@@ -2151,6 +2151,17 @@ table.admin .code{font-family:var(--f-code);font-size:12.5px}
         </div>
       </div>
 
+      <!-- WHERE AM I — lightweight location awareness, so a passenger asking
+           for help doesn't have to describe where they are -->
+      <div class="c-card reveal" style="max-width:640px;margin:0 auto 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="font-size:22px">📍</span>
+        <div style="flex:1;min-width:200px">
+          <b style="display:block;font-size:13.5px">Need help describing where you are?</b>
+          <span id="whereAmIText" style="font-size:12.5px;color:var(--muted)">Tap "Where am I" and we'll show your nearest known stop, temple, or town.</span>
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm" id="whereAmIBtn">📍 Where am I?</button>
+      </div>
+
       <!-- CONTACT FORM -->
       <div class="contact-grid">
         <form class="c-card reveal d1" id="contactForm" novalidate style="grid-column:1/-1;max-width:640px;margin:0 auto">
@@ -2470,6 +2481,11 @@ table.admin .code{font-family:var(--f-code);font-size:12.5px}
   <div class="sn-load" id="snLoad"><div class="spin"></div><p>Loading navigator…</p></div>
   <div id="sn-map"></div>
   <button class="sn-back" id="snBack" title="Back to site">←</button>
+  <div class="sn-banner" id="snBanner">
+    <span class="sb-ico" id="snBanIcon">⬆️</span>
+    <div class="sb-txt"><b id="snBanInstr">—</b><small id="snBanDist">—</small></div>
+    <button class="sb-mic on" id="snBanMic" title="Toggle voice guidance" type="button">🔊</button>
+  </div>
   <div class="sn-top">
     <div class="sn-brand"><span class="om">🕉️</span><div><b>S Hari Nav</b><small>India ⇄ Nepal</small></div></div>
     <div class="sn-search">
@@ -2504,6 +2520,10 @@ table.admin .code{font-family:var(--f-code);font-size:12.5px}
   <div class="sn-dock">
     <div class="sn-panel">
       <button id="snPreset" type="button" style="width:100%;background:linear-gradient(135deg,#7B2FBE,#9d4edd);border:none;color:#fff;font-family:inherit;font-weight:700;font-size:13.5px;padding:11px;cursor:pointer;border-bottom:1px solid var(--sl)">🚌 Load S Hari Bus Route · Ahmedabad ⇄ Nepalgunj</button>
+      <div class="sn-livebar">
+        <button type="button" class="sn-livebtn" id="snDriverToggle" title="Broadcast your position to waiting passengers">📡 I'm the driver</button>
+        <button type="button" class="sn-livebtn" id="snTrackToggle" title="Watch the bus's live shared position">🚌 Track live bus</button>
+      </div>
       <div class="sn-modes" id="snModes">
         <div class="sn-mode on" data-snmode="auto"><span class="em">🚗</span>Car</div>
         <div class="sn-mode" data-snmode="motorcycle"><span class="em">🏍️</span>Bike</div>
@@ -2528,6 +2548,11 @@ table.admin .code{font-family:var(--f-code);font-size:12.5px}
       <div class="sn-sum" id="snSummary">
         <div class="head"><span class="t" id="snSTime">—</span><span class="d" id="snSDist">—</span><span class="via" id="snSVia"></span></div>
         <div class="sn-steps" id="snSteps"></div>
+      </div>
+      <div class="sn-trackcard" id="snTrackCard">
+        <div class="ttl">🚌 Live bus position <small id="snTrackUpd">waiting for driver…</small></div>
+        <div class="row"><div class="cell"><b id="snTrackDist">—</b><span>Remaining</span></div>
+          <div class="cell"><b id="snTrackEta">—</b><span>ETA</span></div></div>
       </div>
     </div>
   </div>
@@ -3587,6 +3612,19 @@ a,button,.btn,.nav a,.tab-btn,.pm-tab,.bt-pill,.tier-pill,.proof-tab,.trip-pill{
 #view-nav .sn-back{position:absolute;top:14px;left:14px;z-index:22;width:40px;height:40px;border-radius:12px;
   background:var(--sx);backdrop-filter:blur(14px);border:1px solid var(--sl);color:var(--sk);font-size:18px;
   cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 22px rgba(0,0,0,.4)}
+#view-nav .sn-banner{display:none;position:absolute;top:14px;left:70px;right:14px;z-index:21;align-items:center;gap:12px;
+  background:linear-gradient(135deg,#0b3d3a,#0f4a46);border:1px solid rgba(255,255,255,.14);border-radius:14px;
+  padding:12px 16px;box-shadow:0 8px 30px rgba(0,0,0,.45);color:#fff}
+#view-nav .sn-banner.show{display:flex}
+#view-nav .sn-banner .sb-ico{font-size:26px;flex:none;filter:drop-shadow(0 2px 3px rgba(0,0,0,.4))}
+#view-nav .sn-banner .sb-txt{flex:1;min-width:0;line-height:1.25}
+#view-nav .sn-banner .sb-txt b{display:block;font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#view-nav .sn-banner .sb-txt small{display:block;font-size:12.5px;color:rgba(255,255,255,.75);margin-top:2px;font-variant-numeric:tabular-nums}
+#view-nav .sn-banner .sb-mic{flex:none;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.24);color:#fff;
+  width:36px;height:36px;border-radius:10px;font-size:16px;cursor:pointer}
+#view-nav .sn-banner .sb-mic.off{opacity:.4}
+@media(max-width:640px){#view-nav .sn-banner{left:60px;padding:9px 12px;gap:9px}
+  #view-nav .sn-banner .sb-txt b{font-size:13.5px}#view-nav .sn-banner .sb-ico{font-size:21px}}
 #view-nav .sn-top{position:absolute;top:0;left:60px;right:0;z-index:20;display:flex;gap:10px;align-items:center;padding:12px 14px 12px 0;pointer-events:none}
 #view-nav .sn-brand{pointer-events:auto;display:flex;align-items:center;gap:9px;background:var(--sx);
   backdrop-filter:blur(14px);border:1px solid var(--sl);border-radius:14px;padding:8px 14px;flex:none;box-shadow:0 8px 30px rgba(0,0,0,.35)}
@@ -3653,6 +3691,19 @@ a,button,.btn,.nav a,.tab-btn,.pm-tab,.bt-pill,.tier-pill,.proof-tab,.trip-pill{
 #view-nav .sn-qd.show{display:flex}
 #view-nav .sn-qd .qd-ico{font-size:15px;flex:none}
 #view-nav .sn-qd .qd-txt b{color:var(--sg);font-variant-numeric:tabular-nums}
+#view-nav .sn-livebar{display:flex;gap:8px;padding:10px 12px 0}
+#view-nav .sn-livebtn{flex:1;background:rgba(255,255,255,.05);border:1px solid var(--sl);color:var(--sm);border-radius:10px;
+  padding:8px 6px;font-family:inherit;font-weight:600;font-size:11.5px;cursor:pointer}
+#view-nav .sn-livebtn.on{background:linear-gradient(135deg,#178A50,#22b06a);border-color:#22b06a;color:#fff}
+#view-nav .sn-trackcard{display:none;margin:10px 12px 12px;padding:11px 13px;border-radius:12px;
+  background:linear-gradient(135deg,rgba(23,138,80,.14),rgba(34,176,106,.06));border:1px solid rgba(34,176,106,.35)}
+#view-nav .sn-trackcard.show{display:block}
+#view-nav .sn-trackcard .ttl{font-size:12.5px;font-weight:700;color:var(--sk);display:flex;justify-content:space-between;align-items:center;gap:8px}
+#view-nav .sn-trackcard .ttl small{font-weight:500;color:var(--sm);font-size:10.5px}
+#view-nav .sn-trackcard .row{display:flex;gap:18px;margin-top:8px}
+#view-nav .sn-trackcard .cell b{display:block;font-size:18px;color:#22b06a;font-variant-numeric:tabular-nums}
+#view-nav .sn-trackcard .cell span{font-size:10px;color:var(--sm);text-transform:uppercase;letter-spacing:.4px}
+#view-nav .sn-bus-m{font-size:22px;filter:drop-shadow(0 2px 5px rgba(0,0,0,.5))}
 #view-nav .sn-rowbtns{display:flex;gap:8px;padding:0 12px 12px}
 #view-nav .sn-go{flex:1;background:linear-gradient(135deg,var(--sn),#ff7a1a);border:none;color:#fff;font-family:inherit;
   font-weight:800;font-size:14px;padding:12px;border-radius:12px;cursor:pointer;box-shadow:0 6px 20px rgba(255,107,0,.4)}
@@ -3685,8 +3736,9 @@ a,button,.btn,.nav a,.tab-btn,.pm-tab,.bt-pill,.tier-pill,.proof-tab,.trip-pill{
   border-bottom:20px solid rgba(66,133,244,.55);transform:translate(-50%,-108%)}
 #view-nav .sn-me-core{position:absolute;left:50%;top:50%;width:16px;height:16px;border-radius:50%;background:#4285F4;
   border:3px solid #fff;transform:translate(-50%,-50%);box-shadow:0 0 0 2px rgba(66,133,244,.35),0 2px 6px rgba(0,0,0,.4)}
-#view-nav .sn-temple-m{font-size:20px;line-height:1;cursor:pointer;filter:drop-shadow(0 2px 4px rgba(0,0,0,.45));transition:transform .12s}
-#view-nav .sn-temple-m:hover{transform:scale(1.3)}
+#view-nav .sn-temple-m{cursor:pointer}
+#view-nav .sn-temple-ico{display:block;font-size:20px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.45));transition:transform .15s}
+#view-nav .sn-temple-m:hover .sn-temple-ico{transform:scale(1.3)!important}
 #view-nav .tc{width:224px;font-family:'Inter',sans-serif}
 #view-nav .tc-img{width:100%;height:128px;object-fit:cover;border-radius:10px;margin-bottom:8px;background:#efeaf6}
 #view-nav .tc h3{margin:0 0 6px;font-size:15px;color:#1a1030;line-height:1.25}
@@ -4597,6 +4649,91 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 }
 
 /* ================================================================
+   [JS] 4g. LIGHTWEIGHT "WHERE AM I" — available anywhere on the site
+   (Help section, any page), separate from the live navigator's continuous
+   high-accuracy watchPosition. Single-shot, low-power getCurrentPosition;
+   resolves a place name from data already on this page first (instant,
+   free, offline) and only calls Nominatim's reverse-geocode as a cached,
+   rate-limited fallback when nothing known is nearby. Never runs alongside
+   the full nav view's watchPosition loop — this is the "just roughly where
+   am I" helper, that one is the "turn-by-turn while moving" helper.
+================================================================ */
+function getLightLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) { reject(new Error('no-geo')); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      (err) => reject(err),
+      { enableHighAccuracy: false, maximumAge: 60000, timeout: 8000 }
+    );
+  });
+}
+function nearestKnownPlace(lat, lng) {
+  const pool = [];
+  (typeof SN_STOPS !== 'undefined' ? SN_STOPS : []).forEach((s) => pool.push({ name: s.n, lat: s.lat, lng: s.lng }));
+  (typeof SHG_TEMPLES !== 'undefined' ? SHG_TEMPLES : []).forEach((tp) => pool.push({ name: tp.name + ' (' + tp.city + ')', lat: tp.lat, lng: tp.lng }));
+  let best = null, bestKm = Infinity;
+  pool.forEach((p) => { const d = haversineKm(lat, lng, p.lat, p.lng); if (d < bestKm) { bestKm = d; best = p; } });
+  return best ? { name: best.name, km: bestKm } : null;
+}
+const _lightGeoCache = {};
+function reverseGeocodeCached(lat, lng) {
+  const key = lat.toFixed(2) + ',' + lng.toFixed(2); /* ~1.1km cells — avoids re-querying the same area */
+  if (_lightGeoCache[key]) return Promise.resolve(_lightGeoCache[key]);
+  return fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat.toFixed(5) + '&lon=' + lng.toFixed(5) + '&zoom=12', { referrerPolicy: 'origin' })
+    .then((r) => r.json())
+    .then((j) => {
+      const addr = j.address || {};
+      const name = addr.town || addr.village || addr.city || addr.county || (j.display_name ? j.display_name.split(',')[0] : null) || 'nearby area';
+      _lightGeoCache[key] = name;
+      return name;
+    });
+}
+/* ================================================================
+   [JS] 4h. LIVE BUS POSITION — backend-agnostic postLocation()/subscribeLocation()
+   pair for the public live-tracking view. [NEEDS BACKEND]: this demo shim only
+   syncs across tabs of the SAME browser (BroadcastChannel + a localStorage
+   last-known fallback) — there is no server here, by design, per project scope.
+   To go cross-device, replace ONLY the bodies of these two functions with a
+   Firebase Realtime DB / Supabase Realtime channel write+listen; every caller
+   (the driver-broadcast toggle, the passenger tracking card) stays unchanged.
+================================================================ */
+var _liveBusChannel = (typeof BroadcastChannel !== 'undefined') ? new BroadcastChannel('shari-live-bus') : null;
+function postLocation(loc) {
+  var msg = { lat: loc.lat, lng: loc.lng, bearing: loc.bearing != null ? loc.bearing : null, ts: loc.ts || Date.now() };
+  try { localStorage.setItem('shari:livebus', JSON.stringify(msg)); } catch (e) {}
+  if (_liveBusChannel) _liveBusChannel.postMessage(msg);
+}
+function subscribeLocation(cb) {
+  try { var last = JSON.parse(localStorage.getItem('shari:livebus') || 'null'); if (last) cb(last); } catch (e) {}
+  var onMsg = function (e) { cb(e.data); };
+  if (_liveBusChannel) _liveBusChannel.addEventListener('message', onMsg);
+  var onStorage = function (e) { if (e.key === 'shari:livebus' && e.newValue) { try { cb(JSON.parse(e.newValue)); } catch (err) {} } };
+  window.addEventListener('storage', onStorage);
+  return function unsubscribeLocation() {
+    if (_liveBusChannel) _liveBusChannel.removeEventListener('message', onMsg);
+    window.removeEventListener('storage', onStorage);
+  };
+}
+
+/* onUpdate({state:'locating'|'known'|'denied', text}) — caller renders it however it likes. */
+function describeWhereAmI(onUpdate) {
+  onUpdate({ state: 'locating', text: 'Locating…' });
+  getLightLocation().then(({ lat, lng }) => {
+    const near = nearestKnownPlace(lat, lng);
+    if (near && near.km <= 15) {
+      onUpdate({ state: 'known', text: 'near ' + near.name + ' (~' + (near.km < 1 ? Math.round(near.km * 1000) + ' m' : near.km.toFixed(1) + ' km') + ' away)' });
+      return;
+    }
+    reverseGeocodeCached(lat, lng).then((name) => {
+      onUpdate({ state: 'known', text: 'near ' + name });
+    }).catch(() => {
+      onUpdate({ state: 'known', text: near ? ('closest known point: ' + near.name + ' (~' + near.km.toFixed(0) + ' km away)') : 'location found, but the area name is unavailable' });
+    });
+  }).catch(() => onUpdate({ state: 'denied', text: 'Location permission needed to show this' }));
+}
+
+/* ================================================================
    [JS] 4g. DARK MODE — data-theme="dark" on <html>, tokens override
    in CSS section 26. Applies site-wide; persisted per device.
 ================================================================ */
@@ -5321,6 +5458,15 @@ document.addEventListener('click', (e) => {
     if (target === 'top') window.scrollTo({ top: 0, behavior: 'smooth' });
     else { const el = document.getElementById(target); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
   }
+});
+
+/* "Where am I?" — Help section lightweight location lookup (see getLightLocation()
+   in the GEO HELPERS block). Single-shot, low-power — does not start any
+   continuous GPS watch, unlike the live navigator. */
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('#whereAmIBtn'); if (!btn) return;
+  const out = document.getElementById('whereAmIText');
+  describeWhereAmI((u) => { if (out) out.textContent = u.text; });
 });
 
 /* ================================================================
@@ -11004,7 +11150,11 @@ document.addEventListener('click', function (e) {
 var SN = { map:null, ready:false, loading:false, watchId:null, meMarker:null, meAnim:null,
   gpsPos:null, origin:null, dest:null, originMarker:null, destMarker:null, routeGeo:null,
   mode:'auto', currentStyle:'day', is3D:false, followMe:false, presetMarkers:[],
-  templeMarkers:[], templesOn:true, toastT:null };
+  templeMarkers:[], templesOn:true, toastT:null,
+  /* live-tracking upgrade state (SN-local only — nothing outside this block reads these) */
+  prevGps:null, routeCoords:null, routeManeuvers:null, routeCumKm:null, routeTotalKm:0,
+  routeProgKm:0, offRouteSince:0, rerouteT:null, userRotated:false, voiceOn:true, lastSpokenInstr:null,
+  driverBroadcast:false, trackingMode:false, busMarker:null, trackUnsub:null, trackLastTs:0, trackTickT:null };
 
 var SN_TEMPLES=[
   {n:'Somnath',lat:20.888,lng:70.4013,deity:'Shiva / शिव',wiki:'Somnath temple',hi:'प्रथम ज्योतिर्लिंग — समुद्र तट पर शिव मंदिर, कई बार नष्ट और पुनर्निर्मित।',special:'First of the 12 Jyotirlingas — a coastal Shiva shrine destroyed and rebuilt many times across a thousand years.'},
@@ -11072,6 +11222,11 @@ function renderNav(){
 }
 function cleanupNav(){
   if(SN.watchId!=null){ navigator.geolocation.clearWatch(SN.watchId); SN.watchId=null; }
+  if(SN.meAnim!=null){ cancelAnimationFrame(SN.meAnim); SN.meAnim=null; }
+  if(SN.rerouteT!=null){ clearTimeout(SN.rerouteT); SN.rerouteT=null; }
+  if(SN.trackUnsub){ SN.trackUnsub(); SN.trackUnsub=null; }
+  if(SN.trackTickT!=null){ clearInterval(SN.trackTickT); SN.trackTickT=null; }
+  SN.driverBroadcast=false;
 }
 
 function initNavApp(){
@@ -11113,7 +11268,99 @@ function initNavApp(){
       lng+=(res&1)?~(res>>1):(res>>1); coords.push([lng/f,lat/f]); }
     return coords;
   }
+  /* ---- route-progress helpers — road snapping, traveled/ahead split, turn banner.
+     Everything here is derived from the polyline + maneuvers Valhalla already returns
+     (SN.routeCoords / SN.routeCumKm / SN.routeManeuvers, set in snRoute()) — no new API. */
+  function buildCumDist(coords){
+    var cum=[0];
+    for(var i=1;i<coords.length;i++) cum.push(cum[i-1]+haversineKm(coords[i-1][1],coords[i-1][0],coords[i][1],coords[i][0]));
+    return cum;
+  }
+  function snapToRoute(lng,lat){
+    var coords=SN.routeCoords; if(!coords||coords.length<2) return null;
+    var bestIdx=-1,bestPx=lng,bestPy=lat,bestD=Infinity;
+    for(var i=0;i<coords.length-1;i++){
+      var ax=coords[i][0],ay=coords[i][1],bx=coords[i+1][0],by=coords[i+1][1];
+      var dx=bx-ax,dy=by-ay,len2=dx*dx+dy*dy;
+      var tt=len2>0?((lng-ax)*dx+(lat-ay)*dy)/len2:0; tt=Math.max(0,Math.min(1,tt));
+      var px=ax+dx*tt,py=ay+dy*tt;
+      var dKm=haversineKm(lat,lng,py,px);
+      if(dKm<bestD){ bestD=dKm; bestIdx=i; bestPx=px; bestPy=py; }
+    }
+    if(bestIdx<0) return null;
+    var distAlongKm=SN.routeCumKm[bestIdx]+haversineKm(coords[bestIdx][1],coords[bestIdx][0],bestPy,bestPx);
+    return {lng:bestPx,lat:bestPy,idx:bestIdx,offKm:bestD,distAlongKm:distAlongKm};
+  }
+  function sliceRouteAt(distAlongKm){
+    var coords=SN.routeCoords,cum=SN.routeCumKm,done=[],ahead=[],i;
+    if(!coords||!cum) return{done:done,ahead:ahead};
+    for(i=0;i<coords.length;i++){ if(cum[i]<=distAlongKm) done.push(coords[i]); else break; }
+    if(i>0&&i<coords.length){
+      var frac=(distAlongKm-cum[i-1])/Math.max(1e-6,cum[i]-cum[i-1]);
+      var split=[coords[i-1][0]+(coords[i][0]-coords[i-1][0])*frac,coords[i-1][1]+(coords[i][1]-coords[i-1][1])*frac];
+      done.push(split); ahead=[split].concat(coords.slice(i));
+    } else ahead=coords.slice(i);
+    return{done:done,ahead:ahead};
+  }
+  function updateTraveledRoute(distAlongKm){
+    if(!SN.routeCoords) return;
+    var sl=sliceRouteAt(Math.max(0,distAlongKm||0));
+    var doneGeo={type:'Feature',geometry:{type:'LineString',coordinates:sl.done.length>1?sl.done:[]}};
+    var aheadGeo={type:'Feature',geometry:{type:'LineString',coordinates:sl.ahead.length>1?sl.ahead:sl.ahead.concat(sl.ahead)}};
+    if(!map.getSource('sn-route-done')){
+      map.addSource('sn-route-done',{type:'geojson',data:doneGeo});
+      map.addLayer({id:'sn-rdone',type:'line',source:'sn-route-done',layout:{'line-cap':'round','line-join':'round'},
+        paint:{'line-color':'#8a94a6','line-width':5,'line-opacity':.6}});
+    } else map.getSource('sn-route-done').setData(doneGeo);
+    if(!map.getSource('sn-route-ahead')){
+      map.addSource('sn-route-ahead',{type:'geojson',data:aheadGeo});
+      map.addLayer({id:'sn-rglow',type:'line',source:'sn-route-ahead',layout:{'line-cap':'round','line-join':'round'},
+        paint:{'line-color':'#FF6B00','line-width':11,'line-opacity':.25,'line-blur':3}});
+      map.addLayer({id:'sn-rline',type:'line',source:'sn-route-ahead',layout:{'line-cap':'round','line-join':'round'},
+        paint:{'line-color':'#FF7A1A','line-width':6}});
+    } else map.getSource('sn-route-ahead').setData(aheadGeo);
+  }
+  function speak(text){
+    if(!SN.voiceOn||!text||!window.speechSynthesis) return;
+    try{ window.speechSynthesis.cancel();
+      var u=new SpeechSynthesisUtterance(text); u.rate=1; u.lang='en-IN';
+      window.speechSynthesis.speak(u);
+    }catch(e){}
+  }
+  function updateManeuverBanner(distAlongKm){
+    var mv=SN.routeManeuvers; if(!mv||!mv.length){ s('#snBanner').classList.remove('show'); return; }
+    var i=0; while(i<mv.length-1&&mv[i+1]._distKm<=distAlongKm) i++;
+    var upcoming=i<mv.length-1, show=upcoming?mv[i+1]:mv[i];
+    var remainKm=upcoming?Math.max(0,show._distKm-distAlongKm):Math.max(0,SN.routeTotalKm-distAlongKm);
+    var v=SN_SPD[SN.mode]||40;
+    s('#snBanIcon').textContent=snManIcon(show.type);
+    s('#snBanInstr').textContent=show.instruction||(upcoming?'Continue':'You have arrived');
+    s('#snBanDist').textContent=(remainKm<1?Math.round(remainKm*1000)+' m':remainKm.toFixed(1)+' km')
+      +(upcoming?' · '+snFmtTime(remainKm/v*3600):'');
+    s('#snBanner').classList.add('show');
+    if(show.instruction&&show.instruction!==SN.lastSpokenInstr){ speak(show.instruction); SN.lastSpokenInstr=show.instruction; }
+  }
+  /* Styling-only road-hierarchy tuning on top of OpenFreeMap's own hosted
+     liberty/dark styles — verified against their actual layer IDs (fetched and
+     inspected directly), not guessed. No tile source swap, no new style JSON
+     shipped — just setPaintProperty nudges after their style finishes loading,
+     each wrapped so a future OpenFreeMap style update can't break anything here. */
+  function tuneRoadStyle(){
+    function setP(id,prop,val){ try{ if(map.getLayer(id)) map.setPaintProperty(id,prop,val); }catch(e){} }
+    if(SN.currentStyle==='day'){
+      /* liberty: road_trunk_primary and road_secondary_tertiary share the exact
+         same #fea color — a highway and a back street look identical at a glance. */
+      setP('road_trunk_primary','line-color','#ffc266');
+      setP('road_trunk_primary_casing','line-color','#e08a3e');
+    } else if(SN.currentStyle==='night'){
+      /* dark: road "inner" fill goes near-black on a near-black background,
+         readable only via a faint grey casing — brighten/warm the casings. */
+      setP('highway_motorway_casing','line-color','rgba(255,167,38,0.55)');
+      setP('highway_major_casing','line-color','rgba(150,150,150,0.85)');
+    }
+  }
   function applyOL(){
+    tuneRoadStyle();
     if(SN.is3D){ var src=firstVS();
       if(src&&!map.getLayer('sn-bld3d')){
         try{ map.addLayer({id:'sn-bld3d',source:src,'source-layer':'building',type:'fill-extrusion',minzoom:13,
@@ -11121,14 +11368,7 @@ function initNavApp(){
             'fill-extrusion-height':['coalesce',['get','render_height'],['get','height'],8],
             'fill-extrusion-base':['coalesce',['get','render_min_height'],['get','min_height'],0],
             'fill-extrusion-opacity':.82}}); }catch(e){} } }
-    if(SN.routeGeo){
-      if(!map.getSource('sn-route')){
-        map.addSource('sn-route',{type:'geojson',data:SN.routeGeo});
-        map.addLayer({id:'sn-rglow',type:'line',source:'sn-route',layout:{'line-cap':'round','line-join':'round'},
-          paint:{'line-color':'#FF6B00','line-width':11,'line-opacity':.25,'line-blur':3}});
-        map.addLayer({id:'sn-rline',type:'line',source:'sn-route',layout:{'line-cap':'round','line-join':'round'},
-          paint:{'line-color':'#FF7A1A','line-width':6}});
-      } else map.getSource('sn-route').setData(SN.routeGeo); }
+    if(SN.routeCoords) updateTraveledRoute(SN.routeProgKm||0);
     if(SN.gpsPos){
       var ring=circPoly(SN.gpsPos.lng,SN.gpsPos.lat,SN.gpsPos.acc||30);
       if(!map.getSource('sn-acc')){
@@ -11157,13 +11397,71 @@ function initNavApp(){
   };
 
   /* compass + zoom */
-  map.on('rotate',function(){ s('#snCompass .sn-needle').style.transform='rotate('+ -map.getBearing()+'deg)'; });
-  s('#snCompass').onclick=function(){ map.easeTo({bearing:0,pitch:SN.is3D?60:0,duration:500}); };
+  map.on('rotate',function(e){ s('#snCompass .sn-needle').style.transform='rotate('+ -map.getBearing()+'deg)'; if(e.originalEvent) SN.userRotated=true; });
+  s('#snCompass').onclick=function(){ SN.userRotated=false; map.easeTo({bearing:0,pitch:SN.is3D?60:0,duration:500}); };
   s('#snZin').onclick=function(){ map.zoomIn(); };
   s('#snZout').onclick=function(){ map.zoomOut(); };
 
   /* back button */
   s('#snBack').onclick=function(){ location.hash='#/'; };
+
+  /* voice guidance toggle — speaks the upcoming turn via the browser's own
+     free, built-in speechSynthesis (no API/key), matching the reference banner's mic icon */
+  s('#snBanMic').onclick=function(){
+    SN.voiceOn=!SN.voiceOn; s('#snBanMic').classList.toggle('on',SN.voiceOn); s('#snBanMic').classList.toggle('off',!SN.voiceOn);
+    if(!SN.voiceOn&&window.speechSynthesis) try{window.speechSynthesis.cancel();}catch(e){}
+    snToast(SN.voiceOn?'🔊 Voice guidance on':'🔇 Voice guidance off');
+  };
+
+  /* ---- public live bus tracking (backend-agnostic — see postLocation/subscribeLocation) ----
+     Driver side: reuses the SAME watchPosition loop below (onSnPos already calls
+     postLocation() when this is on) — no second GPS listener is ever started.
+     Passenger side: does NOT touch GPS at all, just renders whatever the driver
+     last broadcast, so a waiting passenger can watch without granting location. */
+  s('#snDriverToggle').onclick=function(){
+    SN.driverBroadcast=!SN.driverBroadcast;
+    s('#snDriverToggle').classList.toggle('on',SN.driverBroadcast);
+    if(SN.driverBroadcast){
+      snToast('📡 Sharing your live location so waiting passengers can see the bus — allow GPS access');
+      if(SN.watchId==null) s('#snLocate').click();
+    } else snToast('📡 Broadcast stopped');
+  };
+  function snTrackTick(){
+    if(!SN.trackLastTs){ s('#snTrackUpd').textContent='waiting for driver…'; return; }
+    var secs=Math.round((Date.now()-SN.trackLastTs)/1000);
+    s('#snTrackUpd').textContent=secs<5?'just now':(secs<60?secs+'s ago':Math.round(secs/60)+'m ago');
+  }
+  s('#snTrackToggle').onclick=function(){
+    SN.trackingMode=!SN.trackingMode;
+    s('#snTrackToggle').classList.toggle('on',SN.trackingMode);
+    s('#snTrackCard').classList.toggle('show',SN.trackingMode);
+    if(SN.trackingMode){
+      if(!SN.busMarker){ var el=document.createElement('div'); el.className='sn-bus-m'; el.textContent='🚌';
+        SN.busMarker=new maplibregl.Marker({element:el}); }
+      SN.trackUnsub=subscribeLocation(function(loc){
+        SN.trackLastTs=loc.ts||Date.now();
+        SN.busMarker.setLngLat([loc.lng,loc.lat]).addTo(map);
+        if(loc.bearing!=null&&!isNaN(loc.bearing)) SN.busMarker.setRotation(loc.bearing);
+        snTrackTick();
+        if(SN.routeCoords){
+          var snap=snapToRoute(loc.lng,loc.lat);
+          if(snap){
+            updateTraveledRoute(snap.distAlongKm);
+            var remainKm=Math.max(0,SN.routeTotalKm-snap.distAlongKm), v=SN_SPD[SN.mode]||40;
+            s('#snTrackDist').textContent=remainKm<1?Math.round(remainKm*1000)+' m':remainKm.toFixed(1)+' km';
+            s('#snTrackEta').textContent=snFmtTime(remainKm/v*3600);
+          }
+        }
+      });
+      if(SN.trackTickT) clearInterval(SN.trackTickT);
+      SN.trackTickT=setInterval(snTrackTick,5000);
+      snToast('🚌 Watching for the live bus position…');
+    } else {
+      if(SN.trackUnsub){ SN.trackUnsub(); SN.trackUnsub=null; }
+      if(SN.trackTickT){ clearInterval(SN.trackTickT); SN.trackTickT=null; }
+      if(SN.busMarker) SN.busMarker.remove();
+    }
+  };
 
   /* GPS — speed-adaptive refresh: walking maximumAge 0, vehicle maximumAge 0 but throttle HUD */
   function ensureMe(){
@@ -11175,8 +11473,15 @@ function initNavApp(){
   }
   function setMeSmooth(lng,lat){
     if(!SN.meMarker) return;
-    var p=SN.meMarker.getLngLat();
-    if(Math.abs(p.lng-lng)>.03||Math.abs(p.lat-lat)>.03){ SN.meMarker.setLngLat([lng,lat]); return; }
+    /* Interpolate from the last real fix we targeted (SN.prevGps), never from
+       SN.meMarker.getLngLat() — reading the marker mid-tween and chaining a new
+       animation from that in-flight point is what caused the rubber-band/wiggle
+       feel when a fix arrived before the previous 450ms tween finished. */
+    var from=SN.prevGps||SN.meMarker.getLngLat();
+    var big=Math.abs(from.lng-lng)>.03||Math.abs(from.lat-lat)>.03;
+    SN.prevGps={lng:lng,lat:lat};
+    if(big){ SN.meMarker.setLngLat([lng,lat]); return; }
+    var p={lng:from.lng,lat:from.lat};
     var t0=performance.now(),dur=450;
     if(SN.meAnim) cancelAnimationFrame(SN.meAnim);
     (function step(now){ var k=Math.min(1,(now-t0)/dur),e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;
@@ -11185,17 +11490,70 @@ function initNavApp(){
   }
   function onSnPos(p){
     var c=p.coords, fresh=!SN.meMarker;
-    SN.gpsPos={lng:c.longitude,lat:c.latitude,acc:c.accuracy,head:c.heading,spd:c.speed,alt:c.altitude};
+    /* A1 — reject GPS outliers: if the implied speed between this fix and the
+       last one is physically absurd (>500km/h), it's a bad fix (cold-start jump,
+       multipath reflection) — keep the marker where it was and wait for the next one. */
+    if(!fresh&&SN.gpsPos){
+      var dtS=(c.timestamp&&SN.gpsPos.ts?(c.timestamp-SN.gpsPos.ts)/1000:2);
+      if(dtS>0&&dtS<30){
+        var jumpKm=haversineKm(SN.gpsPos.lat,SN.gpsPos.lng,c.latitude,c.longitude);
+        if(jumpKm/dtS*3600>500) return;
+      }
+    }
+    SN.gpsPos={lng:c.longitude,lat:c.latitude,acc:c.accuracy,head:c.heading,spd:c.speed,alt:c.altitude,ts:c.timestamp||Date.now()};
     try{localStorage.setItem('shari:lastpos',JSON.stringify({lng:SN.gpsPos.lng,lat:SN.gpsPos.lat,acc:SN.gpsPos.acc,ts:Date.now()}));}catch(e){}
+
+    /* driver broadcast — piggybacks on this SAME watchPosition loop (no second
+       GPS listener started) whenever the "I'm the driver" toggle is on. */
+    if(SN.driverBroadcast) postLocation({lat:SN.gpsPos.lat,lng:SN.gpsPos.lng,bearing:c.heading,ts:SN.gpsPos.ts});
+
+    /* A3 — road snapping: while a route is active, show the dot on the road
+       geometry Valhalla already gave us instead of the raw (noisy) GPS point,
+       but only when we're plausibly still ON that road — a snap from 2km away
+       would be worse than showing the truth. */
+    var dispLng=SN.gpsPos.lng, dispLat=SN.gpsPos.lat, snap=null;
+    if(SN.routeCoords){
+      snap=snapToRoute(SN.gpsPos.lng,SN.gpsPos.lat);
+      if(snap&&snap.offKm<=0.3){ dispLng=snap.lng; dispLat=snap.lat; }
+    }
+
     ensureMe();
-    if(fresh) SN.meMarker.setLngLat([SN.gpsPos.lng,SN.gpsPos.lat]); else setMeSmooth(SN.gpsPos.lng,SN.gpsPos.lat);
+    if(fresh){ SN.meMarker.setLngLat([dispLng,dispLat]); SN.prevGps={lng:dispLng,lat:dispLat}; }
+    else setMeSmooth(dispLng,dispLat);
     if(SN.meMarker&&c.heading!=null&&!isNaN(c.heading)){
       SN.meMarker.setRotation(c.heading);
       SN.meMarker.getElement().querySelector('.sn-me-cone').style.opacity=1;
     } else if(SN.meMarker){ SN.meMarker.getElement().querySelector('.sn-me-cone').style.opacity=0; }
-    var ring=circPoly(SN.gpsPos.lng,SN.gpsPos.lat,SN.gpsPos.acc||30);
+    var ring=circPoly(dispLng,dispLat,SN.gpsPos.acc||30);
     if(map.getSource('sn-acc')) map.getSource('sn-acc').setData(ring); else applyOL();
-    if(SN.followMe){ map.easeTo({center:[SN.gpsPos.lng,SN.gpsPos.lat],zoom:Math.max(map.getZoom(),15),duration:700}); SN.followMe=false; }
+
+    /* A4/A5 — traveled/ahead route split + live turn-by-turn banner, driven by
+       how far along the route geometry we've actually progressed. */
+    if(snap){
+      SN.routeProgKm=snap.distAlongKm;
+      updateTraveledRoute(snap.distAlongKm);
+      updateManeuverBanner(snap.distAlongKm);
+      /* A7 — auto re-route: only after being sustainedly off-route (not one jittery
+         fix) so we don't hammer the free/rate-limited Valhalla demo server. */
+      var offLimit=SN_OFFROUTE_KM[SN.mode]||0.06;
+      if(snap.offKm>offLimit){
+        if(!SN.offRouteSince) SN.offRouteSince=Date.now();
+        else if(Date.now()-SN.offRouteSince>6000&&!SN.rerouteT){
+          SN.rerouteT=setTimeout(function(){ SN.rerouteT=null; },15000);
+          snToast('↻ Off route — recalculating…'); snSetOrigin(SN.gpsPos.lng,SN.gpsPos.lat,'My location'); snRoute();
+        }
+      } else SN.offRouteSince=0;
+    }
+
+    /* A6 — camera bearing follows travel direction like Google Maps' nav mode,
+       but never fights a manual rotate (compass button/drag resets userRotated). */
+    var easeOpts=null;
+    if(SN.followMe){ easeOpts={center:[dispLng,dispLat],zoom:Math.max(map.getZoom(),15)}; SN.followMe=false; }
+    if(c.heading!=null&&!isNaN(c.heading)&&!SN.userRotated&&(c.speed==null||c.speed*3.6>3)){
+      easeOpts=easeOpts||{}; easeOpts.bearing=c.heading;
+    }
+    if(easeOpts){ easeOpts.duration=700; map.easeTo(easeOpts); }
+
     s('#snHud').classList.remove('off');
     var spd=c.speed!=null?Math.max(0,Math.round(c.speed*3.6)):0;
     s('#snSpeed').textContent=spd;
@@ -11225,7 +11583,12 @@ function initNavApp(){
     var q=e.target.value.trim(); clearTimeout(searchT);
     if(q.length<3){ s('#snResults').classList.remove('show'); return; }
     searchT=setTimeout(function(){
-      fetch('https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&countrycodes=in,np&q='+encodeURIComponent(q))
+      /* Browsers block scripts from setting a custom User-Agent header on fetch —
+         that's a forbidden header name, not something we can add from client JS.
+         The realistic, honest way a pure client-side app identifies itself to
+         Nominatim's usage policy is the Referer the browser sends automatically;
+         referrerPolicy:'origin' just makes sure that's never suppressed. */
+      fetch('https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&countrycodes=in,np&q='+encodeURIComponent(q),{referrerPolicy:'origin'})
         .then(function(r){return r.json();}).then(function(list){
           var box=s('#snResults');
           if(!list.length){ box.classList.remove('show'); return; }
@@ -11265,6 +11628,9 @@ function initNavApp(){
   /* instant, offline distance readout — shows the moment a place is picked,
      no Valhalla round-trip needed (that only fires once "Get directions" is pressed) */
   var SN_SPD={auto:40,motorcycle:35,bus:35,bicycle:15,pedestrian:5};
+  /* off-route distance (km) beyond which we stop trusting the snap and treat the
+     rider as genuinely off the suggested path — tighter for walking, looser for a bus */
+  var SN_OFFROUTE_KM={auto:0.06,motorcycle:0.05,bus:0.08,bicycle:0.03,pedestrian:0.02};
   function snUpdateQuickDist(){
     var el=s('#snQd'); if(!el) return;
     if(!(SN.origin&&SN.dest)){ el.classList.remove('show'); return; }
@@ -11297,13 +11663,15 @@ function initNavApp(){
   /* routing */
   s('#snGo').onclick=snRoute;
   s('#snClear').onclick=function(){
-    SN.origin=SN.dest=SN.routeGeo=null;
+    SN.origin=SN.dest=SN.routeGeo=SN.routeCoords=SN.routeManeuvers=SN.routeCumKm=null;
+    SN.routeTotalKm=0; SN.routeProgKm=0; SN.offRouteSince=0; SN.lastSpokenInstr=null;
     [SN.originMarker,SN.destMarker].forEach(function(m){if(m)m.remove();}); SN.originMarker=SN.destMarker=null;
-    ['sn-rline','sn-rglow'].forEach(function(l){if(map.getLayer(l))map.removeLayer(l);});
-    if(map.getSource('sn-route')) map.removeSource('sn-route');
+    ['sn-rline','sn-rglow','sn-rdone'].forEach(function(l){if(map.getLayer(l))map.removeLayer(l);});
+    if(map.getSource('sn-route-ahead')) map.removeSource('sn-route-ahead');
+    if(map.getSource('sn-route-done')) map.removeSource('sn-route-done');
     SN.presetMarkers.forEach(function(m){m.remove();}); SN.presetMarkers=[];
     s('#snFrom').value=''; s('#snTo').value=''; s('#snQ').value='';
-    s('#snSummary').classList.remove('show'); snRefreshGo();
+    s('#snSummary').classList.remove('show'); s('#snBanner').classList.remove('show'); snRefreshGo();
   };
 
   function snRoute(){
@@ -11317,9 +11685,13 @@ function initNavApp(){
         var trip=j.trip; if(!trip||trip.status!==0)throw new Error('noroute');
         var leg=trip.legs[0], coords=decodePoly(leg.shape);
         SN.routeGeo={type:'Feature',geometry:{type:'LineString',coordinates:coords}};
-        ['sn-rline','sn-rglow'].forEach(function(l){if(map.getLayer(l))map.removeLayer(l);});
-        if(map.getSource('sn-route')) map.removeSource('sn-route');
-        applyOL();
+        SN.routeCoords=coords;
+        SN.routeCumKm=buildCumDist(coords);
+        SN.routeTotalKm=SN.routeCumKm[SN.routeCumKm.length-1]||0;
+        SN.routeManeuvers=leg.maneuvers||[];
+        SN.routeManeuvers.forEach(function(m){ m._distKm=SN.routeCumKm[Math.min(m.begin_shape_index,SN.routeCumKm.length-1)]||0; });
+        SN.routeProgKm=0; SN.offRouteSince=0; SN.lastSpokenInstr=null;
+        updateTraveledRoute(0);
         var b=coords.reduce(function(bb,c){return bb.extend(c);},new maplibregl.LngLatBounds(coords[0],coords[0]));
         map.fitBounds(b,{padding:{top:110,bottom:300,left:60,right:60},duration:900});
         snShowSummary(trip.summary,leg.maneuvers);
@@ -11382,13 +11754,24 @@ function initNavApp(){
       .catch(function(){popup.setHTML(snTempleCard(i,null));});
   }
   SN_TEMPLES.forEach(function(t,i){
-    var el=document.createElement('div'); el.className='sn-temple-m'; el.textContent='🛕';
+    var el=document.createElement('div'); el.className='sn-temple-m';
+    el.innerHTML='<span class="sn-temple-ico">🛕</span>';
     var popup=new maplibregl.Popup({offset:16,maxWidth:'260px'});
     popup.on('open',function(){snLoadCard(i,popup);});
     var m=new maplibregl.Marker({element:el}).setLngLat([t.lng,t.lat]).setPopup(popup);
     if(SN.templesOn) m.addTo(map);
     SN.templeMarkers.push(m);
   });
+  /* temple visual hierarchy — smaller flags for whole-country browsing, full size
+     once zoomed to city/district level, so 29 markers don't clutter a national view
+     (they're plain DOM markers, so this is our own transform, not a vendor style layer) */
+  function updTempleScale(){
+    var z=map.getZoom(), sc=z<=6?0.75:(z>=10?1.1:0.75+(z-6)/4*0.35);
+    SN.templeMarkers.forEach(function(m){
+      var ic=m.getElement().querySelector('.sn-temple-ico'); if(ic) ic.style.transform='scale('+sc.toFixed(2)+')';
+    });
+  }
+  updTempleScale(); map.on('zoom',updTempleScale);
   window.snTempleNav=function(i){ var t=SN_TEMPLES[i]; snSetDest(t.lng,t.lat,t.n);
     document.querySelector('#view-nav [data-snmode="auto"]').click(); snToast('🧭 Routing to '+t.n); };
   s('#snTemples').onclick=function(){
