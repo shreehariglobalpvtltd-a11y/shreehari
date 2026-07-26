@@ -2428,6 +2428,37 @@ table.admin .code{font-family:var(--f-code);font-size:12.5px}
       <div class="verify-note">⏳<span data-i18n="payVerify"><b>Manual verification:</b> your seats are held and the ticket is released once our team confirms this payment — usually within 30 minutes (9 AM–9 PM IST).</span></div>
       <div class="verify-note" style="background:var(--blue-50);border:none;color:var(--blue-800)">📄<span><b data-i18n="payPolicyT">Cancellation &amp; refunds</b>: <span data-i18n="payPolicy">≥48 hrs before departure: 75% refund · 24–48 hrs: 50% · under 24 hrs: no refund. Refunds reach the same account within 5–7 working days.</span> <a href="#/terms"><b>T&amp;C →</b></a></span></div>
       </div><!-- /proofSection -->
+
+      <!-- Payment Completed? — one-click proof submission card -->
+      <div class="pp-card" id="ppCard">
+        <div class="pp-title">✅ Payment Completed?</div>
+        <p class="pp-sub">If you have already paid, send your payment proof below.</p>
+        <input type="file" id="ppFileInput" accept="image/jpeg,image/png,image/webp" style="display:none">
+        <div class="pp-actions">
+          <button type="button" class="pp-btn upload" id="ppUploadBtn">
+            <span class="pp-ico">📸</span>
+            <span class="pp-lbl">Upload Screenshot<small>JPG, PNG, WebP · Max 10 MB</small></span>
+          </button>
+          <a class="pp-btn wa" id="ppWhatsApp" href="#" target="_blank" rel="noopener">
+            <span class="pp-ico">🟢</span>
+            <span class="pp-lbl">Send via WhatsApp<small>Pre-filled message · just attach & send</small></span>
+          </a>
+          <a class="pp-btn email" id="ppEmail" href="#" target="_blank" rel="noopener">
+            <span class="pp-ico">📧</span>
+            <span class="pp-lbl">Send via Email<small>Opens your email app with details filled</small></span>
+          </a>
+          <button type="button" class="pp-btn change hide" id="ppChangeBtn">
+            <span class="pp-ico">📎</span>
+            <span class="pp-lbl">Change Screenshot<small>Replace with a different image</small></span>
+          </button>
+        </div>
+        <div class="pp-preview" id="ppPreview">
+          <img id="ppPreviewImg" alt="Payment screenshot preview">
+          <button type="button" class="pp-remove" id="ppRemoveBtn">&times;</button>
+        </div>
+        <div class="pp-status" id="ppStatus"></div>
+      </div>
+
       <button class="btn btn-orange" type="button" id="submitBookingBtn" style="width:100%;margin-top:16px" data-i18n="paySubmit">Confirm your seat →</button>
       <div style="text-align:center;margin-top:12px;font-size:12.5px;color:var(--muted)">🛡️ Secure Encrypted Booking · Your data is safe</div>
       <div id="payCountdown" style="text-align:center;margin-top:8px;font-size:13px;font-weight:700;color:var(--bad)"></div>
@@ -2443,6 +2474,81 @@ table.admin .code{font-family:var(--f-code);font-size:12.5px}
     <div id="statusBody"></div>
   </div></div>
 </section>
+
+<!-- Payment Verification Submission Overlay -->
+<div class="pv-overlay" id="pvOverlay">
+  <div class="pv-modal">
+    <button class="close" id="pvClose" type="button">&times;</button>
+    <div id="pvFormBody">
+      <h3>Submit Payment Proof</h3>
+      <p class="sub">Upload your payment screenshot so we can verify and confirm your booking.</p>
+      <div class="pv-id" id="pvBookingId"></div>
+      <div class="pv-drop" id="pvDrop">
+        <input type="file" id="pvFileInput" accept="image/jpeg,image/png,image/webp" style="display:none">
+        <div class="ico">📸</div>
+        <b>Tap to upload payment screenshot</b>
+        <small>JPG, PNG or WebP · Max 10 MB</small>
+        <img id="pvPreview" alt="Preview">
+        <button class="remove" id="pvRemove" type="button">&times;</button>
+      </div>
+      <div class="pv-field">
+        <label>Booking ID</label>
+        <input id="pvBkId" readonly>
+      </div>
+      <div class="pv-field">
+        <label>UTR / Transaction Reference</label>
+        <input id="pvUtr" placeholder="e.g. 412345678901" maxlength="30">
+        <div class="err">Please enter a valid UTR/reference number</div>
+      </div>
+      <div class="pv-field">
+        <label>Sender Name (as on bank/UPI)</label>
+        <input id="pvSender" placeholder="Full name on payment app" maxlength="80">
+        <div class="err">Please enter sender name</div>
+      </div>
+      <div class="pv-field">
+        <label>Mobile Number</label>
+        <input id="pvMobile" type="tel" placeholder="+91 or +977" maxlength="15">
+        <div class="err">Please enter a valid mobile number</div>
+      </div>
+      <button class="pv-submit" id="pvSubmitBtn" type="button">Submit for Verification →</button>
+    </div>
+    <div class="pv-success hide" id="pvSuccessBody">
+      <div class="big">✅</div>
+      <h4>Payment Proof Submitted!</h4>
+      <p>Verification ID: <b id="pvVerId"></b></p>
+      <p style="margin-top:8px">Our team will verify your payment and confirm your booking within 30 minutes. You'll receive an email once verified.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Reject Reason Modal -->
+<div class="pvr-overlay" id="pvrOverlay">
+  <div class="pvr-modal">
+    <h3 style="font-family:var(--f-display);font-size:18px;margin-bottom:12px">Reject Payment</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:14px">This reason will be emailed to the customer.</p>
+    <input type="hidden" id="pvrSubId">
+    <div class="pv-field">
+      <label>Rejection Reason</label>
+      <select id="pvrReason" style="width:100%;padding:12px;border:1.5px solid var(--line);border-radius:12px;font-size:14px;background:var(--bg)">
+        <option value="">Select reason…</option>
+        <option value="Screenshot unclear or unreadable">Screenshot unclear or unreadable</option>
+        <option value="UTR/reference number does not match">UTR/reference number does not match</option>
+        <option value="Payment not received in our account">Payment not received in our account</option>
+        <option value="Amount does not match booking total">Amount does not match booking total</option>
+        <option value="Duplicate submission">Duplicate submission</option>
+        <option value="other">Other (type below)</option>
+      </select>
+    </div>
+    <div class="pv-field hide" id="pvrCustomWrap">
+      <label>Custom Reason</label>
+      <input id="pvrCustom" placeholder="Type rejection reason…" maxlength="200">
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn btn-ghost" id="pvrCancel" type="button" style="flex:1">Cancel</button>
+      <button class="pvq-reject" id="pvrConfirm" type="button" style="flex:1;padding:12px;border-radius:12px;font-size:14px">Reject & Notify Customer</button>
+    </div>
+  </div>
+</div>
 
 <!-- ================================================================
      [HTML] VIEW: MY BOOKINGS (phone + OTP sign-in)
@@ -2656,6 +2762,11 @@ table.admin .code{font-family:var(--f-code);font-size:12.5px}
     <div class="cell"><b id="snAlt">—</b><span>Altitude</span></div>
     <div class="cell"><b id="snCoord">—</b><span>Position</span></div>
   </div>
+  <div class="sn-navcard" id="snNavCard">
+    <div class="sn-nc-top"><span class="sn-nc-eta" id="snNcEta">—</span><span class="sn-nc-dist" id="snNcDist">—</span></div>
+    <div class="sn-nc-road" id="snNcRoad">—</div>
+    <div class="sn-nc-next"><span class="nico" id="snNcIco">➡️</span><span class="ntxt" id="snNcTxt">—</span><span class="ndist" id="snNcDist2">—</span></div>
+  </div>
   <div class="sn-dock">
     <div class="sn-panel">
       <button id="snPreset" type="button" style="width:100%;background:linear-gradient(135deg,#7B2FBE,#9d4edd);border:none;color:#fff;font-family:inherit;font-weight:700;font-size:13.5px;padding:11px;cursor:pointer;border-bottom:1px solid var(--sl)">🚌 Load S Hari Bus Route · Ahmedabad ⇄ Nepalgunj</button>
@@ -2688,6 +2799,7 @@ table.admin .code{font-family:var(--f-code);font-size:12.5px}
         <div class="head"><span class="t" id="snSTime">—</span><span class="d" id="snSDist">—</span><span class="via" id="snSVia"></span></div>
         <div class="sn-steps" id="snSteps"></div>
       </div>
+      <div class="sn-altbar" id="snAltBar"></div>
       <div class="sn-trackcard" id="snTrackCard">
         <div class="ttl">🚌 Live bus position <small id="snTrackUpd">waiting for driver…</small></div>
         <div class="row"><div class="cell"><b id="snTrackDist">—</b><span>Remaining</span></div>
@@ -2696,6 +2808,12 @@ table.admin .code{font-family:var(--f-code);font-size:12.5px}
     </div>
   </div>
   <div class="sn-toast" id="snToast"></div>
+  <div class="sn-arrival" id="snArrival">
+    <div class="arr-ico">🎉</div>
+    <h2>You've Arrived!</h2>
+    <p id="snArrDest">—</p>
+    <button class="arr-btn" id="snArrClose" type="button">Continue exploring</button>
+  </div>
 </section>
 
 <!-- ================================================================
@@ -2797,6 +2915,8 @@ table.admin .code{font-family:var(--f-code);font-size:12.5px}
         <button class="atab" data-tab="settings">⚙️ Settings</button>
         <button class="atab" data-tab="messages">💬 Messages</button>
         <button class="atab" data-tab="audit">🧾 Activity</button>
+        <button class="atab" data-tab="payments">💳 Payments</button>
+        <button class="adm-bell" id="pvBell" title="Payment notifications">🔔<span class="count" id="pvBellCount"></span></button>
         <button class="atab" id="adminLogout" style="margin-left:auto">Lock 🔒</button>
       </div>
 
@@ -2981,6 +3101,20 @@ table.admin .code{font-family:var(--f-code);font-size:12.5px}
       <div class="admin-tabpane hide" id="tab-messages">
         <p class="admin-note">Enquiries submitted through the website contact form.</p>
         <div id="messagesList"></div>
+      </div>
+
+      <div class="admin-tabpane hide" id="tab-payments">
+        <p class="admin-note">Payment screenshots submitted by passengers. <b>Verify each payment against your bank/UPI app before approving.</b> Approved bookings auto-generate the passenger's PDF ticket.</p>
+        <div class="adm-toolbar">
+          <input id="pvSearch" type="search" placeholder="🔎 Search by booking ID, name, UTR…">
+          <select id="pvFilter">
+            <option value="all">All</option>
+            <option value="pending">⏳ Pending</option>
+            <option value="approved">✅ Approved</option>
+            <option value="rejected">❌ Rejected</option>
+          </select>
+        </div>
+        <div id="pvQueueList" style="margin-top:12px"></div>
       </div>
     </div>
   </div></div>
@@ -3785,6 +3919,119 @@ a,button,.btn,.nav a,.tab-btn,.pm-tab,.bt-pill,.tier-pill,.proof-tab,.trip-pill{
 .stagger-item:nth-child(n+11){animation-delay:500ms}
 
 /* ================================================================
+   [CSS] PAYMENT PROOF CARD — one-click proof submission on checkout
+================================================================ */
+.pp-card{background:linear-gradient(135deg,#f8fdf9 0%,#eef7f0 100%);border:1.5px solid #c8e6c9;border-radius:20px;padding:22px 20px;margin-top:18px;position:relative;overflow:hidden}
+.pp-card::before{content:'';position:absolute;top:-30px;right:-30px;width:100px;height:100px;border-radius:50%;background:rgba(23,138,80,.08)}
+.pp-card .pp-title{font-family:var(--f-display);font-size:17px;color:var(--ok);margin-bottom:4px;display:flex;align-items:center;gap:8px}
+.pp-card .pp-sub{font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.5}
+.pp-actions{display:flex;flex-direction:column;gap:10px}
+.pp-btn{display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;border:1.5px solid var(--line);border-radius:14px;background:#fff;cursor:pointer;font-family:var(--f-body);font-size:14px;font-weight:600;color:var(--ink);transition:transform .12s,box-shadow .2s,border-color .2s;text-align:left;text-decoration:none}
+.pp-btn:active{transform:scale(.97)}
+.pp-btn:hover{border-color:var(--ok);box-shadow:0 4px 16px rgba(23,138,80,.12)}
+.pp-btn .pp-ico{font-size:22px;flex:none;width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:10px}
+.pp-btn.upload .pp-ico{background:#E8F5E9}
+.pp-btn.wa .pp-ico{background:#E8F5E9}
+.pp-btn.email .pp-ico{background:#E3F2FD}
+.pp-btn.change .pp-ico{background:#FFF3E0}
+.pp-btn .pp-lbl{flex:1}
+.pp-btn .pp-lbl small{display:block;font-weight:400;font-size:11.5px;color:var(--muted);margin-top:2px}
+.pp-btn.disabled{opacity:.45;pointer-events:none}
+.pp-preview{margin-top:12px;border-radius:14px;overflow:hidden;position:relative;display:none}
+.pp-preview.show{display:block}
+.pp-preview img{width:100%;max-height:200px;object-fit:contain;background:#f5f5f5;display:block}
+.pp-preview .pp-remove{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;width:28px;height:28px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.pp-status{margin-top:14px;padding:16px;border-radius:14px;text-align:center;display:none}
+.pp-status.show{display:block}
+.pp-status.ready{background:#E8F5E9;border:1.5px solid #A5D6A7}
+.pp-status.waiting{background:#FFF8E1;border:1.5px solid #FFE082}
+.pp-status .pp-st-ico{font-size:32px;margin-bottom:6px}
+.pp-status .pp-st-title{font-size:15px;font-weight:700;margin-bottom:4px}
+.pp-status .pp-st-sub{font-size:12.5px;color:var(--muted);line-height:1.5}
+@keyframes ppPulse{0%,100%{opacity:1}50%{opacity:.5}}
+.pp-status.waiting .pp-st-ico{animation:ppPulse 1.8s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){.pp-status.waiting .pp-st-ico{animation:none}}
+
+[data-theme="dark"] .pp-card,.dark .pp-card{background:linear-gradient(135deg,#1a2e1f 0%,#162218 100%);border-color:#2e5a3a}
+[data-theme="dark"] .pp-btn,.dark .pp-btn{background:var(--card);border-color:var(--line);color:var(--ink)}
+
+/* ================================================================
+   [CSS] PAYMENT VERIFICATION — glass-morphism submission + admin queue
+================================================================ */
+/* Payment submission form (post-checkout) */
+.pv-overlay{position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:16px;opacity:0;pointer-events:none;transition:opacity .3s}
+.pv-overlay.show{opacity:1;pointer-events:auto}
+.pv-modal{background:var(--card);border-radius:24px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;padding:28px 24px;box-shadow:0 20px 60px rgba(0,0,0,.25);position:relative;transform:translateY(20px);transition:transform .3s var(--ease-decel)}
+.pv-overlay.show .pv-modal{transform:translateY(0)}
+.pv-modal .close{position:absolute;top:14px;right:14px;background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.pv-modal .close:hover{background:var(--blue-50)}
+.pv-modal h3{font-family:var(--f-display);font-size:20px;margin-bottom:4px}
+.pv-modal .sub{font-size:13px;color:var(--muted);margin-bottom:20px}
+.pv-modal .pv-id{display:inline-block;background:var(--blue-50);padding:6px 14px;border-radius:10px;font-family:var(--f-code);font-weight:700;font-size:14px;color:var(--blue);margin-bottom:16px}
+.pv-drop{border:2px dashed var(--line);border-radius:16px;padding:28px 16px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;position:relative;overflow:hidden}
+.pv-drop:hover,.pv-drop.drag{border-color:var(--orange);background:var(--orange-100)}
+.pv-drop .ico{font-size:32px;margin-bottom:8px}
+.pv-drop b{display:block;font-size:14px;margin-bottom:4px}
+.pv-drop small{font-size:12px;color:var(--muted)}
+.pv-drop img{max-width:100%;max-height:200px;border-radius:12px;margin-top:10px;display:none}
+.pv-drop img.show{display:block}
+.pv-drop .remove{position:absolute;top:8px;right:8px;background:var(--bad);color:#fff;border:none;border-radius:50%;width:24px;height:24px;font-size:14px;cursor:pointer;display:none;align-items:center;justify-content:center}
+.pv-drop img.show~.remove{display:flex}
+.pv-field{margin-bottom:14px}
+.pv-field label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:5px}
+.pv-field input{width:100%;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;font-size:14px;font-family:var(--f-body);background:var(--bg);transition:border-color .2s}
+.pv-field input:focus{border-color:var(--blue);outline:none}
+.pv-field .err{font-size:11px;color:var(--bad);margin-top:3px;display:none}
+.pv-field.invalid input{border-color:var(--bad)}
+.pv-field.invalid .err{display:block}
+.pv-submit{width:100%;padding:14px;border:none;border-radius:16px;background:linear-gradient(135deg,var(--ok),#1db954);color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:var(--f-body);transition:transform .15s,box-shadow .2s;margin-top:8px}
+.pv-submit:active{transform:scale(.97)}
+.pv-submit:disabled{opacity:.5;cursor:not-allowed}
+.pv-success{text-align:center;padding:20px 0}
+.pv-success .big{font-size:56px;margin-bottom:12px}
+.pv-success h4{font-size:18px;font-weight:800;margin-bottom:6px}
+.pv-success p{font-size:13px;color:var(--muted)}
+@keyframes pvCheck{0%{transform:scale(0) rotate(-45deg)}50%{transform:scale(1.2) rotate(5deg)}100%{transform:scale(1) rotate(0)}}
+.pv-success .big{animation:pvCheck .6s var(--ease-decel)}
+
+/* Admin verification queue */
+.pvq-card{background:var(--card);border-radius:18px;padding:18px;margin-bottom:14px;box-shadow:0 2px 14px rgba(0,0,0,.06);border-left:4px solid var(--warn);transition:border-color .3s}
+.pvq-card.approved{border-left-color:var(--ok)}
+.pvq-card.rejected{border-left-color:var(--bad)}
+.pvq-head{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.pvq-head .badge{display:inline-block;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700}
+.pvq-head .badge.pending{background:#FFF3E0;color:var(--warn)}
+.pvq-head .badge.approved{background:#E8F5E9;color:var(--ok)}
+.pvq-head .badge.rejected{background:#FFEBEE;color:var(--bad)}
+.pvq-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;font-size:13px;margin-bottom:14px}
+.pvq-grid .lbl{color:var(--muted);font-size:11.5px}
+.pvq-grid .val{font-weight:600}
+.pvq-shot{max-width:100%;max-height:220px;border-radius:12px;cursor:pointer;border:1px solid var(--line);margin-bottom:14px}
+.pvq-actions{display:flex;gap:8px;flex-wrap:wrap}
+.pvq-actions button,.pvq-actions a{padding:8px 16px;border-radius:12px;font-size:12.5px;font-weight:700;border:none;cursor:pointer;font-family:var(--f-body);text-decoration:none;display:inline-flex;align-items:center;gap:5px}
+.pvq-approve{background:var(--ok);color:#fff}
+.pvq-reject{background:var(--bad);color:#fff}
+.pvq-wa{background:#25D366;color:#fff}
+.pvq-view{background:var(--blue-50);color:var(--blue)}
+.pvq-dl{background:var(--bg);color:var(--ink)}
+
+/* Admin notification bell */
+.adm-bell{position:relative;cursor:pointer;font-size:20px;background:none;border:none;padding:4px 8px}
+.adm-bell .count{position:absolute;top:-4px;right:-4px;background:var(--bad);color:#fff;font-size:10px;font-weight:800;min-width:18px;height:18px;line-height:18px;border-radius:99px;text-align:center;padding:0 4px;display:none}
+.adm-bell .count.show{display:block;animation:bellBounce .5s ease}
+@keyframes bellBounce{0%{transform:scale(0)}50%{transform:scale(1.3)}100%{transform:scale(1)}}
+
+/* Reject reason modal */
+.pvr-overlay{position:fixed;inset:0;z-index:350;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px;opacity:0;pointer-events:none;transition:opacity .3s}
+.pvr-overlay.show{opacity:1;pointer-events:auto}
+.pvr-modal{background:var(--card);border-radius:20px;width:100%;max-width:400px;padding:24px;box-shadow:0 16px 50px rgba(0,0,0,.2)}
+
+@media(prefers-reduced-motion:reduce){
+  .pv-success .big{animation:none}
+  .adm-bell .count.show{animation:none}
+}
+
+/* ================================================================
    [CSS] TRIP COMPANION — ixigo-style "My Trip" view
    Accessible via #/trip/<PNR>. Phases: booked → pre-trip → departure → live → arrived.
 ================================================================ */
@@ -4038,15 +4285,17 @@ a,button,.btn,.nav a,.tab-btn,.pm-tab,.bt-pill,.tier-pill,.proof-tab,.trip-pill{
   backdrop-filter:blur(14px);border:1px solid var(--sl);border-radius:12px;padding:10px 16px;font-size:13px;
   box-shadow:0 10px 34px rgba(0,0,0,.5);opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;max-width:80vw;text-align:center}
 #view-nav .sn-toast.show{opacity:1}
-#view-nav .sn-me{width:26px;height:26px;position:relative}
-#view-nav .sn-me-pulse{position:absolute;left:50%;top:50%;width:16px;height:16px;border-radius:50%;background:rgba(66,133,244,.5);
-  transform:translate(-50%,-50%);animation:snPulse 1.6s ease-out infinite;pointer-events:none}
-@keyframes snPulse{0%{transform:translate(-50%,-50%) scale(1);opacity:.55}100%{transform:translate(-50%,-50%) scale(3.6);opacity:0}}
+#view-nav .sn-me{width:40px;height:40px;position:relative}
+#view-nav .sn-me-pulse{position:absolute;left:50%;top:50%;width:20px;height:20px;border-radius:50%;
+  transform:translate(-50%,-50%);animation:snPulse 1.8s ease-out infinite;pointer-events:none}
+@keyframes snPulse{0%{transform:translate(-50%,-50%) scale(1);opacity:.5}100%{transform:translate(-50%,-50%) scale(3);opacity:0}}
 @media(prefers-reduced-motion:reduce){#view-nav .sn-me-pulse{animation:none;opacity:0}}
-#view-nav .sn-me-cone{position:absolute;left:50%;top:50%;width:0;height:0;border-left:9px solid transparent;border-right:9px solid transparent;
-  border-bottom:20px solid rgba(66,133,244,.55);transform:translate(-50%,-108%)}
-#view-nav .sn-me-core{position:absolute;left:50%;top:50%;width:16px;height:16px;border-radius:50%;background:#4285F4;
-  border:3px solid #fff;transform:translate(-50%,-50%);box-shadow:0 0 0 2px rgba(66,133,244,.35),0 2px 6px rgba(0,0,0,.4)}
+#view-nav .sn-me-cone{position:absolute;left:50%;top:50%;width:0;height:0;border-left:10px solid transparent;border-right:10px solid transparent;
+  border-bottom:24px solid;transform:translate(-50%,-115%);opacity:0;transition:opacity .3s}
+#view-nav .sn-me-icon{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:32px;height:32px;
+  border-radius:50%;display:flex;align-items:center;justify-content:center;border:3px solid #fff;
+  box-shadow:0 0 0 2px rgba(0,0,0,.15),0 2px 8px rgba(0,0,0,.4);transition:background .3s}
+#view-nav .sn-me-icon svg{width:18px;height:18px;fill:#fff}
 #view-nav .sn-temple-m{cursor:pointer}
 #view-nav .sn-temple-ico{display:block;font-size:20px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.45));transition:transform .15s}
 #view-nav .sn-temple-m:hover .sn-temple-ico{transform:scale(1.3)!important}
@@ -4071,6 +4320,43 @@ a,button,.btn,.nav a,.tab-btn,.pm-tab,.bt-pill,.tier-pill,.proof-tab,.trip-pill{
   #view-nav .sn-hud{bottom:auto;top:132px;min-width:0;grid-template-columns:auto auto auto}
   #view-nav .sn-hud .big{grid-column:1/-1}
   #view-nav .sn-ss button{padding:7px 9px;font-size:11.5px}}
+
+/* ====== UPGRADE: Nav Info Card (#26) ====== */
+#view-nav .sn-navcard{display:none;position:absolute;left:14px;right:70px;bottom:120px;z-index:16;max-width:340px;
+  background:var(--sx);backdrop-filter:blur(16px);border:1px solid var(--sl);border-radius:16px;padding:14px 16px;box-shadow:0 8px 30px rgba(0,0,0,.45)}
+#view-nav .sn-navcard.show{display:block}
+#view-nav .sn-nc-top{display:flex;align-items:baseline;gap:10px;margin-bottom:6px}
+#view-nav .sn-nc-eta{font-size:26px;font-weight:800;color:var(--sg);font-variant-numeric:tabular-nums;line-height:1}
+#view-nav .sn-nc-dist{font-size:13px;color:var(--sm);font-weight:600}
+#view-nav .sn-nc-road{font-size:12px;color:var(--sk);opacity:.65;margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#view-nav .sn-nc-next{display:flex;align-items:center;gap:10px;padding:9px 12px;background:rgba(255,255,255,.06);border-radius:11px}
+#view-nav .sn-nc-next .nico{font-size:20px;flex:none}
+#view-nav .sn-nc-next .ntxt{flex:1;font-size:12.5px;color:var(--sk);line-height:1.3}
+#view-nav .sn-nc-next .ndist{font-size:11.5px;color:var(--sm);flex:none;font-variant-numeric:tabular-nums}
+/* ====== UPGRADE: Search History + Categories (#27) ====== */
+#view-nav .sn-results .sr-cat{font-size:14px;margin-right:5px}
+#view-nav .sn-results .sr-hist-hd{padding:7px 14px;font-size:10px;color:var(--sm);text-transform:uppercase;letter-spacing:.6px;
+  display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--sl)}
+#view-nav .sn-results .sr-hist-hd button{background:none;border:none;color:var(--sn);font-size:10px;cursor:pointer;font-family:inherit}
+#view-nav .sn-results .row.hist-row{opacity:.85}
+/* ====== UPGRADE: Arrival Overlay (#28) ====== */
+#view-nav .sn-arrival{display:none;position:absolute;inset:0;z-index:30;background:rgba(26,10,46,.92);backdrop-filter:blur(14px);
+  flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:40px}
+#view-nav .sn-arrival.show{display:flex}
+#view-nav .sn-arrival .arr-ico{font-size:56px;animation:snArrPop .8s ease}
+@keyframes snArrPop{0%{transform:scale(0) rotate(-20deg);opacity:0}60%{transform:scale(1.2) rotate(5deg)}100%{transform:scale(1) rotate(0)}}
+#view-nav .sn-arrival h2{font-size:22px;font-weight:800;color:var(--sg);font-family:'Cinzel',serif}
+#view-nav .sn-arrival p{font-size:13px;color:var(--sm);max-width:280px;line-height:1.5}
+#view-nav .sn-arrival .arr-btn{margin-top:8px;background:linear-gradient(135deg,var(--sn),#ff8a33);border:none;color:#fff;
+  padding:12px 28px;border-radius:12px;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit}
+/* ====== UPGRADE: Alt Routes (#28) ====== */
+#view-nav .sn-altbar{display:none;gap:6px;padding:8px 12px;margin:8px 12px 0;background:rgba(255,255,255,.04);border:1px solid var(--sl);border-radius:12px}
+#view-nav .sn-altbar.show{display:flex}
+#view-nav .sn-altbtn{flex:1;background:rgba(255,255,255,.06);border:1px solid var(--sl);color:var(--sm);border-radius:9px;
+  padding:7px 4px;font-family:inherit;font-size:10.5px;cursor:pointer;text-align:center;transition:.15s}
+#view-nav .sn-altbtn.on{background:linear-gradient(135deg,var(--sn),#ff8a33);border-color:var(--sn);color:#fff}
+#view-nav .sn-altbtn b{display:block;font-size:12px;font-weight:700;margin-bottom:1px}
+@media(max-width:640px){#view-nav .sn-navcard{right:14px;bottom:110px;max-width:none}}
 
 </style>
 <!-- Libraries: qrcodejs stays eager (payment QR is critical, ~20KB); jsPDF (~350KB)
@@ -4136,6 +4422,11 @@ const CONFIG = {
   agentPin: 'AGENT@2026',         // Agent mode password — admin can change in Settings
   phone: '+91 91048 01507',
   email: 'shreehariglobalpvtltd@gmail.com',
+  adminWhatsApp: '919104801507',
+  adminEmail: 'booking@shariglobal.com',
+  verifyTimeText: '1–3 minutes',
+  allowScreenshotUpload: true,
+  maxUploadSizeMB: 10,
   nprPerInr: 1.6,                 // fixed INR→NPR peg used for fare estimates
   booking: {
     seatHoldMinutes: 30,          // picked seats stay locked for one visitor this long
@@ -5287,7 +5578,13 @@ en: {
   tcLeaveBy: 'Navigation to boarding point', tcCabin: 'Cabin details', tcCountdown: 'Countdown to departure',
   tcBoardingPt: 'S Hari Global Boarding Counter', tcMyTrip: 'My Trip Companion', tcTrackMap: 'Track on map',
   tcNextHalt: 'Next halt', tcRemaining: 'Remaining', tcBusNear: 'Your bus is nearby!',
-  tcArrivedAt: 'Arrived at {c}', tcComplete: 'Journey completed'
+  tcArrivedAt: 'Arrived at {c}', tcComplete: 'Journey completed',
+  pvTitle: 'Submit Payment Proof', pvSub: 'Upload your payment screenshot so we can verify and confirm your booking.',
+  pvUtrLabel: 'UTR / Transaction Reference', pvSenderLabel: 'Sender Name (as on bank/UPI)',
+  pvMobileLabel: 'Mobile Number', pvSubmitBtn: 'Submit for Verification →',
+  pvSuccess: 'Payment Proof Submitted!', pvSuccessSub: 'Our team will verify your payment within 30 minutes.',
+  pvApproved: 'Payment Verified ✅', pvRejected: 'Payment Rejected', pvPending: 'Under Verification',
+  pvWhatsApp: 'WhatsApp Support'
 },
 hi: {
   navHome: 'होम', navBook: 'टिकट बुक करें', navServices: 'सेवाएं', navRoute: 'भारत–नेपाल',
@@ -5483,7 +5780,13 @@ hi: {
   tcLeaveBy: 'बोर्डिंग पॉइंट तक नेविगेशन', tcCabin: 'केबिन विवरण', tcCountdown: 'प्रस्थान उलटी गिनती',
   tcBoardingPt: 'S Hari Global बोर्डिंग काउंटर', tcMyTrip: 'मेरा ट्रिप साथी', tcTrackMap: 'मैप पर ट्रैक करें',
   tcNextHalt: 'अगला पड़ाव', tcRemaining: 'शेष', tcBusNear: 'आपकी बस पास है!',
-  tcArrivedAt: '{c} पहुँच गए', tcComplete: 'यात्रा पूर्ण'
+  tcArrivedAt: '{c} पहुँच गए', tcComplete: 'यात्रा पूर्ण',
+  pvTitle: 'भुगतान प्रमाण जमा करें', pvSub: 'अपना भुगतान स्क्रीनशॉट अपलोड करें ताकि हम बुकिंग पुष्टि कर सकें।',
+  pvUtrLabel: 'UTR / लेनदेन संदर्भ', pvSenderLabel: 'भेजने वाले का नाम (बैंक/UPI पर)',
+  pvMobileLabel: 'मोबाइल नंबर', pvSubmitBtn: 'सत्यापन के लिए जमा करें →',
+  pvSuccess: 'भुगतान प्रमाण जमा हुआ!', pvSuccessSub: 'हमारी टीम 30 मिनट में भुगतान सत्यापित करेगी।',
+  pvApproved: 'भुगतान सत्यापित ✅', pvRejected: 'भुगतान अस्वीकृत', pvPending: 'सत्यापन जारी',
+  pvWhatsApp: 'WhatsApp सहायता'
 },
 ne: {
   navHome: 'होम', navBook: 'टिकट बुक गर्नुहोस्', navServices: 'सेवाहरू', navRoute: 'भारत–नेपाल',
@@ -5679,7 +5982,13 @@ ne: {
   tcLeaveBy: 'बोर्डिङ पोइन्टसम्म नेभिगेसन', tcCabin: 'क्याबिन विवरण', tcCountdown: 'प्रस्थान काउन्टडाउन',
   tcBoardingPt: 'S Hari Global बोर्डिङ काउन्टर', tcMyTrip: 'मेरो ट्रिप साथी', tcTrackMap: 'म्यापमा ट्र्याक',
   tcNextHalt: 'अर्को पडाव', tcRemaining: 'बाँकी', tcBusNear: 'तपाईंको बस नजिक छ!',
-  tcArrivedAt: '{c} पुग्यो', tcComplete: 'यात्रा सम्पन्न'
+  tcArrivedAt: '{c} पुग्यो', tcComplete: 'यात्रा सम्पन्न',
+  pvTitle: 'भुक्तानी प्रमाण पेस गर्नुहोस्', pvSub: 'तपाईंको भुक्तानी स्क्रिनसट अपलोड गर्नुहोस् ताकि हामी बुकिङ पुष्टि गर्न सकौं।',
+  pvUtrLabel: 'UTR / कारोबार सन्दर्भ', pvSenderLabel: 'पठाउने नाम (बैंक/UPI मा)',
+  pvMobileLabel: 'मोबाइल नम्बर', pvSubmitBtn: 'प्रमाणीकरणका लागि पेस गर्नुहोस् →',
+  pvSuccess: 'भुक्तानी प्रमाण पेस भयो!', pvSuccessSub: 'हाम्रो टोलीले ३० मिनेटभित्र भुक्तानी प्रमाणित गर्नेछ।',
+  pvApproved: 'भुक्तानी प्रमाणित ✅', pvRejected: 'भुक्तानी अस्वीकृत', pvPending: 'प्रमाणीकरण जारी',
+  pvWhatsApp: 'WhatsApp सहायता'
 }
 };
 
@@ -6714,6 +7023,8 @@ function setPayMethod(m) {
   const lp = $('#linkPayPanel'); if (lp) lp.classList.toggle('hide', m !== 'link');
   const cp = $('#codPanel'); if (cp) cp.classList.toggle('hide', m !== 'cod');
   const ps = $('#proofSection'); if (ps) ps.classList.toggle('hide', m === 'cod');
+  var ppC = $('#ppCard'); if (ppC) ppC.style.display = (m === 'cod') ? 'none' : '';
+  if (m !== 'cod') ppUpdateLinks();
   if (m === 'upi' || m === 'esewa') $('#refLbl').innerHTML = t(m === 'upi' ? 'lblUtr' : 'lblRef');
   if (m === 'link') {
     const upiId = (DB.settings && DB.settings.upiId) || '9104801507.eazypay@icici';
@@ -6891,6 +7202,14 @@ function renderCheckout() {
   };
   $('#submitBookingBtn').onclick = submitBooking;
   startHoldTicker();
+
+  /* Payment Proof Card — populate WhatsApp & Email links with booking details */
+  ppUpdateLinks();
+  var ppCard = $('#ppCard');
+  if (ppCard) {
+    var isCodMode = PAY_METHOD === 'cod';
+    ppCard.style.display = isCodMode ? 'none' : '';
+  }
 }
 
 /* Validate everything, save the booking as PENDING, go to status page.
@@ -7031,6 +7350,8 @@ function submitBooking() {
       else pushNotif('🎫', 'Booking submitted · बुकिंग दर्ज', id + ' — payment under verification · भुक्तानी जाँच हुँदैछ · भुगतान सत्यापित हो रहा है.');
     }
   } catch (e) {}
+  if (!isCod) { try { setTimeout(function() { pvOpenForm(id); }, 800); } catch (e) {} }
+  pvLoadEmailJS();
 }
 
 /* ================================================================
@@ -7127,8 +7448,15 @@ function renderStatus(id) {
       band = '<div class="status-band pending" style="border-color:#FF9800"><div class="big-ico">💵</div><h2>COD — Pay at Counter</h2><p>Seats ' + b.seats.join(', ') + ' held. बोर्डिङ पोइन्टमा ' + inr(b.total) + ' नगद तिर्नुहोस्।<br>Pay <b>' + inr(b.total) + '</b> cash at the boarding counter before departure.</p></div>';
     } else {
       band = '<div class="status-band pending"><div class="big-ico">⏳</div><h2>' + t('stPendT') + '</h2><p>' + tf('stPendP', { s: b.seats.join(', ') }) + '</p></div>';
+      var pvSub = PV.submissions.find(function(s) { return s.bookingId === b.id && s.status === 'pending'; });
+      if (pvSub) {
+        extra = '<div class="pp-status show waiting" style="margin-bottom:14px"><div class="pp-st-ico">⏳</div><div class="pp-st-title">Waiting for Verification...</div>'
+          + '<div class="pp-st-sub">Average verification time: <b>' + esc(CONFIG.verifyTimeText || '1–3 minutes') + '</b><br>Verification ID: <b>' + esc(pvSub.id) + '</b><br>Our team will confirm your ticket shortly.</div></div>';
+      } else {
+        extra = '<div class="pp-status show ready" style="margin-bottom:14px"><div class="pp-st-ico">📸</div><div class="pp-st-title">Send Payment Proof</div>'
+          + '<div class="pp-st-sub">Upload your screenshot or send via WhatsApp to speed up verification.</div></div>';
+      }
     }
-    extra = '<div class="demo-hint">🧪 <b>Demo tip:</b> Payment verification is handled by staff. Your booking will be confirmed once verified.</div>';
   } else if (b.status === 'confirmed') {
     band = '<div class="status-band confirmed"><div class="confetti-burst"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="confirm-checkmark"><svg viewBox="0 0 44 44"><circle class="ck-circle" cx="22" cy="22" r="20"/><polyline class="ck-check" points="13,23 20,30 32,16"/></svg></div><h2>' + t('stConfT') + '</h2><p>' + t('stConfP') + '</p></div>';
     /* Luxury boarding-pass header — big city codes + plane-style arrow.
@@ -7270,6 +7598,7 @@ function renderStatus(id) {
         ${b.status === 'confirmed' ? '<button class="btn btn-ghost" id="printBtn" type="button">' + t('btnPrint') + '</button>' : ''}
         ${(typeof navigator.share === 'function') ? '<button class="btn btn-ghost" id="shareBtn" type="button">' + t('btnShare') + '</button>' : ''}
         <button class="btn btn-wa" id="waBtn" type="button">🟢 ${t('btnWa')}</button>
+        ${b.status === 'pending' && !b.codFlag ? '<button class="btn btn-orange" id="pvProofBtn" type="button" onclick="pvOpenForm(\'' + esc(b.id) + '\')">📸 Submit Payment Proof</button>' : ''}
         ${b.status === 'pending' ? '<button class="btn btn-blue" id="refreshBtn" type="button">' + t('btnRefresh') + '</button>' : ''}
         ${canCancel(b) ? '<button class="btn btn-danger-ghost" id="cancelBtn" type="button">' + t('btnCancel') + '</button>' : ''}
         <a class="btn btn-ghost" href="#/">${t('btnHome')}</a>
@@ -8606,7 +8935,7 @@ function renderAdminGateOrApp() {
   $('#adminApp').classList.toggle('hide', !ADMIN_ON);
   if (ADMIN_ON) renderAdminAll();
 }
-function renderAdminAll() { renderAdminStats(); renderAdminCharts(); renderAdminBookings(); renderAdminWaitlist(); renderAdminAgents(); renderAdminRoutes(); renderAdminLiveOps(); renderAdminSettings(); renderAdminMessages(); renderAdminAudit(); }
+function renderAdminAll() { renderAdminStats(); renderAdminCharts(); renderAdminBookings(); renderAdminWaitlist(); renderAdminAgents(); renderAdminRoutes(); renderAdminLiveOps(); renderAdminSettings(); renderAdminMessages(); renderAdminAudit(); renderAdminPayments(); pvSetupSearch(); }
 
 function sameDay(ts, ref) { const a = new Date(ts), b = new Date(ref); return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
 function sameMonth(ts, ref) { const a = new Date(ts), b = new Date(ref); return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth(); }
@@ -9600,6 +9929,11 @@ $$('.atab[data-tab]').forEach(tb => tb.addEventListener('click', () => {
   $$('.atab[data-tab]').forEach(x => x.classList.toggle('on', x === tb));
   $$('.admin-tabpane').forEach(p => p.classList.toggle('hide', p.id !== 'tab-' + tb.getAttribute('data-tab')));
 }));
+$('#pvBell').addEventListener('click', function() {
+  $$('.atab[data-tab]').forEach(x => x.classList.toggle('on', x.getAttribute('data-tab') === 'payments'));
+  $$('.admin-tabpane').forEach(p => p.classList.toggle('hide', p.id !== 'tab-payments'));
+  renderAdminPayments();
+});
 
 /* ================================================================
    [JS] 14A. SPLASH SCREEN — letter-by-letter cinematic cold launch
@@ -11204,6 +11538,548 @@ document.addEventListener('click', function(e) {
 });
 
 /* ================================================================
+   [JS] 13b. PAYMENT VERIFICATION — submission, admin queue,
+   approve/reject, EmailJS, WhatsApp, notification bell
+================================================================ */
+const PV = {
+  submissions: [],
+  logs: [],
+  bellAudio: null,
+  emailjsLoaded: false
+};
+
+const PV_EMAILJS_SERVICE  = '';
+const PV_EMAILJS_TEMPLATE_SUBMIT = '';
+const PV_EMAILJS_TEMPLATE_APPROVE = '';
+const PV_EMAILJS_TEMPLATE_REJECT = '';
+const PV_EMAILJS_PUBLIC_KEY = '';
+const PV_ADMIN_EMAIL = 'booking@shariglobal.com';
+const PV_WHATSAPP_NUM = '';
+
+/* ---- Payment Proof Card — one-click proof on checkout page ---- */
+var PP = { thumb: '', file: null, compressed: false };
+
+function ppCompressImage(file, maxW, quality, cb) {
+  maxW = maxW || 1200; quality = quality || 0.7;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var img = new Image();
+    img.onload = function() {
+      var w = img.width, h = img.height;
+      if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+      var canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      var ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(function(blob) {
+        var r2 = new FileReader();
+        r2.onload = function(ev) { cb(ev.target.result, blob); };
+        r2.readAsDataURL(blob);
+      }, 'image/jpeg', quality);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function ppSetupCard() {
+  var fi = $('#ppFileInput');
+  var uploadBtn = $('#ppUploadBtn');
+  var changeBtn = $('#ppChangeBtn');
+  var removeBtn = $('#ppRemoveBtn');
+  if (!fi || !uploadBtn) return;
+
+  uploadBtn.addEventListener('click', function() { fi.click(); });
+  changeBtn.addEventListener('click', function() { fi.click(); });
+
+  fi.addEventListener('change', function() {
+    if (!fi.files.length) return;
+    var file = fi.files[0];
+    var allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    var maxSize = (CONFIG.maxUploadSizeMB || 10) * 1024 * 1024;
+    if (!allowed.includes(file.type)) { toast('Only JPG, PNG or WebP images allowed.'); fi.value = ''; return; }
+    if (file.size > maxSize) { toast('File too large. Maximum ' + (CONFIG.maxUploadSizeMB || 10) + ' MB.'); fi.value = ''; return; }
+    ppCompressImage(file, 1200, 0.75, function(dataUrl) {
+      PP.thumb = dataUrl;
+      PP.compressed = true;
+      $('#ppPreviewImg').src = dataUrl;
+      $('#ppPreview').classList.add('show');
+      uploadBtn.classList.add('hide');
+      changeBtn.classList.remove('hide');
+      ppShowStatus('ready');
+      if (typeof Flow !== 'undefined') Flow.shotThumb = dataUrl;
+      var shotPreview = $('#shotPreview');
+      if (shotPreview) { shotPreview.src = dataUrl; shotPreview.classList.remove('hide'); }
+    });
+  });
+
+  removeBtn.addEventListener('click', function() {
+    PP.thumb = ''; PP.file = null; PP.compressed = false;
+    fi.value = '';
+    $('#ppPreviewImg').src = '';
+    $('#ppPreview').classList.remove('show');
+    uploadBtn.classList.remove('hide');
+    changeBtn.classList.add('hide');
+    $('#ppStatus').classList.remove('show');
+    $('#ppStatus').className = 'pp-status';
+    if (typeof Flow !== 'undefined') Flow.shotThumb = '';
+    var shotPreview = $('#shotPreview');
+    if (shotPreview) { shotPreview.src = ''; shotPreview.classList.add('hide'); }
+  });
+}
+
+function ppShowStatus(type) {
+  var el = $('#ppStatus');
+  if (!el) return;
+  el.className = 'pp-status show ' + type;
+  if (type === 'ready') {
+    el.innerHTML = '<div class="pp-st-ico">✅</div><div class="pp-st-title">Screenshot Ready</div>'
+      + '<div class="pp-st-sub">Your payment proof is attached. Click "Confirm your seat" to submit your booking.</div>';
+  } else if (type === 'waiting') {
+    el.innerHTML = '<div class="pp-st-ico">⏳</div><div class="pp-st-title">Waiting for Verification...</div>'
+      + '<div class="pp-st-sub">Average verification time: <b>' + (CONFIG.verifyTimeText || '1–3 minutes') + '</b><br>Our team will confirm your ticket shortly.</div>';
+  }
+}
+
+function ppBuildWhatsAppUrl() {
+  var waNum = CONFIG.adminWhatsApp || '919104801507';
+  var bkId = (typeof Flow !== 'undefined' && Flow.draftId) ? Flow.draftId : '—';
+  var pax = '';
+  try { $$('#paxRows .pax-row').forEach(function(r) { var n = r.querySelector('.pxName'); if (n && n.value.trim()) pax += (pax ? ', ' : '') + n.value.trim(); }); } catch(e) {}
+  var from = '', to = '', date = '', seats = '', amount = '';
+  try {
+    if (typeof Flow !== 'undefined' && Flow.route) {
+      var rt = Flow.route;
+      from = rt.from || ''; to = rt.to || '';
+    }
+    var legs = (typeof Flow !== 'undefined') ? Flow.legs || [] : [];
+    if (legs.length) { date = legs[0].date || ''; seats = legs[0].seats ? legs[0].seats.join(', ') : ''; }
+    var totalEl = $('#coTotal');
+    if (totalEl) amount = totalEl.textContent;
+  } catch(e) {}
+
+  var msg = '-----------------------------------\n'
+    + 'Booking ID:\n' + bkId + '\n\n'
+    + 'Passenger:\n' + (pax || '—') + '\n\n'
+    + 'Route:\n' + from + ' → ' + to + '\n\n'
+    + 'Travel Date:\n' + date + '\n\n'
+    + 'Seats:\n' + (seats || '—') + '\n\n'
+    + 'Amount:\n' + (amount || '—') + '\n\n'
+    + 'I have completed the payment.\n'
+    + 'Please verify my payment and confirm my ticket.\n'
+    + 'Payment Screenshot Attached.\n'
+    + '-----------------------------------';
+  return 'https://wa.me/' + waNum + '?text=' + encodeURIComponent(msg);
+}
+
+function ppBuildEmailUrl() {
+  var emailTo = CONFIG.adminEmail || CONFIG.email || 'booking@shariglobal.com';
+  var bkId = (typeof Flow !== 'undefined' && Flow.draftId) ? Flow.draftId : '—';
+  var pax = '';
+  try { $$('#paxRows .pax-row').forEach(function(r) { var n = r.querySelector('.pxName'); if (n && n.value.trim()) pax += (pax ? ', ' : '') + n.value.trim(); }); } catch(e) {}
+  var from = '', to = '', date = '', seats = '', amount = '';
+  try {
+    if (typeof Flow !== 'undefined' && Flow.route) { from = Flow.route.from || ''; to = Flow.route.to || ''; }
+    var legs = (typeof Flow !== 'undefined') ? Flow.legs || [] : [];
+    if (legs.length) { date = legs[0].date || ''; seats = legs[0].seats ? legs[0].seats.join(', ') : ''; }
+    var totalEl = $('#coTotal'); if (totalEl) amount = totalEl.textContent;
+  } catch(e) {}
+
+  var subject = 'Payment Proof - ' + bkId;
+  var body = 'Booking ID:\n' + bkId + '\n\n'
+    + 'Passenger:\n' + (pax || '—') + '\n\n'
+    + 'Route:\n' + from + ' → ' + to + '\n\n'
+    + 'Travel Date:\n' + date + '\n\n'
+    + 'Seats:\n' + (seats || '—') + '\n\n'
+    + 'Amount:\n' + (amount || '—') + '\n\n'
+    + 'I have completed the payment.\n'
+    + 'Please verify and confirm my ticket.\n\n'
+    + 'Payment screenshot attached.';
+  return 'mailto:' + encodeURIComponent(emailTo) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+}
+
+function ppUpdateLinks() {
+  var waLink = $('#ppWhatsApp');
+  var emailLink = $('#ppEmail');
+  if (waLink) waLink.href = ppBuildWhatsAppUrl();
+  if (emailLink) emailLink.href = ppBuildEmailUrl();
+}
+
+document.addEventListener('DOMContentLoaded', function() { ppSetupCard(); });
+
+function pvGenId() {
+  return 'PV-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
+}
+
+function pvLoadEmailJS() {
+  if (PV.emailjsLoaded || !PV_EMAILJS_PUBLIC_KEY) return;
+  var s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js';
+  s.onload = function() {
+    if (window.emailjs) { window.emailjs.init(PV_EMAILJS_PUBLIC_KEY); PV.emailjsLoaded = true; }
+  };
+  document.head.appendChild(s);
+}
+
+function pvSendEmail(templateId, params) {
+  if (!PV.emailjsLoaded || !PV_EMAILJS_SERVICE || !templateId) return Promise.resolve();
+  return window.emailjs.send(PV_EMAILJS_SERVICE, templateId, params).catch(function() {});
+}
+
+function pvOpenForm(bookingId) {
+  var existing = PV.submissions.find(function(s) { return s.bookingId === bookingId && s.status === 'pending'; });
+  if (existing) { toast('Payment proof already submitted (ID: ' + existing.id + '). Under verification.'); return; }
+  var ov = $('#pvOverlay');
+  $('#pvFormBody').classList.remove('hide');
+  $('#pvSuccessBody').classList.add('hide');
+  $('#pvBookingId').textContent = bookingId;
+  $('#pvBkId').value = bookingId;
+  $('#pvUtr').value = '';
+  $('#pvSender').value = '';
+  $('#pvMobile').value = '';
+  $('#pvPreview').classList.remove('show');
+  $('#pvPreview').src = '';
+  $('#pvFileInput').value = '';
+  PV._file = null;
+  PV._thumb = '';
+  $$('.pv-field.invalid').forEach(function(f) { f.classList.remove('invalid'); });
+  ov.classList.add('show');
+}
+
+function pvCloseForm() { $('#pvOverlay').classList.remove('show'); }
+
+(function pvSetupDrop() {
+  document.addEventListener('DOMContentLoaded', function() {
+    var drop = $('#pvDrop');
+    var fi = $('#pvFileInput');
+    if (!drop || !fi) return;
+
+    drop.addEventListener('click', function(e) {
+      if (e.target.id === 'pvRemove') return;
+      fi.click();
+    });
+
+    drop.addEventListener('dragover', function(e) { e.preventDefault(); drop.classList.add('drag'); });
+    drop.addEventListener('dragleave', function() { drop.classList.remove('drag'); });
+    drop.addEventListener('drop', function(e) {
+      e.preventDefault(); drop.classList.remove('drag');
+      if (e.dataTransfer.files.length) pvHandleFile(e.dataTransfer.files[0]);
+    });
+
+    fi.addEventListener('change', function() { if (fi.files.length) pvHandleFile(fi.files[0]); });
+
+    $('#pvRemove').addEventListener('click', function(e) {
+      e.stopPropagation();
+      PV._file = null; PV._thumb = '';
+      $('#pvPreview').classList.remove('show'); $('#pvPreview').src = '';
+      fi.value = '';
+    });
+
+    $('#pvClose').addEventListener('click', pvCloseForm);
+    $('#pvOverlay').addEventListener('click', function(e) { if (e.target === this) pvCloseForm(); });
+
+    $('#pvSubmitBtn').addEventListener('click', pvSubmit);
+
+    var rsel = $('#pvrReason');
+    if (rsel) rsel.addEventListener('change', function() {
+      var cw = $('#pvrCustomWrap');
+      if (this.value === 'other') cw.classList.remove('hide'); else cw.classList.add('hide');
+    });
+    var pvrCancel = $('#pvrCancel');
+    if (pvrCancel) pvrCancel.addEventListener('click', function() { $('#pvrOverlay').classList.remove('show'); });
+    var pvrConfirm = $('#pvrConfirm');
+    if (pvrConfirm) pvrConfirm.addEventListener('click', pvDoReject);
+  });
+})();
+
+var PV_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+var PV_MAX_SIZE = 10 * 1024 * 1024;
+
+function pvHandleFile(file) {
+  if (!PV_ALLOWED_TYPES.includes(file.type)) { toast('Only JPG, PNG or WebP images allowed.'); return; }
+  if (file.size > PV_MAX_SIZE) { toast('File too large. Maximum 10 MB.'); return; }
+  PV._file = file;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    PV._thumb = e.target.result;
+    var img = $('#pvPreview');
+    img.src = PV._thumb;
+    img.classList.add('show');
+  };
+  reader.readAsDataURL(file);
+}
+
+function pvSubmit() {
+  var valid = true;
+  var utr = $('#pvUtr'), sender = $('#pvSender'), mobile = $('#pvMobile');
+  var bookingId = $('#pvBkId').value;
+
+  function mark(el, bad) {
+    el.closest('.pv-field').classList.toggle('invalid', bad);
+    if (bad) valid = false;
+  }
+
+  if (!PV._thumb) { toast('Please upload a payment screenshot.'); valid = false; }
+  mark(utr, !utr.value.trim());
+  mark(sender, !sender.value.trim());
+  mark(mobile, !/^\+?\d{7,15}$/.test(mobile.value.replace(/\s/g, '')));
+
+  if (!valid) return;
+
+  var btn = $('#pvSubmitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+
+  var sub = {
+    id: pvGenId(),
+    bookingId: bookingId,
+    utr: utr.value.trim(),
+    sender: sender.value.trim(),
+    mobile: mobile.value.trim(),
+    screenshot: PV._thumb,
+    status: 'pending',
+    ts: Date.now(),
+    verifiedAt: 0,
+    verifiedBy: '',
+    rejectReason: ''
+  };
+
+  PV.submissions.push(sub);
+  persist('paymentSubmissions');
+
+  var booking = DB.bookings.find(function(b) { return b.id === bookingId; });
+  var emailParams = {
+    booking_id: bookingId,
+    verification_id: sub.id,
+    utr: sub.utr,
+    sender_name: sub.sender,
+    mobile: sub.mobile,
+    passenger_name: booking ? booking.passengers.map(function(p) { return p.name; }).join(', ') : '',
+    route: booking ? (booking.from + ' → ' + booking.to) : '',
+    amount: booking ? ('₹' + booking.total) : '',
+    date: booking ? booking.date : '',
+    to_email: PV_ADMIN_EMAIL
+  };
+  pvSendEmail(PV_EMAILJS_TEMPLATE_SUBMIT, emailParams);
+
+  pvNotifyAdmin(sub);
+
+  var vlog = { id: sub.id, action: 'submitted', ts: Date.now(), by: 'customer', detail: 'UTR: ' + sub.utr };
+  PV.logs.push(vlog);
+  persist('verificationLogs');
+
+  btn.disabled = false;
+  btn.textContent = t('pvSubmitBtn');
+  $('#pvFormBody').classList.add('hide');
+  $('#pvSuccessBody').classList.remove('hide');
+  $('#pvVerId').textContent = sub.id;
+  SFX.success();
+}
+
+function pvNotifyAdmin(sub) {
+  try {
+    if (typeof pushNotif === 'function')
+      pushNotif('💳', 'New payment proof', sub.bookingId + ' — UTR: ' + sub.utr + ' — verify in Admin → Payments');
+  } catch (e) {}
+  pvUpdateBell();
+  pvPlayBell();
+}
+
+function pvUpdateBell() {
+  var cnt = PV.submissions.filter(function(s) { return s.status === 'pending'; }).length;
+  var el = $('#pvBellCount');
+  if (!el) return;
+  el.textContent = cnt;
+  el.classList.toggle('show', cnt > 0);
+}
+
+function pvPlayBell() {
+  try {
+    if (!PV.bellAudio) {
+      var actx = new (window.AudioContext || window.webkitAudioContext)();
+      var osc = actx.createOscillator();
+      var gain = actx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, actx.currentTime);
+      osc.frequency.setValueAtTime(1100, actx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0.3, actx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.5);
+      osc.connect(gain); gain.connect(actx.destination);
+      osc.start(actx.currentTime);
+      osc.stop(actx.currentTime + 0.5);
+    }
+  } catch (e) {}
+}
+
+function renderAdminPayments() {
+  var list = $('#pvQueueList');
+  if (!list) return;
+  pvUpdateBell();
+
+  var searchVal = ($('#pvSearch') ? $('#pvSearch').value.toLowerCase() : '');
+  var filterVal = ($('#pvFilter') ? $('#pvFilter').value : 'all');
+
+  var items = PV.submissions.slice().sort(function(a, b) { return b.ts - a.ts; });
+  if (filterVal !== 'all') items = items.filter(function(s) { return s.status === filterVal; });
+  if (searchVal) items = items.filter(function(s) {
+    return (s.bookingId + ' ' + s.sender + ' ' + s.utr + ' ' + s.id).toLowerCase().includes(searchVal);
+  });
+
+  if (!items.length) { list.innerHTML = '<p style="text-align:center;color:var(--muted);padding:40px 0">No payment submissions ' + (filterVal !== 'all' ? 'with status "' + filterVal + '"' : 'yet') + '.</p>'; return; }
+
+  list.innerHTML = items.map(function(s) {
+    var booking = DB.bookings.find(function(b) { return b.id === s.bookingId; });
+    var statusClass = s.status;
+    var badgeClass = s.status;
+    var badgeText = s.status === 'pending' ? '⏳ Pending' : s.status === 'approved' ? '✅ Approved' : '❌ Rejected';
+
+    var html = '<div class="pvq-card ' + statusClass + '" data-pvid="' + s.id + '">';
+    html += '<div class="pvq-head"><span class="badge ' + badgeClass + '">' + badgeText + '</span>';
+    html += '<span style="font-family:var(--f-code);font-size:12px;color:var(--muted)">' + s.id + '</span>';
+    html += '<span style="margin-left:auto;font-size:12px;color:var(--muted)">' + new Date(s.ts).toLocaleString() + '</span></div>';
+
+    html += '<div class="pvq-grid">';
+    html += '<div><span class="lbl">Booking ID</span><div class="val">' + s.bookingId + '</div></div>';
+    html += '<div><span class="lbl">UTR / Ref</span><div class="val">' + (s.utr || '—') + '</div></div>';
+    html += '<div><span class="lbl">Sender</span><div class="val">' + (s.sender || '—') + '</div></div>';
+    html += '<div><span class="lbl">Mobile</span><div class="val">' + (s.mobile || '—') + '</div></div>';
+    if (booking) {
+      html += '<div><span class="lbl">Route</span><div class="val">' + booking.from + ' → ' + booking.to + '</div></div>';
+      html += '<div><span class="lbl">Amount</span><div class="val">₹' + booking.total + '</div></div>';
+      html += '<div><span class="lbl">Passengers</span><div class="val">' + booking.passengers.map(function(p) { return p.name; }).join(', ') + '</div></div>';
+      html += '<div><span class="lbl">Date</span><div class="val">' + booking.date + '</div></div>';
+    }
+    html += '</div>';
+
+    if (s.screenshot) html += '<img class="pvq-shot" src="' + s.screenshot + '" alt="Payment screenshot" onclick="pvViewShot(this.src)">';
+
+    html += '<div class="pvq-actions">';
+    if (s.status === 'pending') {
+      html += '<button class="pvq-approve" onclick="pvApprove(\'' + s.id + '\')">✅ Approve</button>';
+      html += '<button class="pvq-reject" onclick="pvShowReject(\'' + s.id + '\')">❌ Reject</button>';
+    }
+    if (s.status === 'rejected' && s.rejectReason) {
+      html += '<span style="font-size:12px;color:var(--bad)">Reason: ' + s.rejectReason + '</span>';
+    }
+    var waMsg = 'Hello, I submitted payment for booking ' + s.bookingId + ' (UTR: ' + s.utr + '). Verification ID: ' + s.id + '. Please verify.';
+    var waNum = PV_WHATSAPP_NUM || (booking && booking.contact ? booking.contact.phone.replace(/\D/g, '') : '');
+    html += '<a class="pvq-wa" href="https://wa.me/' + waNum + '?text=' + encodeURIComponent(waMsg) + '" target="_blank" rel="noopener">💬 WhatsApp</a>';
+    html += '<button class="pvq-view" onclick="pvViewShot(\'' + (s.screenshot || '') + '\')">🔍 View</button>';
+    html += '</div></div>';
+    return html;
+  }).join('');
+}
+
+function pvViewShot(src) {
+  if (!src) return;
+  var w = window.open('', '_blank', 'width=600,height=800');
+  w.document.write('<html><head><title>Payment Screenshot</title><style>body{margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh}img{max-width:100%;max-height:100vh;object-fit:contain}</style></head><body><img src="' + src + '"></body></html>');
+}
+
+function pvApprove(subId) {
+  var sub = PV.submissions.find(function(s) { return s.id === subId; });
+  if (!sub) return;
+  sub.status = 'approved';
+  sub.verifiedAt = Date.now();
+  sub.verifiedBy = 'admin';
+  persist('paymentSubmissions');
+
+  var booking = DB.bookings.find(function(b) { return b.id === sub.bookingId; });
+  if (booking) {
+    booking.status = 'confirmed';
+    booking.payment.status = 'verified';
+    persist('bookings');
+  }
+
+  PV.logs.push({ id: subId, action: 'approved', ts: Date.now(), by: 'admin', detail: '' });
+  persist('verificationLogs');
+
+  if (booking) {
+    pvSendEmail(PV_EMAILJS_TEMPLATE_APPROVE, {
+      to_email: booking.contact.email,
+      booking_id: booking.id,
+      passenger_name: booking.passengers.map(function(p) { return p.name; }).join(', '),
+      route: booking.from + ' → ' + booking.to,
+      date: booking.date,
+      amount: '₹' + booking.total,
+      ticket_url: location.origin + location.pathname + '#/ticket/' + booking.id
+    });
+  }
+
+  try { if (typeof pushNotif === 'function') pushNotif('✅', 'Payment approved', sub.bookingId + ' — ticket generated'); } catch (e) {}
+  pvAuditLog('Approved payment ' + subId + ' for booking ' + sub.bookingId);
+  toast('Payment approved — booking confirmed!');
+  SFX.success();
+  renderAdminPayments();
+  renderAdminBookings();
+  pvUpdateBell();
+}
+
+function pvShowReject(subId) {
+  $('#pvrSubId').value = subId;
+  $('#pvrReason').value = '';
+  $('#pvrCustom').value = '';
+  $('#pvrCustomWrap').classList.add('hide');
+  $('#pvrOverlay').classList.add('show');
+}
+
+function pvDoReject() {
+  var subId = $('#pvrSubId').value;
+  var reason = $('#pvrReason').value;
+  if (reason === 'other') reason = $('#pvrCustom').value.trim();
+  if (!reason) { toast('Please select or type a reason.'); return; }
+
+  var sub = PV.submissions.find(function(s) { return s.id === subId; });
+  if (!sub) return;
+  sub.status = 'rejected';
+  sub.verifiedAt = Date.now();
+  sub.verifiedBy = 'admin';
+  sub.rejectReason = reason;
+  persist('paymentSubmissions');
+
+  var booking = DB.bookings.find(function(b) { return b.id === sub.bookingId; });
+  if (booking) {
+    booking.status = 'rejected';
+    booking.payment.status = 'rejected';
+    persist('bookings');
+  }
+
+  PV.logs.push({ id: subId, action: 'rejected', ts: Date.now(), by: 'admin', detail: reason });
+  persist('verificationLogs');
+
+  if (booking) {
+    pvSendEmail(PV_EMAILJS_TEMPLATE_REJECT, {
+      to_email: booking.contact.email,
+      booking_id: booking.id,
+      passenger_name: booking.passengers.map(function(p) { return p.name; }).join(', '),
+      route: booking.from + ' → ' + booking.to,
+      reason: reason,
+      amount: '₹' + booking.total
+    });
+  }
+
+  try { if (typeof pushNotif === 'function') pushNotif('❌', 'Payment rejected', sub.bookingId + ' — ' + reason); } catch (e) {}
+  pvAuditLog('Rejected payment ' + subId + ' for booking ' + sub.bookingId + ': ' + reason);
+  $('#pvrOverlay').classList.remove('show');
+  toast('Payment rejected — customer notified.');
+  renderAdminPayments();
+  renderAdminBookings();
+  pvUpdateBell();
+}
+
+function pvAuditLog(msg) {
+  try {
+    if (typeof auditLog === 'function') auditLog(msg);
+  } catch (e) {}
+}
+
+function pvSetupSearch() {
+  var si = $('#pvSearch'), fi = $('#pvFilter');
+  if (si) si.addEventListener('input', renderAdminPayments);
+  if (fi) fi.addEventListener('change', renderAdminPayments);
+}
+
+/* ================================================================
    [JS] 14. BOOT — load (or seed) data, then start the router
 ================================================================ */
 async function init() {
@@ -11228,6 +12104,10 @@ async function init() {
   DB.delays          = await store.get('shg:delays', []) || [];
   DB.tripExpenses    = await store.get('shg:tripExpenses', []) || [];
   DB.notifications   = await store.get('shg:notifications', []) || [];
+  DB.paymentSubmissions = await store.get('shg:paymentSubmissions', []) || [];
+  DB.verificationLogs   = await store.get('shg:verificationLogs', []) || [];
+  PV.submissions = DB.paymentSubmissions;
+  PV.logs = DB.verificationLogs;
   Splash.tick('Preparing routes…');
   if (!DB.routes || !DB.routes.length || (DB.routes[0] && DB.routes[0].from === 'Mehsana')) { DB.routes = seedRoutes(); persist('routes'); }
   /* Payment migration — replace placeholder UPI/eSewa ids stored by older builds */
@@ -12089,7 +12969,8 @@ var SN = { map:null, ready:false, loading:false, watchId:null, meMarker:null, me
   /* live-tracking upgrade state (SN-local only — nothing outside this block reads these) */
   prevGps:null, routeCoords:null, routeManeuvers:null, routeCumKm:null, routeTotalKm:0,
   routeProgKm:0, offRouteSince:0, rerouteT:null, userRotated:false, voiceOn:true, lastSpokenInstr:null,
-  driverBroadcast:false, trackingMode:false, busMarker:null, trackUnsub:null, trackLastTs:0, trackTickT:null };
+  driverBroadcast:false, trackingMode:false, busMarker:null, trackUnsub:null, trackLastTs:0, trackTickT:null,
+  persistFollow:false, compassMode:false, arrived:false, altRoutes:null, busAnim:null };
 
 var SN_TEMPLES=[
   {n:'Somnath',lat:20.888,lng:70.4013,deity:'Shiva / शिव',wiki:'Somnath temple',hi:'प्रथम ज्योतिर्लिंग — समुद्र तट पर शिव मंदिर, कई बार नष्ट और पुनर्निर्मित।',special:'First of the 12 Jyotirlingas — a coastal Shiva shrine destroyed and rebuilt many times across a thousand years.'},
@@ -12158,10 +13039,11 @@ function renderNav(){
 function cleanupNav(){
   if(SN.watchId!=null){ navigator.geolocation.clearWatch(SN.watchId); SN.watchId=null; }
   if(SN.meAnim!=null){ cancelAnimationFrame(SN.meAnim); SN.meAnim=null; }
+  if(SN.busAnim!=null){ cancelAnimationFrame(SN.busAnim); SN.busAnim=null; }
   if(SN.rerouteT!=null){ clearTimeout(SN.rerouteT); SN.rerouteT=null; }
   if(SN.trackUnsub){ SN.trackUnsub(); SN.trackUnsub=null; }
   if(SN.trackTickT!=null){ clearInterval(SN.trackTickT); SN.trackTickT=null; }
-  SN.driverBroadcast=false;
+  SN.driverBroadcast=false; SN.persistFollow=false;
 }
 
 function initNavApp(){
@@ -12275,6 +13157,26 @@ function initNavApp(){
     s('#snBanner').classList.add('show');
     if(show.instruction&&show.instruction!==SN.lastSpokenInstr){ speak(show.instruction); SN.lastSpokenInstr=show.instruction; }
   }
+  function updateNavCard(distAlongKm){
+    var card=s('#snNavCard'); if(!card) return;
+    if(!SN.routeCoords||!SN.routeManeuvers||!SN.routeManeuvers.length){card.classList.remove('show');return;}
+    var remainKm=Math.max(0,SN.routeTotalKm-distAlongKm);
+    var v=SN_SPD[SN.mode]||40;
+    s('#snNcEta').textContent=snFmtTime(remainKm/v*3600);
+    s('#snNcDist').textContent=remainKm<1?Math.round(remainKm*1000)+' m':remainKm.toFixed(1)+' km';
+    var mv=SN.routeManeuvers, roadName='';
+    for(var i=mv.length-1;i>=0;i--){ if(mv[i]._distKm<=distAlongKm&&mv[i].street_names&&mv[i].street_names.length){ roadName=mv[i].street_names.join(' / '); break; } }
+    s('#snNcRoad').textContent=roadName||'—';
+    var nextIdx=-1;
+    for(var j=0;j<mv.length;j++){if(mv[j]._distKm>distAlongKm){nextIdx=j;break;}}
+    if(nextIdx>=0){
+      s('#snNcIco').textContent=snManIcon(mv[nextIdx].type);
+      s('#snNcTxt').textContent=mv[nextIdx].instruction||'Continue';
+      var nd=Math.max(0,mv[nextIdx]._distKm-distAlongKm);
+      s('#snNcDist2').textContent=nd<1?Math.round(nd*1000)+' m':nd.toFixed(1)+' km';
+    }
+    card.classList.add('show');
+  }
   /* Styling-only road-hierarchy tuning on top of OpenFreeMap's own hosted
      liberty/dark styles — verified against their actual layer IDs (fetched and
      inspected directly), not guessed. No tile source swap, no new style JSON
@@ -12333,7 +13235,12 @@ function initNavApp(){
 
   /* compass + zoom */
   map.on('rotate',function(e){ s('#snCompass .sn-needle').style.transform='rotate('+ -map.getBearing()+'deg)'; if(e.originalEvent) SN.userRotated=true; });
-  s('#snCompass').onclick=function(){ SN.userRotated=false; map.easeTo({bearing:0,pitch:SN.is3D?60:0,duration:500}); };
+  s('#snCompass').onclick=function(){
+    SN.compassMode=!SN.compassMode; SN.userRotated=false;
+    s('#snCompass').classList.toggle('on',SN.compassMode);
+    if(!SN.compassMode) map.easeTo({bearing:0,pitch:SN.is3D?60:0,duration:500});
+    snToast(SN.compassMode?'🧭 Compass mode':'🧭 North-up mode');
+  };
   s('#snZin').onclick=function(){ map.zoomIn(); };
   s('#snZout').onclick=function(){ map.zoomOut(); };
 
@@ -12375,7 +13282,8 @@ function initNavApp(){
         SN.busMarker=new maplibregl.Marker({element:el}); }
       SN.trackUnsub=subscribeLocation(function(loc){
         SN.trackLastTs=loc.ts||Date.now();
-        SN.busMarker.setLngLat([loc.lng,loc.lat]).addTo(map);
+        if(!SN.busMarker._addedOnce){SN.busMarker.setLngLat([loc.lng,loc.lat]).addTo(map);SN.busMarker._addedOnce=true;}
+        else snAnimateBus(loc.lng,loc.lat);
         if(loc.bearing!=null&&!isNaN(loc.bearing)) SN.busMarker.setRotation(loc.bearing);
         snTrackTick();
         if(SN.routeCoords){
@@ -12394,17 +13302,30 @@ function initNavApp(){
     } else {
       if(SN.trackUnsub){ SN.trackUnsub(); SN.trackUnsub=null; }
       if(SN.trackTickT){ clearInterval(SN.trackTickT); SN.trackTickT=null; }
-      if(SN.busMarker) SN.busMarker.remove();
+      if(SN.busMarker){SN.busMarker.remove();SN.busMarker._addedOnce=false;}
+      if(SN.busAnim){cancelAnimationFrame(SN.busAnim);SN.busAnim=null;}
     }
   };
 
-  /* GPS — speed-adaptive refresh: walking maximumAge 0, vehicle maximumAge 0 but throttle HUD */
+  /* GPS — smart vehicle markers + speed-adaptive camera */
+  var SN_MODE_CLR={auto:'#4285F4',motorcycle:'#7B2FBE',bus:'#178A50',bicycle:'#FF9800',pedestrian:'#00BCD4'};
   function ensureMe(){
     if(SN.meMarker) return;
     var el=document.createElement('div'); el.className='sn-me';
-    el.innerHTML='<div class="sn-me-pulse"></div><div class="sn-me-cone"></div><div class="sn-me-core"></div>';
+    var col=SN_MODE_CLR[SN.mode]||'#4285F4';
+    el.innerHTML='<div class="sn-me-pulse" style="background:'+col+'55"></div>'
+      +'<div class="sn-me-cone" style="border-bottom-color:'+col+'88"></div>'
+      +'<div class="sn-me-icon" style="background:'+col+'">'
+      +'<svg viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg></div>';
     SN.meMarker=new maplibregl.Marker({element:el,rotationAlignment:'map',pitchAlignment:'map'});
     SN.meMarker.setLngLat(SN.gpsPos?[SN.gpsPos.lng,SN.gpsPos.lat]:[0,0]).addTo(map);
+  }
+  function snUpdateMeMode(){
+    if(!SN.meMarker) return;
+    var el=SN.meMarker.getElement(), col=SN_MODE_CLR[SN.mode]||'#4285F4';
+    var p=el.querySelector('.sn-me-pulse'); if(p) p.style.background=col+'55';
+    var cn=el.querySelector('.sn-me-cone'); if(cn) cn.style.borderBottomColor=col+'88';
+    var ic=el.querySelector('.sn-me-icon'); if(ic) ic.style.background=col;
   }
   function setMeSmooth(lng,lat){
     if(!SN.meMarker) return;
@@ -12468,6 +13389,7 @@ function initNavApp(){
       SN.routeProgKm=snap.distAlongKm;
       updateTraveledRoute(snap.distAlongKm);
       updateManeuverBanner(snap.distAlongKm);
+      updateNavCard(snap.distAlongKm);
       /* A7 — auto re-route: only after being sustainedly off-route (not one jittery
          fix) so we don't hammer the free/rate-limited Valhalla demo server. */
       var offLimit=SN_OFFROUTE_KM[SN.mode]||0.06;
@@ -12480,14 +13402,29 @@ function initNavApp(){
       } else SN.offRouteSince=0;
     }
 
-    /* A6 — camera bearing follows travel direction like Google Maps' nav mode,
-       but never fights a manual rotate (compass button/drag resets userRotated). */
+    /* A6 — camera: speed-adaptive zoom + persistent follow + compass mode */
     var easeOpts=null;
-    if(SN.followMe){ easeOpts={center:[dispLng,dispLat],zoom:Math.max(map.getZoom(),15)}; SN.followMe=false; }
-    if(c.heading!=null&&!isNaN(c.heading)&&!SN.userRotated&&(c.speed==null||c.speed*3.6>3)){
+    if(SN.followMe||SN.persistFollow){
+      var spdKmh=c.speed!=null?c.speed*3.6:0;
+      var tz=spdKmh<5?18:spdKmh<20?17:spdKmh<50?16:spdKmh<80?15:14;
+      easeOpts={center:[dispLng,dispLat],zoom:tz};
+      if(SN.followMe) SN.followMe=false;
+    }
+    if(c.heading!=null&&!isNaN(c.heading)&&SN.compassMode&&!SN.userRotated&&(c.speed==null||c.speed*3.6>3)){
       easeOpts=easeOpts||{}; easeOpts.bearing=c.heading;
     }
     if(easeOpts){ easeOpts.duration=700; map.easeTo(easeOpts); }
+
+    /* arrival detection — 50m threshold */
+    if(SN.dest&&SN.routeCoords&&!SN.arrived){
+      var arrDist=haversineKm(SN.gpsPos.lat,SN.gpsPos.lng,SN.dest.lat,SN.dest.lng);
+      if(arrDist<0.05){
+        SN.arrived=true;
+        var ae=s('#snArrival'); if(ae){s('#snArrDest').textContent=SN.dest.label||'Destination';ae.classList.add('show');}
+        speak('You have arrived at your destination');
+        snToast('🎉 Arrived!');
+      }
+    }
 
     s('#snHud').classList.remove('off');
     var spd=c.speed!=null?Math.max(0,Math.round(c.speed*3.6)):0;
@@ -12500,7 +13437,8 @@ function initNavApp(){
   }
   s('#snLocate').onclick=function(){
     if(!navigator.geolocation){ snToast('GPS not supported'); return; }
-    SN.followMe=true; s('#snLocate').classList.add('on');
+    SN.followMe=true; SN.persistFollow=true; SN.userRotated=false;
+    s('#snLocate').classList.add('on');
     if(SN.gpsPos) map.easeTo({center:[SN.gpsPos.lng,SN.gpsPos.lat],zoom:Math.max(map.getZoom(),15),duration:800});
     if(SN.watchId==null){
       snToast('📍 Locating…');
@@ -12510,38 +13448,62 @@ function initNavApp(){
       },{enableHighAccuracy:true,maximumAge:0,timeout:15000});
     }
   };
-  map.on('dragstart',function(){ SN.followMe=false; });
+  map.on('dragstart',function(){ SN.followMe=false; SN.persistFollow=false; s('#snLocate').classList.remove('on'); });
 
-  /* search */
+  /* search — enhanced: history, category icons, 2-char trigger, multi-language */
+  var SN_HIST_KEY='shari:searchHist';
+  function snGetHist(){try{return JSON.parse(localStorage.getItem(SN_HIST_KEY)||'[]');}catch(e){return[];}}
+  function snAddHist(item){var h=snGetHist().filter(function(x){return x.label!==item.label;});h.unshift(item);if(h.length>10)h=h.slice(0,10);try{localStorage.setItem(SN_HIST_KEY,JSON.stringify(h));}catch(e){}}
+  function snClearHist(){try{localStorage.removeItem(SN_HIST_KEY);}catch(e){}}
+  function snPlaceIcon(txt){
+    if(!txt)return'📍';txt=txt.toLowerCase();
+    if(/temple|mandir|kovil|dham/.test(txt))return'🛕';if(/hospital|clinic/.test(txt))return'🏥';
+    if(/school|college|university|vidhyalaya/.test(txt))return'🎓';if(/hotel|lodge|dharmshala/.test(txt))return'🏨';
+    if(/restaurant|food|dhaba|bhojanalaya/.test(txt))return'🍽️';if(/petrol|fuel|gas/.test(txt))return'⛽';
+    if(/airport/.test(txt))return'✈️';if(/railway|station/.test(txt))return'🚉';if(/bus.?st/.test(txt))return'🚏';
+    if(/park|garden|udyan/.test(txt))return'🌳';if(/mosque|masjid/.test(txt))return'🕌';if(/church/.test(txt))return'⛪';
+    if(/market|mall|shop|bazaar/.test(txt))return'🛒';if(/bank|atm/.test(txt))return'🏦';
+    if(/river|nadi|lake/.test(txt))return'🌊';if(/mountain|hill|parbat/.test(txt))return'⛰️';
+    if(/village|gaon/.test(txt))return'🏘️';if(/city|town|nagar|pur/.test(txt))return'🏙️';return'📍';
+  }
+  function snBindRows(box){
+    box.querySelectorAll('.row').forEach(function(r){r.onclick=function(){
+      var lat=+r.dataset.lat,lon=+r.dataset.lon;
+      if(r.dataset.icon) snAddHist({label:r.dataset.label,lat:lat,lng:lon,icon:r.dataset.icon});
+      box.classList.remove('show'); s('#snQ').value=r.dataset.label;
+      snSetDest(lon,lat,r.dataset.label);
+      map.easeTo({center:[lon,lat],zoom:Math.max(map.getZoom(),12),duration:900});
+    };});
+  }
+  function snShowHist(){
+    var h=snGetHist(),box=s('#snResults');
+    if(!h.length){box.classList.remove('show');return;}
+    box.innerHTML='<div class="sr-hist-hd">Recent searches<button id="snClearHist">Clear</button></div>'
+      +h.map(function(x){return'<div class="row hist-row" data-lat="'+x.lat+'" data-lon="'+x.lng+'" data-label="'+snEsc(x.label)+'" data-icon="'+(x.icon||'📍')+'"><span class="sr-cat">'+(x.icon||'📍')+'</span><b>'+snEsc(x.label)+'</b></div>';}).join('');
+    box.classList.add('show');
+    var cb=box.querySelector('#snClearHist');if(cb)cb.onclick=function(e){e.stopPropagation();snClearHist();box.classList.remove('show');};
+    snBindRows(box);
+  }
   var searchT;
+  s('#snQ').addEventListener('focus',function(){if(!s('#snQ').value.trim())snShowHist();});
   s('#snQ').addEventListener('input',function(e){
     var q=e.target.value.trim(); clearTimeout(searchT);
-    if(q.length<3){ s('#snResults').classList.remove('show'); return; }
+    if(q.length<1){snShowHist();return;}
+    if(q.length<2){s('#snResults').classList.remove('show');return;}
     searchT=setTimeout(function(){
-      /* Browsers block scripts from setting a custom User-Agent header on fetch —
-         that's a forbidden header name, not something we can add from client JS.
-         The realistic, honest way a pure client-side app identifies itself to
-         Nominatim's usage policy is the Referer the browser sends automatically;
-         referrerPolicy:'origin' just makes sure that's never suppressed. */
-      fetch('https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&countrycodes=in,np&q='+encodeURIComponent(q),{referrerPolicy:'origin'})
+      fetch('https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&countrycodes=in,np&q='+encodeURIComponent(q),{referrerPolicy:'origin'})
         .then(function(r){return r.json();}).then(function(list){
           var box=s('#snResults');
-          if(!list.length){ box.classList.remove('show'); return; }
+          if(!list.length){box.classList.remove('show');return;}
           box.innerHTML=list.map(function(p){
             var nm=p.display_name.split(',')[0];
-            return '<div class="row" data-lat="'+p.lat+'" data-lon="'+p.lon+'" data-label="'+nm.replace(/"/g,'')+'"><b>'+nm+'</b><br><span>'+p.display_name+'</span></div>';
+            var icon=snPlaceIcon(p.type+' '+p.class+' '+p.display_name);
+            return'<div class="row" data-lat="'+p.lat+'" data-lon="'+p.lon+'" data-label="'+nm.replace(/"/g,'')+'" data-icon="'+icon+'"><span class="sr-cat">'+icon+'</span><b>'+nm+'</b><br><span>'+p.display_name+'</span></div>';
           }).join('');
           box.classList.add('show');
-          box.querySelectorAll('.row').forEach(function(r){
-            r.onclick=function(){
-              var lat=+r.dataset.lat,lon=+r.dataset.lon;
-              box.classList.remove('show'); s('#snQ').value=r.dataset.label;
-              snSetDest(lon,lat,r.dataset.label);
-              map.easeTo({center:[lon,lat],zoom:Math.max(map.getZoom(),12),duration:900});
-            };
-          });
+          snBindRows(box);
         }).catch(function(){});
-    },350);
+    },300);
   });
   document.addEventListener('click',function(e){ if(!e.target.closest('#view-nav .sn-search')) { var r=s('#snResults'); if(r) r.classList.remove('show'); } });
 
@@ -12590,6 +13552,7 @@ function initNavApp(){
     m.onclick=function(){
       document.querySelectorAll('#view-nav [data-snmode]').forEach(function(x){x.classList.remove('on');});
       m.classList.add('on'); SN.mode=m.getAttribute('data-snmode');
+      snUpdateMeMode();
       snUpdateQuickDist();
       if(SN.origin&&SN.dest) snRoute();
     };
@@ -12600,13 +13563,17 @@ function initNavApp(){
   s('#snClear').onclick=function(){
     SN.origin=SN.dest=SN.routeGeo=SN.routeCoords=SN.routeManeuvers=SN.routeCumKm=null;
     SN.routeTotalKm=0; SN.routeProgKm=0; SN.offRouteSince=0; SN.lastSpokenInstr=null;
+    SN.arrived=false; SN.altRoutes=null;
     [SN.originMarker,SN.destMarker].forEach(function(m){if(m)m.remove();}); SN.originMarker=SN.destMarker=null;
-    ['sn-rline','sn-rglow','sn-rdone'].forEach(function(l){if(map.getLayer(l))map.removeLayer(l);});
-    if(map.getSource('sn-route-ahead')) map.removeSource('sn-route-ahead');
-    if(map.getSource('sn-route-done')) map.removeSource('sn-route-done');
+    ['sn-rline','sn-rglow','sn-rdone','sn-alt0','sn-alt1'].forEach(function(l){if(map.getLayer(l))map.removeLayer(l);});
+    ['sn-route-ahead','sn-route-done','sn-alt-0','sn-alt-1'].forEach(function(src){if(map.getSource(src))map.removeSource(src);});
     SN.presetMarkers.forEach(function(m){m.remove();}); SN.presetMarkers=[];
     s('#snFrom').value=''; s('#snTo').value=''; s('#snQ').value='';
-    s('#snSummary').classList.remove('show'); s('#snBanner').classList.remove('show'); snRefreshGo();
+    s('#snSummary').classList.remove('show'); s('#snBanner').classList.remove('show');
+    var nc=s('#snNavCard');if(nc)nc.classList.remove('show');
+    var ab=s('#snAltBar');if(ab)ab.classList.remove('show');
+    var ar=s('#snArrival');if(ar)ar.classList.remove('show');
+    snRefreshGo();
   };
 
   function snRoute(){
@@ -12630,6 +13597,8 @@ function initNavApp(){
         var b=coords.reduce(function(bb,c){return bb.extend(c);},new maplibregl.LngLatBounds(coords[0],coords[0]));
         map.fitBounds(b,{padding:{top:110,bottom:300,left:60,right:60},duration:900});
         snShowSummary(trip.summary,leg.maneuvers);
+        SN.arrived=false;
+        snFetchAlts();
       })
       .catch(function(){snToast('No route found — try another mode');})
       .finally(function(){s('#snGo').textContent='Get directions';snRefreshGo();});
@@ -12653,6 +13622,50 @@ function initNavApp(){
         (m.instruction||'')+'<small>'+d+' · '+snFmtTime(m.time)+'</small></div></div>';
     }).join('');
     s('#snSummary').classList.add('show');
+  }
+  function snFetchAlts(){
+    if(!(SN.origin&&SN.dest))return;
+    var body={locations:[{lat:SN.origin.lat,lon:SN.origin.lng},{lat:SN.dest.lat,lon:SN.dest.lng}],
+      costing:SN.mode,directions_options:{units:'kilometers'},alternates:2};
+    fetch('https://valhalla1.openstreetmap.de/route?json='+encodeURIComponent(JSON.stringify(body)))
+      .then(function(r){return r.json();}).then(function(j){
+        var alts=j.alternates;if(!alts||!alts.length)return;
+        var origCoords=SN.routeCoords,origCum=SN.routeCumKm,origTotal=SN.routeTotalKm,origMan=SN.routeManeuvers;
+        SN.altRoutes=[];
+        alts.forEach(function(alt,idx){
+          var leg=alt.trip.legs[0],coords=decodePoly(leg.shape);
+          SN.altRoutes.push({coords:coords,summary:alt.trip.summary,maneuvers:leg.maneuvers});
+          var srcId='sn-alt-'+idx,layId='sn-alt'+idx;
+          var geo={type:'Feature',geometry:{type:'LineString',coordinates:coords}};
+          if(map.getSource(srcId))map.getSource(srcId).setData(geo);
+          else{
+            map.addSource(srcId,{type:'geojson',data:geo});
+            map.addLayer({id:layId,type:'line',source:srcId,layout:{'line-cap':'round','line-join':'round'},
+              paint:{'line-color':'#9B7DC4','line-width':5,'line-opacity':.3,'line-dasharray':[4,3]}},
+              map.getLayer('sn-rglow')?'sn-rglow':undefined);
+          }
+        });
+        var bar=s('#snAltBar');if(!bar)return;
+        bar.innerHTML='<button class="sn-altbtn on" data-snalt="-1"><b>Main</b>'+snFmtTime(j.trip.summary.time)+'</button>'
+          +SN.altRoutes.map(function(a,i){return'<button class="sn-altbtn" data-snalt="'+i+'"><b>Alt '+(i+1)+'</b>'+snFmtTime(a.summary.time)+' · '+a.summary.length.toFixed(1)+' km</button>';}).join('');
+        bar.classList.add('show');
+        bar.querySelectorAll('.sn-altbtn').forEach(function(btn){
+          btn.onclick=function(){
+            bar.querySelectorAll('.sn-altbtn').forEach(function(x){x.classList.remove('on');});
+            btn.classList.add('on');
+            var ai=+btn.dataset.snalt;
+            if(ai<0){SN.routeCoords=origCoords;SN.routeCumKm=origCum;SN.routeTotalKm=origTotal;SN.routeManeuvers=origMan;SN.routeProgKm=0;updateTraveledRoute(0);snShowSummary(j.trip.summary,j.trip.legs[0].maneuvers);}
+            else{
+              var alt=SN.altRoutes[ai];
+              SN.routeCoords=alt.coords;SN.routeCumKm=buildCumDist(alt.coords);
+              SN.routeTotalKm=SN.routeCumKm[SN.routeCumKm.length-1]||0;
+              SN.routeManeuvers=alt.maneuvers||[];
+              SN.routeManeuvers.forEach(function(m){m._distKm=SN.routeCumKm[Math.min(m.begin_shape_index,SN.routeCumKm.length-1)]||0;});
+              SN.routeProgKm=0;updateTraveledRoute(0);snShowSummary(alt.summary,alt.maneuvers);
+            }
+          };
+        });
+      }).catch(function(){});
   }
 
   /* S Hari preset */
@@ -12739,6 +13752,25 @@ function initNavApp(){
   }else if(navigator.geolocation){
     s('#snLocate').click();
   }
+
+  /* smooth bus marker interpolation */
+  function snAnimateBus(lng,lat){
+    if(!SN.busMarker)return;
+    var from=SN.busMarker.getLngLat();
+    var big=Math.abs(from.lng-lng)>.05||Math.abs(from.lat-lat)>.05;
+    if(big){SN.busMarker.setLngLat([lng,lat]);return;}
+    var t0=performance.now(),dur=800;
+    if(SN.busAnim)cancelAnimationFrame(SN.busAnim);
+    (function step(now){var k=Math.min(1,(now-t0)/dur),e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;
+      SN.busMarker.setLngLat([from.lng+(lng-from.lng)*e,from.lat+(lat-from.lat)*e]);
+      if(k<1)SN.busAnim=requestAnimationFrame(step);
+    })(t0);
+  }
+
+  /* arrival close */
+  var arrBtn=s('#snArrClose');if(arrBtn)arrBtn.onclick=function(){
+    var ae=s('#snArrival');if(ae)ae.classList.remove('show');
+  };
 
   map.on('load',function(){ snToast('🕉️ S Hari Nav ready · 📍 for live location'); });
   var loader=$('#snLoad'); if(loader) loader.style.display='none';
