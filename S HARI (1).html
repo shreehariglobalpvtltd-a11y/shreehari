@@ -2471,6 +2471,145 @@ table.admin .code{font-family:var(--f-code);font-size:12.5px}
 </section>
 
 <!-- ================================================================
+     [HTML] VIEW: TRIP COMPANION — ixigo-style "My Trip" per PNR
+================================================================ -->
+<section class="view" id="view-trip">
+  <div class="tc-hero shimmer" id="tcHero">
+    <div class="overlay"></div>
+    <button class="tc-hero back-btn" id="tcBack" type="button">←</button>
+    <div class="route-row">
+      <div class="city" id="tcOriginCity">AMD<small id="tcOriginSub">Ahmedabad</small></div>
+      <div class="mid">
+        <span class="bus-ico">🚌</span>
+        <div class="dash"></div>
+        <span class="dur" id="tcDuration">≈30h 30m</span>
+      </div>
+      <div class="city" style="text-align:right" id="tcDestCity">NGP<small id="tcDestSub">Nepalgunj</small></div>
+    </div>
+    <div class="trip-meta">
+      <span id="tcTripLabel">🎫 SHG <span id="tcTripDate">—</span></span>
+      <span id="tcCabinLabel">🛏️ <span id="tcCabinType">AC Sleeper</span></span>
+      <span id="tcPnrLabel">PNR: <b id="tcPnrCode">—</b></span>
+    </div>
+  </div>
+
+  <div class="tc-body" id="tcBody">
+    <!-- PHASE TIMELINE -->
+    <div class="tc-timeline" id="tcTimeline">
+      <div class="tc-phase active" id="tcPhase0" data-phase="0">
+        <div class="dot">✓</div>
+        <div class="phase-label">Pre-trip checklist</div>
+      </div>
+      <div class="tc-phase future" id="tcPhase1" data-phase="1">
+        <div class="dot">2</div>
+        <div class="phase-label">Departure day</div>
+      </div>
+      <div class="tc-phase future" id="tcPhase2" data-phase="2">
+        <div class="dot">3</div>
+        <div class="phase-label">On board — Live tracking</div>
+      </div>
+      <div class="tc-phase future" id="tcPhase3" data-phase="3">
+        <div class="dot">4</div>
+        <div class="phase-label">Arrived</div>
+      </div>
+    </div>
+
+    <!-- CARDS CONTAINER — JS populates per phase -->
+    <div id="tcCards">
+
+      <!-- DOCUMENT CHECKLIST -->
+      <div class="tc-card" id="tcChecklistCard">
+        <div class="card-head"><span class="ico">📋</span> Travel checklist</div>
+        <ul class="tc-checklist" id="tcChecklist"></ul>
+      </div>
+
+      <!-- WEATHER -->
+      <div class="tc-card dark" id="tcWeatherCard">
+        <div class="card-head"><span class="ico">🌤️</span> Weather at destination</div>
+        <div class="tc-weather" id="tcWeather">
+          <div class="tc-wx"><div class="city-name" id="tcWxOriginName">Ahmedabad</div><div class="temp" id="tcWxOriginTemp">—</div><div class="cond" id="tcWxOriginCond">Loading…</div></div>
+          <div class="tc-wx"><div class="city-name" id="tcWxDestName">Nepalgunj</div><div class="temp" id="tcWxDestTemp">—</div><div class="cond" id="tcWxDestCond">Loading…</div></div>
+        </div>
+      </div>
+
+      <!-- LEAVE-BY CALCULATOR -->
+      <div class="tc-card dark" id="tcLeaveByCard">
+        <div class="card-head"><span class="ico">🧭</span> Navigation to boarding point</div>
+        <div class="tc-leaveby">
+          <div class="time-block"><div class="t" id="tcLeaveByTime">—</div><small>Leave by</small></div>
+          <div class="details"><span id="tcLeaveByDist">Calculating distance…</span><br><small id="tcLeaveByNote">60 min buffer included</small></div>
+        </div>
+      </div>
+
+      <!-- BOARDING POINT -->
+      <div class="tc-boarding" id="tcBoardingCard">
+        <div>
+          <div class="bp-name" id="tcBoardingName">Mehsana</div>
+          <div class="bp-addr" id="tcBoardingAddr">Near Shilpa Garage, Sliver Complex</div>
+          <span class="bp-badge">S Hari Global Boarding Counter</span>
+        </div>
+      </div>
+
+      <!-- CABIN INFO -->
+      <div class="tc-card" id="tcCabinCard">
+        <div class="card-head"><span class="ico">🛏️</span> Cabin details</div>
+        <div class="tc-cabin">
+          <div class="cell"><b id="tcCabinTypeFull">—</b><small>Cabin type</small></div>
+          <div class="cell"><b id="tcCabinPax">—</b><small>Passengers</small></div>
+          <div class="cell"><b id="tcCabinFare">—</b><small>Total fare</small></div>
+          <div class="cell"><b id="tcCabinStatus">Confirmed</b><small>Status</small></div>
+        </div>
+      </div>
+
+      <!-- COUNTDOWN (departure day) -->
+      <div class="tc-card" id="tcCountdownCard" style="display:none">
+        <div class="card-head"><span class="ico">⏰</span> Countdown to departure</div>
+        <div class="tc-countdown"><div class="timer" id="tcCountdown">—</div><small>until departure</small></div>
+      </div>
+
+      <!-- LIVE MAP (phase 2) -->
+      <div id="tcLiveSection" style="display:none">
+        <div class="tc-map-wrap"><div id="tcMap"></div></div>
+        <div class="tc-sheet">
+          <div class="handle"></div>
+          <div class="eta-grid">
+            <div class="cell"><b id="tcLiveEta">—</b><small>ETA</small></div>
+            <div class="cell"><b id="tcLiveSpeed">—</b><small>km/h</small></div>
+            <div class="cell"><b id="tcLiveDist">—</b><small>Remaining</small></div>
+          </div>
+          <div class="tc-next-halt" id="tcNextHalt">
+            <span class="ico">📍</span>
+            <div class="info"><b id="tcNextHaltName">—</b><small id="tcNextHaltMeta">Waiting for live data…</small></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- HALT STATUS BANNER -->
+      <div class="tc-card" id="tcHaltBanner" style="display:none">
+        <div class="card-head"><span class="ico">⏸️</span> <span id="tcHaltText">Bus is at a halt</span></div>
+      </div>
+
+      <!-- ARRIVED (phase 3) -->
+      <div id="tcArrivedSection" style="display:none">
+        <div class="tc-arrived">
+          <div class="big">🎉</div>
+          <h3 id="tcArrivedTitle">Arrived at Nepalgunj</h3>
+          <div class="ts" id="tcArrivedTs">—</div>
+          <div class="actions">
+            <a href="#/my" class="btn btn-blue">📋 My Bookings</a>
+            <a href="tel:+919104801507" class="btn btn-ghost">📞 Contact Support</a>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /tcCards -->
+  </div>
+</section>
+
+<!-- Geofence banner (fixed, overlays any view) -->
+<div class="tc-geobanner" id="tcGeoBanner"></div>
+
+<!-- ================================================================
      [HTML] VIEW: TRACK MY BUS (unified Leaflet live map)
 ================================================================ -->
 
@@ -2785,7 +2924,52 @@ table.admin .code{font-family:var(--f-code);font-size:12.5px}
       </div>
 
       <div class="admin-tabpane hide" id="tab-liveops">
-        <p class="admin-note">Day-of-travel operations: manual bus position updates, delay notices and the per-trip expense log. <b>Positions are entered manually until a real GPS feed exists</b> (see the ROADMAP note in the code).</p>
+        <p class="admin-note">Live trip operations: create trips for drivers, monitor GPS, manage halts. Firebase-connected when configured; manual fallback otherwise.</p>
+
+        <!-- CREATE TRIP -->
+        <div class="c-card" style="margin-bottom:16px;border-top:3px solid var(--orange)">
+          <b style="font-size:15px;font-family:var(--f-display)">➕ Create New Trip</b>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:12px">
+            <div class="field"><label>Route</label><select id="ltRoute"><option>Ahmedabad → Nepalgunj</option><option>Nepalgunj → Ahmedabad</option></select></div>
+            <div class="field"><label>Date</label><input type="date" id="ltDate"></div>
+            <div class="field"><label>Departure time</label><input type="time" id="ltTime" value="08:15"></div>
+            <div class="field"><label>Driver name</label><input type="text" id="ltDriver" placeholder="Driver name"></div>
+            <div class="field"><label>Vehicle No.</label><input type="text" id="ltVehicle" placeholder="GJ-XX-XX-XXXX"></div>
+            <div class="field"><label>Driver PIN</label><input type="text" id="ltPin" value="SHG@2026" readonly style="font-family:var(--f-code)"></div>
+          </div>
+          <button class="btn btn-orange" id="ltCreateBtn" type="button" style="margin-top:12px">🚌 Create trip</button>
+          <div id="ltCreateMsg" style="font-size:12px;margin-top:8px;color:var(--ok)"></div>
+        </div>
+
+        <!-- LIVE TRIPS TABLE -->
+        <div class="c-card" style="margin-bottom:16px">
+          <b style="font-size:15px;font-family:var(--f-display)">📡 Active Trips</b>
+          <div style="overflow-x:auto;margin-top:12px">
+            <table style="width:100%;border-collapse:collapse;font-size:13px" id="ltTable">
+              <thead><tr style="text-align:left;border-bottom:2px solid var(--line)">
+                <th style="padding:8px">Trip ID</th><th style="padding:8px">Route</th>
+                <th style="padding:8px">Driver</th><th style="padding:8px">Last ping</th>
+                <th style="padding:8px">Speed</th><th style="padding:8px">Status</th>
+                <th style="padding:8px">Action</th>
+              </tr></thead>
+              <tbody id="ltTableBody"><tr><td colspan="7" style="text-align:center;padding:20px;color:var(--muted)">No active trips</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- MANUAL POSITION OVERRIDE -->
+        <div class="c-card" style="margin-bottom:16px">
+          <b style="font-size:15px;font-family:var(--f-display)">📍 Manual Position Override</b>
+          <p style="font-size:12px;color:var(--muted);margin:4px 0 12px">If driver phone is dead, select a city to show passengers "Last known: [city]"</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <select id="ltOverrideTrip" style="flex:1;min-width:140px;padding:8px;border:1.5px solid var(--line);border-radius:10px"><option value="">Select trip…</option></select>
+            <select id="ltOverrideCity" style="flex:1;min-width:140px;padding:8px;border:1.5px solid var(--line);border-radius:10px"></select>
+            <button class="btn btn-ghost btn-sm" id="ltOverrideBtn" type="button">📍 Set position</button>
+          </div>
+          <div id="ltOverrideMsg" style="font-size:12px;margin-top:6px;color:var(--ok)"></div>
+        </div>
+
+        <!-- Legacy live ops body -->
         <div id="liveOpsBody"></div>
       </div>
 
@@ -3599,6 +3783,133 @@ a,button,.btn,.nav a,.tab-btn,.pm-tab,.bt-pill,.tier-pill,.proof-tab,.trip-pill{
 .stagger-item:nth-child(7){animation-delay:300ms}.stagger-item:nth-child(8){animation-delay:350ms}
 .stagger-item:nth-child(9){animation-delay:400ms}.stagger-item:nth-child(10){animation-delay:450ms}
 .stagger-item:nth-child(n+11){animation-delay:500ms}
+
+/* ================================================================
+   [CSS] TRIP COMPANION — ixigo-style "My Trip" view
+   Accessible via #/trip/<PNR>. Phases: booked → pre-trip → departure → live → arrived.
+================================================================ */
+#view-trip{background:var(--bg);min-height:100vh}
+.tc-hero{position:relative;overflow:hidden;padding:28px 20px 24px;color:#fff;border-radius:0 0 24px 24px;
+  background:linear-gradient(135deg,#FF9933 0%,#2E5FA8 50%,#DC143C 100%);background-size:200% 200%}
+.tc-hero.shimmer{animation:tcShimmer 6s ease infinite}
+@keyframes tcShimmer{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
+.tc-hero .overlay{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.15) 0%,rgba(0,0,0,.3) 100%)}
+.tc-hero *{position:relative;z-index:1}
+.tc-hero .route-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+.tc-hero .city{font-size:22px;font-weight:800;font-family:var(--f-display);text-shadow:0 2px 8px rgba(0,0,0,.3)}
+.tc-hero .city small{display:block;font-size:11px;font-weight:500;font-family:var(--f-body);opacity:.85;margin-top:2px}
+.tc-hero .mid{flex:1;text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px}
+.tc-hero .mid .bus-ico{font-size:24px}
+.tc-hero .mid .dash{width:80%;max-width:120px;height:2px;background:repeating-linear-gradient(90deg,rgba(255,255,255,.6) 0 6px,transparent 6px 12px)}
+.tc-hero .mid .dur{font-size:12px;opacity:.8;font-weight:600}
+.tc-hero .trip-meta{display:flex;gap:14px;font-size:12px;opacity:.85;flex-wrap:wrap}
+.tc-hero .trip-meta span{display:inline-flex;align-items:center;gap:4px}
+.tc-hero .back-btn{position:absolute;top:16px;left:16px;z-index:2;background:rgba(0,0,0,.3);border:none;color:#fff;width:36px;height:36px;border-radius:50%;font-size:16px;cursor:pointer;backdrop-filter:blur(8px)}
+
+.tc-body{padding:16px 16px 100px;max-width:640px;margin:0 auto}
+
+/* Phase timeline */
+.tc-timeline{position:relative;padding:0 0 0 32px;margin:0 0 20px}
+.tc-timeline::before{content:'';position:absolute;left:11px;top:8px;bottom:8px;width:2px;border-left:2px dashed var(--line)}
+.tc-phase{position:relative;padding:8px 0 16px}
+.tc-phase .dot{position:absolute;left:-32px;top:10px;width:22px;height:22px;border-radius:50%;background:var(--card);border:2.5px solid var(--muted);display:flex;align-items:center;justify-content:center;font-size:10px;z-index:1}
+.tc-phase.done .dot{background:var(--ok);border-color:var(--ok);color:#fff}
+.tc-phase.active .dot{background:var(--ok);border-color:var(--ok);color:#fff;box-shadow:0 0 0 5px rgba(23,138,80,.2);animation:tcPulse 2s infinite}
+@keyframes tcPulse{0%,100%{box-shadow:0 0 0 5px rgba(23,138,80,.2)}50%{box-shadow:0 0 0 10px rgba(23,138,80,.05)}}
+.tc-phase .phase-label{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:8px}
+.tc-phase.future .phase-label{color:var(--muted)}
+
+/* Cards */
+.tc-card{background:var(--card);border-radius:16px;padding:16px;margin-bottom:12px;box-shadow:0 2px 12px rgba(0,0,0,.05)}
+.tc-card.dark{background:#0d1117;color:#e6edf3;border:1px solid rgba(255,255,255,.08)}
+.tc-card.dark b,.tc-card.dark .val{color:#fff}
+.tc-card.dark small,.tc-card.dark .lbl{color:rgba(255,255,255,.6)}
+.tc-card .card-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:14px;font-weight:700}
+.tc-card .card-head .ico{font-size:20px}
+
+/* Weather card */
+.tc-weather{display:flex;gap:12px;flex-wrap:wrap}
+.tc-wx{flex:1;min-width:120px;text-align:center;padding:12px;border-radius:12px;background:rgba(255,255,255,.05)}
+.tc-wx .temp{font-size:28px;font-weight:800}
+.tc-wx .cond{font-size:12px;opacity:.7;margin-top:2px}
+.tc-wx .city-name{font-size:11px;font-weight:600;opacity:.8;margin-bottom:6px}
+
+/* Leave-by card */
+.tc-leaveby{display:flex;align-items:center;gap:14px}
+.tc-leaveby .time-block{min-width:90px;text-align:center}
+.tc-leaveby .time-block .t{font-size:24px;font-weight:800;color:var(--ok)}
+.tc-leaveby .time-block small{font-size:11px;color:rgba(255,255,255,.6)}
+.tc-leaveby .details{flex:1;font-size:13px;line-height:1.5}
+.tc-card.urgent{border:2px solid var(--warn);animation:tcUrgent 2s infinite}
+@keyframes tcUrgent{0%,100%{border-color:var(--warn)}50%{border-color:rgba(183,121,31,.3)}}
+
+/* Checklist */
+.tc-checklist{list-style:none;padding:0;margin:0}
+.tc-checklist li{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+.tc-checklist li:last-child{border:none}
+.tc-checklist input[type=checkbox]{width:20px;height:20px;accent-color:var(--ok);flex-shrink:0}
+.tc-checklist .checked{text-decoration:line-through;opacity:.5}
+
+/* Cabin info */
+.tc-cabin{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tc-cabin .cell{text-align:center;padding:12px;background:var(--blue-50);border-radius:12px}
+.tc-cabin .cell b{display:block;font-size:16px;margin-bottom:2px}
+.tc-cabin .cell small{font-size:11px;color:var(--muted)}
+
+/* Boarding point */
+.tc-boarding{position:relative;border-radius:16px;overflow:hidden;min-height:140px;display:flex;align-items:flex-end;padding:20px;color:#fff;
+  background:linear-gradient(180deg,rgba(0,0,0,0) 0%,rgba(0,0,0,.7) 100%),linear-gradient(135deg,var(--blue-deep),var(--blue-800))}
+.tc-boarding .bp-name{font-size:20px;font-weight:800;font-family:var(--f-display)}
+.tc-boarding .bp-addr{font-size:12px;opacity:.8;margin-top:4px}
+.tc-boarding .bp-badge{display:inline-block;margin-top:8px;padding:4px 12px;background:var(--orange);border-radius:99px;font-size:11px;font-weight:700}
+
+/* Countdown */
+.tc-countdown{text-align:center;padding:20px}
+.tc-countdown .timer{font-size:32px;font-weight:800;font-family:var(--f-code);color:var(--orange)}
+.tc-countdown small{font-size:12px;color:var(--muted);display:block;margin-top:4px}
+
+/* Live map container */
+.tc-map-wrap{position:relative;height:300px;border-radius:16px;overflow:hidden;margin-bottom:12px}
+.tc-map-wrap #tcMap{width:100%;height:100%}
+
+/* Pull-up sheet over map */
+.tc-sheet{background:var(--card);border-radius:20px 20px 0 0;padding:16px 20px;box-shadow:0 -4px 20px rgba(0,0,0,.08)}
+.tc-sheet .handle{width:40px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 14px}
+.tc-sheet .eta-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.tc-sheet .eta-grid .cell{text-align:center}
+.tc-sheet .eta-grid .cell b{display:block;font-size:18px;font-weight:800}
+.tc-sheet .eta-grid .cell small{font-size:11px;color:var(--muted)}
+.tc-next-halt{display:flex;align-items:center;gap:12px;padding:12px;background:var(--blue-50);border-radius:14px}
+.tc-next-halt .ico{font-size:22px}
+.tc-next-halt .info{flex:1}
+.tc-next-halt .info b{display:block;font-size:14px}
+.tc-next-halt .info small{font-size:12px;color:var(--muted)}
+
+/* Geofence banner */
+.tc-geobanner{position:fixed;top:0;left:0;right:0;z-index:200;padding:14px 20px;text-align:center;font-size:14px;font-weight:700;color:#fff;transform:translateY(-100%);transition:transform .4s var(--ease-decel);pointer-events:none}
+.tc-geobanner.show{transform:translateY(0);pointer-events:auto}
+.tc-geobanner.meal{background:linear-gradient(135deg,#FF9800,#F57C00)}
+.tc-geobanner.border{background:linear-gradient(135deg,#E91E63,#C2185B)}
+.tc-geobanner.fuel{background:linear-gradient(135deg,#4CAF50,#388E3C)}
+.tc-geobanner.near{background:linear-gradient(135deg,var(--orange),var(--orange-600))}
+
+/* Arrived */
+.tc-arrived{text-align:center;padding:30px 20px}
+.tc-arrived .big{font-size:48px;margin-bottom:12px}
+.tc-arrived h3{font-size:20px;font-weight:800;margin-bottom:6px}
+.tc-arrived .ts{font-size:13px;color:var(--muted)}
+.tc-arrived .actions{display:flex;gap:10px;justify-content:center;margin-top:20px;flex-wrap:wrap}
+.tc-arrived .actions a,.tc-arrived .actions button{padding:10px 20px;border-radius:14px;font-size:13px;font-weight:700;text-decoration:none;border:none;cursor:pointer;font-family:var(--f-body)}
+
+@media(prefers-reduced-motion:reduce){
+  .tc-hero.shimmer{animation:none}
+  .tc-phase.active .dot{animation:none;box-shadow:0 0 0 5px rgba(23,138,80,.2)}
+  .tc-card.urgent{animation:none}
+}
+@media(max-width:400px){
+  .tc-hero .city{font-size:18px}
+  .tc-cabin{grid-template-columns:1fr}
+}
 
 /* ================================================================
    [CSS] NAV APP — fullscreen MapLibre navigator (merged from shari-nav-prototype)
@@ -4969,7 +5280,14 @@ en: {
   clTitle: 'Travel checklist (India–Nepal border)',
   fareLocked: '🔒 Your fare is fixed once booked — it will not change later.',
   saveTicketNote: '💾 Save the PDF ticket to your phone now — it works fully offline and the QR code scans without internet.',
-  dupAsk: 'This number already has booking {id} for the same route and date. Continue with another booking anyway?'
+  dupAsk: 'This number already has booking {id} for the same route and date. Continue with another booking anyway?',
+  /* Trip Companion */
+  tcPreTrip: 'Pre-trip checklist', tcDeparture: 'Departure day', tcLive: 'On board — Live tracking',
+  tcArrived: 'Arrived', tcChecklist: 'Travel checklist', tcWeather: 'Weather at destination',
+  tcLeaveBy: 'Navigation to boarding point', tcCabin: 'Cabin details', tcCountdown: 'Countdown to departure',
+  tcBoardingPt: 'S Hari Global Boarding Counter', tcMyTrip: 'My Trip Companion', tcTrackMap: 'Track on map',
+  tcNextHalt: 'Next halt', tcRemaining: 'Remaining', tcBusNear: 'Your bus is nearby!',
+  tcArrivedAt: 'Arrived at {c}', tcComplete: 'Journey completed'
 },
 hi: {
   navHome: 'होम', navBook: 'टिकट बुक करें', navServices: 'सेवाएं', navRoute: 'भारत–नेपाल',
@@ -5159,7 +5477,13 @@ hi: {
   clTitle: 'यात्रा चेकलिस्ट (भारत–नेपाल बॉर्डर)',
   fareLocked: '🔒 बुक होते ही आपका किराया तय हो जाता है — बाद में नहीं बदलेगा।',
   saveTicketNote: '💾 PDF टिकट अभी फोन में सेव करें — यह पूरी तरह ऑफलाइन काम करता है और QR बिना इंटरनेट स्कैन होता है।',
-  dupAsk: 'इस नंबर पर इसी मार्ग और तिथि की बुकिंग {id} पहले से है। फिर भी दूसरी बुकिंग करें?'
+  dupAsk: 'इस नंबर पर इसी मार्ग और तिथि की बुकिंग {id} पहले से है। फिर भी दूसरी बुकिंग करें?',
+  tcPreTrip: 'यात्रा पूर्व चेकलिस्ट', tcDeparture: 'प्रस्थान दिवस', tcLive: 'बस में — लाइव ट्रैकिंग',
+  tcArrived: 'पहुँच गए', tcChecklist: 'यात्रा चेकलिस्ट', tcWeather: 'गंतव्य का मौसम',
+  tcLeaveBy: 'बोर्डिंग पॉइंट तक नेविगेशन', tcCabin: 'केबिन विवरण', tcCountdown: 'प्रस्थान उलटी गिनती',
+  tcBoardingPt: 'S Hari Global बोर्डिंग काउंटर', tcMyTrip: 'मेरा ट्रिप साथी', tcTrackMap: 'मैप पर ट्रैक करें',
+  tcNextHalt: 'अगला पड़ाव', tcRemaining: 'शेष', tcBusNear: 'आपकी बस पास है!',
+  tcArrivedAt: '{c} पहुँच गए', tcComplete: 'यात्रा पूर्ण'
 },
 ne: {
   navHome: 'होम', navBook: 'टिकट बुक गर्नुहोस्', navServices: 'सेवाहरू', navRoute: 'भारत–नेपाल',
@@ -5349,7 +5673,13 @@ ne: {
   clTitle: 'यात्रा चेकलिस्ट (भारत–नेपाल सीमा)',
   fareLocked: '🔒 बुक हुनासाथ तपाईंको भाडा निश्चित हुन्छ — पछि बदलिँदैन।',
   saveTicketNote: '💾 PDF टिकट अहिल्यै फोनमा सेभ गर्नुहोस् — यो पूरै अफलाइन चल्छ र QR इन्टरनेटबिना स्क्यान हुन्छ।',
-  dupAsk: 'यो नम्बरमा उही मार्ग र मितिको बुकिङ {id} पहिल्यै छ। अर्को बुकिङ जारी राख्ने?'
+  dupAsk: 'यो नम्बरमा उही मार्ग र मितिको बुकिङ {id} पहिल्यै छ। अर्को बुकिङ जारी राख्ने?',
+  tcPreTrip: 'यात्रा पूर्व चेकलिस्ट', tcDeparture: 'प्रस्थान दिन', tcLive: 'बसमा — लाइभ ट्र्याकिङ',
+  tcArrived: 'पुग्यो', tcChecklist: 'यात्रा चेकलिस्ट', tcWeather: 'गन्तव्यको मौसम',
+  tcLeaveBy: 'बोर्डिङ पोइन्टसम्म नेभिगेसन', tcCabin: 'क्याबिन विवरण', tcCountdown: 'प्रस्थान काउन्टडाउन',
+  tcBoardingPt: 'S Hari Global बोर्डिङ काउन्टर', tcMyTrip: 'मेरो ट्रिप साथी', tcTrackMap: 'म्यापमा ट्र्याक',
+  tcNextHalt: 'अर्को पडाव', tcRemaining: 'बाँकी', tcBusNear: 'तपाईंको बस नजिक छ!',
+  tcArrivedAt: '{c} पुग्यो', tcComplete: 'यात्रा सम्पन्न'
 }
 };
 
@@ -5396,6 +5726,7 @@ const Flow = {
 function showView(name) {
   if (name !== 'track' && typeof cleanupTracker === 'function') cleanupTracker();
   if (name !== 'nav' && typeof cleanupNav === 'function') cleanupNav();
+  if (name !== 'trip' && typeof cleanupTrip === 'function') cleanupTrip();
   $$('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
   window.scrollTo({ top: 0, behavior: 'smooth' });
   observeReveals();
@@ -5406,6 +5737,7 @@ function router() {
   $('#mobileMenu').classList.remove('open');
   $('#hamburger').classList.remove('open');
   if (h.indexOf('#/ticket/') === 0) { showView('status'); renderStatus(h.split('/')[2] || ''); }
+  else if (h.indexOf('#/trip/') === 0) { showView('trip'); renderTrip(h.split('/')[2] || ''); }
   else if (h === '#/results')  { if (!Flow.date)  { location.hash = '#/'; return; } showView('results');  renderResults(); }
   else if (h === '#/seats')    { if (!Flow.route) { location.hash = '#/'; return; } showView('seats');    renderSeats(); }
   else if (h === '#/checkout') { if (!Flow.legs.length) { location.hash = '#/'; return; } showView('checkout'); renderCheckout(); }
@@ -6931,7 +7263,8 @@ function renderStatus(id) {
       <div class="status-actions">
         ${b.status === 'confirmed' ? '<button class="btn btn-orange" id="pdfBtn" type="button">' + t('btnPdf') + '</button>' : ''}
         ${b.status === 'confirmed' ? '<button class="btn btn-ghost" id="imgBtn" type="button">' + t('btnImg') + '</button>' : ''}
-        ${'<a class="btn btn-blue" href="#/track/' + esc(b.id) + '">🗺️ Track this trip</a>'}
+        ${'<a class="btn btn-blue" href="#/trip/' + esc(b.id) + '">🚌 My Trip Companion</a>'}
+        ${'<a class="btn btn-ghost" href="#/track/' + esc(b.id) + '">🗺️ Track on map</a>'}
         ${b.status === 'confirmed' && depTimestamp(b) > Date.now() ? '<button class="btn btn-ghost" type="button" data-ics="' + esc(b.id) + '">' + t('btnCal') + '</button>' : ''}
         ${b.status === 'confirmed' && depTimestamp(b) > Date.now() && ('Notification' in window) ? '<button class="btn btn-ghost btn-sm" id="remindBtn" type="button" style="align-self:center">🔔 Enable boarding reminder · रिमाइन्डर</button>' : ''}
         ${b.status === 'confirmed' ? '<button class="btn btn-ghost" id="printBtn" type="button">' + t('btnPrint') + '</button>' : ''}
@@ -7085,6 +7418,7 @@ function myBookingCard(b) {
     <div class="mybk-actions">
       <a class="btn btn-blue btn-sm" href="#/ticket/${esc(b.id)}">🎫 ${t('st5')}</a>
       ${b.status === 'confirmed' ? '<button class="btn btn-ghost btn-sm" type="button" data-mypdf="' + esc(b.id) + '">' + t('btnPdf') + '</button>' : ''}
+      ${'<a class="btn btn-ghost btn-sm" href="#/trip/' + esc(b.id) + '">🚌 Trip</a>'}
       ${'<a class="btn btn-ghost btn-sm" href="#/track/' + esc(b.id) + '">🗺️ Track</a>'}
       <button class="btn btn-ghost btn-sm" type="button" data-mywa="${esc(b.id)}">🟢 WhatsApp</button>
       ${canCancel(b) ? '<button class="btn btn-danger-ghost btn-sm" type="button" data-mycancel="' + esc(b.id) + '">' + t('btnCancel') + '</button>' : ''}
@@ -7897,7 +8231,7 @@ async function buildTicketCanvas(b) {
   g.fillStyle = '#E8EEF6'; g.fillRect(pad - 10, y - 10, colW + 20, 60);
   g.fillStyle = '#5C6B85'; g.font = '14px sans-serif';
   g.fillText('Support: ' + (S().phone || '') + '  ·  ' + (S().email || ''), pad + 6, y + 14);
-  g.fillText('Track live: ' + location.origin + location.pathname + '#/track/' + b.id, pad + 6, y + 36);
+  g.fillText('My Trip: ' + location.origin + location.pathname + '#/trip/' + b.id, pad + 6, y + 36);
   g.fillStyle = '#0B1E3F'; g.font = 'bold 14px sans-serif';
   g.fillText('S Hari Global Pvt Ltd  ·  CIN: ' + (CONFIG.company.cin || ''), pad + 600, y + 36);
 
@@ -7915,7 +8249,7 @@ async function shareTicket(b) {
   const r = routeById(b.routeId) || {};
   const text = 'S Hari Global Pvt Ltd — E-Ticket ' + b.id + '\n'
     + (r.from || '') + ' → ' + (r.to || '') + ' · ' + fmtDate(b.date) + ' · Seats ' + b.seats.join(', ') + '\n'
-    + 'Track: ' + location.origin + location.pathname + '#/track/' + b.id;
+    + 'My Trip: ' + location.origin + location.pathname + '#/trip/' + b.id;
   try {
     let shareData = { title: 'S Hari Global E-Ticket', text: text };
     if (navigator.canShare) {
@@ -9119,6 +9453,112 @@ function renderAdminLiveOps() {
     toast('Expense entry added ✓');
     renderAdminLiveOps(); renderAdminAudit();
   };
+
+  /* — Firebase Live Trips — create, monitor, force-end — */
+  var cityOpts = ROUTE_STOPS.map(function(s) { return '<option value="' + s.name + '">' + s.name + ' (' + s.lat.toFixed(2) + ', ' + s.lng.toFixed(2) + ')</option>'; }).join('');
+  var oc = $('#ltOverrideCity');
+  if (oc) oc.innerHTML = cityOpts;
+
+  $('#ltCreateBtn').onclick = function() {
+    var route = ($('#ltRoute') || {}).value || 'Ahmedabad → Nepalgunj';
+    var date = ($('#ltDate') || {}).value;
+    var time = ($('#ltTime') || {}).value || '08:15';
+    var driver = ($('#ltDriver') || {}).value || 'Driver';
+    var vehicle = ($('#ltVehicle') || {}).value || '';
+    if (!date) { toast('Pick a date'); return; }
+    var tripId = 'SHG-' + date.replace(/-/g, '') + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+    var tripData = { route: route, departureTime: date + ' ' + time, driverName: driver, vehicleNo: vehicle, status: 'pending', createdAt: Date.now() };
+    if (typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length) {
+      var db = firebase.database();
+      db.ref('activeTrips/' + tripId).set(tripData);
+      db.ref('trips/' + tripId + '/meta').set(tripData);
+    }
+    var localTrips = [];
+    try { localTrips = JSON.parse(localStorage.getItem('shg:livetrips') || '[]'); } catch (e) {}
+    localTrips.unshift({ id: tripId, ...tripData });
+    try { localStorage.setItem('shg:livetrips', JSON.stringify(localTrips)); } catch (e) {}
+    $('#ltCreateMsg').textContent = 'Trip ' + tripId + ' created ✓ · Driver PIN: ' + ($('#ltPin').value || DRIVER_PIN || 'SHG@2026');
+    audit('Trip created', tripId + ' · ' + route + ' · ' + date);
+    ltRefreshTable();
+  };
+
+  function ltRefreshTable() {
+    var tbody = $('#ltTableBody');
+    if (!tbody) return;
+    if (typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length) {
+      firebase.database().ref('activeTrips').once('value').then(function(snap) {
+        var data = snap.val();
+        ltRenderRows(data, tbody);
+      });
+    } else {
+      var local = [];
+      try { local = JSON.parse(localStorage.getItem('shg:livetrips') || '[]'); } catch (e) {}
+      var obj = {};
+      local.forEach(function(t) { obj[t.id] = t; });
+      ltRenderRows(obj, tbody);
+    }
+    var sel = $('#ltOverrideTrip');
+    if (sel) {
+      if (typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length) {
+        firebase.database().ref('activeTrips').once('value').then(function(snap) {
+          var d = snap.val() || {};
+          sel.innerHTML = '<option value="">Select trip…</option>' + Object.keys(d).map(function(id) { return '<option value="' + id + '">' + id + '</option>'; }).join('');
+        });
+      }
+    }
+  }
+
+  function ltRenderRows(data, tbody) {
+    if (!data || !Object.keys(data).length) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--muted)">No active trips</td></tr>';
+      return;
+    }
+    var html = '';
+    Object.keys(data).forEach(function(id) {
+      var t = data[id];
+      var statusCls = t.status === 'active' ? 'color:var(--ok)' : (t.status === 'complete' ? 'color:var(--muted)' : 'color:var(--warn)');
+      html += '<tr style="border-bottom:1px solid var(--line)">'
+        + '<td style="padding:8px;font-family:var(--f-code);font-size:12px">' + id + '</td>'
+        + '<td style="padding:8px">' + (t.route || '—') + '</td>'
+        + '<td style="padding:8px">' + (t.driverName || '—') + '</td>'
+        + '<td style="padding:8px;font-size:12px">—</td>'
+        + '<td style="padding:8px">—</td>'
+        + '<td style="padding:8px;font-weight:700;' + statusCls + '">' + (t.status || 'pending') + '</td>'
+        + '<td style="padding:8px"><button class="btn btn-danger-ghost btn-sm" data-forceend="' + id + '">🛑 End</button></td>'
+        + '</tr>';
+    });
+    tbody.innerHTML = html;
+    tbody.querySelectorAll('[data-forceend]').forEach(function(btn) {
+      btn.onclick = function() {
+        var tid = btn.getAttribute('data-forceend');
+        if (!confirm('Force-end trip ' + tid + '?')) return;
+        if (typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length) {
+          firebase.database().ref('trips/' + tid + '/meta/status').set('complete');
+          firebase.database().ref('trips/' + tid + '/liveLocation').remove();
+          firebase.database().ref('activeTrips/' + tid + '/status').set('complete');
+        }
+        audit('Trip force-ended', tid);
+        toast('Trip ' + tid + ' ended');
+        ltRefreshTable();
+      };
+    });
+  }
+
+  $('#ltOverrideBtn').onclick = function() {
+    var tid = ($('#ltOverrideTrip') || {}).value;
+    var city = ($('#ltOverrideCity') || {}).value;
+    if (!tid || !city) { toast('Select trip and city'); return; }
+    var stop = ROUTE_STOPS.find(function(s) { return s.name === city; });
+    if (!stop) return;
+    if (typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length) {
+      firebase.database().ref('trips/' + tid + '/liveLocation').set({ lat: stop.lat, lng: stop.lng, bearing: null, speed: 0, accuracy: 999, ts: Date.now() });
+    }
+    postLocation({ lat: stop.lat, lng: stop.lng, bearing: null, ts: Date.now() });
+    $('#ltOverrideMsg').textContent = 'Position set to ' + city + ' ✓';
+    audit('Manual position override', tid + ' → ' + city);
+  };
+
+  ltRefreshTable();
 }
 
 function renderAdminMessages() {
@@ -10267,6 +10707,501 @@ function cleanupTracker() {
   FM.booted = false; FM.cluster = null; FM.cityLayer = null;
   FM.routeLine = null; FM.stopMarkers = []; FM.you = null;
 }
+
+/* ================================================================
+   [JS] 13b. TRIP COMPANION — ixigo-style "My Trip" per PNR
+   Firebase live tracking, weather, leave-by, phase management.
+   Replaces the old static Track My Bus with a rich trip experience.
+================================================================ */
+var TC = {
+  pnr: null, booking: null, tripId: null,
+  phase: 0,  // 0=pre-trip, 1=departure, 2=live, 3=arrived
+  map: null, busMarker: null, paxMarker: null,
+  watchId: null, fbRef: null, fbUnsub: null,
+  countdownT: null, geoT: null, wxFetched: false,
+  lastBusPos: null, targetBusPos: null, interpFrame: null,
+  routeCoords: null, routeCumKm: null, routeTotalKm: 1375
+};
+var TC_FIREBASE_CONFIG = {
+  apiKey:            'YOUR_API_KEY',
+  authDomain:        'YOUR_PROJECT.firebaseapp.com',
+  databaseURL:       'https://YOUR_PROJECT-default-rtdb.firebaseio.com',
+  projectId:         'YOUR_PROJECT',
+  storageBucket:     'YOUR_PROJECT.appspot.com',
+  messagingSenderId: '000000000000',
+  appId:             '1:000000000000:web:0000000000000000'
+};
+var TC_OWM_KEY = '';  // OpenWeatherMap free API key — leave empty for demo
+
+function renderTrip(pnr) {
+  TC.pnr = pnr;
+  TC.booking = null;
+  if (DB && DB.bookings) {
+    TC.booking = DB.bookings.find(function(b) { return b.id === pnr; }) || null;
+  }
+  tcPopulateHero();
+  tcPopulateChecklist();
+  tcDeterminePhase();
+  tcPopulateCards();
+  tcFetchWeather();
+  tcStartLeaveBy();
+  tcStartCountdown();
+  tcInitFirebase();
+}
+
+function cleanupTrip() {
+  if (TC.watchId != null) { navigator.geolocation.clearWatch(TC.watchId); TC.watchId = null; }
+  if (TC.fbUnsub) { TC.fbUnsub(); TC.fbUnsub = null; }
+  if (TC.interpFrame != null) { cancelAnimationFrame(TC.interpFrame); TC.interpFrame = null; }
+  if (TC.countdownT != null) { clearInterval(TC.countdownT); TC.countdownT = null; }
+  if (TC.geoT != null) { clearInterval(TC.geoT); TC.geoT = null; }
+  TC.map = null; TC.busMarker = null; TC.paxMarker = null;
+  TC.wxFetched = false; TC.lastBusPos = null; TC.targetBusPos = null;
+}
+
+function tcPopulateHero() {
+  var b = TC.booking;
+  var origin = (b && b.from) || 'Ahmedabad';
+  var dest = (b && b.to) || 'Nepalgunj';
+  var code = function(c) { return c.substring(0, 3).toUpperCase(); };
+  $('#tcOriginCity').innerHTML = code(origin) + '<small>' + esc(origin) + '</small>';
+  $('#tcDestCity').innerHTML = code(dest) + '<small>' + esc(dest) + '</small>';
+  $('#tcPnrCode').textContent = TC.pnr ? TC.pnr.substring(0, 10) : '—';
+  if (b) {
+    $('#tcTripDate').textContent = b.date || '—';
+    $('#tcCabinType').textContent = b.cabinLabel || b.seatLabel || 'AC Sleeper';
+  }
+}
+
+function tcPopulateChecklist() {
+  var items = CONFIG.booking.checklist;
+  var stored = {};
+  try { stored = JSON.parse(localStorage.getItem('tc:chk:' + TC.pnr) || '{}'); } catch (e) {}
+  var html = '';
+  items.forEach(function(item, i) {
+    var checked = stored[i] ? 'checked' : '';
+    var cls = stored[i] ? 'checked' : '';
+    html += '<li><input type="checkbox" data-chk="' + i + '" ' + checked + '><span class="' + cls + '">' + esc(item) + '</span></li>';
+  });
+  $('#tcChecklist').innerHTML = html;
+  $$('#tcChecklist input[type=checkbox]').forEach(function(cb) {
+    cb.addEventListener('change', function() {
+      var idx = cb.getAttribute('data-chk');
+      var s = {}; try { s = JSON.parse(localStorage.getItem('tc:chk:' + TC.pnr) || '{}'); } catch (e) {}
+      if (cb.checked) s[idx] = true; else delete s[idx];
+      try { localStorage.setItem('tc:chk:' + TC.pnr, JSON.stringify(s)); } catch (e) {}
+      var span = cb.nextElementSibling;
+      if (span) span.classList.toggle('checked', cb.checked);
+    });
+  });
+}
+
+function tcDeterminePhase() {
+  var b = TC.booking;
+  if (!b || !b.date) { TC.phase = 0; return; }
+  var dep = new Date(b.date);
+  if (isNaN(dep.getTime())) { TC.phase = 0; return; }
+  dep.setHours(8, 15, 0, 0);  // default departure 08:15
+  var now = Date.now();
+  var tMinus2h = dep.getTime() - 2 * 3600000;
+  if (b.status === 'cancelled') { TC.phase = 0; return; }
+  if (now >= dep.getTime() + 33 * 3600000) { TC.phase = 3; return; }  // ~33h after dep = arrived
+  if (now >= dep.getTime()) { TC.phase = 2; return; }
+  if (now >= tMinus2h) { TC.phase = 1; return; }
+  TC.phase = 0;
+}
+
+function tcPopulateCards() {
+  // Update timeline dots
+  for (var i = 0; i <= 3; i++) {
+    var el = $('#tcPhase' + i);
+    if (!el) continue;
+    el.classList.remove('done', 'active', 'future');
+    if (i < TC.phase) { el.classList.add('done'); el.querySelector('.dot').textContent = '✓'; }
+    else if (i === TC.phase) { el.classList.add('active'); el.querySelector('.dot').textContent = '✓'; }
+    else { el.classList.add('future'); el.querySelector('.dot').textContent = (i + 1); }
+  }
+  // Show/hide cards by phase
+  var show = function(id, yes) { var e = $(id); if (e) e.style.display = yes ? '' : 'none'; };
+  show('#tcChecklistCard', TC.phase <= 1);
+  show('#tcWeatherCard', TC.phase <= 1);
+  show('#tcLeaveByCard', TC.phase <= 1);
+  show('#tcBoardingCard', TC.phase <= 1);
+  show('#tcCabinCard', TC.phase <= 1);
+  show('#tcCountdownCard', TC.phase === 1);
+  show('#tcLiveSection', TC.phase === 2);
+  show('#tcHaltBanner', false);
+  show('#tcArrivedSection', TC.phase === 3);
+
+  // Cabin info
+  var b = TC.booking;
+  if (b) {
+    $('#tcCabinTypeFull').textContent = b.cabinLabel || b.seatLabel || 'Sleeper';
+    $('#tcCabinPax').textContent = (b.passengers ? b.passengers.length : b.seats ? b.seats.length : 1) + ' pax';
+    $('#tcCabinFare').textContent = '₹' + (b.totalFare || b.fare || '—');
+    $('#tcCabinStatus').textContent = b.status === 'confirmed' ? 'Confirmed' : (b.status || 'Booked');
+    $('#tcCabinStatus').style.color = b.status === 'confirmed' ? 'var(--ok)' : 'var(--warn)';
+  }
+
+  // Boarding point
+  var boarding = (b && b.boarding) || 'Mehsana';
+  var bStop = ROUTE_STOPS.find(function(s) { return s.name === boarding; });
+  $('#tcBoardingName').textContent = boarding;
+  if (boarding === 'Mehsana' || boarding === 'Ahmedabad') {
+    $('#tcBoardingAddr').textContent = boarding === 'Mehsana' ? 'Near Shilpa Garage, Sliver Complex, Mehsana – 384002' : 'Ahmedabad, Gujarat';
+  } else {
+    $('#tcBoardingAddr').textContent = boarding;
+  }
+
+  // Arrived
+  if (TC.phase === 3) {
+    var dest = (b && b.to) || 'Nepalgunj';
+    $('#tcArrivedTitle').textContent = 'Arrived at ' + dest;
+    $('#tcArrivedTs').textContent = 'Journey completed';
+  }
+
+  // Live map
+  if (TC.phase === 2) tcInitLiveMap();
+}
+
+/* ── WEATHER (OpenWeatherMap free tier) ── */
+function tcFetchWeather() {
+  if (TC.wxFetched || !TC_OWM_KEY) {
+    if (!TC_OWM_KEY) {
+      $('#tcWxOriginTemp').textContent = '—';
+      $('#tcWxOriginCond').textContent = 'Set OWM key for live weather';
+      $('#tcWxDestTemp').textContent = '—';
+      $('#tcWxDestCond').textContent = '';
+    }
+    return;
+  }
+  TC.wxFetched = true;
+  var b = TC.booking;
+  var origin = ROUTE_STOPS.find(function(s) { return s.name === ((b && b.from) || 'Ahmedabad'); }) || ROUTE_STOPS[0];
+  var dest = ROUTE_STOPS.find(function(s) { return s.name === ((b && b.to) || 'Nepalgunj'); }) || ROUTE_STOPS[ROUTE_STOPS.length - 1];
+  tcFetchWx(origin, 'Origin');
+  tcFetchWx(dest, 'Dest');
+}
+function tcFetchWx(stop, prefix) {
+  var url = 'https://api.openweathermap.org/data/2.5/weather?lat=' + stop.lat + '&lon=' + stop.lng + '&units=metric&appid=' + TC_OWM_KEY;
+  fetch(url).then(function(r) { return r.json(); }).then(function(d) {
+    if (!d || !d.main) return;
+    $('#tcWx' + prefix + 'Temp').textContent = Math.round(d.main.temp) + '°C';
+    $('#tcWx' + prefix + 'Cond').textContent = d.weather && d.weather[0] ? d.weather[0].description : '';
+    $('#tcWx' + prefix + 'Name').textContent = stop.name;
+  }).catch(function() {});
+}
+
+/* ── LEAVE-BY CALCULATOR ── */
+function tcStartLeaveBy() {
+  var b = TC.booking;
+  if (!b || !b.date || TC.phase > 1) return;
+  if (!navigator.geolocation) {
+    $('#tcLeaveByDist').textContent = 'GPS not available';
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(function(pos) {
+    var boarding = (b && b.boarding) || 'Mehsana';
+    var bStop = ROUTE_STOPS.find(function(s) { return s.name === boarding; }) || ROUTE_STOPS[2];
+    var dist = haversineKm(pos.coords.latitude, pos.coords.longitude, bStop.lat, bStop.lng);
+    var speedKmh = CONFIG.booking.assumedTravelSpeedKmh || 40;
+    var travelMin = Math.ceil((dist / speedKmh) * 60);
+    var bufferMin = 60;
+    var dep = new Date(b.date);
+    dep.setHours(8, 15, 0, 0);
+    var leaveBy = new Date(dep.getTime() - (travelMin + bufferMin) * 60000);
+    var hh = leaveBy.getHours(), mm = leaveBy.getMinutes();
+    $('#tcLeaveByTime').textContent = (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm;
+    $('#tcLeaveByDist').textContent = 'Distance: ' + dist.toFixed(1) + ' km · Travel ~' + travelMin + ' min';
+    // Urgency
+    if (TC.phase === 1 && Date.now() > leaveBy.getTime()) {
+      $('#tcLeaveByCard').classList.add('urgent');
+      $('#tcLeaveByTime').style.color = 'var(--warn)';
+    }
+  }, function() {
+    $('#tcLeaveByDist').textContent = 'Allow GPS to calculate';
+  }, { enableHighAccuracy: false, timeout: 8000 });
+}
+
+/* ── COUNTDOWN ── */
+function tcStartCountdown() {
+  if (TC.countdownT) clearInterval(TC.countdownT);
+  if (TC.phase !== 1) return;
+  var b = TC.booking;
+  if (!b || !b.date) return;
+  var dep = new Date(b.date);
+  dep.setHours(8, 15, 0, 0);
+  function tick() {
+    var diff = dep.getTime() - Date.now();
+    if (diff <= 0) { $('#tcCountdown').textContent = 'Departing now!'; clearInterval(TC.countdownT); return; }
+    var h = Math.floor(diff / 3600000);
+    var m = Math.floor((diff % 3600000) / 60000);
+    var s = Math.floor((diff % 60000) / 1000);
+    $('#tcCountdown').textContent = (h > 0 ? h + 'h ' : '') + (m < 10 ? '0' : '') + m + 'm ' + (s < 10 ? '0' : '') + s + 's';
+  }
+  tick();
+  TC.countdownT = setInterval(tick, 1000);
+}
+
+/* ── FIREBASE INIT (passenger side — read only) ── */
+function tcInitFirebase() {
+  if (TC.phase !== 2) return;
+  if (typeof firebase === 'undefined') {
+    var s1 = document.createElement('script');
+    s1.src = 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js';
+    s1.onload = function() {
+      var s2 = document.createElement('script');
+      s2.src = 'https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js';
+      s2.onload = function() {
+        if (!firebase.apps.length) firebase.initializeApp(TC_FIREBASE_CONFIG);
+        tcListenLive();
+      };
+      document.head.appendChild(s2);
+    };
+    document.head.appendChild(s1);
+  } else {
+    if (!firebase.apps.length) firebase.initializeApp(TC_FIREBASE_CONFIG);
+    tcListenLive();
+  }
+}
+
+function tcListenLive() {
+  var tripId = TC.tripId || TC.pnr;
+  if (!tripId) {
+    tcFallbackToLocalTracking();
+    return;
+  }
+  try {
+    var db = firebase.database();
+    var locRef = db.ref('trips/' + tripId + '/liveLocation');
+    var haltRef = db.ref('trips/' + tripId + '/meta/status');
+    var onLoc = locRef.on('value', function(snap) {
+      var d = snap.val();
+      if (!d || !d.lat) return;
+      tcUpdateBusPosition(d);
+    });
+    var onHalt = haltRef.on('value', function(snap) {
+      var status = snap.val();
+      tcUpdateHaltStatus(status);
+    });
+    TC.fbUnsub = function() {
+      locRef.off('value', onLoc);
+      haltRef.off('value', onHalt);
+    };
+  } catch (e) {
+    tcFallbackToLocalTracking();
+  }
+}
+
+function tcFallbackToLocalTracking() {
+  TC.fbUnsub = subscribeLocation(function(loc) {
+    if (loc && loc.lat) tcUpdateBusPosition(loc);
+  });
+}
+
+/* ── LIVE MAP ── */
+function tcInitLiveMap() {
+  if (TC.map) return;
+  var mapDiv = $('#tcMap');
+  if (!mapDiv) return;
+  if (typeof maplibregl === 'undefined') {
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://unpkg.com/maplibre-gl@4.5.0/dist/maplibre-gl.css';
+    document.head.appendChild(link);
+    var scr = document.createElement('script');
+    scr.src = 'https://unpkg.com/maplibre-gl@4.5.0/dist/maplibre-gl.js';
+    scr.onload = function() { tcBuildMap(mapDiv); };
+    document.head.appendChild(scr);
+  } else {
+    tcBuildMap(mapDiv);
+  }
+}
+
+function tcBuildMap(container) {
+  TC.map = new maplibregl.Map({
+    container: container,
+    style: 'https://tiles.openfreemap.org/styles/liberty',
+    center: [77.5, 25.5],
+    zoom: 5,
+    attributionControl: false
+  });
+  TC.map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left');
+  TC.map.on('load', function() {
+    tcDrawRouteOnMap();
+    tcStartPaxTracking();
+  });
+  if (TC.map.loaded()) {
+    tcDrawRouteOnMap();
+    tcStartPaxTracking();
+  }
+}
+
+function tcDrawRouteOnMap() {
+  if (!TC.map) return;
+  var coords = ROUTE_STOPS.map(function(s) { return [s.lng, s.lat]; });
+  if (TC.map.getSource('tc-route')) return;
+  TC.map.addSource('tc-route', {
+    type: 'geojson',
+    data: { type: 'Feature', geometry: { type: 'LineString', coordinates: coords } }
+  });
+  TC.map.addLayer({
+    id: 'tc-route-line', type: 'line', source: 'tc-route',
+    paint: { 'line-color': '#F07C1F', 'line-width': 4, 'line-opacity': 0.7 }
+  });
+  ROUTE_STOPS.forEach(function(s) {
+    var el = document.createElement('div');
+    el.style.cssText = 'width:10px;height:10px;background:#fff;border:2px solid #2E5FA8;border-radius:50%';
+    el.title = s.name;
+    new maplibregl.Marker({ element: el }).setLngLat([s.lng, s.lat]).addTo(TC.map);
+  });
+}
+
+function tcStartPaxTracking() {
+  if (!navigator.geolocation || TC.watchId != null) return;
+  TC.watchId = navigator.geolocation.watchPosition(function(pos) {
+    var lat = pos.coords.latitude, lng = pos.coords.longitude;
+    if (!TC.paxMarker) {
+      var el = document.createElement('div');
+      el.style.cssText = 'width:14px;height:14px;background:#4285F4;border:2.5px solid #fff;border-radius:50%;box-shadow:0 0 8px rgba(66,133,244,.5)';
+      TC.paxMarker = new maplibregl.Marker({ element: el }).setLngLat([lng, lat]).addTo(TC.map);
+    } else {
+      TC.paxMarker.setLngLat([lng, lat]);
+    }
+    tcCheckBusNearMe(lat, lng);
+  }, null, { enableHighAccuracy: true, maximumAge: 3000 });
+}
+
+/* ── BUS POSITION UPDATE + INTERPOLATION ── */
+function tcUpdateBusPosition(data) {
+  TC.lastBusPos = TC.targetBusPos || data;
+  TC.targetBusPos = data;
+  if (TC.interpFrame) cancelAnimationFrame(TC.interpFrame);
+  tcInterpolate(TC.lastBusPos, TC.targetBusPos, 0);
+  tcUpdateLiveStats(data);
+  tcCheckGeofences(data.lat, data.lng);
+}
+
+function tcInterpolate(from, to, progress) {
+  if (progress > 1 || !TC.map) return;
+  var lat = from.lat + (to.lat - from.lat) * progress;
+  var lng = from.lng + (to.lng - from.lng) * progress;
+  if (!TC.busMarker) {
+    var el = document.createElement('div');
+    el.style.cssText = 'width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:20px;transition:transform .3s ease';
+    el.textContent = '🚌';
+    TC.busMarker = new maplibregl.Marker({ element: el }).setLngLat([lng, lat]).addTo(TC.map);
+    TC.map.flyTo({ center: [lng, lat], zoom: 10, duration: 1000 });
+  } else {
+    TC.busMarker.setLngLat([lng, lat]);
+  }
+  if (to.bearing != null) {
+    TC.busMarker.getElement().style.transform = 'rotate(' + to.bearing + 'deg)';
+  }
+  TC.interpFrame = requestAnimationFrame(function() { tcInterpolate(from, to, progress + 0.05); });
+}
+
+function tcUpdateLiveStats(data) {
+  var b = TC.booking;
+  var dest = ROUTE_STOPS.find(function(s) { return s.name === ((b && b.to) || 'Nepalgunj'); }) || ROUTE_STOPS[ROUTE_STOPS.length - 1];
+  var remaining = haversineKm(data.lat, data.lng, dest.lat, dest.lng);
+  $('#tcLiveDist').textContent = remaining > 10 ? Math.round(remaining) + ' km' : remaining.toFixed(1) + ' km';
+  var speedKmh = data.speed != null ? Math.round(data.speed * 3.6) : 0;
+  $('#tcLiveSpeed').textContent = speedKmh || '—';
+  var avgSpeed = Math.max(speedKmh, 35);
+  var etaH = remaining / avgSpeed;
+  var h = Math.floor(etaH), m = Math.round((etaH - h) * 60);
+  $('#tcLiveEta').textContent = h > 0 ? h + 'h ' + m + 'm' : m + ' min';
+
+  // Next halt
+  var bestStop = null, bestDist = Infinity;
+  ROUTE_STOPS.forEach(function(s) {
+    var d = haversineKm(data.lat, data.lng, s.lat, s.lng);
+    if (d > 5 && d < bestDist) { bestDist = d; bestStop = s; }
+  });
+  if (bestStop) {
+    var amenStr = '';
+    if (bestStop.amen) {
+      if (bestStop.amen.meal || bestStop.amen.lunch) amenStr += '🍽️ Meal ';
+      if (bestStop.amen.fuel) amenStr += '⛽ Fuel ';
+      if (bestStop.amen.wash) amenStr += '🚻 Washroom ';
+      if (bestStop.amen.border) amenStr += '🛃 Border ';
+      if (bestStop.amen.prayer) amenStr += '🙏 Prayer ';
+      if (bestStop.amen.hosp) amenStr += '🏥 Hospital ';
+    }
+    $('#tcNextHaltName').textContent = 'Next: ' + bestStop.name;
+    var etaMin = Math.round((bestDist / avgSpeed) * 60);
+    $('#tcNextHaltMeta').textContent = bestDist.toFixed(0) + ' km · ~' + etaMin + ' min' + (amenStr ? ' · ' + amenStr.trim() : '');
+  }
+}
+
+function tcUpdateHaltStatus(status) {
+  var show = status === 'halted';
+  var el = $('#tcHaltBanner');
+  if (el) el.style.display = show ? '' : 'none';
+  if (show) {
+    var nearest = null, bestD = Infinity;
+    if (TC.targetBusPos) {
+      ROUTE_STOPS.forEach(function(s) {
+        var d = haversineKm(TC.targetBusPos.lat, TC.targetBusPos.lng, s.lat, s.lng);
+        if (d < bestD) { bestD = d; nearest = s; }
+      });
+    }
+    var name = nearest ? nearest.name : 'a stop';
+    $('#tcHaltText').textContent = 'Bus is halted at ' + name;
+  }
+  if (status === 'complete') {
+    TC.phase = 3;
+    tcPopulateCards();
+  }
+}
+
+/* ── GEOFENCE BANNERS ── */
+function tcCheckGeofences(lat, lng) {
+  var banner = $('#tcGeoBanner');
+  if (!banner) return;
+  var closest = null, closestDist = Infinity;
+  ROUTE_STOPS.forEach(function(s) {
+    if (!s.amen || Object.keys(s.amen).length === 0) return;
+    var d = haversineKm(lat, lng, s.lat, s.lng);
+    if (d < 5 && d < closestDist) { closestDist = d; closest = s; }
+  });
+  if (closest) {
+    var etaMin = Math.round((closestDist / 40) * 60);
+    var msg = '';
+    var cls = 'show ';
+    if (closest.amen.border) { msg = '🛃 Approaching ' + closest.name + ' border — prepare documents'; cls += 'border'; }
+    else if (closest.amen.meal || closest.amen.lunch) { msg = '🍽️ Meal halt in ~' + etaMin + ' min — ' + closest.name; cls += 'meal'; }
+    else if (closest.amen.fuel) { msg = '⛽ Fuel stop in ~' + etaMin + ' min — ' + closest.name; cls += 'fuel'; }
+    else { msg = '📍 Approaching ' + closest.name + ' in ~' + etaMin + ' min'; cls += 'meal'; }
+    banner.textContent = msg;
+    banner.className = 'tc-geobanner ' + cls;
+    if (TC.geoT) clearTimeout(TC.geoT);
+    TC.geoT = setTimeout(function() { banner.classList.remove('show'); }, 8000);
+  }
+}
+
+/* ── BUS NEAR ME ALERT ── */
+function tcCheckBusNearMe(paxLat, paxLng) {
+  if (!TC.targetBusPos || TC.phase !== 2) return;
+  var dist = haversineKm(paxLat, paxLng, TC.targetBusPos.lat, TC.targetBusPos.lng);
+  if (dist < 10) {
+    var banner = $('#tcGeoBanner');
+    if (banner && !banner.classList.contains('show')) {
+      banner.textContent = '🚌 Your bus is ' + dist.toFixed(1) + ' km away!';
+      banner.className = 'tc-geobanner show near';
+      if (TC.geoT) clearTimeout(TC.geoT);
+      TC.geoT = setTimeout(function() { banner.classList.remove('show'); }, 6000);
+    }
+  }
+}
+
+/* ── BACK BUTTON ── */
+document.addEventListener('click', function(e) {
+  if (e.target.id === 'tcBack' || e.target.closest('#tcBack')) {
+    location.hash = '#/my';
+  }
+});
 
 /* ================================================================
    [JS] 14. BOOT — load (or seed) data, then start the router

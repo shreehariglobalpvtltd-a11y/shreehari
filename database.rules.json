@@ -1,0 +1,44 @@
+{
+  "rules": {
+    "trips": {
+      "$tripId": {
+        ".read": true,
+        "meta": {
+          ".write": "auth != null && (root.child('tripDrivers').child($tripId).val() === auth.uid || root.child('admins').child(auth.uid).exists())"
+        },
+        "liveLocation": {
+          ".write": "auth != null && root.child('tripDrivers').child($tripId).val() === auth.uid",
+          ".validate": "newData.hasChildren(['lat','lng','ts'])",
+          "lat":  { ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90" },
+          "lng":  { ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180" },
+          "bearing": { ".validate": "newData.isNumber()" },
+          "speed": { ".validate": "newData.isNumber()" },
+          "accuracy": { ".validate": "newData.isNumber()" },
+          "ts":   { ".validate": "newData.isNumber()" }
+        },
+        "halts": {
+          "$stopName": {
+            ".write": "auth != null && root.child('tripDrivers').child($tripId).val() === auth.uid",
+            "arrivedAt": { ".validate": "newData.isNumber()" },
+            "departedAt": { ".validate": "newData.isNumber()" }
+          }
+        },
+        "passengers": {
+          ".write": "auth != null && (root.child('tripDrivers').child($tripId).val() === auth.uid || root.child('admins').child(auth.uid).exists())"
+        }
+      }
+    },
+    "tripDrivers": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).exists()",
+      ".write": "auth != null && root.child('admins').child(auth.uid).exists()"
+    },
+    "admins": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).exists()",
+      ".write": false
+    },
+    "activeTrips": {
+      ".read": true,
+      ".write": "auth != null && root.child('admins').child(auth.uid).exists()"
+    }
+  }
+}

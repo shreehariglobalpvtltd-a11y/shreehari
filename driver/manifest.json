@@ -1,0 +1,17 @@
+{
+  "name": "S Hari Driver — Live GPS",
+  "short_name": "SH Driver",
+  "description": "Driver GPS tracking for S Hari Global bus service",
+  "start_url": "/driver/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#12264E",
+  "background_color": "#12264E",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚌</text></svg>",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

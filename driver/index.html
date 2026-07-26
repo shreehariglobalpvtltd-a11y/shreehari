@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<meta name="theme-color" content="#12264E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.json">
+<title>S Hari Driver — Live GPS</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚌</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@4.5.0/dist/maplibre-gl.js"></script>
+<link href="https://unpkg.com/maplibre-gl@4.5.0/dist/maplibre-gl.css" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --blue:#2E5FA8;--blue-deep:#12264E;--blue-800:#1C3B72;
+  --orange:#F07C1F;--orange-600:#D96A10;
+  --ok:#178A50;--warn:#B7791F;--bad:#C53030;
+  --ink:#16233C;--muted:#5C6B85;--line:#E2E9F4;
+  --bg:#F6F8FC;--card:#fff;
+  --f:'Inter',system-ui,sans-serif;
+}
+html,body{height:100%;font-family:var(--f);background:var(--bg);color:var(--ink);overflow:hidden}
+
+/* ── LOGIN SCREEN ── */
+.login{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:24px;text-align:center;background:linear-gradient(160deg,#12264E 0%,#1C3B72 50%,#2E5FA8 100%)}
+.login h1{color:#fff;font-size:24px;font-weight:800;margin-bottom:6px}
+.login .sub{color:rgba(255,255,255,.7);font-size:13px;margin-bottom:32px}
+.login .logo{font-size:48px;margin-bottom:16px}
+.login input{width:100%;max-width:280px;padding:14px 18px;border:2px solid rgba(255,255,255,.2);border-radius:14px;background:rgba(255,255,255,.1);color:#fff;font-size:16px;font-family:var(--f);text-align:center;letter-spacing:4px;outline:none;transition:.2s}
+.login input::placeholder{color:rgba(255,255,255,.4);letter-spacing:1px}
+.login input:focus{border-color:var(--orange);background:rgba(255,255,255,.15)}
+.login .btn{margin-top:16px;width:100%;max-width:280px;padding:14px;border:none;border-radius:14px;background:var(--orange);color:#fff;font-size:15px;font-weight:700;cursor:pointer;transition:.15s}
+.login .btn:active{transform:scale(.97)}
+.login .err{color:#ff6b6b;font-size:12px;margin-top:10px;min-height:18px}
+
+/* ── TRIP SELECT ── */
+.trips{display:flex;flex-direction:column;height:100%}
+.trips .hdr{padding:16px 20px;background:var(--blue-deep);color:#fff;display:flex;align-items:center;gap:12px}
+.trips .hdr h2{font-size:17px;font-weight:700;flex:1}
+.trips .hdr .logout{background:none;border:1px solid rgba(255,255,255,.3);color:#fff;padding:6px 14px;border-radius:10px;font-size:12px;cursor:pointer}
+.trips .body{flex:1;overflow-y:auto;padding:16px}
+.trips .empty{text-align:center;padding:40px 20px;color:var(--muted)}
+.trip-card{background:var(--card);border-radius:16px;padding:16px;margin-bottom:12px;box-shadow:0 2px 12px rgba(0,0,0,.06);border-left:4px solid var(--orange);cursor:pointer;transition:.15s}
+.trip-card:active{transform:scale(.98)}
+.trip-card .route{font-weight:700;font-size:15px;margin-bottom:4px}
+.trip-card .meta{font-size:12px;color:var(--muted)}
+.trip-card .status{display:inline-block;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:600;margin-top:8px}
+.trip-card .status.active{background:#e8f5e9;color:var(--ok)}
+.trip-card .status.pending{background:#fff3e0;color:var(--warn)}
+
+/* ── PRE-DEPARTURE CHECKLIST ── */
+.precheck{display:flex;flex-direction:column;height:100%}
+.precheck .hdr{padding:16px 20px;background:var(--blue-deep);color:#fff;display:flex;align-items:center;gap:12px}
+.precheck .hdr h2{flex:1;font-size:16px;font-weight:700}
+.precheck .hdr .back{background:none;border:none;color:#fff;font-size:20px;cursor:pointer}
+.precheck .body{flex:1;overflow-y:auto;padding:20px}
+.chk-item{display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--card);border-radius:14px;margin-bottom:10px;box-shadow:0 1px 6px rgba(0,0,0,.04)}
+.chk-item input[type=checkbox]{width:22px;height:22px;accent-color:var(--ok)}
+.chk-item label{font-size:14px;flex:1}
+.chk-item input[type=text],.chk-item input[type=number]{flex:1;padding:8px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:14px;font-family:var(--f)}
+.chk-start{margin:20px 16px;padding:16px;border:none;border-radius:16px;background:linear-gradient(135deg,var(--ok),#1db954);color:#fff;font-size:16px;font-weight:700;cursor:pointer}
+.chk-start:disabled{opacity:.4;cursor:not-allowed}
+
+/* ── NAV SCREEN ── */
+.nav-screen{position:relative;height:100%;display:flex;flex-direction:column}
+.nav-map{flex:1;position:relative}
+.nav-map #driverMap{width:100%;height:100%}
+
+.nav-top-banner{position:absolute;top:0;left:0;right:0;z-index:10;background:var(--ok);color:#fff;padding:14px 16px;display:flex;align-items:center;gap:12px}
+.nav-top-banner .ico{font-size:28px}
+.nav-top-banner .txt{flex:1}
+.nav-top-banner .txt b{display:block;font-size:15px}
+.nav-top-banner .txt small{font-size:12px;opacity:.85}
+
+.nav-bottom{position:absolute;bottom:0;left:0;right:0;z-index:10;background:var(--card);border-radius:20px 20px 0 0;box-shadow:0 -4px 20px rgba(0,0,0,.1);padding:16px 20px}
+.nav-bottom .eta-row{display:flex;gap:16px;margin-bottom:12px}
+.nav-bottom .eta-cell{flex:1;text-align:center}
+.nav-bottom .eta-cell b{display:block;font-size:20px;font-weight:800;color:var(--ink)}
+.nav-bottom .eta-cell small{font-size:11px;color:var(--muted)}
+.nav-bottom .actions{display:flex;gap:10px}
+.nav-bottom .actions button{flex:1;padding:12px;border:none;border-radius:14px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--f)}
+.halt-btn{background:#fff3e0;color:var(--warn)}
+.halt-btn.at-halt{background:#e8f5e9;color:var(--ok)}
+.end-btn{background:#ffebee;color:var(--bad)}
+
+.gps-status{position:absolute;top:80px;right:12px;z-index:10;background:var(--card);padding:6px 12px;border-radius:99px;font-size:11px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.1);display:flex;align-items:center;gap:6px}
+.gps-dot{width:8px;height:8px;border-radius:50%;background:var(--ok);animation:gpsPulse 2s infinite}
+@keyframes gpsPulse{0%,100%{opacity:1}50%{opacity:.4}}
+.gps-dot.poor{background:var(--warn)}
+.gps-dot.none{background:var(--bad);animation:none}
+
+.nav-recenter{position:absolute;bottom:180px;right:16px;z-index:10;width:44px;height:44px;border-radius:50%;background:var(--card);border:none;box-shadow:0 2px 10px rgba(0,0,0,.12);font-size:20px;cursor:pointer}
+
+/* ── SHARED ── */
+.screen{display:none;height:100%}
+.screen.active{display:flex;flex-direction:column}
+@media(prefers-reduced-motion:reduce){
+  .gps-dot{animation:none}
+  *{transition-duration:0.01ms!important;animation-duration:0.01ms!important}
+}
+</style>
+</head>
+<body>
+
+<!-- ━━━ SCREEN 1: LOGIN ━━━ -->
+<div class="screen active" id="scrLogin">
+  <div class="login">
+    <div class="logo">🚌</div>
+    <h1>S Hari Driver</h1>
+    <p class="sub">Live GPS tracking for passengers</p>
+    <input type="password" id="pinInput" placeholder="Enter PIN" maxlength="20" inputmode="numeric">
+    <button class="btn" id="loginBtn" type="button">Sign In</button>
+    <div class="err" id="loginErr"></div>
+  </div>
+</div>
+
+<!-- ━━━ SCREEN 2: TRIP SELECT ━━━ -->
+<div class="screen" id="scrTrips">
+  <div class="trips">
+    <div class="hdr">
+      <h2>🚌 Today's Trips</h2>
+      <button class="logout" id="logoutBtn">Sign out</button>
+    </div>
+    <div class="body" id="tripList">
+      <div class="empty">Loading trips…</div>
+    </div>
+  </div>
+</div>
+
+<!-- ━━━ SCREEN 3: PRE-DEPARTURE CHECKLIST ━━━ -->
+<div class="screen" id="scrPrecheck">
+  <div class="precheck">
+    <div class="hdr">
+      <button class="back" id="precheckBack">←</button>
+      <h2>Pre-departure checklist</h2>
+    </div>
+    <div class="body">
+      <div class="chk-item"><input type="checkbox" id="chkPax"><label for="chkPax">Passenger count confirmed</label></div>
+      <div class="chk-item"><label>Passengers on board</label><input type="number" id="chkPaxCount" min="0" max="60" value="0"></div>
+      <div class="chk-item"><input type="checkbox" id="chkVehicle"><label for="chkVehicle">Vehicle number verified</label></div>
+      <div class="chk-item"><label>Vehicle No.</label><input type="text" id="chkVehicleNo" placeholder="GJ-XX-XX-XXXX"></div>
+      <div class="chk-item"><input type="checkbox" id="chkFuel"><label for="chkFuel">Fuel tank full</label></div>
+      <div class="chk-item"><input type="checkbox" id="chkDocs"><label for="chkDocs">Documents ready (license, RC, permit)</label></div>
+      <div class="chk-item"><input type="checkbox" id="chkPhone"><label for="chkPhone">Phone charged + GPS on</label></div>
+    </div>
+    <button class="chk-start" id="startNavBtn" disabled>🚀 Start Navigation & Go Live</button>
+  </div>
+</div>
+
+<!-- ━━━ SCREEN 4: NAVIGATION ━━━ -->
+<div class="screen" id="scrNav">
+  <div class="nav-screen">
+    <div class="nav-map"><div id="driverMap"></div></div>
+
+    <div class="nav-top-banner" id="navBanner">
+      <span class="ico" id="navBanIco">⬆️</span>
+      <div class="txt">
+        <b id="navBanInstr">Preparing route…</b>
+        <small id="navBanDist">—</small>
+      </div>
+    </div>
+
+    <div class="gps-status" id="gpsStatus">
+      <span class="gps-dot" id="gpsDot"></span>
+      <span id="gpsText">GPS: searching…</span>
+    </div>
+
+    <button class="nav-recenter" id="navRecenter" title="Re-centre">📍</button>
+
+    <div class="nav-bottom">
+      <div class="eta-row">
+        <div class="eta-cell"><b id="navEta">—</b><small>ETA</small></div>
+        <div class="eta-cell"><b id="navDist">—</b><small>Remaining</small></div>
+        <div class="eta-cell"><b id="navSpeed">0</b><small>km/h</small></div>
+      </div>
+      <div class="actions">
+        <button class="halt-btn" id="haltBtn">⏸️ Mark halt</button>
+        <button class="end-btn" id="endBtn">🏁 End trip</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================================================================
+   S HARI DRIVER PWA — GPS broadcaster
+   ================================================================
+   Firebase Realtime Database writes.
+   Reads route from Valhalla (free, no key).
+   Map tiles from OpenFreeMap (free, no key).
+   ================================================================ */
+
+/* ── FIREBASE CONFIG ── */
+var FIREBASE_CONFIG = {
+  apiKey:            'YOUR_API_KEY',
+  authDomain:        'YOUR_PROJECT.firebaseapp.com',
+  databaseURL:       'https://YOUR_PROJECT-default-rtdb.firebaseio.com',
+  projectId:         'YOUR_PROJECT',
+  storageBucket:     'YOUR_PROJECT.appspot.com',
+  messagingSenderId: '000000000000',
+  appId:             '1:000000000000:web:0000000000000000'
+};
+
+var DRIVER_PIN = 'SHG@2026';
+
+var ROUTE_STOPS = [
+  {name:'Ahmedabad',lat:23.0225,lng:72.5714,km:0,m:0,amen:{}},
+  {name:'Chiloda',lat:23.1570,lng:72.6550,km:30,m:40,amen:{}},
+  {name:'Mehsana',lat:23.5880,lng:72.3693,km:75,m:120,amen:{}},
+  {name:'Jay Ambe',lat:23.7700,lng:72.3800,km:83,m:155,amen:{lunch:true}},
+  {name:'Unjha',lat:23.8040,lng:72.3910,km:105,m:205,amen:{}},
+  {name:'Sidhpur',lat:23.9170,lng:72.3730,km:130,m:240,amen:{prayer:true}},
+  {name:'Palanpur',lat:24.1710,lng:72.4380,km:205,m:340,amen:{meal:true,wash:true}},
+  {name:'Abu Road',lat:24.4800,lng:72.7700,km:275,m:460,amen:{fuel:true}},
+  {name:'Udaipur',lat:24.5854,lng:73.7125,km:405,m:640,amen:{meal:true,fuel:true,hotel:true}},
+  {name:'Ajmer',lat:26.4499,lng:74.6399,km:545,m:865,amen:{prayer:true,wash:true}},
+  {name:'Jaipur',lat:26.9124,lng:75.7873,km:645,m:1030,amen:{meal:true,wash:true,hosp:true}},
+  {name:'Agra',lat:27.1767,lng:78.0081,km:825,m:1300,amen:{fuel:true,wash:true}},
+  {name:'Lucknow',lat:26.8467,lng:80.9462,km:1035,m:1600,amen:{meal:true,hosp:true,police:true}},
+  {name:'Gorakhpur',lat:26.7606,lng:83.3732,km:1195,m:1810,amen:{fuel:true,wash:true}},
+  {name:'Rupaidiha',lat:28.0600,lng:81.6160,km:1305,m:1930,amen:{border:true,police:true,wash:true}},
+  {name:'Nepalgunj',lat:28.0500,lng:81.6167,km:1375,m:1990,amen:{}}
+];
+
+/* ── STATE ── */
+var D = {
+  screen: 'login',
+  tripId: null,
+  tripMeta: null,
+  map: null,
+  meMarker: null,
+  watchId: null,
+  wakeLock: null,
+  routeCoords: null,
+  routeManeuvers: null,
+  routeCumKm: null,
+  routeTotalKm: 0,
+  prevGps: null,
+  meAnim: null,
+  atHalt: false,
+  currentHalt: null,
+  lastPos: null,
+  firebaseReady: false,
+  db: null
+};
+
+/* ── HELPERS ── */
+function $(s){ return document.querySelector(s); }
+function $$(s){ return document.querySelectorAll(s); }
+function show(id){ $$('.screen').forEach(function(s){ s.classList.toggle('active', s.id === id); }); D.screen = id; }
+function haversineKm(lat1,lon1,lat2,lon2){
+  var R=6371, dLat=(lat2-lat1)*Math.PI/180, dLon=(lon2-lon1)*Math.PI/180;
+  var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+/* ── FIREBASE INIT ── */
+function initFirebase(cb){
+  if(D.firebaseReady){ cb(); return; }
+  var s1 = document.createElement('script');
+  s1.src = 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js';
+  s1.onload = function(){
+    var s2 = document.createElement('script');
+    s2.src = 'https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js';
+    s2.onload = function(){
+      var s3 = document.createElement('script');
+      s3.src = 'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js';
+      s3.onload = function(){
+        if(!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+        D.db = firebase.database();
+        D.firebaseReady = true;
+        cb();
+      };
+      document.head.appendChild(s3);
+    };
+    document.head.appendChild(s2);
+  };
+  document.head.appendChild(s1);
+}
+
+/* ── LOGIN ── */
+$('#loginBtn').addEventListener('click', function(){
+  var pin = $('#pinInput').value.trim();
+  if(!pin){ $('#loginErr').textContent = 'Enter your driver PIN'; return; }
+  if(pin !== DRIVER_PIN){
+    $('#loginErr').textContent = 'Invalid PIN — contact admin';
+    return;
+  }
+  $('#loginErr').textContent = '';
+  initFirebase(function(){
+    firebase.auth().signInAnonymously().then(function(){
+      loadTrips();
+      show('scrTrips');
+    }).catch(function(e){
+      $('#loginErr').textContent = 'Auth error: ' + e.message;
+    });
+  });
+});
+$('#pinInput').addEventListener('keydown', function(e){ if(e.key==='Enter') $('#loginBtn').click(); });
+
+/* ── LOGOUT ── */
+$('#logoutBtn').addEventListener('click', function(){
+  cleanup();
+  if(firebase && firebase.auth) firebase.auth().signOut();
+  show('scrLogin');
+  $('#pinInput').value = '';
+});
+
+/* ── TRIP LIST ── */
+function loadTrips(){
+  var list = $('#tripList');
+  if(!D.db){ list.innerHTML = '<div class="empty">Firebase not connected.<br>Check config.</div>'; return; }
+  D.db.ref('activeTrips').on('value', function(snap){
+    var data = snap.val();
+    if(!data){ list.innerHTML = '<div class="empty">No active trips today.<br>Ask admin to create one.</div>'; return; }
+    var html = '';
+    Object.keys(data).forEach(function(id){
+      var t = data[id];
+      html += '<div class="trip-card" data-tid="' + id + '">'
+        + '<div class="route">' + (t.route || 'Ahmedabad → Nepalgunj') + '</div>'
+        + '<div class="meta">Departure: ' + (t.departureTime || '—') + ' · ' + (t.driverName || 'Driver') + '</div>'
+        + '<div class="meta">Vehicle: ' + (t.vehicleNo || '—') + '</div>'
+        + '<span class="status ' + (t.status || 'pending') + '">' + (t.status || 'pending') + '</span>'
+        + '</div>';
+    });
+    list.innerHTML = html;
+    $$('.trip-card').forEach(function(c){
+      c.addEventListener('click', function(){ selectTrip(c.getAttribute('data-tid')); });
+    });
+  });
+}
+
+function selectTrip(id){
+  D.tripId = id;
+  D.db.ref('activeTrips/' + id).once('value').then(function(snap){
+    D.tripMeta = snap.val() || {};
+    if(D.tripMeta.vehicleNo) $('#chkVehicleNo').value = D.tripMeta.vehicleNo;
+    show('scrPrecheck');
+  });
+}
+
+/* ── PRE-DEPARTURE ── */
+$('#precheckBack').addEventListener('click', function(){ show('scrTrips'); });
+
+function updateStartBtn(){
+  var ok = $('#chkPax').checked && $('#chkVehicle').checked && $('#chkFuel').checked && $('#chkDocs').checked && $('#chkPhone').checked;
+  $('#startNavBtn').disabled = !ok;
+}
+$$('#scrPrecheck input[type=checkbox]').forEach(function(c){ c.addEventListener('change', updateStartBtn); });
+
+$('#startNavBtn').addEventListener('click', function(){
+  var pax = parseInt($('#chkPaxCount').value) || 0;
+  var vno = $('#chkVehicleNo').value.trim();
+  D.db.ref('trips/' + D.tripId).set({
+    meta: {
+      route: D.tripMeta.route || 'Ahmedabad → Nepalgunj',
+      departureTime: D.tripMeta.departureTime || new Date().toLocaleTimeString(),
+      driverName: D.tripMeta.driverName || 'Driver',
+      vehicleNo: vno,
+      status: 'active',
+      startedAt: firebase.database.ServerValue.TIMESTAMP
+    },
+    passengers: { count: pax },
+    liveLocation: null,
+    halts: null
+  });
+  D.db.ref('tripDrivers/' + D.tripId).set(firebase.auth().currentUser.uid);
+  D.db.ref('activeTrips/' + D.tripId + '/status').set('active');
+  startNavigation();
+});
+
+/* ── NAVIGATION ── */
+function startNavigation(){
+  show('scrNav');
+  initMap();
+  startGPS();
+  requestWakeLock();
+  fetchRoute();
+}
+
+function initMap(){
+  if(D.map) return;
+  D.map = new maplibregl.Map({
+    container: 'driverMap',
+    style: 'https://tiles.openfreemap.org/styles/liberty',
+    center: [77.5, 25.5],
+    zoom: 5,
+    attributionControl: false
+  });
+  D.map.addControl(new maplibregl.AttributionControl({compact:true}), 'bottom-left');
+}
+
+function startGPS(){
+  if(!navigator.geolocation){ updateGpsStatus('none','No GPS'); return; }
+  D.watchId = navigator.geolocation.watchPosition(
+    function(pos){
+      var lat = pos.coords.latitude;
+      var lng = pos.coords.longitude;
+      var bearing = pos.coords.heading;
+      var speed = pos.coords.speed;
+      var acc = pos.coords.accuracy;
+
+      updateGpsStatus(acc < 30 ? 'good' : 'poor', 'GPS: ±' + Math.round(acc) + 'm');
+
+      if(D.prevGps && Math.abs(D.prevGps.lat - lat) > 0.03) return;
+
+      var loc = { lat:lat, lng:lng, bearing:bearing, speed:speed, accuracy:acc, ts: Date.now() };
+      D.lastPos = loc;
+
+      setMeSmooth(lng, lat);
+      updateSpeedDisplay(speed);
+      updateNavProgress(lat, lng);
+
+      if(bearing != null && !isNaN(bearing) && speed && speed > 1){
+        D.map.easeTo({ bearing: bearing, duration: 600 });
+      }
+
+      if(D.db && D.tripId && !D.atHalt){
+        D.db.ref('trips/' + D.tripId + '/liveLocation').set({
+          lat: lat, lng: lng,
+          bearing: bearing != null ? bearing : null,
+          speed: speed != null ? speed : null,
+          accuracy: acc,
+          ts: firebase.database.ServerValue.TIMESTAMP
+        });
+      }
+    },
+    function(err){ updateGpsStatus('none', 'GPS error: ' + err.message); },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+  );
+}
+
+function setMeSmooth(lng, lat){
+  if(!D.meMarker){
+    var el = document.createElement('div');
+    el.style.cssText = 'width:20px;height:20px;background:var(--orange);border:3px solid #fff;border-radius:50%;box-shadow:0 0 10px rgba(240,124,31,.5)';
+    D.meMarker = new maplibregl.Marker({ element:el }).setLngLat([lng,lat]).addTo(D.map);
+    D.map.flyTo({ center:[lng,lat], zoom:14, duration:1200 });
+    D.prevGps = {lng:lng, lat:lat};
+    return;
+  }
+  var from = D.prevGps || D.meMarker.getLngLat();
+  D.prevGps = {lng:lng, lat:lat};
+  if(Math.abs(from.lng - lng) > 0.03 || Math.abs(from.lat - lat) > 0.03){
+    D.meMarker.setLngLat([lng,lat]);
+    return;
+  }
+  var p = {lng:from.lng, lat:from.lat};
+  var t0 = performance.now(), dur = 450;
+  if(D.meAnim) cancelAnimationFrame(D.meAnim);
+  (function step(now){
+    var k = Math.min(1, (now - t0) / dur);
+    var e = k < 0.5 ? 2*k*k : 1 - Math.pow(-2*k+2, 2)/2;
+    D.meMarker.setLngLat([p.lng + (lng - p.lng)*e, p.lat + (lat - p.lat)*e]);
+    if(k < 1) D.meAnim = requestAnimationFrame(step);
+  })(t0);
+}
+
+function updateGpsStatus(quality, text){
+  var dot = $('#gpsDot');
+  dot.className = 'gps-dot ' + quality;
+  $('#gpsText').textContent = text;
+}
+
+function updateSpeedDisplay(speedMs){
+  var kmh = speedMs != null ? Math.round(speedMs * 3.6) : 0;
+  $('#navSpeed').textContent = kmh;
+}
+
+/* ── ROUTE FETCH (Valhalla — free, no key) ── */
+function fetchRoute(){
+  var waypoints = ROUTE_STOPS.map(function(s){ return {lon:s.lng, lat:s.lat}; });
+  var body = JSON.stringify({
+    locations: waypoints,
+    costing: 'truck',
+    directions_options: { units:'kilometers', language:'en-US' },
+    costing_options: { truck: { height:3.5, width:2.6, length:12 } }
+  });
+  fetch('https://valhalla1.openstreetmap.de/route', {
+    method:'POST', body:body,
+    headers:{'Content-Type':'application/json'},
+    referrerPolicy:'origin'
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    if(!data.trip || !data.trip.legs) return;
+    var coords = [];
+    var maneuvers = [];
+    var legOffset = 0;
+    data.trip.legs.forEach(function(leg){
+      var shape = decodeValhalla(leg.shape);
+      coords = coords.concat(shape);
+      leg.maneuvers.forEach(function(m){
+        maneuvers.push({
+          instruction: m.instruction || '',
+          type: m.type,
+          length: m.length,
+          beginIdx: m.begin_shape_index + legOffset,
+          streetNames: m.street_names || []
+        });
+      });
+      legOffset += leg.shape ? decodeValhalla(leg.shape).length : 0;
+    });
+    D.routeCoords = coords;
+    D.routeManeuvers = maneuvers;
+    buildCumDist();
+    drawRoute(coords);
+    updateBanner(0);
+    $('#navBanInstr').textContent = maneuvers[0] ? maneuvers[0].instruction : 'Head towards route';
+    var totalKm = data.trip.summary ? data.trip.summary.length : 1375;
+    D.routeTotalKm = totalKm;
+    $('#navDist').textContent = Math.round(totalKm) + ' km';
+    var totalSec = data.trip.summary ? data.trip.summary.time : 0;
+    if(totalSec > 0){
+      var h = Math.floor(totalSec/3600), m = Math.floor((totalSec%3600)/60);
+      $('#navEta').textContent = h + 'h ' + m + 'm';
+    }
+  })
+  .catch(function(e){ console.warn('Route fetch failed:', e); });
+}
+
+function decodeValhalla(encoded){
+  var coords = [], lat = 0, lng = 0, i = 0;
+  while(i < encoded.length){
+    var b, shift = 0, result = 0;
+    do{ b = encoded.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while(b >= 0x20);
+    lat += ((result & 1) ? ~(result >> 1) : (result >> 1));
+    shift = 0; result = 0;
+    do{ b = encoded.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while(b >= 0x20);
+    lng += ((result & 1) ? ~(result >> 1) : (result >> 1));
+    coords.push([lng / 1e6, lat / 1e6]);
+  }
+  return coords;
+}
+
+function buildCumDist(){
+  var c = D.routeCoords;
+  if(!c || c.length < 2) return;
+  var cum = [0];
+  for(var i = 1; i < c.length; i++){
+    cum.push(cum[i-1] + haversineKm(c[i-1][1], c[i-1][0], c[i][1], c[i][0]));
+  }
+  D.routeCumKm = cum;
+  D.routeTotalKm = cum[cum.length - 1];
+}
+
+function drawRoute(coords){
+  if(!D.map || !coords.length) return;
+  D.map.on('load', function(){ addRouteLayer(coords); });
+  if(D.map.loaded()) addRouteLayer(coords);
+}
+function addRouteLayer(coords){
+  if(D.map.getSource('route')) return;
+  D.map.addSource('route', { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates:coords } } });
+  D.map.addLayer({ id:'route-line', type:'line', source:'route', paint:{ 'line-color':'#F07C1F', 'line-width':5, 'line-opacity':0.8 } });
+  ROUTE_STOPS.forEach(function(s){
+    var el = document.createElement('div');
+    el.style.cssText = 'width:12px;height:12px;background:#fff;border:2.5px solid #2E5FA8;border-radius:50%';
+    el.title = s.name;
+    new maplibregl.Marker({element:el}).setLngLat([s.lng,s.lat]).addTo(D.map);
+  });
+}
+
+/* ── NAV PROGRESS ── */
+function updateNavProgress(lat, lng){
+  if(!D.routeCoords || !D.routeCumKm) return;
+  var snap = snapToRoute(lng, lat);
+  if(!snap) return;
+  var remaining = D.routeTotalKm - snap.distAlongKm;
+  $('#navDist').textContent = remaining > 10 ? Math.round(remaining) + ' km' : remaining.toFixed(1) + ' km';
+  var speed = D.lastPos && D.lastPos.speed != null ? D.lastPos.speed : 11;
+  var speedKmh = Math.max(speed * 3.6, 10);
+  var etaSec = (remaining / speedKmh) * 3600;
+  var h = Math.floor(etaSec / 3600), m = Math.floor((etaSec % 3600) / 60);
+  $('#navEta').textContent = h > 0 ? h + 'h ' + m + 'm' : m + ' min';
+  updateBanner(snap.distAlongKm);
+}
+
+function snapToRoute(lng, lat){
+  var coords = D.routeCoords;
+  if(!coords || coords.length < 2) return null;
+  var bestIdx = -1, bestPx = lng, bestPy = lat, bestD = Infinity;
+  for(var i = 0; i < coords.length - 1; i++){
+    var ax=coords[i][0],ay=coords[i][1],bx=coords[i+1][0],by=coords[i+1][1];
+    var dx=bx-ax,dy=by-ay,len2=dx*dx+dy*dy;
+    var tt=len2>0?((lng-ax)*dx+(lat-ay)*dy)/len2:0;
+    tt=Math.max(0,Math.min(1,tt));
+    var px=ax+dx*tt, py=ay+dy*tt;
+    var dKm=haversineKm(lat,lng,py,px);
+    if(dKm<bestD){ bestD=dKm; bestIdx=i; bestPx=px; bestPy=py; }
+  }
+  if(bestIdx < 0) return null;
+  return { lng:bestPx, lat:bestPy, idx:bestIdx, offKm:bestD,
+    distAlongKm: D.routeCumKm[bestIdx] + haversineKm(coords[bestIdx][1],coords[bestIdx][0],bestPy,bestPx) };
+}
+
+function updateBanner(distAlongKm){
+  if(!D.routeManeuvers || !D.routeManeuvers.length) return;
+  var maneuverDistKm = 0;
+  for(var i = 0; i < D.routeManeuvers.length; i++){
+    maneuverDistKm += D.routeManeuvers[i].length;
+    if(maneuverDistKm > distAlongKm){
+      var remain = maneuverDistKm - distAlongKm;
+      $('#navBanInstr').textContent = D.routeManeuvers[i].instruction;
+      $('#navBanDist').textContent = remain > 1 ? remain.toFixed(1) + ' km' : Math.round(remain * 1000) + ' m';
+      var ico = maneuverIcon(D.routeManeuvers[i].type);
+      $('#navBanIco').textContent = ico;
+      break;
+    }
+  }
+}
+
+function maneuverIcon(type){
+  var icons = {0:'🏁',1:'⬆️',2:'↗️',3:'➡️',4:'↘️',5:'⬇️',6:'↙️',7:'⬅️',8:'↖️',9:'⬆️',10:'↩️',11:'↪️',12:'🔄',15:'⬆️',24:'🏁',25:'🏁',26:'🏁'};
+  return icons[type] || '⬆️';
+}
+
+/* ── HALT MANAGEMENT ── */
+$('#haltBtn').addEventListener('click', function(){
+  if(!D.tripId || !D.db) return;
+  if(!D.atHalt){
+    var nearest = findNearestStop();
+    D.atHalt = true;
+    D.currentHalt = nearest ? nearest.name : 'Unknown stop';
+    D.db.ref('trips/' + D.tripId + '/halts/' + D.currentHalt).update({
+      arrivedAt: firebase.database.ServerValue.TIMESTAMP
+    });
+    D.db.ref('trips/' + D.tripId + '/meta/status').set('halted');
+    $('#haltBtn').textContent = '▶️ Resume';
+    $('#haltBtn').classList.add('at-halt');
+  } else {
+    D.db.ref('trips/' + D.tripId + '/halts/' + D.currentHalt).update({
+      departedAt: firebase.database.ServerValue.TIMESTAMP
+    });
+    D.db.ref('trips/' + D.tripId + '/meta/status').set('active');
+    D.atHalt = false;
+    D.currentHalt = null;
+    $('#haltBtn').textContent = '⏸️ Mark halt';
+    $('#haltBtn').classList.remove('at-halt');
+  }
+});
+
+function findNearestStop(){
+  if(!D.lastPos) return null;
+  var best = null, bestD = Infinity;
+  ROUTE_STOPS.forEach(function(s){
+    var d = haversineKm(D.lastPos.lat, D.lastPos.lng, s.lat, s.lng);
+    if(d < bestD){ bestD = d; best = s; }
+  });
+  return best;
+}
+
+/* ── END TRIP ── */
+$('#endBtn').addEventListener('click', function(){
+  if(!confirm('End this trip? Passengers will see "Journey complete".')) return;
+  if(D.db && D.tripId){
+    D.db.ref('trips/' + D.tripId + '/meta/status').set('complete');
+    D.db.ref('trips/' + D.tripId + '/liveLocation').remove();
+    D.db.ref('activeTrips/' + D.tripId + '/status').set('complete');
+  }
+  cleanup();
+  show('scrTrips');
+  loadTrips();
+});
+
+/* ── RE-CENTRE ── */
+$('#navRecenter').addEventListener('click', function(){
+  if(D.lastPos) D.map.flyTo({ center:[D.lastPos.lng, D.lastPos.lat], zoom:15, duration:600 });
+});
+
+/* ── WAKE LOCK ── */
+function requestWakeLock(){
+  if('wakeLock' in navigator){
+    navigator.wakeLock.request('screen').then(function(lock){
+      D.wakeLock = lock;
+      lock.addEventListener('release', function(){ D.wakeLock = null; });
+    }).catch(function(){});
+  }
+}
+
+/* ── CLEANUP ── */
+function cleanup(){
+  if(D.watchId != null){ navigator.geolocation.clearWatch(D.watchId); D.watchId = null; }
+  if(D.meAnim != null){ cancelAnimationFrame(D.meAnim); D.meAnim = null; }
+  if(D.wakeLock){ D.wakeLock.release().catch(function(){}); D.wakeLock = null; }
+  D.atHalt = false;
+  D.currentHalt = null;
+  D.lastPos = null;
+  D.routeCoords = null;
+  D.routeManeuvers = null;
+  D.routeCumKm = null;
+}
+
+/* ── SERVICE WORKER ── */
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').catch(function(){});
+}
+</script>
+</body>
+</html>

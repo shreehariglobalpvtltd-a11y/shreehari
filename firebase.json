@@ -1,0 +1,32 @@
+{
+  "database": {
+    "rules": "database.rules.json"
+  },
+  "hosting": {
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "database.rules.json",
+      "**/.*",
+      "*.md",
+      "node_modules/**"
+    ],
+    "rewrites": [
+      { "source": "/driver/**", "destination": "/driver/index.html" },
+      { "source": "**", "destination": "/S HARI (1).html" }
+    ],
+    "headers": [
+      {
+        "source": "/driver/sw.js",
+        "headers": [{ "key": "Service-Worker-Allowed", "value": "/" }]
+      },
+      {
+        "source": "**",
+        "headers": [
+          { "key": "X-Content-Type-Options", "value": "nosniff" },
+          { "key": "X-Frame-Options", "value": "SAMEORIGIN" }
+        ]
+      }
+    ]
+  }
+}
