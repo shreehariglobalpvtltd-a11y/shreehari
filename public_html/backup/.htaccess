@@ -1,0 +1,13 @@
+# =====================================================================
+#  Database backups — full customer data. Download only through the
+#  authenticated admin panel, never over a guessable URL.
+# =====================================================================
+
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>

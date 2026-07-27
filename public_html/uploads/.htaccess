@@ -1,0 +1,54 @@
+# =====================================================================
+#  Payment screenshots.
+#
+#  Uploaded files are served, but NEVER executed. Even if an attacker
+#  smuggles a .php payload past the MIME check, Apache will not run it.
+# =====================================================================
+
+# 1. Kill every server-side handler in this tree.
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+    php_flag engine off
+</IfModule>
+
+RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .php8 .phps .cgi .pl .py .jsp .asp .sh
+RemoveType    .php .phtml .php3 .php4 .php5 .php7 .php8 .phps .cgi .pl .py .jsp .asp .sh
+
+<IfModule mod_mime.c>
+    AddType text/plain .php .phtml .php3 .php4 .php5 .php7 .php8 .phps .cgi .pl .py .sh
+</IfModule>
+
+# 2. Block execution outright by extension.
+<FilesMatch "\.(?i:php[0-9]?|phtml|phps|cgi|pl|py|jsp|asp|aspx|sh|bash|exe|com|bat)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# 3. Allow only the file types we accept as payment proof.
+<FilesMatch "\.(?i:jpe?g|png|webp|gif|pdf)$">
+    <IfModule mod_authz_core.c>
+        Require all granted
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Allow from all
+    </IfModule>
+</FilesMatch>
+
+# 4. Never let a browser guess the content type here.
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set Content-Disposition "inline"
+</IfModule>
+
+Options -Indexes -ExecCGI
