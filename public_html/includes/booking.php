@@ -451,11 +451,13 @@ final class BookingService
         }
 
         $booking['legs'] = Database::fetchAll(
-            'SELECT l.*, r.from_city, r.to_city, r.bus_name, r.route_code,
-                    r.dep_time, r.arr_time, r.crew_name, r.crew_phone
+            'SELECT l.*, r.from_city, r.to_city, r.route_code,
+                    r.dep_time, r.arr_time, r.crew_name, r.crew_phone,
+                    b.bus_name, b.bus_number
                FROM booking_legs l
                JOIN schedules s ON s.id = l.schedule_id
                JOIN routes r ON r.id = s.route_id
+               LEFT JOIN buses b ON b.id = r.bus_id
               WHERE l.booking_id = :b ORDER BY l.leg_type DESC',
             ['b' => $booking['id']]
         );
