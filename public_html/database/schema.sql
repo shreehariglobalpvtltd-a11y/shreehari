@@ -926,9 +926,32 @@ CREATE TABLE `messages` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
+-- =====================================================================
+--  kv_store — server-side key/value bridge for the front-end app.
+--
+--  The single-file UI persists its working data through window.storage;
+--  this table is the server backing for it. Writes to sensitive/global
+--  keys are gated by api/kv.php (admin session required). Public
+--  operational data (routes, settings) is world-readable so the site
+--  renders for anonymous visitors.
+-- =====================================================================
+CREATE TABLE `kv_store` (
+  `id`         INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `kscope`     VARCHAR(64)  NOT NULL DEFAULT 'global' COMMENT 'global or user:<id>',
+  `kkey`       VARCHAR(191) NOT NULL,
+  `kvalue`     LONGTEXT     NULL,
+  `updated_by` VARCHAR(120) NULL,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_kv` (`kscope`,`kkey`),
+  KEY `ix_kv_updated` (`updated_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- =====================================================================
---  END OF SCHEMA — 30 tables
+--  END OF SCHEMA — 31 tables
 --  Next step: import seed.sql for routes, settings and the admin login.
 -- =====================================================================

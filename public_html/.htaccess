@@ -1,0 +1,58 @@
+# =====================================================================
+#  S Hari Global — public web root Apache config (Hostinger / cPanel)
+# =====================================================================
+
+# ---- Default document ------------------------------------------------
+DirectoryIndex index.php index.html
+
+# ---- Security headers (mirrors the PHP layer for static files) -------
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "geolocation=(self), microphone=(self), camera=(self)"
+  Header unset X-Powered-By
+</IfModule>
+
+# ---- Force HTTPS -----------------------------------------------------
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{HTTPS} !=on
+  RewriteCond %{HTTP:X-Forwarded-Proto} !https
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+</IfModule>
+
+# ---- Hide the raw application template; index.php serves it ----------
+<Files "app.template.html">
+  Require all denied
+</Files>
+
+# ---- Block dotfiles and backups --------------------------------------
+<FilesMatch "(^\.|\.(bak|sql|log|ini|sample|dist|md)$)">
+  Require all denied
+</FilesMatch>
+
+# ---- Never execute uploaded files as code ----------------------------
+<IfModule mod_php.c>
+  php_flag engine on
+</IfModule>
+
+# ---- Long-cache static assets ----------------------------------------
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/css "access plus 7 days"
+  ExpiresByType application/javascript "access plus 7 days"
+  ExpiresByType image/png "access plus 30 days"
+  ExpiresByType image/jpeg "access plus 30 days"
+  ExpiresByType image/webp "access plus 30 days"
+  ExpiresByType image/svg+xml "access plus 30 days"
+</IfModule>
+
+# ---- Gzip text responses ---------------------------------------------
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css application/javascript application/json image/svg+xml
+</IfModule>
+
+# ---- Friendly error pages --------------------------------------------
+ErrorDocument 404 /index.php
+ErrorDocument 403 /index.php

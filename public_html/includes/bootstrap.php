@@ -30,7 +30,15 @@ define('SHG_BOOTSTRAPPED', true);
  *  1. Configuration
  * ===================================================================== */
 
-$configFile = dirname(__DIR__) . '/config/config.php';
+// A local override (config/config.local.php) is used when present. It is
+// git-ignored and exists only on developer machines, so production always
+// uses config.php. Handy for pointing at a test database while developing.
+$configFile  = dirname(__DIR__) . '/config/config.php';
+$localConfig = dirname(__DIR__) . '/config/config.local.php';
+
+if (is_file($localConfig)) {
+    $configFile = $localConfig;
+}
 
 if (!is_file($configFile)) {
     http_response_code(503);

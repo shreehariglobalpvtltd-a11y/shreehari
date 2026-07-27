@@ -1,0 +1,2 @@
+# QR renderer + PNG cache. No directory listing; PHP is allowed.
+Options -Indexes

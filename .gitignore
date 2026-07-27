@@ -1,0 +1,27 @@
+# ---- Local dev / editor -------------------------------------------
+/.claude/php-dev.ini
+/.claude/launch.json
+.vscode/
+.idea/
+
+# ---- Secrets & machine-local config -------------------------------
+# NEVER commit real credentials or the local DB override.
+public_html/config/config.local.php
+
+# ---- Runtime-generated content (created on the server) ------------
+public_html/logs/*
+!public_html/logs/.htaccess
+public_html/uploads/*
+!public_html/uploads/.htaccess
+public_html/tickets/*
+!public_html/tickets/.htaccess
+public_html/invoice/*
+!public_html/invoice/.htaccess
+public_html/qr/*
+!public_html/qr/.htaccess
+public_html/backup/*
+!public_html/backup/.htaccess
+
+# ---- Archives / scratch -------------------------------------------
+*.zip
+*.log
