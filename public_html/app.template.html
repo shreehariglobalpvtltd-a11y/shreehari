@@ -613,6 +613,16 @@ footer{background:linear-gradient(180deg,var(--blue-deep) 0%,#080E1C 100%);color
 .seat.bkd{background:#DFE6F0;border-color:#DFE6F0;color:#93A3BC;cursor:not-allowed;text-decoration:line-through}
 .seat.bkd:hover{transform:none}
 .seat.slpr{height:52px}
+/* Part-2 seat polish: premium hover glow ring, a one-time selection pop,
+   and a visible keyboard focus ring. box-shadow / outline / transform only
+   — no ::before/::after (those carry the A–E letters and the ♿ badge).
+   The pop is disabled under prefers-reduced-motion; the static glow stays. */
+.seat:not(.bkd):hover{box-shadow:0 0 0 4px rgba(46,95,168,.16),0 8px 18px rgba(46,95,168,.24)}
+.seat.sel:hover{box-shadow:0 0 0 4px rgba(240,124,31,.22),0 8px 18px rgba(240,124,31,.4)}
+.seat:focus-visible{outline:3px solid var(--orange);outline-offset:2px}
+.seat.sel{animation:seatPop .34s cubic-bezier(.34,1.56,.64,1)}
+@keyframes seatPop{0%{transform:scale(1)}45%{transform:scale(1.18)}100%{transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){.seat.sel{animation:none}}
 .sum-card{background:#fff;border:1px solid var(--line);border-radius:22px;padding:24px;position:sticky;top:96px}
 .sum-card h3{font-family:var(--f-display);font-size:18px;margin-bottom:14px}
 .sum-row{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px dashed var(--line);font-size:14px}
