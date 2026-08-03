@@ -45,6 +45,7 @@ admin_header('Bookings', 'bookings');
   </select>
   <button class="btn" type="submit">Search</button>
   <?php if ($q !== '' || $status !== ''): ?><a class="btn ghost" href="<?= $base ?>/admin/bookings.php">Clear</a><?php endif; ?>
+  <a class="btn ghost" style="margin-left:auto" href="<?= $base ?>/admin/export.php?<?= Security::e(http_build_query(['q' => $q, 'status' => $status])) ?>">⬇️ Export CSV</a>
 </form>
 
 <div class="panel">
