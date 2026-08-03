@@ -68,13 +68,23 @@ function admin_header(string $title, string $active = ''): void
     echo '<meta name="viewport" content="width=device-width, initial-scale=1">';
     echo '<title>' . Security::e($title) . ' · ' . Security::e($company) . ' Admin</title>';
     echo '<link rel="icon" href="data:image/svg+xml,' . rawurlencode('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🚌</text></svg>') . '">';
-    echo '<style>' . admin_css() . '</style></head><body>';
+    echo '<style>' . admin_css() . '</style>';
+    // Apply saved/system theme before <body> paints (no flash), + the toggle.
+    echo '<script>(function(){try{var t=localStorage.getItem("shg_admin_theme");'
+       . 'if(t!=="dark"&&t!=="light")t=(window.matchMedia&&matchMedia("(prefers-color-scheme:dark)").matches)?"dark":"light";'
+       . 'document.documentElement.setAttribute("data-theme",t);}catch(e){}})();'
+       . 'function shgTheme(){try{var d=document.documentElement,'
+       . 'n=d.getAttribute("data-theme")==="dark"?"light":"dark";'
+       . 'd.setAttribute("data-theme",n);localStorage.setItem("shg_admin_theme",n);}catch(e){}}</script>';
+    echo '</head><body>';
 
     // Top bar
     echo '<header class="tb">';
     echo '<button class="menu" onclick="document.body.classList.toggle(\'nav-open\')" aria-label="Menu">☰</button>';
     echo '<a class="brand" href="' . $base . '/admin/index.php">🚌 ' . Security::e($company) . ' <span>Admin</span></a>';
-    echo '<div class="who">' . $name . ' <em>' . $role . '</em> · <a href="' . $base . '/admin/logout.php">Sign out</a></div>';
+    echo '<div class="who">' . $name . ' <em>' . $role . '</em> · '
+       . '<button type="button" class="theme-tog" onclick="shgTheme()" aria-label="Toggle dark mode" title="Dark / light mode">🌓</button>'
+       . ' · <a href="' . $base . '/admin/logout.php">Sign out</a></div>';
     echo '</header>';
 
     // Sidebar
@@ -197,8 +207,12 @@ function admin_css(): string
 {
     return <<<CSS
 *{box-sizing:border-box}
-:root{--navy:#12264E;--blue:#2E5FA8;--orange:#F07C1F;--ink:#1b2436;--mut:#6b7688;--line:#e5e9f0;--bg:#f4f6fb}
+:root{--navy:#12264E;--blue:#2E5FA8;--orange:#F07C1F;--ink:#1b2436;--mut:#6b7688;--line:#e5e9f0;--bg:#f4f6fb;--card:#fff;--head:#fafbfe;--hover:#eef2fa}
+:root[data-theme="dark"]{--ink:#e8f0fb;--mut:#93a4be;--line:#22314a;--bg:#0b1220;--card:#111d33;--head:#0f1a2e;--hover:#182741}
 body{margin:0;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+body,.side,.card,.panel,.panel h2,th,.toolbar input,.toolbar select,.btn.ghost{transition:background-color .2s,color .2s,border-color .2s}
+.theme-tog{background:none;border:0;color:#fff;font-size:17px;cursor:pointer;padding:2px 7px;border-radius:7px;line-height:1}
+.theme-tog:hover{background:rgba(255,255,255,.14)}
 a{color:var(--blue);text-decoration:none}
 .tb{position:sticky;top:0;z-index:30;height:56px;display:flex;align-items:center;gap:12px;padding:0 16px;
     background:var(--navy);color:#fff;box-shadow:0 1px 8px rgba(0,0,0,.15)}
@@ -208,41 +222,41 @@ a{color:var(--blue);text-decoration:none}
 .tb .who em{font-style:normal;color:var(--orange)}
 .tb .who a{color:#fff;text-decoration:underline}
 .tb .menu{display:none;background:none;border:0;color:#fff;font-size:22px;cursor:pointer}
-.side{position:fixed;top:56px;left:0;width:210px;height:calc(100vh - 56px);background:#fff;border-right:1px solid var(--line);
+.side{position:fixed;top:56px;left:0;width:210px;height:calc(100vh - 56px);background:var(--card);border-right:1px solid var(--line);
       padding:12px 8px;overflow:auto}
 .side a{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:9px;color:var(--ink);font-weight:600;font-size:14px}
 .side a span{width:22px;text-align:center}
-.side a:hover{background:#eef2fa}
+.side a:hover{background:var(--hover)}
 .side a.on{background:var(--navy);color:#fff}
 .navbadge{margin-left:auto;background:var(--orange);color:#fff;border-radius:999px;font-size:11px;font-weight:800;padding:1px 7px;line-height:1.5}
-.side a.on .navbadge{background:#fff;color:var(--navy)}
+.side a.on .navbadge{background:var(--card);color:var(--navy)}
 .row-highlight{background:#fff4d1 !important;animation:rowpulse 1.6s ease 2}
 @keyframes rowpulse{0%,100%{background:#fff4d1}50%{background:#ffe28a}}
 .wrap{margin-left:210px;padding:22px 26px;max-width:1150px}
 .wrap h1{margin:2px 0 18px;font-size:22px}
 .scrim{display:none}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:22px}
-.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
 .card .k{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.4px}
 .card .v{font-size:26px;font-weight:800;margin-top:6px}
 .card .v small{font-size:13px;color:var(--mut);font-weight:600}
-.panel{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:22px}
-.panel h2{margin:0;padding:14px 18px;font-size:15px;border-bottom:1px solid var(--line);background:#fafbfe}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:22px}
+.panel h2{margin:0;padding:14px 18px;font-size:15px;border-bottom:1px solid var(--line);background:var(--head)}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
-th{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.3px;background:#fafbfe}
+th{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.3px;background:var(--head)}
 tr:last-child td{border-bottom:0}
 .pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700}
 .btn{display:inline-block;padding:8px 14px;border-radius:9px;border:1px solid transparent;font-weight:700;font-size:13px;
      cursor:pointer;background:var(--blue);color:#fff}
-.btn.ok{background:#0a6b3b}.btn.bad{background:#b02a2a}.btn.ghost{background:#fff;border-color:var(--line);color:var(--ink)}
+.btn.ok{background:#0a6b3b}.btn.bad{background:#b02a2a}.btn.ghost{background:var(--card);border-color:var(--line);color:var(--ink)}
 .btn:hover{filter:brightness(1.06)}
 .row-actions{display:flex;gap:8px;flex-wrap:wrap}
 .muted{color:var(--mut)}
 .flash{padding:12px 16px;border-radius:10px;margin-bottom:16px;font-weight:600}
 .flash.ok{background:#d7f4e3;color:#0a6b3b}.flash.bad{background:#f7dcdc;color:#8a1f1f}
 .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
-.toolbar input,.toolbar select{padding:9px 12px;border:1px solid var(--line);border-radius:9px;font-size:14px}
+.toolbar input,.toolbar select{padding:9px 12px;border:1px solid var(--line);border-radius:9px;font-size:14px;background:var(--card);color:var(--ink)}
 .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
 @media(max-width:820px){
   .side{transform:translateX(-100%);transition:transform .2s;z-index:40}

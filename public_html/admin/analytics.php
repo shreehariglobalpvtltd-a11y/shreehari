@@ -144,15 +144,15 @@ admin_header('Analytics', 'analytics');
   .an-grid .panel{margin-bottom:0}
   .an-grid .panel.wide{grid-column:1 / -1}
   .an-head{display:flex;align-items:center;justify-content:space-between;gap:10px;
-    padding:14px 18px;border-bottom:1px solid var(--line);background:#fafbfe}
+    padding:14px 18px;border-bottom:1px solid var(--line);background:var(--head)}
   .an-head h2{margin:0;padding:0;border:0;background:none;font-size:15px}
   .an-body{padding:16px 18px}
   .an-canvas{position:relative;height:300px}
   .an-canvas.tall{height:340px}
   .an-note{padding:26px 18px;color:var(--mut);font-size:14px}
-  .an-export{background:#fff;border:1px solid var(--line);color:var(--ink);
+  .an-export{background:var(--card);border:1px solid var(--line);color:var(--ink);
     padding:5px 10px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer}
-  .an-export:hover{background:#eef2fa}
+  .an-export:hover{background:var(--hover)}
   @media(max-width:820px){.an-grid{grid-template-columns:1fr}}
 </style>
 
@@ -216,7 +216,8 @@ admin_header('Analytics', 'analytics');
   function ready() {
     if (typeof Chart === 'undefined') { return setTimeout(ready, 60); }
     Chart.defaults.font.family = "system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
-    Chart.defaults.color = '#4a5568';
+    // Theme-aware axis/legend text (charts draw once; toggling theme needs a reload).
+    Chart.defaults.color = document.documentElement.getAttribute('data-theme') === 'dark' ? '#c7d2e5' : '#4a5568';
 
     // 1) Revenue bar
     charts.revChart = new Chart(document.getElementById('revChart'), {
