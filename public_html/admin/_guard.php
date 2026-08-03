@@ -41,8 +41,10 @@ function admin_nav(): array
 {
     $all = [
         ['href' => 'index.php',    'icon' => '📊', 'label' => 'Dashboard',      'perm' => 'dashboard.view'],
+        ['href' => 'analytics.php','icon' => '📈', 'label' => 'Analytics',      'perm' => 'dashboard.view'],
         ['href' => 'payments.php', 'icon' => '💳', 'label' => 'Verify Payments','perm' => 'payments.view'],
         ['href' => 'bookings.php', 'icon' => '🎫', 'label' => 'Bookings',       'perm' => 'bookings.view'],
+        ['href' => 'enquiries.php','icon' => '📝', 'label' => 'Enquiries',      'perm' => 'bookings.view'],
         ['href' => 'routes.php',   'icon' => '🛣️', 'label' => 'Routes',         'perm' => 'routes.view'],
         ['href' => 'scan.php',     'icon' => '📷', 'label' => 'Scan Ticket',    'perm' => 'tickets.scan'],
         ['href' => 'settings.php', 'icon' => '⚙️', 'label' => 'Settings',       'perm' => 'dashboard.view'],
@@ -78,9 +80,12 @@ function admin_header(string $title, string $active = ''): void
     // Sidebar
     echo '<nav class="side">';
     foreach (admin_nav() as $item) {
-        $on = ($active !== '' && str_contains($item['href'], $active)) ? ' class="on"' : '';
+        $on    = ($active !== '' && str_contains($item['href'], $active)) ? ' class="on"' : '';
+        $badge = $item['href'] === 'payments.php'
+            ? '<span class="navbadge" id="navBadgePayments" style="display:none"></span>'
+            : '';
         echo '<a' . $on . ' href="' . $base . '/admin/' . $item['href'] . '">'
-           . '<span>' . $item['icon'] . '</span>' . Security::e($item['label']) . '</a>';
+           . '<span>' . $item['icon'] . '</span>' . Security::e($item['label']) . $badge . '</a>';
     }
     echo '<a href="' . $base . '/" target="_blank"><span>🌐</span>View site</a>';
     echo '</nav>';
@@ -92,7 +97,83 @@ function admin_footer(): void
 {
     echo '</main>';
     echo '<div class="scrim" onclick="document.body.classList.remove(\'nav-open\')"></div>';
+
+    // Live pending-payments badge + chime, so staff don't have to keep
+    // hitting refresh. Only for roles that can actually act on payments.
+    if (Auth::can('payments.view')) {
+        echo '<script>' . admin_poll_js() . '</script>';
+    }
+
     echo '</body></html>';
+}
+
+/**
+ * Polls admin/pending-count.php every 20s. Updates the sidebar badge
+ * unconditionally; only chimes + shows the "new payment" banner when the
+ * count goes UP versus the last check (never on the first load of a
+ * session, and never just because the count went down after someone
+ * else verified one).
+ */
+function admin_poll_js(): string
+{
+    return <<<JS
+(function () {
+  var KEY_LAST = 'shg_admin_last_pending';
+
+  function beep() {
+    try {
+      var ctx = new (window.AudioContext || window.webkitAudioContext)();
+      [880, 1100].forEach(function (freq, i) {
+        setTimeout(function () {
+          var o = ctx.createOscillator(), g = ctx.createGain();
+          o.type = 'sine'; o.frequency.value = freq;
+          g.gain.setValueAtTime(0.0001, ctx.currentTime);
+          g.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + 0.02);
+          g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
+          o.connect(g); g.connect(ctx.destination);
+          o.start(); o.stop(ctx.currentTime + 0.45);
+        }, i * 180);
+      });
+    } catch (e) {}
+  }
+
+  function showBanner(n) {
+    var el = document.getElementById('newPaymentBanner');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'newPaymentBanner';
+      el.style.cssText = 'position:fixed;top:66px;right:16px;z-index:50;background:#12264E;color:#fff;'
+        + 'padding:12px 16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25);display:flex;'
+        + 'align-items:center;gap:10px;font-size:13px;max-width:320px';
+      el.innerHTML = '<span></span><button type="button" style="background:#F07C1F;border:0;color:#fff;'
+        + 'padding:6px 10px;border-radius:7px;font-weight:700;cursor:pointer;font-size:12px">Refresh</button>';
+      el.querySelector('button').onclick = function () { location.reload(); };
+      document.body.appendChild(el);
+    }
+    el.querySelector('span').textContent = n + ' new payment' + (n === 1 ? '' : 's') + ' waiting for verification.';
+    el.style.display = 'flex';
+  }
+
+  function poll() {
+    fetch('pending-count.php', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (!j || typeof j.pending !== 'number') return;
+        var badge = document.getElementById('navBadgePayments');
+        if (badge) {
+          if (j.pending > 0) { badge.textContent = j.pending; badge.style.display = 'inline-block'; }
+          else { badge.style.display = 'none'; }
+        }
+        var last = parseInt(sessionStorage.getItem(KEY_LAST) || '-1', 10);
+        if (last >= 0 && j.pending > last) { beep(); showBanner(j.pending - last); }
+        sessionStorage.setItem(KEY_LAST, String(j.pending));
+      })
+      .catch(function () {});
+  }
+  poll();
+  setInterval(poll, 20000);
+})();
+JS;
 }
 
 /** Small helper: a coloured status pill. */
@@ -133,6 +214,10 @@ a{color:var(--blue);text-decoration:none}
 .side a span{width:22px;text-align:center}
 .side a:hover{background:#eef2fa}
 .side a.on{background:var(--navy);color:#fff}
+.navbadge{margin-left:auto;background:var(--orange);color:#fff;border-radius:999px;font-size:11px;font-weight:800;padding:1px 7px;line-height:1.5}
+.side a.on .navbadge{background:#fff;color:var(--navy)}
+.row-highlight{background:#fff4d1 !important;animation:rowpulse 1.6s ease 2}
+@keyframes rowpulse{0%,100%{background:#fff4d1}50%{background:#ffe28a}}
 .wrap{margin-left:210px;padding:22px 26px;max-width:1150px}
 .wrap h1{margin:2px 0 18px;font-size:22px}
 .scrim{display:none}

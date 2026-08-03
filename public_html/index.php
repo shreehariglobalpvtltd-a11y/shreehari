@@ -43,12 +43,65 @@ $boot = [
 $bootJson = Security::jsonForHtml($boot);
 
 /* ---------------------------------------------------------------------
+ *  SEO head — canonical + Open Graph/Twitter URLs and JSON-LD, built
+ *  from APP_URL so the absolute URLs are correct in every environment
+ *  (localhost in dev, the real domain in production). This avoids
+ *  hardcoding a production domain in the static template. Business
+ *  facts below are ground-truth (CIN U52291GJ2026PTC174029).
+ * ------------------------------------------------------------------- */
+$baseUrl = rtrim(APP_URL, '/');
+$ogImage = $baseUrl . '/icon-shg.svg';   // swap for a 1200×630 raster when available
+$e = static fn($s): string => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
+
+$ld = [
+    '@context' => 'https://schema.org',
+    '@graph'   => [
+        [
+            '@type'     => 'Organization',
+            '@id'       => $baseUrl . '/#org',
+            'name'      => 'S Hari Global Pvt Ltd',
+            'url'       => $baseUrl . '/',
+            'logo'      => $ogImage,
+            'email'     => 'shreehariglobalpvtltd@gmail.com',
+            'telephone' => '+919104801507',
+            'address'   => [
+                '@type'           => 'PostalAddress',
+                'streetAddress'   => 'Near Shilpa Garage, Sliver Complex',
+                'addressLocality' => 'Mehsana',
+                'postalCode'      => '384002',
+                'addressRegion'   => 'Gujarat',
+                'addressCountry'  => 'IN',
+            ],
+        ],
+        [
+            '@type'      => 'BusOrCoach',
+            'name'       => 'S Hari Global — Ahmedabad ⇄ Nepalgunj Bus',
+            'provider'   => ['@type' => 'Organization', '@id' => $baseUrl . '/#org', 'name' => 'S Hari Global Pvt Ltd'],
+            'areaServed' => ['India', 'Nepal'],
+            'telephone'  => '+919104801507',
+        ],
+    ],
+];
+$ldJson = json_encode(
+    $ld,
+    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+);
+
+$seoHead = '<link rel="canonical" href="' . $e($baseUrl) . '/">'
+    . '<meta property="og:url" content="' . $e($baseUrl) . '/">'
+    . '<meta property="og:image" content="' . $e($ogImage) . '">'
+    . '<meta name="twitter:url" content="' . $e($baseUrl) . '/">'
+    . '<meta name="twitter:image" content="' . $e($ogImage) . '">'
+    . '<script type="application/ld+json">' . $ldJson . '</script>';
+
+/* ---------------------------------------------------------------------
  *  The injected head script: exposes SHG_BOOT and points the app's
  *  window.storage seam at /api/kv.php. The bridge always keeps a local
  *  copy so the site keeps working if the network (or the server ACL)
  *  says no — guests browse and draft locally, admins write to the server.
  * ------------------------------------------------------------------- */
 $inject = <<<HTML
+{$seoHead}
 <script>
 window.SHG_BOOT = {$bootJson};
 (function () {
