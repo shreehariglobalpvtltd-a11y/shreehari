@@ -1394,6 +1394,7 @@ s.addEventListener('click',function(e){e.preventDefault();
         <button type="button" class="lang-btn" data-lang="ne">ने</button>
       </span>
       <button type="button" class="theme-btn" aria-label="Switch to dark mode">🌙</button>
+      <span class="palette-wrap"><button type="button" class="palette-btn" aria-label="Choose colour theme" aria-haspopup="true" aria-expanded="false">🎨</button><div class="palette-pop" id="palettePop" role="menu" aria-label="Colour themes"></div></span>
       <a href="tel:+919104801507">📞 +91 91048 01507</a>
       <a href="mailto:shreehariglobalpvtltd@gmail.com">✉️ shreehariglobalpvtltd@gmail.com</a>
     </div>
@@ -3840,6 +3841,18 @@ s.addEventListener('click',function(e){e.preventDefault();
 :root[data-theme="dark"] .tnc-box{background:var(--blue-50);border-color:var(--line)}
 .theme-btn{width:30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:15px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);transition:transform .25s var(--ease)}
 .theme-btn:hover{transform:rotate(20deg)}
+/* Part-8 palette picker — the 7 day-palettes as a manual theme chooser */
+.palette-btn{width:30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:15px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);cursor:pointer;transition:transform .25s var(--ease)}
+.palette-btn:hover{transform:rotate(-20deg)}
+.palette-wrap{position:relative;display:inline-flex}
+.palette-pop{position:absolute;top:calc(100% + 8px);right:0;z-index:130;display:none;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px;width:242px;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 18px 44px rgba(10,20,40,.28)}
+.palette-pop.open{display:grid}
+.pal-sw{cursor:pointer;border:2px solid transparent;border-radius:10px;padding:6px 2px 5px;display:flex;flex-direction:column;align-items:center;gap:5px;background:none;font-size:10px;font-weight:700;color:var(--ink)}
+.pal-sw:hover{background:var(--blue-50)}
+.pal-sw.on{border-color:var(--orange)}
+.pal-dot{width:26px;height:26px;border-radius:50%;border:1px solid rgba(0,0,0,.12);box-shadow:0 2px 6px rgba(0,0,0,.15)}
+.pal-auto{grid-column:1/-1;flex-direction:row;gap:8px;justify-content:center;border-top:1px solid var(--line);padding-top:9px;margin-top:3px}
+:root[data-theme="dark"] .pal-sw:hover{background:rgba(255,255,255,.06)}
 
 /* ---------- [CSS] 27. AGENT DASHBOARD ---------- */
 .glass{background:rgba(255,255,255,.72);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid var(--line)}
@@ -6330,6 +6343,46 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest('.theme-btn')) return;
   applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
 });
+
+/* Palette picker (Part 8): the 7 tuned day-palettes (data-day 0–6) become a
+   manual theme chooser; "Auto" restores the deity day-of-week rotation. It
+   only touches data-day, so it's orthogonal to the light/dark toggle and each
+   palette works in both. Accents (--blue/--orange) survive dark mode because
+   the dark block overrides surfaces only. */
+(function () {
+  var pop = document.getElementById('palettePop');
+  if (!pop) return;
+  var PAL = [['0', 'Royal', '#2E5FA8', '#F07C1F'], ['1', 'Ocean', '#1B6B93', '#E8672C'],
+    ['2', 'Amethyst', '#5B4FA8', '#D4830F'], ['3', 'Emerald', '#2A7E6F', '#E05A3A'],
+    ['4', 'Orchid', '#7B4B9E', '#CF7A21'], ['5', 'Azure', '#2868A8', '#D4561E'],
+    ['6', 'Bronze', '#8B5A3C', '#C47A22']];
+  function saved() { try { return localStorage.getItem('shg:palette'); } catch (e) { return null; } }
+  function mark(v) {
+    var sel = (v === null || v === '') ? 'auto' : v;
+    pop.querySelectorAll('.pal-sw').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-pal') === sel); });
+  }
+  function setPalette(v) {
+    try { if (v === 'auto') localStorage.removeItem('shg:palette'); else localStorage.setItem('shg:palette', v); } catch (e) {}
+    document.documentElement.setAttribute('data-day', v === 'auto' ? String(new Date().getDay()) : v);
+    mark(v === 'auto' ? null : v);
+  }
+  pop.innerHTML = PAL.map(function (p) {
+    return '<button type="button" class="pal-sw" role="menuitemradio" data-pal="' + p[0] + '" title="' + p[1] + '">'
+      + '<span class="pal-dot" style="background:linear-gradient(135deg,' + p[2] + ' 58%,' + p[3] + ' 58%)"></span>' + p[1] + '</button>';
+  }).join('') + '<button type="button" class="pal-sw pal-auto" role="menuitemradio" data-pal="auto">🔄 Auto · by day</button>';
+  mark(saved());
+  pop.addEventListener('click', function (e) {
+    var b = e.target.closest('.pal-sw'); if (!b) return;
+    setPalette(b.getAttribute('data-pal'));
+    pop.classList.remove('open');
+    var pb = document.querySelector('.palette-btn'); if (pb) pb.setAttribute('aria-expanded', 'false');
+  });
+  document.addEventListener('click', function (e) {
+    var pb = e.target.closest('.palette-btn');
+    if (pb) { var open = pop.classList.toggle('open'); pb.setAttribute('aria-expanded', open ? 'true' : 'false'); return; }
+    if (!e.target.closest('.palette-pop')) pop.classList.remove('open');
+  });
+})();
 
 /* ================================================================
    [JS] 4h. SESSION TIMEOUT — auto sign-out after N idle minutes
@@ -13545,7 +13598,9 @@ function pvSetupSearch() {
    [JS] 14. BOOT — load (or seed) data, then start the router
 ================================================================ */
 async function init() {
-  document.documentElement.setAttribute('data-day', new Date().getDay());
+  // Colour theme: a saved palette (0–6) overrides the auto day-of-week rotation.
+  (function () { var p = null; try { p = localStorage.getItem('shg:palette'); } catch (e) {}
+    document.documentElement.setAttribute('data-day', (p !== null && p !== '' && p !== 'auto') ? p : String(new Date().getDay())); })();
   Splash.init();
   Splash.setTotal(8);
 
