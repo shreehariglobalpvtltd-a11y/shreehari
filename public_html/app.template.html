@@ -3754,6 +3754,9 @@ table.admin .code{font-family:var(--f-code);font-size:12.5px}
 .ai-chips::-webkit-scrollbar{display:none}
 .ai-chip{flex:0 0 auto;padding:6px 12px;border-radius:999px;border:1px solid var(--blue-100);background:var(--blue-50);color:var(--blue-800);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
 .ai-chip:active{transform:scale(.95)}
+.ai-wa-cta{display:inline-block;margin-top:4px;padding:9px 15px;border-radius:11px;background:#25D366;color:#fff;font-weight:800;font-size:13px;text-decoration:none;box-shadow:0 4px 12px rgba(37,211,102,.35)}
+.ai-wa-cta:hover{filter:brightness(1.05)}
+.ai-wa-cta:active{transform:scale(.96)}
 .ai-inrow{display:flex;gap:7px;padding:10px 12px;border-top:1px solid var(--line);background:var(--card,#fff)}
 .ai-inrow input{flex:1;min-width:0;border:1.5px solid var(--line);border-radius:12px;padding:9px 12px;font-size:13.5px;background:var(--bg,#FBFCFE);color:var(--ink)}
 .ai-inrow input:focus{outline:none;border-color:var(--blue-100)}
@@ -14226,10 +14229,18 @@ document.addEventListener('click', function (e) {
   function answerIntent(text) {
     const q = ' ' + String(text || '').toLowerCase() + ' ';
     for (let i = 0; i < INTENTS.length; i++) {
-      if (INTENTS[i].k.some(kw => q.indexOf(kw.toLowerCase()) >= 0)) return INTENTS[i].a()[lang()];
+      if (INTENTS[i].k.some(kw => q.indexOf(kw.toLowerCase()) >= 0)) return { a: INTENTS[i].a()[lang()], matched: true };
     }
-    if (/^\s*(hi|hello|hey|namaste|नमस्ते|नमस्कार|નમસ્તે)\b/i.test(text)) return GREET[lang()];
-    return FALLBACK[lang()];
+    if (/^\s*(hi|hello|hey|namaste|नमस्ते|नमस्कार|નમસ્તે)\b/i.test(text)) return { a: GREET[lang()], matched: true };
+    return { a: FALLBACK[lang()], matched: false };
+  }
+  /* When the rule-based bot can't answer, hand off to a human on WhatsApp
+     with the user's own question pre-filled — a miss becomes a lead. */
+  function waForwardHtml(q) {
+    const num = (typeof digits === 'function' ? digits(S().phone) : '') || '919104801507';
+    const url = 'https://wa.me/' + num + '?text=' + encodeURIComponent('SHG Sahayak — ' + q);
+    const label = { en: '💬 Ask us on WhatsApp', hi: '💬 WhatsApp पर पूछें', ne: '💬 WhatsApp मा सोध्नुहोस्', gu: '💬 WhatsApp પર પૂછો' }[lang()] || '💬 Ask us on WhatsApp';
+    return '<a class="ai-wa-cta" href="' + url + '" target="_blank" rel="noopener">' + label + '</a>';
   }
   function addMsg(html, who) {
     const d = document.createElement('div');
@@ -14244,7 +14255,9 @@ document.addEventListener('click', function (e) {
     msgs.appendChild(typing); msgs.scrollTop = msgs.scrollHeight;
     setTimeout(function () {
       typing.remove();
-      addMsg(answerIntent(q), 'bot');
+      const r = answerIntent(q);
+      addMsg(r.a, 'bot');
+      if (!r.matched) addMsg(waForwardHtml(q), 'bot');   // Part-6: forward-to-WhatsApp on miss
       try { SFX.pop(); } catch (e) {}
     }, 420);
   }
