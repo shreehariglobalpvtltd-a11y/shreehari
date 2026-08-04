@@ -9,9 +9,16 @@ require_once dirname(__DIR__) . '/includes/bootstrap.php';
 
 $base = rtrim(APP_URL, '/');
 
-// Already signed in? Go straight to the dashboard.
+// A "next" page to return to after signing in (e.g. a deep link from the
+// legacy in-app admin mode straight to a specific pending payment).
+// Restricted to a bare "<file>.php[?query]" inside admin/ — never a full
+// URL or another host, so this can't become an open redirect.
+$next     = (string) ($_GET['next'] ?? ($_POST['next'] ?? ''));
+$safeNext = (preg_match('/^[A-Za-z0-9_\-]+\.php(\?[A-Za-z0-9_=&%.\-]*)?$/', $next) === 1) ? $next : 'index.php';
+
+// Already signed in? Go straight to the destination.
 if (Auth::isAdmin()) {
-    Response::redirect('admin/index.php');
+    Response::redirect('admin/' . $safeNext);
 }
 
 $error = '';
@@ -22,7 +29,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     } else {
         $result = Auth::adminLogin((string) ($_POST['username'] ?? ''), (string) ($_POST['password'] ?? ''));
         if ($result['ok']) {
-            Response::redirect('admin/index.php');
+            Response::redirect('admin/' . $safeNext);
         }
         $error = $result['error'] ?? 'Sign in failed.';
     }
@@ -62,6 +69,7 @@ button:hover{filter:brightness(1.05)}
   <div class="sub">Staff administration</div>
   <?php if ($error !== ''): ?><div class="err"><?= Security::e($error) ?></div><?php endif; ?>
   <input type="hidden" name="<?= $csrfKey ?>" value="<?= $csrf ?>">
+  <input type="hidden" name="next" value="<?= Security::e($next) ?>">
   <label for="u">Username</label>
   <input id="u" name="username" required autofocus value="<?= Security::e($_POST['username'] ?? '') ?>">
   <label for="p">Password</label>

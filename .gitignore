@@ -1,6 +1,7 @@
 # ---- Local dev / editor -------------------------------------------
 /.claude/php-dev.ini
 /.claude/launch.json
+public_html/.claude/
 .vscode/
 .idea/
 
@@ -25,3 +26,4 @@ public_html/backup/*
 # ---- Archives / scratch -------------------------------------------
 *.zip
 *.log
+DEPLOY-STATUS.md

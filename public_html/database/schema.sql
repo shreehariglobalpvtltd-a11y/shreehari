@@ -317,6 +317,7 @@ CREATE TABLE `bookings` (
   KEY `ix_bookings_referral` (`referral_code`),
   KEY `ix_bookings_created` (`created_at`),
   KEY `ix_bookings_expiry` (`expires_at`,`status`),
+  KEY `ix_bookings_confirmed` (`status`,`confirmed_at`),
   CONSTRAINT `fk_bookings_user` FOREIGN KEY (`user_id`)
     REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -949,9 +950,38 @@ CREATE TABLE `kv_store` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
+-- =====================================================================
+--  enquiries — homepage "Quick Booking" leads (no OTP, save-only).
+--
+--  The redesigned homepage opens onto a passenger card; "Next →" saves
+--  the intent here and the visitor continues into the search flow.
+--  Staff follow up from the admin panel ("Enquiries").
+-- =====================================================================
+DROP TABLE IF EXISTS `enquiries`;
+CREATE TABLE `enquiries` (
+  `id`           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `name`         VARCHAR(120) NOT NULL,
+  `phone`        VARCHAR(20)  NOT NULL,
+  `gender`       ENUM('Male','Female','Other') NULL,
+  `nationality`  VARCHAR(60)  NULL,
+  `age`          TINYINT UNSIGNED NULL,
+  `travel_date`  DATE NULL,
+  `seats`        TINYINT UNSIGNED NOT NULL DEFAULT 1,
+  `note`         VARCHAR(255) NULL,
+  `source`       VARCHAR(40)  NOT NULL DEFAULT 'quick_booking' COMMENT 'which card/form captured the lead',
+  `status`       ENUM('new','contacted','converted','closed') NOT NULL DEFAULT 'new',
+  `ip`           VARCHAR(45)  NULL,
+  `user_agent`   VARCHAR(255) NULL,
+  `created_at`   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `ix_enquiries_created` (`created_at`),
+  KEY `ix_enquiries_status`  (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- =====================================================================
---  END OF SCHEMA — 31 tables
+--  END OF SCHEMA — 32 tables
 --  Next step: import seed.sql for routes, settings and the admin login.
 -- =====================================================================

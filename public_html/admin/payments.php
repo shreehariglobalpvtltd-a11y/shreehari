@@ -78,7 +78,7 @@ if ($flash !== null) {
     <?php if ($queue === []): ?>
       <tr><td colspan="7" class="muted" style="padding:26px;text-align:center">🎉 Nothing pending. All caught up.</td></tr>
     <?php else: foreach ($queue as $q): ?>
-      <tr>
+      <tr data-pnr="<?= Security::e($q['pnr']) ?>">
         <td class="mono">
           <a href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode($q['pnr']) ?>"><?= Security::e($q['pnr']) ?></a>
           <div class="muted"><?= Security::e(timeAgo((string) $q['created_at'])) ?></div>
@@ -116,5 +116,14 @@ if ($flash !== null) {
     </tbody>
   </table>
 </div>
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var pnr = params.get('pnr');
+  if (!pnr) return;
+  var row = document.querySelector('tr[data-pnr="' + CSS.escape(pnr) + '"]');
+  if (row) { row.classList.add('row-highlight'); row.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+})();
+</script>
 <?php
 admin_footer();

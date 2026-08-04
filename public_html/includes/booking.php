@@ -119,12 +119,15 @@ final class BookingService
                 'total_amount'    => $pricing['total'],
                 'currency'        => 'INR',
                 'referral_code'   => strtoupper(Security::clean($request['referralCode'] ?? '', 20)) ?: null,
-                'status'          => 'pending',
+                'status'          => $isCod ? 'confirmed' : 'pending',
+                'confirmed_at'    => $isCod ? date('Y-m-d H:i:s') : null,
                 'is_cod'          => $isCod ? 1 : 0,
                 'source'          => 'web',
                 'ip_address'      => Security::clientIp(),
                 'user_agent'      => Security::userAgent(),
-                'expires_at'      => date('Y-m-d H:i:s', time() + $expiryMinutes * 60),
+                // COD is confirmed on submit, so it never auto-expires; unpaid
+                // UPI/eSewa bookings still get the pending-hold expiry window.
+                'expires_at'      => $isCod ? null : date('Y-m-d H:i:s', time() + $expiryMinutes * 60),
             ]);
 
             /* ---- Outbound leg ------------------------------------- */
@@ -181,17 +184,42 @@ final class BookingService
                 self::adjustPoints((int) $userId, -$pricing['pointsUsed'], 'Redeemed at checkout ' . $pnr, $bookingId);
             }
 
+            /* ---- COD: confirm on submit (no admin wait) -----------
+               COD does NOT queue for payment verification — the booking is
+               confirmed and the ticket issued right away so it unlocks for the
+               customer immediately. Cash is still collected by the crew before
+               departure, so the payment row stays 'cod_pending' and loyalty /
+               referral commission are intentionally NOT accrued here — those
+               fire on the UPI/eSewa verify path once real money is in hand. */
+            if ($isCod) {
+                try { Ticket::issue($bookingId); }
+                catch (Throwable $e) { Logger::error('Ticket::issue (COD) failed', ['e' => $e->getMessage()]); }
+            }
+
             /* ---- Notify admin ------------------------------------- */
             self::notifyAdmin(
                 '🎫',
                 'New booking ' . $pnr,
-                ($isCod ? 'Pay-at-counter' : 'Awaiting payment') . ' · ' . count($seats) . ' seat(s) · ' . inr($pricing['total']),
+                ($isCod ? 'Pay-at-counter · CONFIRMED' : 'Awaiting payment') . ' · ' . count($seats) . ' seat(s) · ' . inr($pricing['total']),
                 $bookingId
             );
 
-            Logger::audit('booking.create', 'booking', $pnr, null, null, count($seats) . ' seats, ' . inr($pricing['total']));
+            Logger::audit('booking.create', 'booking', $pnr, null, null, count($seats) . ' seats, ' . inr($pricing['total']) . ($isCod ? ' | COD auto-confirmed' : ''));
 
             $booking = Database::fetch('SELECT * FROM bookings WHERE id = :id', ['id' => $bookingId]);
+
+            if ($booking) {
+                try {
+                    $booking['payment_method'] = $isCod ? 'cod' : $paymentMethod;
+                    if ($isCod) {
+                        // COD ticket is valid immediately — deliver it like a confirmed booking.
+                        Notify::bookingConfirmed($booking);
+                    } else {
+                        // WhatsApp/email the admin so they don't have to hit refresh.
+                        Notify::bookingReceived($booking);
+                    }
+                } catch (Throwable $e) { Logger::error('Notify (create) failed', ['e' => $e->getMessage()]); }
+            }
 
             return $booking ?? [];
         });
@@ -301,8 +329,25 @@ final class BookingService
             if ($booking === null) {
                 throw new RuntimeException('Booking not found.');
             }
-            if ($booking['status'] === 'confirmed') {
+            $old = (string) $booking['status'];
+            if ($old === 'confirmed') {
                 return $booking; // idempotent
+            }
+            /* Only a pending or rejected booking may be approved. Never resurrect a
+               cancelled booking here — cancellation carries its own refund/void state
+               (refund_amount, cancelled_at, voided commission) this path does not
+               reverse, so re-confirming it would pay the refund a second time (§4). */
+            if (!in_array($old, ['pending', 'rejected'], true)) {
+                throw new RuntimeException('Only a pending or rejected booking can be approved (this one is “' . $old . '”).');
+            }
+
+            /* Reversal safety (§4): if the seats were released (this booking was
+               rejected/cancelled and is now being re-approved), re-claim them
+               first. If a seat has been resold since, Seats::claim throws and
+               the whole transition rolls back — no double-sell. */
+            $hasSeats = Database::exists('SELECT 1 FROM booking_seats WHERE booking_id = :b', ['b' => $bookingId]);
+            if (!$hasSeats) {
+                self::reclaimSeatsFor($bookingId);
             }
 
             Database::update('payments', [
@@ -313,20 +358,25 @@ final class BookingService
             ], 'booking_id = :b', ['b' => $bookingId]);
 
             Database::update('bookings', [
-                'status'       => 'confirmed',
-                'confirmed_at' => date('Y-m-d H:i:s'),
-                'expires_at'   => null,
+                'status'        => 'confirmed',
+                'confirmed_at'  => date('Y-m-d H:i:s'),
+                'expires_at'    => null,
+                'cancel_reason' => null,   // clear any prior rejection reason
             ], 'id = :id', ['id' => $bookingId]);
 
-            // Issue the ticket now that payment is confirmed.
+            // Issue the ticket now that payment is confirmed (idempotent — reuses
+            // the existing ticket when re-approving a reversed booking).
             Ticket::issue($bookingId);
 
-            self::awardLoyalty($booking);
-            self::recordCommission($booking);
+            self::reconcileRedeemedPoints($booking, true); // re-charge points a prior reject refunded (§4)
+            self::awardLoyalty($booking);      // idempotent — one award per booking
+            self::recordCommission($booking);  // idempotent — one commission per booking
 
             self::notifyUser($booking, '✅', 'Booking confirmed', 'Your ticket for ' . $booking['pnr'] . ' is ready to download.');
+            try { Notify::bookingConfirmed($booking); }
+            catch (Throwable $e) { Logger::error('Notify::bookingConfirmed failed', ['e' => $e->getMessage()]); }
 
-            Logger::audit('booking.confirm', 'booking', (string) $booking['pnr'], null, null, $note);
+            Logger::audit('booking.confirm', 'booking', (string) $booking['pnr'], ['status' => $old], ['status' => 'confirmed'], $note);
 
             return Database::fetch('SELECT * FROM bookings WHERE id = :id', ['id' => $bookingId]) ?? [];
         });
@@ -342,6 +392,13 @@ final class BookingService
             if ($booking === null) {
                 throw new RuntimeException('Booking not found.');
             }
+            $old = (string) $booking['status'];
+            if ($old === 'rejected') {
+                return $booking; // idempotent
+            }
+            if (!in_array($old, ['pending', 'confirmed'], true)) {
+                throw new RuntimeException('Only a pending or confirmed booking can be rejected (this one is “' . $old . '”).');
+            }
 
             Database::update('payments', [
                 'status'        => 'rejected',
@@ -356,14 +413,49 @@ final class BookingService
             ], 'id = :id', ['id' => $bookingId]);
 
             Seats::releaseBooking($bookingId);
-            self::refundPointsIfAny($booking);
+            self::reconcileRedeemedPoints($booking, false); // refund redeemed points, reversibly (§4)
 
             self::notifyUser($booking, '❌', 'Payment not verified', 'Booking ' . $booking['pnr'] . ': ' . $reason);
+            try { Notify::paymentRejected($booking, $reason); }
+            catch (Throwable $e) { Logger::error('Notify::paymentRejected failed', ['e' => $e->getMessage()]); }
 
-            Logger::audit('booking.reject', 'booking', (string) $booking['pnr'], null, null, $reason);
+            /* §4 safe slice: reversing an already-confirmed booking frees the
+               seats and re-locks the customer's ticket, but the issued ticket
+               PDF, referral commission and loyalty points are intentionally NOT
+               auto-voided — flag the admin to handle those manually. */
+            if ($old === 'confirmed') {
+                self::notifyAdmin('↩️', 'Confirmed booking reversed · ' . $booking['pnr'],
+                    'Seats released and ticket re-locked. Void the issued ticket / referral commission / loyalty points manually if required.',
+                    $bookingId);
+            }
+
+            Logger::audit('booking.reject', 'booking', (string) $booking['pnr'], ['status' => $old], ['status' => 'rejected'], $reason);
 
             return Database::fetch('SELECT * FROM bookings WHERE id = :id', ['id' => $bookingId]) ?? [];
         });
+    }
+
+    /**
+     * Re-claim the seats for a booking whose seats were previously released
+     * (e.g. a rejected booking now being re-approved). Throws if any seat has
+     * since been resold, which rolls the caller's transaction back.
+     */
+    private static function reclaimSeatsFor(int $bookingId): void
+    {
+        $legs = Database::fetchAll('SELECT id, schedule_id FROM booking_legs WHERE booking_id = :b', ['b' => $bookingId]);
+        foreach ($legs as $leg) {
+            $rows  = Database::fetchAll(
+                'SELECT seat_no FROM booking_passengers WHERE booking_id = :b AND leg_id = :l',
+                ['b' => $bookingId, 'l' => (int) $leg['id']]
+            );
+            $seats = array_values(array_filter(
+                array_map(static fn($r) => (string) $r['seat_no'], $rows),
+                static fn($s) => $s !== ''
+            ));
+            if ($seats !== []) {
+                Seats::claim((int) $leg['schedule_id'], $seats, $bookingId, (int) $leg['id']);
+            }
+        }
     }
 
     /**
@@ -415,6 +507,8 @@ final class BookingService
 
             $actor = $byCustomer ? 'customer' : 'admin';
             self::notifyAdmin('🚫', 'Booking cancelled · ' . $pnr, ucfirst($actor) . ' cancelled. Refund due: ' . inr($refund['amount']), (int) $booking['id']);
+            try { Notify::bookingCancelled($booking, $refund); }
+            catch (Throwable $e) { Logger::error('Notify::bookingCancelled failed', ['e' => $e->getMessage()]); }
 
             Logger::audit('booking.cancel', 'booking', $pnr, null, null, $reason . ' | refund ' . inr($refund['amount']));
 
@@ -588,6 +682,15 @@ final class BookingService
             return;
         }
 
+        // One trip-booked award per booking, so re-confirming a reversed
+        // booking (§4) does not award loyalty points twice.
+        if (Database::exists(
+            'SELECT 1 FROM loyalty_transactions WHERE booking_id = :b AND points > 0 AND reason LIKE :r',
+            ['b' => $booking['id'], 'r' => 'Trip booked%']
+        )) {
+            return;
+        }
+
         $earned = Fare::pointsEarned((float) $booking['total_amount']);
         $bonus  = Settings::getInt('loyalty_trip_bonus', 10);
         $total  = $earned + $bonus;
@@ -609,6 +712,39 @@ final class BookingService
             if (!$already) {
                 self::adjustPoints((int) $booking['user_id'], $used, 'Refund of points ' . $booking['pnr'], (int) $booking['id']);
             }
+        }
+    }
+
+    /**
+     * Reconcile a booking's *redeemed* loyalty points to the state its status
+     * implies, so the reversible review flow (§4) can't hand out a points-funded
+     * discount for free. Confirmed ⇒ points stay spent (ledger net −points_used);
+     * rejected ⇒ points refunded (net 0). Idempotent, and self-correcting across
+     * reject⇄confirm cycles: it only ever posts the delta needed to hit the target,
+     * so re-running for the same target is a no-op. Only touches the redeemed-points
+     * ledger entries (checkout spend / refund / re-charge) — earned "Trip booked"
+     * points are handled separately by awardLoyalty.
+     */
+    private static function reconcileRedeemedPoints(array $booking, bool $shouldStaySpent): void
+    {
+        $used = (int) ($booking['points_used'] ?? 0);
+        if ($used <= 0 || empty($booking['user_id'])) {
+            return;
+        }
+        $net = (int) Database::scalar(
+            "SELECT COALESCE(SUM(points), 0) FROM loyalty_transactions
+              WHERE booking_id = :b
+                AND (reason LIKE 'Redeemed at checkout%'
+                  OR reason LIKE 'Refund of points%'
+                  OR reason LIKE 'Re-charge of points%')",
+            ['b' => (int) $booking['id']],
+            0
+        );
+        $target = $shouldStaySpent ? -$used : 0;
+        $delta  = $target - $net;
+        if ($delta !== 0) {
+            $reason = ($delta < 0 ? 'Re-charge of points ' : 'Refund of points ') . $booking['pnr'];
+            self::adjustPoints((int) $booking['user_id'], $delta, $reason, (int) $booking['id']);
         }
     }
 

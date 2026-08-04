@@ -1,0 +1,34 @@
+{
+  "name": "S Hari Global — India ⇄ Nepal Navigator",
+  "short_name": "S Hari Nav",
+  "description": "Ahmedabad ⇄ Nepalgunj bus booking and a premium India–Nepal navigation engine with offline maps, live GPS, turn-by-turn and Sanatan temple guide.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0A1628",
+  "theme_color": "#0A1628",
+  "lang": "en",
+  "categories": ["travel", "navigation", "maps"],
+  "icons": [
+    {
+      "src": "/icon-shg.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Open Navigator",
+      "short_name": "Navigator",
+      "url": "/#/nav",
+      "description": "Premium India–Nepal map navigator"
+    },
+    {
+      "name": "My Bookings",
+      "short_name": "Bookings",
+      "url": "/#/my"
+    }
+  ]
+}

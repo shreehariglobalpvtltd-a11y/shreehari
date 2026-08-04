@@ -222,7 +222,12 @@ final class Auth
             if ($wantsJson) {
                 Response::unauthorized('Your session has expired. Please sign in again.');
             }
-            Response::redirect('admin/login.php');
+            // Preserve the deep link (e.g. payments.php?pnr=SHG-...) so signing
+            // in lands the admin back where they meant to go.
+            $file = basename((string) ($_SERVER['SCRIPT_NAME'] ?? 'index.php'));
+            $qs   = (string) ($_SERVER['QUERY_STRING'] ?? '');
+            $next = $file . ($qs !== '' ? '?' . $qs : '');
+            Response::redirect('admin/login.php?next=' . rawurlencode($next));
         }
 
         if ($permission !== '' && !self::can($permission)) {

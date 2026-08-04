@@ -32,10 +32,9 @@ DirectoryIndex index.php index.html
   Require all denied
 </FilesMatch>
 
-# ---- Never execute uploaded files as code ----------------------------
-<IfModule mod_php.c>
-  php_flag engine on
-</IfModule>
+# ---- Never execute PHP inside the public uploads/ folder --------------
+# (uploads/.htaccess already disables the engine there; this block is a
+# defence-in-depth no-op for the rest of the site, which does need PHP.)
 
 # ---- Long-cache static assets ----------------------------------------
 <IfModule mod_expires.c>
@@ -46,6 +45,26 @@ DirectoryIndex index.php index.html
   ExpiresByType image/jpeg "access plus 30 days"
   ExpiresByType image/webp "access plus 30 days"
   ExpiresByType image/svg+xml "access plus 30 days"
+</IfModule>
+
+# ---- Service worker + PWA manifest: must never be long-cached --------
+# (the 7-day JS Expires above would otherwise freeze SW updates; the SW
+#  and manifest must be revalidated on every load so new versions ship.)
+<IfModule mod_headers.c>
+  <Files "sw.js">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Service-Worker-Allowed "/"
+  </Files>
+  <Files "manifest.webmanifest">
+    Header set Cache-Control "no-cache"
+  </Files>
+</IfModule>
+<IfModule mod_expires.c>
+  ExpiresByType application/manifest+json "access plus 0 seconds"
+</IfModule>
+# Serve .webmanifest with the correct MIME type.
+<IfModule mod_mime.c>
+  AddType application/manifest+json .webmanifest
 </IfModule>
 
 # ---- Gzip text responses ---------------------------------------------

@@ -333,6 +333,7 @@ final class Pdf
     {
         $tmp = tempnam(sys_get_temp_dir(), 'shgpdf');
         if ($tmp === false) {
+            Logger::error('PDF: tempnam() failed, QR/image dropped from output', [], 'pdf');
             return;
         }
 
@@ -604,7 +605,11 @@ final class Pdf
     public function save(string $path): string
     {
         ensureDir(dirname($path));
-        file_put_contents($path, $this->output());
+        $written = file_put_contents($path, $this->output());
+        if ($written === false) {
+            Logger::error('PDF: failed to write file (permissions or disk full)', ['path' => $path], 'pdf');
+            throw new RuntimeException('Could not save PDF to ' . $path);
+        }
         return $path;
     }
 

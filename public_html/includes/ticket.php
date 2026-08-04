@@ -116,9 +116,10 @@ final class Ticket
             return $path;
         }
 
-        self::renderTicketPdf($booking, $ticket)->save($path);
-
-        Database::update('tickets', ['pdf_path' => $filename], 'id = :id', ['id' => $ticket['id']]);
+        self::renderWithLock($path, !$force, static function () use ($booking, $ticket, $path, $filename) {
+            self::renderTicketPdf($booking, $ticket)->save($path);
+            Database::update('tickets', ['pdf_path' => $filename], 'id = :id', ['id' => $ticket['id']]);
+        });
 
         return $path;
     }
@@ -138,11 +139,42 @@ final class Ticket
             return $path;
         }
 
-        self::renderInvoicePdf($booking)->save($path);
-
-        Database::update('tickets', ['invoice_path' => $filename], 'id = :id', ['id' => $ticket['id']]);
+        self::renderWithLock($path, !$force, static function () use ($booking, $ticket, $path, $filename) {
+            self::renderInvoicePdf($booking)->save($path);
+            Database::update('tickets', ['invoice_path' => $filename], 'id = :id', ['id' => $ticket['id']]);
+        });
 
         return $path;
+    }
+
+    /**
+     * Serialize concurrent first-time renders of the same PDF (e.g. a
+     * WhatsApp link-preview crawler and the actual customer both hitting
+     * download-ticket.php within the same second) so two requests never
+     * render and write the same file at once. Uses an exclusive flock on
+     * a sibling .lock file, with a double-checked is_file() re-read once
+     * the lock is held so the second caller just reuses the first's
+     * output instead of rendering again.
+     */
+    private static function renderWithLock(string $path, bool $skipIfExists, callable $render): void
+    {
+        ensureDir(dirname($path));
+        $fp = @fopen($path . '.lock', 'c');
+        if ($fp === false) {
+            // Locking unavailable (e.g. restrictive shared-hosting perms) —
+            // fall back to rendering directly rather than failing the download.
+            $render();
+            return;
+        }
+        flock($fp, LOCK_EX);
+        try {
+            if (!$skipIfExists || !is_file($path)) {
+                $render();
+            }
+        } finally {
+            flock($fp, LOCK_UN);
+            fclose($fp);
+        }
     }
 
 

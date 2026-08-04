@@ -6,21 +6,31 @@ declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 $admin = admin_boot('dashboard.view');
 
-$today = todayISO();
+$today     = todayISO();
+$todayEnd  = addDaysISO($today, 1);
+$monthStart = date('Y-m-01');
+$monthEnd   = date('Y-m-01', strtotime('+1 month'));
 
+/* Range predicates (>= start AND < end) instead of DATE()/YEAR()/MONTH()
+   wrapping — a wrapped column can't use the ix_bookings_created /
+   ix_bookings_status indexes, so these were full table scans. */
 $stats = [
     'pendingPay'   => (int) Database::scalar(
         "SELECT COUNT(*) FROM bookings WHERE status='pending'"),
     'todayBookings'=> (int) Database::scalar(
-        "SELECT COUNT(*) FROM bookings WHERE DATE(created_at)=:d", ['d' => $today]),
+        "SELECT COUNT(*) FROM bookings WHERE created_at>=:d0 AND created_at<:d1",
+        ['d0' => $today, 'd1' => $todayEnd]),
     'confirmed'    => (int) Database::scalar(
         "SELECT COUNT(*) FROM bookings WHERE status='confirmed'"),
     'revenueToday' => (float) Database::scalar(
-        "SELECT COALESCE(SUM(total_amount),0) FROM bookings WHERE status='confirmed' AND DATE(confirmed_at)=:d", ['d' => $today]),
+        "SELECT COALESCE(SUM(total_amount),0) FROM bookings WHERE status='confirmed' AND confirmed_at>=:d0 AND confirmed_at<:d1",
+        ['d0' => $today, 'd1' => $todayEnd]),
     'revenueMonth' => (float) Database::scalar(
-        "SELECT COALESCE(SUM(total_amount),0) FROM bookings WHERE status='confirmed' AND YEAR(confirmed_at)=YEAR(CURDATE()) AND MONTH(confirmed_at)=MONTH(CURDATE())"),
+        "SELECT COALESCE(SUM(total_amount),0) FROM bookings WHERE status='confirmed' AND confirmed_at>=:m0 AND confirmed_at<:m1",
+        ['m0' => $monthStart, 'm1' => $monthEnd]),
     'seatsToday'   => (int) Database::scalar(
-        "SELECT COUNT(*) FROM booking_seats bs JOIN bookings b ON b.id=bs.booking_id WHERE b.status='confirmed' AND DATE(b.confirmed_at)=:d", ['d' => $today]),
+        "SELECT COUNT(*) FROM booking_seats bs JOIN bookings b ON b.id=bs.booking_id WHERE b.status='confirmed' AND b.confirmed_at>=:d0 AND b.confirmed_at<:d1",
+        ['d0' => $today, 'd1' => $todayEnd]),
 ];
 
 $recent = Database::fetchAll(
