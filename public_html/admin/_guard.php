@@ -232,6 +232,11 @@ a{color:var(--blue);text-decoration:none}
 .side a.on .navbadge{background:var(--card);color:var(--navy)}
 .row-highlight{background:#fff4d1 !important;animation:rowpulse 1.6s ease 2}
 @keyframes rowpulse{0%,100%{background:#fff4d1}50%{background:#ffe28a}}
+/* Dark mode: the cream highlight + near-white --ink would be invisible, so
+   give highlighted rows a legible dark palette (static — the pale pulse is
+   suppressed since its cream keyframes lose to this !important background). */
+:root[data-theme="dark"] .row-highlight{background:#3a2f12 !important;color:#ffe9a8;animation:none}
+:root[data-theme="dark"] .row-highlight td,:root[data-theme="dark"] .row-highlight th{color:#ffe9a8}
 .wrap{margin-left:210px;padding:22px 26px;max-width:1150px}
 .wrap h1{margin:2px 0 18px;font-size:22px}
 .scrim{display:none}
