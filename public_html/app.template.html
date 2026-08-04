@@ -1260,6 +1260,23 @@ table.admin .code{font-family:var(--f-code);font-size:12.5px}
 </head>
 <body>
 
+<!-- ============ [A11Y] Skip-to-content + global keyboard focus ring (Part 7) ============ -->
+<style>
+.skip-link{position:fixed;top:-64px;left:8px;z-index:3000;background:var(--blue-deep,#12264E);color:#fff;padding:10px 18px;border-radius:0 0 12px 12px;font-weight:700;font-size:14px;text-decoration:none;transition:top .18s ease}
+.skip-link:focus{top:0}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[role="button"]:focus-visible{outline:3px solid var(--orange,#F07C1F);outline-offset:2px}
+.view:focus{outline:none}
+</style>
+<a class="skip-link" href="#" id="skipToContent">Skip to content · मुख्य सामग्रीमा जानुहोस्</a>
+<script>
+(function(){var s=document.getElementById('skipToContent');if(!s)return;
+s.addEventListener('click',function(e){e.preventDefault();
+  var m=document.querySelector('.view.active')||document.querySelector('main,[role="main"]')||document.body;
+  m.setAttribute('tabindex','-1');m.focus();
+  try{m.scrollIntoView({behavior:'smooth',block:'start'});}catch(_){}
+});})();
+</script>
+
 <!-- ============ [HTML] SPLASH SCREEN — cold launch cinematic ============ -->
 <div class="splash" id="splash">
   <div class="float-hero-wrap" style="position:absolute;inset:0;height:auto;margin:0;opacity:.55" aria-hidden="true">
