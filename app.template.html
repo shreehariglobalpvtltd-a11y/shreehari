@@ -115,29 +115,29 @@ body{margin:0;background:#FFFFFF}
 .splash-phone{display:inline-flex;align-items:center;gap:8px;margin-top:22px;padding:10px 22px;border-radius:999px;background:#FFF1E4;border:1px solid rgba(240,124,31,.34);color:#C25E10;font-family:'Cinzel',Georgia,serif;font-size:17px;font-weight:800;letter-spacing:.03em;text-decoration:none;opacity:0;transform:translateY(10px)}
 @media (max-width:400px){.splash-logo{width:min(52vw,132px)}.splash-title{font-size:clamp(23px,7.6vw,32px)}.splash-ceo b{font-size:15.5px}}
 </style>
-  <link rel="preload" as="image" href="/assets/img/logo.png?v=20260913b" fetchpriority="high">
-  <link rel="stylesheet" href="/assets/css/app.css?v=20260913b">
-  <link rel="stylesheet" href="/assets/css/views.css?v=20260913b">
+  <link rel="preload" as="image" href="/assets/img/logo.png?v=20260917a" fetchpriority="high">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260917a">
+  <link rel="stylesheet" href="/assets/css/views.css?v=20260917a">
 <!-- App bundle: `defer` keeps the same execution order and still runs after the
      document is parsed, but placing the tags in <head> lets the browser start
      fetching ~1 MB of JS with the FIRST bytes of HTML instead of after it has
      parsed ~190 KB of markup (perf pass, 11 Sep 2026). -->
-<script defer src="/assets/js/01-boot.js?v=20260913b"></script>
-<script defer src="/assets/js/02-config.js?v=20260913b"></script>
-<script defer src="/assets/js/03-accounts.js?v=20260913b"></script>
-<script defer src="/assets/js/04-i18n.js?v=20260913b"></script>
-<script defer src="/assets/js/05-router.js?v=20260913b"></script>
-<script defer src="/assets/js/06-results.js?v=20260913b"></script>
-<script defer src="/assets/js/07-checkout.js?v=20260913b"></script>
-<script defer src="/assets/js/14-counter.js?v=20260913b"></script>
-<script defer src="/assets/js/08-signin.js?v=20260913b"></script>
-<script defer src="/assets/js/10-track.js?v=20260913b"></script>
-<script defer src="/assets/js/11-pdf-ticket.js?v=20260913b"></script>
-<script defer src="/assets/js/13-admin-routes.js?v=20260913b"></script>
+<script defer src="/assets/js/01-boot.js?v=20260917a"></script>
+<script defer src="/assets/js/02-config.js?v=20260917a"></script>
+<script defer src="/assets/js/03-accounts.js?v=20260917a"></script>
+<script defer src="/assets/js/04-i18n.js?v=20260917a"></script>
+<script defer src="/assets/js/05-router.js?v=20260917a"></script>
+<script defer src="/assets/js/06-results.js?v=20260917a"></script>
+<script defer src="/assets/js/07-checkout.js?v=20260917a"></script>
+<script defer src="/assets/js/14-counter.js?v=20260917a"></script>
+<script defer src="/assets/js/08-signin.js?v=20260917a"></script>
+<script defer src="/assets/js/10-track.js?v=20260917a"></script>
+<script defer src="/assets/js/11-pdf-ticket.js?v=20260917a"></script>
+<script defer src="/assets/js/13-admin-routes.js?v=20260917a"></script>
 <!-- 13 Sep 2026: PWA layer — install sheet, Web Push, border prep card,
      split-pay, 7-day seat-fill chart. Last on purpose: it reads the globals
      the files above define and every hook it adds is optional. -->
-<script defer src="/assets/js/17-pwa.js?v=20260913b"></script>
+<script defer src="/assets/js/17-pwa.js?v=20260917a"></script>
 <meta property="og:title" content="S Hari Global Pvt Ltd — Gujarat ⇄ Rupaidiha Bus">
 <meta property="og:description" content="Direct AC Sleeper coach from Gujarat (India) to the Rupaidiha–Nepalgunj border. Boarding at Surat, Baroda, Emli Bhupal, S Hari Parking (Nana Chiloda) & Mehsana (Silver Complex). Book online at one fixed fair price. Private & sharing cabins.">
 <meta property="og:type" content="website">
@@ -166,14 +166,14 @@ body{margin:0;background:#FFFFFF}
 <meta name="description" content="S Hari Global Pvt Ltd — India to Nepal bus transport (Gujarat ⇄ Rupaidiha) and international import & export. Registered Pvt Ltd company, Mehsana, Gujarat.">
 <!-- Real brand favicon, not the emoji placeholder. PNG first for the tab
      strip, the SVG kept as the scalable fallback. -->
-<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon-32.png?v=20260913b">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon-32.png?v=20260917a">
 <link rel="icon" type="image/svg+xml" href="/icon-shg.svg">
 <!-- PWA / offline navigator: installable app + service-worker cached maps -->
 <link rel="manifest" href="/manifest.webmanifest">
 <!-- iOS ignores SVG here and silently falls back to a screenshot of the
      page, which is why the home-screen icon looked like a web page.
      A 180px opaque PNG is the only thing Safari will use. -->
-<link rel="apple-touch-icon" sizes="180x180" href="/assets/img/apple-touch-icon.png?v=20260913b">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/img/apple-touch-icon.png?v=20260917a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SHG Bus">
@@ -256,13 +256,21 @@ s.addEventListener('click',function(e){e.preventDefault();
     <span class="float-item float-om" style="top:58%;left:auto;right:22%">🏹</span>
   </div>
   <div class="splash-content">
+    <!-- India–Nepal outline + the Gujarat→Rupaidiha road draw themselves behind
+         the brand while the app boots (17 Sep 2026). Inline opacity:0 keeps it
+         invisible until views.css animates it, so the first paint is unchanged. -->
+    <svg class="splash-map" viewBox="0 0 540 310" aria-hidden="true" style="opacity:0">
+      <path class="sm-in" pathLength="1" d="M141,12 L125,32 L108,58 L88,78 L64,102 L40,128 L25,142 L47,150 L38,163 L62,172 L82,162 L96,175 L104,192 L118,226 L138,258 L163,290 L184,301 L206,278 L228,252 L246,232 L270,208 L300,190 L332,172 L352,166 L364,158 L372,146 L370,130 L380,120 L396,116 L424,120 L425,142 L440,134 L448,110 L468,120 L500,102 L516,92 L472,84 L436,98 L400,104 L378,106 L366,116 L330,114 L296,106 L261,101 L229,92 L219,76 L200,58 L172,38 Z"/>
+      <path class="sm-np" pathLength="1" d="M229,92 L246,76 L272,80 L302,86 L334,94 L368,100 L366,116 L330,114 L296,106 L261,101 Z"/>
+      <path class="sm-route" pathLength="1" d="M24,296 L64,264 L98,246 L126,232 L440,78"/>
+    </svg>
     <div class="splash-brand">
-      <img src="/assets/img/logo.png?v=20260913b" alt="S Hari Global Pvt Ltd" class="splash-logo" width="440" height="321" fetchpriority="high" decoding="sync">
+      <img src="/assets/img/logo.png?v=20260917a" alt="S Hari Global Pvt Ltd" class="splash-logo" width="440" height="321" fetchpriority="high" decoding="sync">
       <div class="splash-title" id="splashTitle">S Hari Global Pvt Ltd</div>
     </div>
     <div class="splash-tagline" id="splashTagline">Gujarat ⇄ Rupaidiha · India–Nepal Transport</div>
     <div class="splash-ceo">
-      <img src="/assets/img/ceo.jpg?v=20260913b" class="splash-ceo-photo" alt="Sher Bahadur Bishwokarma" onerror="this.style.display='none'">
+      <img src="/assets/img/ceo.jpg?v=20260917a" class="splash-ceo-photo" alt="Sher Bahadur Bishwokarma" onerror="this.style.display='none'">
       <b>Sher Bahadur Bishwokarma</b><span>👑 Founder &amp; CEO · Director</span>
     </div>
     <a class="splash-phone" id="splashPhone" href="#"><span class="sp-ico">📞</span><span class="sp-num"></span></a>
@@ -297,7 +305,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <!-- Scene 1 — CEO introduction FIRST (sabai bhanda pehle) -->
       <div class="intro-scene" id="introS1">
         <div class="ceo-intro">
-          <div class="ceo-intro-photo"><img id="introCeoImg" src="/assets/img/ceo.jpg?v=20260913b" alt="Sher Bahadur Bishwokarma" loading="lazy" decoding="async" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="ceo-intro-initials" style="display:none">SB</span></div>
+          <div class="ceo-intro-photo"><img id="introCeoImg" src="/assets/img/ceo.jpg?v=20260917a" alt="Sher Bahadur Bishwokarma" loading="lazy" decoding="async" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="ceo-intro-initials" style="display:none">SB</span></div>
           <div class="ceo-intro-name">Sher Bahadur Bishwokarma</div>
           <div class="ceo-intro-title">👑 Founder &amp; CEO · Director</div>
           <div class="intro-company">S HARI GLOBAL PVT LTD</div>
@@ -449,7 +457,7 @@ s.addEventListener('click',function(e){e.preventDefault();
 <header class="nav" id="nav">
   <div class="container nav-inner">
     <a class="brand" href="#/" data-scroll="top" aria-label="S Hari Global Pvt Ltd — Home">
-      <img id="logoNav" src="/assets/img/logo.png?v=20260913b" alt="S Hari Global Pvt Ltd Logo" width="440" height="321" decoding="async">
+      <img id="logoNav" src="/assets/img/logo.png?v=20260917a" alt="S Hari Global Pvt Ltd Logo" width="440" height="321" decoding="async">
     </a>
     <nav class="nav-links" aria-label="Main">
       <a class="nav-link" href="#/" data-scroll="top"><svg class="ic"><use href="#i-home"/></svg> Home</a>
@@ -533,6 +541,13 @@ s.addEventListener('click',function(e){e.preventDefault();
         <p class="hero-brand-np">S Hari Global <span class="npdot">·</span> Nepal</p>
         <p class="hero-slogan" data-i18n="heroTitle">Two nations. One road. <span class="grad">One&nbsp;journey.</span></p>
         <p class="hero-sub" data-i18n="heroSub">Direct <b>Gujarat → Rupaidiha</b> coach. Book your seat, pay by UPI or eSewa — with a registered Indian company.</p>
+        <!-- Coach facilities as printed on the company visiting card (17 Sep 2026). -->
+        <ul class="hero-feats" aria-label="Coach facilities">
+          <li><i>🚌</i><span data-i18n="heroFeat1">AC Sleeper</span></li>
+          <li><i>📍</i><span data-i18n="heroFeat2">Live GPS Tracking</span></li>
+          <li><i>⚡</i><span data-i18n="heroFeat3">USB / Type-C Charging</span></li>
+          <li><i>🛡️</i><span data-i18n="heroFeat4">Safe &amp; Comfortable Journey</span></li>
+        </ul>
         <p class="hero-quote" id="heroQuote"></p>
         <div id="nextDepBox" style="margin-top:14px;display:inline-flex;align-items:center;gap:10px;background:rgba(255,255,255,.12);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:10px 18px;font-size:14px;color:#fff;font-weight:700">
           🚌 Next Departure in: <span id="nextDepTimer" style="font-family:var(--f-code);font-size:18px;letter-spacing:.08em;color:#FFD54F">--:--:--</span>
@@ -600,49 +615,29 @@ s.addEventListener('click',function(e){e.preventDefault();
     <button type="button" class="qt-collapsed" id="qtCollapsed" hidden data-bkmode="quick">⚡ <b data-i18n="bkBackQuick">QuickBot: नाम + मोबाइल → १० सेकेन्डमा टिकट</b><span data-i18n="bkSwitch">बदल्नुहोस् →</span></button>
   </div>
 
-  <!-- ============ §6 LIVE ROUTE ANIMATION — realistic highway scene (India → Nepal) ============ -->
-  
+  <!-- ============ §6 LIVE ROUTE — 3D highway scene (17 Sep 2026) ============
+       The coach is the real S Hari Global bus cut out of the company visiting
+       card (assets/img/bus-shg*.webp, PNG fallback). Sky, Himalaya, foothills,
+       a perspective-tilted asphalt plane and the coach are separate layers so
+       every motion is a transform (compositor only). CSS: views.css block 7. -->
   <div class="container">
-    <div class="route-anim" id="routeAnim" role="img" aria-label="Live route: bus travelling from Gujarat, India to the Rupaidiha India–Nepal border">
-      <span class="ra-sun"></span>
-      <div class="ra-range ra-range-far"></div>
-      <div class="ra-range ra-range-near"></div>
-      <div class="ra-pin ra-in"><span class="ra-fl">🇮🇳</span>Gujarat</div>
-      <div class="ra-pin ra-np"><span class="ra-fl">🇳🇵</span>Rupaidiha</div>
-      <div class="ra-posts"></div>
-      <div class="ra-road">
-        <span class="ra-edge top"></span>
-        <span class="ra-lane"></span>
-        <span class="ra-edge bot"></span>
-      </div>
-      <div class="ra-bus">
-        <svg viewBox="0 0 100 50" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <rect x="3" y="9" width="86" height="27" rx="6" fill="#2E5FA8"/>
-          <path d="M89,13 q7,1 8,9 l0,7 q0,3 -3,3 l-5,0 z" fill="#2E5FA8"/>
-          <path d="M90,15 q5,1 6,7 l-6,0 z" fill="#bcd7f2"/>
-          <rect x="8" y="13" width="12" height="9" rx="2" fill="#bcd7f2"/>
-          <rect x="22" y="13" width="12" height="9" rx="2" fill="#bcd7f2"/>
-          <rect x="36" y="13" width="12" height="9" rx="2" fill="#bcd7f2"/>
-          <rect x="50" y="13" width="12" height="9" rx="2" fill="#bcd7f2"/>
-          <rect x="64" y="13" width="12" height="9" rx="2" fill="#bcd7f2"/>
-          <rect x="3" y="26" width="86" height="6" fill="#F07C1F"/>
-          <rect x="3" y="32" width="94" height="4" rx="2" fill="#1C3B72"/>
-          <circle cx="93" cy="30" r="2.4" fill="#FFE082"/>
-          <g class="ra-wheel" style="animation-delay:0s">
-            <circle cx="26" cy="38" r="7.5" fill="#1a1d24"/>
-            <circle cx="26" cy="38" r="3" fill="#9aa3b0"/>
-            <rect x="25" y="31.5" width="2" height="13" fill="#5b6470"/>
-            <rect x="19.5" y="37" width="13" height="2" fill="#5b6470"/>
-          </g>
-          <g class="ra-wheel" style="animation-delay:0s">
-            <circle cx="72" cy="38" r="7.5" fill="#1a1d24"/>
-            <circle cx="72" cy="38" r="3" fill="#9aa3b0"/>
-            <rect x="71" y="31.5" width="2" height="13" fill="#5b6470"/>
-            <rect x="65.5" y="37" width="13" height="2" fill="#5b6470"/>
-          </g>
-        </svg>
-      </div>
-      <div class="ra-tag">≈1,375 km · via Rupaidiha Border</div>
+    <div class="route-anim" id="routeAnim" role="img" aria-label="S Hari Global coach travelling from Gujarat, India to the Rupaidiha India–Nepal border">
+      <span class="ra3-sun"></span>
+      <span class="ra3-cloud c1"></span><span class="ra3-cloud c2"></span><span class="ra3-cloud c3"></span>
+      <div class="ra3-layer ra3-far"><i></i></div>
+      <div class="ra3-layer ra3-near"><i></i></div>
+      <div class="ra3-pin ra3-in"><span class="ra3-fl">🇮🇳</span>Gujarat</div>
+      <div class="ra3-pin ra3-np"><span class="ra3-fl">🇳🇵</span>Rupaidiha</div>
+      <div class="ra3-ground"><div class="ra3-road"><i class="ra3-stripes"></i><i class="ra3-edge t"></i><i class="ra3-edge b"></i></div></div>
+      <div class="ra3-bus"><div class="ra3-body">
+        <span class="ra3-shadow"></span>
+        <picture>
+          <source type="image/webp" srcset="/assets/img/bus-shg-sm.webp 600w, /assets/img/bus-shg.webp 1129w" sizes="(max-width:520px) 140px, 196px">
+          <img src="/assets/img/bus-shg-sm.png" alt="" width="1129" height="593" decoding="async" fetchpriority="low">
+        </picture>
+        <span class="ra3-beam"></span>
+      </div></div>
+      <div class="ra3-tag">≈1,375 km · via Rupaidiha Border 🛃</div>
     </div>
   </div>
 
@@ -740,6 +735,11 @@ s.addEventListener('click',function(e){e.preventDefault();
         </div>
         <button class="btn btn-orange btn-search" type="submit" data-i18n="sSearch">Search buses →</button>
       </div>
+      <!-- One-tap WhatsApp booking (17 Sep 2026): the message carries the date,
+           direction and town chosen above; handled in 05-router (WhatsApp sheet). -->
+      <div class="s-wa-row">
+        <button type="button" class="btn btn-wa s-wa-btn" id="waBookBtn"><b data-i18n="sWaBook">💬 Book on WhatsApp</b><small data-i18n="sWaBookSub">date · direction · pickup auto-filled</small></button>
+      </div>
 
       <!-- Sweet trip summary — direction, town → Rupaidiha, per-person fare and
            how many buses run that day, all before anyone presses Search. -->
@@ -824,7 +824,7 @@ s.addEventListener('click',function(e){e.preventDefault();
   <div class="container" style="margin-top:26px">
     <div class="founder-card founder-highlight reveal">
       <div class="founder-avatar-wrap">
-        <img id="ceoHeroImg" src="/assets/img/ceo.jpg?v=20260913b" alt="Sher Bahadur Bishwokarma — CEO &amp; Director" loading="lazy" decoding="async" style="width:100%;height:100%;border-radius:50%;object-fit:cover;padding:0" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <img id="ceoHeroImg" src="/assets/img/ceo.jpg?v=20260917a" alt="Sher Bahadur Bishwokarma — CEO &amp; Director" loading="lazy" decoding="async" style="width:100%;height:100%;border-radius:50%;object-fit:cover;padding:0" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
         <span class="founder-initials" style="display:none">SB</span>
         <button type="button" id="ceoPhotoBtn" title="CEO photo यहाँबाट upload गर्नुहोस् — gallery बाट छान्ने बित्तिकै save हुन्छ" style="position:absolute;bottom:-2px;right:-2px;width:30px;height:30px;border-radius:50%;border:2px solid var(--card);background:var(--orange);color:#fff;font-size:14px;cursor:pointer;line-height:1;padding:0">📷</button>
         <input type="file" id="ceoPhotoFile" accept="image/*" style="display:none">
@@ -1110,6 +1110,7 @@ s.addEventListener('click',function(e){e.preventDefault();
           <div class="quote">"S Hari Global Pvt Ltd is a registered Private Limited Company under the Ministry of Corporate Affairs, India, officially classified under Travel Agents &amp; Tour Operators activities — reflecting our core mission of connecting India and Nepal through safe, reliable bus transport, alongside our international import &amp; export operations."</div>
           <p>Every ticket you book is issued by a company you can verify on official government records — not an anonymous portal. Our corporate identity, registration state and business classification are published openly below and in the footer of every page, as required by Indian company-law disclosure norms.</p>
           <p>From our head office in Mehsana, we operate the passenger corridor from Gujarat to the Rupaidiha (India–Nepal) border — onward to Nepalgunj — and a growing import–export practice on the same trusted route.</p>
+          <p>On the Nepal side the service is run by our sister company <b>श्री हरी ग्लोबल प्रा. लि. (Shree Hari Global Pvt. Ltd.)</b>, incorporated under Nepal's Companies Act 2063 with its registered office in Nepalgunj Sub-Metropolitan City, Ward 2, Banke — so both ends of the road are served by a registered company.</p>
         </div>
         <div class="reg-card reveal d1">
           <h3>Official registration record</h3>
@@ -1120,6 +1121,12 @@ s.addEventListener('click',function(e){e.preventDefault();
           <div class="reg-row"><span>Registrar</span><b>Ministry of Corporate Affairs</b></div>
           <div class="reg-row"><span>NIC 52291 activity</span><b>Travel Agents &amp; Tour Operators</b></div>
           <div class="reg-row"><span>Registered office</span><b>Near Shilpa Garage, Silver Complex, Mehsana – 384002, Gujarat</b></div>
+          <h3 style="margin-top:22px">🇳🇵 Nepal entity</h3>
+          <div class="reg-row"><span>Company name</span><b>श्री हरी ग्लोबल प्रा. लि. · Shree Hari Global Pvt. Ltd.</b></div>
+          <div class="reg-row"><span>Law</span><b>Companies Act, 2063 (Nepal)</b></div>
+          <div class="reg-row"><span>Registrar</span><b>Office of the Company Registrar, Tripureshwor, Kathmandu</b></div>
+          <div class="reg-row"><span>Articles certified</span><b>2083-05-29 BS · 14 Sep 2026</b></div>
+          <div class="reg-row"><span>Registered office</span><b>Nepalgunj Sub-Metropolitan City, Ward No. 2, Banke District, Lumbini Province</b></div>
         </div>
       </div>
     </div>
@@ -1379,7 +1386,7 @@ s.addEventListener('click',function(e){e.preventDefault();
           <table style="width:100%;font-size:13.5px;border-collapse:collapse">
             <tr><td style="padding:5px 0;color:var(--muted);white-space:nowrap">Company</td><td style="padding:5px 0 5px 12px;font-weight:600">S Hari Global Pvt Ltd</td></tr>
             <tr><td style="padding:5px 0;color:var(--muted)">Head Office</td><td style="padding:5px 0 5px 12px">Mehsana, Gujarat</td></tr>
-            <tr><td style="padding:5px 0;color:var(--muted)">Registration</td><td style="padding:5px 0 5px 12px" id="lhInReg">Pending / To be updated</td></tr>
+            <tr><td style="padding:5px 0;color:var(--muted)">Registration</td><td style="padding:5px 0 5px 12px" id="lhInReg">CIN <span style="font-family:var(--f-code)">U52291GJ2026PTC174029</span> · Ministry of Corporate Affairs</td></tr>
             <tr><td style="padding:5px 0;color:var(--muted)">Phone</td><td style="padding:5px 0 5px 12px"><a href="tel:+919104801507" style="color:var(--orange);font-weight:600">+91 91048 01507</a></td></tr>
             <tr><td style="padding:5px 0;color:var(--muted)">Service</td><td style="padding:5px 0 5px 12px">Sleeper Bus — Private & Sharing Cabins</td></tr>
           </table>
@@ -1387,11 +1394,12 @@ s.addEventListener('click',function(e){e.preventDefault();
         <div class="c-card reveal" style="padding:22px">
           <h4 style="font-family:var(--f-display);font-size:15px;margin:0 0 12px">🇳🇵 Nepal Operations</h4>
           <table style="width:100%;font-size:13.5px;border-collapse:collapse">
-            <tr><td style="padding:5px 0;color:var(--muted);white-space:nowrap">Company</td><td style="padding:5px 0 5px 12px;font-weight:600" id="lhNpCompany">S Hari Global (Nepal)</td></tr>
-            <tr><td style="padding:5px 0;color:var(--muted)">Office</td><td style="padding:5px 0 5px 12px">Nepalgunj, Banke District</td></tr>
-            <tr><td style="padding:5px 0;color:var(--muted)">Registration</td><td style="padding:5px 0 5px 12px" id="lhNpReg">Pending / To be updated</td></tr>
+            <tr><td style="padding:5px 0;color:var(--muted);white-space:nowrap">Company</td><td style="padding:5px 0 5px 12px;font-weight:600" id="lhNpCompany">श्री हरी ग्लोबल प्रा. लि. · Shree Hari Global Pvt. Ltd.</td></tr>
+            <tr><td style="padding:5px 0;color:var(--muted)">Office</td><td style="padding:5px 0 5px 12px">Nepalgunj Sub-Metropolitan City, Ward 2, Banke District</td></tr>
+            <tr><td style="padding:5px 0;color:var(--muted)">Registration</td><td style="padding:5px 0 5px 12px" id="lhNpReg">Companies Act 2063 · Office of the Company Registrar, Kathmandu · Articles certified 2083-05-29 BS</td></tr>
             <tr><td style="padding:5px 0;color:var(--muted)">Border</td><td style="padding:5px 0 5px 12px">Rupaidiha (IN) / Jamunaha (NP)</td></tr>
             <tr><td style="padding:5px 0;color:var(--muted)">Service</td><td style="padding:5px 0 5px 12px">Cross-border ticketing & operations</td></tr>
+            <tr><td style="padding:5px 0;color:var(--muted)">Phone</td><td style="padding:5px 0 5px 12px"><a href="tel:+9779866201375" style="color:var(--orange);font-weight:600">+977 986-6201375</a> · <a href="tel:+9779848889950" style="color:var(--orange);font-weight:600">+977 984-8889950</a></td></tr>
           </table>
         </div>
       </div>
@@ -1508,6 +1516,7 @@ s.addEventListener('click',function(e){e.preventDefault();
           </div>
           <div class="c-row"><span class="ico">📍</span><div><b>Address</b><span>Near Shilpa Garage, Silver Complex,<br>Mehsana – 384002, Gujarat, India</span></div></div>
           <div class="c-row"><span class="ico">📞</span><div><b>Phone / WhatsApp</b><a href="tel:+919104801507">+91 91048 01507</a> <a class="wa-chip" href="https://wa.me/919104801507" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
+          <div class="c-row"><span class="ico">👑</span><div><b>Director · Sher Bahadur Bishwokarma (24/7)</b><a href="tel:+919726401507">+91 97264 01507</a> <a class="wa-chip" href="https://wa.me/919726401507" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
           <div class="c-row"><span class="ico">✉️</span><div><b>Email</b><a href="mailto:shreehariglobalpvtltd@gmail.com">shreehariglobalpvtltd@gmail.com</a></div></div>
           <div class="c-row"><span class="ico">🏛️</span><div><b>CIN</b><span style="font-family:var(--f-code)">U52291GJ2026PTC174029</span></div></div>
           <div class="c-row"><span class="ico">⏰</span><div><b>Office Hours</b><span>Mon–Sat: 9:00 AM – 8:00 PM IST</span></div></div>
@@ -1523,14 +1532,17 @@ s.addEventListener('click',function(e){e.preventDefault();
             <span style="font-size:28px">🇳🇵</span>
             <div><b style="font-family:var(--f-display);font-size:16px">Nepalgunj Branch Office</b><br><span style="font-size:12px;color:var(--muted)">Nepal Boarding & Drop Point</span></div>
           </div>
-          <div class="c-row"><span class="ico">📍</span><div><b>ठेगाना / Address</b><span>Bus Park, Main Terminal,<br>Nepalgunj – Banke, Nepal</span></div></div>
-          <div class="c-row"><span class="ico">📞</span><div><b>Phone / WhatsApp</b><a href="tel:+919104801507">+91 91048 01507</a> <a class="wa-chip" href="https://wa.me/919104801507" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
+          <div class="c-row"><span class="ico">📍</span><div><b>ठेगाना / Address</b><span>Shree Hari Global Pvt. Ltd. · Nepalgunj Sub-Metropolitan City, Ward No. 2,<br>Banke District, Lumbini Province, Nepal (Bus Park side)</span></div></div>
+          <!-- Nepal team + numbers exactly as printed on the Nepali visiting card (17 Sep 2026). -->
+          <div class="c-row"><span class="ico">📞</span><div><b>लोक बहादुर सुनार · Lok Bahadur Sunar</b><a href="tel:+9779866201375">+977 986-6201375</a> <a class="wa-chip" href="https://wa.me/9779866201375" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
+          <div class="c-row"><span class="ico">📞</span><div><b>बल बहादुर बि.क. · Bal Bahadur B.K.</b><a href="tel:+9779848889950">+977 984-8889950</a> <a class="wa-chip" href="https://wa.me/9779848889950" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
+          <div class="c-row"><span class="ico">📞</span><div><b>महेन्द्र सिंह · Mahendra Singh</b><a href="tel:+9779848119600">+977 984-8119600</a> <a class="wa-chip" href="https://wa.me/9779848119600" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
           <div class="c-row"><span class="ico">🏷️</span><div><b>Services</b><span>टिकट बुकिङ · Boarding सहयोग · सामान सहयोग · सीमा नाका सहायता</span></div></div>
           <div class="c-row"><span class="ico">⏰</span><div><b>Office Hours</b><span>Daily: 8:00 AM – 7:00 PM NPT</span></div></div>
           <div class="c-row"><span class="ico">🌐</span><div><b>भाषा / Languages</b><span>नेपाली · हिन्दी · English</span></div></div>
           <a class="map-cta" href="https://www.google.com/maps/search/?api=1&query=Bus+Park+Nepalgunj+Banke+Nepal" target="_blank" rel="noopener">
             <span class="pinbig">🗺️</span>
-            <span><b style="display:block;color:var(--ink)">Open in Google Maps</b><span style="font-size:12.5px;color:var(--muted)">Nepalgunj Bus Park मा दिशा पाउनुहोस्</span></span>
+            <span><b style="display:block;color:var(--ink)">Open in Google Maps</b><span style="font-size:12.5px;color:var(--muted)">Nepalgunj Ward 2 · Bus Park मा दिशा पाउनुहोस्</span></span>
           </a>
         </div>
 
@@ -1546,6 +1558,28 @@ s.addEventListener('click',function(e){e.preventDefault();
           <div class="c-row"><span class="ico">📞</span><div><b>Baroda (Vadodara)</b><a href="tel:+918735881507">+91 87358 81507</a> <a class="wa-chip" href="https://wa.me/918735881507" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
           <div class="c-row"><span class="ico">📞</span><div><b>Surat</b><a href="tel:+917359301507">+91 73593 01507</a> <a class="wa-chip" href="https://wa.me/917359301507" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
           <div class="c-row"><span class="ico">💬</span><div><b>24×7 Support / WhatsApp</b><a href="https://wa.me/919173401507" target="_blank" rel="noopener">+91 91734 01507</a></div></div>
+        </div>
+      </div>
+
+      <!-- ============ DIGITAL VISITING CARD (17 Sep 2026) ============
+           Both printed cards (English / Nepali) as web images — tap to open
+           full size, save, or share the picture itself on WhatsApp
+           (navigator.share with the file; wa.me text fallback in 05-router). -->
+      <div class="vcard-sec reveal" id="vcard">
+        <div class="sec-head center" style="margin-bottom:16px">
+          <span class="kicker">📇 Digital Visiting Card · भिजिटिङ कार्ड</span>
+          <h3 class="h2" style="font-size:clamp(20px,2.6vw,28px)" data-i18n="vcTitle">Save our card · Share on WhatsApp</h3>
+          <p style="margin-top:8px;font-size:14.5px" data-i18n="vcSub">All office numbers, India &amp; Nepal, on one card — save it or forward it to family.</p>
+        </div>
+        <div class="vcard-grid">
+          <figure class="vcard">
+            <a class="vcard-img" href="/assets/img/card-en.jpg?v=20260917a" target="_blank" rel="noopener"><img src="/assets/img/card-en-sm.jpg?v=20260917a" srcset="/assets/img/card-en-sm.jpg?v=20260917a 720w, /assets/img/card-en.jpg?v=20260917a 1600w" sizes="(max-width:640px) 92vw, 500px" alt="S Hari Global Pvt Ltd visiting card — English" width="1600" height="914" loading="lazy" decoding="async"></a>
+            <figcaption><span data-i18n="vcEn">🇮🇳 English card</span><span class="vcard-btns"><a class="btn btn-ghost btn-sm" href="/assets/img/card-en.jpg" download="S-Hari-Global-Card-EN.jpg">💾 <span data-i18n="vcSave">Save</span></a><button type="button" class="btn btn-wa btn-sm" data-vc-share="en">📤 <span data-i18n="vcShare">Share on WhatsApp</span></button></span></figcaption>
+          </figure>
+          <figure class="vcard">
+            <a class="vcard-img" href="/assets/img/card-ne.jpg?v=20260917a" target="_blank" rel="noopener"><img src="/assets/img/card-ne-sm.jpg?v=20260917a" srcset="/assets/img/card-ne-sm.jpg?v=20260917a 720w, /assets/img/card-ne.jpg?v=20260917a 1600w" sizes="(max-width:640px) 92vw, 500px" alt="एस हरी ग्लोबल प्रा. लि. भिजिटिङ कार्ड — नेपाली" width="1600" height="914" loading="lazy" decoding="async"></a>
+            <figcaption><span data-i18n="vcNe">🇳🇵 Nepali card</span><span class="vcard-btns"><a class="btn btn-ghost btn-sm" href="/assets/img/card-ne.jpg" download="S-Hari-Global-Card-NE.jpg">💾 <span data-i18n="vcSave">Save</span></a><button type="button" class="btn btn-wa btn-sm" data-vc-share="ne">📤 <span data-i18n="vcShare">Share on WhatsApp</span></button></span></figcaption>
+          </figure>
         </div>
       </div>
 
@@ -2259,7 +2293,7 @@ s.addEventListener('click',function(e){e.preventDefault();
      [HTML] VIEW: NAVIGATOR — fullscreen MapLibre nav app
 ================================================================ -->
 <section class="view" id="view-nav">
-  <div class="sn-load" id="snLoad"><div class="spin"></div><p>S Hari Map — loading…</p></div>
+  <div class="sn-load" id="snLoad"><div class="sn-load-map" id="snLoadMap" aria-hidden="true"></div><div class="spin"></div><p>S Hari Map — loading…</p></div>
   <div id="sn-map"></div>
   <button class="sn-back" id="snBack" title="Back to site">←</button>
   <div class="sn-banner" id="snBanner">
@@ -2503,10 +2537,9 @@ s.addEventListener('click',function(e){e.preventDefault();
           <li>✉️ <a href="mailto:shreehariglobalpvtltd@gmail.com">shreehariglobalpvtltd@gmail.com</a></li>
           <li>🕉️ ॐ नमो नारायणाय</li>
           <li style="gap:10px;margin-top:6px">
-            <a href="#" aria-label="Facebook" title="Facebook (add your link)">ⓕ</a>
-            <a href="#" aria-label="Instagram" title="Instagram (add your link)">◎</a>
-            <a href="#" aria-label="WhatsApp" title="WhatsApp (add your link)">✆</a>
-            <a href="#" aria-label="YouTube" title="YouTube (add your link)">▶</a>
+            <a href="https://www.facebook.com/sherbahadur.biswakarma.58" target="_blank" rel="noopener noreferrer" aria-label="Facebook" title="Facebook — Sher Bahadur Bishwokarma">ⓕ</a>
+            <a href="https://wa.me/919726401507" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp" title="WhatsApp — Director +91 97264 01507">✆</a>
+            <a href="https://wa.me/919104801507" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp office" title="WhatsApp — Mehsana office +91 91048 01507">💬</a>
           </li>
         </ul>
       </div>
@@ -2517,7 +2550,7 @@ s.addEventListener('click',function(e){e.preventDefault();
     </div>
     <div class="f-dev">Developed by <strong>Dileep Sunar</strong> · <a href="https://wa.me/919173401507" target="_blank" rel="noopener noreferrer">💬 WhatsApp +91 91734 01507</a> · <a href="https://www.facebook.com/dileep.soonaar/" target="_blank" rel="noopener noreferrer">Facebook</a></div>
     <div class="f-ceo reveal">
-      <img id="ceoPhoto" src="/assets/img/ceo.jpg?v=20260913b" alt="Sher Bahadur Bishwokarma — Founder &amp; CEO" loading="lazy" decoding="async" onerror="this.style.display='none'">
+      <img id="ceoPhoto" src="/assets/img/ceo.jpg?v=20260917a" alt="Sher Bahadur Bishwokarma — Founder &amp; CEO" loading="lazy" decoding="async" onerror="this.style.display='none'">
       <span>🕉️ <span id="ceoMantra"></span> — <strong id="ceoName"></strong>, Founder &amp; CEO
         <button id="mantraBtn" type="button" title="Play mantra chant · मन्त्र सुन्नुहोस्" aria-label="Play mantra chant">🔊</button>
       </span>
@@ -2560,6 +2593,32 @@ s.addEventListener('click',function(e){e.preventDefault();
     <path d="M12 0C5.373 0 0 5.373 0 12c0 2.625.846 5.059 2.284 7.034L.789 23.492a.5.5 0 00.612.638l4.685-1.408A11.945 11.945 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-2.137 0-4.146-.601-5.863-1.646l-.42-.264-2.813.846.781-2.852-.278-.438A9.956 9.956 0 012 12C2 6.486 6.486 2 12 2s10 4.486 10 10-4.486 10-10 10z"/>
   </svg>
 </a>
+<!-- WhatsApp chooser (17 Sep 2026): the FAB opens this sheet — book on
+     WhatsApp with the search card's choices pre-written, or chat with the
+     director / any office printed on the visiting card (India + Nepal).
+     Wired in 05-router.js; the FAB's own href stays as the no-JS fallback. -->
+<div class="wa-sheet" id="waSheet" hidden role="dialog" aria-modal="true" aria-labelledby="waSheetTitle">
+  <button type="button" class="wa-sheet-bg" id="waSheetBg" aria-label="Close"></button>
+  <div class="wa-sheet-card">
+    <div class="wa-sheet-head">
+      <span class="wa-sheet-ic">💬</span>
+      <div><b id="waSheetTitle" data-i18n="waSheetTitle">Chat on WhatsApp</b><small data-i18n="waSheetSub">One tap — booking, ticket, help</small></div>
+      <button type="button" class="wa-sheet-x" id="waSheetClose" aria-label="Close" data-i18n-title="waSheetClose">✕</button>
+    </div>
+    <a class="wa-row wa-row-hot" id="waBookLink" href="https://wa.me/919104801507" target="_blank" rel="noopener"><span>🎫</span><div><b data-i18n="waBookNow">Book a ticket on WhatsApp</b><small data-i18n="waBookSub">Date, direction &amp; pickup are filled in for you</small></div><i>→</i></a>
+    <div class="wa-grid">
+      <a class="wa-row" href="https://wa.me/919726401507?text=Namaste%20%F0%9F%99%8F%20S%20Hari%20Global" target="_blank" rel="noopener"><span>👑</span><div><b>Sher Bahadur Bishwokarma</b><small data-i18n="waDirector">Director · 24/7</small></div></a>
+      <a class="wa-row" href="https://wa.me/919104801507?text=Namaste%20%F0%9F%99%8F%20S%20Hari%20Global%20Mehsana" target="_blank" rel="noopener"><span>🏢</span><div><b>Mehsana Head Office</b><small>+91 91048 01507</small></div></a>
+      <a class="wa-row" href="https://wa.me/919157001507?text=Namaste%20%F0%9F%99%8F%20S%20Hari%20Global%20Ahmedabad" target="_blank" rel="noopener"><span>🏢</span><div><b>Ahmedabad</b><small>+91 91570 01507</small></div></a>
+      <a class="wa-row" href="https://wa.me/917359301507?text=Namaste%20%F0%9F%99%8F%20S%20Hari%20Global%20Surat" target="_blank" rel="noopener"><span>🏢</span><div><b>Surat</b><small>+91 73593 01507</small></div></a>
+      <a class="wa-row" href="https://wa.me/918735881507?text=Namaste%20%F0%9F%99%8F%20S%20Hari%20Global%20Baroda" target="_blank" rel="noopener"><span>🏢</span><div><b>Baroda (Vadodara)</b><small>+91 87358 81507</small></div></a>
+      <a class="wa-row" href="https://wa.me/9779866201375?text=%E0%A4%A8%E0%A4%AE%E0%A4%B8%E0%A5%8D%E0%A4%A4%E0%A5%87%20%F0%9F%99%8F%20S%20Hari%20Global%20Nepalgunj" target="_blank" rel="noopener"><span>🇳🇵</span><div><b data-i18n="waOfficeNepal">Nepal Office · Nepalgunj</b><small>Lok Bahadur Sunar · +977 986-6201375</small></div></a>
+      <a class="wa-row" href="https://wa.me/9779848889950?text=%E0%A4%A8%E0%A4%AE%E0%A4%B8%E0%A5%8D%E0%A4%A4%E0%A5%87%20%F0%9F%99%8F%20S%20Hari%20Global%20Nepalgunj" target="_blank" rel="noopener"><span>🇳🇵</span><div><b>Bal Bahadur B.K.</b><small>+977 984-8889950</small></div></a>
+      <a class="wa-row" href="https://wa.me/9779848119600?text=%E0%A4%A8%E0%A4%AE%E0%A4%B8%E0%A5%8D%E0%A4%A4%E0%A5%87%20%F0%9F%99%8F%20S%20Hari%20Global%20Nepalgunj" target="_blank" rel="noopener"><span>🇳🇵</span><div><b>Mahendra Singh</b><small>+977 984-8119600</small></div></a>
+    </div>
+    <p class="wa-sheet-foot" data-i18n="waSheetFoot">Your ticket is sent to your WhatsApp automatically the moment it is confirmed ✅</p>
+  </div>
+</div>
 
 <!-- ============ [HTML] WOMEN SAFETY: floating SOS button (shown only on ticket-status & live-track views) ============ -->
 <button type="button" class="sos-fab" id="sosFab" aria-label="SOS — Emergency help · आपतकालीन सहायता · आपातकालीन सहायता">🆘</button>

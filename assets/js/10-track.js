@@ -133,7 +133,7 @@ function routeOverviewSVG(opts) {
   const lblA = [A[0] + (A[0] < 360 ? -8 : 8), A[1] + 26], lblB = [B[0] + (B[0] < 360 ? -8 : 8), B[1] - 18];
   const anchorA = A[0] < 360 ? 'start' : 'end', anchorB = B[0] < 360 ? 'start' : 'end';
   const uid = 'rov' + Math.floor(Math.random() * 1e6);
-  return `<div class="rov${opts.compact ? ' rov-compact' : ''}"><div class="rov-3d">
+  return `<div class="rov rov-anim${opts.compact ? ' rov-compact' : ''}"><div class="rov-3d">
   <svg viewBox="0 0 720 430" class="rov-svg" role="img" aria-label="Route overview ${esc(fromName)} to ${esc(toName)}">
     <defs>
       <radialGradient id="${uid}g" cx="18%" cy="8%" r="70%"><stop offset="0" stop-color="#8a4a1c" stop-opacity=".55"/><stop offset=".55" stop-color="#1b2b55" stop-opacity="0"/></radialGradient>
@@ -144,21 +144,22 @@ function routeOverviewSVG(opts) {
     <text x="34" y="46" class="rov-eyebrow">ROUTE OVERVIEW</text>
     <text x="686" y="46" class="rov-eyebrow" text-anchor="end">${esc(rovCode(fromName))} → ${esc(rovCode(toName))}</text>
     <g class="rov-land">
-      <polygon points="${poly(ROV_INDIA)}" fill="rgba(255,255,255,.07)" stroke="rgba(255,255,255,.28)" stroke-width="1.4" stroke-linejoin="round"/>
-      <polygon points="${poly(ROV_NEPAL)}" fill="rgba(220,20,60,.22)" stroke="rgba(255,255,255,.3)" stroke-width="1.2" stroke-linejoin="round"/>
+      <polygon pathLength="1" points="${poly(ROV_INDIA)}" fill="rgba(255,255,255,.07)" stroke="rgba(255,255,255,.28)" stroke-width="1.4" stroke-linejoin="round"/>
+      <polygon pathLength="1" points="${poly(ROV_NEPAL)}" fill="rgba(220,20,60,.22)" stroke="rgba(255,255,255,.3)" stroke-width="1.2" stroke-linejoin="round"/>
       <text x="330" y="330" class="rov-country">INDIA</text>
       <text x="560" y="128" class="rov-country rov-country-sm">NEPAL</text>
     </g>
     <path d="${path}" class="rov-glow"/>
+    <path d="${path}" pathLength="1" class="rov-trace"/>
     <path d="${path}" class="rov-line"/>
     <text class="rov-dist" text-anchor="middle"><textPath href="#${uid}p" startOffset="50%">≈ ${km.toLocaleString('en-IN')} km · ~${hrs} hrs</textPath></text>
     <path id="${uid}p" d="${path}" fill="none" stroke="none" transform="translate(0,-12)"/>
     <g class="rov-end rov-from" transform="translate(${A[0]},${A[1]})"><circle r="16" class="rov-pulse"/><circle r="8" fill="#F07C1F" stroke="#fff" stroke-width="3"/></g>
     <g class="rov-end rov-to" transform="translate(${B[0]},${B[1]})"><circle r="16" class="rov-pulse rov-pulse-b"/><circle r="8" fill="#5FA8E8" stroke="#fff" stroke-width="3"/></g>
-    <text x="${lblA[0]}" y="${lblA[1]}" text-anchor="${anchorA}" class="rov-city"><tspan class="rov-flag">${flag(fromName)}</tspan> ${esc(fromName)}</text>
-    <text x="${lblA[0]}" y="${lblA[1] + 20}" text-anchor="${anchorA}" class="rov-sub">${sub(fromName)}</text>
-    <text x="${lblB[0]}" y="${lblB[1]}" text-anchor="${anchorB}" class="rov-city"><tspan class="rov-flag">${flag(toName)}</tspan> ${esc(toName)}</text>
-    <text x="${lblB[0]}" y="${lblB[1] + 20}" text-anchor="${anchorB}" class="rov-sub">${sub(toName)}</text>
+    <text x="${lblA[0]}" y="${lblA[1]}" text-anchor="${anchorA}" class="rov-city rov-from-lbl"><tspan class="rov-flag">${flag(fromName)}</tspan> ${esc(fromName)}</text>
+    <text x="${lblA[0]}" y="${lblA[1] + 20}" text-anchor="${anchorA}" class="rov-sub rov-from-lbl">${sub(fromName)}</text>
+    <text x="${lblB[0]}" y="${lblB[1]}" text-anchor="${anchorB}" class="rov-city rov-to-lbl"><tspan class="rov-flag">${flag(toName)}</tspan> ${esc(toName)}</text>
+    <text x="${lblB[0]}" y="${lblB[1] + 20}" text-anchor="${anchorB}" class="rov-sub rov-to-lbl">${sub(toName)}</text>
     <g class="rov-bus" filter="url(#${uid}s)"><circle r="17" fill="#fff"/><text y="6" text-anchor="middle" font-size="18">🚌</text>
       <animateMotion dur="${dur}" repeatCount="indefinite" path="${path}" calcMode="linear" keyPoints="0;1" keyTimes="0;1"/></g>
     <line x1="34" y1="376" x2="686" y2="376" stroke="rgba(255,255,255,.18)" stroke-dasharray="3 5"/>
@@ -177,6 +178,46 @@ function renderHomeRouteMap() {
   if (box.getAttribute('data-key') === key) return;
   box.setAttribute('data-key', key);
   box.innerHTML = routeOverviewSVG(dir === 'go' ? { from: town, to: hub } : { from: hub, to: town });
+  rovAttachTilt(box);
+}
+/* Pointer tilt for the 3D route card (17 Sep 2026) — desktop, hover-capable
+   pointers only: the card follows the cursor a few degrees while hovered and
+   hands back to its float animation on leave. Delegated to the container
+   (the card is re-rendered on every direction/town change), rAF-throttled,
+   transform-only. */
+function rovAttachTilt(box) {
+  if (!box || box._rovTilt) return;
+  var mq = window.matchMedia ? window.matchMedia('(hover:hover) and (pointer:fine)') : null;
+  if (!mq || !mq.matches) return;
+  box._rovTilt = true;
+  var raf = 0, px = 0, py = 0;
+  box.addEventListener('pointermove', function (e) {
+    var rov = box.querySelector('.rov'), card = rov && rov.querySelector('.rov-3d');
+    if (!card) return;
+    var r = rov.getBoundingClientRect();
+    px = (e.clientX - r.left) / Math.max(1, r.width) - .5;
+    py = (e.clientY - r.top) / Math.max(1, r.height) - .5;
+    rov.classList.add('rov-hover');
+    if (raf) return;
+    raf = requestAnimationFrame(function () {
+      raf = 0;
+      card.style.transform = 'rotateX(' + (10 - py * 10).toFixed(2) + 'deg) rotateY(' + (px * 12).toFixed(2) + 'deg) scale(.985)';
+    });
+  });
+  box.addEventListener('pointerleave', function () {
+    var rov = box.querySelector('.rov'), card = rov && rov.querySelector('.rov-3d');
+    if (!rov) return;
+    rov.classList.remove('rov-hover');
+    if (card) card.style.transform = '';
+  });
+}
+/* Navigator loader (17 Sep 2026): while MapLibre boots, the same route card
+   draws itself inside #snLoad instead of a bare spinner. Idempotent. */
+function snLoadMapInit() {
+  try {
+    var m = document.getElementById('snLoadMap');
+    if (m && !m.firstChild) m.innerHTML = routeOverviewSVG({ from: 'Surat', to: 'Rupaidiha', compact: true });
+  } catch (e) {}
 }
 /* ================================================================
    [JS] 10f. DISTANCE TO BOARDING POINT — the PASSENGER's own phone

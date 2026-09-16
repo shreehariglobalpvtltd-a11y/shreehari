@@ -80,6 +80,7 @@ function ensureMapLibre(cb){
 function renderNav(){
   var loader=$('#snLoad');
   if(loader) loader.style.display='flex';
+  if(typeof snLoadMapInit==='function') snLoadMapInit();
   if(SN.ready && SN.map){
     if(loader) loader.style.display='none';
     // [MAP PRO] Bug 3 — resize AFTER the view is laid out & painted (double rAF),

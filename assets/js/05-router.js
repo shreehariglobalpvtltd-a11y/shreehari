@@ -2320,3 +2320,91 @@ if (store.local && !store.remote) {
        agent/admin panels on the customer surface (§2 purge, shg-v56). */
   });
 }
+
+/* ================================================================
+   [JS] 6x. WHATSAPP SHEET + DIGITAL VISITING CARD (17 Sep 2026)
+   The green FAB opens a chooser instead of one hardcoded chat: "book on
+   WhatsApp" (message pre-filled from the search card), the director and
+   every office printed on the visiting card (India + Nepal). The FAB keeps
+   its wa.me href as the no-JS fallback. The search card's own WhatsApp
+   button uses the same composer. The visiting-card section shares the card
+   picture itself through the OS share sheet (WhatsApp gets the image) or a
+   wa.me text link where files cannot be shared.
+================================================================ */
+(function () {
+  function officeNum() {
+    var n = '';
+    try { n = String((typeof S === 'function' && S().adminWhatsApp) || (typeof CONFIG !== 'undefined' && CONFIG.adminWhatsApp) || ''); } catch (e) {}
+    n = n.replace(/[^0-9]/g, '');
+    return n || '919104801507';
+  }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function val(id) { var el = document.getElementById(id); return el && typeof el.value === 'string' ? el.value.trim() : ''; }
+  function composeBooking() {
+    var back = false;
+    try { back = document.getElementById('dirBack').classList.contains('on'); } catch (e) {}
+    var date = val('dateInput'), town = '';
+    try { var ps = document.getElementById('pointSel'); town = (ps && ps.selectedIndex >= 0 && ps.options[ps.selectedIndex]) ? ps.options[ps.selectedIndex].text.trim() : ''; } catch (e) {}
+    var name = val('qtName'), phone = val('qtPhone');
+    var dateTxt = date;
+    if (date) {
+      var d = new Date(date + 'T00:00:00');
+      if (!isNaN(d)) dateTxt = pad2(d.getDate()) + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()] + ' ' + d.getFullYear() + ' (' + ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()] + ')';
+    }
+    var dir = back ? 'Rupaidiha (Nepal) → Gujarat' : 'Gujarat → Rupaidiha (Nepal)';
+    return 'Namaste 🙏 S Hari Global\n'
+      + 'म टिकट बुक गर्न चाहन्छु / I want to book a ticket:\n'
+      + '🚌 ' + dir + '\n'
+      + '📅 Date: ' + (dateTxt || '____') + '\n'
+      + '📍 ' + (back ? 'Drop' : 'Boarding') + ': ' + (town || '____') + '\n'
+      + '👥 Passengers: 1\n'
+      + '🧑 Name: ' + (name || '____') + '\n'
+      + '📱 Mobile: ' + (phone || '____');
+  }
+  function waUrl(num, text) { return 'https://wa.me/' + num + '?text=' + encodeURIComponent(text); }
+  var sheet = document.getElementById('waSheet');
+  function openSheet() {
+    if (!sheet) return false;
+    var bk = document.getElementById('waBookLink');
+    if (bk) bk.href = waUrl(officeNum(), composeBooking());
+    sheet.hidden = false;
+    document.body.classList.add('wa-open');
+    try { sheet.querySelector('.wa-sheet-x').focus({ preventScroll: true }); } catch (e) {}
+    return true;
+  }
+  function closeSheet() { if (!sheet) return; sheet.hidden = true; document.body.classList.remove('wa-open'); }
+  var fab = document.getElementById('waFab');
+  if (fab && sheet) fab.addEventListener('click', function (e) { if (openSheet()) e.preventDefault(); });
+  if (sheet) {
+    sheet.addEventListener('click', function (e) {
+      var tgt = e.target;
+      if (tgt.closest('#waSheetBg') || tgt.closest('#waSheetClose')) { closeSheet(); return; }
+      if (tgt.closest('a.wa-row')) setTimeout(closeSheet, 150);
+    });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !sheet.hidden) closeSheet(); });
+  }
+  var sb = document.getElementById('waBookBtn');
+  if (sb) sb.addEventListener('click', function () { window.open(waUrl(officeNum(), composeBooking()), '_blank', 'noopener'); });
+
+  /* Digital visiting card — share the picture. */
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-vc-share]'); if (!b) return;
+    var lang = b.getAttribute('data-vc-share') === 'ne' ? 'ne' : 'en';
+    var file = '/assets/img/card-' + lang + '.jpg';
+    var url = location.origin + file;
+    var text = '🚌 S Hari Global Pvt Ltd — India ⇄ Nepal bus\n'
+      + '📞 Mehsana +91 91048 01507 · Ahmedabad +91 91570 01507 · Surat +91 73593 01507\n'
+      + '🇳🇵 Nepal: +977 986-6201375 · +977 984-8889950 · +977 984-8119600\n'
+      + '🌐 https://shreehariglobal.in\n' + url;
+    var fallback = function () { window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank', 'noopener'); };
+    if (navigator.share && navigator.canShare) {
+      fetch(file).then(function (r) { return r.blob(); }).then(function (blob) {
+        var f = new File([blob], 'S-Hari-Global-card-' + lang + '.jpg', { type: 'image/jpeg' });
+        if (navigator.canShare({ files: [f] })) return navigator.share({ files: [f], text: text, title: 'S Hari Global — visiting card' });
+        return navigator.share({ text: text, url: url });
+      }).catch(function (err) { if (!err || err.name !== 'AbortError') fallback(); });
+    } else {
+      fallback();
+    }
+  });
+})();

@@ -1323,6 +1323,9 @@ function bookingFromServer(d, phone) {
     status: d.status,
     codFlag: !!d.isCod,
     ticketNumber: d.ticketNumber || '',
+    /* WhatsApp delivery of the ticket (track.php → shg_wa_last, 17 Sep 2026):
+       null = nothing sent yet, {ok,last4,status,code} otherwise. */
+    wa: (d.wa === undefined) ? undefined : (d.wa || null),
     fromServer: true
   };
   if (ret) {
@@ -1362,6 +1365,9 @@ async function syncBooking(b) {
        generic fallback. */
     if (b.payment.reason !== (d.payment.reason || '')) { b.payment.reason = d.payment.reason || ''; changed = true; }
   }
+  /* WhatsApp delivery state (17 Sep 2026) — informational, never flips `changed`
+     on its own, the ticket page re-renders itself when it asked for it. */
+  if (d.wa !== undefined) b.wa = d.wa || null;
   return changed;
 }
 
@@ -1848,6 +1854,23 @@ function renderStatus(id) {
   else if (b.status === 'cancelled') note2 = '<div class="tk2-note">' + t('stCancP') + (b.refundNote ? ' ' + esc(b.refundNote) : '') + '</div>';
   else if (b.status === 'expired' || b.status === 'completed') note2 = '<div class="tk2-note">' + t('stExpP') + ' — ' + t('supportLbl') + ': ' + esc(S().phone) + '</div>';
   else if (!conf) note2 = '<div class="tk2-note">' + esc(b.payment.reason || 'We could not verify this payment.') + ' — ' + t('supportLbl') + ': ' + esc(S().phone) + '</div>';
+  /* Did the office's WhatsApp ticket reach the passenger? (17 Sep 2026.) Known
+     once the ticket has been read back from track.php (b.wa defined); a
+     confirmed ticket that has never synced asks the server once. */
+  if (conf) {
+    if (b.wa === undefined) {
+      if (!b._waSync && typeof syncBooking === 'function') {
+        b._waSync = true;
+        try { syncBooking(b).then(function () { if (b.wa !== undefined && location.hash === '#/ticket/' + b.id) renderStatus(b.id); }).catch(function () {}); } catch (e) {}
+      }
+    } else if (b.wa && b.wa.ok) {
+      note2 += '<div class="tk2-note wa ok">📲 ' + tf('tkWaSent', { n: esc(b.wa.last4 || '') }) + '</div>';
+    } else if (b.wa && !b.wa.ok) {
+      note2 += '<div class="tk2-note wa warn">⚠️ ' + tf('tkWaFailed', { n: esc(b.wa.last4 || '') }) + '</div>';
+    } else if (digits((b.contact && b.contact.phone) || '')) {
+      note2 += '<div class="tk2-note wa">📲 ' + t('tkWaPending') + '</div>';
+    }
+  }
   const bp2 = parseBP(b.boarding || '');
   const bpNp2 = bp2.time ? nepaliTimeFull(bp2.time) : '';
   const lead2 = (b.passengers || [])[0] || {};
@@ -1887,7 +1910,7 @@ function renderStatus(id) {
   <div class="status-card tk2${conf ? ' confirm-success' : ''}" id="ticketCard">
     <div class="tk2-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo.png?v=20260913b" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo.png?v=20260917a" alt="" loading="lazy" decoding="async">
         <div><b>S HARI GLOBAL PVT LTD</b><small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small></div>
       </div>
       ${pill2}

@@ -56,7 +56,10 @@ try {
     }
 
     // One shared shape for track.php and my-bookings.php (includes/helpers.php).
-    Response::success(shg_customer_payload($detail));
+    $payload = shg_customer_payload($detail);
+    // Ticket page only (17 Sep 2026): did the WhatsApp ticket go? See shg_wa_last().
+    $payload['wa'] = shg_wa_last((int) ($detail['id'] ?? 0));
+    Response::success($payload);
 } catch (Throwable $e) {
     Response::serverError($e);
 }

@@ -7,76 +7,79 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 
 /* ===== block 7 (was body, 5166 chars) ===== */
 
-  .route-anim{position:relative;height:172px;border-radius:20px;overflow:hidden;margin-top:18px;
-    background:linear-gradient(180deg,#8Fb9e8 0%,#bcd8f2 38%,#e4eef7 60%,#e4eef7 62%);
-    border:1px solid rgba(18,38,78,.08);box-shadow:0 20px 46px -26px rgba(18,38,78,.42)}
-  /* sun with soft haze */
-  .ra-sun{position:absolute;top:20px;right:12%;width:34px;height:34px;border-radius:50%;
-    background:radial-gradient(circle at 40% 40%,#FFF3C4,#FFD54F 55%,#FFB300);
-    box-shadow:0 0 26px 10px rgba(255,199,64,.45),0 0 60px 30px rgba(255,214,120,.2);
-    animation:raSun 7s ease-in-out infinite}
-  @keyframes raSun{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
-  /* far snow-hazed Himalaya — scrolls slowly (parallax) */
-  .ra-range{position:absolute;left:0;right:0;background-repeat:repeat-x;background-position:0 bottom;will-change:background-position}
-  .ra-range-far{bottom:60px;height:78px;opacity:.85;
-    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='440' height='90'%3E%3Cpath d='M0,90 L0,58 L34,30 L52,44 L84,14 L108,40 L140,22 L170,46 L196,20 L232,48 L262,26 L298,50 L330,22 L364,48 L398,28 L440,50 L440,90 Z' fill='%23a9bdd6'/%3E%3Cpath d='M84,14 L74,26 L96,26 Z M196,20 L186,31 L208,31 Z M330,22 L320,33 L342,33 Z' fill='%23eef4fb'/%3E%3C/svg%3E");
-    background-size:440px 78px;animation:raScrollFar 60s linear infinite}
-  @keyframes raScrollFar{from{background-position:0 bottom}to{background-position:-440px bottom}}
-  /* near green foothills — scrolls faster */
-  .ra-range-near{bottom:56px;height:56px;opacity:.95;
-    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='520' height='70'%3E%3Cpath d='M0,70 L0,44 Q64,16 132,40 Q198,60 272,36 Q346,14 418,42 Q470,58 520,44 L520,70 Z' fill='%237ba05f'/%3E%3Cpath d='M0,70 L0,52 Q80,34 150,50 Q230,66 320,48 Q400,34 470,52 Q500,60 520,54 L520,70 Z' fill='%23688c50'/%3E%3C/svg%3E");
-    background-size:520px 56px;animation:raScrollNear 26s linear infinite}
-  @keyframes raScrollNear{from{background-position:0 bottom}to{background-position:-520px bottom}}
-  /* asphalt highway */
-  .ra-road{position:absolute;left:0;right:0;bottom:0;height:60px;
-    background:linear-gradient(180deg,#4a5160 0%,#363c48 30%,#2b303a 100%)}
-  .ra-road::before{content:"";position:absolute;left:0;right:0;top:0;height:4px;
-    background:linear-gradient(180deg,rgba(255,255,255,.25),transparent)}
-  .ra-edge{position:absolute;left:0;right:0;height:2px;background:repeating-linear-gradient(90deg,rgba(255,255,255,.7) 0 18px,transparent 18px 30px);animation:raLane .5s linear infinite}
-  .ra-edge.top{top:9px}.ra-edge.bot{bottom:9px}
-  .ra-lane{position:absolute;top:50%;left:0;right:0;height:5px;transform:translateY(-50%);
-    background:repeating-linear-gradient(90deg,#F6C744 0 30px,transparent 30px 60px);
-    animation:raLane .42s linear infinite;will-change:background-position;border-radius:3px}
-  @keyframes raLane{from{background-position:0 0}to{background-position:-60px 0}}
-  /* roadside km posts flying past for speed feel */
-  .ra-posts{position:absolute;left:0;right:0;bottom:44px;height:16px;
-    background-image:radial-gradient(circle at 6px 12px,#d9dee6 0 2px,transparent 2px);
-    background-size:150px 16px;background-repeat:repeat-x;animation:raPosts 1.3s linear infinite;opacity:.7}
-  @keyframes raPosts{from{background-position:0 0}to{background-position:-150px 0}}
-  /* SVG coach */
-  /* Spans the whole track; the coach artwork sits at its left edge. That
-     makes a translateX percentage a percentage of the ROAD, so the drive
-     needs no `left` and never triggers layout. */
-  .ra-bus{position:absolute;bottom:16px;left:0;right:0;width:auto;z-index:4;pointer-events:none;
-    animation:raDrive 8s cubic-bezier(.45,0,.55,1) infinite;will-change:transform}
-  /* The bob rides on the inner svg, not on .ra-bus: both used to animate the
-     same element, and the shorter transform animation silently cancelled the
-     drive's transform. Split, they compose. */
-  .ra-bus svg{width:96px;height:auto;display:block;
-    filter:drop-shadow(0 6px 5px rgba(0,0,0,.3));
-    animation:raBob 1s ease-in-out infinite}
-  .ra-wheel{transform-box:fill-box;transform-origin:center;animation:raSpin .5s linear infinite}
-  @keyframes raSpin{to{transform:rotate(360deg)}}
-  @keyframes raDrive{
-    0%{transform:translateX(2%);opacity:0}
-    5%{opacity:1}
-    88%{transform:translateX(calc(88% - 96px));opacity:1}
-    95%{transform:translateX(calc(88% - 96px));opacity:0}
-    100%{transform:translateX(calc(88% - 96px));opacity:0}}
-  @keyframes raBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.5px)}}
-  /* city pins */
-  .ra-pin{position:absolute;bottom:64px;z-index:3;display:inline-flex;align-items:center;gap:5px;
-    font-size:11px;font-weight:800;color:var(--ink);background:rgba(255,255,255,.92);
-    padding:3px 9px;border-radius:999px;box-shadow:0 4px 10px rgba(18,38,78,.22)}
-  .ra-pin .ra-fl{font-size:15px;line-height:1}
-  .ra-pin::after{content:"";position:absolute;left:14px;bottom:-6px;border:5px solid transparent;border-top-color:rgba(255,255,255,.92)}
-  .ra-in{left:12px}.ra-np{right:12px}.ra-np::after{left:auto;right:14px}
-  .ra-tag{position:absolute;bottom:7px;left:50%;transform:translateX(-50%);z-index:5;
-    font-size:11px;font-weight:700;color:#fff;background:rgba(0,0,0,.34);padding:3px 12px;border-radius:999px;white-space:nowrap;backdrop-filter:blur(2px)}
-  @media (max-width:520px){.route-anim{height:150px}.ra-bus{width:78px}}
+  /* ===== §6 LIVE ROUTE — 3D highway scene with the REAL S Hari coach (17 Sep 2026).
+     Every moving part is a transform on its own layer (no background-position
+     animation, no layout work): far Himalaya + near hills scroll on translate3d
+     tiles, the asphalt is a perspective-tilted plane whose lane paint slides
+     under the coach, and the coach itself is the cutout from the company's
+     visiting card with a ground shadow, headlight beam and a 1.6 px bob. Every
+     motion stops under prefers-reduced-motion. --bw = coach width. ===== */
+  .route-anim{position:relative;height:222px;border-radius:22px;overflow:hidden;margin-top:18px;isolation:isolate;--bw:196px;
+    background:linear-gradient(180deg,#5E9BE0 0%,#9EC6EE 30%,#D6E8F8 54%,#EAF1F8 62%,#EAF1F8 100%);
+    border:1px solid rgba(18,38,78,.08);box-shadow:0 26px 54px -30px rgba(18,38,78,.55),0 8px 18px -12px rgba(18,38,78,.25)}
+  .ra3-sun{position:absolute;top:18px;right:12%;width:40px;height:40px;border-radius:50%;z-index:1;
+    background:radial-gradient(circle at 40% 40%,#FFF7D6,#FFD54F 55%,#FFB300);
+    box-shadow:0 0 30px 12px rgba(255,199,64,.45),0 0 80px 36px rgba(255,214,120,.22);animation:ra3Sun 8s ease-in-out infinite}
+  @keyframes ra3Sun{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(0,-4px,0)}}
+  .ra3-cloud{position:absolute;top:24px;left:0;width:74px;height:22px;border-radius:999px;background:rgba(255,255,255,.9);z-index:1;
+    box-shadow:22px -8px 0 -2px rgba(255,255,255,.9),-18px -4px 0 -6px rgba(255,255,255,.85);will-change:transform;animation:ra3Cloud 46s linear infinite}
+  .ra3-cloud.c2{top:46px;width:52px;height:16px;animation-duration:62s;animation-delay:-30s;opacity:.85}
+  .ra3-cloud.c3{top:12px;width:64px;height:19px;animation-duration:54s;animation-delay:-14s;opacity:.9}
+  @keyframes ra3Cloud{from{transform:translate3d(-120px,0,0)}to{transform:translate3d(1400px,0,0)}}
+  .ra3-layer{position:absolute;left:0;right:0;overflow:hidden;pointer-events:none;z-index:2}
+  .ra3-layer i{position:absolute;left:0;top:0;bottom:0;background-repeat:repeat-x;background-position:0 bottom;will-change:transform}
+  .ra3-far{bottom:66px;height:88px;opacity:.92}
+  .ra3-far i{width:2640px;background-size:440px 88px;animation:ra3Far 72s linear infinite;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='440' height='90'%3E%3Cpath d='M0,90 L0,58 L34,30 L52,44 L84,14 L108,40 L140,22 L170,46 L196,20 L232,48 L262,26 L298,50 L330,22 L364,48 L398,28 L440,50 L440,90 Z' fill='%23a9bdd6'/%3E%3Cpath d='M84,14 L74,26 L96,26 Z M196,20 L186,31 L208,31 Z M330,22 L320,33 L342,33 Z' fill='%23eef4fb'/%3E%3C/svg%3E")}
+  @keyframes ra3Far{from{transform:translate3d(0,0,0)}to{transform:translate3d(-1320px,0,0)}}
+  .ra3-near{bottom:62px;height:60px}
+  .ra3-near i{width:3120px;background-size:520px 60px;animation:ra3Near 32s linear infinite;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='520' height='70'%3E%3Cpath d='M0,70 L0,44 Q64,16 132,40 Q198,60 272,36 Q346,14 418,42 Q470,58 520,44 L520,70 Z' fill='%237ba05f'/%3E%3Cpath d='M0,70 L0,52 Q80,34 150,50 Q230,66 320,48 Q400,34 470,52 Q500,60 520,54 L520,70 Z' fill='%23688c50'/%3E%3C/svg%3E")}
+  @keyframes ra3Near{from{transform:translate3d(0,0,0)}to{transform:translate3d(-1560px,0,0)}}
+  /* asphalt: a plane tilted away from the viewer */
+  .ra3-ground{position:absolute;left:-8%;right:-8%;bottom:-2px;height:86px;z-index:3;transform-origin:50% 100%;transform:perspective(560px) rotateX(34deg);will-change:transform}
+  .ra3-road{position:absolute;inset:0;overflow:hidden;background:linear-gradient(180deg,#59606f 0%,#3a404c 34%,#2b303a 100%);border-top:3px solid rgba(255,255,255,.3);box-shadow:0 -6px 14px rgba(0,0,0,.18)}
+  .ra3-road::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(255,255,255,0) 0%,rgba(255,255,255,.07) 45%,rgba(255,255,255,0) 100%)}
+  .ra3-stripes{position:absolute;top:50%;left:0;width:4320px;height:7px;margin-top:-3px;border-radius:3px;will-change:transform;
+    background:repeating-linear-gradient(90deg,#F6C744 0 40px,transparent 40px 80px);animation:ra3Lane .74s linear infinite}
+  @keyframes ra3Lane{from{transform:translate3d(0,0,0)}to{transform:translate3d(-80px,0,0)}}
+  .ra3-edge{position:absolute;left:0;width:4320px;height:3px;will-change:transform;
+    background:repeating-linear-gradient(90deg,rgba(255,255,255,.78) 0 24px,transparent 24px 40px);animation:ra3Edge .6s linear infinite}
+  .ra3-edge.t{top:9px}.ra3-edge.b{bottom:10px}
+  @keyframes ra3Edge{from{transform:translate3d(0,0,0)}to{transform:translate3d(-40px,0,0)}}
+  /* the coach — spans the whole track so translateX% is a % of the road */
+  .ra3-bus{position:absolute;left:0;right:0;bottom:24px;z-index:5;pointer-events:none;will-change:transform,opacity;animation:ra3Drive 12s cubic-bezier(.42,0,.58,1) infinite}
+  .ra3-body{position:relative;width:var(--bw)}
+  .ra3-body picture,.ra3-body img{display:block;width:100%;height:auto}
+  .ra3-body img{position:relative;z-index:2;filter:drop-shadow(0 10px 8px rgba(0,0,0,.28));will-change:transform;animation:ra3Bob 1.15s ease-in-out infinite}
+  .ra3-shadow{position:absolute;left:6%;right:2%;bottom:-9px;height:18px;border-radius:50%;z-index:1;
+    background:radial-gradient(ellipse at center,rgba(0,0,0,.45),rgba(0,0,0,0) 68%);animation:ra3Shadow 1.15s ease-in-out infinite}
+  .ra3-beam{position:absolute;right:-30%;bottom:22%;width:38%;height:36%;z-index:0;pointer-events:none;transform:skewX(-10deg);opacity:.85;
+    background:radial-gradient(ellipse at left center,rgba(255,244,196,.7),rgba(255,244,196,0) 68%)}
+  @keyframes ra3Bob{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(0,-1.6px,0)}}
+  @keyframes ra3Shadow{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.03);opacity:.8}}
+  @keyframes ra3Drive{
+    0%{transform:translate3d(1%,0,0) scale(.96);opacity:0}
+    5%{opacity:1;transform:translate3d(4%,0,0) scale(1)}
+    84%{transform:translate3d(calc(88% - var(--bw)),0,0) scale(1);opacity:1}
+    93%{transform:translate3d(calc(92% - var(--bw)),0,0) scale(1.02);opacity:0}
+    100%{transform:translate3d(calc(92% - var(--bw)),0,0) scale(1.02);opacity:0}}
+  /* city pins + distance tag */
+  .ra3-pin{position:absolute;bottom:92px;z-index:6;display:inline-flex;align-items:center;gap:6px;
+    font-size:11.5px;font-weight:800;color:var(--ink);background:rgba(255,255,255,.94);
+    padding:4px 10px;border-radius:999px;box-shadow:0 6px 14px rgba(18,38,78,.24);animation:ra3PinFloat 4s ease-in-out infinite}
+  .ra3-pin .ra3-fl{font-size:15px;line-height:1}
+  .ra3-pin::after{content:"";position:absolute;left:14px;bottom:-6px;border:5px solid transparent;border-top-color:rgba(255,255,255,.94)}
+  .ra3-in{left:14px}.ra3-np{right:14px;animation-delay:-2s}.ra3-np::after{left:auto;right:14px}
+  @keyframes ra3PinFloat{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(0,-4px,0)}}
+  .ra3-tag{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);z-index:7;
+    font-size:11px;font-weight:700;color:#fff;background:rgba(0,0,0,.36);padding:3px 12px;border-radius:999px;white-space:nowrap;backdrop-filter:blur(2px)}
+  @media (max-width:520px){.route-anim{height:186px;--bw:140px}.ra3-pin{bottom:82px;font-size:10.5px}.ra3-ground{height:74px}.ra3-far{bottom:58px;height:70px}.ra3-near{bottom:54px}
+    /* phones: keep the drive, the road and the hills; the sky decoration rests */
+    .ra3-cloud,.ra3-pin,.ra3-sun{animation:none!important}}
   @media (prefers-reduced-motion:reduce){
-    .ra-bus,.ra-lane,.ra-edge,.ra-posts,.ra-range,.ra-sun,.ra-wheel{animation:none}
-    .ra-bus{left:42%;opacity:1}
+    .ra3-bus,.ra3-body img,.ra3-shadow,.ra3-stripes,.ra3-edge,.ra3-layer i,.ra3-sun,.ra3-cloud,.ra3-pin{animation:none!important}
+    .ra3-bus{transform:translate3d(40%,0,0);opacity:1}
   }
   
 /* ===== block 8 (was body, 5308 chars) ===== */
@@ -3536,3 +3539,110 @@ body.bk-regular .qt-collapsed{display:flex}
   .ai-head select{padding:3px 4px;font-size:11.5px;max-width:74px}
   .ai-close{padding:4px;min-width:32px;min-height:32px}
 }
+
+
+/* ================================================================
+   [CSS] 60. 17 Sep 2026 — 3D / SMOOTH UPGRADE
+   Route-overview card draws itself (outline trace → route → pins → coach)
+   and gets slab depth + pointer tilt; hero facility chips from the visiting
+   card; WhatsApp chooser sheet; digital visiting-card section; route map
+   inside the navigator loader; India–Nepal outline behind the splash brand;
+   WhatsApp delivery note on the ticket. Transform / opacity / stroke only.
+================================================================ */
+/* -- route overview: depth (two darker slabs behind the card, visible as a
+   rim under the 10° tilt) + a draw-in sequence every time it renders.
+   pathLength="1" on the traced shapes makes the dash math unit-free. -- */
+.rov-3d{position:relative;transform-style:preserve-3d}
+.rov-3d::before,.rov-3d::after{content:"";position:absolute;inset:0;border-radius:26px;z-index:-1;background:#0b1836;transform:translateZ(-16px)}
+.rov-3d::after{transform:translateZ(-32px);background:#060d22}
+.rov-anim .rov-land polygon{stroke-dasharray:1;stroke-dashoffset:1;fill-opacity:0;animation:rovTrace 1.5s cubic-bezier(.4,0,.2,1) .1s forwards,rovFill .7s ease 1.1s forwards}
+@keyframes rovTrace{to{stroke-dashoffset:0}}
+@keyframes rovFill{to{fill-opacity:1}}
+.rov-anim .rov-country{opacity:0;animation:rovFade .6s ease 1.3s forwards}
+.rov-trace{fill:none;stroke:#fff;stroke-width:3;stroke-linecap:round;opacity:0}
+.rov-anim .rov-trace{stroke-dasharray:1;stroke-dashoffset:1;opacity:.9;animation:rovTrace 1.3s cubic-bezier(.4,0,.2,1) 1.1s forwards,rovOut .5s ease 2.5s forwards}
+@keyframes rovOut{to{opacity:0}}
+.rov-anim .rov-line,.rov-anim .rov-dist{opacity:0;animation:rovFade .6s ease 2.2s forwards}
+.rov-anim .rov-glow{opacity:0;animation:rovFadeGlow .6s ease 2.2s forwards}
+@keyframes rovFade{to{opacity:1}}
+@keyframes rovFadeGlow{to{opacity:.22}}
+.rov-anim .rov-end circle:not(.rov-pulse){transform-box:fill-box;transform-origin:center;transform:scale(0);animation:rovPop .6s cubic-bezier(.34,1.56,.64,1) forwards}
+.rov-anim .rov-from circle:not(.rov-pulse){animation-delay:1.15s}
+.rov-anim .rov-to circle:not(.rov-pulse){animation-delay:2.3s}
+@keyframes rovPop{to{transform:scale(1)}}
+.rov-anim .rov-pulse{opacity:0;animation:rovPulse 2.2s ease-out 2.6s infinite}
+.rov-anim .rov-pulse-b{animation-delay:3.7s}
+.rov-anim .rov-city,.rov-anim .rov-sub{opacity:0;animation:rovFade .5s ease forwards}
+.rov-anim .rov-from-lbl{animation-delay:1.3s}.rov-anim .rov-to-lbl{animation-delay:2.45s}
+.rov-anim .rov-bus{opacity:0;animation:rovFade .4s ease 2.7s forwards}
+.rov.rov-hover .rov-3d{animation:none;transition:transform .14s linear}
+@media (prefers-reduced-motion:reduce){
+  .rov-anim .rov-land polygon,.rov-anim .rov-line,.rov-anim .rov-dist,.rov-anim .rov-end circle,.rov-anim .rov-city,.rov-anim .rov-sub,.rov-anim .rov-bus,.rov-anim .rov-country{animation:none!important;opacity:1;stroke-dashoffset:0;fill-opacity:1;transform:none}
+  .rov-anim .rov-glow{animation:none!important;opacity:.22}
+  .rov-anim .rov-trace{animation:none!important;opacity:0}
+  .rov-3d::before,.rov-3d::after{display:none}
+}
+/* -- hero facility chips (AC Sleeper · Live GPS · USB/Type-C · Safe) -- */
+.hero-feats{list-style:none;display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 12px;padding:0}
+.hero-feats li{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;font-size:12.5px;font-weight:700;color:#fff;
+  background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.hero-feats li i{font-style:normal;font-size:14px;line-height:1}
+@media (max-width:520px){.hero-feats{gap:6px}.hero-feats li{padding:5px 10px;font-size:11.5px}}
+/* -- search card: book on WhatsApp -- */
+.s-wa-row{margin-top:10px}
+.s-wa-btn{width:100%;display:flex;flex-direction:column;align-items:center;gap:2px;padding:11px 14px;border-radius:14px;font-weight:800;line-height:1.2;min-height:52px}
+.s-wa-btn small{font-weight:600;font-size:11.5px;opacity:.8}
+/* -- WhatsApp chooser sheet -- */
+.wa-sheet{position:fixed;inset:0;z-index:120;display:flex;align-items:flex-end;justify-content:center}
+.wa-sheet[hidden]{display:none}
+.wa-sheet-bg{position:absolute;inset:0;border:0;padding:0;background:rgba(10,18,36,.55);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);animation:waBgIn .25s ease both;cursor:pointer}
+@keyframes waBgIn{from{opacity:0}to{opacity:1}}
+.wa-sheet-card{position:relative;width:min(560px,100%);max-height:88vh;overflow:auto;background:var(--card,#fff);color:var(--ink);border-radius:24px 24px 0 0;padding:16px 16px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -18px 50px rgba(10,20,40,.35);animation:waSheetUp .32s cubic-bezier(.2,.8,.2,1) both}
+@media (min-width:640px){.wa-sheet{align-items:center;padding:20px}.wa-sheet-card{border-radius:24px;padding-bottom:18px}}
+@keyframes waSheetUp{from{transform:translate3d(0,40px,0);opacity:0}to{transform:none;opacity:1}}
+.wa-sheet-head{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.wa-sheet-ic{width:44px;height:44px;border-radius:14px;background:#25D366;color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;flex:none}
+.wa-sheet-head b{display:block;font-size:16px;font-family:var(--f-display)}
+.wa-sheet-head small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+.wa-sheet-x{margin-left:auto;width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:15px;cursor:pointer;flex:none}
+.wa-row{display:flex;align-items:center;gap:12px;padding:11px 12px;border:1.5px solid var(--line);border-radius:14px;text-decoration:none;color:var(--ink);background:var(--card,#fff);transition:transform .18s var(--ease-decel),border-color .18s,box-shadow .18s;min-height:56px}
+.wa-row:hover{border-color:#25D366;transform:translateY(-2px);box-shadow:0 8px 20px rgba(37,211,102,.18)}
+.wa-row>span{width:38px;height:38px;border-radius:12px;background:var(--blue-50);display:flex;align-items:center;justify-content:center;font-size:20px;flex:none}
+.wa-row>div{flex:1;min-width:0}
+.wa-row b{display:block;font-size:14px;line-height:1.25}
+.wa-row small{display:block;color:var(--muted);font-size:12px;margin-top:1px}
+.wa-row i{font-style:normal;color:#25D366;font-weight:900}
+.wa-row-hot{background:linear-gradient(135deg,#E7F8EE,#fff);border-color:#BFE8CF;margin-bottom:10px}
+.wa-row-hot>span{background:#25D366;color:#fff}
+.wa-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+@media (max-width:480px){.wa-grid{grid-template-columns:1fr}}
+.wa-sheet-foot{margin:12px 2px 0;font-size:12.5px;color:var(--muted);text-align:center}
+body.wa-open{overflow:hidden}
+[data-theme="dark"] .wa-row-hot{background:linear-gradient(135deg,rgba(37,211,102,.16),var(--card));border-color:rgba(37,211,102,.4)}
+/* -- digital visiting card -- */
+.vcard-sec{margin:26px auto 22px;max-width:1080px}
+.vcard-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:18px;perspective:1200px}
+.vcard{margin:0;background:var(--card,#fff);border:1px solid var(--line);border-radius:20px;padding:12px;box-shadow:var(--shadow-md);transform-style:preserve-3d;transition:transform .5s var(--ease-decel),box-shadow .5s}
+@media (hover:hover){.vcard:hover{transform:rotateY(-5deg) rotateX(3deg) translateY(-4px);box-shadow:var(--shadow-lg)}}
+.vcard .vcard-img{display:block;border-radius:14px;overflow:hidden;background:#f3f5f9}
+.vcard img{display:block;width:100%;height:auto;aspect-ratio:1600/914}
+.vcard figcaption{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:10px;font-weight:800;font-size:13.5px}
+.vcard-btns{display:flex;gap:8px;flex-wrap:wrap}
+.vcard-btns .btn{min-height:40px}
+/* -- navigator loader: the route map draws while MapLibre boots -- */
+#view-nav .sn-load .sn-load-map{width:min(90vw,520px);margin-bottom:4px}
+#view-nav .sn-load .rov{margin:0}
+/* -- splash: outline + road drawing behind the brand -- */
+.splash-map{position:absolute;left:50%;top:50%;width:min(94vw,560px);height:auto;transform:translate(-50%,-54%);opacity:0;pointer-events:none;z-index:0;animation:splashMapIn .8s ease .15s forwards}
+@keyframes splashMapIn{to{opacity:.55}}
+.splash-map .sm-in{fill:rgba(46,95,168,.06);stroke:rgba(18,38,78,.35);stroke-width:1.6;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;animation:smDraw 1.6s cubic-bezier(.4,0,.2,1) .15s forwards}
+.splash-map .sm-np{fill:rgba(220,20,60,.10);stroke:rgba(220,20,60,.55);stroke-width:1.4;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;animation:smDraw 1.2s cubic-bezier(.4,0,.2,1) .8s forwards}
+.splash-map .sm-route{fill:none;stroke:#F07C1F;stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;animation:smDraw 1.4s cubic-bezier(.4,0,.2,1) 1s forwards}
+@keyframes smDraw{to{stroke-dashoffset:0}}
+.splash-brand,.splash-tagline,.splash-ceo,.splash-phone,.splash-portal,.splash-skip{position:relative;z-index:1}
+[data-theme="dark"] .splash-map .sm-in{stroke:rgba(255,255,255,.35);fill:rgba(255,255,255,.04)}
+@media (prefers-reduced-motion:reduce){.splash-map,.splash-map path{animation:none!important;opacity:.45;stroke-dashoffset:0}}
+/* -- ticket: WhatsApp delivery note -- */
+.tk2-note.wa{border-left:4px solid #25D366}
+.tk2-note.wa.ok{background:#E7F8EE;color:#0F7A3D}
+.tk2-note.wa.warn{background:#FFF4E0;color:#8A5A0B;border-left-color:#F0A020}

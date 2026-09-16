@@ -2754,6 +2754,7 @@ function snNavLoad(){
 }
 function renderNav(){
   var stub=renderNav, loader=$('#snLoad'); if(loader) loader.style.display='flex';
+  if(typeof snLoadMapInit==='function') snLoadMapInit();
   snNavLoad().then(function(){
     if(typeof window.renderNav==='function' && window.renderNav!==stub) window.renderNav();
     else { if(loader) loader.style.display='none'; toast('Map could not start'); }

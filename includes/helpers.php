@@ -563,6 +563,41 @@ function sqlSearchClause(array $arms, string $text, array &$params, string $pref
     return '(' . implode(' OR ', $parts) . ')';
 }
 
+
+/* WhatsApp delivery state of the ticket message for ONE booking (ticket
+   page, 17 Sep 2026): the passenger reads "sent to WhatsApp ••••1507" or an
+   honest "could not deliver — send it yourself" instead of guessing whether
+   the office's message went. Reads the newest whatsapp row Notify wrote to
+   message_logs; the number is masked to its last four digits. Never throws:
+   the ticket must render even when the log table is unavailable. */
+function shg_wa_last(int $bookingId): ?array
+{
+    if ($bookingId <= 0) {
+        return null;
+    }
+    try {
+        $row = Database::fetch(
+            "SELECT status, to_number, error, created_at FROM message_logs WHERE booking_id = :b AND channel = 'whatsapp' ORDER BY id DESC LIMIT 1",
+            [':b' => $bookingId]
+        );
+    } catch (Throwable $e) {
+        return null;
+    }
+    if ($row === null) {
+        return null;
+    }
+    $digits = preg_replace('/\D/', '', (string) ($row['to_number'] ?? '')) ?? '';
+    $status = strtolower((string) ($row['status'] ?? ''));
+    $code   = preg_match('/\(code (\d{4,6})\)/', (string) ($row['error'] ?? ''), $m) ? $m[1] : '';
+    return [
+        'status' => $status,
+        'ok'     => in_array($status, ['sent', 'delivered', 'read', 'accepted', 'queued'], true),
+        'last4'  => $digits !== '' ? substr($digits, -4) : '',
+        'code'   => $code,
+        'at'     => (string) ($row['created_at'] ?? ''),
+    ];
+}
+
 /**
  * Customer-facing view of one booking (4 Sep 2026). This is the shape
  * /api/track.php has always answered with, lifted into a shared helper so
