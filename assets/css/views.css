@@ -51,9 +51,9 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
   .ra3-bus{position:absolute;left:0;right:0;bottom:24px;z-index:5;pointer-events:none;will-change:transform,opacity;animation:ra3Drive 12s cubic-bezier(.42,0,.58,1) infinite}
   .ra3-body{position:relative;width:var(--bw)}
   .ra3-body picture,.ra3-body img{display:block;width:100%;height:auto}
-  .ra3-body img{position:relative;z-index:2;filter:drop-shadow(0 10px 8px rgba(0,0,0,.28));will-change:transform;animation:ra3Bob 1.15s ease-in-out infinite}
+  .ra3-body img{position:relative;z-index:2;will-change:transform;animation:ra3Bob 1.15s ease-in-out infinite}
   .ra3-shadow{position:absolute;left:6%;right:2%;bottom:-9px;height:18px;border-radius:50%;z-index:1;
-    background:radial-gradient(ellipse at center,rgba(0,0,0,.45),rgba(0,0,0,0) 68%);animation:ra3Shadow 1.15s ease-in-out infinite}
+    background:radial-gradient(ellipse at center,rgba(0,0,0,.55),rgba(0,0,0,0) 68%);animation:ra3Shadow 1.15s ease-in-out infinite}
   .ra3-beam{position:absolute;right:-30%;bottom:22%;width:38%;height:36%;z-index:0;pointer-events:none;transform:skewX(-10deg);opacity:.85;
     background:radial-gradient(ellipse at left center,rgba(255,244,196,.7),rgba(255,244,196,0) 68%)}
   @keyframes ra3Bob{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(0,-1.6px,0)}}
@@ -73,7 +73,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
   .ra3-in{left:14px}.ra3-np{right:14px;animation-delay:-2s}.ra3-np::after{left:auto;right:14px}
   @keyframes ra3PinFloat{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(0,-4px,0)}}
   .ra3-tag{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);z-index:7;
-    font-size:11px;font-weight:700;color:#fff;background:rgba(0,0,0,.36);padding:3px 12px;border-radius:999px;white-space:nowrap;backdrop-filter:blur(2px)}
+    font-size:11px;font-weight:700;color:#fff;background:rgba(0,0,0,.42);padding:3px 12px;border-radius:999px;white-space:nowrap}
   @media (max-width:520px){.route-anim{height:186px;--bw:140px}.ra3-pin{bottom:82px;font-size:10.5px}.ra3-ground{height:74px}.ra3-far{bottom:58px;height:70px}.ra3-near{bottom:54px}
     /* phones: keep the drive, the road and the hills; the sky decoration rests */
     .ra3-cloud,.ra3-pin,.ra3-sun{animation:none!important}}
