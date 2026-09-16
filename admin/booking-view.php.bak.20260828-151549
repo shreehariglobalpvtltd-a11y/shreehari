@@ -1,0 +1,704 @@
+<?php
+/**
+ * admin/booking-view.php?pnr=... — one booking in full.
+ */
+declare(strict_types=1);
+require __DIR__ . '/_guard.php';
+$admin = admin_boot('bookings.view');
+
+$base  = '';   // root-relative: the panel must stay on the request host (.in or the .network staff door)
+$pnr   = Security::clean($_GET['pnr'] ?? '', 40);
+$flash = null;
+$waManualLink = '';   // click-to-chat URL when no WhatsApp API is configured
+
+/* ---- Cancel action ----------------------------------------------- */
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'cancel') {
+    if (!Security::verifyCsrf()) {
+        $flash = ['bad', 'Session expired — please try again.'];
+    } else {
+        try {
+            Auth::requireAdmin('bookings.cancel');
+            $reason = Security::clean($_POST['reason'] ?? 'Cancelled by staff', 255);
+            $res = BookingService::cancel($pnr, $reason, false);
+            $flash = ['ok', 'Booking cancelled. Refund: ' . inr((float) ($res['refund']['amount'] ?? 0))
+                          . ' (' . (int) ($res['refund']['percent'] ?? 0) . '%).'];
+        } catch (Throwable $e) {
+            $flash = ['bad', $e->getMessage()];
+        }
+    }
+}
+
+$b = BookingService::detail($pnr);
+
+/* ---- Agent scope --------------------------------------------------
+   A counter agent may open a ticket they sold and no other. Without this the
+   PNR in the URL is the only thing between an agent and every passenger
+   record in the company — and a PNR is printed on the ticket, so it is not a
+   secret. Nulling $b here also disarms every action block below, since each
+   one is guarded on $b !== null.
+
+   Treated as "not found" rather than "forbidden" on purpose: confirming that
+   a PNR exists is itself a disclosure. */
+$scopeId = Auth::bookingScopeAdminId();
+if ($b !== null && $scopeId !== null && (int) ($b['sold_by_admin_id'] ?? 0) !== $scopeId) {
+    Logger::warning('Agent tried to open a booking they did not sell', [
+        'admin' => $admin['username'] ?? '',
+        'pnr'   => $pnr,
+    ]);
+    $b = null;
+}
+
+/* ---- Resend WhatsApp ticket (confirmed bookings only) ------------- */
+if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'resend_wa') {
+    if (!Security::verifyCsrf()) {
+        $flash = ['bad', 'Session expired — please try again.'];
+    } elseif (($b['status'] ?? '') !== 'confirmed') {
+        $flash = ['bad', 'Tickets can only be re-sent for confirmed bookings.'];
+    } elseif (!Auth::can('payments.verify')) {
+        $flash = ['bad', 'Your role cannot re-send tickets.'];
+    } else {
+        try {
+            $r = Notify::resendTicketWhatsApp($b);
+            /* Keep the click-to-chat URL out of the escaped flash text and
+               render it as a real button below — printed as plain text it
+               was a 200-character line nobody could click, which made the
+               no-Twilio path look like a failure instead of "press send". */
+            $flash = [$r['ok'] ? 'ok' : 'bad', $r['detail']];
+            $waManualLink = $r['link'] ?? '';
+        } catch (Throwable $e) {
+            $flash = ['bad', $e->getMessage()];
+        }
+    }
+}
+
+/* ---- Cash on delivery: record the money as collected --------------
+   COD confirms on submit so the passenger's ticket works, but the fare is
+   still owed and the payment row stays 'cod_pending'. This is the only place
+   that can close it, so the counter can reconcile the day's cash. */
+if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'cod_settle') {
+    if (!Security::verifyCsrf()) {
+        $flash = ['bad', 'Session expired — please try again.'];
+    } else {
+        try {
+            Auth::requireAdmin('payments.verify');
+            $note = Security::clean($_POST['note'] ?? '', 255);
+            BookingService::settleCod((int) $b['id'], (int) $admin['id'], $note);
+            $flash = ['ok', 'Cash recorded for ' . $pnr . ' — the payment is now settled.'];
+            $b = BookingService::detail($pnr);
+        } catch (Throwable $e) {
+            $flash = ['bad', $e->getMessage()];
+        }
+    }
+}
+
+/* ---- Reversible payment review (§4) ------------------------------
+   An authorised admin can move a booking between confirmed and rejected at
+   any time (e.g. undo a mistaken approval). Every transition is audit-logged
+   with old→new state inside BookingService, and the customer's ticket
+   re-locks / unlocks on their next status refresh. */
+if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'review') {
+    if (!Security::verifyCsrf()) {
+        $flash = ['bad', 'Session expired — please try again.'];
+    } else {
+        $decision = (string) ($_POST['decision'] ?? '');
+        $note     = Security::clean($_POST['note'] ?? '', 255);
+        try {
+            if ($decision === 'approve') {
+                Auth::requireAdmin('payments.verify');
+                $r = BookingService::confirm((int) $b['id'], (int) $admin['id'], $note);
+                $flash = ['ok', 'Payment approved — ticket issued for ' . ($r['pnr'] ?? $pnr) . '.'];
+            } elseif ($decision === 'reject') {
+                Auth::requireAdmin('payments.reject');
+                if ($note === '') { $note = 'Payment could not be verified.'; }
+                $r = BookingService::reject((int) $b['id'], (int) $admin['id'], $note);
+                $flash = ['ok', 'Booking ' . ($r['pnr'] ?? $pnr) . ' marked rejected — seats released.'];
+            } else {
+                $flash = ['bad', 'Unknown decision.'];
+            }
+            $b = BookingService::detail($pnr); // refresh so the page shows the new state
+        } catch (Throwable $e) {
+            $flash = ['bad', $e->getMessage()];
+        }
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SUPERADMIN POWER ACTIONS — edit, force, delete
+   All gated on isSuperadmin() — no regular role can reach these.
+═══════════════════════════════════════════════════════════════════ */
+$isSuperHere = Auth::isSuperadmin();
+
+/* ── Force-cancel (no refund policy, seats released) ── */
+if ($b !== null && $isSuperHere && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'force_cancel') {
+    if (!Security::verifyCsrf()) {
+        $flash = ['bad', 'Session expired.'];
+    } else {
+        try {
+            $reason = Security::clean($_POST['reason'] ?? 'Force-cancelled by admin', 255);
+            // Hard-set status, release seats, skip refund policy.
+            Database::run(
+                "UPDATE bookings SET status='cancelled', cancelled_reason=:r, updated_at=NOW() WHERE id=:id",
+                ['r' => $reason, 'id' => $b['id']]
+            );
+            // Release seat locks
+            Database::run(
+                "UPDATE booking_seats SET status='cancelled' WHERE booking_id=:id",
+                ['id' => $b['id']]
+            );
+            Logger::audit('booking.force_cancel', 'admin', $pnr, null, ['reason' => $reason], 'superadmin force-cancel');
+            $flash = ['ok', 'Booking force-cancelled. Seats released. No refund processing — handle manually if needed.'];
+            $b = BookingService::detail($pnr);
+        } catch (Throwable $e) { $flash = ['bad', $e->getMessage()]; }
+    }
+}
+
+/* ── Reset to pending (re-open for review) ── */
+if ($b !== null && $isSuperHere && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'reset_pending') {
+    if (!Security::verifyCsrf()) {
+        $flash = ['bad', 'Session expired.'];
+    } else {
+        try {
+            Database::run(
+                "UPDATE bookings SET status='pending', updated_at=NOW() WHERE id=:id",
+                ['id' => $b['id']]
+            );
+            Logger::audit('booking.reset_pending', 'admin', $pnr, null, null, 'superadmin reset to pending');
+            $flash = ['ok', 'Booking reset to PENDING — it will now show in the payment verification queue.'];
+            $b = BookingService::detail($pnr);
+        } catch (Throwable $e) { $flash = ['bad', $e->getMessage()]; }
+    }
+}
+
+/* ── Edit contact / passenger name ── */
+if ($b !== null && $isSuperHere && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'edit_contact') {
+    if (!Security::verifyCsrf()) {
+        $flash = ['bad', 'Session expired.'];
+    } else {
+        try {
+            $newPhone = preg_replace('/\D/', '', $_POST['contact_phone'] ?? '');
+            $newEmail = Security::clean($_POST['contact_email'] ?? '', 120);
+            $newNote  = Security::clean($_POST['admin_note'] ?? '', 255);
+            $upd = ['updated_at' => date('Y-m-d H:i:s')];
+            if ($newPhone !== '') { $upd['contact_phone'] = $newPhone; }
+            if ($newEmail !== '') { $upd['contact_email'] = $newEmail; }
+            if ($newNote  !== '') { $upd['admin_note']    = $newNote; }
+            Database::update('bookings', $upd, 'id = :id', ['id' => $b['id']]);
+            // Update passengers if pax name provided
+            foreach (($_POST['pax_name'] ?? []) as $paxId => $paxName) {
+                $paxName = Security::clean((string) $paxName, 120);
+                if ($paxName !== '') {
+                    Database::run(
+                        "UPDATE booking_passengers SET full_name=:n WHERE id=:id AND booking_id=:bid",
+                        ['n' => $paxName, 'id' => (int) $paxId, 'bid' => $b['id']]
+                    );
+                }
+            }
+            Logger::audit('booking.edit_contact', 'admin', $pnr, null, $upd, 'superadmin contact edit');
+            $flash = ['ok', 'Booking details updated.'];
+            $b = BookingService::detail($pnr);
+        } catch (Throwable $e) { $flash = ['bad', $e->getMessage()]; }
+    }
+}
+
+/* ── Hard delete (removes from DB entirely — irreversible!) ── */
+if ($isSuperHere && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'hard_delete') {
+    if (!Security::verifyCsrf()) {
+        $flash = ['bad', 'Session expired.'];
+    } else {
+        try {
+            $confirm = (string) ($_POST['confirm_delete'] ?? '');
+            if ($confirm !== $pnr) {
+                $flash = ['bad', 'Type the PNR exactly to confirm deletion.'];
+            } elseif ($b === null) {
+                $flash = ['bad', 'Booking not found.'];
+            } else {
+                $bid = (int) $b['id'];
+                // Delete in dependency order
+                Database::run("DELETE FROM booking_passengers WHERE booking_id=:id", ['id' => $bid]);
+                Database::run("DELETE FROM booking_seats     WHERE booking_id=:id", ['id' => $bid]);
+                Database::run("DELETE FROM booking_legs      WHERE booking_id=:id", ['id' => $bid]);
+                Database::run("DELETE FROM payments          WHERE booking_id=:id", ['id' => $bid]);
+                Database::run("DELETE FROM bookings          WHERE id=:id",          ['id' => $bid]);
+                Logger::audit('booking.hard_delete', 'admin', $pnr, null, null, 'superadmin permanent delete');
+                // Redirect so a reload cannot re-delete
+                Response::redirect('admin/bookings.php');
+            }
+        } catch (Throwable $e) { $flash = ['bad', $e->getMessage()]; }
+    }
+}
+
+admin_header('Booking ' . $pnr, 'bookings');
+
+if ($b === null) {
+    echo '<div class="flash bad">No booking found with reference ' . Security::e($pnr) . '.</div>';
+    echo '<p><a class="btn ghost" href="' . $base . '/admin/bookings.php">← Back to bookings</a></p>';
+    admin_footer();
+    exit;
+}
+
+if ($flash !== null) {
+    echo '<div class="flash ' . $flash[0] . '">' . Security::e($flash[1]) . '</div>';
+}
+if (!empty($waManualLink)) {
+    echo '<div class="flash ok" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
+       . '<span>Send it yourself in one tap &mdash; WhatsApp opens with the message already written.</span>'
+       . '<a class="btn ok" target="_blank" rel="noopener" href="' . Security::e($waManualLink) . '">'
+       . '&#128172; Open WhatsApp</a></div>';
+}
+
+$leg = $b['legs'][0] ?? [];
+$pay = $b['payment'] ?? [];
+$csrf = Security::e(Security::csrfToken());
+$k    = CSRF_TOKEN_NAME;
+
+/* ---- Agent code lookup ------------------------------------------- */
+$agentCodes = Settings::getArray('agent_codes', []);
+$soldById   = (int) ($b['sold_by_admin_id'] ?? 0);
+$agentCode  = '';
+if ($soldById > 0 && isset($agentCodes[$soldById])) {
+    $agentCode = 'SHG-' . str_pad((string) ($agentCodes[$soldById] ?? ''), 3, '0', STR_PAD_LEFT);
+}
+?>
+<style>
+.source-card{border-left:4px solid var(--blue);background:var(--card);border:1px solid var(--line);border-left:4px solid var(--blue);border-radius:14px;padding:18px 22px;margin-bottom:22px}
+.source-card h3{margin:0 0 12px;font-size:15px}
+.source-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 24px}
+.source-grid dt{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.3px;margin:0}
+.source-grid dd{margin:2px 0 10px;font-size:14px;font-weight:600}
+.source-badge{display:inline-block;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:700;vertical-align:middle}
+.source-badge.online{background:#e2ecfb;color:#1c3b72}
+.source-badge.agent{background:#fff4d1;color:#8a6d00}
+.source-badge.counter{background:#ffe6c7;color:#7a4a00}
+.source-badge.admin-src{background:#f0e6ff;color:#5a3fb0}
+:root[data-theme="dark"] .source-badge.online{background:#1c3b72;color:#b8d4fb}
+:root[data-theme="dark"] .source-badge.agent{background:#4a3d00;color:#ffe28a}
+:root[data-theme="dark"] .source-badge.counter{background:#4a3200;color:#ffcc8a}
+:root[data-theme="dark"] .source-badge.admin-src{background:#2e1f5e;color:#d4bfff}
+.audit-timeline{border-left:3px solid var(--line);margin-left:16px;padding-left:20px}
+.audit-entry{position:relative;margin-bottom:16px;padding:10px 14px;background:var(--head);border-radius:8px}
+.audit-entry::before{content:'';position:absolute;left:-27px;top:14px;width:10px;height:10px;border-radius:50%;background:var(--blue);border:2px solid var(--card)}
+.audit-time{font-size:12px;color:var(--mut);font-family:ui-monospace,Menlo,Consolas,monospace}
+.audit-actor{font-weight:700;font-size:13px;margin-top:2px}
+.audit-action{display:inline-block;font-size:12px;padding:2px 8px;border-radius:4px;background:var(--line);margin-top:4px}
+.audit-detail{font-size:13px;margin-top:4px;color:var(--mut)}
+.board-yes{color:#0a6b3b;font-weight:600}
+.board-no{color:var(--mut)}
+
+/* ── Superadmin power panel ── */
+.power-panel{border:2px solid #C00;border-radius:14px;padding:18px 20px;margin-bottom:22px;background:#FFF8F8}
+.power-panel h3{color:#8a1f1f;font-size:14px;margin:0 0 12px;display:flex;align-items:center;gap:6px}
+.power-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.power-panel details{margin-top:10px}
+.power-panel summary{font-size:13px;font-weight:700;cursor:pointer;color:#8a1f1f;padding:6px 0}
+.power-panel .sub-form{margin-top:10px;display:grid;gap:8px}
+.power-panel label{font-size:12px;font-weight:700;color:#555;margin-bottom:2px}
+.power-panel input,.power-panel textarea{width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:7px;font-size:14px}
+.danger-zone{border:1.5px dashed #C00;border-radius:10px;padding:12px 14px;margin-top:10px}
+.danger-zone p{font-size:12px;color:#8a1f1f;margin:0 0 8px}
+:root[data-theme="dark"] .power-panel{background:#2a0e0e;border-color:#a00}
+:root[data-theme="dark"] .power-panel h3,:root[data-theme="dark"] .power-panel summary,:root[data-theme="dark"] .danger-zone p{color:#f88}
+</style>
+
+<?php if ($isSuperHere): ?>
+<div class="power-panel">
+  <h3>⚡ Superadmin Controls — <?= Security::e($pnr) ?></h3>
+  <div class="power-actions">
+    <!-- Force Cancel -->
+    <form method="post" style="display:inline">
+      <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+      <input type="hidden" name="action" value="force_cancel">
+      <input type="hidden" name="reason" value="Force-cancelled by admin">
+      <button type="submit" class="btn btn-warn btn-sm"
+              onclick="return confirm('Force-cancel <?= Security::e($pnr) ?>? Seats released, NO automatic refund.')">
+        🚫 Force Cancel
+      </button>
+    </form>
+    <!-- Reset to Pending -->
+    <?php if (in_array($b['status'] ?? '', ['confirmed','rejected','cancelled'], true)): ?>
+    <form method="post" style="display:inline">
+      <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+      <input type="hidden" name="action" value="reset_pending">
+      <button type="submit" class="btn btn-ghost btn-sm"
+              onclick="return confirm('Reset this booking to PENDING status?')">
+        🔄 Reset → Pending
+      </button>
+    </form>
+    <?php endif; ?>
+    <!-- Download ticket link -->
+    <a href="<?= $base ?>/download-ticket.php?pnr=<?= urlencode($pnr) ?>" target="_blank" class="btn btn-ghost btn-sm">🎟️ View Ticket</a>
+    <!-- WhatsApp passenger -->
+    <?php if (!empty($b['contact_phone'])): ?>
+    <a href="https://wa.me/91<?= preg_replace('/\D/', '', (string)$b['contact_phone']) ?>"
+       target="_blank" class="btn btn-ghost btn-sm">💬 WhatsApp Passenger</a>
+    <?php endif; ?>
+  </div>
+
+  <!-- Edit Contact + Passengers -->
+  <details>
+    <summary>✏️ Edit Contact / Passenger Names</summary>
+    <form method="post" class="sub-form">
+      <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+      <input type="hidden" name="action" value="edit_contact">
+      <div>
+        <label>Contact Phone</label>
+        <input type="tel" name="contact_phone" placeholder="<?= Security::e((string)$b['contact_phone']) ?>" maxlength="15">
+      </div>
+      <div>
+        <label>Contact Email</label>
+        <input type="email" name="contact_email" placeholder="<?= Security::e((string)($b['contact_email'] ?? '')) ?>" maxlength="120">
+      </div>
+      <?php foreach (($b['passengers'] ?? []) as $pax): ?>
+      <div>
+        <label>Passenger #<?= (int)($pax['berth_no'] ?? 1) ?> Name</label>
+        <input type="text" name="pax_name[<?= (int)$pax['id'] ?>]"
+               placeholder="<?= Security::e((string)$pax['full_name']) ?>" maxlength="120">
+      </div>
+      <?php endforeach; ?>
+      <div>
+        <label>Admin Note (internal)</label>
+        <textarea name="admin_note" rows="2" placeholder="Internal note — not shown to customer"></textarea>
+      </div>
+      <button type="submit" class="btn btn-ok btn-sm" style="width:auto">💾 Save Changes</button>
+    </form>
+  </details>
+
+  <!-- Hard Delete -->
+  <details>
+    <summary>🗑️ Permanently Delete This Booking</summary>
+    <div class="danger-zone">
+      <p>⚠️ This cannot be undone. The booking, passengers, seats and payment records are removed from the database permanently.</p>
+      <form method="post" class="sub-form">
+        <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+        <input type="hidden" name="action" value="hard_delete">
+        <div>
+          <label>Type the PNR to confirm: <b><?= Security::e($pnr) ?></b></label>
+          <input type="text" name="confirm_delete" placeholder="<?= Security::e($pnr) ?>" required autocomplete="off" maxlength="40">
+        </div>
+        <button type="submit" class="btn btn-warn btn-sm" style="width:auto;background:#C00;border-color:#C00"
+                onclick="return confirm('PERMANENTLY DELETE <?= Security::e($pnr) ?>? This cannot be undone.')">
+          💀 Delete Forever
+        </button>
+      </form>
+    </div>
+  </details>
+</div>
+<?php endif; ?>
+
+<p style="margin-top:-8px">
+  <a class="muted" href="<?= $base ?>/admin/bookings.php">← All bookings</a>
+  &nbsp;·&nbsp; <?= admin_pill((string) $b['status']) ?>
+</p>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start">
+  <div class="panel">
+    <h2>Journey</h2>
+    <table>
+      <tr><th>Route</th><td><?= Security::e(($leg['from_city'] ?? '—') . ' → ' . ($leg['to_city'] ?? '—')) ?></td></tr>
+      <tr><th>Bus</th><td><?= Security::e($leg['bus_name'] ?? '—') ?> <span class="muted">(<?= Security::e($leg['route_code'] ?? '') ?>)</span></td></tr>
+      <tr><th>Travel date</th><td><?= Security::e(formatDate($leg['travel_date'] ?? null)) ?> · <?= Security::e(formatTime($leg['dep_time'] ?? null)) ?></td></tr>
+      <tr><th>Boarding</th><td><?= Security::e($leg['boarding_stop'] ?? '—') ?></td></tr>
+      <tr><th>Drop</th><td><?= Security::e($leg['drop_stop'] ?? '—') ?></td></tr>
+      <tr><th>Seats</th><td class="mono"><?= Security::e(implode(', ', $b['seats'] ?? [])) ?></td></tr>
+      <tr><th>Contact</th><td class="mono"><?= Security::e((string) $b['contact_phone']) ?><?= !empty($b['contact_email']) ? ' · ' . Security::e((string) $b['contact_email']) : '' ?></td></tr>
+      <tr><th>Booked by</th><td>
+        <?php if (!empty($b['agent'])): ?>
+          <strong><?= Security::e((string) ($b['agent']['full_name'] ?: $b['agent']['username'])) ?></strong><?php if (!empty($b['agent']['phone'])): ?> <span class="mono">· <?= Security::e((string) $b['agent']['phone']) ?></span><?php endif; ?>
+          <span class="muted">(<?= Security::e(ucfirst((string) ($b['agent']['role'] ?? 'agent'))) ?>)</span>
+        <?php else: ?>
+          <span class="muted">Online — customer self-booking</span>
+        <?php endif; ?>
+        <?php if (!empty($b['source'])): ?> <span class="muted">· via <?= Security::e((string) $b['source']) ?></span><?php endif; ?>
+      </td></tr>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h2>Fare &amp; payment</h2>
+    <table>
+      <tr><th>Base total</th><td><?= Security::e(inr((float) $b['base_total'])) ?></td></tr>
+      <?php foreach ([['group_discount','Group discount'],['coupon_discount','Coupon'],['tier_discount','Member discount'],['points_value','Loyalty points']] as $d): ?>
+        <?php if ((float) ($b[$d[0]] ?? 0) > 0): ?>
+          <tr><th><?= $d[1] ?></th><td>− <?= Security::e(inr((float) $b[$d[0]])) ?></td></tr>
+        <?php endif; ?>
+      <?php endforeach; ?>
+      <?php if ((float) ($b['tax_amount'] ?? 0) > 0): ?><tr><th>Tax</th><td><?= Security::e(inr((float) $b['tax_amount'])) ?></td></tr><?php endif; ?>
+      <tr><th>Total</th><td><strong style="font-size:17px"><?= Security::e(inr((float) $b['total_amount'])) ?></strong></td></tr>
+      <tr><th>Method</th><td><?= Security::e(strtoupper((string) ($pay['method'] ?? '—'))) ?> · <?= admin_pill((string) ($pay['status'] ?? 'pending')) ?></td></tr>
+      <tr><th>UTR / Ref</th><td class="mono"><?= Security::e($pay['utr_number'] ?? '—') ?></td></tr>
+    </table>
+  </div>
+</div>
+
+<?php
+/* ========================================================================
+ *  1a. Booking Source Card
+ * ======================================================================== */
+$source = strtolower((string) ($b['source'] ?? 'web'));
+$sourceBadgeClass = match($source) {
+    'agent'   => 'agent',
+    'counter' => 'counter',
+    'admin'   => 'admin-src',
+    default   => 'online',
+};
+$sourceLabel = match($source) {
+    'agent'   => 'Agent',
+    'counter' => 'Counter',
+    'admin'   => 'Admin',
+    default   => 'Online',
+};
+$bookedByLabel = 'Online Customer';
+if (!empty($b['agent'])) {
+    $name = (string) ($b['agent']['full_name'] ?: $b['agent']['username']);
+    $bookedByLabel = $name . ($agentCode !== '' ? ' (' . $agentCode . ')' : '');
+} elseif ($source === 'admin') {
+    $bookedByLabel = 'Admin';
+} elseif ($source === 'counter') {
+    $bookedByLabel = 'Counter Staff';
+}
+
+/* Agent phone — mask for non-superadmins */
+$agentPhone = '';
+if (!empty($b['agent']['phone'])) {
+    $phone = (string) $b['agent']['phone'];
+    if (Auth::isSuperadmin()) {
+        $agentPhone = $phone;
+    } else {
+        // Show last 4 digits only
+        $agentPhone = str_repeat('*', max(0, strlen($phone) - 4)) . substr($phone, -4);
+    }
+}
+
+$createdAt  = (string) ($b['created_at'] ?? '');
+$updatedAt  = (string) ($b['updated_at'] ?? '');
+$hasUpdated = $updatedAt !== '' && $updatedAt !== $createdAt;
+?>
+<div class="source-card">
+  <h3>Booking Source</h3>
+  <dl class="source-grid">
+    <div>
+      <dt>Source</dt>
+      <dd><span class="source-badge <?= $sourceBadgeClass ?>"><?= Security::e($sourceLabel) ?></span></dd>
+    </div>
+    <div>
+      <dt>Booked by</dt>
+      <dd><?= Security::e($bookedByLabel) ?></dd>
+    </div>
+    <?php if ($agentPhone !== ''): ?>
+    <div>
+      <dt>Agent contact</dt>
+      <dd class="mono"><?= Security::e($agentPhone) ?></dd>
+    </div>
+    <?php endif; ?>
+    <div>
+      <dt>Booking date</dt>
+      <dd><?= $createdAt !== '' ? Security::e(formatDate($createdAt, 'D, j M Y · g:i A')) : '<span class="muted">—</span>' ?></dd>
+    </div>
+    <?php if ($hasUpdated): ?>
+    <div>
+      <dt>Last updated</dt>
+      <dd><?= Security::e(formatDate($updatedAt, 'D, j M Y · g:i A')) ?> <span class="muted">(<?= Security::e(timeAgo($updatedAt)) ?>)</span></dd>
+    </div>
+    <?php endif; ?>
+    <?php if (Auth::isSuperadmin() && !empty($b['ip_address'])): ?>
+    <div>
+      <dt>IP address</dt>
+      <dd class="mono"><?= Security::e((string) $b['ip_address']) ?></dd>
+    </div>
+    <?php endif; ?>
+    <?php if (!empty($b['ticket_number'])): ?>
+    <div>
+      <dt>Ticket no.</dt>
+      <dd class="mono"><?= Security::e((string) $b['ticket_number']) ?></dd>
+    </div>
+    <?php endif; ?>
+  </dl>
+</div>
+
+<?php
+/* ========================================================================
+ *  1c. Enhanced Passenger Table — with boarding status
+ * ======================================================================== */
+$ticket = $b['ticket'] ?? null;
+?>
+<div class="panel">
+  <h2>Passengers</h2>
+  <table>
+    <thead><tr><th>Seat</th><th>Name</th><th>Age</th><th>Gender</th><th>Boarding</th></tr></thead>
+    <tbody>
+    <?php foreach ($b['passengers'] as $p): ?>
+      <tr>
+        <td class="mono"><?= Security::e((string) $p['seat_no']) ?></td>
+        <td><?= Security::e((string) $p['full_name']) ?><?php if ((int) ($p['is_primary'] ?? 0) === 1): ?> <span class="pill" style="background:#e2ecfb;color:#1c3b72;font-size:10px;padding:1px 6px">Primary</span><?php endif; ?></td>
+        <td><?= $p['age'] !== null ? (int) $p['age'] : '—' ?></td>
+        <td><?= Security::e((string) ($p['gender'] ?? '—')) ?></td>
+        <td>
+          <?php if (!empty($p['boarded_at'])): ?>
+            <span class="board-yes">Boarded at <?= Security::e(formatDate($p['boarded_at'], 'g:i A')) ?></span>
+          <?php else: ?>
+            <span class="board-no">Not boarded</span>
+          <?php endif; ?>
+        </td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+  <?php if ($ticket !== null && (int) ($ticket['scan_count'] ?? 0) > 0): ?>
+    <div style="padding:10px 18px;font-size:13px;color:var(--mut);border-top:1px solid var(--line)">
+      Ticket scanned <?= (int) $ticket['scan_count'] ?> time<?= (int) $ticket['scan_count'] !== 1 ? 's' : '' ?>
+      <?php if (!empty($ticket['scanned_at'])): ?>
+        — last at <?= Security::e(formatDate($ticket['scanned_at'], 'j M Y g:i A')) ?>
+        <?php if (!empty($ticket['scanned_by_name'])): ?> by <?= Security::e((string) $ticket['scanned_by_name']) ?><?php endif; ?>
+      <?php endif; ?>
+      <?php if ((int) ($ticket['is_void'] ?? 0) === 1): ?>
+        <span class="pill" style="background:#f7dcdc;color:#8a1f1f;margin-left:6px">VOID</span>
+      <?php endif; ?>
+    </div>
+  <?php endif; ?>
+</div>
+
+<?php if ((Auth::can('payments.verify') || Auth::can('payments.reject')) && in_array($b['status'], ['pending', 'confirmed', 'rejected'], true)): ?>
+<div class="panel">
+  <h2>Payment review</h2>
+  <p class="muted" style="margin-top:-6px">
+    Booking is <?= admin_pill((string) $b['status']) ?> · payment <?= admin_pill((string) ($pay['status'] ?? 'pending')) ?>.
+    You can change this decision at any time — every change is logged and the customer's ticket re-locks or unlocks on their next refresh.
+  </p>
+  <?php if ((int) ($b['is_cod'] ?? 0) === 1 && ($pay['status'] ?? '') === 'cod_pending'): ?>
+    <div style="background:#fff4d1;border:1px solid #f0d48a;border-radius:10px;padding:12px 14px;margin-bottom:12px">
+      <b style="font-size:13.5px">💵 Cash on delivery — <?= Security::e(inr((float) $b['total_amount'])) ?> still to collect</b>
+      <p class="muted" style="font-size:12.5px;margin:4px 0 10px">
+        The ticket is already valid; the fare is collected in cash at the boarding counter.
+        Record it here once you have the money — that settles the payment and posts the agent commission and loyalty points.
+      </p>
+      <?php if (Auth::can('payments.verify')): ?>
+        <form method="post" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"
+              onsubmit="return confirm('Record <?= Security::e(inr((float) $b['total_amount'])) ?> cash as collected for this booking?')">
+          <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+          <input type="text" name="note" placeholder="Who collected it / receipt no. (optional)"
+                 style="flex:1;min-width:200px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
+          <button class="btn ok" type="submit" name="action" value="cod_settle">💵 Cash collected</button>
+        </form>
+      <?php else: ?>
+        <p class="muted" style="font-size:12.5px;margin:0">Your role cannot settle payments.</p>
+      <?php endif; ?>
+    </div>
+  <?php endif; ?>
+  <div class="row-actions" style="gap:10px;flex-wrap:wrap;align-items:center">
+    <?php if (Auth::can('payments.verify') && in_array($b['status'], ['pending', 'rejected'], true)): ?>
+      <form method="post" style="display:flex;gap:8px;align-items:center"
+            onsubmit="return confirm('Approve this payment and issue the ticket? Any released seats will be re-claimed.')">
+        <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+        <input type="hidden" name="decision" value="approve">
+        <input type="text" name="note" placeholder="Note (optional)" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
+        <button class="btn ok" type="submit" name="action" value="review">✓ Approve payment</button>
+      </form>
+    <?php endif; ?>
+    <?php if (Auth::can('payments.reject') && in_array($b['status'], ['pending', 'confirmed'], true)): ?>
+      <form method="post" style="display:flex;gap:8px;align-items:center"
+            onsubmit="return confirm('Reject this payment and release its seats? The customer is notified and their ticket re-locks.')">
+        <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+        <input type="hidden" name="decision" value="reject">
+        <input type="text" name="note" placeholder="Reason (shown to customer)" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
+        <button class="btn bad" type="submit" name="action" value="review">✕ Reject payment</button>
+      </form>
+    <?php endif; ?>
+  </div>
+  <?php if ($b['status'] === 'confirmed'): ?>
+    <p class="muted" style="font-size:12px;margin-top:10px">⚠️ Rejecting a confirmed booking automatically releases the seats, re-locks the customer's ticket, refunds their redeemed loyalty points and reverses the counter agent's wallet commission (reinstated if you approve again). It does <strong>not</strong> void the already-issued ticket PDF or any referral commission payout — check those by hand.</p>
+  <?php endif; ?>
+</div>
+<?php endif; ?>
+
+<div class="toolbar">
+  <?php if ($b['status'] === 'confirmed'): ?>
+    <a class="btn" href="<?= Security::e(Ticket::downloadUrl($pnr)) ?>" target="_blank">⬇️ Ticket PDF</a>
+    <a class="btn ghost" href="<?= Security::e(Ticket::downloadUrl($pnr, true)) ?>" target="_blank">⬇️ Invoice</a>
+    <?php if (Auth::can('payments.verify')): ?>
+      <form method="post" style="display:inline" onsubmit="return confirm('Re-send the ticket to <?= Security::e((string) $b['contact_phone']) ?> on WhatsApp?')">
+        <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+        <button class="btn ok" type="submit" name="action" value="resend_wa">📲 Resend WhatsApp ticket</button>
+      </form>
+    <?php endif; ?>
+  <?php elseif ($b['status'] === 'pending'): ?>
+    <a class="btn ok" href="<?= $base ?>/admin/payments.php">Go to verification queue →</a>
+  <?php endif; ?>
+
+  <?php if (in_array($b['status'], ['pending', 'confirmed'], true) && Auth::can('bookings.cancel')): ?>
+    <form method="post" class="row-actions" style="margin-left:auto"
+          onsubmit="return confirm('Cancel this booking? Seats will be released and the refund slab applied.')">
+      <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+      <input type="text" name="reason" placeholder="Reason" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px">
+      <button class="btn bad" type="submit" name="action" value="cancel">Cancel booking</button>
+    </form>
+  <?php endif; ?>
+</div>
+
+<?php
+/* ========================================================================
+ *  1b. Audit Trail Panel
+ *
+ *  PDO on this system does NOT support reusing named placeholders.
+ *  Every placeholder name must be unique.
+ * ======================================================================== */
+$bookingId = (int) $b['id'];
+
+$auditLogs = [];
+try {
+    $auditLogs = Database::fetchAll(
+        "SELECT al.* FROM audit_logs al
+          WHERE (al.entity_type = 'booking' AND al.entity_id = :pnr1)
+             OR (al.entity_type = 'booking' AND al.entity_id = :bid1)
+             OR (al.entity_type = 'payment' AND al.entity_id IN (SELECT CAST(id AS CHAR) FROM payments WHERE booking_id = :bid2))
+             OR (al.entity_type = 'ticket'  AND al.entity_id IN (SELECT CAST(id AS CHAR) FROM tickets  WHERE booking_id = :bid3))
+         ORDER BY al.created_at ASC",
+        [
+            'pnr1' => $pnr,
+            'bid1'  => (string) $bookingId,
+            'bid2'  => $bookingId,
+            'bid3'  => $bookingId,
+        ]
+    );
+} catch (Throwable $e) {
+    // Silently degrade — audit log is informational
+    $auditLogs = [];
+}
+?>
+<div class="panel">
+  <h2>📋 Audit Trail</h2>
+  <?php if ($auditLogs === []): ?>
+    <div style="padding:18px;color:var(--mut);font-size:14px">No audit entries recorded for this booking.</div>
+  <?php else: ?>
+    <div style="padding:18px">
+      <div class="audit-timeline">
+        <?php foreach ($auditLogs as $log): ?>
+          <div class="audit-entry">
+            <div class="audit-time"><?= Security::e(formatDate($log['created_at'] ?? '', 'j M Y H:i')) ?></div>
+            <div class="audit-actor">
+              <?= Security::e(strtoupper((string) ($log['actor_type'] ?? 'system'))) ?>
+              <?php if (!empty($log['actor_name'])): ?>
+                · <?= Security::e((string) $log['actor_name']) ?>
+              <?php endif; ?>
+            </div>
+            <div class="audit-action"><?= Security::e((string) ($log['action'] ?? '')) ?></div>
+            <?php if (!empty($log['detail'])): ?>
+              <div class="audit-detail"><?= Security::e((string) $log['detail']) ?></div>
+            <?php endif; ?>
+            <?php if (Auth::isSuperadmin()): ?>
+              <?php if (!empty($log['old_value']) || !empty($log['new_value'])): ?>
+                <div class="audit-detail" style="font-size:11px;margin-top:6px">
+                  <?php if (!empty($log['old_value'])): ?><span>Old: <?= Security::e(mb_substr((string) $log['old_value'], 0, 120)) ?></span><?php endif; ?>
+                  <?php if (!empty($log['new_value'])): ?><span> → New: <?= Security::e(mb_substr((string) $log['new_value'], 0, 120)) ?></span><?php endif; ?>
+                </div>
+              <?php endif; ?>
+              <?php if (!empty($log['ip_address'])): ?>
+                <div class="audit-detail mono" style="font-size:11px">IP: <?= Security::e((string) $log['ip_address']) ?></div>
+              <?php endif; ?>
+            <?php endif; ?>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+  <?php endif; ?>
+</div>
+<?php
+admin_footer();

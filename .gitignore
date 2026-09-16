@@ -1,0 +1,23 @@
+# --- Secrets & local-only files — never commit, never deploy ---
+SHG-ADMIN-CREDENTIALS.txt
+.deploy.env
+config/config.local.php
+# The real production config, with live database credentials and APP_KEY.
+# Only config.sample.php is tracked: this file used to be tracked WITH
+# placeholder credentials, so any deploy that included it would have
+# overwritten the live database password and taken the site down.
+config/config.php
+.claude/
+
+# Generated PDFs / uploads — per-booking, never tracked
+tickets/
+invoice/
+uploads/
+qr/*.png
+
+# Local dev / OS noise
+*.log
+*.lock
+Thumbs.db
+.DS_Store
+node_modules/

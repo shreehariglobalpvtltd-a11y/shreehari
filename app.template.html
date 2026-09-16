@@ -1,0 +1,2633 @@
+﻿<!-- S Hari Global Pvt Ltd — Bus Booking Platform v4.0 -->
+<!-- ORPS/cPanel Deploy: Upload as index.html to /public_html/ -->
+<!-- VPS Deploy: See nginx config in SECTION 3 of master prompt -->
+<!DOCTYPE html>
+<!-- The inline background on <html> is deliberate: it is applied the instant
+     the tag is parsed, so the very first frame is brand blue instead of the
+     browser's default white. Nothing else can paint that early — the main
+     stylesheet is ~111KB and must be fully parsed before it applies. -->
+<html lang="en" style="background:#0E1E40">
+<head>
+<meta charset="UTF-8">
+<!-- viewport-fit=cover is load-bearing: without it iOS resolves every
+     env(safe-area-inset-*) to 0, and the 22 safe-area rules in app.css /
+     views.css silently do nothing — the bottom nav sits under the home
+     indicator and the topbar under the notch. -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1A3A6A">
+<meta name="color-scheme" content="light dark">
+<script>
+/* ---- THEME PRE-PAINT (4 Sep 2026) ------------------------------------
+   The saved theme and palette are stamped on <html> here, before any
+   stylesheet or deferred script runs, so a dark-mode traveller never sees
+   a white first frame (applyTheme() in 03-accounts.js used to run as the
+   third deferred script). Mirrors applyTheme() and the palette pick in
+   init() exactly; those still run later and agree with this. */
+(function () {
+  try {
+    var d = document.documentElement, t = localStorage.getItem('shg:theme');
+    if (!t) t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+    d.setAttribute('data-theme', t === 'dark' ? 'dark' : 'light');
+    var p = localStorage.getItem('shg:palette');
+    d.setAttribute('data-day', (p && p !== 'auto') ? p : String(new Date().getDay()));
+    if (t === 'dark') {
+      d.style.background = '#000';
+      var m = document.querySelector('meta[name="theme-color"]');
+      if (m) m.setAttribute('content', '#000000');
+    }
+  } catch (e) { /* storage blocked — light theme, exactly as before */ }
+})();
+</script>
+<script>
+/* ---- STUCK-CLIENT RESCUE (runs before anything else) -----------------
+   A phone whose installed bundle predates the SW auto-update machinery
+   has NO way to pull a new build on its own: its old service worker
+   serves the old ?v= assets cache-first forever, and the old JS never
+   calls reg.update(). The one thing every generation of the app DOES
+   fetch fresh is this HTML (network-first + no-store), so this inline
+   script is the rescue channel.
+
+   RESCUE_EPOCH is bumped ONLY when a forced wipe is needed (not on every
+   deploy — normal deploys ride the regular skip-waiting auto-update).
+   On a mismatch: unregister every SW, drop the shell+asset caches (tiles
+   are left for the new SW's activate to prune), stamp the marker, and
+   reload ONCE (sessionStorage guard makes a loop impossible). The fresh
+   page then re-registers the current sw.js through the normal path. */
+(function () {
+  var EPOCH = 'rescue-2026-08-30';
+  try {
+    if (localStorage.getItem('shg:rescue') === EPOCH) return;
+    var hadSW = ('serviceWorker' in navigator) && !!navigator.serviceWorker.controller;
+    localStorage.setItem('shg:rescue', EPOCH);
+    if (!hadSW) return;                       // clean client — nothing to rescue
+    if (sessionStorage.getItem('shg:rescued')) return;   // loop guard
+    sessionStorage.setItem('shg:rescued', '1');
+    var work = [];
+    work.push(navigator.serviceWorker.getRegistrations().then(function (rs) {
+      return Promise.all(rs.map(function (r) { return r.unregister(); }));
+    }));
+    if (window.caches) {
+      work.push(caches.keys().then(function (ks) {
+        return Promise.all(ks.filter(function (k) {
+          return k.indexOf('shg-shell-') === 0 || k.indexOf('shg-assets-') === 0;
+        }).map(function (k) { return caches.delete(k); }));
+      }));
+    }
+    Promise.all(work).catch(function () {}).then(function () { location.reload(); });
+  } catch (e) { /* storage blocked — nothing we can do, app still runs */ }
+})();
+</script>
+<style>
+/* ---------- CRITICAL BOOT CSS — must stay FIRST and tiny ----------
+   Only what is needed to paint the splash on the very first frame. These
+   rules are byte-identical to their copies in the "SPLASH v2" block at the
+   end of views.css, so when the main stylesheet lands nothing moves.
+   Do not grow this block: its value is parsing in well under a millisecond. */
+html{background:#FFFFFF}
+body{margin:0;background:#FFFFFF}
+.splash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  background:#FFFFFF;
+  background-image:radial-gradient(115% 78% at 50% -8%,#FFF4E7 0%,#FFFFFF 58%)}
+/* Dark ground for the first frame too (4 Sep 2026): data-theme is stamped
+   by the pre-paint script above, so a dark-mode phone never flashes white.
+   The .splash rule is byte-identical to its copy in views.css. */
+:root[data-theme="dark"]{background:#000}
+:root[data-theme="dark"] body{background:#000}
+[data-theme="dark"] .splash{background:#0B1424;background-image:radial-gradient(115% 78% at 50% -8%,#16233C 0%,#0B1424 58%)}
+/* Hidden state must ALSO live here: if views.css stalls, the splash would
+   otherwise stay a full-screen z-9999 tap blocker until JS force-hides it. */
+.splash.done{opacity:0;visibility:hidden;pointer-events:none}
+.splash .float-hero-wrap,.splash .intro-scenes{display:none!important}
+.splash-content{position:relative;z-index:1;text-align:center;padding:0 24px;max-width:520px;opacity:0;transform:translateY(14px);animation:splashContentIn .28s .02s cubic-bezier(.4,0,.2,1) forwards}
+@keyframes splashContentIn{to{opacity:1;transform:none}}
+.splash-brand{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px}
+.splash-logo{width:min(44vw,164px);height:auto;flex:0 0 auto;object-fit:contain;opacity:1;
+  filter:drop-shadow(0 16px 34px rgba(18,38,78,.18))}
+.splash-title{font-family:'Cinzel',Georgia,serif;font-size:clamp(26px,7vw,42px);font-weight:800;color:#12264E;letter-spacing:.015em;line-height:1.06;text-align:center;opacity:1}
+.splash-title .ltr{display:inline-block}
+.splash-title .gold{color:#F07C1F}
+.splash-tagline{margin-top:14px;font-size:13.5px;color:#5B6B85;letter-spacing:.07em;font-weight:600;opacity:1}
+.splash-ceo{margin-top:18px;display:flex;flex-direction:column;gap:3px;align-items:center;line-height:1.3}
+.splash-ceo-photo{width:82px;height:82px;border-radius:50%;object-fit:cover;object-position:center top;border:3px solid #F07C1F;box-shadow:0 6px 24px rgba(18,38,78,.28);margin-bottom:6px;flex:0 0 auto}
+.splash-ceo b{font-family:'Cinzel',Georgia,serif;font-size:17px;font-weight:700;color:#12264E;letter-spacing:.02em}
+.splash-ceo span{font-size:12px;font-weight:600;color:#5C6B85;letter-spacing:.05em}
+.splash-phone{display:inline-flex;align-items:center;gap:8px;margin-top:22px;padding:10px 22px;border-radius:999px;background:#FFF1E4;border:1px solid rgba(240,124,31,.34);color:#C25E10;font-family:'Cinzel',Georgia,serif;font-size:17px;font-weight:800;letter-spacing:.03em;text-decoration:none;opacity:0;transform:translateY(10px)}
+@media (max-width:400px){.splash-logo{width:min(52vw,132px)}.splash-title{font-size:clamp(23px,7.6vw,32px)}.splash-ceo b{font-size:15.5px}}
+</style>
+  <link rel="preload" as="image" href="/assets/img/logo.png?v=20260913b" fetchpriority="high">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260913b">
+  <link rel="stylesheet" href="/assets/css/views.css?v=20260913b">
+<!-- App bundle: `defer` keeps the same execution order and still runs after the
+     document is parsed, but placing the tags in <head> lets the browser start
+     fetching ~1 MB of JS with the FIRST bytes of HTML instead of after it has
+     parsed ~190 KB of markup (perf pass, 11 Sep 2026). -->
+<script defer src="/assets/js/01-boot.js?v=20260913b"></script>
+<script defer src="/assets/js/02-config.js?v=20260913b"></script>
+<script defer src="/assets/js/03-accounts.js?v=20260913b"></script>
+<script defer src="/assets/js/04-i18n.js?v=20260913b"></script>
+<script defer src="/assets/js/05-router.js?v=20260913b"></script>
+<script defer src="/assets/js/06-results.js?v=20260913b"></script>
+<script defer src="/assets/js/07-checkout.js?v=20260913b"></script>
+<script defer src="/assets/js/14-counter.js?v=20260913b"></script>
+<script defer src="/assets/js/08-signin.js?v=20260913b"></script>
+<script defer src="/assets/js/10-track.js?v=20260913b"></script>
+<script defer src="/assets/js/11-pdf-ticket.js?v=20260913b"></script>
+<script defer src="/assets/js/13-admin-routes.js?v=20260913b"></script>
+<!-- 13 Sep 2026: PWA layer — install sheet, Web Push, border prep card,
+     split-pay, 7-day seat-fill chart. Last on purpose: it reads the globals
+     the files above define and every hook it adds is optional. -->
+<script defer src="/assets/js/17-pwa.js?v=20260913b"></script>
+<meta property="og:title" content="S Hari Global Pvt Ltd — Gujarat ⇄ Rupaidiha Bus">
+<meta property="og:description" content="Direct AC Sleeper coach from Gujarat (India) to the Rupaidiha–Nepalgunj border. Boarding at Surat, Baroda, Emli Bhupal, S Hari Parking (Nana Chiloda) & Mehsana (Silver Complex). Book online at one fixed fair price. Private & sharing cabins.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="S Hari Global Pvt Ltd">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="S Hari Global Pvt Ltd — Gujarat ⇄ Rupaidiha Bus">
+<meta name="twitter:description" content="Direct AC Sleeper coach from Gujarat (India) to the Rupaidiha–Nepalgunj border. Boarding at Surat, Baroda, Emli Bhupal, S Hari Parking (Nana Chiloda) & Mehsana (Silver Complex). Book online at one fixed fair price. Private & sharing cabins.">
+<!-- canonical, og:url/og:image, twitter:url/image and JSON-LD are injected per-environment by index.php (built from APP_URL) so the URL is always correct. -->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- V7 — fonts load without blocking the first render. `display=swap` means
+     text is readable straight away in the system face and upgrades to the
+     brand faces when they arrive, which matters on the patchy connectivity
+     along this route. <noscript> keeps them working with JS disabled. -->
+<!-- ONE webfont, two weights. This used to pull three families and fifteen
+     weight files (Cinzel x5, Inter x6, Space Grotesk x4) before the page felt
+     settled — on a phone outside a city that is seconds of the launch budget
+     spent on typefaces. Body and code text now use the device's OWN UI font,
+     which costs zero bytes, renders on the first frame and is what makes the
+     page read like an app rather than a website. Only the brand display face
+     is still downloaded, because that one carries the identity. -->
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;800&display=swap"></noscript>
+<title>S Hari Global Pvt Ltd — Gujarat ⇄ Rupaidiha Bus | India–Nepal Transport & Trade</title>
+<meta name="description" content="S Hari Global Pvt Ltd — India to Nepal bus transport (Gujarat ⇄ Rupaidiha) and international import & export. Registered Pvt Ltd company, Mehsana, Gujarat.">
+<!-- Real brand favicon, not the emoji placeholder. PNG first for the tab
+     strip, the SVG kept as the scalable fallback. -->
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon-32.png?v=20260913b">
+<link rel="icon" type="image/svg+xml" href="/icon-shg.svg">
+<!-- PWA / offline navigator: installable app + service-worker cached maps -->
+<link rel="manifest" href="/manifest.webmanifest">
+<!-- iOS ignores SVG here and silently falls back to a screenshot of the
+     page, which is why the home-screen icon looked like a web page.
+     A 180px opaque PNG is the only thing Safari will use. -->
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/img/apple-touch-icon.png?v=20260913b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SHG Bus">
+
+
+
+
+
+<!-- MAP PRO README ============================================================
+  The navigator + full-map location search is ONE reusable component
+  (createLocationSearchInput) backed by a dual geocoder (window.mapGeocode):
+    • Paste a Google Maps JS+Places key into MAP_CONFIG.googleMapsApiKey
+      (search this file for "MAP PRO CONFIG") to use Google Places Autocomplete.
+    • Leave it EMPTY to use the free fallback — Photon (primary) + Nominatim
+      (secondary, for the Hindi/Nepali alias), merged & de-duplicated, results
+      restricted to India+Nepal via MAP_CONFIG.indiaNepalBounds / restrictCountries.
+  Other MAP_CONFIG keys: valhallaEndpoint (turn-by-turn), defaultCenter/defaultZoom.
+  All new map styling lives in the "=== MAP PRO UPGRADE ===" blocks (CSS + JS).
+============================================================================= -->
+
+</head>
+<body>
+
+<!-- ============ [ICONS] Lucide-style SVG sprite — one icon system, ships once,
+     reused everywhere via <svg class="ic"><use href="#i-name"/></svg>. Stroke
+     colour follows `currentColor` so a placement class alone themes it. ==== -->
+<style>
+.ic{display:inline-block;width:1em;height:1em;line-height:1;vertical-align:-.15em;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ic-lg{width:1.4em;height:1.4em}
+.ic-xl{width:1.8em;height:1.8em}
+</style>
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2h-4v-8h-6v8H5a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-ticket" viewBox="0 0 24 24"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/><path d="M13 5v14"/></symbol>
+    <symbol id="i-bus" viewBox="0 0 24 24"><path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v9H4z"/><path d="M4 15h16v2a2 2 0 0 1-2 2h-1"/><path d="M4 10h16M9 4v6"/><circle cx="7.5" cy="19" r="1.8"/><circle cx="16.5" cy="19" r="1.8"/></symbol>
+    <symbol id="i-bed" viewBox="0 0 24 24"><path d="M2 20V9"/><path d="M2 13h20v7"/><path d="M2 17h20"/><circle cx="7" cy="11.5" r="1.8"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M17.5 3.13a4 4 0 0 1 0 7.75"/></symbol>
+    <symbol id="i-map" viewBox="0 0 24 24"><path d="m3 6 6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.6 19.6 0 0 1-6-6 19.8 19.8 0 0 1-3.1-8.6A2 2 0 0 1 4 2h3a2 2 0 0 1 2 1.7 12.9 12.9 0 0 0 .7 2.8 2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.2-1.2a2 2 0 0 1 2.1-.5c.9.3 1.8.5 2.8.7a2 2 0 0 1 1.7 2z"/></symbol>
+    <symbol id="i-building" viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4M8 6h.01M16 6h.01M8 10h.01M16 10h.01M8 14h.01M16 14h.01"/></symbol>
+    <symbol id="i-luggage" viewBox="0 0 24 24"><rect x="6" y="8" width="12" height="12" rx="2"/><path d="M8 8V4h8v4M6 14h12"/><circle cx="9" cy="21" r="1"/><circle cx="15" cy="21" r="1"/></symbol>
+    <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></symbol>
+    <symbol id="i-headset" viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><path d="M2 15a2 2 0 0 1 2-2h2v6H4a2 2 0 0 1-2-2z"/><path d="M22 15a2 2 0 0 0-2-2h-2v6h2a2 2 0 0 0 2-2z"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+    <symbol id="i-radar" viewBox="0 0 24 24"><path d="M19.07 4.93a10 10 0 1 0 3.24 8.6"/><path d="M15 9a4 4 0 1 0 1.14 5.14"/><path d="M22 4 12 14.01l-3-3"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></symbol>
+    <symbol id="i-scroll" viewBox="0 0 24 24"><path d="M15 3H6a2 2 0 0 0-2 2v3h4"/><path d="M18 3a3 3 0 0 1 3 3v13H8v2a2 2 0 0 1-2 2h11a3 3 0 0 0 3-3V6a3 3 0 0 0-3-3z"/></symbol>
+  </defs>
+</svg>
+
+<!-- ============ [A11Y] Skip-to-content + global keyboard focus ring (Part 7) ============ -->
+
+<a class="skip-link" href="#" id="skipToContent">Skip to content · मुख्य सामग्रीमा जानुहोस्</a>
+<script>
+(function(){var s=document.getElementById('skipToContent');if(!s)return;
+s.addEventListener('click',function(e){e.preventDefault();
+  var m=document.querySelector('.view.active')||document.querySelector('main,[role="main"]')||document.body;
+  m.setAttribute('tabindex','-1');m.focus();
+  try{m.scrollIntoView({behavior:'smooth',block:'start'});}catch(_){}
+});})();
+</script>
+
+<!-- ============ [HTML] SPLASH SCREEN — cold launch cinematic ============ -->
+<div class="splash" id="splash">
+  <div class="float-hero-wrap" style="position:absolute;inset:0;height:auto;margin:0;opacity:.55" aria-hidden="true">
+    <span class="float-item float-flag-in" style="top:16%;left:10%">🇮🇳</span>
+    <span class="float-item float-om" style="top:12%;left:auto;right:12%">🕉️</span>
+    <span class="float-item float-lotus" style="top:72%;left:12%">🪷</span>
+    <span class="float-item float-flag-np" style="top:70%;right:10%">🇳🇵</span>
+    <span class="float-item float-mountain" style="top:42%;right:5%">🏔️</span>
+    <span class="float-item float-wheel" style="top:46%;left:5%">☸️</span>
+    <span class="float-item float-lotus" style="top:30%;left:22%">🚩</span>
+    <span class="float-item float-om" style="top:58%;left:auto;right:22%">🏹</span>
+  </div>
+  <div class="splash-content">
+    <div class="splash-brand">
+      <img src="/assets/img/logo.png?v=20260913b" alt="S Hari Global Pvt Ltd" class="splash-logo" width="440" height="321" fetchpriority="high" decoding="sync">
+      <div class="splash-title" id="splashTitle">S Hari Global Pvt Ltd</div>
+    </div>
+    <div class="splash-tagline" id="splashTagline">Gujarat ⇄ Rupaidiha · India–Nepal Transport</div>
+    <div class="splash-ceo">
+      <img src="/assets/img/ceo.jpg?v=20260913b" class="splash-ceo-photo" alt="Sher Bahadur Bishwokarma" onerror="this.style.display='none'">
+      <b>Sher Bahadur Bishwokarma</b><span>👑 Founder &amp; CEO · Director</span>
+    </div>
+    <a class="splash-phone" id="splashPhone" href="#"><span class="sp-ico">📞</span><span class="sp-num"></span></a>
+
+    <!-- PORTAL STRIP — the 2-second window in which staff can peel off to
+         their own sign-in. Nobody has to touch it: the bar drains, the
+         splash finishes and the visitor lands in the customer app. It sits
+         INSIDE the splash on purpose, so offering the choice costs zero
+         extra time on the way to the booking screen. -->
+    <div class="splash-portal" id="splashPortal" hidden>
+      <!-- The feature strip is the reason the brand screen is allowed to hold
+           for ~6s on a first visit: it is not dead branding time, it tells a
+           first-time visitor what the app does while the data loads behind
+           it. One line at a time, swapped on a CSS fade. -->
+      <ul class="sp-feats" id="spFeats" aria-hidden="true">
+        <li class="on">🎫 <b>15 second</b> ma ticket · Book in 15 seconds</li>
+        <li>🗺️ <b>Live map</b> · bus kaha cha herne · Live bus tracking</li>
+        <li>💸 <b>एकै भाडा</b> · One fixed fair price — online & offline same</li>
+        <li>🛏️ Sleeper &amp; <b>Private cabin</b> · Gujarat ⇄ Rupaidiha</li>
+      </ul>
+      <div class="sp-hint" id="spHint">यात्री हो भने केही गर्नु पर्दैन · Opening in <span id="spCount">6</span>s</div>
+      <div class="sp-pills">
+        <button type="button" class="sp-pill sp-pill-go" data-portal="customer"><span>🎫</span> Book now</button>
+        <!-- Agent/Admin pills removed from public splash (2026-08-29): staff
+             sign in at /admin/ directly. Customer surface must be free of
+             any agent/admin affordance per master-prompt §2. -->
+      </div>
+      <div class="sp-track"><i id="spBar"></i></div>
+    </div>
+
+    <div class="intro-scenes" id="introScenes" aria-hidden="true">
+      <!-- Scene 1 — CEO introduction FIRST (sabai bhanda pehle) -->
+      <div class="intro-scene" id="introS1">
+        <div class="ceo-intro">
+          <div class="ceo-intro-photo"><img id="introCeoImg" src="/assets/img/ceo.jpg?v=20260913b" alt="Sher Bahadur Bishwokarma" loading="lazy" decoding="async" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="ceo-intro-initials" style="display:none">SB</span></div>
+          <div class="ceo-intro-name">Sher Bahadur Bishwokarma</div>
+          <div class="ceo-intro-title">👑 Founder &amp; CEO · Director</div>
+          <div class="intro-company">S HARI GLOBAL PVT LTD</div>
+          <div class="ceo-intro-route">Gujarat ⇄ Rupaidiha · India–Nepal Transport</div>
+        </div>
+      </div>
+      <!-- Scene 2 — India flag pehle (palo-palo) -->
+      <div class="intro-scene" id="introS2">
+        <div class="flag-solo">
+          <div class="flag-big flag-big-in"><span class="chakra">☸</span></div>
+          <div class="flag-name"><i>I</i><i>N</i><i>D</i><i>I</i><i>A</i></div>
+        </div>
+      </div>
+      <!-- Scene 3 — Nepal flag (palo-palo) -->
+      <div class="intro-scene" id="introS3">
+        <div class="flag-solo">
+          <div class="flag-big flag-big-np"><span class="np-sym">☀</span><span class="np-sym moon">🌙</span></div>
+          <div class="flag-name"><i>N</i><i>E</i><i>P</i><i>A</i><i>L</i></div>
+        </div>
+      </div>
+      <!-- Scene 4 — Both flags + bus → "दुई देश एक यात्रा" -->
+      <div class="intro-scene" id="introS4">
+        <div class="flag-duo">
+          <div class="flag-col"><div class="flag-big flag-big-in flag-sm"><span class="chakra">☸</span></div></div>
+          <div class="flag-bus">🚌</div>
+          <div class="flag-col"><div class="flag-big flag-big-np flag-sm"><span class="np-sym">☀</span><span class="np-sym moon">🌙</span></div></div>
+        </div>
+        <div class="intro-text">दुई देश · एक सडक · एक यात्रा</div>
+      </div>
+      <!-- Scene 5 — REAL route map draws itself -->
+      <div class="intro-scene" id="introS5">
+        <div class="intro-text" style="margin-bottom:2px">🗺️ Gujarat → Rupaidiha · ≈1,375 km</div>
+        <div id="introMapBox"></div>
+        <div class="intro-sub">Real road route · 16 stops · Rupaidiha border 🛃</div>
+      </div>
+      <!-- Scene 6 — Highway refreshment halt (generic; no restaurant branding) -->
+      <div class="intro-scene" id="introS6">
+        <div class="intro-icon-big">☕</div>
+        <div class="intro-text">Refreshment Halt</div>
+        <div class="intro-sub">Midway break on NH-48 · Chiloda–Mehsana</div>
+        <div class="feat-grid" style="margin-top:10px">
+          <span class="feat-badge">☕ Tea &amp; Snacks</span>
+          <span class="feat-badge">🚌 Bus Parking</span>
+          <span class="feat-badge">🧼 Clean Washrooms</span>
+          <span class="feat-badge">🛌 Leg Stretch</span>
+        </div>
+        <div class="intro-sub" style="margin-top:6px">Time to freshen up before the long haul</div>
+      </div>
+      <!-- Scene 7 — Ticket booking demo -->
+      <div class="intro-scene" id="introS7">
+        <div class="intro-icon-big">🎫</div>
+        <div class="intro-text">Book in 3 Taps</div>
+        <div class="intro-sub">Online · Offline · No Login Required</div>
+        <div class="feat-grid" style="margin-top:10px">
+          <span class="feat-badge">🛏️ Sleeper Cabin</span>
+          <span class="feat-badge">🔒 Private</span>
+          <span class="feat-badge">🤝 Sharing</span>
+          <span class="feat-badge">💳 UPI / eSewa</span>
+        </div>
+        <div class="feat-grid" style="margin-top:6px">
+          <span class="feat-badge">🛰️ Live Tracking</span>
+          <span class="feat-badge">📱 Offline Mode</span>
+        </div>
+      </div>
+      <!-- Scene 8 — Hindu dharma blessing + CTA -->
+      <div class="intro-scene" id="introS8">
+        <div class="intro-icon-big">🕉️</div>
+        <div class="intro-text" style="font-size:1.3em">ॐ नमो नारायणाय</div>
+        <div class="intro-text" style="margin-top:8px">जय श्री राम 🙏 शुभ यात्रा</div>
+        <div class="intro-sub" style="margin-top:10px">दुई देश · एक सडक · सुरक्षित यात्रा</div>
+        <div class="feat-grid" style="margin-top:10px">
+          <span class="feat-badge">🗺️ Live Map</span>
+          <span class="feat-badge">🎫 Online Ticket</span>
+          <span class="feat-badge">📞 24/7 Support</span>
+        </div>
+        <div class="intro-sub" style="margin-top:8px;font-size:1.1em;font-weight:700;color:var(--orange)">Book Now!</div>
+      </div>
+    </div>
+    <button class="splash-skip" id="splashSkip" type="button">Tap to skip</button>
+  </div>
+</div>
+
+<!-- Role Gate removed 2026-08-29 (master-prompt §2 — customer surface must be
+     free of any agent/admin affordance). Sign-in taps now open the OTP modal
+     directly; staff reach the office via /admin/ (bookmarked door). The
+     RoleGate JS object is kept as a no-op stub so any older caller is safe. -->
+
+
+<!-- ============ [HTML] DIVINE-NAME BANNER — भगवानको नाम सबभन्दा अगाडि.
+     The very first strip on every view, above the topbar, so the divine
+     name greets the visitor first. The fuller CEO + mantra block still
+     stands in the footer; nothing there is removed. ============ -->
+<div class="divine-bar" role="note" aria-label="भगवानको नाम · Blessing">
+  <div class="container">
+    <span class="divine-name">🕉️ ॐ नमो नारायणाय · जय श्री राम · जय अम्बे 🙏 शुभ यात्रा</span>
+  </div>
+</div>
+
+<!-- ============ [HTML] TOPBAR ============ -->
+<div class="topbar">
+  <div class="container">
+    <span class="mantra">ॐ नमो नारायणाय</span>
+    <div class="tb-right">
+      <span class="lang-switch" role="group" aria-label="Language">
+        <button type="button" class="lang-btn on" data-lang="en">EN</button>
+        <button type="button" class="lang-btn" data-lang="hi">हिं</button>
+        <button type="button" class="lang-btn" data-lang="ne">ने</button>
+      </span>
+      <button type="button" class="theme-btn" aria-label="Switch to dark mode">🌙</button>
+      <span class="palette-wrap"><button type="button" class="palette-btn" aria-label="Choose colour theme" aria-haspopup="true" aria-expanded="false">🎨</button><div class="palette-pop" id="palettePop" role="menu" aria-label="Colour themes"></div></span>
+      <a href="tel:+919104801507">📞 +91 91048 01507</a>
+      <a href="mailto:shreehariglobalpvtltd@gmail.com">✉️ shreehariglobalpvtltd@gmail.com</a>
+    </div>
+  </div>
+</div>
+
+<!-- ============ [HTML] LEADERSHIP CREDIT RIBBON — just below ॐ नमो नारायणाय ============ -->
+<div class="credit-ribbon">
+  <div class="container credit-inner">
+    <!-- CEO first and tappable: the number beside the name is the same
+         WhatsApp line printed on the ticket, so a passenger who needs the
+         company can reach it from the very first strip on the page instead
+         of scrolling to the footer. -->
+    <a class="credit-seg credit-lead" href="https://wa.me/919726401507" target="_blank" rel="noopener noreferrer">
+      <span class="credit-ic">👑</span>
+      <span class="credit-txt"><b class="txt-gold">Sher Bahadur Bishwokarma</b><small>CEO &amp; Director</small></span>
+      <span class="credit-num">💬 +91 97264 01507</span>
+    </a>
+    <span class="credit-div" aria-hidden="true">◆</span>
+    <a class="credit-seg" href="tel:+919104801507">
+      <span class="credit-ic">🏢</span>
+      <span class="credit-txt"><b class="txt-silver">Office · Booking</b><small>S Hari Global Pvt Ltd</small></span>
+      <span class="credit-num alt">📞 +91 91048 01507</span>
+    </a>
+  </div>
+</div>
+
+<!-- ============ [HTML] CONTACT NUMBERS STRIP ============
+     Up to 8 booking numbers, each one shown or hidden from
+     Admin -> Settings -> Contact numbers. Nothing here is hardcoded: the
+     owner decides how many are live today and can reveal the rest without a
+     deploy. Empty until at least one number is switched on, so an
+     unconfigured site shows no empty bar. -->
+<div class="num-strip" id="numStrip" hidden>
+  <div class="container num-inner" id="numInner"></div>
+</div>
+
+<!-- ============ [HTML] NAVBAR ============ -->
+<header class="nav" id="nav">
+  <div class="container nav-inner">
+    <a class="brand" href="#/" data-scroll="top" aria-label="S Hari Global Pvt Ltd — Home">
+      <img id="logoNav" src="/assets/img/logo.png?v=20260913b" alt="S Hari Global Pvt Ltd Logo" width="440" height="321" decoding="async">
+    </a>
+    <nav class="nav-links" aria-label="Main">
+      <a class="nav-link" href="#/" data-scroll="top"><svg class="ic"><use href="#i-home"/></svg> Home</a>
+      <a class="nav-link" href="#/" data-scroll="search-anchor"><svg class="ic"><use href="#i-ticket"/></svg> Book</a>
+      <div class="nav-drop">
+        <a class="nav-link nav-drop-btn"><svg class="ic"><use href="#i-map"/></svg> Maps ▾</a>
+        <div class="nav-drop-list">
+          <!-- ONE map entry. "Navigator", "Live Map", the 3D drive and the
+               analog map were four names for the same screen — the router
+               has redirected them all to #/nav for a while, so offering them
+               separately only ever produced four menu items that opened the
+               same page. -->
+          <a href="#/nav"><svg class="ic"><use href="#i-map"/></svg> S Hari Map &amp; Live Bus Tracker</a>
+          <a href="#/" data-scroll="company"><svg class="ic"><use href="#i-building"/></svg> About Us</a>
+        </div>
+      </div>
+      <a class="nav-link" href="#/my"><svg class="ic"><use href="#i-list"/></svg> My Bookings</a>
+      <a class="nav-link" href="#/" data-scroll="timetable"><svg class="ic"><use href="#i-clock"/></svg> Timetable</a>
+      <a class="nav-link" href="#/" data-scroll="contact"><svg class="ic"><use href="#i-phone"/></svg> Contact</a>
+      <span class="nav-sep"></span>
+      <a class="nav-link" href="#/my" id="navUserBtn">Sign in</a>
+      <button class="nav-bell" id="notifBellBtn" type="button" aria-label="Notifications"><svg class="ic"><use href="#i-bell"/></svg><span class="notif-badge hide" id="notifBadge">0</span></button>
+      <a class="btn btn-orange btn-sm nav-cta" href="#/" data-scroll="search-anchor">Book Now</a>
+    </nav>
+    <button class="hamburger" id="hamburger" aria-label="Open menu" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</header>
+<div class="mobile-menu" id="mobileMenu">
+  <a href="#/" data-scroll="top"><svg class="ic"><use href="#i-home"/></svg> Home</a>
+  <a href="#/" data-scroll="search-anchor"><svg class="ic"><use href="#i-ticket"/></svg> Book Tickets</a>
+  <a href="#/" data-scroll="quick-ticket" class="mm-hot">🤖 QuickBot Ticket · 10-Second Booking</a>
+  <a href="#/" data-scroll="company"><svg class="ic"><use href="#i-building"/></svg> About Us</a>
+  <a href="#/nav"><svg class="ic"><use href="#i-map"/></svg> S Hari Map &amp; Live Bus Tracker</a>
+  <a href="#/my"><svg class="ic"><use href="#i-list"/></svg> My Bookings</a>
+  <a href="#/" data-scroll="timetable"><svg class="ic"><use href="#i-clock"/></svg> समय तालिका · Timetable</a>
+  <a href="/agent-signup.php"><svg class="ic"><use href="#i-users"/></svg> एजेन्ट बन्नुहोस् · Become an Agent</a>
+  <a href="/admin/login.php" rel="nofollow"><svg class="ic"><use href="#i-lock"/></svg> एजेन्ट / स्टाफ लगइन · Agent / Staff sign-in</a>
+  <a href="#/" data-scroll="contact"><svg class="ic"><use href="#i-phone"/></svg> Contact</a>
+  <hr style="border:none;border-top:1px dashed var(--line);margin:4px 0">
+  <a href="#/terms"><svg class="ic"><use href="#i-scroll"/></svg> Terms</a>
+  <a href="#/my" id="mmUserBtn"><svg class="ic"><use href="#i-users"/></svg> Sign in</a>
+  <a href="#/" id="mmNotifBtn"><svg class="ic"><use href="#i-bell"/></svg> Notifications<span class="mm-notif-badge hide" id="mmNotifBadge">0</span></a>
+  <!-- "Switch portal" entry removed 2026-08-29 (master-prompt §2). -->
+</div>
+
+<!-- ============ [HTML] SEASONAL NOTICE BANNER (admin-controlled) ============ -->
+<div class="notice-bar hide" id="noticeBar">
+  <div class="container">
+    <span class="megaphone">📢</span>
+    <span id="noticeText"></span>
+    <button type="button" id="noticeClose" aria-label="Dismiss notice">✕</button>
+  </div>
+</div>
+
+<main>
+<!-- ================================================================
+     [HTML] VIEW: HOME
+================================================================ -->
+<section class="view active" id="view-home">
+
+  <!-- ============ HERO ============ -->
+  <div class="hero" id="top">
+    <div class="bhagwan-hero-bg" aria-hidden="true"></div>
+    <div class="orb o1" data-parallax="18"></div>
+    <div class="orb o2" data-parallax="-12"></div>
+    <!-- Premium FX layer: light rays + golden glow + floating particles (decorative only) -->
+    <div class="hero-fx" aria-hidden="true">
+      <span class="hero-ray r1"></span><span class="hero-ray r2"></span><span class="hero-ray r3"></span>
+      <span class="hero-glow"></span>
+      <span class="hero-pt p1"></span><span class="hero-pt p2"></span><span class="hero-pt p3"></span><span class="hero-pt p4"></span><span class="hero-pt p5"></span><span class="hero-pt p6"></span><span class="hero-pt p7"></span><span class="hero-pt p8"></span><span class="hero-pt p9"></span><span class="hero-pt p10"></span>
+    </div>
+    <!-- Oversized brand watermark behind the copy. Decorative only — it is
+         aria-hidden and carries no information the headline does not. -->
+    <span class="hero-wm" aria-hidden="true">S HARI GLOBAL</span>
+    <div class="container hero-grid">
+      <div class="hero-copy">
+        <span class="eyebrow"><span style="font-size:22px;vertical-align:middle;margin-right:6px">🇮🇳</span> Gujarat ⇄ Rupaidiha <span style="font-size:22px;vertical-align:middle;margin-left:6px">🇳🇵</span></span>
+        <h1 class="hero-brand hero-brand-row"><img data-logo-clone alt="S Hari Global Pvt Ltd logo" class="hero-brand-logo"><span>S HARI GLOBAL PVT LTD</span></h1>
+        <p class="hero-brand-np">S Hari Global <span class="npdot">·</span> Nepal</p>
+        <p class="hero-slogan" data-i18n="heroTitle">Two nations. One road. <span class="grad">One&nbsp;journey.</span></p>
+        <p class="hero-sub" data-i18n="heroSub">Direct <b>Gujarat → Rupaidiha</b> coach. Book your seat, pay by UPI or eSewa — with a registered Indian company.</p>
+        <p class="hero-quote" id="heroQuote"></p>
+        <div id="nextDepBox" style="margin-top:14px;display:inline-flex;align-items:center;gap:10px;background:rgba(255,255,255,.12);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:10px 18px;font-size:14px;color:#fff;font-weight:700">
+          🚌 Next Departure in: <span id="nextDepTimer" style="font-family:var(--f-code);font-size:18px;letter-spacing:.08em;color:#FFD54F">--:--:--</span>
+        </div>
+        <a class="btn btn-orange hero-qt-cta" href="#/" data-scroll="quick-ticket" id="heroQtCta" data-i18n="qtBadge">⚡ एक क्लिक, १० सेकेन्डमा टिकट तयार</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ⚡ QUICK TICKET — "One Click, Ticket Ready in 10 Seconds" (6 Sep 2026).
+       The first card under the hero, visible at first paint (no reveal): the
+       plan (next bus · S Hari Parking pickup · 1 seat · fare) is fetched by
+       initQuickTicket() the moment the card is on screen and rendered into
+       #qtPlanCard with in-place editors (passengers, date, pickup, direction,
+       woman/man). A signed-in passenger sees an identity chip (#qtMe) instead
+       of the inputs and their own usual choices pre-filled (customer_plan
+       personal — session-bound, never a typed number). The ONE button books
+       through customer_sell, pinned to the facts shown (expect{}) so a stale
+       card is re-rendered rather than sold; a mistaken tap can be undone free
+       within quick_ticket_undo_min. A selling staff session opens the desk. -->
+  <div class="container qt-wrap" id="quick-ticket">
+    <section class="qt-banner" id="quickTicket" aria-label="QuickBot Ticket — 10-Second Booking">
+      <!-- 12 Sep 2026: one header row = the badge + the way OUT for anyone who
+           would rather pick a seat (owner: customers and agents who do not
+           want the quick option must still get the regular booking). -->
+      <div class="qt-head">
+        <span class="qt-badge" id="qtBadge" data-i18n="qtBadge">🤖 QuickBot Ticket — १० सेकेन्डमा booking</span>
+        <button type="button" class="bk-switch" data-bkmode="regular" title="Seat-map booking"><span data-i18n="bkRegular">🪑 सिट छान्नुहोस्</span></button>
+      </div>
+      <!-- What the AI does for the passenger, in one scrolling line, plus a
+           real counter (SHG_BOOT.stats.tickets, counted by index.php). -->
+      <div class="qt-ai" id="qtAi" aria-label="AI assistance">
+        <span class="qt-ai-chip"><i>🧠</i><span data-i18n="qtAi1">नेपाली · हिन्दी · गुजराती · English पढ्छ</span></span>
+        <span class="qt-ai-chip"><i>🚌</i><span data-i18n="qtAi2">अर्को बस · सुरक्षित सिट · भाडा आफैँ छान्छ</span></span>
+        <span class="qt-ai-chip qt-ai-count" id="qtAiCountWrap" hidden><i>🎫</i><b id="qtAiCount">0</b><span data-i18n="qtAi3">टिकट जारी</span></span>
+      </div>
+      <h3 data-i18n="qtTitle">नाम + मोबाइल → auto suggest → एक ट्याप → टिकट तयार</h3>
+      <p data-i18n="qtSub">एउटै लाइनमा लेख्नुहोस् — "Ram 9876543210, 2 seats, Mehsana tomorrow" — वा नाम + मोबाइल मात्र। QuickBot ले तपाईंका पुराना यात्राबाट बस, मिति, चढ्ने ठाउँ, यात्री, सिट र भाडा आफैँ भर्छ; एक पटक Confirm थिच्नुहोस् — टिकट PNG + PDF र WhatsApp।</p>
+      <div class="qt-me" id="qtMe" hidden></div>
+      <form class="qt-form qt-onetap" id="qtForm" autocomplete="off" novalidate>
+        <!-- the ONE smart line: name + mobile, or the whole request in words -->
+        <div class="qt-line-wrap" id="qtLineWrap">
+          <input id="qtLine" class="qt-line" maxlength="300" placeholder="Ram 9876543210, 2 seats, Mehsana tomorrow" data-i18n-ph="qtLinePh" autocomplete="off" enterkeyhint="go">
+          <!-- shown only when the browser has SpeechRecognition (Chrome Android, iOS 14.5+) -->
+          <button type="button" class="qt-mic" id="qtMic" hidden aria-label="Speak your booking" data-i18n-title="qtMicTip">🎤</button>
+        </div>
+        <div class="qt-pair" id="qtPair">
+          <input id="qtName" maxlength="80" placeholder="तपाईंको नाम" data-i18n-ph="qtNamePh" required autocomplete="name">
+          <input id="qtPhone" type="tel" inputmode="tel" maxlength="16" placeholder="मोबाइल (WhatsApp)" data-i18n-ph="qtPhonePh" required autocomplete="tel">
+        </div>
+        <button class="btn btn-orange" type="submit" id="qtSend" data-i18n="qtCta">⚡ Confirm &amp; Issue Ticket</button>
+      </form>
+      <div class="qt-err" id="qtFormErr" hidden role="alert"></div>
+      <!-- the live plan + in-place editors + the ONE button — filled by initQuickTicket() -->
+      <div class="qt-plan" id="qtPlanCard" hidden aria-live="polite"></div>
+      <button type="button" class="qt-alt" data-bkmode="regular"><span data-i18n="qtAlt">आफ्नो सिट आफैँ छान्न चाहनुहुन्छ? सिट-म्याप booking खोल्नुहोस्</span> →</button>
+      <div class="qt-steps" id="qtSteps">
+        <span>1️⃣ <b data-i18n="qtS1">नाम + मोबाइल</b></span>
+        <span>2️⃣ <b data-i18n="qtS2">Auto: बस · सिट · भाडा</b></span>
+        <span>3️⃣ <b data-i18n="qtS3">टिकट PNG + PDF तुरुन्तै</b></span>
+      </div>
+    </section>
+    <!-- Seat-map mode: the card folds into this one strip (tap = back to QuickBot)
+         and the regular search card right below becomes the first thing on screen. -->
+    <button type="button" class="qt-collapsed" id="qtCollapsed" hidden data-bkmode="quick">⚡ <b data-i18n="bkBackQuick">QuickBot: नाम + मोबाइल → १० सेकेन्डमा टिकट</b><span data-i18n="bkSwitch">बदल्नुहोस् →</span></button>
+  </div>
+
+  <!-- ============ §6 LIVE ROUTE ANIMATION — realistic highway scene (India → Nepal) ============ -->
+  
+  <div class="container">
+    <div class="route-anim" id="routeAnim" role="img" aria-label="Live route: bus travelling from Gujarat, India to the Rupaidiha India–Nepal border">
+      <span class="ra-sun"></span>
+      <div class="ra-range ra-range-far"></div>
+      <div class="ra-range ra-range-near"></div>
+      <div class="ra-pin ra-in"><span class="ra-fl">🇮🇳</span>Gujarat</div>
+      <div class="ra-pin ra-np"><span class="ra-fl">🇳🇵</span>Rupaidiha</div>
+      <div class="ra-posts"></div>
+      <div class="ra-road">
+        <span class="ra-edge top"></span>
+        <span class="ra-lane"></span>
+        <span class="ra-edge bot"></span>
+      </div>
+      <div class="ra-bus">
+        <svg viewBox="0 0 100 50" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect x="3" y="9" width="86" height="27" rx="6" fill="#2E5FA8"/>
+          <path d="M89,13 q7,1 8,9 l0,7 q0,3 -3,3 l-5,0 z" fill="#2E5FA8"/>
+          <path d="M90,15 q5,1 6,7 l-6,0 z" fill="#bcd7f2"/>
+          <rect x="8" y="13" width="12" height="9" rx="2" fill="#bcd7f2"/>
+          <rect x="22" y="13" width="12" height="9" rx="2" fill="#bcd7f2"/>
+          <rect x="36" y="13" width="12" height="9" rx="2" fill="#bcd7f2"/>
+          <rect x="50" y="13" width="12" height="9" rx="2" fill="#bcd7f2"/>
+          <rect x="64" y="13" width="12" height="9" rx="2" fill="#bcd7f2"/>
+          <rect x="3" y="26" width="86" height="6" fill="#F07C1F"/>
+          <rect x="3" y="32" width="94" height="4" rx="2" fill="#1C3B72"/>
+          <circle cx="93" cy="30" r="2.4" fill="#FFE082"/>
+          <g class="ra-wheel" style="animation-delay:0s">
+            <circle cx="26" cy="38" r="7.5" fill="#1a1d24"/>
+            <circle cx="26" cy="38" r="3" fill="#9aa3b0"/>
+            <rect x="25" y="31.5" width="2" height="13" fill="#5b6470"/>
+            <rect x="19.5" y="37" width="13" height="2" fill="#5b6470"/>
+          </g>
+          <g class="ra-wheel" style="animation-delay:0s">
+            <circle cx="72" cy="38" r="7.5" fill="#1a1d24"/>
+            <circle cx="72" cy="38" r="3" fill="#9aa3b0"/>
+            <rect x="71" y="31.5" width="2" height="13" fill="#5b6470"/>
+            <rect x="65.5" y="37" width="13" height="2" fill="#5b6470"/>
+          </g>
+        </svg>
+      </div>
+      <div class="ra-tag">≈1,375 km · via Rupaidiha Border</div>
+    </div>
+  </div>
+
+  <!-- Your next journey — filled by renderNextTrip() when a signed-in
+       traveller has an upcoming confirmed ticket. Deliberately a single
+       card that LINKS to #/trip/<PNR> rather than a second dashboard: the
+       full journey timeline already lives there, and two views of one trip
+       would drift apart. -->
+  <div class="container" id="nextTripBox" hidden></div>
+
+  <!-- ============ SEARCH CARD ============ -->
+  <div class="container search-wrap" id="search-anchor">
+    <span class="intl-badge">
+      <span class="bar"><i style="background:var(--saffron)"></i><i style="background:#fff;border:1px solid #E4E9F2"></i><i style="background:var(--igreen)"></i><i style="background:var(--ncrimson)"></i><i style="background:var(--nblue)"></i></span>
+      🇮🇳 India ↔ 🇳🇵 Nepal · International Bus Route
+    </span>
+    <form class="search-card simple-search" id="searchForm" autocomplete="off">
+      <!-- ============================================================
+           SIMPLE SEARCH (redesign 2026-08-25) — this coach runs ONE road,
+           Gujarat ⇄ Rupaidiha. So the passenger's whole choice is: जाने or
+           फर्किने, and which Gujarat town. The two free-form From/To dropdowns
+           (a city pair you could get wrong, and 3 extra controls on the first
+           screen) are gone from view.
+
+           They are NOT deleted — #fromSel / #toSel / #retInput / #swapBtn /
+           #voiceSearchBtn stay in the DOM inside #legacyPair (hidden), because
+           results, live fare and checkout all still read #fromSel / #toSel as
+           the single source of truth. The direction toggle + one town picker
+           below simply drive those hidden selects (see initSimpleSearch in
+           05-router.js), so every downstream screen is untouched.
+      ============================================================ -->
+      <div class="trip-toggle" role="group" aria-label="Trip type" style="display:none">
+        <button type="button" class="trip-pill on" id="tripOne" data-i18n="sOneWay">One-way</button>
+        <button type="button" class="trip-pill" id="tripRound" data-i18n="sRound">Round trip</button>
+      </div>
+      <div id="legacyPair" hidden aria-hidden="true">
+        <select id="fromSel"></select>
+        <select id="toSel"></select>
+        <button type="button" id="swapBtn" tabindex="-1" aria-hidden="true">⇅</button>
+        <div id="retField" class="hide"><input type="date" id="retInput"></div>
+        <button type="button" id="voiceSearchBtn" tabindex="-1" aria-hidden="true">🎤</button>
+      </div>
+
+      <!-- ROUND-3 (2026-08-28) — the widget now leads with the DATE.
+           Order below is: 30-day date strip → date input (calendar fallback) →
+           direction toggle → Gujarat town picker → Search. The old .date-chips
+           (3-day quick pick, still populated by renderDateChips) sits inside the
+           .s-field for backwards-compat; hidden on mobile once #dateStrip30
+           has 30 buttons. Do NOT rename any id — 05-router / 06-results still
+           read #fromSel / #toSel / #dateInput as the single source of truth. -->
+
+      <!-- 30-day horizontal date strip (JS populates in 05-router::renderDateStrip30) -->
+      <div class="date-strip-30" id="dateStrip30" role="group" aria-label="Journey date · 30-day picker"></div>
+
+      <!-- Calendar fallback for a custom future date beyond the strip -->
+      <div class="s-field s-field-date-input">
+        <label for="dateInput" data-i18n="sDate">Journey date</label>
+        <div class="box no-caret"><input type="date" id="dateInput" required></div>
+        <div class="date-chips" id="dateChips" role="group" aria-label="Quick journey date"></div>
+      </div>
+
+      <!-- Agent late-booking (owner ask, 3 Sep 2026): a COUNTER agent enters
+           their SHG code here to also see and book a bus within 24h of its
+           departure. Optional — ordinary customers leave it blank and nothing
+           changes. Persisted so the agent enters it once. The departed-bus
+           booking is always re-checked server-side against a valid code. -->
+      <details class="s-field s-agent-latebook" style="margin-top:-2px">
+        <summary style="font-size:12.5px;color:var(--mut,#6b7688);cursor:pointer;list-style:none">
+          🎟️ <span data-i18n="agentLateSummary">एजेन्ट हो? छुटेको बस बुक गर्न कोड राख्नुहोस् · Agent? Enter code to book a departed bus</span>
+        </summary>
+        <div class="box no-caret" style="margin-top:6px">
+          <input id="sAgentCode" maxlength="20" autocomplete="off" inputmode="text"
+                 placeholder="SHG-027" style="text-transform:uppercase">
+        </div>
+      </details>
+
+      <!-- DIRECTION — the only two journeys this coach makes -->
+      <div class="dir-toggle" role="group" aria-label="Direction · दिशा">
+        <button type="button" class="dir-pill on" id="dirGo">
+          <span class="dp-fl" aria-hidden="true">🇮🇳 → 🇳🇵</span>
+          <b data-i18n="dirGo">Going to Nepal</b>
+          <small>Gujarat → Rupaidiha</small>
+        </button>
+        <button type="button" class="dir-pill" id="dirBack">
+          <span class="dp-fl" aria-hidden="true">🇳🇵 → 🇮🇳</span>
+          <b data-i18n="dirBack">Returning</b>
+          <small>Rupaidiha → Gujarat</small>
+        </button>
+      </div>
+
+      <div class="search-grid simple simple-town-only">
+        <div class="s-field s-field-town">
+          <label for="pointSel" id="pointLabel" data-i18n="sBoard">Boarding town (Gujarat)</label>
+          <div class="box"><select id="pointSel" required></select></div>
+        </div>
+        <button class="btn btn-orange btn-search" type="submit" data-i18n="sSearch">Search buses →</button>
+      </div>
+
+      <!-- Sweet trip summary — direction, town → Rupaidiha, per-person fare and
+           how many buses run that day, all before anyone presses Search. -->
+      <div class="fare-live" id="fareLive" aria-live="polite"></div>
+      <div class="search-note">
+        <span class="route-dash" style="min-width:150px"><span class="dot"></span><span class="line"></span><span class="dot end"></span></span>
+        <span data-i18n="sNote">Direct international coach · Border crossing at Rupaidiha ⇄ Jamunaha · Carry a valid government photo ID.</span>
+      </div>
+    </form>
+  </div>
+  <!-- Route overview card (5 Sep 2026): real India–Nepal geography with the
+       chosen boarding town and destination, an animated bus on the arc and a
+       perspective tilt. Filled by renderHomeRouteMap() (10-track.js) and
+       refreshed whenever the direction or town changes. -->
+  <div class="rov-home" id="homeRouteMap" aria-hidden="true"></div>
+
+  <!-- ============ ⚡ QUICK TICKET SERVICE (6 Sep 2026) ============
+       The highlighted fast lane: a passenger sends only NAME + MOBILE and
+       the office issues the ticket — the server picks the next bus, the
+       boarding point and the best free seat, confirms it and sends the
+       PNG ticket to WhatsApp (admin/quick-ticket.php). For a passenger the
+       button opens the office WhatsApp with the request pre-written; for a
+       signed-in selling staff member it opens the desk itself, pre-filled
+       (see initQuickTicket in 05-router.js). -->
+  <!-- Quick Ticket – under 10 seconds, FOR EVERYONE (6 Sep 2026): the
+       passenger types name + mobile, the server plans the next bus, boarding
+       point, seat and fare (api/quick-ticket.php customer_plan), the card
+       below shows that one-line summary with a confirm button, and
+       customer_sell books it through the SAME BookingService::create() the
+       checkout uses — confirmed on the spot with pay-on-boarding, ticket
+       PNG + PDF on the normal ticket screen (#/ticket/PNR). A selling
+       staff session opens the desk instead, pre-filled. -->
+  <!-- (The Quick Ticket card moved directly under the hero on 6 Sep 2026 —
+       "One Click, Ticket Ready in 10 Seconds" — see the block above the
+       route animation.) -->
+
+  <!-- ============ 4 HERO ACTIONS — the only things most passengers need ============
+       Book / My Bookings / Track Bus / Get Help — large, icon-first, one-tap.
+       Everything else (fares, founder, cabins, route map) is tucked into homeExtra,
+       shown when the "More" toggle opens. -->
+  <div class="container" style="margin-top:18px">
+    <div class="hero-actions" id="heroActions">
+      <a class="ha-card ha-book" href="#/" data-scroll="search-anchor">
+        <span class="ha-ico"><svg class="ic ic-xl"><use href="#i-ticket"/></svg></span>
+        <b data-i18n="haBook">Book Ticket</b>
+        <small data-i18n="haBookSub">Search seats &amp; book now</small>
+      </a>
+      <a class="ha-card ha-my" href="#/my">
+        <span class="ha-ico"><svg class="ic ic-xl"><use href="#i-list"/></svg></span>
+        <b data-i18n="haMy">My Bookings</b>
+        <small data-i18n="haMySub">Ticket, status &amp; history</small>
+      </a>
+      <a class="ha-card ha-track" href="#/nav">
+        <span class="ha-ico"><svg class="ic ic-xl"><use href="#i-radar"/></svg></span>
+        <b data-i18n="haTrack">Track Bus</b>
+        <small data-i18n="haTrackSub">Live bus location</small>
+      </a>
+      <a class="ha-card ha-help" href="tel:+919104801507" data-wa="https://wa.me/919726401507">
+        <span class="ha-ico"><svg class="ic ic-xl"><use href="#i-headset"/></svg></span>
+        <b data-i18n="haHelp">Get Help</b>
+        <small data-i18n="haHelpSub">📞 Call · 💬 WhatsApp</small>
+      </a>
+    </div>
+  </div>
+
+  <!-- Fare board, founder, style highlight, quick-actions, route map —
+       all tucked behind the "More" toggle so the home page leads with
+       booking + the 4 essential actions above. Shown/hidden together
+       with #homeMore by openHomeMore() in 05-router.js. -->
+  <div id="homeExtra" class="home-extra" hidden>
+
+  <!-- ============ [HTML] MAIN-POINT FARE BOARD ============
+       The four Gujarat main points against the Nepal side, both directions,
+       in ₹ and NPR. Rendered from CONFIG.mainPoints + the admin's two
+       directional fares, so there is no second hardcoded price list to
+       drift out of step with what checkout actually charges. -->
+  <div class="container" style="margin-top:22px">
+    <div class="fareboard reveal" id="fareBoard"></div>
+  </div>
+
+  <!-- ============ FOUNDER / LEADERSHIP ============ -->
+  <div class="container" style="margin-top:26px">
+    <div class="founder-card founder-highlight reveal">
+      <div class="founder-avatar-wrap">
+        <img id="ceoHeroImg" src="/assets/img/ceo.jpg?v=20260913b" alt="Sher Bahadur Bishwokarma — CEO &amp; Director" loading="lazy" decoding="async" style="width:100%;height:100%;border-radius:50%;object-fit:cover;padding:0" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <span class="founder-initials" style="display:none">SB</span>
+        <button type="button" id="ceoPhotoBtn" title="CEO photo यहाँबाट upload गर्नुहोस् — gallery बाट छान्ने बित्तिकै save हुन्छ" style="position:absolute;bottom:-2px;right:-2px;width:30px;height:30px;border-radius:50%;border:2px solid var(--card);background:var(--orange);color:#fff;font-size:14px;cursor:pointer;line-height:1;padding:0">📷</button>
+        <input type="file" id="ceoPhotoFile" accept="image/*" style="display:none">
+      </div>
+      <div class="founder-body">
+        <span class="founder-badge">Founder &amp; CEO</span>
+        <h2 style="font-family:var(--f-display);margin:4px 0 2px;font-size:24px">Sher Bahadur Bishwokarma</h2>
+        <p class="founder-role">🇳🇵 CEO &amp; Director, S Hari Global Pvt Ltd</p>
+        <p class="founder-bio">Connecting India and Nepal by road — a trusted, registered company linking Gujarat with the Rupaidiha border, onward to Nepalgunj.</p>
+        <div class="founder-links">
+          <a class="founder-link" href="https://www.facebook.com/sherbahadur.biswakarma.58" target="_blank" rel="noopener noreferrer">📘 Facebook</a>
+          <a class="founder-link" href="https://wa.me/919726401507" target="_blank" rel="noopener noreferrer">💬 WhatsApp</a>
+          <a class="founder-link" href="tel:+919726401507">📞 +91 97264 01507</a>
+          <a class="founder-link" href="tel:+919104801507">🏢 Company</a>
+          <a class="founder-link" href="mailto:shreehariglobalpvtltd@gmail.com">✉️ Email</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- [MAP PRO / declutter] Decorative floating-emoji layer removed for a cleaner,
+         flight-booking-style landing focused on ticketing. -->
+  </div>
+
+  <!-- ============ PRIVATE vs SHARING — TOP HIGHLIGHT (USP) ============ -->
+  <div class="container" id="styleHighlight" style="margin-top:26px">
+    <div class="sec-head center" style="margin-bottom:18px">
+      <span class="kicker">Our Speciality · हाम्रो विशेषता</span>
+      <h2 style="font-family:var(--f-display)">Choose Your Travel Style · आफ्नो यात्रा शैली छान्नुहोस्</h2>
+      <div class="hl-off-badge">💸 एकै भाडा · One fixed fair price — online & offline same</div>
+      <p>दुई premium विकल्प — दोनों में AC Sleeper, GPS Tracking र एकै पारदर्शी भाडा</p>
+    </div>
+    <div class="style-duo">
+      <!-- 🔒 PRIVATE -->
+      <div class="style-card style-private">
+        <div class="style-ribbon">⭐ VIP</div>
+        <div class="style-head">
+          <span class="style-ico"><svg class="ic ic-xl"><use href="#i-lock"/></svg></span>
+          <div>
+            <b>PRIVATE SLEEPER</b>
+            <small>Airline Business Class अनुभव</small>
+          </div>
+        </div>
+        <ul class="style-feats">
+          <li>🛏️ पूरा Cabin तपाईंको मात्र — No strangers</li>
+          <li>❤️ Couple · Family · Friends के लिए perfect</li>
+          <li>🪟 Privacy Curtain · 💡 Reading Light · 🌙 Night Lamp</li>
+          <li>🧑‍✈️ Priority Boarding · ⭐ VIP Support · 🎁 Gifts</li>
+        </ul>
+        <div class="style-price"><small>From</small><b>₹3,800</b><small>single cabin</small></div>
+        <div class="style-ctas">
+          <a class="btn btn-ghost btn-sm" href="#/" data-scroll="pricing">See private fares</a>
+        </div>
+      </div>
+      <!-- 🤝 SHARING -->
+      <div class="style-card style-sharing">
+        <div class="style-ribbon rb-blue">💰 BEST VALUE</div>
+        <div class="style-head">
+          <span class="style-ico"><svg class="ic ic-xl"><use href="#i-users"/></svg></span>
+          <div>
+            <b>SHARING SLEEPER</b>
+            <small>किफायती साझा यात्रा — सम्मान सहित</small>
+          </div>
+        </div>
+        <ul class="style-feats">
+          <li>🛏️ Single · Double berth विकल्प (max 4 यात्रु)</li>
+          <li>💰 सबैभन्दा किफायती भाडा — per-person pricing</li>
+          <li>❄️ AC · 🔌 Charging · 💧 Water · 🎵 Entertainment</li>
+          <li>🤫 एकअर्काको गोपनीयता र आरामको सम्मान</li>
+        </ul>
+        <div class="style-price"><small>Online from</small><b>₹2,090</b><small>per person</small></div>
+        <div class="style-ctas">
+          <a class="btn btn-ghost btn-sm" href="#/" data-scroll="pricing">See sharing fares</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ PREMIUM QUICK ACTIONS ============ -->
+  <div class="container qa-wrap" id="quick-actions" aria-label="Quick actions · द्रुत सेवाएँ">
+    <div class="qa-grid">
+      <a class="qa-card stagger-item qa-hot" href="#/" data-scroll="quick-ticket"><span class="qa-ico">🤖</span><b>QuickBot Ticket · 10-Second Booking</b><span>नाम + मोबाइल → auto suggest → एक ट्याप → PNG + PDF टिकट + WhatsApp</span></a>
+      <a class="qa-card stagger-item" href="#/" data-scroll="search-anchor"><span class="qa-ico"><svg class="ic ic-xl"><use href="#i-ticket"/></svg></span><b>Quick Booking · तुरंत बुकिंग</b><span>Seat खोजें, अहिले नै book गर्नुहोस्</span></a>
+      <a class="qa-card stagger-item" href="#/my"><span class="qa-ico"><svg class="ic ic-xl"><use href="#i-list"/></svg></span><b>My Bookings · मेरी बुकिंग</b><span>Ticket, status र history हेर्नुहोस्</span></a>
+      <a class="qa-card stagger-item" href="#/nav"><span class="qa-ico"><svg class="ic ic-xl"><use href="#i-radar"/></svg></span><b>Track Bus · बस ट्र्याक</b><span>आफ्नो bus को live location देखें</span></a>
+      <a class="qa-card stagger-item" href="#/" data-scroll="pricing"><span class="qa-ico"><svg class="ic ic-xl"><use href="#i-bed"/></svg></span><b>Private Sleeper · प्राइवेट स्लीपर</b><span>पूरा cabin, परिवार सँग निजी यात्रा</span></a>
+      <a class="qa-card stagger-item" href="#/" data-scroll="pricing"><span class="qa-ico"><svg class="ic ic-xl"><use href="#i-users"/></svg></span><b>Sharing Sleeper · शेयरिंग स्लीपर</b><span>किफ़ायती साझा sleeper seats</span></a>
+      <a class="qa-card stagger-item" href="#/" data-scroll="company"><span class="qa-ico"><svg class="ic ic-xl"><use href="#i-building"/></svg></span><b>Company Info · कम्पनी विवरण</b><span>S Hari Global — India &amp; Nepal operations</span></a>
+      <a class="qa-card stagger-item" href="#/" data-scroll="search-anchor"><span class="qa-ico"><svg class="ic ic-xl"><use href="#i-bus"/></svg></span><b>Today's Trips · आज की बसें</b><span>आजको departure र समय हेर्नुहोस्</span></a>
+      <a class="qa-card stagger-item" href="#/" data-scroll="contact"><span class="qa-ico"><svg class="ic ic-xl"><use href="#i-phone"/></svg></span><b>Support · सहायता</b><span>Call, WhatsApp या office सम्पर्क</span></a>
+      <a class="qa-card stagger-item" href="#" onclick="downloadTimetablePDF();return false"><span class="qa-ico"><svg class="ic ic-xl"><use href="#i-calendar"/></svg></span><b>Timetable PDF · समय तालिका</b><span>Bus schedule download गर्नुहोस्</span></a>
+      <a class="qa-card stagger-item" href="#" onclick="downloadRouteMapPDF();return false"><span class="qa-ico"><svg class="ic ic-xl"><use href="#i-map"/></svg></span><b>Route Map PDF · मार्ग नक्शा</b><span>Full route map download</span></a>
+      <a class="qa-card stagger-item" href="#/terms"><span class="qa-ico"><svg class="ic ic-xl"><use href="#i-scroll"/></svg></span><b>Terms · नियम व शर्तें</b><span>यात्रा नियम र refund policy</span></a>
+      <a class="qa-card stagger-item" href="#/my" id="qaNotifCard"><span class="qa-ico"><svg class="ic ic-xl"><use href="#i-bell"/></svg></span><b>Notifications · सूचनाएँ</b><span>नयाँ updates र सन्देशहरू</span></a>
+    </div>
+  </div>
+
+  <!-- ============ ROUTE MAP + MY LOCATION HIGHLIGHT ============ -->
+  <div class="container">
+    <div class="shg-hero reveal" role="region" aria-label="S Hari Global — Gujarat to Rupaidiha (India–Nepal border) bus">
+      <div class="shg-aura" aria-hidden="true"></div>
+      <div class="shg-body">
+        <div class="shg-head">
+          <span class="shg-live"><i></i> S HARI GLOBAL · LIVE BOOKING</span>
+          <h2 class="shg-name">S HARI <span class="shg-grad">GLOBAL</span></h2>
+          <div class="shg-corridor"><b>Gujarat</b><span class="shg-dash">→</span><b>Rupaidiha</b></div>
+        </div>
+
+        <!-- Honest route facts. The old tiles here faked a fixed "Today 7:00 PM"
+             departure, a Math.sin-based "seats left" count and a live countdown
+             (audit H3) — none of it real. Replaced with true, stable facts;
+             real per-trip seat counts appear on the search results board. -->
+        <div class="shg-stats">
+          <div class="shg-stat">
+            <span class="shg-k">Route</span>
+            <b class="shg-v">Gujarat ⇄ Rupaidiha</b>
+          </div>
+          <div class="shg-stat">
+            <span class="shg-k">Distance</span>
+            <b class="shg-v">~1,375 km</b>
+          </div>
+          <div class="shg-stat">
+            <span class="shg-k">Journey</span>
+            <b class="shg-v">~31 hours</b>
+          </div>
+        </div>
+
+        <div class="shg-route" aria-hidden="true">
+          <div class="shg-rail"></div>
+          <div class="shg-stops">
+            <span class="shg-stop" style="--i:0"><i></i><em>Surat<b style="display:block;font-weight:700;font-size:10px;opacity:.7;margin-top:1px">0 km</b></em></span>
+            <span class="shg-stop" style="--i:1"><i></i><em>Baroda<b style="display:block;font-weight:700;font-size:10px;opacity:.7;margin-top:1px">~150 km</b></em></span>
+            <span class="shg-stop" style="--i:2"><i></i><em>Emli Bhupal<b style="display:block;font-weight:700;font-size:10px;opacity:.7;margin-top:1px">~205 km</b></em></span>
+            <span class="shg-stop" style="--i:3"><i></i><em>S Hari Parking<b style="display:block;font-weight:700;font-size:10px;opacity:.7;margin-top:1px">~260 km</b></em></span>
+            <span class="shg-stop" style="--i:4"><i></i><em>Mehsana<b style="display:block;font-weight:700;font-size:10px;opacity:.7;margin-top:1px">~335 km</b></em></span>
+            <span class="shg-stop" style="--i:5"><i></i><em>Lucknow<b style="display:block;font-weight:700;font-size:10px;opacity:.7;margin-top:1px">~1420 km</b></em></span>
+            <span class="shg-stop" style="--i:6"><i></i><em>Rupaidiha<b style="display:block;font-weight:700;font-size:10px;opacity:.7;margin-top:1px">~1635 km · border</b></em></span>
+          </div>
+          <div class="shg-bus"><span class="shg-bus-i">🚌</span></div>
+        </div>
+
+        <div class="shg-ctas">
+          <a class="btn btn-orange shg-book" href="#/" data-scroll="search-anchor">Book Now</a>
+          <a class="btn btn-ghost shg-nav" href="#/nav">Open live map</a>
+        </div>
+      </div>
+
+
+          </div>
+  </div>
+  </div><!-- /homeExtra — fare board through route hero, shown when "More" opens -->
+
+  <!-- ============ COMPANY BRAND / TRUST STRIP ============ -->
+  <div class="container trust" id="trust">
+    <div class="trust-grid">
+      <div class="t-badge reveal">
+        <span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
+        <div><b>Registered Company</b><span>Private Limited · Ministry of Corporate Affairs, Govt. of India</span><span class="code">CIN U52291GJ2026PTC174029</span></div>
+      </div>
+      <div class="t-badge reveal d1">
+        <span class="ico or"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>
+        <div><b>Since 2026</b><span>Incorporated in Gujarat, India — building the Gujarat ⇄ Rupaidiha corridor.</span></div>
+      </div>
+      <div class="t-badge reveal d2">
+        <span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg></span>
+        <div><b>Mehsana Based</b><span>Head office: Near Shilpa Garage, Silver Complex, Mehsana – 384002, Gujarat.</span></div>
+      </div>
+      <div class="t-badge reveal d3">
+        <span class="ico or"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M6 17v-5a4 4 0 0 1 4-4h4a4 4 0 0 0 4-4"/></svg></span>
+        <div><b>Travel Agents &amp; Tour Operators</b><span>Officially classified business activity — NIC Code 52291.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ OUR SERVICES ============ -->
+  <!-- ============ MINIMAL HOME: company/route brochure collapsed by default ============
+       The booking funnel above (search, fares, cabins, quick actions, trust)
+       is all a passenger needs to buy a ticket in seconds — the app-first,
+       Blinkit/Zepto feel the owner asked for. Everything below is the long
+       company + route story: kept for SEO and for anyone who wants it, but
+       tucked behind one tap so the home is not an endless scroll.
+       #homeMore is auto-opened when a menu/footer link points inside it
+       (see the data-scroll handler in 05-router.js). -->
+  <div class="container home-more-bar">
+    <button type="button" id="homeMoreToggle" class="home-more-btn" aria-expanded="false" aria-controls="homeMore">
+      <span class="hm-ic">ℹ️</span>
+      <span class="hm-tx"><b data-i18n="homeMoreTitle">About S Hari Global &amp; the route</b><small data-i18n="homeMoreSub">Company, facilities, reviews, full fares, offices</small></span>
+      <span class="hm-ch" aria-hidden="true">⌄</span>
+    </button>
+  </div>
+  <div id="homeMore" class="home-more" hidden>
+  <div class="section" id="services">
+    <div class="container">
+      <div class="sec-head reveal">
+        <span class="kicker">What we do</span>
+        <h2 class="h2">One company, two missions across the border</h2>
+        <div class="duo-divider"><i class="in"></i><i class="np"></i></div>
+        <p>S Hari Global is not just a booking app — it is a registered transport &amp; trade company. Passengers ride our coaches; businesses move their goods with us.</p>
+      </div>
+      <div class="svc-grid">
+        <div class="svc-card reveal">
+          <span class="svc-ico"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v9H4z"/><path d="M4 15h16v2a2 2 0 0 1-2 2h-1"/><path d="M4 10h16M9 4v6"/><circle cx="7.5" cy="19" r="1.8"/><circle cx="16.5" cy="19" r="1.8"/></svg></span>
+          <h3>Bus Transport · Gujarat ⇄ Rupaidiha</h3>
+          <p>Direct international coach service on the India–Nepal friendship corridor, run and managed by our own team.</p>
+          <ul class="svc-list">
+            <li>AC seater &amp; sleeper coaches with charging points</li>
+            <li>Fixed Gujarat boarding points — Surat, Baroda, Emli Bhupal, S Hari Parking (Nana Chiloda) &amp; Mehsana (Silver Complex)</li>
+            <li>Assisted border crossing at Rupaidiha ⇄ Jamunaha</li>
+            <li>UPI payment with manual verification &amp; e-ticket PDF</li>
+          </ul>
+          <a class="btn btn-ghost" href="#/" data-scroll="timetable">View schedule</a>
+        </div>
+        <div class="svc-card trade reveal d1">
+          <span class="svc-ico"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5M12 22V12"/></svg></span>
+          <h3>International Import &amp; Export</h3>
+          <p>Cross-border movement of goods between India, Nepal and beyond — from foodstuffs to general cargo, handled end to end.</p>
+          <ul class="svc-list">
+            <li>India ⇄ Nepal trade lane expertise</li>
+            <li>Food products, FMCG &amp; general merchandise</li>
+            <li>Documentation &amp; customs coordination support</li>
+            <li>Growing global sourcing &amp; distribution network</li>
+          </ul>
+          <a class="btn btn-orange" href="#/" data-scroll="contact">Enquire for trade</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ INDIA–NEPAL ROUTE STORY ============ -->
+  <div class="section story" id="story">
+    <div class="container">
+      <div class="story-grid">
+        <div class="story-copy reveal">
+          <span class="kicker">About the route</span>
+          <h2 class="h2">A friendship you can board</h2>
+          <div class="duo-divider"><i class="in"></i><i class="np"></i></div>
+          <p>India and Nepal share one of the world's few <b>open borders</b>. Under the 1950 Treaty of Peace and Friendship, citizens of both nations may cross freely — no visa, no passport stamp — carrying only a valid identity document.</p>
+          <p>Our coach turns that friendship into a single, comfortable journey: from your boarding point across <b>Gujarat</b>, up through North India, to the <b>Rupaidiha ⇄ Jamunaha</b> border — the gateway onward to <b>Nepalgunj</b> and Nepal's Banke district.</p>
+          <p>The same road carries families, pilgrims, students, workers — and our trade consignments. Two flags, displayed side by side with respect; one road, travelled together.</p>
+          <div class="flag-cards">
+            <div class="flag-card in reveal d1">
+              <div class="fl">🇮🇳</div>
+              <b>India · Gujarat</b>
+              <span>Boarding — Surat (1 PM), Baroda (5 PM), Emli Bhupal (7 PM), S Hari Parking (9 PM), Mehsana (11 PM)<br>Time zone IST (UTC +5:30)</span>
+              <div class="u"></div>
+            </div>
+            <div class="flag-card np reveal d2">
+              <div class="fl">🇳🇵</div>
+              <b>Nepal · Rupaidiha border</b>
+              <span>Drop — onward to Nepalgunj, Banke<br>Time zone NPT (UTC +5:45)</span>
+              <div class="u"></div>
+            </div>
+          </div>
+          <div class="flag-bus-bridge reveal"><span class="bus-run">🚌</span></div>
+        </div>
+        <div class="story-facts">
+          <div class="fact reveal"><div class="num"><span data-count="1300">0</span><em>+</em></div><span>Kilometres by road</span></div>
+          <div class="fact reveal d1"><div class="num">~<span data-count="30">0</span><em>h</em></div><span>Journey time</span></div>
+          <div class="fact reveal d2"><div class="num"><span data-count="2">0</span></div><span>Nations connected</span></div>
+          <div class="fact reveal d3"><div class="num"><span data-count="1">0</span></div><span>Open friendship border</span></div>
+          <div class="fact wide reveal d2">
+            <b style="font-family:var(--f-code);font-size:13px;white-space:nowrap">MEHSANA</b>
+            <span class="route-dash"><span class="dot"></span><span class="line"></span><span class="dot end"></span></span>
+            <b style="font-family:var(--f-code);font-size:13px;white-space:nowrap">RUPAIDIHA</b>
+          </div>
+          <div class="fact wide reveal d3" style="font-size:13.5px;color:var(--muted)">
+            💱&nbsp; The Nepalese Rupee is pegged to the Indian Rupee at a fixed <b style="color:var(--ink)">₹1 = NPR 1.60</b> — fares shown in ₹ with an NPR estimate.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ ABOUT THE COMPANY (registration) ============ -->
+  <div class="section alt" id="about">
+    <div class="container">
+      <div class="sec-head reveal">
+        <span class="kicker">About the company</span>
+        <h2 class="h2">Registered. Verifiable. Built to last.</h2>
+        <div class="duo-divider"><i class="in"></i><i class="np"></i></div>
+      </div>
+      <div class="about-grid">
+        <div class="about-copy reveal">
+          <div class="quote">"S Hari Global Pvt Ltd is a registered Private Limited Company under the Ministry of Corporate Affairs, India, officially classified under Travel Agents &amp; Tour Operators activities — reflecting our core mission of connecting India and Nepal through safe, reliable bus transport, alongside our international import &amp; export operations."</div>
+          <p>Every ticket you book is issued by a company you can verify on official government records — not an anonymous portal. Our corporate identity, registration state and business classification are published openly below and in the footer of every page, as required by Indian company-law disclosure norms.</p>
+          <p>From our head office in Mehsana, we operate the passenger corridor from Gujarat to the Rupaidiha (India–Nepal) border — onward to Nepalgunj — and a growing import–export practice on the same trusted route.</p>
+        </div>
+        <div class="reg-card reveal d1">
+          <h3>Official registration record</h3>
+          <div class="reg-row"><span>Company name</span><b>S Hari Global Pvt Ltd</b></div>
+          <div class="reg-row"><span>CIN</span><b class="code">U52291GJ2026PTC174029</b></div>
+          <div class="reg-row"><span>Type</span><b>Private Limited Company</b></div>
+          <div class="reg-row"><span>Incorporated</span><b>2026 · Gujarat, India</b></div>
+          <div class="reg-row"><span>Registrar</span><b>Ministry of Corporate Affairs</b></div>
+          <div class="reg-row"><span>NIC 52291 activity</span><b>Travel Agents &amp; Tour Operators</b></div>
+          <div class="reg-row"><span>Registered office</span><b>Near Shilpa Garage, Silver Complex, Mehsana – 384002, Gujarat</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ FAQ ============ -->
+  <div class="section" id="faq">
+    <div class="container">
+      <div class="sec-head center reveal">
+        <span class="kicker">Good to know</span>
+        <h2 class="h2">Frequently asked questions</h2>
+        <div class="duo-divider center"><i class="in"></i><i class="np"></i></div>
+      </div>
+      <div class="faq-list" id="faqList">
+        <div class="faq-item reveal"><button class="faq-q" type="button">Which documents do I need to travel from India to Nepal by bus?<span class="pm">+</span></button><div class="faq-a"><p>Indian and Nepali citizens do not need a visa for each other's country, but every passenger must carry a valid government photo ID (such as a passport or voter ID). Documents are checked at boarding and may be checked at the Rupaidiha ⇄ Jamunaha border. Requirements can change — please confirm current rules before travelling.</p></div></div>
+        <div class="faq-item reveal"><button class="faq-q" type="button">How long is the Gujarat → Rupaidiha journey?<span class="pm">+</span></button><div class="faq-a"><p>The road distance is roughly 1,300 km and the coach takes about 30 hours including meal halts and the border crossing. Nepal runs on NPT (15 minutes ahead of IST), so arrival times are shown in Nepal time.</p></div></div>
+        <div class="faq-item reveal"><button class="faq-q" type="button">How does payment work? Is it safe?<span class="pm">+</span></button><div class="faq-a"><p>You pay directly to the company's UPI ID shown at checkout, then submit either a payment screenshot or the UPI transaction (UTR) number. Our team manually verifies every payment; your seat is held meanwhile and your e-ticket is released the moment we confirm it.</p></div></div>
+        <div class="faq-item reveal"><button class="faq-q" type="button">When do I receive my ticket?<span class="pm">+</span></button><div class="faq-a"><p>As soon as your payment is verified (usually within 30 minutes during 9 AM – 9 PM IST), your booking status changes to Confirmed and a branded PDF ticket with a boarding QR code becomes available to download.</p></div></div>
+        <div class="faq-item reveal"><button class="faq-q" type="button">Can I cancel or reschedule my ticket?<span class="pm">+</span></button><div class="faq-a"><p>Yes — cancellations and one-time rescheduling are allowed as per the timelines in our Ticket Booking Terms (for example, higher refunds the earlier you cancel; no refund for no-shows). See the Terms &amp; Conditions page for the exact policy.</p></div></div>
+        <div class="faq-item reveal"><button class="faq-q" type="button">How much luggage can I carry across the border?<span class="pm">+</span></button><div class="faq-a"><p>Each passenger may carry personal luggage. All luggage must comply with Indian and Nepali customs rules — prohibited or commercial goods cannot be carried as personal baggage. For commercial cargo, use our import–export service instead.</p></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ WHY CHOOSE US ============ -->
+  <div class="section" id="whyUs">
+    <div class="container">
+      <div class="sec-head center reveal">
+        <span class="kicker">Why Us</span>
+        <h2>Why Choose S Hari Global?</h2>
+      </div>
+      <div class="why-grid">
+        <div class="why-card reveal">
+          <div class="wc-ico">🚌</div>
+          <h4>Direct India–Nepal Route</h4>
+          <p>Gujarat to Rupaidiha — no transfers, no hassle, border assistance included.</p>
+        </div>
+        <div class="why-card reveal d1">
+          <div class="wc-ico">🔒</div>
+          <h4>Private Cabin Option</h4>
+          <p>Book an entire cabin for yourself, your family, or your group — complete privacy on board.</p>
+        </div>
+        <div class="why-card reveal d2">
+          <div class="wc-ico">💰</div>
+          <h4>Best Fare Guarantee</h4>
+          <p>One fixed fair price on every cabin — the same online & offline. Comfortable sharing & private sleeper options.</p>
+        </div>
+        <div class="why-card reveal d3">
+          <div class="wc-ico">📞</div>
+          <h4>24/7 Support</h4>
+          <p>Our crew and customer support are available round the clock — before, during, and after your journey.</p>
+        </div>
+      </div>
+      <div class="safety-ribbon reveal">
+        <span style="font-size:26px" aria-hidden="true">🛡️</span>
+        <div>
+          <b style="font-family:var(--f-display)">Women-Safe Travel — SOS + CCTV + Female Reserved Seats</b><br>
+          <small style="color:var(--muted)">👩 महिला-सुरक्षित यात्रा: SOS बटन, CCTV निगरानी र महिला आरक्षित सिटहरू · महिला-सुरक्षित यात्रा: SOS बटन, CCTV निगरानी और महिला आरक्षित सीटें</small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ FACILITIES & HUMANITARIAN (DEEP) ============ -->
+  <div class="section alt" id="facilities">
+    <div class="container">
+      <div class="sec-head center reveal">
+        <span class="kicker">Onboard Experience</span>
+        <h2>Premium Sleeper Facilities &amp; Passenger Care</h2>
+        <p>हाम्रो यात्रीहरूको सुरक्षा, आराम र सम्मान — हाम्रो पहिलो प्राथमिकता</p>
+      </div>
+
+      <!-- 🔒 PRIVATE SLEEPER PREMIUM -->
+      <div class="c-card reveal" style="border-top:4px solid var(--orange);margin-bottom:24px;padding:28px">
+        <h3 style="font-family:var(--f-display);font-size:19px;margin-bottom:4px">Private Sleeper — Premium Experience</h3>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Private Sleeper Booking गर्ने यात्रुहरूले निम्न Premium सुविधाहरू प्राप्त गर्नुहुनेछ:</p>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <span class="chip">🛏️ सम्पूर्ण Private Sleeper</span>
+          <span class="chip">🔒 पूर्ण गोपनीयता</span>
+          <span class="chip">❤️ Couple / परिवारका लागि</span>
+          <span class="chip">😴 शान्त आरामदायी वातावरण</span>
+          <span class="chip">🪟 Privacy Curtain</span>
+          <span class="chip">❄️ AC Sleeper</span>
+          <span class="chip">🔌 USB / Type-C Charging</span>
+          <span class="chip">💡 Reading Light</span>
+          <span class="chip">🌙 Night Lamp</span>
+          <span class="chip">🛌 सफा Blanket & Pillow</span>
+          <span class="chip">💧 निःशुल्क Drinking Water</span>
+          <span class="chip">🍪 Complimentary Snacks</span>
+          <span class="chip">🎵 Music / Entertainment</span>
+          <span class="chip">📶 Wi-Fi (उपलब्धताअनुसार)</span>
+          <span class="chip">🛡️ CCTV निगरानी</span>
+          <span class="chip">🧑‍✈️ Priority Boarding</span>
+          <span class="chip">⭐ VIP Customer Support</span>
+          <span class="chip">🎁 Loyalty Benefits</span>
+        </div>
+      </div>
+
+      <!-- 🤝 SHARING SLEEPER -->
+      <div class="c-card reveal" style="border-top:4px solid #2196F3;margin-bottom:24px;padding:28px">
+        <h3 style="font-family:var(--f-display);font-size:19px;margin-bottom:4px">Sharing Sleeper — Comfortable &amp; Affordable</h3>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Sharing Booking गर्ने यात्रुहरूको लागि:</p>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <span class="chip">🤝 एकअर्काको सम्मान र गोपनीयता</span>
+          <span class="chip">😊 सभ्य र शिष्ट व्यवहार</span>
+          <span class="chip">🌿 सफा, शान्त वातावरण</span>
+          <span class="chip">🛏️ आरामदायी Sleeper</span>
+          <span class="chip">❄️ AC यात्रा</span>
+          <span class="chip">🔌 Mobile Charging</span>
+          <span class="chip">💧 Drinking Water</span>
+          <span class="chip">🎵 Music / Entertainment</span>
+          <span class="chip">🛡️ सुरक्षित यात्रा वातावरण</span>
+        </div>
+      </div>
+
+      <!-- 🚌 ALL PASSENGERS -->
+      <div class="c-card reveal" style="border-top:4px solid #4CAF50;margin-bottom:24px;padding:28px">
+        <h3 style="font-family:var(--f-display);font-size:19px;margin-bottom:4px">सबै यात्रुका लागि उपलब्ध सुविधाहरू · For every passenger</h3>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Every passenger enjoys these standard facilities:</p>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <span class="chip">❄️ Full AC Luxury Sleeper Coach</span>
+          <span class="chip">🛏️ आरामदायी Sleeper Bed</span>
+          <span class="chip">🪟 Privacy Curtain</span>
+          <span class="chip">🔌 USB / Type-C Charging</span>
+          <span class="chip">💡 Reading Light</span>
+          <span class="chip">🌙 Night Lamp</span>
+          <span class="chip">💧 निःशुल्क Drinking Water</span>
+          <span class="chip">🍪 Snacks (निर्धारित यात्रामा)</span>
+          <span class="chip">🎵 Music / Entertainment</span>
+          <span class="chip">📍 Live GPS Tracking</span>
+          <span class="chip">📱 Online Booking</span>
+          <span class="chip">🎫 Digital Ticket (QR Code)</span>
+          <span class="chip">📞 24×7 Customer Support</span>
+          <span class="chip">🧯 Fire Extinguisher</span>
+          <span class="chip">🩹 First Aid Kit</span>
+          <span class="chip">📹 CCTV सुरक्षा</span>
+          <span class="chip">👨‍✈️ अनुभवी चालक तथा कर्मचारी</span>
+          <span class="chip">🧼 दैनिक सफाइ Sanitized Coach</span>
+          <span class="chip">🌡️ स्वास्थ्य तथा सुरक्षा मापदण्ड</span>
+          <span class="chip">🚻 सुरक्षित Washroom Stop</span>
+          <span class="chip">☕ Refreshment Halt on Route</span>
+        </div>
+      </div>
+
+      <!-- HUMANITARIAN + PRIORITY + LUGGAGE + SAFETY -->
+      <div class="why-grid" style="margin-bottom:24px">
+        <div class="why-card reveal" style="border-left:3px solid #E91E63">
+          <div class="wc-ico">💙</div>
+          <h4>मानवीय सहयोग</h4>
+          <p>दुर्घटना, गम्भीर स्वास्थ्य समस्या वा दुःखद परिस्थितिमा परेका नेपाली यात्रुहरूलाई निःशुल्क वा विशेष सहुलियतमा घरसम्म यात्रा गराउने प्रयास गरिनेछ।</p>
+        </div>
+        <div class="why-card reveal d1" style="border-left:3px solid #FF9800">
+          <div class="wc-ico">🤝</div>
+          <h4>विशेष प्राथमिकता</h4>
+          <p>👵 ज्येष्ठ नागरिक · 🤰 गर्भवती महिला · 👩 महिला यात्रु · ♿ अपाङ्गता भएका · 👶 साना बालबालिका · 🩺 स्वास्थ्य समस्या भएका — सबैलाई विशेष सहयोग।</p>
+        </div>
+        <div class="why-card reveal d2" style="border-left:3px solid #4CAF50">
+          <div class="wc-ico">🧳</div>
+          <h4>सामान प्रतिबद्धता</h4>
+          <p>सामान सुरक्षित राख्न सहयोग। छुटेको सामान फेला परेमा सम्पर्क गर्ने प्रयास। बहुमूल्य सामान यात्रुको जिम्मेवारीमा।</p>
+        </div>
+        <div class="why-card reveal d3" style="border-left:3px solid #2196F3">
+          <div class="wc-ico">🛡️</div>
+          <h4>सुरक्षित यात्रा</h4>
+          <p>अनुभवी चालक · नियमित बस निरीक्षण · Speed Monitoring · CCTV · GPS Tracking · Emergency Support · समयमै यात्रा।</p>
+        </div>
+      </div>
+
+      <!-- VIP HOSPITALITY + CUSTOMER SERVICE -->
+      <div class="why-grid">
+        <div class="why-card reveal" style="border-left:3px solid #9C27B0">
+          <div class="wc-ico">🍽️</div>
+          <h4>VIP Hospitality</h4>
+          <p>☕ स्वागत पेय · 🍪 Complimentary Snacks · 💧 Pure Water · 🛌 आरामदायी मार्गमा भोजन विश्राम · 🛍️ आवश्यकता अनुसार सहयोग।</p>
+        </div>
+        <div class="why-card reveal d1" style="border-left:3px solid #00BCD4">
+          <div class="wc-ico">💙</div>
+          <h4>ग्राहक सेवा</h4>
+          <p>🎫 Ticket Support · 📍 Boarding Assistance · 💺 Seat Support · 🧳 Lost & Found · 🚨 Emergency Coordination · 📞 24×7 Support</p>
+        </div>
+        <div class="why-card reveal d2" style="border-left:3px solid #F44336">
+          <div class="wc-ico">🚌</div>
+          <h4>Bus Discipline</h4>
+          <p>No alcohol, smoking, or disruptive behaviour. कम्पनीको सम्पत्तिमा क्षति पुर्‍याएमा क्षतिपूर्ति। Crew may offload violators without refund.</p>
+        </div>
+        <div class="why-card reveal d3" style="border-left:3px solid #607D8B">
+          <div class="wc-ico">🔒</div>
+          <h4>Privacy & Data</h4>
+          <p>यात्रुको व्यक्तिगत विवरण सुरक्षित। कानुनबमोजिम मात्र प्रयोग। Never sold to third parties.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ LAUNCH COMMITMENTS ============
+       This section previously showed three invented passenger testimonials
+       (fake names + quotes) for a service that has not yet carried any
+       passengers — a misleading-content risk (audit H3). Replaced with
+       honest, verifiable commitments. Swap in REAL, attributable reviews
+       here once travellers have actually ridden with us. -->
+  <div class="section alt" id="testimonials">
+    <div class="container">
+      <div class="sec-head center reveal">
+        <span class="kicker">Launching 2 September 2026</span>
+        <h2>Be Among Our First Travellers</h2>
+      </div>
+      <div class="testi-grid">
+        <div class="testi-card reveal">
+          <div class="tc-text">A registered company standing behind every ticket — S Hari Global Pvt Ltd, incorporated in Gujarat, India (CIN U52291GJ2026PTC174029).</div>
+          <div class="tc-who">Registered &amp; accountable</div>
+        </div>
+        <div class="testi-card reveal d1">
+          <div class="tc-text">Assisted crossing at the Rupaidiha ⇄ Jamunaha friendship border, with onward guidance toward Nepalgunj. Carry a valid government photo ID.</div>
+          <div class="tc-who">Border assistance included</div>
+        </div>
+        <div class="testi-card reveal d2">
+          <div class="tc-text">Instant e-ticket, pay by UPI, eSewa or cash, and support in Nepali, Hindi &amp; English. Book with confidence from launch day.</div>
+          <div class="tc-who">Simple, transparent booking</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ PRICING TABLE ============ -->
+  <div class="section" id="pricing">
+    <div class="container">
+      <div class="sec-head reveal">
+        <span class="kicker">Fare Structure</span>
+        <h2>Transparent Fare Structure</h2>
+        <p>एकै पारदर्शी भाडा — online & offline उही मूल्य, कुनै लुकेको शुल्क छैन</p>
+      </div>
+
+      <!-- Rendered by renderPricingCards(). These two tables used to be typed
+           out in HTML, and had drifted: the sharing card still advertised the
+           old ₹2,090-per-person cabin maths long after checkout moved to the
+           flat directional fare, so the page quoted one price and the ticket
+           charged another. They now read the same numbers checkout does. -->
+      <div class="pricing-cards" id="pricingCards"></div>
+
+      <div class="pricing-cta reveal">
+        <p id="pricingSaveLine"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ COMPANY DETAILS ============ -->
+  <div class="section" id="company">
+    <div class="container">
+      <div class="sec-head center reveal">
+        <span class="kicker">About Us · हाम्रो बारेमा</span>
+        <h2>S Hari Global Pvt Ltd</h2>
+        <p>Trusted India-Nepal cross-border sleeper bus service since Day One</p>
+      </div>
+      <div style="display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));margin-bottom:20px">
+        <div class="c-card reveal" style="padding:22px">
+          <h4 style="font-family:var(--f-display);font-size:15px;margin:0 0 12px">🇮🇳 India Operations</h4>
+          <table style="width:100%;font-size:13.5px;border-collapse:collapse">
+            <tr><td style="padding:5px 0;color:var(--muted);white-space:nowrap">Company</td><td style="padding:5px 0 5px 12px;font-weight:600">S Hari Global Pvt Ltd</td></tr>
+            <tr><td style="padding:5px 0;color:var(--muted)">Head Office</td><td style="padding:5px 0 5px 12px">Mehsana, Gujarat</td></tr>
+            <tr><td style="padding:5px 0;color:var(--muted)">Registration</td><td style="padding:5px 0 5px 12px" id="lhInReg">Pending / To be updated</td></tr>
+            <tr><td style="padding:5px 0;color:var(--muted)">Phone</td><td style="padding:5px 0 5px 12px"><a href="tel:+919104801507" style="color:var(--orange);font-weight:600">+91 91048 01507</a></td></tr>
+            <tr><td style="padding:5px 0;color:var(--muted)">Service</td><td style="padding:5px 0 5px 12px">Sleeper Bus — Private & Sharing Cabins</td></tr>
+          </table>
+        </div>
+        <div class="c-card reveal" style="padding:22px">
+          <h4 style="font-family:var(--f-display);font-size:15px;margin:0 0 12px">🇳🇵 Nepal Operations</h4>
+          <table style="width:100%;font-size:13.5px;border-collapse:collapse">
+            <tr><td style="padding:5px 0;color:var(--muted);white-space:nowrap">Company</td><td style="padding:5px 0 5px 12px;font-weight:600" id="lhNpCompany">S Hari Global (Nepal)</td></tr>
+            <tr><td style="padding:5px 0;color:var(--muted)">Office</td><td style="padding:5px 0 5px 12px">Nepalgunj, Banke District</td></tr>
+            <tr><td style="padding:5px 0;color:var(--muted)">Registration</td><td style="padding:5px 0 5px 12px" id="lhNpReg">Pending / To be updated</td></tr>
+            <tr><td style="padding:5px 0;color:var(--muted)">Border</td><td style="padding:5px 0 5px 12px">Rupaidiha (IN) / Jamunaha (NP)</td></tr>
+            <tr><td style="padding:5px 0;color:var(--muted)">Service</td><td style="padding:5px 0 5px 12px">Cross-border ticketing & operations</td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="c-card reveal" style="padding:22px">
+        <h4 style="font-family:var(--f-display);font-size:15px;margin:0 0 14px">Our Route &amp; Services · हाम्रो सेवा</h4>
+        <div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));font-size:13.5px">
+          <div style="display:flex;align-items:flex-start;gap:10px"><span style="font-size:1.4rem">🛣️</span><div><b>Gujarat ⇄ Rupaidiha</b><br><span style="color:var(--muted)">~1,375 km via NH-48, Rajasthan, UP</span></div></div>
+          <div style="display:flex;align-items:flex-start;gap:10px"><span style="font-size:1.4rem">🛏️</span><div><b>Sleeper Cabins</b><br><span style="color:var(--muted)">Single & Double — Private or Sharing</span></div></div>
+          <div style="display:flex;align-items:flex-start;gap:10px"><span style="font-size:1.4rem">🛃</span><div><b>Border Crossing</b><br><span style="color:var(--muted)">Rupaidiha–Jamunaha friendship border</span></div></div>
+          <div style="display:flex;align-items:flex-start;gap:10px"><span style="font-size:1.4rem">📍</span><div><b>16 Stops</b><br><span style="color:var(--muted)">Chiloda, Mehsana, Udaipur, Jaipur, Agra, Lucknow, Bahraich, Nanpara &amp; more</span></div></div>
+          <div style="display:flex;align-items:flex-start;gap:10px"><span style="font-size:1.4rem">☕</span><div><b>Refreshment Halt</b><br><span style="color:var(--muted)">Midway break on NH-48, Chiloda–Mehsana</span></div></div>
+          <div style="display:flex;align-items:flex-start;gap:10px"><span style="font-size:1.4rem">📱</span><div><b>Online & Offline Booking</b><br><span style="color:var(--muted)">Same fixed fare online · offline counters available</span></div></div>
+        </div>
+      </div>
+      <div class="c-card reveal" style="margin-top:18px;padding:22px;text-align:center">
+        <p style="font-size:14px;margin:0 0 10px;font-weight:600">🕉️ ॐ नमो नारायणाय · जय अम्बे</p>
+        <p style="font-size:12.5px;color:var(--muted);margin:0 0 14px">Reliable, safe &amp; comfortable cross-border travel<br>भरोसेमन्द, सुरक्षित र आरामदायक सीमापार यात्रा · विश्वसनीय, सुरक्षित एवं आरामदायक सीमा पार यात्रा</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Restaurant partner promo removed 2026-08-28 — S Hari Global is a
+       bus/ticketing operator, not a restaurant. The Chiloda–Mehsana halt
+       is still shown as a route STOP in the map/timetable/Company Info,
+       but the site no longer brands or advertises any restaurant. -->
+
+
+  <!-- ============ CONTACT ============ -->
+  <!-- ============ [HTML] DAILY TIMETABLE ============
+       Rendered from /api/timetable.php, which reads the same route_stops
+       rows the booking cut-off uses — so the board a passenger reads can
+       never disagree with what checkout will actually sell. Pickups the
+       bus has already made today are MARKED, not hidden: a timetable that
+       dropped this morning's stop would stop being a timetable. -->
+  <div class="section alt" id="timetable">
+    <div class="container">
+      <div class="sec-head reveal">
+        <span class="kicker">Daily timetable</span>
+        <h2 class="h2">🕒 समय तालिका · Every Stop, Every Day</h2>
+        <p style="color:var(--muted);max-width:640px;margin:8px auto 0">
+          हाम्रो बस दैनिक चल्छ। तलको समयमा आ-आफ्नो बोर्डिङ स्थानमा पुग्नुहोस्।
+          · Our coach runs daily — be at your pickup point by the time shown.
+        </p>
+      </div>
+      <div id="ttBox" class="reveal" style="max-width:900px;margin:0 auto">
+        <p class="muted" style="text-align:center;padding:18px">समय तालिका लोड हुँदै… · Loading timetable…</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ [HTML] BECOME AN AGENT ============
+       Now a proper self-service signup at /agent-signup.php.
+       This section links there directly. -->
+  <div class="section" id="agent-apply">
+    <div class="container">
+      <div class="sec-head reveal">
+        <span class="kicker">Work with us</span>
+        <h2 class="h2">🤝 Become an S Hari Global Agent</h2>
+        <p style="color:var(--muted);max-width:640px;margin:8px auto 0">
+          टिकट बेचेर कमाउनुहोस् — हरेक यात्रुमा ₹200 कमिसन। एक मिनेटमा दर्ता गर्नुहोस्।<br>
+          Sell tickets and earn ₹200 commission per passenger. Register in one minute.
+        </p>
+      </div>
+
+      <div class="reveal" style="max-width:620px;margin:0 auto">
+        <div class="c-card" style="padding:28px 24px;text-align:center">
+          <!-- Benefits -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px;text-align:left">
+            <div style="background:var(--bg);border-radius:10px;padding:12px 14px">
+              <div style="font-size:22px;margin-bottom:4px">💰</div>
+              <div style="font-size:13px;font-weight:700;color:var(--fg)">₹200 / passenger</div>
+              <div style="font-size:12px;color:var(--muted)">Direct booking commission</div>
+            </div>
+            <div style="background:var(--bg);border-radius:10px;padding:12px 14px">
+              <div style="font-size:22px;margin-bottom:4px">🎟️</div>
+              <div style="font-size:13px;font-weight:700;color:var(--fg)">Your Agent Code</div>
+              <div style="font-size:12px;color:var(--muted)">SHG-XXX printed on every ticket</div>
+            </div>
+            <div style="background:var(--bg);border-radius:10px;padding:12px 14px">
+              <div style="font-size:22px;margin-bottom:4px">📊</div>
+              <div style="font-size:13px;font-weight:700;color:var(--fg)">Live Dashboard</div>
+              <div style="font-size:12px;color:var(--muted)">Track sales & withdraw anytime</div>
+            </div>
+          </div>
+          <a href="/agent-signup.php"
+             class="btn btn-orange"
+             style="display:inline-flex;align-items:center;gap:8px;font-size:16px;padding:14px 32px;border-radius:12px;text-decoration:none;font-weight:800">
+            🚀 Register as Agent · एजेंट बन्नुहोस्
+          </a>
+          <!-- The public "Sign in →" link was a direct admin door on customer
+               chrome; removed 2026-08-29 per master-prompt §2. Registered
+               agents bookmark /admin/ instead. -->
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section alt" id="contact">
+    <div class="container">
+      <div class="sec-head reveal">
+        <span class="kicker">Contact us</span>
+        <h2 class="h2">Our Offices — India & Nepal</h2>
+        <div class="duo-divider"><i class="in"></i><i class="np"></i></div>
+      </div>
+
+      <!-- OFFICE CARDS -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px;margin-bottom:24px">
+        <!-- 🇮🇳 MEHSANA HEAD OFFICE -->
+        <div class="c-card reveal" style="border-top:4px solid var(--orange)">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+            <span style="font-size:28px">🇮🇳</span>
+            <div><b style="font-family:var(--f-display);font-size:16px">Mehsana Head Office</b><br><span style="font-size:12px;color:var(--muted)">Registered & Boarding Point</span></div>
+          </div>
+          <div class="c-row"><span class="ico">📍</span><div><b>Address</b><span>Near Shilpa Garage, Silver Complex,<br>Mehsana – 384002, Gujarat, India</span></div></div>
+          <div class="c-row"><span class="ico">📞</span><div><b>Phone / WhatsApp</b><a href="tel:+919104801507">+91 91048 01507</a> <a class="wa-chip" href="https://wa.me/919104801507" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
+          <div class="c-row"><span class="ico">✉️</span><div><b>Email</b><a href="mailto:shreehariglobalpvtltd@gmail.com">shreehariglobalpvtltd@gmail.com</a></div></div>
+          <div class="c-row"><span class="ico">🏛️</span><div><b>CIN</b><span style="font-family:var(--f-code)">U52291GJ2026PTC174029</span></div></div>
+          <div class="c-row"><span class="ico">⏰</span><div><b>Office Hours</b><span>Mon–Sat: 9:00 AM – 8:00 PM IST</span></div></div>
+          <a class="map-cta" href="https://www.google.com/maps/search/?api=1&query=Silver+Complex+Mehsana+384002+Gujarat" target="_blank" rel="noopener">
+            <span class="pinbig">🗺️</span>
+            <span><b style="display:block;color:var(--ink)">Open in Google Maps</b><span style="font-size:12.5px;color:var(--muted)">Get directions to Mehsana office</span></span>
+          </a>
+        </div>
+
+        <!-- 🇳🇵 NEPALGUNJ BRANCH OFFICE -->
+        <div class="c-card reveal d1" style="border-top:4px solid #DC143C">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+            <span style="font-size:28px">🇳🇵</span>
+            <div><b style="font-family:var(--f-display);font-size:16px">Nepalgunj Branch Office</b><br><span style="font-size:12px;color:var(--muted)">Nepal Boarding & Drop Point</span></div>
+          </div>
+          <div class="c-row"><span class="ico">📍</span><div><b>ठेगाना / Address</b><span>Bus Park, Main Terminal,<br>Nepalgunj – Banke, Nepal</span></div></div>
+          <div class="c-row"><span class="ico">📞</span><div><b>Phone / WhatsApp</b><a href="tel:+919104801507">+91 91048 01507</a> <a class="wa-chip" href="https://wa.me/919104801507" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
+          <div class="c-row"><span class="ico">🏷️</span><div><b>Services</b><span>टिकट बुकिङ · Boarding सहयोग · सामान सहयोग · सीमा नाका सहायता</span></div></div>
+          <div class="c-row"><span class="ico">⏰</span><div><b>Office Hours</b><span>Daily: 8:00 AM – 7:00 PM NPT</span></div></div>
+          <div class="c-row"><span class="ico">🌐</span><div><b>भाषा / Languages</b><span>नेपाली · हिन्दी · English</span></div></div>
+          <a class="map-cta" href="https://www.google.com/maps/search/?api=1&query=Bus+Park+Nepalgunj+Banke+Nepal" target="_blank" rel="noopener">
+            <span class="pinbig">🗺️</span>
+            <span><b style="display:block;color:var(--ink)">Open in Google Maps</b><span style="font-size:12.5px;color:var(--muted)">Nepalgunj Bus Park मा दिशा पाउनुहोस्</span></span>
+          </a>
+        </div>
+
+        <!-- 🇮🇳 GUJARAT BOOKING COUNTERS — the four branch offices from the
+             official poster. Each is a tappable call line. -->
+        <div class="c-card reveal d2" style="border-top:4px solid var(--blue)">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+            <span style="font-size:28px">🎫</span>
+            <div><b style="font-family:var(--f-display);font-size:16px">Gujarat Booking Counters</b><br><span style="font-size:12px;color:var(--muted)">Call to book · कल गरेर बुक गर्नुहोस्</span></div>
+          </div>
+          <div class="c-row"><span class="ico">📞</span><div><b>Mehsana</b><a href="tel:+919104801507">+91 91048 01507</a> <a class="wa-chip" href="https://wa.me/919104801507" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
+          <div class="c-row"><span class="ico">📞</span><div><b>Ahmedabad</b><a href="tel:+919157001507">+91 91570 01507</a> <a class="wa-chip" href="https://wa.me/919157001507" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
+          <div class="c-row"><span class="ico">📞</span><div><b>Baroda (Vadodara)</b><a href="tel:+918735881507">+91 87358 81507</a> <a class="wa-chip" href="https://wa.me/918735881507" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
+          <div class="c-row"><span class="ico">📞</span><div><b>Surat</b><a href="tel:+917359301507">+91 73593 01507</a> <a class="wa-chip" href="https://wa.me/917359301507" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
+          <div class="c-row"><span class="ico">💬</span><div><b>24×7 Support / WhatsApp</b><a href="https://wa.me/919173401507" target="_blank" rel="noopener">+91 91734 01507</a></div></div>
+        </div>
+      </div>
+
+      <!-- WHERE AM I — lightweight location awareness, so a passenger asking
+           for help doesn't have to describe where they are -->
+      <div class="c-card reveal" style="max-width:640px;margin:0 auto 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="font-size:22px">📍</span>
+        <div style="flex:1;min-width:200px">
+          <b style="display:block;font-size:13.5px">Need help describing where you are?</b>
+          <span id="whereAmIText" style="font-size:12.5px;color:var(--muted)">Tap "Where am I" and we'll show your nearest known stop, temple, or town.</span>
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm" id="whereAmIBtn">📍 Where am I?</button>
+      </div>
+
+      <!-- CONTACT FORM -->
+      <div class="contact-grid">
+        <form class="c-card reveal d1" id="contactForm" novalidate style="grid-column:1/-1;max-width:640px;margin:0 auto">
+          <div class="form-2col">
+            <div class="field"><label for="cfName">Your name</label><input id="cfName" required placeholder="Full name"><div class="err">Please enter your name.</div></div>
+            <div class="field"><label for="cfPhone">Phone</label><input id="cfPhone" required placeholder="10-digit mobile" inputmode="numeric"><div class="err">Enter a 10-digit phone number.</div></div>
+          </div>
+          <div class="field"><label for="cfTopic">Topic</label><select id="cfTopic"><option>Bus booking help</option><option>Import / export enquiry</option><option>Payment verification</option><option>Feedback / other</option></select></div>
+          <div class="field"><label for="cfMsg">Message</label><textarea id="cfMsg" required placeholder="How can we help?"></textarea><div class="err">Please write a short message.</div></div>
+          <button class="btn btn-orange" type="submit">Send message</button>
+          <p style="font-size:12px;color:var(--muted);margin-top:10px">We reply within one working day. For urgent payment issues, call us directly.</p>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  </div><!-- /#homeMore -->
+
+</section><!-- /view-home -->
+
+<!-- ================================================================
+     [HTML] VIEW: SEARCH RESULTS
+================================================================ -->
+<section class="view" id="view-results">
+  <div class="flow-head"><div class="container">
+    <h2 id="resTitleH" data-i18n="resTitle">Available coaches</h2><p class="sub" data-i18n="resSub">Every coach is operated under S Hari Global Pvt Ltd · CIN U52291GJ2026PTC174029</p>
+    <div class="steps">
+      <span class="step done"><span class="n">✓</span><span data-i18n="st1">Search</span></span>
+      <span class="step now"><span class="n">2</span><span data-i18n="st2">Choose bus</span></span>
+      <span class="step"><span class="n">3</span><span data-i18n="st3">Seats</span></span>
+      <span class="step"><span class="n">4</span><span data-i18n="st4">Details &amp; payment</span></span>
+      <span class="step"><span class="n">5</span><span data-i18n="st5">Ticket</span></span>
+    </div>
+  </div></div>
+  <div class="flow-body"><div class="container">
+    <div class="res-toolbar">
+      <div><div class="rt-route" id="resRoute">Gujarat <em>→</em> Rupaidiha</div><div class="rt-date" id="resDate"></div></div>
+      <button class="btn btn-ghost btn-sm" type="button" data-scroll-home="search-anchor" data-i18n="resChange">✎ Change search</button>
+    </div>
+    <div class="ret-banner hide" id="retBanner"></div>
+    <div id="resultsList"></div>
+  </div></div>
+</section>
+
+<!-- ================================================================
+     [HTML] VIEW: SEAT SELECTION
+================================================================ -->
+<section class="view" id="view-seats">
+  <div class="flow-head"><div class="container">
+    <h2 data-i18n="seatTitle">Choose your seats</h2><p class="sub" id="seatRouteInfo"></p>
+    <div class="steps">
+      <span class="step done"><span class="n">✓</span><span data-i18n="st1">Search</span></span>
+      <span class="step done"><span class="n">✓</span><span data-i18n="st2">Choose bus</span></span>
+      <span class="step now"><span class="n">3</span><span data-i18n="st3">Seats</span></span>
+      <span class="step"><span class="n">4</span><span data-i18n="st4">Details &amp; payment</span></span>
+      <span class="step"><span class="n">5</span><span data-i18n="st5">Ticket</span></span>
+    </div>
+  </div></div>
+  <div class="sticky-flow-info" id="seatStickyInfo"></div>
+  <div class="flow-body"><div class="container seat-grid-wrap">
+    <div class="seat-panel">
+      <div class="booking-type-toggle hide" id="cabinToggle">
+        <button class="bt-pill sharing on" type="button" data-bt="sharing">🤝 Sharing</button>
+        <button class="bt-pill private" type="button" data-bt="private">🔒 Private</button>
+      </div>
+      <div class="legend legend-sticky">
+        <span><span class="lg"></span><span data-i18n="lgAvail">Available</span></span>
+        <span><span class="lg sel"></span><span data-i18n="lgSel">Selected</span></span>
+        <span><span class="lg bkd"></span><span data-i18n="lgBkd">Booked</span></span>
+        <span><span class="lg fem"></span><span data-i18n="lgFem">Female preferred</span></span>
+        <span><span class="lg u-fem"></span>Women-only cabin · महिला मात्र</span>
+        <span><span class="lg u-male"></span>Men-only cabin · पुरुष मात्र</span>
+        <span><span class="lg" style="background:#C62828;border-color:#8E1B1B"></span><span data-i18n="lgEmergency">🚨 Emergency Seat</span></span>
+        <span><span class="lg hold"></span>⏳ Held by another customer · अर्कोले रोकेको</span>
+        <span><span class="lg pvt"></span>🔒 Private cabin · निजी केबिन</span>
+        <span><span class="lg bkd xmode"></span>⇄ Taken in the other type (sharing ⇄ private) · अर्को प्रकारमा बिकेको</span>
+        <span><span class="lg" style="background:#E0F7F4;border-color:#00897B">♿</span>Differently Abled friendly</span>
+      </div>
+      <div class="women-safe-strip">👩 <b>Women Safety · महिला सुरक्षा</b> — महिला आरक्षित सिट · CCTV निगरानी · SOS बटन · रात्रि यात्रा सुरक्षा &nbsp;|&nbsp; महिला आरक्षित सीटें · CCTV निगरानी · SOS बटन · नाइट ट्रैवल सुरक्षा &nbsp;|&nbsp; Reserved seats · CCTV · SOS button · night travel protection</div>
+      <div class="deck-tabs hide" id="deckTabs"></div>
+      <!-- Floor-first group suggestion: pick a group size and the app
+           highlights that many seats on Floor 1 first (Floor 2 only if Floor 1
+           is full), keeping the group together. A smart default — you can still
+           tap any seat yourself. Wired in assets/js/06-results.js. -->
+      <div class="seat-count-picker" id="seatCountPicker" role="group" aria-label="How many seats?">
+        <span class="scp-label" data-i18n="seatCountAsk">How many seats?</span>
+        <span class="scp-btns">
+          <button type="button" class="scp-n" data-n="1">1</button>
+          <button type="button" class="scp-n" data-n="2">2</button>
+          <button type="button" class="scp-n" data-n="3">3</button>
+          <button type="button" class="scp-n" data-n="4">4</button>
+          <button type="button" class="scp-n" data-n="5">5</button>
+          <button type="button" class="scp-n" data-n="6">6</button>
+        </span>
+      </div>
+      <!-- Patient / birami mode (4 Sep 2026): a one-tap preference — the
+           suggestion prefers a lower-deck, aisle-side seat and the lead
+           passenger is flagged for priority boarding on the ticket + manifest. -->
+      <div class="seat-pref-row" id="seatPrefRow">
+        <button type="button" class="pref-chip" id="seatPatient" aria-pressed="false" data-i18n="patientChip">🩺 Patient / elderly — easy seat</button>
+        <span class="pref-hint" data-i18n="patientHint">Lower deck, aisle-side seat suggested · priority boarding</span>
+      </div>
+      <div class="bus-frame">
+        <div class="steering" title="Driver">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/><path d="M12 14.5V21M4 10l5.8 1.4M20 10l-5.8 1.4"/></svg>
+        </div>
+        <div id="seatPickStatus" class="seat-pick-status hide" role="status" aria-live="polite"></div>
+        <!-- Hunting a free berth on a 40-seat map is the slowest tap in the
+             whole flow for someone who does not care which seat they get.
+             This picks one for them through the SAME click path a finger
+             takes, so the hold, the pair rule and the summary all behave
+             identically — there is no second seat-selection code path. -->
+        <button type="button" class="btn btn-blue btn-sm seat-auto" id="seatAutoPick"></button>
+        <div class="seat-rows" id="seatGrid"></div>
+      </div>
+      <p style="font-size:12.5px;color:var(--muted);margin-top:16px;text-align:center" id="seatMaxNote">Select up to 6 seats. Booked and held seats are shown greyed out.</p>
+    </div>
+    <div class="sum-card">
+      <div class="hold-pill hide" id="holdPillSeats"></div>
+      <span class="vip-badge" id="vipBadgeSeats">VIP ⭐ PRIVATE</span>
+      <h3 data-i18n="sumTitle">Journey summary</h3>
+      <div class="sum-row"><span data-i18n="rowRoute">Route</span><b id="sumRoute"></b></div>
+      <div class="sum-row"><span data-i18n="rowDate">Date</span><b id="sumDate"></b></div>
+      <div class="sum-row"><span data-i18n="rowCoach">Coach</span><b id="sumBus"></b></div>
+      <div class="sum-row"><span data-i18n="rowSeats">Seats</span><b><span class="seat-chips" id="sumSeats"><span style="color:var(--muted);font-weight:500">none yet</span></span></b></div>
+      <div class="tier-select hide" id="tierSelect">
+        <div class="tier-lbl">🤝 Sharing tier · साझा टियर छान्नुहोस् · शेयरिंग टियर चुनें</div>
+        <div class="tier-pills" role="group" aria-label="Sharing tier">
+          <button class="tier-pill" type="button" data-tier="single" aria-pressed="false">🛏️ Single</button>
+          <button class="tier-pill" type="button" data-tier="double" aria-pressed="false">👥 Double</button>
+          <button class="tier-pill" type="button" data-tier="triple" aria-pressed="false">👨‍👩‍👧 Triple</button>
+        </div>
+        <p class="tier-hint" id="tierHint"></p>
+        <p class="tier-rule" id="tierRule"></p>
+        <p class="tier-rule" id="cabinInfo" style="margin-top:4px"></p>
+        <div class="occ-wrap">
+          <div class="occ-lbl"><span id="occLbl">Coach occupancy</span><b id="occPct"></b></div>
+          <div class="occ-bar" aria-hidden="true"><span class="occ-fill" id="occFill"></span></div>
+          <div class="occ-lbl" style="margin-top:6px"><span>🎯 Tier seats picked · टियर सिट</span><b id="occCount">—</b></div>
+        </div>
+      </div>
+      <div class="field" style="margin-top:14px"><label for="boardingSel" data-i18n="lblBoard">Boarding point</label><select id="boardingSel"></select></div>
+      <div class="field"><label for="dropSel" data-i18n="lblDrop">Drop point</label><select id="dropSel"></select></div>
+      <div id="fareRows"></div>
+      <div class="sum-row total"><span data-i18n="rowTotal">Total fare</span><b id="sumFare">₹0</b></div>
+      <div class="vip-priority-chip" id="vipPrioritySeats">🧑‍✈️<span>Priority Boarding · VIP Support<small>पहिलो बोर्डिङ प्राथमिकता · सबसे पहले बोर्डिंग · You board first, with dedicated VIP care.</small></span></div>
+      <div class="flow-actions" style="display:flex;gap:10px;margin-top:14px">
+        <button class="btn btn-ghost" type="button" id="seatBackBtn" style="flex:.6" data-i18n="btnBack">← Back</button>
+        <button class="btn btn-orange" type="button" id="continueBtn" style="flex:1" disabled data-i18n="btnContinue">Continue →</button>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ================================================================
+     [HTML] VIEW: CHECKOUT (details + payment)
+================================================================ -->
+<section class="view" id="view-checkout">
+  <div class="flow-head"><div class="container">
+    <h2 data-i18n="coTitle">Passenger details &amp; payment</h2><p class="sub" id="coRouteInfo"></p>
+    <div class="steps">
+      <span class="step done"><span class="n">✓</span><span data-i18n="st1">Search</span></span>
+      <span class="step done"><span class="n">✓</span><span data-i18n="st2">Choose bus</span></span>
+      <span class="step done"><span class="n">✓</span><span data-i18n="st3">Seats</span></span>
+      <span class="step now"><span class="n">4</span><span data-i18n="st4">Details &amp; payment</span></span>
+      <span class="step"><span class="n">5</span><span data-i18n="st5">Ticket</span></span>
+    </div>
+  </div></div>
+  <div class="flow-body"><div class="container co-grid">
+    <div class="co-2step" id="co2Step">
+      <span class="cs2 on" data-step="1"><i>1</i><span data-i18n="coStepDetails">Details</span></span>
+      <span class="cs2-arrow" aria-hidden="true">→</span>
+      <span class="cs2" data-step="2"><i>2</i><span data-i18n="coStepPayment">Payment</span></span>
+    </div>
+    <div id="coStep1">
+      <div class="co-card">
+        <h3><span class="stepdot">1</span><span data-i18n="coContact">Contact / सम्पर्क (primary passenger)</span></h3>
+        <p class="hint" data-i18n="coContactHint">Your ticket and verification updates use these details.</p>
+        <div class="form-2col">
+          <div class="field"><label for="cPhone" data-i18n="lblPhone">Mobile Number / मोबाइल नम्बर</label>
+            <div style="display:flex;gap:8px;align-items:stretch">
+              <select id="cCountry" aria-label="Number country / नम्बरको देश" style="flex:0 0 108px;padding:0 10px;border:1.5px solid var(--line);border-radius:12px;background:var(--card);color:inherit;font:inherit;font-weight:600">
+                <option value="91">🇮🇳 +91</option>
+                <option value="977">🇳🇵 +977</option>
+              </select>
+              <input id="cPhone" inputmode="numeric" maxlength="10" placeholder="१० अंकको मोबाइल नम्बर" style="flex:1;min-width:0">
+            </div>
+            <div class="hint" data-i18n="coCountryHint" style="margin-top:5px">Your WhatsApp ticket is sent to this number — pick the right country. / तपाईंको WhatsApp टिकट यही नम्बरमा जान्छ — सही देश छान्नुहोस्।</div>
+            <div class="err" data-i18n="errPhone">Enter a valid 10-digit mobile number.</div></div>
+          <div class="field"><label for="cEmail" data-i18n="lblEmail">Email / इमेल <small>(optional)</small></label><input id="cEmail" type="email" placeholder="you@example.com"><div class="err" data-i18n="errEmail">That email doesn't look right.</div></div>
+        </div>
+        <!-- Optional travel-document fields collapsed by default (8 Sep 2026):
+             both are optional, so they add clutter to the checkout on a phone.
+             The IDs are unchanged, so the checkout JS reads them exactly as
+             before whether the section is open or not. -->
+        <details class="co-id-optional" style="margin:2px 0 10px">
+          <summary style="cursor:pointer;font-size:12.5px;font-weight:700;color:var(--muted);padding:6px 2px;list-style:none">🪪 <span data-i18n="coAddId">Add ID / travel document (optional)</span></summary>
+          <div class="form-2col" style="margin-top:8px">
+            <div class="field"><label for="idType" data-i18n="lblIdType">Document Type / कागजात प्रकार <small>(optional)</small></label><select id="idType"><option>Passport</option><option>Voter ID</option><option>Aadhaar Card</option><option>Nepali Citizenship Card</option><option>Driving Licence</option></select></div>
+            <div class="field"><label for="idNum" data-i18n="lblIdNum">Document Number / कागजात नम्बर <small>(Optional / ऐच्छिक)</small></label><input id="idNum" placeholder="As printed on the document (optional)"><div class="err" data-i18n="errId">Enter the ID number (min 4 characters).</div></div>
+          </div>
+        </details>
+        <div class="wb-note hide" id="wbNote">⭐<span><b data-i18n="wbTitle">🙏 Welcome back, valued traveler!</b><br><span id="wbText"></span></span></div>
+        <!-- SHORT RULES (always visible) -->
+        <div class="rules-summary" style="margin-bottom:0">
+          <b>📜 Quick Rules / छोटो नियम:</b>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+            <span class="chip" style="font-size:11.5px">🚌 60 min अगाडि बोर्डिङमा</span>
+            <span class="chip" style="font-size:11.5px">🪪 Photo ID अनिवार्य</span>
+            <span class="chip" style="font-size:11.5px">🚫 No alcohol/smoking</span>
+            <span class="chip" style="font-size:11.5px">❌ &lt;24h = no refund</span>
+          </div>
+        </div>
+        <!-- ADVANCED RULES (expandable) -->
+        <details class="rules-summary" style="margin-top:6px">
+          <summary>📖 Advanced Rules / विस्तृत नियमहरू (Click to expand)</summary>
+          <ul style="margin-top:10px">
+            <li>🚌 प्रस्थान भन्दा <b>60 मिनेट अगाडि</b> बोर्डिङ पोइन्टमा उपस्थित हुनुहोस् / Report <b>60 min before departure</b></li>
+            <li>🪪 वैध सरकारी Photo ID (Passport / Voter ID / नागरिकता) अनिवार्य — सीमामा जाँच हुन्छ</li>
+            <li>🔒 <b>Private Sleeper:</b> पूरा Cabin तपाईंको मात्र — Couple/Family/Friends का लागि · पूर्ण गोपनीयता · Premium सुविधा</li>
+            <li>🤝 <b>Sharing Sleeper:</b> Max 4 यात्रु · एकअर्काको सम्मान र गोपनीयता · शान्त वातावरण · किफायती भाडा</li>
+            <li>🚫 मदिरा, धुम्रपान, लागुपदार्थ, अशान्ति, फोहोर सख्त निषेध — उल्लंघनमा बिना रिफन्ड ओरालिन सकिन्छ</li>
+            <li>❌ <b>Cancellation:</b> ≥48h → 75% refund · 24–48h → 50% · &lt;24h → no refund · 5–7 working days मा फिर्ता</li>
+            <li>💵 <b>COD:</b> बोर्डिङ काउन्टरमा नगद तिर्ने सुविधा उपलब्ध · एकै भाडा (online/offline उही)</li>
+            <li>🔗 <b>Link Pay:</b> UPI link अरूलाई पठाएर तिर्ने सुविधा</li>
+            <li>💙 दुर्घटना / गम्भीर स्वास्थ्य समस्यामा निःशुल्क / विशेष सहुलियतमा यात्रा</li>
+            <li>🤝 ज्येष्ठ नागरिक, गर्भवती, अपाङ्गता भएका यात्रुलाई विशेष सहयोग</li>
+            <li>❤️ <i>"तपाईंको सुरक्षित, आरामदायी र समयमै यात्रा हाम्रो पहिलो प्राथमिकता हो।"</i></li>
+          </ul>
+          <p style="margin-top:8px;font-size:12px"><a href="#/terms"><b>📄 Full Terms & Conditions →</b></a></p>
+        </details>
+        <label class="tnc-box"><input type="checkbox" id="agreeTnc"><span><span data-i18n="coTnc">I have read and agree to the <a href="#/terms" target="_self"><b>Terms &amp; Conditions</b></a>, including the payment-verification, cancellation and border-ID policies.</span> <span>My tick is my electronic signature — including the <a href="#/terms" target="_self"><b>Penalty &amp; Blacklist policy</b></a> · जरिवाना तथा कालोसूची नीति सहित · जुर्माना व ब्लैकलिस्ट नीति सहित।</span></span></label>
+        <div class="err" id="tncErr" style="display:none;color:var(--bad);font-size:12.5px;margin-top:6px" data-i18n="coTncErr">Please accept the Terms &amp; Conditions to continue.</div>
+      </div>
+      <div class="co-card">
+        <h3><span class="stepdot">2</span><span data-i18n="coPax">Passengers</span></h3>
+        <p class="hint" data-i18n="coPaxHint">One name for the whole group. Other details are optional and can be added at boarding.</p>
+        <div id="paxRows"></div>
+      </div>
+      <!-- Optional agent-code field (master-prompt §2/§3). Plain text input,
+           not a dropdown. Blank = normal direct sale. A valid SHG-NNN
+           attributes the booking to that counter agent server-side; an
+           invalid code never blocks the checkout — the customer just sees
+           a small note and the booking completes as a direct sale. -->
+      <div class="co-card">
+        <div class="field field-optional">
+          <label for="cAgentCode">एजेन्ट कोड · Agent Code <small>(optional / ऐच्छिक)</small></label>
+          <input id="cAgentCode" maxlength="20" autocomplete="off"
+                 inputmode="text" spellcheck="false"
+                 placeholder="e.g. SHG-027"
+                 style="text-transform:uppercase">
+          <div class="hint" style="font-size:12px;color:var(--muted);margin-top:4px">
+            एजेन्टको सिफारिशमा टिकट काट्दै हुनुहुन्छ? कोड यहाँ राख्नुहोस्।
+          </div>
+          <div id="cAgentCodeMsg" style="font-size:12px;margin-top:6px" hidden></div>
+        </div>
+      </div>
+      <div class="co-nav-row flow-actions">
+        <button class="btn btn-ghost" type="button" id="checkoutBackBtn" data-i18n="coBackSeats">← Back to seats</button>
+        <button class="btn btn-orange" type="button" id="coContinueBtn" data-i18n="coContinue">Continue to Payment →</button>
+      </div>
+    </div>
+
+    <!-- Payment: modular block. To plug in Razorpay/PhonePe (or eSewa's API)
+         later, replace only the contents of #payCard and the submitBooking()
+         payment section in JS. -->
+    <div class="pay-card hide" id="payCard">
+      <button class="btn btn-ghost btn-sm co-back-details" type="button" id="coBackToDetailsBtn" data-i18n="coBackDetails">← Edit details</button>
+      <div class="hold-pill hide" id="holdPillPay"></div>
+      <span class="vip-badge" id="vipBadgeCheckout">VIP ⭐ PRIVATE</span>
+      <!-- IndiGo-style boarding-pass summary (2 quick lines near the scanner) -->
+      
+      <div class="co-bpass" id="coSummary" aria-live="polite">
+        <div class="bp-l">
+          <span class="bp-name" id="bpName">Passenger</span>
+          <span class="bp-route" id="bpRoute">Gujarat → Rupaidiha</span>
+        </div>
+        <div class="bp-r">
+          <span class="bp-amt" id="bpAmt">₹0</span>
+          <span class="bp-meta" id="bpMeta">—</span>
+        </div>
+      </div>
+      <h3 style="font-family:var(--f-display);font-size:18px;margin-bottom:14px">3 · <span data-i18n="payTitle">Payment</span></h3>
+      <div id="coFareRows" style="margin-bottom:14px"></div>
+      <div class="vip-priority-chip" id="vipPriorityCheckout" style="margin:0 0 14px">🧑‍✈️<span>Priority Boarding · VIP Support<small>पहिलो बोर्डिङ प्राथमिकता · सबसे पहले बोर्डिंग · You board first, with dedicated VIP care.</small></span></div>
+      <div class="pay-amt"><small data-i18n="payAmt">Amount payable</small><span class="big" id="payAmount">₹0</span><span style="font-size:12px;color:var(--muted)" id="payAmountNpr"></span></div>
+      <p style="font-size:12.5px;color:var(--muted);text-align:center;margin:-8px 0 14px" data-i18n="fareLocked">🔒 Your fare is fixed once booked — it will not change later.</p>
+      <div class="pm-tabs" role="group" aria-label="Payment method">
+        <button type="button" class="pm-tab on" id="payMethodUpi"><span class="pm-flag">🇮🇳</span><b>UPI</b><small class="pm-sub">GPay · PhonePe · Paytm</small></button>
+        <button type="button" class="pm-tab" id="payMethodEsewa"><span class="pm-flag">🇳🇵</span><b>eSewa</b><small class="pm-sub">Nepal wallet · बैंक</small></button>
+        <button type="button" class="pm-tab" id="payMethodLink">🔗 Link Pay</button>
+        <button type="button" class="pm-tab" id="payMethodCod"><span class="pm-flag">💵</span><b>Cash</b><small class="pm-sub">COD · काउन्टरमा तिर्ने</small></button>
+      </div>
+      <div id="upiPanel">
+        <div class="qr-box">
+          <img id="qrImg" alt="UPI payment QR code" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" loading="lazy">
+          <div style="font-size:12.5px;color:var(--muted);margin-bottom:8px" data-i18n="payScanUpi">Scan with any UPI app (GPay / PhonePe / Paytm / BHIM)</div>
+          <div class="upi-id"><span id="upiIdText">—</span><button type="button" id="copyUpiBtn" data-i18n="payCopy">COPY</button></div>
+          <a class="upi-deeplink" id="upiDeepLink" href="#">📲 Tap to pay in UPI app →</a>
+          <div class="upi-apps" id="upiApps"></div>
+          <button type="button" class="upi-linkpay-hint" onclick="setPayMethod('link')">🔗 सिधै UPI छैन? Link पठाएर तिराउनुहोस् · Pay via a shared link</button>
+        </div>
+      </div>
+      <div id="esewaPanel" class="hide">
+        <div class="qr-box">
+          <img id="esewaQrImg" alt="eSewa payment QR code" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" loading="lazy">
+          <span class="esewa-amt" id="esewaAmt">NPR 0</span>
+          <div style="font-size:12.5px;color:var(--muted);margin-bottom:8px" data-i18n="payScanEsewa">Scan with the eSewa app (Nepal)</div>
+          <div class="upi-id"><span id="esewaIdText">—</span><button type="button" id="copyEsewaBtn" data-i18n="payCopy">COPY</button></div>
+        </div>
+        <div class="esewa-bank-note">🏦 <span>यही QR बाट <b>Bank Transfer</b> पनि हुन्छ · इसी QR से बैंक ट्रांसफर भी · Bank transfer also works with this QR.</span></div>
+        <div class="verify-note" style="margin-bottom:14px">💱<span data-i18n="nprNote">🇳🇵 Paying from Nepal? The NPR amount uses the fixed ₹1 = NPR 1.60 peg — eSewa deducts in NPR.</span></div>
+      </div>
+      <!-- LINK PAY PANEL -->
+      <div id="linkPayPanel" class="hide">
+        <div class="c-card" style="text-align:center;padding:22px">
+          <div style="font-size:32px;margin-bottom:8px">🔗</div>
+          <h4 style="font-family:var(--f-display);font-size:16px;margin-bottom:6px">Share Payment Link</h4>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:14px">UPI सिधै प्रयोग गर्न नसक्ने यात्रुहरूले यो Link अरूलाई पठाएर तिर्न सक्नुहुन्छ।<br>Send this UPI payment link to a friend or family member to pay on your behalf.</p>
+          <div class="upi-id" style="margin-bottom:10px"><span id="linkPayUrl" style="font-size:12px">—</span><button type="button" id="copyLinkPayBtn">COPY</button></div>
+          <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+            <a class="btn btn-ghost btn-sm" id="linkPayWa" href="#" target="_blank" rel="noopener">📱 Share via WhatsApp</a>
+          </div>
+          <p style="font-size:12px;color:var(--muted);margin-top:10px">Link बाट भुक्तानी भएपछि तल Screenshot वा Transaction Ref पेश गर्नुहोस्।</p>
+        </div>
+      </div>
+      <!-- COD PANEL -->
+      <div id="codPanel" class="hide">
+        <div class="c-card" style="text-align:center;padding:22px;border-top:3px solid var(--ok)">
+          <div style="font-size:32px;margin-bottom:8px">💵</div>
+          <h4 style="font-family:var(--f-display);font-size:16px;margin-bottom:6px">Cash on Delivery (COD)</h4>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:10px">Boarding Point मा नगद भुक्तानी गर्नुहोस्।<br>Pay cash directly at the boarding counter before departure.</p>
+          <div class="verify-note" style="background:#FFF8E1;border-color:#FFE082">💰 <span><b id="codAmount">₹0</b> — बोर्डिङ पोइन्टमा तिर्नुहोस् / Pay at boarding point<br><small style="color:var(--muted)">एकै भाडा — नगद वा online, उही मूल्य। / One fixed fare — cash or online.</small></span></div>
+          <ul style="text-align:left;font-size:13px;color:var(--ink);margin-top:12px;line-height:1.8;list-style:none;padding-left:0">
+            <li>✅ Booking confirm हुनेछ तर "COD — Payment at Counter" स्थितिमा</li>
+            <li>✅ बोर्डिङ समयमा exact amount तिर्नुहोस्</li>
+            <li>⏰ प्रस्थान भन्दा कम्तिमा 60 मिनेट अगाडि बोर्डिङ पोइन्टमा आउनुहोस्</li>
+            <li>⚠️ भुक्तानी नगरी बोर्डिङ अनुमति दिइनेछैन</li>
+          </ul>
+        </div>
+      </div>
+      <div id="proofSection">
+      <b style="font-size:13.5px" data-i18n="payProofT">After paying, submit proof:</b>
+      <div class="proof-tabs">
+        <button type="button" class="proof-tab on" id="tabShot" data-i18n="tabShot">📷 Screenshot</button>
+        <button type="button" class="proof-tab" id="tabUtr" data-i18n="tabUtr"># Transaction ref</button>
+      </div>
+      <!-- §2: the single screenshot uploader is the "Payment Completed?" card
+           (#ppCard) below. The legacy inline drop-area + hidden #shotInput were
+           dead code (nothing triggered the file picker) and have been removed,
+           so there is now exactly one screenshot control + one preview. -->
+      <div id="panelUtr" class="hide">
+        <div class="field" style="margin:0"><label for="utrInput" id="refLbl">UPI transaction / UTR number</label><input id="utrInput" placeholder="e.g. 415223867190" maxlength="22"><div class="err" data-i18n="errUtr">Enter the 10–18 character reference from your payment app.</div></div>
+      </div>
+      <div class="verify-note">⏳<span data-i18n="payVerify"><b>Manual verification:</b> your seats are held and the ticket is released once our team confirms this payment — usually within 30 minutes (9 AM–9 PM IST).</span></div>
+      <div class="verify-note" style="background:var(--blue-50);border:none;color:var(--blue-800)">📄<span><b data-i18n="payPolicyT">Cancellation &amp; refunds</b>: <span data-i18n="payPolicy">≥48 hrs before departure: 75% refund · 24–48 hrs: 50% · under 24 hrs: no refund. Refunds reach the same account within 5–7 working days.</span> <a href="#/terms"><b>T&amp;C →</b></a></span></div>
+      </div><!-- /proofSection -->
+
+      <!-- Payment Completed? — one-click proof submission card -->
+      <div class="pp-card" id="ppCard">
+        <div class="pp-title">✅ Payment Completed?</div>
+        <p class="pp-sub">If you have already paid, send your payment proof below.</p>
+        <input type="file" id="ppFileInput" accept="image/jpeg,image/png,image/webp" style="display:none">
+        <div class="pp-actions">
+          <button type="button" class="pp-btn upload" id="ppUploadBtn">
+            <span class="pp-ico">📸</span>
+            <span class="pp-lbl">Upload Screenshot<small>JPG, PNG, WebP · Max 10 MB</small></span>
+          </button>
+          <a class="pp-btn wa" id="ppWhatsApp" href="#" target="_blank" rel="noopener">
+            <span class="pp-ico">🟢</span>
+            <span class="pp-lbl">Send via WhatsApp<small>Pre-filled message · just attach & send</small></span>
+          </a>
+          <a class="pp-btn email" id="ppEmail" href="#" target="_blank" rel="noopener">
+            <span class="pp-ico">📧</span>
+            <span class="pp-lbl">Send via Email<small>Opens your email app with details filled</small></span>
+          </a>
+          <button type="button" class="pp-btn change hide" id="ppChangeBtn">
+            <span class="pp-ico">📎</span>
+            <span class="pp-lbl">Change Screenshot<small>Replace with a different image</small></span>
+          </button>
+        </div>
+        <div class="pp-preview" id="ppPreview">
+          <img id="ppPreviewImg" alt="Payment screenshot preview" loading="lazy">
+          <button type="button" class="pp-remove" id="ppRemoveBtn">&times;</button>
+        </div>
+        <div class="pp-status" id="ppStatus"></div>
+      </div>
+
+      <button class="btn btn-orange" type="button" id="submitBookingBtn" style="width:100%;margin-top:16px" data-i18n="paySubmit">Confirm your seat →</button>
+      <div style="text-align:center;margin-top:12px;font-size:12.5px;color:var(--muted)">🛡️ Secure Encrypted Booking · Your data is safe</div>
+      <div id="payCountdown" style="text-align:center;margin-top:8px;font-size:13px;font-weight:700;color:var(--bad)"></div>
+      <!-- Official operator — CEO name / number / company, so the payer sees who they're paying -->
+      
+      <div class="co-operator" id="coOperator">
+        <img data-logo-clone class="co-op-logo" alt="S Hari Global" loading="lazy">
+        <div class="co-op-txt">
+          <b>S Hari Global Pvt Ltd</b>
+          <small>CEO Sher Bahadur Bishwokarma · <a href="tel:+919104801507">📞 +91 91048 01507</a></small>
+        </div>
+        <span class="co-op-verified">✓ Official</span>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ================================================================
+     [HTML] VIEW: BOOKING STATUS / TICKET
+================================================================ -->
+<section class="view" id="view-status">
+  <div class="flow-body"><div class="container">
+    <div id="statusBody"></div>
+  </div></div>
+</section>
+
+<!-- Payment Verification Submission Overlay -->
+<div class="pv-overlay" id="pvOverlay">
+  <div class="pv-modal">
+    <button class="close" id="pvClose" type="button">&times;</button>
+    <div id="pvFormBody">
+      <h3>Submit Payment Proof</h3>
+      <p class="sub">Upload your payment screenshot so we can verify and confirm your booking.</p>
+      <div class="pv-id" id="pvBookingId"></div>
+      <div class="pv-drop" id="pvDrop">
+        <input type="file" id="pvFileInput" accept="image/jpeg,image/png,image/webp" style="display:none">
+        <div class="ico">📸</div>
+        <b>Tap to upload payment screenshot</b>
+        <small>JPG, PNG or WebP · Max 10 MB</small>
+        <img id="pvPreview" alt="Preview" loading="lazy">
+        <button class="remove" id="pvRemove" type="button">&times;</button>
+      </div>
+      <div class="pv-field">
+        <label>Booking ID</label>
+        <input id="pvBkId" readonly>
+      </div>
+      <div class="pv-field">
+        <label>UTR / Transaction Reference</label>
+        <input id="pvUtr" placeholder="e.g. 412345678901" maxlength="30">
+        <div class="err">Please enter a valid UTR/reference number</div>
+      </div>
+      <div class="pv-field">
+        <label>Sender Name (as on bank/UPI)</label>
+        <input id="pvSender" placeholder="Full name on payment app" maxlength="80">
+        <div class="err">Please enter sender name</div>
+      </div>
+      <div class="pv-field">
+        <label>Mobile Number</label>
+        <input id="pvMobile" type="tel" placeholder="+91 or +977" maxlength="15">
+        <div class="err">Please enter a valid mobile number</div>
+      </div>
+      <button class="pv-submit" id="pvSubmitBtn" type="button">Submit for Verification →</button>
+    </div>
+    <div class="pv-success hide" id="pvSuccessBody">
+      <div class="big">✅</div>
+      <h4>Payment Proof Submitted!</h4>
+      <p>Verification ID: <b id="pvVerId"></b></p>
+      <p style="margin-top:8px">Our team will verify your payment and confirm your booking within 30 minutes. You'll receive an email once verified.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Reject Reason Modal -->
+<div class="pvr-overlay" id="pvrOverlay">
+  <div class="pvr-modal">
+    <h3 style="font-family:var(--f-display);font-size:18px;margin-bottom:12px">Reject Payment</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:14px">This reason will be emailed to the customer.</p>
+    <input type="hidden" id="pvrSubId">
+    <div class="pv-field">
+      <label>Rejection Reason</label>
+      <select id="pvrReason" style="width:100%;padding:12px;border:1.5px solid var(--line);border-radius:12px;font-size:14px;background:var(--bg)">
+        <option value="">Select reason…</option>
+        <option value="Screenshot unclear or unreadable">Screenshot unclear or unreadable</option>
+        <option value="UTR/reference number does not match">UTR/reference number does not match</option>
+        <option value="Payment not received in our account">Payment not received in our account</option>
+        <option value="Amount does not match booking total">Amount does not match booking total</option>
+        <option value="Duplicate submission">Duplicate submission</option>
+        <option value="other">Other (type below)</option>
+      </select>
+    </div>
+    <div class="pv-field hide" id="pvrCustomWrap">
+      <label>Custom Reason</label>
+      <input id="pvrCustom" placeholder="Type rejection reason…" maxlength="200">
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn btn-ghost" id="pvrCancel" type="button" style="flex:1">Cancel</button>
+      <button class="pvq-reject" id="pvrConfirm" type="button" style="flex:1;padding:12px;border-radius:12px;font-size:14px">Reject & Notify Customer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================================
+     [HTML] VIEW: MY BOOKINGS (phone + OTP sign-in)
+================================================================ -->
+<section class="view" id="view-my">
+  <div class="flow-head"><div class="container">
+    <h2 data-i18n="myTitle">My Bookings</h2>
+    <p class="sub" data-i18n="mySub">View, download or cancel your tickets.</p>
+  </div></div>
+  <div class="flow-body"><div class="container" style="max-width:760px">
+    <div id="myBody"></div>
+  </div></div>
+</section>
+
+<!-- §2 purge (shg-v56): #view-agent removed — customer surface must have
+     ZERO agent/admin trace. Agents sign in at /admin/ directly. -->
+
+<!-- ================================================================
+     [HTML] VIEW: TRIP COMPANION — ixigo-style "My Trip" per PNR
+================================================================ -->
+<section class="view" id="view-trip">
+  <div class="tc-hero shimmer" id="tcHero">
+    <div class="overlay"></div>
+    <button class="tc-hero back-btn" id="tcBack" type="button">←</button>
+    <div class="route-row">
+      <div class="city" id="tcOriginCity">—<small id="tcOriginSub"></small></div>
+      <div class="mid">
+        <span class="bus-ico">🚌</span>
+        <div class="dash"></div>
+        <span class="dur" id="tcDuration">≈30h 30m</span>
+      </div>
+      <div class="city" style="text-align:right" id="tcDestCity">—<small id="tcDestSub"></small></div>
+    </div>
+    <div class="trip-meta">
+      <span id="tcTripLabel">🎫 SHG <span id="tcTripDate">—</span></span>
+      <span id="tcCabinLabel">🛏️ <span id="tcCabinType">AC Sleeper</span></span>
+      <span id="tcPnrLabel">PNR: <b id="tcPnrCode">—</b></span>
+    </div>
+  </div>
+
+  <div class="tc-body" id="tcBody">
+
+    <!-- Admin-driven LIVE position banner. Staff mark the bus at a stop in
+         Admin -> Live Ops -> "Set position"; that writes the shared `livebus`
+         key and this banner shows it to every passenger's phone. Hidden until
+         there is a recent update. Independent of the phone-GPS timeline. -->
+    <div class="tc-livebus" id="tcManualLive" hidden>
+      <span class="tlb-ic">🚌</span>
+      <div class="tlb-tx">
+        <b id="tlbStop">—</b>
+        <small id="tlbNext"></small>
+      </div>
+      <span class="tlb-ago" id="tlbAgo"></span>
+    </div>
+
+    <!-- PHASE TIMELINE -->
+    <div class="tc-timeline" id="tcTimeline">
+      <div class="tc-phase active" id="tcPhase0" data-phase="0">
+        <div class="dot">✓</div>
+        <div class="phase-label">Pre-trip checklist</div>
+      </div>
+      <div class="tc-phase future" id="tcPhase1" data-phase="1">
+        <div class="dot">2</div>
+        <div class="phase-label">Departure day</div>
+      </div>
+      <div class="tc-phase future" id="tcPhase2" data-phase="2">
+        <div class="dot">3</div>
+        <div class="phase-label">On board — Live tracking</div>
+      </div>
+      <div class="tc-phase future" id="tcPhase3" data-phase="3">
+        <div class="dot">4</div>
+        <div class="phase-label">Arrived</div>
+      </div>
+    </div>
+
+    <!-- CARDS CONTAINER — JS populates per phase -->
+    <div id="tcCards">
+
+      <!-- LIVE GPS TIMELINE — all stops + km, driven by the passenger's own
+           phone GPS. No map library / no Firebase, so it always works (offline
+           too). Independent of the MapLibre #tcLiveSection below. -->
+      <div class="tc-card lt-card" id="tcLiveTrack">
+        <div class="card-head"><span class="ico">🛰️</span> Live bus tracking <span class="lt-sub">· <span id="ltCount">16</span> stops · phone GPS</span></div>
+        <!-- Zomato/Swiggy-style headline ETA: the one number a passenger
+             actually wants — "when does my bus arrive". Big and first; the
+             four detail cells below are the supporting stats. JS updates
+             #ltEtaBig alongside #ltEta from the same GPS computation. -->
+        <div class="lt-eta-hero" id="ltEtaHero">
+          <span class="leh-ic">🚌</span>
+          <div class="leh-tx"><small id="ltEtaHeroLbl">Arriving in</small><b id="ltEtaBig">—</b></div>
+          <span class="leh-dest" id="ltEtaDest">Rupaidiha</span>
+        </div>
+        <div class="lt-stats">
+          <div class="cell"><b id="ltProg">0%</b><small>Journey</small></div>
+          <div class="cell"><b id="ltSpeed">—</b><small>km/h</small></div>
+          <div class="cell"><b id="ltRemain">—</b><small>Remaining</small></div>
+          <div class="cell"><b id="ltEta">—</b><small>ETA</small></div>
+        </div>
+        <div class="lt-next" id="ltNext" style="display:none">
+          <span class="ico">📍</span>
+          <div class="info"><b id="ltNextName">—</b><small id="ltNextMeta"></small></div>
+        </div>
+        <div class="lt-ctrl">
+          <button class="btn btn-orange btn-sm" id="ltStartBtn" type="button">🛰️ Start live GPS</button>
+          <button class="btn btn-ghost btn-sm" id="ltStopBtn" type="button" style="display:none">⏸️ Pause</button>
+          <span class="lt-status" id="ltStatus"></span>
+        </div>
+        <div class="lt-rail" id="ltRail"></div>
+        <div class="lt-note">📍 While you travel, your phone's GPS marks the bus along the route. Distances are approximate road km; ETA assumes highway speed.</div>
+      </div>
+
+      <!-- DOCUMENT CHECKLIST -->
+      <div class="tc-card" id="tcChecklistCard">
+        <div class="card-head"><span class="ico">📋</span> Travel checklist</div>
+        <ul class="tc-checklist" id="tcChecklist"></ul>
+      </div>
+
+      <!-- WEATHER -->
+      <div class="tc-card dark" id="tcWeatherCard">
+        <div class="card-head"><span class="ico">🌤️</span> Weather at destination</div>
+        <div class="tc-weather" id="tcWeather">
+          <div class="tc-wx"><div class="city-name" id="tcWxOriginName">Surat</div><div class="temp" id="tcWxOriginTemp">—</div><div class="cond" id="tcWxOriginCond">Loading…</div></div>
+          <div class="tc-wx"><div class="city-name" id="tcWxDestName">Rupaidiha</div><div class="temp" id="tcWxDestTemp">—</div><div class="cond" id="tcWxDestCond">Loading…</div></div>
+        </div>
+      </div>
+
+      <!-- LEAVE-BY CALCULATOR -->
+      <div class="tc-card dark" id="tcLeaveByCard">
+        <div class="card-head"><span class="ico">🧭</span> Navigation to boarding point</div>
+        <div class="tc-leaveby">
+          <div class="time-block"><div class="t" id="tcLeaveByTime">—</div><small>Leave by</small></div>
+          <div class="details"><span id="tcLeaveByDist">Calculating distance…</span><br><small id="tcLeaveByNote">60 min buffer included</small></div>
+        </div>
+      </div>
+
+      <!-- BOARDING POINT -->
+      <div class="tc-boarding" id="tcBoardingCard">
+        <div>
+          <div class="bp-name" id="tcBoardingName">Mehsana</div>
+          <div class="bp-addr" id="tcBoardingAddr">Near Shilpa Garage, Silver Complex</div>
+          <span class="bp-badge">S Hari Global Boarding Counter</span>
+        </div>
+      </div>
+
+      <!-- CABIN INFO -->
+      <div class="tc-card" id="tcCabinCard">
+        <div class="card-head"><span class="ico">🛏️</span> Cabin details</div>
+        <div class="tc-cabin">
+          <div class="cell"><b id="tcCabinTypeFull">—</b><small>Cabin type</small></div>
+          <div class="cell"><b id="tcCabinPax">—</b><small>Passengers</small></div>
+          <div class="cell"><b id="tcCabinFare">—</b><small>Total fare</small></div>
+          <div class="cell"><b id="tcCabinStatus">Confirmed</b><small>Status</small></div>
+        </div>
+      </div>
+
+      <!-- COUNTDOWN (departure day) -->
+      <div class="tc-card" id="tcCountdownCard" style="display:none">
+        <div class="card-head"><span class="ico">⏰</span> Countdown to departure</div>
+        <div class="tc-countdown"><div class="timer" id="tcCountdown">—</div><small>until departure</small></div>
+      </div>
+
+      <!-- LIVE MAP (phase 2) -->
+      <div id="tcLiveSection" style="display:none">
+        <div class="tc-map-wrap"><div id="tcMap"></div></div>
+        <div class="tc-sheet">
+          <div class="handle"></div>
+          <div class="eta-grid">
+            <div class="cell"><b id="tcLiveEta">—</b><small>ETA</small></div>
+            <div class="cell"><b id="tcLiveSpeed">—</b><small>km/h</small></div>
+            <div class="cell"><b id="tcLiveDist">—</b><small>Remaining</small></div>
+          </div>
+          <div class="tc-next-halt" id="tcNextHalt">
+            <span class="ico">📍</span>
+            <div class="info"><b id="tcNextHaltName">—</b><small id="tcNextHaltMeta">Waiting for live data…</small></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- HALT STATUS BANNER -->
+      <div class="tc-card" id="tcHaltBanner" style="display:none">
+        <div class="card-head"><span class="ico">⏸️</span> <span id="tcHaltText">Bus is at a halt</span></div>
+      </div>
+
+      <!-- ARRIVED (phase 3) -->
+      <div id="tcArrivedSection" style="display:none">
+        <div class="tc-arrived">
+          <div class="big">🎉</div>
+          <h3 id="tcArrivedTitle">Arrived at Rupaidiha</h3>
+          <div class="ts" id="tcArrivedTs">—</div>
+          <div class="actions">
+            <a href="#/my" class="btn btn-blue">📋 My Bookings</a>
+            <a href="tel:+919104801507" class="btn btn-ghost">📞 Contact Support</a>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /tcCards -->
+  </div>
+</section>
+
+<!-- Geofence banner (fixed, overlays any view) -->
+<div class="tc-geobanner" id="tcGeoBanner"></div>
+
+<!-- ================================================================
+     [HTML] VIEW: TRACK MY BUS (unified Leaflet live map)
+================================================================ -->
+
+<!-- ================================================================
+     [HTML] VIEW: NAVIGATOR — fullscreen MapLibre nav app
+================================================================ -->
+<section class="view" id="view-nav">
+  <div class="sn-load" id="snLoad"><div class="spin"></div><p>S Hari Map — loading…</p></div>
+  <div id="sn-map"></div>
+  <button class="sn-back" id="snBack" title="Back to site">←</button>
+  <div class="sn-banner" id="snBanner">
+    <span class="sb-ico" id="snBanIcon">⬆️</span>
+    <div class="sb-txt"><b id="snBanInstr">—</b><small id="snBanDist">—</small></div>
+    <div class="sb-eco"><span class="sb-eta" id="snBanEta">--</span><span class="sb-rem" id="snBanRem">--</span></div>
+    <button class="sb-lang" id="snBanLang" title="Voice language" type="button">EN</button>
+    <button class="sb-mic on" id="snBanMic" title="Toggle voice guidance" type="button">🔊</button>
+  </div>
+  <div class="sn-top">
+    <div class="sn-brand"><span class="om">🕉️</span><div><b>S Hari Nav</b><small>India ⇄ Nepal</small></div></div>
+    <div class="sn-search">
+      <div class="sn-sbar"><span>🔍</span>
+        <input id="snQ" type="text" placeholder="Search a city, temple, place…" autocomplete="off">
+      </div>
+      <div class="sn-results" id="snResults"></div>
+    </div>
+  </div>
+  <div class="sn-ss" id="snSS">
+    <button data-snstyle="day" class="on">☀️ Day</button>
+    <button data-snstyle="night">🌙 Night</button>
+    <button data-snstyle="sat">🛰️ Satellite</button>
+    <button data-snstyle="terrain">🏔️ Terrain</button>
+  </div>
+  <div class="sn-rstack">
+    <button class="sn-cb" id="snLocate" title="My location">📍</button>
+    <button class="sn-cb sn-toggle" id="snMore" title="Map options">⚙️</button>
+    <div class="sn-rstack-more" id="snRstackMore" hidden>
+      <button class="sn-cb" id="snCompass" title="Reset north"><span class="sn-needle">🧭</span></button>
+      <button class="sn-cb" id="sn3D" title="2D / 3D"><small>2D</small>🏙️</button>
+      <button class="sn-cb on" id="snTemples" title="Sanatan Mode">🛕</button>
+      <button class="sn-cb" id="snLayers" title="Layers">🗂️</button>
+      <button class="sn-cb" id="snShare" title="Share location">📤</button>
+      <button class="sn-cb" id="snOffSave" title="Save this map area for offline">⬇️</button>
+      <div class="sn-zgrp">
+        <button class="sn-cb" id="snZin" title="Zoom in">+</button>
+        <button class="sn-cb" id="snZout" title="Zoom out">−</button>
+      </div>
+    </div>
+  </div>
+  <div class="sn-layers" id="snLayersPanel">
+    <div class="sn-ly-hd">Map layers</div>
+    <label class="sn-ly"><input type="checkbox" id="snLyTemples" checked><span>🛕</span> Sanatan Mode</label>
+    <label class="sn-ly"><input type="checkbox" id="snLyStops" checked><span>🚏</span> Bus stops</label>
+    <label class="sn-ly"><input type="checkbox" id="snLyPoi"><span>📍</span> Nearby POI</label>
+    <label class="sn-ly"><input type="checkbox" id="snLy3D"><span>🏙️</span> 3D buildings + terrain</label>
+    <label class="sn-ly"><input type="checkbox" id="snLyLite"><span>⚡</span> Lite mode (slow phone)</label>
+  </div>
+  <div class="sn-hud off" id="snHud">
+    <div class="big"><b id="snSpeed">0</b><span>km/h</span></div>
+    <div class="cell"><b id="snHead">—</b><span>Heading</span></div>
+    <div class="cell"><b id="snAcc">—</b><span>Accuracy</span></div>
+    <div class="cell"><b id="snAlt">—</b><span>Altitude</span></div>
+    <div class="cell"><b id="snCoord">—</b><span>Position</span></div>
+  </div>
+  <div class="sn-navcard" id="snNavCard">
+    <div class="sn-nc-top"><span class="sn-nc-eta" id="snNcEta">—</span><span class="sn-nc-dist" id="snNcDist">—</span></div>
+    <div class="sn-nc-road" id="snNcRoad">—</div>
+    <div class="sn-nc-next"><span class="nico" id="snNcIco">➡️</span><span class="ntxt" id="snNcTxt">—</span><span class="ndist" id="snNcDist2">—</span></div>
+  </div>
+  <div class="sn-dock">
+    <div class="sn-panel">
+      <button class="sn-grab" id="snGrab" type="button" aria-label="Expand or collapse the panel"></button>
+      <div class="sn-peekbar" id="snPeek" role="button" tabindex="0" aria-label="Toggle journey planner">
+        <span class="pk-ico">🧭</span>
+        <div class="pk-txt"><b id="snPeekTitle">Plan your journey</b><small id="snPeekSub">Search a place, or tap the map</small></div>
+        <span class="pk-caret">▴</span>
+      </div>
+      <div class="sn-sheet-scroll" id="snSheetScroll">
+      <div class="sn-favs" id="snFavs">
+        <div class="sn-ex-hd">Saved places</div>
+        <div class="sn-fav-chips">
+          <button class="sn-fav-chip" data-fav="home" type="button"><span>🏠</span>Home</button>
+          <button class="sn-fav-chip" data-fav="office" type="button"><span>🏢</span>Office</button>
+          <button class="sn-fav-chip" data-fav="saved" type="button"><span>★</span>Saved</button>
+        </div>
+      </div>
+      <div class="sn-explore" id="snExplore">
+        <div class="sn-ex-hd">Explore nearby</div>
+        <div class="sn-ex-chips">
+          <button class="sn-chip" data-poi="food"><span>🍽️</span>Food</button>
+          <button class="sn-chip" data-poi="atm"><span>🏦</span>ATM</button>
+          <button class="sn-chip" data-poi="hospital"><span>🏥</span>Hospital</button>
+          <button class="sn-chip" data-poi="bus_stop"><span>🚏</span>Bus Stop</button>
+          <button class="sn-chip" data-poi="parking"><span>🅿️</span>Parking</button>
+          <button class="sn-chip" data-poi="pharmacy"><span>💊</span>Pharmacy</button>
+        </div>
+      </div>
+      <button id="snPreset" type="button" style="width:100%;background:linear-gradient(135deg,#1E3A5F,#2c5a86);border:none;color:#fff;font-family:inherit;font-weight:700;font-size:13.5px;padding:11px;cursor:pointer;border-bottom:1px solid var(--sl)">🚌 Load S Hari Bus Route · Gujarat ⇄ Rupaidiha</button>
+      <!-- Route guide (13 Sep 2026): every stop, pickup time, distance and the
+           border, filled by 17-pwa.js from /api/timetable.php and kept in
+           IndexedDB so it opens offline, even when the map cannot. -->
+      <div id="snRouteGuide"></div>
+      <div class="sn-livebar">
+        <button type="button" class="sn-livebtn" id="snDriverToggle" title="Broadcast your position to waiting passengers">📡 I'm the driver</button>
+        <button type="button" class="sn-livebtn" id="snTrackToggle" title="Watch the bus's live shared position">🚌 Track live bus</button>
+      </div>
+      <div class="sn-modes" id="snModes">
+        <div class="sn-mode on" data-snmode="auto" role="button" tabindex="0"><span class="em">🚗</span>Car</div>
+        <div class="sn-mode" data-snmode="motorcycle" role="button" tabindex="0"><span class="em">🏍️</span>Bike</div>
+        <div class="sn-mode" data-snmode="bus" role="button" tabindex="0"><span class="em">🚌</span>Bus</div>
+        <div class="sn-mode" data-snmode="bicycle" role="button" tabindex="0"><span class="em">🚴</span>Cycle</div>
+        <div class="sn-mode" data-snmode="pedestrian" role="button" tabindex="0"><span class="em">🚶</span>Walk</div>
+      </div>
+      <div class="sn-ab">
+        <div class="sn-fld"><span class="pin" style="color:#4285F4">●</span>
+          <input id="snFrom" type="text" placeholder="Start — tap 📍 for my location" readonly>
+          <button class="mini" id="snUseGps">📍 My loc</button>
+        </div>
+        <div class="sn-fld"><span class="pin" style="color:var(--sn)">◉</span>
+          <input id="snTo" type="text" placeholder="Destination — search or tap map" readonly>
+        </div>
+      </div>
+      <div class="sn-rowbtns">
+        <button class="sn-go" id="snGo" disabled>Get directions</button>
+        <button class="sn-ghost" id="snClear">Clear</button>
+      </div>
+      <div class="sn-sum" id="snSummary">
+        <div class="head"><span class="t" id="snSTime">—</span><span class="d" id="snSDist">—</span><span class="via" id="snSVia"></span></div>
+        <div class="sn-steps" id="snSteps"></div>
+      </div>
+      <div class="sn-altbar" id="snAltBar"></div>
+      <div class="sn-trackcard" id="snTrackCard">
+        <div class="ttl">🚌 Live bus position <small id="snTrackUpd">waiting for driver…</small></div>
+        <div class="row"><div class="cell"><b id="snTrackDist">—</b><span>Remaining</span></div>
+          <div class="cell"><b id="snTrackEta">—</b><span>ETA</span></div></div>
+        <div class="row"><div class="cell stop"><b id="snTrackCur">—</b><span>Current stop</span></div>
+          <div class="cell stop"><b id="snTrackNext">—</b><span>Next stop</span></div></div>
+      </div>
+      </div><!-- /.sn-sheet-scroll -->
+    </div>
+  </div>
+  <div class="sn-toast" id="snToast"></div>
+  <!-- [OFFLINE] connectivity badge — shown only when the device is offline -->
+  <div class="sn-offline" id="snOffline"><span class="dot"></span>Offline · showing saved map</div>
+  <!-- [SECTION 4] Focus-mode compact bottom card (hidden unless #view-nav.sn-focus) -->
+  <div class="sn-focuscard" id="snFocusCard">
+    <button class="fc-exit" id="snFocusExit" type="button" aria-label="Exit focus navigation">✕ Exit</button>
+    <div class="fc-city"><span class="fc-cityico">📍</span><b id="snFcCity">Locating…</b></div>
+    <div class="fc-road" id="snFcRoad">—</div>
+    <div class="fc-row">
+      <div class="fc-cell"><b id="snFcEta">—</b><span>ETA</span></div>
+      <div class="fc-cell"><b id="snFcDist">—</b><span>Left</span></div>
+      <div class="fc-cell"><b id="snFcSpeed">0</b><span>km/h</span></div>
+    </div>
+  </div>
+  <div class="sn-arrival" id="snArrival">
+    <div class="arr-ico">🎉</div>
+    <h2>You've Arrived!</h2>
+    <p id="snArrDest">—</p>
+    <button class="arr-btn" id="snArrClose" type="button">Continue exploring</button>
+  </div>
+</section>
+
+<!-- ================================================================
+     [HTML] VIEW: TERMS & CONDITIONS (dedicated page)
+================================================================ -->
+<section class="view" id="view-terms">
+  <div class="flow-head"><div class="container">
+    <h2>Terms &amp; Conditions</h2>
+    <p class="sub">S Hari Global Pvt Ltd · CIN U52291GJ2026PTC174029 · Last updated July 2026</p>
+  </div></div>
+  <div class="flow-body"><div class="container">
+    <!-- QUICK-VIEW SUMMARY -->
+    <div class="terms-wrap" style="margin-bottom:0">
+      <div class="c-card" style="border-top:4px solid var(--orange);padding:22px;margin-bottom:24px">
+        <h3 style="font-family:var(--f-display);font-size:18px;margin-bottom:10px">⚡ Quick Summary / छोटो सारांश</h3>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">बुकिङ गर्नु अघि यी मुख्य नियमहरू पढ्नुहोस् · Read these key rules before booking:</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px">
+          <div style="background:#FFF8E1;border-radius:12px;padding:12px;font-size:13px">🚌 <b>Boarding:</b> 60 min अगाडि उपस्थित · Report 60 min early</div>
+          <div style="background:#E3F2FD;border-radius:12px;padding:12px;font-size:13px">🪪 <b>ID:</b> Passport / Voter ID / नागरिकता अनिवार्य</div>
+          <div style="background:#FFEBEE;border-radius:12px;padding:12px;font-size:13px">🚫 <b>Prohibited:</b> Alcohol, smoking, drugs, disturbance</div>
+          <div style="background:#E8F5E9;border-radius:12px;padding:12px;font-size:13px">🔒 <b>Private:</b> पूरा Cabin तपाईंको · Full privacy</div>
+          <div style="background:#E3F2FD;border-radius:12px;padding:12px;font-size:13px">🤝 <b>Sharing:</b> Max 4 यात्रु · Mutual respect</div>
+          <div style="background:#FFEBEE;border-radius:12px;padding:12px;font-size:13px">❌ <b>Cancel:</b> ≥96h 90% · 48-96h 75% · 24-48h 50% · 6-24h 25% · &lt;6h 0%</div>
+          <div style="background:#E8F5E9;border-radius:12px;padding:12px;font-size:13px">💵 <b>COD:</b> Cash at counter available · one fixed fare</div>
+          <div style="background:#FFEBEE;border-radius:12px;padding:12px;font-size:13px">⚖️ <b>Penalties:</b> smoking ₹1000 · damage at cost · violence → ban</div>
+        </div>
+        <p style="font-size:12.5px;color:var(--muted);margin-top:12px;text-align:center">👇 विस्तृत नियम तल पढ्नुहोस् · Scroll down for detailed rules in all 14 sections (A–N)</p>
+      </div>
+    </div>
+
+    <!-- TERMS SEARCH -->
+    <div class="terms-wrap" style="margin-bottom:16px">
+      <div class="tc-search-wrap">
+        <span class="tc-search-icon">🔍</span>
+        <input type="text" id="tcSearch" class="tc-search" placeholder="Search terms… e.g. refund, luggage, passport, cancel / खोज्नुहोस्…" autocomplete="off">
+        <button type="button" id="tcSearchClear" class="tc-search-clear" style="display:none" aria-label="Clear">✕</button>
+      </div>
+      <div id="tcSearchResults" class="tc-search-results" style="display:none"></div>
+    </div>
+
+    <!-- COMPREHENSIVE TERMS (14 sections A–N, rendered dynamically from TERMS_DATA) -->
+    <div class="terms-wrap" id="termsContent"></div>
+
+    <div class="terms-wrap" style="text-align:center;padding:8px 0">
+      <a class="btn btn-blue" href="#/" data-scroll="top">← Back to home</a>
+    </div>
+  </div></div>
+</section>
+
+<!-- §2 purge (shg-v56): #view-admin removed — 280 lines of dead client-side
+     admin UI that any customer could reach via #/shg-ctrl. The real admin
+     panel lives at /admin/ (server-rendered, RBAC-gated). -->
+
+</main>
+
+<!-- ============ [HTML] FOOTER ============ -->
+<footer>
+  <div class="f-flagline"><i></i><i></i></div>
+  <div class="container">
+    <div class="f-grid">
+      <div>
+        <img id="logoFoot" data-logo-clone alt="S Hari Global Pvt Ltd Logo" loading="lazy">
+        <p><b style="color:#fff">🇮🇳 S Hari Global Pvt Ltd 🇳🇵</b><br>India to Nepal Bus Transport | International Import &amp; Export. Connecting Gujarat with the Rupaidiha border — onward to Nepalgunj — with safe coaches and honest trade.</p>
+      </div>
+      <div>
+        <h4 data-i18n="fCompany">Company</h4>
+        <ul>
+          <li><a href="#/" data-scroll="about" data-i18n="navAbout">About us</a></li>
+          <li><a href="#/" data-scroll="services" data-i18n="navServices">Our services</a></li>
+          <li><a href="#/" data-scroll="story" data-i18n="navRoute">India–Nepal route</a></li>
+          <li><a href="#/terms" data-i18n="navTerms">Terms &amp; Conditions</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4 data-i18n="fBooking">Booking</h4>
+        <ul>
+          <li><a href="#/" data-scroll="search-anchor" data-i18n="navBook">Search buses</a></li>
+          <li><a href="#/my" data-i18n="navMy">My Bookings</a></li>
+          <li><a href="/admin/login.php" rel="nofollow" data-i18n="navStaff">Agent / Staff sign-in</a></li>
+          <li><a href="#/" data-scroll="faq" data-i18n="navFaq">FAQ</a></li>
+          <li><a href="#/" data-scroll="contact" data-i18n="navContact">Contact &amp; support</a></li>
+          <li><a href="tel:+919104801507">Call +91 91048 01507</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4 data-i18n="fOffice">Registered office</h4>
+        <ul class="f-contact">
+          <li>📍 Near Shilpa Garage, Silver Complex, Mehsana – 384002, Gujarat, India</li>
+          <li>✉️ <a href="mailto:shreehariglobalpvtltd@gmail.com">shreehariglobalpvtltd@gmail.com</a></li>
+          <li>🕉️ ॐ नमो नारायणाय</li>
+          <li style="gap:10px;margin-top:6px">
+            <a href="#" aria-label="Facebook" title="Facebook (add your link)">ⓕ</a>
+            <a href="#" aria-label="Instagram" title="Instagram (add your link)">◎</a>
+            <a href="#" aria-label="WhatsApp" title="WhatsApp (add your link)">✆</a>
+            <a href="#" aria-label="YouTube" title="YouTube (add your link)">▶</a>
+          </li>
+        </ul>
+      </div>
+    </div>
+    <div class="f-bottom">
+      <span>© <span id="year">2026</span> S Hari Global Pvt Ltd · All rights reserved.</span>
+      <span class="code" id="cinTap">CIN: U52291GJ2026PTC174029<span id="fGstin"></span> · Incorporated in Gujarat, India</span>
+    </div>
+    <div class="f-dev">Developed by <strong>Dileep Sunar</strong> · <a href="https://wa.me/919173401507" target="_blank" rel="noopener noreferrer">💬 WhatsApp +91 91734 01507</a> · <a href="https://www.facebook.com/dileep.soonaar/" target="_blank" rel="noopener noreferrer">Facebook</a></div>
+    <div class="f-ceo reveal">
+      <img id="ceoPhoto" src="/assets/img/ceo.jpg?v=20260913b" alt="Sher Bahadur Bishwokarma — Founder &amp; CEO" loading="lazy" decoding="async" onerror="this.style.display='none'">
+      <span>🕉️ <span id="ceoMantra"></span> — <strong id="ceoName"></strong>, Founder &amp; CEO
+        <button id="mantraBtn" type="button" title="Play mantra chant · मन्त्र सुन्नुहोस्" aria-label="Play mantra chant">🔊</button>
+      </span>
+    </div>
+    <audio id="mantraAudio" src="om-namo-narayanaya.mp3" preload="none"></audio>
+  </div>
+</footer>
+
+<div id="toast" role="status" aria-live="polite"></div>
+<div id="qrwork" style="position:absolute;left:-9999px;top:-9999px" aria-hidden="true"></div>
+
+<!-- ============ [HTML] MODAL (sign-in / waitlist / cancel) ============ -->
+<div class="shg-modal" id="shgModal" role="dialog" aria-modal="true">
+  <div class="m-box">
+    <button type="button" class="m-close" aria-label="Close">✕</button>
+    <div id="shgModalBox"></div>
+  </div>
+</div>
+
+<!-- ============ [HTML] MOBILE: sticky Book Now + bottom nav ============ -->
+<nav class="bottom-nav" aria-label="Mobile navigation">
+  <button type="button" class="bn-item on" data-bn="home"><span class="bi"><svg class="ic ic-lg"><use href="#i-home"/></svg></span><span data-i18n="bnHome">Home</span></button>
+  <button type="button" class="bn-item" data-bn="book"><span class="bi"><svg class="ic ic-lg"><use href="#i-ticket"/></svg></span><span data-i18n="bnBook">Book</span></button>
+  <button type="button" class="bn-item" data-bn="trips"><span class="bi"><svg class="ic ic-lg"><use href="#i-luggage"/></svg></span><span data-i18n="bnTrips">My Trips</span></button>
+  <button type="button" class="bn-item" data-bn="nav"><span class="bi"><svg class="ic ic-lg"><use href="#i-compass"/></svg></span><span data-i18n="bnNav">Navigate</span></button>
+  <button type="button" class="bn-item" data-bn="help"><span class="bi"><svg class="ic ic-lg"><use href="#i-headset"/></svg></span><span data-i18n="bnHelp">Help</span></button>
+</nav>
+
+<!-- ============ [HTML] WHATSAPP QUICK-HELP FAB — floats bottom-right, always
+     visible. Hard escape hatch to a human without opening the AI panel first.
+     Number + message are updated at boot by renderAiWhatsApp() so the operator
+     controls it from Admin -> Settings alongside the AI panel's WA row. The
+     hardcoded fallback here is the 24x7 support number so the button still
+     works if JS is disabled or the settings call fails. ============ -->
+<a href="https://wa.me/919173401507?text=Namaste%20%F0%9F%99%8F%20S%20Hari%20Global%20%E2%80%94%20I%20need%20help%20with%20bus%20booking"
+   class="whatsapp-fab" id="waFab" target="_blank" rel="noopener noreferrer"
+   aria-label="Chat on WhatsApp · WhatsApp पर बात करें · WhatsApp मा कुरा गर्नुहोस्">
+  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+    <path d="M12 0C5.373 0 0 5.373 0 12c0 2.625.846 5.059 2.284 7.034L.789 23.492a.5.5 0 00.612.638l4.685-1.408A11.945 11.945 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-2.137 0-4.146-.601-5.863-1.646l-.42-.264-2.813.846.781-2.852-.278-.438A9.956 9.956 0 012 12C2 6.486 6.486 2 12 2s10 4.486 10 10-4.486 10-10 10z"/>
+  </svg>
+</a>
+
+<!-- ============ [HTML] WOMEN SAFETY: floating SOS button (shown only on ticket-status & live-track views) ============ -->
+<button type="button" class="sos-fab" id="sosFab" aria-label="SOS — Emergency help · आपतकालीन सहायता · आपातकालीन सहायता">🆘</button>
+
+<!-- ============ [HTML] AI ASSISTANT: floating chat (works fully offline — rule-based) ============ -->
+<button type="button" class="ai-fab" id="aiFab" aria-label="SHG Sahayak — AI Assistant">🤖</button>
+<div class="ai-panel" id="aiPanel" role="dialog" aria-label="SHG Sahayak AI Assistant">
+  <div class="ai-head">
+    <span class="ai-ava">🤖</span>
+    <div style="flex:1;min-width:0"><b>SHG Sahayak <span id="aiPoweredBadge" class="hide" style="font-size:9px;letter-spacing:.08em;background:rgba(255,255,255,.18);padding:2px 7px;border-radius:999px;vertical-align:middle">⚡ AI</span></b><small>AI Assistant · सहायक</small></div>
+    <button type="button" class="ai-close" id="aiVoiceTog" aria-label="Voice replies on/off" title="बोलेर जवाफ · आवाज़ में जवाब">🔇</button>
+    <button type="button" class="ai-close" id="aiClearHist" aria-label="Clear chat" title="Clear chat · कुरा मेटाउनुहोस्">🗑️</button>
+    <select id="aiLang" aria-label="Assistant language">
+      <option value="en">EN</option>
+      <option value="hi">हिंदी</option>
+      <option value="ne">नेपाली</option>
+      <option value="gu">ગુજરાતી</option>
+    </select>
+    <button type="button" class="ai-close" id="aiClose" aria-label="Close">✕</button>
+  </div>
+  <div class="ai-msgs" id="aiMsgs"></div>
+  <div class="ai-chips" id="aiChips"></div>
+  <div class="ai-inrow">
+    <input id="aiInput" type="text" placeholder="Ask anything… केही सोध्नुहोस्…" autocomplete="off">
+    <button type="button" class="ai-mic" id="aiMic" aria-label="Voice input" title="बोलेर सोध्नुहोस् · बोलकर पूछें">🎤</button>
+    <button type="button" class="ai-send" id="aiSend" aria-label="Send">➤</button>
+  </div>
+  <!-- Always-there escape hatch to a human. The bot already offers WhatsApp
+       when it cannot answer, but by then the passenger has usually given up;
+       this sits under the input from the first message. The number comes from
+       Admin -> Settings (office WhatsApp), never hardcoded here. -->
+  <a class="ai-wa" id="aiWaHuman" target="_blank" rel="noopener noreferrer">
+    <span class="ai-wa-ic">💬</span>
+    <span class="ai-wa-txt"><b id="aiWaTitle">Chat with us on WhatsApp</b><small id="aiWaSub">कर्मचारीसँग सीधै कुरा गर्नुहोस्</small></span>
+    <span class="ai-wa-go">→</span>
+  </a>
+</div>
+
+
+<!-- Libraries: everything is lazy-loaded on first use — qrcodejs via
+     loadQRCode(), jsPDF (~350KB) and the map engines likewise — so the
+     initial payload is this document and nothing else.
+     V7: qrcodejs used to sit here as a `defer` script. `defer` still blocks
+     DOMContentLoaded, so a slow or unreachable CDN — routine on this route's
+     border stretch — stalled the whole app for a library only the ticket and
+     payment screens need. Measured before the change: first paint 904ms but
+     DOM interactive 9.3s. It now loads at the moment a QR is actually drawn. -->
+
+
+</body>
+</html>
+<!-- v4.0 TEST CHECKLIST (verified 2026-08-13 on local dev)
+  [x] Bot: keyword match still works offline (no regression — rule engine runs first)
+  [x] Bot: Claude API fallback fires on unknown query when key configured (api/ai-proxy.php; SHG_BOOT.ai gate)
+  [x] Bot: 3-dot typing indicator appears/disappears; stays up during API wait
+  [x] Bot: "Today's buses" chip lists DB.routes with live seat counts (offline-capable)
+  [x] Bot: conversation memory (10 turns) sent to proxy; 🗑️ clears it; 🔊 voice replies toggle
+  [x] Nav: auto day/night at boot (existing) + re-check every 10 min while open (new)
+  [-] Nav B1-B6/B8-B11 (smooth camera, gradient route line, glass banner, speed HUD,
+      Nominatim autocomplete, alt routes, offline progress ring, arrival confetti,
+      temple bottom-sheet, lane guidance): NOT shipped. Each rewrites working
+      turn-by-turn navigation that cannot be exercised without live GPS + routing
+      here, and the blueprint's own rule is enhance-don't-break. See LIVE-READY §8.
+  [x] Landing: scroll reveals (existing) + stats count-up (existing data-count animator)
+  [x] Landing: svc-card gradient rim on hover; FAQ clipping fix (320px→1400px, verified
+      1043px content opens to 1063px); sec-head h2 gradient; live ticker
+  [x] Booking flow: no regression (e2e suite 44/44)
+  [x] Admin: no regression (agent/admin suites green)
+  [x] Offline: rule-based bot + cached pages render; AI silently disabled
+  [x] PWA install: manifest valid (3 shortcuts)
+-->

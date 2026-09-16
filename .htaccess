@@ -1,0 +1,120 @@
+# =====================================================================
+#  S Hari Global — public web root Apache config (Hostinger / cPanel)
+# =====================================================================
+
+# ---- Default document ------------------------------------------------
+DirectoryIndex index.php index.html
+
+# ---- No directory listing --------------------------------------------
+# Without this, any folder that has no index file is browsable: /backup,
+# /uploads, /logs, /qr, /tickets. Each of those has its own .htaccess deny,
+# but this is the one line that stops the whole class of mistake rather than
+# relying on every future folder remembering to add one. It was previously
+# left to the host's default, which is not something to depend on.
+Options -Indexes
+
+# ---- Security headers (mirrors the PHP layer for static files) -------
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "geolocation=(self), microphone=(self), camera=(self)"
+  Header unset X-Powered-By
+</IfModule>
+
+# ---- Force HTTPS -----------------------------------------------------
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{HTTPS} !=on
+  RewriteCond %{HTTP:X-Forwarded-Proto} !https
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+</IfModule>
+
+# ---- Hide the raw application template; index.php serves it ----------
+<Files "app.template.html">
+  Require all denied
+</Files>
+
+# ---- Lock the setup installer out of the web entirely ----------------
+# The site is installed and live, so install.php is never needed again. It
+# imports schema.sql (39 DROP TABLE statements) and resets the superadmin, so
+# a stray request to it is a total-data-loss / account-takeover risk. Blocked
+# here as defence-in-depth on top of install.php's own guard. If the site ever
+# has to be re-provisioned, comment this block out for that one operation.
+<Files "install.php">
+  Require all denied
+</Files>
+
+# ---- Lock out one-off maintenance/reset scripts ----------------------
+# shg-reset.php was a one-time emergency admin-password reset that hardcoded
+# the reset key + a known password in source. It has been removed from the
+# repo; this deny is belt-and-braces so any stray shg-reset*.php (or a similar
+# maintenance drop) can never be executed from the web. (Inert on nginx — the
+# file must also be absent on the server; this only guards the Apache/cPanel
+# host.)
+<FilesMatch "^shg-reset.*\.php$">
+  Require all denied
+</FilesMatch>
+
+# ---- Block dotfiles and backups --------------------------------------
+# .txt added 2026-08-28: SHG-ADMIN-CREDENTIALS.txt / SHG-NOTES-*.txt used to
+# sit at webroot and would be publicly served without this. Nginx on the live
+# VPS blocks them separately; this rule is the belt-and-braces for any Apache
+# host (staging, backup restore, dev clone) that also serves this repo.
+<FilesMatch "(^\.|\.(bak|sql|log|ini|sample|dist|md|txt)$)">
+  Require all denied
+</FilesMatch>
+
+# ---- Block archives and stray backup copies --------------------------
+# Deploy/backup archives must never be downloadable from the web root:
+# they can contain config/ and therefore live database credentials.
+<FilesMatch "\.(zip|tar|gz|tgz|bz2|xz|rar|7z)$">
+  Require all denied
+</FilesMatch>
+<FilesMatch "\.(backup|old|orig|save|copy)\.[A-Za-z0-9]+$">
+  Require all denied
+</FilesMatch>
+
+# ---- Never execute PHP inside the public uploads/ folder --------------
+# (uploads/.htaccess already disables the engine there; this block is a
+# defence-in-depth no-op for the rest of the site, which does need PHP.)
+
+# ---- Long-cache static assets ----------------------------------------
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/css "access plus 7 days"
+  ExpiresByType application/javascript "access plus 7 days"
+  ExpiresByType image/png "access plus 30 days"
+  ExpiresByType image/jpeg "access plus 30 days"
+  ExpiresByType image/webp "access plus 30 days"
+  ExpiresByType image/svg+xml "access plus 30 days"
+</IfModule>
+
+# ---- Service worker + PWA manifest: must never be long-cached --------
+# (the 7-day JS Expires above would otherwise freeze SW updates; the SW
+#  and manifest must be revalidated on every load so new versions ship.)
+<IfModule mod_headers.c>
+  <Files "sw.js">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Service-Worker-Allowed "/"
+  </Files>
+  <Files "manifest.webmanifest">
+    Header set Cache-Control "no-cache"
+  </Files>
+</IfModule>
+<IfModule mod_expires.c>
+  ExpiresByType application/manifest+json "access plus 0 seconds"
+</IfModule>
+# Serve .webmanifest with the correct MIME type.
+<IfModule mod_mime.c>
+  AddType application/manifest+json .webmanifest
+</IfModule>
+
+# ---- Gzip text responses ---------------------------------------------
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css application/javascript application/json image/svg+xml
+</IfModule>
+
+# ---- Friendly error pages --------------------------------------------
+ErrorDocument 404 /index.php
+ErrorDocument 403 /index.php

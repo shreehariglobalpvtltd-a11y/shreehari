@@ -1,0 +1,773 @@
+<?php
+/**
+ * =====================================================================
+ *  Auth — admin sessions with role permissions, and customer sign-in
+ *  by one-time password.
+ *
+ *  Customers never need a password: the phone number plus an OTP is the
+ *  identity, matching how the original booking flow worked.
+ * =====================================================================
+ */
+
+declare(strict_types=1);
+
+if (!defined('SHG_APP')) {
+    http_response_code(403);
+    exit('Forbidden');
+}
+
+final class Auth
+{
+    /**
+     * What each staff role is allowed to do.
+     * 'superadmin' is granted everything implicitly.
+     *
+     * @var array<string, array<int, string>>
+     */
+    private const ROLE_PERMISSIONS = [
+        'manager' => [
+            'dashboard.view', 'bookings.view', 'bookings.edit', 'bookings.cancel',
+            'payments.view', 'payments.verify', 'payments.reject',
+            // A branch manager works the refund desk alongside accounts —
+            // waiting for the accountant to log in would strand a customer
+            // whose bus left without them.
+            'refunds.view', 'refunds.process',
+            // Settles the counter agents' wallets — commission payouts and
+            // cash handovers happen at the branch, not at head office.
+            'commissions.view', 'commissions.pay',
+            'routes.view', 'routes.edit', 'schedules.view', 'schedules.edit',
+            'buses.view', 'buses.edit', 'drivers.view', 'drivers.edit',
+            'customers.view', 'coupons.view', 'coupons.edit',
+            'reports.view', 'liveops.view', 'liveops.edit',
+            'messages.view', 'support.view', 'support.reply',
+            'tickets.scan', 'waitlist.view',
+        ],
+        'accountant' => [
+            'dashboard.view', 'bookings.view',
+            'payments.view', 'payments.verify', 'payments.reject',
+            'refunds.view', 'refunds.process',
+            'commissions.view', 'commissions.pay',
+            'reports.view', 'reports.export',
+        ],
+        'support' => [
+            'dashboard.view', 'bookings.view',
+            // Read-only on the refund desk: support answers "where is my
+            // money" all day, but only accounts/manager may approve.
+            'refunds.view',
+            'customers.view', 'messages.view',
+            'support.view', 'support.reply',
+            'waitlist.view', 'tickets.scan',
+        ],
+        'scanner' => [
+            'tickets.scan',
+        ],
+        // Office staff (§8): verify customer payments and — when a messages
+        // page exists — reply to support. Deliberately NO bookings, routes,
+        // analytics, settings or financial exports. With the current admin nav
+        // this shows the "Verify Payments" screen only.
+        'official' => [
+            'payments.view', 'payments.verify', 'payments.reject',
+            'messages.view', 'support.view', 'support.reply',
+        ],
+        // Ticketing agent (Part 2): sells seats and transfers passengers from
+        // the Seat Map + Trips board, and can look up any booking for support.
+        // Deliberately NO dashboard/analytics/payments/routes/settings — those
+        // nav items gate on dashboard.view, which agents are NOT granted.
+        'agent' => [
+            'schedules.view', 'schedules.edit', 'bookings.view',
+        ],
+    ];
+
+
+    /* =================================================================
+     *  Admin authentication
+     * ================================================================= */
+
+    /**
+     * Attempt a staff login.
+     *
+     * @return array{ok: bool, error?: string}
+     */
+    public static function adminLogin(string $username, string $password): array
+    {
+        $username = Security::clean($username, 60);
+        $ip       = Security::clientIp();
+
+        if ($username === '' || $password === '') {
+            return ['ok' => false, 'error' => 'Enter your username and password.'];
+        }
+
+        // Throttle by IP before touching the database.
+        if (!Security::rateLimit('admin_login', $ip, MAX_LOGIN_ATTEMPTS, 300, LOGIN_LOCKOUT_MIN * 60)) {
+            // Recorded too: a throttled IP is the loudest signal in the log,
+            // and leaving it out would make a brute-force attempt look like
+            // it simply stopped. No admin id — we deliberately refuse before
+            // touching the database, so we do not know who was targeted.
+            LoginLog::record($username, 'locked');
+            return ['ok' => false, 'error' => 'Too many failed attempts. Try again in ' . LOGIN_LOCKOUT_MIN . ' minutes.'];
+        }
+
+        $admin = Database::fetch(
+            'SELECT id, username, password_hash, full_name, role, permissions,
+                    is_active, locked_until, failed_logins, must_change_pw
+               FROM admins
+              WHERE username = :u
+              LIMIT 1',
+            ['u' => $username]
+        );
+
+        // Same message whether the user exists or not — no account enumeration.
+        $genericFailure = ['ok' => false, 'error' => 'Incorrect username or password.'];
+
+        if ($admin === null) {
+            // Spend roughly the same time as a real verify would.
+            password_verify($password, '$2y$11$usesomesillystringfoeu1f3.O0hOZ8W4l0sN2q7dPzYlXqR5Z8Vy');
+            Logger::warning('Admin login: unknown username', ['username' => $username, 'ip' => $ip]);
+            LoginLog::record($username, 'unknown_user');
+            return $genericFailure;
+        }
+
+        if ((int) $admin['is_active'] !== 1) {
+            LoginLog::record($username, 'disabled', (int) $admin['id']);
+            return ['ok' => false, 'error' => 'This account has been disabled. Contact the administrator.'];
+        }
+
+        if (!empty($admin['locked_until']) && strtotime((string) $admin['locked_until']) > time()) {
+            LoginLog::record($username, 'locked', (int) $admin['id']);
+            return ['ok' => false, 'error' => 'This account is temporarily locked. Please try again later.'];
+        }
+
+        if (!Security::verifyPassword($password, (string) $admin['password_hash'])) {
+            $failed = (int) $admin['failed_logins'] + 1;
+
+            $update = ['failed_logins' => $failed];
+            if ($failed >= MAX_LOGIN_ATTEMPTS) {
+                $update['locked_until'] = date('Y-m-d H:i:s', time() + (LOGIN_LOCKOUT_MIN * 60));
+            }
+
+            Database::update('admins', $update, 'id = :id', ['id' => $admin['id']]);
+            Logger::warning('Admin login failed', ['username' => $username, 'ip' => $ip, 'attempt' => $failed]);
+            LoginLog::record($username, 'bad_password', (int) $admin['id']);
+
+            return $genericFailure;
+        }
+
+        self::finishAdminSession($admin, $ip);
+
+        return ['ok' => true];
+    }
+
+    /**
+     * Shared session bootstrap for BOTH staff login paths (password and
+     * agent OTP), so counters, session hygiene, LoginLog device tracking
+     * and audit stay identical however someone signed in.
+     *
+     * @param array<string, mixed> $admin admins row (id, username, full_name,
+     *                                    role, permissions, must_change_pw)
+     * @param bool $viaOtp an OTP-authenticated agent never knows a password,
+     *                     so the forced password-change gate (which demands
+     *                     the CURRENT password) would deadlock them — the
+     *                     flag is carried in the session and the gate skipped.
+     */
+    private static function finishAdminSession(array $admin, string $ip, bool $viaOtp = false): void
+    {
+        // Success — clear counters and start a fresh session id.
+        Database::update('admins', [
+            'failed_logins' => 0,
+            'locked_until'  => null,
+            'last_login_at' => date('Y-m-d H:i:s'),
+            'last_login_ip' => $ip,
+        ], 'id = :id', ['id' => $admin['id']]);
+
+        session_regenerate_id(true);
+
+        $_SESSION[ADMIN_SESSION_KEY] = [
+            'id'             => (int) $admin['id'],
+            'username'       => (string) $admin['username'],
+            'full_name'      => (string) $admin['full_name'],
+            'role'           => (string) $admin['role'],
+            'permissions'    => jsonColumn($admin['permissions']),
+            'must_change_pw' => $viaOtp ? false : (int) $admin['must_change_pw'] === 1,
+            'via_otp'        => $viaOtp,
+            'logged_in_at'   => time(),
+            'last_seen'      => time(),
+        ];
+
+        // Record the attempt and note whether this browser is new for this
+        // account. Runs before any output, since it may mint the device
+        // cookie. A failure in here is swallowed by LoginLog — logging must
+        // never be the reason someone cannot sign in.
+        $newDevice = LoginLog::record((string) $admin['username'], 'success', (int) $admin['id']);
+        $_SESSION[ADMIN_SESSION_KEY]['new_device'] = $newDevice;
+
+        Logger::audit('admin.login', 'admin', (string) $admin['id'], null, null,
+            'Signed in from ' . $ip . ($viaOtp ? ' (agent OTP)' : ''));
+
+        if ($newDevice) {
+            Logger::audit('admin.login.newdevice', 'admin', (string) $admin['id'], null,
+                ['device' => LoginLog::deviceLabel((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''))],
+                'First sign-in from this device');
+        }
+    }
+
+    /**
+     * Resolve an agent-code + mobile pair to the admins row it belongs to,
+     * or null. ONE generic failure for every mismatch kind — which part
+     * was wrong is never revealed (no code/number enumeration).
+     *
+     * Agent codes are NOT a DB column: they live in the 'agent_codes'
+     * settings map managed by AgentWallet (SHG-027 → admins.id).
+     */
+    private static function resolveAgentLogin(string $code, string $mobile): ?array
+    {
+        $codeNum = (int) (preg_replace('/\D/', '', $code) ?? '');
+        $mobile  = normalisePhone($mobile);
+        if ($codeNum < 1 || strlen($mobile) < 7) {
+            return null;
+        }
+
+        require_once __DIR__ . '/agentwallet.php';
+        $adminId = AgentWallet::adminForAgentCode($codeNum);
+        if ($adminId === null) {
+            return null;
+        }
+
+        $admin = Database::fetch(
+            "SELECT id, username, full_name, phone, role, permissions,
+                    is_active, locked_until, must_change_pw
+               FROM admins
+              WHERE id = :id AND role = 'agent' AND is_active = 1
+              LIMIT 1",
+            ['id' => $adminId]
+        );
+        if ($admin === null) {
+            return null;
+        }
+
+        // Both sides normalised — admins.phone is stored as typed in Staff
+        // ('+91 98765 43210' and bare '9876543210' must both match).
+        $registered = normalisePhone((string) ($admin['phone'] ?? ''));
+        if ($registered === '' || $registered !== $mobile) {
+            return null;
+        }
+
+        if (!empty($admin['locked_until']) && strtotime((string) $admin['locked_until']) > time()) {
+            return null;
+        }
+
+        return $admin;
+    }
+
+    /**
+     * Agent login, step 1: agent code (SHG-027 / 27) + registered mobile →
+     * a WhatsApp/SMS OTP to that mobile.
+     *
+     * The OTP identifier is namespaced 'agent:<phone>' so an agent whose
+     * number is also a customer number shares neither otp_codes rows nor
+     * the per-identifier rate buckets with the customer checkout flow.
+     *
+     * @return array{ok: bool, error?: string, resend?: int}
+     */
+    public static function agentLoginStart(string $code, string $mobile): array
+    {
+        $ip      = Security::clientIp();
+        $generic = ['ok' => false, 'error' => 'Agent code and mobile number did not match our records.'];
+
+        if (!Security::rateLimit('agent_otp', $ip, MAX_LOGIN_ATTEMPTS, 300, LOGIN_LOCKOUT_MIN * 60)) {
+            return ['ok' => false, 'error' => 'Too many attempts. Try again in ' . LOGIN_LOCKOUT_MIN . ' minutes.'];
+        }
+
+        $admin = self::resolveAgentLogin($code, $mobile);
+        if ($admin === null) {
+            Logger::warning('Agent OTP login: no match', ['code' => Security::clean($code, 12), 'ip' => $ip]);
+            return $generic;
+        }
+
+        $phone = normalisePhone((string) $admin['phone']);
+        $otp   = self::issueOtp('agent:' . $phone, 'login', 'whatsapp');
+        if (!$otp['ok']) {
+            return ['ok' => false, 'error' => (string) ($otp['error'] ?? 'Could not send a code right now.')];
+        }
+
+        // Auth mints, Notify delivers — same split as the customer flow.
+        // The plain code goes to the phone and NOWHERE else (no debug echo).
+        require_once __DIR__ . '/notify.php';
+        $text = Settings::getString('company_name', APP_NAME)
+              . ' agent login code: ' . $otp['code'] . "\n"
+              . 'Valid ' . OTP_EXPIRY_MINUTES . ' minutes. Never share this code.';
+        Notify::whatsapp($phone, $text);
+        if (Settings::getBool('sms_send_otp', false)) {
+            Notify::sms($phone, $text);
+        }
+
+        Logger::audit('agent.otp.sent', 'admin', (string) $admin['id'], null, null, 'Agent login OTP issued');
+
+        return ['ok' => true, 'resend' => OTP_RESEND_SECONDS];
+    }
+
+    /**
+     * Agent login, step 2: verify the OTP and open the staff session
+     * (role stays whatever the admins row says — always 'agent' here,
+     * enforced by resolveAgentLogin; the portal parameter never decides).
+     *
+     * @return array{ok: bool, error?: string}
+     */
+    public static function agentLoginVerify(string $code, string $mobile, string $otpCode): array
+    {
+        $ip = Security::clientIp();
+
+        if (!Security::rateLimit('agent_otp_verify', $ip, 10, 600, LOGIN_LOCKOUT_MIN * 60)) {
+            return ['ok' => false, 'error' => 'Too many attempts. Try again in ' . LOGIN_LOCKOUT_MIN . ' minutes.'];
+        }
+
+        $admin = self::resolveAgentLogin($code, $mobile);
+        if ($admin === null) {
+            return ['ok' => false, 'error' => 'Agent code and mobile number did not match our records.'];
+        }
+
+        $phone  = normalisePhone((string) $admin['phone']);
+        $result = self::verifyOtp('agent:' . $phone, trim($otpCode), 'login');
+        if (!$result['ok']) {
+            LoginLog::record((string) $admin['username'], 'bad_password', (int) $admin['id']);
+            return ['ok' => false, 'error' => (string) ($result['error'] ?? 'That code is not right.')];
+        }
+
+        self::finishAdminSession($admin, $ip, true);
+
+        return ['ok' => true];
+    }
+
+    public static function adminLogout(): void
+    {
+        if (isset($_SESSION[ADMIN_SESSION_KEY]['id'])) {
+            Logger::audit('admin.logout', 'admin', (string) $_SESSION[ADMIN_SESSION_KEY]['id']);
+            LoginLog::record(
+                (string) ($_SESSION[ADMIN_SESSION_KEY]['username'] ?? ''),
+                'logout',
+                (int) $_SESSION[ADMIN_SESSION_KEY]['id']
+            );
+        }
+
+        unset($_SESSION[ADMIN_SESSION_KEY]);
+        session_regenerate_id(true);
+    }
+
+    /**
+     * The signed-in staff member, or null.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function admin(): ?array
+    {
+        $admin = $_SESSION[ADMIN_SESSION_KEY] ?? null;
+
+        if (!is_array($admin) || empty($admin['id'])) {
+            return null;
+        }
+
+        // Idle timeout.
+        $idleLimit = Settings::getInt('session_timeout_min', 45) * 60;
+        if ($idleLimit > 0 && (time() - (int) ($admin['last_seen'] ?? 0)) > $idleLimit) {
+            self::adminLogout();
+            return null;
+        }
+
+        $_SESSION[ADMIN_SESSION_KEY]['last_seen'] = time();
+
+        return $admin;
+    }
+
+    public static function isAdmin(): bool
+    {
+        return self::admin() !== null;
+    }
+
+    /**
+     * Is the signed-in staff member a super-admin? Used to gate overrides
+     * that no other role may perform — e.g. selling a staff-reserved berth.
+     */
+    public static function isSuperadmin(): bool
+    {
+        $admin = self::admin();
+
+        return $admin !== null && (string) ($admin['role'] ?? '') === 'superadmin';
+    }
+
+    /**
+     * Is the signed-in STAFF member a counter / ticketing agent?
+     *
+     * Deliberately NOT called isAgent() — that name is taken, and means
+     * something else entirely. This codebase carries two unrelated "agent"
+     * concepts:
+     *   - counter agent  — admins.role = 'agent'. Sells at a counter, earns
+     *     commission through agent_ledger, and owns a sale via
+     *     bookings.sold_by_admin_id. This method.
+     *   - referral agent — users.role = 'agent' with a ref_code, paid through
+     *     the commissions table. That is what isAgent() reports on.
+     * Booking data isolation gates on the first of the two; confusing them
+     * would scope every query by the wrong id.
+     */
+    public static function isCounterAgent(): bool
+    {
+        $admin = self::admin();
+
+        return $admin !== null && (string) ($admin['role'] ?? '') === 'agent';
+    }
+
+    /**
+     * The admins.id that every booking query must be restricted to, or null
+     * when the signed-in staff member may see the whole company.
+     *
+     * An id here is an obligation to filter, not a hint. A counter agent may
+     * only ever see the bookings they sold themselves — their own passengers,
+     * their own customers, their own money — so any page reachable with
+     * bookings.view has to honour this.
+     */
+    public static function bookingScopeAdminId(): ?int
+    {
+        return self::isCounterAgent() ? (int) (self::admin()['id'] ?? 0) : null;
+    }
+
+    /**
+     * Does the signed-in staff member hold this permission?
+     */
+    public static function can(string $permission): bool
+    {
+        $admin = self::admin();
+
+        if ($admin === null) {
+            return false;
+        }
+
+        $role = (string) ($admin['role'] ?? '');
+
+        if ($role === 'superadmin') {
+            return true;
+        }
+
+        $rolePerms  = self::ROLE_PERMISSIONS[$role] ?? [];
+        $extraPerms = is_array($admin['permissions'] ?? null) ? $admin['permissions'] : [];
+
+        return in_array($permission, $rolePerms, true)
+            || in_array($permission, $extraPerms, true);
+    }
+
+    /**
+     * Require a signed-in admin, optionally holding a permission.
+     * Redirects HTML requests to the login page; answers JSON for the API.
+     */
+    public static function requireAdmin(string $permission = ''): array
+    {
+        $admin = self::admin();
+
+        $wantsJson = str_contains((string) ($_SERVER['REQUEST_URI'] ?? ''), '/api/');
+
+        if ($admin === null) {
+            if ($wantsJson) {
+                Response::unauthorized('Your session has expired. Please sign in again.');
+            }
+            // Preserve the deep link (e.g. payments.php?pnr=SHG-...) so signing
+            // in lands the admin back where they meant to go.
+            $file = basename((string) ($_SERVER['SCRIPT_NAME'] ?? 'index.php'));
+            $qs   = (string) ($_SERVER['QUERY_STRING'] ?? '');
+            $next = $file . ($qs !== '' ? '?' . $qs : '');
+            Response::redirect('admin/login.php?next=' . rawurlencode($next));
+        }
+
+        /* Forced password change (master prompt §20).
+           staff.php issues a temporary password and flags the account
+           must_change_pw. That flag was stored, carried into the session and
+           shown as a badge in the staff list — but nothing ever acted on it,
+           so a temporary password handed out over WhatsApp stayed valid for
+           as long as the holder liked. Everything except the change form, the
+           sign-out link and the API stays shut until it is cleared. */
+        $file = basename((string) ($_SERVER['SCRIPT_NAME'] ?? ''));
+
+        if (!empty($_SESSION[ADMIN_SESSION_KEY]['must_change_pw'])
+            && !$wantsJson
+            && !in_array($file, ['change-password.php', 'logout.php'], true)) {
+            Response::redirect('admin/change-password.php');
+        }
+
+        if ($permission !== '' && !self::can($permission)) {
+            Logger::warning('Permission denied', [
+                'admin'      => $admin['username'] ?? '',
+                'permission' => $permission,
+            ]);
+
+            if ($wantsJson) {
+                Response::forbidden('Your role does not allow that action.');
+            }
+
+            http_response_code(403);
+            exit('You do not have permission to view this page.');
+        }
+
+        return $admin;
+    }
+
+
+    /* =================================================================
+     *  Customer authentication (OTP)
+     * ================================================================= */
+
+    /**
+     * Generate and store an OTP. Returns the plain code so the caller
+     * can hand it to the SMS/WhatsApp/email sender — it is never stored
+     * in plain form and never returned to the browser.
+     *
+     * @return array{ok: bool, error?: string, code?: string, expires?: int}
+     */
+    public static function issueOtp(string $identifier, string $purpose = 'login', string $channel = 'sms'): array
+    {
+        $identifier = Security::clean($identifier, 191);
+
+        if ($identifier === '') {
+            return ['ok' => false, 'error' => 'Enter your mobile number.'];
+        }
+
+        // One OTP per minute, six per hour, per identifier.
+        if (!Security::rateLimit('otp_send_' . $purpose, $identifier, 1, OTP_RESEND_SECONDS)) {
+            return ['ok' => false, 'error' => 'Please wait a moment before requesting another code.'];
+        }
+        if (!Security::rateLimit('otp_hourly_' . $purpose, $identifier, 6, 3600)) {
+            return ['ok' => false, 'error' => 'Too many codes requested. Please try again in an hour.'];
+        }
+
+        // Invalidate any outstanding codes for this purpose.
+        Database::update(
+            'otp_codes',
+            ['is_used' => 1],
+            'identifier = :i AND purpose = :p AND is_used = 0',
+            ['i' => $identifier, 'p' => $purpose]
+        );
+
+        $code      = Security::numericCode(OTP_LENGTH);
+        $expiresAt = time() + (OTP_EXPIRY_MINUTES * 60);
+
+        Database::insert('otp_codes', [
+            'identifier' => $identifier,
+            'channel'    => $channel,
+            'purpose'    => $purpose,
+            'code_hash'  => password_hash($code, PASSWORD_BCRYPT),
+            'expires_at' => date('Y-m-d H:i:s', $expiresAt),
+            'ip_address' => Security::clientIp(),
+        ]);
+
+        return ['ok' => true, 'code' => $code, 'expires' => $expiresAt];
+    }
+
+    /**
+     * Check a submitted OTP.
+     *
+     * @return array{ok: bool, error?: string}
+     */
+    public static function verifyOtp(string $identifier, string $code, string $purpose = 'login'): array
+    {
+        $identifier = Security::clean($identifier, 191);
+        $code       = Security::digits($code, OTP_LENGTH);
+
+        if ($code === '') {
+            return ['ok' => false, 'error' => 'Enter the code we sent you.'];
+        }
+
+        if (!Security::rateLimit('otp_verify', $identifier, 10, 600)) {
+            return ['ok' => false, 'error' => 'Too many attempts. Please request a new code.'];
+        }
+
+        $row = Database::fetch(
+            'SELECT id, code_hash, attempts, max_attempts, expires_at
+               FROM otp_codes
+              WHERE identifier = :i AND purpose = :p AND is_used = 0
+              ORDER BY id DESC
+              LIMIT 1',
+            ['i' => $identifier, 'p' => $purpose]
+        );
+
+        if ($row === null) {
+            return ['ok' => false, 'error' => 'That code is no longer valid. Please request a new one.'];
+        }
+
+        if (strtotime((string) $row['expires_at']) < time()) {
+            Database::update('otp_codes', ['is_used' => 1], 'id = :id', ['id' => $row['id']]);
+            return ['ok' => false, 'error' => 'That code has expired. Please request a new one.'];
+        }
+
+        if ((int) $row['attempts'] >= (int) $row['max_attempts']) {
+            Database::update('otp_codes', ['is_used' => 1], 'id = :id', ['id' => $row['id']]);
+            return ['ok' => false, 'error' => 'Too many incorrect attempts. Please request a new code.'];
+        }
+
+        if (!password_verify($code, (string) $row['code_hash'])) {
+            Database::update(
+                'otp_codes',
+                ['attempts' => (int) $row['attempts'] + 1],
+                'id = :id',
+                ['id' => $row['id']]
+            );
+            return ['ok' => false, 'error' => 'That code is incorrect.'];
+        }
+
+        Database::update('otp_codes', ['is_used' => 1], 'id = :id', ['id' => $row['id']]);
+
+        return ['ok' => true];
+    }
+
+    /**
+     * Sign a customer in, creating the account on first use.
+     *
+     * @return array<string, mixed> the user row
+     */
+    public static function loginUser(string $phone, string $name = '', string $country = ''): array
+    {
+        $phone = normalisePhone($phone);
+
+        // Map the login country ('NP'/'IN') to the stored dialing code so a
+        // Nepali customer's number is not silently assumed to be Indian. India
+        // and Nepal share 10-digit mobiles, so the country cannot be recovered
+        // from the number alone — it must be captured here, at sign-in.
+        $cc          = strtoupper(trim($country));
+        $countryCode = $cc === 'NP' ? '977' : ($cc === 'IN' ? '91' : '');
+
+        $user = Database::fetch('SELECT * FROM users WHERE phone = :p LIMIT 1', ['p' => $phone]);
+
+        if ($user === null) {
+            $userId = Database::insert('users', [
+                'phone'          => $phone,
+                'full_name'      => $name !== '' ? Security::clean($name, 120) : null,
+                'role'           => 'customer',
+                'country_code'   => $countryCode !== '' ? $countryCode : '91',
+                'phone_verified' => 1,
+                'last_login_at'  => date('Y-m-d H:i:s'),
+            ]);
+
+            $user = Database::fetch('SELECT * FROM users WHERE id = :id', ['id' => $userId]);
+            Logger::info('New customer registered', ['phone' => maskPhone($phone)]);
+        } else {
+            $update = [
+                'phone_verified' => 1,
+                'last_login_at'  => date('Y-m-d H:i:s'),
+            ];
+            if ($name !== '' && empty($user['full_name'])) {
+                $update['full_name'] = Security::clean($name, 120);
+            }
+            if ($countryCode !== '') {
+                $update['country_code'] = $countryCode;
+            }
+
+            Database::update('users', $update, 'id = :id', ['id' => $user['id']]);
+        }
+
+        if ($user === null) {
+            throw new RuntimeException('User record could not be created.');
+        }
+
+        if ((int) $user['is_blocked'] === 1) {
+            throw new RuntimeException('This account has been suspended. Please contact support.');
+        }
+
+        session_regenerate_id(true);
+
+        $_SESSION[USER_SESSION_KEY] = [
+            'id'        => (int) $user['id'],
+            'phone'     => (string) $user['phone'],
+            'name'      => (string) ($user['full_name'] ?? ''),
+            'role'      => (string) $user['role'],
+            'ref_code'  => (string) ($user['ref_code'] ?? ''),
+            'logged_in' => time(),
+            'last_seen' => time(),
+        ];
+
+        return $user;
+    }
+
+    public static function logoutUser(): void
+    {
+        unset($_SESSION[USER_SESSION_KEY]);
+        session_regenerate_id(true);
+    }
+
+    /**
+     * Session summary of the signed-in customer, or null.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function user(): ?array
+    {
+        $user = $_SESSION[USER_SESSION_KEY] ?? null;
+
+        if (!is_array($user) || empty($user['id'])) {
+            return null;
+        }
+
+        $idleLimit = Settings::getInt('session_timeout_min', 45) * 60;
+        if ($idleLimit > 0 && (time() - (int) ($user['last_seen'] ?? 0)) > $idleLimit) {
+            self::logoutUser();
+            return null;
+        }
+
+        $_SESSION[USER_SESSION_KEY]['last_seen'] = time();
+
+        return $user;
+    }
+
+    /**
+     * Fresh user row from the database (points, tier, wallet).
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function userRecord(): ?array
+    {
+        $session = self::user();
+
+        if ($session === null) {
+            return null;
+        }
+
+        return Database::fetch('SELECT * FROM users WHERE id = :id LIMIT 1', ['id' => $session['id']]);
+    }
+
+    public static function isUser(): bool
+    {
+        return self::user() !== null;
+    }
+
+    public static function isAgent(): bool
+    {
+        $user = self::user();
+        return $user !== null && ($user['role'] ?? '') === 'agent';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public static function requireUser(): array
+    {
+        $user = self::user();
+
+        if ($user === null) {
+            if (str_contains((string) ($_SERVER['REQUEST_URI'] ?? ''), '/api/')) {
+                Response::unauthorized();
+            }
+            // Customers have no separate login page — signing in is the OTP
+            // panel inside the app at #/my. The old target (customer/login.php)
+            // does not exist and would have 404'd the first caller.
+            Response::redirect('#/my');
+        }
+
+        return $user;
+    }
+
+    /**
+     * The token that owns this visitor's seat holds. Anonymous visitors
+     * get one too, so seat locking works before sign-in.
+     */
+    public static function lockToken(): string
+    {
+        if (empty($_SESSION['lock_token'])) {
+            $_SESSION['lock_token'] = Security::randomToken(24);
+        }
+
+        return (string) $_SESSION['lock_token'];
+    }
+}

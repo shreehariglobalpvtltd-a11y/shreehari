@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ne" style="background:#0E1E40">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1A3A6A">
+<meta name="robots" content="noindex">
+<title>Offline · S Hari Global</title>
+<!-- =====================================================================
+     offline.html — what a phone with NO network and NO cached app sees.
+
+     The service worker serves the cached app shell offline; this page is
+     the fallback for the one case that has nothing to serve (a first-ever
+     offline open, or a shell the browser evicted). It reads the tickets the
+     app already keeps in this browser (localStorage 'shg:bookings', written
+     by the storage bridge in index.php) and offers the ticket IMAGE, which
+     sw.js keeps in its own cache for the border post. No external assets:
+     everything a passenger needs at Rupaidiha with zero signal is in here.
+     ===================================================================== -->
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#0E1E40;color:#F4F7FC;font:15px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans Devanagari',sans-serif;-webkit-font-smoothing:antialiased}
+  body{min-height:100vh;min-height:100dvh;padding:calc(20px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom))}
+  .wrap{max-width:480px;margin:0 auto}
+  .hdr{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+  .hdr img{width:44px;height:44px;border-radius:10px;background:#fff;object-fit:contain}
+  .hdr b{display:block;font-size:15px;letter-spacing:.02em}
+  .hdr small{color:#B9C7E2;font-size:12px}
+  .card{background:#fff;color:#16233C;border-radius:18px;padding:22px 18px;box-shadow:0 10px 30px rgba(0,0,0,.35);margin-bottom:14px}
+  .big{font-size:44px;line-height:1;text-align:center;margin-bottom:6px}
+  h1{font-size:20px;margin:6px 0 4px;text-align:center}
+  .sub{color:#5C6B85;font-size:13.5px;text-align:center;margin:0 0 6px}
+  .tk{border:1px solid #E2E9F4;border-radius:14px;padding:12px 14px;margin-top:12px;background:#F6F8FC}
+  .tk .pnr{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:800;font-size:15px;color:#1A3A6A}
+  .tk .st{float:right;font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;background:#E9F8EF;color:#178A50}
+  .tk .st.pend{background:#FFF3E2;color:#B7791F}
+  .tk .st.off{background:#F1F3F7;color:#5C6B85}
+  .tk .rt{font-weight:700;margin-top:4px}
+  .tk .meta{color:#5C6B85;font-size:13px;margin-top:2px}
+  .row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .btn{flex:1;min-width:140px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:12px;padding:10px 12px;font-weight:800;font-size:14px;text-decoration:none;border:0;cursor:pointer;touch-action:manipulation}
+  .btn-o{background:#F07C1F;color:#fff}
+  .btn-b{background:#1A3A6A;color:#fff}
+  .btn-g{background:#fff;color:#1A3A6A;border:1.5px solid #C9D6EA}
+  .empty{text-align:center;color:#5C6B85;padding:8px 0 2px;font-size:14px}
+  .routes{font-size:13.5px;color:#16233C}
+  .routes div{padding:8px 0;border-top:1px solid #E2E9F4}
+  .routes div:first-child{border-top:0}
+  .foot{text-align:center;color:#8FA2C4;font-size:12px;margin-top:14px;line-height:1.7}
+  .foot a{color:#fff;font-weight:700;text-decoration:none}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#C53030;margin-right:6px;vertical-align:middle;animation:blink 1.2s infinite}
+  @keyframes blink{50%{opacity:.25}}
+  .online .dot{background:#178A50;animation:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <img src="/assets/img/logo.png" alt="" onerror="this.style.display='none'">
+    <div><b>S HARI GLOBAL PVT LTD</b><small>Gujarat ⇄ Rupaidiha · India–Nepal bus</small></div>
+  </div>
+
+  <div class="card">
+    <div class="big">📵</div>
+    <h1 id="h1"><span class="dot"></span>तपाईं अफलाइन हुनुहुन्छ · You're offline</h1>
+    <p class="sub">इन्टरनेट छैन। तपाईंको सुरक्षित टिकट तल छ — बोर्डरमा यही देखाउनुहोस्।<br>No internet right now. Your saved tickets are below — show these at the border.</p>
+    <div id="tickets"></div>
+    <div class="row">
+      <button class="btn btn-o" type="button" onclick="location.replace('/')">🔄 फेरि प्रयास · Retry</button>
+      <a class="btn btn-g" href="tel:+919104801507">📞 Office</a>
+    </div>
+  </div>
+
+  <div class="card" id="routesCard" hidden>
+    <b style="display:block;margin-bottom:6px">🚌 दैनिक बस · Daily service</b>
+    <div class="routes" id="routes"></div>
+  </div>
+
+  <div class="foot">Rupaidiha ⇄ Jamunaha border · photo ID तयार राख्नुहोस्<br>
+    <a href="https://wa.me/919104801507">WhatsApp +91 91048 01507</a></div>
+</div>
+<script>
+(function () {
+  function read(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
+  /* "Name · Landmark @ HH:MM [lat,lng]" → Name */
+  function stopName(s) { return String(s || '').split(' @ ')[0].split(' [')[0].split(' · ')[0].trim(); }
+  var bookings = read('shg:bookings') || [];
+  var routes = read('shg:routes') || [];
+  var byId = {}; routes.forEach(function (r) { if (r && r.id) byId[r.id] = r; });
+  var today = new Date(); today.setHours(0, 0, 0, 0);
+  var iso = today.toISOString().slice(0, 10);
+  var live = bookings.filter(function (b) {
+    return b && b.id && (b.status === 'confirmed' || b.status === 'pending') && (!b.date || b.date >= iso);
+  }).sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); }).slice(0, 3);
+  if (!live.length) {
+    live = bookings.filter(function (b) { return b && b.id && b.status === 'confirmed'; })
+      .sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); }).slice(0, 2);
+  }
+  var box = document.getElementById('tickets');
+  if (!live.length) {
+    box.innerHTML = '<p class="empty">यो फोनमा सुरक्षित टिकट छैन · No saved ticket on this phone yet.</p>';
+  } else {
+    box.innerHTML = live.map(function (b) {
+      var r = byId[b.routeId] || {};
+      var from = stopName(b.boarding) || r.from || '', to = stopName(b.drop) || r.to || '';
+      var st = b.status === 'confirmed' ? '<span class="st">✓ Confirmed</span>' : (b.status === 'pending' ? '<span class="st pend">⏳ Pending</span>' : '<span class="st off">' + esc(b.status) + '</span>');
+      var pax = (b.passengers && b.passengers[0] && b.passengers[0].name) ? esc(b.passengers[0].name) + ' · ' : '';
+      var img = '/download-ticket.php?pnr=' + encodeURIComponent(b.id) + '&img=1&view=1';
+      return '<div class="tk">' + st + '<div class="pnr">' + esc(b.id) + '</div>'
+        + '<div class="rt">' + esc(from) + ' → ' + esc(to) + '</div>'
+        + '<div class="meta">' + pax + '📅 ' + esc(b.date || '') + (r.depTime ? ' · 🕒 ' + esc(r.depTime) : '') + (b.seats && b.seats.length ? ' · 💺 ' + esc(b.seats.join(', ')) : '') + '</div>'
+        + '<div class="row">'
+        + (b.status === 'confirmed' ? '<a class="btn btn-b" href="' + img + '">🎫 Ticket image</a>' : '')
+        + '<a class="btn btn-g" href="/#/ticket/' + encodeURIComponent(b.id) + '">Open in app →</a>'
+        + '</div></div>';
+    }).join('');
+  }
+  var act = routes.filter(function (r) { return r && r.active && r.from && r.to; });
+  if (act.length) {
+    document.getElementById('routesCard').hidden = false;
+    document.getElementById('routes').innerHTML = act.map(function (r) {
+      return '<div><b>' + esc(r.from) + ' → ' + esc(r.to) + '</b> · 🕒 ' + esc(r.depTime || '') + (r.busName ? ' · ' + esc(r.busName) : '') + '</div>';
+    }).join('');
+  }
+  function paint() {
+    document.body.classList.toggle('online', navigator.onLine);
+    if (navigator.onLine) document.getElementById('h1').innerHTML = '<span class="dot"></span>नेटवर्क फर्कियो · Back online — tap Retry';
+  }
+  window.addEventListener('online', function () { paint(); setTimeout(function () { location.replace('/'); }, 800); });
+  window.addEventListener('offline', paint);
+  paint();
+})();
+</script>
+</body>
+</html>

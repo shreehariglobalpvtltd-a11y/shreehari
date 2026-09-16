@@ -1,0 +1,391 @@
+<?php
+/**
+ * =====================================================================
+ *  Database layer — PDO singleton with prepared statements throughout.
+ *
+ *  Every query in this application goes through these helpers, so
+ *  string concatenation of user input into SQL never happens.
+ * =====================================================================
+ */
+
+declare(strict_types=1);
+
+if (!defined('SHG_APP')) {
+    http_response_code(403);
+    exit('Forbidden');
+}
+
+final class Database
+{
+    private static ?PDO $pdo = null;
+
+    /** Nesting depth so nested transaction() calls do not double-commit. */
+    private static int $txDepth = 0;
+
+    private function __construct() {}
+
+    /**
+     * Shared connection. Opens lazily on first use.
+     */
+    public static function pdo(): PDO
+    {
+        if (self::$pdo instanceof PDO) {
+            return self::$pdo;
+        }
+
+        $dsn = sprintf(
+            'mysql:host=%s;dbname=%s;charset=%s',
+            DB_HOST,
+            DB_NAME,
+            DB_CHARSET
+        );
+
+        $options = [
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            // Real prepared statements, not client-side emulation.
+            PDO::ATTR_EMULATE_PREPARES   => false,
+            PDO::ATTR_STRINGIFY_FETCHES  => false,
+            PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES " . DB_CHARSET
+                . ", sql_mode='STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION'",
+        ];
+
+        try {
+            self::$pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
+        } catch (PDOException $e) {
+            // Never leak credentials or the raw driver message to a visitor.
+            error_log('[SHG] DB connection failed: ' . $e->getMessage());
+
+            if (defined('APP_DEBUG') && APP_DEBUG) {
+                exit('Database connection failed: ' . $e->getMessage());
+            }
+            http_response_code(503);
+            exit('Service temporarily unavailable. Please try again shortly.');
+        }
+
+        return self::$pdo;
+    }
+
+    /**
+     * Run a statement and return it.
+     *
+     * @param array<string|int, mixed> $params
+     */
+    public static function query(string $sql, array $params = []): PDOStatement
+    {
+        $stmt = self::pdo()->prepare($sql);
+        $stmt->execute($params);
+        return $stmt;
+    }
+
+    /**
+     * First matching row, or null.
+     *
+     * @param array<string|int, mixed> $params
+     * @return array<string, mixed>|null
+     */
+    public static function fetch(string $sql, array $params = []): ?array
+    {
+        $row = self::query($sql, $params)->fetch();
+        return $row === false ? null : $row;
+    }
+
+    /**
+     * All matching rows.
+     *
+     * @param array<string|int, mixed> $params
+     * @return array<int, array<string, mixed>>
+     */
+    public static function fetchAll(string $sql, array $params = []): array
+    {
+        return self::query($sql, $params)->fetchAll();
+    }
+
+    /**
+     * Single scalar value from the first column.
+     *
+     * @param array<string|int, mixed> $params
+     */
+    public static function scalar(string $sql, array $params = [], mixed $default = null): mixed
+    {
+        $value = self::query($sql, $params)->fetchColumn();
+        return $value === false ? $default : $value;
+    }
+
+    /**
+     * Does at least one row match?
+     *
+     * @param array<string|int, mixed> $params
+     */
+    public static function exists(string $sql, array $params = []): bool
+    {
+        return self::query($sql, $params)->fetchColumn() !== false;
+    }
+
+    /**
+     * Insert a row and return its new id.
+     *
+     * @param array<string, mixed> $data column => value
+     */
+    public static function insert(string $table, array $data): int
+    {
+        $columns      = array_keys($data);
+        $placeholders = array_map(static fn(string $c): string => ':' . $c, $columns);
+
+        $sql = sprintf(
+            'INSERT INTO `%s` (%s) VALUES (%s)',
+            self::safeIdentifier($table),
+            '`' . implode('`, `', $columns) . '`',
+            implode(', ', $placeholders)
+        );
+
+        self::query($sql, self::bindable($data));
+
+        return (int) self::pdo()->lastInsertId();
+    }
+
+    /**
+     * Insert ignoring duplicate-key collisions.
+     * Returns the new id, or 0 when the row already existed.
+     *
+     * @param array<string, mixed> $data
+     */
+    public static function insertIgnore(string $table, array $data): int
+    {
+        $columns      = array_keys($data);
+        $placeholders = array_map(static fn(string $c): string => ':' . $c, $columns);
+
+        $sql = sprintf(
+            'INSERT IGNORE INTO `%s` (%s) VALUES (%s)',
+            self::safeIdentifier($table),
+            '`' . implode('`, `', $columns) . '`',
+            implode(', ', $placeholders)
+        );
+
+        $stmt = self::query($sql, self::bindable($data));
+
+        return $stmt->rowCount() > 0 ? (int) self::pdo()->lastInsertId() : 0;
+    }
+
+    /**
+     * Update rows and return how many changed.
+     *
+     * @param array<string, mixed>     $data        column => new value
+     * @param array<string|int, mixed> $whereParams bindings for $where
+     */
+    public static function update(string $table, array $data, string $where, array $whereParams = []): int
+    {
+        $assignments = [];
+        foreach (array_keys($data) as $column) {
+            $assignments[] = sprintf('`%s` = :set_%s', $column, $column);
+        }
+
+        $sql = sprintf(
+            'UPDATE `%s` SET %s WHERE %s',
+            self::safeIdentifier($table),
+            implode(', ', $assignments),
+            $where
+        );
+
+        $params = [];
+        foreach ($data as $column => $value) {
+            $params['set_' . $column] = self::normalise($value);
+        }
+        foreach ($whereParams as $key => $value) {
+            $params[$key] = self::normalise($value);
+        }
+
+        return self::query($sql, $params)->rowCount();
+    }
+
+    /**
+     * Delete rows and return how many were removed.
+     *
+     * @param array<string|int, mixed> $params
+     */
+    public static function delete(string $table, string $where, array $params = []): int
+    {
+        $sql = sprintf(
+            'DELETE FROM `%s` WHERE %s',
+            self::safeIdentifier($table),
+            $where
+        );
+
+        return self::query($sql, $params)->rowCount();
+    }
+
+    /* -----------------------------------------------------------------
+     *  Transactions
+     * ----------------------------------------------------------------- */
+
+    public static function begin(): void
+    {
+        if (self::$txDepth === 0) {
+            self::pdo()->beginTransaction();
+        }
+        self::$txDepth++;
+    }
+
+    public static function commit(): void
+    {
+        if (self::$txDepth > 0) {
+            self::$txDepth--;
+            if (self::$txDepth === 0 && self::pdo()->inTransaction()) {
+                self::pdo()->commit();
+            }
+        }
+    }
+
+    public static function rollBack(): void
+    {
+        if (self::$txDepth > 0) {
+            self::$txDepth = 0;
+            if (self::pdo()->inTransaction()) {
+                self::pdo()->rollBack();
+            }
+        }
+    }
+
+    /**
+     * Run a closure inside a transaction. Commits on success, rolls back
+     * and rethrows on any exception — so a half-written booking can never
+     * be left behind.
+     *
+     * DEADLOCK RETRY
+     * --------------
+     * When several customers claim the same berth in the same instant, two
+     * booking transactions can grab the shared-cabin lock row, the seat row
+     * and the schedule counter in different orders, and InnoDB kills one of
+     * them with SQLSTATE 40001 ("Deadlock found ... try restarting
+     * transaction"). That is not a failed booking — it is MySQL telling us
+     * to run it again, and the loser's seat may still be free.
+     *
+     * Without this the victim surfaced as a raw PDOException: a 500 and
+     * "Something went wrong at our end" for a customer whose seat was
+     * available all along. Proven by tests/double-booking-race-test.php,
+     * which reproduced it on roughly three runs in four.
+     *
+     * Retrying is safe because rollback leaves nothing behind — every write
+     * in the closure is undone, and BookingService deliberately keeps its
+     * network side effects (ticket PDF, WhatsApp) OUTSIDE the transaction,
+     * so nothing external can be repeated by a second attempt.
+     *
+     * Only the OUTERMOST transaction retries. A nested call shares its
+     * parent's transaction, so replaying its closure would re-run part of
+     * the parent's work inside a transaction the parent still owns.
+     *
+     * @template T
+     * @param callable():T $callback
+     * @param int $attempts max tries for the outermost transaction
+     * @return T
+     */
+    public static function transaction(callable $callback, int $attempts = 3): mixed
+    {
+        $tries = (self::$txDepth === 0) ? max(1, $attempts) : 1;
+
+        for ($attempt = 1; ; $attempt++) {
+            self::begin();
+            try {
+                $result = $callback();
+                self::commit();
+                return $result;
+            } catch (Throwable $e) {
+                self::rollBack();
+
+                if ($attempt >= $tries || !self::isRetryable($e)) {
+                    throw $e;
+                }
+
+                if (class_exists('Logger', false)) {
+                    Logger::warning('Transaction deadlocked — retrying', [
+                        'attempt' => $attempt,
+                        'of'      => $tries,
+                        'error'   => $e->getMessage(),
+                    ]);
+                }
+
+                /* Jittered backoff. Without the random component the two
+                   losers of a three-way race would wake together and
+                   deadlock each other all over again. */
+                usleep(random_int(15000, 55000) * $attempt);
+            }
+        }
+    }
+
+    /**
+     * Is this the database asking us to run the transaction again?
+     *
+     *   40001 / 1213  deadlock — InnoDB picked us as the victim
+     *   1205          lock wait timeout — the other side held on too long
+     *
+     * Anything else (a constraint violation, a syntax error, a rule the
+     * application itself threw) is a real failure and must NOT be retried:
+     * re-running it would just fail again more slowly.
+     */
+    private static function isRetryable(Throwable $e): bool
+    {
+        if (!$e instanceof PDOException) {
+            return false;
+        }
+
+        $sqlState = (string) ($e->errorInfo[0] ?? '');
+        $driver   = (int) ($e->errorInfo[1] ?? 0);
+
+        return $sqlState === '40001' || $driver === 1213 || $driver === 1205;
+    }
+
+    /**
+     * Lock rows for update inside an open transaction.
+     * Used by the seat allocator so two checkouts cannot interleave.
+     *
+     * @param array<string|int, mixed> $params
+     * @return array<int, array<string, mixed>>
+     */
+    public static function fetchForUpdate(string $sql, array $params = []): array
+    {
+        return self::fetchAll(rtrim($sql, '; ') . ' FOR UPDATE', $params);
+    }
+
+    /* -----------------------------------------------------------------
+     *  Internals
+     * ----------------------------------------------------------------- */
+
+    /**
+     * Table names are never user supplied in this application, but this
+     * guard makes that guarantee explicit and cheap to keep.
+     */
+    private static function safeIdentifier(string $name): string
+    {
+        if (preg_match('/^[A-Za-z0-9_]+$/', $name) !== 1) {
+            throw new InvalidArgumentException('Unsafe identifier: ' . $name);
+        }
+        return $name;
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private static function bindable(array $data): array
+    {
+        $out = [];
+        foreach ($data as $key => $value) {
+            $out[$key] = self::normalise($value);
+        }
+        return $out;
+    }
+
+    /**
+     * PDO cannot bind bool or array directly — normalise before binding.
+     */
+    private static function normalise(mixed $value): mixed
+    {
+        if (is_bool($value)) {
+            return $value ? 1 : 0;
+        }
+        if (is_array($value)) {
+            return json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        }
+        return $value;
+    }
+}

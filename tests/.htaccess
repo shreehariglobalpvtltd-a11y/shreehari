@@ -1,0 +1,35 @@
+# =====================================================================
+#  tests/ — deny everything over HTTP, with one deliberate exception.
+#
+#  These files boot the application and several of them WRITE: they create
+#  bookings, reset passwords, delete rows. They are meant to be run from a
+#  shell against a test database. Each one carries its own `PHP_SAPI !==
+#  'cli'` guard, but that guard is one forgotten line away from being a
+#  public endpoint into the production database — as e2e-booking-test.php
+#  actually was. This folder-level deny is the layer that does not depend
+#  on remembering.
+#
+#  preflight.php is the exception: it is designed to be run in a browser
+#  ON the live server after a deploy ("is this server ready to take
+#  money?"), and it gates itself behind a signed-in admin.
+# =====================================================================
+
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>
+
+<Files "preflight.php">
+    <IfModule mod_authz_core.c>
+        Require all granted
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Allow from all
+    </IfModule>
+</Files>
+
+Options -Indexes

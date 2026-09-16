@@ -1,0 +1,11 @@
+# Never commit real credentials. set-twilio-credentials.sql holds a live
+# Twilio Auth Token in plaintext (audit H4). It is a one-time "run this to
+# write the creds into the settings table" file — after running it on the
+# server, DELETE it; the secret then lives only in the DB settings table.
+# This scoped ignore protects it from `git add -A` even while the repo-root
+# .gitignore is absent. Keep it out of every deploy archive as well.
+set-twilio-credentials.sql
+
+# Any other local credential drop-ins.
+*credentials*.sql
+*secret*.sql

@@ -1,0 +1,1742 @@
+/* ===== block 1 (was head, 36332 chars) ===== */
+
+/* ============================================================
+   S HARI GLOBAL PVT LTD — single-file website
+   ------------------------------------------------------------
+   HOW THIS FILE IS ORGANISED (search for these banners):
+     [CSS]   design tokens → layout → components → views → responsive
+     [HTML]  topbar → nav → home sections → booking views → admin → footer
+     [JS]    CONFIG → storage → data → router → booking flow → admin → PDF
+   Everything a beginner needs to change lives in CONFIG (in the JS).
+   ============================================================ */
+
+/* V7 — the webfonts used to be pulled in here with @import, which is the
+   slowest possible way to load them: the browser has to fetch and parse
+   this stylesheet before it even discovers the font CSS, then fetch that,
+   then the fonts — all of it blocking the first render. They are now
+   requested from <head> as a non-blocking preload (see the <link> above
+   the <title>), so text paints immediately in the fallback face and swaps
+   to Cinzel when it arrives. Body text never swaps — it is already
+   the device font. */
+
+/* ---------- [CSS] 1. DESIGN TOKENS (brand colours & type) ---------- */
+:root{
+  /* Brand (from the logo) */
+  --blue:#2E5FA8;          /* primary brand blue  */
+  --blue-deep:#12264E;     /* hero / footer navy   */
+  --blue-800:#1C3B72;
+  --blue-100:#E3ECF9;
+  --blue-50:#F0F5FC;
+  --orange:#F07C1F;        /* primary brand orange */
+  --orange-600:#D96A10;
+  --orange-100:#FCE9D6;
+
+  /* Flag accents — used ONLY in thin dividers, chips & ribbons */
+  --saffron:#FF9933; --igreen:#138808; --chakra:#06038D;
+  --ncrimson:#DC143C; --nblue:#003893;
+
+  /* Neutrals */
+  --bg:#F6F8FC; --card:#FFFFFF; --ink:#16233C;
+  --muted:#5C6B85; --line:#E2E9F4; --ok:#178A50; --warn:#B7791F; --bad:#C53030;
+
+  /* Type — Cinzel for the brand display face (the only download); the
+     device's native UI font for everything else, so body text is painted on
+     the first frame instead of swapping in later. Noto Sans Devanagari is
+     named explicitly because Hindi and Nepali are first-class here and the
+     Latin system faces do not cover the script. */
+  --f-display:'Cinzel', Georgia, serif;
+  --f-body:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,'Noto Sans Devanagari',sans-serif;
+  --f-code:ui-monospace,'SF Mono',SFMono-Regular,'Roboto Mono',Menlo,Consolas,monospace; /* codes, times, seat & ticket numbers */
+
+  --bhagwan-img: url('');
+  --r:18px; --r-sm:12px;
+  --shadow-sm:0 1px 3px rgba(18,38,78,.08), 0 4px 16px rgba(18,38,78,.08);
+  --shadow-md:0 6px 24px rgba(18,38,78,.10), 0 12px 36px rgba(18,38,78,.08);
+  --shadow-lg:0 14px 44px rgba(18,38,78,.14), 0 24px 60px rgba(18,38,78,.10);
+
+  /* Motion tokens */
+  --ease-standard:cubic-bezier(.4,0,.2,1);
+  --ease-decel:cubic-bezier(0,0,.2,1);
+  --ease-accel:cubic-bezier(.4,0,1,1);
+  --dur-fast:150ms;
+  --dur-base:250ms;
+  --dur-slow:400ms;
+}
+
+/* ---------- [CSS] 1b. DAILY COLOR THEMES — 7 palettes rotate by day-of-week ---------- */
+:root[data-day="0"]{--blue:#2E5FA8;--blue-deep:#12264E;--blue-800:#1C3B72;--blue-100:#E3ECF9;--blue-50:#F0F5FC;--orange:#F07C1F;--orange-600:#D96A10;--orange-100:#FCE9D6;--bg:#F6F8FC}
+:root[data-day="1"]{--blue:#1B6B93;--blue-deep:#0A2E42;--blue-800:#145578;--blue-100:#D8EEF6;--blue-50:#EBF6FB;--orange:#E8672C;--orange-600:#C8510E;--orange-100:#FDE4D4;--bg:#F4F9FB}
+:root[data-day="2"]{--blue:#5B4FA8;--blue-deep:#241E4E;--blue-800:#3E3572;--blue-100:#E6E3F9;--blue-50:#F2F0FC;--orange:#D4830F;--orange-600:#B06D0A;--orange-100:#FAE6C8;--bg:#F7F6FC}
+:root[data-day="3"]{--blue:#2A7E6F;--blue-deep:#0D3830;--blue-800:#1C6054;--blue-100:#D6F0EB;--blue-50:#EBF8F5;--orange:#E05A3A;--orange-600:#BF4226;--orange-100:#FCDDD4;--bg:#F4FAF8}
+:root[data-day="4"]{--blue:#7B4B9E;--blue-deep:#321F42;--blue-800:#5C3478;--blue-100:#EDE1F6;--blue-50:#F5EFFB;--orange:#CF7A21;--orange-600:#A86318;--orange-100:#F9E7CF;--bg:#F8F5FC}
+:root[data-day="5"]{--blue:#2868A8;--blue-deep:#102A4E;--blue-800:#1C4E80;--blue-100:#DFEAF9;--blue-50:#ECF2FC;--orange:#D4561E;--orange-600:#B5410D;--orange-100:#FBD9C8;--bg:#F5F7FC}
+:root[data-day="6"]{--blue:#8B5A3C;--blue-deep:#3E2418;--blue-800:#6B4430;--blue-100:#F0E4DA;--blue-50:#F8F2EC;--orange:#C47A22;--orange-600:#A06218;--orange-100:#F7E4C8;--bg:#FAF7F4}
+
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:var(--f-body);background:var(--bg);color:var(--ink);line-height:1.6;font-size:16px;-webkit-font-smoothing:antialiased}
+/* Mobile-first global floor: no horizontal page scroll ever leaks past the viewport.
+   Individual scrollers (.table-wrap, .sn-sheet-scroll, etc.) still overflow-x internally.
+
+   Only <html> carries it. `html,body{overflow-x:hidden}` reads as a harmless
+   belt-and-braces pair but is not: the root element's overflow propagates to the
+   viewport and <html> is then laid out as if `visible`, so the `hidden` left behind
+   on <body> turns BODY into its own scroll container. Android answers a vertical
+   swipe that starts over a scroll container by giving it to that container — and
+   this one has nothing to scroll — which is a large part of why the installed app
+   felt like touch did nothing. `clip` is stronger still: it clips exactly the same
+   but is defined never to create a scroll container, so keep it where supported. */
+html{overflow-x:hidden}
+@supports (overflow:clip){ html{overflow-x:clip} }
+img{max-width:100%;display:block}
+a{color:var(--blue);text-decoration:none}
+button{font-family:inherit;cursor:pointer;border:none;background:none}
+input,select,textarea{font-family:inherit;font-size:15px;color:var(--ink)}
+:focus-visible{outline:3px solid rgba(240,124,31,.55);outline-offset:2px;border-radius:6px}
+.container{max-width:1160px;margin:0 auto;padding:0 22px}
+.hide{display:none!important}
+
+/* Signature motif: dual-flag hairline (India tricolour + Nepal crimson/blue).
+   Used as a quiet divider between sections and on the ticket. */
+.duo-divider{height:3px;border-radius:2px;max-width:280px;margin:14px 0;display:flex;overflow:hidden;gap:6px}
+.duo-divider i{display:block;height:100%;border-radius:2px}
+.duo-divider .in{flex:1.1;background:linear-gradient(90deg,var(--saffron) 0 33%,#fff 33% 66%,var(--igreen) 66% 100%);box-shadow:inset 0 0 0 1px rgba(18,38,78,.08)}
+.duo-divider .np{flex:.7;background:linear-gradient(90deg,var(--ncrimson) 0 55%,var(--nblue) 55% 100%)}
+.duo-divider.center{margin:14px auto}
+
+/* Dashed "route line" motif (echoes the hero map) */
+.route-dash{display:flex;align-items:center;gap:8px;color:var(--muted);font-family:var(--f-code);font-size:13px}
+.route-dash .dot{width:9px;height:9px;border-radius:50%;background:var(--blue);flex:none}
+.route-dash .dot.end{background:var(--orange)}
+.route-dash .line{flex:1;border-top:2px dashed #B9C7DE;position:relative;min-width:40px}
+.route-dash .line::after{content:"🚌";position:absolute;top:-13px;left:50%;transform:translateX(-50%);font-size:14px}
+
+/* ---------- [CSS] 2. TOPBAR (mantra + contact) ---------- */
+.topbar{background:var(--blue-deep);color:#CFE0F8;font-size:12.5px;letter-spacing:.02em}
+.topbar .container{display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:34px;flex-wrap:wrap}
+.topbar .mantra{font-weight:700;color:#FFD9A8;letter-spacing:.14em}
+.topbar .tb-right{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.topbar a{color:#CFE0F8}
+.topbar a:hover{color:#fff}
+
+/* ---------- [CSS] DIVINE-NAME BANNER — first strip on every page.
+   भगवानको नाम सबभन्दा अगाडि: the divine name shows above the topbar so it
+   greets the visitor first. Wraps rather than scrolls on a phone — the
+   sacred text always stays whole. ---------- */
+.divine-bar{background:linear-gradient(90deg,#7A1B00,#B4380A 20%,#EC8A12 50%,#B4380A 80%,#7A1B00);border-bottom:1px solid rgba(255,214,124,.45)}
+.divine-bar .container{display:flex;justify-content:center;align-items:center;min-height:30px;padding:5px 12px;text-align:center}
+.divine-name{font-family:var(--f-display,inherit);font-weight:800;font-size:14px;letter-spacing:.06em;color:#FFF4E2;text-shadow:0 1px 3px rgba(60,20,0,.55)}
+@media(max-width:760px){
+  .divine-bar .container{min-height:26px;padding:4px 10px}
+  .divine-name{font-size:12px;letter-spacing:.03em;line-height:1.35}
+}
+@media(max-width:430px){
+  .divine-name{font-size:11px;letter-spacing:.01em}
+}
+:root[data-theme="dark"] .divine-bar{background:linear-gradient(90deg,#4A1000,#8A2A06 20%,#C56E0C 50%,#8A2A06 80%,#4A1000);border-bottom-color:rgba(255,200,110,.3)}
+
+/* ---------- [CSS] DAILY TIMETABLE (#timetable) ----------
+   A departed pickup is struck through rather than removed, so the board
+   stays a full timetable while still telling the truth about today. */
+.tt-card{background:var(--card,#fff);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.tt-card.tt-done{opacity:.62}
+.tt-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-bottom:10px;border-bottom:1px dashed var(--line);margin-bottom:10px}
+.tt-head b{font-family:var(--f-display,inherit);font-size:16px}
+.tt-dep{font-family:var(--f-code,monospace);font-weight:700;color:var(--blue,#2E5FA8)}
+.tt-live{margin-left:auto;font-size:11.5px;font-weight:700;color:#0a6b3b;background:rgba(34,197,94,.14);border-radius:999px;padding:3px 10px}
+.tt-off{margin-left:auto;font-size:11.5px;font-weight:700;color:#8a3b00;background:rgba(240,124,31,.14);border-radius:999px;padding:3px 10px}
+.tt-sub{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:10px 0 6px}
+.tt-list{list-style:none;margin:0;padding:0}
+.tt-stop{display:flex;gap:12px;align-items:baseline;padding:5px 0;border-bottom:1px solid rgba(0,0,0,.04)}
+.tt-stop:last-child{border-bottom:none}
+.tt-time{font-family:var(--f-code,monospace);font-weight:700;font-size:13px;color:var(--blue,#2E5FA8);flex:0 0 46px}
+.tt-name{font-size:13.5px;line-height:1.4}
+.tt-tag{font-size:10.5px;color:var(--muted);white-space:nowrap}
+.tt-gone .tt-time,.tt-gone .tt-name{text-decoration:line-through;color:var(--muted)}
+.tt-gone-tag{display:inline-block;font-size:10.5px;font-weight:700;color:#8a3b00;background:rgba(240,124,31,.12);
+  border-radius:999px;padding:1px 8px;margin-left:4px;text-decoration:none;white-space:nowrap}
+@media(max-width:560px){
+  .tt-card{padding:14px}
+  .tt-head b{font-size:14.5px}
+  .tt-live,.tt-off{margin-left:0;flex-basis:100%}
+  .tt-time{flex-basis:42px;font-size:12px}
+  .tt-name{font-size:12.5px}
+  .tt-gone-tag{display:block;margin:2px 0 0}
+}
+:root[data-theme="dark"] .tt-card{background:#0D1530;border-color:#1A2240}
+:root[data-theme="dark"] .tt-stop{border-bottom-color:rgba(255,255,255,.06)}
+
+/* Timetable stop rail — visual timeline that ties the stops together as
+   ONE route rather than reading as a flat list. Additive: existing
+   .tt-time / .tt-name / .tt-tag / .tt-gone-tag / mobile rules all still
+   apply unchanged. Rail runs blue→orange (start to end of journey) to
+   echo the brand palette and the results-card bc-time gradient. */
+.tt-list{position:relative;padding-left:16px}
+.tt-list::before{content:"";position:absolute;left:5px;top:10px;bottom:10px;width:2px;
+  background:linear-gradient(180deg,var(--blue),var(--orange));border-radius:2px;opacity:.55}
+.tt-stop{position:relative}
+.tt-stop::before{content:"";position:absolute;left:-15px;top:12px;width:9px;height:9px;border-radius:50%;
+  background:var(--blue);box-shadow:0 0 0 3px var(--card);transition:background .2s ease}
+.tt-list .tt-stop:last-child::before{background:var(--orange)}
+.tt-gone::before{background:#B9C7DE!important}
+:root[data-theme="dark"] .tt-stop::before{box-shadow:0 0 0 3px #0D1530}
+
+/* Leadership credit ribbon (under the mantra) */
+.credit-ribbon{background:linear-gradient(90deg,#0A1730,#12264E 50%,#0A1730);border-bottom:1px solid rgba(255,217,168,.14);overflow:hidden}
+.credit-inner{display:flex;align-items:center;justify-content:center;gap:14px;min-height:30px;flex-wrap:wrap;padding:4px 0}
+.credit-seg{display:inline-flex;align-items:center;gap:8px;text-decoration:none;border-radius:999px;padding:2px 8px;transition:background .18s}
+a.credit-seg:hover,a.credit-seg:focus-visible{background:rgba(255,255,255,.08)}
+.credit-num{font-family:var(--f-display);font-size:12px;font-weight:800;letter-spacing:.03em;color:#0E1E40;
+  background:linear-gradient(120deg,#FFD9A8,#F0B463);padding:3px 10px;border-radius:999px;white-space:nowrap;
+  box-shadow:0 1px 6px rgba(255,199,120,.28)}
+.credit-num.alt{color:#0E1E40;background:linear-gradient(120deg,#DCE8F8,#B9CCE8);box-shadow:none}
+@media (max-width:520px){.credit-num{font-size:10px;padding:2px 8px}.credit-seg{gap:6px;padding:2px 5px}}
+.credit-ic{font-size:15px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.4))}
+.credit-txt{display:inline-flex;flex-direction:column;line-height:1.05}
+.credit-txt b{font-family:var(--f-display);font-size:12.5px;letter-spacing:.03em;color:#FFE8C4}
+
+/* ================================================================
+   V7 §5 UPGRADE — landing hierarchy on phones (Aug 2026).
+   Measured before this block on a 375x812 phone: the mantra topbar
+   (142px, because the contact row wrapped onto three lines) plus the
+   leadership ribbon (67px) took 26% of the first screen, and the
+   From/To/Date search card — the one thing most visitors come to do —
+   started at 946px, entirely below the fold.
+   Nothing is deleted: the mantra, both leadership credits, the daily
+   palette and the flag motif all stay. They are simply set at the
+   weight of texture instead of competing with the primary action.
+   Phone-only — the desktop layout is untouched.
+================================================================ */
+@media(max-width:760px){
+  /* Contact row on one tidy line. The email is the long item; it keeps
+     its tap target as an icon and is still spelled out in the footer
+     and on the Contact page. */
+  .topbar{font-size:11px}
+  .topbar .container{min-height:30px;gap:8px;flex-wrap:nowrap;overflow:hidden}
+  .topbar .mantra{font-size:11px;letter-spacing:.08em;opacity:.9;white-space:nowrap}
+  .topbar .tb-right{gap:10px;flex-wrap:nowrap}
+  /* the phone number must stay on one line, or it stacks three rows deep */
+  .topbar a{white-space:nowrap}
+  .topbar a[href^="mailto:"]{font-size:0;line-height:1}
+  .topbar a[href^="mailto:"]::before{content:"✉️";font-size:13px}
+  /* Both leadership credits stay and stay READABLE: sized to fit a 375px
+     screen rather than being cut off mid-word. */
+  .credit-ribbon{overflow:visible}
+  .credit-ribbon .credit-inner{min-height:0;padding:3px 6px;gap:7px}
+  .credit-ic{font-size:11px}
+  .credit-txt b{font-size:10px;letter-spacing:0}
+  .credit-txt small{font-size:8px}
+  .credit-num{font-size:9.5px}
+  .credit-div{font-size:8px}
+  /* The gold/silver treatment paints text through a moving gradient with a
+     transparent fill. That needs size to read — at ribbon scale on the dark
+     bar the names came out all but invisible. Keep the brand's gold and
+     silver, as a solid legible colour instead of a clipped gradient. */
+  .credit-txt b.txt-gold{-webkit-text-fill-color:#F6D67C;background:none;animation:none}
+  .credit-txt b.txt-silver{-webkit-text-fill-color:#E4EAF2;background:none;animation:none}
+  .credit-txt b.txt-gold::after,.credit-txt b.txt-silver::after{display:none}
+  /* Hero keeps its words, gives back its spacing. `body` prefix is
+     deliberate: the RESPONSIVE section further down carries
+     `@media (max-width:1020px){.hero-grid{padding:56px 22px 150px}}`,
+     which also matches a phone and would otherwise win on source order. */
+  body .hero-grid{padding:14px 16px 18px;gap:10px}
+}
+/* On a narrow phone the row still overflows and was clipping the mantra
+   mid-character. The mantra is sacred text and stays whole; the phone
+   number steps back to its icon instead — still one tap to dial, and the
+   full number is in the hero, the footer and the Help tab. */
+@media(max-width:430px){
+  .topbar .mantra{flex:0 0 auto}
+  .topbar a[href^="tel:"]{font-size:0;line-height:1}
+  .topbar a[href^="tel:"]::before{content:"📞";font-size:13px}
+}
+
+/* ===== Premium GOLD / SILVER / DIAMOND metallic text treatment ===== */
+:root{
+  --gold-deep:#6e4f12;--gold-mid:#b8860b;--gold-rich:#d4af37;--gold-lite:#f6d67c;--gold-spec:#fff6cf;
+  --silv-deep:#6b7280;--silv-mid:#9aa3af;--silv-rich:#c9d1da;--silv-lite:#eef2f7;--silv-spec:#ffffff;
+  --sheen-speed:6s;--sparkle-speed:4.5s;
+}
+.txt-gold,.txt-silver,.txt-diamond{display:inline-block;position:relative;background-repeat:no-repeat;background-size:260% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:geometricPrecision;will-change:background-position}
+.txt-gold{background-image:linear-gradient(100deg,var(--gold-deep) 0%,var(--gold-mid) 18%,var(--gold-rich) 34%,var(--gold-lite) 46%,var(--gold-spec) 52%,var(--gold-lite) 58%,var(--gold-rich) 70%,var(--gold-mid) 84%,var(--gold-deep) 100%);animation:hd-sheen var(--sheen-speed) linear infinite;filter:drop-shadow(0 1px 0 rgba(60,40,0,.35))}
+.txt-silver{background-image:linear-gradient(100deg,var(--silv-deep) 0%,var(--silv-mid) 18%,var(--silv-rich) 34%,var(--silv-lite) 46%,var(--silv-spec) 52%,var(--silv-lite) 58%,var(--silv-rich) 70%,var(--silv-mid) 84%,var(--silv-deep) 100%);animation:hd-sheen var(--sheen-speed) linear infinite;filter:drop-shadow(0 1px 0 rgba(30,40,60,.30))}
+.txt-diamond{background-image:linear-gradient(100deg,#8fa6c4 0%,#cfe0f2 22%,#ffffff 40%,#f3f8ff 50%,#ffffff 60%,#d7e6f6 78%,#9db4d0 100%);animation:hd-sheen var(--sheen-speed) linear infinite;filter:drop-shadow(0 0 .5px rgba(255,255,255,.6));overflow:hidden;isolation:isolate}
+.txt-diamond::after{content:"";position:absolute;top:-20%;left:0;width:22%;height:140%;pointer-events:none;background:linear-gradient(115deg,transparent 0%,rgba(255,255,255,.15) 40%,rgba(255,255,255,.95) 50%,rgba(255,255,255,.15) 60%,transparent 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;mix-blend-mode:screen;transform:translateX(-160%);animation:hd-glint var(--sparkle-speed) ease-in-out infinite;will-change:transform,opacity}
+.glow-orange{filter:drop-shadow(0 0 4px rgba(240,124,31,.55)) drop-shadow(0 0 14px rgba(255,153,51,.45))}
+.glow-blue{filter:drop-shadow(0 0 4px rgba(18,38,78,.55)) drop-shadow(0 0 16px rgba(60,110,210,.40))}
+.hd-shine{position:relative;overflow:hidden;isolation:isolate;transform:translateZ(0)}
+.hd-shine::before{content:"";position:absolute;top:0;left:0;width:60%;height:100%;pointer-events:none;background:linear-gradient(100deg,transparent 0%,rgba(255,255,255,.05) 35%,rgba(255,255,255,.55) 50%,rgba(255,255,255,.05) 65%,transparent 100%);transform:translateX(-180%) skewX(-18deg);animation:hd-gleam var(--sheen-speed) ease-in-out infinite;will-change:transform}
+@keyframes hd-sheen{0%{background-position:160% 0}100%{background-position:-60% 0}}
+@keyframes hd-glint{0%{transform:translateX(-160%);opacity:0}42%{opacity:0}50%{opacity:1}58%{opacity:0}100%{transform:translateX(520%);opacity:0}}
+@keyframes hd-gleam{0%{transform:translateX(-180%) skewX(-18deg)}55%{transform:translateX(320%) skewX(-18deg)}100%{transform:translateX(320%) skewX(-18deg)}}
+@media (prefers-reduced-motion:reduce){.txt-gold,.txt-silver,.txt-diamond{animation:none;background-position:50% 0}.txt-diamond::after,.hd-shine::before{animation:none;opacity:0;transform:none}}
+.credit-txt small{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:rgba(207,224,248,.6);font-weight:700}
+.credit-div{color:#FFD9A8;font-size:9px;opacity:.55;animation:creditSpin 6s linear infinite}
+@keyframes creditSpin{to{transform:rotate(360deg)}}
+@media (max-width:520px){.credit-txt small{font-size:9px;letter-spacing:.1em}.credit-inner{gap:10px}}
+@media (prefers-reduced-motion:reduce){.credit-div{animation:none}}
+/* ===== Official letterhead masthead ===== */
+.lh-wrap{background:linear-gradient(180deg,var(--blue-50),transparent);padding:18px 0 10px}
+.lh-card{position:relative;display:flex;gap:20px;align-items:flex-start;background:linear-gradient(135deg,#fff,#FBFCFF);border:1.5px solid var(--blue-100);border-radius:18px;padding:20px 24px;box-shadow:0 10px 34px rgba(18,38,78,.10);overflow:hidden}
+.lh-card::before{content:"";position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#FF9933 0 33%,#fff 33% 66%,#138808 66% 100%);opacity:.9}
+.lh-card::after{content:"";position:absolute;top:0;right:0;bottom:0;width:5px;background:linear-gradient(180deg,#DC143C 0 55%,#003893 55% 100%)}
+.lh-emblem{position:relative;flex:none;width:74px;height:74px;display:grid;place-items:center}
+.lh-logo{width:64px;height:64px;object-fit:contain;border-radius:14px;background:transparent;padding:5px;box-shadow:none}
+.lh-main{flex:1;min-width:0}
+.lh-tag{font-size:11.5px;color:var(--muted);font-weight:600;letter-spacing:.04em;margin:3px 0 12px;line-height:1.5}
+.lh-entities{display:grid;grid-template-columns:1fr 1fr;gap:10px 22px;padding:12px 0;border-top:1px dashed var(--line);border-bottom:1px dashed var(--line)}
+.lh-entity{display:flex;gap:10px;align-items:flex-start}
+.lh-entity .lh-flag{width:30px;height:30px;object-fit:contain;border-radius:8px;background:transparent;padding:3px;box-shadow:none;flex:none}
+.lh-entity b{display:block;font-family:var(--f-display);font-size:clamp(16px,2.4vw,19px);font-weight:800;letter-spacing:.01em;color:var(--ink);line-height:1.22}
+.lh-entity small{display:block;font-size:11px;color:var(--muted);margin:1px 0 3px}
+.lh-reg{display:inline-block;font-family:var(--f-code);font-size:10.5px;font-weight:600;color:var(--blue-800);background:var(--blue-50);border:1px solid var(--blue-100);border-radius:6px;padding:1px 7px}
+.lh-reg i{font-style:normal;color:var(--orange-600)}
+.lh-reg-verified{background:var(--orange);border-color:var(--orange);color:#fff;font-weight:800}
+.lh-reg-verified i{color:#fff}
+.lh-reg-pending{background:transparent;border-style:dashed;color:var(--muted);font-weight:600}
+.lh-reg-pending i{color:var(--muted);font-style:italic}
+.lh-route{display:flex;align-items:center;gap:8px;margin-top:12px;font-family:var(--f-display);font-size:14px;font-weight:700;color:var(--blue-800)}
+.lh-route .lh-pin{font-size:18px;animation:lhBus 3s ease-in-out infinite}
+@keyframes lhBus{0%,100%{transform:translateX(0)}50%{transform:translateX(6px)}}
+.lh-foot{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;margin-top:12px}
+.lh-blessing{font-size:12px;font-weight:700;color:#B4690A;letter-spacing:.06em}
+.lh-terms{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:800;color:#fff;background:linear-gradient(135deg,var(--blue),var(--blue-deep));border-radius:999px;padding:8px 16px;box-shadow:0 4px 14px rgba(18,38,78,.24)}
+.lh-terms:hover{color:#fff;transform:translateY(-1px)}
+:root[data-theme="dark"] .lh-card{background:linear-gradient(135deg,#0B1122,#0D1530);border-color:#1A2240}
+:root[data-theme="dark"] .lh-wrap{background:linear-gradient(180deg,#0A0E1A,transparent)}
+:root[data-theme="dark"] .lh-logo{background:transparent}
+@media (max-width:640px){.lh-card{flex-direction:column;gap:12px;padding:18px}.lh-entities{grid-template-columns:1fr;gap:12px}.lh-foot{gap:10px}}
+
+/* ---------- [CSS] 3. NAVBAR ---------- */
+.nav{position:sticky;top:0;z-index:60;background:rgba(255,255,255,.86);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid transparent;transition:box-shadow .3s cubic-bezier(.4,0,.2,1),border-color .3s cubic-bezier(.4,0,.2,1),background .3s ease;transform:translateZ(0)}
+.nav.scrolled{box-shadow:var(--shadow-sm);border-color:var(--line);background:rgba(255,255,255,.95)}
+.nav-inner{display:flex;align-items:center;gap:26px;min-height:74px}
+.brand{display:flex;align-items:center;gap:12px;color:var(--ink)}
+.brand img{height:52px;width:auto}
+#logoNav{display:none!important}
+.nav-links{display:flex;gap:4px;margin-left:auto;align-items:center}
+.nav-link{padding:9px 13px;border-radius:10px;font-weight:600;font-size:14.5px;color:var(--ink);transition:background var(--dur-fast) var(--ease-standard),color var(--dur-fast) var(--ease-standard),transform var(--dur-fast) var(--ease-standard)}
+.nav-link:hover{background:var(--blue-50);color:var(--blue);transform:translateY(-1px)}
+.nav-sep{width:1px;height:22px;background:var(--line);margin:0 4px;flex-shrink:0}
+.nav-drop{position:relative}
+.nav-drop-btn{cursor:pointer}
+.nav-drop-list{display:none;position:absolute;top:100%;left:0;background:#fff;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.15);min-width:180px;padding:6px 0;z-index:99;animation:fadeDown .2s var(--ease-decel)}
+.nav-drop:hover .nav-drop-list,.nav-drop:focus-within .nav-drop-list{display:block}
+.nav-drop-list a{display:block;padding:10px 18px;font-size:13.5px;font-weight:600;color:var(--ink);transition:background .15s,transform .15s}
+.nav-drop-list a:hover{background:var(--blue-50);color:var(--blue);transform:translateX(4px)}
+.nav-cta{margin-left:8px}
+.hamburger{display:none;margin-left:auto;align-self:flex-start;margin-top:12px;width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:#fff;align-items:center;justify-content:center;flex-direction:column;gap:5px;-webkit-tap-highlight-color:transparent;transition:background .15s ease}
+.hamburger:active{background:var(--blue-50)}
+.hamburger span{width:20px;height:2px;background:var(--ink);border-radius:2px;transition:transform .3s cubic-bezier(.4,0,.2,1),opacity .2s ease}
+.hamburger.open span:nth-child(1){transform:translateY(7px) rotate(45deg)}
+.hamburger.open span:nth-child(2){opacity:0;transform:scaleX(0)}
+.hamburger.open span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
+.mobile-menu{display:none;background:#fff;border-bottom:1px solid var(--line);padding:8px 22px 18px;position:sticky;top:74px;z-index:59}
+.mobile-menu.open{display:block;animation:fadeDown .3s cubic-bezier(.4,0,.2,1)}
+.mobile-menu a{display:block;padding:12px 8px;font-weight:600;border-bottom:1px dashed var(--line);color:var(--ink);transition:background .15s ease,transform .2s ease,color .15s ease;-webkit-tap-highlight-color:transparent}
+.mobile-menu a:hover,.mobile-menu a:active{background:var(--blue-50);transform:translateX(6px);color:var(--blue)}
+@keyframes fadeDown{from{opacity:0;transform:translateY(-10px) scaleY(.95)}to{opacity:1;transform:none}}
+
+/* ---------- [CSS] 4. BUTTONS & CHIPS ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:700;font-size:15px;padding:13px 22px;border-radius:14px;transition:transform var(--dur-fast) var(--ease-standard),box-shadow var(--dur-fast) var(--ease-standard),background var(--dur-fast) var(--ease-standard);will-change:transform}
+.btn:active{transform:scale(.97)}
+.btn-orange{background:linear-gradient(135deg,var(--orange),var(--orange-600));color:#fff;box-shadow:0 8px 20px rgba(240,124,31,.32);position:relative;overflow:hidden;isolation:isolate}
+.btn-orange::after{content:"";position:absolute;top:0;left:0;width:55%;height:100%;pointer-events:none;background:linear-gradient(100deg,transparent,rgba(255,255,255,.5) 50%,transparent);transform:translateX(-180%) skewX(-18deg);animation:hd-gleam 5.5s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){.btn-orange::after{animation:none;opacity:0}}
+.btn-orange:hover{transform:translateY(-2px);box-shadow:0 12px 26px rgba(240,124,31,.4)}
+.btn-blue{background:var(--blue);color:#fff;box-shadow:0 8px 20px rgba(46,95,168,.28)}
+.btn-blue:hover{transform:translateY(-2px);background:var(--blue-800)}
+.btn-ghost{border:1.5px solid var(--line);background:#fff;color:var(--ink)}
+.btn-ghost:hover{border-color:var(--blue);color:var(--blue)}
+.btn-sm{padding:8px 14px;font-size:13.5px;border-radius:10px}
+.btn[disabled]{opacity:.5;pointer-events:none}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;font-size:12.5px;font-weight:700;background:var(--blue-50);color:var(--blue-800);border:1px solid var(--blue-100)}
+.chip.orange{background:var(--orange-100);color:#9A4D07;border-color:#F6D3AE}
+.pill{display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:.03em}
+.pill.ok{background:#E2F6EB;color:var(--ok)}
+.pill.warn{background:#FCF0DB;color:var(--warn)}
+.pill.bad{background:#FDE3E3;color:var(--bad)}
+
+/* ---------- [CSS] 5. HERO ---------- */
+.hero{position:relative;background:
+  radial-gradient(900px 420px at 85% -10%, rgba(240,124,31,.22), transparent 60%),
+  radial-gradient(700px 500px at -10% 30%, rgba(46,95,168,.5), transparent 60%),
+  linear-gradient(140deg,#0E1E40 0%, var(--blue-deep) 45%, #1E3E77 100%);
+  color:#fff;overflow:hidden}
+.hero::before{ /* faint dotted map texture */
+  content:"";position:absolute;inset:0;
+  background-image:radial-gradient(rgba(255,255,255,.13) 1px, transparent 1.6px);
+  background-size:26px 26px;opacity:.5;pointer-events:none}
+.hero .orb{position:absolute;border-radius:50%;filter:blur(70px);opacity:.5;pointer-events:none;transition:transform .6s ease-out}
+.hero .orb.o1{width:380px;height:380px;background:var(--orange);top:-140px;right:6%}
+.hero .orb.o2{width:420px;height:420px;background:#3E77CE;bottom:-200px;left:-90px}
+/* Oversized ghost wordmark behind the hero copy. Outline-only so it reads as
+   texture, never as text competing with the headline — and nowrap + the
+   hero's own overflow:hidden let it bleed off both edges the way a printed
+   masthead does, instead of wrapping into a second line on a phone. */
+.hero-wm{position:absolute;left:50%;top:30%;transform:translate(-50%,-50%);
+  font-family:var(--f-display);font-weight:900;text-transform:uppercase;
+  font-size:clamp(58px,14vw,180px);line-height:.9;letter-spacing:.02em;
+  white-space:nowrap;pointer-events:none;user-select:none;z-index:0;
+  color:transparent;-webkit-text-stroke:2px rgba(255,255,255,.085)}
+/* The copy has to win against it. */
+.hero-grid,.hero-copy{position:relative;z-index:1}
+@media (prefers-reduced-motion:no-preference){
+  .hero-wm{animation:heroWm 18s ease-in-out infinite alternate}
+}
+@keyframes heroWm{from{transform:translate(-52%,-50%)}to{transform:translate(-48%,-50%)}}
+.hero-grid{display:grid;grid-template-columns:1fr;gap:14px;align-items:center;padding:22px 22px 28px;position:relative}
+.eyebrow{display:inline-flex;align-items:center;gap:10px;font-family:var(--f-code);font-size:12.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#FFC98C;margin-bottom:10px}
+.eyebrow::before{content:"";width:26px;height:2px;background:var(--orange);border-radius:2px}
+.hero h1.hero-brand{font-family:var(--f-display);font-weight:800;font-size:clamp(28px,3.8vw,54px);line-height:1.12;letter-spacing:.05em;margin-bottom:2px}
+.hero-brand-row{display:flex;align-items:center;gap:15px;flex-wrap:wrap}
+.hero-brand-logo{height:clamp(52px,10vw,84px);width:auto;flex:0 0 auto;background:transparent;border-radius:14px;padding:4px;box-shadow:none;border:none}
+.hero-brand-np{display:none}
+.hero-brand-np .npdot{color:var(--ncrimson);font-weight:800}
+.hero-slogan{font-family:var(--f-display);font-weight:700;font-size:clamp(18px,2.2vw,26px);line-height:1.2;margin-bottom:8px}
+.hero .grad{background-image:linear-gradient(100deg,#C9761A 0%,#F07C1F 20%,#FFC07A 40%,#FFF3D9 50%,#FFC07A 60%,#F07C1F 80%,#C9761A 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;background-size:260% 100%;animation:hd-sheen 6s linear infinite}
+@media (prefers-reduced-motion:reduce){.hero .grad{animation:none;background-position:50% 0}}
+.hero-sub{color:#C7D7F0;font-size:15px;max-width:48ch;margin-bottom:10px}
+
+/* ---------- [CSS] 5b. BHAGWAN HERO BACKGROUND ---------- */
+.bhagwan-hero-bg {
+  position: absolute;
+  inset: 0;
+  background-image: var(--bhagwan-img, none);
+  background-size: cover;
+  background-position: center top;
+  background-attachment: fixed;
+  opacity: 0.40;
+  pointer-events: none;
+  z-index: 0;
+  mix-blend-mode: luminosity;
+  border-radius: 0;
+}
+.bhagwan-hero-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, rgba(255,200,50,0.15) 0%, transparent 70%);
+  pointer-events: none;
+}
+.hero::before { z-index: 1; }
+/* Lift hero content above the Bhagwan bg — but decorative layers (.orb, .hero-fx)
+   must stay position:absolute or they enter document flow and push the content down. */
+.hero > :not(.bhagwan-hero-bg):not(.orb):not(.hero-fx):not(.hero-wm) { position: relative; z-index: 2; }
+.hero > .orb, .hero > .hero-fx { z-index: 1; }
+/* .hero-wm is excluded above for the same reason .orb and .hero-fx are: it is
+   a decorative backdrop, and this rule would give it position:relative — which
+   discards its absolute centring — and z-index:2, which would stack the
+   watermark on top of the headline it sits behind. */
+@media (max-width:760px) { .bhagwan-hero-bg { opacity: 0.28; background-attachment: scroll; } }
+
+/* ---------- [CSS] 6. SEARCH CARD (overlaps hero bottom) ---------- */
+.search-wrap{position:relative;margin-top:-96px;z-index:5}
+.intl-badge{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:7px 16px;font-size:13px;font-weight:800;box-shadow:var(--shadow-sm);margin-bottom:-16px;position:relative;z-index:6;margin-left:26px}
+.intl-badge .bar{width:34px;height:6px;border-radius:3px;display:flex;overflow:hidden}
+.intl-badge .bar i{flex:1}
+.search-card{background:linear-gradient(175deg,#fff 60%,var(--blue-50));border-radius:22px;box-shadow:var(--shadow-md);border:1px solid var(--line);padding:26px 26px 22px}
+.search-grid{display:grid;grid-template-columns:1fr 54px 1fr 1fr auto;gap:12px;align-items:end}
+.s-field label{display:block;font-family:var(--f-code);font-size:11.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+.s-field .box{position:relative}
+.s-field select,.s-field input{width:100%;padding:14px 14px;border:1.5px solid var(--line);border-radius:13px;background:var(--blue-50);font-weight:700;font-size:15.5px;appearance:none;transition:border-color .2s,box-shadow .2s}
+.s-field select:focus,.s-field input:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(46,95,168,.12);outline:none;background:#fff}
+.s-field .box::after{content:"▾";position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;font-size:12px}
+.s-field .box.no-caret::after{content:""}
+/* Date quick-chips — most passengers on this route travel today, tomorrow or
+   the day after, so the common case should never need the calendar widget.
+   Tap targets stay >=40px high for the low-literacy / senior-citizen mode. */
+.date-chips{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.date-chips button{flex:1 1 0;min-width:74px;min-height:40px;padding:7px 8px;border:1.5px solid var(--line);
+  border-radius:11px;background:#fff;color:var(--ink);font-weight:800;font-size:12.5px;line-height:1.25;
+  cursor:pointer;transition:border-color .2s,background .2s,color .2s}
+.date-chips button small{display:block;font-weight:600;font-size:10.5px;color:var(--muted);letter-spacing:.02em}
+.date-chips button:hover{border-color:var(--blue)}
+.date-chips button.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.date-chips button.on small{color:rgba(255,255,255,.85)}
+/* Remembered travellers, offered above the passenger rows at checkout. */
+.pax-memory{margin:0 0 12px}
+.pax-memory > small{display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:7px}
+.pax-memory .pm-chips{display:flex;gap:7px;flex-wrap:wrap}
+.pax-memory .pm-chip{min-height:48px;padding:8px 14px;border:1.5px solid var(--line);border-radius:999px;
+  background:#fff;color:var(--ink);font-weight:700;font-size:13px;cursor:pointer;transition:border-color .2s,background .2s}
+.pax-memory .pm-chip:hover{border-color:var(--blue);background:var(--blue-50)}
+.pax-memory .pm-clear{color:var(--muted);font-weight:600}
+.pax-memory .pm-clear:hover{border-color:var(--bad);color:var(--bad);background:#fff}
+.swap-btn{width:46px;height:46px;border-radius:50%;background:#fff;border:1.5px solid var(--line);display:flex;align-items:center;justify-content:center;margin-bottom:3px;justify-self:center;box-shadow:var(--shadow-sm);transition:transform .35s,border-color .2s;font-size:18px;color:var(--blue)}
+.swap-btn:hover{transform:rotate(180deg);border-color:var(--blue)}
+.search-note{margin-top:14px;display:flex;gap:8px;align-items:center;color:var(--muted);font-size:13px;flex-wrap:wrap}
+
+/* ---------- [CSS] 6b. PREMIUM HERO FX (light rays, particles, golden glow) ---------- */
+.hero .hero-fx{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:1}
+.hero-fx .hero-ray{position:absolute;top:-60%;left:50%;width:130px;height:220%;opacity:0;background:linear-gradient(180deg,transparent,rgba(255,214,120,.10) 30%,rgba(255,214,120,.16) 50%,rgba(255,214,120,.10) 70%,transparent);filter:blur(14px);transform-origin:50% 50%}
+.hero-fx .hero-ray.r1{margin-left:-320px}
+.hero-fx .hero-ray.r2{margin-left:-40px;width:180px}
+.hero-fx .hero-ray.r3{margin-left:260px;width:110px}
+.hero-fx .hero-glow{position:absolute;top:-12%;left:58%;width:620px;height:620px;margin-left:-310px;border-radius:50%;opacity:0;background:radial-gradient(circle,rgba(255,196,80,.20) 0%,rgba(255,196,80,.08) 42%,transparent 70%)}
+.hero-fx .hero-pt{position:absolute;bottom:-14px;width:6px;height:6px;border-radius:50%;opacity:0;background:radial-gradient(circle,rgba(255,228,168,.95),rgba(255,180,90,.35) 70%,transparent)}
+.hero-fx .hero-pt.p1{left:5%}  .hero-fx .hero-pt.p2{left:14%;width:4px;height:4px}
+.hero-fx .hero-pt.p3{left:24%} .hero-fx .hero-pt.p4{left:33%;width:5px;height:5px}
+.hero-fx .hero-pt.p5{left:46%} .hero-fx .hero-pt.p6{left:58%;width:4px;height:4px}
+.hero-fx .hero-pt.p7{left:68%} .hero-fx .hero-pt.p8{left:78%;width:5px;height:5px}
+.hero-fx .hero-pt.p9{left:87%} .hero-fx .hero-pt.p10{left:94%;width:4px;height:4px}
+@media (prefers-reduced-motion: no-preference){
+  .hero-fx .hero-ray{animation:heroRay 18s ease-in-out infinite alternate}
+  .hero-fx .hero-ray.r2{animation-duration:23s;animation-delay:-7s}
+  .hero-fx .hero-ray.r3{animation-duration:27s;animation-delay:-13s}
+  .hero-fx .hero-glow{animation:heroGlow 9s ease-in-out infinite}
+  .hero-fx .hero-pt{animation:heroFloat 12s linear infinite}
+  .hero-fx .hero-pt.p2{animation-duration:14s;animation-delay:2.2s}
+  .hero-fx .hero-pt.p3{animation-duration:12.5s;animation-delay:4.8s}
+  .hero-fx .hero-pt.p4{animation-duration:16s;animation-delay:1.4s}
+  .hero-fx .hero-pt.p5{animation-duration:13s;animation-delay:3.6s}
+  .hero-fx .hero-pt.p6{animation-duration:15s;animation-delay:6s}
+  .hero-fx .hero-pt.p7{animation-duration:12s;animation-delay:2.8s}
+  .hero-fx .hero-pt.p8{animation-duration:17s;animation-delay:5.2s}
+  .hero-fx .hero-pt.p9{animation-duration:13.5s;animation-delay:.9s}
+  .hero-fx .hero-pt.p10{animation-duration:15.5s;animation-delay:7.4s}
+  @keyframes heroRay{0%{opacity:.28;transform:rotate(13deg)}50%{opacity:.62;transform:rotate(-8deg)}100%{opacity:.32;transform:rotate(10deg)}}
+  @keyframes heroGlow{0%,100%{opacity:.35;transform:scale(.94)}50%{opacity:.8;transform:scale(1.06)}}
+  @keyframes heroFloat{0%{opacity:0;transform:translateY(0) scale(.8)}8%{opacity:.9}55%{opacity:.5}100%{opacity:0;transform:translateY(-620px) scale(1.15)}}
+}
+
+/* Daily devotional quote (hero, under subtitle) */
+.hero-quote{display:none}
+.hero-quote::before{content:"❝ ";color:rgba(255,217,168,.65)}
+.hero-quote::after{content:" ❞";color:rgba(255,217,168,.65)}
+.hero-quote:empty{display:none}
+
+/* ---------- [CSS] 6c. PREMIUM QUICK ACTIONS ---------- */
+.qa-wrap{margin-top:26px;position:relative;z-index:4}
+.qa-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.qa-card{position:relative;display:flex;flex-direction:column;gap:6px;background:linear-gradient(165deg,var(--card) 60%,var(--blue-50));border:1px solid var(--line);border-radius:16px;padding:16px 14px 14px;overflow:hidden;box-shadow:var(--shadow-sm);transition:transform .28s cubic-bezier(.2,.8,.2,1),box-shadow .28s cubic-bezier(.2,.8,.2,1),border-color .28s;color:var(--ink)}
+.qa-card::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:linear-gradient(90deg,var(--blue),var(--orange));z-index:1}
+.qa-card::after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.5) 48%,transparent 66%);transform:translateX(-120%);transition:transform .6s ease;pointer-events:none}
+.qa-card:hover{transform:translateY(-6px) scale(1.015);box-shadow:var(--shadow-lg);border-color:var(--blue-100)}
+.qa-card:hover::after{transform:translateX(120%)}
+.qa-card:hover .qa-ico{transform:scale(1.15) rotate(-4deg)}
+.qa-card:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.qa-card .qa-ico{font-size:24px;line-height:1;transition:transform .3s cubic-bezier(.34,1.56,.64,1);display:inline-block}
+.qa-card b{font-size:13.5px;line-height:1.3}
+.qa-card span:not(.qa-ico){font-size:11.5px;color:var(--muted);line-height:1.35}
+@media (prefers-reduced-motion:reduce){.qa-card,.qa-card::after,.qa-card .qa-ico{transition:none}}
+@media (max-width:560px){.qa-grid{grid-template-columns:repeat(2,1fr)}.qa-card{padding:13px 12px 12px}}
+
+/* ===== block 2 (was head, 12201 chars) ===== */
+
+/* ---------- [CSS] 7. TRUST / BRAND STRIP ---------- */
+.trust{padding:56px 0 8px}
+.trust-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.t-badge{background:linear-gradient(160deg,#fff 60%,var(--blue-50));border:1px solid var(--line);border-radius:var(--r);padding:20px 18px;display:flex;gap:14px;align-items:flex-start;transition:transform .25s,box-shadow .25s}
+.t-badge:hover{transform:translateY(-4px);box-shadow:var(--shadow-md);border-color:var(--blue-100)}
+.t-badge .ico{width:44px;height:44px;flex:none;border-radius:13px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--blue-50),var(--blue-100));color:var(--blue)}
+.t-badge .ico.or{background:linear-gradient(135deg,var(--orange-100),#FDD6B5);color:var(--orange-600)}
+.t-badge b{display:block;font-size:15px;margin-bottom:3px}
+.t-badge span{font-size:13px;color:var(--muted);line-height:1.45;display:block}
+.t-badge .code{font-family:var(--f-code);font-size:12px;letter-spacing:.04em;color:var(--blue-800);word-break:break-all}
+
+/* ---------- [CSS] 8. GENERIC SECTIONS ---------- */
+.section{padding:84px 0}
+.section.alt{background:#fff;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.sec-head{max-width:640px;margin-bottom:44px}
+.sec-head.center{margin-left:auto;margin-right:auto;text-align:center}
+.kicker{font-family:var(--f-code);font-size:12.5px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--orange-600);display:block;margin-bottom:10px}
+.h2{font-family:var(--f-display);font-weight:800;font-size:clamp(27px,3.2vw,40px);line-height:1.12;letter-spacing:-.01em}
+.sec-head p{color:var(--muted);margin-top:14px;font-size:16.5px}
+
+/* ---------- [CSS] 9. SERVICES (two equal pillars) ---------- */
+.svc-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.svc-card{position:relative;background:linear-gradient(170deg,#fff 50%,var(--blue-50));border:1px solid var(--line);border-radius:24px;padding:34px 30px;overflow:hidden;transition:transform .32s cubic-bezier(.2,.8,.2,1),box-shadow .32s cubic-bezier(.2,.8,.2,1)}
+.svc-card:hover .svc-ico{transform:scale(1.08);box-shadow:0 14px 32px rgba(46,95,168,.42)}
+.svc-card.trade:hover .svc-ico{box-shadow:0 14px 32px rgba(240,124,31,.42)}
+.svc-ico{transition:transform .32s cubic-bezier(.34,1.56,.64,1),box-shadow .32s ease}
+.svc-card:hover{transform:translateY(-6px);box-shadow:var(--shadow-lg);border-color:var(--blue-100)}
+.svc-card::before{content:"";position:absolute;inset:0 0 auto 0;height:5px;background:linear-gradient(90deg,var(--blue),var(--orange))}
+.svc-card.trade::before{background:linear-gradient(90deg,var(--orange),var(--blue))}
+.svc-ico{width:60px;height:60px;border-radius:18px;background:linear-gradient(135deg,var(--blue),var(--blue-800));color:#fff;display:flex;align-items:center;justify-content:center;margin-bottom:20px;box-shadow:0 10px 24px rgba(46,95,168,.3)}
+.svc-card.trade .svc-ico{background:linear-gradient(135deg,var(--orange),var(--orange-600));box-shadow:0 10px 24px rgba(240,124,31,.3)}
+.svc-card h3{font-family:var(--f-display);font-size:23px;font-weight:800;margin-bottom:10px}
+.svc-card>p{color:var(--muted);font-size:15px;margin-bottom:18px}
+.svc-list{list-style:none;margin-bottom:24px}
+.svc-list li{padding:7px 0 7px 30px;position:relative;font-size:14.5px;font-weight:600;border-bottom:1px dashed var(--line)}
+.svc-list li:last-child{border-bottom:none}
+.svc-list li::before{content:"✓";position:absolute;left:2px;top:7px;width:20px;height:20px;border-radius:50%;background:var(--blue-50);color:var(--blue);font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.svc-card.trade .svc-list li::before{background:var(--orange-100);color:var(--orange-600)}
+
+/* ---------- [CSS] 10. INDIA–NEPAL ROUTE STORY ---------- */
+.story{background:linear-gradient(180deg,#fff, var(--blue-50));border-top:1px solid var(--line)}
+.story-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:48px;align-items:start}
+.story-copy p{color:#3D4E6E;font-size:15.5px;margin-bottom:14px}
+.flag-cards{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:26px 0 8px}
+.flag-card{background:linear-gradient(165deg,#fff 55%,var(--blue-50));border:1px solid var(--line);border-radius:20px;padding:22px;text-align:center;transition:transform .25s,box-shadow .25s}
+.flag-card:hover{transform:translateY(-4px);box-shadow:var(--shadow-md);border-color:var(--blue-100)}
+.flag-card .fl{font-size:44px;line-height:1;margin-bottom:10px;animation:flagWave 3s ease-in-out infinite;transform-origin:bottom center;display:inline-block}
+.flag-card.in .fl{animation-delay:0s}
+.flag-card.np .fl{animation-delay:1.5s}
+@keyframes flagWave{0%,100%{transform:rotate(0deg) scale(1)}15%{transform:rotate(-6deg) scale(1.08)}30%{transform:rotate(4deg) scale(1.04)}45%{transform:rotate(-3deg) scale(1.02)}60%{transform:rotate(0deg) scale(1)}}
+.flag-bus-bridge{display:flex;justify-content:center;align-items:center;margin:-8px 0;position:relative;z-index:1}
+.flag-bus-bridge .bus-run{font-size:28px;animation:busSlide 5s ease-in-out infinite;position:relative}
+@keyframes busSlide{0%,100%{transform:translateX(-30px)}50%{transform:translateX(30px)}}
+.flag-card b{font-family:var(--f-display);font-size:17px;display:block}
+.flag-card span{font-size:13px;color:var(--muted);display:block;margin-top:4px}
+.flag-card .u{height:4px;border-radius:2px;margin:12px auto 0;max-width:120px}
+.flag-card.in .u{background:linear-gradient(90deg,var(--saffron) 0 33%,#EDF1F7 33% 66%,var(--igreen) 66% 100%)}
+.flag-card.np .u{background:linear-gradient(90deg,var(--ncrimson) 0 55%,var(--nblue) 55% 100%)}
+.story-facts{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.fact{background:linear-gradient(160deg,#fff 60%,var(--blue-50));border:1px solid var(--line);border-radius:20px;padding:24px 20px;text-align:center}
+.fact .num{font-family:var(--f-display);font-weight:800;font-size:34px;color:var(--blue);line-height:1}
+.fact .num em{font-style:normal;color:var(--orange);font-size:22px}
+.fact span{display:block;font-size:12.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-top:8px}
+.fact.wide{grid-column:1/-1;text-align:left;display:flex;align-items:center;gap:16px}
+.fact.wide .route-dash{flex:1}
+
+/* ---------- [CSS] 11. ABOUT / REGISTRATION ---------- */
+.about-grid{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:start}
+.reg-card{background:linear-gradient(150deg,var(--blue-deep),var(--blue-800));color:#DCE8FA;border-radius:24px;padding:34px 30px;position:relative;overflow:hidden}
+.reg-card::after{content:"";position:absolute;right:-60px;bottom:-60px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(240,124,31,.35),transparent 70%)}
+.reg-card h3{font-family:var(--f-display);color:#fff;font-size:21px;margin-bottom:16px}
+.reg-row{display:flex;justify-content:space-between;gap:14px;padding:11px 0;border-bottom:1px dashed rgba(255,255,255,.16);font-size:14px;position:relative;z-index:1}
+.reg-row:last-of-type{border-bottom:none}
+.reg-row span{color:#9FB6DC;flex:none}
+.reg-row b{text-align:right;color:#fff;font-weight:600}
+.reg-row b.code{font-family:var(--f-code);letter-spacing:.05em;word-break:break-all}
+.about-copy p{color:#3D4E6E;font-size:15.5px;margin-bottom:14px}
+.about-copy .quote{background:#fff;border-left:4px solid var(--orange);border-radius:0 16px 16px 0;padding:18px 20px;box-shadow:var(--shadow-sm);font-size:15px;color:var(--ink);margin:18px 0}
+
+/* ---------- [CSS] 12. FAQ ---------- */
+.faq-list{max-width:780px;margin:0 auto}
+.faq-item{background:linear-gradient(160deg,#fff 70%,var(--blue-50));border:1px solid var(--line);border-radius:16px;margin-bottom:12px;overflow:hidden;transition:box-shadow .25s,border-color .25s}
+.faq-item.open{box-shadow:var(--shadow-sm);border-color:var(--blue-100)}
+.faq-q{width:100%;display:flex;justify-content:space-between;align-items:center;gap:14px;text-align:left;padding:18px 20px;font-weight:700;font-size:15.5px;color:var(--ink)}
+.faq-q .pm{width:28px;height:28px;flex:none;border-radius:50%;background:var(--blue-50);color:var(--blue);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;transition:transform .3s,background .3s,color .3s}
+.faq-item.open .pm{transform:rotate(45deg);background:var(--orange);color:#fff}
+.faq-a{max-height:0;overflow:hidden;transition:max-height .35s ease,padding .35s ease;color:var(--muted);font-size:14.5px;padding:0 20px}
+.faq-item.open .faq-a{max-height:320px;padding:0 20px 20px}
+
+/* ---------- [CSS] 13. CONTACT ---------- */
+.contact-grid{display:grid;grid-template-columns:.9fr 1.1fr;gap:24px}
+.c-card{background:#fff;border:1px solid var(--line);border-radius:22px;padding:28px}
+.c-row{display:flex;gap:14px;align-items:flex-start;padding:13px 0;border-bottom:1px dashed var(--line)}
+.c-row:last-child{border-bottom:none}
+.c-row .ico{width:40px;height:40px;flex:none;border-radius:12px;background:var(--blue-50);color:var(--blue);display:flex;align-items:center;justify-content:center}
+.c-row b{display:block;font-size:14.5px}
+.c-row span,.c-row a{font-size:13.5px;color:var(--muted);word-break:break-word}
+.map-cta{margin-top:16px;display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,var(--blue-50),#fff);border:1.5px dashed var(--blue-100);border-radius:16px;padding:16px}
+.map-cta .pinbig{font-size:28px}
+.field{margin-bottom:15px}
+.field label{display:block;font-size:13px;font-weight:700;margin-bottom:6px;color:var(--ink)}
+.field label small{color:var(--muted);font-weight:500}
+.field input,.field select,.field textarea{width:100%;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;background:#FBFCFE;transition:border-color .2s,box-shadow .2s}
+.field textarea{min-height:110px;resize:vertical}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(46,95,168,.1);outline:none;background:#fff}
+.field .err{color:var(--bad);font-size:12px;margin-top:4px;display:none}
+.field.invalid input,.field.invalid select{border-color:var(--bad)}
+.field.invalid .err{display:block}
+
+/* ---------- [CSS] 14. FOOTER ---------- */
+footer{background:linear-gradient(180deg,var(--blue-deep) 0%,#080E1C 100%);color:#B9C9E6;margin-top:90px}
+.f-flagline{height:4px;display:flex}
+.f-flagline i:nth-child(1){flex:1;background:linear-gradient(90deg,var(--saffron) 0 33%,#F2F5FA 33% 66%,var(--igreen) 66% 100%)}
+.f-flagline i:nth-child(2){flex:.55;background:linear-gradient(90deg,var(--ncrimson) 0 55%,var(--nblue) 55% 100%)}
+.f-grid{display:grid;grid-template-columns:1.3fr 1fr 1fr 1.2fr;gap:34px;padding:56px 0 40px}
+.f-grid img{height:76px;width:auto;margin-bottom:14px;background:rgba(255,255,255,.9);padding:8px;border-radius:14px}
+.f-grid p{font-size:13.5px;line-height:1.7}
+.f-grid h4{color:#fff;font-family:var(--f-display);font-size:15px;letter-spacing:.04em;margin-bottom:16px}
+.f-grid ul{list-style:none}
+.f-grid li{margin-bottom:9px}
+.f-grid a{color:#B9C9E6;font-size:13.5px;transition:color .2s}
+.f-grid a:hover{color:#FFB25E}
+.f-contact li{display:flex;gap:9px;font-size:13.5px}
+.f-bottom{border-top:1px solid rgba(255,255,255,.12);padding:18px 0;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:12.5px;color:#8FA5CC}
+.f-bottom .code{font-family:var(--f-code);letter-spacing:.04em}
+.f-dev{text-align:center;padding:10px 0 6px;font-size:11.5px;color:#6B82AB;border-top:1px solid rgba(255,255,255,.06)}
+.f-dev a{color:#8FA5CC;text-decoration:none;transition:color .2s}
+.f-dev a:hover{color:#FFB25E}
+
+/* ---------- [CSS] 15. SCROLL-REVEAL & MOTION ---------- */
+.reveal{opacity:0;transform:translateY(26px);transition:opacity .7s cubic-bezier(.2,.65,.3,1),transform .7s cubic-bezier(.2,.65,.3,1)}
+.reveal.d1{transition-delay:.08s}.reveal.d2{transition-delay:.16s}.reveal.d3{transition-delay:.24s}
+.reveal.in{opacity:1;transform:none}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+  .reveal,.stagger-item{opacity:1;transform:none}
+}
+
+/* ===== block 3 (was head, 41826 chars) ===== */
+
+/* ---------- [CSS] 16. VIEWS & BOOKING STEPS ---------- */
+@keyframes viewIn{from{opacity:0;transform:translateY(18px) scale(.995)}to{opacity:1;transform:none}}
+/* Opacity-only entrance for the seat + checkout views on mobile: the
+   standard viewIn uses a transform, and a transformed ancestor becomes
+   a containing block that would un-pin the fixed action bar. No transform
+   here = the bar stays fixed to the viewport the whole time. */
+@keyframes flowViewIn{from{opacity:0}to{opacity:1}}
+.view{display:none}
+.view.active{display:block;animation:viewIn .4s var(--ease-decel) both}
+.flow-head{background:linear-gradient(140deg,var(--blue-deep),var(--blue-800));color:#fff;padding:34px 0 30px}
+.flow-head h2{font-family:var(--f-display);font-size:clamp(22px,3vw,30px);margin-bottom:6px}
+.flow-head .sub{color:#B9CDEE;font-size:14px}
+.steps{display:flex;gap:0;margin-top:22px;flex-wrap:wrap}
+.step{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:700;color:#8AA4CF;padding-right:26px;position:relative}
+.step:not(:last-child)::after{content:"";position:absolute;right:8px;top:50%;width:12px;border-top:2px dashed #4A6699}
+.step .n{width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-family:var(--f-code);font-size:12px}
+.step.done .n{background:var(--ok);color:#fff}
+.step.now{color:#fff}
+.step.now .n{background:var(--orange);color:#fff;box-shadow:0 0 0 5px rgba(240,124,31,.25)}
+.flow-body{padding:36px 0 70px}
+/* seats/checkout get their own bottom clearance for the fixed action
+   bar (see MOBILE STICKY ACTION BAR); other flow views just need to
+   clear the bottom tab-bar, which body{padding-bottom} already covers. */
+/* 110px, not 90: the fixed tab-bar is ~84px, so 90 left just 6px and the
+   LAST card's CTA could come to rest half-under the bar — where a thumb
+   tap lands on बुक/मेरो यात्रा instead of the button. */
+@media (max-width:760px){.flow-body{padding-bottom:110px}}
+
+/* ---------- [CSS] 17. SEARCH RESULTS ---------- */
+.res-toolbar{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:22px}
+.res-toolbar .rt-route{font-family:var(--f-display);font-weight:800;font-size:19px}
+.res-toolbar .rt-route em{font-style:normal;color:var(--orange)}
+.res-toolbar .rt-date{font-size:13.5px;color:var(--muted);font-weight:600}
+.bus-card{background:#fff;border:1px solid var(--line);border-radius:20px;padding:22px;display:grid;grid-template-columns:230px 1fr 190px;gap:22px;margin-bottom:16px;transition:transform .25s,box-shadow .25s,border-color .25s}
+.bus-card:hover{transform:translateY(-3px);box-shadow:var(--shadow-md);border-color:var(--blue-100)}
+.bc-time .t{font-family:var(--f-code);font-weight:700;font-size:21px}
+.bc-time .t small{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.06em}
+.bc-time .dur{margin:8px 0}
+.bc-time .plus{font-size:11.5px;color:var(--orange-600);font-weight:800;letter-spacing:.04em}
+.bc-mid h3{font-family:var(--f-display);font-size:18px;margin-bottom:2px}
+.bc-mid .busno{font-family:var(--f-code);font-size:12px;color:var(--muted);letter-spacing:.06em;margin-bottom:10px}
+.bc-tags{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px}
+.bc-points{font-size:12.5px;color:var(--muted);line-height:1.6}
+.bc-points b{color:var(--ink)}
+.bc-fare{border-left:1px dashed var(--line);padding-left:20px;display:flex;flex-direction:column;justify-content:center;gap:8px;text-align:right}
+.bc-fare .amt{font-family:var(--f-display);font-weight:800;font-size:27px;color:var(--blue-deep)}
+.bc-fare .npr{font-size:12px;color:var(--muted)}
+.bc-fare .left{font-size:12.5px;font-weight:800}
+/* Task 1 (Surat 24×7): "next available departure" banner + Task 6 daily-service note */
+.next-dep-banner{background:linear-gradient(135deg,var(--orange-100,#FFF1E6),#FFF9F3);border:1.5px solid var(--orange-200,#FFD9B8);border-radius:16px;padding:14px 16px;margin-bottom:14px;color:var(--fg);font-size:14px;line-height:1.5}
+.next-dep-banner .ndb-sub{color:var(--muted);font-size:13px;margin-top:3px}
+:root[data-theme="dark"] .next-dep-banner{background:rgba(240,124,31,.12);border-color:rgba(240,124,31,.35)}
+.daily-service-note{font-size:12.5px;color:var(--muted);text-align:center;margin-bottom:14px;letter-spacing:.2px}
+.empty-state{background:#fff;border:1.5px dashed var(--line);border-radius:20px;padding:54px 24px;text-align:center;color:var(--muted)}
+.empty-state .big{font-size:42px;margin-bottom:10px}
+
+/* ---------- [CSS] 18. SEAT SELECTION ---------- */
+.seat-grid-wrap{display:grid;grid-template-columns:1.15fr .85fr;gap:26px;align-items:start}
+.seat-panel{background:#fff;border:1px solid var(--line);border-radius:22px;padding:26px}
+.legend{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:20px}
+.legend span{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--muted)}
+.lg{width:22px;height:22px;border-radius:7px;border:1.5px solid #C7D4E8;background:#fff}
+.lg.sel{background:var(--orange);border-color:var(--orange-600)}
+.lg.bkd{background:#DFE6F0;border-color:#DFE6F0}
+.deck-tabs{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;align-items:center}
+.deck-tabs .deck-lbl{font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-right:2px}
+.deck-tab{padding:8px 18px;border-radius:999px;border:1.5px solid var(--line);font-weight:700;font-size:13px;background:#fff;color:var(--muted);min-height:44px}
+.deck-tab.on{background:var(--blue);border-color:var(--blue);color:#fff}
+/* Both decks on one scroll (4 Sep 2026): each deck gets a sticky floor label
+   so the traveller always knows which floor the row under the thumb is on. */
+.deck-head{position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:8px;margin:0 0 10px;padding:8px 12px;border-radius:12px;
+  background:var(--blue-50);border:1px solid var(--blue-100);color:var(--blue-800);font-weight:800;font-size:13px;letter-spacing:.02em}
+.deck-head small{font-weight:600;color:var(--muted)}
+.deck-block+.deck-block{margin-top:18px}
+:root[data-theme="dark"] .deck-head{background:#0D1530;border-color:#1A2240;color:#AECBFB}
+/* Patient / birami chip beside the seat-count picker */
+.seat-pref-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 14px}
+.pref-chip{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:8px 14px;border-radius:999px;border:1.5px solid var(--line);background:#fff;color:var(--ink);font-weight:700;font-size:13px;cursor:pointer;transition:border-color .18s,background .18s,color .18s}
+.pref-chip.on{background:#E6F4EA;border-color:#178A50;color:#0F5C36}
+.pref-chip:active{transform:scale(.96)}
+.seat-pref-row .pref-hint{flex-basis:100%;font-size:12px;color:var(--muted);display:none}
+.seat-pref-row.on .pref-hint{display:block}
+:root[data-theme="dark"] .pref-chip{background:#0D1530;border-color:#1A2240;color:var(--ink)}
+:root[data-theme="dark"] .pref-chip.on{background:#12301F;border-color:#5CCB8F;color:#9BE8BE}
+/* "How many seats?" group picker (Task 3) — floor-first suggestion */
+.seat-count-picker{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;margin:0 0 14px;padding:10px 12px;border-radius:12px;background:var(--blue-50);border:1.5px solid var(--blue-100)}
+.seat-count-picker .scp-label{font-weight:800;font-size:13px;color:var(--fg)}
+.seat-count-picker .scp-btns{display:flex;gap:6px;flex-wrap:wrap}
+.seat-count-picker .scp-n{min-width:48px;height:48px;padding:0 10px;border-radius:10px;border:1.5px solid var(--line);background:#fff;color:var(--fg);font-weight:800;font-size:15px;cursor:pointer;transition:transform .12s,background .18s,border-color .18s}
+.seat-count-picker .scp-n:hover{border-color:var(--blue)}
+.seat-count-picker .scp-n:active{transform:scale(.94)}
+.seat-count-picker .scp-n.on{background:var(--blue);border-color:var(--blue);color:#fff}
+:root[data-theme="dark"] .seat-count-picker{background:rgba(59,130,246,.12);border-color:#1A2240}
+:root[data-theme="dark"] .seat-count-picker .scp-n{background:transparent;color:var(--ink)}
+/* Suggested seats — brief pulse so the traveller sees the smart default */
+.seat.suggested{box-shadow:0 0 0 2px var(--blue),0 0 0 5px rgba(33,150,243,.35);animation:seatSuggestPulse 1s ease-in-out 2}
+@keyframes seatSuggestPulse{0%,100%{box-shadow:0 0 0 2px var(--blue),0 0 0 4px rgba(33,150,243,.30)}50%{box-shadow:0 0 0 2px var(--blue),0 0 0 9px rgba(33,150,243,0)}}
+@media (prefers-reduced-motion: reduce){.seat.suggested{animation:none}}
+.bus-frame{border:2px solid var(--line);border-radius:22px;padding:18px;max-width:340px;margin:0 auto;position:relative;background:linear-gradient(180deg,#FBFCFE,#F3F7FC)}
+.bus-frame .steering{display:flex;justify-content:flex-end;padding:0 6px 12px;border-bottom:2px dashed var(--line);margin-bottom:16px;color:var(--muted)}
+.seat-rows{display:flex;flex-direction:column;gap:10px}
+/* Every seat track is minmax(0,1fr), never a bare 1fr. A bare `1fr` means
+   minmax(AUTO,1fr): the track refuses to shrink below the seat's min-content
+   width, so on a narrow phone the row keeps its full width and spills out of
+   the coach instead of dividing the space it actually has. */
+.seat-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr)) 34px repeat(2,minmax(0,1fr));gap:8px;align-items:center}
+.seat-row.slp-pvt{grid-template-columns:minmax(0,2fr) 34px minmax(0,1fr)}
+.seat-row.slp-shr{grid-template-columns:minmax(0,2fr) 34px minmax(0,1fr)}
+.berth-pair{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:linear-gradient(135deg,rgba(59,130,246,.06),rgba(59,130,246,.02));border:1.5px dashed rgba(59,130,246,.28);border-radius:12px;padding:4px}
+.berth-labels{display:grid;grid-template-columns:2fr 34px 1fr;gap:8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:0 0 6px;align-items:center}
+.bl-dbl{text-align:center;color:var(--blue)}.bl-sgl{text-align:center}.bl-aisle{text-align:center}
+[data-tier="double"] .berth-pair{border-color:var(--blue);border-style:solid;background:linear-gradient(135deg,rgba(59,130,246,.14),rgba(59,130,246,.05));box-shadow:0 2px 10px rgba(59,130,246,.14)}
+[data-tier="single"] .berth-pair{border-color:rgba(59,130,246,.15);border-style:dashed;opacity:.3;filter:grayscale(.65)}
+[data-tier="single"] .berth-pair .seat{pointer-events:none}
+[data-tier="double"] .seat-row.slp-shr>.seat,[data-tier="double"] .seat-row.slp-pvt>.seat{opacity:.3;filter:grayscale(.65);pointer-events:none}
+[data-tier="triple"] .seat-row.slp-shr{background:linear-gradient(135deg,rgba(240,124,31,.08),rgba(240,124,31,.02));border:1.5px solid rgba(240,124,31,.28);border-radius:14px;padding:5px}
+[data-tier="triple"] .berth-pair{border-color:transparent;background:transparent;padding:4px 0}
+:root[data-theme="dark"] .berth-pair{background:rgba(59,130,246,.08);border-color:rgba(100,160,255,.2)}
+:root[data-theme="dark"] [data-tier="double"] .berth-pair{background:rgba(59,130,246,.16);border-color:rgba(100,160,255,.4)}
+/* Live "Selected: x of y" strip above the seat grid (Task 1) */
+.seat-pick-status{margin:0 0 12px;padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.5;background:var(--blue-50);border:1.5px solid var(--blue-100);transition:background .3s,border-color .3s}
+.seat-pick-status.ok{background:#E9F8EF;border-color:#BFE8CF;color:#14532d}
+.seat-pick-status.warn{background:#FFF4E5;border-color:#FFD9A8;color:#7c2d12}
+:root[data-theme="dark"] .seat-pick-status{background:rgba(59,130,246,.12);border-color:#1A2240;color:var(--ink)}
+:root[data-theme="dark"] .seat-pick-status.ok{background:rgba(34,197,94,.14);border-color:rgba(34,197,94,.35);color:#86efac}
+:root[data-theme="dark"] .seat-pick-status.warn{background:rgba(240,124,31,.14);border-color:rgba(240,124,31,.35);color:#fdba74}
+/* Persistent triple-cabin explainer under the column labels */
+[data-tier="triple"] .berth-labels::after{content:'👨‍👩‍👧 Triple cabin — books all 3 berths together · ३ बर्थ एकसाथ';grid-column:1/-1;text-align:center;font-size:10.5px;color:var(--orange);letter-spacing:.02em;padding-top:3px;text-transform:none}
+/* Sticky legend (Module B) — visible while scrolling the seat grid */
+.legend-sticky{position:sticky;top:102px;z-index:6;background:var(--bg);padding:8px 12px;border-radius:12px;border:1px solid var(--line);box-shadow:0 4px 14px rgba(20,40,80,.08)}
+@media(max-width:760px){.legend-sticky{top:64px}}
+:root[data-theme="dark"] .legend-sticky{background:#0A0E1A}
+/* Taken in the OTHER seat type (sharing <-> private): occupied, but not by a sale this
+   view can show. Hatched so it never reads as a plain sold seat (SHG AI BRAIN 1.4). */
+.seat.bkd.xmode{background:repeating-linear-gradient(135deg,#EEF2F8 0 6px,#D7DEEA 6px 12px);color:#5B6B85;text-decoration:none;border-color:#9AA8C0}
+.lg.bkd.xmode{background:repeating-linear-gradient(135deg,#EEF2F8 0 4px,#D7DEEA 4px 8px);border-color:#9AA8C0}
+:root[data-theme="dark"] .seat.bkd.xmode{background:repeating-linear-gradient(135deg,#1A2240 0 6px,#26305A 6px 12px);color:#AECBFB;border-color:#3B4E75}
+
+/* ♿ differently-abled friendly berth — subtle corner badge only, seat looks normal */
+.seat.da{position:relative;overflow:visible}
+.seat.da::after{content:'♿';position:absolute;top:-8px;right:-6px;font-size:11px;background:var(--card);border:1px solid #00897B;border-radius:50%;line-height:1;padding:1.5px 2px}
+/* Cabin-group highlight (Module B) — the whole cabin row glows so users see who they'll share with */
+.seat-row.slp-shr:has(.seat.sel),.seat-row.slp-pvt:has(.seat.sel){background:linear-gradient(90deg,rgba(240,124,31,.08),rgba(59,130,246,.08));border-radius:14px;box-shadow:0 0 0 1.5px rgba(240,124,31,.4)}
+.seat-row.slp-shr:has(.seat:not(:disabled):hover),.seat-row.slp-pvt:has(.seat:not(:disabled):hover){background:rgba(59,130,246,.06);border-radius:14px}
+/* 3-person sharing cabin cards (V7) — cabin no. + capacity + price + live availability */
+.cabin-card{border:1.5px solid var(--line);border-radius:14px;padding:8px 10px 10px;margin-bottom:10px;background:var(--card);transition:border-color .25s,box-shadow .25s}
+.cabin-card:has(.seat.sel){border-color:var(--orange);box-shadow:0 3px 16px rgba(240,124,31,.18)}
+.cab-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:10.5px;font-weight:700;margin-bottom:7px;color:var(--muted)}
+.cab-no{color:var(--blue);font-size:11.5px}
+.cab-price{color:var(--orange)}
+/* Online-discount highlight: struck-through offline fare + a 5% OFF chip. */
+.pp-was{color:var(--muted);font-weight:500;opacity:.75;margin-right:2px}
+.pp-off{display:inline-block;margin-left:6px;background:#0a6b3b;color:#fff;font-size:9.5px;font-weight:800;
+        letter-spacing:.04em;padding:2px 6px;border-radius:999px;vertical-align:middle}
+.save-badge{margin-top:6px;display:inline-flex;align-items:center;gap:5px;background:#E8F5E9;color:#0a6b3b;
+        border:1px solid #a5d6a7;border-radius:999px;padding:3px 10px;font-size:11.5px;font-weight:700}
+:root[data-theme="dark"] .save-badge{background:rgba(10,107,59,.18);border-color:#2e7d52;color:#8fe0b0}
+.cab-free{margin-left:auto;background:#E9F8EF;color:#1B7F3B;border:1px solid #BFE8CF;border-radius:999px;padding:2px 9px}
+.cab-free.cab-full{background:#FDECEA;color:#C62828;border-color:#F5C6C0}
+/* Sharing 4+2 layout — 6 berths per row, each independently bookable.
+   4 berths on the left, aisle, 2 on the right (owner's real coach: 4/2). */
+.seat-row.slp-shr6{grid-template-columns:repeat(4,minmax(0,1fr)) 34px repeat(2,minmax(0,1fr))}
+.berth-labels6{grid-template-columns:4fr 34px 2fr}
+.seat-row.slp-shr6 .seat:nth-of-type(1)::before{content:'A·';font-size:9.5px;font-weight:800;opacity:.5;margin-right:2px}
+.seat-row.slp-shr6 .seat:nth-of-type(2)::before{content:'B·';font-size:9.5px;font-weight:800;opacity:.5;margin-right:2px}
+.seat-row.slp-shr6 .seat:nth-of-type(3)::before{content:'C·';font-size:9.5px;font-weight:800;opacity:.5;margin-right:2px}
+.seat-row.slp-shr6 .seat:nth-of-type(4)::before{content:'D·';font-size:9.5px;font-weight:800;opacity:.5;margin-right:2px}
+.seat-row.slp-shr6 .seat:nth-of-type(5)::before{content:'E·';font-size:9.5px;font-weight:800;opacity:.5;margin-right:2px}
+.seat-row.slp-shr6 .seat:nth-of-type(6)::before{content:'F·';font-size:9.5px;font-weight:800;opacity:.5;margin-right:2px}
+/* Narrow phones: 4 berths on one side get tight — shrink the seat + label a touch.
+   The tuned per-width numbers live with the rest of the phone seat-map rules in
+   views.css (it loads after this file); these are the safe fallback. */
+@media(max-width:430px){
+  .seat-row.slp-shr6{grid-template-columns:repeat(4,minmax(0,1fr)) 20px repeat(2,minmax(0,1fr));gap:5px}
+  .seat-row.slp-shr6 .seat{font-size:11px;min-width:0}
+  .seat-row.slp-shr6 .seat::before{font-size:8.5px;margin-right:1px}
+}
+:root[data-theme="dark"] .cabin-card{background:#0D1530;border-color:#1A2240}
+:root[data-theme="dark"] .cab-free{background:rgba(34,197,94,.14);color:#86efac;border-color:rgba(34,197,94,.3)}
+.seat-row .aisle{text-align:center;font-family:var(--f-code);font-size:11px;color:#AAB9D2}
+.seat{height:44px;border-radius:9px;border:1.5px solid #C7D4E8;background:#fff;font-family:var(--f-code);font-weight:600;font-size:12px;color:var(--blue-800);cursor:pointer;transition:transform .15s,background .2s,border-color .2s;display:flex;align-items:center;justify-content:center}
+.seat:hover{transform:scale(1.08);border-color:var(--blue)}
+.seat.sel{background:var(--orange);border-color:var(--orange-600);color:#fff;box-shadow:0 4px 12px rgba(240,124,31,.4)}
+.seat.bkd{background:#DFE6F0;border-color:#DFE6F0;color:#93A3BC;cursor:not-allowed;text-decoration:line-through}
+.seat.bkd:hover{transform:none}
+.seat.slpr{height:52px}
+/* Part-2 seat polish: premium hover glow ring, a one-time selection pop,
+   and a visible keyboard focus ring. box-shadow / outline / transform only
+   — no ::before/::after (those carry the A–E letters and the ♿ badge).
+   The pop is disabled under prefers-reduced-motion; the static glow stays. */
+.seat:not(.bkd):hover{box-shadow:0 0 0 4px rgba(46,95,168,.16),0 8px 18px rgba(46,95,168,.24)}
+.seat.sel:hover{box-shadow:0 0 0 4px rgba(240,124,31,.22),0 8px 18px rgba(240,124,31,.4)}
+.seat:focus-visible{outline:3px solid var(--orange);outline-offset:2px}
+.seat.sel{animation:seatPop .34s cubic-bezier(.34,1.56,.64,1)}
+@keyframes seatPop{0%{transform:scale(1)}45%{transform:scale(1.18)}100%{transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){.seat.sel{animation:none}}
+.sum-card{background:#fff;border:1px solid var(--line);border-radius:22px;padding:24px;position:sticky;top:96px}
+.sum-card h3{font-family:var(--f-display);font-size:18px;margin-bottom:14px}
+.sum-row{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px dashed var(--line);font-size:14px}
+.sum-row span{color:var(--muted)}
+.sum-row b.code{font-family:var(--f-code)}
+.sum-row.total{border-bottom:none;padding-top:14px;font-size:16px}
+.sum-row.total b{font-family:var(--f-display);font-size:24px;color:var(--blue-deep)}
+.seat-chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;max-width:180px}
+.seat-chips .chip{padding:3px 9px}
+
+/* ---------- [CSS] 18b. CABIN PRICING & SEAT COLORS ---------- */
+.seat.available       { background:#E8F5E9; border-color:#4CAF50; color:#2E7D32; }
+/* EMERGENCY seat — the permanently reserved berth. Red so it can never be
+   mistaken for a bookable seat; not selectable by customer or agent. */
+.seat.reserved        { background:#C62828; border-color:#8E1B1B; color:#fff; font-weight:700;
+                        cursor:not-allowed; position:relative; }
+.seat.reserved::after { content:"EMERGENCY"; position:absolute; left:50%; bottom:-1px; transform:translateX(-50%);
+                        font-size:6.5px; letter-spacing:.04em; font-weight:800; line-height:1;
+                        color:#fff; opacity:.95; pointer-events:none; }
+.seat.reserved.slpr::after{ font-size:7px; bottom:2px; }
+.seat.blocked         { background:#212121; border-color:#000; color:#fff; cursor:not-allowed; }
+.seat.mine            { background:#2196F3; border-color:#1565C0; color:#fff; }
+.seat.ladies          { background:#F48FB1; border-color:#C2185B; color:#fff; }
+.cabin { border: 1.5px dashed #C7D4E8; border-radius:12px; padding:10px 8px 8px; margin-bottom:10px; position:relative; transition: box-shadow .2s, border-color .2s; }
+.cabin:hover { box-shadow: 0 0 0 3px rgba(46,95,168,.12); border-color: var(--blue); }
+.cabin-label { position:absolute; top:-10px; left:10px; background:var(--card); font-size:10px;
+               font-family:var(--f-code); font-weight:700; color:var(--blue-800); padding:0 6px; z-index:1; }
+.cabin-single { border-color:#2196F3; }
+.cabin-double { border-color:#9C27B0; }
+.cabin-double .cabin-label { color:#7B1FA2; }
+.booking-type-toggle { display:flex; gap:4px; background:var(--blue-50); border:1.5px solid var(--blue-100); border-radius:999px; padding:3px; margin-bottom:16px; }
+.bt-pill { flex:1; padding:10px 16px; border-radius:999px; font-weight:800; font-size:13.5px; color:var(--muted); text-align:center; transition:all .2s; cursor:pointer; }
+.bt-pill.sharing.on { background:#2196F3; color:#fff; box-shadow:0 4px 12px rgba(33,150,243,.3); }
+.bt-pill.private.on { background:var(--orange); color:#fff; box-shadow:0 4px 12px rgba(240,124,31,.3); }
+.cabin-price-tag { font-size:12px; color:var(--muted); margin-top:4px; }
+.cabin-price-tag .sharing-price { color:#2E7D32; font-weight:700; }
+.cabin-price-tag .private-price { color:var(--orange-600); font-weight:700; }
+/* §9 Cabin chooser on the sleeper results card — pick Sharing vs Private
+   before seat selection. Two large tap targets; stacked on narrow phones. */
+.cabin-choose{display:flex;gap:8px;margin-top:8px}
+.cabin-choose .cabin-opt{flex:1;display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:9px 11px;border:1.5px solid var(--line);border-radius:12px;background:var(--card);cursor:pointer;text-align:left;transition:border-color .18s,box-shadow .18s,transform .1s;min-height:44px}
+.cabin-choose .cabin-opt:hover{box-shadow:0 4px 14px rgba(0,0,0,.10)}
+.cabin-choose .cabin-opt:active{transform:scale(.97)}
+.cabin-choose .cabin-opt .co-ico{font-size:16px}
+.cabin-choose .cabin-opt .co-name{font-weight:800;font-size:13px;color:var(--ink)}
+.cabin-choose .cabin-opt .co-price{font-family:var(--f-display);font-weight:800;font-size:15px}
+.cabin-choose .cabin-opt .co-price small{font-weight:600;font-size:10px;color:var(--muted);margin-left:2px}
+.cabin-choose .cabin-opt .co-sub{font-size:10.5px;color:var(--muted);line-height:1.25}
+.cabin-choose .cabin-opt.sharing .co-price{color:#2E7D32}
+.cabin-choose .cabin-opt.sharing:hover{border-color:rgba(46,125,50,.6)}
+.cabin-choose .cabin-opt.private .co-price{color:var(--orange-600)}
+.cabin-choose .cabin-opt.private:hover{border-color:var(--orange)}
+@media(max-width:520px){.cabin-choose{flex-direction:column}}
+.cabin-badge { display:inline-flex; align-items:center; gap:4px; font-size:11.5px; font-weight:800; padding:3px 10px; border-radius:999px; }
+.cabin-badge.sharing-badge { background:#E3F2FD; color:#1565C0; border:1px solid #90CAF9; }
+.cabin-badge.private-badge { background:var(--orange-100); color:var(--orange-600); border:1px solid #F6D3AE; }
+.online-save { display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:700; color:var(--ok); background:#E9F8EF; border-radius:8px; padding:4px 10px; margin-top:6px; }
+
+/* ---------- [CSS] 18b-2. SHARING SLEEPER TIERS (single/double/triple) ---------- */
+#view-seats[data-tier="single"] { --tier-accent:#2196F3; --tier-soft:rgba(33,150,243,.25); }
+#view-seats[data-tier="double"] { --tier-accent:#2E7D32; --tier-soft:rgba(46,125,50,.25); }
+#view-seats[data-tier="triple"] { --tier-accent:#7B1FA2; --tier-soft:rgba(123,31,162,.25); }
+:root[data-theme="dark"] #view-seats[data-tier="single"] { --tier-accent:#64B5F6; }
+:root[data-theme="dark"] #view-seats[data-tier="double"] { --tier-accent:#81C784; }
+:root[data-theme="dark"] #view-seats[data-tier="triple"] { --tier-accent:#CE93D8; }
+#view-seats[data-tier] .sum-card { border-top:4px solid var(--tier-accent); transition:border-color .25s ease; }
+.tier-select { margin:12px 0 4px; padding:12px; border:1.5px dashed var(--line); border-radius:14px; background:var(--blue-50); }
+:root[data-theme="dark"] .tier-select { background:rgba(255,255,255,.04); }
+.tier-select .tier-lbl { font-size:12px; font-weight:800; color:var(--muted); margin-bottom:8px; letter-spacing:.3px; }
+.tier-pills { display:flex; gap:6px; }
+.tier-pill { flex:1; min-width:0; padding:8px 4px; border-radius:12px; border:1.5px solid var(--line); background:var(--card); font-weight:800; font-size:12px; color:var(--muted); cursor:pointer; text-align:center; transition:all .2s; }
+.tier-pill.on { background:var(--tier-accent,#2196F3); border-color:var(--tier-accent,#2196F3); color:#fff; box-shadow:0 4px 12px var(--tier-soft,rgba(33,150,243,.25)); }
+.tier-hint { font-size:12.5px; color:var(--ink); margin:9px 0 0; font-weight:600; }
+.tier-rule { font-size:11.5px; color:var(--muted); margin:5px 0 0; line-height:1.55; }
+.occ-wrap { margin-top:10px; }
+.occ-lbl { display:flex; justify-content:space-between; gap:8px; font-size:11.5px; color:var(--muted); font-weight:700; margin-bottom:4px; }
+.occ-lbl b { color:var(--tier-accent,var(--blue)); font-family:var(--f-code); }
+.occ-bar { height:8px; border-radius:999px; background:var(--blue-100); overflow:hidden; }
+:root[data-theme="dark"] .occ-bar { background:rgba(255,255,255,.12); }
+.occ-fill { display:block; height:100%; border-radius:999px; background:var(--tier-accent,var(--blue)); width:100%; transform:scaleX(0); transform-origin:left; transition:transform .4s ease; }
+@media (prefers-reduced-motion:reduce) {
+  .tier-pill, .occ-fill, #view-seats[data-tier] .sum-card { transition:none; }
+}
+
+/* ---------- [CSS] 18c-1. WHY CHOOSE US & TESTIMONIALS ---------- */
+.why-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:20px; margin-top:28px; }
+.why-card { background:#fff; border:1px solid var(--line); border-radius:18px; padding:24px 20px; text-align:center; transition:transform .2s,box-shadow .2s; }
+.why-card:hover { transform:translateY(-4px); box-shadow:var(--shadow-lg); }
+.why-card .wc-ico { font-size:32px; margin-bottom:10px; }
+.why-card h4 { font-family:var(--f-display); font-size:15px; margin-bottom:6px; }
+.why-card p { font-size:13px; color:var(--muted); }
+.testi-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:22px; margin-top:28px; }
+.testi-card { background:#fff; border:1px solid var(--line); border-radius:18px; padding:24px; position:relative; }
+.testi-card::before { content:'"'; position:absolute; top:10px; left:18px; font-size:48px; color:var(--blue-100); font-family:Georgia,serif; line-height:1; }
+.testi-card .tc-text { font-size:14px; line-height:1.65; color:var(--ink); margin-bottom:12px; padding-top:20px; }
+.testi-card .tc-who { font-size:12.5px; color:var(--muted); font-weight:600; }
+@media(max-width:760px) {
+  .why-grid { grid-template-columns:1fr 1fr; }
+  .testi-grid { grid-template-columns:1fr; }
+}
+
+/* ---------- [CSS] 18c-0. PRIVATE vs SHARING TOP HIGHLIGHT ---------- */
+.style-duo{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:18px}
+.style-card{position:relative;background:var(--card);border-radius:22px;padding:24px 22px;overflow:hidden;border:1.5px solid var(--line);box-shadow:0 8px 26px rgba(16,42,84,.08);transition:transform .25s ease,box-shadow .25s ease}
+.style-card:hover{transform:translateY(-4px);box-shadow:0 14px 36px rgba(16,42,84,.14)}
+.style-private{border-color:#D4AF37;background:linear-gradient(150deg,#FFFDF5,#FFF7E0 60%,#FFF)}
+.style-sharing{border-color:var(--blue-100);background:linear-gradient(150deg,#F7FBFF,#EAF3FE 60%,#FFF)}
+:root[data-theme="dark"] .style-private{background:linear-gradient(150deg,#2a2410,#1d1a10)}
+:root[data-theme="dark"] .style-sharing{background:linear-gradient(150deg,#10203a,#0e1828)}
+.style-ribbon{position:absolute;top:14px;right:-32px;transform:rotate(38deg);background:linear-gradient(90deg,#D4AF37,#F0C75E);color:#4a3a05;font-size:11px;font-weight:800;letter-spacing:.08em;padding:5px 40px;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.style-ribbon.rb-blue{background:linear-gradient(90deg,#1565C0,#42A5F5);color:#fff}
+.style-head{display:flex;gap:14px;align-items:center;margin-bottom:14px}
+.style-ico{font-size:38px;line-height:1}
+.style-head b{font-family:var(--f-display);font-size:19px;letter-spacing:.04em;display:block}
+.style-head small{color:var(--muted);font-size:12.5px}
+.style-feats{list-style:none;padding:0;margin:0 0 14px;font-size:13.5px;line-height:2}
+.style-price{display:flex;align-items:baseline;gap:8px;margin-bottom:14px}
+.style-price b{font-family:var(--f-display);font-size:30px;color:var(--orange)}
+.style-sharing .style-price b{color:var(--blue)}
+.style-price small{color:var(--muted);font-size:12px}
+.style-ctas{display:flex;gap:10px;flex-wrap:wrap}
+
+/* ---------- [CSS] 18c. PRICING TABLE SECTION ---------- */
+.pricing-cards { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-top:28px; }
+.pricing-card { background:#fff; border-radius:22px; overflow:hidden; box-shadow:var(--shadow-md); border-top:4px solid; }
+.pricing-card.sharing { border-color:#2196F3; }
+.pricing-card.private { border-color:var(--orange); }
+.pricing-card .pc-head { padding:22px 24px 14px; display:flex; align-items:center; gap:12px; }
+.pricing-card .pc-head .pc-ico { font-size:28px; }
+.pricing-card .pc-head h3 { margin:0; font-family:var(--f-display); font-size:18px; }
+.pricing-card .pc-head small { display:block; color:var(--muted); font-size:12.5px; margin-top:2px; }
+.pricing-card table { width:100%; border-collapse:collapse; font-size:13.5px; }
+.pricing-card thead th { background:var(--blue-50); padding:10px 14px; font-weight:700; font-size:12px; text-align:left; color:var(--blue-800); text-transform:uppercase; letter-spacing:.06em; }
+.pricing-card.private thead th { background:#FFF3E2; color:var(--orange-600); }
+.pricing-card tbody td { padding:12px 14px; border-bottom:1px solid var(--line); }
+.pricing-card tbody tr:hover { background:#F8FBFF; }
+.pricing-card.private tbody tr:hover { background:#FFF9F2; }
+.pricing-card tbody td:not(:first-child) { font-family:var(--f-code); font-weight:600; text-align:center; }
+.pricing-card tbody .online-col { color:#2E7D32; font-weight:800; }
+.pricing-cta { margin-top:28px; text-align:center; background:linear-gradient(135deg,#E8F5E9,#C8E6C9); border-radius:16px; padding:22px 24px; }
+.pricing-cta p { font-size:16px; font-weight:700; color:#2E7D32; margin:0 0 14px; }
+@media(max-width:760px) {
+  .pricing-cards { grid-template-columns:1fr; }
+  .pricing-card table { font-size:12.5px; }
+  .pricing-card thead th, .pricing-card tbody td { padding:9px 10px; }
+}
+
+/* ---------- [CSS] 19. CHECKOUT & PAYMENT ---------- */
+.co-grid{display:grid;grid-template-columns:1fr;gap:22px;align-items:start;max-width:620px;margin-inline:auto}
+/* §1 two-step checkout: Details → Payment sub-indicator + step nav */
+.co-2step{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:4px}
+.co-2step .cs2{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:700;color:var(--muted);opacity:.75;transition:opacity .25s,color .25s}
+.co-2step .cs2 i{width:24px;height:24px;flex:none;border-radius:50%;background:var(--line);color:var(--muted);font-family:var(--f-code);font-size:12px;font-style:normal;display:flex;align-items:center;justify-content:center;transition:background .25s,color .25s}
+.co-2step .cs2.on{opacity:1;color:var(--blue)}
+.co-2step .cs2.on i{background:var(--blue);color:#fff}
+.co-2step .cs2.done i{background:var(--ok,#2E9E5B);color:#fff}
+.co-2step .cs2-arrow{color:var(--muted);opacity:.5;font-size:14px}
+.co-nav-row{display:flex;gap:12px;align-items:center}
+.co-nav-row #checkoutBackBtn{flex:none}
+.co-nav-row #coContinueBtn{flex:1}
+.co-nav-row #coContinueBtn:disabled{opacity:.5;pointer-events:none}
+/* Phone widths: stack so the primary action ("Continue to Payment") gets the
+   full width and sits above the secondary back link, instead of being squeezed
+   into a narrow, text-wrapping button beside it. */
+@media (max-width:520px){
+  .co-nav-row{flex-direction:column-reverse;align-items:stretch;gap:10px}
+  .co-nav-row #checkoutBackBtn,.co-nav-row #coContinueBtn{width:100%}
+}
+.co-back-details{align-self:flex-start;margin-bottom:12px}
+.co-card{background:#fff;border:1px solid var(--line);border-radius:22px;padding:26px;margin-bottom:22px}
+.co-card h3{font-family:var(--f-display);font-size:18px;margin-bottom:6px;display:flex;align-items:center;gap:10px}
+.co-card h3 .stepdot{width:26px;height:26px;flex:none;border-radius:50%;background:var(--blue);color:#fff;font-family:var(--f-code);font-size:12.5px;display:flex;align-items:center;justify-content:center}
+.co-card .hint{font-size:13px;color:var(--muted);margin-bottom:18px}
+.pax-row{display:grid;grid-template-columns:64px 1.6fr .6fr .9fr;gap:10px;margin-bottom:10px;align-items:center}
+.pax-row .seat-tag{font-family:var(--f-code);font-weight:700;background:var(--blue-50);color:var(--blue-800);border:1px solid var(--blue-100);border-radius:10px;padding:11px 0;text-align:center;font-size:13px}
+.pax-row input,.pax-row select{padding:11px 12px;border:1.5px solid var(--line);border-radius:11px;background:#FBFCFE;width:100%}
+/* Group booking under ONE name (Task 6): the lead seat carries the visible
+   name/gender/age; extra seats collapse to a small chip and mirror the lead. */
+.pax-row.grp-extra{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:transparent !important;border:none !important;box-shadow:none !important;padding:2px 6px !important;margin-bottom:4px;opacity:.9}
+.pax-row.grp-extra .grp-fields{display:none}
+.pax-row.grp-extra .seat-tag{padding:6px 12px;font-size:12px}
+.pax-group-note{font-size:12.5px;color:var(--muted);margin:4px 0 12px;padding:9px 12px;background:var(--blue-50);border:1px solid var(--blue-100);border-radius:10px;line-height:1.5}
+:root[data-theme="dark"] .pax-group-note{background:rgba(59,130,246,.12);border-color:#1A2240}
+.form-2col{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+.rules-summary{background:#FFF8E1;border:1.5px solid #FFE082;border-radius:14px;padding:14px 16px;font-size:13px;margin-top:10px;margin-bottom:6px;line-height:1.7;color:#5D4037}
+.rules-summary summary{cursor:pointer;font-weight:700;font-size:14px;color:var(--blue-deep)}
+.rules-summary ul{margin:10px 0 0;padding-left:18px}
+.rules-summary .rule-ne{color:#7B1FA2;font-weight:600}
+.tnc-box{display:flex;gap:11px;align-items:flex-start;background:var(--blue-50);border:1.5px solid var(--blue-100);border-radius:14px;padding:14px 16px;font-size:13.5px;margin-top:6px}
+.tnc-box input{width:19px;height:19px;margin-top:2px;accent-color:var(--orange);flex:none}
+.pay-card{background:linear-gradient(160deg,#fff,#FDF6EE);border:1.5px solid #F3DDC2;border-radius:22px;padding:26px;position:static}
+.pay-amt{text-align:center;padding:14px;background:#fff;border:1px dashed #E7C9A4;border-radius:16px;margin-bottom:18px}
+.pay-amt small{display:block;font-family:var(--f-code);font-size:11px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase}
+.pay-amt .big{font-family:var(--f-display);font-weight:800;font-size:34px;color:var(--blue-deep)}
+.qr-box{background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px;text-align:center;margin-bottom:16px}
+.qr-box img{width:190px;height:190px;margin:0 auto 10px;border-radius:10px}
+.qr-box .upi-id{font-family:var(--f-code);font-weight:600;font-size:14px;background:var(--blue-50);border-radius:10px;padding:9px 12px;display:flex;justify-content:center;gap:10px;align-items:center;word-break:break-all}
+.qr-box .upi-id button{color:var(--orange-600);font-weight:800;font-size:12px}
+.proof-tabs{display:flex;background:#EFF3FA;border-radius:12px;padding:4px;margin:16px 0 14px}
+.proof-tab{flex:1;padding:10px;border-radius:9px;font-weight:700;font-size:13px;color:var(--muted);text-align:center;transition:all .2s}
+.proof-tab.on{background:#fff;color:var(--blue-deep);box-shadow:var(--shadow-sm)}
+.shot-drop{border:2px dashed #D8C4A8;border-radius:14px;padding:18px;text-align:center;font-size:13px;color:var(--muted);cursor:pointer;transition:border-color .2s,background .2s;background:#fff}
+.shot-drop:hover{border-color:var(--orange);background:#FFF9F2}
+.shot-drop img{max-height:120px;margin:10px auto 0;border-radius:10px}
+.verify-note{display:flex;gap:10px;font-size:12.5px;color:#7A5B33;background:#FCF3E4;border-radius:12px;padding:12px 14px;margin-top:14px;line-height:1.55}
+
+/* ---------- [CSS] 20. STATUS / TICKET ---------- */
+.status-card{max-width:720px;margin:0 auto;background:#fff;border:1px solid var(--line);border-radius:26px;overflow:hidden;box-shadow:var(--shadow-md)}
+.status-band{padding:34px 30px;text-align:center;color:#fff}
+.status-band.pending{background:linear-gradient(135deg,#B7791F,#DD9A33)}
+.status-band.confirmed{background:linear-gradient(135deg,#0E7A44,#1FA463)}
+.status-band.rejected{background:linear-gradient(135deg,#A02626,#C74444)}
+.status-band .big-ico{width:70px;height:70px;border-radius:50%;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:32px}
+.status-band.pending .big-ico{animation:softPulse 1.8s ease-in-out infinite}
+@keyframes softPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.09)}}
+.status-band h2{font-family:var(--f-display);font-size:24px;margin-bottom:6px}
+.status-band p{font-size:14px;opacity:.92;max-width:46ch;margin:0 auto}
+.status-body{padding:28px 30px 32px}
+.tk-route{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+.tk-route .city{font-family:var(--f-display);font-weight:800;font-size:20px}
+.tk-route .city small{display:block;font-family:var(--f-code);font-size:11.5px;font-weight:500;color:var(--muted);letter-spacing:.06em}
+.tk-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 22px;margin-bottom:8px}
+.tk-grid .sum-row{font-size:13.5px}
+.tk-qr{display:flex;gap:18px;align-items:center;background:var(--blue-50);border:1px dashed var(--blue-100);border-radius:16px;padding:16px;margin:18px 0}
+.tk-qr img{width:104px;height:104px;border-radius:10px;background:#fff;padding:6px}
+.tk-qr small{font-size:12.5px;color:var(--muted);line-height:1.6}
+.status-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
+.demo-hint{max-width:720px;margin:16px auto 0;font-size:12.5px;color:var(--muted);text-align:center;background:#fff;border:1px dashed var(--line);border-radius:12px;padding:10px 14px}
+
+/* ---------- [CSS] 20b. TICKET WATERMARK ---------- */
+.tk-watermark {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none; z-index: 0; overflow: hidden;
+  border-radius: inherit;
+}
+.tk-watermark img {
+  width: 200px; height: 200px;
+  object-fit: contain;
+  opacity: 0.15;
+  filter: grayscale(100%);
+}
+.status-card { position: relative; }
+.status-card > *:not(.tk-watermark):not(.tk-signature) { position: relative; z-index: 1; }
+.tk-signature{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);pointer-events:none;z-index:0;font-family:'Segoe Script','Brush Script MT',cursive;font-size:48px;color:rgba(26,58,106,0.06);white-space:nowrap;letter-spacing:3px;font-style:italic}
+.tk-letterhead .tk-bhagwan-logo {
+  width: 36px; height: 36px; border-radius: 50%;
+  border: 2px solid rgba(255,200,50,0.6);
+  object-fit: cover; flex: none;
+}
+.tk-letterhead .tk-mantra {
+  font-size: 10px; color: #FFD9A8; margin-top: 2px;
+  letter-spacing: 0.06em;
+}
+
+/* ---------- [CSS] 21. TERMS PAGE ---------- */
+.terms-wrap{max-width:860px;margin:0 auto}
+.tc-section{background:#fff;border:1px solid var(--line);border-radius:18px;margin-bottom:16px;overflow:hidden}
+.tc-section[open]{box-shadow:var(--shadow-md)}
+.tc-head{display:flex;align-items:center;gap:10px;padding:18px 22px;cursor:pointer;list-style:none;user-select:none;transition:background .2s}
+.tc-head:hover{background:rgba(0,0,0,.02)}
+.tc-head::-webkit-details-marker{display:none}
+.tc-head::marker{display:none;content:''}
+.tc-letter{font-family:var(--f-code);font-size:12px;background:var(--orange);color:#fff;border-radius:7px;padding:3px 8px;flex-shrink:0}
+.tc-emoji{font-size:20px;flex-shrink:0}
+.tc-title{font-family:var(--f-display);font-size:15.5px;flex:1;line-height:1.3}
+.tc-arrow{font-size:11px;color:var(--muted);transition:transform .25s;flex-shrink:0}
+.tc-section[open] .tc-arrow{transform:rotate(180deg)}
+.tc-body{padding:0 22px 22px;border-top:1px solid var(--line)}
+.tc-sum{margin:16px 0;padding:14px 18px;background:#F5F7FA;border-radius:14px;font-size:13.5px;line-height:1.7;color:#33456A}
+.tc-sum p{margin:0 0 6px}
+.tc-sum p:last-child{margin-bottom:0}
+.tc-sum .tc-lang{font-size:11px;font-family:var(--f-code);color:var(--muted);margin-right:4px}
+.tc-clauses{margin-top:16px}
+.tc-clause{margin-bottom:18px}
+.tc-clause h4{font-family:var(--f-display);font-size:14.5px;margin-bottom:6px;color:var(--ink)}
+.tc-clause p{font-size:13.5px;line-height:1.75;color:#33456A;text-align:justify}
+.tc-dosdnts{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px}
+@media(max-width:600px){.tc-dosdnts{grid-template-columns:1fr}}
+.tc-dosdnts>div{padding:14px 16px;border-radius:14px;font-size:13px}
+.tc-dosdnts .tc-dos{background:#E8F5E9;border:1px solid #C8E6C9}
+.tc-dosdnts .tc-donts{background:#FFEBEE;border:1px solid #FFCDD2}
+.tc-dosdnts h5{font-family:var(--f-display);font-size:14px;margin:0 0 8px}
+.tc-dosdnts ul{margin:0;padding-left:18px}
+.tc-dosdnts li{margin-bottom:5px;line-height:1.5;color:#33456A}
+.tc-kw{display:none}
+.tc-search-wrap{position:relative;display:flex;align-items:center;background:#fff;border:1.5px solid var(--line);border-radius:16px;padding:4px 14px;transition:border-color .2s,box-shadow .2s}
+.tc-search-wrap:focus-within{border-color:var(--blue);box-shadow:0 0 0 3px rgba(33,150,243,.12)}
+.tc-search-icon{font-size:18px;margin-right:8px;flex-shrink:0}
+.tc-search{border:none;outline:none;background:transparent;font-size:15px;padding:10px 0;flex:1;font-family:var(--f-body);color:var(--ink)}
+.tc-search::placeholder{color:var(--muted);font-size:13.5px}
+.tc-search-clear{border:none;background:none;font-size:16px;cursor:pointer;padding:6px 4px;color:var(--muted);flex-shrink:0}
+.tc-search-clear:hover{color:var(--ink)}
+.tc-search-results{margin-top:12px;max-height:420px;overflow-y:auto;border-radius:14px;border:1px solid var(--line);background:#fff}
+.tc-sr{display:flex;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line);cursor:pointer;transition:background .15s}
+.tc-sr:last-child{border-bottom:none}
+.tc-sr:hover{background:rgba(33,150,243,.04)}
+.tc-sr-letter{font-family:var(--f-code);font-size:11px;background:var(--orange);color:#fff;border-radius:6px;padding:2px 7px;height:fit-content;flex-shrink:0}
+.tc-sr-body{flex:1;min-width:0}
+.tc-sr-title{font-family:var(--f-display);font-size:14px;margin-bottom:3px}
+.tc-sr-match{font-size:12.5px;color:var(--muted);line-height:1.5}
+.tc-sr-match mark{background:#FFF176;border-radius:3px;padding:0 2px}
+.tc-no-results{padding:24px;text-align:center;color:var(--muted);font-size:14px}
+
+/* ---------- [CSS] 22. ADMIN PANEL ---------- */
+.admin-gate{max-width:420px;margin:40px auto;background:#fff;border:1px solid var(--line);border-radius:24px;padding:38px 34px;text-align:center;box-shadow:var(--shadow-md)}
+.admin-gate .lock{width:62px;height:62px;border-radius:20px;background:var(--blue-deep);color:#fff;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;font-size:26px}
+.atabs{display:flex;gap:8px;flex-wrap:wrap;margin:24px 0;position:relative}
+.atab{padding:10px 18px;border-radius:12px;border:1.5px solid var(--line);background:#fff;font-weight:700;font-size:13.5px;color:var(--muted);cursor:pointer;transition:all var(--dur-base) var(--ease-standard);position:relative;overflow:hidden}
+.atab::after{content:'';position:absolute;bottom:0;left:50%;width:0;height:2.5px;background:var(--orange);border-radius:2px;transition:all var(--dur-base) var(--ease-standard);transform:translateX(-50%)}
+.atab.on{background:var(--blue-deep);border-color:var(--blue-deep);color:#fff;box-shadow:0 4px 14px rgba(18,38,78,.18)}
+.atab.on::after{width:60%}
+.atab:hover:not(.on){background:var(--blue-50);border-color:var(--blue-100);color:var(--blue);transform:translateY(-1px)}
+.astat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:8px}
+.astat{background:linear-gradient(145deg,rgba(255,255,255,.9),rgba(245,247,252,.95));backdrop-filter:blur(12px);border:1px solid rgba(46,95,168,.12);border-radius:18px;padding:20px;transition:transform .2s ease,box-shadow .2s ease}
+.astat:hover{transform:translateY(-3px);box-shadow:0 8px 24px rgba(46,95,168,.12)}
+.astat b{font-family:var(--f-display);font-size:28px;display:block;background:linear-gradient(135deg,var(--blue),var(--orange));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.astat b[style*="color"]{-webkit-text-fill-color:initial;background:none}
+.astat span{font-size:12.5px;color:var(--muted);font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+@keyframes statFadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.astat{animation:statFadeIn var(--dur-slow) var(--ease-decel) backwards}
+.astat:nth-child(1){animation-delay:0s}.astat:nth-child(2){animation-delay:.06s}.astat:nth-child(3){animation-delay:.12s}
+.astat:nth-child(4){animation-delay:.18s}.astat:nth-child(5){animation-delay:.24s}.astat:nth-child(6){animation-delay:.3s}
+.astat:nth-child(7){animation-delay:.36s}.astat:nth-child(8){animation-delay:.42s}.astat:nth-child(9){animation-delay:.48s}
+.astat:nth-child(10){animation-delay:.54s}.astat:nth-child(11){animation-delay:.6s}.astat:nth-child(12){animation-delay:.66s}
+.table-wrap{background:#fff;border:1px solid var(--line);border-radius:18px;overflow-x:auto}
+table.admin{width:100%;border-collapse:collapse;min-width:880px;font-size:13.5px}
+table.admin th{background:var(--blue-50);text-align:left;padding:13px 14px;font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--blue-800);font-family:var(--f-code);font-weight:600}
+table.admin td{padding:13px 14px;border-top:1px solid var(--line);vertical-align:top}
+table.admin .code{font-family:var(--f-code);font-size:12.5px}
+.thumb{width:52px;height:52px;object-fit:cover;border-radius:9px;border:1px solid var(--line);cursor:zoom-in}
+.rt-card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:22px;margin-bottom:16px}
+.rt-card .rt-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+.rt-form{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.rt-form .field{margin-bottom:2px}
+.rt-form .span2{grid-column:span 2}
+.rt-form .span4{grid-column:1/-1}
+.admin-note{font-size:12.5px;color:var(--muted);background:var(--blue-50);border-radius:12px;padding:12px 16px;margin-bottom:18px;border:1px dashed var(--blue-100)}
+
+/* ---------- [CSS] 23. TOAST ----------
+   pointer-events matters here: the hidden toast is "hidden" only by an
+   80px translate + opacity:0 and sits at z-index:99 — ABOVE the fixed
+   flow action bar (z:88). A tall multi-line toast's top edge stays inside
+   the viewport, so without pointer-events:none it would invisibly eat
+   taps aimed at Continue — the exact failure shape of the #view-home bug. */
+#toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,80px);background:var(--blue-deep);color:#fff;padding:13px 22px;border-radius:14px;font-size:14px;font-weight:600;box-shadow:var(--shadow-lg);opacity:0;transition:transform .35s,opacity .35s;z-index:99;max-width:90vw;text-align:center;pointer-events:none}
+#toast.show{transform:translate(-50%,0);opacity:1;pointer-events:auto}
+
+/* ---------- [CSS] 24. RESPONSIVE ---------- */
+@media (max-width:1020px){
+  .hero-grid{padding:56px 22px 150px}
+  .trust-grid{grid-template-columns:1fr 1fr}
+  .story-grid,.about-grid{grid-template-columns:1fr}
+  .seat-grid-wrap,.co-grid{grid-template-columns:1fr}
+  .sum-card,.pay-card{position:static}
+  .bus-card{grid-template-columns:1fr;gap:14px}
+  .bc-fare{border-left:none;border-top:1px dashed var(--line);padding:14px 0 0;flex-direction:row;align-items:center;justify-content:space-between;text-align:left}
+}
+@media (max-width:760px){
+  .nav-links{display:none}
+  .hamburger{display:flex}
+  .brand img{height:44px}
+  .search-grid{grid-template-columns:1fr}
+  .swap-btn{transform:rotate(90deg);justify-self:center;margin:-4px 0}
+  .swap-btn:hover{transform:rotate(270deg)}
+  .search-wrap{margin-top:-70px}
+  .svc-grid,.flag-cards,.story-facts,.contact-grid,.trust-grid,.form-2col,.tk-grid,.astat-grid{grid-template-columns:1fr}
+  .pax-row{grid-template-columns:56px 1fr;grid-template-rows:auto auto}
+  .pax-row .seat-tag{grid-row:span 1}
+  .rt-form{grid-template-columns:1fr 1fr}
+  .rt-form .span2,.rt-form .span4{grid-column:1/-1}
+  .section{padding:60px 0}
+  .f-grid{grid-template-columns:1fr;gap:26px;padding:44px 0 30px}
+  .topbar .container{justify-content:center}
+}
+
+/* ===== block 4 (was head, 22506 chars) ===== */
+
+/* ---------- [CSS] 25. UPGRADE PACK — mobile feel, booking polish ---------- */
+/* Language toggle (topbar) */
+.lang-switch{display:inline-flex;gap:2px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:2px}
+.lang-btn{padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:800;color:#CFE0F8;letter-spacing:.04em;transition:background .2s,color .2s}
+.lang-btn.on{background:var(--orange);color:#fff}
+.lang-btn:hover:not(.on){color:#fff}
+
+/* Ripple on buttons */
+.btn{position:relative;overflow:hidden}
+.btn .ripple{position:absolute;border-radius:50%;background:rgba(255,255,255,.45);transform:scale(0);animation:ripple .6s ease-out forwards;pointer-events:none}
+.btn-ghost .ripple,.btn-danger-ghost .ripple{background:rgba(46,95,168,.18)}
+@keyframes ripple{to{transform:scale(1);opacity:0}}
+
+/* Skeleton loading shimmer */
+.skel{display:block;background:linear-gradient(90deg,#EDF1F8 25%,#F7FAFF 45%,#EDF1F8 65%);background-size:200% 100%;animation:skel 1.1s linear infinite;border-radius:8px}
+@keyframes skel{from{background-position:200% 0}to{background-position:-200% 0}}
+.skel-card{pointer-events:none;border-color:var(--line)!important;transform:none!important;box-shadow:none!important}
+
+/* Verified operator badge on bus cards */
+.vbadge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;color:var(--ok);background:#E9F8EF;border:1px solid #BFE8CF;border-radius:999px;padding:2.5px 9px;vertical-align:3px;letter-spacing:.02em}
+
+/* Trip type toggle (search card) */
+.trip-toggle{display:inline-flex;background:var(--blue-50);border:1.5px solid var(--blue-100);border-radius:999px;padding:3px;margin-bottom:16px}
+.trip-pill{padding:8px 18px;border-radius:999px;font-weight:800;font-size:13px;color:var(--muted);transition:all .2s}
+.trip-pill.on{background:var(--blue);color:#fff;box-shadow:0 4px 12px rgba(46,95,168,.3)}
+.search-card.round .search-grid{grid-template-columns:1fr 54px 1fr 1fr 1fr auto}
+
+/* Seat map — drawn like a real coach */
+.bus-frame{box-shadow:inset 0 0 0 4px #fff,var(--shadow-sm);border-color:#C3D2E8;border-radius:26px 26px 20px 20px}
+.seat{position:relative;border-radius:8px 8px 11px 11px;box-shadow:inset 0 -5px 0 rgba(46,95,168,.12);min-height:42px}
+.seat::before{content:"";position:absolute;top:3px;left:6px;right:6px;height:4px;border-radius:3px;background:rgba(46,95,168,.14)}
+.seat.slpr{border-radius:10px;box-shadow:inset 4px 0 0 rgba(46,95,168,.12)}
+.seat.slpr::before{top:6px;bottom:6px;left:4px;right:auto;width:4px;height:auto}
+.seat.sel{box-shadow:0 4px 12px rgba(240,124,31,.4),inset 0 -5px 0 rgba(0,0,0,.12)}
+.seat.sel::before{background:rgba(255,255,255,.45)}
+.seat.bkd{box-shadow:none}
+.seat.bkd::before{background:#C9D3E2}
+.seat.fem{border-color:#E8A0BF;color:#B03A6E}
+.seat.fem::before{background:#F3C6D9}
+.seat.fem.bkd{background:#F9E4EE;border-color:#F0CBDD;color:#C795AC;text-decoration:line-through}
+.seat.fem.sel{background:var(--orange);border-color:var(--orange-600);color:#fff}
+.seat.hold{cursor:not-allowed;background:repeating-linear-gradient(45deg,#EDF1F8 0 6px,#E2E9F4 6px 12px)}
+.lg.fem{background:#FBEAF2;border-color:#E8A0BF}
+.lg.fem::after{content:"♀";font-size:12px;color:#B03A6E;display:flex;align-items:center;justify-content:center;height:100%}
+/* Shared-cabin gender lock (Part 2 · Feature A) — a free bed held by the
+   sex of whoever already booked its cabin, until the cabin is vacated. */
+.seat.u-fem:not(.sel):not(.bkd){border-color:#D81B77;background:#FCE7F1;color:#B0165F}
+.seat.u-male:not(.sel):not(.bkd){border-color:#1C5BD0;background:#E3EDFC;color:#12408C}
+:root[data-theme="dark"] .seat.u-fem:not(.sel):not(.bkd){background:#3A1526;border-color:#E8579F;color:#F7B8D4}
+:root[data-theme="dark"] .seat.u-male:not(.sel):not(.bkd){background:#111E3A;border-color:#4E86E8;color:#AECBFB}
+.lg.u-fem{background:#FCE7F1;border-color:#D81B77}
+.lg.u-fem::after{content:"♀";font-size:12px;color:#B0165F;display:flex;align-items:center;justify-content:center;height:100%}
+.lg.u-male{background:#E3EDFC;border-color:#1C5BD0}
+.lg.u-male::after{content:"♂";font-size:12px;color:#12408C;display:flex;align-items:center;justify-content:center;height:100%}
+
+/* ---------- SEAT STATE BADGES (4 Sep 2026) ----------
+   Every state now carries an icon on the seat itself, not only a colour:
+   ✓ selected · ✕ booked · ⏳ held by someone else · ♀ / ♂ women-/men-only
+   cabin · 🔒 private cabin. Drawn with ::after (the ::before slot carries
+   the A–F column letters); the EMERGENCY berth and the ♿ badge keep their
+   own ::after because those selectors exclude them. */
+.seat.sel::after,.seat.bkd::after,.seat.fem:not(.sel):not(.bkd):not(.reserved)::after,
+.seat.u-fem:not(.sel):not(.bkd)::after,.seat.u-male:not(.sel):not(.bkd)::after,
+.seat.pvt:not(.sel):not(.bkd):not(.reserved):not(.u-fem):not(.u-male)::after{
+  position:absolute;top:2px;right:3px;font-size:9px;line-height:1;font-weight:800;pointer-events:none;text-decoration:none}
+.seat.sel::after{content:"✓";color:#fff}
+.seat.bkd::after{content:"✕";color:#93A3BC}
+.seat.bkd.hold::after{content:"⏳";font-size:8px}
+.seat.fem:not(.sel):not(.bkd):not(.reserved)::after{content:"♀";color:#B03A6E}
+.seat.u-fem:not(.sel):not(.bkd)::after{content:"♀";color:#B0165F}
+.seat.u-male:not(.sel):not(.bkd)::after{content:"♂";color:#12408C}
+.seat.pvt:not(.sel):not(.bkd):not(.reserved):not(.u-fem):not(.u-male)::after{content:"🔒";font-size:8px}
+/* Held (locked by another visitor) is amber stripes — distinct from booked grey. */
+.seat.hold{background:repeating-linear-gradient(45deg,#FFF3D6 0 6px,#FFE7B8 6px 12px);border-color:#E8C170;color:#8A6A1F}
+.lg.hold{background:repeating-linear-gradient(45deg,#FFF3D6 0 4px,#FFE7B8 4px 8px);border-color:#E8C170}
+/* Private-cabin berths (Private mode) are gold — the VIP colour the checkout uses. */
+.seat.pvt:not(.sel):not(.bkd):not(.reserved):not(.u-fem):not(.u-male){border-color:#C9A227;background:#FFFBEF;color:#7A5A00}
+.lg.pvt{background:#FFFBEF;border-color:#C9A227}
+:root[data-theme="dark"] .seat.hold{background:repeating-linear-gradient(45deg,#3A2E14 0 6px,#4A3A18 6px 12px);border-color:#8A6A1F;color:#E8C170}
+:root[data-theme="dark"] .seat.pvt:not(.sel):not(.bkd):not(.reserved):not(.u-fem):not(.u-male){background:#2A2210;border-color:#C9A227;color:#F1D27A}
+
+/* Seat hold countdown pill */
+.hold-pill{display:flex;align-items:center;justify-content:center;gap:6px;background:#FFF6E5;border:1.5px dashed #EBC98A;color:#7A5B33;border-radius:12px;padding:9px 14px;font-size:13px;font-weight:800;margin-bottom:12px;font-variant-numeric:tabular-nums}
+.sum-row.disc span,.sum-row.disc b{color:var(--ok)}
+
+/* Payment method tabs (UPI / eSewa) */
+.pm-tabs{display:flex;gap:8px;margin-bottom:14px}
+.pm-tab{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:12px;border-radius:14px;border:1.5px solid var(--line);background:#fff;font-weight:800;font-size:14px;color:var(--muted);transition:all .2s}
+.pm-tab.on{border-color:var(--orange);background:#FFF7EF;color:var(--ink);box-shadow:0 4px 14px rgba(240,124,31,.16)}
+.esewa-amt{font-family:var(--f-display);font-weight:800;font-size:22px;color:#5C9E31;display:block;margin:2px 0 6px}
+.upi-deeplink{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:800;color:var(--blue);margin-top:8px}
+
+/* Status extras: letterhead, return leg, crew, support strip */
+.tk-letterhead{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:16px 30px;background:linear-gradient(135deg,var(--blue-deep),var(--blue-800));color:#fff}
+.tk-letterhead b{font-family:var(--f-display);font-size:16px;letter-spacing:.03em;display:block}
+.tk-letterhead small{display:block;font-size:10.5px;color:#AFC6E9;margin-top:2px}
+.tk-letterhead .tk-id{text-align:right}
+.tk-letterhead .tk-id b{font-family:var(--f-code);font-size:17px;color:#FFC98C}
+.status-band.cancelled{background:linear-gradient(135deg,#5A6A85,#7A8AA5)}
+.ret-block{border:1.5px dashed var(--blue-100);background:var(--blue-50);border-radius:16px;padding:16px 18px;margin:6px 0 14px}
+.ret-tag{display:inline-block;font-family:var(--f-code);font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--blue-800);background:var(--blue-100);border-radius:999px;padding:3px 11px;margin-bottom:8px}
+.crew-box{display:flex;gap:12px;align-items:flex-start;background:#FFF7EF;border:1.5px dashed #F3D3AE;border-radius:14px;padding:13px 16px;margin:14px 0;font-size:14px}
+.crew-box small{display:block;font-family:var(--f-code);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--warn);margin-bottom:3px}
+.support-strip{text-align:center;font-size:13px;color:var(--muted);background:var(--blue-50);border-radius:12px;padding:10px 14px;margin:14px 0 4px}
+.btn-wa{background:#E7F8EE;border:1.5px solid #BFE8CF;color:#0F7A3D}
+.btn-wa:hover{background:#D9F3E4}
+.btn-danger{background:linear-gradient(135deg,#C0392B,#D95548);color:#fff;box-shadow:0 8px 20px rgba(197,48,48,.28)}
+.btn-danger-ghost{border:1.5px solid #F2C6C6;background:#fff;color:var(--bad)}
+.btn-danger-ghost:hover{background:#FDEDED}
+
+/* Welcome-back loyalty note */
+.wb-note{display:flex;gap:10px;align-items:flex-start;background:linear-gradient(135deg,#FFF9EE,#FDF1DC);border:1.5px solid #F0DBB0;border-radius:14px;padding:13px 16px;font-size:13.5px;margin-top:12px}
+
+/* Modal (sign-in / waitlist / cancel) */
+.shg-modal{position:fixed;inset:0;background:rgba(14,25,48,.55);backdrop-filter:blur(4px);z-index:120;display:none;align-items:flex-end;justify-content:center;padding:18px}
+.shg-modal.open{display:flex;animation:fadeDown .25s ease}
+.shg-modal .m-box{background:#fff;border-radius:24px;box-shadow:var(--shadow-lg);max-width:430px;width:100%;padding:28px 26px;position:relative;animation:sheetUp .3s cubic-bezier(.2,.65,.3,1)}
+@keyframes sheetUp{from{transform:translateY(30px);opacity:0}to{transform:none;opacity:1}}
+.m-close{position:absolute;top:10px;right:10px;width:44px;height:44px;border-radius:50%;background:var(--blue-50);color:var(--blue-800);font-size:16px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.m-title{font-family:var(--f-display);font-size:19px;margin-bottom:4px;padding-right:36px}
+.m-sub{font-size:13.5px;color:var(--muted);margin-bottom:16px}
+.m-actions{display:flex;gap:10px;margin-top:6px}
+.m-actions .btn{flex:1}
+@media (min-width:761px){.shg-modal{align-items:center}}
+
+/* Seasonal notice banner (admin-controlled) */
+.notice-bar{background:linear-gradient(92deg,#FFF9EC,#FDEED2 45%,#FBE2B8);border-bottom:1px solid #F3D9B0;border-left:4px solid #D4A017;color:#7A4A08;font-size:13.5px;font-weight:700}
+.notice-bar .container{display:flex;align-items:center;gap:10px;padding-top:9px;padding-bottom:9px}
+.notice-bar .megaphone{flex:none}
+.notice-bar span{flex:1}
+.notice-bar button{flex:none;width:30px;height:30px;border-radius:50%;color:#7A4A08;font-size:15px;font-weight:800}
+.notice-bar button:hover{background:rgba(122,74,8,.1)}
+
+/* My Bookings */
+.my-hello{display:flex;justify-content:space-between;align-items:center;gap:12px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px 20px;margin-bottom:16px;flex-wrap:wrap}
+.my-hello b{display:block;font-size:15px}
+.my-hello small{display:block;color:var(--warn);font-weight:700;font-size:12.5px;margin-top:3px}
+.mybk-card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:18px 20px;margin-bottom:14px;transition:box-shadow .25s}
+.mybk-card:hover{box-shadow:var(--shadow-sm)}
+.mybk-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.mybk-head small{margin-left:auto;color:var(--muted);font-weight:600}
+.mybk-route{font-size:14.5px;margin-bottom:12px}
+.mybk-route em{font-style:normal;color:var(--orange)}
+.mybk-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+/* Return-leg picker banner on results */
+.ret-banner{background:linear-gradient(90deg,var(--blue-50),#fff);border:1.5px dashed var(--blue-100);border-radius:14px;padding:13px 16px;font-size:14px;font-weight:600;color:var(--blue-800);margin-bottom:18px}
+
+/* Admin toolbar + waitlist */
+.adm-toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.adm-toolbar input,.adm-toolbar select{padding:11px 14px;border:1.5px solid var(--line);border-radius:12px;background:#fff;font-weight:600;transition:border-color .2s ease,box-shadow .2s ease,transform .15s ease}
+.adm-toolbar input:focus,.adm-toolbar select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(46,95,168,.15);transform:scale(1.01)}
+.adm-toolbar input{flex:1;min-width:200px}
+.field input,.field select,.field textarea{transition:border-color .2s ease,box-shadow .2s ease}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(46,95,168,.12)}
+.wl-dot{display:inline-flex;align-items:center;justify-content:center;min-width:19px;height:19px;border-radius:999px;background:var(--bad);color:#fff;font-size:11px;font-weight:800;padding:0 5px;margin-left:4px}
+.wl-notify{border-color:#EBC98A;background:#FFFBF2;box-shadow:0 0 0 3px rgba(235,201,138,.25)}
+.astat-grid{grid-template-columns:repeat(4,1fr)}
+
+/* Sticky Book Now (mobile) + bottom nav */
+.bottom-nav{position:fixed;left:0;right:0;bottom:0;z-index:80;display:none;background:rgba(255,255,255,.96);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--line);box-shadow:0 -6px 24px rgba(18,38,78,.08);padding:6px 4px calc(6px + env(safe-area-inset-bottom));transform:translateZ(0)}
+.bn-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 4px;border-radius:12px;font-size:11px;font-weight:700;color:var(--muted);min-height:52px;justify-content:center;transition:color .2s ease,transform .15s ease;-webkit-tap-highlight-color:transparent}
+.bn-item .bi{font-size:20px;line-height:1;transition:transform .25s cubic-bezier(.34,1.56,.64,1)}
+.bn-item.on{color:var(--orange-600)}
+.bn-item.on .bi{transform:translateY(-2px) scale(1.1)}
+.bn-item:active{background:var(--blue-50);transform:scale(.92)}
+
+/* ---------- [CSS] 46. CONFIRMATION SUCCESS ANIMATION ---------- */
+.confirm-success{position:relative;overflow:hidden}
+.confirm-success .status-band.confirmed{background:linear-gradient(135deg,#0B6E3D 0%,#1FA463 45%,#27B86C 100%)}
+.confirm-checkmark{width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
+.confirm-checkmark svg{width:44px;height:44px}
+.confirm-checkmark .ck-circle{fill:none;stroke:rgba(255,255,255,.3);stroke-width:2}
+.confirm-checkmark .ck-check{fill:none;stroke:#fff;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:32;stroke-dashoffset:32}
+.confirm-anim .ck-check{animation:ckDraw .5s .2s ease-out forwards}
+.confirm-anim .ck-circle{animation:ckCircle .4s ease-out forwards}
+@keyframes ckDraw{to{stroke-dashoffset:0}}
+@keyframes ckCircle{from{stroke-dasharray:126;stroke-dashoffset:126}to{stroke-dasharray:126;stroke-dashoffset:0}}
+.confetti-burst{position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;overflow:hidden;z-index:2}
+.confetti-burst i{position:absolute;width:6px;height:10px;border-radius:2px;opacity:0}
+.confirm-anim .confetti-burst i{animation:confettiFall 1.2s ease-out forwards}
+.confetti-burst i:nth-child(1){left:12%;background:#FFB25E;animation-delay:.1s}
+.confetti-burst i:nth-child(2){left:28%;background:#5FA8E8;animation-delay:.15s;width:8px;height:6px;border-radius:50%}
+.confetti-burst i:nth-child(3){left:42%;background:#F07C1F;animation-delay:.2s}
+.confetti-burst i:nth-child(4){left:56%;background:#1FA463;animation-delay:.12s;width:5px;height:12px}
+.confetti-burst i:nth-child(5){left:70%;background:#E8C547;animation-delay:.18s;border-radius:50%}
+.confetti-burst i:nth-child(6){left:84%;background:#C74444;animation-delay:.25s}
+.confetti-burst i:nth-child(7){left:20%;background:#5FA8E8;animation-delay:.22s;width:4px;height:8px}
+.confetti-burst i:nth-child(8){left:65%;background:#FFB25E;animation-delay:.08s;width:7px;height:5px;border-radius:50%}
+@keyframes confettiFall{0%{opacity:1;transform:translateY(-20px) rotate(0deg) scale(1)}60%{opacity:1}100%{opacity:0;transform:translateY(120px) rotate(720deg) scale(.4)}}
+@media (prefers-reduced-motion:reduce){.confirm-anim .ck-check,.confirm-anim .ck-circle,.confirm-anim .confetti-burst i{animation:none;opacity:1;stroke-dashoffset:0;transform:none}}
+.status-hero-strip{display:flex;align-items:center;justify-content:center;gap:18px;padding:14px 24px;background:linear-gradient(100deg,var(--blue-deep),var(--blue));color:#fff;font-size:13px;font-weight:700;letter-spacing:.04em}
+.status-hero-strip .sh-pnr{font-family:var(--f-code);font-size:18px;color:#FFC98C;letter-spacing:.08em}
+.status-hero-strip .sh-route{font-family:var(--f-display);font-size:15px}
+.status-hero-strip .sh-total{font-size:17px;color:#FFD9A8;margin-left:auto}
+@media (max-width:520px){.status-hero-strip{flex-wrap:wrap;gap:8px;padding:12px 16px;font-size:12px}.status-hero-strip .sh-total{margin-left:0;width:100%;text-align:center}}
+
+/* ---------- [CSS] 47. TRACKING HIGHLIGHT CARD ---------- */
+.trk-highlight{position:relative;overflow:hidden;border-radius:24px;background:linear-gradient(135deg,#0A1628 0%,#12264E 40%,#1A3A6A 100%);padding:42px 36px;color:#fff;margin-top:34px;box-shadow:0 12px 40px rgba(10,22,40,.35)}
+.trk-highlight::before{content:'';position:absolute;top:-60%;right:-20%;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,rgba(240,124,31,.18),transparent 70%);pointer-events:none}
+.trk-highlight .trk-hl-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(240,124,31,.15);border:1px solid rgba(240,124,31,.3);border-radius:999px;padding:5px 14px;font-size:11.5px;font-weight:800;color:#FFB25E;letter-spacing:.08em;text-transform:uppercase;margin-bottom:16px}
+.trk-highlight h2{font-family:var(--f-display);font-size:clamp(22px,3.2vw,32px);font-weight:800;line-height:1.15;margin-bottom:10px}
+.trk-highlight h2 .grad{background:linear-gradient(92deg,#FFB25E,#F07C1F);-webkit-background-clip:text;background-clip:text;color:transparent}
+.trk-highlight p{color:#AFC6E9;font-size:15px;max-width:52ch;margin-bottom:20px;line-height:1.6}
+.trk-hl-features{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:22px}
+.trk-hl-features span{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:6px 14px;font-size:12.5px;font-weight:600;color:#C7D7F0}
+.trk-hl-mini{position:absolute;right:36px;top:50%;transform:translateY(-50%);width:180px;height:180px;border-radius:50%;border:2px solid rgba(95,168,232,.25);display:flex;align-items:center;justify-content:center;opacity:.7}
+.trk-hl-mini .pulse-ring{position:absolute;width:100%;height:100%;border-radius:50%;border:2px solid rgba(95,168,232,.15);animation:trkHlPulse 2.5s ease-out infinite}
+.trk-hl-mini .bus-dot{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--orange));display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 0 20px rgba(240,124,31,.4)}
+@keyframes trkHlPulse{0%{transform:scale(.8);opacity:.6}100%{transform:scale(1.6);opacity:0}}
+@media (max-width:760px){.trk-hl-mini{display:none}.trk-highlight{padding:28px 22px}}
+:root[data-theme="dark"] .trk-highlight{background:linear-gradient(135deg,#050A14,#0A1628,#122040)}
+.trk-hl-accordion{margin-top:16px;border-top:1px solid rgba(255,255,255,.1);padding-top:14px}
+.trk-hl-accordion summary{cursor:pointer;font-size:13px;font-weight:700;color:#AFC6E9;list-style:none;display:flex;align-items:center;gap:6px}
+.trk-hl-accordion summary::before{content:'▸';transition:transform .2s}
+.trk-hl-accordion[open] summary::before{transform:rotate(90deg)}
+.trk-hl-accordion .hl-explain{font-size:12.5px;color:#8FA5CC;line-height:1.7;margin-top:10px;padding-left:14px}
+.trk-hl-accordion .hl-explain b{color:#C7D7F0}
+
+/* ---------- [CSS] 48. MODULE EXPLAINERS ---------- */
+.mod-help-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;border:1.5px solid var(--line);background:var(--card);color:var(--muted);font-weight:800;font-size:13px;cursor:pointer;transition:all var(--dur-fast) var(--ease-standard);margin-left:8px;vertical-align:middle;flex-shrink:0}
+.mod-help-btn:hover{background:var(--blue-50);color:var(--blue);border-color:var(--blue-100)}
+.mod-explain{display:none;background:var(--blue-50);border:1px solid var(--blue-100);border-radius:14px;padding:14px 18px;margin:10px 0 16px;font-size:13.5px;color:var(--ink);line-height:1.65;animation:viewIn var(--dur-base) var(--ease-decel)}
+.mod-explain.show{display:block}
+.mod-explain ul{margin:6px 0 0 16px;font-size:13px;color:var(--muted)}
+.mod-explain ul li{margin-bottom:3px}
+.mod-explain .mod-dismiss{display:inline-block;margin-top:8px;font-size:12px;font-weight:700;color:var(--blue);cursor:pointer;border:none;background:none;padding:0}
+.atab-subtitle{display:block;font-size:11.5px;font-weight:500;color:var(--muted);margin-top:2px;letter-spacing:0;text-transform:none}
+.atab.on .atab-subtitle{color:rgba(255,255,255,.7)}
+
+/* ---------- [CSS] 49. STICKY INFO STRIPS ---------- */
+.sticky-flow-info{position:sticky;top:74px;z-index:20;background:linear-gradient(135deg,var(--blue-deep),var(--blue-800));color:#fff;padding:8px 22px;display:flex;align-items:center;gap:14px;font-size:13px;font-weight:600;flex-wrap:wrap;box-shadow:0 2px 12px rgba(18,38,78,.15)}
+.sticky-flow-info .sfi-route{font-family:var(--f-display);font-size:15px;letter-spacing:.02em}
+.sticky-flow-info .sfi-date{font-family:var(--f-code);color:#AFC6E9;font-size:12px}
+.sticky-flow-info .sfi-fare{margin-left:auto;font-family:var(--f-display);font-size:16px;color:#FFC98C}
+@media (max-width:520px){.sticky-flow-info{gap:6px;padding:6px 14px;font-size:11.5px}.sticky-flow-info .sfi-fare{margin-left:0;width:100%}}
+
+/* Print: only the ticket card */
+@media print{
+  .topbar,.nav,.mobile-menu,.notice-bar,footer,.bottom-nav,#toast,.demo-hint,.flow-head,#noticeBar,#aiFab,#aiPanel,.confetti-burst{display:none!important}
+  body{background:#fff;margin:0;padding:0}
+  .view{display:block!important}
+  .view:not(#view-status){display:none!important}
+  .status-card{box-shadow:none;border:1px solid #B9C7DE;max-width:100%;break-inside:avoid}
+  .status-actions{display:none!important}
+  .status-band{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .bp-band,.vip-band,.share-band,.tk-letterhead{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+
+/* Mobile refinements — comfortable Android tap targets */
+@media (max-width:760px){
+  .bottom-nav{display:flex}
+  body{padding-bottom:76px}
+  .seat{min-height:46px}
+  .seat.slpr{min-height:54px}
+  .btn{min-height:46px}
+  .lang-btn{padding:4px 9px}
+  .pm-tab{padding:13px 8px}
+  .astat-grid{grid-template-columns:1fr 1fr}
+  .adm-toolbar input{min-width:140px}
+  .tk-letterhead{padding:14px 20px}
+  .status-body{padding:22px 18px 26px}
+  .search-card.round .search-grid{grid-template-columns:1fr}
+  .shg-modal{padding:10px}
+
+  /* ---- Native-app feel on iOS + Android ------------------------------
+     These are the details that separate "a website in a browser" from
+     "an app": no grey tap flash, no rubber-band chaining to the page
+     behind, no accidental text selection when you drag the seat map,
+     and — the big one — form controls at 16px so iOS Safari does NOT
+     zoom the whole page in the moment a field is focused. A phone that
+     zooms itself on every input is the single most website-like thing
+     a booking flow can do. */
+  html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+  body{overscroll-behavior-y:contain}
+  *{-webkit-tap-highlight-color:transparent}
+  .topbar,.nav,.bottom-nav,.credit-ribbon,.trip-toggle,.date-chips,
+  .seat,.bn-item,.btn,.lang-btn,.sp-pill,.fb-row{-webkit-user-select:none;user-select:none}
+  /* 16px is a hard iOS floor, not a style choice — Safari zooms the page
+     on focus below it. Listed at the same specificity as the rules that
+     set 15.5px (.s-field select, .pax-row input) so this wins on phones
+     without touching the desktop sizing. */
+  input:not([type=checkbox]):not([type=radio]):not([type=file]),
+  select,textarea{font-size:16px !important}
+  /* The support email is 34 characters and wrapped the top strip onto a
+     second line on every phone; the same address is one tap away in the
+     footer and in Contact. */
+  .topbar .tb-right a[href^="mailto:"]{display:none}
+}
+
+/* ===== [CSS] SMALL-PHONE TYPOGRAPHY (≤360px) ========================
+   Budget Androids (many at 360×640 and some at 320px) get cramped by the
+   desktop-leaning display sizes: long Devanagari headings wrap awkwardly
+   and push the fold down. Trim only the biggest text; body copy is
+   already fluid. Buttons keep their 44px+ touch height. */
+@media (max-width:360px){
+  .flow-head h2{font-size:19px}
+  .flow-head .sub{font-size:12.5px}
+  .steps .step span:last-child{font-size:10px}
+  .section-head h2{font-size:21px}
+  .sum-card h3{font-size:16px}
+  .sum-row{font-size:13px}
+  .bc-time .t{font-size:15px}
+  .bc-mid h3{font-size:15.5px}
+  .bc-fare .amt{font-size:19px}
+  .btn{font-size:14.5px;padding:12px 16px}
+  .co-card{padding:18px 14px}
+  .co-card h3{font-size:15.5px}
+  .field label{font-size:12.5px}
+  .pm-tab{font-size:12.5px}
+  .date-strip-30 button{min-width:52px}
+}
+
+/* ===== [CSS] MOBILE STICKY ACTION BAR ==============================
+   The single most important mobile fix: the flow's primary Next/Back is
+   pinned to the bottom of the screen so it is ALWAYS one tap away.
+
+   Before this, the "Continue →" button sat at the very end of a long
+   scrolling seat map. On a phone it landed under (or right on top of)
+   the fixed bottom tab-bar, so a thumb tap hit the nav bar instead of
+   Continue — this is the "Next button doesn't work on mobile" report.
+   A mouse on desktop can hit the exposed sliver precisely, which is why
+   it "only worked on desktop". Pinning the bar removes the whole class
+   of problem: no scrolling to find Next, nothing overlapping it.
+==================================================================== */
+@media (max-width:760px){
+  /* Give the bottom edge to the action bar during the booking flow.
+     TWO SEPARATE RULES on purpose — never merge them: an old browser that
+     doesn't know :has() throws away the ENTIRE rule a bad selector sits
+     in, so sharing one selector list would kill the fallback too. The
+     `.in-flow` class is set by showView() and works everywhere; the
+     :has() rule is belt-and-braces for any path that toggles .active
+     without going through showView(). */
+  body.in-flow .bottom-nav{display:none}
+  body:has(#view-results.active) .bottom-nav,
+  body:has(#view-seats.active) .bottom-nav,
+  body:has(#view-checkout.active) .bottom-nav{display:none}
+
+  /* A position:fixed element pins to the viewport ONLY if no ancestor
+     is a "containing block". Two ancestors on the bar's chain are:
+       1. .sum-card's backdrop-filter (blur) — killed here (ID beats the
+          .sum-card rule in views.css that loads later). Card is opaque.
+       2. the view's entering animation transform — swapped below for an
+          opacity-only fade so there is never a transform on the chain. */
+  #view-seats .sum-card{backdrop-filter:none !important;-webkit-backdrop-filter:none !important}
+  #view-seats.view.active,
+  #view-checkout.view.active{animation-name:flowViewIn}
+
+  #view-seats .flow-actions,
+  #view-checkout .flow-actions{
+    position:fixed;left:0;right:0;bottom:0;z-index:88;
+    margin:0;gap:10px;
+    padding:10px 14px calc(10px + env(safe-area-inset-bottom));
+    background:var(--card);
+    border-top:1px solid var(--line);
+    box-shadow:0 -6px 22px rgba(18,38,78,.14);
+  }
+  #view-seats .flow-actions .btn,
+  #view-checkout .flow-actions .btn{min-height:52px;font-size:16px}
+
+  /* Checkout labels are long bilingual strings that don't fit side by
+     side on a phone (the Back button wraps to a 47px-wide, 93px-tall
+     sliver). So stack them: the primary "Continue to Payment" on top and
+     a slim "Back to seats" beneath — kept compact so the fixed bar stays
+     shallow. (Seats keeps a short "Back", so it stays a side-by-side row.) */
+  #view-checkout .flow-actions{flex-direction:column-reverse;align-items:stretch;gap:8px}
+  #view-checkout .flow-actions #coContinueBtn{width:100%}
+  #view-checkout .flow-actions #checkoutBackBtn{width:100%;min-height:48px;font-size:13.5px;padding-top:8px;padding-bottom:8px}
+
+  /* keep the tail of the scrolling content clear of the fixed bar */
+  #view-seats .flow-body{padding-bottom:104px}
+  #view-checkout .flow-body{padding-bottom:150px}
+}
+
+/* ===== block 5 (was head, 4072 chars) ===== */
+
+/* === MAP PRO UPGRADE ===  reusable body-mounted location-search dropdown.
+   Mounted on <body> so no overflow:hidden ancestor can clip it, and layered above
+   the fixed navigator (z-index 100). Uses the site's global theme tokens so it
+   adapts to light/dark and the 7 daily palettes automatically. */
+.locss-dd{position:fixed;z-index:99999;background:var(--card);color:var(--ink);
+  border:1px solid var(--line);border-radius:14px;overflow-y:auto;overflow-x:hidden;
+  box-shadow:0 18px 50px rgba(10,20,40,.28);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,'Noto Sans Devanagari',sans-serif;
+  -webkit-overflow-scrolling:touch;
+  /* shg-v59 — fade+slide-in for the autocomplete dropdown (item #3). Initial state is
+     nudged 6px up and transparent; .locss-open flips both. transform:translate3d is used
+     so the compositor picks this up on GPU and never repaints the body list under it. */
+  opacity:0; transform:translate3d(0,-6px,0);
+  transition:opacity .15s ease-out, transform .15s ease-out}
+.locss-dd.locss-open{opacity:1; transform:translate3d(0,0,0)}
+@media (prefers-reduced-motion: reduce){ .locss-dd{transition:none} }
+/* Shimmer skeleton row shown while the geocoder is fetching (item #3, #5 —
+   loading state instead of a blank flash). Two grey bars glide left-to-right
+   at ~1.4Hz so the panel feels alive even before real rows land. */
+.locss-sk{display:flex;align-items:center;gap:10px;padding:11px 13px;border-bottom:1px solid var(--line)}
+.locss-sk:last-child{border-bottom:none}
+.locss-sk > span,.locss-sk > b{display:block;height:11px;border-radius:6px;
+  background:linear-gradient(90deg,rgba(120,132,158,.10) 0%,rgba(120,132,158,.24) 50%,rgba(120,132,158,.10) 100%);
+  background-size:220% 100%;animation:locssShimmer 1.4s linear infinite}
+.locss-sk > span{width:18px;height:18px;border-radius:50%;flex:none}
+.locss-sk > b{flex:1;max-width:70%}
+@keyframes locssShimmer{0%{background-position:120% 0}100%{background-position:-120% 0}}
+@media (prefers-reduced-motion: reduce){ .locss-sk > span,.locss-sk > b{animation:none} }
+.locss-row{display:flex;align-items:flex-start;gap:10px;padding:10px 13px;cursor:pointer;
+  border-bottom:1px solid var(--line);transition:background .12s}
+.locss-row:last-child{border-bottom:none}
+.locss-row.on,.locss-row:hover{background:rgba(46,95,168,.10);
+  background:color-mix(in srgb,var(--blue) 13%,transparent)}
+.locss-ic{font-size:16px;line-height:1.3;flex:none;width:20px;text-align:center}
+.locss-txt{min-width:0;flex:1;line-height:1.32}
+.locss-txt b{display:block;font-size:13.5px;font-weight:600;color:var(--ink);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.locss-chip{display:inline-block;margin-left:6px;padding:0 6px;border-radius:8px;font-size:11px;
+  font-weight:600;vertical-align:middle;color:var(--orange-600,var(--orange));
+  background:rgba(240,124,31,.16);background:color-mix(in srgb,var(--orange) 20%,transparent)}
+.locss-sec{display:block;font-size:11.5px;color:var(--muted);margin-top:1px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.locss-hd{display:flex;align-items:center;justify-content:space-between;padding:7px 13px;
+  font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);
+  border-bottom:1px solid var(--line)}
+.locss-hd .locss-clear{background:none;border:none;color:var(--blue);font:inherit;font-size:10px;cursor:pointer}
+.locss-ft{padding:6px 13px;font-size:10.5px;color:var(--muted);text-align:right;
+  border-top:1px solid var(--line);background:rgba(92,107,133,.06)}
+@media (prefers-reduced-motion: reduce){ .locss-row{transition:none} }
+
+/* [MAP PRO] Premium collapsible navigator bottom-sheet — keeps the MAP dominant.
+   peek = grabber + summary only (map fills the screen); half / full slide up. */
+#view-nav .sn-dock{padding:0}
+#view-nav .sn-panel{position:relative;max-width:680px;display:flex;flex-direction:column;
+  border-radius:22px 22px 0 0;padding-bottom:env(safe-area-inset-bottom);will-change:transform;
+  transition:transform .32s cubic-bezier(.22,.61,.36,1)}
+#view-nav .sn-grab{display:block;flex:none;width:100%;background:none;border:none;cursor:grab;
+  padding:9px 0 4px;touch-action:none}
+#view-nav .sn-grab::before{content:"";display:block;width:42px;height:5px;margin:0 auto;
+  border-radius:99px;background:var(--sm);opacity:.5}
+#view-nav .sn-peekbar{display:flex;align-items:center;gap:11px;padding:3px 16px 12px;cursor:pointer;user-select:none}
+#view-nav .sn-peekbar .pk-ico{font-size:20px;flex:none}
+#view-nav .sn-peekbar .pk-txt{flex:1;min-width:0}
+#view-nav .sn-peekbar .pk-txt b{display:block;font-size:14.5px;font-weight:700;color:var(--sk);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#view-nav .sn-peekbar .pk-txt small{display:block;font-size:11.5px;color:var(--sm);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#view-nav .sn-peekbar .pk-caret{font-size:12px;color:var(--sm);flex:none}
+#view-nav .sn-sheet-scroll{overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;
+  max-height:74vh;transition:max-height .32s cubic-bezier(.22,.61,.36,1)}
+#view-nav .sn-dock[data-sheet="peek"] .sn-sheet-scroll{max-height:0}
+#view-nav .sn-dock[data-sheet="half"] .sn-sheet-scroll{max-height:40vh}
+#view-nav .sn-dock[data-sheet="full"] .sn-sheet-scroll{max-height:74vh}
+@media (prefers-reduced-motion: reduce){
+  #view-nav .sn-panel,#view-nav .sn-sheet-scroll{transition:none}
+  #view-nav .sn-me-pulse{animation:none}
+}
+
+/* ------------------------------------------------------------------
+   Mobile-first tap-target floor (WCAG 2.5.5 / Apple HIG 44pt).
+   Only applied on coarse pointers OR narrow viewports so the dense
+   desktop admin/toolbar layout is untouched. Explicit selectors
+   (not a blanket `button, a`) so we don't accidentally inflate
+   inline icon links or admin table row controls that are already
+   sized on desktop.
+------------------------------------------------------------------ */
+@media (max-width:900px){
+  .btn,.nav-link,.qa-card,.lang-btn,.rg-card,
+  button[type=button],a.pill{min-height:44px;min-width:44px}
+}
+@media (pointer:coarse){
+  .btn,.nav-link,.qa-card,.lang-btn,.rg-card,
+  button[type=button],a.pill{min-height:44px;min-width:44px}
+}
+
+/* ---------- [CSS] shg-v60. DARK-MODE GAP FILLS ----------
+   Landing-page info sections that used hardcoded #fff / light colors.
+   Now they adapt to the user's dark-mode preference. */
+:root[data-theme="dark"] .why-card{background:var(--card);border-color:var(--line)}
+:root[data-theme="dark"] .testi-card{background:var(--card);border-color:var(--line)}
+:root[data-theme="dark"] .testi-card::before{color:rgba(255,255,255,.1)}
+:root[data-theme="dark"] .pricing-card{background:var(--card);box-shadow:var(--shadow-md)}
+:root[data-theme="dark"] .pricing-card thead th{background:rgba(46,95,168,.18);color:var(--blue-100)}
+:root[data-theme="dark"] .pricing-card.private thead th{background:rgba(240,124,31,.15);color:var(--orange)}
+:root[data-theme="dark"] .pricing-card tbody tr:hover{background:rgba(46,95,168,.08)}
+:root[data-theme="dark"] .pricing-card.private tbody tr:hover{background:rgba(240,124,31,.08)}
+:root[data-theme="dark"] .pricing-cta{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);border-radius:16px}
+:root[data-theme="dark"] .pricing-cta p{color:#86efac}
+:root[data-theme="dark"] .tc-sum{background:rgba(46,95,168,.12);color:var(--ink)}
+:root[data-theme="dark"] .tc-clause p{color:var(--ink)}
+:root[data-theme="dark"] .tc-dosdnts .tc-dos{background:rgba(34,197,94,.1);border-color:rgba(34,197,94,.2)}
+:root[data-theme="dark"] .tc-dosdnts .tc-donts{background:rgba(197,48,48,.1);border-color:rgba(197,48,48,.2)}
+:root[data-theme="dark"] .tc-dosdnts li{color:var(--ink)}
+:root[data-theme="dark"] .rules-summary{background:rgba(240,124,31,.1);border-color:rgba(240,124,31,.25);color:var(--ink)}
+:root[data-theme="dark"] .crew-box{background:rgba(240,124,31,.08);border-color:rgba(240,124,31,.2)}
+:root[data-theme="dark"] .pax-row input,:root[data-theme="dark"] .pax-row select{background:var(--card)}
+
+/* ---------- [CSS] shg-v60. :ACTIVE TAP FEEDBACK ----------
+   Mobile users see a brief scale-down on press — feels alive. */
+.nav-link:active{transform:scale(.96)}
+.date-chips button:active:not(.on){transform:scale(.95)}
+.pax-memory .pm-chip:active{transform:scale(.95)}
+.faq-q:active{transform:scale(.98)}
+.swap-btn:active{transform:scale(.88) rotate(180deg)}
+.flag-card:active{transform:scale(.97)}
+.svc-card:active{transform:scale(.98)}
+.mybk-card:active{transform:scale(.98)}
+.proof-tab:active{transform:scale(.95)}
+.style-card:active{transform:scale(.98)}

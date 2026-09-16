@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<!--
+  fix.html — one-tap repair + diagnostic page.
+
+  Deliberately standalone: no app CSS, no app JS, no service worker of
+  its own, nothing cached. It exists because repeated fixes appeared to
+  do nothing on the owner's phone and we could never see WHAT that phone
+  was actually running. This page answers that in one screenshot, and
+  repairs the device while it is at it.
+-->
+<html lang="ne">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>S Hari Global — मर्मत / Repair</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;padding:18px 16px 40px;background:#0E1E40;color:#EAF2FF;
+       font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans Devanagari',sans-serif;
+       line-height:1.6;-webkit-text-size-adjust:100%}
+  h1{font-size:21px;margin:0 0 4px}
+  .sub{color:#9FB6DA;font-size:13px;margin-bottom:18px}
+  .card{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);
+        border-radius:14px;padding:14px;margin-bottom:14px}
+  .row{display:flex;justify-content:space-between;gap:10px;padding:7px 0;
+       border-bottom:1px solid rgba(255,255,255,.08);font-size:13.5px}
+  .row:last-child{border-bottom:0}
+  .k{color:#9FB6DA;flex:none}
+  .v{font-family:ui-monospace,Menlo,Consolas,monospace;text-align:right;word-break:break-all}
+  .ok{color:#6EE7A8}.bad{color:#FF9B9B}.warn{color:#FFCE7A}
+  button{width:100%;min-height:56px;font-size:17px;font-weight:800;border:0;border-radius:14px;
+         background:linear-gradient(135deg,#F07C1F,#E06A0C);color:#fff;cursor:pointer;
+         box-shadow:0 8px 22px rgba(240,124,31,.35);touch-action:manipulation}
+  button:active{transform:scale(.98)}
+  button[disabled]{opacity:.6}
+  .go{background:linear-gradient(135deg,#2E5FA8,#1E4488);box-shadow:0 8px 22px rgba(46,95,168,.35);
+      margin-top:10px;display:none;text-align:center;text-decoration:none;color:#fff;
+      line-height:56px;border-radius:14px;font-weight:800;font-size:17px}
+  #log{font-size:12.5px;font-family:ui-monospace,Menlo,Consolas,monospace;color:#BFD3F0;
+       white-space:pre-wrap;margin-top:12px}
+  .hint{font-size:12.5px;color:#9FB6DA;margin-top:16px}
+</style>
+</head>
+<body>
+
+<h1>🔧 S Hari Global — मर्मत</h1>
+<div class="sub">यो पेजले फोनमा अड्किएको पुरानो version हटाउँछ।<br>This clears the stuck old version on your phone.</div>
+
+<div class="card" id="diag">
+  <div class="row"><span class="k">जाँच हुँदै…</span><span class="v">…</span></div>
+</div>
+
+<button id="btn">सबै सफा गर्नुहोस् · Clean everything</button>
+<a class="go" id="go" href="https://www.shreehariglobal.in/">एप खोल्नुहोस् · Open the app →</a>
+
+<div id="log"></div>
+
+<div class="card" id="scrollcard">
+  <div style="font-weight:800;font-size:15px;margin-bottom:6px">📜 Scroll जाँच / Scroll test</div>
+  <div style="font-size:12.5px;color:#9FB6DA;margin-bottom:10px">
+    तलको बाकसमा औंलाले <b>माथि-तल</b> स्वाइप गर्नुहोस्।<br>
+    Swipe <b>up and down</b> inside the box below.
+  </div>
+  <div id="pad" style="height:150px;overflow:hidden;border-radius:10px;
+       background:repeating-linear-gradient(180deg,#16305C 0 24px,#1B3A6E 24px 48px);
+       border:1px solid rgba(255,255,255,.18);position:relative">
+    <div style="position:absolute;inset:0;display:flex;align-items:center;
+         justify-content:center;font-size:13px;color:#BFD3F0">यहाँ स्वाइप गर्नुहोस् ↕</div>
+  </div>
+  <div class="row"><span class="k">touchstart</span><span class="v" id="tS">0</span></div>
+  <div class="row"><span class="k">touchmove</span><span class="v" id="tM">0</span></div>
+  <div class="row"><span class="k">ठाडो दूरी / vertical px</span><span class="v" id="tD">0</span></div>
+  <div class="row"><span class="k">पेज सर्‍यो? / page moved</span><span class="v" id="tP">—</span></div>
+  <div class="row"><span class="k">कसैले रोक्यो? / prevented</span><span class="v" id="tX">—</span></div>
+  <div class="row"><span class="k">निष्कर्ष / verdict</span><span class="v" id="tV">स्वाइप गर्नुहोस्…</span></div>
+</div>
+
+<div class="hint">
+  माथिको जानकारी screenshot खिचेर पठाउनुहोस् भने समस्या पत्ता लगाउन सजिलो हुन्छ।<br>
+  Screenshot this and send it — it tells us exactly what your phone is running.
+</div>
+
+<script>
+(function () {
+  var diag = document.getElementById('diag');
+  var log  = document.getElementById('log');
+  var btn  = document.getElementById('btn');
+  var go   = document.getElementById('go');
+
+  function row(k, v, cls) {
+    return '<div class="row"><span class="k">' + k + '</span><span class="v ' +
+           (cls || '') + '">' + v + '</span></div>';
+  }
+  function say(m) { log.textContent += m + '\n'; }
+
+  var WANT_ORIGIN = 'https://www.shreehariglobal.in';
+
+  /* ---- Report what this device is actually running ---------------- */
+  async function scan() {
+    var html = '';
+
+    var onRightOrigin = (location.origin === WANT_ORIGIN);
+    html += row('Origin', location.origin, onRightOrigin ? 'ok' : 'bad');
+
+    // standalone == launched from the installed app icon
+    var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+                     (navigator.standalone === true);
+    html += row('कसरी खोलिएको', standalone ? 'APP (installed)' : 'Browser');
+
+    // Which build does the SERVER have right now?
+    var serverVer = '?';
+    try {
+      var r = await fetch(WANT_ORIGIN + '/sw.js?probe=' + Date.now(), { cache: 'no-store' });
+      var t = await r.text();
+      var m = t.match(/VERSION\s*=\s*'([^']+)'/);
+      serverVer = m ? m[1] : 'unreadable';
+    } catch (e) { serverVer = 'offline?'; }
+    html += row('सर्भरमा भएको', serverVer, 'ok');
+
+    // Which build is CACHED on this phone?
+    var cacheNames = [];
+    try { cacheNames = await caches.keys(); } catch (e) {}
+    var cachedVer = '(none)';
+    var shell = cacheNames.filter(function (n) { return n.indexOf('shg-') === 0; });
+    if (shell.length) {
+      var mm = shell.join(' ').match(/shg-v\d+/g);
+      cachedVer = mm ? Array.from(new Set(mm)).join(', ') : shell.join(', ');
+    }
+    var stale = (cachedVer !== '(none)' && serverVer !== '?' && cachedVer.indexOf(serverVer) === -1);
+    html += row('फोनमा अड्किएको', cachedVer, stale ? 'bad' : 'ok');
+    html += row('Cache count', String(cacheNames.length), cacheNames.length ? 'warn' : 'ok');
+
+    // Service workers on THIS origin
+    var regs = [];
+    try { regs = await navigator.serviceWorker.getRegistrations(); } catch (e) {}
+    html += row('Service workers', String(regs.length), regs.length ? 'warn' : 'ok');
+    html += row('नियन्त्रण गर्दै', (navigator.serviceWorker && navigator.serviceWorker.controller) ? 'YES' : 'no');
+
+    var verdict = (!onRightOrigin) ? 'गलत origin — यही मुख्य समस्या'
+                : stale            ? 'पुरानो version अड्किएको छ'
+                : (regs.length || cacheNames.length) ? 'सफा गर्न बाँकी'
+                : 'सफा छ ✓';
+    html += row('निष्कर्ष', verdict, (onRightOrigin && !stale) ? 'ok' : 'bad');
+
+    diag.innerHTML = html;
+  }
+
+  /* ---- Nuke everything -------------------------------------------- */
+  async function clean() {
+    btn.disabled = true;
+    btn.textContent = 'सफा गर्दै… / Cleaning…';
+
+    try {
+      var regs = await navigator.serviceWorker.getRegistrations();
+      for (var i = 0; i < regs.length; i++) {
+        try { await regs[i].unregister(); say('✓ service worker हटाइयो'); } catch (e) {}
+      }
+      if (!regs.length) say('• कुनै service worker थिएन');
+    } catch (e) { say('• service worker पहुँच भएन'); }
+
+    try {
+      var keys = await caches.keys();
+      for (var j = 0; j < keys.length; j++) {
+        try { await caches.delete(keys[j]); say('✓ cache मेटियो: ' + keys[j]); } catch (e) {}
+      }
+      if (!keys.length) say('• कुनै cache थिएन');
+    } catch (e) { say('• cache पहुँच भएन'); }
+
+    // Clear our own markers so the app's rescue logic can run again.
+    try {
+      ['shg:rescue', 'shg:sw'].forEach(function (k) { localStorage.removeItem(k); });
+      sessionStorage.removeItem('shg:rescued');
+      say('✓ marker हटाइयो');
+    } catch (e) {}
+
+    say('');
+    say('सकियो! तल्लो निलो बटन थिच्नुहोस् →');
+    btn.textContent = '✓ सफा भयो · Cleaned';
+    go.style.display = 'block';
+    // Cache-bust the entry so nothing can serve a stale shell.
+    go.href = WANT_ORIGIN + '/?fresh=' + Date.now();
+    scan();
+  }
+
+  /* ---- Live touch-scroll test -------------------------------------
+     The owner reports scrolling is dead on their phone while it works
+     on every device we can test. This measures what the device itself
+     reports: whether touch events arrive at all, how far the finger
+     travelled, whether the page actually moved, and whether anything
+     called preventDefault on the move (the classic scroll killer). */
+  (function () {
+    var tS=document.getElementById('tS'), tM=document.getElementById('tM'),
+        tD=document.getElementById('tD'), tP=document.getElementById('tP'),
+        tX=document.getElementById('tX'), tV=document.getElementById('tV');
+    if(!tS) return;
+    var starts=0, moves=0, dist=0, startY=0, pageAtStart=0, moved=false, prevented=false;
+
+    document.addEventListener('touchstart', function (e) {
+      starts++; tS.textContent = String(starts);
+      startY = e.touches[0].clientY;
+      pageAtStart = window.scrollY;
+      dist = 0; moved = false; prevented = false;
+    }, {passive:true});
+
+    document.addEventListener('touchmove', function (e) {
+      moves++; tM.textContent = String(moves);
+      dist = Math.max(dist, Math.abs(e.touches[0].clientY - startY));
+      tD.textContent = Math.round(dist) + ' px';
+      if (e.defaultPrevented) { prevented = true; }
+      if (Math.abs(window.scrollY - pageAtStart) > 4) moved = true;
+    }, {passive:true});
+
+    document.addEventListener('touchend', function () {
+      if (Math.abs(window.scrollY - pageAtStart) > 4) moved = true;
+      tP.textContent = moved ? 'YES ✓' : 'NO ✗';
+      tP.className = 'v ' + (moved ? 'ok' : 'bad');
+      tX.textContent = prevented ? 'YES — यही समस्या!' : 'no';
+      tX.className = 'v ' + (prevented ? 'bad' : 'ok');
+
+      var v, c;
+      if (starts === 0)            { v = 'touch नै आएन'; c='bad'; }
+      else if (moves === 0)        { v = 'touchmove आएन — ब्राउजरले रोक्यो'; c='bad'; }
+      else if (dist < 12)          { v = 'अझ लामो स्वाइप गर्नुहोस्'; c='warn'; }
+      else if (prevented)          { v = 'कोडले scroll रोकेको छ'; c='bad'; }
+      else if (!moved)             { v = 'औंला चल्यो तर पेज चलेन'; c='bad'; }
+      else                         { v = 'scroll ठीक छ ✓'; c='ok'; }
+      tV.textContent = v; tV.className = 'v ' + c;
+    }, {passive:true});
+  })();
+
+  btn.addEventListener('click', clean);
+  scan();
+})();
+</script>
+
+</body>
+</html>
