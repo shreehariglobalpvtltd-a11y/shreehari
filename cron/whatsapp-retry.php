@@ -111,6 +111,15 @@ if ($lastFail !== null) {
    newest id per booking is what makes this idempotent: as soon as a retry
    succeeds it writes a 'sent' row, which becomes the newest, and the booking
    drops out of this query on the next run. */
+/* Codes that condemn the RECIPIENT, not the attempt: the number is not on
+   WhatsApp at all (63024 / 63003) or is not a valid mobile (21211 / 21614).
+   Re-sending the identical message to the identical number cannot change
+   that answer, so these are excluded from the retry loop instead of burning
+   all MAX_TRIES on them; the passenger already got the SMS with the ticket
+   link at booking time, and cron_done() lists them so the office can call. */
+const UNREACHABLE_SQL = "(m.error LIKE '%(code 63024)%' OR m.error LIKE '%(code 63003)%'
+                         OR m.error LIKE '%(code 21211)%' OR m.error LIKE '%(code 21614)%')";
+
 $due = Database::fetchAll(
     "SELECT b.id, b.pnr, b.contact_phone,
             (SELECT COUNT(*) FROM message_logs t
@@ -122,12 +131,30 @@ $due = Database::fetchAll(
                      ORDER BY m2.id DESC LIMIT 1)
       WHERE b.status = 'confirmed'
         AND m.status = 'failed'
+        AND NOT " . UNREACHABLE_SQL . "
         AND EXISTS (SELECT 1 FROM booking_legs bl
                      WHERE bl.booking_id = b.id AND bl.travel_date >= CURDATE())
       HAVING tries < :max
       ORDER BY b.id DESC
       LIMIT " . BATCH_SIZE,
     ['max' => MAX_TRIES]
+);
+
+// Upcoming passengers whose number WhatsApp itself rejects — call them.
+$unreachable = (int) Database::scalar(
+    "SELECT COUNT(*)
+       FROM bookings b
+       JOIN message_logs m
+         ON m.id = (SELECT m2.id FROM message_logs m2
+                     WHERE m2.booking_id = b.id AND m2.channel = 'whatsapp'
+                     ORDER BY m2.id DESC LIMIT 1)
+      WHERE b.status = 'confirmed'
+        AND m.status = 'failed'
+        AND " . UNREACHABLE_SQL . "
+        AND EXISTS (SELECT 1 FROM booking_legs bl
+                     WHERE bl.booking_id = b.id AND bl.travel_date >= CURDATE())",
+    [],
+    0
 );
 
 $sent = 0;
@@ -168,6 +195,7 @@ $exhausted = (int) Database::scalar(
                      ORDER BY m2.id DESC LIMIT 1)
       WHERE b.status = 'confirmed'
         AND m.status = 'failed'
+        AND NOT " . UNREACHABLE_SQL . "
         AND EXISTS (SELECT 1 FROM booking_legs bl
                      WHERE bl.booking_id = b.id AND bl.travel_date >= CURDATE())
         AND (SELECT COUNT(*) FROM message_logs t
@@ -182,9 +210,14 @@ if ($exhausted > 0) {
     ], 'whatsapp');
 }
 
+if ($unreachable > 0) {
+    Logger::warning('WhatsApp: ' . $unreachable . ' upcoming booking(s) have a number WhatsApp rejects (not on WhatsApp / invalid) — call them', [], 'whatsapp');
+}
+
 cron_done([
-    'due'        => count($due),
-    'sent'       => $sent,
-    'failed'     => $stillFailing,
-    'exhausted'  => $exhausted,
+    'due'         => count($due),
+    'sent'        => $sent,
+    'failed'      => $stillFailing,
+    'exhausted'   => $exhausted,
+    'unreachable' => $unreachable,
 ]);

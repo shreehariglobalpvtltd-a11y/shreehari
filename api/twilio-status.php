@@ -121,6 +121,8 @@ if ($final === 'failed') {
         $error .= ' - Meta disabled the WhatsApp Business Account';
     } elseif ($errNum === '63016') {
         $error .= ' - no approved template for a business-initiated message';
+    } elseif ($errNum === '63024' || $errNum === '63003') {
+        $error .= ' - this number is not on WhatsApp; call the passenger';
     }
 }
 
