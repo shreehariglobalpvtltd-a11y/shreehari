@@ -67,6 +67,21 @@ if (!Settings::getBool('whatsapp_notify_customer', true)) {
     retry_stop(['skipped' => 'whatsapp_notify_customer is off']);
 }
 
+/* The Twilio Sandbox for WhatsApp only delivers to phones that first sent the
+   account's "join <phrase>" message from their own WhatsApp — every other
+   recipient answers 63015 (channel not found). A production ticket retry
+   against a sandbox sender is therefore futile for every real customer, and
+   would silently burn the per-booking MAX_TRIES cap on the very passengers
+   this job exists to rescue. Skip until the owner switches back to a real
+   WhatsApp business sender; the moment they do, the backlog drains as usual. */
+$fromNow = trim(Settings::getString('twilio_whatsapp_from', ''));
+if (str_contains($fromNow, '14155238886')) {
+    retry_stop([
+        'skipped' => 'sender is the Twilio WhatsApp Sandbox — every non-joined recipient fails 63015',
+        'from'    => $fromNow,
+    ]);
+}
+
 /* Do not spend the per-booking try budget while the SENDER is the thing that
    is broken. 63112 (Meta disabled the WhatsApp Business Account) and 63016 (no
    approved template for a business-initiated message) fail identically for
