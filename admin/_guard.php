@@ -84,7 +84,7 @@ function admin_nav(): array
         ['href' => 'quick-ticket.php', 'icon' => 'ticket-alt', 'label' => '🤖 QuickBot Ticket', 'perm' => 'bookings.view', 'section' => 'Tickets', 'hot' => true],
         ['href' => 'seatmap.php',      'icon' => 'seat',      'label' => 'Seat Map',         'perm' => 'schedules.view', 'section' => 'Tickets'],
         ['href' => 'manifest.php',     'icon' => 'clipboard', 'label' => 'Manifest & Chalani', 'perm' => 'bookings.view', 'section' => 'Tickets'],
-        ['href' => 'scan.php',         'icon' => 'camera',    'label' => 'Scan Ticket',      'perm' => 'tickets.scan',   'section' => 'Tickets'],
+        ['href' => 'scan.php',         'icon' => 'scan',    'label' => 'Scan Ticket',      'perm' => 'tickets.scan',   'section' => 'Tickets'],
 
         // Agents — the register first (office roles only — the page itself
         // refuses a counter agent's session), then the working screens.
@@ -92,10 +92,10 @@ function admin_nav(): array
         // bookings.view — an agent still sees their own pages, but the new
         // counter role (and support) must not browse other sellers' money.
         // The pages enforce the same rule server-side; this only hides nav.
-        ['href' => 'agents.php',       'icon' => 'user-cog',  'label' => 'Agents',           'perm' => 'commissions.view', 'section' => 'Agents'],
-        ['href' => 'agent.php',        'icon' => 'ticket-alt', 'label' => $agentView ? 'My Dashboard' : 'Agent Panel',    'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents'],
-        ['href' => 'agent-sales.php',  'icon' => 'doc',        'label' => $agentView ? 'My Sales' : 'Agent Sales',        'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents'],
-        ['href' => 'agent-passengers.php','icon' => 'user-solo','label' => $agentView ? 'My Passengers' : 'Agent Passengers','perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents'],
+        ['href' => 'agents.php',       'icon' => 'users',  'label' => 'Agents',           'perm' => 'commissions.view', 'section' => 'Agents'],
+        ['href' => 'agent.php',        'icon' => 'wallet', 'label' => $agentView ? 'My Dashboard' : 'Agent Panel',    'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents'],
+        ['href' => 'agent-sales.php',  'icon' => 'chart-up',        'label' => $agentView ? 'My Sales' : 'Agent Sales',        'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents'],
+        ['href' => 'agent-passengers.php','icon' => 'id-card','label' => $agentView ? 'My Passengers' : 'Agent Passengers','perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents'],
         ['href' => 'agent-offline.php','icon' => 'notepad',   'label' => 'Paper Tickets',    'perm' => $agentView ? 'bookings.view' : 'commissions.view',  'section' => 'Agents'],
         ['href' => 'agent-ranking.php','icon' => 'trophy',    'label' => 'Agent Ranking',    'perm' => 'dashboard.view', 'section' => 'Agents'],
         ['href' => 'staff.php',        'icon' => 'user-cog',  'label' => 'Staff & Approvals', 'perm' => 'staff.manage',  'section' => 'Agents'],
@@ -103,7 +103,7 @@ function admin_nav(): array
         // Customers — leads and the people who travelled. An agent's own
         // bookings are scoped by sold_by_admin_id, but an unclaimed lead has
         // no seller so it belongs to the office.
-        ['href' => 'customers.php',    'icon' => 'users',     'label' => 'Customers',        'perm' => 'customers.view', 'section' => 'Customers'],
+        ['href' => 'customers.php',    'icon' => 'user',     'label' => 'Customers',        'perm' => 'customers.view', 'section' => 'Customers'],
         ['href' => 'enquiries.php',    'icon' => 'mail',      'label' => 'Enquiries',        'perm' => 'customers.view', 'section' => 'Customers'],
 
         // Buses — fleet, the day-by-day schedule and the crew.
@@ -111,20 +111,20 @@ function admin_nav(): array
         ['href' => 'buses.php',        'icon' => 'bus',       'label' => 'Bus Fleet',        'perm' => 'schedules.view', 'section' => 'Buses'],
         ['href' => 'schedule.php',     'icon' => 'calendar-plus','label' => 'Schedule Manager','perm' => 'schedules.manage','section' => 'Buses'],
         ['href' => 'trips.php',        'icon' => 'clock',     'label' => 'Trips Board',      'perm' => 'schedules.view', 'section' => 'Buses'],
-        ['href' => 'trip-dashboard.php','icon' => 'calendar', 'label' => 'Date View',        'perm' => 'schedules.view', 'section' => 'Buses'],
+        ['href' => 'trip-dashboard.php','icon' => 'grid', 'label' => 'Date View',        'perm' => 'schedules.view', 'section' => 'Buses'],
         ['href' => 'drivers.php',      'icon' => 'user-solo', 'label' => 'Drivers & Crew',   'perm' => 'drivers.view',   'section' => 'Buses'],
 
         // Routes
-        ['href' => 'routes.php',       'icon' => 'road',      'label' => 'Routes',           'perm' => 'routes.view',    'section' => 'Routes'],
+        ['href' => 'routes.php',       'icon' => 'route',      'label' => 'Routes',           'perm' => 'routes.view',    'section' => 'Routes'],
 
         // Payments — money in, money back.
         ['href' => 'payments.php',     'icon' => 'card',      'label' => 'Verify Payments',  'perm' => 'payments.view',  'section' => 'Payments'],
         ['href' => 'refunds.php',      'icon' => 'refund',    'label' => 'Refunds',          'perm' => 'refunds.view',   'section' => 'Payments'],
 
         // Reports
-        ['href' => 'analytics.php',    'icon' => 'chart-up',  'label' => 'Analytics',        'perm' => 'dashboard.view', 'section' => 'Reports'],
+        ['href' => 'analytics.php',    'icon' => 'chart',  'label' => 'Analytics',        'perm' => 'dashboard.view', 'section' => 'Reports'],
         ['href' => 'feedback.php',     'icon' => 'star',      'label' => 'Ratings',          'perm' => 'dashboard.view', 'section' => 'Reports'],
-        ['href' => 'accounting.php',   'icon' => 'ledger',    'label' => 'Accounting',       'perm' => 'payments.view',  'section' => 'Reports'],
+        ['href' => 'accounting.php',   'icon' => 'banknote',    'label' => 'Accounting',       'perm' => 'payments.view',  'section' => 'Reports'],
         ['href' => 'messages-log.php', 'icon' => 'msg',       'label' => 'Message Log',      'perm' => 'dashboard.view', 'section' => 'Reports'],
 
         // Settings
@@ -132,7 +132,7 @@ function admin_nav(): array
         ['href' => 'activity-log.php', 'icon' => 'shield',    'label' => 'Activity & Security','perm'=> 'dashboard.view', 'section' => 'Settings'],
 
         // Map — routes, stops, head office and the driver's live position (5 Sep 2026).
-        ['href' => 'map.php',          'icon' => 'road',      'label' => 'Live Map',         'perm' => 'schedules.view', 'section' => 'Map'],
+        ['href' => 'map.php',          'icon' => 'map-pin',      'label' => 'Live Map',         'perm' => 'schedules.view', 'section' => 'Map'],
     ];
 
     return array_values(array_filter($all, static fn(array $i): bool => $i['perm'] === '' || Auth::can($i['perm'])));
@@ -157,6 +157,13 @@ function admin_header(string $title, string $active = ''): void
     echo '<title>' . Security::e($title) . ' · ' . Security::e($company) . ' Admin</title>';
     echo '<link rel="icon" type="image/png" href="/assets/img/favicon-32.png">';
     echo '<link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png">';
+    // Design system v2 (17 Sep 2026): Inter for the UI (CSP already allows
+    // fonts.googleapis.com / fonts.gstatic.com), swap so text never blocks;
+    // the system stack in --f-ui covers offline desks and Devanagari.
+    echo '<meta name="theme-color" content="#12264E">';
+    echo '<link rel="preconnect" href="https://fonts.googleapis.com">';
+    echo '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>';
+    echo '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">';
     echo '<style>' . admin_css() . '</style>';
     // Apply saved/system theme before <body> paints (no flash), + the toggle.
     echo '<script>(function(){try{var t=localStorage.getItem("shg_admin_theme");'
@@ -207,11 +214,18 @@ function admin_header(string $title, string $active = ''): void
     // this case, so the form no longer deadlocks them.
     $viaOtp = !empty($admin['via_otp']) && empty($admin['must_change_pw']);
     $pwLink = $viaOtp ? ''
-        : ' · <a href="' . $base . '/admin/change-password.php" title="Change your password" aria-label="Change password"><svg class="a-ic"><use href="#a-key"/></svg></a>';
-    echo '<div class="who">' . $name . ' <em>' . $role . '</em> · '
+        : ' <a href="' . $base . '/admin/change-password.php" title="Change your password" aria-label="Change password"><svg class="a-ic"><use href="#a-key"/></svg></a>';
+    // Initials avatar (v2): two letters from the display name, orange gradient.
+    $initials = '';
+    foreach (preg_split('/\s+/', trim((string) ($admin['full_name'] ?: ($admin['username'] ?? 'A')))) ?: [] as $part) {
+        if ($part !== '' && strlen($initials) < 2) { $initials .= mb_strtoupper(mb_substr($part, 0, 1)); }
+    }
+    echo '<div class="who">'
+       . '<span class="tb-av" aria-hidden="true">' . Security::e($initials ?: 'A') . '</span>'
+       . '<span class="tb-name">' . $name . '</span> <em>' . $role . '</em>'
        . '<button type="button" class="theme-tog" onclick="shgTheme()" aria-label="Toggle dark mode" title="Dark / light mode"><svg class="a-ic"><use href="#a-theme"/></svg></button>'
        . $pwLink
-       . ' · <a href="' . $base . '/admin/logout.php">Sign out</a></div>';
+       . ' <a href="' . $base . '/admin/logout.php" title="Sign out" aria-label="Sign out"><svg class="a-ic"><use href="#a-logout"/></svg></a></div>';
     echo '</header>';
 
     // Sidebar — Phase 3 renders items grouped by their `section` key with
@@ -284,7 +298,45 @@ function admin_header(string $title, string $active = ''): void
     echo '</nav>';
     if ($showGroups) { echo '<script>' . admin_nav_js() . '</script>'; }
 
+    echo admin_mobile_nav($items, $active);
+
     echo '<main class="wrap"><h1>' . Security::e($title) . '</h1>';
+}
+
+/**
+ * Phone bottom navigation (v2, 17 Sep 2026). Five thumb-reach slots built
+ * from the same permission-filtered nav: Home · Tickets · (+ New, orange
+ * FAB) · Sales-or-Payments · Menu (opens the sidebar). Rendered for every
+ * role and hidden by CSS above 820px, so desktops never see it. Purely
+ * additive — the sidebar stays the full menu.
+ */
+function admin_mobile_nav(array $items, string $active = ''): string
+{
+    $find = static function (string $href) use ($items): ?array {
+        foreach ($items as $it) { if ($it['href'] === $href) { return $it; } }
+        return null;
+    };
+    $home    = Auth::isCounterAgent() ? $find('agent.php') : $find('index.php');
+    $tickets = $find('bookings.php');
+    $new     = $find('/index.php?counter=1#/');
+    $fourth  = $find('agent-sales.php') ?? $find('payments.php') ?? $find('manifest.php');
+    $slots   = [];
+    $slot = static function (?array $it, string $label, string $icon, string $active, bool $fab = false): string {
+        if ($it === null) { return '<a class="mn-empty" aria-hidden="true"></a>'; }
+        $url = str_starts_with($it['href'], '/') ? $it['href'] : '/admin/' . $it['href'];
+        $on  = ($active !== '' && !str_starts_with($it['href'], '/') && str_contains($it['href'], $active)) ? ' on' : '';
+        if ($fab) {
+            return '<a class="fab" href="' . $url . '" aria-label="' . Security::e($label) . '"><span class="mn-fab"><svg class="a-ic"><use href="#a-plus-plain"/></svg></span></a>';
+        }
+        return '<a class="' . trim($on) . '" href="' . $url . '"><svg class="a-ic"><use href="#a-' . $icon . '"/></svg>' . Security::e($label) . '</a>';
+    };
+    $slots[] = $slot($home, 'Home', 'home', $active);
+    $slots[] = $slot($tickets, 'Tickets', 'ticket', $active);
+    $slots[] = $new !== null ? $slot($new, 'New booking', 'plus-plain', $active, true) : '<a class="mn-empty" aria-hidden="true"></a>';
+    $slots[] = $slot($fourth, $fourth !== null ? ($fourth['href'] === 'payments.php' ? 'Payments' : ($fourth['href'] === 'manifest.php' ? 'Manifest' : 'Sales')) : '', $fourth !== null ? ($fourth['href'] === 'payments.php' ? 'card' : ($fourth['href'] === 'manifest.php' ? 'clipboard' : 'chart-up')) : 'doc', $active);
+    $slots[] = '<a href="#" onclick="document.body.classList.toggle(\'nav-open\');return false" aria-label="Menu"><svg class="a-ic"><use href="#a-list"/></svg>Menu</a>';
+    return '<nav class="mnav" aria-label="Quick navigation">' . implode('', $slots) . '</nav>'
+         . '<script>document.body.classList.add("has-mnav")</script>';
 }
 
 function admin_footer(): void
@@ -699,20 +751,118 @@ function admin_search_js(): string
 JS;
 }
 
-/** Small helper: a coloured status pill. */
-function admin_pill(string $status): string
+/**
+ * Small helper: a coloured status pill. v2 maps every status the system
+ * uses onto the semantic tokens (.st-ok / .st-warn / .st-bad / .st-info /
+ * .st-muted / .st-orange / .st-wa) so pages, dark mode and the mobile card
+ * view all agree. Unknown statuses fall back to a neutral pill.
+ */
+function admin_pill(string $status, string $label = ''): string
 {
+    $s = strtolower(trim($status));
     $map = [
-        'pending'    => ['#8a6d00', '#fff4d1', 'Pending'],
-        'confirmed'  => ['#0a6b3b', '#d7f4e3', 'Confirmed'],
-        'verified'   => ['#0a6b3b', '#d7f4e3', 'Verified'],
-        'cancelled'  => ['#8a1f1f', '#f7dcdc', 'Cancelled'],
-        'rejected'   => ['#8a1f1f', '#f7dcdc', 'Rejected'],
-        'expired'    => ['#555',    '#e7e7e7', 'Expired'],
-        'cod_pending'=> ['#7a4a00', '#ffe6c7', 'Pay at counter'],
+        'pending'     => ['st-warn',   'Pending'],
+        'confirmed'   => ['st-ok',     'Confirmed'],
+        'verified'    => ['st-ok',     'Verified'],
+        'paid'        => ['st-ok',     'Paid'],
+        'completed'   => ['st-ok',     'Completed'],
+        'boarded'     => ['st-ok',     'Boarded'],
+        'active'      => ['st-ok',     'Active'],
+        'delivered'   => ['st-ok',     'Delivered'],
+        'read'        => ['st-ok',     'Read'],
+        'sent'        => ['st-info',   'Sent'],
+        'queued'      => ['st-warn',   'Queued'],
+        'processing'  => ['st-info',   'Processing'],
+        'cancelled'   => ['st-bad',    'Cancelled'],
+        'rejected'    => ['st-bad',    'Rejected'],
+        'failed'      => ['st-bad',    'Failed'],
+        'void'        => ['st-bad',    'Void'],
+        'blocked'     => ['st-bad',    'Blocked'],
+        'suspended'   => ['st-bad',    'Suspended'],
+        'expired'     => ['st-muted',  'Expired'],
+        'inactive'    => ['st-muted',  'Inactive'],
+        'skipped'     => ['st-muted',  'Skipped'],
+        'draft'       => ['st-muted',  'Draft'],
+        'partial'     => ['st-orange', 'Partial'],
+        'unpaid'      => ['st-orange', 'Unpaid'],
+        'due'         => ['st-orange', 'Due'],
+        'cod_pending' => ['st-orange', 'Pay at counter'],
+        'refunded'    => ['st-info',   'Refunded'],
+        'departed'    => ['st-info',   'Departed'],
+        'arrived'     => ['st-ok',     'Arrived'],
+        'boarding'    => ['st-orange', 'Boarding'],
+        'scheduled'   => ['st-info',   'Scheduled'],
+        'whatsapp'    => ['st-wa',     'WhatsApp'],
     ];
-    [$fg, $bg, $label] = $map[$status] ?? ['#333', '#eee', ucfirst($status)];
-    return '<span class="pill" style="color:' . $fg . ';background:' . $bg . '">' . Security::e($label) . '</span>';
+    [$cls, $text] = $map[$s] ?? ['st-muted', ucfirst($s)];
+    if ($label !== '') { $text = $label; }
+    return '<span class="pill ' . $cls . '">' . Security::e($text) . '</span>';
+}
+
+/**
+ * Page header with an optional subtitle, breadcrumb trail and action
+ * buttons. Call right after admin_header() — it sits under the <h1>.
+ *   admin_page_head('Everything about this agent', ['Agents' => '/admin/agents.php'], '<a class="btn">…</a>');
+ */
+function admin_page_head(string $subtitle = '', array $crumbs = [], string $actionsHtml = ''): void
+{
+    echo '<div class="page-head"><div class="ph-txt">';
+    if ($crumbs !== []) {
+        echo '<div class="ph-crumbs">';
+        $i = 0;
+        foreach ($crumbs as $label => $href) {
+            if ($i++ > 0) { echo '<svg class="a-ic sm" style="opacity:.5"><use href="#a-chevron"/></svg>'; }
+            echo $href !== '' ? '<a href="' . Security::e((string) $href) . '">' . Security::e((string) $label) . '</a>' : '<span>' . Security::e((string) $label) . '</span>';
+        }
+        echo '</div>';
+    }
+    if ($subtitle !== '') { echo '<p class="ph-sub">' . Security::e($subtitle) . '</p>'; }
+    echo '</div>';
+    if ($actionsHtml !== '') { echo '<div class="ph-actions">' . $actionsHtml . '</div>'; }
+    echo '</div>';
+}
+
+/**
+ * One KPI tile. $tone: blue (default) | green | orange | red | navy | teal | violet | wa.
+ * $delta: ['up'|'down'|'flat', '+12%'] optional. $href wraps the whole tile.
+ */
+function admin_kpi(string $label, string $value, string $sub = '', string $icon = 'chart', string $tone = 'blue', ?array $delta = null, string $href = ''): string
+{
+    $d = '';
+    if ($delta !== null && isset($delta[0], $delta[1])) {
+        $d = '<span class="kd ' . Security::e((string) $delta[0]) . '">' . Security::e((string) $delta[1]) . '</span>';
+    }
+    return '<div class="kpi tone-' . Security::e($tone) . '">'
+         . '<span class="ki"><svg class="a-ic"><use href="#a-' . Security::e($icon) . '"/></svg></span>'
+         . '<div class="kt"><div class="kk">' . Security::e($label) . '</div>'
+         . '<div class="kv">' . Security::e($value) . $d . '</div>'
+         . ($sub !== '' ? '<div class="ks">' . Security::e($sub) . '</div>' : '')
+         . '</div>'
+         . ($href !== '' ? '<a class="kl" href="' . Security::e($href) . '" aria-label="' . Security::e($label) . '"></a>' : '')
+         . '</div>';
+}
+
+/** Empty-state block for a panel or table cell. */
+function admin_empty(string $title, string $hint = '', string $icon = '🗂️', string $actionHtml = ''): string
+{
+    return '<div class="empty"><span class="em-ic">' . $icon . '</span><b>' . Security::e($title) . '</b>'
+         . ($hint !== '' ? '<div>' . Security::e($hint) . '</div>' : '')
+         . ($actionHtml !== '' ? '<div style="margin-top:12px">' . $actionHtml . '</div>' : '')
+         . '</div>';
+}
+
+/** Initials avatar (or photo when a public URL is given). */
+function admin_avatar(string $name, string $photoUrl = '', string $size = ''): string
+{
+    $initials = '';
+    foreach (preg_split('/\s+/', trim($name)) ?: [] as $part) {
+        if ($part !== '' && mb_strlen($initials) < 2) { $initials .= mb_strtoupper(mb_substr($part, 0, 1)); }
+    }
+    $cls = 'avatar' . ($size !== '' ? ' ' . Security::e($size) : '');
+    if ($photoUrl !== '') {
+        return '<span class="' . $cls . '"><img src="' . Security::e($photoUrl) . '" alt="' . Security::e($name) . '" loading="lazy"></span>';
+    }
+    return '<span class="' . $cls . '" aria-hidden="true">' . Security::e($initials ?: '?') . '</span>';
 }
 
 /**
@@ -720,238 +870,463 @@ function admin_pill(string $status): string
  * inside admin_header() right after <body>, then referenced with
  * <svg class="a-ic"><use href="#a-KEY"/></svg>. Stroke inherits
  * currentColor via CSS so the sidebar's on/off palette themes the icons.
+ * v2 (17 Sep 2026): a full professional set (wallet, whatsapp, id-card,
+ * settlement, loan, download, image, pdf, edit, phone, send, …).
  */
 function admin_sprite(): string
 {
     return <<<'SVG'
 <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false">
 <defs>
-<symbol id="a-dashboard" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 16V9M12 16v-5M17 16v-9"/></symbol>
+<symbol id="a-dashboard" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="5" rx="2"/><rect x="13" y="10" width="8" height="11" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/></symbol>
 <symbol id="a-chevron" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></symbol>
+<symbol id="a-chevron-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
 <symbol id="a-ticket-alt" viewBox="0 0 24 24"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/><path d="M13 5v2M13 11v2M13 17v2"/></symbol>
+<symbol id="a-ticket" viewBox="0 0 24 24"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/><path d="M13 5v14"/></symbol>
 <symbol id="a-doc" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></symbol>
+<symbol id="a-pdf" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 17v-5h2a1.5 1.5 0 0 1 0 3H8M13 17v-5h1.5a2.5 2.5 0 0 1 0 5H13"/></symbol>
+<symbol id="a-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></symbol>
 <symbol id="a-user-solo" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/></symbol>
+<symbol id="a-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/></symbol>
+<symbol id="a-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M17.5 3.13a4 4 0 0 1 0 7.75"/></symbol>
+<symbol id="a-user-cog" viewBox="0 0 24 24"><circle cx="10" cy="7" r="4"/><path d="M2 21v-1a6 6 0 0 1 8-5.66"/><circle cx="18" cy="17" r="3"/><path d="M18 12v1M18 21v1M13.76 14.76l.71.71M22.24 21.24l-.71-.71"/></symbol>
+<symbol id="a-id-card" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8.5" cy="11" r="2.2"/><path d="M5 16.5a3.5 3.5 0 0 1 7 0M14 10h5M14 13.5h5"/></symbol>
 <symbol id="a-notepad" viewBox="0 0 24 24"><path d="M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M9 8h6M9 12h6M9 16h4"/></symbol>
 <symbol id="a-chart-up" viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></symbol>
+<symbol id="a-chart" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 16V9M12 16v-5M17 16v-9"/></symbol>
 <symbol id="a-card" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/></symbol>
+<symbol id="a-wallet" viewBox="0 0 24 24"><path d="M20 7H4a2 2 0 0 1 0-4h13v4"/><path d="M4 7v12a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1"/><path d="M16 13h4v4h-4a2 2 0 0 1 0-4z"/></symbol>
+<symbol id="a-rupee" viewBox="0 0 24 24"><path d="M6 4h12M6 8h12M6 4c5 0 8 1.5 8 4.5S11 13 6 13l8 7"/></symbol>
+<symbol id="a-coins" viewBox="0 0 24 24"><ellipse cx="9" cy="6" rx="6" ry="3"/><path d="M3 6v6c0 1.66 2.69 3 6 3s6-1.34 6-3V6"/><path d="M3 12v6c0 1.66 2.69 3 6 3s6-1.34 6-3v-6"/><path d="M15 9.5c3.3 0 6 1.34 6 3v6c0 1.66-2.7 3-6 3"/></symbol>
+<symbol id="a-banknote" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></symbol>
+<symbol id="a-handshake" viewBox="0 0 24 24"><path d="M2 9l4-4 5 2 3-2 4 4 4 1-3 7-4 2-3-1-2 1-4-3-4-2z"/><path d="M11 7l-3 3 2 2 3-3M14 12l2 2M12 14l2 2"/></symbol>
 <symbol id="a-refund" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3.5-7.1"/><polyline points="3 3 3 8 8 8"/><path d="M12 8v4l3 2"/></symbol>
-<symbol id="a-ticket" viewBox="0 0 24 24"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/><path d="M13 5v14"/></symbol>
+<symbol id="a-loan" viewBox="0 0 24 24"><path d="M12 3v18M7 8h7a3 3 0 0 1 0 6H8"/><path d="M3 21h18"/><path d="M19 12l2 2-2 2"/></symbol>
 <symbol id="a-clipboard" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6M9 16h4"/></symbol>
 <symbol id="a-mail" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="m2 7 10 6 10-6"/></symbol>
-<symbol id="a-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M17.5 3.13a4 4 0 0 1 0 7.75"/></symbol>
 <symbol id="a-road" viewBox="0 0 24 24"><path d="M6 3 3 21M18 3l3 18M12 3v3M12 10v3M12 17v3"/></symbol>
+<symbol id="a-route" viewBox="0 0 24 24"><circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M9 19h6a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6"/></symbol>
+<symbol id="a-map-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></symbol>
 <symbol id="a-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+<symbol id="a-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></symbol>
 <symbol id="a-seat" viewBox="0 0 24 24"><path d="M5 12a3 3 0 0 1 3-3h4v9H8z"/><path d="M12 9v9h4a3 3 0 0 0 3-3v-3a3 3 0 0 0-3-3z"/><path d="M8 21v-3M16 21v-3"/></symbol>
 <symbol id="a-camera" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></symbol>
 <symbol id="a-msg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+<symbol id="a-whatsapp" viewBox="0 0 24 24"><path d="M3.5 20.5l1.3-4A8.5 8.5 0 1 1 8 19.3z"/><path d="M9.2 8.6c.2-.5.5-.5.8-.5h.5c.2 0 .4.1.5.4l.7 1.6c.1.2 0 .4-.1.6l-.5.6c-.1.2-.1.3 0 .5a6 6 0 0 0 2.9 2.7c.2.1.4 0 .5-.1l.7-.8c.2-.2.4-.2.6-.1l1.6.8c.2.1.4.2.4.4 0 .3 0 1-.5 1.5s-1.3.8-1.8.7c-1.2-.2-2.8-.8-4.6-2.6S8.8 11.4 8.6 10.2c-.1-.5.2-1.2.6-1.6z"/></symbol>
+<symbol id="a-phone" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.9 2.1z"/></symbol>
+<symbol id="a-send" viewBox="0 0 24 24"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></symbol>
+<symbol id="a-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></symbol>
+<symbol id="a-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5M12 3v12"/></symbol>
+<symbol id="a-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></symbol>
+<symbol id="a-printer" viewBox="0 0 24 24"><path d="M6 9V3h12v6"/><rect x="2" y="9" width="20" height="9" rx="2"/><path d="M6 14h12v7H6z"/></symbol>
+<symbol id="a-external" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14L21 3"/></symbol>
+<symbol id="a-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+<symbol id="a-edit" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></symbol>
+<symbol id="a-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></symbol>
+<symbol id="a-eye" viewBox="0 0 24 24"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="a-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
+<symbol id="a-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-6"/></symbol>
+<symbol id="a-x" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+<symbol id="a-x-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></symbol>
+<symbol id="a-alert" viewBox="0 0 24 24"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+<symbol id="a-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
+<symbol id="a-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></symbol>
+<symbol id="a-plus" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></symbol>
+<symbol id="a-plus-plain" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="a-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+<symbol id="a-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></symbol>
+<symbol id="a-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></symbol>
+<symbol id="a-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></symbol>
+<symbol id="a-filter" viewBox="0 0 24 24"><path d="M22 3H2l8 9.5V19l4 2v-8.5z"/></symbol>
+<symbol id="a-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></symbol>
+<symbol id="a-home" viewBox="0 0 24 24"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+<symbol id="a-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+<symbol id="a-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+<symbol id="a-layers" viewBox="0 0 24 24"><path d="M12 2l10 5-10 5L2 7z"/><path d="M2 12l10 5 10-5M2 17l10 5 10-5"/></symbol>
+<symbol id="a-tag" viewBox="0 0 24 24"><path d="M20.6 13.4L13.4 20.6a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z"/><path d="M7 7h.01"/></symbol>
+<symbol id="a-percent" viewBox="0 0 24 24"><path d="M19 5L5 19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></symbol>
+<symbol id="a-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+<symbol id="a-unlock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></symbol>
 <symbol id="a-trophy" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 18v4M14 18v4"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></symbol>
 <symbol id="a-star" viewBox="0 0 24 24"><path d="M12 2.6l2.9 5.9 6.5.95-4.7 4.58 1.11 6.47L12 17.45l-5.81 3.05 1.11-6.47L2.6 9.45l6.5-.95L12 2.6Z"/></symbol>
 <symbol id="a-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></symbol>
-<symbol id="a-user-cog" viewBox="0 0 24 24"><circle cx="10" cy="7" r="4"/><path d="M2 21v-1a6 6 0 0 1 8-5.66"/><circle cx="18" cy="17" r="3"/><path d="M18 12v1M18 21v1M13.76 14.76l.71.71M22.24 21.24l-.71-.71"/></symbol>
 <symbol id="a-cog" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
 <symbol id="a-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
 <symbol id="a-theme" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></symbol>
 <symbol id="a-key" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></symbol>
 <symbol id="a-bus" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="15" rx="3"/><path d="M3 10h18"/><circle cx="7.5" cy="15.5" r="1.5"/><circle cx="16.5" cy="15.5" r="1.5"/><path d="M7 21v-2M17 21v-2"/></symbol>
 <symbol id="a-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
-<symbol id="a-plus" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></symbol>
+<symbol id="a-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
 <symbol id="a-calendar-plus" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M12 14v5M9.5 16.5h5"/></symbol>
+<symbol id="a-calendar-move" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M9 16h6M13 13.5l2.5 2.5-2.5 2.5"/></symbol>
 <symbol id="a-ledger" viewBox="0 0 24 24"><path d="M6 2h11a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M9 7h6M9 11h6M9 15h4"/></symbol>
+<symbol id="a-receipt" viewBox="0 0 24 24"><path d="M4 2v20l3-2 3 2 3-2 3 2 3-2 1 .7V2z"/><path d="M8 7h8M8 11h8M8 15h5"/></symbol>
+<symbol id="a-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></symbol>
+<symbol id="a-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 17l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></symbol>
+<symbol id="a-bolt" viewBox="0 0 24 24"><path d="M13 2L3 14h8l-1 8 10-12h-8z"/></symbol>
+<symbol id="a-scan" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M3 12h18"/></symbol>
 </defs>
 </svg>
 SVG;
 }
 
-/** The admin stylesheet (kept here so pages stay self-contained). */
+/** The admin stylesheet (kept here so pages stay self-contained).
+ *
+ *  Design system v2 (17 Sep 2026) — every class the pages already use keeps
+ *  working (.card .panel .btn .pill .flash .toolbar .hcard .dash-* table.dt);
+ *  this pass adds tokens, a real type scale, semantic status colours, icon
+ *  buttons, KPI tiles, chips, empty states, a mobile bottom nav and the
+ *  micro-interactions. Brand stays navy #12264E · blue #2E5FA8 · orange #F07C1F.
+ */
 function admin_css(): string
 {
-    return <<<CSS
+    return <<<'CSS'
 *{box-sizing:border-box}
-:root{--navy:#12264E;--blue:#2E5FA8;--orange:#F07C1F;--ink:#1b2436;--mut:#6b7688;--line:#e5e9f0;--bg:#f4f6fb;--card:#fff;--head:#fafbfe;--hover:#eef2fa}
-:root[data-theme="dark"]{--ink:#e8f0fb;--mut:#93a4be;--line:#22314a;--bg:#0b1220;--card:#111d33;--head:#0f1a2e;--hover:#182741}
-body{margin:0;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+:root{
+  --navy:#12264E;--navy-700:#1C3B72;--blue:#2E5FA8;--blue-600:#24508F;--blue-100:#E3ECF9;--blue-50:#F0F5FC;
+  --orange:#F07C1F;--orange-600:#D96A10;--orange-100:#FCE9D6;--orange-50:#FFF5EC;
+  --ink:#16233C;--ink-2:#2B3A55;--mut:#6B7688;--mut-2:#98A2B3;--line:#E4E9F1;--line-2:#D5DCE8;
+  --bg:#F4F6FB;--card:#FFFFFF;--head:#F8FAFD;--hover:#EEF2FA;--soft:#F6F8FC;
+  --ok:#178A50;--ok-bg:#E4F6EC;--warn:#B7791F;--warn-bg:#FFF4D6;--bad:#C53030;--bad-bg:#FBE3E3;
+  --info:#2E5FA8;--info-bg:#E3ECF9;--wa:#25D366;--wa-600:#1DB558;--wa-bg:#E6FAEE;--violet:#6D4FC2;--violet-bg:#EEE9FB;--teal:#0E8C7F;--teal-bg:#E0F5F2;
+  --r-xs:8px;--r-sm:10px;--r:14px;--r-lg:18px;--r-xl:22px;
+  --sh-1:0 1px 2px rgba(18,38,78,.06),0 1px 6px rgba(18,38,78,.05);
+  --sh-2:0 4px 14px rgba(18,38,78,.08),0 2px 6px rgba(18,38,78,.05);
+  --sh-3:0 14px 34px rgba(18,38,78,.14),0 4px 12px rgba(18,38,78,.06);
+  --ease:cubic-bezier(.4,0,.2,1);--dur:.18s;
+  --f-ui:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,'Noto Sans Devanagari',sans-serif;
+  --f-mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  --side-w:236px;--tb-h:58px;
+}
+:root[data-theme="dark"]{
+  --ink:#E8F0FB;--ink-2:#C9D4E6;--mut:#93A4BE;--mut-2:#6F819C;--line:#22314A;--line-2:#2C3D5A;
+  --bg:#0B1220;--card:#111D33;--head:#0F1A2E;--hover:#182741;--soft:#0E192C;
+  --blue-100:#1B2F55;--blue-50:#152645;--orange-100:#3B2610;--orange-50:#2C1D0F;
+  --ok-bg:#12321F;--warn-bg:#3A2B0E;--bad-bg:#3B1717;--info-bg:#1B2F55;--wa-bg:#0F3320;--violet-bg:#261E45;--teal-bg:#0F2E2B;
+  --sh-1:0 1px 2px rgba(0,0,0,.35);--sh-2:0 4px 14px rgba(0,0,0,.35);--sh-3:0 14px 34px rgba(0,0,0,.5);
+}
+html{overflow-x:hidden;-webkit-text-size-adjust:100%}@supports(overflow:clip){html{overflow-x:clip}}
+body{margin:0;font-family:var(--f-ui);font-size:14px;line-height:1.45;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;font-feature-settings:"cv11","ss01"}
 body,.side,.card,.panel,.panel h2,th,.toolbar input,.toolbar select,.btn.ghost{transition:background-color .2s,color .2s,border-color .2s}
-.a-ic{display:inline-block;width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle;flex:0 0 auto}
-.theme-tog{background:none;border:0;color:#fff;font-size:17px;cursor:pointer;padding:4px 8px;border-radius:7px;line-height:1;display:inline-flex;align-items:center}
-.theme-tog:hover{background:rgba(255,255,255,.14)}
+img,pre{max-width:100%}
 a{color:var(--blue);text-decoration:none}
-.tb{position:sticky;top:0;z-index:30;height:56px;display:flex;align-items:center;gap:12px;padding:0 16px;
-    background:var(--navy);color:#fff;box-shadow:0 1px 8px rgba(0,0,0,.15)}
-.tb .brand{display:inline-flex;align-items:center;gap:8px;color:#fff;font-weight:700;font-size:16px}
-.tb .brand-logo{width:26px;height:26px;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,.3));flex:0 0 auto}
-.tb .brand span{color:var(--orange);font-weight:600}
-.tb .who{margin-left:auto;font-size:13px;color:#cdd6e6}
-.tb .who em{font-style:normal;color:var(--orange)}
-.tb .who a{color:#fff;text-decoration:underline}
-.tb .menu{display:none;background:none;border:0;color:#fff;font-size:22px;cursor:pointer}
-.side{position:fixed;top:56px;left:0;width:210px;height:calc(100vh - 56px);background:var(--card);border-right:1px solid var(--line);
-      padding:12px 8px;overflow:auto}
-.side a{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:9px;color:var(--ink);font-weight:600;font-size:14px}
-.side a span{width:22px;text-align:center}
-.side a:hover{background:var(--hover)}
-.side a.on{background:var(--navy);color:#fff}
-.side a.hot{background:linear-gradient(90deg,rgba(240,124,31,.18),transparent 75%);border:1px solid rgba(240,124,31,.55);color:var(--ink)}
-.side a.hot:hover{background:rgba(240,124,31,.24)}
-.side a.hot.on{background:var(--orange);border-color:var(--orange);color:#fff}
-.navbadge{margin-left:auto;background:var(--orange);color:#fff;border-radius:999px;font-size:11px;font-weight:800;padding:1px 7px;line-height:1.5}
-.side a.on .navbadge{background:var(--card);color:var(--navy)}
+a:hover{color:var(--blue-600)}
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:6px}
+::selection{background:var(--blue-100)}
+.a-ic{display:inline-block;width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle;flex:0 0 auto}
+.a-ic.sm{width:15px;height:15px}.a-ic.lg{width:22px;height:22px}.a-ic.xl{width:28px;height:28px;stroke-width:1.75}
 
-/* Phase 3: sidebar section headers — small uppercase labels that
-   break up the 20-item strip into Operations / Sales / People /
-   Insights / System groups. Hidden when only one section is visible
-   (agent view). */
-.side-sec{padding:14px 12px 4px;font-size:10px;font-weight:800;letter-spacing:1.2px;color:var(--mut);text-transform:uppercase;user-select:none}
+/* ── Top bar ─────────────────────────────────────────────────────────── */
+.tb{position:sticky;top:0;z-index:30;height:var(--tb-h);display:flex;align-items:center;gap:12px;padding:0 16px;
+    background:linear-gradient(90deg,var(--navy) 0%,var(--navy-700) 100%);color:#fff;box-shadow:0 2px 12px rgba(10,22,50,.28)}
+.tb .brand{display:inline-flex;align-items:center;gap:9px;color:#fff;font-weight:800;font-size:15.5px;letter-spacing:-.01em;white-space:nowrap}
+.tb .brand-logo{width:30px;height:30px;object-fit:contain;background:#fff;border-radius:9px;padding:3px;box-shadow:0 1px 3px rgba(0,0,0,.25);flex:0 0 auto}
+.tb .brand span{color:#FFC08A;font-weight:600;font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin-left:2px}
+.tb .who{margin-left:auto;font-size:13px;color:#CDD6E6;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.tb .who em{font-style:normal;color:#FFC08A;font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em}
+.tb .who a{color:#fff;text-decoration:none;opacity:.9}
+.tb .who a:hover{opacity:1;text-decoration:underline}
+.tb .who .tb-av{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,var(--orange),#FFB070);color:#fff;font-weight:800;font-size:12px;display:inline-flex;align-items:center;justify-content:center;letter-spacing:.02em;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.tb .who .tb-name{font-weight:600;color:#fff}
+.tb .menu{display:none;background:none;border:0;color:#fff;font-size:22px;cursor:pointer;line-height:1;padding:6px 8px;border-radius:8px}
+.tb .menu:hover{background:rgba(255,255,255,.12)}
+.theme-tog{background:none;border:0;color:#fff;font-size:17px;cursor:pointer;padding:6px;border-radius:8px;line-height:1;display:inline-flex;align-items:center}
+.theme-tog:hover{background:rgba(255,255,255,.14)}
+.tb-ibtn{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:9px;color:#fff;background:rgba(255,255,255,.08);border:0;cursor:pointer}
+.tb-ibtn:hover{background:rgba(255,255,255,.18)}
+
+/* ── Global search ───────────────────────────────────────────────────── */
+.tb-search{flex:1;max-width:560px;position:relative;display:flex;align-items:center;gap:8px;padding:0 12px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.08);border-radius:999px;height:38px;transition:background var(--dur) var(--ease),box-shadow var(--dur) var(--ease)}
+.tb-search:focus-within{background:rgba(255,255,255,.18);box-shadow:0 0 0 3px rgba(240,124,31,.35);border-color:transparent}
+.tb-search .tb-ic{color:#CDD6E6;flex:0 0 auto}
+.tb-search input{flex:1;background:transparent;border:0;color:#fff;font-size:13.5px;height:100%;outline:none;padding:0;font-family:inherit;min-width:0}
+.tb-search input::placeholder{color:rgba(255,255,255,.55)}
+.tb-sug{position:absolute;top:calc(100% + 8px);left:0;right:0;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh-3);max-height:60vh;overflow:auto;z-index:40;padding:6px}
+.tb-sug .tbs-sec{padding:8px 10px 4px;font-size:10.5px;font-weight:800;letter-spacing:.1em;color:var(--mut);text-transform:uppercase}
+.tb-sug a{display:flex;gap:10px;align-items:center;padding:9px 10px;border-radius:10px;color:var(--ink);font-size:13px}
+.tb-sug a:hover,.tb-sug a.act{background:var(--hover)}
+.tb-sug .tbs-icon{width:26px;height:26px;border-radius:8px;background:var(--blue-50);display:inline-flex;align-items:center;justify-content:center;color:var(--blue);font-weight:800;flex-shrink:0;font-size:14px}
+.tb-sug .tbs-meta{color:var(--mut);font-size:11px;margin-left:auto;flex-shrink:0}
+.tb-sug .tbs-empty{padding:14px 12px;color:var(--mut);font-size:13px;text-align:center}
+
+/* ── Sidebar ─────────────────────────────────────────────────────────── */
+.side{position:fixed;top:var(--tb-h);left:0;width:var(--side-w);height:calc(100vh - var(--tb-h));background:var(--card);border-right:1px solid var(--line);
+      padding:12px 10px 24px;overflow:auto;scrollbar-width:thin}
+.side a{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:11px;color:var(--ink-2);font-weight:600;font-size:13.5px;position:relative;transition:background var(--dur) var(--ease),color var(--dur) var(--ease)}
+.side a span{width:30px;height:30px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;background:var(--soft);color:var(--mut);flex:0 0 auto;transition:background var(--dur) var(--ease),color var(--dur) var(--ease)}
+.side a:hover{background:var(--hover);color:var(--ink)}
+.side a:hover span{color:var(--blue)}
+.side a.on{background:var(--blue-50);color:var(--blue-600);font-weight:700}
+.side a.on span{background:var(--blue);color:#fff;box-shadow:0 3px 8px rgba(46,95,168,.35)}
+.side a.on::before{content:'';position:absolute;left:-10px;top:9px;bottom:9px;width:4px;border-radius:0 4px 4px 0;background:var(--orange)}
+.side a.hot{background:linear-gradient(90deg,var(--orange-50),transparent 80%);border:1px solid rgba(240,124,31,.35);color:var(--ink)}
+.side a.hot span{background:var(--orange-100);color:var(--orange-600)}
+.side a.hot:hover{background:var(--orange-100)}
+.side a.hot.on{background:var(--orange);border-color:var(--orange);color:#fff}
+.side a.hot.on span{background:rgba(255,255,255,.25);color:#fff;box-shadow:none}
+.navbadge{margin-left:auto;background:var(--orange);color:#fff;border-radius:999px;font-size:11px;font-weight:800;padding:1px 7px;line-height:1.5;min-width:20px;text-align:center}
+.side a.on .navbadge{background:var(--card);color:var(--navy)}
+.side-sec{padding:14px 12px 4px;font-size:10.5px;font-weight:800;letter-spacing:.12em;color:var(--mut);text-transform:uppercase;user-select:none}
 .side-sec:first-child{padding-top:6px}
-/* Collapsible nav groups (simplify pass): section headers become toggles so
-   the ~25-item sidebar reads as a few tidy groups. The active section starts
-   open (server-set .open); the client restores the admin's remembered set. */
-.side-toggle{display:flex;align-items:center;gap:6px;width:100%;background:none;border:0;text-align:left;cursor:pointer;font:inherit}
+.side-toggle{display:flex;align-items:center;gap:6px;width:100%;background:none;border:0;text-align:left;cursor:pointer;font:inherit;border-radius:8px}
 .side-sec.side-toggle{color:var(--mut)}
-.side-toggle:hover{color:var(--ink)}
+.side-toggle:hover{color:var(--ink);background:var(--soft)}
 .side-group .side-items{display:none}
-.side-group.open .side-items{display:block}
+.side-group.open .side-items{display:block;animation:fadeDown .18s var(--ease)}
 .nav-caret{margin-left:auto;width:14px;height:14px;transition:transform .15s;opacity:.7}
 .side-group.open .nav-caret{transform:rotate(90deg)}
 .side-group:first-child .side-toggle{padding-top:6px}
-.side-site{margin-top:8px;border-top:1px solid var(--line);padding-top:12px}
+.side-site{margin-top:10px;border-top:1px solid var(--line);padding-top:12px}
+.side-site{border-radius:0}
 
-/* Phase 3: top-bar global search. Flex 1 so it takes the middle of the
-   top bar; suggest dropdown is absolutely positioned below the input.
-   On narrow viewports the form wraps under the brand+menu row so the
-   input keeps a usable width instead of shrinking to a stub. */
-.tb-search{flex:1;max-width:520px;position:relative;display:flex;align-items:center;gap:8px;padding:0 12px;background:rgba(255,255,255,.10);border-radius:22px;height:36px}
-.tb-search:focus-within{background:rgba(255,255,255,.18);box-shadow:0 0 0 2px rgba(240,124,31,.35)}
-.tb-search .tb-ic{color:#cdd6e6;flex:0 0 auto}
-.tb-search input{flex:1;background:transparent;border:0;color:#fff;font-size:13.5px;height:100%;outline:none;padding:0}
-.tb-search input::placeholder{color:rgba(255,255,255,.55)}
-.tb-sug{position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.15);max-height:60vh;overflow:auto;z-index:40;padding:6px}
-.tb-sug .tbs-sec{padding:6px 10px 4px;font-size:10px;font-weight:800;letter-spacing:1px;color:var(--mut);text-transform:uppercase}
-.tb-sug a{display:flex;gap:10px;align-items:center;padding:8px 10px;border-radius:8px;color:var(--ink);font-size:13px}
-.tb-sug a:hover,.tb-sug a.act{background:var(--hover)}
-.tb-sug .tbs-icon{width:22px;text-align:center;color:var(--blue);font-weight:800;flex-shrink:0}
-.tb-sug .tbs-meta{color:var(--mut);font-size:11px;margin-left:auto;flex-shrink:0}
-.tb-sug .tbs-empty{padding:14px 12px;color:var(--mut);font-size:13px;text-align:center}
-.row-highlight{background:#fff4d1 !important;animation:rowpulse 1.6s ease 2}
-@keyframes rowpulse{0%,100%{background:#fff4d1}50%{background:#ffe28a}}
-/* Dark mode: the cream highlight + near-white --ink would be invisible, so
-   give highlighted rows a legible dark palette (static — the pale pulse is
-   suppressed since its cream keyframes lose to this !important background). */
-:root[data-theme="dark"] .row-highlight{background:#3a2f12 !important;color:#ffe9a8;animation:none}
-:root[data-theme="dark"] .row-highlight td,:root[data-theme="dark"] .row-highlight th{color:#ffe9a8}
-.wrap{margin-left:210px;padding:22px 26px;max-width:1150px}
-.wrap h1{margin:2px 0 18px;font-size:22px}
+/* ── Mobile bottom nav (agents / counter, phones only) ───────────────── */
+.mnav{display:none}
+@media(max-width:820px){
+  .mnav{position:fixed;left:0;right:0;bottom:0;z-index:36;display:grid;grid-template-columns:repeat(5,1fr);gap:2px;padding:6px 8px calc(6px + env(safe-area-inset-bottom));
+        background:var(--card);border-top:1px solid var(--line);box-shadow:0 -6px 20px rgba(18,38,78,.10)}
+  .mnav a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:6px 2px;border-radius:12px;color:var(--mut);font-size:10.5px;font-weight:700;letter-spacing:.01em;min-height:50px}
+  .mnav a .a-ic{width:22px;height:22px;stroke-width:1.9}
+  .mnav a.on{color:var(--blue-600);background:var(--blue-50)}
+  .mnav a.fab{color:#fff}
+  .mnav a.fab .mn-fab{width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,var(--orange),#FF9A4D);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 20px rgba(240,124,31,.45);margin-top:-22px;border:3px solid var(--card)}
+  .mnav a.fab .a-ic{color:#fff}
+  body.has-mnav .wrap{padding-bottom:86px}
+  body.has-mnav .side .side-site{display:flex}
+}
+
+/* ── Page frame ──────────────────────────────────────────────────────── */
+.wrap{margin-left:var(--side-w);padding:22px 28px 40px;max-width:1280px}
+.wrap h1{margin:2px 0 18px;font-size:23px;font-weight:800;letter-spacing:-.015em;line-height:1.2}
+.page-head{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;margin:-8px 0 18px}
+.page-head .ph-txt{flex:1 1 260px;min-width:0}
+.page-head .ph-sub{margin:2px 0 0;color:var(--mut);font-size:13.5px}
+.page-head .ph-crumbs{font-size:12px;color:var(--mut);margin-bottom:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.page-head .ph-crumbs a{color:var(--mut)}.page-head .ph-crumbs a:hover{color:var(--blue)}
+.page-head .ph-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .scrim{display:none}
+.muted{color:var(--mut)}
+.mono{font-family:var(--f-mono);font-size:13px}
+.money{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+.text-sm{font-size:12.5px}.text-xs{font-size:11.5px}.fw7{font-weight:700}.fw8{font-weight:800}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.row.between{justify-content:space-between}
+.stack{display:flex;flex-direction:column;gap:10px}
+.grid-2,.grid-3,.grid-4{display:grid;gap:14px}
+.grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}.grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}.grid-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media(max-width:1100px){.grid-4{grid-template-columns:repeat(2,minmax(0,1fr))}.grid-3{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr}}
+.divider{height:1px;background:var(--line);margin:14px 0}
+
+/* ── Cards & panels ──────────────────────────────────────────────────── */
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:22px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
-.card .k{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.4px}
-.card .v{font-size:26px;font-weight:800;margin-top:6px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;box-shadow:var(--sh-1);transition:box-shadow var(--dur) var(--ease),transform var(--dur) var(--ease),border-color var(--dur) var(--ease)}
+.card:hover{box-shadow:var(--sh-2);border-color:var(--line-2)}
+.card .k{font-size:11.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+.card .v{font-size:26px;font-weight:800;margin-top:6px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .card .v small{font-size:13px;color:var(--mut);font-weight:600}
-/* House-style hero stat cards (shared since 3 Sep 2026 so new pages such as
-   customer-view.php get them without copying index.php's block). Pages that
-   still carry their own copy override with identical rules — harmless. */
+.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;margin-bottom:22px;box-shadow:var(--sh-1)}
+.panel h2{margin:0;padding:14px 18px;font-size:15px;font-weight:700;border-bottom:1px solid var(--line);background:var(--head);display:flex;align-items:center;gap:8px;letter-spacing:-.01em}
+.panel h2 .a-ic{color:var(--blue)}
+.panel-body{padding:18px}
+.panel-foot{padding:12px 18px;border-top:1px solid var(--line);background:var(--head);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.dash-panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--sh-1)}
+.dash-panel .dp-head{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;background:var(--head)}
+.dash-panel .dp-body{padding:18px}
+
+/* KPI hero tiles (gradient, kept) */
 .dash-hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px}
-.hcard{border-radius:16px;padding:20px 22px;color:#fff;position:relative;overflow:hidden}
-.hcard::after{content:'';position:absolute;right:-18px;top:-18px;width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.1)}
-.hcard .hicon{font-size:28px;margin-bottom:8px;display:block;filter:drop-shadow(0 2px 4px rgba(0,0,0,.15))}
-.hcard .hk{font-size:12px;text-transform:uppercase;letter-spacing:.5px;opacity:.85}
-.hcard .hv{font-size:30px;font-weight:800;margin:4px 0 2px;line-height:1.1}
-.hcard .hsub{font-size:12px;opacity:.75}
-.hcard .hlink{display:inline-block;margin-top:8px;font-size:12px;font-weight:700;color:#fff;background:rgba(255,255,255,.2);padding:4px 12px;border-radius:20px;text-decoration:none}
+.hcard{border-radius:var(--r-lg);padding:20px 22px;color:#fff;position:relative;overflow:hidden;box-shadow:var(--sh-2);transition:transform var(--dur) var(--ease),box-shadow var(--dur) var(--ease)}
+.hcard:hover{transform:translateY(-2px);box-shadow:var(--sh-3)}
+.hcard::after{content:'';position:absolute;right:-18px;top:-18px;width:90px;height:90px;border-radius:50%;background:rgba(255,255,255,.12)}
+.hcard::before{content:'';position:absolute;left:-30px;bottom:-40px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.06)}
+.hcard .hicon{font-size:26px;margin-bottom:8px;display:inline-flex;width:44px;height:44px;border-radius:12px;align-items:center;justify-content:center;background:rgba(255,255,255,.16);filter:drop-shadow(0 2px 4px rgba(0,0,0,.15))}
+.hcard .hk{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;opacity:.88;font-weight:700}
+.hcard .hv{font-size:30px;font-weight:800;margin:4px 0 2px;line-height:1.1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.hcard .hsub{font-size:12px;opacity:.8}
+.hcard .hlink{display:inline-block;margin-top:10px;font-size:12px;font-weight:700;color:#fff;background:rgba(255,255,255,.2);padding:5px 12px;border-radius:20px;text-decoration:none;transition:background var(--dur) var(--ease)}
+.hcard .hlink:hover{background:rgba(255,255,255,.35)}
 .hc-blue{background:linear-gradient(135deg,#2E5FA8,#1a3d6e)}
 .hc-green{background:linear-gradient(135deg,#0a8b4b,#065a30)}
-.hc-orange{background:linear-gradient(135deg,#e67e22,#d35400)}
+.hc-orange{background:linear-gradient(135deg,#F07C1F,#C85A0A)}
 .hc-red{background:linear-gradient(135deg,#c0392b,#8e2320)}
 .hc-navy{background:linear-gradient(135deg,#12264E,#0b1a36)}
-.hc-teal{background:linear-gradient(135deg,#00897b,#00695c)}
+.hc-teal{background:linear-gradient(135deg,#0E8C7F,#065F56)}
+.hc-violet{background:linear-gradient(135deg,#6D4FC2,#45308F)}
 @media(max-width:900px){.dash-hero{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}}
-.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:22px}
-.panel h2{margin:0;padding:14px 18px;font-size:15px;border-bottom:1px solid var(--line);background:var(--head)}
-table{width:100%;border-collapse:collapse;font-size:14px}
-th,td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
-th{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.3px;background:var(--head)}
-tr:last-child td{border-bottom:0}
-.pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700}
-.btn{display:inline-block;padding:8px 14px;border-radius:9px;border:1px solid transparent;font-weight:700;font-size:13px;
-     cursor:pointer;background:var(--blue);color:#fff}
-.btn.ok{background:#0a6b3b}.btn.bad,.btn.danger{background:#b02a2a}.btn.ghost{background:var(--card);border-color:var(--line);color:var(--ink)}
-.btn.ghost.danger{background:var(--card);border-color:#e3b4b4;color:#8a1f1f}
-.btn:hover{filter:brightness(1.06)}
-.row-actions{display:flex;gap:8px;flex-wrap:wrap}
-.muted{color:var(--mut)}
-.flash{padding:12px 16px;border-radius:10px;margin-bottom:16px;font-weight:600}
-.flash.ok{background:#d7f4e3;color:#0a6b3b}.flash.bad{background:#f7dcdc;color:#8a1f1f}
-.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
-.toolbar input,.toolbar select{padding:9px 12px;border:1px solid var(--line);border-radius:9px;font-size:14px;background:var(--card);color:var(--ink)}
-.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
-/* --- Mobile-first hardening (simplify pass) ---------------------------
-   Nothing should push the whole admin page into horizontal scroll on a
-   phone; wide tables scroll inside their own box instead. */
-/* html only: body{overflow-x:hidden} makes BODY its own scroll container and
-   Android then routes vertical swipes to it — the exact "touch did nothing"
-   trap removed from the customer site on 2 Sep 2026 (app.css). */
-html{overflow-x:hidden}@supports(overflow:clip){html{overflow-x:clip}}
-img,pre{max-width:100%}
-/* Shared wrapper: <div class="tbl-scroll"><table>…</table></div>. A few
-   pages already use this exact class inline — keep the name identical. */
-.tbl-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
-/* Touch targets: on coarse pointers every primary control is >=44px, matching
-   the customer site. Admin previously had no such rule. */
-@media(pointer:coarse){
-  .btn{min-height:44px;display:inline-flex;align-items:center;justify-content:center}
-  .toolbar input,.toolbar select,.side a{min-height:44px}
-  /* Filter bars that never adopted .toolbar (wallet statement, chalani
-     tools, accounting day-book) still deserve tappable controls. */
-  .mf-tools input,.mf-tools select,.acc-tools input,.acc-tools select,
-  form input[type=date],form select{min-height:44px}
-  .theme-tog,.tb .menu{min-width:44px;min-height:44px;justify-content:center;align-items:center}
-}
-@media(max-width:820px){
-  .side{transform:translateX(-100%);transition:transform .2s;z-index:40}
-  /* Phones (3 Sep 2026): 16px controls stop iOS Safari zooming on focus;
-     tighter gutters give a 390px screen its width back; top-bar links get
-     a finger-sized hit area.
 
-     !important added 2026-09-06: without it an inline font-size on the
-     field won this rule, so a handful of controls (booking-view note ×2,
-     customers reason, trips/trip-dashboard driver+bus selects) still
-     zoomed on an iPhone. Scoped to <=820px and to form fields only, so it
-     changes nothing on desktop and cannot touch layout — it only lifts a
-     sub-16px field up to 16px on a phone. One rule fixes the whole class,
-     including any inline font-size added in future, without editing the
-     money-page markup. */
-  .wrap{padding:14px 12px}
+/* KPI tiles (light, Zepto-style) */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:22px}
+.kpi{display:flex;gap:14px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px 18px;box-shadow:var(--sh-1);position:relative;overflow:hidden;transition:box-shadow var(--dur) var(--ease),transform var(--dur) var(--ease)}
+.kpi:hover{box-shadow:var(--sh-2);transform:translateY(-1px)}
+.kpi .ki{width:44px;height:44px;border-radius:13px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;font-size:20px;background:var(--blue-50);color:var(--blue)}
+.kpi .ki .a-ic{width:22px;height:22px;stroke-width:1.9}
+.kpi .kt{min-width:0;flex:1}
+.kpi .kk{font-size:11.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.08em;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi .kv{font-size:24px;font-weight:800;letter-spacing:-.02em;line-height:1.15;margin-top:4px;font-variant-numeric:tabular-nums}
+.kpi .ks{font-size:12px;color:var(--mut);margin-top:3px}
+.kpi .kd{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px;margin-left:6px;vertical-align:middle}
+.kpi .kd.up{background:var(--ok-bg);color:var(--ok)}.kpi .kd.down{background:var(--bad-bg);color:var(--bad)}.kpi .kd.flat{background:var(--soft);color:var(--mut)}
+.kpi.tone-green .ki{background:var(--ok-bg);color:var(--ok)}.kpi.tone-orange .ki{background:var(--orange-100);color:var(--orange-600)}
+.kpi.tone-red .ki{background:var(--bad-bg);color:var(--bad)}.kpi.tone-navy .ki{background:var(--navy);color:#fff}
+.kpi.tone-teal .ki{background:var(--teal-bg);color:var(--teal)}.kpi.tone-violet .ki{background:var(--violet-bg);color:var(--violet)}
+.kpi.tone-wa .ki{background:var(--wa-bg);color:var(--wa-600)}
+.kpi a.kl{position:absolute;inset:0}
+
+/* ── Tables ──────────────────────────────────────────────────────────── */
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:11.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em;background:var(--head);font-weight:700;white-space:nowrap}
+tbody tr{transition:background var(--dur) var(--ease)}
+tbody tr:hover>td{background:var(--soft)}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.tbl-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+.tbl-sticky{max-height:70vh;overflow:auto}
+.tbl-sticky thead th{position:sticky;top:0;z-index:2}
+.row-highlight{background:#fff4d1 !important;animation:rowpulse 1.6s ease 2}
+@keyframes rowpulse{0%,100%{background:#fff4d1}50%{background:#ffe28a}}
+:root[data-theme="dark"] .row-highlight{background:#3a2f12 !important;color:#ffe9a8;animation:none}
+:root[data-theme="dark"] .row-highlight td,:root[data-theme="dark"] .row-highlight th{color:#ffe9a8}
+
+/* ── Status pills & chips ────────────────────────────────────────────── */
+.pill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;line-height:1.5;white-space:nowrap}
+.pill::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.75}
+.pill.nodot::before,.pill.st-none::before{display:none}
+.st-ok{background:var(--ok-bg);color:var(--ok)}.st-warn{background:var(--warn-bg);color:var(--warn)}.st-bad{background:var(--bad-bg);color:var(--bad)}
+.st-info{background:var(--info-bg);color:var(--info)}.st-muted{background:var(--soft);color:var(--mut)}.st-navy{background:var(--navy);color:#fff}
+.st-orange{background:var(--orange-100);color:var(--orange-600)}.st-wa{background:var(--wa-bg);color:var(--wa-600)}.st-violet{background:var(--violet-bg);color:var(--violet)}.st-teal{background:var(--teal-bg);color:var(--teal)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;font-size:12.5px;font-weight:600;background:var(--soft);color:var(--ink-2);border:1px solid var(--line)}
+.chip .a-ic{width:14px;height:14px}
+.chip.on{background:var(--blue-50);color:var(--blue-600);border-color:var(--blue-100)}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.avatar{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--navy));color:#fff;font-weight:800;width:38px;height:38px;font-size:13px;flex:0 0 auto;overflow:hidden;letter-spacing:.02em}
+.avatar img{width:100%;height:100%;object-fit:cover}
+.avatar.lg{width:64px;height:64px;font-size:20px;border-radius:18px}.avatar.xl{width:96px;height:96px;font-size:30px;border-radius:24px}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--mut)}
+.dot.ok{background:var(--ok)}.dot.warn{background:var(--warn)}.dot.bad{background:var(--bad)}.dot.info{background:var(--blue)}
+
+/* ── Buttons ─────────────────────────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:9px 15px;border-radius:var(--r-sm);border:1px solid transparent;font-weight:700;font-size:13.5px;line-height:1.2;
+     cursor:pointer;background:var(--blue);color:#fff;font-family:inherit;text-decoration:none;white-space:nowrap;transition:transform var(--dur) var(--ease),box-shadow var(--dur) var(--ease),background var(--dur) var(--ease),filter var(--dur) var(--ease)}
+.btn:hover{filter:brightness(1.06);box-shadow:0 4px 12px rgba(46,95,168,.25);transform:translateY(-1px)}
+.btn:active{transform:translateY(0) scale(.98);box-shadow:none}
+.btn:disabled,.btn[aria-disabled="true"]{opacity:.55;cursor:not-allowed;transform:none;box-shadow:none}
+.btn .a-ic{width:16px;height:16px}
+.btn.ok,.btn-ok,.btn.success{background:var(--ok)}
+.btn.ok:hover,.btn-ok:hover{box-shadow:0 4px 12px rgba(23,138,80,.3)}
+.btn.bad,.btn.danger,.btn-danger{background:var(--bad)}
+.btn.bad:hover,.btn.danger:hover,.btn-danger:hover{box-shadow:0 4px 12px rgba(197,48,48,.3)}
+.btn.warn,.btn-warn{background:var(--orange);color:#fff}
+.btn.warn:hover,.btn-warn:hover{box-shadow:0 4px 12px rgba(240,124,31,.35)}
+.btn-blue,.btn.primary{background:var(--blue)}
+.btn.navy{background:var(--navy)}
+.btn.ghost,.btn-ghost{background:var(--card);border-color:var(--line-2);color:var(--ink)}
+.btn.ghost:hover,.btn-ghost:hover{background:var(--hover);box-shadow:var(--sh-1);border-color:var(--line-2)}
+.btn.ghost.danger,.btn-ghost.danger{background:var(--card);border-color:#e3b4b4;color:#8a1f1f}
+.btn.soft{background:var(--blue-50);color:var(--blue-600);border-color:transparent}
+.btn.soft:hover{background:var(--blue-100);box-shadow:none}
+.btn.wa,.btn-wa{background:var(--wa);color:#fff}
+.btn.wa:hover,.btn-wa:hover{background:var(--wa-600);box-shadow:0 4px 12px rgba(37,211,102,.35)}
+.btn.link{background:none;border:0;color:var(--blue);padding:4px 6px;box-shadow:none}
+.btn.link:hover{text-decoration:underline;transform:none;box-shadow:none;filter:none}
+.btn.sm,.btn-sm,.btn.btn-sm{padding:6px 11px;font-size:12.5px;border-radius:8px;min-height:32px}
+.btn.lg,.btn-lg{padding:12px 20px;font-size:15px;border-radius:12px}
+.btn.block{width:100%}
+.btn.icon,.btn-icon{padding:8px;width:36px;height:36px}
+.btn.icon.sm{width:30px;height:30px;padding:6px}
+.row-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn-group{display:inline-flex;border:1px solid var(--line-2);border-radius:var(--r-sm);overflow:hidden}
+.btn-group .btn{border-radius:0;border:0;border-right:1px solid var(--line);background:var(--card);color:var(--ink);box-shadow:none;transform:none}
+.btn-group .btn:last-child{border-right:0}.btn-group .btn.on{background:var(--blue-50);color:var(--blue-600)}
+
+/* ── Flash / alerts ──────────────────────────────────────────────────── */
+.flash{padding:12px 16px 12px 18px;border-radius:12px;margin-bottom:16px;font-weight:600;position:relative;border:1px solid transparent;animation:flashIn .3s ease;display:flex;gap:10px;align-items:flex-start}
+.flash::before{content:'';position:absolute;left:0;top:10px;bottom:10px;width:4px;border-radius:0 4px 4px 0;background:currentColor;opacity:.8}
+.flash.ok{background:var(--ok-bg);color:var(--ok);border-color:rgba(23,138,80,.18)}
+.flash.bad{background:var(--bad-bg);color:var(--bad);border-color:rgba(197,48,48,.18)}
+.flash.warn{background:var(--warn-bg);color:var(--warn);border-color:rgba(183,121,31,.2)}
+.flash.info{background:var(--info-bg);color:var(--info);border-color:rgba(46,95,168,.18)}
+.flash.muted{background:var(--soft);color:var(--mut);border-color:var(--line)}
+@keyframes flashIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+@keyframes fadeDown{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.note{font-size:12.5px;color:var(--mut);background:var(--soft);border:1px dashed var(--line-2);border-radius:10px;padding:10px 12px}
+
+/* ── Forms ───────────────────────────────────────────────────────────── */
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
+.toolbar input,.toolbar select,.field input,.field select,.field textarea,input.inp,select.inp,textarea.inp{padding:9px 12px;border:1px solid var(--line-2);border-radius:var(--r-sm);font-size:14px;background:var(--card);color:var(--ink);font-family:inherit;min-height:40px;transition:border-color var(--dur) var(--ease),box-shadow var(--dur) var(--ease)}
+.toolbar input:focus,.toolbar select:focus,.field input:focus,.field select:focus,.field textarea:focus,.inp:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-100)}
+.field{display:flex;flex-direction:column;gap:5px}
+.field>label,.field .lbl{font-size:11.5px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
+.field .help{font-size:12px;color:var(--mut)}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px 16px}
+.form-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px}
+.seg{display:inline-flex;background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:3px;gap:2px}
+.seg a,.seg button{padding:7px 13px;border-radius:9px;font-size:13px;font-weight:700;color:var(--mut);background:none;border:0;cursor:pointer;font-family:inherit;white-space:nowrap}
+.seg a:hover,.seg button:hover{color:var(--ink)}
+.seg a.on,.seg button.on{background:var(--card);color:var(--blue-600);box-shadow:var(--sh-1)}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:16px;overflow-x:auto;scrollbar-width:none}
+.tabs a{padding:10px 14px;font-weight:700;font-size:13.5px;color:var(--mut);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tabs a:hover{color:var(--ink)}.tabs a.on{color:var(--blue-600);border-bottom-color:var(--blue)}
+.switch{position:relative;display:inline-block;width:42px;height:24px}
+.switch input{opacity:0;width:0;height:0}
+.switch i{position:absolute;inset:0;background:var(--line-2);border-radius:999px;transition:background var(--dur) var(--ease)}
+.switch i::after{content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform var(--dur) var(--ease)}
+.switch input:checked+i{background:var(--ok)}.switch input:checked+i::after{transform:translateX(18px)}
+
+/* ── Misc components ─────────────────────────────────────────────────── */
+.empty{padding:34px 16px;text-align:center;color:var(--mut)}
+.empty .em-ic{width:56px;height:56px;border-radius:16px;background:var(--soft);display:inline-flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:10px;color:var(--mut)}
+.empty b{display:block;color:var(--ink);font-size:15px;margin-bottom:3px}
+.progress{height:10px;border-radius:999px;background:var(--soft);overflow:hidden}
+.progress i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--blue),#5B8AD9);transition:width .4s var(--ease)}
+.progress i.ok{background:linear-gradient(90deg,#27ae60,#2ecc71)}.progress i.warn{background:linear-gradient(90deg,#f39c12,#e67e22)}.progress i.bad{background:linear-gradient(90deg,#e74c3c,#c0392b)}
+.timeline{list-style:none;margin:0;padding:0 0 0 18px;border-left:2px solid var(--line);display:flex;flex-direction:column;gap:14px}
+.timeline li{position:relative;padding-left:14px}
+.timeline li::before{content:'';position:absolute;left:-24px;top:5px;width:10px;height:10px;border-radius:50%;background:var(--blue);box-shadow:0 0 0 3px var(--card)}
+.timeline li.ok::before{background:var(--ok)}.timeline li.bad::before{background:var(--bad)}.timeline li.warn::before{background:var(--warn)}
+.timeline .tl-t{font-size:11.5px;color:var(--mut)}
+.kv-list{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;font-size:13.5px}
+.kv-list dt{color:var(--mut);font-weight:600}.kv-list dd{margin:0;font-weight:600}
+.skeleton{background:linear-gradient(90deg,var(--soft) 25%,var(--hover) 37%,var(--soft) 63%);background-size:400% 100%;animation:shimmer 1.4s ease infinite;border-radius:8px;min-height:14px}
+@keyframes shimmer{0%{background-position:100% 0}100%{background-position:0 0}}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--navy);color:#fff;padding:12px 18px;border-radius:12px;box-shadow:var(--sh-3);font-weight:600;font-size:13.5px;z-index:60;animation:flashIn .25s ease}
+.wa-ico{display:inline-flex;width:18px;height:18px;border-radius:50%;background:var(--wa);color:#fff;align-items:center;justify-content:center;font-size:11px;font-weight:900}
+details.advanced-section>summary{cursor:pointer;font-weight:700;color:var(--blue);padding:8px 0;list-style:none}
+details.advanced-section>summary::before{content:'▶ ';font-size:11px}
+details.advanced-section[open]>summary::before{content:'▼ '}
+
+/* ── Touch targets & responsive ──────────────────────────────────────── */
+@media(pointer:coarse){
+  .btn{min-height:44px}
+  .toolbar input,.toolbar select,.side a{min-height:44px}
+  .mf-tools input,.mf-tools select,.acc-tools input,.acc-tools select,form input[type=date],form select{min-height:44px}
+  .theme-tog,.tb .menu,.tb-ibtn{min-width:44px;min-height:44px;justify-content:center;align-items:center}
+  .btn.sm,.btn-sm,.btn.btn-sm{min-height:40px}
+}
+@media(max-width:1024px){.wrap{padding:20px 20px 40px}}
+@media(max-width:820px){
+  .side{transform:translateX(-100%);transition:transform .22s var(--ease);z-index:40;box-shadow:var(--sh-3)}
+  .wrap{padding:14px 12px 40px;margin-left:0}
+  .wrap h1{font-size:20px;margin-bottom:14px}
   input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]),select,textarea{font-size:16px !important}
   .tb .who a{display:inline-block;padding:10px 4px}
+  .tb .who .tb-name,.tb .who em{display:none}
   body.nav-open .side{transform:none}
-  body.nav-open .scrim{display:block;position:fixed;inset:56px 0 0;background:rgba(0,0,0,.35);z-index:35}
-  .wrap{margin-left:0}
+  body.nav-open .scrim{display:block;position:fixed;inset:var(--tb-h) 0 0;background:rgba(6,14,30,.45);z-index:35;backdrop-filter:blur(2px)}
   .tb .menu{display:block}
   .tb .who{font-size:11px}
-  /* Most admin list tables live inside a .panel; on a phone let the panel
-     scroll its wide table horizontally instead of clipping it (overflow:hidden)
-     or forcing the whole page to scroll. Vertical stays clipped for the
-     rounded corners. Covers the pages that lack an explicit .tbl-scroll. */
-  .panel{overflow-x:auto}
-  /* Phase 3 mobile: the search bar shrinks to a magnifier button — tapping
-     it expands into a full-width overlay dropdown so the top bar keeps its
-     brand + who strip readable. The input inside stays operable via keyboard;
-     autosuggest still opens below. */
-  .tb-search{max-width:180px;order:99;flex-basis:100%;margin-top:8px;height:34px}
+  .panel{overflow-x:auto;border-radius:14px}
+  .tb-search{max-width:none;order:99;flex-basis:100%;margin-top:8px;height:36px}
   .tb{flex-wrap:wrap;height:auto;padding-top:8px;padding-bottom:8px;gap:8px}
-  /* Table-to-card pattern: on narrow screens, tables with .card-table class
-     turn each row into a stacked card with <th> labels from data-label. */
+  .page-head .ph-actions{width:100%}
+  .page-head .ph-actions .btn{flex:1 1 auto}
   table.card-table thead{display:none}
-  table.card-table tbody tr{display:block;border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--card)}
-  table.card-table tbody td{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border:none;font-size:14px}
-  table.card-table tbody td::before{content:attr(data-label);font-weight:700;font-size:12px;color:var(--mut);margin-right:12px;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap}
-  /* Advanced sections hidden by default on mobile */
+  table.card-table tbody tr{display:block;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;background:var(--card);box-shadow:var(--sh-1)}
+  table.card-table tbody tr:hover>td{background:transparent}
+  table.card-table tbody td{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border:none;font-size:14px;gap:10px}
+  table.card-table tbody td::before{content:attr(data-label);font-weight:700;font-size:11px;color:var(--mut);margin-right:12px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
   details.advanced-section{margin-top:12px}
-  details.advanced-section>summary{font-size:13px;font-weight:600;cursor:pointer;color:var(--blue);padding:8px 0;list-style:none}
-  details.advanced-section>summary::before{content:'▶ ';font-size:11px}
-  details.advanced-section[open]>summary::before{content:'▼ '}
 }
-/* ── Toast animation — auto-fade after 4s ── */
-.flash{animation:flashIn .3s ease}
-@keyframes flashIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}}
+@media print{.tb,.side,.scrim,.mnav,.no-print{display:none !important}.wrap{margin:0;padding:0;max-width:none}.panel,.card{box-shadow:none;break-inside:avoid}}
 CSS;
 }
