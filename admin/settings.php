@@ -199,6 +199,64 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
   </div>
   <style>.fp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;padding:16px 18px}.fp-grid label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.3px}.fp-grid input{padding:10px 12px;border:1px solid var(--line);border-radius:9px;font-size:16px;font-weight:700;background:var(--card);color:var(--ink);min-width:0}.fp-grid input:disabled{opacity:.5}.fp-grid small{font-weight:500;text-transform:none;letter-spacing:0}</style>
 
+
+  <?php
+  /* -- Agent rules (17 Sep 2026) ------------------------------------------
+     The money rules the office asked to own, in one curated place. Every row
+     is seeded by database/upgrade-2026-09-agent-rules.sql with TODAY'S
+     behaviour as its default, so this panel changes nothing until the office
+     edits a value. Bool rows post through the same _boolkeys mechanism as the
+     generic loop (unticked = 0); the generic loop skips these keys. */
+  $arKeys = ['agent_commission_mode', 'agent_flat_direct', 'agent_flat_joint', 'agent_commission_percent',
+             'agent_advance_max', 'agent_advance_recover_pct', 'agent_payout_min', 'agent_settlement_due_days',
+             'agent_cash_limit_enforce', 'agent_kyc_required', 'agent_notify_settlement',
+             'agent_cash_limit_default', 'agent_daily_booking_limit'];
+  $fpKeys  = array_merge($fpKeys, $arKeys);
+  $arMissing = 'disabled title="Run database/upgrade-2026-09-agent-rules.sql once to enable this field"';
+  $arNum = static function (string $key, string $label, string $help, float $def, string $min, string $max, string $step, string $unit = '') use ($fpHave, $fpRo, $arMissing): string {
+      $val = Settings::get($key, null);
+      $val = $val === null ? $def : (float) $val;
+      $shown = rtrim(rtrim(number_format($val, 2, '.', ''), '0'), '.');
+      return '<label>' . Security::e($label) . ($unit !== '' ? ' <span class="muted">(' . Security::e($unit) . ')</span>' : '')
+           . '<input type="number" name="s[' . Security::e($key) . ']" min="' . $min . '" max="' . $max . '" step="' . $step . '" value="' . Security::e($shown) . '" ' . $fpRo . ' ' . ($fpHave($key) ? '' : $arMissing) . '>'
+           . '<small>' . Security::e($help) . '</small></label>';
+  };
+  $arBool = static function (string $key, string $label, string $help) use ($fpHave, $canEdit, $arMissing): string {
+      $on = Settings::getBool($key, false);
+      return '<label class="ar-bool"><span>' . Security::e($label) . '</span>'
+           . '<span class="row"><label class="switch"><input type="checkbox" name="s[' . Security::e($key) . ']" value="1" ' . ($on ? 'checked' : '') . ' ' . ($canEdit ? '' : 'disabled') . ' ' . ($fpHave($key) ? '' : $arMissing) . '><i></i></label>'
+           . '<small>' . Security::e($help) . '</small></span></label>';
+  };
+  $arMode = (string) Settings::getString('agent_commission_mode', 'flat_per_seat');
+  ?>
+  <div class="panel" id="agentRulesPanel">
+    <h2><svg class="a-ic"><use href="#a-handshake"/></svg> Agent rules <span class="muted" style="font-weight:400">· commission, advances, settlement, KYC — the office decides here</span></h2>
+    <div class="fp-grid">
+      <label>Commission scheme
+        <select name="s[agent_commission_mode]" <?= $canEdit ? '' : 'disabled' ?> <?= $fpHave('agent_commission_mode') ? '' : $arMissing ?>>
+          <option value="flat_per_seat" <?= $arMode === 'flat_per_seat' ? 'selected' : '' ?>>Flat ₹ per passenger (direct / team tiers)</option>
+          <option value="percent" <?= $arMode === 'percent' ? 'selected' : '' ?>>Percent of ticket value</option>
+        </select>
+        <small>Switching to “percent” re-rates EVERY agent’s next sale at the company % (or their own override).</small></label>
+      <?= $arNum('agent_flat_direct', 'Flat commission — direct agent', 'per passenger, flat scheme', 200, '0', '10000', '1', '₹') ?>
+      <?= $arNum('agent_flat_joint', 'Flat commission — team / organisation', 'per passenger, flat scheme', 400, '0', '10000', '1', '₹') ?>
+      <?= $arNum('agent_commission_percent', 'Company commission %', 'percent scheme default; a per-agent override on the Agent Panel wins', 5, '0', '100', '0.5', '%') ?>
+      <?= $arNum('agent_advance_max', 'Advance / loan cap per agent', '0 = no cap. Refuses an advance that would take the agent above this', 0, '0', '10000000', '1', '₹') ?>
+      <?= $arNum('agent_advance_recover_pct', 'Recovery share of each payout', '100 = commission nets the advance in full (today)', 100, '0', '100', '1', '%') ?>
+      <?= $arNum('agent_payout_min', 'Minimum payout', '0 = any amount. Paying the whole balance is always allowed', 0, '0', '10000000', '1', '₹') ?>
+      <?= $arNum('agent_settlement_due_days', 'Settlement due in', '0 = never flag. Cash held longer shows “settlement overdue”', 0, '0', '365', '1', 'days') ?>
+      <?= $arNum('agent_cash_limit_default', 'Default cash-in-hand limit', 'per-agent limit on the Agent Panel overrides this; 0 = no limit', 0, '0', '10000000', '1', '₹') ?>
+      <?= $arNum('agent_daily_booking_limit', 'Default daily booking limit', 'bookings per agent per day; 0 = no limit', 0, '0', '1000', '1', '') ?>
+    </div>
+    <div class="fp-grid" style="padding-top:0">
+      <?= $arBool('agent_cash_limit_enforce', 'Block selling above the cash limit', 'off = the limit only warns (today)') ?>
+      <?= $arBool('agent_kyc_required', 'KYC must be verified before selling', 'off = KYC is informational; verify every agent first') ?>
+      <?= $arBool('agent_notify_settlement', 'WhatsApp the agent on payout / cash handover', 'settlement receipt goes to the agent\'s number') ?>
+    </div>
+    <div style="padding:0 18px 14px"><small class="muted">Per-agent rates, overrides, salary, deposit and route permissions stay on the Agent Panel. Nothing here touches past ledger rows — rules apply from the next sale, payout or advance.</small></div>
+  </div>
+  <style>.ar-bool{display:flex;flex-direction:column;gap:6px}.ar-bool>span:first-child{font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut)}.ar-bool .row{gap:12px;align-items:center}.ar-bool small{font-weight:400;text-transform:none;letter-spacing:0;color:var(--mut)}</style>
+
   <?php foreach ($groups as $group => $items): ?>
     <div class="panel">
       <h2><?= Security::e(ucfirst((string) $group)) ?></h2>

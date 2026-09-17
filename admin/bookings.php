@@ -579,6 +579,7 @@ $canEdit   = Auth::can('bookings.edit');
         <td data-label="Actions"><div class="tk-acts">
           <a class="btn ghost" href="<?= $viewUrl ?>" title="Open the ticket">👁 View</a>
           <?php if ($canEdit && $open): ?><a class="btn ghost" href="<?= $viewUrl ?>#edit" title="Edit passenger, phone, stops, seat, payment">✏️ Edit</a><?php endif; ?>
+          <?php /* 17 Sep 2026: change-date one click from the register (same gate as reschedule.php) */ if ($open && (Auth::can('bookings.edit') || Auth::can('schedules.edit') || Auth::isSuperadmin())): ?><a class="btn ghost" href="<?= $base ?>/admin/reschedule.php?pnr=<?= urlencode((string) $b['pnr']) ?>" title="Move this ticket to another date or departure (same route)">📅 Date</a><?php endif; ?>
           <?php if ((string) $b['status'] === 'confirmed'): ?>
             <a class="btn ghost" href="<?= Security::e(Ticket::downloadUrl((string) $b['pnr'])) ?>&amp;print=1" target="_blank" rel="noopener" title="Open the ticket for printing">🖨 Print</a>
             <a class="btn ghost" href="<?= Security::e(Ticket::imageUrl((string) $b['pnr'])) ?>" target="_blank" rel="noopener" title="The HD image ticket — the format passengers are sent">🎟️ PNG</a>

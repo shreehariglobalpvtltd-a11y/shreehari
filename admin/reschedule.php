@@ -12,15 +12,16 @@
  * coach, ?leg= selects the outbound or return leg, and the passenger is told
  * WHAT changed (old date → new date · seats) via Notify::ticketChanged().
  *
- * Access: staff holding bookings.edit AND schedules.edit — managers,
- * superadmin AND the counter role (since 5 Sep 2026 counter staff move dates
- * for walk-ins). Agents (schedules.edit only) cannot reschedule; they have
- * the missed-bus grace page for their own sales.
+ * Access: staff holding bookings.edit OR schedules.edit — managers,
+ * superadmin, the counter role (since 5 Sep 2026 counter staff move dates
+ * for walk-ins) and, since 17 Sep 2026, agents for THEIR OWN sales (the
+ * engine refuses any booking the agent did not sell; foreign PNRs read as
+ * not found here).
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/tripstatus.php';
-$admin = admin_boot('bookings.edit');
+$admin = admin_boot('bookings.view');
 
 $base  = '';
 $pnr   = Security::clean($_GET['pnr'] ?? ($_POST['pnr'] ?? ''), 40);
@@ -29,7 +30,10 @@ $flash = null;
 // schedules.edit (not .manage) since 5 Sep 2026: counter staff move dates
 // for walk-ins, but must not gain the Schedule Manager / Bus Calendar powers
 // that ride on schedules.manage. Managers hold both, so nothing tightens.
-$canReschedule = Auth::can('bookings.edit') && Auth::can('schedules.edit');
+// 17 Sep 2026: agents (schedules.edit only) may now move THEIR OWN sales too —
+// the same door missed-bus.php already opens; rebookLeg() refuses a booking
+// the agent did not sell and this page hides foreign PNRs ($scopeId below).
+$canReschedule = Auth::can('bookings.edit') || Auth::can('schedules.edit') || Auth::isSuperadmin();
 $csrf = Security::e(Security::csrfToken());
 $k    = CSRF_TOKEN_NAME;
 
@@ -128,7 +132,7 @@ if ($b === null) {
     exit;
 }
 if (!$canReschedule) {
-    echo '<div class="flash bad">Rescheduling needs both booking-edit and schedule-edit rights.</div>';
+    echo '<div class="flash bad">Rescheduling needs booking-edit or schedule-edit rights.</div>';
     admin_footer();
     exit;
 }
