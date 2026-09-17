@@ -700,6 +700,124 @@ final class Notify
     }
 
     /**
+     * Tell the passenger WHAT changed on their ticket (17 Sep 2026).
+     *
+     * Reschedule, missed-bus rebooking, seat change and detail edits all used
+     * to re-send the plain "is CONFIRMED" ticket, so a passenger moved from
+     * the 17th to the 18th was never told a date had moved — they found out at
+     * the bus. This is the same delivery path as resendTicketWhatsApp() (same
+     * PNG + PDF links, ticketTemplateVars, countryHint, message_logs row) with
+     * a clear first line naming the change, in English plus a short Nepali
+     * line like every other passenger message.
+     *
+     * Template-only senders: an approved WhatsApp template carries no free
+     * text, so when one is in force (Twilio twilio_content_sid, or Cloud API
+     * whatsapp_template_name) the send is EXACTLY resendTicketWhatsApp() — the
+     * refreshed ticket goes out, the change note cannot — and the detail says
+     * so. Never throws; best effort like the button it mirrors.
+     *
+     * @param array<string,mixed> $booking FULL BookingService::detail() array
+     * @param string $what 'reschedule' | 'missed_rebook' | 'seat' | 'passenger' | 'contact'
+     * @param array<string,mixed> $ctx oldDate, newDate, seats (string|array),
+     *        oldSeats, old, new, name — all optional, all display strings
+     * @return array{ok: bool, detail: string, link?: string}
+     */
+    public static function ticketChanged(array $booking, string $what, array $ctx = []): array
+    {
+        if (!in_array($what, ['reschedule', 'missed_rebook', 'seat', 'passenger', 'contact'], true)) {
+            return ['ok' => false, 'detail' => 'Unknown ticket change kind "' . $what . '" — nothing sent.'];
+        }
+        $company = Settings::getString('company_name', APP_NAME);
+        $pnr     = (string) ($booking['pnr'] ?? '');
+        if (self::usablePhone($booking['contact_phone'] ?? '') === '') {
+            return ['ok' => false, 'detail' => 'This booking has no usable contact phone number on file.'];
+        }
+
+        $driver = Settings::getString('whatsapp_driver', 'click_to_chat');
+        $templateInForce = ($driver === 'twilio' && Settings::getString('twilio_content_sid', '') !== '')
+            || ($driver === 'cloud_api' && Settings::getString('whatsapp_template_name', '') !== '');
+        if ($templateInForce) {
+            $res = self::resendTicketWhatsApp($booking);
+            $res['detail'] = (string) ($res['detail'] ?? '')
+                . ' (Approved-template sender: the refreshed ticket was sent, the change note itself cannot ride on a template.)';
+            return $res;
+        }
+
+        // Display strings for the change line; the caller passes what it knows.
+        $fmt = static function (mixed $v): string {
+            $s = trim((string) (is_scalar($v) ? $v : ''));
+            return ($s !== '' && Security::isValidDate($s)) ? formatDate($s) : $s;
+        };
+        $seatStr = static function (mixed $v): string {
+            return is_array($v) ? implode(', ', array_map('strval', $v)) : trim((string) (is_scalar($v) ? $v : ''));
+        };
+        $oldDate = $fmt($ctx['oldDate'] ?? '');
+        $newDate = $fmt($ctx['newDate'] ?? '');
+        $seats   = $seatStr($ctx['seats'] ?? ($ctx['new'] ?? ''));
+        $old     = $seatStr($ctx['oldSeats'] ?? ($ctx['old'] ?? ''));
+        $name    = trim((string) ($ctx['name'] ?? ''));
+        $dates   = ($oldDate !== '' ? $oldDate . ' -> ' : '') . $newDate;
+        $seatTail = $seats !== '' ? ' · seat(s) ' . $seats : '';
+
+        switch ($what) {
+            case 'reschedule':
+                $en = 'Your ticket ' . $pnr . ' has been RESCHEDULED: ' . $dates . $seatTail;
+                $np = 'तपाईंको टिकट ' . $pnr . ' को यात्रा मिति परिवर्तन भयो: ' . $newDate . ($seats !== '' ? ' · सिट ' . $seats : '');
+                break;
+            case 'missed_rebook':
+                $en = 'Your ticket ' . $pnr . ' has been REBOOKED after the missed bus: ' . $dates . $seatTail;
+                $np = 'बस छुटेपछि तपाईंको टिकट ' . $pnr . ' नयाँ मितिमा सारियो: ' . $newDate . ($seats !== '' ? ' · सिट ' . $seats : '');
+                break;
+            case 'seat':
+                $en = 'Your seat on ticket ' . $pnr . ' has CHANGED: ' . ($old !== '' ? $old . ' -> ' : '') . $seats;
+                $np = 'टिकट ' . $pnr . ' को सिट परिवर्तन भयो: ' . $seats;
+                break;
+            case 'contact':
+                $en = 'Contact details on ticket ' . $pnr . ' have been UPDATED' . ($seats !== '' ? ': ' . $seats : '');
+                $np = 'टिकट ' . $pnr . ' को सम्पर्क विवरण अद्यावधिक भयो।';
+                break;
+            default: // passenger
+                $en = 'Passenger details on ticket ' . $pnr . ' have been UPDATED' . ($name !== '' ? ' (' . $name . ')' : '');
+                $np = 'टिकट ' . $pnr . ' को यात्रु विवरण अद्यावधिक भयो।';
+                break;
+        }
+
+        $ticketUrl = Ticket::imageUrl($pnr);      // carries the §25 download key
+        $text = "🚌 " . $company . "\n"
+              . $en . "\n"
+              . $np . "\n"
+              . "Amount: " . inr((float) ($booking['total_amount'] ?? 0)) . " (unchanged)\n"
+              . "Your updated ticket (image): " . $ticketUrl . "\n"
+              . "Print copy (PDF): " . Ticket::downloadUrl($pnr) . "\n"
+              . "Please carry the updated ticket. Have a safe journey.";
+        $mediaUrl = Settings::getBool('whatsapp_send_pdf', true) ? $ticketUrl : null;
+        $res = self::whatsapp(
+            (string) $booking['contact_phone'],
+            $text,
+            $mediaUrl,
+            self::countryHint($booking),
+            self::ticketTemplateVars($booking),
+            isset($booking['id']) && (int) $booking['id'] > 0 ? (int) $booking['id'] : null
+        );
+        if ($res === true) {
+            return ['ok' => true, 'detail' => 'Change notice (' . $what . ') sent to ' . $booking['contact_phone'] . ' on WhatsApp.'];
+        }
+        if (is_string($res) && $res !== '') {
+            $pause = $driver === 'twilio' ? self::twilioPause() : null;
+            if ($pause !== null) {
+                return ['ok' => false, 'link' => $res,
+                    'detail' => 'Twilio is refusing the account right now (' . ($pause['message'] !== '' ? $pause['message'] : 'code ' . $pause['code'])
+                        . '), so automatic sends are paused until ' . date('H:i', $pause['until'])
+                        . ' and then retried by themselves. Send via the click-to-chat link for now.'];
+            }
+            return ['ok' => false, 'link' => $res,
+                'detail' => 'No WhatsApp API is configured, so nothing auto-sent. Send the change notice via the click-to-chat link.'];
+        }
+        return ['ok' => false,
+            'detail' => 'WhatsApp send failed. Use Settings → "Test WhatsApp" to see the exact provider error, or check logs/ (channel: whatsapp).'];
+    }
+
+    /**
      * Send through Twilio's WhatsApp REST API (Basic auth: SID:AuthToken).
      * A non-empty $mediaUrl is delivered as a media message (PDF/image).
      *

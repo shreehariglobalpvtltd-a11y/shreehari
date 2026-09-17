@@ -177,6 +177,12 @@ try {
     expectThrow('cannot change the seat count on a missed rebooking',
         fn() => BookingService::rebookMissedLeg($bid, $sidSrc, ['L1', 'L2'], $SRC_DATE, 1));
 
+    // (e) Leg selector (17 Sep 2026): only outbound/return exist; a bogus
+    // value is refused up front and the booking stays exactly where it is.
+    expectThrow('a bogus leg type is rejected on a missed rebooking',
+        fn() => BookingService::rebookMissedLeg($bid, $sidSrc, ['L3'], $SRC_DATE, 1, 'sideways'));
+    check('bogus leg type moved nothing — bid still on dest', seatCount($sidDst) === 1);
+
 } catch (Throwable $e) {
     check('unexpected error: ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine(), false);
 } finally {

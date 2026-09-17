@@ -70,6 +70,22 @@ final class BookingService
         return $has;
     }
 
+    /**
+     * One passenger document field (id_type / id_number / nationality) as it
+     * is stored: the traveller's own value, else $fallback (the contact's
+     * document for the primary passenger), cleaned to the column width and
+     * NULL when both are blank — so an untouched row reads as "not given",
+     * never as an empty string the manifest would print. 17 Sep 2026.
+     */
+    private static function paxIdField(mixed $own, mixed $fallback): ?string
+    {
+        $v = Security::clean((string) (is_scalar($own) ? $own : ''), 60);
+        if ($v === '') {
+            $v = Security::clean((string) (is_scalar($fallback) ? $fallback : ''), 60);
+        }
+        return $v !== '' ? $v : null;
+    }
+
     public static function create(array $request, ?array $seller = null): array
     {
         $routeId    = (int) $request['routeId'];
@@ -494,6 +510,17 @@ final class BookingService
                     'gender'        => in_array($pax['gender'] ?? '', ['Male', 'Female', 'Other'], true) ? $pax['gender'] : null,
                     'is_primary'    => $index === 0 ? 1 : 0,
                 ];
+                /* Per-passenger document (17 Sep 2026): booking_passengers has
+                   carried id_type / id_number / nationality since day one, but
+                   only the admin edit form ever filled them — the manifest and
+                   customer book showed blanks for every online/counter sale.
+                   Each traveller's own document wins; the primary passenger
+                   inherits the CONTACT's document when none was typed for them,
+                   so the existing checkout (contact-level ID only) keeps
+                   working with zero JS change. Blank stays NULL, not ''. */
+                $paxRow['id_type']     = self::paxIdField($pax['idType'] ?? '', $index === 0 ? ($contact['idType'] ?? '') : '');
+                $paxRow['id_number']   = self::paxIdField($pax['idNum'] ?? '', $index === 0 ? ($contact['idNum'] ?? '') : '');
+                $paxRow['nationality'] = self::paxIdField($pax['nationality'] ?? '', '');
                 // Patient / birami mode (4 Sep 2026): priority-boarding flag,
                 // written only where the column exists (guarded migration
                 // database/upgrade-2026-09-passenger-special.sql).
@@ -688,6 +715,11 @@ final class BookingService
                 'gender' => in_array($p['gender'] ?? '', ['Male', 'Female', 'Other'], true)
                     ? (string) $p['gender']
                     : ($i === 0 ? $gender : null),
+                // Per-passenger document (17 Sep 2026); the first traveller
+                // inherits the register's contact-level idType/idNum.
+                'idType'      => self::paxIdField($p['idType'] ?? '', $i === 0 ? ($data['idType'] ?? '') : ''),
+                'idNum'       => self::paxIdField($p['idNum'] ?? '', $i === 0 ? ($data['idNum'] ?? '') : ''),
+                'nationality' => self::paxIdField($p['nationality'] ?? '', ''),
             ];
         }
 
@@ -834,6 +866,9 @@ final class BookingService
                     'full_name'     => $pax['name'],
                     'age'           => $pax['age'],
                     'gender'        => $pax['gender'],
+                    'id_type'       => $pax['idType'] ?? null,
+                    'id_number'     => $pax['idNum'] ?? null,
+                    'nationality'   => $pax['nationality'] ?? null,
                     'is_primary'    => $i === 0 ? 1 : 0,
                 ]);
             }
@@ -897,11 +932,19 @@ final class BookingService
      * to the new trip at the gate.
      *
      * @param array<int,string> $newSeatNos seats on the new schedule (same count)
+     * @param string $legType 'outbound' (default, every historic caller) or
+     *                        'return' — which booking_legs row is moved. Added
+     *                        17 Sep 2026 so a round trip's second leg can be
+     *                        rescheduled once return legs are sold; the
+     *                        default keeps today's behaviour byte-for-byte.
      * @return array{booking: array<string,mixed>, changed: bool}
      */
-    public static function rebookLeg(int $bookingId, int $newScheduleId, array $newSeatNos, string $newDate, int $actorAdminId, string $reason = ''): array
+    public static function rebookLeg(int $bookingId, int $newScheduleId, array $newSeatNos, string $newDate, int $actorAdminId, string $reason = '', string $legType = 'outbound'): array
     {
         /* ---- Pre-transaction gates (no locks held) -------------------- */
+        if (!in_array($legType, ['outbound', 'return'], true)) {
+            throw new RuntimeException('Invalid leg type — choose outbound or return.');
+        }
         $booking = Database::fetch('SELECT * FROM bookings WHERE id = :id', ['id' => $bookingId]);
         if ($booking === null) { throw new RuntimeException('Booking not found.'); }
         $status = (string) $booking['status'];
@@ -917,10 +960,10 @@ final class BookingService
         }
 
         $leg = Database::fetch(
-            "SELECT * FROM booking_legs WHERE booking_id = :b AND leg_type = 'outbound' ORDER BY id LIMIT 1",
-            ['b' => $bookingId]
+            'SELECT * FROM booking_legs WHERE booking_id = :b AND leg_type = :lt ORDER BY id LIMIT 1',
+            ['b' => $bookingId, 'lt' => $legType]
         );
-        if ($leg === null) { throw new RuntimeException('This booking has no outbound leg to move.'); }
+        if ($leg === null) { throw new RuntimeException('This booking has no ' . $legType . ' leg to move.'); }
         $legId         = (int) $leg['id'];
         $oldScheduleId = (int) $leg['schedule_id'];
         $oldDate       = (string) $leg['travel_date'];
@@ -1009,11 +1052,15 @@ final class BookingService
      * scoping rebookLeg already uses). Customers can never reach it.
      *
      * @param array<int,string> $newSeatNos seats on the new schedule (same count)
+     * @param string $legType 'outbound' (default) or 'return' — see rebookLeg().
      * @return array{booking: array<string,mixed>, changed: bool}
      */
-    public static function rebookMissedLeg(int $bookingId, int $newScheduleId, array $newSeatNos, string $newDate, int $actorAdminId): array
+    public static function rebookMissedLeg(int $bookingId, int $newScheduleId, array $newSeatNos, string $newDate, int $actorAdminId, string $legType = 'outbound'): array
     {
         /* ---- Pre-transaction gates (no locks held) -------------------- */
+        if (!in_array($legType, ['outbound', 'return'], true)) {
+            throw new RuntimeException('Invalid leg type — choose outbound or return.');
+        }
         $booking = Database::fetch('SELECT * FROM bookings WHERE id = :id', ['id' => $bookingId]);
         if ($booking === null) { throw new RuntimeException('Booking not found.'); }
         $pnr    = (string) $booking['pnr'];
@@ -1032,10 +1079,10 @@ final class BookingService
         }
 
         $leg = Database::fetch(
-            "SELECT * FROM booking_legs WHERE booking_id = :b AND leg_type = 'outbound' ORDER BY id LIMIT 1",
-            ['b' => $bookingId]
+            'SELECT * FROM booking_legs WHERE booking_id = :b AND leg_type = :lt ORDER BY id LIMIT 1',
+            ['b' => $bookingId, 'lt' => $legType]
         );
-        if ($leg === null) { throw new RuntimeException('This booking has no outbound leg to move.'); }
+        if ($leg === null) { throw new RuntimeException('This booking has no ' . $legType . ' leg to move.'); }
         $legId         = (int) $leg['id'];
         $oldScheduleId = (int) $leg['schedule_id'];
         $oldDate       = (string) $leg['travel_date'];

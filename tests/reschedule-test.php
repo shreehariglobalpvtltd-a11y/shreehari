@@ -27,6 +27,8 @@ function glock(int $sid, string $u): string { return (string) Database::scalar('
 
 function cleanupAll(): void {
     foreach (pluck(Database::fetchAll("SELECT id FROM bookings WHERE pnr LIKE 'SHG-TEST-%'"), 'id') as $id) {
+        $pnr = (string) Database::scalar('SELECT pnr FROM bookings WHERE id = :i', ['i' => (int) $id], '');
+        if ($pnr !== '') { Database::delete('audit_logs', "entity_type='booking' AND entity_id = :p", ['p' => $pnr]); }
         Database::delete('bookings', 'id = :i', ['i' => (int) $id]);   // FK cascade drops legs/seats/passengers/payments/tickets
     }
     foreach ([TDA, TDB] as $d) {
@@ -116,6 +118,36 @@ try {
     check('QR encodes new date B', strpos((string) $tkAfter['qr_payload'], TDB) !== false);
     check('QR encodes new seat L7', strpos((string) $tkAfter['qr_payload'], 'L7') !== false);
     check('QR no longer encodes old date A', strpos((string) $tkAfter['qr_payload'], TDA) === false);
+
+    // ---- Leg selector (17 Sep 2026): explicit 'outbound' == default ----
+    // Move back to A with the leg named, then forward again with the default
+    // signature; both must land the same rows, seats, QR facts and money.
+    expectThrow('a bogus leg type is rejected before anything is touched',
+        fn() => BookingService::rebookLeg($bid, $sidA, ['L3'], TDA, 1, '', 'sideways'));
+    check('bogus leg type moved nothing — bid still holds L7 on B', seatCount($sidB) === 1 && seatCount($sidA) === 0);
+    expectThrow("'return' leg on a one-way booking is refused (no such leg)",
+        fn() => BookingService::rebookLeg($bid, $sidA, ['L3'], TDA, 1, '', 'return'));
+
+    $resX = BookingService::rebookLeg($bid, $sidA, ['L3'], TDA, 1, 'explicit outbound', 'outbound');
+    check("explicit 'outbound' legType: changed=true", ($resX['changed'] ?? false) === true);
+    $legX = Database::fetch("SELECT schedule_id, travel_date, seat_count FROM booking_legs WHERE booking_id = :b AND leg_type='outbound'", ['b' => $bid]);
+    check("explicit 'outbound': leg back on A / date A", (int) $legX['schedule_id'] === $sidA && (string) $legX['travel_date'] === TDA);
+    check("explicit 'outbound': passenger seat_no → L3", (string) Database::scalar('SELECT seat_no FROM booking_passengers WHERE booking_id = :b LIMIT 1', ['b' => $bid]) === 'L3');
+    check("explicit 'outbound': inventory A=1 / B=0", seatCount($sidA) === 1 && seatCount($sidB) === 0);
+    check("explicit 'outbound': still exactly one leg row", (int) Database::scalar('SELECT COUNT(*) FROM booking_legs WHERE booking_id = :b', ['b' => $bid], 0) === 1);
+    $tkX = Database::fetch('SELECT ticket_number, qr_payload FROM tickets WHERE booking_id = :b', ['b' => $bid]);
+    check("explicit 'outbound': ticket_number preserved", (string) $tkX['ticket_number'] === (string) $tkBefore['ticket_number']);
+    check("explicit 'outbound': QR encodes date A + L3", strpos((string) $tkX['qr_payload'], TDA) !== false && strpos((string) $tkX['qr_payload'], 'L3') !== false);
+
+    $resY = BookingService::rebookLeg($bid, $sidB, ['L7'], TDB, 1);   // default legType — identical behaviour
+    check('default legType: changed=true', ($resY['changed'] ?? false) === true);
+    $legY = Database::fetch("SELECT schedule_id, travel_date FROM booking_legs WHERE booking_id = :b AND leg_type='outbound'", ['b' => $bid]);
+    check('default legType: leg on B / date B again', (int) $legY['schedule_id'] === $sidB && (string) $legY['travel_date'] === TDB);
+    check('default legType: inventory A=0 / B=1 again', seatCount($sidA) === 0 && seatCount($sidB) === 1);
+    check('default legType: cabin L-4 on B is female_only again', glock($sidB, 'L-4') === 'female_only');
+    check('default legType: still one payment row (no re-collect on either move)', (int) Database::scalar('SELECT COUNT(*) FROM payments WHERE booking_id = :b', ['b' => $bid], 0) === 1);
+    check('default legType: audit rows say booking.reschedule for every move',
+        (int) Database::scalar("SELECT COUNT(*) FROM audit_logs WHERE action = 'booking.reschedule' AND entity_id = (SELECT pnr FROM bookings WHERE id = :b)", ['b' => $bid], 0) >= 3);
 
     // ---- Adversarial ----
     expectThrow('cannot reschedule to the SAME schedule', fn() => BookingService::rebookLeg($bid, $sidB, ['L9'], TDB, 1));

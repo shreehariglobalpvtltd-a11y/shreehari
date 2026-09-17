@@ -2,7 +2,7 @@
 /**
  * POST /api/book.php — create a pending booking.
  * Body: {
- *   routeId, travelDate, seats[], passengers[{seat,name,age,gender}],
+ *   routeId, travelDate, seats[], passengers[{seat,name,age,gender,special?,idType?,idNum?,nationality?}],
  *   contact{phone,email,idType,idNum}, bookingMode?, cabinType?,
  *   sharingTier?, boarding?, drop?, couponCode?, pointsRequested?,
  *   referralCode?, agentCode?, paymentMethod?, isCod?
@@ -46,6 +46,13 @@ try {
             // Patient / birami mode (4 Sep 2026): a priority-boarding flag the
             // manifest and ticket show. Allow-listed; anything else is dropped.
             'special'=> in_array($pax['special'] ?? '', ['patient', 'senior', 'pregnant'], true) ? $pax['special'] : null,
+            // Per-passenger document (17 Sep 2026): allow-listed keys only,
+            // cleaned to the booking_passengers column width. Optional — a
+            // client that sends none falls back to the contact's document
+            // for the primary passenger inside BookingService::create().
+            'idType'      => Security::clean($pax['idType'] ?? '', 60),
+            'idNum'       => Security::clean($pax['idNum'] ?? '', 60),
+            'nationality' => Security::clean($pax['nationality'] ?? '', 60),
         ];
     }
 

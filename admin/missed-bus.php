@@ -51,12 +51,40 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
                 static fn($s) => strtoupper(Security::clean((string) $s, 10)),
                 (array) ($_POST['seats'] ?? [])
             );
+            // The missed date — read BEFORE the move so the passenger's notice
+            // can say "17 Sep → 18 Sep". Display only.
+            $oldDate = (string) Database::scalar(
+                "SELECT travel_date FROM booking_legs WHERE booking_id = :b AND leg_type = 'outbound' ORDER BY id LIMIT 1",
+                ['b' => (int) $b['id']], ''
+            );
             BookingService::rebookMissedLeg((int) $b['id'], $newScheduleId, $seats, $newDate, (int) $admin['id']);
-            // Display-only row-letter labels; $seats stays canonical for the engine.
-            // Coach not loaded in this handler → 'sleeper'; $bookingMode not yet in scope → 'sharing'.
-            $seatLabels = array_map(static fn($s) => Seats::displayLabel((string) $s, 'sleeper', 'sharing'), $seats);
+            // Display-only row-letter labels in the TARGET bus's real coach
+            // (17 Sep 2026 — was a hard-coded 'sleeper'); $seats stays canonical.
+            $newCoach   = Seats::coachForSchedule($newScheduleId);
+            $newMode    = (string) ($b['booking_mode'] ?? 'sharing');
+            $seatLabels = array_map(static fn($s) => Seats::displayLabel((string) $s, $newCoach, $newMode), $seats);
             $flash = ['ok', 'Missed-bus rebooked to ' . formatDate($newDate) . ' · seat(s) ' . implode(', ', $seatLabels) . '. Ticket re-issued and logged.'];
             $b = BookingService::detail($pnr);
+            /* 17 Sep 2026: the passenger is told they were moved (old date →
+               new date · seats) with the re-issued PNG — the missed-bus page
+               used to send nothing at all. Same best-effort block as
+               reschedule.php: an outage never undoes the rebooking. */
+            if ($b !== null && Settings::getBool('notify_ticket_edit', true) && (string) ($b['status'] ?? '') === 'confirmed') {
+                try {
+                    require_once INCLUDE_PATH . '/notify.php';
+                    $nr = Notify::ticketChanged($b, 'missed_rebook', [
+                        'oldDate' => $oldDate,
+                        'newDate' => $newDate,
+                        'seats'   => $seatLabels,
+                    ]);
+                    Logger::audit('booking.edit_notify', 'booking', $pnr, null,
+                        ['what' => 'missed_rebook', 'ok' => (bool) ($nr['ok'] ?? false), 'to' => (string) ($b['contact_phone'] ?? '')],
+                        (string) ($nr['detail'] ?? ''));
+                    $flash[1] .= ($nr['ok'] ?? false) ? ' Passenger notified on WhatsApp.' : ' (WhatsApp not sent: ' . truncate((string) ($nr['detail'] ?? ''), 120) . ')';
+                } catch (Throwable $e) {
+                    Logger::error('Missed-bus notify failed: ' . $e->getMessage(), ['pnr' => $pnr]);
+                }
+            }
         } catch (Throwable $e) {
             $flash = ['bad', $e->getMessage()];
         }
