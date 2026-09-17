@@ -85,7 +85,8 @@ function todayISO(): string
 
 function addDaysISO(string $iso, int $days): string
 {
-    $ts = strtotime($iso . ' +' . $days . ' days');
+    // 18 Sep 2026: a negative count used to become '+-1 days', which PHP reads as +1.
+    $ts = strtotime($iso . ' ' . ($days < 0 ? '-' : '+') . abs($days) . ' days');
     return $ts === false ? $iso : date('Y-m-d', $ts);
 }
 
