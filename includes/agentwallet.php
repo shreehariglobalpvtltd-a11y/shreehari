@@ -72,10 +72,28 @@ final class AgentWallet
         'payout_account'     => '',
         'joined_on'          => null,
         'notes'              => '',
+        // KYC (17 Sep 2026, database/upgrade-2026-09-agent-kyc.sql). The
+        // document paths are relative to UPLOAD_PATH ('agents-kyc/<file>')
+        // and are NEVER handed to the browser as a /uploads URL — that tree
+        // is public; a gated admin script streams them.
+        'kyc_doc_path'       => '',
+        'kyc_doc2_path'      => '',
+        'kyc_status'         => 'none',
+        'kyc_note'           => '',
+        'kyc_verified_by'    => null,
+        'kyc_verified_at'    => null,
+        'id_expires_on'      => null,
     ];
 
     /** ID documents an agent may be registered against. */
     public const ID_TYPES = ['Aadhaar', 'PAN', 'Citizenship', 'Passport', 'Voter ID', 'Driving Licence'];
+
+    /** KYC verification states — the ENUM on admin_profiles.kyc_status. */
+    public const KYC_STATUSES = ['none', 'submitted', 'verified', 'rejected'];
+
+    /** The profile columns that only exist once the KYC migration has run. */
+    private const KYC_KEYS = ['kyc_doc_path', 'kyc_doc2_path', 'kyc_status', 'kyc_note',
+                              'kyc_verified_by', 'kyc_verified_at', 'id_expires_on'];
 
 
     /* =================================================================
@@ -804,6 +822,45 @@ final class AgentWallet
             $clean['joined_on'] = ($d !== '' && Security::isValidDate($d)) ? $d : null;
         }
 
+        /* KYC (17 Sep 2026). Whitelisted like id_type: a status outside the
+           ENUM would make the UPDATE fail on a strict server, so it is
+           refused here with a message the form can show. */
+        if (array_key_exists('kyc_status', $data)) {
+            $s = strtolower(trim((string) $data['kyc_status']));
+            if (!in_array($s, self::KYC_STATUSES, true)) {
+                throw new RuntimeException('Unknown KYC status.');
+            }
+            $clean['kyc_status'] = $s;
+        }
+        if (array_key_exists('kyc_note', $data)) {
+            $clean['kyc_note'] = Security::clean((string) $data['kyc_note'], 255);
+        }
+        if (array_key_exists('id_expires_on', $data)) {
+            $d = trim((string) $data['id_expires_on']);
+            $clean['id_expires_on'] = ($d !== '' && Security::isValidDate($d)) ? $d : null;
+        }
+        if (array_key_exists('kyc_verified_by', $data)) {
+            $clean['kyc_verified_by'] = (int) $data['kyc_verified_by'] > 0 ? (int) $data['kyc_verified_by'] : null;
+        }
+        if (array_key_exists('kyc_verified_at', $data)) {
+            $v = $data['kyc_verified_at'];
+            $clean['kyc_verified_at'] = ($v === null || $v === '') ? null : (string) $v;
+        }
+        foreach (['kyc_doc_path', 'kyc_doc2_path'] as $pk) {
+            if (array_key_exists($pk, $data)) {
+                // Stored, never echoed — saveKycDoc() is the only thing that
+                // should set these, exactly like photo_path above.
+                $clean[$pk] = Security::clean((string) $data[$pk], 255);
+            }
+        }
+        // An un-migrated database has no KYC columns: drop those keys so the
+        // rest of the profile still saves, rather than failing the whole form.
+        if (!self::kycAvailable()) {
+            foreach (self::KYC_KEYS as $kk) {
+                unset($clean[$kk]);
+            }
+        }
+
         if ($clean === []) {
             return;
         }
@@ -860,6 +917,145 @@ final class AgentWallet
         }
 
         return 'agents/' . $filename;
+    }
+
+
+    /* =================================================================
+     *  KYC — the ID document on file and whether the office verified it
+     *  (17 Sep 2026, database/upgrade-2026-09-agent-kyc.sql)
+     *
+     *  Two files (front / back or address proof), a four-state status and
+     *  who verified it when. The files live under uploads/agents-kyc/ but,
+     *  unlike a face photo, are NEVER linked as /uploads/... — nginx serves
+     *  that tree to anyone, and an ID card is not a thing to leave on a
+     *  public URL. Pages stream them through an admin-gated script.
+     * ================================================================= */
+
+    /** Cached per request: does admin_profiles carry the KYC columns yet? */
+    private static ?bool $kycAvailable = null;
+
+    /** True once database/upgrade-2026-09-agent-kyc.sql has been applied. */
+    public static function kycAvailable(): bool
+    {
+        if (self::$kycAvailable === null) {
+            try {
+                self::$kycAvailable = Database::exists(
+                    "SELECT 1 FROM information_schema.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admin_profiles'
+                        AND COLUMN_NAME = 'kyc_status'"
+                );
+            } catch (Throwable $e) {
+                self::$kycAvailable = false;
+            }
+        }
+        return self::$kycAvailable;
+    }
+
+    /**
+     * Store one KYC document for an agent and record it on the profile.
+     *
+     * $slot '1' = the ID document (kyc_doc_path), '2' = the second page /
+     * back side / address proof (kyc_doc2_path). Same validator as the
+     * photo (real MIME read from the bytes, unguessable filename) but
+     * WITHOUT the image-only narrowing: a scanned PDF is the commonest
+     * shape an ID arrives in. The previous file in that slot is deleted so
+     * a re-upload never leaves an orphan. Unlike savePhoto() this writes
+     * the profile itself — a caller that forgot would strand the file.
+     *
+     * An upload onto a 'none' or 'rejected' profile moves it to
+     * 'submitted' (a fresh document is a re-submission); a 'verified' or
+     * 'submitted' status is left for the office to decide.
+     *
+     * @param array<string, mixed> $file entry from $_FILES
+     * @return string the stored path, 'agents-kyc/<file>'
+     */
+    public static function saveKycDoc(int $adminId, array $file, string $slot = '1'): string
+    {
+        if ($adminId <= 0) {
+            throw new RuntimeException('Choose an agent first.');
+        }
+        if (!self::kycAvailable()) {
+            throw new RuntimeException('KYC is not set up yet — run database/upgrade-2026-09-agent-kyc.sql first.');
+        }
+        $slot   = $slot === '2' ? '2' : '1';
+        $column = $slot === '2' ? 'kyc_doc2_path' : 'kyc_doc_path';
+
+        $check = Security::validateUpload($file);
+        if (!$check['ok']) {
+            throw new RuntimeException($check['error'] ?? 'Upload failed.');
+        }
+        $ext = strtolower((string) ($check['ext'] ?? ''));
+        if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'pdf'], true)) {
+            throw new RuntimeException('The ID document must be a JPG, PNG, WEBP image or a PDF.');
+        }
+
+        $dir = UPLOAD_PATH . '/agents-kyc';
+        ensureDir($dir);
+
+        $filename = Security::safeFilename($ext);
+        if (!move_uploaded_file((string) $file['tmp_name'], $dir . '/' . $filename)) {
+            throw new RuntimeException('Could not save the document.');
+        }
+        $path = 'agents-kyc/' . $filename;
+
+        $profile = self::profile($adminId);
+        $old     = (string) ($profile[$column] ?? '');
+        if ($old !== '' && str_starts_with($old, 'agents-kyc/')) {
+            @unlink(UPLOAD_PATH . '/' . $old);
+        }
+
+        $data = [$column => $path];
+        if (in_array((string) ($profile['kyc_status'] ?? 'none'), ['none', 'rejected'], true)) {
+            $data['kyc_status'] = 'submitted';
+        }
+        self::saveProfile($adminId, $data);
+
+        Logger::audit('agent.kyc_doc', 'admin', (string) $adminId,
+            ['slot' => $slot, 'path' => $old !== '' ? '(replaced)' : ''],
+            ['slot' => $slot, 'ext' => $ext, 'size' => (int) ($check['size'] ?? 0)],
+            'KYC document ' . $slot . ' uploaded');
+
+        return $path;
+    }
+
+    /**
+     * The office's verdict on an agent's KYC: 'verified' (stamps who / when),
+     * 'rejected' (with the reason in $note so the agent knows what to fix),
+     * 'submitted' or 'none' (clears the stamp). Throws on an unknown status
+     * or before the KYC migration has run — a silent no-op here would let
+     * "Mark verified" appear to succeed while agent_kyc_required then
+     * refused every sale.
+     */
+    public static function kycVerify(int $adminId, string $status, string $note, int $by): void
+    {
+        if ($adminId <= 0) {
+            throw new RuntimeException('Choose an agent first.');
+        }
+        if (!self::kycAvailable()) {
+            throw new RuntimeException('KYC is not set up yet — run database/upgrade-2026-09-agent-kyc.sql first.');
+        }
+        $status = strtolower(trim($status));
+        if (!in_array($status, self::KYC_STATUSES, true)) {
+            throw new RuntimeException('Unknown KYC status.');
+        }
+
+        $before = self::profile($adminId);
+        $data   = [
+            'kyc_status'      => $status,
+            'kyc_note'        => $note,
+            'kyc_verified_by' => $status === 'verified' ? $by : null,
+            'kyc_verified_at' => $status === 'verified' ? date('Y-m-d H:i:s') : null,
+        ];
+        self::saveProfile($adminId, $data);
+
+        Logger::audit(
+            $status === 'verified' ? 'agent.kyc_verified' : 'agent.kyc_status',
+            'admin',
+            (string) $adminId,
+            ['kyc_status' => (string) ($before['kyc_status'] ?? 'none')],
+            ['kyc_status' => $status, 'note' => Security::clean($note, 255)],
+            'KYC ' . $status . ' by admin #' . $by
+        );
     }
 
 
@@ -967,6 +1163,37 @@ final class AgentWallet
             throw new RuntimeException(
                 'You have reached your daily limit of ' . $limit . ' bookings. Ask the office to raise it.'
             );
+        }
+
+        /* 17 Sep 2026 — two office-switchable gates, BOTH OFF BY DEFAULT so
+           nothing changes on deploy (upgrade-2026-09-agent-rules.sql):
+
+           agent_cash_limit_enforce: the per-agent cash limit used to be a
+           red card only. Switched on, an agent holding more than their limit
+           must hand cash over before selling again. */
+        if (Settings::getBool('agent_cash_limit_enforce', false)) {
+            $cashLimit = (float) (self::profile($adminId)['cash_limit'] ?? 0);
+            if ($cashLimit > 0) {
+                $held = self::balances($adminId)['cash'];
+                if ($held > $cashLimit + 0.009) {
+                    throw new RuntimeException(
+                        'You are holding ' . inr($held) . ' in cash, above your limit of ' . inr($cashLimit)
+                        . '. Hand cash over to the office before selling again.'
+                        . ' / तपाईंसँग नगद सीमाभन्दा बढी छ — पहिले अफिसमा नगद बुझाउनुहोस्।'
+                    );
+                }
+            }
+        }
+
+        /* agent_kyc_required: selling needs a verified ID on file. */
+        if (Settings::getBool('agent_kyc_required', false)) {
+            $kyc = (string) (self::profile($adminId)['kyc_status'] ?? 'none');
+            if ($kyc !== 'verified') {
+                throw new RuntimeException(
+                    'Your KYC is not verified yet (' . $kyc . '). Send your ID document to the office to be verified before selling.'
+                    . ' / तपाईंको KYC प्रमाणित भएको छैन — अफिसमा परिचयपत्र बुझाउनुहोस्।'
+                );
+            }
         }
     }
 
@@ -1457,8 +1684,18 @@ final class AgentWallet
         self::saveDeposit($adminId, ['required' => $amount, 'paid' => $info['paid']], $by, 'deposit_required');
     }
 
-    /** Record that the agent handed the company more deposit money. */
-    public static function recordDeposit(int $adminId, float $amount, int $by = 0): float
+    /**
+     * Record that the agent handed the company more deposit money (or, with
+     * a negative amount, that some was refunded). Returns the new paid total.
+     *
+     * 17 Sep 2026: the settings pair stays the source of truth for "is the
+     * deposit met", but each call now ALSO writes one dated row to
+     * agent_deposit_txns so the office can see when each rupee arrived and
+     * who took it. The row is best-effort: on a database where
+     * upgrade-2026-09-agent-deposit-txns.sql has not run, the pair is still
+     * updated and only the history is missing — same degrade as balances().
+     */
+    public static function recordDeposit(int $adminId, float $amount, int $by = 0, string $note = '', string $ref = ''): float
     {
         if ($adminId <= 0) { throw new RuntimeException('Choose an agent first.'); }
         $amount = round($amount, 2);
@@ -1467,7 +1704,44 @@ final class AgentWallet
         $newPaid = round($info['paid'] + $amount, 2);
         if ($newPaid < 0) { throw new RuntimeException('That is more than the ' . inr($info['paid']) . ' deposit on file.'); }
         self::saveDeposit($adminId, ['required' => $info['required'], 'paid' => $newPaid], $by, $amount > 0 ? 'deposit_received' : 'deposit_refunded');
+
+        try {
+            Database::insert('agent_deposit_txns', [
+                'agent_admin_id' => $adminId,
+                'amount'         => $amount,
+                'ref'            => Security::clean($ref, 80) ?: null,
+                'note'           => Security::clean($note, 255) ?: null,
+                'created_by'     => $by ?: null,
+            ]);
+        } catch (Throwable $e) {
+            Logger::warning('agent_deposit_txns unavailable: ' . $e->getMessage(), [], 'agent');
+        }
+
         return $newPaid;
+    }
+
+    /**
+     * Dated deposit movements for one agent, newest first (+ received,
+     * − refunded). Empty on an un-migrated database.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function depositHistory(int $adminId, int $limit = 100): array
+    {
+        $limit = max(1, min(500, $limit));
+        try {
+            return Database::fetchAll(
+                "SELECT d.*, a.full_name AS by_name
+                   FROM agent_deposit_txns d
+                   LEFT JOIN admins a ON a.id = d.created_by
+                  WHERE d.agent_admin_id = :a
+                  ORDER BY d.id DESC
+                  LIMIT " . $limit,
+                ['a' => $adminId]
+            );
+        } catch (Throwable $e) {
+            return [];
+        }
     }
 
     public static function record(int $agentId, string $entryType, float $amount, array $meta = []): int
@@ -1497,6 +1771,16 @@ final class AgentWallet
             if ($amount > $due + 0.001) {
                 throw new RuntimeException('That is more than the ' . inr($due) . ' currently owed to this agent.');
             }
+            // 17 Sep 2026 — agent_payout_min (0 = off): a floor on PARTIAL
+            // payouts so the office is not asked to settle ₹50 at a time.
+            // Paying the whole balance is always allowed, or a final
+            // settlement smaller than the floor could never be closed.
+            $min = Settings::getFloat('agent_payout_min', 0.0);
+            if ($min > 0 && $amount < $min - 0.001 && $amount < $due - 0.001) {
+                throw new RuntimeException(
+                    'The minimum payout is ' . inr($min) . ' (or the full ' . inr($due) . ' balance).'
+                );
+            }
         }
         if ($entryType === 'cash_handover') {
             $held = self::balances($agentId)['cash'];
@@ -1505,6 +1789,8 @@ final class AgentWallet
             }
         }
 
+        $ref = Security::clean((string) ($meta['ref'] ?? ''), 80);
+
         $id = self::insertEntry([
             'agent_admin_id' => $agentId,
             'booking_id'     => null,
@@ -1512,14 +1798,42 @@ final class AgentWallet
             'entry_type'     => $entryType,
             'amount'         => $sign * $amount,
             'note'           => Security::clean((string) ($meta['note'] ?? ''), 255),
-            'ref'            => Security::clean((string) ($meta['ref'] ?? ''), 80),
+            'ref'            => $ref,
             'created_by'     => (int) ($meta['by'] ?? 0) ?: null,
         ]);
 
+        /* 17 Sep 2026 — settlement voucher number. A payout or a cash
+           handover is a receipt the agent may be shown or handed, so it
+           needs a number the office can quote. The ledger id is unique and
+           never reused, which makes 'SV-<yymmdd>-<id>' collision-free with
+           no counter row to maintain. Only when the office typed no ref of
+           its own (a UPI reference / receipt-book number wins). */
+        if ($id > 0 && $ref === '' && in_array($entryType, ['payout', 'cash_handover'], true)) {
+            $ref = 'SV-' . date('ymd') . '-' . $id;
+            try {
+                Database::update('agent_ledger', ['ref' => $ref], 'id = :i', ['i' => $id]);
+            } catch (Throwable $e) {
+                Logger::warning('voucher number not written: ' . $e->getMessage(), [], 'agent');
+            }
+        }
+
         Logger::audit('agent.' . $entryType, 'admin', (string) $agentId, null,
-            ['amount' => $sign * $amount, 'account' => $account], (string) ($meta['note'] ?? ''));
+            ['amount' => $sign * $amount, 'account' => $account, 'ref' => $ref], (string) ($meta['note'] ?? ''));
 
         return $id;
+    }
+
+    /**
+     * The voucher / reference on one ledger row ('SV-260917-123' for a
+     * settlement, the PNR for a sale …), or '' when it has none.
+     */
+    public static function voucherFor(int $ledgerId): string
+    {
+        try {
+            return (string) Database::scalar('SELECT ref FROM agent_ledger WHERE id = :i', ['i' => $ledgerId], '');
+        } catch (Throwable $e) {
+            return '';
+        }
     }
 
     /**
@@ -1551,6 +1865,9 @@ final class AgentWallet
         ) === 1;
         if (!$isAgent) {
             throw new RuntimeException('Advances can only be recorded for counter agents.');
+        }
+        if ($amount > 0) {
+            self::assertAdvanceCap($agentId, $amount);
         }
 
         // amount > 0 → advance GIVEN → commission DEBIT (−). amount < 0 → repayment → CREDIT (+).
@@ -1611,6 +1928,600 @@ final class AgentWallet
         $out['netCommission'] = $net;
         $out['outstanding']   = $net < 0 ? round(-$net, 2) : 0.0;
         return $out;
+    }
+
+    /**
+     * agent_advance_max (17 Sep 2026, 0 = no cap — today's behaviour): the
+     * most an agent may have out in advances at once. Measured on the
+     * ledger (advanceSummary outstanding = how far the commission balance
+     * is below zero) plus the new amount, so a second advance on top of an
+     * unrecovered one is what gets refused, not just a single big one.
+     */
+    private static function assertAdvanceCap(int $agentId, float $amount): void
+    {
+        $max = Settings::getFloat('agent_advance_max', 0.0);
+        if ($max <= 0) {
+            return;
+        }
+        $outstanding = self::advanceSummary($agentId)['outstanding'];
+        if ($amount > $max + 0.001 || $outstanding + $amount > $max + 0.001) {
+            throw new RuntimeException(
+                'That would take this agent\'s advance to ' . inr($outstanding + $amount)
+                . ', above the company limit of ' . inr($max)
+                . ($outstanding > 0 ? ' (' . inr($outstanding) . ' is still outstanding)' : '') . '.'
+            );
+        }
+    }
+
+    /* =================================================================
+     *  LOANS & ADVANCES REGISTER (17 Sep 2026)
+     *  database/upgrade-2026-09-agent-loans.sql
+     *
+     *  recordAdvance() above is the right MONEY model and stays exactly as
+     *  it is: an advance is a debit on the commission account that future
+     *  commission nets off through the same SUM() the panel shows. What it
+     *  never gave the office was a per-item view — this advance, that
+     *  loan, how much of each is still out, and the dated repayments.
+     *
+     *  agent_loans is that register. THE MONEY STAYS IN agent_ledger:
+     *    issueLoan()   writes the usual recordAdvance() debit, ref
+     *                  'ADVANCE L<id>' — the 'ADVANCE' prefix keeps
+     *                  advanceSummary() and the ledger tags working,
+     *                  the L<id> suffix ties the row to its register entry.
+     *    repayLoan()   writes the usual recordAdvance() credit, same ref.
+     *    recovered     = cash repaid + commission ALLOCATED to the loan
+     *                  by syncLoanRecovery(), a display figure recomputed
+     *                  from the ledger. No balance is ever read from this
+     *                  table, so a wrong row here cannot pay anyone the
+     *                  wrong amount ("simplest safe variant").
+     * ================================================================= */
+
+    public const LOAN_KINDS         = ['advance', 'loan'];
+    public const LOAN_RECOVER_MODES = ['full', 'fixed', 'percent'];
+    public const LOAN_STATUSES      = ['open', 'settled', 'written_off'];
+
+    /** Cached per request: which of the new tables exist. @var array<string,bool> */
+    private static array $tableCache = [];
+
+    /** True when a table exists — the new registers are optional until migrated. */
+    private static function tableExists(string $table): bool
+    {
+        if (!array_key_exists($table, self::$tableCache)) {
+            try {
+                self::$tableCache[$table] = Database::exists(
+                    'SELECT 1 FROM information_schema.TABLES
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t',
+                    ['t' => $table]
+                );
+            } catch (Throwable $e) {
+                self::$tableCache[$table] = false;
+            }
+        }
+        return self::$tableCache[$table];
+    }
+
+    /** Human label for a register row: 'Advance #12' / 'Loan #12'. */
+    public static function loanLabel(array $loan): string
+    {
+        return ((string) ($loan['kind'] ?? 'advance') === 'loan' ? 'Loan' : 'Advance') . ' #' . (int) ($loan['id'] ?? 0);
+    }
+
+    /** One register row with its outstanding figure, or null. */
+    public static function loan(int $loanId): ?array
+    {
+        try {
+            $row = Database::fetch('SELECT * FROM agent_loans WHERE id = :i LIMIT 1', ['i' => $loanId]);
+        } catch (Throwable $e) {
+            return null;
+        }
+        if ($row === null) {
+            return null;
+        }
+        $row['outstanding'] = round(max(0.0, (float) $row['principal'] - (float) $row['recovered']), 2);
+        return $row;
+    }
+
+    /**
+     * Issue an advance or loan: one register row + the existing
+     * recordAdvance() debit tagged 'ADVANCE L<id>'. Both or neither — the
+     * pair is written in one transaction. Enforces agent_advance_max.
+     *
+     * @param string $kind         'advance' | 'loan'
+     * @param string $recoverMode  'full' (commission nets it, today's rule)
+     *                             | 'fixed' (₹recoverValue per payout)
+     *                             | 'percent' (recoverValue % of each payout)
+     * @return int the agent_loans id
+     */
+    public static function issueLoan(int $adminId, string $kind, float $principal, string $recoverMode, float $recoverValue, string $note, int $by): int
+    {
+        if ($adminId <= 0) {
+            throw new RuntimeException('Choose an agent first.');
+        }
+        if (!self::tableExists('agent_loans')) {
+            throw new RuntimeException('The loan register is not set up yet — run database/upgrade-2026-09-agent-loans.sql first.');
+        }
+        $kind = strtolower(trim($kind));
+        if (!in_array($kind, self::LOAN_KINDS, true)) {
+            throw new RuntimeException('Choose whether this is an advance or a loan.');
+        }
+        $principal = round($principal, 2);
+        if ($principal <= 0) {
+            throw new RuntimeException('Enter the amount given to the agent.');
+        }
+        if ($principal > 10000000) {
+            throw new RuntimeException('That amount looks wrong — check it.');
+        }
+        $recoverMode  = strtolower(trim($recoverMode));
+        $recoverValue = round(max(0.0, $recoverValue), 2);
+        if (!in_array($recoverMode, self::LOAN_RECOVER_MODES, true)) {
+            throw new RuntimeException('Unknown recovery mode.');
+        }
+        if ($recoverMode === 'percent' && ($recoverValue <= 0 || $recoverValue > 100)) {
+            throw new RuntimeException('Recovery % must be between 0 and 100.');
+        }
+        if ($recoverMode === 'fixed' && $recoverValue <= 0) {
+            throw new RuntimeException('Enter the ₹ amount to recover per payout.');
+        }
+        if ($recoverMode === 'full') {
+            $recoverValue = 0.0;
+        }
+        $isAgent = (int) Database::scalar(
+            "SELECT 1 FROM admins WHERE id = :i AND role = 'agent'", ['i' => $adminId], 0
+        ) === 1;
+        if (!$isAgent) {
+            throw new RuntimeException('Advances can only be recorded for counter agents.');
+        }
+        // Refuse BEFORE writing anything, with the register's own message;
+        // recordAdvance() repeats the same check and would agree.
+        self::assertAdvanceCap($adminId, $principal);
+
+        $note   = Security::clean($note, 255);
+        $loanId = 0;
+        Database::transaction(function () use ($adminId, $kind, $principal, $recoverMode, $recoverValue, $note, $by, &$loanId): void {
+            $loanId = Database::insert('agent_loans', [
+                'agent_admin_id' => $adminId,
+                'kind'           => $kind,
+                'principal'      => $principal,
+                'issued_on'      => date('Y-m-d'),
+                'recover_mode'   => $recoverMode,
+                'recover_value'  => $recoverValue,
+                'recovered'      => 0.0,
+                'status'         => 'open',
+                'note'           => $note !== '' ? $note : null,
+                'created_by'     => $by ?: null,
+            ]);
+            self::recordAdvance($adminId, $principal, [
+                'note' => ($kind === 'loan' ? 'Loan' : 'Advance') . ' #' . $loanId . ' given' . ($note !== '' ? ' — ' . $note : ''),
+                'ref'  => 'L' . $loanId,
+                'by'   => $by,
+            ]);
+        });
+
+        Logger::audit('agent.loan_issued', 'admin', (string) $adminId, null,
+            ['loan_id' => $loanId, 'kind' => $kind, 'principal' => $principal,
+             'recover_mode' => $recoverMode, 'recover_value' => $recoverValue],
+            ($kind === 'loan' ? 'Loan' : 'Advance') . ' #' . $loanId . ' issued by admin #' . $by);
+
+        return $loanId;
+    }
+
+    /**
+     * The agent returned cash against one loan: the usual recordAdvance()
+     * credit (same 'ADVANCE L<id>' ref) and the register's recovered figure
+     * moves up; the loan settles itself once recovered reaches principal.
+     * More than the outstanding amount is refused — that is a typo, not a
+     * repayment.
+     *
+     * @return int the agent_ledger row id of the repayment
+     */
+    public static function repayLoan(int $loanId, float $amount, string $note, int $by): int
+    {
+        $loan = self::loan($loanId);
+        if ($loan === null) {
+            throw new RuntimeException('That loan no longer exists.');
+        }
+        if ((string) $loan['status'] !== 'open') {
+            throw new RuntimeException(self::loanLabel($loan) . ' is already ' . str_replace('_', ' ', (string) $loan['status']) . '.');
+        }
+        $amount = round($amount, 2);
+        if ($amount <= 0) {
+            throw new RuntimeException('Enter the amount repaid.');
+        }
+        $outstanding = (float) $loan['outstanding'];
+        if ($amount > $outstanding + 0.009) {
+            throw new RuntimeException('That is more than the ' . inr($outstanding) . ' still outstanding on ' . self::loanLabel($loan) . '.');
+        }
+        $note    = Security::clean($note, 255);
+        $agentId = (int) $loan['agent_admin_id'];
+
+        $ledgerId = self::recordAdvance($agentId, -$amount, [
+            'note' => 'Repayment on ' . self::loanLabel($loan) . ($note !== '' ? ' — ' . $note : ''),
+            'ref'  => 'L' . $loanId,
+            'by'   => $by,
+        ]);
+
+        $recovered = round((float) $loan['recovered'] + $amount, 2);
+        $data      = ['recovered' => $recovered];
+        if ($recovered + 0.001 >= (float) $loan['principal']) {
+            $data['status']     = 'settled';
+            $data['settled_at'] = date('Y-m-d H:i:s');
+        }
+        Database::update('agent_loans', $data, 'id = :i', ['i' => $loanId]);
+
+        Logger::audit('agent.loan_repaid', 'admin', (string) $agentId,
+            ['recovered' => (float) $loan['recovered']],
+            ['loan_id' => $loanId, 'amount' => $amount, 'recovered' => $recovered, 'status' => $data['status'] ?? 'open'],
+            self::loanLabel($loan) . ' repayment by admin #' . $by);
+
+        return $ledgerId;
+    }
+
+    /**
+     * Forgive what is still outstanding on a loan. This IS a money movement:
+     * the ledger debit that issued it still nets the agent's commission, so
+     * forgiving it means a matching credit (recordAdvance negative, same
+     * ref) — otherwise "written off" on the register would keep silently
+     * deducting from every payout. Superadmin/commissions.pay decision.
+     */
+    public static function writeOffLoan(int $loanId, string $note, int $by): void
+    {
+        $loan = self::loan($loanId);
+        if ($loan === null) {
+            throw new RuntimeException('That loan no longer exists.');
+        }
+        if ((string) $loan['status'] !== 'open') {
+            throw new RuntimeException(self::loanLabel($loan) . ' is already ' . str_replace('_', ' ', (string) $loan['status']) . '.');
+        }
+        $note        = Security::clean($note, 255);
+        $outstanding = (float) $loan['outstanding'];
+        $agentId     = (int) $loan['agent_admin_id'];
+        if ($outstanding > 0) {
+            self::recordAdvance($agentId, -$outstanding, [
+                'note' => self::loanLabel($loan) . ' written off' . ($note !== '' ? ' — ' . $note : ''),
+                'ref'  => 'L' . $loanId,
+                'by'   => $by,
+            ]);
+        }
+        Database::update('agent_loans', [
+            'status'     => 'written_off',
+            'settled_at' => date('Y-m-d H:i:s'),
+            'note'       => $note !== '' ? $note : ($loan['note'] ?? null),
+        ], 'id = :i', ['i' => $loanId]);
+
+        Logger::audit('agent.loan_written_off', 'admin', (string) $agentId,
+            ['outstanding' => $outstanding], ['loan_id' => $loanId, 'forgiven' => $outstanding],
+            self::loanLabel($loan) . ' written off by admin #' . $by);
+    }
+
+    /**
+     * The register for one agent, newest first, each row carrying
+     * outstanding = principal − recovered. Optional status filter
+     * ('open' | 'settled' | 'written_off'). Empty on an un-migrated DB.
+     *
+     * NB: outstanding here is REGISTER-based (cash repaid + commission
+     * allocated by syncLoanRecovery). advanceSummary()['outstanding'] is
+     * LEDGER-based (how far the commission balance is below zero). They
+     * agree in the common case and legitimately differ when the agent had
+     * a positive balance before the loan — the register is for reading,
+     * the ledger is what gets paid.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function loans(int $adminId, string $status = ''): array
+    {
+        $where  = 'l.agent_admin_id = :a';
+        $params = ['a' => $adminId];
+        if (in_array($status, self::LOAN_STATUSES, true)) {
+            $where .= ' AND l.status = :s';
+            $params['s'] = $status;
+        }
+        try {
+            $rows = Database::fetchAll(
+                "SELECT l.*, a.full_name AS by_name
+                   FROM agent_loans l
+                   LEFT JOIN admins a ON a.id = l.created_by
+                  WHERE $where
+                  ORDER BY (l.status = 'open') DESC, l.issued_on DESC, l.id DESC
+                  LIMIT 500",
+                $params
+            );
+        } catch (Throwable $e) {
+            return [];
+        }
+        foreach ($rows as &$r) {
+            $r['outstanding'] = round(max(0.0, (float) $r['principal'] - (float) $r['recovered']), 2);
+        }
+        unset($r);
+        return $rows;
+    }
+
+    /**
+     * Refresh the register's `recovered` figures from the ledger — a
+     * DISPLAY step, never a money movement. For each open loan:
+     *
+     *   recovered = cash the agent repaid against it (ledger credits with
+     *               its 'ADVANCE L<id>' ref)
+     *             + commission earned since it was issued, allocated to
+     *               open loans OLDEST FIRST
+     *
+     * The allocation walks the commission rows (earned and reversed) in
+     * time order, and a loan only becomes eligible from its issued_on, so
+     * commission earned before a second loan existed can never be shown
+     * as recovering it. A loan whose recovered reaches its principal is
+     * marked settled. Cheap enough to call on every page render; the
+     * pages call it before loans().
+     */
+    public static function syncLoanRecovery(int $adminId): void
+    {
+        try {
+            $open = Database::fetchAll(
+                "SELECT * FROM agent_loans WHERE agent_admin_id = :a AND status = 'open'
+                  ORDER BY issued_on ASC, id ASC",
+                ['a' => $adminId]
+            );
+            if ($open === []) {
+                return;
+            }
+
+            $cash = [];
+            foreach ($open as $l) {
+                $id  = (int) $l['id'];
+                $ref = 'ADVANCE L' . $id;
+                $cash[$id] = round((float) Database::scalar(
+                    "SELECT COALESCE(SUM(amount), 0) FROM agent_ledger
+                      WHERE agent_admin_id = :a AND entry_type = 'adjustment' AND account = 'commission'
+                        AND amount > 0 AND (ref = :r1 OR ref LIKE :r2)",
+                    ['a' => $adminId, 'r1' => $ref, 'r2' => $ref . ' %'],
+                    0
+                ), 2);
+            }
+
+            $earned = Database::fetchAll(
+                "SELECT amount, created_at FROM agent_ledger
+                  WHERE agent_admin_id = :a AND account = 'commission'
+                    AND entry_type IN ('commission', 'commission_void')
+                    AND created_at >= :f
+                  ORDER BY created_at ASC, id ASC",
+                ['a' => $adminId, 'f' => (string) $open[0]['issued_on'] . ' 00:00:00']
+            );
+
+            $remaining = [];
+            $allocated = [];
+            foreach ($open as $l) {
+                $id = (int) $l['id'];
+                $remaining[$id] = round(max(0.0, (float) $l['principal'] - $cash[$id]), 2);
+                $allocated[$id] = 0.0;
+            }
+
+            $pool = 0.0;
+            foreach ($earned as $row) {
+                $pool += (float) $row['amount'];
+                if ($pool <= 0) {
+                    continue;   // a reversal pulled the pool below zero — wait for more earnings
+                }
+                $at = (string) $row['created_at'];
+                foreach ($open as $l) {
+                    $id = (int) $l['id'];
+                    if ((string) $l['issued_on'] . ' 00:00:00' > $at) {
+                        continue;   // this loan did not exist yet
+                    }
+                    $take = min($pool, $remaining[$id]);
+                    if ($take > 0) {
+                        $allocated[$id] += $take;
+                        $remaining[$id] -= $take;
+                        $pool           -= $take;
+                    }
+                    if ($pool <= 0) {
+                        break;
+                    }
+                }
+            }
+
+            foreach ($open as $l) {
+                $id        = (int) $l['id'];
+                $recovered = round(min((float) $l['principal'], $cash[$id] + $allocated[$id]), 2);
+                $data      = [];
+                if (abs($recovered - (float) $l['recovered']) > 0.005) {
+                    $data['recovered'] = $recovered;
+                }
+                if ($recovered + 0.001 >= (float) $l['principal']) {
+                    $data['status']     = 'settled';
+                    $data['settled_at'] = date('Y-m-d H:i:s');
+                }
+                if ($data !== []) {
+                    Database::update('agent_loans', $data, 'id = :i', ['i' => $id]);
+                }
+            }
+        } catch (Throwable $e) {
+            Logger::warning('AgentWallet syncLoanRecovery unavailable: ' . $e->getMessage(), [], 'agent');
+        }
+    }
+
+    /**
+     * The ledger rows behind one loan — the issuing debit and every cash
+     * repayment / write-off credit — oldest first.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function loanEntries(int $loanId): array
+    {
+        $loan = self::loan($loanId);
+        if ($loan === null) {
+            return [];
+        }
+        $ref = 'ADVANCE L' . $loanId;
+        try {
+            return Database::fetchAll(
+                "SELECT l.*, a.full_name AS by_name
+                   FROM agent_ledger l
+                   LEFT JOIN admins a ON a.id = l.created_by
+                  WHERE l.agent_admin_id = :a AND l.entry_type = 'adjustment'
+                    AND (l.ref = :r1 OR l.ref LIKE :r2)
+                  ORDER BY l.id ASC",
+                ['a' => (int) $loan['agent_admin_id'], 'r1' => $ref, 'r2' => $ref . ' %']
+            );
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
+    /* =================================================================
+     *  PAYOUT REQUESTS (17 Sep 2026)
+     *  database/upgrade-2026-09-agent-payout-requests.sql
+     *
+     *  "Please pay out my commission" used to be an audit_logs row whose
+     *  pending-ness was inferred from timestamps. Now it is a row of its
+     *  own: open until the office records the payout (paid, with the
+     *  ledger row that settled it) or declines it with a note. The audit
+     *  row is still written, unchanged, so the activity log and the
+     *  page's older pending check keep working.
+     * ================================================================= */
+
+    /**
+     * An agent asks for a payout. 0 / blank amount = everything due.
+     * Refused above the commission due, below agent_payout_min (unless it
+     * is the whole balance), or while an earlier request is still open.
+     *
+     * @return int the agent_payout_requests id (0 on an un-migrated DB —
+     *             the audit row is still written)
+     */
+    public static function requestPayout(int $adminId, float $amount, string $note = ''): int
+    {
+        if ($adminId <= 0) {
+            throw new RuntimeException('Choose an agent first.');
+        }
+        $due    = self::balances($adminId)['commission'];
+        $amount = round($amount, 2);
+        if ($amount <= 0) {
+            $amount = $due;
+        }
+        if ($due <= 0 || $amount > $due + 0.009) {
+            throw new RuntimeException('You can request up to your commission due (' . inr($due) . ').');
+        }
+        $min = Settings::getFloat('agent_payout_min', 0.0);
+        if ($min > 0 && $amount < $min - 0.001 && $amount < $due - 0.001) {
+            throw new RuntimeException('The minimum payout is ' . inr($min) . ' (or your full ' . inr($due) . ' balance).');
+        }
+        $note = Security::clean($note, 200);
+
+        $open = self::openPayoutRequests($adminId);
+        if ($open !== []) {
+            throw new RuntimeException(
+                'Your payout request from ' . formatDate(substr((string) $open[0]['created_at'], 0, 10)) . ' is still with the office.'
+            );
+        }
+
+        $id = 0;
+        try {
+            $id = Database::insert('agent_payout_requests', [
+                'agent_admin_id' => $adminId,
+                'amount'         => $amount,
+                'note'           => $note !== '' ? $note : null,
+                'status'         => 'open',
+            ]);
+        } catch (Throwable $e) {
+            Logger::warning('agent_payout_requests unavailable: ' . $e->getMessage(), [], 'agent');
+        }
+
+        // Same audit row as before — new_value.amount is what the panel reads.
+        Logger::audit('agent.payout_request', 'admin', (string) $adminId, null,
+            ['amount' => $amount, 'due' => $due, 'note' => $note, 'request_id' => $id],
+            'Agent requested a commission payout');
+
+        return $id;
+    }
+
+    /**
+     * Open requests, oldest first — for one agent or (null) the whole
+     * office. Empty on an un-migrated database.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function openPayoutRequests(?int $adminId = null): array
+    {
+        $where  = "r.status = 'open'";
+        $params = [];
+        if ($adminId !== null) {
+            $where .= ' AND r.agent_admin_id = :a';
+            $params['a'] = $adminId;
+        }
+        try {
+            return Database::fetchAll(
+                "SELECT r.*, a.full_name AS agent_name, a.username AS agent_username
+                   FROM agent_payout_requests r
+                   LEFT JOIN admins a ON a.id = r.agent_admin_id
+                  WHERE $where
+                  ORDER BY r.created_at ASC, r.id ASC
+                  LIMIT 500",
+                $params
+            );
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Every request one agent ever made, newest first (open, paid, declined).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function payoutRequests(int $adminId, int $limit = 50): array
+    {
+        $limit = max(1, min(500, $limit));
+        try {
+            return Database::fetchAll(
+                "SELECT r.*, d.full_name AS decided_by_name
+                   FROM agent_payout_requests r
+                   LEFT JOIN admins d ON d.id = r.decided_by
+                  WHERE r.agent_admin_id = :a
+                  ORDER BY r.id DESC
+                  LIMIT " . $limit,
+                ['a' => $adminId]
+            );
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * The office answers a request: 'paid' (pass the agent_ledger id of
+     * the payout that settled it) or 'declined' (with a note the agent
+     * will read). Only an open request can be decided.
+     */
+    public static function decidePayoutRequest(int $id, string $decision, int $by, string $note = '', ?int $ledgerId = null): void
+    {
+        $decision = strtolower(trim($decision));
+        if (!in_array($decision, ['paid', 'declined'], true)) {
+            throw new RuntimeException('Decide paid or declined.');
+        }
+        try {
+            $row = Database::fetch('SELECT * FROM agent_payout_requests WHERE id = :i LIMIT 1', ['i' => $id]);
+        } catch (Throwable $e) {
+            throw new RuntimeException('Payout requests are not set up yet — run database/upgrade-2026-09-agent-payout-requests.sql first.');
+        }
+        if ($row === null) {
+            throw new RuntimeException('That payout request no longer exists.');
+        }
+        if ((string) $row['status'] !== 'open') {
+            throw new RuntimeException('That payout request was already ' . (string) $row['status'] . '.');
+        }
+        $note = Security::clean($note, 255);
+        if ($decision === 'declined' && $note === '') {
+            throw new RuntimeException('Tell the agent why the request is declined.');
+        }
+
+        Database::update('agent_payout_requests', [
+            'status'       => $decision,
+            'decided_by'   => $by ?: null,
+            'decided_at'   => date('Y-m-d H:i:s'),
+            'decided_note' => $note !== '' ? $note : null,
+            'ledger_id'    => $decision === 'paid' && $ledgerId !== null && $ledgerId > 0 ? $ledgerId : null,
+        ], 'id = :i', ['i' => $id]);
+
+        Logger::audit('agent.payout_request_' . $decision, 'admin', (string) $row['agent_admin_id'],
+            ['status' => 'open', 'amount' => (float) $row['amount']],
+            ['status' => $decision, 'request_id' => $id, 'ledger_id' => $ledgerId, 'note' => $note],
+            'Payout request #' . $id . ' ' . $decision . ' by admin #' . $by);
     }
 
     /**
@@ -1766,6 +2677,210 @@ final class AgentWallet
             );
         } catch (Throwable $e) {
             return [];
+        }
+    }
+
+    /* =================================================================
+     *  Statement helpers (17 Sep 2026) — one net figure, an opening
+     *  balance, a running column, and commission by month.
+     *
+     *  SIGN OF THE NET POSITION: net = cash − commission.
+     *    positive  the agent owes the company on balance
+     *    negative  the company owes the agent on balance
+     *  Chosen so the office's question ("how much should this agent bring
+     *  in?") reads as a positive number.
+     * ================================================================= */
+
+    /**
+     * Both balances plus their net, as one read.
+     *
+     * @return array{cash: float, commission: float, net: float}
+     */
+    public static function netPosition(int $adminId): array
+    {
+        $b = self::balances($adminId);
+        return [
+            'cash'       => $b['cash'],
+            'commission' => $b['commission'],
+            'net'        => round($b['cash'] - $b['commission'], 2),
+        ];
+    }
+
+    /**
+     * The balance carried INTO a statement window: SUM of every row dated
+     * before $from (Y-m-d, midnight). $account 'commission' or 'cash' gives
+     * that account's balance; '' gives the net position (cash − commission).
+     */
+    public static function openingBalance(int $adminId, string $from, string $account = ''): float
+    {
+        $c = 0.0;
+        $k = 0.0;
+        try {
+            foreach (Database::fetchAll(
+                'SELECT account, COALESCE(SUM(amount), 0) AS bal
+                   FROM agent_ledger WHERE agent_admin_id = :a AND created_at < :f
+                  GROUP BY account',
+                ['a' => $adminId, 'f' => $from . ' 00:00:00']
+            ) as $r) {
+                if ((string) $r['account'] === 'cash') {
+                    $k = (float) $r['bal'];
+                } else {
+                    $c = (float) $r['bal'];
+                }
+            }
+        } catch (Throwable $e) {
+            return 0.0;
+        }
+        if ($account === 'commission') { return round($c, 2); }
+        if ($account === 'cash')       { return round($k, 2); }
+        return round($k - $c, 2);
+    }
+
+    /**
+     * A mini bank statement for [$from, $to] (Y-m-d, inclusive): the
+     * opening balance, every row with a running balance, and the closing
+     * balance. With $account set, 'running' is that account's balance
+     * after the row. With '' (both accounts), 'running' is the NET
+     * position after the row and each row also carries
+     * 'running_commission' and 'running_cash' so a page can show all three.
+     *
+     * @return array{opening: float, rows: array<int, array<string, mixed>>, closing: float,
+     *               account: string, from: string, to: string}
+     */
+    public static function statement(int $adminId, string $from, string $to, string $account = ''): array
+    {
+        $account = in_array($account, ['commission', 'cash'], true) ? $account : '';
+        $openC   = self::openingBalance($adminId, $from, 'commission');
+        $openK   = self::openingBalance($adminId, $from, 'cash');
+        $runC    = $openC;
+        $runK    = $openK;
+
+        $rows = self::entriesBetween($adminId, $from, $to, $account);
+        foreach ($rows as &$r) {
+            $amt = (float) $r['amount'];
+            if ((string) $r['account'] === 'cash') {
+                $runK = round($runK + $amt, 2);
+            } else {
+                $runC = round($runC + $amt, 2);
+            }
+            $r['running_commission'] = $runC;
+            $r['running_cash']       = $runK;
+            $r['running'] = match ($account) {
+                'commission' => $runC,
+                'cash'       => $runK,
+                default      => round($runK - $runC, 2),
+            };
+        }
+        unset($r);
+
+        $opening = match ($account) {
+            'commission' => $openC,
+            'cash'       => $openK,
+            default      => round($openK - $openC, 2),
+        };
+        $closing = match ($account) {
+            'commission' => $runC,
+            'cash'       => $runK,
+            default      => round($runK - $runC, 2),
+        };
+
+        return [
+            'opening' => $opening,
+            'rows'    => $rows,
+            'closing' => $closing,
+            'account' => $account,
+            'from'    => $from,
+            'to'      => $to,
+        ];
+    }
+
+    /**
+     * Commission-account movement per calendar month for the last $months
+     * months (oldest first, every month present even when zero):
+     *   earned      commission credited on sales
+     *   reversed    commission taken back on cancellations (positive figure)
+     *   paidOut     payouts (positive figure)
+     *   adjustment  signed net of salary / advances / corrections
+     *   net         earned − reversed − paidOut + adjustment
+     *
+     * @return array<int, array{month: string, earned: float, reversed: float,
+     *                          paidOut: float, adjustment: float, net: float}>
+     */
+    public static function commissionByMonth(int $adminId, int $months = 12): array
+    {
+        $months = max(1, min(60, $months));
+        $first  = (int) strtotime(date('Y-m-01') . ' -' . ($months - 1) . ' months');
+        $out    = [];
+        for ($i = 0; $i < $months; $i++) {
+            $ym = date('Y-m', (int) strtotime(date('Y-m-01', $first) . ' +' . $i . ' months'));
+            $out[$ym] = ['month' => $ym, 'earned' => 0.0, 'reversed' => 0.0, 'paidOut' => 0.0, 'adjustment' => 0.0, 'net' => 0.0];
+        }
+        try {
+            $rows = Database::fetchAll(
+                "SELECT DATE_FORMAT(created_at, '%Y-%m') AS ym,
+                        COALESCE(SUM(CASE WHEN entry_type = 'commission'      THEN amount END), 0)  AS earned,
+                        COALESCE(SUM(CASE WHEN entry_type = 'commission_void' THEN -amount END), 0) AS reversed,
+                        COALESCE(SUM(CASE WHEN entry_type = 'payout'          THEN -amount END), 0) AS paidOut,
+                        COALESCE(SUM(CASE WHEN entry_type = 'adjustment'      THEN amount END), 0)  AS adjustment
+                   FROM agent_ledger
+                  WHERE agent_admin_id = :a AND account = 'commission' AND created_at >= :f
+                  GROUP BY ym",
+                ['a' => $adminId, 'f' => date('Y-m-01', $first) . ' 00:00:00']
+            );
+        } catch (Throwable $e) {
+            return array_values($out);
+        }
+        foreach ($rows as $r) {
+            $ym = (string) $r['ym'];
+            if (!isset($out[$ym])) {
+                continue;
+            }
+            $e = round((float) $r['earned'], 2);
+            $v = round((float) $r['reversed'], 2);
+            $p = round((float) $r['paidOut'], 2);
+            $j = round((float) $r['adjustment'], 2);
+            $out[$ym] = ['month' => $ym, 'earned' => $e, 'reversed' => $v, 'paidOut' => $p,
+                         'adjustment' => $j, 'net' => round($e - $v - $p + $j, 2)];
+        }
+        return array_values($out);
+    }
+
+    /**
+     * How many days PAST the company's settlement window this agent's cash
+     * has been sitting (agent_settlement_due_days; 0 = the rule is off).
+     * Measured from the oldest cash_due row after their last handover —
+     * the sale whose cash has waited longest. 0 when nothing is overdue
+     * or the agent holds no cash.
+     */
+    public static function settlementOverdueDays(int $adminId): int
+    {
+        $dueDays = Settings::getInt('agent_settlement_due_days', 0);
+        if ($dueDays <= 0) {
+            return 0;
+        }
+        try {
+            if (self::balances($adminId)['cash'] <= 0.009) {
+                return 0;
+            }
+            $lastHandover = Database::scalar(
+                "SELECT MAX(created_at) FROM agent_ledger
+                  WHERE agent_admin_id = :a AND entry_type = 'cash_handover'",
+                ['a' => $adminId],
+                null
+            );
+            $oldest = Database::scalar(
+                "SELECT MIN(created_at) FROM agent_ledger
+                  WHERE agent_admin_id = :a AND entry_type = 'cash_due' AND created_at > :after",
+                ['a' => $adminId, 'after' => (string) ($lastHandover ?? '1970-01-01 00:00:00')],
+                null
+            );
+            if ($oldest === null || $oldest === '') {
+                return 0;
+            }
+            $ageDays = (int) floor((time() - (int) strtotime((string) $oldest)) / 86400);
+            return $ageDays > $dueDays ? $ageDays - $dueDays : 0;
+        } catch (Throwable $e) {
+            return 0;
         }
     }
 
