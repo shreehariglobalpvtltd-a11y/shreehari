@@ -369,6 +369,13 @@ function admin_footer(): void
     // own mobile layout (.sm-table) or opt out (.no-card), have no thead, or
     // whose rows do not line up with the header are left exactly as they are.
     echo '<script>' . admin_cards_js() . '</script>';
+    // 17 Sep 2026: every flash gets a dismiss ×; success flashes fade after 7 s
+    // (errors and warnings stay until dismissed — the desk must read them).
+    echo '<script>(function(){document.querySelectorAll(".flash").forEach(function(f){'
+       . 'if(f.querySelector(".flash-x"))return;var x=document.createElement("button");x.type="button";x.className="flash-x";x.setAttribute("aria-label","Dismiss");x.textContent="\u00d7";'
+       . 'x.onclick=function(){f.remove()};f.appendChild(x);'
+       . 'if(f.classList.contains("ok")){setTimeout(function(){f.style.transition="opacity .4s";f.style.opacity="0";setTimeout(function(){f.remove()},420)},7000)}'
+       . '})})();</script>';
     // 5 Sep 2026: Excel-style list tables (Customers / Agents): search,
     // column filters, click-to-sort, sticky header, detail + edit rows.
     echo admin_datatable_assets();
@@ -587,11 +594,8 @@ function admin_poll_js(): string
     if (!el) {
       el = document.createElement('div');
       el.id = 'newPaymentBanner';
-      el.style.cssText = 'position:fixed;top:66px;right:16px;z-index:50;background:#12264E;color:#fff;'
-        + 'padding:12px 16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25);display:flex;'
-        + 'align-items:center;gap:10px;font-size:13px;max-width:320px';
-      el.innerHTML = '<span></span><button type="button" style="background:#F07C1F;border:0;color:#fff;'
-        + 'padding:6px 10px;border-radius:7px;font-weight:700;cursor:pointer;font-size:12px">Refresh</button>';
+      el.className = 'live-toast pay';
+      el.innerHTML = '<span></span><button type="button">Refresh</button>';
       el.querySelector('button').onclick = function () { location.reload(); };
       document.body.appendChild(el);
     }
@@ -610,11 +614,8 @@ function admin_poll_js(): string
     if (!el) {
       el = document.createElement('div');
       el.id = 'newBookingsPill';
-      el.style.cssText = 'position:fixed;top:112px;right:16px;z-index:50;background:#0a6b3b;color:#fff;'
-        + 'padding:12px 16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25);display:flex;'
-        + 'align-items:center;gap:10px;font-size:13px;max-width:320px';
-      el.innerHTML = '<span></span><button type="button" style="background:#fff;border:0;color:#0a6b3b;'
-        + 'padding:6px 10px;border-radius:7px;font-weight:700;cursor:pointer;font-size:12px">Refresh</button>';
+      el.className = 'live-toast book';
+      el.innerHTML = '<span></span><button type="button">Refresh</button>';
       el.querySelector('button').onclick = function () { location.reload(); };
       document.body.appendChild(el);
     }
@@ -1293,6 +1294,86 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 details.advanced-section>summary{cursor:pointer;font-weight:700;color:var(--blue);padding:8px 0;list-style:none}
 details.advanced-section>summary::before{content:'▶ ';font-size:11px}
 details.advanced-section[open]>summary::before{content:'▼ '}
+
+/* ── Dashboard widgets (promoted from admin/index.php, 17 Sep 2026) ──── */
+.dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:22px}
+.dash-grid.two-one{grid-template-columns:2fr 1fr}
+.dash-grid.one-two{grid-template-columns:1fr 2fr}
+.dp-note{font-size:12px;color:var(--mut)}
+.quick-actions{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px}
+.qa{display:inline-flex;align-items:center;gap:9px;padding:10px 16px;border-radius:12px;background:var(--card);border:1px solid var(--line);color:var(--ink);text-decoration:none;font-weight:700;font-size:13.5px;box-shadow:var(--sh-1);transition:transform var(--dur) var(--ease),box-shadow var(--dur) var(--ease),border-color var(--dur) var(--ease)}
+.qa:hover{border-color:var(--blue);background:var(--hover);transform:translateY(-1px);box-shadow:var(--sh-2);color:var(--ink)}
+.qa .qa-icon{font-size:20px;display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:9px;background:var(--blue-50);color:var(--blue)}
+.qa .qa-icon .a-ic{width:17px;height:17px}
+.qa .qa-badge{background:var(--orange);color:#fff;font-size:11px;font-weight:800;padding:1px 7px;border-radius:999px;margin-left:2px}
+.spark-wrap{display:flex;align-items:flex-end;gap:6px;height:110px;padding:0 4px}
+.spark-bar{flex:1;border-radius:6px 6px 0 0;background:linear-gradient(180deg,#5B8AD9,#2E5FA8);min-width:8px;position:relative;transition:height .3s var(--ease)}
+.spark-bar:hover{filter:brightness(1.15)}
+.spark-bar .spark-tip{display:none;position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;font-size:11px;padding:3px 8px;border-radius:6px;white-space:nowrap;margin-bottom:4px;z-index:2}
+.spark-bar:hover .spark-tip{display:block}
+@media(pointer:coarse){.spark-bar .spark-tip{display:block;font-size:9px;padding:2px 4px;margin-bottom:2px}}
+.spark-labels{display:flex;gap:6px;padding:8px 4px 0;font-size:11px;color:var(--mut);text-align:center}
+.spark-labels span{flex:1;min-width:8px}
+.occ-bar{height:20px;border-radius:10px;background:var(--hover);overflow:hidden;margin:6px 0}
+.occ-fill{height:100%;border-radius:10px;transition:width .4s var(--ease)}
+.occ-green{background:linear-gradient(90deg,#27ae60,#2ecc71)}
+.occ-yellow{background:linear-gradient(90deg,#f39c12,#e67e22)}
+.occ-red{background:linear-gradient(90deg,#e74c3c,#c0392b)}
+.donut-wrap{display:flex;align-items:center;gap:24px;flex-wrap:wrap}
+.donut-svg{width:130px;height:130px;flex-shrink:0}
+.donut-legend{display:flex;flex-direction:column;gap:10px}
+.donut-item{display:flex;align-items:center;gap:8px;font-size:14px}
+.donut-dot{width:12px;height:12px;border-radius:4px;flex-shrink:0}
+.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--mut)}
+.status-dot.confirmed{background:#27ae60}.status-dot.pending{background:#f39c12}.status-dot.expired{background:#95a5a6}.status-dot.cancelled{background:#e74c3c}
+.src-badge{font-size:11px;padding:2px 9px;border-radius:20px;font-weight:700;display:inline-block}
+.src-badge.web,.src-badge.app{background:var(--ok-bg);color:var(--ok)}
+.src-badge.agent{background:var(--info-bg);color:var(--info)}
+.src-badge.counter,.src-badge.admin{background:var(--orange-100);color:var(--orange-600)}
+.trip-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.trip-row:last-child{border-bottom:0}
+.live-trip{display:grid;grid-template-columns:64px 1fr 170px 190px 150px;gap:14px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line)}
+.live-trip:last-child{border-bottom:0}
+.live-time{font-weight:800;color:var(--blue);font-size:15px;font-variant-numeric:tabular-nums}
+.live-route{font-weight:700;font-size:14px;color:var(--ink)}
+.live-route small{display:block;font-weight:500;color:var(--mut);font-size:12px;margin-top:2px}
+.live-bus{font-size:13px;color:var(--ink);line-height:1.3}
+.live-bus .lb-num{font-weight:800;background:var(--hover);padding:2px 8px;border-radius:6px;font-family:var(--f-mono);font-size:12px}
+.live-bus small{display:block;font-size:11px;color:var(--mut);margin-top:2px}
+.live-driver{font-size:13px;color:var(--ink);line-height:1.3}
+.live-driver .ld-empty{font-style:italic;color:var(--mut);font-size:12px}
+.live-driver small{display:block;font-size:11px;color:var(--mut);margin-top:2px}
+.live-state{text-align:right}
+.state-pill{display:inline-block;padding:5px 12px;border-radius:20px;font-size:11.5px;font-weight:800;letter-spacing:.04em;color:#fff;text-transform:uppercase;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.state-detail{display:block;font-size:11px;color:var(--mut);margin-top:4px}
+.live-seats{font-size:12px;color:var(--mut);margin-top:6px;text-align:right}
+.live-seats strong{color:var(--ink);font-weight:700}
+.live-fresh{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--mut);margin-left:auto;font-weight:600}
+.live-fresh::before{content:'';width:8px;height:8px;border-radius:50%;background:#27ae60;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
+.promo{display:flex;align-items:center;gap:14px;margin:0 0 20px;padding:14px 18px;border-radius:var(--r-lg);color:#fff;text-decoration:none;position:relative;overflow:hidden;
+  background:linear-gradient(135deg,#12264E 0%,#1C3B72 55%,#2E5FA8 100%);box-shadow:0 8px 24px rgba(18,38,78,.28);border:1px solid rgba(255,255,255,.12);transition:transform var(--dur) var(--ease),box-shadow var(--dur) var(--ease)}
+.promo::before{content:"";position:absolute;right:-60px;bottom:-80px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(240,124,31,.55),transparent 65%);pointer-events:none}
+.promo:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(18,38,78,.38);color:#fff}
+.promo .promo-ico{width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.14);flex:0 0 auto}
+.promo .promo-ico .a-ic{width:26px;height:26px;stroke-width:1.8}
+.promo .promo-txt{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 auto}
+.promo .promo-txt b{font-size:16.5px;font-weight:800;letter-spacing:-.01em}
+.promo .promo-txt b em{font-style:normal;font-size:10px;letter-spacing:.1em;text-transform:uppercase;background:var(--orange);padding:2px 7px;border-radius:999px;margin-left:8px;vertical-align:middle}
+.promo .promo-txt small{font-size:12.5px;opacity:.88;line-height:1.4}
+.promo .promo-cta{flex:0 0 auto;background:var(--orange);color:#fff;font-weight:800;padding:10px 16px;border-radius:999px;font-size:13.5px;box-shadow:0 4px 14px rgba(240,124,31,.45);white-space:nowrap}
+.live-toast{position:fixed;right:16px;z-index:50;background:var(--navy);color:#fff;padding:12px 16px;border-radius:12px;box-shadow:var(--sh-3);display:flex;align-items:center;gap:10px;font-size:13px;max-width:320px;animation:flashIn .25s ease}
+.live-toast.pay{top:66px}.live-toast.book{top:112px;background:var(--ok)}
+.live-toast button{background:var(--orange);border:0;color:#fff;padding:6px 10px;border-radius:7px;font-weight:700;cursor:pointer;font-size:12px;font-family:inherit}
+.live-toast.book button{background:#fff;color:var(--ok)}
+.flash .flash-x{margin-left:auto;background:none;border:0;color:inherit;opacity:.6;cursor:pointer;font-size:16px;line-height:1;padding:0 2px}
+.flash .flash-x:hover{opacity:1}
+@media(max-width:900px){
+  .dash-grid,.dash-grid.two-one,.dash-grid.one-two{grid-template-columns:1fr}
+  .live-trip{grid-template-columns:1fr;gap:6px;padding:14px 0}
+  .live-state,.live-seats{text-align:left}
+  .promo{flex-wrap:wrap}.promo .promo-cta{width:100%;text-align:center}
+}
 
 /* ── Touch targets & responsive ──────────────────────────────────────── */
 @media(pointer:coarse){
