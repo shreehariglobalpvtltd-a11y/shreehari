@@ -283,7 +283,7 @@ $li = req('POST', '/admin/login.php', ['jar' => $adminJar, 'form' => [
 ]]);
 $dash = req('GET', '/admin/index.php', ['jar' => $adminJar]);
 $loggedIn = $dash['code'] === 200
-    && (str_contains($dash['body'], 'Recent Bookings') || str_contains($dash['body'], 'Latest bookings'));
+    && (str_contains($dash['body'], 'Recent Bookings') || str_contains($dash['body'], 'Latest bookings') || str_contains($dash['body'], 'Recent tickets'));
 check('admin session established', $loggedIn, 'login HTTP ' . $li['code'] . ', dash HTTP ' . $dash['code']);
 
 if ($loggedIn) {
