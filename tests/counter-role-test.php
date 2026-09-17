@@ -141,8 +141,8 @@ try {
     check('admin/agents.php requires commissions.view',
         str_contains($src('admin/agents.php'), "Auth::requireAdmin('commissions.view')"));
 
-    check('reschedule gate is bookings.edit + schedules.edit (not .manage)',
-        str_contains($src('admin/reschedule.php'), "Auth::can('bookings.edit') && Auth::can('schedules.edit')"));
+    check('reschedule gate is bookings.edit OR schedules.edit (agents scoped to own sales by the engine)',
+        str_contains($src('admin/reschedule.php'), "Auth::can('bookings.edit') || Auth::can('schedules.edit') || Auth::isSuperadmin()"));
 
     check("staff.php offers the 'counter' role",
         str_contains($src('admin/staff.php'), "'counter'"));

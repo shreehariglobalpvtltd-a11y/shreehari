@@ -276,6 +276,7 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
         <button type="button" class="btn ghost" data-dt-toggle="<?= $rid ?>v">👁 View</button>
         <?php if ($canManage): ?><button type="button" class="btn ghost" data-dt-toggle="<?= $rid ?>e">✏️ Edit</button><?php endif; ?>
         <a class="btn ghost" href="customer-view.php?phone=<?= urlencode((string) $r['phone']) ?>">📋 History</a>
+        <a class="btn ghost" href="passengers.php?phone=<?= urlencode((string) $r['phone']) ?>" title="Every traveller booked from this number — name, age, ID, photo / document (17 Sep 2026)">🧍 Passengers</a>
       </span></td>
     </tr>
     <tr class="dt-x" id="<?= $rid ?>v" hidden><td colspan="10">
@@ -292,6 +293,7 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
       </div>
       <div class="dt-acts" style="padding:4px 2px">
         <a class="btn ghost" href="customer-view.php?phone=<?= urlencode((string) $r['phone']) ?>">📋 Booking history</a>
+        <a class="btn ghost" href="passengers.php?phone=<?= urlencode((string) $r['phone']) ?>">🧍 Passengers</a>
         <a class="btn ghost" href="export.php?format=pdf&amp;customer=<?= urlencode((string) $r['phone']) ?>" target="_blank" rel="noopener">PDF</a>
         <?php if ($canManage): ?>
           <?php if ($status === 'blocked'): ?>

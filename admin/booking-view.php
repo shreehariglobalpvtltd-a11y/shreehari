@@ -5,6 +5,7 @@
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/tripstatus.php';   // edit-window gate for seat changes (5 Sep 2026)
+require_once INCLUDE_PATH . '/passengerdocs.php'; // passenger photo / ID documents (17 Sep 2026)
 $admin = admin_boot('bookings.view');
 
 $base  = '';   // root-relative: the panel must stay on the request host (.in or the .network staff door)
@@ -115,14 +116,22 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
 
 /* ---- Edit passenger details (bookings.edit permission) -------------- */
 /**
- * After an edit, tell the passenger (SHG AI BRAIN 1.6 "notify customer of the
- * change", 10 Sep 2026): the standard ticket WhatsApp, which links the PNG that
- * bv_invalidate_pdfs() just dropped — so the picture they receive is the
- * corrected one. Best effort: a WhatsApp outage never blocks the edit, and the
- * outcome is written to the audit trail either way (booking.edit_notify).
- * Off via settings notify_ticket_edit = 0.
+ * After an edit, tell the passenger WHAT changed (SHG AI BRAIN 1.6 "notify
+ * customer of the change", 10 Sep 2026; worded since 17 Sep 2026). Until now
+ * every edit re-sent the plain "is CONFIRMED" ticket, so a passenger moved to
+ * another berth got a new picture with no word about why. Notify::ticketChanged()
+ * is the same delivery path (PNG + PDF links, template vars, message_logs row)
+ * with a first line naming the change — seat A → B, corrected passenger
+ * details, updated contact — and it links the PNG that bv_invalidate_pdfs()
+ * just dropped, so the picture they receive is the corrected one.
+ *
+ * $what is one of ticketChanged()'s kinds this page raises — 'passenger' |
+ * 'seat' | 'contact'; $ctx carries display strings (name, old, new). Best
+ * effort: a WhatsApp outage never blocks the edit, and the outcome is written
+ * to the audit trail either way (booking.edit_notify). Off via settings
+ * notify_ticket_edit = 0. The plain ticket resend stays on the resend_wa button.
  */
-function bv_notify_edit(int $bookingId, string $pnr, string $what): string
+function bv_notify_edit(int $bookingId, string $pnr, string $what, array $ctx = []): string
 {
     if (!Settings::getBool('notify_ticket_edit', true)) {
         return '';
@@ -132,12 +141,12 @@ function bv_notify_edit(int $bookingId, string $pnr, string $what): string
         if ($fresh === null || (string) ($fresh['status'] ?? '') !== 'confirmed') {
             return '';
         }
-        $r = Notify::resendTicketWhatsApp($fresh);
+        $r = Notify::ticketChanged($fresh, $what, $ctx);
         Logger::audit('booking.edit_notify', 'booking', $pnr, null,
-            ['what' => $what, 'ok' => (bool) ($r['ok'] ?? false), 'to' => (string) ($fresh['contact_phone'] ?? '')],
+            ['what' => $what, 'ctx' => $ctx, 'ok' => (bool) ($r['ok'] ?? false), 'to' => (string) ($fresh['contact_phone'] ?? '')],
             (string) ($r['detail'] ?? ''));
         return ($r['ok'] ?? false)
-            ? ' Passenger notified on WhatsApp with the updated ticket.'
+            ? ' Passenger notified on WhatsApp — the message names the change and links the updated ticket.'
             : ' (WhatsApp not sent: ' . truncate((string) ($r['detail'] ?? 'unknown'), 120) . ')';
     } catch (Throwable $e) {
         Logger::error('Edit notify failed: ' . $e->getMessage(), ['pnr' => $pnr]);
@@ -156,9 +165,21 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
             $changes = [];
             $oldVals = [];   // 5 Sep 2026: every edit records what it was → what it is now
             $newVals = [];
+            $paxNames = [];  // 17 Sep 2026: who was edited, for the change notice
 
-            $cur = Database::fetch('SELECT id, pnr, contact_phone, contact_email FROM bookings WHERE id = :id', ['id' => $bid]);
+            $cur = Database::fetch('SELECT id, pnr, contact_phone, contact_country_code, contact_email, sold_by_admin_id FROM bookings WHERE id = :id', ['id' => $bid]);
             if ($cur === null || (string) $cur['pnr'] !== $pnr) {
+                throw new RuntimeException('Booking not found.');
+            }
+            /* Agent scope (17 Sep 2026). This handler runs BEFORE the page-level
+               guard further down (it has to — the guard nulls $b, and $b is not
+               loaded yet here), so it applies the rule itself: a counter agent
+               may edit only a booking they sold. Mirrors BookingService::
+               cancelSeat(); a foreign PNR reads as "not found", because
+               confirming it exists is itself a disclosure. No scoped role holds
+               bookings.edit today — this keeps that true by construction. */
+            $editScope = Auth::bookingScopeAdminId();
+            if ($editScope !== null && (int) ($cur['sold_by_admin_id'] ?? 0) !== $editScope) {
                 throw new RuntimeException('Booking not found.');
             }
             $curLeg = Database::fetch("SELECT boarding_stop, drop_stop FROM booking_legs WHERE booking_id = :b AND leg_type = 'outbound' LIMIT 1", ['b' => $bid]) ?? [];
@@ -171,6 +192,17 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
                 if (strlen($newPhone) < 10 || strlen($newPhone) > 15) { throw new RuntimeException('Enter a valid phone number (10-15 digits).'); }
                 $upd['contact_phone'] = $newPhone; $changes[] = 'phone';
                 $oldVals['contact_phone'] = $cur['contact_phone']; $newVals['contact_phone'] = $newPhone;
+                /* India and Nepal share the 10-digit mobile format, so the dialing
+                   code is CAPTURED at booking (contact_country_code) and the
+                   notifier trusts it. A corrected number that carries its own
+                   prefix (+977… / +91…) re-derives the code here; a bare 10-digit
+                   correction says nothing about the country, so the stored code
+                   is kept (17 Sep 2026). */
+                $newCc = countryDialCode(resolvePhoneCountry('', $newPhone));
+                if ($newCc !== '' && $newCc !== (string) ($cur['contact_country_code'] ?? '')) {
+                    $upd['contact_country_code'] = $newCc;
+                    $oldVals['contact_country_code'] = $cur['contact_country_code']; $newVals['contact_country_code'] = $newCc;
+                }
             }
             if ($newEmail !== '' && $newEmail !== (string) ($cur['contact_email'] ?? '')) {
                 $upd['contact_email'] = $newEmail; $changes[] = 'email';
@@ -199,6 +231,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
 
             if (count($upd) > 1) {
                 Database::update('bookings', $upd, 'id = :id', ['id' => $bid]);
+                // The payment row carries the payer's number too (invoice, refund
+                // desk); a corrected contact must not leave it stale (17 Sep 2026).
+                if (isset($upd['contact_phone'])) {
+                    Database::update('payments', ['payer_phone' => $newPhone], 'booking_id = :b', ['b' => $bid]);
+                }
             }
 
             // Per-passenger updates (name / age / gender / ID document)
@@ -252,6 +289,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
                     }
 
                     $changes[] = 'passenger ' . $seatKey;
+                    $paxNames[] = (string) ($pUpd['full_name'] ?? $curPax['full_name']);
                     foreach ($pUpd as $fk => $fv) {
                         $oldVals['pax ' . $seatKey . ' ' . $fk] = $curPax[$fk] ?? null;
                         $newVals['pax ' . $seatKey . ' ' . $fk] = $fv;
@@ -262,6 +300,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
             if ($changes === []) {
                 $flash = ['ok', 'Nothing changed — the values you typed match the booking already.'];
             } else {
+                /* The QR payload is signed over the contact phone
+                   (Ticket::qrPayload), so a corrected number re-mints the QR
+                   exactly as a seat change does — otherwise the PNG on the
+                   passenger's phone keeps a QR signed for a number the booking
+                   no longer has (17 Sep 2026). Before the cache drop below. */
+                if (isset($upd['contact_phone'])) {
+                    Ticket::reissue($bid);
+                }
                 /* The cached ticket PDF (and the invoice) still carry the OLD
                    boarding-stop / passenger name / phone; drop both caches so
                    the next download regenerates them with the edits above. */
@@ -269,7 +315,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
 
                 Logger::audit('booking.edit_passenger', 'booking', $pnr, $oldVals, $newVals,
                     'Edited ' . implode(', ', $changes) . ' by admin #' . $admin['id'], $reason);
-                $notice = bv_notify_edit($bid, $pnr, 'passenger details');
+                // A phone / email change is a 'contact' notice (it reaches the NEW
+                // number); anything else is a 'passenger' notice naming who changed.
+                $notice = bv_notify_edit($bid, $pnr, isset($upd['contact_phone']) || isset($upd['contact_email']) ? 'contact' : 'passenger', [
+                    'name' => implode(', ', array_unique($paxNames)),
+                    'new'  => implode(', ', $changes),
+                ]);
                 $flash = ['ok', 'Booking details updated: ' . implode(', ', $changes) . '. Ticket PNG and PDF regenerate on next open.' . $notice];
             }
         } catch (Throwable $e) {
@@ -296,6 +347,70 @@ if ($b !== null && $scopeId !== null && (int) ($b['sold_by_admin_id'] ?? 0) !== 
         'pnr'   => $pnr,
     ]);
     $b = null;
+}
+
+/* ---- Passenger photo / ID documents (17 Sep 2026) --------------------
+   The office asked for the picture, not just the ID number: a face photo
+   for the manifest, the front / back of the citizenship or Aadhaar for the
+   border. Both actions sit AFTER the scope guard above ($b is null for a
+   foreign PNR), are CSRF-checked, need bookings.edit (the same right as
+   editing a passenger's name) and honour the office switch
+   settings.passenger_docs_on. Validation, storage, scope and audit live in
+   PassengerDocs; this is only the form glue. Files are served through
+   admin/passenger-doc.php, never by their upload path. */
+if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'upload_pax_doc') {
+    if (!Security::verifyCsrf()) {
+        $flash = ['bad', 'Session expired — please try again.'];
+    } else {
+        try {
+            Auth::requireAdmin('bookings.edit');
+            if (!Settings::getBool('passenger_docs_on', true)) {
+                throw new RuntimeException('Passenger photo / ID uploads are switched off in Settings.');
+            }
+            $paxId  = (int) ($_POST['pax_id'] ?? 0);
+            $kind   = Security::clean($_POST['kind'] ?? 'photo', 20);
+            $paxRow = null;
+            foreach (($b['passengers'] ?? []) as $pp) {
+                if ((int) $pp['id'] === $paxId) { $paxRow = $pp; break; }
+            }
+            if ($paxRow === null) {
+                throw new RuntimeException('That passenger is not on this booking.');
+            }
+            if (!isset($_FILES['doc']) || (int) ($_FILES['doc']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+                throw new RuntimeException('Choose a photo or document file first.');
+            }
+            $res   = PassengerDocs::attach($paxId, $_FILES['doc'], $kind, (int) $admin['id']);
+            $flash = ['ok', PassengerDocs::label((string) $res['kind']) . ' attached to ' . (string) $paxRow['full_name']
+                . ' (seat ' . Seats::displayLabel((string) $paxRow['seat_no'], 'sleeper', (string) ($b['booking_mode'] ?? 'sharing'))
+                . ', ' . fileSizeLabel((int) $res['size']) . '). Stored privately — it is not printed on the ticket.'];
+        } catch (Throwable $e) {
+            $flash = ['bad', $e->getMessage()];
+        }
+    }
+}
+
+if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'remove_pax_doc') {
+    if (!Security::verifyCsrf()) {
+        $flash = ['bad', 'Session expired — please try again.'];
+    } else {
+        try {
+            Auth::requireAdmin('bookings.edit');
+            if (!Settings::getBool('passenger_docs_on', true)) {
+                throw new RuntimeException('Passenger photo / ID uploads are switched off in Settings.');
+            }
+            $docId = (int) ($_POST['doc_id'] ?? 0);
+            $doc   = PassengerDocs::get($docId);
+            // The document must belong to THIS booking — the id in the form is
+            // not trusted to point anywhere else.
+            if ($doc === null || (int) ($doc['booking_id'] ?? 0) !== (int) $b['id']) {
+                throw new RuntimeException('Document not found.');
+            }
+            PassengerDocs::remove($docId, (int) $admin['id']);
+            $flash = ['ok', PassengerDocs::label((string) ($doc['kind'] ?? '')) . ' removed from ' . (string) ($doc['full_name'] ?: 'the passenger') . '.'];
+        } catch (Throwable $e) {
+            $flash = ['bad', $e->getMessage()];
+        }
+    }
 }
 
 /* ---- Change seat on the ticket page (5 Sep 2026) --------------------
@@ -330,7 +445,10 @@ if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['
             bv_invalidate_pdfs((int) $b['id'], $pnr);
             Logger::audit('booking.seat_change', 'booking', $pnr, ['seat' => $res['from'] ?? $fromSeat], ['seat' => $res['to'] ?? $toSeat],
                 'Seat changed on the ticket page by admin #' . $admin['id'], Security::clean($_POST['reason'] ?? '', 255));
-            $notice = bv_notify_edit((int) $b['id'], $pnr, 'seat');
+            $notice = bv_notify_edit((int) $b['id'], $pnr, 'seat', [
+                'old' => Seats::displayLabel((string) ($res['from'] ?? $fromSeat), $coach, (string) ($b['booking_mode'] ?? 'sharing')),
+                'new' => Seats::displayLabel((string) ($res['to'] ?? $toSeat), $coach, (string) ($b['booking_mode'] ?? 'sharing')),
+            ]);
             $flash = ['ok', 'Seat changed ' . Seats::displayLabel((string) ($res['from'] ?? $fromSeat), $coach, (string) ($b['booking_mode'] ?? 'sharing')) . ' → ' . Seats::displayLabel((string) ($res['to'] ?? $toSeat), $coach, (string) ($b['booking_mode'] ?? 'sharing')) . '. Ticket QR, PNG and PDF re-issued.' . $notice];
             $b = BookingService::detail($pnr);
         } catch (Throwable $e) {
@@ -587,11 +705,22 @@ if ($b !== null && $isSuperHere && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'PO
             $newNote  = Security::clean($_POST['admin_note'] ?? '', 255);
             $upd = ['updated_at' => date('Y-m-d H:i:s')];
             $oldVals = []; $newVals = [];
-            if ($newPhone !== '' && $newPhone !== (string) $b['contact_phone']) { $upd['contact_phone'] = $newPhone; $oldVals['contact_phone'] = $b['contact_phone']; $newVals['contact_phone'] = $newPhone; }
+            if ($newPhone !== '' && $newPhone !== (string) $b['contact_phone']) {
+                $upd['contact_phone'] = $newPhone; $oldVals['contact_phone'] = $b['contact_phone']; $newVals['contact_phone'] = $newPhone;
+                // Same dialing-code rule as edit_passenger (17 Sep 2026): re-derived
+                // only when the typed number carries its own +977 / +91 prefix.
+                $newCc = countryDialCode(resolvePhoneCountry('', $newPhone));
+                if ($newCc !== '' && $newCc !== (string) ($b['contact_country_code'] ?? '')) {
+                    $upd['contact_country_code'] = $newCc; $oldVals['contact_country_code'] = $b['contact_country_code'] ?? null; $newVals['contact_country_code'] = $newCc;
+                }
+            }
             if ($newEmail !== '' && $newEmail !== (string) ($b['contact_email'] ?? '')) { $upd['contact_email'] = $newEmail; $oldVals['contact_email'] = $b['contact_email'] ?? null; $newVals['contact_email'] = $newEmail; }
             if ($newNote  !== '') { $upd['admin_note'] = $newNote; $oldVals['admin_note'] = $b['admin_note'] ?? null; $newVals['admin_note'] = $newNote; }
             if (count($upd) > 1) {
                 Database::update('bookings', $upd, 'id = :id', ['id' => $b['id']]);
+                if (isset($upd['contact_phone'])) {   // the payer's number on the payment row too (17 Sep 2026)
+                    Database::update('payments', ['payer_phone' => $newPhone], 'booking_id = :b', ['b' => (int) $b['id']]);
+                }
             }
             // Update passengers if pax name provided
             foreach (($_POST['pax_name'] ?? []) as $paxId => $paxName) {
@@ -609,10 +738,21 @@ if ($b !== null && $isSuperHere && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'PO
             if ($oldVals === [] && $newVals === []) {
                 $flash = ['ok', 'Nothing changed.'];
             } else {
+                if (isset($upd['contact_phone'])) {
+                    Ticket::reissue((int) $b['id']);           // the QR is signed over the contact phone (17 Sep 2026)
+                }
                 bv_invalidate_pdfs((int) $b['id'], $pnr);   // the cached ticket/invoice carried the old name / phone
                 Logger::audit('booking.edit_contact', 'booking', $pnr, $oldVals, $newVals, 'superadmin contact edit by admin #' . $admin['id'],
                     Security::clean($_POST['reason'] ?? '', 255));
-                $notice = bv_notify_edit((int) $b['id'], $pnr, 'contact details');
+                // Say what changed; an internal note alone is not the passenger's business.
+                $contactWhat = [];
+                if (isset($upd['contact_phone'])) { $contactWhat[] = 'phone'; }
+                if (isset($upd['contact_email'])) { $contactWhat[] = 'email'; }
+                foreach (array_keys($newVals) as $nk) {
+                    if (str_starts_with((string) $nk, 'pax #')) { $contactWhat[] = 'passenger name'; break; }
+                }
+                $notice = $contactWhat === [] ? ''
+                    : bv_notify_edit((int) $b['id'], $pnr, $contactWhat === ['passenger name'] ? 'passenger' : 'contact', ['new' => implode(', ', $contactWhat)]);
                 $flash = ['ok', 'Booking details updated. Ticket PNG and PDF regenerate on next open.' . $notice];
             }
             $b = BookingService::detail($pnr);
@@ -804,6 +944,44 @@ if (Auth::can('payments.view')) {
             ['b' => (int) ($b['id'] ?? 0)], 0) > 0;
     } catch (Throwable $e) { $hasProof = false; }
 }
+
+/* ---- Passenger photos / ID documents (17 Sep 2026) ----------------
+   One grouped read for the whole page; [] until the migration has run or
+   while the office switch is off. */
+$paxDocsOn    = Settings::getBool('passenger_docs_on', true);
+$paxDocsAvail = $paxDocsOn && PassengerDocs::available();
+$paxDocs      = $paxDocsAvail ? PassengerDocs::listFor((int) ($b['id'] ?? 0)) : [];
+$paxDocsTotal = 0;
+foreach ($paxDocs as $pdList) { $paxDocsTotal += count($pdList); }
+
+/* ---- Other tickets on this contact number (17 Sep 2026) -----------
+   A family books three PNRs from one phone (assertNoDuplicate only refuses
+   the SAME seats within 10 minutes, and never for staff) and until now
+   nothing on the ticket page said so — the desk found the siblings by
+   searching the number by hand. Scoped exactly like the page: a counter
+   agent sees only the siblings they sold. The walk-in placeholder
+   0000000000 is skipped, or it would list every walk-in in the company. */
+$siblings = [];
+if (Notify::usablePhone($b['contact_phone'] ?? '') !== '') {
+    try {
+        $sibSql = "SELECT b.id, b.pnr, b.status, b.total_amount, b.booking_mode, l.travel_date,
+                          r.from_city, r.to_city, r.coach_type,
+                          (SELECT GROUP_CONCAT(bs.seat_no ORDER BY LENGTH(bs.seat_no), bs.seat_no SEPARATOR ',')
+                             FROM booking_seats bs WHERE bs.booking_id = b.id AND bs.released_at IS NULL) AS seats,
+                          (SELECT COUNT(*) FROM booking_passengers bp WHERE bp.booking_id = b.id) AS pax
+                     FROM bookings b
+                     LEFT JOIN booking_legs l ON l.booking_id = b.id AND l.leg_type = 'outbound'
+                     LEFT JOIN schedules s ON s.id = l.schedule_id
+                     LEFT JOIN routes r ON r.id = s.route_id
+                    WHERE b.contact_phone = :p AND b.id <> :id";
+        $sibParams = ['p' => (string) $b['contact_phone'], 'id' => (int) $b['id']];
+        if ($scopeId !== null) {
+            $sibSql .= ' AND b.sold_by_admin_id = :scope';
+            $sibParams['scope'] = $scopeId;
+        }
+        $siblings = Database::fetchAll($sibSql . ' ORDER BY l.travel_date DESC, b.id DESC LIMIT 20', $sibParams);
+    } catch (Throwable $e) { $siblings = []; }
+}
 ?>
 <style>
 .source-card{border-left:4px solid var(--blue);background:var(--card);border:1px solid var(--line);border-left:4px solid var(--blue);border-radius:14px;padding:18px 22px;margin-bottom:22px}
@@ -883,6 +1061,26 @@ if (Auth::can('payments.view')) {
 .edit-row input{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:var(--card);color:var(--ink)}
 .pax-edit-row{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
 .pax-edit-row input,.pax-edit-row select{padding:7px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:var(--card);color:var(--ink)}
+
+/* ── Passenger photos / ID documents (17 Sep 2026) ── */
+.pdoc-pax{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;padding:10px 0;border-top:1px dashed var(--line)}
+.pdoc-pax:first-of-type{border-top:0}
+.pdoc-who{flex:0 0 170px;font-weight:700;font-size:13px;line-height:1.3}
+.pdoc-who .mono{margin-right:6px;color:var(--blue)}
+.pdoc-who small{display:block;color:var(--mut);font-weight:500;font-size:11.5px}
+.pdoc-strip{display:flex;gap:8px;flex-wrap:wrap;flex:1 1 240px;min-height:32px}
+.pdoc{width:104px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--soft);text-align:center;font-size:11px}
+.pdoc .pdoc-th{display:flex;align-items:center;justify-content:center;height:74px;background:var(--card);color:var(--mut)}
+.pdoc img{width:100%;height:74px;object-fit:cover;display:block}
+.pdoc .pill{font-size:10px;padding:1px 7px;margin:5px 0 2px}
+.pdoc-acts{display:flex;justify-content:center;gap:6px;align-items:center;padding:0 4px 4px}
+.pdoc-acts a{color:var(--mut);display:inline-flex;padding:3px}
+.pdoc-acts form{margin:0;display:inline-flex}
+.pdoc-x{background:none;border:0;color:var(--bad);cursor:pointer;padding:3px;display:inline-flex;line-height:1}
+.pdoc-up{display:flex;gap:6px;flex-wrap:wrap;align-items:center;flex:1 1 300px}
+.pdoc-up select,.pdoc-up input[type=file]{padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12.5px;background:var(--card);color:var(--ink);max-width:100%;min-width:0}
+.pdoc-up input[type=file]{flex:1 1 160px}
+@media(max-width:820px){.pdoc-who{flex:1 1 100%}}
 
 /* ── Mobile responsive ── */
 @media(max-width:820px){
@@ -1191,7 +1389,7 @@ $hasUpdated = $updatedAt !== '' && $updatedAt !== $createdAt;
  * ======================================================================== */
 $ticket = $b['ticket'] ?? null;
 ?>
-<div class="panel">
+<div class="panel" id="pax">
   <h2>Passengers</h2>
   <div class="tbl-scroll">
   <table>
@@ -1200,7 +1398,7 @@ $ticket = $b['ticket'] ?? null;
     <?php foreach ($b['passengers'] as $p): ?>
       <tr>
         <td class="mono"><?= Security::e(Seats::displayLabel((string) $p['seat_no'], 'sleeper', (string) ($b['booking_mode'] ?? 'sharing'))) ?></td>
-        <td><?= Security::e((string) $p['full_name']) ?><?php if ((int) ($p['is_primary'] ?? 0) === 1): ?> <span class="pill" style="background:#e2ecfb;color:#1c3b72;font-size:10px;padding:1px 6px">Primary</span><?php endif; ?><?php if (!empty($p['special_need'])): ?> <span class="pill" style="background:#e6f4ea;color:#0f5c36;font-size:10px;padding:1px 6px" title="Priority boarding">🩺 <?= Security::e(ucfirst((string) $p['special_need'])) ?></span><?php endif; ?></td>
+        <td><?= Security::e((string) $p['full_name']) ?><?php if ((int) ($p['is_primary'] ?? 0) === 1): ?> <span class="pill" style="background:#e2ecfb;color:#1c3b72;font-size:10px;padding:1px 6px">Primary</span><?php endif; ?><?php if (!empty($p['special_need'])): ?> <span class="pill" style="background:#e6f4ea;color:#0f5c36;font-size:10px;padding:1px 6px" title="Priority boarding">🩺 <?= Security::e(ucfirst((string) $p['special_need'])) ?></span><?php endif; ?><?php $pdN = count($paxDocs[(int) $p['id']] ?? []); if ($pdN > 0): ?> <a class="pill st-info nodot" style="font-size:10px;padding:1px 6px" href="#paxdocs" title="Photo / ID documents on file">📎 <?= $pdN ?></a><?php endif; ?></td>
         <td><?= $p['age'] !== null ? (int) $p['age'] : '—' ?></td>
         <td><?= Security::e((string) ($p['gender'] ?? '—')) ?></td>
         <td>
@@ -1240,6 +1438,34 @@ $ticket = $b['ticket'] ?? null;
     </div>
   <?php endif; ?>
 </div>
+
+<?php /* ---- Other tickets on this contact number (17 Sep 2026) — query above ---- */ ?>
+<?php if ($siblings !== []): ?>
+<div class="panel">
+  <h2><svg class="a-ic"><use href="#a-phone"/></svg> Other tickets on this number
+    <span class="muted" style="font-weight:500;font-size:13px">· <?= count($siblings) ?><?= count($siblings) === 20 ? '+' : '' ?> · <span class="mono"><?= Security::e((string) $b['contact_phone']) ?></span></span>
+    <a class="btn ghost sm" style="margin-left:auto" href="<?= $base ?>/admin/passengers.php?phone=<?= urlencode((string) $b['contact_phone']) ?>"><svg class="a-ic"><use href="#a-id-card"/></svg> Passenger register</a>
+  </h2>
+  <div class="tbl-scroll">
+  <table>
+    <thead><tr><th>PNR</th><th>Travel date</th><th>Route</th><th>Seats</th><th>Pax</th><th>Amount</th><th>Status</th></tr></thead>
+    <tbody>
+    <?php foreach ($siblings as $sb): $sbSeats = array_values(array_filter(explode(',', (string) ($sb['seats'] ?? '')))); ?>
+      <tr>
+        <td class="mono"><a href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode((string) $sb['pnr']) ?>"><?= Security::e((string) $sb['pnr']) ?></a></td>
+        <td><?= !empty($sb['travel_date']) ? Security::e(formatDate((string) $sb['travel_date'])) : '<span class="muted">—</span>' ?></td>
+        <td><?= Security::e(($sb['from_city'] ?? '—') . ' → ' . ($sb['to_city'] ?? '—')) ?></td>
+        <td class="mono"><?= $sbSeats !== [] ? Security::e(Seats::displayLabels($sbSeats, (string) ($sb['coach_type'] ?: 'sleeper'), (string) ($sb['booking_mode'] ?: 'sharing'))) : '<span class="muted">—</span>' ?></td>
+        <td><?= (int) $sb['pax'] ?></td>
+        <td><?= Security::e(inr((float) $sb['total_amount'])) ?></td>
+        <td><?= admin_pill((string) $sb['status']) ?></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+  </div>
+</div>
+<?php endif; ?>
 
 <?php if (Auth::can('bookings.edit') && in_array($b['status'], ['pending', 'confirmed'], true)):
   $editGate = !empty($leg['schedule_id']) ? TripStatus::editableFor((int) $leg['schedule_id']) : ['editable' => true, 'label' => ''];
@@ -1291,6 +1517,7 @@ $ticket = $b['ticket'] ?? null;
       </select>
       <input type="text" name="pax[<?= (int)$pax['id'] ?>][id_type]" placeholder="<?= Security::e((string) ($pax['id_type'] ?: 'ID type')) ?>" maxlength="60" style="width:110px" title="Aadhaar / Citizenship / Passport">
       <input type="text" name="pax[<?= (int)$pax['id'] ?>][id_number]" placeholder="<?= Security::e((string) ($pax['id_number'] ?: 'ID number')) ?>" maxlength="60" style="width:130px">
+      <?php if ($paxDocsAvail): $pdN = count($paxDocs[(int) $pax['id']] ?? []); ?><a class="chip<?= $pdN > 0 ? ' on' : '' ?>" href="#paxdocs" title="Photo / ID documents — below"><svg class="a-ic"><use href="#a-camera"/></svg> <?= $pdN > 0 ? $pdN . ' file' . ($pdN === 1 ? '' : 's') : 'add photo / ID' ?></a><?php endif; ?>
     </div>
     <?php endforeach; ?>
     <p class="muted" style="font-size:12px;margin:8px 0 0">Leave a box empty to keep its current value (shown as the placeholder). Every change is written to the audit trail below as old → new, and the ticket PDF regenerates on the next download.</p>
@@ -1299,6 +1526,68 @@ $ticket = $b['ticket'] ?? null;
       <button type="submit" class="btn ok" onclick="return confirm('Save these changes to the booking?')">💾 Save changes</button>
     </div>
   </form>
+
+  <?php /* ---- Passenger photos & ID documents (17 Sep 2026) ----------------
+       Kept OUTSIDE the edit form above on purpose: a file input needs
+       enctype="multipart/form-data" and its own submit, and nesting forms
+       is invalid HTML — so the edit form's parsing stays exactly as it was.
+       One small upload form and one tiny remove form per passenger. The
+       thumbnails come through admin/passenger-doc.php (gated), never from
+       the upload path. Hidden entirely while the office switch is off. */ ?>
+  <?php if ($paxDocsOn): ?>
+  <div style="border-top:1px solid var(--line);padding:14px 18px" id="paxdocs">
+    <h3 style="margin:0 0 4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"><svg class="a-ic"><use href="#a-camera"/></svg> Passenger photos &amp; ID documents<?php if ($paxDocsTotal > 0): ?> <span class="pill st-info nodot"><?= $paxDocsTotal ?> on file</span><?php endif; ?></h3>
+    <?php if (!$paxDocsAvail): ?>
+      <p class="muted" style="margin:0;font-size:12.5px">Not set up on this database yet — run <span class="mono">database/upgrade-2026-09-passenger-documents.sql</span> once and this block comes alive.</p>
+    <?php else: ?>
+    <p class="muted" style="margin:0 0 10px;font-size:12.5px">A face photo for the manifest and the front / back of the ID for the border. Stored privately: never printed on the ticket, never on a public link — only signed-in staff can open them. JPG, PNG or WEBP (PDF scans for IDs), up to <?= PassengerDocs::maxMb() ?> MB each.</p>
+    <?php foreach (($b['passengers'] ?? []) as $pax): $pdList = $paxDocs[(int) $pax['id']] ?? []; ?>
+    <div class="pdoc-pax">
+      <div class="pdoc-who">
+        <span class="mono"><?= Security::e(Seats::displayLabel((string) $pax['seat_no'], 'sleeper', (string) ($b['booking_mode'] ?? 'sharing'))) ?></span><?= Security::e((string) $pax['full_name']) ?>
+        <small><?= Security::e(trim((string) ($pax['id_type'] ?? '') . ' ' . (string) ($pax['id_number'] ?? '')) ?: 'no ID number on file') ?></small>
+      </div>
+      <div class="pdoc-strip">
+        <?php if ($pdList === []): ?>
+          <span class="muted" style="font-size:12px;align-self:center">No photo or document yet.</span>
+        <?php endif; ?>
+        <?php foreach ($pdList as $pd): $pdUrl = $base . '/admin/passenger-doc.php?id=' . (int) $pd['id']; $pdLabel = PassengerDocs::label((string) $pd['kind']); ?>
+        <div class="pdoc">
+          <a class="pdoc-th" href="<?= Security::e($pdUrl) ?>" target="_blank" rel="noopener" title="<?= Security::e($pdLabel . ' · ' . fileSizeLabel((int) $pd['file_size']) . ' · ' . formatDate((string) $pd['created_at'], 'j M Y g:i A')) ?>">
+            <?php if (PassengerDocs::isImage($pd)): ?>
+              <img src="<?= Security::e($pdUrl) ?>" alt="<?= Security::e($pdLabel) ?>" loading="lazy">
+            <?php else: ?>
+              <svg class="a-ic lg"><use href="#a-pdf"/></svg>
+            <?php endif; ?>
+          </a>
+          <span class="pill st-info nodot"><?= Security::e($pdLabel) ?></span>
+          <div class="pdoc-acts">
+            <a href="<?= Security::e($pdUrl . '&dl=1') ?>" title="Download"><svg class="a-ic sm"><use href="#a-download"/></svg></a>
+            <form method="post" onsubmit="return confirm('Remove this document? The file is deleted.')">
+              <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+              <input type="hidden" name="action" value="remove_pax_doc">
+              <input type="hidden" name="doc_id" value="<?= (int) $pd['id'] ?>">
+              <button type="submit" class="pdoc-x" title="Remove"><svg class="a-ic sm"><use href="#a-trash"/></svg></button>
+            </form>
+          </div>
+        </div>
+        <?php endforeach; ?>
+      </div>
+      <form method="post" enctype="multipart/form-data" class="pdoc-up">
+        <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+        <input type="hidden" name="action" value="upload_pax_doc">
+        <input type="hidden" name="pax_id" value="<?= (int) $pax['id'] ?>">
+        <select name="kind" aria-label="Document kind">
+          <?php foreach (PassengerDocs::kinds() as $kk => $kl): ?><option value="<?= Security::e($kk) ?>"><?= Security::e($kl) ?></option><?php endforeach; ?>
+        </select>
+        <input type="file" name="doc" accept="image/jpeg,image/png,image/webp,application/pdf" required aria-label="Photo or document file">
+        <button type="submit" class="btn ok sm"><svg class="a-ic"><use href="#a-upload"/></svg> Upload</button>
+      </form>
+    </div>
+    <?php endforeach; ?>
+    <?php endif; ?>
+  </div>
+  <?php endif; ?>
 
   <?php /* ---- Change seat (5 Sep 2026) ---- */
     $seatOptions = [];
@@ -1476,10 +1765,14 @@ $ticket = $b['ticket'] ?? null;
   <?php endif; ?>
 
   <?php /* Change date / trip — same-route date move that keeps the PNR /
-           payment / commission (vs cancel + rebook). Manager + superadmin only
-           (booking-edit AND schedule-management); the page re-checks trip
-           state, so a departed trip is refused there. */ ?>
-  <?php if (in_array($b['status'], ['pending', 'confirmed'], true) && Auth::can('bookings.edit') && Auth::can('schedules.manage')): ?>
+           payment / commission (vs cancel + rebook). Same door as
+           reschedule.php since 17 Sep 2026: booking-edit OR schedule-edit OR
+           superadmin, so the counter desk (bookings.edit) and the selling
+           agent (schedules.edit) both see it — the engine scopes an agent to
+           their own sales and the page re-checks trip state, so a departed
+           trip is refused there. It used to demand schedules.manage, which
+           only managers hold, so the counter never saw the button. */ ?>
+  <?php if (in_array($b['status'], ['pending', 'confirmed'], true) && (Auth::can('bookings.edit') || Auth::can('schedules.edit') || Auth::isSuperadmin())): ?>
     <a class="btn ghost" href="<?= $base ?>/admin/reschedule.php?pnr=<?= urlencode($pnr) ?>">📅 Change date / trip</a>
   <?php endif; ?>
 
@@ -1487,6 +1780,11 @@ $ticket = $b['ticket'] ?? null;
            re-find it there (refunds.php highlights + scrolls to the row). */ ?>
   <?php if (Auth::can('refunds.view')): ?>
     <a class="btn ghost" href="<?= $base ?>/admin/refunds.php?pnr=<?= urlencode($pnr) ?>">💸 Refund desk</a>
+  <?php endif; ?>
+
+  <?php /* Every traveller booked from this number, across PNRs (17 Sep 2026). */ ?>
+  <?php if (Notify::usablePhone($b['contact_phone'] ?? '') !== ''): ?>
+    <a class="btn ghost" href="<?= $base ?>/admin/passengers.php?phone=<?= urlencode((string) $b['contact_phone']) ?>">🧍 Passengers on this number</a>
   <?php endif; ?>
 
   <?php /* Missed bus (Point 11) — 24h grace rebooking onto the next same-route

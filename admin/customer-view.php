@@ -107,6 +107,12 @@ $name = $user['full_name'] ?? ($rows[0]['passenger'] ?? '');
 $cc   = (string) ($user['country_code'] ?? '91');
 $canManage = Auth::isSuperadmin() || Auth::can('bookings.edit');
 
+/* Passenger photos / ID documents on this number (17 Sep 2026): one cheap
+   COUNT for the button label, 0 until the passenger_documents migration has
+   run. The files themselves open from the ticket page, never by path. */
+require_once INCLUDE_PATH . '/passengerdocs.php';
+$docCount = PassengerDocs::countForPhone($phone, Auth::bookingScopeAdminId());
+
 admin_header('Customer · ' . ($name !== '' ? $name : '+' . $cc . ' ' . $phone), 'customers');
 ?>
 <p style="margin:-6px 0 14px"><a href="<?= $base ?>/admin/customers.php">← All customers</a></p>
@@ -139,6 +145,8 @@ admin_header('Customer · ' . ($name !== '' ? $name : '+' . $cc . ' ' . $phone),
     <span style="margin-left:auto;display:inline-flex;gap:8px;flex-wrap:wrap">
       <a class="btn ghost" href="https://wa.me/<?= Security::e(strlen($phone) === 10 ? $cc . $phone : $phone) ?>" target="_blank" rel="noopener">💬 WhatsApp</a>
       <a class="btn ghost" href="<?= $base ?>/admin/export.php?format=pdf&amp;customer=<?= urlencode($phone) ?>" target="_blank" rel="noopener">📄 PDF report</a>
+      <?php /* Every traveller booked from this number, one row per seat (17 Sep 2026). */ ?>
+      <a class="btn ghost" href="<?= $base ?>/admin/passengers.php?phone=<?= urlencode($phone) ?>" title="Every traveller booked from this number — name, age, ID, photo / document"><svg class="a-ic"><use href="#a-id-card"/></svg> Passengers<?= $docCount > 0 ? ' · 📎 ' . (int) $docCount : '' ?></a>
       <?php if ($canManage && $user !== null): ?><a class="btn ghost" href="<?= $base ?>/admin/customers.php?q=<?= urlencode($phone) ?>">✏️ Edit / block</a><?php endif; ?>
     </span>
   </div>
