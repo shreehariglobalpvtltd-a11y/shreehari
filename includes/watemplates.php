@@ -88,7 +88,8 @@ final class WaTemplates
                 $out[$k] = $r['label'];
             }
         }
-        return $out;
+        $out['text'] = trim($out['text']);
+            return $out;
     }
 
     /* =================================================================
@@ -254,7 +255,8 @@ final class WaTemplates
         } catch (Throwable $e) {
             Logger::warning('agentPeriodStats: ' . $e->getMessage(), ['agent' => $aid], 'whatsapp');
         }
-        return $out;
+        $out['text'] = trim($out['text']);
+            return $out;
     }
 
     /**
@@ -294,7 +296,8 @@ final class WaTemplates
         } catch (Throwable $e) {
             Logger::warning('adminPeriodStats: ' . $e->getMessage(), [], 'whatsapp');
         }
-        return $out;
+        $out['text'] = trim($out['text']);
+            return $out;
     }
 
     /* =================================================================
@@ -320,7 +323,8 @@ final class WaTemplates
         $co   = Settings::company();
         $name = (string) ($co['name'] ?? Settings::getString('company_name', APP_NAME));
         $note = trim((string) ($ctx['note'] ?? ''));
-        $note = $note !== '' ? "\n" . Security::clean($note, 300) : '';
+        // An optional line the office adds on the sheet; always on its own line.
+        $note = $note !== '' ? "\n📝 " . Security::clean($note, 300) . "\n" : '';
         $days = max(1, Settings::getInt('wa_statement_link_days', 7));
 
         $out = [
@@ -347,8 +351,9 @@ final class WaTemplates
                 . "⏳ Payments awaiting verification: " . $s['pending'] . "\n"
                 . "🤝 Agent commission accrued: " . inr($s['commission']) . "\n"
                 . "💵 Cash currently with agents: " . inr($s['cashWithAgents'])
-                . $note . "\n"
+                . $note . ""
                 . "सारांश — " . $label;
+            $out['text'] = trim($out['text']);
             return $out;
         }
 
@@ -415,7 +420,7 @@ final class WaTemplates
                         . "Passengers:\n" . implode("\n", $lines) . "\n"
                         . (!empty($leg['boarding_stop']) ? "Pickup: " . self::stopName((string) $leg['boarding_stop']) . "\n" : '')
                         . (!empty($leg['drop_stop']) ? "Drop: " . self::stopName((string) $leg['drop_stop']) . "\n" : '')
-                        . "Amount: " . $amount . $note . "\n"
+                        . "Amount: " . $amount . $note . ""
                         . "यात्रु तथा सिट विवरण माथि छ।";
                     break;
                 case 'customer_payment_reminder':
@@ -429,21 +434,22 @@ final class WaTemplates
                         . "Amount due: " . $amount . "\n"
                         . ($upi !== '' ? "Pay by UPI to " . $upi . " and reply with the screenshot / UTR.\n" : "Pay and reply with the screenshot / UTR.\n")
                         . ($exp !== '' ? "Seats are held until " . date('d M, H:i', (int) strtotime($exp)) . ".\n" : '')
-                        . "Office: " . Settings::officePhone() . $note . "\n"
+                        . "Office: " . Settings::officePhone() . $note . ""
                         . "भुक्तानी बाँकी छ — कृपया माथिको रकम तिरेर स्क्रिनसट पठाउनुहोस्।";
                     break;
                 default: // booking_confirmation
                     $img = $status === 'confirmed' ? Ticket::imageUrl($pnr) : '';
                     if ($status === 'confirmed') {
-                        $out['text'] = "Namaste! " . $name . "\nBooking " . $pnr . " CONFIRMED ✅\n" . $route . " | " . $date . "\nSeats: " . $seats . "\nAmount: " . $amount . "\nTicket: " . $img . $note . "\nशुभ यात्रा!";
+                        $out['text'] = "Namaste! " . $name . "\nBooking " . $pnr . " CONFIRMED ✅\n" . $route . " | " . $date . "\nSeats: " . $seats . "\nAmount: " . $amount . "\nTicket: " . $img . $note . "शुभ यात्रा!";
                         $out['attachments'] = [$img];
                     } elseif ($status === 'cancelled') {
-                        $out['text'] = "Namaste! " . $name . "\nBooking " . $pnr . " is CANCELLED.\n" . $route . " | " . $date . $note . "\nरिफन्ड सम्बन्धी प्रश्न भए यहीँ जवाफ दिनुहोस्।";
+                        $out['text'] = "Namaste! " . $name . "\nBooking " . $pnr . " is CANCELLED.\n" . $route . " | " . $date . $note . "रिफन्ड सम्बन्धी प्रश्न भए यहीँ जवाफ दिनुहोस्।";
                     } else {
-                        $out['text'] = "Namaste! " . $name . "\nBooking " . $pnr . " received — payment verification pending.\n" . $route . " | " . $date . "\nAmount: " . $amount . $note . "\nभुक्तानी प्रमाणित भएपछि टिकट यहीँ पठाइनेछ।";
+                        $out['text'] = "Namaste! " . $name . "\nBooking " . $pnr . " received — payment verification pending.\n" . $route . " | " . $date . "\nAmount: " . $amount . $note . "भुक्तानी प्रमाणित भएपछि टिकट यहीँ पठाइनेछ।";
                     }
                     break;
             }
+            $out['text'] = trim($out['text']);
             return $out;
         }
 
@@ -545,13 +551,13 @@ final class WaTemplates
                     . "Cash you hold now: " . inr($bal['cash']) . ($overdue > 0 ? " (settlement overdue by " . $overdue . " days)" : '') . "\n"
                     . "Commission due to you: " . inr($bal['commission']) . "\n"
                     . ($lines !== [] ? "Recent settlements:\n" . implode("\n", $lines) . "\n" : '')
-                    . $netLine . $note . "\nनगद हिसाब — हातमा " . inr($bal['cash']);
+                    . $netLine . $note . "नगद हिसाब — हातमा " . inr($bal['cash']);
                 break;
             }
             case 'agent_outstanding': {
                 $out['text'] = $head . "Outstanding balance\n" . $balLine . $netLine . "\n"
                     . ($net['net'] > 0.009 ? "Please hand over " . inr($net['net']) . " at the office to settle. " : '')
-                    . "Office: " . Settings::officePhone() . $note . "\nबाँकी हिसाब — " . ($net['net'] > 0.009 ? "तपाईंले बुझाउनुपर्ने " . inr($net['net']) : ($net['net'] < -0.009 ? "कम्पनीले तिर्नुपर्ने " . inr(-$net['net']) : "हिसाब मिलेको छ"));
+                    . "Office: " . Settings::officePhone() . $note . "बाँकी हिसाब — " . ($net['net'] > 0.009 ? "तपाईंले बुझाउनुपर्ने " . inr($net['net']) : ($net['net'] < -0.009 ? "कम्पनीले तिर्नुपर्ने " . inr(-$net['net']) : "हिसाब मिलेको छ"));
                 break;
             }
             case 'agent_payment_reminder': {
@@ -560,7 +566,7 @@ final class WaTemplates
                 $out['text'] = $head . "Payment reminder\n"
                     . "You are holding " . inr($bal['cash']) . " in cash from ticket sales" . ($overdue > 0 ? ", " . $overdue . " days past the " . $dueDays . "-day settlement window" : '') . ".\n"
                     . "Please hand it over at the office" . ($bal['commission'] > 0.009 ? " — your commission of " . inr($bal['commission']) . " will be settled at the same time" : '') . ".\n"
-                    . "Office: " . Settings::officePhone() . $note . "\nकृपया बिक्रीको नगद " . inr($bal['cash']) . " अफिसमा बुझाउनुहोस्।";
+                    . "Office: " . Settings::officePhone() . $note . "कृपया बिक्रीको नगद " . inr($bal['cash']) . " अफिसमा बुझाउनुहोस्।";
                 break;
             }
             case 'agent_settlement_done': {
@@ -578,7 +584,7 @@ final class WaTemplates
                     . $what . ": " . inr(abs((float) $row['amount'])) . "\n"
                     . "Date: " . formatDate(substr((string) $row['created_at'], 0, 10)) . (!empty($row['ref']) ? " · Voucher " . (string) $row['ref'] : '') . "\n"
                     . (!empty($row['note']) ? "Note: " . (string) $row['note'] . "\n" : '')
-                    . "Balance now — " . $balLine . $netLine . $note . "\nभुक्तानी रसिद — " . inr(abs((float) $row['amount']));
+                    . "Balance now — " . $balLine . $netLine . $note . "भुक्तानी रसिद — " . inr(abs((float) $row['amount']));
                 break;
             }
             case 'agent_daily_summary':
@@ -588,13 +594,14 @@ final class WaTemplates
                 $out['text'] = $head . ($purpose === 'agent_daily_summary' ? 'Daily' : 'Monthly') . " summary · " . $label . "\n"
                     . "Tickets sold: " . $s['bookings'] . " · Passengers: " . $s['pax'] . " · Sales: " . inr($s['revenue']) . "\n"
                     . "Commission this period: " . inr($s['commission']) . " · Cash collected: " . inr($s['cash']) . "\n"
-                    . $balLine . $netLine . $note . "\nसारांश — " . $label;
+                    . $balLine . $netLine . $note . "सारांश — " . $label;
                 break;
             }
             default:
                 throw new RuntimeException('Unknown message type.');
         }
-        return $out;
+        $out['text'] = trim($out['text']);
+            return $out;
     }
 
     /** [$fromYmd, $toYmd, label] from ctx (defaults: this month to today). @return array{0:string,1:string,2:string} */
