@@ -22,6 +22,9 @@
  * =====================================================================
  */
 declare(strict_types=1);
+// 18 Sep 2026: this suite does not load bootstrap.php, so pin the app timezone here: between
+// 00:00 and 05:30 IST a UTC CLI computed 'tomorrow' one day behind the server and the natural-line check failed.
+date_default_timezone_set('Asia/Kolkata');
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only.'); }
 
 // SHG_BASE overrides the dev-server origin (a git worktree served on another port).
