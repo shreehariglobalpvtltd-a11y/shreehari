@@ -88,8 +88,7 @@ final class WaTemplates
                 $out[$k] = $r['label'];
             }
         }
-        $out['text'] = trim($out['text']);
-            return $out;
+        return $out;
     }
 
     /* =================================================================
@@ -255,8 +254,7 @@ final class WaTemplates
         } catch (Throwable $e) {
             Logger::warning('agentPeriodStats: ' . $e->getMessage(), ['agent' => $aid], 'whatsapp');
         }
-        $out['text'] = trim($out['text']);
-            return $out;
+        return $out;
     }
 
     /**
@@ -296,8 +294,7 @@ final class WaTemplates
         } catch (Throwable $e) {
             Logger::warning('adminPeriodStats: ' . $e->getMessage(), [], 'whatsapp');
         }
-        $out['text'] = trim($out['text']);
-            return $out;
+        return $out;
     }
 
     /* =================================================================
@@ -315,6 +312,14 @@ final class WaTemplates
      *               contentSidKey:string, bookingId:?int, agentId:?int, recipientName:string, attachments:array<int,string>}
      */
     public static function compose(string $purpose, array $ctx, array $actor): array
+    {
+        $out = self::composeRaw($purpose, $ctx, $actor);
+        $out['text'] = trim((string) $out['text']);
+        return $out;
+    }
+
+    /** @see compose() — the untrimmed builder. */
+    private static function composeRaw(string $purpose, array $ctx, array $actor): array
     {
         $reg = self::REGISTRY[$purpose] ?? null;
         if ($reg === null) {
@@ -353,7 +358,6 @@ final class WaTemplates
                 . "💵 Cash currently with agents: " . inr($s['cashWithAgents'])
                 . $note . ""
                 . "सारांश — " . $label;
-            $out['text'] = trim($out['text']);
             return $out;
         }
 
@@ -449,7 +453,6 @@ final class WaTemplates
                     }
                     break;
             }
-            $out['text'] = trim($out['text']);
             return $out;
         }
 
@@ -600,8 +603,7 @@ final class WaTemplates
             default:
                 throw new RuntimeException('Unknown message type.');
         }
-        $out['text'] = trim($out['text']);
-            return $out;
+        return $out;
     }
 
     /** [$fromYmd, $toYmd, label] from ctx (defaults: this month to today). @return array{0:string,1:string,2:string} */
