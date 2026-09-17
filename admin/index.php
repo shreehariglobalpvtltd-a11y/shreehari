@@ -387,7 +387,7 @@ admin_page_head(
           <span class="state-pill" data-live-pill style="background:<?= $e($st['color']) ?>"><?= $e($st['label']) ?></span>
           <span class="state-detail" data-live-detail><?= $e($st['detail']) ?></span>
           <div class="live-seats" data-live-seats><strong><?= $tSold ?></strong>/<?= $tTotal ?> seats · <?= $tTotal > 0 ? (int) round(($tSold/$tTotal)*100) : 0 ?>%</div>
-          <a href="/admin/challan.php?sid=<?= (int) $t['id'] ?>" target="_blank" class="text-xs fw7" title="Seat-wise challan picture of this bus"><svg class="a-ic sm"><use href="#a-image"/></svg> Challan</a>
+          <a href="/admin/chalan.php?sid=<?= (int) $t['id'] ?>" class="text-xs fw7" title="Bus chalan — preview, PDF / PNG, WhatsApp"><svg class="a-ic sm"><use href="#a-doc"/></svg> Chalan</a>
         </div>
       </div>
       <?php endforeach; ?>

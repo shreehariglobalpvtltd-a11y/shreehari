@@ -83,7 +83,10 @@ function admin_nav(): array
         // Flagged `hot` so every desk finds it at a glance (see $renderLink).
         ['href' => 'quick-ticket.php', 'icon' => 'ticket-alt', 'label' => '🤖 QuickBot Ticket', 'perm' => 'bookings.view', 'section' => 'Tickets', 'hot' => true],
         ['href' => 'seatmap.php',      'icon' => 'seat',      'label' => 'Seat Map',         'perm' => 'schedules.view', 'section' => 'Tickets'],
-        ['href' => 'manifest.php',     'icon' => 'clipboard', 'label' => 'Manifest & Chalani', 'perm' => 'bookings.view', 'section' => 'Tickets'],
+        ['href' => 'manifest.php',     'icon' => 'clipboard', 'label' => 'Passenger Manifest', 'perm' => 'bookings.view', 'section' => 'Tickets'],
+        // 17 Sep 2026: every departure document on one hub (PDF / PNG / WhatsApp).
+        ['href' => 'chalan.php',       'icon' => 'doc',       'label' => 'Bus Chalan',         'perm' => 'bookings.view', 'section' => 'Tickets'],
+        ['href' => 'passengers.php',   'icon' => 'id-card',   'label' => 'Passengers',         'perm' => 'bookings.view', 'section' => 'Tickets'],
         ['href' => 'scan.php',         'icon' => 'scan',    'label' => 'Scan Ticket',      'perm' => 'tickets.scan',   'section' => 'Tickets'],
 
         // Agents — the register first (office roles only — the page itself
@@ -894,7 +897,7 @@ function admin_wa_button(string $purpose, array $target, string $label = 'Send o
         return '';
     }
     $attrs = ' data-wa-purpose="' . Security::e($purpose) . '"';
-    foreach (['agent' => 'agent', 'pnr' => 'pnr', 'from' => 'from', 'to' => 'to', 'on' => 'on', 'ledger' => 'ledger'] as $k => $attr) {
+    foreach (['agent' => 'agent', 'pnr' => 'pnr', 'from' => 'from', 'to' => 'to', 'on' => 'on', 'ledger' => 'ledger', 'sid' => 'sid', 'doc' => 'doc', 'page' => 'page', 'target' => 'target', 'phone' => 'phone', 'country' => 'country'] as $k => $attr) {
         if (isset($target[$k]) && (string) $target[$k] !== '') {
             $attrs .= ' data-wa-' . $attr . '="' . Security::e((string) $target[$k]) . '"';
         }
@@ -955,6 +958,7 @@ function admin_wa_js(): string
   function bodyFor(btn){
     var d=btn.dataset,b={purpose:d.waPurpose||''};
     if(d.waAgent)b.agent_id=parseInt(d.waAgent,10);if(d.waPnr)b.pnr=d.waPnr;if(d.waFrom)b.from=d.waFrom;if(d.waTo)b.to=d.waTo;if(d.waOn)b.on=d.waOn;if(d.waLedger)b.ledger_id=parseInt(d.waLedger,10);
+    if(d.waSid)b.sid=parseInt(d.waSid,10);if(d.waDoc)b.doc=d.waDoc;if(d.waPage)b.page=parseInt(d.waPage,10);if(d.waTarget)b.target=d.waTarget;if(d.waPhone)b.phone=d.waPhone;if(d.waCountry)b.country=d.waCountry;
     return b;
   }
   function preview(btn,body,keep){

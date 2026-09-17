@@ -39,6 +39,7 @@ if (!defined('SHG_APP')) {
 require_once __DIR__ . '/agentwallet.php';
 require_once __DIR__ . '/booking.php';
 require_once __DIR__ . '/seats.php';
+require_once __DIR__ . '/boarding.php';
 require_once __DIR__ . '/ticket.php';
 require_once __DIR__ . '/notify.php';
 
@@ -70,6 +71,7 @@ final class WaTemplates
         'booking_passengers' => ['label' => 'Passenger & seat details', 'audience' => 'customer', 'perm' => 'bookings.view', 'target' => 'booking', 'media' => false, 'contentSidKey' => 'twilio_content_sid_booking_detail', 'hint' => 'Route, date, bus, seats with names, pickup and drop'],
         'customer_payment_reminder' => ['label' => 'Payment reminder', 'audience' => 'customer', 'perm' => 'payments.verify', 'target' => 'booking', 'media' => false, 'contentSidKey' => 'twilio_content_sid_payment_reminder', 'hint' => 'Amount due, how to pay, and when the hold expires'],
         'admin_daily_summary' => ['label' => 'Office daily summary', 'audience' => 'office', 'perm' => 'dashboard.view', 'target' => 'office', 'media' => false, 'contentSidKey' => 'twilio_content_sid_agent_statement', 'hint' => "Today's tickets, money, cancellations, pending payments"],
+        'chalan_send' => ['label' => 'Bus chalan picture', 'audience' => 'crew', 'perm' => 'bookings.view', 'target' => 'schedule', 'media' => true, 'contentSidKey' => 'twilio_content_sid_booking_detail', 'hint' => 'The challan seat picture or one chalani page, to the driver / office / any number'],
         'admin_monthly_summary' => ['label' => 'Office monthly summary', 'audience' => 'office', 'perm' => 'dashboard.view', 'target' => 'office', 'media' => false, 'contentSidKey' => 'twilio_content_sid_agent_statement', 'hint' => "This month's tickets, money, commission and cash with agents"],
     ];
 
@@ -358,6 +360,62 @@ final class WaTemplates
                 . "💵 Cash currently with agents: " . inr($s['cashWithAgents'])
                 . $note . ""
                 . "सारांश — " . $label;
+            return $out;
+        }
+
+        /* ---- Departure documents to the crew --------------------------- */
+        if ($reg['target'] === 'schedule') {
+            if (Auth::bookingScopeAdminId() !== null) {
+                throw new RuntimeException('The chalan lists every seat on the bus — an agent login cannot send it.');
+            }
+            require_once __DIR__ . '/qr.php';
+            require_once __DIR__ . '/pdf.php';
+            require_once __DIR__ . '/challanpng.php';
+            $sid  = (int) ($ctx['sid'] ?? 0);
+            $trip = $sid > 0 ? ChallanPng::schedule($sid) : null;
+            if ($trip === null) {
+                throw new RuntimeException('No such departure.');
+            }
+            $doc  = ($ctx['doc'] ?? '') === 'chalani' ? 'chalani' : 'challan';
+            $page = max(1, min(50, (int) ($ctx['page'] ?? 1)));
+            $tgt  = (string) ($ctx['target'] ?? 'office');
+            if ($tgt === 'driver') {
+                $to = trim((string) ($trip['driver_phone'] ?? ''));
+                if ($to === '') { throw new RuntimeException('This departure has no driver phone on file.'); }
+                $who = 'Driver ' . trim((string) ($trip['driver_name'] ?? ''));
+                $hint = resolvePhoneCountry('', $to) ?: null;
+            } elseif ($tgt === 'custom') {
+                $to = preg_replace('/\D/', '', (string) ($ctx['phone'] ?? '')) ?? '';
+                if (strlen($to) < 8) { throw new RuntimeException('Enter the WhatsApp number to send to.'); }
+                $c = strtoupper((string) ($ctx['country'] ?? ''));
+                $hint = in_array($c, ['NP', 'IN'], true) ? $c : (resolvePhoneCountry('', $to) ?: null);
+                $who = 'Number';
+            } else {
+                $to = Settings::getString('admin_whatsapp', '') ?: Settings::officeWhatsApp();
+                if ($to === '') { throw new RuntimeException('No office WhatsApp number is set (Settings → admin_whatsapp).'); }
+                $who = 'Office';
+                $hint = null;
+            }
+            $exp = time() + max(1, Settings::getInt('wa_statement_link_days', 7)) * 86400;
+            $url = appUrl('download-chalan.php?' . http_build_query([
+                'sid' => $sid, 'doc' => $doc, 'page' => $page, 'exp' => $exp,
+                'k' => substr(Security::sign('chalan-dl|' . $sid . '|' . $doc . '|' . $page . '|' . $exp), 0, 20),
+            ]));
+            $slot  = (int) ($trip['slot'] ?? 1);
+            $plate = trim((string) ($trip['bus_number'] ?? '')) ?: 'bus not assigned';
+            $pax   = (int) Database::scalar(
+                "SELECT COUNT(*) FROM booking_passengers bp JOIN booking_legs bl ON bl.id = bp.leg_id JOIN bookings b ON b.id = bp.booking_id
+                  WHERE bl.schedule_id = :s AND b.status IN ('confirmed','pending','completed')", ['s' => $sid], 0);
+            $label = $doc === 'challan' ? 'Challan (seat picture)' : 'Chalani page ' . $page;
+            $out['to'] = $to; $out['intl'] = self::intl($to, $hint); $out['hint'] = $hint; $out['recipientName'] = $who;
+            $out['text'] = "🚌 " . $name . "\n"
+                . "Bus Chalan " . ChallanPng::challanNo($trip) . "\n"
+                . trim((string) $trip['from_city']) . " → " . trim((string) $trip['to_city']) . " · " . formatDate((string) $trip['travel_date']) . " · " . substr((string) ($trip['dep_time'] ?? ''), 0, 5) . "\n"
+                . "Bus: " . $plate . ($slot > 1 ? " (extra bus #" . $slot . ")" : '') . (!empty($trip['driver_name']) ? " · Driver: " . (string) $trip['driver_name'] : '') . "\n"
+                . "Passengers: " . $pax . "\n"
+                . $label . ": " . $url . $note . "\n"
+                . "बस चलानी संलग्न छ।";
+            $out['mediaUrl'] = $url; $out['mediaType'] = 'image'; $out['attachments'] = [$url];
             return $out;
         }
 

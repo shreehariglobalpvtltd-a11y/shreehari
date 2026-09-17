@@ -623,7 +623,7 @@ if ($flash !== null) {
   <label>Date <input type="date" name="date" value="<?= Security::e($date) ?>" onchange="this.form.submit()"></label>
   <button class="btn ghost" type="submit">Load</button>
   <?php if (Auth::bookingScopeAdminId() === null): ?>
-  <a class="btn ghost" target="_blank" href="/admin/challan.php?<?= Security::e(http_build_query(array_filter(['route' => $routeId, 'date' => $date, 'sid' => $sidReq > 0 ? $sidReq : null]))) ?>" title="This coach as one picture — both floors, every berth, name / mobile / pickup — for the driver and the border desk">🖼️ Challan PNG</a>
+  <a class="btn ghost" href="/admin/chalan.php?<?= Security::e(http_build_query(array_filter(['sid' => $sidReq > 0 ? $sidReq : null, 'date' => $date]))) ?>" title="Bus chalan — the seat picture and the Nepali waybill: preview, PDF / PNG, WhatsApp">📋 Bus Chalan</a>
   <?php endif; ?>
 </form>
 

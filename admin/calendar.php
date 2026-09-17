@@ -437,6 +437,7 @@ window.CAL = {
       html += '<div class="acts">';
       html += '<a class="btn ghost" href="' + C.base + '/admin/seatmap.php?sid=' + t.id + '">🪑 Seats</a>';
       html += '<a class="btn ghost" href="' + C.base + '/admin/manifest.php?sid=' + t.id + '&date=' + encodeURIComponent(date) + '">📋 Manifest</a>';
+      html += '<a class="btn ghost" href="' + C.base + '/admin/chalan.php?sid=' + t.id + '">🧾 Chalan</a>';
       if (t.status !== 'cancelled' && !past) {
         if (!t.departed) html += '<button class="btn ghost" data-act="retime" data-sid="' + t.id + '" data-time="' + esc(t.time) + '">⏰ Time</button>';
         html += '<button class="btn ghost" data-act="vehicle" data-sid="' + t.id + '" data-bus="' + t.busId + '">🚌 Vehicle</button>';

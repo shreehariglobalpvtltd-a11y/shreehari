@@ -583,7 +583,8 @@ $kT      = CSRF_TOKEN_NAME;
             <?php endif; ?>
           <?php endif; ?>
         </td>
-        <td><a class="btn ghost" href="<?= $base ?>/admin/seatmap.php?route=<?= (int) $s['route_id'] ?>&date=<?= Security::e($s['travel_date']) ?>" style="padding:6px 10px">Seat map →</a></td>
+        <td><div class="row-actions"><a class="btn ghost" href="<?= $base ?>/admin/seatmap.php?route=<?= (int) $s['route_id'] ?>&date=<?= Security::e($s['travel_date']) ?>" style="padding:6px 10px">Seat map →</a>
+          <?php if (Auth::bookingScopeAdminId() === null): ?><a class="btn ghost" href="<?= $base ?>/admin/chalan.php?sid=<?= (int) $s['id'] ?>" style="padding:6px 10px" title="Bus chalan — preview, PDF / PNG, WhatsApp">📋 Chalan</a><?php endif; ?></div></td>
       </tr>
     <?php endforeach; endif; ?>
     </tbody>

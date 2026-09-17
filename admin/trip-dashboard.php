@@ -694,8 +694,8 @@ $occColor   = $occPercent >= 80 ? '#0a6b3b' : ($occPercent >= 50 ? '#c99200' : '
     <svg class="a-ic"><use href="#a-clipboard"/></svg> View Passenger Manifest →
   </a>
   <?php if (Auth::bookingScopeAdminId() === null): ?>
-  <a href="<?= $base ?>/admin/challan.php?route=<?= $routeId ?>&date=<?= urlencode($date) ?><?= $sidReq > 0 ? '&sid=' . $sidReq : '' ?>" target="_blank">
-    <svg class="a-ic"><use href="#a-clipboard"/></svg> Challan PNG (seat picture) →
+  <a href="<?= $base ?>/admin/chalan.php?<?= $sidReq > 0 ? 'sid=' . $sidReq : 'date=' . urlencode($date) ?>">
+    <svg class="a-ic"><use href="#a-doc"/></svg> Bus Chalan (PDF / PNG / WhatsApp) →
   </a>
   <?php endif; ?>
   <a href="<?= $base ?>/admin/bookings.php?route=<?= $routeId ?>&date=<?= urlencode($date) ?>">

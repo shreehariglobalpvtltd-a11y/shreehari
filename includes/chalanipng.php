@@ -47,7 +47,7 @@ final class ChalaniPng
     public const HEIGHT = 1414;
 
     /** Bump whenever the drawing changes, so every cached page re-renders once. */
-    public const LAYOUT_VERSION = 6;   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
+    public const LAYOUT_VERSION = 7;   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
 
     private const M         = 48;     // page margin
     private const ROW_H     = 42;
@@ -117,7 +117,11 @@ final class ChalaniPng
 
     public static function chalaniNo(array $trip, string $date): string
     {
-        return 'CH-' . str_replace('-', '', $date) . '-' . strtoupper((string) ($trip['route_code'] ?? 'X'));
+        // Same form as ChallanPng::challanNo(): an extra bus (slot 2+) carries
+        // its slot, so both sheets of one departure quote one number.
+        $slot = (int) ($trip['slot'] ?? 1);
+        return 'CH-' . str_replace('-', '', $date) . '-' . strtoupper((string) ($trip['route_code'] ?? 'X'))
+             . ($slot > 1 ? '-' . $slot : '');
     }
 
     /**

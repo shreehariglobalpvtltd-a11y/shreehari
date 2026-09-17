@@ -80,8 +80,15 @@ $ctx = [
     'on'        => Security::clean((string) ($in['on'] ?? ''), 10),
     'ledger_id' => (int) ($in['ledger_id'] ?? 0),
     'note'      => Security::clean((string) ($in['note'] ?? ''), 300),
+    // Departure documents (Bus Chalan hub, 17 Sep 2026)
+    'sid'       => (int) ($in['sid'] ?? 0),
+    'doc'       => Security::clean((string) ($in['doc'] ?? ''), 10),
+    'page'      => (int) ($in['page'] ?? 1),
+    'target'    => Security::clean((string) ($in['target'] ?? ''), 10),
+    'phone'     => Security::clean((string) ($in['phone'] ?? ''), 20),
+    'country'   => Security::clean((string) ($in['country'] ?? ''), 2),
 ];
-$targetKey = $reg['target'] === 'agent' ? 'agent:' . $ctx['agent_id'] : ($reg['target'] === 'booking' ? $ctx['pnr'] : 'office');
+$targetKey = $reg['target'] === 'agent' ? 'agent:' . $ctx['agent_id'] : ($reg['target'] === 'booking' ? $ctx['pnr'] : ($reg['target'] === 'schedule' ? 'sid:' . $ctx['sid'] . ':' . $ctx['doc'] : 'office'));
 
 try {
     $msg = WaTemplates::compose($purpose, $ctx, $admin);

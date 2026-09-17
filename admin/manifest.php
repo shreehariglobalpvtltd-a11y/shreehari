@@ -37,18 +37,23 @@ $format  = in_array($_GET['format'] ?? '', ['csv', 'chalani', 'chalanipdf', 'cha
 $scopeId = Auth::bookingScopeAdminId();
 
 /* ---- which departures run on this date ------------------------------- */
+/* 17 Sep 2026: the same facts ChallanPng::schedule() reads — the slot (daily
+   bus = 1, Bus-Calendar extra buses = 2+), the per-departure coach override
+   and the route's bus as a fallback — so the chalani never disagrees with
+   the challan picture about the coach, the plate or the number. */
 $departures = Database::fetchAll(
-    "SELECT s.id AS schedule_id, s.travel_date, s.status, s.seats_booked, s.total_seats,
+    "SELECT s.id AS schedule_id, s.travel_date, s.status, s.seats_booked, s.total_seats, s.slot,
             r.id AS route_id, r.route_code, r.from_city, r.to_city,
-            COALESCE(s.dep_time_override, r.dep_time) AS dep_time, r.coach_type,
+            COALESCE(s.dep_time_override, r.dep_time) AS dep_time,
+            COALESCE(s.coach_type_override, r.coach_type) AS coach_type, r.coach_type AS route_coach_type,
             bu.bus_number, bu.bus_name,
             d.full_name AS driver_name, d.phone AS driver_phone
        FROM schedules s
        JOIN routes r      ON r.id = s.route_id
-       LEFT JOIN buses bu ON bu.id = s.bus_id
+       LEFT JOIN buses bu ON bu.id = COALESCE(s.bus_id, r.bus_id)
        LEFT JOIN drivers d ON d.id = s.driver_id
       WHERE s.travel_date = :d AND r.is_active = 1
-      ORDER BY r.dep_time ASC, r.id ASC",
+      ORDER BY COALESCE(s.dep_time_override, r.dep_time) ASC, s.slot ASC, r.id ASC",
     ['d' => $date]
 );
 
@@ -281,8 +286,13 @@ if ($format === 'pdf') {
     if ($trip === null) {
         exit('No departure on this date.');
     }
-    ReportPdf::manifest((int) $trip['schedule_id'], $scopeId);
-    // ^ never returns (streams + exit)
+    /* 17 Sep 2026: ONE PDF, not two. The English ReportPdf manifest
+       duplicated the chalani PDF (and printed the route time, not a retimed
+       departure). Old bookmarks land on the chalani PDF instead. */
+    Logger::audit('manifest.pdf_redirect', 'schedule', (string) $trip['schedule_id'], null, null, 'format=pdf -> chalanipdf');
+    Response::redirect('/admin/manifest.php?' . http_build_query(array_filter([
+        'date' => $date, 'route' => $routeId, 'sid' => $sidReq > 0 ? $sidReq : null, 'format' => 'chalanipdf',
+    ])));
 }
 
 /* =====================================================================
@@ -296,8 +306,18 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
     if ($trip === null) {
         exit('No departure on this date.');
     }
+    /* 17 Sep 2026: an agent login sees only its own sales, so a chalani
+       drawn from its rows would be an official sheet missing half the bus.
+       Same refusal challan.php and the PNG picker already made. */
+    if ($scopeId !== null) {
+        http_response_code(403);
+        header('Content-Type: text/plain; charset=utf-8');
+        exit('The chalani lists every seat on the bus. An agent login sees only its own sales — use My Passengers.');
+    }
 
-    $chalaniNo = 'CH-' . str_replace('-', '', $date) . '-' . strtoupper((string) $trip['route_code']);
+    // Same number the challan picture prints: an extra bus carries its slot.
+    $chalaniNo = 'CH-' . str_replace('-', '', $date) . '-' . strtoupper((string) $trip['route_code'])
+               . ((int) ($trip['slot'] ?? 1) > 1 ? '-' . (int) $trip['slot'] : '');
     $collected = 0.0;
     $methods   = [];
     $seen      = [];
@@ -736,10 +756,12 @@ foreach ($rows as $r) {
 
   <?php if (count($departures) > 1): ?>
   <label>Departure<br>
-    <select name="route" onchange="this.form.submit()">
+    <select name="sid" onchange="this.form.submit()">
       <?php foreach ($departures as $d): ?>
-        <option value="<?= (int) $d['route_id'] ?>" <?= (int) $d['route_id'] === $routeId ? 'selected' : '' ?>>
-          <?= Security::e(substr((string) $d['dep_time'], 0, 5) . ' · ' . $d['from_city'] . ' → ' . $d['to_city']) ?>
+        <option value="<?= (int) $d['schedule_id'] ?>" <?= $trip !== null && (int) $d['schedule_id'] === (int) $trip['schedule_id'] ? 'selected' : '' ?>>
+          <?= Security::e(substr((string) $d['dep_time'], 0, 5) . ' · ' . $d['from_city'] . ' → ' . $d['to_city']
+              . ((int) ($d['slot'] ?? 1) > 1 ? ' · Bus ' . (int) $d['slot'] . ' (extra)' : '')
+              . ($d['bus_number'] ? ' · ' . $d['bus_number'] : '')) ?>
         </option>
       <?php endforeach; ?>
     </select>
@@ -756,16 +778,12 @@ foreach ($rows as $r) {
 
   <?php if ($trip !== null && $paxCount > 0): ?>
     <button class="btn ghost" type="button" onclick="window.print()">🖨️ Print manifest</button>
-    <a class="btn ghost" target="_blank" href="<?= $base ?>/admin/manifest.php?<?= Security::e(http_build_query(['date' => $date, 'route' => $routeId, 'format' => 'chalani'])) ?>">📋 Bus Chalani</a>
-    <a class="btn ghost" href="<?= $base ?>/admin/manifest.php?<?= Security::e(http_build_query(['date' => $date, 'route' => $routeId, 'format' => 'chalanipdf'])) ?>">📄 चलानी PDF</a>
-    <?php if ($scopeId === null): /* the picture shows every berth — agents keep to their own sales */ ?>
-    <a class="btn ghost" target="_blank" href="<?= $base ?>/admin/manifest.php?<?= Security::e(http_build_query(array_filter(['date' => $date, 'route' => $routeId, 'sid' => $sidReq > 0 ? $sidReq : null, 'format' => 'chalanipng']))) ?>" title="The chalani as pictures — one image per page, each downloadable on its own, ready to send on WhatsApp">🖼️ चलानी PNG (पेज छुट्टै)</a>
-    <a class="btn ghost" target="_blank" href="<?= $base ?>/admin/challan.php?<?= Security::e(http_build_query(array_filter(['sid' => $trip['schedule_id'] ?? null, 'route' => $routeId, 'date' => $date]))) ?>" title="Seat-wise picture of the whole coach, both floors — redraws itself whenever a seat changes">🖼️ Challan PNG</a>
-    <a class="btn ghost" href="<?= $base ?>/admin/challan.php?<?= Security::e(http_build_query(array_filter(['sid' => $trip['schedule_id'] ?? null, 'route' => $routeId, 'date' => $date, 'dl' => 1]))) ?>">⬇️ Challan PNG</a>
+    <?php /* 17 Sep 2026: every departure document (challan picture, Nepali
+             chalani PDF / PNG, WhatsApp) lives on ONE hub page now. */ ?>
+    <?php if ($scopeId === null): ?>
+    <a class="btn" href="<?= $base ?>/admin/chalan.php?<?= Security::e(http_build_query(['sid' => (int) $trip['schedule_id']])) ?>"><svg class="a-ic"><use href="#a-doc"/></svg> Bus Chalan (PDF / PNG / WhatsApp)</a>
     <?php endif; ?>
-
-    <a class="btn ghost" href="<?= $base ?>/admin/manifest.php?<?= Security::e(http_build_query(['date' => $date, 'route' => $routeId, 'format' => 'pdf'])) ?>">📄 Download PDF</a>
-    <a class="btn ghost" href="<?= $base ?>/admin/manifest.php?<?= Security::e(http_build_query(['date' => $date, 'route' => $routeId, 'format' => 'csv'])) ?>">⬇️ Download CSV</a>
+    <a class="btn ghost" href="<?= $base ?>/admin/manifest.php?<?= Security::e(http_build_query(array_filter(['date' => $date, 'route' => $routeId, 'sid' => $sidReq > 0 ? $sidReq : null, 'format' => 'csv']))) ?>">⬇️ Download CSV</a>
   <?php endif; ?>
 </form>
 
