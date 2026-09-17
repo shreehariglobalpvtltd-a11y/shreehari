@@ -90,9 +90,24 @@ if (str_contains($fromNow, '14155238886')) {
    guard a disabled WABA would burn all MAX_TRIES on every upcoming booking
    within a couple of hours and permanently give up on exactly the passengers
    this job exists to rescue, right while the owner is still fixing Meta. */
+/* 17 Sep 2026: staff tools (admin/api/wa-send.php) write agent statements,
+   reminders and receipts into message_logs with a `purpose`. Only TICKET
+   rows may drive this job — a refused agent statement must neither halt the
+   sender-level probe nor make a confirmed booking's ticket look failed. The
+   column arrives with upgrade-2026-09-wa-templates.sql; before it exists
+   every row is a ticket row and the filter is a no-op. */
+$hasPurpose = (int) Database::scalar(
+    "SELECT COUNT(*) FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'message_logs' AND COLUMN_NAME = 'purpose'",
+    [], 0
+) > 0;
+$purposeM  = $hasPurpose ? " AND (purpose IS NULL OR purpose = 'ticket')" : '';
+$purposeM2 = $hasPurpose ? " AND (m2.purpose IS NULL OR m2.purpose = 'ticket')" : '';
+$purposeT  = $hasPurpose ? " AND (t.purpose IS NULL OR t.purpose = 'ticket')" : '';
+
 $lastFail = Database::fetch(
     "SELECT error FROM message_logs
-      WHERE channel = 'whatsapp' AND status = 'failed' AND error IS NOT NULL
+      WHERE channel = 'whatsapp' AND status = 'failed' AND error IS NOT NULL" . $purposeM . "
       ORDER BY id DESC LIMIT 1"
 );
 if ($lastFail !== null) {
@@ -123,11 +138,11 @@ const UNREACHABLE_SQL = "(m.error LIKE '%(code 63024)%' OR m.error LIKE '%(code 
 $due = Database::fetchAll(
     "SELECT b.id, b.pnr, b.contact_phone,
             (SELECT COUNT(*) FROM message_logs t
-              WHERE t.booking_id = b.id AND t.channel = 'whatsapp') AS tries
+              WHERE t.booking_id = b.id AND t.channel = 'whatsapp'" . $purposeT . ") AS tries
        FROM bookings b
        JOIN message_logs m
          ON m.id = (SELECT m2.id FROM message_logs m2
-                     WHERE m2.booking_id = b.id AND m2.channel = 'whatsapp'
+                     WHERE m2.booking_id = b.id AND m2.channel = 'whatsapp'" . $purposeM2 . "
                      ORDER BY m2.id DESC LIMIT 1)
       WHERE b.status = 'confirmed'
         AND m.status = 'failed'
@@ -146,7 +161,7 @@ $unreachable = (int) Database::scalar(
        FROM bookings b
        JOIN message_logs m
          ON m.id = (SELECT m2.id FROM message_logs m2
-                     WHERE m2.booking_id = b.id AND m2.channel = 'whatsapp'
+                     WHERE m2.booking_id = b.id AND m2.channel = 'whatsapp'" . $purposeM2 . "
                      ORDER BY m2.id DESC LIMIT 1)
       WHERE b.status = 'confirmed'
         AND m.status = 'failed'
@@ -191,7 +206,7 @@ $exhausted = (int) Database::scalar(
        FROM bookings b
        JOIN message_logs m
          ON m.id = (SELECT m2.id FROM message_logs m2
-                     WHERE m2.booking_id = b.id AND m2.channel = 'whatsapp'
+                     WHERE m2.booking_id = b.id AND m2.channel = 'whatsapp'" . $purposeM2 . "
                      ORDER BY m2.id DESC LIMIT 1)
       WHERE b.status = 'confirmed'
         AND m.status = 'failed'

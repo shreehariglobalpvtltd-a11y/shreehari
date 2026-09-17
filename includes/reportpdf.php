@@ -560,15 +560,14 @@ final class ReportPdf
      * Agent name/code, date range, summary cards (tickets, revenue,
      * commission, seats), then the booking table.
      */
-    public static function agentReport(int $agentAdminId, string $from, string $to, string $rangeLabel = ''): void
+    private static function buildAgentReport(int $agentAdminId, string $from, string $to, string $rangeLabel = ''): array
     {
         $agent = Database::fetch(
             'SELECT id, username, full_name, role FROM admins WHERE id = :id',
             ['id' => $agentAdminId]
         );
         if ($agent === null) {
-            http_response_code(404);
-            exit('Agent not found.');
+            throw new RuntimeException('Agent not found.');
         }
 
         $agentCode = AgentWallet::agentCodeLabel($agentAdminId);
@@ -684,8 +683,32 @@ final class ReportPdf
         Logger::audit('agent.report.pdf', 'admin', (string) $agentAdminId,
             null, null, (int) $report['tickets'] . ' tickets, ' . $from . ' to ' . $to);
 
-        $rpt->stream($filename);
+        return ['rpt' => $rpt, 'filename' => $filename];
+    }
+
+    /** §14 — stream the Agent Sales Report PDF to the browser (the historic entry point). */
+    public static function agentReport(int $agentAdminId, string $from, string $to, string $rangeLabel = ''): void
+    {
+        try {
+            $b = self::buildAgentReport($agentAdminId, $from, $to, $rangeLabel);
+        } catch (RuntimeException $e) {
+            http_response_code(404);
+            exit(Security::e($e->getMessage()));
+        }
+        $b['rpt']->stream($b['filename']);
         exit;
+    }
+
+    /**
+     * 17 Sep 2026 — the same Agent Sales Report as BYTES, for WhatsApp
+     * statements (includes/statement.php publishes it behind a signed link).
+     *
+     * @return array{bytes: string, filename: string}
+     */
+    public static function agentReportBytes(int $agentAdminId, string $from, string $to, string $rangeLabel = ''): array
+    {
+        $b = self::buildAgentReport($agentAdminId, $from, $to, $rangeLabel);
+        return ['bytes' => $b['rpt']->output(), 'filename' => $b['filename']];
     }
 
 
@@ -694,7 +717,7 @@ final class ReportPdf
      *
      * All agents, their ticket count, revenue, commission earned/paid/pending.
      */
-    public static function commissionReport(string $from, string $to): void
+    private static function buildCommissionReport(string $from, string $to): array
     {
         $toExcl = addDaysISO($to, 1);
 
@@ -806,8 +829,22 @@ final class ReportPdf
         Logger::audit('commission.report.pdf', 'report', 'commission',
             null, null, count($agents) . ' agents, ' . $from . ' to ' . $to);
 
-        $rpt->stream($filename);
+        return ['rpt' => $rpt, 'filename' => $filename];
+    }
+
+    /** §15/§28 — stream the Admin Commission Report PDF (the historic entry point). */
+    public static function commissionReport(string $from, string $to): void
+    {
+        $b = self::buildCommissionReport($from, $to);
+        $b['rpt']->stream($b['filename']);
         exit;
+    }
+
+    /** 17 Sep 2026 — the Commission Report as bytes. @return array{bytes: string, filename: string} */
+    public static function commissionReportBytes(string $from, string $to): array
+    {
+        $b = self::buildCommissionReport($from, $to);
+        return ['bytes' => $b['rpt']->output(), 'filename' => $b['filename']];
     }
 
 

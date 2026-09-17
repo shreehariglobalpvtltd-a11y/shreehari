@@ -72,6 +72,9 @@ final class AgentWallet
         'payout_account'     => '',
         'joined_on'          => null,
         'notes'              => '',
+        // 17 Sep 2026 (upgrade-2026-09-wa-templates.sql): 977 or 91 — the
+        // country of the agent's phone / WhatsApp, set once by the office.
+        'country_code'       => '',
         // KYC (17 Sep 2026, database/upgrade-2026-09-agent-kyc.sql). The
         // document paths are relative to UPLOAD_PATH ('agents-kyc/<file>')
         // and are NEVER handed to the browser as a /uploads URL — that tree
@@ -853,6 +856,16 @@ final class AgentWallet
                 $clean[$pk] = Security::clean((string) $data[$pk], 255);
             }
         }
+        /* Country of the agent's number (17 Sep 2026): only the two the
+           company dials. Blank clears it; dropped on an un-migrated DB. */
+        if (array_key_exists('country_code', $data)) {
+            $cc = preg_replace('/\D/', '', (string) $data['country_code']) ?? '';
+            $clean['country_code'] = in_array($cc, ['977', '91'], true) ? $cc : null;
+            if (!self::profileHasColumn('country_code')) {
+                unset($clean['country_code']);
+            }
+        }
+
         // An un-migrated database has no KYC columns: drop those keys so the
         // rest of the profile still saves, rather than failing the whole form.
         if (!self::kycAvailable()) {
@@ -930,6 +943,26 @@ final class AgentWallet
      *  that tree to anyone, and an ID card is not a thing to leave on a
      *  public URL. Pages stream them through an admin-gated script.
      * ================================================================= */
+
+    /** Cached per request: which optional admin_profiles columns exist. @var array<string,bool> */
+    private static array $profileCols = [];
+
+    /** True when admin_profiles has $col (optional columns added by later migrations). */
+    public static function profileHasColumn(string $col): bool
+    {
+        if (!array_key_exists($col, self::$profileCols)) {
+            try {
+                self::$profileCols[$col] = Database::exists(
+                    "SELECT 1 FROM information_schema.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admin_profiles' AND COLUMN_NAME = :c",
+                    ['c' => $col]
+                );
+            } catch (Throwable $e) {
+                self::$profileCols[$col] = false;
+            }
+        }
+        return self::$profileCols[$col];
+    }
 
     /** Cached per request: does admin_profiles carry the KYC columns yet? */
     private static ?bool $kycAvailable = null;

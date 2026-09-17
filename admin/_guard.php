@@ -161,6 +161,8 @@ function admin_header(string $title, string $active = ''): void
     // fonts.googleapis.com / fonts.gstatic.com), swap so text never blocks;
     // the system stack in --f-ui covers offline desks and Devanagari.
     echo '<meta name="theme-color" content="#12264E">';
+    // 17 Sep 2026: the CSRF token for the panel's JSON tools (WhatsApp sends).
+    echo '<meta name="csrf" content="' . Security::e(Security::csrfToken()) . '">';
     echo '<link rel="preconnect" href="https://fonts.googleapis.com">';
     echo '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>';
     echo '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">';
@@ -360,6 +362,8 @@ function admin_footer(): void
     // dropdown. Falls back to the full-page /admin/search.php on Enter.
     if (Auth::can('bookings.view')) {
         echo '<script>' . admin_search_js() . '</script>';
+        // 17 Sep 2026: one-click WhatsApp sheet (admin_wa_button / admin/api/wa-send.php).
+        echo '<script>' . admin_wa_js() . '</script>';
     }
 
     // 3 Sep 2026: phone-friendly tables everywhere. On a narrow screen every
@@ -864,6 +868,134 @@ function admin_avatar(string $name, string $photoUrl = '', string $size = ''): s
         return '<span class="' . $cls . '"><img src="' . Security::e($photoUrl) . '" alt="' . Security::e($name) . '" loading="lazy"></span>';
     }
     return '<span class="' . $cls . '" aria-hidden="true">' . Security::e($initials ?: '?') . '</span>';
+}
+
+/**
+ * "Send on WhatsApp" button (17 Sep 2026). Renders a button the shared sheet
+ * (admin_wa_js) turns into preview -> send / open-on-phone, all logged.
+ *
+ *   admin_wa_button('agent_statement', ['agent' => 12, 'from' => '2026-09-01', 'to' => '2026-09-17']);
+ *   admin_wa_button('booking_ticket',  ['pnr' => 'SHG-2026-00123'], 'Ticket on WhatsApp');
+ *
+ * $target keys: agent | pnr | from | to | on | ledger. $opts: class (default
+ * 'btn ghost sm'), title, id, fallback (an href for a <noscript> anchor).
+ * Nothing renders when the office switch wa_admin_tools_enabled is off or
+ * the signed-in role may not send that purpose (WaTemplates::REGISTRY).
+ */
+function admin_wa_button(string $purpose, array $target, string $label = 'Send on WhatsApp', array $opts = []): string
+{
+    static $registry = null;
+    if ($registry === null) {
+        require_once INCLUDE_PATH . '/watemplates.php';
+        $registry = WaTemplates::REGISTRY;
+    }
+    $reg = $registry[$purpose] ?? null;
+    if ($reg === null || !Settings::getBool('wa_admin_tools_enabled', true) || !Auth::can((string) $reg['perm'])) {
+        return '';
+    }
+    $attrs = ' data-wa-purpose="' . Security::e($purpose) . '"';
+    foreach (['agent' => 'agent', 'pnr' => 'pnr', 'from' => 'from', 'to' => 'to', 'on' => 'on', 'ledger' => 'ledger'] as $k => $attr) {
+        if (isset($target[$k]) && (string) $target[$k] !== '') {
+            $attrs .= ' data-wa-' . $attr . '="' . Security::e((string) $target[$k]) . '"';
+        }
+    }
+    $cls   = Security::e((string) ($opts['class'] ?? 'btn ghost sm'));
+    $title = Security::e((string) ($opts['title'] ?? ((string) $reg['hint'] . ' — opens a preview first')));
+    $id    = isset($opts['id']) ? ' id="' . Security::e((string) $opts['id']) . '"' : '';
+    $html  = '<button type="button" class="' . $cls . ' wa-send"' . $id . $attrs . ' title="' . $title . '">'
+           . '<svg class="a-ic" style="color:var(--wa-600)"><use href="#a-whatsapp"/></svg>' . Security::e($label) . '</button>';
+    if (!empty($opts['fallback'])) {
+        $html .= '<noscript><a class="' . $cls . '" href="' . Security::e((string) $opts['fallback']) . '" target="_blank" rel="noopener">' . Security::e($label) . '</a></noscript>';
+    }
+    return $html;
+}
+
+/**
+ * The WhatsApp sheet: preview the composed message, then send through the
+ * configured API (logged) or open it on the staff phone (also logged).
+ * One IIFE, delegated on .wa-send, no framework — like admin_search_js().
+ */
+function admin_wa_js(): string
+{
+    return <<<'JS'
+(function () {
+  var csrf = (document.querySelector('meta[name="csrf"]') || {}).content || '';
+  var sheet = null, cur = null;
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function post(body){
+    return fetch('/admin/api/wa-send.php',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','Accept':'application/json','X-CSRF-Token':csrf},body:JSON.stringify(body)})
+      .then(function(r){return r.json();}).catch(function(){return {ok:false,error:'Network error — try again.'};});
+  }
+  function toast(msg, bad){
+    var t=document.createElement('div');t.className='toast';if(bad)t.style.background='var(--bad)';t.textContent=msg;document.body.appendChild(t);
+    setTimeout(function(){t.style.transition='opacity .4s';t.style.opacity='0';setTimeout(function(){t.remove();},420);},3200);
+  }
+  function build(){
+    sheet=document.createElement('div');sheet.className='wa-sheet';sheet.hidden=true;
+    sheet.innerHTML='<div class="wa-card" role="dialog" aria-modal="true" aria-labelledby="waTitle">'
+      +'<div class="wa-head"><span class="wa-ico"><svg class="a-ic"><use href="#a-whatsapp"/></svg></span><div><b id="waTitle"></b><div class="wa-to" id="waTo"></div></div><button type="button" class="wa-x" aria-label="Close">×</button></div>'
+      +'<pre class="wa-text" id="waText"></pre>'
+      +'<div class="wa-att" id="waAtt"></div>'
+      +'<label class="wa-note">Add a note (optional)<input type="text" id="waNote" maxlength="300" placeholder="e.g. Please settle by Saturday"></label>'
+      +'<div class="wa-status" id="waStatus"></div>'
+      +'<div class="wa-acts"><button type="button" class="btn wa" id="waSend"><svg class="a-ic"><use href="#a-send"/></svg>Send via WhatsApp API</button>'
+      +'<a class="btn ghost" id="waOpen" href="#" target="_blank" rel="noopener"><svg class="a-ic"><use href="#a-external"/></svg>Open in WhatsApp on this phone</a>'
+      +'<button type="button" class="btn ghost" id="waCopy"><svg class="a-ic"><use href="#a-copy"/></svg>Copy text</button></div></div>';
+    document.body.appendChild(sheet);
+    sheet.addEventListener('click',function(e){if(e.target===sheet||e.target.closest('.wa-x'))close();});
+    document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!sheet.hidden)close();});
+    sheet.querySelector('#waNote').addEventListener('change',function(){if(cur)preview(cur.btn,cur.body,true);});
+    sheet.querySelector('#waSend').addEventListener('click',send);
+    sheet.querySelector('#waOpen').addEventListener('click',function(){if(!cur)return;post(Object.assign({},cur.body,{action:'handoff',note:noteVal()}));mark(cur.btn,'Opened on phone');});
+    sheet.querySelector('#waCopy').addEventListener('click',function(){var t=sheet.querySelector('#waText').textContent;try{navigator.clipboard.writeText(t);toast('Message copied');}catch(e){}});
+  }
+  function noteVal(){return (sheet.querySelector('#waNote').value||'').trim();}
+  function close(){if(sheet){sheet.hidden=true;}cur=null;}
+  function mark(btn,txt){if(!btn)return;btn.classList.add('wa-done');btn.innerHTML='<svg class="a-ic"><use href="#a-check-circle"/></svg>'+esc(txt);}
+  function bodyFor(btn){
+    var d=btn.dataset,b={purpose:d.waPurpose||''};
+    if(d.waAgent)b.agent_id=parseInt(d.waAgent,10);if(d.waPnr)b.pnr=d.waPnr;if(d.waFrom)b.from=d.waFrom;if(d.waTo)b.to=d.waTo;if(d.waOn)b.on=d.waOn;if(d.waLedger)b.ledger_id=parseInt(d.waLedger,10);
+    return b;
+  }
+  function preview(btn,body,keep){
+    if(!sheet)build();
+    cur={btn:btn,body:body,res:null};
+    sheet.hidden=false;
+    var st=sheet.querySelector('#waStatus');st.className='wa-status';st.textContent='Preparing the message…';
+    sheet.querySelector('#waTitle').textContent='WhatsApp';sheet.querySelector('#waTo').textContent='';
+    if(!keep){sheet.querySelector('#waNote').value='';}
+    sheet.querySelector('#waText').textContent='';sheet.querySelector('#waAtt').innerHTML='';
+    post(Object.assign({},body,{action:'preview',note:noteVal()})).then(function(j){
+      if(!cur||cur.btn!==btn)return;
+      if(!j||!j.ok){st.className='wa-status bad';st.textContent=(j&&j.error)||'Could not prepare the message.';sheet.querySelector('#waSend').hidden=true;sheet.querySelector('#waOpen').hidden=true;return;}
+      cur.res=j;
+      sheet.querySelector('#waTitle').textContent=j.label||'WhatsApp';
+      sheet.querySelector('#waTo').textContent=(j.recipient?j.recipient+' · ':'')+'+'+j.intl;
+      sheet.querySelector('#waText').textContent=j.text||'';
+      var att=sheet.querySelector('#waAtt');att.innerHTML='';
+      (j.attachments||[]).forEach(function(u){var a=document.createElement('a');a.href=u;a.target='_blank';a.rel='noopener';a.className='chip';a.innerHTML='<svg class="a-ic"><use href="#a-'+(/\.pdf|statement/i.test(u)?'pdf':'image')+'"/></svg>Attachment';att.appendChild(a);});
+      var send=sheet.querySelector('#waSend'),open=sheet.querySelector('#waOpen');
+      send.hidden=!j.canAutoSend;open.hidden=false;open.href=j.link||'#';
+      st.className='wa-status '+(j.canAutoSend?'ok':'warn');st.textContent=j.reason||'';
+    });
+  }
+  function send(){
+    if(!cur||!cur.res)return;
+    var btn=sheet.querySelector('#waSend');btn.disabled=true;btn.textContent='Sending…';
+    post(Object.assign({},cur.body,{action:'send',note:noteVal()})).then(function(j){
+      btn.disabled=false;btn.innerHTML='<svg class="a-ic"><use href="#a-send"/></svg>Send via WhatsApp API';
+      var st=sheet.querySelector('#waStatus');
+      if(j&&j.ok){toast(j.message||'Sent on WhatsApp');mark(cur.btn,'Sent '+new Date().toTimeString().slice(0,5));close();return;}
+      if(j&&j.handoff&&j.link){st.className='wa-status warn';st.textContent=(j.reason||'Send it from your phone instead.');var o=sheet.querySelector('#waOpen');o.href=j.link;o.hidden=false;btn.hidden=true;return;}
+      st.className='wa-status bad';st.textContent=(j&&j.error)||'Send failed.';
+    });
+  }
+  document.addEventListener('click',function(e){
+    var b=e.target.closest('.wa-send');if(!b)return;e.preventDefault();
+    preview(b,bodyFor(b),false);
+  });
+})();
+JS;
 }
 
 /**
@@ -1374,6 +1506,28 @@ details.advanced-section[open]>summary::before{content:'▼ '}
   .live-state,.live-seats{text-align:left}
   .promo{flex-wrap:wrap}.promo .promo-cta{width:100%;text-align:center}
 }
+
+/* ── WhatsApp sheet (admin_wa_button / admin_wa_js, 17 Sep 2026) ─────── */
+.wa-sheet{position:fixed;inset:0;z-index:70;background:rgba(6,14,30,.45);display:flex;align-items:flex-end;justify-content:center;padding:16px;backdrop-filter:blur(2px)}
+.wa-sheet[hidden]{display:none}
+.wa-card{background:var(--card);color:var(--ink);border-radius:var(--r-xl);box-shadow:var(--sh-3);width:min(560px,100%);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;animation:flashIn .2s ease}
+.wa-head{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--head)}
+.wa-head b{font-size:15px}.wa-head .wa-to{font-size:12.5px;color:var(--mut);font-family:var(--f-mono)}
+.wa-head .wa-ico{width:38px;height:38px;border-radius:12px;background:var(--wa);color:#fff;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.wa-head .wa-x{margin-left:auto;background:none;border:0;font-size:22px;line-height:1;color:var(--mut);cursor:pointer;padding:4px 8px;border-radius:8px}
+.wa-head .wa-x:hover{background:var(--hover);color:var(--ink)}
+.wa-text{margin:0;padding:14px 16px;font:13.5px/1.5 var(--f-ui);white-space:pre-wrap;word-break:break-word;background:#E7F5EC;color:#14311F;overflow:auto;flex:1 1 auto;border-left:4px solid var(--wa)}
+:root[data-theme="dark"] .wa-text{background:#10261A;color:#D7F4E3}
+.wa-att{display:flex;gap:8px;flex-wrap:wrap;padding:8px 16px 0}
+.wa-att:empty{display:none}
+.wa-note{display:flex;flex-direction:column;gap:4px;padding:10px 16px 0;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
+.wa-note input{font:14px var(--f-ui);padding:9px 11px;border:1px solid var(--line-2);border-radius:10px;background:var(--card);color:var(--ink);text-transform:none;letter-spacing:0;font-weight:500}
+.wa-status{padding:10px 16px 0;font-size:12.5px;color:var(--mut)}
+.wa-status.ok{color:var(--ok)}.wa-status.warn{color:var(--warn)}.wa-status.bad{color:var(--bad)}
+.wa-acts{display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px 16px}
+.wa-acts .btn[hidden]{display:none}
+.btn.wa-done{background:var(--ok-bg);color:var(--ok);border-color:transparent;pointer-events:none}
+@media(min-width:700px){.wa-sheet{align-items:center}}
 
 /* ── Touch targets & responsive ──────────────────────────────────────── */
 @media(pointer:coarse){

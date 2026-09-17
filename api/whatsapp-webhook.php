@@ -124,6 +124,15 @@ try {
     $from = (string) ($_POST['From'] ?? '');       // e.g. "whatsapp:+9198XXXXXXXX"
     $body = trim((string) ($_POST['Body'] ?? ''));
     $senderDigits = normalisePhone($from);
+    /* 17 Sep 2026: remember that this number wrote to us — WhatsApp delivers
+       free-text business messages only inside the 24 h after that, and the
+       office's one-click sends (admin/api/wa-send.php) check this window
+       before choosing "send via API" over "open on your phone". */
+    try {
+        require_once INCLUDE_PATH . '/watemplates.php';
+        WaTemplates::noteInbound(preg_replace('/\D/', '', $from) ?? '');
+    } catch (Throwable $ignored) {
+    }
 
     // Abuse guard, keyed on the sender (falls back to IP).
     Security::requireRateLimit('wa_bot', $senderDigits !== '' ? $senderDigits : Security::clientIp(), 20, 60);

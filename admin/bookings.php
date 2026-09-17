@@ -597,9 +597,9 @@ $canEdit   = Auth::can('bookings.edit');
               <button class="btn ghost danger" type="submit" title="Cancel this ticket (refund slab applies)">✖ Cancel</button>
             </form>
           <?php endif; ?>
-          <?php if ($waPhone !== '' && strlen($waPhone) >= 10): ?>
-            <a class="btn ghost" href="https://wa.me/<?= Security::e($waPhone) ?>?text=<?= Security::e(rawurlencode(booking_wa_message($b, $base))) ?>" target="_blank" rel="noopener" title="Open WhatsApp with the message typed">💬 WA</a>
-          <?php endif; ?>
+          <?php /* 17 Sep 2026: status-aware message, logged, +91/+977-aware — the same composer every panel uses */
+                echo admin_wa_button('booking_confirmation', ['pnr' => (string) $b['pnr']], '💬 WhatsApp',
+                    ['class' => 'btn ghost', 'fallback' => ($waPhone !== '' && strlen($waPhone) >= 10) ? 'https://wa.me/' . $waPhone . '?text=' . rawurlencode(booking_wa_message($b, $base)) : '']); ?>
         </div></td>
       </tr>
     <?php endforeach; endif; ?>

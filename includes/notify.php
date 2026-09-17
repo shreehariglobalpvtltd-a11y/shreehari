@@ -285,7 +285,7 @@ final class Notify
      *                                 free-form $message is sent as before
      * @return bool|string true/false for API delivery, or a wa.me URL
      */
-    public static function whatsapp(string $phone, string $message, ?string $mediaUrl = null, ?string $countryHint = null, array $templateVars = [], ?int $bookingId = null): bool|string
+    public static function whatsapp(string $phone, string $message, ?string $mediaUrl = null, ?string $countryHint = null, array $templateVars = [], ?int $bookingId = null, array $meta = []): bool|string
     {
         $driver = Settings::getString('whatsapp_driver', 'click_to_chat');
         $number = self::intlDigits($phone, $countryHint);
@@ -297,7 +297,7 @@ final class Notify
             self::logMessage('whatsapp', (string) $phone, $message, 'skipped', [
                 'provider' => $driver, 'bookingId' => $bookingId,
                 'error'    => 'no usable phone number on the booking',
-            ]);
+            ] + $meta);
             return false;
         }
 
@@ -319,7 +319,7 @@ final class Notify
                    sandbox not joined) never trip it. */
                 if (self::twilioPause() !== null) {
                     $paused = true;
-                } elseif (self::whatsappTwilio($number, $message, $mediaUrl, $sid, $token, $from, $templateVars, $ref)) {
+                } elseif (self::whatsappTwilio($number, $message, $mediaUrl, $sid, $token, $from, $templateVars, $ref, isset($meta['content_sid']) ? (string) $meta['content_sid'] : null)) {
                     self::$journal[] = ['to' => $number, 'ok' => true, 'link' => null, 'driver' => 'twilio', 'reason' => ''];
                     // "accepted", not "delivered": WhatsApp decides later and
                     // api/twilio-status.php flips this row to failed when it
@@ -327,7 +327,7 @@ final class Notify
                     // that callback matches on, so it must be stored here.
                     self::logMessage('whatsapp', $number, $message, 'sent', [
                         'provider' => 'twilio', 'bookingId' => $bookingId, 'sid' => (string) $ref,
-                    ]);
+                    ] + $meta);
                     return true;
                 }
                 // Delivery failed — fall through to the click-to-chat link
@@ -343,11 +343,11 @@ final class Notify
             $phoneId = Settings::getString('whatsapp_phone_id', '');
 
             if ($token !== '' && $phoneId !== '') {
-                if (self::whatsappCloudApi($number, $message, $token, $phoneId, $mediaUrl, $templateVars)) {
+                if (self::whatsappCloudApi($number, $message, $token, $phoneId, $mediaUrl, $templateVars, (string) ($meta['media_type'] ?? ''))) {
                     self::$journal[] = ['to' => $number, 'ok' => true, 'link' => null, 'driver' => 'cloud_api', 'reason' => ''];
                     self::logMessage('whatsapp', $number, $message, 'sent', [
                         'provider' => 'cloud_api', 'bookingId' => $bookingId,
-                    ]);
+                    ] + $meta);
                     return true;
                 }
                 // Same reasoning as the Twilio branch above.
@@ -372,7 +372,7 @@ final class Notify
                 : ($driver === 'click_to_chat'
                     ? 'no WhatsApp API configured - click-to-chat link only'
                     : 'provider refused the send - click-to-chat link only'),
-        ]);
+        ] + $meta);
         return $link;
     }
 
@@ -676,7 +676,8 @@ final class Notify
             $mediaUrl,
             self::countryHint($booking),
             self::ticketTemplateVars($booking),
-            isset($booking['id']) && (int) $booking['id'] > 0 ? (int) $booking['id'] : null
+            isset($booking['id']) && (int) $booking['id'] > 0 ? (int) $booking['id'] : null,
+            ['purpose' => 'ticket']
         );
         if ($res === true) {
             return ['ok' => true, 'detail' => 'Ticket re-sent to ' . $booking['contact_phone'] . ' on WhatsApp.'];
@@ -797,7 +798,8 @@ final class Notify
             $mediaUrl,
             self::countryHint($booking),
             self::ticketTemplateVars($booking),
-            isset($booking['id']) && (int) $booking['id'] > 0 ? (int) $booking['id'] : null
+            isset($booking['id']) && (int) $booking['id'] > 0 ? (int) $booking['id'] : null,
+            ['purpose' => 'ticket']
         );
         if ($res === true) {
             return ['ok' => true, 'detail' => 'Change notice (' . $what . ') sent to ' . $booking['contact_phone'] . ' on WhatsApp.'];
@@ -858,7 +860,7 @@ final class Notify
         return str_starts_with($url, 'https://') ? $url : '';
     }
 
-    private static function whatsappTwilio(string $toDigits, string $message, ?string $mediaUrl, string $sid, string $token, string $from, array $templateVars = [], ?string &$providerRef = null): bool
+    private static function whatsappTwilio(string $toDigits, string $message, ?string $mediaUrl, string $sid, string $token, string $from, array $templateVars = [], ?string &$providerRef = null, ?string $contentSidOverride = null): bool
     {
         // Accept the "From" as "whatsapp:+1415...", "+1415..." or "1415...".
         $from = trim($from);
@@ -868,7 +870,11 @@ final class Notify
 
         $endpoint = 'https://api.twilio.com/2010-04-01/Accounts/' . rawurlencode($sid) . '/Messages.json';
 
-        $contentSid = Settings::getString('twilio_content_sid', '');
+        // 17 Sep 2026: a per-purpose approved template (agent statement,
+        // payment reminder ...) may replace the global ticket template.
+        $contentSid = ($contentSidOverride !== null && $contentSidOverride !== '')
+            ? $contentSidOverride
+            : Settings::getString('twilio_content_sid', '');
 
         if ($contentSid !== '' && $templateVars !== []) {
             // No MediaUrl here on purpose. In a Content template the image is
@@ -956,7 +962,7 @@ final class Notify
      * PNG becomes the template's IMAGE header (carried as var 7 by
      * bookingConfirmed(), or as $mediaUrl).
      */
-    private static function whatsappCloudApi(string $number, string $message, string $token, string $phoneId, ?string $mediaUrl = null, array $templateVars = []): bool
+    private static function whatsappCloudApi(string $number, string $message, string $token, string $phoneId, ?string $mediaUrl = null, array $templateVars = [], string $mediaType = ''): bool
     {
         // Graph API version is a setting so it can be moved forward without a
         // deploy — v18.0 was hard-coded here and is long out of support.
@@ -995,6 +1001,19 @@ final class Notify
                     'language'   => ['code' => Settings::getString('whatsapp_template_lang', 'en')],
                     'components' => $components,
                 ],
+            ];
+        } elseif ($image !== '' && ($mediaType === 'document' || preg_match('/\.pdf(\?|$)/i', $image) === 1)) {
+            // 17 Sep 2026: an agent statement is a PDF — WhatsApp wants that
+            // as a 'document' (the image payload below would be rejected).
+            $fn = basename((string) parse_url($image, PHP_URL_PATH));
+            if (preg_match('/\.pdf$/i', $fn) !== 1) {
+                $fn = 'statement.pdf';
+            }
+            $body = [
+                'messaging_product' => 'whatsapp',
+                'to'                => $number,
+                'type'              => 'document',
+                'document'          => ['link' => $image, 'caption' => mb_substr($message, 0, 1024), 'filename' => $fn],
             ];
         } elseif ($image !== '') {
             // The ticket is a PNG, so send it as an IMAGE — it then renders
@@ -1281,6 +1300,28 @@ final class Notify
      *
      * @param array<string, mixed> $meta provider|sid|error|reason|bookingId
      */
+    /**
+     * Public entry for the staff WhatsApp tools (17 Sep 2026): a wa.me hand-off
+     * or a refused send still gets its message_logs row (status 'skipped',
+     * provider 'manual') so the log is complete — see admin/api/wa-send.php.
+     */
+    public static function logOutbound(string $to, string $body, string $status, array $meta = []): void
+    {
+        self::logMessage('whatsapp', $to, $body, $status, $meta);
+    }
+
+    /** The {{1}}..{{7}} ticket template variables — public for WaTemplates. */
+    public static function ticketVars(array $booking): array
+    {
+        return self::ticketTemplateVars($booking);
+    }
+
+    /** 'NP' / 'IN' / null for a booking's contact number — public for WaTemplates. */
+    public static function bookingCountryHint(array $booking): ?string
+    {
+        return self::countryHint($booking);
+    }
+
     private static function logMessage(string $channel, string $to, string $body, string $status, array $meta = []): void
     {
         // 4 Sep 2026: never keep a one-time code at rest. Customer OTPs and
@@ -1288,20 +1329,38 @@ final class Notify
         // before the row is written, so admin/messages-log.php can show the
         // delivery status without handing any reader a live second factor.
         $body = preg_replace('/(code\D{0,12}?)(\d{4,8})/iu', '$1••••', $body) ?? $body;
+        $row = [
+            'booking_id'   => isset($meta['bookingId']) && $meta['bookingId'] ? (int) $meta['bookingId'] : null,
+            'channel'      => $channel,
+            'provider'     => (string) ($meta['provider'] ?? ''),
+            'to_number'    => substr($to, 0, 32),
+            'body'         => mb_substr($body, 0, 1000),
+            'status'       => $status,
+            'provider_ref' => substr((string) ($meta['sid'] ?? ''), 0, 64),
+            'error'        => isset($meta['error']) && $meta['error'] !== null
+                                ? mb_substr((string) $meta['error'], 0, 255)
+                                : (isset($meta['reason']) ? mb_substr((string) $meta['reason'], 0, 255) : null),
+        ];
+        /* 17 Sep 2026 — purpose / who pressed send / which agent / media
+           (database/upgrade-2026-09-wa-templates.sql). Written when given;
+           on a database where that migration has not run the insert is
+           retried without them, so a row is never lost to a missing column. */
+        $extra = [];
+        if (!empty($meta['purpose']))        { $extra['purpose']        = substr((string) $meta['purpose'], 0, 40); }
+        if (!empty($meta['admin_id']))       { $extra['admin_id']       = (int) $meta['admin_id']; }
+        if (!empty($meta['agent_admin_id'])) { $extra['agent_admin_id'] = (int) $meta['agent_admin_id']; }
+        if (!empty($meta['media_url']))      { $extra['media_url']      = substr((string) $meta['media_url'], 0, 255); }
         try {
-            Database::insert('message_logs', [
-                'booking_id'   => isset($meta['bookingId']) && $meta['bookingId'] ? (int) $meta['bookingId'] : null,
-                'channel'      => $channel,
-                'provider'     => (string) ($meta['provider'] ?? ''),
-                'to_number'    => substr($to, 0, 32),
-                'body'         => mb_substr($body, 0, 1000),
-                'status'       => $status,
-                'provider_ref' => substr((string) ($meta['sid'] ?? ''), 0, 64),
-                'error'        => isset($meta['error']) && $meta['error'] !== null
-                                    ? mb_substr((string) $meta['error'], 0, 255)
-                                    : (isset($meta['reason']) ? mb_substr((string) $meta['reason'], 0, 255) : null),
-            ]);
+            Database::insert('message_logs', $row + $extra);
         } catch (Throwable $e) {
+            if ($extra !== []) {
+                try {
+                    Database::insert('message_logs', $row);
+                    return;
+                } catch (Throwable $e2) {
+                    $e = $e2;
+                }
+            }
             Logger::warning('message_logs insert skipped: ' . $e->getMessage(), ['channel' => $channel], $channel);
         }
     }
@@ -1512,7 +1571,7 @@ final class Notify
             // $bid ties the message_logs row to the booking, which is what
             // lets admin/messages-log.php name the customer who missed their
             // ticket and lets cron/whatsapp-retry.php find it again later.
-            self::whatsapp((string) $booking['contact_phone'], $text, $mediaUrl, self::countryHint($booking), $templateVars, $bid > 0 ? $bid : null);
+            self::whatsapp((string) $booking['contact_phone'], $text, $mediaUrl, self::countryHint($booking), $templateVars, $bid > 0 ? $bid : null, ['purpose' => 'ticket']);
         }
 
         // SMS: compact plain text carrying the required Ticket No / Seat /
@@ -1690,13 +1749,28 @@ final class Notify
                 $code = AgentWallet::agentCodeLabel($adminId);
             } catch (Throwable $ignored) {
             }
+            /* 17 Sep 2026: the agent's WhatsApp number (profile whatsapp, else
+               admins.phone) AND its country — a Nepali agent used to be
+               dialled as +91 because only bookings knew their country. */
+            $phone = self::usablePhone($row['phone'] ?? '');
+            $hint  = null;
+            try {
+                require_once __DIR__ . '/watemplates.php';
+                $rc = WaTemplates::agentRecipient($adminId);
+                if ($rc['digits'] !== '' && self::usablePhone($rc['digits']) !== '') {
+                    $phone = self::usablePhone($rc['digits']);
+                }
+                $hint = $rc['hint'];
+            } catch (Throwable $ignored) {
+            }
 
             return [
                 'id'    => (int) $row['id'],
                 'name'  => (string) ($row['full_name'] ?? ''),
-                'phone' => self::usablePhone($row['phone'] ?? ''),
+                'phone' => $phone,
                 'email' => (string) ($row['email'] ?? ''),
                 'code'  => $code,
+                'hint'  => $hint,
             ];
         } catch (Throwable $e) {
             Logger::error('agentFor failed: ' . $e->getMessage(), ['admin_id' => $adminId], 'automation');
@@ -1827,7 +1901,7 @@ final class Notify
               . ($facts['seats'] !== '' ? "Seat(s): " . $facts['seats'] . "\n" : '')
               . $commission
               . "— " . ($agent['code'] !== '' ? $agent['code'] . ' · ' : '') . Settings::getString('company_name', APP_NAME);
-        self::whatsapp($agent['phone'], $text);
+        self::whatsapp($agent['phone'], $text, null, $agent['hint'] ?? null);
     }
 
     /** WhatsApp the selling agent: booking rejected, customer asked to re-upload. */
@@ -1844,7 +1918,7 @@ final class Notify
         $text = "❌ Booking " . (string) ($booking['pnr'] ?? '') . " REJECTED\n"
               . ($reason !== '' ? "Reason: " . $reason . "\n" : '')
               . "Customer has been asked to re-submit payment proof.";
-        self::whatsapp($agent['phone'], $text);
+        self::whatsapp($agent['phone'], $text, null, $agent['hint'] ?? null);
     }
 
     /** WhatsApp the selling agent: booking cancelled, commission reversed. */
@@ -1871,7 +1945,7 @@ final class Notify
         }
 
         $text = "🚫 Booking " . (string) ($booking['pnr'] ?? '') . " CANCELLED\n" . $reversed;
-        self::whatsapp($agent['phone'], $text);
+        self::whatsapp($agent['phone'], $text, null, $agent['hint'] ?? null);
     }
 
     /**
