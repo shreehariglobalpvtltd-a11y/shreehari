@@ -893,7 +893,18 @@ function admin_wa_button(string $purpose, array $target, string $label = 'Send o
         $registry = WaTemplates::REGISTRY;
     }
     $reg = $registry[$purpose] ?? null;
-    if ($reg === null || !Settings::getBool('wa_admin_tools_enabled', true) || !Auth::can((string) $reg['perm'])) {
+    if ($reg === null || !Settings::getBool('wa_admin_tools_enabled', true)) {
+        return '';
+    }
+    // 18 Sep 2026: an agent may send their OWN statement-type messages to
+    // themselves (WaTemplates::OWN_AGENT_PURPOSES) without the office
+    // permission those purposes carry. admin/api/wa-send.php applies the
+    // identical rule, so a button never appears that the API would refuse.
+    $scopeId = Auth::bookingScopeAdminId();
+    $own     = $scopeId !== null && (string) ($reg['target'] ?? '') === 'agent'
+        && (int) ($target['agent'] ?? 0) === $scopeId
+        && in_array($purpose, WaTemplates::OWN_AGENT_PURPOSES, true);
+    if (!$own && !Auth::can((string) $reg['perm'])) {
         return '';
     }
     $attrs = ' data-wa-purpose="' . Security::e($purpose) . '"';

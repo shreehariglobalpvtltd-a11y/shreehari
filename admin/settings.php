@@ -208,7 +208,7 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
      edits a value. Bool rows post through the same _boolkeys mechanism as the
      generic loop (unticked = 0); the generic loop skips these keys. */
   $arKeys = ['agent_commission_mode', 'agent_flat_direct', 'agent_flat_joint', 'agent_commission_percent',
-             'agent_advance_max', 'agent_advance_recover_pct', 'agent_payout_min', 'agent_settlement_due_days',
+             'agent_advance_max', 'agent_advance_recover_pct', 'agent_payout_min', 'agent_settlement_due_days', 'agent_settle_reminder_days',
              'agent_cash_limit_enforce', 'agent_kyc_required', 'agent_notify_settlement',
              'agent_cash_limit_default', 'agent_daily_booking_limit'];
   $fpKeys  = array_merge($fpKeys, $arKeys);
@@ -245,6 +245,7 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
       <?= $arNum('agent_advance_recover_pct', 'Recovery share of each payout', '100 = commission nets the advance in full (today)', 100, '0', '100', '1', '%') ?>
       <?= $arNum('agent_payout_min', 'Minimum payout', '0 = any amount. Paying the whole balance is always allowed', 0, '0', '10000000', '1', '₹') ?>
       <?= $arNum('agent_settlement_due_days', 'Settlement due in', '0 = never flag. Cash held longer shows “settlement overdue”', 0, '0', '365', '1', 'days') ?>
+      <?= $arNum('agent_settle_reminder_days', 'WhatsApp reminder after', '0 = off. Once cash is overdue this many days, the daily cron (cron/wa-reminders.php) sends the agent one payment reminder a day', 0, '0', '365', '1', 'days') ?>
       <?= $arNum('agent_cash_limit_default', 'Default cash-in-hand limit', 'per-agent limit on the Agent Panel overrides this; 0 = no limit', 0, '0', '10000000', '1', '₹') ?>
       <?= $arNum('agent_daily_booking_limit', 'Default daily booking limit', 'bookings per agent per day; 0 = no limit', 0, '0', '1000', '1', '') ?>
     </div>
@@ -257,6 +258,20 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
   </div>
   <style>.ar-bool{display:flex;flex-direction:column;gap:6px}.ar-bool>span:first-child{font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut)}.ar-bool .row{gap:12px;align-items:center}.ar-bool small{font-weight:400;text-transform:none;letter-spacing:0;color:var(--mut)}</style>
 
+  <?php
+  /* 17 Sep 2026 — one-click WhatsApp (admin/api/wa-send.php): what the office
+     must know under the keys that decide whether a message actually goes out.
+     Help text only — the keys come from database/upgrade-2026-09-wa-templates.sql. */
+  $waTplHelp = 'A business-initiated message (the office writes first) only reaches WhatsApp through an approved Twilio Content template — one per purpose, its HX… SID pasted here. Blank = free text, which WhatsApp delivers only inside the 24-hour window after this number last wrote to us; outside it the button hands the message to the staff phone (wa.me) instead of burning a send that would fail.';
+  $waHelp = [
+      'wa_admin_tools_enabled'              => 'Shows the "Send on WhatsApp" buttons on the agent, booking, manifest and dashboard pages. Every press previews first, then sends through the WhatsApp API (Twilio / Cloud API) or opens wa.me on the staff phone; each attempt is logged under Messages with its purpose.',
+      'twilio_content_sid_agent_statement'  => $waTplHelp . ' Used for agent statements, booking history, commission, advance / loan balance and the daily / monthly summaries.',
+      'twilio_content_sid_payment_reminder' => $waTplHelp . ' Used for agent and customer payment reminders and the outstanding-balance message.',
+      'twilio_content_sid_settlement'       => $waTplHelp . ' Used for settlement receipts and cash-settlement details.',
+      'twilio_content_sid_booking_detail'   => $waTplHelp . ' Used for booking status, passenger / seat details and the bus chalan picture.',
+      'wa_statement_link_days'              => 'Statement PDFs and chalan pictures go out as signed download links, not attachments. A link stops opening after this many days — the message tells the recipient so.',
+  ];
+  ?>
   <?php foreach ($groups as $group => $items): ?>
     <div class="panel">
       <h2><?= Security::e(ucfirst((string) $group)) ?></h2>
@@ -286,6 +301,7 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
             <?php else: ?>
               <input type="text" name="s[<?= Security::e($key) ?>]" value="<?= Security::e($val) ?>" style="width:100%;max-width:420px;padding:9px 11px;border:1px solid var(--line);border-radius:8px" <?= $canEdit ? '' : 'readonly' ?>>
             <?php endif; ?>
+            <?php if (isset($waHelp[$key])): ?><small class="muted" style="display:block;margin-top:6px;max-width:560px;line-height:1.45"><?= Security::e($waHelp[$key]) ?></small><?php endif; ?>
           </td>
         </tr>
         <?php endforeach; ?>

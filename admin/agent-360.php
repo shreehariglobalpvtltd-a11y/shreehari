@@ -662,11 +662,20 @@ function a360_recover_label(array $l): string
 $pageUrl = $base . '/admin/agent-360.php?agent=' . $agentId;
 
 admin_header('Agent 360 · ' . $name, 'agents');
+/* 17 Sep 2026 — one-click WhatsApp (admin_wa_button → admin/api/wa-send.php):
+   the statement for the window the Statement tab shows, the balance today,
+   and a payment reminder only while the agent owes on balance. Each helper
+   returns '' when wa_admin_tools_enabled is off or the role may not send
+   that purpose, so the row simply disappears. */
+$waHead = admin_wa_button('agent_statement', ['agent' => $agentId, 'from' => $stmtFrom, 'to' => $stmtTo], 'Statement', ['class' => 'btn ghost sm'])
+        . admin_wa_button('agent_outstanding', ['agent' => $agentId], 'Outstanding balance', ['class' => 'btn ghost sm'])
+        . ($net['net'] > 0.009 ? admin_wa_button('agent_payment_reminder', ['agent' => $agentId], 'Payment reminder', ['class' => 'btn ghost sm']) : '');
 admin_page_head(
     'Profile, wallet, statement, settlements, loans, deposits, payout requests, KYC and activity — one place.',
     ['Agents' => $base . '/admin/agents.php', $name => ''],
     '<a class="btn ghost" href="' . $base . '/admin/agent.php?agent=' . $agentId . '"><svg class="a-ic"><use href="#a-wallet"/></svg> Open agent panel</a>'
     . '<a class="btn ghost" href="' . $base . '/admin/agents.php"><svg class="a-ic"><use href="#a-arrow-left"/></svg> Register</a>'
+    . ($waHead !== '' ? '<span class="chips" style="gap:6px">' . $waHead . '</span>' : '')
 );
 
 if ($flash !== null) {
@@ -870,6 +879,9 @@ details.a360-rows>summary{cursor:pointer;font-size:12.5px;color:var(--blue);font
         <button class="btn" type="submit"><svg class="a-ic"><use href="#a-filter"/></svg> Show</button>
         <a class="btn ghost" href="<?= $e($pageUrl . '&tab=statement&export=csv&from=' . $stmtFrom . '&to=' . $stmtTo . '&account=' . $stmtAcc) ?>"><svg class="a-ic"><use href="#a-download"/></svg> Export CSV</a>
         <button class="btn ghost" type="button" onclick="window.print()"><svg class="a-ic"><use href="#a-printer"/></svg> Print</button>
+        <?php /* 17 Sep 2026: the same window as the table, to the agent on WhatsApp (previewed first). */ ?>
+        <?= admin_wa_button('agent_history', ['agent' => $agentId, 'from' => $stmtFrom, 'to' => $stmtTo], 'Booking history', ['class' => 'btn ghost']) ?>
+        <?= admin_wa_button('agent_commission', ['agent' => $agentId, 'from' => $stmtFrom, 'to' => $stmtTo], 'Commission summary', ['class' => 'btn ghost']) ?>
       </form>
       <div class="tbl-scroll">
         <table>
@@ -986,7 +998,8 @@ details.a360-rows>summary{cursor:pointer;font-size:12.5px;color:var(--blue);font
               <td class="num money fw7"><?= $e(inr(abs((float) $s['amount']))) ?></td>
               <td class="muted" style="font-size:12px"><?= $e(truncate((string) ($s['note'] ?? ''), 70)) ?></td>
               <td class="muted text-xs"><?= $e($s['by_name'] ?: 'auto') ?></td>
-              <td><a class="btn ghost sm" href="<?= $base ?>/admin/agent-receipt.php?id=<?= (int) $s['id'] ?>" target="_blank"><svg class="a-ic"><use href="#a-printer"/></svg> Receipt</a></td>
+              <td><a class="btn ghost sm" href="<?= $base ?>/admin/agent-receipt.php?id=<?= (int) $s['id'] ?>" target="_blank"><svg class="a-ic"><use href="#a-printer"/></svg> Receipt</a>
+                <?php if ((int) $s['id'] > 0): ?><?= admin_wa_button('agent_settlement_done', ['agent' => $agentId, 'ledger' => (int) $s['id']], '💬', ['class' => 'btn ghost sm', 'title' => 'Send this settlement receipt to the agent on WhatsApp — opens a preview first']) ?><?php endif; ?></td>
             </tr>
           <?php endforeach; endif; ?>
         </tbody>
@@ -1002,6 +1015,11 @@ details.a360-rows>summary{cursor:pointer;font-size:12.5px;color:var(--blue);font
     <?= admin_kpi('Advance outstanding (ledger)', inr($advance['outstanding']), 'how far the commission balance is below zero', 'ledger', $advance['outstanding'] > 0 ? 'orange' : 'teal') ?>
     <?= admin_kpi('Given lifetime', inr($advance['given']), 'repaid in cash ' . inr($advance['repaid']), 'banknote', 'navy') ?>
   </div>
+  <?php /* 17 Sep 2026: open advances / loans and what is still outstanding, to the agent on WhatsApp. */
+        $waAdvance = admin_wa_button('agent_advance', ['agent' => $agentId], 'Advance / loan balance on WhatsApp', ['class' => 'btn ghost sm']);
+        if ($waAdvance !== ''): ?>
+  <div class="chips no-print" style="margin:0 0 16px"><?= $waAdvance ?></div>
+  <?php endif; ?>
 
   <?php if ($showSettle): ?>
   <div class="panel">

@@ -868,6 +868,9 @@ foreach ($rows as $r) {
           <td class="mono"><?= Security::e(inr($farePer($r))) ?></td>
           <td class="mono">
             <a href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode((string) $r['pnr']) ?>"><?= Security::e((string) $r['pnr']) ?></a>
+            <?php /* 17 Sep 2026: the ticket to this passenger on WhatsApp (previewed, logged) —
+                     only a confirmed booking has a ticket the composer will send. */ ?>
+            <?php if ((string) ($r['pnr'] ?? '') !== '' && (string) ($r['booking_status'] ?? '') === 'confirmed'): ?><?= admin_wa_button('booking_ticket', ['pnr' => (string) $r['pnr']], '💬', ['class' => 'btn ghost sm', 'title' => 'Send the ticket to this passenger on WhatsApp — opens a preview first']) ?><?php endif; ?>
           </td>
           <td><span class="mf-tag <?= $paid ? 'mf-paid' : 'mf-unpaid' ?>"><?= Security::e($payLabel($r)) ?></span></td>
           <td><?= Security::e($sourceLabel($r)) ?>

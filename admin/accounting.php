@@ -302,7 +302,13 @@ admin_header('Accounting', 'accounting');
           <td class="muted"><?= Security::e(formatDate(substr((string) $q['created_at'], 0, 10), 'j M Y')) ?> <span style="font-size:11px">· <?= Security::e(timeAgo((string) $q['created_at'])) ?></span></td>
           <td class="acc-num"><?= Security::e(inr((float) $q['amount'])) ?></td>
           <td class="muted" style="font-size:12px"><?= Security::e((string) ($q['note'] ?: '—')) ?></td>
-          <td><a class="btn ghost" style="font-size:12px;padding:5px 12px" href="<?= $base ?>/admin/agent-360.php?agent=<?= (int) $q['agent_admin_id'] ?>&amp;tab=requests">Decide →</a></td>
+          <td><a class="btn ghost" style="font-size:12px;padding:5px 12px" href="<?= $base ?>/admin/agent-360.php?agent=<?= (int) $q['agent_admin_id'] ?>&amp;tab=requests">Decide →</a>
+            <?php /* 17 Sep 2026: one WhatsApp button per row — the settlement receipt once a
+                     payout ledger row exists on the request, otherwise the agent's balance
+                     today. Nothing renders when wa_admin_tools_enabled is off. */ ?>
+            <?= (int) ($q['ledger_id'] ?? 0) > 0
+                ? admin_wa_button('agent_settlement_done', ['agent' => (int) $q['agent_admin_id'], 'ledger' => (int) $q['ledger_id']], 'Receipt', ['class' => 'btn ghost sm'])
+                : admin_wa_button('agent_outstanding', ['agent' => (int) $q['agent_admin_id']], 'Balance', ['class' => 'btn ghost sm']) ?></td>
         </tr>
       <?php endforeach; endif; ?>
     </tbody>

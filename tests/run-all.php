@@ -89,6 +89,7 @@ const CORE_SUITES = [
     'reschedule-test.php'          => 'moving a booking to another date',
     'agent-loans-test.php'         => 'loans & advances register agrees with the ledger, cap enforced',
     'agent-kyc-test.php'           => 'KYC verdicts are stamped; the selling gate only bites when switched on',
+    'wa-send-scope-test.php'       => 'WhatsApp sends: an agent only about themselves and their own sales, the office about anyone',
     'agent-360-render-test.php'    => 'the Agent 360 hub renders every tab for every role',
     'passenger-docs-test.php'      => 'passenger ID documents attach, stream behind the gate, and remove',
     'tripstatus-test.php'          => 'the 9-state departure ladder',

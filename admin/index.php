@@ -210,7 +210,11 @@ $dateForm = '<form method="get" class="row" style="gap:8px;margin:0">'
     . '</form>';
 $actions = $dateForm
     . '<a class="btn warn" href="' . $base . '/admin/quick-ticket.php"><svg class="a-ic"><use href="#a-bolt"/></svg>QuickBot Ticket</a>'
-    . '<a class="btn" href="/index.php?counter=1#/"><svg class="a-ic"><use href="#a-plus-plain"/></svg>New booking</a>';
+    . '<a class="btn" href="/index.php?counter=1#/"><svg class="a-ic"><use href="#a-plus-plain"/></svg>New booking</a>'
+    // 17 Sep 2026: today's office summary to the admin WhatsApp number in one
+    // click (admin/api/wa-send.php). Renders nothing when wa_admin_tools_enabled
+    // is off or the role lacks dashboard.view — the dashboard itself is untouched.
+    . admin_wa_button('admin_daily_summary', ['on' => todayISO()], 'Today on WhatsApp', ['class' => 'btn ghost']);
 admin_page_head(
     $isTodayView ? 'Live view of today\'s tickets, money and buses.' : 'Static snapshot for ' . formatDate($today) . ' — live numbers are paused.',
     [],

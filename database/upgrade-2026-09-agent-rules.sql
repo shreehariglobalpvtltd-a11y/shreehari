@@ -45,4 +45,5 @@ INSERT IGNORE INTO `settings` (`skey`,`svalue`,`stype`,`sgroup`,`label`,`is_publ
 ('agent_payout_min',          '0',             'float',  'agent', 'Minimum payout amount in ₹ (0 = any amount — paying the full balance is always allowed)', 0),
 ('agent_settlement_due_days', '0',             'int',    'agent', 'Days an agent may hold cash before it is flagged as settlement overdue (0 = never flag)', 0),
 ('agent_kyc_required',        '0',             'bool',   'agent', 'Agents must be KYC-verified before they can sell (off = KYC is informational only)', 0),
-('agent_notify_settlement',   '1',             'bool',   'agent', 'WhatsApp the agent when a payout or cash handover is recorded', 0);
+('agent_notify_settlement',   '1',             'bool',   'agent', 'WhatsApp the agent when a payout or cash handover is recorded', 0),
+('agent_settle_reminder_days','0',             'int',    'agent', 'Days of settlement overdue after which the daily cron sends the agent a WhatsApp payment reminder (0 = off)', 0);

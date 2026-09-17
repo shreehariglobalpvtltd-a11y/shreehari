@@ -1140,9 +1140,27 @@ if (Notify::usablePhone($b['contact_phone'] ?? '') !== '') {
          walk-in placeholder 0000000000 is not empty, so this button used to
          render as a live wa.me/910000000000 link and messaged a stranger in
          India about someone else's booking. -->
-    <?php if (Notify::usablePhone($b['contact_phone'] ?? '') !== ''): ?>
-    <a href="https://wa.me/91<?= preg_replace('/\D/', '', (string)$b['contact_phone']) ?>"
+    <?php if (Notify::usablePhone($b['contact_phone'] ?? '') !== ''):
+      /* 17 Sep 2026: one-click sends through admin/api/wa-send.php — previewed,
+         logged, template-aware. The old hand-built wa.me link stays as each
+         button's 'fallback' (<noscript>) and is shown exactly as before when
+         wa_admin_tools_enabled is off or the role may not send, so nothing is
+         lost. The ticket only for a confirmed booking and the payment reminder
+         only while it is still pending: the composer refuses both otherwise. */
+      $bvWaLink = 'https://wa.me/91' . preg_replace('/\D/', '', (string) $b['contact_phone']);
+      $bvStatus = (string) ($b['status'] ?? '');
+      $bvPnr    = (string) ($b['pnr'] ?? $pnr);
+      $bvWaOpts = ['class' => 'btn btn-ghost btn-sm', 'fallback' => $bvWaLink];
+      $bvWa = ($bvStatus === 'confirmed' ? admin_wa_button('booking_ticket', ['pnr' => $bvPnr], 'Ticket on WhatsApp', $bvWaOpts) : '')
+            . admin_wa_button('booking_passengers', ['pnr' => $bvPnr], 'Details on WhatsApp', $bvWaOpts)
+            . ($bvStatus === 'pending' ? admin_wa_button('customer_payment_reminder', ['pnr' => $bvPnr], 'Payment reminder', $bvWaOpts) : '');
+    ?>
+    <?php if ($bvWa !== ''): ?>
+    <?= $bvWa ?>
+    <?php else: ?>
+    <a href="<?= Security::e($bvWaLink) ?>"
        target="_blank" class="btn btn-ghost btn-sm">💬 WhatsApp Passenger</a>
+    <?php endif; ?>
     <?php else: ?>
     <span class="btn btn-ghost btn-sm" style="opacity:.5;cursor:default" title="This walk-in has no phone on file">💬 No phone on file</span>
     <?php endif; ?>

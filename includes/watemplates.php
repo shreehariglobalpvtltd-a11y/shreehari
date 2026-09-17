@@ -55,6 +55,14 @@ final class WaTemplates
      *
      * @var array<string, array{label:string, audience:string, perm:string, target:string, media:bool, contentSidKey:string, hint:string}>
      */
+    /**
+     * Purposes a signed-in AGENT may send about THEMSELVES (target agent id ===
+     * Auth::bookingScopeAdminId()) without commissions.view: the same figures
+     * agent.php already shows them. Office-only purposes (settlement done,
+     * payment reminder, summaries) are deliberately not here.
+     */
+    public const OWN_AGENT_PURPOSES = ['agent_statement', 'agent_history', 'agent_commission', 'agent_advance', 'agent_outstanding'];
+
     public const REGISTRY = [
         'agent_statement' => ['label' => 'Account statement (PDF)', 'audience' => 'agent', 'perm' => 'commissions.view', 'target' => 'agent', 'media' => true,  'contentSidKey' => 'twilio_content_sid_agent_statement', 'hint' => 'Opening / closing balances, every movement in the period, PDF attached'],
         'agent_history' => ['label' => 'Booking history', 'audience' => 'agent', 'perm' => 'commissions.view', 'target' => 'agent', 'media' => false, 'contentSidKey' => 'twilio_content_sid_agent_statement', 'hint' => 'Every ticket the agent sold in the period'],

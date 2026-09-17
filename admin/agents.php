@@ -389,6 +389,11 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
         <a class="btn ghost" href="agent.php?agent=<?= (int) $r['id'] ?>#tierRatesForm" title="Commission tier, override and rates">💰 Commission</a>
         <?php if ($canManage): ?><a class="btn ghost" href="agent.php?agent=<?= (int) $r['id'] ?>#loginCredentials" title="View or reset their email, username and password">🔑 Login</a><?php endif; ?>
         <a class="btn ghost" href="bookings.php?agent=<?= (int) $r['id'] ?>" title="Every ticket this agent sold">🎫 Tickets</a>
+        <?php /* 17 Sep 2026: one-click WhatsApp — this month's statement, and a payment
+                 reminder only while the row's net position (above) says the agent owes.
+                 Both render nothing when wa_admin_tools_enabled is off or the role may not send. */ ?>
+        <?= admin_wa_button('agent_statement', ['agent' => (int) $r['id'], 'from' => date('Y-m-01'), 'to' => todayISO()], 'Statement', ['class' => 'btn ghost', 'title' => 'This month\'s account statement to the agent on WhatsApp — opens a preview first']) ?>
+        <?php if ($r['net'] > 0.009): ?><?= admin_wa_button('agent_payment_reminder', ['agent' => (int) $r['id']], 'Remind', ['class' => 'btn ghost', 'title' => 'Ask the agent to hand over the cash they hold — opens a preview first']) ?><?php endif; ?>
         <?php if ($canManage && (int) $r['id'] !== $selfId): ?>
           <form method="post" style="display:inline" onsubmit="return confirm('<?= $r['status'] === 'active' ? 'Deactivate this agent? They can no longer sign in or sell.' : 'Activate this agent?' ?>')"><input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="id" value="<?= (int) $r['id'] ?>"><button class="btn <?= $r['status'] === 'active' ? 'danger' : 'ok' ?>" name="action" value="toggle"><?= $r['status'] === 'active' ? '⏸ Deactivate' : '▶ Activate' ?></button></form>
         <?php endif; ?>

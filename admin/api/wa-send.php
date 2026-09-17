@@ -68,8 +68,26 @@ $reg     = WaTemplates::REGISTRY[$purpose] ?? null;
 if ($reg === null) {
     waErr('Unknown message type.');
 }
-if (!Auth::can((string) $reg['perm'])) {
+// 18 Sep 2026: a signed-in agent (scoped) may send their OWN statement-type
+// messages without commissions.view; everything else keeps the registry
+// permission. A scoped agent can never address another agent, another
+// seller's booking (checked after compose, below) or an office / departure
+// document — the same walls every admin page applies.
+$scopeId  = Auth::bookingScopeAdminId();
+$ownAgent = $scopeId !== null && (string) ($reg['target'] ?? '') === 'agent'
+    && (int) ($in['agent_id'] ?? 0) === $scopeId
+    && in_array($purpose, WaTemplates::OWN_AGENT_PURPOSES, true);
+if (!$ownAgent && !Auth::can((string) $reg['perm'])) {
     waErr('Your role may not send this message type.');
+}
+if ($scopeId !== null) {
+    $t = (string) ($reg['target'] ?? '');
+    if ($t === 'agent' && (int) ($in['agent_id'] ?? 0) !== $scopeId) {
+        waErr('You may only send messages about your own account.');
+    }
+    if ($t === 'office' || $t === 'schedule') {
+        waErr('Office summaries and departure documents are sent by the office.');
+    }
 }
 
 $ctx = [
@@ -94,6 +112,13 @@ try {
     $msg = WaTemplates::compose($purpose, $ctx, $admin);
 } catch (Throwable $e) {
     waErr($e->getMessage());
+}
+if ($scopeId !== null && (string) ($reg['target'] ?? '') === 'booking') {
+    // Same disclosure wall as booking-view.php: only the seller's own sales.
+    $soldBy = (int) Database::scalar('SELECT sold_by_admin_id FROM bookings WHERE id = :i', ['i' => (int) ($msg['bookingId'] ?? 0)], 0);
+    if ((int) ($msg['bookingId'] ?? 0) <= 0 || $soldBy !== $scopeId) {
+        waErr('That booking is not one of your sales.');
+    }
 }
 
 $driver  = Settings::getString('whatsapp_driver', 'click_to_chat');

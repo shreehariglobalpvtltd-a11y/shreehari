@@ -1140,6 +1140,13 @@ if ($flash !== null) {
       <input type="date" name="to" value="<?= Security::e(todayISO()) ?>" style="padding:7px 9px;border:1px solid var(--line);border-radius:8px"></div>
     <button class="btn ok" type="submit" name="export" value="ledger">⬇ Download CSV</button>
     <button class="btn" type="button" onclick="window.print()">🖨 Print</button>
+    <?php /* 17 Sep 2026: an agent can WhatsApp themselves this window's statement
+             (PDF link) — office viewers have the same on Agent 360. The helper
+             renders nothing when wa_admin_tools_enabled is off or the role may not
+             send agent_statement (commissions.view). */ ?>
+    <?php if (Auth::isCounterAgent() || Auth::bookingScopeAdminId() !== null): ?>
+      <?= admin_wa_button('agent_statement', ['agent' => (int) (Auth::admin()['id'] ?? 0), 'from' => $monthStart, 'to' => $today], 'Statement on WhatsApp', ['class' => 'btn ghost']) ?>
+    <?php endif; ?>
   </form>
   <table>
     <thead><tr><th>When</th><th>Entry</th><th>Booking</th><th>Note</th><th style="text-align:right">Amount</th></tr></thead>
