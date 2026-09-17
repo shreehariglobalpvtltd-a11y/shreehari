@@ -266,7 +266,7 @@ function tabUrl(string $tabName, array $filterQs): string
     return '?'. http_build_query($qs);
 }
 
-admin_header('Payment Verification Center', 'payments');
+admin_header('Verify Payments', 'payments');
 
 if ($flash !== null) {
     echo '<div class="flash ' . $flash[0] . '">' . Security::e($flash[1]) . '</div>';

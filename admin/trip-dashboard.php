@@ -238,7 +238,7 @@ function td_source_badge(string $source): string
     return '<span class="pill ' . $cls . '">' . Security::e($label) . '</span>';
 }
 
-admin_header('Bus Management', 'trip-dashboard');
+admin_header('Date View', 'trip-dashboard');
 
 if ($flash !== null) {
     echo '<div class="flash ' . $flash[0] . '">' . Security::e($flash[1]) . '</div>';

@@ -79,7 +79,7 @@ $b = ($pnr !== '' && Security::isValidPnr($pnr)) ? BookingService::detail($pnr) 
 $csrf = Security::e(Security::csrfToken());
 $k    = CSRF_TOKEN_NAME;
 
-admin_header('Scan ticket', 'scan');
+admin_header('Scan Ticket', 'scan');
 
 if ($qrNote !== null) {
     // 'warn' is amber, not red: the booking underneath it is genuine, the QR

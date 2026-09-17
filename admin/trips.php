@@ -332,7 +332,7 @@ function trip_milestone_btn(int $sid, string $event, string $icon, string $label
         . '</button></form>';
 }
 
-admin_header('Trips', 'trips');
+admin_header('Trips Board', 'trips');
 
 if ($flash !== null) {
     echo '<div class="flash ' . $flash[0] . '">' . Security::e($flash[1]) . '</div>';

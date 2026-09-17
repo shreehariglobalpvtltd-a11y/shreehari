@@ -367,7 +367,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     }
 }
 
-admin_header('Staff & Agents', 'staff');
+admin_header('Staff & Approvals', 'staff');
 
 if (!$isSuper) {
     echo '<div class="flash bad">Only a super-admin can manage staff and agents.</div>';
