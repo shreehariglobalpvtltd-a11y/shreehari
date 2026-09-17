@@ -73,6 +73,9 @@ function showView(name) {
   window.scrollTo(0, 0);
   observeReveals();
   updateBookProgress(name);
+  /* 17 Sep 2026: the "bus on the road" strip (18-journey.js) — shown on
+     results/seats, detached everywhere else. Optional file, so guarded. */
+  if (window.SHG_JOURNEY && typeof window.SHG_JOURNEY.show === 'function') { try { window.SHG_JOURNEY.show(name); } catch (e) {} }
 }
 function router() {
   captureReferralFromURL();   // a #/?ref=CODE link can arrive mid-session too
