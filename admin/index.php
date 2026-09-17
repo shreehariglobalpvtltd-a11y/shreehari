@@ -277,7 +277,7 @@ admin_page_head(
 <div class="quick-actions">
   <a class="qa" href="<?= $base ?>/admin/payments.php"><span class="qa-icon"><svg class="a-ic"><use href="#a-card"/></svg></span>Verify payments<?php if ($stats['pendingPay'] > 0): ?><span class="qa-badge"><?= (int) $stats['pendingPay'] ?></span><?php endif; ?></a>
   <a class="qa" href="<?= $base ?>/admin/manifest.php"><span class="qa-icon"><svg class="a-ic"><use href="#a-clipboard"/></svg></span>Today's manifest</a>
-  <a class="qa" href="<?= $base ?>/admin/scan.php"><span class="qa-icon"><svg class="a-ic"><use href="#a-scan"/></svg></span>Scan ticket</a>
+  <a class="qa" href="<?= $base ?>/admin/scan.php"><span class="qa-icon"><svg class="a-ic"><use href="#a-scan"/></svg></span>Scan Ticket</a>
   <a class="qa" href="<?= $base ?>/admin/bookings.php"><span class="qa-icon"><svg class="a-ic"><use href="#a-ticket"/></svg></span>All tickets</a>
   <a class="qa" href="<?= $base ?>/admin/seatmap.php"><span class="qa-icon"><svg class="a-ic"><use href="#a-seat"/></svg></span>Seat map</a>
   <a class="qa" href="<?= $base ?>/admin/trips.php"><span class="qa-icon"><svg class="a-ic"><use href="#a-clock"/></svg></span>Trips board</a>

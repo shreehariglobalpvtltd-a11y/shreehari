@@ -25,7 +25,7 @@
   var doc = document, VIEWS = { results: 1, seats: 1 };
   var IMG = 'img/bus-shg-sm.webp';   /* 600x315, alpha, 31 KB */
 
-  /* Where was I loaded from? → asset base + cache stamp (?v=...). */
+  /* Where was I loaded from? → asset base + cache stamp (the v= query). */
   var me = doc.currentScript || (function () { var s = doc.getElementsByTagName('script'); return s[s.length - 1] || null; })();
   var m = /^(.*\/assets\/)js\/[^\/?#]+(\?[^#]*)?/.exec((me && me.src) || '');
   var base = m ? m[1] : '/assets/', stamp = (m && m[2]) || '';
