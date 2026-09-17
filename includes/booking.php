@@ -35,6 +35,15 @@ final class BookingService
     public const LATE_BOOK_HOURS = 24;
 
     /**
+     * Sentinel a client posts as `boarding` / `drop` to say "the passenger
+     * typed their own point" (owner ask, 17 Sep 2026). The text then arrives
+     * in boardingOther / dropOther — api/book.php for create(), $data for
+     * counterSale(). Free text is accepted ONLY behind this sentinel; see the
+     * "Other" pickup / drop block in create() and manualStop().
+     */
+    public const BOARDING_OTHER = '__other__';
+
+    /**
      * Create a pending booking.
      *
      * The $request array is already-validated input from the API layer:
@@ -282,16 +291,46 @@ final class BookingService
            optional client-supplied `originTown` hint picks the right
            one; otherwise we default to the first still-open stop, so a
            ticket never says the wrong pickup. (SHG-2026-00056 fix.) */
-        $boardingStop = Security::clean($request['boarding'] ?? '', 191);
-        if ($boardingStop === '') {
-            $boardingStop = self::defaultBoardingStop(
-                $routeId,
-                $travelDate,
-                Security::clean($request['originTown'] ?? '', 80),
-                (string) ($route['from_city'] ?? '')
-            );
+        /* "Other" pickup / drop (owner ask, 17 Sep 2026) -------------
+           Contract: boarding === self::BOARDING_OTHER ('__other__') AND
+           boardingOther = the text the passenger typed (same pair for
+           drop / dropOther). Only behind that sentinel is free text
+           accepted: trimmed, cleaned to 120 chars, at least 3 characters
+           (manualStop), and saved as plain text into the SAME
+           booking_legs.boarding_stop / drop_stop columns a configured stop
+           uses — so the ticket, manifest, chalani and CSV print it with no
+           change. Without the sentinel the label takes exactly the path it
+           always has, and boardingOther / dropOther are ignored. The
+           cut-off for a manual pickup is judged by the town the passenger
+           SEARCHED from (originTown → that stop's own time, the same stop
+           the dropdown would have defaulted to), else by the route's
+           departure — never later than the configured stop they could have
+           picked instead. */
+        $boardingIsOther = (string) ($request['boarding'] ?? '') === self::BOARDING_OTHER;
+        $dropIsOther     = (string) ($request['drop'] ?? '') === self::BOARDING_OTHER;
+        $originTown      = Security::clean($request['originTown'] ?? '', 80);
+        if ($boardingIsOther) {
+            $boardingStop = self::manualStop($request['boardingOther'] ?? '', 'boarding');
+        } else {
+            $boardingStop = Security::clean($request['boarding'] ?? '', 191);
+            if ($boardingStop === '') {
+                $boardingStop = self::defaultBoardingStop(
+                    $routeId,
+                    $travelDate,
+                    $originTown,
+                    (string) ($route['from_city'] ?? '')
+                );
+            }
         }
-        $cutoff       = Boarding::status($routeId, $travelDate, $boardingStop);
+        $dropStop = $dropIsOther
+            ? self::manualStop($request['dropOther'] ?? '', 'drop')
+            : Security::clean($request['drop'] ?? '', 191);
+        // A manual pickup has no time of its own: the searched town's configured
+        // stop time (what the cut-off below is judged by) is stamped on the leg
+        // so the ticket prints THAT pickup time, not the route origin's departure.
+        // Null when the town matches no stop — the ticket then falls back as before.
+        $boardingTime = ($boardingIsOther && $originTown !== '') ? self::configuredStopTime($routeId, $originTown) : null;
+        $cutoff       = Boarding::status($routeId, $travelDate, ($boardingIsOther && $originTown !== '') ? $originTown : $boardingStop);
         // An extra bus with its own (later) departure sells until IT leaves —
         // the route's stop cut-offs describe the daily bus, not this one.
         if ($chosenSchedule !== null && (int) ($chosenSchedule['slot'] ?? 1) > 1 && !empty($chosenSchedule['dep_time_override'])) {
@@ -327,7 +366,7 @@ final class BookingService
         /* ---- Everything below is atomic --------------------------- */
         $booking = Database::transaction(function () use (
             $route, $routeId, $travelDate, $scheduleIdReq, $seats, $passengers,
-            $contact, $phone, $bookingMode, $isCod, $request, $token, $boardingStop,
+            $contact, $phone, $bookingMode, $isCod, $request, $token, $boardingStop, $dropStop, $boardingTime,
             $referralCodeClean, $soldByAdminId,
             $seller, $sellerId, $sellerSource, $counterMethod, $counterNote, $allowStaffSeats
         ): array {
@@ -480,18 +519,23 @@ final class BookingService
             ]);
 
             /* ---- Outbound leg ------------------------------------- */
-            $legId = Database::insert('booking_legs', [
+            $legRow = [
                 'booking_id'    => $bookingId,
                 'schedule_id'   => $scheduleId,
                 'leg_type'      => 'outbound',
                 'travel_date'   => $travelDate,
-                // Exactly the value the cut-off above was checked against.
+                // Exactly the value the cut-off above was checked against —
+                // or the passenger's own "Other" text, resolved up there too.
                 'boarding_stop' => $boardingStop,
-                'drop_stop'     => Security::clean($request['drop'] ?? '', 191),
+                'drop_stop'     => $dropStop,
                 'fare_per_seat' => $pricing['perSeat'],
                 'seat_count'    => count($seats),
                 'leg_total'     => $pricing['base'],
-            ]);
+            ];
+            if ($boardingTime !== null) {
+                $legRow['boarding_time'] = $boardingTime;   // "Other" pickup only (see above)
+            }
+            $legId = Database::insert('booking_legs', $legRow);
 
             /* ---- Claim seats (throws on a lost race) -------------- */
             Seats::claim($scheduleId, $seats, $bookingId, $legId);
@@ -784,10 +828,19 @@ final class BookingService
         // straight through.
         AgentWallet::assertMaySell($adminId, (int) $route['id']);
 
+        /* "Other" pickup (owner ask, 17 Sep 2026): $data['boarding'] =
+           self::BOARDING_OTHER plus $data['boardingOther'] = the typed text
+           (the create() contract) stores that text verbatim; any other label
+           is matched to a configured stop below exactly as before. Resolved
+           here, outside the transaction, so a too-short text costs no lock. */
+        $boardingOther = (string) ($data['boarding'] ?? '') === self::BOARDING_OTHER
+            ? self::manualStop($data['boardingOther'] ?? '', 'boarding')
+            : null;
+
         $booking = Database::transaction(function () use (
             $route, $scheduleId, $date, $seats, $passengers, $name, $phone, $gender,
             $coach, $bookingMode, $perSeat, $base, $discount, $total, $method, $note, $adminId, $source, $allowStaffSeats,
-            $counterCountryCode
+            $counterCountryCode, $boardingOther
         ): array {
             Seats::assertAvailable($scheduleId, $seats, 'admin-counter-' . $adminId, $allowStaffSeats, $bookingMode);
             Seats::assertGenderAllowed(
@@ -844,7 +897,7 @@ final class BookingService
                 'schedule_id'   => $scheduleId,
                 'leg_type'      => 'outbound',
                 'travel_date'   => $date,
-                'boarding_stop' => self::defaultBoardingStop(
+                'boarding_stop' => $boardingOther ?? self::defaultBoardingStop(
                     (int) $route['id'],
                     $date,
                     (string) ($data['boarding'] ?? $data['originTown'] ?? ''),
@@ -2793,6 +2846,48 @@ final class BookingService
     {
         $method = strtolower(trim($method));
         return in_array($method, ['upi', 'esewa', 'cash', 'bank', 'wallet', 'cod'], true) ? $method : 'upi';
+    }
+
+    /**
+     * The passenger's own "Other" pickup / drop text (owner ask, 17 Sep 2026),
+     * made safe for the booking_legs.boarding_stop / drop_stop columns:
+     * control characters gone, whitespace collapsed, trimmed, cut at 120
+     * characters, and refused when fewer than 3 remain. A canonical-label
+     * suffix ("@ 21:00", "[lat,lng]") is stripped so typed text can never
+     * pose as a configured stop's time on the ticket. Stored as plain text —
+     * booking_legs has no marker column and none is added here.
+     */
+    private static function manualStop(mixed $text, string $which): string
+    {
+        $s = Security::clean($text, 120);
+        $s = (string) preg_replace('/\s*\[[^\]]*\]\s*$/u', '', $s);
+        $s = (string) preg_replace('/\s*@\s*[0-2]?\d:\d{2}\s*$/u', '', $s);
+        $s = trim((string) preg_replace('/\s+/u', ' ', $s));
+        if ($s === self::BOARDING_OTHER || mb_strlen($s, 'UTF-8') < 3) {
+            throw new RuntimeException($which === 'drop'
+                ? 'Please type your drop point (at least 3 letters). / कृपया आफ्नो ओर्लने ठाउँ लेख्नुहोस् (कम्तीमा ३ अक्षर)।'
+                : 'Please type your boarding point (at least 3 letters). / कृपया आफ्नो चढ्ने ठाउँ लेख्नुहोस् (कम्तीमा ३ अक्षर)।');
+        }
+        return $s;
+    }
+
+    /**
+     * 'HH:MM:SS' of the configured pickup whose town matches $town, or null
+     * when none does. Unlike Boarding::timeForStop() this never falls back
+     * to the route's departure — a guess must not be written to the leg.
+     */
+    private static function configuredStopTime(int $routeId, string $town): ?string
+    {
+        $want = Boarding::townKey($town);
+        if ($want === '') {
+            return null;
+        }
+        foreach (Boarding::stopsFor($routeId) as $stop) {
+            if ($stop['time'] !== null && Boarding::townKey((string) $stop['name']) === $want) {
+                return (string) $stop['time'];
+            }
+        }
+        return null;
     }
 
     /**

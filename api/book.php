@@ -4,7 +4,7 @@
  * Body: {
  *   routeId, travelDate, seats[], passengers[{seat,name,age,gender,special?,idType?,idNum?,nationality?}],
  *   contact{phone,email,idType,idNum}, bookingMode?, cabinType?,
- *   sharingTier?, boarding?, drop?, couponCode?, pointsRequested?,
+ *   sharingTier?, boarding?, drop?, boardingOther?, dropOther?, couponCode?, pointsRequested?,
  *   referralCode?, agentCode?, paymentMethod?, isCod?
  * }
  *
@@ -88,6 +88,16 @@ try {
         'sharingTier'     => $input['sharingTier'] ?? null,
         'boarding'        => $input['boarding'] ?? '',
         'drop'            => $input['drop'] ?? '',
+        // "Other" pickup / drop (owner ask, 17 Sep 2026). Contract: the
+        // client posts boarding = '__other__' (BookingService::BOARDING_OTHER)
+        // PLUS boardingOther = the text the passenger typed; same pair for
+        // drop / dropOther. Only behind that sentinel does the server accept
+        // free text (BookingService::create trims it, cleans it to 120 chars
+        // and refuses fewer than 3), and it lands in the same
+        // booking_legs.boarding_stop / drop_stop columns a configured stop
+        // does. Without the sentinel these two fields are ignored.
+        'boardingOther'   => Security::clean(is_scalar($input['boardingOther'] ?? null) ? $input['boardingOther'] : '', 120),
+        'dropOther'       => Security::clean(is_scalar($input['dropOther'] ?? null) ? $input['dropOther'] : '', 120),
         // Search-origin hint the server uses to pick the right route_stops
         // row when 'boarding' arrives empty (a route with no visible
         // dropdown, or an old client). See BookingService::defaultBoardingStop.

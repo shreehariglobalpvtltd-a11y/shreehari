@@ -671,6 +671,70 @@ function suggestSeats(n) {
 }
 
 let SEAT_TOKEN = 0;
+/* ---- "Other" boarding / drop point (owner ask, 17 Sep 2026) ---------------
+   Each select ends with an Other option (value BOARD_OTHER); choosing it
+   reveals the text box under the select (#boardingOther / #dropOther in
+   app.template.html). At Continue the typed text goes into legData.boarding
+   (so every card and ticket that prints b.boarding shows it as-is) AND into
+   legData.boardingOther, which makes the checkout post the '__other__'
+   sentinel + boardingOther to api/book.php — the server accepts free text
+   only behind that sentinel (BookingService::BOARDING_OTHER). Same for drop.
+   Counter mode (14-counter.js) sells through this very view, so one
+   implementation covers the customer and the desk. */
+const BOARD_OTHER = '__other__';
+
+/* Was Other chosen on this select for this very leg? Read BEFORE a refill.
+   The select remembers which bus + date it was last built for (data-leg),
+   so a fresh leg never inherits the previous leg's choice or text. */
+function otherStopChosen(sel, legKey) {
+  return !!sel && sel.getAttribute('data-leg') === legKey && sel.value === BOARD_OTHER;
+}
+
+/* Append the Other option, keep / restore the choice across redraws, and
+   wire the reveal. keep = Other was chosen before this redraw of the same
+   leg (the typed text is still in the box, whatever the redraw's reason:
+   occupancy poll, cabin / tier toggle, language switch, back from checkout);
+   restoreText = what this leg had typed before it was carried past Continue,
+   used only when the view is built fresh for that same leg. */
+function syncOtherStop(sel, inputId, label, legKey, keep, restoreText) {
+  const inp = $(inputId); if (!sel || !inp) return;
+  const field = inp.closest('.field');
+  const sameLeg = sel.getAttribute('data-leg') === legKey;
+  sel.setAttribute('data-leg', legKey);
+  const opt = document.createElement('option');
+  opt.value = BOARD_OTHER; opt.textContent = '✏️ ' + label;
+  sel.appendChild(opt);
+  if (keep) { sel.value = BOARD_OTHER; }
+  else if (!sameLeg) {
+    if (restoreText) { sel.value = BOARD_OTHER; inp.value = restoreText; }
+    else { inp.value = ''; }                      // a fresh leg never inherits old text
+  }
+  const show = () => {
+    const on = sel.value === BOARD_OTHER;
+    inp.classList.toggle('hide', !on);
+    if (field) field.classList.remove('invalid');
+    return on;
+  };
+  show();
+  sel.onchange = () => { if (show()) { try { inp.focus(); } catch (e) {} } };
+  inp.oninput = () => { if (field) field.classList.remove('invalid'); };
+}
+
+/* The text behind an Other choice: '' when a configured stop is selected,
+   the tidied text when it is long enough, false (field marked, toast shown)
+   when it is not. Mirrors BookingService::manualStop — min 3, max 120. */
+function otherStopText(sel, inputId, errKey) {
+  if (!sel || sel.value !== BOARD_OTHER) return '';
+  const inp = $(inputId);
+  const txt = String((inp && inp.value) || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  if (txt.length >= 3) return txt;
+  const field = inp ? inp.closest('.field') : null;
+  if (field) { field.classList.add('invalid'); try { field.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {} }
+  if (inp) { try { inp.focus(); } catch (e) {} }
+  toast(t(errKey));
+  return false;
+}
+
 function renderSeats(instant) {
   const r = Flow.route; if (!r) return;
   const ctx = legCtx();
@@ -718,6 +782,15 @@ function renderSeats(instant) {
       .filter(Boolean);
     sel.innerHTML = opts.map(p => '<option value="' + esc(p) + '">' + esc(bpLabel(p)) + '</option>').join('');
   };
+  /* "Other" pickup / drop (owner ask, 17 Sep 2026) — see syncOtherStop(). Any
+     redraw of this same leg (occupancy poll, cabin / tier toggle, language
+     switch, back from checkout) rebuilds both selects, so note BEFORE the
+     refill whether Other was chosen for this very bus + date. */
+  const legKey = r.id + '|' + ctx.date;
+  const otherWas = {
+    b: otherStopChosen($('#boardingSel'), legKey),
+    d: otherStopChosen($('#dropSel'), legKey)
+  };
   fill($('#boardingSel'), r.boarding);
   fill($('#dropSel'), r.drop);
 
@@ -737,6 +810,14 @@ function renderSeats(instant) {
   if (dSel && typeof r.dropIdx === 'number' && r.dropIdx >= 0 && r.dropIdx < dSel.options.length) {
     dSel.selectedIndex = r.dropIdx;
   }
+  /* The Other option goes LAST and only now, after the index pre-select, so
+     the server's boardingIdx / dropIdx keep addressing configured stops only.
+     A leg already carried past Continue (Flow.legs) restores its typed text
+     when the view is built fresh; a different bus / date never inherits it. */
+  const prevLeg = Flow.legs[Flow.legIndex];
+  const sameLeg = !!(prevLeg && prevLeg.routeId === r.id && prevLeg.date === ctx.date);
+  syncOtherStop(bSel, '#boardingOther', t('boardOther'), legKey, otherWas.b, sameLeg ? (prevLeg.boardingOther || '') : '');
+  syncOtherStop(dSel, '#dropOther', t('dropOther'), legKey, otherWas.d, sameLeg ? (prevLeg.dropOther || '') : '');
 
   $('#seatMaxNote').textContent = tf('seatNote', { n: CONFIG.booking.maxSeats });
 
@@ -1148,12 +1229,22 @@ function renderSeats(instant) {
     if (Flow.tripType === 'round' && Flow.legIndex === 1 && Flow.legs[0] && Flow.seats.length !== Flow.legs[0].seats.length) {
       toast(tf('tRetCount', { n: Flow.legs[0].seats.length })); return;
     }
+    /* "Other" pickup / drop: the typed text must be at least 3 letters (the
+       server enforces the same) — otherwise the field is marked and we stay. */
+    const bOther = otherStopText($('#boardingSel'), '#boardingOther', 'boardOtherErr');
+    if (bOther === false) return;
+    const dOther = otherStopText($('#dropSel'), '#dropOther', 'dropOtherErr');
+    if (dOther === false) return;
     const legData = {
       routeId: r.id, date: ctx.date, seats: Flow.seats.slice(),
-      boarding: $('#boardingSel').value, drop: $('#dropSel').value, fare: r.fare,
+      boarding: bOther || $('#boardingSel').value, drop: dOther || $('#dropSel').value, fare: r.fare,
       sid: Flow.scheduleId || 0,  // extra bus on this date (Bus Calendar, 5 Sep 2026); 0 = daily bus
       fareOverride: Flow.fareOverride || 0   // this bus's own per-seat price; 0 = the normal fare
     };
+    // The same text again as a flag: the checkout then posts the '__other__'
+    // sentinel + boardingOther / dropOther (see submitBooking in 07-checkout).
+    if (bOther) legData.boardingOther = bOther;
+    if (dOther) legData.dropOther = dOther;
     if (r.type === 'sleeper' && Flow.bookingType) {
       legData.bookingType = Flow.bookingType;
       if (Flow.bookingType === 'private') {

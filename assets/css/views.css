@@ -2313,6 +2313,9 @@ a,button,.btn,.nav a,.tab-btn,.pm-tab,.bt-pill,.tier-pill,.proof-tab,.trip-pill{
 :root[data-theme="dark"] .field.invalid input,:root[data-theme="dark"] .field.invalid select{
   border-color:#D97706 !important;box-shadow:0 0 0 3px rgba(217,119,6,.18) !important}
 
+/* ---------- [CSS] "OTHER" PICKUP / DROP — text box under the select (17 Sep 2026) ---------- */
+.field .bp-other{margin-top:8px}
+
 /* ---------- [CSS] PAYMENT TABS — visual cards with flag + sub-label ---------- */
 .pm-tab{flex-direction:column !important;gap:4px !important;padding:14px 8px 12px !important;min-height:74px !important}
 .pm-tab .pm-flag{font-size:26px;line-height:1;display:block}

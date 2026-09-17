@@ -138,6 +138,7 @@ body{margin:0;background:#FFFFFF}
      split-pay, 7-day seat-fill chart. Last on purpose: it reads the globals
      the files above define and every hook it adds is optional. -->
 <script defer src="/assets/js/17-pwa.js?v=20260917a"></script>
+<script defer src="/assets/js/18-journey.js?v=20260917a"></script>
 <meta property="og:title" content="S Hari Global Pvt Ltd — Gujarat ⇄ Rupaidiha Bus">
 <meta property="og:description" content="Direct AC Sleeper coach from Gujarat (India) to the Rupaidiha–Nepalgunj border. Boarding at Surat, Baroda, Emli Bhupal, S Hari Parking (Nana Chiloda) & Mehsana (Silver Complex). Book online at one fixed fair price. Private & sharing cabins.">
 <meta property="og:type" content="website">
@@ -1738,8 +1739,15 @@ s.addEventListener('click',function(e){e.preventDefault();
           <div class="occ-lbl" style="margin-top:6px"><span>🎯 Tier seats picked · टियर सिट</span><b id="occCount">—</b></div>
         </div>
       </div>
-      <div class="field" style="margin-top:14px"><label for="boardingSel" data-i18n="lblBoard">Boarding point</label><select id="boardingSel"></select></div>
-      <div class="field"><label for="dropSel" data-i18n="lblDrop">Drop point</label><select id="dropSel"></select></div>
+      <!-- "Other" pickup / drop (owner ask, 17 Sep 2026): the last option of each
+           select is Other; picking it reveals the text box under it, whose text is
+           posted as boardingOther / dropOther and saved on the booking (06-results.js). -->
+      <div class="field" style="margin-top:14px"><label for="boardingSel" data-i18n="lblBoard">Boarding point</label><select id="boardingSel"></select>
+        <input type="text" id="boardingOther" class="bp-other hide" maxlength="120" autocomplete="off" autocapitalize="words" data-i18n-ph="boardOtherPh" placeholder="Type your pickup point">
+        <div class="err" data-i18n="boardOtherErr">Please type your boarding point (at least 3 letters)</div></div>
+      <div class="field"><label for="dropSel" data-i18n="lblDrop">Drop point</label><select id="dropSel"></select>
+        <input type="text" id="dropOther" class="bp-other hide" maxlength="120" autocomplete="off" autocapitalize="words" data-i18n-ph="dropOtherPh" placeholder="Type your drop point">
+        <div class="err" data-i18n="dropOtherErr">Please type your drop point (at least 3 letters)</div></div>
       <div id="fareRows"></div>
       <div class="sum-row total"><span data-i18n="rowTotal">Total fare</span><b id="sumFare">₹0</b></div>
       <div class="vip-priority-chip" id="vipPrioritySeats">🧑‍✈️<span>Priority Boarding · VIP Support<small>पहिलो बोर्डिङ प्राथमिकता · सबसे पहले बोर्डिंग · You board first, with dedicated VIP care.</small></span></div>

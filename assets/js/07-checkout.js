@@ -1234,7 +1234,11 @@ async function submitBooking() {
       bookingMode: out.bookingType || 'sharing',
       cabinType: out.cabinType || null,
       sharingTier: out.sharingTier || null,
-      boarding: out.boarding, drop: out.drop,
+      // "Other" pickup / drop (17 Sep 2026): the select posts the '__other__'
+      // sentinel and the typed text travels in its own field — the server
+      // accepts free text only behind the sentinel (BookingService::BOARDING_OTHER).
+      boarding: out.boardingOther ? BOARD_OTHER : out.boarding, drop: out.dropOther ? BOARD_OTHER : out.drop,
+      boardingOther: out.boardingOther || '', dropOther: out.dropOther || '',
       // Search-origin town; server backfills boarding_stop from it when
       // the client posted an empty boarding (SHG-2026-00056 fix).
       originTown: Flow.from || '',
