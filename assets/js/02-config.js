@@ -481,6 +481,21 @@ const CONFIG = {
   if (n > 0 && n <= 20) CONFIG.booking.maxSeats = n;
 })();
 
+/* Round trip gate (17 Sep 2026): the engine sells ONE leg per ticket —
+   api/book.php has no returnLeg — so a "Round trip" chosen in the app would
+   silently drop its return. The pill is offered only once the office turns
+   the public setting round_trip_on on (database/upgrade-2026-09-round-trip.sql);
+   off, the confirmed ticket offers "Book return journey" instead. A missing
+   row reads as off, exactly like the shipped value. */
+CONFIG.roundTripOn = false;
+(function applyServerRoundTrip() {
+  var v = null;
+  try { v = window.SHG_BOOT && window.SHG_BOOT.settings && window.SHG_BOOT.settings.round_trip_on; }
+  catch (e) { v = null; }
+  if (v === undefined || v === null) return;
+  CONFIG.roundTripOn = (v === true || v === 1 || v === '1' || String(v).toLowerCase() === 'true');
+})();
+
 (function applyServerPricing() {
   var srv = null;
   try { srv = window.SHG_BOOT && window.SHG_BOOT.settings && window.SHG_BOOT.settings.cabin_pricing; }

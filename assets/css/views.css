@@ -3646,3 +3646,25 @@ body.wa-open{overflow:hidden}
 .tk2-note.wa{border-left:4px solid #25D366}
 .tk2-note.wa.ok{background:#E7F8EE;color:#0F7A3D}
 .tk2-note.wa.warn{background:#FFF4E0;color:#8A5A0B;border-left-color:#F0A020}
+
+/* ================================================================
+   PER-SEAT NAMES (17 Sep 2026). "Different names per seat" on the
+   checkout flips #paxRows.pax-names-on: the hidden .grp-extra rows come
+   back as full passenger rows (same .pxName/.pxAge/.pxGender inputs and
+   data-seat, so live validation, the draft autosave and the
+   one-passenger-per-seat POST are untouched). Off — the default — keeps
+   the one-name group booking exactly as before. The restore mirrors the
+   .pax-row card rules above (light + dark + focus ring), because the
+   collapsed .grp-extra rule in app.css strips them with !important.
+================================================================ */
+#paxRows.pax-names-on .pax-row.grp-extra{display:grid;gap:10px;margin-bottom:10px;opacity:1;padding:12px 14px !important;background:var(--blue-50) !important;border:1.5px solid var(--blue-100) !important}
+#paxRows.pax-names-on .pax-row.grp-extra:focus-within{border-color:var(--blue) !important;background:#fff !important;box-shadow:0 0 0 4px rgba(46,95,168,.10) !important}
+:root[data-theme="dark"] #paxRows.pax-names-on .pax-row.grp-extra{background:rgba(46,95,168,.10) !important;border-color:#3B4E75 !important}
+:root[data-theme="dark"] #paxRows.pax-names-on .pax-row.grp-extra:focus-within{background:rgba(46,95,168,.16) !important}
+#paxRows.pax-names-on .pax-row.grp-extra .grp-fields{display:block}
+#paxRows.pax-names-on .pax-row.grp-extra .seat-tag{padding:11px 0;font-size:13px}
+#paxRows.pax-names-on .pax-group-note{display:none}
+.pax-names-toggle{margin:0 0 14px}
+/* Ticket actions: a full-width fourth button ("Book return journey") under
+   the three primary ones, instead of a lone button in a 3-column grid. */
+.tk2-actions .tk2-wide{grid-column:1/-1}

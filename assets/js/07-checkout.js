@@ -164,7 +164,9 @@ function validateCheckoutDetails() {
   /* Group booking (Task 6): one name + one gender for the whole party. The
      lead passenger's resolved values are applied to every seat, so the ticket
      reads "Name · N passengers" and the shared-cabin lock sees one gender. */
-  if (passengers.length > 1 && $('#paxRows .grp-extra')) {
+  /* Unless "Different names per seat" is on (Flow.paxIndividual, 17 Sep
+     2026) — then every row is its own passenger and nothing is mirrored. */
+  if (!Flow.paxIndividual && passengers.length > 1 && $('#paxRows .grp-extra')) {
     const gName = passengers[0].name, gGender = passengers[0].gender;
     passengers.forEach(p => { p.name = gName; p.gender = gGender; });
   }
@@ -525,8 +527,15 @@ function applyPaxMemory() {
    V6 §"One-click rebook previous trip".
    Loads the same route straight into the results view for tomorrow,
    with that trip's passengers already remembered for checkout.
+
+   reverse = true (17 Sep 2026, "Book return journey" on a confirmed
+   ticket): the OPPOSITE direction instead — the Nepal hub ⇄ the
+   passenger's own Gujarat stop — dated after the outbound bus arrives,
+   with the lead passenger handed to the checkout through the same
+   SHG_QUICK prefill the home-page card uses. Still one ticket per leg:
+   the engine books no return leg yet (round_trip_on gate, 05-router).
 ================================================================ */
-function rebookFrom(bookingId) {
+function rebookFrom(bookingId, reverse) {
   const b = DB.bookings.find(x => x.id === bookingId);
   if (!b) return;
   const r = routeById(b.routeId);
@@ -535,19 +544,54 @@ function rebookFrom(bookingId) {
   PaxMemory.remember(b);
 
   const setVal = (sel, v) => { const el = $(sel); if (el && $$('option', el).some(o => o.value === v)) el.value = v; };
-  setVal('#fromSel', r.from);
-  setVal('#toSel', r.to);
+  let from = r.from, to = r.to;
+  let date = addDaysISO(todayISO(), 1);
+  if (reverse) {
+    from = r.to; to = r.from;
+    /* The passenger's own Gujarat stop (boarding going out, drop coming
+       back) is where the return starts or ends — not the route's nominal
+       end city. The Nepal side stays the hub the search understands. */
+    const nep = (typeof isNepalPoint === 'function') ? isNepalPoint : (() => false);
+    const ownTown = nep(r.from) ? (parseBP(b.drop || '').name || '') : (parseBP(b.boarding || '').name || '');
+    if (ownTown && !nep(ownTown)) { if (nep(from)) to = ownTown; else from = ownTown; }
+    /* Earliest sensible day: the one after the outbound bus arrives. */
+    const arrive = addDaysISO(b.date || todayISO(), (parseInt(r.dayOffset, 10) || 0) + 1);
+    if (arrive > date) date = arrive;
+    /* Drive the simple search (direction + town) when it is there, so the
+       hidden #fromSel/#toSel it mirrors onto are set exactly as a tap would. */
+    if (typeof setSearchDir === 'function' && $('#pointSel')) {
+      const dir = nep(from) ? 'back' : 'go';
+      const town = dir === 'back' ? to : from;
+      setSearchDir(dir);
+      const ps = $('#pointSel');
+      if (ps && $$('option', ps).some(o => o.value === town)) { ps.value = town; if (typeof applyDirection === 'function') applyDirection(); }
+      from = ($('#fromSel') || {}).value || from; to = ($('#toSel') || {}).value || to;
+    } else { setVal('#fromSel', from); setVal('#toSel', to); }
+    /* Same lead passenger on the return ticket (renderCheckout reads SHG_QUICK). */
+    try {
+      const lead = (b.passengers || [])[0] || {};
+      const nm = String(lead.name || '').trim();
+      window.SHG_QUICK = {
+        name: (nm && nm.indexOf(t('paxAuto')) !== 0) ? nm : '',
+        phone: digits((b.contact && b.contact.phone) || ''),
+        gender: lead.gender || '', age: lead.age || ''
+      };
+    } catch (e) {}
+  } else {
+    setVal('#fromSel', from);
+    setVal('#toSel', to);
+  }
 
-  const date = addDaysISO(todayISO(), 1);
   const di = $('#dateInput'); if (di) di.value = date;
   markDateChip();
 
   setTripType('one');
   releaseMyLocks();
-  Flow.from = r.from; Flow.to = r.to; Flow.date = date; Flow.retDate = '';
+  Flow.from = from; Flow.to = to; Flow.date = date; Flow.retDate = '';
   Flow.route = null; Flow.seats = []; Flow.legs = []; Flow.legIndex = 0; Flow.draftId = ''; Flow.fareOverride = 0;
+  Flow.paxIndividual = false;
 
-  toast(t('tRebookOn'));
+  toast(t(reverse ? 'tRebookRet' : 'tRebookOn'));
   location.hash = '#/results';
   if (location.hash === '#/results') router();
 }
@@ -558,7 +602,10 @@ function renderCheckout() {
   const rOut = routeById(out.routeId) || {};
   const ret = legs[1] || null;
   const rRet = ret ? (routeById(ret.routeId) || {}) : null;
-  Flow.draftId = Flow.draftId || genId(rOut);  // ticket ID reserved up-front
+  if (!Flow.draftId) {
+    Flow.draftId = genId(rOut);  // ticket ID reserved up-front
+    Flow.paxIndividual = false;  // a new draft starts as a one-name group booking (17 Sep 2026)
+  }
 
   let info = (rOut.from || '') + ' → ' + (rOut.to || '') + ' · ' + fmtDate(out.date) + ' · ' + seatLabelJoin(out.seats, rOut.type, out.bookingType);
   if (ret) info += '   |   ↩ ' + (rRet.from || '') + ' → ' + (rRet.to || '') + ' · ' + fmtDate(ret.date) + ' · ' + seatLabelJoin(ret.seats, rRet.type, ret.bookingType);
@@ -578,7 +625,7 @@ function renderCheckout() {
       <div class="field field-optional grp-fields"><label data-i18n="${i === 0 ? 'lblName' : 'lblName'}">${i === 0 && grpN > 1 ? tf('lblGroupName', { n: grpN }) : t('lblName')}</label><input class="pxName" placeholder="${esc(t('paxAuto'))} ${i + 1}" autocomplete="name" autocapitalize="words"><div class="err" data-i18n="errName">${t('errName')}</div></div>
       <div class="field field-optional grp-fields"><label data-i18n="lblAge">${t('lblAge')}</label><input class="pxAge" type="number" min="1" max="99" inputmode="numeric" placeholder="—"><div class="err" data-i18n="errAge">${t('errAge')}</div></div>
       <div class="field field-optional grp-fields"><label data-i18n="lblGender">${t('lblGender')}</label><select class="pxGender"><option value="">—</option><option value="Male">${t('gM')}</option><option value="Female">${t('gF')}</option><option value="Other">${t('gO')}</option></select></div>
-    </div>`).join('') + (grpN > 1 ? `<p class="pax-group-note" data-i18n="paxGroupNote">${tf('paxGroupNote', { n: grpN })}</p>` : '');
+    </div>`).join('') + (grpN > 1 ? `<p class="pax-group-note" data-i18n="paxGroupNote">${tf('paxGroupNote', { n: grpN })}</p><button type="button" class="btn btn-ghost btn-sm pax-names-toggle" id="paxNamesToggle" aria-pressed="false">${esc(t('paxNamesOn'))}</button>` : '');
 
   /* Mirror the lead passenger onto the hidden extra seats so the whole party
      books under ONE name + one gender (Task 6). Gender flows to every seat too,
@@ -587,6 +634,7 @@ function renderCheckout() {
   if (grpN > 1) {
     const lead = $('#paxRows .grp-lead');
     const syncGroup = () => {
+      if (Flow.paxIndividual) return;   // per-seat names on (17 Sep 2026): every row is its own passenger
       const nm = $('.pxName', lead).value, ag = $('.pxAge', lead).value, gd = $('.pxGender', lead).value;
       $$('#paxRows .grp-extra').forEach(row => {
         $('.pxName', row).value = nm; $('.pxAge', row).value = ag; $('.pxGender', row).value = gd;
@@ -594,6 +642,35 @@ function renderCheckout() {
     };
     ['input', 'change'].forEach(ev => lead.addEventListener(ev, syncGroup));
     syncGroup();
+
+    /* "Different names per seat" (17 Sep 2026): an opt-in that shows the
+       hidden rows as full passenger rows (#paxRows.pax-names-on, views.css)
+       and stops the mirroring — a mixed party, or a manifest that needs
+       every name, no longer has to travel under one name. Same inputs,
+       same one-passenger-per-seat POST, server unchanged; the default is
+       exactly as before. Switching on clears the mirrored copies so each
+       row shows its own placeholder; switching off re-mirrors the lead. */
+    const pnt = $('#paxNamesToggle');
+    const applyPaxMode = () => {
+      const on = !!Flow.paxIndividual;
+      $('#paxRows').classList.toggle('pax-names-on', on);
+      if (pnt) { pnt.setAttribute('aria-pressed', on ? 'true' : 'false'); pnt.textContent = t(on ? 'paxNamesOff' : 'paxNamesOn'); }
+      const leadLbl = $('#paxRows .grp-lead .grp-fields label');
+      if (leadLbl) leadLbl.textContent = on ? t('lblName') : tf('lblGroupName', { n: grpN });
+      if (!on) syncGroup();
+    };
+    if (pnt) pnt.onclick = () => {
+      Flow.paxIndividual = !Flow.paxIndividual;
+      if (Flow.paxIndividual) {
+        $$('#paxRows .grp-extra').forEach(row => { $('.pxName', row).value = ''; $('.pxAge', row).value = ''; $('.pxGender', row).value = ''; });
+      }
+      applyPaxMode();
+      if (Flow.paxIndividual) { const f = $('#paxRows .grp-extra .pxName'); if (f) { try { f.focus({ preventScroll: true }); } catch (e) {} } }
+      coSyncContinue();
+    };
+    applyPaxMode();
+  } else {
+    Flow.paxIndividual = false;
   }
 
   /* A fresh checkout must never inherit the previous sale's button state.
@@ -730,6 +807,16 @@ function renderCheckout() {
     var elR = $('#bpRoute'); if (elR) elR.textContent = (rOut.from || '') + ' → ' + (rOut.to || '');
     var elM = $('#bpMeta'); if (elM) elM.textContent = fmtDate(out.date) + ' · ' + out.seats.length + ' seat' + (out.seats.length > 1 ? 's' : '') + ' · ' + seatLabelJoin(out.seats, rOut.type, out.bookingType);
     var elA = $('#bpAmt'), pa = $('#payAmount'); if (elA && pa) elA.textContent = pa.textContent;
+    /* Sticky recap in the step-1 action bar (17 Sep 2026): route · seats ·
+       amount — step 1 otherwise shows no amount at all. data-val is the
+       tween's true target (flipNumber), so a mid-animation read never
+       leaves a half-way number here. */
+    var rc = $('#coRecap');
+    if (rc) {
+      var dv = pa ? pa.getAttribute('data-val') : null;
+      var amt = (dv != null && dv !== '' && !isNaN(parseInt(dv, 10))) ? inr(parseInt(dv, 10)) : ((pa && pa.textContent) || '');
+      rc.textContent = (rOut.from || '') + ' → ' + (rOut.to || '') + ' · ' + seatLabelJoin(out.seats, rOut.type, out.bookingType) + (amt ? ' · ' + amt : '');
+    }
   }
   $$('#paxRows .pxName').forEach(function (n) { n.addEventListener('input', updateCoSummary); });
   updateCoSummary();
@@ -1261,6 +1348,7 @@ async function submitBooking() {
   const id = pnr;
   Flow.route = null; Flow.seats = []; Flow.legs = []; Flow.legIndex = 0; Flow.draftId = ''; Flow.fareOverride = 0; Flow.shotThumb = ''; Flow.shotBlob = null;
   Flow.sharingTier = null; Flow.tierManual = false; Flow.patient = false;
+  Flow.paxIndividual = false;   // the next party starts under one name again
   location.hash = '#/ticket/' + id;
   toast(t('tSubmitted'));
   SFX.success(); shgHaptic('success');
@@ -1687,6 +1775,7 @@ function renderStatus(id) {
   const b = DB.bookings.find(x => x.id === id);
   const body = $('#statusBody');
   if (!b) {
+    if (typeof TicketPoll !== 'undefined') TicketPoll.stop();
     body.innerHTML = '<div class="empty-state"><div class="big">🔍</div><h3>' + t('stNotFoundT') + '</h3><p>'
       + tf('stNotFoundP', { id: esc(id) }) + '</p><a class="btn btn-blue" href="#/">' + t('btnHome') + '</a></div>';
     return;
@@ -1890,6 +1979,10 @@ function renderStatus(id) {
     ? '<button class="btn btn-orange" id="imgBtn" type="button">' + t('btnImg') + '</button>'
       + '<button class="btn btn-wa" id="waBtn" type="button">🟢 ' + t('btnWa') + '</button>'
       + '<a class="btn btn-blue" href="#/trip/' + esc(b.id) + '">' + t('tkTrackBtn') + '</a>'
+      /* Return journey as its own ticket (17 Sep 2026): the engine books one
+         leg per ticket (round_trip_on gate), so this starts a fresh search in
+         the opposite direction with the same lead passenger — rebookFrom(id, true). */
+      + '<button class="btn btn-ghost tk2-wide" id="retBookBtn" type="button">' + t('btnRetBook') + '</button>'
     : (b.status === 'pending' ? '<button class="btn btn-blue" id="refreshBtn" type="button">' + t('btnRefresh') + '</button>' + splitBtn : '')
       + (canCancel(b) ? '<button class="btn btn-danger-ghost" id="cancelBtn" type="button">' + t('btnCancel') + '</button>' : '')
       + '<a class="btn btn-orange" href="#/">' + t('tkNewTicket') + '</a>';
@@ -1997,7 +2090,24 @@ function renderStatus(id) {
     const shareBtn = $('#shareBtn'); if (shareBtn) shareBtn.onclick = () => shareTicket(b);
     if (typeof window.wireBoardingReminder === 'function') window.wireBoardingReminder(b);
   }
-  if (b.status === 'pending') $('#refreshBtn').onclick = () => renderStatus(id);
+  if (b.status === 'pending') {
+    /* Refresh now ASKS the server (17 Sep 2026) — it used to only redraw the
+       local copy — and the same ticket is re-read every 20 s while it stays
+       pending and on screen (TicketPoll, 05-router.js), so an approval shows
+       up here without navigating away and back. */
+    const rfBtn = $('#refreshBtn');
+    if (rfBtn) rfBtn.onclick = () => {
+      rfBtn.disabled = true; rfBtn.classList.add('loading');
+      syncBookings([id]).then((changed) => {
+        renderStatus(id);
+        if (!changed) toast(t('tStatusFresh'));
+      }).catch(() => { renderStatus(id); });
+    };
+    if (typeof TicketPoll !== 'undefined') TicketPoll.start(id);
+  } else if (typeof TicketPoll !== 'undefined') {
+    TicketPoll.stop();
+  }
+  const rbk = $('#retBookBtn'); if (rbk) rbk.onclick = () => rebookFrom(id, true);
   const wb = $('#waBtn'); if (wb) wb.onclick = () => waShare(id);
   const cb = $('#cancelBtn'); if (cb) cb.onclick = () => openCancelModal(id);
   /* 17-pwa.js wiring (13 Sep 2026): border checklist ticks + print, push

@@ -1210,11 +1210,13 @@ function updateSeatSummary() {
     seatView.classList.toggle('sharing-mode', !!(isSleeper && Flow.bookingType === 'sharing'));
   }
 
+  let recapTotal = 0;
   if (isSleeper && Flow.seats.length) {
     const seatLabels = Flow.seats;
     const hasDouble = seatLabels.some(s => /^D/i.test(s));
     const cabinType = hasDouble ? 'double' : 'single';
     const cf = calcCabinFare(cabinType, Flow.bookingType, Flow.seats.length, true, Flow.route && Flow.route.to, Flow.fareOverride);
+    recapTotal = cf.total;
     let rows = '<div class="sum-row"><span>' + cf.emoji + ' ' + cf.label + '</span><b>' + inr(cf.total) + '</b></div>';
     if (cf.saved > 0) rows += '<div class="sum-row disc"><span>🌐 Online Discount</span><b>− ' + inr(cf.saved) + '</b></div>';
     rows += '<div class="sum-row"><span>' + tf('rowPaxFare', { n: Flow.seats.length, f: inr(cf.perPerson) }) + '</span><b>' + inr(cf.total) + '</b></div>';
@@ -1226,9 +1228,18 @@ function updateSeatSummary() {
     $('#sumFare').innerHTML = inr(cf.total) + ' <small style="color:var(--muted);font-weight:500">' + nprEst(cf.total) + '</small>';
   } else {
     const f = calcFare(currentLegs());
+    recapTotal = f.total;
     $('#fareRows').innerHTML = fareRowsHTML(f);
     $('#sumFare').innerHTML = inr(f.total) + ' <small style="color:var(--muted);font-weight:500">' + nprEst(f.total) + '</small>';
   }
+  /* Sticky recap in the fixed Continue bar (17 Sep 2026): on a phone the
+     summary card scrolls away under the map, so the bar itself reads
+     "L3, L4 · ₹4,000" — the same chips and total as above. Empty when
+     nothing is picked, and the CSS hides an empty recap. */
+  const recap = $('#seatRecap');
+  if (recap) recap.textContent = Flow.seats.length
+    ? Flow.seats.map(s => seatLabel(s, Flow.route && Flow.route.type, Flow.bookingType)).join(', ') + ' · ' + inr(recapTotal)
+    : '';
   $('#continueBtn').disabled = !Flow.seats.length;
   updateTierUI();
 }

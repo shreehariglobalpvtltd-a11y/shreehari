@@ -1263,6 +1263,8 @@ table.admin .code{font-family:var(--f-code);font-size:12.5px}
 .trip-toggle{display:inline-flex;background:var(--blue-50);border:1.5px solid var(--blue-100);border-radius:999px;padding:3px;margin-bottom:16px}
 .trip-pill{padding:8px 18px;border-radius:999px;font-weight:800;font-size:13px;color:var(--muted);transition:all .2s}
 .trip-pill.on{background:var(--blue);color:#fff;box-shadow:0 4px 12px rgba(46,95,168,.3)}
+/* Round-trip gate note (17 Sep 2026): shown in place of the hidden "Round trip" pill. */
+.trip-toggle .trip-note{display:block;width:100%;font-size:12px;color:var(--muted);margin-top:6px;line-height:1.4}
 .search-card.round .search-grid{grid-template-columns:1fr 54px 1fr 1fr 1fr auto}
 
 /* Seat map — drawn like a real coach */
@@ -1598,6 +1600,18 @@ table.admin .code{font-family:var(--f-code);font-size:12.5px}
   #view-seats .flow-actions .btn,
   #view-checkout .flow-actions .btn{min-height:52px;font-size:16px}
 
+  /* Sticky recap (17 Sep 2026): on a phone the summary card is static and
+     scrolls away under a 72-berth map, so the fixed bar itself says what
+     is picked and what it costs — "L3, L4 · ₹4,000" above Back/Continue,
+     and "Surat → Rupaidiha · L3, L4 · ₹4,000" above the checkout buttons.
+     Filled by updateSeatSummary / updateCoSummary; empty = not shown. */
+  #view-seats .flow-actions{flex-wrap:wrap}
+  #view-seats .flow-actions .fa-recap,
+  #view-checkout .flow-actions .fa-recap{display:block;flex:1 1 100%;width:100%;text-align:center;line-height:1.35;padding:0 2px}
+  #view-checkout .flow-actions .fa-recap{order:99}   /* column-reverse: highest order sits on top */
+  #view-seats .flow-actions .fa-recap:empty,
+  #view-checkout .flow-actions .fa-recap:empty{display:none}
+
   /* Checkout labels are long bilingual strings that don't fit side by
      side on a phone (the Back button wraps to a 47px-wide, 93px-tall
      sliver). So stack them: the primary "Continue to Payment" on top and
@@ -1607,10 +1621,14 @@ table.admin .code{font-family:var(--f-code);font-size:12.5px}
   #view-checkout .flow-actions #coContinueBtn{width:100%}
   #view-checkout .flow-actions #checkoutBackBtn{width:100%;min-height:48px;font-size:13.5px;padding-top:8px;padding-bottom:8px}
 
-  /* keep the tail of the scrolling content clear of the fixed bar */
-  #view-seats .flow-body{padding-bottom:104px}
-  #view-checkout .flow-body{padding-bottom:150px}
+  /* keep the tail of the scrolling content clear of the fixed bar
+     (one recap line taller since 17 Sep 2026) */
+  #view-seats .flow-body{padding-bottom:126px}
+  #view-checkout .flow-body{padding-bottom:172px}
 }
+/* Recap line inside the flow bars — only the phone's fixed bar shows it (above);
+   on desktop the summary card beside the map already carries the same facts. */
+.fa-recap{display:none;flex:1 1 100%;font-size:12.5px;font-weight:700;color:var(--muted)}
 
 /* ===== block 5 (was head, 4072 chars) ===== */
 

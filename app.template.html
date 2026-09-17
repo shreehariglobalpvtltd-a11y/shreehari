@@ -672,6 +672,9 @@ s.addEventListener('click',function(e){e.preventDefault();
       <div class="trip-toggle" role="group" aria-label="Trip type" style="display:none">
         <button type="button" class="trip-pill on" id="tripOne" data-i18n="sOneWay">One-way</button>
         <button type="button" class="trip-pill" id="tripRound" data-i18n="sRound">Round trip</button>
+        <!-- Round trip is gated by the public setting round_trip_on (17 Sep 2026):
+             while it is off 05-router hides the pill and shows this note instead. -->
+        <small class="trip-note hide" id="roundOffNote" data-i18n="roundOffNote">Return journey is booked as a separate ticket — we offer it as soon as this ticket is confirmed.</small>
       </div>
       <div id="legacyPair" hidden aria-hidden="true">
         <select id="fromSel"></select>
@@ -1741,6 +1744,10 @@ s.addEventListener('click',function(e){e.preventDefault();
       <div class="sum-row total"><span data-i18n="rowTotal">Total fare</span><b id="sumFare">₹0</b></div>
       <div class="vip-priority-chip" id="vipPrioritySeats">🧑‍✈️<span>Priority Boarding · VIP Support<small>पहिलो बोर्डिङ प्राथमिकता · सबसे पहले बोर्डिंग · You board first, with dedicated VIP care.</small></span></div>
       <div class="flow-actions" style="display:flex;gap:10px;margin-top:14px">
+        <!-- Sticky recap (17 Sep 2026): on a phone this bar is fixed while the
+             summary card above scrolls away, so 06-results::updateSeatSummary
+             writes "L3, L4 · ₹4,000" here. Hidden on desktop (app.css .fa-recap). -->
+        <div class="fa-recap" id="seatRecap" aria-live="polite"></div>
         <button class="btn btn-ghost" type="button" id="seatBackBtn" style="flex:.6" data-i18n="btnBack">← Back</button>
         <button class="btn btn-orange" type="button" id="continueBtn" style="flex:1" disabled data-i18n="btnContinue">Continue →</button>
       </div>
@@ -1852,6 +1859,9 @@ s.addEventListener('click',function(e){e.preventDefault();
         </div>
       </div>
       <div class="co-nav-row flow-actions">
+        <!-- Sticky recap (17 Sep 2026): route · seats · amount, written by
+             07-checkout::updateCoSummary; step 1 otherwise shows no amount. -->
+        <div class="fa-recap" id="coRecap" aria-live="polite"></div>
         <button class="btn btn-ghost" type="button" id="checkoutBackBtn" data-i18n="coBackSeats">← Back to seats</button>
         <button class="btn btn-orange" type="button" id="coContinueBtn" data-i18n="coContinue">Continue to Payment →</button>
       </div>

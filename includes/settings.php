@@ -301,6 +301,15 @@ final class Settings
             }
         }
 
+        /* Round trip gate (17 Sep 2026): the app offers the "Round trip" pill
+           only when this public bool is on (row added by
+           database/upgrade-2026-09-round-trip.sql, shipped off). Guaranteed
+           present in the feed — a site that has not run the upgrade behaves
+           exactly like one that has, instead of the browser guessing. */
+        if (!array_key_exists('round_trip_on', $out)) {
+            $out['round_trip_on'] = false;
+        }
+
         return $out;
     }
 

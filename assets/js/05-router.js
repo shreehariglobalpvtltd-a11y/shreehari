@@ -79,6 +79,8 @@ function router() {
   const h = location.hash || '#/';
   $('#mobileMenu').classList.remove('open');
   $('#hamburger').classList.remove('open');
+  /* The pending-ticket poll (TicketPoll, below) lives only on its own view. */
+  if (typeof TicketPoll !== 'undefined' && TicketPoll._id && h.indexOf('#/ticket/') !== 0) TicketPoll.stop();
   /* Both ticket views re-read the database before trusting what this browser
      remembers, so an approval, rejection or cancellation made by staff shows
      up on the passenger's next look instead of never. Fire-and-forget: the
@@ -1595,6 +1597,14 @@ function renderFareBoard() {
   };
 }
 function setTripType(type) {
+  /* Round trip gate (17 Sep 2026): the engine books ONE leg per ticket, so
+     until the office switches round_trip_on on (CONFIG.roundTripOn) a round
+     trip is not selectable — the return is sold as its own ticket from the
+     confirmed ticket's "Book return journey" button. */
+  if (type === 'round' && !(typeof CONFIG !== 'undefined' && CONFIG.roundTripOn)) {
+    type = 'one';
+    try { toast(t('roundOffNote')); } catch (e) {}
+  }
   Flow.tripType = type;
   $('#tripOne').classList.toggle('on', type === 'one');
   $('#tripRound').classList.toggle('on', type === 'round');
@@ -1603,6 +1613,15 @@ function setTripType(type) {
 }
 $('#tripOne').addEventListener('click', () => setTripType('one'));
 $('#tripRound').addEventListener('click', () => setTripType('round'));
+/* Hide the pill (and show the one-line note in its place) while the gate is
+   off; when it is on the search card is exactly as before. */
+(function gateRoundTrip() {
+  const on = !!(typeof CONFIG !== 'undefined' && CONFIG.roundTripOn);
+  const pill = $('#tripRound'), note = $('#roundOffNote');
+  if (pill) { pill.classList.toggle('hide', !on); pill.disabled = !on; pill.setAttribute('aria-disabled', on ? 'false' : 'true'); }
+  if (note) note.classList.toggle('hide', on);
+  if (!on && Flow.tripType === 'round') setTripType('one');
+})();
 /* Repricing on every From/To change is what makes the fare feel "automatic" —
    the passenger never has to press Search to find out what it costs. */
 ['#fromSel', '#toSel'].forEach(sel => {
@@ -2271,6 +2290,73 @@ document.addEventListener('visibilitychange', () => {
   /* Coming back to the tab, refresh at once rather than waiting out the
      interval — the map on screen is exactly as old as the time away. */
   if (!document.hidden && SeatPoll._ctx) SeatPoll._tick();
+});
+
+/* ================================================================
+   LIVE TICKET STATUS (17 Sep 2026)
+
+   A passenger staring at "Waiting for verification" saw nothing when
+   staff approved the payment: the only server re-read was the router's
+   syncBookings on a hash change, so the screen moved only after they
+   navigated away and back. Modelled on SeatPoll: polls /api/track.php
+   (via syncBookings, PNR + phone) every 20 s — well inside track.php's
+   40/60 s rate limit — ONLY while a PENDING ticket is the visible view
+   (#/ticket/<id>) and the tab is in the foreground; repaints only when
+   something actually changed; stops itself the moment the status leaves
+   'pending', the hash moves, or the ticket is gone. Started/stopped by
+   renderStatus (07-checkout.js), which knows the status it just drew.
+================================================================ */
+const TicketPoll = {
+  EVERY_MS: 20000,
+  _t: null,
+  _id: '',
+
+  start(id) {
+    if (!id) return this.stop();
+    if (this._id === id && (this._t || document.hidden)) return;   // already watching (or paused for) this ticket
+    this.stop();
+    this._id = id;
+    if (document.hidden) return;                                   // no timer while hidden — resume() arms it
+    this._t = setInterval(() => this._tick(), this.EVERY_MS);
+  },
+
+  stop() { clearInterval(this._t); this._t = null; this._id = ''; },
+
+  /* A hidden tab has NO timer at all (not merely skipped ticks): the radio
+     sleeps; coming back arms it again and asks at once. */
+  pause() { clearInterval(this._t); this._t = null; },
+  resume() {
+    if (!this._id || this._t) return;
+    this._t = setInterval(() => this._tick(), this.EVERY_MS);
+    this._tick();
+  },
+
+  _tick() {
+    const id = this._id;
+    if (!id) return this.stop();
+    if ((location.hash || '') !== '#/ticket/' + id) return this.stop();   // view left
+    if (document.hidden) return;                                          // belt and braces (pause() already cleared the timer)
+    const b = (DB.bookings || []).find(x => x && x.id === id);
+    if (!b || b.status !== 'pending' || typeof syncBookings !== 'function') return this.stop();
+    syncBookings([id]).then((changed) => {
+      if ((location.hash || '') !== '#/ticket/' + id) return this.stop();
+      if (!changed) return;
+      /* Staff moved it (approved / rejected / cancelled): redraw — the
+         confirmed render brings its own confetti + auto-PNG — and let
+         renderStatus decide whether there is still anything to watch. */
+      if (typeof renderStatus === 'function') renderStatus(id);
+      const nb = (DB.bookings || []).find(x => x && x.id === id);
+      if (!nb || nb.status !== 'pending') this.stop();
+    }).catch(() => {});
+  }
+};
+window.addEventListener('hashchange', () => {
+  /* router() runs first (registered above) and re-arms the poll when the
+     new hash is still this pending ticket; anything else stops it. */
+  if (TicketPoll._id && (location.hash || '') !== '#/ticket/' + TicketPoll._id) TicketPoll.stop();
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) TicketPoll.pause(); else TicketPoll.resume();
 });
 let holdInt = null;
 function startHoldTicker() {
