@@ -11,6 +11,7 @@
  *   • How much went out in refunds?
  *   • What did the paper-ticket register take in?
  *   • Which agents are still holding our cash (to hand over)?
+ *   • Which agents are waiting for a payout decision? (17 Sep 2026)
  *
  * Read-only and defensive: every figure falls back to 0 if a table/column
  * is missing on an environment, so the page can never 500 a working panel.
@@ -157,6 +158,20 @@ try {
     }
 } catch (Throwable $e) { /* ledger absent — skip */ }
 
+/* =====================================================================
+ *  6. Open payout requests (17 Sep 2026) — every "please pay out my
+ *     commission" still waiting for the office. Live, not windowed: a
+ *     request stays here until it is paid or declined on the agent's
+ *     360 view. Empty on a database without agent_payout_requests.
+ * ===================================================================== */
+$openReqs      = AgentWallet::openPayoutRequests();
+$openReqTotal  = 0.0;
+foreach ($openReqs as &$oq) {
+    $oq['code']    = AgentWallet::agentCodeLabel((int) $oq['agent_admin_id']);
+    $openReqTotal += (float) $oq['amount'];
+}
+unset($oq);
+
 $isToday = ($from === $to && $from === todayISO());
 $rangeLabel = $from === $to ? formatDate($from) : (formatDate($from) . ' → ' . formatDate($to));
 
@@ -197,6 +212,7 @@ admin_header('Accounting', 'accounting');
   <div class="card"><div class="k">Commission payable</div><div class="v"><?= Security::e(inr($commissionAccrued)) ?><br><small>accrued this period</small></div></div>
   <div class="card"><div class="k">Refunds out</div><div class="v"><?= Security::e(inr($refunds['amount'])) ?><br><small><?= $refunds['count'] ?> refund<?= $refunds['count'] === 1 ? '' : 's' ?></small></div></div>
   <div class="card"><div class="k">Cash held by agents</div><div class="v"><?= Security::e(inr($cashInHandTotal)) ?><br><small>awaiting handover</small></div></div>
+  <div class="card"><div class="k">Payout requests open</div><div class="v"><?= count($openReqs) ?><br><small><?= $openReqs !== [] ? Security::e(inr($openReqTotal)) . ' asked for' : 'nothing waiting' ?></small></div></div>
 </div>
 
 <div class="acc-grid">
@@ -260,12 +276,38 @@ admin_header('Accounting', 'accounting');
           <td><?= Security::e((string) ($c['full_name'] ?: $c['username'])) ?></td>
           <td class="mono"><?= Security::e($c['code'] ?: '—') ?></td>
           <td class="acc-num"><?= Security::e(inr((float) $c['bal'])) ?></td>
-          <td><a class="btn ghost" style="font-size:12px;padding:5px 12px" href="<?= $base ?>/admin/agent.php?agent=<?= (int) $c['agent_admin_id'] ?>">Settle →</a></td>
+          <td><a class="btn ghost" style="font-size:12px;padding:5px 12px" href="<?= $base ?>/admin/agent-360.php?agent=<?= (int) $c['agent_admin_id'] ?>&amp;tab=settlements" title="Agent 360 — record the handover and print the receipt">Settle →</a></td>
         </tr>
       <?php endforeach; endif; ?>
     </tbody>
     <?php if ($cashInHand !== []): ?>
     <tfoot><tr class="acc-tot"><td colspan="2">Total to hand over</td><td class="acc-num"><?= Security::e(inr($cashInHandTotal)) ?></td><td></td></tr></tfoot>
+    <?php endif; ?>
+  </table>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Open payout requests <span class="muted" style="font-weight:500;font-size:13px">· agents asking to be paid their commission</span></h2>
+  <div class="tbl-scroll">
+  <table>
+    <thead><tr><th>Agent</th><th>Code</th><th>Requested</th><th class="acc-num">Amount</th><th>Note</th><th></th></tr></thead>
+    <tbody>
+      <?php if ($openReqs === []): ?>
+        <tr><td colspan="6" class="muted" style="padding:20px;text-align:center">No payout request is waiting for a decision.</td></tr>
+      <?php else: foreach ($openReqs as $q): ?>
+        <tr>
+          <td><?= Security::e((string) ($q['agent_name'] ?: $q['agent_username'])) ?></td>
+          <td class="mono"><?= Security::e($q['code'] ?: '—') ?></td>
+          <td class="muted"><?= Security::e(formatDate(substr((string) $q['created_at'], 0, 10), 'j M Y')) ?> <span style="font-size:11px">· <?= Security::e(timeAgo((string) $q['created_at'])) ?></span></td>
+          <td class="acc-num"><?= Security::e(inr((float) $q['amount'])) ?></td>
+          <td class="muted" style="font-size:12px"><?= Security::e((string) ($q['note'] ?: '—')) ?></td>
+          <td><a class="btn ghost" style="font-size:12px;padding:5px 12px" href="<?= $base ?>/admin/agent-360.php?agent=<?= (int) $q['agent_admin_id'] ?>&amp;tab=requests">Decide →</a></td>
+        </tr>
+      <?php endforeach; endif; ?>
+    </tbody>
+    <?php if ($openReqs !== []): ?>
+    <tfoot><tr class="acc-tot"><td colspan="3">Total requested</td><td class="acc-num"><?= Security::e(inr($openReqTotal)) ?></td><td colspan="2"></td></tr></tfoot>
     <?php endif; ?>
   </table>
   </div>
