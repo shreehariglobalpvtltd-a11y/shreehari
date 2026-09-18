@@ -22,6 +22,14 @@ require_once __DIR__ . '/includes/bootstrap.php';
 /* ---------------------------------------------------------------------
  *  Bootstrap payload for the browser.
  * ------------------------------------------------------------------- */
+/* 18 Sep 2026: real server-rendered legal pages at plain URLs (Meta app
+   review and crawlers do not run the SPA; these used to return the homepage). */
+$legalPath = rtrim((string) (parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?: '/'), '/');
+if (in_array($legalPath, ['/privacy-policy', '/privacy', '/terms-of-service', '/data-deletion'], true)) {
+    require_once INCLUDE_PATH . '/legal.php';
+    LegalPages::render(LegalPages::ROUTES[$legalPath]);
+}
+
 $user = Auth::user();
 
 /* The country the signed-in customer chose at sign-in (users.country_code),
