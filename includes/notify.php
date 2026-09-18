@@ -1847,7 +1847,7 @@ final class Notify
             $company = Settings::getString('company_name', APP_NAME);
             self::whatsapp(
                 $phone,
-                "🚌 " . $company . "\nतपाईंको भुक्तानी प्रमाण प्राप्त भयो " . $pnr . " ✅\n"
+                "🚌 " . $company . "\n" . $pnr . " को भुक्तानी प्रमाण प्राप्त भयो ✅\n"
                 . "जाँच भइरहेको छ — छिट्टै तपाईंको टिकट पक्का गर्नेछौं।",
                 null,
                 self::countryHint($booking)
@@ -1951,7 +1951,7 @@ final class Notify
 
         if (Settings::getBool('whatsapp_notify_customer', true) && $phone !== '') {
             $text = "🚌 " . $company . "\n"
-                  . "तपाईंको भुक्तानी प्राप्त भयो " . $pnr . " ✅\n"
+                  . $pnr . " को भुक्तानी प्राप्त भयो ✅\n"
                   . "जम्मा: " . $amount . "\n"
                   . "तपाईंको टिकटमा अब PAID देखिन्छ — नयाँ प्रति डाउनलोड गर्नुहोस्:\n"
                   . Ticket::imageUrl($pnr);
