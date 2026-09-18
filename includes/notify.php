@@ -339,14 +339,18 @@ final class Notify
                 // provider error is already logged by whatsappTwilio().
             }
         } elseif ($driver === 'cloud_api') {
-            $token   = Settings::getString('whatsapp_api_token', '');
-            $phoneId = Settings::getString('whatsapp_phone_id', '');
+            // 18 Sep 2026: credentials resolve env -> settings in whatsapp/config.php.
+            require_once ROOT_PATH . '/whatsapp/api.php';
+            $token   = META_ACCESS_TOKEN;
+            $phoneId = META_PHONE_NUMBER_ID;
 
             if ($token !== '' && $phoneId !== '') {
-                if (self::whatsappCloudApi($number, $message, $token, $phoneId, $mediaUrl, $templateVars, (string) ($meta['media_type'] ?? ''))) {
+                if (self::whatsappCloudApi($number, $message, $token, $phoneId, $mediaUrl, $templateVars, (string) ($meta['media_type'] ?? ''), $ref)) {
                     self::$journal[] = ['to' => $number, 'ok' => true, 'link' => null, 'driver' => 'cloud_api', 'reason' => ''];
+                    // provider_ref = Meta's wamid, the key whatsapp/webhook.php
+                    // matches delivery statuses on (same role as the Twilio SID).
                     self::logMessage('whatsapp', $number, $message, 'sent', [
-                        'provider' => 'cloud_api', 'bookingId' => $bookingId,
+                        'provider' => 'cloud_api', 'bookingId' => $bookingId, 'sid' => (string) $ref,
                     ] + $meta);
                     return true;
                 }
@@ -962,12 +966,12 @@ final class Notify
      * PNG becomes the template's IMAGE header (carried as var 7 by
      * bookingConfirmed(), or as $mediaUrl).
      */
-    private static function whatsappCloudApi(string $number, string $message, string $token, string $phoneId, ?string $mediaUrl = null, array $templateVars = [], string $mediaType = ''): bool
+    private static function whatsappCloudApi(string $number, string $message, string $token, string $phoneId, ?string $mediaUrl = null, array $templateVars = [], string $mediaType = '', ?string &$providerRef = null): bool
     {
-        // Graph API version is a setting so it can be moved forward without a
-        // deploy — v18.0 was hard-coded here and is long out of support.
-        $version  = Settings::getString('whatsapp_api_version', 'v21.0');
-        $endpoint = 'https://graph.facebook.com/' . $version . '/' . $phoneId . '/messages';
+        // 18 Sep 2026: the HTTP call (Graph API version, retry-once, per-day
+        // log, message id) lives in whatsapp/api.php — one path for every
+        // Meta send. This method only chooses the payload.
+        require_once ROOT_PATH . '/whatsapp/api.php';
 
         // The ticket image: explicit media wins, else template var 7.
         $image = ($mediaUrl !== null && $mediaUrl !== '') ? $mediaUrl : (string) ($templateVars['7'] ?? '');
@@ -1036,30 +1040,12 @@ final class Notify
             ];
         }
 
-        $payload = json_encode($body, JSON_UNESCAPED_UNICODE);
+        // messaging_product / to are added by waGraphPost().
+        unset($body['messaging_product'], $body['to']);
+        $r = waGraphPost($number, $body, (string) ($body['type'] ?? 'text'), $token, $phoneId);
+        $providerRef = $r['message_id'];
 
-        $ch = curl_init($endpoint);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => $payload,
-            CURLOPT_HTTPHEADER     => [
-                'Authorization: Bearer ' . $token,
-                'Content-Type: application/json',
-            ],
-            CURLOPT_TIMEOUT        => 15,
-        ]);
-
-        $response = curl_exec($ch);
-        $status   = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($status >= 200 && $status < 300) {
-            return true;
-        }
-
-        Logger::error('WhatsApp Cloud API failed', ['status' => $status, 'resp' => $response], 'whatsapp');
-        return false;
+        return $r['success'];
     }
 
     /**

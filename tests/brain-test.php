@@ -450,12 +450,16 @@ check('the nightly job claims its day exactly once', str_contains($read('/cron/b
 check('the digest checks its toggle BEFORE claiming the day',
     (bool) preg_match('/brain_digest_on.*EventBus::claim/s', $read('/cron/brain-digest.php')));
 
-check('WhatsApp intake is wired to the brain', str_contains($read('/api/whatsapp-webhook.php'), 'TicketBrain::capture'));
+// 18 Sep 2026: the reply logic lives in includes/wabot.php, shared by the
+// Twilio webhook and the Meta Cloud API webhook.
+check('WhatsApp intake is wired to the brain', str_contains($read('/includes/wabot.php'), 'TicketBrain::capture')
+    && str_contains($read('/api/whatsapp-webhook.php'), 'WaBot::reply')
+    && str_contains($read('/whatsapp/webhook.php'), 'WaBot::reply'));
 
 // Only what actually goes out to the passenger counts here — a comment
 // explaining the rule must not be mistaken for breaking it. Strings only.
 $waStrings = '';
-foreach (token_get_all($read('/api/whatsapp-webhook.php')) as $tok) {
+foreach (array_merge(...array_map(static fn ($f) => token_get_all($read($f)), ['/api/whatsapp-webhook.php', '/includes/wabot.php', '/whatsapp/webhook.php'])) as $tok) {
     if (is_array($tok) && in_array($tok[0], [T_CONSTANT_ENCAPSED_STRING, T_ENCAPSED_AND_WHITESPACE, T_INLINE_HTML], true)) {
         $waStrings .= ' ' . $tok[1];
     }

@@ -111,7 +111,9 @@ $lastFail = Database::fetch(
       ORDER BY id DESC LIMIT 1"
 );
 if ($lastFail !== null) {
-    foreach (['63112', '63016', '63007', '20003'] as $senderCode) {
+    // 18 Sep 2026: Meta Cloud API equivalents, written by whatsapp/webhook.php as
+    // "(code N)": template missing / not approved, WABA locked, payment problem.
+    foreach (['63112', '63016', '63007', '20003', '(code 132000)', '(code 132001)', '(code 131031)', '(code 131042)'] as $senderCode) {
         if (str_contains((string) $lastFail['error'], $senderCode)) {
             retry_stop([
                 'skipped' => 'sender-level failure, not the passengers',
@@ -133,7 +135,8 @@ if ($lastFail !== null) {
    all MAX_TRIES on them; the passenger already got the SMS with the ticket
    link at booking time, and cron_done() lists them so the office can call. */
 const UNREACHABLE_SQL = "(m.error LIKE '%(code 63024)%' OR m.error LIKE '%(code 63003)%'
-                         OR m.error LIKE '%(code 21211)%' OR m.error LIKE '%(code 21614)%')";
+                         OR m.error LIKE '%(code 21211)%' OR m.error LIKE '%(code 21614)%'
+                         OR m.error LIKE '%(code 131026)%')";
 
 $due = Database::fetchAll(
     "SELECT b.id, b.pnr, b.contact_phone,
