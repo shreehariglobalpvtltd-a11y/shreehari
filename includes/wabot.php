@@ -74,7 +74,7 @@ final class WaBot
             if ($draft !== null) {
                 $got = [];
                 if (($draft['seats'] ?? 0) > 0) {
-                    $got[] = (int) $draft['seats'] . ' seat' . ((int) $draft['seats'] === 1 ? '' : 's');
+                    $got[] = (int) $draft['seats'] . ' सिट';
                 }
                 if (($draft['date'] ?? '') !== '') {
                     $got[] = formatDate((string) $draft['date'], 'D, j M');
@@ -83,33 +83,33 @@ final class WaBot
                     $got[] = QuickTicket::directionLabel((string) $draft['direction']);
                 }
                 if (($draft['boarding'] ?? '') !== '') {
-                    $got[] = 'from ' . Boarding::stopDisplay((string) $draft['boarding'])['name'];
+                    $got[] = Boarding::stopDisplay((string) $draft['boarding'])['name'] . ' बाट';
                 }
 
                 return self::out(
-                    "🙏 Namaste! Got your request.\n\n"
-                    . ($got !== [] ? "I understood: " . implode(' · ', $got) . "\n\n" : '')
-                    . "Our desk will confirm the bus, seat and fare and send your ticket here shortly."
-                    . (($draft['date'] ?? '') === '' ? "\n\nWhich date do you want to travel?" : '')
-                    . ($phone !== '' ? "\n\nIn a hurry? Call " . $phone . "." : '')
+                    "🙏 नमस्ते! तपाईंको अनुरोध प्राप्त भयो।\n\n"
+                    . ($got !== [] ? "मैले बुझेँ: " . implode(' · ', $got) . "\n\n" : '')
+                    . "हाम्रो डेस्कले बस, सिट र भाडा पक्का गरेर तपाईंको टिकट यहीँ छिट्टै पठाउनेछ।"
+                    . (($draft['date'] ?? '') === '' ? "\n\nतपाईं कुन मितिमा यात्रा गर्न चाहनुहुन्छ?" : '')
+                    . ($phone !== '' ? "\n\nहतार छ? फोन गर्नुहोस्: " . $phone . "।" : '')
                 );
             }
 
             return self::out(
-                "🙏 Namaste! I'm the " . $company . " ticket assistant.\n\n"
-                . "Send your booking PNR (looks like SHG-XXXX-XXXX-XXXX) and I'll reply with your ticket "
-                . "status and PDF instantly.\n\n"
-                . "Want to travel? Just tell me the date, how many seats and where you board — "
-                . "for example \"2 seat Nepal 15 Sep, Mehsana\".\n\n"
-                . ($phone !== '' ? "Need a person? Call " . $phone . "." : "")
+                "🙏 नमस्ते! म " . $company . " को टिकट सहायक हुँ।\n\n"
+                . "आफ्नो बुकिङ PNR (जस्तै SHG-XXXX-XXXX-XXXX) पठाउनुहोस्, म तुरुन्तै तपाईंको टिकट "
+                . "स्थिति र PDF पठाउँछु।\n\n"
+                . "यात्रा गर्नु छ? मलाई मिति, कति सिट र कहाँबाट चढ्ने भन्नुहोस् — "
+                . "जस्तै \"2 सिट Nepal 15 Sep, Mehsana\"।\n\n"
+                . ($phone !== '' ? "मान्छेसँग कुरा गर्नु छ? फोन गर्नुहोस्: " . $phone . "।" : "")
             );
         }
 
         $detail = BookingService::detail($pnr);
         if ($detail === null) {
             return self::out(
-                "❌ No booking found for PNR " . $pnr . ".\n"
-                . "Please double-check the code and send it again."
+                "❌ PNR " . $pnr . " को कुनै बुकिङ भेटिएन।\n"
+                . "कृपया कोड जाँचेर फेरि पठाउनुहोस्।"
             );
         }
 
@@ -119,8 +119,8 @@ final class WaBot
 
         if (!$owns) {
             return self::out(
-                "🔒 Booking " . $detail['pnr'] . " — status: " . $status . ".\n"
-                . "For full details and your ticket PDF, message me from the mobile number used at booking."
+                "🔒 बुकिङ " . $detail['pnr'] . " — स्थिति: " . $status . "।\n"
+                . "पूरा विवरण र टिकट PDF को लागि, बुकिङमा प्रयोग गरेको मोबाइल नम्बरबाट सन्देश पठाउनुहोस्।"
             );
         }
 
@@ -134,24 +134,24 @@ final class WaBot
         $lines = [
             "🎫 " . $company,
             "PNR: " . $detail['pnr'],
-            "Status: " . $status,
+            "स्थिति: " . $status,
         ];
         if ($leg !== []) {
-            $lines[] = "Route: " . ($leg['from_city'] ?? '') . " -> " . ($leg['to_city'] ?? '');
+            $lines[] = "बाटो: " . ($leg['from_city'] ?? '') . " -> " . ($leg['to_city'] ?? '');
             $date = formatDate((string) ($leg['travel_date'] ?? ''), 'D, j M Y');
             if ($date !== '') {
-                $lines[] = "Date: " . $date;
+                $lines[] = "मिति: " . $date;
             }
             $dep = substr((string) ($leg['dep_time'] ?? ''), 0, 5);
             if ($dep !== '') {
-                $lines[] = "Departs: " . $dep;
+                $lines[] = "प्रस्थान: " . $dep;
             }
         }
         if ($seats !== '') {
-            $lines[] = "Seats: " . $seats;
+            $lines[] = "सिट: " . $seats;
         }
-        $lines[] = "Passengers: " . count($detail['passengers']);
-        $lines[] = "Total: " . inr((float) $detail['total_amount']);
+        $lines[] = "यात्रु: " . count($detail['passengers']);
+        $lines[] = "जम्मा: " . inr((float) $detail['total_amount']);
 
         $mediaUrl = null;
         if ($detail['status'] === 'confirmed') {
@@ -161,18 +161,19 @@ final class WaBot
 
             if (Settings::getBool('whatsapp_send_pdf', true)) {
                 $mediaUrl = $ticketUrl;
-                $lines[]  = "\n✅ Your e-ticket is attached below. Safe journey!";
+                $lines[]  = "\n✅ तपाईंको ई-टिकट तल संलग्न छ। राम्रो यात्रा होस्!";
             } else {
                 // Media attachments switched off (a Twilio TRIAL account rejects
                 // them) — send the keyed links instead.
-                $lines[] = "\n✅ Your e-ticket: " . $ticketUrl;
-                $lines[] = "Print copy (PDF): " . Ticket::downloadUrl((string) $detail['pnr']);
-                $lines[] = "Safe journey!";
+                $lines[] = "\n✅ तपाईंको ई-टिकट: " . $ticketUrl;
+                $lines[] = "प्रिन्ट गर्ने (PDF): " . Ticket::downloadUrl((string) $detail['pnr']);
+                $lines[] = "राम्रो यात्रा होस्!";
             }
         } elseif ($detail['status'] === 'pending') {
-            $lines[] = "\n⏳ Payment is being verified. Your ticket will arrive here the moment it's confirmed.";
+            $lines[] = "\n⏳ भुक्तानी जाँच भइरहेको छ। पक्का भएपछि तपाईंको टिकट यहीँ आउनेछ।";
         } elseif (in_array($detail['status'], ['cancelled', 'rejected'], true)) {
-            $lines[] = "\nThis booking is " . strtolower($status) . ". Contact us if that's unexpected.";
+            $stTxt = $detail['status'] === 'rejected' ? 'अस्वीकृत' : 'रद्द';
+            $lines[] = "\nयो बुकिङ " . $stTxt . " भएको छ। अनपेक्षित लागेमा हामीलाई फोन गर्नुहोस्।";
         }
 
         return self::out(implode("\n", $lines), $mediaUrl);
@@ -181,8 +182,8 @@ final class WaBot
     /** Greeting for a plain GET on a webhook URL. */
     public static function greeting(): string
     {
-        return "🙏 Namaste! This is the " . Settings::getString('company_name', APP_NAME) . " ticket assistant.\n"
-            . "Send your booking PNR (looks like SHG-XXXX-XXXX-XXXX) to check your ticket.";
+        return "🙏 नमस्ते! यो " . Settings::getString('company_name', APP_NAME) . " को टिकट सहायक हो।\n"
+            . "आफ्नो बुकिङ PNR (जस्तै SHG-XXXX-XXXX-XXXX) पठाएर टिकट जाँच्नुहोस्।";
     }
 
     /** @return array{text: string, media: ?string} */

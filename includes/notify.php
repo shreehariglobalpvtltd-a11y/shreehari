@@ -1593,9 +1593,9 @@ final class Notify
 
         if (Settings::getBool('whatsapp_notify_customer', true) && self::usablePhone($booking['contact_phone'] ?? '') !== '') {
             $text = "🚌 " . $company . "\n"
-                  . "Booking " . $pnr . ": payment could not be verified.\n"
-                  . "Reason: " . $reason . "\n"
-                  . "Please re-submit your proof or call " . Settings::officePhone() . ".";
+                  . "बुकिङ " . $pnr . ": भुक्तानी पुष्टि हुन सकेन।\n"
+                  . "कारण: " . $reason . "\n"
+                  . "कृपया भुक्तानीको प्रमाण फेरि पठाउनुहोस् वा फोन गर्नुहोस्: " . Settings::officePhone() . "।";
             self::whatsapp((string) $booking['contact_phone'], $text, null, self::countryHint($booking));
         }
     }
@@ -1613,11 +1613,11 @@ final class Notify
         $pnr        = (string) $booking['pnr'];
 
         $lines = [
-            "🎫 New booking " . $pnr,
-            "Amount: " . inr((float) $booking['total_amount']),
-            "Phone: " . ($booking['contact_phone'] ?? '—'),
-            "Method: " . strtoupper((string) ($booking['payment_method'] ?? 'upi')),
-            "Verify: " . appUrl('admin/payments.php?pnr=' . urlencode($pnr)),
+            "🎫 नयाँ बुकिङ " . $pnr,
+            "जम्मा: " . inr((float) $booking['total_amount']),
+            "फोन: " . ($booking['contact_phone'] ?? '—'),
+            "तरिका: " . strtoupper((string) ($booking['payment_method'] ?? 'upi')),
+            "जाँच्नुहोस्: " . appUrl('admin/payments.php?pnr=' . urlencode($pnr)),
         ];
         $text = implode("\n", $lines);
 
@@ -1644,16 +1644,16 @@ final class Notify
 
         if (Settings::getBool('whatsapp_notify_customer', true) && self::usablePhone($booking['contact_phone'] ?? '') !== '') {
             $text = "🚌 " . $company . "\n"
-                  . "Booking " . $pnr . " is CANCELLED.\n"
-                  . "Refund: " . inr((float) ($refund['amount'] ?? 0)) . " (" . (int) ($refund['percent'] ?? 0) . "%)\n"
+                  . "बुकिङ " . $pnr . " रद्द भयो।\n"
+                  . "फिर्ता: " . inr((float) ($refund['amount'] ?? 0)) . " (" . (int) ($refund['percent'] ?? 0) . "%)\n"
                   . ($refund['reason'] ?? '');
             self::whatsapp((string) $booking['contact_phone'], $text, null, self::countryHint($booking));
         }
 
         if (Settings::getBool('whatsapp_notify_admin', true) && $adminPhone !== '') {
-            $text = "🚫 Booking " . $pnr . " cancelled by customer.\n"
-                  . "Refund: " . inr((float) ($refund['amount'] ?? 0)) . " (" . (int) ($refund['percent'] ?? 0) . "%)\n"
-                  . "Phone: " . ($booking['contact_phone'] ?? '—');
+            $text = "🚫 बुकिङ " . $pnr . " ग्राहकले रद्द गरे।\n"
+                  . "फिर्ता: " . inr((float) ($refund['amount'] ?? 0)) . " (" . (int) ($refund['percent'] ?? 0) . "%)\n"
+                  . "फोन: " . ($booking['contact_phone'] ?? '—');
             self::whatsapp($adminPhone, $text);
         }
     }
@@ -1675,8 +1675,8 @@ final class Notify
         $company = Settings::getString('company_name', APP_NAME);
         $pnr     = (string) ($booking['pnr'] ?? '');
         $text = "↩️ " . $company . "\n"
-              . "Ticket " . $pnr . " undone — nothing to pay. / टिकट " . $pnr . " undo भयो — केही तिर्नु पर्दैन।\n"
-              . "Book again any time: " . appUrl('');
+              . "टिकट " . $pnr . " रद्द भयो — केही तिर्नु पर्दैन।\n"
+              . "फेरि बुक गर्न सक्नुहुन्छ: " . appUrl('');
         self::whatsapp((string) $booking['contact_phone'], $text, null, self::countryHint($booking));
     }
 
@@ -1829,10 +1829,10 @@ final class Notify
         $adminEmail = Settings::getString('admin_email', Settings::getString('company_email', ''));
         $reviewUrl  = appUrl('admin/payments.php?pnr=' . urlencode($pnr));
 
-        $text = "🧾 Payment proof uploaded · " . $pnr . "\n"
-              . "Amount: " . inr((float) ($booking['total_amount'] ?? 0)) . "\n"
-              . ($kind !== '' ? "Proof: " . $kind . "\n" : '')
-              . "Review: " . $reviewUrl;
+        $text = "🧾 भुक्तानी प्रमाण अपलोड भयो · " . $pnr . "\n"
+              . "जम्मा: " . inr((float) ($booking['total_amount'] ?? 0)) . "\n"
+              . ($kind !== '' ? "प्रमाण: " . $kind . "\n" : '')
+              . "जाँच्नुहोस्: " . $reviewUrl;
 
         if (Settings::getBool('whatsapp_notify_admin', true) && $adminPhone !== '') {
             self::whatsapp($adminPhone, $text);
@@ -1876,15 +1876,15 @@ final class Notify
                 ['b' => (int) ($booking['id'] ?? 0)]
             );
             if ($amt !== null && (float) $amt > 0) {
-                $commission = "Commission: " . inr((float) $amt) . " credited ✅\n";
+                $commission = "कमिसन: " . inr((float) $amt) . " जम्मा भयो ✅\n";
             }
         } catch (Throwable $ignored) {
         }
 
-        $text = "✅ Booking " . $pnr . " APPROVED\n"
-              . ($facts['route'] !== '' ? "Route: " . $facts['route'] . "\n" : '')
-              . ($facts['date'] !== ''  ? "Date: " . $facts['date'] . "\n" : '')
-              . ($facts['seats'] !== '' ? "Seat(s): " . $facts['seats'] . "\n" : '')
+        $text = "✅ बुकिङ " . $pnr . " स्वीकृत भयो\n"
+              . ($facts['route'] !== '' ? "बाटो: " . $facts['route'] . "\n" : '')
+              . ($facts['date'] !== ''  ? "मिति: " . $facts['date'] . "\n" : '')
+              . ($facts['seats'] !== '' ? "सिट: " . $facts['seats'] . "\n" : '')
               . $commission
               . "— " . ($agent['code'] !== '' ? $agent['code'] . ' · ' : '') . Settings::getString('company_name', APP_NAME);
         self::whatsapp($agent['phone'], $text, null, $agent['hint'] ?? null);
@@ -1901,9 +1901,9 @@ final class Notify
             return;
         }
 
-        $text = "❌ Booking " . (string) ($booking['pnr'] ?? '') . " REJECTED\n"
-              . ($reason !== '' ? "Reason: " . $reason . "\n" : '')
-              . "Customer has been asked to re-submit payment proof.";
+        $text = "❌ बुकिङ " . (string) ($booking['pnr'] ?? '') . " अस्वीकृत भयो\n"
+              . ($reason !== '' ? "कारण: " . $reason . "\n" : '')
+              . "ग्राहकलाई भुक्तानी प्रमाण फेरि पठाउन भनिएको छ।";
         self::whatsapp($agent['phone'], $text, null, $agent['hint'] ?? null);
     }
 
@@ -1925,12 +1925,12 @@ final class Notify
                 ['b' => (int) ($booking['id'] ?? 0)]
             );
             if ($amt !== null && (float) $amt < 0) {
-                $reversed = "Commission " . inr(abs((float) $amt)) . " reversed.\n";
+                $reversed = "कमिसन " . inr(abs((float) $amt)) . " फिर्ता भयो।\n";
             }
         } catch (Throwable $ignored) {
         }
 
-        $text = "🚫 Booking " . (string) ($booking['pnr'] ?? '') . " CANCELLED\n" . $reversed;
+        $text = "🚫 बुकिङ " . (string) ($booking['pnr'] ?? '') . " रद्द भयो\n" . $reversed;
         self::whatsapp($agent['phone'], $text, null, $agent['hint'] ?? null);
     }
 
@@ -1963,8 +1963,8 @@ final class Notify
             if ($agent !== null && $agent['phone'] !== '') {
                 self::whatsapp(
                     $agent['phone'],
-                    "💵 Cash settled for " . $pnr . " (" . $amount . ").\n"
-                    . "Ticket updated to PAID."
+                    "💵 " . $pnr . " को नगद भुक्तानी भयो (" . $amount . ")।\n"
+                    . "टिकट PAID मा अपडेट भयो।"
                 );
             }
         }
@@ -1989,10 +1989,10 @@ final class Notify
         }
 
         $company = Settings::getString('company_name', APP_NAME);
-        $text = "🙏 Welcome to " . $company . ($name !== '' ? ", " . $name : '') . "!\n"
-              . ($code !== '' ? "Your agent code: " . $code . "\n" : "Your agent code will be assigned by the office.\n")
-              . "Login (agent portal): " . appUrl('admin/login.php?portal=agent') . "\n"
-              . "Sign in with the email, username and password the office gives you.";
+        $text = "🙏 " . $company . " मा स्वागत छ" . ($name !== '' ? ", " . $name : '') . "!\n"
+              . ($code !== '' ? "तपाईंको एजेन्ट कोड: " . $code . "\n" : "तपाईंको एजेन्ट कोड अफिसले दिनेछ।\n")
+              . "लगइन (एजेन्ट पोर्टल): " . appUrl('admin/login.php?portal=agent') . "\n"
+              . "अफिसले दिएको इमेल, युजरनेम र पासवर्डले साइन इन गर्नुहोस्।";
         self::whatsapp($phone, $text);
     }
 
