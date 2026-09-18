@@ -521,7 +521,7 @@ final class Notify
                 'detail' => 'Enter a valid mobile number with country code, e.g. +9198XXXXXXXX (India) or +97798XXXXXXXX (Nepal).'];
         }
         $msg = '✅ ' . Settings::getString('company_name', APP_NAME)
-             . ' WhatsApp test. If you can read this, your automatic ticket alerts are working. 🎫';
+             . ' WhatsApp परीक्षण। यो सन्देश देखिएमा, तपाईंको स्वचालित टिकट अलर्ट चलिरहेको छ। 🎫';
 
         if ($driver === 'twilio') {
             $sid   = Settings::getString('twilio_account_sid', '');
@@ -664,11 +664,11 @@ final class Notify
         // viewer needed. The PDF stays one line below for printing.
         $ticketUrl = Ticket::imageUrl($pnr);      // carries the §25 download key
         $text = "🚌 " . $company . "\n"
-              . "Your booking " . $pnr . " is CONFIRMED ✅\n"
-              . "Amount: " . inr((float) ($booking['total_amount'] ?? 0)) . "\n"
-              . "Your ticket (image): " . $ticketUrl . "\n"
-              . "Print copy (PDF): " . Ticket::downloadUrl($pnr) . "\n"
-              . "Have a safe journey.";
+              . "तपाईंको बुकिङ " . $pnr . " पक्का भयो ✅\n"
+              . "जम्मा: " . inr((float) ($booking['total_amount'] ?? 0)) . "\n"
+              . "तपाईंको टिकट (फोटो): " . $ticketUrl . "\n"
+              . "प्रिन्ट गर्ने (PDF): " . Ticket::downloadUrl($pnr) . "\n"
+              . "राम्रो यात्रा होस्! 🙏";
         $mediaUrl = Settings::getBool('whatsapp_send_pdf', true) ? $ticketUrl : null;
         // Same template variables bookingConfirmed() sends: without them this
         // falls to the free-form Body branch, which a template-only WhatsApp
@@ -767,7 +767,7 @@ final class Notify
         switch ($what) {
             case 'reschedule':
                 $en = 'Your ticket ' . $pnr . ' has been RESCHEDULED: ' . $dates . $seatTail;
-                $np = 'तपाईंको टिकट ' . $pnr . ' को यात्रा मिति परिवर्तन भयो: ' . $newDate . ($seats !== '' ? ' · सिट ' . $seats : '');
+                $np = 'तपाईंको टिकट ' . $pnr . ' को यात्रा मिति बदलियो: ' . $newDate . ($seats !== '' ? ' · सिट ' . $seats : '');
                 break;
             case 'missed_rebook':
                 $en = 'Your ticket ' . $pnr . ' has been REBOOKED after the missed bus: ' . $dates . $seatTail;
@@ -775,26 +775,26 @@ final class Notify
                 break;
             case 'seat':
                 $en = 'Your seat on ticket ' . $pnr . ' has CHANGED: ' . ($old !== '' ? $old . ' -> ' : '') . $seats;
-                $np = 'टिकट ' . $pnr . ' को सिट परिवर्तन भयो: ' . $seats;
+                $np = 'टिकट ' . $pnr . ' को सिट बदलियो: ' . $seats;
                 break;
             case 'contact':
                 $en = 'Contact details on ticket ' . $pnr . ' have been UPDATED' . ($seats !== '' ? ': ' . $seats : '');
-                $np = 'टिकट ' . $pnr . ' को सम्पर्क विवरण अद्यावधिक भयो।';
+                $np = 'टिकट ' . $pnr . ' को सम्पर्क विवरण मिलाइयो।';
                 break;
             default: // passenger
                 $en = 'Passenger details on ticket ' . $pnr . ' have been UPDATED' . ($name !== '' ? ' (' . $name . ')' : '');
-                $np = 'टिकट ' . $pnr . ' को यात्रु विवरण अद्यावधिक भयो।';
+                $np = 'टिकट ' . $pnr . ' को यात्रु विवरण मिलाइयो।';
                 break;
         }
 
         $ticketUrl = Ticket::imageUrl($pnr);      // carries the §25 download key
+        unset($en); // customer message is Nepali-only; $en kept for logs/readability above
         $text = "🚌 " . $company . "\n"
-              . $en . "\n"
               . $np . "\n"
-              . "Amount: " . inr((float) ($booking['total_amount'] ?? 0)) . " (unchanged)\n"
-              . "Your updated ticket (image): " . $ticketUrl . "\n"
-              . "Print copy (PDF): " . Ticket::downloadUrl($pnr) . "\n"
-              . "Please carry the updated ticket. Have a safe journey.";
+              . "जम्मा: " . inr((float) ($booking['total_amount'] ?? 0)) . " (उही)\n"
+              . "तपाईंको नयाँ टिकट (फोटो): " . $ticketUrl . "\n"
+              . "प्रिन्ट गर्ने (PDF): " . Ticket::downloadUrl($pnr) . "\n"
+              . "नयाँ टिकट लिएर जानुहोला। राम्रो यात्रा होस्! 🙏";
         $mediaUrl = Settings::getBool('whatsapp_send_pdf', true) ? $ticketUrl : null;
         $res = self::whatsapp(
             (string) $booking['contact_phone'],
@@ -1782,11 +1782,11 @@ final class Notify
 
         if (Settings::getBool('whatsapp_notify_customer', true) && $phone !== '') {
             $text = "🚌 " . $company . "\n"
-                  . "Booking received! PNR: " . $pnr . "\n"
-                  . "Amount: " . $amount . "\n"
-                  . "Please upload your payment proof to confirm your seat:\n"
+                  . "तपाईंको बुकिङ प्राप्त भयो! बुकिङ नं.: " . $pnr . "\n"
+                  . "जम्मा: " . $amount . "\n"
+                  . "सिट पक्का गर्न भुक्तानीको प्रमाण (स्क्रिनसट) अपलोड गर्नुहोस्:\n"
                   . appUrl('') . "\n"
-                  . "Help: " . Settings::officePhone();
+                  . "सहयोग: " . Settings::officePhone();
             self::whatsapp($phone, $text, null, self::countryHint($booking));
         }
 
@@ -1847,8 +1847,8 @@ final class Notify
             $company = Settings::getString('company_name', APP_NAME);
             self::whatsapp(
                 $phone,
-                "🚌 " . $company . "\nPayment proof received for " . $pnr . " ✅\n"
-                . "It is under review — we will confirm your ticket shortly.",
+                "🚌 " . $company . "\nतपाईंको भुक्तानी प्रमाण प्राप्त भयो " . $pnr . " ✅\n"
+                . "जाँच भइरहेको छ — छिट्टै तपाईंको टिकट पक्का गर्नेछौं।",
                 null,
                 self::countryHint($booking)
             );
@@ -1951,9 +1951,9 @@ final class Notify
 
         if (Settings::getBool('whatsapp_notify_customer', true) && $phone !== '') {
             $text = "🚌 " . $company . "\n"
-                  . "Payment received for " . $pnr . " ✅\n"
-                  . "Amount: " . $amount . "\n"
-                  . "Your ticket now shows PAID — download the updated copy:\n"
+                  . "तपाईंको भुक्तानी प्राप्त भयो " . $pnr . " ✅\n"
+                  . "जम्मा: " . $amount . "\n"
+                  . "तपाईंको टिकटमा अब PAID देखिन्छ — नयाँ प्रति डाउनलोड गर्नुहोस्:\n"
                   . Ticket::imageUrl($pnr);
             self::whatsapp($phone, $text, null, self::countryHint($booking));
         }

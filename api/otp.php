@@ -115,7 +115,7 @@ try {
         // Deliver the code. SMS first (when the SMS channel is on), then a
         // WhatsApp attempt (silent no-op if no WhatsApp driver is configured).
         $company = Settings::getString('company_name', APP_NAME);
-        $otpText = $company . ' verification code: ' . $code . ' (valid ' . OTP_EXPIRY_MINUTES . ' min). Do not share this code.';
+        $otpText = $company . ' को कोड: ' . $code . ' (' . OTP_EXPIRY_MINUTES . ' मिनेट सम्म मान्य)। यो कोड कसैलाई नबताउनुहोस्।';
         if (Settings::getBool('sms_send_otp', true)) {
             Notify::sms($phone, $otpText, $hint);
         }

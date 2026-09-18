@@ -230,8 +230,8 @@ final class Auth
                 if (!empty($otp['ok'])) {
                     require_once __DIR__ . '/notify.php';
                     $text = Settings::getString('company_name', APP_NAME)
-                          . ' admin login code: ' . $otp['code'] . "\n"
-                          . 'Valid ' . OTP_EXPIRY_MINUTES . ' minutes. Never share this code.';
+                          . ' एडमिन लगइन कोड: ' . $otp['code'] . "\n"
+                          . OTP_EXPIRY_MINUTES . ' मिनेट सम्म मान्य। यो कोड कसैलाई नबताउनुहोस्।';
                     Notify::whatsapp($phone, $text);
                     if (Settings::getBool('sms_send_otp', false)) { Notify::sms($phone, $text); }
 
@@ -329,8 +329,8 @@ final class Auth
         }
         require_once __DIR__ . '/notify.php';
         $text = Settings::getString('company_name', APP_NAME)
-              . ' admin login code: ' . $otp['code'] . "\n"
-              . 'Valid ' . OTP_EXPIRY_MINUTES . ' minutes. Never share this code.';
+              . ' एडमिन लगइन कोड: ' . $otp['code'] . "\n"
+              . OTP_EXPIRY_MINUTES . ' मिनेट सम्म मान्य। यो कोड कसैलाई नबताउनुहोस्।';
         Notify::whatsapp($phone, $text);
         if (Settings::getBool('sms_send_otp', false)) { Notify::sms($phone, $text); }
         return ['ok' => true, 'resend' => OTP_RESEND_SECONDS];
@@ -535,8 +535,8 @@ final class Auth
         // The plain code goes to the phone and NOWHERE else (no debug echo).
         require_once __DIR__ . '/notify.php';
         $text = Settings::getString('company_name', APP_NAME)
-              . ' agent login code: ' . $otp['code'] . "\n"
-              . 'Valid ' . OTP_EXPIRY_MINUTES . ' minutes. Never share this code.';
+              . ' एजेन्ट लगइन कोड: ' . $otp['code'] . "\n"
+              . OTP_EXPIRY_MINUTES . ' मिनेट सम्म मान्य। यो कोड कसैलाई नबताउनुहोस्।';
         Notify::whatsapp($phone, $text);
         if (Settings::getBool('sms_send_otp', false)) {
             Notify::sms($phone, $text);
