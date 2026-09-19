@@ -135,6 +135,7 @@ const CORE_SUITES = [
     'counter-shift-test.php'       => 'the cash drawer adds up: mine only, frozen at close, never on the sale path',
     'eta-alerts-test.php'          => 'bus-is-near: the right passenger, once, and silence whenever unsure',
     'backup-offsite-test.php'      => 'the off-site backup leaves encrypted, opens with stock openssl, goes once',
+    'offline-queue-test.php'       => 'an offline request becomes ONE ticket or a loud failure - never two, never nothing',
 ];
 
 /**
