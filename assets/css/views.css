@@ -3704,3 +3704,49 @@ body.wa-open{overflow:hidden}
 /* Ticket actions: a full-width fourth button ("Book return journey") under
    the three primary ones, instead of a lone button in a 3-column grid. */
 .tk2-actions .tk2-wide{grid-column:1/-1}
+/* ===== Seat screen: seats first (owner, 20 Sep 2026: "seat haru surumai dekhinu
+   parcha, kun mathi kun tala, nepali ma ni thaha hunu parcha") ===== */
+.legend .lg-lu{font-weight:700;white-space:nowrap}
+.legend .lg-lu b{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:6px;background:var(--blue,#1E5AA8);color:#fff;font-size:11px}
+.deck-block[data-deck="L"] .deck-head{background:#E8F1FF;border:1.5px solid #B9D3F7;color:#12306A}
+.deck-block[data-deck="U"] .deck-head{background:#FFF1E4;border:1.5px solid #FFCF9E;color:#7A3A06}
+:root[data-theme="dark"] .deck-block[data-deck="U"] .deck-head{background:#2A1A0C;border-color:#5A3514;color:#FFC98F}
+.seat-quick{margin:0 0 14px;padding:12px;border-radius:14px;border:1.5px solid var(--orange,#F07C1F);background:rgba(240,124,31,.07);display:grid;gap:8px}
+.seat-quick[hidden]{display:none}
+.sq-title{font-weight:800;font-size:14px}
+.sq-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.seat-quick input{width:100%;min-height:44px;padding:10px 12px;border:1.5px solid var(--line);border-radius:12px;background:var(--card,#fff);color:var(--ink);font:inherit;font-size:16px}
+.sq-g{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sq-g button{min-height:44px;border-radius:12px;border:1.5px solid var(--line);background:var(--card,#fff);color:var(--ink);font:inherit;font-size:14px;font-weight:800;cursor:pointer}
+.sq-g button.on{background:var(--blue,#1E5AA8);border-color:var(--blue,#1E5AA8);color:#fff}
+.sq-note{color:var(--muted);font-size:12px}
+@media (max-width:760px){
+  #view-seats .shg-journey{display:none}
+  #view-seats .berth-labels{display:none}
+  #view-seats .cab-head{flex-wrap:nowrap;margin-bottom:6px}
+  #view-seats .cab-head .cab-cap,#view-seats .cab-head .cab-price{display:none}
+  #view-seats .cab-head .cab-no{font-size:12.5px;color:var(--ink)}
+  #view-seats .cab-head .cab-free{margin-left:auto}
+  #view-seats .cabin-card{padding:7px 6px 8px;margin-bottom:8px}
+  #view-seats .deck-head{font-size:15px;font-weight:900;padding:10px 12px}
+  #view-seats .seat-count-picker{display:grid;grid-template-columns:1fr;gap:6px;padding:8px 10px;margin-bottom:10px}
+  #view-seats .seat-count-picker .scp-label{font-size:12.5px}
+  #view-seats .seat-count-picker .scp-btns{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;flex-wrap:nowrap}
+  #view-seats .seat-count-picker .scp-n{min-width:0;height:44px;padding:0}
+  #view-seats #deckTabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:6px 0 10px}
+  #view-seats #deckTabs.hide{display:none}
+  #view-seats #deckTabs .deck-lbl{display:none}
+  #view-seats #deckTabs .deck-tab{padding:4px 6px;font-size:12px;line-height:1.25;border-radius:12px;min-height:44px}
+  #view-seats .seat-pick-status{padding:8px 10px;font-size:12.5px;margin-bottom:8px}
+  #view-seats .sq-row{grid-template-columns:1fr}
+  #view-seats .bus-frame .steering{display:none}
+  #view-seats .flow-body{padding-top:10px}
+  #view-seats .seat-pick-status:not(.ok):not(.warn){display:none}
+  #view-seats .seat-auto{margin:0 auto 8px;font-size:13px}
+  #view-seats .women-safe-strip{display:none}
+  #view-seats .seat-count-picker{grid-template-columns:auto 1fr;align-items:center}
+  #view-seats .seat-count-picker .scp-btns{gap:4px}
+  #view-seats .deck-head{padding:7px 12px;margin-bottom:8px}
+  #view-seats .booking-type-toggle .bt-pill{min-height:44px;padding-top:6px;padding-bottom:6px}
+  #view-seats .seat-pref-row{margin-bottom:8px}
+}

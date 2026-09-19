@@ -1350,8 +1350,42 @@ function updateSeatSummary() {
     ? Flow.seats.map(s => seatLabel(s, Flow.route && Flow.route.type, Flow.bookingType)).join(', ') + (fareGood ? ' · ' + inr(recapTotal) : '')
     : '';
   $('#continueBtn').disabled = !Flow.seats.length || !fareGood;
+  seatQuickSync();
   updateTierUI();
 }
+
+/* Lead passenger on the seat screen (owner, 20 Sep 2026: "yahi name number halna
+   milos, agent portal jasto"). Written into the SHG_QUICK hand-off the home card
+   already uses, so the checkout opens with name, mobile and gender filled. A desk
+   sale has its own form and never sees this card. */
+function seatQuickSync() {
+  const box = $('#seatQuick'); if (!box) return;
+  const desk = typeof isCounterSale === 'function' && isCounterSale();
+  box.hidden = !Flow.seats.length || desk;
+  if (box.hidden || box.dataset.filled) return;
+  box.dataset.filled = '1';
+  const q = window.SHG_QUICK || {};
+  const me = (typeof USER !== 'undefined' && USER) ? USER : null;
+  const v = (id) => { const e = document.getElementById(id); return e && e.value ? e.value.trim() : ''; };
+  $('#sqName').value = q.name || v('qtName') || (me && me.name) || '';
+  $('#sqPhone').value = q.phone || v('qtPhone') || (me && me.phone) || '';
+  seatQuickGender(q.gender || '');
+}
+function seatQuickGender(g) {
+  $$('#seatQuick [data-sqg]').forEach(b => b.classList.toggle('on', b.getAttribute('data-sqg') === g));
+}
+function seatQuickSave() {
+  const on = $('#seatQuick [data-sqg].on');
+  window.SHG_QUICK = Object.assign({}, window.SHG_QUICK || {}, {
+    name: $('#sqName').value.trim(), phone: $('#sqPhone').value.trim(),
+    gender: on ? on.getAttribute('data-sqg') : ((window.SHG_QUICK || {}).gender || '')
+  });
+}
+document.addEventListener('input', (e) => { const id = e.target && e.target.id; if (id === 'sqName' || id === 'sqPhone') seatQuickSave(); });
+document.addEventListener('click', (e) => {
+  const b = e.target && e.target.closest && e.target.closest('#seatQuick [data-sqg]');
+  if (b) { seatQuickGender(b.getAttribute('data-sqg')); seatQuickSave(); }
+});
 
 /* ----------------------------------------------------------------
    SHARING SLEEPER TIERS — 🛏️ Single / 👥 Double / 👨‍👩‍👧 Triple.
