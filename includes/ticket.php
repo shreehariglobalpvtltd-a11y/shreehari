@@ -914,7 +914,17 @@ final class Ticket
         $listH = 60 + $listN * 44 + 16 + ($paxN > $listN ? 32 : 0);
         $grow  = max(0, $listH - 108);          // 108 = the seat-chip band it replaced
 
-        $W = 1080; $H = 1620 + $grow;
+        /* 20 Sep 2026 (owner): the corner QR is the company UPI QR for the
+           exact fare, so a scan opens any UPI app with the amount filled in.
+           It replaces the verify QR; without a UPI ID the old layout stays. */
+        $upiVpa = Settings::getString('upi_id', '');
+        $fare   = (float) ($booking['total_amount'] ?? 0);
+        $payUpi = ($upiVpa !== '' && $fare > 0)
+            ? upiLink($upiVpa, Settings::getString('upi_name', APP_NAME), $fare, (string) ($booking['pnr'] ?? ''))
+            : '';
+        $qrExt  = $payUpi !== '' ? 170 : 0;
+
+        $W = 1080; $H = 1620 + $grow + $qrExt;
         $im = imagecreatetruecolor($W, $H);
 
         $navy   = imagecolorallocate($im, 18, 38, 78);
@@ -1023,7 +1033,7 @@ final class Ticket
             $clampTo(14, $iWho, 228), false);
 
         /* ---- White card ---------------------------------------------- */
-        self::gdRounded($im, 36, 262, $W - 36, 1544 + $grow, 24, $white);
+        self::gdRounded($im, 36, 262, $W - 36, 1544 + $grow + $qrExt, 24, $white);
         imagefilledrectangle($im, 36, 262, $W - 36, 300, $white);        // square the join
 
         /* PNR hero */
@@ -1213,7 +1223,12 @@ final class Ticket
             if (!class_exists('QrCode')) {
                 require_once __DIR__ . '/qr.php';
             }
-            QrCode::png($qrData, $qrTmp, 5, 4, QrCode::ECC_M);
+            if ($payUpi !== '') {
+                $mods = count(QrCode::matrix($payUpi, QrCode::ECC_M));
+                QrCode::png($payUpi, $qrTmp, max(4, intdiv(360, $mods + 4)), 2, QrCode::ECC_M);
+            } else {
+                QrCode::png($qrData, $qrTmp, 5, 4, QrCode::ECC_M);
+            }
             $qr = @imagecreatefromstring((string) file_get_contents($qrTmp));
             if ($qr !== false) {
                 if (!imageistruecolor($qr)) { imagepalettetotruecolor($qr); }
@@ -1221,8 +1236,8 @@ final class Ticket
                    for a short PNR and 245px for the longest realistic one.
                    Clamped so a future longer payload can never push the
                    card down into the footer notes at y=1578. */
-                $qrPx   = min(imagesx($qr), 245);
-                $pad    = 12;
+                $qrPx   = min(imagesx($qr), $payUpi !== '' ? 380 : 245);
+                $pad    = $payUpi !== '' ? 14 : 12;
                 $cardW  = $qrPx + $pad * 2;
                 $cardX1 = $W - 60 - $cardW;
                 $cardY1 = 1272 + $grow;
@@ -1232,20 +1247,33 @@ final class Ticket
                    can only blur what is already the right size. */
                 imagecopy($im, $qr, $cardX1 + $pad, $cardY1 + $pad, 0, 0, $qrPx, $qrPx);
                 imagedestroy($qr);
+                if ($payUpi !== '') {
+                    $cap = 'स्क्यान गरेर तिर्नुहोस्  ·  SCAN TO PAY';
+                    self::gdText($im, 16, (int) ($cardX1 + ($cardW - self::gdWidth(16, $cap)) / 2), $cardY1 + $cardW + 30, $navy, $cap, true);
+                }
             }
         } catch (Throwable $e) {
             Logger::error('PNG ticket QR failed: ' . $e->getMessage());
         } finally {
             @unlink($qrTmp);
         }
-        self::gdText($im, 22, 60, 1300 + $grow, $navy, 'स्क्यान गर्नुहोस्  ·  LIVE STATUS', true);
-        self::gdText($im, 17, 60, 1332 + $grow, $mut, 'Valid / Cancelled / Boarded — checked live.', false);
-        self::gdText($im, 17, 60, 1358 + $grow, $mut, 'Works at boarding and at the border.', false);
-        self::gdText($im, 19, 60, 1398 + $grow, $ink, 'सम्पर्क  ·  ' . Settings::officePhone(), true);
-        self::gdText($im, 18, 60, 1428 + $grow, $orange, self::latin($co['web']), true);
+        if ($payUpi !== '') {
+            self::gdText($im, 22, 60, 1300 + $grow, $navy, 'यहाँबाट पनि भुक्तानी गर्न मिल्छ', true);
+            self::gdText($im, 17, 60, 1332 + $grow, $mut, 'PAY HERE  ·  Scan the QR with any UPI app', false);
+            self::gdText($im, 15, 60, 1374 + $grow, $mut, 'तिर्ने रकम  ·  AMOUNT', false);
+            self::gdText($im, 32, 60, 1418 + $grow, $green, '₹ ' . number_format($fare), true);
+            self::gdText($im, 18, 60, 1458 + $grow, $ink, 'UPI: ' . $upiVpa, true);
+            self::gdText($im, 16, 60, 1488 + $grow, $mut, 'GPay  ·  PhonePe  ·  Paytm  ·  BHIM', false);
+        } else {
+            self::gdText($im, 22, 60, 1300 + $grow, $navy, 'स्क्यान गर्नुहोस्  ·  LIVE STATUS', true);
+            self::gdText($im, 17, 60, 1332 + $grow, $mut, 'Valid / Cancelled / Boarded — checked live.', false);
+            self::gdText($im, 17, 60, 1358 + $grow, $mut, 'Works at boarding and at the border.', false);
+        }
+        self::gdText($im, 19, 60, 1398 + $grow + $qrExt, $ink, 'सम्पर्क  ·  ' . Settings::officePhone(), true);
+        self::gdText($im, 18, 60, 1428 + $grow + $qrExt, $orange, self::latin($co['web']), true);
         $wa = Settings::officeWhatsApp();
         if ($wa !== '') {
-            self::gdText($im, 16, 60, 1456 + $grow, $green, 'WhatsApp: +' . $wa, true);
+            self::gdText($im, 16, 60, 1456 + $grow + $qrExt, $green, 'WhatsApp: +' . $wa, true);
         }
 
         /* Who cut it, in full — name, code and the agent's own phone, with
@@ -1257,14 +1285,14 @@ final class Ticket
            x stops at 727: the QR card's left edge is W-60-(qr+24) and the
            widest realistic QR still leaves it at 751, so the strip can never
            run under the code no matter which QR version the payload picks. */
-        $tileR = 727;
-        self::gdRounded($im, 60, 1472 + $grow, $tileR, 1541 + $grow, 14, $tile);
-        imagefilledrectangle($im, 60, 1486 + $grow, 66, 1527 + $grow, $orange);
-        self::gdText($im, 15, 82, 1500 + $grow, $mut, 'टिकट काट्ने  ·  ' . $issued['label'], false);
+        $tileR = $payUpi !== '' ? 612 : 727;
+        self::gdRounded($im, 60, 1472 + $grow + $qrExt, $tileR, 1541 + $grow + $qrExt, 14, $tile);
+        imagefilledrectangle($im, 60, 1486 + $grow + $qrExt, 66, 1527 + $grow + $qrExt, $orange);
+        self::gdText($im, 15, 82, 1500 + $grow + $qrExt, $mut, 'टिकट काट्ने  ·  ' . $issued['label'], false);
         $chip  = self::latinUpper($issued['code']);
         $chipW = self::gdWidth(20, $chip) + 34;
-        self::gdRounded($im, $tileR - 16 - $chipW, 1488 + $grow, $tileR - 16, 1528 + $grow, 12, $orange);
-        self::gdText($im, 20, $tileR - 16 - $chipW + 17, 1517 + $grow, $white, $chip, true);
+        self::gdRounded($im, $tileR - 16 - $chipW, 1488 + $grow + $qrExt, $tileR - 16, 1528 + $grow + $qrExt, 12, $orange);
+        self::gdText($im, 20, $tileR - 16 - $chipW + 17, 1517 + $grow + $qrExt, $white, $chip, true);
         /* The parts are sanitised FIRST and the separator added after —
            joining before it once ate the middle dot and printed
            "Agent One 9825012345" as one run. */
@@ -1273,14 +1301,14 @@ final class Ticket
         $who     = $whoPh !== '' ? $whoName . '  ·  ' . $whoPh : $whoName;
         $maxWho = $tileR - 16 - $chipW - 20 - 82;
         while ($who !== '' && self::gdWidth(20, $who) > $maxWho) { $who = mb_substr($who, 0, mb_strlen($who) - 2) . '…'; }
-        self::gdText($im, 20, 82, 1530 + $grow, $ink, $who, true);
+        self::gdText($im, 20, 82, 1530 + $grow + $qrExt, $ink, $who, true);
 
         /* Footer notes on the cream */
         $n1 = 'सरकारी परिचयपत्र अनिवार्य  ·  बस छुट्नु ३० मिनेट अगाडि आउनुहोस्';
-        self::gdText($im, 17, (int) (($W - self::gdWidth(17, $n1)) / 2), 1578 + $grow, $mut, $n1, false);
+        self::gdText($im, 17, (int) (($W - self::gdWidth(17, $n1)) / 2), 1578 + $grow + $qrExt, $mut, $n1, false);
         $cin = Settings::getString('company_cin', '');
         $n2  = self::display($co['name']) . ($cin !== '' ? '  ·  CIN ' . $cin : '');
-        self::gdText($im, 16, (int) (($W - self::gdWidth(16, $n2)) / 2), 1606 + $grow, $mut, $n2, false);
+        self::gdText($im, 16, (int) (($W - self::gdWidth(16, $n2)) / 2), 1606 + $grow + $qrExt, $mut, $n2, false);
 
         /* CORRECTED / DUPLICATE band in the 36px margin above the header. */
         $markTxt = self::markText($ticket, $mark);
@@ -1427,7 +1455,7 @@ final class Ticket
 
     /** Bump whenever renderTicketPng()'s layout changes — see pngPath().
      *  11 Sep 2026: seat chips now print the LA1/UA1 row-letter grid id. */
-    private const PNG_LAYOUT_CHANGED = '2026-09-11 12:00:00';
+    private const PNG_LAYOUT_CHANGED = '2026-09-20 00:14:51';
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the

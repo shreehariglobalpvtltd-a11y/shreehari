@@ -402,6 +402,9 @@ final class QrCode
         self::placeTimingPatterns($matrix, $reserved, $size);
         self::placeAlignmentPatterns($matrix, $reserved, $version);
         self::reserveFormatAreas($reserved, $size);
+        if ($version >= 7) {
+            self::reserveVersionAreas($reserved, $size);
+        }
 
         // Dark module, always set.
         $matrix[$size - 8][8] = true;
@@ -414,6 +417,9 @@ final class QrCode
         $maskedGrid = self::applyMask($matrix, $reserved, $size, $bestMask);
 
         self::placeFormatInfo($maskedGrid, $size, $ecc, $bestMask);
+        if ($version >= 7) {
+            self::placeVersionInfo($maskedGrid, $size, $version);
+        }
 
         // Any module still null (shouldn't happen) becomes light.
         for ($r = 0; $r < $size; $r++) {
@@ -425,6 +431,36 @@ final class QrCode
         }
 
         return $maskedGrid;
+    }
+
+    /* Versions 7+ must carry two 6x3 version-information blocks. They were
+       never written, so any payload over ~106 bytes (e.g. a UPI pay link)
+       produced a QR that no scanner could read. */
+    private static function reserveVersionAreas(array &$reserved, int $size): void
+    {
+        for ($i = 0; $i < 18; $i++) {
+            $a = $size - 11 + $i % 3;
+            $b = intdiv($i, 3);
+            $reserved[$b][$a] = true;
+            $reserved[$a][$b] = true;
+        }
+    }
+
+    private static function placeVersionInfo(array &$grid, int $size, int $version): void
+    {
+        $rem = $version;
+        for ($i = 0; $i < 12; $i++) {
+            $rem = ($rem << 1) ^ (($rem >> 11) * 0x1F25);
+        }
+        $bits = ($version << 12) | $rem;
+
+        for ($i = 0; $i < 18; $i++) {
+            $bit = (($bits >> $i) & 1) === 1;
+            $a = $size - 11 + $i % 3;
+            $b = intdiv($i, 3);
+            $grid[$b][$a] = $bit;
+            $grid[$a][$b] = $bit;
+        }
     }
 
     private static function placeFinderPatterns(array &$matrix, array &$reserved, int $size): void
@@ -490,8 +526,11 @@ final class QrCode
 
         foreach ($centres as $row) {
             foreach ($centres as $col) {
-                // Skip the three that would collide with finder patterns.
-                if ($reserved[$row][$col] === true) {
+                // Skip only the three finder corners. Testing $reserved here also
+                // skipped (6,x)/(x,6), which sit on the timing lines from v7 up.
+                $first = $centres[0];
+                $last  = $centres[count($centres) - 1];
+                if (($row === $first && ($col === $first || $col === $last)) || ($row === $last && $col === $first)) {
                     continue;
                 }
 
