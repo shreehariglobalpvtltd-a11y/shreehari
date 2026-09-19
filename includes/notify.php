@@ -2207,7 +2207,7 @@ final class Notify
      * ================================================================= */
 
     /** The lifecycle events, in the order a journey goes through them. */
-    public const TRIP_EVENTS = ['reminder_12h', 'reminder_2h', 'delayed', 'departed', 'border', 'arrived'];
+    public const TRIP_EVENTS = ['reminder_12h', 'reminder_2h', 'delayed', 'departed', 'border', 'arrived', 'bus_near'];
 
     /**
      * Is this lifecycle event switched on? Callers check this BEFORE they
@@ -2224,6 +2224,9 @@ final class Notify
             'reminder_12h' => Settings::getBool('reminder_12h_enabled', true),
             'reminder_2h'  => Settings::getBool('reminder_2h_enabled', true),
             'departed', 'border', 'arrived' => Settings::getBool('trip_status_notify', true),
+            // 19 Sep 2026: GPS says the coach is ~30 min from the passenger's own
+            // pickup (includes/etaalerts.php). Its own switch, off by default.
+            'bus_near'     => Settings::getBool('eta_alert_on', false),
             default        => false,
         };
     }
@@ -2409,6 +2412,21 @@ final class Notify
                 'sms' => $company . ': Your bus has arrived'
                     . ($destCity !== '' ? ' at ' . $destCity : '') . '. ' . $pnr
                     . '. Thank you for travelling with us.',
+            ],
+            'bus_near' => [
+                'whatsapp' => "🚌 " . $company . "
+"
+                    . "बस नजिकै आइपुग्यो — " . $pnr . "
+"
+                    . ($f['boarding'] !== '' ? "तपाईंको चढ्ने ठाउँ: " . $f['boarding'] . "
+" : '')
+                    . "बस करिब " . (string) ($f['etaMin'] ?? '30') . " मिनेटमा आइपुग्छ। कृपया तयार भएर बस्नुहोस्।
+"
+                    . ($f['seats'] !== '' ? "सिट: " . $f['seats'] . "
+" : '')
+                    . ($helpline !== '' ? "सहयोग: " . $helpline : ''),
+                'sms' => $company . ': Bus is about ' . (string) ($f['etaMin'] ?? '30') . ' min from '
+                    . ($f['boarding'] !== '' ? $f['boarding'] : 'your stop') . '. Please be ready. ' . $pnr,
             ],
             default => ['whatsapp' => '', 'sms' => ''],
         };

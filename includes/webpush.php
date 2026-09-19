@@ -709,6 +709,12 @@ final class WebPush
                 '🎫 Ticket ready · टिकट तयार — ' . $pnr,
                 ($route !== '' ? $route . "\n" : '') . ($when !== '' ? $when . "\n" : '') . 'Tap to open your e-ticket.',
             ],
+            'bus_near' => [
+                '🚌 बस करिब ' . (string) ($f['etaMin'] ?? '30') . ' मिनेटमा · Bus in ~' . (string) ($f['etaMin'] ?? '30') . ' min',
+                (trim((string) ($f['boarding'] ?? '')) !== '' ? trim((string) $f['boarding']) . "
+" : '')
+                . 'कृपया तयार भएर बस्नुहोस् · Please be ready at your stop. ' . $pnr,
+            ],
             default => [$company . ' — ' . $pnr, $route],
         };
         return [
