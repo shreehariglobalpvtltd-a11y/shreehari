@@ -80,6 +80,10 @@ foreach ($rows as $r) {
         $code = 'unconfigured';
     } elseif (stripos($err, 'sender paused') !== false) {
         $code = 'paused';
+    } elseif (preg_match('/template name .* does not exist|13200[01]/i', $err) === 1) {
+        /* Meta Cloud API (19 Sep 2026): the setting names a template Meta does
+           not have in that language. Every ticket is refused at the door. */
+        $code = 'template_missing';
     } elseif (preg_match('/\b(6\d{4}|2000\d)\b/', $err, $m) === 1) {
         $code = $m[1];
     }
@@ -130,6 +134,23 @@ const FAULTS = [
                     . "   check the Meta Security Centre first (see the WABA incident if one is open).\n"
                     . "3. Confirm the code sends the template variables: a Resend that passes none fails with this\n"
                     . "   same code even when the template IS approved.",
+    ],
+    'template_missing' => [
+        'severity' => Health::CRITICAL,
+        'title'    => 'WhatsApp ticket template not found at Meta - no ticket is being delivered',
+        'detail'   => 'Meta refuses every ticket because the template named in Settings does not exist in the '
+                    . 'language named in Settings (the exact name and language are in Admin > Message Log, in the '
+                    . 'error of any failed ticket). Passengers get no ticket on WhatsApp until this is fixed; the '
+                    . 'retry job keeps the backlog and sends it by itself afterwards.',
+        'fix'      => "1. Open business.facebook.com > WhatsApp Manager > Message templates.
+"
+                    . "2. Find the ticket template. Note its exact NAME, its LANGUAGE (en, hi, ne...) and that its status is Approved.
+"
+                    . "3. Admin > Settings > Notifications: set whatsapp_template_name and whatsapp_template_lang to exactly those two values. Save.
+"
+                    . "4. If there is no approved ticket template yet, create one (Utility, image header, 6 body variables - see whatsapp/TEMPLATES.md) and wait for approval.
+"
+                    . "5. Open any booking > Resend ticket on WhatsApp to test.",
     ],
     '63015' => [
         'severity' => Health::WARN,

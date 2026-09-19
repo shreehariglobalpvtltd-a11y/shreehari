@@ -199,6 +199,33 @@ check('it never creates a booking',      !str_contains($src, 'BookingService::cr
 check('it never touches a seat',         !preg_match('/Seats::(assertAvailable|claim|lock|release)/', $src));
 check('it writes only incidents',        !preg_match('/Database::(update|insert|delete)\s*\(\s*[\'"]bookings/', $src));
 
+/* -----------------------------------------------------------------
+ *  F. 19 Sep 2026 - the live outage: Settings named a template Meta does
+ *     not have ("shg_ticket_hi_v1 does not exist in hi"). 60 tickets were
+ *     refused in a day and the ledger said only "provider refused the
+ *     send". The notifier now keeps Meta's sentence; the sentinel must
+ *     name the fault and send the owner to WhatsApp Manager, not Twilio.
+ * --------------------------------------------------------------- */
+echo "
+-- F. Meta: the ticket template does not exist --
+";
+Database::run("DELETE FROM message_logs WHERE provider_ref LIKE '" . TAG . "%'");
+Database::run("DELETE FROM health_incidents WHERE dedupe_key LIKE 'delivery.%'");
+for ($i = 0; $i < 4; $i++) {
+    seed('provider refused the send: HTTP 404 (code 132001) template name (shg_ticket_hi_v1) does not exist in hi - click-to-chat link only', 'failed', 950 + $i);
+}
+$res = runSentinel();
+check('classified as template_missing, not "other"',
+      ($res['classes']['template_missing'] ?? 0) === 4 && !isset($res['classes']['other']), json_encode($res['classes'] ?? []));
+check('a CRITICAL card is open', isOpen('delivery.template_missing'));
+$inc = Database::fetch("SELECT * FROM health_incidents WHERE dedupe_key = 'delivery.template_missing'");
+check('...that sends the owner to WhatsApp Manager and the two settings',
+      $inc !== null && stripos((string) $inc['fix_steps'], 'WhatsApp Manager') !== false
+      && str_contains((string) $inc['fix_steps'], 'whatsapp_template_name') && str_contains((string) $inc['fix_steps'], 'whatsapp_template_lang'));
+$nsrc = (string) file_get_contents(dirname(__DIR__) . '/includes/notify.php');
+check('the notifier keeps the provider's own reason in the ledger',
+      str_contains($nsrc, "'provider refused the send: ' . mb_substr(self::\$lastProviderError"));
+
 $cleanupRan = true;
 $cleanup();
 

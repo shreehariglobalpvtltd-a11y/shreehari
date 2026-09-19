@@ -44,6 +44,15 @@ final class Notify
      */
     private static array $journal = [];
 
+    /**
+     * Why the provider refused the LAST send, in the provider's own words.
+     * whatsappCloudApi() returns a bool, so until 19 Sep 2026 Meta's reason
+     * ("template name (x) does not exist in hi") was thrown away and the
+     * ledger said only "provider refused the send" - 60 refused tickets in a
+     * day with nothing on any screen saying why. Reset before each attempt.
+     */
+    private static string $lastProviderError = '';
+
     /** @return list<array{to: string, ok: bool, link: ?string, driver: string, reason: string}> */
     public static function whatsappJournal(): array
     {
@@ -345,6 +354,7 @@ final class Notify
             $phoneId = META_PHONE_NUMBER_ID;
 
             if ($token !== '' && $phoneId !== '') {
+                self::$lastProviderError = '';
                 if (self::whatsappCloudApi($number, $message, $token, $phoneId, $mediaUrl, $templateVars, (string) ($meta['media_type'] ?? ''), $ref)) {
                     self::$journal[] = ['to' => $number, 'ok' => true, 'link' => null, 'driver' => 'cloud_api', 'reason' => ''];
                     // provider_ref = Meta's wamid, the key whatsapp/webhook.php
@@ -375,7 +385,9 @@ final class Notify
                 ? 'sender paused after an account-level refusal - click-to-chat link only'
                 : ($driver === 'click_to_chat'
                     ? 'no WhatsApp API configured - click-to-chat link only'
-                    : 'provider refused the send - click-to-chat link only'),
+                    : (self::$lastProviderError !== ''
+                        ? 'provider refused the send: ' . mb_substr(self::$lastProviderError, 0, 300) . ' - click-to-chat link only'
+                        : 'provider refused the send - click-to-chat link only')),
         ] + $meta);
         return $link;
     }
@@ -1044,6 +1056,9 @@ final class Notify
         unset($body['messaging_product'], $body['to']);
         $r = waGraphPost($number, $body, (string) ($body['type'] ?? 'text'), $token, $phoneId);
         $providerRef = $r['message_id'];
+        if (!$r['success']) {
+            self::$lastProviderError = trim((string) ($r['error'] ?? ''));
+        }
 
         return $r['success'];
     }
