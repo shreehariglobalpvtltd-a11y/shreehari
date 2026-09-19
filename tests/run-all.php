@@ -163,6 +163,7 @@ const KNOWN_STALE = [
 const NODE_SUITES = [
     'i18n-check.js'          => 'en/hi/ne key parity',
     'offline-ticket-test.js' => 'the ticket survives a deploy and works offline',
+    'lazy-retry-test.js'     => 'failed lazy downloads remain retryable without duplicate actions',
 ];
 
 /** Need the dev server on :8899 as well as the database. */
