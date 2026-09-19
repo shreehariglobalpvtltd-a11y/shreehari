@@ -1,6 +1,6 @@
 # WhatsApp templates — Meta Cloud API
 
-WABA `3562001380633706` / `2783607078690529` · sender **+91 91734 01507** (phone number ID `1349098131618073`)
+WABA `2550012892113424` · sender **+91 87358 81507** (phone number ID `1256122924259996`)
 
 ## Why templates
 
@@ -15,7 +15,7 @@ India rate card at *WhatsApp Manager → Overview → Pricing* before quoting pe
 
 ## Already approved (in use)
 
-### `shg_ticket_confirmed_v2_hxf4fc47f327b75190543be8d9214e6c44`: ticket confirmation ✅ APPROVED
+### `shg_ticket_confirmed_v2_hxf4fc47f327b75190543be8d9214e6c44`: ticket confirmation (OLD WABA, deprecated)
 - Category: **Utility** · Language: `en`
 - Header: **IMAGE**, the ticket PNG (`Ticket::imageUrl()`)
 - Body:
@@ -36,6 +36,16 @@ India rate card at *WhatsApp Manager → Overview → Pricing* before quoting pe
 - Variables: `[pnr, route, date, boarding_point · time, seats, total_amount]`, built by `Notify::ticketTemplateVars()`
 - Settings: `whatsapp_template_name` = the name above, `whatsapp_template_lang` = `en`
 - Used by: `Notify::bookingConfirmed()`, `resendTicketWhatsApp()`, `ticketChanged()`, `cron/whatsapp-retry.php`
+
+
+### `shg_ticket_confirmed_v3`: ticket confirmation ✅ APPROVED (ACTIVE)
+- Category: **Utility** · Language: `en`
+- Header: **IMAGE**, the ticket PNG (`Ticket::imageUrl()`)
+- Body: same as v2 (English)
+- Variables: `[pnr, route, date, boarding_point · time, seats, total_amount]`, built by `Notify::ticketTemplateVars()`
+- Settings: `whatsapp_template_name` = `shg_ticket_confirmed_v3`, `whatsapp_template_lang` = `en`
+- Used by: `Notify::bookingConfirmed()`, `resendTicketWhatsApp()`, `ticketChanged()`, `cron/whatsapp-retry.php`
+- Activated: 19 Sep 2026, replacing v2 after WABA migration to Cloud API
 
 ## To create (currently free text, so they reach people only inside a 24 h chat)
 

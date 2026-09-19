@@ -1792,16 +1792,33 @@ final class Notify
 
         $company = Settings::getString('company_name', APP_NAME);
         $pnr     = (string) ($booking['pnr'] ?? '');
-        $amount  = inr((float) ($booking['total_amount'] ?? 0));
+        $total   = (float) ($booking['total_amount'] ?? 0);
+        $amount  = inr($total);
         $phone   = self::usablePhone($booking['contact_phone'] ?? '');
 
         if (Settings::getBool('whatsapp_notify_customer', true) && $phone !== '') {
+            $upiId   = Settings::getString('upi_id', '');
+            $upiName = Settings::getString('upi_name', $company);
+            $upiUri  = ($upiId !== '' && $total > 0)
+                     ? upiLink($upiId, $upiName, $total, $pnr)
+                     : '';
+
             $text = "🚌 " . $company . "\n"
                   . "तपाईंको बुकिङ प्राप्त भयो! बुकिङ नं.: " . $pnr . "\n"
-                  . "जम्मा: " . $amount . "\n"
-                  . "सिट पक्का गर्न भुक्तानीको प्रमाण (स्क्रिनसट) अपलोड गर्नुहोस्:\n"
-                  . appUrl('') . "\n"
-                  . "सहयोग: " . Settings::officePhone();
+                  . "जम्मा: " . $amount . "\n";
+
+            if ($upiId !== '') {
+                $text .= "\n💰 यहाँ तिर्नुहोस् · Pay Here\n"
+                       . "UPI: " . $upiId . "\n";
+                if ($upiUri !== '') {
+                    $text .= "टेप गरेर तिर्नुहोस्: " . $upiUri . "\n";
+                }
+                $text .= "\n";
+            }
+
+            $text .= "भुक्तानी पछि प्रमाण अपलोड गर्नुहोस्:\n"
+                   . appUrl('') . "\n"
+                   . "सहयोग: " . Settings::officePhone();
             self::whatsapp($phone, $text, null, self::countryHint($booking));
         }
 
