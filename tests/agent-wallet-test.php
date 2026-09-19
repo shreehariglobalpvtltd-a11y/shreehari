@@ -342,20 +342,24 @@ try {
     Settings::flush();
 
     /* ---- 12. Agent number (1..1000) printed on every ticket ---------- */
-    AgentWallet::setAgentCode($agentId, 27, $agentId);
-    check('agent number: is stored and read back', AgentWallet::agentCodeFor($agentId) === 27);
-    check('agent number: prints as SHG-0027', AgentWallet::agentCodeLabel($agentId) === 'SHG-0027');
-    check('agent number: resolves back to the agent', AgentWallet::adminForAgentCode(27) === $agentId);
+    /* 19 Sep 2026: the number was a literal 27. On a database where a real agent
+       already holds 27 the suite died with "Agent number 27 is already used".
+       Ask the wallet for a free one - the rules under test do not care which. */
+    $code = AgentWallet::nextFreeAgentCode();
+    AgentWallet::setAgentCode($agentId, $code, $agentId);
+    check('agent number: is stored and read back', AgentWallet::agentCodeFor($agentId) === $code);
+    check('agent number: prints as SHG-NNNN', AgentWallet::agentCodeLabel($agentId) === 'SHG-' . str_pad((string) $code, 4, '0', STR_PAD_LEFT));
+    check('agent number: resolves back to the agent', AgentWallet::adminForAgentCode($code) === $agentId);
 
     // Uniqueness is the whole point — two agents must never share a number.
     $dupBlocked = false;
-    try { AgentWallet::setAgentCode($agentId + 99999, 27, $agentId); }
+    try { AgentWallet::setAgentCode($agentId + 99999, $code, $agentId); }
     catch (Throwable $e) { $dupBlocked = str_contains($e->getMessage(), 'already used'); }
     check('agent number: a duplicate is refused', $dupBlocked);
 
     // Re-setting an agent to the number they already hold must NOT self-clash.
     $sameOk = true;
-    try { AgentWallet::setAgentCode($agentId, 27, $agentId); }
+    try { AgentWallet::setAgentCode($agentId, $code, $agentId); }
     catch (Throwable $e) { $sameOk = false; }
     check('agent number: re-saving your own number is allowed', $sameOk);
 
@@ -368,12 +372,12 @@ try {
     }
 
     check('agent number: next free number skips the taken one',
-        AgentWallet::nextFreeAgentCode() !== 27 && AgentWallet::nextFreeAgentCode() >= 1);
+        AgentWallet::nextFreeAgentCode() !== $code && AgentWallet::nextFreeAgentCode() >= 1);
 
     AgentWallet::setAgentCode($agentId, null, $agentId);
     check('agent number: clearing it works', AgentWallet::agentCodeFor($agentId) === null);
     check('  and the label is then empty', AgentWallet::agentCodeLabel($agentId) === '');
-    check('  and the number is free again', AgentWallet::adminForAgentCode(27) === null);
+    check('  and the number is free again', AgentWallet::adminForAgentCode($code) === null);
 
 } catch (Throwable $e) {
     check('unexpected error: ' . $e->getMessage(), false);

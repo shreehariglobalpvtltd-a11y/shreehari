@@ -356,9 +356,18 @@ Database::query('DELETE FROM brain_alerts WHERE alert_date = :d', ['d' => $today
 $alerts = TicketBrain::alerts($today);
 check('alerts() runs and writes', is_array($alerts));
 $kinds = array_column($alerts, 'kind');
-check('tomorrow\'s departures are on the checklist',
-    in_array('departure', $kinds, true) || $alerts === [],
-    implode(',', array_unique($kinds)) ?: '(none)');
+/* 19 Sep 2026: this read "a departure card is present OR there are no alerts at
+   all", which fails on any database that has a repeat canceller but nothing sold
+   for tomorrow (shari_test). The rule in TicketBrain::alerts(): one departure
+   card per scheduled, unblocked run tomorrow that has sold at least one seat. */
+$tomorrowSold = Database::exists(
+    "SELECT 1 FROM schedules s JOIN booking_seats bs ON bs.schedule_id = s.id AND bs.released_at IS NULL
+      WHERE s.travel_date = :d AND s.is_blocked = 0 AND s.status = 'scheduled' LIMIT 1",
+    ['d' => date('Y-m-d', strtotime($today . ' +1 day'))]
+);
+check('tomorrow\'s departures are on the checklist exactly when something is sold for tomorrow',
+    in_array('departure', $kinds, true) === $tomorrowSold,
+    ($tomorrowSold ? 'sold' : 'nothing sold') . ' -> ' . (implode(',', array_unique($kinds)) ?: '(none)'));
 
 $cancelRefs = array_column(array_filter($alerts, static fn(array $a): bool => $a['kind'] === 'cancel_risk'), 'ref');
 check('a placeholder number is never flagged as a repeat canceller',

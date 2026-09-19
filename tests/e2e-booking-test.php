@@ -151,6 +151,9 @@ try { pdo()->exec("DELETE FROM rate_limits WHERE bucket LIKE 'admin_login%'"); }
 ensureStaff(E2E_ADMIN_USER, 'superadmin', $E2E_ADMIN_PW, null);
 ensureStaff(E2E_AGENT_USER, 'agent', $E2E_AGENT_PW, '919812300000');
 
+// TEST 11 compares against this: the run must not LOSE a legacy row.
+$legacyBefore = (int) pdo()->query("SELECT COUNT(*) FROM bookings WHERE pnr LIKE 'SHG-R%'")->fetchColumn();
+
 echo "\n=== TEST 1 — guest opens the site, no login ===\n";
 $home = req('GET', '/', ['jar' => $jar]);
 check('GET / returns 200', $home['code'] === 200, 'HTTP ' . $home['code']);
@@ -357,7 +360,10 @@ if ($agentIn) {
 
 echo "\n=== TEST 11 — existing data untouched ===\n";
 $cnt = (int) pdo()->query("SELECT COUNT(*) FROM bookings WHERE pnr LIKE 'SHG-R%'")->fetchColumn();
-check('legacy bookings still present', $cnt >= 5, $cnt . ' legacy rows');
+/* 19 Sep 2026: this asserted ">= 5", a fact about one developer's seed, not
+   about this run - shari_test on the VPS holds 3, so the suite failed for ever.
+   What the test is FOR: the run must not lose a legacy row. */
+check('legacy bookings still present', $cnt === $legacyBefore, $legacyBefore . ' before, ' . $cnt . ' after');
 
 // Remove the throwaway sign-in accounts (they carry no sales / wallet rows).
 try { $d = pdo()->prepare('DELETE FROM admins WHERE username IN (?, ?)'); $d->execute([E2E_ADMIN_USER, E2E_AGENT_USER]); } catch (Throwable $e) {}
