@@ -133,6 +133,7 @@ function admin_nav(): array
         // Settings
         ['href' => 'settings.php',     'icon' => 'cog',       'label' => 'Settings',         'perm' => 'dashboard.view', 'section' => 'Settings'],
         ['href' => 'activity-log.php', 'icon' => 'shield',    'label' => 'Activity & Security','perm'=> 'dashboard.view', 'section' => 'Settings'],
+        ['href' => 'health.php',       'icon' => 'alert',     'label' => 'System Health',    'perm' => 'dashboard.view', 'section' => 'Settings'],
 
         // Map — routes, stops, head office and the driver's live position (5 Sep 2026).
         ['href' => 'map.php',          'icon' => 'map-pin',      'label' => 'Live Map',         'perm' => 'schedules.view', 'section' => 'Map'],
