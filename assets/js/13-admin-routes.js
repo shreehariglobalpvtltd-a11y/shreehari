@@ -637,16 +637,9 @@ const Splash = {
      dropped to 500ms so a phone paint feels instant; the logo still
      registers because the letter-by-letter animation runs in parallel. */
   minDuration: 500,
-  /* How long the brand screen holds on a FIRST visit — the owner's ask,
-     so staff have a real window to tap Agent/Admin and a new visitor
-     reads what the app does. It is a floor for first-timers only:
-     anyone who has been here before gets 400ms (see init), and the
-     'Book now' pill or Skip leaves instantly at any point. */
-  /* 4 Sep 2026: 6500 → 2500. The brand still registers (logo + name land
-     in the first half-second); nobody waits six seconds to book a bus. */
-  /* 11 Sep 2026 perf pass: 2500 → 1500. Logo + name land in the first
-     half-second; the portal pills are still tappable for a full second. */
-  portalMs: 1500,
+  /* First visit: show the brand briefly while data loads. Staff sign-in
+     has its own link; passengers need not wait for a portal chooser. */
+  portalMs: 600,
   portalTimer: null,
   featTimer: null,
   messages: [
@@ -660,7 +653,9 @@ const Splash = {
     this.skip = $('#splashSkip');
     this.startTs = performance.now();
     if (!this.el) { this.done = true; return; }
-    if (sessionStorage.getItem('shg:splashed')) {
+    var splashed = false;
+    try { splashed = !!sessionStorage.getItem('shg:splashed'); } catch (e) {}
+    if (splashed) {
       this.el.style.display = 'none';
       this.done = true;
       RoleGate.init().maybeShow();   // splash skipped this session — still ask
@@ -1122,7 +1117,7 @@ function shgLazyLoad() {
     s.src = '/assets/js/16-lazy.js' + (ver ? '?v=' + encodeURIComponent(ver) : '');
     s.async = true;
     s.onload = function () { window._shgLazyDone = true; resolve(); };
-    s.onerror = function () { window._shgLazyP = null; reject(new Error('16-lazy.js failed to load')); };
+    s.onerror = function () { s.remove(); window._shgLazyP = null; reject(new Error('16-lazy.js failed to load')); };
     document.head.appendChild(s);
   });
   return window._shgLazyP;
@@ -1138,11 +1133,19 @@ function cleanupTracker() { /* idem */ }
      so the real handler (attached by the chunk) takes it. */
   function arm(sel, ev, replay) {
     var el = document.querySelector(sel); if (!el) return;
+    var pending = false;
     el.addEventListener(ev, function h(e) {
-      el.removeEventListener(ev, h);
-      if (window._shgLazyDone) return;
+      if (window._shgLazyDone) { el.removeEventListener(ev, h); return; }
       e.preventDefault();
-      shgLazyLoad().then(function () { replay(el); }).catch(function () {});
+      if (pending) return;
+      pending = true;
+      shgLazyLoad().then(function () {
+        el.removeEventListener(ev, h);
+        replay(el);
+      }).catch(function () {
+        // Keep the trigger armed so a tap after reconnecting can retry.
+        pending = false;
+      });
     });
   }
   arm('#aiFab', 'click', function (el) { el.click(); });

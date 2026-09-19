@@ -965,7 +965,7 @@ footer{background:linear-gradient(180deg,var(--blue-deep) 0%,#080E1C 100%);color
 }
 
 /* ---------- [CSS] 18c-0. PRIVATE vs SHARING TOP HIGHLIGHT ---------- */
-.style-duo{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:18px}
+.style-duo{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(290px,100%),1fr));gap:18px}
 .style-card{position:relative;background:var(--card);border-radius:22px;padding:24px 22px;overflow:hidden;border:1.5px solid var(--line);box-shadow:0 8px 26px rgba(16,42,84,.08);transition:transform .25s ease,box-shadow .25s ease}
 .style-card:hover{transform:translateY(-4px);box-shadow:0 14px 36px rgba(16,42,84,.14)}
 .style-private{border-color:#D4AF37;background:linear-gradient(150deg,#FFFDF5,#FFF7E0 60%,#FFF)}
@@ -1359,7 +1359,7 @@ table.admin .code{font-family:var(--f-code);font-size:12.5px}
 /* Modal (sign-in / waitlist / cancel) */
 .shg-modal{position:fixed;inset:0;background:rgba(14,25,48,.55);backdrop-filter:blur(4px);z-index:120;display:none;align-items:flex-end;justify-content:center;padding:18px}
 .shg-modal.open{display:flex;animation:fadeDown .25s ease}
-.shg-modal .m-box{background:#fff;border-radius:24px;box-shadow:var(--shadow-lg);max-width:430px;width:100%;padding:28px 26px;position:relative;animation:sheetUp .3s cubic-bezier(.2,.65,.3,1)}
+.shg-modal .m-box{background:#fff;border-radius:24px;box-shadow:var(--shadow-lg);max-width:430px;width:100%;max-height:calc(100vh - 36px);max-height:calc(100dvh - 36px);overflow-y:auto;overscroll-behavior:contain;padding:28px 26px;position:relative;animation:sheetUp .3s cubic-bezier(.2,.65,.3,1)}
 @keyframes sheetUp{from{transform:translateY(30px);opacity:0}to{transform:none;opacity:1}}
 .m-close{position:absolute;top:10px;right:10px;width:44px;height:44px;border-radius:50%;background:var(--blue-50);color:var(--blue-800);font-size:16px;font-weight:800;display:flex;align-items:center;justify-content:center}
 .m-title{font-family:var(--f-display);font-size:19px;margin-bottom:4px;padding-right:36px}

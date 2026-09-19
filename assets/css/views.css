@@ -3631,7 +3631,7 @@ body.wa-open{overflow:hidden}
 [data-theme="dark"] .wa-row-hot{background:linear-gradient(135deg,rgba(37,211,102,.16),var(--card));border-color:rgba(37,211,102,.4)}
 /* -- digital visiting card -- */
 .vcard-sec{margin:26px auto 22px;max-width:1080px}
-.vcard-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:18px;perspective:1200px}
+.vcard-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(290px,100%),1fr));gap:18px;perspective:1200px}
 .vcard{margin:0;background:var(--card,#fff);border:1px solid var(--line);border-radius:20px;padding:12px;box-shadow:var(--shadow-md);transform-style:preserve-3d;transition:transform .5s var(--ease-decel),box-shadow .5s}
 @media (hover:hover){.vcard:hover{transform:rotateY(-5deg) rotateX(3deg) translateY(-4px);box-shadow:var(--shadow-lg)}}
 .vcard .vcard-img{display:block;border-radius:14px;overflow:hidden;background:#f3f5f9}

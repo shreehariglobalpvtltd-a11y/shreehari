@@ -77,7 +77,7 @@
       '<div class="jy-road"></div>' +
       '<div class="jy-mark jy-a"><span></span></div>' +
       '<div class="jy-mark jy-b"><span></span></div>' +
-      '<div class="jy-bus"><i class="jy-shadow"></i><div class="jy-body"><img alt="" decoding="async" src="' + base + IMG + '"></div></div>';
+      '<div class="jy-bus"><i class="jy-shadow"></i><div class="jy-body"><img alt="" decoding="async" src="' + base + IMG + stamp + '"></div></div>';
     img = el.querySelector('img');
     labA = el.querySelector('.jy-a span');
     labB = el.querySelector('.jy-b span');
@@ -122,7 +122,7 @@
     if (strip) strip.classList.toggle('jy-paused', paused);
   });
   /* fetch the coach picture while idle so the first search starts at once */
-  function warm() { try { var i = new Image(); i.fetchPriority = 'low'; i.src = base + IMG; } catch (e) {} }
+  function warm() { try { var i = new Image(); i.fetchPriority = 'low'; i.src = base + IMG + stamp; } catch (e) {} }
   if (window.requestIdleCallback) window.requestIdleCallback(warm, { timeout: 6000 }); else setTimeout(warm, 3000);
 
   window.SHG_JOURNEY = {

@@ -1,0 +1,24 @@
+name: Application checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: PHP syntax
+        run: find . -type f -name '*.php' -not -path './.git/*' -print0 | xargs -0 -n1 php -l
+      - name: JavaScript syntax
+        run: find assets/js -name '*.js' -print0 | xargs -0 -n1 node --check
+      - name: Asset versions
+        run: php tests/asset-version-test.php
+      - name: Offline ticket behavior
+        run: node tests/offline-ticket-test.js
+      - name: Lazy-load recovery
+        run: node tests/lazy-retry-test.js
+      - name: Translations
+        run: node tests/i18n-check.js
