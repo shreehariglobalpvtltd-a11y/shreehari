@@ -106,7 +106,7 @@ $color    = $state === 'open' ? '#F07C1F' : ($state === 'claimed' || $state === 
 <body>
 <div class="wrap">
   <div class="hdr">
-    <img src="/assets/img/logo.png?v=20260920d" alt="" onerror="this.style.display='none'">
+    <img src="/assets/img/logo.png?v=20260920e" alt="" onerror="this.style.display='none'">
     <div><b><?= $e($company) ?></b><small>Split-pay · भाडा बाँडेर तिर्नुहोस् · किराया बाँटकर भरें</small></div>
   </div>
 

@@ -183,7 +183,7 @@ function initNavApp(){
 
   /* [SECTION 1] Auto day/night — open in the premium night theme after 18:00 / before
      06:00 local time; the manual Day/Night/Sat/Terrain buttons still fully override. */
-  try{ var _snH=new Date().getHours(); if((_snH>=18||_snH<6)&&SN.currentStyle==='day') SN.currentStyle='night'; }catch(e){}
+  /* Opens in the day style at any hour (owner, 20 Sep 2026: "day light aaos"); Night is one tap. */
 
   /* ---- Lite mode (5 Sep 2026) ----
      A low-end phone (<=2 GB RAM or <=2 cores), a data-saver / 2G-3G link, or a
@@ -572,21 +572,6 @@ function initNavApp(){
   /* [SECTION 1] reflect the auto-picked day/night choice on the style bar */
   try{ document.querySelectorAll('#view-nav [data-snstyle]').forEach(function(x){ x.classList.toggle('on', x.getAttribute('data-snstyle')===SN.currentStyle); }); }catch(e){}
 
-  /* v4.0 B7 — keep day/night in step while the map stays open. The boot-time
-     pick above only ran once; a driver who opened the navigator at 17:30 was
-     still on the day style at 21:00. Only flips between the two auto styles —
-     a manual choice of 'topo' (or any explicit tap) is left alone until the
-     clock next crosses a boundary. */
-  SN._autoStyleTimer = setInterval(function(){
-    try{
-      var h = new Date().getHours();
-      var want = (h >= 18 || h < 6) ? 'night' : 'day';
-      if (SN.currentStyle !== want && (SN.currentStyle === 'day' || SN.currentStyle === 'night')) {
-        SN.currentStyle = want; map.setStyle(STYLES[want]);
-        document.querySelectorAll('#view-nav [data-snstyle]').forEach(function(x){ x.classList.toggle('on', x.getAttribute('data-snstyle') === want); });
-      }
-    }catch(e){}
-  }, 10 * 60 * 1000);
 
   /* 3D toggle — pitch + buildings + real terrain (falls back to pitch only) */
   s('#sn3D').onclick=function(){
@@ -1173,6 +1158,8 @@ function initNavApp(){
     s('#snHud').classList.remove('off');
     var spd=c.speed!=null?Math.max(0,Math.round(c.speed*3.6)):0;
     s('#snSpeed').textContent=spd;
+    /* The speed / heading panel is for driving: shown once moving or on a route. */
+    s('#snHud').classList.toggle('moving', spd>=5 || !!(SN.routeCoords&&SN.routeCoords.length));
     /* 4 Sep 2026 — the pace band (walking / cycle / car / bus) is read from
        the LIVE speed, not the mode chip, and recolours the HUD so a glance
        says how the phone is moving. Thresholds: <6 walk, <28 cycle, <75 car. */

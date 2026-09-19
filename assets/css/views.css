@@ -1777,6 +1777,7 @@ a,button,.btn,.nav a,.tab-btn,.pm-tab,.bt-pill,.tier-pill,.proof-tab,.trip-pill{
 #view-nav .sn-hud .cell b{display:block;font-size:13px;font-weight:700;color:var(--sk);font-variant-numeric:tabular-nums}
 #view-nav .sn-hud .cell span{font-size:9.5px;color:var(--sm);letter-spacing:.4px;text-transform:uppercase}
 #view-nav .sn-hud.off{opacity:.55}
+#view-nav .sn-hud:not(.moving){display:none}
 /* Speed bands (4 Sep 2026): the big number recolours with the pace so a
    glance reads walking / cycling / car / bus without reading the digits. */
 #view-nav .sn-hud .big b{transition:color .3s ease,text-shadow .3s ease}
