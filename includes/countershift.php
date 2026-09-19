@@ -237,7 +237,7 @@ final class CounterShift
         $where  = $scopeAdminId !== null ? 'WHERE s.admin_id = :a' : '';
         $params = $scopeAdminId !== null ? ['a' => $scopeAdminId] : [];
         return Database::fetchAll(
-            "SELECT s.*, a.name AS admin_name
+            "SELECT s.*, a.full_name AS admin_name
                FROM counter_shifts s
                LEFT JOIN admins a ON a.id = s.admin_id
                {$where}

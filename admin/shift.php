@@ -77,7 +77,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     try {
                         require_once INCLUDE_PATH . '/notify.php';
                         $office = Settings::getString('admin_whatsapp', Settings::officePhone());
-                        $who    = (string) (Database::scalar('SELECT name FROM admins WHERE id = :i', ['i' => (int) $closed['admin_id']], '') ?: ('#' . $closed['admin_id']));
+                        $who    = (string) (Database::scalar('SELECT full_name FROM admins WHERE id = :i', ['i' => (int) $closed['admin_id']], '') ?: ('#' . $closed['admin_id']));
                         if ($office !== '') {
                             Notify::whatsapp($office, CounterShift::summaryText($closed, $who), null, null, [], null, ['purpose' => 'shift_close']);
                         }
@@ -201,7 +201,7 @@ admin_header('Shift & Cash', 'shift');
 <?php else:
   $mine = (int) $shift['admin_id'] === $me; ?>
   <div class="panel">
-    <h2><?= $mine ? 'Your shift is open' : 'Open shift of ' . Security::e((string) (Database::scalar('SELECT name FROM admins WHERE id = :i', ['i' => (int) $shift['admin_id']], '') ?: '#' . $shift['admin_id'])) ?>
+    <h2><?= $mine ? 'Your shift is open' : 'Open shift of ' . Security::e((string) (Database::scalar('SELECT full_name FROM admins WHERE id = :i', ['i' => (int) $shift['admin_id']], '') ?: '#' . $shift['admin_id'])) ?>
       <span class="muted" style="font-size:13px;font-weight:500"> · since <?= Security::e(substr((string) $shift['opened_at'], 0, 16)) ?></span></h2>
     <div class="sh-sum">
       <div><small>Cash taken · नगद</small><b><?= Security::e(inr($live['cash'])) ?></b></div>
