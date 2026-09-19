@@ -223,7 +223,7 @@ check('...that sends the owner to WhatsApp Manager and the two settings',
       $inc !== null && stripos((string) $inc['fix_steps'], 'WhatsApp Manager') !== false
       && str_contains((string) $inc['fix_steps'], 'whatsapp_template_name') && str_contains((string) $inc['fix_steps'], 'whatsapp_template_lang'));
 $nsrc = (string) file_get_contents(dirname(__DIR__) . '/includes/notify.php');
-check('the notifier keeps the provider's own reason in the ledger',
+check('the notifier keeps the reason the provider gave in the ledger',
       str_contains($nsrc, "'provider refused the send: ' . mb_substr(self::\$lastProviderError"));
 
 $cleanupRan = true;
