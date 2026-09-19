@@ -1798,10 +1798,11 @@ final class Notify
 
         if (Settings::getBool('whatsapp_notify_customer', true) && $phone !== '') {
             $upiId   = Settings::getString('upi_id', '');
-            $upiName = Settings::getString('upi_name', $company);
-            $upiUri  = ($upiId !== '' && $total > 0)
-                     ? upiLink($upiId, $upiName, $total, $pnr)
-                     : '';
+            // WhatsApp only auto-links http(s), not upi:// — send the
+            // tappable pay.php redirect that turns into upi://pay on tap.
+            $payUrl = ($upiId !== '' && $total > 0)
+                    ? appUrl('pay.php?pnr=' . urlencode($pnr))
+                    : '';
 
             $text = "🚌 " . $company . "\n"
                   . "तपाईंको बुकिङ प्राप्त भयो! बुकिङ नं.: " . $pnr . "\n"
@@ -1810,8 +1811,8 @@ final class Notify
             if ($upiId !== '') {
                 $text .= "\n💰 यहाँ तिर्नुहोस् · Pay Here\n"
                        . "UPI: " . $upiId . "\n";
-                if ($upiUri !== '') {
-                    $text .= "टेप गरेर तिर्नुहोस्: " . $upiUri . "\n";
+                if ($payUrl !== '') {
+                    $text .= "टेप गरेर तिर्नुहोस्:\n" . $payUrl . "\n";
                 }
                 $text .= "\n";
             }
