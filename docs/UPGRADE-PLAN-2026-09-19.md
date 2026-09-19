@@ -193,6 +193,34 @@ Deviations from the plan, on purpose: the shift slip is a print view (no PDF); E
 only (the driver's publish path is untouched); off-site backup goes by **email**, not Google Drive (0.6 MB dump,
 SMTP already works, no Google key for the owner to create) — move to Drive/S3 if the dump passes 18 MB.
 
+## Session 6 — shipped 19 Sep (evening), LIVE `shg-v132`
+
+- [x] **Phone audit of every admin page** (42 renderable, 375 px and 1366 px): only Seat Map and Trip
+      Dashboard overflowed (a long route `<select>`, +83 px) — fixed in the shared toolbar style.
+- [x] **Colourful bottom bar** (admin, phone): Home navy · Tickets green · **⚡ Ticket** orange (now QuickBot,
+      was the seat-map booking) · Map teal for agents/counters, Payments gold for the office · Menu.
+- [x] **Map in agent mode**: Live Map card "My passengers · by pickup" — call / WhatsApp per passenger,
+      "~N min" per pickup when the driver's phone is live. An agent sees only their own passengers.
+- [x] **QuickBot speaks** ("human jasto"): 🔊 Voice on → "टिकट बन्यो, सिट L12, भाडा…, व्हाट्सएपमा गयो";
+      a refusal is spoken too. Off by default, per device.
+- [x] **Trip Companion ETA**: "तपाईंको स्टपसम्म करिब N मिनेट" from `/api/eta.php` — the same engine as the
+      WhatsApp alert, so the two never disagree.
+- [x] Seat screen women-safety line in the app language only. Three fixture-bound suites repaired:
+      **battery 70 passed, 0 failed** (+2 node suites green locally; node is not on the VPS).
+- [ ] Customer navigator already has Google-style search / routing / voice / 3D / follow-bus (15-nav.js) —
+      nothing rebuilt. Next map step, if wanted: tap a stop pin → its pickup time + "book from here".
+
+### Click audit (counted from the code, not stopwatch-timed)
+
+| Job | Before | Now |
+|---|---|---|
+| Counter / agent sells 1 seat | bottom "+" → app seat map → seat → continue → form → T&C → confirm ≈ 7 taps | bottom **⚡** → name + mobile → **Enter** = 2 taps |
+| Counter sells 5 seats | ≈ 11 taps | ⚡ → seats chip **5** → Enter = 3 taps |
+| Customer books (seat map) | date → search → choose bus → seat → continue → pay → T&C → confirm ≈ 8 | unchanged (QuickBot card on home: name + mobile → 1 tap) |
+| Agent: who boards where, call them | Tickets → filter → open each booking | bottom **Map** → pickup → 📞 / 💬 = 3 taps |
+| Count the drawer | notebook | Tickets → Shift & Cash → notes → Close = 3 taps |
+| Ticket on WhatsApp | automatic | automatic — **blocked on live by the Meta template name** (owner action) |
+
 ## Progress log
 
 | Date | Session | Done | Commit |
@@ -205,3 +233,5 @@ SMTP already works, no Google key for the owner to create) — move to Drive/S3 
 | 19 Sep 2026 | 4 — LIVE, OFF | encrypted off-site backup by email, `backup-offsite-test` 18/18, cron 02:45 | (this commit − 1) |
 
 Battery on `shari_test`: 66 pass / the same 3 fixture failures. Still open: click audit (S1), fixture repair, S5 offline queue, S6.
+| 19 Sep 2026 | 5 — LIVE, OFF | offline desk (requests, never seats), `offline-queue-test` 23/23 incl. one real sale, `shg-v130` | 7b99d0a, f2d2444 |
+| 19 Sep 2026 | 6 — LIVE | phone audit, colourful bar, agent map, QuickBot voice, app ETA, fixtures green, `shg-v132` | 1618bfc … 19e26a0 |
