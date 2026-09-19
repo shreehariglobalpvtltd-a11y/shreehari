@@ -153,6 +153,30 @@ it should feel like a person is helping; fast, effective, easy in real life.*
 - [ ] Brand accent (if approved in P0), Lighthouse pass on a mid-range Android, full battery,
       one release: `shg-v129+`, one asset stamp, `docs/UPGRADE-2026-09-xx.md` in plain language.
 
+## Owner round 2 — 19 Sep evening (screenshots: System Health table, seat screen on a wide monitor)
+
+- [x] **"Scroll down, then sideways" on a computer** — every `table.dt` was forced to 900px inside a
+      78vh box. One scroller now; only a register with > 25 rows keeps a window-sized box (07c0a3e).
+- [x] **Bus strip / route bar not lined up on a wide monitor** — they stand on the 1160px page column.
+- [x] **"Too many options on top, make it simple, Nepali"** — seat key = 4 signs + *More signs* on a
+      computer, labels are i18n (en/hi/ne); CEO ribbon + office pills hidden inside the flow on every
+      width; shorter header and road scene (ec1b572).
+- [x] **"Send the ticket on WhatsApp automatically like the chalan"** — the code already does; it is
+      **failing on live**: `whatsapp_template_name = shg_ticket_hi_v1`, `whatsapp_template_lang = hi`, and
+      Meta answers *"template name (shg_ticket_hi_v1) does not exist in hi"* — 60 refusals to 11
+      passengers on 19 Sep; 13 of 26 confirmed bookings in 3 days got no WhatsApp. The chalan works
+      because the office number is inside its own 24 h chat window. Code now keeps Meta's sentence in
+      the ledger and the sentinel raises a CRITICAL *template missing* card.
+      **OWNER ACTION:** WhatsApp Manager → Message templates → read the approved ticket template's exact
+      name + language → put those two values in Admin → Settings → Notifications. (Or create the
+      template per `whatsapp/TEMPLATES.md` and wait for approval.) The retry cron then drains the backlog.
+- [ ] **Every admin option usable on phone and computer** — walk all ~55 pages at 375px and 1366px,
+      list what breaks (Session 6 audit; the table change above already covers every list page).
+- [ ] **Map "like Google"** — search a place, my-location button, pinch/scroll zoom without the page
+      moving, tap a stop for times, live bus with ETA (ties into Session 3). MapLibre stays (no paid maps).
+- [ ] Women-safety strip on the seat screen is three languages long — show the app language only.
+- Release prepared: `shg-v129`, asset stamp `20260919a`. Battery 63 pass / same 3 fixture failures.
+
 ## Progress log
 
 | Date | Session | Done | Commit |
