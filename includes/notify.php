@@ -1803,6 +1803,12 @@ final class Notify
             $payUrl = ($upiId !== '' && $total > 0)
                     ? appUrl('pay.php?pnr=' . urlencode($pnr))
                     : '';
+            // Ticket-look PNG with the big UPI-pay QR + amount, so the
+            // customer sees a scannable image the moment the WhatsApp
+            // message opens (no typing, no copy-paste).
+            $payImg = ($upiId !== '' && $total > 0)
+                    ? appUrl('pay-image.php?pnr=' . urlencode($pnr))
+                    : null;
 
             $text = "🚌 " . $company . "\n"
                   . "तपाईंको बुकिङ प्राप्त भयो! बुकिङ नं.: " . $pnr . "\n"
@@ -1814,13 +1820,13 @@ final class Notify
                 if ($payUrl !== '') {
                     $text .= "टेप गरेर तिर्नुहोस्:\n" . $payUrl . "\n";
                 }
-                $text .= "\n";
+                $text .= "माथिको QR स्क्यान गर्नुहोस् · Or scan the QR above\n\n";
             }
 
             $text .= "भुक्तानी पछि प्रमाण अपलोड गर्नुहोस्:\n"
                    . appUrl('') . "\n"
                    . "सहयोग: " . Settings::officePhone();
-            self::whatsapp($phone, $text, null, self::countryHint($booking));
+            self::whatsapp($phone, $text, $payImg, self::countryHint($booking));
         }
 
         if (!empty($booking['contact_email'])) {
