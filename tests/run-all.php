@@ -132,6 +132,7 @@ const CORE_SUITES = [
     'webpush-test.php'             => 'Web Push: RFC 8291 vectors, VAPID signature, subscription store',
     // 19 Sep 2026, registered with the night data audit it guards.
     'data-audit-test.php'          => 'the night audit names the right broken row, and only that one',
+    'counter-shift-test.php'       => 'the cash drawer adds up: mine only, frozen at close, never on the sale path',
 ];
 
 /**

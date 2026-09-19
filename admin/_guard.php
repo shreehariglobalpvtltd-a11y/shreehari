@@ -82,6 +82,7 @@ function admin_nav(): array
         // bus, pickup, seat and fare → confirmed sale → PNG ticket → WhatsApp.
         // Flagged `hot` so every desk finds it at a glance (see $renderLink).
         ['href' => 'quick-ticket.php', 'icon' => 'ticket-alt', 'label' => '🤖 QuickBot Ticket', 'perm' => 'bookings.view', 'section' => 'Tickets', 'hot' => true],
+        ['href' => 'shift.php',        'icon' => 'coins',      'label' => 'Shift & Cash',      'perm' => 'bookings.view', 'section' => 'Tickets'],
         ['href' => 'seatmap.php',      'icon' => 'seat',      'label' => 'Seat Map',         'perm' => 'schedules.view', 'section' => 'Tickets'],
         ['href' => 'manifest.php',     'icon' => 'clipboard', 'label' => 'Passenger Manifest', 'perm' => 'bookings.view', 'section' => 'Tickets'],
         // 17 Sep 2026: every departure document on one hub (PDF / PNG / WhatsApp).
