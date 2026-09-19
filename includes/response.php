@@ -211,6 +211,7 @@ final class Response
         if (!headers_sent()) {
             header('Content-Type: ' . $mime);
             header('Content-Length: ' . (string) filesize($absolutePath));
+            header('Cache-Control: private, no-cache, must-revalidate');
             header('X-Content-Type-Options: nosniff');
         }
 

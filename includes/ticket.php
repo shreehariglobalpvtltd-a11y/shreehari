@@ -735,6 +735,16 @@ final class Ticket
             @unlink(INVOICE_PATH . '/invoice_' . $pnr . '.pdf');
         }
 
+        /* Revision count + time (19 Sep 2026, owner: 'correction lekhnu paryo'): the
+           re-rendered ticket prints CORRECTED · REV n so an older copy on a phone or
+           a WhatsApp chat is recognisably superseded. A missing column (migration not
+           run) must never break the reissue itself. */
+        try {
+            Database::query('UPDATE tickets SET reissue_count = reissue_count + 1, reissued_at = NOW() WHERE booking_id = :b', ['b' => $bookingId]);
+        } catch (Throwable $e) {
+            Logger::exception($e);
+        }
+
         Logger::audit('ticket.reissue', 'booking', (string) ($booking['pnr'] ?? ''), null, null, 'Ticket QR + PDF re-minted after reschedule');
     }
 
@@ -801,6 +811,30 @@ final class Ticket
      * ================================================================= */
 
     /** Generate (and cache) the PNG ticket. Same contract as pdfPath(). */
+    /**
+     * A one-off DUPLICATE COPY of the current ticket for an office reprint.
+     * Rendered to a temp file (the caller deletes it) so the cached original
+     * the passenger holds is never replaced by the stamped copy.
+     */
+    public static function pngDuplicatePath(int $bookingId): string
+    {
+        $ticket  = self::issue($bookingId);
+        $booking = self::loadBooking($bookingId);
+        $path    = sys_get_temp_dir() . '/shg-dup-' . bin2hex(random_bytes(6)) . '.png';
+        self::renderTicketPng($booking, $ticket, $path, 'dup');
+        return $path;
+    }
+
+    /** PDF twin of pngDuplicatePath(). */
+    public static function pdfDuplicatePath(int $bookingId): string
+    {
+        $ticket  = self::issue($bookingId);
+        $booking = self::loadBooking($bookingId);
+        $path    = sys_get_temp_dir() . '/shg-dup-' . bin2hex(random_bytes(6)) . '.pdf';
+        self::renderTicketPdf($booking, $ticket, 'dup')->save($path);
+        return $path;
+    }
+
     public static function pngPath(int $bookingId, bool $force = false): string
     {
         $ticket  = self::issue($bookingId);
@@ -865,7 +899,7 @@ final class Ticket
         imagefilledellipse($im, $x2 - $r, $y2 - $r, $r * 2, $r * 2, $col);
     }
 
-    private static function renderTicketPng(array $booking, array $ticket, string $path): void
+    private static function renderTicketPng(array $booking, array $ticket, string $path, string $mark = ''): void
     {
         /* The passenger list decides the height (owner ask, 10 Sep 2026:
            "kati jana manche chan tinko exact, list like 7 people"). A single
@@ -1248,6 +1282,15 @@ final class Ticket
         $n2  = self::display($co['name']) . ($cin !== '' ? '  ·  CIN ' . $cin : '');
         self::gdText($im, 16, (int) (($W - self::gdWidth(16, $n2)) / 2), 1606 + $grow, $mut, $n2, false);
 
+        /* CORRECTED / DUPLICATE band in the 36px margin above the header. */
+        $markTxt = self::markText($ticket, $mark);
+        if ($markTxt !== '') {
+            imagefilledrectangle($im, 0, 0, $W, 34, $mark === 'dup' ? imagecolorallocate($im, 70, 78, 94) : $red);
+            $mSz = 16;
+            while ($mSz > 11 && self::gdWidth($mSz, $markTxt) > $W - 40) { $mSz--; }
+            self::gdText($im, $mSz, (int) (($W - self::gdWidth($mSz, $markTxt)) / 2), 24, $white, $markTxt, true);
+        }
+
         /* Atomic write: tmp then rename, so a half-written PNG is never served. */
         $tmp = $path . '.tmp';
         imagepng($im, $tmp, 6);
@@ -1471,7 +1514,21 @@ final class Ticket
         return $map[$text] ?? preg_replace('/[^\x20-\x7E]/', '', $text) ?: $text;
     }
 
-    private static function renderTicketPdf(array $booking, array $ticket): Pdf
+    /** 'CORRECTED TICKET · REV 2 · 19 Sep 2026 23:40 ...' / 'DUPLICATE COPY ...', or '' for a first issue. */
+    private static function markText(array $ticket, string $mark): string
+    {
+        $rev = (int) ($ticket['reissue_count'] ?? 0);
+        if ($mark === 'dup') {
+            return 'DUPLICATE COPY' . ($rev > 0 ? '  ·  REV ' . $rev : '') . '  ·  PRINTED ' . strtoupper(date('d M Y H:i'));
+        }
+        if ($rev > 0) {
+            $at = !empty($ticket['reissued_at']) ? (int) strtotime((string) $ticket['reissued_at']) : time();
+            return 'CORRECTED TICKET  ·  REV ' . $rev . '  ·  ' . strtoupper(date('d M Y H:i', $at)) . '  ·  REPLACES EARLIER COPIES';
+        }
+        return '';
+    }
+
+    private static function renderTicketPdf(array $booking, array $ticket, string $mark = ''): Pdf
     {
         $pdf = new Pdf();
         $W   = $pdf->width();
@@ -1517,6 +1574,11 @@ final class Ticket
            ============================================================== */
         $pdf->rect(0, 0, $W, 96, self::BROWN, true);
         $pdf->rect(0, 92, $W, 4, self::ORANGE, true);
+        $markTxt = self::markText($ticket, $mark);
+        if ($markTxt !== '') {
+            $pdf->rect(0, 0, $W, 13, $mark === 'dup' ? [70, 78, 94] : [176, 42, 42], true);
+            $pdf->textCenter(0, $W, 9.5, $markTxt, 7, 'F2', [255, 255, 255]);
+        }
 
         // Company logo on a white chip (5 Sep 2026) — the brand mark the
         // owner asked for. Text shifts right only when the logo is there,

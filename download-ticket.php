@@ -98,15 +98,20 @@ try {
     // ?img=1 (5 Sep 2026): the PNG ticket — the primary customer format.
     // Phone-friendly HD image; WhatsApp links and the app's download
     // button use this. ?view=1 shows it inline instead of saving.
+    /* ?dup=1 (19 Sep 2026): office reprint stamped DUPLICATE COPY, staff only;
+       a one-off temp render, deleted once sent. */
+    $dup = !empty($_GET['dup']) && Auth::can('bookings.view');
     if (!empty($_GET['img'])) {
-        $path = Ticket::pngPath((int) $booking['id']);
+        $path = $dup ? Ticket::pngDuplicatePath((int) $booking['id']) : Ticket::pngPath((int) $booking['id']);
+        if ($dup) { register_shutdown_function(static function () use ($path) { @unlink($path); }); }
         if (!empty($_GET['view'])) {
             Response::inline($path, 'image/png');
         }
         Response::download($path, 'SHG-Ticket-' . $pnr . '.png', 'image/png');
     }
 
-    $path = Ticket::pdfPath((int) $booking['id']);
+    $path = $dup ? Ticket::pdfDuplicatePath((int) $booking['id']) : Ticket::pdfPath((int) $booking['id']);
+    if ($dup) { register_shutdown_function(static function () use ($path) { @unlink($path); }); }
     // ?print=1 (5 Sep 2026): open the PDF in the browser tab instead of
     // saving it, so the office "Print" button goes straight to Ctrl+P.
     if (!empty($_GET['print'])) {

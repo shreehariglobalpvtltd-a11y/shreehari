@@ -1136,6 +1136,7 @@ if (Notify::usablePhone($b['contact_phone'] ?? '') !== '') {
          download-ticket.php's gate — paste it into WhatsApp and it dies. */ ?>
     <a href="<?= Security::e(Ticket::imageUrl($pnr)) ?>" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">🎟️ Ticket (Image)</a>
     <a href="<?= $base ?>/download-ticket.php?pnr=<?= urlencode($pnr) ?>" target="_blank" class="btn btn-ghost btn-sm">📄 PDF</a>
+    <a href="<?= $base ?>/download-ticket.php?pnr=<?= urlencode($pnr) ?>&amp;dup=1&amp;print=1" target="_blank" class="btn btn-ghost btn-sm" title="Reprint stamped DUPLICATE COPY">🖨️ Duplicate</a>
     <!-- WhatsApp passenger. Gated on usablePhone(), not on "not empty": the
          walk-in placeholder 0000000000 is not empty, so this button used to
          render as a live wa.me/910000000000 link and messaged a stranger in
