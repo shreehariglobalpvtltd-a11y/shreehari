@@ -99,9 +99,17 @@ function fmtMinutes(min) {
    stops under prefers-reduced-motion (CSS). Shown first on the ticket and
    under the home search card; NOT a live position (the trip page has that).
 ================================================================ */
-const ROV_INDIA = [[34.6,74.0],[32.8,74.3],[31.9,76.6],[30.2,79.0],[28.8,80.2],[27.6,82.4],[26.7,84.5],[26.5,86.6],[26.8,88.2],[27.3,88.9],[26.1,89.8],[26.9,92.0],[28.2,95.6],[27.2,97.2],[24.2,94.6],[22.3,93.1],[23.6,91.2],[21.6,89.0],[20.3,86.7],[17.6,83.3],[15.8,80.3],[13.0,80.3],[10.3,79.9],[8.1,77.5],[8.8,76.5],[12.9,74.8],[15.4,73.8],[19.0,72.8],[20.9,72.7],[22.3,72.0],[20.8,70.3],[22.6,68.6],[23.8,68.2],[24.3,69.0],[27.0,70.2],[29.9,73.4],[32.2,74.5]];
-const ROV_NEPAL = [[30.4,80.1],[29.6,80.2],[28.6,80.5],[28.1,80.9],[27.6,82.2],[27.4,83.4],[26.8,85.2],[26.5,86.9],[26.4,88.1],[27.3,88.2],[27.9,87.1],[28.3,85.5],[29.0,84.0],[29.7,82.6],[30.3,81.2]];
-function rovProject(lat, lng) { return [Math.round((24 + (lng - 66) * 19) * 10) / 10, Math.round((24 + (36 - lat) * 12.5) * 10) / 10]; }
+/* Accurate outlines (20 Sep 2026, owner: "map original jasto, pickup points saji sajhi"):
+   India (Natural Earth 10m, India's official-boundary view) and Nepal, clipped to the
+   Gujarat -> Nepal corridor, simplified and pre-projected to the 720x430 card with a
+   25 deg N aspect: x = 20 + (lng - 67.3) * 30.22, y = 52 + (30.8 - lat) * 33.33.
+   The route follows the road corridor (the Gujarat pickups, then Mehsana, Palanpur,
+   Udaipur, Jaipur, Agra, Lucknow, Bahraich - the navigator's OSRM waypoints). */
+const ROV_INDIA_D = 'M371 -34 377 -31 387 -30 385 -25 386 -22 384 -21 386 -20 392 -12 387 -6 383 -8 382 -6 377 -4 376 0 372 0 367 -3 366 -9 355 -6 357 -2 357 4 366 13 364 20 368 25 365 28 366 30 366 35 371 36 376 30 378 31 381 34 386 45 391 47 396 46 399 47 406 53 409 52 411 54 409 56 409 60 422 63 434 72 432 73 430 72 425 78 421 80 418 85 415 87 415 92 410 98 412 102 412 105 410 105 410 108 408 108 405 117 411 121 414 124 416 124 419 127 419 123 421 123 431 131 439 133 443 141 446 140 448 143 460 150 465 148 476 156 485 156 487 162 499 164 503 168 505 166 506 163 512 163 520 167 520 164 525 164 528 162 533 166 543 168 545 172 544 178 549 178 555 184 560 184 561 187 564 187 573 184 576 185 576 190 580 193 585 190 591 193 594 192 607 198 610 197 617 193 619 199 622 198 624 200 628 198 633 199 642 197 646 200 651 187 650 183 645 175 647 168 646 162 650 153 649 147 657 146 664 142 670 146 671 151 668 161 669 165 673 168 669 171 668 174 671 175 671 180 673 179 674 181 676 182 679 185 686 184 694 186 694 188 700 189 701 188 710 187 711 184 717 182 724 186 728 186 738 185 745 186 749 183 752 185 757 185 761 183 763 185 763 183 766 184 769 182 769 179 766 175 769 169 766 163 758 163 755 161 754 158 755 153 753 150 761 152 762 154 765 155 774 150 776 152 778 150 779 151 784 150 789 146 786 143 787 141 796 136 803 134 802 131 806 125 812 123 812 280 811 280 807 276 806 277 808 287 810 289 808 308 805 312 802 310 801 311 802 316 799 320 799 322 802 337 800 338 801 339 797 339 796 346 794 345 793 347 792 344 787 340 786 345 784 346 781 322 777 314 777 300 774 292 774 288 772 290 771 288 767 291 764 288 765 295 761 299 759 303 760 309 754 314 748 303 747 305 747 310 746 309 745 300 740 291 742 290 740 288 743 284 743 282 745 279 747 279 747 275 754 275 755 271 758 274 758 271 763 273 763 267 766 268 765 266 770 265 770 262 774 253 773 249 778 251 781 250 781 248 776 243 768 239 758 240 756 241 743 239 731 241 717 240 703 235 701 236 701 224 699 218 701 213 699 211 698 207 696 207 696 205 693 207 694 210 692 213 690 212 686 212 679 207 678 202 679 201 677 199 674 197 673 199 676 202 676 204 672 203 671 204 668 202 666 203 667 201 665 198 658 194 657 191 655 196 660 197 661 200 659 200 656 203 655 205 651 207 648 215 648 218 649 220 653 219 662 229 666 230 669 229 671 234 675 236 674 240 659 239 658 244 655 250 653 249 652 247 649 248 650 251 647 254 646 257 649 262 660 268 665 269 666 267 668 269 668 272 666 274 667 281 663 283 662 290 667 296 669 296 667 304 675 305 671 309 671 313 674 317 673 321 675 326 674 327 675 328 678 340 677 342 678 347 676 349 673 346 676 350 678 358 676 359 673 357 672 353 672 357 670 358 670 356 669 360 667 359 667 351 669 345 667 343 669 341 667 343 668 344 666 347 665 347 666 338 663 350 663 353 665 354 663 360 662 359 661 361 660 360 662 352 661 347 659 358 657 359 657 355 656 355 656 357 655 358 654 352 655 360 653 360 651 356 652 352 650 347 652 343 652 340 646 337 643 331 645 337 650 339 651 342 647 345 645 350 641 354 637 357 621 360 613 368 610 373 611 376 614 385 612 386 615 387 615 388 614 389 615 390 617 389 608 396 607 400 610 398 606 402 608 402 600 406 597 413 593 410 591 410 590 407 590 410 596 413 588 417 569 423 568 422 572 420 572 416 568 415 563 419 558 428 559 429 562 427 561 426 562 423 564 424 567 422 566 425 564 425 565 426 572 422 560 429 549 441 547 440 547 443 548 442 547 444 538 457 532 461 533 462 535 460 529 466 528 469 518 474 509 482 508 481 505 488 502 488 504 490 501 491 502 492 479 505 473 512 200 512 200 507 198 502 200 503 196 493 198 492 196 491 196 487 192 478 194 476 193 477 192 476 190 471 190 469 194 472 194 470 192 469 190 467 189 461 193 463 191 460 190 460 188 456 188 452 190 451 192 454 192 450 189 449 194 445 192 445 191 440 190 444 188 445 187 449 186 447 185 447 187 444 187 440 186 440 187 437 185 439 186 435 191 436 194 438 192 435 186 434 185 433 185 429 189 428 186 428 184 426 185 428 184 427 183 421 184 422 184 419 183 420 182 417 185 403 189 394 189 388 191 387 190 385 189 385 189 383 187 384 187 381 189 379 187 380 185 378 188 377 187 374 183 376 184 373 182 375 181 375 184 372 182 370 181 370 180 367 182 367 179 366 185 364 184 363 180 365 187 357 196 353 190 356 179 356 179 350 184 346 178 348 177 346 179 339 185 340 187 338 190 338 190 336 185 337 179 336 176 338 176 337 174 337 174 333 172 337 169 335 167 336 168 337 169 336 169 337 171 338 171 343 167 346 165 345 165 347 163 347 167 348 167 351 164 349 165 351 162 350 162 352 167 352 171 358 169 364 165 368 165 372 136 386 131 388 124 388 112 381 103 374 96 363 84 353 83 349 82 350 77 346 70 335 71 331 74 329 74 332 77 332 77 334 78 336 86 334 87 330 90 333 94 329 95 331 101 327 107 327 113 315 117 313 117 309 116 308 114 310 113 314 111 314 109 312 107 314 106 312 106 314 97 317 93 320 89 320 77 317 67 311 61 307 59 304 60 303 58 303 58 301 59 301 57 300 57 298 56 299 54 297 56 295 54 294 54 296 54 291 56 291 55 290 66 283 60 284 54 288 51 292 45 292 49 290 47 289 47 286 46 287 49 281 50 282 52 280 52 281 63 280 64 268 65 268 67 271 68 268 70 270 73 269 76 270 88 269 93 273 101 273 103 272 105 269 114 265 119 265 119 270 124 271 127 270 127 268 129 267 132 267 134 265 131 263 130 259 134 256 127 240 121 232 121 223 119 222 112 223 109 222 104 213 106 205 106 194 103 192 96 193 87 187 85 185 88 174 101 160 105 152 112 145 118 145 121 148 123 154 127 155 139 150 149 150 158 147 159 141 167 134 170 124 173 120 190 110 199 94 203 81 215 77 221 72 218 66 224 61 225 58 227 57 232 49 235 49 242 43 239 41 238 39 241 30 237 22 239 18 244 14 246 14 248 11 251 11 254 9 258 9 262 7 264 3 260 -1 253 -4 243 -4 242 -8 243 -16 240 -13 233 -14 232 -15 221 -22 217 -22 212 -25 212 -27 210 -29 210 -34 211 -40 210 -42 210 -52 208 -55 207 -64 204 -67 205 -71 395 -71 396 -70 395 -69 389 -68 390 -62 388 -61 389 -58 386 -55 371 -54 374 -42 370 -42 371 -35ZM672 359 673 361 671 361 671 358ZM647 355 650 350 651 355 650 358 647 357 647 356ZM665 348 666 348 665 352 663 351 664 349ZM648 350 649 347 649 350Z';
+const ROV_NEPAL_D = 'M649 150 651 150 650 153 646 162 647 168 645 175 650 183 651 187 646 200 642 197 633 199 628 198 624 200 622 198 619 199 617 193 610 197 607 198 594 192 591 193 585 190 580 193 576 190 576 185 573 184 564 187 561 187 560 184 555 184 549 178 544 178 545 172 543 168 533 166 528 162 525 164 520 164 520 167 512 163 506 163 505 166 503 168 499 164 487 162 485 156 476 156 465 148 460 150 448 143 446 140 443 141 439 133 431 131 421 123 419 123 419 127 416 124 414 124 411 121 405 117 408 108 410 108 410 105 412 105 412 102 410 98 415 92 415 87 418 85 421 80 425 78 431 72 432 73 434 72 437 78 440 79 442 74 445 73 446 66 449 68 453 65 458 67 466 67 467 71 469 73 469 77 474 78 481 81 490 90 494 90 496 93 500 91 502 94 502 96 505 97 510 106 514 107 516 104 522 102 527 103 530 106 529 107 530 110 532 111 531 114 536 117 538 121 543 122 545 124 545 125 549 127 553 127 557 124 560 126 557 131 558 135 566 137 568 135 573 137 576 134 577 138 581 141 585 149 589 148 587 143 590 140 591 145 598 148 601 147 602 142 605 142 607 143 608 145 611 145 613 147 616 147 620 151 624 151 626 150 627 152 631 151 637 152 641 148 648 150Z';
+const ROV_ROUTE_D = 'M187.2,373.0 L191.0,369.6 L192.7,357.8 L192.1,355.2 L197.7,335.1 L190.1,326.5 L188.1,322.3 L180.9,306.3 L173.2,292.4 L175.3,272.8 L213.8,259.2 L276.5,181.6 L343.6,172.8 L432.4,183.8 L452.1,159.6 L452.7,143.3';
+const ROV_VIA = {"Udaipur":[213.8,259.2],"Jaipur":[276.5,181.6],"Agra":[343.6,172.8],"Lucknow":[432.4,183.8]};
+function rovProject(lat, lng) { return [Math.round((20 + (lng - 67.3) * 30.222) * 10) / 10, Math.round((52 + (30.8 - lat) * 33.333) * 10) / 10]; }
 function rovCoords(name) {
   const n = String(name || '').toLowerCase();
   const key = Object.keys(CITY_COORDS).find(c => n.indexOf(c) >= 0) || (n.indexOf('vadodara') >= 0 ? 'barauda' : (n.indexOf('bhupal') >= 0 || n.indexOf('emli') >= 0 ? 'ahmedabad' : (n.indexOf('hari parking') >= 0 || n.indexOf('nana') >= 0 ? 'chiloda' : null)));
@@ -117,61 +125,87 @@ function rovStopKm(name) {
   return s ? { km: s.km, m: s.m } : null;
 }
 /* opts: { from, to, reverse?, compact?, title? } — from/to are town names. */
+/* The pickups (or, coming back, the drops) of the one daily coach, read from the
+   same route lines the pickers use: "Kamrej · Shiv Shakti Hotel @ 13:30 [lat,lng]". */
+function rovStopList(back) {
+  const nep = (typeof isNepalPoint === 'function') ? isNepalPoint : (n => /rupaidiha/i.test(n));
+  const r = (DB.routes || []).find(x => x && x.active && (back ? nep(x.from) : nep(x.to)));
+  const lines = r ? (back ? r.drop : r.boarding) : [];
+  return (lines || []).map(function (ln) {
+    const s = String(ln).replace(/\s*\[[^\]]*\]\s*$/, '');
+    const at = s.split(' @ '), left = at[0].split(' · ');
+    return { town: left[0].trim(), mark: (left[1] || '').trim(), time: (at[1] || '').trim() };
+  }).filter(x => x.town && !nep(x.town));
+}
+/* A pin only where the town's coordinates are known (CITY_COORDS) — never a guess. */
+function rovPin(name) {
+  const n = String(name || '').toLowerCase();
+  const key = Object.keys(CITY_COORDS).find(c => n.indexOf(c) >= 0);
+  return key ? rovProject(CITY_COORDS[key][0], CITY_COORDS[key][1]) : null;
+}
+/* opts: { from, to, compact?, stops? } — from/to are town names; stops adds the
+   pickup / drop list under the card (home only). */
 function routeOverviewSVG(opts) {
   opts = opts || {};
   const fromName = String(opts.from || 'Surat'), toName = String(opts.to || 'Rupaidiha');
-  const a = rovCoords(fromName) || { lat: 21.17, lng: 72.831 }, b = rovCoords(toName) || { lat: 28.06, lng: 81.617 };
-  const A = rovProject(a.lat, a.lng), B = rovProject(b.lat, b.lng);
-  // Arc: quadratic curve bowed to the north-west, like a flight path.
-  const mx = (A[0] + B[0]) / 2, my = (A[1] + B[1]) / 2;
-  const dx = B[0] - A[0], dy = B[1] - A[1], len = Math.max(1, Math.hypot(dx, dy));
-  const bow = Math.min(90, len * 0.22);
-  const C = [mx + (dy / len) * bow, my - (dx / len) * bow];
-  const path = 'M' + A[0] + ',' + A[1] + ' Q' + C[0] + ',' + C[1] + ' ' + B[0] + ',' + B[1];
-  const poly = pts => pts.map(p => rovProject(p[0], p[1]).join(',')).join(' ');
   const isNep = n => /rupaidiha|nepalgunj|kohalpur/i.test(n);
-  const flag = n => isNep(n) ? 'NP' : 'IN';
-  const sub  = n => isNep(n) ? 'INDIA–NEPAL BORDER' : 'GUJARAT · IST';
+  const back = isNep(fromName);
+  const town = back ? toName : fromName;
+  const T = rovPin(town) || rovProject(21.17, 72.831), R = rovProject(28.06, 81.617);
   const ka = rovStopKm(fromName), kb = rovStopKm(toName);
-  const km = (ka && kb) ? Math.abs(kb.km - ka.km) : 1600, hrs = (ka && kb) ? Math.round(Math.abs(kb.m - ka.m) / 60) : 30;
-  const dur = Math.max(6, Math.min(14, 6 + km / 250)) + 's';
-  const lblA = [A[0] + (A[0] < 360 ? -8 : 8), A[1] + 26], lblB = [B[0] + (B[0] < 360 ? -8 : 8), B[1] - 18];
-  const anchorA = A[0] < 360 ? 'start' : 'end', anchorB = B[0] < 360 ? 'start' : 'end';
+  const km = (ka && kb) ? Math.abs(kb.km - ka.km) : 1600, hrs = (ka && kb) ? Math.round(Math.abs(kb.m - ka.m) / 60) : 20;
   const uid = 'rov' + Math.floor(Math.random() * 1e6);
+  const list = rovStopList(back);
+  const dots = list.map(s => rovPin(s.town)).filter(Boolean)
+    .map(p => '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="3.2" class="rov-pick"/>').join('');
+  const via = Object.keys(ROV_VIA).map(k => '<circle cx="' + ROV_VIA[k][0] + '" cy="' + ROV_VIA[k][1] + '" r="2.6" fill="#9fc4f0"/>'
+    + '<text x="' + (ROV_VIA[k][0] + 7) + '" y="' + (ROV_VIA[k][1] - 7) + '" class="rov-via">' + k + '</text>').join('');
+  const dur = Math.max(8, Math.min(14, 6 + km / 250)) + 's';
+  const townLbl = town.split(',').pop().replace(/\(.*\)/, '').trim() || town;
+  let listHTML = '';
+  if (opts.stops && list.length) {
+    const same = s => { const a = s.town.toLowerCase(), b = town.toLowerCase(); return a.indexOf(b) === 0 || b.indexOf(a) === 0; };
+    const f12 = tm => (tm && typeof fmt12h === 'function') ? fmt12h(tm) : tm;
+    const tt = (k, en) => { const v = (typeof t === 'function') ? t(k) : ''; return v && v !== k ? v : en; };
+    const rows = list.map(s => '<li' + (same(s) ? ' class="on"' : '') + '><b>' + esc(f12(s.time)) + '</b><span>' + esc(s.town)
+      + (s.mark ? '<small>' + esc(s.mark) + '</small>' : '') + '</span></li>');
+    const border = '<li class="end"><b>' + (back ? esc(f12('18:00')) : '🛃') + '</b><span>Rupaidiha<small>' + esc(tt('rovLast', 'India–Nepal border')) + '</small></span></li>';
+    listHTML = '<div class="rov-stops"><div class="rov-stops-h">📍 ' + esc(back ? tt('rovDrops', 'Drop points') : tt('rovPickups', 'Pickup points'))
+      + '</div><ol>' + (back ? border + rows.join('') : rows.join('') + border) + '</ol></div>';
+  }
   return `<div class="rov rov-anim${opts.compact ? ' rov-compact' : ''}"><div class="rov-3d">
   <svg viewBox="0 0 720 430" class="rov-svg" role="img" aria-label="Route overview ${esc(fromName)} to ${esc(toName)}">
     <defs>
-      <radialGradient id="${uid}g" cx="18%" cy="8%" r="70%"><stop offset="0" stop-color="#8a4a1c" stop-opacity=".55"/><stop offset=".55" stop-color="#1b2b55" stop-opacity="0"/></radialGradient>
-      <pattern id="${uid}d" width="26" height="26" patternUnits="userSpaceOnUse"><circle cx="1.5" cy="1.5" r="1.1" fill="#fff" opacity=".08"/></pattern>
-      <filter id="${uid}s" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#000" flood-opacity=".35"/></filter>
+      <radialGradient id="${uid}g" cx="18%" cy="8%" r="70%"><stop offset="0" stop-color="#1c4aa0" stop-opacity=".55"/><stop offset=".55" stop-color="#0c306c" stop-opacity="0"/></radialGradient>
+      <pattern id="${uid}d" width="26" height="26" patternUnits="userSpaceOnUse"><circle cx="1.5" cy="1.5" r="1.1" fill="#fff" opacity=".07"/></pattern>
+      <filter id="${uid}s" x="-30%" y="-60%" width="160%" height="220%"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000" flood-opacity=".45"/></filter>
     </defs>
-    <rect width="720" height="430" rx="26" fill="#0f1f45"/><rect width="720" height="430" rx="26" fill="url(#${uid}g)"/><rect width="720" height="430" rx="26" fill="url(#${uid}d)"/>
-    <text x="34" y="46" class="rov-eyebrow">ROUTE OVERVIEW</text>
-    <text x="686" y="46" class="rov-eyebrow" text-anchor="end">${esc(rovCode(fromName))} → ${esc(rovCode(toName))}</text>
+    <rect width="720" height="430" rx="26" fill="#0c1d44"/><rect width="720" height="430" rx="26" fill="url(#${uid}g)"/><rect width="720" height="430" rx="26" fill="url(#${uid}d)"/>
     <g class="rov-land">
-      <polygon pathLength="1" points="${poly(ROV_INDIA)}" fill="rgba(255,255,255,.07)" stroke="rgba(255,255,255,.28)" stroke-width="1.4" stroke-linejoin="round"/>
-      <polygon pathLength="1" points="${poly(ROV_NEPAL)}" fill="rgba(220,20,60,.22)" stroke="rgba(255,255,255,.3)" stroke-width="1.2" stroke-linejoin="round"/>
-      <text x="330" y="330" class="rov-country">INDIA</text>
-      <text x="560" y="128" class="rov-country rov-country-sm">NEPAL</text>
+      <path pathLength="1" d="${ROV_INDIA_D}" fill="rgba(255,255,255,.08)" stroke="rgba(255,255,255,.34)" stroke-width="1.2" stroke-linejoin="round"/>
+      <path pathLength="1" d="${ROV_NEPAL_D}" fill="rgba(220,20,60,.30)" stroke="rgba(255,255,255,.6)" stroke-width="1.2" stroke-linejoin="round"/>
+      <text x="360" y="300" class="rov-country">INDIA</text>
+      <text x="548" y="140" class="rov-country rov-country-sm">NEPAL</text>
     </g>
-    <path d="${path}" class="rov-glow"/>
-    <path d="${path}" pathLength="1" class="rov-trace"/>
-    <path d="${path}" class="rov-line"/>
-    <text class="rov-dist" text-anchor="middle"><textPath href="#${uid}p" startOffset="50%">≈ ${km.toLocaleString('en-IN')} km · ~${hrs} hrs</textPath></text>
-    <path id="${uid}p" d="${path}" fill="none" stroke="none" transform="translate(0,-12)"/>
-    <g class="rov-end rov-from" transform="translate(${A[0]},${A[1]})"><circle r="16" class="rov-pulse"/><circle r="8" fill="#F07C1F" stroke="#fff" stroke-width="3"/></g>
-    <g class="rov-end rov-to" transform="translate(${B[0]},${B[1]})"><circle r="16" class="rov-pulse rov-pulse-b"/><circle r="8" fill="#5FA8E8" stroke="#fff" stroke-width="3"/></g>
-    <text x="${lblA[0]}" y="${lblA[1]}" text-anchor="${anchorA}" class="rov-city rov-from-lbl"><tspan class="rov-flag">${flag(fromName)}</tspan> ${esc(fromName)}</text>
-    <text x="${lblA[0]}" y="${lblA[1] + 20}" text-anchor="${anchorA}" class="rov-sub rov-from-lbl">${sub(fromName)}</text>
-    <text x="${lblB[0]}" y="${lblB[1]}" text-anchor="${anchorB}" class="rov-city rov-to-lbl"><tspan class="rov-flag">${flag(toName)}</tspan> ${esc(toName)}</text>
-    <text x="${lblB[0]}" y="${lblB[1] + 20}" text-anchor="${anchorB}" class="rov-sub rov-to-lbl">${sub(toName)}</text>
-    <g class="rov-bus" filter="url(#${uid}s)"><circle r="17" fill="#fff"/><text y="6" text-anchor="middle" font-size="18">🚌</text>
-      <animateMotion dur="${dur}" repeatCount="indefinite" path="${path}" calcMode="linear" keyPoints="0;1" keyTimes="0;1"/></g>
-    <line x1="34" y1="376" x2="686" y2="376" stroke="rgba(255,255,255,.18)" stroke-dasharray="3 5"/>
-    <text x="34" y="410" class="rov-foot"><tspan class="rov-flag">IN</tspan> India <tspan fill="#F07C1F">⇄</tspan> <tspan class="rov-flag">NP</tspan> Nepal</text>
-    <text x="686" y="410" class="rov-foot rov-foot-r" text-anchor="end">ROUTE OVERVIEW · NOT LIVE POSITION</text>
-  </svg></div></div>`;
+    <path d="${ROV_ROUTE_D}" class="rov-glow"/>
+    <path d="${ROV_ROUTE_D}" pathLength="1" class="rov-trace"/>
+    <path d="${ROV_ROUTE_D}" class="rov-line"/>
+    ${via}${dots}
+    <g class="rov-end rov-from" transform="translate(${T[0]},${T[1]})"><circle r="16" class="rov-pulse"/><circle r="8" fill="#F07800" stroke="#fff" stroke-width="3"/></g>
+    <g class="rov-end rov-to" transform="translate(${R[0]},${R[1]})"><circle r="16" class="rov-pulse rov-pulse-b"/><circle r="8" fill="#5FA8E8" stroke="#fff" stroke-width="3"/></g>
+    <text x="${T[0] - 16}" y="${T[1] + 6}" text-anchor="end" class="rov-city rov-from-lbl"><tspan class="rov-flag">IN</tspan> ${esc(townLbl)}</text>
+    <text x="${T[0] - 16}" y="${T[1] + 26}" text-anchor="end" class="rov-sub rov-from-lbl">GUJARAT · IST</text>
+    <text x="${R[0] + 16}" y="${R[1] + 30}" class="rov-city rov-to-lbl"><tspan class="rov-flag">NP</tspan> Rupaidiha</text>
+    <text x="${R[0] + 16}" y="${R[1] + 50}" class="rov-sub rov-to-lbl">INDIA–NEPAL BORDER</text>
+    <g class="rov-pill" transform="translate(560,332)"><rect x="-128" y="-22" width="256" height="36" rx="18"/><text y="3" text-anchor="middle" class="rov-dist">≈ ${km.toLocaleString('en-IN')} km · ~${hrs} h</text></g>
+    <g class="rov-bus" filter="url(#${uid}s)"><image href="/assets/img/bus-side.svg" x="-27" y="-17" width="54" height="17"/>
+      <animateMotion dur="${dur}" repeatCount="indefinite" path="${ROV_ROUTE_D}" calcMode="linear" keyPoints="${back ? '1;0' : '0;1'}" keyTimes="0;1"/></g>
+    <text x="34" y="40" class="rov-eyebrow">ROUTE OVERVIEW</text>
+    <text x="686" y="40" class="rov-eyebrow" text-anchor="end">${esc(rovCode(fromName))} → ${esc(rovCode(toName))}</text>
+    <text x="686" y="414" class="rov-foot rov-foot-r" text-anchor="end">NOT LIVE POSITION</text>
+  </svg></div>${listHTML}</div>`;
 }
+
 /* Home: the card follows the chosen direction + town. */
 function renderHomeRouteMap() {
   const box = document.getElementById('homeRouteMap'); if (!box) return;
@@ -182,7 +216,7 @@ function renderHomeRouteMap() {
   const key = dir + '|' + town;
   if (box.getAttribute('data-key') === key) return;
   box.setAttribute('data-key', key);
-  box.innerHTML = routeOverviewSVG(dir === 'go' ? { from: town, to: hub } : { from: hub, to: town });
+  box.innerHTML = routeOverviewSVG(dir === 'go' ? { from: town, to: hub, stops: true } : { from: hub, to: town, stops: true });
   rovAttachTilt(box);
 }
 /* Pointer tilt for the 3D route card (17 Sep 2026) — desktop, hover-capable

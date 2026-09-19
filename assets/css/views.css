@@ -2775,6 +2775,22 @@ body.in-flow .credit-ribbon,body.in-flow #numStrip{display:none}
 .rov-glow{fill:none;stroke:#F07C1F;stroke-width:12;stroke-linecap:round;opacity:.22;filter:blur(3px)}
 .rov-dist{font-family:var(--f-code);font-size:17px;letter-spacing:.12em;fill:#f7b26d;font-weight:600}
 .rov-city{font-family:var(--f-body);font-size:24px;font-weight:800;fill:#fff}
+.rov-via{font-family:var(--f-body);font-size:15px;font-weight:700;fill:#c9d6ef}
+.rov-pick{fill:#fff;stroke:#F07800;stroke-width:1.6}
+.rov-pill rect{fill:rgba(8,18,44,.78);stroke:rgba(247,178,109,.6);stroke-width:1.2}
+/* pickup / drop list under the map (home) */
+.rov-stops{margin:12px 2px 0;padding:12px 14px;border-radius:16px;background:var(--card,#fff);border:1px solid var(--line);box-shadow:var(--shadow-sm)}
+.rov-stops-h{font-weight:800;font-size:14px;margin-bottom:6px}
+.rov-stops ol{list-style:none;margin:0;padding:0;position:relative}
+.rov-stops ol::before{content:"";position:absolute;left:66px;top:12px;bottom:12px;width:2px;background:linear-gradient(var(--orange,#F07800),var(--blue,#0054A8))}
+.rov-stops li{display:grid;grid-template-columns:56px 1fr;gap:22px;align-items:start;padding:5px 0;position:relative}
+.rov-stops li::before{content:"";position:absolute;left:61px;top:9px;width:12px;height:12px;border-radius:50%;background:var(--card,#fff);border:2.5px solid var(--orange,#F07800);box-sizing:border-box}
+.rov-stops li b{font-family:var(--f-code);font-size:12px;text-align:right;color:var(--muted);padding-top:3px;white-space:nowrap}
+.rov-stops li span{font-weight:800;font-size:14px;line-height:1.25;color:var(--ink)}
+.rov-stops li small{display:block;font-weight:600;font-size:12px;color:var(--muted)}
+.rov-stops li.on span{color:var(--orange,#F07800)}
+.rov-stops li.on::before{background:var(--orange,#F07800)}
+.rov-stops li.end::before{border-color:var(--blue,#0054A8);background:var(--blue,#0054A8)}
 .rov-sub{font-family:var(--f-code);font-size:14px;letter-spacing:.16em;fill:#9fb3d9}
 .rov-flag{font-size:14px;font-weight:800;letter-spacing:.06em;fill:#f7b26d}
 .rov-foot{font-family:var(--f-body);font-size:22px;font-weight:800;fill:#fff}
