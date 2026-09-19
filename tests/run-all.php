@@ -130,6 +130,8 @@ const CORE_SUITES = [
     'delivery-sentinel-test.php'   => 'a delivery outage names the right fault, in owner language',
     // 13 Sep 2026, registered with the PWA master upgrade it guards.
     'webpush-test.php'             => 'Web Push: RFC 8291 vectors, VAPID signature, subscription store',
+    // 19 Sep 2026, registered with the night data audit it guards.
+    'data-audit-test.php'          => 'the night audit names the right broken row, and only that one',
 ];
 
 /**

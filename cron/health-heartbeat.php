@@ -62,6 +62,8 @@ const EXPECTED = [
                               'what'  => 'The daily revenue/agent summary has not been produced.'],
     'backup.php'          => ['every' => 1440, 'grace' => 360,  'severity' => Health::CRITICAL,
                               'what'  => 'No database backup has been taken. A disk failure right now loses every booking since the last good backup.'],
+    'data-audit.php'      => ['every' => 1440, 'grace' => 480,  'severity' => Health::WARN,
+                              'what'  => 'The night data audit has not run — a double-sold bed, a ticket without a seat or an unreversed commission would go unnoticed. Selling is unaffected.'],
     /* WEEKLY on this box (crontab: Sunday 03:00), not daily. Checked against
        the live crontab rather than assumed — a daily expectation here would
        have raised a false "rotate.php has not run for 6 days" card on six
