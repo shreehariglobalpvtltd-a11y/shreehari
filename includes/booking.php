@@ -837,10 +837,16 @@ final class BookingService
             ? self::manualStop($data['boardingOther'] ?? '', 'boarding')
             : null;
 
+        /* The closure reads $data for the boarding hint (boarding / originTown)
+           it hands defaultBoardingStop() below, so $data MUST be in its use-list.
+           It was not, and because `??` also swallows an undefined variable no
+           warning ever showed: the hint was silently '' and every counter ticket
+           took the first open stop instead of the caller's town (18 Sep 2026;
+           tests/boarding-other-test.php case 5c). */
         $booking = Database::transaction(function () use (
             $route, $scheduleId, $date, $seats, $passengers, $name, $phone, $gender,
             $coach, $bookingMode, $perSeat, $base, $discount, $total, $method, $note, $adminId, $source, $allowStaffSeats,
-            $counterCountryCode, $boardingOther
+            $counterCountryCode, $boardingOther, $data
         ): array {
             Seats::assertAvailable($scheduleId, $seats, 'admin-counter-' . $adminId, $allowStaffSeats, $bookingMode);
             Seats::assertGenderAllowed(
