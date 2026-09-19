@@ -125,7 +125,7 @@ $bootJson = Security::jsonForHtml($boot);
  *  facts below are ground-truth (CIN U52291GJ2026PTC174029).
  * ------------------------------------------------------------------- */
 $baseUrl = rtrim(APP_URL, '/');
-$ogImage = $baseUrl . '/icon-shg.svg';   // swap for a 1200×630 raster when available
+$ogImage = $baseUrl . '/assets/img/og-shg.png';   // 1200x630 share card (20 Sep 2026); icon-shg.svg never existed
 $e = static fn($s): string => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
 
 $ld = [
@@ -136,7 +136,7 @@ $ld = [
             '@id'       => $baseUrl . '/#org',
             'name'      => 'S Hari Global Pvt Ltd',
             'url'       => $baseUrl . '/',
-            'logo'      => $ogImage,
+            'logo'      => $baseUrl . '/assets/img/logo.png',
             'email'     => 'shreehariglobalpvtltd@gmail.com',
             'telephone' => '+919104801507',
             'address'   => [
@@ -165,6 +165,7 @@ $ldJson = json_encode(
 $seoHead = '<link rel="canonical" href="' . $e($baseUrl) . '/">'
     . '<meta property="og:url" content="' . $e($baseUrl) . '/">'
     . '<meta property="og:image" content="' . $e($ogImage) . '">'
+    . '<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:type" content="image/png">'
     . '<meta name="twitter:url" content="' . $e($baseUrl) . '/">'
     . '<meta name="twitter:image" content="' . $e($ogImage) . '">'
     . '<script type="application/ld+json">' . $ldJson . '</script>';
