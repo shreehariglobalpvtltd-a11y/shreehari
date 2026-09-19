@@ -62,6 +62,8 @@ const EXPECTED = [
                               'what'  => 'The daily revenue/agent summary has not been produced.'],
     'backup.php'          => ['every' => 1440, 'grace' => 360,  'severity' => Health::CRITICAL,
                               'what'  => 'No database backup has been taken. A disk failure right now loses every booking since the last good backup.'],
+    'backup-offsite.php'  => ['every' => 1440, 'grace' => 480,  'severity' => Health::CRITICAL,
+                              'what'  => 'The nightly backup is no longer being sent off this server. If the server is lost, every booking since the last emailed backup is lost with it.'],
     'eta-alerts.php'      => ['every' => 3,    'grace' => 30,   'severity' => Health::WARN,
                               'what'  => 'The "bus is near your stop" check has stopped - waiting passengers are no longer told when the coach is close. Selling is unaffected.'],
     'data-audit.php'      => ['every' => 1440, 'grace' => 480,  'severity' => Health::WARN,

@@ -134,6 +134,7 @@ const CORE_SUITES = [
     'data-audit-test.php'          => 'the night audit names the right broken row, and only that one',
     'counter-shift-test.php'       => 'the cash drawer adds up: mine only, frozen at close, never on the sale path',
     'eta-alerts-test.php'          => 'bus-is-near: the right passenger, once, and silence whenever unsure',
+    'backup-offsite-test.php'      => 'the off-site backup leaves encrypted, opens with stock openssl, goes once',
 ];
 
 /**
