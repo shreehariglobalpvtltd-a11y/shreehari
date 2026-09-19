@@ -1471,7 +1471,7 @@ table.admin .code{font-family:var(--f-code);font-size:12.5px}
 .atab.on .atab-subtitle{color:rgba(255,255,255,.7)}
 
 /* ---------- [CSS] 49. STICKY INFO STRIPS ---------- */
-.sticky-flow-info{position:sticky;top:74px;z-index:20;background:linear-gradient(135deg,var(--blue-deep),var(--blue-800));color:#fff;padding:8px 22px;display:flex;align-items:center;gap:14px;font-size:13px;font-weight:600;flex-wrap:wrap;box-shadow:0 2px 12px rgba(18,38,78,.15)}
+.sticky-flow-info{position:sticky;top:74px;z-index:20;background:linear-gradient(135deg,var(--blue-deep),var(--blue-800));color:#fff;padding:8px max(22px,calc((100% - 1160px)/2 + 22px));display:flex;align-items:center;gap:14px;font-size:13px;font-weight:600;flex-wrap:wrap;box-shadow:0 2px 12px rgba(18,38,78,.15)}
 .sticky-flow-info .sfi-route{font-family:var(--f-display);font-size:15px;letter-spacing:.02em}
 .sticky-flow-info .sfi-date{font-family:var(--f-code);color:#AFC6E9;font-size:12px}
 .sticky-flow-info .sfi-fare{margin-left:auto;font-family:var(--f-display);font-size:16px;color:#FFC98C}

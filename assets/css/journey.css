@@ -33,18 +33,22 @@
 .jy-mark span{position:absolute;bottom:28px;max-width:150px;padding:4px 9px;border-radius:999px;background:rgba(18,38,78,.62);border:1px solid rgba(255,255,255,.24);color:#fff;
   font:600 10.5px/1.15 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   opacity:0;animation:jyFade .5s ease-out .25s forwards}
-.jy-a{left:5%}.jy-a span{left:-1px}
-.jy-b{right:5%}.jy-b span{right:-1px}
+/* 19 Sep 2026 (owner, wide monitor): the posts and the coach hung on the far
+   edges of a 1920px window while the heading and the seat card sat in the
+   centred 1160px column. They now stand on that column; below ~1290px the
+   max() falls back to the old percentages, so phones and laptops are unchanged. */
+.jy-a{left:max(5%,calc((100% - 1160px)/2 + 22px))}.jy-a span{left:-1px}
+.jy-b{right:max(5%,calc((100% - 1160px)/2 + 22px))}.jy-b span{right:-1px}
 
 /* the coach: X motion on the outer box, suspension bob on the inner one,
    a soft contact shadow that breathes against the bob */
-.jy-bus{left:19%;bottom:6%;width:210px;z-index:2;will-change:transform}
+.jy-bus{left:max(19%,calc((100% - 1160px)/2 + 190px));bottom:6%;width:210px;z-index:2;will-change:transform}
 .jy-body{position:relative;z-index:1;will-change:transform}
 .jy-body img{display:block;width:100%;height:auto}
 .jy-shadow{position:absolute;left:3%;right:5%;bottom:-2%;height:9%;border-radius:50%;background:radial-gradient(ellipse at 50% 50%,rgba(5,9,18,.55),rgba(5,9,18,.26) 45%,rgba(5,9,18,0) 72%);will-change:transform,opacity}
 
 /* states */
-.jy-wait .jy-bus{transform:translateX(calc(-23vw - 100%))}
+.jy-wait .jy-bus{transform:translateX(calc(-50vw - 100%))}
 .jy-enter .jy-bus{animation:jyDrive 1.6s cubic-bezier(.215,.61,.355,1) both}
 .jy-enter .jy-body{animation:jyBob .32s ease-in-out 5 both,jyIdle 3.6s ease-in-out 1.7s infinite}
 .jy-enter .jy-shadow{animation:jyBreath 3.6s ease-in-out 1.7s infinite}
@@ -53,7 +57,7 @@
 .jy-instant .jy-mark span{animation:none;opacity:1}
 .jy-paused *,.jy-paused .jy-road::before{animation-play-state:paused!important}
 
-@keyframes jyDrive{from{transform:translateX(calc(-23vw - 100%))}to{transform:translateX(0)}}
+@keyframes jyDrive{from{transform:translateX(calc(-50vw - 100%))}to{transform:translateX(0)}}
 @keyframes jyBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
 @keyframes jyIdle{0%,100%{transform:translateY(0)}50%{transform:translateY(-1px)}}
 @keyframes jyBreath{0%,100%{transform:scaleX(1);opacity:1}50%{transform:scaleX(.965);opacity:.8}}
