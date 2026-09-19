@@ -1406,6 +1406,9 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 
 /* ── Forms ───────────────────────────────────────────────────────────── */
 .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
+/* 19 Sep 2026 (phone audit of all 42 admin pages): a long route name in a toolbar <select> pushed Seat Map and Trip Dashboard 83px sideways at 375px - the only two pages that overflowed. */
+.toolbar label{min-width:0;max-width:100%}.toolbar select,.toolbar input{max-width:100%}
+@media(max-width:560px){.toolbar label{flex:1 1 100%;display:flex;flex-direction:column;gap:4px}.toolbar label select,.toolbar label input{width:100%}}
 .toolbar input,.toolbar select,.field input,.field select,.field textarea,input.inp,select.inp,textarea.inp{padding:9px 12px;border:1px solid var(--line-2);border-radius:var(--r-sm);font-size:14px;background:var(--card);color:var(--ink);font-family:inherit;min-height:40px;transition:border-color var(--dur) var(--ease),box-shadow var(--dur) var(--ease)}
 .toolbar input:focus,.toolbar select:focus,.field input:focus,.field select:focus,.field textarea:focus,.inp:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-100)}
 .field{display:flex;flex-direction:column;gap:5px}
@@ -1557,6 +1560,7 @@ details.advanced-section[open]>summary::before{content:'▼ '}
   .mf-tools input,.mf-tools select,.acc-tools input,.acc-tools select,form input[type=date],form select{min-height:44px}
   .theme-tog,.tb .menu,.tb-ibtn{min-width:44px;min-height:44px;justify-content:center;align-items:center}
   .btn.sm,.btn-sm,.btn.btn-sm{min-height:40px}
+  .code-edit button{min-width:36px;min-height:36px}
 }
 @media(max-width:1024px){.wrap{padding:20px 20px 40px}}
 @media(max-width:820px){
