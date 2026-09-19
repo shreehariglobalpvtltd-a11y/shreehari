@@ -181,6 +181,7 @@ function renderResults(instant) {
          THAT number, because it is what the server will charge for it. */
       const busFare = Number((srv && srv.fareOverride) || r._fare || 0);
       const perPersonFare = busFare > 0 ? busFare : (r.type === 'sleeper' ? sharingPP(r.to, true) : r.fare);
+      const fareKnown = fareOk(perPersonFare);
       const availState    = left <= 0 ? 'gone' : (left <= 10 ? 'low' : 'ok');
       const seatsPillTxt  = left <= 0
         ? t('resSoldOut')
@@ -189,7 +190,7 @@ function renderResults(instant) {
             : left + ' ' + t('resLeft'));
       const pillsRow = `<div class="bc-pills">
           <span class="seats-avail-pill ${availState}">${seatsPillTxt}</span>
-          <span class="fare-from-pill">From ${inr(perPersonFare)}</span>
+          <span class="fare-from-pill">${fareKnown ? 'From ' + inr(perPersonFare) : esc(t('fareNA'))}</span>
         </div>`;
       /* Sold-out CTA — bilingual, disabled. Waitlist modal path removed
          from the card per Round-3 spec ("disable the click handler and swap
@@ -219,9 +220,9 @@ function renderResults(instant) {
           <div class="bc-points"><b>${t('resBoardingLbl')}</b> ${esc(bpShort(bp0))} ${r.boarding && r.boarding.length > 1 ? '+' + (r.boarding.length - 1) + ' ' + t('resMore') : ''}</div>
         </div>
         <div class="bc-fare">
-          <span class="amt">${inr(perPersonFare)}</span>
-          <span class="npr">${r.type === 'sleeper' ? nprEst(perPersonFare) + ' /person' : nprEst(r.fare) + ' / ' + t('rowSeats').toLowerCase()}</span>
-          ${r.type === 'sleeper' ? '<div class="cabin-price-tag"><span class="sharing-price">🤝 Sharing from ' + inr(busFare > 0 ? busFare : sharingPP(r.to, true)) + '/person</span></div><div class="cabin-price-tag"><span class="private-price">🔒 Private from ' + inr(CONFIG.cabinPricing.private.single_1pax.online) + '/cabin</span></div>' + (busFare <= 0 && sharingBasePP(r.to) > sharingPP(r.to, true) ? '<div class="save-badge">💸 ' + tf('saveOnline', { a: inr(sharingBasePP(r.to) - sharingPP(r.to, true)) }) + '</div>' : '') : ''}
+          <span class="amt">${fareKnown ? inr(perPersonFare) : '—'}</span>
+          <span class="npr">${!fareKnown ? '' : r.type === 'sleeper' ? nprEst(perPersonFare) + ' /person' : nprEst(r.fare) + ' / ' + t('rowSeats').toLowerCase()}</span>
+          ${r.type === 'sleeper' ? (fareKnown ? '<div class="cabin-price-tag"><span class="sharing-price">🤝 Sharing from ' + inr(busFare > 0 ? busFare : sharingPP(r.to, true)) + '/person</span></div>' : '') + '<div class="cabin-price-tag"><span class="private-price">🔒 Private from ' + inr(CONFIG.cabinPricing.private.single_1pax.online) + '/cabin</span></div>' + (busFare <= 0 && sharingBasePP(r.to) > sharingPP(r.to, true) ? '<div class="save-badge">💸 ' + tf('saveOnline', { a: inr(sharingBasePP(r.to) - sharingPP(r.to, true)) }) + '</div>' : '') : ''}
           <span class="left" style="color:${left <= 5 ? 'var(--bad)' : 'var(--ok)'}">${left <= 0 ? t('resSoldOut') : (r.type === 'sleeper' && cabinsLeft <= 4 ? '<b style="color:var(--bad)">Only ' + cabinsLeft + ' cabins left!</b>' : left + ' ' + t('resLeft'))}</span>
           ${cta}
         </div>
@@ -765,7 +766,7 @@ function renderSeats(instant) {
   if (Flow.tripType === 'round') info += ' · ' + t(ctx.ret ? 'tkRet' : 'tkOut') + ' (' + (Flow.legIndex + 1) + '/2)';
   $('#seatRouteInfo').textContent = info;
   var ssi = $('#seatStickyInfo');
-  if (ssi) ssi.innerHTML = '<span class="sfi-route">' + esc(ctx.from) + ' → ' + esc(ctx.to) + '</span><span class="sfi-date">' + fmtDate(ctx.date) + ' · ' + esc(r.busName) + '</span><span class="sfi-fare">' + (r.type === 'sleeper' ? 'from ' + inr(sharingPP(ctx.to, true)) : inr(r.fare)) + '</span>';
+  if (ssi) ssi.innerHTML = '<span class="sfi-route">' + esc(ctx.from) + ' → ' + esc(ctx.to) + '</span><span class="sfi-date">' + fmtDate(ctx.date) + ' · ' + esc(r.busName) + '</span><span class="sfi-fare">' + (function (v) { return fareOk(v) ? (r.type === 'sleeper' ? 'from ' : '') + inr(v) : '—'; })(r.type === 'sleeper' ? sharingPP(ctx.to, true) : r.fare) + '</span>';
   $('#sumRoute').textContent = ctx.from + ' → ' + ctx.to;
   $('#sumDate').textContent = fmtDate(ctx.date);
   $('#sumBus').textContent = r.busName + ' (' + r.busNo + ')';
@@ -1323,15 +1324,22 @@ function updateSeatSummary() {
     $('#fareRows').innerHTML = fareRowsHTML(f);
     $('#sumFare').innerHTML = inr(f.total) + ' <small style="color:var(--muted);font-weight:500">' + nprEst(f.total) + '</small>';
   }
+  const fareGood = fareOk(recapTotal);
+  if (!fareGood) {
+    $('#fareRows').innerHTML = '';
+    $('#sumFare').innerHTML = Flow.seats.length
+      ? '<span style="color:var(--bad);font-size:13px;font-weight:600">' + esc(t('fareNA')) + '</span>'
+      : '—';
+  }
   /* Sticky recap in the fixed Continue bar (17 Sep 2026): on a phone the
      summary card scrolls away under the map, so the bar itself reads
      "L3, L4 · ₹4,000" — the same chips and total as above. Empty when
      nothing is picked, and the CSS hides an empty recap. */
   const recap = $('#seatRecap');
   if (recap) recap.textContent = Flow.seats.length
-    ? Flow.seats.map(s => seatLabel(s, Flow.route && Flow.route.type, Flow.bookingType)).join(', ') + ' · ' + inr(recapTotal)
+    ? Flow.seats.map(s => seatLabel(s, Flow.route && Flow.route.type, Flow.bookingType)).join(', ') + (fareGood ? ' · ' + inr(recapTotal) : '')
     : '';
-  $('#continueBtn').disabled = !Flow.seats.length;
+  $('#continueBtn').disabled = !Flow.seats.length || !fareGood;
   updateTierUI();
 }
 
@@ -1460,7 +1468,7 @@ function updateTierUI() {
   const ti = SHARING_TIERS[effTier];
   const fp = tierFarePreview(effTier, mode);
   $('#tierHint').innerHTML = ti.emoji + ' <b>' + ti.berths + (ti.berths > 1 ? ' berths' : ' berth') + '</b> अपेक्षित / expected · '
-    + (fp.approx ? '≈ ' : '') + inr(fp.perPerson)
+    + (fareOk(fp.perPerson) ? (fp.approx ? '≈ ' : '') + inr(fp.perPerson) : '—')
     + ' <small style="color:var(--muted)">/person · प्रति व्यक्ति'
     + (fp.approx ? ' (निकटतम साझा दर / nearest sharing rate)' : '') + '</small>';
   $('#tierRule').textContent = ti.rule;

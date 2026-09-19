@@ -547,7 +547,7 @@ function loadTermsData(cb) {
   if (window.__shgTermsQueue) { window.__shgTermsQueue.push(cb); return; }
   window.__shgTermsQueue = [cb];
   var el = document.createElement('script');
-  el.src = '/assets/js/terms-data.js?v=20260919d';
+  el.src = '/assets/js/terms-data.js?v=20260919e';
   el.onload = function () {
     TERMS_DATA = window.TERMS_DATA || [];
     window.__shgTermsReady = true;
@@ -1017,6 +1017,9 @@ const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const inr = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
 const nprEst = (n) => '≈ NPR ' + Math.round(Number(n || 0) * CONFIG.nprPerInr).toLocaleString('en-IN');
+/* inr() prints a missing fare as ₹0, which reads as a real price. Booking
+   screens test fareOk() first and show a 'could not load' state instead. */
+const fareOk = (n) => { const v = Number(n); return isFinite(v) && v > 0; };
 const digits = (s) => String(s || '').replace(/\D/g, '');
 function todayISO() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 function addDaysISO(iso, n) { const p = iso.split('-').map(Number); const d = new Date(p[0], p[1] - 1, p[2] + n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
@@ -1275,9 +1278,15 @@ function sharingDir() {
   // pair — this mirrors Fare::dirFares() server-side so the page quotes exactly
   // what checkout charges. Restore the override + fix the DB row together later.
   const base = (CONFIG.cabinPricing && CONFIG.cabinPricing.sharingByDir) || { toNepal: 2000, toIndia: 1800 };
+  /* 19 Sep 2026: Fare::dirFares() charges the fare_to_nepal / fare_to_india
+     settings rows (Admin -> Settings, since 3 Sep). They ride SHG_BOOT as
+     public settings, so the quote follows a panel price change instead of
+     staying on the packaged pair while the server charges the new one. */
+  const st = (window.SHG_BOOT && window.SHG_BOOT.settings) || {};
+  const live = (k, d) => { const v = Math.round(Number(st[k])); return v > 0 ? v : d; };
   return {
-    toNepal: Math.max(0, Math.round(Number(base.toNepal) || 2000)),
-    toIndia: Math.max(0, Math.round(Number(base.toIndia) || 1800))
+    toNepal: live('fare_to_nepal', Math.max(0, Math.round(Number(base.toNepal) || 2000))),
+    toIndia: live('fare_to_india', Math.max(0, Math.round(Number(base.toIndia) || 1800)))
   };
 }
 /* Sharing per-person base fare (offline) for a destination. Heading INTO

@@ -44,7 +44,11 @@
    a soft contact shadow that breathes against the bob */
 .jy-bus{left:max(19%,calc((100% - 1160px)/2 + 190px));bottom:6%;width:210px;z-index:2;will-change:transform}
 .jy-body{position:relative;z-index:1;will-change:transform}
-.jy-body img{display:block;width:100%;height:auto}
+/* The coach is a 3/4-front photo: its rear wheel meets the ground ~2deg
+   above the front one and the near-side perspective dips the nose, which on
+   this flat side-on road read as a flat front tyre (owner, 19 Sep 2026).
+   Counter-rotate about the front wheel so the coach sits level. */
+.jy-body img{display:block;width:100%;height:auto;transform:rotate(-3deg);transform-origin:49% 99.7%}
 .jy-shadow{position:absolute;left:3%;right:5%;bottom:-2%;height:9%;border-radius:50%;background:radial-gradient(ellipse at 50% 50%,rgba(5,9,18,.55),rgba(5,9,18,.26) 45%,rgba(5,9,18,0) 72%);will-change:transform,opacity}
 
 /* states */

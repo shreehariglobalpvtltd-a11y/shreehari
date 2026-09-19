@@ -314,16 +314,19 @@ function setPayMethod(m) {
   if (m === 'upi' || m === 'esewa') $('#refLbl').innerHTML = t(m === 'upi' ? 'lblUtr' : 'lblRef');
   if (m === 'link') {
     const upiId = (DB.settings && DB.settings.upiId) || '9104801507.eazypay@icici';
-    const amt = Flow.checkoutTotals ? Flow.checkoutTotals.grand : 0;
-    const linkUrl = 'upi://pay?pa=' + encodeURIComponent(upiId) + '&pn=S+Hari+Global&am=' + amt + '&cu=INR';
+    const lt = Flow.checkoutTotals ? Flow.checkoutTotals() : null;
+    const amt = lt && !lt.fareBad ? lt.total : 0;
+    const linkUrl = 'upi://pay?pa=' + encodeURIComponent(upiId) + '&pn=S+Hari+Global' + (amt ? '&am=' + amt : '') + '&cu=INR';
     const el = $('#linkPayUrl'); if (el) el.textContent = linkUrl;
     const wa = $('#linkPayWa');
-    if (wa) wa.href = 'https://wa.me/?text=' + encodeURIComponent('S Hari Global Bus Booking Payment\nAmount: ₹' + amt + '\nPay via UPI: ' + linkUrl);
+    if (wa) wa.href = 'https://wa.me/?text=' + encodeURIComponent('S Hari Global Bus Booking Payment\nAmount: ' + (amt ? inr(amt) : '—') + '\nPay via UPI: ' + linkUrl);
     $('#copyLinkPayBtn').onclick = () => { navigator.clipboard.writeText(linkUrl).then(() => toast(t('copied'))); };
   }
   if (m === 'cod') {
-    const amt = Flow.checkoutTotals ? Flow.checkoutTotals.grand : 0;
-    const el = $('#codAmount'); if (el) el.textContent = inr(amt);
+    /* checkoutTotals is a function; this read .grand off it, which never
+       existed, so the cash panel always told the passenger ₹0. */
+    const ct = Flow.checkoutTotals ? Flow.checkoutTotals() : null;
+    const el = $('#codAmount'); if (el) el.textContent = ct && !ct.fareBad ? inr(ct.total) : '—';
   }
 }
 
@@ -904,7 +907,8 @@ function renderCheckout() {
     const afterTier = fareBase - tierDisc;
     const red = Flow.usePoints ? loyaltyRedemption(me, (me && me.loyaltyPoints) || 0, afterTier) : { points: 0, rupees: 0 };
     return { tierDisc: tierDisc, tierName: tierInfo ? tierInfo.tier.icon + ' ' + tierInfo.tier.name : '',
-             points: red.points, pointsValue: red.rupees, total: Math.max(1, afterTier - red.rupees) };
+             points: red.points, pointsValue: red.rupees, total: Math.max(1, afterTier - red.rupees),
+             fareBad: !fareOk(fareBase) };
   };
 
   /* Number-flip: tween a money element from its current value to the new
@@ -948,12 +952,16 @@ function renderCheckout() {
       rows += '<label class="loy-use"><input type="checkbox" id="loyUseChk"' + (Flow.usePoints ? ' checked' : '') + '> '
         + tf('loyUseChk', { p: preview.points, a: inr(preview.rupees) }) + '</label>';
     }
-    $('#coFareRows').innerHTML = rows
-      + '<div class="sum-row total"><span>' + t('rowTotal') + '</span><b>' + inr(x.total) + '</b></div>';
+    /* Math.max(1, …) above would turn a fare that failed to load into a
+       payable ₹1; say so instead and let submitBooking refuse. */
+    $('#coFareRows').innerHTML = x.fareBad
+      ? '<div class="sum-row total"><span style="color:var(--bad)">' + esc(t('fareNA')) + '</span><b>—</b></div>'
+      : rows + '<div class="sum-row total"><span>' + t('rowTotal') + '</span><b>' + inr(x.total) + '</b></div>';
     const chk = $('#loyUseChk');
     if (chk) chk.onchange = () => { Flow.usePoints = chk.checked; updatePayment(); };
-    flipNumber($('#payAmount'), x.total, inr, $('#bpAmt'));
-    $('#payAmountNpr').textContent = nprEst(x.total);
+    flipNumber($('#payAmount'), x.total, x.fareBad ? (() => '—') : inr, $('#bpAmt'));
+    $('#payAmountNpr').textContent = x.fareBad ? '' : nprEst(x.total);
+    const codEl = $('#codAmount'); if (codEl) codEl.textContent = x.fareBad ? '—' : inr(x.total);
     if (typeof updateCoSummary === 'function') updateCoSummary();
 
     /* — UPI panel — */
@@ -1175,6 +1183,7 @@ async function submitBooking() {
 
   const f = calcFare(legs);
   const x = Flow.checkoutTotals ? Flow.checkoutTotals() : { tierDisc: 0, points: 0, pointsValue: 0, total: f.total };
+  if (x.fareBad) { toast('⚠️ ' + t('fareNA')); SFX.error(); shgHaptic('error'); return; }
 
   /* ---- Create the real booking on the server (authoritative) --------
      This is the actual reservation: server-side price quote, the DB-level
@@ -2007,7 +2016,7 @@ function renderStatus(id) {
   <div class="status-card tk2${conf ? ' confirm-success' : ''}" id="ticketCard">
     <div class="tk2-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo.png?v=20260919d" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo.png?v=20260919e" alt="" loading="lazy" decoding="async">
         <div><b>S HARI GLOBAL PVT LTD</b><small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small></div>
       </div>
       ${pill2}
