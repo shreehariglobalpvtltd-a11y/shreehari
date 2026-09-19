@@ -23,35 +23,46 @@ is missing. Nothing here creates Supabase tables or new stand-alone HTML apps.
 6. New user-facing strings go in **all** languages of `assets/js/04-i18n.js` in the same commit.
 7. End each session with: STATUS / CHANGES / TEST / NEXT, and tick the boxes below.
 
-## P0 — blockers found on 19 Sep (need the owner)
+## P0 — blockers found on 19 Sep
 
-- [ ] **No PHP on this Windows machine and no `.deploy.env`.** Tests cannot run here and nothing
-      can be deployed from here. Pick one: (a) install PHP 8.3 + MariaDB locally with a copy of the
-      schema/seed, or (b) run the sessions on the VPS checkout like the earlier sessions did.
-      Until then code can be written but **not verified** — and unverified code must not go live.
-- [ ] **Six uncommitted files from the 18 Sep session**: a real bug fix in
-      `includes/booking.php` (`counterSale()` closure did not capture `$data`, so every counter
-      ticket took the first open stop — test cases 5c–5e added) and Nepali wording for OTP /
-      WhatsApp-bot / notification texts (`api/otp.php`, `includes/auth.php`, `includes/notify.php`,
-      `includes/wabot.php`). Run `tests/boarding-other-test.php` + the notify/wabot suites, then commit
-      as two commits (fix, wording).
+- [x] **Where to test / how to ship** — owner chose the VPS (19 Sep). The working loop, verified:
+      1. commit here → `git push vps main:wip` (**`wip` is a scratch branch, not live**);
+      2. `ssh shari-vps '/root/shg-test-refresh.sh wip'` → `/root/shg-test` (database `shari_test`);
+      3. `ssh shari-vps 'cd /root/shg-test && php tests/<suite>.php'` or `php tests/run-all.php`;
+      4. page smoke test: `php tests/render-admin.php <page>.php [post:action=...]`.
+      **`vps main` IS THE LIVE SITE** (`receive.denyCurrentBranch=updateInstead`): a push to `main`
+      is a deploy. Only with the owner's yes, only after the battery, and `git fetch vps` first —
+      sessions on the VPS commit straight to `main` (three did between 18 and 19 Sep).
+- [x] **Uncommitted files from 18 Sep** — the four Nepali-wording files were already live on
+      `vps/main` (2e05e1c, 0a85a16, dd62687); local `main` rebased onto it. The `counterSale()`
+      boarding-town fix + cases 5c–5e committed as b9f9cee, `boarding-other-test` 27/27.
+- [ ] **Three suites fail on `shari_test` for test-data reasons** (they failed before this work too):
+      `e2e-booking` TEST 11 wants ≥ 5 legacy `SHG-R%` rows (has 3); `agent-wallet` fixture agent
+      number 27 is taken; `brain-test` "tomorrow's departures are on the checklist". Fix the
+      fixtures so the battery can be green before a release.
 - [ ] **Brand colours**: the prompt asks for navy `#1A237E` + orange + gold; live is `#1A3A6A`
       (design system v2, shipped 18 Sep). Recommendation: keep the live navy, add orange only as the
       CTA accent token. Owner to say yes/no before Session 6.
 
 ## Session 1 — foundation: verify, measure, data audit
 
-- [ ] Clear P0 (test environment, commit pending work).
+- [x] Clear P0 (test environment, commit pending work).
 - [ ] **Click audit**: count taps and screens for the 8 everyday jobs — customer books 1 seat,
       customer re-books, counter sells 1 / sells 5, agent sells, cancel + refund, reschedule,
       send ticket on WhatsApp, print chalan. Write the table into this file. Every later session
       must lower these numbers, never raise them.
-- [ ] **`cron/data-audit.php` (read-only, nightly)** — the "100 % correct data" guard. Checks:
+- [x] **`cron/data-audit.php` (read-only, nightly)** — the "100 % correct data" guard. Checks:
       every confirmed seat has exactly one live booking; no bed sold in both Sharing and Private;
       `total_amount` = sum of passenger fares − discount; agent wallet balance = sum of its ledger;
       refunds ≤ paid; holds older than the timeout. Any mismatch → one `Health` incident in owner
       language (same channel as `cron/health-delivery.php`). It never repairs by itself.
-- [ ] Test: `tests/data-audit-test.php` with planted bad rows.
+- [x] Test: `tests/data-audit-test.php` with planted bad rows — 25/25 on `shari_test`. Read-only dry
+      run against the **live** register on 19 Sep: **clean, all 11 checks**.
+- [x] `admin/health.php` (Settings → System Health): first screen that shows `health_incidents`
+      (four monitors had been writing cards nobody could see). Ack + "Check data now".
+- [ ] **Go-live of the above (needs the owner's yes):** push to `vps main`, apply
+      `database/upgrade-2026-09-data-audit.sql`, add the crontab line
+      `40 3 * * * /usr/bin/php /var/www/shreehariglobal.in/public_html/cron/data-audit.php`.
 
 ## Session 2 — counter shift + cash count (gap 2)
 
@@ -146,4 +157,5 @@ it should feel like a person is helping; fast, effective, easy in real life.*
 
 | Date | Session | Done | Commit |
 |---|---|---|---|
-| 19 Sep 2026 | 0 | Codebase survey vs prompt v3.0, this plan | — |
+| 19 Sep 2026 | 0 | Codebase survey vs prompt v3.0, this plan | 38b8b85 |
+| 19 Sep 2026 | 1 (part) | counterSale boarding fix; night data audit + test; System Health page. On `vps wip`, battery 63 pass / 3 old test-data fails. **Not live yet.** Click audit still to do. | b9f9cee … |
