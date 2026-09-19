@@ -246,10 +246,19 @@ function renderResults(instant) {
       /* Seat-fill chart (13 Sep 2026): the next 7 days of this direction, so a
          passenger can pick a lighter day. Fills itself from /api/occupancy.php
          after the cards paint; the board never waits for it. */
-      + '<div class="occ-host" id="occHost"></div>'
       + routes.map(r => cardHTML(r, srvSnap && srvSnap.byCode[r.id], false)).join('')
-      + extraCards.join('');
+      + extraCards.join('')
+      + '<div class="occ-host" id="occHost"></div>';
     observeReveals();
+    /* One daily coach (owner, 19 Sep 2026): when the SERVER's board holds a single
+       bookable card, a fresh search opens its seat map directly. A sold-out coach,
+       an extra bus or a date rolled forward still shows this page. */
+    if (srvSnap && Flow.autoSkip) {
+      Flow.autoSkip = false;
+      const cards = list.querySelectorAll('.bus-card');
+      const pick = cards.length === 1 && !ctx.ret && !srvSnap.nextAvailable ? cards[0].querySelector('[data-sel]') : null;
+      if (pick) { Flow.skipNav = true; pick.click(); return; }
+    }
     try {
       if (window.OccChart && !ctx.ret) window.OccChart.render($('#occHost'), ctx.from, ctx.to, ctx.date);
     } catch (e) {}
@@ -336,7 +345,8 @@ $('#resultsList').addEventListener('click', (e) => {
   // #cabinToggle), not on the results card — so start it fresh each time.
   const bt = sel.getAttribute('data-bt');
   Flow.bookingType = bt || null;
-  location.hash = '#/seats';
+  /* replace(): Back from a skipped board returns to the search, not to a page that skips again. */
+  if (Flow.skipNav) { Flow.skipNav = false; location.replace('#/seats'); } else location.hash = '#/seats';
 });
 
 /* ================================================================

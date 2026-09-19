@@ -76,7 +76,7 @@
       beacon('install_prompt', { source: deferred ? 'android' : 'ios' });
     }
     function head() {
-      return '<div class="pwa-head"><img src="/assets/img/icon-192.png?v=20260919g" alt="" width="52" height="52">'
+      return '<div class="pwa-head"><img src="/assets/img/icon-192.png?v=20260919h" alt="" width="52" height="52">'
         + '<div><b>' + E(T('pwaInstallT')) + '</b><small>' + E(T('pwaInstallP')) + '</small></div></div>';
     }
     function showAndroid() {
@@ -471,7 +471,7 @@
         var lbl = x.off ? T('occOff') : (x.soldOut ? T('occFull') : x.pct + '%');
         var h = x.off ? 6 : Math.max(6, Math.min(100, x.soldOut ? 100 : x.pct));
         return '<button type="button" class="occ-bar ' + cls + (x.date === selected ? ' on' : '') + '" data-iso="' + E(x.date) + '"' + (x.off || x.soldOut ? ' disabled' : '') + ' aria-label="' + E(x.date + ' ' + lbl) + '">'
-          + '<span class="occ-pct">' + E(lbl) + '</span><span class="occ-col"><i style="height:' + h + '%"></i></span><span class="occ-day">' + E(wd) + '</span><span class="occ-num">' + E(dn) + '</span></button>';
+          + '<span class="occ-day">' + E(wd) + '</span><span class="occ-num">' + E(dn) + '</span><span class="occ-meter"><i style="width:' + h + '%"></i></span><span class="occ-pct">' + E(lbl) + '</span></button>';
       }).join('');
       /* No .reveal here: observeReveals() has already run by the time this
          async card lands, so a reveal class would leave it at opacity 0. */

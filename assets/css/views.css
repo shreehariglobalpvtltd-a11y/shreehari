@@ -3451,29 +3451,32 @@ body.bk-regular .qt-collapsed{display:flex}
 
 /* -- 7-day seat-fill chart (results board) -- */
 .occ-host:empty{display:none}
-.occ-card{margin:0 0 14px;padding:14px 14px 10px;border-radius:16px;background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow-sm)}
+.occ-card{margin:14px 0 0;padding:10px 10px 8px;border-radius:14px;background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow-sm)}
 .occ-card.occ-loading{text-align:center;color:var(--muted);font-size:12.5px;padding:12px}
-.occ-head b{display:block;font-size:14px}
-.occ-head small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
-.occ-bars{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-top:12px;align-items:end}
-.occ-bar{display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:0;padding:4px 2px;border-radius:10px;cursor:pointer;min-height:44px;touch-action:manipulation;color:var(--ink);font:inherit}
+.occ-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:2px 8px}
+.occ-head b{font-size:13px}
+.occ-head small{color:var(--muted);font-size:11px}
+@media (max-width:520px){.occ-head small{display:none}.occ-card{padding:9px 8px 7px}.occ-bars{margin-top:6px}}
+.occ-bars{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;margin-top:8px}
+/* scoped: app.css has its own .occ-bar (the seat page's 8px tier meter, overflow hidden) */
+.occ-bars .occ-bar{display:flex;flex-direction:column;align-items:center;gap:3px;height:auto;overflow:visible;background:var(--bg);border:1px solid var(--line);padding:6px 2px 5px;border-radius:10px;cursor:pointer;min-height:44px;touch-action:manipulation;color:var(--ink);font:inherit}
 .occ-bar:disabled{cursor:default;opacity:.55}
-.occ-bar.on{background:var(--blue-50);box-shadow:inset 0 0 0 2px var(--blue-100)}
-.occ-pct{font-size:10.5px;font-weight:800;color:var(--muted);font-family:var(--f-code)}
-.occ-col{width:100%;max-width:34px;height:72px;border-radius:8px;background:var(--bg);border:1px solid var(--line);display:flex;align-items:flex-end;overflow:hidden}
-.occ-col i{display:block;width:100%;border-radius:7px 7px 0 0;background:#4CAF50;transform-origin:bottom;animation:occGrow .5s var(--ease) both}
-@keyframes occGrow{from{transform:scaleY(0)}to{transform:none}}
-.occ-bar.low .occ-col i{background:#4CAF50}
-.occ-bar.mid .occ-col i{background:#F5B300}
-.occ-bar.high .occ-col i,.occ-bar.full .occ-col i{background:#D32F2F}
-.occ-bar.off .occ-col i{background:var(--line)}
-.occ-day{font-size:11px;color:var(--muted)}
-.occ-num{font-size:13px;font-weight:800;line-height:1}
-.occ-legend{display:flex;gap:12px;justify-content:center;margin-top:10px;font-size:11px;color:var(--muted)}
-.occ-legend span::before{content:'';display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px;background:#4CAF50}
+.occ-bars .occ-bar.on{background:rgba(240,124,31,.12);border-color:var(--orange,#F07C1F)}
+.occ-day{font-size:10.5px;color:var(--muted);line-height:1}
+.occ-num{font-size:15px;font-weight:800;line-height:1}
+.occ-meter{display:block;width:78%;height:5px;border-radius:3px;background:var(--line);overflow:hidden}
+.occ-meter i{display:block;height:100%;border-radius:3px;background:#2E9E5B;transform-origin:left;animation:occGrow .5s var(--ease) both}
+@keyframes occGrow{from{transform:scaleX(0)}to{transform:none}}
+.occ-bar.low .occ-meter i{background:#2E9E5B}
+.occ-bar.mid .occ-meter i{background:#F5B300}
+.occ-bar.high .occ-meter i,.occ-bar.full .occ-meter i{background:#D32F2F}
+.occ-bar.off .occ-meter i{background:var(--line)}
+.occ-pct{font-size:10px;font-weight:700;color:var(--muted);font-family:var(--f-code);line-height:1}
+.occ-legend{display:flex;gap:10px;justify-content:center;margin-top:6px;font-size:10.5px;color:var(--muted)}
+.occ-legend span::before{content:'';display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:-1px;background:#2E9E5B}
 .occ-legend .mid::before{background:#F5B300}
 .occ-legend .high::before{background:#D32F2F}
-@media (prefers-reduced-motion:reduce){.occ-col i{animation:none}.pwa-sheet,.pwa-backdrop{transition:none}}
+@media (prefers-reduced-motion:reduce){.occ-meter i{animation:none}.pwa-sheet,.pwa-backdrop{transition:none}}
 @media print{.occ-card{display:none!important}}
 
 /* -- navigator route guide (#view-nav sheet) -- */
