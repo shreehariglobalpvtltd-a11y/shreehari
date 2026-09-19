@@ -3631,6 +3631,25 @@ body.bk-regular .qt-collapsed{display:flex}
 .wa-row i{font-style:normal;color:#25D366;font-weight:900}
 .wa-row-hot{background:linear-gradient(135deg,#E7F8EE,#fff);border-color:#BFE8CF;margin-bottom:10px}
 .wa-row-hot>span{background:#25D366;color:#fff}
+/* one-tap request, sent by the company API number (19 Sep 2026) */
+.wa-req{display:grid;gap:8px;margin:0 0 12px;padding:12px;border:1.5px solid #BFE8CF;border-radius:16px;background:linear-gradient(135deg,#F1FBF5,var(--card,#fff))}
+.wa-req-tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.wa-req-tabs button{min-height:40px;border-radius:12px;border:1.5px solid var(--line);background:var(--card,#fff);color:var(--ink);font:inherit;font-size:13.5px;font-weight:800;cursor:pointer}
+.wa-req-tabs button.on{background:#25D366;border-color:#25D366;color:#fff}
+.wa-req-trip{font-size:12.5px;font-weight:700;color:var(--ink);line-height:1.45}
+.wa-req-trip:empty{display:none}
+.wa-req-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.wa-req input,.wa-req select,.wa-req textarea{width:100%;min-height:44px;padding:10px 12px;border:1.5px solid var(--line);border-radius:12px;background:var(--card,#fff);color:var(--ink);font:inherit;font-size:16px}
+.wa-req textarea{min-height:0;resize:vertical}
+.wa-req-pax{grid-template-columns:auto 96px;align-items:center;justify-content:start}
+.wa-req-pax label{font-size:13px;font-weight:700;color:var(--muted)}
+.wa-req-go{min-height:48px;border:0;border-radius:14px;background:#128C4B;color:#fff;font:inherit;font-size:15px;font-weight:900;cursor:pointer}
+.wa-req-go:disabled{opacity:.6;cursor:default}
+.wa-req-msg{font-size:13px;font-weight:700;color:#128C4B}
+.wa-req-msg.bad{color:var(--bad,#B42318)}
+.wa-req.is-help .wa-req-pax,.wa-req.is-help .wa-req-trip{display:none}
+@media (max-width:400px){.wa-req-row{grid-template-columns:1fr}.wa-req-pax{grid-template-columns:auto 96px}}
+[data-theme="dark"] .wa-req{background:linear-gradient(135deg,rgba(37,211,102,.12),var(--card));border-color:rgba(37,211,102,.4)}
 .wa-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 @media (max-width:480px){.wa-grid{grid-template-columns:1fr}}
 .wa-sheet-foot{margin:12px 2px 0;font-size:12.5px;color:var(--muted);text-align:center}

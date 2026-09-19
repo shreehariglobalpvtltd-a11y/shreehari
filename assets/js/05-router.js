@@ -1089,7 +1089,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20260919l" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20260919m" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'
@@ -2459,6 +2459,7 @@ if (store.local && !store.remote) {
     if (!sheet) return false;
     var bk = document.getElementById('waBookLink');
     if (bk) bk.href = waUrl(officeNum(), composeBooking());
+    fillReq();
     sheet.hidden = false;
     document.body.classList.add('wa-open');
     try { sheet.querySelector('.wa-sheet-x').focus({ preventScroll: true }); } catch (e) {}
@@ -2475,8 +2476,63 @@ if (store.local && !store.remote) {
     });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !sheet.hidden) closeSheet(); });
   }
+  /* One-tap request (owner, 19 Sep 2026): the server's WhatsApp sender delivers it
+     to the office (api/wa-request.php); the wa.me row below stays as the fallback. */
+  var req = document.getElementById('waReq');
+  var reqType = 'booking';
+  function tripInfo() {
+    var back = false, town = '';
+    try { back = document.getElementById('dirBack').classList.contains('on'); } catch (e) {}
+    try { var ps = document.getElementById('pointSel'); town = (ps && ps.selectedIndex >= 0 && ps.options[ps.selectedIndex]) ? ps.options[ps.selectedIndex].text.trim() : ''; } catch (e) {}
+    return { back: back, date: val('dateInput'), point: town };
+  }
+  function setReqType(tp) {
+    reqType = tp === 'help' ? 'help' : 'booking';
+    if (!req) return;
+    req.classList.toggle('is-help', reqType === 'help');
+    req.querySelectorAll('[data-wareq]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-wareq') === reqType); });
+    var note = document.getElementById('waReqNote');
+    if (note) note.placeholder = t(reqType === 'help' ? 'waReqHelpPh' : 'waReqNotePh');
+  }
+  function fillReq() {
+    if (!req) return;
+    var tr = tripInfo(), line = document.getElementById('waReqTrip');
+    var dTxt = tr.date ? (typeof fmtDate === 'function' ? fmtDate(tr.date) : tr.date) : '';
+    if (line) line.textContent = '🚌 ' + (tr.back ? 'Rupaidiha → Gujarat' : 'Gujarat → Rupaidiha') + (dTxt ? '  ·  📅 ' + dTxt : '') + (tr.point ? '  ·  📍 ' + tr.point : '');
+    var n = document.getElementById('waReqName'), p = document.getElementById('waReqPhone');
+    var me = (typeof USER !== 'undefined' && USER) ? USER : null;
+    if (n && !n.value) n.value = val('qtName') || (me && me.name) || '';
+    if (p && !p.value) p.value = val('qtPhone') || (me && me.phone) || '';
+    var msg = document.getElementById('waReqMsg'); if (msg) { msg.hidden = true; msg.textContent = ''; }
+  }
+  if (req) {
+    req.addEventListener('click', function (e) { var b = e.target.closest('[data-wareq]'); if (b) setReqType(b.getAttribute('data-wareq')); });
+    req.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var go = document.getElementById('waReqGo'), msg = document.getElementById('waReqMsg');
+      var say = function (k, bad) { if (!msg) return; msg.textContent = k; msg.classList.toggle('bad', !!bad); msg.hidden = false; };
+      var name = val('waReqName'), phone = val('waReqPhone'), note = val('waReqNote');
+      if (name.length < 2 || phone.replace(/[^0-9]/g, '').length < 8) { say(t('waReqNeed'), true); return; }
+      if (reqType === 'help' && !note) { say(t('waReqNeedNote'), true); return; }
+      var tr = tripInfo();
+      var body = { type: reqType, name: name, phone: phone, note: note };
+      if (reqType === 'booking') { body.direction = tr.back ? 'back' : 'go'; body.date = tr.date; body.point = tr.point; body.pax = val('waReqPax') || '1'; }
+      var label = go ? go.textContent : '';
+      if (go) { go.disabled = true; go.textContent = t('waReqBusy'); }
+      shgApi.post('/wa-request.php', body).then(function (d) {
+        say(d && d.sent ? t('waReqSent') : t('waReqFail'), !(d && d.sent));
+      }).catch(function (err) {
+        say((err && err.status !== 422 && err.message) || t('waReqNeed'), true);
+      }).then(function () { if (go) { go.disabled = false; go.textContent = label; } });
+    });
+  }
   var sb = document.getElementById('waBookBtn');
-  if (sb) sb.addEventListener('click', function () { window.open(waUrl(officeNum(), composeBooking()), '_blank', 'noopener'); });
+  if (sb) sb.addEventListener('click', function () {
+    if (!req || !openSheet()) { window.open(waUrl(officeNum(), composeBooking()), '_blank', 'noopener'); return; }
+    setReqType('booking');
+    var n = document.getElementById('waReqName');
+    if (n && !n.value) { try { n.focus({ preventScroll: true }); } catch (e) {} }
+  });
 
   /* Digital visiting card — share the picture. */
   document.addEventListener('click', function (e) {
