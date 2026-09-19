@@ -73,7 +73,7 @@ final class Fare
     public static function mainPoints(): array
     {
         return Settings::getArray('main_points', [
-            'india' => ['Surat', 'Baroda', 'Emli Bhupal', 'S Hari Parking, Nana Chiloda', 'Mehsana — Silver Complex'],
+            'india' => ['Surat', 'Kamrej', 'Ankleshwar', 'Bharuch', 'Vadodara', 'Anand', 'Nadiad', 'Emli Bhupal', 'S Hari Parking, Nana Chiloda'],
             // Rupaidiha is the ONLY Nepal-side point the company may sell today: the service is licensed to the India-side border and no further. Nepalgunj, Kohalpur and Lumbini Pradesh are a FUTURE extension — listing them here put them on the public fare board and in the search boxes as if they were bookable. Add them back the day the permit exists.
             'nepal' => ['Rupaidiha'],
         ]);

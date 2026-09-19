@@ -924,7 +924,7 @@ final class TicketBot
         $bareNepal    = ['nepal', 'nepalganj', 'kohalpur', 'kathmandu', 'नेपाल', 'નેપાળ', 'નેપાલ'];
         $bareIndia    = ['india', 'gujarat', 'भारत', 'इंडिया', 'इण्डिया', 'गुजरात', 'ભારત', 'ઈન્ડિયા', 'ગુજરાત'];
         $nepalTowns   = ['rupaidiha', 'rupaideha', 'nepalgunj', 'रुपैडिया', 'रूपैडिया', 'रुपैडिहा', 'नेपालगंज', 'नेपालगन्ज', 'काठमाडौं', 'काठमांडू', 'कोहलपुर', 'રૂપૈડિયા', 'નેપાળગંજ', 'કાઠમંડુ'];
-        $indiaTowns   = ['surat', 'ahmedabad', 'amdavad', 'mehsana', 'baroda', 'vadodara', 'सूरत', 'सुरत', 'अहमदाबाद', 'अमदावाद', 'मेहसाणा', 'मेहसाना', 'बड़ौदा', 'बडौदा', 'वडोदरा', 'સુરત', 'અમદાવાદ', 'મહેસાણા', 'વડોદરા', 'બરોડા'];
+        $indiaTowns   = ['surat', 'ahmedabad', 'amdavad', 'mehsana', 'baroda', 'vadodara', 'kamrej', 'ankleshwar', 'bharuch', 'nadiad', 'कामरेज', 'अंकलेश्वर', 'भरूच', 'भरुच', 'नडियाद', 'કામરેજ', 'અંકલેશ્વર', 'ભરૂચ', 'નડિયાદ', 'सूरत', 'सुरत', 'अहमदाबाद', 'अमदावाद', 'मेहसाणा', 'मेहसाना', 'बड़ौदा', 'बडौदा', 'वडोदरा', 'સુરત', 'અમદાવાદ', 'મહેસાણા', 'વડોદરા', 'બરોડા'];
         $sideOf = static function (string $w) use ($bareNepal, $bareIndia, $nepalTowns, $indiaTowns): string {
             if (in_array($w, $bareNepal, true) || in_array($w, $nepalTowns, true)) { return 'toNepal'; }
             if (in_array($w, $bareIndia, true) || in_array($w, $indiaTowns, true)) { return 'toIndia'; }
@@ -1491,6 +1491,11 @@ final class TicketBot
                       'અમદાવાદ', 'નાના ચિલોડા', 'ચિલોડા', 'હરિ પાર્કિંગ', 'પાર્કિંગ', 'પાલડી'],
             'MSN' => ['mehsana', 'mahesana', 'silver complex', 'मेहसाणा', 'मेहसाना', 'महेसाणा', 'મહેસાણા', 'મેહસાણા', 'સિલ્વર કોમ્પ્લેક્સ'],
             'STV' => ['surat', 'surat station', 'सूरत', 'सुरत', 'સુરત'],
+            'KMJ' => ['kamrej', 'कामरेज', 'કામરેજ'],
+            'AKV' => ['ankleshwar', 'anklesvar', 'ankleshvar', 'अंकलेश्वर', 'अङ्कलेश्वर', 'અંકલેશ્વર'],
+            'BRH' => ['bharuch', 'broach', 'भरूच', 'भरुच', 'ભરૂચ'],
+            'ANA' => ['anand', 'आनंद', 'आनन्द', 'આણંદ'],
+            'NAD' => ['nadiad', 'नडियाद', 'नाडियाद', 'નડિયાદ'],
             'BRC' => ['baroda', 'barauda', 'vadodara', 'badoda', 'बड़ौदा', 'बडौदा', 'बरोडा', 'वडोदरा', 'बड़ोदरा', 'વડોદરા', 'બરોડા'],
             'EMB' => ['emli', 'emli bhupal', 'bhupal', 'limbli', 'limli', 'इमली', 'इमली भूपाल', 'एमली', 'एमली भूपाल', 'लिंबली', 'लिम्बली', 'लिम्बली भूपाल', 'લીંબલી', 'લિંબલી', 'એમલી', 'એમલી ભૂપાલ'],
             'RPD' => ['rupaidiha', 'rupaideha', 'rupediha', 'jamunaha', 'border', 'रुपैडिया', 'रूपैडिया', 'रुपैडिहा', 'रुपैदिया', 'बॉर्डर', 'बोर्डर', 'जमुनाहा', 'રૂપૈડિયા', 'રુપૈડિયા', 'બોર્ડર'],

@@ -749,7 +749,7 @@ async function downloadRouteMapPDF() {
   doc.text('S Hari Global — Route Map', mx, 35);
   doc.setFontSize(9); doc.setFont('helvetica', 'normal');
   /* Display-only corridor summary (short names — canonical stop names would overflow the line) */
-  doc.text('Surat → Baroda → S Hari Parking → Nana Chiloda → Mehsana → Rupaidiha', mx, 48);
+  doc.text('Surat → Bharuch → Vadodara → Nadiad → Ahmedabad (Nana Chiloda) → Rupaidiha', mx, 48);
   doc.text(new Date().toLocaleDateString('en-IN'), W - mx, 35, { align: 'right' });
   y = 70;
   var paths = [

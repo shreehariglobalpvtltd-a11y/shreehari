@@ -96,11 +96,11 @@ check('seats name phone', $want(p('2 seats Ram Bahadur 9876543210')));
 
 echo "\n-- SHG AI BRAIN Phase 2 (10 Sep 2026): Hindi / Nepali / Gujarati scripts --\n";
 $tm = addDaysISO(todayISO(), 1);
-$h = p('राम शर्मा 9876543210 कल 2 सीट मेहसाणा से नेपाल जाना है');
+$h = p('राम शर्मा 9876543210 कल 2 सीट नडियाद से नेपाल जाना है');
 check('Hindi: name stays in Devanagari', $h['name'] === 'राम शर्मा', $h['name']);
 check('Hindi: कल = tomorrow', $h['date'] === $tm, $h['date']);
 check('Hindi: 2 सीट = 2 seats', (int) $h['seats'] === 2, (string) $h['seats']);
-check('Hindi: मेहसाणा = the Mehsana pickup', str_contains(mb_strtolower($h['boarding']), 'mehsana'), $h['boarding']);
+check('Hindi: नडियाद = the Nadiad pickup', str_contains(mb_strtolower($h['boarding']), 'nadiad'), $h['boarding']);
 check('Hindi: नेपाल जाना = toNepal', $h['direction'] === 'toNepal', $h['direction']);
 check('Hindi: language detected', $h['lang'] === 'hi', $h['lang']);
 $n = p('सीता देवी ९८१२३४५६७८ भोलि दुई जना सुरत बाट नेपाल जाने महिला');
@@ -156,7 +156,7 @@ check('"2 जनाको टिकट" = 2 seats', (int) p('राम 987654321
 $c8 = p('भूपाल थापा 9876543210');
 check('भूपाल is a given name, not the Limbli pickup', $c8['name'] === 'भूपाल थापा' && $c8['boarding'] === '', $c8['name'] . ' / ' . $c8['boarding']);
 $c9 = p("राम 9876543210 \u{092C}\u{095C}\u{094C}\u{0926}\u{093E} से");   // precomposed ड़ (U+095C)
-check('a precomposed nukta (बड़ौदा typed as U+095C) still finds the Baroda pickup', str_contains(mb_strtolower($c9['boarding']), 'barauda') || str_contains(mb_strtolower($c9['boarding']), 'baroda'), $c9['boarding'] . ' / ' . $c9['name']);
+check('a precomposed nukta (बड़ौदा typed as U+095C) still finds the Vadodara (Baroda) pickup', str_contains(mb_strtolower($c9['boarding']), 'barauda') || str_contains(mb_strtolower($c9['boarding']), 'baroda') || str_contains(mb_strtolower($c9['boarding']), 'vadodara'), $c9['boarding'] . ' / ' . $c9['name']);
 check('"2 tikit chahiye" is Hindi, not Gujarati', p('Ram 9876543210 2 tikit chahiye')['lang'] === 'hi');
 check('"tikit chahiyo" is Nepali', p('Ram 9876543210 tikit chahiyo')['lang'] === 'ne');
 check('"back to nepal" is still to Nepal', p('Ram 9876543210 back to nepal')['direction'] === 'toNepal');

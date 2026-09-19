@@ -5,10 +5,10 @@
    the map shows the real road route, real stops, and the passenger's
    own device location (see [JS] 14B UNIFIED LIVE MAP).
 ================================================================ */
-/* "30h 45m" → minutes (fallback 30h for this corridor) */
+/* "30h 45m" → minutes (fallback 20h: the owner's timetable says 18–22 h) */
 function durationMinutes(r) {
   const m = String((r && r.duration) || '').match(/(\d+)\s*h(?:\s*(\d+)\s*m)?/i);
-  return m ? (parseInt(m[1], 10) * 60 + (parseInt(m[2], 10) || 0)) : 1800;
+  return m ? (parseInt(m[1], 10) * 60 + (parseInt(m[2], 10) || 0)) : 1200;
 }
 /* Route waypoints with SVG positions and real distances (km).
    Additive fields (trackMapSVG only reads name/flag/x/y/km):
@@ -16,12 +16,17 @@ function durationMinutes(r) {
    amen = amenity flags at that halt {meal,fuel,wash,hotel,prayer,hosp,police,border} */
 const ROUTE_STOPS = [
   { name: 'Surat',        flag: '🇮🇳', x: 24,  y: 296, km: 0,    m: 0,    lat: 21.1700, lng: 72.8310, amen: {} },
-  { name: 'Baroda',       flag: '',     x: 64,  y: 264, km: 150,  m: 240,  lat: 22.3070, lng: 73.1810, amen: {} },
-  /* 'Emli Bhupal' (19:00 halt) has no coordinates yet — deliberately
+  /* town-level coordinates (ETA estimates only, never directions); m = the owner's 19 Sep 2026 timetable */
+  { name: 'Kamrej',       flag: '',     x: 39,  y: 287, km: 20,   m: 30,   lat: 21.2710, lng: 72.9580, amen: {} },
+  { name: 'Ankleshwar',   flag: '',     x: 53,  y: 278, km: 60,   m: 120,  lat: 21.6260, lng: 73.0150, amen: {} },
+  { name: 'Bharuch',      flag: '',     x: 68,  y: 269, km: 75,   m: 180,  lat: 21.7050, lng: 72.9960, amen: {} },
+  { name: 'Vadodara',     flag: '',     x: 82,  y: 259, km: 150,  m: 240,  lat: 22.3070, lng: 73.1810, amen: {} },
+  { name: 'Anand',        flag: '',     x: 97,  y: 250, km: 190,  m: 330,  lat: 22.5650, lng: 72.9290, amen: {} },
+  { name: 'Nadiad',       flag: '',     x: 111, y: 241, km: 210,  m: 420,  lat: 22.6920, lng: 72.8630, amen: {} },
+  /* 'Emli Bhupal' (21:00, Taj Hotel) has no coordinates yet — deliberately
      skipped here; add it once real lat/lng are known. */
-  { name: 'S Hari Parking, Nana Chiloda', flag: '', x: 98, y: 246, km: 260, m: 480, lat: 23.1710, lng: 72.6230, amen: {} },
-  { name: 'Mehsana',      flag: '',     x: 126, y: 232, km: 325,  m: 600,  lat: 23.5880, lng: 72.3690, amen: {} },
-  { name: 'Rupaidiha',    flag: '🛃',   x: 440, y: 78,  km: 1600, m: 1800, lat: 28.0600, lng: 81.6170, amen: { border: true, police: true, wash: true } }
+  { name: 'S Hari Parking, Nana Chiloda', flag: '', x: 126, y: 232, km: 260, m: 600, lat: 23.1710, lng: 72.6230, amen: {} },
+  { name: 'Rupaidiha',    flag: '🛃',   x: 440, y: 78,  km: 1600, m: 1200, lat: 28.0600, lng: 81.6170, amen: { border: true, police: true, wash: true } }
 ];
 function trackMapSVG(pct, reverse) {
   const p = Math.max(0, Math.min(100, pct == null ? 0 : pct));
@@ -103,7 +108,7 @@ function rovCoords(name) {
   return key ? { lat: CITY_COORDS[key][0], lng: CITY_COORDS[key][1] } : null;
 }
 function rovCode(name) {
-  return ({ Surat: 'STV', Rupaidiha: 'RPD', Ahmedabad: 'AMD', Nepalgunj: 'NPJ', Mehsana: 'MSN', Baroda: 'BRC', Vadodara: 'BRC' })[String(name || '').trim()]
+  return ({ Surat: 'STV', Rupaidiha: 'RPD', Ahmedabad: 'AMD', Nepalgunj: 'NPJ', Mehsana: 'MSN', Baroda: 'BRC', Vadodara: 'BRC', Kamrej: 'KMJ', Ankleshwar: 'AKV', Bharuch: 'BRH', Anand: 'ANA', Nadiad: 'NAD' })[String(name || '').trim()]
     || String(name || '---').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase();
 }
 function rovStopKm(name) {
@@ -229,7 +234,9 @@ function snLoadMapInit() {
 /* Fallback coordinates for known corridor cities (used when a stored
    route predates the [lat,lng] suffix in its boarding points). */
 const CITY_COORDS = {
-  'surat': [21.170, 72.831], 'barauda': [22.307, 73.181],
+  'surat': [21.170, 72.831], 'barauda': [22.307, 73.181], 'vadodara': [22.307, 73.181],
+  'kamrej': [21.271, 72.958], 'ankleshwar': [21.626, 73.015], 'bharuch': [21.705, 72.996],
+  'anand': [22.565, 72.929], 'nadiad': [22.692, 72.863],
   'ahmedabad': [23.022, 72.571], 'chiloda': [23.157, 72.655],
   'mehsana': [23.588, 72.369], 'unjha': [23.804, 72.391], 'sidhpur': [23.917, 72.373],
   'palanpur': [24.171, 72.438], 'visnagar': [23.700, 72.554],

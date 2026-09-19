@@ -424,7 +424,7 @@ const CONFIG = {
        boarding dropdown, ticket, PDF, admin, agent) reads from here or from
        the boarding arrays in seedRoutes() below. Change names HERE, they
        propagate everywhere. */
-    india: ['Surat', 'Baroda', 'Emli Bhupal', 'S Hari Parking, Nana Chiloda', 'Mehsana — Silver Complex'],
+    india: ['Surat', 'Kamrej', 'Ankleshwar', 'Bharuch', 'Vadodara', 'Anand', 'Nadiad', 'Emli Bhupal', 'S Hari Parking, Nana Chiloda'],
     /* Rupaidiha is the ONLY Nepal-side point the company may sell today: the service is licensed to the India-side border and no further. Nepalgunj, Kohalpur and Lumbini Pradesh are a FUTURE extension — listing them here put them on the public fare board and in the search boxes as if they were bookable. Add them back the day the permit exists. */
     nepal: ['Rupaidiha']
   },
@@ -547,7 +547,7 @@ function loadTermsData(cb) {
   if (window.__shgTermsQueue) { window.__shgTermsQueue.push(cb); return; }
   window.__shgTermsQueue = [cb];
   var el = document.createElement('script');
-  el.src = '/assets/js/terms-data.js?v=20260919h';
+  el.src = '/assets/js/terms-data.js?v=20260919k';
   el.onload = function () {
     TERMS_DATA = window.TERMS_DATA || [];
     window.__shgTermsReady = true;
@@ -972,13 +972,17 @@ function seedRoutes() {
       busName: 'SHG Gandaki Sleeper', busNo: 'GJ-02-T-5580', type: 'sleeper',
       pathId: 'via_bahraich',
       depTime: '13:00', arrTime: '', dayOffset: 1, duration: '', fare: 2000,
-      configVer: 3,   // reseed guard — bump when stop names change
+      configVer: 4,   // reseed guard — bump when stop names change
       boarding: [
-        'Surat · Departure @ 13:00 [21.170,72.831]',
-        'Baroda @ 17:00 [22.307,73.181]',
-        'Emli Bhupal @ 19:00',
-        'S Hari Parking, Nana Chiloda @ 21:00 [23.171,72.623]',
-        'Mehsana — Silver Complex @ 23:00 [23.588,72.369]'
+        'Surat · Bus stand / designated point @ 13:00 [21.170,72.831]',
+        'Kamrej · Shiv Shakti Hotel @ 13:30',
+        'Ankleshwar · Ada Bridge @ 15:00',
+        'Bharuch · Somnath Mahadev Mandir @ 16:00',
+        'Vadodara · Golden Chokdi @ 17:00 [22.307,73.181]',
+        'Anand · Pipal Chautra @ 18:30',
+        'Nadiad · Nadiad Bridge – under bridge @ 20:00',
+        'Emli Bhupal · Taj Hotel @ 21:00',
+        'S Hari Parking, Nana Chiloda (Amd) @ 23:00 [23.171,72.623]'
       ],
       drop: ['Rupaidiha · India-Nepal border checkpoint [28.060,81.617]'],
       amenities: ['AC Sleeper', 'Blanket', 'Charging Point', 'Water Bottle'],
@@ -990,14 +994,18 @@ function seedRoutes() {
       busName: 'SHG Gandaki Sleeper', busNo: 'GJ-02-T-5580', type: 'sleeper',
       pathId: 'via_bahraich',
       depTime: '18:00', arrTime: '', dayOffset: 1, duration: '', fare: 1800,
-      configVer: 3,
+      configVer: 4,
       boarding: ['Rupaidiha · India-Nepal border checkpoint @ 18:00 [28.060,81.617]'],
       drop: [
-        'Mehsana — Silver Complex [23.588,72.369]',
-        'S Hari Parking, Nana Chiloda [23.171,72.623]',
-        'Emli Bhupal',
-        'Baroda [22.307,73.181]',
-        'Surat · Final drop [21.170,72.831]'
+        'S Hari Parking, Nana Chiloda (Amd) [23.171,72.623]',
+        'Emli Bhupal · Taj Hotel',
+        'Nadiad · Nadiad Bridge – under bridge',
+        'Anand · Pipal Chautra',
+        'Vadodara · Golden Chokdi [22.307,73.181]',
+        'Bharuch · Somnath Mahadev Mandir',
+        'Ankleshwar · Ada Bridge',
+        'Kamrej · Shiv Shakti Hotel',
+        'Surat · Bus stand / designated point [21.170,72.831]'
       ],
       amenities: ['AC Sleeper', 'Blanket', 'Charging Point', 'Water Bottle'],
       crewName: '', crewPhone: '',
@@ -1101,14 +1109,11 @@ function parseBP(str) {
 }
 /* Nepali time-of-day label for the five Gujarat stops */
 function nepaliTime(t24) {
-  var h = parseInt(t24, 10);
-  if (h === 13) return '(दिउँसो १ बजे)';
-  if (h === 17) return '(साँझ ५ बजे)';
-  if (h === 19) return '(साँझ ७ बजे)';
-  if (h === 21) return '(राति ९ बजे)';
-  if (h === 23) return '(राति ११ बजे)';
-  if (h === 18) return '(साँझ ६ बजे)';
-  return '';
+  var p = String(t24 || '').split(':'), h = parseInt(p[0], 10), m = parseInt(p[1] || '0', 10) || 0;
+  if (isNaN(h)) return '';
+  var nd = function (s) { return String(s).replace(/[0-9]/g, function (x) { return '०१२३४५६७८९'[x]; }); };
+  var period = (h >= 4 && h < 12) ? 'बिहान' : (h >= 12 && h < 16) ? 'दिउँसो' : (h >= 16 && h < 20) ? 'साँझ' : 'राति';
+  return '(' + period + ' ' + nd(h % 12 || 12) + (m ? ':' + nd(m < 10 ? '0' + m : m) : '') + ' बजे)';
 }
 /* How a stop reads on the ticket card: short code + short name + pickup time.
    MIRRORS includes/boarding.php Boarding::stopDisplay() / STOP_CODES — keep
@@ -1119,6 +1124,7 @@ var STOP_CODES = [
   ['nana chiloda', 'AMD', 'Nana Chiloda'], ['hari parking', 'AMD', 'Nana Chiloda'], ['ahmedabad', 'AMD', 'Ahmedabad'],
   ['emli', 'EMB', null], ['bhupal', 'EMB', null], ['mehsana', 'MSN', 'Mehsana'], ['surat', 'STV', 'Surat'],
   ['baroda', 'BRC', 'Baroda'], ['barauda', 'BRC', 'Baroda'], ['vadodara', 'BRC', 'Vadodara'],
+  ['kamrej', 'KMJ', 'Kamrej'], ['ankleshwar', 'AKV', 'Ankleshwar'], ['bharuch', 'BRH', 'Bharuch'], ['anand', 'ANA', 'Anand'], ['nadiad', 'NAD', 'Nadiad'],
   ['rupaidiha', 'RPD', 'Rupaidiha'], ['jamunaha', 'RPD', 'Jamunaha'], ['nepalgunj', 'NPJ', 'Nepalgunj'], ['nepalganj', 'NPJ', 'Nepalgunj'],
   ['kohalpur', 'KHL', 'Kohalpur'], ['lucknow', 'LKO', 'Lucknow'], ['bahraich', 'BRK', 'Bahraich'], ['gorakhpur', 'GKP', 'Gorakhpur'],
   ['kathmandu', 'KTM', 'Kathmandu'], ['delhi', 'DEL', 'Delhi'], ['jaipur', 'JAI', 'Jaipur'], ['udaipur', 'UDR', 'Udaipur']

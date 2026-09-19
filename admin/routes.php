@@ -57,11 +57,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
             $OUT = (int) $outR['id'];
             $RET = (int) $retR['id'];
             $stops = [
-                ['Surat',                          'Departure',      '13:00:00', 21.1702, 72.8311, 1],
-                ['Baroda',                         null,             '17:00:00', 22.3072, 73.1812, 2],
-                ['Emli Bhupal',                    null,             '19:00:00', null,    null,    3],
-                ['S Hari Parking, Nana Chiloda',   null,             '21:00:00', 23.1710, 72.6230, 4],
-                ['Mehsana — Silver Complex',       null,             '23:00:00', 23.5880, 72.3693, 5],
+                // Owner's timetable poster, 19 Sep 2026 (Mehsana is no longer a pickup).
+                ['Surat',                              'Bus stand / designated point', '13:00:00', 21.1702, 72.8311, 1],
+                ['Kamrej',                             'Shiv Shakti Hotel',            '13:30:00', null,    null,    2],
+                ['Ankleshwar',                         'Ada Bridge',                   '15:00:00', null,    null,    3],
+                ['Bharuch',                            'Somnath Mahadev Mandir',       '16:00:00', null,    null,    4],
+                ['Vadodara',                           'Golden Chokdi',                '17:00:00', 22.3072, 73.1812, 5],
+                ['Anand',                              'Pipal Chautra',                '18:30:00', null,    null,    6],
+                ['Nadiad',                             'Nadiad Bridge – under bridge', '20:00:00', null,    null,    7],
+                ['Emli Bhupal',                        'Taj Hotel',                    '21:00:00', null,    null,    8],
+                ['S Hari Parking, Nana Chiloda (Amd)', null,                           '23:00:00', 23.1710, 72.6230, 9],
             ];
 
             Database::transaction(static function () use ($OUT, $RET, $stops): void {
@@ -104,7 +109,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
 
             Logger::audit('routes.daily_setup', 'routes', (string) $OUT, null,
                 ['outbound' => $OUT, 'return' => $RET], 'Daily service applied from Admin - Routes');
-            $flash = ['ok', 'Daily service set: one sleeper out (13:00) and one back (18:00), with the five permanent stops.'];
+            $flash = ['ok', 'Daily service set: one sleeper out (13:00) and one back (18:00), with the nine pickup points.'];
         } catch (Throwable $e) {
             $flash = ['bad', $e->getMessage()];
         }

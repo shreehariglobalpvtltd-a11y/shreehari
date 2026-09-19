@@ -73,7 +73,7 @@ function ai_system_prompt(): string
         // the fallback lines below still stand
     }
     if ($routeLines === []) {
-        $routeLines[] = '- Surat → Rupaidiha (India–Nepal border), daily. Pickups: Surat 13:00 · Baroda 17:00 · Emli Bhupal 19:00 · S Hari Parking, Nana Chiloda 21:00 · Mehsana 23:00.';
+        $routeLines[] = '- Surat → Rupaidiha (India–Nepal border), daily. Pickups: Surat 13:00 · Kamrej 13:30 · Ankleshwar 15:00 · Bharuch 16:00 · Vadodara 17:00 · Anand 18:30 · Nadiad 20:00 · Emli Bhupal 21:00 · S Hari Parking, Nana Chiloda (Ahmedabad) 23:00.';
         $routeLines[] = '- Rupaidiha → Surat, departs 18:00 daily.';
     }
 
