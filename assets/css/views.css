@@ -3542,6 +3542,9 @@ body.bk-regular .qt-collapsed{display:flex}
    Light: page #F5F5F5 (surface), cards #FFFFFF, primary #FF6B00, text #1A1A1A.
    Dark:  page #0A0A1A, cards #1A1A2E, primary #FF8C42, text #F5F5F5. */
 :root[data-day="brand"]{--blue:#23305A;--blue-deep:#0A0A1A;--blue-800:#1A1A2E;--blue-100:#E4E6EE;--blue-50:#F4F5F9;--orange:#FF6B00;--orange-600:#E05E00;--orange-100:#FFE7D4;--bg:#F5F5F5;--card:#FFFFFF;--ink:#1A1A1A;--line:#E6E6EA}
+/* -- logo palette (20 Sep 2026), the default: measured from assets/img/logo.png -- */
+:root[data-day="logo"]{--blue:#0054A8;--blue-deep:#0C306C;--blue-800:#003C90;--blue-100:#DCE8F7;--blue-50:#EEF4FC;--orange:#F07800;--orange-600:#E05500;--orange-100:#FDE8D2}
+:root[data-theme="dark"][data-day="logo"]{--blue:#5B9BE8;--blue-800:#A9C8F0;--blue-100:#1C2E4A;--blue-50:#132238;--orange:#FF8A1F;--orange-600:#F56A00;--orange-100:#3A2410}
 :root[data-theme="dark"][data-day="brand"]{--bg:#0A0A1A;--card:#1A1A2E;--ink:#F5F5F5;--muted:#A6A6C0;--line:#2A2A44;--orange:#FF8C42;--orange-600:#FF7A26;--orange-100:#3A2616;--blue:#8C9BD6;--blue-50:#1F1F36;--blue-100:#2A2A48;--blue-800:#C7CBE6;--blue-deep:#05050F}
 
 /* -- assistant header on a phone (13 Sep 2026): five controls beside the

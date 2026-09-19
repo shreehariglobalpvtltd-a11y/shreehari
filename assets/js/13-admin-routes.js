@@ -1784,7 +1784,7 @@ function pvSetupSearch() {
 async function init() {
   // Colour theme: a saved palette (0–6) overrides the auto day-of-week rotation.
   (function () { var p = null; try { p = localStorage.getItem('shg:palette'); } catch (e) {}
-    document.documentElement.setAttribute('data-day', (p !== null && p !== '' && p !== 'auto') ? p : String(new Date().getDay())); })();
+    document.documentElement.setAttribute('data-day', p === 'auto' ? String(new Date().getDay()) : (p || 'logo')); })();
   Splash.init();
   Splash.setTotal(6);   // matches the number of Splash.tick() calls below
 

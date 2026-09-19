@@ -412,19 +412,23 @@ document.addEventListener('click', (e) => {
   if (!pop) return;
   /* 'brand' (13 Sep 2026): the saffron #FF6B00 + navy #0A0A1A palette from the
      master prompt's brand system, tokens in views.css section 27. */
-  var PAL = [['brand', 'Saffron', '#0A0A1A', '#FF6B00'], ['0', 'Royal', '#2E5FA8', '#F07C1F'], ['1', 'Ocean', '#1B6B93', '#E8672C'],
+  /* 'logo' (20 Sep 2026, owner: "logo sita match garne brand color, orange fika"):
+     the colours measured from assets/img/logo.png - navy #0C306C, royal #0054A8,
+     the arrow's orange - and the default for everyone. "Auto · by day" is now an
+     explicit choice (saved as 'auto'); an unset palette means the logo colours. */
+  var PAL = [['logo', 'S Hari', '#0C306C', '#F07800'], ['brand', 'Saffron', '#0A0A1A', '#FF6B00'], ['0', 'Royal', '#2E5FA8', '#F07C1F'], ['1', 'Ocean', '#1B6B93', '#E8672C'],
     ['2', 'Amethyst', '#5B4FA8', '#D4830F'], ['3', 'Emerald', '#2A7E6F', '#E05A3A'],
     ['4', 'Orchid', '#7B4B9E', '#CF7A21'], ['5', 'Azure', '#2868A8', '#D4561E'],
     ['6', 'Bronze', '#8B5A3C', '#C47A22']];
   function saved() { try { return localStorage.getItem('shg:palette'); } catch (e) { return null; } }
   function mark(v) {
-    var sel = (v === null || v === '') ? 'auto' : v;
+    var sel = (v === null || v === '') ? 'logo' : v;
     pop.querySelectorAll('.pal-sw').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-pal') === sel); });
   }
   function setPalette(v) {
-    try { if (v === 'auto') localStorage.removeItem('shg:palette'); else localStorage.setItem('shg:palette', v); } catch (e) {}
+    try { if (v === 'logo') localStorage.removeItem('shg:palette'); else localStorage.setItem('shg:palette', v); } catch (e) {}
     document.documentElement.setAttribute('data-day', v === 'auto' ? String(new Date().getDay()) : v);
-    mark(v === 'auto' ? null : v);
+    mark(v === 'logo' ? null : v);
   }
   pop.innerHTML = PAL.map(function (p) {
     return '<button type="button" class="pal-sw" role="menuitemradio" data-pal="' + p[0] + '" title="' + p[1] + '">'
