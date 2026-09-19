@@ -409,8 +409,10 @@ function admin_datatable_assets(): string
 .dt-bar input,.dt-bar select{padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink);font-size:14px;min-height:40px}
 .dt-bar .dt-q{flex:1 1 220px;min-width:0}
 .dt-bar .dt-count{margin-left:auto;font-size:12px;color:var(--mut);font-variant-numeric:tabular-nums;white-space:nowrap}
-.dt-wrap{overflow:auto;max-height:78vh;border:1px solid var(--line);border-radius:12px;background:var(--card);-webkit-overflow-scrolling:touch}
-table.dt{width:100%;border-collapse:separate;border-spacing:0;font-size:13.5px;min-width:900px}
+/* ONE scroller (19 Sep 2026, owner: 'scroll down, then scroll sideways'). The box used to be 78vh tall on every table AND every table was forced 900px wide, so a four-column list on a laptop got a sideways scrollbar hidden at the bottom of an inner vertical scroller. Now: the page scrolls; a table is only as wide as its columns; only a LONG register (.dt-tall, set below from the row count) keeps a box - sized to the window, so its sticky header and its sideways scrollbar are on screen together. */
+.dt-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--card);-webkit-overflow-scrolling:touch}
+.dt-wrap.dt-tall{overflow:auto;max-height:calc(100vh - 96px);scroll-margin-top:72px}
+table.dt{width:100%;border-collapse:separate;border-spacing:0;font-size:13.5px}
 table.dt th,table.dt td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top;white-space:nowrap}
 table.dt th{position:sticky;top:0;z-index:2;background:var(--head);font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--mut);text-align:left}
 table.dt th.dt-sortable{cursor:pointer;user-select:none}
@@ -431,7 +433,7 @@ table.dt tr.dt-x[hidden]{display:none}
 .dt-grid label{display:flex;flex-direction:column;gap:3px;font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--mut)}
 .dt-grid label input,.dt-grid label select{font-size:14px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);text-transform:none;letter-spacing:0}
 .dt-grid .kv b{display:block;font-size:14px;color:var(--ink);font-weight:600;text-transform:none;letter-spacing:0;white-space:normal}
-@media (max-width:820px){table.dt{min-width:760px;font-size:13px}.dt-wrap{max-height:none;border-radius:10px}.dt-bar .dt-count{margin-left:0}}
+@media (max-width:820px){table.dt{font-size:13px}.dt-wrap,.dt-wrap.dt-tall{max-height:none;border-radius:10px}.dt-bar .dt-count{margin-left:0}}
 /* Phones: row buttons and the filter bar meet the 44px touch target the rest
    of the admin already keeps (the compact 32px is a desktop-only density). */
 @media (pointer:coarse){.dt-acts .btn{min-height:44px;padding:8px 12px}.dt-bar input,.dt-bar select{min-height:44px}}
@@ -443,6 +445,7 @@ table.dt tr.dt-x[hidden]{display:none}
   function init(t){
     var tb=t.tBodies[0]; if(!tb) return;
     var rows=Array.prototype.filter.call(tb.rows,function(r){return !r.classList.contains('dt-x');});
+    var wrap=t.closest('.dt-wrap'); if(wrap&&rows.length>25) wrap.classList.add('dt-tall');
     var ctrl=document.getElementById(t.getAttribute('data-controls')||'');
     var q=ctrl?ctrl.querySelector('.dt-q'):null;
     var filters=ctrl?Array.prototype.slice.call(ctrl.querySelectorAll('[data-dt-filter]')):[];
