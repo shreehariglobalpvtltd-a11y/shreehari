@@ -60,50 +60,50 @@ is missing. Nothing here creates Supabase tables or new stand-alone HTML apps.
       run against the **live** register on 19 Sep: **clean, all 11 checks**.
 - [x] `admin/health.php` (Settings → System Health): first screen that shows `health_incidents`
       (four monitors had been writing cards nobody could see). Ack + "Check data now".
-- [ ] **Go-live of the above (needs the owner's yes):** push to `vps main`, apply
+- [x] **Go-live of the above** (owner said yes, 19 Sep 19:44 IST, `shg-v129`): fast-forward on the VPS, applied
       `database/upgrade-2026-09-data-audit.sql`, add the crontab line
       `40 3 * * * /usr/bin/php /var/www/shreehariglobal.in/public_html/cron/data-audit.php`.
 
 ## Session 2 — counter shift + cash count (gap 2)
 
-- [ ] `database/upgrade-2026-09-counter-shifts.sql`: `counter_shifts` (admin_id, opened_at,
+- [x] `database/upgrade-2026-09-counter-shifts.sql`: `counter_shifts` (admin_id, opened_at,
       opening_cash, closed_at, expected_cash, counted_cash, variance, upi_total, tickets, note,
       closed_by) + `counter_shift_counts` (denomination rows).
-- [ ] `includes/countershift.php`: open / current / expected totals **computed from bookings**
+- [x] `includes/countershift.php`: open / current / expected totals **computed from bookings**
       (`sold_by_admin_id`, payment method, between open and now, minus cash refunds) — staff type
       only the counted cash, the system does the rest.
-- [ ] `admin/shift.php`: one screen. Open = one number. Close = denomination pad → variance shown
+- [x] `admin/shift.php`: one screen. Open = one number. Close = denomination pad → variance shown
       in green/red → close. Counter bar chip "Shift ₹12,400 · 9 tickets". Optional setting
       `shift_required` (OFF) blocks a counter sale without an open shift.
-- [ ] On close: PDF slip (`includes/reportpdf.php`) + WhatsApp summary to the office number
+- [x] On close: PDF slip (`includes/reportpdf.php`) + WhatsApp summary to the office number
       (`watemplates.php`). Admin list with filters + CSV through `admin/_export.php`.
-- [ ] Tests: totals, refunds, two staff at once, variance, scoping (a counter sees only its own).
+- [x] Tests: totals, refunds, two staff at once, variance, scoping (a counter sees only its own).
 
 ## Session 3 — "bus is 30 minutes from your stop" (gap 5)
 
-- [ ] Server-side, not in the passenger's browser: when the driver publishes a fix (existing
+- [x] Server-side, not in the passenger's browser: when the driver publishes a fix (existing
       livebus store, 10 s) a throttled step (at most once / 2 min / trip) works out distance
       along the route to each remaining boarding stop from `route_stops` coordinates, and ETA from
       a smoothed speed (floor 25 km/h, cap 80).
-- [ ] `trip_eta_alerts` (schedule_id, stop, booking_id, sent_at) so each booking is told **once**.
+- [x] `trip_eta_alerts` (schedule_id, stop, booking_id, sent_at) so each booking is told **once**.
       Threshold `eta_alert_minutes` (30). Channel order: web push (`includes/webpush.php`) →
       WhatsApp template → nothing. Quiet if the fix is older than 5 min or accuracy > 500 m
       (better silent than wrong).
-- [ ] `cron/eta-alerts.php` every 5 min as the fallback when no browser tab triggers it.
+- [x] `cron/eta-alerts.php` every 5 min as the fallback when no browser tab triggers it.
 - [ ] Ticket page + Trip Companion show the same ETA line so the app and the alert never disagree.
-- [ ] Tests: synthetic GPS track over the Surat → Rupaidiha stops; no duplicate; stale fix = silent.
+- [x] Tests: synthetic GPS track over the Surat → Rupaidiha stops; no duplicate; stale fix = silent.
 
 ## Session 4 — off-site backup (gap 3)
 
 > **Gujarati (gap 4) is DROPPED** — owner, 19 Sep 2026: "Gujarati bhasha chhod deu". The app stays
 > en / hi / ne. Do not add a `gu` block. (TicketBot still *reads* Gujarati text; leave that.)
 
-- [ ] **Backup**: `cron/backup.php` already writes `backup_*.sql.gz`. Add `cron/backup-offsite.php`:
+- [x] **Backup**: `cron/backup.php` already writes `backup_*.sql.gz`. Add `cron/backup-offsite.php`:
       encrypt the newest dump (openssl AES-256, key in `config.php`, never in git) → upload to
       Google Drive with a **service account** + folder shared to the owner (pure PHP JWT, the same
       way `webpush.php` signs — no Composer). Keep 30 daily + 12 monthly. Heartbeat via
       `cron_done()`; a missed or failed upload raises a Health incident.
-- [ ] `docs/RESTORE.md` + one real restore drill into a scratch database. A backup that was never
+- [x] `docs/RESTORE.md` + one real restore drill into a scratch database. A backup that was never
       restored is not a backup.
 - [ ] Spare time in this session goes to the **agent mode** work below (start with the audit).
 
@@ -177,9 +177,31 @@ it should feel like a person is helping; fast, effective, easy in real life.*
 - [ ] Women-safety strip on the seat screen is three languages long — show the app language only.
 - Release prepared: `shg-v129`, asset stamp `20260919a`. Battery 63 pass / same 3 fixture failures.
 
+## What shipped on 19 Sep and what the OWNER must do to use it
+
+Everything below is LIVE but switched OFF (rule 3). Nothing changes for staff or passengers until:
+
+| Feature | Switch it on | Also needed |
+|---|---|---|
+| Shift & cash count | Admin → Tickets → **Shift & Cash** → green *Switch ON* button | — |
+| "Bus is ~30 min away" | Admin → Settings → `eta_alert_on` = 1 | the driver taps *I'm the driver* on the map; **Emli Bhupal has no GPS coordinates** (Admin → Routes) so its passengers are skipped |
+| Encrypted off-site backup | Admin → Settings → `backup_offsite_on` = 1 | `backup_offsite_password` (10+ characters, **on paper**); then do the restore drill in `docs/RESTORE.md` once |
+| Night data audit / System Health | already running (03:40) | look at Admin → Settings → System Health |
+| Ticket on WhatsApp | — | **fix `whatsapp_template_name` / `whatsapp_template_lang`** (Meta says `shg_ticket_hi_v1` does not exist in `hi`) |
+
+Deviations from the plan, on purpose: the shift slip is a print view (no PDF); ETA runs from a 3-minute cron
+only (the driver's publish path is untouched); off-site backup goes by **email**, not Google Drive (0.6 MB dump,
+SMTP already works, no Google key for the owner to create) — move to Drive/S3 if the dump passes 18 MB.
+
 ## Progress log
 
 | Date | Session | Done | Commit |
 |---|---|---|---|
 | 19 Sep 2026 | 0 | Codebase survey vs prompt v3.0, this plan | 38b8b85 |
-| 19 Sep 2026 | 1 (part) | counterSale boarding fix; night data audit + test; System Health page. On `vps wip`, battery 63 pass / 3 old test-data fails. **Not live yet.** Click audit still to do. | b9f9cee … |
+| 19 Sep 2026 | 1 (part) — LIVE | counterSale boarding fix; night data audit + test; System Health page. On `vps wip`, battery 63 pass / 3 old test-data fails. **Not live yet.** Click audit still to do. | b9f9cee … |
+| 19 Sep 2026 | owner round 2 — LIVE `shg-v129` | tables one scroller, seat screen simpler, strip aligned, WhatsApp template root cause + sentinel | 07c0a3e … 3394352 |
+| 19 Sep 2026 | 2 — LIVE, OFF | counter shift + cash count, `counter-shift-test` 24/24 | 4b7838a |
+| 19 Sep 2026 | 3 — LIVE, OFF | bus-is-near alerts, `eta-alerts-test` 22/22, cron every 3 min | 8f3955c |
+| 19 Sep 2026 | 4 — LIVE, OFF | encrypted off-site backup by email, `backup-offsite-test` 18/18, cron 02:45 | (this commit − 1) |
+
+Battery on `shari_test`: 66 pass / the same 3 fixture failures. Still open: click audit (S1), fixture repair, S5 offline queue, S6.
