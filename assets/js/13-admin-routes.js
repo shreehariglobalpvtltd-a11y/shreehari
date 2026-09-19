@@ -688,8 +688,21 @@ const Splash = {
        only thing anyone waits for — never floor + load. */
     var _seenRole = null;
     try { _seenRole = localStorage.getItem(RoleGate.KEY); } catch (e) {}
-    if (!this.trailer) this.minDuration = _seenRole ? 250 : this.portalMs;
-    if (!this.trailer && !_seenRole) this.armPortal();
+    /* First ever visit in this browser (owner, 20 Sep 2026: "starting animation advance -
+       bus sui guyera aaos, logo rotate, 7 sec jati marketing loading, CEO introduction").
+       The inline script under #splash marks it before the first paint, so the CSS
+       choreography starts on frame one; the 7 s count from navigation start (startTs 0),
+       not from when this file arrived, and the countdown bar drains what is left. */
+    var _intro7 = !this.trailer && this.el.classList.contains('intro7');
+    var _introTotal = 0;
+    if (_intro7) {
+      try { localStorage.setItem('shg:intro7', '1'); } catch (e) {}
+      _introTotal = (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) ? 2500 : 7000;
+      this.startTs = 0;
+      this.portalMs = Math.max(1200, _introTotal - Math.round(performance.now()));
+    }
+    if (!this.trailer) this.minDuration = _intro7 ? _introTotal : (_seenRole ? 250 : this.portalMs);
+    if (!this.trailer && (!_seenRole || _intro7)) this.armPortal();
 
     const sb = $('#splashSound');
     if (sb) sb.addEventListener('click', () => {

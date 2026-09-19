@@ -115,6 +115,15 @@ body{margin:0;background:#FFFFFF}
 @keyframes splashBus{from{transform:translateX(-75vw)}to{transform:none}}
 @media (prefers-reduced-motion:reduce){.splash-road img{animation:none}}
 @media (max-height:620px){.splash-road{display:none}}
+.splash.intro7 .splash-logo{animation:spLogoSpin 1.5s cubic-bezier(.2,.8,.2,1) both}
+@keyframes spLogoSpin{0%{opacity:0;transform:perspective(700px) rotateY(-200deg) scale(.55)}55%{opacity:1;transform:perspective(700px) rotateY(18deg) scale(1.06)}100%{opacity:1;transform:none}}
+.splash.intro7 .splash-road img{animation:spBusWhoosh 1.7s cubic-bezier(.12,.8,.2,1) .5s both}
+@keyframes spBusWhoosh{0%{transform:translateX(-90vw) skewX(-14deg);filter:blur(4px)}68%{transform:translateX(14px) skewX(5deg);filter:blur(0)}84%{transform:translateX(-5px) skewX(-1.5deg)}100%{transform:none}}
+.splash.intro7 .splash-road::after{animation:spLane .45s linear infinite}
+@keyframes spLane{to{background-position:-26px 0}}
+.splash.intro7 .splash-ceo{animation:spCeoIn .9s cubic-bezier(.2,.8,.2,1) 2.4s both}
+@keyframes spCeoIn{from{opacity:0;transform:translateY(18px) scale(.9)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.splash.intro7 .splash-logo,.splash.intro7 .splash-road img,.splash.intro7 .splash-road::after,.splash.intro7 .splash-ceo{animation:none}}
 .splash-ceo{margin-top:18px;display:flex;flex-direction:column;gap:3px;align-items:center;line-height:1.3}
 .splash-ceo-photo{width:82px;height:82px;border-radius:50%;object-fit:cover;object-position:center top;border:3px solid #F07C1F;box-shadow:0 6px 24px rgba(18,38,78,.28);margin-bottom:6px;flex:0 0 auto}
 .splash-ceo b{font-family:'Cinzel',Georgia,serif;font-size:17px;font-weight:700;color:#12264E;letter-spacing:.02em}
@@ -122,30 +131,30 @@ body{margin:0;background:#FFFFFF}
 .splash-phone{display:inline-flex;align-items:center;gap:8px;margin-top:22px;padding:10px 22px;border-radius:999px;background:#FFF1E4;border:1px solid rgba(240,124,31,.34);color:#C25E10;font-family:'Cinzel',Georgia,serif;font-size:17px;font-weight:800;letter-spacing:.03em;text-decoration:none;opacity:0;transform:translateY(10px)}
 @media (max-width:400px){.splash-logo{width:min(52vw,132px)}.splash-title{font-size:clamp(23px,7.6vw,32px)}.splash-ceo b{font-size:15.5px}}
 </style>
-  <link rel="preload" as="image" href="/assets/img/logo.png?v=20260920a" fetchpriority="high">
-  <link rel="stylesheet" href="/assets/css/app.css?v=20260920a">
-  <link rel="stylesheet" href="/assets/css/views.css?v=20260920a">
+  <link rel="preload" as="image" href="/assets/img/logo.png?v=20260920b" fetchpriority="high">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260920b">
+  <link rel="stylesheet" href="/assets/css/views.css?v=20260920b">
 <!-- App bundle: `defer` keeps the same execution order and still runs after the
      document is parsed, but placing the tags in <head> lets the browser start
      fetching ~1 MB of JS with the FIRST bytes of HTML instead of after it has
      parsed ~190 KB of markup (perf pass, 11 Sep 2026). -->
-<script defer src="/assets/js/01-boot.js?v=20260920a"></script>
-<script defer src="/assets/js/02-config.js?v=20260920a"></script>
-<script defer src="/assets/js/03-accounts.js?v=20260920a"></script>
-<script defer src="/assets/js/04-i18n.js?v=20260920a"></script>
-<script defer src="/assets/js/05-router.js?v=20260920a"></script>
-<script defer src="/assets/js/06-results.js?v=20260920a"></script>
-<script defer src="/assets/js/07-checkout.js?v=20260920a"></script>
-<script defer src="/assets/js/14-counter.js?v=20260920a"></script>
-<script defer src="/assets/js/08-signin.js?v=20260920a"></script>
-<script defer src="/assets/js/10-track.js?v=20260920a"></script>
-<script defer src="/assets/js/11-pdf-ticket.js?v=20260920a"></script>
-<script defer src="/assets/js/13-admin-routes.js?v=20260920a"></script>
+<script defer src="/assets/js/01-boot.js?v=20260920b"></script>
+<script defer src="/assets/js/02-config.js?v=20260920b"></script>
+<script defer src="/assets/js/03-accounts.js?v=20260920b"></script>
+<script defer src="/assets/js/04-i18n.js?v=20260920b"></script>
+<script defer src="/assets/js/05-router.js?v=20260920b"></script>
+<script defer src="/assets/js/06-results.js?v=20260920b"></script>
+<script defer src="/assets/js/07-checkout.js?v=20260920b"></script>
+<script defer src="/assets/js/14-counter.js?v=20260920b"></script>
+<script defer src="/assets/js/08-signin.js?v=20260920b"></script>
+<script defer src="/assets/js/10-track.js?v=20260920b"></script>
+<script defer src="/assets/js/11-pdf-ticket.js?v=20260920b"></script>
+<script defer src="/assets/js/13-admin-routes.js?v=20260920b"></script>
 <!-- 13 Sep 2026: PWA layer — install sheet, Web Push, border prep card,
      split-pay, 7-day seat-fill chart. Last on purpose: it reads the globals
      the files above define and every hook it adds is optional. -->
-<script defer src="/assets/js/17-pwa.js?v=20260920a"></script>
-<script defer src="/assets/js/18-journey.js?v=20260920a"></script>
+<script defer src="/assets/js/17-pwa.js?v=20260920b"></script>
+<script defer src="/assets/js/18-journey.js?v=20260920b"></script>
 <meta property="og:title" content="S Hari Global Pvt Ltd — Gujarat ⇄ Rupaidiha Bus">
 <meta property="og:description" content="Direct AC Sleeper coach from Gujarat (India) to the Rupaidiha (India–Nepal) border. Boarding at Surat, Kamrej, Ankleshwar, Bharuch, Vadodara, Anand, Nadiad, Emli Bhupal & Ahmedabad (S Hari Parking, Nana Chiloda). Book online at one fixed fair price. Private & sharing cabins.">
 <meta property="og:type" content="website">
@@ -174,14 +183,14 @@ body{margin:0;background:#FFFFFF}
 <meta name="description" content="S Hari Global Pvt Ltd — India to Nepal bus transport (Gujarat ⇄ Rupaidiha) and international import & export. Registered Pvt Ltd company, Mehsana, Gujarat.">
 <!-- Real brand favicon, not the emoji placeholder. PNG first for the tab
      strip, the SVG kept as the scalable fallback. -->
-<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon-32.png?v=20260920a">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon-32.png?v=20260920b">
 <link rel="icon" type="image/svg+xml" href="/icon-shg.svg">
 <!-- PWA / offline navigator: installable app + service-worker cached maps -->
 <link rel="manifest" href="/manifest.webmanifest">
 <!-- iOS ignores SVG here and silently falls back to a screenshot of the
      page, which is why the home-screen icon looked like a web page.
      A 180px opaque PNG is the only thing Safari will use. -->
-<link rel="apple-touch-icon" sizes="180x180" href="/assets/img/apple-touch-icon.png?v=20260920a">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/img/apple-touch-icon.png?v=20260920b">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SHG Bus">
@@ -253,6 +262,7 @@ s.addEventListener('click',function(e){e.preventDefault();
 
 <!-- ============ [HTML] SPLASH SCREEN — cold launch cinematic ============ -->
 <div class="splash" id="splash">
+<script>try{if(!localStorage.getItem('shg:intro7')&&!sessionStorage.getItem('shg:splashed'))document.getElementById('splash').className+=' intro7'}catch(e){}</script>
   <div class="float-hero-wrap" style="position:absolute;inset:0;height:auto;margin:0;opacity:.55" aria-hidden="true">
     <span class="float-item float-flag-in" style="top:16%;left:10%">🇮🇳</span>
     <span class="float-item float-om" style="top:12%;left:auto;right:12%">🕉️</span>
@@ -273,13 +283,13 @@ s.addEventListener('click',function(e){e.preventDefault();
       <path class="sm-route" pathLength="1" d="M24,296 L64,264 L98,246 L126,232 L440,78"/>
     </svg>
     <div class="splash-brand">
-      <img src="/assets/img/logo.png?v=20260920a" alt="S Hari Global Pvt Ltd" class="splash-logo" width="440" height="321" fetchpriority="high" decoding="sync">
+      <img src="/assets/img/logo.png?v=20260920b" alt="S Hari Global Pvt Ltd" class="splash-logo" width="440" height="321" fetchpriority="high" decoding="sync">
       <div class="splash-title" id="splashTitle">S Hari Global Pvt Ltd</div>
     </div>
     <div class="splash-tagline" id="splashTagline">Gujarat ⇄ Rupaidiha · India–Nepal Transport</div>
-    <div class="splash-road" aria-hidden="true"><img src="/assets/img/bus-side.svg?v=20260920a" alt="" width="640" height="200" decoding="async"></div>
+    <div class="splash-road" aria-hidden="true"><img src="/assets/img/bus-side.svg?v=20260920b" alt="" width="640" height="200" decoding="async"></div>
     <div class="splash-ceo">
-      <img src="/assets/img/ceo.jpg?v=20260920a" class="splash-ceo-photo" alt="Sher Bahadur Bishwokarma" onerror="this.style.display='none'">
+      <img src="/assets/img/ceo.jpg?v=20260920b" class="splash-ceo-photo" alt="Sher Bahadur Bishwokarma" onerror="this.style.display='none'">
       <b>Sher Bahadur Bishwokarma</b><span>👑 Founder &amp; CEO · Director</span>
     </div>
     <a class="splash-phone" id="splashPhone" href="#"><span class="sp-ico">📞</span><span class="sp-num"></span></a>
@@ -314,7 +324,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <!-- Scene 1 — CEO introduction FIRST (sabai bhanda pehle) -->
       <div class="intro-scene" id="introS1">
         <div class="ceo-intro">
-          <div class="ceo-intro-photo"><img id="introCeoImg" src="/assets/img/ceo.jpg?v=20260920a" alt="Sher Bahadur Bishwokarma" loading="lazy" decoding="async" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="ceo-intro-initials" style="display:none">SB</span></div>
+          <div class="ceo-intro-photo"><img id="introCeoImg" src="/assets/img/ceo.jpg?v=20260920b" alt="Sher Bahadur Bishwokarma" loading="lazy" decoding="async" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="ceo-intro-initials" style="display:none">SB</span></div>
           <div class="ceo-intro-name">Sher Bahadur Bishwokarma</div>
           <div class="ceo-intro-title">👑 Founder &amp; CEO · Director</div>
           <div class="intro-company">S HARI GLOBAL PVT LTD</div>
@@ -466,7 +476,7 @@ s.addEventListener('click',function(e){e.preventDefault();
 <header class="nav" id="nav">
   <div class="container nav-inner">
     <a class="brand" href="#/" data-scroll="top" aria-label="S Hari Global Pvt Ltd — Home">
-      <img id="logoNav" src="/assets/img/logo.png?v=20260920a" alt="S Hari Global Pvt Ltd Logo" width="440" height="321" decoding="async">
+      <img id="logoNav" src="/assets/img/logo.png?v=20260920b" alt="S Hari Global Pvt Ltd Logo" width="440" height="321" decoding="async">
     </a>
     <nav class="nav-links" aria-label="Main">
       <a class="nav-link" href="#/" data-scroll="top"><svg class="ic"><use href="#i-home"/></svg> Home</a>
@@ -640,7 +650,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <div class="ra3-ground"><div class="ra3-road"><i class="ra3-stripes"></i><i class="ra3-edge t"></i><i class="ra3-edge b"></i></div></div>
       <div class="ra3-bus"><div class="ra3-body">
         <span class="ra3-shadow"></span>
-        <img src="/assets/img/bus-side.svg?v=20260920a" alt="" width="640" height="200" decoding="async" fetchpriority="low">
+        <img src="/assets/img/bus-side.svg?v=20260920b" alt="" width="640" height="200" decoding="async" fetchpriority="low">
         <span class="ra3-beam"></span>
       </div></div>
       <div class="ra3-tag">≈1,375 km · via Rupaidiha Border 🛃</div>
@@ -833,7 +843,7 @@ s.addEventListener('click',function(e){e.preventDefault();
   <div class="container" style="margin-top:26px">
     <div class="founder-card founder-highlight reveal">
       <div class="founder-avatar-wrap">
-        <img id="ceoHeroImg" src="/assets/img/ceo.jpg?v=20260920a" alt="Sher Bahadur Bishwokarma — CEO &amp; Director" loading="lazy" decoding="async" style="width:100%;height:100%;border-radius:50%;object-fit:cover;padding:0" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <img id="ceoHeroImg" src="/assets/img/ceo.jpg?v=20260920b" alt="Sher Bahadur Bishwokarma — CEO &amp; Director" loading="lazy" decoding="async" style="width:100%;height:100%;border-radius:50%;object-fit:cover;padding:0" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
         <span class="founder-initials" style="display:none">SB</span>
         <button type="button" id="ceoPhotoBtn" title="CEO photo यहाँबाट upload गर्नुहोस् — gallery बाट छान्ने बित्तिकै save हुन्छ" style="position:absolute;bottom:-2px;right:-2px;width:30px;height:30px;border-radius:50%;border:2px solid var(--card);background:var(--orange);color:#fff;font-size:14px;cursor:pointer;line-height:1;padding:0">📷</button>
         <input type="file" id="ceoPhotoFile" accept="image/*" style="display:none">
@@ -1583,11 +1593,11 @@ s.addEventListener('click',function(e){e.preventDefault();
         </div>
         <div class="vcard-grid">
           <figure class="vcard">
-            <a class="vcard-img" href="/assets/img/card-en.jpg?v=20260920a" target="_blank" rel="noopener"><img src="/assets/img/card-en-sm.jpg?v=20260920a" srcset="/assets/img/card-en-sm.jpg?v=20260920a 720w, /assets/img/card-en.jpg?v=20260920a 1600w" sizes="(max-width:640px) 92vw, 500px" alt="S Hari Global Pvt Ltd visiting card — English" width="1600" height="914" loading="lazy" decoding="async"></a>
+            <a class="vcard-img" href="/assets/img/card-en.jpg?v=20260920b" target="_blank" rel="noopener"><img src="/assets/img/card-en-sm.jpg?v=20260920b" srcset="/assets/img/card-en-sm.jpg?v=20260920b 720w, /assets/img/card-en.jpg?v=20260920b 1600w" sizes="(max-width:640px) 92vw, 500px" alt="S Hari Global Pvt Ltd visiting card — English" width="1600" height="914" loading="lazy" decoding="async"></a>
             <figcaption><span data-i18n="vcEn">🇮🇳 English card</span><span class="vcard-btns"><a class="btn btn-ghost btn-sm" href="/assets/img/card-en.jpg" download="S-Hari-Global-Card-EN.jpg">💾 <span data-i18n="vcSave">Save</span></a><button type="button" class="btn btn-wa btn-sm" data-vc-share="en">📤 <span data-i18n="vcShare">Share on WhatsApp</span></button></span></figcaption>
           </figure>
           <figure class="vcard">
-            <a class="vcard-img" href="/assets/img/card-ne.jpg?v=20260920a" target="_blank" rel="noopener"><img src="/assets/img/card-ne-sm.jpg?v=20260920a" srcset="/assets/img/card-ne-sm.jpg?v=20260920a 720w, /assets/img/card-ne.jpg?v=20260920a 1600w" sizes="(max-width:640px) 92vw, 500px" alt="एस हरी ग्लोबल प्रा. लि. भिजिटिङ कार्ड — नेपाली" width="1600" height="914" loading="lazy" decoding="async"></a>
+            <a class="vcard-img" href="/assets/img/card-ne.jpg?v=20260920b" target="_blank" rel="noopener"><img src="/assets/img/card-ne-sm.jpg?v=20260920b" srcset="/assets/img/card-ne-sm.jpg?v=20260920b 720w, /assets/img/card-ne.jpg?v=20260920b 1600w" sizes="(max-width:640px) 92vw, 500px" alt="एस हरी ग्लोबल प्रा. लि. भिजिटिङ कार्ड — नेपाली" width="1600" height="914" loading="lazy" decoding="async"></a>
             <figcaption><span data-i18n="vcNe">🇳🇵 Nepali card</span><span class="vcard-btns"><a class="btn btn-ghost btn-sm" href="/assets/img/card-ne.jpg" download="S-Hari-Global-Card-NE.jpg">💾 <span data-i18n="vcSave">Save</span></a><button type="button" class="btn btn-wa btn-sm" data-vc-share="ne">📤 <span data-i18n="vcShare">Share on WhatsApp</span></button></span></figcaption>
           </figure>
         </div>
@@ -2595,7 +2605,7 @@ s.addEventListener('click',function(e){e.preventDefault();
     </div>
     <div class="f-dev">Developed by <strong>Dileep Sunar</strong> · <a href="https://wa.me/919173401507" target="_blank" rel="noopener noreferrer">💬 WhatsApp +91 91734 01507</a> · <a href="https://www.facebook.com/dileep.soonaar/" target="_blank" rel="noopener noreferrer">Facebook</a></div>
     <div class="f-ceo reveal">
-      <img id="ceoPhoto" src="/assets/img/ceo.jpg?v=20260920a" alt="Sher Bahadur Bishwokarma — Founder &amp; CEO" loading="lazy" decoding="async" onerror="this.style.display='none'">
+      <img id="ceoPhoto" src="/assets/img/ceo.jpg?v=20260920b" alt="Sher Bahadur Bishwokarma — Founder &amp; CEO" loading="lazy" decoding="async" onerror="this.style.display='none'">
       <span>🕉️ <span id="ceoMantra"></span> — <strong id="ceoName"></strong>, Founder &amp; CEO
         <button id="mantraBtn" type="button" title="Play mantra chant · मन्त्र सुन्नुहोस्" aria-label="Play mantra chant">🔊</button>
       </span>
