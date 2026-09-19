@@ -547,7 +547,7 @@ function loadTermsData(cb) {
   if (window.__shgTermsQueue) { window.__shgTermsQueue.push(cb); return; }
   window.__shgTermsQueue = [cb];
   var el = document.createElement('script');
-  el.src = '/assets/js/terms-data.js?v=20260919e';
+  el.src = '/assets/js/terms-data.js?v=20260919f';
   el.onload = function () {
     TERMS_DATA = window.TERMS_DATA || [];
     window.__shgTermsReady = true;
@@ -834,9 +834,9 @@ const shgApi = {
   async _read(res) {
     let json;
     try { json = await res.json(); }
-    catch (e) { throw new Error('The server sent an unexpected response. Please try again.'); }
+    catch (e) { throw new Error(shgApi._msg('apiBadResp', 'The server sent an unexpected response. Please try again.')); }
     if (!json || json.ok !== true) {
-      const err = new Error((json && json.error) || 'Something went wrong. Please try again.');
+      const err = new Error((json && json.error) || shgApi._msg('apiErr', 'Something went wrong. Please try again.'));
       err.fields = json && json.fields; err.status = res.status;
       /* Carry the payload through too. A refusal often ships the detail the
          caller needs to recover — /lock.php returns which seats were taken
@@ -851,6 +851,8 @@ const shgApi = {
      multipart proof upload gets 90 s because a 10 MB screenshot on a slow
      link legitimately takes that long. The error reads as advice, not a
      code, because it is shown to the passenger as-is. */
+  /* Fallback lines follow the app language; a server message is shown as sent. */
+  _msg(k, en) { try { const s = typeof t === 'function' ? t(k) : ''; return s && s !== k ? s : en; } catch (e) { return en; } },
   _slow: 'The network is slow right now — please check your connection and try again. · नेटवर्क ढिलो छ, फेरि प्रयास गर्नुहोस्।',
   async _fetch(url, init, ms) {
     const ctl = (typeof AbortController === 'function') ? new AbortController() : null;
@@ -860,6 +862,8 @@ const shgApi = {
       return await fetch(url, init);
     } catch (e) {
       if (e && e.name === 'AbortError') throw new Error(this._slow);
+      /* fetch() rejects with a TypeError only when no answer came back at all. */
+      if (e && e.name === 'TypeError') throw new Error(shgApi._msg('apiOffline', 'Could not reach S Hari Global — check your internet and try again.'));
       throw e;
     } finally {
       if (timer) clearTimeout(timer);

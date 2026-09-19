@@ -6,7 +6,7 @@
    Drops ONE aria-hidden <div class="shg-journey"> under the .flow-head of
    #view-results / #view-seats: dawn sky, two mountain ranges, a road with
    a rolling centre line, a milestone at each end naming the leg's cities,
-   and the S Hari Global coach (assets/img/bus-shg-sm.webp) driving in from
+   and the S Hari Global coach (assets/img/bus-side.svg) driving in from
    the left, settling centre-left and idling. transform/opacity only.
 
    The entrance plays ONCE per session per view (sessionStorage
@@ -23,7 +23,7 @@
   'use strict';
   if (window.SHG_JOURNEY) return;
   var doc = document, VIEWS = { results: 1, seats: 1 };
-  var IMG = 'img/bus-shg-sm.webp';   /* 600x315, alpha, 31 KB */
+  var IMG = 'img/bus-side.svg';   /* side-on coach, name + logo straight, 12 KB */
 
   /* Where was I loaded from? → asset base + cache stamp (the v= query). */
   var me = doc.currentScript || (function () { var s = doc.getElementsByTagName('script'); return s[s.length - 1] || null; })();
