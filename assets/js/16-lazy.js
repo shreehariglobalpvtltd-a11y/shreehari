@@ -917,6 +917,7 @@ function tcRenderManualLive(lb) {
   }
   box.hidden = false;
   TC.liveGps = live;
+  if (live) { tcEtaToMyStop(lb, nextEl); } else { TC.etaLine = ''; }
   if (live && TC.map && typeof tcUpdateBusPosition === 'function') {
     var key = String(lb.at);
     if (TC.lastLiveKey !== key) {
@@ -926,6 +927,33 @@ function tcRenderManualLive(lb) {
       } catch (e) {}
     }
   }
+}
+/* "About 25 min to your stop" (19 Sep 2026). Asks /api/eta.php — the same
+   EtaAlerts engine that sends the bus-is-near WhatsApp — at most once a minute,
+   and matches the passenger's own pickup by its town (Boarding::townKey on the
+   server, mirrored here). Silent when the server is not sure. */
+function tcTownKey(label) {
+  var s = String(label || '').replace(/\[[^\]]*\]/g, ' ').replace(/@.*$/, ' ');
+  s = s.split(/[—–\-·|,(]/)[0] || s;
+  try { return s.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase(); } catch (e) { return s.replace(/\W+/g, '').toLowerCase(); }
+}
+function tcEtaToMyStop(lb, nextEl) {
+  var b = TC.booking;
+  var show = function () {
+    if (!nextEl) return;
+    var base = lb.next ? ((typeof t === 'function' ? t('tlbNext') : 'Next') + ': ' + lb.next) : '';
+    nextEl.textContent = TC.etaLine ? (base ? base + ' · ' : '') + TC.etaLine : base;
+  };
+  show();
+  if (!b || !b.routeId || !b.boarding || typeof shgApi === 'undefined') return;
+  if (TC.etaAsked && Date.now() - TC.etaAsked < 60000) return;
+  TC.etaAsked = Date.now();
+  var mine = tcTownKey(b.boarding);
+  shgApi.get('/eta.php?route=' + encodeURIComponent(b.routeId)).then(function (d) {
+    var hit = ((d && d.stops) || []).filter(function (s) { return s.key === mine; })[0];
+    TC.etaLine = hit ? (typeof t === 'function' ? t('tlbEta') : 'About {n} min to your stop').replace('{n}', hit.eta) : '';
+    show();
+  }).catch(function () {});
 }
 function tcInitManualLive() {
   if (TC.manualT != null) { clearInterval(TC.manualT); TC.manualT = null; }
