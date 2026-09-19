@@ -2658,6 +2658,13 @@ a,button,.btn,.nav a,.tab-btn,.pm-tab,.bt-pill,.tier-pill,.proof-tab,.trip-pill{
    actual booking card off the first fold. Save ~120px per view.
    .nav (with the hamburger for the menu) stays.
 ================================================================ */
+/* 19 Sep 2026 (owner, computer): the same tax on a laptop - divine bar +
+   topbar + CEO ribbon + office pills + nav + header + road scene put the
+   first seat ~560px down a 768px screen. Inside the flow the CEO ribbon and
+   the office pills (97px) go on every width; they are one tap away on Home
+   and Contact, and the WhatsApp button stays. */
+body.in-flow .credit-ribbon,body.in-flow #numStrip{display:none}
+@media (min-width:761px){body.in-flow .flow-head{padding:20px 0 16px}body.in-flow .shg-journey{height:132px}}
 @media (max-width:760px){
   body.in-flow .credit-ribbon{display:none}
   body.in-flow #numStrip{display:none}

@@ -793,6 +793,9 @@ footer{background:linear-gradient(180deg,var(--blue-deep) 0%,#080E1C 100%);color
 /* Persistent triple-cabin explainer under the column labels */
 [data-tier="triple"] .berth-labels::after{content:'👨‍👩‍👧 Triple cabin — books all 3 berths together · ३ बर्थ एकसाथ';grid-column:1/-1;text-align:center;font-size:10.5px;color:var(--orange);letter-spacing:.02em;padding-top:3px;text-transform:none}
 /* Sticky legend (Module B) — visible while scrolling the seat grid */
+.lg-more-btn{display:none;align-items:center;gap:4px;min-height:32px;padding:4px 12px;border:1px solid var(--line);border-radius:999px;background:transparent;color:var(--blue);font:600 12.5px/1 inherit;cursor:pointer}
+.lg-more-btn:hover{background:rgba(46,95,168,.08)}
+@media(min-width:761px){.lg-more-btn{display:inline-flex}.legend:not(.lg-open) .lg-x{display:none}.legend.lg-open .lg-more-btn{order:99}}
 .legend-sticky{position:sticky;top:102px;z-index:6;background:var(--bg);padding:8px 12px;border-radius:12px;border:1px solid var(--line);box-shadow:0 4px 14px rgba(20,40,80,.08)}
 @media(max-width:760px){.legend-sticky{top:64px}}
 :root[data-theme="dark"] .legend-sticky{background:#0A0E1A}

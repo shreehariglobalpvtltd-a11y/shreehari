@@ -1667,14 +1667,20 @@ s.addEventListener('click',function(e){e.preventDefault();
         <span><span class="lg"></span><span data-i18n="lgAvail">Available</span></span>
         <span><span class="lg sel"></span><span data-i18n="lgSel">Selected</span></span>
         <span><span class="lg bkd"></span><span data-i18n="lgBkd">Booked</span></span>
-        <span><span class="lg fem"></span><span data-i18n="lgFem">Female preferred</span></span>
-        <span><span class="lg u-fem"></span>Women-only cabin · महिला मात्र</span>
-        <span><span class="lg u-male"></span>Men-only cabin · पुरुष मात्र</span>
-        <span><span class="lg" style="background:#C62828;border-color:#8E1B1B"></span><span data-i18n="lgEmergency">🚨 Emergency Seat</span></span>
-        <span><span class="lg hold"></span>⏳ Held by another customer · अर्कोले रोकेको</span>
-        <span><span class="lg pvt"></span>🔒 Private cabin · निजी केबिन</span>
-        <span><span class="lg bkd xmode"></span>⇄ Taken in the other type (sharing ⇄ private) · अर्को प्रकारमा बिकेको</span>
-        <span><span class="lg" style="background:#E0F7F4;border-color:#00897B">♿</span>Differently Abled friendly</span>
+        <span><span class="lg u-fem"></span><span data-i18n="lgWomenOnly">Women only</span></span>
+        <!-- 19 Sep 2026 (owner: "too many options on top, keep it simple"): four
+             signs a passenger needs to pick a seat stay in view; the other seven
+             sit behind one button on a computer. Every seat still carries its own
+             icon (✕ ⏳ ♀ ♂ 🔒), so nothing is told by this key alone. Phones keep
+             the one-line swipe strip (views.css) and never see the button. -->
+        <button type="button" class="lg-more-btn" aria-expanded="false" onclick="var l=this.parentNode,o=l.classList.toggle('lg-open');this.setAttribute('aria-expanded',o?'true':'false')"><span data-i18n="lgMore">More signs</span> ▾</button>
+        <span class="lg-x"><span class="lg fem"></span><span data-i18n="lgFem">Female preferred</span></span>
+        <span class="lg-x"><span class="lg u-male"></span><span data-i18n="lgMenOnly">Men only</span></span>
+        <span class="lg-x"><span class="lg" style="background:#C62828;border-color:#8E1B1B"></span><span data-i18n="lgEmergency">🚨 Emergency Seat</span></span>
+        <span class="lg-x"><span class="lg hold"></span>⏳ <span data-i18n="lgHeld">Held by someone else</span></span>
+        <span class="lg-x"><span class="lg pvt"></span>🔒 <span data-i18n="lgPrivate">Private cabin</span></span>
+        <span class="lg-x"><span class="lg bkd xmode"></span>⇄ <span data-i18n="lgXmode">Sold as the other type</span></span>
+        <span class="lg-x"><span class="lg" style="background:#E0F7F4;border-color:#00897B">♿</span><span data-i18n="lgAccessible">Easy-access seat</span></span>
       </div>
       <div class="women-safe-strip">👩 <b>Women Safety · महिला सुरक्षा</b> — महिला आरक्षित सिट · CCTV निगरानी · SOS बटन · रात्रि यात्रा सुरक्षा &nbsp;|&nbsp; महिला आरक्षित सीटें · CCTV निगरानी · SOS बटन · नाइट ट्रैवल सुरक्षा &nbsp;|&nbsp; Reserved seats · CCTV · SOS button · night travel protection</div>
       <div class="deck-tabs hide" id="deckTabs"></div>
