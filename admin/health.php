@@ -122,8 +122,8 @@ admin_header('System Health', 'health');
 
 <div class="hl-top">
   <span class="muted" style="font-size:13px">
-    Data audit last ran: <b><?= $lastAudit === null ? 'never' : Security::e(hl_ago($lastAudit['age_min'])) ?></b>
-    <?php if ($lastAudit === null): ?> — press the button to run it now.<?php endif; ?>
+    Automatic night check last ran: <b><?= $lastAudit === null ? 'not yet' : Security::e(hl_ago($lastAudit['age_min'])) ?></b>
+    <?php if ($lastAudit === null): ?> — you can run it now with the button.<?php endif; ?>
   </span>
   <form method="post">
     <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= Security::csrfToken() ?>">
@@ -136,10 +136,10 @@ admin_header('System Health', 'health');
   <div class="hl-ok"><svg class="a-ic"><use href="#a-check-circle"/></svg>
     <span>All clear — seats, payments, agent commission, messages and scheduled jobs have nothing to report.</span></div>
 <?php else: ?>
-  <div class="dash-hero">
-    <div class="hcard"><span>Fix today</span><b style="color:<?= $sum['critical'] > 0 ? 'var(--bad)' : 'inherit' ?>"><?= $sum['critical'] ?></b><small>critical</small></div>
-    <div class="hcard"><span>Look at this week</span><b style="color:<?= $sum['warn'] > 0 ? 'var(--warn)' : 'inherit' ?>"><?= $sum['warn'] ?></b><small>warnings</small></div>
-    <div class="hcard"><span>For information</span><b><?= $sum['info'] ?></b><small>no action needed</small></div>
+  <div class="kpis">
+    <div class="kpi <?= $sum['critical'] > 0 ? 'tone-red' : 'tone-green' ?>"><span class="ki"><svg class="a-ic"><use href="#a-alert"/></svg></span><div class="kt"><div class="kk">Fix today</div><div class="kv"><?= $sum['critical'] ?></div><div class="ks">critical</div></div></div>
+    <div class="kpi <?= $sum['warn'] > 0 ? 'tone-orange' : 'tone-green' ?>"><span class="ki"><svg class="a-ic"><use href="#a-clock"/></svg></span><div class="kt"><div class="kk">Look at this week</div><div class="kv"><?= $sum['warn'] ?></div><div class="ks">warnings</div></div></div>
+    <div class="kpi tone-navy"><span class="ki"><svg class="a-ic"><use href="#a-info"/></svg></span><div class="kt"><div class="kk">For information</div><div class="kv"><?= $sum['info'] ?></div><div class="ks">no action needed</div></div></div>
   </div>
 
   <div class="panel">
