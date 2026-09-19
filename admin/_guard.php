@@ -324,25 +324,41 @@ function admin_mobile_nav(array $items, string $active = ''): string
         foreach ($items as $it) { if ($it['href'] === $href) { return $it; } }
         return null;
     };
+    /* 19 Sep 2026 (owner: "colourful bottom buttons; Quick Ticket and the map
+       in agent mode"). Every slot keeps its own colour, always - a thumb finds
+       green = tickets, blue = map without reading. The orange button is the
+       fastest sale (QuickBot, name + mobile -> ticket); the seat-map booking
+       stays one tap away inside it and in the menu. A selling desk (agent,
+       counter - no dashboard.view) gets the Map in slot four, where its
+       passengers by pickup and the live bus are; the office keeps money. */
     $home    = Auth::isCounterAgent() ? $find('agent.php') : $find('index.php');
     $tickets = $find('bookings.php');
-    $new     = $find('/index.php?counter=1#/');
-    $fourth  = $find('agent-sales.php') ?? $find('payments.php') ?? $find('manifest.php');
+    $new     = $find('quick-ticket.php') ?? $find('/index.php?counter=1#/');
+    $desk    = !Auth::can('dashboard.view');
+    $fourth  = $desk
+        ? ($find('map.php') ?? $find('agent-sales.php'))
+        : ($find('payments.php') ?? $find('agent-sales.php') ?? $find('manifest.php'));
     $slots   = [];
-    $slot = static function (?array $it, string $label, string $icon, string $active, bool $fab = false): string {
+    $slot = static function (?array $it, string $label, string $icon, string $tone, string $active, bool $fab = false): string {
         if ($it === null) { return '<a class="mn-empty" aria-hidden="true"></a>'; }
         $url = str_starts_with($it['href'], '/') ? $it['href'] : '/admin/' . $it['href'];
         $on  = ($active !== '' && !str_starts_with($it['href'], '/') && str_contains($it['href'], $active)) ? ' on' : '';
         if ($fab) {
-            return '<a class="fab" href="' . $url . '" aria-label="' . Security::e($label) . '"><span class="mn-fab"><svg class="a-ic"><use href="#a-plus-plain"/></svg></span></a>';
+            return '<a class="fab" href="' . $url . '" aria-label="' . Security::e($label) . '"><span class="mn-fab"><svg class="a-ic"><use href="#a-' . $icon . '"/></svg></span><span class="mn-fab-l">' . Security::e($label) . '</span></a>';
         }
-        return '<a class="' . trim($on) . '" href="' . $url . '"><svg class="a-ic"><use href="#a-' . $icon . '"/></svg>' . Security::e($label) . '</a>';
+        return '<a class="mn-' . $tone . $on . '" href="' . $url . '"><svg class="a-ic"><use href="#a-' . $icon . '"/></svg>' . Security::e($label) . '</a>';
     };
-    $slots[] = $slot($home, 'Home', 'home', $active);
-    $slots[] = $slot($tickets, 'Tickets', 'ticket', $active);
-    $slots[] = $new !== null ? $slot($new, 'New booking', 'plus-plain', $active, true) : '<a class="mn-empty" aria-hidden="true"></a>';
-    $slots[] = $slot($fourth, $fourth !== null ? ($fourth['href'] === 'payments.php' ? 'Payments' : ($fourth['href'] === 'manifest.php' ? 'Manifest' : 'Sales')) : '', $fourth !== null ? ($fourth['href'] === 'payments.php' ? 'card' : ($fourth['href'] === 'manifest.php' ? 'clipboard' : 'chart-up')) : 'doc', $active);
-    $slots[] = '<a href="#" onclick="document.body.classList.toggle(\'nav-open\');return false" aria-label="Menu"><svg class="a-ic"><use href="#a-list"/></svg>Menu</a>';
+    $fourthMeta = match ($fourth['href'] ?? '') {
+        'map.php'      => ['Map', 'map-pin', 'map'],
+        'payments.php' => ['Payments', 'card', 'money'],
+        'manifest.php' => ['Manifest', 'clipboard', 'money'],
+        default        => ['Sales', 'chart-up', 'money'],
+    };
+    $slots[] = $slot($home, 'Home', 'home', 'home', $active);
+    $slots[] = $slot($tickets, 'Tickets', 'ticket', 'tix', $active);
+    $slots[] = $new !== null ? $slot($new, 'Ticket', $new['href'] === 'quick-ticket.php' ? 'bolt' : 'plus-plain', 'fab', $active, true) : '<a class="mn-empty" aria-hidden="true"></a>';
+    $slots[] = $slot($fourth, $fourthMeta[0], $fourthMeta[1], $fourthMeta[2], $active);
+    $slots[] = '<a class="mn-menu" href="#" onclick="document.body.classList.toggle(\'nav-open\');return false" aria-label="Menu"><svg class="a-ic"><use href="#a-list"/></svg>Menu</a>';
     return '<nav class="mnav" aria-label="Quick navigation">' . implode('', $slots) . '</nav>'
          . '<script>document.body.classList.add("has-mnav")</script>';
 }
@@ -1244,6 +1260,16 @@ a:hover{color:var(--blue-600)}
   .mnav a.fab{color:#fff}
   .mnav a.fab .mn-fab{width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,var(--orange),#FF9A4D);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 20px rgba(240,124,31,.45);margin-top:-22px;border:3px solid var(--card)}
   .mnav a.fab .a-ic{color:#fff}
+  /* One colour per job, always on (19 Sep 2026) - tinted icon + word, a
+     filled chip when it is the page you are on. Tokens, so dark mode follows. */
+  .mnav a.mn-home{--mn:var(--blue-600)} .mnav a.mn-tix{--mn:var(--ok)} .mnav a.mn-map{--mn:#0E7C86}
+  .mnav a.mn-money{--mn:var(--warn)} .mnav a.mn-menu{--mn:var(--mut)}
+  .mnav a[class^="mn-"] .a-ic{color:var(--mn)}
+  .mnav a[class^="mn-"]{color:var(--ink)}
+  .mnav a[class^="mn-"].on{color:var(--mn);background:color-mix(in srgb,var(--mn) 14%,transparent)}
+  .mnav a.fab{gap:1px}
+  .mnav a.fab .mn-fab-l{font-size:10.5px;font-weight:800;color:var(--orange-600);margin-top:2px}
+  :root[data-theme="dark"] .mnav a.mn-map{--mn:#4FC3CC}
   body.has-mnav .wrap{padding-bottom:86px}
   body.has-mnav .side .side-site{display:flex}
 }

@@ -91,6 +91,8 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
 .qt-stepper li b{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:rgba(255,255,255,.25);font-size:11px}
 .qt-stepper li.on{opacity:1;background:var(--orange);border-color:var(--orange)}
 .qt-stepper li.done{opacity:1;background:#178A50;border-color:#178A50}
+.qt-voice{position:relative;z-index:1;align-self:flex-start;min-height:44px;padding:0 14px;border-radius:999px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.12);color:#fff;font:700 13px/1 inherit;cursor:pointer}
+.qt-voice.on{background:#1FA35A;border-color:#1FA35A}
 .qt-clock{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:110px;height:110px;border-radius:50%;background:rgba(255,255,255,.12);border:3px solid rgba(255,255,255,.35);font-variant-numeric:tabular-nums}
 .qt-clock span{font-size:32px;font-weight:900;line-height:1}
 .qt-clock small{font-size:11px;opacity:.8;letter-spacing:.08em;text-transform:uppercase}
@@ -281,6 +283,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       </ol>
     </div>
     <div class="qt-clock" id="qtClock" title="Seconds since the first keystroke"><span id="qtTime">0.0</span><small>sec</small></div>
+    <button type="button" class="qt-voice" id="qtVoice" aria-pressed="false" title="Read the result aloud · नतिजा बोलेर सुनाउने">🔇 Voice off</button>
   </section>
 
   <?php if (!$canSell): ?>
@@ -715,10 +718,11 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       brainDraft: brain.draft || undefined
     }).then(function (j) {
       setBusy(false);
-      if (!j.ok) { showErr(j.error || 'The ticket could not be issued.'); step(1); return; }
+      if (!j.ok) { showErr(j.error || 'The ticket could not be issued.'); say('टिकट बनेन। स्क्रिनमा कारण हेर्नुहोस्।'); step(1); return; }
       var secs = stopClock();
       step(3);
       renderResult(j.data, secs);
+      sayTicket(j.data);
       prependRecent(j.data);
       $('#qtLine').value = ''; $('#qtName').value = ''; $('#qtPhone').value = ''; $('#qtDisc').value = ''; $('#qtNote').value = '';
       st.prefer = []; st.preferPhone = '';
@@ -732,6 +736,56 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       showErr('Network problem — the ticket may or may not have been issued. Check Tickets before trying again.');
     });
   });
+
+  /* 🔊 Voice (19 Sep 2026, owner: "like a human speaking"). At a busy window
+     the eyes are on the passenger and the cash, not the screen - so the desk
+     can HEAR that the ticket is done, which seat, and whether WhatsApp went.
+     Off by default, remembered per device. Nepali text read by the phone's
+     Nepali voice, else its Hindi voice (Devanagari reads naturally), else the
+     default. Never throws: a phone without speech simply stays silent. */
+  var voiceOn = false;
+  try { voiceOn = localStorage.getItem('shg:qt:voice') === '1'; } catch (e) {}
+  function voiceBtn() {
+    var b = $('#qtVoice'); if (!b) return;
+    b.textContent = voiceOn ? '🔊 Voice on' : '🔇 Voice off';
+    b.setAttribute('aria-pressed', voiceOn ? 'true' : 'false');
+    b.classList.toggle('on', voiceOn);
+  }
+  function pickVoice() {
+    try {
+      var vs = window.speechSynthesis.getVoices() || [];
+      return vs.filter(function (v) { return /^ne/i.test(v.lang); })[0]
+          || vs.filter(function (v) { return /^hi/i.test(v.lang); })[0] || null;
+    } catch (e) { return null; }
+  }
+  function say(text) {
+    if (!voiceOn || !text || !window.speechSynthesis) return;
+    try {
+      window.speechSynthesis.cancel();
+      var u = new SpeechSynthesisUtterance(text), v = pickVoice();
+      if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = 'hi-IN'; }
+      u.rate = 0.95;
+      window.speechSynthesis.speak(u);
+    } catch (e) {}
+  }
+  function sayTicket(d) {
+    var seats = (d.seats || []).map(function (s) { return seatLabelJoin([s], 'sleeper', 'sharing'); }).join(', ');
+    var wa = d.whatsapp || {};
+    say('टिकट बन्यो। ' + (d.name ? d.name + ', ' : '') + 'सिट ' + seats + '। '
+      + (d.totalLabel ? 'भाडा ' + String(d.totalLabel).replace('₹', '') + ' रुपैयाँ। ' : '')
+      + (wa.sent ? 'टिकट व्हाट्सएपमा गयो।' : 'व्हाट्सएप गएन, बटन थिचेर पठाउनुहोस्।'));
+  }
+  (function () {
+    var b = $('#qtVoice'); if (!b) return;
+    if (!window.speechSynthesis) { b.hidden = true; return; }
+    voiceBtn();
+    b.addEventListener('click', function () {
+      voiceOn = !voiceOn;
+      try { localStorage.setItem('shg:qt:voice', voiceOn ? '1' : '0'); } catch (e) {}
+      voiceBtn();
+      say(voiceOn ? 'आवाज खुल्यो। टिकट बनेपछि म बोलेर सुनाउँछु।' : '');
+    });
+  })();
 
   function renderResult(d, secs) {
     var wa = d.whatsapp || {};

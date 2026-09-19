@@ -67,6 +67,53 @@ $jsRoutes = array_map(static fn(array $r): array => [
     'id' => (int) $r['id'], 'code' => (string) $r['route_code'], 'label' => (string) $r['from_city'] . ' → ' . (string) $r['to_city'],
     'time' => substr((string) $r['dep_time'], 0, 5), 'stops' => $stopsByRoute[(int) $r['id']] ?? [],
 ], $routes);
+/* 👥 Passengers by pickup (19 Sep 2026, owner: "agent mode in the map").
+   Who boards where on today's buses, with call / WhatsApp, and - when the
+   driver's phone is publishing - roughly how many minutes the bus is from each
+   pickup (EtaAlerts::stopEtas: silent when the fix is stale or off-route).
+   A counter agent sees ONLY the passengers they sold (bookingScopeAdminId);
+   names and phones need bookings.view, otherwise only the counts show. */
+require_once INCLUDE_PATH . '/etaalerts.php';
+$paxScope = Auth::bookingScopeAdminId();
+$paxNames = Auth::can('bookings.view');
+$routeOf  = [];
+foreach ($trips as $raw) { $routeOf[(int) $raw['id']] = (int) $raw['route_id']; }
+$etaCache = [];
+$paxTrips = [];
+foreach ($jsTrips as $t) {
+    if ($t['cancelled'] || !($t['date'] === $today || in_array($t['stateKey'], ['departed', 'on_route', 'boarding', 'delayed'], true))) {
+        continue;
+    }
+    $rows = Database::fetchAll(
+        "SELECT b.pnr, b.contact_phone, l.boarding_stop, l.seat_count,
+                (SELECT p.full_name FROM booking_passengers p WHERE p.booking_id = b.id ORDER BY p.is_primary DESC, p.id LIMIT 1) AS name
+           FROM booking_legs l JOIN bookings b ON b.id = l.booking_id
+          WHERE l.schedule_id = :s AND b.status IN ('confirmed','pending')"
+        . ($paxScope !== null ? ' AND b.sold_by_admin_id = :a' : '') . "
+          ORDER BY l.boarding_time, l.boarding_stop, b.id",
+        ['s' => $t['id']] + ($paxScope !== null ? ['a' => $paxScope] : [])
+    );
+    if ($rows === []) {
+        continue;
+    }
+    $rid = $routeOf[$t['id']] ?? 0;
+    $etaCache[$rid] ??= EtaAlerts::stopEtas($rid);
+    $groups = [];
+    foreach ($rows as $r) {
+        $label = trim((string) ($r['boarding_stop'] ?? ''));
+        $key   = $label !== '' ? Boarding::townKey($label) : '?';
+        $groups[$key] ??= [
+            'stop'  => $label !== '' ? Boarding::stopDisplay($label)['name'] : 'Pickup not set',
+            'eta'   => $etaCache[$rid][$key]['eta'] ?? null,
+            'seats' => 0,
+            'pax'   => [],
+        ];
+        $groups[$key]['seats'] += (int) $r['seat_count'];
+        $groups[$key]['pax'][]  = $r;
+    }
+    $paxTrips[] = ['trip' => $t, 'groups' => $groups];
+}
+
 $company = Settings::getString('company_name', 'S Hari Global Pvt Ltd');
 $phone   = Settings::officePhone();
 
@@ -79,6 +126,17 @@ admin_header('Live Map', 'map');
 #lmMap .maplibregl-canvas{outline:none}
 .lm-side{display:flex;flex-direction:column;gap:12px;max-height:calc(100vh - 170px);overflow:auto}
 .lm-card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.lm-pax-trip{padding:10px 14px 4px;font-size:13px}
+.lm-pax{border-top:1px solid var(--line)}
+.lm-pax summary{display:flex;gap:8px;align-items:center;padding:10px 14px;cursor:pointer;min-height:46px;list-style:none;font-size:13.5px}
+.lm-pax summary::-webkit-details-marker{display:none}
+.lm-pax-stop{font-weight:700;flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lm-pax-n{font-size:12px;font-weight:800;padding:3px 9px;border-radius:999px;background:var(--blue-50);color:var(--blue-600);white-space:nowrap}
+.lm-pax-eta{font-size:12px;font-weight:800;padding:3px 9px;border-radius:999px;background:var(--ok-bg);color:var(--ok);white-space:nowrap}
+.lm-pax-row{display:flex;gap:8px;align-items:center;padding:6px 14px 6px 34px;font-size:13.5px}
+.lm-pax-row span{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+.lm-pax-row a{width:40px;height:40px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;font-size:18px;flex:0 0 auto}
+.lm-call{background:var(--blue-50)} .lm-wa{background:#DCF8E7}
 .lm-card h3{margin:0;padding:11px 14px;font-size:14px;border-bottom:1px solid var(--line);background:var(--head);display:flex;align-items:center;gap:8px}
 .lm-card h3 small{margin-left:auto;font-weight:500;color:var(--mut);font-size:11.5px}
 .lm-bus{padding:12px 14px;display:flex;flex-direction:column;gap:6px;font-size:13px}
@@ -133,6 +191,27 @@ admin_header('Live Map', 'map');
         </div>
         <?php endforeach; if ($shown === 0): ?><div class="muted" style="padding:14px">No departures today.</div><?php endif; ?>
       </div>
+    </div>
+    <div class="lm-card"><h3>👥 <?= $paxScope !== null ? 'My passengers' : 'Passengers' ?> · यात्रु <small>by pickup · चढ्ने ठाउँ अनुसार</small></h3>
+      <?php if ($paxTrips === []): ?>
+        <div class="muted" style="padding:10px 14px"><?= $paxScope !== null ? 'You have no passengers on today&#39;s buses. · आजको बसमा तपाईंको यात्रु छैन।' : 'No passengers on today&#39;s buses yet.' ?></div>
+      <?php endif; ?>
+      <?php foreach ($paxTrips as $pt): $t = $pt['trip']; ?>
+        <div class="lm-pax-trip"><b><?= Security::e($t['time']) ?> · <?= Security::e($t['label']) ?></b></div>
+        <?php foreach ($pt['groups'] as $g): ?>
+          <details class="lm-pax">
+            <summary><span class="lm-pax-stop">📍 <?= Security::e($g['stop']) ?></span>
+              <span class="lm-pax-n"><?= (int) $g['seats'] ?> seat<?= (int) $g['seats'] === 1 ? '' : 's' ?></span>
+              <?php if ($g['eta'] !== null): ?><span class="lm-pax-eta">🚌 ~<?= (int) (ceil($g['eta'] / 5) * 5) ?> min</span><?php endif; ?></summary>
+            <?php if ($paxNames): foreach ($g['pax'] as $p):
+              $tel = (string) preg_replace('/\D/', '', (string) $p['contact_phone']);
+              $wa  = ($tel !== '' && preg_match('/^0+$/', $tel) !== 1) ? (strlen($tel) === 10 ? '91' . $tel : $tel) : ''; ?>
+              <div class="lm-pax-row"><span><?= Security::e((string) ($p['name'] ?: '—')) ?> <small class="muted"><?= Security::e((string) $p['pnr']) ?></small></span>
+                <?php if ($wa !== ''): ?><a class="lm-call" href="tel:+<?= Security::e($wa) ?>" aria-label="Call">📞</a><a class="lm-wa" href="https://wa.me/<?= Security::e($wa) ?>" target="_blank" rel="noopener" aria-label="WhatsApp">💬</a><?php endif; ?></div>
+            <?php endforeach; endif; ?>
+          </details>
+        <?php endforeach; ?>
+      <?php endforeach; ?>
     </div>
   </aside>
 </div>

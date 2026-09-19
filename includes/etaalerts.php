@@ -203,6 +203,38 @@ final class EtaAlerts
         return $out;
     }
 
+    /**
+     * Minutes from the live bus to each boarding stop still ahead of it on
+     * this route, for a screen (the office / agent map). Same rules as the
+     * alert: a stale, inaccurate or off-route fix gives an empty answer, never
+     * a guess. Keyed by Boarding::townKey() so a booking's label finds its stop.
+     *
+     * @return array<string, array{name:string, eta:int, km:float}>
+     */
+    public static function stopEtas(int $routeId, ?array $fix = null, ?int $nowTs = null): array
+    {
+        if ($fix === null) {
+            [$fix] = self::fix($nowTs);
+            if ($fix === null) {
+                return [];
+            }
+        }
+        $geo = self::routeLine($routeId);
+        $pos = self::project($geo['line'], (float) $fix['lat'], (float) $fix['lng']);
+        if ($pos === null || $pos['off'] > self::OFF_ROUTE_KM) {
+            return [];
+        }
+        $out = [];
+        foreach ($geo['line'] as $stop) {
+            $ahead = $stop['km'] - $pos['km'];
+            if ($stop['type'] !== 'boarding' || $ahead <= 0.5 || $ahead > 400) {
+                continue;
+            }
+            $out[Boarding::townKey($stop['name'])] = ['name' => $stop['name'], 'eta' => self::etaMinutes($ahead, $fix['kmh'] ?? null), 'km' => round($ahead, 1)];
+        }
+        return $out;
+    }
+
     /* ---------------------------------------------------------------
      *  The run
      * ------------------------------------------------------------- */
