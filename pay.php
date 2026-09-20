@@ -33,7 +33,7 @@ if ($pnr === '' || !preg_match('/^[A-Z0-9-]{6,40}$/', $pnr)) {
 }
 
 $booking = Database::fetch(
-    'SELECT pnr, total_amount, status FROM bookings WHERE pnr = :p LIMIT 1',
+    'SELECT id, pnr, total_amount, status FROM bookings WHERE pnr = :p LIMIT 1',
     ['p' => $pnr]
 );
 if ($booking === null) {
@@ -55,6 +55,11 @@ if ($upiId === '') {
 }
 
 $upiUri = upiLink($upiId, $upiName, $total, $pnr);
+
+/* Intent trail for the desk: this passenger tapped pay. The UPI app itself
+   never reports back, so this is the last thing we can see. */
+require_once INCLUDE_PATH . '/payevents.php';
+PayEvents::log((int) ($booking['id'] ?? 0), $pnr, 'pay_open');
 
 // Prefer a direct 302 to the upi:// scheme so the UPI app opens the
 // moment the customer taps in WhatsApp. HTML fallback follows for the

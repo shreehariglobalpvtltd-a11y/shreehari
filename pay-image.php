@@ -90,6 +90,9 @@ try {
 
 $upiUri = upiLink($upiId, $upiName, $total, $pnr);
 
+require_once INCLUDE_PATH . '/payevents.php';
+PayEvents::log((int) ($booking['id'] ?? 0), $pnr, 'qr_view');
+
 // ---------- Compose the image ----------
 $W = 900;
 $H = 1250;

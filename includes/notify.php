@@ -630,6 +630,31 @@ final class Notify
      * variable, and strtotime() is guarded because a malformed boarding time
      * returns false, which date() rejects under strict_types.
      */
+    /** Devanagari digits, so a Nepali message never prints "2026". */
+    private static function nepaliDigits(string $s): string
+    {
+        return strtr($s, ['0' => '०', '1' => '१', '2' => '२', '3' => '३', '4' => '४',
+                          '5' => '५', '6' => '६', '7' => '७', '8' => '८', '9' => '९']);
+    }
+
+    /** "शनिबार, १९ सेप्टेम्बर २०२६" — the travel date as a passenger reads it. */
+    private static function nepaliDateLine(string $ymd): string
+    {
+        $ts = strtotime($ymd);
+        if ($ts === false) {
+            return $ymd;
+        }
+        $days = ['Sun' => 'आइतबार', 'Mon' => 'सोमबार', 'Tue' => 'मङ्गलबार', 'Wed' => 'बुधबार',
+                 'Thu' => 'बिहिबार', 'Fri' => 'शुक्रबार', 'Sat' => 'शनिबार'];
+        $months = [1 => 'जनवरी', 'फेब्रुअरी', 'मार्च', 'अप्रिल', 'मे', 'जुन',
+                    'जुलाई', 'अगस्ट', 'सेप्टेम्बर', 'अक्टोबर', 'नोभेम्बर', 'डिसेम्बर'];
+
+        return ($days[date('D', $ts)] ?? '') . ', '
+             . self::nepaliDigits((string) date('j', $ts)) . ' '
+             . ($months[(int) date('n', $ts)] ?? '') . ' '
+             . self::nepaliDigits((string) date('Y', $ts));
+    }
+
     private static function ticketTemplateVars(array $booking): array
     {
         $facts   = self::ticketFacts($booking);
@@ -639,6 +664,14 @@ final class Notify
         $board = $facts['boardingStop'] !== ''
             ? $facts['boardingStop']
             : ($facts['route'] !== '' ? explode(' → ', $facts['route'])[0] : '');
+
+        /* The stored stop label carries machine bits a passenger must never
+           read: a trailing "@ 21:00" and a "[23.171,72.623]" GPS pair. The
+           message showed both, the time twice. Strip them; the time is
+           printed once, formatted, below. */
+        $board = (string) preg_replace('/\s*\[[^\]]*\]\s*/u', ' ', $board);
+        $board = (string) preg_replace('/\s*@\s*[0-2]?\d:\d{2}\s*$/u', '', trim($board));
+        $board = trim((string) preg_replace('/\s{2,}/u', ' ', $board));
 
         $time = '';
         foreach ([$facts['boardingTime'], $facts['depTime']] as $cand) {
@@ -653,12 +686,33 @@ final class Notify
         }
         $boardLine = trim($board . ($time !== '' ? ' · ' . $time : ''));
 
+        /* The template in force decides the language of these values: a
+           Nepali template must not print "2026-09-19". */
+        $nepali = str_starts_with(Settings::getString('whatsapp_template_lang', 'en'), 'hi')
+               || str_starts_with(Settings::getString('whatsapp_template_lang', 'en'), 'ne');
+
+        $dateLine = $facts['date'] !== ''
+            ? ($nepali ? self::nepaliDateLine($facts['date']) : formatDate($facts['date'], 'D, j M Y'))
+            : '-';
+
+        /* "UE5, UE6" alone leaves the passenger counting berths to know how
+           many people the ticket covers. */
+        $seatLine = $facts['seats'] !== '' ? $facts['seats'] : '-';
+        $seatN    = $facts['seats'] !== ''
+            ? count(array_filter(array_map('trim', explode(',', $facts['seats']))))
+            : 0;
+        if ($seatN > 1) {
+            $seatLine .= $nepali
+                ? ' · ' . self::nepaliDigits((string) $seatN) . ' जना'
+                : ' · ' . $seatN . ' passengers';
+        }
+
         return [
             '1' => $pnr                !== '' ? $pnr                : '-',
             '2' => $facts['route']     !== '' ? $facts['route']     : $company,
-            '3' => $facts['date']      !== '' ? $facts['date']      : '-',
+            '3' => $dateLine,
             '4' => $boardLine          !== '' ? $boardLine          : '-',
-            '5' => $facts['seats']     !== '' ? $facts['seats']     : '-',
+            '5' => $seatLine,
             '6' => inr((float) ($booking['total_amount'] ?? 0)),
             // {{7}} is the template's IMAGE header — the ticket PNG itself.
             '7' => Ticket::imageUrl($pnr),

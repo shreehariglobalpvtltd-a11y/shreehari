@@ -445,6 +445,12 @@ tr.row-done td{background:var(--hover)}
       <th style="min-width:240px">Actions</th>
     </tr></thead>
     <tbody>
+    <?php
+      /* Who opened the QR / tapped the pay link, per booking — one query
+         for the whole page rather than one per row. */
+      require_once INCLUDE_PATH . '/payevents.php';
+      $payTrail = PayEvents::summary(array_column($rows, 'id'));
+    ?>
     <?php if ($rows === []): ?>
       <tr><td colspan="10" class="muted" style="padding:28px;text-align:center">
         <?php if ($tab === 'pending'): ?>
@@ -505,6 +511,21 @@ tr.row-done td{background:var(--hover)}
           <?php endif; ?>
           <?php if (!empty($q['payer_name'])): ?>
             <div class="muted" style="font-size:11px"><?= Security::e($q['payer_name']) ?></div>
+          <?php endif; ?>
+          <?php
+            /* QR / pay-link activity. Absence of it on an old pending booking
+               is the useful signal: the passenger never even opened it. */
+            $tr = $payTrail[$bId] ?? null;
+            if ($tr !== null && ($tr['qr'] > 0 || $tr['link'] > 0)):
+          ?>
+            <div style="font-size:11px;margin-top:4px;color:#0a7c2f">
+              <?php if ($tr['qr'] > 0): ?>QR <?= (int) $tr['qr'] ?>x<?php endif; ?>
+              <?php if ($tr['qr'] > 0 && $tr['link'] > 0): ?> · <?php endif; ?>
+              <?php if ($tr['link'] > 0): ?>pay link <?= (int) $tr['link'] ?>x<?php endif; ?>
+              <span class="muted">· <?= Security::e(timeAgo($tr['last'])) ?></span>
+            </div>
+          <?php elseif ($bStatus === 'pending'): ?>
+            <div style="font-size:11px;margin-top:4px;color:#b02a2a">QR not opened yet</div>
           <?php endif; ?>
         </td>
         <!-- Proof -->
