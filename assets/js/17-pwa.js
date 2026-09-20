@@ -117,7 +117,12 @@
         var h = location.hash || '#/';
         if (h === '#/' || h === '#/my') showAndroid(); else setTimeout(later, 15000);
       };
-      setTimeout(later, 4000);
+      /* 20 Sep 2026 (brief P5): was a flat 4 s, so a first-time visitor on
+         Android - which is nearly everyone on this route - got a modal over
+         the booking form before they had read it or typed anything. iOS has
+         waited since the sheet was written ("never on first paint"); Android
+         now follows the same rule: 25 s on the first visit, 6 s after that. */
+      setTimeout(later, visits >= 2 ? 6000 : 25000);
     });
     window.addEventListener('appinstalled', function () {
       lsDel(DKEY); hide(); say('✅ ' + T('pwaDone'));
