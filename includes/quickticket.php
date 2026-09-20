@@ -746,7 +746,13 @@ final class QuickTicket
         ];
         $seller = [
             'adminId'       => (int) ($staff['id'] ?? 0),
-            'source'        => Auth::isCounterAgent() ? 'agent' : 'counter',
+            /* Read the SELLER ROW first, and only then the session (20 Sep 2026).
+               The row is already in hand and is the truth about who is selling;
+               the session was the only source until the WhatsApp assistant began
+               calling this with a staff record and no session, which would have
+               filed an agent's sale as a counter sale. Same answer as before for
+               every screen that does have a session. */
+            'source'        => (((string) ($staff['role'] ?? '')) === 'agent' || Auth::isCounterAgent()) ? 'agent' : 'counter',
             'paymentMethod' => $pay,
             'discountType'  => in_array($input['discountType'] ?? '', ['flat', 'percent'], true) ? (string) $input['discountType'] : '',
             'discountValue' => (float) ($input['discountValue'] ?? 0),

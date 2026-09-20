@@ -78,6 +78,32 @@ final class WaBot
             $pnr = strtoupper($m[0]);
         }
 
+        /* THE ASSISTANT WITH TOOLS (20 Sep 2026, wa_agent_on).
+           Everything below this block is the bot of 19 Sep and stays exactly
+           as it was: with the switch off, or with no AI key, AiAgent::handle()
+           returns null and nothing here changes.
+
+           One message is deliberately NOT given to the model: a bare PNR and
+           nothing else. That is the commonest message this number receives,
+           the answer is a database read, and the deterministic path below
+           answers it in milliseconds for nothing. A PNR inside a SENTENCE
+           ("SHG-… ko naam galat cha") is a request, not a lookup, so that one
+           does go to the assistant. */
+        $strip   = static fn (string $s): string => (string) preg_replace('/[^\p{L}\p{N}]/u', '', $s);
+        $pnrOnly = $pnr !== '' && $strip(str_ireplace($pnr, '', $body)) === '';
+
+        if (!$pnrOnly) {
+            try {
+                require_once INCLUDE_PATH . '/aiagent.php';
+                $agent = AiAgent::handle($from, $body);
+                if ($agent !== null) {
+                    return self::out($agent['text'], $agent['media']);
+                }
+            } catch (Throwable $e) {
+                Logger::exception($e);          // the proven bot below still answers
+            }
+        }
+
         // No PNR — is this a booking REQUEST rather than a status check?
         //
         // "bhai 2 seat chahiye nepal 15th" is a sale waiting to happen, not a
@@ -166,6 +192,10 @@ final class WaBot
         try {
             require_once INCLUDE_PATH . '/aichat.php';
             AiChat::forget($senderDigits);
+            // A bare PNR is a fresh subject: drop the assistant's thread and any
+            // fare it had parked, so an old quote can never attach itself to it.
+            require_once INCLUDE_PATH . '/aiagent.php';
+            AiAgent::forget($senderDigits);
         } catch (Throwable $e) {
             // memory cleanup is best effort
         }
