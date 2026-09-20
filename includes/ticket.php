@@ -1462,7 +1462,7 @@ final class Ticket
 
     /** Bump whenever renderTicketPng()'s layout changes — see pngPath().
      *  11 Sep 2026: seat chips now print the LA1/UA1 row-letter grid id. */
-    private const PNG_LAYOUT_CHANGED = '2026-09-20 09:56:14';
+    private const PNG_LAYOUT_CHANGED = '2026-09-20 14:15:19';
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the

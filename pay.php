@@ -88,6 +88,16 @@ header('Location: ' . $upiUri, true, 302);
     <div class="amt">₹<?= number_format($total, 2) ?></div>
     <a class="btn" href="<?= htmlspecialchars($upiUri, ENT_QUOTES, 'UTF-8') ?>">UPI app मा खोल्नुहोस्</a>
     <div class="row">UPI ID: <code><?= htmlspecialchars($upiId, ENT_QUOTES, 'UTF-8') ?></code></div>
+<?php
+  /* One tap opens our WhatsApp with the PNR already typed. That inbound
+     message opens the 24 h service window, which is what lets the ticket
+     and every later update reach this customer without Meta billing. */
+  $bizWa = Settings::officeWhatsApp();
+  if ($bizWa !== ''):
+      $waText = rawurlencode('मेरो बुकिङ ' . $pnr . ' को टिकट पठाउनुहोस्।');
+?>
+    <a class="btn" style="background:#128C7E" href="https://wa.me/<?= htmlspecialchars($bizWa, ENT_QUOTES, 'UTF-8') ?>?text=<?= $waText ?>">WhatsApp मा टिकट पाउनुहोस्</a>
+<?php endif; ?>
     <div class="row">प्राप्तकर्ता: <?= htmlspecialchars($upiName, ENT_QUOTES, 'UTF-8') ?></div>
     <script>
       // In case the header redirect was blocked, try once more from JS.
