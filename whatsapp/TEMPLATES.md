@@ -47,6 +47,22 @@ India rate card at *WhatsApp Manager → Overview → Pricing* before quoting pe
 - Used by: `Notify::bookingConfirmed()`, `resendTicketWhatsApp()`, `ticketChanged()`, `cron/whatsapp-retry.php`
 - Activated: 19 Sep 2026, replacing v2 after WABA migration to Cloud API
 
+## Submitted 20 Sep 2026 (awaiting Meta review)
+
+All UTILITY / `en`, BODY + FOOTER "S Hari Global Pvt Ltd", no media header, built to Meta review rules
+(no variable at the body start or end, never two variables adjacent, an example for every variable):
+
+`shg_booking_received`, `shg_payment_received`, `shg_payment_rejected`, `shg_booking_cancelled`,
+`shg_refund_update`, `shg_trip_update`, `shg_payment_reminder`, `shg_agent_statement`,
+`shg_settlement_receipt`, `shg_agent_booking_update`, `shg_office_alert`.
+
+Each still needs its `sendWhatsAppTemplate()` call wired at the trigger once Meta approves it —
+the variable order in the table below is the contract.
+
+`shg_login_otp` (AUTHENTICATION) was REFUSED at creation: "This WhatsApp business account does not
+have permission to create message template". Authentication templates need that permission on the
+WABA first (Business Manager), so OTP still rides SMS / the 24 h window.
+
 ## To create (currently free text, so they reach people only inside a 24 h chat)
 
 | # | Template name | Category | Trigger (code) | Body (suggested) | Variables |
