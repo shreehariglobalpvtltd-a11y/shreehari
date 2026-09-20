@@ -899,6 +899,73 @@ final class Ticket
         imagefilledellipse($im, $x2 - $r, $y2 - $r, $r * 2, $r * 2, $col);
     }
 
+    /* -----------------------------------------------------------------
+     *  Depth helpers (21 Sep 2026, owner: "ticket ali color, full digital
+     *  ho ta, design dimensions wala banao attractive").
+     *
+     *  GD has no shadow or gradient primitive, so these three build the
+     *  only kinds of depth that survive WhatsApp: a soft drop shadow, a
+     *  vertical gradient inside a rounded box, and a scanner-style corner
+     *  frame. All three are drawn from flat fills — no alpha blending per
+     *  pixel — because WhatsApp re-encodes the PNG to JPEG and soft alpha
+     *  edges are the first thing it smears into mud.
+     * --------------------------------------------------------------- */
+
+    /** Soft drop shadow under a rounded box: $depth stacked, fading rings. */
+    private static function gdShadow($im, int $x1, int $y1, int $x2, int $y2, int $r, int $depth = 7, int $baseR = 190, int $baseG = 196, int $baseB = 208): void
+    {
+        // Darkest ring closest to the card, lightening outward, so the eye
+        // reads a lift rather than a grey outline.
+        for ($i = $depth; $i >= 1; $i--) {
+            $t   = $i / $depth;                       // 1 = outermost = lightest
+            $col = imagecolorallocate(
+                $im,
+                (int) min(255, $baseR + (250 - $baseR) * $t),
+                (int) min(255, $baseG + (243 - $baseG) * $t),
+                (int) min(255, $baseB + (232 - $baseB) * $t)
+            );
+            self::gdRounded($im, $x1 + $i, $y1 + $i + 1, $x2 + $i, $y2 + $i + 1, $r, $col);
+        }
+    }
+
+    /** Rounded box filled with a vertical gradient from RGB $a to RGB $b. */
+    private static function gdRoundedGrad($im, int $x1, int $y1, int $x2, int $y2, int $r, array $a, array $b): void
+    {
+        $h = max(1, $y2 - $y1);
+        // Paint the gradient as full-width lines, then re-round the corners
+        // by overpainting them with the page behind — cheaper and crisper
+        // than clipping every line to the rounded path.
+        for ($y = $y1; $y <= $y2; $y++) {
+            $t   = ($y - $y1) / $h;
+            $col = imagecolorallocate(
+                $im,
+                (int) ($a[0] + ($b[0] - $a[0]) * $t),
+                (int) ($a[1] + ($b[1] - $a[1]) * $t),
+                (int) ($a[2] + ($b[2] - $a[2]) * $t)
+            );
+            // Inset the ends by the corner radius on the first/last rows so
+            // the box still reads as rounded.
+            $dy   = min($y - $y1, $y2 - $y);
+            $inset = $dy >= $r ? 0 : (int) round($r - sqrt(max(0, $r * $r - ($r - $dy) * ($r - $dy))));
+            imageline($im, $x1 + $inset, $y, $x2 - $inset, $y, $col);
+        }
+    }
+
+    /** Scanner-style corner brackets — four L marks around a QR. */
+    private static function gdScanFrame($im, int $x1, int $y1, int $x2, int $y2, int $len, int $thick, int $col): void
+    {
+        foreach ([[$x1, $y1, 1, 1], [$x2, $y1, -1, 1], [$x1, $y2, 1, -1], [$x2, $y2, -1, -1]] as [$cx, $cy, $sx, $sy]) {
+            $hx1 = $sx > 0 ? $cx : $cx - $len;
+            $hx2 = $sx > 0 ? $cx + $len : $cx;
+            $hy1 = $sy > 0 ? $cy : $cy - $thick;
+            imagefilledrectangle($im, $hx1, $hy1, $hx2, $hy1 + $thick, $col);   // horizontal arm
+            $vy1 = $sy > 0 ? $cy : $cy - $len;
+            $vy2 = $sy > 0 ? $cy + $len : $cy;
+            $vx1 = $sx > 0 ? $cx : $cx - $thick;
+            imagefilledrectangle($im, $vx1, $vy1, $vx1 + $thick, $vy2, $col);   // vertical arm
+        }
+    }
+
     private static function renderTicketPng(array $booking, array $ticket, string $path, string $mark = ''): void
     {
         /* The passenger list decides the height (owner ask, 10 Sep 2026:
@@ -1033,6 +1100,10 @@ final class Ticket
             $clampTo(14, $iWho, 228), false);
 
         /* ---- White card ---------------------------------------------- */
+        // 21 Sep 2026: the card now sits ON the cream page instead of being
+        // painted flat against it — a soft shadow under the right and lower
+        // edges is what makes the whole ticket read as a physical pass.
+        self::gdShadow($im, 36, 300, $W - 36, 1544 + $grow + $qrExt, 24, 8);
         self::gdRounded($im, 36, 262, $W - 36, 1544 + $grow + $qrExt, 24, $white);
         imagefilledrectangle($im, 36, 262, $W - 36, 300, $white);        // square the join
 
@@ -1180,8 +1251,13 @@ final class Ticket
                 '+ ' . self::nepaliDigits((string) ($paxN - $listN)) . ' जना थप  ·  ' . ($paxN - $listN) . ' more', false);
         }
 
-        /* Fare band */
-        self::gdRounded($im, 60, 1152 + $grow, $W - 60, 1250 + $grow, 16, $navy);
+        /* Fare band — the one number everybody looks for, so it gets the
+           deepest treatment on the ticket: its own shadow, a navy gradient
+           instead of a flat fill, and a gold hairline along the top edge
+           that catches the eye the way a foil stripe does on a real pass. */
+        self::gdShadow($im, 60, 1152 + $grow, $W - 60, 1250 + $grow, 16, 6);
+        self::gdRoundedGrad($im, 60, 1152 + $grow, $W - 60, 1250 + $grow, 16, [14, 32, 68], [38, 72, 128]);
+        imagefilledrectangle($im, 76, 1152 + $grow, $W - 76, 1155 + $grow, $gold);
         self::gdText($im, 17, 88, 1192 + $grow, $gold, 'जम्मा भाडा  ·  TOTAL FARE', false);
         $amt = '₹ ' . number_format((float) ($booking['total_amount'] ?? 0));
         self::gdText($im, 36, 88, 1236 + $grow, $white, $amt, true);
@@ -1253,20 +1329,42 @@ final class Ticket
                 $cardY1 = ($payUpi !== '' ? 1330 : 1272) + $grow;
                 if ($payUpi !== '') {
                     /* The owner's ask: it must be obvious that THIS is where
-                       you pay, so the QR gets its own orange banner. */
+                       you pay, so the QR gets its own banner. 21 Sep 2026:
+                       the banner is now a gradient with a shadow, so it
+                       lifts off the card instead of lying flat on it. */
                     $bnr = 'भुक्तानी यहाँ  ·  PAY HERE';
-                    self::gdRounded($im, $cardX1, 1272 + $grow, $W - 60, 1324 + $grow, 14, $orange);
+                    self::gdShadow($im, $cardX1, 1272 + $grow, $W - 60, 1324 + $grow, 14, 5);
+                    self::gdRoundedGrad($im, $cardX1, 1272 + $grow, $W - 60, 1324 + $grow, 14, [248, 146, 46], [226, 104, 16]);
                     self::gdText($im, 21, (int) ($cardX1 + ($cardW - self::gdWidth(21, $bnr)) / 2), 1309 + $grow, $white, $bnr, true);
                 }
+                /* ---- The QR card -----------------------------------------
+                   21 Sep 2026 (owner: "payment QR ko outline ramro hos").
+                   The old card was a white box with one hairline, which on
+                   a cream page had almost no edge at all. Now it reads as a
+                   scanner viewfinder: shadow under it, a coloured double
+                   ring around it, and four corner brackets — the shape every
+                   phone camera has trained people to point at. Green while a
+                   payment is due (the UPI QR), navy for the status QR. */
+                $frameCol = $payUpi !== '' ? $green : $navy;
+                self::gdShadow($im, $cardX1, $cardY1, $W - 60, $cardY1 + $cardW, 12, 6);
                 self::gdRounded($im, $cardX1, $cardY1, $W - 60, $cardY1 + $cardW, 12, $white);
+                // Double ring: a soft outer hairline, then a solid 3 px inner
+                // ring in the accent colour, with a white gutter between them
+                // so a scanner still finds the quiet zone.
                 imagerectangle($im, $cardX1, $cardY1, $W - 60, $cardY1 + $cardW, $line);
+                for ($k = 0; $k < 3; $k++) {
+                    imagerectangle($im, $cardX1 + 5 + $k, $cardY1 + 5 + $k, $W - 65 - $k, $cardY1 + $cardW - 5 - $k, $frameCol);
+                }
                 /* imagecopy, not imagecopyresampled: at 1:1 any resampler
                    can only blur what is already the right size. */
                 imagecopy($im, $qr, $cardX1 + $pad, $cardY1 + $pad, 0, 0, $qrPx, $qrPx);
                 imagedestroy($qr);
+                // Corner brackets sit OUTSIDE the ring, over the white card,
+                // so they never touch a QR module and break the scan.
+                self::gdScanFrame($im, $cardX1 - 4, $cardY1 - 4, $W - 56, $cardY1 + $cardW + 4, 34, 6, $frameCol);
                 if ($payUpi !== '') {
                     $cap = 'स्क्यान गरेर तिर्नुहोस्  ·  SCAN TO PAY';
-                    self::gdText($im, 17, (int) ($cardX1 + ($cardW - self::gdWidth(17, $cap)) / 2), $cardY1 + $cardW + 32, $green, $cap, true);
+                    self::gdText($im, 17, (int) ($cardX1 + ($cardW - self::gdWidth(17, $cap)) / 2), $cardY1 + $cardW + 44, $green, $cap, true);
                 }
             }
         } catch (Throwable $e) {
@@ -1471,8 +1569,10 @@ final class Ticket
      * ================================================================= */
 
     /** Bump whenever renderTicketPng()'s layout changes — see pngPath().
-     *  11 Sep 2026: seat chips now print the LA1/UA1 row-letter grid id. */
-    private const PNG_LAYOUT_CHANGED = '2026-09-20 18:37:02';
+     *  21 Sep 2026: depth pass — card and fare-band drop shadows, navy
+     *  gradient fare band with a gold hairline, and the payment QR in a
+     *  scanner viewfinder (double ring + corner brackets). */
+    private const PNG_LAYOUT_CHANGED = '2026-09-21 03:10:00';
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the

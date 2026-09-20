@@ -393,11 +393,34 @@ final class AiAgent
      *  Gemini (generateContent) — the fallback brain
      * ---------------------------------------------------------------- */
 
+    /**
+     * The model ladder (21 Sep 2026). The newest Gemini flash models answer
+     * best but are the ones Google overloads: on this account a plain "hi"
+     * to gemini-3.8-flash came back 503 "experiencing high demand" roughly
+     * one call in three, while 3.6 and 3.5 answered every time. One model in
+     * a setting therefore meant choosing between a clever bot that sometimes
+     * says nothing and a dependable bot that is dull.
+     *
+     * So the newest is tried FIRST and a 503 / 429 / 5xx steps down the
+     * ladder within the same request — the passenger gets the best brain
+     * that is actually awake, and never a silence. gemini_model (when set)
+     * is pushed to the front, so the owner can still pin one from Settings.
+     */
+    private const GEMINI_LADDER = [
+        'gemini-3.8-flash',   // newest; best reasoning, flakiest capacity
+        'gemini-3.7-flash',
+        'gemini-3.6-flash',   // measured 3/3 available
+        'gemini-3.5-flash',   // measured 3/3 available — the floor
+    ];
+
     private static function askGemini(string $key, string $system, array $history, array $tools): ?array
     {
-        $model = Settings::getString('gemini_model', 'gemini-2.5-flash');
-        $url   = 'https://generativelanguage.googleapis.com/v1beta/models/'
-               . rawurlencode($model) . ':generateContent';
+        $pinned = trim(Settings::getString('gemini_model', ''));
+        $ladder = self::GEMINI_LADDER;
+        if ($pinned !== '') {
+            // Owner's pick first, then the rest of the ladder as the net.
+            $ladder = array_values(array_unique(array_merge([$pinned], $ladder)));
+        }
 
         $payload = [
             'systemInstruction' => ['parts' => [['text' => $system]]],
@@ -415,7 +438,19 @@ final class AiAgent
             )]];
         }
 
-        $res = self::http($url, $payload, ['content-type: application/json', 'x-goog-api-key: ' . $key]);
+        $res = null;
+        foreach ($ladder as $model) {
+            $url = 'https://generativelanguage.googleapis.com/v1beta/models/'
+                 . rawurlencode($model) . ':generateContent';
+            $res = self::http($url, $payload, ['content-type: application/json', 'x-goog-api-key: ' . $key]);
+            if ($res !== null) {
+                if ($model !== $ladder[0]) {
+                    Logger::info('Gemini stepped down the ladder', ['used' => $model], 'whatsapp');
+                }
+                break;
+            }
+            // self::http() already logged the status; try the next rung.
+        }
         if ($res === null) {
             return null;
         }
@@ -560,6 +595,77 @@ final class AiAgent
      * contradict each other. Everything after that is this channel and
      * this role.
      */
+    /**
+     * WHO WE ARE + HOW TO TALK LIKE A PERSON (21 Sep 2026, owner ask:
+     * "manche sita kura garos, marketing garos, hamro company ko barema
+     * website ko barema bhanos").
+     *
+     * Until now the assistant could look up a booking but could not answer
+     * "tapai ko company ko barema bhannus na" or "website ma ke ke cha?" —
+     * it had the register and no story. Everything here is READ from the
+     * settings the website footer and the ticket already print, so the bot
+     * can never introduce a company that does not match the paperwork.
+     *
+     * Marketing is deliberately fenced: offer, never push; one line, never
+     * a brochure; and only a claim that is true of this service.
+     */
+    private static function companyBriefing(): string
+    {
+        $name    = Settings::getString('company_legal', Settings::getString('company_name', APP_NAME));
+        $tagline = Settings::getString('company_tagline', '');
+        $ceo     = Settings::getString('company_ceo', Settings::getString('company_operator', ''));
+        $addr    = Settings::getString('company_address', '');
+        $cin     = Settings::getString('company_cin', '');
+        $web     = Settings::getString('company_web', 'shreehariglobal.in');
+        $counters = Settings::getString('company_counters', '');
+        $email   = Settings::getString('company_email', '');
+
+        $s = "\n=== WHO WE ARE (answer freely when asked; never invent beyond this) ===\n"
+           . "Company: " . $name . ($cin !== '' ? " (CIN " . $cin . ")" : '') . ".\n"
+           . ($tagline !== '' ? "What we do: " . $tagline . ".\n" : '')
+           . ($ceo !== '' ? "Founder and director: " . $ceo . ".\n" : '')
+           . ($addr !== '' ? "Head office: " . $addr . ".\n" : '')
+           . ($counters !== '' ? "Counters: " . $counters . ".\n" : '')
+           . "Website and app: " . $web . ($email !== '' ? " · " . $email : '') . ".\n"
+           . "We are a registered Indian private limited company running our own AC sleeper buses on the "
+           . "Gujarat–Nepal border route, plus import/export logistics. We are not a reseller or an aggregator: "
+           . "the bus, the driver and the counter staff are ours, so a passenger deals with the operator direct.\n\n"
+
+           . "=== WHAT THE WEBSITE / APP DOES (say this when someone asks what they can do online) ===\n"
+           . "Search buses and pick an exact berth on a live seat map · book without any account (phone + OTP) · "
+           . "pay by UPI, eSewa, a payment link a family member can pay, or cash at boarding · the e-ticket arrives "
+           . "on WhatsApp as a picture and a PDF · 'My tickets' shows every booking and lets them cancel or "
+           . "reschedule · a live map tracks where the bus is right now · it works offline once opened, so a "
+           . "ticket still opens at the border with no signal · Nepali, Hindi and English.\n\n"
+
+           . "=== TALKING LIKE A PERSON ===\n"
+           . "A. You are a real person at the counter, not a form. Greet the way a Nepali shopkeeper does, use "
+           . "their name once you know it, and react to what they actually said before answering — if they are "
+           . "going home for a festival, say something warm about it in half a line.\n"
+           . "B. Small talk is allowed and welcome: a greeting, 'kasto cha', thanks, a joke, a festival wish. "
+           . "Answer it like a human would, then gently bring it back to how you can help.\n"
+           . "C. Length follows the question. A yes/no gets one line. 'Tapai ko company ko barema bhannus' or "
+           . "'website ma ke cha' may take 5–8 lines — that is a real question and deserves a real answer. "
+           . "Never pad, never repeat yourself, never send a wall of text.\n"
+           . "D. If they ask something outside the bus and logistics business, say so warmly in one line and "
+           . "bring it back — do not lecture, do not refuse coldly.\n\n"
+
+           . "=== MARKETING (offer, never chase) ===\n"
+           . "E. When it genuinely fits the conversation, ONE line about why travelling with us is good: our own "
+           . "AC sleeper buses, direct Gujarat–Nepal border with no bus change, fixed fare that is the same "
+           . "online and at the counter, ticket on WhatsApp, live tracking, cash-at-boarding allowed, our own "
+           . "counters in Mehsana / Ahmedabad / Baroda / Surat, and staff who speak Nepali.\n"
+           . "F. Attach that line to a real moment: after answering their question, or when they are comparing, "
+           . "or when they say they travel often. Never open with it, never repeat it in the same conversation, "
+           . "never send it to somebody who is upset or mid-complaint.\n"
+           . "G. Never invent an offer, a discount, a festival scheme or a 'limited time' anything. If no tool "
+           . "gave you a price, do not name one.\n"
+           . "H. Someone asking about import/export or cargo: say we do it, take what they need, and pass them "
+           . "to the office number — do not quote freight rates yourself.\n";
+
+        return $s;
+    }
+
     private static function systemPrompt(array $ctx): string
     {
         $company = Settings::getString('company_name', APP_NAME);
@@ -576,8 +682,9 @@ final class AiAgent
             . "1. Write NEPALI (Devanagari) by default — natural, warm, the way a polite Nepali shopkeeper "
             . "speaks, never translated English. If the person writes in romanised Nepali, Hindi or English, "
             . "answer in THAT, and keep it simple.\n"
-            . "2. Short: 2–6 lines. No markdown, no *, no #, no bullet characters, no headings. Plain "
-            . "sentences and line breaks. One or two emoji at most.\n"
+            . "2. Usually 2–6 lines. A question about the company, the website or the route may take up to 8 — "
+            . "see 'TALKING LIKE A PERSON' below. No markdown, no *, no #, no bullet characters, no headings. "
+            . "Plain sentences and line breaks. One or two emoji at most.\n"
             . "3. Ask ONE question at a time. Never send a form or a list of fields.\n\n"
             . "FACTS\n"
             . "4. Anything about a booking, a seat, a fare, a bus position, money or a person — USE A TOOL. "
@@ -593,7 +700,8 @@ final class AiAgent
             . "If someone sends one, tell them not to share it.\n"
             . "8. You may never promise a seat, a fare, a refund or a date that a tool has not confirmed.\n"
             . "9. If the person is upset, angry or in a hurry, apologise in one line and give the office "
-            . "number instead of a long explanation.\n";
+            . "number instead of a long explanation.\n"
+            . self::companyBriefing();
 
         $sell = Settings::getBool('wa_agent_sell', false);
 
