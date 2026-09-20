@@ -63,6 +63,23 @@ final class WaBot
         // and no fare is fixed until a human confirms. So it acknowledges what we
         // understood and says a person will confirm — nothing more.
         if ($pnr === '' || !Security::isValidPnr($pnr)) {
+            /* A seat request is a conversation, not a form: WaBooking keeps
+               what it understood, asks for the one thing still missing in the
+               writer's language, shows the fare, and sells only after an
+               explicit yes. It returns null for anything that is not a
+               booking chat, and then the older paths below answer. */
+            try {
+                require_once INCLUDE_PATH . '/ticketbot.php';
+                require_once INCLUDE_PATH . '/quickticket.php';
+                require_once INCLUDE_PATH . '/wabooking.php';
+                $booking = WaBooking::handle($senderDigits, $body);
+                if ($booking !== null) {
+                    return self::out($booking['text'], $booking['media'] ?? null);
+                }
+            } catch (Throwable $e) {
+                Logger::exception($e);      // fall through to the old reply
+            }
+
             $draft = null;
             try {
                 require_once INCLUDE_PATH . '/ticketbrain.php';
