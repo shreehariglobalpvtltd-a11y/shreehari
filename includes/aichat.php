@@ -157,7 +157,12 @@ final class AiChat
             . "confirms it — or ask them to send their PNR (SHG-...) for ticket status.\n"
             . "5. Never ask for card numbers, CVV, OTP, passwords or any document number.\n"
             . "6. If the passenger sounds upset or the matter is urgent, apologise briefly and "
-            . "give the office number instead of a long explanation.";
+            . "give the office number instead of a long explanation.
+"
+            . "7. The briefing above is written for the website, so it mentions in-app routes "
+            . "like \"#/book\". Those mean nothing in WhatsApp — never print one. To send "
+            . "someone to the site, write the full address " . appUrl('') . " , or better, "
+            . "tell them to reply here with the date, how many seats and the boarding point.";
     }
 
     /** One call to whichever brain is configured. Returns the text, or null. */
@@ -206,18 +211,28 @@ final class AiChat
             ['Content-Type: application/json']
         );
 
-        // A retired model answers 404/400 for every message; pick a live one
-        // and try once more before giving up on the passenger.
-        if (($http === 404 || $http === 400) && Settings::getString('gemini_model', '') !== '') {
-            Settings::set('gemini_model', '');
-            $fresh = self::geminiPickModel($key);
-            if ($fresh !== '' && $fresh !== $model) {
+        /* ListModels happily lists models a given key may NOT call — a new
+           key gets "this model is no longer available to new users. Please
+           update your code to use models/X". Google names the replacement in
+           that message, so follow it; otherwise pick the next candidate and
+           never the one that just failed. */
+        if ($http === 404 || $http === 400) {
+            $next = self::geminiSuggestedModel($body);
+            if ($next === '' || $next === $model) {
+                $next = self::geminiPickModel($key, [$model]);
+            }
+            if ($next !== '' && $next !== $model) {
                 [$http, $body] = self::httpJson(
-                    'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($fresh)
+                    'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($next)
                         . ':generateContent?key=' . rawurlencode($key),
                     $payload,
                     ['Content-Type: application/json']
                 );
+                if ($http === 200) {
+                    Settings::set('gemini_model', $next);
+                    Logger::info('Gemini model switched', ['from' => $model, 'to' => $next], 'whatsapp');
+                }
+                $model = $next;
             }
         }
 
@@ -237,8 +252,21 @@ final class AiChat
         return trim($out) !== '' ? trim($out) : null;
     }
 
-    /** Ask Google which models this key can use, and keep the choice. */
-    private static function geminiPickModel(string $key): string
+    /** "Please update your code to use models/gemini-3.5-flash-lite". */
+    private static function geminiSuggestedModel(string $errorBody): string
+    {
+        if (preg_match('#use\s+models/([A-Za-z0-9._\-]+)#', $errorBody, $m) === 1) {
+            return $m[1];
+        }
+        return '';
+    }
+
+    /**
+     * Ask Google which models this key can use, and keep the choice.
+     *
+     * @param array<int, string> $exclude models already known to fail
+     */
+    private static function geminiPickModel(string $key, array $exclude = []): string
     {
         $ch = curl_init('https://generativelanguage.googleapis.com/v1beta/models?key=' . rawurlencode($key));
         curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => self::TIMEOUT_SEC]);
@@ -256,21 +284,28 @@ final class AiChat
             if (!in_array('generateContent', (array) ($m['supportedGenerationMethods'] ?? []), true)) {
                 continue;
             }
-            $names[] = preg_replace('#^models/#', '', (string) ($m['name'] ?? ''));
+            $name = (string) preg_replace('#^models/#', '', (string) ($m['name'] ?? ''));
+            if ($name !== '' && !in_array($name, $exclude, true)) {
+                $names[] = $name;
+            }
         }
         if ($names === []) {
             return '';
         }
 
-        /* A bus-ticket assistant wants the cheap fast tier, and a stable
-           name over a preview one. */
-        usort($names, static function (string $a, string $b): int {
-            $score = static function (string $n): int {
+        /* Which tier to prefer. "flash" is the cheap fast one a ticket
+           assistant wants; an owner paying for Pro can set gemini_tier=pro
+           and get the stronger model when the key is allowed one. A preview
+           or experimental name is always last — those disappear without
+           notice, and this bot answers passengers. */
+        $tier = strtolower(trim(Settings::getString('gemini_tier', 'flash'))) === 'pro' ? 'pro' : 'flash';
+        usort($names, static function (string $a, string $b) use ($tier): int {
+            $score = static function (string $n) use ($tier): int {
                 $s = 0;
-                if (str_contains($n, 'flash')) { $s -= 4; }
-                if (str_contains($n, 'lite'))  { $s -= 1; }
+                if (str_contains($n, $tier))   { $s -= 4; }
+                if ($tier === 'flash' && str_contains($n, 'lite')) { $s -= 1; }
                 if (str_contains($n, 'preview') || str_contains($n, 'exp')) { $s += 5; }
-                if (str_contains($n, 'vision') || str_contains($n, 'embedding')) { $s += 10; }
+                if (str_contains($n, 'vision') || str_contains($n, 'embedding') || str_contains($n, 'tts')) { $s += 10; }
                 return $s;
             };
             return [$score($a), $a] <=> [$score($b), $b];
