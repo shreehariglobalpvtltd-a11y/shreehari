@@ -429,3 +429,29 @@ document.addEventListener('click', (e) => {
   const b = DB.bookings.find(x => x.id === btn.getAttribute('data-ics'));
   if (b) downloadICS(b);
 });
+/* ================================================================
+   📍 OPEN A PLACE IN OUR OWN MAP (20 Sep 2026)
+   Owner: "yo location pin point banayera afno map ma direct open hune, ya
+   Google Map bata ni open hune ... click garexi open hos". Any element with
+   data-navto="lat,lng" opens #/nav with that point pinned and set as the
+   destination; the marker's popup there already carries Call, WhatsApp and
+   the Google Maps link, so both halves of the ask are one tap apart.
+   The coordinates live in the markup, next to the office they belong to —
+   an office whose pin nobody has surveyed simply has no 📍 to tap.
+================================================================ */
+document.addEventListener('click', function (e) {
+  var b = e.target.closest && e.target.closest('[data-navto]');
+  if (!b) return;
+  var p = String(b.getAttribute('data-navto') || '').split(',');
+  var lat = parseFloat(p[0]), lng = parseFloat(p[1]);
+  if (!isFinite(lat) || !isFinite(lng)) return;
+  e.preventDefault();
+  var label = b.getAttribute('data-navto-label') || 'S Hari Global';
+  if (typeof window.snGoToPlace === 'function') {
+    location.hash = '#/nav';
+    setTimeout(function () { window.snGoToPlace(lat, lng, label); }, 60);
+  } else {
+    window.SHG_NAVTO = { lat: lat, lng: lng, label: label };
+    location.hash = '#/nav';
+  }
+});

@@ -3650,6 +3650,32 @@ body.bk-regular .qt-collapsed{display:flex}
 .wa-row small{display:block;color:var(--muted);font-size:12px;margin-top:1px}
 .wa-row i{font-style:normal;color:#25D366;font-weight:900}
 .wa-row-hot{background:linear-gradient(135deg,#E7F8EE,#fff);border-color:#BFE8CF;margin-bottom:10px}
+/* 20 Sep 2026 — the 📍 beside an office. A sibling of the row, not a
+   child: the row itself is the WhatsApp link and an anchor cannot nest. */
+.wa-row-wrap{display:flex;align-items:stretch;gap:8px;min-width:0}
+.wa-row-wrap>.wa-row{flex:1 1 auto;min-width:0}
+.wa-pin{flex:0 0 auto;width:56px;min-height:56px;display:inline-flex;align-items:center;justify-content:center;
+  font-size:21px;line-height:1;padding:0;border:1.5px solid var(--line);border-radius:14px;
+  background:var(--card,#fff);color:var(--ink);cursor:pointer;
+  transition:transform .18s var(--ease-decel),border-color .18s,box-shadow .18s}
+.wa-pin:hover{border-color:var(--orange);box-shadow:0 4px 14px rgba(240,120,0,.18)}
+.wa-pin:active{transform:scale(.94)}
+/* the 📍 on the contact card's address row does the same job */
+.ico-pin{border:0;padding:0;cursor:pointer;transition:transform .18s var(--ease-decel);
+  /* it is a <button> inside a .c-row, so it has to opt out of the global
+     44 px tap target and inherit the row's type - otherwise its tile is
+     4 px taller than the ones under it and the 📍 is a size smaller.
+     Everything else (the blue tile, 40x40, the radius) stays with the
+     .c-row .ico rule in app.css, which outranks this one. */
+  min-width:0;min-height:0;font:inherit}
+/* Scoped, because the two rules it has to beat live in app.css and both
+   outrank a bare .ico-pin: button[type=button]{min-height:44px;min-width:44px}
+   stretched the tile past its 40x40 neighbours, and .c-row span{font-size:13.5px}
+   never reached a <button>, so the 📍 took the row's own 16px. Same numbers as
+   the spans beside it - change them together. */
+.c-row .ico-pin{min-width:0;min-height:0;font-size:13.5px}
+.ico-pin:hover{filter:drop-shadow(0 2px 6px rgba(240,120,0,.5))}
+.ico-pin:active{transform:scale(.9)}
 .wa-row-hot>span{background:#25D366;color:#fff}
 /* one-tap request, sent by the company API number (19 Sep 2026) */
 .wa-req{display:grid;gap:8px;margin:0 0 12px;padding:12px;border:1.5px solid #BFE8CF;border-radius:16px;background:linear-gradient(135deg,#F1FBF5,var(--card,#fff))}

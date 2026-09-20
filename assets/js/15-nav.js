@@ -1641,7 +1641,7 @@ function initNavApp(){
      Popup: address, call, WhatsApp, in-app directions, Google Maps. */
   (function(){
     var C=(typeof CONFIG!=='undefined'&&CONFIG)||{}, co=C.company||{};
-    var OFF={lat:23.588,lng:72.369,name:co.name||'S Hari Global Pvt Ltd',
+    var OFF={lat:23.6008959,lng:72.3807235,name:co.name||'S Hari Global Pvt Ltd',
       addr:co.address||'Near Shilpa Garage, Silver Complex, Mehsana - 384002, Gujarat',
       tel:C.phone||'+91 91048 01507', wa:C.adminWhatsApp||'919104801507'};
     var oel=document.createElement('div'); oel.className='sn-office-m';
@@ -1656,6 +1656,27 @@ function initNavApp(){
       +'<a class="op-btn" href="'+gmaps+'" target="_blank" rel="noopener">🗺️ Google Maps</a></div></div>';
     var pop=new maplibregl.Popup({offset:[0,-38],closeButton:true,maxWidth:'290px',className:'sn-office-popup'}).setHTML(html);
     new maplibregl.Marker({element:oel,anchor:'bottom'}).setLngLat([OFF.lng,OFF.lat]).setPopup(pop).addTo(map);
+    /* 20 Sep 2026 — a 📍 tapped anywhere else in the app (the office list in
+       the WhatsApp sheet, the address row on the contact card) lands here.
+       Called straight away when the navigator is already loaded; on a first
+       open the tap leaves the place in window.SHG_NAVTO and the block below
+       picks it up. Nothing is geocoded: the caller passes a surveyed
+       coordinate or there is no 📍 to tap. */
+    window.snGoToPlace=function(lat,lng,label){
+      if(!SN.map){ window.SHG_NAVTO={lat:lat,lng:lng,label:label}; return; }
+      snSetDest(lng,lat,label||OFF.name);
+      if(SN.gpsPos&&!SN.origin) snSetOrigin(SN.gpsPos.lng,SN.gpsPos.lat,'My location');
+      /* offset upward: the half sheet owns the lower half of the screen, and
+         centring on the pin would park it behind that sheet. */
+      snEase({center:[lng,lat],zoom:16,duration:900,offset:[0,-Math.round(innerHeight*0.16)]});
+      if(typeof snSheet==='function') snSheet('half');
+    };
+    /* Deliberately NOT inside map.on('load'): on a weak connection that event
+       is many seconds after the map object exists, and the traveller would
+       stare at a map with no pin on it. MapLibre queues a marker and a fly-to
+       made before the style is ready, so this is safe here and immediate. */
+    (function(){ var go=window.SHG_NAVTO; if(!go) return; window.SHG_NAVTO=null;
+      setTimeout(function(){ window.snGoToPlace(go.lat,go.lng,go.label); },120); })();
     window.snOfficeNav=function(){
       try{ pop.remove(); }catch(e){}
       snSetDest(OFF.lng,OFF.lat,OFF.name+' (Mehsana office)');

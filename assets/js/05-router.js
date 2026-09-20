@@ -2472,7 +2472,7 @@ if (store.local && !store.remote) {
     sheet.addEventListener('click', function (e) {
       var tgt = e.target;
       if (tgt.closest('#waSheetBg') || tgt.closest('#waSheetClose')) { closeSheet(); return; }
-      if (tgt.closest('a.wa-row')) setTimeout(closeSheet, 150);
+      if (tgt.closest('a.wa-row') || tgt.closest('.wa-pin')) setTimeout(closeSheet, 150);
     });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !sheet.hidden) closeSheet(); });
   }
