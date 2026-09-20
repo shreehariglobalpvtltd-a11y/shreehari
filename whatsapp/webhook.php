@@ -225,7 +225,7 @@ function wh_inbound(array $msg): void
     }
 
     require_once INCLUDE_PATH . '/wabot.php';
-    $reply = WaBot::reply('+' . $from, $text);
+    $reply = WaBot::reply('+' . $from, $text, $type);
 
     $media = $reply['media'];
     if ($media !== null && $media !== '' && mb_strlen($reply['text']) <= 1024) {

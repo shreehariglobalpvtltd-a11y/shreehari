@@ -39,12 +39,38 @@ final class WaBot
      * @param string $body message text
      * @return array{text: string, media: ?string}
      */
-    public static function reply(string $from, string $body): array
+    public static function reply(string $from, string $body, string $kind = 'text'): array
     {
         $company      = Settings::getString('company_name', APP_NAME);
         $phone        = Settings::officePhone();
         $body         = trim($body);
         $senderDigits = normalisePhone($from);
+
+        /* A photo or a file with no caption: on this number that is a
+           payment screenshot nine times out of ten. The generic menu told
+           the sender nothing about the money they had just sent, so say
+           what happens next and ask for the one thing we need to match it. */
+        if ($body === '' && in_array($kind, ['image', 'document', 'video'], true)) {
+            return self::out(
+                "📩 " . $company . "\n"
+                . "तपाईंले पठाउनुभएको फोटो प्राप्त भयो।\n\n"
+                . "यो भुक्तानीको प्रमाण हो भने आफ्नो बुकिङ नं. (जस्तै SHG-2026-00123) पनि पठाउनुहोस् — "
+                . "हाम्रो टोलीले जाँचेर टिकट यहीँ पठाउँछ।\n\n"
+                . "Photo received. If this is a payment proof, please also send your booking number "
+                . "(like SHG-2026-00123) so we can match it."
+                . ($phone !== '' ? "\n\nसहयोग: " . $phone : '')
+            );
+        }
+
+        /* A voice note: nobody at the desk can act on it automatically. */
+        if ($body === '' && in_array($kind, ['audio', 'voice'], true)) {
+            return self::out(
+                "🎤 " . $company . "\n"
+                . "अहिले म आवाज सुन्न सक्दिनँ। कृपया लेखेर पठाउनुहोस् — "
+                . "मिति, कति सिट र कहाँबाट चढ्ने।"
+                . ($phone !== '' ? "\n\nवा फोन गर्नुहोस्: " . $phone : '')
+            );
+        }
 
         // Pull a PNR out of the message text.
         $pnr = '';
