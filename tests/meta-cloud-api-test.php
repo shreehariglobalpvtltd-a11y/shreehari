@@ -49,6 +49,7 @@ function check(string $l, bool $ok, string $extra = ''): void {
 $cleanup = static function (): void {
     Database::run("DELETE FROM message_logs WHERE provider_ref LIKE 'wamid.METATEST%' OR to_number = :t", ['t' => T_SENDER]);
     Database::run("DELETE FROM kv_store WHERE kscope = 'wa_inbound' AND kkey = :t", ['t' => T_SENDER]);
+    Database::run("DELETE FROM kv_store WHERE kscope = 'global' AND kkey = 'wa_meta.billing_ok_at'");
     Database::run("DELETE FROM rate_limits WHERE (bucket = 'wa_meta_seen' AND identifier LIKE 'wamid.METATEST%') OR (bucket = 'wa_bot' AND identifier = :n)",
         ['n' => normalisePhone(T_SENDER)]);
 };
@@ -136,8 +137,11 @@ try {
     check('failed status flips row to failed', ($row['status'] ?? '') === 'failed');
     check('error carries "(code 131026)" for the retry cron', str_contains((string) ($row['error'] ?? ''), '(code 131026)'), (string) ($row['error'] ?? ''));
 
-    $signed($event(T_PHONEID, ['statuses' => [['id' => 'wamid.METATEST2', 'status' => 'read', 'recipient_id' => T_SENDER]]]));
+    $signed($event(T_PHONEID, ['statuses' => [['id' => 'wamid.METATEST2', 'status' => 'read', 'recipient_id' => T_SENDER,
+        'pricing' => ['billable' => true, 'pricing_model' => 'PMP', 'category' => 'utility']]]]));
     check('read status keeps row sent, error cleared', ($status('wamid.METATEST2')['status'] ?? '') === 'sent');
+    check('billable delivery records proof that WABA billing works',
+        (int) Database::scalar("SELECT kvalue FROM kv_store WHERE kscope='global' AND kkey='wa_meta.billing_ok_at'", [], 0) > time() - 60);
 
     $signed($event('999999999', ['statuses' => [['id' => 'wamid.METATEST3', 'status' => 'failed', 'recipient_id' => T_SENDER,
         'errors' => [['code' => 131026]]]]]));

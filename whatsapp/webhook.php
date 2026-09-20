@@ -161,6 +161,24 @@ function wh_status(array $st): void
         ['id' => (int) $row['id']]
     );
 
+    /* A free message inside an open 24 h service window can be delivered even
+       while WABA billing is broken. Only Meta's explicit billable=true status
+       proves that error 131042 is actually cleared. The retry cron uses this
+       timestamp to release a payment-blocked backlog without mistaking a free
+       service-window reply for billing recovery. */
+    if ($final === 'sent' && ($st['pricing']['billable'] ?? false) === true) {
+        try {
+            Database::run(
+                "INSERT INTO kv_store (kscope, kkey, kvalue, updated_by)
+                 VALUES ('global', 'wa_meta.billing_ok_at', :v, 'webhook')
+                 ON DUPLICATE KEY UPDATE kvalue = :v2, updated_by = 'webhook'",
+                ['v' => (string) time(), 'v2' => (string) time()]
+            );
+        } catch (Throwable $e) {
+            Logger::warning('Meta billing recovery proof could not be stored: ' . $e->getMessage(), [], 'whatsapp');
+        }
+    }
+
     if ($final === 'failed') {
         Logger::warning('WhatsApp delivery FAILED (Meta, async)', [
             'wamid' => $wamid, 'booking' => $row['booking_id'], 'code' => $code,

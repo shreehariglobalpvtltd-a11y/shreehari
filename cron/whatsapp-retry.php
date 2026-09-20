@@ -106,7 +106,7 @@ $purposeM2 = $hasPurpose ? " AND (m2.purpose IS NULL OR m2.purpose = 'ticket')" 
 $purposeT  = $hasPurpose ? " AND (t.purpose IS NULL OR t.purpose = 'ticket')" : '';
 
 $lastFail = Database::fetch(
-    "SELECT id, error FROM message_logs
+    "SELECT id, error, created_at FROM message_logs
       WHERE channel = 'whatsapp' AND status = 'failed' AND error IS NOT NULL" . $purposeM . "
       ORDER BY id DESC LIMIT 1"
 );
@@ -116,19 +116,31 @@ if ($lastFail !== null) {
     foreach (['63112', '63016', '63007', '20003', '(code 132000)', '(code 132001)', '(code 131031)', '(code 131042)'] as $senderCode) {
         if (str_contains((string) $lastFail['error'], $senderCode)) {
             /* A sender-level failure is a brake, not a permanent tombstone.
-               Meta reports these asynchronously, so keep the brake on until a
-               later ticket has remained successful for two minutes. Before
-               this recovery probe, one historical 131042 kept the retry job
-               stopped forever even after a new ticket was delivered/read. */
-            $recovered = Database::exists(
-                "SELECT 1 FROM message_logs
-                  WHERE channel = 'whatsapp'
-                    AND status = 'sent'
-                    AND id > :failed_id
-                    AND created_at <= NOW() - INTERVAL 2 MINUTE" . $purposeM . "
-                  LIMIT 1",
-                ['failed_id' => (int) $lastFail['id']]
-            );
+               Meta reports these asynchronously. A stable later ticket proves
+               most faults cleared; billing is stricter because free 24 h-window
+               traffic can succeed while paid templates still fail. */
+            if ($senderCode === '(code 131042)') {
+                // A free 24 h-window delivery does not prove billing works.
+                // whatsapp/webhook.php records this only when Meta explicitly
+                // reports a successful message as billable.
+                $billingOkAt = (int) Database::scalar(
+                    "SELECT kvalue FROM kv_store
+                      WHERE kscope = 'global' AND kkey = 'wa_meta.billing_ok_at'
+                      LIMIT 1",
+                    [], 0
+                );
+                $recovered = $billingOkAt > (int) strtotime((string) $lastFail['created_at']);
+            } else {
+                $recovered = Database::exists(
+                    "SELECT 1 FROM message_logs
+                      WHERE channel = 'whatsapp'
+                        AND status = 'sent'
+                        AND id > :failed_id
+                        AND created_at <= NOW() - INTERVAL 2 MINUTE" . $purposeM . "
+                      LIMIT 1",
+                    ['failed_id' => (int) $lastFail['id']]
+                );
+            }
             if ($recovered) {
                 break;
             }
