@@ -1196,6 +1196,16 @@ final class Ticket
         $sw2 = self::gdWidth(19, $sub);
         self::gdText($im, 19, $W - 88 - $sw2, 1222 + $grow, imagecolorallocate($im, 200, 210, 230), $sub, false);
 
+        /* What the offer saved them, on the ticket itself (owner ask, 20 Sep
+           2026). The fare band already shows what they paid; without this the
+           discount lived only in the checkout screen they have closed. */
+        $offerCut = (float) ($booking['coupon_discount'] ?? 0);
+        if ($offerCut > 0) {
+            $offerTxt = 'तपाईंले बचाउनुभयो  ·  SAVED ₹ ' . number_format($offerCut);
+            $ow = self::gdWidth(18, $offerTxt);
+            self::gdText($im, 18, $W - 88 - $ow, 1192 + $grow, $gold, $offerTxt, true);
+        }
+
         /* QR + help block */
         $qrData = appUrl('verify-ticket.php') . '?pnr=' . urlencode($pnr) . '&k=' . self::downloadToken($pnr);
         $qrTmp  = tempnam(sys_get_temp_dir(), 'shgqr');
@@ -1462,7 +1472,7 @@ final class Ticket
 
     /** Bump whenever renderTicketPng()'s layout changes — see pngPath().
      *  11 Sep 2026: seat chips now print the LA1/UA1 row-letter grid id. */
-    private const PNG_LAYOUT_CHANGED = '2026-09-20 14:15:19';
+    private const PNG_LAYOUT_CHANGED = '2026-09-20 18:37:02';
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the

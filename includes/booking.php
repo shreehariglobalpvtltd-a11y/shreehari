@@ -2804,7 +2804,11 @@ final class BookingService
             'perSeat'         => $perSeat,
             'base'            => $quote['base'],
             'groupDiscount'   => $quote['groupDiscount'],
-            'couponCode'      => ($request['couponCode'] ?? '') !== '' && $quote['couponDiscount'] > 0 ? strtoupper((string) $request['couponCode']) : null,
+            // The code the fare engine actually applied: what the passenger
+            // typed, or the running offer it picked for them.
+            'couponCode'      => ((string) ($quote['couponCode'] ?? '')) !== '' && $quote['couponDiscount'] > 0
+                ? strtoupper((string) $quote['couponCode'])
+                : null,
             'couponDiscount'  => $quote['couponDiscount'],
             'tierDiscount'    => $quote['tierDiscount'],
             'tierName'        => $quote['tierName'],

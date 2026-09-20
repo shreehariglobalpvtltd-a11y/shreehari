@@ -355,6 +355,47 @@ final class Fare
      *
      * @return array{ok: bool, error?: string, amount?: float, coupon?: array<string, mixed>}
      */
+    /**
+     * The running offer, applied without anyone typing a code (20 Sep 2026).
+     *
+     * A Dashain/Tihar offer has to reach every passenger, not only the ones
+     * who know a code. Rows flagged auto_apply are considered here and put
+     * through the SAME couponDiscount() validation as a typed code, so
+     * dates, per-route limits, minimum amount, usage caps and the max
+     * discount ceiling all behave identically. When several qualify the
+     * passenger gets the biggest one.
+     *
+     * @return array{ok: bool, amount?: float, code?: string, title?: string}
+     */
+    public static function autoOffer(float $subtotal, string $phone, ?int $routeId = null): array
+    {
+        $today = todayISO();
+        $rows  = Database::fetchAll(
+            "SELECT code, title FROM coupons
+              WHERE is_active = 1 AND auto_apply = 1
+                AND (valid_from  IS NULL OR valid_from  <= :d1)
+                AND (valid_until IS NULL OR valid_until >= :d2)
+                AND (route_id IS NULL OR route_id = :r)
+              ORDER BY id DESC
+              LIMIT 20",
+            ['d1' => $today, 'd2' => $today, 'r' => $routeId]
+        );
+
+        $best = ['ok' => false];
+        foreach ($rows as $row) {
+            $try = self::couponDiscount((string) $row['code'], $subtotal, $phone, $routeId);
+            if (!empty($try['ok']) && (float) $try['amount'] > (float) ($best['amount'] ?? 0)) {
+                $best = [
+                    'ok'     => true,
+                    'amount' => (float) $try['amount'],
+                    'code'   => (string) $row['code'],
+                    'title'  => trim((string) ($row['title'] ?? '')) !== '' ? (string) $row['title'] : (string) $row['code'],
+                ];
+            }
+        }
+        return $best;
+    }
+
     public static function couponDiscount(string $code, float $subtotal, string $phone, ?int $routeId = null): array
     {
         $code = strtoupper(Security::clean($code, 40));
@@ -558,7 +599,7 @@ final class Fare
             $breakdown[] = ['label' => 'Group discount (' . $seatCount . ' seats)', 'amount' => -$groupCut];
         }
 
-        // 2. Coupon
+        // 2. Coupon — typed by the passenger, or the running offer
         $couponCut = 0.0;
         if ($couponCode !== '') {
             $couponResult = self::couponDiscount($couponCode, $running, $phone, $routeId);
@@ -566,6 +607,14 @@ final class Fare
                 $couponCut   = (float) $couponResult['amount'];
                 $running    -= $couponCut;
                 $breakdown[] = ['label' => 'Coupon ' . strtoupper($couponCode), 'amount' => -$couponCut];
+            }
+        } else {
+            $auto = self::autoOffer($running, $phone, $routeId);
+            if (!empty($auto['ok'])) {
+                $couponCut   = (float) $auto['amount'];
+                $running    -= $couponCut;
+                $couponCode  = (string) $auto['code'];   // stored on the booking
+                $breakdown[] = ['label' => (string) $auto['title'], 'amount' => -$couponCut];
             }
         }
 
@@ -604,6 +653,7 @@ final class Fare
             'base'           => $baseAmount,
             'groupDiscount'  => $groupCut,
             'couponDiscount' => $couponCut,
+            'couponCode'     => $couponCut > 0 ? strtoupper($couponCode) : '',
             'tierDiscount'   => $tierCut,
             'tierName'       => $tierCut > 0 ? $tier['tierName'] : '',
             'pointsUsed'     => $points['points'],
