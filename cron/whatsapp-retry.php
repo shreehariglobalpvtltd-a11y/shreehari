@@ -113,7 +113,11 @@ $lastFail = Database::fetch(
 if ($lastFail !== null) {
     // 18 Sep 2026: Meta Cloud API equivalents, written by whatsapp/webhook.php as
     // "(code N)": template missing / not approved, WABA locked, payment problem.
-    foreach (['63112', '63016', '63007', '20003', '(code 132000)', '(code 132001)', '(code 131031)', '(code 131042)'] as $senderCode) {
+    // 21 Sep 2026: Gupshup equivalents from whatsapp/gupshup-webhook.php —
+    // template not found / not approved / paused, and the free-form-outside-
+    // 24 h refusal (1014). Same shape: "(code N)".
+    foreach (['63112', '63016', '63007', '20003', '(code 132000)', '(code 132001)', '(code 131031)', '(code 131042)',
+              '(code 1002)', '(code 1004)', '(code 1005)', '(code 1014)', '(code 62)', '(code 66)'] as $senderCode) {
         if (str_contains((string) $lastFail['error'], $senderCode)) {
             /* A sender-level failure is a brake, not a permanent tombstone.
                Meta reports these asynchronously. A stable later ticket proves

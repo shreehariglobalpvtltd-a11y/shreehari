@@ -310,6 +310,40 @@ final class Notify
             return false;
         }
 
+        /* Idempotency guard (21 Sep 2026): a confirmed booking must never
+           be handed the same ticket twice. bookingConfirmed() runs inside
+           the EventBus fan-out, so if a payment webhook re-fires (Razorpay
+           duplicate delivery) or an admin presses "Resend WhatsApp ticket"
+           on a booking whose confirmation went out cleanly, this returns
+           the earlier success without touching the driver again. Applies
+           ONLY to purpose=ticket: staff tools (agent statements, reminders)
+           deliberately re-send. The manual Resend button uses
+           resendTicketWhatsApp() and passes purpose=ticket, so it is also
+           protected — a customer who actually needs a resend is served
+           either by cron/whatsapp-retry.php (only fires on a FAILED latest
+           row) or by the button after the earlier row is marked failed by
+           the delivery callback. */
+        if (($meta['purpose'] ?? '') === 'ticket' && $bookingId && (int) $bookingId > 0) {
+            try {
+                $prior = Database::fetch(
+                    "SELECT status FROM message_logs
+                      WHERE channel = 'whatsapp' AND booking_id = :b
+                        AND (purpose IS NULL OR purpose = 'ticket')
+                      ORDER BY id DESC LIMIT 1",
+                    ['b' => (int) $bookingId]
+                );
+                if ($prior !== null && ($prior['status'] ?? '') === 'sent') {
+                    self::$journal[] = ['to' => $number, 'ok' => true, 'link' => null, 'driver' => $driver, 'reason' => 'idempotent'];
+                    return true;
+                }
+            } catch (Throwable $ignored) {
+                // Idempotency is a guard, not a hard requirement — if the
+                // check itself falls over (missing `purpose` column on an
+                // older DB, or a transient MySQL hiccup) fall through to
+                // the normal send path and let the driver do its work.
+            }
+        }
+
         if ($driver === 'twilio') {
             $sid   = Settings::getString('twilio_account_sid', '');
             $token = Settings::getString('twilio_auth_token', '');
@@ -365,6 +399,29 @@ final class Notify
                     return true;
                 }
                 // Same reasoning as the Twilio branch above.
+            }
+        } elseif ($driver === 'gupshup') {
+            // 21 Sep 2026: Gupshup BSP driver. Credentials resolve env ->
+            // settings in whatsapp/gupshup.php (GUPSHUP_API_KEY / _APP_NAME /
+            // _SOURCE_NUMBER). The Meta Cloud API path is kept live as the
+            // rollback driver — flipping whatsapp_driver back to 'cloud_api'
+            // is all it takes.
+            require_once ROOT_PATH . '/whatsapp/gupshup.php';
+            if (GUPSHUP_API_KEY !== '' && GUPSHUP_SOURCE_NUMBER !== '') {
+                self::$lastProviderError = '';
+                if (self::whatsappGupshup($number, $message, $mediaUrl, $templateVars, (string) ($meta['media_type'] ?? ''), $ref, (string) ($meta['template_name'] ?? ''))) {
+                    self::$journal[] = ['to' => $number, 'ok' => true, 'link' => null, 'driver' => 'gupshup', 'reason' => ''];
+                    // provider_ref = Gupshup messageId, the key
+                    // whatsapp/gupshup-webhook.php matches delivery statuses
+                    // on (same role as the wamid and Twilio SID).
+                    self::logMessage('whatsapp', $number, $message, 'sent', [
+                        'provider' => 'gupshup', 'bookingId' => $bookingId, 'sid' => (string) $ref,
+                    ] + $meta);
+                    return true;
+                }
+                // Same reasoning as the Twilio / Cloud API branches above:
+                // fall through to the click-to-chat link so the ticket is
+                // never lost silently.
             }
         }
 
@@ -593,8 +650,23 @@ final class Notify
                 : ['ok' => false, 'stage' => 'api', 'detail' => 'Meta Cloud API send failed — check whatsapp_api_token / whatsapp_phone_id and logs/ (channel: whatsapp).'];
         }
 
+        if ($driver === 'gupshup') {
+            require_once ROOT_PATH . '/whatsapp/gupshup.php';
+            if (GUPSHUP_API_KEY === '' || GUPSHUP_SOURCE_NUMBER === '') {
+                return ['ok' => false, 'stage' => 'config',
+                    'detail' => 'Gupshup is selected but GUPSHUP_API_KEY / GUPSHUP_SOURCE_NUMBER are missing. Fill them in Settings (or the FPM env), Save, then test again.'];
+            }
+            $ok = self::whatsapp($phone, $msg, null, $countryHint);
+            return $ok === true
+                ? ['ok' => true, 'stage' => 'sent', 'detail' => 'Sent to +' . $number . ' via Gupshup — check WhatsApp on that phone.']
+                : ['ok' => false, 'stage' => 'api',
+                    'detail' => 'Gupshup send failed'
+                        . (self::$lastProviderError !== '' ? ' — ' . mb_substr(self::$lastProviderError, 0, 300) : '')
+                        . '. Check gupshup_api_key / gupshup_app_name / gupshup_source and logs/ (channel: whatsapp).'];
+        }
+
         return ['ok' => false, 'stage' => 'driver',
-            'detail' => 'WhatsApp driver is "click-to-chat", which does not auto-send. Set whatsapp_driver to "twilio" above, Save, then test.'];
+            'detail' => 'WhatsApp driver is "click-to-chat", which does not auto-send. Set whatsapp_driver to "twilio", "cloud_api" or "gupshup" above, Save, then test.'];
     }
 
     /** Friendly, actionable advice for the common Twilio WhatsApp error codes. */
@@ -806,7 +878,9 @@ final class Notify
 
         $driver = Settings::getString('whatsapp_driver', 'click_to_chat');
         $templateInForce = ($driver === 'twilio' && Settings::getString('twilio_content_sid', '') !== '')
-            || ($driver === 'cloud_api' && Settings::getString('whatsapp_template_name', '') !== '');
+            || ($driver === 'cloud_api' && Settings::getString('whatsapp_template_name', '') !== '')
+            || ($driver === 'gupshup' && (Settings::getString('whatsapp_template_name_gupshup', '') !== ''
+                                           || Settings::getString('whatsapp_template_name', '') !== ''));
         if ($templateInForce) {
             $res = self::resendTicketWhatsApp($booking);
             $res['detail'] = (string) ($res['detail'] ?? '')
@@ -1137,6 +1211,85 @@ final class Notify
         }
 
         return $r['success'];
+    }
+
+    /**
+     * Gupshup driver (21 Sep 2026) — mirror image of whatsappCloudApi().
+     * Same contract: pick the payload shape (template / image / document /
+     * plain text) from what the caller passed and hand it to gupshupPost().
+     * A refused template (Gupshup 1004/1005/…"template not approved") falls
+     * back to a free-form image + caption or text, so a ticket inside a 24 h
+     * service window still reaches the customer while a new template moves
+     * through review.
+     *
+     * Templates: Gupshup identifies a template by NAME by default; when the
+     * WABA is embedded-signup-linked to Gupshup the Meta-approved templates
+     * are already synced and the SAME name works on both drivers, which is
+     * why $templateName defaults to Settings::whatsapp_template_name.
+     * $whatsapp_template_name_gupshup can override it when the templates
+     * are cloned rather than synced.
+     */
+    private static function whatsappGupshup(string $number, string $message, ?string $mediaUrl = null, array $templateVars = [], string $mediaType = '', ?string &$providerRef = null, string $templateName = ''): bool
+    {
+        require_once ROOT_PATH . '/whatsapp/gupshup.php';
+
+        // Header image: explicit media wins, else template var 7 (same
+        // contract as ticketTemplateVars() -> Meta Cloud API).
+        $image = ($mediaUrl !== null && $mediaUrl !== '') ? $mediaUrl : (string) ($templateVars['7'] ?? '');
+        // Prefer the Gupshup-specific override when set; else the shared
+        // whatsapp_template_name; a caller-supplied $templateName wins over
+        // both.
+        $template = $templateName !== ''
+            ? $templateName
+            : (Settings::getString('whatsapp_template_name_gupshup', '') !== ''
+                ? Settings::getString('whatsapp_template_name_gupshup', '')
+                : Settings::getString('whatsapp_template_name', ''));
+
+        $r = ['success' => false, 'message_id' => '', 'error' => '', 'http' => 0, 'code' => 0];
+
+        if ($template !== '' && $templateVars !== []) {
+            $bodyVars = $templateVars;
+            unset($bodyVars['7']);   // 7 is the header image, not a body slot
+            ksort($bodyVars, SORT_NATURAL);
+            $r = sendGupshupTemplate($number, $template, $bodyVars, $image !== '' ? $image : null);
+
+            /* Gupshup refuses the template itself (typical codes 1002/1004/
+               1005/2010 for "template not approved / paused / mismatched
+               params"). The message is fine, so send it as free text / image
+               inside an open 24 h window — the moment Gupshup approves the
+               template this retry stops happening on its own. */
+            if (!$r['success']) {
+                $err = (string) ($r['error'] ?? '');
+                $tplBad = str_contains($err, 'template') || str_contains($err, 'Template')
+                    || in_array((int) $r['code'], [1002, 1004, 1005, 2010, 62, 66], true);
+                if ($tplBad) {
+                    if ($image !== '' && ($mediaType === 'document' || preg_match('/\.pdf(\?|$)/i', $image) === 1)) {
+                        $fn = basename((string) parse_url($image, PHP_URL_PATH));
+                        if (preg_match('/\.pdf$/i', $fn) !== 1) { $fn = 'statement.pdf'; }
+                        $r = sendGupshupDocument($number, $image, $fn, mb_substr($message, 0, 1024));
+                    } elseif ($image !== '') {
+                        $r = sendGupshupImage($number, $image, mb_substr($message, 0, 1024));
+                    } else {
+                        $r = sendGupshupText($number, $message);
+                    }
+                }
+            }
+        } elseif ($image !== '' && ($mediaType === 'document' || preg_match('/\.pdf(\?|$)/i', $image) === 1)) {
+            $fn = basename((string) parse_url($image, PHP_URL_PATH));
+            if (preg_match('/\.pdf$/i', $fn) !== 1) { $fn = 'statement.pdf'; }
+            $r = sendGupshupDocument($number, $image, $fn, mb_substr($message, 0, 1024));
+        } elseif ($image !== '') {
+            // Ticket path: the PNG rides inline in the chat with the caption.
+            $r = sendGupshupImage($number, $image, mb_substr($message, 0, 1024));
+        } else {
+            $r = sendGupshupText($number, $message);
+        }
+
+        $providerRef = $r['message_id'];
+        if (!$r['success']) {
+            self::$lastProviderError = trim((string) ($r['error'] ?? ''));
+        }
+        return (bool) $r['success'];
     }
 
     /**
