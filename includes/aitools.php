@@ -1096,17 +1096,19 @@ final class AiTools
             return self::no('Give at least three characters to search for.');
         }
 
+        /* One placeholder per occurrence: PDO runs with emulation off, where a
+           named parameter may not be bound twice (HY093). */
         $digits = normalisePhone($q);
         $rows = Database::fetchAll(
             "SELECT b.pnr, b.status, b.contact_phone, b.total_amount, l.travel_date,
                     (SELECT p.full_name FROM booking_passengers p WHERE p.booking_id = b.id ORDER BY p.is_primary DESC, p.id LIMIT 1) AS pax
                FROM bookings b
                LEFT JOIN booking_legs l ON l.booking_id = b.id AND l.leg_type = 'outbound'
-              WHERE b.pnr LIKE :like
-                 OR (:digits <> '' AND b.contact_phone = :digits)
-                 OR EXISTS (SELECT 1 FROM booking_passengers p2 WHERE p2.booking_id = b.id AND p2.full_name LIKE :like)
+              WHERE b.pnr LIKE :likePnr
+                 OR (:digitsSet <> '' AND b.contact_phone = :digitsEq)
+                 OR EXISTS (SELECT 1 FROM booking_passengers p2 WHERE p2.booking_id = b.id AND p2.full_name LIKE :likeName)
               ORDER BY b.id DESC LIMIT 10",
-            ['like' => '%' . $q . '%', 'digits' => $digits]
+            ['likePnr' => '%' . $q . '%', 'likeName' => '%' . $q . '%', 'digitsSet' => $digits, 'digitsEq' => $digits]
         );
 
         $list = [];
