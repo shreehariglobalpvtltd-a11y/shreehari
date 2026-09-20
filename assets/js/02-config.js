@@ -338,7 +338,7 @@ const CONFIG = {
      See goRealAdmin() and renderAgentGateOrApp(). */
   phone: '+91 91048 01507',
   email: 'shreehariglobalpvtltd@gmail.com',
-  adminWhatsApp: '919104801507',
+  adminWhatsApp: '918735881507',
   adminEmail: 'booking@shariglobal.com',
   verifyTimeText: '1–3 minutes',
   allowScreenshotUpload: true,

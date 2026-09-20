@@ -95,6 +95,22 @@ final class WaBot
                 );
             }
 
+            /* Neither a PNR nor a booking request — a real question
+               ("Mehsana bata kati baje?", "bachhalai kati lagcha?").
+               The assistant answers it in Nepali from the same live
+               routes/fares/refund facts the website assistant uses. With
+               no Anthropic key configured this returns null and the menu
+               below goes out exactly as before. */
+            try {
+                require_once INCLUDE_PATH . '/aichat.php';
+                $ai = AiChat::whatsappReply($senderDigits, $body);
+                if ($ai !== null) {
+                    return self::out($ai);
+                }
+            } catch (Throwable $e) {
+                Logger::exception($e);
+            }
+
             return self::out(
                 "🙏 नमस्ते! म " . $company . " को टिकट सहायक हुँ।\n\n"
                 . "आफ्नो बुकिङ PNR (जस्तै SHG-XXXX-XXXX-XXXX) पठाउनुहोस्, म तुरुन्तै तपाईंको टिकट "
@@ -103,6 +119,13 @@ final class WaBot
                 . "जस्तै \"2 सिट Nepal 15 Sep, Mehsana\"।\n\n"
                 . ($phone !== '' ? "मान्छेसँग कुरा गर्नु छ? फोन गर्नुहोस्: " . $phone . "।" : "")
             );
+        }
+
+        try {
+            require_once INCLUDE_PATH . '/aichat.php';
+            AiChat::forget($senderDigits);
+        } catch (Throwable $e) {
+            // memory cleanup is best effort
         }
 
         $detail = BookingService::detail($pnr);
@@ -171,6 +194,13 @@ final class WaBot
             }
         } elseif ($detail['status'] === 'pending') {
             $lines[] = "\n⏳ भुक्तानी जाँच भइरहेको छ। पक्का भएपछि तपाईंको टिकट यहीँ आउनेछ।";
+            /* Not paid yet? Then the most useful reply is the way to pay: the
+               QR image carries the exact amount, the link opens a UPI app. */
+            if (Settings::getString('upi_id', '') !== '' && (float) $detail['total_amount'] > 0) {
+                $mediaUrl = appUrl('pay-image.php?pnr=' . urlencode((string) $detail['pnr']));
+                $lines[]  = "\n💰 तिर्न बाँकी छ भने माथिको QR स्क्यान गर्नुहोस्, वा यहाँ थिच्नुहोस्:";
+                $lines[]  = appUrl('pay.php?pnr=' . urlencode((string) $detail['pnr']));
+            }
         } elseif (in_array($detail['status'], ['cancelled', 'rejected'], true)) {
             $stTxt = $detail['status'] === 'rejected' ? 'अस्वीकृत' : 'रद्द';
             $lines[] = "\nयो बुकिङ " . $stTxt . " भएको छ। अनपेक्षित लागेमा हामीलाई फोन गर्नुहोस्।";
