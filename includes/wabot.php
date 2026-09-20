@@ -136,8 +136,25 @@ final class WaBot
             );
         }
 
-        // Only the booking's own number gets full detail + the ticket.
-        $owns   = $senderDigits !== '' && normalisePhone((string) $detail['contact_phone']) === $senderDigits;
+        // Only the booking's own number gets full detail + the ticket —
+        // and the office's own numbers, so the desk can check any PNR from
+        // WhatsApp instead of opening the admin panel. Staff numbers come
+        // from Settings, so adding a manager is a settings change.
+        $staff = [];
+        foreach (['admin_whatsapp', 'company_whatsapp', 'company_phone', 'office_phone'] as $k) {
+            $d = normalisePhone(Settings::getString($k, ''));
+            if ($d !== '') {
+                $staff[$d] = true;
+            }
+        }
+        $d = normalisePhone(Settings::officePhone());
+        if ($d !== '') {
+            $staff[$d] = true;
+        }
+
+        $isStaff = $senderDigits !== '' && isset($staff[$senderDigits]);
+        $owns    = $isStaff
+            || ($senderDigits !== '' && normalisePhone((string) $detail['contact_phone']) === $senderDigits);
         $status = strtoupper((string) $detail['status']);
 
         if (!$owns) {
