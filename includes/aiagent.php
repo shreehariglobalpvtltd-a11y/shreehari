@@ -188,7 +188,7 @@ final class AiAgent
                 break;
             }
 
-            $reply = self::ask($system, $history, $tools);
+            $reply = self::ask($system, $history, $tools, $ctx);
             if ($reply === null) {
                 return null;
             }
@@ -238,7 +238,7 @@ final class AiAgent
            silence. */
         $last = self::ask($system . "\n\nThe tool budget for this message is spent. Answer NOW in words, "
             . "with what the results above already gave you. If something is still unknown, say so plainly "
-            . "and give the office number.", $history, []);
+            . "and give the office number.", $history, [], $ctx);
         if ($last === null || trim((string) $last['text']) === '') {
             return null;
         }
@@ -251,7 +251,7 @@ final class AiAgent
      *
      * @return array{text: string, calls: array<int, array{id: string, name: string, input: array}>, blocks: array}|null
      */
-    private static function ask(string $system, array $history, array $tools): ?array
+    private static function ask(string $system, array $history, array $tools, array $ctx = []): ?array
     {
         $provider = strtolower(Settings::getString('ai_provider', 'auto'));
         $claude   = self::anthropicKey();
@@ -273,7 +273,7 @@ final class AiAgent
 
             $out = $brain === 'anthropic'
                 ? self::askAnthropic($claude, $system, $history, $tools)
-                : self::askGemini($gemini, $system, $history, $tools);
+                : self::askGemini($gemini, $system, $history, $tools, $ctx);
 
             if ($out !== null) {
                 return $out;
@@ -416,13 +416,89 @@ final class AiAgent
         'gemini-3.5-flash',   // measured 3/3 available — the floor
     ];
 
-    private static function askGemini(string $key, string $system, array $history, array $tools): ?array
+    /**
+     * Which rung to start on (21 Sep 2026, owner: "afai kaam herera decide
+     * garos ki kun model le garne").
+     *
+     * The ladder already handles a model being DOWN. This decides which one
+     * to reach for FIRST, because the two things a passenger notices are
+     * opposite: a "kati bajey?" answered in 4 seconds feels broken, and a
+     * "kina tapai ko bus?" answered badly loses the sale. So the cheap fast
+     * rung takes the errands and the strong rung takes the conversations.
+     *
+     * Deliberately a heuristic on what we can see BEFORE the call — the
+     * message, the turn count, who is asking — not a classifier call, which
+     * would cost the very second it is trying to save.
+     *
+     * @param array<int,array<string,mixed>> $history
+     * @return int index into GEMINI_LADDER to start from
+     */
+    private static function pickRung(array $history, array $ctx): int
+    {
+        if (!Settings::getBool('ai_route_auto', true)) {
+            return 0;               // routing off: always the strongest rung
+        }
+
+        $last = '';
+        for ($i = count($history) - 1; $i >= 0; $i--) {
+            if (($history[$i]['role'] ?? '') === 'user' && is_string($history[$i]['content'] ?? null)) {
+                $last = (string) $history[$i]['content'];
+                break;
+            }
+        }
+        $text  = mb_strtolower(trim($last));
+        $words = $text === '' ? 0 : count(preg_split('/\s+/u', $text) ?: []);
+
+        // Staff and the office get the strong rung: their questions fan out
+        // over several tools and a wrong number there moves real money.
+        $role = (string) ($ctx['role'] ?? 'customer');
+        if ($role !== 'customer') {
+            return 0;
+        }
+
+        // Mid-conversation (the model is already holding a thread, a plan or
+        // a half-built booking) — never downgrade underneath it.
+        if (count($history) > 2) {
+            return 0;
+        }
+
+        /* An errand: a greeting, a thank-you, or a short factual lookup that
+           is one tool call and a number read back. These are the bulk of the
+           traffic and the cheapest rung answers them indistinguishably. */
+        $errand = '/^(k cha|ke cha|kasto cha|namaste|namaskar|hello|hi|hey|thanks|thank you|dhanyabad|ok|okay|thik cha|hunchha|ho|yes|no)\b/u';
+        if ($words <= 3 && preg_match($errand, $text) === 1) {
+            return 3;               // the reliable floor — 3.5-flash
+        }
+
+        /* A conversation: anything where the ANSWER is persuasion, judgement
+           or several facts woven together. Cheap models are visibly worse at
+           exactly these, and they are the ones that win or lose a passenger. */
+        $rich = '/\b(kina|why|company|barema|about|website|sewa|service|safe|surakshit|compare|bhanda|better|ramro|discount|offer|complain|gunaso|problem|samasya|sorry|galat|wrong|refund|cancel|paisa|money|facebook|owner|ceo|malik|director|name|naam|import|export|cargo|business)\b/u';
+        if ($words >= 12 || preg_match($rich, $text) === 1) {
+            return 0;               // the strongest rung available
+        }
+
+        return 2;                   // everything else: the reliable middle
+    }
+
+    private static function askGemini(string $key, string $system, array $history, array $tools, array $ctx = []): ?array
     {
         $pinned = trim(Settings::getString('gemini_model', ''));
         $ladder = self::GEMINI_LADDER;
         if ($pinned !== '') {
             // Owner's pick first, then the rest of the ladder as the net.
             $ladder = array_values(array_unique(array_merge([$pinned], $ladder)));
+        } else {
+            // No pin: the router chooses where to enter the ladder, and the
+            // rungs ABOVE the entry point stay as the fallback below it —
+            // a downgrade never costs reliability, only cleverness.
+            $start = self::pickRung($history, $ctx);
+            if ($start > 0 && $start < count($ladder)) {
+                $ladder = array_merge(
+                    array_slice($ladder, $start),          // chosen rung, then down
+                    array_slice($ladder, 0, $start)        // the stronger ones as a net
+                );
+            }
         }
 
         $payload = [
@@ -625,6 +701,71 @@ final class AiAgent
      * Marketing is deliberately fenced: offer, never push; one line, never
      * a brochure; and only a claim that is true of this service.
      */
+    /**
+     * THE VISITING CARD, IN FULL (21 Sep 2026, owner: "visiting card number,
+     * CIN number, website ko har ek details pani jhatto thaha hunu paryo,
+     * systematic khale ho; facebook id pani deos, need pare CEO ko WhatsApp").
+     *
+     * One rule runs through every line: a key that is EMPTY prints NOTHING.
+     * A model handed "Facebook: " with a blank after it will fill the blank —
+     * so an unfilled setting has to disappear from the briefing entirely,
+     * and the closing instruction tells it what to say about a fact it was
+     * not given. That is why database/upgrade-2026-09-21-brand-and-brain.sql
+     * creates these keys empty instead of guessing values.
+     */
+    private static function cardFacts(): string
+    {
+        $rows = [];
+        $add  = static function (string $label, string $key) use (&$rows): void {
+            $v = trim(Settings::getString($key, ''));
+            if ($v !== '') {
+                $rows[] = '  ' . $label . ': ' . $v;
+            }
+        };
+
+        $add('Phone (office, calls)', 'company_phone');
+        $add('WhatsApp (business)',   'company_whatsapp');
+        $add('Email',                 'company_email');
+        $add('Website',               'company_web');
+        $add('Registered office',     'company_address');
+        $add('Office (Nepali)',       'company_address_ne');
+        $add('CIN',                   'company_cin');
+        $add('GSTIN',                 'company_gstin');
+        $add('Counters',              'company_counters');
+        $add('Nepal office',          'nepal_office');
+        $add('Nepal phone',           'nepal_phone');
+        $add('Nepal entity',          'nepal_company');
+        $add('Facebook',              'company_facebook');
+        $add('Instagram',             'company_instagram');
+        $add('YouTube',               'company_youtube');
+        $add('TikTok',                'company_tiktok');
+
+        $out = "\n--- OUR VISITING CARD (quote any of these on request, exactly as written) ---\n"
+             . ($rows !== [] ? implode("\n", $rows) . "\n" : "  (not configured)\n");
+
+        /* The escalation line. The director's own number is a different kind
+           of fact from the office number: giving it out on a routine question
+           turns his phone into the help desk, and refusing it to somebody
+           with a real problem is why people stop trusting a company. */
+        $ceoWa = trim(Settings::getString('ceo_whatsapp', ''));
+        $ceoFb = trim(Settings::getString('ceo_facebook', ''));
+        if ($ceoWa !== '' || $ceoFb !== '') {
+            $out .= "  Director, for ESCALATION ONLY: "
+                  . ($ceoWa !== '' ? 'WhatsApp ' . $ceoWa : '')
+                  . ($ceoWa !== '' && $ceoFb !== '' ? ' · ' : '')
+                  . ($ceoFb !== '' ? 'Facebook ' . $ceoFb : '') . "\n"
+                  . "  Give the director's contact ONLY when the office has already failed the person: a "
+                  . "complaint nobody answered, money stuck, or they ask for the owner after a real problem. "
+                  . "For a fare, a timing or a booking, give the office number instead.\n";
+        }
+
+        $out .= "If somebody asks for a detail that is NOT in the list above — another branch, a landline, a "
+              . "social account, a registration number — say plainly that we do not publish one, and give the "
+              . "office number. NEVER improvise a number, a handle, a URL or a registration code.\n";
+
+        return $out;
+    }
+
     private static function companyBriefing(): string
     {
         $name    = Settings::getString('company_legal', Settings::getString('company_name', APP_NAME));
@@ -648,6 +789,7 @@ final class AiAgent
            . ($addr !== '' ? "Head office: " . $addr . ".\n" : '')
            . ($counters !== '' ? "Counters: " . $counters . ".\n" : '')
            . "Website and app: " . $web . ($email !== '' ? " · " . $email : '') . ".\n"
+           . self::cardFacts()
            . "We are a registered Indian private limited company running our own AC sleeper buses on the "
            . "Gujarat–Nepal border route, plus import/export logistics. We are not a reseller or an aggregator: "
            . "the bus, the driver and the counter staff are ours, so a passenger deals with the operator direct.\n"
