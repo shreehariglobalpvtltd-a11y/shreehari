@@ -1988,6 +1988,22 @@ function renderStatus(id) {
   try { if (window.SHGBorder) borderCard = window.SHGBorder.card(b) || ''; } catch (e) {}
   try { if (window.SHGPush) pushCard = window.SHGPush.card(b) || ''; } catch (e) {}
   try { if (window.SHGSplit) splitBtn = window.SHGSplit.button(b) || ''; } catch (e) {}
+  /* One tap into OUR WhatsApp with the message already written, so the
+     passenger only presses send. That inbound message opens the 24 h
+     service window - the only way a ticket reaches a new customer while
+     Meta has no payment method on the account (error 131042). */
+  let waGetBtn = '';
+  try {
+    const bizWa = String((typeof S === 'function' && S().adminWhatsApp) || (typeof CONFIG !== 'undefined' && CONFIG.adminWhatsApp) || '').replace(/[^0-9]/g, '');
+    if (bizWa) {
+      const waAsk = conf
+        ? 'मेरो बुकिङ ' + b.id + ' को टिकट पठाउनुहोस्।'
+        : 'मेरो बुकिङ ' + b.id + ' को भुक्तानी QR र टिकट पठाउनुहोस्।';
+      waGetBtn = '<a class="btn btn-wa tk2-wide" target="_blank" rel="noopener" href="https://wa.me/'
+        + bizWa + '?text=' + encodeURIComponent(waAsk) + '">🎫 WhatsApp मा टिकट पाउनुहोस्</a>';
+    }
+  } catch (e) {}
+
   const primary2 = conf
     ? '<button class="btn btn-orange" id="imgBtn" type="button">' + t('btnImg') + '</button>'
       + '<button class="btn btn-wa" id="waBtn" type="button">🟢 ' + t('btnWa') + '</button>'
@@ -1996,8 +2012,10 @@ function renderStatus(id) {
          leg per ticket (round_trip_on gate), so this starts a fresh search in
          the opposite direction with the same lead passenger — rebookFrom(id, true). */
       + '<button class="btn btn-ghost tk2-wide" id="retBookBtn" type="button">' + t('btnRetBook') + '</button>'
+      + waGetBtn
     : (b.status === 'pending' ? '<button class="btn btn-blue" id="refreshBtn" type="button">' + t('btnRefresh') + '</button>' + splitBtn : '')
       + (canCancel(b) ? '<button class="btn btn-danger-ghost" id="cancelBtn" type="button">' + t('btnCancel') + '</button>' : '')
+      + waGetBtn
       + '<a class="btn btn-orange" href="#/">' + t('tkNewTicket') + '</a>';
   const secondary2 = (conf ? '<button class="btn btn-ghost" id="pdfBtn" type="button">' + t('btnPdf') + '</button>'
       + (soon ? '<button class="btn btn-ghost" type="button" data-ics="' + esc(b.id) + '">' + t('btnCal') + '</button>' : '')
