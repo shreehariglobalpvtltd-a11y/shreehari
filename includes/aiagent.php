@@ -67,6 +67,9 @@ final class AiAgent
     private const TURN_BUDGET_SEC = 45;
 
     private const MAX_TOKENS  = 700;
+    /** Gemini 3.x spends thinking tokens out of this budget — see askGemini(). */
+    private const MAX_TOKENS_GEMINI  = 2400;
+    private const GEMINI_THINK_BUDGET = 512;
     private const HTTP_TIMEOUT = 20;
 
     /** "Start again" in the languages this desk actually receives. */
@@ -425,7 +428,20 @@ final class AiAgent
         $payload = [
             'systemInstruction' => ['parts' => [['text' => $system]]],
             'contents'          => self::geminiContents($history),
-            'generationConfig'  => ['maxOutputTokens' => self::MAX_TOKENS, 'temperature' => 0.3],
+            /* 21 Sep 2026 — the Gemini 3.x models think before they answer,
+               and those thinking tokens are spent out of maxOutputTokens.
+               At 700 the model burned the whole budget reasoning and the
+               reply arrived chopped mid-sentence ("S Hari Global Pvt Ltd
+               Gujarat ra Nepal border (Rupaidiha)" and then nothing). So:
+               a thinking budget small enough to leave room for the words,
+               and a bigger ceiling above it. A WhatsApp reply is a few
+               lines — this is head-room for the thinking, not permission
+               to write an essay; the length rules live in the prompt. */
+            'generationConfig'  => [
+                'maxOutputTokens' => self::MAX_TOKENS_GEMINI,
+                'temperature'     => 0.3,
+                'thinkingConfig'  => ['thinkingBudget' => self::GEMINI_THINK_BUDGET],
+            ],
         ];
         if ($tools !== []) {
             $payload['tools'] = [['functionDeclarations' => array_map(
