@@ -355,7 +355,7 @@ final class Notify
 
             if ($token !== '' && $phoneId !== '') {
                 self::$lastProviderError = '';
-                if (self::whatsappCloudApi($number, $message, $token, $phoneId, $mediaUrl, $templateVars, (string) ($meta['media_type'] ?? ''), $ref)) {
+                if (self::whatsappCloudApi($number, $message, $token, $phoneId, $mediaUrl, $templateVars, (string) ($meta['media_type'] ?? ''), $ref, (string) ($meta['template_name'] ?? ''), (string) ($meta['template_lang'] ?? 'en'))) {
                     self::$journal[] = ['to' => $number, 'ok' => true, 'link' => null, 'driver' => 'cloud_api', 'reason' => ''];
                     // provider_ref = Meta's wamid, the key whatsapp/webhook.php
                     // matches delivery statuses on (same role as the Twilio SID).
@@ -978,7 +978,7 @@ final class Notify
      * PNG becomes the template's IMAGE header (carried as var 7 by
      * bookingConfirmed(), or as $mediaUrl).
      */
-    private static function whatsappCloudApi(string $number, string $message, string $token, string $phoneId, ?string $mediaUrl = null, array $templateVars = [], string $mediaType = '', ?string &$providerRef = null): bool
+    private static function whatsappCloudApi(string $number, string $message, string $token, string $phoneId, ?string $mediaUrl = null, array $templateVars = [], string $mediaType = '', ?string &$providerRef = null, string $templateName = '', string $templateLang = 'en'): bool
     {
         // 18 Sep 2026: the HTTP call (Graph API version, retry-once, per-day
         // log, message id) lives in whatsapp/api.php — one path for every
@@ -987,7 +987,10 @@ final class Notify
 
         // The ticket image: explicit media wins, else template var 7.
         $image = ($mediaUrl !== null && $mediaUrl !== '') ? $mediaUrl : (string) ($templateVars['7'] ?? '');
-        $template = Settings::getString('whatsapp_template_name', '');
+        /* A caller that names its own template (booking received, payment
+           rejected, ...) wins over the ticket template in Settings. */
+        $template = $templateName !== '' ? $templateName : Settings::getString('whatsapp_template_name', '');
+        $lang     = $templateName !== '' ? $templateLang : Settings::getString('whatsapp_template_lang', 'en');
 
         if ($template !== '' && $templateVars !== []) {
             $bodyVars = $templateVars;
@@ -995,9 +998,13 @@ final class Notify
             ksort($bodyVars, SORT_NATURAL);
 
             $components = [];
-            if ($image !== '') {
+            $hdrImage = (string) ($templateVars['7'] ?? '');
+            if ($hdrImage === '' && $templateName === '') {
+                $hdrImage = $image;   // ticket path: media is the header
+            }
+            if ($hdrImage !== '') {
                 $components[] = ['type' => 'header', 'parameters' => [
-                    ['type' => 'image', 'image' => ['link' => $image]],
+                    ['type' => 'image', 'image' => ['link' => $hdrImage]],
                 ]];
             }
             $params = [];
@@ -1014,7 +1021,7 @@ final class Notify
                 'type'              => 'template',
                 'template'          => [
                     'name'       => $template,
-                    'language'   => ['code' => Settings::getString('whatsapp_template_lang', 'en')],
+                    'language'   => ['code' => $lang],
                     'components' => $components,
                 ],
             ];
@@ -1053,8 +1060,23 @@ final class Notify
         }
 
         // messaging_product / to are added by waGraphPost().
+        $wasTemplate = ($body['type'] ?? '') === 'template';
         unset($body['messaging_product'], $body['to']);
         $r = waGraphPost($number, $body, (string) ($body['type'] ?? 'text'), $token, $phoneId);
+
+        /* Meta refuses the template itself — not found, still in review,
+           paused, or its shape changed. The message is fine, so send it as
+           free text/image: inside a 24 h window it still reaches the
+           customer, and the moment Meta approves the template this retry
+           stops happening on its own. */
+        if (!$r['success'] && $wasTemplate
+            && in_array((int) ($r['code'] ?? 0), [132000, 132001, 132005, 132007, 132012, 132015, 132016, 132068, 132069], true)) {
+            $alt = $image !== ''
+                ? ['type' => 'image', 'image' => ['link' => $image, 'caption' => mb_substr($message, 0, 1024)]]
+                : ['type' => 'text', 'text' => ['body' => $message]];
+            $r = waGraphPost($number, $alt, (string) $alt['type'], $token, $phoneId);
+        }
+
         $providerRef = $r['message_id'];
         if (!$r['success']) {
             self::$lastProviderError = trim((string) ($r['error'] ?? ''));
@@ -1611,7 +1633,11 @@ final class Notify
                   . "बुकिङ " . $pnr . ": भुक्तानी पुष्टि हुन सकेन।\n"
                   . "कारण: " . $reason . "\n"
                   . "कृपया भुक्तानीको प्रमाण फेरि पठाउनुहोस् वा फोन गर्नुहोस्: " . Settings::officePhone() . "।";
-            self::whatsapp((string) $booking['contact_phone'], $text, null, self::countryHint($booking));
+            self::whatsapp((string) $booking['contact_phone'], $text, null, self::countryHint($booking), [
+                '1' => $pnr,
+                '2' => $reason !== '' ? $reason : '-',
+                '3' => Settings::officePhone(),
+            ], (int) ($booking['id'] ?? 0) ?: null, ['template_name' => 'shg_payment_rejected', 'purpose' => 'payment_rejected']);
         }
     }
 
@@ -1662,7 +1688,13 @@ final class Notify
                   . "बुकिङ " . $pnr . " रद्द भयो।\n"
                   . "फिर्ता: " . inr((float) ($refund['amount'] ?? 0)) . " (" . (int) ($refund['percent'] ?? 0) . "%)\n"
                   . ($refund['reason'] ?? '');
-            self::whatsapp((string) $booking['contact_phone'], $text, null, self::countryHint($booking));
+            $cFacts = self::ticketFacts($booking);
+            self::whatsapp((string) $booking['contact_phone'], $text, null, self::countryHint($booking), [
+                '1' => $pnr,
+                '2' => $cFacts['route'] !== '' ? $cFacts['route'] : '-',
+                '3' => $cFacts['date']  !== '' ? $cFacts['date']  : '-',
+                '4' => inr((float) ($refund['amount'] ?? 0)) . ' (' . (int) ($refund['percent'] ?? 0) . '%)',
+            ], (int) ($booking['id'] ?? 0) ?: null, ['template_name' => 'shg_booking_cancelled', 'purpose' => 'booking_cancelled']);
         }
 
         if (Settings::getBool('whatsapp_notify_admin', true) && $adminPhone !== '') {
@@ -1826,7 +1858,13 @@ final class Notify
             $text .= "भुक्तानी पछि प्रमाण अपलोड गर्नुहोस्:\n"
                    . appUrl('') . "\n"
                    . "सहयोग: " . Settings::officePhone();
-            self::whatsapp($phone, $text, $payImg, self::countryHint($booking));
+            $facts = self::ticketFacts($booking);
+            self::whatsapp($phone, $text, $payImg, self::countryHint($booking), [
+                '1' => $pnr,
+                '2' => $facts['route'] !== '' ? $facts['route'] : '-',
+                '3' => $facts['date']  !== '' ? $facts['date']  : '-',
+                '4' => $amount,
+            ], (int) ($booking['id'] ?? 0) ?: null, ['template_name' => 'shg_booking_received', 'purpose' => 'booking_received']);
         }
 
         if (!empty($booking['contact_email'])) {
@@ -1889,7 +1927,10 @@ final class Notify
                 "🚌 " . $company . "\n" . $pnr . " को भुक्तानी प्रमाण प्राप्त भयो ✅\n"
                 . "जाँच भइरहेको छ — छिट्टै तपाईंको टिकट पक्का गर्नेछौं।",
                 null,
-                self::countryHint($booking)
+                self::countryHint($booking),
+                ['1' => $pnr, '2' => inr((float) ($booking['total_amount'] ?? 0))],
+                $bid > 0 ? $bid : null,
+                ['template_name' => 'shg_payment_received', 'purpose' => 'payment_received']
             );
         }
     }
