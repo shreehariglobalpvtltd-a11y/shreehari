@@ -42,9 +42,40 @@ final class AiChat
     /** No key, no cURL, or switched off in Settings — caller keeps its own reply. */
     public static function configured(): bool
     {
-        return Settings::getString('anthropic_api_key', '') !== ''
+        return self::apiKey() !== ''
             && Settings::getBool('wa_ai_enabled', true)
             && function_exists('curl_init');
+    }
+
+    /**
+     * Which brain answers. Gemini first when its key is present: Google's
+     * free tier costs nothing, which is why the owner asked for it. Claude
+     * stays fully supported — set anthropic_api_key (and leave the Gemini
+     * one empty, or set ai_provider) and nothing else changes.
+     *
+     * @return array{provider: string, key: string}
+     */
+    private static function brain(): array
+    {
+        $forced = strtolower(trim(Settings::getString('ai_provider', '')));
+        $gem    = trim(Settings::getString('gemini_api_key', ''));
+        $ant    = trim(Settings::getString('anthropic_api_key', ''));
+
+        if ($forced === 'gemini' && $gem !== '') {
+            return ['provider' => 'gemini', 'key' => $gem];
+        }
+        if ($forced === 'anthropic' && $ant !== '') {
+            return ['provider' => 'anthropic', 'key' => $ant];
+        }
+        if ($gem !== '') {
+            return ['provider' => 'gemini', 'key' => $gem];
+        }
+        return ['provider' => 'anthropic', 'key' => $ant];
+    }
+
+    private static function apiKey(): string
+    {
+        return self::brain()['key'];
     }
 
     /**
@@ -129,45 +160,151 @@ final class AiChat
             . "give the office number instead of a long explanation.";
     }
 
-    /** One Anthropic Messages API call. Returns the text, or null. */
+    /** One call to whichever brain is configured. Returns the text, or null. */
     private static function ask(string $system, array $messages): ?string
     {
-        $key   = Settings::getString('anthropic_api_key', '');
-        $model = Settings::getString('ai_model', 'claude-opus-5');
+        $brain = self::brain();
+        return $brain['provider'] === 'gemini'
+            ? self::askGemini($brain['key'], $system, $messages)
+            : self::askClaude($brain['key'], $system, $messages);
+    }
 
-        $payload = json_encode([
-            'model'      => $model,
-            'max_tokens' => self::MAX_TOKENS,
-            'system'     => $system,
-            'messages'   => $messages,
-        ], JSON_UNESCAPED_UNICODE);
+    /**
+     * Google Gemini (free tier). The model id is NOT hardcoded: model names
+     * come and go, and a wrong one is a silent 404 on every reply. The first
+     * call asks Google which models this key may use, keeps the choice in
+     * settings, and re-discovers if that model ever stops answering.
+     */
+    private static function askGemini(string $key, string $system, array $messages): ?string
+    {
+        $model = trim(Settings::getString('gemini_model', ''));
+        if ($model === '') {
+            $model = self::geminiPickModel($key);
+            if ($model === '') {
+                return null;
+            }
+        }
 
-        $ch = curl_init('https://api.anthropic.com/v1/messages');
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => $payload,
-            CURLOPT_TIMEOUT        => self::TIMEOUT_SEC,
-            CURLOPT_HTTPHEADER     => [
-                'x-api-key: ' . $key,
-                'anthropic-version: 2023-06-01',
-                'content-type: application/json',
-            ],
-        ]);
-        $body = curl_exec($ch);
-        $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $err  = curl_error($ch);
-        curl_close($ch);
+        $contents = [];
+        foreach ($messages as $m) {
+            $contents[] = [
+                'role'  => ($m['role'] ?? 'user') === 'assistant' ? 'model' : 'user',
+                'parts' => [['text' => (string) ($m['content'] ?? '')]],
+            ];
+        }
 
-        if ($body === false || $http !== 200) {
-            Logger::error('Anthropic call failed (HTTP ' . $http . ')', [
-                'err'  => $err,
-                'body' => mb_substr((string) $body, 0, 300),
+        $payload = [
+            'system_instruction' => ['parts' => [['text' => $system]]],
+            'contents'           => $contents,
+            'generationConfig'   => ['maxOutputTokens' => self::MAX_TOKENS, 'temperature' => 0.4],
+        ];
+
+        [$http, $body] = self::httpJson(
+            'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model)
+                . ':generateContent?key=' . rawurlencode($key),
+            $payload,
+            ['Content-Type: application/json']
+        );
+
+        // A retired model answers 404/400 for every message; pick a live one
+        // and try once more before giving up on the passenger.
+        if (($http === 404 || $http === 400) && Settings::getString('gemini_model', '') !== '') {
+            Settings::set('gemini_model', '');
+            $fresh = self::geminiPickModel($key);
+            if ($fresh !== '' && $fresh !== $model) {
+                [$http, $body] = self::httpJson(
+                    'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($fresh)
+                        . ':generateContent?key=' . rawurlencode($key),
+                    $payload,
+                    ['Content-Type: application/json']
+                );
+            }
+        }
+
+        if ($http !== 200) {
+            Logger::error('Gemini call failed (HTTP ' . $http . ')', [
+                'model' => $model,
+                'body'  => mb_substr($body, 0, 300),
             ], 'whatsapp');
             return null;
         }
 
-        $json = json_decode((string) $body, true);
+        $json = json_decode($body, true);
+        $out  = '';
+        foreach ($json['candidates'][0]['content']['parts'] ?? [] as $part) {
+            $out .= (string) ($part['text'] ?? '');
+        }
+        return trim($out) !== '' ? trim($out) : null;
+    }
+
+    /** Ask Google which models this key can use, and keep the choice. */
+    private static function geminiPickModel(string $key): string
+    {
+        $ch = curl_init('https://generativelanguage.googleapis.com/v1beta/models?key=' . rawurlencode($key));
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => self::TIMEOUT_SEC]);
+        $body = (string) curl_exec($ch);
+        $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($http !== 200) {
+            Logger::error('Gemini model list failed (HTTP ' . $http . ')', ['body' => mb_substr($body, 0, 200)], 'whatsapp');
+            return '';
+        }
+
+        $names = [];
+        foreach (json_decode($body, true)['models'] ?? [] as $m) {
+            if (!in_array('generateContent', (array) ($m['supportedGenerationMethods'] ?? []), true)) {
+                continue;
+            }
+            $names[] = preg_replace('#^models/#', '', (string) ($m['name'] ?? ''));
+        }
+        if ($names === []) {
+            return '';
+        }
+
+        /* A bus-ticket assistant wants the cheap fast tier, and a stable
+           name over a preview one. */
+        usort($names, static function (string $a, string $b): int {
+            $score = static function (string $n): int {
+                $s = 0;
+                if (str_contains($n, 'flash')) { $s -= 4; }
+                if (str_contains($n, 'lite'))  { $s -= 1; }
+                if (str_contains($n, 'preview') || str_contains($n, 'exp')) { $s += 5; }
+                if (str_contains($n, 'vision') || str_contains($n, 'embedding')) { $s += 10; }
+                return $s;
+            };
+            return [$score($a), $a] <=> [$score($b), $b];
+        });
+
+        Settings::set('gemini_model', $names[0]);
+        Logger::info('Gemini model selected', ['model' => $names[0]], 'whatsapp');
+        return $names[0];
+    }
+
+    /** One Anthropic Messages API call. Returns the text, or null. */
+    private static function askClaude(string $key, string $system, array $messages): ?string
+    {
+        $model = Settings::getString('ai_model', 'claude-opus-5');
+
+        [$http, $body] = self::httpJson('https://api.anthropic.com/v1/messages', [
+            'model'      => $model,
+            'max_tokens' => self::MAX_TOKENS,
+            'system'     => $system,
+            'messages'   => $messages,
+        ], [
+            'x-api-key: ' . $key,
+            'anthropic-version: 2023-06-01',
+            'Content-Type: application/json',
+        ]);
+
+        if ($http !== 200) {
+            Logger::error('Anthropic call failed (HTTP ' . $http . ')', [
+                'body' => mb_substr($body, 0, 300),
+            ], 'whatsapp');
+            return null;
+        }
+
+        $json = json_decode($body, true);
         $out  = '';
         foreach ($json['content'] ?? [] as $block) {
             if (($block['type'] ?? '') === 'text') {
@@ -176,6 +313,34 @@ final class AiChat
         }
 
         return trim($out) !== '' ? trim($out) : null;
+    }
+
+    /**
+     * POST JSON, return [httpStatus, body]. Shared so both brains time out,
+     * log and fail the same way.
+     *
+     * @return array{0: int, 1: string}
+     */
+    private static function httpJson(string $url, array $payload, array $headers): array
+    {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => json_encode($payload, JSON_UNESCAPED_UNICODE),
+            CURLOPT_TIMEOUT        => self::TIMEOUT_SEC,
+            CURLOPT_HTTPHEADER     => $headers,
+        ]);
+        $body = curl_exec($ch);
+        $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err  = curl_error($ch);
+        curl_close($ch);
+
+        if ($body === false) {
+            Logger::error('AI request failed', ['url' => parse_url($url, PHP_URL_HOST), 'err' => $err], 'whatsapp');
+            return [0, ''];
+        }
+        return [$http, (string) $body];
     }
 
     /** @return array<int, array{role: string, content: string}> */
