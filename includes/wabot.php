@@ -80,6 +80,21 @@ final class WaBot
                 Logger::exception($e);      // fall through to the old reply
             }
 
+            /* Anything that is not a seat request is a question, and the
+               assistant answers those from the live timetable, fares and
+               refund rules. It returns null when no AI key is configured or
+               the number hit its limit, and then the older paths below run
+               exactly as they used to. */
+            try {
+                require_once INCLUDE_PATH . '/aichat.php';
+                $ai = AiChat::whatsappReply($senderDigits, $body);
+                if ($ai !== null) {
+                    return self::out($ai);
+                }
+            } catch (Throwable $e) {
+                Logger::exception($e);
+            }
+
             $draft = null;
             try {
                 require_once INCLUDE_PATH . '/ticketbrain.php';
@@ -110,22 +125,6 @@ final class WaBot
                     . (($draft['date'] ?? '') === '' ? "\n\nतपाईं कुन मितिमा यात्रा गर्न चाहनुहुन्छ?" : '')
                     . ($phone !== '' ? "\n\nहतार छ? फोन गर्नुहोस्: " . $phone . "।" : '')
                 );
-            }
-
-            /* Neither a PNR nor a booking request — a real question
-               ("Mehsana bata kati baje?", "bachhalai kati lagcha?").
-               The assistant answers it in Nepali from the same live
-               routes/fares/refund facts the website assistant uses. With
-               no Anthropic key configured this returns null and the menu
-               below goes out exactly as before. */
-            try {
-                require_once INCLUDE_PATH . '/aichat.php';
-                $ai = AiChat::whatsappReply($senderDigits, $body);
-                if ($ai !== null) {
-                    return self::out($ai);
-                }
-            } catch (Throwable $e) {
-                Logger::exception($e);
             }
 
             return self::out(

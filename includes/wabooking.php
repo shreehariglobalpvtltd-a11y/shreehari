@@ -108,6 +108,12 @@ final class WaBooking
                 self::clear($phoneDigits);
                 return self::out(self::say('cancelled', $lang));
             }
+            /* A question while the summary is up ("kati ghanta lagcha?")
+               deserves an answer, not a re-print of the same summary. Hand it
+               to the assistant and keep the booking exactly where it is. */
+            if ($text !== '' && self::isQuestion(mb_strtolower($text))) {
+                return null;
+            }
             // Anything else is a correction — fall through and re-plan.
         }
 
@@ -438,18 +444,52 @@ final class WaBooking
         return false;
     }
 
-    /** Does this message want a seat? */
+    /**
+     * Does this message actually want a seat?
+     *
+     * A city name or a bare number is not enough. "kati ghanta lagcha surat
+     * bata?" parses a boarding point and used to open a booking — and then
+     * swallowed the next message as the passenger's name. A question goes to
+     * the assistant unless it also says book / ticket / seat.
+     */
     private static function looksLikeRequest(string $text): bool
     {
-        $p = TicketBot::parse($text);
-        foreach (['seats', 'date', 'direction', 'boarding'] as $k) {
-            $v = $p[$k] ?? '';
-            if ($v !== '' && $v !== 0) {
-                return true;
+        $t    = mb_strtolower(trim($text));
+        $said = false;
+        foreach (['book', 'ticket', 'seat', 'टिकट', 'बुक', 'सिट', 'सीट', 'चाहियो', 'चाहिए', 'चाहिये',
+                  'जानु', 'जाना', 'ટિકિટ', 'બુક', 'સીટ'] as $w) {
+            if (str_contains($t, $w)) {
+                $said = true;
+                break;
             }
         }
-        $t = mb_strtolower($text);
-        foreach (['book', 'ticket', 'seat', 'टिकट', 'बुक', 'सिट', 'सीट', 'चाहियो', 'चाहिए', 'ટિકિટ', 'બુક'] as $w) {
+        if ($said) {
+            return true;
+        }
+        if (self::isQuestion($t)) {
+            return false;       // the assistant answers questions
+        }
+
+        /* No booking word: only an unmistakable request — how many people
+           AND when or which way — may start a sale. */
+        $p     = TicketBot::parse($text);
+        $seats = (int) ($p['seats'] ?? 0);
+        $when  = ((string) ($p['date'] ?? '')) !== '' || ((string) ($p['direction'] ?? '')) !== '';
+
+        return $seats > 0 && $when;
+    }
+
+    /** "kati", "kaha", "how much", "?" — someone asking, not booking. */
+    private static function isQuestion(string $t): bool
+    {
+        if (str_contains($t, '?') || str_contains($t, '？')) {
+            return true;
+        }
+        foreach (['kati', 'kaha', 'kahan', 'kasari', 'kaise', 'kyun', 'kina', 'kun ', 'kab ',
+                  'milcha', 'milchha', 'milta', 'hunchha', 'huncha',
+                  'how ', 'what ', 'when ', 'where ', 'why ', 'can i', 'is there', 'do you',
+                  'कति', 'कहाँ', 'कहां', 'कसरी', 'कैसे', 'क्या', 'कब', 'क्यों', 'किन',
+                  'કેટલા', 'ક્યાં', 'કેવી'] as $w) {
             if (str_contains($t, $w)) {
                 return true;
             }
