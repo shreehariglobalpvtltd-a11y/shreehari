@@ -562,8 +562,22 @@ final class AiAgent
                 // Gemini has no tool-call id; the loop only needs a handle that
                 // is unique within this turn.
                 $id = 'gem_' . $i . '_' . substr(md5($name . microtime(true)), 0, 8);
+                /* 21 Sep 2026 — THE BUG THAT KILLED SELLING.
+                   Gemini 3.x signs every functionCall with a thoughtSignature
+                   and REQUIRES it back when the conversation continues with
+                   that call's result. We were dropping it, so the second leg
+                   of every tool turn came back 400 "Function call is missing
+                   a thought_signature in functionCall parts" — the ladder
+                   then walked all four rungs into the same wall and
+                   AiAgent::handle() returned null. Every read-only answer
+                   still worked (no tools, no signature), which is exactly why
+                   this hid for so long: the bot looked healthy and simply
+                   could never finish a booking. Carried on the block so
+                   geminiContents() can put it back. */
+                $sig = (string) ($part['thoughtSignature'] ?? '');
                 $calls[]  = ['id' => $id, 'name' => $name, 'input' => $args];
-                $blocks[] = ['type' => 'tool_use', 'id' => $id, 'name' => $name, 'input' => $args];
+                $blocks[] = ['type' => 'tool_use', 'id' => $id, 'name' => $name, 'input' => $args]
+                          + ($sig !== '' ? ['gemSig' => $sig] : []);
             }
         }
 
@@ -595,10 +609,20 @@ final class AiAgent
                 if ($type === 'text') {
                     $parts[] = ['text' => (string) ($block['text'] ?? '')];
                 } elseif ($type === 'tool_use') {
-                    $parts[] = ['functionCall' => [
+                    /* The thoughtSignature Gemini 3.x signed this call with
+                       must travel back beside it — see the capture in
+                       askGemini(). Without it the next leg is a 400 and the
+                       whole tool turn dies. Older models (and the Anthropic
+                       brain) never set it, so the key is simply absent and
+                       the payload is what it always was. */
+                    $fc = [
                         'name' => (string) ($block['name'] ?? ''),
                         'args' => is_array($block['input'] ?? null) ? $block['input'] : (object) [],
-                    ]];
+                    ];
+                    $sig = (string) ($block['gemSig'] ?? '');
+                    $parts[] = $sig !== ''
+                        ? ['functionCall' => $fc, 'thoughtSignature' => $sig]
+                        : ['functionCall' => $fc];
                 } elseif ($type === 'tool_result') {
                     $decoded = json_decode((string) ($block['content'] ?? ''), true);
                     $parts[] = ['functionResponse' => [
