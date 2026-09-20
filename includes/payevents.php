@@ -78,25 +78,45 @@ final class PayEvents
 
         // Ints only — cast above, so this list is safe to inline.
         $rows = Database::fetchAll(
-            "SELECT booking_id,
-                    SUM(kind = 'qr_view')  AS qr,
-                    SUM(kind = 'pay_open') AS link,
-                    MAX(created_at)        AS last_seen
-               FROM payment_events
-              WHERE is_bot = 0
-                AND booking_id IN (" . implode(',', $ids) . ")
-              GROUP BY booking_id"
+            "SELECT e.booking_id,
+                    SUM(e.kind = 'qr_view')  AS qr,
+                    SUM(e.kind = 'pay_open') AS link,
+                    MAX(e.created_at)        AS last_seen,
+                    SUBSTRING_INDEX(GROUP_CONCAT(e.user_agent ORDER BY e.id DESC SEPARATOR '||'), '||', 1) AS last_ua
+               FROM payment_events e
+              WHERE e.is_bot = 0
+                AND e.booking_id IN (" . implode(',', $ids) . ")
+              GROUP BY e.booking_id"
         );
 
         $out = [];
         foreach ($rows as $r) {
             $out[(int) $r['booking_id']] = [
-                'qr'   => (int) $r['qr'],
-                'link' => (int) $r['link'],
-                'last' => (string) $r['last_seen'],
+                'qr'     => (int) $r['qr'],
+                'link'   => (int) $r['link'],
+                'last'   => (string) $r['last_seen'],
+                'device' => self::device((string) ($r['last_ua'] ?? '')),
             ];
         }
         return $out;
+    }
+
+    /** The phone the passenger used, as the desk would say it. */
+    public static function device(string $ua): string
+    {
+        foreach ([
+            'iPhone'  => 'iPhone',
+            'iPad'    => 'iPad',
+            'Android' => 'Android',
+            'Windows' => 'Windows',
+            'Macintosh' => 'Mac',
+            'Linux'   => 'Linux',
+        ] as $needle => $name) {
+            if (stripos($ua, $needle) !== false) {
+                return $name;
+            }
+        }
+        return 'unknown device';
     }
 
     /** Full trail for one booking, newest first. */

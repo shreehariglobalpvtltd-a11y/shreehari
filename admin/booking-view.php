@@ -1293,6 +1293,32 @@ if (Notify::usablePhone($b['contact_phone'] ?? '') !== '') {
       <?php if ($hasProof): ?>
       <tr><th>Payment proof</th><td><a class="btn ghost" style="font-size:12px;padding:5px 12px" href="/admin/screenshot.php?id=<?= (int) ($b['id'] ?? 0) ?>" target="_blank" rel="noopener">🖼️ View proof</a></td></tr>
       <?php endif; ?>
+      <?php
+        /* QR / pay-link trail. A UPI QR is paid inside the passenger's bank
+           app and tells us nothing, so this is intent only — never proof of
+           payment. Useful the other way round: an old pending booking with
+           nothing here was never even opened. */
+        require_once INCLUDE_PATH . '/payevents.php';
+        $trail = PayEvents::forBooking((int) ($b['id'] ?? 0), 12);
+        $human = array_values(array_filter($trail, static fn(array $e): bool => (int) $e['is_bot'] === 0));
+      ?>
+      <tr><th>QR / pay link</th><td>
+        <?php if ($human === []): ?>
+          <span class="muted">never opened</span>
+        <?php else: ?>
+          <div style="font-size:12px;line-height:1.7">
+          <?php foreach (array_slice($human, 0, 6) as $e): ?>
+            <div>
+              <strong><?= $e['kind'] === 'qr_view' ? 'QR opened' : 'Pay link tapped' ?></strong>
+              · <?= Security::e(PayEvents::device((string) $e['user_agent'])) ?>
+              · <?= Security::e(timeAgo((string) $e['created_at'])) ?>
+              <span class="muted mono" style="font-size:11px"><?= Security::e((string) $e['ip']) ?></span>
+            </div>
+          <?php endforeach; ?>
+          </div>
+          <div class="muted" style="font-size:11px;margin-top:4px">Shows interest only — a UPI QR never reports the payment back.</div>
+        <?php endif; ?>
+      </td></tr>
     </table>
   </div>
 </div>

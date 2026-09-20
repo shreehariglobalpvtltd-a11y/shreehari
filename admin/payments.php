@@ -522,7 +522,7 @@ tr.row-done td{background:var(--hover)}
               <?php if ($tr['qr'] > 0): ?>QR <?= (int) $tr['qr'] ?>x<?php endif; ?>
               <?php if ($tr['qr'] > 0 && $tr['link'] > 0): ?> · <?php endif; ?>
               <?php if ($tr['link'] > 0): ?>pay link <?= (int) $tr['link'] ?>x<?php endif; ?>
-              <span class="muted">· <?= Security::e(timeAgo($tr['last'])) ?></span>
+              <span class="muted">· <?= Security::e((string) ($tr['device'] ?? '')) ?> · <?= Security::e(timeAgo($tr['last'])) ?></span>
             </div>
           <?php elseif ($bStatus === 'pending'): ?>
             <div style="font-size:11px;margin-top:4px;color:#b02a2a">QR not opened yet</div>
