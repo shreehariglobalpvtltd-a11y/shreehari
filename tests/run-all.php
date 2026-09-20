@@ -50,7 +50,13 @@ require_once INCLUDE_PATH . '/seats.php';
  * later suite that guards a money or auth path and needs only the database.
  */
 const CORE_SUITES = [
-    'e2e-booking-test.php'         => 'whole ticket lifecycle over real HTTP',
+    /* 21 Sep 2026: e2e-booking-test.php USED to be listed here as well as in
+       HTTP_SUITES. It needs the dev server on :8899 and its own PDO on the
+       local dev MySQL, so in CORE it did not skip — it died on an uncaught
+       PDOException and reported the whole battery red on every machine that
+       is not the author's laptop. A suite that cannot run without the dev
+       server belongs in HTTP_SUITES only, where --http gates it and the
+       summary says "Not run" instead of "FAIL". */
     'agent-wallet-test.php'        => 'commission ledger, no double-claim',
     'gender-lock-test.php'         => 'shared-cabin gender locking',
     'seat-transfer-test.php'       => 'moving a seat keeps the money straight',
