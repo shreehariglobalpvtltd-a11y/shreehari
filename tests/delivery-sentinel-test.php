@@ -226,6 +226,23 @@ $nsrc = (string) file_get_contents(dirname(__DIR__) . '/includes/notify.php');
 check('the notifier keeps the reason the provider gave in the ledger',
       str_contains($nsrc, "'provider refused the send: ' . mb_substr(self::\$lastProviderError"));
 
+/* -----------------------------------------------------------------
+ *  G. Direct Meta Cloud API failures are named, not filed as "other".
+ * --------------------------------------------------------------- */
+echo "\n-- G. Meta Cloud API codes --\n";
+Database::run("DELETE FROM message_logs WHERE provider_ref LIKE '" . TAG . "%'");
+Database::run("DELETE FROM health_incidents WHERE dedupe_key LIKE 'delivery.%'");
+seed('WhatsApp failed (code 131042) - payment method problem on the WhatsApp Business Account');
+seed('WhatsApp failed (code 131047) - more than 24 h since the customer last wrote');
+seed('WhatsApp failed (code 131026) - message undeliverable');
+$res = runSentinel();
+check('billing failure is classified as 131042', ($res['classes']['131042'] ?? 0) === 1, json_encode($res['classes'] ?? []));
+check('24-hour-window failure is classified as 131047', ($res['classes']['131047'] ?? 0) === 1, json_encode($res['classes'] ?? []));
+check('recipient failure is classified as 131026', ($res['classes']['131026'] ?? 0) === 1, json_encode($res['classes'] ?? []));
+check('Meta failures are not filed as unrecognised', !isset($res['classes']['other']), json_encode($res['classes'] ?? []));
+check('billing opens an actionable critical card', isOpen('delivery.131042')
+      && (string) Database::scalar("SELECT severity FROM health_incidents WHERE dedupe_key='delivery.131042'", [], '') === 'critical');
+
 $cleanupRan = true;
 $cleanup();
 

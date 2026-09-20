@@ -80,11 +80,11 @@ foreach ($rows as $r) {
         $code = 'unconfigured';
     } elseif (stripos($err, 'sender paused') !== false) {
         $code = 'paused';
-    } elseif (preg_match('/template name .* does not exist|13200[01]/i', $err) === 1) {
+    } elseif (preg_match('/template name .* does not exist|\b13200[01]\b/i', $err) === 1) {
         /* Meta Cloud API (19 Sep 2026): the setting names a template Meta does
            not have in that language. Every ticket is refused at the door. */
         $code = 'template_missing';
-    } elseif (preg_match('/\b(6\d{4}|2000\d)\b/', $err, $m) === 1) {
+    } elseif (preg_match('/\b((?:6|13)\d{4}|2000\d)\b/', $err, $m) === 1) {
         $code = $m[1];
     }
 
@@ -151,6 +151,48 @@ const FAULTS = [
                     . "4. If there is no approved ticket template yet, create one (Utility, image header, 6 body variables - see whatsapp/TEMPLATES.md) and wait for approval.
 "
                     . "5. Open any booking > Resend ticket on WhatsApp to test.",
+    ],
+    '131042' => [
+        'severity' => Health::CRITICAL,
+        'title'    => 'Meta WhatsApp billing is not ready — ticket templates are being refused',
+        'detail'   => 'Meta accepted the API request but then refused the message because this WhatsApp Business '
+                    . 'Account had no usable payment method. This is a sender/account problem, not a passenger '
+                    . 'number problem. The retry job preserves the backlog and resumes after a later ticket proves '
+                    . 'that the sender is healthy again.',
+        'fix'      => "1. WhatsApp Manager -> Billing & payments: add or repair the payment method for this WABA.\n"
+                    . "2. Send one approved ticket template and wait for Delivered/Read.\n"
+                    . "3. The retry job will then drain the failed-ticket backlog automatically.",
+    ],
+    '131047' => [
+        'severity' => Health::WARN,
+        'title'    => 'A WhatsApp free-text message was sent outside the 24-hour service window',
+        'detail'   => 'Meta only allows free text for 24 hours after that customer last messaged the business. '
+                    . 'Business-initiated booking, payment and reminder messages need their own approved template.',
+        'fix'      => 'Use the approved Meta template for this message purpose. A customer replying first also opens the 24-hour service window.',
+    ],
+    '131026' => [
+        'severity' => Health::INFO,
+        'title'    => 'Some passenger numbers cannot receive WhatsApp',
+        'detail'   => 'Meta says these individual numbers are not reachable on WhatsApp (or use an unsupported old client). The sender itself is healthy.',
+        'fix'      => 'Call the passenger or use SMS; correct the booking phone number if it was entered wrongly.',
+    ],
+    '131031' => [
+        'severity' => Health::CRITICAL,
+        'title'    => 'Meta has locked the WhatsApp Business Account',
+        'detail'   => 'This is an account-level restriction. Every automated WhatsApp message can fail until Meta clears it.',
+        'fix'      => 'Open WhatsApp Manager and Meta Business Support, read the restriction reason, and complete the requested review or verification.',
+    ],
+    '132000' => [
+        'severity' => Health::CRITICAL,
+        'title'    => 'WhatsApp template variables do not match the approved template',
+        'detail'   => 'The API payload has the wrong number or shape of parameters for the selected Meta template.',
+        'fix'      => 'Compare the approved template components with the variables sent by the app, then resend one ticket.',
+    ],
+    '132001' => [
+        'severity' => Health::CRITICAL,
+        'title'    => 'WhatsApp template name or language does not match Meta',
+        'detail'   => 'The configured template cannot be found in the configured language on this WABA.',
+        'fix'      => 'Copy the exact approved template name and language from WhatsApp Manager into Admin -> Settings -> Notifications.',
     ],
     '63015' => [
         'severity' => Health::WARN,

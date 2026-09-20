@@ -106,7 +106,7 @@ $purposeM2 = $hasPurpose ? " AND (m2.purpose IS NULL OR m2.purpose = 'ticket')" 
 $purposeT  = $hasPurpose ? " AND (t.purpose IS NULL OR t.purpose = 'ticket')" : '';
 
 $lastFail = Database::fetch(
-    "SELECT error FROM message_logs
+    "SELECT id, error FROM message_logs
       WHERE channel = 'whatsapp' AND status = 'failed' AND error IS NOT NULL" . $purposeM . "
       ORDER BY id DESC LIMIT 1"
 );
@@ -115,6 +115,23 @@ if ($lastFail !== null) {
     // "(code N)": template missing / not approved, WABA locked, payment problem.
     foreach (['63112', '63016', '63007', '20003', '(code 132000)', '(code 132001)', '(code 131031)', '(code 131042)'] as $senderCode) {
         if (str_contains((string) $lastFail['error'], $senderCode)) {
+            /* A sender-level failure is a brake, not a permanent tombstone.
+               Meta reports these asynchronously, so keep the brake on until a
+               later ticket has remained successful for two minutes. Before
+               this recovery probe, one historical 131042 kept the retry job
+               stopped forever even after a new ticket was delivered/read. */
+            $recovered = Database::exists(
+                "SELECT 1 FROM message_logs
+                  WHERE channel = 'whatsapp'
+                    AND status = 'sent'
+                    AND id > :failed_id
+                    AND created_at <= NOW() - INTERVAL 2 MINUTE" . $purposeM . "
+                  LIMIT 1",
+                ['failed_id' => (int) $lastFail['id']]
+            );
+            if ($recovered) {
+                break;
+            }
             retry_stop([
                 'skipped' => 'sender-level failure, not the passengers',
                 'code'    => $senderCode,
@@ -141,7 +158,8 @@ const UNREACHABLE_SQL = "(m.error LIKE '%(code 63024)%' OR m.error LIKE '%(code 
 $due = Database::fetchAll(
     "SELECT b.id, b.pnr, b.contact_phone,
             (SELECT COUNT(*) FROM message_logs t
-              WHERE t.booking_id = b.id AND t.channel = 'whatsapp'" . $purposeT . ") AS tries
+              WHERE t.booking_id = b.id AND t.channel = 'whatsapp'
+                AND t.status IN ('sent','failed')" . $purposeT . ") AS tries
        FROM bookings b
        JOIN message_logs m
          ON m.id = (SELECT m2.id FROM message_logs m2
@@ -217,7 +235,8 @@ $exhausted = (int) Database::scalar(
         AND EXISTS (SELECT 1 FROM booking_legs bl
                      WHERE bl.booking_id = b.id AND bl.travel_date >= CURDATE())
         AND (SELECT COUNT(*) FROM message_logs t
-              WHERE t.booking_id = b.id AND t.channel = 'whatsapp') >= :max",
+              WHERE t.booking_id = b.id AND t.channel = 'whatsapp'
+                AND t.status IN ('sent','failed')" . $purposeT . ") >= :max",
     ['max' => MAX_TRIES],
     0
 );
