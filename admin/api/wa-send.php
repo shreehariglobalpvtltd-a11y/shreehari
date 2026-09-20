@@ -184,12 +184,34 @@ if (!$canAutoSend) {
 if ($templateConfigured) {
     $meta['content_sid'] = $contentSid;
 }
+
+/* Outside a 24 h window Meta only delivers an approved template, so a
+   statement or a chalani sent to an agent on a quiet day simply failed.
+   shg_office_alert is the generic two-variable template ("Type" and
+   "Details"), which every staff-facing message fits: the purpose label
+   becomes the type, the composed text becomes the details. Customer
+   messages are excluded — that wording is written for the office, and a
+   passenger must never receive it. While the template is still in review
+   whatsappCloudApi() falls back to the plain text, exactly as before. */
+$templateVars = $templateConfigured ? $msg['templateVars'] : [];
+$audience     = (string) (WaTemplates::REGISTRY[$purpose]['audience'] ?? '');
+if ($templateVars === [] && in_array($audience, ['agent', 'office', 'crew'], true)) {
+    $label = (string) (WaTemplates::REGISTRY[$purpose]['label'] ?? $purpose);
+    $meta['template_name'] = 'shg_office_alert';
+    $meta['template_lang'] = 'en';
+    $templateVars = [
+        '1' => mb_substr($label, 0, 60),
+        // One variable cannot hold a newline, and Meta rejects an empty one.
+        '2' => mb_substr(trim((string) preg_replace('/\s*\R\s*/u', ' · ', $msg['text'])), 0, 600) ?: '-',
+    ];
+}
+
 $res = Notify::whatsapp(
     $msg['to'],
     $msg['text'],
     $msg['mediaUrl'],
     $msg['hint'],
-    $templateConfigured ? $msg['templateVars'] : [],
+    $templateVars,
     $msg['bookingId'],
     $meta
 );
