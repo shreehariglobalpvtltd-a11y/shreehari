@@ -972,10 +972,10 @@ function seedRoutes() {
       busName: 'SHG Gandaki Sleeper', busNo: 'GJ-02-T-5580', type: 'sleeper',
       pathId: 'via_bahraich',
       depTime: '13:00', arrTime: '', dayOffset: 1, duration: '', fare: 2000,
-      configVer: 4,   // reseed guard — bump when stop names change
+      configVer: 5,   // reseed guard — bump when stop names change
       boarding: [
         'Surat · Bus stand / designated point @ 13:00 [21.170,72.831]',
-        'Kamrej · Shiv Shakti Hotel @ 13:30',
+        'Kamrej · Shiv Shakti Hotel @ 13:30 [21.2729662,72.9555969]',
         'Ankleshwar · Ada Bridge @ 15:00',
         'Bharuch · Somnath Mahadev Mandir @ 16:00',
         'Vadodara · Golden Chokdi @ 17:00 [22.307,73.181]',
@@ -994,7 +994,7 @@ function seedRoutes() {
       busName: 'SHG Gandaki Sleeper', busNo: 'GJ-02-T-5580', type: 'sleeper',
       pathId: 'via_bahraich',
       depTime: '18:00', arrTime: '', dayOffset: 1, duration: '', fare: 1800,
-      configVer: 4,
+      configVer: 5,
       boarding: ['Rupaidiha · India-Nepal border checkpoint @ 18:00 [28.060,81.617]'],
       drop: [
         'S Hari Parking, Nana Chiloda (Amd) [23.171,72.623]',
@@ -1004,7 +1004,7 @@ function seedRoutes() {
         'Vadodara · Golden Chokdi [22.307,73.181]',
         'Bharuch · Somnath Mahadev Mandir',
         'Ankleshwar · Ada Bridge',
-        'Kamrej · Shiv Shakti Hotel',
+        'Kamrej · Shiv Shakti Hotel [21.2729662,72.9555969]',
         'Surat · Bus stand / designated point [21.170,72.831]'
       ],
       amenities: ['AC Sleeper', 'Blanket', 'Charging Point', 'Water Bottle'],

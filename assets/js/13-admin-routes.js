@@ -1873,7 +1873,7 @@ async function init() {
      If ANY active route is missing configVer or has a lower version than
      the current seed, reseed — this catches every rename round (Barauda→
      Baroda→Emli Bhupal etc.) without growing a list of old names. */
-  const _CURRENT_VER = 4;   // must match seedRoutes() configVer
+  const _CURRENT_VER = 5;   // must match seedRoutes() configVer
   const _needsSeed =
        _liveRoutes.length === 0
     || _liveRoutes.some(r => RETIRED_TOWNS.includes(String(r.from)) || RETIRED_TOWNS.includes(String(r.to)))

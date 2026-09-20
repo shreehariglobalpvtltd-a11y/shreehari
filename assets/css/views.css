@@ -2790,6 +2790,16 @@ body.in-flow .credit-ribbon,body.in-flow #numStrip{display:none}
 .rov-stops li span{font-weight:800;font-size:14px;line-height:1.25;color:var(--ink)}
 .rov-stops li small{display:block;font-weight:600;font-size:12px;color:var(--muted)}
 .rov-stops li.on span{color:var(--orange,#F07800)}
+/* 20 Sep 2026 - the 📍 beside a stop that has a surveyed pin. Scoped so it
+   outranks app.css's button[type=button]{min-height:44px}, which would
+   otherwise blow the row open; it sits inline after the town name rather
+   than in a third grid column, so rows without a pin keep their layout. */
+.rov-stops .rov-pin{display:inline-flex;align-items:center;justify-content:center;vertical-align:-3px;
+  margin-left:6px;width:26px;height:26px;min-width:0;min-height:0;padding:0;border:0;border-radius:8px;
+  background:var(--blue-50,#EEF4FC);font-size:13px;line-height:1;cursor:pointer;
+  transition:transform .18s var(--ease-decel),box-shadow .18s}
+.rov-stops .rov-pin:hover{box-shadow:0 3px 10px rgba(240,120,0,.28)}
+.rov-stops .rov-pin:active{transform:scale(.9)}
 .rov-stops li.on::before{background:var(--orange,#F07800)}
 .rov-stops li.end::before{border-color:var(--blue,#0054A8);background:var(--blue,#0054A8)}
 .rov-sub{font-family:var(--f-code);font-size:14px;letter-spacing:.16em;fill:#9fb3d9}

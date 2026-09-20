@@ -132,9 +132,15 @@ function rovStopList(back) {
   const r = (DB.routes || []).find(x => x && x.active && (back ? nep(x.from) : nep(x.to)));
   const lines = r ? (back ? r.drop : r.boarding) : [];
   return (lines || []).map(function (ln) {
-    const s = String(ln).replace(/\s*\[[^\]]*\]\s*$/, '');
+    const raw = String(ln);
+    /* The optional [lat,lng] suffix is the SURVEYED boarding pin - the same
+       route_stops row /api/timetable.php serves. A stop without one gets no
+       📍 rather than a guessed town centre (20 Sep 2026). */
+    const geo = raw.match(/\[\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\]\s*$/);
+    const s = raw.replace(/\s*\[[^\]]*\]\s*$/, '');
     const at = s.split(' @ '), left = at[0].split(' · ');
-    return { town: left[0].trim(), mark: (left[1] || '').trim(), time: (at[1] || '').trim() };
+    return { town: left[0].trim(), mark: (left[1] || '').trim(), time: (at[1] || '').trim(),
+             lat: geo ? +geo[1] : null, lng: geo ? +geo[2] : null };
   }).filter(x => x.town && !nep(x.town));
 }
 /* A pin only where the town's coordinates are known (CITY_COORDS) — never a guess. */
@@ -156,7 +162,7 @@ function routeOverviewSVG(opts) {
   const km = (ka && kb) ? Math.abs(kb.km - ka.km) : 1600, hrs = (ka && kb) ? Math.round(Math.abs(kb.m - ka.m) / 60) : 20;
   const uid = 'rov' + Math.floor(Math.random() * 1e6);
   const list = rovStopList(back);
-  const dots = list.map(s => rovPin(s.town)).filter(Boolean)
+  const dots = list.map(s => (s.lat != null ? rovProject(s.lat, s.lng) : rovPin(s.town))).filter(Boolean)
     .map(p => '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="3.2" class="rov-pick"/>').join('');
   const via = Object.keys(ROV_VIA).map(k => '<circle cx="' + ROV_VIA[k][0] + '" cy="' + ROV_VIA[k][1] + '" r="2.6" fill="#9fc4f0"/>'
     + '<text x="' + (ROV_VIA[k][0] + 7) + '" y="' + (ROV_VIA[k][1] - 7) + '" class="rov-via">' + k + '</text>').join('');
@@ -167,8 +173,15 @@ function routeOverviewSVG(opts) {
     const same = s => { const a = s.town.toLowerCase(), b = town.toLowerCase(); return a.indexOf(b) === 0 || b.indexOf(a) === 0; };
     const f12 = tm => (tm && typeof fmt12h === 'function') ? fmt12h(tm) : tm;
     const tt = (k, en) => { const v = (typeof t === 'function') ? t(k) : ''; return v && v !== k ? v : en; };
+    /* 📍 only where the stop carries a surveyed pin - it opens the app's own
+       map on the exact boarding spot (see the data-navto listener at the end
+       of this file). A stop still waiting for its coordinates shows no 📍. */
+    const pinT = tt('waPin', 'Show on the map');
+    const pin = s => s.lat == null ? '' : '<button type="button" class="rov-pin" data-navto="' + s.lat + ',' + s.lng
+      + '" data-navto-label="' + esc(s.town + (s.mark ? ' · ' + s.mark : '')) + '" title="' + esc(pinT)
+      + '" aria-label="' + esc(pinT) + '">📍</button>';
     const rows = list.map(s => '<li' + (same(s) ? ' class="on"' : '') + '><b>' + esc(f12(s.time)) + '</b><span>' + esc(s.town)
-      + (s.mark ? '<small>' + esc(s.mark) + '</small>' : '') + '</span></li>');
+      + pin(s) + (s.mark ? '<small>' + esc(s.mark) + '</small>' : '') + '</span></li>');
     const border = '<li class="end"><b>' + (back ? esc(f12('18:00')) : '🛃') + '</b><span>Rupaidiha<small>' + esc(tt('rovLast', 'India–Nepal border')) + '</small></span></li>';
     listHTML = '<div class="rov-stops"><div class="rov-stops-h">📍 ' + esc(back ? tt('rovDrops', 'Drop points') : tt('rovPickups', 'Pickup points'))
       + '</div><ol>' + (back ? border + rows.join('') : rows.join('') + border) + '</ol></div>';
@@ -269,10 +282,10 @@ function snLoadMapInit() {
    route predates the [lat,lng] suffix in its boarding points). */
 const CITY_COORDS = {
   'surat': [21.170, 72.831], 'barauda': [22.307, 73.181], 'vadodara': [22.307, 73.181],
-  'kamrej': [21.271, 72.958], 'ankleshwar': [21.626, 73.015], 'bharuch': [21.705, 72.996],
+  'kamrej': [21.2729662, 72.9555969], 'ankleshwar': [21.626, 73.015], 'bharuch': [21.705, 72.996],
   'anand': [22.565, 72.929], 'nadiad': [22.692, 72.863],
   'ahmedabad': [23.022, 72.571], 'chiloda': [23.157, 72.655],
-  'mehsana': [23.588, 72.369], 'unjha': [23.804, 72.391], 'sidhpur': [23.917, 72.373],
+  'mehsana': [23.6008959, 72.3807235], 'unjha': [23.804, 72.391], 'sidhpur': [23.917, 72.373],
   'palanpur': [24.171, 72.438], 'visnagar': [23.700, 72.554],
   'nepalgunj': [28.050, 81.616], 'rupaidiha': [28.060, 81.617], 'kohalpur': [28.196, 81.700]
 };
