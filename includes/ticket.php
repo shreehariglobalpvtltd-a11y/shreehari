@@ -1572,7 +1572,7 @@ final class Ticket
      *  21 Sep 2026: depth pass — card and fare-band drop shadows, navy
      *  gradient fare band with a gold hairline, and the payment QR in a
      *  scanner viewfinder (double ring + corner brackets). */
-    private const PNG_LAYOUT_CHANGED = '2026-09-21 03:10:00';
+    private const PNG_LAYOUT_CHANGED = '2026-09-21 02:40:00';
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the

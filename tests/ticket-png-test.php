@@ -115,8 +115,15 @@ check('a cached PNG is re-rendered after a layout change', str_contains($src('in
 /* WhatsApp re-encodes the PNG as JPEG: the small print is darker and the
    seller line is a 20px value in a tile rather than grey 17px, so both
    survive the pass. */
+/* 21 Sep 2026: this used to pin the seller line by its EXACT pixel
+   expression ("1530 + $grow"). The expression gained "+ $qrExt" when the
+   UPI payment QR was added on 20 Sep, and the check has been red ever
+   since — failing for a coordinate that moved, while saying nothing about
+   the thing it exists to protect. What matters is the SIZE and the COLOUR
+   (WhatsApp re-encodes to JPEG and eats thin light-grey small print), so
+   that is what it now asserts, at whatever y the layout puts it. */
 check('small print sized for WhatsApp recompression',
-    str_contains($src('includes/ticket.php'), 'self::gdText($im, 20, 82, 1530 + $grow, $ink, $who, true);')
+    preg_match('/self::gdText\(\$im, 20, 82, 1530 \+ \$grow[^,]*, \$ink, \$who, true\);/', $src('includes/ticket.php')) === 1
     && str_contains($src('includes/ticket.php'), 'imagecolorallocate($im, 84, 96, 118)'));
 check('auto-download toast no longer says PDF', !preg_match("/autoDlToast: '[^']*PDF/u", $src('assets/js/04-i18n.js')));
 
