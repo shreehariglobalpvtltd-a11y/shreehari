@@ -69,6 +69,22 @@ final class WaBooking
             return self::out(self::say('cancelled', $lang));
         }
 
+        /* JUST SOLD, AND SOMETHING IS WRONG (21 Sep 2026, owner: "confirm
+           gare ticket aaune, mistake bhaye feri tyaslai sachhyaera aaune").
+           For a few minutes after a sale a complaint about the NAME is
+           answered here instead of falling through to the menu. Only the
+           name: a wrong date or pickup moves seats and money, and that
+           stays with fix_ticket and the desk. */
+        if ($state === null) {
+            $justSold = self::recentSale($phoneDigits);
+            if ($justSold !== null && self::looksLikeNameFix($text)) {
+                $fixed = self::fixNameLocally($phoneDigits, $justSold, $text, $lang);
+                if ($fixed !== null) {
+                    return $fixed;
+                }
+            }
+        }
+
         // Nothing in progress and nothing bookable in the message — let the
         // PNR lookup, the assistant or the menu answer instead.
         if ($state === null && !self::looksLikeRequest($text)) {
@@ -237,6 +253,14 @@ final class WaBooking
         self::clear($phoneDigits);
 
         $pnr    = (string) ($res['pnr'] ?? '');
+        /* Remember what we just sold, briefly. A wrong name is noticed in
+           the seconds AFTER the ticket lands, not before — and until now
+           the conversation was already cleared, so "naam galat bhayo" fell
+           through to the menu and the passenger was told to ring the
+           office about a ticket we had cut ten seconds earlier. */
+        if ($pnr !== '') {
+            self::rememberSale($phoneDigits, $pnr);
+        }
         $seats  = implode(', ', array_map('strval', (array) ($res['seats'] ?? [])));
         $total  = (string) ($res['totalLabel'] ?? '');
         $when   = (string) ($res['dateLabel'] ?? ($slots['date'] ?? ''));
@@ -346,6 +370,18 @@ Example: Ram Bahadur 35, Sita Gurung 30",
 जस्तै: राम बहादुर ३५, सीता गुरुङ ३०",
                 'gu' => "કૃપા કરીને બધાં %d નામ એક જ સંદેશમાં મોકલો, ઉંમર હોય તો સાથે.
 દા.ત.: રામ બહાદુર 35, સીતા ગુરુંગ 30",
+            ],
+            'askRightName' => [
+                'en' => 'Sorry about that. Please send the correct name, like: naam Ram Bahadur',
+                'hi' => 'माफ़ कीजिए। सही नाम भेजिए, जैसे: नाम राम बहादुर',
+                'ne' => 'माफ गर्नुहोस्। सही नाम पठाउनुहोस्, जस्तै: नाम राम बहादुर',
+                'gu' => 'માફ કરશો. સાચું નામ મોકલો, દા.ત.: નામ રામ બહાદુર',
+            ],
+            'nameFixed' => [
+                'en' => 'Fixed — the ticket is now in the name %s. The corrected ticket is below.',
+                'hi' => 'ठीक कर दिया — टिकट अब %s के नाम पर है। सुधारा हुआ टिकट नीचे है।',
+                'ne' => 'मिलाइयो — टिकट अब %s को नाममा छ। सच्याइएको टिकट तल छ।',
+                'gu' => 'સુધારી દીધું — ટિકિટ હવે %s ના નામે છે. સુધારેલી ટિકિટ નીચે છે.',
             ],
             'checkThis' => [
                 'en' => 'Please check this booking:',
@@ -473,6 +509,165 @@ Example: Ram Bahadur 35, Sita Gurung 30",
         return mb_substr(trim($t), 0, 60);
     }
 
+    /* -----------------------------------------------------------------
+     *  Just-sold correction (21 Sep 2026)
+     *
+     *  A wrong name is noticed in the seconds AFTER the ticket lands. Up
+     *  to now the conversation was already cleared by then, so "naam galat
+     *  bhayo" fell through to the menu and the passenger was told to ring
+     *  the office about a ticket we had cut ten seconds earlier.
+     *
+     *  Only the NAME is corrected here. A wrong date or pickup moves seats
+     *  and money and belongs to fix_ticket (which quotes, guards the fare
+     *  and keeps an audit row) or to the desk — this path is deliberately
+     *  the smallest one that removes the most common frustration.
+     * --------------------------------------------------------------- */
+
+    /** How long after a sale a name complaint is still handled here. */
+    private const SOLD_TTL  = 900;          // 15 minutes
+    private const SOLD_SCOPE = 'wa_sold';
+    /** Corrections allowed per booking from this path. */
+    private const SOLD_FIX_MAX = 2;
+
+    private static function rememberSale(string $who, string $pnr): void
+    {
+        try {
+            Database::run(
+                "INSERT INTO kv_store (kscope, kkey, kvalue, updated_by)
+                 VALUES (:s, :k, :v, 'wabooking')
+                 ON DUPLICATE KEY UPDATE kvalue = :v2, updated_by = 'wabooking'",
+                ['s' => self::SOLD_SCOPE, 'k' => $who,
+                 'v'  => json_encode(['pnr' => $pnr, 'at' => time(), 'fixes' => 0]),
+                 'v2' => json_encode(['pnr' => $pnr, 'at' => time(), 'fixes' => 0])]
+            );
+        } catch (Throwable $e) {
+            // Remembering is a convenience; a sale must never fail on it.
+        }
+    }
+
+    /** @return array{pnr: string, at: int, fixes: int}|null */
+    private static function recentSale(string $who): ?array
+    {
+        try {
+            $row = Database::fetch(
+                'SELECT kvalue FROM kv_store WHERE kscope = :s AND kkey = :k',
+                ['s' => self::SOLD_SCOPE, 'k' => $who]
+            );
+        } catch (Throwable $e) {
+            return null;
+        }
+        if ($row === null) {
+            return null;
+        }
+        $v = json_decode((string) $row['kvalue'], true);
+        if (!is_array($v) || ($v['pnr'] ?? '') === '') {
+            return null;
+        }
+        if ((time() - (int) ($v['at'] ?? 0)) > self::SOLD_TTL) {
+            return null;
+        }
+        return ['pnr' => (string) $v['pnr'], 'at' => (int) $v['at'], 'fixes' => (int) ($v['fixes'] ?? 0)];
+    }
+
+    /**
+     * Does this message complain about the NAME on the ticket we just cut?
+     *
+     * Kept deliberately narrow: it must say something is wrong AND be about
+     * a name, or be an explicit "naam X" correction. "miti galat cha" is a
+     * date complaint and must fall through, not be answered as a name.
+     */
+    private static function looksLikeNameFix(string $t): bool
+    {
+        $t = mb_strtolower(trim($t));
+        if ($t === '') {
+            return false;
+        }
+        // An outright "naam Ram Bahadur" is a correction on its own.
+        if (preg_match('/^\s*(?:naam|nam|name|नाम|નામ)\s*[:\-]?\s*\p{L}/ui', $t) === 1) {
+            return true;
+        }
+        $wrong = ['galat', 'galati', 'wrong', 'mistake', 'gadbad', 'milena', 'mileko chaina',
+                  'sachya', 'sudhar', 'change', 'badal', 'fix', 'correct',
+                  'गलत', 'गल्ती', 'सच्या', 'सुधार', 'बदल', 'मिलेन', 'ખોટું', 'સુધાર'];
+        $about = ['naam', 'nam', 'name', 'नाम', 'નામ', 'spelling', 'हिज्जे'];
+        $hasWrong = false;
+        foreach ($wrong as $w) { if (str_contains($t, $w)) { $hasWrong = true; break; } }
+        if (!$hasWrong) {
+            return false;
+        }
+        foreach ($about as $w) { if (str_contains($t, $w)) { return true; } }
+        return false;
+    }
+
+    /**
+     * Correct the name on the booking we just sold and re-send the ticket.
+     *
+     * Returns null when it cannot be done safely — a missing new name, a
+     * booking that is no longer ours to touch, a party where we cannot tell
+     * WHICH name is meant — so the caller falls through to the assistant or
+     * the menu rather than guessing.
+     */
+    private static function fixNameLocally(string $who, array $sold, string $text, string $lang): ?array
+    {
+        if ($sold['fixes'] >= self::SOLD_FIX_MAX) {
+            return null;                       // hand it on; a human should look
+        }
+
+        $party = self::parseParty($text, 2);
+        $new   = $party !== [] ? $party[0]['name'] : '';
+        if ($new === '' || mb_strlen($new) < 2) {
+            // They said it is wrong but not what it should be.
+            return self::out(self::say('askRightName', $lang));
+        }
+
+        try {
+            $detail = BookingService::detail($sold['pnr']);
+            if ($detail === null || normalisePhone((string) ($detail['contact_phone'] ?? '')) !== $who) {
+                return null;
+            }
+            if (!in_array((string) ($detail['status'] ?? ''), ['pending', 'confirmed'], true)) {
+                return null;
+            }
+            $pax = $detail['passengers'] ?? [];
+            // With a party we cannot tell which of four names they mean —
+            // fix_ticket / the desk asks that question properly.
+            if (count($pax) !== 1) {
+                return null;
+            }
+            $target = $pax[0];
+            if (mb_strtolower(trim((string) $target['full_name'])) === mb_strtolower($new)) {
+                return null;
+            }
+
+            $bid = (int) $detail['id'];
+            Database::run(
+                'UPDATE booking_passengers SET full_name = :n WHERE id = :id AND booking_id = :b',
+                ['n' => $new, 'id' => (int) $target['id'], 'b' => $bid]
+            );
+            Database::update('bookings', ['full_name' => $new], 'id = :id', ['id' => $bid]);
+            Ticket::reissue($bid);
+            Logger::audit('booking.rename_wabooking', 'booking', $sold['pnr'],
+                ['full_name' => (string) $target['full_name']], ['full_name' => $new],
+                'Name corrected in the WhatsApp chat right after the sale');
+
+            // Spend one of the two allowed corrections.
+            Database::run(
+                "UPDATE kv_store SET kvalue = :v WHERE kscope = :s AND kkey = :k",
+                ['v' => json_encode(['pnr' => $sold['pnr'], 'at' => $sold['at'], 'fixes' => $sold['fixes'] + 1]),
+                 's' => self::SOLD_SCOPE, 'k' => $who]
+            );
+
+            $fresh = BookingService::detail($sold['pnr']) ?? $detail;
+            return self::out(
+                sprintf(self::say('nameFixed', $lang), $new) . "\n" . self::label('pnr', $lang) . ': ' . $sold['pnr'],
+                (string) ($fresh['status'] ?? '') === 'confirmed' ? Ticket::imageUrl($sold['pnr']) : null
+            );
+        } catch (Throwable $e) {
+            Logger::exception($e, 'whatsapp');
+            return null;
+        }
+    }
+
     /**
      * The captured party in the shape QuickTicket::requestFor() reads.
      *
@@ -546,6 +741,11 @@ Example: Ram Bahadur 35, Sita Gurung 30",
         }
         // " ra " / " and " / " और " / " ane " join two people exactly like a comma.
         $t = (string) preg_replace('/\s+(?:ra|and|aur|ane|और|अनि|ર|અને)\s+/ui', ',', $t);
+        /* A numbered list often carries no comma at all — "1. Ram Bahadur
+           2. Sita Gurung" is two people, and without this the whole line
+           came back as one very long name. The marker itself becomes the
+           separator; the leading one is stripped per-part below. */
+        $t = (string) preg_replace('/(?<=\S)\s+(?=\d{1,2}\s*[.)]\s*\p{L})/u', ',', $t);
 
         $parts = preg_split('/[,;\/\n\r।|]+/u', $t) ?: [];
         $out   = [];
