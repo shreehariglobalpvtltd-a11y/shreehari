@@ -414,7 +414,24 @@ final class WaBooking
     private static function isYes(string $t): bool
     {
         $t = mb_strtolower(trim($t));
-        foreach (['yes', 'y', 'ok', 'okay', 'sure', 'book', 'हो', 'हजुर', 'हाँ', 'हा', 'ठीक', 'ठिक', 'हां', 'હા', 'બરાબર'] as $w) {
+        /* 21 Sep 2026 — THE BUG THAT SWALLOWED EVERY LOCAL SALE.
+           This list held Devanagari हो but not romanised "ho", which is
+           what a Nepali actually types on a phone keyboard. The summary
+           went up, the passenger wrote "ho", nothing matched, and the
+           engine re-printed the same summary forever. It was invisible
+           while the model sat in front (a model understands "ho" without
+           being told); the moment selling moved onto this VPS it became
+           the whole feature failing. Romanised Nepali, Hindi and Gujarati
+           now sit beside the scripts they are typed instead of. */
+        foreach ([
+            'yes', 'y', 'ok', 'okay', 'oke', 'sure', 'book', 'confirm', 'done', 'go',
+            'ho', 'hoo', 'hos', 'hunchha', 'hunxa', 'huncha', 'hunca', 'hajur', 'hajoor',
+            'thik', 'thik cha', 'thikcha', 'theek', 'thek', 'tik', 'tikcha',
+            'haa', 'han', 'ha', 'haan', 'hai', 'sahi', 'malai chahiyo', 'chahiyo',
+            'kaat', 'kata', 'katnus', 'katidinus', 'katdinus', 'book gara', 'book garnus',
+            'हो', 'हजुर', 'हाँ', 'हा', 'ठीक', 'ठिक', 'हां', 'हुन्छ', 'काट', 'काट्नुहोस्',
+            'હા', 'બરાબર', 'હોવ',
+        ] as $w) {
             if ($t === $w || str_starts_with($t, $w . ' ')) {
                 return true;
             }
@@ -425,7 +442,11 @@ final class WaBooking
     private static function isNo(string $t): bool
     {
         $t = mb_strtolower(trim($t));
-        foreach (['no', 'n', 'nope', 'होइन', 'नहीं', 'नही', 'ना', 'ના'] as $w) {
+        foreach ([
+            'no', 'n', 'nope', 'nahi', 'nai', 'haina', 'hoina', 'chaidaina', 'pardaina',
+            'nachahine', 'rahana deu', 'napathau',
+            'होइन', 'नहीं', 'नही', 'ना', 'चाहिँदैन', 'पर्दैन', 'ના', 'નથી',
+        ] as $w) {
             if ($t === $w || str_starts_with($t, $w . ' ')) {
                 return true;
             }
@@ -436,7 +457,8 @@ final class WaBooking
     private static function isCancel(string $t): bool
     {
         $t = mb_strtolower(trim($t));
-        foreach (['cancel', 'stop', 'रद्द', 'रोक', 'बन्द', 'બંધ', 'રદ'] as $w) {
+        foreach (['cancel', 'stop', 'radda', 'rokka', 'band gara', 'chhodde', 'chod',
+                  'रद्द', 'रोक', 'बन्द', 'બંધ', 'રદ'] as $w) {
             if (str_contains($t, $w)) {
                 return true;
             }
