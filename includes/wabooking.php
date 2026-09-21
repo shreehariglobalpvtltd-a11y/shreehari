@@ -600,6 +600,59 @@ Example: Ram Bahadur 35, Sita Gurung 30",
     }
 
     /**
+     * The REPLACEMENT name out of a correction message — and nothing else.
+     *
+     * 21 Sep 2026: the first attempt fed the whole sentence to parseParty,
+     * which happily read "naam galat bhayo, naam Ram Bahadur ho" as a party
+     * whose first member is called "galat bhayo" — and renamed a live
+     * ticket to it. A correction message contains BOTH the complaint and
+     * the fix, so the fix has to be picked out, never just "the first thing
+     * that looks like a name".
+     *
+     * So: take the LAST explicit "naam X" in the message (people write the
+     * complaint first and the correction after it), strip the trailing "ho"
+     * / "hunchha" / "cha" that ends a Nepali sentence, and refuse anything
+     * that still reads like a complaint. Returns '' when unsure — the
+     * caller then asks for the name plainly instead of guessing.
+     */
+    private static function correctedNameFrom(string $text): string
+    {
+        $t = trim($text);
+        if ($t === '') {
+            return '';
+        }
+        // Every "naam X" / "नाम X" in the message; the LAST one is the fix.
+        if (preg_match_all('/(?:naam|nam|name|नाम|નામ)\s*[:\-]?\s*([^\n,;।]{2,60})/ui', $t, $mm) !== 1 + 0
+            && empty($mm[1])) {
+            return '';
+        }
+        if (empty($mm[1])) {
+            return '';
+        }
+        $cand = trim((string) end($mm[1]));
+
+        // Trailing sentence tails: "Ram Bahadur ho", "… hunchha", "… cha".
+        $cand = (string) preg_replace('/\s+(?:ho|hos|hunchha|hunxa|huncha|cha|chha|hai|हो|हुन्छ|छ)\s*[.!]?$/ui', '', $cand);
+        $cand = trim((string) preg_replace('/\s{2,}/u', ' ', $cand));
+
+        if (mb_strlen($cand) < 2 || preg_match('/\p{L}/u', $cand) !== 1) {
+            return '';
+        }
+        // A candidate that still sounds like the complaint is not a name.
+        foreach (['galat', 'galati', 'wrong', 'mistake', 'gadbad', 'milena', 'sachya', 'sudhar',
+                  'change', 'badal', 'fix', 'correct', 'गलत', 'गल्ती', 'सच्या', 'सुधार', 'बदल', 'मिलेन'] as $w) {
+            if (str_contains(mb_strtolower($cand), $w)) {
+                return '';
+            }
+        }
+        // A name is words, not digits.
+        if (preg_match('/\d/u', $cand) === 1) {
+            return '';
+        }
+        return mb_substr($cand, 0, 60);
+    }
+
+    /**
      * Correct the name on the booking we just sold and re-send the ticket.
      *
      * Returns null when it cannot be done safely — a missing new name, a
@@ -613,9 +666,8 @@ Example: Ram Bahadur 35, Sita Gurung 30",
             return null;                       // hand it on; a human should look
         }
 
-        $party = self::parseParty($text, 2);
-        $new   = $party !== [] ? $party[0]['name'] : '';
-        if ($new === '' || mb_strlen($new) < 2) {
+        $new = self::correctedNameFrom($text);
+        if ($new === '') {
             // They said it is wrong but not what it should be.
             return self::out(self::say('askRightName', $lang));
         }
@@ -645,7 +697,18 @@ Example: Ram Bahadur 35, Sita Gurung 30",
                 ['n' => $new, 'id' => (int) $target['id'], 'b' => $bid]
             );
             Database::update('bookings', ['full_name' => $new], 'id = :id', ['id' => $bid]);
-            Ticket::reissue($bid);
+            /* The rename is COMMITTED by this point. A hiccup re-minting the
+               picture must not make this method return null, because the
+               caller reads null as "I did nothing" and answers with the
+               menu — which is how a corrected ticket once came back looking
+               like it had been ignored. The ticket self-heals on next open;
+               the passenger is told the name is fixed either way. */
+            try {
+                Ticket::reissue($bid);
+            } catch (Throwable $e) {
+                Logger::error('Ticket reissue after WhatsApp rename failed: ' . $e->getMessage(),
+                    ['pnr' => $sold['pnr']], 'whatsapp');
+            }
             Logger::audit('booking.rename_wabooking', 'booking', $sold['pnr'],
                 ['full_name' => (string) $target['full_name']], ['full_name' => $new],
                 'Name corrected in the WhatsApp chat right after the sale');
