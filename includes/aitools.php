@@ -1037,6 +1037,13 @@ final class AiTools
            sale, so a corrected ticket can never land on a bus that is full
            or past its cut-off. */
         if ($newDate !== '' || $newBoard !== '') {
+            /* rebookLeg() reaches for TripStatus when it releases the old
+               departure. admin/reschedule.php requires it at the top of the
+               page; a tool call has no page, so it must ask for it here or
+               the whole correction dies on "Class TripStatus not found". */
+            if (!class_exists('TripStatus')) {
+                require_once INCLUDE_PATH . '/tripstatus.php';
+            }
             $seatCount = max(1, count($detail['passengers'] ?? []) ?: count(self::seatNos($detail)));
             $plan = QuickTicket::plan([
                 'seats'     => $seatCount,
