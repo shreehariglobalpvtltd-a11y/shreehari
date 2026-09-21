@@ -86,16 +86,32 @@ final class WaBooking
                 $slots[$awaiting] = $picked;
                 $text = '';                          // consumed by the answer
             } elseif ($awaiting === 'name') {
-                // They often answer the name question with "naam Ram" too.
-                $slots['name'] = self::stripNameWord($text);
+                /* They answer the name question with "naam Ram", with one
+                   name, or — when the party is 3 — with all three at once.
+                   parseParty() reads every shape; the first is the booking
+                   name and the rest ride on their own berths. */
+                $party = self::parseParty($text, max(1, (int) ($slots['seats'] ?? 1)));
+                if ($party !== []) {
+                    $slots['name']  = $party[0]['name'];
+                    $slots['party'] = $party;
+                } else {
+                    $slots['name'] = self::stripNameWord($text);
+                }
                 $text = '';
             }
         }
 
         /* "naam Ram Bahadur" / "नाम राम" — the one correction the parser cannot
-           make for itself, since any word could be a name. */
-        if (preg_match('/^\s*(?:naam|nam|name|नाम)\s*[:\-]?\s*(.{2,60})$/ui', $text, $m)) {
-            $slots['name'] = trim($m[1]);
+           make for itself, since any word could be a name. A list behind the
+           same word is the whole family: "naam Ram, Sita 30, Maya 12". */
+        if (preg_match('/^\s*(?:naam|nam|name|नाम|નામ)\s*[:\-]?\s*(.{2,400})$/ui', $text, $m)) {
+            $party = self::parseParty($m[1], max(1, (int) ($slots['seats'] ?? 1)));
+            if ($party !== []) {
+                $slots['name']  = $party[0]['name'];
+                $slots['party'] = $party;
+            } else {
+                $slots['name'] = trim($m[1]);
+            }
             $text = '';
         }
 
@@ -164,7 +180,20 @@ final class WaBooking
            first, the next message ("Mehsana") was read as the name. */
         if (trim((string) ($slots['name'] ?? '')) === '') {
             self::save($phoneDigits, $slots, 'name', [], $lang);
-            return self::out(self::say('askName', $lang));
+            $paxN = max(1, (int) ($slots['seats'] ?? 1));
+            return self::out($paxN > 1
+                ? sprintf(self::say('askNames', $lang), $paxN)
+                : self::say('askName', $lang));
+        }
+
+        /* The party was given as ONE name for several berths — ask for the
+           rest before the summary, so the manifest is right the first time
+           rather than after a correction. */
+        if (count(self::partyForSale($slots)) < max(1, (int) ($slots['seats'] ?? 1))
+            && ($slots['namesAsked'] ?? false) !== true) {
+            $slots['namesAsked'] = true;
+            self::save($phoneDigits, $slots, 'name', [], $lang);
+            return self::out(sprintf(self::say('askNames', $lang), max(1, (int) ($slots['seats'] ?? 1))));
         }
 
         $plan = $sug['plan'] ?? null;
@@ -193,6 +222,11 @@ final class WaBooking
                 'direction' => (string) ($slots['direction'] ?? ''),
                 'date'      => (string) ($slots['date'] ?? ''),
                 'boarding'  => (string) ($slots['boarding'] ?? ''),
+                /* 21 Sep 2026: every traveller on their own berth. Without
+                   this QuickTicket numbers the party after the buyer —
+                   "Ram Bahadur (2)", "(3)" — which is three real people
+                   under one name on the border manifest. */
+                'passengers' => self::partyForSale($slots),
             ], null);
         } catch (Throwable $e) {
             self::clear($phoneDigits);
@@ -244,7 +278,20 @@ final class WaBooking
         $total = (float) ($plan['fare']['total'] ?? 0);
 
         $lines = [self::say('checkThis', $lang), ''];
-        $lines[] = self::label('name', $lang) . ': ' . (string) ($slots['name'] ?? '');
+        /* Every traveller by name (and age when given), so the party can
+           check its OWN manifest before confirming — a wrong name is far
+           cheaper to catch here than at the border. One traveller still
+           reads as the single "Name:" line it always did. */
+        $party = self::partyForSale($slots);
+        if (count($party) > 1) {
+            $lines[] = self::label('name', $lang) . ':';
+            foreach ($party as $i => $p) {
+                $lines[] = '  ' . ($i + 1) . '. ' . $p['name']
+                         . ($p['age'] !== null ? ' (' . $p['age'] . ')' : '');
+            }
+        } else {
+            $lines[] = self::label('name', $lang) . ': ' . (string) ($slots['name'] ?? '');
+        }
         if ($route !== '') {
             $lines[] = self::label('route', $lang) . ': ' . $route;
         }
@@ -284,6 +331,21 @@ final class WaBooking
                 'hi' => 'टिकट किस नाम से बनाएँ?',
                 'ne' => 'टिकट कुन नाममा बनाउने?',
                 'gu' => 'ટિકિટ કયા નામે બનાવીએ?',
+            ],
+            /* A party is asked for EVERY name in one message — asking one at
+               a time is four round trips for a family of four, and a berth
+               with no name on it is a berth the border cannot check. Age is
+               invited, never demanded: it is written in brackets if given
+               and simply left out if not. */
+            'askNames' => [
+                'en' => "Please send all %d names in one message, with age if you can.
+Example: Ram Bahadur 35, Sita Gurung 30",
+                'hi' => "कृपया चारों नाम एक ही संदेश में भेजिए, उम्र हो तो साथ में।
+जैसे: राम बहादुर 35, सीता गुरुङ 30",
+                'ne' => "कृपया %d जनाकै नाम एउटै सन्देशमा पठाउनुहोस्, उमेर भए सँगै।
+जस्तै: राम बहादुर ३५, सीता गुरुङ ३०",
+                'gu' => "કૃપા કરીને બધાં %d નામ એક જ સંદેશમાં મોકલો, ઉંમર હોય તો સાથે.
+દા.ત.: રામ બહાદુર 35, સીતા ગુરુંગ 30",
             ],
             'checkThis' => [
                 'en' => 'Please check this booking:',
@@ -407,8 +469,126 @@ final class WaBooking
     private static function stripNameWord(string $t): string
     {
         $t = trim($t);
-        $t = (string) preg_replace('/^\s*(?:naam|nam|name|नाम)\s*[:\-]?\s*/ui', '', $t);
+        $t = (string) preg_replace('/^\s*(?:naam|nam|name|नाम|નામ)\s*[:\-]?\s*/ui', '', $t);
         return mb_substr(trim($t), 0, 60);
+    }
+
+    /**
+     * The captured party in the shape QuickTicket::requestFor() reads.
+     *
+     * Trimmed to the berths actually being sold: a list longer than the
+     * seats would put a name on a berth nobody bought, and a shorter one
+     * is fine — the engine numbers the remainder after the buyer exactly
+     * as the seat map does.
+     *
+     * @return list<array{name: string, age: int|null}>
+     */
+    private static function partyForSale(array $slots): array
+    {
+        $party = is_array($slots['party'] ?? null) ? $slots['party'] : [];
+        if ($party === []) {
+            return [];
+        }
+        $seats = max(1, (int) ($slots['seats'] ?? 1));
+        $out   = [];
+        foreach ($party as $p) {
+            if (count($out) >= $seats) {
+                break;
+            }
+            $name = trim((string) ($p['name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $age  = isset($p['age']) && $p['age'] !== null ? (int) $p['age'] : null;
+            $out[] = ['name' => $name, 'age' => ($age !== null && $age >= 1 && $age <= 120) ? $age : null];
+        }
+        return $out;
+    }
+
+    /**
+     * A whole travelling party out of one sentence (21 Sep 2026, owner:
+     * "name age ticket count date sabai Nepali Hindi English ma jasto
+     * tarika bata ni bujhne").
+     *
+     * Until now the local engine took ONE name and QuickTicket numbered
+     * the rest after it, so a family of three rode on "Ram Bahadur",
+     * "Ram Bahadur (2)", "Ram Bahadur (3)" — three real people, one name,
+     * and a manifest nobody could check at the border.
+     *
+     * Everything people actually type is accepted:
+     *     naam Ram Bahadur, Sita Gurung, Maya Thapa
+     *     Ram 35, Sita 30, Maya 12
+     *     नाम: राम बहादुर ३५, सीता गुरुङ ३०
+     *     Ram Bahadur (35) ra Sita Gurung (30)
+     *     1. Ram Bahadur  2. Sita Gurung
+     * Separators may be commas, Devanagari danda, semicolons, slashes,
+     * newlines, or the words "ra" / "और" / "ane" / "and".
+     *
+     * Ages are read only where they are unambiguous — a number glued to a
+     * name, in brackets, or after it — and anything outside 1..120 is
+     * dropped rather than guessed at. A name is never invented: a fragment
+     * with no letters is skipped entirely.
+     *
+     * @return list<array{name: string, age: int|null}>
+     */
+    private static function parseParty(string $text, int $max = 12): array
+    {
+        $t = trim(self::stripNameWord($text));
+        if ($t === '') {
+            return [];
+        }
+        // Devanagari and Gujarati digits first, so "३५" is just 35.
+        if (class_exists('TicketBot') && method_exists('TicketBot', 'asciiDigits')) {
+            $t = (string) TicketBot::asciiDigits($t);
+        } else {
+            $t = strtr($t, ['०'=>'0','१'=>'1','२'=>'2','३'=>'3','४'=>'4','५'=>'5','६'=>'6','७'=>'7','८'=>'8','९'=>'9',
+                            '૦'=>'0','૧'=>'1','૨'=>'2','૩'=>'3','૪'=>'4','૫'=>'5','૬'=>'6','૭'=>'7','૮'=>'8','૯'=>'9']);
+        }
+        // " ra " / " and " / " और " / " ane " join two people exactly like a comma.
+        $t = (string) preg_replace('/\s+(?:ra|and|aur|ane|और|अनि|ર|અને)\s+/ui', ',', $t);
+
+        $parts = preg_split('/[,;\/\n\r।|]+/u', $t) ?: [];
+        $out   = [];
+        foreach ($parts as $part) {
+            if (count($out) >= $max) {
+                break;
+            }
+            $p = trim($part);
+            // Drop a list marker: "1.", "२)", "-"
+            $p = (string) preg_replace('/^\s*[\d]{1,2}\s*[.)\-]\s*/u', '', $p);
+            $p = trim($p);
+            if ($p === '') {
+                continue;
+            }
+
+            $age = null;
+            // "(35)" or "35" at either end, or "umer 35" / "age 35".
+            if (preg_match('/[\(\[]\s*(\d{1,3})\s*[\)\]]/u', $p, $m)) {
+                $age = (int) $m[1];
+                $p   = trim((string) str_replace($m[0], ' ', $p));
+            } elseif (preg_match('/\b(?:umer|umar|age|उमेर|ઉંમર)\s*[:\-]?\s*(\d{1,3})\b/ui', $p, $m)) {
+                $age = (int) $m[1];
+                $p   = trim((string) str_replace($m[0], ' ', $p));
+            } elseif (preg_match('/^(\d{1,3})\s+(?=\D)/u', $p, $m)) {
+                $age = (int) $m[1];
+                $p   = trim(mb_substr($p, mb_strlen($m[0])));
+            } elseif (preg_match('/\s(\d{1,3})\s*$/u', $p, $m)) {
+                $age = (int) $m[1];
+                $p   = trim(mb_substr($p, 0, mb_strlen($p) - mb_strlen($m[0])));
+            }
+            if ($age !== null && ($age < 1 || $age > 120)) {
+                $age = null;                       // a phone tail, not an age
+            }
+
+            $name = trim((string) preg_replace('/\s{2,}/u', ' ', $p));
+            // A fragment with no letter at all is not a person.
+            if (preg_match('/\p{L}/u', $name) !== 1 || mb_strlen($name) < 2) {
+                continue;
+            }
+            $out[] = ['name' => mb_substr($name, 0, 60), 'age' => $age];
+        }
+
+        return $out;
     }
 
     private static function isYes(string $t): bool
