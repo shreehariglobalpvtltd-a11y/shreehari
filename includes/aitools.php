@@ -76,6 +76,9 @@ final class AiTools
     /** A passenger may fix the name on one booking this many times. */
     private const RENAME_MAX = 2;
 
+    /** Date / seat / pickup corrections allowed per booking from WhatsApp. */
+    private const FIX_MAX = 3;
+
     /* =================================================================
      *  Who is writing to us
      * ================================================================= */
@@ -251,6 +254,34 @@ final class AiTools
                 ], ['pnr', 'new_name']);
         }
 
+        if ($mayEdit) {
+            /* 21 Sep 2026 (owner: "customer 3 ta samma ticket katda bigreo
+               bhane natural language ma customer bhaneko sachchyaera tei
+               ticket lai system bata naya generate").
+               rename_passenger only ever fixed a NAME. Everything else that
+               is commonly wrong on a freshly-cut ticket — the day, the
+               pickup, the berth, the number the ticket went to — had no
+               path at all from WhatsApp: the passenger had to ring the
+               office and the desk redid it by hand. This is that path, and
+               it reuses exactly what admin/reschedule.php calls, so a
+               WhatsApp correction and a desk correction are the same
+               transaction with the same audit row. */
+            $t[] = self::spec('fix_ticket',
+                'CORRECT a ticket that was cut wrong — the travel DATE, the PICKUP point, the BERTH, or the phone the ticket goes to. '
+                . 'Read what the passenger said in their own words and pass only the fields they actually want changed; leave the rest empty. '
+                . 'The system re-books the seats, re-mints the ticket and sends the NEW picture by itself — never tell them to rebook. '
+                . 'Always say what it will become BEFORE calling this, and only call it once they agree. '
+                . 'For a wrong NAME use rename_passenger instead. Before departure only.',
+                [
+                    'pnr'          => ['string', 'The PNR of the ticket to correct'],
+                    'new_date'     => ['string', 'Corrected travel date YYYY-MM-DD — only if the DAY is wrong'],
+                    'new_boarding' => ['string', 'Corrected pickup town or stop as they said it, e.g. Surat, Vadodara, Mehsana'],
+                    'new_phone'    => ['string', 'Corrected 10-digit mobile the ticket should go to'],
+                    'reason'       => ['string', "Short reason in the passenger's own words"],
+                    'confirm'      => ['boolean', 'Must be true — it records that the passenger agreed to the correction'],
+                ], ['pnr', 'confirm']);
+        }
+
         $t[] = self::spec('bus_eta',
             'Where the bus is right now and roughly how many minutes to each pickup still ahead of it. Answers "bus kaha pugyo?". Silent when the driver\'s phone is not live.',
             ['pnr' => ['string', 'Optional PNR, to answer for that passenger\'s own stop']]);
@@ -351,6 +382,7 @@ final class AiTools
                 'resend_ticket'    => self::resendTicket($args, $ctx),
                 'payment_info'     => self::paymentInfo($args, $ctx),
                 'rename_passenger' => self::renamePassenger($args, $ctx),
+                'fix_ticket'       => self::fixTicket($args, $ctx),
                 'bus_eta'          => self::busEta($args, $ctx),
                 'agent_day'        => self::agentDay($args, $ctx),
                 'agent_passengers' => self::agentPassengers($args, $ctx),
@@ -879,6 +911,184 @@ final class AiTools
             ],
             'media' => (string) $fresh['status'] === 'confirmed' ? Ticket::imageUrl($pnr) : null,
         ];
+    }
+
+    /**
+     * Correct a mis-cut ticket — date, pickup, berth or contact number —
+     * and send the re-minted ticket (21 Sep 2026).
+     *
+     * This is deliberately NOT a new booking engine. A date or pickup change
+     * is BookingService::rebookLeg(), the identical call admin/reschedule.php
+     * makes, so the seat locks, the cut-off, the fare rules and the audit row
+     * are the desk's. The only thing this adds is understanding a sentence
+     * instead of a form.
+     *
+     * The fences, in order: the tool must be on this sender's list, the
+     * booking must be theirs, it must still be live and un-departed, the
+     * passenger must have agreed (confirm), and a booking may be corrected
+     * FIX_MAX times before it belongs to a human. A correction that would
+     * change the fare is refused outright and sent to the office — nobody
+     * gets re-priced by a chatbot.
+     */
+    private static function fixTicket(array $args, array $ctx): array
+    {
+        if (!Settings::getBool('wa_agent_rewrite', true)) {
+            return self::no('Ticket correction on WhatsApp is switched off — the desk does it.');
+        }
+        if (($args['confirm'] ?? false) !== true) {
+            return self::no('Read the correction back to them first and call this again only after they agree.');
+        }
+
+        $pnr    = strtoupper(trim((string) ($args['pnr'] ?? '')));
+        $detail = $pnr !== '' ? BookingService::detail($pnr) : null;
+        if ($detail === null) {
+            return self::no('No booking with that PNR.');
+        }
+        if (!self::mayWrite($detail, $ctx)) {
+            return self::no('That booking is not on this number.');
+        }
+        if (!in_array((string) $detail['status'], ['pending', 'confirmed'], true)) {
+            return self::no('Only a live booking can be corrected — this one is ' . strtoupper((string) $detail['status']) . '.');
+        }
+
+        $bid  = (int) $detail['id'];
+        $leg  = $detail['legs'][0] ?? [];
+        $when = trim((string) ($leg['travel_date'] ?? '') . ' ' . substr((string) ($leg['dep_time'] ?? '00:00:00'), 0, 8));
+        if ($when !== '' && strtotime($when) !== false && strtotime($when) < time()) {
+            return self::no('That bus has already departed, so the ticket cannot be changed. Give the office number.');
+        }
+
+        $used = (int) Database::scalar(
+            "SELECT COUNT(*) FROM ai_agent_calls WHERE tool = 'fix_ticket' AND ok = 1 AND booking_id = :b",
+            ['b' => $bid],
+            0
+        );
+        if ($used >= self::FIX_MAX) {
+            return self::no('This ticket has already been corrected ' . self::FIX_MAX . ' times. Further changes are done at the office.');
+        }
+
+        $newDate  = self::cleanDate((string) ($args['new_date'] ?? ''));
+        $newBoard = Security::clean((string) ($args['new_boarding'] ?? ''), 80);
+        $newPhone = preg_replace('/\D/', '', (string) ($args['new_phone'] ?? '')) ?? '';
+        $reason   = Security::clean((string) ($args['reason'] ?? ''), 200);
+        if ($reason === '') {
+            $reason = 'Corrected from WhatsApp';
+        }
+
+        if ($newDate === '' && $newBoard === '' && $newPhone === '') {
+            return self::no('Nothing to correct — ask them exactly what is wrong: the date, the pickup, or the number.');
+        }
+
+        $oldDate  = (string) ($leg['travel_date'] ?? '');
+        $oldPhone = (string) ($detail['contact_phone'] ?? '');
+        $changed  = [];
+
+        /* ---- 1. The number the ticket goes to -------------------------
+           A pure contact fix touches no seat and no money, so it is a
+           plain update plus a re-send. */
+        if ($newPhone !== '') {
+            if (strlen($newPhone) < 10) {
+                return self::no('That does not look like a full mobile number. Ask them to send all 10 digits.');
+            }
+            if (normalisePhone($newPhone) !== normalisePhone($oldPhone)) {
+                Database::update('bookings', ['contact_phone' => $newPhone], 'id = :id', ['id' => $bid]);
+                $changed['contact'] = ['was' => $oldPhone, 'now' => $newPhone];
+            }
+        }
+
+        /* ---- 2. The day or the pickup ---------------------------------
+           Both mean the party moves to a different departure, which is a
+           re-book of the leg onto freshly held seats. QuickTicket::plan()
+           finds that departure and the berths exactly as it does for a new
+           sale, so a corrected ticket can never land on a bus that is full
+           or past its cut-off. */
+        if ($newDate !== '' || $newBoard !== '') {
+            $seatCount = max(1, count($detail['passengers'] ?? []) ?: count(self::seatNos($detail)));
+            $plan = QuickTicket::plan([
+                'seats'     => $seatCount,
+                'date'      => $newDate !== '' ? $newDate : $oldDate,
+                'direction' => (string) ($leg['direction'] ?? ''),
+                'boarding'  => $newBoard !== '' ? $newBoard : (string) ($leg['boarding_stop'] ?? ''),
+                'customer'  => (string) ($ctx['role'] ?? 'customer') === 'customer',
+            ]);   // throws a desk-safe RuntimeException the model reads back
+
+            /* A correction is a correction, not a re-sale. If the new
+               departure prices differently, a human has to take the money
+               conversation — the assistant does not re-charge anybody. */
+            $oldTotal = (float) ($detail['total_amount'] ?? 0);
+            $newTotal = (float) ($plan['fare']['total'] ?? 0);
+            if ($newTotal > 0 && abs($newTotal - $oldTotal) >= 1.0) {
+                return self::no(
+                    'That change would move the fare from ' . inr($oldTotal) . ' to ' . inr($newTotal)
+                    . '. A correction must not change the price, so the office has to do this one — give them the office number.'
+                );
+            }
+
+            BookingService::rebookLeg(
+                $bid,
+                (int) $plan['scheduleId'],
+                (array) $plan['seats'],
+                (string) $plan['date'],
+                (int) ($ctx['adminId'] ?? 0),
+                $reason,
+                'outbound'
+            );
+
+            if ($newDate !== '' && $newDate !== $oldDate) {
+                $changed['date'] = ['was' => $oldDate, 'now' => (string) $plan['date']];
+            }
+            if ($newBoard !== '') {
+                $changed['pickup'] = ['now' => (string) $plan['boardingName']];
+            }
+            $changed['seats'] = (array) $plan['seats'];
+        }
+
+        if ($changed === []) {
+            return self::no('The ticket already says that — nothing needed changing.');
+        }
+
+        Ticket::reissue($bid);          // new QR, cached PNG/PDF dropped, REV n
+        Logger::audit('booking.fix_whatsapp', 'booking', $pnr,
+            ['date' => $oldDate, 'phone' => $oldPhone],
+            ['changed' => array_keys($changed)],
+            'Ticket corrected from WhatsApp by ' . ($ctx['phone'] ?? '') . ' (' . ($ctx['role'] ?? '') . '): ' . $reason);
+
+        $fresh = BookingService::detail($pnr) ?? $detail;
+
+        /* Tell them WHAT moved, not just "here is a ticket" — the same
+           kinds admin/reschedule.php and booking-view.php raise. */
+        $kind = isset($changed['date']) ? 'reschedule' : (isset($changed['contact']) ? 'contact' : 'seat');
+        $sent = Notify::ticketChanged($fresh, $kind, [
+            'oldDate' => $changed['date']['was'] ?? '',
+            'newDate' => $changed['date']['now'] ?? '',
+            'seats'   => $changed['seats'] ?? '',
+        ]);
+
+        return [
+            'ok'   => true,
+            'say'  => 'The ticket is corrected and the new one has been sent'
+                    . (($sent['ok'] ?? false) ? '.' : ' — but the automatic send failed, so give them the ticket link.')
+                    . ' Read the corrected date, pickup and berth back to them.',
+            'data' => [
+                'pnr'       => $pnr,
+                'changed'   => $changed,
+                'resent'    => (bool) ($sent['ok'] ?? false),
+                'bookingId' => $bid,
+                'triesLeft' => self::FIX_MAX - $used - 1,
+            ],
+            'media' => (string) $fresh['status'] === 'confirmed' ? Ticket::imageUrl($pnr) : null,
+        ];
+    }
+
+    /** Seat numbers on a booking, from whichever shape detail() returned. */
+    private static function seatNos(array $detail): array
+    {
+        $out = [];
+        foreach (($detail['passengers'] ?? []) as $p) {
+            $s = trim((string) ($p['seat_no'] ?? ''));
+            if ($s !== '') { $out[] = $s; }
+        }
+        return $out;
     }
 
     private static function resendTicket(array $args, array $ctx): array
