@@ -651,10 +651,18 @@ final class AiAgent
             if (!is_array($spec)) {
                 continue;
             }
-            $props[(string) $name] = [
-                'type'        => strtoupper((string) ($spec['type'] ?? 'string')),
-                'description' => (string) ($spec['description'] ?? ''),
-            ];
+            $type = strtoupper((string) ($spec['type'] ?? 'string'));
+            $p    = ['type' => $type, 'description' => (string) ($spec['description'] ?? '')];
+            /* ARRAY carries its item schema through, recursively, because
+               Gemini refuses a declaration whose array has no `items` and
+               fails the ENTIRE tool list with it — see AiTools::spec(). */
+            if ($type === 'ARRAY') {
+                $items = is_array($spec['items'] ?? null) ? $spec['items'] : ['type' => 'string'];
+                $p['items'] = isset($items['properties']) || ($items['type'] ?? '') === 'object'
+                    ? self::geminiSchema($items)
+                    : ['type' => strtoupper((string) ($items['type'] ?? 'string'))];
+            }
+            $props[(string) $name] = $p;
         }
 
         $out = ['type' => 'OBJECT', 'properties' => $props === [] ? (object) [] : $props];

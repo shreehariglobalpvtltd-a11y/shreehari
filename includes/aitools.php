@@ -208,7 +208,11 @@ final class AiTools
                 . 'For a PARTY of 2 or more, put every traveller in names[] in the order they were given — each berth is then printed with its own name. Leave names[] out for a single traveller.',
                 [
                     'name'    => ['string', "The booking name — the person writing to you"],
-                    'names'   => ['array',  'Every traveller in the party: [{"name":"Ram Bahadur","gender":"Male"},{"name":"Sita Gurung","gender":"Female"}]. Same count as the berths quoted.'],
+                    'names'   => ['array',  'Every traveller in the party, in the order given. Same count as the berths quoted.',
+                                   ['type' => 'object', 'properties' => [
+                                       'name'   => ['type' => 'string', 'description' => "The traveller's full name"],
+                                       'gender' => ['type' => 'string', 'description' => 'Male, Female or Other'],
+                                   ], 'required' => ['name']]],
                     'gender'  => ['string', 'Male, Female or Other — the booking name\'s own'],
                     'confirm' => ['boolean', 'Must be true — it records that the passenger said yes'],
                 ], ['name', 'confirm']);
@@ -220,7 +224,11 @@ final class AiTools
                 . 'For a GROUP — 4, 5, a whole family on one chalan — quote the seat count with plan_ticket, then pass every traveller in names[] here. One booking, one PNR, every berth printed with its own name. Ask for the names in ONE message, not one at a time.',
                 [
                     'name'    => ['string', "The lead passenger's full name — the booking is in this name"],
-                    'names'   => ['array',  'Every traveller: [{"name":"Ram Bahadur","gender":"Male"},{"name":"Sita Gurung","gender":"Female"}]. Same count as the berths quoted.'],
+                    'names'   => ['array',  'Every traveller in the party, in the order given. Same count as the berths quoted.',
+                                   ['type' => 'object', 'properties' => [
+                                       'name'   => ['type' => 'string', 'description' => "The traveller's full name"],
+                                       'gender' => ['type' => 'string', 'description' => 'Male, Female or Other'],
+                                   ], 'required' => ['name']]],
                     'phone'   => ['string', "The passenger's 10-digit mobile — the ticket goes there"],
                     'gender'  => ['string', 'Male, Female or Other — the lead passenger\'s own'],
                     'pay'     => ['string', 'cash, upi, esewa or bank — how the passenger paid'],
@@ -331,8 +339,21 @@ final class AiTools
     private static function spec(string $name, string $desc, array $props, array $required = []): array
     {
         $properties = [];
-        foreach ($props as $key => [$type, $help]) {
+        foreach ($props as $key => $def) {
+            [$type, $help] = $def;
             $properties[$key] = ['type' => $type, 'description' => $help];
+            /* 21 Sep 2026 — an ARRAY property must declare what it holds.
+               Gemini rejects the whole tool list otherwise:
+               "function_declarations[3].parameters.properties[names].items:
+               missing field", which takes down every tool on the call, not
+               just this one. A third element in the prop gives the item
+               schema; without one, a list of strings is the safe default —
+               partyNames() accepts both shapes anyway. */
+            if ($type === 'array') {
+                $properties[$key]['items'] = isset($def[2]) && is_array($def[2])
+                    ? $def[2]
+                    : ['type' => 'string'];
+            }
         }
 
         return [
