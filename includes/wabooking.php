@@ -78,7 +78,8 @@ final class WaBooking
         if ($state === null) {
             $justSold = self::recentSale($phoneDigits);
             if ($justSold !== null && self::looksLikeNameFix($text)) {
-                $fixed = self::fixNameLocally($phoneDigits, $justSold, $text, $lang);
+                $soldLang = ($justSold['lang'] ?? '') !== '' ? (string) $justSold['lang'] : $lang;
+                $fixed = self::fixNameLocally($phoneDigits, $justSold, $text, $soldLang);
                 if ($fixed !== null) {
                     return $fixed;
                 }
@@ -259,7 +260,11 @@ final class WaBooking
            through to the menu and the passenger was told to ring the
            office about a ticket we had cut ten seconds earlier. */
         if ($pnr !== '') {
-            self::rememberSale($phoneDigits, $pnr);
+            /* The language rides along: after a sale the conversation is
+               cleared, so a romanised "naam galat bhayo" would be read as
+               English and a Nepali customer would suddenly be answered in
+               English about their own ticket. */
+            self::rememberSale($phoneDigits, $pnr, $lang);
         }
         $seats  = implode(', ', array_map('strval', (array) ($res['seats'] ?? [])));
         $total  = (string) ($res['totalLabel'] ?? '');
@@ -529,7 +534,7 @@ Example: Ram Bahadur 35, Sita Gurung 30",
     /** Corrections allowed per booking from this path. */
     private const SOLD_FIX_MAX = 2;
 
-    private static function rememberSale(string $who, string $pnr): void
+    private static function rememberSale(string $who, string $pnr, string $lang = ''): void
     {
         try {
             Database::run(
@@ -537,8 +542,8 @@ Example: Ram Bahadur 35, Sita Gurung 30",
                  VALUES (:s, :k, :v, 'wabooking')
                  ON DUPLICATE KEY UPDATE kvalue = :v2, updated_by = 'wabooking'",
                 ['s' => self::SOLD_SCOPE, 'k' => $who,
-                 'v'  => json_encode(['pnr' => $pnr, 'at' => time(), 'fixes' => 0]),
-                 'v2' => json_encode(['pnr' => $pnr, 'at' => time(), 'fixes' => 0])]
+                 'v'  => json_encode(['pnr' => $pnr, 'at' => time(), 'fixes' => 0, 'lang' => $lang]),
+                 'v2' => json_encode(['pnr' => $pnr, 'at' => time(), 'fixes' => 0, 'lang' => $lang])]
             );
         } catch (Throwable $e) {
             // Remembering is a convenience; a sale must never fail on it.
@@ -566,7 +571,8 @@ Example: Ram Bahadur 35, Sita Gurung 30",
         if ((time() - (int) ($v['at'] ?? 0)) > self::SOLD_TTL) {
             return null;
         }
-        return ['pnr' => (string) $v['pnr'], 'at' => (int) $v['at'], 'fixes' => (int) ($v['fixes'] ?? 0)];
+        return ['pnr' => (string) $v['pnr'], 'at' => (int) $v['at'],
+                'fixes' => (int) ($v['fixes'] ?? 0), 'lang' => (string) ($v['lang'] ?? '')];
     }
 
     /**
@@ -723,7 +729,8 @@ Example: Ram Bahadur 35, Sita Gurung 30",
             // Spend one of the two allowed corrections.
             Database::run(
                 "UPDATE kv_store SET kvalue = :v WHERE kscope = :s AND kkey = :k",
-                ['v' => json_encode(['pnr' => $sold['pnr'], 'at' => $sold['at'], 'fixes' => $sold['fixes'] + 1]),
+                ['v' => json_encode(['pnr' => $sold['pnr'], 'at' => $sold['at'],
+                                     'fixes' => $sold['fixes'] + 1, 'lang' => (string) ($sold['lang'] ?? '')]),
                  's' => self::SOLD_SCOPE, 'k' => $who]
             );
 
