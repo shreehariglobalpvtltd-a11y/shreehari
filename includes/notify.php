@@ -1853,6 +1853,47 @@ final class Notify
      * if configured). Falls back to a click-to-chat link stored in the
      * app log so a staff member can send it in one tap.
      */
+    /**
+     * A one-line note to the office (21 Sep 2026, owner: "admin update de
+     * rakhos").
+     *
+     * A SALE already reaches the office: BookingService::create emits
+     * booking.created and bookingReceived() alerts them. A CORRECTION did
+     * not. A name changed in the WhatsApp chat wrote an audit row and
+     * nothing else, so the desk could hand a boarding list to the driver
+     * with a name that had been corrected an hour earlier and never know
+     * it had moved.
+     *
+     * Deliberately best-effort and deliberately quiet: it never throws, it
+     * is logged under its own purpose so it can never be mistaken for a
+     * passenger's ticket by the retry cron, and it obeys the same
+     * whatsapp_notify_admin switch every other office alert does.
+     */
+    public static function adminNote(string $headline, array $facts = [], ?int $bookingId = null): void
+    {
+        try {
+            if (!Settings::getBool('whatsapp_notify_admin', true)) {
+                return;
+            }
+            $adminPhone = Settings::getString('admin_whatsapp', Settings::officePhone());
+            if (trim($adminPhone) === '') {
+                return;
+            }
+            $lines = [$headline];
+            foreach ($facts as $k => $v) {
+                $v = trim((string) $v);
+                if ($v !== '') {
+                    $lines[] = $k . ': ' . $v;
+                }
+            }
+            self::whatsapp($adminPhone, implode("\n", $lines), null, null, [],
+                $bookingId !== null && $bookingId > 0 ? $bookingId : null,
+                ['purpose' => 'admin_note']);
+        } catch (Throwable $e) {
+            Logger::warning('Admin note not sent: ' . $e->getMessage(), [], 'whatsapp');
+        }
+    }
+
     public static function bookingReceived(array $booking): void
     {
         $company    = Settings::getString('company_name', APP_NAME);

@@ -92,6 +92,11 @@ final class WaBooking
             return null;
         }
 
+        /* Computed BEFORE anything writes the conversation row, because
+           greetedAlready() keys on exactly that row: once the state exists
+           we are mid-conversation and the mantra must not repeat. */
+        $opener = self::opener($phoneDigits, $lang);
+
         $slots = is_array($state['slots'] ?? null) ? $state['slots'] : [];
 
         /* A tapped-looking answer ("2") replies to the question we asked, not
@@ -190,7 +195,7 @@ final class WaBooking
                 static fn ($o): bool => is_array($o) && ($o['value'] ?? '') !== '' && ($o['value'] ?? '') !== 'other'
             ));
             self::save($phoneDigits, $slots, (string) $ask['field'], $options, $lang);
-            return self::out(self::withOptions((string) $ask['question'], $options, $lang));
+            return self::out($opener . self::withOptions((string) $ask['question'], $options, $lang));
         }
 
         /* The name is asked LAST, once the trip itself is settled: asked
@@ -198,9 +203,9 @@ final class WaBooking
         if (trim((string) ($slots['name'] ?? '')) === '') {
             self::save($phoneDigits, $slots, 'name', [], $lang);
             $paxN = max(1, (int) ($slots['seats'] ?? 1));
-            return self::out($paxN > 1
+            return self::out($opener . ($paxN > 1
                 ? sprintf(self::say('askNames', $lang), $paxN)
-                : self::say('askName', $lang));
+                : self::say('askName', $lang)));
         }
 
         /* The party was given as ONE name for several berths — ask for the
@@ -734,6 +739,21 @@ Example: Ram Bahadur 35, Sita Gurung 30",
                  's' => self::SOLD_SCOPE, 'k' => $who]
             );
 
+            /* The office learns of it too. Without this the desk could hand
+               the driver a boarding list carrying a name that was corrected
+               an hour earlier and never know it had moved. */
+            try {
+                if (!class_exists('Notify')) { require_once INCLUDE_PATH . '/notify.php'; }
+                Notify::adminNote('✏️ नाम सच्चियो (WhatsApp)', [
+                    'PNR'  => $sold['pnr'],
+                    'थियो' => (string) $target['full_name'],
+                    'भयो'  => $new,
+                    'फोन'  => $who,
+                ], $bid);
+            } catch (Throwable $e) {
+                Logger::warning('Admin note after rename failed: ' . $e->getMessage(), [], 'whatsapp');
+            }
+
             $fresh = BookingService::detail($sold['pnr']) ?? $detail;
             return self::out(
                 sprintf(self::say('nameFixed', $lang), $new) . "\n" . self::label('pnr', $lang) . ': ' . $sold['pnr'],
@@ -1032,5 +1052,115 @@ Example: Ram Bahadur 35, Sita Gurung 30",
     private static function out(string $text, ?string $media = null): array
     {
         return ['text' => $text, 'media' => $media];
+    }
+
+    /* =================================================================
+     *  Opening line (21 Sep 2026, owner: "Shree Hari Bhagwan ko naam
+     *  lerakhos bolne suruma", and "agent lai number bata identity
+     *  garera naam le bolaos")
+     *
+     *  The AI assistant already opened a conversation with the house
+     *  mantra and greeted a known seller by name. The local engine — now
+     *  the one that actually answers first — did neither, so the same
+     *  company sounded like two different businesses depending on which
+     *  path happened to take the message.
+     *
+     *  Rules kept deliberately tight:
+     *    - the mantra opens the FIRST message of a conversation only, and
+     *      never a correction, a refusal or a failure. A blessing on top
+     *      of "that bus is full" reads as mockery.
+     *    - a name is used only when this number is ON FILE as staff or a
+     *      known passenger. Guessing a name at somebody is worse than
+     *      not greeting them at all.
+     * ================================================================= */
+
+    /** Has this number already been greeted inside the live conversation? */
+    private static function greetedAlready(string $who): bool
+    {
+        try {
+            return Database::fetch(
+                'SELECT 1 FROM kv_store WHERE kscope = :s AND kkey = :k',
+                ['s' => self::SCOPE, 'k' => $who]
+            ) !== null;
+        } catch (Throwable $e) {
+            return true;      // unsure → stay quiet rather than repeat it
+        }
+    }
+
+    /**
+     * The mantra + a name, for the first line of a conversation.
+     * Returns '' whenever anything is uncertain.
+     */
+    private static function opener(string $who, string $lang): string
+    {
+        if (self::greetedAlready($who)) {
+            return '';
+        }
+
+        $lines = [];
+        $mantra = trim(Settings::getString('company_mantra', ''));
+        if ($mantra !== '') {
+            $lines[] = $mantra;
+        }
+
+        $name = self::knownName($who);
+        if ($name !== '') {
+            $lines[] = match ($lang) {
+                'ne'    => 'नमस्ते ' . $name . ' जी 🙏',
+                'hi'    => 'नमस्ते ' . $name . ' जी 🙏',
+                'gu'    => 'નમસ્તે ' . $name . ' જી 🙏',
+                default => 'Namaste ' . $name . ' ji 🙏',
+            };
+        }
+
+        return $lines === [] ? '' : implode("\n", $lines) . "\n\n";
+    }
+
+    /**
+     * The name we already hold for this number — a staff member by their
+     * admin record, otherwise a passenger who has travelled with us.
+     * '' when we do not actually know, which is most numbers.
+     */
+    private static function knownName(string $who): string
+    {
+        if ($who === '') {
+            return '';
+        }
+        try {
+            /* Staff numbers are stored as typed (with or without +91), so
+               the match is on the normalised tail, exactly as
+               AiTools::whoIs() does it — one rule for who a number is. */
+            foreach (Database::fetchAll(
+                "SELECT full_name, phone FROM admins
+                  WHERE is_active = 1 AND phone IS NOT NULL AND phone <> ''"
+            ) as $row) {
+                if (normalisePhone((string) $row['phone']) === $who) {
+                    return self::firstName((string) $row['full_name']);
+                }
+            }
+
+            $prev = (string) Database::scalar(
+                "SELECT full_name FROM bookings
+                  WHERE contact_phone = :p AND status IN ('confirmed','completed')
+                  ORDER BY id DESC LIMIT 1",
+                ['p' => $who],
+                ''
+            );
+            return self::firstName($prev);
+        } catch (Throwable $e) {
+            return '';
+        }
+    }
+
+    /** "Sher Bahadur Bishwokarma" → "Sher Bahadur": warm, not formal. */
+    private static function firstName(string $full): string
+    {
+        $full = trim((string) preg_replace('/\s+/u', ' ', $full));
+        if ($full === '' || mb_strlen($full) < 2) {
+            return '';
+        }
+        $parts = explode(' ', $full);
+        $take  = array_slice($parts, 0, 2);
+        return mb_substr(implode(' ', $take), 0, 40);
     }
 }

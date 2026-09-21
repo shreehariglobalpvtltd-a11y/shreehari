@@ -1096,6 +1096,19 @@ final class AiTools
 
         $fresh = BookingService::detail($pnr) ?? $detail;
 
+        /* The office sees every correction, not only every sale. */
+        try {
+            Notify::adminNote('✏️ टिकट सच्चियो (WhatsApp)', [
+                'PNR'    => $pnr,
+                'बदलियो' => implode(', ', array_keys($changed)),
+                'मिति'   => isset($changed['date']) ? $changed['date']['was'] . ' → ' . $changed['date']['now'] : '',
+                'कारण'   => $reason,
+                'फोन'    => (string) ($ctx['phone'] ?? ''),
+            ], $bid);
+        } catch (Throwable $e) {
+            Logger::warning('Admin note after fix_ticket failed: ' . $e->getMessage(), [], 'whatsapp');
+        }
+
         /* Tell them WHAT moved, not just "here is a ticket" — the same
            kinds admin/reschedule.php and booking-view.php raise. */
         $kind = isset($changed['date']) ? 'reschedule' : (isset($changed['contact']) ? 'contact' : 'seat');
