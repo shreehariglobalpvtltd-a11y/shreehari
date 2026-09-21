@@ -696,8 +696,15 @@ Example: Ram Bahadur 35, Sita Gurung 30",
                 'UPDATE booking_passengers SET full_name = :n WHERE id = :id AND booking_id = :b',
                 ['n' => $new, 'id' => (int) $target['id'], 'b' => $bid]
             );
-            Database::update('bookings', ['full_name' => $new], 'id = :id', ['id' => $bid]);
-            /* The rename is COMMITTED by this point. A hiccup re-minting the
+            /* The passenger row IS the manifest — `bookings` has no name
+               column at all, and an UPDATE against one threw "Unknown
+               column 'full_name' in 'SET'" straight past the rename that
+               had already committed, so the ticket showed the new name
+               while the passenger was answered with the generic menu.
+               AiTools::renamePassenger() touches booking_passengers only,
+               for the same reason.
+
+               The rename is COMMITTED by this point. A hiccup re-minting the
                picture must not make this method return null, because the
                caller reads null as "I did nothing" and answers with the
                menu — which is how a corrected ticket once came back looking
