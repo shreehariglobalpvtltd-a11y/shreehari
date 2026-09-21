@@ -143,6 +143,8 @@ const CORE_SUITES = [
     'eta-alerts-test.php'          => 'bus-is-near: the right passenger, once, and silence whenever unsure',
     'backup-offsite-test.php'      => 'the off-site backup leaves encrypted, opens with stock openssl, goes once',
     'offline-queue-test.php'       => 'an offline request becomes ONE ticket or a loud failure - never two, never nothing',
+    // 21 Sep 2026, registered with the on-VPS booking engine it guards.
+    'wa-local-booking-test.php'    => 'the WhatsApp ticket engine sells with no AI key at all',
     // 20 Sep 2026, registered with the WhatsApp assistant it guards.
     'wa-agent-test.php'            => 'the WhatsApp assistant: role, switch, quote-then-confirm, ownership, audit',
 ];

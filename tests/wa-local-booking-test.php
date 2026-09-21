@@ -133,7 +133,12 @@ try {
     /* Devanagari digits must read as ages, not as part of the name. */
     $np = priv('parseParty', ['नाम: राम बहादुर ३५, सीता गुरुङ ३०', 4]);
     check('Devanagari digits become ages', count($np) === 2 && $np[0]['age'] === 35 && $np[1]['age'] === 30);
-    check('an age outside 1..120 is dropped', (priv('parseParty', ['Ram 900', 2])[0]['age'] ?? 'x') === null);
+    /* Read the key directly: `?? 'x'` would ALSO fire on a present-but-null
+       age, which is exactly the value being asserted, and the check would
+       fail against correct code. */
+    $old = priv('parseParty', ['Ram 900', 2]);
+    check('an age outside 1..120 is dropped',
+        count($old) === 1 && $old[0]['name'] === 'Ram' && $old[0]['age'] === null);
     check('a fragment with no letters is not a person', priv('parseParty', ['35, 40', 4]) === []);
 
     echo "\n— a correction carries BOTH the complaint and the fix\n";
