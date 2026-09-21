@@ -92,6 +92,58 @@ final class WaBot
         $strip   = static fn (string $s): string => (string) preg_replace('/[^\p{L}\p{N}]/u', '', $s);
         $pnrOnly = $pnr !== '' && $strip(str_ireplace($pnr, '', $body)) === '';
 
+        /* ---------------------------------------------------------------
+         *  LOCAL FIRST (21 Sep 2026, owner: "mero website VPS ma ticket
+         *  katna ko lagi use hune AI bandeu").
+         *
+         *  Selling used to sit BEHIND the model: every "bholi 2 seat
+         *  chahiyo" went to Gemini, and a ticket could only be cut while a
+         *  third party's quota held. On this account that quota is the free
+         *  tier — an afternoon of ordinary traffic returns HTTP 429 and the
+         *  sale simply stops. Paying for a seat is the one thing on this
+         *  number that must never depend on somebody else's API.
+         *
+         *  WaBooking is the same conversation entirely on this VPS:
+         *  TicketBot::parse reads the message (Nepali, Hindi, Gujarati,
+         *  English, and Devanagari / Gujarati digits), TicketBot::suggest
+         *  merges it with live availability, and QuickTicket::sellCustomer
+         *  makes the sale under every customer rule. No network, no key, no
+         *  quota, answered in milliseconds.
+         *
+         *  It is safe in front because it claims only what it is sure of:
+         *  with no conversation open and nothing bookable in the message it
+         *  returns null, and a question asked mid-summary is handed on
+         *  deliberately. Everything it does not claim — company questions,
+         *  complaints, corrections, small talk — still reaches the model
+         *  below, which now spends its quota on conversation instead of
+         *  on the sale.
+         *
+         *  wa_local_first = 0 puts the model back in front.
+         * ------------------------------------------------------------- */
+        $localFirst = Settings::getBool('wa_local_first', true);
+
+        $tryLocalBooking = function () use ($senderDigits, $body): ?array {
+            if ($senderDigits === '') {
+                return null;
+            }
+            try {
+                require_once INCLUDE_PATH . '/ticketbot.php';
+                require_once INCLUDE_PATH . '/quickticket.php';
+                require_once INCLUDE_PATH . '/wabooking.php';
+                return WaBooking::handle($senderDigits, $body);
+            } catch (Throwable $e) {
+                Logger::exception($e);      // the model and the old paths still answer
+                return null;
+            }
+        };
+
+        if ($localFirst && !$pnrOnly) {
+            $booking = $tryLocalBooking();
+            if ($booking !== null) {
+                return self::out($booking['text'], $booking['media'] ?? null);
+            }
+        }
+
         if (!$pnrOnly) {
             try {
                 require_once INCLUDE_PATH . '/aiagent.php';
@@ -120,16 +172,17 @@ final class WaBot
                writer's language, shows the fare, and sells only after an
                explicit yes. It returns null for anything that is not a
                booking chat, and then the older paths below answer. */
-            try {
-                require_once INCLUDE_PATH . '/ticketbot.php';
-                require_once INCLUDE_PATH . '/quickticket.php';
-                require_once INCLUDE_PATH . '/wabooking.php';
-                $booking = WaBooking::handle($senderDigits, $body);
+            /* When wa_local_first is on, this already ran ABOVE the model —
+               calling it twice would re-enter the same conversation state
+               and could answer the same message two different ways. So this
+               position is now only for the legacy order (wa_local_first = 0),
+               where the model gets first refusal and the local engine picks
+               up whatever it left. */
+            if (!$localFirst) {
+                $booking = $tryLocalBooking();
                 if ($booking !== null) {
                     return self::out($booking['text'], $booking['media'] ?? null);
                 }
-            } catch (Throwable $e) {
-                Logger::exception($e);      // fall through to the old reply
             }
 
             /* Anything that is not a seat request is a question, and the

@@ -61,3 +61,14 @@ INSERT INTO settings (skey, svalue, stype, sgroup, is_public, label) VALUES
    'Nepal-side contact number (leave empty until one exists — the assistant will not invent one)'),
   ('nepal_office',      '', 'string', 'company', 1, 'Nepal-side office address')
 ON DUPLICATE KEY UPDATE svalue = svalue;
+
+-- ---------------------------------------------------------------------
+--  4. Local-first routing (21 Sep 2026)
+--     Selling runs on this VPS (WaBooking + TicketBot + QuickTicket) and
+--     is tried BEFORE the model, so a ticket never waits on a third
+--     party's quota. 0 puts the model back in front.
+-- ---------------------------------------------------------------------
+INSERT INTO settings (skey, svalue, stype, sgroup, is_public, label) VALUES
+  ('wa_local_first', '1', 'bool', 'whatsapp', 0,
+   'Cut tickets with the on-VPS engine before asking the AI (recommended)')
+ON DUPLICATE KEY UPDATE svalue = svalue;
