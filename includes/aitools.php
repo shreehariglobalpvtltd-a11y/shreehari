@@ -204,21 +204,25 @@ final class AiTools
 
         if ($mayCut) {
             $t[] = self::spec('issue_ticket',
-                'ISSUE the ticket that plan_ticket just quoted, after the passenger has clearly said yes (ho / hunxa / ok / thik cha / book it). The ticket PNG goes to their WhatsApp by itself. Only call this when the passenger agreed to the total you read out.',
+                'ISSUE the ticket that plan_ticket just quoted, after the passenger has clearly said yes (ho / hunxa / ok / thik cha / book it). The ticket PNG goes to their WhatsApp by itself. Only call this when the passenger agreed to the total you read out. '
+                . 'For a PARTY of 2 or more, put every traveller in names[] in the order they were given — each berth is then printed with its own name. Leave names[] out for a single traveller.',
                 [
-                    'name'    => ['string', "The passenger's full name"],
-                    'gender'  => ['string', 'Male, Female or Other'],
+                    'name'    => ['string', "The booking name — the person writing to you"],
+                    'names'   => ['array',  'Every traveller in the party: [{"name":"Ram Bahadur","gender":"Male"},{"name":"Sita Gurung","gender":"Female"}]. Same count as the berths quoted.'],
+                    'gender'  => ['string', 'Male, Female or Other — the booking name\'s own'],
                     'confirm' => ['boolean', 'Must be true — it records that the passenger said yes'],
                 ], ['name', 'confirm']);
         }
 
         if ($staff && $mayCut) {
             $t[] = self::spec('staff_sell',
-                'Sell a ticket AT THE DESK for a passenger who is not the sender: their name and number, the plan quoted by plan_ticket. The ticket goes to the passenger\'s WhatsApp and the commission is credited to the selling agent. Staff only.',
+                'Sell a ticket AT THE DESK for a passenger who is not the sender: their name and number, the plan quoted by plan_ticket. The ticket goes to the passenger\'s WhatsApp and the commission is credited to the selling agent. Staff only. '
+                . 'For a GROUP — 4, 5, a whole family on one chalan — quote the seat count with plan_ticket, then pass every traveller in names[] here. One booking, one PNR, every berth printed with its own name. Ask for the names in ONE message, not one at a time.',
                 [
-                    'name'    => ['string', "The passenger's full name"],
+                    'name'    => ['string', "The lead passenger's full name — the booking is in this name"],
+                    'names'   => ['array',  'Every traveller: [{"name":"Ram Bahadur","gender":"Male"},{"name":"Sita Gurung","gender":"Female"}]. Same count as the berths quoted.'],
                     'phone'   => ['string', "The passenger's 10-digit mobile — the ticket goes there"],
-                    'gender'  => ['string', 'Male, Female or Other'],
+                    'gender'  => ['string', 'Male, Female or Other — the lead passenger\'s own'],
                     'pay'     => ['string', 'cash, upi, esewa or bank — how the passenger paid'],
                     'confirm' => ['boolean', 'Must be true'],
                 ], ['name', 'phone', 'confirm']);
@@ -685,16 +689,23 @@ final class AiTools
             return self::no("Ask the passenger's full name first.");
         }
 
+        $seatCount = (int) ($staged['opts']['seats'] ?? 1);
+        $party     = self::partyNames($args['names'] ?? null, $seatCount);
+
         $input = [
             'name'      => $name,
             'phone'     => (string) $ctx['phone'],     // always the sender's own number
-            'seats'     => (int) ($staged['opts']['seats'] ?? 1),
+            'seats'     => $seatCount,
             'date'      => (string) ($staged['opts']['date'] ?? ''),
             'direction' => (string) ($staged['opts']['direction'] ?? ''),
             'boarding'  => (string) ($staged['opts']['boarding'] ?? ''),
             'gender'    => in_array($args['gender'] ?? '', ['Male', 'Female', 'Other'], true)
                 ? (string) $args['gender']
                 : ($staged['opts']['gender'] ?? null),
+            // 21 Sep 2026: a party of 4 used to print "Ram (2)", "Ram (3)" —
+            // QuickTicket has always accepted real names here, the tool just
+            // never offered the model anywhere to put them.
+            'passengers' => $party,
             'expect'    => $staged['expect'] ?? null,
         ];
 
@@ -737,6 +748,8 @@ final class AiTools
                 ? (string) $args['gender']
                 : ($staged['opts']['gender'] ?? null),
             'pay'       => in_array($args['pay'] ?? '', ['cash', 'upi', 'esewa', 'bank'], true) ? (string) $args['pay'] : 'cash',
+            // A whole family on one chalan, each berth under its own name.
+            'passengers' => self::partyNames($args['names'] ?? null, (int) ($staged['opts']['seats'] ?? 1)),
             'note'      => 'WhatsApp desk sale',
         ];
 
@@ -1078,6 +1091,48 @@ final class AiTools
             ],
             'media' => (string) $fresh['status'] === 'confirmed' ? Ticket::imageUrl($pnr) : null,
         ];
+    }
+
+    /**
+     * The model's names[] → the shape QuickTicket::requestFor() reads
+     * (21 Sep 2026, owner: "counter agent mode lai bulk ticket 4-5 ota").
+     *
+     * Trimmed to the berths actually quoted, because the model is the one
+     * counting and a party list longer than the seats would silently drop
+     * a traveller — or, worse, put a name on a berth nobody bought. Short
+     * lists are fine: requestFor() numbers the remainder after the buyer
+     * exactly as the seat map does.
+     *
+     * Anything that is not a usable name is dropped rather than guessed at.
+     *
+     * @return list<array{name: string, gender: string|null}>
+     */
+    private static function partyNames(mixed $raw, int $seatCount): array
+    {
+        if (!is_array($raw) || $raw === [] || $seatCount < 1) {
+            return [];
+        }
+        $out = [];
+        foreach (array_values($raw) as $row) {
+            if (count($out) >= $seatCount) {
+                break;
+            }
+            // Accept both [{"name":…}] and a plain ["Ram","Sita"] — models
+            // produce either, and a dropped family member is not worth a
+            // schema argument.
+            $name = is_array($row)
+                ? Security::clean((string) ($row['name'] ?? ''), 120)
+                : (is_string($row) ? Security::clean($row, 120) : '');
+            if (mb_strlen($name) < 2 || preg_match('/\d/', $name) === 1) {
+                continue;
+            }
+            $g = is_array($row) ? (string) ($row['gender'] ?? '') : '';
+            $out[] = [
+                'name'   => $name,
+                'gender' => in_array($g, ['Male', 'Female', 'Other'], true) ? $g : null,
+            ];
+        }
+        return $out;
     }
 
     /** Seat numbers on a booking, from whichever shape detail() returned. */

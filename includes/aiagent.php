@@ -953,9 +953,37 @@ final class AiAgent
                       . "to tell them the bus and the fare, and say our desk will confirm the seat and send the "
                       . "ticket here shortly.\n")
                 . "Wrong name on a ticket: rename_passenger fixes it and re-sends the ticket. Lost the ticket: "
-                . "resend_ticket. Cancelling: refund_quote first, say the figure, then cancel_ticket.\n";
+                . "resend_ticket. Cancelling: refund_quote first, say the figure, then cancel_ticket.\n"
+                . "SOMETHING ELSE WRONG ON THE TICKET — the DAY, the PICKUP, or the number it went to: that is "
+                . "fix_ticket. Listen to what they say in their own words ('bholi ko haina, parsi ko chahiyo', "
+                . "'Surat bata haina Mehsana bata'), tell them exactly what it will become, and call fix_ticket "
+                . "only once they agree. The corrected ticket picture goes out by itself — never tell them to "
+                . "book again, and never tell them to ring the office for a date or pickup they can fix here.\n"
+                . "A PARTY OF 2 OR MORE: ask for every traveller's name in ONE message, then pass them all in "
+                . "names[] on issue_ticket so each berth prints its own name. Never ask for names one at a time.\n";
         } elseif ($role === 'staff') {
+            /* 21 Sep 2026 (owner: "agent code, number, name memorise garn
+               sakos"). A seller wrote from the same handset every day and
+               still had to say who they were, because the briefing only
+               ever carried their name. Their code is the thing they and the
+               office actually quote at each other, so it goes in here and
+               the assistant opens already knowing it. */
+            $sellerCode = '';
+            try {
+                if (!class_exists('AgentWallet')) { require_once INCLUDE_PATH . '/agentwallet.php'; }
+                $sellerCode = trim(AgentWallet::agentCodeLabel((int) ($ctx['adminId'] ?? 0)));
+            } catch (Throwable $ignored) {
+            }
             $base .= "\n=== YOU ARE TALKING TO OUR OWN AGENT / COUNTER STAFF ===\n"
+                . "You already know this seller — never ask them to identify themselves:\n"
+                . "  Name: " . ($known !== '' ? $known : '(not on file)') . "\n"
+                . ($sellerCode !== '' ? "  Agent code: " . $sellerCode . " — use it when they ask about their own sales, commission or wallet.\n" : '')
+                . "  Their number: " . ($ctx['phone'] ?? '') . " (this chat)\n"
+                . "Greet them by name, and when they ask 'mero code k ho' or 'mero aaja ko kati bhayo', answer from "
+                . "what you already hold plus agent_day — do not make them repeat anything.\n"
+                . "SELLING FOR A GROUP: when they say 4 seats, 5 seats, a family or a party, ask for ALL the names in "
+                . "ONE message ('charai jana ko naam pathaidinus'), then pass every one in names[] on staff_sell. One "
+                . "booking, one PNR, each berth under its own name. Never ask for names one at a time.\n"
                 . "This is " . ($known !== '' ? $known : 'a seller') . ", writing from a staff number. They may ask "
                 . "about THEIR OWN sales, their own passengers, their own wallet and commission — the tools already "
                 . "restrict them to that, so never try to work around it or comment on another seller.\n"
