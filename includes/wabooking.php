@@ -211,11 +211,18 @@ final class WaBooking
         /* The party was given as ONE name for several berths — ask for the
            rest before the summary, so the manifest is right the first time
            rather than after a correction. */
-        if (count(self::partyForSale($slots)) < max(1, (int) ($slots['seats'] ?? 1))
+        /* Only a PARTY is asked for more names. Without the seats > 1
+           guard this fired for a lone traveller too — partyForSale() is
+           empty until a list is given, so 0 < 1 was true — and a single
+           passenger who had already given their name was asked to "send
+           all 1 names in one message". */
+        $paxWanted = max(1, (int) ($slots['seats'] ?? 1));
+        if ($paxWanted > 1
+            && count(self::partyForSale($slots)) < $paxWanted
             && ($slots['namesAsked'] ?? false) !== true) {
             $slots['namesAsked'] = true;
             self::save($phoneDigits, $slots, 'name', [], $lang);
-            return self::out(sprintf(self::say('askNames', $lang), max(1, (int) ($slots['seats'] ?? 1))));
+            return self::out($opener . sprintf(self::say('askNames', $lang), $paxWanted));
         }
 
         $plan = $sug['plan'] ?? null;
