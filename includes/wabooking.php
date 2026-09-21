@@ -183,9 +183,22 @@ final class WaBooking
 
         foreach (['name', 'seats', 'date', 'direction', 'boarding', 'country'] as $k) {
             $v = $sug['prefill'][$k] ?? '';
-            if ($v !== '' && $v !== null && $v !== 0) {
-                $slots[$k] = $v;
+            if ($v === '' || $v === null || $v === 0) {
+                continue;
             }
+            /* 21 Sep 2026 — "bholi 1 seat Mehsana bata" came back with a
+               prefilled name of "Mehsana": the pickup town, read as the
+               passenger. The summary then said Name: Mehsana, and a "ho"
+               on top of it would have sold a ticket under the name of a
+               bus stop. The file already warned about this shape ("asked
+               first, the next message (Mehsana) was read as the name") —
+               it just never guarded the prefill. A name that IS this
+               booking's pickup, or any stop we serve, is refused; the
+               passenger is then asked for their name properly. */
+            if ($k === 'name' && self::looksLikePlace((string) $v, $slots)) {
+                continue;
+            }
+            $slots[$k] = $v;
         }
 
         $ask = $sug['ask'] ?? null;
@@ -234,7 +247,7 @@ final class WaBooking
 
         // Everything is known: show what it will cost and wait for a yes.
         self::save($phoneDigits, $slots, 'confirm', [], $lang);
-        return self::out(self::summary($plan, $slots, $lang));
+        return self::out($opener . self::summary($plan, $slots, $lang));
     }
 
     /* ----------------------------------------------------------------- */
@@ -1157,6 +1170,49 @@ Example: Ram Bahadur 35, Sita Gurung 30",
         } catch (Throwable $e) {
             return '';
         }
+    }
+
+    /**
+     * Is this "name" actually a place we serve?
+     *
+     * Checked against the booking's own pickup first (the common case),
+     * then against every active stop and city on the route board. A real
+     * passenger called after a town is possible but vanishingly rare next
+     * to the parser handing us a bus stop — and the cost of being wrong is
+     * only that we ask them their name, which we were going to do anyway.
+     */
+    private static function looksLikePlace(string $name, array $slots): bool
+    {
+        $n = mb_strtolower(trim($name));
+        if ($n === '') {
+            return false;
+        }
+        $board = mb_strtolower(trim((string) ($slots['boarding'] ?? '')));
+        if ($board !== '' && ($n === $board || str_contains($board, $n))) {
+            return true;
+        }
+        try {
+            foreach (Database::fetchAll(
+                'SELECT stop_name FROM route_stops WHERE stop_name IS NOT NULL'
+            ) as $r) {
+                $stop = mb_strtolower(trim((string) $r['stop_name']));
+                if ($stop !== '' && ($n === $stop || str_starts_with($stop, $n . ' ') || str_contains($stop, $n))) {
+                    return true;
+                }
+            }
+            foreach (Database::fetchAll(
+                'SELECT from_city, to_city FROM routes WHERE is_active = 1'
+            ) as $r) {
+                foreach ([$r['from_city'] ?? '', $r['to_city'] ?? ''] as $city) {
+                    if ($n === mb_strtolower(trim((string) $city))) {
+                        return true;
+                    }
+                }
+            }
+        } catch (Throwable $e) {
+            // Unsure — let the name through rather than block a real booking.
+        }
+        return false;
     }
 
     /** "Sher Bahadur Bishwokarma" → "Sher Bahadur": warm, not formal. */
