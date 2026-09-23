@@ -166,3 +166,49 @@ button,input,select,textarea{font-family:inherit}
 /* the older green WhatsApp card says what the WhatsApp channel card above it
    now says - one card per channel, no duplicates (brief: remove clutter) */
 #chanCards ~ .wa-ticket-highlight{display:none}
+
+/* ---------- 6. CHECKOUT — one smart form, straight to payment, slim hold bar ---------- */
+/* the seat-screen "name + mobile" card asked the same two things the checkout
+   asks 10 s later - it is hidden (the SHG_QUICK hand-off from the home card
+   still pre-fills the checkout). Code untouched. */
+#seatQuick{display:none!important}
+/* step 1 order: Passengers (name · gender) first, then Contact (mobile · rules ·
+   T&C), then the optional agent code; the stepdot numbers are re-stamped by 19-ux.js */
+#coStep1{display:flex;flex-direction:column}
+#coStep1 > .co-card{order:2}
+#coStep1 > .co-card.ux-pax{order:1}
+#coStep1 > .co-card.ux-agent{order:3}
+#coStep1 > .co-nav-row{order:4}
+@media (max-width:760px){#coStep1 > .co-card{padding:18px 16px;border-radius:18px;margin-bottom:14px}}
+/* guests see name · mobile · gender; age stays in the DOM (optional, counters use it) */
+body.ux-guest .pax-row.grp-lead .field:has(.pxAge){display:none}
+body.ux-guest .pax-row{grid-template-columns:64px 1.6fr 1fr}
+@media (max-width:760px){body.ux-guest .pax-row{grid-template-columns:1fr}.pax-row .seat-tag{justify-self:start;padding:6px 12px}}
+/* gender as a 3-way toggle bound to the (hidden) select */
+.pax-row .pxGender.ux-bound{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.gtog{display:inline-flex;padding:3px;border-radius:999px;background:var(--bg);border:1px solid var(--line);gap:2px}
+.gtog button{min-height:38px;padding:6px 14px;border:0;border-radius:999px;background:transparent;color:var(--muted);font-weight:600;font-size:13px;cursor:pointer}
+.gtog button.on{background:var(--card);color:var(--blue-800);box-shadow:var(--shadow-sm)}
+.gtog button.on[data-g="Female"]{color:#B0165F}
+.field:has(.gtog){position:relative}
+/* the long rules block folds into one line on phones; the T&C tick stays */
+@media (max-width:760px){
+  .rules-summary:not(details){display:none}
+  details.rules-summary{margin-top:0}
+}
+/* payment screen: compact - summary strip, amount, methods, QR/apps, proof, confirm */
+#payCard .co-bpass{border-radius:16px}
+#payCard .pm-tab{min-height:56px!important;padding:8px 6px!important}
+#payCard .pay-amt .big{font-size:32px;font-weight:700}
+/* slim sticky hold bar (seat + checkout screens) */
+.hold-bar{position:sticky;top:0;z-index:58;display:flex;align-items:center;gap:8px;min-height:34px;padding:4px 14px;background:#FFF6E5;color:#7A5B33;border-bottom:1px solid #EBC98A;font-size:12.5px;font-weight:600}
+.hold-bar[hidden]{display:none}
+.hold-bar .hb-ico{font-size:14px}
+.hold-bar .hb-txt{white-space:nowrap}
+.hold-bar .hb-track{flex:1 1 auto;height:4px;border-radius:999px;background:rgba(122,91,51,.18);overflow:hidden;margin-left:6px}
+.hold-bar .hb-track b{display:block;height:100%;width:100%;border-radius:999px;background:linear-gradient(90deg,#F07C1F,#FFB25E);transform-origin:left center;transition:transform 1s linear}
+.hold-bar.hb-low{background:#FDECEC;color:#8A1F1F;border-bottom-color:#F1B4B4}
+.hold-bar.hb-low .hb-track b{background:#C53030}
+:root[data-theme="dark"] .hold-bar{background:#2A2210;color:#F1D27A;border-bottom-color:#5A4A1A}
+/* the in-card pills say the same thing - keep one timer on screen */
+body.ux-holdbar .hold-pill{display:none!important}

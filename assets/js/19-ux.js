@@ -305,4 +305,78 @@
   } catch (e) {}
   window.addEventListener('hashchange', function () { if (location.hash.indexOf('#/seats') === 0) setTimeout(function () { relabelDeckTabs(); renderBpDots(); }, 500); });
 
+  /* ---------------------------------------------------------------
+   *  CHECKOUT — one smart form: Passengers (name · gender toggle) first,
+   *  Contact second; the gender <select> stays the source of truth and
+   *  drives a 3-way toggle. Rows are re-rendered by renderCheckout, so a
+   *  MutationObserver decorates whatever appears.
+   * ------------------------------------------------------------- */
+  try { if (!(boot().staff && boot().staff.canSell)) document.body.classList.add('ux-guest'); } catch (e) {}
+  function tagCheckoutCards() {
+    var cards = qa('#coStep1 > .co-card'); if (!cards.length) return;
+    cards.forEach(function (c) {
+      if (c.querySelector('#paxRows')) c.classList.add('ux-pax');
+      else if (c.querySelector('#cAgentCode')) c.classList.add('ux-agent');
+    });
+    var n = 0;
+    ['.ux-pax', ':not(.ux-pax):not(.ux-agent)'].forEach(function (sel) {
+      var c = q('#coStep1 > .co-card' + sel); var dot = c && c.querySelector('.stepdot');
+      if (dot) dot.textContent = String(++n);
+    });
+  }
+  function bindGender(sel) {
+    if (sel.classList.contains('ux-bound')) return;
+    sel.classList.add('ux-bound');
+    var wrap = document.createElement('div'); wrap.className = 'gtog'; wrap.setAttribute('role', 'group');
+    qa('option', sel).forEach(function (o) {
+      if (!o.value) return;
+      var b = document.createElement('button'); b.type = 'button'; b.setAttribute('data-g', o.value); b.textContent = o.textContent;
+      b.className = o.value === sel.value ? 'on' : '';
+      b.addEventListener('click', function () {
+        sel.value = o.value;
+        qa('button', wrap).forEach(function (x) { x.classList.toggle('on', x === b); });
+        sel.dispatchEvent(new Event('change', { bubbles: true })); sel.dispatchEvent(new Event('input', { bubbles: true }));
+        try { shgHaptic('tap'); SFX.pop(); } catch (e) {}
+      });
+      wrap.appendChild(b);
+    });
+    sel.parentNode.insertBefore(wrap, sel.nextSibling);
+    sel.addEventListener('change', function () { qa('button', wrap).forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-g') === sel.value); }); });
+  }
+  function decorateCheckout() { tagCheckoutCards(); qa('#paxRows .pxGender').forEach(bindGender); }
+  try {
+    var pr = q('#paxRows'); if (pr) new MutationObserver(decorateCheckout).observe(pr, { childList: true });
+    decorateCheckout();
+  } catch (e) {}
+  window.addEventListener('hashchange', function () { if (location.hash.indexOf('#/checkout') === 0) setTimeout(decorateCheckout, 300); });
+
+  /* ---------------------------------------------------------------
+   *  SEAT-HOLD BAR — mirrors the existing pill text into one slim
+   *  sticky strip. updateHoldPills is a top-level function declaration
+   *  in 05-router (a window binding), so wrapping it here catches every
+   *  tick of the same timer; nothing about the hold itself changes.
+   * ------------------------------------------------------------- */
+  var holdTotalMs = 0;
+  function syncHoldBar() {
+    var bar = q('#holdBar'), txt = q('#holdBarTxt'), fill = q('#holdBarFill'); if (!bar) return;
+    var h = location.hash || '#/';
+    var onFlow = h.indexOf('#/seats') === 0 || h.indexOf('#/checkout') === 0;
+    var pill = qa('.hold-pill').filter(function (p) { return !p.classList.contains('hide') && p.textContent.trim(); })[0];
+    var exp = 0; try { exp = typeof myHoldExpiry === 'function' ? (myHoldExpiry() || 0) : 0; } catch (e) {}
+    if (!onFlow || !pill || !exp) { bar.hidden = true; document.body.classList.remove('ux-holdbar'); holdTotalMs = 0; return; }
+    var left = Math.max(0, exp - Date.now());
+    if (!holdTotalMs || left > holdTotalMs) holdTotalMs = Math.max(left, ((((typeof CONFIG !== 'undefined' && CONFIG.booking) || {}).seatHoldMinutes || 30) * 60000));
+    txt.textContent = pill.textContent.replace(/^⏳\s*/, '');
+    if (fill) fill.style.transform = 'scaleX(' + (left / holdTotalMs).toFixed(3) + ')';
+    bar.classList.toggle('hb-low', left < 3 * 60000);
+    bar.hidden = false; document.body.classList.add('ux-holdbar');
+  }
+  try {
+    if (typeof updateHoldPills === 'function') {
+      var _uhp = updateHoldPills;
+      window.updateHoldPills = function () { var r = _uhp.apply(this, arguments); try { syncHoldBar(); } catch (e) {} return r; };
+    }
+  } catch (e) {}
+  window.addEventListener('hashchange', function () { setTimeout(syncHoldBar, 50); });
+
 }());

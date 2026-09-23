@@ -542,6 +542,11 @@ s.addEventListener('click',function(e){e.preventDefault();
     </button>
   </div>
 </header>
+<!-- SEAT-HOLD BAR (23 Sep 2026, v3 brief §7): the 30-minute hold as one slim
+     sticky strip under the header on the seat + checkout screens. Text comes
+     from the existing hold pills (05-router::updateHoldPills, wrapped in
+     19-ux.js); the timer, the release and the expiry redirect are unchanged. -->
+<div class="hold-bar" id="holdBar" hidden role="status" aria-live="polite"><span class="hb-ico">⏳</span><span class="hb-txt" id="holdBarTxt"></span><i class="hb-track"><b id="holdBarFill"></b></i></div>
 <div class="mobile-menu" id="mobileMenu">
   <a href="#/" data-scroll="top"><svg class="ic"><use href="#i-home"/></svg> Home</a>
   <a href="#/" data-scroll="search-anchor"><svg class="ic"><use href="#i-ticket"/></svg> Book Tickets</a>
