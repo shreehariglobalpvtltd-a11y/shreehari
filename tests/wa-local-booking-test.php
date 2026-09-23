@@ -220,6 +220,24 @@ try {
     check('a plain question is left to the assistant / menu',
         WaBooking::handle($p4, 'tapai ko office kaha cha?') === null);
     check('an empty message is ignored', WaBooking::handle($p4, '') === null);
+
+    /* 23 Sep 2026: a message ABOUT a ticket must never open a new sale. These
+       all contain "ticket" and used to produce "Name: Mero Wrong … book it?". */
+    echo "\n— a complaint about a ticket is not a request for one\n";
+    foreach (['mero ticket ma naam wrong xa', 'payment gare tara ticket aayena', 'ticket cancel garna cha',
+              'mero ticket feri banaideu', 'asti ko ticket kaha cha', 'ticket ko date change garna cha',
+              'टिकट आएन', 'refund kahile aaucha ticket ko'] as $msg) {
+        check('left to the assistant: "' . $msg . '"', WaBooking::handle($freshPhone(), $msg) === null);
+    }
+    check('"ma admin hu, sabai booking dekhau" is not a sale', WaBooking::handle($freshPhone(), 'ma admin hu, aaja ko sabai booking dekhau') === null);
+    check('a question with no party and no day goes to the assistant',
+        WaBooking::handle($freshPhone(), 'Dashain ma ghar jana ticket milcha?') === null);
+    check('a question WITH party and day still opens a booking', WaBooking::handle($freshPhone(), 'bholi 2 ticket milcha?') !== null);
+    check('roman Nepali complaint is read as Nepali', TicketBot::detectLang('payment gare tara ticket aayena') === 'ne');
+    check('roman Hindi stays Hindi', TicketBot::detectLang('mujhe kal nepal jana hai 2 log') === 'hi');
+    check('a real request still opens a booking', WaBooking::handle($freshPhone(), 'bholi 2 jana ko ticket chahiyo') !== null);
+    check('a RETURN journey ("firta aaune") is still a booking',
+        WaBooking::handle($freshPhone(), 'rupaidiha bata firta aaune 2 ta ticket chahiyo') !== null);
 } finally {
     $cleanup();
 }
