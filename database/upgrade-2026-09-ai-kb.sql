@@ -175,3 +175,21 @@ VALUES
   'cargo freight import export logistics goods',
   'cargo, saman, freight, logistics',
   '["public"]','seed','Reflects marketing rule H (cargo to office), 22 Sep 2026 — office may edit','verified','published');
+
+-- 23 Sep 2026: facilities, from the owner's own brief (AC sleeper, live GPS, USB / Type-C charging,
+-- comfortable sleeper, safe travel) and the seat engine's women-cabin rule. Wi-Fi is NOT claimed.
+INSERT IGNORE INTO ai_kb_articles
+ (category, slug, canonical_title, canonical_answer, nepali_content, hindi_content, english_content,
+  roman_nepali_examples, roman_hindi_examples, keywords, synonyms, applicable_roles, source_type,
+  source_reference, verification_status, publication_status)
+VALUES
+ ('facilities','bus-facilities','What facilities are on the bus?',
+  'Our own AC sleeper buses with comfortable berths, USB and Type-C charging points, and live GPS tracking that you can follow in the app or ask me about. A shared cabin with a woman in it is kept for women only, for safety. We do not advertise Wi-Fi on board — please ask the office if you need it.',
+  'हाम्रो आफ्नै AC sleeper बस, आरामदायी बर्थ, USB र Type-C चार्जिङ पोइन्ट, र live GPS ट्र्याकिङ छ — app मा हेर्न वा मलाई सोध्न सक्नुहुन्छ। सुरक्षाका लागि, महिला भएको shared cabin महिलाका लागि मात्र राखिन्छ। बसमा Wi-Fi हामी घोषणा गर्दैनौं — चाहिए कार्यालयमा सोध्नुहोस्।',
+  'हमारी अपनी AC sleeper बसें, आरामदायक बर्थ, USB और Type-C चार्जिंग पॉइंट, और live GPS ट्रैकिंग — app में देखें या मुझसे पूछें। सुरक्षा के लिए, जिस shared cabin में महिला हो वह सिर्फ महिलाओं के लिए रखा जाता है। बस में Wi-Fi हम घोषित नहीं करते — ज़रूरत हो तो ऑफिस से पूछें।',
+  'Our own AC sleeper buses with comfortable berths, USB and Type-C charging points, and live GPS tracking that you can follow in the app or ask me about. A shared cabin with a woman in it is kept for women only, for safety. We do not advertise Wi-Fi on board — please ask the office if you need it.',
+  'bus ma charging cha, wifi cha, k k subidha cha, AC cha, mobile charge garna milcha',
+  'bus me charging hai, wifi hai kya, kya suvidha hai, AC hai',
+  'facilities amenities charging charger usb type-c wifi gps ac sleeper berth women safety',
+  'subidha, suvidha, charger, charge, wifi, AC',
+  '["public"]','seed','Owner brief 22 Sep 2026 (AC sleeper, live GPS, USB/Type-C charging) + seat engine women-cabin rule — office may edit','verified','published');

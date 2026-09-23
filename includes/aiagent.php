@@ -72,6 +72,8 @@ final class AiAgent
     private const GEMINI_THINK_BUDGET = 512;
     private const HTTP_TIMEOUT = 20;
     private static ?float $deadline = null;
+    /** HTTP status of the most recent model call (0 = network / no answer). */
+    private static int $lastHttp = 0;
 
     /** "Start again" in the languages this desk actually receives. */
     private const RESET_WORDS = ['reset', 'restart', 'naya', 'नयाँ', 'फेरि सुरु', 'start over', 'clear'];
@@ -478,17 +480,32 @@ final class AiAgent
         }
 
         $res = null;
-        foreach ($ladder as $model) {
-            $url = 'https://generativelanguage.googleapis.com/v1beta/models/'
-                 . rawurlencode($model) . ':generateContent';
-            $res = self::http($url, $payload, ['content-type: application/json', 'x-goog-api-key: ' . $key]);
-            if ($res !== null) {
-                if ($model !== $ladder[0]) {
-                    Logger::info('Gemini stepped down the ladder', ['used' => $model], 'whatsapp');
+        for ($pass = 0; $pass < 2 && $res === null; $pass++) {
+            if ($pass === 1) {
+                /* 23 Sep 2026: every rung answered 503 "high demand". Google's
+                   spikes clear in seconds, so one pause and one more pass — but
+                   only when the whole turn can still afford it. A 429 (quota) is
+                   NOT retried: a few seconds never refill a quota, and each extra
+                   call would spend what is left of it. */
+                if (self::$lastHttp !== 503 || self::$deadline === null
+                    || self::$deadline - microtime(true) < 12) {
+                    break;
                 }
-                break;
+                usleep(2500000);
+                Logger::info('Gemini busy on every rung, one retry after a pause', [], 'whatsapp');
             }
-            // self::http() already logged the status; try the next rung.
+            foreach ($ladder as $model) {
+                $url = 'https://generativelanguage.googleapis.com/v1beta/models/'
+                     . rawurlencode($model) . ':generateContent';
+                $res = self::http($url, $payload, ['content-type: application/json', 'x-goog-api-key: ' . $key]);
+                if ($res !== null) {
+                    if ($model !== $ladder[0] || $pass > 0) {
+                        Logger::info('Gemini stepped down the ladder', ['used' => $model, 'pass' => $pass], 'whatsapp');
+                    }
+                    break;
+                }
+                // self::http() already logged the status; try the next rung.
+            }
         }
         if ($res === null) {
             return null;
@@ -642,6 +659,7 @@ final class AiAgent
         $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $err  = curl_error($ch);
         curl_close($ch);
+        self::$lastHttp = $http;
 
         if ($body === false || $http !== 200) {
             Logger::error('AI agent HTTP ' . $http, [
@@ -813,8 +831,8 @@ final class AiAgent
            . "C. Length follows the question. A yes/no gets one line. 'Tapai ko company ko barema bhannus' or "
            . "'website ma ke cha' may take 5–8 lines — that is a real question and deserves a real answer. "
            . "Never pad, never repeat yourself, never send a wall of text.\n"
-           . "D. If they ask something outside the bus and logistics business, say so warmly in one line and "
-           . "bring it back — do not lecture, do not refuse coldly.\n\n"
+           . "D. If they ask something outside the bus and logistics business, give a short real answer as rule 10 "
+           . "allows, then bring it back — do not lecture, do not refuse coldly.\n\n"
 
            . "=== NAMES YOU SHOULD RECOGNISE ===\n"
            . ($ceo !== ''
@@ -901,7 +919,24 @@ final class AiAgent
             . "If someone sends one, tell them not to share it.\n"
             . "8. You may never promise a seat, a fare, a refund or a date that a tool has not confirmed.\n"
             . "9. If the person is upset, angry or in a hurry, apologise in one line and give the office "
-            . "number instead of a long explanation.\n"
+            . "number instead of a long explanation.\n\n"
+            /* 23 Sep 2026 (owner: "sabai kura ko answer dina sakne bandeu"). The
+               base briefing says ANSWER ONLY about the bus, so "aaj cricket kasle
+               jityo?" or "Kathmandu ko temperature?" got a cold refusal. On
+               WhatsApp the assistant is the company's front desk: it may talk
+               about anything harmless — but it has no internet, and general
+               knowledge must never pass for company policy. */
+            . "BEYOND THE BUS (this replaces 'ANSWER ONLY about this bus service' above, for this chat)\n"
+            . "10. People will ask you anything. Do not refuse a harmless question because it is not about the bus. "
+            . "Answer general-knowledge, travel, Nepal and India, festival, language or everyday questions in 1–3 "
+            . "short lines, warmly and correctly, then offer help with their journey in half a line.\n"
+            . "11. You have NO internet: no news, sports scores, weather, exchange rates or share prices. For anything "
+            . "that depends on today's live information, say honestly that you cannot check live updates here and "
+            . "where they can look. Never guess a result, a score, a rate or a number.\n"
+            . "12. General knowledge is never company policy. Company facts — our times, prices, rules, facilities, "
+            . "offers — come ONLY from this briefing and your tools; if neither has it, say you will check with the office.\n"
+            . "13. Still decline, politely in one line: medical, legal or financial advice beyond common sense (point "
+            . "them to a professional), anything harmful, hateful or sexual, and political or religious arguments.\n"
             . self::companyBriefing();
 
         $sell = Settings::getBool('wa_agent_sell', false);
