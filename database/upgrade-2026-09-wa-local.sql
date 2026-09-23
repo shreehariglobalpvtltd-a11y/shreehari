@@ -8,7 +8,8 @@
 -- =====================================================================
 
 INSERT IGNORE INTO settings (skey,svalue,stype,sgroup,label,is_public) VALUES
- ('wa_faq_on','0','bool','ai','WhatsApp: answer everyday questions (fare, time, offers, website, office, FAQ) on the VPS without an AI call',0);
+ ('wa_faq_on','0','bool','ai','WhatsApp: answer everyday questions (fare, time, offers, website, office, FAQ) on the VPS without an AI call',0),
+ ('wa_seat_photo_on','0','bool','ai','WhatsApp: send the coach seat picture (free berths, the customer''s own in orange) — status only, never names',0);
 
 -- Two facts the assistant already states in its briefing (includes/aiprompt.php), now in the
 -- knowledge base so the VPS can answer them without the model.

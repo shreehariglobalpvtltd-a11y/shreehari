@@ -52,6 +52,12 @@ final class WaFaq
 
     private const WEBSITE = ['website', 'web site', 'webside', 'app', 'link', 'site', 'वेबसाइट', 'एप', 'लिंक'];
 
+    /** "Is there a free seat / show me the seats" — answered with the coach picture. */
+    private const SEATS = ['khali seat', 'seat khali', 'khali sit', 'sit khali', 'seat map', 'seatmap', 'seat herdeu', 'seat hernu',
+        'seat dekhau', 'seat dekhaideu', 'seat dikhao', 'seat available', 'available seat', 'seat cha', 'seat chha', 'seat xa',
+        'seat baki', 'seat bacheko', 'kati seat', 'kitni seat', 'seat kitni', 'free seat', 'seats free', 'seat photo',
+        'खाली सिट', 'सिट खाली', 'सीट खाली', 'खाली सीट', 'सिट छ', 'कति सिट'];
+
     private const CONTACT = ['office', 'contact', 'sampark', 'phone number', 'contact number', 'office number', 'address',
         'thegana', 'counter', 'call', 'helpline', 'customer care', 'सम्पर्क', 'ठेगाना', 'कार्यालय', 'अफिस', 'काउन्टर'];
 
@@ -91,7 +97,13 @@ final class WaFaq
 
         $parts = [];
         $intents = [];
-        if (self::isGreeting($t)) {
+        $media = null;
+        $seat  = self::has($t, self::SEATS) ? self::seatPicture($text, $lang) : null;
+        if ($seat !== null) {
+            $intents[] = 'seats';
+            $parts[]   = $seat['text'];
+            $media     = $seat['media'];
+        } elseif (self::isGreeting($t)) {
             $intents[] = 'greeting';
             // A bare "namaste" / "hi" carries no language signal; the desk speaks Nepali first.
             $parts[]   = self::greeting($fromRaw, $who, $lang === 'en' ? 'ne' : $lang);
@@ -137,7 +149,49 @@ final class WaFaq
         self::remember($who, $text, $reply);
         self::log($fromRaw, $who, $intent, $t0);
 
-        return ['text' => $reply, 'media' => null, 'intent' => $intent];
+        return ['text' => $reply, 'media' => $media, 'intent' => $intent];
+    }
+
+    /**
+     * Free berths on the next catchable bus (or the day / way they named),
+     * with the coach picture. Null when the picture is switched off or the
+     * departure cannot be read — the assistant then answers.
+     *
+     * @return array{text: string, media: ?string}|null
+     */
+    private static function seatPicture(string $text, string $lang): ?array
+    {
+        if (!Settings::getBool('wa_seat_photo_on', false)) {
+            return null;
+        }
+        require_once INCLUDE_PATH . '/quickticket.php';
+        require_once INCLUDE_PATH . '/seatmappng.php';
+        $p = TicketBot::parse($text);
+        try {
+            $plan = QuickTicket::plan([
+                'seats'     => max(1, (int) ($p['seats'] ?? 0)),
+                'date'      => (string) ($p['date'] ?? ''),
+                'direction' => (string) ($p['direction'] ?? ''),
+                'boarding'  => (string) ($p['boarding'] ?? ''),
+                'customer'  => true,
+            ]);
+        } catch (RuntimeException $e) {
+            return ['text' => trim($e->getMessage()), 'media' => null];   // desk-safe, bilingual
+        }
+        $sid = (int) ($plan['scheduleId'] ?? 0);
+        $sum = $sid > 0 ? SeatMapPng::summary($sid) : null;
+        if ($sum === null) {
+            return null;
+        }
+        $when  = (string) ($plan['dateLabel'] ?? $sum['date']);
+        $route = $sum['from'] . ' → ' . $sum['to'];
+        return [
+            'text'  => '🪑 ' . $when . ' · ' . $route . "\n" . self::t($lang,
+                $sum['total'] . ' मध्ये ' . $sum['free'] . ' सिट खाली (हरियो)। बुक गर्न नाम र कति जना भन्नुहोस्।',
+                $sum['total'] . ' में से ' . $sum['free'] . ' सीट खाली (हरी)। बुक करने के लिए नाम और कितने लोग बताइए।',
+                $sum['free'] . ' of ' . $sum['total'] . ' berths free (green). To book, tell me your name and how many people.'),
+            'media' => SeatMapPng::url($sid),
+        ];
     }
 
     /* =================================================================

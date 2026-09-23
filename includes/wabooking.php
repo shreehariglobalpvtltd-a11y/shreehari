@@ -247,7 +247,19 @@ final class WaBooking
 
         // Everything is known: show what it will cost and wait for a yes.
         self::save($phoneDigits, $slots, 'confirm', [], $lang);
-        return self::out($opener . self::summary($plan, $slots, $lang));
+        /* 23 Sep 2026 (owner: "customer lai seat photo"): the summary rides on
+           the coach picture with THEIR berths in orange, so they see where
+           they will sleep before they say yes. No picture = the same text. */
+        $picture = null;
+        if (Settings::getBool('wa_seat_photo_on', false) && (int) ($plan['scheduleId'] ?? 0) > 0) {
+            try {
+                require_once INCLUDE_PATH . '/seatmappng.php';
+                $picture = SeatMapPng::url((int) $plan['scheduleId'], array_map('strval', (array) ($plan['seats'] ?? [])));
+            } catch (Throwable $e) {
+                $picture = null;
+            }
+        }
+        return self::out($opener . self::summary($plan, $slots, $lang), $picture);
     }
 
     /* ----------------------------------------------------------------- */

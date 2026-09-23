@@ -152,6 +152,7 @@ const CORE_SUITES = [
     'ai-kb-test.php'              => 'the knowledge base: audience scope, the ai_kb_on switch, an honest redacted miss',
     // 23 Sep 2026, registered with the on-VPS everyday answers it guards.
     'wa-faq-test.php'             => 'everyday WhatsApp answers from the live tables, no AI: personal left to the assistant',
+    'seatmap-test.php'            => 'the customer seat picture: signed link, status only (never names), same count as the challan',
 ];
 
 /**
