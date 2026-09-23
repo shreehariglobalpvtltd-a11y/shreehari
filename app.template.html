@@ -845,6 +845,8 @@ s.addEventListener('click',function(e){e.preventDefault();
           <label for="pointSel" id="pointLabel" data-i18n="sBoard">Boarding town (Gujarat)</label>
           <div class="box"><select id="pointSel" required></select></div>
         </div>
+        <!-- v3 §10 (behind ux_voice_search_on + browser support; 19-ux.js shows it) -->
+        <button type="button" class="s-mic" id="sxMic" hidden aria-label="Voice search" title="Voice search">🎤</button>
         <button class="btn btn-orange btn-search" type="submit" data-i18n="sSearch">Search buses →</button>
       </div>
       <!-- One-tap WhatsApp booking (17 Sep 2026): the message carries the date,

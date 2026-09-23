@@ -480,4 +480,91 @@
   } catch (e) {}
   try { var sg = q('#seatGrid'); if (sg) new MutationObserver(function () { renderPvtBand(); }).observe(sg, { childList: true }); } catch (e) {}
 
+  /* ---------------------------------------------------------------
+   *  AI EXTRAS (brief §10) — each behind a public setting, each a
+   *  no-op while off, none touch first paint.
+   * ------------------------------------------------------------- */
+  var flag = function (k) { try { var v = settings()[k]; return v === true || v === 1 || v === '1' || v === 'true'; } catch (e) { return false; } };
+
+  /* 🎤 Voice search on the search card: "Surat to Rupaidiha kal" ->
+     direction + town + date through the same controls a finger uses. */
+  (function voiceSearch() {
+    var mic = q('#sxMic'); var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!mic || !SR || !flag('ux_voice_search_on')) return;
+    mic.hidden = false;
+    var rec = null;
+    function norm(s) { return String(s || '').toLowerCase(); }
+    function apply(text) {
+      var tx = norm(text), hit = 0;
+      /* direction */
+      if (/nepal|rupaidiha|rupaidih|रुपैडिहा|रूपैडीहा|नेपाल|jane|जाने/.test(tx)) { if (typeof setSearchDir === 'function') setSearchDir('go'); hit++; }
+      else if (/return|wapas|farki|फर्क|वापस|gujarat|गुजरात/.test(tx)) { if (typeof setSearchDir === 'function') setSearchDir('back'); hit++; }
+      /* town: the first option whose first word appears in the sentence */
+      var sel = q('#pointSel');
+      if (sel) {
+        var match = qa('option', sel).filter(function (o) { var w = norm(o.value).split(/[ ,]/)[0]; return w.length > 3 && tx.indexOf(w) >= 0; })[0];
+        if (match) { sel.value = match.value; sel.dispatchEvent(new Event('change', { bubbles: true })); hit++; }
+      }
+      /* date */
+      var d = null;
+      if (/parso|परसो|परसी|day after/.test(tx)) d = 2; else if (/tomorrow|kal\b|काल|कल\b|भोलि|bholi/.test(tx)) d = 1; else if (/today|aaj|आज/.test(tx)) d = 0;
+      if (d !== null) {
+        var dt = new Date(); dt.setDate(dt.getDate() + d);
+        var b = q('#dateStrip30 button[data-iso="' + iso(dt) + '"]:not([disabled])'); if (b) { b.click(); hit++; }
+      }
+      if (hit) { try { SFX.pop(); shgHaptic('tap'); } catch (e) {} renderSearchChips(); }
+      try { toast(hit ? tr('sxMicOk', 'Got it - check and tap Search') : tr('sxMicMiss', 'Did not catch a town or date - try "Surat to Rupaidiha tomorrow"')); } catch (e) {}
+    }
+    mic.addEventListener('click', function () {
+      if (rec) { try { rec.stop(); } catch (e) {} return; }
+      try {
+        rec = new SR();
+        var map = { en: 'en-IN', hi: 'hi-IN', ne: 'ne-NP', gu: 'gu-IN' };
+        rec.lang = map[typeof LANG === 'string' ? LANG : 'ne'] || 'en-IN';
+        rec.interimResults = false; rec.maxAlternatives = 1;
+        mic.classList.add('listening');
+        rec.onresult = function (ev) { var out = ''; for (var i = 0; i < ev.results.length; i++) out += ev.results[i][0].transcript; apply(out); };
+        rec.onend = function () { mic.classList.remove('listening'); rec = null; };
+        rec.onerror = function () { mic.classList.remove('listening'); rec = null; };
+        rec.start();
+      } catch (e) { mic.classList.remove('listening'); rec = null; }
+    });
+  }());
+
+  /* 📍 Nearest pickup: one chip that hands the question to the Help bot's
+     own GPS routine (it already knows every stop's coordinates). */
+  (function nearestStop() {
+    if (!flag('ux_nearest_stop_on') || !navigator.geolocation) return;
+    var row = q('#qdRow'); if (!row) return;
+    var chip = document.createElement('button'); chip.type = 'button'; chip.className = 'chip qd-chip qd-near';
+    chip.textContent = '📍 ' + tr('sxNearest', 'Nearest pickup');
+    row.insertBefore(chip, row.querySelector('.st-chip'));
+    chip.addEventListener('click', function () {
+      var fab = q('#aiFab'), inp = q('#aiInput'), send = q('#aiSend'); if (!fab || !inp || !send) return;
+      var panel = q('#aiPanel'); if (!panel || getComputedStyle(panel).display === 'none') fab.click();
+      setTimeout(function () { inp.value = 'nearest boarding point'; send.click(); }, 250);
+    });
+  }());
+
+  /* ---------------------------------------------------------------
+   *  BOOKED! — a one-shot tick + confetti the moment the ticket page
+   *  opens after "Confirm your seat" (the old celebration only played
+   *  once staff had verified; the passenger saw nothing at submit).
+   * ------------------------------------------------------------- */
+  var submitTs = 0;
+  document.addEventListener('click', function (e) { if (e.target.closest('#submitBookingBtn')) submitTs = Date.now(); }, true);
+  window.addEventListener('hashchange', function () {
+    if (location.hash.indexOf('#/ticket/') !== 0 || !submitTs || Date.now() - submitTs > 20000) return;
+    submitTs = 0;
+    try {
+      var ov = document.createElement('div'); ov.className = 'cel'; ov.setAttribute('role', 'status');
+      var bits = ''; for (var i = 0; i < 18; i++) bits += '<i style="--x:' + (Math.random() * 100).toFixed(1) + '%;--d:' + (Math.random() * .6).toFixed(2) + 's;--c:' + ['#F07C1F', '#0054A8', '#25D366', '#F2C14E', '#38A8F5'][i % 5] + '"></i>';
+      ov.innerHTML = '<div class="cel-card"><div class="cel-tick"><svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="24"/><path d="M14 27l8 8 16-17"/></svg></div><b>' + esc(tr('celT', 'Seat request sent!')) + '</b><small>' + esc(tr('celS', 'We verify your payment and send the ticket on WhatsApp.')) + '</small></div><div class="cel-bits">' + bits + '</div>';
+      document.body.appendChild(ov);
+      try { shgHaptic('success'); } catch (err) {}
+      setTimeout(function () { ov.classList.add('out'); setTimeout(function () { ov.remove(); }, 400); }, reduced() ? 1200 : 2600);
+      ov.addEventListener('click', function () { ov.remove(); });
+    } catch (e) {}
+  });
+
 }());

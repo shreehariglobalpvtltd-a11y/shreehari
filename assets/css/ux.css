@@ -242,3 +242,29 @@ body.ux-holdbar .hold-pill{display:none!important}
 @media (max-width:760px){.pvt-upsell{flex-wrap:wrap}.pvt-upsell .pu-btn{flex-basis:100%}}
 :root[data-theme="dark"] .pvt-band,:root[data-theme="dark"] .pvt-upsell{background:linear-gradient(120deg,#3A2E0E,#2A2210);border-color:#6B5320}
 :root[data-theme="dark"] .pvt-price{color:var(--ink)}
+
+/* ---------- 10. AI EXTRAS + POLISH ---------- */
+.s-mic{width:48px;min-height:48px;border-radius:14px;border:1.5px solid var(--line);background:var(--card);font-size:20px;cursor:pointer;flex:0 0 auto}
+.s-mic[hidden]{display:none}
+.s-mic.listening{border-color:var(--cta);box-shadow:0 0 0 4px rgba(240,124,31,.2);animation:micPulse 1s ease-in-out infinite}
+@keyframes micPulse{50%{transform:scale(1.08)}}
+.search-grid.simple-town-only{align-items:end}
+.qd-near{background:var(--sky-100);border-color:#BFE3FB;color:var(--sky-deep)}
+/* booked! celebration */
+.cel{position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;background:rgba(12,30,64,.42);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);animation:celIn .25s var(--ease-decel) both;padding:24px}
+.cel.out{animation:celOut .35s var(--ease-accel) forwards}
+@keyframes celIn{from{opacity:0}to{opacity:1}}
+@keyframes celOut{to{opacity:0}}
+.cel-card{position:relative;z-index:2;background:var(--card);color:var(--ink);border-radius:var(--r-xl);padding:28px 26px;text-align:center;max-width:340px;box-shadow:var(--shadow-lg);animation:celPop .45s cubic-bezier(.34,1.56,.64,1) both}
+@keyframes celPop{from{transform:scale(.7);opacity:0}to{transform:none;opacity:1}}
+.cel-card b{display:block;font-size:20px;font-weight:700;margin-top:12px}
+.cel-card small{display:block;margin-top:6px;color:var(--muted);font-size:13.5px;line-height:1.4}
+.cel-tick{width:88px;height:88px;margin:0 auto}
+.cel-tick svg{width:100%;height:100%;fill:none;stroke:var(--wa);stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+.cel-tick circle{stroke-dasharray:160;stroke-dashoffset:160;animation:celDraw .6s .1s ease-out forwards}
+.cel-tick path{stroke-dasharray:40;stroke-dashoffset:40;animation:celDraw .4s .55s ease-out forwards}
+@keyframes celDraw{to{stroke-dashoffset:0}}
+.cel-bits{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+.cel-bits i{position:absolute;top:-12px;left:var(--x);width:10px;height:14px;background:var(--c);border-radius:2px;animation:celFall 2.2s var(--d) cubic-bezier(.2,.6,.4,1) forwards;opacity:.95}
+@keyframes celFall{to{transform:translateY(110vh) rotate(540deg);opacity:0}}
+@media (prefers-reduced-motion:reduce){.cel-bits{display:none}.cel-card{animation:none}.cel-tick circle,.cel-tick path{animation:none;stroke-dashoffset:0}.s-mic.listening{animation:none}}

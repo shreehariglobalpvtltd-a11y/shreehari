@@ -7,6 +7,7 @@
 ================================================================ */
 const I18N = {
 en: {
+  sxMicOk: 'Got it — check and tap Search', sxMicMiss: 'Did not catch a town or date — try "Surat to Rupaidiha tomorrow"', sxNearest: 'Nearest pickup', celT: 'Seat request sent!', celS: 'We verify your payment and send the ticket on WhatsApp.',
   pvtBadge: 'Private · Comfort', pvtSingle: 'Single cabin', pvtDouble: 'Double cabin', pvtWhy: 'Why private?', pvtWhyT: 'Your cabin, nobody else', pvtWhy1: 'Full privacy — the door is yours', pvtWhy2: 'More space, own light and charging', pvtWhy3: 'Perfect for couples, family, friends',
   pvtUpT: 'Make it a private cabin?', pvtUpS: 'These two berths are one cabin — book it whole, nobody else inside', pvtUpBtn: 'Book full cabin',
   chanTitle: 'Book your ticket', chanWa: 'WhatsApp Ticket', chanWaSub: 'Send name + journey, the desk replies with your ticket', chanBot: 'Bot / AI Ticket', chanBotSub: 'Name + mobile, one tap, ticket in 10 seconds', chanManual: 'Manual / Counter Ticket', chanManualSub: 'Pick your own seat on the map and pay by UPI',
@@ -405,6 +406,7 @@ en: {
   rgMap: 'Show on map', rgNone: 'The route guide is not available right now.', payApps: 'Or tap your UPI app:'
 },
 hi: {
+  sxMicOk: 'समझ गया — जाँचें और Search दबाएँ', sxMicMiss: 'शहर या तारीख समझ नहीं आई — "Surat to Rupaidiha kal" बोलें', sxNearest: 'नज़दीकी पिकअप', celT: 'सीट अनुरोध भेज दिया!', celS: 'हम भुगतान जाँचकर टिकट WhatsApp पर भेजेंगे।',
   pvtBadge: 'प्राइवेट · आराम', pvtSingle: 'सिंगल केबिन', pvtDouble: 'डबल केबिन', pvtWhy: 'प्राइवेट क्यों?', pvtWhyT: 'आपका केबिन, कोई और नहीं', pvtWhy1: 'पूरी प्राइवेसी — दरवाज़ा आपका', pvtWhy2: 'ज़्यादा जगह, अपनी लाइट और चार्जिंग', pvtWhy3: 'कपल, परिवार, दोस्तों के लिए बेहतरीन',
   pvtUpT: 'इसे प्राइवेट केबिन बनाएँ?', pvtUpS: 'ये दो बर्थ एक ही केबिन हैं — पूरा केबिन बुक करें, अंदर कोई और नहीं', pvtUpBtn: 'पूरा केबिन बुक करें',
   chanTitle: 'टिकट बुक करें', chanWa: 'WhatsApp टिकट', chanWaSub: 'नाम + यात्रा भेजें, डेस्क आपका टिकट भेजेगा', chanBot: 'बॉट / AI टिकट', chanBotSub: 'नाम + मोबाइल, एक टैप, 10 सेकंड में टिकट', chanManual: 'मैनुअल / काउंटर टिकट', chanManualSub: 'सीट-मैप पर अपनी सीट चुनें और UPI से भुगतान करें',
@@ -796,6 +798,7 @@ hi: {
   rgMap: 'मैप पर देखें', rgNone: 'रूट गाइड अभी उपलब्ध नहीं है।', payApps: 'या अपना UPI ऐप दबाएँ:'
 },
 ne: {
+  sxMicOk: 'बुझें — जाँच्नुहोस् र Search थिच्नुहोस्', sxMicMiss: 'सहर वा मिति बुझिएन — "Surat to Rupaidiha bholi" भन्नुहोस्', sxNearest: 'नजिकको पिकअप', celT: 'सिट अनुरोध पठाइयो!', celS: 'भुक्तानी जाँचेर टिकट WhatsApp मा पठाउँछौं।',
   pvtBadge: 'प्राइभेट · आराम', pvtSingle: 'सिंगल केबिन', pvtDouble: 'डबल केबिन', pvtWhy: 'प्राइभेट किन?', pvtWhyT: 'तपाईंको केबिन, अरू कोही होइन', pvtWhy1: 'पूरा गोपनीयता — ढोका तपाईंको', pvtWhy2: 'बढी ठाउँ, आफ्नै बत्ती र चार्जिङ', pvtWhy3: 'जोडी, परिवार, साथीहरूका लागि उत्तम',
   pvtUpT: 'यसलाई प्राइभेट केबिन बनाउने?', pvtUpS: 'यी दुई बर्थ एउटै केबिन हुन् — पूरै केबिन बुक गर्नुहोस्, भित्र अरू कोही हुँदैन', pvtUpBtn: 'पूरै केबिन बुक गर्नुहोस्',
   chanTitle: 'टिकट बुक गर्नुहोस्', chanWa: 'WhatsApp टिकट', chanWaSub: 'नाम + यात्रा पठाउनुहोस्, डेस्कले टिकट पठाउँछ', chanBot: 'बट / AI टिकट', chanBotSub: 'नाम + मोबाइल, एक ट्याप, 10 सेकेन्डमा टिकट', chanManual: 'म्यानुअल / काउन्टर टिकट', chanManualSub: 'सिट-म्यापमा आफ्नो सिट छान्नुहोस्, UPI बाट तिर्नुहोस्',
