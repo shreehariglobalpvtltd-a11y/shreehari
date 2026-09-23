@@ -85,7 +85,7 @@ final class ReportChart
     }
 
     /** Three short lines for WhatsApp, in the office's language. */
-    public static function text(array $data, string $lang): string
+    public static function message(array $data, string $lang): string
     {
         $t = $data['today'];
         $w = $data['week'];

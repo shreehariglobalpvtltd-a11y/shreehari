@@ -179,7 +179,7 @@ final class WaFaq
                 return null;
             }
             require_once INCLUDE_PATH . '/reportchart.php';
-            return ['text' => ReportChart::text(ReportChart::data(), $lang), 'media' => ReportChart::url()];
+            return ['text' => ReportChart::message(ReportChart::data(), $lang), 'media' => ReportChart::url()];
         } catch (Throwable $e) {
             Logger::warning('WaFaq report failed: ' . $e->getMessage(), [], 'whatsapp');
             return null;
