@@ -89,22 +89,21 @@ button,.btn,a.btn,.nav-link,.bn-item,.seat,.num-pill,.lang-btn,
   }
 }
 
-/* NOT content-visibility. The obvious move here was to put
-   `content-visibility:auto` on the #homeMore / #homeExtra sections so the
-   engine could skip the ~1200 nodes a "show more" tap reveals. It was
-   written, deployed and then taken out again on 24 Sep 2026, for two
-   reasons that both say the same thing:
+/* NOT content-visibility — views.css line 697 already does it.
+   `.section:not(#top){content-visibility:auto;contain-intrinsic-size:1px 600px}`
+   has been live since long before this pass, and #homeMore / #homeExtra
+   are built from .section, so they were already covered.
 
-     • It buys almost nothing in the state everyone is actually in.
-       #homeMore and #homeExtra carry the `hidden` attribute until the
-       visitor taps for them, so on the screen that sells tickets the
-       rule never applies.
-     • What it CAN do, when it does apply, is move the scroll position
-       under a finger — contain-intrinsic-size is an estimate, and the
-       correction lands as a jump. On a page where the next tap is
-       "Confirm and take the ticket", that trade is the wrong way round.
+   A rule was added here anyway during this pass (24 Sep 2026) and taken
+   back out the same night, because a SECOND content-visibility on the
+   same elements with a DIFFERENT intrinsic-size guess — 520px against
+   the existing 600px — is worse than either one alone: the two estimates
+   disagree about how tall an unrendered section is, and the correction
+   lands as a scroll jump. On a page whose next tap is "Confirm and take
+   the ticket", that is the wrong way round.
 
-   Keep it out unless the reveal is measured and found slow. */
+   If the "show more" reveal is ever measured and found slow, tune the
+   ONE rule in views.css. Do not add a second one here. */
 
 /* Reduced motion: stop moving, stay visible. */
 @media (prefers-reduced-motion:reduce){
