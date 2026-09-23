@@ -223,3 +223,22 @@ body.ux-holdbar .hold-pill{display:none!important}
 .sos-fab{right:auto;left:16px}
 @media (max-width:760px){.ai-panel{right:8px;left:8px;width:auto;bottom:calc(76px + env(safe-area-inset-bottom) + 62px);height:min(520px,66vh)}}
 .ai-chip-wa{display:inline-flex;align-items:center;gap:6px;margin-top:6px;background:var(--wa)!important;color:#fff!important;border-color:var(--wa)!important;text-decoration:none;font-weight:700}
+
+/* ---------- 8. PRIVATE CABIN — gold band, why-private pop, upsell nudge ---------- */
+.pvt-band{position:relative;display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin:0 0 12px;padding:10px 12px;border-radius:14px;background:linear-gradient(120deg,var(--gold-100),#FFF9E8);border:1px solid #E9CF7A}
+.pvt-band[hidden]{display:none}
+.pvt-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;background:linear-gradient(135deg,#C99A2E,#F2C14E);color:#3A2C00;font-weight:700;font-size:12.5px;letter-spacing:.02em;box-shadow:0 2px 8px rgba(201,154,46,.35)}
+.pvt-price{font-size:13px;color:var(--ink)}
+.pvt-price b{color:var(--gold-deep);font-weight:700}
+.pvt-why{margin-left:auto;min-height:34px;padding:5px 12px;border-radius:999px;border:1px solid #E9CF7A;background:var(--card);color:var(--gold-deep);font-weight:600;font-size:12.5px;cursor:pointer}
+.pvt-pop{flex-basis:100%;margin-top:4px;padding:10px 12px;border-radius:12px;background:var(--card);border:1px solid var(--line);font-size:13px;color:var(--ink)}
+.pvt-pop ul{margin:6px 0 0;padding-left:0;list-style:none;display:grid;gap:4px}
+.pvt-upsell{display:flex;align-items:center;gap:10px;margin:10px 0 4px;padding:10px 12px;border-radius:14px;background:linear-gradient(120deg,var(--gold-100),#FFF9E8);border:1px dashed #D9B44A}
+.pvt-upsell .pu-ico{font-size:22px}
+.pvt-upsell .pu-txt{flex:1 1 0;min-width:0}
+.pvt-upsell .pu-txt b{display:block;font-size:13.5px}
+.pvt-upsell .pu-txt small{display:block;color:var(--muted);font-size:12px;line-height:1.3}
+.pvt-upsell .pu-btn{flex:0 0 auto;background:linear-gradient(135deg,#C99A2E,#F2C14E);color:#3A2C00;border:0;font-weight:700;min-height:40px;white-space:nowrap}
+@media (max-width:760px){.pvt-upsell{flex-wrap:wrap}.pvt-upsell .pu-btn{flex-basis:100%}}
+:root[data-theme="dark"] .pvt-band,:root[data-theme="dark"] .pvt-upsell{background:linear-gradient(120deg,#3A2E0E,#2A2210);border-color:#6B5320}
+:root[data-theme="dark"] .pvt-price{color:var(--ink)}

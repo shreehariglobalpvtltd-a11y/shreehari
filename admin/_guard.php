@@ -127,6 +127,7 @@ function admin_nav(): array
         ['href' => 'payments.php',     'icon' => 'card',      'label' => 'Verify Payments',  'perm' => 'payments.view',  'section' => 'Payments'],
         ['href' => 'refunds.php',      'icon' => 'refund',    'label' => 'Refunds',          'perm' => 'refunds.view',   'section' => 'Payments'],
         ['href' => 'offers.php',       'icon' => 'star',      'label' => 'Offers & Discounts','perm' => 'payments.view',  'section' => 'Payments'],
+        ['href' => 'promo-card.php',   'icon' => 'image',     'label' => 'Promo card',       'perm' => 'dashboard.view', 'section' => 'Payments'],
 
         // Reports
         ['href' => 'analytics.php',    'icon' => 'chart',  'label' => 'Analytics',        'perm' => 'dashboard.view', 'section' => 'Reports'],

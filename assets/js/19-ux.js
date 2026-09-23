@@ -396,4 +396,88 @@
     try { shgHaptic('tap'); } catch (err) {}
   }, true);
 
+  /* ---------------------------------------------------------------
+   *  PRIVATE CABIN MARKETING (brief §6) — visual + one nudge; the seat
+   *  engine, prices and the mode switch are the existing ones.
+   *   - private mode: a gold "Private · Comfort" band over the map with
+   *     the per-cabin prices and a "Why private?" pop.
+   *   - sharing mode: when the two chosen berths share one cabin, offer
+   *     the whole private cabin for its price in one tap (switches the
+   *     mode through the existing pill, then re-selects the same beds).
+   * ------------------------------------------------------------- */
+  function pvtPrices() {
+    var P = ((typeof CONFIG !== 'undefined' && CONFIG.cabinPricing) || {}).private || {};
+    var s = (P.single_1pax || {}).offline || 0, d = (P.double_2pax || {}).offline || 0;
+    return { single: s, double: d };
+  }
+  function money(n) { try { return typeof inr === 'function' ? inr(n) : '₹' + Number(n).toLocaleString('en-IN'); } catch (e) { return '₹' + n; } }
+  function renderPvtBand() {
+    var grid = q('#seatGrid'), frame = q('.bus-frame'); if (!grid || !frame) return;
+    var band = q('#pvtBand');
+    var isPvt = !!(typeof Flow !== 'undefined' && Flow.bookingType === 'private' && Flow.route && Flow.route.type === 'sleeper');
+    if (!isPvt) { if (band) band.hidden = true; return; }
+    var p = pvtPrices();
+    if (!band) {
+      band = document.createElement('div'); band.id = 'pvtBand'; band.className = 'pvt-band';
+      frame.parentNode.insertBefore(band, frame);
+    }
+    band.innerHTML = '<span class="pvt-badge">👑 ' + esc(tr('pvtBadge', 'Private · Comfort')) + '</span>'
+      + '<span class="pvt-price">' + (p.single ? esc(tr('pvtSingle', 'Single cabin')) + ' <b>' + money(p.single) + '</b>' : '')
+      + (p.double ? ' · ' + esc(tr('pvtDouble', 'Double cabin')) + ' <b>' + money(p.double) + '</b>' : '') + '</span>'
+      + '<button type="button" class="pvt-why" data-pvt-why aria-expanded="false">' + esc(tr('pvtWhy', 'Why private?')) + '</button>'
+      + '<div class="pvt-pop" hidden><b>' + esc(tr('pvtWhyT', 'Your cabin, nobody else')) + '</b><ul>'
+      + '<li>🔒 ' + esc(tr('pvtWhy1', 'Full privacy - the door is yours')) + '</li>'
+      + '<li>🛏️ ' + esc(tr('pvtWhy2', 'More space, own light and charging')) + '</li>'
+      + '<li>👨‍👩‍👧 ' + esc(tr('pvtWhy3', 'Perfect for couples, family, friends')) + '</li></ul></div>';
+    band.hidden = false;
+  }
+  document.addEventListener('click', function (e) {
+    var w = e.target.closest('[data-pvt-why]');
+    if (w) { var pop = w.parentNode.querySelector('.pvt-pop'); if (pop) { pop.hidden = !pop.hidden; w.setAttribute('aria-expanded', pop.hidden ? 'false' : 'true'); } return; }
+    if (!e.target.closest('#pvtBand')) { var op = q('#pvtBand .pvt-pop'); if (op && !op.hidden) { op.hidden = true; var b = q('#pvtBand [data-pvt-why]'); if (b) b.setAttribute('aria-expanded', 'false'); } }
+  });
+  function renderUpsell() {
+    var host = q('#fareRows'); if (!host) return;
+    var old = q('#pvtUpsell');
+    var ok = false, price = 0, beds = [];
+    try {
+      if (typeof Flow !== 'undefined' && Flow.bookingType === 'sharing' && Flow.route && Flow.route.type === 'sleeper'
+          && Array.isArray(Flow.seats) && Flow.seats.length === 2 && typeof unitKeyJS === 'function') {
+        var a = Flow.seats[0], b = Flow.seats[1];
+        ok = unitKeyJS(a, Flow.route.type) === unitKeyJS(b, Flow.route.type) && /^[LU]\d+$/i.test(a) && /^[LU]\d+$/i.test(b);
+        price = pvtPrices().double; beds = [a, b];
+      }
+    } catch (e) { ok = false; }
+    if (!ok || !price) { if (old) old.remove(); return; }
+    if (!old) { old = document.createElement('div'); old.id = 'pvtUpsell'; old.className = 'pvt-upsell'; host.parentNode.insertBefore(old, host.nextSibling); }
+    old.innerHTML = '<span class="pu-ico">👑</span><span class="pu-txt"><b>' + esc(tr('pvtUpT', 'Make it a private cabin?')) + '</b><small>'
+      + esc(tr('pvtUpS', 'These two berths are one cabin - book it whole, nobody else inside')) + '</small></span>'
+      + '<button type="button" class="btn btn-sm pu-btn" data-pvt-upsell="' + esc(beds.join(',')) + '">' + esc(tr('pvtUpBtn', 'Book full cabin')) + ' · ' + money(price) + '</button>';
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-pvt-upsell]'); if (!b) return;
+    e.preventDefault();
+    var beds = (b.getAttribute('data-pvt-upsell') || '').split(',').filter(Boolean);
+    var pill = q('#cabinToggle .bt-pill[data-bt="private"]'); if (!pill) return;
+    try { SFX.select(); shgHaptic('select'); } catch (err) {}
+    pill.click();                                          // the existing mode switch (releases holds, re-renders)
+    var tries = 0;
+    (function pick() {
+      var grid = q('#seatGrid'); var first = grid && grid.querySelector('.seat[data-id="' + beds[0] + '"]');
+      if (!first || first.disabled) { if (++tries < 12) return setTimeout(pick, 250); return; }
+      if (!first.classList.contains('sel')) first.click();   // in Double-cabin tier the pair toggles together
+      setTimeout(function () {
+        var second = grid.querySelector('.seat[data-id="' + beds[1] + '"]');
+        if (second && !second.disabled && !second.classList.contains('sel')) second.click();
+      }, 120);
+    }());
+  });
+  try {
+    if (typeof updateSeatSummary === 'function') {
+      var _uss = updateSeatSummary;
+      window.updateSeatSummary = function () { var r = _uss.apply(this, arguments); try { renderUpsell(); renderPvtBand(); } catch (e) {} return r; };
+    }
+  } catch (e) {}
+  try { var sg = q('#seatGrid'); if (sg) new MutationObserver(function () { renderPvtBand(); }).observe(sg, { childList: true }); } catch (e) {}
+
 }());

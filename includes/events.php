@@ -140,6 +140,29 @@ final class EventBus
      * Register the automation listeners exactly once (bootstrap calls
      * this via the require of events.php below).
      */
+    /**
+     * 23 Sep 2026 (v3 brief §9): after a booking is confirmed or cancelled the
+     * office / agent WhatsApp gets the live seat-status PNG of every departure
+     * that booking sits on. Behind seat_status_wa_on (default OFF); a failure
+     * here can never touch the sale - emit() already swallows, and this
+     * swallows again so a drawing error is one log line, not a lost ticket.
+     */
+    private static function seatStatusCard(array $booking, string $reason): void
+    {
+        try {
+            if (!Settings::getBool('seat_status_wa_on', false)) {
+                return;
+            }
+            require_once INCLUDE_PATH . '/seatstatuspng.php';
+            $bid = (int) ($booking['id'] ?? 0);
+            foreach (SeatStatusPng::scheduleIdsFor($bid) as $sid) {
+                SeatStatusPng::notify($sid, $reason, $bid > 0 ? $bid : null);
+            }
+        } catch (Throwable $e) {
+            Logger::warning('Seat-status card hook failed', ['err' => $e->getMessage()]);
+        }
+    }
+
     public static function registerDefaultListeners(): void
     {
         if (self::$registered) {
@@ -246,6 +269,7 @@ final class EventBus
             $notify();
             Notify::bookingConfirmed($booking);
             Notify::agentBookingApproved($booking);
+            self::seatStatusCard($booking, 'approved');
         });
 
         self::on('booking.rejected', static function (array $d) use ($notify): void {
@@ -264,6 +288,7 @@ final class EventBus
                 return;
             }
             $notify();
+            self::seatStatusCard($booking, 'cancelled');
             $refund = (array) ($d['refund'] ?? []);
             /* A QuickBot one-tap ticket undone inside its free window: nothing
                was paid, so the passenger gets the short undo copy and the
