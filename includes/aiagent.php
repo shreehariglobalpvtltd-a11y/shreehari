@@ -579,9 +579,17 @@ final class AiAgent
                        whole tool turn dies. Older models (and the Anthropic
                        brain) never set it, so the key is simply absent and
                        the payload is what it always was. */
+                    /* 23 Sep 2026: a tool called with NO arguments (my_tickets,
+                       office_day, bus_eta …) comes back from json_decode as an
+                       empty PHP array, which json_encode writes as a LIST "[]".
+                       Gemini wants an object and answered every such follow-up
+                       with 400 "Unknown name args … Proto field is not repeating,
+                       cannot start list" — so "mero ticket …" never finished.
+                       anthropicBlock() already had this guard; this leg lacked it. */
                     $fc = [
                         'name' => (string) ($block['name'] ?? ''),
-                        'args' => is_array($block['input'] ?? null) ? $block['input'] : (object) [],
+                        'args' => is_array($block['input'] ?? null) && $block['input'] !== []
+                            ? $block['input'] : (object) [],
                     ];
                     $sig = (string) ($block['gemSig'] ?? '');
                     $parts[] = $sig !== ''
