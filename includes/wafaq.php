@@ -52,6 +52,10 @@ final class WaFaq
 
     private const WEBSITE = ['website', 'web site', 'webside', 'app', 'link', 'site', 'वेबसाइट', 'एप', 'लिंक'];
 
+    /** The office asking for the day — answered with the chart, office numbers ONLY. */
+    private const REPORT = ['report', 'bikri', 'sales', 'collection', 'revenue', 'kamai', 'hisab', 'daily report',
+        'रिपोर्ट', 'बिक्री', 'कमाइ', 'कमाई', 'हिसाब', 'कलेक्सन'];
+
     /** "Is there a free seat / show me the seats" — answered with the coach picture. */
     private const SEATS = ['khali seat', 'seat khali', 'khali sit', 'sit khali', 'seat map', 'seatmap', 'seat herdeu', 'seat hernu',
         'seat dekhau', 'seat dekhaideu', 'seat dikhao', 'seat available', 'available seat', 'seat cha', 'seat chha', 'seat xa',
@@ -97,9 +101,14 @@ final class WaFaq
 
         $parts = [];
         $intents = [];
-        $media = null;
-        $seat  = self::has($t, self::SEATS) ? self::seatPicture($text, $lang) : null;
-        if ($seat !== null) {
+        $media  = null;
+        $report = self::has($t, self::REPORT) ? self::report($fromRaw, $lang) : null;
+        $seat   = $report === null && self::has($t, self::SEATS) ? self::seatPicture($text, $lang) : null;
+        if ($report !== null) {
+            $intents[] = 'report';
+            $parts[]   = $report['text'];
+            $media     = $report['media'];
+        } elseif ($seat !== null) {
             $intents[] = 'seats';
             $parts[]   = $seat['text'];
             $media     = $seat['media'];
@@ -150,6 +159,31 @@ final class WaFaq
         self::log($fromRaw, $who, $intent, $t0);
 
         return ['text' => $reply, 'media' => $media, 'intent' => $intent];
+    }
+
+    /**
+     * Today's figures + the 7-day chart, for an OFFICE number only (role
+     * admin: superadmin / manager). Agents and customers get null here — an
+     * agent's own "hisab" is the assistant's agent_day tool, scoped to them.
+     *
+     * @return array{text: string, media: ?string}|null
+     */
+    private static function report(string $fromRaw, string $lang): ?array
+    {
+        if (!Settings::getBool('wa_report_chart_on', false)) {
+            return null;
+        }
+        try {
+            require_once INCLUDE_PATH . '/aitools.php';
+            if ((string) (AiTools::whoIs($fromRaw)['role'] ?? 'customer') !== 'admin') {
+                return null;
+            }
+            require_once INCLUDE_PATH . '/reportchart.php';
+            return ['text' => ReportChart::text(ReportChart::data(), $lang), 'media' => ReportChart::url()];
+        } catch (Throwable $e) {
+            Logger::warning('WaFaq report failed: ' . $e->getMessage(), [], 'whatsapp');
+            return null;
+        }
     }
 
     /**

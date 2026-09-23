@@ -153,6 +153,7 @@ const CORE_SUITES = [
     // 23 Sep 2026, registered with the on-VPS everyday answers it guards.
     'wa-faq-test.php'             => 'everyday WhatsApp answers from the live tables, no AI: personal left to the assistant',
     'seatmap-test.php'            => 'the customer seat picture: signed link, status only (never names), same count as the challan',
+    'report-chart-test.php'       => 'the office report chart: figures = the register, signed link, office numbers only',
 ];
 
 /**
