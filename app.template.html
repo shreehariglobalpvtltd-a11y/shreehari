@@ -584,6 +584,19 @@ s.addEventListener('click',function(e){e.preventDefault();
     </div>
   </div>
 
+  <section class="container wa-ticket-highlight" aria-labelledby="waTicketTitle">
+    <div class="wa-ticket-mark" aria-hidden="true">💬</div>
+    <div class="wa-ticket-copy">
+      <span class="wa-ticket-eyebrow">WHATSAPP</span>
+      <h2 id="waTicketTitle" data-i18n="waTicketTitle">Ticket with WhatsApp</h2>
+      <p data-i18n="waTicketIntro">Send your name, mobile and journey details. Continue booking in WhatsApp, request a ticket correction, or ask the office for help.</p>
+    </div>
+    <div class="wa-ticket-actions">
+      <button type="button" class="btn btn-wa" data-wa-open="booking" aria-haspopup="dialog" aria-controls="waSheet" data-i18n="waTicketStart">🎫 Ticket with WhatsApp →</button>
+      <button type="button" class="wa-ticket-fix" data-wa-open="correction" aria-haspopup="dialog" aria-controls="waSheet" data-i18n="waReqFix">✏️ Correct my ticket</button>
+    </div>
+  </section>
+
   <!-- ⚡ QUICK TICKET — "One Click, Ticket Ready in 10 Seconds" (6 Sep 2026).
        The first card under the hero, visible at first paint (no reveal): the
        plan (next bus · S Hari Parking pickup · 1 seat · fare) is fetched by
@@ -2669,22 +2682,39 @@ s.addEventListener('click',function(e){e.preventDefault();
       <button type="button" class="wa-sheet-x" id="waSheetClose" aria-label="Close" data-i18n-title="waSheetClose">✕</button>
     </div>
     <form class="wa-req" id="waReq" novalidate>
-      <div class="wa-req-tabs">
-        <button type="button" class="on" data-wareq="booking" data-i18n="waReqBook">🎫 Book a ticket</button>
-        <button type="button" data-wareq="help" data-i18n="waReqHelp">🆘 Need help</button>
+      <div class="wa-req-tabs" role="group" aria-label="Request type">
+        <button type="button" class="on" data-wareq="booking" aria-pressed="true" data-i18n="waReqBook">🎫 Book a ticket</button>
+        <button type="button" data-wareq="correction" aria-pressed="false" data-i18n="waReqFix">✏️ Correct my ticket</button>
+        <button type="button" data-wareq="help" aria-pressed="false" data-i18n="waReqHelp">🆘 Need help</button>
       </div>
-      <div class="wa-req-trip" id="waReqTrip"></div>
+      <label class="wa-req-field" for="waReqName"><span data-i18n="waReqNamePh">Your name</span>
+        <input id="waReqName" maxlength="60" autocomplete="name" required>
+      </label>
       <div class="wa-req-row">
-        <input id="waReqName" maxlength="60" autocomplete="name" placeholder="Your name" data-i18n-ph="waReqNamePh">
-        <input id="waReqPhone" type="tel" inputmode="tel" maxlength="16" autocomplete="tel" placeholder="Mobile (WhatsApp)" data-i18n-ph="waReqPhonePh">
+        <label class="wa-req-field" for="waReqCountry"><span data-i18n="waReqCountry">Country code</span>
+          <select id="waReqCountry" autocomplete="tel-country-code"><option value="91">🇮🇳 India +91</option><option value="977">🇳🇵 Nepal +977</option></select>
+        </label>
+        <label class="wa-req-field" for="waReqPhone"><span data-i18n="waReqPhonePh">Mobile (WhatsApp)</span>
+          <input id="waReqPhone" type="tel" inputmode="tel" maxlength="20" autocomplete="tel-national" required aria-describedby="waReqPhoneHint">
+        </label>
       </div>
+      <p class="wa-req-hint" id="waReqPhoneHint" data-i18n="waReqPhoneHint">Use the number you will send from on WhatsApp. For someone else's ticket, ask the office.</p>
+      <div class="wa-req-journey" id="waReqJourney">
+        <div class="wa-req-row">
+          <label class="wa-req-field" for="waReqDate"><span data-i18n="sDate">Journey date</span><input id="waReqDate" type="date" required></label>
+          <label class="wa-req-field" for="waReqDirection"><span data-i18n="waReqDirection">Direction</span><select id="waReqDirection"><option value="toNepal">Gujarat → Rupaidiha</option><option value="toIndia">Rupaidiha → Gujarat</option></select></label>
+        </div>
+        <label class="wa-req-field" for="waReqPoint"><span id="waReqPointLabel" data-i18n="sBoard">Boarding town (Gujarat)</span><select id="waReqPoint" required></select></label>
+      </div>
+      <label class="wa-req-field" id="waReqPnrRow" for="waReqPnr" hidden><span data-i18n="waReqPnr">Booking number (PNR)</span><input id="waReqPnr" maxlength="40" autocomplete="off" autocapitalize="characters"></label>
       <div class="wa-req-row wa-req-pax" id="waReqPaxRow"><label for="waReqPax" data-i18n="waReqPax">Passengers</label>
         <select id="waReqPax"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></div>
-      <textarea id="waReqNote" rows="2" maxlength="300" placeholder="Anything to add? (optional)" data-i18n-ph="waReqNotePh"></textarea>
+      <label class="wa-req-field" for="waReqNote"><span id="waReqNoteLabel" data-i18n="waReqNotePh">Anything to add? (optional)</span><textarea id="waReqNote" rows="2" maxlength="300"></textarea></label>
+      <a class="wa-row wa-row-hot" id="waBookLink" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">💬</span><div><b data-i18n="waReqChat">Continue in WhatsApp →</b><small data-i18n="waReqChatSub">Review the message, then tap Send in WhatsApp</small></div></a>
       <button type="submit" class="wa-req-go" id="waReqGo" data-i18n="waReqGo">📨 Send to the office on WhatsApp</button>
       <div class="wa-req-msg" id="waReqMsg" role="status" aria-live="polite" hidden></div>
+      <p class="wa-req-hint" data-i18n="waReqPrivacy">Your details are shared with S Hari Global only when you send. A request does not confirm a seat or change a ticket.</p>
     </form>
-    <a class="wa-row wa-row-hot" id="waBookLink" href="https://wa.me/919104801507" target="_blank" rel="noopener"><span>🎫</span><div><b data-i18n="waBookNow">Book a ticket on WhatsApp</b><small data-i18n="waBookSub">Date, direction &amp; pickup are filled in for you</small></div><i>→</i></a>
     <div class="wa-grid">
       <a class="wa-row" href="https://wa.me/919726401507?text=Namaste%20%F0%9F%99%8F%20S%20Hari%20Global" target="_blank" rel="noopener"><span>👑</span><div><b>Sher Bahadur Bishwokarma</b><small data-i18n="waDirector">Director · 24/7</small></div></a>
       <div class="wa-row-wrap"><a class="wa-row" href="https://wa.me/919104801507?text=Namaste%20%F0%9F%99%8F%20S%20Hari%20Global%20Mehsana" target="_blank" rel="noopener"><span>🏢</span><div><b>Mehsana Head Office</b><small>+91 91048 01507</small></div></a><button type="button" class="wa-pin" data-navto="23.6008959,72.3807235" data-navto-label="S Hari Global · Mehsana Head Office" aria-label="Show on the map" title="Show on the map" data-i18n-title="waPin">📍</button></div>

@@ -2425,56 +2425,67 @@ if (store.local && !store.remote) {
 ================================================================ */
 (function () {
   function officeNum() {
-    var n = '';
-    try { n = String((typeof S === 'function' && S().adminWhatsApp) || (typeof CONFIG !== 'undefined' && CONFIG.adminWhatsApp) || ''); } catch (e) {}
-    n = n.replace(/[^0-9]/g, '');
-    return n || '919104801507';
+    var settings = (window.SHG_BOOT && window.SHG_BOOT.settings) || {};
+    var n = String(settings.whatsapp_booking_number || settings.company_whatsapp || settings.company_phone || '').replace(/\D/g, '').replace(/^00/, '');
+    if (n.length === 10) n = '91' + n;
+    return /^[1-9]\d{7,14}$/.test(n) ? n : '';
   }
-  function pad2(n) { return (n < 10 ? '0' : '') + n; }
   function val(id) { var el = document.getElementById(id); return el && typeof el.value === 'string' ? el.value.trim() : ''; }
+  function contactPhone() {
+    var raw = val('waReqPhone').replace(/[०-९]/g, function (d) { return String(d.charCodeAt(0) - 0x0966); });
+    if (!/^[+\d\s().-]+$/.test(raw)) return '';
+    var number = raw.replace(/\D/g, '').replace(/^00/, '');
+    var country = val('waReqCountry');
+    if (number.length === 10) number = country + number;
+    return /^(?:91[6-9]\d{9}|9779[678]\d{8})$/.test(number) && number.indexOf(country) === 0 ? '+' + number : '';
+  }
   function composeBooking() {
-    var back = false;
-    try { back = document.getElementById('dirBack').classList.contains('on'); } catch (e) {}
-    var date = val('dateInput'), town = '';
-    try { var ps = document.getElementById('pointSel'); town = (ps && ps.selectedIndex >= 0 && ps.options[ps.selectedIndex]) ? ps.options[ps.selectedIndex].text.trim() : ''; } catch (e) {}
-    var name = val('qtName'), phone = val('qtPhone');
-    var dateTxt = date;
-    if (date) {
-      var d = new Date(date + 'T00:00:00');
-      if (!isNaN(d)) dateTxt = pad2(d.getDate()) + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()] + ' ' + d.getFullYear() + ' (' + ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()] + ')';
-    }
-    var dir = back ? 'Rupaidiha (Nepal) → Gujarat' : 'Gujarat → Rupaidiha (Nepal)';
-    return 'Namaste 🙏 S Hari Global\n'
-      + 'म टिकट बुक गर्न चाहन्छु / I want to book a ticket:\n'
-      + '🚌 ' + dir + '\n'
-      + '📅 Date: ' + (dateTxt || '____') + '\n'
-      + '📍 ' + (back ? 'Drop' : 'Boarding') + ': ' + (town || '____') + '\n'
-      + '👥 Passengers: 1\n'
-      + '🧑 Name: ' + (name || '____') + '\n'
-      + '📱 Mobile: ' + (phone || '____');
+    var lines = ['S Hari Global website request', reqType === 'booking' ? 'Book a ticket' : reqType === 'correction' ? 'Correct my ticket' : 'Help request',
+      'Name: ' + val('waReqName'), 'Mobile: ' + contactPhone()];
+    if (reqType === 'booking') {
+      var back = val('waReqDirection') === 'toIndia';
+      lines.push('Date: ' + val('waReqDate'), 'Direction: ' + val('waReqDirection'),
+        'Boarding: ' + (back ? 'Rupaidiha' : val('waReqPoint')), 'Drop: ' + (back ? val('waReqPoint') : 'Rupaidiha'), val('waReqPax') + ' seats');
+    } else if (reqType === 'correction') lines.push('PNR: ' + val('waReqPnr').toUpperCase());
+    if (val('waReqNote')) lines.push((reqType === 'correction' ? 'Requested correction: ' : 'Note: ') + val('waReqNote'));
+    return lines.join('\n');
   }
   function waUrl(num, text) { return 'https://wa.me/' + num + '?text=' + encodeURIComponent(text); }
   var sheet = document.getElementById('waSheet');
+  var lastFocus = null;
   function openSheet() {
     if (!sheet) return false;
+    lastFocus = document.activeElement;
     var bk = document.getElementById('waBookLink');
-    if (bk) bk.href = waUrl(officeNum(), composeBooking());
+    if (bk) bk.href = officeNum() ? waUrl(officeNum(), '') : '#';
     fillReq();
     sheet.hidden = false;
     document.body.classList.add('wa-open');
     try { sheet.querySelector('.wa-sheet-x').focus({ preventScroll: true }); } catch (e) {}
     return true;
   }
-  function closeSheet() { if (!sheet) return; sheet.hidden = true; document.body.classList.remove('wa-open'); }
+  function closeSheet() {
+    if (!sheet) return;
+    sheet.hidden = true; document.body.classList.remove('wa-open');
+    if (lastFocus && lastFocus.focus) lastFocus.focus({ preventScroll: true });
+  }
   var fab = document.getElementById('waFab');
   if (fab && sheet) fab.addEventListener('click', function (e) { if (openSheet()) e.preventDefault(); });
   if (sheet) {
     sheet.addEventListener('click', function (e) {
       var tgt = e.target;
       if (tgt.closest('#waSheetBg') || tgt.closest('#waSheetClose')) { closeSheet(); return; }
-      if (tgt.closest('a.wa-row') || tgt.closest('.wa-pin')) setTimeout(closeSheet, 150);
+      if (!e.defaultPrevented && (tgt.closest('a.wa-row') || tgt.closest('.wa-pin'))) setTimeout(closeSheet, 150);
     });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !sheet.hidden) closeSheet(); });
+    document.addEventListener('keydown', function (e) {
+      if (sheet.hidden) return;
+      if (e.key === 'Escape') { e.preventDefault(); closeSheet(); }
+      if (e.key !== 'Tab') return;
+      var focusable = Array.from(sheet.querySelectorAll('button:not([disabled]),a[href],input,select,textarea')).filter(function (el) { return el.getClientRects().length; });
+      var first = focusable[0], last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    });
   }
   /* One-tap request (owner, 19 Sep 2026): the server's WhatsApp sender delivers it
      to the office (api/wa-request.php); the wa.me row below stays as the fallback. */
@@ -2487,36 +2498,92 @@ if (store.local && !store.remote) {
     return { back: back, date: val('dateInput'), point: town };
   }
   function setReqType(tp) {
-    reqType = tp === 'help' ? 'help' : 'booking';
+    reqType = ['help', 'correction'].indexOf(tp) >= 0 ? tp : 'booking';
     if (!req) return;
-    req.classList.toggle('is-help', reqType === 'help');
-    req.querySelectorAll('[data-wareq]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-wareq') === reqType); });
-    var note = document.getElementById('waReqNote');
-    if (note) note.placeholder = t(reqType === 'help' ? 'waReqHelpPh' : 'waReqNotePh');
+    req.querySelectorAll('[data-wareq]').forEach(function (b) {
+      var active = b.getAttribute('data-wareq') === reqType;
+      b.classList.toggle('on', active); b.setAttribute('aria-pressed', String(active));
+    });
+    document.getElementById('waReqJourney').hidden = reqType !== 'booking';
+    document.getElementById('waReqPaxRow').hidden = reqType !== 'booking';
+    document.getElementById('waReqPnrRow').hidden = reqType !== 'correction';
+    var label = document.getElementById('waReqNoteLabel');
+    label.setAttribute('data-i18n', reqType === 'correction' ? 'waReqFixNote' : reqType === 'help' ? 'waReqHelpPh' : 'waReqNotePh');
+    label.textContent = t(label.getAttribute('data-i18n'));
+    say('', false);
+  }
+  function say(text, bad) {
+    var msg = document.getElementById('waReqMsg');
+    if (msg) { msg.textContent = text; msg.classList.toggle('bad', !!bad); msg.hidden = !text; }
+  }
+  function pointLabel() {
+    var label = document.getElementById('waReqPointLabel');
+    var key = val('waReqDirection') === 'toIndia' ? 'sDrop' : 'sBoard';
+    label.setAttribute('data-i18n', key); label.textContent = t(key);
   }
   function fillReq() {
     if (!req) return;
-    var tr = tripInfo(), line = document.getElementById('waReqTrip');
-    var dTxt = tr.date ? (typeof fmtDate === 'function' ? fmtDate(tr.date) : tr.date) : '';
-    if (line) line.textContent = '🚌 ' + (tr.back ? 'Rupaidiha → Gujarat' : 'Gujarat → Rupaidiha') + (dTxt ? '  ·  📅 ' + dTxt : '') + (tr.point ? '  ·  📍 ' + tr.point : '');
+    var tr = tripInfo(), date = document.getElementById('waReqDate'), sourceDate = document.getElementById('dateInput');
+    date.min = sourceDate && sourceDate.min || todayISO();
+    date.max = sourceDate && sourceDate.max || '';
+    if (!date.value || date.value < date.min) date.value = tr.date || date.min;
+    if (!req.dataset.tripFilled) {
+      document.getElementById('waReqDirection').value = tr.back ? 'toIndia' : 'toNepal';
+      var point = document.getElementById('waReqPoint'), source = document.getElementById('pointSel');
+      var towns = source ? Array.from(source.options).filter(function (o) { return o.value && !o.disabled; }).map(function (o) { return o.text.trim(); }) : [];
+      if (!towns.length && typeof CONFIG !== 'undefined') towns = CONFIG.mainPoints.india;
+      point.textContent = '';
+      towns.forEach(function (town) { var o = document.createElement('option'); o.value = town; o.textContent = town; point.appendChild(o); });
+      if (towns.indexOf(tr.point) >= 0) point.value = tr.point;
+      req.dataset.tripFilled = '1';
+      var pax = document.getElementById('waReqPax');
+      var cap = typeof CONFIG !== 'undefined' ? CONFIG.booking.maxSeats : 6;
+      pax.textContent = '';
+      for (var i = 1; i <= cap; i++) { var option = document.createElement('option'); option.value = String(i); option.textContent = String(i); pax.appendChild(option); }
+    }
+    pointLabel();
     var n = document.getElementById('waReqName'), p = document.getElementById('waReqPhone');
     var me = (typeof USER !== 'undefined' && USER) ? USER : null;
     if (n && !n.value) n.value = val('qtName') || (me && me.name) || '';
-    if (p && !p.value) p.value = val('qtPhone') || (me && me.phone) || '';
-    var msg = document.getElementById('waReqMsg'); if (msg) { msg.hidden = true; msg.textContent = ''; }
+    if (p && !p.value) {
+      p.value = val('qtPhone') || (me && me.phone) || '';
+      var digits = p.value.replace(/\D/g, '').replace(/^00/, '');
+      if ((digits.length === 13 && digits.indexOf('977') === 0) || (me && me.country === 'NP')) document.getElementById('waReqCountry').value = '977';
+    }
+    say('', false);
+  }
+  function validateRequest() {
+    req.querySelectorAll('[aria-invalid]').forEach(function (el) { el.removeAttribute('aria-invalid'); });
+    function fail(id, key) {
+      say(t(key), true); var el = document.getElementById(id); el.setAttribute('aria-invalid', 'true'); el.focus(); return false;
+    }
+    if (val('waReqName').length < 2) return fail('waReqName', 'waReqNeed');
+    if (!contactPhone()) return fail('waReqPhone', 'waReqPhoneError');
+    if (reqType === 'booking') {
+      var date = document.getElementById('waReqDate');
+      if (!date.value || !date.checkValidity()) return fail('waReqDate', 'waReqDateError');
+      if (!val('waReqPoint')) return fail('waReqPoint', 'waReqPointError');
+    }
+    if (reqType === 'correction' && !/^[A-Z0-9-]{5,40}$/i.test(val('waReqPnr'))) return fail('waReqPnr', 'waReqPnrError');
+    if (reqType !== 'booking' && !val('waReqNote')) return fail('waReqNote', reqType === 'correction' ? 'waReqFixNote' : 'waReqNeedNote');
+    return true;
   }
   if (req) {
     req.addEventListener('click', function (e) { var b = e.target.closest('[data-wareq]'); if (b) setReqType(b.getAttribute('data-wareq')); });
+    document.getElementById('waReqDirection').addEventListener('change', pointLabel);
+    document.getElementById('waBookLink').addEventListener('click', function (e) {
+      if (!validateRequest()) { e.preventDefault(); return; }
+      if (!officeNum()) { e.preventDefault(); say(t('waReqUnavailable'), true); return; }
+      this.href = waUrl(officeNum(), composeBooking());
+    });
     req.addEventListener('submit', function (e) {
       e.preventDefault();
-      var go = document.getElementById('waReqGo'), msg = document.getElementById('waReqMsg');
-      var say = function (k, bad) { if (!msg) return; msg.textContent = k; msg.classList.toggle('bad', !!bad); msg.hidden = false; };
-      var name = val('waReqName'), phone = val('waReqPhone'), note = val('waReqNote');
-      if (name.length < 2 || phone.replace(/[^0-9]/g, '').length < 8) { say(t('waReqNeed'), true); return; }
-      if (reqType === 'help' && !note) { say(t('waReqNeedNote'), true); return; }
-      var tr = tripInfo();
-      var body = { type: reqType, name: name, phone: phone, note: note };
-      if (reqType === 'booking') { body.direction = tr.back ? 'back' : 'go'; body.date = tr.date; body.point = tr.point; body.pax = val('waReqPax') || '1'; }
+      var go = document.getElementById('waReqGo');
+      if ((go && go.disabled) || !validateRequest()) return;
+      var note = val('waReqNote');
+      if (reqType === 'correction') note = 'Correct my ticket. PNR: ' + val('waReqPnr').toUpperCase() + '\n' + note;
+      var body = { type: reqType === 'booking' ? 'booking' : 'help', name: val('waReqName'), phone: contactPhone(), note: note.slice(0, 300) };
+      if (reqType === 'booking') { body.direction = val('waReqDirection') === 'toIndia' ? 'back' : 'go'; body.date = val('waReqDate'); body.point = val('waReqPoint'); body.pax = val('waReqPax') || '1'; }
       var label = go ? go.textContent : '';
       if (go) { go.disabled = true; go.textContent = t('waReqBusy'); }
       shgApi.post('/wa-request.php', body).then(function (d) {
@@ -2528,10 +2595,20 @@ if (store.local && !store.remote) {
   }
   var sb = document.getElementById('waBookBtn');
   if (sb) sb.addEventListener('click', function () {
-    if (!req || !openSheet()) { window.open(waUrl(officeNum(), composeBooking()), '_blank', 'noopener'); return; }
+    if (req) {
+      delete req.dataset.tripFilled;
+      document.getElementById('waReqDate').value = val('dateInput');
+    }
+    if (!req || !openSheet()) return;
     setReqType('booking');
     var n = document.getElementById('waReqName');
     if (n && !n.value) { try { n.focus({ preventScroll: true }); } catch (e) {} }
+  });
+  document.querySelectorAll('[data-wa-open]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      setReqType(button.getAttribute('data-wa-open')); openSheet();
+      document.getElementById('waReqName').focus({ preventScroll: true });
+    });
   });
 
   /* Digital visiting card — share the picture. */

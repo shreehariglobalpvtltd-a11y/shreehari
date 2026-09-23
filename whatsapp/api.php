@@ -279,4 +279,26 @@ if (!function_exists('waGraphPost')) {
         }
         return waGraphPost($to, ['type' => 'image', 'image' => $image], 'image');
     }
+
+    /**
+     * Send ONE contact card — the company's visiting card.
+     *
+     * This is Meta's `contacts` message type, not a picture of a card: it
+     * arrives in WhatsApp with a "Save to contacts" button and a green
+     * "Message" button on the wa_id, so the office number lands in the
+     * passenger's phonebook in one tap. `$card` is built by
+     * VisitingCard::contact(); pass any Meta contact object to send another.
+     *
+     * Returns the same contract as every other sender — it never throws.
+     */
+    function sendWhatsAppContact(string $phone, array $card, ?string $countryHint = null): array
+    {
+        $to = waCleanPhone($phone, $countryHint);
+        if ($card === [] || !isset($card['name']['formatted_name'])) {
+            $r = ['success' => false, 'message_id' => '', 'error' => 'contact card is empty', 'http' => 0, 'code' => 0];
+            logWhatsAppEvent('contacts', $to, [], $r);
+            return $r;
+        }
+        return waGraphPost($to, ['type' => 'contacts', 'contacts' => [$card]], 'contacts');
+    }
 }

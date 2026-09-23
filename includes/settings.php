@@ -310,6 +310,11 @@ final class Settings
             $out['round_trip_on'] = false;
         }
 
+        // A dialable business number, never the Cloud API phone ID or token.
+        // Chat must go to the configured sender so the booking bot receives it;
+        // admin_whatsapp is a notification recipient and may be a different desk.
+        $out['whatsapp_booking_number'] = self::bookingWhatsApp();
+
         return $out;
     }
 
@@ -373,6 +378,24 @@ final class Settings
             }
         }
         return OFFICE_WHATSAPP_DIGITS;
+    }
+
+    /** The public number customers message to start a booking conversation. */
+    public static function bookingWhatsApp(): string
+    {
+        $driver = self::getString('whatsapp_driver', '');
+        $senderKey = match ($driver) {
+            'twilio' => 'twilio_whatsapp_from',
+            'gupshup' => 'gupshup_source',
+            default => 'company_whatsapp', // Meta phone IDs are not dialable.
+        };
+        foreach ([self::getString('whatsapp_booking_number', ''), self::getString($senderKey, '')] as $raw) {
+            $number = preg_replace('/\D/', '', $raw) ?? '';
+            if (str_starts_with($number, '00')) { $number = substr($number, 2); }
+            if (strlen($number) === 10) { $number = '91' . $number; }
+            if (preg_match('/^[1-9]\d{7,14}$/', $number)) { return $number; }
+        }
+        return self::officeWhatsApp();
     }
 
     /* =================================================================

@@ -147,6 +147,9 @@ const CORE_SUITES = [
     'wa-local-booking-test.php'    => 'the WhatsApp ticket engine sells with no AI key at all',
     // 20 Sep 2026, registered with the WhatsApp assistant it guards.
     'wa-agent-test.php'            => 'the WhatsApp assistant: role, switch, quote-then-confirm, ownership, audit',
+    // 22 Sep 2026, registered with the knowledge base it guards.
+    'ai-turn-test.php'            => 'the tool loop is bounded: budget, deadline, no repeated write on retry',
+    'ai-kb-test.php'              => 'the knowledge base: audience scope, the ai_kb_on switch, an honest redacted miss',
 ];
 
 /**
