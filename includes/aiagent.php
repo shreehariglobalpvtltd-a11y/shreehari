@@ -86,7 +86,8 @@ final class AiAgent
     {
         return Settings::getBool('wa_agent_on', false)
             && function_exists('curl_init')
-            && (self::anthropicKey() !== '' || self::geminiKey() !== '');
+            && (self::anthropicKey() !== '' || self::geminiKey() !== ''
+                || self::grokKey() !== '' || self::openrouterKey() !== '' || self::cerebrasKey() !== '');
     }
 
     /**
@@ -141,6 +142,14 @@ final class AiAgent
 
             $answer = self::converse($ctx, $history);
             if ($answer === null || trim((string) $answer['text']) === '') {
+                if (Settings::getBool('ai_timeout_message', true)) {
+                    $phone = Settings::officePhone();
+                    return [
+                        'text' => "🙏 अहिले जवाफ दिन सकिएन। कृपया केही बेरमा फेरि प्रयास गर्नुहोस् वा हाम्रो office मा सम्पर्क गर्नुहोस्"
+                               . ($phone !== '' ? " — " . $phone : '') . "।",
+                        'media' => null,
+                    ];
+                }
                 return null;
             }
 
@@ -222,27 +231,29 @@ final class AiAgent
      */
     private static function ask(string $system, array $history, array $tools, array $ctx = []): ?array
     {
-        $provider = strtolower(Settings::getString('ai_provider', 'auto'));
-        $claude   = self::anthropicKey();
-        $gemini   = self::geminiKey();
-
-        $order = match ($provider) {
-            'anthropic' => ['anthropic'],
-            'gemini'    => ['gemini'],
-            default     => $claude !== '' ? ['anthropic', 'gemini'] : ['gemini'],
-        };
+        $order = self::buildLadder();
 
         foreach ($order as $brain) {
-            if ($brain === 'anthropic' && $claude === '') {
-                continue;
-            }
-            if ($brain === 'gemini' && $gemini === '') {
+            $key = match ($brain) {
+                'anthropic'  => self::anthropicKey(),
+                'gemini'     => self::geminiKey(),
+                'grok'       => self::grokKey(),
+                'openrouter' => self::openrouterKey(),
+                'cerebras'   => self::cerebrasKey(),
+                default      => '',
+            };
+            if ($key === '') {
                 continue;
             }
 
-            $out = $brain === 'anthropic'
-                ? self::askAnthropic($claude, $system, $history, $tools)
-                : self::askGemini($gemini, $system, $history, $tools, $ctx);
+            $out = match ($brain) {
+                'anthropic'  => self::askAnthropic($key, $system, $history, $tools),
+                'gemini'     => self::askGemini($key, $system, $history, $tools, $ctx),
+                'grok'       => self::askOpenAICompat($key, $system, $history, $tools, 'grok'),
+                'openrouter' => self::askOpenAICompat($key, $system, $history, $tools, 'openrouter'),
+                'cerebras'   => self::askOpenAICompat($key, $system, $history, $tools, 'cerebras'),
+                default      => null,
+            };
 
             if ($out !== null) {
                 return $out;
@@ -251,6 +262,36 @@ final class AiAgent
         }
 
         return null;
+    }
+
+    /**
+     * Build the provider ladder from settings.
+     *
+     * ai_model_ladder = "auto" (default): tries every keyed provider in a
+     * sensible order — fast cheap ones first, strong expensive ones last.
+     * A comma list like "cerebras,grok,gemini" overrides the order.
+     *
+     * @return string[]
+     */
+    private static function buildLadder(): array
+    {
+        $setting = strtolower(trim(Settings::getString('ai_model_ladder', 'auto')));
+
+        if ($setting !== '' && $setting !== 'auto') {
+            $explicit = array_filter(array_map('trim', explode(',', $setting)));
+            if ($explicit !== []) {
+                return $explicit;
+            }
+        }
+
+        $ladder = [];
+        if (self::cerebrasKey()   !== '') { $ladder[] = 'cerebras'; }
+        if (self::grokKey()       !== '') { $ladder[] = 'grok'; }
+        if (self::geminiKey()     !== '') { $ladder[] = 'gemini'; }
+        if (self::openrouterKey() !== '') { $ladder[] = 'openrouter'; }
+        if (self::anthropicKey()  !== '') { $ladder[] = 'anthropic'; }
+
+        return $ladder;
     }
 
     /* ----------------------------------------------------------------
@@ -666,6 +707,146 @@ final class AiAgent
     }
 
     /* ----------------------------------------------------------------
+     *  Grok / OpenRouter / Cerebras (OpenAI-compatible chat/completions)
+     * ---------------------------------------------------------------- */
+
+    private const OPENAI_PROVIDERS = [
+        'grok' => [
+            'url'   => 'https://api.x.ai/v1/chat/completions',
+            'model' => 'grok-3-mini-fast',
+            'setting' => 'grok_model',
+        ],
+        'openrouter' => [
+            'url'   => 'https://openrouter.ai/api/v1/chat/completions',
+            'model' => 'meta-llama/llama-4-scout',
+            'setting' => 'openrouter_model',
+        ],
+        'cerebras' => [
+            'url'   => 'https://api.cerebras.ai/v1/chat/completions',
+            'model' => 'llama-4-scout-17b-16e-instruct',
+            'setting' => 'cerebras_model',
+        ],
+    ];
+
+    private static function askOpenAICompat(string $key, string $system, array $history, array $tools, string $provider): ?array
+    {
+        $cfg = self::OPENAI_PROVIDERS[$provider] ?? null;
+        if ($cfg === null) {
+            return null;
+        }
+
+        $model = trim(Settings::getString($cfg['setting'], ''));
+        if ($model === '') {
+            $model = $cfg['model'];
+        }
+
+        $messages = [['role' => 'system', 'content' => $system]];
+        foreach ($history as $m) {
+            $role    = ($m['role'] ?? '') === 'assistant' ? 'assistant' : 'user';
+            $content = $m['content'] ?? '';
+
+            if (is_string($content)) {
+                $content = trim($content);
+                if ($content === '') {
+                    continue;
+                }
+                $messages[] = ['role' => $role, 'content' => $content];
+                continue;
+            }
+            if (!is_array($content)) {
+                continue;
+            }
+
+            foreach ($content as $block) {
+                $type = (string) ($block['type'] ?? '');
+                if ($type === 'text') {
+                    $messages[] = ['role' => $role, 'content' => (string) ($block['text'] ?? '')];
+                } elseif ($type === 'tool_use') {
+                    $messages[] = [
+                        'role'       => 'assistant',
+                        'tool_calls' => [[
+                            'id'       => (string) ($block['id'] ?? ''),
+                            'type'     => 'function',
+                            'function' => [
+                                'name'      => (string) ($block['name'] ?? ''),
+                                'arguments' => json_encode(
+                                    is_array($block['input'] ?? null) && $block['input'] !== []
+                                        ? $block['input'] : (object) [],
+                                    JSON_UNESCAPED_UNICODE
+                                ),
+                            ],
+                        ]],
+                    ];
+                } elseif ($type === 'tool_result') {
+                    $messages[] = [
+                        'role'         => 'tool',
+                        'tool_call_id' => (string) ($block['tool_use_id'] ?? ''),
+                        'content'      => (string) ($block['content'] ?? ''),
+                    ];
+                }
+            }
+        }
+
+        while ($messages !== [] && ($messages[0]['role'] ?? '') === 'assistant') {
+            array_shift($messages);
+        }
+
+        $payload = [
+            'model'       => $model,
+            'messages'    => $messages,
+            'max_tokens'  => self::MAX_TOKENS,
+            'temperature' => 0.3,
+        ];
+        if ($tools !== []) {
+            $payload['tools'] = array_map(static fn(array $t): array => [
+                'type'     => 'function',
+                'function' => [
+                    'name'        => $t['name'],
+                    'description' => $t['description'],
+                    'parameters'  => $t['input_schema'],
+                ],
+            ], $tools);
+        }
+
+        $headers = [
+            'content-type: application/json',
+            'Authorization: Bearer ' . $key,
+        ];
+        if ($provider === 'openrouter') {
+            $headers[] = 'HTTP-Referer: https://shreehariglobal.in';
+            $headers[] = 'X-Title: SHG Sahayak';
+        }
+
+        $res = self::http($cfg['url'], $payload, $headers);
+        if ($res === null) {
+            return null;
+        }
+
+        $choice = (array) ($res['choices'][0]['message'] ?? []);
+        $text   = (string) ($choice['content'] ?? '');
+        $calls  = [];
+        $blocks = [];
+
+        if ($text !== '') {
+            $blocks[] = ['type' => 'text', 'text' => $text];
+        }
+
+        foreach ((array) ($choice['tool_calls'] ?? []) as $tc) {
+            $fn   = (array) ($tc['function'] ?? []);
+            $name = (string) ($fn['name'] ?? '');
+            $id   = (string) ($tc['id'] ?? 'oai_' . substr(md5($name . microtime(true)), 0, 8));
+            $args = json_decode((string) ($fn['arguments'] ?? '{}'), true);
+            if (!is_array($args)) {
+                $args = [];
+            }
+            $calls[]  = ['id' => $id, 'name' => $name, 'input' => $args];
+            $blocks[] = ['type' => 'tool_use', 'id' => $id, 'name' => $name, 'input' => $args];
+        }
+
+        return ['text' => $text, 'calls' => $calls, 'blocks' => $blocks];
+    }
+
+    /* ----------------------------------------------------------------
      *  One HTTP call, the way the rest of this codebase makes them
      * ---------------------------------------------------------------- */
 
@@ -936,15 +1117,21 @@ final class AiAgent
             . "write the company's live register.\n\n"
             . "LANGUAGE\n"
             . "1. Write NEPALI (Devanagari) by default — natural, warm, the way a polite Nepali shopkeeper "
-            . "speaks, never translated English. If the person writes in romanised Nepali, Hindi or English, "
-            . "answer in THAT, and keep it simple.\n"
-            /* 23 Sep 2026 (owner: "compact garera lekhne"): replies were 5–9
-               lines of warm filler. A WhatsApp reply from a good counter is
-               short: the answer, then one question. */
+            . "speaks, never translated English. If the person writes in romanised Nepali, Hindi, Gujarati or English, "
+            . "answer in THAT language and script. Gujarati in Gujarati script, Hindi in Devanagari, and keep it simple.\n"
+            . "1a. UNDERSTAND messy input: spelling mistakes, mixed languages in one sentence, Roman Nepali/Hindi, "
+            . "voice-transcribed text (extra words, broken grammar), and short fragments. Read intent, not perfection.\n"
             . "2. SHORT: 1–3 lines, about 40 words — the answer first, then at most one question. Only an overview "
             . "of the company or the website may take up to 5 short lines. No filler, no repeating the question back. "
             . "No markdown, no *, no #, no bullet characters, no headings. Plain sentences and line breaks. One emoji at most.\n"
-            . "3. Ask ONE question at a time. Never send a form or a list of fields.\n\n"
+            . "3. Ask ONE question at a time. Never send a form or a list of fields.\n"
+            . "3a. DISAMBIGUATION: when a name, place, date or request is ambiguous, ask ONE natural clarification. "
+            . "Example: someone says \"Dileep ho\" — ask whether Dileep is the traveller or the person booking, do not assume. "
+            . "Someone says \"bholi 2\" — confirm: 2 seats for tomorrow? Never guess silently.\n\n"
+            . "TONE\n"
+            . "Use light, respectful humour when it naturally fits — a warm comment, a festival wish, a playful line. "
+            . "NEVER joke about delays, safety, payments, complaints, or personal hardship. If someone is upset, "
+            . "be direct and helpful, not funny.\n\n"
             . "FACTS\n"
             . "4. Anything about a booking, a seat, a fare, a bus position, money or a person — USE A TOOL. "
             . "Never answer such a question from memory and never guess a number, a name, a seat or a time. "
@@ -960,8 +1147,15 @@ final class AiAgent
                   . "cancellation or refund PROCESS, payment methods, boarding points, offers, the agent "
                   . "process — call knowledge_lookup FIRST, before telling anyone you do not know. Answer only "
                   . "from what it returns; if it finds nothing, say you will check with the office. Never use it "
-                  . "for a live fare, a refund amount, seats or a specific booking — those come from the other tools.\n\n"
+                  . "for a live fare, a refund amount, seats or a specific booking — those come from the other tools.\n"
+                  . ($role !== 'customer'
+                      ? "When answering staff/office from KB, mention the source: e.g. '(KB: luggage-policy, last reviewed 15 Sep)' at the end.\n"
+                      : "")
+                  . "\n"
                 : "")
+            . "STAFF CONFIRMATION\n"
+            . "When you are not confident in the answer or cannot verify it through a tool, say clearly: "
+            . "\"यो कुरा office बाट confirm गर्नुपर्छ\" and give the office number. Never guess to sound helpful.\n\n"
             . "MULTIPLE REQUESTS\n"
             . "Handle every distinct requested task within your tool budget. Run dependent actions only after their prerequisite results. "
             . "Never treat a request for information as permission to sell, change a ticket, verify payment or send a campaign. "
@@ -1205,5 +1399,20 @@ final class AiAgent
     private static function geminiKey(): string
     {
         return trim(Settings::getString('gemini_api_key', ''));
+    }
+
+    private static function grokKey(): string
+    {
+        return trim(Settings::getString('grok_api_key', ''));
+    }
+
+    private static function openrouterKey(): string
+    {
+        return trim(Settings::getString('openrouter_api_key', ''));
+    }
+
+    private static function cerebrasKey(): string
+    {
+        return trim(Settings::getString('cerebras_api_key', ''));
     }
 }

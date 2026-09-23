@@ -19,9 +19,9 @@ if (!defined('SHG_APP')) {
 
 final class Ticket
 {
-    private const NAVY   = [26, 58, 106];
-    private const BLUE   = [46, 95, 168];
-    private const ORANGE = [240, 124, 31];
+    private const NAVY   = [16, 42, 86];
+    private const BLUE   = [8, 99, 184];
+    private const ORANGE = [255, 122, 22];
     private const GOLD   = [255, 200, 40];
     private const INK    = [30, 30, 40];
     private const MUTE   = [120, 120, 130];
@@ -981,15 +981,15 @@ final class Ticket
         $listH = 60 + $listN * 44 + 16 + ($paxN > $listN ? 32 : 0);
         $grow  = max(0, $listH - 108);          // 108 = the seat-chip band it replaced
 
-        /* 20 Sep 2026 (owner): the corner QR is the company UPI QR for the
-           exact fare, so a scan opens any UPI app with the amount filled in.
-           It replaces the verify QR; without a UPI ID the old layout stays. */
+        // A payment request never replaces the signed boarding verification QR.
         $upiVpa = Settings::getString('upi_id', '');
-        $fare   = (float) ($booking['total_amount'] ?? 0);
-        $payUpi = ($upiVpa !== '' && $fare > 0)
-            ? upiLink($upiVpa, Settings::getString('upi_name', APP_NAME), $fare, (string) ($booking['pnr'] ?? ''))
-            : '';
-        $qrExt  = $payUpi !== '' ? 260 : 0;
+        $fare = (float) ($booking['total_amount'] ?? 0);
+        $settlement = self::paymentSummary($booking);
+        $currency = strtoupper((string) ($booking['currency'] ?? 'INR'));
+        $payUpi = ($upiVpa !== '' && $settlement['due'] > 0 && $currency === 'INR'
+            && in_array($booking['status'] ?? '', ['pending', 'confirmed'], true))
+            ? upiLink($upiVpa, Settings::getString('upi_name', APP_NAME), $settlement['due'], (string) ($booking['pnr'] ?? '')) : '';
+        $qrExt = $payUpi !== '' ? 350 : 270;
 
         $W = 1080; $H = 1620 + $grow + $qrExt;
         $im = imagecreatetruecolor($W, $H);
@@ -1002,7 +1002,7 @@ final class Ticket
         $red    = imagecolorallocate($im, 176, 42, 42);
         $ink    = imagecolorallocate($im, 27, 36, 54);
         $mut    = imagecolorallocate($im, 84, 96, 118);     // darker than the web's muted: WhatsApp re-encodes to JPEG and thin light-grey small print is the first thing it smears (6 Sep 2026)
-        $cream  = imagecolorallocate($im, 250, 243, 232);
+        $cream  = imagecolorallocate($im, 240, 247, 255);
         $white  = imagecolorallocate($im, 255, 255, 255);
         $line   = imagecolorallocate($im, 229, 233, 240);
         $tile   = imagecolorallocate($im, 246, 248, 252);
@@ -1054,7 +1054,7 @@ final class Ticket
 
         /* Payment pill (top-right of the band) */
         $pay  = $booking['payment'] ?? null;
-        $paid = $pay !== null && (string) ($pay['status'] ?? '') === 'verified';
+        $paid = self::paymentSummary($booking)['due'] <= 0;
         if ($paid) {
             $pillCol = $green;
             $method  = strtoupper((string) ($pay['method'] ?? ''));
@@ -1259,7 +1259,7 @@ final class Ticket
         self::gdRoundedGrad($im, 60, 1152 + $grow, $W - 60, 1250 + $grow, 16, [14, 32, 68], [38, 72, 128]);
         imagefilledrectangle($im, 76, 1152 + $grow, $W - 76, 1155 + $grow, $gold);
         self::gdText($im, 17, 88, 1192 + $grow, $gold, 'जम्मा भाडा  ·  TOTAL FARE', false);
-        $amt = '₹ ' . number_format((float) ($booking['total_amount'] ?? 0));
+        $amt = $currency . ' ' . number_format((float) ($booking['total_amount'] ?? 0), 2);
         self::gdText($im, 36, 88, 1236 + $grow, $white, $amt, true);
         $fps = (float) ($booking['fare_per_seat'] ?? 0);
         /* Never fewer than the list above it names: a private cabin holds more
@@ -1282,114 +1282,50 @@ final class Ticket
             self::gdText($im, 18, $W - 88 - $ow, 1192 + $grow, $gold, $offerTxt, true);
         }
 
-        /* QR + help block */
+        /* Separate, labelled QR cards. Integer modules + four-module quiet
+           zones stay crisp in the original PNG and WhatsApp's image copy. */
         $qrData = appUrl('verify-ticket.php') . '?pnr=' . urlencode($pnr) . '&k=' . self::downloadToken($pnr);
-        $qrTmp  = tempnam(sys_get_temp_dir(), 'shgqr');
-        try {
-            /* Rendered at its FINAL pixel size, not scaled down into it.
-               It used to be drawn at scale 10 (450px) and resampled to
-               236px — bicubic softening every module edge right before
-               WhatsApp puts a JPEG pass over the top. Now scale 5 with the
-               spec quiet zone of 4 gives (41 + 8) x 5 = 245px natively:
-               every module is exactly 5 square pixels with hard edges, and
-               imagecopy (no resample) keeps them that way.
-
-               The quiet zone was also 2 modules, half what the spec asks
-               and half what QrCode::png() itself defaults to. Widening it
-               inside a fixed 236px box would have made each module SMALLER,
-               so the white card grows with it — there is 690px of empty
-               room to the left of it, the help text starts at x=60. */
-            /* ticket.php declares no dependencies of its own and has always
-               relied on the caller having loaded qr.php. Every real entry
-               point does (api/_init.php, admin/_guard.php,
-               download-ticket.php, cron/expire.php) — but a caller that
-               forgets gets a ticket with NO QR and only a line in the log,
-               which is precisely the kind of failure that reaches a
-               passenger unnoticed. Cheap to make self-sufficient. */
-            if (!class_exists('QrCode')) {
-                require_once __DIR__ . '/qr.php';
-            }
-            if ($payUpi !== '') {
-                $mods = count(QrCode::matrix($payUpi, QrCode::ECC_M));
-                QrCode::png($payUpi, $qrTmp, max(4, intdiv(430, $mods + 4)), 2, QrCode::ECC_M);
-            } else {
-                QrCode::png($qrData, $qrTmp, 5, 4, QrCode::ECC_M);
-            }
-            $qr = @imagecreatefromstring((string) file_get_contents($qrTmp));
-            if ($qr !== false) {
-                if (!imageistruecolor($qr)) { imagepalettetotruecolor($qr); }
-                /* Payload length decides the QR version, so this is 185px
-                   for a short PNR and 245px for the longest realistic one.
-                   Clamped so a future longer payload can never push the
-                   card down into the footer notes at y=1578. */
-                $qrPx   = min(imagesx($qr), $payUpi !== '' ? 440 : 245);
-                $pad    = $payUpi !== '' ? 14 : 12;
-                $cardW  = $qrPx + $pad * 2;
-                $cardX1 = $W - 60 - $cardW;
-                $cardY1 = ($payUpi !== '' ? 1330 : 1272) + $grow;
-                if ($payUpi !== '') {
-                    /* The owner's ask: it must be obvious that THIS is where
-                       you pay, so the QR gets its own banner. 21 Sep 2026:
-                       the banner is now a gradient with a shadow, so it
-                       lifts off the card instead of lying flat on it. */
-                    $bnr = 'भुक्तानी यहाँ  ·  PAY HERE';
-                    self::gdShadow($im, $cardX1, 1272 + $grow, $W - 60, 1324 + $grow, 14, 5);
-                    self::gdRoundedGrad($im, $cardX1, 1272 + $grow, $W - 60, 1324 + $grow, 14, [248, 146, 46], [226, 104, 16]);
-                    self::gdText($im, 21, (int) ($cardX1 + ($cardW - self::gdWidth(21, $bnr)) / 2), 1309 + $grow, $white, $bnr, true);
-                }
-                /* ---- The QR card -----------------------------------------
-                   21 Sep 2026 (owner: "payment QR ko outline ramro hos").
-                   The old card was a white box with one hairline, which on
-                   a cream page had almost no edge at all. Now it reads as a
-                   scanner viewfinder: shadow under it, a coloured double
-                   ring around it, and four corner brackets — the shape every
-                   phone camera has trained people to point at. Green while a
-                   payment is due (the UPI QR), navy for the status QR. */
-                $frameCol = $payUpi !== '' ? $green : $navy;
-                self::gdShadow($im, $cardX1, $cardY1, $W - 60, $cardY1 + $cardW, 12, 6);
-                self::gdRounded($im, $cardX1, $cardY1, $W - 60, $cardY1 + $cardW, 12, $white);
-                // Double ring: a soft outer hairline, then a solid 3 px inner
-                // ring in the accent colour, with a white gutter between them
-                // so a scanner still finds the quiet zone.
-                imagerectangle($im, $cardX1, $cardY1, $W - 60, $cardY1 + $cardW, $line);
-                for ($k = 0; $k < 3; $k++) {
-                    imagerectangle($im, $cardX1 + 5 + $k, $cardY1 + 5 + $k, $W - 65 - $k, $cardY1 + $cardW - 5 - $k, $frameCol);
-                }
-                /* imagecopy, not imagecopyresampled: at 1:1 any resampler
-                   can only blur what is already the right size. */
-                imagecopy($im, $qr, $cardX1 + $pad, $cardY1 + $pad, 0, 0, $qrPx, $qrPx);
+        if (!class_exists('QrCode')) { require_once __DIR__ . '/qr.php'; }
+        $drawQr = static function (string $payload, int $x, int $y, int $maxSize) use ($im): void {
+            $tmp = tempnam(sys_get_temp_dir(), 'shgqr');
+            try {
+                $modules = count(QrCode::matrix($payload, QrCode::ECC_M)) + 8;
+                $scale = max(1, intdiv($maxSize, $modules));
+                QrCode::png($payload, $tmp, $scale, 4, QrCode::ECC_M);
+                $qr = imagecreatefromstring((string) file_get_contents($tmp));
+                if ($qr === false) { throw new RuntimeException('QR image unavailable'); }
+                imagecopy($im, $qr, $x, $y, 0, 0, imagesx($qr), imagesy($qr));
                 imagedestroy($qr);
-                // Corner brackets sit OUTSIDE the ring, over the white card,
-                // so they never touch a QR module and break the scan.
-                self::gdScanFrame($im, $cardX1 - 4, $cardY1 - 4, $W - 56, $cardY1 + $cardW + 4, 34, 6, $frameCol);
-                if ($payUpi !== '') {
-                    $cap = 'स्क्यान गरेर तिर्नुहोस्  ·  SCAN TO PAY';
-                    self::gdText($im, 17, (int) ($cardX1 + ($cardW - self::gdWidth(17, $cap)) / 2), $cardY1 + $cardW + 44, $green, $cap, true);
-                }
-            }
-        } catch (Throwable $e) {
-            Logger::error('PNG ticket QR failed: ' . $e->getMessage());
-        } finally {
-            @unlink($qrTmp);
-        }
+            } finally { @unlink($tmp); }
+        };
+        self::gdText($im, 20, 76, 1300 + $grow, $navy, 'TICKET VERIFICATION', true);
+        try { $drawQr($qrData, 76, 1320 + $grow, 245); }
+        catch (Throwable $e) { Logger::error('Ticket verification QR: ' . $e->getMessage()); }
+        $infoX = $payUpi !== '' ? 560 : 360;
         if ($payUpi !== '') {
-            self::gdText($im, 22, 60, 1300 + $grow, $navy, 'यहाँबाट पनि भुक्तानी गर्न मिल्छ', true);
-            self::gdText($im, 17, 60, 1332 + $grow, $mut, 'PAY HERE  ·  Scan the QR with any UPI app', false);
-            self::gdText($im, 15, 60, 1374 + $grow, $mut, 'तिर्ने रकम  ·  AMOUNT', false);
-            self::gdText($im, 32, 60, 1418 + $grow, $green, '₹ ' . number_format($fare), true);
-            self::gdText($im, 18, 60, 1458 + $grow, $ink, 'UPI: ' . $upiVpa, true);
-            self::gdText($im, 16, 60, 1488 + $grow, $mut, 'GPay  ·  PhonePe  ·  Paytm  ·  BHIM', false);
+            self::gdRounded($im, 550, 1270 + $grow, 1010, 1320 + $grow, 12, $orange);
+            self::gdText($im, 22, 580, 1305 + $grow, $white, 'SCAN & PAY', true);
+            try { $drawQr($payUpi, 590, 1332 + $grow, 350); }
+            catch (Throwable $e) { Logger::error('Payment QR: ' . $e->getMessage()); }
+            self::gdText($im, 18, 560, 1710 + $grow, $ink, $clampTo(18, 'UPI: ' . $upiVpa, 448), true);
+            self::gdText($im, 16, 560, 1740 + $grow, $mut, $clampTo(16, Settings::getString('upi_name', APP_NAME), 448), false);
         } else {
-            self::gdText($im, 22, 60, 1300 + $grow, $navy, 'स्क्यान गर्नुहोस्  ·  LIVE STATUS', true);
-            self::gdText($im, 17, 60, 1332 + $grow, $mut, 'Valid / Cancelled / Boarded — checked live.', false);
-            self::gdText($im, 17, 60, 1358 + $grow, $mut, 'Works at boarding and at the border.', false);
+            self::gdText($im, 24, $infoX, 1300 + $grow, $settlement['due'] <= 0 ? $green : $orange,
+                $settlement['due'] <= 0 ? 'PAID' : 'PAYMENT DUE', true);
+            $ref = (string) ($booking['payment']['utr_number'] ?? '');
+            self::gdText($im, 17, $infoX, 1420 + $grow, $mut, $clampTo(17, $ref, 640), false);
+            if ($settlement['due'] > 0) {
+                self::gdText($im, 16, $infoX, 1454 + $grow, $mut, 'Contact the office for payment instructions.', false);
+            }
         }
-        self::gdText($im, 19, 60, 1398 + $grow + $qrExt - 90, $ink, 'सम्पर्क  ·  ' . Settings::officePhone(), true);
+        self::gdText($im, 18, $infoX, ($payUpi !== '' ? 1780 : 1345) + $grow, $ink,
+            'Paid: ' . $currency . ' ' . number_format($settlement['paid'], 2), true);
+        self::gdText($im, 18, $infoX, ($payUpi !== '' ? 1810 : 1380) + $grow, $ink,
+            'Due: ' . $currency . ' ' . number_format($settlement['due'], 2), true);
+        self::gdText($im, 19, 60, 1398 + $grow + $qrExt - 90, $ink, 'Support: ' . Settings::officePhone(), true);
         self::gdText($im, 18, 60, 1428 + $grow + $qrExt - 90, $orange, self::latin($co['web']), true);
         $wa = Settings::officeWhatsApp();
-        if ($wa !== '') {
-            self::gdText($im, 16, 60, 1456 + $grow + $qrExt - 90, $green, 'WhatsApp: +' . $wa, true);
-        }
+        if ($wa !== '') { self::gdText($im, 16, 60, 1456 + $grow + $qrExt - 90, $green, 'WhatsApp: +' . $wa, true); }
 
         /* Who cut it, in full — name, code and the agent's own phone, with
            the CODE repeated as an orange chip. The header chip answers it at
@@ -1511,11 +1447,25 @@ final class Ticket
         // Latest payment row — the ticket prints PAID / CASH DUE from this,
         // so the passenger and the crew never have to guess.
         $booking['payment'] = Database::fetch(
-            'SELECT status, method FROM payments WHERE booking_id = :b ORDER BY id DESC LIMIT 1',
+            'SELECT status, method, amount, utr_number FROM payments WHERE booking_id = :b ORDER BY id DESC LIMIT 1',
             ['b' => $bookingId]
         );
 
+        $booking['verified_paid'] = (float) Database::scalar(
+            "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE booking_id = :b AND status = 'verified'",
+            ['b' => $bookingId], 0
+        );
         return $booking;
+    }
+
+    /** Presentation only: never treats a screenshot or pending transfer as paid. */
+    public static function paymentSummary(array $booking): array
+    {
+        $total = max(0, (float) ($booking['total_amount'] ?? 0));
+        $payment = $booking['payment'] ?? [];
+        $paid = max(0, (float) ($booking['verified_paid'] ??
+            (($payment['status'] ?? '') === 'verified' ? ($payment['amount'] ?? 0) : 0)));
+        return ['paid' => round($paid, 2), 'due' => round(max(0, $total - $paid), 2)];
     }
 
     /**
@@ -1572,7 +1522,7 @@ final class Ticket
      *  21 Sep 2026: depth pass — card and fare-band drop shadows, navy
      *  gradient fare band with a gold hairline, and the payment QR in a
      *  scanner viewfinder (double ring + corner brackets). */
-    private const PNG_LAYOUT_CHANGED = '2026-09-23 19:10:00';   // 23 Sep 2026: seats print the two-floor grid (A1-F6 / A7-F12)
+    private const PNG_LAYOUT_CHANGED = '2026-09-23 23:59:00';   // 23 Sep 2026: seats print the two-floor grid (A1-F6 / A7-F12)
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
@@ -1588,8 +1538,8 @@ final class Ticket
     private const PNG_MAX_PAX_ROWS = 12;
 
     /* Warm brown palette — premium boarding pass look. */
-    private const BROWN  = [80, 45, 20];
-    private const CREAM  = [252, 248, 240];
+    private const BROWN  = [16, 42, 86];
+    private const CREAM  = [240, 247, 255];
 
     private static function registerDevanagariFont(Pdf $pdf): void
     {
@@ -1753,7 +1703,7 @@ final class Ticket
            PAYMENT BAND — bilingual (keeps the existing logic)
            ============================================================== */
         $pay  = $booking['payment'] ?? null;
-        $paid = $pay !== null && (string) $pay['status'] === 'verified';
+        $paid = self::paymentSummary($booking)['due'] <= 0;
         $due  = inr((float) $booking['total_amount']);
         if ($paid) {
             $method = strtoupper((string) ($pay['method'] ?? ''));

@@ -609,6 +609,7 @@ function applyDeckPref(grid) {
   const blocks = $$('.deck-block', grid);
   blocks.forEach(b => b.classList.toggle('hide', pref !== 'ANY' && b.getAttribute('data-deck') !== pref));
   grid.classList.toggle('both-decks', pref === 'ANY' && blocks.length > 1);
+  $$('#deckTabs .deck-tab').forEach(tab => tab.setAttribute('aria-pressed', String(tab.dataset.deck === pref)));
 }
 /* Floor heading: "🔽 Lower Floor (1F) … A1–F6" (blue) / "🔼 Upper Floor (2F) … A7–F12"
    (green, views.css). The range is the floor's first and last BED, so it reads
@@ -685,7 +686,7 @@ function suggestSeats(n) {
   const ctxDate = (typeof legCtx === 'function' && legCtx()) ? legCtx().date : Flow.date;
   Flow.seats.slice().forEach(sid => {
     const b = grid.querySelector('.seat[data-id="' + sid + '"]');
-    if (b) b.classList.remove('sel');
+    if (b) { b.classList.remove('sel'); b.setAttribute('aria-pressed', 'false'); }
     unlockSeat(r.id, ctxDate, sid);
   });
   Flow.seats = [];
@@ -964,7 +965,7 @@ function renderSeats(instant) {
       /* Visible label is the row-letter grid id (LA1, UB3…); data-id stays the
          canonical L1/U7 the hold + sale + server speak. */
       const disp = seatLabel(id, r.type, Flow.bookingType || 'sharing');
-      return `<button type="button" class="${cls}" data-id="${id}" ${bk || hd || rsv ? 'disabled' : ''} title="Seat ${disp}${rTitle}${uTitle}${xTitle}" aria-label="Seat ${disp}${rsv ? ' (emergency seat, cannot be booked)' : xm ? ' (taken in the other seat type)' : bk ? ' (booked)' : hd ? ' (held)' : ''}${uTitle}">${disp}</button>`;
+      return `<button type="button" class="${cls}" data-id="${id}" ${bk || hd || rsv ? 'disabled' : ''} aria-pressed="${sl ? 'true' : 'false'}" title="Seat ${disp}${rTitle}${uTitle}${xTitle}" aria-label="Seat ${disp}${rsv ? ' (emergency seat, cannot be booked)' : xm ? ' (taken in the other seat type)' : hd ? ' (held)' : bk ? ' (booked)' : sl ? ' (selected)' : ' (available)'}${uTitle}">${disp}</button>`;
     };
     const bt = Flow.bookingType || 'sharing';
     /* Real directional per-person fare — what the server will actually
@@ -1101,6 +1102,13 @@ function renderSeats(instant) {
         }).join('');
       }
       applyDeckPref(grid);
+      $$('.deck-block', grid).forEach(block => {
+        const front = document.createElement('div'); front.className = 'coach-end coach-front';
+        front.innerHTML = '<span>' + esc(t('premiumFront')) + '</span><span aria-hidden="true">◉</span>';
+        block.insertBefore(front, block.querySelector('.deck-head').nextSibling);
+        const rear = document.createElement('div'); rear.className = 'coach-end coach-rear';
+        rear.textContent = t('premiumRear'); block.appendChild(rear);
+      });
       /* ♿ lower-deck door-side berth flagged differently-abled friendly (Module B) */
       const daBtn = grid.querySelector('.seat[data-id="L3"]');
       if (daBtn && !daBtn.disabled) {
@@ -1164,11 +1172,11 @@ function renderSeats(instant) {
     const toggleSeat = (sid) => {
       const ix = Flow.seats.indexOf(sid);
       const b = grid.querySelector('.seat[data-id="' + sid + '"]');
-      if (ix >= 0) { Flow.seats.splice(ix, 1); if (b) b.classList.remove('sel'); unlockSeat(r.id, ctx.date, sid); shgHaptic('tap'); }
+      if (ix >= 0) { Flow.seats.splice(ix, 1); if (b) { b.classList.remove('sel'); b.setAttribute('aria-pressed', 'false'); } unlockSeat(r.id, ctx.date, sid); shgHaptic('tap'); }
       else {
         // At the cap: say so instead of silently ignoring the tap (3 Sep 2026).
         if (Flow.seats.length >= CONFIG.booking.maxSeats) { try { toast(tf('seatNote', { n: CONFIG.booking.maxSeats })); } catch (e) {} shgHaptic('error'); return; }
-        Flow.seats.push(sid); if (b) b.classList.add('sel'); lockSeat(r.id, ctx.date, sid); shgHaptic('select');
+        Flow.seats.push(sid); if (b) { b.classList.add('sel'); b.setAttribute('aria-pressed', 'true'); } lockSeat(r.id, ctx.date, sid); shgHaptic('select');
       }
     };
     const idx = Flow.seats.indexOf(id);
@@ -1554,7 +1562,7 @@ function updateTierUI() {
       if (zoneOk(sid)) return;
       const ix = Flow.seats.indexOf(sid); if (ix >= 0) Flow.seats.splice(ix, 1);
       const b = document.querySelector('#view-seats .seat[data-id="' + sid + '"]');
-      if (b) b.classList.remove('sel');
+      if (b) { b.classList.remove('sel'); b.setAttribute('aria-pressed', 'false'); }
       if (Flow.route) unlockSeat(Flow.route.id, ctxDate, sid);
     });
     if (typeof SFX !== 'undefined' && SFX.select) SFX.select();

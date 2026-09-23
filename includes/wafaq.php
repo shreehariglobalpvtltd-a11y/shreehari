@@ -40,17 +40,20 @@ final class WaFaq
     /* "chhut" (discount) is also the start of "chhutcha" (the bus DEPARTS), so
        the short forms carry a trailing space: a whole word only. */
     private const OFFER = ['discount', 'offer', 'chhut ', 'chut ', 'chhoot', 'sasto', 'scheme', 'coupon', 'promo',
-        'छुट ', 'छूट ', 'अफर', 'ऑफर', 'डिस्काउन्ट', 'सस्तो'];
+        'छुट ', 'छूट ', 'अफर', 'ऑफर', 'डिस्काउन्ट', 'सस्तो',
+        'ડિસ્કાઉન્ટ', 'ઓફર', 'સસ્તું', 'છૂટ'];
 
     private const FARE = ['bhada', 'bhaada', 'bhara', 'kiraya', 'kiraaya', 'fare', 'price', 'rate', 'charge ', 'kati parcha',
         'kati parchha', 'kati lagcha', 'kati lagchha', 'kati paisa', 'kati rupaiya', 'kitna', 'kitne ka', 'kitne paise',
-        'how much', 'भाडा', 'भाड़ा', 'किराया', 'कति पर्छ', 'कति लाग्छ', 'कितना'];
+        'how much', 'भाडा', 'भाड़ा', 'किराया', 'कति पर्छ', 'कति लाग्छ', 'कितना',
+        'ભાડું', 'કેટલા', 'કેટલું', 'ભાવ', 'ketla', 'ketlu'];
 
     private const TIME = ['kati baje', 'kati bajey', 'kati bje', 'kahile', 'kaile', 'kun time', 'kun samay', 'time', 'timing',
         'samay', 'departure', 'chhutcha', 'chutcha', 'chhutchha', 'chhutne', 'chutne', 'kab ', 'kitne baje', 'kitne bje',
-        'schedule', 'बजे', 'कहिले', 'समय', 'छुट्छ', 'कब', 'कितने बजे'];
+        'schedule', 'बजे', 'कहिले', 'समय', 'छुट्छ', 'कब', 'कितने बजे',
+        'ક્યારે', 'કેટલા વાગે', 'સમય', 'kyare', 'ketla vage'];
 
-    private const WEBSITE = ['website', 'web site', 'webside', 'app', 'link', 'site', 'वेबसाइट', 'एप', 'लिंक'];
+    private const WEBSITE = ['website', 'web site', 'webside', 'app', 'link', 'site', 'वेबसाइट', 'एप', 'लिंक', 'વેબસાઈટ', 'એપ'];
 
     /** The office asking for the day — answered with the chart, office numbers ONLY. */
     private const REPORT = ['report', 'bikri', 'sales', 'collection', 'revenue', 'kamai', 'hisab', 'daily report',
@@ -63,7 +66,8 @@ final class WaFaq
         'खाली सिट', 'सिट खाली', 'सीट खाली', 'खाली सीट', 'सिट छ', 'कति सिट'];
 
     private const CONTACT = ['office', 'contact', 'sampark', 'phone number', 'contact number', 'office number', 'address',
-        'thegana', 'counter', 'call', 'helpline', 'customer care', 'सम्पर्क', 'ठेगाना', 'कार्यालय', 'अफिस', 'काउन्टर'];
+        'thegana', 'counter', 'call', 'helpline', 'customer care', 'सम्पर्क', 'ठेगाना', 'कार्यालय', 'अफिस', 'काउन्टर',
+        'સંપર્ક', 'ઓફિસ', 'કાઉન્ટર', 'ફોન નંબર'];
 
     /** Places people type, mapped to a word in the stop's own name. */
     private const PLACE_ALIASES = [
@@ -245,18 +249,20 @@ final class WaFaq
         }
         $mantra = trim(Settings::getString('company_mantra', ''));
         $open   = ($mantra !== '' && !self::greetedRecently($who)) ? $mantra . "\n" : '';
-        $hi     = self::t($lang, 'नमस्ते', 'नमस्ते', 'Namaste') . ($name !== '' ? ' ' . $name . ' ' . self::t($lang, 'जी', 'जी', 'ji') : '') . '! ';
+        $hi     = self::t($lang, 'नमस्ते', 'नमस्ते', 'Namaste', 'નમસ્તે') . ($name !== '' ? ' ' . $name . ' ' . self::t($lang, 'जी', 'जी', 'ji', 'જી') : '') . '! ';
 
         if ($staff) {
             return $open . $hi . self::t($lang,
                 'आजको बिक्री, report, यात्रु सूची वा टिकट — के चाहियो?',
                 'आज की बिक्री, report, यात्री सूची या टिकट — क्या चाहिए?',
-                "Today's sales, the report, the passenger list or a ticket — what do you need?");
+                "Today's sales, the report, the passenger list or a ticket — what do you need?",
+                "આજનું વેચાણ, રિપોર્ટ, મુસાફર યાદી કે ટિકિટ — શું જોઈએ?");
         }
         return $open . $hi . self::t($lang,
             'म S Hari Global को सहायक हुँ। टिकट, भाडा, बसको समय वा आफ्नो टिकटबारे सोध्नुहोस्।',
             'मैं S Hari Global का सहायक हूँ। टिकट, किराया, बस का समय या अपने टिकट के बारे में पूछिए।',
-            "I'm S Hari Global's assistant. Ask me about tickets, fares, bus times or your own ticket.");
+            "I'm S Hari Global's assistant. Ask me about tickets, fares, bus times or your own ticket.",
+            "હું S Hari Global નો સહાયક છું. ટિકિટ, ભાડું, બસનો સમય કે તમારી ટિકિટ વિશે પૂછો.");
     }
 
     private static function fare(string $text, string $lang, bool $withOffer): string
@@ -435,8 +441,9 @@ final class WaFaq
     {
         $s = trim(preg_replace('/[!.,?🙏\s]+/u', ' ', $t) ?? $t);
         return preg_match('/^(namaste|namaskar|namaskaar|hello|hi|hii|hey|hlo|helo|jai shree ram|ram ram|good morning|good evening|'
-            . 'k cha|ke cha|kasto cha|kasto chha|k xa|नमस्ते|नमस्कार|हेलो|राम राम|सुप्रभात)'
-            . '( (ji|jee|dai|daju|bhai|sir|hajur|didi|जी|दाइ|हजुर))?$/u', $s) === 1;
+            . 'k cha|ke cha|kasto cha|kasto chha|k xa|kem cho|kem chho|'
+            . 'नमस्ते|नमस्कार|हेलो|राम राम|सुप्रभात|નમસ્તે|કેમ છો)'
+            . '( (ji|jee|dai|daju|bhai|sir|hajur|didi|saheb|જી|जी|दाइ|हजुर))?$/u', $s) === 1;
     }
 
     private static function has(string $t, array $words): bool
@@ -513,16 +520,15 @@ final class WaFaq
         return trim(preg_replace('/\s+/u', ' ', $t) ?? $t);
     }
 
-    /** ne / hi / en — Gujarati writers get English (the app dropped Gujarati). */
     private static function lang(string $text): string
     {
         $l = TicketBot::detectLang($text);
-        return in_array($l, ['ne', 'hi'], true) ? $l : 'en';
+        return in_array($l, ['ne', 'hi', 'gu'], true) ? $l : 'en';
     }
 
-    private static function t(string $lang, string $ne, string $hi, string $en): string
+    private static function t(string $lang, string $ne, string $hi, string $en, string $gu = ''): string
     {
-        return match ($lang) { 'ne' => $ne, 'hi' => $hi, default => $en };
+        return match ($lang) { 'ne' => $ne, 'hi' => $hi, 'gu' => ($gu !== '' ? $gu : $en), default => $en };
     }
 
     private static function firstName(string $full): string
