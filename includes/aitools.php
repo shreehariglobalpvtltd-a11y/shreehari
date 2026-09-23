@@ -556,6 +556,8 @@ final class AiTools
             'boarding'  => Security::clean((string) ($args['boarding'] ?? ''), 80),
             'gender'    => in_array($args['gender'] ?? '', ['Male', 'Female', 'Other'], true) ? (string) $args['gender'] : null,
             'customer'  => $customer,
+            // A passenger's own number, so a per-passenger office offer is priced as the sale will price it.
+            'phone'     => $customer ? (string) ($ctx['phone'] ?? '') : '',
         ];
 
         $plan = QuickTicket::plan($opts);           // throws a desk-safe RuntimeException
@@ -593,6 +595,9 @@ final class AiTools
                 'farePerSeat'  => (float) ($plan['fare']['perSeat'] ?? 0),
                 'total'        => (float) $plan['fare']['total'],
                 'totalLabel'   => inr((float) $plan['fare']['total']),
+                // The office offer already inside the total (none = 0 / '').
+                'offer'        => (string) ($plan['fare']['offerTitle'] ?? ''),
+                'offerSaving'  => (float) ($plan['fare']['couponDiscount'] ?? 0),
                 'payOnBoard'   => Settings::getBool('allow_cod', true),
             ],
             'media' => null,

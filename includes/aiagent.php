@@ -837,7 +837,7 @@ final class AiAgent
            . "B. Small talk is allowed and welcome: a greeting, 'kasto cha', thanks, a joke, a festival wish. "
            . "Answer it like a human would, then gently bring it back to how you can help.\n"
            . "C. Length follows the question. A yes/no gets one line. 'Tapai ko company ko barema bhannus' or "
-           . "'website ma ke cha' may take 5–8 lines — that is a real question and deserves a real answer. "
+           . "'website ma ke cha' may take up to 5 short lines. "
            . "Never pad, never repeat yourself, never send a wall of text.\n"
            . "D. If they ask something outside the bus and logistics business, give a short real answer as rule 10 "
            . "allows, then bring it back — do not lecture, do not refuse coldly.\n\n"
@@ -877,6 +877,31 @@ final class AiAgent
         return $s;
     }
 
+    /**
+     * The offers running TODAY, read live from Admin → Offers & Discounts
+     * (23 Sep 2026, owner: "discount dine"). The assistant never decides a
+     * discount: the office creates the offer, the fare engine applies it
+     * inside every quote and sale, and this block only lets the assistant
+     * TALK about it. No offer running = it must say so, not invent one.
+     */
+    private static function offersBrief(): string
+    {
+        if (!class_exists('Fare')) {
+            require_once INCLUDE_PATH . '/fare.php';
+        }
+        $offers = Fare::runningOffers();
+        if ($offers === []) {
+            return "\n=== OFFERS RUNNING TODAY ===\nNone. If asked about a discount or offer, say plainly that no offer is running "
+                 . "today and the fare is the same online and at the counter. Never invent one.\n";
+        }
+        $lines = array_map(static fn(array $o): string => '  ' . Fare::offerLine($o), $offers);
+        return "\n=== OFFERS RUNNING TODAY (live, set by the office) ===\n" . implode("\n", $lines) . "\n"
+             . "They are applied AUTOMATICALLY to every eligible booking — plan_ticket's total already includes them and "
+             . "its 'offer' / 'offerSaving' fields say which one applied. Mention an offer once when you talk about price, "
+             . "in one short line. Never promise one to a booking the tool did not apply it to, and never describe any other "
+             . "discount.\n";
+    }
+
     private static function systemPrompt(array $ctx): string
     {
         $company = Settings::getString('company_name', APP_NAME);
@@ -893,9 +918,12 @@ final class AiAgent
             . "1. Write NEPALI (Devanagari) by default — natural, warm, the way a polite Nepali shopkeeper "
             . "speaks, never translated English. If the person writes in romanised Nepali, Hindi or English, "
             . "answer in THAT, and keep it simple.\n"
-            . "2. Usually 2–6 lines. A question about the company, the website or the route may take up to 8 — "
-            . "see 'TALKING LIKE A PERSON' below. No markdown, no *, no #, no bullet characters, no headings. "
-            . "Plain sentences and line breaks. One or two emoji at most.\n"
+            /* 23 Sep 2026 (owner: "compact garera lekhne"): replies were 5–9
+               lines of warm filler. A WhatsApp reply from a good counter is
+               short: the answer, then one question. */
+            . "2. SHORT: 1–3 lines, about 40 words — the answer first, then at most one question. Only an overview "
+            . "of the company or the website may take up to 5 short lines. No filler, no repeating the question back. "
+            . "No markdown, no *, no #, no bullet characters, no headings. Plain sentences and line breaks. One emoji at most.\n"
             . "3. Ask ONE question at a time. Never send a form or a list of fields.\n\n"
             . "FACTS\n"
             . "4. Anything about a booking, a seat, a fare, a bus position, money or a person — USE A TOOL. "
@@ -945,7 +973,8 @@ final class AiAgent
             . "offers — come ONLY from this briefing and your tools; if neither has it, say you will check with the office.\n"
             . "13. Still decline, politely in one line: medical, legal or financial advice beyond common sense (point "
             . "them to a professional), anything harmful, hateful or sexual, and political or religious arguments.\n"
-            . self::companyBriefing();
+            . self::companyBriefing()
+            . self::offersBrief();
 
         $sell = Settings::getBool('wa_agent_sell', false);
 

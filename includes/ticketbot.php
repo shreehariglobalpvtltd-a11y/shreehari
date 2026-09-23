@@ -1324,6 +1324,8 @@ final class TicketBot
             // "Same as last time": the berths to try first when free (QuickTicket::plan `prefer`).
             'prefer'    => array_values(array_filter(array_map(static fn($s): string => strtoupper(trim((string) $s)), (array) ($input['prefer'] ?? [])))),
             'customer'  => !$isStaff,
+            // Priced like the sale (per-passenger offer limits), 23 Sep 2026.
+            'phone'     => (string) ($input['phone'] ?? ''),
         ];
         $plan = null; $planError = '';
         try {

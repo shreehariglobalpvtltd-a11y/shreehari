@@ -413,7 +413,8 @@ final class QuickTicket
             // The canonical "Name @ HH:MM" label create() checks and prints.
             $boardLabel = trim($chosen['name']) . ($chosen['time'] !== '' ? ' @ ' . substr($chosen['time'], 0, 5) : '');
             $display    = Boarding::stopDisplay($boardLabel, (string) ($route['from_city'] ?? ''));
-            $fare       = self::fareFor($route, $chosenSchedule, $seatPick['bookingMode'], count($seatPick['seats']));
+            $fare       = self::fareFor($route, $chosenSchedule, $seatPick['bookingMode'], count($seatPick['seats']),
+                                        normalisePhone((string) ($opts['phone'] ?? '')));
 
             $aheadNames = array_map(static fn(array $s): string => $s['name'], $ahead);
 
@@ -642,9 +643,17 @@ final class QuickTicket
      * pricing uses: direction fare (sleeper sharing) or the route's seat
      * fare, a per-bus override, then Fare::quote() (group discount, tax, fee).
      *
-     * @return array{perSeat: float, base: float, total: float, groupDiscount: float, tax: float, fee: float, label: string}
+     * 23 Sep 2026: the passenger's phone is passed through, exactly as
+     * BookingService::priceBooking() passes it, so an office offer with a
+     * per-passenger limit ("first booking ₹100 off") is priced the SAME in the
+     * quote and in the sale. Without it the quote showed the discount to a
+     * repeat passenger, the sale refused it, and the totals no longer matched.
+     * The offer that applied is returned so the bot can SAY it.
+     *
+     * @return array{perSeat: float, base: float, total: float, groupDiscount: float, tax: float, fee: float, label: string,
+     *               couponDiscount: float, offerCode: string, offerTitle: string}
      */
-    private static function fareFor(array $route, array $schedule, ?string $mode, int $count): array
+    private static function fareFor(array $route, array $schedule, ?string $mode, int $count, string $phone = ''): array
     {
         $perSeat = (float) ($route['base_fare'] ?? 0);
         $label   = 'Seat';
@@ -660,16 +669,31 @@ final class QuickTicket
             $perSeat = $override;
         }
         $base  = round($perSeat * $count, 2);
-        $quote = Fare::quote($base, $count, 0, 0, 0, '', '', (int) $route['id']);
+        $quote = Fare::quote($base, $count, 0, 0, 0, '', $phone, (int) $route['id']);
+
+        // The office offer that applied, by its own title (breakdown label).
+        $offerCut   = (float) ($quote['couponDiscount'] ?? 0);
+        $offerTitle = '';
+        if ($offerCut > 0) {
+            foreach ((array) ($quote['breakdown'] ?? []) as $line) {
+                if (abs((float) ($line['amount'] ?? 0) + $offerCut) < 0.01 && !str_starts_with((string) ($line['label'] ?? ''), 'Group')) {
+                    $offerTitle = (string) $line['label'];
+                    break;
+                }
+            }
+        }
 
         return [
-            'perSeat'       => $perSeat,
-            'base'          => (float) $quote['base'],
-            'total'         => (float) $quote['total'],
-            'groupDiscount' => (float) $quote['groupDiscount'],
-            'tax'           => (float) $quote['tax'],
-            'fee'           => (float) $quote['fee'],
-            'label'         => $label,
+            'perSeat'        => $perSeat,
+            'base'           => (float) $quote['base'],
+            'total'          => (float) $quote['total'],
+            'groupDiscount'  => (float) $quote['groupDiscount'],
+            'tax'            => (float) $quote['tax'],
+            'fee'            => (float) $quote['fee'],
+            'label'          => $label,
+            'couponDiscount' => $offerCut,
+            'offerCode'      => (string) ($quote['couponCode'] ?? ''),
+            'offerTitle'     => $offerTitle,
         ];
     }
 
@@ -743,6 +767,7 @@ final class QuickTicket
             'seats'     => (int) ($input['seats'] ?? 1),
             'gender'    => $gender,
             'prefer'    => (array) ($input['prefer'] ?? []),
+            'phone'     => $phone,      // priced like the sale: per-passenger offer limits
         ];
         $seller = [
             'adminId'       => (int) ($staff['id'] ?? 0),
@@ -846,6 +871,7 @@ final class QuickTicket
             'gender'    => $gender,
             'prefer'    => (array) ($input['prefer'] ?? []),
             'customer'  => true,
+            'phone'     => $phone,      // priced like the sale: per-passenger offer limits
         ];
 
         /* Optional agent code (QuickBot, 7 Sep 2026): "SHG-027" typed in the

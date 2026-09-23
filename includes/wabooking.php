@@ -362,6 +362,14 @@ final class WaBooking
             $lines[] = self::label('bus', $lang) . ': ' . (string) $plan['busName']
                      . (($plan['busNumber'] ?? '') !== '' ? ' · ' . (string) $plan['busNumber'] : '');
         }
+        /* 23 Sep 2026: an office offer (Admin → Offers & Discounts, auto-apply)
+           is already inside the total — say so, with the office's own title,
+           so the passenger sees the saving instead of just a smaller number. */
+        $offerCut = (float) ($plan['fare']['couponDiscount'] ?? 0);
+        if ($offerCut > 0) {
+            $title    = trim((string) ($plan['fare']['offerTitle'] ?? ''));
+            $lines[]  = '🎁 ' . self::label('offer', $lang) . ': −' . inr($offerCut) . ($title !== '' ? ' (' . $title . ')' : '');
+        }
         if ($total > 0) {
             $lines[] = self::label('total', $lang) . ': ' . inr($total);
         }
@@ -482,6 +490,7 @@ Example: Ram Bahadur 35, Sita Gurung 30",
             'seat'  => ['en' => 'Seat',       'hi' => 'सीट',       'ne' => 'सिट',      'gu' => 'સીટ'],
             'pax'   => ['en' => 'Passengers', 'hi' => 'यात्री',    'ne' => 'यात्रु',   'gu' => 'મુસાફરો'],
             'total' => ['en' => 'Total',      'hi' => 'कुल',       'ne' => 'जम्मा',    'gu' => 'કુલ'],
+            'offer' => ['en' => 'Offer',      'hi' => 'ऑफ़र छूट',   'ne' => 'अफर छुट',  'gu' => 'ઑફર છૂટ'],
             'bus'   => ['en' => 'Bus',        'hi' => 'बस',        'ne' => 'बस',      'gu' => 'બસ'],
         ];
         return $l[$key][$lang] ?? $l[$key]['en'];
