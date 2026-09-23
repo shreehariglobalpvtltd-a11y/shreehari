@@ -19,19 +19,19 @@
   ],
   "icons": [
     {
-      "src": "/assets/img/icon-192.png?v=20260923a",
+      "src": "/assets/img/icon-192.png?v=20260924a",
       "type": "image/png",
       "sizes": "192x192",
       "purpose": "any"
     },
     {
-      "src": "/assets/img/icon-512.png?v=20260923a",
+      "src": "/assets/img/icon-512.png?v=20260924a",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "any"
     },
     {
-      "src": "/assets/img/icon-maskable-512.png?v=20260923a",
+      "src": "/assets/img/icon-maskable-512.png?v=20260924a",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "maskable"

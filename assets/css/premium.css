@@ -1,0 +1,293 @@
+/* =====================================================================
+   PREMIUM SHELL — 24 Sep 2026 (owner: "premium, powerful, original mobile
+   app … fast, smooth, easy", and "the top shows unnecessary HTTP/URL text,
+   show our logo instead").
+
+   WHY A SEPARATE FILE
+   app.css and views.css are 144 KB + 316 KB of accumulated rules. This
+   pass changes the shell — the first 160px of every screen, how motion
+   feels, and how far a phone has to scroll before it can book — and those
+   edits would be scattered across forty places in two files that are hard
+   to revert. Everything here is additive, loads LAST (so it wins on equal
+   specificity without !important wars), and deleting the one <link> in
+   app.template.html puts the app back exactly as it was.
+
+   Sections:
+     1. Motion + scroll feel (the "165 Hz" ask)
+     2. The header: the real logo comes back, the chrome above the
+        booking card halves
+     3. Splash credit line
+     4. Elevation, colour and focus polish
+     5. Sound / haptics settings row
+   ===================================================================== */
+
+
+/* ---------------------------------------------------------------------
+   1. MOTION + SCROLL FEEL
+   -------------------------------------------------------------------
+   A 120/165 Hz screen has 6-8ms to produce a frame. Anything the
+   compositor cannot do on its own thread — width, height, top, left,
+   margin, box-shadow, filter — misses that budget and the app reads as
+   "laggy" however fast the network is. These rules do three things:
+
+     a) Give the app one motion vocabulary (the --m-* tokens) built only
+        from transform and opacity, which the compositor animates without
+        the main thread.
+     b) Stop the browser from re-deciding on every touch whether a swipe
+        belongs to the page or to a scroller (touch-action / overscroll-
+        behavior), which is the actual source of the "half a beat behind
+        my finger" feeling on Android.
+     c) Honour prefers-reduced-motion properly: motion off, but nothing
+        invisible (an `animation:none` on a `both`-filled keyframe would
+        leave elements stuck at their 0% state, which is why this uses a
+        1ms duration instead).
+   ------------------------------------------------------------------- */
+:root{
+  /* Springy but short. 190ms is about the shortest duration a person
+     still reads as "it moved" rather than "it teleported". */
+  --m-quick:120ms;
+  --m-base:190ms;
+  --m-slow:280ms;
+  --m-spring:cubic-bezier(.22,1,.36,1);     /* overshoot-free ease-out-quint */
+  --m-snap:cubic-bezier(.2,.9,.28,1);
+  --m-exit:cubic-bezier(.4,0,1,1);
+  /* One elevation ramp, so a card, a sheet and a popup never disagree
+     about how far off the page they are. */
+  --e-1:0 1px 2px rgba(16,32,64,.06),0 2px 8px rgba(16,32,64,.06);
+  --e-2:0 2px 6px rgba(16,32,64,.07),0 10px 26px rgba(16,32,64,.09);
+  --e-3:0 8px 20px rgba(16,32,64,.10),0 24px 56px rgba(16,32,64,.12);
+}
+
+/* Scroll containers: keep a swipe inside the thing it started on, and
+   never let a horizontal scroller's rubber-band pull the page with it. */
+html{scroll-padding-top:120px}          /* anchors land below the sticky header */
+body{overscroll-behavior-y:none}
+.table-wrap,.date-chips,.num-strip,.nav-inner #numInner,.qa-wrap{
+  overscroll-behavior-x:contain;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-width:none;
+}
+.table-wrap::-webkit-scrollbar,.date-chips::-webkit-scrollbar,
+.nav-inner #numInner::-webkit-scrollbar{height:0;width:0}
+
+/* Every control the finger lands on: no 300ms double-tap-zoom wait, no
+   grey flash, no text selection on a long press. */
+button,.btn,a.btn,.nav-link,.bn-item,.seat,.num-pill,.lang-btn,
+.qt-go,.credit-seg{
+  touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
+}
+
+/* The press. One rule for the whole app so a seat, a nav tab and the
+   Confirm button all answer a finger the same way — a 40ms scale that
+   runs entirely on the compositor. */
+@media (hover:none){
+  button:active,.btn:active,a.btn:active,.seat:active,.num-pill:active,
+  .bn-item:active,.qt-go:active,.credit-seg:active{
+    transform:scale(.97);
+    transition:transform 40ms linear;
+  }
+}
+
+/* Below-the-fold home blocks. #homeMore / #homeExtra are revealed by a
+   tap, and revealing them hands the engine ~1200 fresh nodes to lay out
+   in one frame. content-visibility lets it skip the ones still off
+   screen; the intrinsic size keeps the scrollbar honest so the page does
+   not jump while they stream in. */
+#homeMore .section,#homeExtra .section{
+  content-visibility:auto;
+  contain-intrinsic-size:auto 520px;
+}
+
+/* Reduced motion: stop moving, stay visible. */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:1ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:1ms!important;
+  }
+  html{scroll-behavior:auto}
+}
+
+
+/* ---------------------------------------------------------------------
+   2. THE HEADER
+   -------------------------------------------------------------------
+   What the owner saw: on a phone the first 161px of the app were four
+   stacked strips of text and contact details, and the company logo was
+   not among them — #logoNav carried `display:none!important` (app.css
+   line 316) and .nav-inner .brand carried `display:none` (views.css line
+   3225), so the brand slot rendered as an empty box on desktop and
+   vanished entirely on a phone. What was left up there read as raw
+   contact / address text.
+
+   The fix keeps every job that chrome was doing and gives the logo the
+   first position:
+
+     divine bar   27px -> 22px   (the mantra, unchanged)
+     topbar       50px -> 0      (hidden on phones: its mantra duplicated
+                                  the divine bar, and its language, theme
+                                  and palette controls move into the nav
+                                  row and the menu)
+     credit rib.  31px -> 26px   (CEO + the 24/7 WhatsApp number stays)
+     nav          53px -> 54px   (NOW: logo + wordmark, then the number
+                                  pills, then language + menu)
+     ---------------------------
+     161px -> 102px, and the booking card climbs 59px up the first screen.
+   ------------------------------------------------------------------- */
+
+/* The logo, everywhere. These two selectors are the exact pair that hid
+   it; they are re-stated here (loading last) rather than deleted in place
+   so the whole header pass reverts with one <link>. */
+#logoNav{display:block!important}
+.brand{display:flex;align-items:center;gap:10px;min-width:0;flex:0 0 auto}
+.brand img{height:46px;width:auto;flex:0 0 auto}
+
+/* The nav bar itself: a real sticky header with a hairline and a blur,
+   and a shadow-only transition so scrolling never relays it out. */
+.nav{
+  z-index:70;
+  transition:box-shadow var(--m-base) var(--m-snap),
+             background var(--m-base) var(--m-snap),
+             border-color var(--m-base) var(--m-snap);
+}
+.nav.scrolled{box-shadow:var(--e-1)}
+
+/* Compact language control (phones). The three-button EN/हिं/ने group is
+   38px tall because of the global button{min-height:44px} floor; on a
+   phone it becomes one pill showing the current language, which opens the
+   other two. Desktop keeps the full group. */
+.lang-mini{display:none;position:relative;flex:0 0 auto}
+/* Double-class on purpose: app.css sets button[type=button]{min-height:44px}
+   (specificity 0,1,1), which a single .lang-mini-btn would lose to — the
+   pill rendered as a 44px circle that swallowed the number pill beside it. */
+.lang-mini .lang-mini-btn{
+  height:34px;min-height:34px;min-width:36px;padding:0 9px;border-radius:999px;
+  font-size:12.5px;font-weight:800;letter-spacing:.04em;
+  color:#fff;background:var(--blue-deep);
+  display:inline-flex;align-items:center;justify-content:center;
+  transition:transform var(--m-quick) var(--m-snap);
+}
+.lang-mini-pop{
+  position:absolute;top:calc(100% + 6px);right:0;z-index:90;
+  background:var(--card);border:1px solid var(--line);border-radius:12px;
+  box-shadow:var(--e-2);padding:4px;display:none;min-width:92px;
+}
+.lang-mini.open .lang-mini-pop{display:block;animation:lmIn var(--m-base) var(--m-spring) both}
+@keyframes lmIn{from{opacity:0;transform:translateY(-6px) scale(.97)}to{opacity:1;transform:none}}
+.lang-mini-pop button{
+  display:block;width:100%;text-align:left;padding:9px 12px;border-radius:8px;
+  font-size:13.5px;font-weight:700;color:var(--ink);min-height:40px;
+}
+.lang-mini-pop button.on{background:var(--blue-50);color:var(--blue)}
+:root[data-theme="dark"] .lang-mini-pop{background:#101A2E;border-color:#233149}
+:root[data-theme="dark"] .lang-mini-pop button{color:#EAF1FF}
+
+@media (max-width:760px){
+  /* One mantra, not two: the divine bar already carries it. */
+  .topbar{display:none}
+  .divine-bar .container{min-height:22px;padding:3px 10px}
+  .divine-name{font-size:11px}
+
+  .credit-ribbon .credit-inner{min-height:26px}
+
+  /* The brand comes back, and takes only what it needs — the number pills
+     keep the rest of the row and still scroll. */
+  .nav-inner{gap:8px;min-height:54px;flex-wrap:nowrap}
+  .nav-inner .brand{display:flex;flex:0 0 auto}
+  .brand img{height:36px}
+  /* The pills give way, not the brand: this is the element that is allowed
+     to shrink and scroll, and min-width:0 is what lets it (a flex item's
+     default min-width:auto refuses to go below its content). */
+  .nav-inner #numInner{flex:1 1 auto;min-width:0}
+  .lang-mini{display:block}
+  .hamburger{flex:0 0 auto}
+}
+
+/* Desktop: give the header real presence — the logo it never showed, the
+   wordmark beside it, and a taller, calmer bar. */
+@media (min-width:761px){
+  .nav-inner{min-height:76px}
+  .brand img{height:50px}
+}
+
+
+/* ---------------------------------------------------------------------
+   3. SPLASH — the credit line
+   -------------------------------------------------------------------
+   The startup screen already carries the real logo, the real bus and the
+   real CEO photograph. The owner asked for the attribution line under
+   them. The spelling is the one the company uses everywhere else in this
+   app (admin/login.php, the footer, the ticket): Sher Bahadur Bishwokarma.
+   ------------------------------------------------------------------- */
+.splash-by{
+  margin-top:14px;font-size:11.5px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:#7A8AA6;
+  opacity:0;animation:splashByIn var(--m-slow) 420ms var(--m-spring) forwards;
+}
+.splash-by b{color:var(--blue-deep);letter-spacing:.08em;font-weight:800}
+
+/* The CEO's own 24/7 line, under the name on the startup screen. Same
+   number the ticket and the credit ribbon print. */
+.splash-ceo-num{
+  /* block, not the inline the sibling spans use: inline let it wrap up
+     beside "S HARI GLOBAL" and break the number across two lines. */
+  display:block;width:100%;
+  font-family:var(--f-code);font-size:11.5px;font-weight:700;
+  letter-spacing:.02em;color:var(--orange-600);margin-top:4px;white-space:nowrap;
+}
+:root[data-theme="dark"] .splash-ceo-num{color:#FFB765}
+@keyframes splashByIn{to{opacity:1}}
+:root[data-theme="dark"] .splash-by{color:#8296B4}
+:root[data-theme="dark"] .splash-by b{color:#EAF1FF}
+@media (prefers-reduced-motion:reduce){.splash-by{opacity:1;animation:none}}
+
+
+/* ---------------------------------------------------------------------
+   4. ELEVATION, COLOUR AND FOCUS POLISH
+   -------------------------------------------------------------------
+   Cards across the app had picked up five different shadow recipes. One
+   ramp (--e-1..3) reads as one product. The focus ring is rewritten as a
+   box-shadow so it follows a rounded corner instead of boxing it.
+   ------------------------------------------------------------------- */
+.card,.qt-plan,.result-card{box-shadow:var(--e-1)}
+.card:hover,.result-card:hover{box-shadow:var(--e-2)}
+
+:focus-visible{
+  outline:none;
+  box-shadow:0 0 0 3px rgba(240,124,31,.55),0 0 0 5px rgba(240,124,31,.18);
+}
+
+/* The primary action. One gradient, one press, everywhere it appears. */
+.btn-orange,.qt-go{
+  background-image:linear-gradient(135deg,var(--orange),var(--orange-600));
+  box-shadow:0 2px 10px rgba(240,124,31,.28);
+  transition:transform var(--m-quick) var(--m-snap),box-shadow var(--m-base) var(--m-snap);
+}
+.btn-orange:active,.qt-go:active{box-shadow:0 1px 4px rgba(240,124,31,.3)}
+
+
+/* ---------------------------------------------------------------------
+   5. SOUND / HAPTICS SETTINGS ROW  (see assets/js/19-premium.js)
+   -------------------------------------------------------------------
+   Both default ON but are one tap from off, and the switch is rendered
+   into the mobile menu so it is reachable without an account.
+   ------------------------------------------------------------------- */
+.feel-row{
+  display:flex;align-items:center;gap:10px;padding:10px 0;
+  font-size:13.5px;font-weight:700;color:var(--ink);
+}
+.feel-row .feel-lbl{flex:1 1 auto;min-width:0}
+.feel-sw{
+  flex:0 0 auto;width:48px;height:28px;border-radius:999px;
+  background:#C7D3E6;position:relative;min-height:28px;
+  transition:background var(--m-base) var(--m-snap);
+}
+.feel-sw::after{
+  content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;
+  border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);
+  transition:transform var(--m-base) var(--m-spring);
+}
+.feel-sw.on{background:var(--ok)}
+.feel-sw.on::after{transform:translateX(20px)}
+:root[data-theme="dark"] .feel-sw{background:#2A3750}

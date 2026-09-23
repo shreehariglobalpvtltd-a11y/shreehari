@@ -7,6 +7,7 @@
 ================================================================ */
 const I18N = {
 en: {
+  premiumFront: "Front · direction of travel", premiumRear: "Rear", premiumBeyond: "Travel Beyond Borders", premiumDirector: "CHAIRMAN / DIRECTOR", premiumPromise: "Your Journey, Our Responsibility.", premiumSafe: "Safe Travel", premiumEasy: "Easy Booking", premiumLoading: "Preparing your journey…", premiumRetry: "Connection is taking longer. Reload", premiumSlow: "Still connecting. You can retry or continue.", premiumTrust: "Travel with Trust.", premiumPay: "SCAN & PAY", premiumPaid: "PAID · Verified", premiumPending: "Payment verification pending", premiumVerify: "Ticket verification", premiumDue: "Pending amount",
   navHome: 'Home', navBook: 'Book Tickets', navServices: 'Services', navRoute: 'India–Nepal',
   navAbout: 'About', navFaq: 'FAQ', navContact: 'Contact', navMy: 'My Bookings', navStaff: 'Agent / Staff sign-in', agentLateSummary: 'Agent? Enter your code to book a departed bus (24h)',
   navTerms: 'Terms &amp; Conditions', navBookNow: 'Book Now', navSignIn: 'Sign in',
@@ -391,6 +392,7 @@ en: {
   rgMap: 'Show on map', rgNone: 'The route guide is not available right now.', payApps: 'Or tap your UPI app:'
 },
 hi: {
+  premiumFront: "आगे · यात्रा की दिशा", premiumRear: "पीछे", premiumBeyond: "सरहदों के पार सफ़र", premiumDirector: "अध्यक्ष / निदेशक", premiumPromise: "आपकी यात्रा, हमारी ज़िम्मेदारी।", premiumSafe: "सुरक्षित यात्रा", premiumEasy: "आसान बुकिंग", premiumLoading: "आपकी यात्रा तैयार हो रही है…", premiumRetry: "कनेक्शन में समय लग रहा है। पुनः लोड करें", premiumSlow: "कनेक्ट हो रहा है। पुनः प्रयास करें या आगे बढ़ें।", premiumTrust: "भरोसे के साथ यात्रा।", premiumPay: "स्कैन करके भुगतान करें", premiumPaid: "भुगतान सत्यापित", premiumPending: "भुगतान सत्यापन लंबित", premiumVerify: "टिकट सत्यापन", premiumDue: "बकाया राशि",
   navHome: 'होम', navBook: 'टिकट बुक करें', navServices: 'सेवाएं', navRoute: 'भारत–नेपाल',
   navAbout: 'कंपनी', navFaq: 'सवाल-जवाब', navContact: 'संपर्क', navMy: 'मेरी बुकिंग', navStaff: 'एजेंट / स्टाफ लॉगिन', agentLateSummary: 'एजेंट हैं? छूटी बस बुक करने के लिए कोड डालें (24 घंटे)',
   navTerms: 'नियम व शर्तें', navBookNow: 'अभी बुक करें', navSignIn: 'लॉगिन',
@@ -770,6 +772,7 @@ hi: {
   rgMap: 'मैप पर देखें', rgNone: 'रूट गाइड अभी उपलब्ध नहीं है।', payApps: 'या अपना UPI ऐप दबाएँ:'
 },
 ne: {
+  premiumFront: "अगाडि · यात्राको दिशा", premiumRear: "पछाडि", premiumBeyond: "सीमापारको यात्रा", premiumDirector: "अध्यक्ष / निर्देशक", premiumPromise: "तपाईंको यात्रा, हाम्रो जिम्मेवारी।", premiumSafe: "सुरक्षित यात्रा", premiumEasy: "सजिलो बुकिङ", premiumLoading: "तपाईंको यात्रा तयार हुँदैछ…", premiumRetry: "जडानमा समय लाग्यो। फेरि लोड गर्नुहोस्", premiumSlow: "जडान हुँदैछ। फेरि प्रयास गर्नुहोस् वा अगाडि बढ्नुहोस्।", premiumTrust: "विश्वासका साथ यात्रा।", premiumPay: "स्क्यान गरेर तिर्नुहोस्", premiumPaid: "भुक्तानी प्रमाणित", premiumPending: "भुक्तानी प्रमाणीकरण बाँकी", premiumVerify: "टिकट प्रमाणीकरण", premiumDue: "बाँकी रकम",
   navHome: 'होम', navBook: 'टिकट बुक गर्नुहोस्', navServices: 'सेवाहरू', navRoute: 'भारत–नेपाल',
   navAbout: 'कम्पनी', navFaq: 'प्रश्नोत्तर', navContact: 'सम्पर्क', navMy: 'मेरो बुकिङ', navStaff: 'एजेन्ट / स्टाफ लगइन', agentLateSummary: 'एजेन्ट हो? छुटेको बस बुक गर्न कोड राख्नुहोस् (२४ घण्टा)',
   navTerms: 'नियम तथा सर्तहरू', navBookNow: 'बुक गर्नुहोस्', navSignIn: 'लगइन',
@@ -1168,6 +1171,7 @@ let LANG = (function () {
   } catch (e) {}
   return 'ne';
 })();
+I18N.gu = Object.assign({}, I18N.en, {"premiumFront": "આગળ · મુસાફરીની દિશા", "premiumRear": "પાછળ", "premiumBeyond": "સરહદોની પાર મુસાફરી", "premiumDirector": "અધ્યક્ષ / નિયામક", "premiumPromise": "તમારી મુસાફરી, અમારી જવાબદારી.", "premiumSafe": "સુરક્ષિત મુસાફરી", "premiumEasy": "સરળ બુકિંગ", "premiumLoading": "તમારી મુસાફરી તૈયાર થઈ રહી છે…", "premiumRetry": "જોડાણમાં સમય લાગે છે. ફરી લોડ કરો", "premiumSlow": "જોડાઈ રહ્યું છે. ફરી પ્રયાસ કરો અથવા આગળ વધો.", "premiumTrust": "વિશ્વાસ સાથે મુસાફરી.", "premiumPay": "સ્કેન કરીને ચૂકવો", "premiumPaid": "ચુકવણી ચકાસાયેલ", "premiumPending": "ચુકવણી ચકાસણી બાકી", "premiumVerify": "ટિકિટ ચકાસણી", "premiumDue": "બાકી રકમ"});
 function t(k) { const d = I18N[LANG] || I18N.en; const s = (k in d) ? d[k] : I18N.en[k]; return s == null ? k : s; }
 function tf(k, vars) { let s = t(k); Object.keys(vars || {}).forEach(v => { s = s.split('{' + v + '}').join(vars[v]); }); return s; }
 function applyLang() {

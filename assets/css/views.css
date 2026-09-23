@@ -3844,3 +3844,91 @@ body.wa-open{overflow:hidden}
   #view-seats .booking-type-toggle .bt-pill{min-height:44px;padding-top:6px;padding-bottom:6px}
   #view-seats .seat-pref-row{margin-bottom:8px}
 }
+/* Premium travel surfaces. Geometry and availability remain server-owned. */
+.premium-pay-card{margin:20px;padding:20px;border:1px solid #f3c99e;border-top:4px solid #ff7a16;border-radius:16px;background:white;color:#14284b;display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap}
+.premium-pay-card h3{color:#b94b00;font-size:16px;margin-bottom:8px}.premium-pay-card p{overflow-wrap:anywhere;font-size:13px;margin:10px 0}
+#premiumPayQr{width:220px;text-align:center;flex-shrink:0}#premiumPayQr img{width:100%;height:auto;display:block}#premiumPayQr small{font-size:11px;color:#526680}
+@media(max-width:520px){.premium-pay-card{justify-content:center}.premium-pay-card>div:first-child{width:100%}}
+:root{--premium-navy:#102A56;--premium-blue:#0863B8;--premium-orange:#FF7A16;--premium-green:#087D54}
+.premium-ticket-head{background:linear-gradient(115deg,#102A56,#0863B8);color:#fff;min-height:126px;position:relative;overflow:hidden;gap:18px}
+.premium-ticket-head .tk2-brand{flex:1;min-width:0;align-items:center}
+.premium-ticket-head .tk2-brand img{width:76px;height:64px;object-fit:contain;background:white;padding:6px;border-radius:12px}
+.premium-ticket-head .tk2-brand b{color:white;font-size:17px;line-height:1.5}
+.premium-ticket-head .tk2-brand small{color:#e0efff;line-height:1.6}
+.premium-ticket-head em{display:block;font-style:normal;color:#ffd8b8;font-size:12px;margin-top:5px}
+.premium-ticket-bus{width:180px;height:auto;object-fit:contain;align-self:flex-end;filter:drop-shadow(0 8px 8px #102a5640)}
+.premium-ticket-status{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;padding:14px 20px;background:#f0f7ff}
+.premium-ticket-status .off{background:#ffeaed;color:#b51229}
+.premium-ticket-status .ok{background:#def4e9;color:#087d54}
+.tk2{max-width:900px;box-shadow:0 18px 54px #102a5610}
+.tk2 .tk2-hero{background:#fff;color:#14284b;padding:24px}
+.tk2 .tk2-pnr{font-size:clamp(18px,4vw,27px);color:#102a56;letter-spacing:.03em;flex-wrap:wrap;overflow-wrap:anywhere}
+.tk2 .tk2-pnr small{color:#526680;font-size:12px}
+.tk2 .tk2-route{padding:22px 16px;background:#f0f7ff;border:1px solid #d9e9fa;border-radius:16px}
+.tk2 .tk2-city span,.tk2 .tk2-city small{color:#425a79;white-space:normal;overflow:visible;overflow-wrap:anywhere}
+.tk2 .tk2-city span{font-size:15px;font-weight:700}
+.tk2 .tk2-arrow{color:#0863b8}.tk2 .tk2-arrow i{border-color:#ff7a16}
+.tk2 .tk2-date{color:#14284b}
+.tk2 .tk2-fare{margin:18px 20px;padding:20px;border-radius:16px;background:linear-gradient(120deg,#102a56,#0863b8);align-items:center;flex-wrap:wrap}
+.tk2 .tk2-fare .lbl,.tk2 .tk2-fare .sub{color:#e0efff}.tk2 .tk2-fare .amt{color:#fff;font-size:36px}
+.premium-passengers{padding:0 20px}.premium-passengers table{width:100%;table-layout:fixed}
+.premium-passengers th:nth-child(2){width:46%}.premium-passengers td{overflow-wrap:anywhere;vertical-align:top;white-space:normal}
+.premium-passengers td:first-child{color:#0863b8;font-weight:800}.premium-passengers td:nth-child(2){font-weight:700}
+.premium-payment-state{margin:16px 20px;padding:14px 16px;border:1px solid #f7d2a6;border-radius:12px;background:#fff8ed;color:#8b4b07;display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;overflow-wrap:anywhere}
+.premium-payment-state.paid{background:#eefaf4;color:#087d54;border-color:#b8e4d0}
+.premium-ticket-support{padding:18px 20px;display:flex;flex-wrap:wrap;gap:8px 18px;justify-content:center;color:#425a79;background:#f0f7ff;font-size:12px}
+.premium-ticket-support b{color:#102a56}
+.tk2 .sum-row b{min-width:0;overflow-wrap:anywhere}
+.coach-end{display:flex;justify-content:space-between;padding:10px 12px;color:var(--fl-ink);font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.coach-front{border-bottom:2px solid var(--fl-line);border-radius:50% 50% 0 0;margin-bottom:12px;background:linear-gradient(180deg,#ffffffa0,transparent)}
+.coach-rear{justify-content:center;border-top:2px solid var(--fl-line);margin-top:12px}
+#view-seats .deck-block{padding:14px;border-radius:36px 36px 24px 24px;border:2px solid var(--fl-line);box-shadow:0 8px 24px #102a5608}
+#view-seats .deck-block .cab-head{padding:4px 2px;min-height:20px;background:transparent;border:0}
+#view-seats .deck-block .cab-head .cab-cap,#view-seats .deck-block .cab-head .cab-price{display:none}
+#view-seats .deck-block .cabin-card{background:transparent;border:0;box-shadow:none;padding:0;margin-bottom:10px}
+#view-seats .deck-block .seat-row.slp-shr6{grid-template-columns:repeat(4,minmax(0,1fr)) 24px repeat(2,minmax(0,1fr));gap:6px}
+#view-seats .deck-block .seat{min-height:62px;min-width:0;border-radius:10px;font-size:13px;position:relative;padding:9px 2px 17px}
+#view-seats .deck-block .seat:not(.sel):not(.bkd):not(.hold):not(.reserved):not(.fem):not(.pvt):not(.u-fem):not(.u-male){background:var(--fl-bg);border:2px solid var(--fl);color:var(--fl-ink)}
+#view-seats .seat.sel{background:#ff7a16!important;color:#102a56!important;border-color:#c45400!important}
+#view-seats .seat.sel::after{content:'✓';position:absolute;right:3px;bottom:1px;font-size:13px}
+#view-seats .seat.bkd{background:#e3e7ed;color:#586577;border-color:#b8c0cc;opacity:1}
+#view-seats .seat.bkd::after{content:'×';position:absolute;bottom:1px;right:4px}
+#view-seats .seat.hold{background:#fff0d2!important;color:#7a520b!important;border-color:#bd8f35!important}
+#view-seats .seat.hold::after{content:'▣'}
+#view-seats .seat.reserved{background:#374151!important;color:#fff!important;border-color:#374151!important}
+#view-seats .seat.reserved::after{content:'—';position:absolute;bottom:0;right:4px}
+#view-seats .seat:focus-visible,.deck-tab:focus-visible{outline:3px solid #ff7a16;outline-offset:3px}
+#splash{background:radial-gradient(ellipse at 50% 10%,#fff 20%,#f0f7ff 75%,#dcecff);color:#102a56;overflow:auto;padding:24px 12px;justify-content:safe center}
+#splash .splash-content{width:min(100%,700px);max-width:700px;padding:0 12px}
+#splash .splash-logo{width:94px;filter:none;animation:premiumRise .4s ease both}
+#splash .splash-brand{gap:8px}#splash .splash-title{color:#102a56;font-size:clamp(24px,5vw,34px)}
+#splash .splash-tagline{margin-top:6px;font-size:11px;letter-spacing:.09em;color:#425a79}
+.premium-border{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:20px 0 8px;font-size:10px;font-weight:800;color:#0863b8;letter-spacing:.06em}
+.premium-border span:nth-child(2){font-size:14px;color:#102a56;letter-spacing:0}
+#splash .splash-ceo{position:relative;flex-direction:row;justify-content:center;gap:18px;margin:10px auto -30px;z-index:1;animation:premiumRise .55s ease both;text-align:left}
+#splash .splash-ceo-photo{width:140px;height:194px;border:0;border-radius:70px 70px 12px 12px;object-fit:contain;object-position:center;box-shadow:0 0 0 8px #ffffff90,0 10px 36px #0863b819;margin:0}
+#splash .splash-ceo b{font-family:var(--f-body);font-size:17px;max-width:210px;display:block;margin:7px 0;color:#102a56}
+#splash .splash-ceo span{font-size:10px;color:#526680;letter-spacing:.1em}
+.premium-fleet{position:relative;height:165px;isolation:isolate;z-index:2}
+.premium-fleet img{position:absolute;object-fit:contain;height:auto;bottom:12px;filter:drop-shadow(0 10px 8px #102a561f)}
+.premium-fleet .fleet-main{width:59%;left:0;z-index:2;animation:premiumBusLeft .65s ease both}
+.premium-fleet .fleet-second{width:42%;right:0;bottom:24px;animation:premiumBusRight .65s ease both}
+.premium-road{position:absolute;bottom:1px;left:-2%;width:104%;height:58px;border-radius:50%;background:#d6e3f2;border-bottom:5px solid #a9c2de;transform:rotate(-3deg)}
+.premium-road::after{content:'';position:absolute;inset:20px 5% 15px;border-bottom:2px dashed #fff;border-radius:50%}
+.premium-promise{font-size:clamp(20px,4vw,27px);font-weight:800;color:#102a56;margin:12px 0}
+.premium-services{display:flex;flex-wrap:wrap;gap:8px 18px;justify-content:center;font-size:11px;color:#526680}
+.premium-services span::before{content:'✓';margin-right:5px;color:#087d54}
+.premium-loading{margin:18px auto 0;max-width:300px;font-size:11px;color:#526680}
+.premium-progress{height:4px;margin:10px 0;background:#d6e3f2;border-radius:4px;overflow:hidden}
+.premium-progress i{height:100%;width:8%;display:block;background:linear-gradient(90deg,#0863b8,#ff7a16);transition:width .2s}
+#splashRetry:not([hidden]){display:block;color:#0863b8;text-decoration:underline;margin-top:12px}
+#splash .splash-phone{margin-top:12px;padding:6px 18px;font-size:14px}
+#splash .splash-skip{margin-top:8px;color:#425a79}
+#splash .splash-map{opacity:.15!important;top:42%;width:100%}
+@keyframes premiumRise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes premiumBusLeft{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:none}}
+@keyframes premiumBusRight{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+@media(max-width:600px){.premium-ticket-bus{width:110px}.premium-ticket-head .tk2-brand{gap:8px}.premium-ticket-head .tk2-brand img{width:48px;height:48px}.premium-ticket-head .tk2-brand b{font-size:12px}.premium-ticket-head .tk2-brand small{font-size:10px}.tk2 .tk2-hero{padding:16px}.tk2 .tk2-ess{display:flex;flex-direction:column-reverse}.tk2 .tk2-tiles{width:100%}.tk2 .tk2-qr{width:150px;align-self:center}.premium-ticket-status{padding:12px 16px}.premium-fleet{height:125px}.premium-border{gap:6px;font-size:8px}.premium-border span:nth-child(2){font-size:11px}#view-seats .deck-block{padding:10px 6px}#view-seats .deck-block .seat-row.slp-shr6{gap:4px;grid-template-columns:repeat(4,minmax(0,1fr)) 18px repeat(2,minmax(0,1fr))}#view-seats .deck-block .seat{min-height:58px;font-size:11px}.tk2 .tk2-city b{font-size:25px}}
+@media(max-height:700px){#splash .splash-logo{width:62px}#splash .splash-ceo-photo{width:92px;height:128px}.premium-border{margin-top:12px}.premium-fleet{height:110px;max-width:430px;margin:auto}.premium-promise{margin:7px 0}.premium-loading{margin-top:10px}}
+@media(prefers-reduced-motion:reduce){#splash *,#splash *::before,#splash *::after{animation:none!important;transition:none!important;transform:none}.premium-fleet img,#splash .splash-logo,#splash .splash-ceo{opacity:1}}
+@media print{.premium-ticket-head,.tk2 .tk2-fare{print-color-adjust:exact;-webkit-print-color-adjust:exact}.tk2{max-width:none;box-shadow:none}.premium-passengers tr,.tk2-tile,.tk2-qr{break-inside:avoid}.tk2-more::details-content{content-visibility:visible}.tk2 .tk2-links,.tk2-more>summary{display:none!important}.premium-ticket-support a{color:#102a56}}
