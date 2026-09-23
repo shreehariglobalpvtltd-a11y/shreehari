@@ -2043,7 +2043,7 @@ function renderStatus(id) {
   <div class="status-card tk2${conf ? ' confirm-success' : ''}" id="ticketCard">
     <div class="tk2-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo.png?v=20260923a" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo.png?v=20260923b" alt="" loading="lazy" decoding="async">
         <div><b>S HARI GLOBAL PVT LTD</b><small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small></div>
       </div>
       ${pill2}

@@ -71,7 +71,7 @@
   function pretty(d) {
     d = digits(d);
     if (d.length === 12 && d.indexOf('91') === 0) return '+91 ' + d.slice(2, 7) + ' ' + d.slice(7);
-    if (d.length === 13 && d.indexOf('977') === 0) return '+977 ' + d.slice(3, 6) + ' ' + d.slice(6);
+    if (d.length === 13 && d.indexOf('977') === 0) return '+977 ' + d.slice(3, 8) + ' ' + d.slice(8);   // Nepal mobiles: 98xxx xxxxx
     return d ? '+' + d : '';
   }
   function callRows() {
@@ -95,6 +95,8 @@
           var d = digits(n.num);
           if (!n.show || d.length < 7 || seen[d]) return;
           seen[d] = 1;
+          /* a 10-digit Nepal mobile (98x/97x/96x) written without its code gets +977 */
+          if (d.length === 10 && /^9[6-8]/.test(d) && /nepalgunj|npj|nepal/i.test(n.label || '')) d = '977' + d;
           rows.push(n.wa
             ? { k: 'wa', ico: '💬', b: n.label || tr('csWa', 'WhatsApp'), s: pretty(d), href: 'https://wa.me/' + d }
             : { k: 'call', ico: '📞', b: n.label || tr('csCall', 'Call'), s: pretty(d), href: 'tel:+' + d });
@@ -106,10 +108,20 @@
   UX.callRows = callRows;
   function renderCallSheet() {
     var list = q('#callSheetList'); if (!list) return;
-    list.innerHTML = callRows().map(function (r) {
+    var rows = callRows();
+    /* Two groups: 🇳🇵 Nepalgunj branch (the +977 numbers) and 🇮🇳 India offices.
+       A Nepali-language visitor sees the NPJ staff first (owner, 23 Sep 2026). */
+    var np = rows.filter(function (r) { return /(^|[^0-9])977\d{9,10}/.test(r.href.replace(/\+/, '')); });
+    var rest = rows.filter(function (r) { return np.indexOf(r) < 0; });
+    var neFirst = (typeof LANG === 'string' && LANG === 'ne');
+    var row = function (r) {
       var ext = r.k === 'wa' || r.k === 'ceo' ? ' target="_blank" rel="noopener noreferrer"' : '';
       return '<a class="cs-item" href="' + esc(r.href) + '"' + ext + '><span class="cs-tile ' + r.k + '">' + r.ico + '</span><span><b>' + esc(r.b) + '</b><small>' + esc(r.s) + '</small></span><span class="cs-go">›</span></a>';
-    }).join('');
+    };
+    var grp = function (lbl, arr) { return arr.length ? '<div class="cs-grp">' + esc(lbl) + '</div>' + arr.map(row).join('') : ''; };
+    var npHtml = grp('🇳🇵 ' + tr('csNpj', 'Nepalgunj branch · NPJ staff'), np);
+    var inHtml = grp('🇮🇳 ' + tr('csIndia', 'India · offices & booking desk'), rest);
+    list.innerHTML = neFirst ? npHtml + inHtml : inHtml + npHtml;
   }
   var lastFocus = null;
   UX.openCallSheet = function () {

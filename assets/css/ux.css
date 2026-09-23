@@ -268,3 +268,46 @@ body.ux-holdbar .hold-pill{display:none!important}
 .cel-bits i{position:absolute;top:-12px;left:var(--x);width:10px;height:14px;background:var(--c);border-radius:2px;animation:celFall 2.2s var(--d) cubic-bezier(.2,.6,.4,1) forwards;opacity:.95}
 @keyframes celFall{to{transform:translateY(110vh) rotate(540deg);opacity:0}}
 @media (prefers-reduced-motion:reduce){.cel-bits{display:none}.cel-card{animation:none}.cel-tick circle,.cel-tick path{animation:none;stroke-dashoffset:0}.s-mic.listening{animation:none}}
+
+/* ---------- 11. QUICKBOT — a clean card: header strip, plain inputs, one CTA ---------- */
+.cs-grp{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:6px 2px 2px}
+.qt-banner{background:var(--card)!important;color:var(--ink)!important;border:1px solid var(--line)!important;box-shadow:var(--shadow-md)!important;padding:0!important;border-radius:var(--r-lg)!important}
+.qt-banner::before{display:none!important}
+.qt-banner .qt-head{padding:12px 14px;background:linear-gradient(120deg,var(--blue-deep),var(--blue-800));color:#fff}
+.qt-banner .qt-badge{animation:none;box-shadow:none;background:var(--cta);font-size:11.5px;letter-spacing:.06em}
+.qt-banner .bk-switch{border-color:rgba(255,255,255,.4);background:rgba(255,255,255,.12)}
+.qt-banner .qt-ai{margin:10px 14px 0}
+.qt-banner .qt-ai-chip{background:var(--blue-50);border-color:var(--blue-100);color:var(--blue-800)}
+.qt-banner .qt-ai-count{background:var(--cta-100);border-color:#F6D3AE}
+.qt-banner .qt-ai-count b{color:var(--cta-600)}
+.qt-banner h3{margin:12px 14px 2px;font-size:17px;font-weight:700;color:var(--ink)}
+.qt-banner p{margin:0 14px 10px;color:var(--muted);font-size:12.5px}
+.qt-banner .qt-me{margin:0 14px 8px}
+.qt-banner .qt-form{padding:0 14px;gap:8px}
+.qt-banner .qt-form input,.qt-banner .qt-line{background:var(--bg)!important;border:1.5px solid var(--line)!important;color:var(--ink)!important;border-radius:14px;font-weight:500}
+.qt-banner .qt-form input::placeholder{color:var(--muted)}
+.qt-banner .qt-form input:focus,.qt-banner .qt-line:focus{border-color:var(--blue)!important;box-shadow:0 0 0 4px rgba(46,95,168,.12);background:var(--card)!important;outline:none}
+.qt-banner .qt-mic{background:var(--blue)}
+.qt-banner .qt-form .btn{min-height:50px;font-size:15.5px;border-radius:14px;box-shadow:0 8px 20px rgba(240,124,31,.3)}
+.qt-banner .qt-err{margin:8px 14px 0;background:#FDECEC;border-color:#F1B4B4;color:#8A1F1F}
+.qt-banner .qt-plan{margin:10px 14px 0;box-shadow:none;border:1px solid var(--line);background:var(--bg)}
+.qt-banner .qt-alt{margin:10px 14px 0;width:auto;border-color:var(--blue-100);background:var(--blue-50);color:var(--blue-800)}
+.qt-banner .qt-steps{margin:10px 14px 0;padding:10px 0 14px;border-top:1px dashed var(--line);color:var(--muted);font-size:12px;opacity:1}
+.qt-banner .qt-steps b{color:var(--ink)}
+:root[data-theme="dark"] .qt-banner{background:var(--card)!important;border-color:var(--line)!important}
+:root[data-theme="dark"] .qt-banner .qt-err{background:#3A1515;border-color:#7A2A2A;color:#F7B8B8}
+@media (max-width:560px){.qt-banner .qt-form{grid-template-columns:1fr}.qt-banner .qt-pair{grid-template-columns:1fr 1fr}}
+
+/* ---------- 12. TYPE POLISH — headings with a brand accent, key words highlighted ---------- */
+h2,h3{font-weight:700}
+#view-home h2:not(.chan-title):not(.hero-brand),.flow-head h2,.sum-card h3,.co-card h3{position:relative}
+.chan-title,.sec-title,#view-home section > h2,#view-home .container > h2{background:linear-gradient(90deg,var(--blue-deep),var(--blue) 60%,var(--cta));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:var(--blue-deep)}
+:root[data-theme="dark"] .chan-title,:root[data-theme="dark"] .sec-title,:root[data-theme="dark"] #view-home section > h2,:root[data-theme="dark"] #view-home .container > h2{background:linear-gradient(90deg,#EAF2FF,#9FBCE8 60%,#FFB25E);-webkit-background-clip:text;background-clip:text}
+.hl,.txt-hl{background:linear-gradient(90deg,var(--cta),#FFB25E);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;font-weight:700}
+.flow-head h2{letter-spacing:.005em}
+.flow-head h2::after{content:"";display:block;width:44px;height:4px;border-radius:2px;margin-top:6px;background:linear-gradient(90deg,var(--cta),#FFB25E)}
+.chan-title::after{content:"";display:block;width:36px;height:4px;border-radius:2px;margin:4px 0 0;background:linear-gradient(90deg,var(--cta),#FFB25E)}
+.cs-item b,.chan-card .chan-txt b,.pvt-upsell .pu-txt b{letter-spacing:.005em}
+/* Devanagari sits in Mukta: it reads a touch smaller than Poppins caps, so
+   headings that are mostly Devanagari get a small lift */
+:lang(ne) h1,:lang(ne) h2,:lang(hi) h1,:lang(hi) h2{letter-spacing:0}

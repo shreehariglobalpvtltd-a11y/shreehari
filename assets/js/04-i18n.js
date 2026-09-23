@@ -7,6 +7,7 @@
 ================================================================ */
 const I18N = {
 en: {
+  csNpj: 'Nepalgunj branch · NPJ staff', csIndia: 'India · offices & booking desk',
   sxMicOk: 'Got it — check and tap Search', sxMicMiss: 'Did not catch a town or date — try "Surat to Rupaidiha tomorrow"', sxNearest: 'Nearest pickup', celT: 'Seat request sent!', celS: 'We verify your payment and send the ticket on WhatsApp.',
   pvtBadge: 'Private · Comfort', pvtSingle: 'Single cabin', pvtDouble: 'Double cabin', pvtWhy: 'Why private?', pvtWhyT: 'Your cabin, nobody else', pvtWhy1: 'Full privacy — the door is yours', pvtWhy2: 'More space, own light and charging', pvtWhy3: 'Perfect for couples, family, friends',
   pvtUpT: 'Make it a private cabin?', pvtUpS: 'These two berths are one cabin — book it whole, nobody else inside', pvtUpBtn: 'Book full cabin',
@@ -406,6 +407,7 @@ en: {
   rgMap: 'Show on map', rgNone: 'The route guide is not available right now.', payApps: 'Or tap your UPI app:'
 },
 hi: {
+  csNpj: 'नेपालगंज शाखा · NPJ स्टाफ', csIndia: 'भारत · ऑफिस और बुकिंग डेस्क',
   sxMicOk: 'समझ गया — जाँचें और Search दबाएँ', sxMicMiss: 'शहर या तारीख समझ नहीं आई — "Surat to Rupaidiha kal" बोलें', sxNearest: 'नज़दीकी पिकअप', celT: 'सीट अनुरोध भेज दिया!', celS: 'हम भुगतान जाँचकर टिकट WhatsApp पर भेजेंगे।',
   pvtBadge: 'प्राइवेट · आराम', pvtSingle: 'सिंगल केबिन', pvtDouble: 'डबल केबिन', pvtWhy: 'प्राइवेट क्यों?', pvtWhyT: 'आपका केबिन, कोई और नहीं', pvtWhy1: 'पूरी प्राइवेसी — दरवाज़ा आपका', pvtWhy2: 'ज़्यादा जगह, अपनी लाइट और चार्जिंग', pvtWhy3: 'कपल, परिवार, दोस्तों के लिए बेहतरीन',
   pvtUpT: 'इसे प्राइवेट केबिन बनाएँ?', pvtUpS: 'ये दो बर्थ एक ही केबिन हैं — पूरा केबिन बुक करें, अंदर कोई और नहीं', pvtUpBtn: 'पूरा केबिन बुक करें',
@@ -798,6 +800,7 @@ hi: {
   rgMap: 'मैप पर देखें', rgNone: 'रूट गाइड अभी उपलब्ध नहीं है।', payApps: 'या अपना UPI ऐप दबाएँ:'
 },
 ne: {
+  csNpj: 'नेपालगञ्ज शाखा · NPJ स्टाफ', csIndia: 'भारत · अफिस र बुकिङ डेस्क',
   sxMicOk: 'बुझें — जाँच्नुहोस् र Search थिच्नुहोस्', sxMicMiss: 'सहर वा मिति बुझिएन — "Surat to Rupaidiha bholi" भन्नुहोस्', sxNearest: 'नजिकको पिकअप', celT: 'सिट अनुरोध पठाइयो!', celS: 'भुक्तानी जाँचेर टिकट WhatsApp मा पठाउँछौं।',
   pvtBadge: 'प्राइभेट · आराम', pvtSingle: 'सिंगल केबिन', pvtDouble: 'डबल केबिन', pvtWhy: 'प्राइभेट किन?', pvtWhyT: 'तपाईंको केबिन, अरू कोही होइन', pvtWhy1: 'पूरा गोपनीयता — ढोका तपाईंको', pvtWhy2: 'बढी ठाउँ, आफ्नै बत्ती र चार्जिङ', pvtWhy3: 'जोडी, परिवार, साथीहरूका लागि उत्तम',
   pvtUpT: 'यसलाई प्राइभेट केबिन बनाउने?', pvtUpS: 'यी दुई बर्थ एउटै केबिन हुन् — पूरै केबिन बुक गर्नुहोस्, भित्र अरू कोही हुँदैन', pvtUpBtn: 'पूरै केबिन बुक गर्नुहोस्',

@@ -62,3 +62,26 @@ php tests/apply-sql.php database/upgrade-2026-09-23-ux-flags.sql
 - GD draws Devanagari without OpenType shaping (as the existing ticket / chalani PNGs do); the promo
   card's English variant is the safe default for sharing.
 - Push departure reminders and live tracking already exist (17-pwa.js, #/nav); no change.
+
+## Round 2 (owner feedback, 23 Sep 2026) — `20260923b`, `shg-v156`
+
+- **Fonts**: Devanagari now set in **Mukta** 400/700 (`assets/fonts/mukta-devanagari-*.woff2`,
+  unicode-range) beside Poppins for Latin; Poppins' own Devanagari files removed (too large and heavy
+  next to English). `--f-display` / `--f-body` = `'Poppins','Mukta',…`.
+- **Splash**: name words arrive at .35 s intervals (was .8 s), logo scales in faster, title
+  reduced to clamp(21px, 5.6vw, 32px), a Nepali facilities row (AC स्लिपर · लाइभ GPS · USB चार्जिङ ·
+  सुरक्षित यात्रा) lands after the name; total 4 s.
+- **QuickBot card**: restyled as a clean light card (navy header strip, plain inputs, one CTA,
+  chips/plan/steps inside the card) — CSS only, `initQuickTicket()` untouched.
+- **Nepalgunj branch staff**: default contact slots raised to 10; Lokesh Sunar and Mahendra Singh are
+  labelled "· Nepalgunj branch" with **+977**, a Bal Bahadur slot waits (hidden) for its number; the
+  Call sheet groups 🇳🇵 NPJ staff / 🇮🇳 India and lists NPJ first for a Nepali-language visitor.
+  If the owner had already saved contact numbers in Admin → Settings, that saved list wins — relabel
+  and set +977 there once.
+- **Ticket regenerate + replace** (`admin/booking-view.php` `bv_regen_ticket()`): every passenger,
+  contact or payment edit now re-mints the QR (REV n), redraws the PNG immediately, and — if that
+  ticket had already gone out on WhatsApp — re-sends the new one through the same path as the Resend
+  button. `Ticket::imageUrl()` carries `&r=<rev>` so WhatsApp and browsers fetch the corrected picture
+  instead of a cached copy.
+- **Headings**: section titles carry a navy→orange gradient and an accent bar; `.hl` utility for
+  highlighted words.

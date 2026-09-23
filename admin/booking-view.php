@@ -19,6 +19,44 @@ $waManualLink = '';   // click-to-chat URL when no WhatsApp API is configured
  * before, only the passenger edit cleared the ticket and nothing cleared
  * the invoice).
  */
+/* ---- Regenerate + REPLACE the ticket after an edit (23 Sep 2026) ----------
+   Owner: "ticket generate vai sakyo, name / payment edit gare vane tyo ticket
+   automatic regenerate vayera replace huna paryo". Until now only a phone
+   change re-minted the QR, the PNG waited for the next open, and the copy
+   already on the passenger's WhatsApp stayed the old one. Now every edit:
+     1. Ticket::reissue()  - new QR hash, REV n+1, old files gone;
+     2. redraws the PNG at once so every link shows the corrected ticket
+        (imageUrl carries ?r=REV so WhatsApp / browsers do not reuse a cache);
+     3. if the ticket had already gone out on WhatsApp, sends the new one
+        again through the same path the Resend button uses. Nothing here can
+        fail the edit itself. Returns the sentence appended to the flash. */
+function bv_regen_ticket(int $bookingId, string $pnr, ?array $b): string
+{
+    $out = '';
+    try {
+        if (!Database::exists('SELECT 1 FROM tickets WHERE booking_id = :b', ['b' => $bookingId])) {
+            return ' Ticket is issued at confirmation and will carry these details.';
+        }
+        Ticket::reissue($bookingId);
+        try { Ticket::pngPath($bookingId, true); } catch (Throwable $e) { Logger::warning('Ticket redraw after edit failed', ['pnr' => $pnr, 'err' => $e->getMessage()]); }
+        $rev = (int) Database::scalar('SELECT reissue_count FROM tickets WHERE booking_id = :b', ['b' => $bookingId], 0);
+        $out = ' Ticket regenerated' . ($rev > 0 ? ' (REV ' . $rev . ')' : '') . ' — old PNG/PDF replaced.';
+        $sentBefore = Database::exists(
+            "SELECT 1 FROM message_logs WHERE booking_id = :b AND channel = 'whatsapp' AND status = 'sent'", ['b' => $bookingId]);
+        if ($b !== null && (string) ($b['status'] ?? '') === 'confirmed' && $sentBefore) {
+            $r = Notify::resendTicketWhatsApp($b);
+            $link = (string) ($r['link'] ?? '');
+            bv_log_message($bookingId, (string) ($b['contact_phone'] ?? ''), $r['ok'] ? 'sent' : ($link !== '' ? 'skipped' : 'failed'),
+                $link !== '' ? 'manual' : 'api', $r['ok'] ? 'auto-resend after edit' : (string) ($r['detail'] ?? ''));
+            $out .= $r['ok'] ? ' New ticket re-sent on WhatsApp.' : ' Re-send the new ticket on WhatsApp (button below).';
+        }
+    } catch (Throwable $e) {
+        Logger::warning('Ticket regeneration after edit failed', ['pnr' => $pnr, 'err' => $e->getMessage()]);
+        $out = ' Ticket could not be regenerated automatically — open it once to redraw.';
+    }
+    return $out;
+}
+
 function bv_invalidate_pdfs(int $bookingId, string $pnr): void
 {
     if (defined('TICKET_PATH')) {
@@ -305,9 +343,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
                    exactly as a seat change does — otherwise the PNG on the
                    passenger's phone keeps a QR signed for a number the booking
                    no longer has (17 Sep 2026). Before the cache drop below. */
-                if (isset($upd['contact_phone'])) {
-                    Ticket::reissue($bid);
-                }
+                $regenNote = bv_regen_ticket($bid, $pnr, BookingService::detail($pnr));
                 /* The cached ticket PDF (and the invoice) still carry the OLD
                    boarding-stop / passenger name / phone; drop both caches so
                    the next download regenerates them with the edits above. */
@@ -321,7 +357,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
                     'name' => implode(', ', array_unique($paxNames)),
                     'new'  => implode(', ', $changes),
                 ]);
-                $flash = ['ok', 'Booking details updated: ' . implode(', ', $changes) . '. Ticket PNG and PDF regenerate on next open.' . $notice];
+                $flash = ['ok', 'Booking details updated: ' . implode(', ', $changes) . '.' . $regenNote . $notice];
             }
         } catch (Throwable $e) {
             $flash = ['bad', $e->getMessage()];
@@ -483,8 +519,8 @@ if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['
             } else {
                 Database::update('payments', $upd, 'id = :i', ['i' => $payId]);
                 Logger::audit('payment.edit', 'payment', (string) $payId, $oldVals, $newVals, 'Payment details edited on ' . $pnr . ' by admin #' . $admin['id']);
-                if (isset($upd['method'])) { bv_invalidate_pdfs((int) $b['id'], $pnr); }   // the invoice prints the method
-                $flash = ['ok', 'Payment record updated (' . implode(', ', array_keys($upd)) . ').'];
+                bv_invalidate_pdfs((int) $b['id'], $pnr);   // the invoice prints the method, the PNG the payment pill
+                $flash = ['ok', 'Payment record updated (' . implode(', ', array_keys($upd)) . ').' . bv_regen_ticket((int) $b['id'], $pnr, BookingService::detail($pnr))];
             }
             $b = BookingService::detail($pnr);
         } catch (Throwable $e) {
@@ -738,10 +774,8 @@ if ($b !== null && $isSuperHere && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'PO
             if ($oldVals === [] && $newVals === []) {
                 $flash = ['ok', 'Nothing changed.'];
             } else {
-                if (isset($upd['contact_phone'])) {
-                    Ticket::reissue((int) $b['id']);           // the QR is signed over the contact phone (17 Sep 2026)
-                }
                 bv_invalidate_pdfs((int) $b['id'], $pnr);   // the cached ticket/invoice carried the old name / phone
+                $contactRegen = bv_regen_ticket((int) $b['id'], $pnr, BookingService::detail($pnr));   // any edit: new QR/REV, redrawn, re-sent
                 Logger::audit('booking.edit_contact', 'booking', $pnr, $oldVals, $newVals, 'superadmin contact edit by admin #' . $admin['id'],
                     Security::clean($_POST['reason'] ?? '', 255));
                 // Say what changed; an internal note alone is not the passenger's business.
@@ -753,7 +787,7 @@ if ($b !== null && $isSuperHere && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'PO
                 }
                 $notice = $contactWhat === [] ? ''
                     : bv_notify_edit((int) $b['id'], $pnr, $contactWhat === ['passenger name'] ? 'passenger' : 'contact', ['new' => implode(', ', $contactWhat)]);
-                $flash = ['ok', 'Booking details updated. Ticket PNG and PDF regenerate on next open.' . $notice];
+                $flash = ['ok', 'Booking details updated.' . $contactRegen . $notice];
             }
             $b = BookingService::detail($pnr);
         } catch (Throwable $e) { $flash = ['bad', $e->getMessage()]; }

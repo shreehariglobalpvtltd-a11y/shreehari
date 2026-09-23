@@ -674,7 +674,7 @@ function initSimpleSearch() {
    so every device sees the same numbers the moment the owner saves - no
    deploy, and nothing hardcoded about which ones are hidden today.
 ================================================================ */
-const NUM_SLOTS = 8;
+const NUM_SLOTS = 10;   // 23 Sep 2026: two more slots for the Nepalgunj branch staff
 
 /* The strip's default is the two numbers already printed in the markup, so a
    site that has never opened Settings looks exactly as it did. Slots 3-8
@@ -692,8 +692,14 @@ function defaultContactNumbers() {
     { label: 'Surat Office',     num: '+91 73593 01507', wa: false, show: true },
     { label: 'CEO · Director',   num: '+91 97264 01507', wa: true,  show: true },
     { label: '24×7 Support',     num: '+91 91734 01507', wa: true,  show: true },
-    { label: 'Lokesh Sunar',     num: '+91 98662 01375', wa: false, show: true },
-    { label: 'Mahendra Singh',   num: '+91 98481 19600', wa: false, show: true }
+    /* Nepalgunj branch staff (owner, 23 Sep 2026: "3 jana Nepalgunj branch ko
+       staff hun, code 977 - Nepal ko sabai thau ma yini haru nai default").
+       Nepal numbers, so +977; the Call sheet groups them as the NPJ branch and
+       lists them FIRST for a Nepali-language visitor. The third number is
+       filled in from Admin > Settings when the owner sends it. */
+    { label: 'Lokesh Sunar · Nepalgunj branch',   num: '+977 98662 01375', wa: true,  show: true },
+    { label: 'Bal Bahadur · Nepalgunj branch',    num: '',                 wa: true,  show: false },
+    { label: 'Mahendra Singh · Nepalgunj branch', num: '+977 98481 19600', wa: true,  show: true }
   ];
   while (list.length < NUM_SLOTS) list.push({ label: '', num: '', wa: false, show: false });
   return list;
@@ -1089,7 +1095,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20260923a" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20260923b" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'

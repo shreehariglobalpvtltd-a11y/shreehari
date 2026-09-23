@@ -704,7 +704,7 @@ const Splash = {
        entirely, see the top of init). Reduced motion: 1.5 s, no choreography. */
     if (_intro7) {
       try { localStorage.setItem('shg:intro7', '1'); } catch (e) {}
-      _introTotal = (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) ? 1500 : 4500;
+      _introTotal = (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) ? 1500 : 4000;
       this.startTs = 0;
       this.portalMs = Math.max(1200, _introTotal - Math.round(performance.now()));
       this.introMs = _introTotal;
@@ -851,8 +851,8 @@ const Splash = {
        start on the first frame); tagline and phone follow the last word. */
     var _slow = this.introMs > 2000;
     reveal('#splashTitle', 40);
-    reveal('#splashTagline', _slow ? 2900 : 130);
-    reveal('#splashPhone', _slow ? 3200 : 210);
+    reveal('#splashTagline', _slow ? 1700 : 130);
+    reveal('#splashPhone', _slow ? 2500 : 210);
     /* (the skip button is revealed separately in init(), at 1.2s) */
   },
   /* The 2-second staff window. Purely additive: it rides on top of the
