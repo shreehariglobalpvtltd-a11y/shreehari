@@ -184,10 +184,10 @@ INSERT IGNORE INTO ai_kb_articles
   source_reference, verification_status, publication_status)
 VALUES
  ('facilities','bus-facilities','What facilities are on the bus?',
-  'Our own AC sleeper buses with comfortable berths, USB and Type-C charging points, and live GPS tracking that you can follow in the app or ask me about. A shared cabin with a woman in it is kept for women only, for safety. We do not advertise Wi-Fi on board — please ask the office if you need it.',
-  'हाम्रो आफ्नै AC sleeper बस, आरामदायी बर्थ, USB र Type-C चार्जिङ पोइन्ट, र live GPS ट्र्याकिङ छ — app मा हेर्न वा मलाई सोध्न सक्नुहुन्छ। सुरक्षाका लागि, महिला भएको shared cabin महिलाका लागि मात्र राखिन्छ। बसमा Wi-Fi हामी घोषणा गर्दैनौं — चाहिए कार्यालयमा सोध्नुहोस्।',
-  'हमारी अपनी AC sleeper बसें, आरामदायक बर्थ, USB और Type-C चार्जिंग पॉइंट, और live GPS ट्रैकिंग — app में देखें या मुझसे पूछें। सुरक्षा के लिए, जिस shared cabin में महिला हो वह सिर्फ महिलाओं के लिए रखा जाता है। बस में Wi-Fi हम घोषित नहीं करते — ज़रूरत हो तो ऑफिस से पूछें।',
-  'Our own AC sleeper buses with comfortable berths, USB and Type-C charging points, and live GPS tracking that you can follow in the app or ask me about. A shared cabin with a woman in it is kept for women only, for safety. We do not advertise Wi-Fi on board — please ask the office if you need it.',
+  'Our own AC sleeper buses with comfortable berths, USB and Type-C charging points, and live GPS tracking that you can follow in the app or ask me about. A shared cabin with a woman in it is kept for women only, for safety. We cannot confirm Wi-Fi on board — please ask the office before you travel if you need it.',
+  'हाम्रो आफ्नै AC sleeper बस, आरामदायी बर्थ, USB र Type-C चार्जिङ पोइन्ट, र live GPS ट्र्याकिङ छ — app मा हेर्न वा मलाई सोध्न सक्नुहुन्छ। सुरक्षाका लागि, महिला भएको shared cabin महिलाका लागि मात्र राखिन्छ। बसमा Wi-Fi छ कि छैन हामी पक्का भन्न सक्दैनौं — चाहिए यात्रा अघि कार्यालयमा सोध्नुहोस्।',
+  'हमारी अपनी AC sleeper बसें, आरामदायक बर्थ, USB और Type-C चार्जिंग पॉइंट, और live GPS ट्रैकिंग — app में देखें या मुझसे पूछें। सुरक्षा के लिए, जिस shared cabin में महिला हो वह सिर्फ महिलाओं के लिए रखा जाता है। बस में Wi-Fi है या नहीं, हम पक्का नहीं कह सकते — ज़रूरत हो तो यात्रा से पहले ऑफिस से पूछें।',
+  'Our own AC sleeper buses with comfortable berths, USB and Type-C charging points, and live GPS tracking that you can follow in the app or ask me about. A shared cabin with a woman in it is kept for women only, for safety. We cannot confirm Wi-Fi on board — please ask the office before you travel if you need it.',
   'bus ma charging cha, wifi cha, k k subidha cha, AC cha, mobile charge garna milcha',
   'bus me charging hai, wifi hai kya, kya suvidha hai, AC hai',
   'facilities amenities charging charger usb type-c wifi gps ac sleeper berth women safety',
