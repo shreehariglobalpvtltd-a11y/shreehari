@@ -1534,7 +1534,7 @@ final class Ticket
 
     /**
      * Passenger-facing seat label for ONE seat, in THIS booking's coach + mode.
-     * The printed ticket shows the row-letter grid id (LA1, UB3…) the app draws,
+     * The printed ticket shows the row-letter grid id (A1, B9…) the app draws,
      * while the QR payload and the database keep the canonical L1/U7 — so this is
      * used only where a berth is shown to a human, never for identity.
      */
@@ -1572,12 +1572,13 @@ final class Ticket
      *  21 Sep 2026: depth pass — card and fare-band drop shadows, navy
      *  gradient fare band with a gold hairline, and the payment QR in a
      *  scanner viewfinder (double ring + corner brackets). */
-    private const PNG_LAYOUT_CHANGED = '2026-09-21 02:40:00';
+    private const PNG_LAYOUT_CHANGED = '2026-09-23 19:10:00';   // 23 Sep 2026: seats print the two-floor grid (A1-F6 / A7-F12)
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
-     *  seat box + stub pick up the LA1/UA1 grid ids without a manual purge. */
-    private const PDF_LAYOUT_CHANGED = '2026-09-11 12:00:00';
+     *  seat box + stub pick up the current seat labels without a manual purge
+     *  (23 Sep 2026: the two-floor grid A1-F6 / A7-F12). */
+    private const PDF_LAYOUT_CHANGED = '2026-09-23 19:10:00';
 
     /**
      * How many passengers the ticket names one by one before it stops and
@@ -1692,7 +1693,7 @@ final class Ticket
            ============================================================== */
         $primary  = $booking['passengers'][0]['full_name'] ?? '';
         $paxCount = count($booking['passengers']);
-        // Row-letter grid ids for the printed ticket (LA1 · LA2 …); the QR
+        // Row-letter grid ids for the printed ticket (A1 · A2 …); the QR
         // payload built elsewhere keeps the canonical L1/L2 for the scanner.
         $seatList = self::seatLabelList($seats, $booking, ' · ');
 

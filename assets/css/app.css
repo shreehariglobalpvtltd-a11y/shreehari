@@ -830,19 +830,14 @@ footer{background:linear-gradient(180deg,var(--blue-deep) 0%,#080E1C 100%);color
    4 berths on the left, aisle, 2 on the right (owner's real coach: 4/2). */
 .seat-row.slp-shr6{grid-template-columns:repeat(4,minmax(0,1fr)) 34px repeat(2,minmax(0,1fr))}
 .berth-labels6{grid-template-columns:4fr 34px 2fr}
-.seat-row.slp-shr6 .seat:nth-of-type(1)::before{content:'A·';font-size:9.5px;font-weight:800;opacity:.5;margin-right:2px}
-.seat-row.slp-shr6 .seat:nth-of-type(2)::before{content:'B·';font-size:9.5px;font-weight:800;opacity:.5;margin-right:2px}
-.seat-row.slp-shr6 .seat:nth-of-type(3)::before{content:'C·';font-size:9.5px;font-weight:800;opacity:.5;margin-right:2px}
-.seat-row.slp-shr6 .seat:nth-of-type(4)::before{content:'D·';font-size:9.5px;font-weight:800;opacity:.5;margin-right:2px}
-.seat-row.slp-shr6 .seat:nth-of-type(5)::before{content:'E·';font-size:9.5px;font-weight:800;opacity:.5;margin-right:2px}
-.seat-row.slp-shr6 .seat:nth-of-type(6)::before{content:'F·';font-size:9.5px;font-weight:800;opacity:.5;margin-right:2px}
+/* (The A·..F· column prefixes were removed 23 Sep 2026: the berth label itself
+   is now row-letter + column — A1..F6 lower, A7..F12 upper.) */
 /* Narrow phones: 4 berths on one side get tight — shrink the seat + label a touch.
    The tuned per-width numbers live with the rest of the phone seat-map rules in
    views.css (it loads after this file); these are the safe fallback. */
 @media(max-width:430px){
   .seat-row.slp-shr6{grid-template-columns:repeat(4,minmax(0,1fr)) 20px repeat(2,minmax(0,1fr));gap:5px}
   .seat-row.slp-shr6 .seat{font-size:11px;min-width:0}
-  .seat-row.slp-shr6 .seat::before{font-size:8.5px;margin-right:1px}
 }
 :root[data-theme="dark"] .cabin-card{background:#0D1530;border-color:#1A2240}
 :root[data-theme="dark"] .cab-free{background:rgba(34,197,94,.14);color:#86efac;border-color:rgba(34,197,94,.3)}

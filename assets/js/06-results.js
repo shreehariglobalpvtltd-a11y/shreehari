@@ -401,29 +401,71 @@ function seatRowLetterJS(idx) {
   do { out = String.fromCharCode(65 + (idx % 26)) + out; idx = Math.floor(idx / 26) - 1; } while (idx >= 0);
   return out;
 }
+/* The coach's whole rule set (canonical mode, decks) from the boot payload, or
+   null — callers then fall back to the historical 72-berth coach. */
+function seatModeSpecJS(coachType) {
+  try {
+    const map = window.SHG_BOOT && SHG_BOOT.settings && SHG_BOOT.settings.seat_mode_map;
+    return (map && map[coachType || 'sleeper']) || null;
+  } catch (e) { return null; }
+}
+/* The physical bed(s) a mode label covers — mirror of Seats::physicalSeats():
+   an explicit irregular cabin first, then the bedsPerLabel ratio. */
+function seatBedsOfLabelJS(label, coachType, mode) {
+  const rule = seatModeRuleJS(coachType, mode);
+  if (rule && rule.explicit && rule.explicit[label]) {
+    return rule.explicit[label].map(function (b) { return String(b).toUpperCase(); });
+  }
+  const per = bedsPerLabelJS(coachType, mode);
+  const m = label.match(/^([A-Z])(\d+)$/);
+  if (per <= 1 || !m) return [label];
+  const j = parseInt(m[2], 10), out = [];
+  for (let k = per * (j - 1) + 1; k <= per * j; k++) out.push(m[1] + k);
+  return out;
+}
+/* One physical bed -> its grid label: L1..L36 -> A1..F6, U1..U36 -> A7..F12
+   (the upper floor's columns continue after the lower floor's). */
+function seatBedLabelJS(bed, coachType) {
+  const m = bed.match(/^([A-Z])(\d+)$/);
+  const n = m ? parseInt(m[2], 10) : 0;
+  if (!(n >= 1)) return bed;
+  const spec = seatModeSpecJS(coachType);
+  const rule = seatModeRuleJS(coachType, (spec && spec.canonical) || 'sharing');
+  const across = (rule && Array.isArray(rule.across) && rule.across.length === 2) ? rule.across : [4, 2];
+  const perRow = Math.max(1, (parseInt(across[0], 10) || 0) + (parseInt(across[1], 10) || 0));
+  const floor = Math.max(0, ((spec && Array.isArray(spec.decks)) ? spec.decks : ['L', 'U']).indexOf(m[1]));
+  return seatRowLetterJS(Math.floor((n - 1) / perRow)) + (((n - 1) % perRow) + 1 + floor * perRow);
+}
+/* ["B5","B6"] -> "B5-6"; beds that are not one run in one row -> "A1+B1". */
+function seatJoinBedLabelsJS(lbls) {
+  if (lbls.length < 2) return lbls[0] || '';
+  let row = null, prev = null;
+  for (let i = 0; i < lbls.length; i++) {
+    const m = String(lbls[i]).match(/^([A-Z]+)(\d+)$/);
+    if (!m || (row !== null && m[1] !== row) || (prev !== null && parseInt(m[2], 10) !== prev + 1)) return lbls.join('+');
+    row = m[1]; prev = parseInt(m[2], 10);
+  }
+  return lbls[0] + '-' + prev;
+}
 /* PASSENGER-FACING seat label — MUST match Seats::displayLabel() on the server
    (includes/seats.php). Storage stays canonical (L1..L36 / U1..U36 / 1A..10D);
-   this is the row-letter grid a human reads: Lower LA1..LF6, Upper UA1..UF6
-   (private 3-across -> LA1..LF3). `perRow` is derived from the SAME seat_mode_map
-   `across` the layout uses, so the tile text can never disagree with the grid.
-   The canonical id keeps flowing through data-id, holds, sales and the API —
-   only the visible text is prettified. */
+   this is the one two-floor grid a human reads (23 Sep 2026): Lower Floor (1F)
+   A1..F6, Upper Floor (2F) A7..F12 — 72 unique labels. A private cabin is named
+   by the beds it covers (private L6 = beds L11+L12 = "B5-6"). The canonical id
+   keeps flowing through data-id, holds, sales and the API — only the visible
+   text is prettified. */
 function seatLabel(id, coachType, mode) {
   id = String(id == null ? '' : id).toUpperCase();
-  const m = id.match(/^([LU])(\d+)$/);            // sleeper deck berth
+  const m = id.match(/^([LU])(\d+)$/);            // sleeper deck berth / cabin
   if (m) {
-    const rule = seatModeRuleJS(coachType || 'sleeper', mode || 'sharing');
-    const across = (rule && Array.isArray(rule.across) && rule.across.length === 2)
-      ? rule.across : (mode === 'private' ? [2, 1] : [4, 2]);
-    const perRow = Math.max(1, (parseInt(across[0], 10) || 0) + (parseInt(across[1], 10) || 0));
-    const n = parseInt(m[2], 10);
-    if (!(n >= 1)) return id;
-    return m[1] + seatRowLetterJS(Math.floor((n - 1) / perRow)) + (((n - 1) % perRow) + 1);
+    if (!(parseInt(m[2], 10) >= 1)) return id;
+    const coach = coachType || 'sleeper';
+    return seatJoinBedLabelsJS(seatBedsOfLabelJS(id, coach, mode || 'sharing').map(function (b) { return seatBedLabelJS(b, coach); }));
   }
   if (/^\d+$/.test(id)) return 'A' + id;          // pure-numeric fallback
   return id;                                       // seater #A..#D, unchanged
 }
-/* Map a canonical seat-id list to a display string (LA1, LA2, …). Used wherever
+/* Map a canonical seat-id list to a display string (A1, A2, …). Used wherever
    a selected/booked seat list is shown to a human; the stored array stays
    canonical, only the joined text is prettified. */
 function seatLabelJoin(seats, coach, mode, glue) {
@@ -568,9 +610,19 @@ function applyDeckPref(grid) {
   blocks.forEach(b => b.classList.toggle('hide', pref !== 'ANY' && b.getAttribute('data-deck') !== pref));
   grid.classList.toggle('both-decks', pref === 'ANY' && blocks.length > 1);
 }
-function deckHeadHTML(key, label) {
+/* Floor heading: "🔽 Lower Floor (1F) … A1–F6" (blue) / "🔼 Upper Floor (2F) … A7–F12"
+   (green, views.css). The range is the floor's first and last BED, so it reads
+   the same in sharing and private mode. `label` (the server's English floor
+   name) is no longer printed — t('deckL'/'deckU') is the same name in the
+   traveller's language. */
+function deckHeadHTML(key, label, coach) {
   const name = key === 'U' ? t('deckU') : t('deckL');
-  return '<div class="deck-head">' + (key === 'U' ? '🔼' : '🔽') + ' ' + esc(name) + (label ? ' <small>· ' + esc(label) + '</small>' : '') + '</div>';
+  const spec = seatModeSpecJS(coach || 'sleeper');
+  const perDeck = (spec && parseInt(spec.perDeck, 10)) || 36;
+  const range = (key === 'L' || key === 'U')
+    ? seatBedLabelJS(key + '1', coach || 'sleeper') + '–' + seatBedLabelJS(key + perDeck, coach || 'sleeper') : '';
+  return '<div class="deck-head">' + (key === 'U' ? '🔼' : '🔽') + ' ' + esc(name)
+    + (range ? '<span class="dh-range">' + esc(range) + '</span>' : '') + '</div>';
 }
 
 /* ----------------------------------------------------------------
@@ -971,7 +1023,7 @@ function renderSeats(instant) {
             const left  = row.left  || [];
             const right = row.right || [];
             const inThisRow = left.length + right.length;
-            const rowNo = ri + 1;
+            const rowNo = seatRowLetterJS(ri);   // aisle + card name the row letter (A..F) the berths carry
             if (bt === 'private') {
               const pairAttr = left.join(',');
               rowsHtml += '<div class="seat-row ' + cls + '">'
@@ -981,8 +1033,8 @@ function renderSeats(instant) {
                 + '</div>';
             } else {
               /* Sharing row card — per-person rate + live free counter. Row
-                 label comes from the server (row.label = "Row L-1", etc.). */
-              const rowLabel = row.label || ('Row ' + deck.key + '-' + rowNo);
+                 label comes from the server (row.label = "Row A" .. "Row F"). */
+              const rowLabel = row.label || ('Row ' + rowNo);
               rowsHtml += '<div class="cabin-card">'
                 + '<div class="cab-head"><span class="cab-no">🚪 ' + esc(rowLabel) + '</span><span class="cab-cap">👥 ' + inThisRow + ' berth' + (inThisRow > 1 ? 's' : '') + ' · अलग-अलग बुक</span><span class="cab-price">'
                 + (PP_SAVE > 0 ? '<s class="pp-was">₹' + PP_OFF.toLocaleString('en-IN') + '</s> ' : '')
@@ -998,7 +1050,7 @@ function renderSeats(instant) {
           });
           /* Both decks are rendered; applyDeckPref() hides one only when the
              traveller asked for a single floor. */
-          return '<div class="deck-block" data-deck="' + esc(deck.key) + '">' + deckHeadHTML(deck.key, deck.label) + rowsHtml + '</div>';
+          return '<div class="deck-block" data-deck="' + esc(deck.key) + '">' + deckHeadHTML(deck.key, deck.label, r.type) + rowsHtml + '</div>';
         }).join('');
       } else {
         /* ⚠️ LEGACY FALLBACK — used only when the server layout is missing
@@ -1023,7 +1075,7 @@ function renderSeats(instant) {
               const s1 = d + (base + 1), s2 = d + (base + 2), s3 = d + (base + 3);
               rows += '<div class="seat-row ' + cls + '">'
                 + '<span class="berth-pair" data-pair="' + s1 + ',' + s2 + '">' + seatBtn(s1, true) + seatBtn(s2, true) + '</span>'
-                + '<span class="aisle">' + row + '</span>'
+                + '<span class="aisle">' + seatRowLetterJS(row - 1) + '</span>'
                 + seatBtn(s3, true)
                 + '</div>';
             } else {
@@ -1033,19 +1085,19 @@ function renderSeats(instant) {
               const left  = ids.slice(0, 4);
               const right = ids.slice(4, 6);
               rows += '<div class="cabin-card">'
-                + '<div class="cab-head"><span class="cab-no">🚪 Row ' + d + '-' + row + '</span><span class="cab-cap">👥 ' + inThisRow + ' berth' + (inThisRow > 1 ? 's' : '') + ' · अलग-अलग बुक</span><span class="cab-price">'
+                + '<div class="cab-head"><span class="cab-no">🚪 Row ' + seatRowLetterJS(row - 1) + '</span><span class="cab-cap">👥 ' + inThisRow + ' berth' + (inThisRow > 1 ? 's' : '') + ' · अलग-अलग बुक</span><span class="cab-price">'
                 + (PP_SAVE > 0 ? '<s class="pp-was">₹' + PP_OFF.toLocaleString('en-IN') + '</s> ' : '')
                 + '₹' + PP_ON.toLocaleString('en-IN') + ' /person'
                 + (PP_SAVE > 0 ? '<b class="pp-off">5% OFF</b>' : '')
                 + '</span><span class="cab-free"></span></div>'
                 + '<div class="seat-row ' + cls + '">'
                 + left.map(function (id) { return seatBtn(id, true); }).join('')
-                + '<span class="aisle">' + row + '</span>'
+                + '<span class="aisle">' + seatRowLetterJS(row - 1) + '</span>'
                 + right.map(function (id) { return seatBtn(id, true); }).join('')
                 + '</div></div>';
             }
           }
-          return '<div class="deck-block" data-deck="' + d + '">' + deckHeadHTML(d, '') + rows + '</div>';
+          return '<div class="deck-block" data-deck="' + d + '">' + deckHeadHTML(d, '', r.type) + rows + '</div>';
         }).join('');
       }
       applyDeckPref(grid);

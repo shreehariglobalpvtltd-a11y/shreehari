@@ -2501,7 +2501,6 @@ a,button,.btn,.nav a,.tab-btn,.pm-tab,.bt-pill,.tier-pill,.proof-tab,.trip-pill{
   .seat-row.slp-shr6{grid-template-columns:repeat(4,minmax(0,1fr)) 16px repeat(2,minmax(0,1fr));gap:4px}
   .berth-labels6{grid-template-columns:4fr 16px 2fr}
   .seat-row.slp-shr6 .seat{font-size:11px;min-width:0}
-  .seat-row.slp-shr6 .seat::before{font-size:8px;margin-right:1px}
   /* The one non-seat thing that still didn't fit the coach: this label is a
      long unbreakable line (`white-space:nowrap`, views.css:694) and measured
      266px inside a 252px frame at 320px. Let it wrap instead. */
@@ -3785,10 +3784,27 @@ body.wa-open{overflow:hidden}
 /* ===== Seat screen: seats first (owner, 20 Sep 2026: "seat haru surumai dekhinu
    parcha, kun mathi kun tala, nepali ma ni thaha hunu parcha") ===== */
 .legend .lg-lu{font-weight:700;white-space:nowrap}
-.legend .lg-lu b{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:6px;background:var(--blue,#1E5AA8);color:#fff;font-size:11px}
-.deck-block[data-deck="L"] .deck-head{background:#E8F1FF;border:1.5px solid #B9D3F7;color:#12306A}
-.deck-block[data-deck="U"] .deck-head{background:#FFF1E4;border:1.5px solid #FFCF9E;color:#7A3A06}
-:root[data-theme="dark"] .deck-block[data-deck="U"] .deck-head{background:#2A1A0C;border-color:#5A3514;color:#FFC98F}
+.legend .lg-lu b{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 4px;border-radius:6px;background:#1E5AA8;color:#fff;font-size:11px}
+.legend .lg-lu b.lg-2f{background:#15803D}
+/* ===== Two floors, one grid (owner, 23 Sep 2026): Lower Floor (1F) A1–F6 in
+   BLUE, Upper Floor (2F) A7–F12 in GREEN. Only the floor chrome and the FREE
+   berth take the floor colour — selected / booked / held / women / emergency /
+   private keep their own status colours, so every state still reads the same
+   on both floors. ===== */
+.deck-block{--fl:#1E5AA8;--fl-bg:#F2F7FF;--fl-line:#C3D8F5;--fl-ink:#12306A;border:1.5px solid var(--fl-line);border-radius:18px;padding:10px;background:var(--fl-bg)}
+.deck-block[data-deck="U"]{--fl:#15803D;--fl-bg:#F1FAF4;--fl-line:#B9E2C7;--fl-ink:#0E4A25}
+:root[data-theme="dark"] .deck-block{--fl:#2F6FD0;--fl-bg:rgba(47,111,208,.08);--fl-line:#27466F;--fl-ink:#BFD5FA}
+:root[data-theme="dark"] .deck-block[data-deck="U"]{--fl:#1F8F4E;--fl-bg:rgba(31,143,78,.08);--fl-line:#245B3A;--fl-ink:#B5EBC8}
+.deck-block .deck-head,.deck-block[data-deck] .deck-head,:root[data-theme="dark"] .deck-block[data-deck] .deck-head{background:var(--fl);border:0;color:#fff;border-radius:12px;box-shadow:0 3px 10px rgba(18,38,78,.14)}
+.deck-head .dh-range{margin-left:auto;font-family:var(--f-code);font-size:12px;font-weight:800;background:rgba(255,255,255,.22);padding:2px 9px;border-radius:999px;white-space:nowrap}
+.deck-block .cabin-card{border-color:var(--fl-line);border-radius:14px;box-shadow:0 1px 4px rgba(18,38,78,.05)}
+.deck-block .cab-no{color:var(--fl)}
+.deck-block .seat{border-radius:12px}
+.deck-block .seat:not(.sel):not(.bkd):not(.hold):not(.reserved):not(.fem):not(.pvt):not(.u-fem):not(.u-male){background:#fff;border-color:var(--fl-line);color:var(--fl-ink);font-weight:800}
+:root[data-theme="dark"] .deck-block .seat:not(.sel):not(.bkd):not(.hold):not(.reserved):not(.fem):not(.pvt):not(.u-fem):not(.u-male){background:#0A0E1A;border-color:var(--fl-line);color:var(--fl-ink)}
+.deck-block .seat:not(.sel):not(.bkd):not(.hold):not(.reserved):not(.fem):not(.pvt):not(.u-fem):not(.u-male)::before{background:var(--fl-line)}
+@media (max-width:760px){.deck-block{padding:6px;border-radius:14px}}
+@media (max-width:430px){.deck-block{padding:3px;border-width:1px}}
 .seat-quick{margin:0 0 14px;padding:12px;border-radius:14px;border:1.5px solid var(--orange,#F07C1F);background:rgba(240,124,31,.07);display:grid;gap:8px}
 .seat-quick[hidden]{display:none}
 .sq-title{font-weight:800;font-size:14px}

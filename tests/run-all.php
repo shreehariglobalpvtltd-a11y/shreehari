@@ -88,6 +88,7 @@ const CORE_SUITES = [
     'cross-mode-seat-sync-test.php' => 'private cabin ⇄ sharing beds: one physical inventory',
     'cross-mode-hold-test.php'     => 'a hold in one mode blocks the bed in the other',
     'seat-layout-test.php'         => 'one 4+2 physical shape everywhere',
+    'seat-label-test.php'          => 'two floors, one grid: A1..F6 / A7..F12, 72 unique, stored ids unchanged',
     'seat-block-test.php'          => 'a berth taken out of service stays out',
     'per-seat-cancel-test.php'     => 'cancelling one seat leaves the rest intact',
     'emergency-seat-test.php'      => 'the emergency berth is never sold',
@@ -182,6 +183,7 @@ const NODE_SUITES = [
     'i18n-check.js'          => 'en/hi/ne key parity',
     'offline-ticket-test.js' => 'the ticket survives a deploy and works offline',
     'lazy-retry-test.js'     => 'failed lazy downloads remain retryable without duplicate actions',
+    'seat-label-parity.js'   => 'the browser prints the same seat labels as the server',
 ];
 
 /** Need the dev server on :8899 as well as the database. */

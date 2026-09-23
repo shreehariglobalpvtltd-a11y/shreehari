@@ -104,7 +104,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
             $seat   = strtoupper(Security::clean($_POST['seat_no'] ?? '', 10));
             $reason = Security::clean($_POST['reason'] ?? 'Seat cancelled by staff', 255);
             $res    = BookingService::cancelSeat((int) ($_POST['booking_id'] ?? 0), $seat, (int) $admin['id'], $reason);
-            $flash  = ['ok', 'Seat ' . Security::e(Seats::displayLabel($seat)) . ' cancelled. Refund for this seat: '
+            $seatMode = (string) Database::scalar('SELECT booking_mode FROM bookings WHERE id = :i', ['i' => (int) ($_POST['booking_id'] ?? 0)], 'sharing');
+            $flash  = ['ok', 'Seat ' . Security::e(Seats::displayLabel($seat, 'sleeper', $seatMode !== '' ? $seatMode : 'sharing')) . ' cancelled. Refund for this seat: '
                             . inr((float) ($res['refund']['amount'] ?? 0))
                             . ' (' . (int) ($res['refund']['percent'] ?? 0) . '%).'];
             $pnr = (string) ($res['booking']['pnr'] ?? $pnr);

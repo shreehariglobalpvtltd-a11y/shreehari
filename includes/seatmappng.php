@@ -150,7 +150,7 @@ final class SeatMapPng
             $legend[] = ['mine', 'Your seat'];
         }
         foreach ($legend as [$k, $lbl]) {
-            self::box($im, $lx, $ly, $lx + 22, $ly + 18, $fill[$k], $stroke[$k]);
+            self::card($im, $lx, $ly, $lx + 22, $ly + 18, 5, $fill[$k], $stroke[$k]);
             self::text($im, 13, $lx + 28, $ly, $muted, $lbl);
             $lx += 28 + self::width(13, $lbl) + 22;
         }
@@ -158,12 +158,19 @@ final class SeatMapPng
         self::text($im, 13, $lx + 28, $ly, $muted, 'Women-only cabin');
         $y += 44;
 
-        /* decks */
-        $deckNames = ['L' => 'LOWER DECK', 'U' => 'UPPER DECK', 'M' => 'MAIN DECK'];
+        /* decks — Lower Floor (1F) A1-F6 blue, Upper Floor (2F) A7-F12 green
+           (23 Sep 2026, same as every seat screen). Status colours stay. */
+        $floorCol = ['L' => [$c('#1E5AA8'), $c('#EEF4FD')], 'U' => [$c('#15803D'), $c('#EDF8F1')]];
         foreach ($layout['decks'] as $deck) {
             $key = (string) ($deck['key'] ?? 'L');
-            imagefilledrectangle($im, self::M, $y, self::W - self::M, $y + 30, $navy2);
-            self::text($im, 14, self::M + 12, $y + 6, $white, $deckNames[$key] ?? strtoupper((string) ($deck['label'] ?? 'DECK')), true);
+            [$head, $tint] = $floorCol[$key] ?? [$navy2, $c('#F3F5F9')];
+            $range = str_replace('–', '-', Seats::floorRange($key, $coach));
+            $title = isset($floorCol[$key])
+                ? strtoupper(Seats::floorName($key)) . ($range !== '' ? '   ·   ' . $range : '')
+                : strtoupper((string) ($deck['label'] ?? 'DECK'));
+            self::rr($im, self::M, $y, self::W - self::M, $y + 40 + count($deck['rows']) * (self::CELL_H + self::ROW_GAP) + 2, 12, $tint);
+            self::rr($im, self::M, $y, self::W - self::M, $y + 30, 10, $head);
+            self::text($im, 14, self::M + 12, $y + 6, $white, $title, true);
             $y += 40;
             foreach ($deck['rows'] as $row) {
                 $x = $gridX;
@@ -173,7 +180,7 @@ final class SeatMapPng
                         $st    = (string) ($info['status'] ?? 'open');
                         $kind  = isset($mine[$bed]) ? 'mine'
                                : ($st === 'open' ? 'free' : (in_array($st, ['blocked', 'staff'], true) ? 'off' : 'taken'));
-                        self::box($im, $x, $y, $x + $cellW, $y + self::CELL_H, $fill[$kind], $stroke[$kind]);
+                        self::card($im, $x, $y, $x + $cellW, $y + self::CELL_H, 10, $fill[$kind], $stroke[$kind]);
                         $unit = Seats::unitKey((string) $bed, $coach, 'sharing');
                         if (($data['unitLocks'][$unit] ?? '') === 'female_only') {
                             imagefilledrectangle($im, $x + 8, $y + 3, $x + $cellW - 8, $y + 6, $pink);
@@ -259,9 +266,20 @@ final class SeatMapPng
         return $b === false ? (int) (mb_strlen($text) * $size * 0.6) : (int) abs($b[2] - $b[0]);
     }
 
-    private static function box($im, int $x1, int $y1, int $x2, int $y2, int $fillCol, int $border): void
+    /** Rounded seat card: a 2px rounded border in $border around a $fillCol face. */
+    private static function card($im, int $x1, int $y1, int $x2, int $y2, int $r, int $fillCol, int $border): void
     {
-        imagefilledrectangle($im, $x1, $y1, $x2, $y2, $fillCol);
-        imagerectangle($im, $x1, $y1, $x2, $y2, $border);
+        self::rr($im, $x1, $y1, $x2, $y2, $r, $border);
+        self::rr($im, $x1 + 2, $y1 + 2, $x2 - 2, $y2 - 2, max(1, $r - 2), $fillCol);
+    }
+
+    /** Filled rounded rectangle. */
+    private static function rr($im, int $x1, int $y1, int $x2, int $y2, int $r, int $col): void
+    {
+        imagefilledrectangle($im, $x1 + $r, $y1, $x2 - $r, $y2, $col);
+        imagefilledrectangle($im, $x1, $y1 + $r, $x2, $y2 - $r, $col);
+        foreach ([[$x1 + $r, $y1 + $r], [$x2 - $r, $y1 + $r], [$x1 + $r, $y2 - $r], [$x2 - $r, $y2 - $r]] as [$cx, $cy]) {
+            imagefilledellipse($im, $cx, $cy, $r * 2, $r * 2, $col);
+        }
     }
 }

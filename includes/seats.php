@@ -124,7 +124,7 @@ final class Seats
             $rowsPerDeck = intdiv($perDeck, $perRow);
 
             $decks = [];
-            foreach ([['L', 'Lower Deck'], ['U', 'Upper Deck']] as $pair) {
+            foreach ([['L', self::floorName('L')], ['U', self::floorName('U')]] as $pair) {
                 [$prefix, $label] = $pair;
                 $rows = [];
                 for ($r = 1; $r <= $rowsPerDeck; $r++) {
@@ -139,7 +139,7 @@ final class Seats
                     }
                     $rows[] = [
                         'rowKey' => $prefix . '-row-' . $r,
-                        'label'  => 'Row ' . $prefix . '-' . $r,
+                        'label'  => 'Row ' . self::rowLetter($r - 1),   // same letter the berths carry (A1..A6 / A7..A12)
                         'left'   => $left,
                         'aisle'  => true,
                         'right'  => $right,
@@ -2493,12 +2493,14 @@ final class Seats
     /* =================================================================
      *  PASSENGER-FACING SEAT LABEL  (owner ask, 11 Sep 2026)
      *
-     *  The seat map is drawn as a row-letter grid — Lower LA1..LF6, Upper
-     *  UA1..UF6 (row A..F across the six physical rows, seat 1..6 across each,
-     *  4+2 either side of the aisle) — and that same label must appear on the
-     *  customer app, the agent/counter desk, the admin seat map, the printed
-     *  ticket (PNG + PDF), the chalani and every WhatsApp/e-mail that names a
-     *  berth.
+     *  The seat map is drawn as a row-letter grid. Since 23 Sep 2026 (owner
+     *  ask) the two floors share ONE grid: Lower Floor (1F) A1..F6, Upper
+     *  Floor (2F) A7..F12 — row A..F down the coach, columns 1..6 across the
+     *  lower floor and 7..12 across the upper, 4+2 either side of the aisle —
+     *  so all 72 labels are unique without a deck prefix. (11–23 Sep it was
+     *  LA1..LF6 / UA1..UF6.) That same label must appear on the customer app,
+     *  the agent/counter desk, the admin seat map, the printed ticket (PNG +
+     *  PDF), the chalani and every WhatsApp/e-mail that names a berth.
      *
      *  This is a DISPLAY transform ONLY. Storage stays canonical: booking_seats
      *  .seat_no / seat_locks / seat_blocks are L1..L36 / U1..U36 / 1A..10D, and
@@ -2512,11 +2514,16 @@ final class Seats
     /**
      * The passenger-facing label for a canonical seat id.
      *
-     *   sleeper L{n}/U{n} -> deck + row-letter + column. `perRow` comes from the
-     *                        SAME seat_mode_map `across` the layout uses
-     *                        (sharing 4+2=6 -> LA1..LF6; private 2+1=3 ->
-     *                        LA1..LF3), so the label can never disagree with the
-     *                        grid layoutFor() draws — even for a reconfigured coach.
+     *   sleeper bed L{n}/U{n} -> row-letter + column on the one two-floor grid:
+     *                        L1..L36 -> A1..F6, U1..U36 -> A7..F12. `perRow`
+     *                        comes from the canonical (bed) mode's `across` in
+     *                        seat_mode_map — the rule layoutFor() draws — so the
+     *                        label can never disagree with the grid.
+     *   private cabin      -> named by the physical beds it covers, exactly as
+     *                        the sharing map labels them: private L6 = beds
+     *                        L11+L12 = "B5-6". A cabin label can therefore never
+     *                        name a different bed than the one the passenger
+     *                        finds on the coach.
      *   pure numeric "{n}" -> "A{n}"  (defensive: no live coach stores this, but
      *                        the owner asked for it explicitly).
      *   seater "{n}{A-D}"  -> unchanged (already a row-number + column-letter).
@@ -2524,8 +2531,8 @@ final class Seats
      * @param string $seat       canonical seat id (as stored)
      * @param string $coachType  'sleeper' | 'seater'
      * @param string $bookingType 'sharing' | 'private' — the mode the label was
-     *                            sold/shown in, so a private cabin uses its own
-     *                            3-across geometry.
+     *                            sold/shown in, so a private cabin expands to
+     *                            its own beds.
      */
     public static function displayLabel(string $seat, string $coachType = 'sleeper', string $bookingType = 'sharing'): string
     {
@@ -2534,19 +2541,17 @@ final class Seats
             return '';
         }
 
-        // Sleeper deck berth: L{n} / U{n} -> row-letter grid.
+        // Sleeper deck berth / cabin: L{n} / U{n} -> the bed(s) on the grid.
         if (preg_match('/^([LU])(\d+)$/', $s, $m) === 1) {
-            $deck = $m[1];
-            $n    = (int) $m[2];
-            if ($n < 1) {
+            if ((int) $m[2] < 1) {
                 return $s;
             }
-            $modes  = self::modeMap($coachType !== '' ? $coachType : 'sleeper')['modes'] ?? [];
-            $across = $modes[$bookingType]['across'] ?? ($bookingType === 'private' ? [2, 1] : [4, 2]);
-            $perRow = max(1, (int) ($across[0] ?? 0) + (int) ($across[1] ?? 0));
-            $rowIdx = intdiv($n - 1, $perRow);         // 0-based row down the deck
-            $col    = (($n - 1) % $perRow) + 1;        // 1-based seat across the row
-            return $deck . self::rowLetter($rowIdx) . $col;
+            $coach = $coachType !== '' ? $coachType : 'sleeper';
+            $lbls  = [];
+            foreach (self::physicalSeats($s, $bookingType, $coach) as $bed) {
+                $lbls[] = self::bedLabel((string) $bed, $coach);
+            }
+            return self::joinBedLabels($lbls);
         }
 
         // Purely numeric id -> 'A' prefix (defensive; live data never hits this).
@@ -2556,6 +2561,43 @@ final class Seats
 
         // Seater #A..#D and anything else: already human-labelled.
         return $s;
+    }
+
+    /** One physical bed -> its grid label (L1 -> A1, L36 -> F6, U1 -> A7, U36 -> F12). */
+    private static function bedLabel(string $bed, string $coachType): string
+    {
+        if (preg_match('/^([A-Z])(\d+)$/', $bed, $m) !== 1 || (int) $m[2] < 1) {
+            return $bed;
+        }
+        $spec   = self::modeMap($coachType);
+        $canon  = (string) ($spec['canonical'] ?? 'sharing');
+        $across = $spec['modes'][$canon]['across'] ?? [4, 2];
+        $perRow = max(1, (int) ($across[0] ?? 0) + (int) ($across[1] ?? 0));
+        // Floor index: lower 0, upper 1 — the upper floor's columns continue
+        // after the lower floor's, which is what makes every label unique.
+        $floor  = (int) array_search($m[1], array_values((array) ($spec['decks'] ?? ['L', 'U'])), true);
+        $n      = (int) $m[2];
+        return self::rowLetter(intdiv($n - 1, $perRow)) . ((($n - 1) % $perRow) + 1 + $floor * $perRow);
+    }
+
+    /** ["B5","B6"] -> "B5-6"; beds that are not one run in one row -> "A1+B1". */
+    private static function joinBedLabels(array $lbls): string
+    {
+        if (count($lbls) < 2) {
+            return (string) ($lbls[0] ?? '');
+        }
+        $row = null;
+        $prev = null;
+        foreach ($lbls as $l) {
+            if (preg_match('/^([A-Z]+)(\d+)$/', (string) $l, $m) !== 1
+                || ($row !== null && $m[1] !== $row)
+                || ($prev !== null && (int) $m[2] !== $prev + 1)) {
+                return implode('+', $lbls);
+            }
+            $row  = $m[1];
+            $prev = (int) $m[2];
+        }
+        return $lbls[0] . '-' . $prev;
     }
 
     /**
@@ -2590,16 +2632,37 @@ final class Seats
     }
 
     /**
-     * Human label for a seat: "Lower LA4" / "Seat 3C". Uses the passenger-facing
-     * grid id (displayLabel) so the long form and the tile agree.
+     * Human label for a seat: "Lower Floor (1F) · A4" / "Seat 3C". Uses the
+     * passenger-facing grid id (displayLabel) so the long form and the tile agree.
      */
     public static function label(string $seatNo): string
     {
         if (preg_match('/^([LU])(\d+)$/i', $seatNo, $match) === 1) {
-            $deck = strtoupper($match[1]) === 'L' ? 'Lower' : 'Upper';
-            return $deck . ' ' . self::displayLabel(strtoupper($seatNo));
+            return self::floorName(strtoupper($match[1])) . ' · ' . self::displayLabel(strtoupper($seatNo));
         }
 
         return 'Seat ' . self::displayLabel(strtoupper($seatNo));
+    }
+
+    /** A floor's first–last bed label: L -> "A1–F6", U -> "A7–F12" ('' for a seater). */
+    public static function floorRange(string $deck, string $coachType = 'sleeper'): string
+    {
+        $deck = strtoupper($deck);
+        if ($deck !== 'L' && $deck !== 'U') {
+            return '';
+        }
+        $coach   = $coachType !== '' ? $coachType : 'sleeper';
+        $perDeck = max(1, (int) (self::modeMap($coach)['perDeck'] ?? 36));
+        return self::bedLabel($deck . '1', $coach) . '–' . self::bedLabel($deck . $perDeck, $coach);
+    }
+
+    /** Floor heading every seat surface prints: L -> "Lower Floor (1F)", U -> "Upper Floor (2F)". */
+    public static function floorName(string $deck): string
+    {
+        return match (strtoupper($deck)) {
+            'L'     => 'Lower Floor (1F)',
+            'U'     => 'Upper Floor (2F)',
+            default => 'Main Cabin',
+        };
     }
 }
