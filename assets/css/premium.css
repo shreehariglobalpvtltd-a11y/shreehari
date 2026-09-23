@@ -89,15 +89,22 @@ button,.btn,a.btn,.nav-link,.bn-item,.seat,.num-pill,.lang-btn,
   }
 }
 
-/* Below-the-fold home blocks. #homeMore / #homeExtra are revealed by a
-   tap, and revealing them hands the engine ~1200 fresh nodes to lay out
-   in one frame. content-visibility lets it skip the ones still off
-   screen; the intrinsic size keeps the scrollbar honest so the page does
-   not jump while they stream in. */
-#homeMore .section,#homeExtra .section{
-  content-visibility:auto;
-  contain-intrinsic-size:auto 520px;
-}
+/* NOT content-visibility. The obvious move here was to put
+   `content-visibility:auto` on the #homeMore / #homeExtra sections so the
+   engine could skip the ~1200 nodes a "show more" tap reveals. It was
+   written, deployed and then taken out again on 24 Sep 2026, for two
+   reasons that both say the same thing:
+
+     • It buys almost nothing in the state everyone is actually in.
+       #homeMore and #homeExtra carry the `hidden` attribute until the
+       visitor taps for them, so on the screen that sells tickets the
+       rule never applies.
+     • What it CAN do, when it does apply, is move the scroll position
+       under a finger — contain-intrinsic-size is an estimate, and the
+       correction lands as a jump. On a page where the next tap is
+       "Confirm and take the ticket", that trade is the wrong way round.
+
+   Keep it out unless the reveal is measured and found slow. */
 
 /* Reduced motion: stop moving, stay visible. */
 @media (prefers-reduced-motion:reduce){
