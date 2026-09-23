@@ -1029,6 +1029,12 @@ Example: Ram Bahadur 35, Sita Gurung 30",
         return $seats > 0 && $when;
     }
 
+    /** The same test, for WaFaq: a message about an existing ticket gets no canned answer. */
+    public static function aboutExistingTicket(string $text): bool
+    {
+        return self::isAboutExistingTicket(mb_strtolower($text));
+    }
+
     /**
      * A complaint, correction or follow-up about a ticket that already exists
      * (or a payment that was already made). Deliberately broad: a missed sale

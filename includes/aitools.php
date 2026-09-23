@@ -1300,13 +1300,21 @@ final class AiTools
         if ($date !== $oldDate) {
             // QuickTicket can choose among routes: explicitly reject a different route,
             // coach mode, pickup or fare instead of silently accepting its fallback.
+            /* 23 Sep 2026: `routes` has no `direction` column, so the old
+               "SELECT r.direction" failed on the live schema and every WhatsApp
+               date correction died with "That failed on our side". The direction
+               is derived exactly as QuickTicket derives it: from the destination. */
             $source = Database::fetch(
-                'SELECT s.route_id, r.direction FROM schedules s JOIN routes r ON r.id = s.route_id WHERE s.id = :id',
+                'SELECT s.route_id, r.to_city FROM schedules s JOIN routes r ON r.id = s.route_id WHERE s.id = :id',
                 ['id' => (int) $leg['schedule_id']]
             );
             if ($source === null) {
                 throw new RuntimeException('The original route is unavailable; contact the office.');
             }
+            if (!class_exists('Fare')) {
+                require_once INCLUDE_PATH . '/fare.php';
+            }
+            $source['direction'] = Fare::isNepalPoint((string) $source['to_city']) ? 'toNepal' : 'toIndia';
             $passengers = array_values(array_filter($detail['passengers'] ?? [],
                 static fn(array $p): bool => (int) ($p['leg_id'] ?? 0) === (int) $leg['id']));
             $genders = array_unique(array_column($passengers, 'gender'));

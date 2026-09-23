@@ -154,6 +154,26 @@ final class AiAgent
         }
     }
 
+    /**
+     * A reply given WITHOUT the model (WaFaq, 23 Sep 2026) joins this
+     * sender's thread, so the next message — "ani bholi ko?" — still has the
+     * context of what was just said.
+     */
+    public static function remember(string $phoneDigits, string $userText, string $replyText): void
+    {
+        if ($phoneDigits === '' || trim($userText) === '' || trim($replyText) === '') {
+            return;
+        }
+        try {
+            $history   = self::loadHistory($phoneDigits);
+            $history[] = ['role' => 'user', 'content' => mb_substr(trim($userText), 0, 1500)];
+            $history[] = ['role' => 'assistant', 'content' => trim($replyText)];
+            self::saveHistory($phoneDigits, $history);
+        } catch (Throwable $e) {
+            // memory is best effort
+        }
+    }
+
     /** Forget one sender's conversation and any parked quote. */
     public static function forget(string $phoneDigits): void
     {

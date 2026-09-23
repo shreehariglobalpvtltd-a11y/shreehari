@@ -144,6 +144,24 @@ final class WaBot
             }
         }
 
+        /* THE EVERYDAY QUESTIONS, ON THIS VPS (23 Sep 2026, owner: "95 % kam
+           afai garne"). Hello, fare, bus time, offers, website, office, and
+           a strong knowledge-base match are answered from the live tables in
+           milliseconds with no AI call. Anything personal or unsure returns
+           null and falls through to the assistant below. wa_faq_on = 0 turns
+           it off without touching anything else. */
+        if (!$pnrOnly && $senderDigits !== '') {
+            try {
+                require_once INCLUDE_PATH . '/wafaq.php';
+                $faq = WaFaq::answer($from, $body);
+                if ($faq !== null) {
+                    return self::out($faq['text'], $faq['media']);
+                }
+            } catch (Throwable $e) {
+                Logger::exception($e);          // the assistant still answers
+            }
+        }
+
         if (!$pnrOnly) {
             try {
                 require_once INCLUDE_PATH . '/aiagent.php';
