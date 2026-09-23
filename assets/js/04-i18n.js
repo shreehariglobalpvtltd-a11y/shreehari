@@ -7,6 +7,8 @@
 ================================================================ */
 const I18N = {
 en: {
+  chanTitle: 'Book your ticket', chanWa: 'WhatsApp Ticket', chanWaSub: 'Send name + journey, the desk replies with your ticket', chanBot: 'Bot / AI Ticket', chanBotSub: 'Name + mobile, one tap, ticket in 10 seconds', chanManual: 'Manual / Counter Ticket', chanManualSub: 'Pick your own seat on the map and pay by UPI',
+  sxRecent: 'Recent', sxPopular: 'Popular', qdToday: 'Today', qdTomorrow: 'Tomorrow', qdNext: 'Next bus', deck1F: '1F · Lower', deck2F: '2F · Upper', deckAll: 'All',
   /* 23 Sep 2026: the WhatsApp ticket card + request sheet had these eleven keys in the markup but in no language - the page showed the raw key names */
   waTicketTitle: 'Ticket with WhatsApp', waTicketIntro: 'Send your name, mobile and journey details. Continue booking in WhatsApp, request a ticket correction, or ask the office for help.',
   waTicketStart: '🎫 Ticket with WhatsApp →', waReqFix: '✏️ Correct my ticket', waReqCountry: 'Country code',
@@ -401,6 +403,8 @@ en: {
   rgMap: 'Show on map', rgNone: 'The route guide is not available right now.', payApps: 'Or tap your UPI app:'
 },
 hi: {
+  chanTitle: 'टिकट बुक करें', chanWa: 'WhatsApp टिकट', chanWaSub: 'नाम + यात्रा भेजें, डेस्क आपका टिकट भेजेगा', chanBot: 'बॉट / AI टिकट', chanBotSub: 'नाम + मोबाइल, एक टैप, 10 सेकंड में टिकट', chanManual: 'मैनुअल / काउंटर टिकट', chanManualSub: 'सीट-मैप पर अपनी सीट चुनें और UPI से भुगतान करें',
+  sxRecent: 'हाल के', sxPopular: 'लोकप्रिय', qdToday: 'आज', qdTomorrow: 'कल', qdNext: 'अगली बस', deck1F: '1F · नीचे', deck2F: '2F · ऊपर', deckAll: 'सभी',
   waTicketTitle: 'WhatsApp से टिकट', waTicketIntro: 'अपना नाम, मोबाइल और यात्रा विवरण भेजें। WhatsApp में बुकिंग जारी रखें, टिकट सुधार माँगें या ऑफिस से मदद लें।',
   waTicketStart: '🎫 WhatsApp से टिकट →', waReqFix: '✏️ मेरा टिकट सुधारें', waReqCountry: 'देश कोड',
   waReqPhoneHint: 'वही नंबर लिखें जिससे आप WhatsApp पर भेजेंगे। किसी और के टिकट के लिए ऑफिस से पूछें।', waReqDirection: 'दिशा', waReqPnr: 'बुकिंग नंबर (PNR)',
@@ -788,6 +792,8 @@ hi: {
   rgMap: 'मैप पर देखें', rgNone: 'रूट गाइड अभी उपलब्ध नहीं है।', payApps: 'या अपना UPI ऐप दबाएँ:'
 },
 ne: {
+  chanTitle: 'टिकट बुक गर्नुहोस्', chanWa: 'WhatsApp टिकट', chanWaSub: 'नाम + यात्रा पठाउनुहोस्, डेस्कले टिकट पठाउँछ', chanBot: 'बट / AI टिकट', chanBotSub: 'नाम + मोबाइल, एक ट्याप, 10 सेकेन्डमा टिकट', chanManual: 'म्यानुअल / काउन्टर टिकट', chanManualSub: 'सिट-म्यापमा आफ्नो सिट छान्नुहोस्, UPI बाट तिर्नुहोस्',
+  sxRecent: 'भर्खरका', sxPopular: 'लोकप्रिय', qdToday: 'आज', qdTomorrow: 'भोलि', qdNext: 'अर्को बस', deck1F: '1F · तल', deck2F: '2F · माथि', deckAll: 'सबै',
   waTicketTitle: 'WhatsApp बाट टिकट', waTicketIntro: 'आफ्नो नाम, मोबाइल र यात्राको विवरण पठाउनुहोस्। WhatsApp मा बुकिङ जारी राख्नुहोस्, टिकट सच्याउन भन्नुहोस् वा अफिससँग सहयोग माग्नुहोस्।',
   waTicketStart: '🎫 WhatsApp बाट टिकट →', waReqFix: '✏️ मेरो टिकट सच्याउनुहोस्', waReqCountry: 'देश कोड',
   waReqPhoneHint: 'WhatsApp बाट पठाउने नम्बर नै लेख्नुहोस्। अरूको टिकटका लागि अफिसलाई सोध्नुहोस्।', waReqDirection: 'दिशा', waReqPnr: 'बुकिङ नम्बर (PNR)',

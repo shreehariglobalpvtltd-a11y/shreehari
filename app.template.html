@@ -612,6 +612,32 @@ s.addEventListener('click',function(e){e.preventDefault();
     </div>
   </div>
 
+  <!-- BOOKING CHANNELS (23 Sep 2026, UI/UX v3 brief §3): three cards, one tap
+       each, straight into that flow. WhatsApp -> the request sheet (same
+       [data-wa-open] hook as the card below); Bot -> QuickBot (data-bkmode=quick,
+       initBookMode's own delegate); Manual -> the seat-map search (data-bkmode=
+       regular). No new booking path: the cards only START the flows that exist. -->
+  <section class="container chan-wrap" id="chanCards" aria-labelledby="chanTitle">
+    <h2 class="chan-title" id="chanTitle" data-i18n="chanTitle">Book your ticket</h2>
+    <div class="chan-grid">
+      <button type="button" class="chan-card chan-wa" data-wa-open="booking" aria-haspopup="dialog" aria-controls="waSheet">
+        <span class="chan-ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.625.846 5.059 2.284 7.034L.789 23.492a.5.5 0 00.612.638l4.685-1.408A11.945 11.945 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-2.137 0-4.146-.601-5.863-1.646l-.42-.264-2.813.846.781-2.852-.278-.438A9.956 9.956 0 012 12C2 6.486 6.486 2 12 2s10 4.486 10 10-4.486 10-10 10z"/></svg></span>
+        <span class="chan-txt"><b data-i18n="chanWa">WhatsApp Ticket</b><small data-i18n="chanWaSub">Send name + journey, the desk replies with your ticket</small></span>
+        <span class="chan-go" aria-hidden="true">›</span>
+      </button>
+      <button type="button" class="chan-card chan-bot" data-bkmode="quick">
+        <span class="chan-ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="3"/><path d="M12 8V4M8 4h8"/><circle cx="9" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="14" r="1.2" fill="currentColor"/><path d="M9 17.5h6"/></svg></span>
+        <span class="chan-txt"><b data-i18n="chanBot">Bot / AI Ticket</b><small data-i18n="chanBotSub">Name + mobile, one tap, ticket in 10 seconds</small></span>
+        <span class="chan-go" aria-hidden="true">›</span>
+      </button>
+      <button type="button" class="chan-card chan-manual" data-bkmode="regular">
+        <span class="chan-ic" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" width="30" height="30"><use href="#i-ticket"/></svg></span>
+        <span class="chan-txt"><b data-i18n="chanManual">Manual / Counter Ticket</b><small data-i18n="chanManualSub">Pick your own seat on the map and pay by UPI</small></span>
+        <span class="chan-go" aria-hidden="true">›</span>
+      </button>
+    </div>
+  </section>
+
   <section class="container wa-ticket-highlight" aria-labelledby="waTicketTitle">
     <div class="wa-ticket-mark" aria-hidden="true">💬</div>
     <div class="wa-ticket-copy">
@@ -757,8 +783,19 @@ s.addEventListener('click',function(e){e.preventDefault();
            has 30 buttons. Do NOT rename any id — 05-router / 06-results still
            read #fromSel / #toSel / #dateInput as the single source of truth. -->
 
+      <!-- v3 (23 Sep 2026): recent + popular route chips - one tap sets direction
+           and town through setSearchDir()/#pointSel, the same path the pills use. -->
+      <div class="sx-chips" id="sxChips" hidden></div>
       <!-- 30-day horizontal date strip (JS populates in 05-router::renderDateStrip30) -->
       <div class="date-strip-30" id="dateStrip30" role="group" aria-label="Journey date · 30-day picker"></div>
+      <!-- v3: quick dates - each taps the matching strip button, so the strip's own
+           click delegate (05-router) does the date work. -->
+      <div class="qd-row" id="qdRow" role="group" aria-label="Quick date">
+        <button type="button" class="chip qd-chip" data-qd="today" data-i18n="qdToday">Today</button>
+        <button type="button" class="chip qd-chip" data-qd="tomorrow" data-i18n="qdTomorrow">Tomorrow</button>
+        <button type="button" class="chip qd-chip qd-next" data-qd="next">🚌 <span data-i18n="qdNext">Next bus</span></button>
+        <button type="button" class="chip qd-chip st-chip" data-sound-toggle aria-pressed="true" title="UI sounds"><span class="st-ico">🔊</span><span class="st-lbl" data-i18n="soundOn">Sound on</span></button>
+      </div>
 
       <!-- Calendar fallback for a custom future date beyond the strip -->
       <div class="s-field s-field-date-input">
@@ -794,6 +831,8 @@ s.addEventListener('click',function(e){e.preventDefault();
           <b data-i18n="dirBack">Returning</b>
           <small>Rupaidiha → Gujarat</small>
         </button>
+        <!-- v3: swap - flips the direction with a rotate; 19-ux.js calls setSearchDir() -->
+        <button type="button" class="dir-swap" id="dirSwap" aria-label="Swap direction" title="Swap"><svg class="ic" viewBox="0 0 24 24"><path d="M7 16V4m0 0L3 8m4-4 4 4M17 8v12m0 0 4-4m-4 4-4-4"/></svg></button>
       </div>
 
       <div class="search-grid simple simple-town-only">
@@ -1728,26 +1767,27 @@ s.addEventListener('click',function(e){e.preventDefault();
         <button class="bt-pill sharing on" type="button" data-bt="sharing">🤝 Sharing</button>
         <button class="bt-pill private" type="button" data-bt="private">🔒 Private</button>
       </div>
-      <div class="legend legend-sticky">
-        <span class="lg-lu"><b>L</b>&nbsp;<span data-i18n="lgLower">Lower berth</span> · <b>U</b>&nbsp;<span data-i18n="lgUpper">Upper berth</span></span>
-        <span><span class="lg"></span><span data-i18n="lgAvail">Available</span></span>
-        <span><span class="lg sel"></span><span data-i18n="lgSel">Selected</span></span>
-        <span><span class="lg bkd"></span><span data-i18n="lgBkd">Booked</span></span>
-        <span><span class="lg u-fem"></span><span data-i18n="lgWomenOnly">Women only</span></span>
-        <!-- 19 Sep 2026 (owner: "too many options on top, keep it simple"): four
-             signs a passenger needs to pick a seat stay in view; the other seven
-             sit behind one button on a computer. Every seat still carries its own
-             icon (✕ ⏳ ♀ ♂ 🔒), so nothing is told by this key alone. Phones keep
-             the one-line swipe strip (views.css) and never see the button. -->
-        <button type="button" class="lg-more-btn" aria-expanded="false" onclick="var l=this.parentNode,o=l.classList.toggle('lg-open');this.setAttribute('aria-expanded',o?'true':'false')"><span data-i18n="lgMore">More signs</span> ▾</button>
-        <span class="lg-x"><span class="lg fem"></span><span data-i18n="lgFem">Female preferred</span></span>
-        <span class="lg-x"><span class="lg u-male"></span><span data-i18n="lgMenOnly">Men only</span></span>
-        <span class="lg-x"><span class="lg" style="background:#C62828;border-color:#8E1B1B"></span><span data-i18n="lgEmergency">🚨 Emergency Seat</span></span>
-        <span class="lg-x"><span class="lg hold"></span>⏳ <span data-i18n="lgHeld">Held by someone else</span></span>
-        <span class="lg-x"><span class="lg pvt"></span>🔒 <span data-i18n="lgPrivate">Private cabin</span></span>
-        <span class="lg-x"><span class="lg bkd xmode"></span>⇄ <span data-i18n="lgXmode">Sold as the other type</span></span>
-        <span class="lg-x"><span class="lg" style="background:#E0F7F4;border-color:#00897B">♿</span><span data-i18n="lgAccessible">Easy-access seat</span></span>
+      <!-- SEAT KEY (23 Sep 2026, v3 brief §5): every colour the map uses, in one
+           container that wraps on a computer and pans sideways on a phone - no
+           "More signs" button, nothing cut off. Seat ids, classes and the engine
+           are untouched: this is the key, not the map. -->
+      <div class="legend legend-sticky legend-v3" id="seatLegend" role="list" aria-label="Seat colours">
+        <span class="lg-lu" role="listitem"><b>L</b>&nbsp;<span data-i18n="lgLower">Lower berth</span> · <b>U</b>&nbsp;<span data-i18n="lgUpper">Upper berth</span></span>
+        <span role="listitem"><span class="lg"></span><span data-i18n="lgAvail">Available</span></span>
+        <span role="listitem"><span class="lg sel"></span><span data-i18n="lgSel">Selected</span></span>
+        <span role="listitem"><span class="lg bkd"></span><span data-i18n="lgBkd">Booked</span></span>
+        <span role="listitem"><span class="lg hold"></span><span data-i18n="lgHeld">Held by someone else</span></span>
+        <span role="listitem"><span class="lg u-fem"></span><span data-i18n="lgWomenOnly">Women only</span></span>
+        <span role="listitem"><span class="lg pvt"></span><span data-i18n="lgPrivate">Private cabin</span></span>
+        <span role="listitem"><span class="lg fem"></span><span data-i18n="lgFem">Female preferred</span></span>
+        <span role="listitem"><span class="lg u-male"></span><span data-i18n="lgMenOnly">Men only</span></span>
+        <span role="listitem"><span class="lg bkd xmode"></span><span data-i18n="lgXmode">Sold as the other type</span></span>
+        <span role="listitem"><span class="lg" style="background:#C62828;border-color:#8E1B1B"></span><span data-i18n="lgEmergency">🚨 Emergency Seat</span></span>
+        <span role="listitem"><span class="lg" style="background:#E0F7F4;border-color:#00897B">♿</span><span data-i18n="lgAccessible">Easy-access seat</span></span>
       </div>
+      <!-- boarding-point colour dots: the stops of THIS bus in order, the chosen
+           pickup highlighted; filled by 19-ux.js from #boardingSel / #dropSel -->
+      <div class="bp-dots" id="bpDots" hidden aria-label="Boarding points"></div>
       <div class="women-safe-strip" data-i18n="womenSafe">👩 <b>Women safety</b> — reserved seats · CCTV · SOS button · night travel protection</div>
       <div class="deck-tabs hide" id="deckTabs"></div>
       <!-- Floor-first group suggestion: pick a group size and the app

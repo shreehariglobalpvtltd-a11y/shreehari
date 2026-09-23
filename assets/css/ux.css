@@ -58,3 +58,111 @@ button,input,select,textarea{font-family:inherit}
   .nav-call,.cs-item{transition:none}
   .nav-call:active,.cs-item:active{transform:none}
 }
+
+/* ---------- 3. HOME — three booking-channel cards ---------- */
+.chan-wrap{margin-top:18px}
+.chan-title{font-size:clamp(18px,2.4vw,22px);font-weight:700;color:var(--ink);margin:0 0 10px 2px}
+.chan-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:760px){
+  .chan-grid{grid-template-columns:1fr;gap:10px}
+  /* phones: views.css orders the home as QuickBot (1) > search (2) > hero and the
+     rest (3). The three channel cards go FIRST (brief §3) - an id+id selector
+     outranks the :not() rule that stamps order:3 on everything else. */
+  #view-home > #chanCards{order:0;margin-top:12px;width:100%;min-width:0}
+}
+.chan-card{position:relative;overflow:hidden;display:flex;align-items:center;gap:14px;min-height:88px;padding:14px 16px;border-radius:var(--r-lg);
+  border:2px solid transparent;color:#fff;text-align:left;cursor:pointer;isolation:isolate;
+  box-shadow:var(--shadow-md);transition:transform .16s var(--ease-standard),box-shadow .16s var(--ease-standard)}
+/* DOUBLE outline: the 2px border above + a 1px ring 3px outside it, in the card's own hue */
+.chan-card::after{content:"";position:absolute;inset:-5px;border-radius:calc(var(--r-lg) + 5px);border:1.5px solid var(--chan-ring);pointer-events:none;opacity:.55}
+.chan-card:active{transform:scale(.975)}
+.chan-card:hover{box-shadow:var(--shadow-lg),0 0 24px var(--chan-glow)}
+.chan-wa{--chan-ring:var(--wa);--chan-glow:rgba(37,211,102,.45);background:linear-gradient(135deg,#128C7E 0%,#25D366 60%,#5EE38F 100%);border-color:rgba(255,255,255,.55)}
+.chan-bot{--chan-ring:var(--bot);--chan-glow:rgba(109,74,255,.45);background:linear-gradient(135deg,#3B2BB5 0%,#6D4AFF 55%,#4FB0FF 100%);border-color:rgba(255,255,255,.55)}
+.chan-manual{--chan-ring:var(--cta);--chan-glow:rgba(240,124,31,.45);background:linear-gradient(135deg,#C2500A 0%,#F07C1F 55%,#FFB25E 100%);border-color:rgba(255,255,255,.55)}
+.chan-card .chan-ic{width:52px;height:52px;border-radius:16px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.18);box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)}
+.chan-card .chan-ic svg{width:30px;height:30px}
+.chan-card .chan-ic .ic{stroke-width:1.8}
+.chan-card .chan-txt{min-width:0;flex:1 1 auto}
+.chan-card .chan-txt b{display:block;font-size:16.5px;font-weight:700;line-height:1.2;letter-spacing:.005em}
+.chan-card .chan-txt small{display:block;margin-top:3px;font-size:12.5px;line-height:1.3;opacity:.92;font-weight:500}
+.chan-card .chan-go{font-size:26px;line-height:1;opacity:.85;flex:0 0 auto}
+/* ripple (span added on pointerdown by 19-ux.js) */
+.chan-card .rip{position:absolute;border-radius:50%;background:rgba(255,255,255,.35);transform:scale(0);animation:ripGo .55s ease-out forwards;pointer-events:none}
+@keyframes ripGo{to{transform:scale(2.6);opacity:0}}
+:root[data-theme="dark"] .chan-card{border-color:rgba(255,255,255,.22)}
+
+/* ---------- 4. SEARCH CARD — chips, quick dates, swap ---------- */
+.sx-chips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:2px 2px 8px;margin:0 -2px 4px;touch-action:pan-x pan-y}
+.sx-chips::-webkit-scrollbar{display:none}
+.sx-chips[hidden]{display:none}
+.sx-chips .sx-lbl{flex:0 0 auto;align-self:center;font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-right:2px}
+.sx-chip{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;transition:transform .12s,background .12s,border-color .12s}
+.sx-chip:active{transform:scale(.96)}
+.sx-chip.recent{border-style:dashed}
+.sx-chip .sx-t{color:var(--muted);font-weight:500;font-family:var(--f-code);font-size:12px}
+.sx-chip.on{background:var(--blue-50);border-color:var(--blue);color:var(--blue-800)}
+.qd-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0 10px}
+.qd-chip{min-height:36px;padding:6px 14px;font-size:13px;cursor:pointer;border-radius:999px;background:var(--card);border:1px solid var(--line);color:var(--ink);font-weight:600}
+.qd-chip.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.qd-chip.qd-next{background:var(--cta-100);border-color:#F6D3AE;color:#9A4D07}
+.qd-chip:disabled{opacity:.45;cursor:not-allowed}
+.st-chip{margin-left:auto;gap:6px}
+.st-chip.off{opacity:.65}
+.dir-toggle{position:relative}
+.dir-swap{position:absolute;left:50%;top:50%;width:40px;height:40px;margin:-20px 0 0 -20px;border-radius:50%;border:2px solid var(--card);background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:var(--shadow-sm);z-index:2;transition:transform .35s var(--ease-standard)}
+.dir-swap .ic{width:20px;height:20px}
+.dir-swap.spin{transform:rotate(180deg)}
+.dir-swap:active{transform:scale(.92)}
+/* skeleton shimmer for every .skel / skeleton block the app already draws */
+.skel,.skeleton,.sk-card,.sk-row{position:relative;overflow:hidden}
+.skel::after,.skeleton::after,.sk-card::after,.sk-row::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);transform:translateX(-100%);animation:skelShine 1.3s infinite}
+@keyframes skelShine{to{transform:translateX(100%)}}
+:root[data-theme="dark"] .skel::after,:root[data-theme="dark"] .skeleton::after{background:linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent)}
+
+/* ---------- 5. SEAT SCREEN — legend, boarding dots, floor tabs, sticky fixes ---------- */
+/* the key: wraps on a computer, one sideways-scrolling row on a phone, never clipped */
+#view-seats .legend-v3{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:10px 12px;border-radius:14px;background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow-sm);margin:0 0 12px}
+#view-seats .legend-v3>span{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--ink);white-space:nowrap}
+#view-seats .legend-v3 .lg{width:20px;height:20px;border-radius:6px;flex:0 0 auto;border:1.5px solid var(--seat-free-line);background:var(--seat-free)}
+#view-seats .legend-v3 .lg.sel{background:var(--seat-sel);border-color:var(--cta-600)}
+#view-seats .legend-v3 .lg.bkd{background:var(--seat-bkd);border-color:var(--seat-bkd)}
+#view-seats .legend-v3 .lg.pvt{background:var(--seat-pvt-100);border-color:var(--seat-pvt);position:relative}
+#view-seats .legend-v3 .lg.pvt::after{content:"👑";font-size:10px;display:flex;align-items:center;justify-content:center;height:100%}
+#view-seats .legend-v3 .lg.u-fem{background:var(--seat-ladies-100);border-color:var(--seat-ladies)}
+@media (max-width:760px){
+  #view-seats .legend-v3{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;gap:12px;padding:8px 10px;margin:0 0 8px;scrollbar-width:none;touch-action:pan-x pan-y;-webkit-overflow-scrolling:touch;
+    -webkit-mask-image:linear-gradient(90deg,#000 0,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(90deg,#000 0,#000 calc(100% - 28px),transparent)}
+  #view-seats .legend-v3::-webkit-scrollbar{display:none}
+  #view-seats .legend-v3>span{flex:0 0 auto;font-size:11.5px}
+  /* the key sits right under the sticky nav (54px) - views.css had it at 64px, leaving a gap the rows showed through */
+  #view-seats .legend-sticky{top:54px}
+}
+/* the deck heading used to be sticky at top:0 and slid UNDER the nav and the key, covering seat rows */
+#view-seats .deck-head{position:relative;top:auto;z-index:1}
+/* boarding-point dots */
+.bp-dots{display:flex;align-items:center;gap:0;overflow-x:auto;scrollbar-width:none;padding:6px 4px 10px;margin:-2px 0 8px;touch-action:pan-x pan-y}
+.bp-dots::-webkit-scrollbar{display:none}
+.bp-dots[hidden]{display:none}
+.bp-dot{position:relative;flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:58px;padding:0 4px;font-size:10.5px;font-weight:700;letter-spacing:.04em;color:var(--muted);font-family:var(--f-code)}
+.bp-dot i{width:14px;height:14px;border-radius:50%;background:var(--bp-c,var(--brand));box-shadow:0 0 0 3px color-mix(in srgb,var(--bp-c,var(--brand)) 22%,transparent)}
+.bp-dot::before{content:"";position:absolute;top:6px;left:50%;right:-50%;height:2px;background:var(--line);z-index:-1}
+.bp-dot:last-child::before{display:none}
+.bp-dot.on{color:var(--ink)}
+.bp-dot.on i{transform:scale(1.25);box-shadow:0 0 0 4px color-mix(in srgb,var(--bp-c,var(--brand)) 30%,transparent)}
+.bp-dot.on small{color:var(--bp-c)}
+.bp-dot small{font-family:var(--f-body);font-weight:600;font-size:10px;letter-spacing:0;color:var(--muted);max-width:74px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bp-dot.end i{border-radius:4px}
+/* floor tabs as one segmented control: 1F · 2F · All */
+#view-seats .deck-tabs{display:inline-flex;gap:0;padding:3px;border-radius:999px;background:var(--blue-50);border:1px solid var(--blue-100);margin-bottom:14px}
+#view-seats .deck-tabs.hide{display:none}
+#view-seats .deck-tabs .deck-lbl{display:none}
+#view-seats .deck-tab{border:0;background:transparent;color:var(--muted);min-height:40px;padding:6px 16px;border-radius:999px;font-weight:700;font-size:13px;transition:background .15s,color .15s}
+#view-seats .deck-tab.on{background:var(--card);color:var(--blue-800);box-shadow:var(--shadow-sm)}
+/* seat colours: available = white with a navy outline (was pale grey) */
+#view-seats .bus-frame .seat:not(.sel):not(.bkd):not(.fem):not(.u-fem):not(.u-male):not(.pvt):not(.reserved):not(.hold){border-color:var(--seat-free-line);background:var(--seat-free)}
+#view-seats .bus-frame .seat.sel{animation:seatPop .34s cubic-bezier(.34,1.56,.64,1)}
+@media (prefers-reduced-motion:reduce){#view-seats .bus-frame .seat.sel{animation:none}.chan-card .rip{display:none}.dir-swap{transition:none}}
+/* the older green WhatsApp card says what the WhatsApp channel card above it
+   now says - one card per channel, no duplicates (brief: remove clutter) */
+#chanCards ~ .wa-ticket-highlight{display:none}
