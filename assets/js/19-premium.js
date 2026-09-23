@@ -341,16 +341,18 @@
   /* -------------------------------------------------------------------
      TICKET ISSUED — the one moment that earns its own sound.
      -----------------------------------------------------------------
-     The status view is where a confirmed ticket lands (router hash
-     #/status). Firing on the hash rather than from inside the booking
-     code keeps this file out of the money path entirely: if anything here
-     throws, a ticket has still been issued.
+     A confirmed sale ends with `location.hash = '#/ticket/<pnr>'`
+     (confirmSale in 05-router.js); the seat-map flow lands on #/status.
+     Firing off the hash rather than from inside the booking code keeps
+     this file out of the money path entirely: if anything here throws, a
+     ticket has still been issued and the passenger still has it.
      ----------------------------------------------------------------- */
   function watchTicket() {
-    var lastHash = '';
+    var isTicket = function (h) { return h.indexOf('#/ticket/') === 0 || h.indexOf('#/status') === 0; };
+    var lastHash = location.hash || '';
     window.addEventListener('hashchange', function () {
       var h = location.hash || '';
-      if (h.indexOf('#/status') === 0 && lastHash.indexOf('#/status') !== 0) Feel.fire('ticket');
+      if (isTicket(h) && !isTicket(lastHash)) Feel.fire('ticket');
       lastHash = h;
     });
   }

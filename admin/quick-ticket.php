@@ -42,6 +42,15 @@ $prePhone = Security::clean((string) ($_GET['phone'] ?? ''), 20);
    render the party sizes the engine would happily sell. */
 $maxSeats = BookingService::maxSeatsFor(true);
 $maxDisc  = Settings::getFloat('counter_max_discount_pct', 15.0);
+/* Nepal counters (24 Sep 2026, owner: "Nepalgunj and other authorised
+   counters in Nepal … INR/NPR currency handling where required"). Fares are
+   held in INR everywhere — the database, the ticket, the accounts — and that
+   does not change. What a clerk at Nepalgunj or the Rupaidiha desk needs is
+   the NPR figure to say out loud while taking cash, so the peg travels to
+   the page and the desk prints "≈ NPR x" UNDER the rupee total. It is a
+   conversion aid and is labelled as one: nothing is stored in NPR.
+   npr_per_inr lives in Admin → Settings; 0 switches the line off. */
+$nprPeg   = Settings::getFloat('npr_per_inr', NPR_PER_INR);
 $waDriver = Settings::getString('whatsapp_driver', 'click_to_chat');
 $waReady  = $waDriver === 'twilio'
     ? (Settings::getString('twilio_account_sid', '') !== ''
@@ -140,6 +149,10 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
 .qt-facts b{display:block;font-size:16px;margin-top:2px;word-break:break-word}
 .qt-facts em{display:block;font-style:normal;font-size:11.5px;color:var(--mut);margin-top:2px}
 .qt-facts .big b{font-size:24px;color:var(--navy)}
+/* The NPR conversion aid for a Nepal desk (24 Sep 2026). Deliberately
+   smaller and quieter than the rupee figure beside it: the fare IS the
+   rupee amount — this is what to say out loud while taking Nepali cash. */
+.qt-npr{display:block;font-size:12.5px;font-weight:700;color:#0863b8;margin-top:1px;letter-spacing:.01em}
 .qt-alt{margin-top:12px;padding:10px 12px;border-radius:12px;border:1px dashed var(--line);font-size:12.5px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .qt-alt button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:5px 10px;font-weight:700;cursor:pointer;font-size:12px}
 .qt-noplan{padding:14px;border-radius:12px;background:#fff3e0;color:#8a4a00;font-weight:700;font-size:13px;line-height:1.45}
@@ -427,6 +440,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
   var CSRF = <?= json_encode($csrf) ?>;
   var CAN = <?= $canSell ? 'true' : 'false' ?>;
   var MAX_DISC = <?= json_encode($maxDisc) ?>;
+  var NPR_PEG  = <?= json_encode($nprPeg) ?>;   // 0 = do not show the NPR line
   var $ = function (s, r) { return (r || document).querySelector(s); };
   var $$ = function (s, r) {
     var root = typeof r === 'string' ? document.querySelector(r) : (r || document);
@@ -593,6 +607,16 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
     return 'in ' + Math.floor(h / 24) + 'd ' + (h % 24) + 'h';
   }
   function money(n) { return '₹' + Number(n || 0).toLocaleString('en-IN'); }
+  /* The NPR aid for a Nepal desk. Rounded to a whole rupee the way
+     nprEstimate() does server-side, so the clerk and the quote agree. */
+  function npr(n) {
+    if (!NPR_PEG || !Number(n)) return '';
+    return 'NPR ' + Math.round(Number(n) * NPR_PEG).toLocaleString('en-IN');
+  }
+  function nprNote(n) {
+    var s = npr(n);
+    return s ? '<span class="qt-npr">≈ ' + s + '</span>' : '';
+  }
   function renderPlan() {
     if (!plan) return;
     var f = plan.fare || {};
@@ -606,7 +630,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       + '<div><small>Bus departs</small><b>' + esc(plan.depTime || '—') + '</b><em>' + esc(plan.from) + '</em></div>'
       + '<div><small>Boarding · चढ्ने ठाउँ</small><b>' + esc(plan.boardingCode) + ' · ' + esc(plan.boardingName) + '</b><em>' + esc(plan.boardingTime || '') + (plan.departsInMin != null ? ' · ' + inLabel(plan.departsInMin) : '') + '</em></div>'
       + '<div><small>Seat' + ((plan.seats || []).length > 1 ? 's' : '') + '</small><b>' + esc(seatsTxt) + '</b><em>' + esc(plan.seatsLeft) + ' free · ' + esc(plan.coach) + '</em></div>'
-      + '<div class="big"><small>Fare · भाडा</small><b>' + money(f.total) + '</b><em>' + esc(plan.seatCount) + ' × ' + money(f.perSeat) + (f.groupDiscount > 0 ? ' · group −' + money(f.groupDiscount) : '') + (f.fee > 0 ? ' + fee ' + money(f.fee) : '') + '</em></div>'
+      + '<div class="big"><small>Fare · भाडा</small><b>' + money(f.total) + nprNote(f.total) + '</b><em>' + esc(plan.seatCount) + ' × ' + money(f.perSeat) + (f.groupDiscount > 0 ? ' · group −' + money(f.groupDiscount) : '') + (f.fee > 0 ? ' + fee ' + money(f.fee) : '') + '</em></div>'
       + '</div>'
       + '<div class="qt-why">' + (plan.matchedDesk ? '📍 Desk pickup remembered — <b>' + esc(plan.boardingName) + '</b>.' : '📍 First pickup still ahead. Tap a stop under Options → Boarding to make it this desk\'s default.') + '</div>';
     if (plan.alternatives && plan.alternatives.length) {
@@ -807,7 +831,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       + '<div><small>Bus</small><b>' + esc(d.route) + '</b><em>' + esc(d.dateLabel) + ' · dep ' + esc(d.depTime) + '</em></div>'
       + '<div><small>Boarding</small><b>' + esc(d.boardingCode) + ' · ' + esc(d.boardingName) + '</b><em>' + esc(d.boardingTime) + '</em></div>'
       + '<div><small>Seat' + ((d.seats || []).length > 1 ? 's' : '') + '</small><b>' + esc(seatLabelJoin(d.seats, 'sleeper', 'sharing')) + '</b></div>'
-      + '<div class="big"><small>Fare</small><b>' + esc(d.totalLabel) + '</b><em>received · ' + esc(st.pay) + '</em></div>'
+      + '<div class="big"><small>Fare</small><b>' + esc(d.totalLabel) + nprNote(d.total) + '</b><em>received · ' + esc(st.pay) + '</em></div>'
       + '</div>'
       + '<div class="qt-wa ' + waCls + '">' + waTxt + (wa.link ? ' <a class="btn" href="' + esc(wa.link) + '" target="_blank" rel="noopener">💬 Send on WhatsApp</a>' : '') + '</div>'
       + '<div class="qt-actions">'

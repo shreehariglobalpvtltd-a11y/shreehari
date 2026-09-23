@@ -1331,7 +1331,31 @@ function initQuickTicket() {
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!mic || !line || !SR || line.hidden) return;
     mic.hidden = false; if (wrap) wrap.classList.add('has-mic');
-    var rec = null;
+    var rec = null, hush = null, cap = null;
+
+    /* 24 Sep 2026 (owner: "understand different speaking styles … short or
+       incomplete sentences"). The single biggest accuracy problem here was
+       not the parser — it was that this ran in the default one-shot mode.
+       Android ends recognition at the FIRST pause, and a booking is spoken
+       with pauses in it: "Ram Bahadur … nau aath saat … dui sit … bholi".
+       Everything after the first gap was simply never heard, and the desk
+       blamed the parser for a line it was never given.
+
+       continuous:true keeps the session open across those gaps; a 2.2s
+       hush timer after the last FINAL result closes it so nobody has to
+       find the stop button, and a 20s cap means a phone left face-down in
+       a pocket cannot hold the microphone open. */
+    function stopSoon(ms) {
+      clearTimeout(hush);
+      hush = setTimeout(function () { try { if (rec) rec.stop(); } catch (e) {} }, ms);
+    }
+    function done() {
+      clearTimeout(hush); clearTimeout(cap);
+      mic.classList.remove('listening');
+      mic.setAttribute('aria-pressed', 'false');
+      rec = null;
+    }
+
     mic.addEventListener('click', function () {
       if (rec) { try { rec.stop(); } catch (e) {} return; }
       try {
@@ -1339,17 +1363,47 @@ function initQuickTicket() {
         var map = { en: 'en-IN', hi: 'hi-IN', ne: 'ne-NP', gu: 'gu-IN' };
         rec.lang = map[typeof LANG === 'string' ? LANG : 'ne'] || 'en-IN';
         rec.interimResults = true; rec.maxAlternatives = 1;
+        try { rec.continuous = true; } catch (e) { /* older engines ignore it */ }
         mic.classList.add('listening');
+        mic.setAttribute('aria-pressed', 'true');
+        try { if (window.SHGFeel) window.SHGFeel.fire('select'); } catch (e) {}
+
         rec.onresult = function (ev) {
-          var out = '';
-          for (var i = 0; i < ev.results.length; i++) out += ev.results[i][0].transcript;
+          var out = '', final = false;
+          for (var i = 0; i < ev.results.length; i++) {
+            out += ev.results[i][0].transcript;
+            if (ev.results[i].isFinal) final = true;
+          }
           line.value = out;
           line.dispatchEvent(new Event('input', { bubbles: true }));
+          /* A pause AFTER something was actually heard ends the turn; while
+             the speaker is still mid-phrase the timer keeps being pushed
+             out, which is what lets a sentence with gaps arrive whole. */
+          if (final) stopSoon(2200);
         };
-        rec.onend = function () { mic.classList.remove('listening'); rec = null; };
-        rec.onerror = function () { mic.classList.remove('listening'); rec = null; toast(t('qtMicErr')); };
+        rec.onspeechend = function () { stopSoon(1200); };
+        rec.onend = function () {
+          done();
+          try { if (window.SHGFeel) window.SHGFeel.fire('tap'); } catch (e) {}
+        };
+        rec.onerror = function (ev) {
+          var why = ev && ev.error;
+          done();
+          /* "aborted" is the user tapping stop — not a failure to report.
+             A refused microphone needs its own sentence, because telling
+             somebody to "speak again" when the browser has blocked the mic
+             is the most frustrating message the app could give. */
+          if (why === 'aborted') return;
+          if (why === 'not-allowed' || why === 'service-not-allowed') {
+            toast('🎤 ' + t('qtMicErr'));
+            return;
+          }
+          toast(t('qtMicErr'));
+          try { if (window.SHGFeel) window.SHGFeel.fire('error'); } catch (e) {}
+        };
         rec.start();
-      } catch (e) { mic.classList.remove('listening'); rec = null; }
+        cap = setTimeout(function () { try { if (rec) rec.stop(); } catch (e) {} }, 20000);
+      } catch (e) { done(); }
     });
   })();
   if (line) {
