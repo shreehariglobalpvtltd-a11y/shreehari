@@ -70,6 +70,7 @@ $clock = static fn(?array $s): string => $s === null ? '??' : date('g:i A', (int
 /* ---- greeting ------------------------------------------------------ */
 $r = $ask('01', 'namaste');
 check('"namaste" is answered locally', $r !== null && $r['intent'] === 'greeting', json_encode($r, JSON_UNESCAPED_UNICODE));
+check('a bare greeting is answered in Nepali', $r !== null && str_contains($r['text'], 'नमस्ते'), (string) ($r['text'] ?? ''));
 
 /* ---- fare ---------------------------------------------------------- */
 $r = $ask('02', 'bhada kati parcha?');
@@ -107,6 +108,8 @@ $r = $ask('09', 'website k ho?');
 check('website: the company site', $r !== null && str_contains($r['text'], Settings::getString('company_web', 'shreehariglobal.in')), (string) ($r['text'] ?? ''));
 $r = $ask('10', 'office ko contact dinus');
 check('office: the one office number', $r !== null && str_contains($r['text'], Settings::officePhone()), (string) ($r['text'] ?? ''));
+$r = $ask('13', 'office kaha cha?');
+check('"office kaha cha?" is about us, answered locally', $r !== null && $r['intent'] === 'contact', json_encode($r, JSON_UNESCAPED_UNICODE));
 
 /* ---- knowledge base, only on a strong match ------------------------- */
 Database::insert('ai_kb_articles', ['category' => 'test', 'slug' => 'zztest-faq', 'canonical_title' => 'ZZ faq article',

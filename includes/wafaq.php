@@ -93,7 +93,8 @@ final class WaFaq
         $intents = [];
         if (self::isGreeting($t)) {
             $intents[] = 'greeting';
-            $parts[]   = self::greeting($fromRaw, $who, $lang);
+            // A bare "namaste" / "hi" carries no language signal; the desk speaks Nepali first.
+            $parts[]   = self::greeting($fromRaw, $who, $lang === 'en' ? 'ne' : $lang);
         } else {
             $isFare  = self::has($t, self::FARE);
             $isTime  = self::has($t, self::TIME);
@@ -233,10 +234,11 @@ final class WaFaq
                 foreach ($r['board'] as $s) {
                     $name = mb_strtolower($s['name']);
                     if ($want === $name || str_contains($name, $want) || str_contains($want, $name)) {
+                        $at = self::short($s['name']);
                         return self::t($lang,
-                            $s['name'] . ' बाट ' . $r['to'] . ' जाने बस हरेक दिन ' . self::clock($s['time']) . ' मा छुट्छ। ' . $early,
-                            $s['name'] . ' से ' . $r['to'] . ' जाने वाली बस रोज़ ' . self::clock($s['time']) . ' बजे निकलती है। ' . $early,
-                            'The bus from ' . $s['name'] . ' to ' . $r['to'] . ' leaves daily at ' . self::clock($s['time']) . '. ' . $early);
+                            $at . ' बाट ' . $r['to'] . ' जाने बस हरेक दिन ' . self::clock($s['time']) . ' मा छुट्छ। ' . $early,
+                            $at . ' से ' . $r['to'] . ' जाने वाली बस रोज़ ' . self::clock($s['time']) . ' पर निकलती है। ' . $early,
+                            'The bus from ' . $at . ' to ' . $r['to'] . ' leaves daily at ' . self::clock($s['time']) . '. ' . $early);
                     }
                 }
             }
@@ -313,20 +315,32 @@ final class WaFaq
      *  Helpers
      * ================================================================= */
 
-    /** Their own ticket, money, number or a complaint — never a canned answer. */
+    /**
+     * Their own ticket, money, number or a complaint — never a canned answer.
+     * Its own list, narrower than WaBooking's: "office kaha cha?" is a
+     * question about US, while WaBooking (which guards a SALE) treats every
+     * "kaha cha" as a reason not to sell.
+     */
+    private const PERSONAL = ['mero', 'mera', 'meri', 'my', 'hamro', 'hamaro', 'humara', 'हमारा', 'मेरो', 'मेरा', 'मेरी', 'हाम्रो',
+        'admin', 'ticket kahile', 'ticket aau', 'ticket aun',
+        'galat', 'galti', 'wrong', 'mistake', 'problem', 'samasya', 'error', 'aayena', 'aaena', 'ayena', 'aayeko chaina',
+        'pugena', 'milena', 'nahi aaya', 'nahi aya', 'not received', 'cancel', 'radd', 'refund', 'paisa firta', 'paise wapas',
+        'change', 'badal', 'sachya', 'sudhar', 'correct', 'reschedule', 'resend', 'pathaideu', 'harayo', 'lost',
+        'payment gar', 'payment kiya', 'paisa tire', 'paid', 'katyo', 'kat gaya', 'complain', 'gunaso', 'ujuri',
+        'गलत', 'गल्ती', 'आएन', 'पुगेन', 'मिलेन', 'समस्या', 'रद्द', 'क्यान्सिल', 'फिर्ता', 'रिफन्ड', 'बदल', 'सच्या', 'हरायो',
+        'गुनासो', 'नहीं आया'];
+
     private static function personal(string $t): bool
     {
         if (preg_match('/shg[-\s]?[a-z0-9]/iu', $t) === 1) {
             return true;
         }
-        foreach (['mero', 'mera', 'meri', 'my', 'hamro', 'hamaro', 'humara', 'हमारा', 'मेरो', 'मेरा', 'मेरी', 'हाम्रो', 'admin',
-                  'ticket kahile', 'ticket aau', 'ticket aun'] as $w) {
-            if (preg_match('/(?<![\p{L}\p{M}])' . preg_quote($w, '/') . '(?![\p{L}\p{M}])/u', $t) === 1) {
+        foreach (self::PERSONAL as $w) {
+            if (preg_match('/(?<![\p{L}\p{M}\p{N}])' . preg_quote($w, '/') . '/u', $t) === 1) {
                 return true;
             }
         }
-        require_once INCLUDE_PATH . '/wabooking.php';
-        return WaBooking::aboutExistingTicket($t);
+        return false;
     }
 
     private static function isGreeting(string $t): bool
