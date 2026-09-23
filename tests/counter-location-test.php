@@ -38,6 +38,10 @@ if (PHP_SAPI !== 'cli') {
 
 define('SHG_APP', true);
 require_once __DIR__ . '/../includes/bootstrap.php';
+/* bootstrap.php brings up Settings and the database, not every class —
+   Ticket and AgentWallet are required where they are used. */
+require_once __DIR__ . '/../includes/ticket.php';
+require_once __DIR__ . '/../includes/agentwallet.php';
 
 $PASS = 0;
 $FAIL = 0;
