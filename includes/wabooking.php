@@ -254,7 +254,14 @@ final class WaBooking
         if (Settings::getBool('wa_seat_photo_on', false) && (int) ($plan['scheduleId'] ?? 0) > 0) {
             try {
                 require_once INCLUDE_PATH . '/seatmappng.php';
-                $picture = SeatMapPng::url((int) $plan['scheduleId'], array_map('strval', (array) ($plan['seats'] ?? [])));
+                // Physical beds, so a private cabin lights up both of its berths.
+                $beds = [];
+                foreach ((array) ($plan['seats'] ?? []) as $s) {
+                    foreach (Seats::physicalSeats((string) $s, (string) ($plan['bookingMode'] ?? 'sharing'), (string) ($plan['coach'] ?? 'sleeper')) as $b) {
+                        $beds[] = (string) $b;
+                    }
+                }
+                $picture = SeatMapPng::url((int) $plan['scheduleId'], $beds);
             } catch (Throwable $e) {
                 $picture = null;
             }
@@ -340,7 +347,11 @@ final class WaBooking
         $time  = trim((string) ($plan['boardingTime'] ?? ''));
         $ts    = $time !== '' ? strtotime($time) : false;
         $timeL = $ts !== false ? date('g:i A', $ts) : $time;
-        $seats = implode(', ', array_map('strval', (array) ($plan['seats'] ?? [])));
+        /* 23 Sep 2026: the berth as the TICKET prints it (LB1, UA3 — Ticket::seatLabel
+           uses displayLabel), not the canonical L7 the database keeps. The summary said
+           "L7" and the ticket then said "LB1" for the same bed. */
+        $seats = Seats::displayLabels(array_map('strval', (array) ($plan['seats'] ?? [])),
+            (string) ($plan['coach'] ?? 'sleeper'), (string) ($plan['bookingMode'] ?? 'sharing'));
         $total = (float) ($plan['fare']['total'] ?? 0);
 
         $lines = [self::say('checkThis', $lang), ''];

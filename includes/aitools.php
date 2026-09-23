@@ -589,7 +589,10 @@ final class AiTools
                 'depTime'      => (string) $plan['depTime'],
                 'pickup'       => (string) $plan['boardingName'],
                 'pickupTime'   => (string) $plan['boardingTime'],
-                'seatNumbers'  => $plan['seats'],
+                // As the ticket prints them (LB1, UA3), not the canonical L7 (23 Sep 2026).
+                'seatNumbers'  => array_values(array_filter(array_map(
+                    static fn($s): string => Seats::displayLabel((string) $s, (string) ($plan['coach'] ?? 'sleeper'), (string) ($plan['bookingMode'] ?? 'sharing')),
+                    (array) $plan['seats']))),
                 'seatCount'    => (int) $plan['seatCount'],
                 'seatsLeft'    => (int) $plan['seatsLeft'],
                 'farePerSeat'  => (float) ($plan['fare']['perSeat'] ?? 0),
