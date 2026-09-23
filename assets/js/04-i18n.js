@@ -7,6 +7,16 @@
 ================================================================ */
 const I18N = {
 en: {
+  /* 23 Sep 2026: the WhatsApp ticket card + request sheet had these eleven keys in the markup but in no language - the page showed the raw key names */
+  waTicketTitle: 'Ticket with WhatsApp', waTicketIntro: 'Send your name, mobile and journey details. Continue booking in WhatsApp, request a ticket correction, or ask the office for help.',
+  waTicketStart: '🎫 Ticket with WhatsApp →', waReqFix: '✏️ Correct my ticket', waReqCountry: 'Country code',
+  waReqPhoneHint: "Use the number you will send from on WhatsApp. For someone else's ticket, ask the office.", waReqDirection: 'Direction', waReqPnr: 'Booking number (PNR)',
+  waReqChat: 'Continue in WhatsApp →', waReqChatSub: 'Review the message, then tap Send in WhatsApp.',
+  waReqPrivacy: 'Your details are shared with S Hari Global only when you send. A request does not confirm a seat or change a ticket.',
+  /* UI/UX v3 (23 Sep 2026): header call sheet + sound switch */
+  csTitle: 'Call or WhatsApp', csSub: 'Booking help · 7 AM – 10 PM · India &amp; Nepal', csFoot: 'Tap a row to call or open WhatsApp.',
+  csCall: 'Call the office', csWa: 'WhatsApp booking desk', csCeo: 'Director on WhatsApp', csMail: 'Email',
+  soundOn: 'Sound on', soundOff: 'Muted',
   navHome: 'Home', navBook: 'Book Tickets', navServices: 'Services', navRoute: 'India–Nepal',
   navAbout: 'About', navFaq: 'FAQ', navContact: 'Contact', navMy: 'My Bookings', navStaff: 'Agent / Staff sign-in', agentLateSummary: 'Agent? Enter your code to book a departed bus (24h)',
   navTerms: 'Terms &amp; Conditions', navBookNow: 'Book Now', navSignIn: 'Sign in',
@@ -391,6 +401,14 @@ en: {
   rgMap: 'Show on map', rgNone: 'The route guide is not available right now.', payApps: 'Or tap your UPI app:'
 },
 hi: {
+  waTicketTitle: 'WhatsApp से टिकट', waTicketIntro: 'अपना नाम, मोबाइल और यात्रा विवरण भेजें। WhatsApp में बुकिंग जारी रखें, टिकट सुधार माँगें या ऑफिस से मदद लें।',
+  waTicketStart: '🎫 WhatsApp से टिकट →', waReqFix: '✏️ मेरा टिकट सुधारें', waReqCountry: 'देश कोड',
+  waReqPhoneHint: 'वही नंबर लिखें जिससे आप WhatsApp पर भेजेंगे। किसी और के टिकट के लिए ऑफिस से पूछें।', waReqDirection: 'दिशा', waReqPnr: 'बुकिंग नंबर (PNR)',
+  waReqChat: 'WhatsApp में जारी रखें →', waReqChatSub: 'संदेश जाँचें, फिर WhatsApp में Send दबाएँ।',
+  waReqPrivacy: 'आपका विवरण S Hari Global को तभी जाता है जब आप भेजते हैं। अनुरोध से सीट पक्की नहीं होती और टिकट नहीं बदलता।',
+  csTitle: 'कॉल या WhatsApp', csSub: 'बुकिंग सहायता · सुबह 7 – रात 10 · भारत और नेपाल', csFoot: 'कॉल या WhatsApp खोलने के लिए किसी पंक्ति पर टैप करें।',
+  csCall: 'ऑफिस को कॉल करें', csWa: 'WhatsApp बुकिंग डेस्क', csCeo: 'डायरेक्टर से WhatsApp पर', csMail: 'ईमेल',
+  soundOn: 'आवाज़ चालू', soundOff: 'म्यूट',
   navHome: 'होम', navBook: 'टिकट बुक करें', navServices: 'सेवाएं', navRoute: 'भारत–नेपाल',
   navAbout: 'कंपनी', navFaq: 'सवाल-जवाब', navContact: 'संपर्क', navMy: 'मेरी बुकिंग', navStaff: 'एजेंट / स्टाफ लॉगिन', agentLateSummary: 'एजेंट हैं? छूटी बस बुक करने के लिए कोड डालें (24 घंटे)',
   navTerms: 'नियम व शर्तें', navBookNow: 'अभी बुक करें', navSignIn: 'लॉगिन',
@@ -770,6 +788,14 @@ hi: {
   rgMap: 'मैप पर देखें', rgNone: 'रूट गाइड अभी उपलब्ध नहीं है।', payApps: 'या अपना UPI ऐप दबाएँ:'
 },
 ne: {
+  waTicketTitle: 'WhatsApp बाट टिकट', waTicketIntro: 'आफ्नो नाम, मोबाइल र यात्राको विवरण पठाउनुहोस्। WhatsApp मा बुकिङ जारी राख्नुहोस्, टिकट सच्याउन भन्नुहोस् वा अफिससँग सहयोग माग्नुहोस्।',
+  waTicketStart: '🎫 WhatsApp बाट टिकट →', waReqFix: '✏️ मेरो टिकट सच्याउनुहोस्', waReqCountry: 'देश कोड',
+  waReqPhoneHint: 'WhatsApp बाट पठाउने नम्बर नै लेख्नुहोस्। अरूको टिकटका लागि अफिसलाई सोध्नुहोस्।', waReqDirection: 'दिशा', waReqPnr: 'बुकिङ नम्बर (PNR)',
+  waReqChat: 'WhatsApp मा जारी राख्नुहोस् →', waReqChatSub: 'सन्देश हेर्नुहोस्, अनि WhatsApp मा Send थिच्नुहोस्।',
+  waReqPrivacy: 'तपाईंको विवरण पठाउँदा मात्र S Hari Global मा जान्छ। अनुरोधले सिट पक्का गर्दैन, टिकट बदल्दैन।',
+  csTitle: 'कल वा WhatsApp', csSub: 'बुकिङ सहायता · बिहान 7 – राति 10 · भारत र नेपाल', csFoot: 'कल गर्न वा WhatsApp खोल्न कुनै पङ्क्तिमा ट्याप गर्नुहोस्।',
+  csCall: 'अफिसमा कल गर्नुहोस्', csWa: 'WhatsApp बुकिङ डेस्क', csCeo: 'डाइरेक्टरसँग WhatsApp मा', csMail: 'इमेल',
+  soundOn: 'आवाज खुला', soundOff: 'म्युट',
   navHome: 'होम', navBook: 'टिकट बुक गर्नुहोस्', navServices: 'सेवाहरू', navRoute: 'भारत–नेपाल',
   navAbout: 'कम्पनी', navFaq: 'प्रश्नोत्तर', navContact: 'सम्पर्क', navMy: 'मेरो बुकिङ', navStaff: 'एजेन्ट / स्टाफ लगइन', agentLateSummary: 'एजेन्ट हो? छुटेको बस बुक गर्न कोड राख्नुहोस् (२४ घण्टा)',
   navTerms: 'नियम तथा सर्तहरू', navBookNow: 'बुक गर्नुहोस्', navSignIn: 'लगइन',

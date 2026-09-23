@@ -44,8 +44,13 @@
      the first frame instead of swapping in later. Noto Sans Devanagari is
      named explicitly because Hindi and Nepali are first-class here and the
      Latin system faces do not cover the script. */
-  --f-display:'Cinzel', Georgia, serif;
-  --f-body:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,'Noto Sans Devanagari',sans-serif;
+  /* 23 Sep 2026 (UI/UX v3): ONE typeface everywhere - Poppins, self-hosted
+     (latin + latin-ext + devanagari subsets, 400/500/600/700), declared
+     inline in app.template.html. Cinzel is no longer downloaded; the display
+     face and body face are the same family so headings and text read as one
+     app instead of a serif brand strip on a sans page. */
+  --f-display:'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans Devanagari',sans-serif;
+  --f-body:'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,'Noto Sans Devanagari',sans-serif;
   --f-code:ui-monospace,'SF Mono',SFMono-Regular,'Roboto Mono',Menlo,Consolas,monospace; /* codes, times, seat & ticket numbers */
 
   --bhagwan-img: url('');
@@ -61,6 +66,25 @@
   --dur-fast:150ms;
   --dur-base:250ms;
   --dur-slow:400ms;
+
+  /* ---- v3 DESIGN TOKENS (23 Sep 2026) - the palette every NEW component
+     uses. Aliases over the existing --blue/--orange so the seven day
+     palettes and the logo palette still drive them; the extra hues (sky,
+     gold, WhatsApp green, bot violet) are fixed brand values. ---- */
+  --navy:var(--blue-deep);  --brand:var(--blue);  --cta:var(--orange);  --cta-600:var(--orange-600);  --cta-100:var(--orange-100);
+  --sky:#38A8F5;  --sky-100:#DFF2FF;  --sky-deep:#0B78C2;
+  --gold:#D4A017;  --gold-100:#FFF3D1;  --gold-deep:#8A6400;
+  --wa:#25D366;  --wa-deep:#128C7E;  --wa-100:#E3F9EC;
+  --bot:#6D4AFF;  --bot-deep:#4A2FCC;  --bot-100:#ECE7FF;
+  /* seat legend (visual only - the seat engine and its class names are untouched) */
+  --seat-free:#FFFFFF;  --seat-free-line:var(--blue-deep);  --seat-sel:var(--orange);  --seat-bkd:#C9D1DE;  --seat-bkd-ink:#6B7A93;
+  --seat-hold:#F5B400;  --seat-ladies:#F472B6;  --seat-ladies-100:#FDE7F3;  --seat-pvt:var(--gold);  --seat-pvt-100:var(--gold-100);
+  /* boarding-point colour dots */
+  --bp-srt:#2E5FA8;  --bp-brd:#0E9F6E;  --bp-ebp:#7C3AED;  --bp-shp:#F07C1F;  --bp-mhsa:#DB2777;  --bp-rpd:#DC2626;
+  /* spacing / radius / touch scale */
+  --sp-1:4px;  --sp-2:8px;  --sp-3:12px;  --sp-4:16px;  --sp-5:20px;  --sp-6:24px;  --sp-8:32px;
+  --r-lg:22px;  --r-xl:28px;  --r-pill:999px;  --tap:48px;
+  --shadow-glow:0 0 0 1px rgba(255,255,255,.6), 0 10px 30px rgba(18,38,78,.16);
 }
 
 /* ---------- [CSS] 1b. DAILY COLOR THEMES — 7 palettes rotate by day-of-week ---------- */

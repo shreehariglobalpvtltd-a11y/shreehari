@@ -629,7 +629,7 @@ const RoleGate = {
 const Splash = {
   el: null, bar: null, status: null, skip: null, done: false,
   progress: 0, tasks: 0, completed: 0, startTs: 0, dataReady: false,
-  trailer: false, soundOn: false, _ac: null,
+  trailer: false, soundOn: false, _ac: null, introMs: 0, barAuto: false,
   /* A floor, not a wait. Long enough that the logo doesn't flash past on a
      fast connection, short enough that nobody is ever held back by it —
      this used to be 5000, so a booking that had loaded in 300ms still sat
@@ -695,14 +695,32 @@ const Splash = {
        not from when this file arrived, and the countdown bar drains what is left. */
     var _intro7 = !this.trailer && this.el.classList.contains('intro7');
     var _introTotal = 0;
+    /* 23 Sep 2026 (UI/UX v3): the branded launch now runs on EVERY cold
+       session (the inline script under #splash adds .intro7 whenever
+       sessionStorage has no shg:splashed), not only on the first-ever visit:
+       ~4.5 s, the name arriving word by word, the logo scaling in and a thin
+       progress bar underneath - while the data load runs behind it. Within
+       the same session every further navigation is instant (splash skipped
+       entirely, see the top of init). Reduced motion: 1.5 s, no choreography. */
     if (_intro7) {
       try { localStorage.setItem('shg:intro7', '1'); } catch (e) {}
-      _introTotal = (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) ? 2500 : 7000;
+      _introTotal = (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) ? 1500 : 4500;
       this.startTs = 0;
       this.portalMs = Math.max(1200, _introTotal - Math.round(performance.now()));
+      this.introMs = _introTotal;
+      /* The thin bar drains once, on the compositor, over the whole hold;
+         tick() leaves it alone while it runs and finish() snaps it to 100%. */
+      if (this.bar) {
+        this.barAuto = true;
+        var _bar = this.bar, _left = Math.max(300, _introTotal - Math.round(performance.now()));
+        _bar.style.transition = 'width ' + _left + 'ms linear';
+        requestAnimationFrame(function () { requestAnimationFrame(function () { _bar.style.width = '96%'; }); });
+      }
     }
     if (!this.trailer) this.minDuration = _intro7 ? _introTotal : (_seenRole ? 250 : this.portalMs);
-    if (!this.trailer && (!_seenRole || _intro7)) this.armPortal();
+    /* v3: the branded launch stands alone (logo, name, bar, coach, founder,
+       phone, Skip) - the old feature/countdown strip is not armed under it. */
+    if (!this.trailer && !_seenRole && !_intro7) this.armPortal();
 
     const sb = $('#splashSound');
     if (sb) sb.addEventListener('click', () => {
@@ -713,7 +731,9 @@ const Splash = {
     });
     this.animateTitle();
     if (this.skip) {
-      setTimeout(() => { this.skip.classList.add('show'); }, this.trailer ? 2500 : 600);
+      /* Skip appears after 2 s (brief §1) so the brand still registers, and
+         nobody is ever held longer than they want. */
+      setTimeout(() => { this.skip.classList.add('show'); }, this.trailer ? 2500 : (_intro7 ? 2000 : 600));
       this.skip.addEventListener('click', () => this.finish());
     }
     /* Safety net: if the data never arrives (dead network, KV down) the
@@ -789,21 +809,24 @@ const Splash = {
          FIRST frame. Splitting it into letters is a nice-to-have: only do it
          when the text is still the seeded name, and never blank the element
          first — wiping it made the name blink out and back on every launch. */
+      /* v3 (23 Sep 2026): the markup now carries the name as four words
+         (.sw spans, animated by CSS), so the letter split is skipped - but
+         the phone fill and the reveals below MUST still run. */
       if (title.textContent.trim() && title.textContent.trim() !== name) {
+        if (!title.getAttribute('aria-label')) title.setAttribute('aria-label', name);
+      } else {
+        title.textContent = '';
         title.setAttribute('aria-label', name);
-        return;
-      }
-      title.textContent = '';
-      title.setAttribute('aria-label', name);
-      let i = 0;
-      for (const ch of name) {
-        if (ch === ' ') { title.appendChild(document.createTextNode(' ')); continue; }
-        const s = document.createElement('span');
-        s.className = 'ltr';
-        s.setAttribute('aria-hidden', 'true');
-        s.style.setProperty('--i', i++);
-        s.textContent = ch;
-        title.appendChild(s);
+        let i = 0;
+        for (const ch of name) {
+          if (ch === ' ') { title.appendChild(document.createTextNode(' ')); continue; }
+          const s = document.createElement('span');
+          s.className = 'ltr';
+          s.setAttribute('aria-hidden', 'true');
+          s.style.setProperty('--i', i++);
+          s.textContent = ch;
+          title.appendChild(s);
+        }
       }
     }
     const ph = $('#splashPhone');
@@ -824,9 +847,12 @@ const Splash = {
        minDuration to a 500ms floor, so anything revealed after ~400ms would
        never be seen — the brand promise here is logo + name + phone, so all
        three must be on screen before finish() starts the fade. */
+    /* v3 launch: the words of the name land at .5/1.3/2.1/2.9 s (CSS, so they
+       start on the first frame); tagline and phone follow the last word. */
+    var _slow = this.introMs > 2000;
     reveal('#splashTitle', 40);
-    reveal('#splashTagline', 130);
-    reveal('#splashPhone', 210);
+    reveal('#splashTagline', _slow ? 2900 : 130);
+    reveal('#splashPhone', _slow ? 3200 : 210);
     /* (the skip button is revealed separately in init(), at 1.2s) */
   },
   /* The 2-second staff window. Purely additive: it rides on top of the
@@ -900,13 +926,13 @@ const Splash = {
   tick(label) {
     this.completed++;
     this.progress = Math.min(95, Math.round(this.completed / Math.max(1, this.tasks) * 95));
-    if (this.bar) this.bar.style.width = this.progress + '%';
+    if (this.bar && !this.barAuto) this.bar.style.width = this.progress + '%';
     if (this.status) this.status.textContent = label || this.messages[Math.min(this.completed - 1, this.messages.length - 1)] || '';
   },
   setTotal(n) { this.tasks = n; },
   markReady() {
     this.dataReady = true;
-    if (this.bar) this.bar.style.width = '95%';
+    if (this.bar && !this.barAuto) this.bar.style.width = '95%';
     if (this.status) this.status.textContent = 'Almost ready…';
     const elapsed = performance.now() - this.startTs;
     const wait = Math.max(0, this.minDuration - elapsed);
@@ -916,7 +942,7 @@ const Splash = {
     if (this.done) return;
     this.done = true;
     this.stopPortal();
-    if (this.bar) this.bar.style.width = '100%';
+    if (this.bar) { this.bar.style.transition = 'width .25s ease-out'; this.bar.style.width = '100%'; }
     if (this.status) { this.status.style.opacity = '0'; setTimeout(() => { if (this.status) this.status.textContent = '✓ Ready'; this.status.style.opacity = '1'; }, 200); }
     try { sessionStorage.setItem('shg:splashed', '1'); } catch (e) {}
     /* Hand the role picker over AS the splash fades, not after it. The two
@@ -1908,8 +1934,13 @@ async function init() {
      number strip sat above it as its own 57px bar. The pills move INTO the
      nav row (renderContactStrip keeps writing into #numInner by id), so
      one bar does both jobs and the booking card climbs into view. */
+  /* 23 Sep 2026 (UI/UX v3): NOT any more. Up to eight pills in a 390px row
+     overflowed past the hamburger and pushed the logo out of the header.
+     The nav row is logo + Call + menu; every configured number is one tap
+     away in the Call sheet (19-ux.js reads contactNumbers() too). The move
+     stays only for a page without the v3 Call button. */
   try {
-    if (window.matchMedia && window.matchMedia('(max-width:760px)').matches) {
+    if (!$('#navCallBtn') && window.matchMedia && window.matchMedia('(max-width:760px)').matches) {
       var _ni = $('#numInner'), _hb = $('#hamburger');
       if (_ni && _hb && _hb.parentNode) _hb.parentNode.insertBefore(_ni, _hb);
     }
