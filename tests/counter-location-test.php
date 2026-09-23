@@ -42,6 +42,7 @@ require_once __DIR__ . '/../includes/bootstrap.php';
    Ticket and AgentWallet are required where they are used. */
 require_once __DIR__ . '/../includes/ticket.php';
 require_once __DIR__ . '/../includes/agentwallet.php';
+require_once __DIR__ . '/../includes/pdf.php';
 
 $PASS = 0;
 $FAIL = 0;
