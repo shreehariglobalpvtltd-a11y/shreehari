@@ -69,6 +69,21 @@ en: {
   haHelp: 'Get Help', haHelpSub: '📞 Call · 💬 WhatsApp',
   qtBadge: '🤖 QuickBot Ticket — 10-Second Booking',
   bkQuick: '⚡ QuickBot · 10 sec', bkQuickSub: 'name + mobile → ticket', bkRegular: '🪑 Choose seat', bkRegularSub: 'date · seat map · pay', bkBackQuick: 'QuickBot: name + mobile → ticket in 10 seconds', bkSwitch: 'Switch →', qtAi1: 'Reads Nepali · Hindi · Gujarati · English', qtAi2: 'Picks the next bus · safe seat · fare', qtAi3: 'tickets issued', qtAlt: 'Prefer to pick your own seat? Open the seat-map booking', qtMicErr: 'Could not hear you — please type instead.', qtMicTip: 'Speak your booking',
+  /* WhatsApp ticket desk (24 Sep 2026): the markup carried these eleven
+     keys and no language defined them, so applyLang() replaced good English
+     with the key name on the live home page. */
+  waTicketTitle: 'Ticket with WhatsApp',
+  waTicketIntro: 'Send your name, mobile and journey details. Continue booking in WhatsApp, request a ticket correction, or ask the office for help.',
+  waTicketStart: '🎫 Ticket with WhatsApp →',
+  waReqChat: 'Continue in WhatsApp →',
+  waReqChatSub: 'Review the message, then tap Send in WhatsApp',
+  waReqCountry: 'Country code',
+  waReqDirection: 'Direction',
+  waReqFix: '✏️ Correct my ticket',
+  waReqPhoneHint: 'Use the number you will send from on WhatsApp. For someone else\u2019s ticket, ask the office.',
+  waReqPnr: 'Booking number (PNR)',
+  waReqPrivacy: 'Your details are shared with S Hari Global only when you send. A request does not confirm a seat or change a ticket.',
+
   qtTitle: 'Name + mobile → auto suggest → one tap → ticket ready',
   qtSub: 'Type one line — "Ram 9876543210, 2 seats, Vadodara tomorrow" — or just your name + mobile. QuickBot fills the bus, date, pickup, passengers, seat and fare from your earlier trips; tap Confirm once and your ticket is ready as PNG + PDF and on WhatsApp.',
   qtNamePh: 'Your name', qtPhonePh: 'Mobile (WhatsApp)', qtCta: '⚡ Confirm & Issue Ticket', qtDateLbl: 'Travel date',
@@ -454,6 +469,18 @@ hi: {
   haHelp: 'सहायता', haHelpSub: '📞 कॉल · 💬 WhatsApp',
   qtBadge: '🤖 QuickBot Ticket — 10 सेकंड में booking',
   bkQuick: '⚡ QuickBot · 10 सेकंड', bkQuickSub: 'नाम + मोबाइल → टिकट', bkRegular: '🪑 सीट चुनें', bkRegularSub: 'तारीख · सीट मैप · भुगतान', bkBackQuick: 'QuickBot: नाम + मोबाइल → 10 सेकंड में टिकट', bkSwitch: 'बदलें →', qtAi1: 'नेपाली · हिन्दी · गुजराती · English पढ़ता है', qtAi2: 'अगली बस · सुरक्षित सीट · किराया खुद चुनता है', qtAi3: 'टिकट जारी', qtAlt: 'अपनी सीट खुद चुनना है? सीट-मैप बुकिंग खोलें', qtMicErr: 'आवाज़ समझ नहीं आई — कृपया टाइप करें।', qtMicTip: 'बोलकर बुक करें',
+  waTicketTitle: 'WhatsApp से टिकट',
+  waTicketIntro: 'अपना नाम, मोबाइल और यात्रा की जानकारी भेजें। WhatsApp पर बुकिंग जारी रखें, टिकट में सुधार माँगें, या ऑफिस से मदद लें।',
+  waTicketStart: '🎫 WhatsApp से टिकट →',
+  waReqChat: 'WhatsApp में जारी रखें →',
+  waReqChatSub: 'संदेश देख लें, फिर WhatsApp में Send दबाएँ',
+  waReqCountry: 'देश कोड',
+  waReqDirection: 'दिशा',
+  waReqFix: '✏️ मेरा टिकट सुधारें',
+  waReqPhoneHint: 'वही नंबर दें जिससे आप WhatsApp पर भेजेंगे। किसी और के टिकट के लिए ऑफिस से बात करें।',
+  waReqPnr: 'बुकिंग नंबर (PNR)',
+  waReqPrivacy: 'आपकी जानकारी भेजने पर ही S Hari Global को मिलती है। अनुरोध से सीट पक्की नहीं होती और टिकट नहीं बदलता।',
+
   qtTitle: 'नाम + मोबाइल → auto suggest → एक टैप → टिकट तैयार',
   qtSub: 'एक लाइन लिखें — "Ram 9876543210, 2 seats, Vadodara tomorrow" — या सिर्फ़ नाम + मोबाइल। QuickBot आपके पिछले सफ़र से बस, तारीख़, pickup, यात्री, seat और किराया खुद भरता है; एक बार Confirm दबाएँ — टिकट PNG + PDF और WhatsApp पर।',
   qtNamePh: 'आपका नाम', qtPhonePh: 'मोबाइल (WhatsApp)', qtCta: '⚡ Confirm करें और टिकट लें', qtDateLbl: 'यात्रा की तारीख़',
@@ -834,6 +861,18 @@ ne: {
   haHelp: 'सहायता', haHelpSub: '📞 कल · 💬 WhatsApp',
   qtBadge: '🤖 QuickBot Ticket — १० सेकेन्डमा booking',
   bkQuick: '⚡ QuickBot · १० सेकेन्ड', bkQuickSub: 'नाम + मोबाइल → टिकट', bkRegular: '🪑 सिट छान्नुहोस्', bkRegularSub: 'मिति · सिट म्याप · भुक्तानी', bkBackQuick: 'QuickBot: नाम + मोबाइल → १० सेकेन्डमा टिकट', bkSwitch: 'बदल्नुहोस् →', qtAi1: 'नेपाली · हिन्दी · गुजराती · English पढ्छ', qtAi2: 'अर्को बस · सुरक्षित सिट · भाडा आफैँ छान्छ', qtAi3: 'टिकट जारी', qtAlt: 'आफ्नो सिट आफैँ छान्न चाहनुहुन्छ? सिट-म्याप booking खोल्नुहोस्', qtMicErr: 'आवाज बुझिएन — कृपया टाइप गर्नुहोस्।', qtMicTip: 'बोलेर book गर्नुहोस्',
+  waTicketTitle: 'WhatsApp बाट टिकट',
+  waTicketIntro: 'आफ्नो नाम, मोबाइल र यात्राको विवरण पठाउनुहोस्। WhatsApp मै booking अगाडि बढाउनुहोस्, टिकट सच्याउन अनुरोध गर्नुहोस्, वा अफिससँग सहयोग माग्नुहोस्।',
+  waTicketStart: '🎫 WhatsApp बाट टिकट →',
+  waReqChat: 'WhatsApp मा अगाडि बढ्नुहोस् →',
+  waReqChatSub: 'सन्देश हेर्नुहोस्, अनि WhatsApp मा Send थिच्नुहोस्',
+  waReqCountry: 'देश कोड',
+  waReqDirection: 'दिशा',
+  waReqFix: '✏️ मेरो टिकट सच्याउनुहोस्',
+  waReqPhoneHint: 'WhatsApp बाट जुन नम्बरबाट पठाउनुहुन्छ त्यही दिनुहोस्। अरूको टिकटको लागि अफिसमा सम्पर्क गर्नुहोस्।',
+  waReqPnr: 'बुकिङ नम्बर (PNR)',
+  waReqPrivacy: 'तपाईंको विवरण पठाएपछि मात्र S Hari Global सँग जान्छ। अनुरोधले सिट पक्का गर्दैन र टिकट बदल्दैन।',
+
   qtTitle: 'नाम + मोबाइल → auto suggest → एक ट्याप → टिकट तयार',
   qtSub: 'एउटै लाइनमा लेख्नुहोस् — "Ram 9876543210, 2 seats, Vadodara tomorrow" — वा नाम + मोबाइल मात्र। QuickBot ले तपाईंका पुराना यात्राबाट बस, मिति, चढ्ने ठाउँ, यात्री, सिट र भाडा आफैँ भर्छ; एक पटक Confirm थिच्नुहोस् — टिकट PNG + PDF र WhatsApp।',
   qtNamePh: 'तपाईंको नाम', qtPhonePh: 'मोबाइल (WhatsApp)', qtCta: '⚡ Confirm गरी टिकट लिनुहोस्', qtDateLbl: 'यात्रा मिति',
@@ -1179,7 +1218,18 @@ function applyLang() {
      boards are built from t()/tf(), so a language switch that skipped them
      left the fares in the previous language while everything else changed. */
   document.documentElement.lang = LANG;
-  $$('[data-i18n]').forEach(el => { el.innerHTML = t(el.getAttribute('data-i18n')); });
+  /* 24 Sep 2026: t() returns the KEY when nothing is defined for it, so an
+     element whose key was never added had its perfectly good English
+     fallback markup overwritten with the developer's key name — eleven of
+     them were printing "waTicketTitle", "waReqChat" and friends to real
+     customers on the home page. The markup fallback is always better than a
+     key, so an unknown key now leaves the element exactly as authored.
+     tests/i18n-check.js still reports the gap, which is where it belongs. */
+  $$('[data-i18n]').forEach(el => {
+    const k = el.getAttribute('data-i18n');
+    const s = t(k);
+    if (s !== k) el.innerHTML = s;
+  });
   $$('[data-i18n-ph]').forEach(el => { el.setAttribute('placeholder', t(el.getAttribute('data-i18n-ph'))); });
   /* 20 Sep 2026: an icon-only control (the office 📍, the mic, the sheet's
      close X) has no text to translate - its label is the title / aria-label.
