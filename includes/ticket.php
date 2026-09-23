@@ -498,6 +498,21 @@ final class Ticket
             $phone = '';
         }
 
+        /* WHERE the ticket was cut (owner ask, 24 Sep 2026: "ticket [ma] by
+           name ra counter ko location hos, dekhine gari"). The desk's town
+           and its short code live on admin_profiles — loadBooking() joins
+           them in as agent_counter / agent_counter_code. Only a real seller
+           has a desk: an online sale has none, and printing the head office
+           on it would say a counter issued something a customer issued for
+           themselves. Falls back to the company city so a desk that has not
+           been given a location yet still prints somewhere true. */
+        $locName = trim((string) ($booking['agent_counter'] ?? ''));
+        $locCode = trim((string) ($booking['agent_counter_code'] ?? ''));
+        $location = $kind === 'online' ? '' : Settings::counterLabel($locCode, $locName);
+        if ($location === '' && $kind !== 'online') {
+            $location = trim((string) Settings::getString('company_city', ''));
+        }
+
         $parts = array_values(array_filter([$name, $code, $phone], static fn(string $s): bool => $s !== ''));
 
         /* The CHANNEL, named out loud (owner, 11 Sep 2026: "counter bata
@@ -512,12 +527,14 @@ final class Ticket
         };
 
         return [
-            'kind'  => $kind,
-            'code'  => $code,
-            'name'  => $name,
-            'phone' => $phone,
-            'label' => $label,
-            'line'  => implode('  ·  ', $parts),
+            'kind'     => $kind,
+            'code'     => $code,
+            'name'     => $name,
+            'phone'    => $phone,
+            'label'    => $label,
+            'line'     => implode('  ·  ', $parts),
+            'location' => $location,          // "Nepalgunj — Bus Park (NPJ)"
+            'locCode'  => mb_strtoupper($locCode),
         ];
     }
 
@@ -1043,14 +1060,26 @@ final class Ticket
             }
             return $text;
         };
+        /* Resolved here rather than at the chip below, because the line
+           under the company name needs the desk too (owner, 24 Sep 2026:
+           "company ko name ko tala location lekhne thau"). */
+        $issued = self::issuedBy($booking);
+
         $brand = self::latinUpper($co['name']);
         $bSz   = 30;
         foreach ([30, 27, 24, 21] as $try) { $bSz = $try; if (self::gdWidth($try, $brand) <= $W - 60 - $bx) { break; } }
         self::gdText($im, $bSz, $bx, 122, $white, $clampTo($bSz, $brand, $W - 60 - $bx), true);
         self::gdText($im, 19, $bx, 162, $gold,
             $clampTo(19, 'E-TICKET  ·  INDIA-NEPAL BUS SERVICE', $chipX1 - 24 - $bx), false);
+        /* The desk this ticket was cut at, directly under the company name.
+           A Nepalgunj walk-in should be able to see which window sold it
+           without reading the small print. No desk (an online sale, or a
+           counter that has not been given a location yet) leaves the line
+           exactly as it was — the route and the website. */
+        $deskLine = self::latin($issued['location'] ?? '');
         self::gdText($im, 16, $bx, 200, imagecolorallocate($im, 170, 185, 215),
-            $clampTo(16, 'Gujarat <-> Rupaidiha  ·  ' . self::latin($co['web']), $chipX1 - 24 - $bx), false);
+            $clampTo(16, ($deskLine !== '' ? $deskLine . '  ·  ' : '')
+                . 'Gujarat <-> Rupaidiha  ·  ' . self::latin($co['web']), $chipX1 - 24 - $bx), false);
 
         /* Payment pill (top-right of the band) */
         $pay  = $booking['payment'] ?? null;
@@ -1078,7 +1107,6 @@ final class Ticket
            class as the PNR, so whoever picks the ticket up reads the code
            before anything else — and a commission question is settled off
            the picture instead of off the register. */
-        $issued = self::issuedBy($booking);
         $iCode  = self::latinUpper($issued['code']);
         $chipX2 = $W - 60;
         self::gdRounded($im, $chipX1, 124, $chipX2, 224, 18, $navyHi);
@@ -1095,7 +1123,14 @@ final class Ticket
         $cSz = 30;
         foreach ([30, 26, 22, 19, 17] as $try) { $cSz = $try; if (self::gdWidth($try, $iBig) <= 228) { break; } }
         self::gdText($im, $cSz, $chipX1 + 20, 196, $white, $clampTo($cSz, $iBig, 228), true);
-        $iWho = $issued['kind'] === 'agent' ? self::display($issued['name']) : '';
+        /* The third line of the chip. An agent sale spends it on the person
+           behind the code (the code is the identity; the name is the
+           courtesy). A counter or office sale has already spent the big
+           line on the seller's NAME, so this one carries WHERE they sold it
+           — the half of "by name and counter location" that was missing. */
+        $iWho = $issued['kind'] === 'agent'
+            ? self::display($issued['name'])
+            : self::latin((string) ($issued['location'] ?? ''));
         self::gdText($im, 14, $chipX1 + 20, 216, imagecolorallocate($im, 170, 185, 215),
             $clampTo(14, $iWho, 228), false);
 
@@ -1423,13 +1458,15 @@ final class Ticket
                     COALESCE(s.dep_time_override, r.dep_time) AS dep_time, r.arr_time,
                     r.crew_name, r.crew_phone, r.duration_text,
                     bus.bus_name, bus.bus_number, bus.coach_type,
-                    a.full_name AS agent_name, a.phone AS agent_phone, a.role AS agent_role
+                    a.full_name AS agent_name, a.phone AS agent_phone, a.role AS agent_role,
+                    ap.counter_name AS agent_counter, ap.counter_code AS agent_counter_code
                FROM bookings b
                JOIN booking_legs l ON l.booking_id = b.id AND l.leg_type = \'outbound\'
                JOIN schedules s ON s.id = l.schedule_id
                JOIN routes r ON r.id = s.route_id
                LEFT JOIN buses bus ON bus.id = s.bus_id
                LEFT JOIN admins a ON a.id = b.sold_by_admin_id
+               LEFT JOIN admin_profiles ap ON ap.admin_id = a.id
               WHERE b.id = :id
               LIMIT 1',
             ['id' => $bookingId]
@@ -1522,13 +1559,13 @@ final class Ticket
      *  21 Sep 2026: depth pass — card and fare-band drop shadows, navy
      *  gradient fare band with a gold hairline, and the payment QR in a
      *  scanner viewfinder (double ring + corner brackets). */
-    private const PNG_LAYOUT_CHANGED = '2026-09-23 23:59:00';   // 23 Sep 2026: seats print the two-floor grid (A1-F6 / A7-F12)
+    private const PNG_LAYOUT_CHANGED = '2026-09-24 01:20:00';   // 24 Sep 2026: the counter location prints under the company name and in the issued-by chip
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
      *  seat box + stub pick up the current seat labels without a manual purge
      *  (23 Sep 2026: the two-floor grid A1-F6 / A7-F12). */
-    private const PDF_LAYOUT_CHANGED = '2026-09-23 19:10:00';
+    private const PDF_LAYOUT_CHANGED = '2026-09-24 01:20:00';   // 24 Sep 2026: COUNTER line in the header band, desk code in the ISSUED BY caption
 
     /**
      * How many passengers the ticket names one by one before it stops and
@@ -1690,6 +1727,16 @@ final class Ticket
         self::devText($pdf, $textX, 44, 'भारत–नेपाल बस सेवा', 11, $F7, self::GOLD);
         if ($cin !== '') {
             $pdf->text($textX, 68, 'CIN: ' . $cin, 7.5, 'F1', [200, 190, 170]);
+        }
+        /* The desk, directly under the company name (owner, 24 Sep 2026:
+           "company ko name ko tala location lekhne thau"). It takes the last
+           line of the 96pt band — above the orange rule at y=92 — and steps
+           up into the CIN's slot when there is no CIN, so the band never
+           carries an empty row. Latin only: the desk names are place names
+           and this line sits outside the Devanagari font's reach. */
+        $deskPdf = self::latin((string) (self::issuedBy($booking)['location'] ?? ''));
+        if ($deskPdf !== '') {
+            $pdf->text($textX, $cin !== '' ? 82 : 68, 'COUNTER: ' . strtoupper($deskPdf), 8.5, 'F2', self::GOLD);
         }
 
         self::devText($pdf, $W - 220, 18, 'यात्रा टिकट', 16, $F8, self::GOLD);
@@ -1999,7 +2046,14 @@ final class Ticket
             $iName     = rtrim(mb_substr($iName, 0, max(1, mb_strlen($iName) - 2)));
             $issuedTxt = $join([$iName . '..', $issued['code']]);
         }
-        $pdf->text(400, $cY, 'ISSUED BY  ·  ' . strtoupper($issued['kind'] === 'agent' ? 'AGENT' : $issued['code']), 8, 'F2', self::MUTE);
+        /* The caption carries the desk code (NPJ, MSA) — three letters is
+           all this line has room for, and the code is what a clerk reads
+           back over the phone. The full name is already in the header band. */
+        $issuedCap = 'ISSUED BY  ·  ' . strtoupper($issued['kind'] === 'agent' ? 'AGENT' : $issued['code']);
+        if (($issued['locCode'] ?? '') !== '') {
+            $issuedCap .= '  ·  ' . strtoupper((string) $issued['locCode']);
+        }
+        $pdf->text(400, $cY, $issuedCap, 8, 'F2', self::MUTE);
         if ($isDev) {
             self::devText($pdf, 400, $cY + 14, $issuedTxt, 9, $F7, self::INK);
         } else {

@@ -341,6 +341,15 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
 </div>
 <p class="muted" style="margin:-4px 0 10px;font-size:12px">Serial bands: <b>Organization 1–20</b> (next free <?= $nextOrg === null ? 'none' : (int) $nextOrg ?>) · <b>Person 21+</b> (next free <?= $nextPerson === null ? 'none' : (int) $nextPerson ?>). Switching an agent's type keeps their serial, wallet and commission history.</p>
 
+<!-- The desks the office has defined, offered to every "City / counter" box
+     on this page. One <datalist> for all of them — each row's edit panel
+     points at it by id. -->
+<datalist id="counterLocList">
+<?php foreach (Settings::counterLocations() as $cLocCode => $cLocName): ?>
+  <option value="<?= $e($cLocName) ?>"><?= $e($cLocCode) ?></option>
+<?php endforeach; ?>
+</datalist>
+
 <div class="dt-wrap">
 <table class="dt no-card" data-controls="agCtl">
   <thead><tr>
@@ -452,7 +461,13 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
           <label>Email <span class="muted">· part of their sign-in</span><input name="email" type="email" value="<?= $e($r['email']) ?>" maxlength="191" autocomplete="off"></label>
           <label>Login username<input name="login_username" value="<?= $e($r['username']) ?>" maxlength="60" autocapitalize="none" autocorrect="off" autocomplete="off"></label>
           <label>New password <span class="muted">· blank = keep</span><input name="login_password" type="text" minlength="8" maxlength="72" placeholder="min 8 characters" autocomplete="new-password"></label>
-          <label>City / counter<input name="counter_name" value="<?= $e($r['counter_name']) ?>" maxlength="120"></label>
+          <!-- Suggestions only (24 Sep 2026): the desks defined in Admin →
+               Settings → counter_locations, so this box and the counter
+               picker on Staff speak the same vocabulary. Still free text —
+               an agent can sit somewhere the list has never heard of. To
+               also give them the SHORT code that prints on their tickets,
+               use the Counter · location column on the Staff page. -->
+          <label>City / counter<input name="counter_name" list="counterLocList" value="<?= $e($r['counter_name']) ?>" maxlength="120"></label>
           <label>Address<input name="address" value="<?= $e($r['address']) ?>" maxlength="255"></label>
           <label>Document type<input name="id_type" value="<?= $e($r['id_type']) ?>" maxlength="40" placeholder="Aadhaar / Citizenship / PAN"></label>
           <label>Document number<input name="id_number" value="<?= $e($r['id_number']) ?>" maxlength="60"></label>

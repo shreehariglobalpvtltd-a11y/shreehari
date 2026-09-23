@@ -51,6 +51,17 @@ $maxDisc  = Settings::getFloat('counter_max_discount_pct', 15.0);
    conversion aid and is labelled as one: nothing is stored in NPR.
    npr_per_inr lives in Admin → Settings; 0 switches the line off. */
 $nprPeg   = Settings::getFloat('npr_per_inr', NPR_PER_INR);
+/* Which desk this clerk is signed in at (24 Sep 2026) — the same label the
+   tickets they issue will carry. Read straight off their own profile; a
+   staff member with no counter set simply sees no badge. */
+$deskRow   = Database::fetch(
+    'SELECT counter_name, counter_code FROM admin_profiles WHERE admin_id = :id',
+    ['id' => (int) ($admin['id'] ?? 0)]
+);
+$deskLabel = $deskRow === null ? '' : Settings::counterLabel(
+    (string) ($deskRow['counter_code'] ?? ''),
+    (string) ($deskRow['counter_name'] ?? '')
+);
 $waDriver = Settings::getString('whatsapp_driver', 'click_to_chat');
 $waReady  = $waDriver === 'twilio'
     ? (Settings::getString('twilio_account_sid', '') !== ''
@@ -95,6 +106,10 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
 .qt-hero p{margin:0;font-size:13px;opacity:.9;max-width:620px;line-height:1.45}
 .qt-badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;background:var(--orange);color:#fff;padding:5px 10px;border-radius:999px;box-shadow:0 4px 14px rgba(240,124,31,.45);animation:qtPulse 2.4s ease-in-out infinite}
 @keyframes qtPulse{0%,100%{box-shadow:0 4px 14px rgba(240,124,31,.45)}50%{box-shadow:0 4px 22px rgba(240,124,31,.9)}}
+/* The desk badge sits beside the QuickBot pill — quieter than it (this is
+   context, not the headline) but bright enough to catch a clerk who signed
+   in at the wrong window. */
+.qt-desk{display:inline-flex;align-items:center;gap:5px;margin-left:8px;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);color:#fff;padding:5px 10px;border-radius:999px}
 .qt-stepper{display:flex;gap:8px;flex-wrap:wrap;list-style:none;margin:12px 0 0;padding:0}
 .qt-stepper li{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);opacity:.75;transition:all .25s}
 .qt-stepper li b{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:rgba(255,255,255,.25);font-size:11px}
@@ -287,6 +302,13 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
   <section class="qt-hero">
     <div class="qt-hero-l">
       <span class="qt-badge">🤖 QuickBot Ticket — 10-Second Booking</span>
+      <?php if ($deskLabel !== ''): ?>
+        <!-- Which window this is (24 Sep 2026). The same string that prints
+             on every ticket sold here, shown before the first keystroke so a
+             clerk signed in at the wrong desk sees it immediately rather
+             than after a passenger reads it off their ticket. -->
+        <span class="qt-desk">📍 <?= Security::e($deskLabel) ?></span>
+      <?php endif; ?>
       <h2>Name + Mobile → Auto Suggest → One Tap → Ticket</h2>
       <p>एउटै लाइनमा लेख्नुहोस् — "Ram Bahadur 9876543210 2 seats Mehsana kal" — वा नाम + मोबाइल मात्र। QuickBot ले यात्रीको पुराना टिकट र desk को pattern बाट route, date, boarding, seats, best seat र fare आफैँ भर्छ; तपाईं एक पटक Confirm थिच्नुहोस् — ticket बन्छ, WhatsApp जान्छ।</p>
       <ol class="qt-stepper">

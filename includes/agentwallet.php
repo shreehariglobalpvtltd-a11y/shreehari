@@ -769,6 +769,17 @@ final class AgentWallet
         if (array_key_exists('whatsapp', $data))       { $clean['whatsapp']       = self::cleanPhone((string) $data['whatsapp']); }
         if (array_key_exists('display_email', $data))  { $clean['display_email']  = Security::email((string) $data['display_email']); }
         if (array_key_exists('counter_name', $data))   { $clean['counter_name']   = Security::clean((string) $data['counter_name'], 120); }
+        /* The desk's short code — NPJ, MSA, RPD (24 Sep 2026). Upper-cased
+           and reduced to letters, digits and a dash, because it is printed
+           on a ticket and read back over a phone: a code with a space or an
+           emoji in it is a code nobody can say. Free text on purpose — a new
+           desk can be given one before anybody edits the counter_locations
+           list, which only supplies the suggestions. */
+        if (array_key_exists('counter_code', $data)) {
+            $cc = mb_strtoupper(trim((string) $data['counter_code']));
+            $cc = preg_replace('/[^A-Z0-9\-]/', '', $cc) ?? '';
+            $clean['counter_code'] = mb_substr($cc, 0, 16);
+        }
         if (array_key_exists('agent_kind', $data))     { $clean['agent_kind']     = self::normaliseKind((string) $data['agent_kind']); }
         if (array_key_exists('contact_person', $data)) { $clean['contact_person'] = Security::clean((string) $data['contact_person'], 120); }
         if (array_key_exists('address', $data))        { $clean['address']        = Security::clean((string) $data['address'], 255); }
