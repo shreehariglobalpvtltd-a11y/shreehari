@@ -1077,13 +1077,26 @@ final class Ticket
            counter that has not been given a location yet) leaves the line
            exactly as it was — the route and the website. */
         $deskLine = self::latin($issued['location'] ?? '');
-        /* The website drops off this line when a desk is on it — the line is
-           only ~430px wide and the address is already printed in full beside
-           the QR, so keeping both here only bought an ellipsis. */
+        /* This line is ~480px wide and the desk name is the new thing on it,
+           so the line gives ground rather than the desk: try desk + route,
+           then desk + website, then the desk alone, and take the first that
+           fits WHOLE. Nothing is lost by dropping the other two — the route
+           is set in 60px letters in the middle of the ticket (STV -> RPD)
+           and the website is printed in full beside the QR. With no desk
+           the line is exactly what it always was. */
+        $brandSub = 'Gujarat <-> Rupaidiha  ·  ' . self::latin($co['web']);
+        if ($deskLine !== '') {
+            foreach ([
+                $deskLine . '  ·  Gujarat <-> Rupaidiha',
+                $deskLine . '  ·  ' . self::latin($co['web']),
+                $deskLine,
+            ] as $try) {
+                $brandSub = $try;
+                if (self::gdWidth(16, $try) <= $chipX1 - 24 - $bx) { break; }
+            }
+        }
         self::gdText($im, 16, $bx, 200, imagecolorallocate($im, 170, 185, 215),
-            $clampTo(16, $deskLine !== ''
-                ? $deskLine . '  ·  Gujarat <-> Rupaidiha'
-                : 'Gujarat <-> Rupaidiha  ·  ' . self::latin($co['web']), $chipX1 - 24 - $bx), false);
+            $clampTo(16, $brandSub, $chipX1 - 24 - $bx), false);
 
         /* Payment pill (top-right of the band) */
         $pay  = $booking['payment'] ?? null;
@@ -1579,7 +1592,7 @@ final class Ticket
      *  21 Sep 2026: depth pass — card and fare-band drop shadows, navy
      *  gradient fare band with a gold hairline, and the payment QR in a
      *  scanner viewfinder (double ring + corner brackets). */
-    private const PNG_LAYOUT_CHANGED = '2026-09-24 02:05:00';   // 24 Sep 2026: the counter location prints under the company name and in the issued-by chip
+    private const PNG_LAYOUT_CHANGED = '2026-09-24 02:20:00';   // 24 Sep 2026: the counter location prints under the company name and in the issued-by chip
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
