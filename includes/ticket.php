@@ -1077,9 +1077,13 @@ final class Ticket
            counter that has not been given a location yet) leaves the line
            exactly as it was — the route and the website. */
         $deskLine = self::latin($issued['location'] ?? '');
+        /* The website drops off this line when a desk is on it — the line is
+           only ~430px wide and the address is already printed in full beside
+           the QR, so keeping both here only bought an ellipsis. */
         self::gdText($im, 16, $bx, 200, imagecolorallocate($im, 170, 185, 215),
-            $clampTo(16, ($deskLine !== '' ? $deskLine . '  ·  ' : '')
-                . 'Gujarat <-> Rupaidiha  ·  ' . self::latin($co['web']), $chipX1 - 24 - $bx), false);
+            $clampTo(16, $deskLine !== ''
+                ? $deskLine . '  ·  Gujarat <-> Rupaidiha'
+                : 'Gujarat <-> Rupaidiha  ·  ' . self::latin($co['web']), $chipX1 - 24 - $bx), false);
 
         /* Payment pill (top-right of the band) */
         $pay  = $booking['payment'] ?? null;
@@ -1128,9 +1132,25 @@ final class Ticket
            courtesy). A counter or office sale has already spent the big
            line on the seller's NAME, so this one carries WHERE they sold it
            — the half of "by name and counter location" that was missing. */
-        $iWho = $issued['kind'] === 'agent'
-            ? self::display($issued['name'])
-            : self::latin((string) ($issued['location'] ?? ''));
+        if ($issued['kind'] === 'agent') {
+            $iWho = self::display($issued['name']);
+        } else {
+            /* 228px at 14px is about 30 characters. "Nepalgunj — Bus Park
+               (NPJ)" is 26 and fits; "Nepalgunj — Dhamboji Chowk (NPJD)" is
+               not, and clamping it produced "Nepalgunj — Dhamboji Cho…" —
+               an ellipsis where the CODE should be, which is the one part
+               of a desk name that has to survive. So: try the whole label,
+               then the town without its bracket, then the bare code, and
+               take the first that fits whole. */
+            $iWho = '';
+            foreach ([
+                self::latin((string) ($issued['location'] ?? '')),
+                self::latin(trim((string) preg_replace('/\s*\([^)]*\)\s*$/', '', (string) ($issued['location'] ?? '')))),
+                self::latinUpper((string) ($issued['locCode'] ?? '')),
+            ] as $try) {
+                if ($try !== '' && self::gdWidth(14, $try) <= 228) { $iWho = $try; break; }
+            }
+        }
         self::gdText($im, 14, $chipX1 + 20, 216, imagecolorallocate($im, 170, 185, 215),
             $clampTo(14, $iWho, 228), false);
 
@@ -1559,7 +1579,7 @@ final class Ticket
      *  21 Sep 2026: depth pass — card and fare-band drop shadows, navy
      *  gradient fare band with a gold hairline, and the payment QR in a
      *  scanner viewfinder (double ring + corner brackets). */
-    private const PNG_LAYOUT_CHANGED = '2026-09-24 01:20:00';   // 24 Sep 2026: the counter location prints under the company name and in the issued-by chip
+    private const PNG_LAYOUT_CHANGED = '2026-09-24 02:05:00';   // 24 Sep 2026: the counter location prints under the company name and in the issued-by chip
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
