@@ -1054,7 +1054,11 @@ Example: Ram Bahadur 35, Sita Gurung 30",
             // Gujarati
             'ખોટું', 'રદ', 'રિફંડ', 'મારી ટિકિટ',
         ] as $w) {
-            if (str_contains($t, $w)) {
+            /* Matched at the START of a word only (suffixes allowed: "badalnu",
+               "pathaunu", "cancelled"). A plain substring test found "paid"
+               inside "Ru-paid-iha" — our own destination — and would have
+               refused every booking that named it. */
+            if (preg_match('/(?<![\p{L}\p{M}\p{N}])' . preg_quote($w, '/') . '/u', $t) === 1) {
                 return true;
             }
         }

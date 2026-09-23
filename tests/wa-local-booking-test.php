@@ -236,6 +236,8 @@ try {
     check('roman Nepali complaint is read as Nepali', TicketBot::detectLang('payment gare tara ticket aayena') === 'ne');
     check('roman Hindi stays Hindi', TicketBot::detectLang('mujhe kal nepal jana hai 2 log') === 'hi');
     check('a real request still opens a booking', WaBooking::handle($freshPhone(), 'bholi 2 jana ko ticket chahiyo') !== null);
+    check('"Rupaidiha" is a place, not the word "paid"',
+        WaBooking::handle($freshPhone(), 'bholi rupaidiha jane 2 jana ko ticket chahiyo') !== null);
     check('a RETURN journey ("firta aaune") is still a booking',
         WaBooking::handle($freshPhone(), 'rupaidiha bata firta aaune 2 ta ticket chahiyo') !== null);
 } finally {
