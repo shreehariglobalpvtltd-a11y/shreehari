@@ -212,3 +212,14 @@ body.ux-guest .pax-row{grid-template-columns:64px 1.6fr 1fr}
 :root[data-theme="dark"] .hold-bar{background:#2A2210;color:#F1D27A;border-bottom-color:#5A4A1A}
 /* the in-card pills say the same thing - keep one timer on screen */
 body.ux-holdbar .hold-pill{display:none!important}
+
+/* ---------- 7. HELP — the bot is the bottom-right Help button ---------- */
+/* views.css put the Sahayak FAB bottom-LEFT and the panel with it; the brief
+   wants Help bottom-right. WhatsApp stacks above it, SOS moves to the left. */
+.ai-fab{left:auto;right:16px;width:auto;min-width:52px;height:52px;padding:0 18px 0 12px;border-radius:999px;gap:8px;font-size:22px}
+.ai-fab::after{content:attr(data-help);font-family:var(--f-display);font-size:14px;font-weight:700;letter-spacing:.01em}
+.ai-fab:not([data-help])::after,.ai-fab[data-help=""]::after{display:none}
+.ai-panel{left:auto;right:16px}
+.sos-fab{right:auto;left:16px}
+@media (max-width:760px){.ai-panel{right:8px;left:8px;width:auto;bottom:calc(76px + env(safe-area-inset-bottom) + 62px);height:min(520px,66vh)}}
+.ai-chip-wa{display:inline-flex;align-items:center;gap:6px;margin-top:6px;background:var(--wa)!important;color:#fff!important;border-color:var(--wa)!important;text-decoration:none;font-weight:700}

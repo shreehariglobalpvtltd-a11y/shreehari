@@ -1806,10 +1806,10 @@ document.addEventListener('click', function(e) {
      The second string is what gets "typed", so each chip lands on an intent
      that already exists (or on the human handoff for Call Agent). */
   const CHIPS = {
-    en: [['🎫 Book Ticket', 'book ticket'], ['🛰️ Track Bus', 'track bus'], ['↩️ Cancel / Refund', 'cancel refund'], ['📞 Call Agent', 'talk to agent'], ['🗺️ Route Info', 'route stops timing'], ['🧳 Luggage Rules', 'luggage'], ['💰 Fares', 'fare'], ['❌ Complaint', 'complaint']],
-    hi: [['🎫 टिकट बुक', 'बुक टिकट'], ['🛰️ बस ट्रैक', 'ट्रैक'], ['↩️ रद्द / रिफंड', 'रद्द रिफंड'], ['📞 एजेंट से बात', 'एजेंट से बात करनी'], ['🗺️ रूट जानकारी', 'बोर्डिंग समय'], ['🧳 सामान नियम', 'सामान'], ['💰 किराया', 'किराया'], ['❌ शिकायत', 'शिकायत']],
-    ne: [['🎫 टिकट बुक', 'बुक गर्नु'], ['🛰️ बस ट्र्याक', 'ट्र्याक'], ['↩️ रद्द / फिर्ता', 'रद्द फिर्ता'], ['📞 कर्मचारीसँग कुरा', 'कर्मचारीसँग कुरा गर्नु'], ['🗺️ रुट जानकारी', 'बोर्डिङ समय'], ['🧳 सामान नियम', 'सामान'], ['💰 भाडा', 'भाडा'], ['❌ गुनासो', 'गुनासो']],
-    gu: [['🎫 ટિકિટ બુક', 'બુક'], ['🛰️ બસ ટ્રેક', 'ટ્રેક'], ['↩️ રદ / રિફંડ', 'રદ રિફંડ'], ['📞 વ્યક્તિ સાથે વાત', 'વ્યક્તિ સાથે વાત કરવી'], ['🗺️ રૂટ માહિતી', 'ટાઈમ'], ['🧳 સામાન', 'સામાન'], ['💰 ભાડું', 'ભાડું'], ['❌ ફરિયાદ', 'ફરિયાદ']]
+    en: [['🎫 Book Ticket', 'book ticket'], ['📝 Complaint', 'complaint'], ['🛰️ Track Bus', 'track bus'], ['↩️ Cancel / Refund', 'cancel refund'], ['📞 Call Agent', 'talk to agent'], ['🗺️ Route Info', 'route stops timing'], ['🧳 Luggage Rules', 'luggage'], ['💰 Fares', 'fare'], ['❌ Complaint', 'complaint']],
+    hi: [['🎫 टिकट बुक', 'बुक टिकट'], ['📝 शिकायत', 'शिकायत'], ['🛰️ बस ट्रैक', 'ट्रैक'], ['↩️ रद्द / रिफंड', 'रद्द रिफंड'], ['📞 एजेंट से बात', 'एजेंट से बात करनी'], ['🗺️ रूट जानकारी', 'बोर्डिंग समय'], ['🧳 सामान नियम', 'सामान'], ['💰 किराया', 'किराया'], ['❌ शिकायत', 'शिकायत']],
+    ne: [['🎫 टिकट बुक', 'बुक गर्नु'], ['📝 गुनासो', 'गुनासो'], ['🛰️ बस ट्र्याक', 'ट्र्याक'], ['↩️ रद्द / फिर्ता', 'रद्द फिर्ता'], ['📞 कर्मचारीसँग कुरा', 'कर्मचारीसँग कुरा गर्नु'], ['🗺️ रुट जानकारी', 'बोर्डिङ समय'], ['🧳 सामान नियम', 'सामान'], ['💰 भाडा', 'भाडा'], ['❌ गुनासो', 'गुनासो']],
+    gu: [['🎫 ટિકિટ બુક', 'બુક'], ['📝 ફરિયાદ', 'ફરિયાદ'], ['🛰️ બસ ટ્રેક', 'ટ્રેક'], ['↩️ રદ / રિફંડ', 'રદ રિફંડ'], ['📞 વ્યક્તિ સાથે વાત', 'વ્યક્તિ સાથે વાત કરવી'], ['🗺️ રૂટ માહિતી', 'ટાઈમ'], ['🧳 સામાન', 'સામાન'], ['💰 ભાડું', 'ભાડું'], ['❌ ફરિયાદ', 'ફરિયાદ']]
   };
 
   /* Reply language (13 Sep 2026). The dropdown stays the user's choice, but a
@@ -2634,14 +2634,42 @@ document.addEventListener('click', function(e) {
         note: ('[' + ref + '] ' + p.cat + (p.pnr ? ' · ' + p.pnr : '') + ' · ' + desc).slice(0, 250),
         source: 'complaint'
       };
-      const done = L('Complaint <b>' + ref + '</b> registered — ' + this.catLabel(p.cat) + '.',
-        'शिकायत <b>' + ref + '</b> दर्ज — ' + this.catLabel(p.cat) + '।',
-        'गुनासो <b>' + ref + '</b> दर्ता — ' + this.catLabel(p.cat) + '।',
-        'ફરિયાદ <b>' + ref + '</b> નોંધાઈ.');
+      const doneWith = (tk) => L('Complaint <b>' + tk + '</b> registered — ' + this.catLabel(p.cat) + '.',
+        'शिकायत <b>' + tk + '</b> दर्ज — ' + this.catLabel(p.cat) + '।',
+        'गुनासो <b>' + tk + '</b> दर्ता — ' + this.catLabel(p.cat) + '।',
+        'ફરિયાદ <b>' + tk + '</b> નોંધાઈ.');
+      const done = doneWith(ref);
       const escal = '<br><small>' + L('Not resolved? Say "still not resolved" and I will hand you straight to the office on WhatsApp.',
         'हल नहीं हुआ? "still not resolved" लिखें — सीधे WhatsApp पर ऑफिस से जोड़ दूँगा।',
         'समाधान भएन? "still not resolved" लेख्नुहोस् — सीधै WhatsApp मा अफिससँग जोडिदिन्छु।',
         'ઉકેલ ન આવ્યો? "still not resolved" લખો.') + '</small>';
+      /* 23 Sep 2026 (v3 brief §8): with complaints_on the desk is
+         api/complaint.php - a real ticket number, the office told on
+         WhatsApp by the configured driver, and a prefilled wa.me link for
+         the passenger when no driver could send. Off, or if that call
+         fails, the enquiry path below runs exactly as before. */
+      const v3 = !!(window.SHG_BOOT && SHG_BOOT.settings && SHG_BOOT.settings.complaints_on);
+      if (v3 && navigator.onLine !== false) {
+        const self = this;
+        shgApi.post('/complaint.php', { name: item.name, phone: p.phone, pnr: p.pnr || '', category: p.cat, message: String(desc || '').slice(0, 1000), lang: lang() }).then(d => {
+          const tk = (d && d.ticketId) || ref;
+          let html = '✅ ' + doneWith(tk) + '<br>⏱️ ' + self.timeline(p.cat);
+          if (d && !d.waSent && d.waLink) {
+            html += '<br><a class="ai-chip ai-chip-wa" href="' + d.waLink.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener noreferrer">💬 '
+              + L('Send it to the office on WhatsApp', 'WhatsApp पर ऑफिस को भेजें', 'WhatsApp मा अफिसलाई पठाउनुहोस्', 'WhatsApp પર ઓફિસને મોકલો') + '</a>';
+          } else {
+            html += '<br><small>' + L('The office has it on WhatsApp.', 'ऑफिस को WhatsApp पर मिल गई।', 'अफिसलाई WhatsApp मा पुग्यो।', 'ઓફિસને WhatsApp પર મળી.') + '</small>';
+          }
+          addMsg(html + escal, 'bot');
+          try { if (typeof SFX !== 'undefined') SFX.success(); shgHaptic('success'); } catch (e) {}
+        }).catch(() => legacy());
+        return;
+      }
+      legacy();
+      function legacy() { Complaint._legacyFile(item, done, escal, p); }
+
+    },
+    _legacyFile(item, done, escal, p) {
       shgApi.post('/enquiry.php', item).then(() => {
         addMsg('✅ ' + done + '<br>⏱️ ' + this.timeline(p.cat) + escal, 'bot');
       }).catch(() => {

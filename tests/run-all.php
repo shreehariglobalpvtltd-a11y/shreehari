@@ -149,6 +149,7 @@ const CORE_SUITES = [
     'wa-agent-test.php'            => 'the WhatsApp assistant: role, switch, quote-then-confirm, ownership, audit',
     // 22 Sep 2026, registered with the knowledge base it guards.
     'ai-turn-test.php'            => 'the tool loop is bounded: budget, deadline, no repeated write on retry',
+    'complaints-test.php'         => 'the Help bot complaint desk: ticket, office WhatsApp / wa.me fallback, status ladder, switch',
     'ai-kb-test.php'              => 'the knowledge base: audience scope, the ai_kb_on switch, an honest redacted miss',
 ];
 

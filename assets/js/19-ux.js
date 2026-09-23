@@ -379,4 +379,21 @@
   } catch (e) {}
   window.addEventListener('hashchange', function () { setTimeout(syncHoldBar, 50); });
 
+  /* ---------------------------------------------------------------
+   *  HELP — the bottom-nav "Help" tab and any [data-open-help] open the
+   *  Sahayak bot (it used to scroll to the contact section); the FAB
+   *  carries a "Help" word beside its icon (localised via bnHelp).
+   * ------------------------------------------------------------- */
+  function labelHelpFab() { var f = q('#aiFab'); if (f) f.setAttribute('data-help', tr('bnHelp', 'Help')); }
+  labelHelpFab();
+  document.addEventListener('click', function (e) {
+    var l = e.target.closest('.lang-btn'); if (l) setTimeout(labelHelpFab, 50);
+    var h = e.target.closest('.bn-item[data-bn="help"], [data-open-help]'); if (!h) return;
+    var fab = q('#aiFab'); if (!fab) return;
+    e.preventDefault(); e.stopPropagation();
+    var panel = q('#aiPanel');
+    if (!panel || getComputedStyle(panel).display === 'none') fab.click();
+    try { shgHaptic('tap'); } catch (err) {}
+  }, true);
+
 }());

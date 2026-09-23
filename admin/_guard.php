@@ -110,6 +110,7 @@ function admin_nav(): array
         // no seller so it belongs to the office.
         ['href' => 'customers.php',    'icon' => 'user',     'label' => 'Customers',        'perm' => 'customers.view', 'section' => 'Customers'],
         ['href' => 'enquiries.php',    'icon' => 'mail',      'label' => 'Enquiries',        'perm' => 'customers.view', 'section' => 'Customers'],
+        ['href' => 'complaints.php',   'icon' => 'alert',     'label' => 'Complaints',       'perm' => 'customers.view', 'section' => 'Customers'],
 
         // Buses — fleet, the day-by-day schedule and the crew.
         ['href' => 'calendar.php',     'icon' => 'calendar',  'label' => 'Bus Calendar',     'perm' => 'schedules.manage','section' => 'Buses'],
