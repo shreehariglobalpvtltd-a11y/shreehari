@@ -154,6 +154,7 @@ const CORE_SUITES = [
     'wa-faq-test.php'             => 'everyday WhatsApp answers from the live tables, no AI: personal left to the assistant',
     'seatmap-test.php'            => 'the customer seat picture: signed link, status only (never names), same count as the challan',
     'report-chart-test.php'       => 'the office report chart: figures = the register, signed link, office numbers only',
+    'wa-voice-test.php'           => 'voice notes: the Gemini request, the cleaned transcript, the typed-message path',
 ];
 
 /**

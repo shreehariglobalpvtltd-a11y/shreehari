@@ -224,8 +224,30 @@ function wh_inbound(array $msg): void
         return;
     }
 
+    /* A voice note becomes the words that were spoken (23 Sep 2026, owner:
+       "sunne"), and then takes exactly the path a typed message takes. The
+       reply opens with what we heard, so a mis-heard word is visible before
+       anything is booked. No transcript = the old "please type" reply. */
+    $heard = '';
+    if (in_array($type, ['audio', 'voice'], true) && trim($text) === '') {
+        try {
+            require_once INCLUDE_PATH . '/wavoice.php';
+            $said = WaVoice::transcribe((string) ($msg['audio']['id'] ?? ($msg['voice']['id'] ?? '')), $from);
+            if ($said !== null && $said !== '') {
+                $text  = $said;
+                $type  = 'text';
+                $heard = WaVoice::heardLine($said);
+            }
+        } catch (Throwable $e) {
+            Logger::exception($e, 'whatsapp');
+        }
+    }
+
     require_once INCLUDE_PATH . '/wabot.php';
     $reply = WaBot::reply('+' . $from, $text, $type);
+    if ($heard !== '') {
+        $reply['text'] = $heard . "\n" . $reply['text'];
+    }
 
     $media = $reply['media'];
     if ($media !== null && $media !== '' && mb_strlen($reply['text']) <= 1024) {
