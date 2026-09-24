@@ -1596,20 +1596,24 @@ final class Ticket
      *  gradient fare band with a gold hairline, and the payment QR in a
      *  scanner viewfinder (double ring + corner brackets).
      *
-     *  WRITE THIS IN UTC. strtotime() reads it in PHP's default timezone,
-     *  which on this server is UTC while the clock on the wall is IST —
-     *  5h45m ahead. A stamp written as "now" off the wall clock therefore
-     *  lands in the FUTURE, and a future stamp makes `filemtime < stamp`
-     *  true for every ticket forever: each one re-renders on every single
-     *  download instead of once. tests/chalani-png-test.php asserts the
-     *  stamp is a past moment precisely because of this. */
-    private const PNG_LAYOUT_CHANGED = '2026-09-23 20:10:00';   // 24 Sep 2026 IST: the counter location prints under the company name and in the issued-by chip. UTC, see the note above.
+     *  WRITE THIS IN INDIA TIME, and never later than the deploy that ships
+     *  it. strtotime() reads it in the app timezone that bootstrap.php sets
+     *  (APP_TIMEZONE = Asia/Kolkata on live and on shg-test, checked through
+     *  bootstrap on 24 Sep 2026). A stamp in the FUTURE makes
+     *  `filemtime < stamp` true for every ticket until then: each one
+     *  re-renders on every download instead of once. A stamp EARLIER than
+     *  the layout change leaves the tickets drawn in between stale for
+     *  good — the old note said "UTC", so 20:10 here meant 20:10 IST and two
+     *  tickets drawn at 23:43/23:44 IST with the old seat labels were never
+     *  redrawn. tests/chalani-png-test.php and tests/ticket-cache-test.php
+     *  assert a past moment. */
+    private const PNG_LAYOUT_CHANGED = '2026-09-24 01:50:00';   // IST, after both 24 Sep deploys: the two-floor seat labels (00:34) and the counter location under the company name / in the issued-by chip (01:49).
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
      *  seat box + stub pick up the current seat labels without a manual purge
      *  (23 Sep 2026: the two-floor grid A1-F6 / A7-F12). */
-    private const PDF_LAYOUT_CHANGED = '2026-09-23 20:10:00';   // 24 Sep 2026 IST: COUNTER line in the header band, desk code in the ISSUED BY caption. UTC, see the note above.
+    private const PDF_LAYOUT_CHANGED = '2026-09-24 01:50:00';   // IST, after both 24 Sep deploys: the two-floor seat labels (00:34), COUNTER line in the header band and desk code in the ISSUED BY caption (01:49).
 
     /**
      * How many passengers the ticket names one by one before it stops and
