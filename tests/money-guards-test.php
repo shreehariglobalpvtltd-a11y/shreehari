@@ -83,7 +83,7 @@ try {
     echo "\n-- M2: commission only for an agent (commission_agent_only) --\n";
     $agentOnly = Settings::getBool('commission_agent_only', false);
     Settings::set('commission_agent_only', false, 'bool', 'agents', false);
-    $bOff0 = BookingService::counterSale($route, $sid, TD, ['L5'], $pax('Office Sale Off'), $officeId, 'counter');
+    $bOff0 = BookingService::counterSale($route, $sid, TD, ['L12'], $pax('Office Sale Off'), $officeId, 'counter');
     $rows0 = (int) Database::scalar('SELECT COUNT(*) FROM agent_ledger WHERE booking_id = :b', ['b' => (int) $bOff0['id']], 0);
     check('switch OFF (default): an office sale keeps its ledger rows, as live does today', $rows0 > 0, "rows=$rows0");
     Settings::set('commission_agent_only', true, 'bool', 'agents', false);
