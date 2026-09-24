@@ -3544,19 +3544,22 @@ body.bk-regular .qt-collapsed{display:flex}
 .upi-app{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:8px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-weight:800;font-size:13px;text-decoration:none;touch-action:manipulation}
 .upi-app i{font-style:normal;font-size:16px}
 
-/* -- SHG Sahayak, WhatsApp-style -- */
-.ai-head{background:linear-gradient(120deg,#075E54,#128C7E)}
-.ai-msgs{background-color:#ECE5DD;background-image:radial-gradient(rgba(0,0,0,.035) 1px,transparent 1px);background-size:18px 18px}
-.ai-msg.user{background:#DCF8C6;color:#111B21;border:1px solid #CFE9BA}
-.ai-msg.bot{background:#FFFFFF;color:#111B21;border-color:#E6E1DA}
-.ai-msg a{color:#027EB5}
-.ai-send{background:#00A884;border-color:#00A884}
+/* -- SHG Sahayak, on the brand (24 Sep 2026; was WhatsApp green). The skin
+   reads the palette tokens, so the logo palette - the default - paints the
+   chat navy / royal / orange-gold exactly like the rest of the app. -- */
+.ai-head{background:linear-gradient(110deg,var(--blue-deep,#0C306C) 0%,var(--blue,#0054A8) 72%,var(--blue-800,#003C90) 100%);border-bottom:3px solid var(--orange,#F07800)}
+.ai-msgs{background-color:var(--blue-50,#EEF4FC);background-image:radial-gradient(rgba(0,84,168,.09) 1px,transparent 1px);background-size:18px 18px}
+.ai-msg.user{background:linear-gradient(135deg,var(--blue,#0054A8),var(--blue-deep,#0C306C));color:#fff;border:1px solid transparent}
+.ai-msg.bot{background:var(--card,#fff);color:var(--ink);border-color:var(--blue-100,#DCE8F7);box-shadow:0 1px 3px rgba(12,48,108,.06)}
+.ai-msg a{color:var(--orange-600,#E05500)}
+.ai-msg.user a{color:#FFD9A8}
+.ai-send{background:linear-gradient(135deg,var(--orange,#F07800),var(--gold,#FFB703));border-color:transparent;color:#fff;box-shadow:0 4px 12px rgba(240,120,0,.3)}
 .ai-chip{min-height:44px;display:inline-flex;align-items:center}
-.ai-call-cta{background:#128C7E;box-shadow:none;margin-left:6px}
-:root[data-theme="dark"] .ai-msgs{background-color:#0B141A;background-image:radial-gradient(rgba(255,255,255,.03) 1px,transparent 1px)}
-:root[data-theme="dark"] .ai-msg.user{background:#005C4B;color:#E9EDEF;border-color:#005C4B}
-:root[data-theme="dark"] .ai-msg.bot{background:#202C33;color:#E9EDEF;border-color:#202C33}
-:root[data-theme="dark"] .ai-msg a{color:#53BDEB}
+.ai-call-cta{background:var(--blue,#0054A8);box-shadow:none;margin-left:6px}
+:root[data-theme="dark"] .ai-msgs{background-color:#0B1628;background-image:radial-gradient(rgba(255,255,255,.04) 1px,transparent 1px)}
+:root[data-theme="dark"] .ai-msg.user{background:linear-gradient(135deg,#0054A8,#0C306C);color:#E9EDEF;border-color:transparent}
+:root[data-theme="dark"] .ai-msg.bot{background:#152238;color:#E9EDEF;border-color:#1C2E4A}
+:root[data-theme="dark"] .ai-msg a{color:#FFB703}
 
 /* -- assistant unread badge -- */
 .ai-fab{overflow:visible}
@@ -3570,8 +3573,15 @@ body.bk-regular .qt-collapsed{display:flex}
    Dark:  page #0A0A1A, cards #1A1A2E, primary #FF8C42, text #F5F5F5. */
 :root[data-day="brand"]{--blue:#23305A;--blue-deep:#0A0A1A;--blue-800:#1A1A2E;--blue-100:#E4E6EE;--blue-50:#F4F5F9;--orange:#FF6B00;--orange-600:#E05E00;--orange-100:#FFE7D4;--bg:#F5F5F5;--card:#FFFFFF;--ink:#1A1A1A;--line:#E6E6EA}
 /* -- logo palette (20 Sep 2026), the default: measured from assets/img/logo.png -- */
-:root[data-day="logo"]{--blue:#0054A8;--blue-deep:#0C306C;--blue-800:#003C90;--blue-100:#DCE8F7;--blue-50:#EEF4FC;--orange:#F07800;--orange-600:#E05500;--orange-100:#FDE8D2}
-:root[data-theme="dark"][data-day="logo"]{--blue:#5B9BE8;--blue-800:#A9C8F0;--blue-100:#1C2E4A;--blue-50:#132238;--orange:#FF8A1F;--orange-600:#F56A00;--orange-100:#3A2410}
+/* 24 Sep 2026 (owner: "color haru ajhai rich, logo matching theme"): the
+   same measured logo colours, now with the logo's full range - the globe's
+   deep navy and royal blue, the arrow's orange running into gold - plus
+   the two brand gradients every accent surface below is painted with. */
+:root[data-day="logo"]{--blue:#0054A8;--blue-deep:#0C306C;--blue-800:#0B3F8F;--blue-100:#D9E7FA;--blue-50:#EEF4FC;--orange:#F07800;--orange-600:#D95F00;--orange-100:#FFE4C7;--gold:#FFB703;--sky:#2D7BE0;--bg:#F3F7FD;--line:#DCE6F4;
+  --grad-brand:linear-gradient(135deg,#0C306C 0%,#0054A8 58%,#2D7BE0 100%);--grad-warm:linear-gradient(135deg,#F07800 0%,#FFB703 100%);
+  --shadow-sm:0 1px 3px rgba(12,48,108,.08),0 4px 16px rgba(12,48,108,.08);--shadow-md:0 6px 24px rgba(12,48,108,.11),0 12px 36px rgba(12,48,108,.08)}
+:root[data-theme="dark"][data-day="logo"]{--blue:#5B9BE8;--blue-800:#A9C8F0;--blue-100:#1C2E4A;--blue-50:#132238;--orange:#FF8A1F;--orange-600:#F56A00;--orange-100:#3A2410;--gold:#FFC533;--sky:#5B9BE8;
+  --grad-brand:linear-gradient(135deg,#0A2A5E 0%,#0054A8 60%,#2D7BE0 100%);--grad-warm:linear-gradient(135deg,#FF8A1F 0%,#FFC533 100%)}
 :root[data-theme="dark"][data-day="brand"]{--bg:#0A0A1A;--card:#1A1A2E;--ink:#F5F5F5;--muted:#A6A6C0;--line:#2A2A44;--orange:#FF8C42;--orange-600:#FF7A26;--orange-100:#3A2616;--blue:#8C9BD6;--blue-50:#1F1F36;--blue-100:#2A2A48;--blue-800:#C7CBE6;--blue-deep:#05050F}
 
 /* -- assistant header on a phone (13 Sep 2026): five controls beside the
@@ -3828,3 +3838,76 @@ body.wa-open{overflow:hidden}
   #view-seats .booking-type-toggle .bt-pill{min-height:44px;padding-top:6px;padding-bottom:6px}
   #view-seats .seat-pref-row{margin-bottom:8px}
 }
+
+
+/* ================================================================
+   [CSS] 61. 24 Sep 2026 — AI SAHAYAK PRO + LOGO-RICH THEME
+   The assistant with hands (charts, pictures, action buttons, a full-
+   screen mode, a role badge) and the brand gradients on the surfaces
+   people see first: hero, buttons, top bar, footer, cards, chat. Scoped
+   to the logo palette so a hand-picked palette keeps its own look.
+================================================================ */
+/* -- widget: role badge, expand, charts, media, actions, bullet lists -- */
+.ai-role{font-size:9px;letter-spacing:.1em;background:var(--orange,#F07800);color:#fff;padding:2px 7px;border-radius:999px;vertical-align:middle;font-weight:800}
+.ai-panel.max{left:12px;right:12px;bottom:12px;top:12px;width:auto;height:auto;max-height:none;border-radius:18px}
+@media (max-width:760px){.ai-panel.max{left:6px;right:6px;top:6px;bottom:6px}}
+.ai-panel.max .ai-msg{max-width:min(720px,88%)}
+.ai-msg.ai-chart{max-width:96%;width:96%;padding:9px 10px 6px}
+.ai-panel.max .ai-msg.ai-chart{max-width:min(760px,92%);width:min(760px,92%)}
+.ai-chart-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;font-size:12.5px}
+.ai-chart-box{position:relative;height:190px}
+.ai-panel.max .ai-chart-box{height:300px}
+.ai-chart-dl{flex:0 0 auto;background:var(--blue-50,#EEF4FC);border:1px solid var(--blue-100,#DCE8F7);color:var(--blue-800,#0B3F8F);padding:3px 9px;border-radius:8px;font-size:11.5px;font-weight:800;cursor:pointer;min-height:0}
+.ai-chart-dl:hover{background:var(--blue-100,#DCE8F7)}
+.ai-media img{display:block;max-width:100%;border-radius:10px;border:1px solid var(--line)}
+.ai-actions{display:flex;flex-wrap:wrap;gap:6px}
+.ai-act{display:inline-flex;align-items:center;gap:5px;padding:8px 12px;border-radius:10px;background:var(--grad-warm,linear-gradient(135deg,#F07800,#FFB703));color:#fff!important;font-weight:800;font-size:12.5px;text-decoration:none;box-shadow:0 4px 12px rgba(240,120,0,.28)}
+.ai-act:active{transform:scale(.97)}
+.ai-msg .ai-ul{margin:4px 0 2px 16px;padding:0}
+.ai-msg .ai-ul li{margin:2px 0}
+/* -- the floating button wears the whole logo: globe blue into arrow orange -- */
+.ai-fab{background:linear-gradient(135deg,var(--blue-deep,#0C306C) 0%,var(--blue,#0054A8) 55%,var(--orange,#F07800) 100%);box-shadow:0 8px 22px rgba(12,48,108,.4)}
+.ai-chip{background:var(--blue-50,#EEF4FC);color:var(--blue-800,#0B3F8F);border-color:var(--blue-100,#DCE8F7)}
+.ai-chip:hover{background:var(--blue-100,#DCE8F7)}
+.ai-mic{background:var(--blue-50,#EEF4FC);color:var(--blue-800,#0B3F8F)}
+.ai-head select{background:rgba(255,255,255,.14)}
+
+/* -- brand gradients on the app surfaces (logo palette only) -- */
+:root[data-day="logo"] .topbar{background:linear-gradient(90deg,#0C306C 0%,#0B3F8F 100%)}
+:root[data-day="logo"] .hero{background:
+  radial-gradient(900px 420px at 85% -10%, rgba(255,183,3,.28), transparent 60%),
+  radial-gradient(700px 520px at -10% 30%, rgba(45,123,224,.55), transparent 60%),
+  linear-gradient(140deg,#071E4A 0%,#0C306C 42%,#0054A8 100%)}
+:root[data-day="logo"] .hero .orb.o1{background:#FFB703;opacity:.45}
+:root[data-day="logo"] .hero .orb.o2{background:#2D7BE0}
+:root[data-day="logo"] .btn-orange{background:var(--grad-warm);box-shadow:0 8px 20px rgba(240,120,0,.34)}
+:root[data-day="logo"] .btn-orange:hover{box-shadow:0 12px 26px rgba(240,120,0,.42)}
+:root[data-day="logo"] .btn-blue{background:var(--grad-brand);box-shadow:0 8px 20px rgba(0,84,168,.3)}
+:root[data-day="logo"] .btn-blue:hover{background:linear-gradient(135deg,#0A2A5E 0%,#0B3F8F 60%,#0054A8 100%)}
+:root[data-day="logo"] .nav.scrolled{border-color:var(--blue-100);box-shadow:0 2px 14px rgba(12,48,108,.10)}
+:root[data-day="logo"] .nav::after{content:"";display:block;height:3px;background:linear-gradient(90deg,#0C306C 0%,#0054A8 55%,#F07800 55.2%,#FFB703 100%);opacity:.95}
+:root[data-day="logo"] footer{background:linear-gradient(180deg,#0C306C 0%,#071E4A 55%,#050F26 100%)}
+:root[data-day="logo"] .svc-card{background:linear-gradient(170deg,#fff 55%,#EEF4FC)}
+:root[data-day="logo"] .svc-card:hover{box-shadow:0 14px 40px rgba(0,84,168,.16)}
+:root[data-day="logo"] .chip.orange{background:#FFE4C7;color:#8A4300;border-color:#FFD09A}
+:root[data-day="logo"] .pill.ok{background:#E2F6EB}
+:root[data-day="logo"] .duo-divider .in{box-shadow:inset 0 0 0 1px rgba(12,48,108,.1)}
+:root[data-theme="dark"][data-day="logo"] .svc-card{background:linear-gradient(170deg,#132238 55%,#0E1A30)}
+:root[data-theme="dark"][data-day="logo"] .topbar{background:linear-gradient(90deg,#071E4A 0%,#0C306C 100%)}
+/* -- chart fallback table (no chart library), and the phone header --
+   On a 375px phone the header holds avatar · title · ⛶ · 🔇 · 🗑️ · lang · ✕;
+   the badges go and the controls tighten so "SHG Sahayak" stays readable. */
+.ai-chart-box.ai-chart-txt{height:auto;max-height:260px;overflow:auto}
+.ai-tbl{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:4px}
+.ai-tbl th{text-align:right;font-weight:800;color:var(--blue-800,#0B3F8F);padding:3px 6px;border-bottom:1px solid var(--line)}
+.ai-tbl th:first-child{text-align:left}
+.ai-tbl td{padding:3px 6px;border-bottom:1px solid var(--line)}
+.ai-tbl td.n{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+@media (max-width:420px){
+  .ai-head #aiPoweredBadge,.ai-head .ai-role{display:none}
+  .ai-head .ai-close{padding:3px;min-width:28px;min-height:30px;font-size:14px}
+  .ai-head select{max-width:60px;padding:2px 3px}
+  .ai-head b{font-size:13px}
+}
+/* full-screen chat sits above the staff counter-mode strip (#counterBar, z 1200) */
+.ai-panel.max{z-index:1250}

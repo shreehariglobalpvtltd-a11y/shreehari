@@ -150,6 +150,9 @@ const CORE_SUITES = [
     // 22 Sep 2026, registered with the knowledge base it guards.
     'ai-turn-test.php'            => 'the tool loop is bounded: budget, deadline, no repeated write on retry',
     'ai-kb-test.php'              => 'the knowledge base: audience scope, the ai_kb_on switch, an honest redacted miss',
+    // 24 Sep 2026, registered with the website / app assistant they guard.
+    'ai-chart-test.php'           => 'the report picture: every chart shape paints, an empty block never does, the sweep',
+    'ai-web-agent-test.php'       => 'the website assistant: identity by session, per-channel selling switch, reports scoped, feedback filed, audit',
 ];
 
 /**

@@ -169,6 +169,105 @@ final class AiTools
         return $out;
     }
 
+    /**
+     * The role of a WEBSITE / APP visitor, decided by their signed-in
+     * SESSION alone (24 Sep 2026 — the assistant with hands, on the site).
+     *
+     * The same three roles as whoIs(), reached the other way round: on
+     * WhatsApp the phone number proves who is writing, on the website the
+     * password (staff) or the OTP (customer) already did. Nothing in the
+     * message can change it — a guest who types "I am the admin" is still
+     * a guest, with the guest's tools.
+     *
+     *   staff session, office role  -> admin  (the whole company)
+     *   staff session, counter role -> staff  (their own book only,
+     *                                          Auth::bookingScopeAdminId())
+     *   customer session (OTP)      -> customer, scoped to their number
+     *   nobody signed in            -> customer with NO number: may ask,
+     *                                  may get a quote, can read no booking
+     *
+     * `stageKey` is the identity the quote-then-confirm staging and the
+     * conversation memory hang off. On WhatsApp that is the phone number;
+     * here a guest has none, so the PHP session id stands in for it (hashed,
+     * never stored raw).
+     *
+     * @return array<string,mixed> the same shape whoIs() returns, plus
+     *         channel, userId and stageKey
+     */
+    public static function whoIsWeb(): array
+    {
+        $out = [
+            'role'         => 'customer',
+            'admin'        => null,
+            'adminId'      => 0,
+            'scopeAdminId' => null,
+            'name'         => '',
+            'phone'        => '',
+            'channel'      => 'web',
+            'userId'       => 0,
+            'stageKey'     => '',
+        ];
+
+        try {
+            $admin = Auth::admin();
+            if (is_array($admin) && (int) ($admin['id'] ?? 0) > 0 && (int) ($admin['is_active'] ?? 1) === 1) {
+                $role = (string) ($admin['role'] ?? '');
+                // Same door as WhatsApp: only these four roles hold the
+                // assistant's staff / office powers. Support, scanner and the
+                // like keep the customer tools plus their own sign-in name.
+                if (in_array($role, ['agent', 'counter', 'manager', 'superadmin'], true)) {
+                    $scoped = in_array($role, ['agent', 'counter'], true);
+                    $out['admin']        = $admin;
+                    $out['adminId']      = (int) $admin['id'];
+                    $out['name']         = (string) ($admin['full_name'] ?? ($admin['username'] ?? ''));
+                    $out['phone']        = normalisePhone((string) ($admin['phone'] ?? ''));
+                    $out['role']         = $scoped ? 'staff' : 'admin';
+                    $out['scopeAdminId'] = $scoped ? (int) $admin['id'] : null;
+                    $out['stageKey']     = 'web-staff-' . (int) $admin['id'];
+                    return $out;
+                }
+                $out['name'] = (string) ($admin['full_name'] ?? '');
+            }
+
+            $user = Auth::user();
+            if (is_array($user) && (int) ($user['id'] ?? 0) > 0) {
+                $out['userId'] = (int) $user['id'];
+                $out['phone']  = normalisePhone((string) ($user['phone'] ?? ''));
+                $out['name']   = (string) ($user['full_name'] ?? ($user['name'] ?? $out['name']));
+                $out['stageKey'] = $out['phone'] !== '' ? 'web-' . $out['phone'] : 'web-user-' . (int) $user['id'];
+                return $out;
+            }
+        } catch (Throwable $e) {
+            Logger::exception($e, 'ai');
+        }
+
+        // A guest: keyed on the session so a quote asked in one message can
+        // still be recognised in the next, and forgotten with the session.
+        $sid = session_status() === PHP_SESSION_ACTIVE ? (string) session_id() : '';
+        $out['stageKey'] = 'web-guest-' . substr(hash('sha256', $sid . '|' . (defined('APP_KEY') ? APP_KEY : '')), 0, 24);
+
+        return $out;
+    }
+
+    /**
+     * May this sender be SOLD a ticket by the assistant? Two independent
+     * switches, one per channel, both shipped OFF: wa_agent_sell for the
+     * WhatsApp number, ai_web_sell for the website and the app.
+     */
+    private static function maySell(array $ctx): bool
+    {
+        return ((string) ($ctx['channel'] ?? 'whatsapp')) === 'web'
+            ? Settings::getBool('ai_web_sell', false)
+            : Settings::getBool('wa_agent_sell', false);
+    }
+
+    /** The identity a staged quote / conversation hangs off (phone, or the web key). */
+    private static function stageKey(array $ctx): string
+    {
+        $key = trim((string) ($ctx['stageKey'] ?? ''));
+        return $key !== '' ? $key : (string) ($ctx['phone'] ?? '');
+    }
+
     /* =================================================================
      *  The catalogue handed to the model
      * ================================================================= */
@@ -187,7 +286,8 @@ final class AiTools
     {
         $role    = (string) ($ctx['role'] ?? 'customer');
         $staff   = $role === 'staff' || $role === 'admin';
-        $mayCut  = Settings::getBool('wa_agent_sell', false);
+        $web     = ((string) ($ctx['channel'] ?? 'whatsapp')) === 'web';
+        $mayCut  = self::maySell($ctx);
         $mayEdit = Settings::getBool('wa_agent_rewrite', true);
         $mayWrite = Settings::getBool('wa_agent_admin_write', false);
 
@@ -223,7 +323,10 @@ final class AiTools
                 'gender'    => ['string', 'Male, Female or Other — needed for a shared cabin berth'],
             ], ['seats']);
 
-        if ($mayCut) {
+        /* A guest on the website has no number to sell to: the quote still
+           works, the sale is the booking screen's. Signed-in customers and
+           staff sell through the same switch-gated tools as WhatsApp. */
+        if ($mayCut && !($web && $role === 'customer' && (string) ($ctx['phone'] ?? '') === '')) {
             $t[] = self::spec('issue_ticket',
                 'ISSUE the ticket that plan_ticket just quoted, after the passenger has clearly said yes (ho / hunxa / ok / thik cha / book it). The ticket PNG goes to their WhatsApp by itself. Only call this when the passenger agreed to the total you read out. '
                 . 'For a PARTY of 2 or more, put every traveller in names[] in the order they were given — each berth is then printed with its own name. Leave names[] out for a single traveller.',
@@ -326,6 +429,19 @@ final class AiTools
             'Where the bus is right now and roughly how many minutes to each pickup still ahead of it. Answers "bus kaha pugyo?". Silent when the driver\'s phone is not live.',
             ['pnr' => ['string', 'Optional PNR, to answer for that passenger\'s own stop']]);
 
+        /* 24 Sep 2026 (owner: "AI le sabai kura ko answer deos — reputation
+           ko pani"). Every role may leave a rating or a complaint; it lands
+           in the same Ratings / Enquiries screens the office already reads. */
+        $t[] = self::spec('record_feedback',
+            'RECORD a rating, a compliment or a complaint about the journey or the company so the office sees it. Use when the person says they want to rate, review, praise or complain — after you have asked for a 1–5 star rating and their words. A low rating (1–2) is also filed as a complaint for the office to call back. Never invent a rating.',
+            [
+                'rating'  => ['integer', '1 (worst) to 5 (best)'],
+                'comment' => ['string', "The person's own words, short"],
+                'pnr'     => ['string', 'The PNR the feedback is about, if they gave one'],
+                'name'    => ['string', 'Their name, if known'],
+                'phone'   => ['string', 'A callback number — staff only, for a passenger they are speaking for'],
+            ], ['rating']);
+
         if ($staff) {
             $t[] = self::spec('agent_day',
                 "One seller's own day: tickets sold, seats, money by method, commission earned and wallet balance. Defaults to the staff member who is writing, and to today.",
@@ -334,6 +450,35 @@ final class AiTools
             $t[] = self::spec('agent_passengers',
                 'The passengers travelling on a date, grouped by pickup, with seat and phone — a counter agent sees only the ones they sold themselves.',
                 ['date' => ['string', 'YYYY-MM-DD, default today']]);
+
+            /* 24 Sep 2026 — REPORTS AND GRAPHS (owner: "report, graph, real
+               time data, kati ticket bikri bhayo"). Read-only, drawn from
+               the same tables as Admin → Analytics, normalised to INR the
+               same way. Every report returns a `chart` block the website
+               draws live (Chart.js) and WhatsApp receives as a PNG. A
+               counter agent's report is always their own sales only. */
+            $t[] = self::spec('sales_report',
+                'SALES REPORT with a chart: tickets sold, seats, revenue (₹), refunds and cancellations for a period — today, yesterday, this week, this month, the last 7 or 30 days, or a custom range — broken down by day, route, payment method, pickup, cabin mode or (office only) selling agent. Use for "kati bikri bhayo", "yo hapta ko report", "graph dekhau", "which route earns most", comparisons and trends. A counter agent gets their own sales only.',
+                [
+                    'period'   => ['string', 'today | yesterday | week | month | last7 | last30 | custom (then give from/to)'],
+                    'from'     => ['string', 'YYYY-MM-DD, with period=custom'],
+                    'to'       => ['string', 'YYYY-MM-DD, with period=custom'],
+                    'group_by' => ['string', 'day (default) | route | method | pickup | mode | agent'],
+                ]);
+
+            $t[] = self::spec('occupancy_report',
+                'HOW FULL each departure is for the coming days: seats sold against capacity per bus, with a chart. Use for "bholi ko bus kati bhariyo", "kun din seat khali cha", "occupancy", planning an extra bus.',
+                ['days' => ['integer', 'How many days ahead, 1–14 (default 7)']]);
+        }
+
+        if ($role === 'admin') {
+            $t[] = self::spec('site_visitors',
+                'WEBSITE AND APP TRAFFIC, live: how many people are on the site right now, visits and page views per day, searches, empty searches, checkout drop-offs, quick-ticket opens, app installs, and tickets per 100 visits — with a chart. Use for "kati customer le visit gare", "aaja website ma kati manche", conversion, "kaha bata manche harauchan".',
+                ['days' => ['integer', 'How many days back, 1–90 (default 7)']]);
+
+            $t[] = self::spec('agent_leaderboard',
+                'TOP SELLING AGENTS for a period: tickets, seats and revenue per agent, ranked, with a chart. Office only.',
+                ['period' => ['string', 'today | yesterday | week | month | last7 | last30 (default month)']]);
         }
 
         if ($role === 'admin') {
@@ -445,6 +590,11 @@ final class AiTools
                 'office_search'    => self::officeSearch($args, $ctx),
                 'office_alerts'    => self::officeAlerts($args, $ctx),
                 'office_confirm'   => self::officeConfirm($args, $ctx),
+                'record_feedback'  => self::recordFeedback($args, $ctx),
+                'sales_report'     => self::salesReport($args, $ctx),
+                'occupancy_report' => self::occupancyReport($args, $ctx),
+                'site_visitors'    => self::siteVisitors($args, $ctx),
+                'agent_leaderboard' => self::salesReport(['period' => (string) ($args['period'] ?? 'month'), 'group_by' => 'agent'], $ctx),
                 default            => $out,
             };
         } catch (RuntimeException $e) {
@@ -786,8 +936,14 @@ final class AiTools
 
     private static function issueTicket(array $args, array $ctx): array
     {
-        if (!Settings::getBool('wa_agent_sell', false)) {
-            return self::no('Selling on WhatsApp is switched off. Say the desk will confirm the booking and give the office number.');
+        $web = ((string) ($ctx['channel'] ?? 'whatsapp')) === 'web';
+        if (!self::maySell($ctx)) {
+            return self::no($web
+                ? 'Selling from the website chat is switched off. Send them to the booking screen (#/) with the date, pickup and seats you quoted, or give the office number.'
+                : 'Selling on WhatsApp is switched off. Say the desk will confirm the booking and give the office number.');
+        }
+        if ($web && (string) ($ctx['phone'] ?? '') === '') {
+            return self::no('This visitor is not signed in, so there is no mobile number to put the ticket on. Ask them to sign in at #/my with their mobile number, or book at #/.');
         }
         if (($args['confirm'] ?? false) !== true) {
             return self::no('The passenger has not confirmed yet. Read the total back and wait for ho / yes.');
@@ -830,8 +986,10 @@ final class AiTools
 
     private static function staffSell(array $args, array $ctx): array
     {
-        if (!Settings::getBool('wa_agent_sell', false)) {
-            return self::no('Selling on WhatsApp is switched off for this company.');
+        if (!self::maySell($ctx)) {
+            return self::no(((string) ($ctx['channel'] ?? 'whatsapp')) === 'web'
+                ? 'Selling from the chat is switched off for this company — use ⚡ Quick Ticket in the panel.'
+                : 'Selling on WhatsApp is switched off for this company.');
         }
         if (($args['confirm'] ?? false) !== true) {
             return self::no('Not confirmed — read the plan back to the seller first.');
@@ -1076,9 +1234,9 @@ final class AiTools
         ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
         Database::transaction(static function () use ($saved, $ctx): void {
             Database::delete('kv_store', 'kscope = :s AND kkey = :k',
-                ['s' => 'wa_ticket_fix', 'k' => (string) $ctx['phone']]);
+                ['s' => 'wa_ticket_fix', 'k' => self::stageKey($ctx)]);
             Database::insert('kv_store', [
-                'kscope' => 'wa_ticket_fix', 'kkey' => (string) $ctx['phone'],
+                'kscope' => 'wa_ticket_fix', 'kkey' => self::stageKey($ctx),
                 'kvalue' => $saved, 'updated_by' => 'aiagent',
             ]);
         });
@@ -1107,7 +1265,7 @@ final class AiTools
             // Lock and consume once in the same transaction as the correction.
             $row = Database::fetchForUpdate(
                 'SELECT kvalue FROM kv_store WHERE kscope = :s AND kkey = :k',
-                ['s' => 'wa_ticket_fix', 'k' => (string) $ctx['phone']]
+                ['s' => 'wa_ticket_fix', 'k' => self::stageKey($ctx)]
             )[0] ?? null;
             $saved = $row !== null ? json_decode((string) $row['kvalue'], true) : null;
             if (!is_array($saved) || (int) ($saved['at'] ?? 0) < time() - self::STAGE_TTL
@@ -1145,7 +1303,7 @@ final class AiTools
                 Database::update('payments', ['payer_phone' => $proposal['phone']], 'booking_id = :b', ['b' => $bid]);
             }
             Database::delete('kv_store', 'kscope = :s AND kkey = :k',
-                ['s' => 'wa_ticket_fix', 'k' => (string) $ctx['phone']]);
+                ['s' => 'wa_ticket_fix', 'k' => self::stageKey($ctx)]);
             Logger::audit('booking.fix_whatsapp', 'booking', $pnr,
                 ['date' => self::outboundLeg($detail)['travel_date'], 'phone' => $detail['contact_phone']],
                 ['changed' => $changed], 'WhatsApp correction by ' . $ctx['phone'] . ': ' . $reason);
@@ -1727,6 +1885,515 @@ final class AiTools
      *  Gates and plumbing
      * ================================================================= */
 
+    /* =================================================================
+     *  Tools — reputation, reports and graphs (24 Sep 2026)
+     *
+     *  Owner ask: "image, report, graph, real-time data — kati customer
+     *  le visit gare, kati ticket bikri bhayo — teen wotai role, WhatsApp
+     *  ra app dubai bata; company reputation ma dhyan."
+     *
+     *  Everything below READS. The figures come from the same tables and
+     *  the same INR peg as Admin → Analytics, so a number the assistant
+     *  says and a number on the Analytics screen never disagree. Each
+     *  report carries a `chart` block: {type, title, labels, series[],
+     *  format}. The website draws it live; WhatsApp gets it as a PNG
+     *  (includes/aichart.php). A counter agent's report is scoped to
+     *  sold_by_admin_id exactly as every admin page is.
+     * ================================================================= */
+
+    /**
+     * A rating, a compliment or a complaint — into the `feedback` table the
+     * Ratings screen reads, and (when it is a complaint) into the Enquiries
+     * inbox the office watches all day. The assistant never grades anyone
+     * itself: a rating is what the person said.
+     */
+    private static function recordFeedback(array $args, array $ctx): array
+    {
+        $rating = (int) ($args['rating'] ?? 0);
+        if ($rating < 1 || $rating > 5) {
+            return self::no('Ask for a rating from 1 to 5 first.');
+        }
+        $comment = Security::clean((string) ($args['comment'] ?? ''), 1000);
+        $name    = Security::clean((string) ($args['name'] ?? ($ctx['name'] ?? '')), 120);
+        $pnr     = strtoupper(trim((string) ($args['pnr'] ?? '')));
+        $role    = (string) ($ctx['role'] ?? 'customer');
+        $staff   = $role === 'staff' || $role === 'admin';
+
+        $phone = (string) ($ctx['phone'] ?? '');
+        if ($staff) {
+            $given = normalisePhone((string) ($args['phone'] ?? ''));
+            if ($given !== '') {
+                $phone = $given;
+            }
+        }
+
+        $bookingId = null;
+        if ($pnr !== '' && Security::isValidPnr($pnr)) {
+            $detail = BookingService::detail($pnr);
+            if ($detail !== null && self::mayRead($detail, $ctx)) {
+                $bookingId = (int) $detail['id'];
+                if ($phone === '') {
+                    $phone = normalisePhone((string) ($detail['contact_phone'] ?? ''));
+                }
+                if ($name === '') {
+                    $name = (string) ($detail['passengers'][0]['full_name'] ?? '');
+                }
+            }
+        }
+
+        $id = (int) Database::insert('feedback', [
+            'booking_id' => $bookingId,
+            'user_phone' => $phone !== '' ? $phone : null,
+            'name'       => $name !== '' ? $name : null,
+            'rating'     => $rating,
+            'comment'    => $comment !== '' ? mb_substr($comment, 0, 1000) : null,
+            'is_public'  => 0,
+        ]);
+
+        // A poor rating is a complaint the office must call back on, so it
+        // also lands in the Enquiries inbox — one queue, not a second one.
+        $complaintRef = '';
+        if ($rating <= 2 && $phone !== '' && Security::isValidPhone($phone)) {
+            try {
+                $complaintRef = 'SHG-C-' . strtoupper(base_convert((string) time(), 10, 36));
+                Database::insert('enquiries', [
+                    'name'   => $name !== '' ? $name : 'Sahayak guest',
+                    'phone'  => $phone,
+                    'note'   => mb_substr('[' . $complaintRef . '] rating ' . $rating . '/5'
+                                . ($pnr !== '' ? ' · ' . $pnr : '') . ' · ' . $comment, 0, 250),
+                    'source' => 'complaint',
+                    'status' => 'new',
+                ]);
+            } catch (Throwable $e) {
+                Logger::exception($e, 'ai');           // the rating itself is saved
+                $complaintRef = '';
+            }
+        }
+
+        return [
+            'ok'   => true,
+            'say'  => 'Saved. Thank them warmly in their own language. '
+                    . ($rating <= 2
+                        ? 'This is a complaint: apologise in one line, say the office will call back' . ($complaintRef !== '' ? ' (reference ' . $complaintRef . ')' : '') . ', and give the office number.'
+                        : ($rating >= 4 ? 'Invite them, in one line, to share the experience with family or on our Facebook page — only if they seem happy.' : 'Ask, in one line, what would have made it a 5.')),
+            'data' => ['feedbackId' => $id, 'rating' => $rating, 'pnr' => $pnr, 'complaintRef' => $complaintRef, 'bookingId' => $bookingId],
+            'media' => null,
+        ];
+    }
+
+    /**
+     * Resolve "today / week / last30 / custom" into an inclusive date pair.
+     *
+     * @return array{0: string, 1: string, 2: string} from, to, label
+     */
+    private static function periodRange(string $period, string $from = '', string $to = ''): array
+    {
+        $today = todayISO();
+        $period = strtolower(trim($period));
+        if ($period === 'custom' || ($period === '' && ($from !== '' || $to !== ''))) {
+            $f = self::cleanDate($from) ?: addDaysISO($today, -6);
+            $t = self::cleanDate($to) ?: $today;
+            if ($f > $t) {
+                [$f, $t] = [$t, $f];
+            }
+            // Never more than a year in one report — a chart with 400 bars says nothing.
+            if (strtotime($t) - strtotime($f) > 366 * 86400) {
+                $f = addDaysISO($t, -365);
+            }
+            return [$f, $t, $f . ' to ' . $t];
+        }
+        return match ($period) {
+            'yesterday' => [addDaysISO($today, -1), addDaysISO($today, -1), 'yesterday'],
+            'week', 'this_week'  => [date('Y-m-d', strtotime('monday this week')), $today, 'this week'],
+            'month', 'this_month' => [date('Y-m-01'), $today, 'this month'],
+            'last7', '7d', 'last_7_days', 'last 7 days'   => [addDaysISO($today, -6), $today, 'last 7 days'],
+            'last30', '30d', 'last_30_days', 'last 30 days' => [addDaysISO($today, -29), $today, 'last 30 days'],
+            default     => [$today, $today, 'today'],
+        };
+    }
+
+    /** SQL: a booking's total in INR whatever currency it was sold in. */
+    private static function revInrSql(string $alias = 'b'): string
+    {
+        $peg = defined('NPR_PER_INR') ? (float) NPR_PER_INR : 1.6;
+        return "SUM(CASE WHEN {$alias}.currency = 'NPR' THEN {$alias}.total_amount / {$peg} ELSE {$alias}.total_amount END)";
+    }
+
+    private static function salesReport(array $args, array $ctx): array
+    {
+        $role  = (string) ($ctx['role'] ?? 'customer');
+        if ($role !== 'staff' && $role !== 'admin') {
+            return self::no('Only staff and the office may ask for a sales report.');
+        }
+        $scope = $ctx['scopeAdminId'] ?? null;             // a counter agent: own sales only
+        $group = strtolower(trim((string) ($args['group_by'] ?? 'day')));
+        if (!in_array($group, ['day', 'route', 'method', 'pickup', 'mode', 'agent'], true)) {
+            $group = 'day';
+        }
+        if ($group === 'agent' && $role !== 'admin') {
+            return self::no('A per-agent breakdown is for the office. This seller may see their own figures only — ask for group_by day.');
+        }
+
+        [$from, $to, $label] = self::periodRange((string) ($args['period'] ?? 'today'),
+            (string) ($args['from'] ?? ''), (string) ($args['to'] ?? ''));
+        $p = ['d0' => $from . ' 00:00:00', 'd1' => $to . ' 23:59:59'];
+        $scopeSql = '';
+        if ($scope !== null) {
+            $scopeSql = ' AND b.sold_by_admin_id = :scope';
+            $p['scope'] = (int) $scope;
+        }
+        $paid = "b.status IN ('confirmed','completed')";
+        $soldAt = 'COALESCE(b.confirmed_at, b.created_at)';
+
+        /* ---- the totals ------------------------------------------------ */
+        $tot = Database::fetch(
+            "SELECT COUNT(*) AS tickets, COALESCE(" . self::revInrSql() . ",0) AS revenue,
+                    COALESCE(SUM(b.refund_amount),0) AS refunds
+               FROM bookings b
+              WHERE {$paid} AND {$soldAt} BETWEEN :d0 AND :d1{$scopeSql}",
+            $p
+        ) ?? [];
+        $seats = (int) Database::scalar(
+            "SELECT COUNT(*) FROM booking_seats s JOIN bookings b ON b.id = s.booking_id
+              WHERE {$paid} AND s.released_at IS NULL AND {$soldAt} BETWEEN :d0 AND :d1{$scopeSql}",
+            $p, 0
+        );
+        $cancelled = (int) Database::scalar(
+            "SELECT COUNT(*) FROM bookings b WHERE b.status = 'cancelled' AND b.cancelled_at BETWEEN :d0 AND :d1{$scopeSql}",
+            $p, 0
+        );
+        $pending = (int) Database::scalar(
+            "SELECT COUNT(*) FROM bookings b WHERE b.status = 'pending' AND b.created_at BETWEEN :d0 AND :d1{$scopeSql}",
+            $p, 0
+        );
+        $refunded = (float) Database::scalar(
+            "SELECT COALESCE(SUM(b.refund_amount),0) FROM bookings b
+              WHERE b.status = 'cancelled' AND b.cancelled_at BETWEEN :d0 AND :d1{$scopeSql}",
+            $p, 0
+        );
+
+        /* ---- the breakdown ---------------------------------------------- */
+        $rev = self::revInrSql();
+        [$keySql, $joinSql, $keyLabel] = match ($group) {
+            'route'  => ["CONCAT(r.from_city, ' → ', r.to_city)",
+                         " JOIN booking_legs bl ON bl.booking_id = b.id AND bl.leg_type = 'outbound'
+                           JOIN schedules s ON s.id = bl.schedule_id JOIN routes r ON r.id = s.route_id", 'Route'],
+            'method' => ["COALESCE(NULLIF((SELECT p2.method FROM payments p2 WHERE p2.booking_id = b.id ORDER BY p2.id DESC LIMIT 1),''),'unknown')", '', 'Payment method'],
+            'pickup' => ["COALESCE(NULLIF(bl.boarding_stop,''),'—')",
+                         " LEFT JOIN booking_legs bl ON bl.booking_id = b.id AND bl.leg_type = 'outbound'", 'Pickup'],
+            'mode'   => ["COALESCE(NULLIF(b.booking_mode,''),'seater')", '', 'Cabin'],
+            'agent'  => ["COALESCE(NULLIF(a.full_name,''), CASE WHEN b.sold_by_admin_id IS NULL THEN 'Online / office' ELSE CONCAT('Staff #', b.sold_by_admin_id) END)",
+                         ' LEFT JOIN admins a ON a.id = b.sold_by_admin_id', 'Agent'],
+            default  => ["DATE({$soldAt})", '', 'Day'],
+        };
+        $rows = Database::fetchAll(
+            "SELECT {$keySql} AS k, COUNT(DISTINCT b.id) AS tickets, COALESCE({$rev},0) AS revenue
+               FROM bookings b{$joinSql}
+              WHERE {$paid} AND {$soldAt} BETWEEN :d0 AND :d1{$scopeSql}
+              GROUP BY k ORDER BY " . ($group === 'day' ? 'k' : 'revenue DESC') . ' LIMIT 40',
+            $p
+        );
+
+        $labels = [];
+        $tickets = [];
+        $revenue = [];
+        $list = [];
+        if ($group === 'day') {
+            // Every day in the range, zero-filled, so a quiet day is a gap the eye can see.
+            $byDay = [];
+            foreach ($rows as $r) {
+                $byDay[(string) $r['k']] = $r;
+            }
+            for ($d = $from; $d <= $to; $d = addDaysISO($d, 1)) {
+                $r = $byDay[$d] ?? ['tickets' => 0, 'revenue' => 0];
+                $labels[]  = date('d M', strtotime($d));
+                $tickets[] = (int) $r['tickets'];
+                $revenue[] = round((float) $r['revenue']);
+                $list[] = ['day' => $d, 'tickets' => (int) $r['tickets'], 'revenue' => round((float) $r['revenue'])];
+                if (count($labels) >= 366) { break; }
+            }
+        } else {
+            foreach ($rows as $r) {
+                $labels[]  = (string) $r['k'];
+                $tickets[] = (int) $r['tickets'];
+                $revenue[] = round((float) $r['revenue']);
+                $list[] = [strtolower($keyLabel) => (string) $r['k'], 'tickets' => (int) $r['tickets'], 'revenue' => round((float) $r['revenue'])];
+            }
+        }
+
+        $revenueTotal = (float) ($tot['revenue'] ?? 0);
+        $ticketsTotal = (int) ($tot['tickets'] ?? 0);
+        $who = $scope !== null ? (string) ($ctx['name'] ?? 'this seller') . "'s own" : 'the company\'s';
+
+        $chart = [
+            'type'   => $group === 'day' && count($labels) > 12 ? 'line' : 'bar',
+            'title'  => 'Sales · ' . $label . ($scope !== null ? ' · ' . (string) ($ctx['name'] ?? '') : '') . ' · by ' . strtolower($keyLabel),
+            'labels' => $labels,
+            'series' => [
+                ['name' => 'Revenue ₹', 'data' => $revenue, 'format' => 'money'],
+                ['name' => 'Tickets',   'data' => $tickets, 'format' => 'count', 'axis' => 'y2'],
+            ],
+            'format' => 'money',
+        ];
+
+        return [
+            'ok'   => true,
+            'say'  => 'These are ' . $who . ' live sales figures for ' . $label . ' (INR, NPR converted at the company peg). '
+                    . 'Give the totals first in one line, then the two or three biggest items, then one sentence of meaning. '
+                    . 'A chart is attached — say so, do not read every bar aloud.',
+            'data' => [
+                'period'        => $label,
+                'from'          => $from,
+                'to'            => $to,
+                'scope'         => $scope !== null ? 'own sales only' : 'whole company',
+                'tickets'       => $ticketsTotal,
+                'seats'         => $seats,
+                'revenue'       => round($revenueTotal),
+                'revenueLabel'  => inr($revenueTotal),
+                'avgPerTicket'  => $ticketsTotal > 0 ? round($revenueTotal / $ticketsTotal) : 0,
+                'cancelled'     => $cancelled,
+                'refunded'      => round($refunded),
+                'pendingPayment' => $pending,
+                'groupBy'       => strtolower($keyLabel),
+                'rows'          => array_slice($list, 0, 40),
+                'chart'         => $chart,
+            ],
+            'media' => null,
+        ];
+    }
+
+    private static function occupancyReport(array $args, array $ctx): array
+    {
+        $role = (string) ($ctx['role'] ?? 'customer');
+        if ($role !== 'staff' && $role !== 'admin') {
+            return self::no('Only staff and the office may ask for occupancy.');
+        }
+        $days = max(1, min(14, (int) ($args['days'] ?? 7)));
+        $from = todayISO();
+        $to   = addDaysISO($from, $days - 1);
+
+        $deps = Database::fetchAll(
+            "SELECT s.id, s.route_id, s.travel_date, s.status, s.is_blocked, r.from_city, r.to_city,
+                    COALESCE(s.dep_time_override, r.dep_time) AS dep_time,
+                    COALESCE(bus.total_seats, rb.total_seats, 0) AS bus_seats,
+                    (SELECT COUNT(*) FROM booking_seats bs WHERE bs.schedule_id = s.id AND bs.released_at IS NULL) AS sold
+               FROM schedules s
+               JOIN routes r ON r.id = s.route_id
+               LEFT JOIN buses bus ON bus.id = s.bus_id
+               LEFT JOIN buses rb  ON rb.id  = r.bus_id
+              WHERE s.travel_date BETWEEN :d0 AND :d1
+              ORDER BY s.travel_date, dep_time",
+            ['d0' => $from, 'd1' => $to]
+        );
+
+        /* Schedules are materialised on first demand (Seats::schedule), so
+           a day nobody has searched yet has no row — but the daily bus still
+           runs. Fill those days from the active routes, WITHOUT creating
+           rows: a report must never leave a footprint in the register. */
+        $have = [];
+        foreach ($deps as $d) {
+            $have[(int) $d['route_id'] . '|' . (string) $d['travel_date']] = true;
+        }
+        try {
+            $routes = Database::fetchAll(
+                'SELECT r.id, r.from_city, r.to_city, r.dep_time, r.coach_type, COALESCE(rb.total_seats, 0) AS bus_seats
+                   FROM routes r LEFT JOIN buses rb ON rb.id = r.bus_id
+                  WHERE r.is_active = 1 ORDER BY r.sort_order, r.dep_time'
+            );
+            for ($d = $from; $d <= $to; $d = addDaysISO($d, 1)) {
+                foreach ($routes as $r) {
+                    if (isset($have[(int) $r['id'] . '|' . $d])) {
+                        continue;
+                    }
+                    $cap = 0;
+                    try {
+                        $cap = count(Seats::seatIds((string) $r['coach_type'], 'sharing'));
+                    } catch (Throwable $e) {
+                        $cap = (int) $r['bus_seats'];
+                    }
+                    $deps[] = [
+                        'id' => 0, 'route_id' => (int) $r['id'], 'travel_date' => $d, 'status' => 'scheduled', 'is_blocked' => 0,
+                        'from_city' => (string) $r['from_city'], 'to_city' => (string) $r['to_city'],
+                        'dep_time' => (string) $r['dep_time'], 'bus_seats' => $cap, 'sold' => 0,
+                    ];
+                }
+            }
+            usort($deps, static fn(array $a, array $b): int =>
+                [(string) $a['travel_date'], (string) $a['dep_time']] <=> [(string) $b['travel_date'], (string) $b['dep_time']]);
+        } catch (Throwable $e) {
+            // the materialised rows alone still make an honest report
+        }
+
+        $labels = [];
+        $pct    = [];
+        $rows   = [];
+        foreach ($deps as $d) {
+            $cap = 0;
+            try {
+                $cap = (int) $d['id'] > 0 ? count(Seats::seatIdsForSchedule((int) $d['id'])) : 0;
+            } catch (Throwable $e) {
+                $cap = 0;
+            }
+            if ($cap <= 0) {
+                $cap = (int) $d['bus_seats'];
+            }
+            $sold = (int) $d['sold'];
+            $fill = $cap > 0 ? (int) round($sold * 100 / $cap) : null;
+            $day  = formatDate((string) $d['travel_date'], 'D j M');
+            $rows[] = [
+                'date'     => (string) $d['travel_date'],
+                'dateLabel' => $day,
+                'route'    => (string) $d['from_city'] . ' → ' . (string) $d['to_city'],
+                'depTime'  => substr((string) $d['dep_time'], 0, 5),
+                'sold'     => $sold,
+                'capacity' => $cap,
+                'free'     => max(0, $cap - $sold),
+                'fillPct'  => $fill,
+                'status'   => (string) ($d['status'] ?? ''),
+                'blocked'  => (int) ($d['is_blocked'] ?? 0) === 1,
+            ];
+            // The chart shows the first four weeks of bars; the rows carry
+            // every departure in the window (at most 14 days x the routes).
+            if (count($labels) < 28) {
+                $labels[] = $day . ' ' . substr((string) $d['dep_time'], 0, 5);
+                $pct[]    = $fill ?? 0;
+            }
+            if (count($rows) >= 80) { break; }
+        }
+
+        $chart = [
+            'type'   => 'bar',
+            'title'  => 'Bus occupancy · next ' . $days . ' day' . ($days > 1 ? 's' : '') . ' (% of seats sold)',
+            'labels' => $labels,
+            'series' => [['name' => 'Sold %', 'data' => $pct, 'format' => 'percent']],
+            'format' => 'percent',
+            'max'    => 100,
+        ];
+
+        return [
+            'ok'   => true,
+            'say'  => $rows === []
+                ? 'No departures are scheduled in that window.'
+                : 'Seats sold against capacity per departure, live. Name the fullest and the emptiest bus, and any bus over 85% as "almost full". A chart is attached.',
+            'data' => ['from' => $from, 'to' => $to, 'departures' => $rows, 'chart' => $chart],
+            'media' => null,
+        ];
+    }
+
+    /**
+     * The product beacon (api/events.php) read back as traffic. It stores
+     * behaviour, never people: a visit is a rotating per-visit key, so
+     * "visitors" here means visits, and nothing here can be joined to a
+     * phone number or a name.
+     */
+    private static function siteVisitors(array $args, array $ctx): array
+    {
+        if ((string) ($ctx['role'] ?? '') !== 'admin') {
+            return self::no('Website traffic is for the office only.');
+        }
+        $days = max(1, min(90, (int) ($args['days'] ?? 7)));
+        $from = addDaysISO(todayISO(), -($days - 1));
+
+        try {
+            $now = (int) Database::scalar(
+                'SELECT COUNT(DISTINCT session_key) FROM app_events WHERE created_at >= (NOW() - INTERVAL 5 MINUTE)', [], 0
+            );
+            $rows = Database::fetchAll(
+                "SELECT DATE(created_at) AS d,
+                        COUNT(DISTINCT session_key)                        AS visits,
+                        SUM(name = 'view')                                 AS views,
+                        SUM(name = 'search')                               AS searches,
+                        SUM(name = 'search_empty')                         AS empty_searches,
+                        SUM(name = 'seat_open')                            AS seat_opens,
+                        SUM(name = 'checkout_drop')                        AS checkout_drops,
+                        SUM(name = 'quick_ticket_open')                    AS quick_ticket_opens,
+                        SUM(name = 'install_prompt')                       AS installs,
+                        SUM(name = 'offline_hit')                          AS offline_hits,
+                        SUM(name = 'error_boundary')                       AS errors
+                   FROM app_events
+                  WHERE created_at >= :d0
+                  GROUP BY DATE(created_at) ORDER BY d",
+                ['d0' => $from . ' 00:00:00']
+            );
+        } catch (Throwable $e) {
+            return self::no('Visitor tracking is not installed on this server yet (the app_events table is missing).');
+        }
+
+        $byDay = [];
+        foreach ($rows as $r) {
+            $byDay[(string) $r['d']] = $r;
+        }
+        $labels = [];
+        $visits = [];
+        $views  = [];
+        $sum = ['visits' => 0, 'views' => 0, 'searches' => 0, 'empty_searches' => 0, 'seat_opens' => 0,
+                'checkout_drops' => 0, 'quick_ticket_opens' => 0, 'installs' => 0, 'offline_hits' => 0, 'errors' => 0];
+        $today = todayISO();
+        for ($d = $from; $d <= $today; $d = addDaysISO($d, 1)) {
+            $r = $byDay[$d] ?? [];
+            $labels[] = date('d M', strtotime($d));
+            $visits[] = (int) ($r['visits'] ?? 0);
+            $views[]  = (int) ($r['views'] ?? 0);
+            foreach ($sum as $k => $_) {
+                $sum[$k] += (int) ($r[$k] ?? 0);
+            }
+        }
+
+        // What people looked at most, from the redacted props of view events.
+        $topViews = [];
+        try {
+            foreach (Database::fetchAll(
+                "SELECT JSON_UNQUOTE(JSON_EXTRACT(props, '$.view')) AS v, COUNT(*) AS n
+                   FROM app_events
+                  WHERE name = 'view' AND created_at >= :d0 AND props IS NOT NULL
+                  GROUP BY v ORDER BY n DESC LIMIT 8",
+                ['d0' => $from . ' 00:00:00']
+            ) as $r) {
+                if ((string) ($r['v'] ?? '') !== '' && (string) $r['v'] !== 'null') {
+                    $topViews[] = ['view' => (string) $r['v'], 'views' => (int) $r['n']];
+                }
+            }
+        } catch (Throwable $e) {
+            $topViews = [];                       // an older MySQL without JSON functions
+        }
+
+        // Conversion: tickets that were actually sold in the same window.
+        $tickets = (int) Database::scalar(
+            "SELECT COUNT(*) FROM bookings WHERE status IN ('confirmed','completed') AND created_at >= :d0",
+            ['d0' => $from . ' 00:00:00'], 0
+        );
+        $conversion = $sum['visits'] > 0 ? round($tickets * 100 / $sum['visits'], 1) : null;
+
+        $chart = [
+            'type'   => $days > 12 ? 'line' : 'bar',
+            'title'  => 'Website & app visits · last ' . $days . ' day' . ($days > 1 ? 's' : ''),
+            'labels' => $labels,
+            'series' => [
+                ['name' => 'Visits',     'data' => $visits, 'format' => 'count'],
+                ['name' => 'Page views', 'data' => $views,  'format' => 'count'],
+            ],
+            'format' => 'count',
+        ];
+
+        return [
+            'ok'   => true,
+            'say'  => 'Live traffic from the product beacon (visits are anonymous per-visit keys, never people). '
+                    . 'Say how many are on the site RIGHT NOW, the visits for the period, and the one funnel fact that matters '
+                    . '(empty searches or checkout drop-offs). A chart is attached.',
+            'data' => [
+                'onSiteNow'      => $now,
+                'days'           => $days,
+                'from'           => $from,
+                'to'             => $today,
+                'totals'         => $sum + ['ticketsSold' => $tickets],
+                'ticketsPer100Visits' => $conversion,
+                'topViews'       => $topViews,
+                'chart'          => $chart,
+            ],
+            'media' => null,
+        ];
+    }
+
     /** May this sender READ the full detail of this booking? */
     private static function mayRead(array $detail, array $ctx): bool
     {
@@ -1780,10 +2447,10 @@ final class AiTools
 
         try {
             $done = Database::update('kv_store', ['kvalue' => $row, 'updated_by' => 'aiagent'],
-                'kscope = :s AND kkey = :k', ['s' => 'wa_stage', 'k' => (string) $ctx['phone']]);
+                'kscope = :s AND kkey = :k', ['s' => 'wa_stage', 'k' => self::stageKey($ctx)]);
             if ($done === 0) {
                 Database::insertIgnore('kv_store', [
-                    'kscope' => 'wa_stage', 'kkey' => (string) $ctx['phone'],
+                    'kscope' => 'wa_stage', 'kkey' => self::stageKey($ctx),
                     'kvalue' => $row, 'updated_by' => 'aiagent',
                 ]);
             }
@@ -1798,7 +2465,7 @@ final class AiTools
         try {
             $row = Database::fetch(
                 'SELECT kvalue FROM kv_store WHERE kscope = :s AND kkey = :k',
-                ['s' => 'wa_stage', 'k' => (string) $ctx['phone']]
+                ['s' => 'wa_stage', 'k' => self::stageKey($ctx)]
             );
         } catch (Throwable $e) {
             return null;
@@ -1847,9 +2514,15 @@ final class AiTools
                     $safe[(string) $k] = is_string($v) ? mb_substr($v, 0, 60) : $v;
                 }
             }
+            // A website visitor may have no number; the log then carries the
+            // (hashed) session key so a burst from one guest is still visible.
+            $who = (string) ($ctx['phone'] ?? '');
+            if ($who === '') {
+                $who = mb_substr(self::stageKey($ctx), 0, 20);
+            }
             Database::insert('ai_agent_calls', [
                 'created_at' => date('Y-m-d H:i:s'),
-                'phone'      => (string) ($ctx['phone'] ?? ''),
+                'phone'      => $who,
                 'role'       => in_array($ctx['role'] ?? '', ['customer', 'staff', 'admin'], true) ? (string) $ctx['role'] : 'customer',
                 'channel'    => (string) ($ctx['channel'] ?? 'whatsapp'),
                 'tool'       => mb_substr($tool, 0, 40),

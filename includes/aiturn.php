@@ -20,7 +20,11 @@ final class AiTurn
             $calls = (array) ($reply['calls'] ?? []);
             if ($calls === []) {
                 $text = trim((string) ($reply['text'] ?? ''));
-                return $text !== '' ? ['text' => $text, 'media' => $media] : self::fallback($outcomes, $media);
+                // `outcomes` (24 Sep 2026): every tool result of the turn, so a
+                // caller can lift a report's chart or an action out of it.
+                return $text !== ''
+                    ? ['text' => $text, 'media' => $media, 'outcomes' => $outcomes]
+                    : self::fallback($outcomes, $media);
             }
             $history[] = ['role' => 'assistant', 'content' => $reply['blocks'] ?? []];
             $results = [];
@@ -77,6 +81,6 @@ final class AiTurn
                 . ($facts !== [] ? ' (' . implode(', ', $facts) . ')' : '');
         }
         $lines[] = 'पूरा भएको काम फेरि नगर्नुहोस्। बाँकी कुरा बुझ्न अर्को सन्देश पठाउनुहोस्।';
-        return ['text' => implode("\n", array_unique($lines)), 'media' => $media];
+        return ['text' => implode("\n", array_unique($lines)), 'media' => $media, 'outcomes' => $outcomes];
     }
 }

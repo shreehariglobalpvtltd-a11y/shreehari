@@ -58,6 +58,12 @@ $boot = [
     // itself stays server-side (api/ai-proxy.php). Drives the "AI" badge
     // and whether the bot escalates unmatched questions to the proxy.
     'ai'       => Settings::getString('anthropic_api_key', '') !== '',
+    // 24 Sep 2026: the assistant WITH HANDS (api/ai-chat.php) — tools, role
+    // by sign-in, reports and graphs. Either brain's key will do. When true
+    // the widget asks the agent first and keeps the rule engine as its
+    // offline fallback; when false it behaves exactly as before.
+    'aiAgent'  => Settings::getBool('ai_web_agent_on', true)
+                  && (Settings::getString('anthropic_api_key', '') !== '' || Settings::getString('gemini_api_key', '') !== ''),
     'settings' => Settings::publicSettings(),
     'user'     => $user !== null ? [
         'phone'  => $user['phone'] ?? '',
