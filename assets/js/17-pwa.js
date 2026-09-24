@@ -76,7 +76,7 @@
       beacon('install_prompt', { source: deferred ? 'android' : 'ios' });
     }
     function head() {
-      return '<div class="pwa-head"><img src="/assets/img/icon-192.png?v=20260923b" alt="" width="52" height="52">'
+      return '<div class="pwa-head"><img src="/assets/img/icon-192.png?v=20260923c" alt="" width="52" height="52">'
         + '<div><b>' + E(T('pwaInstallT')) + '</b><small>' + E(T('pwaInstallP')) + '</small></div></div>';
     }
     function showAndroid() {

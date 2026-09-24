@@ -311,3 +311,43 @@ h2,h3{font-weight:700}
 /* Devanagari sits in Mukta: it reads a touch smaller than Poppins caps, so
    headings that are mostly Devanagari get a small lift */
 :lang(ne) h1,:lang(ne) h2,:lang(hi) h1,:lang(hi) h2{letter-spacing:0}
+
+/* ---------- 13. PERFORMANCE — refresh-rate smooth (24 Sep 2026, owner: "165 Hz jasto") ----------
+   Measured on the phone home page: ONE layout + ONE style recalc per frame while
+   idle, from animations on left / box-shadow / filter / background-position.
+   Everything below keeps the look but moves the motion to the compositor
+   (transform / opacity), stops sheens after a couple of passes, drops blur on
+   scrolling surfaces, and lets 19-ux.js pause any animation that is off screen. */
+html{-webkit-tap-highlight-color:transparent}
+body{touch-action:manipulation}
+/* fixed chrome gets its own layer once, so scrolling never repaints it */
+.nav,.bottom-nav,.ai-fab,.whatsapp-fab,.sos-fab,.hold-bar,.ai-panel,.wa-sheet-card{will-change:transform;transform:translateZ(0);backface-visibility:hidden}
+/* box-shadow pulses -> a scaling/fading ring on a pseudo element */
+.whatsapp-fab,.sos-fab.show,.gps-pulse-dot,.shg-live i,.f-ceo img,.jt-item.current .jt-node,.premium-mode .vip-badge,.tc-phase.active .dot{animation:none!important}
+.whatsapp-fab::after,.sos-fab.show::after{content:"";position:absolute;inset:-3px;border-radius:50%;border:3px solid currentColor;opacity:0;pointer-events:none;animation:uxRing 2.6s ease-out infinite;will-change:transform,opacity}
+.whatsapp-fab::after{color:#25D366}.sos-fab.show::after{color:#D32F2F}
+@keyframes uxRing{0%{transform:scale(.9);opacity:.55}70%{transform:scale(1.35);opacity:0}100%{transform:scale(1.35);opacity:0}}
+.gps-pulse-dot,.shg-live i{position:relative}
+.gps-pulse-dot::after,.shg-live i::after{content:"";position:absolute;inset:-2px;border-radius:50%;background:currentColor;opacity:.35;animation:uxRing 1.8s ease-out infinite}
+.gps-pulse-dot{color:#22c55e}.shg-live i{color:var(--orange)}
+/* filter animations repaint every frame: the logo keeps its scale pulse only */
+.topbar-logo img,.nav .logo-img,#logoNav{animation:none!important;filter:none!important}
+/* sheens (background-position on clipped text) run twice, then rest */
+.txt-gold,.txt-silver,.txt-diamond,.hero .grad{animation-iteration-count:2!important}
+.txt-diamond::after,.hd-shine::before{animation-iteration-count:3!important}
+.btn-orange::after{animation-iteration-count:2!important}
+/* the rail bus animated `left` (layout per frame): same motion on transform */
+.shg-bus{left:7.14%!important;animation-name:uxShgBus!important;will-change:transform}
+@keyframes uxShgBus{0%{transform:translateX(-50%)}100%{transform:translateX(calc(-50% + 85.72cqw))}}
+.shg-rail{container-type:inline-size}
+/* blur behind scrolling surfaces costs a full-screen readback each frame */
+.sum-card,.pay-card,#nextDepBox,.glass,.shg-modal .m-box{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+@media (max-width:760px){.ai-panel,.wa-sheet-bg,.cel{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}}
+/* below-the-fold home blocks are not laid out or painted until they are near */
+#view-home > .rov-home,#view-home > #trust,#view-home > .ra-wrap,#view-home > .home-more-bar,#view-home > #homeExtra,#view-home > #homeMore,#view-home > .container:not(.chan-wrap):not(.qt-wrap):not(.search-wrap):not(.wa-ticket-highlight){content-visibility:auto;contain-intrinsic-size:auto 480px}
+.chan-card,.cabin-card,.bus-card,.cs-item,.co-card,.sum-card{contain:layout paint}
+/* anything off screen or in a hidden tab stops animating (19-ux.js) */
+.anim-off,.anim-off *,.anim-off::before,.anim-off::after,.anim-off *::before,.anim-off *::after{animation-play-state:paused!important}
+body.tab-hidden *{animation-play-state:paused!important}
+/* hover lifts on touch screens leave stuck layers: none on coarse pointers */
+@media (pointer:coarse){.chan-card:hover,.cs-item:hover,.sx-chip:hover{box-shadow:var(--shadow-md);transform:none}}

@@ -85,3 +85,28 @@ php tests/apply-sql.php database/upgrade-2026-09-23-ux-flags.sql
   instead of a cached copy.
 - **Headings**: section titles carry a navy→orange gradient and an accent bar; `.hl` utility for
   highlighted words.
+
+## Round 3 — performance pass (24 Sep 2026) — `20260923c`, `shg-v157`
+
+Owner: "165 Hz jasto smooth, hardware-level optimisation". Measured on the phone home page in
+headless Chromium (rAF frame timing + CDP Performance metrics, 3 s idle and 3 s scripted scroll):
+
+| | before | after |
+|---|---|---|
+| layouts in 3 s idle | 1,522 | 3 |
+| layout time | 64 ms | 1 ms |
+| style recalculation time | 423 ms | 178 ms |
+| main-thread task time | 3,027 ms | 1,492 ms |
+| average frame cost | 2.02 ms | 0.23 ms |
+| running animations at rest | 14 | 1 |
+
+What changed (`ux.css` section 13, `19-ux.js` governor):
+- Animations on `left`, `box-shadow`, `filter` and `background-position` (which force layout or
+  paint every frame) replaced with transform/opacity equivalents (ring pulses on pseudo-elements,
+  the rail bus on `translateX` with container units) or limited to two passes (sheens).
+- `backdrop-filter` removed from surfaces that scroll (summary/payment cards, hero countdown,
+  modals; panels on phones).
+- Every top-level block of every view is watched with an IntersectionObserver: off screen ⇒
+  `animation-play-state:paused`; hidden tab ⇒ everything paused.
+- `content-visibility:auto` on below-the-fold home blocks; `contain:layout paint` on cards; the
+  fixed chrome (nav, bottom nav, FABs, hold bar) promoted to its own layer; `touch-action:manipulation`.

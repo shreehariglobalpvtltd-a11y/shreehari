@@ -579,4 +579,27 @@
     } catch (e) {}
   });
 
+  /* ---------------------------------------------------------------
+   *  ANIMATION GOVERNOR (24 Sep 2026) — the page carries ~100 looping
+   *  decorations. Only the ones on screen may run: every top-level
+   *  block of every view (and the fixed chrome) is watched, and gets
+   *  .anim-off while it is out of the viewport; a hidden tab pauses
+   *  everything. Purely additive - remove this block and nothing else
+   *  changes.
+   * ------------------------------------------------------------- */
+  (function governor() {
+    if (!('IntersectionObserver' in window)) return;
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { e.target.classList.toggle('anim-off', !e.isIntersecting); });
+    }, { rootMargin: '120px 0px' });
+    function watch() {
+      qa('.view > *, .view > .container > *, .credit-ribbon, .divine-bar, .num-strip, footer, .shg-journey, .ra-wrap').forEach(function (el) {
+        if (el._ux_io) return; el._ux_io = true; io.observe(el);
+      });
+    }
+    watch();
+    window.addEventListener('hashchange', function () { setTimeout(watch, 400); });
+    document.addEventListener('visibilitychange', function () { document.body.classList.toggle('tab-hidden', document.hidden); });
+  }());
+
 }());
