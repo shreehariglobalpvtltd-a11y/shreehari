@@ -94,12 +94,16 @@ final class AiAgent
      *         rate-limited, or the model could not answer — the caller then
      *         keeps its own reply.
      */
-    public static function handle(string $fromRaw, string $text, string $channel = 'whatsapp'): ?array
+    public static function handle(string $fromRaw, string $text, string $channel = 'whatsapp', array $extra = []): ?array
     {
         $text = trim($text);
         if ($text === '' || !self::enabled()) {
             return null;
         }
+        /* 24 Sep 2026 — an attachment travels beside the words as DATA, never
+           as an instruction: kind, mime and whether the desk kept a copy. The
+           model cannot see the file; it is told so, and told what to do. */
+        $attachment = is_array($extra['attachment'] ?? null) ? $extra['attachment'] : [];
 
         require_once INCLUDE_PATH . '/aitools.php';
         require_once INCLUDE_PATH . '/aiprompt.php';
@@ -112,6 +116,7 @@ final class AiAgent
         // Confirmation comes from the authenticated message, never model arguments.
         $ctx['messageText'] = $text;
         $ctx['raw_text'] = $text;
+        $ctx['attachment'] = $attachment;
 
         /* A person asking questions never reaches these; a loop, a prank or
            a broken integration does. Staff get a wider daily allowance
@@ -135,7 +140,18 @@ final class AiAgent
         try {
             $history      = self::loadHistory($who);
             $ctx['turn']  = self::bumpTurn($who);
-            $history[]    = ['role' => 'user', 'content' => mb_substr($text, 0, 1500)];
+            $turnText = mb_substr($text, 0, 1500);
+            if ($attachment !== []) {
+                $turnText .= "\n\n[System note — not from the sender: a " . (string) ($attachment['kind'] ?? 'file')
+                    . ((string) ($attachment['mime'] ?? '') !== '' ? ' (' . (string) $attachment['mime'] . ')' : '')
+                    . " was attached. You cannot see its content. "
+                    . (!empty($attachment['stash'])
+                        ? "A copy is kept for the office and will be attached to any support request you open. "
+                        : "It was not stored. ")
+                    . "If it is a payment proof: ask for the booking number if missing, then open handoff_to_staff (payment_dispute or booking_help) so the desk verifies it. "
+                    . "If it is a document meant for the office: open handoff_to_staff (document_request). Never claim to have read it.]";
+            }
+            $history[]    = ['role' => 'user', 'content' => $turnText];
 
             $answer = self::converse($ctx, $history);
             if ($answer === null || trim((string) $answer['text']) === '') {
@@ -851,6 +867,48 @@ final class AiAgent
         return $s;
     }
 
+    /**
+     * THE OPERATIONS MANAGER (24 Sep 2026): documents, human handoff and
+     * step-up verification — each paragraph appears only when its switch
+     * is on, so the model is never briefed about a button it cannot press.
+     */
+    private static function opsBriefing(array $ctx): string
+    {
+        $role  = (string) ($ctx['role'] ?? 'customer');
+        $phone = Settings::officePhone();
+        $s     = '';
+
+        if (class_exists('CompanyDocs') && CompanyDocs::enabled()) {
+            $s .= "COMPANY DOCUMENTS\n"
+                . "For \"do you have…\", \"send me the…\", \"what is our…\" about the company profile, services, routes, "
+                . "boarding points, schedules, fares sheet, luggage rules, refund policy, procedures, agent/counter "
+                . "instructions, emergency contacts or the registration/tax papers, call company_docs_search FIRST and answer "
+                . "only from the approved summaries it returns. To hand over the file, company_doc_send with the id. A "
+                . "confidential paper is shown first and sent only after the person says yes in their NEXT message"
+                . ($role !== 'customer' ? " and their number is verified" : '')
+                . ". If the tool refuses, do not describe the document. Say a document was sent ONLY when the tool "
+                . "says WhatsApp accepted it.\n\n";
+        }
+        if (class_exists('AiHandoff') && AiHandoff::enabled()) {
+            $s .= "HUMAN HANDOFF\n"
+                . "You are not a human and must never pretend one is online. For a complaint, a payment dispute, a refund "
+                . "outside the published rules, doubt about who the person is, a safety issue, a policy exception, a "
+                . "confidential paper the vault would not release, or anything that needs approval: gather the facts in "
+                . "one or two questions, then call handoff_to_staff ONCE and read back the SUP reference and whether the "
+                . "office was alerted. Tell the person plainly: done / waiting for approval / handed to staff. Do not "
+                . "promise a response time" . ($phone !== '' ? "; for anything urgent give " . $phone : '') . ". "
+                . "For \"where is my request\", handoff_status with the reference.\n\n";
+        }
+        if ($role !== 'customer' && class_exists('AiVerify') && AiVerify::enabled()) {
+            $s .= "VERIFICATION OF STAFF NUMBERS\n"
+                . "Some actions from a staff or office number need a FRESH verification. When a tool answers "
+                . "\"VERIFICATION NEEDED\", send the person the exact link it gives (nothing else about it), tell them to "
+                . "open it while signed in to the staff panel, and run the tool again after they say done. Never ask for, "
+                . "accept or repeat a password or a login code in this chat — if one is sent, tell them to change it.\n\n";
+        }
+        return $s;
+    }
+
     private static function systemPrompt(array $ctx): string
     {
         $company = Settings::getString('company_name', APP_NAME);
@@ -865,8 +923,8 @@ final class AiAgent
             . "write the company's live register.\n\n"
             . "LANGUAGE\n"
             . "1. Write NEPALI (Devanagari) by default — natural, warm, the way a polite Nepali shopkeeper "
-            . "speaks, never translated English. If the person writes in romanised Nepali, Hindi or English, "
-            . "answer in THAT, and keep it simple.\n"
+            . "speaks, never translated English. If the person writes in romanised Nepali, Hindi, Gujarati or English, "
+            . "answer in THAT, and keep it simple. Gujarati script (ગુજરાતી) gets a Gujarati answer.\n"
             . "2. Usually 2–6 lines. A question about the company, the website or the route may take up to 8 — "
             . "see 'TALKING LIKE A PERSON' below. No markdown, no *, no #, no bullet characters, no headings. "
             . "Plain sentences and line breaks. One or two emoji at most.\n"
@@ -888,6 +946,12 @@ final class AiAgent
                   . "from what it returns; if it finds nothing, say you will check with the office. Never use it "
                   . "for a live fare, a refund amount, seats or a specific booking — those come from the other tools.\n\n"
                 : "")
+            . "SENSITIVE NUMBERS AND PAPERS\n"
+            . "Never read out a full PAN, GSTIN, CIN, Aadhaar, passport, account or ID number to anyone, and never "
+            . "send one to a number that has not been verified for it. The document tools mask these on purpose — do "
+            . "not guess or complete hidden digits. If a company detail or paper is missing, expired or not approved, "
+            . "say so plainly and route the request to the office; never fill the gap from memory.\n\n"
+            . self::opsBriefing($ctx)
             . "MULTIPLE REQUESTS\n"
             . "Handle every distinct requested task within your tool budget. Run dependent actions only after their prerequisite results. "
             . "Never treat a request for information as permission to sell, change a ticket, verify payment or send a campaign. "
@@ -970,9 +1034,12 @@ final class AiAgent
                 . "full each bus is, office_search to find a booking, office_alerts for what needs attention.\n"
                 . "When they ask an open question ('aaja kasto cha?'), call office_day and office_alerts, then give "
                 . "them the three things that matter in three lines.\n";
-            $base .= "MARKETING: marketing_draft saves an unsent campaign; marketing_preview shows the verified template and consenting audience. "
-                . "Read the exact confirmation command returned by preview. marketing_send may only queue after the admin sends that command in a later message. "
-                . "marketing_status distinguishes queued, provider-accepted, delivered, failed and unknown. Never say a draft or queued campaign was delivered.\n";
+            if (Settings::getBool('wa_marketing_on', false)) {
+                $base .= "MARKETING: marketing_draft saves an unsent campaign; marketing_preview shows the verified template and consenting audience. "
+                    . "Read the exact confirmation command returned by preview. marketing_send may only queue after the admin sends that command in a later message. "
+                    . "marketing_status distinguishes queued, provider-accepted, delivered, failed and unknown. Never say a draft or queued campaign was delivered. "
+                    . "Campaigns go ONLY to people who sent START OFFERS themselves, ONLY with an approved template — never invent an offer, a price or a date.\n";
+            }
         }
 
         return $base;

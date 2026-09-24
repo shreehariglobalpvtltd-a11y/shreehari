@@ -68,6 +68,13 @@ if (!defined('SHG_APP')) {
     exit('Forbidden');
 }
 
+// 24 Sep 2026 — the operations-manager modules. Each degrades to "not
+// available" while its table or switch is missing, so this include is safe
+// on a database that has not run upgrade-2026-09-24-wa-ops-manager.sql.
+require_once INCLUDE_PATH . '/companydocs.php';
+require_once INCLUDE_PATH . '/aihandoff.php';
+require_once INCLUDE_PATH . '/aiverify.php';
+
 final class AiTools
 {
     /** A staged quote (sale / cancel) is only good for this long. */
@@ -213,6 +220,41 @@ final class AiTools
                 ['query' => ['string', "The person's question, in their own words"]], ['query']);
         }
 
+        /* 24 Sep 2026 — the OPERATIONS MANAGER tools (owner: "24/7 WhatsApp-first
+           company operations manager"). Each hides itself while its switch is
+           off, so a feature the office has not turned on is a button the
+           model never sees and cannot argue for. */
+        if (CompanyDocs::enabled()) {
+            $t[] = self::spec('company_docs_search',
+                'Search the APPROVED company documents vault: company profile, services, routes and boarding points, schedules, fares sheet, luggage rules, the cancellation/refund policy, staff procedures and checklists, agent and counter instructions, customer-support answers, marketing material, emergency contacts, and the registration / tax / identity papers (CIN, PAN, GST). Returns each matching document\'s approved SUMMARY (identification numbers masked) and its id. Only documents this person\'s role may see are returned. Use it for "do you have…", "send me the…", "what is our…" questions. Live fares, seats and bookings still come from the booking tools.',
+                ['query' => ['string', "What they are looking for, in their own words"]], ['query']);
+            $t[] = self::spec('company_doc_send',
+                'SEND one approved document FILE from the vault to this WhatsApp chat, by the id company_docs_search returned. Public documents go at once. A confidential or restricted paper needs the person\'s step-up verification AND a yes in a LATER message: call once without confirm to show it and ask, then again with confirm true after they agree. Never describe a document this tool refused.',
+                [
+                    'doc_id'  => ['integer', 'The document id from company_docs_search'],
+                    'purpose' => ['string',  'Why they need it, in a few words (recorded in the access log)'],
+                    'confirm' => ['boolean', 'True only after the person agreed in a later message (needed for confidential / restricted papers)'],
+                ], ['doc_id']);
+        }
+        if (AiHandoff::enabled()) {
+            $t[] = self::spec('handoff_to_staff',
+                'Hand the matter to a HUMAN by opening a trackable support request (reference SUP-…). Use for: a complaint, a payment dispute, a refund outside the published rules, doubt about who the person is, a confidential document the vault would not release, a safety or emergency issue, a policy exception, anything that needs approval, or a booking problem no tool can fix. Collect the facts first (what, which booking, what they want), then call this ONCE. Read the returned reference and status back exactly. Never promise a response time.',
+                [
+                    'category' => ['string', 'One of: ' . implode(', ', array_keys(AiHandoff::CATEGORIES))],
+                    'summary'  => ['string', "The problem and what the person wants, 1–4 lines, in their words. No OTP, password or card numbers."],
+                    'pnr'      => ['string', 'The booking PNR, when there is one'],
+                    'urgent'   => ['boolean', 'True only for safety, a bus about to leave, or money stuck today'],
+                ], ['category', 'summary']);
+            $t[] = self::spec('handoff_status',
+                'The current status of a support request by its SUP-… reference (own requests only for a customer or seller).',
+                ['ref' => ['string', 'The reference, e.g. SUP-260924-AB12C']], ['ref']);
+        }
+        if ($staff && AiVerify::enabled()) {
+            $t[] = self::spec('verify_identity',
+                'Give this STAFF or OFFICE number a one-time link to open while signed in to the staff panel, so their WhatsApp is verified for sensitive actions for a while. Call it when a tool answered "VERIFICATION NEEDED", or when the person asks to verify themselves. Never ask for a password in this chat.',
+                []);
+        }
+
         $t[] = self::spec('plan_ticket',
             'QUOTE a ticket without selling it: reads live availability and returns the exact bus, date, pickup, berth(s), seats left and total fare. ALWAYS call this before issue_ticket, and read the total back to the passenger so they can say ho/yes.',
             [
@@ -349,6 +391,33 @@ final class AiTools
                 'What needs the office today: open health incidents, failed WhatsApp deliveries, payments waiting, buses filling unusually fast, and the night audit\'s findings.',
                 []);
 
+            /* 24 Sep 2026 — the marketing engine's four buttons (includes/wamarketing.php).
+               The system prompt has described them since 22 Sep, but they were
+               never in the catalogue, so the model was told about tools it could
+               not call. Offered only when wa_marketing_on is set; every rule
+               (approved MARKETING template with a STOP line, double opt-in,
+               confirmation phrase in a LATER message) is enforced inside WaMarketing. */
+            if (Settings::getBool('wa_marketing_on', false)) {
+                $t[] = self::spec('marketing_draft',
+                    'Save an UNSENT marketing campaign draft: title, the approved MARKETING template name and language, audience country (all / IN / NP) and the body variables. Nothing is sent.',
+                    [
+                        'title'         => ['string', 'Campaign title (1–120 characters)'],
+                        'template_name' => ['string', 'Approved Meta MARKETING template name (lowercase, underscores)'],
+                        'language'      => ['string', 'Template language code, e.g. en, hi, ne'],
+                        'country'       => ['string', 'all, IN or NP'],
+                        'body_vars'     => ['array',  'The template body variables, in order'],
+                    ], ['title', 'template_name']);
+                $t[] = self::spec('marketing_preview',
+                    'Show the verified template text, the exact count of consenting recipients and the confirmation phrase. Read ALL of it back to the manager. Nothing is sent.',
+                    ['campaign_id' => ['integer', 'The campaign id from marketing_draft']], ['campaign_id']);
+                $t[] = self::spec('marketing_send',
+                    'QUEUE a previewed campaign — only after the manager has typed the exact confirmation phrase from marketing_preview in a LATER message. Delivery happens in the worker later; this is not a delivery receipt.',
+                    ['campaign_id' => ['integer', 'The campaign id']], ['campaign_id']);
+                $t[] = self::spec('marketing_status',
+                    'Where a campaign stands: draft, preview, queued, complete, with per-recipient counts (accepted, delivered, failed, unknown). Without an id: the last ten campaigns.',
+                    ['campaign_id' => ['integer', 'Optional campaign id']]);
+            }
+
             if ($mayWrite) {
                 $t[] = self::spec('office_confirm',
                     'Verify the payment on a PENDING booking and confirm it — the same button as Admin → Payments. The ticket is issued and sent. Office only, and only after checking the proof.',
@@ -424,6 +493,15 @@ final class AiTools
                 return $out;
             }
 
+            // Gate 5 (24 Sep 2026): a staff / office number must hold a FRESH
+            // step-up verification for the actions that move money or open the
+            // company's papers. The refusal carries the one-time link.
+            $gate = AiVerify::gate($name, $ctx);
+            if ($gate !== null) {
+                self::log($name, $args, $ctx, false, 'step-up verification required', null, $t0);
+                return $gate;
+            }
+
             $out = match ($name) {
                 'find_ticket'      => self::findTicket($args, $ctx),
                 'my_tickets'       => self::myTickets($args, $ctx),
@@ -445,6 +523,16 @@ final class AiTools
                 'office_search'    => self::officeSearch($args, $ctx),
                 'office_alerts'    => self::officeAlerts($args, $ctx),
                 'office_confirm'   => self::officeConfirm($args, $ctx),
+                // 24 Sep 2026 — operations manager
+                'company_docs_search' => self::docsSearch($args, $ctx),
+                'company_doc_send'    => self::docSend($args, $ctx),
+                'handoff_to_staff'    => AiHandoff::open($ctx, $args),
+                'handoff_status'      => AiHandoff::status($ctx, $args),
+                'verify_identity'     => self::verifyIdentity($ctx),
+                'marketing_draft'     => self::marketing('draft', $args, $ctx),
+                'marketing_preview'   => self::marketing('preview', $args, $ctx),
+                'marketing_send'      => self::marketing('confirm', $args, $ctx),
+                'marketing_status'    => self::marketing('status', $args, $ctx),
                 default            => $out,
             };
         } catch (RuntimeException $e) {
@@ -1726,6 +1814,205 @@ final class AiTools
     /* =================================================================
      *  Gates and plumbing
      * ================================================================= */
+
+    /* =================================================================
+     *  Tools — the operations manager (24 Sep 2026)
+     * ================================================================= */
+
+    /** The admins.role of the sender ('' for a customer). */
+    private static function adminRole(array $ctx): string
+    {
+        return is_array($ctx['admin'] ?? null) ? (string) ($ctx['admin']['role'] ?? '') : '';
+    }
+
+    /**
+     * Search the approved documents vault. Only what this role may see is
+     * returned, summaries are masked, the extraction is never handed over,
+     * and the search itself is logged.
+     */
+    private static function docsSearch(array $args, array $ctx): array
+    {
+        if (!CompanyDocs::enabled()) {
+            return self::no('The company documents vault is switched off. Give the office number.');
+        }
+        $query = Security::clean((string) ($args['query'] ?? ''), 200);
+        if (mb_strlen($query) < 2) {
+            return self::no('Ask what document or fact the person actually wants.');
+        }
+        $role  = (string) ($ctx['role'] ?? 'customer');
+        $aRole = self::adminRole($ctx);
+        $res   = CompanyDocs::search($query, $role, $aRole, 5);
+        // The real figures (an unmasked PAN / GSTIN / CIN) are read out only to
+        // the office, and only inside a fresh step-up verification. Everyone
+        // else, always masked — and if step-up is off, masked for the office too.
+        $unmasked = $role === 'admin' && AiVerify::enabled() && AiVerify::isFresh($ctx);
+
+        CompanyDocs::logAccess(null, 'search', $ctx, true, count($res['hits']) . ' hit(s), ' . $res['expired'] . ' expired for: ' . mb_substr($query, 0, 120), $query);
+
+        if ($res['hits'] === []) {
+            $say = 'No approved document matches this. Do NOT invent one or quote anything from memory.';
+            if ($res['expired'] > 0) {
+                $say .= ' ' . $res['expired'] . ' matching document(s) exist but have EXPIRED: say the paper needs the office to renew it'
+                      . (AiHandoff::enabled() ? ' and offer handoff_to_staff (category document_request).' : ' and give the office number.');
+            } else {
+                $say .= AiHandoff::enabled()
+                    ? ' If the person genuinely needs it, offer to open a support request for the office (handoff_to_staff, category document_request).'
+                    : ' Give the office number.';
+            }
+            return ['ok' => true, 'say' => $say, 'data' => ['found' => false, 'expired' => $res['expired']], 'media' => null];
+        }
+
+        $docs = [];
+        foreach ($res['hits'] as $d) {
+            $docs[] = CompanyDocs::present($d, $unmasked);
+        }
+        return [
+            'ok'   => true,
+            'say'  => 'Answer ONLY from these approved summaries, in the person\'s own language and your own words. Identification numbers appear masked (••••) on purpose — never guess or "complete" the hidden digits, and never read a full PAN, GSTIN, CIN or ID number aloud. To send the FILE itself use company_doc_send with the id. needsConfirmation=true means it is confidential: show it, then ask for yes in the NEXT message before sending.',
+            'data' => ['found' => true, 'documents' => $docs, 'expired' => $res['expired']],
+            'media' => null,
+        ];
+    }
+
+    /**
+     * Send one approved file to the chat. Public papers go at once to
+     * anyone whose audience allows; internal ones to staff; confidential
+     * and restricted ones only to the office, verified, after a yes in a
+     * later message. The file travels as a single-use, short-lived link
+     * that only Meta fetches, and every step is logged.
+     */
+    private static function docSend(array $args, array $ctx): array
+    {
+        if (!CompanyDocs::enabled()) {
+            return self::no('The company documents vault is switched off. Give the office number.');
+        }
+        $role    = (string) ($ctx['role'] ?? 'customer');
+        $aRole   = self::adminRole($ctx);
+        $purpose = Security::clean((string) ($args['purpose'] ?? ''), 200);
+        $id      = (int) ($args['doc_id'] ?? 0);
+        $doc     = CompanyDocs::get($id);
+
+        if ($doc === null || !CompanyDocs::roleMaySee($doc, $role, $aRole)) {
+            CompanyDocs::logAccess($doc, 'deny', $ctx, false, 'not available to role ' . ($aRole !== '' ? $aRole : $role), $purpose);
+            return self::no('That document is not available to this person. Do not describe it or confirm it exists.'
+                . (AiHandoff::enabled() ? ' Offer to open a support request for the office instead (handoff_to_staff, category document_request).' : ' Give the office number.'));
+        }
+        if ((string) ($doc['file_path'] ?? '') === '') {
+            return self::no('This entry has no file — it is text only. Read its summary from company_docs_search instead.');
+        }
+        $phone = (string) ($ctx['phone'] ?? '');
+        if ($phone === '') {
+            return self::no('There is no usable number to send to.');
+        }
+
+        if (CompanyDocs::needsConfirm($doc)) {
+            // Confidential / restricted: a VERIFIED sender, then yes in a LATER
+            // message. With step-up switched off there is no way to verify, so
+            // the paper stays in the vault — possession of a staff handset is
+            // not enough for the company's registration or tax papers.
+            if (!AiVerify::enabled()) {
+                CompanyDocs::logAccess($doc, 'deny', $ctx, false, 'confidential send needs wa_ops_stepup_on', $purpose);
+                return self::no('Confidential and restricted documents can only be sent from WhatsApp once the office has switched on step-up verification (wa_ops_stepup_on). Say the office will share it through the staff panel instead.');
+            }
+            if (!AiVerify::isFresh($ctx)) {
+                CompanyDocs::logAccess($doc, 'deny', $ctx, false, 'step-up verification required', $purpose);
+                $c = AiVerify::challenge($ctx);
+                return ['ok' => false, 'say' => 'VERIFICATION NEEDED before this confidential document can go. ' . $c['say'],
+                        'data' => $c['data'] + ['needs_verification' => true], 'media' => null];
+            }
+            if (($args['confirm'] ?? false) !== true) {
+                self::stage($ctx, 'docsend', ['doc' => (int) $doc['id'], 'version' => (int) $doc['version'], 'purpose' => $purpose]);
+                CompanyDocs::logAccess($doc, 'view', $ctx, true, 'confidential — confirmation requested', $purpose);
+                return [
+                    'ok'   => true,
+                    'say'  => 'This is a ' . strtoupper((string) $doc['sensitivity']) . ' document. Read its title back and ask the person to confirm with yes / ho in their NEXT message that "' . $doc['title'] . '" should be sent to this number (' . $phone . '). Only then call company_doc_send again with confirm true. Do not send anything else from it.',
+                    'data' => CompanyDocs::present($doc, false) + ['awaiting_confirmation' => true],
+                    'media' => null,
+                ];
+            }
+            $staged = self::takeStage($ctx, 'docsend');
+            if ($staged === null || (int) ($staged['doc'] ?? 0) !== (int) $doc['id']) {
+                CompanyDocs::logAccess($doc, 'deny', $ctx, false, 'confirm without a staged request', $purpose);
+                return self::no('No confirmed request is open for this document. Show it first (company_doc_send without confirm) and ask for yes in the next message.');
+            }
+            // One yes, one send: the staged request is spent whatever happens next.
+            self::clearStage($phone);
+            if ($purpose === '') {
+                $purpose = (string) ($staged['purpose'] ?? '');
+            }
+        }
+
+        if (Settings::getString('whatsapp_driver', '') !== 'cloud_api') {
+            CompanyDocs::logAccess($doc, 'deny', $ctx, false, 'document send needs the Meta cloud_api driver', $purpose);
+            return self::no('Sending a file from this chat is not available on the current WhatsApp setup. Say the office will send it, and give the office number.');
+        }
+
+        require_once ROOT_PATH . '/whatsapp/api.php';
+        $link    = CompanyDocs::mintShareLink($doc, $phone, $aRole !== '' ? $aRole : $role);
+        $company = Settings::getString('company_name', APP_NAME);
+        $caption = $company . ' — ' . (string) $doc['title'] . ' (v' . (int) $doc['version'] . ')'
+                 . (CompanyDocs::needsConfirm($doc) ? ' · ' . strtoupper((string) $doc['sensitivity']) . ' — do not forward' : '');
+        $r = sendWhatsAppDocument($phone, $link['url'], (string) ($doc['file_name'] ?? ''), $caption);
+
+        try {
+            require_once INCLUDE_PATH . '/notify.php';
+            Notify::logOutbound($phone, $caption, $r['success'] ? 'sent' : 'failed', [
+                'provider' => 'cloud_api', 'sid' => (string) ($r['message_id'] ?? ''), 'purpose' => 'company_doc',
+                'error' => $r['success'] ? null : (string) ($r['error'] ?? ''),
+            ]);
+        } catch (Throwable $ignored) {
+        }
+
+        if (!$r['success']) {
+            CompanyDocs::logAccess($doc, 'send', $ctx, false, 'WhatsApp refused: ' . (string) ($r['error'] ?? ''), $purpose);
+            return self::no('The document could NOT be sent (' . mb_substr((string) ($r['error'] ?? 'provider error'), 0, 120)
+                . '). Do not say it was sent. Say the office will send it and give the office number.');
+        }
+        CompanyDocs::logAccess($doc, 'send', $ctx, true, 'accepted by WhatsApp ' . (string) ($r['message_id'] ?? ''), $purpose);
+        return [
+            'ok'   => true,
+            'say'  => 'WhatsApp ACCEPTED the file "' . $doc['title'] . '" for delivery to this chat (delivery itself is confirmed by WhatsApp a moment later). Say it is on its way in this chat, name the document'
+                    . (CompanyDocs::needsConfirm($doc) ? ', and remind them it is confidential and must not be forwarded.' : '.'),
+            'data' => ['sent' => true, 'accepted' => true, 'doc_id' => (int) $doc['id'], 'title' => (string) $doc['title'], 'version' => (int) $doc['version']],
+            'media' => null,
+        ];
+    }
+
+    /** Hand a staff / office number its one-time verification link (or say it is still fresh). */
+    private static function verifyIdentity(array $ctx): array
+    {
+        if (!AiVerify::enabled()) {
+            return self::no('Step-up verification is switched off on this server.');
+        }
+        if ((string) ($ctx['role'] ?? 'customer') === 'customer') {
+            return self::no('Only a staff or office number is verified this way. A passenger proves a booking by writing from the number on it.');
+        }
+        $until = AiVerify::freshUntil($ctx);
+        if ($until > time()) {
+            return ['ok' => true, 'say' => 'This number is ALREADY verified until ' . date('H:i', $until) . '. No link is needed — go ahead with what they asked.',
+                    'data' => ['verified' => true, 'until' => date('Y-m-d H:i:s', $until)], 'media' => null];
+        }
+        $c = AiVerify::challenge($ctx);
+        return ['ok' => $c['data']['link'] !== null || !empty($c['data']['already_sent']), 'say' => $c['say'], 'data' => $c['data'], 'media' => null];
+    }
+
+    /** The marketing engine's buttons, wrapped in the tool contract. Every rule lives in WaMarketing. */
+    private static function marketing(string $fn, array $args, array $ctx): array
+    {
+        require_once INCLUDE_PATH . '/wamarketing.php';
+        $res = match ($fn) {
+            'draft'   => WaMarketing::draft($ctx, $args),
+            'preview' => WaMarketing::preview($ctx, $args),
+            'confirm' => WaMarketing::confirm($ctx, $args),
+            default   => WaMarketing::status($ctx, $args),
+        };
+        $ok  = !empty($res['ok']);
+        $say = $ok
+            ? (string) ($res['next'] ?? $res['detail'] ?? 'Done. Read the result back exactly; nothing has been delivered to any customer by this call.')
+            : (string) ($res['error'] ?? 'Refused.');
+        unset($res['ok'], $res['next'], $res['error']);
+        return ['ok' => $ok, 'say' => $say, 'data' => $res, 'media' => null];
+    }
 
     /** May this sender READ the full detail of this booking? */
     private static function mayRead(array $detail, array $ctx): bool

@@ -110,6 +110,8 @@ function admin_nav(): array
         // no seller so it belongs to the office.
         ['href' => 'customers.php',    'icon' => 'user',     'label' => 'Customers',        'perm' => 'customers.view', 'section' => 'Customers'],
         ['href' => 'enquiries.php',    'icon' => 'mail',      'label' => 'Enquiries',        'perm' => 'customers.view', 'section' => 'Customers'],
+        // 24 Sep 2026: requests the WhatsApp assistant handed to people (SUP-…).
+        ['href' => 'support-inbox.php','icon' => 'msg',       'label' => 'Support Inbox',    'perm' => 'support.view',   'section' => 'Customers'],
 
         // Buses — fleet, the day-by-day schedule and the crew.
         ['href' => 'calendar.php',     'icon' => 'calendar',  'label' => 'Bus Calendar',     'perm' => 'schedules.manage','section' => 'Buses'],
@@ -140,6 +142,8 @@ function admin_nav(): array
         ['href' => 'health.php',       'icon' => 'alert',     'label' => 'System Health',    'perm' => 'dashboard.view', 'section' => 'Settings'],
         ['href' => 'ai-knowledge.php', 'icon' => 'doc',       'label' => 'AI Knowledge',     'perm' => 'dashboard.view', 'section' => 'Settings'],
         ['href' => 'ai-activity.php',  'icon' => 'msg',       'label' => 'AI Activity',      'perm' => 'dashboard.view', 'section' => 'Settings'],
+        // 24 Sep 2026: the approved documents vault the assistant may quote and send.
+        ['href' => 'company-docs.php', 'icon' => 'doc',       'label' => 'Company Documents','perm' => 'dashboard.view', 'section' => 'Settings'],
 
         // Map — routes, stops, head office and the driver's live position (5 Sep 2026).
         ['href' => 'map.php',          'icon' => 'map-pin',      'label' => 'Live Map',         'perm' => 'schedules.view', 'section' => 'Map'],

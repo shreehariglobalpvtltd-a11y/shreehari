@@ -150,6 +150,9 @@ const CORE_SUITES = [
     // 22 Sep 2026, registered with the knowledge base it guards.
     'ai-turn-test.php'            => 'the tool loop is bounded: budget, deadline, no repeated write on retry',
     'ai-kb-test.php'              => 'the knowledge base: audience scope, the ai_kb_on switch, an honest redacted miss',
+    // 24 Sep 2026, registered with the operations-manager stage it guards.
+    'company-docs-test.php'       => 'the documents vault: encrypted at rest, masked in chat, clearance by role, one-time links, honest sends',
+    'wa-ops-manager-test.php'     => 'human handoff (SUP-…), step-up gate on money tools, catalogue by switch, attachments, consent',
 ];
 
 /**
