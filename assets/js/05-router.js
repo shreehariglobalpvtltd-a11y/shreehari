@@ -1939,12 +1939,21 @@ const SeatSrv = {
 
     const prev = this._snap[k];
     const sid = this._sid();
-    const p = shgApi.post('/seats.php', sid
+    const body = sid
         ? { routeCode: routeId, date: date, bookingMode: bookingMode, scheduleId: sid }
-        : { routeCode: routeId, date: date, bookingMode: bookingMode })
+        : { routeCode: routeId, date: date, bookingMode: bookingMode };
+    /* Tell the server which seat version we hold: when nothing changed it
+       answers "unchanged" in ~200 bytes instead of re-sending the map. */
+    if (prev && prev.ver) body.ver = prev.ver;
+    const p = shgApi.post('/seats.php', body)
       .then((d) => {
+        if (d && d.unchanged) {
+          if (prev) prev.at = Date.now();
+          return false;
+        }
         const next = {
           sid: sid,
+          ver: d.ver || '',
           booked:  d.booked  || [],
           locked:  d.locked  || [],
           blocked: (d.blocked || []).concat(d.staff || []),
@@ -2304,17 +2313,54 @@ function myHoldExpiry() {
 ================================================================ */
 const SeatPoll = {
   EVERY_MS: 8000,
+  /* While the live stream is connected the poll is only a safety net. */
+  SLOW_MS: 30000,
   _t: null,
   _ctx: null,
+  _es: null,
 
   start(routeId, date) {
     this.stop();
     if (!routeId || !date) return;
     this._ctx = { routeId: routeId, date: date };
     this._t = setInterval(() => this._tick(), this.EVERY_MS);
+    this._listen();
   },
 
-  stop() { clearInterval(this._t); this._t = null; this._ctx = null; },
+  stop() { clearInterval(this._t); this._t = null; this._ctx = null; this._closeStream(); },
+
+  /* Live seat events (24 Sep 2026): when the office switches seat_events_on,
+     the server pushes "seats" the second a booking or hold lands on this
+     departure and the map refreshes at once — customer, counter and office
+     agree within about a second. Off, or on a browser without EventSource,
+     the 8 s poll carries on exactly as before. */
+  _listen() {
+    if (!this._ctx || this._es || document.hidden) return;
+    if (!window.EventSource || !seatEventsOn()) return;
+    const c = this._ctx;
+    const sid = SeatSrv._sid();
+    const qs = 'routeCode=' + encodeURIComponent(c.routeId) + '&date=' + encodeURIComponent(c.date)
+             + (sid ? '&scheduleId=' + encodeURIComponent(sid) : '');
+    let es;
+    try { es = new EventSource('/api/seat-events.php?' + qs); } catch (e) { return; }
+    this._es = es;
+    es.addEventListener('seats', () => this._tick());
+    es.addEventListener('bye', () => { /* the server ended its turn; the browser reconnects */ });
+    es.onopen = () => {
+      clearInterval(this._t);
+      this._t = setInterval(() => this._tick(), this.SLOW_MS);
+    };
+    es.onerror = () => {
+      if (es.readyState === 2) {               // CLOSED for good (404 = switched off, 429)
+        this._closeStream();
+        if (this._ctx) { clearInterval(this._t); this._t = setInterval(() => this._tick(), this.EVERY_MS); }
+      }
+    };
+  },
+
+  _closeStream() {
+    if (this._es) { try { this._es.close(); } catch (e) { /* already closed */ } this._es = null; }
+  },
 
   _tick() {
     if (!this._ctx) return this.stop();
@@ -2348,9 +2394,20 @@ const SeatPoll = {
 };
 document.addEventListener('visibilitychange', () => {
   /* Coming back to the tab, refresh at once rather than waiting out the
-     interval — the map on screen is exactly as old as the time away. */
-  if (!document.hidden && SeatPoll._ctx) SeatPoll._tick();
+     interval — the map on screen is exactly as old as the time away. A
+     hidden tab drops its live stream (a phone in a pocket must not hold a
+     server worker) and picks it up again on return. */
+  if (document.hidden) { SeatPoll._closeStream(); return; }
+  if (SeatPoll._ctx) { SeatPoll._tick(); SeatPoll._listen(); }
 });
+
+/** Has the office switched on live seat events? (public setting, shipped in SHG_BOOT) */
+function seatEventsOn() {
+  try {
+    const v = window.SHG_BOOT && window.SHG_BOOT.settings && window.SHG_BOOT.settings.seat_events_on;
+    return v === true || v === 1 || v === '1';
+  } catch (e) { return false; }
+}
 
 /* ================================================================
    LIVE TICKET STATUS (17 Sep 2026)

@@ -327,6 +327,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
   .whatsapp-fab svg{width:26px;height:26px}
 }
 @media print{.whatsapp-fab{display:none!important}}
+.whatsapp-fab[hidden]{display:none}
 
 /* ---------- [CSS] AI ASSISTANT — floating chat FAB (bottom-left) + glass panel ---------- */
 .ai-fab{position:fixed;left:16px;bottom:24px;z-index:90;width:52px;height:52px;border-radius:50%;border:2px solid #fff;background:linear-gradient(135deg,var(--blue,#1A3A6A),#F07C1F);color:#fff;font-size:24px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 6px 20px rgba(26,58,106,.4);transition:transform .2s ease}
@@ -3974,3 +3975,35 @@ body.wa-open{overflow:hidden}
 @media(max-height:700px){#splash .splash-logo{width:62px}#splash .splash-ceo-photo{width:92px;height:128px}.premium-border{margin-top:12px}.premium-fleet{height:110px;max-width:430px;margin:auto}.premium-promise{margin:7px 0}.premium-loading{margin-top:10px}}
 @media(prefers-reduced-motion:reduce){#splash *,#splash *::before,#splash *::after{animation:none!important;transition:none!important;transform:none}.premium-fleet img,#splash .splash-logo,#splash .splash-ceo{opacity:1}}
 @media print{.premium-ticket-head,.tk2 .tk2-fare{print-color-adjust:exact;-webkit-print-color-adjust:exact}.tk2{max-width:none;box-shadow:none}.premium-passengers tr,.tk2-tile,.tk2-qr{break-inside:avoid}.tk2-more::details-content{content-visibility:visible}.tk2 .tk2-links,.tk2-more>summary{display:none!important}.premium-ticket-support a{color:#102a56}}
+
+/* ── Contact dial (24 Sep 2026) — the office one tap away on every screen ── */
+.ct-fab{position:fixed;right:16px;bottom:96px;z-index:90;width:52px;height:52px;border-radius:50%;border:2px solid #fff;background:linear-gradient(135deg,#178A50,#25D366);color:#fff;font-size:22px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 6px 20px rgba(23,138,80,.4);transition:transform .2s ease}
+.ct-fab:hover{transform:scale(1.06)}
+.ct-fab[aria-expanded="true"]{transform:rotate(12deg) scale(1.04)}
+@media (max-width:760px){.ct-fab{bottom:calc(76px + env(safe-area-inset-bottom) + 68px)}}
+.ct-fab[hidden]{display:none}
+.ct-sheet{position:fixed;inset:0;z-index:95;background:rgba(18,38,78,.45);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);display:flex;align-items:flex-end;justify-content:center;padding:0 0 calc(12px + env(safe-area-inset-bottom))}
+.ct-sheet[hidden]{display:none}
+.ct-card{width:min(520px,calc(100% - 24px));background:var(--card);color:var(--ink);border-radius:22px;padding:16px 16px 14px;box-shadow:var(--shadow-lg);animation:ctUp .25s var(--ease-decel)}
+@keyframes ctUp{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
+.ct-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.ct-head b{font-size:17px}
+.ct-x{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--bg);color:var(--muted);font-size:15px;cursor:pointer}
+.ct-sub{color:var(--muted);font-size:12.5px;margin:4px 0 12px}
+.ct-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ct-btn{display:flex;align-items:center;gap:10px;min-height:56px;padding:10px 12px;border-radius:16px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-weight:800;font-size:14px;text-decoration:none;cursor:pointer;text-align:left}
+.ct-btn span{font-size:22px;line-height:1}
+.ct-btn b{line-height:1.2}
+.ct-call{background:#E9F4FF;border-color:#BBD6F3;color:#12264E}
+.ct-wa{background:#E7F9EE;border-color:#B9E6C9;color:#0F5F38}
+.ct-chat{background:#FFF1E4;border-color:#F3D3B0;color:#8A4B12}
+.ct-cb{background:#F1EEFB;border-color:#D6CDF2;color:#3E2E7A}
+.ct-cb-form{margin-top:12px;display:grid;gap:10px}
+.ct-cb-form label{display:grid;gap:4px;font-size:12.5px;color:var(--muted);font-weight:700}
+.ct-cb-form input{min-height:46px;border:1px solid var(--line);border-radius:12px;padding:0 12px;font-size:16px;background:var(--card);color:var(--ink)}
+.ct-send{justify-content:center;background:var(--blue);border-color:var(--blue);color:#fff}
+.ct-note{font-size:13px;color:var(--muted);min-height:1em;margin:0}
+.ct-note.ok{color:var(--ok);font-weight:700}
+.ct-note.bad{color:var(--bad);font-weight:700}
+@media (prefers-color-scheme:dark){.ct-call{background:#16294a;border-color:#27406b;color:#dbe8ff}.ct-wa{background:#0f3a26;border-color:#1f6a45;color:#c9f5da}.ct-chat{background:#4a2a10;border-color:#7a4a20;color:#ffe2c4}.ct-cb{background:#2c2350;border-color:#4a3c85;color:#e6dfff}}
+@media print{.ct-fab,.ct-sheet{display:none!important}}

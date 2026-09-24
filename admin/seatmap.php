@@ -1077,10 +1077,10 @@ if ($legendStops !== []): ?>
   var _pollUrl   = <?= json_encode($base . '/admin/api/seatmap-poll.php') ?>;
   var _pollSid   = <?= (int) $sidReq ?>;   // extra bus on the same date (0 = daily bus)
 
-  setInterval(function(){
+  function pollSeats(){
     if (document.hidden) return;  // save bandwidth when tab is in background
     fetch(_pollUrl + '?route=' + _pollRoute + '&date=' + encodeURIComponent(_pollDate) + (_pollSid ? '&sid=' + _pollSid : ''), {credentials:'same-origin'})
-      .then(function(r){ return r.json(); })
+      .then(function(r){ return r.status === 304 ? null : r.json(); })   // 304 = nothing moved
       .then(function(data){
         if (!data || !data.seats) return;
 
@@ -1207,7 +1207,26 @@ if ($legendStops !== []): ?>
         });
       })
       .catch(function(){ /* network error — silently skip this tick */ });
-  }, 15000);
+  }
+  setInterval(pollSeats, 15000);
+
+  /* Live seat events (24 Sep 2026): with seat_events_on the server pushes
+     "seats" the second a sale, hold or block lands on this departure, and
+     the map refreshes at once instead of at the next 15 s tick. */
+  (function liveSeats(){
+    if (!window.EventSource || !<?= Settings::getBool('seat_events_on', false) ? 'true' : 'false' ?>) return;
+    var es = null;
+    function open(){
+      if (es || document.hidden) return;
+      var qs = _pollSid ? 'scheduleId=' + _pollSid : ('routeId=' + _pollRoute + '&date=' + encodeURIComponent(_pollDate));
+      try { es = new EventSource('/api/seat-events.php?' + qs); } catch (e) { es = null; return; }
+      es.addEventListener('seats', pollSeats);
+      es.onerror = function(){ if (es && es.readyState === 2) { es = null; } };
+    }
+    function close(){ if (es) { try { es.close(); } catch (e) {} es = null; } }
+    document.addEventListener('visibilitychange', function(){ if (document.hidden) close(); else { pollSeats(); open(); } });
+    open();
+  })();
 })();
 </script>
 

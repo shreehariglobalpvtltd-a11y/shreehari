@@ -447,6 +447,17 @@ final class Ticket
     }
 
     /**
+     * Keyed link to the public "Where is my bus?" page (24 Sep 2026): live
+     * position, minutes to the passenger's own stop, and a share button so
+     * the family at home can watch too. Same key as the ticket download, so
+     * every place that already links a ticket can link this.
+     */
+    public static function trackUrl(string $pnr): string
+    {
+        return appUrl('track.php?pnr=' . urlencode($pnr) . '&k=' . self::downloadToken($pnr));
+    }
+
+    /**
      * Who cut this ticket — ONE answer for every surface that prints it
      * (PNG, PDF, chalani, register), so the ticket a passenger holds and the
      * sheet the office keeps can never disagree about whose sale it was.

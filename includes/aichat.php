@@ -205,10 +205,9 @@ final class AiChat
         ];
 
         [$http, $body] = self::httpJson(
-            'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model)
-                . ':generateContent?key=' . rawurlencode($key),
+            'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent',
             $payload,
-            ['Content-Type: application/json']
+            ['Content-Type: application/json', 'x-goog-api-key: ' . $key]
         );
 
         /* ListModels happily lists models a given key may NOT call — a new
@@ -223,10 +222,9 @@ final class AiChat
             }
             if ($next !== '' && $next !== $model) {
                 [$http, $body] = self::httpJson(
-                    'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($next)
-                        . ':generateContent?key=' . rawurlencode($key),
+                    'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($next) . ':generateContent',
                     $payload,
-                    ['Content-Type: application/json']
+                    ['Content-Type: application/json', 'x-goog-api-key: ' . $key]
                 );
                 if ($http === 200) {
                     Settings::set('gemini_model', $next);
@@ -268,8 +266,9 @@ final class AiChat
      */
     private static function geminiPickModel(string $key, array $exclude = []): string
     {
-        $ch = curl_init('https://generativelanguage.googleapis.com/v1beta/models?key=' . rawurlencode($key));
-        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => self::TIMEOUT_SEC]);
+        $ch = curl_init('https://generativelanguage.googleapis.com/v1beta/models');
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => self::TIMEOUT_SEC,
+            CURLOPT_HTTPHEADER => ['x-goog-api-key: ' . $key]]);
         $body = (string) curl_exec($ch);
         $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);

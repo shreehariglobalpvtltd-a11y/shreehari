@@ -171,6 +171,13 @@ const CORE_SUITES = [
     // 24 Sep 2026, registered with the operations-manager stage it guards.
     'company-docs-test.php'       => 'the documents vault: encrypted at rest, masked in chat, clearance by role, one-time links, honest sends',
     'wa-ops-manager-test.php'     => 'human handoff (SUP-…), step-up gate on money tools, catalogue by switch, attachments, consent',
+    // 24 Sep 2026, registered with the per-request session check it guards.
+    'admin-session-revalidate-test.php' => 'a deactivated or demoted staff member loses it on the next request, not the next login',
+    'money-guards-test.php'        => 'paper-ticket cap, agent-only commission, no proof downgrade, coupon redemption, second void, hold cap',
+    'seat-events-test.php'         => 'live seat events: the version moves only when seats move; unchanged answers; the stream',
+    'whereis-test.php'             => '"Where is my bus?": honest status, three doors, the keyed page, its JSON, trackUrl in the app payload',
+    'contact-layer-test.php'       => 'the contact dial on every screen; "call me back" reaches the office inbox; labels in three languages',
+    'route-pages-test.php'         => 'search-facing route pages in en / hi / ne from the live tables; JSON-LD, hreflang, sitemaps, robots',
 ];
 
 /**
