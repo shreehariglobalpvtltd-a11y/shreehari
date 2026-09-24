@@ -239,6 +239,43 @@ final class WaMedia
         return null;
     }
 
+    /**
+     * Retention: delete stashed attachments older than $days that no support
+     * request still points at (support_tickets.evidence_path). Run from
+     * cron/rotate.php. Returns how many files went.
+     */
+    public static function sweep(int $days = 30): int
+    {
+        $days = max(1, min(3650, $days));
+        $base = UPLOAD_PATH . '/' . self::SUBDIR;
+        if (!is_dir($base)) {
+            return 0;
+        }
+        $keep = [];
+        try {
+            foreach (Database::fetchAll("SELECT evidence_path FROM support_tickets WHERE evidence_path IS NOT NULL AND evidence_path <> ''") as $r) {
+                $keep[(string) $r['evidence_path']] = true;
+            }
+        } catch (Throwable $e) {
+            return 0;                       // cannot tell what is referenced: delete nothing
+        }
+        $cut  = time() - $days * 86400;
+        $gone = 0;
+        foreach (glob($base . '/[0-9][0-9][0-9][0-9]/[0-9][0-9]/*.bin') ?: [] as $abs) {
+            $rel = self::SUBDIR . substr($abs, strlen($base));
+            if (isset($keep[$rel]) || (int) @filemtime($abs) > $cut) {
+                continue;
+            }
+            if (@unlink($abs)) {
+                $gone++;
+            }
+        }
+        foreach (glob($base . '/[0-9][0-9][0-9][0-9]/[0-9][0-9]') ?: [] as $dir) {
+            @rmdir($dir);                   // only succeeds when empty
+        }
+        return $gone;
+    }
+
     /* -----------------------------------------------------------------
      *  Internals
      * ----------------------------------------------------------------- */

@@ -578,10 +578,13 @@ final class CompanyDocs
         }
 
         try {
-            return Database::transaction(static function () use ($data, $id, $adminId, $status, $stored): int {
+            return Database::transaction(static function () use ($data, $id, $adminId, $status, $stored, $actor): int {
                 if ($id !== null && $id > 0) {
                     $old = Database::fetchForUpdate('SELECT * FROM company_documents WHERE id = :id', ['id' => $id])[0] ?? null;
-                    if ($old === null) {
+                    // A paper above the actor's clearance reads as "not found" — a
+                    // manager posting the id of the owner's restricted PAN card must
+                    // not be able to reclassify, replace or downgrade it.
+                    if ($old === null || !self::adminMaySee($actor, $old)) {
                         throw new RuntimeException('Document not found.');
                     }
                     $snap = $old;
@@ -641,7 +644,7 @@ final class CompanyDocs
             throw new RuntimeException('Only a manager or the owner may approve or archive company documents.');
         }
         $doc = self::get($id);
-        if ($doc === null) {
+        if ($doc === null || !self::adminMaySee($actor, $doc)) {
             throw new RuntimeException('Document not found.');
         }
         if ($status === 'approved' && (string) $doc['sensitivity'] === 'restricted' && (string) $actor['role'] !== 'superadmin') {

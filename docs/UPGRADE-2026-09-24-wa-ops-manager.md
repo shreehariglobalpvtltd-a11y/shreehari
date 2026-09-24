@@ -96,7 +96,7 @@ halnu (GST, insurance jasta).
 | `wa_ops_handoff_on = 1` | complaint/dispute → SUP- number → Support Inbox. `wa_ops_handoff_notify` (default 1) le office WhatsApp lai khabar — `whatsapp_driver = cloud_api` chahinchha |
 | `wa_ops_docs_on = 1` | approved documents AI le khojchha ra pathaunchha |
 | `wa_ops_stepup_on = 1` | staff/office number lai paisa ko kaam agadi link kholnu parne. `wa_ops_stepup_minutes` (30), `wa_ops_stepup_actions` (default: `office_confirm,cancel_ticket,fix_ticket,company_doc_send,agent_day,office_day`) |
-| `wa_ops_media_on = 1` | photo/PDF aayo bhane AI lai bhanne + evidence rakhne (Meta token chahinchha) |
+| `wa_ops_media_on = 1` | photo/PDF aayo bhane AI lai bhanne + evidence rakhne (Meta token chahinchha). Ek number lai dinko 6 file samma, `wa_ops_media_keep_days` (30) pachhi `cron/rotate.php` le hataunchha (support request le samatirakheko file bahek) |
 | `wa_ops_voice_on = 1` | voice note → Gemini transcript → confirm → kaam (`gemini_api_key` chahinchha) |
 | `wa_marketing_on = 1` | START OFFERS / STOP record + office lai marketing tools (APPROVED MARKETING template + `wa_marketing_templates` allow-list chahinchha) |
 
@@ -106,18 +106,54 @@ halnu (GST, insurance jasta).
 
 ---
 
+### Go-live — exact commands (owner ko machine bata, `vps` remote sanga)
+
+Yo container bata VPS (93.127.167.249) ra live site pugdaina (network policy) ra SSH key
+pani chhaina — tyesaile deploy owner ko machine bata, ya yo environment ma VPS host allow
++ SSH key secret halera. Kram:
+
+```bash
+# 0. branch tanne
+git fetch origin claude/hari-global-whatsapp-ops-c8iiof
+
+# 1. shg-test ma pahila (test DB, live chhoidaina)
+git push vps claude/hari-global-whatsapp-ops-c8iiof:wip
+ssh shari-vps '/root/shg-test-refresh.sh wip'
+ssh shari-vps 'cd /root/shg-test && mysql shari_test < database/upgrade-2026-09-24-wa-ops-manager.sql \
+  && php tests/company-docs-test.php && php tests/wa-ops-manager-test.php && php tests/run-all.php'
+
+# 2. sabai green bhaye — LIVE (yo push nai deploy ho)
+ssh shari-vps 'cd /var/www/shreehariglobal.in/public_html && php cron/backup.php'   # DB backup pahila
+git fetch vps && git push vps claude/hari-global-whatsapp-ops-c8iiof:main
+ssh shari-vps 'cd /var/www/shreehariglobal.in/public_html && mysql shari < database/upgrade-2026-09-24-wa-ops-manager.sql \
+  && chown -R www-data:www-data includes admin company-doc-share.php \
+  && find . -name "*.php" -newer CLAUDE.md -print0 | xargs -0 -n1 php -l | grep -v "No syntax" ; \
+  curl -s -o /dev/null -w "%{http_code}\n" https://www.shreehariglobal.in/'
+
+# 3. nginx: deploy/nginx-shreehariglobal.in.conf ko /uploads/company/ ra /uploads/wa-inbound/
+#    deny line live conf ma halne, tespachhi:  nginx -t && systemctl reload nginx
+
+# 4. Admin → Settings → Company Documents ma kagaj halne, approve garne; switch ek pachi ek (tala ko table)
+```
+
+Migration le kunai row badaldaina (CREATE IF NOT EXISTS, guarded ALTER, INSERT IGNORE, sabai
+switch OFF) — apply garepachhi pani site ra bot pahile jastai chalchha.
+
 ## 5. Test (24 Sep, local `shari_test`, MariaDB 10.11, PHP 8.4)
 
-- `company-docs-test.php` — **105/105**: seal/open + tamper, masking (PAN/GSTIN/CIN/Aadhaar/
+- `company-docs-test.php` — **117/117**: seal/open + tamper, masking (PAN/GSTIN/CIN/Aadhaar/
   passport/account/password; phone number chhoidaina), kasle file garna sakchha, audience rule,
   role × sensitivity matrix, draft/archived/expired luki, search scope, version snapshot + purano
   file rakhne, share link (3 fetch, expiry, withdraw = dead), tools (switch, role, honest "NOT sent",
   access trail + audit_logs), confidential quote-then-confirm (same turn = refuse, stage single-use),
-  step-up (link hashed, galat account = burn + audit, sahi account = fresh, stale pachhi fresh hoina).
-- `wa-ops-manager-test.php` — **65/65**: handoff switch, SUP- ref, redaction, dedupe, aafno/aruko
+  step-up (link hashed, galat account = burn + audit, sahi account = fresh, stale pachhi fresh hoina),
+  manager le owner ko restricted kagaj id bata chhuna nasakne, confirm=true model le bhane pani manche ko
+  aafnai "ho" chahine, wa_agent_oneshot le confidential ko 2-message niyam natodne, +977 sender lai +977 mai
+  pathaune, token audit/message_logs ma nabasne.
+- `wa-ops-manager-test.php` — **72/72**: handoff switch, SUP- ref, redaction, dedupe, aafno/aruko
   PNR, office alert honesty, status ownership, step-up needs/gate/audit/consume/revoke, catalogue
   by switch & role (marketing pani), media sanitize, fixed replies bahal, voice "हो" replay,
-  START OFFERS / STOP.
+  START OFFERS / STOP, +977 handoff ko number country code sahit, evidence retention sweep.
 - Purano battery: **uhi 62 pass**, uhi 4 purano fail (fares-settings / export-filters — :8899 dev
   server chahine; chalani-png channel label; trip-reminder, whatsapp-retry-policy — baseline ma
   pani fail). `wa-agent-test` 79/79, `ai-kb-test` 27/27, `wa-local-booking` 54/54 — kehi bigreko

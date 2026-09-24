@@ -93,10 +93,10 @@ $mkStaff = static function (string $username, string $name, string $role, string
 
 $cleanup = static function () use ($restore): void {
     try {
-        foreach (Database::fetchAll("SELECT id FROM support_tickets WHERE phone LIKE '" . OM_LIKE . "%'") as $t) {
+        foreach (Database::fetchAll("SELECT id FROM support_tickets WHERE phone LIKE '%" . OM_LIKE . "%'") as $t) {
             Database::delete('support_messages', 'ticket_id = :t', ['t' => (int) $t['id']]);
         }
-        Database::delete('support_tickets', "phone LIKE '" . OM_LIKE . "%'", []);
+        Database::delete('support_tickets', "phone LIKE '%" . OM_LIKE . "%'", []);
     } catch (Throwable $e) {}
     try { Database::delete('bookings', "contact_phone LIKE '" . OM_LIKE . "%'", []); } catch (Throwable $e) {}
     try { Database::delete('wa_identity_links', "phone LIKE '" . OM_LIKE . "%'", []); } catch (Throwable $e) {}
@@ -195,6 +195,11 @@ $row4 = Database::fetch('SELECT * FROM support_tickets WHERE ticket_ref = :r', [
 check('an unknown category becomes other; urgent lifts priority; staff role recorded', $row4 !== null && $row4['category'] === 'other' && $row4['priority'] === 'urgent' && $row4['sender_role'] === 'staff');
 $h5 = AiTools::run('handoff_to_staff', ['category' => 'complaint', 'summary' => 'x'], $cust);
 check('an empty summary is refused', !$h5['ok']);
+$hNp = AiTools::run('handoff_to_staff', ['category' => 'complaint', 'summary' => 'bus dherai dhilo aayo, driver le phone uthayena'], $mk('+977' . OM_OTHER, 1, 'bus dherai dhilo aayo'));
+$rowNp = Database::fetch('SELECT phone FROM support_tickets WHERE ticket_ref = :r', ['r' => (string) ($hNp['data']['ref'] ?? '')]);
+check('a +977 sender\'s request keeps the country code, so the desk replies to Nepal', $rowNp !== null && (string) $rowNp['phone'] === '977' . OM_OTHER);
+$stNp = AiTools::run('handoff_status', ['ref' => (string) $hNp['data']['ref']], $mk('+977' . OM_OTHER, 2));
+check('  and the same sender can still read its status', $stNp['ok']);
 
 section('handoff — status');
 $st = AiTools::run('handoff_status', ['ref' => $ref], $mk(OM_CUST, 3));
@@ -288,6 +293,20 @@ check('any other message drops the transcript and is handled as itself', str_con
 Database::insertIgnore('kv_store', ['kscope' => 'wa_voice', 'kkey' => OM_CUST, 'kvalue' => json_encode(['text' => $fakePnr, 'at' => time() - 3600]), 'updated_by' => 'test']);
 $stale = WaBot::reply('+91' . OM_CUST, 'ho', 'text');
 check('a stale transcript is not replayed', !str_contains($stale['text'], $fakePnr));
+
+section('media — retention sweep');
+$stashDir = UPLOAD_PATH . '/wa-inbound/2001/01';
+ensureDir($stashDir);
+$oldFile = $stashDir . '/zz_old_unreferenced.bin'; $keptFile = $stashDir . '/zz_old_referenced.bin'; $newFile = $stashDir . '/zz_new.bin';
+foreach ([$oldFile, $keptFile, $newFile] as $f) { file_put_contents($f, 'x'); }
+touch($oldFile, time() - 90 * 86400); touch($keptFile, time() - 90 * 86400);
+Database::update('support_tickets', ['evidence_path' => 'wa-inbound/2001/01/zz_old_referenced.bin'], 'ticket_ref = :r', ['r' => $ref]);
+$swept = WaMedia::sweep(30);
+check('sweep() removes an old unreferenced attachment', !is_file($oldFile) && $swept >= 1);
+check('  keeps one a support request still points at', is_file($keptFile));
+check('  keeps a recent one', is_file($newFile));
+@unlink($keptFile); @unlink($newFile); @rmdir($stashDir); @rmdir(UPLOAD_PATH . '/wa-inbound/2001');
+check('cron/rotate.php runs the sweep', str_contains((string) file_get_contents(dirname(__DIR__) . '/cron/rotate.php'), 'WaMedia::sweep'));
 
 section('consent — START OFFERS / STOP');
 $hasConsent = Database::fetch("SHOW TABLES LIKE 'wa_marketing_consents'") !== null;

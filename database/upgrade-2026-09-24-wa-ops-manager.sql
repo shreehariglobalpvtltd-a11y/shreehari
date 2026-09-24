@@ -222,4 +222,5 @@ INSERT IGNORE INTO `settings` (`skey`,`svalue`,`stype`,`sgroup`,`label`,`is_publ
 ('wa_ops_stepup_minutes', '30', 'int',    'ai', 'How long a step-up verification stays fresh (minutes)',0),
 ('wa_ops_stepup_actions', 'office_confirm,cancel_ticket,fix_ticket,company_doc_send,agent_day,office_day','string','ai','Comma-separated tools that need a fresh step-up verification from a staff or office number',0),
 ('wa_ops_media_on',       '0',  'bool',   'ai', 'Inbound attachments: tell the assistant a photo / document arrived (metadata only) and keep it as evidence for a handoff',0),
+('wa_ops_media_keep_days','30', 'int',    'ai', 'How many days an inbound attachment is kept unless a support request still points at it (cron/rotate.php)',0),
 ('wa_ops_voice_on',       '0',  'bool',   'ai', 'Voice notes: transcribe with Gemini and read the words back for confirmation before acting (needs gemini_api_key)',0);

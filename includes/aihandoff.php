@@ -100,6 +100,9 @@ final class AiHandoff
         if ($phone === '') {
             return self::no('The sender has no usable number, so a request cannot be opened. Give the office number.');
         }
+        // Stored WITH the country code so the desk's reply and wa.me link reach
+        // a +977 sender in Nepal, not +91 + the same digits in India.
+        $intl = (string) ($ctx['intl'] ?? '') !== '' ? (string) $ctx['intl'] : $phone;
         $category = (string) ($args['category'] ?? 'other');
         if (!isset(self::CATEGORIES[$category])) {
             $category = 'other';
@@ -192,13 +195,13 @@ final class AiHandoff
 
         try {
             $id = Database::transaction(static function () use (
-                $ref, $bookingId, $name, $phone, $category, $pnr, $message, $priority, $role, $lang, $key, $evidence
+                $ref, $bookingId, $name, $intl, $category, $pnr, $message, $priority, $role, $lang, $key, $evidence
             ): int {
                 $id = (int) Database::insert('support_tickets', [
                     'ticket_ref'  => $ref,
                     'booking_id'  => $bookingId,
                     'name'        => mb_substr($name, 0, 120),
-                    'phone'       => substr($phone, 0, 20),
+                    'phone'       => substr($intl, 0, 20),
                     'subject'     => mb_substr(self::label($category) . ($pnr !== '' ? ' · ' . $pnr : ''), 0, 191),
                     'message'     => $message,
                     'category'    => substr($category, 0, 60),
@@ -228,7 +231,7 @@ final class AiHandoff
             'phone' => maskPhone($phone), 'booking' => $bookingId,
         ], 'opened by the WhatsApp assistant');
 
-        $notified = self::notifyOffice($ref, $category, $priority, $phone, $summary, $pnr, $bookingId);
+        $notified = self::notifyOffice($ref, $category, $priority, $intl, $summary, $pnr, $bookingId);
         if ($notified) {
             try {
                 Database::update('support_tickets', ['office_notified_at' => date('Y-m-d H:i:s')], 'id = :id', ['id' => $id]);

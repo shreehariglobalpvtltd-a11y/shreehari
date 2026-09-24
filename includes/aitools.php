@@ -104,6 +104,16 @@ final class AiTools
     public static function whoIs(string $phoneRaw): array
     {
         $digits = normalisePhone($phoneRaw);
+        /* 24 Sep 2026 — the number WITH its country code, when the caller had
+           one (the webhook always does: "+9779812345678"). India and Nepal
+           share ten-digit mobiles, so anything that SENDS to this person must
+           use 'intl', never 'phone' + a default country: that is exactly how
+           Nepali tickets once went to strangers in India. 'phone' stays the
+           identity every table agrees on. */
+        $raw = preg_replace('/\D/', '', $phoneRaw) ?? '';
+        if (str_starts_with($raw, '00')) {
+            $raw = substr($raw, 2);
+        }
         $out = [
             'role'         => 'customer',
             'admin'        => null,
@@ -111,6 +121,7 @@ final class AiTools
             'scopeAdminId' => null,
             'name'         => '',
             'phone'        => $digits,
+            'intl'         => (strlen($raw) >= 11 && strlen($raw) <= 15) ? $raw : $digits,
         ];
         if ($digits === '') {
             return $out;
@@ -1901,7 +1912,10 @@ final class AiTools
             return self::no('This entry has no file — it is text only. Read its summary from company_docs_search instead.');
         }
         $phone = (string) ($ctx['phone'] ?? '');
-        if ($phone === '') {
+        // The number WITH its country code: a +977 sender must never be sent
+        // to as +91 + digits (see whoIs).
+        $to = (string) ($ctx['intl'] ?? '') !== '' ? (string) $ctx['intl'] : $phone;
+        if ($phone === '' || $to === '') {
             return self::no('There is no usable number to send to.');
         }
 
@@ -1921,19 +1935,27 @@ final class AiTools
                         'data' => $c['data'] + ['needs_verification' => true], 'media' => null];
             }
             if (($args['confirm'] ?? false) !== true) {
-                self::stage($ctx, 'docsend', ['doc' => (int) $doc['id'], 'version' => (int) $doc['version'], 'purpose' => $purpose]);
+                self::stage($ctx, 'docsend', ['doc' => (int) $doc['id'], 'version' => (int) $doc['version'], 'purpose' => $purpose, 'turn' => (int) ($ctx['turn'] ?? 0)]);
                 CompanyDocs::logAccess($doc, 'view', $ctx, true, 'confidential — confirmation requested', $purpose);
                 return [
                     'ok'   => true,
-                    'say'  => 'This is a ' . strtoupper((string) $doc['sensitivity']) . ' document. Read its title back and ask the person to confirm with yes / ho in their NEXT message that "' . $doc['title'] . '" should be sent to this number (' . $phone . '). Only then call company_doc_send again with confirm true. Do not send anything else from it.',
+                    'say'  => 'This is a ' . strtoupper((string) $doc['sensitivity']) . ' document. Read its title back and ask the person to confirm with yes / ho in their NEXT message that "' . $doc['title'] . '" should be sent to this number (+' . $to . '). Only then call company_doc_send again with confirm true. Do not send anything else from it.',
                     'data' => CompanyDocs::present($doc, false) + ['awaiting_confirmation' => true],
                     'media' => null,
                 ];
             }
             $staged = self::takeStage($ctx, 'docsend');
-            if ($staged === null || (int) ($staged['doc'] ?? 0) !== (int) $doc['id']) {
-                CompanyDocs::logAccess($doc, 'deny', $ctx, false, 'confirm without a staged request', $purpose);
+            // A confidential paper is ALWAYS two messages — wa_agent_oneshot (which
+            // lets a ticket be quoted and sold in one breath) does not apply here.
+            if ($staged === null || (int) ($staged['doc'] ?? 0) !== (int) $doc['id']
+                || (int) ($staged['turn'] ?? 0) >= (int) ($ctx['turn'] ?? 0)) {
+                CompanyDocs::logAccess($doc, 'deny', $ctx, false, 'confirm without a staged request from an earlier message', $purpose);
                 return self::no('No confirmed request is open for this document. Show it first (company_doc_send without confirm) and ask for yes in the next message.');
+            }
+            // The yes must be in the PERSON'S message, not in the model's arguments.
+            if (!self::personSaidYes($ctx)) {
+                CompanyDocs::logAccess($doc, 'deny', $ctx, false, 'confirm=true but the message is not a yes', $purpose);
+                return self::no('The person has not said yes in THIS message. Ask them to reply ho / yes to confirm, and call again only after that reply.');
             }
             // One yes, one send: the staged request is spent whatever happens next.
             self::clearStage($phone);
@@ -1948,15 +1970,15 @@ final class AiTools
         }
 
         require_once ROOT_PATH . '/whatsapp/api.php';
-        $link    = CompanyDocs::mintShareLink($doc, $phone, $aRole !== '' ? $aRole : $role);
+        $link    = CompanyDocs::mintShareLink($doc, $to, $aRole !== '' ? $aRole : $role);
         $company = Settings::getString('company_name', APP_NAME);
         $caption = $company . ' — ' . (string) $doc['title'] . ' (v' . (int) $doc['version'] . ')'
                  . (CompanyDocs::needsConfirm($doc) ? ' · ' . strtoupper((string) $doc['sensitivity']) . ' — do not forward' : '');
-        $r = sendWhatsAppDocument($phone, $link['url'], (string) ($doc['file_name'] ?? ''), $caption);
+        $r = sendWhatsAppDocument($to, $link['url'], (string) ($doc['file_name'] ?? ''), $caption);
 
         try {
             require_once INCLUDE_PATH . '/notify.php';
-            Notify::logOutbound($phone, $caption, $r['success'] ? 'sent' : 'failed', [
+            Notify::logOutbound($to, $caption, $r['success'] ? 'sent' : 'failed', [
                 'provider' => 'cloud_api', 'sid' => (string) ($r['message_id'] ?? ''), 'purpose' => 'company_doc',
                 'error' => $r['success'] ? null : (string) ($r['error'] ?? ''),
             ]);
@@ -1976,6 +1998,22 @@ final class AiTools
             'data' => ['sent' => true, 'accepted' => true, 'doc_id' => (int) $doc['id'], 'title' => (string) $doc['title'], 'version' => (int) $doc['version']],
             'media' => null,
         ];
+    }
+
+    /**
+     * Did the sender's OWN message say yes? Confirmation comes from the
+     * authenticated message, never from a model argument. A yes may carry a
+     * few words after it ("ho, pathaideu"), but it must open the message.
+     */
+    private static function personSaidYes(array $ctx): bool
+    {
+        $text = mb_strtolower(trim((string) ($ctx['messageText'] ?? '')));
+        return preg_match(
+            '/^(?:yes|yes please|y|ok|okay|confirm|confirmed|sure|ho|hunxa|huncha|hunchha|thik cha|thik chha|haan|han|hai ha|ha|'
+            . 'हो|हुन्छ|ठिक छ|ठीक छ|ठीक|ठीक है|हाँ|हां|हा|બરાબર|'
+            . 'pathau|pathaideu|pathaidinus|pathaunus|send|send it|bhejo|bhej do|भेजो|भेज दो|पठाऊ|पठाउनुस|पठाइदिनुस|मोकલો)(?![\p{L}\p{N}])/u',
+            $text
+        ) === 1;
     }
 
     /** Hand a staff / office number its one-time verification link (or say it is still fresh). */
@@ -2134,6 +2172,9 @@ final class AiTools
                     $safe[(string) $k] = is_string($v) ? mb_substr($v, 0, 60) : $v;
                 }
             }
+            // A one-time link token (step-up, document share) is for the
+            // person's phone only — never for a table the whole office reads.
+            $detail = preg_replace('~([?&]t=)[A-Za-z0-9]{16,}~', '$1[hidden]', $detail) ?? $detail;
             Database::insert('ai_agent_calls', [
                 'created_at' => date('Y-m-d H:i:s'),
                 'phone'      => (string) ($ctx['phone'] ?? ''),

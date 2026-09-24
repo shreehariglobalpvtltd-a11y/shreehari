@@ -83,8 +83,20 @@ try {
     // health_incidents missing — nothing to prune.
 }
 
+// Inbound WhatsApp attachments kept as handoff evidence (Settings ->
+// wa_ops_media_keep_days, default 30). A file a support request still points
+// at is never touched. Module or table missing — nothing to prune.
+$mediaPurged = 0;
+try {
+    require_once INCLUDE_PATH . '/wamedia.php';
+    $mediaPurged = WaMedia::sweep(Settings::getInt('wa_ops_media_keep_days', 30));
+} catch (Throwable $e) {
+    // best effort, like the rest of this file
+}
+
 cron_done([
     'logFilesRemoved'  => $logsRemoved,
+    'waMediaPurged'    => $mediaPurged,
     'rateLimitsPurged' => $rlPurged,
     'otpPurged'        => $otpPurged,
     'loginHistoryPurged' => $loginsPurged,

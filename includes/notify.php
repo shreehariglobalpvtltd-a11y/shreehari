@@ -1559,6 +1559,9 @@ final class Notify
         // before the row is written, so admin/messages-log.php can show the
         // delivery status without handing any reader a live second factor.
         $body = preg_replace('/(code\D{0,12}?)(\d{4,8})/iu', '$1••••', $body) ?? $body;
+        // 24 Sep 2026: the same for a one-time link token (step-up verification,
+        // document share) — the bot's reply carrying it is logged here too.
+        $body = preg_replace('~([?&]t=)[A-Za-z0-9]{16,}~', '$1[hidden]', $body) ?? $body;
         $row = [
             'booking_id'   => isset($meta['bookingId']) && $meta['bookingId'] ? (int) $meta['bookingId'] : null,
             'channel'      => $channel,

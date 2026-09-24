@@ -442,7 +442,11 @@ final class WaBot
                 'filename' => (string) ($media['filename'] ?? ''),
                 'stash'    => '',
             ];
-            if ($ctx['id'] !== '' && $senderDigits !== '' && in_array($kind, ['image', 'document'], true)) {
+            // A handful of files per number per day is evidence; more is a disk
+            // filler. Past the cap the assistant still learns a file arrived,
+            // but nothing is fetched or kept.
+            if ($ctx['id'] !== '' && $senderDigits !== '' && in_array($kind, ['image', 'document'], true)
+                && Security::rateLimit('wa_media_stash', $senderDigits, 6, 86400)) {
                 $bytes = WaMedia::download($ctx['id']);
                 if ($bytes !== null) {
                     $ctx['stash'] = (string) (WaMedia::stash($bytes, $senderDigits) ?? '');

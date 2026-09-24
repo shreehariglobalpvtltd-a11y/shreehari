@@ -66,7 +66,7 @@ if (!CompanyDocs::available(true)) { echo "  SKIP  company_documents table could
 
 /* ---- settings this suite drives; restored exactly --------------------- */
 $PINNED = ['wa_ops_docs_on', 'wa_ops_stepup_on', 'wa_ops_stepup_minutes', 'wa_ops_stepup_actions', 'wa_ops_doc_link_minutes',
-           'wa_ops_handoff_on', 'whatsapp_driver', 'whatsapp_api_token', 'whatsapp_phone_id', 'wa_agent_on'];
+           'wa_ops_handoff_on', 'whatsapp_driver', 'whatsapp_api_token', 'whatsapp_phone_id', 'wa_agent_on', 'wa_agent_oneshot'];
 $prior = [];
 foreach ($PINNED as $k) {
     $prior[$k] = Database::fetch('SELECT svalue, stype, sgroup, is_public FROM settings WHERE skey = :k', ['k' => $k]);
@@ -115,7 +115,8 @@ $cleanup = static function () use ($restore): void {
     try { Database::delete('ai_agent_calls', "phone LIKE '" . CD_LIKE . "%'", []); } catch (Throwable $e) {}
     try { Database::delete('kv_store', "kscope IN ('wa_stage','wa_agent','wa_turn') AND kkey LIKE '" . CD_LIKE . "%'", []); } catch (Throwable $e) {}
     try { Database::delete('audit_logs', "entity_type = 'company_document' AND created_at >= NOW() - INTERVAL 1 HOUR AND new_value LIKE '%zztest%'", []); } catch (Throwable $e) {}
-    try { Database::delete('message_logs', "to_number LIKE '" . CD_LIKE . "%'", []); } catch (Throwable $e) {}
+    try { Database::delete('message_logs', "to_number LIKE '%" . CD_LIKE . "%'", []); } catch (Throwable $e) {}
+    try { Database::delete('wa_share_links', "phone LIKE '%" . CD_LIKE . "%'", []); } catch (Throwable $e) {}
     try { Database::delete('rate_limits', "identifier LIKE '" . CD_LIKE . "%'", []); } catch (Throwable $e) {}
     // The step-up consumer and the share endpoint throttle by CLIENT IP, and
     // the CLI has one: a fourth standalone run inside ten minutes tripped it.
@@ -252,6 +253,13 @@ check('the superseded blob is kept for rollback', (string) $ver['file_path'] ===
 check('the new file replaced the old', (string) $pub2['file_path'] !== $oldPath && CompanyDocs::plaintext($pub2) === 'zztest luggage policy v2 zzsuitcase2');
 try { CompanyDocs::setStatus($resId, 'approved', $mgrId); check('a manager cannot approve a restricted paper', false); }
 catch (RuntimeException $e) { check('a manager cannot approve a restricted paper', true); }
+try { CompanyDocs::setStatus($resId, 'archived', $mgrId); check('a manager cannot archive the owner\'s restricted paper by id', false); }
+catch (RuntimeException $e) { check('a manager cannot archive the owner\'s restricted paper by id', true, $e->getMessage()); }
+try {
+    CompanyDocs::saveWithBytes(['title' => 'zztest Director PAN card', 'doc_type' => 'identity', 'sensitivity' => 'internal', 'audience' => ['manager'], 'summary' => 'downgraded', 'status' => 'approved'], null, $mgrId, $resId);
+    check('a manager cannot downgrade / edit a restricted paper by id', false);
+} catch (RuntimeException $e) { check('a manager cannot downgrade / edit a restricted paper by id', true); }
+check('  the restricted paper is untouched', (string) CompanyDocs::get($resId)['sensitivity'] === 'restricted' && (string) CompanyDocs::get($resId)['status'] === 'approved');
 CompanyDocs::setStatus($resId, 'draft', $bossId);
 check('the owner withdraws it', (string) CompanyDocs::get($resId)['status'] === 'draft');
 CompanyDocs::setStatus($resId, 'approved', $bossId);
@@ -320,6 +328,13 @@ check('when WhatsApp does not accept the file the tool says NOT sent', !$d3['ok'
 check('  the failed send is in the trail as ok=0', Database::exists("SELECT 1 FROM company_document_access WHERE action = 'send' AND ok = 0 AND document_id = :d AND phone = :p", ['d' => $pubId, 'p' => CD_CUST]));
 check('  a share link was minted for that number only', Database::exists('SELECT 1 FROM wa_share_links WHERE document_id = :d AND phone = :p', ['d' => $pubId, 'p' => CD_CUST]));
 check('  and the outbound attempt is in message_logs', Database::exists("SELECT 1 FROM message_logs WHERE to_number = :p AND status = 'failed' AND purpose = 'company_doc'", ['p' => CD_CUST]));
+// A Nepali sender writes from +977…: the file must go to +977, never to +91 + the same digits.
+$np = $mk('+9779100007104', 1, 'luggage rule pathaideu');
+check('whoIs keeps the country code beside the normalised number', $np['phone'] === CD_CUST && $np['intl'] === '977' . CD_CUST);
+$dNp = AiTools::run('company_doc_send', ['doc_id' => $pubId, 'purpose' => 'test'], $np);
+check('a +977 sender is addressed as +977 (link and outbound row), not +91', Database::exists('SELECT 1 FROM wa_share_links WHERE document_id = :d AND phone = :p', ['d' => $pubId, 'p' => '977' . CD_CUST])
+    && Database::exists("SELECT 1 FROM message_logs WHERE to_number = :p AND purpose = 'company_doc'", ['p' => '977' . CD_CUST])
+    && !Database::exists("SELECT 1 FROM message_logs WHERE to_number = :p AND purpose = 'company_doc'", ['p' => '91' . CD_CUST]));
 
 section('confidential: show, then yes in the NEXT message');
 $c0 = AiTools::run('company_doc_send', ['doc_id' => $confId, 'purpose' => 'audit'], $mgr);
@@ -339,11 +354,20 @@ check('  the summary shown is masked', !str_contains(json_encode($c1['data']), '
 $c2 = AiTools::run('company_doc_send', ['doc_id' => $confId, 'confirm' => true], $mgr);
 check('confirm in the SAME turn is refused', !$c2['ok'] && str_contains($c2['say'], 'No confirmed request'));
 $c1b = AiTools::run('company_doc_send', ['doc_id' => $confId, 'purpose' => 'audit'], $mgr);
-$mgr2 = $mk(CD_MGR, 2);
+$notYes = AiTools::run('company_doc_send', ['doc_id' => $confId, 'confirm' => true], $mk(CD_MGR, 2, 'bus kati bajey?'));
+check('confirm=true from the model while the PERSON did not say yes is refused', !$notYes['ok'] && str_contains($notYes['say'], 'not said yes'));
+$c1c = AiTools::run('company_doc_send', ['doc_id' => $confId, 'purpose' => 'audit'], $mk(CD_MGR, 2));
+$mgr2 = $mk(CD_MGR, 3, 'ho, pathaideu');
 $c3 = AiTools::run('company_doc_send', ['doc_id' => $confId, 'confirm' => true], $mgr2);
-check('confirm in the NEXT turn passes the confirmation gate (fails later only at the provider)', !$c3['ok'] && str_contains($c3['say'], 'could NOT be sent'));
-$c4 = AiTools::run('company_doc_send', ['doc_id' => $confId, 'confirm' => true], $mk(CD_MGR, 3));
+check('confirm in the NEXT turn, with the person\'s own "ho", passes the gate (fails later only at the provider)', !$c3['ok'] && str_contains($c3['say'], 'could NOT be sent'));
+$c4 = AiTools::run('company_doc_send', ['doc_id' => $confId, 'confirm' => true], $mk(CD_MGR, 4, 'ho'));
 check('the staged confirmation is single-use', !$c4['ok'] && str_contains($c4['say'], 'No confirmed request'));
+Settings::set('wa_agent_oneshot', true, 'bool', 'ai'); Settings::flush();
+AiTools::run('company_doc_send', ['doc_id' => $confId, 'purpose' => 'audit'], $mk(CD_MGR, 5, 'gst certificate'));
+$one = AiTools::run('company_doc_send', ['doc_id' => $confId, 'confirm' => true], $mk(CD_MGR, 5, 'ho'));
+check('wa_agent_oneshot does NOT collapse the two-message rule for a confidential paper', !$one['ok'] && str_contains($one['say'], 'No confirmed request'));
+Settings::set('wa_agent_oneshot', false, 'bool', 'ai'); Settings::flush();
+AiTools::clearStage(CD_MGR);
 $a1 = AiTools::run('company_doc_send', ['doc_id' => $confId], $agent);
 check('an agent never reaches a confidential paper', !$a1['ok'] && str_contains($a1['say'], 'not available'));
 
@@ -358,6 +382,11 @@ check('  the refusal is audited in ai_agent_calls', Database::exists("SELECT 1 F
 $tok = $lm[1];
 check('  the token is stored hashed, never raw', Database::exists('SELECT 1 FROM wa_identity_links WHERE phone = :p AND challenge_hash = :h', ['p' => CD_MGR, 'h' => hash('sha256', $tok)])
     && !Database::exists('SELECT 1 FROM wa_identity_links WHERE challenge_hash = :t', ['t' => $tok]));
+check('  the token is NOT in the ai_agent_calls audit row', !Database::exists("SELECT 1 FROM ai_agent_calls WHERE phone = :p AND (detail LIKE :t OR args LIKE :t2)", ['p' => CD_MGR, 't' => '%' . $tok . '%', 't2' => '%' . $tok . '%']));
+require_once INCLUDE_PATH . '/notify.php';
+Notify::logOutbound(CD_MGR, 'Open this link: https://x.test/admin/wa-verify.php?t=' . $tok . ' now', 'sent', ['provider' => 'test', 'purpose' => 'bot_reply']);
+check('  a bot reply carrying the link is logged WITHOUT the token', Database::exists("SELECT 1 FROM message_logs WHERE to_number = :p AND body LIKE '%t=[hidden]%'", ['p' => CD_MGR])
+    && !Database::exists('SELECT 1 FROM message_logs WHERE to_number = :p AND body LIKE :t', ['p' => CD_MGR, 't' => '%' . $tok . '%']));
 $v1b = AiTools::run('company_doc_send', ['doc_id' => $confId, 'purpose' => 'audit'], $mk(CD_MGR, 5));
 check('asking again does not mint a second link while one is live', !$v1b['ok'] && ($v1b['data']['already_sent'] ?? false) === true);
 $bossRow = Database::fetch('SELECT * FROM admins WHERE id = :i', ['i' => $bossId]);
