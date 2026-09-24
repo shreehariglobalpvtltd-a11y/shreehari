@@ -155,6 +155,7 @@ const CORE_SUITES = [
     'money-guards-test.php'        => 'paper-ticket cap, agent-only commission, no proof downgrade, coupon redemption, second void, hold cap',
     'seat-events-test.php'         => 'live seat events: the version moves only when seats move; unchanged answers; the stream',
     'whereis-test.php'             => '"Where is my bus?": honest status, three doors, the keyed page, its JSON, trackUrl in the app payload',
+    'contact-layer-test.php'       => 'the contact dial on every screen; "call me back" reaches the office inbox; labels in three languages',
 ];
 
 /**

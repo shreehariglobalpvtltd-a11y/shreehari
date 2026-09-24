@@ -58,6 +58,9 @@ $boot = [
     // itself stays server-side (api/ai-proxy.php). Drives the "AI" badge
     // and whether the bot escalates unmatched questions to the proxy.
     'ai'       => Settings::getString('anthropic_api_key', '') !== '',
+    // The contact button on every screen (24 Sep 2026): call / WhatsApp the
+    // office without hunting for the number.
+    'contact'  => ['phone' => Settings::officePhone(), 'wa' => Settings::officeWhatsApp()],
     'settings' => Settings::publicSettings(),
     'user'     => $user !== null ? [
         'phone'  => $user['phone'] ?? '',

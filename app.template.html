@@ -2733,6 +2733,28 @@ s.addEventListener('click',function(e){e.preventDefault();
 <button type="button" class="sos-fab" id="sosFab" aria-label="SOS — Emergency help · आपतकालीन सहायता · आपातकालीन सहायता">🆘</button>
 
 <!-- ============ [HTML] AI ASSISTANT: floating chat (works fully offline — rule-based) ============ -->
+<!-- Contact dial (24 Sep 2026): the office is one tap away on every screen —
+     call, WhatsApp, the Sahayak chat, or "call me back" which lands in the
+     office Enquiries inbox. Wired in 17-pwa.js (ContactDial). -->
+<button type="button" class="ct-fab" id="ctFab" aria-haspopup="dialog" aria-controls="ctSheet" aria-expanded="false" aria-label="Contact the office">📞</button>
+<div class="ct-sheet" id="ctSheet" role="dialog" aria-modal="true" aria-labelledby="ctTitle" hidden>
+  <div class="ct-card">
+    <div class="ct-head"><b id="ctTitle" data-i18n="ctTitle">Talk to S Hari Global</b><button type="button" class="ct-x" id="ctClose" aria-label="Close">✕</button></div>
+    <p class="ct-sub" data-i18n="ctHours">Office 7 am – 11 pm · Nepali · Hindi · English</p>
+    <div class="ct-grid">
+      <a class="ct-btn ct-call" id="ctCall" href="tel:"><span>📞</span><b data-i18n="ctCall">Call the office</b></a>
+      <a class="ct-btn ct-wa" id="ctWa" href="https://wa.me/" target="_blank" rel="noopener"><span>💬</span><b data-i18n="ctWa">WhatsApp</b></a>
+      <button type="button" class="ct-btn ct-chat" id="ctChat"><span>🤖</span><b data-i18n="ctChat">Ask Sahayak (AI)</b></button>
+      <button type="button" class="ct-btn ct-cb" id="ctCbOpen"><span>🔁</span><b data-i18n="ctCallback">Call me back</b></button>
+    </div>
+    <form class="ct-cb-form" id="ctCbForm" hidden autocomplete="on">
+      <label><span data-i18n="ctCbName">Your name</span><input id="ctCbName" maxlength="120" autocomplete="name" required></label>
+      <label><span data-i18n="ctCbPhone">Mobile (we call this number)</span><input id="ctCbPhone" inputmode="tel" maxlength="16" autocomplete="tel" required></label>
+      <button type="submit" class="ct-btn ct-send" id="ctCbSend"><span>📨</span><b data-i18n="ctCbSend">Request a call</b></button>
+      <p class="ct-note" id="ctCbMsg" aria-live="polite"></p>
+    </form>
+  </div>
+</div>
 <button type="button" class="ai-fab" id="aiFab" aria-label="SHG Sahayak — AI Assistant">🤖</button>
 <div class="ai-panel" id="aiPanel" role="dialog" aria-label="SHG Sahayak AI Assistant">
   <div class="ai-head">

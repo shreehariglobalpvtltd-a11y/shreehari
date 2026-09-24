@@ -748,3 +748,76 @@
     }
   } catch (e) {}
 })();
+
+/* =====================================================================
+ *  ContactDial (24 Sep 2026) — the office one tap away on every screen.
+ *  Call · WhatsApp · Sahayak chat · "call me back" (an enquiry the office
+ *  sees in its inbox). Numbers come from SHG_BOOT.contact, so the desk can
+ *  change them in Settings without a deploy. Every hook is optional: a
+ *  page without the markup simply has no dial.
+ * ===================================================================== */
+(function ContactDial() {
+  var fab = document.getElementById('ctFab'), sheet = document.getElementById('ctSheet');
+  if (!fab || !sheet) return;
+  var boot = window.SHG_BOOT || {}, contact = boot.contact || {};
+  var phone = String(contact.phone || '').trim(), wa = String(contact.wa || '').replace(/\D/g, '');
+  try { if (typeof t === 'function') fab.setAttribute('aria-label', t('ctFabLbl')); } catch (e) {}
+  var callA = document.getElementById('ctCall'), waA = document.getElementById('ctWa');
+  if (callA) { if (phone) callA.href = 'tel:' + phone.replace(/[^0-9+]/g, ''); else callA.hidden = true; }
+  if (waA) {
+    if (wa) {
+      var hello = (typeof t === 'function') ? t('ctWaHello') : 'Namaste, S Hari Global. ';
+      waA.href = 'https://wa.me/' + wa + '?text=' + encodeURIComponent(hello);
+    } else { waA.hidden = true; }
+  }
+  function open() {
+    sheet.hidden = false; fab.setAttribute('aria-expanded', 'true');
+    var f = document.getElementById('ctCbForm'); if (f) f.hidden = true;
+    try { if (navigator.vibrate) navigator.vibrate(8); } catch (e) {}
+    var x = document.getElementById('ctClose'); if (x) x.focus();
+  }
+  function close() { sheet.hidden = true; fab.setAttribute('aria-expanded', 'false'); fab.focus(); }
+  fab.addEventListener('click', function () { sheet.hidden ? open() : close(); });
+  var closeBtn = document.getElementById('ctClose'); if (closeBtn) closeBtn.addEventListener('click', close);
+  sheet.addEventListener('click', function (e) { if (e.target === sheet) close(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !sheet.hidden) close(); });
+
+  var chat = document.getElementById('ctChat');
+  if (chat) chat.addEventListener('click', function () {
+    close();
+    var ai = document.getElementById('aiFab'); if (ai) ai.click();
+  });
+
+  var cbOpen = document.getElementById('ctCbOpen'), form = document.getElementById('ctCbForm');
+  if (cbOpen && form) {
+    cbOpen.addEventListener('click', function () {
+      form.hidden = !form.hidden;
+      if (!form.hidden) {
+        var u = boot.user || {};
+        var n = document.getElementById('ctCbName'), p = document.getElementById('ctCbPhone');
+        if (n && !n.value && u.name) n.value = u.name;
+        if (p && !p.value && u.phone) p.value = u.phone;
+        (n && !n.value ? n : p).focus();
+      }
+    });
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var msg = document.getElementById('ctCbMsg'), btn = document.getElementById('ctCbSend');
+      var name = (document.getElementById('ctCbName').value || '').trim();
+      var ph = (document.getElementById('ctCbPhone').value || '').replace(/\D/g, '');
+      if (name.length < 2 || ph.length < 10) { msg.className = 'ct-note bad'; msg.textContent = (typeof t === 'function') ? t('ctCbNeed') : 'Enter your name and mobile number.'; return; }
+      btn.disabled = true; msg.className = 'ct-note'; msg.textContent = '…';
+      var body = { name: name, phone: ph, source: 'callback', note: 'Call me back · ' + (location.hash || '#/'), seats: 1 };
+      var send = (typeof shgApi !== 'undefined' && shgApi.post)
+        ? shgApi.post('/enquiry.php', body)
+        : fetch('/api/enquiry.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(function (r) { return r.json(); }).then(function (j) { if (!j.ok) throw new Error(j.error || ''); return j; });
+      send.then(function () {
+        msg.className = 'ct-note ok'; msg.textContent = (typeof t === 'function') ? t('ctCbOk') : 'Done — the office will call you back.';
+        try { if (typeof toast === 'function') toast('✅ ' + msg.textContent); } catch (e2) {}
+        setTimeout(close, 2200);
+      }).catch(function () {
+        msg.className = 'ct-note bad'; msg.textContent = (typeof t === 'function') ? t('ctCbFail') : 'Could not send — please call the office.';
+      }).then(function () { btn.disabled = false; });
+    });
+  }
+})();
