@@ -1,0 +1,133 @@
+# =====================================================================
+#  Deploy to the live VPS — MANUAL ONLY (Actions → "Deploy to VPS" →
+#  Run workflow). Never runs on push. 24 Sep 2026.
+#
+#  It runs the repository's own deploy.sh against the VPS, exactly as the
+#  owner's laptop would, so nothing about HOW the site is deployed lives
+#  in two places. The runner only needs the four secrets below; the key
+#  never leaves the runner and .deploy.env is built and discarded there.
+#
+#  Repository → Settings → Secrets and variables → Actions:
+#    VPS_SSH_KEY   the private key deploy.sh uses (contents of ~/.ssh/shg_deploy)
+#    VPS_HOST      e.g. 93.127.167.249
+#    VPS_USER      e.g. root
+#    VPS_PATH      the live folder, e.g. /var/www/shreehariglobal.in/public_html
+#  Optional: SITE_URL (default https://www.shreehariglobal.in)
+#
+#  What one run does, in order:
+#    1. rsync the chosen branch to VPS_PATH (deploy.sh, same excludes:
+#       no config/, no uploads/, no tickets/, no tests/, no *.md)
+#    2. php -l on every PHP file that arrived + chown www-data
+#    3. optional: DB backup, then the migration file you name
+#    4. deploy.sh's own health check (HTTP 200 on the site)
+#  Feature switches stay OFF after a deploy — turn them on in Admin → Settings.
+# =====================================================================
+name: Deploy to VPS
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'full = rsync whole tree (checksum, only changed files travel) · dry = preview only'
+        required: true
+        default: 'dry'
+        type: choice
+        options: [dry, full]
+      migrate:
+        description: 'SQL migration to apply after the sync (path under database/), or empty'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-live
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: ${{ inputs.mode }} deploy of ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: live
+    steps:
+      - name: Check out the branch to deploy
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up PHP (syntax check before anything leaves the runner)
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          tools: none
+
+      - name: PHP syntax on the runner
+        run: find . -type f -name '*.php' -not -path './.git/*' -print0 | xargs -0 -n1 php -l > /dev/null && echo "all PHP files parse"
+
+      - name: Refuse to run without the secrets
+        env:
+          K: ${{ secrets.VPS_SSH_KEY }}
+          H: ${{ secrets.VPS_HOST }}
+          U: ${{ secrets.VPS_USER }}
+          P: ${{ secrets.VPS_PATH }}
+        run: |
+          for v in K H U P; do
+            if [ -z "${!v}" ]; then echo "::error::Secret for $v is not set (VPS_SSH_KEY / VPS_HOST / VPS_USER / VPS_PATH)"; exit 1; fi
+          done
+
+      - name: Install the deploy key and .deploy.env
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PATH: ${{ secrets.VPS_PATH }}
+          SITE_URL: ${{ secrets.SITE_URL }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/shg_deploy
+          chmod 600 ~/.ssh/shg_deploy
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+          {
+            echo "VPS_USER=$VPS_USER"
+            echo "VPS_HOST=$VPS_HOST"
+            echo "VPS_PATH=$VPS_PATH"
+            echo "SSH_KEY=$HOME/.ssh/shg_deploy"
+            echo "SITE_URL=${SITE_URL:-https://www.shreehariglobal.in}"
+          } > .deploy.env
+          mkdir -p logs
+
+      - name: Sync the site (deploy.sh)
+        run: |
+          if [ "${{ inputs.mode }}" = "dry" ]; then bash deploy.sh --dry-run; else bash deploy.sh; fi
+
+      - name: Syntax check and ownership on the server
+        if: ${{ inputs.mode == 'full' }}
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PATH: ${{ secrets.VPS_PATH }}
+        run: |
+          ssh -i ~/.ssh/shg_deploy -o StrictHostKeyChecking=no "$VPS_USER@$VPS_HOST" bash -s "$VPS_PATH" <<'REMOTE'
+            set -e
+            cd "$1"
+            bad=0
+            for f in $(find includes admin api whatsapp cron -name '*.php' -newer config/config.php 2>/dev/null); do
+              php -l "$f" > /dev/null || bad=1
+            done
+            [ "$bad" = 0 ] || { echo "::error::a PHP file on the server does not parse"; exit 1; }
+            chown -R www-data:www-data includes admin api whatsapp cron database docs 2>/dev/null || true
+            echo "server-side php -l ok, ownership set"
+          REMOTE
+
+      - name: Backup + migration
+        if: ${{ inputs.mode == 'full' && inputs.migrate != '' }}
+        run: bash deploy.sh --backup --migrate "${{ inputs.migrate }}"
+
+      - name: Forget the key
+        if: ${{ always() }}
+        run: rm -f ~/.ssh/shg_deploy .deploy.env

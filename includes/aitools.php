@@ -68,6 +68,8 @@ if (!defined('SHG_APP')) {
     exit('Forbidden');
 }
 
+require_once __DIR__ . '/personname.php';
+
 final class AiTools
 {
     /** A staged quote (sale / cancel) is only good for this long. */
@@ -104,25 +106,53 @@ final class AiTools
             'scopeAdminId' => null,
             'name'         => '',
             'phone'        => $digits,
+            /* 24 Sep 2026 — the sender's country, read off the +91 / +977 the
+               webhook delivers. India and Nepal share 10-digit mobiles, so
+               once the number is normalised nothing else can tell them apart,
+               and a Nepali passenger's ticket used to be addressed to +91.
+               Carried into every sale made on this number. */
+            'country'      => resolvePhoneCountry('', $phoneRaw),
+            'login'        => null,
         ];
         if ($digits === '') {
             return $out;
         }
 
         try {
-            /* Staff numbers are stored as typed (with or without +91), so the
-               match is on the normalised tail the whole app agrees on. */
-            $matches = [];
-            foreach (Database::fetchAll(
-                "SELECT id, full_name, phone, role, is_active, must_change_pw, locked_until FROM admins WHERE phone IS NOT NULL AND phone <> ''"
-            ) as $row) {
-                if (normalisePhone((string) $row['phone']) === $digits) {
-                    $matches[] = $row;
+            $admin = null;
+
+            /* 24 Sep 2026 — a WhatsApp sign-in (includes/walogin.php) names
+               the account for this number explicitly, so it wins over the
+               staff-record match below. session() has already re-checked
+               that the account is active, unlocked and initialised. */
+            if (Settings::getBool('wa_login_on', false)) {
+                require_once INCLUDE_PATH . '/walogin.php';
+                $session = WaLogin::session($phoneRaw);   // keyed on +91/+977 + digits
+                if ($session !== null) {
+                    $admin        = $session['admin'];
+                    $out['login'] = [
+                        'id'         => (int) $session['login']['id'],
+                        'expires_at' => (string) $session['login']['expires_at'],
+                        'method'     => (string) $session['login']['method'],
+                    ];
                 }
             }
-            // Shared, suspended or uninitialised staff accounts cannot confer
-            // privileges through a channel that has no password challenge.
-            $admin = count($matches) === 1 ? $matches[0] : null;
+
+            /* Staff numbers are stored as typed (with or without +91), so the
+               match is on the normalised tail the whole app agrees on. */
+            if ($admin === null) {
+                $matches = [];
+                foreach (Database::fetchAll(
+                    "SELECT id, full_name, phone, role, is_active, must_change_pw, locked_until FROM admins WHERE phone IS NOT NULL AND phone <> ''"
+                ) as $row) {
+                    if (normalisePhone((string) $row['phone']) === $digits) {
+                        $matches[] = $row;
+                    }
+                }
+                // Shared, suspended or uninitialised staff accounts cannot confer
+                // privileges through a channel that has no password challenge.
+                $admin = count($matches) === 1 ? $matches[0] : null;
+            }
             if ($admin !== null && ((int) ($admin['is_active'] ?? 0) !== 1
                 || (int) ($admin['must_change_pw'] ?? 1) !== 0
                 || (!empty($admin['locked_until']) && strtotime((string) $admin['locked_until']) > time())
@@ -143,25 +173,18 @@ final class AiTools
                 return $out;
             }
 
-            // A customer we have met before — the vault knows their name, so
-            // the assistant can greet them and pre-fill a ticket.
-            $name = (string) Database::scalar(
-                'SELECT full_name FROM bookings WHERE contact_phone = :p
-                   AND status IN (\'confirmed\',\'completed\') ORDER BY id DESC LIMIT 1',
+            // A customer we have met before — the register knows their name,
+            // so the assistant can greet them and pre-fill a ticket. (bookings
+            // has no full_name column: the passenger row is the only source.)
+            $out['name'] = (string) Database::scalar(
+                'SELECT p.full_name FROM booking_passengers p
+                   JOIN bookings b ON b.id = p.booking_id
+                  WHERE b.contact_phone = :p AND p.is_primary = 1
+                    AND b.status IN (\'confirmed\',\'completed\')
+                  ORDER BY p.id DESC LIMIT 1',
                 ['p' => $digits],
                 ''
             );
-            if ($name === '') {
-                $name = (string) Database::scalar(
-                    'SELECT p.full_name FROM booking_passengers p
-                       JOIN bookings b ON b.id = p.booking_id
-                      WHERE b.contact_phone = :p AND p.is_primary = 1
-                      ORDER BY p.id DESC LIMIT 1',
-                    ['p' => $digits],
-                    ''
-                );
-            }
-            $out['name'] = $name;
         } catch (Throwable $e) {
             Logger::exception($e, 'whatsapp');
         }
@@ -214,18 +237,22 @@ final class AiTools
         }
 
         $t[] = self::spec('plan_ticket',
-            'QUOTE a ticket without selling it: reads live availability and returns the exact bus, date, pickup, berth(s), seats left and total fare. ALWAYS call this before issue_ticket, and read the total back to the passenger so they can say ho/yes.',
+            'QUOTE a ticket without selling it: reads live availability and returns the exact bus, date, pickup, berth(s), seats left and total fare. ALWAYS call this before issue_ticket, and read the total back to the passenger so they can say ho/yes. '
+            . 'When you already know the passenger\'s NAME (and, for a desk sale, their MOBILE), pass them here too: they are pinned to the quote, read back with the fare, and the sale is refused if they differ later — that is how a name or number can never be wrong on the ticket.',
             [
                 'seats'     => ['integer', 'How many berths (1–6)'],
                 'date'      => ['string', "Travel date as YYYY-MM-DD. Leave empty for the next catchable bus."],
                 'direction' => ['string', "toNepal = Gujarat→Rupaidiha ('jane'), toIndia = Rupaidiha→Gujarat ('aaune'). Empty = decide from the pickup."],
                 'boarding'  => ['string', 'Pickup town or stop as the passenger said it, e.g. Surat, Vadodara, Mehsana, S Hari Parking'],
                 'gender'    => ['string', 'Male, Female or Other — needed for a shared cabin berth'],
+                'name'      => ['string', 'The passenger\'s full name, exactly as they gave it, if already known'],
+                'phone'     => ['string', 'Desk sale only: the passenger\'s mobile, with +977 when it is a Nepali number'],
             ], ['seats']);
 
         if ($mayCut) {
             $t[] = self::spec('issue_ticket',
                 'ISSUE the ticket that plan_ticket just quoted, after the passenger has clearly said yes (ho / hunxa / ok / thik cha / book it). The ticket PNG goes to their WhatsApp by itself. Only call this when the passenger agreed to the total you read out. '
+                . 'The name must be the one the quote pinned (or the one they gave with their yes); a different name is refused — quote again. '
                 . 'For a PARTY of 2 or more, put every traveller in names[] in the order they were given — each berth is then printed with its own name. Leave names[] out for a single traveller.',
                 [
                     'name'    => ['string', "The booking name — the person writing to you"],
@@ -242,6 +269,7 @@ final class AiTools
         if ($staff && $mayCut) {
             $t[] = self::spec('staff_sell',
                 'Sell a ticket AT THE DESK for a passenger who is not the sender: their name and number, the plan quoted by plan_ticket. The ticket goes to the passenger\'s WhatsApp and the commission is credited to the selling agent. Staff only. '
+                . 'Pass the SAME name and mobile the quote pinned — a changed name or number is refused, so read both back before the seller says ho. '
                 . 'For a GROUP — 4, 5, a whole family on one chalan — quote the seat count with plan_ticket, then pass every traveller in names[] here. One booking, one PNR, every berth printed with its own name. Ask for the names in ONE message, not one at a time.',
                 [
                     'name'    => ['string', "The lead passenger's full name — the booking is in this name"],
@@ -250,11 +278,25 @@ final class AiTools
                                        'name'   => ['type' => 'string', 'description' => "The traveller's full name"],
                                        'gender' => ['type' => 'string', 'description' => 'Male, Female or Other'],
                                    ], 'required' => ['name']]],
-                    'phone'   => ['string', "The passenger's 10-digit mobile — the ticket goes there"],
+                    'phone'   => ['string', "The passenger's 10-digit mobile — the ticket goes there. Keep +977 in front of a Nepali number"],
+                    'country' => ['string', 'NP when the passenger\'s number is Nepali, IN when Indian. Decides where the WhatsApp ticket goes'],
                     'gender'  => ['string', 'Male, Female or Other — the lead passenger\'s own'],
                     'pay'     => ['string', 'cash, upi, esewa or bank — how the passenger paid'],
                     'confirm' => ['boolean', 'Must be true'],
                 ], ['name', 'phone', 'confirm']);
+        }
+
+        /* 24 Sep 2026 (owner: "agent lai bulk ticket support garos"). A pasted
+           LIST — one passenger per line, name and mobile — is read by code,
+           quoted in one message and sold on the next "ho". The same two
+           functions the deterministic path in wabot.php calls. */
+        if ($staff && Settings::getBool('wa_bulk_on', false)) {
+            $t[] = self::spec('bulk_quote',
+                'QUOTE a LIST of passengers the seller pasted — one per line, "Name 9876543210 M 32", optionally with Date:/From:/Pay: header lines. Two lines with the same mobile are one booking (a family). Returns every booking\'s names, number, bus, date, pickup, seats and fare, plus any line that could not be read. NOTHING is sold. Read the summary back and ask the seller to reply ho. Tell them "FORMAT" gives the template.',
+                ['text' => ['string', 'The list exactly as the seller sent it, line breaks included']], ['text']);
+            $t[] = self::spec('bulk_issue',
+                'SELL every booking that bulk_quote read back, only after the seller replied ho / yes in a LATER message. Each ticket goes to its own passenger\'s WhatsApp; the commission goes to the seller. Returns the PNRs and any booking that failed.',
+                ['confirm' => ['boolean', 'Must be true — the seller said ho to the bulk quote']], ['confirm']);
         }
 
         $t[] = self::spec('refund_quote',
@@ -334,9 +376,55 @@ final class AiTools
             $t[] = self::spec('agent_passengers',
                 'The passengers travelling on a date, grouped by pickup, with seat and phone — a counter agent sees only the ones they sold themselves.',
                 ['date' => ['string', 'YYYY-MM-DD, default today']]);
+
+            /* 24 Sep 2026 (owner: "agent le ticket edit, cancel, manage garna
+               sakos; aafno commission herna sakos"). The seller's own register
+               and wallet, so a correction or a cancellation starts from a PNR
+               they can find without the office. */
+            $t[] = self::spec('my_sales',
+                'This seller\'s OWN recent sales — PNR, passenger, mobile, travel date, pickup, seats, amount, status — newest first, or every sale travelling on one date. Use it to find the PNR before rename_passenger, quote_ticket_fix, resend_ticket, refund_quote or cancel_ticket.',
+                [
+                    'date'  => ['string', 'YYYY-MM-DD travel date to list, or empty for the latest sales'],
+                    'limit' => ['integer', 'How many to show, 1–20 (default 8)'],
+                ]);
+
+            $t[] = self::spec('my_wallet',
+                'This seller\'s OWN account: commission due to them, commission earned this month and lifetime, cash they still owe the office, the last ledger entries, any open payout request, deposit, KYC state and daily limit. Answers "mero commission kati bhayo", "mero hisab", "mero paisa kahile aaucha".',
+                []);
+
+            if (Settings::getBool('wa_agent_payout', false) && (string) ($ctx['admin']['role'] ?? '') === 'agent') {
+                $t[] = self::spec('request_payout',
+                    'Ask the office to PAY OUT this agent\'s commission. Call once WITHOUT confirm to see the amount and the rule, read it back, and only after the agent says ho in the NEXT message call again with confirm true. Empty amount = the whole commission due.',
+                    [
+                        'amount'  => ['number', 'Amount to request, or 0 for all that is due'],
+                        'note'    => ['string', 'Optional note for the office'],
+                        'confirm' => ['boolean', 'True only after the agent agreed in a later message'],
+                    ]);
+            }
         }
 
         if ($role === 'admin') {
+            /* 24 Sep 2026 (owner: "admin le sabai heros — agent, customer,
+               jun Admin portal ma milcha"). The office's reading tools over
+               people: one agent, all agents, one customer, the payout queue. */
+            $t[] = self::spec('office_agent',
+                'ONE agent or counter, found by agent code (SHG-0027), name or mobile: status, KYC, their day (any date), commission due, earned this month and lifetime, cash owed, open payout request and last sales. When several match, the list comes back — ask which.',
+                [
+                    'q'    => ['string', 'Agent code, part of the name, or mobile'],
+                    'date' => ['string', 'YYYY-MM-DD for their day, default today'],
+                ], ['q']);
+
+            $t[] = self::spec('office_agents',
+                'Every agent at a glance: code, name, active or not, today\'s tickets, commission due, cash owed. Answers "kun agent le aaja kati becheyo", "kasko cash baaki cha".',
+                []);
+
+            $t[] = self::spec('office_customer',
+                'ONE customer by mobile: the name on their bookings, how many trips, money spent, upcoming travel and their last bookings with status. What Admin → Customers shows.',
+                ['phone' => ['string', 'The customer\'s 10-digit mobile']], ['phone']);
+
+            $t[] = self::spec('office_payout_requests',
+                'Commission payout requests waiting for the office, oldest first, with the agent, amount, their note and the commission actually due.',
+                []);
             $t[] = self::spec('office_day',
                 'The whole company for one day: tickets, seats, revenue by payment method, refunds, how full each departure is, and how many payments are waiting to be verified.',
                 ['date' => ['string', 'YYYY-MM-DD, default today']]);
@@ -357,6 +445,34 @@ final class AiTools
                         'note'    => ['string', 'Short note for the audit trail, e.g. "UTR checked"'],
                         'confirm' => ['boolean', 'Must be true'],
                     ], ['pnr', 'confirm']);
+
+                /* 24 Sep 2026 — the office's other buttons, each in two steps:
+                   the first call previews and pins, the office says ho, the
+                   second call (next message, confirm true) presses it. */
+                $t[] = self::spec('office_settle_cod',
+                    'Record that the CASH on a pay-at-boarding booking was collected — Admin → Payments "cash received". First call without confirm previews the booking and amount; after ho in the next message, call again with confirm true.',
+                    [
+                        'pnr'     => ['string', 'The PNR'],
+                        'note'    => ['string', 'Who collected it / where'],
+                        'confirm' => ['boolean', 'True only after the office said ho to the preview'],
+                    ], ['pnr']);
+
+                $t[] = self::spec('office_reject',
+                    'REJECT a PENDING booking whose payment proof is wrong or missing — the seats go back, the passenger is told the reason. Preview first (no confirm), then confirm true after ho in the next message.',
+                    [
+                        'pnr'     => ['string', 'The PNR'],
+                        'reason'  => ['string', 'Why, in plain words — the passenger reads this'],
+                        'confirm' => ['boolean', 'True only after the office said ho to the preview'],
+                    ], ['pnr', 'reason']);
+
+                $t[] = self::spec('office_agent_status',
+                    'ACTIVATE or DEACTIVATE an agent / counter account (Admin → Staff toggle). A deactivated agent cannot sell or sign in anywhere. Preview first (no confirm), then confirm true after ho in the next message. Never for a superadmin or for yourself.',
+                    [
+                        'q'       => ['string', 'Agent code, name or mobile'],
+                        'active'  => ['boolean', 'true = activate, false = deactivate'],
+                        'reason'  => ['string', 'Why — goes in the audit trail'],
+                        'confirm' => ['boolean', 'True only after the office said ho to the preview'],
+                    ], ['q', 'active']);
             }
         }
 
@@ -441,10 +557,22 @@ final class AiTools
                 'bus_eta'          => self::busEta($args, $ctx),
                 'agent_day'        => self::agentDay($args, $ctx),
                 'agent_passengers' => self::agentPassengers($args, $ctx),
+                'my_sales'         => self::mySales($args, $ctx),
+                'my_wallet'        => self::myWallet($args, $ctx),
+                'request_payout'   => self::requestPayout($args, $ctx),
+                'bulk_quote'       => self::bulkQuote($args, $ctx),
+                'bulk_issue'       => self::bulkIssue($args, $ctx),
                 'office_day'       => self::officeDay($args, $ctx),
                 'office_search'    => self::officeSearch($args, $ctx),
                 'office_alerts'    => self::officeAlerts($args, $ctx),
                 'office_confirm'   => self::officeConfirm($args, $ctx),
+                'office_agent'     => self::officeAgent($args, $ctx),
+                'office_agents'    => self::officeAgents($args, $ctx),
+                'office_customer'  => self::officeCustomer($args, $ctx),
+                'office_payout_requests' => self::officePayoutRequests($args, $ctx),
+                'office_settle_cod' => self::officeSettleCod($args, $ctx),
+                'office_reject'    => self::officeReject($args, $ctx),
+                'office_agent_status' => self::officeAgentStatus($args, $ctx),
                 default            => $out,
             };
         } catch (RuntimeException $e) {
@@ -560,6 +688,34 @@ final class AiTools
 
         $plan = QuickTicket::plan($opts);           // throws a desk-safe RuntimeException
 
+        /* 24 Sep 2026 (owner: "naam ra mobile number ma mistake nahos").
+           A name or a number given before the quote is PINNED with it and
+           read back beside the fare, so the one "ho" confirms all three.
+           issue_ticket / staff_sell refuse a different name or number: a
+           change means a fresh quote, never a silent substitution. */
+        $pin = ['name' => '', 'phone' => '', 'country' => ''];
+        $nameNote = '';
+        $rawName  = (string) ($args['name'] ?? '');
+        if (trim($rawName) !== '') {
+            $clean = PersonName::clean($rawName);
+            if ($clean !== '') {
+                $pin['name'] = $clean;
+            } else {
+                $nameNote = ' The name "' . Security::clean($rawName, 40) . '" was NOT accepted: ' . PersonName::why($rawName)
+                          . '. Ask for the passenger\'s real full name before they confirm.';
+            }
+        }
+        $rawPhone = trim((string) ($args['phone'] ?? ''));
+        if ($rawPhone !== '' && !$customer) {
+            $digits = normalisePhone($rawPhone);
+            if (preg_match('/^[6-9]\d{9}$/', $digits) === 1) {
+                $pin['phone']   = $digits;
+                $pin['country'] = resolvePhoneCountry('', $rawPhone);
+            } else {
+                $nameNote .= ' The mobile "' . Security::clean($rawPhone, 20) . '" is not a valid 10-digit number — ask for it again before selling.';
+            }
+        }
+
         // Pin exactly what the passenger is about to be told. issue_ticket
         // refuses if the fresh plan no longer matches this, so the sale can
         // never be for a different day, pickup, party or price.
@@ -574,12 +730,19 @@ final class AiTools
             'opts'     => ['seats' => (int) $plan['seatCount'], 'date' => (string) $plan['date'],
                            'direction' => (string) $plan['direction'], 'boarding' => (string) $plan['boarding'],
                            'gender' => $opts['gender']],
+            'pin'      => $pin,
         ]);
 
         return [
             'ok'   => true,
-            'say'  => 'This is a QUOTE, nothing is booked yet. Read the bus, date, pickup, berth and the TOTAL to the passenger and ask them to reply ho / yes to confirm.',
+            'say'  => 'This is a QUOTE, nothing is booked yet. Read the bus, date, pickup, berth and the TOTAL to the passenger'
+                    . ($pin['name'] !== '' ? ', and the NAME "' . $pin['name'] . '"' : '')
+                    . ($pin['phone'] !== '' ? ' and the MOBILE ' . $pin['phone'] . ($pin['country'] === 'NP' ? ' (+977)' : '') : '')
+                    . ', and ask them to reply ho / yes to confirm.' . $nameNote,
             'data' => [
+                'pinnedName'   => $pin['name'],
+                'pinnedPhone'  => $pin['phone'],
+                'pinnedCountry' => $pin['country'],
                 'date'         => (string) $plan['date'],
                 'dateLabel'    => (string) $plan['dateLabel'],
                 'route'        => $plan['from'] . ' → ' . $plan['to'],
@@ -793,15 +956,24 @@ final class AiTools
             return self::no('The passenger has not confirmed yet. Read the total back and wait for ho / yes.');
         }
 
-        $staged = self::takeStage($ctx, 'sale');
+        $staged = self::peekStage($ctx, 'sale');
         if ($staged === null) {
             return self::no('No quote is open. Call plan_ticket first and read the fare to the passenger.');
         }
 
-        $name = Security::clean((string) ($args['name'] ?? ($ctx['name'] ?? '')), 120);
-        if (mb_strlen($name) < 2) {
-            return self::no("Ask the passenger's full name first.");
+        $rawName = (string) ($args['name'] ?? '');
+        $name    = PersonName::clean($rawName !== '' ? $rawName : (string) ($ctx['name'] ?? ''));
+        if ($name === '') {
+            return self::no($rawName !== ''
+                ? 'The name "' . Security::clean($rawName, 40) . '" cannot go on a ticket: ' . PersonName::why($rawName) . '. Ask for the passenger\'s real full name.'
+                : "Ask the passenger's full name first.");
         }
+        $pinned = (string) ($staged['pin']['name'] ?? '');
+        if ($pinned !== '' && !PersonName::same($pinned, $name)) {
+            return self::no('The name changed since the quote — quoted "' . $pinned . '", now "' . $name
+                . '". Call plan_ticket again with the right name so the passenger reads it before saying ho.');
+        }
+        self::takeStage($ctx, 'sale');                 // consumed only now — a refusal above keeps the quote
 
         $seatCount = (int) ($staged['opts']['seats'] ?? 1);
         $party     = self::partyNames($args['names'] ?? null, $seatCount);
@@ -809,6 +981,8 @@ final class AiTools
         $input = [
             'name'      => $name,
             'phone'     => (string) $ctx['phone'],     // always the sender's own number
+            // +977 or +91 as the webhook delivered it — never guessed from ten digits.
+            'country'   => (string) ($ctx['country'] ?? ''),
             'seats'     => $seatCount,
             'date'      => (string) ($staged['opts']['date'] ?? ''),
             'direction' => (string) ($staged['opts']['direction'] ?? ''),
@@ -841,19 +1015,55 @@ final class AiTools
             return self::no('Only signed-in staff numbers may sell for another passenger.');
         }
 
-        $staged = self::takeStage($ctx, 'sale');
+        $staged = self::peekStage($ctx, 'sale');
         if ($staged === null) {
             return self::no('No quote is open. Call plan_ticket first.');
         }
 
-        $phone = normalisePhone((string) ($args['phone'] ?? ''));
-        if ($phone === '' || !Security::isValidPhone($phone, true)) {
-            return self::no("The passenger's mobile number is missing or not valid.");
+        /* The mobile: ten real digits, and the country kept from the +977 /
+           +91 the seller typed (24 Sep 2026). normalisePhone() strips the
+           prefix, and before this the stripped number reached QuickTicket
+           with no country — so every Nepali passenger sold from WhatsApp
+           had their ticket addressed to +91. */
+        $rawPhone = trim((string) ($args['phone'] ?? ''));
+        $phone    = normalisePhone($rawPhone);
+        if ($phone === '' || preg_match('/^[6-9]\d{9}$/', $phone) !== 1) {
+            return self::no("The passenger's mobile number is missing or not a valid 10-digit number. Ask for it again — the ticket goes there.");
+        }
+        $country = strtoupper(Security::clean((string) ($args['country'] ?? ''), 2));
+        if ($country !== 'NP' && $country !== 'IN') {
+            $country = resolvePhoneCountry('', $rawPhone);
         }
 
+        $rawName = (string) ($args['name'] ?? '');
+        $name    = PersonName::clean($rawName);
+        if ($name === '') {
+            return self::no('The name "' . Security::clean($rawName, 40) . '" cannot go on a ticket: ' . PersonName::why($rawName) . '. Ask for the passenger\'s real full name.');
+        }
+        $pin = (array) ($staged['pin'] ?? []);
+        if ((string) ($pin['name'] ?? '') !== '' && !PersonName::same((string) $pin['name'], $name)) {
+            return self::no('The name changed since the quote — quoted "' . $pin['name'] . '", now "' . $name . '". Quote again with plan_ticket so the seller reads the right name.');
+        }
+        if ((string) ($pin['phone'] ?? '') !== '' && (string) $pin['phone'] !== $phone) {
+            return self::no('The mobile changed since the quote — quoted ' . $pin['phone'] . ', now ' . $phone . '. Quote again with plan_ticket so the seller reads the right number.');
+        }
+        /* The pinned country wins, as the pinned name and number do: a model
+           that "fills in" country: IN from ten bare digits, or re-types +91,
+           would otherwise address a Nepali passenger's ticket to a stranger
+           in India (24 Sep review). */
+        if ((string) ($pin['country'] ?? '') !== '') {
+            if ($country !== '' && $country !== (string) $pin['country']) {
+                return self::no('The country changed since the quote — quoted ' . ((string) $pin['country'] === 'NP' ? '+977' : '+91')
+                    . ', now ' . ($country === 'NP' ? '+977' : '+91') . '. Quote again with plan_ticket so the seller reads the right number.');
+            }
+            $country = (string) $pin['country'];
+        }
+        self::takeStage($ctx, 'sale');                 // consumed only now
+
         $input = [
-            'name'      => Security::clean((string) ($args['name'] ?? ''), 120),
+            'name'      => $name,
             'phone'     => $phone,
+            'country'   => $country,
             'seats'     => (int) ($staged['opts']['seats'] ?? 1),
             'date'      => (string) ($staged['opts']['date'] ?? ''),
             'direction' => (string) ($staged['opts']['direction'] ?? ''),
@@ -879,10 +1089,13 @@ final class AiTools
 
         return [
             'ok'   => true,
-            'say'  => $say . ' Read back ONLY these facts.',
+            'say'  => $say . ' Read back ONLY these facts — including the name and the mobile the ticket is on, so a mistake is caught now.',
             'data' => [
                 'pnr'        => $pnr,
                 'status'     => (string) ($res['status'] ?? ''),
+                'name'       => (string) ($res['name'] ?? ''),
+                'phone'      => (string) ($res['phone'] ?? ''),
+                'ticketSentToWhatsApp' => (bool) ($res['whatsapp']['sent'] ?? false),
                 'seats'      => $res['seats'] ?? [],
                 'total'      => (float) ($res['total'] ?? 0),
                 'totalLabel' => (string) ($res['totalLabel'] ?? ''),
@@ -1217,6 +1430,16 @@ final class AiTools
             'country' => $raw !== '' ? countryDialCode(resolvePhoneCountry('', $raw)) : ''];
     }
 
+    /**
+     * The sender's OWN message says yes (24 Sep 2026 review): a model's
+     * confirm flag is never consent on its own. The same anchored form
+     * fix_ticket has always required — "ho tara …" is not a yes.
+     */
+    private static function saidYes(array $ctx): bool
+    {
+        return self::correctionConfirmed($ctx);
+    }
+
     private static function correctionConfirmed(array $ctx): bool
     {
         $text = mb_strtolower(trim((string) ($ctx['messageText'] ?? '')));
@@ -1428,26 +1651,7 @@ final class AiTools
             return self::no('Only a staff number can ask this.');
         }
         $date = self::cleanDate((string) ($args['date'] ?? '')) ?: todayISO();
-
-        $row = Database::fetch(
-            "SELECT COUNT(*) AS tickets,
-                    COALESCE(SUM(b.total_amount),0) AS amount,
-                    COALESCE(SUM(CASE WHEN p.method = 'cash' THEN b.total_amount ELSE 0 END),0) AS cash
-               FROM bookings b
-               LEFT JOIN payments p ON p.booking_id = b.id
-              WHERE b.sold_by_admin_id = :a
-                AND DATE(b.created_at) = :d
-                AND b.status IN ('confirmed','completed')",
-            ['a' => $adminId, 'd' => $date]
-        ) ?? [];
-
-        $seats = (int) Database::scalar(
-            "SELECT COUNT(*) FROM booking_seats s JOIN bookings b ON b.id = s.booking_id
-              WHERE b.sold_by_admin_id = :a AND DATE(b.created_at) = :d
-                AND b.status IN ('confirmed','completed') AND s.released_at IS NULL",
-            ['a' => $adminId, 'd' => $date],
-            0
-        );
+        $day  = self::sellerDay($adminId, $date);
 
         /* Two separate balances, never added together: commission is what the
            company owes the agent, cash is what the agent owes the company. */
@@ -1467,11 +1671,12 @@ final class AiTools
             'data' => [
                 'date'          => $date,
                 'seller'        => (string) ($ctx['name'] ?? ''),
-                'tickets'       => (int) ($row['tickets'] ?? 0),
-                'seats'         => $seats,
-                'amount'        => (float) ($row['amount'] ?? 0),
-                'amountLabel'   => inr((float) ($row['amount'] ?? 0)),
-                'cashTakenToday' => (float) ($row['cash'] ?? 0),
+                'tickets'       => $day['tickets'],
+                'seats'         => $day['seats'],
+                'cancelled'     => $day['cancelled'],
+                'amount'        => $day['amount'],
+                'amountLabel'   => $day['amountLabel'],
+                'cashTakenToday' => $day['cashTaken'],
                 'commissionDue' => (float) $bal['commission'],
                 'commissionDueLabel' => inr((float) $bal['commission']),
                 'commissionThisMonth' => $earned,
@@ -1724,6 +1929,719 @@ final class AiTools
     }
 
     /* =================================================================
+     *  Tools — a seller's own register and wallet (24 Sep 2026)
+     * ================================================================= */
+
+    /**
+     * The seller's own recent sales, so a correction or a cancellation can
+     * start from a PNR they find themselves. Scoped to sold_by_admin_id,
+     * exactly like admin/bookings.php is for a counter agent.
+     */
+    private static function mySales(array $args, array $ctx): array
+    {
+        $adminId = (int) ($ctx['adminId'] ?? 0);
+        if ($adminId <= 0) {
+            return self::no('Only a staff number can ask this.');
+        }
+        $date  = self::cleanDate((string) ($args['date'] ?? ''));
+        $limit = max(1, min(20, (int) ($args['limit'] ?? 8)));
+
+        $sql = "SELECT b.id, b.pnr, b.status, b.total_amount, b.contact_phone, b.contact_country_code, b.created_at,
+                       l.travel_date, l.boarding_stop, l.seat_count,
+                       (SELECT p.full_name FROM booking_passengers p WHERE p.booking_id = b.id ORDER BY p.is_primary DESC, p.id LIMIT 1) AS pax,
+                       (SELECT COUNT(*) FROM payments pm WHERE pm.booking_id = b.id AND pm.status = 'verified') AS paid
+                  FROM bookings b
+                  LEFT JOIN booking_legs l ON l.booking_id = b.id AND l.leg_type = 'outbound'
+                 WHERE b.sold_by_admin_id = :a";
+        $params = ['a' => $adminId];
+        if ($date !== '') {
+            $sql .= ' AND l.travel_date = :d';
+            $params['d'] = $date;
+        }
+        $sql .= ' ORDER BY b.id DESC LIMIT ' . $limit;
+
+        $list = [];
+        foreach (Database::fetchAll($sql, $params) as $r) {
+            $list[] = [
+                'pnr'       => (string) $r['pnr'],
+                'name'      => (string) ($r['pax'] ?? ''),
+                'phone'     => (string) $r['contact_phone'],
+                'country'   => (string) ($r['contact_country_code'] ?? ''),
+                'date'      => (string) ($r['travel_date'] ?? ''),
+                'dateLabel' => formatDate((string) ($r['travel_date'] ?? ''), 'D, j M'),
+                'pickup'    => Boarding::stopDisplay((string) ($r['boarding_stop'] ?? ''))['name'],
+                'seats'     => (int) ($r['seat_count'] ?? 0),
+                'total'     => (float) $r['total_amount'],
+                'totalLabel' => inr((float) $r['total_amount']),
+                'status'    => (string) $r['status'],
+                'paid'      => (int) ($r['paid'] ?? 0) > 0,
+                'soldAt'    => substr((string) $r['created_at'], 0, 16),
+            ];
+        }
+
+        return [
+            'ok'   => true,
+            'say'  => $list === []
+                ? ($date !== '' ? 'This seller has no sale travelling on ' . $date . '.' : 'This seller has no sales yet.')
+                : 'This seller\'s own sales, newest first. Quote the PNR when they want to change, resend or cancel one.',
+            'data' => ['date' => $date, 'count' => count($list), 'sales' => $list],
+            'media' => null,
+        ];
+    }
+
+    /** The seller's own wallet — what the Agent Panel shows them. */
+    private static function myWallet(array $args, array $ctx): array
+    {
+        require_once INCLUDE_PATH . '/agentwallet.php';
+        $adminId = (int) ($ctx['adminId'] ?? 0);
+        if ($adminId <= 0) {
+            return self::no('Only a staff number can ask this.');
+        }
+
+        return [
+            'ok'   => true,
+            'say'  => 'This seller\'s own account. commissionDue is what the company owes them; cashDue is what they still owe the company — never add the two. '
+                    . 'If cashDue is above cashLimit, or KYC is not verified, or a payout request is open, say so plainly like a manager would.',
+            'data' => self::walletCard($adminId, (string) ($ctx['name'] ?? '')),
+            'media' => null,
+        ];
+    }
+
+    /**
+     * One agent's account, the way the seller and the office both read it.
+     *
+     * @return array<string,mixed>
+     */
+    private static function walletCard(int $adminId, string $name = ''): array
+    {
+        require_once INCLUDE_PATH . '/agentwallet.php';
+        $bal     = ['commission' => 0.0, 'cash' => 0.0];
+        $sum     = [];
+        $profile = [];
+        $entries = [];
+        $open    = [];
+        $deposit = [];
+        try {
+            $bal     = AgentWallet::balances($adminId) + $bal;
+            $sum     = AgentWallet::summary($adminId);
+            $profile = AgentWallet::profile($adminId);
+            $entries = AgentWallet::entries($adminId, 6);
+            $open    = AgentWallet::openPayoutRequests($adminId);
+            $deposit = AgentWallet::depositInfo($adminId);
+        } catch (Throwable $e) {
+            Logger::exception($e, 'whatsapp');
+        }
+        $recent = [];
+        foreach ($entries as $e) {
+            $recent[] = [
+                'when'   => substr((string) ($e['created_at'] ?? ''), 0, 10),
+                'type'   => (string) ($e['entry_type'] ?? ''),
+                'amount' => (float) ($e['amount'] ?? 0),
+                'pnr'    => (string) ($e['pnr'] ?? ''),
+                'note'   => mb_substr((string) ($e['note'] ?? ''), 0, 60),
+            ];
+        }
+        $limit = 0;
+        $today = 0;
+        try {
+            $limit = AgentWallet::dailyLimitFor($adminId);
+            $today = AgentWallet::bookingsToday($adminId);
+        } catch (Throwable $ignored) {
+        }
+
+        return [
+            'seller'          => $name,
+            'agentCode'       => AgentWallet::agentCodeLabel($adminId),
+            'commissionDue'   => (float) $bal['commission'],
+            'commissionDueLabel' => inr((float) $bal['commission']),
+            'commissionThisMonth' => (float) ($sum['earnedMonth'] ?? 0),
+            'commissionLifetime'  => (float) ($sum['earned'] ?? 0),
+            'paidOutLifetime'     => (float) ($sum['paidOut'] ?? 0),
+            'commissionRule'  => self::commissionRule($adminId),
+            'cashDue'         => (float) $bal['cash'],
+            'cashDueLabel'    => inr((float) $bal['cash']),
+            'cashLimit'       => (float) ($profile['cash_limit'] ?? 0),
+            'kyc'             => (string) ($profile['kyc_status'] ?? 'none'),
+            'suspendedReason' => (string) ($profile['suspended_reason'] ?? ''),
+            'dailyLimit'      => $limit,
+            'bookingsToday'   => $today,
+            'depositRequired' => (float) ($deposit['required'] ?? 0),
+            'depositPaid'     => (float) ($deposit['paid'] ?? 0),
+            'openPayoutRequest' => $open !== []
+                ? ['amount' => (float) $open[0]['amount'], 'since' => substr((string) $open[0]['created_at'], 0, 10)]
+                : null,
+            'recentEntries'   => $recent,
+        ];
+    }
+
+    /** "5% of every ticket" / "1 x ₹200 (direct agent)" — the rule, not a sum of nothing. */
+    private static function commissionRule(int $adminId): string
+    {
+        try {
+            $note = AgentWallet::commissionNoteFor($adminId, 1, 0.0);
+            return str_contains($note, '% of')
+                ? AgentWallet::commissionPercentFor($adminId) . '% of every ticket'
+                : $note;
+        } catch (Throwable $e) {
+            return '';
+        }
+    }
+
+    /**
+     * An agent asks for their commission (wa_agent_payout). Two steps: the
+     * first call shows the figure and pins it, the agent says ho, the
+     * second call (next message, confirm true) files the request — the
+     * same AgentWallet::requestPayout row the panel writes.
+     */
+    private static function requestPayout(array $args, array $ctx): array
+    {
+        require_once INCLUDE_PATH . '/agentwallet.php';
+        if (!Settings::getBool('wa_agent_payout', false)) {
+            return self::no('Payout requests from WhatsApp are switched off — use the Agent Panel.');
+        }
+        $adminId = (int) ($ctx['adminId'] ?? 0);
+        if ($adminId <= 0 || (string) ($ctx['admin']['role'] ?? '') !== 'agent') {
+            return self::no('Only an agent account can request a payout.');
+        }
+
+        $due    = (float) (AgentWallet::balances($adminId)['commission'] ?? 0);
+        $amount = round((float) ($args['amount'] ?? 0), 2);
+        if ($amount <= 0) {
+            $amount = $due;
+        }
+        $note = Security::clean((string) ($args['note'] ?? ''), 200);
+
+        if (($args['confirm'] ?? false) !== true) {
+            if ($due <= 0) {
+                return self::no('No commission is due right now, so there is nothing to request.');
+            }
+            if ($amount > $due + 0.009) {
+                return self::no('Only ' . inr($due) . ' is due — they cannot request more than that.');
+            }
+            $open = AgentWallet::openPayoutRequests($adminId);
+            if ($open !== []) {
+                return self::no('A payout request for ' . inr((float) $open[0]['amount']) . ' from '
+                    . formatDate(substr((string) $open[0]['created_at'], 0, 10)) . ' is still with the office. Wait for that one.');
+            }
+            self::stage($ctx, 'payout', ['amount' => $amount, 'note' => $note]);
+            return [
+                'ok'   => true,
+                'say'  => 'Nothing is filed yet. Read the amount back and ask the agent to reply ho; then call request_payout again with confirm true.',
+                'data' => ['amount' => $amount, 'amountLabel' => inr($amount), 'due' => $due, 'dueLabel' => inr($due),
+                           'minimum' => Settings::getFloat('agent_payout_min', 0.0)],
+                'media' => null,
+            ];
+        }
+
+        if (!self::saidYes($ctx)) {
+            return self::no('The agent has not replied ho to the payout preview in a new message. A confirm flag alone is not consent.');
+        }
+        $staged = self::takeStage($ctx, 'payout');
+        if ($staged === null) {
+            return self::no('Preview the payout first (request_payout without confirm) and get a ho in the next message.');
+        }
+        $amount = (float) ($staged['amount'] ?? $amount);
+        $id     = AgentWallet::requestPayout($adminId, $amount, (string) ($staged['note'] ?? $note));
+
+        return [
+            'ok'   => true,
+            'say'  => 'The payout request is with the office. Say the office decides it and the money follows the usual way.',
+            'data' => ['requestId' => $id, 'amount' => $amount, 'amountLabel' => inr($amount)],
+            'media' => null,
+        ];
+    }
+
+    /* =================================================================
+     *  Tools — bulk (24 Sep 2026)
+     * ================================================================= */
+
+    private static function bulkQuote(array $args, array $ctx): array
+    {
+        require_once INCLUDE_PATH . '/wabulk.php';
+        if (!WaBulk::enabled()) {
+            return self::no('Bulk tickets on WhatsApp are switched off.');
+        }
+        $text = (string) ($args['text'] ?? '');
+        if (trim($text) === '') {
+            return self::no('Pass the list the seller sent.');
+        }
+        $res = WaBulk::quote($ctx, WaBulk::parse($text));
+
+        return [
+            'ok'   => (bool) $res['ok'],
+            'say'  => $res['ok']
+                ? 'This is a QUOTE, nothing is sold. Read every name, mobile, the bus and the fare back — the text below is already written for WhatsApp, you may send it as is — and ask for ho. Report the lines that failed.'
+                : 'No booking could be read from the list. Read the problems back and offer the FORMAT template.',
+            'data' => $res['data'] + ['reply' => $res['text']],
+            'media' => null,
+        ];
+    }
+
+    private static function bulkIssue(array $args, array $ctx): array
+    {
+        require_once INCLUDE_PATH . '/wabulk.php';
+        if (!WaBulk::enabled()) {
+            return self::no('Bulk tickets on WhatsApp are switched off.');
+        }
+        if (($args['confirm'] ?? false) !== true || !self::saidYes($ctx)) {
+            return self::no('The seller has not replied ho to the bulk quote in a new message. A confirm flag alone is not consent — ask for a plain ho.');
+        }
+        $admin = $ctx['admin'] ?? null;
+        if (!is_array($admin) || (int) ($admin['id'] ?? 0) <= 0) {
+            return self::no('Only a staff number may sell for other passengers.');
+        }
+        $res = WaBulk::issue($ctx, $admin);
+
+        return [
+            'ok'   => (bool) $res['ok'],
+            'say'  => $res['ok']
+                ? 'Sold. Read back the PNRs and the failures exactly — the text below is ready for WhatsApp.'
+                : (string) $res['text'],
+            'data' => $res['data'] + ['reply' => $res['text']],
+            'media' => null,
+        ];
+    }
+
+    /* =================================================================
+     *  Tools — the office over people (24 Sep 2026)
+     * ================================================================= */
+
+    /**
+     * Find staff by agent code, name or mobile. Inactive accounts included:
+     * the office needs to see them to switch them back on.
+     *
+     * @return list<array<string,mixed>>
+     */
+    private static function findStaff(string $q): array
+    {
+        require_once INCLUDE_PATH . '/agentwallet.php';
+        $q = Security::clean($q, 80);
+        if ($q === '') {
+            return [];
+        }
+        $cols = "id, username, full_name, phone, email, role, is_active, locked_until, last_login_at";
+        if (preg_match('/^\s*(?:shg|agent)?[-\s]*0*(\d{1,4})\s*$/i', $q, $m) === 1) {
+            $adminId = AgentWallet::adminForAgentCode((int) $m[1]);
+            if ($adminId !== null) {
+                $row = Database::fetch("SELECT $cols FROM admins WHERE id = :id", ['id' => $adminId]);
+                return $row !== null ? [$row] : [];
+            }
+        }
+        $digits = normalisePhone($q);
+        if (strlen($digits) >= 8) {
+            $out = [];
+            foreach (Database::fetchAll("SELECT $cols FROM admins WHERE phone IS NOT NULL AND phone <> ''") as $row) {
+                if (normalisePhone((string) $row['phone']) === $digits) {
+                    $out[] = $row;
+                }
+            }
+            if ($out !== []) {
+                return $out;
+            }
+        }
+        return Database::fetchAll(
+            "SELECT $cols FROM admins
+              WHERE role IN ('agent','counter','manager','superadmin','accountant','support')
+                AND (full_name LIKE :n OR username LIKE :u)
+              ORDER BY is_active DESC, full_name LIMIT 8",
+            ['n' => '%' . $q . '%', 'u' => '%' . $q . '%']
+        );
+    }
+
+    /** One seller's day — shared by agent_day and office_agent. */
+    private static function sellerDay(int $adminId, string $date): array
+    {
+        $row = Database::fetch(
+            "SELECT COUNT(*) AS tickets,
+                    COALESCE(SUM(b.total_amount),0) AS amount,
+                    COALESCE(SUM(CASE WHEN p.method = 'cash' THEN b.total_amount ELSE 0 END),0) AS cash
+               FROM bookings b
+               LEFT JOIN payments p ON p.booking_id = b.id
+              WHERE b.sold_by_admin_id = :a
+                AND DATE(b.created_at) = :d
+                AND b.status IN ('confirmed','completed')",
+            ['a' => $adminId, 'd' => $date]
+        ) ?? [];
+        $seats = (int) Database::scalar(
+            "SELECT COUNT(*) FROM booking_seats s JOIN bookings b ON b.id = s.booking_id
+              WHERE b.sold_by_admin_id = :a AND DATE(b.created_at) = :d
+                AND b.status IN ('confirmed','completed') AND s.released_at IS NULL",
+            ['a' => $adminId, 'd' => $date],
+            0
+        );
+        $cancelled = (int) Database::scalar(
+            "SELECT COUNT(*) FROM bookings WHERE sold_by_admin_id = :a AND DATE(created_at) = :d AND status IN ('cancelled','rejected')",
+            ['a' => $adminId, 'd' => $date],
+            0
+        );
+
+        return [
+            'date'        => $date,
+            'tickets'     => (int) ($row['tickets'] ?? 0),
+            'seats'       => $seats,
+            'amount'      => (float) ($row['amount'] ?? 0),
+            'amountLabel' => inr((float) ($row['amount'] ?? 0)),
+            'cashTaken'   => (float) ($row['cash'] ?? 0),
+            'cancelled'   => $cancelled,
+        ];
+    }
+
+    private static function officeAgent(array $args, array $ctx): array
+    {
+        $q = (string) ($args['q'] ?? '');
+        $hits = self::findStaff($q);
+        if ($hits === []) {
+            return self::no('No agent or staff member matches "' . Security::clean($q, 40) . '".');
+        }
+        if (count($hits) > 1) {
+            $list = [];
+            foreach ($hits as $h) {
+                $list[] = ['name' => (string) $h['full_name'], 'code' => AgentWallet::agentCodeLabel((int) $h['id']),
+                           'role' => (string) $h['role'], 'active' => (int) $h['is_active'] === 1];
+            }
+            return ['ok' => true, 'say' => 'Several match — ask which one.', 'data' => ['matches' => $list], 'media' => null];
+        }
+        $a    = $hits[0];
+        $id   = (int) $a['id'];
+        $date = self::cleanDate((string) ($args['date'] ?? '')) ?: todayISO();
+
+        $sales = [];
+        foreach (Database::fetchAll(
+            "SELECT b.pnr, b.status, b.total_amount, b.contact_phone, l.travel_date,
+                    (SELECT p.full_name FROM booking_passengers p WHERE p.booking_id = b.id ORDER BY p.is_primary DESC, p.id LIMIT 1) AS pax
+               FROM bookings b LEFT JOIN booking_legs l ON l.booking_id = b.id AND l.leg_type = 'outbound'
+              WHERE b.sold_by_admin_id = :a ORDER BY b.id DESC LIMIT 5",
+            ['a' => $id]
+        ) as $r) {
+            $sales[] = ['pnr' => (string) $r['pnr'], 'name' => (string) ($r['pax'] ?? ''), 'phone' => (string) $r['contact_phone'],
+                        'date' => (string) ($r['travel_date'] ?? ''), 'total' => (float) $r['total_amount'], 'status' => (string) $r['status']];
+        }
+
+        return [
+            'ok'   => true,
+            'say'  => 'This agent, from the register. Give the figures the office asked for; commissionDue is owed TO the agent, cashDue is owed BY the agent.',
+            'data' => [
+                'name'      => (string) $a['full_name'],
+                'username'  => (string) $a['username'],
+                'role'      => (string) $a['role'],
+                'phone'     => (string) ($a['phone'] ?? ''),
+                'active'    => (int) $a['is_active'] === 1,
+                'locked'    => !empty($a['locked_until']) && strtotime((string) $a['locked_until']) > time(),
+                'lastLogin' => (string) ($a['last_login_at'] ?? ''),
+                'day'       => self::sellerDay($id, $date),
+                'wallet'    => self::walletCard($id, (string) $a['full_name']),
+                'lastSales' => $sales,
+            ],
+            'media' => null,
+        ];
+    }
+
+    private static function officeAgents(array $args, array $ctx): array
+    {
+        require_once INCLUDE_PATH . '/agentwallet.php';
+        $today = todayISO();
+        $list  = [];
+        foreach (Database::fetchAll(
+            "SELECT id, full_name, role, is_active FROM admins WHERE role IN ('agent','counter') ORDER BY is_active DESC, full_name LIMIT 40"
+        ) as $a) {
+            $id  = (int) $a['id'];
+            $bal = ['commission' => 0.0, 'cash' => 0.0];
+            try {
+                $bal = AgentWallet::balances($id) + $bal;
+            } catch (Throwable $ignored) {
+            }
+            $day = self::sellerDay($id, $today);
+            $list[] = [
+                'name'          => (string) $a['full_name'],
+                'code'          => AgentWallet::agentCodeLabel($id),
+                'role'          => (string) $a['role'],
+                'active'        => (int) $a['is_active'] === 1,
+                'ticketsToday'  => $day['tickets'],
+                'amountToday'   => $day['amount'],
+                'commissionDue' => (float) $bal['commission'],
+                'cashDue'       => (float) $bal['cash'],
+            ];
+        }
+        usort($list, static fn(array $x, array $y): int => [$y['active'], $y['ticketsToday'], $y['cashDue']] <=> [$x['active'], $x['ticketsToday'], $x['cashDue']]);
+
+        return [
+            'ok'   => true,
+            'say'  => $list === [] ? 'No agent accounts yet.' : 'Every agent today. Name the ones that matter for the question; do not read the whole table unless asked.',
+            'data' => ['date' => $today, 'count' => count($list), 'agents' => $list],
+            'media' => null,
+        ];
+    }
+
+    private static function officeCustomer(array $args, array $ctx): array
+    {
+        $phone = normalisePhone((string) ($args['phone'] ?? ''));
+        if ($phone === '' || strlen($phone) < 8) {
+            return self::no('Give the customer\'s 10-digit mobile.');
+        }
+        $tot = Database::fetch(
+            "SELECT COUNT(*) AS trips,
+                    COALESCE(SUM(CASE WHEN status IN ('confirmed','completed') THEN total_amount ELSE 0 END),0) AS spent,
+                    SUM(status = 'cancelled') AS cancelled,
+                    MIN(created_at) AS first_seen
+               FROM bookings WHERE contact_phone = :p",
+            ['p' => $phone]
+        ) ?? [];
+        if ((int) ($tot['trips'] ?? 0) === 0) {
+            return ['ok' => true, 'say' => 'This number has never booked with us.', 'data' => ['phone' => $phone, 'trips' => 0], 'media' => null];
+        }
+        $rows = Database::fetchAll(
+            "SELECT b.pnr, b.status, b.total_amount, b.contact_country_code, b.source, l.travel_date, l.boarding_stop,
+                    r.from_city, r.to_city, l.seat_count,
+                    (SELECT p.full_name FROM booking_passengers p WHERE p.booking_id = b.id ORDER BY p.is_primary DESC, p.id LIMIT 1) AS pax,
+                    a.full_name AS seller
+               FROM bookings b
+               LEFT JOIN booking_legs l ON l.booking_id = b.id AND l.leg_type = 'outbound'
+               LEFT JOIN schedules s ON s.id = l.schedule_id
+               LEFT JOIN routes r ON r.id = s.route_id
+               LEFT JOIN admins a ON a.id = b.sold_by_admin_id
+              WHERE b.contact_phone = :p ORDER BY b.id DESC LIMIT 8",
+            ['p' => $phone]
+        );
+        $list = [];
+        $name = '';
+        $upcoming = [];
+        foreach ($rows as $r) {
+            if ($name === '' && (string) ($r['pax'] ?? '') !== '') {
+                $name = (string) $r['pax'];
+            }
+            $item = [
+                'pnr'    => (string) $r['pnr'],
+                'name'   => (string) ($r['pax'] ?? ''),
+                'date'   => (string) ($r['travel_date'] ?? ''),
+                'route'  => trim((string) ($r['from_city'] ?? '') . ' → ' . (string) ($r['to_city'] ?? ''), ' →'),
+                'pickup' => Boarding::stopDisplay((string) ($r['boarding_stop'] ?? ''))['name'],
+                'seats'  => (int) ($r['seat_count'] ?? 0),
+                'total'  => (float) $r['total_amount'],
+                'status' => (string) $r['status'],
+                'source' => (string) $r['source'],
+                'seller' => (string) ($r['seller'] ?? ''),
+            ];
+            $list[] = $item;
+            if (in_array($item['status'], ['confirmed', 'pending'], true) && $item['date'] >= todayISO()) {
+                $upcoming[] = $item['pnr'] . ' on ' . $item['date'];
+            }
+        }
+
+        return [
+            'ok'   => true,
+            'say'  => 'This customer, from the register. Give what was asked; do not read out every booking unless asked.',
+            'data' => [
+                'phone'     => $phone,
+                'country'   => (string) ($rows[0]['contact_country_code'] ?? ''),
+                'name'      => $name,
+                'trips'     => (int) ($tot['trips'] ?? 0),
+                'cancelled' => (int) ($tot['cancelled'] ?? 0),
+                'spent'     => (float) ($tot['spent'] ?? 0),
+                'spentLabel' => inr((float) ($tot['spent'] ?? 0)),
+                'firstSeen' => substr((string) ($tot['first_seen'] ?? ''), 0, 10),
+                'upcoming'  => $upcoming,
+                'bookings'  => $list,
+            ],
+            'media' => null,
+        ];
+    }
+
+    private static function officePayoutRequests(array $args, array $ctx): array
+    {
+        require_once INCLUDE_PATH . '/agentwallet.php';
+        $list = [];
+        foreach (AgentWallet::openPayoutRequests(null) as $r) {
+            $id = (int) $r['agent_admin_id'];
+            $list[] = [
+                'requestId' => (int) $r['id'],
+                'agent'     => (string) ($r['agent_name'] ?? ''),
+                'code'      => AgentWallet::agentCodeLabel($id),
+                'amount'    => (float) $r['amount'],
+                'amountLabel' => inr((float) $r['amount']),
+                'note'      => (string) ($r['note'] ?? ''),
+                'since'     => substr((string) $r['created_at'], 0, 10),
+                'commissionDue' => (float) (AgentWallet::balances($id)['commission'] ?? 0),
+            ];
+        }
+
+        return [
+            'ok'   => true,
+            'say'  => $list === [] ? 'No payout request is waiting.' : 'Open payout requests, oldest first. They are paid or declined in Admin → Agent Panel; say so.',
+            'data' => ['count' => count($list), 'requests' => $list],
+            'media' => null,
+        ];
+    }
+
+    /**
+     * The office's two-step write: preview + pin on the first call, press
+     * the button on the second (next message, confirm true, same PNR).
+     */
+    private static function officeSettleCod(array $args, array $ctx): array
+    {
+        if (!Settings::getBool('wa_agent_admin_write', false)) {
+            return self::no('Office writes from WhatsApp are switched off — do it in Admin → Payments.');
+        }
+        if ((string) ($ctx['role'] ?? '') !== 'admin') {
+            return self::no('Only an office number may record cash.');
+        }
+        $pnr    = strtoupper(trim((string) ($args['pnr'] ?? '')));
+        $detail = $pnr !== '' ? BookingService::detail($pnr) : null;
+        if ($detail === null) {
+            return self::no('No booking with that PNR.');
+        }
+        if ((int) ($detail['is_cod'] ?? 0) !== 1) {
+            return self::no('Booking ' . $pnr . ' is not a pay-at-boarding booking.');
+        }
+        if ((string) ($detail['payment']['status'] ?? '') === 'verified') {
+            return self::no('The cash on ' . $pnr . ' is already recorded as collected.');
+        }
+        $note = Security::clean((string) ($args['note'] ?? 'Cash recorded on WhatsApp'), 200);
+
+        if (($args['confirm'] ?? false) !== true) {
+            self::stage($ctx, 'office', ['action' => 'settle_cod', 'pnr' => $pnr, 'note' => $note]);
+            return [
+                'ok'   => true,
+                'say'  => 'Nothing is recorded yet. Read the PNR, passenger and amount back and ask for ho; then call again with confirm true.',
+                'data' => self::bookingCard($detail),
+                'media' => null,
+            ];
+        }
+        if (!self::saidYes($ctx)) {
+            return self::no('The office has not replied ho to the preview in a new message. A confirm flag alone is not consent.');
+        }
+        $staged = self::takeStage($ctx, 'office');
+        if ($staged === null || ($staged['action'] ?? '') !== 'settle_cod' || ($staged['pnr'] ?? '') !== $pnr) {
+            return self::no('Preview this exact PNR first (office_settle_cod without confirm) and get a ho in the next message.');
+        }
+        $res = BookingService::settleCod((int) $detail['id'], (int) ($ctx['adminId'] ?? 0), (string) ($staged['note'] ?? $note));
+
+        return [
+            'ok'   => true,
+            'say'  => 'Cash recorded as collected on ' . $pnr . '.',
+            'data' => ['pnr' => $pnr, 'bookingId' => (int) $detail['id'], 'total' => (float) $detail['total_amount'],
+                       'changed' => (bool) ($res['changed'] ?? true)],
+            'media' => null,
+        ];
+    }
+
+    private static function officeReject(array $args, array $ctx): array
+    {
+        if (!Settings::getBool('wa_agent_admin_write', false)) {
+            return self::no('Office writes from WhatsApp are switched off — do it in Admin → Payments.');
+        }
+        if ((string) ($ctx['role'] ?? '') !== 'admin') {
+            return self::no('Only an office number may reject a booking.');
+        }
+        $pnr    = strtoupper(trim((string) ($args['pnr'] ?? '')));
+        $detail = $pnr !== '' ? BookingService::detail($pnr) : null;
+        if ($detail === null) {
+            return self::no('No booking with that PNR.');
+        }
+        if ((string) $detail['status'] !== 'pending') {
+            return self::no('Booking ' . $pnr . ' is ' . strtoupper((string) $detail['status']) . ' — only a PENDING booking can be rejected. A confirmed one is cancelled with refund_quote + cancel_ticket.');
+        }
+        $reason = Security::clean((string) ($args['reason'] ?? ''), 200);
+        if (mb_strlen($reason) < 3) {
+            return self::no('Ask the office for the reason — the passenger reads it.');
+        }
+
+        if (($args['confirm'] ?? false) !== true) {
+            self::stage($ctx, 'office', ['action' => 'reject', 'pnr' => $pnr, 'reason' => $reason]);
+            return [
+                'ok'   => true,
+                'say'  => 'Nothing is rejected yet. Read the PNR, passenger, amount and the reason back and ask for ho; then call again with confirm true.',
+                'data' => self::bookingCard($detail) + ['reason' => $reason],
+                'media' => null,
+            ];
+        }
+        if (!self::saidYes($ctx)) {
+            return self::no('The office has not replied ho to the preview in a new message. A confirm flag alone is not consent.');
+        }
+        $staged = self::takeStage($ctx, 'office');
+        if ($staged === null || ($staged['action'] ?? '') !== 'reject' || ($staged['pnr'] ?? '') !== $pnr) {
+            return self::no('Preview this exact PNR first (office_reject without confirm) and get a ho in the next message.');
+        }
+        BookingService::reject((int) $detail['id'], (int) ($ctx['adminId'] ?? 0), (string) ($staged['reason'] ?? $reason));
+
+        return [
+            'ok'   => true,
+            'say'  => 'Rejected. The seats are released and the passenger has been told the reason.',
+            'data' => ['pnr' => $pnr, 'bookingId' => (int) $detail['id']],
+            'media' => null,
+        ];
+    }
+
+    private static function officeAgentStatus(array $args, array $ctx): array
+    {
+        if (!Settings::getBool('wa_agent_admin_write', false)) {
+            return self::no('Office writes from WhatsApp are switched off — do it in Admin → Staff.');
+        }
+        if ((string) ($ctx['role'] ?? '') !== 'admin') {
+            return self::no('Only an office number may change an account.');
+        }
+        $hits = self::findStaff((string) ($args['q'] ?? ''));
+        if ($hits === []) {
+            return self::no('No staff member matches that.');
+        }
+        if (count($hits) > 1) {
+            $list = [];
+            foreach ($hits as $h) {
+                $list[] = ['name' => (string) $h['full_name'], 'code' => AgentWallet::agentCodeLabel((int) $h['id']), 'role' => (string) $h['role']];
+            }
+            return ['ok' => true, 'say' => 'Several match — ask which one before changing anything.', 'data' => ['matches' => $list], 'media' => null];
+        }
+        $a  = $hits[0];
+        $id = (int) $a['id'];
+        if ($id === (int) ($ctx['adminId'] ?? 0)) {
+            return self::no('Nobody may switch off their own account from WhatsApp.');
+        }
+        if (in_array((string) $a['role'], ['superadmin', 'manager'], true)) {
+            return self::no('Office accounts are changed in Admin → Staff, not from WhatsApp.');
+        }
+        $active = ($args['active'] ?? null) === true;
+        if ((int) $a['is_active'] === ($active ? 1 : 0)) {
+            return self::no((string) $a['full_name'] . ' is already ' . ($active ? 'active' : 'deactivated') . '.');
+        }
+        $reason = Security::clean((string) ($args['reason'] ?? ''), 200);
+
+        if (($args['confirm'] ?? false) !== true) {
+            self::stage($ctx, 'office', ['action' => 'agent_status', 'adminId' => $id, 'active' => $active, 'reason' => $reason]);
+            return [
+                'ok'   => true,
+                'say'  => 'Nothing is changed yet. Say who and what will happen (' . ($active ? 'activate' : 'deactivate — they can no longer sell or sign in') . '), ask for ho, then call again with confirm true.',
+                'data' => ['name' => (string) $a['full_name'], 'code' => AgentWallet::agentCodeLabel($id), 'role' => (string) $a['role'],
+                           'activeNow' => (int) $a['is_active'] === 1, 'willBe' => $active],
+                'media' => null,
+            ];
+        }
+        if (!self::saidYes($ctx)) {
+            return self::no('The office has not replied ho to the preview in a new message. A confirm flag alone is not consent.');
+        }
+        $staged = self::takeStage($ctx, 'office');
+        if ($staged === null || ($staged['action'] ?? '') !== 'agent_status' || (int) ($staged['adminId'] ?? 0) !== $id || (bool) ($staged['active'] ?? !$active) !== $active) {
+            return self::no('Preview this exact change first (office_agent_status without confirm) and get a ho in the next message.');
+        }
+        Database::update('admins', ['is_active' => $active ? 1 : 0], 'id = :id', ['id' => $id]);
+        if (!$active) {
+            try {
+                require_once INCLUDE_PATH . '/walogin.php';
+                WaLogin::revokeAdmin($id, (int) ($ctx['adminId'] ?? 0));
+            } catch (Throwable $ignored) {
+            }
+        }
+        Logger::audit('staff.toggle', 'admin', (string) $a['username'], ['active' => (int) $a['is_active'] === 1], ['active' => $active],
+            'staff ' . ($active ? 'activated' : 'deactivated') . ' from WhatsApp by admin #' . (int) ($ctx['adminId'] ?? 0)
+            . ($staged['reason'] !== '' ? ': ' . $staged['reason'] : ''));
+
+        return [
+            'ok'   => true,
+            'say'  => (string) $a['full_name'] . ' is now ' . ($active ? 'active' : 'deactivated') . '.',
+            'data' => ['name' => (string) $a['full_name'], 'active' => $active],
+            'media' => null,
+        ];
+    }
+
+    /* =================================================================
      *  Gates and plumbing
      * ================================================================= */
 
@@ -1792,8 +2710,11 @@ final class AiTools
         }
     }
 
-    /** Take the staged quote of this kind, or null when there is none to use. */
-    private static function takeStage(array $ctx, string $kind): ?array
+    /**
+     * Read the staged quote of this kind WITHOUT consuming it — so a refusal
+     * for a wrong name or number can keep the quote for the corrected call.
+     */
+    private static function peekStage(array $ctx, string $kind): ?array
     {
         try {
             $row = Database::fetch(
@@ -1822,6 +2743,24 @@ final class AiTools
         return is_array($saved['payload'] ?? null) ? $saved['payload'] : null;
     }
 
+    /**
+     * Take the staged quote of this kind, or null when there is none to use.
+     *
+     * 24 Sep 2026: CONSUMED on read. Until now the quote stayed parked after
+     * the sale, so a seller's second "ho" in a later message — or a model
+     * retry — could press staff_sell on the same quote twice; only the
+     * customer path was saved from it, by QuickTicket's own repeat guard.
+     * One quote, one sale.
+     */
+    private static function takeStage(array $ctx, string $kind): ?array
+    {
+        $payload = self::peekStage($ctx, $kind);
+        if ($payload !== null) {
+            self::clearStage((string) ($ctx['phone'] ?? ''));
+        }
+        return $payload;
+    }
+
     /** Drop any staged quote — used when a conversation is reset. */
     public static function clearStage(string $phoneDigits): void
     {
@@ -1833,6 +2772,12 @@ final class AiTools
         } catch (Throwable $e) {
             // a stale quote expires on its own
         }
+    }
+
+    /** The audit row, for a caller outside this class (the bulk path). */
+    public static function logCall(string $tool, array $args, array $ctx, bool $ok, string $detail, ?int $bookingId, float $t0): void
+    {
+        self::log($tool, $args, $ctx, $ok, $detail, $bookingId, $t0);
     }
 
     /** The audit row. Never throws — a missing table must not cost a reply. */
