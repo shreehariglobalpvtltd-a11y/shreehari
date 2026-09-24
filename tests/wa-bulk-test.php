@@ -129,10 +129,11 @@ $cleanup = static function () use ($D1, $D2): void {
 };
 $cleanup();
 
-$ctxFor = static function (string $phone, int $turn = 0): array {
+$ctxFor = static function (string $phone, int $turn = 0, string $said = ''): array {
     $c = AiTools::whoIs($phone);
     $c['turn'] = $turn;
     $c['channel'] = 'whatsapp';
+    $c['messageText'] = $said;
     return $c;
 };
 
@@ -181,6 +182,21 @@ try {
         count($joined['bookings']) === 1 && count($joined['bookings'][0]['passengers']) === 3 && $joined['bookings'][0]['passengers'][2]['age'] === 6);
 
     $free = WaBulk::parse("ticket\nbholi Mehsana bata\nRam Thapa " . WB_P1 . "\nSita Rai " . WB_P2);
+    $chatter = WaBulk::parse("TICKET\n1. Ram Thapa " . WB_P1 . "\n2. Sita Thapa " . WB_P2 . "\nbholi Mehsana bata\nsabai ko ticket kaatnu hai\nTotal 2 jana\ndhanyabad\nDate 5 Oct\nMaya Thapa");
+    check('chatter after the passengers never becomes a berth: only the bare name joins',
+        $chatter['pax'] === 3 && count($chatter['bookings'][1]['passengers']) === 2 && $chatter['bookings'][1]['passengers'][1]['name'] === 'Maya Thapa',
+        $chatter['pax'] . ' pax; ' . implode(' | ', $chatter['errors']));
+    check('  and each such line is reported', count($chatter['errors']) === 5, (string) count($chatter['errors']));
+
+    $devKeys = WaBulk::parse("TICKET\n1. Ram Thapa " . WB_P1 . "\nमिति: " . $D2 . "\nभुक्तानी: upi");
+    check('Devanagari header keys are read (after a passenger too)', $devKeys['header']['date'] === $D2 && $devKeys['header']['pay'] === 'upi' && $devKeys['errors'] === [], implode(' | ', $devKeys['errors']));
+
+    $umar = WaBulk::parse("TICKET\nUmar Khan " . WB_P1 . " M\nRam Thapa " . WB_P2 . " umer 35\nSita Rai " . WB_P3 . " 40 yrs");
+    check('Umar keeps his name; "umer 35" and "40 yrs" are ages', $umar['bookings'][0]['passengers'][0]['name'] === 'Umar Khan'
+        && $umar['bookings'][1]['passengers'][0]['age'] === 35 && $umar['bookings'][1]['passengers'][0]['name'] === 'Ram Thapa'
+        && $umar['bookings'][2]['passengers'][0]['age'] === 40 && $umar['bookings'][2]['passengers'][0]['name'] === 'Sita Rai',
+        json_encode(array_map(static fn($b) => $b['passengers'][0], $umar['bookings']), JSON_UNESCAPED_UNICODE));
+
     $oneLine = WaBulk::parse("ticket\n1) Hari Rai " . WB_P1 . ", 2) Gopal Rai " . WB_P2 . "; 3) Mina Rai " . WB_P3 . " F");
     check('several numbered people on ONE line are split apart', count($oneLine['bookings']) === 3 && $oneLine['bookings'][2]['passengers'][0]['gender'] === 'Female', implode(' | ', $oneLine['errors']));
 
@@ -230,6 +246,13 @@ try {
     $staged = WaBulk::staged(WB_AGENT);
     check('  the quote is pinned for this seller', $staged !== null && count($staged['items']) === 3 && (float) $staged['total'] > 0);
 
+    $hedged = WaBulk::handle($agent, 'ho tara line 2 ko number galat cha');
+    check('"ho tara …" (yes, BUT) is not a yes — nothing is sold', (int) Database::scalar("SELECT COUNT(*) FROM bookings WHERE contact_phone LIKE '" . WB_LIKE . "%'", [], 0) === 0);
+    check('  and the quote is dropped, so a later ho cannot sell it', WaBulk::staged(WB_AGENT) === null && $hedged === null && WaBulk::handle($agent, 'ho') === null);
+    WaBulk::handle($agent, $list);
+    $aside = WaBulk::handle($agent, 'SHG-2026-00001 cancel gara');
+    check('an unrelated message drops an open quote too', $aside === null && WaBulk::staged(WB_AGENT) === null);
+    WaBulk::handle($agent, $list);
     $no = WaBulk::handle($agent, 'no');
     check('"no" drops it', $no !== null && str_contains((string) $no['text'], 'रद्द') && WaBulk::staged(WB_AGENT) === null);
     check('  and a ho now sells nothing', WaBulk::handle($agent, 'ho') === null
@@ -262,6 +285,29 @@ try {
     check('a second ho sells nothing', WaBulk::handle($agent, 'ho') === null
         && (int) Database::scalar("SELECT COUNT(*) FROM bookings WHERE contact_phone LIKE '" . WB_LIKE . "%'", [], 0) === 3);
 
+    /* ---- a mixed family is sold as a party, never as "Female" ------ */
+    $mixed = "TICKET\nDate: " . $D2 . "\n1. Sita Thapa " . WB_P4 . " F 32\nRam Thapa M 8\n";
+    $mq = WaBulk::handle($agent, $mixed);
+    $ms = WaBulk::handle($agent, 'ho');
+    $mixedRow = Database::fetch("SELECT id FROM bookings WHERE contact_phone = :p AND status = 'confirmed'", ['p' => WB_P4]);
+    check('a mixed family sells', $mixedRow !== null, (string) ($ms['text'] ?? ''));
+    if ($mixedRow !== null) {
+        $seatsMixed = array_column(Database::fetchAll('SELECT seat_no FROM booking_seats WHERE booking_id = :b AND released_at IS NULL', ['b' => (int) $mixedRow['id']]), 'seat_no');
+        $womenOnly = [];
+        try { $womenOnly = array_map('strtoupper', array_map('strval', Seats::femaleSeats('sleeper'))); } catch (Throwable $e) {}
+        check('  and not onto a women-only berth', array_intersect(array_map('strtoupper', $seatsMixed), $womenOnly) === [], implode(',', $seatsMixed) . ' vs ' . implode(',', $womenOnly));
+        foreach (['agent_ledger', 'tickets', 'payments', 'booking_passengers', 'booking_seats', 'booking_legs', 'notifications'] as $t) {
+            try { Database::delete($t, 'booking_id = :b', ['b' => (int) $mixedRow['id']]); } catch (Throwable $e) {}
+        }
+        Database::delete('bookings', 'id = :i', ['i' => (int) $mixedRow['id']]);
+    }
+
+    /* ---- a booking that lands on another day is said, not hidden --- */
+    WaBulk::handle($agent, "TICKET\nDate: " . $D2 . "\nGita Rai " . WB_P4 . " F\n");
+    $st2 = WaBulk::staged(WB_AGENT);
+    check('(fixture) a one-booking quote is staged', $st2 !== null && count($st2['items']) === 1);
+    WaBulk::clear(WB_AGENT);
+
     /* ---- a changed fare is refused ------------------------------- */
     $again = "TICKET\nDate: " . $D2 . "\nGita Rai " . WB_P4 . " F\n";
     WaBulk::handle($agent, $again);
@@ -279,13 +325,15 @@ try {
     echo "\n== through the assistant's tools ==\n";
     $tq = AiTools::run('bulk_quote', ['text' => $again], $ctxFor(WB_AGENT, 7));
     check('bulk_quote reads the list', $tq['ok'] === true && count($tq['data']['bookings'] ?? []) === 1, $tq['say']);
-    $same = AiTools::run('bulk_issue', ['confirm' => true], $ctxFor(WB_AGENT, 7));
+    $same = AiTools::run('bulk_issue', ['confirm' => true], $ctxFor(WB_AGENT, 7, 'ho'));
     check('  bulk_issue in the SAME message is refused', $same['ok'] === false && !Database::exists('SELECT 1 FROM bookings WHERE contact_phone = :p', ['p' => WB_P4]), $same['say']);
     // The refusal consumed nothing: quote again, then sell in the next turn.
     AiTools::run('bulk_quote', ['text' => $again], $ctxFor(WB_AGENT, 8));
-    $next = AiTools::run('bulk_issue', ['confirm' => true], $ctxFor(WB_AGENT, 9));
-    check('  and in the NEXT message it sells', $next['ok'] === true && Database::exists("SELECT 1 FROM bookings WHERE contact_phone = :p AND status = 'confirmed'", ['p' => WB_P4]), $next['say']);
-    check('  a customer cannot reach bulk_issue by name', AiTools::run('bulk_issue', ['confirm' => true], $ctxFor(WB_CUST, 2))['ok'] === false);
+    $flagOnly = AiTools::run('bulk_issue', ['confirm' => true], $ctxFor(WB_AGENT, 9, 'thik cha tara pahila fare bhannus'));
+    check('  a confirm flag without a plain ho in the message is refused', $flagOnly['ok'] === false && !Database::exists('SELECT 1 FROM bookings WHERE contact_phone = :p', ['p' => WB_P4]), $flagOnly['say']);
+    $next = AiTools::run('bulk_issue', ['confirm' => true], $ctxFor(WB_AGENT, 10, 'ho'));
+    check('  and in the NEXT message, with a plain ho, it sells', $next['ok'] === true && Database::exists("SELECT 1 FROM bookings WHERE contact_phone = :p AND status = 'confirmed'", ['p' => WB_P4]), $next['say']);
+    check('  a customer cannot reach bulk_issue by name', AiTools::run('bulk_issue', ['confirm' => true], $ctxFor(WB_CUST, 2, 'ho'))['ok'] === false);
 
     /* ================================================================
      *  6. The wiring

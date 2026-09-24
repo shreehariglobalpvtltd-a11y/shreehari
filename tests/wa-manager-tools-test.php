@@ -151,10 +151,11 @@ $cleanup = static function () use ($D1, $D2, $D3, $agentId): void {
 };
 $cleanup();
 
-$ctxFor = static function (string $phone, int $turn): array {
+$ctxFor = static function (string $phone, int $turn, string $said = ''): array {
     $c = AiTools::whoIs($phone);
     $c['turn'] = $turn;
     $c['channel'] = 'whatsapp';
+    $c['messageText'] = $said;
     return $c;
 };
 $names = static fn(array $tools): array => array_column($tools, 'name');
@@ -279,10 +280,12 @@ try {
     $preview = AiTools::run('request_payout', ['amount' => 0], $ctxFor(WM_AGENT, 13));
     check('request_payout previews the amount without filing', $preview['ok'] === true && abs((float) $preview['data']['amount'] - $due) < 0.01
         && AgentWallet::openPayoutRequests($agentId) === [], $preview['say']);
-    $sameTurn = AiTools::run('request_payout', ['amount' => 0, 'confirm' => true], $ctxFor(WM_AGENT, 13));
+    $sameTurn = AiTools::run('request_payout', ['amount' => 0, 'confirm' => true], $ctxFor(WM_AGENT, 13, 'ho'));
     check('  confirming in the SAME message is refused', $sameTurn['ok'] === false && AgentWallet::openPayoutRequests($agentId) === []);
+    $flagOnly = AiTools::run('request_payout', ['amount' => 0, 'confirm' => true], $ctxFor(WM_AGENT, 14, 'kati din lagcha?'));
+    check('  a confirm flag without the agent\'s own ho is refused', $flagOnly['ok'] === false && AgentWallet::openPayoutRequests($agentId) === [], $flagOnly['say']);
     AiTools::run('request_payout', ['amount' => 0], $ctxFor(WM_AGENT, 14));
-    $filed = AiTools::run('request_payout', ['amount' => 0, 'confirm' => true], $ctxFor(WM_AGENT, 15));
+    $filed = AiTools::run('request_payout', ['amount' => 0, 'confirm' => true], $ctxFor(WM_AGENT, 15, 'ho'));
     check('  the next message files it', $filed['ok'] === true && count(AgentWallet::openPayoutRequests($agentId)) === 1, $filed['say']);
     $second = AiTools::run('request_payout', ['amount' => 0], $ctxFor(WM_AGENT, 16));
     check('  a second request is refused while one is open', $second['ok'] === false && str_contains($second['say'], 'still with the office'));
@@ -326,9 +329,12 @@ try {
     $codPrev = AiTools::run('office_settle_cod', ['pnr' => $codPnr], $ctxFor(WM_BOSS, 11));
     check('settle_cod previews the pay-at-boarding booking', $codPrev['ok'] === true && ($codPrev['data']['pnr'] ?? '') === $codPnr, $codPrev['say']);
     check('  nothing recorded yet', !Database::exists("SELECT 1 FROM payments WHERE booking_id = :b AND status = 'verified'", ['b' => (int) $cSold['data']['bookingId']]));
-    $codSame = AiTools::run('office_settle_cod', ['pnr' => $codPnr, 'confirm' => true], $ctxFor(WM_BOSS, 11));
+    $codSame = AiTools::run('office_settle_cod', ['pnr' => $codPnr, 'confirm' => true], $ctxFor(WM_BOSS, 11, 'ho'));
     check('  confirming in the same message is refused', $codSame['ok'] === false);
-    $codDone = AiTools::run('office_settle_cod', ['pnr' => $codPnr, 'confirm' => true], $ctxFor(WM_BOSS, 12));
+    $codNo = AiTools::run('office_settle_cod', ['pnr' => $codPnr, 'confirm' => true], $ctxFor(WM_BOSS, 12, 'na, pahila UTR check gara'));
+    check('  a confirm flag on a "no" message is refused', $codNo['ok'] === false
+        && !Database::exists("SELECT 1 FROM payments WHERE booking_id = :b AND status = 'verified'", ['b' => (int) $cSold['data']['bookingId']]), $codNo['say']);
+    $codDone = AiTools::run('office_settle_cod', ['pnr' => $codPnr, 'confirm' => true], $ctxFor(WM_BOSS, 12, 'ho'));
     check('  the next message records the cash', $codDone['ok'] === true
         && Database::exists("SELECT 1 FROM payments WHERE booking_id = :b AND status = 'verified'", ['b' => (int) $cSold['data']['bookingId']]), $codDone['say']);
     $codAgain = AiTools::run('office_settle_cod', ['pnr' => $codPnr], $ctxFor(WM_BOSS, 13));
@@ -346,7 +352,7 @@ try {
     check('reject needs a reason the passenger can read', $rjNoReason['ok'] === false);
     $rjPrev = AiTools::run('office_reject', ['pnr' => $pendPnr, 'reason' => 'Payment proof did not match'], $ctxFor(WM_BOSS, 16));
     check('  previews first', $rjPrev['ok'] === true && (string) Database::scalar('SELECT status FROM bookings WHERE pnr = :p', ['p' => $pendPnr], '') === 'pending');
-    $rjDone = AiTools::run('office_reject', ['pnr' => $pendPnr, 'reason' => 'Payment proof did not match', 'confirm' => true], $ctxFor(WM_BOSS, 17));
+    $rjDone = AiTools::run('office_reject', ['pnr' => $pendPnr, 'reason' => 'Payment proof did not match', 'confirm' => true], $ctxFor(WM_BOSS, 17, 'ho'));
     check('  then rejects in the next message', $rjDone['ok'] === true && (string) Database::scalar('SELECT status FROM bookings WHERE pnr = :p', ['p' => $pendPnr], '') === 'rejected', $rjDone['say']);
     $rjConfirmed = AiTools::run('office_reject', ['pnr' => $soldPnr, 'reason' => 'x'], $ctxFor(WM_BOSS, 18));
     check('  a confirmed booking cannot be rejected, only cancelled', $rjConfirmed['ok'] === false && str_contains($rjConfirmed['say'], 'cancel_ticket'));
@@ -356,12 +362,12 @@ try {
     $stPrev = AiTools::run('office_agent_status', ['q' => $codeLabel, 'active' => false, 'reason' => 'left the company'], $ctxFor(WM_BOSS, 20));
     check('deactivating an agent previews first', $stPrev['ok'] === true && ($stPrev['data']['willBe'] ?? true) === false
         && (int) Database::scalar('SELECT is_active FROM admins WHERE id = :i', ['i' => $agentId], 1) === 1, $stPrev['say']);
-    $stDone = AiTools::run('office_agent_status', ['q' => $codeLabel, 'active' => false, 'confirm' => true], $ctxFor(WM_BOSS, 21));
+    $stDone = AiTools::run('office_agent_status', ['q' => $codeLabel, 'active' => false, 'confirm' => true], $ctxFor(WM_BOSS, 21, 'हो'));
     check('  the next message deactivates', $stDone['ok'] === true && (int) Database::scalar('SELECT is_active FROM admins WHERE id = :i', ['i' => $agentId], 1) === 0, $stDone['say']);
     check('  and that number is a customer to the assistant now', (string) AiTools::whoIs(WM_AGENT)['role'] === 'customer');
     check('  the audit trail has it', Database::exists("SELECT 1 FROM audit_logs WHERE action = 'staff.toggle' AND entity_id = 'wa-mgr-agent' AND detail LIKE '%WhatsApp%'"));
     AiTools::run('office_agent_status', ['q' => $codeLabel, 'active' => true], $ctxFor(WM_BOSS, 22));
-    $stBack = AiTools::run('office_agent_status', ['q' => $codeLabel, 'active' => true, 'confirm' => true], $ctxFor(WM_BOSS, 23));
+    $stBack = AiTools::run('office_agent_status', ['q' => $codeLabel, 'active' => true, 'confirm' => true], $ctxFor(WM_BOSS, 23, 'yes'));
     check('  and reactivates the same way', $stBack['ok'] === true && (string) AiTools::whoIs(WM_AGENT)['role'] === 'staff');
 
     check('the office may cancel ANY booking: refund_quote works on the agent\'s sale',

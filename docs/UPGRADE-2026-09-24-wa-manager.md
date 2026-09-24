@@ -68,9 +68,11 @@ Pay: cash
 - Key nabhaye pani "bholi Mehsana bata" jasto line bujhcha.
 
 Sahayak le **BULK QUOTE** pathaucha — harek naam, number, seat, bhaau, jamma; galat line number
-sahit bhancha ("लाइन 4: मोबाइल नम्बर मिलेन"). Agent le **"ho"** lekhepachi sabai booking
-`QuickTicket::sell()` bata katincha — desk ko jastai seat lock, cut-off, bhaau, commission — harek
-ticket yatru kai WhatsApp ma. "no" le radda.
+sahit bhancha ("लाइन 4: मोबाइल नम्बर मिलेन"). Agent le **thyakkai "ho"** lekhepachi matra sabai
+booking `QuickTicket::sell()` bata katincha — desk ko jastai seat lock, cut-off, bhaau, commission —
+harek ticket yatru kai WhatsApp ma. "no" le radda. "ho tara line 2 galat cha" jasto kura **yes
+hoina**: quote khasin-cha, sachyaera feri paste garnus. Quote khulla hunda arko kunai kura lekhyo
+bhane pani quote khasin-cha (pachi ko "ho" cancel/fix ko lagi bhayo bhane list nabikos bhanera).
 
 Suraksha: list **code le padhcha, model le hoina** (12 naam ko list ma model le 2 number saatidina
 sakcha). Quote **pin** huncha — "ho" aaunda kunai booking ko bus/din/pickup/bhaau badliyeko cha bhane
@@ -92,12 +94,16 @@ otp 482913                     (code registered mobile ma aaucha)
 logout  ·  ma ko hu
 ```
 
-- Tehi `admins.password_hash`, tehi generic failure, `failed_logins` / lock, LoginLog, audit —
-  WhatsApp ma guess garnu website ma guess garnu jatikai mahango.
+- Tehi `admins.password_hash`, tehi generic failure (galat password, unknown id, inactive, locked —
+  sabai euta line, kinaki agent code ticket ma chhapiyeko huncha), LoginLog, audit. WhatsApp ko
+  guess le website ko lock (`failed_logins` / `locked_until`) **chhudaina** — natra ticket bhako
+  jo koi le agent lai portal bata lock garna sakthyo. Guess ko budget aafnai: 5 per number, 5 per
+  account, 15 minute.
 - **Dosro factor**: `wa_login_otp` on (default) bhaye agent lai pani registered mobile ma code
   jaancha; **manager/superadmin lai sadhai** code chahincha, setting jasto bhaye pani. Aafnai
   registered number bata login garda code chahidaina.
-- Session = `wa_logins` table ko row, `wa_login_ttl_hours` (12) pachi aafai sakincha; harek message
+- Session = `wa_logins` table ko row, **+91/+977 sahit** ko number ma (`9779812345678`) — +91 98… ra
+  +977 98… euta session share gardainan; `wa_login_ttl_hours` (12) pachi aafai sakincha; harek message
   ma account feri check huncha (inactive/lock/must_change_pw bhaye turantai customer). Office le
   **Admin → AI Activity → WhatsApp sign-ins** ma herera **Revoke** garna sakcha. Agent deactivate
   garda uska sabai WhatsApp login pani revoke.
@@ -124,7 +130,8 @@ pachhillo bikri, khula payout), `office_agents` (sabai — aaja ko ticket, commi
 `office_payout_requests`. Padhne tool sadhai. **Write** (`wa_agent_admin_write` on):
 `office_settle_cod` (cash bujhiyo), `office_reject` (pending booking reject, karan sahit),
 `office_agent_status` (agent on/off — aafai lai ra superadmin/manager lai hoina) — **sabai 2 step**:
-preview → office le "ho" → arko message ma confirm. Office le jun pani booking `cancel_ticket`,
+preview → office le arko message ma **thyakkai "ho"** → confirm. Model ko confirm flag matra le
+kehi hudaina — office ko aafnai message "ho" hunuparcha (`request_payout` ra `bulk_issue` ma pani). Office le jun pani booking `cancel_ticket`,
 `rename_passenger`, `fix_ticket`, `resend_ticket` garna sakcha (pahila dekhi nai).
 
 Staff/admin le WhatsApp bata lekhda aba **local customer engine skip huncha** (sahayak on bhaye):
@@ -165,9 +172,9 @@ Tin naya suite, `tests/run-all.php` ma registered, `shari_test` ma sabai pass (2
 
 | Suite | Check | K hercha |
 |---|---|---|
-| `tests/wa-login-test.php` | 58 | switch off ma password swallow; galat password, unknown id euta line; failed_logins/lock; code registered number ma; manager lai sadhai code; session expire/revoke/logout/deactivate; 5 try pachi wait |
-| `tests/wa-bulk-test.php` | 59 | naam/number tehi; +977; pariwar euta booking; galat line number sahit; 9 digit + umer join hoina; bus stop naam hoina; customer lai chhaina; quote le bechdaina; "ho" le sabai bechcha, yatru kai number ma, agent lai credit; dosro "ho" le kehi hoina; bhaau badliyo bhane refuse; tool 2-message rule |
-| `tests/wa-manager-tools-test.php` | 85 | PersonName; role anusar catalogue; naam/number pin ra refuse; euta quote euta bikri; +977 stamp; my_sales/my_wallet aafnai; request_payout 2 step; office_agent/agents/customer/payout_requests; settle_cod/reject/agent_status 2 step, aafai lai hoina |
+| `tests/wa-login-test.php` | 68 | switch off ma password swallow; galat password, unknown id euta line; failed_logins/lock; code registered number ma; manager lai sadhai code; session expire/revoke/logout/deactivate; 5 try pachi wait |
+| `tests/wa-bulk-test.php` | 73 | naam/number tehi; +977; pariwar euta booking; galat line number sahit; 9 digit + umer join hoina; bus stop naam hoina; customer lai chhaina; quote le bechdaina; "ho" le sabai bechcha, yatru kai number ma, agent lai credit; dosro "ho" le kehi hoina; bhaau badliyo bhane refuse; tool 2-message rule |
+| `tests/wa-manager-tools-test.php` | 87 | PersonName; role anusar catalogue; naam/number pin ra refuse; euta quote euta bikri; +977 stamp; my_sales/my_wallet aafnai; request_payout 2 step; office_agent/agents/customer/payout_requests; settle_cod/reject/agent_status 2 step, aafai lai hoina |
 
 `tests/wa-agent-test.php` (79) pahila jastai pass.
 

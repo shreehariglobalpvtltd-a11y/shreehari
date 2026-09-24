@@ -92,27 +92,47 @@ final class WaBulk
             return self::out(self::template());
         }
 
-        $staged = self::staged($phone);
-        if ($staged !== null) {
-            if (!class_exists('WaBooking')) {
-                require_once INCLUDE_PATH . '/wabooking.php';
-            }
-            if (WaBooking::isYes($text)) {
-                $res = self::issue($ctx, is_array($ctx['admin'] ?? null) ? $ctx['admin'] : []);
-                return self::out((string) $res['text']);
-            }
-            if (WaBooking::isNo($text) || WaBooking::isCancel($text)) {
-                self::clear($phone);
-                return self::out('ठिक छ, यो सूची रद्द भयो — कुनै टिकट काटिएन।');
-            }
-        }
-
         if (self::looksLikeBulk($text)) {
-            $res = self::quote($ctx, self::parse($text));
+            $res = self::quote($ctx, self::parse($text));      // a new list replaces any open quote
             return self::out((string) $res['text']);
         }
 
+        $staged = self::staged($phone);
+        if ($staged !== null) {
+            /* Thirty tickets ride on this word, so only a PLAIN yes sells —
+               "ho tara line 2 ko number galat cha" is a correction, not a
+               yes (24 Sep 2026 review). Anything that is neither yes nor no
+               means the seller moved on: the quote is dropped, so a later
+               "ho" meant for the assistant (a cancel, a fix) can never sell
+               the list. They paste it again when they are ready. */
+            if (self::isPlainYes($text)) {
+                $res = self::issue($ctx, is_array($ctx['admin'] ?? null) ? $ctx['admin'] : []);
+                return self::out((string) $res['text']);
+            }
+            self::clear($phone);
+            if (self::isPlainNo($text)) {
+                return self::out('ठिक छ, यो सूची रद्द भयो — कुनै टिकट काटिएन।');
+            }
+            return null;
+        }
+
         return null;
+    }
+
+    /** Exactly a yes, nothing after it (a PNR tail is allowed, as fix_ticket allows). */
+    public static function isPlainYes(string $text): bool
+    {
+        $t = mb_strtolower(trim($text));
+        $t = (string) preg_replace('/[\s.!।]+$/u', '', $t);
+        return preg_match('/^(?:yes|yes please|confirm|confirmed|ok|okay|ho|hoo|hos|hajur|hunxa|huncha|hunchha|thik cha|thik chha|thikcha|ho garidinu|kaat|katnus|katidinus|book gara|हुन्छ|हो|हजुर|ठिक छ|ठीक छ|काट|काट्नुहोस्)$/u', $t) === 1;
+    }
+
+    /** Exactly a no. */
+    public static function isPlainNo(string $text): bool
+    {
+        $t = mb_strtolower(trim($text));
+        $t = (string) preg_replace('/[\s.!।]+$/u', '', $t);
+        return preg_match('/^(?:no|nope|na|nai|nahi|haina|hoina|cancel|radda|stop|chaidaina|pardaina|होइन|नहीं|ना|रद्द|रोक|चाहिँदैन|पर्दैन)$/u', $t) === 1;
     }
 
     /** "FORMAT" / "format pathau" / "bulk format" / "फर्म्याट". */
@@ -209,7 +229,7 @@ final class WaBulk
             $phone = self::phoneIn($l);
 
             // "Key: value" header lines.
-            if ($phone === null && preg_match('/^([\p{L} ]{2,24}?)\s*[:=]\s*(.+)$/u', $l, $m) === 1) {
+            if ($phone === null && preg_match('/^([\p{L}\p{M} ]{2,24}?)\s*[:=]\s*(.+)$/u', $l, $m) === 1) {
                 $key = self::headerKey(mb_strtolower(trim($m[1])));
                 $val = trim($m[2]);
                 if ($key === '') {
@@ -239,6 +259,14 @@ final class WaBulk
                 }
                 $bare = self::stripMarker($l);
                 [$name, $gender, $age, $why] = self::person($bare);
+                /* A companion is a SHORT bare name and nothing else. "bholi
+                   Mehsana bata", "sabai ko ticket kaatnu hai", "Total 2 jana",
+                   "Date 5 Oct" are not people, and every one of them used to
+                   become a berth on the previous booking (24 Sep review). */
+                if ($name !== '' && !self::isBareName($name, $bare)) {
+                    $name = '';
+                    $why  = 'यो यात्रुको नाम जस्तो छैन (नाम मात्र लेख्नुहोस्, वा Date:/From:/Pay: ढाँचा प्रयोग गर्नुहोस्)';
+                }
                 if ($name === '') {
                     $errors[] = 'लाइन ' . $n . ': "' . mb_substr($l, 0, 30) . '" — ' . $why;
                     continue;
@@ -433,15 +461,29 @@ final class WaBulk
                      . ' · चढ्ने: ' . $bus['boardingName'] . ($bus['boardingTime'] !== '' ? ' ' . $bus['boardingTime'] : '');
         }
         $lines[] = '';
+        $elsewhere = [];
         foreach ($items as $k => $it) {
             $names = [];
             foreach ($it['passengers'] as $p) {
                 $names[] = $p['name'] . ($p['gender'] !== null ? ' (' . mb_substr((string) $p['gender'], 0, 1) . ')' : '')
                     . ($p['age'] !== null ? ' ' . $p['age'] : '');
             }
+            /* A booking the planner had to put on ANOTHER day or bus (today's
+               bus full for a family of four) is said on its own line and
+               flagged — never confirmed blind under the first bus's heading. */
+            $sameBus = $bus !== null && $it['expect']['date'] === (string) $bus['date']
+                && $it['expect']['direction'] === (string) $bus['direction']
+                && $it['expect']['boardingCode'] === (string) $bus['boardingCode'];
             $lines[] = ($k + 1) . '. ' . implode(', ', $names)
                 . ' · ' . ($it['country'] === 'NP' ? '+977 ' : '') . self::spaced($it['phone'])
-                . ' · ' . $it['expect']['seats'] . ' सिट · ' . inr((float) $it['total']);
+                . ' · ' . $it['expect']['seats'] . ' सिट · ' . inr((float) $it['total'])
+                . ($sameBus ? '' : ' · ⚠️ ' . $it['dateLabel'] . ' ' . $it['depTime'] . ' · ' . $it['pickup']);
+            if (!$sameBus) {
+                $elsewhere[] = (string) ($k + 1);
+            }
+        }
+        if ($elsewhere !== []) {
+            $lines[] = '⚠️ बुकिङ ' . implode(', ', $elsewhere) . ' पहिलो बस भन्दा अर्कै दिन/बस/ठाउँमा पर्‍यो (माथि लेखिएको)। सबै एउटै दिन चाहिए Date: लेखेर फेरि पठाउनुहोस्।';
         }
         if ($errors !== []) {
             $lines[] = '';
@@ -534,7 +576,10 @@ final class WaBulk
                     'date'       => (string) $it['opts']['date'],
                     'direction'  => (string) $it['opts']['direction'],
                     'boarding'   => (string) $it['opts']['boarding'],
-                    'gender'     => $it['passengers'][0]['gender'] ?? null,
+                    // The PARTY's gender as the quote and the re-plan used it —
+                    // null for a mixed family. The lead's own gender would put a
+                    // mixed party onto women-only berths (24 Sep review).
+                    'gender'     => $it['opts']['gender'] ?? null,
                     'pay'        => (string) $stage['pay'],
                     'passengers' => $it['passengers'],
                     'note'       => 'WhatsApp bulk',
@@ -740,6 +785,12 @@ final class WaBulk
             // Only the token itself: str_replace('म') would also eat the म inside कमला.
             $rest = (string) preg_replace($gre, ' ', $rest, 1);
         }
+        // Words that describe, not name: "umer 35" / "age 35" / "35 yrs" —
+        // the word only when it sits by a number, and BEFORE the number is
+        // read: Umar is also a given name, and Umar Khan is not "Khan".
+        $rest = (string) preg_replace('/(?<![\p{L}\p{M}])(umer|umar|age|उमेर)(?=\s*\d)/iu', ' ', $rest);
+        $rest = (string) preg_replace('/(?<=\d)\s*(yrs|years|saal|barsa|barsha|varsha)(?![\p{L}\p{M}])/iu', ' ', $rest);
+        $rest = (string) preg_replace('/(?<![\p{L}\p{M}])(seat|sit|seats)(?![\p{L}\p{M}])/iu', ' ', $rest);
         $age = null;
         $are = '/(?<![\d\p{L}])(\d{1,3})(?![\d\p{L}])/u';
         if (preg_match($are, $rest, $a) === 1) {
@@ -749,12 +800,45 @@ final class WaBulk
             }
             $rest = (string) preg_replace($are, ' ', $rest, 1);
         }
-        // Words that describe, not name: "umer", "age", "seat".
-        $rest = (string) preg_replace('/(?<![\p{L}\p{M}])(umer|umar|age|उमेर|yrs|years|saal|barsa|seat|sit)(?![\p{L}\p{M}])/iu', ' ', $rest);
         $rest = trim((string) preg_replace('/\s+/u', ' ', $rest));
 
         $name = PersonName::clean($rest);
         return [$name, $gender, $age, $name === '' ? PersonName::why($rest) : ''];
+    }
+
+    /**
+     * Is a phone-less line nothing but a person's name (plus M/F and an
+     * age)? Three words at most, no booking word, and TicketBot reads no
+     * date, pickup, direction, payment or seat count out of it.
+     */
+    private static function isBareName(string $name, string $line): bool
+    {
+        if (count(preg_split('/\s+/u', trim($name)) ?: []) > 3) {
+            return false;
+        }
+        $stop = ['total', 'jana', 'jan', 'dhanyabad', 'dhanyawad', 'thank', 'thanks', 'thankyou', 'please', 'hai', 'haina',
+                 'kaatnu', 'katnu', 'kaat', 'katne', 'ticket', 'tickets', 'seat', 'seats', 'sit', 'bata', 'date', 'miti', 'from',
+                 'pay', 'payment', 'cash', 'upi', 'esewa', 'bank', 'sabai', 'sab', 'ko', 'ka', 'ki', 'lai', 'le', 'ho', 'cha',
+                 'chha', 'xa', 'bholi', 'aaja', 'parsi', 'kal', 'din', 'jane', 'aaune', 'bus', 'pickup', 'boarding', 'to',
+                 'for', 'and', 'ra', 'aur', 'the', 'book', 'booking', 'confirm', 'note', 'time', 'baje', 'pm', 'am',
+                 'जना', 'धन्यवाद', 'टिकट', 'सिट', 'बाट', 'मिति', 'सबै', 'को', 'भोलि', 'आज', 'जाने', 'बस', 'नगद', 'भुक्तानी'];
+        foreach (preg_split('/\s+/u', mb_strtolower(trim($line))) ?: [] as $w) {
+            $w = trim($w, ".,:;!()-");
+            if ($w !== '' && in_array($w, $stop, true)) {
+                return false;
+            }
+        }
+        try {
+            $p = TicketBot::parse($line);
+            if ((string) ($p['date'] ?? '') !== '' || (string) ($p['boarding'] ?? '') !== ''
+                || (string) ($p['direction'] ?? '') !== '' || (string) ($p['pay'] ?? '') !== ''
+                || (int) ($p['seats'] ?? 0) > 0) {
+                return false;
+            }
+        } catch (Throwable $e) {
+            return false;                          // unsure = not a seat
+        }
+        return true;
     }
 
     private static function headerKey(string $k): string

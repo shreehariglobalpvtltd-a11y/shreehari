@@ -127,7 +127,7 @@ final class AiTools
                that the account is active, unlocked and initialised. */
             if (Settings::getBool('wa_login_on', false)) {
                 require_once INCLUDE_PATH . '/walogin.php';
-                $session = WaLogin::session($digits);
+                $session = WaLogin::session($phoneRaw);   // keyed on +91/+977 + digits
                 if ($session !== null) {
                     $admin        = $session['admin'];
                     $out['login'] = [
@@ -1429,6 +1429,16 @@ final class AiTools
             'country' => $raw !== '' ? countryDialCode(resolvePhoneCountry('', $raw)) : ''];
     }
 
+    /**
+     * The sender's OWN message says yes (24 Sep 2026 review): a model's
+     * confirm flag is never consent on its own. The same anchored form
+     * fix_ticket has always required — "ho tara …" is not a yes.
+     */
+    private static function saidYes(array $ctx): bool
+    {
+        return self::correctionConfirmed($ctx);
+    }
+
     private static function correctionConfirmed(array $ctx): bool
     {
         $text = mb_strtolower(trim((string) ($ctx['messageText'] ?? '')));
@@ -2122,6 +2132,9 @@ final class AiTools
             ];
         }
 
+        if (!self::saidYes($ctx)) {
+            return self::no('The agent has not replied ho to the payout preview in a new message. A confirm flag alone is not consent.');
+        }
         $staged = self::takeStage($ctx, 'payout');
         if ($staged === null) {
             return self::no('Preview the payout first (request_payout without confirm) and get a ho in the next message.');
@@ -2169,8 +2182,8 @@ final class AiTools
         if (!WaBulk::enabled()) {
             return self::no('Bulk tickets on WhatsApp are switched off.');
         }
-        if (($args['confirm'] ?? false) !== true) {
-            return self::no('The seller has not said ho to the bulk quote yet.');
+        if (($args['confirm'] ?? false) !== true || !self::saidYes($ctx)) {
+            return self::no('The seller has not replied ho to the bulk quote in a new message. A confirm flag alone is not consent — ask for a plain ho.');
         }
         $admin = $ctx['admin'] ?? null;
         if (!is_array($admin) || (int) ($admin['id'] ?? 0) <= 0) {
@@ -2492,6 +2505,9 @@ final class AiTools
                 'media' => null,
             ];
         }
+        if (!self::saidYes($ctx)) {
+            return self::no('The office has not replied ho to the preview in a new message. A confirm flag alone is not consent.');
+        }
         $staged = self::takeStage($ctx, 'office');
         if ($staged === null || ($staged['action'] ?? '') !== 'settle_cod' || ($staged['pnr'] ?? '') !== $pnr) {
             return self::no('Preview this exact PNR first (office_settle_cod without confirm) and get a ho in the next message.');
@@ -2536,6 +2552,9 @@ final class AiTools
                 'data' => self::bookingCard($detail) + ['reason' => $reason],
                 'media' => null,
             ];
+        }
+        if (!self::saidYes($ctx)) {
+            return self::no('The office has not replied ho to the preview in a new message. A confirm flag alone is not consent.');
         }
         $staged = self::takeStage($ctx, 'office');
         if ($staged === null || ($staged['action'] ?? '') !== 'reject' || ($staged['pnr'] ?? '') !== $pnr) {
@@ -2593,6 +2612,9 @@ final class AiTools
                            'activeNow' => (int) $a['is_active'] === 1, 'willBe' => $active],
                 'media' => null,
             ];
+        }
+        if (!self::saidYes($ctx)) {
+            return self::no('The office has not replied ho to the preview in a new message. A confirm flag alone is not consent.');
         }
         $staged = self::takeStage($ctx, 'office');
         if ($staged === null || ($staged['action'] ?? '') !== 'agent_status' || (int) ($staged['adminId'] ?? 0) !== $id || (bool) ($staged['active'] ?? !$active) !== $active) {

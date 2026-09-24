@@ -74,6 +74,14 @@ final class WaLogin
      */
     public static function command(string $text): ?array
     {
+        /* The login line is read off the FIRST line, whatever follows and
+           however long: a password must be swallowed here even when a list
+           was pasted under it, or it travels on to the model and the logs. */
+        $first = trim((string) preg_replace('/\s+/u', ' ', (string) strtok(trim($text), "\r\n")));
+        if ($first !== '' && mb_strlen($first) <= 400
+            && preg_match('/^(?:login|log in|log-in|signin|sign in|लगइन|लग इन|साइन इन)\s*[:\-]?\s+(\S+)\s+(.+)$/su', $first, $m) === 1) {
+            return ['cmd' => 'login', 'id' => trim($m[1]), 'password' => trim($m[2])];
+        }
         $t = trim((string) preg_replace('/\s+/u', ' ', $text));
         if ($t === '' || mb_strlen($t) > 200) {
             return null;
@@ -88,10 +96,6 @@ final class WaLogin
         }
         if (preg_match('/^(?:otp|code|कोड)\s*[:\-]?\s*(\d{4,8})\s*$/u', $lower, $m) === 1) {
             return ['cmd' => 'otp', 'code' => $m[1]];
-        }
-        // login <id> <password …> — the password is everything after the id.
-        if (preg_match('/^(?:login|log in|log-in|signin|sign in|लगइन|लग इन|साइन इन)\s*[:\-]?\s+(\S+)\s+(.+)$/su', $t, $m) === 1) {
-            return ['cmd' => 'login', 'id' => trim($m[1]), 'password' => trim($m[2])];
         }
         if (preg_match('/^(?:login|log in|log-in|signin|sign in|लगइन|लग इन|साइन इन)(?:\s+\S+)?\s*[.!?]?$/u', $lower) === 1) {
             return ['cmd' => 'help'];
@@ -110,12 +114,18 @@ final class WaLogin
      *
      * @return array{text: string, media: ?string}|null
      */
-    public static function handle(string $phoneDigits, string $text): ?array
+    public static function handle(string $phoneRaw, string $text): ?array
     {
-        $cmd = self::command($text);
-        if ($cmd === null || $phoneDigits === '') {
+        $cmd    = self::command($text);
+        $digits = normalisePhone($phoneRaw);
+        if ($cmd === null || $digits === '') {
             return null;
         }
+        /* The session is keyed on the INTERNATIONAL number (24 Sep 2026
+           review): +91 98… and +977 98… normalise to the same ten digits,
+           and a sign-in from a Nepali SIM must never be inherited by the
+           Indian number that shares its tail. */
+        $key = self::key($phoneRaw);
 
         try {
             if (!self::enabled()) {
@@ -130,10 +140,10 @@ final class WaLogin
             }
 
             return match ($cmd['cmd']) {
-                'login'  => self::login($phoneDigits, (string) $cmd['id'], (string) $cmd['password']),
-                'otp'    => self::otp($phoneDigits, (string) $cmd['code']),
-                'logout' => self::logout($phoneDigits),
-                'whoami' => self::whoami($phoneDigits),
+                'login'  => self::login($key, $digits, (string) $cmd['id'], (string) $cmd['password']),
+                'otp'    => self::otp($key, $digits, (string) $cmd['code']),
+                'logout' => self::logout($key, $digits),
+                'whoami' => self::whoami($phoneRaw, $digits),
                 default  => self::help(),
             };
         } catch (Throwable $e) {
@@ -154,7 +164,7 @@ final class WaLogin
         );
     }
 
-    private static function login(string $phone, string $id, string $password): array
+    private static function login(string $key, string $phone, string $id, string $password): array
     {
         $deleteNote = "\n\nसुरक्षाका लागि पासवर्ड भएको सन्देश अब मेटाउनुहोस्।";
         $generic    = self::out('❌ लगइन मिलेन — कोड/युजरनेम वा पासवर्ड गलत छ। फेरि प्रयास गर्नुहोस्, वा अफिसलाई सम्पर्क गर्नुहोस्।' . $deleteNote);
@@ -164,8 +174,8 @@ final class WaLogin
         }
         // Five tries per number in 15 minutes, then a 15-minute lockout —
         // the same budget the web login gives one IP.
-        if (!Security::rateLimit('wa_login', $phone, MAX_LOGIN_ATTEMPTS, 900, LOGIN_LOCKOUT_MIN * 60)) {
-            Logger::warning('WhatsApp login rate limit hit', ['phone' => $phone], 'whatsapp');
+        if (!Security::rateLimit('wa_login', $key, MAX_LOGIN_ATTEMPTS, 900, LOGIN_LOCKOUT_MIN * 60)) {
+            Logger::warning('WhatsApp login rate limit hit', ['phone' => $key], 'whatsapp');
             return self::out('⏳ धेरै प्रयास भयो। ' . LOGIN_LOCKOUT_MIN . ' मिनेट पछि फेरि प्रयास गर्नुहोस्।' . $deleteNote);
         }
 
@@ -174,32 +184,40 @@ final class WaLogin
             // Burn the same time a real check takes, so a missing account is
             // not distinguishable from a wrong password by the clock.
             password_verify($password, '$2y$11$usesomesillystringfoeu1f3.O0hOZ8W4l0sN2q7dPzYlXqR5Z8Vy');
-            LoginLog::record(Security::clean($id, 60), 'unknown_user');
-            Logger::warning('WhatsApp login: unknown id', ['phone' => $phone], 'whatsapp');
+            /* Only something shaped like an id goes into the sign-in log: with
+               the two words swapped, the "id" IS the password. */
+            LoginLog::record(self::loggableId($id), 'unknown_user');
+            Logger::warning('WhatsApp login: unknown id', ['phone' => $key], 'whatsapp');
             return $generic;
         }
 
         $username = (string) $admin['username'];
         $adminId  = (int) $admin['id'];
 
+        /* Every account-state refusal is the SAME generic line: the agent
+           code is printed on every ticket, so a distinct "locked" or
+           "inactive" answer would tell a stranger which codes are live. */
         if (!in_array((string) $admin['role'], self::ROLES, true) || (int) $admin['is_active'] !== 1) {
             LoginLog::record($username, 'disabled', $adminId);
             return $generic;
         }
         if (!empty($admin['locked_until']) && strtotime((string) $admin['locked_until']) > time()) {
             LoginLog::record($username, 'locked', $adminId);
-            return self::out('🔒 यो खाता केही समयका लागि लक भएको छ। केही बेरपछि फेरि प्रयास गर्नुहोस्।' . $deleteNote);
+            return $generic;
+        }
+        /* A WhatsApp guess never touches admins.failed_logins / locked_until:
+           those lock the WEB portal too, and anyone holding a ticket knows the
+           agent code. Guesses against one account are counted in their own
+           bucket instead — five in 15 minutes, whoever sends them. */
+        if (!Security::rateLimit('wa_login_acct', (string) $adminId, MAX_LOGIN_ATTEMPTS, 900, LOGIN_LOCKOUT_MIN * 60)) {
+            LoginLog::record($username, 'locked', $adminId);
+            Logger::warning('WhatsApp login: account guess budget spent', ['admin' => $adminId, 'phone' => $key], 'whatsapp');
+            return $generic;
         }
 
         if (!Security::verifyPassword($password, (string) $admin['password_hash'])) {
-            $failed = (int) $admin['failed_logins'] + 1;
-            $update = ['failed_logins' => $failed];
-            if ($failed >= MAX_LOGIN_ATTEMPTS) {
-                $update['locked_until'] = date('Y-m-d H:i:s', time() + (LOGIN_LOCKOUT_MIN * 60));
-            }
-            Database::update('admins', $update, 'id = :id', ['id' => $adminId]);
             LoginLog::record($username, 'bad_password', $adminId);
-            Logger::warning('WhatsApp login failed', ['phone' => $phone, 'admin' => $adminId, 'attempt' => $failed], 'whatsapp');
+            Logger::warning('WhatsApp login failed', ['phone' => $key, 'admin' => $adminId], 'whatsapp');
             return $generic;
         }
 
@@ -231,23 +249,25 @@ final class WaLogin
                 null,
                 resolvePhoneCountry('', (string) ($admin['phone'] ?? '')) ?: null
             );
-            self::pendingSet($phone, ['adminId' => $adminId, 'registered' => $registered, 'at' => time()]);
-            Logger::audit('staff.login_whatsapp_otp', 'admin', (string) $adminId, null, ['from' => $phone],
+            self::pendingSet($key, ['adminId' => $adminId, 'registered' => $registered, 'at' => time()]);
+            Logger::audit('staff.login_whatsapp_otp', 'admin', (string) $adminId, null, ['from' => $key],
                 'WhatsApp login: password accepted, one-time code sent to the registered mobile');
 
             return self::out('✅ पासवर्ड मिल्यो। एक पटकको कोड तपाईंको दर्ता भएको नम्बर (' . self::mask($registered) . ') मा पठाइयो।'
                 . "\nयहाँ यसरी लेख्नुहोस्: otp 123456" . $deleteNote);
         }
 
-        $opened = self::open($phone, $admin, $needOtp ? 'password+otp' : 'password');
+        // No code was sent on this path (own registered number, or the switch
+        // is off), so the record must not claim one was.
+        $opened = self::open($key, $phone, $admin, 'password');
         $opened['text'] .= $deleteNote;
 
         return $opened;
     }
 
-    private static function otp(string $phone, string $code): array
+    private static function otp(string $key, string $phone, string $code): array
     {
-        $pending = self::pendingGet($phone);
+        $pending = self::pendingGet($key);
         if ($pending === null) {
             return self::out('कुनै लगइन पर्खिरहेको छैन। पहिले "login <कोड> <पासवर्ड>" लेख्नुहोस्।');
         }
@@ -259,18 +279,18 @@ final class WaLogin
             LoginLog::record((string) ($admin['username'] ?? 'wa-login'), 'bad_password', $adminId ?: null);
             return self::out('❌ कोड मिलेन — ' . (string) ($result['error'] ?? '') . "\nफेरि \"otp 123456\" लेख्नुहोस्, वा नयाँ login गर्नुहोस्।");
         }
-        self::pendingClear($phone);
+        self::pendingClear($key);
 
         $admin = self::adminRow($adminId);
         if ($admin === null || (int) $admin['is_active'] !== 1 || !in_array((string) $admin['role'], self::ROLES, true)) {
             return self::out('❌ यो खाता अहिले सक्रिय छैन। अफिसलाई सम्पर्क गर्नुहोस्।');
         }
 
-        return self::open($phone, $admin, 'password+otp');
+        return self::open($key, $phone, $admin, 'password+otp');
     }
 
     /** Open the session and say hello. */
-    private static function open(string $phone, array $admin, string $method): array
+    private static function open(string $key, string $phone, array $admin, string $method): array
     {
         $adminId = (int) $admin['id'];
         $hours   = max(1, min(24 * 30, Settings::getInt('wa_login_ttl_hours', 12)));
@@ -278,25 +298,26 @@ final class WaLogin
         $until   = date('Y-m-d H:i:s', time() + $hours * 3600);
 
         // One live session per number: the new one replaces the old.
-        self::revokePhone($phone, null);
+        self::revokePhone($key, null);
         Database::insert('wa_logins', [
-            'phone'      => $phone,
+            'phone'      => $key,
             'admin_id'   => $adminId,
             'method'     => $method,
             'created_at' => $now,
             'expires_at' => $until,
             'last_seen_at' => $now,
         ]);
-        Database::update('admins', ['failed_logins' => 0, 'last_login_at' => $now], 'id = :id', ['id' => $adminId]);
-        // A good sign-in is not a guess: the five-tries budget starts afresh.
+        Database::update('admins', ['last_login_at' => $now], 'id = :id', ['id' => $adminId]);
+        // A good sign-in is not a guess: both budgets start afresh.
         try {
-            Database::delete('rate_limits', 'bucket = :b AND identifier = :i', ['b' => 'wa_login', 'i' => $phone]);
+            Database::delete('rate_limits', 'bucket = :b AND identifier = :i', ['b' => 'wa_login', 'i' => $key]);
+            Database::delete('rate_limits', 'bucket = :b AND identifier = :i', ['b' => 'wa_login_acct', 'i' => (string) $adminId]);
         } catch (Throwable $ignored) {
         }
 
         LoginLog::record((string) $admin['username'], 'success', $adminId);
         Logger::audit('staff.login_whatsapp', 'admin', (string) $adminId, null,
-            ['from' => $phone, 'method' => $method, 'until' => $until],
+            ['from' => $key, 'method' => $method, 'until' => $until],
             'Signed in over WhatsApp as ' . (string) $admin['role']);
 
         // A fresh role means a fresh conversation — nothing a customer chat
@@ -326,14 +347,14 @@ final class WaLogin
         return self::out(implode("\n", $lines));
     }
 
-    private static function logout(string $phone): array
+    private static function logout(string $key, string $phone): array
     {
-        $had = self::session($phone);
-        self::revokePhone($phone, null);
-        self::pendingClear($phone);
+        $had = self::session($key);
+        self::revokePhone($key, null);
+        self::pendingClear($key);
         self::forgetChats($phone);
         if ($had !== null) {
-            Logger::audit('staff.logout_whatsapp', 'admin', (string) $had['admin']['id'], null, ['from' => $phone], 'Signed out over WhatsApp');
+            Logger::audit('staff.logout_whatsapp', 'admin', (string) $had['admin']['id'], null, ['from' => $key], 'Signed out over WhatsApp');
             LoginLog::record((string) $had['admin']['username'], 'logout', (int) $had['admin']['id']);
             return self::out('👋 तपाईं साइन आउट हुनुभयो। फेरि स्टाफ काम गर्न "login <कोड> <पासवर्ड>" लेख्नुहोस्।');
         }
@@ -341,10 +362,10 @@ final class WaLogin
         return self::out('तपाईं WhatsApp मा साइन इन हुनुभएको थिएन। स्टाफ हुनुहुन्छ भने "login <कोड> <पासवर्ड>" लेख्नुहोस्।');
     }
 
-    private static function whoami(string $phone): array
+    private static function whoami(string $phoneRaw, string $phone): array
     {
         require_once INCLUDE_PATH . '/aitools.php';
-        $ctx = AiTools::whoIs($phone);
+        $ctx = AiTools::whoIs($phoneRaw);
         if (($ctx['role'] ?? 'customer') === 'customer') {
             return self::out('तपाईं यो नम्बर (' . self::mask($phone) . ') बाट ग्राहकको रूपमा हुनुहुन्छ। स्टाफ हुनुहुन्छ भने "login <कोड> <पासवर्ड>" लेख्नुहोस्।');
         }
@@ -373,9 +394,10 @@ final class WaLogin
      *
      * @return array{admin: array<string,mixed>, login: array<string,mixed>}|null
      */
-    public static function session(string $phoneDigits): ?array
+    public static function session(string $phoneRaw): ?array
     {
-        if ($phoneDigits === '' || !self::enabled()) {
+        $key = self::key($phoneRaw);
+        if ($key === '' || !self::enabled()) {
             return null;
         }
         try {
@@ -385,7 +407,7 @@ final class WaLogin
             $row = Database::fetch(
                 'SELECT * FROM wa_logins WHERE phone = :p AND revoked_at IS NULL AND expires_at > :now
                   ORDER BY id DESC LIMIT 1',
-                ['p' => $phoneDigits, 'now' => date('Y-m-d H:i:s')]
+                ['p' => $key, 'now' => date('Y-m-d H:i:s')]
             );
         } catch (Throwable $e) {
             return null;                             // table not migrated yet
@@ -425,15 +447,16 @@ final class WaLogin
         }
     }
 
-    /** Every live session of one number. */
-    public static function revokePhone(string $phoneDigits, ?int $by): void
+    /** Every live session of one number (raw or already keyed). */
+    public static function revokePhone(string $phoneRaw, ?int $by): void
     {
-        if ($phoneDigits === '') {
+        $key = self::key($phoneRaw);
+        if ($key === '') {
             return;
         }
         try {
             Database::update('wa_logins', ['revoked_at' => date('Y-m-d H:i:s'), 'revoked_by' => $by ?: null],
-                'phone = :p AND revoked_at IS NULL', ['p' => $phoneDigits]);
+                'phone = :p AND revoked_at IS NULL', ['p' => $key]);
         } catch (Throwable $ignored) {
         }
     }
@@ -585,6 +608,29 @@ final class WaLogin
     private static function mentionsSecret(array $cmd): bool
     {
         return ($cmd['cmd'] ?? '') === 'login';
+    }
+
+    /**
+     * The session key for a sender: country code + ten digits when the
+     * transport told us the country ("9779812345678" from Meta,
+     * "whatsapp:+919812345678" from Twilio), the bare digits otherwise. A
+     * value that already IS a key (12/13 digits with 91/977) is kept.
+     */
+    public static function key(string $phoneRaw): string
+    {
+        $digits = normalisePhone($phoneRaw);
+        if ($digits === '') {
+            return '';
+        }
+        $cc = countryDialCode(resolvePhoneCountry('', $phoneRaw));
+        return $cc . $digits;
+    }
+
+    /** An id worth writing into the sign-in log — never a password typed in its place. */
+    private static function loggableId(string $id): string
+    {
+        $id = Security::clean($id, 60);
+        return preg_match('/^(?:shg[-\s]*\d{1,4}|\d{1,4}|[a-z0-9._@+\-]{3,60})$/i', $id) === 1 ? $id : '[unparsed id]';
     }
 
     /** "9876543210" → "98xxxxxx10": enough to recognise, not enough to dial. */

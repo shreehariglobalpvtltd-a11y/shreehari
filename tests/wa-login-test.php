@@ -100,11 +100,11 @@ if ($agentCode === null) {
 $codeLabel = AgentWallet::agentCodeLabel($agentId);
 
 $cleanup = static function () use ($agentId, $bossId): void {
-    try { Database::delete('wa_logins', "phone LIKE '" . WL_LIKE . "%'", []); } catch (Throwable $e) {}
+    try { Database::delete('wa_logins', "phone LIKE '%" . WL_LIKE . "%'", []); } catch (Throwable $e) {}
     try { Database::delete('wa_logins', 'admin_id IN (:a, :b)', ['a' => $agentId, 'b' => $bossId]); } catch (Throwable $e) {}
     try { Database::delete('kv_store', "kscope IN ('wa_login_pending','wa_agent','wa_stage','wa_turn','wa_bulk') AND kkey LIKE '" . WL_LIKE . "%'", []); } catch (Throwable $e) {}
     try { Database::delete('otp_codes', "identifier LIKE 'walogin:" . WL_LIKE . "%'", []); } catch (Throwable $e) {}
-    try { Database::delete('rate_limits', "identifier LIKE '" . WL_LIKE . "%' OR identifier LIKE 'walogin:" . WL_LIKE . "%'", []); } catch (Throwable $e) {}
+    try { Database::delete('rate_limits', "identifier LIKE '%" . WL_LIKE . "%' OR identifier LIKE 'walogin:" . WL_LIKE . "%' OR bucket = 'wa_login_acct'", []); } catch (Throwable $e) {}
     try { Database::delete('admin_login_events', 'admin_id IN (:a, :b)', ['a' => $agentId, 'b' => $bossId]); } catch (Throwable $e) {}
     try { Database::delete('admin_login_events', "username IN ('wa-login-agent','wa-login-boss','nobody-here')", []); } catch (Throwable $e) {}
 };
@@ -150,13 +150,23 @@ try {
     $bad = WaLogin::handle(WL_NEW, 'login ' . $codeLabel . ' wrong-password');
     check('a wrong password is refused with the generic line', $bad !== null && str_contains((string) $bad['text'], 'मिलेन'), (string) ($bad['text'] ?? ''));
     check('  the number stays a customer', $roleOf(WL_NEW) === 'customer');
-    check('  and the account counted the failure',
-        (int) Database::scalar('SELECT failed_logins FROM admins WHERE id = :i', ['i' => $agentId], 0) === 1);
+    check('  the WEB lockout counters are NOT touched (the agent code is public)',
+        (int) Database::scalar('SELECT failed_logins FROM admins WHERE id = :i', ['i' => $agentId], 0) === 0
+        && Database::scalar('SELECT locked_until FROM admins WHERE id = :i', ['i' => $agentId], null) === null);
     check('  and it is in the sign-in log', Database::exists(
         "SELECT 1 FROM admin_login_events WHERE admin_id = :a AND outcome = 'bad_password'", ['a' => $agentId]));
 
     $unknown = WaLogin::handle(WL_NEW, 'login nobody-here ' . WL_PW);
     check('an unknown id gets the SAME generic line', $unknown !== null && (string) $unknown['text'] === (string) $bad['text']);
+    Database::update('admins', ['locked_until' => date('Y-m-d H:i:s', time() + 600)], 'id = :i', ['i' => $agentId]);
+    $lockedTry = WaLogin::handle(WL_NEW, 'login ' . $codeLabel . ' ' . WL_PW);
+    check('a web-locked account gets the SAME generic line too (no code enumeration)', $lockedTry !== null && (string) $lockedTry['text'] === (string) $bad['text'] && $roleOf(WL_NEW) === 'customer');
+    Database::update('admins', ['locked_until' => null], 'id = :i', ['i' => $agentId]);
+    $swapped = WaLogin::handle(WL_NEW, 'login MyS3cret!Pw ' . $codeLabel);
+    check('id and password in the wrong order: the password is NOT written to the sign-in log',
+        $swapped !== null && !Database::exists("SELECT 1 FROM admin_login_events WHERE username LIKE '%MyS3cret%'")
+        && !Database::exists("SELECT 1 FROM audit_logs WHERE entity_id LIKE '%MyS3cret%' OR detail LIKE '%MyS3cret%'"));
+    try { Database::delete('rate_limits', "bucket IN ('wa_login','wa_login_acct')", []); } catch (Throwable $e) {}
 
     $ok = WaLogin::handle(WL_NEW, 'login ' . $codeLabel . ' ' . WL_PW);
     check('the right password signs the agent in by agent code', $ok !== null && str_starts_with((string) $ok['text'], '✅'), (string) ($ok['text'] ?? ''));
@@ -165,7 +175,8 @@ try {
     check('  the strange number is now this agent', $who['role'] === 'staff' && $who['adminId'] === $agentId, $who['role']);
     check('  scoped to their own book', (int) $who['scopeAdminId'] === $agentId);
     check('  and carries the sign-in with its expiry', is_array($who['login']) && (string) $who['login']['expires_at'] > date('Y-m-d H:i:s'));
-    check('  failed_logins was reset', (int) Database::scalar('SELECT failed_logins FROM admins WHERE id = :i', ['i' => $agentId], 0) === 0);
+    check('  the sign-in is recorded as password only (no code was sent)',
+        (string) Database::scalar('SELECT method FROM wa_logins WHERE phone = :p AND revoked_at IS NULL ORDER BY id DESC LIMIT 1', ['p' => WL_NEW], '') === 'password');
     check('  a success row is in the sign-in log', Database::exists(
         "SELECT 1 FROM admin_login_events WHERE admin_id = :a AND outcome = 'success'", ['a' => $agentId]));
     check('  and the audit trail names the number', Database::exists(
@@ -183,6 +194,22 @@ try {
     $byMail = WaLogin::handle(WL_NEW2, 'login wa-login-agent@example.test ' . WL_PW);
     check('signing in by EMAIL works from another handset', $byMail !== null && str_starts_with((string) $byMail['text'], '✅'));
     check('  and that handset is staff too', $roleOf(WL_NEW2) === 'staff');
+
+    $longLine = WaLogin::handle(WL_NEW3, "login " . $codeLabel . " " . WL_PW . "\n" . str_repeat("1. Ram Thapa 9876543210\n", 12));
+    check('a login line with a long list pasted under it is still swallowed (the password never travels on)',
+        $longLine !== null && str_starts_with((string) $longLine['text'], '✅') && $roleOf(WL_NEW3) === 'staff', (string) ($longLine['text'] ?? 'null'));
+    WaLogin::handle(WL_NEW3, 'logout');
+
+    /* The session is keyed on the INTERNATIONAL number: +977 98… and
+       +91 98… normalise to the same ten digits and must never share it. */
+    $np = WaLogin::handle('+977' . WL_NEW3, 'login ' . $codeLabel . ' ' . WL_PW);
+    check('a sign-in from +977 opens', $np !== null && str_starts_with((string) $np['text'], '✅'));
+    check('  and is staff for +977', $roleOf('+977' . WL_NEW3) === 'staff');
+    check('  but the +91 number with the same ten digits is a customer', $roleOf('+91' . WL_NEW3) === 'customer');
+    check('  and so is the bare ten-digit form', $roleOf(WL_NEW3) === 'customer');
+    check('  the row carries the country code', Database::exists('SELECT 1 FROM wa_logins WHERE phone = :p AND revoked_at IS NULL', ['p' => '977' . WL_NEW3]));
+    WaLogin::handle('+977' . WL_NEW3, 'logout');
+    check('  logout from +977 ends exactly that session', $roleOf('+977' . WL_NEW3) === 'customer');
 
     /* ---- the session ends ---------------------------------------- */
     echo "\n== the session ends ==\n";
@@ -205,7 +232,7 @@ try {
     $rowId = (int) Database::scalar('SELECT id FROM wa_logins WHERE phone = :p AND revoked_at IS NULL ORDER BY id DESC LIMIT 1', ['p' => WL_NEW], 0);
     WaLogin::revoke($rowId, $bossId);
     check('the office can revoke a sign-in', $rowId > 0 && $roleOf(WL_NEW) === 'customer');
-    check('  and the row remembers who did it',
+    check('  and the row remembers who did it (revoke)',
         (int) Database::scalar('SELECT revoked_by FROM wa_logins WHERE id = :i', ['i' => $rowId], 0) === $bossId);
 
     Database::update('admins', ['must_change_pw' => 1], 'id = :i', ['i' => $agentId]);
@@ -264,10 +291,10 @@ try {
     Settings::flush();
 
     /* ================================================================
-     *  5. Rate limit and lockout
+     *  5. Rate limit — per number AND per account, never the web lock
      * ================================================================ */
     echo "\n== a guesser is slowed down ==\n";
-    try { Database::delete('rate_limits', "bucket = 'wa_login' AND identifier = :p", ['p' => WL_NEW2]); } catch (Throwable $e) {}
+    try { Database::delete('rate_limits', "bucket IN ('wa_login','wa_login_acct')", []); } catch (Throwable $e) {}
     Database::update('admins', ['failed_logins' => 0, 'locked_until' => null], 'id = :i', ['i' => $agentId]);
     $last = null;
     for ($i = 0; $i < MAX_LOGIN_ATTEMPTS; $i++) {
@@ -275,11 +302,15 @@ try {
     }
     $sixth = WaLogin::handle(WL_NEW2, 'login ' . $codeLabel . ' ' . WL_PW);
     check('after ' . MAX_LOGIN_ATTEMPTS . ' wrong tries even the right password must wait',
-        $sixth !== null && (str_contains((string) $sixth['text'], 'धेरै प्रयास') || str_contains((string) $sixth['text'], 'लक')), (string) ($sixth['text'] ?? ''));
+        $sixth !== null && !str_starts_with((string) $sixth['text'], '✅'), (string) ($sixth['text'] ?? ''));
     check('  and the number is still a customer', $roleOf(WL_NEW2) === 'customer');
-    check('  the account itself is locked for a while',
-        (string) Database::scalar('SELECT locked_until FROM admins WHERE id = :i', ['i' => $agentId], '') > date('Y-m-d H:i:s'));
-    Database::update('admins', ['failed_logins' => 0, 'locked_until' => null], 'id = :i', ['i' => $agentId]);
+    check('  the WEB portal is NOT locked by WhatsApp guesses',
+        Database::scalar('SELECT locked_until FROM admins WHERE id = :i', ['i' => $agentId], null) === null
+        && (int) Database::scalar('SELECT failed_logins FROM admins WHERE id = :i', ['i' => $agentId], 0) === 0);
+    try { Database::delete('rate_limits', "bucket = 'wa_login'", []); } catch (Throwable $e) {}
+    $otherNumber = WaLogin::handle(WL_NEW, 'login ' . $codeLabel . ' ' . WL_PW);
+    check('  the ACCOUNT budget holds from a second number too', $otherNumber !== null && !str_starts_with((string) $otherNumber['text'], '✅') && $roleOf(WL_NEW) === 'customer');
+    try { Database::delete('rate_limits', "bucket IN ('wa_login','wa_login_acct')", []); } catch (Throwable $e) {}
 
     /* ================================================================
      *  6. The wiring

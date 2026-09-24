@@ -57,7 +57,7 @@ final class WaBot
         if ($senderDigits !== '' && $body !== '') {
             try {
                 require_once INCLUDE_PATH . '/walogin.php';
-                $auth = WaLogin::handle($senderDigits, $body);
+                $auth = WaLogin::handle($from, $body);   // the raw sender: +91 / +977 keeps the session apart
                 if ($auth !== null) {
                     return self::out($auth['text'], $auth['media'] ?? null);
                 }
