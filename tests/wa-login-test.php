@@ -10,7 +10,8 @@
  *    • OFF       with wa_login_on off nothing signs in — and a "login …"
  *                line is still swallowed (the password goes nowhere)
  *    • PASSWORD  the same admins.password_hash, the same generic failure,
- *                failed_logins counted, lockout, must_change_pw refused
+ *                failed_logins / locked_until untouched (own rate buckets),
+ *                must_change_pw refused
  *    • SECOND    an office role always needs the one-time code; an agent
  *      FACTOR    needs it when wa_login_otp is on; the sender's own
  *                registered number never does
@@ -76,6 +77,9 @@ Settings::set('wa_login_ttl_hours', 12, 'int', 'ai', false);
 Settings::set('whatsapp_driver', 'click_to_chat', 'string', 'notify', false);   // journal only, no network
 Settings::set('whatsapp_notify_customer', true, 'bool', 'notify', false);
 Settings::flush();
+// Registered NOW, not in the finally: a failure before the try (no route, a
+// fixture insert) must not leave the pinned switches on for the next suite.
+register_shutdown_function($restoreSettings);
 
 $mkStaff = static function (string $username, string $name, string $role, string $phone, string $email = ''): int {
     $id = (int) Database::scalar('SELECT id FROM admins WHERE username = :u', ['u' => $username], 0);
@@ -106,7 +110,15 @@ $cleanup = static function () use ($agentId, $bossId): void {
     try { Database::delete('otp_codes', "identifier LIKE 'walogin:" . WL_LIKE . "%'", []); } catch (Throwable $e) {}
     try { Database::delete('rate_limits', "identifier LIKE '%" . WL_LIKE . "%' OR identifier LIKE 'walogin:" . WL_LIKE . "%' OR bucket = 'wa_login_acct'", []); } catch (Throwable $e) {}
     try { Database::delete('admin_login_events', 'admin_id IN (:a, :b)', ['a' => $agentId, 'b' => $bossId]); } catch (Throwable $e) {}
-    try { Database::delete('admin_login_events', "username IN ('wa-login-agent','wa-login-boss','nobody-here')", []); } catch (Throwable $e) {}
+    try { Database::delete('admin_login_events', "username IN ('wa-login-agent','wa-login-boss','nobody-here','[unparsed id]')", []); } catch (Throwable $e) {}
+    try {
+        Database::delete('audit_logs',
+            "(action IN ('staff.login_whatsapp','staff.login_whatsapp_otp','staff.logout_whatsapp') AND entity_id IN (:a, :b))
+             OR (action LIKE 'admin.login.%' AND entity_id IN ('wa-login-agent','wa-login-boss','nobody-here','[unparsed id]'))
+             OR (action = 'agent.code_set' AND entity_id = :c)",
+            ['a' => (string) $agentId, 'b' => (string) $bossId, 'c' => (string) $agentId]);
+    } catch (Throwable $e) {}
+    try { Database::delete('message_logs', "to_number LIKE '%" . WL_LIKE . "%'", []); } catch (Throwable $e) {}
 };
 $cleanup();
 

@@ -84,6 +84,8 @@ Settings::set('whatsapp_notify_customer', true, 'bool', 'notify', false);
 Settings::set('whatsapp_notify_admin', false, 'bool', 'notify', false);
 Settings::set('agent_daily_booking_limit', 0, 'int', 'agent', false);
 Settings::flush();
+// Registered NOW: a failure before the try must not leave wa_bulk_on / selling on.
+register_shutdown_function($restoreSettings);
 
 $route = null;
 foreach (QuickTicket::routes() as $r) {
@@ -111,11 +113,11 @@ $agentId = $mkStaff('wa-bulk-agent', 'WA Bulk Agent', 'agent', WB_AGENT);
 $cleanup = static function () use ($D1, $D2): void {
     foreach (Database::fetchAll("SELECT id, pnr FROM bookings WHERE contact_phone LIKE '" . WB_LIKE . "%'") as $r) {
         $bid = (int) $r['id'];
-        foreach (['agent_ledger', 'tickets', 'payments', 'booking_passengers', 'booking_seats', 'booking_legs', 'notifications'] as $t) {
+        foreach (['agent_ledger', 'tickets', 'payments', 'booking_passengers', 'booking_seats', 'booking_legs', 'notifications', 'message_logs'] as $t) {
             try { Database::delete($t, 'booking_id = :b', ['b' => $bid]); } catch (Throwable $e) {}
         }
         try { Database::delete('ai_agent_calls', 'booking_id = :b', ['b' => $bid]); } catch (Throwable $e) {}
-        Database::delete('bookings', 'id = :i', ['i' => $bid]);
+        try { Database::delete('bookings', 'id = :i', ['i' => $bid]); } catch (Throwable $e) {}
         @unlink(TICKET_PATH . '/ticket_' . $r['pnr'] . '.png');
         @unlink(TICKET_PATH . '/ticket_' . $r['pnr'] . '.pdf');
         @unlink(INVOICE_PATH . '/invoice_' . $r['pnr'] . '.pdf');
@@ -296,7 +298,7 @@ try {
         $womenOnly = [];
         try { $womenOnly = array_map('strtoupper', array_map('strval', Seats::femaleSeats('sleeper'))); } catch (Throwable $e) {}
         check('  and not onto a women-only berth', array_intersect(array_map('strtoupper', $seatsMixed), $womenOnly) === [], implode(',', $seatsMixed) . ' vs ' . implode(',', $womenOnly));
-        foreach (['agent_ledger', 'tickets', 'payments', 'booking_passengers', 'booking_seats', 'booking_legs', 'notifications'] as $t) {
+        foreach (['agent_ledger', 'tickets', 'payments', 'booking_passengers', 'booking_seats', 'booking_legs', 'notifications', 'message_logs', 'ai_agent_calls'] as $t) {
             try { Database::delete($t, 'booking_id = :b', ['b' => (int) $mixedRow['id']]); } catch (Throwable $e) {}
         }
         Database::delete('bookings', 'id = :i', ['i' => (int) $mixedRow['id']]);
@@ -352,6 +354,8 @@ try {
     check('suite completed without an unexpected error', false, $e->getMessage() . ' @ ' . basename($e->getFile()) . ':' . $e->getLine());
 } finally {
     $cleanup();
+    try { Database::delete('message_logs', "to_number LIKE '%" . WB_LIKE . "%'", []); } catch (Throwable $e) {}
+    try { Database::delete('admins', 'id = :a', ['a' => $agentId]); } catch (Throwable $e) {}
     $restoreSettings();
 }
 

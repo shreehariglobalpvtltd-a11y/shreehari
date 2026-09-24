@@ -90,6 +90,8 @@ Settings::set('whatsapp_notify_admin', false, 'bool', 'notify', false);
 Settings::set('agent_daily_booking_limit', 0, 'int', 'agent', false);
 Settings::set('agent_payout_min', 0, 'float', 'agent', false);
 Settings::flush();
+// Registered NOW: a failure before the try must not leave the write switches on.
+register_shutdown_function($restoreSettings);
 
 $route = null;
 foreach (QuickTicket::routes() as $r) {
@@ -131,11 +133,11 @@ $codeLabel = AgentWallet::agentCodeLabel($agentId);
 $cleanup = static function () use ($D1, $D2, $D3, $agentId): void {
     foreach (Database::fetchAll("SELECT id, pnr FROM bookings WHERE contact_phone LIKE '" . WM_LIKE . "%'") as $r) {
         $bid = (int) $r['id'];
-        foreach (['agent_ledger', 'tickets', 'payments', 'booking_passengers', 'booking_seats', 'booking_legs', 'notifications'] as $t) {
+        foreach (['agent_ledger', 'tickets', 'payments', 'booking_passengers', 'booking_seats', 'booking_legs', 'notifications', 'message_logs'] as $t) {
             try { Database::delete($t, 'booking_id = :b', ['b' => $bid]); } catch (Throwable $e) {}
         }
         try { Database::delete('ai_agent_calls', 'booking_id = :b', ['b' => $bid]); } catch (Throwable $e) {}
-        Database::delete('bookings', 'id = :i', ['i' => $bid]);
+        try { Database::delete('bookings', 'id = :i', ['i' => $bid]); } catch (Throwable $e) {}
         @unlink(TICKET_PATH . '/ticket_' . $r['pnr'] . '.png');
         @unlink(TICKET_PATH . '/ticket_' . $r['pnr'] . '.pdf');
         @unlink(INVOICE_PATH . '/invoice_' . $r['pnr'] . '.pdf');
@@ -397,6 +399,10 @@ try {
 } finally {
     $cleanup();
     try { Database::delete('audit_logs', "entity_id = 'wa-mgr-agent' AND action = 'staff.toggle'", []); } catch (Throwable $e) {}
+    try { Database::delete('message_logs', "to_number LIKE '%" . WM_LIKE . "%'", []); } catch (Throwable $e) {}
+    try { AgentWallet::setAgentCode($agentId, null, 0); } catch (Throwable $e) {}
+    try { Database::delete('audit_logs', "action = 'agent.code_set' AND entity_id = :a", ['a' => (string) $agentId]); } catch (Throwable $e) {}
+    try { Database::delete('admins', 'id IN (:a, :b, :c)', ['a' => $agentId, 'b' => $bossId, 'c' => $counterId]); } catch (Throwable $e) {}
     $restoreSettings();
 }
 

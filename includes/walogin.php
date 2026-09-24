@@ -19,9 +19,11 @@
  *  WHAT KEEPS IT SAFE
  *  ------------------
  *   · the same credentials as the web login (admins.password_hash), the
- *     same generic failure text, the same failed_logins / locked_until
- *     counters and the same LoginLog rows — a guess on WhatsApp costs
- *     exactly what a guess on the login page costs;
+ *     same generic failure text and the same LoginLog rows — but its OWN
+ *     guess budgets (wa_login per number, wa_login_acct per account): a
+ *     WhatsApp guess never touches failed_logins / locked_until, because
+ *     the agent code is printed on every ticket and anyone holding one
+ *     could otherwise lock the agent out of the web portal;
  *   · a one-time code to the REGISTERED mobile of that account when
  *     wa_login_otp is on (default), and ALWAYS for office roles: a
  *     password alone is never enough to become the manager from a
