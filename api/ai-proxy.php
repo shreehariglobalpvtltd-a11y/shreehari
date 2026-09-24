@@ -89,7 +89,21 @@ try {
 
     /* ---- System prompt: server-owned, never client-supplied, built from
        live settings and tables on every call (ai_system_prompt above). */
-    $system = ai_system_prompt();
+    $webUser = Auth::user();
+    $webPhone = (string) ($webUser['phone'] ?? '');
+    $lastUser = '';
+    foreach (array_reverse($messages) as $m) { if (($m['role'] ?? '') === 'user') { $lastUser = (string) (is_string($m['content']) ? $m['content'] : ''); break; } }
+    $system = ai_system_prompt($webPhone, $lastUser);
+
+    /* "galat" / "wrong" right after an answer is a 👎 on it (24 Sep 2026). */
+    try {
+        require_once INCLUDE_PATH . '/ailearn.php';
+        $n = count($messages);
+        if ($n >= 3 && AiLearn::looksLikeCorrection($lastUser) && ($messages[$n - 2]['role'] ?? '') === 'assistant') {
+            AiLearn::feedback($webPhone !== '' ? $webPhone : Security::clientIp(), 'web', 'down',
+                (string) ($messages[$n - 3]['content'] ?? ''), (string) ($messages[$n - 2]['content'] ?? ''), mb_substr($lastUser, 0, 200));
+        }
+    } catch (Throwable $e) { /* learning is optional */ }
 
     /* ---- Relay to the Anthropic Messages API ----------------------- */
     $req = [

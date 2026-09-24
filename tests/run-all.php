@@ -157,6 +157,10 @@ const CORE_SUITES = [
     'whereis-test.php'             => '"Where is my bus?": honest status, three doors, the keyed page, its JSON, trackUrl in the app payload',
     'contact-layer-test.php'       => 'the contact dial on every screen; "call me back" reaches the office inbox; labels in three languages',
     'route-pages-test.php'         => 'search-facing route pages in en / hi / ne from the live tables; JSON-LD, hreflang, sitemaps, robots',
+    'ai-memory-test.php'           => 'memory that follows the person: hashed key, the register writes it, the brief, forget, the 120 cap',
+    'ai-learn-test.php'            => 'the learning loop: corrections in three scripts, candidates, office approval, the prompt block, the endpoint',
+    'social-posts-test.php'        => 'the marketing queue: validation, three-language caption, claim-then-send, retries, the daily cap',
+    'ai-manager-test.php'          => 'Admin → AI Manager: every tab, the office actions, the doors, the crons idle while off, the thumbs',
 ];
 
 /**

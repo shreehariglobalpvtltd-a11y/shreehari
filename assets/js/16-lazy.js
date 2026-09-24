@@ -2229,6 +2229,27 @@ document.addEventListener('click', function(e) {
     msgs.scrollTop = msgs.scrollHeight;
     persistChat(who, html);
     if (who === 'bot') markUnread();
+    return d;
+  }
+  /* 👍 / 👎 under a Claude answer (24 Sep 2026). One tap, no form: the
+     verdict and the two texts go to /api/ai-feedback.php, where a 👎 opens
+     an example the office can correct in Admin → AI Manager → Learn. The
+     row disappears after the tap; nothing is stored in the browser. */
+  function addFeedback(bubble, userText, replyText) {
+    if (!bubble || !replyText) return;
+    const row = document.createElement('div');
+    row.className = 'ai-fb';
+    row.innerHTML = '<button type="button" class="ai-fb-btn" data-v="up">' + esc(t('aiFbUp')) + '</button>'
+                  + '<button type="button" class="ai-fb-btn" data-v="down">' + esc(t('aiFbDown')) + '</button>';
+    row.addEventListener('click', function (ev) {
+      const b = ev.target.closest('.ai-fb-btn'); if (!b) return;
+      const v = b.getAttribute('data-v');
+      row.innerHTML = '<span class="ai-fb-done">' + esc(t(v === 'up' ? 'aiFbThanks' : 'aiFbNoted')) + '</span>';
+      shgApi.post('/ai-feedback.php', { verdict: v, userText: userText || '', replyText: replyText }).catch(function () {});
+      try { SFX.pop(); } catch (e) {}
+    });
+    bubble.appendChild(row);
+    msgs.scrollTop = msgs.scrollHeight;
   }
   /* Transcript memory (13 Sep 2026): the last 20 bubbles survive a reload,
      so a passenger who comes back sees the answer they were given, and the
@@ -2328,8 +2349,9 @@ document.addEventListener('click', function(e) {
           typing.remove();
           const text = (d && d.text) ? linkify(esc(d.text)).replace(/\n/g, '<br>') : '';
           if (!text) throw new Error('empty');
-          addMsg(text, 'bot');
+          const bubble = addMsg(text, 'bot');
           remember('assistant', d.text);
+          addFeedback(bubble, q, d.text);
           speakBot(d.text);
         })
         .catch(function () {

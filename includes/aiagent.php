@@ -84,9 +84,14 @@ final class AiAgent
      *  Entry
      * ================================================================= */
 
+    /** Set by the office copilot (admin/api/ai-copilot.php) so the office can
+     *  talk to the assistant on the web before wa_agent_on is switched on for
+     *  customers. Never set on the WhatsApp path. */
+    public static bool $officeDoor = false;
+
     public static function enabled(): bool
     {
-        return Settings::getBool('wa_agent_on', false)
+        return (Settings::getBool('wa_agent_on', false) || self::$officeDoor)
             && function_exists('curl_init')
             && (self::anthropicKey() !== '' || self::geminiKey() !== '');
     }
@@ -139,6 +144,20 @@ final class AiAgent
         try {
             $history      = self::loadHistory($who);
             $ctx['turn']  = self::bumpTurn($who);
+
+            /* Learning (24 Sep 2026): "galat" / "hoina" / "wrong" right after
+               an answer is a 👎 on that answer. Logged with the exchange so
+               the office can turn it into an approved example. */
+            if (count($history) >= 2 && $ctx['phone'] !== '') {
+                require_once INCLUDE_PATH . '/ailearn.php';
+                if (AiLearn::looksLikeCorrection($text)) {
+                    $last = end($history); $prev = prev($history);
+                    if (is_array($last) && ($last['role'] ?? '') === 'assistant' && is_array($prev) && ($prev['role'] ?? '') === 'user') {
+                        AiLearn::feedback($ctx['phone'], $channel, 'down', (string) ($prev['content'] ?? ''), (string) ($last['content'] ?? ''), mb_substr($text, 0, 200));
+                    }
+                }
+            }
+
             $history[]    = ['role' => 'user', 'content' => mb_substr($text, 0, 1500)];
 
             $answer = self::converse($ctx, $history);
@@ -951,6 +970,13 @@ final class AiAgent
             . self::companyBriefing();
 
         $sell = Settings::getBool('wa_agent_sell', false);
+
+        /* Memory that follows the person + corrections the office approved
+           (24 Sep 2026). Both read '' while their switches are off. */
+        require_once INCLUDE_PATH . '/aimemory.php';
+        require_once INCLUDE_PATH . '/ailearn.php';
+        $base .= AiMemory::brief((string) ($ctx['phone'] ?? ''))
+               . AiLearn::examplesBlock(AiLearn::languageOf((string) ($ctx['messageText'] ?? '')));
 
         if ($role === 'customer') {
             $base .= "\n=== YOU ARE TALKING TO A PASSENGER ===\n"
