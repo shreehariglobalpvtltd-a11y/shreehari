@@ -20,6 +20,7 @@ en: {
   waReqBook: '🎫 Book a ticket', waReqHelp: '🆘 Need help', waReqNamePh: 'Your name', waReqPhonePh: 'Mobile (WhatsApp)', waReqPax: 'Passengers', waReqNotePh: 'Anything to add? (optional)', waReqHelpPh: 'What do you need help with?', waReqGo: '📨 Send to the office on WhatsApp', waReqBusy: 'Sending…', waReqSent: '✅ Sent! The office will reply on your WhatsApp shortly.', waReqNeed: 'Enter your name and mobile number.', waReqNeedNote: 'Write what you need help with.', waReqFail: 'Could not send — tap “Continue in WhatsApp →” above instead.',
   waSheetTitle: 'Chat on WhatsApp', waSheetSub: 'One tap — booking, ticket, help', waBookNow: 'Book a ticket on WhatsApp', waBookSub: 'Date, direction & pickup are filled in for you',
   ecTitle: 'Book your ticket', ecNormal: 'Normal Booking', ecNormalSub: 'Pick date & seat', ecQuick: 'Quick Ticket', ecQuickSub: 'Name + mobile → 10 sec', ecWa: 'WhatsApp Booking', ecWaSub: 'Request · office confirms',
+  bbRoute: 'India ⇄ Nepal Travel Service', bbTag: 'Your trusted travel partner', bbF1: 'AC Sleeper', bbF2: 'Live GPS', bbF3: 'USB Charging', bbF4: 'Safe Travel',
   waReqPhoneError: 'Enter a valid mobile for the chosen country — India: 10 digits starting 6–9 · Nepal: 10 digits starting 96/97/98.', waReqDateError: 'Choose a valid journey date.', waReqPointError: 'Choose your boarding or drop town.', waReqPnrError: 'Enter the booking number (PNR) printed on your ticket.', waReqFixNote: 'What should be corrected? (e.g. name spelling, mobile, date)', waReqUnavailable: 'WhatsApp booking is not available right now — please call the office.',
   copied: 'Copied ✓',
   waDirector: 'Director · 24/7', waOfficeNepal: 'Nepal Office · Nepalgunj', waSheetFoot: 'Your ticket is sent to your WhatsApp automatically the moment it is confirmed ✅', waSheetClose: 'Close', waPin: 'Show on the map',
@@ -423,6 +424,7 @@ hi: {
   waReqBook: '🎫 टिकट बुक करें', waReqHelp: '🆘 मदद चाहिए', waReqNamePh: 'आपका नाम', waReqPhonePh: 'मोबाइल (WhatsApp)', waReqPax: 'यात्री', waReqNotePh: 'कुछ और? (वैकल्पिक)', waReqHelpPh: 'किस बात में मदद चाहिए?', waReqGo: '📨 WhatsApp पर ऑफ़िस को भेजें', waReqBusy: 'भेज रहे हैं…', waReqSent: '✅ भेज दिया! ऑफ़िस जल्द आपके WhatsApp पर जवाब देगा।', waReqNeed: 'अपना नाम और मोबाइल नंबर लिखें।', waReqNeedNote: 'किस बात में मदद चाहिए, लिखें।', waReqFail: 'भेज नहीं पाए — ऊपर “WhatsApp में जारी रखें →” दबाएँ।',
   waSheetTitle: 'WhatsApp पर बात करें', waSheetSub: 'एक टैप — बुकिंग, टिकट, मदद', waBookNow: 'WhatsApp पर टिकट बुक करें', waBookSub: 'तारीख़, दिशा और पिकअप अपने-आप भर जाते हैं',
   ecTitle: 'अपना टिकट बुक करें', ecNormal: 'सामान्य बुकिंग', ecNormalSub: 'तारीख और सीट चुनें', ecQuick: 'क्विक टिकट', ecQuickSub: 'नाम + मोबाइल → 10 सेकंड', ecWa: 'WhatsApp बुकिंग', ecWaSub: 'अनुरोध · ऑफ़िस पक्का करेगा',
+  bbRoute: 'भारत ⇄ नेपाल यात्रा सेवा', bbTag: 'आपका भरोसेमंद यात्रा साथी', bbF1: 'AC स्लीपर', bbF2: 'लाइव GPS', bbF3: 'USB चार्जिंग', bbF4: 'सुरक्षित यात्रा',
   waReqPhoneError: 'चुने गए देश का सही मोबाइल नंबर लिखें — भारत: 6–9 से शुरू 10 अंक · नेपाल: 96/97/98 से शुरू 10 अंक।', waReqDateError: 'यात्रा की सही तारीख चुनें।', waReqPointError: 'चढ़ने या उतरने का शहर चुनें।', waReqPnrError: 'टिकट पर छपा बुकिंग नंबर (PNR) लिखें।', waReqFixNote: 'क्या सुधारना है? (जैसे नाम की स्पेलिंग, मोबाइल, तारीख)', waReqUnavailable: 'WhatsApp बुकिंग अभी उपलब्ध नहीं है — कृपया ऑफ़िस को कॉल करें।',
   copied: 'कॉपी हो गया ✓',
   waDirector: 'डायरेक्टर · 24/7', waOfficeNepal: 'नेपाल ऑफ़िस · नेपालगंज', waSheetFoot: 'टिकट confirm होते ही आपके WhatsApp पर अपने-आप आ जाता है ✅', waSheetClose: 'बंद करें', waPin: 'मैप पर दिखाएँ',
@@ -818,6 +820,7 @@ ne: {
   waReqBook: '🎫 टिकट बुक गर्नुहोस्', waReqHelp: '🆘 सहायता चाहियो', waReqNamePh: 'तपाईंको नाम', waReqPhonePh: 'मोबाइल (WhatsApp)', waReqPax: 'यात्री', waReqNotePh: 'अरू केही? (ऐच्छिक)', waReqHelpPh: 'के सहायता चाहियो?', waReqGo: '📨 कार्यालयलाई WhatsApp मा पठाउनुहोस्', waReqBusy: 'पठाउँदै…', waReqSent: '✅ पठाइयो! कार्यालयले छिट्टै तपाईंको WhatsApp मा जवाफ दिनेछ।', waReqNeed: 'आफ्नो नाम र मोबाइल नम्बर लेख्नुहोस्।', waReqNeedNote: 'के सहायता चाहियो, लेख्नुहोस्।', waReqFail: 'पठाउन सकिएन — माथि “WhatsApp मा अगाडि बढ्नुहोस् →” थिच्नुहोस्।',
   waSheetTitle: 'WhatsApp मा कुरा गर्नुहोस्', waSheetSub: 'एक ट्याप — booking, टिकट, सहायता', waBookNow: 'WhatsApp मा टिकट बुक गर्नुहोस्', waBookSub: 'मिति, दिशा र चढ्ने ठाउँ आफैँ भरिन्छ',
   ecTitle: 'आफ्नो टिकट बुक गर्नुहोस्', ecNormal: 'सामान्य बुकिङ', ecNormalSub: 'मिति र सिट छान्नुहोस्', ecQuick: 'क्विक टिकट', ecQuickSub: 'नाम + मोबाइल → १० सेकेन्ड', ecWa: 'WhatsApp बुकिङ', ecWaSub: 'अनुरोध · कार्यालयले पक्का गर्छ',
+  bbRoute: 'भारत ⇄ नेपाल यात्रा सेवा', bbTag: 'तपाईंको भरपर्दो यात्रा साथी', bbF1: 'AC स्लीपर', bbF2: 'लाइभ GPS', bbF3: 'USB चार्जिङ', bbF4: 'सुरक्षित यात्रा',
   waReqPhoneError: 'छानिएको देशको सही मोबाइल नम्बर लेख्नुहोस् — भारत: ६–९ बाट सुरु हुने १० अङ्क · नेपाल: ९६/९७/९८ बाट सुरु हुने १० अङ्क।', waReqDateError: 'यात्राको सही मिति छान्नुहोस्।', waReqPointError: 'चढ्ने वा ओर्लने ठाउँ छान्नुहोस्।', waReqPnrError: 'टिकटमा छापिएको बुकिङ नम्बर (PNR) लेख्नुहोस्।', waReqFixNote: 'के सच्याउनुपर्छ? (जस्तै नामको हिज्जे, मोबाइल, मिति)', waReqUnavailable: 'WhatsApp बुकिङ अहिले उपलब्ध छैन — कृपया कार्यालयमा फोन गर्नुहोस्।',
   copied: 'कपी भयो ✓',
   waDirector: 'निर्देशक · 24/7', waOfficeNepal: 'नेपाल कार्यालय · नेपालगञ्ज', waSheetFoot: 'टिकट confirm हुनासाथ तपाईंको WhatsApp मा आफैँ आउँछ ✅', waSheetClose: 'बन्द गर्नुहोस्', waPin: 'नक्सामा देखाउनुहोस्',
@@ -865,10 +868,10 @@ ne: {
   waHumanSub: 'कर्मचारीसँग सीधै कुरा',
   updateReady: 'नयाँ वर्जन तयार छ — काम सकिएपछि रिफ्रेस हुन्छ।',
   haBook: 'टिकट बुक गर्नुहोस्', haBookSub: 'सिट खोज्नुहोस् र अहिले नै बुक गर्नुहोस्',
-  haMy: 'मेरो बुकिंग', haMySub: 'टिकट, स्टेटस र इतिहास',
+  haMy: 'मेरो बुकिङ', haMySub: 'टिकट, स्टेटस र इतिहास',
   haTrack: 'बस ट्र्याक गर्नुहोस्', haTrackSub: 'बस कहाँ छ हेर्नुहोस्',
   haHelp: 'सहायता', haHelpSub: '📞 कल · 💬 WhatsApp',
-  qtBadge: '🤖 QuickBot Ticket — १० सेकेन्डमा booking',
+  qtBadge: '🤖 QuickBot टिकट — १० सेकेन्डमा बुकिङ',
   bkQuick: '⚡ QuickBot · १० सेकेन्ड', bkQuickSub: 'नाम + मोबाइल → टिकट', bkRegular: '🪑 सिट छान्नुहोस्', bkRegularSub: 'मिति · सिट म्याप · भुक्तानी', bkBackQuick: 'QuickBot: नाम + मोबाइल → १० सेकेन्डमा टिकट', bkSwitch: 'बदल्नुहोस् →', qtAi1: 'नेपाली · हिन्दी · गुजराती · English पढ्छ', qtAi2: 'अर्को बस · सुरक्षित सिट · भाडा आफैँ छान्छ', qtAi3: 'टिकट जारी', qtAlt: 'आफ्नो सिट आफैँ छान्न चाहनुहुन्छ? सिट-म्याप booking खोल्नुहोस्', qtMicErr: 'आवाज बुझिएन — कृपया टाइप गर्नुहोस्।', qtMicTip: 'बोलेर book गर्नुहोस्',
   waTicketTitle: 'WhatsApp बाट टिकट',
   waTicketIntro: 'आफ्नो नाम, मोबाइल र यात्राको विवरण पठाउनुहोस्। WhatsApp मै booking अगाडि बढाउनुहोस्, टिकट सच्याउन अनुरोध गर्नुहोस्, वा अफिससँग सहयोग माग्नुहोस्।',
@@ -1219,7 +1222,7 @@ let LANG = (function () {
   } catch (e) {}
   return 'ne';
 })();
-I18N.gu = Object.assign({}, I18N.en, {"ecTitle": "તમારી ટિકિટ બુક કરો", "ecNormal": "સામાન્ય બુકિંગ", "ecNormalSub": "તારીખ અને સીટ પસંદ કરો", "ecQuick": "ક્વિક ટિકિટ", "ecQuickSub": "નામ + મોબાઇલ → 10 સેકન્ડ", "ecWa": "WhatsApp બુકિંગ", "ecWaSub": "વિનંતી · ઓફિસ પુષ્ટિ કરશે", "premiumFront": "આગળ · મુસાફરીની દિશા", "premiumRear": "પાછળ", "premiumBeyond": "સરહદોની પાર મુસાફરી", "premiumDirector": "અધ્યક્ષ / નિયામક", "premiumPromise": "તમારી મુસાફરી, અમારી જવાબદારી.", "premiumSafe": "સુરક્ષિત મુસાફરી", "premiumEasy": "સરળ બુકિંગ", "premiumLoading": "તમારી મુસાફરી તૈયાર થઈ રહી છે…", "premiumRetry": "જોડાણમાં સમય લાગે છે. ફરી લોડ કરો", "premiumSlow": "જોડાઈ રહ્યું છે. ફરી પ્રયાસ કરો અથવા આગળ વધો.", "premiumTrust": "વિશ્વાસ સાથે મુસાફરી.", "premiumPay": "સ્કેન કરીને ચૂકવો", "premiumPaid": "ચુકવણી ચકાસાયેલ", "premiumPending": "ચુકવણી ચકાસણી બાકી", "premiumVerify": "ટિકિટ ચકાસણી", "premiumDue": "બાકી રકમ"});
+I18N.gu = Object.assign({}, I18N.en, {"bbRoute": "ભારત ⇄ નેપાળ યાત્રા સેવા", "bbTag": "તમારો ભરોસાપાત્ર યાત્રા સાથી", "bbF1": "AC સ્લીપર", "bbF2": "લાઇવ GPS", "bbF3": "USB ચાર્જિંગ", "bbF4": "સુરક્ષિત યાત્રા", "ecTitle": "તમારી ટિકિટ બુક કરો", "ecNormal": "સામાન્ય બુકિંગ", "ecNormalSub": "તારીખ અને સીટ પસંદ કરો", "ecQuick": "ક્વિક ટિકિટ", "ecQuickSub": "નામ + મોબાઇલ → 10 સેકન્ડ", "ecWa": "WhatsApp બુકિંગ", "ecWaSub": "વિનંતી · ઓફિસ પુષ્ટિ કરશે", "premiumFront": "આગળ · મુસાફરીની દિશા", "premiumRear": "પાછળ", "premiumBeyond": "સરહદોની પાર મુસાફરી", "premiumDirector": "અધ્યક્ષ / નિયામક", "premiumPromise": "તમારી મુસાફરી, અમારી જવાબદારી.", "premiumSafe": "સુરક્ષિત મુસાફરી", "premiumEasy": "સરળ બુકિંગ", "premiumLoading": "તમારી મુસાફરી તૈયાર થઈ રહી છે…", "premiumRetry": "જોડાણમાં સમય લાગે છે. ફરી લોડ કરો", "premiumSlow": "જોડાઈ રહ્યું છે. ફરી પ્રયાસ કરો અથવા આગળ વધો.", "premiumTrust": "વિશ્વાસ સાથે મુસાફરી.", "premiumPay": "સ્કેન કરીને ચૂકવો", "premiumPaid": "ચુકવણી ચકાસાયેલ", "premiumPending": "ચુકવણી ચકાસણી બાકી", "premiumVerify": "ટિકિટ ચકાસણી", "premiumDue": "બાકી રકમ"});
 function t(k) { const d = I18N[LANG] || I18N.en; const s = (k in d) ? d[k] : I18N.en[k]; return s == null ? k : s; }
 function tf(k, vars) { let s = t(k); Object.keys(vars || {}).forEach(v => { s = s.split('{' + v + '}').join(vars[v]); }); return s; }
 function applyLang() {

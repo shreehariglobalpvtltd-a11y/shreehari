@@ -19,6 +19,11 @@
      3. Splash credit line
      4. Elevation, colour and focus polish
      5. Sound / haptics settings row
+     6. Devanagari: Nepali and Hindi a phone can read (same day, owner:
+        "nepali fonts haru bujeko xain")
+     7. Brand band on the phone home screen
+     8. Brand palette: one navy, one royal, one saffron ("color haru ali
+        profesional, brand lai highlight garera marketing khalko")
    ===================================================================== */
 
 
@@ -297,3 +302,319 @@ button,.btn,a.btn,.nav-link,.bn-item,.seat,.num-pill,.lang-btn,
 .feel-sw.on{background:var(--ok)}
 .feel-sw.on::after{transform:translateX(20px)}
 :root[data-theme="dark"] .feel-sw{background:#2A3750}
+
+
+/* ---------------------------------------------------------------------
+   6. DEVANAGARI — Nepali and Hindi that a phone can actually read
+   -------------------------------------------------------------------
+   Owner, 24 Sep: "nepali fonts haru bujeko xain". Measured on the Nepali
+   home page at 375px (shg-test, bd5bf64):
+     - 118 Devanagari elements below 12px, the smallest 9.5px (the Bikram
+       Sambat date under every day on the date strip, "असोज ८");
+     - letter-spacing from 0.1 to 1.4px on dates, labels, card heads, the
+       QuickBot badge and the footer headings. Tracking is a Latin idea:
+       the browser puts the gap between letter clusters, which cuts the
+       head-line (shirorekha) that joins a Devanagari word, so the word
+       reads as loose letters;
+     - Devanagari in Cinzel (Latin only) and in the monospace code stack,
+       so the phone fell back to whatever serif / mono Devanagari it had.
+   applyLang() (04-i18n.js) sets <html lang>, so every rule here hangs on
+   :lang(ne) / :lang(hi) and English is untouched. Anything marked
+   lang="en" inside a Nepali page (the brand name in #brandBand) keeps its
+   tracking, because :lang() follows the nearest lang attribute.
+   ------------------------------------------------------------------- */
+
+/* a) Devanagari faces AFTER the Latin ones: Latin still renders in Cinzel
+      / the monospace / the device UI font, and only Devanagari characters
+      fall through - to a sans face (Android Noto, iOS Kohinoor, Windows
+      Nirmala UI) instead of a serif or monospace fallback. */
+:root{
+  --f-display:'Cinzel',Georgia,'Noto Sans Devanagari','Kohinoor Devanagari','Nirmala UI',serif;
+  --f-body:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,'Noto Sans Devanagari','Kohinoor Devanagari','Nirmala UI',sans-serif;
+  --f-code:ui-monospace,'SF Mono',SFMono-Regular,'Roboto Mono',Menlo,Consolas,monospace,'Noto Sans Devanagari','Kohinoor Devanagari','Nirmala UI';
+}
+
+/* b) No tracking on Devanagari. !important on purpose: the tracking comes
+      from ~40 rules of every specificity plus inline style="" attributes,
+      and there is no case where spaced-out Devanagari is right. */
+:is(:lang(ne),:lang(hi)){letter-spacing:normal!important}
+
+/* c) Labels set in the monospace stack read as the body face in Nepali. */
+:root:is(:lang(ne),:lang(hi)) .s-field label{font-family:var(--f-body);font-size:12.5px}
+
+/* d) Size and line-height floors. Every selector below is the existing
+      rule plus the :root:is(:lang()) prefix, so it outranks the original
+      (and its phone override) by two classes without !important. Only
+      raised, never lowered; the desktop sizes at or above these stay. */
+:root:is(:lang(ne),:lang(hi)) .date-strip-30 button .d-bs{font-size:11px;line-height:1.3}
+:root:is(:lang(ne),:lang(hi)) .ec-head{font-size:13px}
+:root:is(:lang(ne),:lang(hi)) .ec-card b{line-height:1.3}
+:root:is(:lang(ne),:lang(hi)) .qt-head .qt-badge{font-size:11.5px;line-height:1.4}
+:root:is(:lang(ne),:lang(hi)) .qt-plan-facts small{font-size:12px}
+:root:is(:lang(ne),:lang(hi)) .qt-plan-facts em{font-size:12px}
+:root:is(:lang(ne),:lang(hi)) .qt-plan-row>span{font-size:12.5px}
+:root:is(:lang(ne),:lang(hi)) .qt-tnc{font-size:12px;line-height:1.5}
+:root:is(:lang(ne),:lang(hi)) .qt-go{line-height:1.4}
+:root:is(:lang(ne),:lang(hi)) .qa-card span:not(.qa-ico){font-size:12.5px}
+:root:is(:lang(ne),:lang(hi)) .tt-sub{font-size:12px}
+:root:is(:lang(ne),:lang(hi)) .tt-live{font-size:12.5px}
+:root:is(:lang(ne),:lang(hi)) .fb-chip{font-size:12.5px}
+:root:is(:lang(ne),:lang(hi)) .fb-price .n{font-size:12px}
+:root:is(:lang(ne),:lang(hi)) .bn-item{font-size:12px}
+:root:is(:lang(ne),:lang(hi)) .hero-slogan{line-height:1.4}
+:root:is(:lang(ne),:lang(hi)) #waBookBtn small{font-size:12.5px;line-height:1.4}
+@media (max-width:760px){
+  :root:is(:lang(ne),:lang(hi)) .divine-name{font-size:12.5px;line-height:1.4}
+  :root:is(:lang(ne),:lang(hi)) .ec-card small{font-size:12.5px;line-height:1.4}
+  :root:is(:lang(ne),:lang(hi)) .qt-pay{font-size:12.5px;line-height:1.45}
+  :root:is(:lang(ne),:lang(hi)) .qt-ai-chip span{font-size:12.5px}
+  :root:is(:lang(ne),:lang(hi)) .hero-feats li{font-size:12.5px}
+}
+
+/* e) The rest of the audit (read from the CSS and the JS templates, so it
+      also covers the booking flow, the ticket card and the payment tabs,
+      which a home-page probe cannot see). */
+/* Text that was set in the code face reads as the body face in Nepali. */
+:root:is(:lang(ne),:lang(hi)) :is(.kicker,.pay-amt small,.ret-tag,.crew-box small,.tk-route .city small,.pricing-card tbody td){font-family:var(--f-body)}
+/* Headings: Noto Sans Devanagari's glyph box is 1.3em before the matras,
+   so 1.05-1.2 made two-line headings collide. The Latin brand wordmarks
+   (.hero-brand, .shg-name, .bb-name) keep their tight setting. */
+:root:is(:lang(ne),:lang(hi)) :is(h1,h2,h3,h4,.h2):not(.hero-brand,.shg-name){line-height:1.4}
+:root:is(:lang(ne),:lang(hi)) :is(.qa-card b,.tc-title,.ha-card b,.ha-card small,.ai-wa-txt,.fb-price,.s-wa-btn,.wa-row b,
+  .qt-collapsed b,.home-more-btn .hm-tx,.rov-stops li span,.tk2-brand b,.tk2-tile b,.tk2-qr small,.paystep li b,.pm-tab,
+  .pm-tab b,.pm-tab .pm-sub,.nt-route,.tke-row .tke-val,.tke-row .tke-lbl,#view-seats #deckTabs .deck-tab){line-height:1.4}
+/* background-clip:text paints only inside the element's box, so a matra
+   above or below the line came out transparent. Grow the painted box; the
+   negative margin keeps every line exactly where it was. */
+:root:is(:lang(ne),:lang(hi)) :is(.hero .grad,.sec-head h2){padding-block:.16em;margin-block:-.16em}
+/* One-line boxes that cut Nepali off with "…": let it wrap instead. */
+:root:is(:lang(ne),:lang(hi)) :is(.pm-tab .pm-sub,.tk2-actions .btn,.qt-route>span){white-space:normal;text-overflow:clip}
+:root:is(:lang(ne),:lang(hi)) .pm-tab .pm-sub{overflow:visible}
+/* Size floor for the small labels (8-10.8px, where the matras and the
+   nukta dot disappear). */
+:root:is(:lang(ne),:lang(hi)) :is(.pm-tab .pm-sub,.tk2-tile small,.tk2-qr small,.tk2-fare .lbl,.paystep li b,
+  .premium-ticket-head .tk2-brand small,.qt-auto,.tke-row .tke-lbl,.steps .step span:last-child,
+  .field label small,.verify-note small,.crew-box small,.tt-gone-tag,.pay-amt small){font-size:11.5px}
+/* Weight ceiling: Android 12+ ships Noto Sans Devanagari with a weight
+   axis, so 900 draws as a true Black and the small counters fill in. */
+:root:is(:lang(ne),:lang(hi)) :is(.hero-qt-cta,.qt-banner h3,.wa-req-go,.pm-tab b,.s-wa-btn b,.qt-collapsed b){font-weight:800}
+
+
+/* ---------------------------------------------------------------------
+   7. BRAND BAND (phones) — markup and reasons above #brandBand in
+      app.template.html
+   -------------------------------------------------------------------
+   The logo palette (views.css :root[data-day="logo"]): navy #0C306C ->
+   royal #0054A8, and the logo arrow's orange for the keyline. Fixed hex,
+   not var(--blue): this band IS the brand, and must not turn purple or
+   bronze when a visitor picks another palette in the menu.
+   Contrast, measured (WCAG 2.x):
+     white on #0C306C 12.7   white on #0054A8 7.4
+     #FFD08A (tagline, PVT LTD) on #0054A8 5.2, on #0C306C 8.9
+     #0C306C on the white route pill 12.7
+     chips: white on white-13% over the gradient >= 6.0
+   ------------------------------------------------------------------- */
+.brand-wrap{display:none}
+@media (max-width:760px){
+  /* The id outranks views.css "#view-home > *:not(.hero):not(.search-wrap)"
+     (1,2,0), which a class selector here would lose to. */
+  #view-home > #brandBand{display:block;order:-1;width:100%;min-width:0;margin-top:12px}
+  .brand-band{
+    position:relative;overflow:hidden;isolation:isolate;
+    padding:16px 14px 18px;border-radius:20px;text-align:center;color:#fff;
+    background:
+      radial-gradient(120% 90% at 100% 0%,rgba(240,120,0,.30),transparent 55%),
+      linear-gradient(135deg,#0C306C 0%,#0A3F8A 55%,#0054A8 100%);
+    box-shadow:0 10px 26px rgba(12,48,108,.26);
+  }
+  /* Orange -> gold keyline along the bottom: the arrow in the logo. */
+  .brand-band::after{
+    content:"";position:absolute;left:0;right:0;bottom:0;height:4px;
+    background:linear-gradient(90deg,#F07800,#FFB547 50%,#F07800);
+  }
+  .bb-route{
+    display:inline-flex;align-items:center;gap:6px;margin:0 0 8px;
+    padding:2px 12px;border-radius:999px;background:#fff;color:#0C306C;
+    font-size:12.5px;font-weight:800;line-height:1.6;
+  }
+  /* One line from 320px up: "S HARI GLOBAL PVT LTD" measures 257px at 22px
+     in Cinzel 800, and the clamp keeps it under the band's inner width
+     (248px on a 320px phone, 301px on a 375px one). */
+  .bb-name{
+    margin:0;font-family:var(--f-display);font-weight:800;color:#fff;
+    font-size:clamp(19px,6vw,24px);line-height:1.2;letter-spacing:.03em;
+    text-shadow:0 2px 10px rgba(0,0,0,.25);
+  }
+  .bb-name small{font-size:.5em;letter-spacing:.12em;color:#FFD08A;vertical-align:middle;margin-left:2px}
+  .bb-tag{margin:4px 0 12px;font-size:15px;font-weight:800;line-height:1.5;color:#FFD08A}
+  /* Four facility tiles in one row: icon over a short label. */
+  .bb-feats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:0;padding:0;list-style:none}
+  .bb-feats li{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+    padding:6px 2px;border-radius:12px;min-width:0;
+    background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);
+    font-size:12px;font-weight:700;line-height:1.35;color:#fff;text-align:center;
+  }
+  .bb-ic{font-size:17px;line-height:1.1}
+  :root[data-theme="dark"] .brand-band{box-shadow:0 10px 26px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,255,255,.08)}
+}
+
+/* ---------------------------------------------------------------------
+   8. BRAND PALETTE - one navy, one royal, one saffron (24 Sep 2026)
+   -------------------------------------------------------------------
+   Owner: "color haru ali profesional, ankha ma parne, brand lai
+   highlight garera marketing khalko". Colours measured from the logo
+   (assets/img/logo.png) and the OG image: wordmark navy #0C306C, globe
+   royal #0054A8, arrow saffron #F07800 fading to amber.
+
+   Rules this section enforces:
+     - Brand surfaces (hero, header strips, QuickBot, footer, splash)
+       use FIXED hex, so they stay on-brand whatever the palette picker
+       (data-day) says - same reasoning as the brand band in section 7.
+     - Saffron #F07800 is a fill / keyline colour only. Any text on
+       saffron, or saffron text on white, uses the deeper #BF4C00 /
+       #A84300, which pass AA. Amber #FFB547 and gold #FFD08A are the
+       highlight colours on navy.
+     - Green belongs to WhatsApp only.
+     - No token that the seat map reads (--orange, --orange-600,
+       --blue, --blue-800, --card) is changed here, so seat states
+       (available / booked / selected / women / men) are untouched.
+   Contrast (WCAG 2.x, measured):
+     white on #BF4C00 4.94, on #A84300 6.06   (CTA, lang pill)
+     #06163A on #FFB547 10.1                   (QuickBot badge)
+     #A84300 on #F6F8FC 5.70, on #FFF 6.06     (kicker, active tab)
+     #FFF4E2 on #B84A00 4.80 (was 2.35 on #EC8A12)   (divine bar)
+     white on #0054A8 7.41, #0C306C 12.7, #BF4C00 4.94, #943A00 7.33,
+       #15803D 5.02, #0B5E2E 7.91              (three booking doors)
+     hero: white >= 8.1, #DCE8F7 >= 6.5, #FFD08A 7.0, #FFB547 >= 4.6
+     footer: #B9C9E6 >= 7.6, #FFD08A >= 8.9, #8FA5CC 7.1
+     dark: #FFB547 on #0A0E1A 11.0, #9CC3FF 10.7, #DCE8FF 15.6
+   ------------------------------------------------------------------- */
+:root{
+  --brand-navy-950:#06163A;
+  --brand-navy:#0C306C;
+  --brand-royal-700:#0A3F8A;
+  --brand-royal:#0054A8;
+  --brand-saffron:#F07800;      /* fills and keylines only */
+  --brand-saffron-700:#BF4C00;  /* white text on it: 4.94 */
+  --brand-saffron-800:#A84300;  /* saffron text on light: 5.70+ */
+  --brand-saffron-900:#943A00;
+  --brand-amber:#FFB547;        /* highlight on navy */
+  --brand-gold:#FFD08A;
+  --brand-cream:#FFF3D9;
+}
+
+/* a) Divine bar: same saffron sweep, but the centre stop under the text
+      is deep enough to read (text #FFF4E2 on #B84A00 4.80). */
+.divine-bar{background:linear-gradient(90deg,#5A1400,#8E2E04 22%,#B84A00 50%,#8E2E04 78%,#5A1400)}
+:root[data-theme="dark"] .divine-bar{background:linear-gradient(90deg,#3A0C00,#6E2204 22%,#9A3A04 50%,#6E2204 78%,#3A0C00)}
+
+/* b) Header strips: one navy family instead of five. */
+.topbar{background:var(--brand-navy)}
+.credit-ribbon{background:linear-gradient(90deg,var(--brand-navy-950),var(--brand-navy) 50%,var(--brand-navy-950))}
+.credit-txt small{color:rgba(207,224,248,.78)}
+.num-strip{background:linear-gradient(90deg,var(--brand-navy),var(--brand-royal-700) 55%,var(--brand-navy))}
+.num-pill:hover,.num-pill:focus-visible{background:var(--brand-saffron-700);border-color:var(--brand-saffron-700)}
+.nav-inner .num-pill.wa{background:#15803D}
+.lang-btn.on{background:var(--brand-saffron-700);color:#fff}
+
+/* c) Primary action: deep saffron, white text AA in both themes. The
+      selector list with :root[data-theme] matches the dark rule in
+      views.css (same specificity, loads later). Shadow stays on the
+      plain selectors so :hover / :active still win. */
+.btn-orange,.qt-go,
+:root[data-theme] .btn-orange,:root[data-theme] .qt-go{
+  background:linear-gradient(135deg,var(--brand-saffron-700),var(--brand-saffron-800));
+  color:#fff;
+}
+.btn-orange,.qt-go{box-shadow:0 6px 18px rgba(191,76,0,.30),inset 0 1px 0 rgba(255,190,110,.35)}
+
+/* d) Hero: the navy -> royal of the OG image and the brand band, a
+      saffron glow, gold route line, amber-gold slogan sheen. */
+.hero{background:
+  radial-gradient(900px 420px at 85% -10%,rgba(240,120,0,.28),transparent 60%),
+  radial-gradient(700px 500px at -10% 30%,rgba(0,84,168,.45),transparent 60%),
+  linear-gradient(140deg,var(--brand-navy-950) 0%,var(--brand-navy) 50%,var(--brand-royal-700) 100%)}
+:root[data-theme="dark"] .hero{background:
+  radial-gradient(900px 420px at 85% -10%,rgba(240,120,0,.16),transparent 60%),
+  linear-gradient(165deg,#000 0%,var(--brand-navy-950) 45%,#0A2150 100%)}
+.hero .orb.o2{background:var(--brand-royal)}
+.hero .eyebrow{color:var(--brand-gold)}
+.hero-sub{color:#DCE8F7}
+.hero .grad{background-image:linear-gradient(100deg,var(--brand-amber) 0%,var(--brand-gold) 25%,var(--brand-cream) 50%,var(--brand-gold) 75%,var(--brand-amber) 100%)}
+.hero-feats li{border-color:rgba(255,181,71,.40)}
+
+/* e) Three booking doors: blue / orange / green kept, each moved onto
+      the logo's own hue; small line at full opacity (4.61 -> 4.94 on
+      orange); a tinted glow so each door reads as its own colour. */
+.ec-head{position:relative;color:var(--brand-navy)}
+.ec-head::after{content:"";position:absolute;left:50%;bottom:-5px;width:44px;height:3px;margin-left:-22px;
+  border-radius:2px;background:linear-gradient(90deg,var(--brand-saffron),var(--brand-amber))}
+:root[data-theme="dark"] .ec-head{color:#DCE8FF}
+.ec-normal{background:linear-gradient(135deg,var(--brand-royal) 0%,var(--brand-navy) 100%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 8px 20px rgba(0,84,168,.28)}
+.ec-quick{background:linear-gradient(135deg,var(--brand-saffron-700) 0%,var(--brand-saffron-900) 100%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 8px 20px rgba(191,76,0,.28)}
+.ec-wa{background:linear-gradient(135deg,#15803D 0%,#0B5E2E 100%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 8px 20px rgba(21,128,61,.26)}
+.ec-card small{opacity:1}
+.ec-card:focus-visible{outline-color:var(--brand-navy)}
+
+/* f) QuickBot: brand navy -> royal card, and the badge becomes a gold
+      ribbon with navy text (was white on #F07800, 2.84). */
+.qt-banner{background:linear-gradient(135deg,var(--brand-navy) 0%,var(--brand-royal-700) 55%,var(--brand-royal) 100%)}
+:root[data-theme="dark"] .qt-banner{background:linear-gradient(135deg,var(--brand-navy-950),var(--brand-navy) 60%,var(--brand-royal-700))}
+.qt-badge{background:var(--brand-amber);color:var(--brand-navy-950)}
+
+/* g) Section rhythm: saffron kicker that passes AA, headings in the
+      logo gradient navy -> royal -> deep saffron. Dark mode gets a
+      light gradient (the old one started at #0C306C on black, 1.65). */
+.kicker{color:var(--brand-saffron-800)}
+:root[data-theme="dark"] .kicker{color:var(--brand-amber)}
+.sec-head h2{background:linear-gradient(135deg,var(--brand-navy) 0%,var(--brand-royal) 60%,var(--brand-saffron-700) 100%);
+  -webkit-background-clip:text;background-clip:text}
+:root[data-theme="dark"] .sec-head h2{background:linear-gradient(135deg,#FFFFFF 0%,#9CC3FF 60%,var(--brand-amber) 100%);
+  -webkit-background-clip:text;background-clip:text}
+.bn-item.on{color:var(--brand-saffron-800)}
+:root[data-theme="dark"] .bn-item.on{color:var(--brand-amber)}
+
+/* h) Footer: brand navy, gold headings, the CIN in gold (the
+      "registered Indian company" trust line). */
+footer{background:linear-gradient(180deg,var(--brand-navy) 0%,var(--brand-navy-950) 100%)}
+.f-grid h4{color:var(--brand-gold)}
+.f-grid a:hover{color:var(--brand-amber)}
+.f-bottom .code{color:var(--brand-gold)}
+.f-dev{color:#8FA5CC}
+.f-dev a{color:#B9C9E6}
+.f-dev a:hover{color:var(--brand-amber)}
+
+/* i) Splash. The startup screen is painted by the #splash block at the
+      end of views.css (ID selectors, light ground #FFF -> #DCECFF in
+      BOTH themes), so these rules carry #splash to reach it.
+      - title and CEO name: brand navy (was #102A56, a sixth navy);
+      - "S HARI GLOBAL" under the CEO: navy 800 instead of 10px grey;
+      - the CEO number in deep saffron (section 3's orange never won
+        against "#splash .splash-ceo span");
+      - "By Sher Bahadur Bishwokarma": section 3 turns it #8296B4 with
+        the name #EAF1FF in dark mode, on this LIGHT ground - 2.5 and
+        1.06, the name disappears. Same colours in both themes now:
+        #526680 4.90 and #0C306C 10.6 at the #DCECFF edge. */
+#splash .splash-title{color:var(--brand-navy)}
+#splash .splash-ceo b{color:var(--brand-navy)}
+#splash .splash-ceo b + span{color:var(--brand-navy);font-weight:800}
+#splash .splash-ceo .splash-ceo-num{color:var(--brand-saffron-800)}
+.premium-promise{color:var(--brand-navy)}
+.splash-by,:root[data-theme="dark"] .splash-by{color:#526680}
+.splash-by b,:root[data-theme="dark"] .splash-by b{color:var(--brand-navy)}
+.splash-phone{color:var(--brand-saffron-800)}
+
+/* j) Dark mode, booking-flow TEXT only (no seat state): fare, total,
+      amount payable and departure time are painted var(--blue-deep),
+      which in dark mode is #0C306C (logo palette) or #000 (others) on a
+      #0A0E1A card - 1.52 / 1.09. Drop this block if the booking flow
+      must stay byte-identical. */
+:root[data-theme="dark"] .bc-fare .amt,
+:root[data-theme="dark"] .sum-row.total b,
+:root[data-theme="dark"] .pay-amt .big,
+:root[data-theme="dark"] .bus-card .depTime-big,
+:root[data-theme="dark"] .rules-summary summary{color:#DCE8FF}
