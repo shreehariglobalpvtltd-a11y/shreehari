@@ -1212,9 +1212,15 @@ final class AgentWallet
         if ($adminId <= 0) {
             return;
         }
-        if (Auth::admin() !== null && !Auth::isCounterAgent()) {
-            return;
+        if (Auth::admin() !== null) {
+            if (!Auth::isCounterAgent()) {
+                return;                     // the office selling under an agent's code
+            }
+        } elseif (PHP_SAPI === 'cli') {
+            return;                         // tests and cron act as the office
         }
+        // A web request with no admin session can only be a machine channel
+        // (the WhatsApp webhook) selling AS the agent: bound like the agent.
         if (!self::isAgentRow($adminId)) {
             return;
         }

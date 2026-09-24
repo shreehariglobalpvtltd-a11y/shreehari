@@ -153,6 +153,7 @@ const CORE_SUITES = [
     // 24 Sep 2026, registered with the per-request session check it guards.
     'admin-session-revalidate-test.php' => 'a deactivated or demoted staff member loses it on the next request, not the next login',
     'money-guards-test.php'        => 'paper-ticket cap, agent-only commission, no proof downgrade, coupon redemption, second void, hold cap',
+    'seat-events-test.php'         => 'live seat events: the version moves only when seats move; unchanged answers; the stream',
 ];
 
 /**
