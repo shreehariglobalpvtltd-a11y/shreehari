@@ -691,6 +691,10 @@ function shg_customer_payload(array $detail): array
         'ticketUrl'   => $detail['status'] === 'confirmed'
             ? Ticket::downloadUrl((string) $detail['pnr'])
             : null,
+        // "Where is my bus?" — public keyed page, shareable with the family.
+        'trackUrl'    => $detail['status'] === 'confirmed'
+            ? Ticket::trackUrl((string) $detail['pnr'])
+            : null,
         'createdAt'   => $createdAt !== false ? $createdAt * 1000 : null,
     ];
 }

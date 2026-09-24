@@ -154,6 +154,7 @@ const CORE_SUITES = [
     'admin-session-revalidate-test.php' => 'a deactivated or demoted staff member loses it on the next request, not the next login',
     'money-guards-test.php'        => 'paper-ticket cap, agent-only commission, no proof downgrade, coupon redemption, second void, hold cap',
     'seat-events-test.php'         => 'live seat events: the version moves only when seats move; unchanged answers; the stream',
+    'whereis-test.php'             => '"Where is my bus?": honest status, three doors, the keyed page, its JSON, trackUrl in the app payload',
 ];
 
 /**
