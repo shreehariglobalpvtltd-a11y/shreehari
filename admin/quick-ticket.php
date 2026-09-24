@@ -470,20 +470,87 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
   };
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); };
 
-  function seatLabel(id, coach, mode){
-    id = String(id==null?'':id).toUpperCase();
-    var m = id.match(/^([LU])(\d+)$/);
-    if(m){
-      var across = mode==='private' ? [2,1] : [4,2];
-      try{ var mm = window.SHG_BOOT&&SHG_BOOT.settings&&SHG_BOOT.settings.seat_mode_map;
-           var sp = mm && mm[coach||'sleeper']; var ru = sp&&sp.modes&&sp.modes[mode||'sharing'];
-           if(ru&&Array.isArray(ru.across)&&ru.across.length===2) across=ru.across; }catch(e){}
-      var perRow = Math.max(1,(parseInt(across[0],10)||0)+(parseInt(across[1],10)||0));
-      var n = parseInt(m[2],10); if(!(n>=1)) return id;
-      var idx = Math.floor((n-1)/perRow), out=''; for(var k=idx;;){ out=String.fromCharCode(65+(k%26))+out; k=Math.floor(k/26)-1; if(k<0)break; }
-      return m[1]+out+(((n-1)%perRow)+1);
+  /* Seat labels (24 Sep 2026). This page used to keep its own copy of the
+     OLD deck-prefixed grid, so after the two-floor grid shipped the plan
+     card, the result card, Recent, the "same as last time" chip and the
+     spoken read-back said "UA4" while the seat map and the ticket shown
+     in the same card said "A10". These are the shared helpers from
+     assets/js/06-results.js (seatModeRuleJS ... seatLabel), kept in step
+     with them: tests/seat-label-parity.js lifts THIS copy as well and
+     holds it to tests/seat-labels.json (= Seats::displayLabel). Display
+     only - the stored id (L1..U36) still flows through plan, sale and API. */
+  if (!(window.SHG_BOOT && window.SHG_BOOT.settings)) {
+    window.SHG_BOOT = { settings: { seat_mode_map: <?= json_encode(Settings::getArray('seat_mode_map', []) ?: null) ?> } };
+  }
+  function seatModeRuleJS(coachType, mode) {
+    try {
+      const map = window.SHG_BOOT && SHG_BOOT.settings && SHG_BOOT.settings.seat_mode_map;
+      const spec = map && map[coachType || 'sleeper'];
+      const rule = spec && spec.modes && spec.modes[mode];
+      if (rule) return rule;
+    } catch (e) { /* boot payload absent or malformed - fall through */ }
+    return null;
+  }
+  function bedsPerLabelJS(coachType, mode) {
+    const rule = seatModeRuleJS(coachType, mode);
+    const n = rule && parseInt(rule.bedsPerLabel, 10);
+    if (n >= 1) return n;
+    return mode === 'private' ? 2 : 1;
+  }
+  function seatRowLetterJS(idx) {
+    idx = Math.max(0, idx | 0);
+    let out = '';
+    do { out = String.fromCharCode(65 + (idx % 26)) + out; idx = Math.floor(idx / 26) - 1; } while (idx >= 0);
+    return out;
+  }
+  function seatModeSpecJS(coachType) {
+    try {
+      const map = window.SHG_BOOT && SHG_BOOT.settings && SHG_BOOT.settings.seat_mode_map;
+      return (map && map[coachType || 'sleeper']) || null;
+    } catch (e) { return null; }
+  }
+  function seatBedsOfLabelJS(label, coachType, mode) {
+    const rule = seatModeRuleJS(coachType, mode);
+    if (rule && rule.explicit && rule.explicit[label]) {
+      return rule.explicit[label].map(function (b) { return String(b).toUpperCase(); });
     }
-    if(/^\d+$/.test(id)) return 'A'+id;
+    const per = bedsPerLabelJS(coachType, mode);
+    const m = label.match(/^([A-Z])(\d+)$/);
+    if (per <= 1 || !m) return [label];
+    const j = parseInt(m[2], 10), out = [];
+    for (let k = per * (j - 1) + 1; k <= per * j; k++) out.push(m[1] + k);
+    return out;
+  }
+  function seatBedLabelJS(bed, coachType) {
+    const m = bed.match(/^([A-Z])(\d+)$/);
+    const n = m ? parseInt(m[2], 10) : 0;
+    if (!(n >= 1)) return bed;
+    const spec = seatModeSpecJS(coachType);
+    const rule = seatModeRuleJS(coachType, (spec && spec.canonical) || 'sharing');
+    const across = (rule && Array.isArray(rule.across) && rule.across.length === 2) ? rule.across : [4, 2];
+    const perRow = Math.max(1, (parseInt(across[0], 10) || 0) + (parseInt(across[1], 10) || 0));
+    const floor = Math.max(0, ((spec && Array.isArray(spec.decks)) ? spec.decks : ['L', 'U']).indexOf(m[1]));
+    return seatRowLetterJS(Math.floor((n - 1) / perRow)) + (((n - 1) % perRow) + 1 + floor * perRow);
+  }
+  function seatJoinBedLabelsJS(lbls) {
+    if (lbls.length < 2) return lbls[0] || '';
+    let row = null, prev = null;
+    for (let i = 0; i < lbls.length; i++) {
+      const m = String(lbls[i]).match(/^([A-Z]+)(\d+)$/);
+      if (!m || (row !== null && m[1] !== row) || (prev !== null && parseInt(m[2], 10) !== prev + 1)) return lbls.join('+');
+      row = m[1]; prev = parseInt(m[2], 10);
+    }
+    return lbls[0] + '-' + prev;
+  }
+  function seatLabel(id, coachType, mode) {
+    id = String(id == null ? '' : id).toUpperCase();
+    const m = id.match(/^([LU])(\d+)$/);
+    if (m) {
+      if (!(parseInt(m[2], 10) >= 1)) return id;
+      const coach = coachType || 'sleeper';
+      return seatJoinBedLabelsJS(seatBedsOfLabelJS(id, coach, mode || 'sharing').map(function (b) { return seatBedLabelJS(b, coach); }));
+    }
+    if (/^\d+$/.test(id)) return 'A' + id;
     return id;
   }
   function seatLabelJoin(seats, coach, mode){ return (seats||[]).map(function(s){return seatLabel(s,coach,mode);}).join(', '); }

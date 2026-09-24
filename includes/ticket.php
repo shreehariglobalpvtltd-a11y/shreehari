@@ -784,7 +784,10 @@ final class Ticket
             return $path;
         }
 
-        self::renderWithLock($path, !$force, static function () use ($booking, $ticket, $path, $filename) {
+        /* 24 Sep 2026: pass $stale through, as pngPath() does. It used to be
+           !$force alone, so a stale PDF that already existed was "skipped" and
+           printed / e-mailed tickets kept the old seat names forever. */
+        self::renderWithLock($path, !($force || $stale), static function () use ($booking, $ticket, $path, $filename) {
             self::renderTicketPdf($booking, $ticket)->save($path);
             Database::update('tickets', ['pdf_path' => $filename], 'id = :id', ['id' => $ticket['id']]);
         });

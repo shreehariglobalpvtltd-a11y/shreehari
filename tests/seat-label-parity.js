@@ -78,5 +78,42 @@ check('72 distinct labels in the browser', new Set(all).size === 72 && all.lengt
 check('seatLabelJoin prints the ticket line', js.seatLabelJoin(['L1', 'U1', 'U36'], 'sleeper', 'sharing') === 'A1, A7, F12');
 check('lower-case and odd input tolerated', js.seatLabel('u4', 'sleeper', 'sharing') === 'A10' && js.seatLabel('', 'sleeper') === '' && js.seatLabel(null) === '');
 
+/* 24 Sep 2026: the QuickBot desk (admin/quick-ticket.php) carries its own
+   copy of these helpers inside the page script. It had fallen behind (it
+   printed "UA4" for U4), so the same table now holds that copy too. */
+const DESK = fs.readFileSync(path.join(__dirname, '..', 'admin', 'quick-ticket.php'), 'utf8');
+function liftFrom(src, name, file) {
+  const start = src.search(new RegExp('^[ \\t]*function ' + name + '\\(', 'm'));
+  if (start < 0) throw new Error('function ' + name + ' not found in ' + file);
+  let depth = 0, i = src.indexOf('{', start);
+  for (; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}' && --depth === 0) break;
+  }
+  return src.slice(start, i + 1);
+}
+const DESK_CODE = NAMES.map(function (n) { return liftFrom(DESK, n, 'admin/quick-ticket.php'); }).join('\n');
+function deskSandbox(boot) {
+  const ctx = { window: {} };
+  if (boot) { ctx.window.SHG_BOOT = boot; ctx.SHG_BOOT = boot; }
+  vm.createContext(ctx);
+  vm.runInContext(DESK_CODE, ctx);
+  return ctx;
+}
+[['with the boot rule set', { settings: { seat_mode_map: FIX.seat_mode_map } }], ['with NO boot payload (fallback)', null]]
+  .forEach(function (c) {
+    const desk = deskSandbox(c[1]);
+    ['sharing', 'private'].forEach(function (mode) {
+      const want = FIX.labels[mode];
+      const bad = Object.keys(want).filter(function (id) { return desk.seatLabel(id, 'sleeper', mode) !== want[id]; });
+      check('QuickBot desk: ' + mode + ' labels match PHP, ' + c[0], bad.length === 0,
+        bad.slice(0, 4).map(function (id) { return id + ': desk ' + desk.seatLabel(id, 'sleeper', mode) + ' / php ' + want[id]; }).join('; '));
+    });
+  });
+const desk = deskSandbox({ settings: { seat_mode_map: FIX.seat_mode_map } });
+check('QuickBot desk: seatLabelJoin prints the ticket line', desk.seatLabelJoin(['L1', 'U1', 'U36'], 'sleeper', 'sharing') === 'A1, A7, F12',
+  desk.seatLabelJoin(['L1', 'U1', 'U36'], 'sleeper', 'sharing'));
+check('QuickBot desk: no deck-prefixed grid left (U4 is A10, never UA4)', desk.seatLabel('U4', 'sleeper', 'sharing') === 'A10');
+
 console.log('\n  ' + PASS + ' passed, ' + FAIL + ' failed\n');
 process.exit(FAIL === 0 ? 0 : 1);
