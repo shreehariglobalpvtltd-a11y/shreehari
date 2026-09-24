@@ -308,96 +308,138 @@ button,.btn,a.btn,.nav-link,.bn-item,.seat,.num-pill,.lang-btn,
    6. DEVANAGARI — Nepali and Hindi that a phone can actually read
    -------------------------------------------------------------------
    Owner, 24 Sep: "nepali fonts haru bujeko xain". Measured on the Nepali
-   home page at 375px (shg-test, bd5bf64):
-     - 118 Devanagari elements below 12px, the smallest 9.5px (the Bikram
-       Sambat date under every day on the date strip, "असोज ८");
-     - letter-spacing from 0.1 to 1.4px on dates, labels, card heads, the
-       QuickBot badge and the footer headings. Tracking is a Latin idea:
-       the browser puts the gap between letter clusters, which cuts the
-       head-line (shirorekha) that joins a Devanagari word, so the word
-       reads as loose letters;
-     - Devanagari in Cinzel (Latin only) and in the monospace code stack,
-       so the phone fell back to whatever serif / mono Devanagari it had.
-   applyLang() (04-i18n.js) sets <html lang>, so every rule here hangs on
-   :lang(ne) / :lang(hi) and English is untouched. Anything marked
-   lang="en" inside a Nepali page (the brand name in #brandBand) keeps its
-   tracking, because :lang() follows the nearest lang attribute.
+   home page at 375px: 118 Devanagari elements under 12px (the smallest
+   9.5px: the Bikram Sambat date on every day chip), tracking of 0.1-1.4px
+   on 40+ rules, line-heights of 1.05-1.3, and Devanagari set in Cinzel and
+   in the monospace code stack. Tracking is what breaks the script: the
+   gap lands between letter clusters and cuts the head-line (shirorekha)
+   that joins a Devanagari word, so it reads as loose letters.
+
+   v2 (same day, after an independent review of v1 as shipped in 5993747):
+   v1 ended the display stack in `serif`, and Chrome for Android cannot
+   pick a Devanagari face by name, so it asked Android for a SERIF
+   fallback (Noto Serif Devanagari) on every Cinzel element; v1's blanket
+   `letter-spacing:normal!important` also took the tracking off the Latin
+   wordmarks; and its 11.5px floor shrank the 13px booking-step labels.
+
+   Hook: applyLang() (assets/js/04-i18n.js) writes LANG into <html lang>
+   on every switch. Every rule tests the element's OWN language —
+   X:is(:lang(ne),:lang(hi)) — so English never matches, a lang="en"
+   island (the brand name in #brandBand) is skipped, and a lang="ne" span
+   in English markup later picks the fix up. No font is downloaded.
+   Checked in Chrome: with lang=en, 0 of 3,202 elements change computed
+   style; with ne at 320/375px no horizontal scroll, and visible tracked /
+   under-11px / under-1.3 Devanagari went from 44/31/44 to 0/0/0.
    ------------------------------------------------------------------- */
 
-/* a) Devanagari faces AFTER the Latin ones: Latin still renders in Cinzel
-      / the monospace / the device UI font, and only Devanagari characters
-      fall through - to a sans face (Android Noto, iOS Kohinoor, Windows
-      Nirmala UI) instead of a serif or monospace fallback. */
-:root{
-  --f-display:'Cinzel',Georgia,'Noto Sans Devanagari','Kohinoor Devanagari','Nirmala UI',serif;
-  --f-body:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,'Noto Sans Devanagari','Kohinoor Devanagari','Nirmala UI',sans-serif;
-  --f-code:ui-monospace,'SF Mono',SFMono-Regular,'Roboto Mono',Menlo,Consolas,monospace,'Noto Sans Devanagari','Kohinoor Devanagari','Nirmala UI';
+/* a) Named Devanagari faces right after the Latin face. Cinzel stays
+      first (its @font-face unicode-range is Latin-only, so "S HARI
+      GLOBAL" still draws in Cinzel). The display stack ends in sans-serif
+      so Android's fallback is a SANS Devanagari. The code stack keeps
+      `monospace` ahead of the Devanagari faces: several of them carry
+      Latin glyphs and would otherwise un-monospace the PNRs and times. */
+[lang|="ne"],[lang|="hi"]{
+  --f-deva:'Nirmala UI','Kohinoor Devanagari','Noto Sans Devanagari','Devanagari Sangam MN','Mangal','Lohit Devanagari';
+  --f-body:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,var(--f-deva),sans-serif;
+  --f-display:'Cinzel',var(--f-deva),Georgia,sans-serif;
+  --f-code:ui-monospace,'SF Mono',SFMono-Regular,'Roboto Mono',Menlo,Consolas,monospace,var(--f-deva);
+}
+/* Labels that were set in the code (monospace) face use the body face. */
+:is(.s-field label,.pay-amt small,.ret-tag,.crew-box small,
+    .tk-route .city small,.pricing-card tbody td,.qr-box .upi-id button,
+    .tc-sum .tc-lang):is(:lang(ne),:lang(hi)){
+  font-family:var(--f-body);
 }
 
-/* b) No tracking on Devanagari. !important on purpose: the tracking comes
-      from ~40 rules of every specificity plus inline style="" attributes,
-      and there is no case where spaced-out Devanagari is right. */
-:is(:lang(ne),:lang(hi)){letter-spacing:normal!important}
+/* b) No tracking and no forced capitals on every translated element and
+      on every rule found putting tracking on Devanagari. !important
+      because several of those rules carry #ids. Codes, phone numbers, the
+      splash credit line and the Latin wordmarks are not listed, so they
+      keep their tracking. */
+:is([data-i18n],[data-i18n] *,
+    .divine-name,.topbar .mantra,.f-ceo #ceoMantra,
+    .date-strip-30 button .d-bs,.ec-head,.qt-badge,.fare-live .fl-lbl,.fare-live .fl-off,.fb-off,
+    .s-field label,.pay-amt small,.pricing-card thead th,.tier-select .tier-lbl,
+    .f-grid h4,.ha-card b,.hl-off-badge,.sp-hint,
+    .lang-btn,.lang-mini .lang-mini-btn,.pill,.badge,.tt-sub,.daily-service-note,
+    .deck-tabs .deck-lbl,.bus-card .seats-avail-pill,.ret-tag,.crew-box small,
+    .tk-route .city small,.astat span,.bp-title,.vip-band,
+    .tk2-brand small,.tk2-pill,.tk2-tile small,.tk2-fare .lbl,.pax-table th,
+    .qt-plan-row>span,.qt-plan-facts small):is(:lang(ne),:lang(hi)){
+  letter-spacing:normal!important;
+  text-transform:none!important;
+}
+/* Section labels mix English and Nepali in one line ("Our Speciality ·
+   हाम्रो विशेषता"): drop the tracking, keep the English capitals. */
+:is(.kicker,.h2):is(:lang(ne),:lang(hi)){letter-spacing:normal}
 
-/* c) Labels set in the monospace stack read as the body face in Nepali. */
-:root:is(:lang(ne),:lang(hi)) .s-field label{font-family:var(--f-body);font-size:12.5px}
-
-/* d) Size and line-height floors. Every selector below is the existing
-      rule plus the :root:is(:lang()) prefix, so it outranks the original
-      (and its phone override) by two classes without !important. Only
-      raised, never lowered; the desktop sizes at or above these stay. */
-:root:is(:lang(ne),:lang(hi)) .date-strip-30 button .d-bs{font-size:11px;line-height:1.3}
-:root:is(:lang(ne),:lang(hi)) .ec-head{font-size:13px}
-:root:is(:lang(ne),:lang(hi)) .ec-card b{line-height:1.3}
-:root:is(:lang(ne),:lang(hi)) .qt-head .qt-badge{font-size:11.5px;line-height:1.4}
-:root:is(:lang(ne),:lang(hi)) .qt-plan-facts small{font-size:12px}
-:root:is(:lang(ne),:lang(hi)) .qt-plan-facts em{font-size:12px}
-:root:is(:lang(ne),:lang(hi)) .qt-plan-row>span{font-size:12.5px}
-:root:is(:lang(ne),:lang(hi)) .qt-tnc{font-size:12px;line-height:1.5}
-:root:is(:lang(ne),:lang(hi)) .qt-go{line-height:1.4}
-:root:is(:lang(ne),:lang(hi)) .qa-card span:not(.qa-ico){font-size:12.5px}
-:root:is(:lang(ne),:lang(hi)) .tt-sub{font-size:12px}
-:root:is(:lang(ne),:lang(hi)) .tt-live{font-size:12.5px}
-:root:is(:lang(ne),:lang(hi)) .fb-chip{font-size:12.5px}
-:root:is(:lang(ne),:lang(hi)) .fb-price .n{font-size:12px}
-:root:is(:lang(ne),:lang(hi)) .bn-item{font-size:12px}
-:root:is(:lang(ne),:lang(hi)) .hero-slogan{line-height:1.4}
-:root:is(:lang(ne),:lang(hi)) #waBookBtn small{font-size:12.5px;line-height:1.4}
-@media (max-width:760px){
-  :root:is(:lang(ne),:lang(hi)) .divine-name{font-size:12.5px;line-height:1.4}
-  :root:is(:lang(ne),:lang(hi)) .ec-card small{font-size:12.5px;line-height:1.4}
-  :root:is(:lang(ne),:lang(hi)) .qt-pay{font-size:12.5px;line-height:1.45}
-  :root:is(:lang(ne),:lang(hi)) .qt-ai-chip span{font-size:12.5px}
-  :root:is(:lang(ne),:lang(hi)) .hero-feats li{font-size:12.5px}
+/* c) Line height: every heading (the Latin wordmark keeps its tight
+      1.05-1.12), then each text rule found below 1.35. */
+:is(h1,h2,h3,h4,h5,h6,.h2):is(:lang(ne),:lang(hi)):not(.hero-brand,.shg-name){
+  line-height:1.45;
+}
+:is(.hero-slogan,.qa-card b,.tc-title,.date-chips button,
+    .ai-head b,.ai-wa-txt,.ec-card b,.ec-card small,.fb-price,.pm-tab,.pm-tab b,.pm-tab .pm-sub,
+    .ha-card b,.ha-card small,.home-more-btn .hm-tx,.tk2-brand b,.tk2-qr small,.tk2-tile b,
+    .rov-stops li span,.paystep li b,.nt-route,.qt-go,.qt-collapsed b,.qt-head .qt-badge,
+    .qt-pay,.s-wa-btn,.wa-row b,.splash-ceo [data-i18n],.lt-eta-hero .leh-tx,.tc-livebus .tlb-tx,
+    .rg-txt b,.pwa-head b,.divine-name,
+    .date-strip-30 button .d-bs,#view-seats #deckTabs .deck-tab):is(:lang(ne),:lang(hi)){
+  line-height:1.45;
 }
 
-/* e) The rest of the audit (read from the CSS and the JS templates, so it
-      also covers the booking flow, the ticket card and the payment tabs,
-      which a home-page probe cannot see). */
-/* Text that was set in the code face reads as the body face in Nepali. */
-:root:is(:lang(ne),:lang(hi)) :is(.kicker,.pay-amt small,.ret-tag,.crew-box small,.tk-route .city small,.pricing-card tbody td){font-family:var(--f-body)}
-/* Headings: Noto Sans Devanagari's glyph box is 1.3em before the matras,
-   so 1.05-1.2 made two-line headings collide. The Latin brand wordmarks
-   (.hero-brand, .shg-name, .bb-name) keep their tight setting. */
-:root:is(:lang(ne),:lang(hi)) :is(h1,h2,h3,h4,.h2):not(.hero-brand,.shg-name){line-height:1.4}
-:root:is(:lang(ne),:lang(hi)) :is(.qa-card b,.tc-title,.ha-card b,.ha-card small,.ai-wa-txt,.fb-price,.s-wa-btn,.wa-row b,
-  .qt-collapsed b,.home-more-btn .hm-tx,.rov-stops li span,.tk2-brand b,.tk2-tile b,.tk2-qr small,.paystep li b,.pm-tab,
-  .pm-tab b,.pm-tab .pm-sub,.nt-route,.tke-row .tke-val,.tke-row .tke-lbl,#view-seats #deckTabs .deck-tab){line-height:1.4}
 /* background-clip:text paints only inside the element's box, so a matra
-   above or below the line came out transparent. Grow the painted box; the
-   negative margin keeps every line exactly where it was. */
-:root:is(:lang(ne),:lang(hi)) :is(.hero .grad,.sec-head h2){padding-block:.16em;margin-block:-.16em}
-/* One-line boxes that cut Nepali off with "…": let it wrap instead. */
-:root:is(:lang(ne),:lang(hi)) :is(.pm-tab .pm-sub,.tk2-actions .btn,.qt-route>span){white-space:normal;text-overflow:clip}
-:root:is(:lang(ne),:lang(hi)) .pm-tab .pm-sub{overflow:visible}
-/* Size floor for the small labels (8-10.8px, where the matras and the
-   nukta dot disappear). */
-:root:is(:lang(ne),:lang(hi)) :is(.pm-tab .pm-sub,.tk2-tile small,.tk2-qr small,.tk2-fare .lbl,.paystep li b,
-  .premium-ticket-head .tk2-brand small,.qt-auto,.tke-row .tke-lbl,.steps .step span:last-child,
-  .field label small,.verify-note small,.crew-box small,.tt-gone-tag,.pay-amt small){font-size:11.5px}
-/* Weight ceiling: Android 12+ ships Noto Sans Devanagari with a weight
-   axis, so 900 draws as a true Black and the small counters fill in. */
-:root:is(:lang(ne),:lang(hi)) :is(.hero-qt-cta,.qt-banner h3,.wa-req-go,.pm-tab b,.s-wa-btn b,.qt-collapsed b){font-weight:800}
+   above it came out transparent. Grow the painted box; .hero .grad is
+   inline and .sec-head h2 inline-block with no margin of its own, so the
+   equal negative margin leaves the layout where it was. */
+:is(.hero .grad,.sec-head h2):is(:lang(ne),:lang(hi)){
+  padding-block:.16em;
+  margin-block:-.16em;
+}
+
+/* One-line clips: let Nepali wrap instead of being cut off with "...". */
+:is(.pm-tab .pm-sub,.qt-form .btn,.search-grid.simple .btn-search,.tk2-actions .btn,
+    .qt-route>span,.ai-head b,.lt-eta-hero .leh-dest,.co-bpass .bp-name):is(:lang(ne),:lang(hi)){
+  white-space:normal;
+  text-overflow:clip;
+}
+.pm-tab .pm-sub:is(:lang(ne),:lang(hi)){overflow:visible}
+:is(.qt-form .btn,.search-grid.simple .btn-search,.tk2-actions .btn):is(:lang(ne),:lang(hi)){text-align:center}
+
+/* d) Size floor and weight ceiling for small Devanagari. Each base value
+      below is under 11.5px at every width, so this only raises. */
+:is(.pm-tab .pm-sub,.qt-head .qt-badge,.tk2-tile small,.tk2-qr small,.paystep li b,
+    .premium-ticket-head .tk2-brand small,#splash .splash-ceo span[data-i18n],
+    .qt-auto,.field label small,.verify-note small,.crew-box small,.cab-head,.berth-labels,
+    .tt-gone-tag,.qt-plan-facts small):is(:lang(ne),:lang(hi)){
+  font-size:11.5px;
+}
+/* The step labels are 13px (app.css .step) and drop to 10px only at 360px
+   and below, so the floor belongs there only. */
+@media (max-width:360px){
+  .steps .step span:last-child:is(:lang(ne),:lang(hi)){font-size:11.5px}
+}
+.ec-head:is(:lang(ne),:lang(hi)){font-size:13px}
+.date-strip-30 button .d-bs:is(:lang(ne),:lang(hi)){font-size:11px;font-weight:700}
+/* The Bikram Sambat date is var(--orange) (#F07800) on the white chip:
+   2.84:1. Section 8's rule — saffron TEXT on white uses #A84300 — gives
+   6.06:1. Light theme only (the pre-paint script always stamps it); the
+   dark chip (#FFB25E on #1f2937, 8.2:1) and the selected chip keep theirs. */
+:root[data-theme="light"] .date-strip-30 button:not(.on) .d-bs:is(:lang(ne),:lang(hi)){color:var(--brand-saffron-800,#A84300)}
+/* Phones: the 11-11.5px Devanagari labels step up to 12-12.5px. */
+@media (max-width:760px){
+  :is(.bn-item,.fb-price .n,.tt-sub,.qt-plan-facts em,.qt-tnc):is(:lang(ne),:lang(hi)){font-size:12px}
+  :is(.qa-card span:not(.qa-ico),.fb-chip,.tt-live,.qt-plan-row>span,.ec-card small,.qt-ai-chip span,
+      .hero-feats li,.s-wa-btn small,.qt-pay,.divine-name):is(:lang(ne),:lang(hi)){font-size:12.5px}
+}
+:is(.ec-head,.fare-live .fl-lbl,.qt-badge,.tk2-tile small,.tk2-fare .lbl,
+    .pricing-card thead th,.pax-table th,.deck-tabs .deck-lbl,.tier-select .tier-lbl,
+    .seat-count-picker .scp-label):is(:lang(ne),:lang(hi)){
+  font-weight:700;
+}
+:is(.hero-qt-cta,.qt-banner h3,.wa-req-go,.pm-tab b,.s-wa-btn b,.qt-collapsed b):is(:lang(ne),:lang(hi)){
+  font-weight:800;
+}
 
 
 /* ---------------------------------------------------------------------
