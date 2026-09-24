@@ -14,7 +14,9 @@ final class AiTurn
         for ($round = 0; $round <= $limit; $round++) {
             if (microtime(true) >= $deadline) { break; }
             $available = $used < $limit && $round < $limit ? $tools : [];
-            try { $reply = $ask($system, $history, $available); }
+            // The final round still declares the tools (a history with tool
+            // blocks and no tool list is a 400) but forbids calling them.
+            try { $reply = $ask($system, $history, $tools, $available === []); }
             catch (Throwable $e) { break; }
             if ($reply === null) { break; }
             $calls = (array) ($reply['calls'] ?? []);

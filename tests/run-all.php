@@ -152,6 +152,7 @@ const CORE_SUITES = [
     'ai-kb-test.php'              => 'the knowledge base: audience scope, the ai_kb_on switch, an honest redacted miss',
     // 24 Sep 2026, registered with the per-request session check it guards.
     'admin-session-revalidate-test.php' => 'a deactivated or demoted staff member loses it on the next request, not the next login',
+    'money-guards-test.php'        => 'paper-ticket cap, agent-only commission, no proof downgrade, coupon redemption, second void, hold cap',
 ];
 
 /**

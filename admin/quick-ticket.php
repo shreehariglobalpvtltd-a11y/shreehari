@@ -558,6 +558,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
         if (id !== planReq) return;
         if (!j.ok || !j.data) {
           plan = null;
+          submitAfterPlan = false;       // Enter on a line that could not be read must not sell on the next refresh
           $('#qtPlanState').textContent = '⚠️';
           $('#qtPlanBody').innerHTML = '<div class="qt-noplan">' + esc(j.error || 'No bus can be sold right now.') + '</div>';
           return;
@@ -568,6 +569,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
         renderAsk(d);
         if (!d.plan) {
           plan = null;
+          submitAfterPlan = false;
           $('#qtPlanState').textContent = '⚠️';
           $('#qtPlanBody').innerHTML = '<div class="qt-noplan">' + esc(d.planError || 'No bus can be sold right now.') + '</div>';
           return;
