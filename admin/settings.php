@@ -9,7 +9,7 @@ require __DIR__ . '/_guard.php';
 $admin = admin_boot('dashboard.view');
 
 // Writing settings is a privileged action.
-$canEdit = Auth::can('routes.edit') || ($admin['role'] ?? '') === 'superadmin';
+$canEdit = Auth::canManageSettings();
 
 $flash = null;
 
@@ -58,7 +58,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $canEdit && !isset($_FIL
     } else {
         $pairs = [];
         foreach (($_POST['s'] ?? []) as $key => $val) {
-            $pairs[(string) $key] = is_string($val) ? $val : (string) $val;
+            $val = is_string($val) ? $val : (string) $val;
+            /* Secrets are write-only: the form never carries the stored
+               value, so an empty field means "keep what is there" and the
+               word CLEAR means "remove it". Anything else is a new secret. */
+            if (preg_match('/(token|secret|_pass$|password|api_key)/i', (string) $key)) {
+                if (trim($val) === '') { continue; }
+                if (trim($val) === 'CLEAR') { $val = ''; }
+            }
+            $pairs[(string) $key] = $val;
         }
         // Checkboxes are absent from POST when unticked, so set every known
         // bool key explicitly from whether its box came through.
@@ -297,7 +305,12 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
             <?php elseif ($isJson): ?>
               <textarea name="s[<?= Security::e($key) ?>]" rows="2" style="width:100%;font-family:ui-monospace,monospace;font-size:12px;padding:8px;border:1px solid var(--line);border-radius:8px" <?= $canEdit ? '' : 'readonly' ?>><?= Security::e($val) ?></textarea>
             <?php elseif ($isSecret): ?>
-              <input type="password" autocomplete="new-password" name="s[<?= Security::e($key) ?>]" value="<?= Security::e($val) ?>" style="width:100%;max-width:420px;padding:9px 11px;border:1px solid var(--line);border-radius:8px" <?= $canEdit ? '' : 'readonly' ?>>
+              <?php /* Write-only: the stored value is never sent to the browser.
+                       It used to be printed into value="…" for every dashboard.view
+                       role — API keys and the WhatsApp token, readable in the page
+                       source by support staff. */ ?>
+              <input type="password" autocomplete="new-password" name="s[<?= Security::e($key) ?>]" value="" placeholder="<?= $val !== '' ? '•••••••• set — leave blank to keep' : 'not set' ?>" style="width:100%;max-width:420px;padding:9px 11px;border:1px solid var(--line);border-radius:8px" <?= $canEdit ? '' : 'readonly' ?>>
+              <small class="muted" style="display:block;margin-top:4px;font-size:11.5px"><?= $val !== '' ? 'Set. Type a new value to replace it, or CLEAR to remove it.' : 'Not set.' ?></small>
             <?php else: ?>
               <input type="text" name="s[<?= Security::e($key) ?>]" value="<?= Security::e($val) ?>" style="width:100%;max-width:420px;padding:9px 11px;border:1px solid var(--line);border-radius:8px" <?= $canEdit ? '' : 'readonly' ?>>
             <?php endif; ?>

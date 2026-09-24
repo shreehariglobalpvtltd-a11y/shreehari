@@ -103,7 +103,10 @@ function admin_nav(): array
         ['href' => 'agent-passengers.php','icon' => 'id-card','label' => $agentView ? 'My Passengers' : 'Agent Passengers','perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents'],
         ['href' => 'agent-offline.php','icon' => 'notepad',   'label' => 'Paper Tickets',    'perm' => $agentView ? 'bookings.view' : 'commissions.view',  'section' => 'Agents'],
         ['href' => 'agent-ranking.php','icon' => 'trophy',    'label' => 'Agent Ranking',    'perm' => 'dashboard.view', 'section' => 'Agents'],
-        ['href' => 'staff.php',        'icon' => 'user-cog',  'label' => 'Staff & Approvals', 'perm' => 'staff.manage',  'section' => 'Agents'],
+        // staff.php itself admits only a super-admin (it says so on the page),
+        // so the item is shown only to one — a manager used to see a link
+        // that refused them every time.
+        ['href' => 'staff.php',        'icon' => 'user-cog',  'label' => 'Staff & Approvals', 'perm' => Auth::isSuperadmin() ? 'dashboard.view' : '__superadmin_only__',  'section' => 'Agents'],
 
         // Customers — leads and the people who travelled. An agent's own
         // bookings are scoped by sold_by_admin_id, but an unclaimed lead has
@@ -151,6 +154,19 @@ function admin_nav(): array
 /**
  * Render the page head, top bar and sidebar. Call once at the top.
  */
+/**
+ * Is a nav item the page being shown? Exact file-name match: 'agent' used
+ * to light up agent.php AND agents.php, agent-sales.php, agent-passengers.php,
+ * agent-offline.php and agent-ranking.php at once (substring match).
+ */
+function admin_nav_is_active(string $href, string $active): bool
+{
+    if ($active === '' || str_starts_with($href, '/')) {
+        return false;
+    }
+    return pathinfo($href, PATHINFO_FILENAME) === $active;
+}
+
 function admin_header(string $title, string $active = ''): void
 {
     $admin = Auth::admin() ?? [];
@@ -252,7 +268,7 @@ function admin_header(string $title, string $active = ''): void
     // and the payments badge span (#navBadgePayments) that the live poll needs.
     $renderLink = static function (array $item) use ($active, $base): void {
         $cls = [];
-        if ($active !== '' && !str_starts_with($item['href'], '/') && str_contains($item['href'], $active)) {
+        if (admin_nav_is_active($item['href'], $active)) {
             $cls[] = 'on';
         }
         if (!empty($item['hot'])) {
@@ -290,7 +306,7 @@ function admin_header(string $title, string $active = ''): void
         // set from localStorage on top of this (see admin_nav_js).
         $activeSec = '';
         foreach ($items as $item) {
-            if ($active !== '' && str_contains($item['href'], $active)) { $activeSec = (string) ($item['section'] ?? ''); break; }
+            if (admin_nav_is_active($item['href'], $active)) { $activeSec = (string) ($item['section'] ?? ''); break; }
         }
         foreach ($groups as $sec => $groupItems) {
             if ($sec === '') { foreach ($groupItems as $item) { $renderLink($item); } continue; }
@@ -346,7 +362,7 @@ function admin_mobile_nav(array $items, string $active = ''): string
     $slot = static function (?array $it, string $label, string $icon, string $tone, string $active, bool $fab = false): string {
         if ($it === null) { return '<a class="mn-empty" aria-hidden="true"></a>'; }
         $url = str_starts_with($it['href'], '/') ? $it['href'] : '/admin/' . $it['href'];
-        $on  = ($active !== '' && !str_starts_with($it['href'], '/') && str_contains($it['href'], $active)) ? ' on' : '';
+        $on  = admin_nav_is_active($it['href'], $active) ? ' on' : '';
         if ($fab) {
             return '<a class="fab" href="' . $url . '" aria-label="' . Security::e($label) . '"><span class="mn-fab"><svg class="a-ic"><use href="#a-' . $icon . '"/></svg></span><span class="mn-fab-l">' . Security::e($label) . '</span></a>';
         }

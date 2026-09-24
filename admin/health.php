@@ -36,6 +36,11 @@ $flash = null;
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     if (!Security::verifyCsrf()) {
         $flash = ['bad', 'Session expired — please try again.'];
+    } elseif (!Auth::canManageSettings()) {
+        // Any dashboard.view role may READ the health cards; acknowledging
+        // one or starting a data audit is a manager's or the owner's call.
+        http_response_code(403);
+        $flash = ['bad', 'Only a manager or the owner can acknowledge incidents or run the audit.'];
     } else {
         $act = (string) ($_POST['action'] ?? '');
         if ($act === 'ack') {

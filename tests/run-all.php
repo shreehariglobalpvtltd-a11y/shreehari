@@ -150,6 +150,8 @@ const CORE_SUITES = [
     // 22 Sep 2026, registered with the knowledge base it guards.
     'ai-turn-test.php'            => 'the tool loop is bounded: budget, deadline, no repeated write on retry',
     'ai-kb-test.php'              => 'the knowledge base: audience scope, the ai_kb_on switch, an honest redacted miss',
+    // 24 Sep 2026, registered with the per-request session check it guards.
+    'admin-session-revalidate-test.php' => 'a deactivated or demoted staff member loses it on the next request, not the next login',
 ];
 
 /**

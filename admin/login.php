@@ -85,6 +85,11 @@ function login_destination(string $safeNext): string
         // Counter staff have no dashboard.view — their day starts at the
         // tickets register (search by PNR / phone / name).
         'counter' => 'bookings.php',
+        // A scanner holds tickets.scan only and an official payments.* only:
+        // neither may open index.php (dashboard.view), so sending them there
+        // greeted them with a 403 the moment they signed in.
+        'scanner'  => 'scan.php',
+        'official' => 'payments.php',
         default   => 'index.php',
     };
 }
