@@ -183,7 +183,10 @@ try {
     check('a name line without a number joins the booking above it',
         count($joined['bookings']) === 1 && count($joined['bookings'][0]['passengers']) === 3 && $joined['bookings'][0]['passengers'][2]['age'] === 6);
 
-    $free = WaBulk::parse("ticket\nbholi Mehsana bata\nRam Thapa " . WB_P1 . "\nSita Rai " . WB_P2);
+    /* Surat, not Mehsana: the free line is read by TicketBot against the ACTIVE
+       pickups, and every route that boards at Mehsana is inactive on shari and
+       shari_test (24 Sep 2026). The rule under test is the keyless header. */
+    $free = WaBulk::parse("ticket\nbholi Surat bata\nRam Thapa " . WB_P1 . "\nSita Rai " . WB_P2);
     $chatter = WaBulk::parse("TICKET\n1. Ram Thapa " . WB_P1 . "\n2. Sita Thapa " . WB_P2 . "\nbholi Mehsana bata\nsabai ko ticket kaatnu hai\nTotal 2 jana\ndhanyabad\nDate 5 Oct\nMaya Thapa");
     check('chatter after the passengers never becomes a berth: only the bare name joins',
         $chatter['pax'] === 3 && count($chatter['bookings'][1]['passengers']) === 2 && $chatter['bookings'][1]['passengers'][1]['name'] === 'Maya Thapa',
@@ -202,7 +205,7 @@ try {
     $oneLine = WaBulk::parse("ticket\n1) Hari Rai " . WB_P1 . ", 2) Gopal Rai " . WB_P2 . "; 3) Mina Rai " . WB_P3 . " F");
     check('several numbered people on ONE line are split apart', count($oneLine['bookings']) === 3 && $oneLine['bookings'][2]['passengers'][0]['gender'] === 'Female', implode(' | ', $oneLine['errors']));
 
-    check('a header without keys is still understood', $free['header']['date'] === addDaysISO($today, 1) && str_contains(mb_strtolower($free['header']['boarding']), 'mehsana'), $free['header']['date'] . ' / ' . $free['header']['boarding']);
+    check('a header without keys is still understood', $free['header']['date'] === addDaysISO($today, 1) && str_contains(mb_strtolower($free['header']['boarding']), 'surat'), $free['header']['date'] . ' / ' . $free['header']['boarding']);
 
     check('one bare line is NOT a bulk message', !WaBulk::looksLikeBulk('Ram Thapa ' . WB_P1));
     check('  two lines with numbers are', WaBulk::looksLikeBulk("Ram Thapa " . WB_P1 . "\nSita Rai " . WB_P2));
