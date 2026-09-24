@@ -682,9 +682,15 @@ function shg_customer_payload(array $detail): array
 }
 
 /**
+ * FALLBACK ONLY since 24 Sep 2026 — HarfBuzz (includes/devshape.php) now
+ * shapes Devanagari for GD and the PDFs; this runs only when that is
+ * unavailable. The 10 Sep claim below that GD forms conjuncts was wrong:
+ * measured on the live VPS, libgd 2.3.3 links FreeType only, and यात्रु,
+ * जम्मा, कृष्ण printed with a visible halant (यात्‌रु).
+ *
  * The one piece of Devanagari shaping neither of our text engines does.
  *
- * Measured on 10 Sep 2026, on this box and on the live VPS: GD/FreeType
+ * (10 Sep 2026 note, kept for history:) GD/FreeType
  * forms the Devanagari conjuncts and the reph correctly (यात्रु, कृष्ण,
  * निर्मला), and Pdf::textCID maps codepoints straight to glyphs. NEITHER
  * performs the Indic shaper's REORDERING step. The short-i matra ि is

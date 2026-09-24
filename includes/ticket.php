@@ -192,11 +192,11 @@ final class Ticket
      * Text for the PNG documents, WITH its Devanagari intact.
      *
      * The PNG ticket has stripped every non-ASCII byte since it was built,
-     * on the belief that GD cannot shape Devanagari. Measured on 10 Sep 2026
-     * against both this box and the live VPS (PHP 8.3, FreeType), it can:
-     * "यात्रु" keeps its त्र conjunct, "सिट" puts the i-matra in front of
-     * the स, "चढ्ने ठाउँ" comes out whole. So a Nepali name now prints as
-     * the passenger wrote it instead of vanishing.
+     * on the belief that GD cannot shape Devanagari. GD indeed cannot (the
+     * 10 Sep 2026 note that it forms conjuncts was wrong: libgd 2.3.3 on the
+     * VPS links FreeType only, and यात्रु printed as यात्‌रु). Since 24 Sep
+     * 2026 HarfBuzz shapes it (DevShape, via gdText/gdWidth), so a Nepali
+     * name prints as the passenger wrote it — conjuncts, reph and all.
      *
      * Kept: printable ASCII and the Devanagari block (which carries the
      * Nepali digits and the danda). Dropped: everything else — emoji and
@@ -890,6 +890,13 @@ final class Ticket
     /** TTF text with optional faux bold (the shipped face has no Bold). */
     private static function gdText($im, float $size, int $x, int $y, int $col, string $text, bool $bold = false): void
     {
+        /* Devanagari goes through HarfBuzz (includes/devshape.php) so the
+           conjuncts, the reph and the i-matra come out as written. The old
+           path below is the fallback when shaping is unavailable. */
+        if (class_exists('DevShape') && DevShape::needs($text)
+            && DevShape::gdText($im, $size, $x, $y, $col, $text, $bold ? [[0, 0], [1, 0], [0, 1]] : [[0, 0]])) {
+            return;
+        }
         $text = dev_shape($text);
         $f = self::pngFont();
         imagettftext($im, $size, 0, $x, $y, $col, $f, $text);
@@ -902,6 +909,12 @@ final class Ticket
     /** Rendered width of a TTF string, for centring / right-aligning. */
     private static function gdWidth(float $size, string $text): int
     {
+        if (class_exists('DevShape') && DevShape::needs($text)) {
+            $w = DevShape::gdWidth($size, $text);
+            if ($w !== null) {
+                return $w;
+            }
+        }
         $text = dev_shape($text);
         $box = imagettfbbox($size, 0, self::pngFont(), $text);
 
@@ -1607,13 +1620,13 @@ final class Ticket
      *  tickets drawn at 23:43/23:44 IST with the old seat labels were never
      *  redrawn. tests/chalani-png-test.php and tests/ticket-cache-test.php
      *  assert a past moment. */
-    private const PNG_LAYOUT_CHANGED = '2026-09-24 01:50:00';   // IST, after both 24 Sep deploys: the two-floor seat labels (00:34) and the counter location under the company name / in the issued-by chip (01:49).
+    private const PNG_LAYOUT_CHANGED = '2026-09-24 10:30:00';   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
      *  seat box + stub pick up the current seat labels without a manual purge
      *  (23 Sep 2026: the two-floor grid A1-F6 / A7-F12). */
-    private const PDF_LAYOUT_CHANGED = '2026-09-24 01:50:00';   // IST, after both 24 Sep deploys: the two-floor seat labels (00:34), COUNTER line in the header band and desk code in the ISSUED BY caption (01:49).
+    private const PDF_LAYOUT_CHANGED = '2026-09-24 10:30:00';   // IST: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
 
     /**
      * How many passengers the ticket names one by one before it stops and

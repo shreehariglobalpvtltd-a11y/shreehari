@@ -33,8 +33,8 @@
  *
  * HEADINGS ROMAN, NAMES AS TYPED. The labels and column heads stay English —
  * this is the crew and border-desk copy. A PASSENGER NAME prints in the script
- * it was written in: GD does form the Devanagari conjuncts, and dev_shape()
- * supplies the one reordering step it misses. Until 11 Sep 2026 a Nepali name
+ * it was written in, shaped by HarfBuzz (DevShape, 24 Sep 2026 — GD alone
+ * does NOT form the conjuncts; dev_shape() is only the fallback). Until 11 Sep 2026 a Nepali name
  * printed as the literal words "(Nepali name)", which left the crew a berth
  * they could not match to a person.
  *
@@ -618,12 +618,16 @@ final class ChallanPng
         // The drawing boundary — see dev_shape() in helpers.php. Passenger
         // names reach this file in Devanagari since 11 Sep 2026, and GD does
         // not move the short-i matra in front of its consonant on its own.
-        $text = dev_shape($text);
-        $box = imagettfbbox($size, 0, self::font(), $text);
+        $flat = dev_shape($text);
+        $box = imagettfbbox($size, 0, self::font(), $flat);
         $baseline = $y - (int) min($box[5], $box[7]);
-        imagettftext($im, $size, 0, $x, $baseline, $col, self::font(), $text);
+        if (class_exists('DevShape') && DevShape::needs($text)
+            && DevShape::gdText($im, $size, $x, $baseline, $col, $text, $bold ? [[0, 0], [1, 0]] : [[0, 0]])) {
+            return;
+        }
+        imagettftext($im, $size, 0, $x, $baseline, $col, self::font(), $flat);
         if ($bold) {
-            imagettftext($im, $size, 0, $x + 1, $baseline, $col, self::font(), $text);
+            imagettftext($im, $size, 0, $x + 1, $baseline, $col, self::font(), $flat);
         }
     }
 
@@ -631,6 +635,9 @@ final class ChallanPng
     {
         if ($text === '') {
             return 0;
+        }
+        if (class_exists('DevShape') && DevShape::needs($text) && ($sw = DevShape::gdWidth($size, $text)) !== null) {
+            return $sw;
         }
         $box = imagettfbbox($size, 0, self::font(), dev_shape($text));
         return (int) (max($box[2], $box[4]) - min($box[0], $box[6]));

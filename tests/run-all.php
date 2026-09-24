@@ -163,6 +163,7 @@ const CORE_SUITES = [
     'ticket-cache-test.php'       => 'a ticket PNG/PDF older than its layout stamp is redrawn once, and only once',
     // 24 Sep 2026, registered with the removal of the downloadable admin source backups.
     'public-files-test.php'       => 'no backup copy of PHP source where the web server can hand it out',
+    'devshape-test.php'           => 'Nepali on the PNG / PDF documents is shaped by HarfBuzz, and falls back safely',
 ];
 
 /**
