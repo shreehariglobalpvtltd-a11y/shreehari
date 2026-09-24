@@ -513,23 +513,29 @@ button,.btn,a.btn,.nav-link,.bn-item,.seat,.num-pill,.lang-btn,
      - Brand surfaces (hero, header strips, QuickBot, footer, splash)
        use FIXED hex, so they stay on-brand whatever the palette picker
        (data-day) says - same reasoning as the brand band in section 7.
-     - Saffron #F07800 is a fill / keyline colour only. Any text on
-       saffron, or saffron text on white, uses the deeper #BF4C00 /
-       #A84300, which pass AA. Amber #FFB547 and gold #FFD08A are the
-       highlight colours on navy.
+       Trade-off: the palette picker now re-tints only links, chips,
+       the date strip, the phone nav pills and the seat map.
+     - On LIGHT surfaces the action colour is deep saffron #BF4C00 ->
+       #A84300 with white text (4.94 / 6.06). On NAVY surfaces deep
+       saffron sinks into the ground (2.1-2.6:1), so there the highlight
+       is the bright logo saffron / amber with navy #06163A text
+       (6.25 / 10.1), which stands 4.1-7.2:1 off the navy.
      - Green belongs to WhatsApp only.
      - No token that the seat map reads (--orange, --orange-600,
        --blue, --blue-800, --card) is changed here, so seat states
        (available / booked / selected / women / men) are untouched.
+     - Hover colours only where a mouse can hover: on a phone :hover
+       sticks to the element that was tapped (views.css (hover:none)).
    Contrast (WCAG 2.x, measured):
-     white on #BF4C00 4.94, on #A84300 6.06   (CTA, lang pill)
-     #06163A on #FFB547 10.1                   (QuickBot badge)
+     white on #BF4C00 4.94, on #A84300 6.06   (CTA on light)
+     #06163A on #FFB547 10.1, on #F07800 6.25  (CTA on navy, badge, lang)
      #A84300 on #F6F8FC 5.70, on #FFF 6.06     (kicker, active tab)
      #FFF4E2 on #B84A00 4.80 (was 2.35 on #EC8A12)   (divine bar)
      white on #0054A8 7.41, #0C306C 12.7, #BF4C00 4.94, #943A00 7.33,
        #15803D 5.02, #0B5E2E 7.91              (three booking doors)
+     selected language: #FFB547 fill 7.2 vs the topbar, 5.8 vs its group
      hero: white >= 8.1, #DCE8F7 >= 6.5, #FFD08A 7.0, #FFB547 >= 4.6
-     footer: #B9C9E6 >= 7.6, #FFD08A >= 8.9, #8FA5CC 7.1
+     footer: #B9C9E6 >= 7.6, #FFD08A >= 8.9, #8FA5CC >= 5.1
      dark: #FFB547 on #0A0E1A 11.0, #9CC3FF 10.7, #DCE8FF 15.6
    ------------------------------------------------------------------- */
 :root{
@@ -537,7 +543,7 @@ button,.btn,a.btn,.nav-link,.bn-item,.seat,.num-pill,.lang-btn,
   --brand-navy:#0C306C;
   --brand-royal-700:#0A3F8A;
   --brand-royal:#0054A8;
-  --brand-saffron:#F07800;      /* fills and keylines only */
+  --brand-saffron:#F07800;      /* fills and keylines; navy text on it */
   --brand-saffron-700:#BF4C00;  /* white text on it: 4.94 */
   --brand-saffron-800:#A84300;  /* saffron text on light: 5.70+ */
   --brand-saffron-900:#943A00;
@@ -556,20 +562,42 @@ button,.btn,a.btn,.nav-link,.bn-item,.seat,.num-pill,.lang-btn,
 .credit-ribbon{background:linear-gradient(90deg,var(--brand-navy-950),var(--brand-navy) 50%,var(--brand-navy-950))}
 .credit-txt small{color:rgba(207,224,248,.78)}
 .num-strip{background:linear-gradient(90deg,var(--brand-navy),var(--brand-royal-700) 55%,var(--brand-navy))}
-.num-pill:hover,.num-pill:focus-visible{background:var(--brand-saffron-700);border-color:var(--brand-saffron-700)}
-.nav-inner .num-pill.wa{background:#15803D}
-.lang-btn.on{background:var(--brand-saffron-700);color:#fff}
+/* Pill hover for mouse pointers only. Unscoped, this (0,2,0) rule also
+   beats the phone nav-row pill (views.css ".nav-inner .num-pill") and a
+   tapped number stayed saffron. */
+@media (hover:hover){
+  .num-pill:hover{background:var(--brand-saffron-700);border-color:var(--brand-saffron-700)}
+}
+.num-pill:focus-visible{background:var(--brand-saffron-700);border-color:var(--brand-saffron-700)}
+/* WhatsApp pill in the phone nav row: green with white text in every
+   state (5.02). views.css ".num-pill.wa:hover/:focus-visible" sets text
+   #06301A, which on this green is 2.90; (0,4,0) outranks it. */
+.nav-inner .num-pill.wa,
+.nav-inner .num-pill.wa:hover,
+.nav-inner .num-pill.wa:focus-visible{background:#15803D;border-color:#15803D;color:#fff}
+/* Selected language on the navy topbar. The fill is the only cue, so it
+   needs 3:1 against its ground (WCAG 1.4.11): amber 7.2 vs the bar and
+   5.8 vs the group pill; deep saffron was 2.57 / 2.06. Text 10.1. */
+.lang-btn.on{background:var(--brand-amber);color:var(--brand-navy-950)}
 
-/* c) Primary action: deep saffron, white text AA in both themes. The
-      selector list with :root[data-theme] matches the dark rule in
-      views.css (same specificity, loads later). Shadow stays on the
-      plain selectors so :hover / :active still win. */
+/* c) Primary action on light surfaces: deep saffron, white text AA in
+      both themes. The selector list with :root[data-theme] matches the
+      dark rule in views.css (same specificity, loads later). Shadow
+      stays on the plain selectors so :hover / :active still win. */
 .btn-orange,.qt-go,
 :root[data-theme] .btn-orange,:root[data-theme] .qt-go{
   background:linear-gradient(135deg,var(--brand-saffron-700),var(--brand-saffron-800));
   color:#fff;
 }
 .btn-orange,.qt-go{box-shadow:0 6px 18px rgba(191,76,0,.30),inset 0 1px 0 rgba(255,190,110,.35)}
+/* ...and on navy (the hero's "10-second ticket", the route card's Book
+   Now): amber -> logo saffron with navy text, so the one CTA on the
+   brand ground is the brightest thing on it (4.1-7.0:1 off the navy,
+   deep saffron measured 2.1-2.3). (0,4,0) beats the list above. */
+:root[data-theme] :is(.hero,.shg-hero) .btn-orange{
+  background:linear-gradient(135deg,var(--brand-amber),var(--brand-saffron));
+  color:var(--brand-navy-950);
+}
 
 /* d) Hero: the navy -> royal of the OG image and the brand band, a
       saffron glow, gold route line, amber-gold slogan sheen. */
