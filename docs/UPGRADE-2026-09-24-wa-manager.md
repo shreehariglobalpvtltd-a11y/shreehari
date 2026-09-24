@@ -185,7 +185,21 @@ cd /root/shg-test && php tests/wa-login-test.php && php tests/wa-bulk-test.php &
 ```
 
 Deploy pachi pani **sabai switch OFF** hunchan — maathi ko table anusar ek-ek on garnus.
-Yo branch sandbox bata sidhai deploy garna milena (VPS ko SSH key sandbox ma chhaina).
+
+**Ek click deploy — GitHub Actions bata (`.github/workflows/deploy.yml`, manual matra):**
+
+1. GitHub → repo → Settings → Secrets and variables → Actions → New repository secret:
+   `VPS_SSH_KEY` (laptop ko `~/.ssh/shg_deploy` file ko pura text), `VPS_HOST` (93.127.167.249),
+   `VPS_USER` (root), `VPS_PATH` (live folder, jastai `/var/www/shreehariglobal.in/public_html`).
+   Key chat ma kahilyai nahalnus — GitHub ko secret ma matra.
+2. GitHub → Actions → **Deploy to VPS** → Run workflow → branch `claude/mero-ai-ticket-system-keatp1`,
+   mode **dry** → herne k k jaancha (kehi badlidaina).
+3. Thik lagyo bhane feri Run workflow → mode **full**, migrate = `database/upgrade-2026-09-24-wa-manager.sql`.
+   Yesle: file sync (deploy.sh, config/uploads/tickets/tests chhudaina) → server ma `php -l` + `chown www-data`
+   → DB backup → migration → site HTTP 200 check.
+
+Yo sandbox (Claude ko cloud environment) bata sidhai deploy garna mildaina: SSH client, VPS key, ra
+VPS ko port 22 tinai chhainan — tyasaile maathi ko workflow banaieko ho.
 
 > Pahile jastai: WhatsApp ticket template ko naam milaunu (docs/UPGRADE-PLAN-2026-09-19.md, OWNER
 > ACTION) — nabhaye bulk le pani ticket katcha tara photo yatru samma pugdaina.
