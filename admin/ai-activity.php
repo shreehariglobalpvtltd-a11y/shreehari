@@ -25,6 +25,39 @@ try {
     $have = false;
 }
 
+/* WhatsApp sign-ins (24 Sep 2026, wa_login_on): who is signed in as staff
+   from which number, and a Revoke button. Revoking needs staff.manage — the
+   same right that switches an account off in Staff. */
+require_once INCLUDE_PATH . '/walogin.php';
+$canRevoke = Auth::can('staff.manage') || (($admin['role'] ?? '') === 'superadmin');
+$flash = null;
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && isset($_POST['revoke_login'])) {
+    if (!Security::verifyCsrf()) {
+        $flash = ['bad', 'Session expired — please try again.'];
+    } elseif (!$canRevoke) {
+        $flash = ['bad', 'Your role cannot revoke a sign-in.'];
+    } else {
+        $rid = (int) $_POST['revoke_login'];
+        $row = null;
+        try {
+            $row = Database::fetch('SELECT w.*, a.username FROM wa_logins w LEFT JOIN admins a ON a.id = w.admin_id WHERE w.id = :id', ['id' => $rid]);
+        } catch (Throwable $e) {
+        }
+        if ($row === null) {
+            $flash = ['bad', 'That sign-in no longer exists.'];
+        } else {
+            WaLogin::revoke($rid, (int) ($admin['id'] ?? 0));
+            Logger::audit('staff.logout_whatsapp', 'admin', (string) ($row['username'] ?? $row['admin_id']), null,
+                ['from' => (string) $row['phone'], 'login_id' => $rid], 'WhatsApp sign-in revoked by the office');
+            $flash = ['ok', 'Signed out ' . (string) ($row['username'] ?? '#' . $row['admin_id']) . ' on ' . (string) $row['phone'] . '.'];
+        }
+    }
+}
+$logins   = WaLogin::active(100);
+$loginOn  = Settings::getBool('wa_login_on', false);
+$csrf     = Security::e(Security::csrfToken());
+$csrfName = CSRF_TOKEN_NAME;
+
 $sum = ['total' => 0, 'ok' => 0, 'people' => 0, 'refused' => 0];
 $tools = [];
 $rows  = [];
@@ -67,8 +100,46 @@ admin_header('AI Activity', 'ai-activity');
   <?php admin_footer(); return; ?>
 <?php endif; ?>
 
+<?php if ($flash !== null): ?><div class="flash <?= $flash[0] ?>"><?= Security::e($flash[1]) ?></div><?php endif; ?>
+
 <p class="aa-note">Every action the WhatsApp assistant takes is recorded here — successes and refusals both.
   The passenger's own words are not shown; only what the assistant did.</p>
+
+<div class="panel">
+  <h2>WhatsApp sign-ins (<?= count($logins) ?> live)</h2>
+  <p class="aa-note">Staff who signed in over WhatsApp with <code>login &lt;code&gt; &lt;password&gt;</code>
+    (<code>wa_login_on</code> is <?= $loginOn ? 'ON' : 'OFF' ?>). A sign-in expires by itself; revoke one here to end it now.</p>
+  <?php if ($logins === []): ?>
+    <p class="aa-note">Nobody is signed in over WhatsApp right now.</p>
+  <?php else: ?>
+  <div class="dt-wrap">
+    <table class="dt card-table">
+      <thead><tr><th>Number</th><th>Account</th><th>Role</th><th>Method</th><th>Since</th><th>Last seen</th><th>Expires</th><?php if ($canRevoke): ?><th></th><?php endif; ?></tr></thead>
+      <tbody>
+      <?php foreach ($logins as $l): ?>
+        <tr>
+          <td data-label="Number"><?= Security::e((string) $l['phone']) ?></td>
+          <td data-label="Account"><?= Security::e((string) ($l['full_name'] ?? '')) ?> <span style="color:var(--mut)">(<?= Security::e((string) ($l['username'] ?? '#' . $l['admin_id'])) ?>)</span></td>
+          <td data-label="Role"><?= Security::e((string) ($l['role'] ?? '')) ?></td>
+          <td data-label="Method"><?= Security::e((string) $l['method']) ?></td>
+          <td data-label="Since"><?= Security::e(substr((string) $l['created_at'], 0, 16)) ?></td>
+          <td data-label="Last seen"><?= Security::e(substr((string) ($l['last_seen_at'] ?? ''), 0, 16)) ?></td>
+          <td data-label="Expires"><?= Security::e(substr((string) $l['expires_at'], 0, 16)) ?></td>
+          <?php if ($canRevoke): ?>
+          <td data-label="">
+            <form method="post" onsubmit="return confirm('Sign this number out of WhatsApp now?');" style="display:inline">
+              <input type="hidden" name="<?= $csrfName ?>" value="<?= $csrf ?>">
+              <button class="btn btn-sm" name="revoke_login" value="<?= (int) $l['id'] ?>">Revoke</button>
+            </form>
+          </td>
+          <?php endif; ?>
+        </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+  <?php endif; ?>
+</div>
 
 <div class="kpis">
   <div class="kpi tone-navy"><span class="ki"><svg class="a-ic"><use href="#a-msg"/></svg></span><div class="kt"><div class="kk">Actions today</div><div class="kv"><?= $sum['total'] ?></div><div class="ks"><?= $sum['people'] ?> people</div></div></div>
