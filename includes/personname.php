@@ -34,8 +34,18 @@ final class PersonName
         'hajur', 'namaste', 'namaskar', 'hi', 'hello', 'hey', 'haan', 'han', 'haa', 'confirm', 'book', 'ticket',
         'seat', 'cash', 'upi', 'esewa', 'bank', 'male', 'female', 'other', 'purush', 'mahila', 'm', 'f',
         'today', 'tomorrow', 'aaja', 'bholi', 'parsi', 'kal', 'nepal', 'india', 'np', 'in',
+        // The request vocabulary TicketBot strips as intent — "ticket chahiyo"
+        // must never ride on a berth as Mr Chahiyo (24 Sep review).
+        'chahiyo', 'chahiye', 'chaiyo', 'chaiye', 'chahie', 'chahincha', 'chahinchha', 'chahinxa', 'chainxa', 'chahinu',
+        'bata', 'jane', 'jana', 'jaane', 'aaune', 'aune', 'farkine', 'wapas', 'kaat', 'kata', 'katne', 'katnus', 'katidinus',
+        'katdinus', 'kaatnu', 'katnu', 'pathau', 'pathaunus', 'pathaidinus', 'gara', 'garnus', 'garidinus', 'booking', 'tikat',
+        'tiket', 'sleeper', 'cabin', 'berth', 'malai', 'hamilai', 'mero', 'hamro', 'lagi', 'samma', 'chahincha',
+        'चाहियो', 'चाहिए', 'चाहिये', 'चाहिन्छ', 'जाने', 'आउने', 'मलाई', 'हामीलाई', 'बाट', 'लागि', 'काट', 'काट्नुहोस्', 'पठाउनुस्',
         'हो', 'हजुर', 'हुन्छ', 'ठिक', 'ठीक', 'नमस्ते', 'पुरुष', 'महिला', 'टिकट', 'सिट', 'नेपाल', 'भारत', 'भोलि', 'आज',
     ];
+
+    /** Given names that are also towns we serve — a person before a place. */
+    private const GIVEN_NAMES = ['anand', 'dang', 'nadia', 'gorakh', 'gorakhi', 'nepal', 'bharat'];
 
     /** @var array<int, string>|null lowercase town/stop keys we serve, loaded once */
     private static ?array $places = null;
@@ -125,8 +135,14 @@ final class PersonName
         if ($key === '') {
             return false;
         }
+        /* Exact matches only. A prefix rule read "Nadia" as Nadiad and
+           "Gorakh" as Gorakhpur and refused real passengers for ever; and
+           Anand is a stop on this route AND a common Gujarati given name. */
+        if (in_array($key, self::GIVEN_NAMES, true)) {
+            return false;
+        }
         foreach (self::places() as $place) {
-            if ($place === $key || ($key !== '' && mb_strlen($key) >= 4 && str_starts_with($place, $key))) {
+            if ($place === $key) {
                 return true;
             }
         }

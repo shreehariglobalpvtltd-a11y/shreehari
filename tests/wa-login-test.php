@@ -123,6 +123,11 @@ try {
     check('"otp 123456" is a code', (WaLogin::command('otp 123456')['code'] ?? '') === '123456');
     check('"ma ko hu" asks who am I', (WaLogin::command('ma ko hu?')['cmd'] ?? '') === 'whoami');
     check('a bare "login" asks for the format', (WaLogin::command('login')['cmd'] ?? '') === 'help');
+    check('a CAPITALISED "Login SHG-0027 pw" (a phone keyboard) is still a login', (WaLogin::command('Login SHG-0027 pw1234')['cmd'] ?? '') === 'login'
+        && (WaLogin::command('LOGIN wa-login-agent pw1234')['cmd'] ?? '') === 'login' && (WaLogin::command('Sign in SHG-0027 pw1234')['cmd'] ?? '') === 'login');
+    check('"login kasari garne?" is a question, not credentials', (WaLogin::command('login kasari garne?')['cmd'] ?? '') === 'help'
+        && (WaLogin::command('login garna mildaina site ma')['cmd'] ?? '') === 'help' && (WaLogin::command('log in to the app kaise kare')['cmd'] ?? '') === 'help');
+    check('  while a username + one-token password is', (WaLogin::command('login wa-login-agent Wa@Login123')['cmd'] ?? '') === 'login');
     check('an ordinary sentence is not a command', WaLogin::command('bholi 2 seat chahiyo') === null);
     check('  nor is a sentence that merely contains the word', WaLogin::command('mero login kina mildaina') === null);
 
@@ -146,6 +151,9 @@ try {
 
     $help = WaLogin::handle(WL_NEW, 'login');
     check('"login" alone explains the format', $help !== null && str_contains((string) $help['text'], 'login <'));
+    $q = WaLogin::handle(WL_NEW, 'login kasari garne?');
+    check('a "how do I log in" question gets the format and spends no guess', $q !== null && str_contains((string) $q['text'], 'login <')
+        && !Database::exists("SELECT 1 FROM rate_limits WHERE bucket = 'wa_login' AND identifier = :p", ['p' => WL_NEW]));
 
     $bad = WaLogin::handle(WL_NEW, 'login ' . $codeLabel . ' wrong-password');
     check('a wrong password is refused with the generic line', $bad !== null && str_contains((string) $bad['text'], 'मिलेन'), (string) ($bad['text'] ?? ''));

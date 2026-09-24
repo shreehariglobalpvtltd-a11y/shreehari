@@ -173,25 +173,18 @@ final class AiTools
                 return $out;
             }
 
-            // A customer we have met before — the vault knows their name, so
-            // the assistant can greet them and pre-fill a ticket.
-            $name = (string) Database::scalar(
-                'SELECT full_name FROM bookings WHERE contact_phone = :p
-                   AND status IN (\'confirmed\',\'completed\') ORDER BY id DESC LIMIT 1',
+            // A customer we have met before — the register knows their name,
+            // so the assistant can greet them and pre-fill a ticket. (bookings
+            // has no full_name column: the passenger row is the only source.)
+            $out['name'] = (string) Database::scalar(
+                'SELECT p.full_name FROM booking_passengers p
+                   JOIN bookings b ON b.id = p.booking_id
+                  WHERE b.contact_phone = :p AND p.is_primary = 1
+                    AND b.status IN (\'confirmed\',\'completed\')
+                  ORDER BY p.id DESC LIMIT 1',
                 ['p' => $digits],
                 ''
             );
-            if ($name === '') {
-                $name = (string) Database::scalar(
-                    'SELECT p.full_name FROM booking_passengers p
-                       JOIN bookings b ON b.id = p.booking_id
-                      WHERE b.contact_phone = :p AND p.is_primary = 1
-                      ORDER BY p.id DESC LIMIT 1',
-                    ['p' => $digits],
-                    ''
-                );
-            }
-            $out['name'] = $name;
         } catch (Throwable $e) {
             Logger::exception($e, 'whatsapp');
         }
@@ -1054,7 +1047,15 @@ final class AiTools
         if ((string) ($pin['phone'] ?? '') !== '' && (string) $pin['phone'] !== $phone) {
             return self::no('The mobile changed since the quote — quoted ' . $pin['phone'] . ', now ' . $phone . '. Quote again with plan_ticket so the seller reads the right number.');
         }
-        if ($country === '' && (string) ($pin['country'] ?? '') !== '') {
+        /* The pinned country wins, as the pinned name and number do: a model
+           that "fills in" country: IN from ten bare digits, or re-types +91,
+           would otherwise address a Nepali passenger's ticket to a stranger
+           in India (24 Sep review). */
+        if ((string) ($pin['country'] ?? '') !== '') {
+            if ($country !== '' && $country !== (string) $pin['country']) {
+                return self::no('The country changed since the quote — quoted ' . ((string) $pin['country'] === 'NP' ? '+977' : '+91')
+                    . ', now ' . ($country === 'NP' ? '+977' : '+91') . '. Quote again with plan_ticket so the seller reads the right number.');
+            }
             $country = (string) $pin['country'];
         }
         self::takeStage($ctx, 'sale');                 // consumed only now

@@ -79,8 +79,20 @@ final class WaLogin
            was pasted under it, or it travels on to the model and the logs. */
         $first = trim((string) preg_replace('/\s+/u', ' ', (string) strtok(trim($text), "\r\n")));
         if ($first !== '' && mb_strlen($first) <= 400
-            && preg_match('/^(?:login|log in|log-in|signin|sign in|लगइन|लग इन|साइन इन)\s*[:\-]?\s+(\S+)\s+(.+)$/su', $first, $m) === 1) {
-            return ['cmd' => 'login', 'id' => trim($m[1]), 'password' => trim($m[2])];
+            && preg_match('/^(?:login|log in|log-in|signin|sign in|लगइन|लग इन|साइन इन)\s*[:\-]?\s+(\S+)\s+(.+)$/sui', $first, $m) === 1) {
+            /* "Login SHG-0027 pw" (a phone capitalises the first letter) is a
+               sign-in; "login kasari garne?" is a question. Credentials need
+               an id-shaped first token — an agent code, a number, an email,
+               or a username followed by a single-token password — otherwise
+               the person gets the format, and no guess is counted. */
+            $id = trim($m[1]);
+            $pw = trim($m[2]);
+            $strongId = preg_match('/^(?:shg[-\s]*\d{1,4}|\d{1,4}|[^\s@]+@[^\s@]+\.[a-z]{2,})$/iu', $id) === 1;
+            $userId   = preg_match('/^[a-z0-9._-]{3,60}$/i', $id) === 1 && preg_match('/^\S{4,128}$/u', $pw) === 1 && !str_contains($pw, '?');
+            if ($strongId || $userId) {
+                return ['cmd' => 'login', 'id' => $id, 'password' => $pw];
+            }
+            return ['cmd' => 'help'];
         }
         $t = trim((string) preg_replace('/\s+/u', ' ', $text));
         if ($t === '' || mb_strlen($t) > 200) {
@@ -98,6 +110,10 @@ final class WaLogin
             return ['cmd' => 'otp', 'code' => $m[1]];
         }
         if (preg_match('/^(?:login|log in|log-in|signin|sign in|लगइन|लग इन|साइन इन)(?:\s+\S+)?\s*[.!?]?$/u', $lower) === 1) {
+            return ['cmd' => 'help'];
+        }
+        // "log in to the app kaise kare" — a question about signing in, not a sign-in.
+        if (preg_match('/^(?:login|log in|log-in|signin|sign in|लगइन|लग इन|साइन इन)\b/u', $lower) === 1) {
             return ['cmd' => 'help'];
         }
 

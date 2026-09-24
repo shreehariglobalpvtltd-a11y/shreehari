@@ -174,6 +174,11 @@ try {
     check('"2 seat" is refused', PersonName::clean('2 seat') === '');
     check('a gender word alone is refused', PersonName::clean('Female') === '');
     check('same() ignores case, spacing and dots', PersonName::same('Ram  Thapa', 'ram thapa') && PersonName::same('R. Thapa', 'r thapa') && !PersonName::same('Ram Thapa', 'Sita Thapa'));
+    check('a given name that is also a town is a person (Anand, Dang, Nadia, Gorakh)',
+        PersonName::clean('Anand') === 'Anand' && PersonName::clean('Dang') === 'Dang' && PersonName::clean('Nadia') === 'Nadia' && PersonName::clean('Gorakh') === 'Gorakh');
+    check('  but the town itself still is a place', PersonName::clean('Mehsana') === '' && PersonName::clean('Rupaidiha') === '' && PersonName::clean('Surat') === '');
+    check('request words are never a name', PersonName::clean('ticket chahiyo') === '' && PersonName::clean('Chahiyo') === '' && PersonName::clean('bata') === ''
+        && PersonName::clean('seat chahiyo') === '' && PersonName::clean('जाने') === '');
 
     /* ================================================================
      *  2. The catalogue per role
@@ -229,8 +234,11 @@ try {
     check('  the passenger still has exactly one booking',
         (int) Database::scalar('SELECT COUNT(*) FROM bookings WHERE contact_phone = :p', ['p' => WM_PAX], 0) === 1);
 
-    AiTools::run('plan_ticket', ['seats' => 1, 'date' => $D2, 'direction' => 'toNepal'], $ctxFor(WM_AGENT, 8));
-    $np = AiTools::run('staff_sell', ['name' => 'Kamala Gurung', 'phone' => '+977 ' . WM_PAX2, 'gender' => 'Female', 'pay' => 'cash', 'confirm' => true], $ctxFor(WM_AGENT, 9));
+    AiTools::run('plan_ticket', ['seats' => 1, 'date' => $D2, 'direction' => 'toNepal', 'name' => 'Kamala Gurung', 'phone' => '+977 ' . WM_PAX2], $ctxFor(WM_AGENT, 8));
+    $wrongCountry = AiTools::run('staff_sell', ['name' => 'Kamala Gurung', 'phone' => WM_PAX2, 'country' => 'IN', 'gender' => 'Female', 'pay' => 'cash', 'confirm' => true], $ctxFor(WM_AGENT, 9));
+    check('a +977 pinned at the quote cannot be turned into +91 at the sale', $wrongCountry['ok'] === false && str_contains($wrongCountry['say'], 'country changed')
+        && !Database::exists('SELECT 1 FROM bookings WHERE contact_phone = :p', ['p' => WM_PAX2]), $wrongCountry['say']);
+    $np = AiTools::run('staff_sell', ['name' => 'Kamala Gurung', 'phone' => WM_PAX2, 'gender' => 'Female', 'pay' => 'cash', 'confirm' => true], $ctxFor(WM_AGENT, 10));
     check('a +977 number sells', $np['ok'] === true, (string) ($np['data']['pnr'] ?? $np['say']));
     $npRow = Database::fetch('SELECT contact_phone, contact_country_code, id_type FROM bookings WHERE contact_phone = :p', ['p' => WM_PAX2]);
     check('  the ten digits are stored', $npRow !== null && (string) $npRow['contact_phone'] === WM_PAX2);

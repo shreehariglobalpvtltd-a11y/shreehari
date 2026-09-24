@@ -161,6 +161,32 @@ php tests/apply-sql.php database/upgrade-2026-09-24-wa-manager.sql
 
 **OFF garna:** tyo switch 0. Turantai purano bewahar fercha.
 
+**Live ma lagne (deploy) — VPS ma, owner le:**
+
+```bash
+# 1. live folder ma (LIVE cha — git status pahila)
+cd /var/www/shreehariglobal.in/public_html      # ya jun folder live cha
+git status
+git fetch origin claude/mero-ai-ticket-system-keatp1
+git merge --ff-only origin/claude/mero-ai-ticket-system-keatp1   # ya: git checkout main && git merge ...
+
+# 2. database (ek choti, additive — kehi mettidaina)
+mysql shari < database/upgrade-2026-09-24-wa-manager.sql
+
+# 3. file owner ra syntax
+chown -R www-data:www-data includes/personname.php includes/walogin.php includes/wabulk.php \
+      database/upgrade-2026-09-24-wa-manager.sql docs/UPGRADE-2026-09-24-wa-manager.md tests/wa-*.php
+for f in includes/aitools.php includes/aiagent.php includes/wabot.php includes/wabooking.php \
+         includes/quickticket.php includes/walogin.php includes/wabulk.php includes/personname.php admin/ai-activity.php; do php -l $f; done
+curl -s -o /dev/null -w "%{http_code}\n" https://www.shreehariglobal.in/     # 200 aunuparcha
+
+# 4. test DB ma battery (live DB ma kahilyai hoina)
+cd /root/shg-test && php tests/wa-login-test.php && php tests/wa-bulk-test.php && php tests/wa-manager-tools-test.php
+```
+
+Deploy pachi pani **sabai switch OFF** hunchan — maathi ko table anusar ek-ek on garnus.
+Yo branch sandbox bata sidhai deploy garna milena (VPS ko SSH key sandbox ma chhaina).
+
 > Pahile jastai: WhatsApp ticket template ko naam milaunu (docs/UPGRADE-PLAN-2026-09-19.md, OWNER
 > ACTION) — nabhaye bulk le pani ticket katcha tara photo yatru samma pugdaina.
 
@@ -172,9 +198,9 @@ Tin naya suite, `tests/run-all.php` ma registered, `shari_test` ma sabai pass (2
 
 | Suite | Check | K hercha |
 |---|---|---|
-| `tests/wa-login-test.php` | 68 | switch off ma password swallow; galat password, unknown id euta line; failed_logins/lock; code registered number ma; manager lai sadhai code; session expire/revoke/logout/deactivate; 5 try pachi wait |
+| `tests/wa-login-test.php` | 72 | switch off ma password swallow; galat password, unknown id euta line; failed_logins/lock; code registered number ma; manager lai sadhai code; session expire/revoke/logout/deactivate; 5 try pachi wait |
 | `tests/wa-bulk-test.php` | 73 | naam/number tehi; +977; pariwar euta booking; galat line number sahit; 9 digit + umer join hoina; bus stop naam hoina; customer lai chhaina; quote le bechdaina; "ho" le sabai bechcha, yatru kai number ma, agent lai credit; dosro "ho" le kehi hoina; bhaau badliyo bhane refuse; tool 2-message rule |
-| `tests/wa-manager-tools-test.php` | 87 | PersonName; role anusar catalogue; naam/number pin ra refuse; euta quote euta bikri; +977 stamp; my_sales/my_wallet aafnai; request_payout 2 step; office_agent/agents/customer/payout_requests; settle_cod/reject/agent_status 2 step, aafai lai hoina |
+| `tests/wa-manager-tools-test.php` | 91 | PersonName; role anusar catalogue; naam/number pin ra refuse; euta quote euta bikri; +977 stamp; my_sales/my_wallet aafnai; request_payout 2 step; office_agent/agents/customer/payout_requests; settle_cod/reject/agent_status 2 step, aafai lai hoina |
 
 `tests/wa-agent-test.php` (79) pahila jastai pass.
 

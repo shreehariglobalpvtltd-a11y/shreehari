@@ -115,11 +115,19 @@ final class WaBooking
                    parseParty() reads every shape; the first is the booking
                    name and the rest ride on their own berths. */
                 $party = self::parseParty($text, max(1, (int) ($slots['seats'] ?? 1)));
+                $lead  = $party !== [] ? (string) $party[0]['name'] : self::stripNameWord($text);
+                /* Checked HERE, at intake (24 Sep review): a stop, a request
+                   word or a yes-word is refused with the reason, before it
+                   can reach the summary and loop at the sale. */
+                if (PersonName::clean($lead) === '') {
+                    self::save($phoneDigits, $slots, 'name', [], $lang);
+                    return self::out($opener . self::say('askName', $lang) . ' (' . PersonName::why($lead) . ')');
+                }
                 if ($party !== []) {
                     $slots['name']  = $party[0]['name'];
                     $slots['party'] = $party;
                 } else {
-                    $slots['name'] = self::stripNameWord($text);
+                    $slots['name'] = $lead;
                 }
                 $text = '';
             }
@@ -130,11 +138,16 @@ final class WaBooking
            same word is the whole family: "naam Ram, Sita 30, Maya 12". */
         if (preg_match('/^\s*(?:naam|nam|name|नाम|નામ)\s*[:\-]?\s*(.{2,400})$/ui', $text, $m)) {
             $party = self::parseParty($m[1], max(1, (int) ($slots['seats'] ?? 1)));
+            $lead  = $party !== [] ? (string) $party[0]['name'] : trim($m[1]);
+            if (PersonName::clean($lead) === '') {
+                self::save($phoneDigits, $slots, 'name', [], $lang);
+                return self::out($opener . self::say('askName', $lang) . ' (' . PersonName::why($lead) . ')');
+            }
             if ($party !== []) {
                 $slots['name']  = $party[0]['name'];
                 $slots['party'] = $party;
             } else {
-                $slots['name'] = trim($m[1]);
+                $slots['name'] = $lead;
             }
             $text = '';
         }
@@ -197,8 +210,8 @@ final class WaBooking
                it just never guarded the prefill. A name that IS this
                booking's pickup, or any stop we serve, is refused; the
                passenger is then asked for their name properly. */
-            if ($k === 'name' && self::looksLikePlace((string) $v, $slots)) {
-                continue;
+            if ($k === 'name' && (self::looksLikePlace((string) $v, $slots) || PersonName::clean((string) $v) === '')) {
+                continue;                 // "Chahiyo" is a request word, not a passenger
             }
             $slots[$k] = $v;
         }
@@ -262,10 +275,11 @@ final class WaBooking
            refused here, before any seat is taken, and asked for again. */
         $paxName = PersonName::clean((string) ($slots['name'] ?? ''));
         if ($paxName === '') {
+            $why = PersonName::why((string) ($slots['name'] ?? ''));
             $slots['name'] = '';
             $slots['party'] = [];
             self::save($phoneDigits, $slots, 'name', [], $lang);
-            return self::out(self::say('askName', $lang));
+            return self::out(self::say('askName', $lang) . ($why !== '' ? ' (' . $why . ')' : ''));
         }
         try {
             $res = QuickTicket::sellCustomer([

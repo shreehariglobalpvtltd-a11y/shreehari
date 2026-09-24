@@ -146,7 +146,10 @@ final class WaBot
            or a WhatsApp sign-in (WaLogin) — and handed to the assistant, so
            the admins table is read once per message, not twice. */
         $who = null;
-        if ($senderDigits !== '' && !$pnrOnly) {
+        if ($senderDigits !== '' && (Settings::getBool('wa_agent_on', false)
+                || Settings::getBool('wa_bulk_on', false) || Settings::getBool('wa_login_on', false))) {
+            /* Only while a switch that cares is on — with everything off this
+               number behaves exactly as it did on 19 Sep, at no extra cost. */
             try {
                 require_once INCLUDE_PATH . '/aitools.php';
                 $who = AiTools::whoIs($from);
@@ -221,6 +224,16 @@ final class WaBot
             } catch (Throwable $e) {
                 Logger::exception($e);          // the proven bot below still answers
             }
+            /* The assistant could not answer a member of staff (provider
+               down, deadline, cap). The paths below are for PASSENGERS —
+               they would park a customer draft under the agent's own number
+               or sell them a ticket — so staff get a plain "try again". */
+            if ($staffToAssistant) {
+                return self::out(
+                    "⏳ सहायक अहिले व्यस्त छ — एक मिनेटपछि फेरि पठाउनुहोस्, वा app को ⚡ Quick Ticket प्रयोग गर्नुहोस्।"
+                    . ($phone !== '' ? "\nहतार छ भने अफिस: " . $phone : '')
+                );
+            }
         }
 
         // No PNR — is this a booking REQUEST rather than a status check?
@@ -245,7 +258,7 @@ final class WaBot
                position is now only for the legacy order (wa_local_first = 0),
                where the model gets first refusal and the local engine picks
                up whatever it left. */
-            if (!$localFirst) {
+            if (!$localFirst && !$staffToAssistant) {
                 $booking = $tryLocalBooking();
                 if ($booking !== null) {
                     return self::out($booking['text'], $booking['media'] ?? null);
@@ -344,8 +357,18 @@ final class WaBot
             $staff[$d] = true;
         }
 
-        $isStaff = $senderDigits !== '' && isset($staff[$senderDigits]);
-        $owns    = $isStaff
+        $isOffice = $senderDigits !== '' && isset($staff[$senderDigits]);
+        /* 24 Sep 2026: the office (a staff record or a WhatsApp sign-in) reads
+           any PNR here too, and a seller their own sale — the same rule
+           find_ticket applies, so a bare PNR is not the one message that
+           answers an agent with the customer lock line. */
+        if (!$isOffice && is_array($who)) {
+            $role  = (string) ($who['role'] ?? '');
+            $scope = $who['scopeAdminId'] ?? null;
+            $isOffice = $role === 'admin'
+                || ($role === 'staff' && ($scope === null || (int) ($detail['sold_by_admin_id'] ?? 0) === (int) $scope));
+        }
+        $owns    = $isOffice
             || ($senderDigits !== '' && normalisePhone((string) $detail['contact_phone']) === $senderDigits);
         $status = strtoupper((string) $detail['status']);
 

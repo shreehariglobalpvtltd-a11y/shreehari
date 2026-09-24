@@ -121,8 +121,11 @@ final class AiAgent
         if ($ctx['role'] !== 'customer') {
             $daily *= 5;
         }
+        // A seller cutting tickets one after another is 2 messages a ticket;
+        // the 5-minute burst budget is wider for staff, like the daily one.
+        $burst = $ctx['role'] !== 'customer' ? 60 : 15;
         if (!Security::rateLimit('wa_agent_day', $who, $daily, 86400)
-            || !Security::rateLimit('wa_agent', $who, 15, 300)) {
+            || !Security::rateLimit('wa_agent', $who, $burst, 300)) {
             Logger::warning('WhatsApp agent rate limit hit', ['to' => $who, 'role' => $ctx['role']], 'whatsapp');
             return null;
         }
@@ -898,9 +901,10 @@ final class AiAgent
             . "Only then call fix_ticket with the same fields and confirm:true. If that fails, do not silently re-quote or choose different seats. "
             . "Pickup or explicit berth changes need the desk. A new correction preview replaces the previous correction preview.\n\n"
             . "NAMES AND NUMBERS (owner: \"naam ra mobile number ma mistake nahos\")\n"
-            . "N1. A ticket carries a NAME and a MOBILE, and both must be exactly right. The moment you know them, pass "
-            . "them to plan_ticket so the quote pins them; then read the name, the number, the bus and the fare back in "
-            . "the SAME message and let one ho confirm all of it.\n"
+            . "N1. A ticket carries a NAME and a MOBILE, and both must be exactly right. When you know them BEFORE "
+            . "quoting, pass them to plan_ticket so the quote pins them and read name, number, bus and fare back "
+            . "together, so one ho confirms all of it. When the name (or number) arrives WITH the ho, call "
+            . "issue_ticket / staff_sell with it straight away — do not quote again; quote again only if the tool refuses.\n"
             . "N2. Never correct, shorten, translate or re-spell a name yourself. Use it exactly as written. If a name "
             . "looks like a place, a word, or has digits, ask again — a tool will refuse it anyway.\n"
             . "N3. A mobile is 10 digits. Keep +977 in front of a Nepali number and say so; never guess a digit, never "
@@ -977,11 +981,12 @@ final class AiAgent
                 . "agent_day and my_wallet yourself and give them the three things that matter — today's tickets and money, "
                 . "cash still to hand over, commission due — in three short lines, plus ONE reminder when it is due: cash "
                 . "above the limit, KYC not verified, an open payout request, a deposit short, or the daily limit near. "
-                . "Praise a good day in half a line; never scold. Company rules, leave, the agent process: knowledge_lookup, "
-                . "then the office number.\n"
+                . "Praise a good day in half a line; never scold. Company rules, leave, the agent process: "
+                . ($has('knowledge_lookup') ? "knowledge_lookup, then the office number.\n" : "give the office number.\n")
                 . "THEIR TICKETS: my_sales lists their own sales with PNR, name, number and date. From a PNR they may "
-                . "rename_passenger, quote_ticket_fix + fix_ticket (date or number), resend_ticket, and refund_quote + "
-                . "cancel_ticket — only on tickets they sold. Never touch another seller's booking.\n"
+                . ($has('rename_passenger') ? "rename_passenger, " : '')
+                . ($has('fix_ticket') ? "quote_ticket_fix + fix_ticket (date or number), " : '')
+                . "resend_ticket, and refund_quote + cancel_ticket — only on tickets they sold. Never touch another seller's booking.\n"
                 . "THEIR MONEY: my_wallet is the whole account; agent_day is one day. "
                 . ($has('request_payout') ? "request_payout files a payout request in two steps (preview, ho, confirm). " : '')
                 . "Commission is what the company owes them; cash due is what they owe the company — say them apart.\n"
@@ -1018,7 +1023,8 @@ final class AiAgent
                 . "PEOPLE: office_agent for one agent (by code, name or mobile — their day, wallet, cash owed, last "
                 . "sales), office_agents for all of them, office_customer for one passenger's history by mobile, "
                 . "office_payout_requests for the payout queue. The office may read and change ANY booking: find_ticket, "
-                . "rename_passenger, quote_ticket_fix, resend_ticket, refund_quote + cancel_ticket all work on any PNR here.\n"
+                . ($has('rename_passenger') ? "rename_passenger, " : '') . ($has('fix_ticket') ? "quote_ticket_fix + fix_ticket, " : '')
+                . "resend_ticket, refund_quote + cancel_ticket all work on any PNR here.\n"
                 . ($has('office_confirm')
                     ? "WRITES (switched on): office_confirm verifies a payment; office_settle_cod records cash collected; "
                       . "office_reject rejects a pending booking; office_agent_status activates or deactivates an agent. "
