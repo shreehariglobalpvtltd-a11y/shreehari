@@ -387,6 +387,21 @@ function countryDialCode(string $country): string
  * ===================================================================== */
 
 /**
+ * fputcsv() with every optional argument spelled out. PHP 8.4 deprecates a
+ * call that leaves $escape to its default (the default changes in 9.0), and
+ * this app turns deprecations into exceptions outside production — so
+ * every CSV export answered 500 on a PHP 8.4 machine. One place, one rule:
+ * comma, double quote, backslash escape, \n line ending.
+ *
+ * @param resource            $out
+ * @param array<int|string, mixed> $row
+ */
+function csv_put($out, array $row): int|false
+{
+    return fputcsv($out, $row, ',', '"', '\\', "\n");
+}
+
+/**
  * Decode a JSON column, always returning an array.
  *
  * @return array<mixed>
