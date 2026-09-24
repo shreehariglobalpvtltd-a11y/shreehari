@@ -37,7 +37,7 @@ const WB_P1    = '9100008011';   // passengers
 const WB_P2    = '9100008012';
 const WB_P3    = '9100008013';
 const WB_P4    = '9100008014';
-const WB_LIKE  = '910000801';
+const WB_LIKE  = '91000080';    // covers the seller (…8001), the customer (…8002) and the passengers (…8011-14)
 
 $PASS = 0; $FAIL = 0;
 function check(string $l, bool $ok, string $extra = ''): void {
