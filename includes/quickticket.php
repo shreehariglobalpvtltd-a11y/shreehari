@@ -764,7 +764,7 @@ final class QuickTicket
         $exclude = [];
         for ($attempt = 1; $attempt <= 2; $attempt++) {
             $plan    = self::plan($opts + ['exclude' => $exclude]);
-            $request = self::requestFor($plan, $name, $phone, $gender, $idType, $given);
+            $request = self::requestFor($plan, $name, $phone, $gender, $idType, $given, '', $country);
             try {
                 $booking = BookingService::create($request, $seller);
                 break;
@@ -876,7 +876,7 @@ final class QuickTicket
                     self::assertPlanAsShown($plan, $expect);
                 }
             }
-            $request = self::requestFor($plan, $name, $phone, $gender, $idType, $given, $agentCode);
+            $request = self::requestFor($plan, $name, $phone, $gender, $idType, $given, $agentCode, $country);
             // Pay-at-counter when the office allows it (confirmed now); else the normal UPI-pending path.
             $request['isCod']         = $cod;
             $request['paymentMethod'] = $cod ? 'cod' : 'upi';
@@ -1057,7 +1057,7 @@ final class QuickTicket
     }
 
     /** The exact request shape api/book.php hands BookingService::create(). */
-    private static function requestFor(array $plan, string $name, string $phone, ?string $gender, string $idType, array $given, string $referralCode = ''): array
+    private static function requestFor(array $plan, string $name, string $phone, ?string $gender, string $idType, array $given, string $referralCode = '', string $country = ''): array
     {
         $passengers = [];
         foreach ($plan['seats'] as $i => $seat) {
@@ -1080,7 +1080,10 @@ final class QuickTicket
             'scheduleId'      => (int) $plan['slot'] > 1 ? (int) $plan['scheduleId'] : 0,
             'seats'           => $plan['seats'],
             'passengers'      => $passengers,
-            'contact'         => ['phone' => $phone, 'email' => '', 'idType' => $idType, 'idNum' => ''],
+            /* 24 Sep 2026: the country rides on the contact too, so
+               bookings.contact_country_code is stamped (Notify's first
+               choice) rather than inferred from the ID type alone. */
+            'contact'         => ['phone' => $phone, 'email' => '', 'idType' => $idType, 'idNum' => '', 'country' => $country],
             'bookingMode'     => $plan['bookingMode'],
             'cabinType'       => $plan['bookingMode'] !== null ? 'single' : null,
             'sharingTier'     => null,
