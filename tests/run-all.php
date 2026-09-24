@@ -157,6 +157,8 @@ const CORE_SUITES = [
     'seatmap-test.php'            => 'the customer seat picture: signed link, status only (never names), same count as the challan',
     'report-chart-test.php'       => 'the office report chart: figures = the register, signed link, office numbers only',
     'wa-voice-test.php'           => 'voice notes: the Gemini request, the cleaned transcript, the typed-message path',
+    // 24 Sep 2026, registered with the three homepage booking cards it guards.
+    'home-entry-test.php'         => 'three booking doors open the existing flows; every home/sheet label exists in en/hi/ne',
 ];
 
 /**

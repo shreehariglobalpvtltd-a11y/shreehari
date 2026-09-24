@@ -864,7 +864,49 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
   /* Quick Ticket first, above the normal search card and the hero. The id
      selector outranks the :not() rule above. */
   #view-home > #quick-ticket{order:1;width:100%;min-width:0;margin-top:14px}
+  /* Phase B (24 Sep 2026): the three booking doors lead everything on a
+     phone - above QuickBot (1), the search card (2) and the hero (3). */
+  #view-home > #entryCards{order:0;width:100%;min-width:0;margin-top:12px}
 }
+
+/* =========================================================================
+   PHASE B (24 Sep 2026): THREE BOOKING DOORS - #entryCards on the home view.
+   Blue = normal (seat map), orange = QuickBot, green = WhatsApp request.
+   Mobile-first: three equal columns from 320px up; white text on every
+   card stays above 4.5:1 (blue #2E5FA8 6.3, orange #C2410C 5.2, green
+   #15803D 5.0). min-height sits on .ec-grid .ec-card so it outranks
+   app.css button[type=button]{min-height:44px}; the hover lift is
+   hover-capable pointers only, so a tapped card does not stay lifted.
+   ========================================================================= */
+.entry-cards{margin:16px auto 8px}
+.ec-head{margin:0 0 8px;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;text-align:center;color:var(--muted)}
+.ec-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.ec-card{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:5px;margin:0;padding:14px 6px 12px;
+  border:0;border-radius:18px;color:#fff;text-align:center;font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  box-shadow:0 6px 18px rgba(16,24,40,.16);transition:transform .15s ease,box-shadow .15s ease}
+.ec-grid .ec-card{min-height:118px}
+@media (hover:hover){.ec-card:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(16,24,40,.22)}}
+.ec-card:active{transform:scale(.97)}
+.ec-card:focus-visible{outline:3px solid #12264E;outline-offset:3px}
+:root[data-theme="dark"] .ec-card:focus-visible{outline-color:#FFB020}
+.ec-ico{display:grid;place-items:center;width:42px;height:42px;border-radius:13px;background:rgba(255,255,255,.18);font-size:23px;line-height:1}
+.ec-card b{font-size:14px;font-weight:800;line-height:1.2;overflow-wrap:anywhere}
+.ec-card small{font-size:11.5px;font-weight:600;line-height:1.3;opacity:.95;overflow-wrap:anywhere}
+.ec-normal{background:linear-gradient(135deg,#2E5FA8 0%,#1A3A6A 100%)}
+.ec-quick{background:linear-gradient(135deg,#C2410C 0%,#9A3412 100%)}
+.ec-wa{background:linear-gradient(135deg,#15803D 0%,#0E5C2F 100%)}
+@media (min-width:761px){
+  .entry-cards{margin:22px auto 10px}
+  .ec-grid{gap:16px}
+  .ec-card{display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;column-gap:14px;row-gap:2px;
+    align-items:center;justify-items:start;padding:16px 18px;text-align:left}
+  .ec-grid .ec-card{min-height:92px}
+  .ec-ico{grid-row:1 / span 2;width:52px;height:52px;font-size:28px}
+  .ec-card b{font-size:17px;align-self:end}
+  .ec-card small{font-size:13px;align-self:start}
+}
+:root[data-theme="dark"] .ec-card{box-shadow:0 6px 18px rgba(0,0,0,.45)}
+@media (prefers-reduced-motion:reduce){.ec-card{transition:none}.ec-card:hover,.ec-card:active{transform:none}}
 
 /* =========================================================================
    [Round-3] BUS-CARD — TIME-prominent hierarchy
