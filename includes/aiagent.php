@@ -146,10 +146,13 @@ final class AiAgent
                     . ((string) ($attachment['mime'] ?? '') !== '' ? ' (' . (string) $attachment['mime'] . ')' : '')
                     . " was attached. You cannot see its content. "
                     . (!empty($attachment['stash'])
-                        ? "A copy is kept for the office and will be attached to any support request you open. "
+                        ? "A copy is kept for the office" . (class_exists('AiHandoff') && AiHandoff::enabled() ? " and will be attached to any support request you open. " : ". ")
                         : "It was not stored. ")
-                    . "If it is a payment proof: ask for the booking number if missing, then open handoff_to_staff (payment_dispute or booking_help) so the desk verifies it. "
-                    . "If it is a document meant for the office: open handoff_to_staff (document_request). Never claim to have read it.]";
+                    . (class_exists('AiHandoff') && AiHandoff::enabled()
+                        ? "If it is a payment proof: ask for the booking number if missing, then open handoff_to_staff (payment_dispute or booking_help) so the desk verifies it. "
+                          . "If it is a document meant for the office: open handoff_to_staff (document_request). "
+                        : "If it is a payment proof: ask for the booking number if missing and say the office will check it and confirm the ticket here; give the office number for anything urgent. ")
+                    . "Never claim to have read it.]";
             }
             $history[]    = ['role' => 'user', 'content' => $turnText];
 

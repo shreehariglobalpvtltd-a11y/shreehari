@@ -336,14 +336,14 @@ final class CompanyDocs
     public static function mask(string $text): string
     {
         $rules = [
-            // GSTIN 22ABCDE1234F1Z5 → 22•••••••••••Z5
-            ['/\b(\d{2})([A-Z]{5}\d{4}[A-Z])([1-9A-Z]Z[0-9A-Z])\b/',
+            // GSTIN 22ABCDE1234F1Z5 → 22•••••••••••Z5 (any letter case, as pasted)
+            ['/\b(\d{2})([A-Z]{5}\d{4}[A-Z])([1-9A-Z]Z[0-9A-Z])\b/i',
                 static fn(array $m): string => $m[1] . '•••••••••••' . substr($m[3], -2)],
             // CIN U12345GJ2020PTC123456 → U••••••••••••••••3456
-            ['/\b([LU])(\d{5}[A-Z]{2}\d{4}[A-Z]{3})(\d{6})\b/',
+            ['/\b([LU])(\d{5}[A-Z]{2}\d{4}[A-Z]{3})(\d{6})\b/i',
                 static fn(array $m): string => $m[1] . '••••••••••••••••' . substr($m[3], -4)],
             // PAN ABCDE1234F → ABCDE••••F
-            ['/\b([A-Z]{5})(\d{4})([A-Z])\b/',
+            ['/\b([A-Z]{5})(\d{4})([A-Z])\b/i',
                 static fn(array $m): string => $m[1] . '••••' . $m[3]],
             // Aadhaar written in groups 1234 5678 9012 → •••• •••• 9012
             ['/\b\d{4}[ \-]\d{4}[ \-](\d{4})\b/',
@@ -352,10 +352,12 @@ final class CompanyDocs
             ['/(?<!\d)(?!91\d{10}|977\d{9})(\d{8})(\d{4})(?!\d)/',
                 static fn(array $m): string => '••••••••' . $m[2]],
             // Passport A1234567 → A•••••67
-            ['/\b([A-Z])(\d{7})\b/',
+            ['/\b([A-Z])(\d{7})\b/i',
                 static fn(array $m): string => $m[1] . '•••••' . substr($m[2], -2)],
-            // Account numbers named as such: "A/c 123456789012" → A/c ••••9012
-            ['/\b(a\/c|acct?|account(?:\s+no\.?|\s+number)?|ifsc)\s*[:#.\-]?\s*([A-Z0-9]{6,20})\b/iu',
+            // Account numbers named as such: "A/c 123456789012" → A/c ••••9012. The
+            // label must end at a word boundary and the value must carry a digit,
+            // so "A/C sleeper", "according" and "accountant" are left alone.
+            ['/\b(a\/c|acct?|account(?:\s+no\.?|\s+number)?|ifsc)\b\s*[:#.\-]?\s*((?=[A-Z0-9]*\d)[A-Z0-9]{6,20})\b/iu',
                 static fn(array $m): string => $m[1] . ': ••••' . substr($m[2], -4)],
             // Anything written as a secret
             ['/\b(password|passcode|otp|pin|token|secret|api[_ ]?key)\s*[:=]\s*\S+/iu',
@@ -606,11 +608,16 @@ final class CompanyDocs
                     if ($stored !== null) {
                         $data['uploaded_by'] = $adminId;
                     }
-                    // A summary/title/audience edit re-indexes without a new file.
+                    // A summary/title/audience edit re-indexes without a new file:
+                    // the words of the FILE (whatever followed the previous
+                    // title/summary header, if one was ever written) are kept.
                     if ($stored === null) {
+                        $oldText = (string) ($old['search_text'] ?? '');
+                        $prefix  = (string) $old['title'] . "\n" . (string) ($old['summary'] ?? '') . "\n";
+                        $rest    = str_starts_with($oldText, $prefix) ? substr($oldText, strlen($prefix))
+                                 : ($oldText === rtrim($prefix, "\n") ? '' : $oldText);
                         $data['search_text'] = mb_substr(
-                            (string) $data['title'] . "\n" . (string) ($data['summary'] ?? '') . "\n"
-                            . self::stripIndexedHeader((string) ($old['search_text'] ?? '')),
+                            (string) $data['title'] . "\n" . (string) ($data['summary'] ?? '') . "\n" . $rest,
                             0, self::MAX_TEXT
                         );
                     }
@@ -973,13 +980,6 @@ final class CompanyDocs
     private static function normalize(string $text): string
     {
         return preg_replace('/\s+/u', ' ', mb_strtolower(trim($text))) ?? mb_strtolower(trim($text));
-    }
-
-    /** search_text starts with "title\nsummary\n" when it was re-indexed; drop that before re-adding. */
-    private static function stripIndexedHeader(string $text): string
-    {
-        $parts = explode("\n", $text, 3);
-        return count($parts) === 3 ? $parts[2] : $text;
     }
 
     /** @return array<string,mixed>|null */

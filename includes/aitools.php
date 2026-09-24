@@ -1853,10 +1853,11 @@ final class AiTools
         $role  = (string) ($ctx['role'] ?? 'customer');
         $aRole = self::adminRole($ctx);
         $res   = CompanyDocs::search($query, $role, $aRole, 5);
-        // The real figures (an unmasked PAN / GSTIN / CIN) are read out only to
-        // the office, and only inside a fresh step-up verification. Everyone
-        // else, always masked — and if step-up is off, masked for the office too.
-        $unmasked = $role === 'admin' && AiVerify::enabled() && AiVerify::isFresh($ctx);
+        // Ordinary answers are ALWAYS masked, for the office too: a full PAN /
+        // GSTIN / CIN read into a chat lands in message_logs for every staff
+        // reader. The FILE, via company_doc_send after step-up and a yes, is
+        // the only channel for the full paper.
+        $unmasked = false;
 
         CompanyDocs::logAccess(null, 'search', $ctx, true, count($res['hits']) . ' hit(s), ' . $res['expired'] . ' expired for: ' . mb_substr($query, 0, 120), $query);
 

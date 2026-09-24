@@ -63,6 +63,11 @@ foreach (['source' => "VARCHAR(20) NOT NULL DEFAULT 'web'", 'sender_role' => 'VA
         }
     } catch (Throwable $e) {}
 }
+try {
+    if (Database::fetch("SHOW COLUMNS FROM support_messages LIKE 'is_internal'") === null) {
+        Database::run("ALTER TABLE support_messages ADD COLUMN `is_internal` TINYINT(1) NOT NULL DEFAULT 0");
+    }
+} catch (Throwable $e) {}
 if (!AiHandoff::available(true)) { echo "  SKIP  support_tickets could not be extended\n"; exit(0); }
 
 /* ---- settings pinned + restored -------------------------------------- */
@@ -101,7 +106,7 @@ $cleanup = static function () use ($restore): void {
     try { Database::delete('bookings', "contact_phone LIKE '" . OM_LIKE . "%'", []); } catch (Throwable $e) {}
     try { Database::delete('wa_identity_links', "phone LIKE '" . OM_LIKE . "%'", []); } catch (Throwable $e) {}
     try { Database::delete('ai_agent_calls', "phone LIKE '" . OM_LIKE . "%'", []); } catch (Throwable $e) {}
-    try { Database::delete('kv_store', "kscope IN ('wa_stage','wa_agent','wa_turn','wa_voice','wa_booking') AND kkey LIKE '" . OM_LIKE . "%'", []); } catch (Throwable $e) {}
+    try { Database::delete('kv_store', "kscope IN ('wa_stage','wa_agent','wa_turn','wa_voice','wa_book') AND kkey LIKE '" . OM_LIKE . "%'", []); } catch (Throwable $e) {}
     try { Database::delete('message_logs', "to_number LIKE '%" . OM_LIKE . "%'", []); } catch (Throwable $e) {}
     try { Database::delete('wa_marketing_consents', "phone LIKE '91" . OM_LIKE . "%'", []); } catch (Throwable $e) {}
     try { Database::delete('rate_limits', "identifier LIKE '%" . OM_LIKE . "%'", []); } catch (Throwable $e) {}
@@ -167,6 +172,8 @@ $row = Database::fetch('SELECT * FROM support_tickets WHERE ticket_ref = :r', ['
 check('the row carries source, role, language, priority', $row !== null && $row['source'] === 'whatsapp_ai' && $row['sender_role'] === 'customer'
     && $row['language'] === 'ne' && $row['priority'] === 'high' && $row['status'] === 'open', json_encode([$row['source'] ?? null, $row['sender_role'] ?? null, $row['language'] ?? null]));
 check('the OTP and the card number never reached the queue', !str_contains((string) $row['message'], '482913') && !str_contains((string) $row['message'], '4111'));
+check('redact() hides an OTP however it is phrased', !str_contains(AiHandoff::redact('OTP was 482910 tara fail'), '482910') && !str_contains(AiHandoff::redact('otp aayo 482910'), '482910')
+    && !str_contains(AiHandoff::redact('code: 4829'), '4829') && str_contains(AiHandoff::redact('seat 12 ra 2 jana'), 'seat 12'));
 check('redact() keeps a Nepali number with its country code (13 digits is not a card)', str_contains(AiHandoff::redact('call 9779812345678 or 919104801507, card 4111111111111111 cvv 123'), '9779812345678')
     && str_contains(AiHandoff::redact('call 9779812345678'), '9779812345678') && !str_contains(AiHandoff::redact('card 4111111111111111'), '4111111111111111')
     && !str_contains(AiHandoff::redact('amex 378282246310005'), '378282246310005'));
@@ -208,10 +215,12 @@ $st2 = AiTools::run('handoff_status', ['ref' => $ref], $mk(OM_OTHER));
 check('another number cannot', !$st2['ok'] && str_contains($st2['say'], 'No request'));
 $st3 = AiTools::run('handoff_status', ['ref' => $ref], $mk(OM_BOSS));
 check('the office can', $st3['ok']);
-Database::insert('support_messages', ['ticket_id' => (int) $row['id'], 'sender_type' => 'admin', 'sender_name' => 'Desk', 'message' => 'Refund of Rs 2000 approved, 3 working days.']);
+Database::insert('support_messages', ['ticket_id' => (int) $row['id'], 'sender_type' => 'admin', 'sender_name' => 'Desk', 'message' => 'Refund of Rs 2000 approved, 3 working days.', 'is_internal' => 0]);
+Database::insert('support_messages', ['ticket_id' => (int) $row['id'], 'sender_type' => 'admin', 'sender_name' => 'Desk', 'message' => 'Screenshot looks edited, customer probably lying — check with the bank first.', 'is_internal' => 1]);
 Database::update('support_tickets', ['status' => 'in_progress'], 'id = :i', ['i' => (int) $row['id']]);
 $st4 = AiTools::run('handoff_status', ['ref' => $ref], $mk(OM_CUST, 4));
-check("the desk's reply and the new status are read back", ($st4['data']['status'] ?? '') === 'in_progress' && str_contains((string) ($st4['data']['staffReply'] ?? ''), 'approved'));
+check("the desk's SENT reply and the new status are read back", ($st4['data']['status'] ?? '') === 'in_progress' && str_contains((string) ($st4['data']['staffReply'] ?? ''), 'approved'));
+check('  an INTERNAL note is never read back to the person', !str_contains(json_encode($st4['data']), 'lying'));
 check('a malformed reference is refused', !AiTools::run('handoff_status', ['ref' => 'SUP-1'], $cust)['ok']);
 
 /* ------------------------------------------------------------------------ */
@@ -317,8 +326,11 @@ if ($hasConsent) {
     $c1 = WaBot::reply('+91' . OM_CUST, 'START OFFERS', 'text');
     check('with marketing ON, START OFFERS is recorded and acknowledged', str_contains($c1['text'], 'सहमति')
         && Database::exists("SELECT 1 FROM wa_marketing_consents WHERE phone = :p AND state = 'opted_in'", ['p' => '91' . OM_CUST]));
+    Database::insertIgnore('kv_store', ['kscope' => 'wa_book', 'kkey' => OM_CUST, 'kvalue' => json_encode(['step' => 'names', 'at' => time()]), 'updated_by' => 'test']);
+    Database::insertIgnore('kv_store', ['kscope' => 'wa_stage', 'kkey' => OM_CUST, 'kvalue' => json_encode(['kind' => 'sale', 'turn' => 1, 'at' => time(), 'payload' => []]), 'updated_by' => 'test']);
     $c2 = WaBot::reply('+91' . OM_CUST, 'STOP', 'text');
     check('STOP flips it to opted_out', Database::exists("SELECT 1 FROM wa_marketing_consents WHERE phone = :p AND state = 'opted_out'", ['p' => '91' . OM_CUST]));
+    check('  and ends any half-way booking chat and parked quote', Database::fetch("SELECT 1 FROM kv_store WHERE kscope IN ('wa_book','wa_stage') AND kkey = :k", ['k' => OM_CUST]) === null);
     Settings::set('wa_marketing_on', false, 'bool', 'ai'); Settings::flush();
 } else {
     echo "  SKIP  wa_marketing_consents not migrated\n";

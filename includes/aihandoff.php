@@ -279,10 +279,14 @@ final class AiHandoff
             // Not found and not-yours read the same: confirming a reference exists is a disclosure.
             return self::no('No request with that reference is on this number.');
         }
+        // Only a reply the desk actually SENT to the person is read back; an
+        // internal note (is_internal = 1) never leaves the inbox. On a database
+        // without that column nothing is read back at all.
         $last = null;
         try {
             $last = Database::fetch(
-                "SELECT message, created_at FROM support_messages WHERE ticket_id = :t AND sender_type = 'admin' ORDER BY id DESC LIMIT 1",
+                "SELECT message, created_at FROM support_messages
+                  WHERE ticket_id = :t AND sender_type = 'admin' AND is_internal = 0 ORDER BY id DESC LIMIT 1",
                 ['t' => (int) $t['id']]);
         } catch (Throwable $ignored) {
         }
@@ -306,7 +310,9 @@ final class AiHandoff
     /** One-time codes, passwords, card numbers and CVVs never reach the queue. */
     public static function redact(string $text): string
     {
-        $text = preg_replace('/\b(otp|code|password|passcode|pin|cvv|cvc)\s*(?:is|:|=|-)?\s*\d{3,8}\b/iu', '$1 [hidden]', $text) ?? $text;
+        // "OTP 482913", "otp was 482913", "otp aayo 482913", "code: 4829" — a short
+        // non-digit gap is allowed, the way Notify::logMessage masks codes.
+        $text = preg_replace('/\b(otp|code|password|passcode|pin|cvv|cvc)\b\D{0,12}?(\d{3,8})\b/iu', '$1 [hidden]', $text) ?? $text;
         // A card is 15–19 digits (Amex 15, Visa / Mastercard / RuPay 16). 13 would
         // also eat a Nepali number with its country code (977 + 10), which the
         // desk needs.

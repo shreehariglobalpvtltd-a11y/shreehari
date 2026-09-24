@@ -210,6 +210,15 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+SET @have := (SELECT COUNT(*) FROM information_schema.COLUMNS
+               WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'support_messages' AND COLUMN_NAME = 'is_internal');
+SET @sql := IF(@have = 0,
+  'ALTER TABLE `support_messages` ADD COLUMN `is_internal` TINYINT(1) NOT NULL DEFAULT 0 COMMENT ''1 = a desk note never shown to the person, 0 = a reply they received'' AFTER `message`',
+  'SELECT ''support_messages.is_internal already present'' AS note');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 -- ---------------------------------------------------------------------
 --  5. The switches — every one OFF, so applying this file changes nothing.
 -- ---------------------------------------------------------------------

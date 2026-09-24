@@ -161,6 +161,11 @@ check('passport is masked', !str_contains($m, 'A1234567'));
 check('account is masked',  !str_contains($m, '123456789012'));
 check('password is hidden', !str_contains($m, 'hunter2'));
 check('phone numbers stay readable', str_contains($m, '919104801507') && str_contains($m, '9104801507'));
+$plain = CompanyDocs::mask('Non A/C seater and A/C sleeper buses run daily; refunds go back to the customer account within 7 days, according to the accountant. IFSC code on request.');
+check('ordinary words near "A/C" / "account" are NOT mangled', $plain === 'Non A/C seater and A/C sleeper buses run daily; refunds go back to the customer account within 7 days, according to the accountant. IFSC code on request.', $plain);
+check('a named account number IS masked', !str_contains(CompanyDocs::mask('Pay to A/c 123456789012, IFSC SBIN0001234'), '123456789012'));
+$lower = CompanyDocs::mask('pan: abcde1234f, gstin 24abcde1234f1z5, cin u12345gj2020ptc123456, passport a1234567');
+check('lowercase identifiers are masked too', !str_contains($lower, 'abcde1234f') && !str_contains($lower, '24abcde1234f1z5') && !str_contains($lower, 'u12345gj2020ptc123456') && !str_contains($lower, 'a1234567'), $lower);
 
 /* ------------------------------------------------------------------------ */
 section('who may file');
@@ -251,6 +256,17 @@ $ver = Database::fetch('SELECT * FROM company_document_versions WHERE document_i
 check('the old row is snapshotted', $ver !== null && str_contains((string) $ver['snapshot'], 'zztest Luggage rules'));
 check('the superseded blob is kept for rollback', (string) $ver['file_path'] === $oldPath && is_file(UPLOAD_PATH . '/' . $oldPath));
 check('the new file replaced the old', (string) $pub2['file_path'] !== $oldPath && CompanyDocs::plaintext($pub2) === 'zztest luggage policy v2 zzsuitcase2');
+// Re-indexing without a new file must keep the FILE's words — including its first lines.
+$reIdx = CompanyDocs::saveWithBytes(['title' => 'zztest Reindex certificate', 'doc_type' => 'tax', 'sensitivity' => 'internal', 'audience' => ['manager'], 'summary' => 'first summary', 'status' => 'approved'],
+    ['bytes' => "GOODS AND SERVICES zzfirstlinemarker
+REGISTRATION zzsecondlinemarker
+body zzbodymarker", 'ext' => 'txt', 'mime' => 'text/plain', 'name' => 'gst.txt'], $mgrId);
+CompanyDocs::saveWithBytes(['title' => 'zztest Reindex certificate', 'doc_type' => 'tax', 'sensitivity' => 'internal', 'audience' => ['manager'], 'summary' => 'second summary zzsummarymarker', 'status' => 'approved'], null, $mgrId, $reIdx);
+CompanyDocs::saveWithBytes(['title' => 'zztest Reindex certificate', 'doc_type' => 'tax', 'sensitivity' => 'internal', 'audience' => ['manager'], 'summary' => 'third summary', 'status' => 'approved'], null, $mgrId, $reIdx);
+$ri = CompanyDocs::get($reIdx);
+check('re-indexing twice without a file keeps the first extracted lines', str_contains((string) $ri['search_text'], 'zzfirstlinemarker') && str_contains((string) $ri['search_text'], 'zzsecondlinemarker') && str_contains((string) $ri['search_text'], 'zzbodymarker'));
+check('  and does not pile up old summaries', !str_contains((string) $ri['search_text'], 'zzsummarymarker') && substr_count((string) $ri['search_text'], 'zztest Reindex certificate') === 1);
+check('  so the first line is still searchable', CompanyDocs::search('zzfirstlinemarker', 'admin', 'manager')['hits'] !== []);
 try { CompanyDocs::setStatus($resId, 'approved', $mgrId); check('a manager cannot approve a restricted paper', false); }
 catch (RuntimeException $e) { check('a manager cannot approve a restricted paper', true); }
 try { CompanyDocs::setStatus($resId, 'archived', $mgrId); check('a manager cannot archive the owner\'s restricted paper by id', false); }
@@ -407,7 +423,7 @@ check('  audited as verified', Database::exists("SELECT 1 FROM audit_logs WHERE 
 $v3 = AiTools::run('company_doc_send', ['doc_id' => $confId, 'purpose' => 'audit'], $mk(CD_MGR, 8));
 check('once verified, the paper is shown and confirmation asked', $v3['ok'] && ($v3['data']['awaiting_confirmation'] ?? false));
 $s4 = AiTools::run('company_docs_search', ['query' => 'gst certificate'], $mk(CD_MGR, 9));
-check('a verified office number may read the real GSTIN', str_contains(json_encode($s4['data']), '24ABCDE1234F1Z5'));
+check('even a verified office number gets the GSTIN masked in chat (the file is the channel)', !str_contains(json_encode($s4['data']), '24ABCDE1234F1Z5') && str_contains(json_encode($s4['data']), 'zzgstmarker'));
 Database::update('wa_identity_links', ['verified_at' => date('Y-m-d H:i:s', time() - 3600)], 'phone = :p', ['p' => CD_MGR]);
 check('a verification older than the window is stale', !AiVerify::isFresh($mk(CD_MGR, 10)));
 $vi = AiTools::run('verify_identity', [], $cust);

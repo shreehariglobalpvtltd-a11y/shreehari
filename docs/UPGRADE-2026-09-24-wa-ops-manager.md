@@ -141,7 +141,7 @@ switch OFF) — apply garepachhi pani site ra bot pahile jastai chalchha.
 
 ## 5. Test (24 Sep, local `shari_test`, MariaDB 10.11, PHP 8.4)
 
-- `company-docs-test.php` — **117/117**: seal/open + tamper, masking (PAN/GSTIN/CIN/Aadhaar/
+- `company-docs-test.php` — **123/123**: seal/open + tamper, masking (PAN/GSTIN/CIN/Aadhaar/
   passport/account/password; phone number chhoidaina), kasle file garna sakchha, audience rule,
   role × sensitivity matrix, draft/archived/expired luki, search scope, version snapshot + purano
   file rakhne, share link (3 fetch, expiry, withdraw = dead), tools (switch, role, honest "NOT sent",
@@ -149,11 +149,13 @@ switch OFF) — apply garepachhi pani site ra bot pahile jastai chalchha.
   step-up (link hashed, galat account = burn + audit, sahi account = fresh, stale pachhi fresh hoina),
   manager le owner ko restricted kagaj id bata chhuna nasakne, confirm=true model le bhane pani manche ko
   aafnai "ho" chahine, wa_agent_oneshot le confidential ko 2-message niyam natodne, +977 sender lai +977 mai
-  pathaune, token audit/message_logs ma nabasne.
-- `wa-ops-manager-test.php` — **72/72**: handoff switch, SUP- ref, redaction, dedupe, aafno/aruko
+  pathaune, token audit/message_logs ma nabasne, "A/C sleeper" / "account" jasta sabda mask le nabigarne, lowercase
+  PAN/GSTIN pani mask, office lai pani chat ma GSTIN masked (file matra pura), re-index le file ko shabda nakhosne.
+- `wa-ops-manager-test.php` — **75/75**: handoff switch, SUP- ref, redaction, dedupe, aafno/aruko
   PNR, office alert honesty, status ownership, step-up needs/gate/audit/consume/revoke, catalogue
   by switch & role (marketing pani), media sanitize, fixed replies bahal, voice "हो" replay,
-  START OFFERS / STOP, +977 handoff ko number country code sahit, evidence retention sweep.
+  START OFFERS / STOP (STOP le adhuro booking chat pani band garchha), +977 handoff ko number country code sahit,
+  evidence retention sweep, Support Inbox ko internal note customer lai kahilyai napadhine, OTP jasari lekhe pani redact.
 - Purano battery: **uhi 62 pass**, uhi 4 purano fail (fares-settings / export-filters — :8899 dev
   server chahine; chalani-png channel label; trip-reminder, whatsapp-retry-policy — baseline ma
   pani fail). `wa-agent-test` 79/79, `ai-kb-test` 27/27, `wa-local-booking` 54/54 — kehi bigreko

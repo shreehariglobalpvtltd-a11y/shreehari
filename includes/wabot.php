@@ -55,6 +55,20 @@ final class WaBot
                 require_once INCLUDE_PATH . '/wamarketing.php';
                 $consent = WaMarketing::consentMessage($from, $body);
                 if ($consent !== null) {
+                    // "STOP" / "बन्द" also means: whatever was half-way — a seat
+                    // conversation waiting for names, a parked quote — is over.
+                    // Otherwise the next message would be read as the answer to
+                    // a question the person has already walked away from.
+                    if ($senderDigits !== '') {
+                        try {
+                            require_once INCLUDE_PATH . '/wabooking.php';
+                            WaBooking::clear($senderDigits);
+                            require_once INCLUDE_PATH . '/aiagent.php';
+                            AiAgent::forget($senderDigits);
+                        } catch (Throwable $e) {
+                            Logger::exception($e);
+                        }
+                    }
                     return self::out((string) $consent['text'], $consent['media'] ?? null);
                 }
             } catch (Throwable $e) {

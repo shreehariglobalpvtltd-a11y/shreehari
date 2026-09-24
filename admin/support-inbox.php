@@ -93,14 +93,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 if (mb_strlen($note) < 2) {
                     throw new RuntimeException('Write the reply first.');
                 }
-                Database::insert('support_messages', [
-                    'ticket_id' => $id, 'sender_type' => 'admin',
-                    'sender_name' => mb_substr((string) ($admin['full_name'] ?? $admin['username'] ?? 'Office'), 0, 120),
-                    'message' => $note,
-                ]);
-                if ($t['status'] === 'open') {
-                    Database::update('support_tickets', ['status' => 'in_progress', 'assigned_to' => $t['assigned_to'] ?: (int) $admin['id']], 'id = :id', ['id' => $id]);
-                }
+                // Send first, then record what it turned out to be: a reply the
+                // person actually received (the assistant may read it back to
+                // them on request) or an INTERNAL note that never leaves this
+                // screen. Unticked, or refused by WhatsApp, means internal.
                 $sent = null;
                 if (($_POST['send_wa'] ?? '') === '1') {
                     require_once INCLUDE_PATH . '/notify.php';
@@ -109,8 +105,22 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                         ['purpose' => 'support_reply', 'admin_id' => (int) $admin['id']]);
                     $sent = $r === true;
                 }
+                $msgRow = [
+                    'ticket_id' => $id, 'sender_type' => 'admin',
+                    'sender_name' => mb_substr((string) ($admin['full_name'] ?? $admin['username'] ?? 'Office'), 0, 120),
+                    'message' => $note,
+                ];
+                try {
+                    Database::insert('support_messages', $msgRow + ['is_internal' => $sent === true ? 0 : 1]);
+                } catch (Throwable $e) {
+                    Database::insert('support_messages', $msgRow);       // column not migrated yet
+                }
+                if ($t['status'] === 'open') {
+                    Database::update('support_tickets', ['status' => 'in_progress', 'assigned_to' => $t['assigned_to'] ?: (int) $admin['id']], 'id = :id', ['id' => $id]);
+                }
                 Logger::audit('support.reply', 'support_ticket', (string) $t['ticket_ref'], null, ['wa' => $sent], 'by admin #' . $admin['id']);
-                $flash = ['ok', 'Reply saved.' . ($sent === null ? '' : ($sent ? ' Sent on WhatsApp.' : ' WhatsApp did NOT accept it — the note is saved, send it by hand.'))];
+                $flash = ['ok', $sent === true ? 'Reply sent on WhatsApp and saved.'
+                    : ($sent === false ? 'WhatsApp did NOT accept it — saved as an internal note; send it by hand.' : 'Internal note saved (not sent to the person).')];
             } else {
                 throw new RuntimeException('Unknown action.');
             }
@@ -165,7 +175,11 @@ $open = isset($_GET['open']) ? (int) $_GET['open'] : 0;
 $thread = [];
 if ($open > 0) {
     try {
-        $thread = Database::fetchAll('SELECT sender_type, sender_name, message, created_at FROM support_messages WHERE ticket_id = :t ORDER BY id', ['t' => $open]);
+        try {
+            $thread = Database::fetchAll('SELECT sender_type, sender_name, message, created_at, is_internal FROM support_messages WHERE ticket_id = :t ORDER BY id', ['t' => $open]);
+        } catch (Throwable $e) {
+            $thread = Database::fetchAll('SELECT sender_type, sender_name, message, created_at, 0 AS is_internal FROM support_messages WHERE ticket_id = :t ORDER BY id', ['t' => $open]);
+        }
     } catch (Throwable $ignored) {
     }
 }
@@ -253,14 +267,14 @@ admin_header('Support Inbox', 'support-inbox');
         <tr id="t<?= $rid ?>"><td colspan="9">
           <?php foreach ($thread as $m): ?>
             <div class="si-thread"><b class="<?= $m['sender_type'] === 'admin' ? 'adm' : 'cus' ?>"><?= Security::e((string) ($m['sender_name'] ?? $m['sender_type'])) ?></b>
-              <small style="color:var(--mut)"> · <?= Security::e(substr((string) $m['created_at'], 0, 16)) ?></small>
+              <small style="color:var(--mut)"> · <?= Security::e(substr((string) $m['created_at'], 0, 16)) ?><?= $m['sender_type'] === 'admin' ? ((int) ($m['is_internal'] ?? 0) === 1 ? ' · internal note' : ' · sent to the person') : '' ?></small>
               <div class="si-msg"><?= Security::e((string) $m['message']) ?></div></div>
           <?php endforeach; ?>
           <?php if ($mayAct): ?>
           <form method="post" class="si-reply"><?= $csrf ?>
             <input type="hidden" name="action" value="reply"><input type="hidden" name="id" value="<?= $rid ?>">
             <textarea name="note" required placeholder="Reply / internal note…"></textarea>
-            <label style="display:inline-flex;gap:6px;align-items:center;margin:8px 0"><input type="checkbox" name="send_wa" value="1"> also send this to the person's WhatsApp</label>
+            <label style="display:inline-flex;gap:6px;align-items:center;margin:8px 0"><input type="checkbox" name="send_wa" value="1"> send this to the person's WhatsApp (unticked = internal note, never shown to them)</label>
             <div><button class="btn" type="submit">Save reply</button></div>
           </form>
           <?php endif; ?>
