@@ -117,6 +117,9 @@ $cleanup = static function () use ($restore): void {
     try { Database::delete('audit_logs', "entity_type = 'company_document' AND created_at >= NOW() - INTERVAL 1 HOUR AND new_value LIKE '%zztest%'", []); } catch (Throwable $e) {}
     try { Database::delete('message_logs', "to_number LIKE '" . CD_LIKE . "%'", []); } catch (Throwable $e) {}
     try { Database::delete('rate_limits', "identifier LIKE '" . CD_LIKE . "%'", []); } catch (Throwable $e) {}
+    // The step-up consumer and the share endpoint throttle by CLIENT IP, and
+    // the CLI has one: a fourth standalone run inside ten minutes tripped it.
+    try { Database::delete('rate_limits', "bucket IN ('wa_stepup_consume','wa_stepup_link','doc_share_fetch')", []); } catch (Throwable $e) {}
     try { Database::delete('admins', "username IN ('cdoc-boss','cdoc-mgr','cdoc-agent')", []); } catch (Throwable $e) {}
     $restore();
 };

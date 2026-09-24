@@ -105,6 +105,9 @@ $cleanup = static function () use ($restore): void {
     try { Database::delete('message_logs', "to_number LIKE '%" . OM_LIKE . "%'", []); } catch (Throwable $e) {}
     try { Database::delete('wa_marketing_consents', "phone LIKE '91" . OM_LIKE . "%'", []); } catch (Throwable $e) {}
     try { Database::delete('rate_limits', "identifier LIKE '%" . OM_LIKE . "%'", []); } catch (Throwable $e) {}
+    // The step-up consumer and the share endpoint throttle by CLIENT IP, and
+    // the CLI has one: a fourth standalone run inside ten minutes tripped it.
+    try { Database::delete('rate_limits', "bucket IN ('wa_stepup_consume','wa_stepup_link','doc_share_fetch')", []); } catch (Throwable $e) {}
     try { Database::delete('admins', "username IN ('om-agent','om-boss')", []); } catch (Throwable $e) {}
     $restore();
 };
