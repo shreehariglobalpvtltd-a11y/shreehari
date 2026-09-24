@@ -156,6 +156,7 @@ const CORE_SUITES = [
     'seat-events-test.php'         => 'live seat events: the version moves only when seats move; unchanged answers; the stream',
     'whereis-test.php'             => '"Where is my bus?": honest status, three doors, the keyed page, its JSON, trackUrl in the app payload',
     'contact-layer-test.php'       => 'the contact dial on every screen; "call me back" reaches the office inbox; labels in three languages',
+    'route-pages-test.php'         => 'search-facing route pages in en / hi / ne from the live tables; JSON-LD, hreflang, sitemaps, robots',
 ];
 
 /**

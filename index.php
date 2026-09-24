@@ -29,6 +29,13 @@ if (in_array($legalPath, ['/privacy-policy', '/privacy', '/terms-of-service', '/
     require_once INCLUDE_PATH . '/legal.php';
     LegalPages::render(LegalPages::ROUTES[$legalPath]);
 }
+/* 24 Sep 2026: server-rendered route pages (/bus, /bus/<slug>, /hi/bus/…,
+   /ne/bus/…) and the two dynamic sitemaps — what a search engine reads. */
+if ($legalPath === '/bus' || str_starts_with($legalPath, '/bus/') || str_starts_with($legalPath, '/hi/bus') || str_starts_with($legalPath, '/ne/bus')
+    || $legalPath === '/sitemap-routes.xml' || $legalPath === '/sitemap-pages.xml') {
+    require_once INCLUDE_PATH . '/routepages.php';
+    RoutePages::dispatch($legalPath);
+}
 
 $user = Auth::user();
 
