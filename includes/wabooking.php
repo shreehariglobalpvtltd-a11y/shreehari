@@ -32,6 +32,8 @@ if (!defined('SHG_APP')) {
     exit('Forbidden');
 }
 
+require_once __DIR__ . '/personname.php';
+
 final class WaBooking
 {
     /** A conversation this old is over; the next message starts fresh. */
@@ -44,7 +46,7 @@ final class WaBooking
      * @return array{text: string, media: ?string}|null null = not a booking
      *         conversation, so the caller keeps its own reply.
      */
-    public static function handle(string $phoneDigits, string $text): ?array
+    public static function handle(string $phoneDigits, string $text, string $senderCountry = ''): ?array
     {
         $text = trim($text);
         if ($text === '' || $phoneDigits === '') {
@@ -140,7 +142,7 @@ final class WaBooking
         // The summary was on the table: yes sells it, no drops it.
         if ($awaiting === 'confirm') {
             if (self::isYes($text)) {
-                return self::sell($phoneDigits, $slots, $lang);
+                return self::sell($phoneDigits, $slots, $lang, $senderCountry);
             }
             if (self::isNo($text)) {
                 self::clear($phoneDigits);
@@ -253,13 +255,27 @@ final class WaBooking
     /* ----------------------------------------------------------------- */
 
     /** The sale itself, after an explicit yes. */
-    private static function sell(string $phoneDigits, array $slots, string $lang): array
+    private static function sell(string $phoneDigits, array $slots, string $lang, string $senderCountry = ''): array
     {
+        /* The name on the ticket must be a person's name (24 Sep 2026): a
+           stop, a yes-word or a number that slipped past the slot logic is
+           refused here, before any seat is taken, and asked for again. */
+        $paxName = PersonName::clean((string) ($slots['name'] ?? ''));
+        if ($paxName === '') {
+            $slots['name'] = '';
+            $slots['party'] = [];
+            self::save($phoneDigits, $slots, 'name', [], $lang);
+            return self::out(self::say('askName', $lang));
+        }
         try {
             $res = QuickTicket::sellCustomer([
-                'name'      => (string) ($slots['name'] ?? ''),
+                'name'      => $paxName,
                 'phone'     => $phoneDigits,
-                'country'   => (string) ($slots['country'] ?? ''),
+                /* The country the SENDER's own number carries (+977 / +91 from
+                   the webhook) is the truth about where this ticket goes; a
+                   country parsed out of the text only fills in when the
+                   transport gave none. */
+                'country'   => $senderCountry !== '' ? $senderCountry : (string) ($slots['country'] ?? ''),
                 'seats'     => (int) ($slots['seats'] ?? 1),
                 'direction' => (string) ($slots['direction'] ?? ''),
                 'date'      => (string) ($slots['date'] ?? ''),
@@ -908,7 +924,7 @@ Example: Ram Bahadur 35, Sita Gurung 30",
         return $out;
     }
 
-    private static function isYes(string $t): bool
+    public static function isYes(string $t): bool
     {
         $t = mb_strtolower(trim($t));
         /* 21 Sep 2026 — THE BUG THAT SWALLOWED EVERY LOCAL SALE.
@@ -936,7 +952,7 @@ Example: Ram Bahadur 35, Sita Gurung 30",
         return false;
     }
 
-    private static function isNo(string $t): bool
+    public static function isNo(string $t): bool
     {
         $t = mb_strtolower(trim($t));
         foreach ([
@@ -951,7 +967,7 @@ Example: Ram Bahadur 35, Sita Gurung 30",
         return false;
     }
 
-    private static function isCancel(string $t): bool
+    public static function isCancel(string $t): bool
     {
         $t = mb_strtolower(trim($t));
         foreach (['cancel', 'stop', 'radda', 'rokka', 'band gara', 'chhodde', 'chod',

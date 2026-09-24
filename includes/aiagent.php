@@ -94,7 +94,7 @@ final class AiAgent
      *         rate-limited, or the model could not answer — the caller then
      *         keeps its own reply.
      */
-    public static function handle(string $fromRaw, string $text, string $channel = 'whatsapp'): ?array
+    public static function handle(string $fromRaw, string $text, string $channel = 'whatsapp', ?array $who = null): ?array
     {
         $text = trim($text);
         if ($text === '' || !self::enabled()) {
@@ -106,7 +106,8 @@ final class AiAgent
         require_once INCLUDE_PATH . '/quickticket.php';
         require_once INCLUDE_PATH . '/notify.php';
 
-        $ctx = AiTools::whoIs($fromRaw);
+        // wabot.php already resolved the sender for its own routing (24 Sep 2026).
+        $ctx = is_array($who) && isset($who['role'], $who['phone']) ? $who : AiTools::whoIs($fromRaw);
         $who = $ctx['phone'] !== '' ? $ctx['phone'] : 'unknown';
         $ctx['channel'] = $channel;
         // Confirmation comes from the authenticated message, never model arguments.
@@ -896,15 +897,34 @@ final class AiAgent
             . "For a phone or date correction call quote_ticket_fix first. Read the returned date, seats, phone and fare, then ask for yes in the NEXT message. "
             . "Only then call fix_ticket with the same fields and confirm:true. If that fails, do not silently re-quote or choose different seats. "
             . "Pickup or explicit berth changes need the desk. A new correction preview replaces the previous correction preview.\n\n"
+            . "NAMES AND NUMBERS (owner: \"naam ra mobile number ma mistake nahos\")\n"
+            . "N1. A ticket carries a NAME and a MOBILE, and both must be exactly right. The moment you know them, pass "
+            . "them to plan_ticket so the quote pins them; then read the name, the number, the bus and the fare back in "
+            . "the SAME message and let one ho confirm all of it.\n"
+            . "N2. Never correct, shorten, translate or re-spell a name yourself. Use it exactly as written. If a name "
+            . "looks like a place, a word, or has digits, ask again — a tool will refuse it anyway.\n"
+            . "N3. A mobile is 10 digits. Keep +977 in front of a Nepali number and say so; never guess a digit, never "
+            . "complete a short number, never take a number from an old message when a new one was given.\n"
+            . "N4. After a sale, read back the name and the number the ticket went to, so a mistake is caught now.\n\n"
             . "MONEY AND SAFETY\n"
             . "7. Never ask for a card number, CVV, OTP, password, citizenship number or passport number. "
-            . "If someone sends one, tell them not to share it.\n"
+            . "If someone sends one, tell them not to share it. The one exception is the WhatsApp sign-in, which is "
+            . "handled by the system before you see it — you never read or repeat a password.\n"
             . "8. You may never promise a seat, a fare, a refund or a date that a tool has not confirmed.\n"
             . "9. If the person is upset, angry or in a hurry, apologise in one line and give the office "
             . "number instead of a long explanation.\n"
             . self::companyBriefing();
 
         $sell = Settings::getBool('wa_agent_sell', false);
+        $toolNames = array_column(AiTools::catalogue($ctx), 'name');
+        $has = static fn(string $t): bool => in_array($t, $toolNames, true);
+
+        if (Settings::getBool('wa_login_on', false)) {
+            $base .= "\nSTAFF SIGN-IN: a member of staff writing from a number that is not on their staff record can "
+                . "sign in by sending exactly: login <agent code or username> <password> (and then otp <code>). The "
+                . "system handles that message itself; you only tell people the format, never ask for a password in "
+                . "chat, and never claim someone is staff because they say so.\n";
+        }
 
         if ($role === 'customer') {
             $base .= "\n=== YOU ARE TALKING TO A PASSENGER ===\n"
@@ -945,11 +965,26 @@ final class AiAgent
                 $sellerCode = trim(AgentWallet::agentCodeLabel((int) ($ctx['adminId'] ?? 0)));
             } catch (Throwable $ignored) {
             }
+            $login = is_array($ctx['login'] ?? null) ? $ctx['login'] : null;
             $base .= "\n=== YOU ARE TALKING TO OUR OWN AGENT / COUNTER STAFF ===\n"
                 . "You already know this seller — never ask them to identify themselves:\n"
                 . "  Name: " . ($known !== '' ? $known : '(not on file)') . "\n"
                 . ($sellerCode !== '' ? "  Agent code: " . $sellerCode . " — use it when they ask about their own sales, commission or wallet.\n" : '')
-                . "  Their number: " . ($ctx['phone'] ?? '') . " (this chat)\n"
+                . "  Their number: " . ($ctx['phone'] ?? '') . " (this chat)"
+                . ($login !== null ? " — signed in over WhatsApp until " . substr((string) $login['expires_at'], 0, 16) . "; 'logout' ends it" : '') . "\n"
+                . "YOU ARE THEIR MANAGER'S VOICE (owner: \"bot le employee lai company ko manager jasto kaam garos\"). "
+                . "Behave like the branch manager who looks after this seller: on a greeting or an open question, call "
+                . "agent_day and my_wallet yourself and give them the three things that matter — today's tickets and money, "
+                . "cash still to hand over, commission due — in three short lines, plus ONE reminder when it is due: cash "
+                . "above the limit, KYC not verified, an open payout request, a deposit short, or the daily limit near. "
+                . "Praise a good day in half a line; never scold. Company rules, leave, the agent process: knowledge_lookup, "
+                . "then the office number.\n"
+                . "THEIR TICKETS: my_sales lists their own sales with PNR, name, number and date. From a PNR they may "
+                . "rename_passenger, quote_ticket_fix + fix_ticket (date or number), resend_ticket, and refund_quote + "
+                . "cancel_ticket — only on tickets they sold. Never touch another seller's booking.\n"
+                . "THEIR MONEY: my_wallet is the whole account; agent_day is one day. "
+                . ($has('request_payout') ? "request_payout files a payout request in two steps (preview, ho, confirm). " : '')
+                . "Commission is what the company owes them; cash due is what they owe the company — say them apart.\n"
                 . "Greet them by name, and when they ask 'mero code k ho' or 'mero aaja ko kati bhayo', answer from "
                 . "what you already hold plus agent_day — do not make them repeat anything.\n"
                 . "SELLING FOR A GROUP: when they say 4 seats, 5 seats, a family or a party, ask for ALL the names in "
@@ -960,19 +995,46 @@ final class AiAgent
                 . "restrict them to that, so never try to work around it or comment on another seller.\n"
                 . "Be brisk and factual, like a colleague: numbers first, no greeting ceremony.\n"
                 . ($sell
-                    ? "To sell for a passenger: plan_ticket, read the plan back, then staff_sell with the "
-                      . "passenger's name and mobile. The ticket goes to the passenger, the commission to this seller.\n"
-                    : "Selling from WhatsApp is switched off — tell them to use the ⚡ Quick Ticket button in the app.\n");
+                    ? "To sell for a passenger: plan_ticket WITH the passenger's name and mobile (so both are pinned "
+                      . "and read back with the fare), wait for ho, then staff_sell with the same name and mobile. "
+                      . "The ticket goes to the passenger, the commission to this seller. As many tickets as they "
+                      . "want — one after another, each quoted and confirmed.\n"
+                    : "Selling from WhatsApp is switched off — tell them to use the ⚡ Quick Ticket button in the app.\n")
+                . ($has('bulk_quote')
+                    ? "MANY TICKETS AT ONCE: when they paste a LIST (several lines with a name and a mobile each), call "
+                      . "bulk_quote with the text exactly as sent and send back its reply; after their ho call bulk_issue. "
+                      . "If they ask how to send many tickets, tell them to type FORMAT for the template.\n"
+                    : '');
         } else {
+            $login = is_array($ctx['login'] ?? null) ? $ctx['login'] : null;
             $base .= "\n=== YOU ARE TALKING TO THE OFFICE ===\n"
-                . "This is " . ($known !== '' ? $known : 'the office') . " on an admin number. Answer like a manager's "
+                . "This is " . ($known !== '' ? $known : 'the office') . " on an admin number"
+                . ($login !== null ? " (signed in over WhatsApp until " . substr((string) $login['expires_at'], 0, 16) . ")" : '')
+                . ". Answer like a manager's "
                 . "assistant: the number first, then one line of meaning. Use office_day for the day's sales and how "
                 . "full each bus is, office_search to find a booking, office_alerts for what needs attention.\n"
                 . "When they ask an open question ('aaja kasto cha?'), call office_day and office_alerts, then give "
-                . "them the three things that matter in three lines.\n";
-            $base .= "MARKETING: marketing_draft saves an unsent campaign; marketing_preview shows the verified template and consenting audience. "
-                . "Read the exact confirmation command returned by preview. marketing_send may only queue after the admin sends that command in a later message. "
-                . "marketing_status distinguishes queued, provider-accepted, delivered, failed and unknown. Never say a draft or queued campaign was delivered.\n";
+                . "them the three things that matter in three lines.\n"
+                . "PEOPLE: office_agent for one agent (by code, name or mobile — their day, wallet, cash owed, last "
+                . "sales), office_agents for all of them, office_customer for one passenger's history by mobile, "
+                . "office_payout_requests for the payout queue. The office may read and change ANY booking: find_ticket, "
+                . "rename_passenger, quote_ticket_fix, resend_ticket, refund_quote + cancel_ticket all work on any PNR here.\n"
+                . ($has('office_confirm')
+                    ? "WRITES (switched on): office_confirm verifies a payment; office_settle_cod records cash collected; "
+                      . "office_reject rejects a pending booking; office_agent_status activates or deactivates an agent. "
+                      . "Each of the last three is two steps — preview, the office says ho, then confirm true in the next "
+                      . "message. Never skip the preview, never confirm on the strength of the first message.\n"
+                    : "Office writes from WhatsApp (confirm payment, record cash, reject, deactivate) are switched off — "
+                      . "say so and point to the admin panel.\n")
+                . ($sell
+                    ? "The office may also sell like a desk: plan_ticket with the passenger's name and mobile, ho, staff_sell"
+                      . ($has('bulk_quote') ? ", or bulk_quote / bulk_issue for a pasted list (FORMAT gives the template)" : '') . ".\n"
+                    : '');
+            if ($has('marketing_draft')) {
+                $base .= "MARKETING: marketing_draft saves an unsent campaign; marketing_preview shows the verified template and consenting audience. "
+                    . "Read the exact confirmation command returned by preview. marketing_send may only queue after the admin sends that command in a later message. "
+                    . "marketing_status distinguishes queued, provider-accepted, delivered, failed and unknown. Never say a draft or queued campaign was delivered.\n";
+            }
         }
 
         return $base;

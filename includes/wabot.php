@@ -45,6 +45,26 @@ final class WaBot
         $phone        = Settings::officePhone();
         $body         = trim($body);
         $senderDigits = normalisePhone($from);
+        // +91 / +977 as the transport delivered it — a Nepali sender's ticket
+        // must be addressed to +977, and ten normalised digits cannot say so.
+        $senderCountry = resolvePhoneCountry('', $from);
+
+        /* STAFF SIGN-IN (24 Sep 2026, wa_login_on). "login SHG-0027 <password>",
+           "otp 123456", "logout", "ma ko hu" — answered here, FIRST, so a
+           password never travels on into the model, the booking engine, the
+           drafts queue or a log. With the switch off the login line is still
+           swallowed and answered with "switched off". */
+        if ($senderDigits !== '' && $body !== '') {
+            try {
+                require_once INCLUDE_PATH . '/walogin.php';
+                $auth = WaLogin::handle($senderDigits, $body);
+                if ($auth !== null) {
+                    return self::out($auth['text'], $auth['media'] ?? null);
+                }
+            } catch (Throwable $e) {
+                Logger::exception($e, 'whatsapp');
+            }
+        }
 
         /* A photo or a file with no caption: on this number that is a
            payment screenshot nine times out of ten. The generic menu told
@@ -122,7 +142,39 @@ final class WaBot
          * ------------------------------------------------------------- */
         $localFirst = Settings::getBool('wa_local_first', true);
 
-        $tryLocalBooking = function () use ($senderDigits, $body): ?array {
+        /* WHO IS WRITING (24 Sep 2026). Resolved once here — a staff record,
+           or a WhatsApp sign-in (WaLogin) — and handed to the assistant, so
+           the admins table is read once per message, not twice. */
+        $who = null;
+        if ($senderDigits !== '' && !$pnrOnly) {
+            try {
+                require_once INCLUDE_PATH . '/aitools.php';
+                $who = AiTools::whoIs($from);
+            } catch (Throwable $e) {
+                Logger::exception($e, 'whatsapp');
+            }
+        }
+        $isStaff = is_array($who) && in_array((string) ($who['role'] ?? ''), ['staff', 'admin'], true);
+
+        /* BULK TICKETS (24 Sep 2026, wa_bulk_on, staff only). "FORMAT" gives the
+           template; a pasted list is quoted; "ho" on an open quote sells every
+           booking through QuickTicket::sell(). Read by code, not by a model —
+           see includes/wabulk.php for why. */
+        if ($isStaff && Settings::getBool('wa_bulk_on', false)) {
+            try {
+                require_once INCLUDE_PATH . '/ticketbot.php';
+                require_once INCLUDE_PATH . '/quickticket.php';
+                require_once INCLUDE_PATH . '/wabulk.php';
+                $bulk = WaBulk::handle($who, $body);
+                if ($bulk !== null) {
+                    return self::out($bulk['text'], $bulk['media'] ?? null);
+                }
+            } catch (Throwable $e) {
+                Logger::exception($e, 'whatsapp');
+            }
+        }
+
+        $tryLocalBooking = function () use ($senderDigits, $senderCountry, $body): ?array {
             if ($senderDigits === '') {
                 return null;
             }
@@ -130,14 +182,29 @@ final class WaBot
                 require_once INCLUDE_PATH . '/ticketbot.php';
                 require_once INCLUDE_PATH . '/quickticket.php';
                 require_once INCLUDE_PATH . '/wabooking.php';
-                return WaBooking::handle($senderDigits, $body);
+                return WaBooking::handle($senderDigits, $body, $senderCountry);
             } catch (Throwable $e) {
                 Logger::exception($e);      // the model and the old paths still answer
                 return null;
             }
         };
 
-        if ($localFirst && !$pnrOnly) {
+        /* A member of staff is served by the assistant with the staff tools
+           (24 Sep 2026): the local engine below sells to the SENDER's own
+           number as a customer, which for a seller saying "bholi 2 seat" is
+           the wrong ticket on the wrong number. Only while the assistant is
+           actually on — with it off, the local engine still answers everyone. */
+        $staffToAssistant = false;
+        if ($isStaff && !$pnrOnly) {
+            try {
+                require_once INCLUDE_PATH . '/aiagent.php';
+                $staffToAssistant = AiAgent::enabled();
+            } catch (Throwable $e) {
+                $staffToAssistant = false;
+            }
+        }
+
+        if ($localFirst && !$pnrOnly && !$staffToAssistant) {
             $booking = $tryLocalBooking();
             if ($booking !== null) {
                 return self::out($booking['text'], $booking['media'] ?? null);
@@ -147,7 +214,7 @@ final class WaBot
         if (!$pnrOnly) {
             try {
                 require_once INCLUDE_PATH . '/aiagent.php';
-                $agent = AiAgent::handle($from, $body);
+                $agent = AiAgent::handle($from, $body, 'whatsapp', $who);
                 if ($agent !== null) {
                     return self::out($agent['text'], $agent['media']);
                 }
