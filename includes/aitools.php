@@ -655,6 +655,8 @@ final class AiTools
             'boarding'  => Security::clean((string) ($args['boarding'] ?? ''), 80),
             'gender'    => in_array($args['gender'] ?? '', ['Male', 'Female', 'Other'], true) ? (string) $args['gender'] : null,
             'customer'  => $customer,
+            // A passenger's own number, so a per-passenger office offer is priced as the sale will price it.
+            'phone'     => $customer ? (string) ($ctx['phone'] ?? '') : '',
         ];
 
         $plan = QuickTicket::plan($opts);           // throws a desk-safe RuntimeException
@@ -686,12 +688,18 @@ final class AiTools
                 'depTime'      => (string) $plan['depTime'],
                 'pickup'       => (string) $plan['boardingName'],
                 'pickupTime'   => (string) $plan['boardingTime'],
-                'seatNumbers'  => $plan['seats'],
+                // As the ticket prints them (LB1, UA3), not the canonical L7 (23 Sep 2026).
+                'seatNumbers'  => array_values(array_filter(array_map(
+                    static fn($s): string => Seats::displayLabel((string) $s, (string) ($plan['coach'] ?? 'sleeper'), (string) ($plan['bookingMode'] ?? 'sharing')),
+                    (array) $plan['seats']))),
                 'seatCount'    => (int) $plan['seatCount'],
                 'seatsLeft'    => (int) $plan['seatsLeft'],
                 'farePerSeat'  => (float) ($plan['fare']['perSeat'] ?? 0),
                 'total'        => (float) $plan['fare']['total'],
                 'totalLabel'   => inr((float) $plan['fare']['total']),
+                // The office offer already inside the total (none = 0 / '').
+                'offer'        => (string) ($plan['fare']['offerTitle'] ?? ''),
+                'offerSaving'  => (float) ($plan['fare']['couponDiscount'] ?? 0),
                 'payOnBoard'   => Settings::getBool('allow_cod', true),
             ],
             'media' => null,
@@ -1394,13 +1402,21 @@ final class AiTools
         if ($date !== $oldDate) {
             // QuickTicket can choose among routes: explicitly reject a different route,
             // coach mode, pickup or fare instead of silently accepting its fallback.
+            /* 23 Sep 2026: `routes` has no `direction` column, so the old
+               "SELECT r.direction" failed on the live schema and every WhatsApp
+               date correction died with "That failed on our side". The direction
+               is derived exactly as QuickTicket derives it: from the destination. */
             $source = Database::fetch(
-                'SELECT s.route_id, r.direction FROM schedules s JOIN routes r ON r.id = s.route_id WHERE s.id = :id',
+                'SELECT s.route_id, r.to_city FROM schedules s JOIN routes r ON r.id = s.route_id WHERE s.id = :id',
                 ['id' => (int) $leg['schedule_id']]
             );
             if ($source === null) {
                 throw new RuntimeException('The original route is unavailable; contact the office.');
             }
+            if (!class_exists('Fare')) {
+                require_once INCLUDE_PATH . '/fare.php';
+            }
+            $source['direction'] = Fare::isNepalPoint((string) $source['to_city']) ? 'toNepal' : 'toIndia';
             $passengers = array_values(array_filter($detail['passengers'] ?? [],
                 static fn(array $p): bool => (int) ($p['leg_id'] ?? 0) === (int) $leg['id']));
             $genders = array_unique(array_column($passengers, 'gender'));

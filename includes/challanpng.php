@@ -33,8 +33,8 @@
  *
  * HEADINGS ROMAN, NAMES AS TYPED. The labels and column heads stay English —
  * this is the crew and border-desk copy. A PASSENGER NAME prints in the script
- * it was written in: GD does form the Devanagari conjuncts, and dev_shape()
- * supplies the one reordering step it misses. Until 11 Sep 2026 a Nepali name
+ * it was written in, shaped by HarfBuzz (DevShape, 24 Sep 2026 — GD alone
+ * does NOT form the conjuncts; dev_shape() is only the fallback). Until 11 Sep 2026 a Nepali name
  * printed as the literal words "(Nepali name)", which left the crew a berth
  * they could not match to a person.
  *
@@ -49,7 +49,7 @@ final class ChallanPng
     public const WIDTH = 1600;
 
     /** Bump whenever the drawing changes so every cached challan re-renders once. */
-    public const LAYOUT_VERSION = 5;   // 5 = berths print the LA1/UA1 row-letter grid id
+    public const LAYOUT_VERSION = 6;   // 6 = two-floor grid A1-F6 / A7-F12, floor bars blue (1F) / green (2F)   // 5 = berths print the LA1/UA1 row-letter grid id
 
     private const MARGIN = 56;
     private const CELL_H = 118;
@@ -416,16 +416,18 @@ final class ChallanPng
         self::text($im, 14, $lx + 34, $ly + 1, $muted, 'Women-only cabin');
         $y += 46;
 
-        /* ---- decks ---- */
-        $deckNames = ['L' => 'FIRST FLOOR  ·  LOWER DECK', 'U' => 'SECOND FLOOR  ·  UPPER DECK', 'M' => 'MAIN DECK'];
+        /* ---- decks — Lower Floor (1F) A1-F6 blue, Upper Floor (2F) A7-F12 green ---- */
+        $floorCol = ['L' => [$c('#1E5AA8'), $c('#EEF4FD')], 'U' => [$c('#15803D'), $c('#EDF8F1')]];
         foreach ($layout['decks'] as $deck) {
             $key = (string) ($deck['key'] ?? 'L');
             $ids = [];
             foreach ($deck['rows'] as $row) { foreach (array_merge($row['left'], $row['right']) as $s) { $ids[] = $s; } }
             $firstLbl = isset($ids[0]) ? Seats::displayLabel((string) $ids[0], $data['coach'], 'sharing') : '';
             $lastLbl  = isset($ids[count($ids) - 1]) ? Seats::displayLabel((string) $ids[count($ids) - 1], $data['coach'], 'sharing') : '';
-            $title = ($deckNames[$key] ?? strtoupper((string) ($deck['label'] ?? 'DECK'))) . '   (' . $firstLbl . ' - ' . $lastLbl . ')';
-            imagefilledrectangle($im, $M, $y, $W - $M, $y + 40, $navy2);
+            $title = (isset($floorCol[$key]) ? strtoupper(Seats::floorName($key)) : strtoupper((string) ($deck['label'] ?? 'DECK'))) . '   (' . $firstLbl . ' - ' . $lastLbl . ')';
+            [$head, $tint] = $floorCol[$key] ?? [$navy2, $c('#F3F6FB')];
+            self::roundRect($im, $M, $y, $W - $M, $y + 52 + count($deck['rows']) * (self::CELL_H + self::ROW_GAP) + 4, 14, $tint, null);
+            self::roundRect($im, $M, $y, $W - $M, $y + 40, 10, $head, null);
             self::text($im, 19, $M + 16, $y + 8, $white, $title, true);
             $deckSold = 0;
             foreach ($ids as $s) { if (($beds[$s]['status'] ?? '') === 'booked') { $deckSold++; } }
@@ -514,7 +516,7 @@ final class ChallanPng
                 }
             }
             $w = $cellW * $span + self::CELL_GAP * ($span - 1);
-            // Row-letter grid id (LA1, UB3…); this is the physical coach picture,
+            // Row-letter grid id (A1, B9…); this is the physical coach picture,
             // so every bed is named in the canonical sharing namespace.
             $label = $span === 2
                 ? Seats::displayLabel((string) $bed, $coach, 'sharing') . ' + ' . Seats::displayLabel((string) $ids[$i + 1], $coach, 'sharing')
@@ -616,12 +618,16 @@ final class ChallanPng
         // The drawing boundary — see dev_shape() in helpers.php. Passenger
         // names reach this file in Devanagari since 11 Sep 2026, and GD does
         // not move the short-i matra in front of its consonant on its own.
-        $text = dev_shape($text);
-        $box = imagettfbbox($size, 0, self::font(), $text);
+        $flat = dev_shape($text);
+        $box = imagettfbbox($size, 0, self::font(), $flat);
         $baseline = $y - (int) min($box[5], $box[7]);
-        imagettftext($im, $size, 0, $x, $baseline, $col, self::font(), $text);
+        if (class_exists('DevShape') && DevShape::needs($text)
+            && DevShape::gdText($im, $size, $x, $baseline, $col, $text, $bold ? [[0, 0], [1, 0]] : [[0, 0]])) {
+            return;
+        }
+        imagettftext($im, $size, 0, $x, $baseline, $col, self::font(), $flat);
         if ($bold) {
-            imagettftext($im, $size, 0, $x + 1, $baseline, $col, self::font(), $text);
+            imagettftext($im, $size, 0, $x + 1, $baseline, $col, self::font(), $flat);
         }
     }
 
@@ -629,6 +635,9 @@ final class ChallanPng
     {
         if ($text === '') {
             return 0;
+        }
+        if (class_exists('DevShape') && DevShape::needs($text) && ($sw = DevShape::gdWidth($size, $text)) !== null) {
+            return $sw;
         }
         $box = imagettfbbox($size, 0, self::font(), dev_shape($text));
         return (int) (max($box[2], $box[4]) - min($box[0], $box[6]));

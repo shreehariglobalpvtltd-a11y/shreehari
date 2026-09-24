@@ -677,33 +677,9 @@ const Splash = {
          clean logo + name + phone intro stands alone. */
       var _intro = $('#introScenes'); if (_intro) _intro.style.display = 'none';
     }
-    /* How long the brand screen is held open, decided per visitor:
-
-         first ever visit  → 2s, so the Agent / Admin pills get a real
-                             window before the app opens as Customer;
-         role remembered   → 0.4s, because that visitor already answered
-                             and must not be taxed 2s on every cold start.
-
-       Either way the data load runs underneath this, so the floor is the
-       only thing anyone waits for — never floor + load. */
-    var _seenRole = null;
-    try { _seenRole = localStorage.getItem(RoleGate.KEY); } catch (e) {}
-    /* First ever visit in this browser (owner, 20 Sep 2026: "starting animation advance -
-       bus sui guyera aaos, logo rotate, 7 sec jati marketing loading, CEO introduction").
-       The inline script under #splash marks it before the first paint, so the CSS
-       choreography starts on frame one; the 7 s count from navigation start (startTs 0),
-       not from when this file arrived, and the countdown bar drains what is left. */
-    var _intro7 = !this.trailer && this.el.classList.contains('intro7');
-    var _introTotal = 0;
-    if (_intro7) {
-      try { localStorage.setItem('shg:intro7', '1'); } catch (e) {}
-      _introTotal = (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) ? 2500 : 7000;
-      this.startTs = 0;
-      this.portalMs = Math.max(1200, _introTotal - Math.round(performance.now()));
-    }
-    if (!this.trailer) this.minDuration = _intro7 ? _introTotal : (_seenRole ? 250 : this.portalMs);
-    if (!this.trailer && (!_seenRole || _intro7)) this.armPortal();
-
+    // No marketing countdown: initialization owns the lifetime of this screen.
+    this.minDuration = 0;
+    if (this.el.classList.contains('done')) { this.done = true; this.el.style.display = 'none'; return; }
     const sb = $('#splashSound');
     if (sb) sb.addEventListener('click', () => {
       this.soundOn = !this.soundOn;
@@ -716,13 +692,12 @@ const Splash = {
       setTimeout(() => { this.skip.classList.add('show'); }, this.trailer ? 2500 : 600);
       this.skip.addEventListener('click', () => this.finish());
     }
-    /* Safety net: if the data never arrives (dead network, KV down) the
-       splash still gets out of the way rather than trapping the visitor. */
-    /* Safety net — if the data never arrives (dead network, KV down) the
-       splash still gets out of the way rather than trapping the visitor.
-       Tied to the floor so a fast visitor is never held 3.5s for nothing:
-       worst case is now floor + 1.2s (≈ 3.2s cold, ≈ 1.6s returning). */
-    setTimeout(() => { if (!this.done) this.finish(); }, this.trailer ? 42000 : this.minDuration + 1200);
+    this.recoveryTimer = setTimeout(() => {
+      if (this.done) return;
+      if (this.status) this.status.textContent = t('premiumSlow');
+      const retry = $('#splashRetry'); if (retry) retry.hidden = false;
+      if (this.skip) this.skip.classList.add('show');
+    }, 8000);
   },
   /* Trailer — 6 scenes, 24s total. CEO first → India → Nepal → both → map → features.
      Tight, smooth, skip naparos jasto chhoto. */
@@ -915,6 +890,7 @@ const Splash = {
   finish() {
     if (this.done) return;
     this.done = true;
+    clearTimeout(this.recoveryTimer);
     this.stopPortal();
     if (this.bar) this.bar.style.width = '100%';
     if (this.status) { this.status.style.opacity = '0'; setTimeout(() => { if (this.status) this.status.textContent = '✓ Ready'; this.status.style.opacity = '1'; }, 200); }

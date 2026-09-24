@@ -117,6 +117,15 @@ final class ReportPdf
         $this->cursorY = 62;
     }
 
+    /** "L1 L2" (stored) -> "A1 A2" — the seat labels the ticket and seat map print. */
+    private static function seatText(string $seats, string $mode): string
+    {
+        if (!class_exists('Seats')) {
+            require_once __DIR__ . '/seats.php';
+        }
+        return Seats::displayLabels(array_filter(explode(' ', $seats), static fn($s) => $s !== ''), 'sleeper', $mode !== '' ? $mode : 'sharing', ' ');
+    }
+
     /**
      * The company logo file for the banner, or null when none is usable.
      * Mirrors Ticket::logoFile() (kept local so reports never depend on
@@ -959,7 +968,7 @@ final class ReportPdf
             $params['payStFlt'] = $payStatusFilter;
         }
 
-        $sql = "SELECT b.pnr, b.status, b.total_amount, b.contact_phone, b.created_at, b.sold_by_admin_id,
+        $sql = "SELECT b.pnr, b.status, b.total_amount, b.contact_phone, b.created_at, b.sold_by_admin_id, b.booking_mode,
                        r.from_city, r.to_city, bl.travel_date,
                        (SELECT GROUP_CONCAT(bs.seat_no ORDER BY bs.seat_no SEPARATOR ' ')
                           FROM booking_seats bs WHERE bs.booking_id = b.id) AS seats,
@@ -1041,7 +1050,7 @@ final class ReportPdf
                 (string) ($b['passenger'] ?: '-'),
                 ($b['from_city'] ?? '-') . ' -> ' . ($b['to_city'] ?? '-'),
                 $b['travel_date'] ? formatDate((string) $b['travel_date'], 'j M Y') : '-',
-                (string) ($b['seats'] ?: ('x' . (int) $b['seat_count'])),
+                (string) ($b['seats'] ? self::seatText((string) $b['seats'], (string) ($b['booking_mode'] ?? 'sharing')) : ('x' . (int) $b['seat_count'])),
                 inr((float) $b['total_amount']),
                 $pay,
                 $sellerName,
@@ -1106,7 +1115,7 @@ final class ReportPdf
 
         $rows = Database::fetchAll(
             "SELECT b.pnr, b.status, b.total_amount, b.contact_phone, b.contact_email,
-                    b.created_at, b.sold_by_admin_id,
+                    b.created_at, b.sold_by_admin_id, b.booking_mode,
                     r.from_city, r.to_city, bl.travel_date,
                     (SELECT GROUP_CONCAT(bs.seat_no ORDER BY bs.seat_no SEPARATOR ' ')
                        FROM booking_seats bs WHERE bs.booking_id = b.id) AS seats,
@@ -1213,7 +1222,7 @@ final class ReportPdf
                 $b['created_at'] ? formatDate((string) $b['created_at'], 'j M, H:i') : '-',
                 ($b['from_city'] ?? '-') . ' -> ' . ($b['to_city'] ?? '-'),
                 $b['travel_date'] ? formatDate((string) $b['travel_date'], 'j M Y') : '-',
-                (string) ($b['seats'] ?: ('x' . (int) $b['seat_count'])),
+                (string) ($b['seats'] ? self::seatText((string) $b['seats'], (string) ($b['booking_mode'] ?? 'sharing')) : ('x' . (int) $b['seat_count'])),
                 inr((float) $b['total_amount']),
                 $pay,
                 $sold ?: '-',

@@ -72,6 +72,8 @@ final class AiAgent
     private const GEMINI_THINK_BUDGET = 512;
     private const HTTP_TIMEOUT = 20;
     private static ?float $deadline = null;
+    /** HTTP status of the most recent model call (0 = network / no answer). */
+    private static int $lastHttp = 0;
 
     /** "Start again" in the languages this desk actually receives. */
     private const RESET_WORDS = ['reset', 'restart', 'naya', 'नयाँ', 'फेरि सुरु', 'start over', 'clear'];
@@ -84,7 +86,8 @@ final class AiAgent
     {
         return Settings::getBool('wa_agent_on', false)
             && function_exists('curl_init')
-            && (self::anthropicKey() !== '' || self::geminiKey() !== '');
+            && (self::anthropicKey() !== '' || self::geminiKey() !== ''
+                || self::grokKey() !== '' || self::openrouterKey() !== '' || self::cerebrasKey() !== '');
     }
 
     /**
@@ -158,6 +161,14 @@ final class AiAgent
 
             $answer = self::converse($ctx, $history);
             if ($answer === null || trim((string) $answer['text']) === '') {
+                if (Settings::getBool('ai_timeout_message', true)) {
+                    $phone = Settings::officePhone();
+                    return [
+                        'text' => "🙏 अहिले जवाफ दिन सकिएन। कृपया केही बेरमा फेरि प्रयास गर्नुहोस् वा हाम्रो office मा सम्पर्क गर्नुहोस्"
+                               . ($phone !== '' ? " — " . $phone : '') . "।",
+                        'media' => null,
+                    ];
+                }
                 return null;
             }
 
@@ -168,6 +179,26 @@ final class AiAgent
         } catch (Throwable $e) {
             Logger::error('WhatsApp agent failed: ' . $e->getMessage(), ['to' => $who], 'whatsapp');
             return null;
+        }
+    }
+
+    /**
+     * A reply given WITHOUT the model (WaFaq, 23 Sep 2026) joins this
+     * sender's thread, so the next message — "ani bholi ko?" — still has the
+     * context of what was just said.
+     */
+    public static function remember(string $phoneDigits, string $userText, string $replyText): void
+    {
+        if ($phoneDigits === '' || trim($userText) === '' || trim($replyText) === '') {
+            return;
+        }
+        try {
+            $history   = self::loadHistory($phoneDigits);
+            $history[] = ['role' => 'user', 'content' => mb_substr(trim($userText), 0, 1500)];
+            $history[] = ['role' => 'assistant', 'content' => trim($replyText)];
+            self::saveHistory($phoneDigits, $history);
+        } catch (Throwable $e) {
+            // memory is best effort
         }
     }
 
@@ -219,27 +250,29 @@ final class AiAgent
      */
     private static function ask(string $system, array $history, array $tools, array $ctx = []): ?array
     {
-        $provider = strtolower(Settings::getString('ai_provider', 'auto'));
-        $claude   = self::anthropicKey();
-        $gemini   = self::geminiKey();
-
-        $order = match ($provider) {
-            'anthropic' => ['anthropic'],
-            'gemini'    => ['gemini'],
-            default     => $claude !== '' ? ['anthropic', 'gemini'] : ['gemini'],
-        };
+        $order = self::buildLadder();
 
         foreach ($order as $brain) {
-            if ($brain === 'anthropic' && $claude === '') {
-                continue;
-            }
-            if ($brain === 'gemini' && $gemini === '') {
+            $key = match ($brain) {
+                'anthropic'  => self::anthropicKey(),
+                'gemini'     => self::geminiKey(),
+                'grok'       => self::grokKey(),
+                'openrouter' => self::openrouterKey(),
+                'cerebras'   => self::cerebrasKey(),
+                default      => '',
+            };
+            if ($key === '') {
                 continue;
             }
 
-            $out = $brain === 'anthropic'
-                ? self::askAnthropic($claude, $system, $history, $tools)
-                : self::askGemini($gemini, $system, $history, $tools, $ctx);
+            $out = match ($brain) {
+                'anthropic'  => self::askAnthropic($key, $system, $history, $tools),
+                'gemini'     => self::askGemini($key, $system, $history, $tools, $ctx),
+                'grok'       => self::askOpenAICompat($key, $system, $history, $tools, 'grok'),
+                'openrouter' => self::askOpenAICompat($key, $system, $history, $tools, 'openrouter'),
+                'cerebras'   => self::askOpenAICompat($key, $system, $history, $tools, 'cerebras'),
+                default      => null,
+            };
 
             if ($out !== null) {
                 return $out;
@@ -248,6 +281,36 @@ final class AiAgent
         }
 
         return null;
+    }
+
+    /**
+     * Build the provider ladder from settings.
+     *
+     * ai_model_ladder = "auto" (default): tries every keyed provider in a
+     * sensible order — fast cheap ones first, strong expensive ones last.
+     * A comma list like "cerebras,grok,gemini" overrides the order.
+     *
+     * @return string[]
+     */
+    private static function buildLadder(): array
+    {
+        $setting = strtolower(trim(Settings::getString('ai_model_ladder', 'auto')));
+
+        if ($setting !== '' && $setting !== 'auto') {
+            $explicit = array_filter(array_map('trim', explode(',', $setting)));
+            if ($explicit !== []) {
+                return $explicit;
+            }
+        }
+
+        $ladder = [];
+        if (self::cerebrasKey()   !== '') { $ladder[] = 'cerebras'; }
+        if (self::grokKey()       !== '') { $ladder[] = 'grok'; }
+        if (self::geminiKey()     !== '') { $ladder[] = 'gemini'; }
+        if (self::openrouterKey() !== '') { $ladder[] = 'openrouter'; }
+        if (self::anthropicKey()  !== '') { $ladder[] = 'anthropic'; }
+
+        return $ladder;
     }
 
     /* ----------------------------------------------------------------
@@ -497,17 +560,32 @@ final class AiAgent
         }
 
         $res = null;
-        foreach ($ladder as $model) {
-            $url = 'https://generativelanguage.googleapis.com/v1beta/models/'
-                 . rawurlencode($model) . ':generateContent';
-            $res = self::http($url, $payload, ['content-type: application/json', 'x-goog-api-key: ' . $key]);
-            if ($res !== null) {
-                if ($model !== $ladder[0]) {
-                    Logger::info('Gemini stepped down the ladder', ['used' => $model], 'whatsapp');
+        for ($pass = 0; $pass < 2 && $res === null; $pass++) {
+            if ($pass === 1) {
+                /* 23 Sep 2026: every rung answered 503 "high demand". Google's
+                   spikes clear in seconds, so one pause and one more pass — but
+                   only when the whole turn can still afford it. A 429 (quota) is
+                   NOT retried: a few seconds never refill a quota, and each extra
+                   call would spend what is left of it. */
+                if (self::$lastHttp !== 503 || self::$deadline === null
+                    || self::$deadline - microtime(true) < 12) {
+                    break;
                 }
-                break;
+                usleep(2500000);
+                Logger::info('Gemini busy on every rung, one retry after a pause', [], 'whatsapp');
             }
-            // self::http() already logged the status; try the next rung.
+            foreach ($ladder as $model) {
+                $url = 'https://generativelanguage.googleapis.com/v1beta/models/'
+                     . rawurlencode($model) . ':generateContent';
+                $res = self::http($url, $payload, ['content-type: application/json', 'x-goog-api-key: ' . $key]);
+                if ($res !== null) {
+                    if ($model !== $ladder[0] || $pass > 0) {
+                        Logger::info('Gemini stepped down the ladder', ['used' => $model, 'pass' => $pass], 'whatsapp');
+                    }
+                    break;
+                }
+                // self::http() already logged the status; try the next rung.
+            }
         }
         if ($res === null) {
             return null;
@@ -581,9 +659,17 @@ final class AiAgent
                        whole tool turn dies. Older models (and the Anthropic
                        brain) never set it, so the key is simply absent and
                        the payload is what it always was. */
+                    /* 23 Sep 2026: a tool called with NO arguments (my_tickets,
+                       office_day, bus_eta …) comes back from json_decode as an
+                       empty PHP array, which json_encode writes as a LIST "[]".
+                       Gemini wants an object and answered every such follow-up
+                       with 400 "Unknown name args … Proto field is not repeating,
+                       cannot start list" — so "mero ticket …" never finished.
+                       anthropicBlock() already had this guard; this leg lacked it. */
                     $fc = [
                         'name' => (string) ($block['name'] ?? ''),
-                        'args' => is_array($block['input'] ?? null) ? $block['input'] : (object) [],
+                        'args' => is_array($block['input'] ?? null) && $block['input'] !== []
+                            ? $block['input'] : (object) [],
                     ];
                     $sig = (string) ($block['gemSig'] ?? '');
                     $parts[] = $sig !== ''
@@ -640,6 +726,146 @@ final class AiAgent
     }
 
     /* ----------------------------------------------------------------
+     *  Grok / OpenRouter / Cerebras (OpenAI-compatible chat/completions)
+     * ---------------------------------------------------------------- */
+
+    private const OPENAI_PROVIDERS = [
+        'grok' => [
+            'url'   => 'https://api.x.ai/v1/chat/completions',
+            'model' => 'grok-3-mini-fast',
+            'setting' => 'grok_model',
+        ],
+        'openrouter' => [
+            'url'   => 'https://openrouter.ai/api/v1/chat/completions',
+            'model' => 'meta-llama/llama-4-scout',
+            'setting' => 'openrouter_model',
+        ],
+        'cerebras' => [
+            'url'   => 'https://api.cerebras.ai/v1/chat/completions',
+            'model' => 'llama-4-scout-17b-16e-instruct',
+            'setting' => 'cerebras_model',
+        ],
+    ];
+
+    private static function askOpenAICompat(string $key, string $system, array $history, array $tools, string $provider): ?array
+    {
+        $cfg = self::OPENAI_PROVIDERS[$provider] ?? null;
+        if ($cfg === null) {
+            return null;
+        }
+
+        $model = trim(Settings::getString($cfg['setting'], ''));
+        if ($model === '') {
+            $model = $cfg['model'];
+        }
+
+        $messages = [['role' => 'system', 'content' => $system]];
+        foreach ($history as $m) {
+            $role    = ($m['role'] ?? '') === 'assistant' ? 'assistant' : 'user';
+            $content = $m['content'] ?? '';
+
+            if (is_string($content)) {
+                $content = trim($content);
+                if ($content === '') {
+                    continue;
+                }
+                $messages[] = ['role' => $role, 'content' => $content];
+                continue;
+            }
+            if (!is_array($content)) {
+                continue;
+            }
+
+            foreach ($content as $block) {
+                $type = (string) ($block['type'] ?? '');
+                if ($type === 'text') {
+                    $messages[] = ['role' => $role, 'content' => (string) ($block['text'] ?? '')];
+                } elseif ($type === 'tool_use') {
+                    $messages[] = [
+                        'role'       => 'assistant',
+                        'tool_calls' => [[
+                            'id'       => (string) ($block['id'] ?? ''),
+                            'type'     => 'function',
+                            'function' => [
+                                'name'      => (string) ($block['name'] ?? ''),
+                                'arguments' => json_encode(
+                                    is_array($block['input'] ?? null) && $block['input'] !== []
+                                        ? $block['input'] : (object) [],
+                                    JSON_UNESCAPED_UNICODE
+                                ),
+                            ],
+                        ]],
+                    ];
+                } elseif ($type === 'tool_result') {
+                    $messages[] = [
+                        'role'         => 'tool',
+                        'tool_call_id' => (string) ($block['tool_use_id'] ?? ''),
+                        'content'      => (string) ($block['content'] ?? ''),
+                    ];
+                }
+            }
+        }
+
+        while ($messages !== [] && ($messages[0]['role'] ?? '') === 'assistant') {
+            array_shift($messages);
+        }
+
+        $payload = [
+            'model'       => $model,
+            'messages'    => $messages,
+            'max_tokens'  => self::MAX_TOKENS,
+            'temperature' => 0.3,
+        ];
+        if ($tools !== []) {
+            $payload['tools'] = array_map(static fn(array $t): array => [
+                'type'     => 'function',
+                'function' => [
+                    'name'        => $t['name'],
+                    'description' => $t['description'],
+                    'parameters'  => $t['input_schema'],
+                ],
+            ], $tools);
+        }
+
+        $headers = [
+            'content-type: application/json',
+            'Authorization: Bearer ' . $key,
+        ];
+        if ($provider === 'openrouter') {
+            $headers[] = 'HTTP-Referer: https://shreehariglobal.in';
+            $headers[] = 'X-Title: SHG Sahayak';
+        }
+
+        $res = self::http($cfg['url'], $payload, $headers);
+        if ($res === null) {
+            return null;
+        }
+
+        $choice = (array) ($res['choices'][0]['message'] ?? []);
+        $text   = (string) ($choice['content'] ?? '');
+        $calls  = [];
+        $blocks = [];
+
+        if ($text !== '') {
+            $blocks[] = ['type' => 'text', 'text' => $text];
+        }
+
+        foreach ((array) ($choice['tool_calls'] ?? []) as $tc) {
+            $fn   = (array) ($tc['function'] ?? []);
+            $name = (string) ($fn['name'] ?? '');
+            $id   = (string) ($tc['id'] ?? 'oai_' . substr(md5($name . microtime(true)), 0, 8));
+            $args = json_decode((string) ($fn['arguments'] ?? '{}'), true);
+            if (!is_array($args)) {
+                $args = [];
+            }
+            $calls[]  = ['id' => $id, 'name' => $name, 'input' => $args];
+            $blocks[] = ['type' => 'tool_use', 'id' => $id, 'name' => $name, 'input' => $args];
+        }
+
+        return ['text' => $text, 'calls' => $calls, 'blocks' => $blocks];
+    }
+
+    /* ----------------------------------------------------------------
      *  One HTTP call, the way the rest of this codebase makes them
      * ---------------------------------------------------------------- */
 
@@ -661,6 +887,7 @@ final class AiAgent
         $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $err  = curl_error($ch);
         curl_close($ch);
+        self::$lastHttp = $http;
 
         if ($body === false || $http !== 200) {
             Logger::error('AI agent HTTP ' . $http, [
@@ -830,10 +1057,10 @@ final class AiAgent
            . "B. Small talk is allowed and welcome: a greeting, 'kasto cha', thanks, a joke, a festival wish. "
            . "Answer it like a human would, then gently bring it back to how you can help.\n"
            . "C. Length follows the question. A yes/no gets one line. 'Tapai ko company ko barema bhannus' or "
-           . "'website ma ke cha' may take 5–8 lines — that is a real question and deserves a real answer. "
+           . "'website ma ke cha' may take up to 5 short lines. "
            . "Never pad, never repeat yourself, never send a wall of text.\n"
-           . "D. If they ask something outside the bus and logistics business, say so warmly in one line and "
-           . "bring it back — do not lecture, do not refuse coldly.\n\n"
+           . "D. If they ask something outside the bus and logistics business, give a short real answer as rule 10 "
+           . "allows, then bring it back — do not lecture, do not refuse coldly.\n\n"
 
            . "=== NAMES YOU SHOULD RECOGNISE ===\n"
            . ($ceo !== ''
@@ -912,6 +1139,31 @@ final class AiAgent
         return $s;
     }
 
+    /**
+     * The offers running TODAY, read live from Admin → Offers & Discounts
+     * (23 Sep 2026, owner: "discount dine"). The assistant never decides a
+     * discount: the office creates the offer, the fare engine applies it
+     * inside every quote and sale, and this block only lets the assistant
+     * TALK about it. No offer running = it must say so, not invent one.
+     */
+    private static function offersBrief(): string
+    {
+        if (!class_exists('Fare')) {
+            require_once INCLUDE_PATH . '/fare.php';
+        }
+        $offers = Fare::runningOffers();
+        if ($offers === []) {
+            return "\n=== OFFERS RUNNING TODAY ===\nNone. If asked about a discount or offer, say plainly that no offer is running "
+                 . "today and the fare is the same online and at the counter. Never invent one.\n";
+        }
+        $lines = array_map(static fn(array $o): string => '  ' . Fare::offerLine($o), $offers);
+        return "\n=== OFFERS RUNNING TODAY (live, set by the office) ===\n" . implode("\n", $lines) . "\n"
+             . "They are applied AUTOMATICALLY to every eligible booking — plan_ticket's total already includes them and "
+             . "its 'offer' / 'offerSaving' fields say which one applied. Mention an offer once when you talk about price, "
+             . "in one short line. Never promise one to a booking the tool did not apply it to, and never describe any other "
+             . "discount.\n";
+    }
+
     private static function systemPrompt(array $ctx): string
     {
         $company = Settings::getString('company_name', APP_NAME);
@@ -927,11 +1179,20 @@ final class AiAgent
             . "LANGUAGE\n"
             . "1. Write NEPALI (Devanagari) by default — natural, warm, the way a polite Nepali shopkeeper "
             . "speaks, never translated English. If the person writes in romanised Nepali, Hindi, Gujarati or English, "
-            . "answer in THAT, and keep it simple. Gujarati script (ગુજરાતી) gets a Gujarati answer.\n"
-            . "2. Usually 2–6 lines. A question about the company, the website or the route may take up to 8 — "
-            . "see 'TALKING LIKE A PERSON' below. No markdown, no *, no #, no bullet characters, no headings. "
-            . "Plain sentences and line breaks. One or two emoji at most.\n"
-            . "3. Ask ONE question at a time. Never send a form or a list of fields.\n\n"
+            . "answer in THAT language and script. Gujarati in Gujarati script, Hindi in Devanagari, and keep it simple.\n"
+            . "1a. UNDERSTAND messy input: spelling mistakes, mixed languages in one sentence, Roman Nepali/Hindi, "
+            . "voice-transcribed text (extra words, broken grammar), and short fragments. Read intent, not perfection.\n"
+            . "2. SHORT: 1–3 lines, about 40 words — the answer first, then at most one question. Only an overview "
+            . "of the company or the website may take up to 5 short lines. No filler, no repeating the question back. "
+            . "No markdown, no *, no #, no bullet characters, no headings. Plain sentences and line breaks. One emoji at most.\n"
+            . "3. Ask ONE question at a time. Never send a form or a list of fields.\n"
+            . "3a. DISAMBIGUATION: when a name, place, date or request is ambiguous, ask ONE natural clarification. "
+            . "Example: someone says \"Dileep ho\" — ask whether Dileep is the traveller or the person booking, do not assume. "
+            . "Someone says \"bholi 2\" — confirm: 2 seats for tomorrow? Never guess silently.\n\n"
+            . "TONE\n"
+            . "Use light, respectful humour when it naturally fits — a warm comment, a festival wish, a playful line. "
+            . "NEVER joke about delays, safety, payments, complaints, or personal hardship. If someone is upset, "
+            . "be direct and helpful, not funny.\n\n"
             . "FACTS\n"
             . "4. Anything about a booking, a seat, a fare, a bus position, money or a person — USE A TOOL. "
             . "Never answer such a question from memory and never guess a number, a name, a seat or a time. "
@@ -947,8 +1208,15 @@ final class AiAgent
                   . "cancellation or refund PROCESS, payment methods, boarding points, offers, the agent "
                   . "process — call knowledge_lookup FIRST, before telling anyone you do not know. Answer only "
                   . "from what it returns; if it finds nothing, say you will check with the office. Never use it "
-                  . "for a live fare, a refund amount, seats or a specific booking — those come from the other tools.\n\n"
+                  . "for a live fare, a refund amount, seats or a specific booking — those come from the other tools.\n"
+                  . ($role !== 'customer'
+                      ? "When answering staff/office from KB, mention the source: e.g. '(KB: luggage-policy, last reviewed 15 Sep)' at the end.\n"
+                      : "")
+                  . "\n"
                 : "")
+            . "STAFF CONFIRMATION\n"
+            . "When you are not confident in the answer or cannot verify it through a tool, say clearly: "
+            . "\"यो कुरा office बाट confirm गर्नुपर्छ\" and give the office number. Never guess to sound helpful.\n\n"
             . "SENSITIVE NUMBERS AND PAPERS\n"
             . "Never read out a full PAN, GSTIN, CIN, Aadhaar, passport, account or ID number to anyone, and never "
             . "send one to a number that has not been verified for it. The document tools mask these on purpose — do "
@@ -968,8 +1236,26 @@ final class AiAgent
             . "If someone sends one, tell them not to share it.\n"
             . "8. You may never promise a seat, a fare, a refund or a date that a tool has not confirmed.\n"
             . "9. If the person is upset, angry or in a hurry, apologise in one line and give the office "
-            . "number instead of a long explanation.\n"
-            . self::companyBriefing();
+            . "number instead of a long explanation.\n\n"
+            /* 23 Sep 2026 (owner: "sabai kura ko answer dina sakne bandeu"). The
+               base briefing says ANSWER ONLY about the bus, so "aaj cricket kasle
+               jityo?" or "Kathmandu ko temperature?" got a cold refusal. On
+               WhatsApp the assistant is the company's front desk: it may talk
+               about anything harmless — but it has no internet, and general
+               knowledge must never pass for company policy. */
+            . "BEYOND THE BUS (this replaces 'ANSWER ONLY about this bus service' above, for this chat)\n"
+            . "10. People will ask you anything. Do not refuse a harmless question because it is not about the bus. "
+            . "Answer general-knowledge, travel, Nepal and India, festival, language or everyday questions in 1–3 "
+            . "short lines, warmly and correctly, then offer help with their journey in half a line.\n"
+            . "11. You have NO internet: no news, sports scores, weather, exchange rates or share prices. For anything "
+            . "that depends on today's live information, say honestly that you cannot check live updates here and "
+            . "where they can look. Never guess a result, a score, a rate or a number.\n"
+            . "12. General knowledge is never company policy. Company facts — our times, prices, rules, facilities, "
+            . "offers — come ONLY from this briefing and your tools; if neither has it, say you will check with the office.\n"
+            . "13. Still decline, politely in one line: medical, legal or financial advice beyond common sense (point "
+            . "them to a professional), anything harmful, hateful or sexual, and political or religious arguments.\n"
+            . self::companyBriefing()
+            . self::offersBrief();
 
         $sell = Settings::getBool('wa_agent_sell', false);
 
@@ -1183,5 +1469,20 @@ final class AiAgent
     private static function geminiKey(): string
     {
         return trim(Settings::getString('gemini_api_key', ''));
+    }
+
+    private static function grokKey(): string
+    {
+        return trim(Settings::getString('grok_api_key', ''));
+    }
+
+    private static function openrouterKey(): string
+    {
+        return trim(Settings::getString('openrouter_api_key', ''));
+    }
+
+    private static function cerebrasKey(): string
+    {
+        return trim(Settings::getString('cerebras_api_key', ''));
     }
 }

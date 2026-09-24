@@ -319,6 +319,7 @@ final class Pdf
         $this->cidFonts[$fontKey] = [
             'data'    => $raw,
             'metrics' => self::parseTTFMetrics($raw),
+            'path'    => (string) realpath($fontPath),
         ];
     }
 
@@ -335,11 +336,47 @@ final class Pdf
             throw new RuntimeException('CID font not registered: ' . $fontKey);
         }
 
-        /* This maps codepoints straight to glyphs — there is no shaping
-           engine behind it, so the short-i matra has to be put in front of
-           its consonant here or it prints on the wrong side. See
-           dev_shape(); it is applied at the drawing boundary only, and
-           textWidthCID() applies it too so the two always agree. */
+        /* Devanagari is shaped by HarfBuzz (DevShape, 24 Sep 2026): glyph
+           ids straight into the Identity-H stream, each placed where the
+           font's own rules put it. Only when shaping is unavailable does the
+           old path below run — codepoints mapped one by one, with
+           dev_shape() moving the i-matra (conjuncts then print broken). */
+        $shaped = $this->shapedCID($text, $fontKey);
+        if ($shaped !== null) {
+            $this->setFillColor($rgb);
+            $this->stream('BT');
+            $this->stream(sprintf('/%s %.2F Tf', $fontKey, $size));
+            $base = $this->y($y + $size * 0.8);
+            $k    = $size / 1000;
+            $w    = $this->cidFonts[$fontKey]['metrics']['widths'];
+            $pen  = 0.0;
+            $run  = '';
+            foreach ($shaped as [$gid, $ax, $dx, $dy]) {
+                // A glyph that sits at the pen and advances exactly as the
+                // font's width table says joins the current Tj run; anything
+                // else (a positioned mark, a kerned pair) starts a new one.
+                $natural = abs($dx) < 0.5 && abs($dy) < 0.5 && abs($ax - ($w[$gid] ?? 0)) < 0.5;
+                if ($run === '' || !$natural) {
+                    if ($run !== '') {
+                        $this->stream(sprintf('<%s> Tj', $run));
+                    }
+                    $this->stream(sprintf('1 0 0 1 %.3F %.3F Tm', $x + ($pen + $dx) * $k, $base + $dy * $k));
+                    $run = '';
+                }
+                $run .= sprintf('%04X', $gid);
+                if (!$natural) {
+                    $this->stream(sprintf('<%s> Tj', $run));
+                    $run = '';
+                }
+                $pen += $ax;
+            }
+            if ($run !== '') {
+                $this->stream(sprintf('<%s> Tj', $run));
+            }
+            $this->stream('ET');
+            return;
+        }
+
         $text = dev_shape($text);
 
         $u2g = $this->cidFonts[$fontKey]['metrics']['unicodeToGID'];
@@ -375,6 +412,14 @@ final class Pdf
     public function textWidthCID(string $text, float $size, string $fontKey = 'F7'): float
     {
         if (!isset($this->cidFonts[$fontKey])) return 0.0;
+        $shaped = $this->shapedCID($text, $fontKey);
+        if ($shaped !== null) {                      // measure exactly what textCID() will draw
+            $total = 0.0;
+            foreach ($shaped as $g) {
+                $total += $g[1];
+            }
+            return ($total / 1000) * $size;
+        }
         $text = dev_shape($text);          // measure exactly what textCID() will draw
         $m = $this->cidFonts[$fontKey]['metrics'];
         $u2g = $m['unicodeToGID'];
@@ -386,6 +431,36 @@ final class Pdf
             $total += $widths[$gid] ?? ($m['defaultWidth'] ?? 600);
         }
         return ($total / 1000) * $size;
+    }
+
+    /**
+     * HarfBuzz glyphs for $text in PDF units (1000 per em): a list of
+     * [glyph id, x advance, x offset, y offset], or null to use the
+     * unshaped path. Only for Devanagari, and only when the registered
+     * font is the very file DevShape shaped with — glyph ids from one font
+     * mean nothing in another.
+     *
+     * @return list<array{0:int,1:float,2:float,3:float}>|null
+     */
+    private function shapedCID(string $text, string $fontKey): ?array
+    {
+        if (!class_exists('DevShape') || !DevShape::needs($text)) {
+            return null;
+        }
+        $path = $this->cidFonts[$fontKey]['path'] ?? '';
+        if ($path === '' || $path !== realpath(DevShape::fontFile())) {
+            return null;
+        }
+        $s = DevShape::shape($text);
+        if ($s === null) {
+            return null;
+        }
+        $k = 1000 / max(1, (int) $s['upem']);
+        $out = [];
+        foreach ($s['g'] as [$g, $ax, $dx, $dy]) {
+            $out[] = [(int) $g, $ax * $k, $dx * $k, $dy * $k];
+        }
+        return $out;
     }
 
     /* ---- TTF binary readers ---- */
