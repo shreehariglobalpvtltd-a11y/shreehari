@@ -183,6 +183,8 @@ const CORE_SUITES = [
     'ai-web-agent-test.php'       => 'the website assistant: identity by session, per-channel selling switch, reports scoped, feedback filed, audit',
     // 23 Sep 2026 (UI v3, ported by the 24 Sep integration), registered with the card it guards.
     'seat-status-png-test.php'    => 'the live seat-status card: draws every berth, no names, cached on the fingerprint, off by default',
+    // 26 Sep 2026, registered with the one-time WhatsApp ticket codes it guards.
+    'wa-chat-token-test.php'      => 'WA chat tokens: mint/verify/expire/replay, customer always writes first',
 ];
 
 /**
