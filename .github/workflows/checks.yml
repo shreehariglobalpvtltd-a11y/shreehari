@@ -109,6 +109,12 @@ jobs:
           curl -s -o /dev/null -w "dev server: HTTP %{http_code}\n" http://127.0.0.1:8899/index.php
       - name: Run the battery
         run: php tests/run-all.php --http
+      - name: A real browser opens the app and picks a seat
+        run: |
+          npm install --no-save --no-audit --no-fund playwright-core
+          node tests/browser-smoke.mjs
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       - name: Server log on failure
         if: failure()
         run: tail -n 100 /tmp/php-server.log || true

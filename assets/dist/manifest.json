@@ -81,9 +81,9 @@
   },
   "css": {
     "output": "assets/dist/app.min.css",
-    "bytes": 362889,
-    "sha256": "34ebf563a00e1cb6e1acbb62e5c4ead49608aa3d424ff16dc7619a1c1dc8a0e3",
-    "rawBytes": 453070,
+    "bytes": 363026,
+    "sha256": "d88baf55e6fb9d3cfc6596413be8f6a18929817e65d0e521ba85f3a7d33afdb4",
+    "rawBytes": 453676,
     "sources": [
       {
         "file": "assets/css/app.css",
@@ -92,8 +92,8 @@
       },
       {
         "file": "assets/css/views.css",
-        "bytes": 307990,
-        "sha256": "58046fa9e067577c073b04f1cc043de81b0803acbf096254d768a08dce0344ba"
+        "bytes": 308596,
+        "sha256": "c0546c4de65e94bedc6b8d9f8b686d525253371e4699d3f1cd5f0bbcf6e5a943"
       }
     ]
   }

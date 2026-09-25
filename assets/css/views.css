@@ -1237,13 +1237,23 @@ input,select,textarea{font-size:16px}
    showView() in 05-router.js) must live in its own rule. */
 @media (max-width:760px){
   body.in-flow .whatsapp-fab,
-  body.in-flow .ai-fab{display:none!important}
+  body.in-flow .ai-fab,
+  /* 25 Sep 2026: the contact dial belongs in this list too. A browser
+     screenshot of the seat map caught it floating over seats LA6 and E/F,
+     which does not just look wrong — the seat underneath cannot be tapped
+     at all, so those berths were unsellable on a phone. It follows the two
+     FABs above: away during results, seat pick and checkout, back on every
+     other screen. The header still carries call and WhatsApp there. */
+  body.in-flow .ct-fab{display:none!important}
   body:has(#view-results.active) .whatsapp-fab,
   body:has(#view-results.active) .ai-fab,
+  body:has(#view-results.active) .ct-fab,
   body:has(#view-seats.active) .whatsapp-fab,
   body:has(#view-seats.active) .ai-fab,
+  body:has(#view-seats.active) .ct-fab,
   body:has(#view-checkout.active) .whatsapp-fab,
-  body:has(#view-checkout.active) .ai-fab{display:none!important}
+  body:has(#view-checkout.active) .ai-fab,
+  body:has(#view-checkout.active) .ct-fab{display:none!important}
 }
 @media (max-width:760px){
   .hero h1.hero-brand{font-size:clamp(19px,6.5vw,28px);letter-spacing:.02em}

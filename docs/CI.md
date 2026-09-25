@@ -40,6 +40,20 @@ bookings, and a database that has already run the battery a few times drifts
 far enough that suites start failing on each other's leftovers — which is why
 a local pass on a reused database says nothing about CI.
 
+A real browser check runs after the battery, driving the app the way a
+passenger does — home page, language switch, search, seat map — and failing on
+any console error, any failed request from this site, or any floating button
+parked on top of a seat:
+
+```bash
+node tests/browser-smoke.mjs
+```
+
+It needs Chromium. It uses `CHROME_PATH`, then `/usr/bin/google-chrome` or
+`/usr/bin/chromium`, then a Playwright browsers directory, and if it finds
+none it says so and exits 0 rather than failing a machine that simply has no
+browser. Install the driver with `npm install --no-save playwright-core`.
+
 Node must be on PATH for that runner to finish with zero missing suites. Its
 three Node suites can also run on the development machine:
 
