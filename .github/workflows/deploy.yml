@@ -1,0 +1,225 @@
+# =====================================================================
+#  Deploy to the Hostinger VPS — on demand, never automatically.
+#
+#  HOW TO USE:
+#  1. Add these 4 secrets in GitHub → Settings → Secrets and variables → Actions:
+#       VPS_SSH_KEY   private key for SSH access to the VPS
+#       VPS_HOST      VPS IP or hostname (e.g. 93.127.167.249)
+#       VPS_USER      SSH username (root or a sudoer)
+#       VPS_PATH      /var/www/shreehariglobal.in/public_html
+#
+#  2. Go to Actions → Deploy to VPS → Run workflow
+#  3. Set branch: claude/shreehari-global-upgrade-myl45u
+#  4. Keep dry_run: true for the FIRST run to check what it would do
+#  5. Run again with dry_run: false to actually deploy
+#
+#  The workflow clones the branch side-by-side, preserves config.php and
+#  uploads/, runs migrations, swaps directories atomically, and rolls back
+#  if the site stops answering 200.
+# =====================================================================
+
+name: Deploy to VPS
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to deploy'
+        required: true
+        default: 'claude/shreehari-global-upgrade-myl45u'
+      dry_run:
+        description: 'Dry run — show what would happen, no changes'
+        type: boolean
+        default: true
+
+concurrency:
+  group: vps-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: ${{ inputs.dry_run && 'Dry run' || 'Deploy' }} ${{ inputs.branch }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check secrets are set
+        env:
+          KEY:  ${{ secrets.VPS_SSH_KEY }}
+          HOST: ${{ secrets.VPS_HOST }}
+          USER: ${{ secrets.VPS_USER }}
+          PATH_: ${{ secrets.VPS_PATH }}
+        run: |
+          missing=""
+          [ -n "$KEY" ]   || missing="$missing VPS_SSH_KEY"
+          [ -n "$HOST" ]  || missing="$missing VPS_HOST"
+          [ -n "$USER" ]  || missing="$missing VPS_USER"
+          [ -n "$PATH_" ] || missing="$missing VPS_PATH"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing secret(s):$missing — add them in Settings > Secrets and variables > Actions"
+            exit 1
+          fi
+          echo "All secrets present."
+
+      - name: Setup SSH
+        env:
+          KEY:  ${{ secrets.VPS_SSH_KEY }}
+          HOST: ${{ secrets.VPS_HOST }}
+          PORT: ${{ secrets.VPS_PORT }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -p "${PORT:-22}" -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          echo "Host key recorded."
+
+      - name: ${{ inputs.dry_run && '[DRY RUN] Show what would be deployed' || 'Deploy' }}
+        env:
+          HOST:   ${{ secrets.VPS_HOST }}
+          USER:   ${{ secrets.VPS_USER }}
+          PORT:   ${{ secrets.VPS_PORT }}
+          SITE:   ${{ secrets.VPS_PATH }}
+          BRANCH: ${{ inputs.branch }}
+          DRY:    ${{ inputs.dry_run }}
+        run: |
+          set -o pipefail
+          ssh -i ~/.ssh/id_deploy -p "${PORT:-22}" -o BatchMode=yes "$USER@$HOST" bash -s << 'REMOTE'
+          set -euo pipefail
+
+          SITE="$SITE"
+          BRANCH="$BRANCH"
+          DRY="$DRY"
+          REPO="https://github.com/shreehariglobalpvtltd-a11y/shreehari.git"
+          SITE_PARENT="$(dirname "$SITE")"
+          NEW_DIR="$SITE_PARENT/new_html_deploy"
+          OLD_DIR="$SITE_PARENT/old_html_backup"
+
+          echo "=== Deploy: $BRANCH -> $SITE ==="
+          echo "Date: $(date '+%Y-%m-%d %H:%M:%S IST')"
+
+          # Backup current state
+          BACKUP_DIR="/root/backups"
+          mkdir -p "$BACKUP_DIR"
+          STAMP="$(date +%Y%m%d-%H%M%S)"
+          if [ "$DRY" != "true" ]; then
+            echo "--- Backup: $BACKUP_DIR/pre-deploy-$STAMP.tar.gz"
+            tar -czf "$BACKUP_DIR/pre-deploy-$STAMP.tar.gz" \
+              --exclude="$SITE/uploads" --exclude="$SITE/tickets" \
+              --exclude="$SITE/qr" --exclude="$SITE/logs" \
+              "$SITE" 2>/dev/null || true
+            echo "--- DB backup: $BACKUP_DIR/pre-deploy-$STAMP.sql.gz"
+            mysqldump --single-transaction shari 2>/dev/null | gzip > "$BACKUP_DIR/pre-deploy-$STAMP.sql.gz" || true
+          else
+            echo "[DRY] Would backup to $BACKUP_DIR/pre-deploy-$STAMP.tar.gz"
+          fi
+
+          # Show current deployed commit
+          if [ -d "$SITE/.git" ]; then
+            echo "--- Current: $(git -C '$SITE' -c safe.directory='$SITE' log -1 --format='%h %s' 2>/dev/null || echo unknown)"
+          fi
+
+          # Clone branch
+          echo "--- Cloning $BRANCH..."
+          if [ "$DRY" != "true" ]; then
+            rm -rf "$NEW_DIR"
+            git clone --branch "$BRANCH" --depth 30 "$REPO" "$NEW_DIR"
+            echo "--- Cloned: $(git -C '$NEW_DIR' log -1 --format='%h %s')"
+          else
+            echo "[DRY] Would clone $REPO branch $BRANCH to $NEW_DIR"
+          fi
+
+          # PHP lint
+          echo "--- PHP syntax check..."
+          if [ "$DRY" != "true" ]; then
+            find "$NEW_DIR" -name '*.php' -not -path '*/vendor/*' | while read f; do
+              php -l "$f" > /dev/null || { echo "FAIL: $f"; exit 1; }
+            done
+            echo "    PHP OK"
+          else
+            echo "[DRY] Would run php -l on all .php files"
+          fi
+
+          # Preserve config and uploads
+          echo "--- Preserving config.php and uploads/..."
+          if [ "$DRY" != "true" ]; then
+            cp "$SITE/config/config.php" "$NEW_DIR/config/config.php"
+            cp -a "$SITE/uploads/." "$NEW_DIR/uploads/" 2>/dev/null || true
+            cp -a "$SITE/tickets/." "$NEW_DIR/tickets/" 2>/dev/null || true
+            cp -a "$SITE/qr/." "$NEW_DIR/qr/" 2>/dev/null || true
+            cp -a "$SITE/invoice/." "$NEW_DIR/invoice/" 2>/dev/null || true
+            cp -a "$SITE/backup/." "$NEW_DIR/backup/" 2>/dev/null || true
+          else
+            echo "[DRY] Would copy config.php and uploads/ tickets/ qr/ invoice/ backup/"
+          fi
+
+          # Migrations
+          echo "--- Running migrations..."
+          if [ "$DRY" != "true" ]; then
+            for f in "$NEW_DIR"/database/upgrade-*.sql; do
+              [ -f "$f" ] || continue
+              base="$(basename $f)"
+              exists=$(mysql shari -se "SELECT COUNT(*) FROM schema_migrations WHERE migration='$base' LIMIT 1" 2>/dev/null || echo 0)
+              if [ "${exists:-0}" -eq 0 ]; then
+                echo "    Applying $base..."
+                mysql shari < "$f"
+                mysql shari -e "INSERT IGNORE INTO schema_migrations (migration) VALUES ('$base')" 2>/dev/null || true
+              else
+                echo "    Skip $base (already applied)"
+              fi
+            done
+          else
+            for f in "$NEW_DIR"/database/upgrade-*.sql 2>/dev/null; do
+              [ -f "$f" ] && echo "[DRY] Would apply: $(basename $f)"
+            done || echo "[DRY] Would check and apply pending migrations"
+          fi
+
+          # Atomic swap
+          echo "--- Swapping directories..."
+          if [ "$DRY" != "true" ]; then
+            chown -R www-data:www-data "$NEW_DIR"
+            chmod 640 "$NEW_DIR/config/config.php"
+            rm -rf "$OLD_DIR"
+            mv "$SITE" "$OLD_DIR"
+            mv "$NEW_DIR" "$SITE"
+            echo "    Swapped."
+          else
+            echo "[DRY] Would: mv $SITE -> $OLD_DIR && mv $NEW_DIR -> $SITE"
+          fi
+
+          # Reload services
+          echo "--- Reloading services..."
+          if [ "$DRY" != "true" ]; then
+            systemctl reload php8.3-fpm 2>/dev/null && echo "    php8.3-fpm reloaded" || echo "    WARN: php-fpm reload failed (non-fatal)"
+            systemctl reload nginx 2>/dev/null && echo "    nginx reloaded" || echo "    WARN: nginx reload failed (non-fatal)"
+          else
+            echo "[DRY] Would reload php8.3-fpm and nginx"
+          fi
+
+          # Health check
+          echo "--- Health check..."
+          if [ "$DRY" != "true" ]; then
+            sleep 3
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 https://www.shreehariglobal.in/ || echo 000)
+            echo "    Site answers: $CODE"
+            if [ "$CODE" != "200" ]; then
+              echo "ROLLBACK: site answered $CODE, restoring previous version..."
+              mv "$SITE" "$SITE_PARENT/failed_$STAMP"
+              mv "$OLD_DIR" "$SITE"
+              systemctl reload php8.3-fpm 2>/dev/null || true
+              systemctl reload nginx 2>/dev/null || true
+              echo "ROLLBACK DONE. Check $SITE_PARENT/failed_$STAMP for the failed deploy."
+              exit 1
+            fi
+            echo "    Deploy successful!"
+          else
+            echo "[DRY] Would check https://www.shreehariglobal.in/ returns 200"
+            echo ""
+            echo "=== DRY RUN COMPLETE — no changes were made ==="
+          fi
+          REMOTE
+
+      - name: Check site health
+        if: always()
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 https://www.shreehariglobal.in/ || echo 000)
+          echo "https://www.shreehariglobal.in/ -> HTTP $code"
+          [ "$code" = "200" ] || echo "::warning::Site returned $code — check logs above"
