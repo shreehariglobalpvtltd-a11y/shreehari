@@ -69,7 +69,30 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$KEY" > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
-          ssh-keyscan -p "${PORT:-22}" -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          # An unusable key otherwise surfaces much later as ssh's
+          # `Load key ...: error in libcrypto`, which says nothing about what is
+          # wrong with the secret. Check it here, where we can say.
+          # stdin is /dev/null so a passphrase-protected key fails instead of hanging.
+          if ! ssh-keygen -y -f ~/.ssh/id_deploy > /dev/null 2>&1 < /dev/null; then
+            echo "::error::VPS_SSH_KEY is not a usable private key."
+            echo "  starts with : $(head -1 ~/.ssh/id_deploy | cut -c1-40)"
+            echo "  line count  : $(wc -l < ~/.ssh/id_deploy)"
+            echo "  It must be the PRIVATE key file — the one whose first line is"
+            echo "  -----BEGIN OPENSSH PRIVATE KEY----- — pasted whole, with its line"
+            echo "  breaks intact, and with no passphrase. Not the .pub file."
+            exit 1
+          fi
+          echo "Key parses OK: $(ssh-keygen -l -f ~/.ssh/id_deploy | awk '{print $1, $4}')"
+
+          # ssh-keyscan failing means the port never answered. That is a different
+          # fault from a bad key — reachability, not credentials — so name it apart.
+          if ! ssh-keyscan -T 10 -p "${PORT:-22}" -H "$HOST" >> ~/.ssh/known_hosts 2>/tmp/keyscan.err; then
+            echo "::error::No host key from port ${PORT:-22} — the VPS did not answer."
+            sed 's/^/  /' /tmp/keyscan.err
+            echo "  The key may be fine; the server or its firewall is the thing to check."
+            exit 1
+          fi
           echo "Host key recorded."
 
       - name: ${{ inputs.dry_run && '[DRY RUN] Show what would be deployed' || 'Deploy' }}
