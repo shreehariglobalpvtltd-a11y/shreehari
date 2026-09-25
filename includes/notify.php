@@ -843,6 +843,43 @@ final class Notify
     }
 
     /**
+     * SMS fallback for the ticket (26 Sep 2026): when WhatsApp cannot reach
+     * the passenger, the desk sends the keyed ticket-image link by SMS. Same
+     * link the WhatsApp ticket carries (Ticket::imageUrl, download key
+     * included); plain ASCII so it stays one or two GSM segments. Never
+     * throws.
+     *
+     * @return array{ok: bool, detail: string}
+     */
+    public static function smsTicketLink(array $booking): array
+    {
+        if (!Settings::getBool('sms_enabled', false)) {
+            return ['ok' => false, 'detail' => 'SMS is switched off in Settings (sms_enabled).'];
+        }
+        $phone = self::usablePhone($booking['contact_phone'] ?? '');
+        if ($phone === '') {
+            return ['ok' => false, 'detail' => 'This booking has no usable contact phone number on file.'];
+        }
+        if (($booking['status'] ?? '') !== 'confirmed') {
+            return ['ok' => false, 'detail' => 'The ticket link can only be sent for a confirmed booking.'];
+        }
+        $pnr  = (string) ($booking['pnr'] ?? '');
+        $text = Settings::getString('company_name', APP_NAME) . ': your ticket ' . $pnr . "\n"
+              . Ticket::imageUrl($pnr) . "\n"
+              . 'Tapaiko ticket mathi ko link ma cha. Subha yatra!';
+        try {
+            $ok = self::sms($phone, $text, self::countryHint($booking),
+                isset($booking['id']) && (int) $booking['id'] > 0 ? (int) $booking['id'] : null);
+        } catch (Throwable $e) {
+            Logger::exception($e);
+            $ok = false;
+        }
+        return $ok
+            ? ['ok' => true,  'detail' => 'Ticket link sent by SMS to ' . $phone . '.']
+            : ['ok' => false, 'detail' => 'SMS send failed. Use Settings -> "Test SMS" to see the provider error.'];
+    }
+
+    /**
      * Tell the passenger WHAT changed on their ticket (17 Sep 2026).
      *
      * Reschedule, missed-bus rebooking, seat change and detail edits all used
