@@ -35,13 +35,7 @@ try {
     // does. Without this the PNR — which is printed on every ticket, so it is
     // no secret — was the only thing between an agent and full passenger
     // detail (name, phone, seats, crew) for the entire company.
-    $scopeId   = Auth::bookingScopeAdminId();
-    $staffSees = Auth::isAdmin()
-        && ($scopeId === null || (int) ($detail['sold_by_admin_id'] ?? 0) === $scopeId);
-
-    $ownsIt = ($phone !== '' && $phone === (string) $detail['contact_phone'])
-        || (Auth::isUser() && (int) (Auth::user()['id'] ?? 0) === (int) ($detail['user_id'] ?? -1))
-        || $staffSees;
+    $ownsIt = shg_booking_viewer_owns($detail, $phone);
 
     if (!$ownsIt) {
         Response::success([
