@@ -588,7 +588,7 @@ function ensurePrivateDir(string $path): bool
 function privateUploadRoot(string $path): ?string
 {
     $real = rtrim(str_replace('\\', '/', $path), '/');
-    foreach (['challan', 'chalani', 'passengers', 'agents-kyc'] as $tree) {
+    foreach (['challan', 'chalani', 'passengers', 'agents-kyc', 'wa-inbound'] as $tree) {
         $needle = '/uploads/' . $tree;
         $at = strpos($real, $needle);
         if ($at !== false) {

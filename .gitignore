@@ -22,10 +22,12 @@ uploads/
 !uploads/chalani/.htaccess
 !uploads/passengers/.htaccess
 !uploads/agents-kyc/.htaccess
+!uploads/wa-inbound/.htaccess
 !uploads/challan/index.html
 !uploads/chalani/index.html
 !uploads/passengers/index.html
 !uploads/agents-kyc/index.html
+!uploads/wa-inbound/index.html
 qr/*.png
 
 # Local dev / OS noise

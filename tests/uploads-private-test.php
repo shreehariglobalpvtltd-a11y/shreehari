@@ -41,7 +41,10 @@ function get(string $path): array {
     return ['code' => $c, 'body' => $b];
 }
 $ROOT    = dirname(__DIR__);
-$PRIVATE = ['challan', 'chalani', 'passengers', 'agents-kyc'];
+/* wa-inbound carries media a customer sent us on WhatsApp, so it is a
+   private tree exactly like the other four. This lineage's nginx already
+   denied it; the guard beside the data was missing. */
+$PRIVATE = ['challan', 'chalani', 'passengers', 'agents-kyc', 'wa-inbound'];
 
 echo "\n=== The uploads tree is private ===\n\n-- A. the guards ship with the code --\n";
 check('uploads/.htaccess is in the tree', is_file($ROOT . '/uploads/.htaccess'));
