@@ -19,6 +19,7 @@ declare(strict_types=1);
 define('SHG_APP', true);
 require_once __DIR__ . '/includes/bootstrap.php';
 require_once INCLUDE_PATH . '/trust.php';
+require_once INCLUDE_PATH . '/assetbundle.php';
 
 /* ---------------------------------------------------------------------
  *  Bootstrap payload for the browser.
@@ -271,6 +272,12 @@ $stripped = preg_replace('/<!--(?!\[if).*?-->/s', '', $html);
 if (is_string($stripped) && $stripped !== '') {
     $html = preg_replace('/\n[ \t]*\n(?:[ \t]*\n)+/', "\n\n", $stripped) ?: $stripped;
 }
+
+/* One script and one stylesheet instead of sixteen, when the office has
+   turned bundle_assets_on on and the committed bundle still matches the
+   template exactly (includes/assetbundle.php). Off, or stale, and the page
+   is served exactly as before. 25 Sep 2026. */
+$html = AssetBundle::apply($html);
 
 $pos = stripos($html, '</head>');
 if ($pos !== false) {

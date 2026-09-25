@@ -44,6 +44,10 @@ jobs:
         run: node -e "JSON.parse(require('node:fs').readFileSync('manifest.webmanifest', 'utf8'))"
       - name: Asset versions
         run: php tests/asset-version-test.php
+      - name: The committed bundle matches the sources
+        run: |
+          npm install --no-save --no-audit --no-fund esbuild
+          node tools/build.mjs --check
       - name: Offline ticket behavior
         run: node tests/offline-ticket-test.js
       - name: Lazy-load recovery
