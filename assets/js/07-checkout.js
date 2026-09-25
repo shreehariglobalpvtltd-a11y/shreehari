@@ -140,6 +140,16 @@ function autoFillFromPhone() {
    SAME submitBooking() payload — this is a UI/state split, not a new model.
    validateCheckoutDetails() is the single details validator, shared by the
    "Continue to Payment" gate and the final submit, so they never drift. */
+/* 23 Sep 2026 (UI v3 brief §7, ported 24 Sep): a customer's number must look
+   like a real mobile for the country picked - India +91 starts 6-9, Nepal +977
+   starts 9 (96/97/98 today) - not merely be ten digits. Staff counters keep
+   their looser rule (walk-ins, international numbers). */
+function coPhoneShapeOk(phv) {
+  if (!/^\d{10}$/.test(phv)) return false;
+  const cc = ($('#cCountry') && $('#cCountry').value) || '91';
+  return cc === '977' ? /^9[6-9]/.test(phv) : /^[6-9]/.test(phv);
+}
+
 function validateCheckoutDetails() {
   let ok = true;
   const passengers = $$('.pax-row').map((row, i) => {
@@ -186,7 +196,7 @@ function validateCheckoutDetails() {
      10-digit rule and blocking the desk with "check the highlighted
      fields". Customers online keep the strict Indian-mobile rule. */
   const ctrSell = !!(window.SHG_BOOT && window.SHG_BOOT.staff && window.SHG_BOOT.staff.canSell);
-  const pOk = ctrSell ? (phoneVal === '' || /^\d{8,15}$/.test(phoneVal)) : /^\d{10}$/.test(phoneVal);
+  const pOk = ctrSell ? (phoneVal === '' || /^\d{8,15}$/.test(phoneVal)) : coPhoneShapeOk(phoneVal);
   const eOk = !email.value.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim());
   const iOk = idNum.value.trim() === '' || idNum.value.trim().length >= 4;
   phone.closest('.field').classList.toggle('invalid', !pOk);
@@ -245,7 +255,7 @@ function coSyncContinue() {
   const phv = ph ? digits(ph.value) : '';
   // Counter sale: phone optional / international (mirrors validateCheckoutDetails).
   const ctrSell2 = !!(window.SHG_BOOT && window.SHG_BOOT.staff && window.SHG_BOOT.staff.canSell);
-  if (ctrSell2 ? (phv !== '' && !/^\d{8,15}$/.test(phv)) : !/^\d{10}$/.test(phv)) ready = false;
+  if (ctrSell2 ? (phv !== '' && !/^\d{8,15}$/.test(phv)) : !coPhoneShapeOk(phv)) ready = false;
   /* blacklisted numbers are refused on click, so don't offer an enabled button */
   if (ready && ((DB.settings && DB.settings.blacklist) || []).indexOf(phv) >= 0) ready = false;
   const em = $('#cEmail');

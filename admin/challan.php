@@ -53,7 +53,15 @@ if ($sid <= 0 || ChallanPng::schedule($sid) === null) {
 }
 
 try {
-    $res = ChallanPng::render($sid, 'manual', (int) $admin['id'], isset($_GET['fresh']));
+    /* 23 Sep 2026: ?doc=status - the live seat-status card (colours + counts,
+       no passenger details), the picture the office WhatsApp receives. */
+    if (($_GET['doc'] ?? '') === 'status') {
+        require_once INCLUDE_PATH . '/seatstatuspng.php';
+        $res = SeatStatusPng::render($sid, isset($_GET['fresh']));
+        $res['file'] = 'seat-status-' . $res['file'];
+    } else {
+        $res = ChallanPng::render($sid, 'manual', (int) $admin['id'], isset($_GET['fresh']));
+    }
 } catch (Throwable $e) {
     Logger::error('Challan render failed: ' . $e->getMessage(), ['sid' => $sid]);
     http_response_code(500);

@@ -181,6 +181,8 @@ const CORE_SUITES = [
     // 24 Sep 2026, registered with the website / app assistant they guard.
     'ai-chart-test.php'           => 'the report picture: every chart shape paints, an empty block never does, the sweep',
     'ai-web-agent-test.php'       => 'the website assistant: identity by session, per-channel selling switch, reports scoped, feedback filed, audit',
+    // 23 Sep 2026 (UI v3, ported by the 24 Sep integration), registered with the card it guards.
+    'seat-status-png-test.php'    => 'the live seat-status card: draws every berth, no names, cached on the fingerprint, off by default',
 ];
 
 /**

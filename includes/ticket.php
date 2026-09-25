@@ -440,9 +440,22 @@ final class Ticket
      */
     public static function imageUrl(string $pnr): string
     {
+        /* 23 Sep 2026: ?r=<revision> - a corrected ticket gets a NEW url, so
+           WhatsApp and browsers fetch the redrawn picture instead of the copy
+           they cached under the old one. Per-request memo: the lists call this
+           once per row. download-ticket.php ignores the parameter. */
+        static $rev = [];
+        if (!array_key_exists($pnr, $rev)) {
+            try {
+                $rev[$pnr] = (int) Database::scalar(
+                    'SELECT t.reissue_count FROM tickets t JOIN bookings b ON b.id = t.booking_id WHERE b.pnr = :p LIMIT 1',
+                    ['p' => $pnr], 0);
+            } catch (Throwable $e) { $rev[$pnr] = 0; }
+        }
         return appUrl(
             'download-ticket.php?pnr=' . urlencode($pnr)
             . '&img=1&k=' . self::downloadToken($pnr)
+            . ($rev[$pnr] > 0 ? '&r=' . $rev[$pnr] : '')
         );
     }
 

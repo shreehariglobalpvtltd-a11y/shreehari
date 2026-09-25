@@ -115,6 +115,7 @@ function admin_nav(): array
         ['href' => 'enquiries.php',    'icon' => 'mail',      'label' => 'Enquiries',        'perm' => 'customers.view', 'section' => 'Customers'],
         // 24 Sep 2026: requests the WhatsApp assistant handed to people (SUP-…).
         ['href' => 'support-inbox.php','icon' => 'msg',       'label' => 'Support Inbox',    'perm' => 'support.view',   'section' => 'Customers'],
+        ['href' => 'promo-card.php',   'icon' => 'image',     'label' => 'Promo card',       'perm' => 'dashboard.view', 'section' => 'Payments'],
 
         // Buses — fleet, the day-by-day schedule and the crew.
         ['href' => 'calendar.php',     'icon' => 'calendar',  'label' => 'Bus Calendar',     'perm' => 'schedules.manage','section' => 'Buses'],
