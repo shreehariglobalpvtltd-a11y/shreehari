@@ -200,7 +200,24 @@ jobs:
           fi
 
           # Migrations
+          #
+          # deploy/vps-pull-deploy.sh already owns the schema_migrations shape in
+          # this repo — filename/applied_at/sha1 — and this step used to invent its
+          # own `migration` column. On a live database carrying the other table the
+          # lookup errored, every file counted as unapplied, and the deploy replayed
+          # all 67 from the beginning; upgrade-2026-08-agent-role.sql then narrowed
+          # admins.role back to a list without 'counter' and MySQL refused:
+          # "Data truncated for column 'role' at row 12". Same table, same column
+          # names, same tolerance as that script, so the two paths agree.
           echo "--- Running migrations..."
+          if [ "$DRY" != "true" ]; then
+            mysql shari -e "
+              CREATE TABLE IF NOT EXISTS schema_migrations (
+                filename   VARCHAR(190) NOT NULL PRIMARY KEY,
+                applied_at DATETIME     NOT NULL,
+                sha1       CHAR(40)     NOT NULL
+              ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;"
+          fi
           for f in "$NEW_DIR"/database/upgrade-*.sql; do
             [ -f "$f" ] || continue
             base="$(basename "$f")"
@@ -208,14 +225,30 @@ jobs:
               echo "[DRY] Would consider: $base"
               continue
             fi
-            exists=$(mysql shari -se "SELECT COUNT(*) FROM schema_migrations WHERE migration='$base' LIMIT 1" 2>/dev/null || echo 0)
-            if [ "${exists:-0}" -eq 0 ]; then
-              echo "    Applying $base..."
-              mysql shari < "$f"
-              mysql shari -e "INSERT IGNORE INTO schema_migrations (migration) VALUES ('$base')" 2>/dev/null || true
-            else
+            exists=$(mysql shari -sNe "SELECT COUNT(*) FROM schema_migrations WHERE filename='$base'")
+            if [ "${exists:-0}" -gt 0 ]; then
               echo "    Skip $base (already applied)"
+              continue
             fi
+            printf '    %s ... ' "$base"
+            err="$(mysql shari < "$f" 2>&1 >/dev/null || true)"
+            if [ -n "$err" ]; then
+              # The house rule is additive files — IF NOT EXISTS, INSERT IGNORE — so
+              # an object that is already there on a hand-upgraded database is
+              # expected. Anything else is a real failure and stops the deploy
+              # BEFORE the swap, leaving the current site untouched.
+              if grep -qvE "Duplicate (column|key) name|Duplicate entry|already exists|Multiple primary key|check that column/key exists" <<< "$err"; then
+                echo "FAILED"
+                echo "$err" | head -5
+                echo "    The site was NOT swapped; it is still serving the previous version."
+                exit 1
+              fi
+              echo "already there"
+            else
+              echo "ok"
+            fi
+            sha="$(sha1sum "$f" | cut -d' ' -f1)"
+            mysql shari -e "INSERT IGNORE INTO schema_migrations (filename, applied_at, sha1) VALUES ('$base', NOW(), '$sha')"
           done
           [ "$DRY" != "true" ] || echo "[DRY] (nothing cloned yet, so the list above may be empty)"
 
