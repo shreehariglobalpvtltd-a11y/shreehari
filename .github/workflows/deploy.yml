@@ -74,13 +74,32 @@ jobs:
           # `Load key ...: error in libcrypto`, which says nothing about what is
           # wrong with the secret. Check it here, where we can say.
           # stdin is /dev/null so a passphrase-protected key fails instead of hanging.
-          if ! ssh-keygen -y -f ~/.ssh/id_deploy > /dev/null 2>&1 < /dev/null; then
+          key_ok() { ssh-keygen -y -f ~/.ssh/id_deploy > /dev/null 2>&1 < /dev/null; }
+
+          # A secret that arrives as one line is nearly always a paste that lost
+          # its newlines — the commonest way to get this wrong, and invisible
+          # afterwards because GitHub will not show a secret back. So base64 of
+          # the key file is accepted too: `base64 -w0 ~/.ssh/gh_deploy` pastes as
+          # a single line that cannot be mangled. A real key is not valid base64
+          # (the BEGIN/END lines have dashes), so this can only help.
+          if ! key_ok && base64 -d < ~/.ssh/id_deploy > ~/.ssh/id_deploy.dec 2>/dev/null; then
+            mv ~/.ssh/id_deploy.dec ~/.ssh/id_deploy
+            chmod 600 ~/.ssh/id_deploy
+            key_ok && echo "VPS_SSH_KEY was base64; decoded it."
+          fi
+          rm -f ~/.ssh/id_deploy.dec
+
+          if ! key_ok; then
             echo "::error::VPS_SSH_KEY is not a usable private key."
             echo "  starts with : $(head -1 ~/.ssh/id_deploy | cut -c1-40)"
             echo "  line count  : $(wc -l < ~/.ssh/id_deploy)"
             echo "  It must be the PRIVATE key file — the one whose first line is"
             echo "  -----BEGIN OPENSSH PRIVATE KEY----- — pasted whole, with its line"
             echo "  breaks intact, and with no passphrase. Not the .pub file."
+            echo "  A line count of 1 means the newlines were lost in the paste."
+            echo "  Easiest fix: set the secret to the output of"
+            echo "      base64 -w0 ~/.ssh/gh_deploy"
+            echo "  which is one line by design and is accepted here."
             exit 1
           fi
           echo "Key parses OK: $(ssh-keygen -l -f ~/.ssh/id_deploy | awk '{print $1, $4}')"
