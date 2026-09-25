@@ -217,6 +217,34 @@ jobs:
                 applied_at DATETIME     NOT NULL,
                 sha1       CHAR(40)     NOT NULL
               ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;"
+
+            # First run on a database that predates this bookkeeping: the table is
+            # empty while the schema is already 67 migrations deep, upgraded by hand.
+            # Replaying from the beginning is not merely noisy — it is wrong, because
+            # an early file can narrow what a later one widened. Exactly that happened:
+            # upgrade-2026-08-agent-role.sql sets admins.role to an ENUM without
+            # 'counter', which upgrade-2026-09-counter-role.sql added and a real admin
+            # uses, and MySQL refused with "Data truncated for column 'role' at row 12".
+            #
+            # What the LIVE code shipped with is what the LIVE database has, so the
+            # migrations sitting in the current document root are recorded as applied.
+            # Files arriving only with the new code are not in that directory, so they
+            # stay pending and still run. Only ever on an empty table, so a later
+            # deploy cannot silently skip a migration.
+            if [ "$(mysql shari -sNe 'SELECT COUNT(*) FROM schema_migrations')" -eq 0 ]; then
+              seeded=0
+              for old_f in "$SITE"/database/upgrade-*.sql; do
+                [ -f "$old_f" ] || continue
+                old_base="$(basename "$old_f")"
+                old_sha="$(sha1sum "$old_f" | cut -d' ' -f1)"
+                mysql shari -e "INSERT IGNORE INTO schema_migrations (filename, applied_at, sha1)
+                                VALUES ('$old_base', NOW(), '$old_sha')"
+                seeded=$((seeded+1))
+              done
+              [ "$seeded" -eq 0 ] \
+                && echo "    schema_migrations was empty and the live tree has no migrations — nothing seeded" \
+                || echo "    schema_migrations was empty: seeded $seeded file(s) already live"
+            fi
           fi
           for f in "$NEW_DIR"/database/upgrade-*.sql; do
             [ -f "$f" ] || continue
