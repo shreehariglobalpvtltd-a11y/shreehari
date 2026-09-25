@@ -176,6 +176,38 @@
       voice(1567.98, 0.22, 0.34, 0.018, 'sine');
       voice(1046.5, 0.36, 0.42, 0.030, 'triangle');
     },
+    /* THE FOUR FACILITY STORIES (owner, 26 Sep 2026: "animation …
+       sound pani hos … manche lai attractive lagos"). Each scene gets
+       its own signature rather than one generic chime, because the
+       whole point of the panel is that the four facilities feel like
+       four different things. They are all quiet and all under 500ms —
+       this plays when a finger opens a card, not in the background. */
+    /* GPS: a radar sweep. Two pings, the second higher, like a
+       contact returning. */
+    storyGps: function () {
+      voice(1318.51, 0, 0.09, 0.040, 'sine');
+      voice(1760.00, 0.10, 0.13, 0.030, 'sine');
+      voice(2637.02, 0.20, 0.20, 0.012, 'sine');
+    },
+    /* CHARGING: current arriving. A low surge under a bright spark. */
+    storyCharge: function () {
+      voice(110, 0, 0.26, 0.045, 'sawtooth');
+      voice(880, 0.06, 0.09, 0.030, 'square');
+      voice(1760, 0.14, 0.22, 0.022, 'triangle');
+    },
+    /* AC SLEEPER: the softest of the four — a warm fifth, no attack
+       edge at all. It should feel like lying down. */
+    storyAc: function () {
+      voice(329.63, 0, 0.42, 0.034, 'sine');
+      voice(493.88, 0.10, 0.44, 0.026, 'sine');
+      voice(659.25, 0.22, 0.40, 0.016, 'sine');
+    },
+    /* SAFE TRAVEL: a calm two-note confirmation, the shape a hospital
+       or a help desk uses — reassurance, not alarm. */
+    storySafe: function () {
+      voice(587.33, 0, 0.16, 0.045, 'triangle');
+      voice(783.99, 0.13, 0.30, 0.038, 'sine');
+    },
     /* THE APP OPENING (owner, 25 Sep 2026: "khulne bela ma"). A warm
        low-to-high fifth with a soft bell over it — a doorway, not a
        fanfare. It plays at most once per browser session (see WELCOME
@@ -199,7 +231,11 @@
     error: [26, 40, 26],
     success: [10, 34, 16],
     ticket: [12, 28, 12, 28, 26],
-    welcome: [6, 40, 10]
+    welcome: [6, 40, 10],
+    storyGps: [6, 24, 6],
+    storyCharge: [14, 18, 8],
+    storyAc: 8,
+    storySafe: [8, 26, 8]
   };
 
   var Feel = {
