@@ -14,7 +14,7 @@
      views.css silently do nothing — the bottom nav sits under the home
      indicator and the topbar under the notch. -->
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#1A3A6A">
+<meta name="theme-color" content="#0C306C">
 <meta name="color-scheme" content="light dark">
 <script>
 /* ---- THEME PRE-PAINT (4 Sep 2026) ------------------------------------
@@ -2847,7 +2847,8 @@ s.addEventListener('click',function(e){e.preventDefault();
 <div class="ai-panel" id="aiPanel" role="dialog" aria-label="SHG Sahayak AI Assistant">
   <div class="ai-head">
     <span class="ai-ava">🤖</span>
-    <div style="flex:1;min-width:0"><b>SHG Sahayak <span id="aiPoweredBadge" class="hide" style="font-size:9px;letter-spacing:.08em;background:rgba(255,255,255,.18);padding:2px 7px;border-radius:999px;vertical-align:middle">⚡ AI</span></b><small>AI Assistant · सहायक</small></div>
+    <div style="flex:1;min-width:0"><b>SHG Sahayak <span id="aiPoweredBadge" class="hide" style="font-size:9px;letter-spacing:.08em;background:rgba(255,255,255,.18);padding:2px 7px;border-radius:999px;vertical-align:middle">⚡ AI</span> <span id="aiRoleBadge" class="hide ai-role"></span></b><small>AI Assistant · सहायक</small></div>
+    <button type="button" class="ai-close" id="aiExpand" aria-label="Expand chat" title="ठूलो बनाउनुहोस् · बड़ा करें">⛶</button>
     <button type="button" class="ai-close" id="aiVoiceTog" aria-label="Voice replies on/off" title="बोलेर जवाफ · आवाज़ में जवाब">🔇</button>
     <button type="button" class="ai-close" id="aiClearHist" aria-label="Clear chat" title="Clear chat · कुरा मेटाउनुहोस्">🗑️</button>
     <select id="aiLang" aria-label="Assistant language">

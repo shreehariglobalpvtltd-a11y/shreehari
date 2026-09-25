@@ -2281,6 +2281,196 @@ document.addEventListener('click', function(e) {
   }
   const aiOn = () => !!(window.SHG_BOOT && window.SHG_BOOT.ai) && navigator.onLine;
 
+  /* ================================================================
+     24 Sep 2026 — SHG SAHAYAK WITH HANDS (api/ai-chat.php).
+
+     Owner ask: "website ko AI advance — sabai kura ko answer, image,
+     report, graph, real-time data; Agent / Admin / Customer; Nepali,
+     Hindi, English". The WhatsApp assistant already had tools; this
+     points the widget at the same agent. WHO is asking comes from the
+     signed-in session on the server (never from this script), so the
+     office gets reports and graphs, an agent their own book, a passenger
+     their own tickets, and a guest the public answers + a fare quote.
+
+     Order of answering, per message:
+       1. the agent (when SHG_BOOT.aiAgent and online)
+       2. the offline rule engine (instant, free)      — on any failure
+       3. the plain relay api/ai-proxy.php (old path) — only for a MISS
+       4. the static line + WhatsApp handoff
+     Nothing below removes a path that existed before.
+  ================================================================ */
+  const agentOn = () => !!(window.SHG_BOOT && window.SHG_BOOT.aiAgent) && navigator.onLine;
+  /* office = superadmin/manager (reports for the whole company); staff =
+     counter agent (their own book); else customer. Mirrors AiTools::whoIsWeb. */
+  function roleOf() {
+    const st = window.SHG_BOOT && window.SHG_BOOT.staff;
+    if (st && st.role) return (st.role === 'agent' || st.role === 'counter') ? 'staff' : ((st.role === 'superadmin' || st.role === 'manager') ? 'office' : 'customer');
+    return 'customer';
+  }
+  function whoName() {
+    const st = window.SHG_BOOT && window.SHG_BOOT.staff;
+    if (st && st.name) return String(st.name).split(' ')[0];
+    const u = window.SHG_BOOT && window.SHG_BOOT.user;
+    return (u && u.name) ? String(u.name).split(' ')[0] : '';
+  }
+
+  /* Chart.js, on demand and only once — the same lazy pattern as loadQRCode(). */
+  function loadChartJs() {
+    if (window._chartJsPromise) return window._chartJsPromise;
+    window._chartJsPromise = new Promise(function (resolve) {
+      if (typeof Chart !== 'undefined') { resolve(true); return; }
+      const srcs = [
+        'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
+        'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js'
+      ];
+      let i = 0;
+      (function next() {
+        if (i >= srcs.length) { resolve(false); return; }
+        const sc = document.createElement('script');
+        sc.src = srcs[i++];
+        sc.onload = function () { resolve(typeof Chart !== 'undefined'); };
+        sc.onerror = next;
+        document.head.appendChild(sc);
+      })();
+    });
+    return window._chartJsPromise;
+  }
+
+  /* The agent may write light markdown (**bold**, "- " bullets). Everything
+     is escaped FIRST; only these shapes are turned back into markup, so
+     nothing the model writes can inject HTML. */
+  function mdLite(text) {
+    const lines = String(text || '').split('\n');
+    let html = '', inList = false;
+    lines.forEach(function (ln) {
+      let e = linkify(esc(ln)).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+      const m = e.match(/^\s*(?:[-*•]|\d+[.)])\s+(.*)$/);
+      if (m) {
+        if (!inList) { html += '<ul class="ai-ul">'; inList = true; }
+        html += '<li>' + m[1] + '</li>';
+      } else {
+        if (inList) { html += '</ul>'; inList = false; }
+        html += (html && !/<\/ul>$/.test(html) ? '<br>' : '') + e;
+      }
+    });
+    if (inList) html += '</ul>';
+    return html.replace(/^(<br>)+/, '');
+  }
+
+  /* Brand colours for the charts (the logo palette in views.css). */
+  const CHART_COLORS = ['#0054A8', '#F07800', '#138808', '#DC143C', '#5B4FA8', '#FFB703'];
+  function fmtVal(v, f) {
+    if (f === 'money') return '₹' + Number(v).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+    if (f === 'percent') return Math.round(Number(v)) + '%';
+    return Number(v).toLocaleString('en-IN');
+  }
+  /* One chart block → a bubble with a live canvas and a ⬇ PNG button.
+     The bubble is remembered as text only (a canvas cannot be replayed). */
+  function addChart(spec) {
+    if (!spec || !Array.isArray(spec.labels) || !Array.isArray(spec.series) || !spec.series.length) return;
+    const d = document.createElement('div');
+    d.className = 'ai-msg bot ai-chart';
+    const title = esc(spec.title || 'Chart');
+    d.innerHTML = '<div class="ai-chart-head"><b>📊 ' + title + '</b><button type="button" class="ai-chart-dl" title="Download PNG">⬇ PNG</button></div>'
+      + '<div class="ai-chart-box"><canvas></canvas></div>';
+    msgs.appendChild(d);
+    msgs.scrollTop = msgs.scrollHeight;
+    persistChat('bot', '📊 ' + title);
+    loadChartJs().then(function (ok) {
+      if (!ok) {
+        /* No chart library (offline, CDN blocked): the numbers still arrive,
+           as a small table, so the answer is never an empty box. */
+        const box = d.querySelector('.ai-chart-box');
+        box.classList.add('ai-chart-txt');
+        const rows = spec.labels.slice(0, 31).map(function (lb, i) {
+          return '<tr><td>' + esc(lb) + '</td>' + spec.series.map(function (sr) {
+            return '<td class="n">' + fmtVal((sr.data || [])[i] || 0, sr.format || spec.format || 'count') + '</td>';
+          }).join('') + '</tr>';
+        }).join('');
+        box.innerHTML = '<table class="ai-tbl"><thead><tr><th></th>' + spec.series.map(function (sr) { return '<th>' + esc(sr.name || '') + '</th>'; }).join('') + '</tr></thead><tbody>' + rows + '</tbody></table>'
+          + '<small>' + L('Chart library did not load — figures shown instead.', 'चार्ट लोड नहीं हुआ — आँकड़े दिखाए गए।', 'चार्ट लोड भएन — अङ्क देखाइयो।', 'ચાર્ટ લોડ ન થયો — આંકડા બતાવ્યા.') + '</small>';
+        d.querySelector('.ai-chart-dl').style.display = 'none';
+        return;
+      }
+      const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+      const ink = dark ? '#c7d2e5' : '#4a5568';
+      const isDough = spec.type === 'doughnut';
+      const datasets = spec.series.map(function (sr, i) {
+        const c = CHART_COLORS[i % CHART_COLORS.length];
+        const line = spec.type === 'line' || sr.axis === 'y2';
+        return {
+          label: sr.name || ('Series ' + (i + 1)), data: (sr.data || []).map(Number),
+          type: isDough ? undefined : (line ? 'line' : 'bar'),
+          backgroundColor: isDough ? CHART_COLORS : (line ? c : c + 'CC'),
+          borderColor: isDough ? '#fff' : c, borderWidth: isDough ? 2 : (line ? 3 : 0),
+          borderRadius: line ? 0 : 5, maxBarThickness: 28, tension: .3, pointRadius: 3,
+          yAxisID: sr.axis === 'y2' ? 'y2' : 'y', order: line ? 0 : 1, _fmt: sr.format || spec.format || 'count'
+        };
+      });
+      const hasY2 = datasets.some(function (x) { return x.yAxisID === 'y2'; });
+      const scales = isDough ? {} : {
+        x: { grid: { display: false }, ticks: { color: ink, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
+        y: { beginAtZero: true, max: spec.max || undefined, ticks: { color: ink, callback: function (v) { return fmtVal(v, datasets[0]._fmt); } }, grid: { color: dark ? '#22314A' : '#E2E9F4' } }
+      };
+      if (hasY2) scales.y2 = { position: 'right', beginAtZero: true, ticks: { color: ink, precision: 0 }, grid: { drawOnChartArea: false } };
+      const ch = new Chart(d.querySelector('canvas'), {
+        type: isDough ? 'doughnut' : 'bar',
+        data: { labels: spec.labels, datasets: datasets },
+        options: {
+          responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+          plugins: {
+            legend: { display: datasets.length > 1 || isDough, position: 'bottom', labels: { color: ink, boxWidth: 12, padding: 10 } },
+            tooltip: { callbacks: { label: function (c) { const ds = c.dataset; return ' ' + ds.label + ': ' + fmtVal(isDough ? c.parsed : (c.parsed.y), ds._fmt); } } }
+          },
+          scales: scales, cutout: isDough ? '58%' : undefined
+        }
+      });
+      d.querySelector('.ai-chart-dl').onclick = function () {
+        try {
+          const a = document.createElement('a');
+          a.download = 'SHG-' + String(spec.title || 'chart').replace(/[^\w\u0900-\u097F]+/g, '-').slice(0, 60) + '.png';
+          a.href = ch.toBase64Image('image/png', 1);
+          a.click();
+        } catch (e) {}
+      };
+    });
+  }
+  /* A picture the tools returned (a ticket, a chart for WhatsApp). */
+  function addMedia(url) {
+    if (!url || !/^https?:\/\//i.test(url)) return;
+    addMsg('<a class="ai-media" href="' + esc(url) + '" target="_blank" rel="noopener"><img src="' + esc(url) + '" alt="" loading="lazy"></a>', 'bot');
+  }
+  /* Buttons under the reply: only what the server derived from what the
+     tools actually did. In-app routes (#/…) stay in the app; the panel
+     closes so the screen is visible. */
+  function addActions(acts) {
+    if (!Array.isArray(acts) || !acts.length) return;
+    const html = acts.slice(0, 4).map(function (a) {
+      const href = String(a.href || ''), label = esc(a.label || href);
+      if (!/^(#\/|https?:\/\/|\/admin\/|tel:)/i.test(href)) return '';
+      const ext = /^https?:\/\//i.test(href) || /^\/admin\//.test(href);
+      return '<a class="ai-act" href="' + esc(href) + '"' + (ext ? ' target="_blank" rel="noopener"' : '') + '>' + label + '</a>';
+    }).join('');
+    if (html) addMsg('<div class="ai-actions">' + html + '</div>', 'bot');
+  }
+  /* One turn with the agent. Resolves true when it answered, false when the
+     caller should fall back. Never throws. */
+  function askAgent(q) {
+    return shgApi.post('/ai-chat.php', { message: q, lang: lang() })
+      .then(function (d) {
+        const text = d && d.text ? String(d.text) : '';
+        if (!text) return false;
+        addMsg(mdLite(text), 'bot');
+        remember('assistant', text);
+        (d.charts || []).forEach(addChart);
+        addMedia(d.media);
+        addActions(d.actions);
+        speakBot(text);
+        return true;
+      })
+      .catch(function () { return false; });
+  }
+
   function typingDots() {
     const t = document.createElement('div');
     t.className = 'ai-typing';
@@ -2304,6 +2494,19 @@ document.addEventListener('click', function(e) {
   function botReply(q) {
     remember('user', q);
     const typing = typingDots();
+    if (agentOn()) {
+      askAgent(q).then(function (answered) {
+        typing.remove();
+        if (answered) { try { SFX.pop(); } catch (e) {} return; }
+        // The agent is busy or off: the rule engine answers exactly as before.
+        const r = answerIntent(q);
+        addMsg(r.a, 'bot');
+        if (!r.matched) addMsg(waForwardHtml(q), 'bot');
+        else remember('assistant', r.a);
+        try { SFX.pop(); } catch (e) {}
+      });
+      return;
+    }
     setTimeout(function () {
       const r = answerIntent(q);
       if (r.matched) {
@@ -2422,7 +2625,7 @@ document.addEventListener('click', function(e) {
     }
     {
       const pnr = pnrIn(q);
-      if (pnr && navigator.onLine && !(DB.bookings || []).some(function (x) { return String(x.id).toUpperCase() === pnr; })) {
+      if (pnr && navigator.onLine && !agentOn() && !(DB.bookings || []).some(function (x) { return String(x.id).toUpperCase() === pnr; })) {
         remember('user', q);
         return lookupPnr(pnr, (typeof USER !== 'undefined' && USER && USER.phone) || '');
       }
@@ -2723,9 +2926,30 @@ document.addEventListener('click', function(e) {
         'GPS ન મળ્યું. જિલ્લો લખો.'), 'bot');
     }, { timeout: 8000, maximumAge: 120000 });
   }
+  /* Staff / office chips (24 Sep 2026): what the agent can now answer for
+     them — sales, visitors, occupancy, ranking, alerts. Only shown when the
+     agent is on; otherwise the passenger chips stay. */
+  const CHIPS_STAFF = {
+    en: [['📊 My sales today', 'my sales today'], ['🧑‍🤝‍🧑 My passengers', 'my passengers today'], ['💰 Wallet & commission', 'my wallet and commission'], ['🚌 Occupancy 7 days', 'occupancy next 7 days'], ['🎫 Quote a ticket', 'quote 1 seat for tomorrow']],
+    hi: [['📊 आज मेरी बिक्री', 'आज मेरी बिक्री'], ['🧑‍🤝‍🧑 मेरे यात्री', 'आज मेरे यात्री'], ['💰 वॉलेट/कमीशन', 'मेरा वॉलेट और कमीशन'], ['🚌 7 दिन का ऑक्युपेंसी', '7 दिन का ऑक्युपेंसी'], ['🎫 टिकट कोट', 'कल 1 सीट का कोट']],
+    ne: [['📊 आज मेरो बिक्री', 'आज मेरो बिक्री'], ['🧑‍🤝‍🧑 मेरा यात्रु', 'आज मेरा यात्रु'], ['💰 वालेट/कमिसन', 'मेरो वालेट र कमिसन'], ['🚌 ७ दिनको सिट', '७ दिनको occupancy'], ['🎫 टिकट कोट', 'भोलि १ सिटको भाडा']],
+    gu: [['📊 આજનું વેચાણ', 'my sales today'], ['🧑‍🤝‍🧑 મારા મુસાફરો', 'my passengers today'], ['💰 વૉલેટ', 'my wallet and commission'], ['🚌 ઑક્યુપન્સી', 'occupancy next 7 days'], ['🎫 ટિકિટ ક્વોટ', 'quote 1 seat for tomorrow']]
+  };
+  const CHIPS_OFFICE = {
+    en: [['📊 Sales today', 'sales report today'], ['📈 This week graph', 'sales report this week by day with graph'], ['👥 Visitors', 'website visitors last 7 days'], ['🚌 Occupancy', 'occupancy next 7 days'], ['🏆 Top agents', 'agent leaderboard this month'], ['⚠️ Alerts', 'what needs attention today'], ['🛣️ Route earnings', 'sales this month by route']],
+    hi: [['📊 आज की बिक्री', 'आज की बिक्री रिपोर्ट'], ['📈 हफ्ते का ग्राफ', 'इस हफ्ते की बिक्री दिन के हिसाब से ग्राफ'], ['👥 विज़िटर', 'पिछले 7 दिन के वेबसाइट विज़िटर'], ['🚌 ऑक्युपेंसी', '7 दिन का ऑक्युपेंसी'], ['🏆 टॉप एजेंट', 'इस महीने के टॉप एजेंट'], ['⚠️ अलर्ट', 'आज क्या ध्यान देना है'], ['🛣️ रूट कमाई', 'इस महीने रूट के हिसाब से बिक्री']],
+    ne: [['📊 आजको बिक्री', 'आजको बिक्री रिपोर्ट'], ['📈 हप्ताको ग्राफ', 'यो हप्ताको बिक्री दिन अनुसार ग्राफ'], ['👥 भिजिटर', 'पछिल्लो ७ दिनको वेबसाइट भिजिटर'], ['🚌 सिट भरिएको', '७ दिनको occupancy'], ['🏆 टप एजेन्ट', 'यो महिनाको टप एजेन्ट'], ['⚠️ अलर्ट', 'आज के मा ध्यान दिने'], ['🛣️ रुट कमाइ', 'यो महिना रुट अनुसार बिक्री']],
+    gu: [['📊 આજનું વેચાણ', 'sales report today'], ['📈 અઠવાડિયું', 'sales report this week by day with graph'], ['👥 વિઝિટર', 'website visitors last 7 days'], ['🚌 ઑક્યુપન્સી', 'occupancy next 7 days'], ['🏆 ટોપ એજન્ટ', 'agent leaderboard this month'], ['⚠️ અલર્ટ', 'what needs attention today']]
+  };
+  function chipSet() {
+    const r = roleOf();
+    if (agentOn() && r === 'office') return CHIPS_OFFICE[langSel.value] || CHIPS_OFFICE.en;
+    if (agentOn() && r === 'staff') return CHIPS_STAFF[langSel.value] || CHIPS_STAFF.en;
+    return CHIPS[langSel.value] || CHIPS.en;
+  }
   function renderChips() {
     chipsBox.innerHTML = '';
-    (CHIPS[langSel.value] || CHIPS.en).forEach(function (c) {
+    chipSet().forEach(function (c) {
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'ai-chip'; b.textContent = c[0];
       b.onclick = function () { send(c[1]); };
@@ -2750,12 +2974,27 @@ document.addEventListener('click', function(e) {
       }, 30000);
     } catch (e) {}
   })();
+  /* The office and an agent are greeted as colleagues, with what the
+     assistant can now do for them; a passenger keeps the old greeting. */
+  function greetLine() {
+    const r = roleOf(), n = whoName();
+    if (!agentOn() || r === 'customer') return GREET[lang()];
+    const hi = n ? ' ' + n : '';
+    if (r === 'office') return L('🙏 Namaste' + hi + '! Ask me for today\'s sales, this week\'s graph, live visitors, bus occupancy, top agents or any booking — Nepali, Hindi or English.',
+      '🙏 नमस्ते' + hi + '! आज की बिक्री, हफ्ते का ग्राफ, लाइव विज़िटर, बस ऑक्युपेंसी, टॉप एजेंट या कोई भी बुकिंग — पूछिए।',
+      '🙏 नमस्ते' + hi + '! आजको बिक्री, हप्ताको ग्राफ, लाइभ भिजिटर, बस कति भरियो, टप एजेन्ट वा कुनै पनि बुकिङ — सोध्नुहोस्।',
+      '🙏 નમસ્તે' + hi + '! આજનું વેચાણ, અઠવાડિયાનો ગ્રાફ, વિઝિટર, ઑક્યુપન્સી — પૂછો.');
+    return L('🙏 Namaste' + hi + '! Ask me for your sales today, your passengers, your wallet, or a fare quote for a passenger.',
+      '🙏 नमस्ते' + hi + '! आज की आपकी बिक्री, आपके यात्री, वॉलेट, या किसी यात्री का किराया — पूछिए।',
+      '🙏 नमस्ते' + hi + '! आज तपाईंको बिक्री, तपाईंका यात्रु, वालेट, वा कुनै यात्रुको भाडा — सोध्नुहोस्।',
+      '🙏 નમસ્તે' + hi + '! આજનું તમારું વેચાણ, મુસાફરો, વૉલેટ — પૂછો.');
+  }
   fab.addEventListener('click', function () {
     panel.classList.toggle('open');
     fab.classList.remove('has-unread');
     if (panel.classList.contains('open')) {
       renderChips();
-      if (!greeted) { greeted = true; if (!restoreChat()) addMsg(GREET[lang()], 'bot'); }
+      if (!greeted) { greeted = true; if (!restoreChat()) addMsg(greetLine(), 'bot'); }
       input.focus();
       try { SFX.pop(); } catch (e) {}
     }
@@ -2763,7 +3002,7 @@ document.addEventListener('click', function(e) {
   $('#aiClose').addEventListener('click', function () { panel.classList.remove('open'); });
   $('#aiSend').addEventListener('click', function () { send(); });
   input.addEventListener('keydown', function (e) { if (e.key === 'Enter') send(); });
-  langSel.addEventListener('change', function () { msgLang = ''; renderChips(); addMsg(GREET[lang()], 'bot'); });
+  langSel.addEventListener('change', function () { msgLang = ''; renderChips(); addMsg(greetLine(), 'bot'); });
   /* links inside bot replies use data-scroll — close the panel so the scroll is visible */
   msgs.addEventListener('click', function (e) {
     if (e.target.closest('a')) panel.classList.remove('open');
@@ -2777,13 +3016,28 @@ document.addEventListener('click', function(e) {
   /* — v4.0 header controls: AI badge, clear history, voice-reply toggle — */
   (function () {
     const badge = $('#aiPoweredBadge');
-    if (badge && window.SHG_BOOT && window.SHG_BOOT.ai) badge.classList.remove('hide');
+    if (badge && window.SHG_BOOT && (window.SHG_BOOT.ai || window.SHG_BOOT.aiAgent)) badge.classList.remove('hide');
+    /* Who the assistant sees (from the server's own session, shown here so
+       an agent never wonders whether the office view leaked to them). */
+    const rb = $('#aiRoleBadge');
+    if (rb && agentOn() && roleOf() !== 'customer') {
+      rb.textContent = roleOf() === 'office' ? L('OFFICE', 'ऑफिस', 'अफिस', 'ઓફિસ') : L('AGENT', 'एजेंट', 'एजेन्ट', 'એજન્ટ');
+      rb.classList.remove('hide');
+    }
+    const ex = $('#aiExpand');
+    if (ex) ex.addEventListener('click', function () {
+      panel.classList.toggle('max');
+      ex.textContent = panel.classList.contains('max') ? '🗗' : '⛶';
+      msgs.scrollTop = msgs.scrollHeight;
+    });
     const clr = $('#aiClearHist');
     if (clr) clr.addEventListener('click', function () {
       SHG_CHAT_HISTORY.length = 0;
       chatSave([]);
       msgs.innerHTML = '';
-      addMsg(GREET[lang()], 'bot');
+      // The server keeps a short memory per person too — forget it as well.
+      if (agentOn()) shgApi.post('/ai-chat.php', { reset: true, message: 'reset' }).catch(function () {});
+      addMsg(greetLine(), 'bot');
       try { SFX.pop(); } catch (e) {}
     });
     const vt = $('#aiVoiceTog');

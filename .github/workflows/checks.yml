@@ -44,6 +44,10 @@ jobs:
         run: node -e "JSON.parse(require('node:fs').readFileSync('manifest.webmanifest', 'utf8'))"
       - name: Asset versions
         run: php tests/asset-version-test.php
+      - name: AI tool loop (no database)
+        run: php tests/ai-turn-test.php
+      - name: AI report charts (no database)
+        run: php tests/ai-chart-test.php
       - name: Offline ticket behavior
         run: node tests/offline-ticket-test.js
       - name: Lazy-load recovery

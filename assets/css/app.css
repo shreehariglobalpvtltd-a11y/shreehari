@@ -21,15 +21,22 @@
 
 /* ---------- [CSS] 1. DESIGN TOKENS (brand colours & type) ---------- */
 :root{
-  /* Brand (from the logo) */
-  --blue:#2E5FA8;          /* primary brand blue  */
-  --blue-deep:#12264E;     /* hero / footer navy   */
-  --blue-800:#1C3B72;
-  --blue-100:#E3ECF9;
-  --blue-50:#F0F5FC;
-  --orange:#F07C1F;        /* primary brand orange */
-  --orange-600:#D96A10;
-  --orange-100:#FCE9D6;
+  /* Brand (measured from assets/img/logo.png, 24 Sep 2026): the globe's
+     navy and royal blue, the arrow's orange into gold. The same values as
+     the "logo" palette in views.css, so the first paint - before any
+     script picks a palette - already matches the logo. */
+  --blue:#0054A8;          /* primary brand blue (royal) */
+  --blue-deep:#0C306C;     /* hero / footer navy         */
+  --blue-800:#0B3F8F;
+  --blue-100:#D9E7FA;
+  --blue-50:#EEF4FC;
+  --orange:#F07800;        /* primary brand orange       */
+  --orange-600:#D95F00;
+  --orange-100:#FFE4C7;
+  --gold:#FFB703;          /* the arrow's tip            */
+  --sky:#2D7BE0;
+  --grad-brand:linear-gradient(135deg,#0C306C 0%,#0054A8 58%,#2D7BE0 100%);
+  --grad-warm:linear-gradient(135deg,#F07800 0%,#FFB703 100%);
 
   /* Flag accents — used ONLY in thin dividers, chips & ribbons */
   --saffron:#FF9933; --igreen:#138808; --chakra:#06038D;

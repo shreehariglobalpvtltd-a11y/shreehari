@@ -133,6 +133,10 @@ function admin_nav(): array
         ['href' => 'offers.php',       'icon' => 'star',      'label' => 'Offers & Discounts','perm' => 'payments.view',  'section' => 'Payments'],
 
         // Reports
+        // 24 Sep 2026: the assistant with hands, full-screen — reports and
+        // graphs for the office, their own book for an agent (bookings.view
+        // so a counter agent finds it too; the server scopes every answer).
+        ['href' => 'ai-copilot.php',   'icon' => 'msg',    'label' => '🤖 AI Sahayak',     'perm' => 'bookings.view',  'section' => 'Reports', 'hot' => true],
         ['href' => 'analytics.php',    'icon' => 'chart',  'label' => 'Analytics',        'perm' => 'dashboard.view', 'section' => 'Reports'],
         ['href' => 'feedback.php',     'icon' => 'star',      'label' => 'Ratings',          'perm' => 'dashboard.view', 'section' => 'Reports'],
         ['href' => 'accounting.php',   'icon' => 'banknote',    'label' => 'Accounting',       'perm' => 'payments.view',  'section' => 'Reports'],
@@ -190,7 +194,7 @@ function admin_header(string $title, string $active = ''): void
     // Design system v2 (17 Sep 2026): Inter for the UI (CSP already allows
     // fonts.googleapis.com / fonts.gstatic.com), swap so text never blocks;
     // the system stack in --f-ui covers offline desks and Devanagari.
-    echo '<meta name="theme-color" content="#12264E">';
+    echo '<meta name="theme-color" content="#0C306C">';
     // 17 Sep 2026: the CSRF token for the panel's JSON tools (WhatsApp sends).
     echo '<meta name="csrf" content="' . Security::e(Security::csrfToken()) . '">';
     echo '<link rel="preconnect" href="https://fonts.googleapis.com">';
@@ -1177,8 +1181,8 @@ function admin_css(): string
     return <<<'CSS'
 *{box-sizing:border-box}
 :root{
-  --navy:#12264E;--navy-700:#1C3B72;--blue:#2E5FA8;--blue-600:#24508F;--blue-100:#E3ECF9;--blue-50:#F0F5FC;
-  --orange:#F07C1F;--orange-600:#D96A10;--orange-100:#FCE9D6;--orange-50:#FFF5EC;
+  --navy:#0C306C;--navy-700:#0B3F8F;--blue:#0054A8;--blue-600:#003C90;--blue-100:#D9E7FA;--blue-50:#EEF4FC;
+  --orange:#F07800;--orange-600:#D95F00;--orange-100:#FFE4C7;--orange-50:#FFF4E8;--gold:#FFB703;
   --ink:#16233C;--ink-2:#2B3A55;--mut:#6B7688;--mut-2:#98A2B3;--line:#E4E9F1;--line-2:#D5DCE8;
   --bg:#F4F6FB;--card:#FFFFFF;--head:#F8FAFD;--hover:#EEF2FA;--soft:#F6F8FC;
   --ok:#178A50;--ok-bg:#E4F6EC;--warn:#B7791F;--warn-bg:#FFF4D6;--bad:#C53030;--bad-bg:#FBE3E3;
@@ -1212,7 +1216,7 @@ a:hover{color:var(--blue-600)}
 
 /* ── Top bar ─────────────────────────────────────────────────────────── */
 .tb{position:sticky;top:0;z-index:30;height:var(--tb-h);display:flex;align-items:center;gap:12px;padding:0 16px;
-    background:linear-gradient(90deg,var(--navy) 0%,var(--navy-700) 100%);color:#fff;box-shadow:0 2px 12px rgba(10,22,50,.28)}
+    background:linear-gradient(90deg,var(--navy) 0%,var(--navy-700) 62%,var(--blue) 100%);color:#fff;box-shadow:0 2px 12px rgba(10,22,50,.28);border-bottom:3px solid var(--orange)}
 .tb .brand{display:inline-flex;align-items:center;gap:9px;color:#fff;font-weight:800;font-size:15.5px;letter-spacing:-.01em;white-space:nowrap}
 .tb .brand-logo{width:30px;height:30px;object-fit:contain;background:#fff;border-radius:9px;padding:3px;box-shadow:0 1px 3px rgba(0,0,0,.25);flex:0 0 auto}
 .tb .brand span{color:#FFC08A;font-weight:600;font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin-left:2px}

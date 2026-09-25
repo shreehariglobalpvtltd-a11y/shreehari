@@ -178,6 +178,9 @@ const CORE_SUITES = [
     'whereis-test.php'             => '"Where is my bus?": honest status, three doors, the keyed page, its JSON, trackUrl in the app payload',
     'contact-layer-test.php'       => 'the contact dial on every screen; "call me back" reaches the office inbox; labels in three languages',
     'route-pages-test.php'         => 'search-facing route pages in en / hi / ne from the live tables; JSON-LD, hreflang, sitemaps, robots',
+    // 24 Sep 2026, registered with the website / app assistant they guard.
+    'ai-chart-test.php'           => 'the report picture: every chart shape paints, an empty block never does, the sweep',
+    'ai-web-agent-test.php'       => 'the website assistant: identity by session, per-channel selling switch, reports scoped, feedback filed, audit',
 ];
 
 /**

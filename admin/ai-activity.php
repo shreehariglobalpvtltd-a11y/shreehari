@@ -1,6 +1,6 @@
 <?php
 /**
- * admin/ai-activity.php — what the WhatsApp assistant actually DID.
+ * admin/ai-activity.php — what the assistant actually DID (WhatsApp, website, app).
  *
  * Every tool the assistant runs — allowed or refused — writes one row to
  * ai_agent_calls (see AiTools::log): who (number + role), which button, did
@@ -102,8 +102,9 @@ admin_header('AI Activity', 'ai-activity');
 
 <?php if ($flash !== null): ?><div class="flash <?= $flash[0] ?>"><?= Security::e($flash[1]) ?></div><?php endif; ?>
 
-<p class="aa-note">Every action the WhatsApp assistant takes is recorded here — successes and refusals both.
-  The passenger's own words are not shown; only what the assistant did.</p>
+<p class="aa-note">Every action the assistant takes — on WhatsApp, on the website chat and in the app (24 Sep 2026) — is recorded here,
+  successes and refusals both. The <b>Channel</b> column says where it happened; a website guest shows as a hashed session key
+  instead of a number. The passenger's own words are not shown; only what the assistant did.</p>
 
 <div class="panel">
   <h2>WhatsApp sign-ins (<?= count($logins) ?> live)</h2>
@@ -162,18 +163,19 @@ admin_header('AI Activity', 'ai-activity');
 <div class="panel">
   <h2>Recent actions (<?= count($rows) ?>)</h2>
   <?php if ($rows === []): ?>
-    <p class="aa-note">The assistant has not run any tool yet. Once <code>wa_agent_on</code> is switched on and a
-      customer writes in, its actions appear here.</p>
+    <p class="aa-note">The assistant has not run any tool yet. Once a key is set (Settings → ai) and <code>wa_agent_on</code>
+      or <code>ai_web_agent_on</code> is on, every action from WhatsApp, the website or the app appears here.</p>
   <?php else: ?>
   <div class="dt-wrap">
     <table class="dt card-table">
-      <thead><tr><th>When</th><th>Number</th><th>Role</th><th>Tool</th><th>Result</th><th data-type="num">ms</th><th>Detail</th><th>PNR</th></tr></thead>
+      <thead><tr><th>When</th><th>Number / visitor</th><th>Role</th><th>Channel</th><th>Tool</th><th>Result</th><th data-type="num">ms</th><th>Detail</th><th>PNR</th></tr></thead>
       <tbody>
       <?php foreach ($rows as $r): ?>
         <tr>
           <td data-label="When" data-sort="<?= Security::e((string) $r['created_at']) ?>"><?= Security::e(substr((string) $r['created_at'], 0, 16)) ?></td>
           <td data-label="Number"><?= Security::e((string) $r['phone']) ?></td>
           <td data-label="Role"><?= Security::e((string) $r['role']) ?></td>
+          <td data-label="Channel"><?= Security::e((string) ($r['channel'] ?? 'whatsapp')) ?></td>
           <td data-label="Tool"><?= Security::e((string) $r['tool']) ?></td>
           <td data-label="Result"><span class="<?= (int) $r['ok'] === 1 ? 'aa-ok' : 'aa-no' ?>"><?= (int) $r['ok'] === 1 ? '✓ ok' : '⚠ no' ?></span></td>
           <td data-label="ms" class="num"><?= (int) $r['ms'] ?></td>
