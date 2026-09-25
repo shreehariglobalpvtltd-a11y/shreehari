@@ -29,6 +29,18 @@
  *    · anything else                     → index.php, REQUEST_URI untouched,
  *      which is what the route pages, the sitemaps and the SPA need.
  *
+ *  Start the server with PHP_CLI_SERVER_WORKERS set:
+ *
+ *      PHP_CLI_SERVER_WORKERS=4 php -S 127.0.0.1:8899 -t . tests/dev-router.php
+ *
+ *  Without it the built-in server handles one request at a time, and a
+ *  single open /api/seat-events.php stream — which is the whole point of
+ *  the live seat feature, and which production holds open for 25 seconds —
+ *  blocks every other request until it finishes. The first browser run with
+ *  seat_events_on turned on timed out on the next page for exactly that
+ *  reason. Production is nginx with PHP-FPM workers; four here is enough to
+ *  behave the same way.
+ *
  *  Test infrastructure only: nothing here ships to the server. Production
  *  is nginx + PHP-FPM and never loads this file.
  */

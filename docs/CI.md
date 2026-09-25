@@ -21,7 +21,7 @@ The full booking and agent regression battery requires the existing isolated
 ```bash
 cd /root/shg-test
 bash tests/ci-setup.sh                                  # rebuild shari_test from the repository
-php -S 127.0.0.1:8899 -t . tests/dev-router.php &       # the dev server, routed like nginx
+PHP_CLI_SERVER_WORKERS=4 php -S 127.0.0.1:8899 -t . tests/dev-router.php &   # routed like nginx, and not single-threaded
 php tests/run-all.php --http
 ```
 

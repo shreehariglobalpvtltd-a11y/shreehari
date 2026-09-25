@@ -463,6 +463,30 @@ try {
 
     checkClean('the home page logged no errors and no failed requests', homeMark);
 
+    /* The trust card. Its whole promise is that it never shows a number we
+       cannot stand behind, so both outcomes are worth asserting: with the
+       switch on it appears when the register has something to show, and
+       stays away when every figure would be zero. */
+    const trust = await page.evaluate(() => {
+        const b = window.SHG_BOOT || {};
+        const on = (b.settings || {}).trust_card_on;
+        const n = (b.trust || {}).numbers || {};
+        const el = document.querySelector('#trustLive');
+        return {
+            switchOn: on === true || on === 1 || on === '1',
+            hasNumbers: (n.trips > 0) || (n.pax > 0) || (n.womenSeats > 0) || (n.ratingCount >= 3 && n.rating > 0),
+            shown: !!el && !el.classList.contains('hide'),
+            text: el ? el.innerText.replace(/\s+/g, ' ').trim().slice(0, 140) : '',
+        };
+    });
+    if (!trust.switchOn) {
+        skip('the trust card on the home page', 'trust_card_on is off');
+    } else if (trust.hasNumbers) {
+        check('the trust card shows the register\'s own numbers', trust.shown && trust.text.length > 0, trust.text);
+    } else {
+        check('the trust card stays away rather than showing an empty claim', !trust.shown, trust.text || 'hidden, as it should be');
+    }
+
     /* ---------------------------------------------------------------
      *  2. Language.
      * ------------------------------------------------------------- */
@@ -797,6 +821,26 @@ try {
                         return bad;
                     });
                     check('no floating button sits on top of a seat', floaters.length === 0, floaters.join(', '));
+
+                    /* The women-safety line, when the office has turned it
+                       on. It is drawn by 06-results.js as the seat grid
+                       paints, so this is the only place it can be seen. */
+                    const women = await page.evaluate(() => {
+                        const on = (window.SHG_BOOT && window.SHG_BOOT.settings || {}).women_layer_on;
+                        const el = document.querySelector('#womenLine');
+                        return {
+                            switchOn: on === true || on === 1 || on === '1',
+                            exists: !!el,
+                            shown: !!el && !el.classList.contains('hide'),
+                            text: el ? el.innerText.replace(/\s+/g, ' ').trim().slice(0, 120) : '',
+                        };
+                    });
+                    if (!women.switchOn) {
+                        skip('the women-safety line on the seat map', 'women_layer_on is off');
+                    } else {
+                        check('the women-safety line is shown on the seat map',
+                            women.exists && women.shown && women.text.length > 0, women.text || 'nothing rendered');
+                    }
                 } else if (seats.n === 0) {
                     fail('the seat map renders at least one seat', 'the seat grid is empty');
                 } else {
