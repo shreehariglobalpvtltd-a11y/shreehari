@@ -10,10 +10,21 @@
 #  ------------------
 #    /opt/shg-brain/bin      llama.cpp, the prebuilt CPU build (no
 #                            compiler is installed on the live box)
-#    /opt/shg-brain/models   Qwen3-4B-Instruct-2507, Q4_K_M, ~2.5 GB
+#    /opt/shg-brain/models   Gemma-3-4B-it, Q4_K_M, ~2.4 GB
 #    shg-brain.service       systemd unit on 127.0.0.1:8081
 #
-#  Why this model
+#  Why this model — Gemma-3-4B-it, chosen by measurement on 26 Sep
+
+#  THE OTHER THREE WERE TRIED AND DELETED. Run through the real
+#  assistant (tests/brain-bench.php, not a toy prompt):
+#    Qwen3-4B-Instruct   15-30s, rambled to the ceiling, failed the tool
+#                        call, sometimes returned nothing at all
+#    Qwen3-1.7B no-think  8.4s, and answered by repeating the question
+#    Granite-4.2-3B      37.8s, all five answers empty
+#    Gemma-3-4B          13.0s, best Nepali, and the only one that
+#                        obeyed the refusal rule
+#  Gemma still invents a fare rather than calling the tool, which is why
+#  it is the FALLBACK and a cloud key leads (ai_local_first = 0).
 #  --------------
 #  Measured on the live VPS (2 vCPU AMD EPYC 9354P Zen 4, 8 GB, AVX-512)
 #  on 25-26 Sep 2026, with the f16 KV cache this unit sets:
@@ -49,9 +60,9 @@ set -euo pipefail
 
 LLAMA_BUILD="${LLAMA_BUILD:-b11184}"
 ROOT=/opt/shg-brain
-MODEL_FILE="$ROOT/models/qwen3-4b-instruct-q4_k_m.gguf"
-MODEL_URL="https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
-MODEL_BYTES=2497281120
+MODEL_FILE="$ROOT/models/gemma-3-4b-it-q4.gguf"
+MODEL_URL="https://huggingface.co/unsloth/gemma-3-4b-it-GGUF/resolve/main/gemma-3-4b-it-Q4_K_M.gguf"
+MODEL_BYTES=0   # 0 = do not size-check; gemma re-releases change the byte count
 UNIT=/etc/systemd/system/shg-brain.service
 
 say() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
@@ -90,14 +101,17 @@ else
 fi
 LD_LIBRARY_PATH="$ROOT/bin" "$ROOT/bin/llama-server" --version 2>&1 | grep -m1 version || die "binary will not run"
 
-say "3/5  Model (Qwen3-4B-Instruct-2507 Q4_K_M, 2.5 GB)"
+say "3/5  Model (Gemma-3-4B-it Q4_K_M, 2.4 GB)"
 if [ -f "$MODEL_FILE" ] && [ "$(stat -c%s "$MODEL_FILE")" = "$MODEL_BYTES" ]; then
   echo "     already downloaded and the size matches"
 else
   echo "     downloading — this takes a few minutes"
   curl -fL --max-time 3600 -o "$MODEL_FILE.part" "$MODEL_URL"
   GOT=$(stat -c%s "$MODEL_FILE.part")
-  [ "$GOT" = "$MODEL_BYTES" ] || die "download is $GOT bytes, expected $MODEL_BYTES"
+  if [ "$MODEL_BYTES" != "0" ] && [ "$GOT" != "$MODEL_BYTES" ]; then
+    die "download is $GOT bytes, expected $MODEL_BYTES"
+  fi
+  [ "$GOT" -gt 1000000000 ] || die "download is only $GOT bytes - it failed"
   mv "$MODEL_FILE.part" "$MODEL_FILE"
 fi
 
@@ -121,7 +135,7 @@ Environment=LD_LIBRARY_PATH=/opt/shg-brain/bin
 # token and made prompt intake 12.7 tok/s against f16's 22.2 - a 75%
 # difference on the number that hurts most here. The extra memory is
 # about 600 MB, which this box has.
-ExecStart=/opt/shg-brain/bin/llama-server -m /opt/shg-brain/models/qwen3-4b-instruct-q4_k_m.gguf --host 127.0.0.1 --port 8081 -c 8192 -t 2 -np 1 --jinja --cache-type-k f16 --cache-type-v f16 --no-webui
+ExecStart=/opt/shg-brain/bin/llama-server -m /opt/shg-brain/models/gemma-3-4b-it-q4.gguf --host 127.0.0.1 --port 8081 -c 8192 -t 2 -np 1 --jinja --cache-type-k f16 --cache-type-v f16 --no-webui
 Restart=always
 RestartSec=5
 Nice=10
