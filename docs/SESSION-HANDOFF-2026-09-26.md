@@ -4,7 +4,7 @@ For the next session. The owner went to sleep asking that the work be
 finished, deployed, checked as a customer and as an admin, and reported.
 This is that report, plus what is still open.
 
-**Live right now:** `7ca56be`, asset stamp `20260926c`, `sw-v165`.
+**Live right now:** `1ae5cb6`, asset stamp `20260926d`, `sw-v166`.
 **Rollback:** `bash deploy/go-live.sh --rollback` (backups in `/root/backups/`).
 
 ---
@@ -114,3 +114,34 @@ in `docs/LOCAL-BRAIN-2026-09-26.md`.
 - **Three test suites are red without `--http`** and always have been —
   forced-password-change, fares-settings, export-filters. Confirmed
   identical on an untouched checkout. Not regressions.
+
+
+---
+
+## 6. Last pass before the session ended
+
+The owner asked for plain Nepali and for three pictures to show the
+benefit rather than the mechanism. Both done and live.
+
+**The words.** Every line now says what the passenger gets, in the
+shortest plain Nepali that carries it — "बस कहाँ पुग्यो? अब सोध्नु पर्दैन।"
+rather than an explanation of what a GPS does. English loan words are
+gone wherever Nepali has its own (ओढ्ने, मल्हमपट्टी, सितल); GPS, USB and
+AC stay, because that is what people call them.
+
+The four cards now read:
+
+- ❄️ बाहिर घाम, भित्र सितल
+- 📍 बस कहाँ छ, फोनमै हेर्नुहोस्
+- ⚡ रातभरि फोनको चार्ज
+- 🛡️ बाटोमा तपाईं एक्लै हुनुहुन्न
+
+**The pictures.** The charging wire now fills end to end like a level
+rising inside the cable, instead of a dash sliding along it. The berth
+has a real vent with air blowing out of it, so the picture answers
+where the cool is coming from. The first-aid box holds a bottle and a
+tablet strip rather than two coloured lozenges.
+
+Verified on the live site, on a phone viewport: all four films play, the
+reel auto-advances, and after close there are zero panels and zero
+animations left behind.
