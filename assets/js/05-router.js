@@ -843,11 +843,11 @@ function initQuickTicket() {
      (the desk runs the same QuickBot engine with the desk's own options). */
   if (staff) {
     var badge = $id('qtBadge');
-    if (badge) { badge.textContent = '🤖 QuickBot desk · staff'; badge.removeAttribute('data-i18n'); }
+    if (badge) { badge.textContent = t('qbDeskBadge'); badge.removeAttribute('data-i18n'); }
     var btn = $id('qtSend');
-    if (btn) { btn.textContent = '🤖 Open the QuickBot desk →'; btn.removeAttribute('data-i18n'); }
+    if (btn) { btn.textContent = t('qbDeskOpen'); btn.removeAttribute('data-i18n'); }
     var cta = $id('heroQtCta');
-    if (cta) { cta.textContent = '🤖 QuickBot desk →'; cta.removeAttribute('data-i18n'); cta.removeAttribute('data-scroll'); cta.href = '/admin/quick-ticket.php'; }
+    if (cta) { cta.textContent = t('qbDeskCta'); cta.removeAttribute('data-i18n'); cta.removeAttribute('data-scroll'); cta.href = '/admin/quick-ticket.php'; }
     form.classList.remove('qt-onetap');
     var lineS = $id('qtLine'); if (lineS) lineS.hidden = true;
     var lineW = $id('qtLineWrap'); if (lineW) lineW.hidden = true;
@@ -1089,7 +1089,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20260925a" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20260926a" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'

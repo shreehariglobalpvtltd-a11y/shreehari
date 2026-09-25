@@ -109,6 +109,35 @@
     } catch (e) {}
   }
 
+  /* A very short filtered noise burst — the only non-tonal texture here.
+     It is what makes the ticket sound like a ticket being torn off the
+     book rather than one more chime: 70ms of band-passed noise under the
+     bells. The buffer is built once and reused, so repeated tickets at a
+     busy counter cost one allocation, not forty. */
+  var noiseBuf = null;
+  function noise(at, dur, vol, centre) {
+    var c = ctx();
+    if (!c || !master) return;
+    try {
+      if (!noiseBuf) {
+        var n = Math.floor(c.sampleRate * 0.4);
+        noiseBuf = c.createBuffer(1, n, c.sampleRate);
+        var d = noiseBuf.getChannelData(0);
+        for (var i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+      }
+      var t0 = c.currentTime + at;
+      var s = c.createBufferSource(); s.buffer = noiseBuf;
+      var bp = c.createBiquadFilter(); bp.type = 'bandpass';
+      bp.frequency.value = centre || 2600; bp.Q.value = 0.9;
+      var g = c.createGain();
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(Math.max(vol, 0.0002), t0 + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      s.connect(bp); bp.connect(g); g.connect(master);
+      s.start(t0); s.stop(t0 + dur + 0.02);
+    } catch (e) {}
+  }
+
   /* The palette. Kept deliberately narrow: a company app is not a game,
      and five recognisable sounds are easier to live with than fifteen. */
   var VOICES = {
@@ -133,10 +162,30 @@
       voice(783.99, 0.15, 0.30, 0.06, 'sine');
       voice(1567.98, 0.16, 0.34, 0.018, 'sine');   /* air, an octave + fifth up */
     },
-    /* The ticket itself exists. Success, plus one held bell above it. */
+    /* The ticket itself exists. Success, plus one held bell above it.
+       25 Sep 2026 (owner: "ticket katne bela ma") — a 70ms tear of
+       band-passed noise now opens it, so the counter hears the ticket
+       come off the book and then the confirmation bells. The tear is
+       quiet (0.03) and lands BEFORE the first bell, which is why the
+       arpeggio is pushed back by 60ms rather than played on top of it. */
     ticket: function () {
-      VOICES.success();
-      voice(1046.5, 0.30, 0.42, 0.030, 'triangle');
+      noise(0, 0.07, 0.030, 3000);
+      voice(523.25, 0.06, 0.16, 0.06, 'sine');
+      voice(659.25, 0.135, 0.16, 0.055, 'sine');
+      voice(783.99, 0.21, 0.30, 0.06, 'sine');
+      voice(1567.98, 0.22, 0.34, 0.018, 'sine');
+      voice(1046.5, 0.36, 0.42, 0.030, 'triangle');
+    },
+    /* THE APP OPENING (owner, 25 Sep 2026: "khulne bela ma"). A warm
+       low-to-high fifth with a soft bell over it — a doorway, not a
+       fanfare. It plays at most once per browser session (see WELCOME
+       below), so re-entering a view never repeats it, and it is the
+       quietest of the set because it arrives unasked. */
+    welcome: function () {
+      voice(261.63, 0, 0.55, 0.030, 'sine');
+      voice(392.00, 0.09, 0.50, 0.026, 'sine');
+      voice(783.99, 0.20, 0.55, 0.026, 'triangle');
+      voice(1174.66, 0.30, 0.60, 0.012, 'sine');
     }
   };
 
@@ -149,7 +198,8 @@
     notify: [8, 30, 8],
     error: [26, 40, 26],
     success: [10, 34, 16],
-    ticket: [12, 28, 12, 28, 26]
+    ticket: [12, 28, 12, 28, 26],
+    welcome: [6, 40, 10]
   };
 
   var Feel = {
@@ -216,8 +266,35 @@
      means the first sound is on time instead of being the one that gets
      swallowed. */
   ['pointerdown', 'keydown', 'touchstart'].forEach(function (ev) {
-    window.addEventListener(ev, function () { ctx(); }, { passive: true, once: false });
+    window.addEventListener(ev, function () { ctx(); welcome(); }, { passive: true, once: false });
   });
+
+  /* -------------------------------------------------------------------
+     THE OPENING SOUND  (owner, 25 Sep 2026)
+     -----------------------------------------------------------------
+     A browser will not let a page make a noise before the visitor has
+     touched it, so "play a sound when the app opens" cannot literally
+     mean document load — that sound is discarded by the autoplay policy
+     and the owner would hear silence. It is therefore armed at load and
+     released on the first real gesture (the same gesture that builds the
+     AudioContext, one line above), which is the first moment the app is
+     allowed to speak. sessionStorage keeps it to once per visit: a tab
+     left open all day at the counter greets once, not on every reload of
+     a view. The Sound switch in the menu silences it like everything
+     else, because it goes through Feel.play(). */
+  var WELCOME_KEY = 'shg:welcomed';
+  var welcomed = false;
+  try { welcomed = sessionStorage.getItem(WELCOME_KEY) === '1'; } catch (e) {}
+  function welcome() {
+    if (welcomed) return;
+    welcomed = true;
+    try { sessionStorage.setItem(WELCOME_KEY, '1'); } catch (e) {}
+    /* One frame later: the gesture that released it is usually also a tap
+       on a control that plays its own 'tap', and two voices in the same
+       millisecond hit the 45ms rate limit — the greeting would lose. */
+    setTimeout(function () { Feel.fire('welcome'); }, 90);
+  }
+  Feel.welcome = welcome;
 
   /* -------------------------------------------------------------------
      THE COMPACT LANGUAGE PILL  (phones — see premium.css §2)

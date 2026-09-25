@@ -652,9 +652,27 @@ function pickSeatsSmart(floors, n, patient) {
     return (n === 1 ? (isWindow ? 2 : (isAisle ? 1 : 0)) : 0) - femPenalty;
   };
   const byScore = (list) => list.slice().sort((a, b) => score(b) - score(a));
+  /* ---- ROW ORDER: MIDDLE FIRST, THEN FORWARD (owner, 25 Sep 2026) -------
+     The DOM order of .seat-row is front → rear, and picking from index 0
+     filled the coach nose-first: the bumpiest, noisiest rows went out
+     before the calm middle ones, and a bus that is half sold looked sold
+     out at the front. The owner's rule is "bich bich 50-50, tyaspachi
+     balla agadi" — start at the centre of the deck and open outwards,
+     and when two rows are the same distance from the centre take the
+     one nearer the front. Six rows are therefore served 3,4,2,5,1,6 (a
+     0-based 2,3,1,4,0,5), which is exactly middle-out with a forward
+     tie-break. Nothing else about the pick changes: the whole-group row
+     search, the window/aisle scoring and the real seat click all run on
+     this order instead of raw DOM order. */
+  const middleOut = (rows) => {
+    const mid = (rows.length - 1) / 2;
+    return rows.map((rw, i) => ({ rw, i }))
+      .sort((a, b) => (Math.abs(a.i - mid) - Math.abs(b.i - mid)) || (a.i - b.i))
+      .map(x => x.rw);
+  };
   const chosen = [];
   for (let fi = 0; fi < floors.length && chosen.length < n; fi++) {
-    const rows = Array.prototype.slice.call(floors[fi].querySelectorAll('.seat-row'));
+    const rows = middleOut(Array.prototype.slice.call(floors[fi].querySelectorAll('.seat-row')));
     const need = n - chosen.length;
     const together = rows.find(rw => free(rw).length >= need);
     if (together) { chosen.push.apply(chosen, byScore(free(together)).slice(0, need)); break; }

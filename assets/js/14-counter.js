@@ -133,7 +133,7 @@
           var a = document.createElement('a');
           a.id = 'cbUpdate'; a.href = '#';
           a.style.background = '#F07C1F';
-          a.textContent = '🔄 New version — tap to refresh';
+          a.textContent = t('ctrUpdate');
           a.addEventListener('click', function (e) { e.preventDefault(); location.reload(); });
           links.insertBefore(a, links.firstChild);
         }
@@ -304,11 +304,11 @@
     if (cp && !cp.hasAttribute('data-ctr')) {
       cp.setAttribute('data-ctr', '1');
       cp.maxLength = 15;
-      cp.placeholder = 'optional · WhatsApp ticket ko lagi';
+      cp.placeholder = t('ctrPhonePh');
       var cpl = cp.closest('.field') && cp.closest('.field').querySelector('label');
-      if (cpl) cpl.innerHTML = 'Mobile <small>(optional at counter · +977 pani milcha)</small>';
+      if (cpl) cpl.innerHTML = t('ctrPhoneLbl');
       var cpe = cp.closest('.field') && cp.closest('.field').querySelector('.err');
-      if (cpe) cpe.textContent = 'Blank OK — or 8-15 digits (Indian / Nepali).';
+      if (cpe) cpe.textContent = t('ctrPhoneErr');
     }
 
     var card = $q('#payCard'); if (!card) return;
@@ -320,7 +320,7 @@
     var tabsWrap = $q('#payMethodUpi') && $q('#payMethodUpi').parentElement; if (tabsWrap) tabsWrap.style.display = 'none';
 
     var btn = $q('#submitBookingBtn');
-    if (btn) { btn.textContent = '🧾 Confirm counter sale →'; btn.removeAttribute('data-i18n'); }
+    if (btn) { btn.textContent = t('ctrConfirm'); btn.removeAttribute('data-i18n'); }
 
     /* Belt and braces (5 Sep 2026): re-assert the proof-free 'cod' path and
        the auto-accepted T&C at the very moment of submit — a document-level
@@ -407,7 +407,7 @@
     if (cont && !cont.hasAttribute('data-ctr')) {
       cont.setAttribute('data-ctr', '1');
       cont.removeAttribute('data-i18n');
-      cont.textContent = '🧾 Received at counter →';
+      cont.textContent = t('ctrReceived');
       cont.style.display = 'none';
     }
     var stepLbl = document.querySelector('#co2Step .cs2[data-step="2"] span');
@@ -427,7 +427,7 @@
     if (nav && !$q('#ctrConfirmBtn')) {
       var cb = document.createElement('button');
       cb.type = 'button'; cb.id = 'ctrConfirmBtn'; cb.className = 'btn btn-orange';
-      cb.textContent = '🧾 Confirm counter sale →';
+      cb.textContent = t('ctrConfirm');
       nav.appendChild(cb);
       cb.addEventListener('click', ctrConfirm);
     }

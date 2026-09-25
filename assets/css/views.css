@@ -3798,16 +3798,34 @@ body.wa-open{overflow:hidden}
 /* -- navigator loader: the route map draws while MapLibre boots -- */
 #view-nav .sn-load .sn-load-map{width:min(90vw,520px);margin-bottom:4px}
 #view-nav .sn-load .rov{margin:0}
-/* -- splash: outline + road drawing behind the brand -- */
+/* -- splash: outline + road drawing behind the brand --
+   25 Sep 2026 (owner: "yo Nepal ra India ko map ali tyati ramro chhaina,
+   ali clear original map jasto banaidinu"). The two outlines used to be
+   hand-placed polygons — India had 48 straight segments and no Gujarat
+   coast to speak of, and Nepal was a flat sliver — drawn into a 540x310
+   box that stretched both of them sideways. They are now projected from
+   real coordinates (equirectangular, width scaled by cos of the mean
+   latitude), so the country has the proportions of a printed map: the
+   Kutch and Saurashtra coast, the Gulf of Khambhat, the peninsula down to
+   Kanyakumari, the north-east arm, and Nepal sitting where Nepal actually
+   sits against the northern border. The orange line is the company's own
+   road, Surat → Ahmedabad → Udaipur → Jaipur → Agra → Lucknow →
+   Rupaidiha, with a dot at each end of it. See the generator note in
+   docs/ — the point list is coordinates, not tracing of any map product. */
 .splash-map{position:absolute;left:50%;top:50%;width:min(94vw,560px);height:auto;transform:translate(-50%,-54%);opacity:0;pointer-events:none;z-index:0;animation:splashMapIn .8s ease .15s forwards}
-@keyframes splashMapIn{to{opacity:.55}}
-.splash-map .sm-in{fill:rgba(46,95,168,.06);stroke:rgba(18,38,78,.35);stroke-width:1.6;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;animation:smDraw 1.6s cubic-bezier(.4,0,.2,1) .15s forwards}
-.splash-map .sm-np{fill:rgba(220,20,60,.10);stroke:rgba(220,20,60,.55);stroke-width:1.4;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;animation:smDraw 1.2s cubic-bezier(.4,0,.2,1) .8s forwards}
+@keyframes splashMapIn{to{opacity:.62}}
+.splash-map .sm-in{fill:rgba(46,95,168,.07);stroke:rgba(18,38,78,.42);stroke-width:1.5;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;animation:smDraw 1.6s cubic-bezier(.4,0,.2,1) .15s forwards}
+.splash-map .sm-np{fill:rgba(220,20,60,.13);stroke:rgba(220,20,60,.62);stroke-width:1.4;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;animation:smDraw 1.2s cubic-bezier(.4,0,.2,1) .8s forwards}
 .splash-map .sm-route{fill:none;stroke:#F07C1F;stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;animation:smDraw 1.4s cubic-bezier(.4,0,.2,1) 1s forwards}
+/* The two ends of the road: Gujarat and the Rupaidiha border post. They
+   arrive after the line has finished drawing to it. */
+.splash-map .sm-dot{fill:#F07C1F;stroke:rgba(255,255,255,.85);stroke-width:1.2;opacity:0;animation:smDot .5s ease 2.2s forwards}
+.splash-map .sm-dot-b{fill:#DC143C;animation-delay:2.45s}
 @keyframes smDraw{to{stroke-dashoffset:0}}
+@keyframes smDot{to{opacity:1}}
 .splash-brand,.splash-tagline,.splash-ceo,.splash-phone,.splash-portal,.splash-skip{position:relative;z-index:1}
-[data-theme="dark"] .splash-map .sm-in{stroke:rgba(255,255,255,.35);fill:rgba(255,255,255,.04)}
-@media (prefers-reduced-motion:reduce){.splash-map,.splash-map path{animation:none!important;opacity:.45;stroke-dashoffset:0}}
+[data-theme="dark"] .splash-map .sm-in{stroke:rgba(255,255,255,.4);fill:rgba(255,255,255,.05)}
+@media (prefers-reduced-motion:reduce){.splash-map,.splash-map path,.splash-map circle{animation:none!important;opacity:.45;stroke-dashoffset:0}}
 /* -- ticket: WhatsApp delivery note -- */
 .tk2-note.wa{border-left:4px solid #25D366}
 .tk2-note.wa.ok{background:#E7F8EE;color:#0F7A3D}
@@ -3977,7 +3995,10 @@ body.wa-open{overflow:hidden}
 #splashRetry:not([hidden]){display:block;color:#0863b8;text-decoration:underline;margin-top:12px}
 #splash .splash-phone{margin-top:12px;padding:6px 18px;font-size:14px}
 #splash .splash-skip{margin-top:8px;color:#425a79}
-#splash .splash-map{opacity:.15!important;top:42%;width:100%}
+/* On the phone splash the map is the backdrop the brand sits on, so it
+   keeps a low opacity — but .15 made the new outline unreadable, and an
+   unreadable map is exactly what the owner asked us to fix. */
+#splash .splash-map{opacity:.24!important;top:44%;width:100%}
 @keyframes premiumRise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @keyframes premiumBusLeft{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:none}}
 @keyframes premiumBusRight{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}

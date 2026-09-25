@@ -29,7 +29,7 @@ if ($pnr === '' || !preg_match('/^[A-Z0-9-]{6,40}$/', $pnr)) {
 }
 
 $booking = Database::fetch(
-    'SELECT id, pnr, total_amount, status FROM bookings WHERE pnr = :p LIMIT 1',
+    'SELECT id, pnr, total_amount, status, booking_mode FROM bookings WHERE pnr = :p LIMIT 1',
     ['p' => $pnr]
 );
 if ($booking === null) {
@@ -57,7 +57,7 @@ $travelDate = '';
 $seats = '';
 try {
     $leg = Database::fetch(
-        "SELECT bl.travel_date, bl.route_id, r.from_city, r.to_city
+        "SELECT bl.travel_date, bl.route_id, r.from_city, r.to_city, r.coach_type
            FROM booking_legs bl
            LEFT JOIN routes r ON r.id = bl.route_id
           WHERE bl.booking_id = :b
@@ -82,7 +82,17 @@ try {
         ['b' => (int) $booking['id']]
     );
     if ($seatRows !== null && count($seatRows) > 0) {
-        $seats = implode(', ', array_column($seatRows, 'seat_no'));
+        /* The stored id (L1..L36 / U1..U36) is NOT what a passenger reads —
+           every other surface prints the grid label A1..F6 (lower floor) /
+           A7..F12 (upper). This image is sent to the customer on WhatsApp
+           the moment the booking is placed, so printing the raw id here is
+           one of the places an "L" was still reaching a passenger (owner,
+           25 Sep 2026). Seats::displayLabels() is the same transform the
+           ticket, the chalani and every message already use. */
+        require_once INCLUDE_PATH . '/seats.php';
+        $coach = trim((string) ($leg['coach_type'] ?? '')) ?: 'sleeper';
+        $mode  = trim((string) ($booking['booking_mode'] ?? '')) ?: 'sharing';
+        $seats = Seats::displayLabels(array_column($seatRows, 'seat_no'), $coach, $mode);
     }
 } catch (Throwable $e) {
     // best-effort — a missing table must not stop the QR generation
