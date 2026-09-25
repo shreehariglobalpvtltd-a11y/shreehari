@@ -1304,10 +1304,17 @@ function renderSeats(instant) {
      its own — a tap anywhere in the map keeps the passenger here to choose. */
   if (Flow.quick > 0) {
     const want = Math.min(Flow.quick, CONFIG.booking.maxSeats); Flow.quick = 0;
-    if (countPicker) $$('.scp-n', countPicker).forEach(x => x.classList.toggle('on', parseInt(x.getAttribute('data-n'), 10) === want));
-    suggestSeats(want);
-    if (Flow.seats.length === want) {
-      const view = $('#view-seats') || document.body;
+    const view = $('#view-seats') || document.body;
+    let tries = 0;
+    /* The first draw is a skeleton; the real seat buttons arrive with
+       paint() ~340 ms later (and again when the occupancy snapshot lands),
+       so the pick waits for them instead of picking from the skeleton. */
+    const arm = () => {
+      if (location.hash !== '#/seats' || !Flow.route || Flow.route.id !== r.id) return;
+      if (!$$('#seatGrid .seat').length) { if (++tries < 25) setTimeout(arm, 120); return; }
+      if (countPicker) $$('.scp-n', countPicker).forEach(x => x.classList.toggle('on', parseInt(x.getAttribute('data-n'), 10) === want));
+      suggestSeats(want);
+      if (Flow.seats.length !== want) return;
       let left = 3;
       const label = () => seatLabelJoin(Flow.seats, r.type, Flow.bookingType, ', ');
       const stop = () => { clearInterval(tick); view.removeEventListener('pointerdown', stop, true); };
@@ -1319,7 +1326,8 @@ function renderSeats(instant) {
       }, 1000);
       view.addEventListener('pointerdown', stop, true);
       toast(tf('tQuickGo', { seats: label(), n: left }));
-    }
+    };
+    arm();
   }
 
   updateSeatSummary();
