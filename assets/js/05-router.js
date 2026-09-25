@@ -1089,7 +1089,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20260926c" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20260926d" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'

@@ -48,72 +48,72 @@
      t() is still used for the chip labels themselves. */
   var COPY = {
     gps: {
-      ne: { title: '📍 लाइभ GPS — बस कहाँ छ, थाहा हुन्छ',
-            lead: 'बसमा राखिएको GPS ले हरेक केही सेकेन्डमा आफ्नो ठाउँ पठाउँछ। तपाईं र घरपरिवार दुवैले नक्सामा हेर्न सक्नुहुन्छ।',
-            points: ['<b>हरेक मिनेट अपडेट</b> — बस कति टाढा छ, कति बेरमा आइपुग्छ',
-                     '<b>घरमा पठाउनुहोस्</b> — लिंक पठाएपछि उहाँहरूले पनि हेर्न पाउनुहुन्छ',
-                     '<b>पिकअपमा पर्खनु पर्दैन</b> — बस नजिक आएपछि निस्किए पुग्छ'] },
-      hi: { title: '📍 लाइव GPS — बस कहाँ है, पता चलता है',
-            lead: 'बस में लगा GPS हर कुछ सेकंड में अपनी जगह भेजता है। आप और घरवाले दोनों नक्शे पर देख सकते हैं।',
-            points: ['<b>हर मिनट अपडेट</b> — बस कितनी दूर है, कब पहुँचेगी',
-                     '<b>घर भेजें</b> — लिंक भेजने पर वे भी देख सकते हैं',
-                     '<b>पिकअप पर इंतज़ार नहीं</b> — बस पास आने पर निकलें'] },
-      en: { title: '📍 Live GPS — you always know where the bus is',
-            lead: 'The GPS on the coach reports its position every few seconds. You and your family can both watch it on the map.',
-            points: ['<b>Updated every minute</b> — how far the bus is, and when it arrives',
-                     '<b>Send it home</b> — share the link and they can follow it too',
-                     '<b>No waiting at the pickup</b> — leave when the bus is close'] }
+      ne: { title: '📍 बस कहाँ छ, फोनमै हेर्नुहोस्',
+            lead: 'बस कहाँ पुग्यो भनेर अब कसैलाई सोध्नु पर्दैन। आफैं हेर्नुहोस्, घरमा पनि देखाउनुहोस्।',
+            points: ['<b>बस कति टाढा छ</b> — र कति बेरमा आइपुग्छ',
+                     '<b>घरमा पठाउनुहोस्</b> — उहाँहरूले पनि हेर्न पाउनुहुन्छ',
+                     '<b>पर्खनु पर्दैन</b> — नजिक आएपछि मात्र निस्कनुहोस्'] },
+      hi: { title: '📍 बस कहाँ है, फोन पर देखिए',
+            lead: 'बस कहाँ पहुँची, अब किसी से पूछना नहीं पड़ता। खुद देखिए, घर भी दिखाइए।',
+            points: ['<b>बस कितनी दूर है</b> — और कब पहुँचेगी',
+                     '<b>घर भेजिए</b> — वे भी देख सकते हैं',
+                     '<b>इंतज़ार नहीं</b> — पास आने पर ही निकलिए'] },
+      en: { title: '📍 See where the bus is, on your phone',
+            lead: 'No need to ask anyone where the bus has reached. Watch it yourself, and show your family too.',
+            points: ['<b>How far it is</b> — and when it will arrive',
+                     '<b>Send it home</b> — they can watch it too',
+                     '<b>No waiting</b> — leave only when it is close'] }
     },
     charge: {
-      ne: { title: '⚡ USB चार्जिङ — रातभरि फोन अन',
-            lead: 'बस गुड्दै गर्दा नै बिजुली बन्छ। हरेक सिटमा USB र Type-C पोइन्ट छ, त्यसैले लामो बाटोमा पनि फोन मर्दैन।',
-            points: ['<b>हरेक सिटमा आफ्नै पोइन्ट</b> — कसैसँग भाग लगाउनु पर्दैन',
-                     '<b>USB र Type-C दुवै</b> — आफ्नै तार ल्याए पुग्छ',
-                     '<b>रातभरि चल्छ</b> — बिहान फोन फुल चार्ज, नक्सा र टिकट दुवै हातमा'] },
-      hi: { title: '⚡ USB चार्जिंग — रातभर फोन चालू',
-            lead: 'बस चलते-चलते ही बिजली बनती है। हर सीट पर USB और Type-C पॉइंट है, इसलिए लंबे रास्ते में भी फोन बंद नहीं होता।',
-            points: ['<b>हर सीट पर अपना पॉइंट</b> — किसी से बाँटना नहीं पड़ता',
-                     '<b>USB और Type-C दोनों</b> — अपनी केबल लाएँ',
-                     '<b>रातभर चालू</b> — सुबह फोन फुल, नक्शा और टिकट दोनों हाथ में'] },
-      en: { title: '⚡ USB charging — your phone stays on all night',
-            lead: 'The coach makes its own power as it runs. Every berth has a USB and a Type-C point, so a long night never ends with a dead phone.',
+      ne: { title: '⚡ रातभरि फोनको चार्ज',
+            lead: 'बस गुड्दा गुड्दै बिजुली बन्छ। हरेक सिटमा चार्ज गर्ने ठाउँ छ, त्यसैले लामो बाटोमा पनि फोन बन्द हुँदैन।',
+            points: ['<b>हरेक सिटमा आफ्नै ठाउँ</b> — कसैसँग भाग लगाउनु पर्दैन',
+                     '<b>आफ्नै तार ल्याए पुग्छ</b> — दुवै किसिमको मिल्छ',
+                     '<b>बिहान फोन भरिएको</b> — बाटो पनि, टिकट पनि हातमा'] },
+      hi: { title: '⚡ रातभर फोन का चार्ज',
+            lead: 'बस चलते-चलते ही बिजली बनती है। हर सीट पर चार्ज की जगह है, इसलिए लंबे रास्ते में भी फोन बंद नहीं होता।',
+            points: ['<b>हर सीट पर अपनी जगह</b> — किसी से बाँटना नहीं',
+                     '<b>अपनी केबल लाइए</b> — दोनों तरह की चलती है',
+                     '<b>सुबह फोन भरा हुआ</b> — रास्ता भी, टिकट भी हाथ में'] },
+      en: { title: '⚡ Your phone charged all night',
+            lead: 'The coach makes its own power as it runs. Every berth has a charging point, so a long road never ends with a dead phone.',
             points: ['<b>A point at every berth</b> — nothing to share',
-                     '<b>USB and Type-C</b> — bring your own cable',
-                     '<b>Runs all night</b> — full battery by morning, map and ticket in hand'] }
+                     '<b>Bring your own cable</b> — both kinds fit',
+                     '<b>Full by morning</b> — map and ticket both in hand'] }
     },
     ac: {
-      ne: { title: '❄️ AC स्लिपर — ओछ्यान जस्तै',
-            lead: 'सिट होइन, सुत्ने बर्थ। पर्दा तान्नुहोस्, आफ्नै ठाउँ हुन्छ — सफा ब्ल्याङ्केट र सिरानीसँग।',
-            points: ['<b>सफा ब्ल्याङ्केट र सिरानी</b> — हरेक यात्रापछि फेरिन्छ',
-                     '<b>पर्दा तान्दा आफ्नै कोठा</b> — बत्ती र हावा आफैं मिलाउनुहोस्',
-                     '<b>रातभरि AC</b> — गर्मी होस् कि जाडो, भित्र उस्तै'] },
-      hi: { title: '❄️ AC स्लीपर — बिस्तर जैसा',
-            lead: 'सीट नहीं, सोने की बर्थ। परदा खींचिए, अपनी जगह बन जाती है — साफ़ कंबल और तकिये के साथ।',
+      ne: { title: '❄️ बाहिर घाम, भित्र सितल',
+            lead: 'यो सिट होइन, सुत्ने ठाउँ हो। पर्दा तान्नुहोस् — आफ्नै सानो ठाउँ बन्छ, सफा ओढ्ने र सिरानीसँग।',
+            points: ['<b>सफा ओढ्ने र सिरानी</b> — हरेक यात्रापछि फेरिन्छ',
+                     '<b>पर्दा तान्दा आफ्नै ठाउँ</b> — बत्ती आफैं मिलाउनुहोस्',
+                     '<b>रातभरि सितल</b> — गर्मी होस् कि जाडो, भित्र उस्तै'] },
+      hi: { title: '❄️ बाहर धूप, अंदर ठंडक',
+            lead: 'यह सीट नहीं, सोने की जगह है। परदा खींचिए — अपनी छोटी जगह बन जाती है, साफ़ कंबल और तकिये के साथ।',
             points: ['<b>साफ़ कंबल और तकिया</b> — हर यात्रा के बाद बदला जाता है',
-                     '<b>परदा खींचो, अपना कमरा</b> — लाइट और हवा अपने हिसाब से',
-                     '<b>रातभर AC</b> — गर्मी हो या सर्दी, अंदर एक जैसा'] },
-      en: { title: '❄️ AC sleeper — a bed, not a seat',
-            lead: 'A berth you lie down in. Draw the curtain and the space is yours, with a clean blanket and a pillow.',
+                     '<b>परदा खींचिए, अपनी जगह</b> — लाइट अपने हिसाब से',
+                     '<b>रातभर ठंडक</b> — गर्मी हो या सर्दी, अंदर एक जैसा'] },
+      en: { title: '❄️ Hot outside, cool inside',
+            lead: 'Not a seat but a place to sleep. Draw the curtain and the space is yours, with a clean blanket and a pillow.',
             points: ['<b>Clean blanket and pillow</b> — changed after every journey',
-                     '<b>Curtain drawn, your own room</b> — your light, your air',
-                     '<b>AC through the night</b> — the same inside whatever the weather'] }
+                     '<b>Curtain drawn, your own space</b> — your own light',
+                     '<b>Cool all night</b> — the same inside whatever the weather'] }
     },
     safe: {
-      ne: { title: '🛡️ सुरक्षित यात्रा — मान्छे सधैं छ',
-            lead: 'बसमा फर्स्ट-एड बाकस, र फोनमा मान्छे। बाटोमा जे भए पनि कोही न कोही उठाउँछ।',
-            points: ['<b>फर्स्ट-एड बाकस बसमै</b> — औषधी, ब्यान्डेज, आधारभूत सामान',
-                     '<b>२४ घण्टा फोन</b> — रातको २ बजे पनि कार्यालयले उठाउँछ',
-                     '<b>अनुभवी चालक</b> — यही बाटो, यही सिमाना, वर्षौंदेखि'] },
-      hi: { title: '🛡️ सुरक्षित यात्रा — आदमी हमेशा मौजूद',
-            lead: 'बस में फर्स्ट-एड बॉक्स, और फोन पर आदमी। रास्ते में कुछ भी हो, कोई न कोई उठाता है।',
-            points: ['<b>फर्स्ट-एड बॉक्स बस में</b> — दवा, पट्टी, ज़रूरी सामान',
-                     '<b>24 घंटे फोन</b> — रात 2 बजे भी ऑफिस उठाता है',
-                     '<b>अनुभवी ड्राइवर</b> — यही रास्ता, यही बॉर्डर, सालों से'] },
-      en: { title: '🛡️ Safe travel — somebody is always there',
-            lead: 'A first-aid box on the coach, and a person on the phone. Whatever happens on the road, someone picks up.',
-            points: ['<b>First-aid box on board</b> — medicines, bandages, the basics',
-                     '<b>24-hour phone</b> — the office answers at 2am too',
-                     '<b>Drivers who know the road</b> — this route, this border, for years'] }
+      ne: { title: '🛡️ बाटोमा तपाईं एक्लै हुनुहुन्न',
+            lead: 'बसमै औषधी र मल्हमपट्टी हुन्छ, र फोनमा मान्छे। जुनसुकै बेला फोन गर्नुहोस्, उठ्छ।',
+            points: ['<b>बसमै औषधी</b> — मल्हमपट्टी र चाहिने सामान',
+                     '<b>जुनसुकै बेला फोन</b> — रातको दुई बजे पनि उठ्छ',
+                     '<b>बाटो चिनेका चालक</b> — यही बाटो, वर्षौंदेखि'] },
+      hi: { title: '🛡️ रास्ते में आप अकेले नहीं',
+            lead: 'बस में ही दवा और पट्टी रहती है, और फोन पर आदमी। जब भी फोन कीजिए, उठता है।',
+            points: ['<b>बस में ही दवा</b> — पट्टी और ज़रूरी सामान',
+                     '<b>जब भी फोन</b> — रात दो बजे भी उठता है',
+                     '<b>रास्ता जानने वाले ड्राइवर</b> — यही रास्ता, सालों से'] },
+      en: { title: '🛡️ You are never alone on the road',
+            lead: 'Medicines and bandages are on the coach, and a person is on the phone. Call at any hour and it is answered.',
+            points: ['<b>Medicines on board</b> — bandages and the basics',
+                     '<b>Call at any hour</b> — answered at two in the morning too',
+                     '<b>Drivers who know the road</b> — this route, for years'] }
     }
   };
 
@@ -224,6 +224,10 @@
       + '<path d="M86 148q46 4 62-22t44-18" fill="none" stroke="#3A4E78" stroke-width="4" stroke-linecap="round"/>'
       + '<path class="fs-flow" d="M86 148q46 4 62-22t44-18" fill="none" stroke="#FFD76B" stroke-width="3" stroke-linecap="round"/>'
       + '<path class="fs-flow2" d="M86 148q46 4 62-22t44-18" fill="none" stroke="#FFF3C9" stroke-width="1.4" stroke-linecap="round"/>'
+      /* The level rising INSIDE the cable (owner: "wire bhitra bijuli
+         bharinu bhayeko jasto"). One stroke the full length of the
+         wire, revealed end to end by its own dash offset. */
+      + '<path class="fs-fill-wire" d="M86 148q46 4 62-22t44-18" fill="none" stroke="#FFE9A3" stroke-width="5" stroke-linecap="round" opacity=".55"/>'
       /* the phone, filling */
       + '<g transform="translate(206,66)">'
       +   '<rect x="0" y="0" width="52" height="92" rx="9" fill="#0E1C38" stroke="#5B7CB5" stroke-width="2"/>'
@@ -263,6 +267,14 @@
       + '<rect x="28" y="56" width="244" height="14" rx="7" fill="#16305C"/>'
       /* reading light */
       + '<circle cx="62" cy="76" r="5" fill="#FFD89B"/>'
+      /* The vent, and the air actually coming out of it. Snowflakes
+         alone never said WHERE the cool was coming from. */
+      + '<g class="fs-vent"><rect x="150" y="62" width="66" height="10" rx="4" fill="#1E3E70" stroke="#3E67A8" stroke-width="1.2"/>'
+      +   '<path d="M158 64v6M168 64v6M178 64v6M188 64v6M198 64v6M208 64v6" stroke="#6B93D6" stroke-width="1.4"/></g>'
+      + '<g class="fs-air" stroke="#9BD8FF" stroke-width="2" stroke-linecap="round" fill="none" opacity=".8">'
+      +   '<path class="fs-puff" d="M164 76q-5 9 0 18t-3 16"/>'
+      +   '<path class="fs-puff" d="M184 76q-5 9 0 18t-3 16"/>'
+      +   '<path class="fs-puff" d="M204 76q-5 9 0 18t-3 16"/></g>'
       + '<path d="M62 81l-14 26h28z" fill="#FFD89B" opacity=".18"/>'
       /* mattress, pillow, blanket, sleeper */
       + '<rect x="40" y="128" width="220" height="30" rx="8" fill="#DFE8F8"/>'
@@ -303,8 +315,14 @@
       +     '<rect x="140" y="96" width="20" height="4" rx="2" fill="#B31F2B"/></g>'
       +   '<g class="fs-cross"><rect x="141" y="124" width="18" height="6" rx="1.5" fill="#E53946"/>'
       +     '<rect x="147" y="118" width="6" height="18" rx="1.5" fill="#E53946"/></g>'
-      +   '<g class="fs-pill"><rect x="112" y="142" width="16" height="7" rx="3.5" fill="#6FA8F5"/></g>'
-      +   '<g class="fs-pill"><rect x="172" y="144" width="14" height="6" rx="3" fill="#F5C36F"/></g>'
+      /* A bottle and a tablet strip - "aushadhi" should look like
+         medicine, not two coloured lozenges. */
+      +   '<g class="fs-pill"><rect x="110" y="136" width="14" height="20" rx="3" fill="#EAF1FF" stroke="#9BB6DD" stroke-width="1"/>'
+      +     '<rect x="113" y="132" width="8" height="5" rx="1.5" fill="#4B7BC4"/>'
+      +     '<rect x="112" y="143" width="10" height="7" rx="1" fill="#E53946"/></g>'
+      +   '<g class="fs-pill"><rect x="166" y="142" width="24" height="10" rx="2" fill="#D7E3F7" stroke="#9BB6DD" stroke-width="1"/>'
+      +     '<circle cx="171" cy="147" r="2.4" fill="#F5F9FF"/><circle cx="178" cy="147" r="2.4" fill="#F5F9FF"/>'
+      +     '<circle cx="185" cy="147" r="2.4" fill="#F5F9FF"/></g>'
       + '</g>'
       /* the phone that is always answered */
       + '<g transform="translate(246,58)">'
@@ -357,60 +375,60 @@
   ================================================================ */
   var FILM = {
     gps: { beats: [
-      { at: 0.0,  ne: 'तपाईंको बस अहिले कहाँ छ?',
-                  hi: 'आपकी बस अभी कहाँ है?',
-                  en: 'Where is your bus right now?' },
-      { at: 4.5,  ne: 'बसमा राखिएको GPS ले हरेक केही सेकेन्डमा ठाउँ पठाउँछ।',
-                  hi: 'बस में लगा GPS हर कुछ सेकंड में जगह भेजता है।',
-                  en: 'The GPS on board reports its position every few seconds.' },
-      { at: 9.5,  ne: 'तपाईं र घरपरिवार — दुवैले नक्सामा हेर्न पाउनुहुन्छ।',
-                  hi: 'आप और घरवाले — दोनों नक्शे पर देख सकते हैं।',
-                  en: 'You and your family can both watch it on the map.' },
-      { at: 14.0, ne: 'अब पिकअपमा पर्खनु पर्दैन।',
-                  hi: 'अब पिकअप पर इंतज़ार नहीं।',
-                  en: 'No more waiting at the pickup point.' }
+      { at: 0.0,  ne: 'बस कहाँ पुग्यो? अब सोध्नु पर्दैन।',
+                  hi: 'बस कहाँ पहुँची? अब पूछना नहीं पड़ता।',
+                  en: 'Where has the bus reached? You no longer have to ask.' },
+      { at: 4.5,  ne: 'बस कहाँ छ, फोनमै देखिन्छ।',
+                  hi: 'बस कहाँ है, फोन पर ही दिखता है।',
+                  en: 'You can see where it is, right on your phone.' },
+      { at: 9.5,  ne: 'घरका मान्छेलाई पनि देखाउन मिल्छ।',
+                  hi: 'घरवालों को भी दिखा सकते हैं।',
+                  en: 'You can show it to your family too.' },
+      { at: 14.0,  ne: 'बस नजिक आएपछि मात्र निस्कनुहोस्।',
+                  hi: 'बस पास आने पर ही निकलिए।',
+                  en: 'Leave only when the bus is close.' }
     ] },
     charge: { beats: [
-      { at: 0.0,  ne: 'लामो रात। फोनको ब्याट्री सकिँदै।',
-                  hi: 'लंबी रात। फोन की बैटरी खत्म होती हुई।',
-                  en: 'A long night, and the battery going down.' },
-      { at: 4.5,  ne: 'बस गुड्दै गर्दा नै बिजुली बन्छ।',
+      { at: 0.0,  ne: 'लामो बाटो। फोनको चार्ज सकिँदै।',
+                  hi: 'लंबा रास्ता। फोन का चार्ज खत्म होता हुआ।',
+                  en: 'A long road, and the charge running out.' },
+      { at: 4.5,  ne: 'बस गुड्दा गुड्दै बिजुली बन्छ।',
                   hi: 'बस चलते-चलते ही बिजली बनती है।',
                   en: 'The coach makes its own power as it runs.' },
-      { at: 9.5,  ne: 'हरेक सिटमा आफ्नै USB र Type-C पोइन्ट।',
-                  hi: 'हर सीट पर अपना USB और Type-C पॉइंट।',
-                  en: 'A USB and Type-C point at every single berth.' },
-      { at: 14.0, ne: 'बिहान फोन फुल चार्ज — नक्सा पनि, टिकट पनि।',
-                  hi: 'सुबह फोन फुल चार्ज — नक्शा भी, टिकट भी।',
-                  en: 'Full battery by morning — map and ticket both.' }
+      { at: 9.5,  ne: 'हरेक सिटमा चार्ज गर्ने ठाउँ छ।',
+                  hi: 'हर सीट पर चार्ज करने की जगह है।',
+                  en: 'There is a charging point at every berth.' },
+      { at: 14.0,  ne: 'बिहान फोन भरिएको हुन्छ।',
+                  hi: 'सुबह फोन भरा हुआ मिलता है।',
+                  en: 'By morning your phone is full again.' }
     ] },
     ac: { beats: [
-      { at: 0.0,  ne: 'यो सिट होइन। सुत्ने बर्थ हो।',
-                  hi: 'यह सीट नहीं। सोने की बर्थ है।',
-                  en: 'This is not a seat. It is a bed.' },
-      { at: 4.5,  ne: 'सफा ब्ल्याङ्केट, सिरानी — हरेक यात्रापछि फेरिन्छ।',
-                  hi: 'साफ़ कंबल, तकिया — हर यात्रा के बाद बदला जाता है।',
-                  en: 'A clean blanket and pillow, changed after every journey.' },
-      { at: 9.5,  ne: 'पर्दा तान्नुहोस् — आफ्नै सानो कोठा।',
-                  hi: 'परदा खींचिए — अपना छोटा कमरा।',
-                  en: 'Draw the curtain, and the space is yours.' },
-      { at: 14.0, ne: 'रातभरि AC। बिहान आराममा उठ्नुहोस्।',
-                  hi: 'रातभर AC। सुबह आराम से उठिए।',
-                  en: 'AC all night. Wake up rested.' }
+      { at: 0.0,  ne: 'बाहिर घाम। भित्र सितल।',
+                  hi: 'बाहर धूप। अंदर ठंडक।',
+                  en: 'Hot outside. Cool inside.' },
+      { at: 4.5,  ne: 'यो सिट होइन — सुत्ने ठाउँ हो।',
+                  hi: 'यह सीट नहीं — सोने की जगह है।',
+                  en: 'This is not a seat. It is a place to sleep.' },
+      { at: 9.5,  ne: 'सफा ओढ्ने र सिरानी दिइन्छ।',
+                  hi: 'साफ़ कंबल और तकिया मिलता है।',
+                  en: 'A clean blanket and pillow are given.' },
+      { at: 14.0,  ne: 'पर्दा तान्नुहोस् — आफ्नै ठाउँ।',
+                  hi: 'परदा खींचिए — अपनी जगह।',
+                  en: 'Draw the curtain, and the space is yours.' }
     ] },
     safe: { beats: [
       { at: 0.0,  ne: 'बाटोमा केही भयो भने?',
                   hi: 'रास्ते में कुछ हो गया तो?',
                   en: 'And if something happens on the road?' },
-      { at: 4.5,  ne: 'बसमै फर्स्ट-एड बाकस — औषधी, ब्यान्डेज।',
-                  hi: 'बस में ही फर्स्ट-एड बॉक्स — दवा, पट्टी।',
-                  en: 'A first-aid box on board — medicines, bandages.' },
-      { at: 9.5,  ne: 'रातको दुई बजे पनि कार्यालयले फोन उठाउँछ।',
-                  hi: 'रात दो बजे भी ऑफिस फोन उठाता है।',
-                  en: 'The office answers the phone at two in the morning.' },
-      { at: 14.0, ne: 'तपाईं एक्लै हुनुहुन्न। कहिल्यै पनि।',
-                  hi: 'आप अकेले नहीं हैं। कभी नहीं।',
-                  en: 'You are never travelling alone.' }
+      { at: 4.5,  ne: 'बसमै औषधी र मल्हमपट्टी हुन्छ।',
+                  hi: 'बस में ही दवा और पट्टी रहती है।',
+                  en: 'Medicines and bandages are on the coach.' },
+      { at: 9.5,  ne: 'जुनसुकै बेला फोन गर्नुहोस् — उठ्छ।',
+                  hi: 'जब भी फोन कीजिए — उठता है।',
+                  en: 'Call at any hour, and it is answered.' },
+      { at: 14.0,  ne: 'तपाईं एक्लै हुनुहुन्न।',
+                  hi: 'आप अकेले नहीं हैं।',
+                  en: 'You are never alone.' }
     ] }
   };
 

@@ -311,3 +311,38 @@
 .fs-hand{opacity:0;transform:translateX(-8px);transition:opacity 1.6s ease,transform 1.6s ease}
 .fs-stage[data-beat="3"] .fs-hand,
 .fs-stage[data-beat="4"] .fs-hand{opacity:1;transform:none}
+
+/* ================================================================
+   PLAIN-NEPALI PASS (26 Sep 2026, owner) — three pictures that had to
+   show the benefit rather than the mechanism.
+================================================================ */
+
+/* THE WIRE FILLS. One stroke the length of the cable, hidden by its own
+   dash and revealed end to end — so the current reads as a level rising
+   inside the wire, which is what the owner described, rather than as a
+   dashed line sliding along it. It fills on the beat that says the coach
+   makes its own power, and stays full. */
+.fs-fill-wire{stroke-dasharray:190;stroke-dashoffset:190}
+.fs-stage[data-beat="2"] .fs-fill-wire,
+.fs-stage[data-beat="3"] .fs-fill-wire,
+.fs-stage[data-beat="4"] .fs-fill-wire{animation:fsWireFill 4.2s ease-out both}
+@keyframes fsWireFill{from{stroke-dashoffset:190}to{stroke-dashoffset:0}}
+
+/* THE AC ACTUALLY BLOWS. The vent is always there; the air starts on the
+   beat that says it is cool inside, so the picture answers "where is the
+   cool coming from" instead of just drifting snowflakes. */
+.fs-air{opacity:0;transition:opacity 1.8s ease}
+.fs-stage[data-beat="1"] .fs-air{opacity:.9}
+.fs-stage[data-beat="2"] .fs-air,
+.fs-stage[data-beat="3"] .fs-air,
+.fs-stage[data-beat="4"] .fs-air{opacity:.9}
+.fs-puff{stroke-dasharray:5 7;animation:fsPuff 1.6s linear infinite}
+.fs-puff:nth-of-type(2){animation-delay:.5s}
+.fs-puff:nth-of-type(3){animation-delay:1s}
+@keyframes fsPuff{to{stroke-dashoffset:-24}}
+
+@media (prefers-reduced-motion:reduce){
+  .fs-fill-wire{stroke-dashoffset:0!important;animation:none!important}
+  .fs-puff{animation:none}
+  .fs-air{opacity:.9}
+}
