@@ -173,13 +173,6 @@ line so a restart is picked up within half an hour:
 To stop it at any time: `systemctl stop shg-brain`. The assistant falls back
 to its rule engine exactly as it does today.
 
-## 7. If ten seconds turns out to be too slow
-
-The next step down is **Qwen3-1.7B** — roughly 2.4× faster, so about four
-seconds, at the price of noticeably weaker Nepali and weaker tool use. It is
-a one-line change in the systemd unit plus a download. Worth doing only if
-the owner uses the 4B and finds the wait unacceptable; the measurements above
-say the 4B is the better trade while the cache stays warm.
 
 ## 8. Still to build on top of this
 
@@ -190,3 +183,39 @@ From the 25 Sep brief (`docs/OWNER-BRIEF-2026-09-25.md` §6):
 - fixing wrong names and numbers (`includes/personname.php` already exists)
 - feeding the knowledge base from the company's own data on a schedule, which
   is the honest version of "aafai sikos"
+
+## 9. Four models measured on the real path — 26 Sep 2026
+
+The owner asked for a faster free model. Four were installed and run through
+`tests/brain-bench.php`, which goes through `AiAgent::handleWeb()` — the real
+2 600-token briefing, the real tools, the real loop. That matters: a 1.7B
+benchmarked against a 150-token prompt looked better than everything here and
+fell apart completely on the real one.
+
+| Model | Avg | What actually happened |
+|---|---|---|
+| Qwen3-4B-Instruct-2507 | 15–30 s | Rambles to the token ceiling, failed the tool call, sometimes returns nothing at all |
+| Qwen3-1.7B (thinking off) | 8.4 s | Fast, and **answers by repeating the question back**; degenerates into a loop on anything else |
+| Granite-4.2-3B | 37.8 s | **All five answers empty** — it reasons until the budget is gone |
+| **Gemma-3-4B-it** | **13.0 s** | Best Nepali, shortest answers, and the only one that **obeyed the refusal rule**. But it invented a fare of ₹2800 (it is ₹2000) and invented a booking status, instead of calling the tool |
+
+### The conclusion, plainly
+
+**None of them is safe in front of a customer**, and they all fail the same
+way: asked something factual they answer from memory instead of calling the
+tool. For a company that sells tickets, a confidently invented fare is the
+worst possible failure — worse than a slow answer, worse than no answer.
+
+Gemma is the best of the four and is now the installed local brain, as the
+**fallback**. Gemini leads (`ai_local_first = 0`) because Gemini answers
+correctly in two seconds and calls its tools.
+
+### What would actually change this
+
+Not a different 3–4B model; they were four different families and they failed
+alike. Either **more cores** (a 4-8 vCPU box would let a 7-8B model run, and
+that size does use tools reliably), or accept the local brain as what it is:
+a free, private, offline **safety net** for when the cloud is unreachable.
+
+All four are kept in `/opt/shg-brain/models/` (7 GB of 88 GB free), so
+swapping one in is a line in the systemd unit and a restart.
