@@ -184,3 +184,70 @@ until the translate was moved to an outer group.
 
 Live: asset stamp `20260926e`, `sw-v167`. Rollback unchanged:
 `bash deploy/go-live.sh --rollback`.
+
+---
+
+## 8. The office pass — WhatsApp, help desk, quick book, the blessing
+
+Owner (26 Sep, afternoon): *"WhatsApp API bata matra jaos, redirect sano side
+ma option · help desk chalauna sajilo, msg optimise · ticketing kam click ma
+automated · admin ma hi lekhera guide · error bhayo bhane 9104801507 ma data
+send, yo name lai yo ticket send gardinu bhanera link ra number deu · boot ma
+Bishnu Bhagwan ko naam mantra · saboi report admin le controllable."*
+
+What shipped (branch `wip-office`, stamp `20260926f`, `sw-v168`):
+
+- **WhatsApp request sheet** — the API send (`api/wa-request.php`, the
+  office's own sender) is the one big green button; the passenger's wa.me
+  chat is a small underlined line under it that only grows (dashed box)
+  when the API send has failed. Success swaps the form for a ✅ card
+  ("कार्यालयमा पठाइयो", office-chat link, ठीक छ). Reopening resets it.
+- **Help desk on the home page** (`#helpDesk`, above the office cards) —
+  six pre-written questions (ticket where, bus time, refund, luggage,
+  change name/date, other). A tap opens the sheet in help/correction mode
+  with the note already written in the passenger's language; a returning
+  passenger only presses Send. WhatsApp / call buttons beside them.
+- **⚡ Quick book** on every results card (`.bc-quick`) — picks the best
+  seats the way the count picker does (middle of the lower deck first),
+  shows a 3-second countdown toast, then continues to checkout by itself;
+  any tap in the map keeps the passenger there. Verified on the test copy:
+  results → quick → C1 picked → `#/checkout` with the leg filled.
+- **Ticket not delivered → the office** — `Notify::deliveryFallback()`.
+  Fires when the sender refuses a ticket, when Meta/Twilio/Gupshup report
+  it failed, and when `cron/whatsapp-retry.php` gives up. The office
+  WhatsApp (`admin_whatsapp` = 919104801507) and admin e-mail get: PNR,
+  name, number, route/date, the ticket picture link, a one-tap
+  **wa.me forward link** with the ticket text pre-written, the admin link
+  and the reason. One per booking per `wa_delivery_fallback_hours` (24).
+  The office's own rows (`delivery_fallback`, `admin_note`) are excluded
+  from the ticket badge (`shg_wa_last`), the pending list and the retry
+  cron so they can never mask a passenger's failed ticket.
+  `tests/delivery-fallback-test.php` (14).
+- **Staff "hi" → menu** — `WaBot::isStaffGreeting()` / `staffMenu()`:
+  a staff number writing hi / namaste / menu / help / ? gets what the
+  number does for them and links into Admin, Quick Ticket, bookings and the
+  messages log. Assistant lines are listed only while the assistant is on.
+  `tests/wa-staff-menu-test.php` (34).
+- **The blessing** — on the first touch the app now plays a temple bell +
+  conch swell (`VOICES.blessing`) and speaks "ॐ नमो भगवते वासुदेवाय" with
+  the handset's Nepali/Hindi voice, once per visit. Switches: 🙏 मन्त्र in
+  the app menu (per device) and `app_mantra_on` in Admin → Settings → Site
+  (for everyone). The splash carries the mantra line in shimmering gold and
+  a breathing golden aura behind the logo.
+- **Reports on one panel** — `database/upgrade-2026-09-26-office-fallback-reports.sql`
+  moves every digest / office-alert switch (daily digest, brain digest, WA
+  chart, booking alerts, low-seat, pending-approval, the office number and
+  e-mail) into the settings group **Reports**, plus the new switches.
+  Apply on live by hand after go-live: `mysql shari < database/upgrade-2026-09-26-office-fallback-reports.sql`.
+
+**Meta API cost, plainly.** The local model cannot send a WhatsApp message;
+only the Meta Cloud API (or Gupshup) can. A reply inside a window the
+customer opened (they messaged us within 24 h) is free. A business-initiated
+utility template in India costs about ₹0.11–0.15 per message. The free path
+is already on the ticket page: "🎫 WhatsApp मा टिकट पाउनुहोस्" makes the
+customer message us first, and the bot answers with the ticket for free.
+
+**Trap found today** (in memory as `mixed-eol-patch-trap`): `helpers.php`
+is CRLF except its heredocs, which are LF on purpose; a patch tool that
+normalised the file flipped them and only `uploads-private-test` noticed.
+The scratchpad `patch.js` now keeps each line's own ending.
