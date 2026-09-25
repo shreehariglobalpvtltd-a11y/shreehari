@@ -821,3 +821,83 @@
     });
   }
 })();
+
+
+/* ===================================================================
+   Trust layer (24 Sep 2026) — three switches, all OFF until the office
+   turns them on in Admin → Settings:
+     trust_card_on     real numbers on the home page (SHG_BOOT.trust.numbers)
+     refund_ladder_on  the refund slabs next to Pay + "where is my refund"
+     women_layer_on    "N women already on this bus" + the 24×7 helpline
+   Nothing here invents a number: the server sends what the register holds.
+   =================================================================== */
+(function () {
+  var B = window.SHG_BOOT || {};
+  var S = B.settings || {};
+  var T = B.trust || {};
+  function on(k) { return S[k] === true || S[k] === 1 || S[k] === '1'; }
+  function h(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
+  function tx(k, v) { return (typeof tf === 'function' && v) ? tf(k, v) : (typeof t === 'function' ? t(k) : k); }
+
+  function card() {
+    var el = document.getElementById('trustLive');
+    if (!el || !on('trust_card_on')) return;
+    var n = T.numbers || {};
+    var pills = [];
+    if (n.trips > 0) pills.push('🚌 ' + tx('trTrips', { n: n.trips }));
+    if (n.pax > 0) pills.push('👥 ' + tx('trPax', { n: n.pax.toLocaleString('en-IN') }));
+    if (n.ratingCount >= 3 && n.rating > 0) pills.push('⭐ ' + tx('trRating', { r: n.rating, n: n.ratingCount }));
+    if (n.womenSeats > 0) pills.push('👩 ' + tx('trWomen', { n: n.womenSeats }));
+    if (!pills.length) return;
+    el.innerHTML = pills.map(function (p) { return '<span class="tl-pill">' + h(p) + '</span>'; }).join('');
+    el.classList.remove('hide');
+  }
+
+  function ladder(dateISO, depTime) {
+    var el = document.getElementById('rfLadder');
+    if (!el) return;
+    if (!on('refund_ladder_on') || !dateISO) { el.classList.add('hide'); return; }
+    var slabs = (T.ladder && T.ladder.length) ? T.ladder
+              : ((window.CONFIG && CONFIG.booking && CONFIG.booking.refundSlabs) || []);
+    slabs = slabs.slice().sort(function (a, b) { return b.minHrs - a.minHrs; });
+    if (!slabs.length) { el.classList.add('hide'); return; }
+    var dep = new Date(dateISO + 'T' + String(depTime || '00:00').slice(0, 5) + ':00').getTime();
+    var hrs = isNaN(dep) ? 0 : (dep - Date.now()) / 36e5;
+    var now = null;
+    for (var i = 0; i < slabs.length; i++) { if (hrs >= slabs[i].minHrs) { now = slabs[i]; break; } }
+    var minPos = 0;
+    slabs.forEach(function (s) { if (s.minHrs > 0 && (minPos === 0 || s.minHrs < minPos)) minPos = s.minHrs; });
+    var rows = slabs.map(function (s) {
+      var txt = s.minHrs > 0 ? tx('rfRow', { h: s.minHrs, p: s.pct }) : tx('rfNone', { h: minPos });
+      return '<li' + (s === now ? ' class="on"' : '') + '>' + h(txt) + '</li>';
+    });
+    el.innerHTML = '<b>' + h(tx('rfTitle')) + '</b><ul>' + rows.join('') + '</ul><p>' + h(tx('rfNow', { p: now ? now.pct : 0 })) + '</p>';
+    el.classList.remove('hide');
+  }
+
+  function women(r, dateISO, femSet) {
+    var el = document.getElementById('womenLine');
+    if (!el) return;
+    var privateCabin = (typeof Flow !== 'undefined' && Flow && Flow.bookingType === 'private');
+    if (!on('women_layer_on') || privateCabin || !r) { el.classList.add('hide'); return; }
+    var n = 0;
+    try { if (typeof femaleBookedSeats === 'function') n = (femaleBookedSeats(r.id, dateISO) || []).length; } catch (e) { n = 0; }
+    var help = String(S.women_helpline || (B.contact && B.contact.phone) || '').trim();
+    var pink = (femSet && femSet.length) ? ' · ' + tx('trWomen', { n: femSet.length }) : '';
+    el.innerHTML = '<span>👩 ' + h(n > 0 ? tx('wlCount', { n: n }) : tx('wlNone')) + h(n > 0 ? pink : '') + '</span>'
+                 + (help ? '<a href="tel:' + h(help.replace(/[^\d+]/g, '')) + '">📞 ' + h(tx('wlHelp')) + '</a>' : '');
+    el.classList.remove('hide');
+  }
+
+  function refundLine(b) {
+    if (!on('refund_ladder_on') || !b) return '';
+    var a = Number(b.refundAmount || 0), s = String(b.refundStatus || '');
+    if (!(a > 0) || (s !== 'pending' && s !== 'processed')) return '';
+    var lbl = tx(s === 'pending' ? 'rfStPending' : 'rfStPaid');
+    var money = (typeof inr === 'function') ? inr(a) : ('₹' + a);
+    return '<div class="mybk-refund">↩ ' + h(tx('rfStatus', { a: money, s: lbl })) + '</div>';
+  }
+
+  window.SHG_TRUST = { card: card, ladder: ladder, women: women, refundLine: refundLine };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', card); else card();
+})();

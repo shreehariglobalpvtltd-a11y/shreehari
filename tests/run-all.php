@@ -161,6 +161,7 @@ const CORE_SUITES = [
     'ai-learn-test.php'            => 'the learning loop: corrections in three scripts, candidates, office approval, the prompt block, the endpoint',
     'social-posts-test.php'        => 'the marketing queue: validation, three-language caption, claim-then-send, retries, the daily cap',
     'ai-manager-test.php'          => 'Admin → AI Manager: every tab, the office actions, the doors, the crons idle while off, the thumbs',
+    'trust-layer-test.php'         => 'the trust layer: one refund ladder, real numbers, the home payload, refund status in the booking payload',
 ];
 
 /**
@@ -530,9 +531,20 @@ if ($failed !== []) {
     echo "\n  Output from the failing suites:\n";
     foreach ($failed as $file => $out) {
         echo "\n  ── {$file} " . str_repeat('─', max(0, 40 - strlen($file))) . "\n";
-        // The tail is where the assertions and the summary live.
+        /* Every failing line first, then the tail (25 Sep 2026). A tail alone
+           hid which checks failed whenever a suite's failures sat above its
+           last 25 lines of PASSes — the CI log then said "3 failed" and named
+           none of them, which cost a whole push-and-wait cycle to find out. */
         $lines = explode("\n", rtrim($out));
-        foreach (array_slice($lines, -25) as $line) {
+        $bad   = array_values(array_filter($lines, static fn(string $l): bool => str_contains($l, 'FAIL') || str_contains($l, 'Fatal error') || str_contains($l, 'Uncaught')));
+        foreach (array_slice($bad, 0, 40) as $line) {
+            echo '  ' . $line . "\n";
+        }
+        if (count($bad) > 40) {
+            echo '  … ' . (count($bad) - 40) . " more failing line(s)\n";
+        }
+        echo "  ┄ tail ┄\n";
+        foreach (array_slice($lines, -12) as $line) {
             echo '  ' . $line . "\n";
         }
     }

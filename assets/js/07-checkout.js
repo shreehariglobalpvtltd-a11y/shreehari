@@ -823,6 +823,8 @@ function renderCheckout() {
   }
   $$('#paxRows .pxName').forEach(function (n) { n.addEventListener('input', updateCoSummary); });
   updateCoSummary();
+  /* The refund ladder next to Pay (24 Sep 2026, refund_ladder_on). */
+  try { if (window.SHG_TRUST) SHG_TRUST.ladder(out.date, rOut.depTime); } catch (e) {}
 
   /* Feature A — warn inline the moment a chosen gender clashes with a
      shared-cabin lock, so the passenger fixes it here instead of being
@@ -1422,6 +1424,7 @@ function bookingFromServer(d, phone) {
       reason: (d.payment && d.payment.reason) || ''
     },
     status: d.status,
+    refundAmount: Number(d.refundAmount || 0), refundStatus: d.refundStatus || '',
     codFlag: !!d.isCod,
     ticketNumber: d.ticketNumber || '',
     trackUrl: d.trackUrl || null,

@@ -688,6 +688,9 @@ function shg_customer_payload(array $detail): array
             'reason' => (string) ($detail['payment']['reject_reason'] ?? ($detail['cancel_reason'] ?? '')),
         ],
         'canCancel'   => in_array($detail['status'], ['pending', 'confirmed'], true),
+        // Where a cancelled booking's money is (24 Sep 2026, refund_ladder_on).
+        'refundAmount'=> (float) ($detail['refund_amount'] ?? 0),
+        'refundStatus'=> (string) ($detail['refund_status'] ?? ''),
         'ticketUrl'   => $detail['status'] === 'confirmed'
             ? Ticket::downloadUrl((string) $detail['pnr'])
             : null,

@@ -18,6 +18,7 @@ declare(strict_types=1);
 
 define('SHG_APP', true);
 require_once __DIR__ . '/includes/bootstrap.php';
+require_once INCLUDE_PATH . '/trust.php';
 
 /* ---------------------------------------------------------------------
  *  Bootstrap payload for the browser.
@@ -68,6 +69,9 @@ $boot = [
     // The contact button on every screen (24 Sep 2026): call / WhatsApp the
     // office without hunting for the number.
     'contact'  => ['phone' => Settings::officePhone(), 'wa' => Settings::officeWhatsApp()],
+    // The trust layer (24 Sep 2026): real numbers for the home card and the
+    // refund ladder for checkout — each only while its switch is on.
+    'trust'    => Trust::boot(),
     'settings' => Settings::publicSettings(),
     'user'     => $user !== null ? [
         'phone'  => $user['phone'] ?? '',

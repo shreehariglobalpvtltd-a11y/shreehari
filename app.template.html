@@ -1018,6 +1018,7 @@ s.addEventListener('click',function(e){e.preventDefault();
 
   <!-- ============ COMPANY BRAND / TRUST STRIP ============ -->
   <div class="container trust" id="trust">
+    <div class="trust-live hide" id="trustLive" aria-live="polite"></div>
     <div class="trust-grid">
       <div class="t-badge reveal">
         <span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
@@ -1700,6 +1701,7 @@ s.addEventListener('click',function(e){e.preventDefault();
         <button class="bt-pill sharing on" type="button" data-bt="sharing">🤝 Sharing</button>
         <button class="bt-pill private" type="button" data-bt="private">🔒 Private</button>
       </div>
+      <div class="women-line hide" id="womenLine"></div>
       <div class="legend legend-sticky">
         <span class="lg-lu"><b>L</b>&nbsp;<span data-i18n="lgLower">Lower berth</span> · <b>U</b>&nbsp;<span data-i18n="lgUpper">Upper berth</span></span>
         <span><span class="lg"></span><span data-i18n="lgAvail">Available</span></span>
@@ -1954,6 +1956,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <div class="vip-priority-chip" id="vipPriorityCheckout" style="margin:0 0 14px">🧑‍✈️<span>Priority Boarding · VIP Support<small>पहिलो बोर्डिङ प्राथमिकता · सबसे पहले बोर्डिंग · You board first, with dedicated VIP care.</small></span></div>
       <div class="pay-amt"><small data-i18n="payAmt">Amount payable</small><span class="big" id="payAmount">₹0</span><span style="font-size:12px;color:var(--muted)" id="payAmountNpr"></span></div>
       <p style="font-size:12.5px;color:var(--muted);text-align:center;margin:-8px 0 14px" data-i18n="fareLocked">🔒 Your fare is fixed once booked — it will not change later.</p>
+      <div class="rf-ladder hide" id="rfLadder"></div>
       <div class="pm-tabs" role="group" aria-label="Payment method">
         <button type="button" class="pm-tab on" id="payMethodUpi"><span class="pm-flag">🇮🇳</span><b>UPI</b><small class="pm-sub">GPay · PhonePe · Paytm</small></button>
         <button type="button" class="pm-tab" id="payMethodEsewa"><span class="pm-flag">🇳🇵</span><b>eSewa</b><small class="pm-sub">Nepal wallet · बैंक</small></button>
