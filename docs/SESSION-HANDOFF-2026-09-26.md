@@ -4,7 +4,7 @@ For the next session. The owner went to sleep asking that the work be
 finished, deployed, checked as a customer and as an admin, and reported.
 This is that report, plus what is still open.
 
-**Live right now:** `1ae5cb6`, asset stamp `20260926d`, `sw-v166`.
+**Live right now:** `7adb700`, asset stamp `20260926e`, `sw-v167`.
 **Rollback:** `bash deploy/go-live.sh --rollback` (backups in `/root/backups/`).
 
 ---
@@ -145,3 +145,42 @@ tablet strip rather than two coloured lozenges.
 Verified on the live site, on a phone viewport: all four films play, the
 reel auto-advances, and after close there are zero panels and zero
 animations left behind.
+
+
+---
+
+## 7. The brand film, v3 — one film instead of four
+
+A written brief arrived after the owner slept: turn the four separate
+eighteen-second films into one premium, realistic brand film — Earth in
+space, a zoom to India and Nepal, the branded route with the coach moving,
+the four facilities as scenes, and an end card with the logo, the coach and
+the CTA "आजै आफ्नो यात्रा बुक गर्नुहोस्". Red, blue, white. Voice, music,
+must work without sound, lightweight, reduced-motion.
+
+Done and live. The full before/after is in
+`docs/FEATURE-FILM-UPGRADE-2026-09-26.md`. The short version:
+
+- **One film, eight acts, ~18 s**, any chip opens it. The stage carries
+  `data-act="0..7"` and every visual change is a CSS rule keyed on it.
+- **Real geography**: the same projected India/Nepal outlines and the
+  Surat → Rupaidiha road the splash uses, with the coach travelling the
+  road by SMIL `animateMotion`.
+- **New scenes**: a passenger charging a phone in their seat; a highway in
+  motion with a safety shield that ticks; an end card with logo, coach,
+  both flags and a real CTA button that closes the film and clicks the nav
+  "Book" link (`[data-scroll="search-anchor"]`).
+- **Sound**: handset voice-over per act (Nepali first), a synthesised music
+  bed (`SHGFeel.bed`) and a whoosh per scene, all behind the Sound switch.
+  Every line is also on screen, so the film is whole without audio.
+- **Still true**: nothing runs until a chip is tapped, `close()` removes the
+  panel — verified zero panels, zero animations, speech stopped.
+
+Two bugs found only by looking, now in memory so they are not repeated: a
+caption class named `brand` collided with the navbar's `.brand{display:flex}`
+(renamed `fs-brand`); and a CSS `transform` on an SVG group **replaces** its
+`transform="translate(…)"` attribute — the safety shield sat in the corner
+until the translate was moved to an outer group.
+
+Live: asset stamp `20260926e`, `sw-v167`. Rollback unchanged:
+`bash deploy/go-live.sh --rollback`.
