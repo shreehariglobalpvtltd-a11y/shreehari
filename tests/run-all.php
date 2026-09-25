@@ -164,6 +164,7 @@ const CORE_SUITES = [
     'trust-layer-test.php'         => 'the trust layer: one refund ladder, real numbers, the home payload, refund status in the booking payload',
     'bundle-test.php'              => 'one bundled script + stylesheet: the manifest matches the template, the switch, and it refuses a stale bundle',
     'ai-web-test.php'              => 'the assistant reads only listed https hosts, never a private address, and writes a draft the office must publish',
+    'uploads-private-test.php'     => 'nobody reads a departure sheet, an ID scan or a KYC paper by guessing its URL; the signed chalan link still works',
 ];
 
 /**

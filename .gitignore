@@ -9,6 +9,19 @@ config/config.local.php
 config/config.php
 .claude/
 
+# The guards that keep the uploads tree private travel WITH the code, or a
+# fresh install serves people's documents to anybody who guesses a URL until
+# somebody remembers to edit nginx. The folders' contents stay untracked.
+!uploads/.htaccess
+!uploads/challan/.htaccess
+!uploads/chalani/.htaccess
+!uploads/passengers/.htaccess
+!uploads/agents-kyc/.htaccess
+!uploads/challan/index.html
+!uploads/chalani/index.html
+!uploads/passengers/index.html
+!uploads/agents-kyc/index.html
+
 # Generated PDFs / uploads — per-booking, never tracked
 tickets/
 invoice/
