@@ -39,12 +39,76 @@ final class WaBot
      * @param string $body message text
      * @return array{text: string, media: ?string}
      */
-    public static function reply(string $from, string $body, string $kind = 'text'): array
+    public static function reply(string $from, string $body, string $kind = 'text', array $media = []): array
     {
         $company      = Settings::getString('company_name', APP_NAME);
         $phone        = Settings::officePhone();
         $body         = trim($body);
         $senderDigits = normalisePhone($from);
+
+        /* 24 Sep 2026 — marketing consent words (START OFFERS / STOP) are a
+           record, not a conversation: they are written down first, exactly,
+           before any engine gets to interpret them. Only when the marketing
+           engine is on; otherwise the words fall through like any other. */
+        if ($body !== '' && Settings::getBool('wa_marketing_on', false)) {
+            try {
+                require_once INCLUDE_PATH . '/wamarketing.php';
+                $consent = WaMarketing::consentMessage($from, $body);
+                if ($consent !== null) {
+                    // "STOP" / "बन्द" also means: whatever was half-way — a seat
+                    // conversation waiting for names, a parked quote — is over.
+                    // Otherwise the next message would be read as the answer to
+                    // a question the person has already walked away from.
+                    if ($senderDigits !== '') {
+                        try {
+                            require_once INCLUDE_PATH . '/wabooking.php';
+                            WaBooking::clear($senderDigits);
+                            require_once INCLUDE_PATH . '/aiagent.php';
+                            AiAgent::forget($senderDigits);
+                        } catch (Throwable $e) {
+                            Logger::exception($e);
+                        }
+                    }
+                    return self::out((string) $consent['text'], $consent['media'] ?? null);
+                }
+            } catch (Throwable $e) {
+                Logger::exception($e);
+            }
+        }
+
+        /* 24 Sep 2026 — a voice note that was transcribed a moment ago is
+           waiting for the person to confirm the words. "ho" turns the
+           transcript into this message; anything else drops it and is
+           handled as the fresh text it is. */
+        if ($body !== '' && $senderDigits !== '') {
+            $pending = self::takePendingVoice($senderDigits, $body);
+            if ($pending !== null) {
+                $body = $pending;
+                $kind = 'text';
+            }
+        }
+
+        /* 24 Sep 2026 — an attachment beside the words (or instead of them).
+           With wa_ops_media_on the assistant is TOLD about it (kind + mime,
+           never the content) and a copy is kept, encrypted, as evidence for a
+           handoff. Off, or no assistant: the fixed replies below stand. */
+        $attachment = [];
+        if ($media !== [] && in_array($kind, ['image', 'document', 'video', 'sticker'], true)) {
+            $attachment = self::attachmentContext($senderDigits, $kind, $media);
+            if ($body === '' && $attachment !== []) {
+                try {
+                    require_once INCLUDE_PATH . '/aiagent.php';
+                    if (AiAgent::enabled()) {
+                        $agent = AiAgent::handle($from, '[' . $kind . ' attached without any words]', 'whatsapp', ['attachment' => $attachment]);
+                        if ($agent !== null) {
+                            return self::out($agent['text'], $agent['media']);
+                        }
+                    }
+                } catch (Throwable $e) {
+                    Logger::exception($e);
+                }
+            }
+        }
 
         /* A photo or a file with no caption: on this number that is a
            payment screenshot nine times out of ten. The generic menu told
@@ -62,7 +126,16 @@ final class WaBot
             );
         }
 
-        /* A voice note: nobody at the desk can act on it automatically. */
+        /* A voice note. With wa_ops_voice_on the words are transcribed and READ
+           BACK for confirmation — a wrong name on a ticket is exactly the mistake
+           a transcriber makes, so nothing is acted on until the person says ho.
+           Otherwise (or when the transcriber is unsure) the old ask-to-type reply. */
+        if ($body === '' && in_array($kind, ['audio', 'voice'], true) && $media !== [] && $senderDigits !== '') {
+            $heard = self::transcribeVoice($senderDigits, $media);
+            if ($heard !== null) {
+                return self::out($heard);
+            }
+        }
         if ($body === '' && in_array($kind, ['audio', 'voice'], true)) {
             return self::out(
                 "🎤 " . $company . "\n"
@@ -144,10 +217,28 @@ final class WaBot
             }
         }
 
+        /* THE EVERYDAY QUESTIONS, ON THIS VPS (23 Sep 2026, owner: "95 % kam
+           afai garne"). Hello, fare, bus time, offers, website, office, and
+           a strong knowledge-base match are answered from the live tables in
+           milliseconds with no AI call. Anything personal or unsure returns
+           null and falls through to the assistant below. wa_faq_on = 0 turns
+           it off without touching anything else. */
+        if (!$pnrOnly && $senderDigits !== '') {
+            try {
+                require_once INCLUDE_PATH . '/wafaq.php';
+                $faq = WaFaq::answer($from, $body);
+                if ($faq !== null) {
+                    return self::out($faq['text'], $faq['media']);
+                }
+            } catch (Throwable $e) {
+                Logger::exception($e);          // the assistant still answers
+            }
+        }
+
         if (!$pnrOnly) {
             try {
                 require_once INCLUDE_PATH . '/aiagent.php';
-                $agent = AiAgent::handle($from, $body);
+                $agent = AiAgent::handle($from, $body, 'whatsapp', $attachment !== [] ? ['attachment' => $attachment] : []);
                 if ($agent !== null) {
                     return self::out($agent['text'], $agent['media']);
                 }
@@ -349,6 +440,137 @@ final class WaBot
         }
 
         return self::out(implode("\n", $lines), $mediaUrl);
+    }
+
+    /* =================================================================
+     *  Attachments and voice notes (24 Sep 2026)
+     * ================================================================= */
+
+    /** Words that mean "yes, that is what I said" in the languages this desk receives. */
+    private const YES_WORDS = ['ho', 'हो', 'yes', 'y', 'haan', 'han', 'ha', 'हाँ', 'हां', 'ok', 'okay', 'thik', 'thik cha', 'thik xa',
+        'ठिक छ', 'ठीक', 'ठीक है', 'hunxa', 'huncha', 'hunchha', 'हुन्छ', 'sahi', 'सही', 'barabar', 'બરાબર', 'હા', 'confirm', 'yes ho'];
+
+    /** How long a transcript waits for its "ho". */
+    private const VOICE_TTL = 600;
+
+    /**
+     * Metadata (and, when the office allows, an encrypted copy) of an inbound
+     * attachment — data about the conversation, never an instruction.
+     *
+     * @param array<string,mixed> $media from WaMedia::describe()
+     * @return array<string,mixed>
+     */
+    private static function attachmentContext(string $senderDigits, string $kind, array $media): array
+    {
+        try {
+            require_once INCLUDE_PATH . '/wamedia.php';
+            if (!WaMedia::enabled()) {
+                return [];
+            }
+            $ctx = [
+                'kind'     => $kind,
+                'mime'     => (string) ($media['mime'] ?? ''),
+                'id'       => (string) ($media['id'] ?? ''),
+                'filename' => (string) ($media['filename'] ?? ''),
+                'stash'    => '',
+            ];
+            // A handful of files per number per day is evidence; more is a disk
+            // filler. Past the cap the assistant still learns a file arrived,
+            // but nothing is fetched or kept.
+            if ($ctx['id'] !== '' && $senderDigits !== '' && in_array($kind, ['image', 'document'], true)
+                && Security::rateLimit('wa_media_stash', $senderDigits, 6, 86400)) {
+                $bytes = WaMedia::download($ctx['id']);
+                if ($bytes !== null) {
+                    $ctx['stash'] = (string) (WaMedia::stash($bytes, $senderDigits) ?? '');
+                    $ctx['mime']  = (string) $bytes['mime'];
+                }
+            }
+            return $ctx;
+        } catch (Throwable $e) {
+            Logger::exception($e);
+            return [];
+        }
+    }
+
+    /**
+     * Transcribe a voice note and ask the person to confirm the words.
+     * Returns the reply text, or null when transcription is off / unsure
+     * (the caller then sends the ask-to-type line).
+     */
+    private static function transcribeVoice(string $senderDigits, array $media): ?string
+    {
+        try {
+            require_once INCLUDE_PATH . '/wamedia.php';
+            if (!WaMedia::voiceEnabled() || (string) ($media['id'] ?? '') === '') {
+                return null;
+            }
+            $bytes = WaMedia::download((string) $media['id']);
+            if ($bytes === null) {
+                return null;
+            }
+            $text = WaMedia::transcribe($bytes);
+            if ($text === null || $text === '') {
+                return null;
+            }
+            self::keepPendingVoice($senderDigits, $text);
+
+            require_once INCLUDE_PATH . '/ticketbot.php';
+            $lang = TicketBot::detectLang($text);
+            $ask  = match ($lang) {
+                'hi' => "🎤 मैंने सुना: “%s”\n\nसही है? “हाँ” लिखें, मैं इसी पर काम करूँगा। गलत हो तो सही बात लिखकर भेजें।",
+                'gu' => "🎤 મેં સાંભળ્યું: “%s”\n\nબરાબર છે? “હા” લખો, હું એ પ્રમાણે કરીશ. ખોટું હોય તો સાચી વાત લખીને મોકલો.",
+                'en' => "🎤 I heard: “%s”\n\nIs that right? Reply “yes” and I will act on it. If not, please type the correct details.",
+                default => "🎤 मैले सुनेँ: “%s”\n\nठिक हो? “हो” लेख्नुहोस्, म त्यही अनुसार गर्छु। गलत भए सही कुरा लेखेर पठाउनुहोस्।",
+            };
+            return sprintf($ask, mb_substr($text, 0, 600));
+        } catch (Throwable $e) {
+            Logger::exception($e);
+            return null;
+        }
+    }
+
+    private static function keepPendingVoice(string $who, string $text): void
+    {
+        $json = json_encode(['text' => mb_substr($text, 0, 1500), 'at' => time()], JSON_UNESCAPED_UNICODE);
+        try {
+            $done = Database::update('kv_store', ['kvalue' => $json, 'updated_by' => 'wabot'],
+                'kscope = :s AND kkey = :k', ['s' => 'wa_voice', 'k' => $who]);
+            if ($done === 0) {
+                Database::insertIgnore('kv_store', ['kscope' => 'wa_voice', 'kkey' => $who, 'kvalue' => $json, 'updated_by' => 'wabot']);
+            }
+        } catch (Throwable $e) {
+            Logger::exception($e);
+        }
+    }
+
+    /**
+     * If a transcript is waiting and this message is a plain yes, return the
+     * transcript (and forget it). Any other message forgets it and returns null.
+     */
+    private static function takePendingVoice(string $who, string $body): ?string
+    {
+        try {
+            $row = Database::fetch('SELECT kvalue FROM kv_store WHERE kscope = :s AND kkey = :k', ['s' => 'wa_voice', 'k' => $who]);
+        } catch (Throwable $e) {
+            return null;
+        }
+        if ($row === null) {
+            return null;
+        }
+        try {
+            Database::delete('kv_store', 'kscope = :s AND kkey = :k', ['s' => 'wa_voice', 'k' => $who]);
+        } catch (Throwable $ignored) {
+        }
+        $saved = json_decode((string) $row['kvalue'], true);
+        if (!is_array($saved) || (time() - (int) ($saved['at'] ?? 0)) > self::VOICE_TTL) {
+            return null;
+        }
+        $norm = mb_strtolower(trim(preg_replace('/[\s\p{P}]+/u', ' ', $body) ?? $body));
+        if (!in_array($norm, self::YES_WORDS, true)) {
+            return null;
+        }
+        $text = trim((string) ($saved['text'] ?? ''));
+        return $text !== '' ? $text : null;
     }
 
     /** Greeting for a plain GET on a webhook URL. */

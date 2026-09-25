@@ -19,9 +19,9 @@ if (!defined('SHG_APP')) {
 
 final class Ticket
 {
-    private const NAVY   = [26, 58, 106];
-    private const BLUE   = [46, 95, 168];
-    private const ORANGE = [240, 124, 31];
+    private const NAVY   = [16, 42, 86];
+    private const BLUE   = [8, 99, 184];
+    private const ORANGE = [255, 122, 22];
     private const GOLD   = [255, 200, 40];
     private const INK    = [30, 30, 40];
     private const MUTE   = [120, 120, 130];
@@ -192,11 +192,11 @@ final class Ticket
      * Text for the PNG documents, WITH its Devanagari intact.
      *
      * The PNG ticket has stripped every non-ASCII byte since it was built,
-     * on the belief that GD cannot shape Devanagari. Measured on 10 Sep 2026
-     * against both this box and the live VPS (PHP 8.3, FreeType), it can:
-     * "यात्रु" keeps its त्र conjunct, "सिट" puts the i-matra in front of
-     * the स, "चढ्ने ठाउँ" comes out whole. So a Nepali name now prints as
-     * the passenger wrote it instead of vanishing.
+     * on the belief that GD cannot shape Devanagari. GD indeed cannot (the
+     * 10 Sep 2026 note that it forms conjuncts was wrong: libgd 2.3.3 on the
+     * VPS links FreeType only, and यात्रु printed as यात्‌रु). Since 24 Sep
+     * 2026 HarfBuzz shapes it (DevShape, via gdText/gdWidth), so a Nepali
+     * name prints as the passenger wrote it — conjuncts, reph and all.
      *
      * Kept: printable ASCII and the Devanagari block (which carries the
      * Nepali digits and the danda). Dropped: everything else — emoji and
@@ -498,6 +498,21 @@ final class Ticket
             $phone = '';
         }
 
+        /* WHERE the ticket was cut (owner ask, 24 Sep 2026: "ticket [ma] by
+           name ra counter ko location hos, dekhine gari"). The desk's town
+           and its short code live on admin_profiles — loadBooking() joins
+           them in as agent_counter / agent_counter_code. Only a real seller
+           has a desk: an online sale has none, and printing the head office
+           on it would say a counter issued something a customer issued for
+           themselves. Falls back to the company city so a desk that has not
+           been given a location yet still prints somewhere true. */
+        $locName = trim((string) ($booking['agent_counter'] ?? ''));
+        $locCode = trim((string) ($booking['agent_counter_code'] ?? ''));
+        $location = $kind === 'online' ? '' : Settings::counterLabel($locCode, $locName);
+        if ($location === '' && $kind !== 'online') {
+            $location = trim((string) Settings::getString('company_city', ''));
+        }
+
         $parts = array_values(array_filter([$name, $code, $phone], static fn(string $s): bool => $s !== ''));
 
         /* The CHANNEL, named out loud (owner, 11 Sep 2026: "counter bata
@@ -512,12 +527,14 @@ final class Ticket
         };
 
         return [
-            'kind'  => $kind,
-            'code'  => $code,
-            'name'  => $name,
-            'phone' => $phone,
-            'label' => $label,
-            'line'  => implode('  ·  ', $parts),
+            'kind'     => $kind,
+            'code'     => $code,
+            'name'     => $name,
+            'phone'    => $phone,
+            'label'    => $label,
+            'line'     => implode('  ·  ', $parts),
+            'location' => $location,          // "Nepalgunj — Bus Park (NPJ)"
+            'locCode'  => mb_strtoupper($locCode),
         ];
     }
 
@@ -767,7 +784,10 @@ final class Ticket
             return $path;
         }
 
-        self::renderWithLock($path, !$force, static function () use ($booking, $ticket, $path, $filename) {
+        /* 24 Sep 2026: pass $stale through, as pngPath() does. It used to be
+           !$force alone, so a stale PDF that already existed was "skipped" and
+           printed / e-mailed tickets kept the old seat names forever. */
+        self::renderWithLock($path, !($force || $stale), static function () use ($booking, $ticket, $path, $filename) {
             self::renderTicketPdf($booking, $ticket)->save($path);
             Database::update('tickets', ['pdf_path' => $filename], 'id = :id', ['id' => $ticket['id']]);
         });
@@ -870,6 +890,13 @@ final class Ticket
     /** TTF text with optional faux bold (the shipped face has no Bold). */
     private static function gdText($im, float $size, int $x, int $y, int $col, string $text, bool $bold = false): void
     {
+        /* Devanagari goes through HarfBuzz (includes/devshape.php) so the
+           conjuncts, the reph and the i-matra come out as written. The old
+           path below is the fallback when shaping is unavailable. */
+        if (class_exists('DevShape') && DevShape::needs($text)
+            && DevShape::gdText($im, $size, $x, $y, $col, $text, $bold ? [[0, 0], [1, 0], [0, 1]] : [[0, 0]])) {
+            return;
+        }
         $text = dev_shape($text);
         $f = self::pngFont();
         imagettftext($im, $size, 0, $x, $y, $col, $f, $text);
@@ -882,6 +909,12 @@ final class Ticket
     /** Rendered width of a TTF string, for centring / right-aligning. */
     private static function gdWidth(float $size, string $text): int
     {
+        if (class_exists('DevShape') && DevShape::needs($text)) {
+            $w = DevShape::gdWidth($size, $text);
+            if ($w !== null) {
+                return $w;
+            }
+        }
         $text = dev_shape($text);
         $box = imagettfbbox($size, 0, self::pngFont(), $text);
 
@@ -981,15 +1014,15 @@ final class Ticket
         $listH = 60 + $listN * 44 + 16 + ($paxN > $listN ? 32 : 0);
         $grow  = max(0, $listH - 108);          // 108 = the seat-chip band it replaced
 
-        /* 20 Sep 2026 (owner): the corner QR is the company UPI QR for the
-           exact fare, so a scan opens any UPI app with the amount filled in.
-           It replaces the verify QR; without a UPI ID the old layout stays. */
+        // A payment request never replaces the signed boarding verification QR.
         $upiVpa = Settings::getString('upi_id', '');
-        $fare   = (float) ($booking['total_amount'] ?? 0);
-        $payUpi = ($upiVpa !== '' && $fare > 0)
-            ? upiLink($upiVpa, Settings::getString('upi_name', APP_NAME), $fare, (string) ($booking['pnr'] ?? ''))
-            : '';
-        $qrExt  = $payUpi !== '' ? 260 : 0;
+        $fare = (float) ($booking['total_amount'] ?? 0);
+        $settlement = self::paymentSummary($booking);
+        $currency = strtoupper((string) ($booking['currency'] ?? 'INR'));
+        $payUpi = ($upiVpa !== '' && $settlement['due'] > 0 && $currency === 'INR'
+            && in_array($booking['status'] ?? '', ['pending', 'confirmed'], true))
+            ? upiLink($upiVpa, Settings::getString('upi_name', APP_NAME), $settlement['due'], (string) ($booking['pnr'] ?? '')) : '';
+        $qrExt = $payUpi !== '' ? 350 : 270;
 
         $W = 1080; $H = 1620 + $grow + $qrExt;
         $im = imagecreatetruecolor($W, $H);
@@ -1002,7 +1035,7 @@ final class Ticket
         $red    = imagecolorallocate($im, 176, 42, 42);
         $ink    = imagecolorallocate($im, 27, 36, 54);
         $mut    = imagecolorallocate($im, 84, 96, 118);     // darker than the web's muted: WhatsApp re-encodes to JPEG and thin light-grey small print is the first thing it smears (6 Sep 2026)
-        $cream  = imagecolorallocate($im, 250, 243, 232);
+        $cream  = imagecolorallocate($im, 240, 247, 255);
         $white  = imagecolorallocate($im, 255, 255, 255);
         $line   = imagecolorallocate($im, 229, 233, 240);
         $tile   = imagecolorallocate($im, 246, 248, 252);
@@ -1043,18 +1076,47 @@ final class Ticket
             }
             return $text;
         };
+        /* Resolved here rather than at the chip below, because the line
+           under the company name needs the desk too (owner, 24 Sep 2026:
+           "company ko name ko tala location lekhne thau"). */
+        $issued = self::issuedBy($booking);
+
         $brand = self::latinUpper($co['name']);
         $bSz   = 30;
         foreach ([30, 27, 24, 21] as $try) { $bSz = $try; if (self::gdWidth($try, $brand) <= $W - 60 - $bx) { break; } }
         self::gdText($im, $bSz, $bx, 122, $white, $clampTo($bSz, $brand, $W - 60 - $bx), true);
         self::gdText($im, 19, $bx, 162, $gold,
             $clampTo(19, 'E-TICKET  ·  INDIA-NEPAL BUS SERVICE', $chipX1 - 24 - $bx), false);
+        /* The desk this ticket was cut at, directly under the company name.
+           A Nepalgunj walk-in should be able to see which window sold it
+           without reading the small print. No desk (an online sale, or a
+           counter that has not been given a location yet) leaves the line
+           exactly as it was — the route and the website. */
+        $deskLine = self::latin($issued['location'] ?? '');
+        /* This line is ~480px wide and the desk name is the new thing on it,
+           so the line gives ground rather than the desk: try desk + route,
+           then desk + website, then the desk alone, and take the first that
+           fits WHOLE. Nothing is lost by dropping the other two — the route
+           is set in 60px letters in the middle of the ticket (STV -> RPD)
+           and the website is printed in full beside the QR. With no desk
+           the line is exactly what it always was. */
+        $brandSub = 'Gujarat <-> Rupaidiha  ·  ' . self::latin($co['web']);
+        if ($deskLine !== '') {
+            foreach ([
+                $deskLine . '  ·  Gujarat <-> Rupaidiha',
+                $deskLine . '  ·  ' . self::latin($co['web']),
+                $deskLine,
+            ] as $try) {
+                $brandSub = $try;
+                if (self::gdWidth(16, $try) <= $chipX1 - 24 - $bx) { break; }
+            }
+        }
         self::gdText($im, 16, $bx, 200, imagecolorallocate($im, 170, 185, 215),
-            $clampTo(16, 'Gujarat <-> Rupaidiha  ·  ' . self::latin($co['web']), $chipX1 - 24 - $bx), false);
+            $clampTo(16, $brandSub, $chipX1 - 24 - $bx), false);
 
         /* Payment pill (top-right of the band) */
         $pay  = $booking['payment'] ?? null;
-        $paid = $pay !== null && (string) ($pay['status'] ?? '') === 'verified';
+        $paid = self::paymentSummary($booking)['due'] <= 0;
         if ($paid) {
             $pillCol = $green;
             $method  = strtoupper((string) ($pay['method'] ?? ''));
@@ -1078,7 +1140,6 @@ final class Ticket
            class as the PNR, so whoever picks the ticket up reads the code
            before anything else — and a commission question is settled off
            the picture instead of off the register. */
-        $issued = self::issuedBy($booking);
         $iCode  = self::latinUpper($issued['code']);
         $chipX2 = $W - 60;
         self::gdRounded($im, $chipX1, 124, $chipX2, 224, 18, $navyHi);
@@ -1095,7 +1156,30 @@ final class Ticket
         $cSz = 30;
         foreach ([30, 26, 22, 19, 17] as $try) { $cSz = $try; if (self::gdWidth($try, $iBig) <= 228) { break; } }
         self::gdText($im, $cSz, $chipX1 + 20, 196, $white, $clampTo($cSz, $iBig, 228), true);
-        $iWho = $issued['kind'] === 'agent' ? self::display($issued['name']) : '';
+        /* The third line of the chip. An agent sale spends it on the person
+           behind the code (the code is the identity; the name is the
+           courtesy). A counter or office sale has already spent the big
+           line on the seller's NAME, so this one carries WHERE they sold it
+           — the half of "by name and counter location" that was missing. */
+        if ($issued['kind'] === 'agent') {
+            $iWho = self::display($issued['name']);
+        } else {
+            /* 228px at 14px is about 30 characters. "Nepalgunj — Bus Park
+               (NPJ)" is 26 and fits; "Nepalgunj — Dhamboji Chowk (NPJD)" is
+               not, and clamping it produced "Nepalgunj — Dhamboji Cho…" —
+               an ellipsis where the CODE should be, which is the one part
+               of a desk name that has to survive. So: try the whole label,
+               then the town without its bracket, then the bare code, and
+               take the first that fits whole. */
+            $iWho = '';
+            foreach ([
+                self::latin((string) ($issued['location'] ?? '')),
+                self::latin(trim((string) preg_replace('/\s*\([^)]*\)\s*$/', '', (string) ($issued['location'] ?? '')))),
+                self::latinUpper((string) ($issued['locCode'] ?? '')),
+            ] as $try) {
+                if ($try !== '' && self::gdWidth(14, $try) <= 228) { $iWho = $try; break; }
+            }
+        }
         self::gdText($im, 14, $chipX1 + 20, 216, imagecolorallocate($im, 170, 185, 215),
             $clampTo(14, $iWho, 228), false);
 
@@ -1259,7 +1343,7 @@ final class Ticket
         self::gdRoundedGrad($im, 60, 1152 + $grow, $W - 60, 1250 + $grow, 16, [14, 32, 68], [38, 72, 128]);
         imagefilledrectangle($im, 76, 1152 + $grow, $W - 76, 1155 + $grow, $gold);
         self::gdText($im, 17, 88, 1192 + $grow, $gold, 'जम्मा भाडा  ·  TOTAL FARE', false);
-        $amt = '₹ ' . number_format((float) ($booking['total_amount'] ?? 0));
+        $amt = $currency . ' ' . number_format((float) ($booking['total_amount'] ?? 0), 2);
         self::gdText($im, 36, 88, 1236 + $grow, $white, $amt, true);
         $fps = (float) ($booking['fare_per_seat'] ?? 0);
         /* Never fewer than the list above it names: a private cabin holds more
@@ -1282,114 +1366,50 @@ final class Ticket
             self::gdText($im, 18, $W - 88 - $ow, 1192 + $grow, $gold, $offerTxt, true);
         }
 
-        /* QR + help block */
+        /* Separate, labelled QR cards. Integer modules + four-module quiet
+           zones stay crisp in the original PNG and WhatsApp's image copy. */
         $qrData = appUrl('verify-ticket.php') . '?pnr=' . urlencode($pnr) . '&k=' . self::downloadToken($pnr);
-        $qrTmp  = tempnam(sys_get_temp_dir(), 'shgqr');
-        try {
-            /* Rendered at its FINAL pixel size, not scaled down into it.
-               It used to be drawn at scale 10 (450px) and resampled to
-               236px — bicubic softening every module edge right before
-               WhatsApp puts a JPEG pass over the top. Now scale 5 with the
-               spec quiet zone of 4 gives (41 + 8) x 5 = 245px natively:
-               every module is exactly 5 square pixels with hard edges, and
-               imagecopy (no resample) keeps them that way.
-
-               The quiet zone was also 2 modules, half what the spec asks
-               and half what QrCode::png() itself defaults to. Widening it
-               inside a fixed 236px box would have made each module SMALLER,
-               so the white card grows with it — there is 690px of empty
-               room to the left of it, the help text starts at x=60. */
-            /* ticket.php declares no dependencies of its own and has always
-               relied on the caller having loaded qr.php. Every real entry
-               point does (api/_init.php, admin/_guard.php,
-               download-ticket.php, cron/expire.php) — but a caller that
-               forgets gets a ticket with NO QR and only a line in the log,
-               which is precisely the kind of failure that reaches a
-               passenger unnoticed. Cheap to make self-sufficient. */
-            if (!class_exists('QrCode')) {
-                require_once __DIR__ . '/qr.php';
-            }
-            if ($payUpi !== '') {
-                $mods = count(QrCode::matrix($payUpi, QrCode::ECC_M));
-                QrCode::png($payUpi, $qrTmp, max(4, intdiv(430, $mods + 4)), 2, QrCode::ECC_M);
-            } else {
-                QrCode::png($qrData, $qrTmp, 5, 4, QrCode::ECC_M);
-            }
-            $qr = @imagecreatefromstring((string) file_get_contents($qrTmp));
-            if ($qr !== false) {
-                if (!imageistruecolor($qr)) { imagepalettetotruecolor($qr); }
-                /* Payload length decides the QR version, so this is 185px
-                   for a short PNR and 245px for the longest realistic one.
-                   Clamped so a future longer payload can never push the
-                   card down into the footer notes at y=1578. */
-                $qrPx   = min(imagesx($qr), $payUpi !== '' ? 440 : 245);
-                $pad    = $payUpi !== '' ? 14 : 12;
-                $cardW  = $qrPx + $pad * 2;
-                $cardX1 = $W - 60 - $cardW;
-                $cardY1 = ($payUpi !== '' ? 1330 : 1272) + $grow;
-                if ($payUpi !== '') {
-                    /* The owner's ask: it must be obvious that THIS is where
-                       you pay, so the QR gets its own banner. 21 Sep 2026:
-                       the banner is now a gradient with a shadow, so it
-                       lifts off the card instead of lying flat on it. */
-                    $bnr = 'भुक्तानी यहाँ  ·  PAY HERE';
-                    self::gdShadow($im, $cardX1, 1272 + $grow, $W - 60, 1324 + $grow, 14, 5);
-                    self::gdRoundedGrad($im, $cardX1, 1272 + $grow, $W - 60, 1324 + $grow, 14, [248, 146, 46], [226, 104, 16]);
-                    self::gdText($im, 21, (int) ($cardX1 + ($cardW - self::gdWidth(21, $bnr)) / 2), 1309 + $grow, $white, $bnr, true);
-                }
-                /* ---- The QR card -----------------------------------------
-                   21 Sep 2026 (owner: "payment QR ko outline ramro hos").
-                   The old card was a white box with one hairline, which on
-                   a cream page had almost no edge at all. Now it reads as a
-                   scanner viewfinder: shadow under it, a coloured double
-                   ring around it, and four corner brackets — the shape every
-                   phone camera has trained people to point at. Green while a
-                   payment is due (the UPI QR), navy for the status QR. */
-                $frameCol = $payUpi !== '' ? $green : $navy;
-                self::gdShadow($im, $cardX1, $cardY1, $W - 60, $cardY1 + $cardW, 12, 6);
-                self::gdRounded($im, $cardX1, $cardY1, $W - 60, $cardY1 + $cardW, 12, $white);
-                // Double ring: a soft outer hairline, then a solid 3 px inner
-                // ring in the accent colour, with a white gutter between them
-                // so a scanner still finds the quiet zone.
-                imagerectangle($im, $cardX1, $cardY1, $W - 60, $cardY1 + $cardW, $line);
-                for ($k = 0; $k < 3; $k++) {
-                    imagerectangle($im, $cardX1 + 5 + $k, $cardY1 + 5 + $k, $W - 65 - $k, $cardY1 + $cardW - 5 - $k, $frameCol);
-                }
-                /* imagecopy, not imagecopyresampled: at 1:1 any resampler
-                   can only blur what is already the right size. */
-                imagecopy($im, $qr, $cardX1 + $pad, $cardY1 + $pad, 0, 0, $qrPx, $qrPx);
+        if (!class_exists('QrCode')) { require_once __DIR__ . '/qr.php'; }
+        $drawQr = static function (string $payload, int $x, int $y, int $maxSize) use ($im): void {
+            $tmp = tempnam(sys_get_temp_dir(), 'shgqr');
+            try {
+                $modules = count(QrCode::matrix($payload, QrCode::ECC_M)) + 8;
+                $scale = max(1, intdiv($maxSize, $modules));
+                QrCode::png($payload, $tmp, $scale, 4, QrCode::ECC_M);
+                $qr = imagecreatefromstring((string) file_get_contents($tmp));
+                if ($qr === false) { throw new RuntimeException('QR image unavailable'); }
+                imagecopy($im, $qr, $x, $y, 0, 0, imagesx($qr), imagesy($qr));
                 imagedestroy($qr);
-                // Corner brackets sit OUTSIDE the ring, over the white card,
-                // so they never touch a QR module and break the scan.
-                self::gdScanFrame($im, $cardX1 - 4, $cardY1 - 4, $W - 56, $cardY1 + $cardW + 4, 34, 6, $frameCol);
-                if ($payUpi !== '') {
-                    $cap = 'स्क्यान गरेर तिर्नुहोस्  ·  SCAN TO PAY';
-                    self::gdText($im, 17, (int) ($cardX1 + ($cardW - self::gdWidth(17, $cap)) / 2), $cardY1 + $cardW + 44, $green, $cap, true);
-                }
-            }
-        } catch (Throwable $e) {
-            Logger::error('PNG ticket QR failed: ' . $e->getMessage());
-        } finally {
-            @unlink($qrTmp);
-        }
+            } finally { @unlink($tmp); }
+        };
+        self::gdText($im, 20, 76, 1300 + $grow, $navy, 'TICKET VERIFICATION', true);
+        try { $drawQr($qrData, 76, 1320 + $grow, 245); }
+        catch (Throwable $e) { Logger::error('Ticket verification QR: ' . $e->getMessage()); }
+        $infoX = $payUpi !== '' ? 560 : 360;
         if ($payUpi !== '') {
-            self::gdText($im, 22, 60, 1300 + $grow, $navy, 'यहाँबाट पनि भुक्तानी गर्न मिल्छ', true);
-            self::gdText($im, 17, 60, 1332 + $grow, $mut, 'PAY HERE  ·  Scan the QR with any UPI app', false);
-            self::gdText($im, 15, 60, 1374 + $grow, $mut, 'तिर्ने रकम  ·  AMOUNT', false);
-            self::gdText($im, 32, 60, 1418 + $grow, $green, '₹ ' . number_format($fare), true);
-            self::gdText($im, 18, 60, 1458 + $grow, $ink, 'UPI: ' . $upiVpa, true);
-            self::gdText($im, 16, 60, 1488 + $grow, $mut, 'GPay  ·  PhonePe  ·  Paytm  ·  BHIM', false);
+            self::gdRounded($im, 550, 1270 + $grow, 1010, 1320 + $grow, 12, $orange);
+            self::gdText($im, 22, 580, 1305 + $grow, $white, 'SCAN & PAY', true);
+            try { $drawQr($payUpi, 590, 1332 + $grow, 350); }
+            catch (Throwable $e) { Logger::error('Payment QR: ' . $e->getMessage()); }
+            self::gdText($im, 18, 560, 1710 + $grow, $ink, $clampTo(18, 'UPI: ' . $upiVpa, 448), true);
+            self::gdText($im, 16, 560, 1740 + $grow, $mut, $clampTo(16, Settings::getString('upi_name', APP_NAME), 448), false);
         } else {
-            self::gdText($im, 22, 60, 1300 + $grow, $navy, 'स्क्यान गर्नुहोस्  ·  LIVE STATUS', true);
-            self::gdText($im, 17, 60, 1332 + $grow, $mut, 'Valid / Cancelled / Boarded — checked live.', false);
-            self::gdText($im, 17, 60, 1358 + $grow, $mut, 'Works at boarding and at the border.', false);
+            self::gdText($im, 24, $infoX, 1300 + $grow, $settlement['due'] <= 0 ? $green : $orange,
+                $settlement['due'] <= 0 ? 'PAID' : 'PAYMENT DUE', true);
+            $ref = (string) ($booking['payment']['utr_number'] ?? '');
+            self::gdText($im, 17, $infoX, 1420 + $grow, $mut, $clampTo(17, $ref, 640), false);
+            if ($settlement['due'] > 0) {
+                self::gdText($im, 16, $infoX, 1454 + $grow, $mut, 'Contact the office for payment instructions.', false);
+            }
         }
-        self::gdText($im, 19, 60, 1398 + $grow + $qrExt - 90, $ink, 'सम्पर्क  ·  ' . Settings::officePhone(), true);
+        self::gdText($im, 18, $infoX, ($payUpi !== '' ? 1780 : 1345) + $grow, $ink,
+            'Paid: ' . $currency . ' ' . number_format($settlement['paid'], 2), true);
+        self::gdText($im, 18, $infoX, ($payUpi !== '' ? 1810 : 1380) + $grow, $ink,
+            'Due: ' . $currency . ' ' . number_format($settlement['due'], 2), true);
+        self::gdText($im, 19, 60, 1398 + $grow + $qrExt - 90, $ink, 'Support: ' . Settings::officePhone(), true);
         self::gdText($im, 18, 60, 1428 + $grow + $qrExt - 90, $orange, self::latin($co['web']), true);
         $wa = Settings::officeWhatsApp();
-        if ($wa !== '') {
-            self::gdText($im, 16, 60, 1456 + $grow + $qrExt - 90, $green, 'WhatsApp: +' . $wa, true);
-        }
+        if ($wa !== '') { self::gdText($im, 16, 60, 1456 + $grow + $qrExt - 90, $green, 'WhatsApp: +' . $wa, true); }
 
         /* Who cut it, in full — name, code and the agent's own phone, with
            the CODE repeated as an orange chip. The header chip answers it at
@@ -1487,13 +1507,15 @@ final class Ticket
                     COALESCE(s.dep_time_override, r.dep_time) AS dep_time, r.arr_time,
                     r.crew_name, r.crew_phone, r.duration_text,
                     bus.bus_name, bus.bus_number, bus.coach_type,
-                    a.full_name AS agent_name, a.phone AS agent_phone, a.role AS agent_role
+                    a.full_name AS agent_name, a.phone AS agent_phone, a.role AS agent_role,
+                    ap.counter_name AS agent_counter, ap.counter_code AS agent_counter_code
                FROM bookings b
                JOIN booking_legs l ON l.booking_id = b.id AND l.leg_type = \'outbound\'
                JOIN schedules s ON s.id = l.schedule_id
                JOIN routes r ON r.id = s.route_id
                LEFT JOIN buses bus ON bus.id = s.bus_id
                LEFT JOIN admins a ON a.id = b.sold_by_admin_id
+               LEFT JOIN admin_profiles ap ON ap.admin_id = a.id
               WHERE b.id = :id
               LIMIT 1',
             ['id' => $bookingId]
@@ -1511,11 +1533,25 @@ final class Ticket
         // Latest payment row — the ticket prints PAID / CASH DUE from this,
         // so the passenger and the crew never have to guess.
         $booking['payment'] = Database::fetch(
-            'SELECT status, method FROM payments WHERE booking_id = :b ORDER BY id DESC LIMIT 1',
+            'SELECT status, method, amount, utr_number FROM payments WHERE booking_id = :b ORDER BY id DESC LIMIT 1',
             ['b' => $bookingId]
         );
 
+        $booking['verified_paid'] = (float) Database::scalar(
+            "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE booking_id = :b AND status = 'verified'",
+            ['b' => $bookingId], 0
+        );
         return $booking;
+    }
+
+    /** Presentation only: never treats a screenshot or pending transfer as paid. */
+    public static function paymentSummary(array $booking): array
+    {
+        $total = max(0, (float) ($booking['total_amount'] ?? 0));
+        $payment = $booking['payment'] ?? [];
+        $paid = max(0, (float) ($booking['verified_paid'] ??
+            (($payment['status'] ?? '') === 'verified' ? ($payment['amount'] ?? 0) : 0)));
+        return ['paid' => round($paid, 2), 'due' => round(max(0, $total - $paid), 2)];
     }
 
     /**
@@ -1534,7 +1570,7 @@ final class Ticket
 
     /**
      * Passenger-facing seat label for ONE seat, in THIS booking's coach + mode.
-     * The printed ticket shows the row-letter grid id (LA1, UB3…) the app draws,
+     * The printed ticket shows the row-letter grid id (A1, B9…) the app draws,
      * while the QR payload and the database keep the canonical L1/U7 — so this is
      * used only where a berth is shown to a human, never for identity.
      */
@@ -1571,13 +1607,26 @@ final class Ticket
     /** Bump whenever renderTicketPng()'s layout changes — see pngPath().
      *  21 Sep 2026: depth pass — card and fare-band drop shadows, navy
      *  gradient fare band with a gold hairline, and the payment QR in a
-     *  scanner viewfinder (double ring + corner brackets). */
-    private const PNG_LAYOUT_CHANGED = '2026-09-21 02:40:00';
+     *  scanner viewfinder (double ring + corner brackets).
+     *
+     *  WRITE THIS IN INDIA TIME, and never later than the deploy that ships
+     *  it. strtotime() reads it in the app timezone that bootstrap.php sets
+     *  (APP_TIMEZONE = Asia/Kolkata on live and on shg-test, checked through
+     *  bootstrap on 24 Sep 2026). A stamp in the FUTURE makes
+     *  `filemtime < stamp` true for every ticket until then: each one
+     *  re-renders on every download instead of once. A stamp EARLIER than
+     *  the layout change leaves the tickets drawn in between stale for
+     *  good — the old note said "UTC", so 20:10 here meant 20:10 IST and two
+     *  tickets drawn at 23:43/23:44 IST with the old seat labels were never
+     *  redrawn. tests/chalani-png-test.php and tests/ticket-cache-test.php
+     *  assert a past moment. */
+    private const PNG_LAYOUT_CHANGED = '2026-09-24 10:30:00';   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
-     *  seat box + stub pick up the LA1/UA1 grid ids without a manual purge. */
-    private const PDF_LAYOUT_CHANGED = '2026-09-11 12:00:00';
+     *  seat box + stub pick up the current seat labels without a manual purge
+     *  (23 Sep 2026: the two-floor grid A1-F6 / A7-F12). */
+    private const PDF_LAYOUT_CHANGED = '2026-09-24 10:30:00';   // IST: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
 
     /**
      * How many passengers the ticket names one by one before it stops and
@@ -1587,8 +1636,8 @@ final class Ticket
     private const PNG_MAX_PAX_ROWS = 12;
 
     /* Warm brown palette — premium boarding pass look. */
-    private const BROWN  = [80, 45, 20];
-    private const CREAM  = [252, 248, 240];
+    private const BROWN  = [16, 42, 86];
+    private const CREAM  = [240, 247, 255];
 
     private static function registerDevanagariFont(Pdf $pdf): void
     {
@@ -1692,7 +1741,7 @@ final class Ticket
            ============================================================== */
         $primary  = $booking['passengers'][0]['full_name'] ?? '';
         $paxCount = count($booking['passengers']);
-        // Row-letter grid ids for the printed ticket (LA1 · LA2 …); the QR
+        // Row-letter grid ids for the printed ticket (A1 · A2 …); the QR
         // payload built elsewhere keeps the canonical L1/L2 for the scanner.
         $seatList = self::seatLabelList($seats, $booking, ' · ');
 
@@ -1740,6 +1789,16 @@ final class Ticket
         if ($cin !== '') {
             $pdf->text($textX, 68, 'CIN: ' . $cin, 7.5, 'F1', [200, 190, 170]);
         }
+        /* The desk, directly under the company name (owner, 24 Sep 2026:
+           "company ko name ko tala location lekhne thau"). It takes the last
+           line of the 96pt band — above the orange rule at y=92 — and steps
+           up into the CIN's slot when there is no CIN, so the band never
+           carries an empty row. Latin only: the desk names are place names
+           and this line sits outside the Devanagari font's reach. */
+        $deskPdf = self::latin((string) (self::issuedBy($booking)['location'] ?? ''));
+        if ($deskPdf !== '') {
+            $pdf->text($textX, $cin !== '' ? 82 : 68, 'COUNTER: ' . strtoupper($deskPdf), 8.5, 'F2', self::GOLD);
+        }
 
         self::devText($pdf, $W - 220, 18, 'यात्रा टिकट', 16, $F8, self::GOLD);
         $pdf->text($W - 220, 42, 'E-TICKET / BOARDING PASS', 8, 'F2', [230, 220, 200]);
@@ -1752,7 +1811,7 @@ final class Ticket
            PAYMENT BAND — bilingual (keeps the existing logic)
            ============================================================== */
         $pay  = $booking['payment'] ?? null;
-        $paid = $pay !== null && (string) $pay['status'] === 'verified';
+        $paid = self::paymentSummary($booking)['due'] <= 0;
         $due  = inr((float) $booking['total_amount']);
         if ($paid) {
             $method = strtoupper((string) ($pay['method'] ?? ''));
@@ -2048,7 +2107,14 @@ final class Ticket
             $iName     = rtrim(mb_substr($iName, 0, max(1, mb_strlen($iName) - 2)));
             $issuedTxt = $join([$iName . '..', $issued['code']]);
         }
-        $pdf->text(400, $cY, 'ISSUED BY  ·  ' . strtoupper($issued['kind'] === 'agent' ? 'AGENT' : $issued['code']), 8, 'F2', self::MUTE);
+        /* The caption carries the desk code (NPJ, MSA) — three letters is
+           all this line has room for, and the code is what a clerk reads
+           back over the phone. The full name is already in the header band. */
+        $issuedCap = 'ISSUED BY  ·  ' . strtoupper($issued['kind'] === 'agent' ? 'AGENT' : $issued['code']);
+        if (($issued['locCode'] ?? '') !== '') {
+            $issuedCap .= '  ·  ' . strtoupper((string) $issued['locCode']);
+        }
+        $pdf->text(400, $cY, $issuedCap, 8, 'F2', self::MUTE);
         if ($isDev) {
             self::devText($pdf, 400, $cY + 14, $issuedTxt, 9, $F7, self::INK);
         } else {

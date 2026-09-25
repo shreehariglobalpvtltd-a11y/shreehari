@@ -445,6 +445,74 @@ final class Settings
     }
 
     /**
+     * The counter locations the office has defined, as code => name.
+     *
+     * Owner ask (24 Sep 2026): "counter mode lai location haru ni add garna
+     * milos, like NPJ". The list lives in ONE settings row rather than a
+     * table — it is a dozen short lines only a superadmin ever edits, and a
+     * table would cost a CRUD screen to buy integrity nobody needs. Format
+     * is one desk per line:
+     *
+     *     NPJ|Nepalgunj — Bus Park
+     *
+     * A line with no pipe is taken as the name and given itself as the
+     * code, so somebody who types just "Birgunj" still gets a usable row
+     * instead of a silently dropped one. Blank lines are skipped, codes are
+     * upper-cased and trimmed to 16 characters (the column width), and a
+     * duplicate code keeps the FIRST spelling so the order on screen is the
+     * order in the box.
+     *
+     * @return array<string,string> code => name, in the order written
+     */
+    public static function counterLocations(): array
+    {
+        $raw = self::getString('counter_locations', '');
+        $out = [];
+        foreach (preg_split('/\r\n|\r|\n/', $raw) ?: [] as $line) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+            [$code, $name] = array_pad(explode('|', $line, 2), 2, null);
+            $code = mb_strtoupper(trim((string) $code));
+            $name = trim((string) ($name ?? ''));
+            if ($name === '') {
+                $name = $code;
+            }
+            $code = mb_substr($code, 0, 16);
+            if ($code === '' || isset($out[$code])) {
+                continue;
+            }
+            $out[$code] = mb_substr($name, 0, 120);
+        }
+
+        return $out;
+    }
+
+    /**
+     * The printable label for a desk: "Nepalgunj — Bus Park (NPJ)".
+     *
+     * Either half may be missing — a desk can be given a name with no code
+     * or a code the list has never heard of — and the label degrades to
+     * whichever half exists rather than printing stray brackets on a
+     * ticket. An unknown code still resolves its name from the list when
+     * the profile carries only the code.
+     */
+    public static function counterLabel(string $code, string $name = ''): string
+    {
+        $code = mb_strtoupper(trim($code));
+        $name = trim($name);
+        if ($name === '' && $code !== '') {
+            $name = self::counterLocations()[$code] ?? '';
+        }
+        if ($name === '') {
+            return $code;
+        }
+
+        return $code === '' ? $name : $name . ' (' . $code . ')';
+    }
+
+    /**
      * Drop the in-memory cache — used by long-running cron scripts.
      */
     public static function flush(): void

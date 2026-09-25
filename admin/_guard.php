@@ -110,6 +110,8 @@ function admin_nav(): array
         // no seller so it belongs to the office.
         ['href' => 'customers.php',    'icon' => 'user',     'label' => 'Customers',        'perm' => 'customers.view', 'section' => 'Customers'],
         ['href' => 'enquiries.php',    'icon' => 'mail',      'label' => 'Enquiries',        'perm' => 'customers.view', 'section' => 'Customers'],
+        // 24 Sep 2026: requests the WhatsApp assistant handed to people (SUP-…).
+        ['href' => 'support-inbox.php','icon' => 'msg',       'label' => 'Support Inbox',    'perm' => 'support.view',   'section' => 'Customers'],
 
         // Buses — fleet, the day-by-day schedule and the crew.
         ['href' => 'calendar.php',     'icon' => 'calendar',  'label' => 'Bus Calendar',     'perm' => 'schedules.manage','section' => 'Buses'],
@@ -140,6 +142,8 @@ function admin_nav(): array
         ['href' => 'health.php',       'icon' => 'alert',     'label' => 'System Health',    'perm' => 'dashboard.view', 'section' => 'Settings'],
         ['href' => 'ai-knowledge.php', 'icon' => 'doc',       'label' => 'AI Knowledge',     'perm' => 'dashboard.view', 'section' => 'Settings'],
         ['href' => 'ai-activity.php',  'icon' => 'msg',       'label' => 'AI Activity',      'perm' => 'dashboard.view', 'section' => 'Settings'],
+        // 24 Sep 2026: the approved documents vault the assistant may quote and send.
+        ['href' => 'company-docs.php', 'icon' => 'doc',       'label' => 'Company Documents','perm' => 'dashboard.view', 'section' => 'Settings'],
 
         // Map — routes, stops, head office and the driver's live position (5 Sep 2026).
         ['href' => 'map.php',          'icon' => 'map-pin',      'label' => 'Live Map',         'perm' => 'schedules.view', 'section' => 'Map'],
@@ -1618,5 +1622,15 @@ details.advanced-section[open]>summary::before{content:'▼ '}
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}}
 @media print{.tb,.side,.scrim,.mnav,.no-print{display:none !important}.wrap{margin:0;padding:0;max-width:none}.panel,.card{box-shadow:none;break-inside:avoid}}
+/* Seat floors (23 Sep 2026) — one look on every admin seat surface: Lower Floor
+   (1F) A1–F6 BLUE, Upper Floor (2F) A7–F12 GREEN. Only the floor frame and its
+   heading take the floor colour; seat status colours stay as each page sets them. */
+.floor-L{--fl:#1E5AA8;--fl-bg:#F2F7FF;--fl-line:#C3D8F5}
+.floor-U{--fl:#15803D;--fl-bg:#F1FAF4;--fl-line:#B9E2C7}
+:root[data-theme="dark"] .floor-L{--fl:#2F6FD0;--fl-bg:rgba(47,111,208,.08);--fl-line:#27466F}
+:root[data-theme="dark"] .floor-U{--fl:#1F8F4E;--fl-bg:rgba(31,143,78,.08);--fl-line:#245B3A}
+.floor-L,.floor-U{background:var(--fl-bg);border:1.5px solid var(--fl-line);border-radius:var(--r);padding:10px}
+.floor-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px;padding:8px 12px;border-radius:10px;background:var(--fl,var(--navy));color:#fff;font-weight:800;font-size:13.5px;letter-spacing:.01em}
+.floor-head .fh-range{margin-left:auto;font-family:var(--f-mono);font-size:12px;background:rgba(255,255,255,.22);padding:2px 9px;border-radius:999px;white-space:nowrap}
 CSS;
 }

@@ -397,6 +397,19 @@ try {
     check('the migration seeds the master switch OFF', str_contains($sql, "('wa_agent_on',         '0'"));
     check('  and creates the audit table', str_contains($sql, 'CREATE TABLE IF NOT EXISTS `ai_agent_calls`'));
 
+    /* 23 Sep 2026: a no-argument tool call must reach Gemini as "args":{} —
+       as "args":[] every follow-up was a 400 and "mero ticket ..." never finished. */
+    $gc = new ReflectionMethod(AiAgent::class, 'geminiContents');
+    $gc->setAccessible(true);
+    $wire = json_encode($gc->invoke(null, [
+        ['role' => 'user', 'content' => 'mero ticket'],
+        ['role' => 'assistant', 'content' => [['type' => 'tool_use', 'id' => 'g1', 'name' => 'my_tickets', 'input' => []]]],
+        ['role' => 'user', 'content' => [['type' => 'tool_result', 'tool_use_id' => 'g1', 'toolName' => 'my_tickets',
+            'content' => json_encode(['ok' => true, 'note' => 'none', 'data' => ['bookings' => []]])]]],
+    ]));
+    check('a no-argument tool call goes to Gemini as args:{} (not a list)',
+        str_contains((string) $wire, '"args":{}') && !str_contains((string) $wire, '"args":[]'), (string) $wire);
+
     $runAll = $src('tests/run-all.php');
     check('this suite is registered in the battery', str_contains($runAll, 'wa-agent-test.php'));
 

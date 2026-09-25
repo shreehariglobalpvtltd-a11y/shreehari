@@ -218,6 +218,46 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $flash = ['ok', 'Contact number updated for "' . $target['username'] . '".'];
             }
 
+        } elseif ($act === 'setcounter') {
+            /* The desk this account sells from (24 Sep 2026, owner: "counter
+               mode lai location haru ni add garna milos, like NPJ"). It is
+               printed on every ticket they issue — under the company name in
+               the header band and in the ISSUED BY chip — so a Nepalgunj
+               walk-in can see which window sold it.
+
+               One <select> writes both halves: the option value carries
+               "CODE|Name", because a code with no name prints bare letters on
+               a ticket and a name with no code has nothing short enough for
+               the chip. An empty value clears both, which is how a desk that
+               moved is un-assigned rather than left pointing at the old town. */
+            $id     = (int) ($_POST['id'] ?? 0);
+            $pick   = trim((string) ($_POST['counter'] ?? ''));
+            $target = Database::fetch('SELECT id, username FROM admins WHERE id = :id', ['id' => $id]);
+            if ($target === null) {
+                $flash = ['bad', 'Staff account not found.'];
+            } else {
+                [$cCode, $cName] = array_pad(explode('|', $pick, 2), 2, '');
+                $cCode = trim((string) $cCode);
+                $cName = trim((string) $cName);
+                /* A code chosen from the list arrives with its name; a code
+                   typed by hand may not, so the list fills the blank. */
+                if ($cName === '' && $cCode !== '') {
+                    $cName = Settings::counterLocations()[mb_strtoupper($cCode)] ?? '';
+                }
+                try {
+                    AgentWallet::saveProfile($id, ['counter_code' => $cCode, 'counter_name' => $cName]);
+                    $label = Settings::counterLabel($cCode, $cName);
+                    Logger::audit('staff.setcounter', 'admin', (string) $target['username'], null,
+                        ['counter' => $label], 'counter location updated');
+                    $flash = ['ok', $label !== ''
+                        ? 'Counter location for "' . $target['username'] . '" is now ' . $label . '. It prints on every ticket they issue.'
+                        : 'Counter location cleared for "' . $target['username'] . '".'];
+                } catch (Throwable $e) {
+                    Logger::error('setcounter failed', ['e' => $e->getMessage()], 'automation');
+                    $flash = ['bad', 'Could not save the counter location.'];
+                }
+            }
+
         } elseif ($act === 'reset_2fa') {
             // Superadmin rescue (Point 10) — turn OFF a staff member's two-factor
             // sign-in if they lost access to their registered mobile and are
@@ -385,6 +425,10 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
 // the moment any agent application is pending.
 $csrf = Security::e(Security::csrfToken());
 $k    = CSRF_TOKEN_NAME;
+/* The desks the office has defined, for the counter picker on each row.
+   Edited in Admin → Settings → counter_locations, one "CODE|Name" per
+   line, so a new window (Birgunj, Butwal) is added without a deploy. */
+$counterLocs = Settings::counterLocations();
 
 /* ── Pending Agent Applications ─────────────────────────────────── */
 $pending = Database::fetchAll(
@@ -550,8 +594,12 @@ if ($pageIds !== []) {
     $in   = implode(',', $pageIds);   // ids are ints from the DB — safe to inline
     $byId = [];
     foreach (Database::fetchAll(
-        'SELECT id, username, email, full_name, phone, role, is_active, must_change_pw, last_login_at, created_at
-           FROM admins WHERE id IN (' . $in . ')'
+        'SELECT a.id, a.username, a.email, a.full_name, a.phone, a.role, a.is_active, a.must_change_pw,
+                a.last_login_at, a.created_at,
+                ap.counter_name, ap.counter_code
+           FROM admins a
+           LEFT JOIN admin_profiles ap ON ap.admin_id = a.id
+          WHERE a.id IN (' . $in . ')'
     ) as $r) {
         $byId[(int) $r['id']] = $r;
     }
@@ -789,6 +837,7 @@ if ($pageIds !== []) {
   <table>
     <thead><tr>
       <th>Name</th><th>Agent #</th>
+      <th>Counter · location</th>
       <th>Contact · WhatsApp</th>
       <th>Role</th><th>Status</th><th>Last login</th><th>Actions</th>
     </tr></thead>
@@ -818,6 +867,46 @@ if ($pageIds !== []) {
               <span class="code-pre">SHG-</span>
               <input type="number" name="code" min="1" max="1000" value="<?= $shg !== null ? (int) $shg : '' ?>" placeholder="—" aria-label="Agent code">
               <button type="submit" title="Save code">💾</button>
+            </form>
+          <?php else: ?><span class="muted">—</span><?php endif; ?>
+        </td>
+        <!-- The desk this account sells from. Printed on every ticket they
+             issue, so it is edited here beside the agent code rather than
+             buried two screens deep. Only the roles that actually sell get
+             the control — a scanner or an accountant has no counter. -->
+        <td>
+          <?php
+            $sCode = mb_strtoupper(trim((string) ($s['counter_code'] ?? '')));
+            $sName = trim((string) ($s['counter_name'] ?? ''));
+            $sells = in_array((string) $s['role'], ['counter', 'agent', 'manager', 'superadmin'], true);
+          ?>
+          <?php if ($sells): ?>
+            <form method="post" style="margin:0;display:flex;gap:4px;align-items:center">
+              <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+              <input type="hidden" name="action" value="setcounter">
+              <input type="hidden" name="id" value="<?= (int) $s['id'] ?>">
+              <select name="counter" aria-label="Counter location"
+                      style="padding:4px 6px;border:1px solid var(--line);border-radius:7px;font-size:12px;max-width:170px">
+                <option value="">— none —</option>
+                <?php
+                  $seen = false;
+                  foreach ($counterLocs as $cc => $cn):
+                    $selected = $cc === $sCode;
+                    $seen = $seen || $selected;
+                ?>
+                  <option value="<?= Security::e($cc . '|' . $cn) ?>"<?= $selected ? ' selected' : '' ?>>
+                    <?= Security::e($cc . ' · ' . $cn) ?>
+                  </option>
+                <?php endforeach; ?>
+                <?php /* A desk set before the list carried it must not be
+                         silently re-pointed by opening this page. */ ?>
+                <?php if (!$seen && ($sCode !== '' || $sName !== '')): ?>
+                  <option value="<?= Security::e($sCode . '|' . $sName) ?>" selected>
+                    <?= Security::e(trim($sCode . ' · ' . $sName, ' ·')) ?> (not in list)
+                  </option>
+                <?php endif; ?>
+              </select>
+              <button class="btn ghost" type="submit" style="padding:4px 8px" title="Save counter location">💾</button>
             </form>
           <?php else: ?><span class="muted">—</span><?php endif; ?>
         </td>

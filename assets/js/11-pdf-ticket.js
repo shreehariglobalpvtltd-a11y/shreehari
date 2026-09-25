@@ -56,6 +56,22 @@ async function _loadDevFont(doc) {
     return true;
   } catch (e) { return false; }
 }
+/* What Helvetica can print (24 Sep 2026). jsPDF has no Devanagari shaping, and
+   a Devanagari string handed to its standard fonts comes out as symbols
+   ('सीता शर्मा' -> '8@$> 60M.>'), letter-spaced with the rest of the line —
+   every pickup line did that, because bpShort() appends the Nepali time of
+   day. The jsPDF ticket is only the fallback now (server PDF first, see
+   downloadTicketPDF), so it drops the Devanagari and the arrows the font
+   lacks instead of printing them broken. */
+function pdfSafe(t) {
+  if (Array.isArray(t)) return t.map(pdfSafe);
+  if (typeof t !== 'string') return t;
+  var kept = t.replace(/→/g, '->').replace(/⇄|↔/g, '<->').replace(/▶/g, '>').replace(/↩/g, '<-');
+  var out = kept.replace(/[\u0900-\u097F\u200C\u200D]+/g, '');
+  if (out === kept) return kept;            // nothing dropped: spacing untouched
+  out = out.replace(/\(\s*\)/g, '').replace(/ {2,}/g, ' ').replace(/\s+·\s*$/, '').trim();
+  return out === '' ? '-' : out;
+}
 /* Write text in Devanagari font if loaded, else keep current font with Roman fallback.
    Caller must setFontSize/setTextColor before calling.
    After the call, font is restored to helvetica. */
@@ -323,6 +339,15 @@ function serverTicketPngBlob(b) {
     return r.blob();
   });
 }
+/* The server's A4 PDF (download-ticket.php without img), as a Blob. */
+function serverTicketPdfBlob(b) {
+  return fetch('/download-ticket.php?pnr=' + encodeURIComponent(b.id), {
+    credentials: 'same-origin', redirect: 'error'
+  }).then(function (r) {
+    if (!r.ok || (r.headers.get('content-type') || '').indexOf('application/pdf') !== 0) throw new Error('no pdf');
+    return r.blob();
+  });
+}
 function downloadTicketImage(b) {
   serverTicketPngBlob(b).then(function (blob) {
     const a = document.createElement('a');
@@ -397,14 +422,33 @@ function _dropName(b, r) {
 }
 
 async function downloadTicketPDF(b) {
+  /* Server PDF first (24 Sep 2026). The server shapes Nepali with HarfBuzz
+     (includes/devshape.php); jsPDF cannot, and printed यात्‌रा, मति, सटि.
+     Same access rule as the PNG (the booking's own signed-in customer, or
+     staff); when the server says no, or we are offline, the jsPDF drawing
+     below is the fallback. */
+  try {
+    var pdfBlob = await serverTicketPdfBlob(b);
+    var pa = document.createElement('a');
+    pa.download = 'SHG-Ticket-' + b.id + '.pdf';
+    pa.href = URL.createObjectURL(pdfBlob);
+    pa.click();
+    setTimeout(function () { URL.revokeObjectURL(pa.href); }, 30000);
+    return;
+  } catch (e) { /* refused / offline: draw it here */ }
   if (!(await waitForJsPDF($('#pdfBtn')))) return;
   toast('Preparing your ticket…');
   const r = routeById(b.routeId) || {};
   const rr = b.ret ? (routeById(b.ret.routeId) || {}) : null;
   const doc = new window.jspdf.jsPDF({ unit: 'pt', format: 'a4' });
-  /* Load Devanagari font — Rule 4: full Devanagari Unicode block.
-     If loading fails, hasDev=false → Rule 5: Roman fallback. */
-  var hasDev = await _loadDevFont(doc);
+  /* No Devanagari font here any more (24 Sep 2026): jsPDF draws its glyphs
+     unshaped (यात्‌रा, मति), so the fallback prints the Roman labels, and
+     every string goes through pdfSafe() on its way to the page. Saves the
+     647 KB font download too. */
+  var hasDev = false;
+  (function (orig) {
+    doc.text = function (t, x, y, o, tf) { return orig.call(this, pdfSafe(t), x, y, o, tf); };
+  })(doc.text);
   const W = 595.28, PH = 841.89;
   /* #logoNav used to carry a 52KB base64 blob purely so this check could
      require a data: URI. It now points at /assets/img/logo.png — the same

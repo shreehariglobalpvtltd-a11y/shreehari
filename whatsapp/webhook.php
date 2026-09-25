@@ -131,6 +131,19 @@ function wh_status(array $st): void
     logWhatsAppEvent('status', $to, [], ['status' => strtoupper($state), 'message_id' => $wamid,
         'error' => $code ? '(code ' . $code . ') ' . $errText : '']);
 
+    /* 24 Sep 2026 — the marketing engine keeps its own per-recipient state
+       (accepted → delivered / read / failed) keyed on the same wamid. Told
+       first, only when the engine is on, and never allowed to break the
+       legacy row update below. */
+    if (in_array($state, ['delivered', 'read', 'failed'], true) && Settings::getBool('wa_marketing_on', false)) {
+        try {
+            require_once INCLUDE_PATH . '/wamarketing.php';
+            WaMarketing::deliveryStatus($wamid, $state);
+        } catch (Throwable $e) {
+            Logger::exception($e, 'whatsapp');
+        }
+    }
+
     // Same mapping as api/twilio-status.php: only terminal states rewrite a row.
     $final = match ($state) {
         'delivered', 'read' => 'sent',
@@ -224,8 +237,45 @@ function wh_inbound(array $msg): void
         return;
     }
 
+    /* A voice note becomes the words that were spoken (23 Sep 2026, owner:
+       "sunne"), and then takes exactly the path a typed message takes. The
+       reply opens with what we heard, so a mis-heard word is visible before
+       anything is booked. No transcript = the old "please type" reply. */
+    $heard = '';
+    if (in_array($type, ['audio', 'voice'], true) && trim($text) === '') {
+        try {
+            require_once INCLUDE_PATH . '/wavoice.php';
+            $said = WaVoice::transcribe((string) ($msg['audio']['id'] ?? ($msg['voice']['id'] ?? '')), $from);
+            if ($said !== null && $said !== '') {
+                $text  = $said;
+                $type  = 'text';
+                $heard = WaVoice::heardLine($said);
+            }
+        } catch (Throwable $e) {
+            Logger::exception($e, 'whatsapp');
+        }
+    }
+
+    /* 24 Sep 2026 — an attachment's METADATA (kind, mime, media id, the
+       sha256 Meta reports) travels with the words. WaBot decides, by the
+       office's switches, whether to fetch, keep or transcribe it. A voice
+       note the live transcriber (above) already turned into text is text
+       by now, so it never arrives here twice. */
+    $media = [];
+    if (in_array($type, ['image', 'document', 'audio', 'voice', 'video', 'sticker'], true)) {
+        try {
+            require_once INCLUDE_PATH . '/wamedia.php';
+            $media = WaMedia::describe($type, $msg);
+        } catch (Throwable $e) {
+            Logger::exception($e, 'whatsapp');
+        }
+    }
+
     require_once INCLUDE_PATH . '/wabot.php';
-    $reply = WaBot::reply('+' . $from, $text, $type);
+    $reply = WaBot::reply('+' . $from, $text, $type, $media);
+    if ($heard !== '') {
+        $reply['text'] = $heard . "\n" . $reply['text'];
+    }
 
     $media = $reply['media'];
     if ($media !== null && $media !== '' && mb_strlen($reply['text']) <= 1024) {

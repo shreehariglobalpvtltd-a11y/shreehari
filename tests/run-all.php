@@ -88,6 +88,7 @@ const CORE_SUITES = [
     'cross-mode-seat-sync-test.php' => 'private cabin ⇄ sharing beds: one physical inventory',
     'cross-mode-hold-test.php'     => 'a hold in one mode blocks the bed in the other',
     'seat-layout-test.php'         => 'one 4+2 physical shape everywhere',
+    'seat-label-test.php'          => 'two floors, one grid: A1..F6 / A7..F12, 72 unique, stored ids unchanged',
     'seat-block-test.php'          => 'a berth taken out of service stays out',
     'per-seat-cancel-test.php'     => 'cancelling one seat leaves the rest intact',
     'emergency-seat-test.php'      => 'the emergency berth is never sold',
@@ -103,6 +104,7 @@ const CORE_SUITES = [
     'missed-bus-test.php'          => 'the 24h grace after a departure',
     'counter-mode-test.php'        => 'the desk sells through the same engine',
     'counter-role-test.php'        => 'the counter role sees only what it may',
+    'counter-location-test.php'    => 'the desk a ticket was cut at: the list, the label, and both renders',
     'counter-grace-test.php'       => 'counter may sell past the public cut-off',
     'counter-discount-test.php'    => 'counter discount is capped server-side',
     'agent-isolation-test.php'     => 'an agent never reads another agent’s book',
@@ -150,6 +152,21 @@ const CORE_SUITES = [
     // 22 Sep 2026, registered with the knowledge base it guards.
     'ai-turn-test.php'            => 'the tool loop is bounded: budget, deadline, no repeated write on retry',
     'ai-kb-test.php'              => 'the knowledge base: audience scope, the ai_kb_on switch, an honest redacted miss',
+    // 23 Sep 2026, registered with the on-VPS everyday answers it guards.
+    'wa-faq-test.php'             => 'everyday WhatsApp answers from the live tables, no AI: personal left to the assistant',
+    'seatmap-test.php'            => 'the customer seat picture: signed link, status only (never names), same count as the challan',
+    'report-chart-test.php'       => 'the office report chart: figures = the register, signed link, office numbers only',
+    'wa-voice-test.php'           => 'voice notes: the Gemini request, the cleaned transcript, the typed-message path',
+    // 24 Sep 2026, registered with the three homepage booking cards it guards.
+    'home-entry-test.php'         => 'three booking doors open the existing flows; every home/sheet label exists in en/hi/ne',
+    // 24 Sep 2026, registered with the pdfPath() fix it guards.
+    'ticket-cache-test.php'       => 'a ticket PNG/PDF older than its layout stamp is redrawn once, and only once',
+    // 24 Sep 2026, registered with the removal of the downloadable admin source backups.
+    'public-files-test.php'       => 'no backup copy of PHP source where the web server can hand it out',
+    'devshape-test.php'           => 'Nepali on the PNG / PDF documents is shaped by HarfBuzz, and falls back safely',
+    // 24 Sep 2026, registered with the operations-manager stage it guards.
+    'company-docs-test.php'       => 'the documents vault: encrypted at rest, masked in chat, clearance by role, one-time links, honest sends',
+    'wa-ops-manager-test.php'     => 'human handoff (SUP-…), step-up gate on money tools, catalogue by switch, attachments, consent',
 ];
 
 /**
@@ -177,6 +194,7 @@ const NODE_SUITES = [
     'i18n-check.js'          => 'en/hi/ne key parity',
     'offline-ticket-test.js' => 'the ticket survives a deploy and works offline',
     'lazy-retry-test.js'     => 'failed lazy downloads remain retryable without duplicate actions',
+    'seat-label-parity.js'   => 'the browser prints the same seat labels as the server',
 ];
 
 /** Need the dev server on :8899 as well as the database. */

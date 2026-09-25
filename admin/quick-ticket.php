@@ -42,6 +42,26 @@ $prePhone = Security::clean((string) ($_GET['phone'] ?? ''), 20);
    render the party sizes the engine would happily sell. */
 $maxSeats = BookingService::maxSeatsFor(true);
 $maxDisc  = Settings::getFloat('counter_max_discount_pct', 15.0);
+/* Nepal counters (24 Sep 2026, owner: "Nepalgunj and other authorised
+   counters in Nepal … INR/NPR currency handling where required"). Fares are
+   held in INR everywhere — the database, the ticket, the accounts — and that
+   does not change. What a clerk at Nepalgunj or the Rupaidiha desk needs is
+   the NPR figure to say out loud while taking cash, so the peg travels to
+   the page and the desk prints "≈ NPR x" UNDER the rupee total. It is a
+   conversion aid and is labelled as one: nothing is stored in NPR.
+   npr_per_inr lives in Admin → Settings; 0 switches the line off. */
+$nprPeg   = Settings::getFloat('npr_per_inr', NPR_PER_INR);
+/* Which desk this clerk is signed in at (24 Sep 2026) — the same label the
+   tickets they issue will carry. Read straight off their own profile; a
+   staff member with no counter set simply sees no badge. */
+$deskRow   = Database::fetch(
+    'SELECT counter_name, counter_code FROM admin_profiles WHERE admin_id = :id',
+    ['id' => (int) ($admin['id'] ?? 0)]
+);
+$deskLabel = $deskRow === null ? '' : Settings::counterLabel(
+    (string) ($deskRow['counter_code'] ?? ''),
+    (string) ($deskRow['counter_name'] ?? '')
+);
 $waDriver = Settings::getString('whatsapp_driver', 'click_to_chat');
 $waReady  = $waDriver === 'twilio'
     ? (Settings::getString('twilio_account_sid', '') !== ''
@@ -86,6 +106,10 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
 .qt-hero p{margin:0;font-size:13px;opacity:.9;max-width:620px;line-height:1.45}
 .qt-badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;background:var(--orange);color:#fff;padding:5px 10px;border-radius:999px;box-shadow:0 4px 14px rgba(240,124,31,.45);animation:qtPulse 2.4s ease-in-out infinite}
 @keyframes qtPulse{0%,100%{box-shadow:0 4px 14px rgba(240,124,31,.45)}50%{box-shadow:0 4px 22px rgba(240,124,31,.9)}}
+/* The desk badge sits beside the QuickBot pill — quieter than it (this is
+   context, not the headline) but bright enough to catch a clerk who signed
+   in at the wrong window. */
+.qt-desk{display:inline-flex;align-items:center;gap:5px;margin-left:8px;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);color:#fff;padding:5px 10px;border-radius:999px}
 .qt-stepper{display:flex;gap:8px;flex-wrap:wrap;list-style:none;margin:12px 0 0;padding:0}
 .qt-stepper li{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);opacity:.75;transition:all .25s}
 .qt-stepper li b{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:rgba(255,255,255,.25);font-size:11px}
@@ -140,6 +164,10 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
 .qt-facts b{display:block;font-size:16px;margin-top:2px;word-break:break-word}
 .qt-facts em{display:block;font-style:normal;font-size:11.5px;color:var(--mut);margin-top:2px}
 .qt-facts .big b{font-size:24px;color:var(--navy)}
+/* The NPR conversion aid for a Nepal desk (24 Sep 2026). Deliberately
+   smaller and quieter than the rupee figure beside it: the fare IS the
+   rupee amount — this is what to say out loud while taking Nepali cash. */
+.qt-npr{display:block;font-size:12.5px;font-weight:700;color:#0863b8;margin-top:1px;letter-spacing:.01em}
 .qt-alt{margin-top:12px;padding:10px 12px;border-radius:12px;border:1px dashed var(--line);font-size:12.5px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .qt-alt button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:5px 10px;font-weight:700;cursor:pointer;font-size:12px}
 .qt-noplan{padding:14px;border-radius:12px;background:#fff3e0;color:#8a4a00;font-weight:700;font-size:13px;line-height:1.45}
@@ -274,6 +302,13 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
   <section class="qt-hero">
     <div class="qt-hero-l">
       <span class="qt-badge">🤖 QuickBot Ticket — 10-Second Booking</span>
+      <?php if ($deskLabel !== ''): ?>
+        <!-- Which window this is (24 Sep 2026). The same string that prints
+             on every ticket sold here, shown before the first keystroke so a
+             clerk signed in at the wrong desk sees it immediately rather
+             than after a passenger reads it off their ticket. -->
+        <span class="qt-desk">📍 <?= Security::e($deskLabel) ?></span>
+      <?php endif; ?>
       <h2>Name + Mobile → Auto Suggest → One Tap → Ticket</h2>
       <p>एउटै लाइनमा लेख्नुहोस् — "Ram Bahadur 9876543210 2 seats Mehsana kal" — वा नाम + मोबाइल मात्र। QuickBot ले यात्रीको पुराना टिकट र desk को pattern बाट route, date, boarding, seats, best seat र fare आफैँ भर्छ; तपाईं एक पटक Confirm थिच्नुहोस् — ticket बन्छ, WhatsApp जान्छ।</p>
       <ol class="qt-stepper">
@@ -427,6 +462,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
   var CSRF = <?= json_encode($csrf) ?>;
   var CAN = <?= $canSell ? 'true' : 'false' ?>;
   var MAX_DISC = <?= json_encode($maxDisc) ?>;
+  var NPR_PEG  = <?= json_encode($nprPeg) ?>;   // 0 = do not show the NPR line
   var $ = function (s, r) { return (r || document).querySelector(s); };
   var $$ = function (s, r) {
     var root = typeof r === 'string' ? document.querySelector(r) : (r || document);
@@ -434,20 +470,87 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
   };
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); };
 
-  function seatLabel(id, coach, mode){
-    id = String(id==null?'':id).toUpperCase();
-    var m = id.match(/^([LU])(\d+)$/);
-    if(m){
-      var across = mode==='private' ? [2,1] : [4,2];
-      try{ var mm = window.SHG_BOOT&&SHG_BOOT.settings&&SHG_BOOT.settings.seat_mode_map;
-           var sp = mm && mm[coach||'sleeper']; var ru = sp&&sp.modes&&sp.modes[mode||'sharing'];
-           if(ru&&Array.isArray(ru.across)&&ru.across.length===2) across=ru.across; }catch(e){}
-      var perRow = Math.max(1,(parseInt(across[0],10)||0)+(parseInt(across[1],10)||0));
-      var n = parseInt(m[2],10); if(!(n>=1)) return id;
-      var idx = Math.floor((n-1)/perRow), out=''; for(var k=idx;;){ out=String.fromCharCode(65+(k%26))+out; k=Math.floor(k/26)-1; if(k<0)break; }
-      return m[1]+out+(((n-1)%perRow)+1);
+  /* Seat labels (24 Sep 2026). This page used to keep its own copy of the
+     OLD deck-prefixed grid, so after the two-floor grid shipped the plan
+     card, the result card, Recent, the "same as last time" chip and the
+     spoken read-back said "UA4" while the seat map and the ticket shown
+     in the same card said "A10". These are the shared helpers from
+     assets/js/06-results.js (seatModeRuleJS ... seatLabel), kept in step
+     with them: tests/seat-label-parity.js lifts THIS copy as well and
+     holds it to tests/seat-labels.json (= Seats::displayLabel). Display
+     only - the stored id (L1..U36) still flows through plan, sale and API. */
+  if (!(window.SHG_BOOT && window.SHG_BOOT.settings)) {
+    window.SHG_BOOT = { settings: { seat_mode_map: <?= json_encode(Settings::getArray('seat_mode_map', []) ?: null) ?> } };
+  }
+  function seatModeRuleJS(coachType, mode) {
+    try {
+      const map = window.SHG_BOOT && SHG_BOOT.settings && SHG_BOOT.settings.seat_mode_map;
+      const spec = map && map[coachType || 'sleeper'];
+      const rule = spec && spec.modes && spec.modes[mode];
+      if (rule) return rule;
+    } catch (e) { /* boot payload absent or malformed - fall through */ }
+    return null;
+  }
+  function bedsPerLabelJS(coachType, mode) {
+    const rule = seatModeRuleJS(coachType, mode);
+    const n = rule && parseInt(rule.bedsPerLabel, 10);
+    if (n >= 1) return n;
+    return mode === 'private' ? 2 : 1;
+  }
+  function seatRowLetterJS(idx) {
+    idx = Math.max(0, idx | 0);
+    let out = '';
+    do { out = String.fromCharCode(65 + (idx % 26)) + out; idx = Math.floor(idx / 26) - 1; } while (idx >= 0);
+    return out;
+  }
+  function seatModeSpecJS(coachType) {
+    try {
+      const map = window.SHG_BOOT && SHG_BOOT.settings && SHG_BOOT.settings.seat_mode_map;
+      return (map && map[coachType || 'sleeper']) || null;
+    } catch (e) { return null; }
+  }
+  function seatBedsOfLabelJS(label, coachType, mode) {
+    const rule = seatModeRuleJS(coachType, mode);
+    if (rule && rule.explicit && rule.explicit[label]) {
+      return rule.explicit[label].map(function (b) { return String(b).toUpperCase(); });
     }
-    if(/^\d+$/.test(id)) return 'A'+id;
+    const per = bedsPerLabelJS(coachType, mode);
+    const m = label.match(/^([A-Z])(\d+)$/);
+    if (per <= 1 || !m) return [label];
+    const j = parseInt(m[2], 10), out = [];
+    for (let k = per * (j - 1) + 1; k <= per * j; k++) out.push(m[1] + k);
+    return out;
+  }
+  function seatBedLabelJS(bed, coachType) {
+    const m = bed.match(/^([A-Z])(\d+)$/);
+    const n = m ? parseInt(m[2], 10) : 0;
+    if (!(n >= 1)) return bed;
+    const spec = seatModeSpecJS(coachType);
+    const rule = seatModeRuleJS(coachType, (spec && spec.canonical) || 'sharing');
+    const across = (rule && Array.isArray(rule.across) && rule.across.length === 2) ? rule.across : [4, 2];
+    const perRow = Math.max(1, (parseInt(across[0], 10) || 0) + (parseInt(across[1], 10) || 0));
+    const floor = Math.max(0, ((spec && Array.isArray(spec.decks)) ? spec.decks : ['L', 'U']).indexOf(m[1]));
+    return seatRowLetterJS(Math.floor((n - 1) / perRow)) + (((n - 1) % perRow) + 1 + floor * perRow);
+  }
+  function seatJoinBedLabelsJS(lbls) {
+    if (lbls.length < 2) return lbls[0] || '';
+    let row = null, prev = null;
+    for (let i = 0; i < lbls.length; i++) {
+      const m = String(lbls[i]).match(/^([A-Z]+)(\d+)$/);
+      if (!m || (row !== null && m[1] !== row) || (prev !== null && parseInt(m[2], 10) !== prev + 1)) return lbls.join('+');
+      row = m[1]; prev = parseInt(m[2], 10);
+    }
+    return lbls[0] + '-' + prev;
+  }
+  function seatLabel(id, coachType, mode) {
+    id = String(id == null ? '' : id).toUpperCase();
+    const m = id.match(/^([LU])(\d+)$/);
+    if (m) {
+      if (!(parseInt(m[2], 10) >= 1)) return id;
+      const coach = coachType || 'sleeper';
+      return seatJoinBedLabelsJS(seatBedsOfLabelJS(id, coach, mode || 'sharing').map(function (b) { return seatBedLabelJS(b, coach); }));
+    }
+    if (/^\d+$/.test(id)) return 'A' + id;
     return id;
   }
   function seatLabelJoin(seats, coach, mode){ return (seats||[]).map(function(s){return seatLabel(s,coach,mode);}).join(', '); }
@@ -593,6 +696,16 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
     return 'in ' + Math.floor(h / 24) + 'd ' + (h % 24) + 'h';
   }
   function money(n) { return '₹' + Number(n || 0).toLocaleString('en-IN'); }
+  /* The NPR aid for a Nepal desk. Rounded to a whole rupee the way
+     nprEstimate() does server-side, so the clerk and the quote agree. */
+  function npr(n) {
+    if (!NPR_PEG || !Number(n)) return '';
+    return 'NPR ' + Math.round(Number(n) * NPR_PEG).toLocaleString('en-IN');
+  }
+  function nprNote(n) {
+    var s = npr(n);
+    return s ? '<span class="qt-npr">≈ ' + s + '</span>' : '';
+  }
   function renderPlan() {
     if (!plan) return;
     var f = plan.fare || {};
@@ -606,7 +719,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       + '<div><small>Bus departs</small><b>' + esc(plan.depTime || '—') + '</b><em>' + esc(plan.from) + '</em></div>'
       + '<div><small>Boarding · चढ्ने ठाउँ</small><b>' + esc(plan.boardingCode) + ' · ' + esc(plan.boardingName) + '</b><em>' + esc(plan.boardingTime || '') + (plan.departsInMin != null ? ' · ' + inLabel(plan.departsInMin) : '') + '</em></div>'
       + '<div><small>Seat' + ((plan.seats || []).length > 1 ? 's' : '') + '</small><b>' + esc(seatsTxt) + '</b><em>' + esc(plan.seatsLeft) + ' free · ' + esc(plan.coach) + '</em></div>'
-      + '<div class="big"><small>Fare · भाडा</small><b>' + money(f.total) + '</b><em>' + esc(plan.seatCount) + ' × ' + money(f.perSeat) + (f.groupDiscount > 0 ? ' · group −' + money(f.groupDiscount) : '') + (f.fee > 0 ? ' + fee ' + money(f.fee) : '') + '</em></div>'
+      + '<div class="big"><small>Fare · भाडा</small><b>' + money(f.total) + nprNote(f.total) + '</b><em>' + esc(plan.seatCount) + ' × ' + money(f.perSeat) + (f.groupDiscount > 0 ? ' · group −' + money(f.groupDiscount) : '') + (f.fee > 0 ? ' + fee ' + money(f.fee) : '') + '</em></div>'
       + '</div>'
       + '<div class="qt-why">' + (plan.matchedDesk ? '📍 Desk pickup remembered — <b>' + esc(plan.boardingName) + '</b>.' : '📍 First pickup still ahead. Tap a stop under Options → Boarding to make it this desk\'s default.') + '</div>';
     if (plan.alternatives && plan.alternatives.length) {
@@ -807,7 +920,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       + '<div><small>Bus</small><b>' + esc(d.route) + '</b><em>' + esc(d.dateLabel) + ' · dep ' + esc(d.depTime) + '</em></div>'
       + '<div><small>Boarding</small><b>' + esc(d.boardingCode) + ' · ' + esc(d.boardingName) + '</b><em>' + esc(d.boardingTime) + '</em></div>'
       + '<div><small>Seat' + ((d.seats || []).length > 1 ? 's' : '') + '</small><b>' + esc(seatLabelJoin(d.seats, 'sleeper', 'sharing')) + '</b></div>'
-      + '<div class="big"><small>Fare</small><b>' + esc(d.totalLabel) + '</b><em>received · ' + esc(st.pay) + '</em></div>'
+      + '<div class="big"><small>Fare</small><b>' + esc(d.totalLabel) + nprNote(d.total) + '</b><em>received · ' + esc(st.pay) + '</em></div>'
       + '</div>'
       + '<div class="qt-wa ' + waCls + '">' + waTxt + (wa.link ? ' <a class="btn" href="' + esc(wa.link) + '" target="_blank" rel="noopener">💬 Send on WhatsApp</a>' : '') + '</div>'
       + '<div class="qt-actions">'

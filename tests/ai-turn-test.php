@@ -45,4 +45,21 @@ $round=0; $executed=0;
 $answer = AiTurn::run(static function () use (&$round) { return $round++ < 2 ? calls([[]]) : null; },
     static function () use (&$executed) { $executed++; throw new RuntimeException('uncertain mutation'); }, '', [], [['name'=>'issue_ticket']], 3, microtime(true)+5);
 check($executed === 1 && str_contains($answer['text'],'जाँच'), 'uncertain mutation is never retried during the turn');
+
+// 23 Sep 2026: a provider failure after READ-only tools hands the reply back to the
+// caller (null) instead of a raw list of English tool notes.
+$round = 0; $executed = 0;
+$answer = AiTurn::run(static function () use (&$round) {
+    return $round++ === 0 ? ['text' => '', 'calls' => [['id' => 'r1', 'name' => 'my_tickets', 'input' => []]], 'blocks' => []] : null;
+}, static function () use (&$executed) { $executed++; return ['ok'=>true,'say'=>'This number has no booking with us yet.','data'=>['bookings'=>[]],'media'=>null]; },
+    '', [], [['name'=>'my_tickets']], 3, microtime(true)+5);
+check($executed === 1 && $answer === null, 'provider failure after read-only tools returns null, not tool notes');
+
+$round = 0;
+$answer = AiTurn::run(static function () use (&$round) {
+    return $round++ === 0 ? ['text' => '', 'calls' => [['id' => 'r1', 'name' => 'knowledge_lookup', 'input' => ['query'=>'x']],
+                                                         ['id' => 'w1', 'name' => 'cancel_ticket', 'input' => ['pnr'=>'SHG-X']]], 'blocks' => []] : null;
+}, static fn($n, $a) => ['ok'=>true,'say'=>'done','data'=>['pnr'=>$a['pnr'] ?? ''],'media'=>null],
+    '', [], [['name'=>'knowledge_lookup'],['name'=>'cancel_ticket']], 3, microtime(true)+5);
+check($answer !== null && str_contains($answer['text'], 'SHG-X'), 'a write in the same turn is still reported after a provider failure');
 echo "$checks checks passed\n";

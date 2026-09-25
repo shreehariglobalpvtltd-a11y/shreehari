@@ -247,7 +247,26 @@ final class WaBooking
 
         // Everything is known: show what it will cost and wait for a yes.
         self::save($phoneDigits, $slots, 'confirm', [], $lang);
-        return self::out($opener . self::summary($plan, $slots, $lang));
+        /* 23 Sep 2026 (owner: "customer lai seat photo"): the summary rides on
+           the coach picture with THEIR berths in orange, so they see where
+           they will sleep before they say yes. No picture = the same text. */
+        $picture = null;
+        if (Settings::getBool('wa_seat_photo_on', false) && (int) ($plan['scheduleId'] ?? 0) > 0) {
+            try {
+                require_once INCLUDE_PATH . '/seatmappng.php';
+                // Physical beds, so a private cabin lights up both of its berths.
+                $beds = [];
+                foreach ((array) ($plan['seats'] ?? []) as $s) {
+                    foreach (Seats::physicalSeats((string) $s, (string) ($plan['bookingMode'] ?? 'sharing'), (string) ($plan['coach'] ?? 'sleeper')) as $b) {
+                        $beds[] = (string) $b;
+                    }
+                }
+                $picture = SeatMapPng::url((int) $plan['scheduleId'], $beds);
+            } catch (Throwable $e) {
+                $picture = null;
+            }
+        }
+        return self::out($opener . self::summary($plan, $slots, $lang), $picture);
     }
 
     /* ----------------------------------------------------------------- */
@@ -328,7 +347,11 @@ final class WaBooking
         $time  = trim((string) ($plan['boardingTime'] ?? ''));
         $ts    = $time !== '' ? strtotime($time) : false;
         $timeL = $ts !== false ? date('g:i A', $ts) : $time;
-        $seats = implode(', ', array_map('strval', (array) ($plan['seats'] ?? [])));
+        /* 23 Sep 2026: the berth as the TICKET prints it (LB1, UA3 — Ticket::seatLabel
+           uses displayLabel), not the canonical L7 the database keeps. The summary said
+           "L7" and the ticket then said "LB1" for the same bed. */
+        $seats = Seats::displayLabels(array_map('strval', (array) ($plan['seats'] ?? [])),
+            (string) ($plan['coach'] ?? 'sleeper'), (string) ($plan['bookingMode'] ?? 'sharing'));
         $total = (float) ($plan['fare']['total'] ?? 0);
 
         $lines = [self::say('checkThis', $lang), ''];
@@ -361,6 +384,14 @@ final class WaBooking
         if (($plan['busName'] ?? '') !== '') {
             $lines[] = self::label('bus', $lang) . ': ' . (string) $plan['busName']
                      . (($plan['busNumber'] ?? '') !== '' ? ' · ' . (string) $plan['busNumber'] : '');
+        }
+        /* 23 Sep 2026: an office offer (Admin → Offers & Discounts, auto-apply)
+           is already inside the total — say so, with the office's own title,
+           so the passenger sees the saving instead of just a smaller number. */
+        $offerCut = (float) ($plan['fare']['couponDiscount'] ?? 0);
+        if ($offerCut > 0) {
+            $title    = trim((string) ($plan['fare']['offerTitle'] ?? ''));
+            $lines[]  = '🎁 ' . self::label('offer', $lang) . ': −' . inr($offerCut) . ($title !== '' ? ' (' . $title . ')' : '');
         }
         if ($total > 0) {
             $lines[] = self::label('total', $lang) . ': ' . inr($total);
@@ -482,6 +513,7 @@ Example: Ram Bahadur 35, Sita Gurung 30",
             'seat'  => ['en' => 'Seat',       'hi' => 'सीट',       'ne' => 'सिट',      'gu' => 'સીટ'],
             'pax'   => ['en' => 'Passengers', 'hi' => 'यात्री',    'ne' => 'यात्रु',   'gu' => 'મુસાફરો'],
             'total' => ['en' => 'Total',      'hi' => 'कुल',       'ne' => 'जम्मा',    'gu' => 'કુલ'],
+            'offer' => ['en' => 'Offer',      'hi' => 'ऑफ़र छूट',   'ne' => 'अफर छुट',  'gu' => 'ઑફર છૂટ'],
             'bus'   => ['en' => 'Bus',        'hi' => 'बस',        'ne' => 'बस',      'gu' => 'બસ'],
         ];
         return $l[$key][$lang] ?? $l[$key]['en'];
@@ -974,6 +1006,17 @@ Example: Ram Bahadur 35, Sita Gurung 30",
     private static function looksLikeRequest(string $text): bool
     {
         $t    = mb_strtolower(trim($text));
+        /* 23 Sep 2026 — a message ABOUT a ticket is not a request FOR one.
+           "mero ticket ma naam wrong xa" contains "ticket", so it opened a
+           brand-new sale named "Mero Wrong" and asked "book it? ho"; "payment
+           gare tara ticket aayena" became a ticket for "Payment Gare Tara
+           Aayena". A confused passenger answering ho would have been sold a
+           second, wrongly-named ticket. Complaints, corrections, cancels,
+           refunds, resends and "where is my ticket" go to the assistant,
+           which can read their booking; a new sale is never guessed here. */
+        if (self::isAboutExistingTicket($t)) {
+            return false;
+        }
         $said = false;
         foreach (['book', 'ticket', 'seat', 'टिकट', 'बुक', 'सिट', 'सीट', 'चाहियो', 'चाहिए', 'चाहिये',
                   'जानु', 'जाना', 'ટિકિટ', 'બુક', 'સીટ'] as $w) {
@@ -983,6 +1026,17 @@ Example: Ram Bahadur 35, Sita Gurung 30",
             }
         }
         if ($said) {
+            /* 23 Sep 2026: "Dashain ma ghar jana ticket milcha?" is a QUESTION
+               that mentions a ticket. With no party and no day there is nothing
+               to sell yet — it was booked for TODAY under the name "Dashain
+               Ghar". The assistant answers it; a question that names the party
+               and the day ("bholi 2 ticket milcha?") still opens the booking. */
+            if (self::isQuestion($t)) {
+                $p = TicketBot::parse($text);
+                if ((int) ($p['seats'] ?? 0) === 0 && (string) ($p['date'] ?? '') === '') {
+                    return false;
+                }
+            }
             return true;
         }
         if (self::isQuestion($t)) {
@@ -996,6 +1050,51 @@ Example: Ram Bahadur 35, Sita Gurung 30",
         $when  = ((string) ($p['date'] ?? '')) !== '' || ((string) ($p['direction'] ?? '')) !== '';
 
         return $seats > 0 && $when;
+    }
+
+    /**
+     * A complaint, correction or follow-up about a ticket that already exists
+     * (or a payment that was already made). Deliberately broad: a missed sale
+     * costs one more message, a guessed sale costs a wrong ticket.
+     */
+    private static function isAboutExistingTicket(string $t): bool
+    {
+        foreach ([
+            // something is wrong / did not arrive
+            'galat', 'galti', 'wrong', 'mistake', 'problem', 'samasya', 'error', 'gadbad',
+            'aayena', 'aaena', 'ayena', 'aayeko chaina', 'aako chaina', 'aayeko chhaina', 'pugena', 'pugeko chaina',
+            'milena', 'nahi aaya', 'nahi aya', 'nahin aaya', 'not received', 'not come', "didn't get", 'didnt get',
+            // change / fix / cancel / refund
+            // "firta" / "wapas" alone also mean the RETURN journey ("firta aaune ticket"), so only with money.
+            'cancel', 'radd', 'refund', 'paisa firta', 'firta paisa', 'paise wapas', 'paisa wapas', 'paise vapas',
+            'change', 'badal', 'sachya', 'sudhar', 'correct',
+            'reschedule', 'sarna', 'sarnu',
+            // send again / lost / where is it
+            'resend', 'pathaideu', 'pathaidinu', 'pathau', 'bhejo', 'bhej do', 'send again', 'feri pathau',
+            'feri banau', 'feri banaideu', 'harayo', 'haraayo', 'lost', 'kaha cha', 'kaha xa', 'kaha chha',
+            'kahan hai', 'where is', 'status',
+            // it is theirs already
+            'mero ticket', 'mera ticket', 'meri ticket', 'my ticket', 'mero booking', 'my booking', 'asti ko',
+            // looking at bookings, not making one ("booking" contains "book")
+            'sabai booking', 'all booking', 'bookings', 'booking dekh', 'booking dikh', 'booking show',
+            'booking check', 'booking her',
+            'payment gar', 'payment kiya', 'paisa tire', 'paisa tireko', 'paid', 'katyo', 'kat gaya', 'kat gaye',
+            // Devanagari
+            'गलत', 'गल्ती', 'गलती', 'आएन', 'आएको छैन', 'पुगेन', 'मिलेन', 'नहीं आया', 'समस्या', 'रद्द', 'क्यान्सिल',
+            'कैंसल', 'पैसा फिर्ता', 'रकम फिर्ता', 'पैसे वापस', 'रिफन्ड', 'रिफंड', 'बदल', 'सच्या', 'सुधार', 'पठाइदिनु', 'पठाउनु', 'भेजो',
+            'हरायो', 'मेरो टिकट', 'मेरा टिकट', 'मेरी टिकट', 'भुक्तानी गरे', 'पैसा तिरे', 'कहाँ छ',
+            // Gujarati
+            'ખોટું', 'રદ', 'રિફંડ', 'મારી ટિકિટ',
+        ] as $w) {
+            /* Matched at the START of a word only (suffixes allowed: "badalnu",
+               "pathaunu", "cancelled"). A plain substring test found "paid"
+               inside "Ru-paid-iha" — our own destination — and would have
+               refused every booking that named it. */
+            if (preg_match('/(?<![\p{L}\p{M}\p{N}])' . preg_quote($w, '/') . '/u', $t) === 1) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** "kati", "kaha", "how much", "?" — someone asking, not booking. */

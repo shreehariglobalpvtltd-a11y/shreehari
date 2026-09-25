@@ -82,7 +82,7 @@ if ($view === 'manifest') {
 
     $manifest = Database::fetchAll(
         "SELECT bp.full_name, bp.seat_no, bp.age, bp.gender, bp.boarded_at,
-                b.pnr, b.contact_phone, b.total_amount,
+                b.pnr, b.contact_phone, b.total_amount, b.booking_mode,
                 bl.travel_date, bl.boarding_stop, bl.drop_stop,
                 r.from_city, r.to_city, r.dep_time, r.route_code
            FROM booking_passengers bp
@@ -273,7 +273,7 @@ admin_header(
         <tbody>
         <?php foreach ($t['pax'] as $p): ?>
           <tr>
-            <td class="mono"><strong><?= Security::e((string) $p['seat_no']) ?></strong></td>
+            <td class="mono"><strong><?= Security::e(Seats::displayLabel((string) $p['seat_no'], 'sleeper', (string) ($p['booking_mode'] ?? 'sharing'))) ?></strong></td>
             <td><?= Security::e((string) $p['full_name']) ?></td>
             <td class="muted"><?= $p['age'] !== null ? (int) $p['age'] : '—' ?><?= $p['gender'] ? ' · ' . Security::e((string) $p['gender']) : '' ?></td>
             <td class="mono"><?= Security::e(maskPhone((string) $p['contact_phone'])) ?></td>

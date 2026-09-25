@@ -445,8 +445,8 @@ admin_header('Seat Map', 'seatmap');
    or any single-deck coach). auto-fit + minmax collapses to one column
    on narrow screens for free. */
 .seatmap-visual{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px;margin-bottom:22px}
-.deck{background:var(--card,#fff);border:1px solid var(--line,#e5e7eb);border-radius:14px;padding:16px}
-.deck h3{margin:0 0 12px;font-size:15px;color:var(--ink,#1f2937)}
+.deck{background:var(--fl-bg,var(--card,#fff));border:1.5px solid var(--fl-line,var(--line,#e5e7eb));border-radius:16px;padding:12px}
+.deck h3{margin:0 0 12px;font-size:15px}   /* colours: .floor-head (admin/_guard.php) */
 /* Row-driven grid — one .seat-row-adm per physical row on the coach,
    mirroring what the customer sees. left seats | aisle | right seats. */
 .deck-grid{display:flex;flex-direction:column;gap:6px}
@@ -454,9 +454,9 @@ admin_header('Seat Map', 'seatmap');
 .seat-row-adm .seat-group{display:flex;gap:4px;flex:1 1 auto;min-width:0}
 .seat-row-adm .seat-group .seat{flex:1 1 0;min-width:0}
 .seat-row-adm .seat-group.right{justify-content:flex-end}
-.seat-row-adm .aisle-adm{flex:0 0 14px;text-align:center;color:var(--mut,#666);font-size:10px;
+.seat-row-adm .aisle-adm{flex:0 0 16px;text-align:center;color:var(--fl,var(--mut,#666));font-size:11px;font-weight:800;
   display:flex;align-items:center;justify-content:center;user-select:none}
-.seat{border:2px solid transparent;border-radius:8px;padding:8px 6px;text-align:center;cursor:pointer;
+.seat{border:2px solid transparent;border-radius:11px;padding:8px 6px;text-align:center;cursor:pointer;
   position:relative;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;
   transition:transform .1s,box-shadow .1s}
 .seat:hover{transform:scale(1.05);box-shadow:0 2px 8px rgba(0,0,0,.15)}
@@ -652,12 +652,14 @@ if ($flash !== null) {
         foreach (array_merge($rw['left'] ?? [], $rw['right'] ?? []) as $s) { $deckSeats[] = $s; }
     }
     $rangeLabel = $deckSeats !== []
-        ? ' (' . Seats::displayLabel((string) $deckSeats[0], $coach, 'sharing') . '–' . Seats::displayLabel((string) end($deckSeats), $coach, 'sharing') . ')'
+        ? Seats::displayLabel((string) $deckSeats[0], $coach, 'sharing') . '–' . Seats::displayLabel((string) end($deckSeats), $coach, 'sharing')
         : '';
     $deckIcon = $deck['key'] === 'L' ? '🔽 ' : ($deck['key'] === 'U' ? '🔼 ' : '💺 ');
+    // Lower Floor (1F) blue / Upper Floor (2F) green — .floor-* in admin/_guard.php.
+    $floorCls = in_array($deck['key'], ['L', 'U'], true) ? ' floor-' . $deck['key'] : '';
   ?>
-    <div class="deck">
-      <h3><?= $deckIcon ?><?= Security::e((string) $deck['label']) ?><?= Security::e($rangeLabel) ?></h3>
+    <div class="deck<?= $floorCls ?>">
+      <h3 class="floor-head"><?= $deckIcon ?><?= Security::e((string) $deck['label']) ?><?php if ($rangeLabel !== ''): ?><span class="fh-range"><?= Security::e($rangeLabel) ?></span><?php endif; ?></h3>
       <div class="deck-grid">
         <?php foreach ($deck['rows'] as $row): ?>
           <div class="seat-row-adm">
@@ -665,7 +667,7 @@ if ($flash !== null) {
               <?php foreach (($row['left'] ?? []) as $sid): if (isset($map[$sid])) echo seatmap_seat_div($map[$sid], $femalePref, $agentCodes, $coach); endforeach; ?>
             </div>
             <?php if (!empty($row['aisle'])): ?>
-              <span class="aisle-adm" title="Aisle · <?= Security::e((string) ($row['label'] ?? '')) ?>">·</span>
+              <span class="aisle-adm" title="Aisle · <?= Security::e((string) ($row['label'] ?? '')) ?>"><?= $coach === 'sleeper' ? Security::e(trim(str_replace('Row', '', (string) ($row['label'] ?? '')))) : '·' ?></span>
             <?php endif; ?>
             <div class="seat-group right">
               <?php foreach (($row['right'] ?? []) as $sid): if (isset($map[$sid])) echo seatmap_seat_div($map[$sid], $femalePref, $agentCodes, $coach); endforeach; ?>
