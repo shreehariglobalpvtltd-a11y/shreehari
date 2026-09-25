@@ -728,7 +728,13 @@ function shg_wa_last(int $bookingId): ?array
     }
     try {
         $row = Database::fetch(
-            "SELECT status, to_number, error, created_at FROM message_logs WHERE booking_id = :b AND channel = 'whatsapp' ORDER BY id DESC LIMIT 1",
+            /* The office's own rows about this booking (an admin note, the
+               26 Sep 2026 delivery-fallback alert) are not the passenger's
+               ticket — the badge must show the PASSENGER's last attempt. */
+            "SELECT status, to_number, error, created_at FROM message_logs
+              WHERE booking_id = :b AND channel = 'whatsapp'
+                AND (purpose IS NULL OR purpose NOT IN ('delivery_fallback', 'admin_note'))
+              ORDER BY id DESC LIMIT 1",
             [':b' => $bookingId]
         );
     } catch (Throwable $e) {
