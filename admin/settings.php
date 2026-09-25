@@ -274,7 +274,8 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
   $waHelp = [
       'wa_delivery_fallback_on'             => 'When a passenger\'s ticket cannot be delivered on WhatsApp (sender refused it, Meta/Twilio reported it failed, or the retry gave up), the office WhatsApp and the admin e-mail get the passenger\'s name, number, the ticket link and a one-tap forward link.',
       'wa_delivery_fallback_hours'          => 'At most one such alert per booking in this many hours.',
-      'wa_staff_menu_on'                    => 'A member of staff who writes hi / namaste / menu / help on the WhatsApp number gets the staff menu with links into this panel instead of the passenger greeting.',
+      'wa_staff_menu_on'                    => 'A member of staff who writes hi / namaste / menu / help on the WhatsApp number gets the staff menu with links into this panel instead of the passenger greeting. Staff = an admins record with role admin/counter, the office numbers in Settings, and the numbers below.',
+      'wa_staff_menu_numbers'               => 'Extra numbers that get the staff menu, comma separated (e.g. the director\'s own phone, which the agents list knows only as an agent).',
       'app_mantra_on'                       => 'The app\'s opening blessing: a temple bell and the spoken mantra on the first touch. Visitors can still switch it off in the app menu; this turns it off for everyone.',
       'wa_admin_tools_enabled'              => 'Shows the "Send on WhatsApp" buttons on the agent, booking, manifest and dashboard pages. Every press previews first, then sends through the WhatsApp API (Twilio / Cloud API) or opens wa.me on the staff phone; each attempt is logged under Messages with its purpose.',
       'twilio_content_sid_agent_statement'  => $waTplHelp . ' Used for agent statements, booking history, commission, advance / loan balance and the daily / monthly summaries.',

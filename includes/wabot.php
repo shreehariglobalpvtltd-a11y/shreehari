@@ -238,8 +238,33 @@ final class WaBot
            this number does for them and the links straight into the panel —
            not the passenger greeting, and not a model call. Anything else
            they write still goes to the assistant below. */
-        if ($isStaff && Settings::getBool('wa_staff_menu_on', true) && self::isStaffGreeting($body)) {
-            return self::out(self::staffMenu($who));
+        /* The office's own numbers (Settings) and any number listed in
+           wa_staff_menu_numbers count as staff for the menu even without an
+           admins record — the director writes from their own phone, which
+           the admins table knows only as an agent. */
+        $menuStaff = $isStaff;
+        if (!$menuStaff && $senderDigits !== '' && Settings::getBool('wa_staff_menu_on', true)) {
+            $officeNums = [];
+            foreach (['admin_whatsapp', 'company_whatsapp', 'company_phone', 'office_phone'] as $k) {
+                $d = normalisePhone(Settings::getString($k, ''));
+                if ($d !== '') {
+                    $officeNums[$d] = true;
+                }
+            }
+            $d = normalisePhone(Settings::officePhone());
+            if ($d !== '') {
+                $officeNums[$d] = true;
+            }
+            foreach (preg_split('/[\s,;]+/', Settings::getString('wa_staff_menu_numbers', '')) ?: [] as $n) {
+                $d = normalisePhone((string) $n);
+                if ($d !== '') {
+                    $officeNums[$d] = true;
+                }
+            }
+            $menuStaff = isset($officeNums[$senderDigits]);
+        }
+        if ($menuStaff && Settings::getBool('wa_staff_menu_on', true) && self::isStaffGreeting($body)) {
+            return self::out(self::staffMenu($isStaff && is_array($who) ? $who : ['name' => '', 'role' => 'admin']));
         }
 
         /* BULK TICKETS (24 Sep 2026, wa_bulk_on, staff only). "FORMAT" gives the

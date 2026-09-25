@@ -29,6 +29,8 @@ INSERT INTO settings (skey, svalue, stype, sgroup, is_public, label) VALUES
    'Ticket-not-delivered alert - at most one per booking in this many hours'),
   ('wa_staff_menu_on', '1', 'bool', 'whatsapp', 0,
    'Staff who write hi / menu / help on WhatsApp get the staff menu with panel links'),
+  ('wa_staff_menu_numbers', '', 'string', 'whatsapp', 0,
+   'Extra numbers that get the staff menu (comma separated) - the office numbers in Settings already do'),
   ('app_mantra_on', '1', 'bool', 'site', 1,
    'App opening blessing - temple bell and the Vishnu mantra on the first touch (visitors can still switch it off in the menu)')
 ON DUPLICATE KEY UPDATE svalue = svalue;
