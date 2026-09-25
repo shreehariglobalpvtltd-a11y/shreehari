@@ -352,6 +352,21 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .ai-msg.bot{align-self:flex-start;background:var(--card);border:1px solid var(--line);color:var(--ink);border-bottom-left-radius:5px}
 .ai-msg.user{align-self:flex-end;background:var(--blue,#1A3A6A);color:#fff;border-bottom-right-radius:5px}
 .ai-msg a{color:var(--orange);font-weight:700}
+.ai-fb{display:flex;gap:6px;margin-top:7px;padding-top:6px;border-top:1px dashed var(--line)}
+.ai-fb-btn{font:inherit;font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);background:var(--bg,#F4F7FC);color:var(--ink);cursor:pointer;min-height:28px}
+.ai-fb-btn:active{transform:scale(.96)}
+.ai-fb-done{font-size:12px;color:var(--muted,#5B6B85)}
+.rf-ladder{margin:0 0 14px;padding:10px 12px;border:1px dashed var(--line);border-radius:12px;font-size:12.5px;background:var(--bg,#F4F7FC)}
+.rf-ladder b{display:block;margin-bottom:4px}
+.rf-ladder ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:2px 10px}
+.rf-ladder li{color:var(--muted,#5B6B85)}
+.rf-ladder li.on{color:var(--ink);font-weight:700}
+.rf-ladder p{margin:6px 0 0;font-weight:700;color:var(--blue,#1A3A6A)}
+.women-line{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 8px;padding:8px 12px;border-radius:12px;background:#FDF2F8;border:1px solid #FBCFE8;color:#9D174D;font-size:12.5px;font-weight:700}
+.women-line a{color:#9D174D;text-decoration:none;white-space:nowrap}
+:root[data-theme="dark"] .women-line{background:#3B0A2A;border-color:#9D174D;color:#FBCFE8}
+:root[data-theme="dark"] .women-line a{color:#FBCFE8}
+.mybk-refund{font-size:12.5px;color:var(--blue,#1A3A6A);font-weight:700;margin:4px 0}
 .ai-chips{display:flex;gap:6px;overflow-x:auto;padding:8px 12px;border-top:1px solid var(--line);background:var(--card);scrollbar-width:none}
 .ai-chips::-webkit-scrollbar{display:none}
 .ai-chip{flex:0 0 auto;padding:6px 12px;border-radius:999px;border:1px solid var(--blue-100);background:var(--blue-50);color:var(--blue-800);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
@@ -1222,13 +1237,23 @@ input,select,textarea{font-size:16px}
    showView() in 05-router.js) must live in its own rule. */
 @media (max-width:760px){
   body.in-flow .whatsapp-fab,
-  body.in-flow .ai-fab{display:none!important}
+  body.in-flow .ai-fab,
+  /* 25 Sep 2026: the contact dial belongs in this list too. A browser
+     screenshot of the seat map caught it floating over seats LA6 and E/F,
+     which does not just look wrong — the seat underneath cannot be tapped
+     at all, so those berths were unsellable on a phone. It follows the two
+     FABs above: away during results, seat pick and checkout, back on every
+     other screen. The header still carries call and WhatsApp there. */
+  body.in-flow .ct-fab{display:none!important}
   body:has(#view-results.active) .whatsapp-fab,
   body:has(#view-results.active) .ai-fab,
+  body:has(#view-results.active) .ct-fab,
   body:has(#view-seats.active) .whatsapp-fab,
   body:has(#view-seats.active) .ai-fab,
+  body:has(#view-seats.active) .ct-fab,
   body:has(#view-checkout.active) .whatsapp-fab,
-  body:has(#view-checkout.active) .ai-fab{display:none!important}
+  body:has(#view-checkout.active) .ai-fab,
+  body:has(#view-checkout.active) .ct-fab{display:none!important}
 }
 @media (max-width:760px){
   .hero h1.hero-brand{font-size:clamp(19px,6.5vw,28px);letter-spacing:.02em}
@@ -3828,3 +3853,34 @@ body.wa-open{overflow:hidden}
   #view-seats .booking-type-toggle .bt-pill{min-height:44px;padding-top:6px;padding-bottom:6px}
   #view-seats .seat-pref-row{margin-bottom:8px}
 }
+
+/* ── Contact dial (24 Sep 2026) — the office one tap away on every screen ── */
+.ct-fab{position:fixed;right:16px;bottom:24px;z-index:90;width:52px;height:52px;border-radius:50%;border:2px solid #fff;background:linear-gradient(135deg,#178A50,#25D366);color:#fff;font-size:22px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 6px 20px rgba(23,138,80,.4);transition:transform .2s ease}
+.ct-fab:hover{transform:scale(1.06)}
+.ct-fab[aria-expanded="true"]{transform:rotate(12deg) scale(1.04)}
+@media (max-width:760px){.ct-fab{bottom:calc(76px + env(safe-area-inset-bottom))}}
+.ct-sheet{position:fixed;inset:0;z-index:95;background:rgba(18,38,78,.45);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);display:flex;align-items:flex-end;justify-content:center;padding:0 0 calc(12px + env(safe-area-inset-bottom))}
+.ct-sheet[hidden]{display:none}
+.ct-card{width:min(520px,calc(100% - 24px));background:var(--card);color:var(--ink);border-radius:22px;padding:16px 16px 14px;box-shadow:var(--shadow-lg);animation:ctUp .25s var(--ease-decel)}
+@keyframes ctUp{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
+.ct-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.ct-head b{font-size:17px}
+.ct-x{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--bg);color:var(--muted);font-size:15px;cursor:pointer}
+.ct-sub{color:var(--muted);font-size:12.5px;margin:4px 0 12px}
+.ct-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ct-btn{display:flex;align-items:center;gap:10px;min-height:56px;padding:10px 12px;border-radius:16px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-weight:800;font-size:14px;text-decoration:none;cursor:pointer;text-align:left}
+.ct-btn span{font-size:22px;line-height:1}
+.ct-btn b{line-height:1.2}
+.ct-call{background:#E9F4FF;border-color:#BBD6F3;color:#12264E}
+.ct-wa{background:#E7F9EE;border-color:#B9E6C9;color:#0F5F38}
+.ct-chat{background:#FFF1E4;border-color:#F3D3B0;color:#8A4B12}
+.ct-cb{background:#F1EEFB;border-color:#D6CDF2;color:#3E2E7A}
+.ct-cb-form{margin-top:12px;display:grid;gap:10px}
+.ct-cb-form label{display:grid;gap:4px;font-size:12.5px;color:var(--muted);font-weight:700}
+.ct-cb-form input{min-height:46px;border:1px solid var(--line);border-radius:12px;padding:0 12px;font-size:16px;background:var(--card);color:var(--ink)}
+.ct-send{justify-content:center;background:var(--blue);border-color:var(--blue);color:#fff}
+.ct-note{font-size:13px;color:var(--muted);min-height:1em;margin:0}
+.ct-note.ok{color:var(--ok);font-weight:700}
+.ct-note.bad{color:var(--bad);font-weight:700}
+@media (prefers-color-scheme:dark){.ct-call{background:#16294a;border-color:#27406b;color:#dbe8ff}.ct-wa{background:#0f3a26;border-color:#1f6a45;color:#c9f5da}.ct-chat{background:#4a2a10;border-color:#7a4a20;color:#ffe2c4}.ct-cb{background:#2c2350;border-color:#4a3c85;color:#e6dfff}}
+@media print{.ct-fab,.ct-sheet{display:none!important}}

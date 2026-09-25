@@ -457,6 +457,27 @@ final class Fare
     }
 
     /**
+     * The published refund slabs, highest threshold first so the most
+     * generous matching slab wins. One source for refundFor() and for the
+     * ladder the app shows next to the Pay button (Trust::ladder()).
+     *
+     * @return list<array{minHrs:int|float,pct:int|float}>
+     */
+    public static function refundSlabs(): array
+    {
+        $slabs = Settings::getArray('refund_slabs', [
+            ['minHrs' => 96, 'pct' => 90],
+            ['minHrs' => 48, 'pct' => 75],
+            ['minHrs' => 24, 'pct' => 50],
+            ['minHrs' => 6,  'pct' => 25],
+            ['minHrs' => 0,  'pct' => 0],
+        ]);
+        $slabs = array_values(array_filter($slabs, static fn($s): bool => is_array($s) && isset($s['minHrs'], $s['pct'])));
+        usort($slabs, static fn(array $a, array $b): int => (int) $b['minHrs'] <=> (int) $a['minHrs']);
+        return $slabs;
+    }
+
+    /**
      * Refund due on cancellation, using the published slabs.
      *
      * @return array{amount: float, percent: float, hoursLeft: float, reason: string}
@@ -468,16 +489,7 @@ final class Fare
         // 5 Sep 2026: matched to the published Terms (section C) — the T&C
         // page has promised five tiers since launch, but the enforced slabs
         // still had the older three. Terms are the contract; code follows.
-        $slabs = Settings::getArray('refund_slabs', [
-            ['minHrs' => 96, 'pct' => 90],
-            ['minHrs' => 48, 'pct' => 75],
-            ['minHrs' => 24, 'pct' => 50],
-            ['minHrs' => 6,  'pct' => 25],
-            ['minHrs' => 0,  'pct' => 0],
-        ]);
-
-        // Highest threshold first so the most generous matching slab wins.
-        usort($slabs, static fn(array $a, array $b): int => (int) $b['minHrs'] <=> (int) $a['minHrs']);
+        $slabs = self::refundSlabs();
 
         $percent = 0.0;
         $reason  = 'Cancelled after the free-cancellation window.';

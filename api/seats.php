@@ -45,9 +45,23 @@ try {
         Response::invalid(['date' => 'Choose a valid travel date.']);
     }
 
+    /* A client that already holds this departure's seat version (from its
+       last snapshot or the live stream) gets a 200-byte answer instead of
+       the whole map when nothing changed — the 8 s poll used to re-send
+       ~4 KB per open seat map whether or not anything had moved. */
+    require_once INCLUDE_PATH . '/seatversion.php';
+    $verIn = Security::clean((string) Response::field('ver', ''), 40);
+    if ($verIn !== '') {
+        $sidFor = $scheduleId > 0 ? $scheduleId : (int) (Seats::schedule($routeId, $date)['id'] ?? 0);
+        if ($sidFor > 0 && SeatVersion::of($sidFor) === $verIn) {
+            Response::success(['unchanged' => true, 'ver' => $verIn, 'scheduleId' => $sidFor]);
+        }
+    }
+
     $availability = Seats::availability($routeId, $date, $bookingMode, $scheduleId > 0 ? $scheduleId : null);
 
     Response::success([
+        'ver'            => SeatVersion::of((int) $availability['scheduleId']),
         'routeId'        => $routeId,
         'routeCode'      => $routeCode,
         'date'           => $date,

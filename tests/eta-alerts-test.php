@@ -123,9 +123,16 @@ if (!$hasTable) {
         check('both passengers boarding at the NEXT stop are told', $ids === [$bMid, $bMid2], json_encode($r));
         check('...not the stop after it, not the stop already passed, not a cancelled ticket',
             !in_array($bLast, $ids, true) && !in_array($bPast, $ids, true) && !in_array($bDead, $ids, true));
+        /* Read the first alert only if one was sent. When the scenario does
+           not fire (a fixture whose stop times moved, say), $told is empty and
+           $told[0] used to be a PHP fatal that ended the whole suite with
+           "Undefined array key 0" — a crash where a plain FAIL naming the
+           real problem belongs. (25 Sep 2026.) */
+        $first = $told[0]['facts'] ?? null;
         check('the message says a rounded "about N minutes", never a false-precise figure',
-            (int) $told[0]['facts']['etaMin'] % 5 === 0 && (int) $told[0]['facts']['etaMin'] >= $expectEta);
-        check('...and names the passenger\'s own stop', trim((string) $told[0]['facts']['boarding']) !== '');
+            $first !== null && (int) $first['etaMin'] % 5 === 0 && (int) $first['etaMin'] >= $expectEta,
+            $first === null ? 'nothing was sent, so there is no message to read' : (string) $first['etaMin'] . ' min');
+        check('...and names the passenger\'s own stop', $first !== null && trim((string) $first['boarding']) !== '');
         $row = Database::fetch('SELECT * FROM trip_eta_alerts WHERE booking_id = :b', ['b' => $bMid]);
         check('the alert is recorded with what went', $row !== null && (int) $row['ok'] === 1 && (string) $row['channels'] === 'test');
 

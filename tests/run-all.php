@@ -150,6 +150,21 @@ const CORE_SUITES = [
     // 22 Sep 2026, registered with the knowledge base it guards.
     'ai-turn-test.php'            => 'the tool loop is bounded: budget, deadline, no repeated write on retry',
     'ai-kb-test.php'              => 'the knowledge base: audience scope, the ai_kb_on switch, an honest redacted miss',
+    // 24 Sep 2026, registered with the per-request session check it guards.
+    'admin-session-revalidate-test.php' => 'a deactivated or demoted staff member loses it on the next request, not the next login',
+    'money-guards-test.php'        => 'paper-ticket cap, agent-only commission, no proof downgrade, coupon redemption, second void, hold cap',
+    'seat-events-test.php'         => 'live seat events: the version moves only when seats move; unchanged answers; the stream',
+    'whereis-test.php'             => '"Where is my bus?": honest status, three doors, the keyed page, its JSON, trackUrl in the app payload',
+    'contact-layer-test.php'       => 'the contact dial on every screen; "call me back" reaches the office inbox; labels in three languages',
+    'route-pages-test.php'         => 'search-facing route pages in en / hi / ne from the live tables; JSON-LD, hreflang, sitemaps, robots',
+    'ai-memory-test.php'           => 'memory that follows the person: hashed key, the register writes it, the brief, forget, the 120 cap',
+    'ai-learn-test.php'            => 'the learning loop: corrections in three scripts, candidates, office approval, the prompt block, the endpoint',
+    'social-posts-test.php'        => 'the marketing queue: validation, three-language caption, claim-then-send, retries, the daily cap',
+    'ai-manager-test.php'          => 'Admin → AI Manager: every tab, the office actions, the doors, the crons idle while off, the thumbs',
+    'trust-layer-test.php'         => 'the trust layer: one refund ladder, real numbers, the home payload, refund status in the booking payload',
+    'bundle-test.php'              => 'one bundled script + stylesheet: the manifest matches the template, the switch, and it refuses a stale bundle',
+    'ai-web-test.php'              => 'the assistant reads only listed https hosts, never a private address, and writes a draft the office must publish',
+    'uploads-private-test.php'     => 'nobody reads a departure sheet, an ID scan or a KYC paper by guessing its URL; the signed chalan link still works',
 ];
 
 /**
@@ -382,6 +397,12 @@ function tally(string $output): string
     if (preg_match('/PASS\s+(\d+)\s+WARN\s+(\d+)\s+FAIL\s+(\d+)/i', $output, $m) === 1) {
         return "PASS {$m[1]} WARN {$m[2]} FAIL {$m[3]}";
     }
+    // Suites that end with "PASSED: 25   FAILED: 3" (25 Sep 2026): without
+    // this their result row printed no counts at all, so a red CI row said
+    // only "FAIL" and the reader had to scroll for the numbers.
+    if (preg_match('/PASSED:\s*(\d+)\s+FAILED:\s*(\d+)/i', $output, $m) === 1) {
+        return "{$m[1]} passed, {$m[2]} failed";
+    }
     return '';
 }
 
@@ -519,9 +540,23 @@ if ($failed !== []) {
     echo "\n  Output from the failing suites:\n";
     foreach ($failed as $file => $out) {
         echo "\n  ── {$file} " . str_repeat('─', max(0, 40 - strlen($file))) . "\n";
-        // The tail is where the assertions and the summary live.
+        /* Every failing line first, then the tail (25 Sep 2026). A tail alone
+           hid which checks failed whenever a suite's failures sat above its
+           last 25 lines of PASSes — the CI log then said "3 failed" and named
+           none of them, which cost a whole push-and-wait cycle to find out. */
         $lines = explode("\n", rtrim($out));
-        foreach (array_slice($lines, -25) as $line) {
+        $bad   = array_values(array_filter($lines, static fn(string $l): bool => str_contains($l, 'FAIL') || str_contains($l, 'Fatal error') || str_contains($l, 'Uncaught')));
+        foreach (array_slice($bad, 0, 40) as $line) {
+            echo '  ' . $line . "\n";
+        }
+        if (count($bad) > 40) {
+            echo '  … ' . (count($bad) - 40) . " more failing line(s)\n";
+        }
+        echo "  ┄ tail ┄\n";
+        foreach (array_slice($lines, -12) as $line) {
+            if (str_contains($line, 'FAIL')) {
+                continue;   // already printed above; printing it twice reads like two failures
+            }
             echo '  ' . $line . "\n";
         }
     }

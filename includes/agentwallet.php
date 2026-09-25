@@ -461,6 +461,27 @@ final class AgentWallet
     }
 
     /** "SHG-0027" — the form printed on tickets. Empty when none is issued. */
+    /**
+     * Is this admins row a counter agent (role = agent)? Cached per request:
+     * accrue(), assertMaySell() and the statements ask several times.
+     */
+    public static function isAgentRow(int $adminId): bool
+    {
+        static $cache = [];
+        if ($adminId <= 0) {
+            return false;
+        }
+        if (!array_key_exists($adminId, $cache)) {
+            try {
+                $role = (string) Database::scalar('SELECT role FROM admins WHERE id = :id', ['id' => $adminId], '');
+            } catch (Throwable $e) {
+                $role = '';
+            }
+            $cache[$adminId] = $role === 'agent';
+        }
+        return $cache[$adminId];
+    }
+
     public static function agentCodeLabel(int $adminId): string
     {
         $code = self::agentCodeFor($adminId);
@@ -1023,7 +1044,7 @@ final class AgentWallet
         }
 
         $dir = UPLOAD_PATH . '/agents-kyc';
-        ensureDir($dir);
+        ensurePrivateDir($dir);                 // KYC papers are served only by admin/agent-kyc-file.php
 
         $filename = Security::safeFilename($ext);
         if (!move_uploaded_file((string) $file['tmp_name'], $dir . '/' . $filename)) {
@@ -1183,7 +1204,24 @@ final class AgentWallet
      */
     public static function assertMaySell(int $adminId, int $routeId): void
     {
-        if ($adminId <= 0 || !Auth::isCounterAgent()) {
+        /* Who is bound: a signed-in counter agent (their own sale), or an
+           agent sold FOR by a channel with no admin session at all — the
+           WhatsApp assistant's staff_sell, which used to bypass every route
+           list and daily cap. An office member (manager, owner) selling
+           under an agent's code from their own screen is not bound. */
+        if ($adminId <= 0) {
+            return;
+        }
+        if (Auth::admin() !== null) {
+            if (!Auth::isCounterAgent()) {
+                return;                     // the office selling under an agent's code
+            }
+        } elseif (PHP_SAPI === 'cli') {
+            return;                         // tests and cron act as the office
+        }
+        // A web request with no admin session can only be a machine channel
+        // (the WhatsApp webhook) selling AS the agent: bound like the agent.
+        if (!self::isAgentRow($adminId)) {
             return;
         }
 
@@ -1256,6 +1294,15 @@ final class AgentWallet
             $bookingId = (int) ($booking['id'] ?? 0);
             if ($agentId <= 0 || $bookingId <= 0) {
                 return;   // an online sale has no counter agent
+            }
+            /* Only a counter AGENT earns commission and owes cash through
+               this ledger. sold_by_admin_id is stamped for every staff
+               seller — the owner, a manager, a company ticket window — and
+               each of them used to accrue ₹200 a seat of phantom commission
+               plus a cash_due row, so the agent reports and the accounting
+               page counted office sales as agent liabilities. */
+            if (!self::isAgentRow($agentId)) {
+                return;
             }
 
             /* Reversal-aware (§4 reversible payment review).
@@ -3010,6 +3057,35 @@ final class AgentWallet
         // has to be settled before commission is worked out — not derived a
         // second, possibly different way when the row is inserted.
         $paxCount = max(1, (int) ($data['paxCount'] ?? max(1, count($seats))));
+
+        /* Commission is paid per passenger, so an uncapped count is a way to
+           pay yourself: 500 passengers on one paper ticket at ₹1 was accepted
+           and credited ₹200 × 500 to the agent's own wallet. A paper ticket
+           is one party, so it obeys the counter's party cap, and the money
+           collected must be at least a quarter of the cheapest fare per head
+           — a real discount still passes, an invented sale does not. */
+        $partyCap = max(1, Settings::getInt('counter_max_seats_per_booking', 20));
+        if ($paxCount > $partyCap) {
+            throw new RuntimeException('A paper ticket may carry at most ' . $partyCap . ' passengers. Enter the rest as a second ticket.');
+        }
+        if ($seats !== [] && count($seats) > $partyCap) {
+            throw new RuntimeException('A paper ticket may carry at most ' . $partyCap . ' seats.');
+        }
+        require_once __DIR__ . '/fare.php';
+        $cheapest = 0.0;
+        try {
+            $dir = Fare::dirFares();
+            $cheapest = (float) min(array_filter(array_map('floatval', (array) $dir), static fn(float $v): bool => $v > 0) ?: [0.0]);
+        } catch (Throwable $e) {
+            $cheapest = 0.0;
+        }
+        $floor = round($cheapest * 0.25 * $paxCount, 2);
+        if ($floor > 0 && $amount < $floor) {
+            throw new RuntimeException(
+                'The fare collected (' . inr($amount) . ') is too low for ' . $paxCount
+                . ' passenger(s) — at least ' . inr($floor) . ' is expected. Check the passenger count.'
+            );
+        }
 
         // Refuse the duplicate up front so the agent gets a clear message
         // instead of a raw constraint violation from deep inside a booking.

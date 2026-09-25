@@ -1,0 +1,100 @@
+{
+  "note": "Written by tools/build.mjs. Do not edit by hand. includes/assetbundle.php reads it at serve time.",
+  "builtFor": "app.template.html",
+  "js": {
+    "output": "assets/dist/app.min.js",
+    "bytes": 628340,
+    "sha256": "79a1b0ec3b1d93e8f1f69eb79c959928ba60607302684f63ed8bc9834fdbf850",
+    "rawBytes": 1026314,
+    "sources": [
+      {
+        "file": "assets/js/01-boot.js",
+        "bytes": 6497,
+        "sha256": "6a7e958c545fe0e7d72527141cb0703f1a73c1c8ada0819c8ee4993faeb3df9e"
+      },
+      {
+        "file": "assets/js/02-config.js",
+        "bytes": 78809,
+        "sha256": "6d446fa8c3e648d1e4cea03bfa7d6a6ca269dfa2c54ead2d332aa7eba67c5037"
+      },
+      {
+        "file": "assets/js/03-accounts.js",
+        "bytes": 25385,
+        "sha256": "f90b6d7f7a68adabf4939f017dcaee3a60431ab2d25a62b58875236825ef10dd"
+      },
+      {
+        "file": "assets/js/04-i18n.js",
+        "bytes": 176976,
+        "sha256": "7cfbe7d1e8ca803af57e66b10a54dadea7fee37bc77ca82530ac4991f9fb4cc1"
+      },
+      {
+        "file": "assets/js/05-router.js",
+        "bytes": 139968,
+        "sha256": "3fe48b017b230f7d115a2a05d04d56c455dd29b08fe672c2b322f8079fcf1993"
+      },
+      {
+        "file": "assets/js/06-results.js",
+        "bytes": 92957,
+        "sha256": "bb2cb6aa310393215a09fcb671363903b2052de044873ad33afa4f587e1cc91d"
+      },
+      {
+        "file": "assets/js/07-checkout.js",
+        "bytes": 127107,
+        "sha256": "595ccf52f127c636c39339ffe2dbc75ff99c8da00c6b3ae13dfd8863d9677da5"
+      },
+      {
+        "file": "assets/js/14-counter.js",
+        "bytes": 39215,
+        "sha256": "4d4a62eb3d3d1e0b8c742cc559becf4dd9efbf626601263a1e34f3d0b46562d3"
+      },
+      {
+        "file": "assets/js/08-signin.js",
+        "bytes": 30395,
+        "sha256": "6e92d9471e03ef3c29c34ce50df61cf483bfba692f8e8257da9cdc623c9da57c"
+      },
+      {
+        "file": "assets/js/10-track.js",
+        "bytes": 39475,
+        "sha256": "ba5a919e61450f42a32eec6328e65127247c3772a21165050722addf054f8209"
+      },
+      {
+        "file": "assets/js/11-pdf-ticket.js",
+        "bytes": 39461,
+        "sha256": "f7efb37f4311a5182dff6417a67dbec9d2b68916d0cceae9abc3ccc6b4c9280b"
+      },
+      {
+        "file": "assets/js/13-admin-routes.js",
+        "bytes": 169404,
+        "sha256": "96f2f52cd8384f08fed23586d6a99f09b1b18eef3c583bb845206966ce53ba99"
+      },
+      {
+        "file": "assets/js/17-pwa.js",
+        "bytes": 53129,
+        "sha256": "0e45b9793e6bc58ce9186f2cc007caf98e0c4a195ed57fac4fb757d8b6089a1d"
+      },
+      {
+        "file": "assets/js/18-journey.js",
+        "bytes": 7222,
+        "sha256": "c8c654fff44367361dc7a7d3cbdbdd877bdf32097c141c19e6d01513494dbb9a"
+      }
+    ]
+  },
+  "css": {
+    "output": "assets/dist/app.min.css",
+    "bytes": 363026,
+    "sha256": "d88baf55e6fb9d3cfc6596413be8f6a18929817e65d0e521ba85f3a7d33afdb4",
+    "rawBytes": 453676,
+    "sources": [
+      {
+        "file": "assets/css/app.css",
+        "bytes": 145049,
+        "sha256": "7630aca8f23ff20272ce4bb72a3320c80a553a4a2aa7347dc3964cbab6d51d9e"
+      },
+      {
+        "file": "assets/css/views.css",
+        "bytes": 308596,
+        "sha256": "c0546c4de65e94bedc6b8d9f8b686d525253371e4699d3f1cd5f0bbcf6e5a943"
+      }
+    ]
+  }
+}

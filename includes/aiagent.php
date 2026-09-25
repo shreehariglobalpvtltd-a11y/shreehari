@@ -67,6 +67,10 @@ final class AiAgent
     private const TURN_BUDGET_SEC = 45;
 
     private const MAX_TOKENS  = 700;
+    /* Claude: max_tokens caps thinking + text together. Sonnet 5 / Opus 5 run
+       adaptive thinking by default, so 700 left the reply truncated or empty
+       once a key was set; 2048 with effort=low keeps replies short and cheap. */
+    private const MAX_TOKENS_CLAUDE = 2048;
     /** Gemini 3.x spends thinking tokens out of this budget — see askGemini(). */
     private const MAX_TOKENS_GEMINI  = 2400;
     private const GEMINI_THINK_BUDGET = 512;
@@ -80,9 +84,14 @@ final class AiAgent
      *  Entry
      * ================================================================= */
 
+    /** Set by the office copilot (admin/api/ai-copilot.php) so the office can
+     *  talk to the assistant on the web before wa_agent_on is switched on for
+     *  customers. Never set on the WhatsApp path. */
+    public static bool $officeDoor = false;
+
     public static function enabled(): bool
     {
-        return Settings::getBool('wa_agent_on', false)
+        return (Settings::getBool('wa_agent_on', false) || self::$officeDoor)
             && function_exists('curl_init')
             && (self::anthropicKey() !== '' || self::geminiKey() !== '');
     }
@@ -135,6 +144,20 @@ final class AiAgent
         try {
             $history      = self::loadHistory($who);
             $ctx['turn']  = self::bumpTurn($who);
+
+            /* Learning (24 Sep 2026): "galat" / "hoina" / "wrong" right after
+               an answer is a 👎 on that answer. Logged with the exchange so
+               the office can turn it into an approved example. */
+            if (count($history) >= 2 && $ctx['phone'] !== '') {
+                require_once INCLUDE_PATH . '/ailearn.php';
+                if (AiLearn::looksLikeCorrection($text)) {
+                    $last = end($history); $prev = prev($history);
+                    if (is_array($last) && ($last['role'] ?? '') === 'assistant' && is_array($prev) && ($prev['role'] ?? '') === 'user') {
+                        AiLearn::feedback($ctx['phone'], $channel, 'down', (string) ($prev['content'] ?? ''), (string) ($last['content'] ?? ''), mb_substr($text, 0, 200));
+                    }
+                }
+            }
+
             $history[]    = ['role' => 'user', 'content' => mb_substr($text, 0, 1500)];
 
             $answer = self::converse($ctx, $history);
@@ -184,7 +207,7 @@ final class AiAgent
         self::$deadline = microtime(true) + self::TURN_BUDGET_SEC;
         try {
             return AiTurn::run(
-                static fn(string $system, array $messages, array $tools) => self::ask($system, $messages, $tools, $ctx),
+                static fn(string $system, array $messages, array $tools, bool $noTools = false) => self::ask($system, $messages, $tools, $ctx, $noTools),
                 static fn(string $name, array $args) => AiTools::run($name, $args, $ctx),
                 self::systemPrompt($ctx), $history, AiTools::catalogue($ctx),
                 Settings::getInt('wa_agent_max_tools', 6), self::$deadline
@@ -198,7 +221,7 @@ final class AiAgent
      *
      * @return array{text: string, calls: array<int, array{id: string, name: string, input: array}>, blocks: array}|null
      */
-    private static function ask(string $system, array $history, array $tools, array $ctx = []): ?array
+    private static function ask(string $system, array $history, array $tools, array $ctx = [], bool $noTools = false): ?array
     {
         $provider = strtolower(Settings::getString('ai_provider', 'auto'));
         $claude   = self::anthropicKey();
@@ -219,8 +242,8 @@ final class AiAgent
             }
 
             $out = $brain === 'anthropic'
-                ? self::askAnthropic($claude, $system, $history, $tools)
-                : self::askGemini($gemini, $system, $history, $tools, $ctx);
+                ? self::askAnthropic($claude, $system, $history, $tools, $noTools)
+                : self::askGemini($gemini, $system, $history, $tools, $ctx, $noTools);
 
             if ($out !== null) {
                 return $out;
@@ -235,16 +258,42 @@ final class AiAgent
      *  Claude (Anthropic Messages API)
      * ---------------------------------------------------------------- */
 
-    private static function askAnthropic(string $key, string $system, array $history, array $tools): ?array
+    /** Does this Claude model run adaptive thinking and take output_config.effort? */
+    private static function claudeIsAdaptive(string $model): bool
     {
+        $m = strtolower($model);
+        if (str_contains($m, 'haiku')) {
+            return false;
+        }
+        return str_contains($m, 'sonnet-5') || str_contains($m, 'opus-5') || str_contains($m, 'opus-4-')
+            || str_contains($m, 'sonnet-4-6') || str_contains($m, 'fable') || str_contains($m, 'mythos');
+    }
+
+    private static function askAnthropic(string $key, string $system, array $history, array $tools, bool $noTools = false): ?array
+    {
+        $model   = Settings::getString('ai_agent_model', 'claude-sonnet-5');
         $payload = [
-            'model'      => Settings::getString('ai_agent_model', 'claude-sonnet-5'),
-            'max_tokens' => self::MAX_TOKENS,
+            'model'      => $model,
+            'max_tokens' => self::MAX_TOKENS_CLAUDE,
             'system'     => $system,
             'messages'   => self::anthropicMessages($history),
         ];
+        if (self::claudeIsAdaptive($model)) {
+            // Adaptive thinking at low effort: a WhatsApp turn is a short
+            // conversation, not a maths problem. Disabling thinking outright
+            // makes the model write tool calls into visible text.
+            $payload['thinking']      = ['type' => 'adaptive'];
+            $payload['output_config'] = ['effort' => 'low'];
+        }
+        /* The tool list must be present whenever the history carries
+           tool_use / tool_result blocks — the API rejects such a history
+           with no tools defined. On the final round (budget spent) the
+           tools stay declared but the model may not call one. */
         if ($tools !== []) {
             $payload['tools'] = $tools;
+            if ($noTools) {
+                $payload['tool_choice'] = ['type' => 'none'];
+            }
         }
 
         $res = self::http('https://api.anthropic.com/v1/messages', $payload, [
@@ -270,6 +319,10 @@ final class AiAgent
                     'name'  => (string) ($block['name'] ?? ''),
                     'input' => is_array($block['input'] ?? null) ? $block['input'] : [],
                 ];
+                $blocks[] = $block;
+            } elseif ($type === 'thinking' || $type === 'redacted_thinking') {
+                // Kept whole (text + signature) so the assistant turn can be
+                // replayed unchanged on the next round of the same call.
                 $blocks[] = $block;
             }
         }
@@ -334,6 +387,15 @@ final class AiAgent
                 'id'    => (string) ($block['id'] ?? ''),
                 'name'  => (string) ($block['name'] ?? ''),
                 'input' => is_array($block['input'] ?? null) && $block['input'] !== [] ? $block['input'] : (object) [],
+            ],
+            'thinking' => [
+                'type'      => 'thinking',
+                'thinking'  => (string) ($block['thinking'] ?? ''),
+                'signature' => (string) ($block['signature'] ?? ''),
+            ],
+            'redacted_thinking' => [
+                'type' => 'redacted_thinking',
+                'data' => (string) ($block['data'] ?? ''),
             ],
             default => ['type' => 'text', 'text' => (string) ($block['text'] ?? '')],
         };
@@ -428,7 +490,7 @@ final class AiAgent
         return 2;                   // everything else: the reliable middle
     }
 
-    private static function askGemini(string $key, string $system, array $history, array $tools, array $ctx = []): ?array
+    private static function askGemini(string $key, string $system, array $history, array $tools, array $ctx = [], bool $noTools = false): ?array
     {
         $pinned = trim(Settings::getString('gemini_model', ''));
         $ladder = self::GEMINI_LADDER;
@@ -475,6 +537,9 @@ final class AiAgent
                 ],
                 $tools
             )]];
+        }
+        if ($tools !== [] && $noTools) {
+            $payload['toolConfig'] = ['functionCallingConfig' => ['mode' => 'NONE']];
         }
 
         $res = null;
@@ -905,6 +970,13 @@ final class AiAgent
             . self::companyBriefing();
 
         $sell = Settings::getBool('wa_agent_sell', false);
+
+        /* Memory that follows the person + corrections the office approved
+           (24 Sep 2026). Both read '' while their switches are off. */
+        require_once INCLUDE_PATH . '/aimemory.php';
+        require_once INCLUDE_PATH . '/ailearn.php';
+        $base .= AiMemory::brief((string) ($ctx['phone'] ?? ''))
+               . AiLearn::examplesBlock(AiLearn::languageOf((string) ($ctx['messageText'] ?? '')));
 
         if ($role === 'customer') {
             $base .= "\n=== YOU ARE TALKING TO A PASSENGER ===\n"

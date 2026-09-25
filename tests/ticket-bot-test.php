@@ -226,10 +226,47 @@ try {
     check('  direction from history', ($s['prefill']['direction'] ?? '') === 'toNepal' && ($s['fields']['direction']['source'] ?? '') === 'history');
     check('  gender from the recorded tickets', ($s['prefill']['gender'] ?? '') === 'Male' && ($s['fields']['gender']['source'] ?? '') === 'history');
     check('  the date is NEVER taken from history', ($s['prefill']['date'] ?? 'x') === '' && ($s['fields']['date']['source'] ?? '') === 'auto');
-    check('  a live plan comes back, on the remembered pickup', is_array($s['plan']) && ($s['plan']['matchedDesk'] ?? false) === true && count($s['plan']['seats']) === 1, (string) ($s['plan']['boarding'] ?? $s['planError']));
+    /* No date was typed, so the plan is for "today or the next catchable
+       run", and whether the remembered pickup is still sellable today
+       depends on the hour. Production answers honestly either way: it plans
+       on that pickup, or it takes the first stop still ahead AND says so —
+       a reason for the desk plus fields.boarding.check. Demanding only the
+       first passed before 8 pm and failed the CI run at 22:37 IST, when
+       Nadiad (20:00) was behind and Mehsana (23:00) was still ahead. Both
+       outcomes are asserted here, so the check is true at every hour and
+       still proves the pickup is never silently swapped. (25 Sep 2026.) */
+    /* Matched means the plan really sits on the remembered town, not just
+       that a flag says so: stopMatches() also accepts a short stop code, so
+       the flag alone could be true on a different town. */
+    $planTown  = Boarding::townKey((string) ($s['plan']['boarding'] ?? ''));
+    $onPickup  = ($s['plan']['matchedDesk'] ?? false) === true
+        && $planTown !== '' && $planTown === Boarding::townKey((string) ($s['prefill']['boarding'] ?? ''));
+    /* A fallback must be the FIRST pickup still ahead on that run — not any
+       later one — and it must be admitted to, in the reason and the flag the
+       desk sees. */
+    $stillAhead = array_values(array_filter(
+        Boarding::stopsFor($rid),
+        static fn(array $st): bool => ($ts = strtotime(todayISO() . ' ' . substr((string) $st['time'], 0, 5))) !== false && $ts > time()
+    ));
+    $firstAhead = $stillAhead === [] ? '' : Boarding::townKey((string) $stillAhead[0]['name']);
+    $saidSo   = ($s['fields']['boarding']['check'] ?? false) === true
+        && array_filter($s['reasons'], static fn(string $r): bool => str_contains($r, 'does not call at the suggested pickup')) !== []
+        && ($firstAhead === '' || $planTown === $firstAhead);
+    check('  a live plan comes back — on the remembered pickup, or a fallback it admits to',
+        is_array($s['plan']) && count($s['plan']['seats']) === 1 && ($onPickup || $saidSo),
+        (string) ($s['plan']['boarding'] ?? 'no plan') . ' @ ' . (string) ($s['plan']['boardingTime'] ?? '?')
+        . ' · matched ' . ($onPickup ? 'yes' : 'no') . ($onPickup ? '' : ' · admitted ' . ($saidSo ? 'yes' : 'NO')));
+    /* With a date the desk types, the remembered pickup is never in doubt —
+       every stop of that run lies ahead, whatever the clock says. */
+    $sd = TicketBot::suggest(['phone' => TB_PHONE . '001', 'date' => $D], $staffRow);
+    check('  with a typed date the plan sits on the remembered pickup',
+        is_array($sd['plan']) && ($sd['plan']['matchedDesk'] ?? false) === true && count($sd['plan']['seats']) === 1
+        && Boarding::stopDisplay((string) ($sd['plan']['boarding'] ?? ''))['code'] === $lastCode,
+        (string) ($sd['plan']['boarding'] ?? 'no plan') . ' @ ' . (string) ($sd['plan']['boardingTime'] ?? '?'));
     $q = Fare::quote((float) $dir['toNepal'], 1, 0, 0, 0, '', '', $rid);
-    check('  the fare is the engine\'s own quote — untouched', abs((float) ($s['plan']['fare']['total'] ?? 0) - (float) $q['total']) < 0.01 && abs((float) ($s['plan']['fare']['perSeat'] ?? 0) - (float) $dir['toNepal']) < 0.01, (string) ($s['plan']['fare']['total'] ?? ''));
-    check('  confidence + reasons are reported', (float) $s['confidence'] > 0.5 && count($s['reasons']) >= 1, (string) $s['confidence'] . ' · ' . implode(' | ', $s['reasons']));
+    check('  the fare is the engine\'s own quote — untouched', abs((float) ($sd['plan']['fare']['total'] ?? 0) - (float) $q['total']) < 0.01 && abs((float) ($sd['plan']['fare']['perSeat'] ?? 0) - (float) $dir['toNepal']) < 0.01, (string) ($sd['plan']['fare']['total'] ?? ''));
+    check('  confidence + reasons are reported', (float) $sd['confidence'] > 0.5 && count($sd['reasons']) >= 1, (string) $sd['confidence'] . ' · ' . implode(' | ', $sd['reasons']));
+    check('  and the undated suggestion still explains itself', count($s['reasons']) >= 1, implode(' | ', $s['reasons']));
     $s = TicketBot::suggest(['phone' => TB_PHONE . '001', 'boarding' => $firstTown, 'name' => 'Typed Name', 'gender' => 'Female'], $staffRow);
     check('explicit input beats history (name, pickup, gender)',
         ($s['prefill']['name'] ?? '') === 'Typed Name' && ($s['fields']['boarding']['source'] ?? '') === 'input' && ($s['prefill']['gender'] ?? '') === 'Female' && ($s['fields']['name']['source'] ?? '') === 'input');
@@ -252,15 +289,25 @@ try {
      *  4. patterns() — aggregated, cached
      * ================================================================ */
     echo "\n== patterns(): aggregated + cached ==\n";
+    /* patterns() counts every confirmed sale in the window, whoever made it.
+       This suite's own qualifying sales were a1 and a2 (a3 and c1 are
+       cancelled), so "sample >= 3" used to pass only because earlier suites
+       had left bookings in the database — on a freshly built CI database it
+       read "sample 2" and went red. A third sale of our own makes the count
+       ours, and the assertion now proves what it always meant to: every
+       sale just made is inside the window. (25 Sep 2026.)  */
+    $a4 = $sell(['name' => 'Bot Test Sita', 'phone' => TB_PHONE . '004', 'date' => $D, 'boarding' => $lastTown, 'gender' => 'Female']);
+    $mine = (int) Database::scalar("SELECT COUNT(*) FROM bookings WHERE contact_phone LIKE '" . TB_PHONE . "%' AND status IN ('confirmed','completed')", [], 0);
+    check('this suite made three sales the window must hold', $mine === 3, (string) $mine);
     $pt = TicketBot::patterns(true);
-    check('the window holds the sales just made', (int) $pt['sample'] >= 3 && (int) $pt['repeat'] >= 1, 'sample ' . $pt['sample'] . ' · repeat ' . $pt['repeat']);
+    check('the window holds the sales just made', (int) $pt['sample'] >= $mine && (int) $pt['repeat'] >= 1, 'sample ' . $pt['sample'] . ' · repeat ' . $pt['repeat'] . ' · ours ' . $mine);
     $codes = array_map(static fn(array $x): string => (string) $x['code'], $pt['stops']);
     check('  the learned pickups include the one sold', in_array($lastCode, $codes, true), implode(',', $codes));
     check('  a desk pattern exists for the selling agent', isset($pt['stopBySeller'][(string) $agentId]), json_encode(array_keys($pt['stopBySeller'])));
     $pt2 = TicketBot::patterns();
     check('  the second read is served from the kv_store cache', $pt2['computedAt'] === $pt['computedAt'] && Database::exists("SELECT 1 FROM kv_store WHERE kscope = 'global' AND kkey = 'ticketbot.patterns.v1'"));
     $sum = TicketBot::summary();
-    check('  summary() for the desk header', (int) $sum['sample'] >= 3 && $sum['enabled'] === true && is_array($sum['accuracy']));
+    check('  summary() for the desk header', (int) $sum['sample'] >= $mine && $sum['enabled'] === true && is_array($sum['accuracy']), 'sample ' . $sum['sample']);
 
     /* ================================================================
      *  5. feedback() / accuracy() — the outcome loop

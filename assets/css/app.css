@@ -526,6 +526,8 @@ a.credit-seg:hover,a.credit-seg:focus-visible{background:rgba(255,255,255,.08)}
 
 /* ---------- [CSS] 7. TRUST / BRAND STRIP ---------- */
 .trust{padding:56px 0 8px}
+.trust-live{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:0 0 18px}
+.tl-pill{background:var(--card,#fff);border:1px solid var(--line);border-radius:999px;padding:7px 13px;font-size:13px;font-weight:700;color:var(--ink);box-shadow:0 2px 8px rgba(18,38,78,.06)}
 .trust-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
 .t-badge{background:linear-gradient(160deg,#fff 60%,var(--blue-50));border:1px solid var(--line);border-radius:var(--r);padding:20px 18px;display:flex;gap:14px;align-items:flex-start;transition:transform .25s,box-shadow .25s}
 .t-badge:hover{transform:translateY(-4px);box-shadow:var(--shadow-md);border-color:var(--blue-100)}

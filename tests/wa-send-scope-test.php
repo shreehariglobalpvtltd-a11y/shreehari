@@ -9,7 +9,8 @@
  * summary or a departure document. The office (superadmin) may do all of
  * it. CSRF is enforced on every call. Preview only — nothing is sent.
  *
- *   php tests/wa-send-scope-test.php          (needs php -S 127.0.0.1:8899)
+ *   php tests/wa-send-scope-test.php
+ *       (needs the dev server: php -S 127.0.0.1:8899 -t . tests/dev-router.php)
  * Throwaway agents + bookings on a far-future date; cleans up after itself
  * and restores the settings it pins. CLI only.
  */

@@ -76,7 +76,7 @@
       beacon('install_prompt', { source: deferred ? 'android' : 'ios' });
     }
     function head() {
-      return '<div class="pwa-head"><img src="/assets/img/icon-192.png?v=20260920l" alt="" width="52" height="52">'
+      return '<div class="pwa-head"><img src="/assets/img/icon-192.png?v=20260925a" alt="" width="52" height="52">'
         + '<div><b>' + E(T('pwaInstallT')) + '</b><small>' + E(T('pwaInstallP')) + '</small></div></div>';
     }
     function showAndroid() {
@@ -747,4 +747,157 @@
       renderStatus(decodeURIComponent(h0.split('/')[2] || ''));
     }
   } catch (e) {}
+})();
+
+/* =====================================================================
+ *  ContactDial (24 Sep 2026) — the office one tap away on every screen.
+ *  Call · WhatsApp · Sahayak chat · "call me back" (an enquiry the office
+ *  sees in its inbox). Numbers come from SHG_BOOT.contact, so the desk can
+ *  change them in Settings without a deploy. Every hook is optional: a
+ *  page without the markup simply has no dial.
+ * ===================================================================== */
+(function ContactDial() {
+  var fab = document.getElementById('ctFab'), sheet = document.getElementById('ctSheet');
+  if (!fab || !sheet) return;
+  var boot = window.SHG_BOOT || {}, contact = boot.contact || {};
+  var phone = String(contact.phone || '').trim(), wa = String(contact.wa || '').replace(/\D/g, '');
+  try { if (typeof t === 'function') fab.setAttribute('aria-label', t('ctFabLbl')); } catch (e) {}
+  var callA = document.getElementById('ctCall'), waA = document.getElementById('ctWa');
+  if (callA) { if (phone) callA.href = 'tel:' + phone.replace(/[^0-9+]/g, ''); else callA.hidden = true; }
+  if (waA) {
+    if (wa) {
+      var hello = (typeof t === 'function') ? t('ctWaHello') : 'Namaste, S Hari Global. ';
+      waA.href = 'https://wa.me/' + wa + '?text=' + encodeURIComponent(hello);
+    } else { waA.hidden = true; }
+  }
+  function open() {
+    sheet.hidden = false; fab.setAttribute('aria-expanded', 'true');
+    var f = document.getElementById('ctCbForm'); if (f) f.hidden = true;
+    try { if (navigator.vibrate) navigator.vibrate(8); } catch (e) {}
+    var x = document.getElementById('ctClose'); if (x) x.focus();
+  }
+  function close() { sheet.hidden = true; fab.setAttribute('aria-expanded', 'false'); fab.focus(); }
+  fab.addEventListener('click', function () { sheet.hidden ? open() : close(); });
+  var closeBtn = document.getElementById('ctClose'); if (closeBtn) closeBtn.addEventListener('click', close);
+  sheet.addEventListener('click', function (e) { if (e.target === sheet) close(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !sheet.hidden) close(); });
+
+  var chat = document.getElementById('ctChat');
+  if (chat) chat.addEventListener('click', function () {
+    close();
+    var ai = document.getElementById('aiFab'); if (ai) ai.click();
+  });
+
+  var cbOpen = document.getElementById('ctCbOpen'), form = document.getElementById('ctCbForm');
+  if (cbOpen && form) {
+    cbOpen.addEventListener('click', function () {
+      form.hidden = !form.hidden;
+      if (!form.hidden) {
+        var u = boot.user || {};
+        var n = document.getElementById('ctCbName'), p = document.getElementById('ctCbPhone');
+        if (n && !n.value && u.name) n.value = u.name;
+        if (p && !p.value && u.phone) p.value = u.phone;
+        (n && !n.value ? n : p).focus();
+      }
+    });
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var msg = document.getElementById('ctCbMsg'), btn = document.getElementById('ctCbSend');
+      var name = (document.getElementById('ctCbName').value || '').trim();
+      var ph = (document.getElementById('ctCbPhone').value || '').replace(/\D/g, '');
+      if (name.length < 2 || ph.length < 10) { msg.className = 'ct-note bad'; msg.textContent = (typeof t === 'function') ? t('ctCbNeed') : 'Enter your name and mobile number.'; return; }
+      btn.disabled = true; msg.className = 'ct-note'; msg.textContent = '…';
+      var body = { name: name, phone: ph, source: 'callback', note: 'Call me back · ' + (location.hash || '#/'), seats: 1 };
+      var send = (typeof shgApi !== 'undefined' && shgApi.post)
+        ? shgApi.post('/enquiry.php', body)
+        : fetch('/api/enquiry.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(function (r) { return r.json(); }).then(function (j) { if (!j.ok) throw new Error(j.error || ''); return j; });
+      send.then(function () {
+        msg.className = 'ct-note ok'; msg.textContent = (typeof t === 'function') ? t('ctCbOk') : 'Done — the office will call you back.';
+        try { if (typeof toast === 'function') toast('✅ ' + msg.textContent); } catch (e2) {}
+        setTimeout(close, 2200);
+      }).catch(function () {
+        msg.className = 'ct-note bad'; msg.textContent = (typeof t === 'function') ? t('ctCbFail') : 'Could not send — please call the office.';
+      }).then(function () { btn.disabled = false; });
+    });
+  }
+})();
+
+
+/* ===================================================================
+   Trust layer (24 Sep 2026) — three switches, all OFF until the office
+   turns them on in Admin → Settings:
+     trust_card_on     real numbers on the home page (SHG_BOOT.trust.numbers)
+     refund_ladder_on  the refund slabs next to Pay + "where is my refund"
+     women_layer_on    "N women already on this bus" + the 24×7 helpline
+   Nothing here invents a number: the server sends what the register holds.
+   =================================================================== */
+(function () {
+  var B = window.SHG_BOOT || {};
+  var S = B.settings || {};
+  var T = B.trust || {};
+  function on(k) { return S[k] === true || S[k] === 1 || S[k] === '1'; }
+  function h(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
+  function tx(k, v) { return (typeof tf === 'function' && v) ? tf(k, v) : (typeof t === 'function' ? t(k) : k); }
+
+  function card() {
+    var el = document.getElementById('trustLive');
+    if (!el || !on('trust_card_on')) return;
+    var n = T.numbers || {};
+    var pills = [];
+    if (n.trips > 0) pills.push('🚌 ' + tx('trTrips', { n: n.trips }));
+    if (n.pax > 0) pills.push('👥 ' + tx('trPax', { n: n.pax.toLocaleString('en-IN') }));
+    if (n.ratingCount >= 3 && n.rating > 0) pills.push('⭐ ' + tx('trRating', { r: n.rating, n: n.ratingCount }));
+    if (n.womenSeats > 0) pills.push('👩 ' + tx('trWomen', { n: n.womenSeats }));
+    if (!pills.length) return;
+    el.innerHTML = pills.map(function (p) { return '<span class="tl-pill">' + h(p) + '</span>'; }).join('');
+    el.classList.remove('hide');
+  }
+
+  function ladder(dateISO, depTime) {
+    var el = document.getElementById('rfLadder');
+    if (!el) return;
+    if (!on('refund_ladder_on') || !dateISO) { el.classList.add('hide'); return; }
+    var slabs = (T.ladder && T.ladder.length) ? T.ladder
+              : ((window.CONFIG && CONFIG.booking && CONFIG.booking.refundSlabs) || []);
+    slabs = slabs.slice().sort(function (a, b) { return b.minHrs - a.minHrs; });
+    if (!slabs.length) { el.classList.add('hide'); return; }
+    var dep = new Date(dateISO + 'T' + String(depTime || '00:00').slice(0, 5) + ':00').getTime();
+    var hrs = isNaN(dep) ? 0 : (dep - Date.now()) / 36e5;
+    var now = null;
+    for (var i = 0; i < slabs.length; i++) { if (hrs >= slabs[i].minHrs) { now = slabs[i]; break; } }
+    var minPos = 0;
+    slabs.forEach(function (s) { if (s.minHrs > 0 && (minPos === 0 || s.minHrs < minPos)) minPos = s.minHrs; });
+    var rows = slabs.map(function (s) {
+      var txt = s.minHrs > 0 ? tx('rfRow', { h: s.minHrs, p: s.pct }) : tx('rfNone', { h: minPos });
+      return '<li' + (s === now ? ' class="on"' : '') + '>' + h(txt) + '</li>';
+    });
+    el.innerHTML = '<b>' + h(tx('rfTitle')) + '</b><ul>' + rows.join('') + '</ul><p>' + h(tx('rfNow', { p: now ? now.pct : 0 })) + '</p>';
+    el.classList.remove('hide');
+  }
+
+  function women(r, dateISO, femSet) {
+    var el = document.getElementById('womenLine');
+    if (!el) return;
+    var privateCabin = (typeof Flow !== 'undefined' && Flow && Flow.bookingType === 'private');
+    if (!on('women_layer_on') || privateCabin || !r) { el.classList.add('hide'); return; }
+    var n = 0;
+    try { if (typeof femaleBookedSeats === 'function') n = (femaleBookedSeats(r.id, dateISO) || []).length; } catch (e) { n = 0; }
+    var help = String(S.women_helpline || (B.contact && B.contact.phone) || '').trim();
+    var pink = (femSet && femSet.length) ? ' · ' + tx('trWomen', { n: femSet.length }) : '';
+    el.innerHTML = '<span>👩 ' + h(n > 0 ? tx('wlCount', { n: n }) : tx('wlNone')) + h(n > 0 ? pink : '') + '</span>'
+                 + (help ? '<a href="tel:' + h(help.replace(/[^\d+]/g, '')) + '">📞 ' + h(tx('wlHelp')) + '</a>' : '');
+    el.classList.remove('hide');
+  }
+
+  function refundLine(b) {
+    if (!on('refund_ladder_on') || !b) return '';
+    var a = Number(b.refundAmount || 0), s = String(b.refundStatus || '');
+    if (!(a > 0) || (s !== 'pending' && s !== 'processed')) return '';
+    var lbl = tx(s === 'pending' ? 'rfStPending' : 'rfStPaid');
+    var money = (typeof inr === 'function') ? inr(a) : ('₹' + a);
+    return '<div class="mybk-refund">↩ ' + h(tx('rfStatus', { a: money, s: lbl })) + '</div>';
+  }
+
+  window.SHG_TRUST = { card: card, ladder: ladder, women: women, refundLine: refundLine };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', card); else card();
 })();

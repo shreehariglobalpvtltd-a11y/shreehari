@@ -274,6 +274,86 @@ $codOwed = (float) Database::scalar(
 ok('cash-on-delivery outstanding', inr($codOwed) . ' — settle from Admin → Verify Payments');
 
 /* =====================================================================
+ *  What the web server itself lets through (25 Sep 2026)
+ *
+ *  The two things that cannot be checked from inside PHP — whether the
+ *  server hands out a departure sheet to anybody who guesses its URL, and
+ *  whether it holds the live seat stream open — are checked by asking this
+ *  very site over HTTP, the way a stranger would.
+ * ===================================================================== */
+head('The web server');
+
+$base = rtrim(APP_URL, '/');
+$get  = static function (string $path, int $timeout = 8): array {
+    if (!function_exists('curl_init')) {
+        return ['code' => 0, 'type' => '', 'body' => '', 'err' => 'cURL is not loaded'];
+    }
+    $ch = curl_init($path);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => $timeout, CURLOPT_FOLLOWLOCATION => false]);
+    $body = (string) curl_exec($ch);
+    $out  = [
+        'code' => (int) curl_getinfo($ch, CURLINFO_HTTP_CODE),
+        'type' => (string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE),
+        'body' => $body,
+        'err'  => curl_error($ch),
+    ];
+    curl_close($ch);
+    return $out;
+};
+
+/* A real private file, if there is one, is the honest test; otherwise the
+   folder itself must still be refused. */
+$probe = '';
+foreach (['challan', 'chalani'] as $tree) {
+    foreach (glob(UPLOAD_PATH . '/' . $tree . '/*/*.png') ?: [] as $f) {
+        $probe = '/uploads/' . $tree . '/' . basename(dirname($f)) . '/' . basename($f);
+        break 2;
+    }
+}
+$probePath = $probe !== '' ? $probe : '/uploads/challan/';
+$r = $get($base . $probePath);
+if ($r['code'] === 0) {
+    meh('could not ask the server about ' . $probePath, $r['err'] ?: 'no answer');
+} elseif (in_array($r['code'], [401, 403, 404], true)) {
+    ok('a departure sheet cannot be fetched directly', $probePath . ' → HTTP ' . $r['code']);
+} else {
+    bad('ANYONE CAN READ A DEPARTURE SHEET — passenger names and mobiles are public',
+        $probePath . ' → HTTP ' . $r['code'] . '. Add the uploads rules from deploy/nginx-shreehariglobal.in.conf (or check that .htaccess is being read), then run this again.');
+}
+
+/* The same question for ID scans and KYC papers. */
+foreach (['/uploads/passengers/', '/uploads/agents-kyc/'] as $dir) {
+    $r = $get($base . $dir);
+    if ($r['code'] === 0) {
+        meh('could not ask the server about ' . $dir, $r['err'] ?: 'no answer');
+    } else {
+        check(in_array($r['code'], [401, 403, 404], true), 'the server refuses ' . $dir, 'HTTP ' . $r['code']);
+    }
+}
+
+/* Live seat updates need nginx to stop buffering, or the stream arrives in
+   one lump when it ends and the whole feature is pointless. Only worth
+   saying anything about when the switch is on, or about to be. */
+if (Settings::getBool('seat_events_on', false)) {
+    $sid = (int) Database::scalar("SELECT id FROM schedules ORDER BY id DESC LIMIT 1", [], 0);
+    $t0  = microtime(true);
+    $r   = $get($base . '/api/seat-events.php?scheduleId=' . $sid . '&max=1', 8);
+    $took = microtime(true) - $t0;
+    if ($r['code'] === 0) {
+        meh('could not open the live seat stream', $r['err'] ?: 'no answer');
+    } elseif (!str_contains(strtolower($r['type']), 'text/event-stream')) {
+        bad('the live seat stream is not being served as a stream',
+            'HTTP ' . $r['code'] . ' ' . ($r['type'] ?: 'no content type') . ' — add the /api/seat-events.php location from deploy/nginx-shreehariglobal.in.conf');
+    } elseif (!str_contains($r['body'], 'event:') && !str_contains($r['body'], 'data:')) {
+        bad('the live seat stream sent no events', 'check the nginx location for /api/seat-events.php');
+    } else {
+        ok('the live seat stream answers as a stream', 'text/event-stream in ' . round($took, 1) . 's');
+    }
+} else {
+    meh('live seat updates are off', 'turn seat_events_on ON only after the /api/seat-events.php location from deploy/nginx-shreehariglobal.in.conf is in place — then run this again');
+}
+
+/* =====================================================================
  *  Verdict
  * ===================================================================== */
 echo "\n" . str_repeat('-', 60) . "\n";

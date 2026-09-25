@@ -221,6 +221,7 @@ async function refreshMyBookingsFromServer(force) {
       });
       const next = Object.assign({}, cur, { status: b.status, total: b.total, codFlag: b.codFlag,
         ticketNumber: b.ticketNumber || cur.ticketNumber || '', payment: pay,
+        trackUrl: b.trackUrl || cur.trackUrl || null,
         createdAt: cur.createdAt || b.createdAt });
       if (JSON.stringify(next) !== JSON.stringify(cur)) { DB.bookings[at] = next; changed = true; }
     });
@@ -372,6 +373,7 @@ function myBookingCard(b) {
       <small>${fmtDate(b.date)}</small>
     </div>
     <div class="mybk-route">${esc(parseBP(b.boarding).name || r.from || '?')} <em>→</em> ${esc(parseBP(b.drop).name || r.to || '?')} · ${seatLabelJoin(b.seats, r.type, b.bookingType)} · <b>${inr(b.total)}</b></div>
+    ${(b.status === 'cancelled' && window.SHG_TRUST) ? SHG_TRUST.refundLine(b) : ''}
     <div class="mybk-actions">
       <a class="btn btn-blue btn-sm" href="#/ticket/${esc(b.id)}">🎫 ${t('st5')}</a>
       ${b.status === 'confirmed' ? '<button class="btn btn-ghost btn-sm" type="button" data-mypdf="' + esc(b.id) + '">' + t('btnPdf') + '</button>' : ''}

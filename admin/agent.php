@@ -538,11 +538,11 @@ if (($_GET['export'] ?? '') === 'ledger') {
 
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel reads Devanagari/₹ correctly
-    fputcsv($out, ['Date', 'Entry', 'Account', 'Booking / Ref', 'Note', 'Amount (signed)', 'Recorded by']);
+    csv_put($out, ['Date', 'Entry', 'Account', 'Booking / Ref', 'Note', 'Amount (signed)', 'Recorded by']);
     $running = 0.0;
     foreach ($rows as $r) {
         $running += (float) $r['amount'];
-        fputcsv($out, [
+        csv_put($out, [
             (string) $r['created_at'],
             (string) $r['entry_type'],
             (string) $r['account'],
@@ -552,8 +552,8 @@ if (($_GET['export'] ?? '') === 'ledger') {
             (string) ($r['by_name'] ?? ''),
         ]);
     }
-    fputcsv($out, []);
-    fputcsv($out, ['', '', '', '', 'Net movement in window', number_format($running, 2, '.', ''), '']);
+    csv_put($out, []);
+    csv_put($out, ['', '', '', '', 'Net movement in window', number_format($running, 2, '.', ''), '']);
     fclose($out);
     exit;
 }

@@ -57,7 +57,8 @@ try {
     // The operator named this model in the master prompt (cost: this is a
     // bus company's FAQ bot, not a coding agent). Changeable in Admin →
     // Settings without a deploy.
-    $model = Settings::getString('ai_model', 'claude-sonnet-4-6');
+    // claude-sonnet-5: half the price of the sonnet-4-6 default this shipped with.
+    $model = Settings::getString('ai_model', 'claude-sonnet-5');
 
     /* ---- Validate the conversation from the browser ---------------- */
     $raw = Response::field('messages', []);
@@ -88,15 +89,34 @@ try {
 
     /* ---- System prompt: server-owned, never client-supplied, built from
        live settings and tables on every call (ai_system_prompt above). */
-    $system = ai_system_prompt();
+    $webUser = Auth::user();
+    $webPhone = (string) ($webUser['phone'] ?? '');
+    $lastUser = '';
+    foreach (array_reverse($messages) as $m) { if (($m['role'] ?? '') === 'user') { $lastUser = (string) (is_string($m['content']) ? $m['content'] : ''); break; } }
+    $system = ai_system_prompt($webPhone, $lastUser);
+
+    /* "galat" / "wrong" right after an answer is a 👎 on it (24 Sep 2026). */
+    try {
+        require_once INCLUDE_PATH . '/ailearn.php';
+        $n = count($messages);
+        if ($n >= 3 && AiLearn::looksLikeCorrection($lastUser) && ($messages[$n - 2]['role'] ?? '') === 'assistant') {
+            AiLearn::feedback($webPhone !== '' ? $webPhone : Security::clientIp(), 'web', 'down',
+                (string) ($messages[$n - 3]['content'] ?? ''), (string) ($messages[$n - 2]['content'] ?? ''), mb_substr($lastUser, 0, 200));
+        }
+    } catch (Throwable $e) { /* learning is optional */ }
 
     /* ---- Relay to the Anthropic Messages API ----------------------- */
-    $payload = json_encode([
+    $req = [
         'model'      => $model,
-        'max_tokens' => 420,
+        'max_tokens' => 1024,   // thinking + text share this cap on Sonnet 5
         'system'     => $system,
         'messages'   => $messages,
-    ], JSON_UNESCAPED_UNICODE);
+    ];
+    if (!str_contains(strtolower($model), 'haiku') && !str_contains(strtolower($model), 'sonnet-4-5')) {
+        $req['thinking']      = ['type' => 'adaptive'];
+        $req['output_config'] = ['effort' => 'low'];
+    }
+    $payload = json_encode($req, JSON_UNESCAPED_UNICODE);
 
     $ch = curl_init('https://api.anthropic.com/v1/messages');
     curl_setopt_array($ch, [

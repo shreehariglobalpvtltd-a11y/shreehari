@@ -1,0 +1,120 @@
+# =====================================================================
+#  Deploy to the Hostinger VPS — on demand, never automatically.
+#
+#  This workflow does NOT run on a push. Somebody has to start it from the
+#  Actions tab (Run workflow), choose the branch and decide whether it is a
+#  dry run. A live bus-ticketing site should not change because a commit
+#  landed; it should change because a person decided it is time.
+#
+#  What it does on the server is deploy/vps-pull-deploy.sh, which takes a
+#  backup, fast-forwards, lints what changed, applies pending migrations,
+#  fixes ownership, reloads PHP-FPM and nginx, and rolls the code back by
+#  itself if the site stops answering 200. Read that file before the first
+#  real run.
+#
+#  It needs four repository secrets (Settings, Secrets and variables,
+#  Actions). Until they exist the workflow stops with a clear message
+#  instead of half-deploying:
+#
+#    VPS_SSH_KEY   private key of a user that can sudo on the VPS
+#    VPS_HOST      93.127.167.249, or the hostname
+#    VPS_USER      the SSH user (root, or a sudoer)
+#    VPS_PATH      /var/www/shreehariglobal.in/public_html
+#
+#  Optional: VPS_PORT (default 22).
+# =====================================================================
+
+name: Deploy to VPS
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to put live on the server'
+        required: true
+        default: 'main'
+      dry_run:
+        description: 'Only say what would happen (no changes)'
+        type: boolean
+        default: true
+      rollback:
+        description: 'Roll the server back to the previous commit instead of deploying'
+        type: boolean
+        default: false
+
+concurrency:
+  group: vps-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: ${{ inputs.rollback && 'Roll back' || (inputs.dry_run && 'Dry run' || 'Deploy') }} ${{ inputs.branch }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check the secrets are set
+        env:
+          KEY:  ${{ secrets.VPS_SSH_KEY }}
+          HOST: ${{ secrets.VPS_HOST }}
+          USER: ${{ secrets.VPS_USER }}
+          PATH_: ${{ secrets.VPS_PATH }}
+        run: |
+          missing=""
+          [ -n "$KEY" ]   || missing="$missing VPS_SSH_KEY"
+          [ -n "$HOST" ]  || missing="$missing VPS_HOST"
+          [ -n "$USER" ]  || missing="$missing VPS_USER"
+          [ -n "$PATH_" ] || missing="$missing VPS_PATH"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing — add them in Settings > Secrets and variables > Actions, then run this again."
+            exit 1
+          fi
+          echo "All four secrets are present."
+
+      - name: Open an SSH session to the server
+        env:
+          KEY:  ${{ secrets.VPS_SSH_KEY }}
+          HOST: ${{ secrets.VPS_HOST }}
+          PORT: ${{ secrets.VPS_PORT }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          # Pin the host key on first use and keep it in the log, so a
+          # changed key is visible rather than silently accepted.
+          ssh-keyscan -p "${PORT:-22}" -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          echo "Host fingerprint(s) recorded:"
+          ssh-keygen -lf ~/.ssh/known_hosts | sed 's/^/  /'
+
+      - name: ${{ inputs.rollback && 'Roll back' || 'Deploy' }}
+        env:
+          HOST:  ${{ secrets.VPS_HOST }}
+          USER:  ${{ secrets.VPS_USER }}
+          PORT:  ${{ secrets.VPS_PORT }}
+          SITE:  ${{ secrets.VPS_PATH }}
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          set -o pipefail
+          FLAGS=""
+          if [ "${{ inputs.rollback }}" = "true" ]; then
+            FLAGS="--rollback"
+          elif [ "${{ inputs.dry_run }}" = "true" ]; then
+            FLAGS="--dry-run"
+          fi
+          echo "Running deploy/vps-pull-deploy.sh $FLAGS on $HOST:$SITE (branch $BRANCH)"
+          ssh -i ~/.ssh/id_deploy -p "${PORT:-22}" -o BatchMode=yes "$USER@$HOST" \
+            "cd '$SITE' && sudo BRANCH='$BRANCH' bash deploy/vps-pull-deploy.sh $FLAGS" 2>&1 | tee deploy.log
+
+      - name: Say what the site answers now
+        if: always()
+        run: |
+          code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 https://www.shreehariglobal.in/ || echo 000)"
+          echo "https://www.shreehariglobal.in/ answers $code"
+          [ "$code" = "200" ] || echo "::warning::The site is not answering 200. Check deploy.log above; the script rolls the code back by itself when a deploy fails its own health check."
+
+      - name: Keep the log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: deploy-log
+          path: deploy.log
+          if-no-files-found: ignore

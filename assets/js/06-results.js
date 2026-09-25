@@ -872,6 +872,8 @@ function renderSeats(instant) {
     const femSnap = (SeatSrv.snap(r.id, ctx.date, Flow.bookingType) || SeatSrv.snap(r.id, ctx.date) || {}).female;
     const femSet = Flow.bookingType === 'private' ? []
       : ((Array.isArray(femSnap) && femSnap.length) ? femSnap : (CONFIG.femaleSeats[r.type] || []));
+    /* "N women already on this bus" above the key (24 Sep 2026, women_layer_on). */
+    try { if (window.SHG_TRUST) SHG_TRUST.women(r, ctx.date, femSet); } catch (e) {}
     /* Reserved berths (permanent staff pair + the mode-aware emergency berth)
        resolved into the CURRENT booking mode's namespace, mirroring the server
        (Seats::physicalSetToMode): sharing/seater identity; private collapses a

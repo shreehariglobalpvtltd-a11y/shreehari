@@ -154,6 +154,14 @@ final class EventBus
             return true;
         };
 
+        // AI memory (24 Sep 2026): the assistant remembers each person from
+        // the register's own events. The listeners no-op while ai_memory_on
+        // is off and never throw, so a booking cannot fail on a memory write.
+        if (is_file(__DIR__ . '/aimemory.php')) {
+            require_once __DIR__ . '/aimemory.php';
+            AiMemory::registerListeners();
+        }
+
         // Same lazy treatment for the customer vault: a page view that emits
         // no booking event should not pay to load it.
         $vault = static function (): bool {

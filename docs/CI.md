@@ -20,8 +20,40 @@ The full booking and agent regression battery requires the existing isolated
 
 ```bash
 cd /root/shg-test
+bash tests/ci-setup.sh                                  # rebuild shari_test from the repository
+PHP_CLI_SERVER_WORKERS=4 php -S 127.0.0.1:8899 -t . tests/dev-router.php &   # routed like nginx, and not single-threaded
 php tests/run-all.php --http
 ```
+
+Start the server **with `tests/dev-router.php`**. Without a router script the
+built-in server decides for itself which URIs are static files, and it decides
+on a dot: a path whose last segment contains one is treated as a file, so a
+missing `/sitemap-routes.xml` gets the server's own 404 page rather than
+reaching `index.php`, which generates it. Three route-page checks went red in
+CI for exactly that reason. The router states nginx's
+`try_files $uri $uri/ /index.php` rule explicitly, and refuses the same paths
+nginx refuses (`/config/`, `/includes/`, `/tests/`, `app.template.html`,
+dotfiles), so a suite cannot pass here by reaching something production
+blocks.
+
+Run the battery against a **freshly built** database. Every suite writes real
+bookings, and a database that has already run the battery a few times drifts
+far enough that suites start failing on each other's leftovers — which is why
+a local pass on a reused database says nothing about CI.
+
+A real browser check runs after the battery, driving the app the way a
+passenger does — home page, language switch, search, seat map — and failing on
+any console error, any failed request from this site, or any floating button
+parked on top of a seat:
+
+```bash
+node tests/browser-smoke.mjs
+```
+
+It needs Chromium. It uses `CHROME_PATH`, then `/usr/bin/google-chrome` or
+`/usr/bin/chromium`, then a Playwright browsers directory, and if it finds
+none it says so and exits 0 rather than failing a machine that simply has no
+browser. Install the driver with `npm install --no-save playwright-core`.
 
 Node must be on PATH for that runner to finish with zero missing suites. Its
 three Node suites can also run on the development machine:

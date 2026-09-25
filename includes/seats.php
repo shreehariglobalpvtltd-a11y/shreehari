@@ -1050,6 +1050,27 @@ final class Seats
         $holdMinutes = Settings::getInt('seat_hold_minutes', SEAT_HOLD_MINUTES);
         $expiresAt   = date('Y-m-d H:i:s', time() + ($holdMinutes * 60));
 
+        /* One visitor may hold one party's worth of seats. There was no cap
+           at all — a browser could hold all 72 beds of a coach for the hold
+           window (only a 120/min IP limit stood in the way), which is a
+           denial-of-sale as much as a griefing vector. Staff (allowStaffSeats)
+           get the counter party cap, customers the public one; seats already
+           held by this token count towards it. */
+        $seats   = array_values(array_unique(array_map(static fn($s): string => strtoupper(trim((string) $s)), $seats)));
+        $partyCap = $allowStaffSeats
+            ? max(1, Settings::getInt('counter_max_seats_per_booking', 20))
+            : max(1, Settings::getInt('max_seats_per_booking', MAX_SEATS_BOOKING));
+        $alreadyHeld = array_map('strval', array_column(Database::fetchAll(
+            'SELECT seat_no FROM seat_locks WHERE schedule_id = :s AND lock_token = :t AND expires_at > NOW()',
+            ['s' => $scheduleId, 't' => $token]
+        ), 'seat_no'));
+        $wouldHold = count(array_unique(array_merge($alreadyHeld, $seats)));
+        if ($wouldHold > $partyCap) {
+            throw new RuntimeException(
+                'You can hold at most ' . $partyCap . ' seats at a time. / एक पटकमा बढीमा ' . $partyCap . ' सिट मात्र रोक्न मिल्छ।'
+            );
+        }
+
         $lockedNow = [];
         $failed    = [];
 

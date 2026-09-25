@@ -823,6 +823,8 @@ function renderCheckout() {
   }
   $$('#paxRows .pxName').forEach(function (n) { n.addEventListener('input', updateCoSummary); });
   updateCoSummary();
+  /* The refund ladder next to Pay (24 Sep 2026, refund_ladder_on). */
+  try { if (window.SHG_TRUST) SHG_TRUST.ladder(out.date, rOut.depTime); } catch (e) {}
 
   /* Feature A — warn inline the moment a chosen gender clashes with a
      shared-cabin lock, so the passenger fixes it here instead of being
@@ -1422,8 +1424,10 @@ function bookingFromServer(d, phone) {
       reason: (d.payment && d.payment.reason) || ''
     },
     status: d.status,
+    refundAmount: Number(d.refundAmount || 0), refundStatus: d.refundStatus || '',
     codFlag: !!d.isCod,
     ticketNumber: d.ticketNumber || '',
+    trackUrl: d.trackUrl || null,
     /* WhatsApp delivery of the ticket (track.php → shg_wa_last, 17 Sep 2026):
        null = nothing sent yet, {ok,last4,status,code} otherwise. */
     wa: (d.wa === undefined) ? undefined : (d.wa || null),
@@ -1456,6 +1460,7 @@ async function syncBooking(b) {
   if (d.status && b.status !== d.status) { b.status = d.status; changed = true; }
   if (typeof d.total === 'number' && b.total !== d.total) { b.total = d.total; changed = true; }
   if (d.ticketNumber && b.ticketNumber !== d.ticketNumber) { b.ticketNumber = d.ticketNumber; changed = true; }
+  if (d.trackUrl !== undefined && b.trackUrl !== (d.trackUrl || null)) { b.trackUrl = d.trackUrl || null; changed = true; }
   if (typeof d.isCod === 'boolean' && !!b.codFlag !== d.isCod) { b.codFlag = d.isCod; changed = true; }
   b.payment = b.payment || {};
   if (d.payment) {
@@ -1920,6 +1925,16 @@ function renderStatus(id) {
   }
   const crewBox = crewBits.length ? '<div class="crew-box">👨‍✈️ <div><small>' + t('tkCrew') + '</small>' + crewBits.join('<br>') + '</div></div>' : '';
 
+  /* "Where is my bus?" (24 Sep 2026): the keyed public page with the live
+     position and minutes to THIS passenger's stop, plus a one-tap share so
+     the family at home can watch the same page. Only on a confirmed ticket. */
+  const whereBox = (b.status === 'confirmed' && b.trackUrl)
+    ? '<div class="crew-box where-box">📍 <div><small>' + t('tkWhereT') + '</small>'
+      + '<a class="btn btn-blue btn-sm" href="' + esc(b.trackUrl) + '" target="_blank" rel="noopener" style="margin:6px 8px 0 0">' + t('tkWhereBtn') + '</a>'
+      + '<a class="btn btn-ghost btn-sm" href="https://wa.me/?text=' + encodeURIComponent(t('tkWhereShare') + ' ' + b.trackUrl) + '" target="_blank" rel="noopener" style="margin-top:6px">' + t('tkWhereFam') + '</a>'
+      + '</div></div>'
+    : '';
+
   /* Delay banner — pull-based: admin publishes {routeId, date, delayMinutes}
      in Live Ops; any matching confirmed booking shows it here. */
   const delay = (b.status === 'confirmed') ? (DB.delays || []).find(d => d.routeId === b.routeId && d.date === b.date) : null;
@@ -2034,7 +2049,7 @@ function renderStatus(id) {
   <div class="status-card tk2${conf ? ' confirm-success' : ''}" id="ticketCard">
     <div class="tk2-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo.png?v=20260920l" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo.png?v=20260925a" alt="" loading="lazy" decoding="async">
         <div><b>S HARI GLOBAL PVT LTD</b><small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small></div>
       </div>
       ${pill2}
@@ -2074,6 +2089,7 @@ function renderStatus(id) {
       </div>
       ${retBlock}
       <table class="pax-table"><thead><tr><th>${t('tkSeats')}</th><th>${t('coPax')}</th><th>${t('lblAge')}</th><th>${t('lblGender')}</th></tr></thead><tbody>${paxRows}</tbody></table>
+      ${whereBox}
       ${crewBox}
       ${soon ? distanceWidgetHTML(b) : ''}
       ${soon ? '<div class="wx-box" id="wxBox"><small>' + tf('wxTitle', { c: esc(parseBP(b.drop).name || '') }) + '</small><b>…</b></div>' : ''}
