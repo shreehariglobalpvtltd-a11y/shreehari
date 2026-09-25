@@ -100,7 +100,21 @@ check('an unknown post is refused', fails(static fn() => SocialPosts::setStatus(
 SocialPosts::setStatus($capped, 'cancelled', 1);
 check('cancel clears the error and the approver', ($x = Database::fetch('SELECT status, approved_by, error FROM social_posts WHERE id = :id', ['id' => $capped])) !== null && $x['status'] === 'cancelled' && $x['approved_by'] === null && $x['error'] === null);
 
-echo "\n-- E. draft without a key --\n";
+echo "\n-- E. the Telegram URL --\n";
+/* A bot token is 123456789:AAH-secret, and the colon must reach Telegram
+   as a colon: percent-encoding it into the path answers 404 for every post,
+   which is how this was found. Nothing here touches the network. */
+check('a real-looking token is carried into the path unchanged',
+    SocialPosts::telegramUrl('123456789:AAH-ExampleSecretToken_1234567', 'sendMessage') === 'https://api.telegram.org/bot123456789:AAH-ExampleSecretToken_1234567/sendMessage');
+check('sendPhoto is built the same way',
+    str_ends_with(SocialPosts::telegramUrl('123456789:AAH-ExampleSecretToken_1234567', 'sendPhoto'), '/sendPhoto'));
+foreach (['', 'abc', '123:short', '123456789:AAH/../escape-the-path-1234567', '123456789:AAH space in it 12345678'] as $bad) {
+    check('a token that could not be real, or could escape the path, is refused: "' . mb_substr($bad, 0, 18) . '"',
+        fails(static fn() => SocialPosts::telegramUrl($bad, 'sendMessage'), 'Telegram'));
+}
+check('a made-up method name is refused', fails(static fn() => SocialPosts::telegramUrl('123456789:AAH-ExampleSecretToken_1234567', '../../evil'), 'method'));
+
+echo "\n-- F. draft without a key --\n";
 $wasKey = Settings::getString('anthropic_api_key', '');
 Settings::set('anthropic_api_key', '', 'string', 'ai'); Settings::flush();
 $d = SocialPosts::draft('SPT Dashain');
@@ -111,7 +125,7 @@ check('with the live sharing fare and the topic', str_contains($d['en'], '₹' .
 check('and the office phone', str_contains($d['hi'], Settings::officePhone()));
 Settings::set('anthropic_api_key', $wasKey, 'string', 'ai'); Settings::flush();
 
-echo "\n-- F. the cron --\n";
+echo "\n-- G. the cron --\n";
 $out = (string) shell_exec(PHP_BINARY . ' ' . escapeshellarg(dirname(__DIR__) . '/cron/social-publish.php') . ' 2>&1');
 check('cron/social-publish.php runs and reports', $out !== '' && (str_contains($out, 'sent') || str_contains($out, 'idle') || str_contains($out, 'off')), trim(strtok($out, "\n")));
 

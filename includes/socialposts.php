@@ -174,13 +174,35 @@ final class SocialPosts
         if ($token === '' || $chat === '') {
             throw new RuntimeException('Telegram: set telegram_bot_token and telegram_channel in Settings.');
         }
-        $url  = 'https://api.telegram.org/bot' . rawurlencode($token) . '/' . ($mediaUrl !== '' ? 'sendPhoto' : 'sendMessage');
+        $url  = self::telegramUrl($token, $mediaUrl !== '' ? 'sendPhoto' : 'sendMessage');
         $body = $mediaUrl !== '' ? ['chat_id' => $chat, 'photo' => $mediaUrl, 'caption' => mb_substr($caption, 0, 1024)] : ['chat_id' => $chat, 'text' => mb_substr($caption, 0, 4096), 'disable_web_page_preview' => false];
         $r = self::http($url, $body);
         if (empty($r['ok'])) {
             throw new RuntimeException('Telegram: ' . ($r['description'] ?? 'no answer'));
         }
         return (string) ($r['result']['message_id'] ?? '');
+    }
+
+    /**
+     * https://api.telegram.org/bot<token>/<method> — and the token goes in
+     * RAW. A bot token looks like 123456789:AAH_long-secret, and percent
+     * encoding turns that colon into %3A, which Telegram answers with a 404
+     * for every single post. The token is checked instead: only the
+     * characters a real one contains, and it must carry the colon that
+     * separates the bot id from the secret, so nothing can be smuggled into
+     * the path. Public because the test suite proves both halves of this
+     * without touching the network.
+     */
+    public static function telegramUrl(string $token, string $method): string
+    {
+        $token = trim($token);
+        if (preg_match('/^\d{5,}:[A-Za-z0-9_-]{20,}$/', $token) !== 1) {
+            throw new RuntimeException('Telegram: telegram_bot_token does not look like a bot token (123456789:AA...).');
+        }
+        if (preg_match('/^[a-zA-Z]+$/', $method) !== 1) {
+            throw new RuntimeException('Telegram: bad method name.');
+        }
+        return 'https://api.telegram.org/bot' . $token . '/' . $method;
     }
 
     private static function facebook(string $caption, string $mediaUrl): string
