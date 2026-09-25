@@ -73,12 +73,24 @@ foreach ($cases as $name => $q) {
     $secs = microtime(true) - $t0;
     $text = trim((string) ($out['text'] ?? ''));
 
-    /* The three ways a small model fails here, each measurable. */
+    /* The ways a small model fails here, each measurable. */
     $deva  = preg_match_all('/[\x{0900}-\x{097F}]/u', $text);
     $latin = preg_match_all('/[A-Za-z]/u', $text);
     $flags = [];
     if ($text === '')              { $flags[] = 'EMPTY'; }
     if ($deva > 0 && $latin > $deva) { $flags[] = 'NOT-DEVANAGARI'; }
+    /* PARROT — added 26 Sep after this bench scored garbage as "ok".
+       A 1.7B handed a small briefing answered every question by saying
+       the question back: asked "how much is the fare" it replied "how
+       much is the fare". Short, Devanagari, no repetition, no cap — it
+       passed every other check here and was completely useless. Any
+       reply that is mostly the question is not an answer. */
+    $norm = static fn(string $s): string => trim(preg_replace('/[\s\p{P}]+/u', ' ', $s) ?? $s);
+    $qn   = $norm($q);
+    $an   = $norm($text);
+    if ($an !== '' && (str_contains($an, $qn) || similar_text($qn, $an) / max(1, mb_strlen($qn)) > 0.8)) {
+        $flags[] = 'PARROT';
+    }
     /* Repetition: the degeneration loop. Any 25-character run that
        appears three times or more is a model chewing its own tail. */
     if (mb_strlen($text) > 80) {
