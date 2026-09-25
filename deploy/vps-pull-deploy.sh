@@ -60,18 +60,45 @@ ok()   { printf '\033[32m  ok\033[0m %s\n' "$*"; }
 die()  { printf '\033[31m!! \033[0m%s\n' "$*" >&2; exit 1; }
 run()  { if [[ $DRY_RUN == 1 ]]; then printf '   would run: %s\n' "$*"; else eval "$@"; fi }
 
+# Reloading is best effort wherever it happens. By the time it runs the code
+# and the schema are already in place, and the health check is what decides
+# whether the release stays — so a server that names its services differently,
+# or has no systemd at all, gets a warning and a manual step rather than a
+# deploy abandoned half way through.
+reload_workers() {
+  if ! command -v systemctl >/dev/null; then
+    echo "   (systemctl is not on PATH — reload PHP-FPM and nginx by hand, or the old code stays in opcache)" >&2
+    return 0
+  fi
+  if systemctl reload "$FPM_SERVICE" >/dev/null 2>&1 || systemctl restart "$FPM_SERVICE" >/dev/null 2>&1; then
+    if command -v nginx >/dev/null; then
+      systemctl reload nginx >/dev/null 2>&1 || true
+    fi
+    return 0
+  fi
+  echo "!! could not reload $FPM_SERVICE — the new code may still be in the old opcache. Reload it by hand." >&2
+  return 1
+}
+
 cd "$SITE_DIR" || die "no such directory: $SITE_DIR"
 [[ -f index.php && -d includes ]] || die "$SITE_DIR does not look like the site root"
 [[ -f config/config.php ]] || die "config/config.php is missing — this is not a live install"
 command -v git >/dev/null || die "git is not installed"
 
+# Every git call carries safe.directory. Step 5 hands the whole tree to
+# www-data, and from the second deploy onwards git — running as root — would
+# otherwise refuse the repository it just updated ("detected dubious
+# ownership") and the deploy would stop at the fetch. Caught by rehearsing
+# this script twice against a sandbox rather than on the live site.
+GIT=(git -c "safe.directory=$SITE_DIR")
+
 # Git history may live outside the tree (the shared-hosting layout keeps it
 # in /root/shg-site.git with a .git file pointing at it) — git handles that
 # itself, we only need to be inside a work tree.
-git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "no git work tree here"
+"${GIT[@]}" rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "no git work tree here"
 
-CUR_SHA="$(git rev-parse HEAD)"
-CUR_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+CUR_SHA="$("${GIT[@]}" rev-parse HEAD)"
+CUR_BRANCH="$("${GIT[@]}" rev-parse --abbrev-ref HEAD)"
 [[ -n "$BRANCH" ]] || BRANCH="$CUR_BRANCH"
 [[ "$BRANCH" != "HEAD" ]] || die "detached HEAD — pass BRANCH=<name>"
 
@@ -79,10 +106,10 @@ if [[ $ROLLBACK == 1 ]]; then
   [[ -s "$STATE_FILE" ]] || die "no previous deploy recorded in $STATE_FILE"
   PREV="$(cat "$STATE_FILE")"
   log "rolling back to $PREV"
-  run "git -c advice.detachedHead=false checkout --quiet '$PREV'"
+  run "git -c safe.directory='$SITE_DIR' -c advice.detachedHead=false checkout --quiet '$PREV'"
   run "chown -R www-data:www-data '$SITE_DIR'"
   run "chmod 640 '$SITE_DIR/config/config.php'"
-  run "systemctl reload '$FPM_SERVICE' || systemctl restart '$FPM_SERVICE'"
+  [[ $DRY_RUN == 1 ]] || reload_workers || true
   code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$HEALTH_URL" || true)"
   [[ "$code" == 200 ]] || die "after rollback the site answers $code — look at the nginx and PHP logs now"
   ok "rolled back, site answers 200"
@@ -129,23 +156,26 @@ fi
 ok "database dumped to $BACKUP_DIR/db-$STAMP.sql.gz"
 
 # ---- 2. fetch + fast-forward ---------------------------------------
+# Fetching is read-only, so a dry run does it too — otherwise it compares
+# against whatever this clone last saw and cheerfully reports "nothing to
+# deploy" while a release is waiting on the remote.
 log "fetch origin/$BRANCH"
 for attempt in 1 2 3 4; do
-  if run "git fetch --quiet origin '$BRANCH'"; then break; fi
+  if "${GIT[@]}" fetch --quiet origin "$BRANCH"; then break; fi
   [[ $attempt == 4 ]] && die "git fetch failed four times"
   sleep $((2 ** attempt))
 done
-NEW_SHA="$(git rev-parse "origin/$BRANCH")"
+NEW_SHA="$("${GIT[@]}" rev-parse "origin/$BRANCH")"
 if [[ "$NEW_SHA" == "$CUR_SHA" ]]; then
   ok "already at $NEW_SHA — nothing to deploy"
   exit 0
 fi
-git merge-base --is-ancestor "$CUR_SHA" "$NEW_SHA" 2>/dev/null \
+"${GIT[@]}" merge-base --is-ancestor "$CUR_SHA" "$NEW_SHA" 2>/dev/null \
   || die "origin/$BRANCH is not a fast-forward of what is live — resolve by hand, this script will not force"
-CHANGED="$(git diff --name-only "$CUR_SHA" "$NEW_SHA")"
+CHANGED="$("${GIT[@]}" diff --name-only "$CUR_SHA" "$NEW_SHA")"
 log "$(echo "$CHANGED" | grep -c . || true) file(s) change"
-run "git checkout --quiet '$BRANCH'"
-run "git merge --quiet --ff-only 'origin/$BRANCH'"
+run "git -c safe.directory='$SITE_DIR' checkout --quiet '$BRANCH'"
+run "git -c safe.directory='$SITE_DIR' merge --quiet --ff-only 'origin/$BRANCH'"
 ok "code now at $NEW_SHA"
 
 # ---- 3. lint what changed ------------------------------------------
@@ -157,7 +187,7 @@ while IFS= read -r f; do
   if ! $PHP_BIN -l "$f" >/dev/null; then echo "   lint failed: $f" >&2; FAILED_LINT=1; fi
 done <<< "$CHANGED"
 if [[ $FAILED_LINT == 1 ]]; then
-  run "git -c advice.detachedHead=false checkout --quiet '$CUR_SHA'"
+  run "git -c safe.directory='$SITE_DIR' -c advice.detachedHead=false checkout --quiet '$CUR_SHA'"
   die "a changed PHP file does not parse — code put back to $CUR_SHA, nothing went live"
 fi
 ok "every changed PHP file parses"
@@ -188,6 +218,9 @@ if [[ ${#PENDING[@]} == 0 ]]; then
   ok "no new migrations"
 else
   log "${#PENDING[@]} migration(s) to apply"
+  if [[ $DRY_RUN == 1 ]]; then
+    echo "   (this lists what is pending on the CODE THAT IS LIVE NOW; migrations arriving with the new code are applied too)"
+  fi
   for f in "${PENDING[@]}"; do
     name="$(basename "$f")"
     if [[ $DRY_RUN == 1 ]]; then printf '   would apply: %s\n' "$name"; continue; fi
@@ -223,11 +256,20 @@ run "find '$SITE_DIR' -type d -exec chmod 755 {} +"
 ok "files belong to www-data, config is 640"
 
 # ---- 6. reload ------------------------------------------------------
+#  A server that names these differently must not lose a deploy that has
+#  already updated the code and the schema: a missing nginx or systemctl is
+#  a loud warning and a manual step, not an abort half way through.
 log "reload PHP-FPM and nginx"
-run "nginx -t"
-run "systemctl reload '$FPM_SERVICE' || systemctl restart '$FPM_SERVICE'"
-run "systemctl reload nginx"
-ok "workers restarted, opcache is cold"
+if command -v nginx >/dev/null; then
+  run "nginx -t"
+else
+  echo "   (nginx is not on PATH — skipping the config test)" >&2
+fi
+if [[ $DRY_RUN == 1 ]]; then
+  printf '   would run: systemctl reload %s (and nginx)\n' "$FPM_SERVICE"
+else
+  if reload_workers; then ok "workers reloaded, opcache is cold"; fi
+fi
 
 # ---- 7. health ------------------------------------------------------
 log "health check"
@@ -239,9 +281,9 @@ else
   json="$(curl -s --max-time 25 "$API_URL" || true)"
   if [[ "$code" != 200 ]] || ! echo "$json" | $PHP_BIN -r '$s = stream_get_contents(STDIN); exit(json_decode($s, true) === null ? 1 : 0);'; then
     echo "!! the site answered $code and /api/config.php was not JSON — rolling the code back" >&2
-    git -c advice.detachedHead=false checkout --quiet "$CUR_SHA"
+    "${GIT[@]}" -c advice.detachedHead=false checkout --quiet "$CUR_SHA"
     chown -R www-data:www-data "$SITE_DIR"
-    systemctl reload "$FPM_SERVICE" || systemctl restart "$FPM_SERVICE"
+    reload_workers || true
     after="$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 "$HEALTH_URL" || true)"
     die "rolled back to $CUR_SHA (site now answers $after). Nothing else was undone; the schema is additive."
   fi

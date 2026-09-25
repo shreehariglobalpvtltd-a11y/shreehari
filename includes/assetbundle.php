@@ -109,17 +109,38 @@ final class AssetBundle
                 $built = min($built, (int) filemtime($file));
             }
 
-            /* A bundle older than one of its own sources is stale: someone
-               edited a script and did not run tools/build.mjs. Serving it
-               would quietly ship the OLD code, which is the one failure mode
-               that would be invisible from the outside, so the page falls
-               back to the separate files and says so in the log. Sixteen
-               stat() calls, no hashing — this runs on every page view.
-               (tools/build.mjs --check compares hashes in CI as well.) */
+            /* Is the bundle still made of these files? Someone who edits a
+               script and forgets to run tools/build.mjs would otherwise ship
+               the OLD code — the one failure mode invisible from outside.
+               Two cheap signals from the same stat() call:
+
+                 · the size the manifest recorded for that source, which is
+                   exact and catches an edit however it was made;
+                 · its mtime, but only when it is more than a couple of
+                   seconds newer than the built file.
+
+               The tolerance matters. git does not preserve mtimes, so a
+               fresh checkout writes all of these within the same instant in
+               no particular order, and a strict comparison called a perfectly
+               good bundle stale — which is exactly what went red in CI on a
+               checkout that had never been touched. A real edit is minutes or
+               hours later, never one second. Sixteen stat() calls, no hashing;
+               tools/build.mjs --check compares every sha256 in CI. */
             foreach ([...$man['js']['sources'], ...$man['css']['sources']] as $src) {
                 $file = ROOT_PATH . '/' . ltrim((string) $src['file'], '/');
-                if (is_file($file) && (int) filemtime($file) > $built) {
-                    Logger::warning('Asset bundle is older than its sources — serving the separate files. Run node tools/build.mjs', [
+                if (!is_file($file)) {
+                    continue;
+                }
+                $size = (int) filesize($file);
+                $want = (int) ($src['bytes'] ?? $size);
+                if ($size !== $want) {
+                    Logger::warning('Asset bundle does not match its sources any more — serving the separate files. Run node tools/build.mjs', [
+                        'changed' => (string) $src['file'], 'bytes' => $size, 'built with' => $want,
+                    ]);
+                    return $html;
+                }
+                if ((int) filemtime($file) > $built + 2) {
+                    Logger::warning('A source was edited after the bundle was built — serving the separate files. Run node tools/build.mjs', [
                         'newer' => (string) $src['file'],
                     ]);
                     return $html;

@@ -76,9 +76,16 @@ $js  = (string) file_get_contents($ROOT . '/assets/dist/app.min.js');
 $css = (string) file_get_contents($ROOT . '/assets/dist/app.min.css');
 check('the built files are on disk and are what the manifest says', hash('sha256', $js) === $man['js']['sha256'] && hash('sha256', $css) === $man['css']['sha256']);
 check('the bundle is smaller than its sources', $man['js']['bytes'] < $man['js']['rawBytes'] * 0.8 && $man['css']['bytes'] < $man['css']['rawBytes'], round($man['js']['rawBytes'] / 1024) . ' KB → ' . round($man['js']['bytes'] / 1024) . ' KB');
-$newest = 0;
-foreach ([...$man['js']['sources'], ...$man['css']['sources']] as $s) { $newest = max($newest, (int) @filemtime($ROOT . '/' . $s['file'])); }
-check('the built files are not older than their sources', (int) filemtime($ROOT . '/assets/dist/app.min.js') >= $newest);
+/* Every source is still exactly the size the bundle was built from. This
+   is the check that matters: git does not preserve mtimes, so a fresh
+   checkout says nothing about which file is newer, and only the recorded
+   size (and the sha256 above) can tell whether a source has moved on. */
+$wrongSize = [];
+foreach ([...$man['js']['sources'], ...$man['css']['sources']] as $s) {
+    $f = $ROOT . '/' . $s['file'];
+    if (is_file($f) && (int) filesize($f) !== (int) $s['bytes']) { $wrongSize[] = $s['file']; }
+}
+check('every source is still the size the bundle was built from', $wrongSize === [], implode(', ', $wrongSize));
 
 echo "\n-- D. the same program, minified --\n";
 $missing = [];
@@ -145,12 +152,28 @@ if ($home['code'] !== 200) {
     file_put_contents($mf, $keep);
     AssetBundle::__reset();
     check('…and with the manifest restored it is used again', str_contains(get('/')['body'], '/assets/dist/app.min.js'));
-    touch($ROOT . '/assets/js/01-boot.js');    // as if a script had been edited without a rebuild
+    /* A source edited after the build is refused — by its size, which is
+       exact, and by an mtime more than two seconds newer, which is what a
+       real edit looks like. A re-touched but unchanged file must NOT trip
+       it: a fresh checkout touches everything at once, and calling that
+       stale is how this test went red in CI on a tree nobody had edited. */
+    $builtAt = (int) filemtime($ROOT . '/assets/dist/app.min.js');
+    $keepTime = (int) filemtime($ROOT . '/assets/js/01-boot.js');
+    touch($ROOT . '/assets/js/01-boot.js', $builtAt);          // the same instant, as a checkout leaves them
+    check('a source written in the same instant as the bundle is not called stale', str_contains(get('/')['body'], '/assets/dist/app.min.js'));
+    touch($ROOT . '/assets/js/01-boot.js', $builtAt + 1);      // inside the tolerance
+    check('…nor one a second later', str_contains(get('/')['body'], '/assets/dist/app.min.js'));
+    touch($ROOT . '/assets/js/01-boot.js', $builtAt + 600);    // a real edit, ten minutes later
     $r = get('/');
-    check('a bundle older than a source is refused', !str_contains($r['body'], '/assets/dist/app.min.js'));
-    touch($ROOT . '/assets/dist/app.min.js');
-    touch($ROOT . '/assets/dist/app.min.css');
-    check('…and a rebuilt bundle is used again', str_contains(get('/')['body'], '/assets/dist/app.min.js'));
+    check('a source edited after the build is refused', !str_contains($r['body'], '/assets/dist/app.min.js'));
+    touch($ROOT . '/assets/js/01-boot.js', $builtAt);
+    check('…and putting its time back brings the bundle back', str_contains(get('/')['body'], '/assets/dist/app.min.js'));
+    $keepJs = (string) file_get_contents($ROOT . '/assets/js/01-boot.js');
+    file_put_contents($ROOT . '/assets/js/01-boot.js', $keepJs . "\n/* one byte more */\n");
+    check('a source whose size changed is refused whatever its clock says', !str_contains(get('/')['body'], '/assets/dist/app.min.js'));
+    file_put_contents($ROOT . '/assets/js/01-boot.js', $keepJs);
+    touch($ROOT . '/assets/js/01-boot.js', $keepTime > $builtAt ? $builtAt : $keepTime);
+    check('…and restoring it brings the bundle back', str_contains(get('/')['body'], '/assets/dist/app.min.js'));
 
     echo "\n-- F. served --\n";
     $b = get('/assets/dist/app.min.js');
