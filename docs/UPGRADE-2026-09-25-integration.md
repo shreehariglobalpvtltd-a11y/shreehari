@@ -47,4 +47,11 @@ Live smoke: `/`, `/admin/login.php`, `/bus`, `/sitemap.xml`, `/robots.txt` = 200
 
 ## 5. Rollback
 
-Live worktree ma: `git reset --hard 7bead74` hoina — `git revert --no-edit -m 1 <merge>` / wa `git checkout 7bead74 -- .` pachhi commit; ya pura: `/root/backups/pre-integration-site-20260925-1408.tar.gz`, DB `backup/backup_20260925_140805.sql.gz`, nginx `/root/backups/nginx-shreehariglobal.in.pre-integration-20260925.conf`. Migration haru additive matra (naya table/column/setting) — rollback ma chhodda pani hunchha.
+Live worktree (`/var/www/shreehariglobal.in/public_html`) ma, purano tree lai naya commit banaune (history metidaina):
+
+```bash
+git read-tree -u --reset 7bead74 && git commit -m "rollback: back to 7bead74 (before the 25 Sep integration)"
+chown -R www-data:www-data .
+```
+
+Pura backup: site `/root/backups/pre-integration-site-20260925-1408.tar.gz`, DB `backup/backup_20260925_140805.sql.gz`, nginx `/root/backups/nginx-shreehariglobal.in.pre-integration-20260925.conf`. Migration haru additive matra (naya table / column / setting) — rollback garda DB chhoddaa pani hunchha.
