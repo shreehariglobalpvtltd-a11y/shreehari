@@ -347,8 +347,8 @@ try {
     Settings::flush();
 
     $mig = $src('database/upgrade-2026-09-24-ai-sahayak-pro.sql');
-    check('the migration seeds ai_web_agent_on ON and ai_web_sell OFF',
-        str_contains($mig, "('ai_web_agent_on',   '1'") && str_contains($mig, "('ai_web_sell',       '0'"));
+    check('the migration seeds ai_web_agent_on OFF and ai_web_sell OFF (every switch ships OFF)',
+        str_contains($mig, "('ai_web_agent_on',   '0'") && str_contains($mig, "('ai_web_sell',       '0'"));
     check('api/ai-chat.php requires CSRF and POST', str_contains($src('api/ai-chat.php'), 'Security::requireCsrf()') && str_contains($src('api/ai-chat.php'), 'Security::requirePost()'));
     check('  and never echoes a key', !str_contains($src('api/ai-chat.php'), 'anthropic_api_key'));
     check('the widget asks the agent first and keeps the rule engine', str_contains($src('assets/js/16-lazy.js'), "shgApi.post('/ai-chat.php'") && str_contains($src('assets/js/16-lazy.js'), 'answerIntent(q)'));
