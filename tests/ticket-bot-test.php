@@ -235,9 +235,23 @@ try {
        Nadiad (20:00) was behind and Mehsana (23:00) was still ahead. Both
        outcomes are asserted here, so the check is true at every hour and
        still proves the pickup is never silently swapped. (25 Sep 2026.) */
-    $onPickup = ($s['plan']['matchedDesk'] ?? false) === true;
+    /* Matched means the plan really sits on the remembered town, not just
+       that a flag says so: stopMatches() also accepts a short stop code, so
+       the flag alone could be true on a different town. */
+    $planTown  = Boarding::townKey((string) ($s['plan']['boarding'] ?? ''));
+    $onPickup  = ($s['plan']['matchedDesk'] ?? false) === true
+        && $planTown !== '' && $planTown === Boarding::townKey((string) ($s['prefill']['boarding'] ?? ''));
+    /* A fallback must be the FIRST pickup still ahead on that run — not any
+       later one — and it must be admitted to, in the reason and the flag the
+       desk sees. */
+    $stillAhead = array_values(array_filter(
+        Boarding::stopsFor($rid),
+        static fn(array $st): bool => ($ts = strtotime(todayISO() . ' ' . substr((string) $st['time'], 0, 5))) !== false && $ts > time()
+    ));
+    $firstAhead = $stillAhead === [] ? '' : Boarding::townKey((string) $stillAhead[0]['name']);
     $saidSo   = ($s['fields']['boarding']['check'] ?? false) === true
-        && array_filter($s['reasons'], static fn(string $r): bool => str_contains($r, 'does not call at the suggested pickup')) !== [];
+        && array_filter($s['reasons'], static fn(string $r): bool => str_contains($r, 'does not call at the suggested pickup')) !== []
+        && ($firstAhead === '' || $planTown === $firstAhead);
     check('  a live plan comes back — on the remembered pickup, or a fallback it admits to',
         is_array($s['plan']) && count($s['plan']['seats']) === 1 && ($onPickup || $saidSo),
         (string) ($s['plan']['boarding'] ?? 'no plan') . ' @ ' . (string) ($s['plan']['boardingTime'] ?? '?')

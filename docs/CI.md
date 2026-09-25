@@ -26,10 +26,11 @@ php tests/run-all.php --http
 ```
 
 Start the server **with `tests/dev-router.php`**. Without a router script the
-built-in server decides for itself which URIs are static files, and that
-decision differs between PHP releases: on 8.3 the CI runner answered
-`/sitemap-routes.xml` with its own 404 page, so three route-page checks went
-red while the same battery was green on 8.4. The router states nginx's
+built-in server decides for itself which URIs are static files, and it decides
+on a dot: a path whose last segment contains one is treated as a file, so a
+missing `/sitemap-routes.xml` gets the server's own 404 page rather than
+reaching `index.php`, which generates it. Three route-page checks went red in
+CI for exactly that reason. The router states nginx's
 `try_files $uri $uri/ /index.php` rule explicitly, and refuses the same paths
 nginx refuses (`/config/`, `/includes/`, `/tests/`, `app.template.html`,
 dotfiles), so a suite cannot pass here by reaching something production
