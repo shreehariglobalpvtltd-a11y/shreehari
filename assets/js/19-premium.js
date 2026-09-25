@@ -269,6 +269,56 @@
     }
   };
 
+  /* -------------------------------------------------------------------
+     THE MUSIC BED  (26 Sep 2026 — the brand film)
+     -----------------------------------------------------------------
+     "Light cinematic background music" with no audio file: a pad of
+     three detuned sines an octave apart, a slow breathing LFO on its
+     gain, and a filtered-noise whoosh for each scene change. It is
+     deliberately faint (peak ~0.03) — a bed, not a track — and it is
+     the one sound here that is long-lived, so it has its own start/stop
+     rather than going through play(), and stop() is what close() calls.
+     Nothing here plays if the Sound switch is off. */
+  var bed = null;
+  Feel.bed = {
+    start: function () {
+      if (bed || !read(LS_SOUND)) return;
+      var c = ctx();
+      if (!c || !master) return;
+      try {
+        var g = c.createGain();
+        g.gain.setValueAtTime(0.0001, c.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.028, c.currentTime + 2.2);
+        var lfo = c.createOscillator(), lg = c.createGain();
+        lfo.type = 'sine'; lfo.frequency.value = 0.11; lg.gain.value = 0.009;
+        lfo.connect(lg); lg.connect(g.gain);
+        var oscs = [[110, 'sine', 1], [164.81, 'sine', .55], [220.4, 'triangle', .22]].map(function (v) {
+          var o = c.createOscillator(), og = c.createGain();
+          o.type = v[1]; o.frequency.value = v[0]; og.gain.value = v[2];
+          o.connect(og); og.connect(g); o.start(); return o;
+        });
+        var lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900;
+        g.connect(lp); lp.connect(master);
+        lfo.start();
+        bed = { g: g, oscs: oscs, lfo: lfo };
+      } catch (e) { bed = null; }
+    },
+    stop: function () {
+      if (!bed) return;
+      var b = bed; bed = null;
+      try {
+        var c = ctx(); var t = c ? c.currentTime : 0;
+        b.g.gain.cancelScheduledValues(t);
+        b.g.gain.setValueAtTime(Math.max(b.g.gain.value, 0.0001), t);
+        b.g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
+        setTimeout(function () { try { b.oscs.forEach(function (o) { o.stop(); }); b.lfo.stop(); } catch (e) {} }, 1000);
+      } catch (e) {}
+    }
+  };
+  /* A scene change: a short, soft sweep. */
+  VOICES.whoosh = function () { noise(0, 0.42, 0.024, 900); noise(0.05, 0.3, 0.014, 2400); };
+  BUZZ.whoosh = 5;
+
   window.SHGFeel = Feel;
 
   /* -------------------------------------------------------------------
