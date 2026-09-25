@@ -446,6 +446,11 @@ final class Notify
                         ? 'provider refused the send: ' . mb_substr(self::$lastProviderError, 0, 300) . ' - click-to-chat link only'
                         : 'provider refused the send - click-to-chat link only')),
         ] + $meta);
+        /* 26 Sep 2026: a passenger's ticket that the sender refused is handed
+           to the office right now (see deliveryFallback). */
+        self::deliveryFallback($bookingId, $number, (string) ($meta['purpose'] ?? ''),
+            $paused ? 'sender paused' : ($driver === 'click_to_chat' ? 'no WhatsApp API configured'
+            : 'sender refused' . (self::$lastProviderError !== '' ? ': ' . mb_substr(self::$lastProviderError, 0, 120) : '')));
         return $link;
     }
 
@@ -1856,6 +1861,113 @@ final class Notify
      * if configured). Falls back to a click-to-chat link stored in the
      * app log so a staff member can send it in one tap.
      */
+    /**
+     * THE OFFICE GETS THE TICKET WHEN THE PASSENGER CANNOT (26 Sep 2026).
+     *
+     * Owner: "error bhayo bhane 9104801507 yo WhatsApp ma data send gardine
+     * — yo name lai yo ticket send gardinu bhanera ticket link ra number
+     * deu". A ticket WhatsApp refused used to become a 'failed' row and a
+     * line in a log; the desk found out when the passenger rang. Now the
+     * office WhatsApp (admin_whatsapp — the head-office number) gets one
+     * message: who, which number, the ticket picture link, and a
+     * tap-to-forward link that opens the passenger's chat with the ticket
+     * text already written. The admin e-mail gets the same words, because
+     * when the sender itself is down the office WhatsApp is down with it.
+     *
+     * Reached from every place a ticket dies: the sender refusing it here
+     * (whatsapp() above), Meta's or Twilio's status callback flipping a row
+     * to failed later, and cron/whatsapp-retry.php giving up. Only for
+     * passenger tickets (purpose ticket / ticket_change / resend, or the
+     * legacy empty purpose with a booking); never for the office's own
+     * alerts, so a dead sender cannot loop on itself. At most one alert per
+     * booking per wa_delivery_fallback_hours (default 24), counted from the
+     * delivery_fallback rows this writes. Never throws.
+     */
+    public static function deliveryFallback(?int $bookingId, string $toNumber, string $purpose, string $reason): void
+    {
+        try {
+            if ($bookingId === null || $bookingId <= 0) {
+                return;
+            }
+            if (!Settings::getBool('wa_delivery_fallback_on', true)) {
+                return;
+            }
+            if (!in_array($purpose, ['ticket', 'ticket_change', 'resend', ''], true)) {
+                return;
+            }
+            $hours  = max(1, Settings::getInt('wa_delivery_fallback_hours', 24));
+            $recent = (int) Database::scalar(
+                "SELECT COUNT(*) FROM message_logs
+                  WHERE booking_id = :b AND purpose = 'delivery_fallback'
+                    AND created_at >= DATE_SUB(NOW(), INTERVAL :h HOUR)",
+                ['b' => $bookingId, 'h' => $hours], 0
+            );
+            if ($recent > 0) {
+                return;
+            }
+            $b = Database::fetch(
+                'SELECT id, pnr, contact_phone, contact_country_code, status FROM bookings WHERE id = :i',
+                ['i' => $bookingId]
+            );
+            if ($b === null || (string) $b['status'] === 'cancelled') {
+                return;
+            }
+            $lead = Database::fetch(
+                'SELECT full_name FROM booking_passengers WHERE booking_id = :b ORDER BY is_primary DESC, id ASC LIMIT 1',
+                ['b' => $bookingId]
+            );
+            $leg = Database::fetch(
+                'SELECT bl.travel_date, r.from_city, r.to_city
+                   FROM booking_legs bl
+                   JOIN schedules s ON s.id = bl.schedule_id
+                   JOIN routes r    ON r.id = s.route_id
+                  WHERE bl.booking_id = :b
+                  ORDER BY bl.id ASC LIMIT 1',
+                ['b' => $bookingId]
+            );
+            $pnr    = (string) $b['pnr'];
+            $name   = trim((string) ($lead['full_name'] ?? ''));
+            $digits = preg_replace('/\D+/', '', $toNumber) ?: self::intlDigits((string) $b['contact_phone'], (string) ($b['contact_country_code'] ?? ''));
+            $company   = Settings::getString('company_name', APP_NAME);
+            $ticketUrl = Ticket::imageUrl($pnr);
+            $forward   = 'https://wa.me/' . $digits . '?text=' . rawurlencode(
+                '🎫 ' . $company . " — तपाईंको टिकट " . $pnr . "\n" . $ticketUrl
+            );
+            $lines = [
+                '⚠️ टिकट WhatsApp मा गएन — हातले पठाइदिनुहोस्',
+                '🎫 ' . $pnr,
+                '🧑 ' . ($name !== '' ? $name : '—'),
+                '📱 +' . $digits,
+            ];
+            if ($leg !== null) {
+                $lines[] = '🚌 ' . $leg['from_city'] . ' → ' . $leg['to_city'] . ' · ' . date('d M Y', (int) strtotime((string) $leg['travel_date']));
+            }
+            $lines[] = '📄 टिकट: ' . $ticketUrl;
+            $lines[] = '👉 यो नम्बरमा टिकट पठाउन थिच्नुहोस्: ' . $forward;
+            $lines[] = '🛠 Admin: ' . appUrl('admin/booking-view.php?id=' . $bookingId);
+            $lines[] = 'कारण: ' . mb_substr($reason, 0, 160);
+            $text = implode("\n", $lines);
+
+            $office = Settings::getString('admin_whatsapp', Settings::officePhone());
+            if (trim($office) !== '') {
+                self::whatsapp($office, $text, null, null, [], $bookingId, ['purpose' => 'delivery_fallback']);
+            }
+            $email = Settings::getString('admin_email', Settings::getString('company_email', ''));
+            if ($email !== '') {
+                self::email(
+                    $email,
+                    'टिकट WhatsApp मा गएन · ' . $pnr . ' — हातले पठाउनुहोस्',
+                    self::wrapEmail('Ticket not delivered · ' . $pnr,
+                        '<p>WhatsApp could not deliver this ticket. Please forward it to the passenger.</p>'
+                        . '<pre style="font-family:monospace;font-size:13px;white-space:pre-wrap">' . e($text) . '</pre>'),
+                    $text
+                );
+            }
+        } catch (Throwable $e) {
+            Logger::warning('Delivery fallback not sent: ' . $e->getMessage(), ['booking' => $bookingId], 'whatsapp');
+        }
+    }
+
     /**
      * A one-line note to the office (21 Sep 2026, owner: "admin update de
      * rakhos").

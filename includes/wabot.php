@@ -232,6 +232,16 @@ final class WaBot
         }
         $isStaff = is_array($who) && in_array((string) ($who['role'] ?? ''), ['staff', 'admin'], true);
 
+        /* STAFF MENU (26 Sep 2026, owner: "admin ma hi lekhera athawa kei msg
+           lekhera jaba thau samma puryaidinu paryo, guide ni"). A member of
+           staff who writes hi / namaste / menu / help gets the map of what
+           this number does for them and the links straight into the panel —
+           not the passenger greeting, and not a model call. Anything else
+           they write still goes to the assistant below. */
+        if ($isStaff && Settings::getBool('wa_staff_menu_on', true) && self::isStaffGreeting($body)) {
+            return self::out(self::staffMenu($who));
+        }
+
         /* BULK TICKETS (24 Sep 2026, wa_bulk_on, staff only). "FORMAT" gives the
            template; a pasted list is quoted; "ho" on an open quote sells every
            booking through QuickTicket::sell(). Read by code, not by a model —
@@ -665,6 +675,62 @@ final class WaBot
         }
         $text = trim((string) ($saved['text'] ?? ''));
         return $text !== '' ? $text : null;
+    }
+
+    /** hi / hello / namaste / menu / help / ? — alone, in any of the three scripts. */
+    public static function isStaffGreeting(string $body): bool
+    {
+        $s = mb_strtolower(trim($body));
+        $s = trim((string) preg_replace('/[\s!.,?🙏👋🙂😊]+/u', ' ', $s));
+        if ($s === '' || mb_strlen($s) > 24) {
+            return $body !== '' && trim($body) === '?';
+        }
+        return (bool) preg_match(
+            '/^(hi+|hii+|hello+|hellow|hey+|hlo|helo|namaste|namaskar|namaskaar|नमस्ते|नमस्कार|menu|मेनु|मेन्यु|help|सहायता|मदद|start|सुरु|guide|गाइड|options?|k garne|ke garne|के गर्ने)$/u',
+            $s
+        );
+    }
+
+    /**
+     * The staff menu: what this number does for a member of staff, and the
+     * panel links. Lists the assistant's jobs only while the assistant is
+     * actually on, and the bulk format only while wa_bulk_on is on — a menu
+     * that promises what does not work is worse than none.
+     */
+    public static function staffMenu(array $who): string
+    {
+        $name = trim((string) ($who['name'] ?? ''));
+        $role = (string) ($who['role'] ?? 'staff');
+        $ai   = false;
+        try {
+            require_once INCLUDE_PATH . '/aiagent.php';
+            $ai = AiAgent::enabled();
+        } catch (Throwable $e) {
+            $ai = false;
+        }
+        $l   = [];
+        $l[] = '🙏 नमस्ते ' . ($name !== '' ? $name . ' जी' : 'साथी') . ' — ' . Settings::getString('company_name', APP_NAME)
+             . ' स्टाफ सहायक (' . ($role === 'admin' ? 'admin' : 'staff') . ')';
+        $l[] = '';
+        $l[] = 'यहीँ लेख्नुहोस्:';
+        $l[] = '1️⃣ टिकट हेर्न → PNR पठाउनुहोस् (SHG-XXXX-XXXX-XXXX)';
+        if ($ai) {
+            $l[] = '2️⃣ टिकट काट्न → "bholi 2 seat Ram 98xxxxxxxx Mehsana cash"';
+            $l[] = '3️⃣ आजको बिक्री / सिट → "aaja ko report" · "bholi kati seat khali"';
+            $l[] = '4️⃣ टिकट सच्याउन → "SHG-.... ko naam Ram bata Shyam"';
+            $l[] = '5️⃣ फेरि पठाउन → "SHG-.... resend"';
+        }
+        if (Settings::getBool('wa_bulk_on', false)) {
+            $l[] = '📋 धेरै टिकट एकैपटक → "FORMAT"';
+        }
+        $l[] = '';
+        $l[] = '🔗 Admin: ' . appUrl('admin/');
+        $l[] = '⚡ Quick Ticket: ' . appUrl('admin/quick-ticket.php');
+        $l[] = '🎫 बुकिङहरू: ' . appUrl('admin/bookings.php');
+        $l[] = '💬 WhatsApp लग: ' . appUrl('admin/messages-log.php');
+        $l[] = '';
+        $l[] = '"menu" लेखे यो सूची फेरि आउँछ।';
+        return implode("\n", $l);
     }
 
     /** Greeting for a plain GET on a webhook URL. */

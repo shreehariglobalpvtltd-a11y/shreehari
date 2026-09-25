@@ -1089,7 +1089,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20260926e" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20260926f" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'
@@ -2569,6 +2569,9 @@ if (store.local && !store.remote) {
     lastFocus = document.activeElement;
     var bk = document.getElementById('waBookLink');
     if (bk) bk.href = officeNum() ? waUrl(officeNum(), '') : '#';
+    /* 26 Sep 2026: a fresh sheet every time — the "sent" card and the
+       "API down" emphasis belonged to the previous request. */
+    if (req) { req.classList.remove('sent', 'api-down'); var dn0 = document.getElementById('waReqDone'); if (dn0) dn0.hidden = true; }
     fillReq();
     sheet.hidden = false;
     document.body.classList.add('wa-open');
@@ -2586,7 +2589,8 @@ if (store.local && !store.remote) {
     sheet.addEventListener('click', function (e) {
       var tgt = e.target;
       if (tgt.closest('#waSheetBg') || tgt.closest('#waSheetClose')) { closeSheet(); return; }
-      if (!e.defaultPrevented && (tgt.closest('a.wa-row') || tgt.closest('.wa-pin'))) setTimeout(closeSheet, 150);
+      if (tgt.closest('#waReqOk')) { closeSheet(); return; }
+      if (!e.defaultPrevented && (tgt.closest('a.wa-row') || tgt.closest('.wa-pin') || tgt.closest('#waBookLink') || tgt.closest('#waDoneChat'))) setTimeout(closeSheet, 150);
     });
     document.addEventListener('keydown', function (e) {
       if (sheet.hidden) return;
@@ -2599,7 +2603,9 @@ if (store.local && !store.remote) {
     });
   }
   /* One-tap request (owner, 19 Sep 2026): the server's WhatsApp sender delivers it
-     to the office (api/wa-request.php); the wa.me row below stays as the fallback. */
+     to the office (api/wa-request.php). 26 Sep 2026: that send is the only big
+     button; the wa.me link is a small line under it that grows only when the
+     API send has failed. Success swaps the form for the #waReqDone card. */
   var req = document.getElementById('waReq');
   var reqType = 'booking';
   function tripInfo() {
@@ -2698,8 +2704,21 @@ if (store.local && !store.remote) {
       var label = go ? go.textContent : '';
       if (go) { go.disabled = true; go.textContent = t('waReqBusy'); }
       shgApi.post('/wa-request.php', body).then(function (d) {
-        say(d && d.sent ? t('waReqSent') : t('waReqFail'), !(d && d.sent));
+        if (d && d.sent) {
+          /* Delivered through the office's own sender: the form gives way to
+             a tick, and the passenger's own chat stays one small tap away. */
+          var dn = document.getElementById('waReqDone'), dc = document.getElementById('waDoneChat');
+          if (dc) dc.href = officeNum() ? waUrl(officeNum(), composeBooking()) : '#';
+          if (dn) dn.hidden = false;
+          req.classList.add('sent');
+          say('', false);
+          try { if (window.SHGFeel) window.SHGFeel.fire('success'); } catch (e2) {}
+        } else {
+          req.classList.add('api-down');
+          say(t('waReqFail'), true);
+        }
       }).catch(function (err) {
+        if (!(err && err.status === 422)) req.classList.add('api-down');
         say((err && err.status !== 422 && err.message) || t('waReqNeed'), true);
       }).then(function () { if (go) { go.disabled = false; go.textContent = label; } });
     });
@@ -2718,7 +2737,14 @@ if (store.local && !store.remote) {
   document.querySelectorAll('[data-wa-open]').forEach(function (button) {
     button.addEventListener('click', function () {
       setReqType(button.getAttribute('data-wa-open')); openSheet();
-      document.getElementById('waReqName').focus({ preventScroll: true });
+      /* Help-desk chips (26 Sep 2026) carry the question as an i18n key, so
+         the note arrives already written in the passenger's language and a
+         returning passenger only has to press Send. */
+      var nk = button.getAttribute('data-wa-note-key');
+      if (nk) { var nt = document.getElementById('waReqNote'); if (nt) nt.value = t(nk); }
+      var nm = document.getElementById('waReqName');
+      var target = (nm && !nm.value.trim()) ? nm : (nk && contactPhone() ? document.getElementById('waReqGo') : nm);
+      if (target) { try { target.focus({ preventScroll: true }); } catch (e) {} }
     });
   });
 

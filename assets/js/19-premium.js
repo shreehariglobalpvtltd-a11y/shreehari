@@ -42,6 +42,7 @@
 
   var LS_SOUND = 'shg:sound';
   var LS_HAPTIC = 'shg:haptics';
+  var LS_MANTRA = 'shg:mantra';       /* the opening blessing (26 Sep 2026) */
 
   function read(key) {
     /* Default ON — both were already on before this file existed, so a
@@ -102,6 +103,26 @@
       o.frequency.setValueAtTime(freq, t0);
       g.gain.setValueAtTime(0.0001, t0);
       g.gain.exponentialRampToValueAtTime(Math.max(vol, 0.0002), t0 + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g); g.connect(master);
+      o.start(t0);
+      o.stop(t0 + dur + 0.02);
+    } catch (e) {}
+  }
+
+  /* A voice with its own attack. voice() above is fixed at 6ms, which is
+     right for every UI sound and wrong for a swell: the temple bell needs
+     no attack at all, the conch needs half a second. */
+  function swell(freq, at, attack, dur, vol, type) {
+    var c = ctx();
+    if (!c || !master) return;
+    try {
+      var t0 = c.currentTime + at;
+      var o = c.createOscillator(), g = c.createGain();
+      o.type = type || 'sine';
+      o.frequency.setValueAtTime(freq, t0);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(Math.max(vol, 0.0002), t0 + Math.max(0.004, attack));
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
       o.connect(g); g.connect(master);
       o.start(t0);
@@ -218,6 +239,20 @@
       voice(392.00, 0.09, 0.50, 0.026, 'sine');
       voice(783.99, 0.20, 0.55, 0.026, 'triangle');
       voice(1174.66, 0.30, 0.60, 0.012, 'sine');
+    },
+    /* THE BLESSING (owner, 26 Sep 2026: "boot ma Bishnu Bhagwan ko naam
+       mantra, bhagwan ko sound"). One strike of a temple bell — the
+       inharmonic partials a real ghanta rings with, fading over two and a
+       half seconds — over a conch-like swell a fifth below. The mantra is
+       spoken over it (MANTRA, further down). Once per visit, on the first
+       touch, and only while Sound and Mantra are both on. */
+    blessing: function () {
+      swell(528, 0, 0.004, 2.6, 0.050, 'sine');
+      swell(1056, 0, 0.004, 1.9, 0.026, 'sine');
+      swell(1457, 0, 0.004, 1.3, 0.016, 'sine');
+      swell(2150, 0, 0.004, 0.8, 0.008, 'sine');
+      swell(196, 0.15, 0.55, 2.4, 0.034, 'triangle');
+      swell(294, 0.25, 0.60, 2.2, 0.016, 'sine');
     }
   };
 
@@ -378,9 +413,52 @@
     /* One frame later: the gesture that released it is usually also a tap
        on a control that plays its own 'tap', and two voices in the same
        millisecond hit the 45ms rate limit — the greeting would lose. */
-    setTimeout(function () { Feel.fire('welcome'); }, 90);
+    setTimeout(function () {
+      if (mantraOn()) {
+        Feel.play('blessing'); Feel.buzz('welcome');
+        setTimeout(sayMantra, 380);
+      } else {
+        Feel.fire('welcome');
+      }
+    }, 90);
   }
   Feel.welcome = welcome;
+
+  /* -------------------------------------------------------------------
+     THE MANTRA  (owner, 26 Sep 2026: "boot ma Bishnu Bhagwan ko naam mantra")
+     -----------------------------------------------------------------
+     "ॐ नमो भगवते वासुदेवाय", spoken by the handset's own Nepali or Hindi
+     voice over the bell. No audio file, nothing downloaded. Three things
+     silence it: the Sound switch, the Mantra switch beside it in the menu
+     (remembered per device), and the office switch app_mantra_on, which
+     the admin turns off for everyone from Settings → Site. */
+  function mantraOn() {
+    try {
+      var st = window.SHG_BOOT && window.SHG_BOOT.settings;
+      if (st && Object.prototype.hasOwnProperty.call(st, 'app_mantra_on')
+          && (st.app_mantra_on === false || String(st.app_mantra_on) === '0')) return false;
+    } catch (e) {}
+    return read(LS_SOUND) && read(LS_MANTRA);
+  }
+  function sayMantra() {
+    if (!mantraOn() || document.hidden) return;
+    try {
+      var ss = window.speechSynthesis;
+      if (!ss || !window.SpeechSynthesisUtterance) return;
+      var u = new SpeechSynthesisUtterance('ॐ नमो भगवते वासुदेवाय');
+      u.lang = 'hi-IN'; u.rate = 0.78; u.pitch = 0.85; u.volume = 0.9;
+      var vs = ss.getVoices ? ss.getVoices() : [], pick = null;
+      for (var i = 0; i < vs.length; i++) {
+        var l = String(vs[i].lang || '').toLowerCase();
+        if (l.indexOf('ne') === 0) { pick = vs[i]; break; }
+        if (!pick && (l.indexOf('hi') === 0 || l.indexOf('mr') === 0)) pick = vs[i];
+      }
+      if (pick) u.voice = pick;
+      ss.speak(u);
+    } catch (e) {}
+  }
+  Feel.mantra = mantraOn;
+  Feel.setMantra = function (on) { write(LS_MANTRA, on); if (on) { Feel.play('blessing'); setTimeout(sayMantra, 380); } };
 
   /* -------------------------------------------------------------------
      THE COMPACT LANGUAGE PILL  (phones — see premium.css §2)
@@ -499,6 +577,7 @@
 
     menu.appendChild(row('🔊 आवाज · Sound', Feel.sound, Feel.setSound));
     menu.appendChild(row('📳 कम्पन · Vibration', Feel.haptics, Feel.setHaptics));
+    menu.appendChild(row('🙏 मन्त्र · Mantra', read(LS_MANTRA), Feel.setMantra));
   }
 
   /* -------------------------------------------------------------------

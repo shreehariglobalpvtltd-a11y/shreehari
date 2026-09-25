@@ -3762,9 +3762,35 @@ body.bk-regular .qt-collapsed{display:flex}
 .wa-req-hint{font-size:12px;line-height:1.5;color:var(--muted);margin:0}
 .wa-req :is(input,select,textarea)[aria-invalid="true"]{border-color:var(--bad,#B42318)}
 .wa-req :is(input,select,textarea,a,button):focus-visible,.wa-ticket-highlight button:focus-visible{outline:3px solid #168846;outline-offset:3px}
-.wa-req .wa-row-hot{margin:4px 0 0;background:#106b3a;color:white;border-color:#106b3a}
-.wa-req .wa-row-hot small{color:#e0f5e8}
-.wa-req-go{background:var(--card,#fff);color:var(--ink);border:1.5px solid #85bfa0;font-size:13px}
+/* 26 Sep 2026 (owner: "WhatsApp API bata matra jaos, redirect sano side ma"):
+   the server send is THE button; the passenger's own wa.me chat is a small
+   line under it, which grows only when the API send has failed. */
+.wa-req-go{margin-top:4px;background:linear-gradient(135deg,#1FAF5A,#128C4B);color:#fff;font-size:15.5px;letter-spacing:.01em;box-shadow:0 8px 22px rgba(18,140,75,.28)}
+.wa-req-alt{display:block;text-align:center;margin:8px 0 0;font-size:12.5px;font-weight:600;color:var(--muted);text-decoration:underline;text-underline-offset:3px}
+.wa-req-alt:hover{color:#128C4B}
+.wa-req.api-down .wa-req-alt{font-size:14.5px;font-weight:800;color:#128C4B;padding:10px;border:1.5px dashed #85bfa0;border-radius:12px;text-decoration:none}
+.wa-req-done{flex-direction:column;align-items:center;gap:6px;padding:18px 12px 8px;text-align:center}
+.wa-req-done-ic{font-size:46px;line-height:1;animation:waPop .5s cubic-bezier(.2,.8,.2,1) both}
+@keyframes waPop{from{transform:scale(.4);opacity:0}to{transform:none;opacity:1}}
+.wa-req-done b{font-size:17px}
+.wa-req-done small{color:var(--muted);font-size:13px}
+.wa-req-ok{min-height:44px;margin-top:8px;padding:0 28px;border:0;border-radius:12px;background:var(--blue);color:#fff;font:inherit;font-weight:800;cursor:pointer}
+.wa-req.sent>*:not(.wa-req-done){display:none}
+.wa-req.sent .wa-req-done{display:flex}
+/* HELP DESK on the home page (26 Sep 2026): pre-written questions, one tap each. */
+.help-desk{max-width:760px;margin:0 auto 22px}
+.hd-head{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.hd-head>span{width:44px;height:44px;border-radius:14px;background:#E7F8EE;display:flex;align-items:center;justify-content:center;font-size:22px;flex:none}
+.hd-head b{display:block;font-family:var(--f-display);font-size:16.5px}
+.hd-head small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+.hd-chips{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:12px}
+.hd-chip{min-height:46px;padding:8px 12px;border:1.5px solid var(--line);border-radius:14px;background:var(--card,#fff);font:inherit;font-size:13.5px;font-weight:700;color:var(--ink);cursor:pointer;text-align:left;display:flex;align-items:center;gap:8px;transition:border-color .15s,transform .15s,box-shadow .15s}
+.hd-chip:hover,.hd-chip:focus-visible{border-color:#25D366;transform:translateY(-1px);box-shadow:0 6px 16px rgba(37,211,102,.16)}
+.hd-row{display:flex;gap:8px;flex-wrap:wrap}
+.hd-row .btn{flex:1 1 140px;justify-content:center}
+[data-theme="dark"] .hd-head>span{background:rgba(37,211,102,.16)}
+/* ⚡ Quick book on the results card (26 Sep 2026). */
+.bc-quick{margin-top:6px;white-space:nowrap}
 .wa-ticket-highlight{display:flex;align-items:center;gap:18px;margin:18px auto 10px;padding:20px 24px;border:2px solid #1bab63;border-radius:20px;background:linear-gradient(115deg,#e7f9ee,#fff);box-shadow:0 10px 28px rgba(18,140,75,.12);color:#153e29}
 .wa-ticket-mark{width:58px;height:58px;flex:none;display:grid;place-items:center;font-size:30px;background:#c7f1d7;border-radius:17px}
 .wa-ticket-copy{flex:1;min-width:0}

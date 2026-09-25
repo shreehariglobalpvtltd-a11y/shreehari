@@ -199,7 +199,8 @@ function renderResults(instant) {
       const sidAttr = extra && r._sid ? ` data-sid="${r._sid}"` : '';
       const cta = left <= 0
         ? `<button class="btn btn-ghost btn-sm sold-out" type="button" disabled aria-disabled="true">बुक भइसक्यो · Sold out</button>`
-        : `<button class="btn btn-orange btn-sm" type="button" data-sel="${r.id}"${sidAttr}>${t('resSelect')}</button>`;
+        : `<button class="btn btn-orange btn-sm" type="button" data-sel="${r.id}"${sidAttr}>${t('resSelect')}</button>
+           <button class="btn btn-ghost btn-sm bc-quick" type="button" data-sel="${r.id}"${sidAttr} data-quick="1" title="${esc(t('resQuickT'))}">⚡ ${esc(t('resQuick'))}</button>`;
 
       return `<div class="bus-card reveal${left <= 0 ? ' is-sold-out' : ''}${extra ? ' is-extra' : ''}" data-rid="${r.id}"${sidAttr}>
         <div class="bc-time">
@@ -300,6 +301,9 @@ $('#resultsList').addEventListener('click', (e) => {
   if (!sel) return;
   Flow.route = routeById(sel.getAttribute('data-sel'));
   Flow.seats = [];
+  /* ⚡ Quick book (26 Sep 2026): the card's quick button asks the seat view
+     to pick the best seats and move on by itself (see the seat view below). */
+  Flow.quick = sel.hasAttribute('data-quick') ? Math.max(1, parseInt(sel.getAttribute('data-quick'), 10) || 1) : 0;
   /* Task 1 (Surat 24×7): if the board was rolled forward to the next available
      departure, adopt that date now so the seat map, checkout and ticket all use
      the date the customer is really booking (outbound one-way only). */
@@ -1291,6 +1295,31 @@ function renderSeats(instant) {
       if (Flow.patient && (on || Flow.seats.length)) suggestSeats(on ? parseInt(on.getAttribute('data-n'), 10) : Flow.seats.length);
     };
     syncPatient();
+  }
+
+  /* ⚡ Quick book (26 Sep 2026, owner: "ticketing kam click ma, automated").
+     The results card's quick button lands here with Flow.quick = seats
+     wanted. The best seats are chosen exactly as the count picker would
+     choose them, and after a three-second countdown the view continues on
+     its own — a tap anywhere in the map keeps the passenger here to choose. */
+  if (Flow.quick > 0) {
+    const want = Math.min(Flow.quick, CONFIG.booking.maxSeats); Flow.quick = 0;
+    if (countPicker) $$('.scp-n', countPicker).forEach(x => x.classList.toggle('on', parseInt(x.getAttribute('data-n'), 10) === want));
+    suggestSeats(want);
+    if (Flow.seats.length === want) {
+      const view = $('#view-seats') || document.body;
+      let left = 3;
+      const label = () => seatLabelJoin(Flow.seats, r.type, Flow.bookingType, ', ');
+      const stop = () => { clearInterval(tick); view.removeEventListener('pointerdown', stop, true); };
+      const tick = setInterval(() => {
+        left--;
+        if (location.hash !== '#/seats' || !Flow.seats.length) { stop(); return; }
+        if (left <= 0) { stop(); const cb = $('#continueBtn'); if (cb) cb.click(); return; }
+        toast(tf('tQuickGo', { seats: label(), n: left }));
+      }, 1000);
+      view.addEventListener('pointerdown', stop, true);
+      toast(tf('tQuickGo', { seats: label(), n: left }));
+    }
   }
 
   updateSeatSummary();
