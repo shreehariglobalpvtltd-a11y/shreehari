@@ -163,6 +163,7 @@ const CORE_SUITES = [
     'ai-manager-test.php'          => 'Admin → AI Manager: every tab, the office actions, the doors, the crons idle while off, the thumbs',
     'trust-layer-test.php'         => 'the trust layer: one refund ladder, real numbers, the home payload, refund status in the booking payload',
     'bundle-test.php'              => 'one bundled script + stylesheet: the manifest matches the template, the switch, and it refuses a stale bundle',
+    'ai-web-test.php'              => 'the assistant reads only listed https hosts, never a private address, and writes a draft the office must publish',
 ];
 
 /**
