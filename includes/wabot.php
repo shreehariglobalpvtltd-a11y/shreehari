@@ -165,6 +165,16 @@ final class WaBot
             );
         }
 
+        /* ONE-TIME TICKET CODE (26 Sep 2026, includes/wachat.php).
+           "TICKET K7QM2P" came from the button on the ticket page or the QR
+           at the desk. The passenger wrote first, which is the only way we
+           answer; the code, not the sender's number, is the proof, so a
+           ticket booked from another phone still arrives. Checked before the
+           booking engine and the model so a code is never read as a sale. */
+        if ($senderDigits !== '' && self::isTicketCode($body)) {
+            return self::ticketByCode($senderDigits, $body, $company, $phone);
+        }
+
         // Pull a PNR out of the message text.
         $pnr = '';
         if (preg_match('/SHG-[A-Z0-9]+(?:-[A-Z0-9]+)+/i', $body, $m)) {
@@ -665,6 +675,86 @@ final class WaBot
         }
         $text = trim((string) ($saved['text'] ?? ''));
         return $text !== '' ? $text : null;
+    }
+
+    private static function isTicketCode(string $body): bool
+    {
+        require_once INCLUDE_PATH . '/wachat.php';
+        return WaChat::enabled() && WaChat::looksLikeRequest($body);
+    }
+
+    /**
+     * Answer "TICKET <code>": spend the code and send the ticket image with
+     * its keyed links. Unknown, used and expired codes get one reply that
+     * does not say which. Guesses are capped per sender.
+     *
+     * @return array{text: string, media: ?string}
+     */
+    private static function ticketByCode(string $senderDigits, string $body, string $company, string $phone): array
+    {
+        $bad = "❌ यो कोड मिलेन वा म्याद सकियो।\n"
+             . "टिकट पेजबाट वा काउन्टरबाट नयाँ कोड लिनुहोस्, वा आफ्नो PNR पठाउनुहोस्।\n"
+             . "This code is not valid or has expired."
+             . ($phone !== '' ? "\n\nसहयोग: " . $phone : '');
+
+        // 5 tries per 10 minutes, then 30 minutes out: 887 million codes
+        // are not guessed at that pace.
+        if (!Security::rateLimit('wa_ticket_code_try', $senderDigits, 5, 600, 1800)) {
+            return self::out($bad);
+        }
+
+        try {
+            $bookingId = WaChat::redeem($body);
+        } catch (Throwable $e) {
+            Logger::exception($e);
+            $bookingId = null;
+        }
+        if ($bookingId === null) {
+            return self::out($bad);
+        }
+
+        $pnr    = (string) Database::scalar('SELECT pnr FROM bookings WHERE id = :id', ['id' => $bookingId], '');
+        $detail = $pnr !== '' ? BookingService::detail($pnr) : null;
+        if ($detail === null || (string) $detail['status'] !== 'confirmed') {
+            return self::out(
+                "⏳ यो बुकिङ अहिले पक्का छैन, त्यसैले टिकट पठाउन मिलेन।"
+                . ($phone !== '' ? "\nसहयोग: " . $phone : '')
+            );
+        }
+
+        $leg   = $detail['legs'][0] ?? [];
+        $lines = ["🎫 " . $company, "PNR: " . $detail['pnr']];
+        if ($leg !== []) {
+            $lines[] = "बाटो: " . ($leg['from_city'] ?? '') . " -> " . ($leg['to_city'] ?? '');
+            $date = formatDate((string) ($leg['travel_date'] ?? ''), 'D, j M Y');
+            if ($date !== '') {
+                $lines[] = "मिति: " . $date;
+            }
+        }
+
+        $ticketUrl = Ticket::imageUrl((string) $detail['pnr']);
+        $mediaUrl  = null;
+        if (Settings::getBool('whatsapp_send_pdf', true)) {
+            $mediaUrl = $ticketUrl;
+            $lines[]  = "\n✅ तपाईंको ई-टिकट तल संलग्न छ।";
+        } else {
+            $lines[] = "\n✅ तपाईंको ई-टिकट: " . $ticketUrl;
+        }
+        $lines[] = "प्रिन्ट गर्ने (PDF): " . Ticket::downloadUrl((string) $detail['pnr']);
+        $lines[] = "राम्रो यात्रा होस्! 🙏";
+        $text = implode("\n", $lines);
+
+        // The delivery pill on the booking page reads message_logs.
+        try {
+            require_once INCLUDE_PATH . '/notify.php';
+            Notify::logOutbound($senderDigits, $text, 'sent', [
+                'provider' => 'wa_code', 'bookingId' => $bookingId, 'purpose' => 'ticket', 'media_url' => (string) $mediaUrl,
+            ]);
+        } catch (Throwable $e) {
+            // informational only
+        }
+
+        return self::out($text, $mediaUrl);
     }
 
     /** Greeting for a plain GET on a webhook URL. */

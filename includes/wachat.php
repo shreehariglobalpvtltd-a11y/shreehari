@@ -16,7 +16,9 @@
  *
  *  Security:
  *   - 6 characters from a 31-letter alphabet with no look-alikes
- *     (0/O, 1/I/L), from random_int(): about 887 million codes.
+ *     (0/O, 1/I/L), from random_int(), always with at least one digit so
+ *     an ordinary word ("ticket CHAHIY") is never read as a code: about
+ *     740 million codes.
  *   - Only sha256(code) is stored. The code itself is shown once.
  *   - redeem() marks the row used in the same UPDATE that checks it, so two
  *     racing messages cannot both win. Expired, used and unknown codes all
@@ -53,11 +55,13 @@ final class WaChat
     /** A fresh random code. Public for the tests; callers use mint(). */
     public static function randomCode(): string
     {
-        $max  = strlen(self::ALPHABET) - 1;
-        $code = '';
-        for ($i = 0; $i < self::LENGTH; $i++) {
-            $code .= self::ALPHABET[random_int(0, $max)];
-        }
+        $max = strlen(self::ALPHABET) - 1;
+        do {
+            $code = '';
+            for ($i = 0; $i < self::LENGTH; $i++) {
+                $code .= self::ALPHABET[random_int(0, $max)];
+            }
+        } while (!preg_match('/\d/', $code));
         return $code;
     }
 
@@ -131,17 +135,21 @@ final class WaChat
     public static function extract(string $text): ?string
     {
         $alpha = self::ALPHABET;
-        if (preg_match('/(?:^|\s)(?:TICKET|TIKET|टिकट)\s*[:#-]?\s*([' . $alpha . ']{' . self::LENGTH . '})(?![A-Z0-9])/iu', trim($text), $m)) {
+        if (preg_match('/(?:^|\s)(?:TICKET|TIKET|टिकट)\s*[:#-]?\s*([A-Z0-9]{' . self::LENGTH . '})(?![A-Z0-9])/iu', trim($text), $m)) {
             $code = strtoupper($m[1]);
-            return strspn($code, $alpha) === self::LENGTH ? $code : null;
+            return strspn($code, $alpha) === self::LENGTH && preg_match('/\d/', $code) ? $code : null;
         }
         return null;
     }
 
-    /** True when the message is "TICKET <something>", valid or not. */
+    /**
+     * True when the whole message is "TICKET <6 characters with a digit>",
+     * valid or not. "ticket chahiyo" or "ticket 2 seat" is a sale, not a
+     * code, and goes on to the booking engine.
+     */
     public static function looksLikeRequest(string $text): bool
     {
-        return (bool) preg_match('/^\s*(?:TICKET|TIKET|टिकट)\s*[:#-]?\s*[A-Z0-9]{4,8}\s*$/iu', $text);
+        return (bool) preg_match('/^\s*(?:TICKET|TIKET|टिकट)\s*[:#-]?\s*(?=[A-Z]*\d)[A-Z0-9]{' . self::LENGTH . '}\s*$/iu', $text);
     }
 
     /**
