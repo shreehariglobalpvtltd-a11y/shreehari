@@ -70,4 +70,15 @@ foreach ($stale as $b) {
     }
 }
 
-cron_done(['locksFreed' => $locksFreed, 'bookingsExpired' => $expired]);
+// 3. One-time WhatsApp ticket codes (includes/wachat.php): expired unused
+//    codes, and spent ones after a day. Guarded so a database where the
+//    2026-09-26 migration has not run yet still expires bookings above.
+$waCodes = 0;
+try {
+    require_once INCLUDE_PATH . '/wachat.php';
+    $waCodes = WaChat::expire();
+} catch (Throwable $e) {
+    Logger::warning('wa_chat_tokens cleanup skipped: ' . $e->getMessage());
+}
+
+cron_done(['locksFreed' => $locksFreed, 'bookingsExpired' => $expired, 'waCodesCleared' => $waCodes]);
