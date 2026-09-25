@@ -185,6 +185,10 @@ const CORE_SUITES = [
     'seat-status-png-test.php'    => 'the live seat-status card: draws every berth, no names, cached on the fingerprint, off by default',
     // 26 Sep 2026, registered with the one-time WhatsApp ticket codes it guards.
     'wa-chat-token-test.php'      => 'WA chat tokens: mint/verify/expire/replay, customer always writes first',
+    'payment-webhook-test.php'    => 'Payment webhook: HMAC, idempotent, hint-only unless auto-confirm is on',
+    'wa-admin-command-test.php'   => 'WA office commands: staff number + permission, CANCEL never cancels',
+    'notifier-test.php'           => 'Notifier: office alerts rate-limited, customers only inside their 24 h window',
+    'ai-client-test.php'          => 'AI client: rules first, local model, redaction, usage log without text',
 ];
 
 /**

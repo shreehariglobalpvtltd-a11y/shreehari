@@ -181,6 +181,31 @@ final class WaBot
             $pnr = strtoupper($m[0]);
         }
 
+        /* COMMANDS (26 Sep 2026, Prompt 2 section 6). All of them answer a
+           message the sender wrote first.
+           - Office: "VERIFY SHG-…", "REJECT SHG-… reason", "COD SHG-…" from a
+             staff member's own number (admins.phone), with the same
+             permission the admin panel asks for. Off unless
+             wa_admin_commands_on. Agents are excluded: their panel is scoped
+             to their own sales and this path is not.
+           - Customer: "STATUS SHG-…" and "PAY SHG-…" read as the bare PNR
+             (status, ticket or the pay QR, as before). "CANCEL SHG-…" is
+             never carried out here: the office is alerted and calls back. */
+        if ($pnr !== '' && $senderDigits !== '') {
+            $cmd = self::command($body, $pnr);
+            if ($cmd !== null && in_array($cmd['verb'], ['VERIFY', 'APPROVE', 'REJECT', 'COD'], true)) {
+                $done = self::officeCommand($senderDigits, $cmd['verb'], $pnr, $cmd['rest']);
+                if ($done !== null) {
+                    return self::out($done);
+                }
+                $body = $pnr;                 // not staff: answer it as a status check
+            } elseif ($cmd !== null && in_array($cmd['verb'], ['STATUS', 'PAY'], true)) {
+                $body = $pnr;
+            } elseif ($cmd !== null && $cmd['verb'] === 'CANCEL') {
+                return self::out(self::cancelRequest($senderDigits, $pnr, $phone));
+            }
+        }
+
         /* THE ASSISTANT WITH TOOLS (20 Sep 2026, wa_agent_on).
            Everything below this block is the bot of 19 Sep and stays exactly
            as it was: with the switch off, or with no AI key, AiAgent::handle()
@@ -675,6 +700,109 @@ final class WaBot
         }
         $text = trim((string) ($saved['text'] ?? ''));
         return $text !== '' ? $text : null;
+    }
+
+    /**
+     * "VERB SHG-… rest" → ['verb' => 'VERIFY', 'rest' => '…'], or null when
+     * the message is not a command. The PNR must follow the verb directly.
+     *
+     * @return array{verb: string, rest: string}|null
+     */
+    private static function command(string $body, string $pnr): ?array
+    {
+        if (!preg_match('/^\s*(VERIFY|APPROVE|REJECT|COD|STATUS|PAY|CANCEL)\s+' . preg_quote($pnr, '/') . '\b\s*(.*)$/isu', $body, $m)) {
+            return null;
+        }
+        return ['verb' => strtoupper($m[1]), 'rest' => trim($m[2])];
+    }
+
+    /**
+     * Run an office command. Returns the reply, or null when the sender is
+     * not a staff member allowed to use commands (the message then goes on
+     * down the normal path, so a customer typing "verify SHG-…" is simply
+     * answered with the booking status).
+     */
+    private static function officeCommand(string $senderDigits, string $verb, string $pnr, string $rest): ?string
+    {
+        if (!Settings::getBool('wa_admin_commands_on', false)) {
+            return null;
+        }
+        $admin = null;
+        foreach (Database::fetchAll(
+            "SELECT id, username, role, permissions, phone FROM admins
+              WHERE is_active = 1 AND role <> 'agent' AND phone IS NOT NULL AND phone <> ''"
+        ) as $row) {
+            if (normalisePhone((string) $row['phone']) === $senderDigits) {
+                $admin = $row;
+                break;
+            }
+        }
+        if ($admin === null) {
+            return null;
+        }
+
+        // A stolen staff phone should not be able to hammer the queue.
+        if (!Security::rateLimit('wa_office_cmd', $senderDigits, 30, 3600)) {
+            return "⏳ Too many commands from this number in the last hour. Use the admin panel.";
+        }
+
+        $perm = $verb === 'REJECT' ? 'payments.reject' : 'payments.verify';
+        if (!Auth::rowCan($admin, $perm)) {
+            return "🔒 Your role cannot " . strtolower($verb) . " bookings. Use the admin panel or ask a manager.";
+        }
+
+        $b = BookingService::findByPnr($pnr);
+        if ($b === null) {
+            return "❌ " . $pnr . " not found.";
+        }
+        $aid = (int) $admin['id'];
+        $by  = 'WhatsApp command by ' . $admin['username'];
+
+        try {
+            if ($verb === 'VERIFY' || $verb === 'APPROVE') {
+                BookingService::confirm((int) $b['id'], $aid, $by);
+                $msg = "✅ " . $pnr . " confirmed. The ticket goes to the passenger as usual.";
+            } elseif ($verb === 'REJECT') {
+                if ($rest === '') {
+                    return "✍️ Add a reason: REJECT " . $pnr . " <reason>";
+                }
+                BookingService::reject((int) $b['id'], $aid, mb_substr($rest, 0, 200));
+                $msg = "🚫 " . $pnr . " rejected: " . mb_substr($rest, 0, 200);
+            } else {
+                BookingService::settleCod((int) $b['id'], $aid, $by);
+                $msg = "💵 " . $pnr . " cash collected (COD settled).";
+            }
+        } catch (Throwable $e) {
+            return "⚠️ " . $pnr . ": " . $e->getMessage();
+        }
+
+        Logger::audit('booking.wa_command', 'booking', $pnr, null, ['verb' => $verb, 'admin' => $aid], $by);
+        return $msg;
+    }
+
+    /**
+     * "CANCEL SHG-…": never cancels. The booking's own number gets a promise
+     * of a call back and the office an alert; anyone else learns nothing
+     * about the booking.
+     */
+    private static function cancelRequest(string $senderDigits, string $pnr, string $phone): string
+    {
+        $b = BookingService::findByPnr($pnr);
+        if ($b === null || normalisePhone((string) $b['contact_phone']) !== $senderDigits) {
+            return "🔒 रद्द गर्न बुकिङमा प्रयोग गरेको मोबाइल नम्बरबाट सन्देश पठाउनुहोस्।"
+                . ($phone !== '' ? "\nवा फोन गर्नुहोस्: " . $phone : '');
+        }
+        if (!in_array((string) $b['status'], ['pending', 'confirmed'], true)) {
+            return "ℹ️ बुकिङ " . $pnr . " को स्थिति: " . strtoupper((string) $b['status']) . "। रद्द गर्नुपर्ने केही छैन।";
+        }
+        require_once INCLUDE_PATH . '/notifier.php';
+        Notifier::notifyAdmin('cancel_requested', (int) $b['id'], '🛑 Customer asked to cancel on WhatsApp', [
+            'PNR' => $pnr, 'Status' => (string) $b['status'], 'Action' => 'Call the passenger, then cancel in the admin panel if confirmed.',
+        ]);
+        Logger::audit('booking.cancel_request', 'booking', $pnr, null, null, 'Cancel requested on WhatsApp');
+        return "📝 बुकिङ " . $pnr . " रद्द गर्ने अनुरोध प्राप्त भयो।\n"
+            . "अहिले रद्द भएको छैन। हाम्रो कार्यालयले तपाईंलाई फोन गरेर पक्का गरेपछि मात्र रद्द हुन्छ (फिर्ता नियम अनुसार)।"
+            . ($phone !== '' ? "\n\nसहयोग: " . $phone : '');
     }
 
     private static function isTicketCode(string $body): bool

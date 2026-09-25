@@ -81,4 +81,13 @@ try {
     Logger::warning('wa_chat_tokens cleanup skipped: ' . $e->getMessage());
 }
 
-cron_done(['locksFreed' => $locksFreed, 'bookingsExpired' => $expired, 'waCodesCleared' => $waCodes]);
+// 4. Payment webhook events older than 90 days (includes/paywebhook.php).
+$webhooksPruned = 0;
+try {
+    require_once INCLUDE_PATH . '/paywebhook.php';
+    $webhooksPruned = PayWebhook::prune();
+} catch (Throwable $e) {
+    Logger::warning('webhooks_received prune skipped: ' . $e->getMessage());
+}
+
+cron_done(['locksFreed' => $locksFreed, 'bookingsExpired' => $expired, 'waCodesCleared' => $waCodes, 'webhooksPruned' => $webhooksPruned]);

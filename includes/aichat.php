@@ -165,6 +165,22 @@ final class AiChat
             . "tell them to reply here with the date, how many seats and the boarding point.";
     }
 
+    /**
+     * One-shot completion for includes/aiclient.php (26 Sep 2026): the same
+     * cloud brain, key discovery and model fallback as the WhatsApp replies,
+     * with no conversation memory. Null when no cloud AI is configured.
+     *
+     * @return array{text: ?string, provider: string}
+     */
+    public static function complete(string $system, string $prompt): array
+    {
+        if (!self::configured()) {
+            return ['text' => null, 'provider' => 'none'];
+        }
+        $provider = self::brain()['provider'];
+        return ['text' => self::ask($system, [['role' => 'user', 'content' => $prompt]]), 'provider' => $provider];
+    }
+
     /** One call to whichever brain is configured. Returns the text, or null. */
     private static function ask(string $system, array $messages): ?string
     {

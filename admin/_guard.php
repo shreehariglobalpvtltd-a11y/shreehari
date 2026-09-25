@@ -152,6 +152,7 @@ function admin_nav(): array
         ['href' => 'ai-activity.php',  'icon' => 'msg',       'label' => 'AI Activity',      'perm' => 'dashboard.view', 'section' => 'Settings'],
         // 24 Sep 2026: the approved documents vault the assistant may quote and send.
         ['href' => 'company-docs.php', 'icon' => 'doc',       'label' => 'Company Documents','perm' => 'dashboard.view', 'section' => 'Settings'],
+        ['href' => 'ai-usage.php',     'icon' => 'msg',       'label' => 'AI Usage',         'perm' => 'dashboard.view', 'section' => 'Settings'],
 
         // Map — routes, stops, head office and the driver's live position (5 Sep 2026).
         ['href' => 'map.php',          'icon' => 'map-pin',      'label' => 'Live Map',         'perm' => 'schedules.view', 'section' => 'Map'],
