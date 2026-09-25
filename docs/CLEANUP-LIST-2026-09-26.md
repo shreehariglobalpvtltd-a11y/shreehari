@@ -100,3 +100,33 @@ work, and that is the thing actually worth fixing — **one session per folder.*
 4. Move `public_html/backup/` off the web root (§5). It is protected today,
    but it is protected by one nginx line rather than by not being there.
 5. Leave `restore21` and the backups alone.
+
+
+---
+
+## 7. What was actually cleaned — 26 Sep, 02:10
+
+Done, with the owner's go-ahead:
+
+| | Freed |
+|---|---|
+| Three of the four models deleted — only Gemma-3-4B is kept | **5.6 GB** |
+| llama.cpp download leftovers in /tmp, candidate server logs, stale bench files | 58 MB |
+| Three of four old nginx configs (newest kept) | small |
+| The duplicate backup from the deploy that aborted at step 5 | 108 MB |
+
+Disk went from **14 GB used to 7.7 GB**, 89 GB free.
+
+### Two things deliberately NOT deleted
+
+**The database dumps under the web root.** They were moved out, and then
+moved straight back. The nightly `cron/backup.php` writes there
+(`BACKUP_PATH = ROOT_PATH . '/backup'`), keeps its own retention, and the
+admin backup screen lists and downloads them from that path. Moving them
+tidied the folder and quietly broke a working admin feature. They are
+protected where they are — nginx denies `/backup/` and a direct request for a
+dump returns 404, verified — so the right answer was to put them back.
+
+**The rest of /root/backups (782 MB).** With 89 GB free there is nothing to
+gain, and each one is the only undo for the day it was taken. The 22 Sep
+rollback is in that folder.
