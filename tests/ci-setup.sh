@@ -101,4 +101,6 @@ php tests/ci-fixtures.php
 
 echo "== tables: $("${MYSQL[@]}" -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$DB_NAME'") =="
 [[ $fails -eq 0 ]] || { echo "$fails upgrade script(s) failed"; exit 1; }
-echo "ready: php tests/run-all.php --http   (start php -S 127.0.0.1:8899 -t . first)"
+echo "ready:"
+echo "  php -S 127.0.0.1:8899 -t . tests/dev-router.php &    # routed like nginx (see the file)"
+echo "  php tests/run-all.php --http"

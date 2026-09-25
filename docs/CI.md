@@ -20,8 +20,25 @@ The full booking and agent regression battery requires the existing isolated
 
 ```bash
 cd /root/shg-test
+bash tests/ci-setup.sh                                  # rebuild shari_test from the repository
+php -S 127.0.0.1:8899 -t . tests/dev-router.php &       # the dev server, routed like nginx
 php tests/run-all.php --http
 ```
+
+Start the server **with `tests/dev-router.php`**. Without a router script the
+built-in server decides for itself which URIs are static files, and that
+decision differs between PHP releases: on 8.3 the CI runner answered
+`/sitemap-routes.xml` with its own 404 page, so three route-page checks went
+red while the same battery was green on 8.4. The router states nginx's
+`try_files $uri $uri/ /index.php` rule explicitly, and refuses the same paths
+nginx refuses (`/config/`, `/includes/`, `/tests/`, `app.template.html`,
+dotfiles), so a suite cannot pass here by reaching something production
+blocks.
+
+Run the battery against a **freshly built** database. Every suite writes real
+bookings, and a database that has already run the battery a few times drifts
+far enough that suites start failing on each other's leftovers — which is why
+a local pass on a reused database says nothing about CI.
 
 Node must be on PATH for that runner to finish with zero missing suites. Its
 three Node suites can also run on the development machine:

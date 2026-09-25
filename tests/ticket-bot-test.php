@@ -252,15 +252,25 @@ try {
      *  4. patterns() — aggregated, cached
      * ================================================================ */
     echo "\n== patterns(): aggregated + cached ==\n";
+    /* patterns() counts every confirmed sale in the window, whoever made it.
+       This suite's own qualifying sales were a1 and a2 (a3 and c1 are
+       cancelled), so "sample >= 3" used to pass only because earlier suites
+       had left bookings in the database — on a freshly built CI database it
+       read "sample 2" and went red. A third sale of our own makes the count
+       ours, and the assertion now proves what it always meant to: every
+       sale just made is inside the window. (25 Sep 2026.)  */
+    $a4 = $sell(['name' => 'Bot Test Sita', 'phone' => TB_PHONE . '004', 'date' => $D, 'boarding' => $lastTown, 'gender' => 'Female']);
+    $mine = (int) Database::scalar("SELECT COUNT(*) FROM bookings WHERE contact_phone LIKE '" . TB_PHONE . "%' AND status IN ('confirmed','completed')", [], 0);
+    check('this suite made three sales the window must hold', $mine === 3, (string) $mine);
     $pt = TicketBot::patterns(true);
-    check('the window holds the sales just made', (int) $pt['sample'] >= 3 && (int) $pt['repeat'] >= 1, 'sample ' . $pt['sample'] . ' · repeat ' . $pt['repeat']);
+    check('the window holds the sales just made', (int) $pt['sample'] >= $mine && (int) $pt['repeat'] >= 1, 'sample ' . $pt['sample'] . ' · repeat ' . $pt['repeat'] . ' · ours ' . $mine);
     $codes = array_map(static fn(array $x): string => (string) $x['code'], $pt['stops']);
     check('  the learned pickups include the one sold', in_array($lastCode, $codes, true), implode(',', $codes));
     check('  a desk pattern exists for the selling agent', isset($pt['stopBySeller'][(string) $agentId]), json_encode(array_keys($pt['stopBySeller'])));
     $pt2 = TicketBot::patterns();
     check('  the second read is served from the kv_store cache', $pt2['computedAt'] === $pt['computedAt'] && Database::exists("SELECT 1 FROM kv_store WHERE kscope = 'global' AND kkey = 'ticketbot.patterns.v1'"));
     $sum = TicketBot::summary();
-    check('  summary() for the desk header', (int) $sum['sample'] >= 3 && $sum['enabled'] === true && is_array($sum['accuracy']));
+    check('  summary() for the desk header', (int) $sum['sample'] >= $mine && $sum['enabled'] === true && is_array($sum['accuracy']), 'sample ' . $sum['sample']);
 
     /* ================================================================
      *  5. feedback() / accuracy() — the outcome loop

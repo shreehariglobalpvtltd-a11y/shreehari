@@ -394,6 +394,12 @@ function tally(string $output): string
     if (preg_match('/PASS\s+(\d+)\s+WARN\s+(\d+)\s+FAIL\s+(\d+)/i', $output, $m) === 1) {
         return "PASS {$m[1]} WARN {$m[2]} FAIL {$m[3]}";
     }
+    // Suites that end with "PASSED: 25   FAILED: 3" (25 Sep 2026): without
+    // this their result row printed no counts at all, so a red CI row said
+    // only "FAIL" and the reader had to scroll for the numbers.
+    if (preg_match('/PASSED:\s*(\d+)\s+FAILED:\s*(\d+)/i', $output, $m) === 1) {
+        return "{$m[1]} passed, {$m[2]} failed";
+    }
     return '';
 }
 
@@ -545,6 +551,9 @@ if ($failed !== []) {
         }
         echo "  ┄ tail ┄\n";
         foreach (array_slice($lines, -12) as $line) {
+            if (str_contains($line, 'FAIL')) {
+                continue;   // already printed above; printing it twice reads like two failures
+            }
             echo '  ' . $line . "\n";
         }
     }
