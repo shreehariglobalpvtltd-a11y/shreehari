@@ -226,10 +226,33 @@ try {
     check('  direction from history', ($s['prefill']['direction'] ?? '') === 'toNepal' && ($s['fields']['direction']['source'] ?? '') === 'history');
     check('  gender from the recorded tickets', ($s['prefill']['gender'] ?? '') === 'Male' && ($s['fields']['gender']['source'] ?? '') === 'history');
     check('  the date is NEVER taken from history', ($s['prefill']['date'] ?? 'x') === '' && ($s['fields']['date']['source'] ?? '') === 'auto');
-    check('  a live plan comes back, on the remembered pickup', is_array($s['plan']) && ($s['plan']['matchedDesk'] ?? false) === true && count($s['plan']['seats']) === 1, (string) ($s['plan']['boarding'] ?? $s['planError']));
+    /* No date was typed, so the plan is for "today or the next catchable
+       run", and whether the remembered pickup is still sellable today
+       depends on the hour. Production answers honestly either way: it plans
+       on that pickup, or it takes the first stop still ahead AND says so —
+       a reason for the desk plus fields.boarding.check. Demanding only the
+       first passed before 8 pm and failed the CI run at 22:37 IST, when
+       Nadiad (20:00) was behind and Mehsana (23:00) was still ahead. Both
+       outcomes are asserted here, so the check is true at every hour and
+       still proves the pickup is never silently swapped. (25 Sep 2026.) */
+    $onPickup = ($s['plan']['matchedDesk'] ?? false) === true;
+    $saidSo   = ($s['fields']['boarding']['check'] ?? false) === true
+        && array_filter($s['reasons'], static fn(string $r): bool => str_contains($r, 'does not call at the suggested pickup')) !== [];
+    check('  a live plan comes back — on the remembered pickup, or a fallback it admits to',
+        is_array($s['plan']) && count($s['plan']['seats']) === 1 && ($onPickup || $saidSo),
+        (string) ($s['plan']['boarding'] ?? 'no plan') . ' @ ' . (string) ($s['plan']['boardingTime'] ?? '?')
+        . ' · matched ' . ($onPickup ? 'yes' : 'no') . ($onPickup ? '' : ' · admitted ' . ($saidSo ? 'yes' : 'NO')));
+    /* With a date the desk types, the remembered pickup is never in doubt —
+       every stop of that run lies ahead, whatever the clock says. */
+    $sd = TicketBot::suggest(['phone' => TB_PHONE . '001', 'date' => $D], $staffRow);
+    check('  with a typed date the plan sits on the remembered pickup',
+        is_array($sd['plan']) && ($sd['plan']['matchedDesk'] ?? false) === true && count($sd['plan']['seats']) === 1
+        && Boarding::stopDisplay((string) ($sd['plan']['boarding'] ?? ''))['code'] === $lastCode,
+        (string) ($sd['plan']['boarding'] ?? 'no plan') . ' @ ' . (string) ($sd['plan']['boardingTime'] ?? '?'));
     $q = Fare::quote((float) $dir['toNepal'], 1, 0, 0, 0, '', '', $rid);
-    check('  the fare is the engine\'s own quote — untouched', abs((float) ($s['plan']['fare']['total'] ?? 0) - (float) $q['total']) < 0.01 && abs((float) ($s['plan']['fare']['perSeat'] ?? 0) - (float) $dir['toNepal']) < 0.01, (string) ($s['plan']['fare']['total'] ?? ''));
-    check('  confidence + reasons are reported', (float) $s['confidence'] > 0.5 && count($s['reasons']) >= 1, (string) $s['confidence'] . ' · ' . implode(' | ', $s['reasons']));
+    check('  the fare is the engine\'s own quote — untouched', abs((float) ($sd['plan']['fare']['total'] ?? 0) - (float) $q['total']) < 0.01 && abs((float) ($sd['plan']['fare']['perSeat'] ?? 0) - (float) $dir['toNepal']) < 0.01, (string) ($sd['plan']['fare']['total'] ?? ''));
+    check('  confidence + reasons are reported', (float) $sd['confidence'] > 0.5 && count($sd['reasons']) >= 1, (string) $sd['confidence'] . ' · ' . implode(' | ', $sd['reasons']));
+    check('  and the undated suggestion still explains itself', count($s['reasons']) >= 1, implode(' | ', $s['reasons']));
     $s = TicketBot::suggest(['phone' => TB_PHONE . '001', 'boarding' => $firstTown, 'name' => 'Typed Name', 'gender' => 'Female'], $staffRow);
     check('explicit input beats history (name, pickup, gender)',
         ($s['prefill']['name'] ?? '') === 'Typed Name' && ($s['fields']['boarding']['source'] ?? '') === 'input' && ($s['prefill']['gender'] ?? '') === 'Female' && ($s['fields']['name']['source'] ?? '') === 'input');
