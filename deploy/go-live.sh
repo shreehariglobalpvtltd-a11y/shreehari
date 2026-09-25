@@ -110,9 +110,12 @@ ok "$D  ($(du -sh "$D" | cut -f1))"
 
 # ------------------------------------------------------------- 5. switch
 c "5/7  Switching the worktree"
-git status --porcelain | grep -v '^??' | while read -r _ f; do
+# Keep a copy of anything edited in place before it is thrown away.
+# The '|| true' matters: with set -e, a grep that finds nothing exits 1
+# and takes the whole deploy down at the last safe moment. It did.
+git status --porcelain 2>/dev/null | grep -v '^??' | while read -r _ f; do
   cp "$f" "$D/dirty-$(echo "$f" | tr / _)" 2>/dev/null || true
-done
+done || true
 git checkout -- . 2>/dev/null || true
 git checkout -q -B "release/$BRANCH-$STAMP" FETCH_HEAD
 chown -R www-data:www-data "$SITE"
