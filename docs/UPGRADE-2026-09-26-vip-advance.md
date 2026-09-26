@@ -146,18 +146,33 @@ over HTTP and need the dev server on `:8899`.
 
 ---
 
-## 7. Known gaps
+## 7. Known gaps — closed 26 Sep 2026 (later the same day)
 
-1. `bookings.advance_discount` is stored but not itemised on the ticket, the
-   invoice, `admin/booking-view.php` or the passenger's My Bookings — the total
-   is right, the line is not shown.
-2. Gujarati carries only the short new labels; the long VIP sentences fall back
-   to English.
-3. The pricing screen has no "what would this journey on this date cost" box.
-4. The advance offer is company-wide. A discount limited to one route or one
-   departure still needs a `coupons` row on Offers & Discounts.
-5. A WhatsApp fare change does not notify the other authorised admin, and
-   `rules_change` has no attempt rate limit of its own.
-6. `admin/quick-ticket.php` and the agent panel show the discounted total but
-   do not print the offer as its own line.
-7. `advance_offer_max_inr` is a ceiling per **booking**, not per passenger.
+All seven were finished in `feat/nepal-counter-npr`, one commit each, and are
+pinned by `php tests/vip-finish-test.php` (one section per change). Tested on
+`/root/shg-test`; **not deployed** — this branch still has to merge the live
+lineage first (see docs/NEXT-PROMPTS-2026-09-27.md, Block 0).
+
+1. ✅ `bookings.advance_discount` is its own line: "Advance booking offer" on
+   the invoice, "ADVANCE OFFER − ₹" inside the PNG fare band, "Offer" on the
+   PDF fare line, a row on `admin/booking-view.php`, under the amount on the
+   agent's register (`admin/agent-sales.php`), on both Quick Ticket cards, and
+   on the My Bookings card (`advanceDiscount` in the customer payload).
+2. ✅ Gujarati carries `vipSub`, `vipNote`, `aoBook`, `aoRow` and the four
+   checkout row labels.
+3. ✅ `admin/pricing.php` has the "what would this journey on this date cost"
+   box — GET only, mirrors `api/quote.php` step for step, saves nothing.
+4. ✅ `advance_offer_route` (0 = every route) and `advance_offer_date` ('' =
+   any date) narrow the offer; the card names the narrowing. A caller that
+   does not name its route gets nothing from a one-route offer.
+5. ✅ `AiRules::notifyOthers()` tells every other authorised number after a
+   write; `rules_change` is rate-limited — 8 attempts / 10 min per NUMBER,
+   30-minute lockout.
+6. ✅ (with 1) Quick Ticket's plan card and result card print the offer line.
+7. ✅ `advance_offer_max_per` = booking | passenger.
+
+**Still true, on purpose:** a sale typed at the desk (`BookingService::counterSale`,
+the clerk enters the fare) carries no advance offer — the website, the agent
+panel and QuickBot price through `priceBooking()` and do. The countdown on the
+offer card (`#aoCount`, Nepali first) counts to the office's "Runs until" date
+and stays hidden for an open-ended offer. Asset stamp `20260926l`, `sw-v174`.
