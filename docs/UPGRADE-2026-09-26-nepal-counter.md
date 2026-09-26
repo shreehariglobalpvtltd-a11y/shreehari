@@ -285,6 +285,32 @@ when space ran short.
 registration. Until `nepal_phone` is filled, a Nepalgunj ticket honestly falls back to the
 India office number rather than printing a placeholder.
 
+## 4c. The run a desk sells
+
+Owner, 26 Sep, looking at a demo ticket cut at Nepalgunj that read "Surat →
+Rupaidiha": *"yesto sano mistake nahunu paryo."*
+
+He is right, and it is not really the clerk's mistake to make. A window at
+Nepalgunj serves passengers standing in Nepal: they board at **Rupaidiha** and
+travel **into India**. Until now every desk opened on "Auto" and the direction
+was one more thing to get right by hand, on every sale, forever.
+
+`counter_locations.default_direction` + `default_from`:
+
+| desk | opens on | search opens at |
+|---|---|---|
+| NPJ / NPJD / KHL / RPD | 🇳🇵→🇮🇳 Return | Rupaidiha |
+| every Indian desk | Auto (both) | — |
+
+QuickBot opens with the chip already picked; counter mode opens its search on
+the desk's boarding town; Counters & collection edits both. Neither is a wall —
+a Nepalgunj customer buying a relative's outbound leg is a real sale. What
+changes is that the common sale is one tap and the uncommon one is deliberate.
+
+`tests/counter-desk-test.php` also asserts that **no active route boards at
+Nepalgunj**. If that ever goes red, someone turned the selling window into a
+bus stop — which may be a real decision one day, but must be a decision.
+
 ## 5b. Live now — what changed for whom, today
 
 Nothing changes for anyone until a desk is assigned: **no staff account on live has a
