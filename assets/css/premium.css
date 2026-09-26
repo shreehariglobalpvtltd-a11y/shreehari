@@ -725,3 +725,39 @@ footer{background:linear-gradient(180deg,var(--brand-navy) 0%,var(--brand-navy-9
   .sp-lines .sp-line{opacity:1;transform:none}
   .sp-lines .sp-line.out{opacity:0}
 }
+
+
+/* ---------------------------------------------------------------------
+   10. ONE ENTER MOTION (27 Sep 2026)
+   -------------------------------------------------------------------
+   Owner: "an entrance animation on every screen". Every screen already had
+   one — viewIn (app.css), fadeDown for menus and the modal, sheetUp,
+   waSheetUp, ctUp for the sheets — five shapes, five durations, five
+   curves. They now all point at ONE keyframe, shgEnter, with the tokens
+   from section 1 (--m-base 190 ms, --m-spring), so a view, a menu, a modal
+   and a sheet all arrive the same way. Opacity + translateY only.
+
+   KEPT AS IS: #view-seats / #view-checkout on phones stay on flowViewIn
+   (app.css ~1593, an ID rule that outranks this one on animation-name): a
+   transform on those views would un-pin their fixed action bar. Only the
+   name is theirs — duration and curve below are shared.
+
+   OFF SWITCH: app_motion_on (public bool, Admin -> Settings -> Site).
+   02-config.js stamps html.no-motion when it is 0, and the app then
+   behaves exactly as it does for a visitor who asked for reduced motion:
+   1 ms, one pass, nothing invisible. Absent row = on.
+   ------------------------------------------------------------------- */
+@keyframes shgEnter{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.view.active{animation:shgEnter var(--m-base) var(--m-spring) both}
+.shg-modal.open,.mobile-menu.open,.nav-drop-list,.notif-panel.open{
+  animation:shgEnter var(--m-base) var(--m-spring) both;
+}
+.ai-panel.open,.wa-sheet-card,.ct-card{
+  animation:shgEnter var(--m-slow) var(--m-spring) both;
+}
+html.no-motion *,html.no-motion *::before,html.no-motion *::after{
+  animation-duration:1ms!important;
+  animation-iteration-count:1!important;
+  transition-duration:1ms!important;
+}
+html.no-motion{scroll-behavior:auto}

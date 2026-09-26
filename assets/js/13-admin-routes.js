@@ -689,6 +689,10 @@ const Splash = {
       var _intro = $('#introScenes'); if (_intro) _intro.style.display = 'none';
     }
     if (this.el.classList.contains('done')) { this.done = true; this.el.style.display = 'none'; return; }
+    /* app_motion_on = 0 (Admin -> Settings -> Site, 27 Sep 2026): no floor
+       and no rotating lines — the opening lasts exactly as long as the boot,
+       as it did before. Absent row = on (shgSwitchOn, 02-config.js). */
+    if (!this.motion()) this.minDuration = 0;
     const sb = $('#splashSound');
     if (sb) sb.addEventListener('click', () => {
       this.soundOn = !this.soundOn;
@@ -860,13 +864,16 @@ const Splash = {
     try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
     catch (e) { return false; }
   },
+  motion() {
+    try { return typeof shgSwitchOn !== 'function' || shgSwitchOn('app_motion_on'); } catch (e) { return true; }
+  },
   rotate() {
     var box = $('#splashPromise');
     if (!box) return;
     var lines = this.lines();
     if (!lines.length) return;
     box.setAttribute('lang', (typeof LANG === 'string' && LANG) || 'en');
-    if (this.reducedMotion()) {
+    if (this.reducedMotion() || !this.motion()) {
       box.textContent = '';
       var one = document.createElement('span');
       one.className = 'sp-line in';
