@@ -499,6 +499,19 @@ final class Fare
         if (!in_array($modes, ['all', 'sharing', 'private'], true)) {
             $modes = 'all';
         }
+        /* 26 Sep 2026 (follow-up): the offer may be narrowed to ONE route or
+           ONE departure date, and its ceiling may count per passenger. Blank,
+           0 and 'booking' keep the company-wide behaviour the owner started
+           with, so nothing changes until the office chooses otherwise. */
+        $routeId = max(0, Settings::getInt('advance_offer_route', 0));
+        $date    = trim(Settings::getString('advance_offer_date', ''));
+        if ($date !== '' && !Security::isValidDate($date)) {
+            $date = '';
+        }
+        $maxPer = strtolower(trim(Settings::getString('advance_offer_max_per', 'booking')));
+        if (!in_array($maxPer, ['booking', 'passenger'], true)) {
+            $maxPer = 'booking';
+        }
         $title = trim(Settings::getString('advance_offer_title', ''));
         if ($title === '') {
             $title = 'Advance booking offer';
@@ -521,6 +534,7 @@ final class Fare
             'on' => $on, 'live' => $live, 'percent' => $pct, 'hours' => max(0, $hrs),
             'from' => $from, 'to' => $to, 'max' => $max, 'modes' => $modes,
             'text' => $text, 'title' => $title,
+            'routeId' => $routeId, 'date' => $date, 'maxPer' => $maxPer,
         ];
     }
 
@@ -539,7 +553,9 @@ final class Fare
         float $subtotal,
         string $travelDate,
         string $departureTime = '00:00:00',
-        ?string $bookingMode = null
+        ?string $bookingMode = null,
+        ?int $routeId = null,
+        int $passengers = 1
     ): array {
         $offer = self::advanceOffer();
         $no    = static function (string $why) use ($offer): array {
@@ -562,6 +578,15 @@ final class Fare
         if ($subtotal <= 0) {
             return $no('Nothing to discount.');
         }
+        /* Narrowed offers (26 Sep 2026 follow-up). A caller that does not
+           know its route gets nothing from a one-route offer — better a
+           missed discount than one on the wrong bus. */
+        if ((int) $offer['routeId'] > 0 && ($routeId === null || (int) $routeId !== (int) $offer['routeId'])) {
+            return $no('This offer is for one route only.');
+        }
+        if ($offer['date'] !== '' && $travelDate !== $offer['date']) {
+            return $no('This offer is for the ' . $offer['date'] . ' departure only.');
+        }
 
         $time      = trim($departureTime) !== '' ? trim($departureTime) : '00:00:00';
         $hoursLeft = hoursUntil($travelDate, $time);
@@ -576,7 +601,10 @@ final class Fare
 
         $amount = round($subtotal * (float) $offer['percent'] / 100);
         if ($offer['max'] > 0) {
-            $amount = min($amount, (float) $offer['max']);
+            /* The ceiling is per booking unless the office chose per
+               passenger — a family of four then keeps four times the cap. */
+            $cap    = (float) $offer['max'] * (($offer['maxPer'] ?? 'booking') === 'passenger' ? max(1, $passengers) : 1);
+            $amount = min($amount, $cap);
         }
         $amount = min($amount, $subtotal);
 
@@ -1160,7 +1188,7 @@ final class Fare
         $advanceInfo = ['ok' => false, 'amount' => 0.0, 'percent' => 0.0, 'hoursLeft' => 0.0,
                         'hoursNeeded' => 0, 'title' => '', 'text' => '', 'why' => 'No advance context supplied.'];
         if ($ctxDate !== '') {
-            $advanceInfo = self::advanceDiscount($running, $ctxDate, $ctxTime, $ctxMode);
+            $advanceInfo = self::advanceDiscount($running, $ctxDate, $ctxTime, $ctxMode, $routeId, $seatCount);
             if (!empty($advanceInfo['ok'])) {
                 $advanceCut  = (float) $advanceInfo['amount'];
                 $advancePct  = (float) $advanceInfo['percent'];

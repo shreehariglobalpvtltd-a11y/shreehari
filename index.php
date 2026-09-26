@@ -161,6 +161,12 @@ try {
 try {
     require_once INCLUDE_PATH . '/fare.php';   // bootstrap.php does not load it
     $advNow = Fare::advanceOffer();
+    /* A one-route offer names its route on the card (26 Sep 2026 follow-up). */
+    $advRoute = '';
+    if ((int) ($advNow['routeId'] ?? 0) > 0) {
+        $advR = Database::fetch('SELECT from_city, to_city FROM routes WHERE id = :i LIMIT 1', ['i' => (int) $advNow['routeId']]);
+        $advRoute = $advR !== null ? (string) $advR['from_city'] . ' → ' . (string) $advR['to_city'] : '';
+    }
     $boot['pricing'] = [
         'board' => Fare::fareBoardMap(),
         'offer' => [
@@ -174,6 +180,9 @@ try {
             'title'   => (string) $advNow['title'],
             'text'    => (string) $advNow['text'],
             'until'   => (string) $advNow['to'],
+            'route'   => $advRoute,
+            'date'    => (string) ($advNow['date'] ?? ''),
+            'maxPer'  => (string) ($advNow['maxPer'] ?? 'booking'),
         ],
         'vip' => [
             'single' => (float) (Settings::getArray('cabin_pricing', Fare::pricing())['private']['single_1pax']['offline'] ?? 0),

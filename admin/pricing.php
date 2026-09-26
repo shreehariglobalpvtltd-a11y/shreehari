@@ -159,6 +159,20 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $modes = (string) ($_POST['advance_offer_modes'] ?? 'all');
                 $title = Security::clean($_POST['advance_offer_title'] ?? '', 120);
                 $text  = Security::clean($_POST['advance_offer_text'] ?? '', 240);
+                /* 26 Sep 2026 follow-up: narrow the offer to one route or one
+                   departure date, and count the ceiling per passenger. */
+                $route  = max(0, (int) ($_POST['advance_offer_route'] ?? 0));
+                $date   = trim((string) ($_POST['advance_offer_date'] ?? ''));
+                $maxPer = (string) ($_POST['advance_offer_max_per'] ?? 'booking');
+                if (!in_array($maxPer, ['booking', 'passenger'], true)) {
+                    $maxPer = 'booking';
+                }
+                if ($date !== '' && !Security::isValidDate($date)) {
+                    throw new RuntimeException('The one-departure date must be YYYY-MM-DD, or left blank.');
+                }
+                if ($route > 0 && Database::fetch('SELECT id FROM routes WHERE id = :i LIMIT 1', ['i' => $route]) === null) {
+                    throw new RuntimeException('That route does not exist.');
+                }
 
                 if ($hours < 0 || $hours > 8760) {
                     throw new RuntimeException('Advance hours must be between 0 and 8760 (a year).');
@@ -188,6 +202,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     'advance_offer_modes'   => ['string', $modes],
                     'advance_offer_title'   => ['string', $title],
                     'advance_offer_text'    => ['string', $text],
+                    'advance_offer_route'   => ['int',    (string) $route],
+                    'advance_offer_date'    => ['string', $date],
+                    'advance_offer_max_per' => ['string', $maxPer],
                 ] as $k => [$type, $v]) {
                     $old = (string) Settings::get($k, '');
                     Settings::set($k, $v, $type, 'pricing', true);
@@ -241,6 +258,7 @@ $vipD    = (float) ($cpNow['private']['double_2pax']['offline'] ?? 7600);
 $offer   = Fare::advanceOffer();
 $board   = Fare::fareBoard();
 $points  = Fare::mainPoints();
+$routesAll = Database::fetchAll("SELECT id, route_code, from_city, to_city, coach_type FROM routes WHERE is_active = 1 ORDER BY from_city, to_city");
 $waOn    = Settings::getBool('wa_rules_control', false);
 $waNums  = array_values(array_filter(array_map('trim', explode(',', Settings::getString('wa_rules_numbers', '')))));
 
@@ -265,6 +283,55 @@ $sample     = $board !== [] ? (float) $board[0]['amount'] : 2200.0;
 $sampleCut  = $offer['percent'] > 0 ? round($sample * $offer['percent'] / 100) : 0.0;
 if ($offer['max'] > 0) {
     $sampleCut = min($sampleCut, (float) $offer['max']);
+}
+
+/* "What would this journey on this date cost?" (26 Sep 2026 follow-up).
+   Mirrors api/quote.php step for step — the same board, the same cabin list,
+   the same per-departure override and the same advance-offer clock — so the
+   office reads here exactly what a passenger will be charged. GET only:
+   nothing is saved. */
+$pv = [
+    'route' => (int) ($_GET['pv_route'] ?? 0),
+    'date'  => Security::clean((string) ($_GET['pv_date'] ?? ''), 10),
+    'mode'  => (string) ($_GET['pv_mode'] ?? 'sharing'),
+    'seats' => max(1, min(20, (int) ($_GET['pv_seats'] ?? 1))),
+    'from'  => Security::clean((string) ($_GET['pv_from'] ?? ''), 191),
+    'to'    => Security::clean((string) ($_GET['pv_to'] ?? ''), 191),
+];
+$pvOut = null;
+if ($pv['route'] > 0 && Security::isValidDate($pv['date'])) {
+    if (!class_exists('BookingService')) {
+        require_once INCLUDE_PATH . '/booking.php';
+    }
+    $pvRoute = Database::fetch('SELECT * FROM routes WHERE id = :id LIMIT 1', ['id' => $pv['route']]);
+    if ($pvRoute !== null) {
+        $pvMode  = in_array($pv['mode'], ['sharing', 'private'], true) ? $pv['mode'] : 'sharing';
+        $pvEnds  = Fare::journeyPoints($pvRoute, $pv['from'], $pv['to']);
+        $pvSched = Database::fetch(
+            'SELECT id, route_id, fare_override, dep_time_override FROM schedules WHERE route_id = :r AND travel_date = :d ORDER BY id LIMIT 1',
+            ['r' => $pv['route'], 'd' => $pv['date']]
+        );
+        $pvOver = $pvSched !== null ? BookingService::scheduleFareOverride($pvSched) : null;
+        if ($pvOver !== null && ($pvRoute['coach_type'] !== 'sleeper' || $pvMode !== 'private')) {
+            $pvPer   = $pvOver;
+            $pvBase  = $pvPer * $pv['seats'];
+            $pvLabel = "this bus's own fare";
+        } elseif ($pvRoute['coach_type'] === 'sleeper') {
+            $pvCabin = Fare::cabinFare($pvMode === 'private' && $pv['seats'] >= 2 ? 'double' : 'single', $pvMode, $pv['seats'], true, (string) ($pvRoute['to_city'] ?? ''), 4, $pvEnds['from']);
+            $pvBase  = (float) $pvCabin['total'];
+            $pvPer   = $pv['seats'] > 0 ? round($pvBase / $pv['seats'], 2) : $pvBase;
+            $pvLabel = (string) ($pvCabin['label'] ?? 'the fare board');
+        } else {
+            $pvPer   = (float) $pvRoute['base_fare'];
+            $pvBase  = $pvPer * $pv['seats'];
+            $pvLabel = 'route base fare';
+        }
+        $pvDep   = Fare::departureTime($pvSched, $pvRoute);
+        $pvQuote = Fare::quote($pvBase, $pv['seats'], 0, 0, 0, '', '', $pv['route'], [
+            'travelDate' => $pv['date'], 'departureTime' => $pvDep, 'bookingMode' => $pvMode,
+        ]);
+        $pvOut = ['ends' => $pvEnds, 'per' => $pvPer, 'label' => $pvLabel, 'q' => $pvQuote, 'mode' => $pvMode, 'dep' => $pvDep];
+    }
 }
 
 admin_header('Fares & offers', 'pricing');
@@ -371,6 +438,57 @@ admin_header('Fares & offers', 'pricing');
     </div>
   </div>
 
+  <!-- ============ 1b. WHAT WOULD THIS JOURNEY COST ============ -->
+  <form method="get" class="pr-card" id="pvBox">
+    <h2>🔎 What would this journey on this date cost? <small>the exact charge a passenger meets — board, this bus's fare, the offer, all of it</small></h2>
+    <div class="pr-body">
+      <div class="pr-grid">
+        <label>Bus / route
+          <select name="pv_route">
+            <?php foreach ($routesAll as $rt): ?>
+              <option value="<?= (int) $rt['id'] ?>" <?= $pv['route'] === (int) $rt['id'] ? 'selected' : '' ?>><?= Security::e($rt['from_city'] . ' → ' . $rt['to_city'] . ' (' . $rt['route_code'] . ')') ?></option>
+            <?php endforeach; ?>
+          </select></label>
+        <label>Travel date
+          <input type="date" name="pv_date" value="<?= Security::e($pv['date'] !== '' ? $pv['date'] : todayISO()) ?>" required></label>
+        <label>Booking
+          <select name="pv_mode">
+            <option value="sharing" <?= $pv['mode'] !== 'private' ? 'selected' : '' ?>>Sharing sleeper</option>
+            <option value="private" <?= $pv['mode'] === 'private' ? 'selected' : '' ?>>VIP private cabin</option>
+          </select></label>
+        <label>Passengers
+          <input type="number" name="pv_seats" min="1" max="20" value="<?= (int) $pv['seats'] ?>"></label>
+        <label>Boarding at
+          <input type="text" name="pv_from" list="pvPoints" value="<?= Security::e($pv['from']) ?>" placeholder="blank = route start"></label>
+        <label>Getting off at
+          <input type="text" name="pv_to" list="pvPoints" value="<?= Security::e($pv['to']) ?>" placeholder="blank = route end"></label>
+      </div>
+      <datalist id="pvPoints"><?php foreach (array_merge((array) ($points['india'] ?? []), (array) ($points['nepal'] ?? [])) as $pt): ?><option value="<?= Security::e((string) $pt) ?>"></option><?php endforeach; ?></datalist>
+      <?php if ($pvOut !== null): $q = $pvOut['q']; ?>
+        <div class="pr-eg" id="pvResult">
+          <b><?= Security::e($pvOut['ends']['from']) ?> → <?= Security::e($pvOut['ends']['to']) ?></b>
+          · <?= Security::e(formatDate($pv['date'])) ?> · departs <?= Security::e(substr($pvOut['dep'], 0, 5)) ?>
+          · <?= (int) $pv['seats'] ?> passenger<?= $pv['seats'] === 1 ? '' : 's' ?> · <?= $pvOut['mode'] === 'private' ? 'VIP private' : 'sharing' ?><br>
+          Original fare <b><?= Security::e(inr((float) $q['originalFare'])) ?></b>
+          <small>(<?= (int) $pv['seats'] ?> × <?= Security::e(inr((float) $pvOut['per'])) ?> · <?= Security::e($pvOut['label']) ?>)</small><br>
+          Discount <b><?= Security::e(rtrim(rtrim(number_format((float) $q['discountPercent'], 2, '.', ''), '0'), '.')) ?>%</b>
+          · Discount amount <b>− <?= Security::e(inr((float) $q['discountAmount'])) ?></b><br>
+          Final fare <b style="font-size:18px"><?= Security::e(inr((float) $q['finalFare'])) ?></b>
+          <?php if ((float) $q['advanceDiscount'] > 0): ?>
+            <br><span class="pr-live on"><?= Security::e((string) $q['advanceTitle']) ?> − <?= Security::e(inr((float) $q['advanceDiscount'])) ?></span>
+            booked <?= Security::e(number_format((float) $q['advanceHoursLeft'], 0)) ?> h before departure (needs <?= (int) $q['advanceHoursNeeded'] ?>)
+          <?php else: ?>
+            <br><span class="pr-hint">No advance offer on this quote: <?= Security::e((string) $q['advanceWhy']) ?></span>
+          <?php endif; ?>
+        </div>
+      <?php elseif ($pv['route'] > 0): ?>
+        <div class="pr-eg pr-bad">Pick a bus and a valid date.</div>
+      <?php endif; ?>
+    </div>
+    <div class="pr-actions"><button class="btn primary" type="submit">Work it out</button>
+      <span class="pr-hint">Reads the same engine as the website, the counter and WhatsApp — nothing is saved.</span></div>
+  </form>
+
   <!-- ============ 2. BASE + VIP ============ -->
   <form method="post" class="pr-card">
     <?= Security::csrfField() ?>
@@ -431,6 +549,23 @@ admin_header('Fares & offers', 'pricing');
               <option value="<?= $k ?>" <?= $offer['modes'] === $k ? 'selected' : '' ?>><?= Security::e($v) ?></option>
             <?php endforeach; ?>
           </select></label>
+        <label>One route only
+          <select name="advance_offer_route" <?= $canEdit ? '' : 'disabled' ?>>
+            <option value="0">Every route</option>
+            <?php foreach ($routesAll as $rt): ?>
+              <option value="<?= (int) $rt['id'] ?>" <?= (int) ($offer['routeId'] ?? 0) === (int) $rt['id'] ? 'selected' : '' ?>><?= Security::e($rt['from_city'] . ' → ' . $rt['to_city'] . ' (' . $rt['route_code'] . ')') ?></option>
+            <?php endforeach; ?>
+          </select>
+          <small>Every route = company-wide, as before</small></label>
+        <label>One departure date only
+          <input type="date" name="advance_offer_date" value="<?= Security::e((string) ($offer['date'] ?? '')) ?>" <?= $canEdit ? '' : 'readonly' ?>>
+          <small>only tickets FOR this travel date get it; blank = any date</small></label>
+        <label>Largest discount counts
+          <select name="advance_offer_max_per" <?= $canEdit ? '' : 'disabled' ?>>
+            <option value="booking" <?= ($offer['maxPer'] ?? 'booking') === 'booking' ? 'selected' : '' ?>>per booking</option>
+            <option value="passenger" <?= ($offer['maxPer'] ?? 'booking') === 'passenger' ? 'selected' : '' ?>>per passenger</option>
+          </select>
+          <small>per passenger: a family of four keeps 4 × the ceiling</small></label>
         <label>Offer name
           <input type="text" name="advance_offer_title" maxlength="120" value="<?= Security::e($offer['title']) ?>" <?= $canEdit ? '' : 'readonly' ?>>
           <small>printed on the fare breakdown and the ticket</small></label>
