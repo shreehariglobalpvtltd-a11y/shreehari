@@ -268,7 +268,7 @@ CounterDesk::syncSettingsMirror();
 
 Settings::set('npr_per_inr', $savedPeg, 'float', 'company', true);
 if (trim($savedMirror) !== '') {
-    Settings::set('counter_locations', $savedMirror, 'text', 'company');
+    Settings::set('counter_locations', $savedMirror, 'string', 'company');
 }
 Settings::flush();
 CounterDesk::flush();

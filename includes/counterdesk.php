@@ -327,10 +327,13 @@ final class CounterDesk
             }
             $lines[] = $d['code'] . '|' . $d['name'];
         }
+        /* stype is an ENUM('string','int','float','bool','json') — 'text'
+           is not a member and MySQL truncates it (the 24 Sep migration
+           wrote 'text' and the row landed with no type at all). */
         if ($lines === []) {
             return;   // never blank the mirror — an empty list would hide every desk
         }
-        Settings::set('counter_locations', implode("\n", $lines), 'text', 'company');
+        Settings::set('counter_locations', implode("\n", $lines), 'string', 'company');
     }
 
     /* ----------------------------------------------------------------- */
