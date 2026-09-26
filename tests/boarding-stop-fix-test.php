@@ -75,7 +75,26 @@ function req(string $method, string $url, array $opt = []): array {
 function pdo(): PDO {
     static $p = null;
     if ($p === null) {
-        $p = new PDO('mysql:host=127.0.0.1;port=3307;dbname=shari_test;charset=utf8mb4', 'root', '',
+        /* 26 Sep 2026: the checkout's own test database first. The VPS test copy
+           keeps shari_test in config/config.local.php under its own user; the
+           127.0.0.1:3307 root line is only the Windows dev box. Whatever it is,
+           the name must still say "test" - this suite writes rows. */
+        if (!defined('DB_NAME')) {
+            $local = dirname(__DIR__) . '/config/config.local.php';
+            if (is_file($local)) {
+                if (!defined('SHG_APP')) { define('SHG_APP', true); }   // the config file's own guard
+                require_once $local;
+            }
+        }
+        $host = defined('DB_HOST') ? (string) DB_HOST : '127.0.0.1:3307';
+        $name = defined('DB_NAME') ? (string) DB_NAME : 'shari_test';
+        $user = defined('DB_USER') ? (string) DB_USER : 'root';
+        $pass = defined('DB_PASS') ? (string) DB_PASS : '';
+        if (stripos($name, 'test') === false) {
+            throw new RuntimeException("Refusing: $name is not a test database");
+        }
+        [$h, $port] = array_pad(explode(':', $host, 2), 2, '3306');
+        $p = new PDO("mysql:host=$h;port=$port;dbname=$name;charset=utf8mb4", $user, $pass,
             [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
     }
     return $p;
