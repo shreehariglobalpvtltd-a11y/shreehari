@@ -1,1 +1,3 @@
-action=snapshot
+action=deploy
+expect_live=51744e3c930b962dbb3fe495de322185e96bd0c6
+dry_run=true
