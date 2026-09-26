@@ -98,7 +98,6 @@ body{margin:0;background:#FFFFFF}
 /* Hidden state must ALSO live here: if views.css stalls, the splash would
    otherwise stay a full-screen z-9999 tap blocker until JS force-hides it. */
 .splash.done{opacity:0;visibility:hidden;pointer-events:none}
-.splash .float-hero-wrap,.splash .intro-scenes{display:none!important}
 .splash-content{position:relative;z-index:1;text-align:center;padding:0 24px;max-width:520px;opacity:0;transform:translateY(14px);animation:splashContentIn .28s .02s cubic-bezier(.4,0,.2,1) forwards}
 @keyframes splashContentIn{to{opacity:1;transform:none}}
 .splash-brand{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px}
@@ -117,22 +116,6 @@ body{margin:0;background:#FFFFFF}
 @keyframes spShimmer{to{background-position:-220% 0}}
 @media (prefers-reduced-motion:reduce){.splash-aura,.splash-mantra{animation:none}}
 [data-theme="dark"] .splash-aura{opacity:.55}
-.splash-road{position:relative;width:min(70vw,280px);height:54px;margin:16px auto 0;overflow:hidden}
-.splash-road::before{content:"";position:absolute;left:0;right:0;bottom:0;height:9px;border-radius:5px;background:#2B3342}
-.splash-road::after{content:"";position:absolute;left:0;right:0;bottom:4px;height:2px;background:repeating-linear-gradient(90deg,#F6C744 0 14px,transparent 14px 26px)}
-.splash-road img{position:absolute;z-index:1;left:50%;bottom:5px;width:144px;height:auto;margin-left:-72px;animation:splashBus 1.3s cubic-bezier(.2,.7,.3,1) .15s both}
-@keyframes splashBus{from{transform:translateX(-75vw)}to{transform:none}}
-@media (prefers-reduced-motion:reduce){.splash-road img{animation:none}}
-@media (max-height:620px){.splash-road{display:none}}
-.splash.intro7 .splash-logo{animation:spLogoSpin 1.5s cubic-bezier(.2,.8,.2,1) both}
-@keyframes spLogoSpin{0%{opacity:0;transform:perspective(700px) rotateY(-200deg) scale(.55)}55%{opacity:1;transform:perspective(700px) rotateY(18deg) scale(1.06)}100%{opacity:1;transform:none}}
-.splash.intro7 .splash-road img{animation:spBusWhoosh 1.7s cubic-bezier(.12,.8,.2,1) .5s both}
-@keyframes spBusWhoosh{0%{transform:translateX(-90vw) skewX(-14deg);filter:blur(4px)}68%{transform:translateX(14px) skewX(5deg);filter:blur(0)}84%{transform:translateX(-5px) skewX(-1.5deg)}100%{transform:none}}
-.splash.intro7 .splash-road::after{animation:spLane .45s linear infinite}
-@keyframes spLane{to{background-position:-26px 0}}
-.splash.intro7 .splash-ceo{animation:spCeoIn .9s cubic-bezier(.2,.8,.2,1) 2.4s both}
-@keyframes spCeoIn{from{opacity:0;transform:translateY(18px) scale(.9)}to{opacity:1;transform:none}}
-@media (prefers-reduced-motion:reduce){.splash.intro7 .splash-logo,.splash.intro7 .splash-road img,.splash.intro7 .splash-road::after,.splash.intro7 .splash-ceo{animation:none}}
 .splash-ceo{margin-top:18px;display:flex;flex-direction:column;gap:3px;align-items:center;line-height:1.3}
 .splash-ceo-photo{width:82px;height:82px;border-radius:50%;object-fit:cover;object-position:center top;border:3px solid #F07C1F;box-shadow:0 6px 24px rgba(18,38,78,.28);margin-bottom:6px;flex:0 0 auto}
 .splash-ceo b{font-family:'Cinzel',Georgia,serif;font-size:17px;font-weight:700;color:#12264E;letter-spacing:.02em}
@@ -314,16 +297,6 @@ s.addEventListener('click',function(e){e.preventDefault();
      is more than six hours old, so a phone that opens the app morning and
      evening sees it twice a day, not once per install. Same rule, same
      numbers, in Splash.init (13-admin-routes.js). -->
-  <div class="float-hero-wrap" style="position:absolute;inset:0;height:auto;margin:0;opacity:.55" aria-hidden="true">
-    <span class="float-item float-flag-in" style="top:16%;left:10%">🇮🇳</span>
-    <span class="float-item float-om" style="top:12%;left:auto;right:12%">🕉️</span>
-    <span class="float-item float-lotus" style="top:72%;left:12%">🪷</span>
-    <span class="float-item float-flag-np" style="top:70%;right:10%">🇳🇵</span>
-    <span class="float-item float-mountain" style="top:42%;right:5%">🏔️</span>
-    <span class="float-item float-wheel" style="top:46%;left:5%">☸️</span>
-    <span class="float-item float-lotus" style="top:30%;left:22%">🚩</span>
-    <span class="float-item float-om" style="top:58%;left:auto;right:22%">🏹</span>
-  </div>
   <div class="splash-content">
     <!-- India–Nepal outline + the Gujarat→Rupaidiha road draw themselves behind
          the brand while the app boots (17 Sep 2026). Inline opacity:0 keeps it
@@ -368,115 +341,6 @@ s.addEventListener('click',function(e){e.preventDefault();
     <div class="premium-loading" role="status"><span id="splashStatus" data-i18n="premiumLoading">Preparing your journey…</span><div class="premium-progress"><i id="splashBar"></i></div><a id="splashRetry" href="" hidden data-i18n="premiumRetry">Connection is taking longer. Reload</a></div>
     <a class="splash-phone" id="splashPhone" href="#"><span class="sp-ico">📞</span><span class="sp-num"></span></a>
 
-    <!-- PORTAL STRIP — the 2-second window in which staff can peel off to
-         their own sign-in. Nobody has to touch it: the bar drains, the
-         splash finishes and the visitor lands in the customer app. It sits
-         INSIDE the splash on purpose, so offering the choice costs zero
-         extra time on the way to the booking screen. -->
-    <div class="splash-portal" id="splashPortal" hidden>
-      <!-- The feature strip is the reason the brand screen is allowed to hold
-           for ~6s on a first visit: it is not dead branding time, it tells a
-           first-time visitor what the app does while the data loads behind
-           it. One line at a time, swapped on a CSS fade. -->
-      <ul class="sp-feats" id="spFeats" aria-hidden="true">
-        <li class="on">🎫 <b>15 second</b> ma ticket · Book in 15 seconds</li>
-        <li>🗺️ <b>Live map</b> · bus kaha cha herne · Live bus tracking</li>
-        <li>💸 <b>एकै भाडा</b> · One fixed fair price — online & offline same</li>
-        <li>🛏️ Sleeper &amp; <b>Private cabin</b> · Gujarat ⇄ Rupaidiha</li>
-      </ul>
-      <div class="sp-hint" id="spHint">यात्री हो भने केही गर्नु पर्दैन · Opening in <span id="spCount">1</span>s</div>
-      <div class="sp-pills">
-        <button type="button" class="sp-pill sp-pill-go" data-portal="customer"><span>🎫</span> Book now</button>
-        <!-- Agent/Admin pills removed from public splash (2026-08-29): staff
-             sign in at /admin/ directly. Customer surface must be free of
-             any agent/admin affordance per master-prompt §2. -->
-      </div>
-      <div class="sp-track"><i id="spBar"></i></div>
-    </div>
-
-    <div class="intro-scenes" id="introScenes" aria-hidden="true">
-      <!-- Scene 1 — CEO introduction FIRST (sabai bhanda pehle) -->
-      <div class="intro-scene" id="introS1">
-        <div class="ceo-intro">
-          <div class="ceo-intro-photo"><img id="introCeoImg" src="/assets/img/ceo-sm.webp?v=20260926m" alt="Sher Bahadur Bishwokarma" loading="lazy" decoding="async" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="ceo-intro-initials" style="display:none">SB</span></div>
-          <div class="ceo-intro-name">Sher Bahadur Bishwokarma</div>
-          <div class="ceo-intro-title">👑 Founder &amp; CEO · Director</div>
-          <div class="intro-company">S HARI GLOBAL PVT LTD</div>
-          <div class="ceo-intro-route">Gujarat ⇄ Rupaidiha · India–Nepal Transport</div>
-        </div>
-      </div>
-      <!-- Scene 2 — India flag pehle (palo-palo) -->
-      <div class="intro-scene" id="introS2">
-        <div class="flag-solo">
-          <div class="flag-big flag-big-in"><span class="chakra">☸</span></div>
-          <div class="flag-name"><i>I</i><i>N</i><i>D</i><i>I</i><i>A</i></div>
-        </div>
-      </div>
-      <!-- Scene 3 — Nepal flag (palo-palo) -->
-      <div class="intro-scene" id="introS3">
-        <div class="flag-solo">
-          <div class="flag-big flag-big-np"><span class="np-sym">☀</span><span class="np-sym moon">🌙</span></div>
-          <div class="flag-name"><i>N</i><i>E</i><i>P</i><i>A</i><i>L</i></div>
-        </div>
-      </div>
-      <!-- Scene 4 — Both flags + bus → "दुई देश एक यात्रा" -->
-      <div class="intro-scene" id="introS4">
-        <div class="flag-duo">
-          <div class="flag-col"><div class="flag-big flag-big-in flag-sm"><span class="chakra">☸</span></div></div>
-          <div class="flag-bus">🚌</div>
-          <div class="flag-col"><div class="flag-big flag-big-np flag-sm"><span class="np-sym">☀</span><span class="np-sym moon">🌙</span></div></div>
-        </div>
-        <div class="intro-text">दुई देश · एक सडक · एक यात्रा</div>
-      </div>
-      <!-- Scene 5 — REAL route map draws itself -->
-      <div class="intro-scene" id="introS5">
-        <div class="intro-text" style="margin-bottom:2px">🗺️ Gujarat → Rupaidiha · ≈1,375 km</div>
-        <div id="introMapBox"></div>
-        <div class="intro-sub">Real road route · 16 stops · Rupaidiha border 🛃</div>
-      </div>
-      <!-- Scene 6 — Highway refreshment halt (generic; no restaurant branding) -->
-      <div class="intro-scene" id="introS6">
-        <div class="intro-icon-big">☕</div>
-        <div class="intro-text">Refreshment Halt</div>
-        <div class="intro-sub">Midway break on NH-48 · Chiloda–Mehsana</div>
-        <div class="feat-grid" style="margin-top:10px">
-          <span class="feat-badge">☕ Tea &amp; Snacks</span>
-          <span class="feat-badge">🚌 Bus Parking</span>
-          <span class="feat-badge">🧼 Clean Washrooms</span>
-          <span class="feat-badge">🛌 Leg Stretch</span>
-        </div>
-        <div class="intro-sub" style="margin-top:6px">Time to freshen up before the long haul</div>
-      </div>
-      <!-- Scene 7 — Ticket booking demo -->
-      <div class="intro-scene" id="introS7">
-        <div class="intro-icon-big">🎫</div>
-        <div class="intro-text">Book in 3 Taps</div>
-        <div class="intro-sub">Online · Offline · No Login Required</div>
-        <div class="feat-grid" style="margin-top:10px">
-          <span class="feat-badge">🛏️ Sleeper Cabin</span>
-          <span class="feat-badge">🔒 Private</span>
-          <span class="feat-badge">🤝 Sharing</span>
-          <span class="feat-badge">💳 UPI / eSewa</span>
-        </div>
-        <div class="feat-grid" style="margin-top:6px">
-          <span class="feat-badge">🛰️ Live Tracking</span>
-          <span class="feat-badge">📱 Offline Mode</span>
-        </div>
-      </div>
-      <!-- Scene 8 — Hindu dharma blessing + CTA -->
-      <div class="intro-scene" id="introS8">
-        <div class="intro-icon-big">🕉️</div>
-        <div class="intro-text" style="font-size:1.3em">ॐ नमो नारायणाय</div>
-        <div class="intro-text" style="margin-top:8px">जय श्री राम 🙏 शुभ यात्रा</div>
-        <div class="intro-sub" style="margin-top:10px">दुई देश · एक सडक · सुरक्षित यात्रा</div>
-        <div class="feat-grid" style="margin-top:10px">
-          <span class="feat-badge">🗺️ Live Map</span>
-          <span class="feat-badge">🎫 Online Ticket</span>
-          <span class="feat-badge">📞 24/7 Support</span>
-        </div>
-        <div class="intro-sub" style="margin-top:8px;font-size:1.1em;font-weight:700;color:var(--orange)">Book Now!</div>
-      </div>
-    </div>
     <button class="splash-skip" id="splashSkip" type="button">Tap to skip</button>
   </div>
 </div>
