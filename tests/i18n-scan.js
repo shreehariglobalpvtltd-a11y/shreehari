@@ -8,9 +8,9 @@
  * reading English. Thirteen were found and fixed on 25 Sep 2026; this keeps
  * them from coming back.
  *
- * What it looks at: the CUSTOMER bundle only. The admin and agent panels are
- * English on purpose (12-admin-panel.js says so in its header), so they are
- * not scanned.
+ * What it looks at: the CUSTOMER bundle only. The staff panels live in
+ * admin/*.php and are English on purpose, so they are not scanned. (The old
+ * in-app 09-agent.js / 12-admin-panel.js were deleted on 27 Sep 2026.)
  *
  * What counts as a hit: a literal of three or more English words handed to a
  * sink a human reads — toast / alert / confirm / prompt, .textContent =,
@@ -29,9 +29,9 @@ const path = require('path');
 
 const JS_DIR = path.join(__dirname, '..', 'assets', 'js');
 
-/* The customer bundle. 04-i18n.js is the dictionary itself, 09-agent.js and
-   12/13-admin-* are the English staff panels, terms-data.js is legal copy
-   that ships per-language elsewhere. */
+/* The customer bundle. 04-i18n.js is the dictionary itself, 13-admin-routes.js
+   is splash / trackers / loaders / the payment-proof form (its staff screens
+   are gone), terms-data.js is legal copy that ships per-language elsewhere. */
 const FILES = [
   '01-boot.js', '02-config.js', '03-accounts.js', '05-router.js', '06-results.js',
   '07-checkout.js', '08-signin.js', '10-track.js', '11-pdf-ticket.js',

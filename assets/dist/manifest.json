@@ -1,7 +1,7 @@
 {
   "note": "Written by tools/build.mjs. Do not edit by hand. includes/assetbundle.php reads it at serve time; tests/bundle-test.php checks it.",
   "builtFor": "app.template.html",
-  "builtAt": "2026-09-26T17:58:30.831Z",
+  "builtAt": "2026-09-26T18:06:20.910Z",
   "stamp": "20260926m",
   "minifier": {
     "js": "concat",
@@ -9,9 +9,9 @@
   },
   "js": {
     "output": "assets/dist/app.min.js",
-    "bytes": 1163699,
-    "sha256": "c1a95b6a350aae1fe9e5d6d5b4a17788a87dfed104623508d14c5763076fcf6a",
-    "rawBytes": 1163115,
+    "bytes": 1118116,
+    "sha256": "c79a4111c9548397d807fa35dafe094b863a3b2032047b2fcaf8c46b9d933987",
+    "rawBytes": 1117532,
     "sources": [
       {
         "file": "assets/js/01-boot.js",
@@ -70,8 +70,8 @@
       },
       {
         "file": "assets/js/13-admin-routes.js",
-        "bytes": 167746,
-        "sha256": "90b689c4c5d72861f7455d6b73123723de502663b28afced5a4b5e1f315bdf32"
+        "bytes": 122163,
+        "sha256": "94f933be045e27457d85689c9c53a5abb9d0ccc17ad2486e2b3cbe5ddeb344b3"
       },
       {
         "file": "assets/js/17-pwa.js",
