@@ -1530,12 +1530,13 @@ final class Ticket
             $cutW    = $cutTxt !== '' ? self::gdWidth($cutSz, $cutTxt) + 22 : 0;
             $maxDesk = $tileR - 24 - 82 - $cutW;
             $tail    = $deskPhone !== '' ? '  ·  ' . $deskPhone : '';
-            while ($deskName !== '' && self::gdWidth(15, $deskName . $tail) > $maxDesk) {
-                $deskName = rtrim(mb_substr($deskName, 0, max(1, mb_strlen($deskName) - 2)));
-                if (mb_strlen($deskName) <= 3) { $deskName = ''; break; }
+            /* The name is printed WHOLE or not at all. It is already in the
+               header band in full, so half of it here ("Nepalgunj - Puspal")
+               buys nothing and reads like a bug; the number and the time are
+               what this line exists for. */
+            if ($deskName !== '' && self::gdWidth(15, $deskName . $tail) > $maxDesk) {
+                $deskName = '';
             }
-            /* A name cut mid-word used to leave "Nepalgunj -" hanging. */
-            $deskName = rtrim($deskName, " 	-–—·,");
             $deskTxt = $deskName !== '' ? $deskName . $tail : ltrim($tail, ' ·');
             if (trim($deskTxt) !== '') {
                 self::gdText($im, 15, 82, 1554 + $grow + $qrExt, $mut, trim($deskTxt), false);
@@ -1730,13 +1731,13 @@ final class Ticket
      *  tickets drawn at 23:43/23:44 IST with the old seat labels were never
      *  redrawn. tests/chalani-png-test.php and tests/ticket-cache-test.php
      *  assert a past moment. */
-    private const PNG_LAYOUT_CHANGED = '2026-09-26 13:06:00';   // IST: the desk that cut it, its own number and the minute, in a taller issuer tile; the Nepal entity in the header. Before: a Nepal desk's NPR beside the rupee in the fare band. Before: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
+    private const PNG_LAYOUT_CHANGED = '2026-09-26 13:07:00';   // IST: the desk that cut it, its own number and the minute, in a taller issuer tile; the Nepal entity in the header. Before: a Nepal desk's NPR beside the rupee in the fare band. Before: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
      *  seat box + stub pick up the current seat labels without a manual purge
      *  (23 Sep 2026: the two-floor grid A1-F6 / A7-F12). */
-    private const PDF_LAYOUT_CHANGED = '2026-09-26 13:06:00';   // IST: the desk, its number and the minute under ISSUED BY; the Nepal entity in the band. Before: a Nepal desk's NPR on the fare box line. Before: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
+    private const PDF_LAYOUT_CHANGED = '2026-09-26 13:07:00';   // IST: the desk, its number and the minute under ISSUED BY; the Nepal entity in the band. Before: a Nepal desk's NPR on the fare box line. Before: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
 
     /**
      * How many passengers the ticket names one by one before it stops and
