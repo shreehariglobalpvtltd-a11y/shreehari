@@ -790,10 +790,31 @@ final class Notify
             '3' => $dateLine,
             '4' => $boardLine          !== '' ? $boardLine          : '-',
             '5' => $seatLine,
-            '6' => inr((float) ($booking['total_amount'] ?? 0)),
+            '6' => self::bookingMoney($booking),
             // {{7}} is the template's IMAGE header — the ticket PNG itself.
             '7' => Ticket::imageUrl($pnr),
         ];
+    }
+
+    /**
+     * The money on a message, the way the passenger was charged it.
+     *
+     * The ticket PICTURE has carried the NPR since 26 Sep, but every WhatsApp
+     * body still said only the rupee — so a Nepalgunj passenger read "₹2,000"
+     * in the message and "NPR 3,200" on the image attached to it. The rupee
+     * stays first (it is what the company accounts in) and the money they
+     * actually handed over follows it, at the rate frozen on that ticket.
+     */
+    public static function bookingMoney(array $booking): string
+    {
+        $txt = inr((float) ($booking['total_amount'] ?? 0));
+        $cur = strtoupper((string) ($booking['fx_currency'] ?? ''));
+        $amt = (float) ($booking['fx_total'] ?? 0);
+        if ($cur !== '' && $cur !== 'INR' && $amt > 0) {
+            $txt .= ' · ' . $cur . ' ' . number_format($amt);
+        }
+
+        return $txt;
     }
 
     public static function resendTicketWhatsApp(array $booking): array
@@ -808,7 +829,7 @@ final class Notify
         $ticketUrl = Ticket::imageUrl($pnr);      // carries the §25 download key
         $text = "🚌 " . $company . "\n"
               . "तपाईंको बुकिङ " . $pnr . " पक्का भयो ✅\n"
-              . "जम्मा: " . inr((float) ($booking['total_amount'] ?? 0)) . "\n"
+              . "जम्मा: " . self::bookingMoney($booking) . "\n"
               . "तपाईंको टिकट (फोटो): " . $ticketUrl . "\n"
               . "प्रिन्ट गर्ने (PDF): " . Ticket::downloadUrl($pnr) . "\n"
               . "राम्रो यात्रा होस्! 🙏";
@@ -936,7 +957,7 @@ final class Notify
         unset($en); // customer message is Nepali-only; $en kept for logs/readability above
         $text = "🚌 " . $company . "\n"
               . $np . "\n"
-              . "जम्मा: " . inr((float) ($booking['total_amount'] ?? 0)) . " (उही)\n"
+              . "जम्मा: " . self::bookingMoney($booking) . " (उही)\n"
               . "तपाईंको नयाँ टिकट (फोटो): " . $ticketUrl . "\n"
               . "प्रिन्ट गर्ने (PDF): " . Ticket::downloadUrl($pnr) . "\n"
               . "नयाँ टिकट लिएर जानुहोला। राम्रो यात्रा होस्! 🙏";
@@ -1563,7 +1584,10 @@ final class Notify
         // staff 2FA texts read "… code: 123456 …"; the digits are masked
         // before the row is written, so admin/messages-log.php can show the
         // delivery status without handing any reader a live second factor.
-        $body = preg_replace('/(code\D{0,12}?)(\d{4,8})/iu', '$1••••', $body) ?? $body;
+        /* 26 Sep 2026: the word is कोड, not "code", in every OTP this app
+           actually sends — so the redaction never fired and every login code
+           was sitting in message_logs in clear. */
+        $body = preg_replace('/((?:code|कोड|ओटिपी|OTP)\D{0,12}?)(\d{4,8})/iu', '$1••••', $body) ?? $body;
         // 24 Sep 2026: the same for a one-time link token (step-up verification,
         // document share) — the bot's reply carrying it is logged here too.
         $body = preg_replace('~([?&]t=)[A-Za-z0-9]{16,}~', '$1[hidden]', $body) ?? $body;
@@ -1688,7 +1712,7 @@ final class Notify
         $pnr       = (string) $booking['pnr'];
         $bid       = (int) ($booking['id'] ?? 0);
         $facts     = self::ticketFacts($booking);
-        $amount    = inr((float) ($booking['total_amount'] ?? 0));
+        $amount    = self::bookingMoney($booking);
         $ticketUrl = Ticket::imageUrl($pnr);      // PNG first; PDF linked below
 
         // Journey date · departure time, when known.
@@ -2188,7 +2212,7 @@ final class Notify
         $company = Settings::getString('company_name', APP_NAME);
         $pnr     = (string) ($booking['pnr'] ?? '');
         $total   = (float) ($booking['total_amount'] ?? 0);
-        $amount  = inr($total);
+        $amount  = self::bookingMoney($booking);
         $phone   = self::usablePhone($booking['contact_phone'] ?? '');
 
         if (Settings::getBool('whatsapp_notify_customer', true) && $phone !== '') {
@@ -2270,7 +2294,7 @@ final class Notify
         $reviewUrl  = appUrl('admin/payments.php?pnr=' . urlencode($pnr));
 
         $text = "🧾 भुक्तानी प्रमाण अपलोड भयो · " . $pnr . "\n"
-              . "जम्मा: " . inr((float) ($booking['total_amount'] ?? 0)) . "\n"
+              . "जम्मा: " . self::bookingMoney($booking) . "\n"
               . ($kind !== '' ? "प्रमाण: " . $kind . "\n" : '')
               . "जाँच्नुहोस्: " . $reviewUrl;
 

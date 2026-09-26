@@ -34,7 +34,13 @@ function setUser(u) {
   /* Signing out drops any ticket kept for offline use. These are cached on
      phones but also on the shared counter machine, and the next passenger
      at that desk must not be able to open the previous one's ticket. */
-  if (!u) { try { swMsg({ type: 'shg-clear-tickets' }); } catch (e) {} }
+  if (!u) {
+    try { swMsg({ type: 'shg-clear-tickets' }); } catch (e) {}
+    /* …and the photo draft taken before a number was typed (21-me.js keeps a
+       signed-in traveller's own photo under their number, so it is not the
+       next person's to see). */
+    try { if (typeof meForget === 'function') meForget(); } catch (e) {}
+  }
   updateNavUser();
 }
 function updateNavUser() {

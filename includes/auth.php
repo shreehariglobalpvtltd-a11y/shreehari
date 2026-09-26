@@ -236,7 +236,16 @@ final class Auth
                     $text = Settings::getString('company_name', APP_NAME)
                           . ' एडमिन लगइन कोड: ' . $otp['code'] . "\n"
                           . OTP_EXPIRY_MINUTES . ' मिनेट सम्म मान्य। यो कोड कसैलाई नबताउनुहोस्।';
-                    Notify::whatsapp($phone, $text);
+                    /* Same trap as the agent door (fixed the same day): with
+                       no country hint a bare ten-digit Nepali number gets the
+                       default 91 and the ADMIN's second factor goes to a
+                       stranger in India. */
+                    $hint2fa = resolvePhoneCountry('', (string) ($admin['phone'] ?? ''));
+                    if ($hint2fa === '') {
+                        $desk2fa = CounterDesk::forAdmin((int) $admin['id'])['code'];
+                        if ($desk2fa !== '' && CounterDesk::dialCode($desk2fa) === '977') { $hint2fa = 'NP'; }
+                    }
+                    Notify::whatsapp($phone, $text, null, $hint2fa !== '' ? $hint2fa : null);
                     if (Settings::getBool('sms_send_otp', false)) { Notify::sms($phone, $text); }
 
                     // Hold at the pending step. NOTHING that opens a session has

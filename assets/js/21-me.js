@@ -34,13 +34,37 @@
   var MAX_PX    = 256;      // a 44px circle on a 3x screen, no bigger
   var STYLE_ID  = 'me-av-css';
 
+  /* The photo is filed under the NUMBER, not under the browser. A counter
+     machine and a family phone are both shared, and the previous person's
+     face must not sit on the next person's card. Before sign-in there is no
+     number yet, so a photo added in the sheet is a DRAFT under the bare key
+     and is promoted to the account the moment one is known. */
+  function keyFor() {
+    var u  = me();
+    var ph = (u && u.phone) ? String(u.phone).replace(/\D/g, '') : '';
+    return ph ? PHOTO_KEY + ':' + ph : PHOTO_KEY;
+  }
   function readPhoto() {
-    try { return localStorage.getItem(PHOTO_KEY) || ''; } catch (e) { return ''; }
+    try {
+      var k = keyFor();
+      var v = localStorage.getItem(k) || '';
+      if (!v && k !== PHOTO_KEY) {
+        /* Promote the draft taken before the number was typed. */
+        var draft = localStorage.getItem(PHOTO_KEY) || '';
+        if (draft) {
+          localStorage.setItem(k, draft);
+          localStorage.removeItem(PHOTO_KEY);
+          v = draft;
+        }
+      }
+      return v;
+    } catch (e) { return ''; }
   }
   function writePhoto(dataUrl) {
     try {
-      if (dataUrl) { localStorage.setItem(PHOTO_KEY, dataUrl); }
-      else { localStorage.removeItem(PHOTO_KEY); }
+      var k = keyFor();
+      if (dataUrl) { localStorage.setItem(k, dataUrl); }
+      else { localStorage.removeItem(k); }
     } catch (e) { /* private window / quota — the initial still shows */ }
   }
 
@@ -238,6 +262,13 @@
       }
     }
   });
+
+  /* Sign-out on a shared machine: drop the draft. An account's own photo stays
+     under its number, so the next person simply never sees it. */
+  window.meForget = function () {
+    try { localStorage.removeItem(PHOTO_KEY); } catch (e) {}
+    refresh();
+  };
 
   window.meAvatarHtml     = avatarHtml;
   window.meAvatarPicker   = pickerHtml;
