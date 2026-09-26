@@ -163,7 +163,30 @@ The flag is not decoration: tapping it re-signs the account in with that country
 a stranger on the same ten digits in India. Flags are **drawn as SVG** — Windows ships no
 glyph for a flag emoji and renders it as the two letters.
 
-### 3.8 A Nepali agent's login code no longer goes to India
+### 3.8 The chalani separates the desks
+
+One bus carries tickets cut at Mehsana, Surat and Nepalgunj, and the office settling the trip
+has to know whose money is whose. The Nepali waybill now prints a **काउन्टर अनुसार संकलन**
+block — per desk: passengers, ticket value, cash, online — and a Nepal desk's line also carries
+the NPR it actually took. Printed only when a desk is involved, so an online-only sheet is
+unchanged. (`admin/manifest.php` carries `counter_code` on every row; `includes/chalanipdf.php`
+draws the block. The PNG variant still prints `Rs` — §5.)
+
+### 3.9 A desk with no bank account takes cash
+
+`counter_locations.allowed_methods` (NULL = no rule). Seeded `cash` for NPJ / NPJD / KHL,
+because the company has no Nepali gateway and no Nepali account. Enforced in
+`BookingService::create()` — the one path every app sale goes through, so it cannot be worked
+around from a browser — and the chips for methods a desk may not take are not drawn at all.
+
+### 3.10 Counter mode knows which window it is
+
+The staff boot in `index.php` now carries the desk (code, name, country, currency, rate,
+allowed methods), so the main seat-map sale screen shows **📍 Nepalgunj — Bus Park (NPJ) ·
+NPR @ 1.6** on its bar and puts the NPR beside the rupee on the "to collect" line. A clerk with
+no desk assigned is told so, there and on Quick Ticket. Asset stamp `20260926h`, `sw-v170`.
+
+### 3.11 A Nepali agent's login code no longer goes to India
 
 `Auth::agentLoginStart()` sent the OTP with no country hint after `normalisePhone()` had
 stripped the 977, so the sender prepended the default 91. The country now comes from the
@@ -190,15 +213,13 @@ stored number, and failing that from the desk the agent sits at.
 
 | # | what | why it matters | size |
 |---|---|---|---|
-| 1 | **Cash-only per desk** (`counter_locations.allowed_methods`) | the owner said Nepalgunj has no Nepali gateway and no Nepali bank account — nothing stops a clerk choosing UPI today | S |
-| 2 | **Counter mode knows its desk** — `index.php` staff boot carries no `counter_code`, so the main seat-map sale screen shows no desk and no NPR (the sale is still stamped correctly server-side) | the busiest sale path is the one that cannot see the currency it is taking | S |
-| 3 | **Chalani / challan in the desk's money** — the waybill that actually crosses the border hardcodes `₹` / `Rs` in its column heads and totals | a border document with the wrong currency on it | S |
-| 4 | **NPR on the rest of admin** — booking-view, payments, accounting, analytics show only the rupee; analytics/accounting still divide by a hardcoded 1.6 instead of the setting | the owner will look for the NPR where the money is | M |
-| 5 | **Live seat push on** (`seat_events_on`) + a hold on the admin sale screens | two desks are 8–15 s out of step, and the admin screens hold nothing while a clerk types — a lost seat at the last press | M |
-| 6 | **Photo at the counter** — `PassengerDocs::attach()` has exactly one caller (booking-view, after the sale) | a window that must capture a face has to finish the sale, find the booking and re-open it | M |
-| 7 | **Agent ledger in NPR** — `agent_ledger` has no currency column, so a Nepali agent's commission and cash-in-hand are rupees only | M |
-| 8 | **Desk isolation for detail pages and POSTs** (§3.5's known limit) | M |
-| 9 | Public site's NPR is a browser hardcode (`CONFIG.nprPerInr = 1.6`) that Settings cannot change | the three pegs (config constant, settings row, JS literal) should be one | S |
+| 1 | **The chalani PNG** still prints `Rs` in its summary (the PDF is done); `challanpng.php` likewise | the PNG is what goes out on WhatsApp | S |
+| 2 | **NPR on the rest of admin** — booking-view, payments, accounting, analytics show only the rupee; analytics/accounting still divide by a hardcoded 1.6 instead of the setting | the owner will look for the NPR where the money is | M |
+| 3 | **Live seat push on** (`seat_events_on`) + a hold on the admin sale screens | two desks are 8–15 s out of step, and the admin screens hold nothing while a clerk types — a lost seat at the last press | M |
+| 4 | **Photo at the counter** — `PassengerDocs::attach()` has exactly one caller (booking-view, after the sale) | a window that must capture a face has to finish the sale, find the booking and re-open it | M |
+| 5 | **Agent ledger in NPR** — `agent_ledger` has no currency column, so a Nepali agent's commission and cash-in-hand are rupees only | M |
+| 6 | **Desk isolation for detail pages and POSTs** (§3.5's known limit) | M |
+| 7 | Public site's NPR is a browser hardcode (`CONFIG.nprPerInr = 1.6`) that Settings cannot change | the three pegs (config constant, settings row, JS literal) should be one | S |
 
 ---
 
@@ -234,5 +255,6 @@ stored number, and failing that from the desk the agent sits at.
 currency, notes), `includes/ticket.php` (NPR on PNG + PDF, layout stamps),
 `admin/quick-ticket.php`, `admin/shift.php`, `admin/staff.php`, `admin/bookings.php`,
 `admin/passengers.php`, `admin/payments.php`, `admin/accounting.php`, `admin/export.php`,
-`admin/offers.php`, `admin/_guard.php`, `assets/js/08-signin.js`, `app.template.html`,
-`sw.js` (asset stamp `20260926g`, `sw-v169`), `tests/counter-shift-test.php`.
+`admin/offers.php`, `admin/_guard.php`, `admin/manifest.php`, `includes/chalanipdf.php`,
+`index.php`, `assets/js/08-signin.js`, `assets/js/14-counter.js`, `app.template.html`,
+`sw.js` (asset stamp `20260926h`, `sw-v170`), `tests/counter-shift-test.php`.
