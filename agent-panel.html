@@ -1,0 +1,913 @@
+<!doctype html>
+<!--
+================================================================================
+श्री हरि ग्लोबल प्रा. लि. — एजेन्ट प्यानल (AGENT PANEL) · v1.0
+SHREE HARI GLOBAL PVT. LTD. · CIN U52291GJ2026PTC174029
+सञ्चालक: Sher Bahadur Bishwokarma · shreehariglobal.in
+================================================================================
+
+यो के हो
+  एजेन्टले टिकट दर्ता गर्ने, कति कमिसन भयो हेर्ने, र दिनभरिको हिसाब
+  श्री हरि ग्लोबलको स्टाफलाई WhatsApp बाट पठाउने एउटै HTML पाना।
+  server, database, PHP केही चाहिँदैन — Hostinger मा सिधै राख्न मिल्छ।
+
+⚠ सुरक्षाबारे इमानदार कुरा — पढ्नैपर्ने
+  यो पानाको लगइन केवल "यही फोन/कम्प्युटरको ताला" हो। पासवर्ड यही यन्त्रमा
+  बस्छ, कुनै server मा जाँदैन। त्यसैले:
+    • यसले अर्को मान्छेलाई पाना खोल्नबाट अलिकति रोक्छ, तर यो साँचो सुरक्षा होइन।
+    • जान्ने मान्छेले ब्राउजरको developer tool बाट डाटा हेर्न सक्छ।
+    • हरेक एजेन्टको डाटा उसकै यन्त्रमा छुट्टै बस्छ — कम्पनीले यहाँबाट
+      सबैको हिसाब एकै ठाउँ हेर्न पाउँदैन।
+  साँचो लगइन, कम्पनीले सबै एजेन्टको हिसाब एकै ठाउँ हेर्ने, र टिकट आफैँ
+  गनिने प्रणाली चाहिए — server (PHP + MySQL, वा Firebase/Supabase) चाहिन्छ।
+  यो पाना त्यो बन्नुअघि दिनदिनैको काम चलाउन बनाइएको हो।
+  सम्झौताको बुँदा ८ अनुसार पनि — कमिसनको अन्तिम प्रमाण कम्पनीको सर्भरकै
+  रेकर्ड हो, यो पानाको हिसाब होइन। यो मिलाउन र सम्झाउनका लागि मात्र हो।
+
+कसरी चलाउने
+  १. खोल्दा पहिलो पटक: एजेन्ट ID, नाम, मोबाइल, रुट, प्रति टिकट कमिसन र
+     स्टाफको WhatsApp नम्बर भर्नुहोस्, अनि आफ्नो पासवर्ड बनाउनुहोस्।
+  २. हरेक टिकट काटेपछि "नयाँ टिकट" मा भरेर थप्नुहोस्।
+  ३. दिनको अन्त्यमा "आजको रिपोर्ट WhatsApp" थिच्नुहोस् — स्टाफकहाँ
+     आजको टिकट संख्या, भाडा, कमिसन र बुझाउनुपर्ने रकम जान्छ।
+  ४. हप्तामा एक पटक "ब्याकअप" थिचेर .json फाइल जोगाउनुहोस्।
+
+Hostinger मा राख्ने
+  hPanel → File Manager → public_html → agent-panel.html नाम राखेर upload।
+  लिंक: https://shreehariglobal.in/agent-panel.html
+================================================================================
+-->
+<html lang="ne" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>श्री हरि ग्लोबल — एजेन्ट प्यानल</title>
+<meta name="description" content="श्री हरि ग्लोबल प्रा. लि. — एजेन्ट प्यानल। टिकट दर्ता, कमिसन हिसाब र दैनिक रिपोर्ट।">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#CE5216">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='48' fill='%23CE5216'/><circle cx='50' cy='50' r='28' fill='%23241F4D'/><text x='50' y='62' font-size='30' text-anchor='middle' fill='%23FFF0D2' font-family='serif'>श</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+Devanagari:wght@500;600;700&family=Mukta:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Poppins:wght@400;500;600&display=swap">
+<style>
+/* ── टोकन: सम्झौता फारमसँग ठ्याक्कै मिल्दो ── */
+:root{
+  color-scheme:light;
+  --desk:#E6DFD2; --desk-edge:#D4CABA; --paper:#FFFCF6;
+  --wash-gold:#FBF2DE; --wash-saffron:#FDEEE3; --wash-indigo:#EDEDF9;
+  --wash-danger:#FBEAE7; --wash-ok:#E7F2EC;
+  --ink:#1E1A2B; --ink-soft:#544C66; --ink-faint:#8B8398;
+  --saffron:#CE5216; --saffron-deep:#A63D0B;
+  --gold:#A9781A; --gold-bright:#D9A63C;
+  --indigo:#2B2A66; --indigo-soft:#4B4998;
+  --danger:#A61E14; --ok:#166544;
+  --rule:#DDD3C2; --rule-soft:#EBE3D6; --field-line:#B9AD99; --field-bg:#FFFFFF;
+  --shadow:0 1px 2px rgba(40,30,15,.10), 0 10px 30px rgba(40,30,15,.13);
+  --f-display:"Noto Serif Devanagari","Nirmala UI",Georgia,serif;
+  --f-body:"Mukta","Noto Sans Devanagari","Nirmala UI",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"Courier New",monospace;
+  --f-ui:"Poppins","Mukta",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --desk:#120F1B; --desk-edge:#241F33; --paper:#1C1828;
+    --wash-gold:#2B2314; --wash-saffron:#2E1C12; --wash-indigo:#1E1D3A;
+    --wash-danger:#2E1512; --wash-ok:#12281F;
+    --ink:#F3ECDD; --ink-soft:#C3B9CC; --ink-faint:#8F869C;
+    --saffron:#FF8B4F; --saffron-deep:#FFA873;
+    --gold:#E0B45C; --gold-bright:#F0CC80;
+    --indigo:#A8A6F2; --indigo-soft:#8F8DE0;
+    --danger:#FF8478; --ok:#5FD3A4;
+    --rule:#3A3350; --rule-soft:#2A2440; --field-line:#5A5170; --field-bg:#231E33;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 34px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --desk:#120F1B; --desk-edge:#241F33; --paper:#1C1828;
+  --wash-gold:#2B2314; --wash-saffron:#2E1C12; --wash-indigo:#1E1D3A;
+  --wash-danger:#2E1512; --wash-ok:#12281F;
+  --ink:#F3ECDD; --ink-soft:#C3B9CC; --ink-faint:#8F869C;
+  --saffron:#FF8B4F; --saffron-deep:#FFA873;
+  --gold:#E0B45C; --gold-bright:#F0CC80;
+  --indigo:#A8A6F2; --indigo-soft:#8F8DE0;
+  --danger:#FF8478; --ok:#5FD3A4;
+  --rule:#3A3350; --rule-soft:#2A2440; --field-line:#5A5170; --field-bg:#231E33;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 34px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box}
+body{margin:0; background:var(--desk); color:var(--ink);
+  font-family:var(--f-body); font-size:15px; line-height:1.5; -webkit-text-size-adjust:100%}
+h1,h2,h3,h4{font-family:var(--f-display); font-weight:600; margin:0; line-height:1.25}
+p{margin:0}
+.mono{font-family:var(--f-mono); font-variant-numeric:tabular-nums}
+[hidden]{display:none !important}
+
+/* ── बटन / फाँट ── */
+.btn{font-family:var(--f-ui); font-size:13px; font-weight:500; padding:8px 14px;
+  border-radius:7px; cursor:pointer; border:1px solid var(--rule);
+  background:var(--field-bg); color:var(--ink); display:inline-flex;
+  align-items:center; gap:6px; min-height:40px; white-space:nowrap}
+.btn:hover{border-color:var(--gold)}
+.btn:focus-visible{outline:2px solid var(--saffron); outline-offset:2px}
+.btn-main{background:var(--saffron); border-color:var(--saffron-deep); color:#fff}
+.btn-main:hover{background:var(--saffron-deep)}
+.btn-ok{background:var(--ok); border-color:var(--ok); color:#fff}
+.btn-danger{color:var(--danger); border-color:var(--danger)}
+.btn-sm{min-height:30px; padding:3px 9px; font-size:11.5px}
+.fld{display:flex; flex-direction:column; gap:3px; min-width:0}
+.fld label{font-family:var(--f-mono); font-size:10px; font-weight:600;
+  letter-spacing:.06em; text-transform:uppercase; color:var(--ink-faint)}
+input,select,textarea{font-family:var(--f-body); font-size:14px; color:var(--ink);
+  background:var(--field-bg); border:1px solid var(--rule); border-radius:6px;
+  padding:8px 10px; min-height:42px; width:100%}
+input:focus,select:focus,textarea:focus{outline:0; border-color:var(--saffron);
+  box-shadow:0 0 0 3px rgba(206,82,22,.16)}
+input.bad{border-color:var(--danger); background:var(--wash-danger)}
+input[type=file]{display:none}
+
+/* ── लगइन ── */
+.gate{min-height:100dvh; display:grid; place-items:center; padding:18px}
+.gatebox{width:100%; max-width:420px; background:var(--paper); border:1px solid var(--desk-edge);
+  border-top:4px solid var(--saffron); border-radius:10px; box-shadow:var(--shadow); padding:22px 20px}
+.gatebox .seal{width:66px; height:66px; margin:0 auto 10px; display:block}
+.gatebox h1{font-size:21px; text-align:center; color:var(--saffron-deep)}
+.gatebox .en{font-family:var(--f-mono); font-size:9.5px; letter-spacing:.14em;
+  text-align:center; color:var(--indigo); margin-top:3px}
+.gatebox .ceo{text-align:center; font-size:11.5px; color:var(--ink-soft); margin-top:5px}
+.gatebox form{display:grid; gap:11px; margin-top:16px}
+.warnbox{background:var(--wash-danger); border:1px solid var(--danger);
+  border-inline-start:4px solid var(--danger); border-radius:6px;
+  padding:9px 11px; font-size:11.5px; line-height:1.45; margin-top:14px}
+.warnbox b{color:var(--danger)}
+.msg{font-size:12px; color:var(--danger); min-height:16px; font-family:var(--f-ui)}
+.msg.ok{color:var(--ok)}
+
+/* ── टप बार ── */
+.bar{position:sticky; top:0; z-index:30; display:flex; flex-wrap:wrap; align-items:center;
+  gap:8px; padding:9px 14px; background:var(--paper); border-bottom:1px solid var(--rule);
+  box-shadow:0 2px 10px rgba(30,20,10,.08); font-family:var(--f-ui)}
+.bar .brandline{display:flex; align-items:center; gap:8px; font-family:var(--f-display);
+  font-weight:600; color:var(--indigo); font-size:14px; margin-inline-end:auto}
+.bar .dot{width:9px; height:9px; border-radius:50%; background:var(--saffron); flex:none}
+.wrap{max-width:1080px; margin:0 auto; padding:16px 14px 60px}
+
+/* ── एजेन्ट परिचय ── */
+.who{background:linear-gradient(95deg,var(--indigo),var(--indigo-soft)); color:#fff;
+  border-radius:9px; padding:13px 16px; display:flex; gap:14px; align-items:center; flex-wrap:wrap}
+.who .nm{font-family:var(--f-display); font-size:19px; font-weight:600}
+.who .sub{font-size:12.5px; opacity:.9; margin-top:2px}
+.who .sub b{color:#FFE7B8; font-weight:600}
+.who .idchip{margin-inline-start:auto; font-family:var(--f-mono); font-size:13px;
+  background:rgba(0,0,0,.24); padding:6px 12px; border-radius:99px; letter-spacing:.05em}
+
+/* ── स्ट्याट कार्ड ── */
+.stats{display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(152px,1fr)); margin-top:13px}
+.stat{background:var(--paper); border:1px solid var(--rule); border-radius:9px;
+  padding:12px 13px; border-top:3px solid var(--gold-bright)}
+.stat .k{font-family:var(--f-mono); font-size:9.5px; letter-spacing:.1em;
+  color:var(--ink-faint); text-transform:uppercase}
+.stat .v{font-family:var(--f-mono); font-size:25px; font-weight:600; color:var(--indigo); line-height:1.2}
+.stat .n{font-size:11px; color:var(--ink-soft); margin-top:1px}
+.stat.comm{border-top-color:var(--ok)} .stat.comm .v{color:var(--ok)}
+.stat.due{border-top-color:var(--danger)} .stat.due .v{color:var(--danger)}
+.stat.today{border-top-color:var(--saffron)} .stat.today .v{color:var(--saffron-deep)}
+
+/* ── प्यानल ── */
+.card{background:var(--paper); border:1px solid var(--rule); border-radius:9px;
+  margin-top:13px; overflow:hidden}
+.card > h3{font-size:15px; color:var(--indigo); padding:10px 14px;
+  background:var(--wash-indigo); border-bottom:1px solid var(--rule);
+  display:flex; align-items:center; gap:9px; flex-wrap:wrap}
+.card > h3 .sp{margin-inline-start:auto; display:flex; gap:7px; flex-wrap:wrap}
+.card .body{padding:13px 14px}
+.grid{display:grid; gap:10px 12px; grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+.actions{display:flex; gap:8px; flex-wrap:wrap; margin-top:12px}
+
+/* ── तालिका ── */
+.tw{overflow-x:auto; -webkit-overflow-scrolling:touch}
+table{width:100%; border-collapse:collapse; font-size:13px}
+th,td{border:1px solid var(--rule); padding:7px 9px; text-align:start; vertical-align:middle}
+thead th{background:var(--wash-indigo); color:var(--indigo); font-weight:600;
+  font-size:11px; font-family:var(--f-ui); white-space:nowrap}
+tbody tr:nth-child(even) td{background:var(--wash-gold)}
+td.num{text-align:end; font-family:var(--f-mono); font-variant-numeric:tabular-nums; white-space:nowrap}
+tfoot td{background:var(--wash-ok); font-weight:700; color:var(--ok)}
+.pill{font-family:var(--f-ui); font-size:10px; font-weight:600; padding:2px 8px;
+  border-radius:99px; white-space:nowrap; display:inline-block}
+.pill.ok{background:var(--wash-ok); color:var(--ok); border:1px solid var(--ok)}
+.pill.no{background:var(--wash-danger); color:var(--danger); border:1px solid var(--danger)}
+.pill.wait{background:var(--wash-gold); color:var(--gold); border:1px solid var(--gold)}
+.empty{text-align:center; color:var(--ink-faint); padding:26px 10px; font-size:13px}
+
+/* ── टोस्ट / मोडल ── */
+.toast{position:fixed; inset-inline:0; bottom:20px; z-index:80; margin-inline:auto;
+  width:max-content; max-width:92vw; background:var(--indigo); color:#fff;
+  font-family:var(--f-ui); font-size:12.5px; padding:9px 17px; border-radius:99px;
+  box-shadow:var(--shadow); opacity:0; transform:translateY(12px);
+  transition:opacity .2s,transform .2s; pointer-events:none}
+.toast[data-show="1"]{opacity:1; transform:none}
+.scrim{position:fixed; inset:0; z-index:60; background:rgba(18,15,27,.6);
+  display:none; place-items:center; padding:16px}
+.scrim[data-open="1"]{display:grid}
+.modal{width:100%; max-width:480px; background:var(--paper); border-radius:9px;
+  box-shadow:var(--shadow); overflow:hidden; max-height:86vh; display:flex; flex-direction:column}
+.modal .mh{padding:11px 15px; background:var(--danger); color:#fff;
+  font-family:var(--f-ui); font-weight:600; font-size:14px}
+.modal .mb{padding:13px 15px; font-size:13.5px; line-height:1.55; overflow:auto}
+.modal .mf{padding:10px 15px; border-top:1px solid var(--rule); background:var(--wash-gold);
+  display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap}
+
+.note{font-size:11.5px; color:var(--ink-soft); line-height:1.45}
+.note b{color:var(--saffron-deep)}
+.srv{background:var(--wash-gold); border:1px solid var(--gold-bright);
+  border-inline-start:4px solid var(--gold); border-radius:6px; padding:10px 12px;
+  font-size:11.5px; line-height:1.5; margin-top:13px}
+.srv b{color:var(--gold)}
+
+@media (max-width:620px){
+  .who{gap:9px} .who .idchip{margin-inline-start:0}
+  .card > h3 .sp{margin-inline-start:0; width:100%}
+  .wrap{padding:12px 10px 50px}
+}
+@media (prefers-reduced-motion:reduce){ *{animation:none !important; transition:none !important} }
+
+/* ── छपाइ: दिनको हिसाब पाना ── */
+@page{size:A4; margin:12mm}
+@media print{
+  :root,:root[data-theme="dark"]{color-scheme:light; --desk:#fff; --paper:#fff;
+    --ink:#16131F; --ink-soft:#453E55; --ink-faint:#6E6779; --rule:#C9BFAE;
+    --wash-gold:#FBF2DE; --wash-indigo:#EDEDF9; --wash-ok:#E7F2EC; --wash-danger:#FBEAE7;
+    --indigo:#242357; --saffron:#C44D12; --saffron-deep:#9C380A; --ok:#12563A; --danger:#9C1A11}
+  body{background:#fff; font-size:10.5pt}
+  .bar,.noprint,.actions,.srv,.toast,.scrim{display:none !important}
+  .wrap{max-width:none; padding:0}
+  .card{border:0; margin-top:8px; break-inside:auto}
+  .card > h3{background:#EDEDF9 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact}
+  .who{background:#242357 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact}
+  thead{display:table-header-group}
+  tr{break-inside:avoid}
+  *{-webkit-print-color-adjust:exact; print-color-adjust:exact}
+}
+</style>
+</head>
+<body>
+
+<!-- ════════ लगइन ════════ -->
+<div class="gate" id="gate">
+  <div class="gatebox">
+    <svg class="seal" viewBox="0 0 120 120" role="img" aria-label="श्री हरि ग्लोबल छाप">
+      <defs>
+        <linearGradient id="pg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#F0862F"/><stop offset="1" stop-color="#B8410C"/>
+        </linearGradient>
+        <path id="pArc" d="M 14,60 a 46,46 0 0 1 92,0" fill="none"/>
+      </defs>
+      <circle cx="60" cy="60" r="58" fill="url(#pg)"/>
+      <circle cx="60" cy="60" r="51.5" fill="none" stroke="#F8DCA4" stroke-width="1.4"/>
+      <text font-family="IBM Plex Mono, monospace" font-size="10.5" font-weight="600"
+            letter-spacing="1.6" fill="#FFF0D2">
+        <textPath href="#pArc" startOffset="50%" text-anchor="middle">SHREE HARI GLOBAL</textPath>
+      </text>
+      <circle cx="60" cy="60" r="33" fill="#241F4D"/>
+      <circle cx="60" cy="60" r="33" fill="none" stroke="#F8DCA4" stroke-width="1"/>
+      <text x="60" y="68" text-anchor="middle" font-family="Noto Serif Devanagari, serif"
+            font-size="27" font-weight="700" fill="#FFF0D2">श्री</text>
+      <text x="60" y="103" text-anchor="middle" font-family="IBM Plex Mono, monospace"
+            font-size="8.5" font-weight="600" letter-spacing="2" fill="#FFF0D2">PVT. LTD.</text>
+    </svg>
+    <h1>श्री हरि ग्लोबल प्रा. लि.</h1>
+    <div class="en">AGENT PANEL · CIN U52291GJ2026PTC174029</div>
+    <div class="ceo">सञ्चालक: <b>Sher Bahadur Bishwokarma</b><br>
+      अहमदाबाद (भारत) ⇄ नेपालगन्ज (नेपाल)</div>
+
+    <!-- पहिलो पटक: दर्ता -->
+    <form id="setupForm" hidden autocomplete="off">
+      <p class="note"><b>पहिलो पटक</b> — तलको विवरण भरेर आफ्नो पासवर्ड बनाउनुहोस्।
+        यी कुरा पछि सेटिङबाट बदल्न सकिन्छ।</p>
+      <div class="fld"><label for="s_id">एजेन्ट ID</label>
+        <input id="s_id" placeholder="SHG-NP-0000" required></div>
+      <div class="fld"><label for="s_name">एजेन्ट / फर्मको नाम</label>
+        <input id="s_name" placeholder="हिमालय यात्रा सेवा प्रा. लि." required></div>
+      <div class="fld"><label for="s_mob">मोबाइल</label>
+        <input id="s_mob" inputmode="tel" placeholder="98********" required></div>
+      <div class="fld"><label for="s_route">कार्य क्षेत्र / रुट</label>
+        <input id="s_route" placeholder="नेपालगन्ज काउन्टर"></div>
+      <div class="fld"><label for="s_rate">प्रति टिकट कमिसन (रु.)</label>
+        <input id="s_rate" inputmode="decimal" placeholder="50"></div>
+      <div class="fld"><label for="s_staff">स्टाफको WhatsApp नम्बर (देशको कोडसहित)</label>
+        <input id="s_staff" inputmode="tel" placeholder="9779800000000"></div>
+      <div class="fld"><label for="s_pw">नयाँ पासवर्ड (कम्तीमा ४ अक्षर)</label>
+        <input id="s_pw" type="password" required></div>
+      <div class="fld"><label for="s_pw2">पासवर्ड फेरि</label>
+        <input id="s_pw2" type="password" required></div>
+      <p class="msg" id="setupMsg"></p>
+      <button class="btn btn-main" type="submit" style="justify-content:center">दर्ता गरी भित्र जानुहोस्</button>
+    </form>
+
+    <!-- दोहोर्‍याएर खोल्दा -->
+    <form id="loginForm" hidden autocomplete="off">
+      <div class="fld"><label for="l_id">एजेन्ट ID</label>
+        <input id="l_id" autocomplete="username" required></div>
+      <div class="fld"><label for="l_pw">पासवर्ड</label>
+        <input id="l_pw" type="password" autocomplete="current-password" required></div>
+      <p class="msg" id="loginMsg"></p>
+      <button class="btn btn-main" type="submit" style="justify-content:center">भित्र जानुहोस्</button>
+      <button class="btn btn-danger btn-sm" type="button" id="btnForgot"
+              style="justify-content:center">पासवर्ड बिर्सिएँ</button>
+    </form>
+
+    <div class="warnbox">
+      <b>⚠ यो ताला यही यन्त्रको मात्र हो।</b> पासवर्ड कुनै server मा जाँदैन, यही
+      फोन/कम्प्युटरमा बस्छ। यसले अरूलाई अलिकति रोक्छ, तर <b>साँचो सुरक्षा होइन</b>।
+      कम्पनीको आधिकारिक हिसाब सधैँ <b>कम्पनीको सर्भरकै रेकर्ड</b> हुनेछ
+      (सम्झौता, खण्ड ३ बुँदा ८)।
+    </div>
+  </div>
+</div>
+
+<!-- ════════ प्यानल ════════ -->
+<div id="app" hidden>
+  <div class="bar noprint">
+    <span class="brandline"><span class="dot"></span> श्री हरि ग्लोबल — एजेन्ट प्यानल</span>
+    <button class="btn" id="btnPrint" type="button">🖨 आजको हिसाब छाप्नुहोस्</button>
+    <button class="btn" id="btnTheme" type="button">🌗</button>
+    <button class="btn" id="btnSettings" type="button">⚙ सेटिङ</button>
+    <button class="btn btn-danger" id="btnOut" type="button">बाहिर</button>
+  </div>
+
+  <div class="wrap">
+    <div class="who">
+      <div>
+        <div class="nm" id="whoName">—</div>
+        <div class="sub">मोबाइल: <b id="whoMob">—</b> · रुट: <b id="whoRoute">—</b></div>
+      </div>
+      <div class="idchip" id="whoId">—</div>
+    </div>
+
+    <div class="stats">
+      <div class="stat today"><div class="k">आजका टिकट</div>
+        <div class="v" id="stToday">०</div><div class="n" id="stTodayNote">—</div></div>
+      <div class="stat"><div class="k">यो महिना टिकट</div>
+        <div class="v" id="stMonth">०</div><div class="n" id="stMonthNote">—</div></div>
+      <div class="stat comm"><div class="k">कुल कमिसन</div>
+        <div class="v" id="stComm">रु. ०</div><div class="n">गणना योग्य टिकटको</div></div>
+      <div class="stat due"><div class="k">बुझाउन बाँकी</div>
+        <div class="v" id="stDue">रु. ०</div><div class="n">कम्पनीको खातामा</div></div>
+    </div>
+
+    <!-- नयाँ टिकट -->
+    <div class="card noprint">
+      <h3>🎫 नयाँ टिकट दर्ता</h3>
+      <div class="body">
+        <form id="tForm">
+          <div class="grid">
+            <div class="fld"><label for="t_date">मिति</label><input id="t_date" type="date" required></div>
+            <div class="fld"><label for="t_pnr">टिकट / PNR नं.</label><input id="t_pnr" placeholder="स्वतः"></div>
+            <div class="fld"><label for="t_name">यात्रुको नाम</label><input id="t_name" required></div>
+            <div class="fld"><label for="t_mob">यात्रुको मोबाइल</label><input id="t_mob" inputmode="tel"></div>
+            <div class="fld"><label for="t_from">कहाँबाट</label>
+              <input id="t_from" list="places" value="नेपालगन्ज"></div>
+            <div class="fld"><label for="t_to">कहाँसम्म</label>
+              <input id="t_to" list="places" value="अहमदाबाद"></div>
+            <datalist id="places">
+              <option value="नेपालगन्ज"></option><option value="अहमदाबाद"></option>
+              <option value="काठमाडौँ"></option><option value="सुर्खेत"></option>
+              <option value="कोहलपुर"></option><option value="लखनउ"></option>
+              <option value="दिल्ली"></option><option value="जयपुर"></option>
+            </datalist>
+            <div class="fld"><label for="t_seat">सिट</label><input id="t_seat" placeholder="A1, A2"></div>
+            <div class="fld"><label for="t_fare">भाडा (रु.)</label>
+              <input id="t_fare" inputmode="decimal" required></div>
+            <div class="fld"><label for="t_comm">कमिसन (रु.)</label>
+              <input id="t_comm" inputmode="decimal" placeholder="स्वतः"></div>
+            <div class="fld"><label for="t_pay">भुक्तानी</label>
+              <select id="t_pay"><option>नगद</option><option>UPI</option><option>बैंक</option><option>अनलाइन</option></select></div>
+            <div class="fld"><label for="t_status">अवस्था</label>
+              <select id="t_status"><option value="confirm">Confirm</option><option value="cancel">रद्द</option></select></div>
+            <div class="fld"><label for="t_dep">कम्पनीलाई बुझाइयो?</label>
+              <select id="t_dep"><option value="0">बाँकी</option><option value="1">बुझाइयो</option></select></div>
+          </div>
+          <div class="actions">
+            <button class="btn btn-main" type="submit" id="tSubmit">+ टिकट थप्नुहोस्</button>
+            <button class="btn" type="button" id="tCancel" hidden>रद्द</button>
+            <span class="note" style="align-self:center">कमिसन खाली छाडे प्रति टिकट दर आफैँ लाग्छ।</span>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- टिकट सूची -->
+    <div class="card">
+      <h3>📋 टिकट सूची
+        <span class="sp noprint">
+          <select id="fRange" style="min-height:32px; font-size:12px; padding:3px 8px; width:auto">
+            <option value="today">आज</option>
+            <option value="7">पछिल्ला ७ दिन</option>
+            <option value="month">यो महिना</option>
+            <option value="all">सबै</option>
+          </select>
+          <input id="fSearch" placeholder="नाम / PNR खोज्नुहोस्"
+                 style="min-height:32px; font-size:12px; padding:3px 8px; width:auto">
+        </span>
+      </h3>
+      <div class="body" style="padding:0">
+        <div class="tw">
+          <table>
+            <thead><tr>
+              <th>मिति</th><th>PNR</th><th>यात्रु</th><th>रुट</th><th>सिट</th>
+              <th class="num">भाडा</th><th class="num">कमिसन</th><th>भुक्तानी</th>
+              <th>अवस्था</th><th>बुझाएको</th><th class="noprint">—</th>
+            </tr></thead>
+            <tbody id="tBody"></tbody>
+            <tfoot id="tFoot"></tfoot>
+          </table>
+        </div>
+        <div class="empty" id="tEmpty">अहिलेसम्म कुनै टिकट दर्ता भएको छैन।</div>
+      </div>
+    </div>
+
+    <!-- रिपोर्ट -->
+    <div class="card noprint">
+      <h3>📤 दैनिक रिपोर्ट — श्री हरि ग्लोबल स्टाफलाई</h3>
+      <div class="body">
+        <p class="note">तलको बटनले आजको टिकट संख्या, भाडा, कमिसन र बुझाउन बाँकी रकम
+          सिधै WhatsApp मा पठाउँछ। नम्बर सेटिङमा बदल्न सकिन्छ।</p>
+        <div class="actions">
+          <button class="btn btn-ok" id="btnWa" type="button">📱 आजको रिपोर्ट WhatsApp</button>
+          <button class="btn" id="btnCopy" type="button">📋 रिपोर्ट कपी</button>
+          <button class="btn" id="btnCsv" type="button">📄 CSV झिक्नुहोस्</button>
+          <button class="btn" id="btnBackup" type="button">💾 ब्याकअप (.json)</button>
+          <button class="btn" id="btnRestore" type="button">📂 फिर्ता (.json)</button>
+          <input type="file" id="restoreFile" accept="application/json,.json">
+        </div>
+        <textarea id="reportBox" readonly rows="9"
+          style="margin-top:12px; font-family:var(--f-mono); font-size:12px; line-height:1.55"></textarea>
+      </div>
+    </div>
+
+    <div class="srv">
+      <b>सम्झौतासँगको सम्बन्ध:</b> यो प्यानलको हिसाब <b>तपाईंलाई मिलाउन</b> हो।
+      सम्झौताको खण्ड ३, बुँदा ८ अनुसार टिकट, रकम र कमिसनको <b>अन्तिम प्रमाण
+      कम्पनीको सर्भरको रेकर्ड</b> नै हुनेछ। भाडा सधैँ सम्झौताको पाना ३ मा लेखिएको
+      <b>कम्पनीको खातामा मात्र</b> बुझाउनुहोस् — कुनै कर्मचारीको व्यक्तिगत खातामा होइन।
+      <br><br>
+      <b>सम्झौता फारम चाहियो?</b>
+      <a href="/agent-agreement/" style="color:var(--saffron-deep); font-weight:600">एजेन्ट सम्झौता फारम खोल्नुहोस् →</a>
+    </div>
+  </div>
+</div>
+
+<!-- सेटिङ -->
+<div class="scrim" id="setScrim" data-open="0" role="dialog" aria-modal="true">
+  <div class="modal">
+    <div class="mh" style="background:var(--indigo)">⚙ सेटिङ</div>
+    <div class="mb">
+      <div class="grid">
+        <div class="fld"><label for="x_name">एजेन्ट / फर्मको नाम</label><input id="x_name"></div>
+        <div class="fld"><label for="x_mob">मोबाइल</label><input id="x_mob" inputmode="tel"></div>
+        <div class="fld"><label for="x_route">कार्य क्षेत्र / रुट</label><input id="x_route"></div>
+        <div class="fld"><label for="x_rate">प्रति टिकट कमिसन (रु.)</label><input id="x_rate" inputmode="decimal"></div>
+        <div class="fld"><label for="x_staff">स्टाफ WhatsApp (देशको कोडसहित)</label><input id="x_staff" inputmode="tel"></div>
+      </div>
+      <p class="note" style="margin-top:11px">पासवर्ड बदल्न तल भर्नुहोस् (खाली छाडे पुरानै रहन्छ)।</p>
+      <div class="grid" style="margin-top:6px">
+        <div class="fld"><label for="x_pw">नयाँ पासवर्ड</label><input id="x_pw" type="password"></div>
+        <div class="fld"><label for="x_pw2">फेरि</label><input id="x_pw2" type="password"></div>
+      </div>
+      <p class="msg" id="setMsg"></p>
+    </div>
+    <div class="mf">
+      <button class="btn" type="button" data-close="setScrim">रद्द</button>
+      <button class="btn btn-main" type="button" id="btnSaveSet">सुरक्षित</button>
+    </div>
+  </div>
+</div>
+
+<!-- सामान्य पुष्टि -->
+<div class="scrim" id="askScrim" data-open="0" role="dialog" aria-modal="true">
+  <div class="modal">
+    <div class="mh" id="askTitle">पक्का?</div>
+    <div class="mb" id="askBody"></div>
+    <div class="mf">
+      <button class="btn" type="button" data-close="askScrim">रद्द</button>
+      <button class="btn btn-danger" type="button" id="askYes">हो</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" data-show="0" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+'use strict';
+
+var K = { cfg:'shg.panel.cfg.v1', tk:'shg.panel.tickets.v1', theme:'shg.panel.theme.v1' };
+var $ = function (id) { return document.getElementById(id); };
+var all = function (s, c) { return Array.prototype.slice.call((c || document).querySelectorAll(s)); };
+function read(k){ try { return localStorage.getItem(k); } catch (e) { return null; } }
+function write(k, v){ try { localStorage.setItem(k, v); return true; } catch (e) { return false; } }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+  return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]; }); }
+function toAscii(s){ return String(s == null ? '' : s)
+  .replace(/[०-९]/g, function (d) { return String(d.charCodeAt(0) - 0x0966); }); }
+function num(v){ var m = toAscii(v).replace(/,/g,'').match(/-?\d+(?:\.\d+)?/); return m ? parseFloat(m[0]) : 0; }
+function money(n){ return 'रु. ' + (Math.round(n * 100) / 100).toLocaleString('en-IN'); }
+
+var cfg = null, tickets = [], editId = null;
+
+/* ── सानो UI ── */
+var tT = null;
+function toast(m){
+  var el = $('toast'); el.textContent = m; el.setAttribute('data-show','1');
+  clearTimeout(tT); tT = setTimeout(function(){ el.setAttribute('data-show','0'); }, 2500);
+}
+function open(id, on){ $(id).setAttribute('data-open', on ? '1' : '0'); }
+all('[data-close]').forEach(function (b) {
+  b.addEventListener('click', function () { open(b.getAttribute('data-close'), false); });
+});
+all('.scrim').forEach(function (s) {
+  s.addEventListener('click', function (e) { if (e.target === s) open(s.id, false); });
+});
+var askFn = null;
+function ask(title, body, fn){
+  $('askTitle').textContent = title; $('askBody').innerHTML = body; askFn = fn; open('askScrim', true);
+}
+$('askYes').addEventListener('click', function () { open('askScrim', false); if (askFn) askFn(); });
+
+/* ── पासवर्ड ह्यास ──
+   SubtleCrypto भए SHA-256; नभए सानो fallback। दुवैमा पासवर्ड यन्त्रबाहिर जाँदैन।
+   यो "ताला" हो, कूटलेखन सुरक्षा होइन — माथिको चेतावनी हेर्नुहोस्। */
+function hash(txt){
+  var salt = 'shg-panel-v1:';
+  if (window.crypto && window.crypto.subtle && window.TextEncoder) {
+    return window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(salt + txt))
+      .then(function (buf) {
+        return Array.prototype.map.call(new Uint8Array(buf), function (b) {
+          return ('0' + b.toString(16)).slice(-2); }).join('');
+      })
+      .catch(function () { return Promise.resolve(weak(salt + txt)); });
+  }
+  return Promise.resolve(weak(salt + txt));
+}
+function weak(s){
+  var h1 = 0x811c9dc5, h2 = 0x01000193;
+  for (var i = 0; i < s.length; i++) {
+    h1 = (h1 ^ s.charCodeAt(i)) >>> 0; h1 = (h1 * 16777619) >>> 0;
+    h2 = (h2 + s.charCodeAt(i) * (i + 7)) >>> 0;
+  }
+  return 'w' + h1.toString(16) + h2.toString(16);
+}
+
+/* ── मिति ── */
+function iso(d){
+  var p = function (n) { return (n < 10 ? '0' : '') + n; };
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+function todayISO(){ return iso(new Date()); }
+
+/* ── भण्डारण ── */
+function loadAll(){
+  try { cfg = JSON.parse(read(K.cfg) || 'null'); } catch (e) { cfg = null; }
+  try { tickets = JSON.parse(read(K.tk) || '[]'); } catch (e) { tickets = []; }
+  if (!Array.isArray(tickets)) tickets = [];
+}
+function saveTickets(){
+  if (!write(K.tk, JSON.stringify(tickets))) toast('सुरक्षित भएन — ठाउँ भरियो होला');
+}
+function saveCfg(){ write(K.cfg, JSON.stringify(cfg)); }
+
+/* ── लगइन ── */
+function showGate(){
+  loadAll();
+  $('gate').hidden = false; $('app').hidden = true;
+  if (cfg && cfg.pw) {
+    $('loginForm').hidden = false; $('setupForm').hidden = true;
+    $('l_id').value = cfg.id || '';
+    setTimeout(function () { $('l_pw').focus(); }, 60);
+  } else {
+    $('setupForm').hidden = false; $('loginForm').hidden = true;
+    $('s_id').focus();
+  }
+}
+$('setupForm').addEventListener('submit', function (e) {
+  e.preventDefault();
+  var pw = $('s_pw').value, pw2 = $('s_pw2').value, m = $('setupMsg');
+  if (pw.length < 4) { m.textContent = 'पासवर्ड कम्तीमा ४ अक्षरको बनाउनुहोस्।'; return; }
+  if (pw !== pw2)    { m.textContent = 'दुवै पासवर्ड मिलेनन्।'; return; }
+  hash(pw).then(function (h) {
+    cfg = {
+      id: $('s_id').value.trim(), name: $('s_name').value.trim(), mob: $('s_mob').value.trim(),
+      route: $('s_route').value.trim(), rate: num($('s_rate').value),
+      staff: $('s_staff').value.replace(/\D/g, ''), pw: h
+    };
+    saveCfg(); enter();
+  });
+});
+$('loginForm').addEventListener('submit', function (e) {
+  e.preventDefault();
+  var m = $('loginMsg');
+  hash($('l_pw').value).then(function (h) {
+    if (h === cfg.pw) { m.textContent = ''; $('l_pw').value = ''; enter(); }
+    else { m.textContent = 'पासवर्ड मिलेन।'; $('l_pw').classList.add('bad'); }
+  });
+});
+$('l_pw').addEventListener('input', function () { this.classList.remove('bad'); });
+$('btnForgot').addEventListener('click', function () {
+  ask('पासवर्ड बिर्सिनुभयो?',
+    '<p>यो ताला यही यन्त्रमा मात्र भएकाले <b>पासवर्ड फेरि पाउने उपाय छैन</b>।</p>' +
+    '<p style="margin-top:8px">अगाडि बढ्न सेटिङ नयाँ बनाउनुपर्छ। <b>टिकटको डाटा मेटिँदैन</b> — ' +
+    'सबै टिकट जस्ताको तस्तै रहन्छ।</p>',
+    function () {
+      if (cfg) { delete cfg.pw; saveCfg(); }
+      toast('नयाँ पासवर्ड बनाउनुहोस्'); showGate();
+    });
+});
+$('btnOut').addEventListener('click', function () {
+  $('app').hidden = true; showGate();
+});
+
+function enter(){
+  $('gate').hidden = true; $('app').hidden = false;
+  $('t_date').value = todayISO();
+  renderAll();
+}
+
+/* ── गणना ── */
+function rateOf(t){ return t.comm != null && t.comm !== '' ? num(t.comm) : (cfg.rate || 0); }
+function live(){ return tickets.filter(function (t) { return t.status !== 'cancel'; }); }
+function inRange(t, r){
+  if (r === 'all') return true;
+  var d = t.date || '';
+  if (r === 'today') return d === todayISO();
+  if (r === 'month') return d.slice(0, 7) === todayISO().slice(0, 7);
+  var lim = new Date(); lim.setDate(lim.getDate() - 6);
+  return d >= iso(lim) && d <= todayISO();
+}
+function renderStats(){
+  var t0 = live().filter(function (t) { return t.date === todayISO(); });
+  var tm = live().filter(function (t) { return (t.date || '').slice(0, 7) === todayISO().slice(0, 7); });
+  var comm = live().reduce(function (a, t) { return a + rateOf(t); }, 0);
+  var due  = live().filter(function (t) { return !t.dep; })
+                   .reduce(function (a, t) { return a + num(t.fare); }, 0);
+  $('stToday').textContent = t0.length;
+  $('stTodayNote').textContent = 'भाडा ' + money(t0.reduce(function (a, t) { return a + num(t.fare); }, 0));
+  $('stMonth').textContent = tm.length;
+  $('stMonthNote').textContent = 'कमिसन ' + money(tm.reduce(function (a, t) { return a + rateOf(t); }, 0));
+  $('stComm').textContent = money(comm);
+  $('stDue').textContent  = money(due);
+}
+function renderWho(){
+  $('whoName').textContent = cfg.name || '—';
+  $('whoMob').textContent  = cfg.mob || '—';
+  $('whoRoute').textContent = cfg.route || '—';
+  $('whoId').textContent   = cfg.id || '—';
+}
+function renderTable(){
+  var r = $('fRange').value, q = $('fSearch').value.trim().toLowerCase();
+  var rows = tickets.filter(function (t) { return inRange(t, r); }).filter(function (t) {
+    if (!q) return true;
+    return ((t.name || '') + ' ' + (t.pnr || '') + ' ' + (t.mob || '')).toLowerCase().indexOf(q) >= 0;
+  }).sort(function (a, b) { return (b.date || '').localeCompare(a.date || '') || b.id - a.id; });
+
+  var tb = $('tBody'); tb.innerHTML = '';
+  $('tEmpty').hidden = rows.length > 0;
+  var fare = 0, comm = 0;
+  rows.forEach(function (t) {
+    var cancelled = t.status === 'cancel';
+    if (!cancelled) { fare += num(t.fare); comm += rateOf(t); }
+    var tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td class="mono">' + esc(t.date) + '</td>' +
+      '<td class="mono">' + esc(t.pnr || '—') + '</td>' +
+      '<td>' + esc(t.name) + (t.mob ? '<br><span class="mono" style="font-size:11px;color:var(--ink-faint)">' + esc(t.mob) + '</span>' : '') + '</td>' +
+      '<td>' + esc(t.from) + ' → ' + esc(t.to) + '</td>' +
+      '<td>' + esc(t.seat || '—') + '</td>' +
+      '<td class="num">' + (cancelled ? '—' : num(t.fare).toLocaleString('en-IN')) + '</td>' +
+      '<td class="num">' + (cancelled ? '—' : rateOf(t).toLocaleString('en-IN')) + '</td>' +
+      '<td>' + esc(t.pay || '—') + '</td>' +
+      '<td><span class="pill ' + (cancelled ? 'no' : 'ok') + '">' + (cancelled ? 'रद्द' : 'Confirm') + '</span></td>' +
+      '<td><span class="pill ' + (t.dep ? 'ok' : 'wait') + '">' + (t.dep ? 'बुझाइयो' : 'बाँकी') + '</span></td>' +
+      '<td class="noprint" style="white-space:nowrap">' +
+        '<button class="btn btn-sm" data-edit="' + t.id + '">✎</button> ' +
+        '<button class="btn btn-sm btn-danger" data-del="' + t.id + '">🗑</button></td>';
+    tb.appendChild(tr);
+  });
+  $('tFoot').innerHTML = rows.length
+    ? '<tr><td colspan="5">जम्मा (' + rows.length + ' टिकट, रद्द बाहेक)</td>' +
+      '<td class="num">' + fare.toLocaleString('en-IN') + '</td>' +
+      '<td class="num">' + comm.toLocaleString('en-IN') + '</td>' +
+      '<td colspan="4" class="noprint"></td></tr>'
+    : '';
+}
+function renderAll(){ renderWho(); renderStats(); renderTable(); buildReport(); }
+
+/* ── टिकट थप्ने / सम्पादन ── */
+$('tForm').addEventListener('submit', function (e) {
+  e.preventDefault();
+  var t = {
+    id: editId || Date.now(),
+    date: $('t_date').value || todayISO(),
+    pnr: $('t_pnr').value.trim() || autoPnr(),
+    name: $('t_name').value.trim(), mob: $('t_mob').value.trim(),
+    from: $('t_from').value.trim(), to: $('t_to').value.trim(),
+    seat: $('t_seat').value.trim(), fare: num($('t_fare').value),
+    comm: $('t_comm').value.trim() === '' ? '' : num($('t_comm').value),
+    pay: $('t_pay').value, status: $('t_status').value, dep: $('t_dep').value === '1'
+  };
+  if (editId) {
+    var i = tickets.findIndex(function (x) { return x.id === editId; });
+    if (i >= 0) tickets[i] = t;
+    toast('टिकट मिलाइयो');
+  } else { tickets.push(t); toast('टिकट थपियो'); }
+  saveTickets(); resetForm(); renderAll();
+});
+function autoPnr(){
+  var n = live().length + 1;
+  return 'SHG' + todayISO().replace(/-/g, '').slice(2) + '-' + ('00' + n).slice(-3);
+}
+function resetForm(){
+  editId = null;
+  $('tForm').reset();
+  $('t_date').value = todayISO();
+  $('t_from').value = 'नेपालगन्ज'; $('t_to').value = 'अहमदाबाद';
+  $('tSubmit').textContent = '+ टिकट थप्नुहोस्';
+  $('tCancel').hidden = true;
+}
+$('tCancel').addEventListener('click', resetForm);
+$('tBody').addEventListener('click', function (e) {
+  var b = e.target.closest('button'); if (!b) return;
+  var ed = b.getAttribute('data-edit'), dl = b.getAttribute('data-del');
+  if (ed) {
+    var t = tickets.find(function (x) { return String(x.id) === ed; }); if (!t) return;
+    editId = t.id;
+    $('t_date').value = t.date; $('t_pnr').value = t.pnr; $('t_name').value = t.name;
+    $('t_mob').value = t.mob || ''; $('t_from').value = t.from; $('t_to').value = t.to;
+    $('t_seat').value = t.seat || ''; $('t_fare').value = t.fare;
+    $('t_comm').value = t.comm === '' ? '' : t.comm;
+    $('t_pay').value = t.pay; $('t_status').value = t.status; $('t_dep').value = t.dep ? '1' : '0';
+    $('tSubmit').textContent = '✓ मिलाउनुहोस्'; $('tCancel').hidden = false;
+    $('t_name').scrollIntoView({ block:'center', behavior:'smooth' });
+  }
+  if (dl) {
+    var x = tickets.find(function (y) { return String(y.id) === dl; }); if (!x) return;
+    ask('टिकट मेट्ने?', '<p><b>' + esc(x.name) + '</b> — ' + esc(x.date) +
+        ' · ' + money(num(x.fare)) + '</p><p style="margin-top:8px">यो फिर्ता आउँदैन।</p>',
+      function () {
+        tickets = tickets.filter(function (y) { return String(y.id) !== dl; });
+        saveTickets(); renderAll(); toast('मेटियो');
+      });
+  }
+});
+$('fRange').addEventListener('change', function () { renderTable(); buildReport(); });
+$('fSearch').addEventListener('input', renderTable);
+
+/* ── रिपोर्ट ── */
+function buildReport(){
+  var t0 = tickets.filter(function (t) { return t.date === todayISO(); });
+  var good = t0.filter(function (t) { return t.status !== 'cancel'; });
+  var fare = good.reduce(function (a, t) { return a + num(t.fare); }, 0);
+  var comm = good.reduce(function (a, t) { return a + rateOf(t); }, 0);
+  var due  = good.filter(function (t) { return !t.dep; })
+                 .reduce(function (a, t) { return a + num(t.fare); }, 0);
+  var L = [];
+  L.push('श्री हरि ग्लोबल प्रा. लि. — दैनिक रिपोर्ट');
+  L.push('मिति: ' + todayISO());
+  L.push('एजेन्ट: ' + (cfg.name || '—') + ' (' + (cfg.id || '—') + ')');
+  L.push('मोबाइल: ' + (cfg.mob || '—') + (cfg.route ? ' · रुट: ' + cfg.route : ''));
+  L.push('--------------------------------');
+  L.push('Confirm टिकट : ' + good.length);
+  L.push('रद्द टिकट    : ' + (t0.length - good.length));
+  L.push('कुल भाडा     : ' + money(fare));
+  L.push('कमिसन        : ' + money(comm));
+  L.push('बुझाउन बाँकी : ' + money(due));
+  if (good.length) {
+    L.push('--------------------------------');
+    good.forEach(function (t, i) {
+      L.push((i + 1) + '. ' + t.name + ' · ' + t.from + '→' + t.to +
+             (t.seat ? ' · सिट ' + t.seat : '') + ' · ' + money(num(t.fare)) +
+             ' · ' + t.pay + (t.dep ? ' · बुझाइयो' : ' · बाँकी'));
+    });
+  }
+  L.push('--------------------------------');
+  L.push('(एजेन्ट प्यानलबाट स्वतः बनेको। अन्तिम हिसाब कम्पनीको सर्भरकै रेकर्ड।)');
+  $('reportBox').value = L.join('\n');
+  return L.join('\n');
+}
+$('btnWa').addEventListener('click', function () {
+  var txt = buildReport();
+  var no = (cfg.staff || '').replace(/\D/g, '');
+  if (!no) {
+    toast('पहिले सेटिङमा स्टाफको WhatsApp नम्बर भर्नुहोस्');
+    openSettings(); return;
+  }
+  window.open('https://wa.me/' + no + '?text=' + encodeURIComponent(txt), '_blank', 'noopener');
+});
+$('btnCopy').addEventListener('click', function () {
+  var txt = buildReport();
+  var done = function () { toast('रिपोर्ट कपी भयो'); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(done, fallback);
+  } else fallback();
+  function fallback(){
+    var b = $('reportBox'); b.removeAttribute('readonly'); b.select();
+    try { document.execCommand('copy'); done(); } catch (e) { toast('कपी भएन — हातले छान्नुहोस्'); }
+    b.setAttribute('readonly', 'readonly');
+  }
+});
+function download(name, text, mime){
+  /* BOM केवल CSV लाई — Excel ले देवनागरी ठिक पढोस्। JSON मा BOM राखे
+     JSON.parse भाँचिन्छ र ब्याकअप फिर्ता हुँदैन। */
+  var m = mime || 'text/plain;charset=utf-8';
+  var body = (m.indexOf('csv') >= 0 ? '\ufeff' : '') + text;
+  var blob = new Blob([body], { type: m });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a'); a.href = url; a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(url); }, 400);
+}
+$('btnCsv').addEventListener('click', function () {
+  var r = $('fRange').value;
+  var rows = tickets.filter(function (t) { return inRange(t, r); });
+  var head = ['मिति','PNR','यात्रु','मोबाइल','कहाँबाट','कहाँसम्म','सिट','भाडा','कमिसन','भुक्तानी','अवस्था','बुझाएको'];
+  var q = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
+  var csv = [head.map(q).join(',')].concat(rows.map(function (t) {
+    return [t.date, t.pnr, t.name, t.mob, t.from, t.to, t.seat, num(t.fare), rateOf(t),
+            t.pay, t.status === 'cancel' ? 'रद्द' : 'Confirm', t.dep ? 'बुझाइयो' : 'बाँकी'].map(q).join(',');
+  })).join('\r\n');
+  download('SHG_tickets_' + (cfg.id || 'agent') + '_' + todayISO().replace(/-/g,'') + '.csv',
+           csv, 'text/csv;charset=utf-8');
+  toast('CSV झर्‍यो');
+});
+$('btnBackup').addEventListener('click', function () {
+  var c = JSON.parse(JSON.stringify(cfg)); delete c.pw;   /* पासवर्ड ब्याकअपमा राख्दैनौँ */
+  download('SHG_panel_' + (cfg.id || 'agent') + '_' + todayISO().replace(/-/g,'') + '.json',
+    JSON.stringify({ _app:'shree-hari-global-agent-panel', _version:1,
+      _savedAt:new Date().toISOString(), cfg:c, tickets:tickets }, null, 2),
+    'application/json');
+  toast('ब्याकअप झर्‍यो');
+});
+$('btnRestore').addEventListener('click', function () { $('restoreFile').click(); });
+$('restoreFile').addEventListener('change', function (e) {
+  var f = e.target.files && e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  var r = new FileReader();
+  r.onload = function () {
+    var d;
+    try { d = JSON.parse(r.result); } catch (x) { toast('फाइल पढ्न सकिएन'); return; }
+    if (!d || d._app !== 'shree-hari-global-agent-panel') { toast('मिल्दो ब्याकअप होइन'); return; }
+    ask('फिर्ता गर्ने?',
+      '<p>ब्याकअप मिति: <b>' + esc((d._savedAt || '').slice(0, 16).replace('T',' ')) + '</b><br>' +
+      'टिकट: <b>' + ((d.tickets || []).length) + '</b></p>' +
+      '<p style="margin-top:8px">अहिलेका सबै टिकट हटेर यो ब्याकअपको आउनेछ। ' +
+      'पासवर्ड भने <b>यही यन्त्रकै</b> रहनेछ।</p>',
+      function () {
+        var keepPw = cfg && cfg.pw;
+        cfg = Object.assign({}, d.cfg || {}, keepPw ? { pw: keepPw } : {});
+        tickets = Array.isArray(d.tickets) ? d.tickets : [];
+        saveCfg(); saveTickets(); renderAll(); toast('फिर्ता भयो');
+      });
+  };
+  r.readAsText(f);
+});
+
+/* ── सेटिङ ── */
+function openSettings(){
+  $('x_name').value = cfg.name || ''; $('x_mob').value = cfg.mob || '';
+  $('x_route').value = cfg.route || ''; $('x_rate').value = cfg.rate || '';
+  $('x_staff').value = cfg.staff || '';
+  $('x_pw').value = ''; $('x_pw2').value = ''; $('setMsg').textContent = '';
+  open('setScrim', true);
+}
+$('btnSettings').addEventListener('click', openSettings);
+$('btnSaveSet').addEventListener('click', function () {
+  var pw = $('x_pw').value, pw2 = $('x_pw2').value, m = $('setMsg');
+  if (pw || pw2) {
+    if (pw.length < 4) { m.textContent = 'पासवर्ड कम्तीमा ४ अक्षर।'; return; }
+    if (pw !== pw2) { m.textContent = 'दुवै पासवर्ड मिलेनन्।'; return; }
+  }
+  cfg.name = $('x_name').value.trim(); cfg.mob = $('x_mob').value.trim();
+  cfg.route = $('x_route').value.trim(); cfg.rate = num($('x_rate').value);
+  cfg.staff = $('x_staff').value.replace(/\D/g, '');
+  var fin = function () { saveCfg(); renderAll(); open('setScrim', false); toast('सुरक्षित भयो'); };
+  if (pw) hash(pw).then(function (h) { cfg.pw = h; fin(); }); else fin();
+});
+
+/* ── विविध ── */
+$('btnPrint').addEventListener('click', function () { $('fRange').value = 'today'; renderTable(); window.print(); });
+$('btnTheme').addEventListener('click', function () {
+  var cur = document.documentElement.getAttribute('data-theme');
+  var next = cur === 'dark' ? 'light' : cur === 'light' ? '' : 'dark';
+  if (next) { document.documentElement.setAttribute('data-theme', next); write(K.theme, next); }
+  else { document.documentElement.removeAttribute('data-theme'); try { localStorage.removeItem(K.theme); } catch (e) {} }
+  toast(next === 'dark' ? 'अँध्यारो' : next === 'light' ? 'उज्यालो' : 'फोनकै सेटिङ');
+});
+
+/* ── सुरुवात ── */
+var th = read(K.theme); if (th) document.documentElement.setAttribute('data-theme', th);
+showGate();
+})();
+</script>
+</body>
+</html>
