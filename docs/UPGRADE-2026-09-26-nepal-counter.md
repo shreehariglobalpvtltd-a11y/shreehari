@@ -215,9 +215,10 @@ stored number, and failing that from the desk the agent sits at.
 2. Admin → **Counters & collection**: check NPJ's rate, phone, and that Rupaidiha is still IN.
 3. Admin → **Staff & Approvals**: create the Nepalgunj login(s) with role `counter` and give
    them the **NPJ** desk. *Until a desk is assigned, a sale carries no place and no NPR.*
-4. Admin → **Routes**: add the Nepal-side stops (Nepalgunj Bus Park / Dhamboji / Kohalpur) to
-   the routes that should sell from them — today every route stops at Rupaidiha, the Indian
-   side. **Do not re-run** `upgrade-2026-08-sharing-stops.sql`: it deletes and rebuilds stops.
+4. **Do NOT add Nepalgunj as a boarding stop.** The owner corrected this on 26 Sep:
+   *"Nepalgunj ticket katne matra ho, chadne Rupaidiha nai ho."* Nepalgunj is a SELLING
+   window; the passenger still boards at Rupaidiha. Nothing in this release changes a
+   boarding point — the desk is where the ticket was cut, never where the bus stops.
 5. Optional: switch **Desk isolation** on once the Nepalgunj staff are real people.
 6. Optional: `counter_shift_on` is already 1 on live but no drawer has ever been opened
    (`counter_shifts` = 0 rows). A Nepal desk is the first place it will earn its keep.
@@ -248,6 +249,41 @@ stored number, and failing that from the desk the agent sits at.
 - The OTP redaction in `message_logs` matched the word "code", while every code this app sends
   is labelled **कोड** — so login codes were being kept in clear. The pattern now covers
   कोड / ओटिपी / OTP.
+
+## 4b. What a Nepalgunj ticket says, and why
+
+Owner, 26 Sep: *"Nepalgunj bata ticket katda tesma naam … Shree Hari Global Pvt Ltd Nepal,
+Puspalal Chowk lekhnu paryo … tei bata ticket kateko Nepal ko number aaunu paryo ticket ma"*
+and *"jun desk ho tesko naam number clearly mention, ticket kateko timing ni mention."*
+
+`Settings::companyFor($counterCode)` decides the issuer from the desk that cut the ticket:
+
+| on the ticket | India desk / online | Nepalgunj (NPJ) |
+|---|---|---|
+| brand band | S Hari Global Pvt Ltd | **Shree Hari Global Pvt Ltd Nepal** |
+| under it | the desk and the route | **Nepalgunj — Puspalal Chowk (NPJ)** |
+| Support / Help | the India office number | **the Nepal number** (`nepal_phone`, or the desk's own) |
+| register | `CIN U52291GJ2026PTC174029` | `Reg. <nepal_reg>`, or nothing until it is on file |
+| footer | company + CIN | **Shree Hari Global Pvt Ltd Nepal · Puspalal Chowk, Nepalgunj** |
+| fare band | ₹ only | **INR 2,000.00 · NPR 3,200** |
+
+Most specific wins: the DESK's own phone/address (Counters & collection) beats the
+country-level `nepal_*` rows, which beat the Indian identity. Nothing changes for an Indian
+desk or an online sale.
+
+And on **every** ticket, whichever desk: the issuer tile now carries the desk's own phone
+number and the **minute the ticket was cut** (`काटिएको 26 Sep 2026, 1:07 PM`). The desk name
+prints whole or not at all — it is already in the header band in full, and half a town name
+reads like a bug.
+
+Three layout faults the Nepal name exposed and fixed on the way: the brand was measured to the
+page edge while the ISSUED-BY chip sits 268px in (so a long name printed under the chip), the
+taller tile collided with the footer notes, and the desk's phone was the first thing trimmed
+when space ran short.
+
+**Still needed from the owner:** the Nepal phone number and, if it exists, the Nepal company
+registration. Until `nepal_phone` is filled, a Nepalgunj ticket honestly falls back to the
+India office number rather than printing a placeholder.
 
 ## 5b. Live now — what changed for whom, today
 
