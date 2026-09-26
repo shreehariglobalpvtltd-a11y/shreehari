@@ -324,5 +324,17 @@ check(premiumJs.includes("shgSwitchOn('app_load_sound_on')") && premiumJs.includ
 check(/function shgSwitchOn\(key\)/.test(config) && /return true;\s*\r?\n\}/.test(config.slice(config.indexOf('function shgSwitchOn'))),
   'shgSwitchOn() treats an absent row as ON');
 
+/* ---- h) the switches ship OFF, public, idempotent, with help text ------- */
+let sql = '';
+try { sql = read('database/upgrade-2026-09-27-motion-switches.sql'); } catch (e) { fail('database/upgrade-2026-09-27-motion-switches.sql exists', e.message); }
+check(/INSERT IGNORE INTO settings/.test(sql), 'the motion SQL is INSERT IGNORE (safe to re-run)');
+for (const key of ['app_motion_on', 'app_load_sound_on']) {
+  const row = new RegExp(`\\('${key}',\\s*'0',\\s*'bool',\\s*'site',\\s*1,\\s*\\r?\\n?\\s*'([^']*)'`).exec(sql);
+  check(!!row, `${key} ships as bool 0, public, group site`);
+  check(!!row && /[ऀ-ॿ]/.test(row[1]) && /[A-Za-z]/.test(row[1]) && !row[1].includes(';'),
+    `${key} label is Nepali + English and carries no semicolon (apply-sql splits on them)`);
+  check(read('admin/settings.php').includes(`'${key}'`), `${key} has help text on Admin -> Settings`);
+}
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed === 0 ? 0 : 1);
