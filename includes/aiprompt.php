@@ -18,6 +18,12 @@ if (!defined('SHG_APP')) {
     exit('Forbidden');
 }
 
+/* The prompt states the fare board and the running offer, so the engine that
+   decides both has to be loaded here rather than assumed (26 Sep 2026). The
+   builder below still falls back to the two directional rows if anything in
+   Fare throws, so a missing class degrades the wording, never the reply. */
+require_once INCLUDE_PATH . '/fare.php';
+
 /**
  * The system prompt, built from LIVE data on every call (13 Sep 2026).
  *
@@ -67,10 +73,49 @@ function ai_system_prompt(): string
         $routeLines[] = '- Rupaidiha → Surat, departs 18:00 daily.';
     }
 
-    $fareNp = Settings::getInt('fare_to_nepal', 2000);
-    $fareIn = Settings::getInt('fare_to_india', 1800);
-    $cabin  = Settings::getArray('cabin_pricing', []);
-    $priv   = (int) ($cabin['private']['single_1pax']['online'] ?? 3800);
+    /* 26 Sep 2026 — the FARE BOARD, not one number per direction.
+       A Surat pickup and an Ahmedabad pickup no longer cost the same, so a
+       prompt that stated "₹2000 towards Nepal" was telling the assistant a
+       price the checkout would not charge. The board is built from the same
+       Fare::fareBoard() the admin screen and the counter read; a failure to
+       read it falls back to the two directional rows rather than to a guess. */
+    $cabin = Settings::getArray('cabin_pricing', []);
+    $priv  = (int) ($cabin['private']['single_1pax']['online'] ?? 3800);
+    $privD = (int) ($cabin['private']['double_2pax']['online'] ?? 7600);
+
+    $fareTxt = '';
+    try {
+        $seen = [];
+        foreach (Fare::fareBoard() as $b) {
+            $seen[] = $b['from'] . ' → ' . $b['to'] . ' ' . inr((float) $b['amount']);
+        }
+        if ($seen !== []) {
+            $fareTxt = 'Sharing sleeper, per person: ' . implode(' · ', $seen) . '.';
+        }
+    } catch (Throwable $e) {
+        $fareTxt = '';
+    }
+    if ($fareTxt === '') {
+        $fareTxt = 'Sharing sleeper ₹' . Settings::getInt('fare_to_nepal', 2000) . ' per person towards Nepal, ₹'
+                 . Settings::getInt('fare_to_india', 1800) . ' per person towards India.';
+    }
+
+    /* The advance-booking offer, in the prompt only so the assistant KNOWS it
+       exists and offers it. The amount is still worked out by the fare_quote
+       tool against the passenger's own date. */
+    $advTxt = '';
+    try {
+        $adv = Fare::advanceOffer();
+        if ($adv['live']) {
+            $advTxt = $adv['title'] . ': booking ' . $adv['hours'] . ' hours or more before departure takes '
+                    . rtrim(rtrim(number_format($adv['percent'], 2, '.', ''), '0'), '.') . '% off'
+                    . ($adv['modes'] === 'all' ? ', on sharing and on a VIP private cabin alike' : ', on ' . $adv['modes'] . ' only')
+                    . ($adv['to'] !== '' ? ', until ' . $adv['to'] : '')
+                    . '. Use the fare_quote tool for the actual amount on their date.';
+        }
+    } catch (Throwable $e) {
+        $advTxt = '';
+    }
 
     $slabs = array_values(array_filter(Settings::getArray('refund_slabs', []), 'is_array'));
     usort($slabs, static fn(array $a, array $b): int => ((int) ($b['minHrs'] ?? 0)) <=> ((int) ($a['minHrs'] ?? 0)));
@@ -104,7 +149,10 @@ function ai_system_prompt(): string
         . "ANSWER ONLY about this bus service: booking, seats and cabins, fares, timings and pickups, the border crossing, luggage, payments, cancellations and refunds, tracking, offices. For anything else say politely, in the user's language, that you only help with the bus service, and give the office number.\n\n"
         . "FACTS (the only facts you may state; never invent a time, price or rule that is not here):\n"
         . "Routes and timings:\n" . implode("\n", $routeLines) . "\n"
-        . "Fares: sharing sleeper ₹{$fareNp} per person towards Nepal, ₹{$fareIn} per person towards India; a private cabin from ₹{$priv}. Same price online and at the counter.\n"
+        . "Fares: {$fareTxt} VIP PRIVATE SLEEPER — the whole cabin, nobody else in it: single ₹{$priv}, double ₹{$privD} per cabin. Same price online and at the counter.\n"
+        . ($advTxt !== '' ? "Offer: {$advTxt}\n" : '')
+        . "PRICES, SEATS, DISCOUNTS AND PAYMENT STATUS ARE NOT YOURS TO STATE. When you have the tools, call fare_quote for any amount, seat_availability for whether a berth or a cabin is free, and current_offers for a discount — then repeat what they return. The board above is for orientation; the tool is what the passenger will be charged. If a tool is unavailable, say the office will confirm the exact amount. Never estimate, never add up, never round, and never say a seat is free because it probably is.\n"
+        . "VIP PRIVATE and PUBLIC SHARING share ONE physical coach: a private cabin closes the sharing berths inside it, and a sharing berth closes that cabin. So never tell anybody a cabin is free without seat_availability.\n"
         . "Payment: {$pay}. An online ticket is confirmed after the payment is verified, usually within minutes.\n"
         . "Refund by cancellation time: " . implode(' · ', $slabTxt) . ". Money returns to the same account in 5–7 working days.\n"
         . "Boarding: reach the pickup 60 minutes early; booking for a pickup closes {$cutoff} minutes before its time.\n"

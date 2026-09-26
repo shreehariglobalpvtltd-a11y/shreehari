@@ -84,6 +84,26 @@ final class BookingService
         return $has;
     }
 
+    /**
+     * Does `bookings` carry advance_discount yet
+     * (database/upgrade-2026-09-vip-advance.sql)? Same deploy-in-either-order
+     * rule as deskColumns(): until the SQL is run the offer is still granted
+     * and still reduces total_amount — only its own column is skipped, so no
+     * passenger is overcharged by a migration that has not landed.
+     */
+    private static function advanceColumn(): bool
+    {
+        static $has = null;
+        if ($has === null) {
+            try {
+                $has = Database::fetch("SHOW COLUMNS FROM bookings LIKE 'advance_discount'") !== null;
+            } catch (Throwable $e) {
+                $has = false;
+            }
+        }
+        return $has;
+    }
+
     /** The same question for the payment row's local-money columns. */
     private static function tenderColumns(): bool
     {
@@ -528,7 +548,15 @@ final class BookingService
             }
 
             /* ---- Price it (server-authoritative) ------------------ */
-            $pricing = self::priceBooking($route, $seats, $bookingMode, $request, $phone, $schedule);
+            /* 26 Sep 2026: the passenger's OWN boarding / drop stop and the
+               travel date go in too. The point-to-point board prices a
+               Nana Chiloda pickup differently from a Surat one, and the
+               advance-booking offer is decided against this date and this
+               bus's departure clock. */
+            $pricing = self::priceBooking(
+                $route, $seats, $bookingMode, $request, $phone, $schedule,
+                $boardingStop, $dropStop, $travelDate
+            );
 
             // Counter discount (flat or % off the pre-discount base), clamped to
             // the admin-set cap — the same rule the old counter form applied.
@@ -582,7 +610,13 @@ final class BookingService
 
             $expiryMinutes = Settings::getInt('booking_expiry_minutes', 120);
 
-            $bookingId = Database::insert('bookings', self::deskStamp($seller !== null ? $sellerId : null, (float) $pricing['total']) + [
+            /* The advance-booking offer, in its own column when the migration
+               has landed (see advanceColumn()). */
+            $advanceCol = self::advanceColumn() && (float) ($pricing['advanceDiscount'] ?? 0) > 0
+                ? ['advance_discount' => round((float) $pricing['advanceDiscount'], 2)]
+                : [];
+
+            $bookingId = Database::insert('bookings', $advanceCol + self::deskStamp($seller !== null ? $sellerId : null, (float) $pricing['total']) + [
                 'pnr'             => $pnr,
                 'user_id'         => $userId,
                 'trip_type'       => !empty($request['returnLeg']) ? 'round' : 'oneway',
@@ -903,7 +937,7 @@ final class BookingService
             // (Gujarat→Rupaidiha) / toIndia 1800 (return). Without $toCity,
             // cabinFare() defaulted to the toIndia rate, mispricing every
             // toNepal counter sale by ₹200 (M1).
-            $cf = Fare::cabinFare('single', 'sharing', 1, false, (string) ($route['to_city'] ?? ''));
+            $cf = Fare::cabinFare('single', 'sharing', 1, false, (string) ($route['to_city'] ?? ''), 4, (string) ($route['from_city'] ?? ''));
             if (($cf['perPerson'] ?? 0) > 0) {
                 $perSeat = (float) $cf['perPerson'];
             }
@@ -2901,8 +2935,17 @@ final class BookingService
      * @param array<string, mixed> $request
      * @return array<string, mixed>
      */
-    private static function priceBooking(array $route, array $seats, ?string $bookingMode, array $request, string $phone, ?array $schedule = null): array
-    {
+    private static function priceBooking(
+        array $route,
+        array $seats,
+        ?string $bookingMode,
+        array $request,
+        string $phone,
+        ?array $schedule = null,
+        string $boardingStop = '',
+        string $dropStop = '',
+        string $travelDate = ''
+    ): array {
         $seatCount = count($seats);
         $isSleeper = ($schedule !== null ? Seats::effectiveCoach($schedule, $route) : (string) $route['coach_type']) === 'sleeper';
 
@@ -2914,9 +2957,14 @@ final class BookingService
         // when the office set one. Private cabins keep the cabin price list.
         $override = self::scheduleFareOverride($schedule);
 
+        /* The two ends the FARE BOARD reasons about: on the outbound leg the
+           passenger's boarding stop is the Gujarat end, on the return it is
+           their drop. Falls back to the route's own cities. */
+        $ends = Fare::journeyPoints($route, $boardingStop, $dropStop);
+
         if ($isSleeper && $bookingMode !== null) {
             $cabinType = ($request['cabinType'] ?? 'single') === 'double' ? 'double' : 'single';
-            $cabin     = Fare::cabinFare($cabinType, $bookingMode, $seatCount, true, (string) ($route['to_city'] ?? ''));
+            $cabin     = Fare::cabinFare($cabinType, $bookingMode, $seatCount, true, (string) ($route['to_city'] ?? ''), 4, $ends['from']);
             if ($override !== null && $bookingMode === 'sharing') {
                 $base    = round($override * $seatCount, 2);
                 $perSeat = $override;
@@ -2949,7 +2997,12 @@ final class BookingService
             $pointsAvailable,
             (string) ($request['couponCode'] ?? ''),
             $phone,
-            (int) $route['id']
+            (int) $route['id'],
+            [
+                'travelDate'    => $travelDate,
+                'departureTime' => Fare::departureTime($schedule, $route),
+                'bookingMode'   => $bookingMode,
+            ]
         );
 
         return [
@@ -2970,6 +3023,18 @@ final class BookingService
             'tax'             => $quote['tax'],
             'total'           => $quote['total'],
             'cabinLabel'      => $cabinLabel,
+            /* 26 Sep 2026 — the advance-booking offer and the four lines every
+               screen prints before payment. Carried through so the counter, the
+               agent panel and the confirmation all read one calculation. */
+            'advanceDiscount' => $quote['advanceDiscount'] ?? 0.0,
+            'advancePercent'  => $quote['advancePercent'] ?? 0.0,
+            'advanceTitle'    => $quote['advanceTitle'] ?? '',
+            'originalFare'    => $quote['originalFare'] ?? $quote['base'],
+            'discountAmount'  => $quote['discountAmount'] ?? 0.0,
+            'discountPercent' => $quote['discountPercent'] ?? 0.0,
+            'finalFare'       => $quote['finalFare'] ?? $quote['total'],
+            'fareFrom'        => $ends['from'],
+            'fareTo'          => $ends['to'],
         ];
     }
 

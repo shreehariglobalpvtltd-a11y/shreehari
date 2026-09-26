@@ -1,0 +1,288 @@
+/* ================================================================
+   [CSS] VIP PRIVATE SLEEPER + ADVANCE-BOOKING OFFER + the four
+   facility chips.  26 Sep 2026.
+
+   THE BRIEF
+   ---------
+   "Make VIP Private Booking one of the main homepage highlights …
+    an attractive lightweight animation for VIP Private Sleeper
+    showing private comfort, AC, mobile charging and comfortable
+    family/personal travel … keep the homepage fast … lightweight
+    CSS/SVG where practical; do not add heavy unnecessary assets …
+    a separate animated Dashain/Tihar advance booking offer."
+
+   HOW IT STAYS FAST
+   -----------------
+   · No images. The cabin is one inline SVG in the template; the
+     offer lamps are seven CSS dots. Nothing here costs a request.
+   · Nothing animates until the card is on screen: 22-vip.js adds
+     .is-live from an IntersectionObserver, and every keyframe below
+     is under `.is-live`. A visitor who never scrolls to the block
+     pays for no animation at all.
+   · Every animation is transform / opacity only, so it runs on the
+     compositor and never triggers layout.
+   · prefers-reduced-motion switches all of it off and leaves the
+     cabin drawn, the curtain open and the offer card readable.
+================================================================ */
+
+/* ---------------------------------------------------------------- *
+ *  1. THE ADVANCE-BOOKING OFFER CARD
+ * ---------------------------------------------------------------- */
+.adv-offer { margin-top: 16px; }
+.adv-offer[hidden] { display: none !important; }
+
+.ao-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px 20px;
+  border-radius: 18px;
+  overflow: hidden;
+  color: #fff;
+  background:
+    radial-gradient(120% 140% at 0% 0%, #b3121a 0%, #7f0c12 45%, #3d0509 100%);
+  box-shadow: 0 10px 30px rgba(127, 12, 18, .28);
+}
+
+/* the festival lamp string across the top */
+.ao-lamps {
+  position: absolute; inset: 0 0 auto 0;
+  display: flex; justify-content: space-around;
+  padding: 0 14px;
+  pointer-events: none;
+}
+.ao-lamps i {
+  width: 8px; height: 8px; margin-top: 6px;
+  border-radius: 50%;
+  background: #ffd97d;
+  box-shadow: 0 0 8px 2px rgba(255, 217, 125, .75);
+  opacity: .35;
+}
+.is-live .ao-lamps i { animation: aoLamp 2.2s ease-in-out infinite; }
+.is-live .ao-lamps i:nth-child(2) { animation-delay: .18s; }
+.is-live .ao-lamps i:nth-child(3) { animation-delay: .36s; }
+.is-live .ao-lamps i:nth-child(4) { animation-delay: .54s; }
+.is-live .ao-lamps i:nth-child(5) { animation-delay: .72s; }
+.is-live .ao-lamps i:nth-child(6) { animation-delay: .90s; }
+.is-live .ao-lamps i:nth-child(7) { animation-delay: 1.08s; }
+@keyframes aoLamp {
+  0%, 100% { opacity: .3;  transform: scale(.9); }
+  50%      { opacity: 1;   transform: scale(1.15); }
+}
+
+.ao-mark {
+  display: grid; place-items: center;
+  width: 78px; height: 78px;
+  border-radius: 50%;
+  background: #ffd97d;
+  color: #5b0509;
+  box-shadow: inset 0 0 0 3px rgba(91, 5, 9, .18);
+}
+.is-live .ao-mark { animation: aoPulse 3s ease-in-out infinite; }
+@keyframes aoPulse {
+  0%, 100% { transform: scale(1)    rotate(-3deg); }
+  50%      { transform: scale(1.06) rotate(3deg); }
+}
+.ao-pct { font-size: 24px; font-weight: 900; line-height: 1; letter-spacing: -.5px; }
+.ao-off { font-size: 11px; font-weight: 900; letter-spacing: 2px; }
+
+.ao-copy { min-width: 0; }
+.ao-eyebrow {
+  display: inline-block;
+  font-size: 11px; font-weight: 800; letter-spacing: 1.4px;
+  padding: 2px 9px; border-radius: 999px;
+  background: rgba(255, 255, 255, .16);
+}
+.ao-title  { margin: 6px 0 4px; font-size: 20px; line-height: 1.25; font-family: var(--f-display, inherit); }
+.ao-text   { margin: 0; font-size: 14px; line-height: 1.55; opacity: .95; }
+.ao-until  { margin: 6px 0 0; font-size: 12px; font-weight: 700; opacity: .85; }
+.ao-actions .btn { white-space: nowrap; }
+
+@media (max-width: 720px) {
+  .ao-card { grid-template-columns: auto 1fr; padding-top: 22px; }
+  .ao-actions { grid-column: 1 / -1; }
+  .ao-actions .btn { width: 100%; }
+  .ao-title { font-size: 18px; }
+}
+
+/* ---------------------------------------------------------------- *
+ *  2. THE VIP PRIVATE SLEEPER HIGHLIGHT
+ * ---------------------------------------------------------------- */
+.vip-hl { margin-top: 18px; }
+
+.vip-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 420px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: center;
+  padding: 20px;
+  border-radius: 20px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 26px rgba(11, 27, 69, .10);
+  overflow: hidden;
+}
+.vip-card::before {              /* a soft VIP wash behind the art */
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(90% 120% at 0% 0%, rgba(30, 58, 138, .10), transparent 60%);
+  pointer-events: none;
+}
+
+.vip-ribbon {
+  position: absolute; top: 14px; right: 14px; z-index: 2;
+  font-size: 12px; font-weight: 900; letter-spacing: .6px;
+  padding: 4px 12px; border-radius: 999px;
+  background: linear-gradient(135deg, #ffd97d, #f0a827);
+  color: #4a2a00;
+  box-shadow: 0 4px 12px rgba(240, 168, 39, .35);
+}
+
+.vip-stage {
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #0b1b45;
+  aspect-ratio: 360 / 200;
+}
+.vip-stage svg { display: block; }
+
+/* --- the cabin's moving parts ---------------------------------- */
+
+/* the curtain draws closed, holds, and opens again: "only yours" */
+.vip-curtain { transform: translateX(-176px); }
+.is-live .vip-curtain { animation: vipCurtain 9s ease-in-out infinite; }
+@keyframes vipCurtain {
+  0%, 8%    { transform: translateX(-176px); }
+  30%, 62%  { transform: translateX(0); }
+  84%, 100% { transform: translateX(-176px); }
+}
+
+/* air actually leaving the vent */
+.vip-air path { opacity: 0; }
+.is-live .vip-air path { animation: vipAir 2.4s ease-out infinite; }
+.is-live .vip-air path:nth-child(2) { animation-delay: .3s; }
+.is-live .vip-air path:nth-child(3) { animation-delay: .6s; }
+.is-live .vip-air path:nth-child(4) { animation-delay: .9s; }
+@keyframes vipAir {
+  0%   { opacity: 0;  transform: translateY(-6px) scaleY(.6); }
+  35%  { opacity: .85; }
+  100% { opacity: 0;  transform: translateY(16px) scaleY(1.2); }
+}
+
+/* the battery filling from the bottom of the phone */
+.vip-batt { transform-box: fill-box; transform-origin: 50% 100%; transform: scaleY(.25); }
+.is-live .vip-batt { animation: vipBatt 4.5s ease-in-out infinite; }
+@keyframes vipBatt {
+  0%   { transform: scaleY(.22); }
+  70%  { transform: scaleY(1); }
+  100% { transform: scaleY(1); }
+}
+.is-live .vip-cord { animation: vipCord 4.5s ease-in-out infinite; }
+@keyframes vipCord {
+  0%, 100% { opacity: .5; }
+  70%      { opacity: 1; }
+}
+
+/* the road going past the window */
+.is-live .vip-road { animation: vipRoad 3.6s linear infinite; }
+@keyframes vipRoad {
+  from { transform: translateX(18px); opacity: 0; }
+  20%  { opacity: .9; }
+  to   { transform: translateX(-34px); opacity: 0; }
+}
+
+/* three people resting: the smallest possible "breathing" */
+.is-live .vip-pax { animation: vipRest 5s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 100%; }
+@keyframes vipRest {
+  0%, 100% { transform: scaleY(1); }
+  50%      { transform: scaleY(1.02); }
+}
+
+.is-live .vip-lock { animation: vipLock 9s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 50%; }
+@keyframes vipLock {
+  0%, 26%   { transform: scale(.7); opacity: 0; }
+  34%, 60%  { transform: scale(1);  opacity: 1; }
+  70%, 100% { transform: scale(.7); opacity: 0; }
+}
+
+/* --- the words beside it --------------------------------------- */
+.vip-body { min-width: 0; }
+.vip-eyebrow {
+  display: inline-block;
+  font-size: 11px; font-weight: 900; letter-spacing: 1.4px;
+  color: #1e3a8a;
+  padding: 3px 10px; border-radius: 999px;
+  background: rgba(30, 58, 138, .10);
+}
+.vip-title { margin: 8px 0 6px; font-size: 24px; line-height: 1.2; font-family: var(--f-display, inherit); }
+.vip-sub   { margin: 0 0 12px; font-size: 14px; line-height: 1.6; color: var(--mut); }
+
+.vip-feats {
+  list-style: none; margin: 0 0 14px; padding: 0;
+  display: flex; flex-wrap: wrap; gap: 8px;
+}
+.vip-feats li {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 700;
+  padding: 6px 11px; border-radius: 999px;
+  background: var(--bg2, rgba(30, 58, 138, .06));
+  border: 1px solid var(--line);
+}
+
+.vip-price { margin: 0 0 12px; font-size: 14px; color: var(--mut); }
+.vip-price b { font-size: 22px; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+.vip-ctas { display: flex; gap: 10px; flex-wrap: wrap; }
+.vip-ctas .btn { flex: 1 1 auto; min-width: 150px; }
+.vip-note { margin: 10px 0 0; font-size: 12px; line-height: 1.5; color: var(--mut); }
+
+@media (max-width: 860px) {
+  .vip-card { grid-template-columns: 1fr; }
+  .vip-title { font-size: 21px; }
+  .vip-ctas .btn { width: 100%; flex: 1 1 100%; }
+}
+
+/* ---------------------------------------------------------------- *
+ *  3. THE FOUR FACILITY CHIPS — simple, and alive
+ *
+ *  The band (premium.css) already lays these out. All that is added
+ *  here is one small motion per icon, so the section reads as
+ *  animated without anything moving position.
+ * ---------------------------------------------------------------- */
+.bb-anim .bb-ic { display: inline-block; will-change: transform; }
+.bb-anim .bb-ac   { animation: bbSpin 7s linear infinite; }
+.bb-anim .bb-chg  { animation: bbBolt 2.6s ease-in-out infinite; }
+.bb-anim .bb-safe { animation: bbBeat 3.4s ease-in-out infinite; }
+.bb-anim .bb-cmf  { animation: bbSway 4.2s ease-in-out infinite; }
+
+@keyframes bbSpin { from { transform: rotate(0);    } to { transform: rotate(360deg); } }
+@keyframes bbBolt { 0%, 100% { opacity: .55; transform: scale(.95); } 45% { opacity: 1; transform: scale(1.14); } }
+@keyframes bbBeat { 0%, 100% { transform: scale(1); } 40% { transform: scale(1.12); } 60% { transform: scale(1.04); } }
+@keyframes bbSway { 0%, 100% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }
+
+/* ---------------------------------------------------------------- *
+ *  4. NOTHING MOVES IF THE VISITOR ASKED FOR THAT
+ * ---------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .ao-lamps i,
+  .ao-mark,
+  .vip-curtain,
+  .vip-air path,
+  .vip-batt,
+  .vip-cord,
+  .vip-road,
+  .vip-pax,
+  .vip-lock,
+  .bb-anim .bb-ic {
+    animation: none !important;
+  }
+  /* leave the cabin readable: curtain open, battery full, lock shown */
+  .vip-curtain { transform: translateX(-176px); }
+  .vip-batt    { transform: scaleY(1); }
+  .vip-air path { opacity: .5; }
+  .vip-lock    { opacity: 1; transform: none; }
+}

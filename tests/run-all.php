@@ -87,6 +87,8 @@ const CORE_SUITES = [
     'cross-mode-integrity-test.php' => 'admin seat mutations reason in beds, not labels',
     'cross-mode-seat-sync-test.php' => 'private cabin ⇄ sharing beds: one physical inventory',
     'cross-mode-hold-test.php'     => 'a hold in one mode blocks the bed in the other',
+    // added 2026-09-26 with the work it guards
+    'vip-advance-test.php'         => 'VIP private + public sharing on one inventory; the point fare board; the 24h/10% advance offer; who may change it by WhatsApp',
     'seat-layout-test.php'         => 'one 4+2 physical shape everywhere',
     'seat-label-test.php'          => 'two floors, one grid: A1..F6 / A7..F12, 72 unique, stored ids unchanged',
     'seat-block-test.php'          => 'a berth taken out of service stays out',

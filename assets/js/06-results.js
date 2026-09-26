@@ -129,7 +129,7 @@ function renderResults(instant) {
         + tf('resEmptyP', { route: esc(ctx.from) + ' → ' + esc(ctx.to), date: fmtDate(ctx.date) }) + '</p></div>';
       observeReveals(); return;
     }
-    const cheapest = routes.filter(r => r.type === 'sleeper').length ? sharingPP(ctx.to, true) : Math.min(...routes.map(r => r.fare));
+    const cheapest = routes.filter(r => r.type === 'sleeper').length ? sharingPP(ctx.to, true, ctx.from) : Math.min(...routes.map(r => r.fare));
     /* Task 1 (Surat 24×7): the server rolled a spent departure forward — tell
        the customer clearly that today's bus has left and show the next date,
        instead of an empty board. Task 6 (single daily bus): a quiet affirmation
@@ -153,7 +153,7 @@ function renderResults(instant) {
       const left = srv ? Math.max(0, srv.seatsLeft) : Math.max(0, total - taken);
       const cabinsLeft = r.type === 'sleeper' ? Math.floor(left / 2) : left;
       const bp0 = (r.boarding || [])[0] || '';
-      const isBest = r.type === 'sleeper' && sharingPP(r.to, true) <= cheapest;
+      const isBest = r.type === 'sleeper' && sharingPP(r.to, true, r.from) <= cheapest;
       const valueBadge = isBest ? '<span class="badge ok" style="font-size:11px;margin-left:6px">BEST VALUE</span>' : '';
       const privateBadge = r.type === 'sleeper' ? '<span class="badge" style="background:var(--orange-100);color:var(--orange-600);font-size:11px;margin-left:4px">🔒 PRIVATE</span>' : '';
       const extraBadge = extra ? '<span class="badge" style="background:#efeaff;color:#5a3fb0;font-size:11px;margin-left:4px" title="Extra departure added for this date">➕ EXTRA BUS' + (r._slot ? ' · Bus ' + r._slot : '') + '</span>' : '';
@@ -180,7 +180,7 @@ function renderResults(instant) {
       /* A departure the office priced itself (Bus Calendar → Price) shows
          THAT number, because it is what the server will charge for it. */
       const busFare = Number((srv && srv.fareOverride) || r._fare || 0);
-      const perPersonFare = busFare > 0 ? busFare : (r.type === 'sleeper' ? sharingPP(r.to, true) : r.fare);
+      const perPersonFare = busFare > 0 ? busFare : (r.type === 'sleeper' ? sharingPP(r.to, true, r.from) : r.fare);
       const fareKnown = fareOk(perPersonFare);
       const availState    = left <= 0 ? 'gone' : (left <= 10 ? 'low' : 'ok');
       const seatsPillTxt  = left <= 0
@@ -223,7 +223,7 @@ function renderResults(instant) {
         <div class="bc-fare">
           <span class="amt">${fareKnown ? inr(perPersonFare) : '—'}</span>
           <span class="npr">${!fareKnown ? '' : r.type === 'sleeper' ? nprEst(perPersonFare) + ' /person' : nprEst(r.fare) + ' / ' + t('rowSeats').toLowerCase()}</span>
-          ${r.type === 'sleeper' ? (fareKnown ? '<div class="cabin-price-tag"><span class="sharing-price">🤝 Sharing from ' + inr(busFare > 0 ? busFare : sharingPP(r.to, true)) + '/person</span></div>' : '') + '<div class="cabin-price-tag"><span class="private-price">🔒 Private from ' + inr(CONFIG.cabinPricing.private.single_1pax.online) + '/cabin</span></div>' + (busFare <= 0 && sharingBasePP(r.to) > sharingPP(r.to, true) ? '<div class="save-badge">💸 ' + tf('saveOnline', { a: inr(sharingBasePP(r.to) - sharingPP(r.to, true)) }) + '</div>' : '') : ''}
+          ${r.type === 'sleeper' ? (fareKnown ? '<div class="cabin-price-tag"><span class="sharing-price">🤝 Sharing from ' + inr(busFare > 0 ? busFare : sharingPP(r.to, true, r.from)) + '/person</span></div>' : '') + '<div class="cabin-price-tag"><span class="private-price">🔒 Private from ' + inr(CONFIG.cabinPricing.private.single_1pax.online) + '/cabin</span></div>' + (busFare <= 0 && sharingBasePP(r.to, r.from) > sharingPP(r.to, true, r.from) ? '<div class="save-badge">💸 ' + tf('saveOnline', { a: inr(sharingBasePP(r.to, r.from) - sharingPP(r.to, true, r.from)) }) + '</div>' : '') : ''}
           <span class="left" style="color:${left <= 5 ? 'var(--bad)' : 'var(--ok)'}">${left <= 0 ? t('resSoldOut') : (r.type === 'sleeper' && cabinsLeft <= 4 ? '<b style="color:var(--bad)">Only ' + cabinsLeft + ' cabins left!</b>' : left + ' ' + t('resLeft'))}</span>
           ${cta}
         </div>
@@ -851,7 +851,7 @@ function renderSeats(instant) {
   if (Flow.tripType === 'round') info += ' · ' + t(ctx.ret ? 'tkRet' : 'tkOut') + ' (' + (Flow.legIndex + 1) + '/2)';
   $('#seatRouteInfo').textContent = info;
   var ssi = $('#seatStickyInfo');
-  if (ssi) ssi.innerHTML = '<span class="sfi-route">' + esc(ctx.from) + ' → ' + esc(ctx.to) + '</span><span class="sfi-date">' + fmtDate(ctx.date) + ' · ' + esc(r.busName) + '</span><span class="sfi-fare">' + (function (v) { return fareOk(v) ? (r.type === 'sleeper' ? 'from ' : '') + inr(v) : '—'; })(r.type === 'sleeper' ? sharingPP(ctx.to, true) : r.fare) + '</span>';
+  if (ssi) ssi.innerHTML = '<span class="sfi-route">' + esc(ctx.from) + ' → ' + esc(ctx.to) + '</span><span class="sfi-date">' + fmtDate(ctx.date) + ' · ' + esc(r.busName) + '</span><span class="sfi-fare">' + (function (v) { return fareOk(v) ? (r.type === 'sleeper' ? 'from ' : '') + inr(v) : '—'; })(r.type === 'sleeper' ? sharingPP(ctx.to, true, ctx.from) : r.fare) + '</span>';
   $('#sumRoute').textContent = ctx.from + ' → ' + ctx.to;
   $('#sumDate').textContent = fmtDate(ctx.date);
   $('#sumBus').textContent = r.busName + ' (' + r.busNo + ')';
@@ -911,7 +911,19 @@ function renderSeats(instant) {
   const cabinToggle = $('#cabinToggle');
   if (r.type === 'sleeper') {
     cabinToggle.classList.remove('hide');
-    if (!Flow.bookingType) Flow.bookingType = 'sharing';
+    /* 26 Sep 2026: "Book VIP Private" on the home page has to land on the
+       PRIVATE seat map, or the button is a lie. The VIP block sets
+       window.SHG_VIP_INTENT (22-vip.js); it is read ONCE and cleared here,
+       so an ordinary search straight afterwards still opens sharing. */
+    if (!Flow.bookingType) {
+      let wantVip = false;
+      try { wantVip = Flow.preferMode === 'private' || window.SHG_VIP_INTENT === 'private'; } catch (e) {}
+      Flow.bookingType = wantVip ? 'private' : 'sharing';
+      Flow.preferMode = null;
+      try { window.SHG_VIP_INTENT = null; } catch (e) {}
+      /* private has no Triple tier — same coercion the toggle does. */
+      if (Flow.bookingType === 'private' && Flow.sharingTier === 'triple') Flow.sharingTier = 'double';
+    }
     $$('.bt-pill', cabinToggle).forEach(p => p.classList.toggle('on', p.getAttribute('data-bt') === Flow.bookingType));
     cabinToggle.onclick = (e) => {
       const pill = e.target.closest('.bt-pill'); if (!pill) return;
@@ -993,8 +1005,8 @@ function renderSeats(instant) {
     /* Real directional per-person fare — what the server will actually
        charge (was showing a stale flat tier price). Offline vs online are
        both shown so the 5% online saving is visible while picking a berth. */
-    const PP_OFF  = sharingBasePP(ctx.to);
-    const PP_ON   = sharingPP(ctx.to, true);
+    const PP_OFF  = sharingBasePP(ctx.to, ctx.from);
+    const PP_ON   = sharingPP(ctx.to, true, ctx.from);
     const PP_SAVE = Math.max(0, PP_OFF - PP_ON);
 
     /* Physical layout — server-owned since 29 Aug 2026. `layout.decks[i].rows`
@@ -1432,13 +1444,13 @@ function updateSeatSummary() {
     const seatLabels = Flow.seats;
     const hasDouble = seatLabels.some(s => /^D/i.test(s));
     const cabinType = hasDouble ? 'double' : 'single';
-    const cf = calcCabinFare(cabinType, Flow.bookingType, Flow.seats.length, true, Flow.route && Flow.route.to, Flow.fareOverride);
+    const cf = calcCabinFare(cabinType, Flow.bookingType, Flow.seats.length, true, Flow.route && Flow.route.to, Flow.fareOverride, Flow.route && Flow.route.from);
     recapTotal = cf.total;
     let rows = '<div class="sum-row"><span>' + cf.emoji + ' ' + cf.label + '</span><b>' + inr(cf.total) + '</b></div>';
     if (cf.saved > 0) rows += '<div class="sum-row disc"><span>🌐 Online Discount</span><b>− ' + inr(cf.saved) + '</b></div>';
     rows += '<div class="sum-row"><span>' + tf('rowPaxFare', { n: Flow.seats.length, f: inr(cf.perPerson) }) + '</span><b>' + inr(cf.total) + '</b></div>';
     const altMode = Flow.bookingType === 'sharing' ? 'private' : 'sharing';
-    const altCf = calcCabinFare(cabinType, altMode, Flow.seats.length, true, Flow.route && Flow.route.to, Flow.fareOverride);
+    const altCf = calcCabinFare(cabinType, altMode, Flow.seats.length, true, Flow.route && Flow.route.to, Flow.fareOverride, Flow.route && Flow.route.from);
     rows += '<div class="sum-row" style="border-top:1px dashed var(--line);padding-top:6px;margin-top:4px;opacity:.7"><span>' + altCf.emoji + ' ' + (altMode === 'sharing' ? 'Sharing' : 'Private') + '</span><b>' + inr(altCf.total) + '</b></div>';
     rows += '<div class="sum-row" style="opacity:.7"><span>' + (altMode === 'sharing' ? '🤝 per person' : '🔒 per person') + '</span><b>' + inr(altCf.perPerson) + '</b></div>';
     $('#fareRows').innerHTML = rows;
@@ -1551,7 +1563,7 @@ function tierFromSeatCount(n) { return n >= 3 ? 'triple' : (n === 2 ? 'double' :
 function tierFarePreview(tier, mode) {
   const ti = SHARING_TIERS[tier] || SHARING_TIERS.single;
   const m = mode === 'private' ? 'private' : 'sharing';
-  const cf = calcCabinFare(ti.cabin, m, ti.pax, true, Flow.route && Flow.route.to);
+  const cf = calcCabinFare(ti.cabin, m, ti.pax, true, Flow.route && Flow.route.to, 0, Flow.route && Flow.route.from);
   return { perPerson: cf.perPerson, approx: m === 'sharing' && tier !== 'triple', label: cf.label };
 }
 

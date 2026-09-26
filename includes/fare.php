@@ -125,6 +125,476 @@ final class Fare
         ];
     }
 
+    /* =================================================================
+     *  POINT-TO-POINT FARE RULES  (26 Sep 2026)
+     *
+     *  Until today the sharing fare had exactly two values — one per
+     *  DIRECTION (toNepal 2000 / toIndia 1800). The owner's real board is
+     *  finer than that: a pickup below Ahmedabad pays more than Ahmedabad
+     *  itself, and the return leg is not symmetrical either. Encoding that
+     *  as more `fare_to_*` rows would have meant one settings key per town
+     *  per direction, and a second place for the app, the counter, the
+     *  chatbot and WhatsApp each to get wrong.
+     *
+     *  So the board itself is the setting: an ORDERED list of rules, first
+     *  match wins, each `{from, to, amount}`. `from`/`to` accept a town
+     *  name, the zone tokens `@india` / `@nepal`, or `*` for anything. An
+     *  unmatched pair still falls through to dirFares(), so a site with no
+     *  rules row prices exactly as it did before this change.
+     *
+     *  Owner-confirmed 26 Sep 2026:
+     *      Ahmedabad (S Hari Parking, Nana Chiloda) -> Rupaidiha  2000
+     *      any other Gujarat point       -> Rupaidiha             2200
+     *      Rupaidiha -> Ahmedabad                                 1800
+     *      Rupaidiha -> any other Gujarat point                   2200
+     * ================================================================= */
+
+    /** The packaged board — also the fallback when the settings row is absent. */
+    public const FARE_RULES_DEFAULT = [
+        ['from' => 'S Hari Parking, Nana Chiloda', 'to' => 'Rupaidiha', 'amount' => 2000, 'note' => 'Ahmedabad to the border'],
+        ['from' => '@india', 'to' => 'Rupaidiha', 'amount' => 2200, 'note' => 'any Gujarat pickup before Ahmedabad'],
+        ['from' => 'Rupaidiha', 'to' => 'S Hari Parking, Nana Chiloda', 'amount' => 1800, 'note' => 'border to Ahmedabad'],
+        ['from' => 'Rupaidiha', 'to' => '@india', 'amount' => 2200, 'note' => 'border to any Gujarat drop below Ahmedabad'],
+    ];
+
+    /**
+     * Spellings the office (and the WhatsApp assistant) may type for a point
+     * whose official name is longer. "Ahmedabad" is the one that matters:
+     * the bookable stop is called "S Hari Parking, Nana Chiloda", and both
+     * the owner and every passenger call it Ahmedabad.
+     *
+     * @return array<string, string> lower-case alias => official point name
+     */
+    public static function pointAliases(): array
+    {
+        $packaged = [
+            'ahmedabad'      => 'S Hari Parking, Nana Chiloda',
+            'amdavad'        => 'S Hari Parking, Nana Chiloda',
+            'nana chiloda'   => 'S Hari Parking, Nana Chiloda',
+            'chiloda'        => 'S Hari Parking, Nana Chiloda',
+            's hari parking' => 'S Hari Parking, Nana Chiloda',
+            'rupaidia'       => 'Rupaidiha',
+            'border'         => 'Rupaidiha',
+        ];
+        $extra = Settings::getArray('fare_point_aliases', []);
+        $out   = $packaged;
+        foreach ($extra as $k => $v) {
+            $k = strtolower(trim((string) $k));
+            if ($k !== '' && trim((string) $v) !== '') {
+                $out[$k] = trim((string) $v);
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * The comparison key for a place. A stop reaches us in several shapes —
+     * the settings list says "S Hari Parking, Nana Chiloda", the browser
+     * submits "S Hari Parking, Nana Chiloda @ 21:00 [23.171,72.623]", and
+     * Boarding::townKey() has already reduced that to "shariparking". All
+     * three must price the same journey, so the pickup time, the coordinates
+     * and every separator are stripped before anything is compared. Same
+     * reasoning as Boarding::townKey(); kept here so Fare has no dependency
+     * on the boarding module.
+     */
+    public static function pkey(?string $s): string
+    {
+        $t = (string) preg_replace('/\[[^\]]*\]/u', ' ', (string) $s);   // drop [lat,lng]
+        $t = (string) preg_replace('/@.*$/u', ' ', $t);                    // drop "@ 21:00"
+        $t = (string) preg_replace('/[^\p{L}\p{N}]+/u', '', $t);
+        return mb_strtolower(trim($t));
+    }
+
+    /**
+     * The OFFICIAL point name for whatever a human (or the checkout) typed.
+     * Falls back to the trimmed input, so an unknown town is compared as
+     * itself rather than silently becoming a different town.
+     */
+    public static function canonicalPoint(?string $name): string
+    {
+        $raw = trim((string) $name);
+        if ($raw === '') {
+            return '';
+        }
+        $key = self::pkey($raw);
+        if ($key === '') {
+            return $raw;
+        }
+
+        foreach (self::pointAliases() as $alias => $official) {
+            if (self::pkey((string) $alias) === $key) {
+                return (string) $official;
+            }
+        }
+
+        $points = self::mainPoints();
+        $all    = array_merge((array) ($points['india'] ?? []), (array) ($points['nepal'] ?? []));
+
+        foreach ($all as $p) {                       // the whole name
+            if (self::pkey((string) $p) === $key) {
+                return (string) $p;
+            }
+        }
+        /* A submitted label carries only the LEADING segment of the official
+           name ("shariparking" for "shariparkingnanachiloda"), so a prefix
+           either way is the same place. Checked after every exact match so a
+           short name can never swallow a longer one. */
+        foreach ($all as $p) {
+            $pk = self::pkey((string) $p);
+            if ($pk !== '' && (str_starts_with($pk, $key) || str_starts_with($key, $pk)
+                || str_contains($pk, $key) || str_contains($key, $pk))) {
+                return (string) $p;
+            }
+        }
+        return $raw;
+    }
+
+    /** True when the point is on the India side of the board. */
+    public static function isIndiaPoint(?string $city): bool
+    {
+        $key = self::pkey(self::canonicalPoint($city));
+        if ($key === '') {
+            return false;
+        }
+        foreach ((array) (self::mainPoints()['india'] ?? []) as $p) {
+            if (self::pkey((string) $p) === $key) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The two points that decide the fare for ONE booking.
+     *
+     * The route says Surat -> Rupaidiha, but the passenger may be getting on
+     * at Nana Chiloda, and on the return leg it is the DROP that is the
+     * Gujarat town. Pricing off routes.from_city alone charged every Gujarat
+     * pickup the same, which is exactly the board the owner replaced on
+     * 26 Sep 2026. The browser has reasoned this way since 19 Sep
+     * (07-checkout.js `ownTown`); this is the server's copy, and the server
+     * is what charges.
+     *
+     * @param  array<string,mixed>|null $route
+     * @return array{from: string, to: string}
+     */
+    public static function journeyPoints(?array $route, string $boardingLabel = '', string $dropLabel = ''): array
+    {
+        $rFrom = trim((string) ($route['from_city'] ?? ''));
+        $rTo   = trim((string) ($route['to_city'] ?? ''));
+
+        if (self::isNepalPoint(self::canonicalPoint($rTo))) {
+            // Outbound: the passenger's own boarding stop is the Gujarat end.
+            return [
+                'from' => self::canonicalPoint($boardingLabel !== '' ? $boardingLabel : $rFrom),
+                'to'   => self::canonicalPoint($rTo),
+            ];
+        }
+
+        // Inbound from the border: the DROP is the Gujarat end.
+        return [
+            'from' => self::canonicalPoint($rFrom),
+            'to'   => self::canonicalPoint($dropLabel !== '' ? $dropLabel : $rTo),
+        ];
+    }
+
+    /**
+     * Does one side of a rule match a city?
+     *   '*'       anything (including an unknown town)
+     *   '@nepal'  a Nepal-side point
+     *   '@india'  an India-side point
+     *   a name    that point, by any of its spellings
+     */
+    public static function pointMatches(string $pattern, ?string $city): bool
+    {
+        $pattern = trim($pattern);
+        if ($pattern === '' || $pattern === '*') {
+            return true;
+        }
+        $low = strtolower($pattern);
+        if ($low === '@nepal') {
+            return self::isNepalPoint(self::canonicalPoint($city));
+        }
+        if ($low === '@india') {
+            return self::isIndiaPoint($city);
+        }
+        $want = self::canonicalPoint($pattern);
+        $have = self::canonicalPoint($city);
+        return $have !== '' && $want === $have;
+    }
+
+    /**
+     * The live board, normalised and ordered. A malformed row is dropped
+     * rather than thrown: a typo in one line must not stop the bus selling
+     * tickets on every other line.
+     *
+     * @return array<int, array{from: string, to: string, amount: float, note: string}>
+     */
+    public static function fareRules(): array
+    {
+        $raw = Settings::getArray('fare_rules', []);
+        if ($raw === []) {
+            $raw = self::FARE_RULES_DEFAULT;
+        }
+        return self::normaliseRules($raw);
+    }
+
+    /**
+     * @param  array<mixed> $raw
+     * @return array<int, array{from: string, to: string, amount: float, note: string}>
+     */
+    public static function normaliseRules(array $raw): array
+    {
+        $out = [];
+        foreach ($raw as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $from = trim((string) ($row['from'] ?? ''));
+            $to   = trim((string) ($row['to'] ?? ''));
+            $amt  = (float) ($row['amount'] ?? 0);
+            if ($from === '' || $to === '' || $amt <= 0 || $amt > 1000000) {
+                continue;
+            }
+            $out[] = [
+                'from'   => $from,
+                'to'     => $to,
+                'amount' => round($amt, 2),
+                'note'   => Security::clean((string) ($row['note'] ?? ''), 120),
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * The first rule that covers this journey, or null when none does.
+     *
+     * @return array{amount: float, from: string, to: string, note: string, index: int}|null
+     */
+    public static function ruleFare(?string $fromCity, ?string $toCity): ?array
+    {
+        if (trim((string) $toCity) === '') {
+            return null;
+        }
+        foreach (self::fareRules() as $i => $rule) {
+            if (self::pointMatches($rule['from'], $fromCity) && self::pointMatches($rule['to'], $toCity)) {
+                return $rule + ['index' => $i];
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The per-person sharing fare for one journey — ONE definition, used by
+     * the website, the counter, the agent panel, the chatbot and WhatsApp.
+     * Rules first, the two directional rows second, the packaged pair last.
+     */
+    public static function pointFare(?string $fromCity, ?string $toCity): float
+    {
+        $rule = self::ruleFare($fromCity, $toCity);
+        if ($rule !== null) {
+            return (float) $rule['amount'];
+        }
+        $dir = self::dirFares();
+        return self::isNepalPoint(self::canonicalPoint($toCity)) ? $dir['toNepal'] : $dir['toIndia'];
+    }
+
+    /**
+     * The whole published board, for the fare table on the home page, the
+     * admin pricing screen and the assistant's "kati paisa" answer.
+     *
+     * @return array<int, array{from: string, to: string, amount: float, source: string}>
+     */
+    public static function fareBoard(): array
+    {
+        $points = self::mainPoints();
+        $india  = (array) ($points['india'] ?? []);
+        $nepal  = (array) ($points['nepal'] ?? []);
+        $out    = [];
+
+        foreach ($nepal as $np) {
+            foreach ($india as $ip) {
+                $r     = self::ruleFare((string) $ip, (string) $np);
+                $out[] = ['from' => (string) $ip, 'to' => (string) $np,
+                          'amount' => self::pointFare((string) $ip, (string) $np),
+                          'source' => $r !== null ? 'rule' : 'direction'];
+            }
+            foreach ($india as $ip) {
+                $r     = self::ruleFare((string) $np, (string) $ip);
+                $out[] = ['from' => (string) $np, 'to' => (string) $ip,
+                          'amount' => self::pointFare((string) $np, (string) $ip),
+                          'source' => $r !== null ? 'rule' : 'direction'];
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * The board as a FLAT LOOKUP the browser can use without carrying a copy
+     * of the rule engine: "<fromKey>|<toKey>" => amount, for every bookable
+     * pair, plus a "*|<toKey>" line per destination for a pickup the page
+     * does not recognise.
+     *
+     * The page has always kept its own fare table (CONFIG.cabinPricing) so it
+     * can quote instantly and offline. Now that the fare depends on WHICH
+     * pickup, that copy would have gone wrong for eight of the nine Gujarat
+     * towns — so the server hands over the answers rather than the rules.
+     * There is still exactly one place that decides a price; this is a
+     * read-only projection of it.
+     *
+     * @return array<string, float>
+     */
+    public static function fareBoardMap(): array
+    {
+        $out = [];
+        foreach (self::fareBoard() as $row) {
+            $out[self::pkey($row['from']) . '|' . self::pkey($row['to'])] = (float) $row['amount'];
+        }
+        /* The fallback line for each destination: what somebody boarding at a
+           point the page cannot name would pay. */
+        $points = self::mainPoints();
+        foreach (array_merge((array) ($points['india'] ?? []), (array) ($points['nepal'] ?? [])) as $to) {
+            $out['*|' . self::pkey((string) $to)] = self::pointFare(null, (string) $to);
+        }
+        return $out;
+    }
+
+    /* =================================================================
+     *  ADVANCE-BOOKING OFFER  (Dashain / Tihar, 26 Sep 2026)
+     *
+     *  "Book at least N hours before departure and get P% off." Every part
+     *  of it is a settings row so the office can move the hours, the
+     *  percentage, the window and the wording without a deploy, and can
+     *  switch it off outright. It is applied inside quote(), which means
+     *  the website, the counter, the agent panel, Quick Ticket, the chatbot
+     *  and WhatsApp all grant exactly the same discount — including on a
+     *  VIP private cabin, which is a mode of the same quote.
+     * ================================================================= */
+
+    /**
+     * The offer as configured. `live` folds in the ON switch, a positive
+     * percentage and today's date against the window.
+     *
+     * @return array{on: bool, live: bool, percent: float, hours: int,
+     *               from: string, to: string, max: float, modes: string,
+     *               text: string, title: string}
+     */
+    public static function advanceOffer(): array
+    {
+        $on    = Settings::getBool('advance_offer_on', false);
+        $pct   = round(Settings::getFloat('advance_offer_percent', 10.0), 2);
+        $hrs   = Settings::getInt('advance_offer_hours', 24);
+        $from  = trim(Settings::getString('advance_offer_from', ''));
+        $to    = trim(Settings::getString('advance_offer_to', ''));
+        $max   = max(0.0, Settings::getFloat('advance_offer_max_inr', 0.0));
+        $modes = strtolower(trim(Settings::getString('advance_offer_modes', 'all')));
+        if (!in_array($modes, ['all', 'sharing', 'private'], true)) {
+            $modes = 'all';
+        }
+        $title = trim(Settings::getString('advance_offer_title', ''));
+        if ($title === '') {
+            $title = 'Advance booking offer';
+        }
+        $text = trim(Settings::getString('advance_offer_text', ''));
+        if ($text === '') {
+            $text = sprintf(
+                'Book %d hours before departure and save %s%%.',
+                max(0, $hrs),
+                rtrim(rtrim(number_format($pct, 2, '.', ''), '0'), '.')
+            );
+        }
+
+        $today = todayISO();
+        $live  = $on && $pct > 0 && $hrs >= 0
+            && ($from === '' || $from <= $today)
+            && ($to === ''   || $to   >= $today);
+
+        return [
+            'on' => $on, 'live' => $live, 'percent' => $pct, 'hours' => max(0, $hrs),
+            'from' => $from, 'to' => $to, 'max' => $max, 'modes' => $modes,
+            'text' => $text, 'title' => $title,
+        ];
+    }
+
+    /**
+     * The advance discount due on one subtotal.
+     *
+     * `$departureTime` matters: without it the boundary is measured to
+     * MIDNIGHT at the start of the travel date, which would refuse the
+     * discount to somebody booking 33 hours before an evening bus. Every
+     * caller that knows the departure passes it.
+     *
+     * @return array{ok: bool, amount: float, percent: float, hoursLeft: float,
+     *               hoursNeeded: int, title: string, text: string, why: string}
+     */
+    public static function advanceDiscount(
+        float $subtotal,
+        string $travelDate,
+        string $departureTime = '00:00:00',
+        ?string $bookingMode = null
+    ): array {
+        $offer = self::advanceOffer();
+        $no    = static function (string $why) use ($offer): array {
+            return [
+                'ok' => false, 'amount' => 0.0, 'percent' => (float) $offer['percent'],
+                'hoursLeft' => 0.0, 'hoursNeeded' => (int) $offer['hours'],
+                'title' => (string) $offer['title'], 'text' => (string) $offer['text'], 'why' => $why,
+            ];
+        };
+
+        if (!$offer['live']) {
+            return $no($offer['on'] ? 'The offer is not running today.' : 'No advance offer is running.');
+        }
+        if ($offer['modes'] !== 'all' && $bookingMode !== null && $bookingMode !== $offer['modes']) {
+            return $no('This offer applies to ' . $offer['modes'] . ' bookings only.');
+        }
+        if ($travelDate === '' || !Security::isValidDate($travelDate)) {
+            return $no('No travel date to measure against.');
+        }
+        if ($subtotal <= 0) {
+            return $no('Nothing to discount.');
+        }
+
+        $time      = trim($departureTime) !== '' ? trim($departureTime) : '00:00:00';
+        $hoursLeft = hoursUntil($travelDate, $time);
+
+        if ($hoursLeft < (float) $offer['hours']) {
+            return $no(sprintf(
+                'Booked %s hours before departure — the offer needs %d.',
+                number_format(max(0, $hoursLeft), 0),
+                (int) $offer['hours']
+            ));
+        }
+
+        $amount = round($subtotal * (float) $offer['percent'] / 100);
+        if ($offer['max'] > 0) {
+            $amount = min($amount, (float) $offer['max']);
+        }
+        $amount = min($amount, $subtotal);
+
+        return [
+            'ok' => $amount > 0, 'amount' => $amount, 'percent' => (float) $offer['percent'],
+            'hoursLeft' => round($hoursLeft, 1), 'hoursNeeded' => (int) $offer['hours'],
+            'title' => (string) $offer['title'], 'text' => (string) $offer['text'],
+            'why' => $amount > 0 ? 'Booked in advance.' : 'The discount worked out to nothing.',
+        ];
+    }
+
+    /**
+     * The departure clock for a schedule row, as the rest of the app reads
+     * it: the per-date override, else the route's timetable, else midnight.
+     *
+     * @param array<string,mixed>|null $schedule
+     * @param array<string,mixed>|null $route
+     */
+    public static function departureTime(?array $schedule, ?array $route = null): string
+    {
+        $t = trim((string) ($schedule['dep_time_override'] ?? ''));
+        if ($t === '') {
+            $t = trim((string) ($route['dep_time'] ?? ''));
+        }
+        return $t !== '' ? $t : '00:00:00';
+    }
     /**
      * Cabin fare — the direct port of calcCabinFare().
      *
@@ -143,7 +613,7 @@ final class Fare
      * gets a "short run" discount off the base fare (business rule set
      * in Admin → Settings → sharing_short_run_*).
      */
-    public static function cabinFare(string $cabinType, string $bookingType, int $passengers, bool $isOnline = true, ?string $toCity = null, int $stopCount = 4): array
+    public static function cabinFare(string $cabinType, string $bookingType, int $passengers, bool $isOnline = true, ?string $toCity = null, int $stopCount = 4, ?string $fromCity = null): array
     {
         $passengers = max(1, $passengers);
         $pricing    = self::pricing();
@@ -203,8 +673,11 @@ final class Fare
             // offline. A "short run" that only uses 1-2 of the 4 Gujarat stops
             // (e.g. Surat -> border only) still drops 200 off the base -- set
             // in Admin -> Settings.
-            $dir      = self::dirFares();
-            $base     = self::isNepalPoint($toCity) ? $dir['toNepal'] : $dir['toIndia'];
+            // 26 Sep 2026: the per-person fare now comes from the point-to-point
+            // board (pointFare), which still falls back to the two directional
+            // rows when no rule covers the pair — so a site with no fare_rules
+            // row prices exactly as it did before.
+            $base     = self::pointFare($fromCity, $toCity);
 
             $minFullStops = Settings::getInt('sharing_short_run_min_stops', 3);
             $shortCut     = Settings::getFloat('sharing_short_run_discount_inr', 200.0);
@@ -645,8 +1118,18 @@ final class Fare
         int $pointsAvailable = 0,
         string $couponCode = '',
         string $phone = '',
-        ?int $routeId = null
+        ?int $routeId = null,
+        array $ctx = []
     ): array {
+        /* 26 Sep 2026 — $ctx carries what the ADVANCE offer needs to be
+           decided: travelDate, departureTime and bookingMode. It is a
+           trailing optional argument so every existing caller keeps working
+           and simply gets no advance discount until it passes the context. */
+        $ctxDate = trim((string) ($ctx['travelDate'] ?? ''));
+        $ctxTime = trim((string) ($ctx['departureTime'] ?? ''));
+        $ctxMode = isset($ctx['bookingMode']) && in_array($ctx['bookingMode'], ['sharing', 'private'], true)
+            ? (string) $ctx['bookingMode'] : null;
+
         $breakdown = [['label' => 'Base fare', 'amount' => $baseAmount]];
 
         // 1. Group discount
@@ -657,6 +1140,29 @@ final class Fare
 
         if ($groupCut > 0) {
             $breakdown[] = ['label' => 'Group discount (' . $seatCount . ' seats)', 'amount' => -$groupCut];
+        }
+
+        /* 1b. ADVANCE-BOOKING OFFER (26 Sep 2026) — "book N hours before
+           departure, save P%". Applied here, before the coupon, so a coupon
+           percentage is taken off the already-reduced amount and the order of
+           operations stays reproducible. Identical for a sharing berth and a
+           VIP private cabin: this is the same quote for both. */
+        $advanceCut  = 0.0;
+        $advancePct  = 0.0;
+        $advanceInfo = ['ok' => false, 'amount' => 0.0, 'percent' => 0.0, 'hoursLeft' => 0.0,
+                        'hoursNeeded' => 0, 'title' => '', 'text' => '', 'why' => 'No advance context supplied.'];
+        if ($ctxDate !== '') {
+            $advanceInfo = self::advanceDiscount($running, $ctxDate, $ctxTime, $ctxMode);
+            if (!empty($advanceInfo['ok'])) {
+                $advanceCut  = (float) $advanceInfo['amount'];
+                $advancePct  = (float) $advanceInfo['percent'];
+                $running    -= $advanceCut;
+                $breakdown[] = [
+                    'label'  => (string) $advanceInfo['title'] . ' ('
+                                . rtrim(rtrim(number_format($advancePct, 2, '.', ''), '0'), '.') . '%)',
+                    'amount' => -$advanceCut,
+                ];
+            }
         }
 
         // 2. Coupon — typed by the passenger, or the running offer
@@ -709,8 +1215,25 @@ final class Fare
 
         $total = max(0.0, round($running + $tax + $fee));
 
+        /* The four lines every screen must show before payment (req 23):
+           Original fare, Discount %, Discount amount, Final fare. Computed
+           HERE so the checkout, the counter, the agent panel, Quick Ticket,
+           the chatbot and WhatsApp cannot each arrive at a different set. */
+        $discountTotal = max(0.0, round($groupCut + $advanceCut + $couponCut + $tierCut + $pointsCut));
+        $discountPct   = $baseAmount > 0 ? round($discountTotal * 100 / $baseAmount, 2) : 0.0;
+
         return [
             'base'           => $baseAmount,
+            'originalFare'   => $baseAmount,
+            'discountAmount' => $discountTotal,
+            'discountPercent' => $discountPct,
+            'finalFare'      => $total,
+            'advanceDiscount' => $advanceCut,
+            'advancePercent'  => $advancePct,
+            'advanceTitle'    => $advanceCut > 0 ? (string) $advanceInfo['title'] : '',
+            'advanceWhy'      => (string) ($advanceInfo['why'] ?? ''),
+            'advanceHoursLeft' => (float) ($advanceInfo['hoursLeft'] ?? 0),
+            'advanceHoursNeeded' => (int) ($advanceInfo['hoursNeeded'] ?? 0),
             'groupDiscount'  => $groupCut,
             'couponDiscount' => $couponCut,
             'couponCode'     => $couponCut > 0 ? strtoupper($couponCode) : '',

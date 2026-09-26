@@ -105,7 +105,7 @@
   ];
   /* which chip opens which act, when a viewer taps a facility rather
      than watching from the top */
-  var CHIP_ACT = { ac: 3, gps: 4, charge: 5, safe: 6 };
+  var CHIP_ACT = { ac: 3, gps: 4, charge: 5, safe: 6, comfort: 3 };
 
   /* ================================================================
      THE STAGE — one SVG, every act drawn and hidden, 360 x 220.
@@ -505,7 +505,15 @@
   }
 
   /* ---- turn the four chips into buttons -------------------------- */
-  var ORDER = ['ac', 'gps', 'charge', 'safe'];
+  /* 26 Sep 2026: the band's four chips are AC Sleeper, Mobile Charging,
+     Safe Travel and Travel Comfort (the owner's list), so the third chip is
+     now Safe Travel and the fourth is Comfort. 'comfort' opens act 3 - the
+     AC-sleeper scene, whose own copy is the clean blanket, the pillow and
+     your own curtain, which is exactly what comfort means on this coach.
+     'gps' is still here and still narrated inside the film (act 4); it is
+     just no longer one of the four chips, because Track Bus already leads
+     with it. */
+  var ORDER = ['ac', 'charge', 'safe', 'comfort'];
   function upgrade() {
     var list = doc.querySelectorAll('.bb-feats > li');
     if (!list.length || list[0].querySelector('.bb-open')) { return; }

@@ -22,7 +22,16 @@ en: {
   ctFabLbl: 'Contact the office', ctTitle: 'Talk to S Hari Global', ctHours: 'Office 7 am – 11 pm · Nepali · Hindi · English', ctCall: 'Call the office', ctWa: 'WhatsApp', ctChat: 'Ask Sahayak (AI)', ctCallback: 'Call me back', ctCbName: 'Your name', ctCbPhone: 'Mobile (we call this number)', ctCbSend: 'Request a call', ctCbNeed: 'Enter your name and mobile number.', ctCbOk: 'Done — the office will call you back.', ctCbFail: 'Could not send — please call the office.', ctWaHello: 'Namaste S Hari Global, ',
   waSheetTitle: 'Chat on WhatsApp', waSheetSub: 'One tap — booking, ticket, help', waBookNow: 'Book a ticket on WhatsApp', waBookSub: 'Date, direction & pickup are filled in for you',
   ecTitle: 'Book your ticket', ecNormal: 'Normal Booking', ecNormalSub: 'Pick date & seat', ecQuick: 'Quick Ticket', ecQuickSub: 'Name + mobile → 10 sec', ecWa: 'WhatsApp Booking', ecWaSub: 'Request · office confirms',
-  bbRoute: 'India ⇄ Nepal Travel Service', bbTag: 'Your trusted travel partner', bbF1: 'AC Sleeper', bbF2: 'Live GPS', bbF3: 'USB Charging', bbF4: 'Safe Travel',
+  bbRoute: 'India ⇄ Nepal Travel Service', bbTag: 'Your trusted travel partner', bbF1: 'AC Sleeper', bbF2: 'Mobile Charging', bbF3: 'Safe Travel', bbF4: 'Travel Comfort',
+  /* 26 Sep 2026 — the VIP private highlight, the advance-booking offer
+     card, and the four lines the checkout must show before payment. */
+  vipEyebrow: 'VIP PRIVATE SLEEPER', vipTitle: 'The whole cabin is yours',
+  vipSub: 'No strangers in your cabin. Air conditioning, a charging point by the berth, a curtain you close yourself — comfortable enough for a family or a couple to travel as one.',
+  vipF1: 'AC Sleeper', vipF2: 'Mobile Charging', vipF3: 'Private & Safe', vipF4: 'Family Comfort',
+  vipBook: 'Book VIP Private', vipCheck: 'Check availability',
+  vipNote: 'One coach, one seat list — a cabin booked here is closed to everyone else at once.',
+  aoBook: 'Book early & save', aoRow: 'Advance booking offer',
+  rowOrigFare: 'Original fare', rowDiscPct: 'Discount', rowDiscAmt: 'Discount amount', rowFinalFare: 'Final fare',
   waReqPhoneError: 'Enter a valid mobile for the chosen country — India: 10 digits starting 6–9 · Nepal: 10 digits starting 96/97/98.', waReqDateError: 'Choose a valid journey date.', waReqPointError: 'Choose your boarding or drop town.', waReqPnrError: 'Enter the booking number (PNR) printed on your ticket.', waReqFixNote: 'What should be corrected? (e.g. name spelling, mobile, date)', waReqUnavailable: 'WhatsApp booking is not available right now — please call the office.',
   copied: 'Copied ✓',
   waDirector: 'Director · 24/7', waOfficeNepal: 'Nepal Office · Nepalgunj', waSheetFoot: 'Your ticket is sent to your WhatsApp automatically the moment it is confirmed ✅', waSheetClose: 'Close', waPin: 'Show on the map',
@@ -470,7 +479,14 @@ hi: {
   ctFabLbl: 'ऑफ़िस से संपर्क', ctTitle: 'S Hari Global से बात करें', ctHours: 'ऑफ़िस सुबह 7 – रात 11 · नेपाली · हिंदी · English', ctCall: 'ऑफ़िस को कॉल करें', ctWa: 'WhatsApp', ctChat: 'सहायक से पूछें (AI)', ctCallback: 'मुझे कॉल करें', ctCbName: 'आपका नाम', ctCbPhone: 'मोबाइल (इसी नंबर पर कॉल आएगा)', ctCbSend: 'कॉल का अनुरोध', ctCbNeed: 'अपना नाम और मोबाइल नंबर लिखें।', ctCbOk: 'हो गया — ऑफ़िस आपको कॉल करेगा।', ctCbFail: 'भेज नहीं पाए — कृपया ऑफ़िस को कॉल करें।', ctWaHello: 'नमस्ते S Hari Global, ',
   waSheetTitle: 'WhatsApp पर बात करें', waSheetSub: 'एक टैप — बुकिंग, टिकट, मदद', waBookNow: 'WhatsApp पर टिकट बुक करें', waBookSub: 'तारीख़, दिशा और पिकअप अपने-आप भर जाते हैं',
   ecTitle: 'अपना टिकट बुक करें', ecNormal: 'सामान्य बुकिंग', ecNormalSub: 'तारीख और सीट चुनें', ecQuick: 'क्विक टिकट', ecQuickSub: 'नाम + मोबाइल → 10 सेकंड', ecWa: 'WhatsApp बुकिंग', ecWaSub: 'अनुरोध · ऑफ़िस पक्का करेगा',
-  bbRoute: 'भारत ⇄ नेपाल यात्रा सेवा', bbTag: 'आपका भरोसेमंद यात्रा साथी', bbF1: 'AC स्लीपर', bbF2: 'लाइव GPS', bbF3: 'USB चार्जिंग', bbF4: 'सुरक्षित यात्रा',
+  bbRoute: 'भारत ⇄ नेपाल यात्रा सेवा', bbTag: 'आपका भरोसेमंद यात्रा साथी', bbF1: 'AC स्लीपर', bbF2: 'मोबाइल चार्जिंग', bbF3: 'सुरक्षित यात्रा', bbF4: 'यात्रा का आराम',
+  vipEyebrow: 'VIP प्राइवेट स्लीपर', vipTitle: 'पूरा केबिन आपका',
+  vipSub: 'केबिन में कोई अजनबी नहीं। AC, बर्थ के पास चार्जिंग, अपना परदा — परिवार या कपल के लिए पूरा आराम।',
+  vipF1: 'AC स्लीपर', vipF2: 'मोबाइल चार्जिंग', vipF3: 'निजी और सुरक्षित', vipF4: 'परिवार का आराम',
+  vipBook: 'VIP प्राइवेट बुक करें', vipCheck: 'सीट खाली है? देखें',
+  vipNote: 'एक ही बस, एक ही सीट लिस्ट — यहाँ बुक किया केबिन तुरंत सबके लिए बंद हो जाता है।',
+  aoBook: 'पहले बुक करें, बचाएँ', aoRow: 'एडवांस बुकिंग छूट',
+  rowOrigFare: 'मूल भाड़ा', rowDiscPct: 'छूट', rowDiscAmt: 'छूट राशि', rowFinalFare: 'अंतिम भाड़ा',
   waReqPhoneError: 'चुने गए देश का सही मोबाइल नंबर लिखें — भारत: 6–9 से शुरू 10 अंक · नेपाल: 96/97/98 से शुरू 10 अंक।', waReqDateError: 'यात्रा की सही तारीख चुनें।', waReqPointError: 'चढ़ने या उतरने का शहर चुनें।', waReqPnrError: 'टिकट पर छपा बुकिंग नंबर (PNR) लिखें।', waReqFixNote: 'क्या सुधारना है? (जैसे नाम की स्पेलिंग, मोबाइल, तारीख)', waReqUnavailable: 'WhatsApp बुकिंग अभी उपलब्ध नहीं है — कृपया ऑफ़िस को कॉल करें।',
   copied: 'कॉपी हो गया ✓',
   waDirector: 'डायरेक्टर · 24/7', waOfficeNepal: 'नेपाल ऑफ़िस · नेपालगंज', waSheetFoot: 'टिकट confirm होते ही आपके WhatsApp पर अपने-आप आ जाता है ✅', waSheetClose: 'बंद करें', waPin: 'मैप पर दिखाएँ',
@@ -904,7 +920,14 @@ ne: {
   ctFabLbl: 'कार्यालयसँग सम्पर्क', ctTitle: 'S Hari Global सँग कुरा गर्नुहोस्', ctHours: 'कार्यालय बिहान ७ – राति ११ · नेपाली · हिन्दी · English', ctCall: 'कार्यालयलाई फोन', ctWa: 'WhatsApp', ctChat: 'सहायकलाई सोध्नुहोस् (AI)', ctCallback: 'मलाई फोन गर्नुहोस्', ctCbName: 'तपाईंको नाम', ctCbPhone: 'मोबाइल (यही नम्बरमा फोन आउँछ)', ctCbSend: 'फोनको अनुरोध', ctCbNeed: 'आफ्नो नाम र मोबाइल नम्बर लेख्नुहोस्।', ctCbOk: 'भयो — कार्यालयले तपाईंलाई फोन गर्नेछ।', ctCbFail: 'पठाउन सकिएन — कृपया कार्यालयलाई फोन गर्नुहोस्।', ctWaHello: 'नमस्ते S Hari Global, ',
   waSheetTitle: 'WhatsApp मा कुरा गर्नुहोस्', waSheetSub: 'एक ट्याप — booking, टिकट, सहायता', waBookNow: 'WhatsApp मा टिकट बुक गर्नुहोस्', waBookSub: 'मिति, दिशा र चढ्ने ठाउँ आफैँ भरिन्छ',
   ecTitle: 'आफ्नो टिकट बुक गर्नुहोस्', ecNormal: 'सामान्य बुकिङ', ecNormalSub: 'मिति र सिट छान्नुहोस्', ecQuick: 'क्विक टिकट', ecQuickSub: 'नाम + मोबाइल → १० सेकेन्ड', ecWa: 'WhatsApp बुकिङ', ecWaSub: 'अनुरोध · कार्यालयले पक्का गर्छ',
-  bbRoute: 'भारत ⇄ नेपाल यात्रा सेवा', bbTag: 'तपाईंको भरपर्दो यात्रा साथी', bbF1: 'AC स्लीपर', bbF2: 'लाइभ GPS', bbF3: 'USB चार्जिङ', bbF4: 'सुरक्षित यात्रा',
+  bbRoute: 'भारत ⇄ नेपाल यात्रा सेवा', bbTag: 'तपाईंको भरपर्दो यात्रा साथी', bbF1: 'AC स्लीपर', bbF2: 'मोबाइल चार्जिङ', bbF3: 'सुरक्षित यात्रा', bbF4: 'यात्राको आराम',
+  vipEyebrow: 'VIP प्राइभेट स्लीपर', vipTitle: 'पूरै क्याबिन तपाईंको',
+  vipSub: 'क्याबिनमा अरू कोही हुँदैन। AC, बर्थको दायाँ चार्जिङ, आम्नै पर्दा — परिवार वा जोडीका लागि पूरा आराम।',
+  vipF1: 'AC स्लीपर', vipF2: 'मोबाइल चार्जिङ', vipF3: 'निजी र सुरक्षित', vipF4: 'परिवारको आराम',
+  vipBook: 'VIP प्राइभेट बुक गर्नुहोस्', vipCheck: 'सिट खाली छ? हेर्नुहोस्',
+  vipNote: 'एउटै बस, एउटै सिट सूची — यहाँ बुक भएको क्याबिन तुरुन्तै सबैका लागि बन्द हुन्छ।',
+  aoBook: 'चाँडै बुक गर्नु, बचत गर्नु', aoRow: 'अग्रिम बुकिङ छुट',
+  rowOrigFare: 'मूल भाडा', rowDiscPct: 'छुट', rowDiscAmt: 'छुट रकम', rowFinalFare: 'अन्तिम भाडा',
   waReqPhoneError: 'छानिएको देशको सही मोबाइल नम्बर लेख्नुहोस् — भारत: ६–९ बाट सुरु हुने १० अङ्क · नेपाल: ९६/९७/९८ बाट सुरु हुने १० अङ्क।', waReqDateError: 'यात्राको सही मिति छान्नुहोस्।', waReqPointError: 'चढ्ने वा ओर्लने ठाउँ छान्नुहोस्।', waReqPnrError: 'टिकटमा छापिएको बुकिङ नम्बर (PNR) लेख्नुहोस्।', waReqFixNote: 'के सच्याउनुपर्छ? (जस्तै नामको हिज्जे, मोबाइल, मिति)', waReqUnavailable: 'WhatsApp बुकिङ अहिले उपलब्ध छैन — कृपया कार्यालयमा फोन गर्नुहोस्।',
   copied: 'कपी भयो ✓',
   waDirector: 'निर्देशक · 24/7', waOfficeNepal: 'नेपाल कार्यालय · नेपालगञ्ज', waSheetFoot: 'टिकट confirm हुनासाथ तपाईंको WhatsApp मा आफैँ आउँछ ✅', waSheetClose: 'बन्द गर्नुहोस्', waPin: 'नक्सामा देखाउनुहोस्',
@@ -1342,7 +1365,7 @@ let LANG = (function () {
   } catch (e) {}
   return 'ne';
 })();
-I18N.gu = Object.assign({}, I18N.en, {"bbRoute": "ભારત ⇄ નેપાળ યાત્રા સેવા", "bbTag": "તમારો ભરોસાપાત્ર યાત્રા સાથી", "bbF1": "AC સ્લીપર", "bbF2": "લાઇવ GPS", "bbF3": "USB ચાર્જિંગ", "bbF4": "સુરક્ષિત યાત્રા", "ecTitle": "તમારી ટિકિટ બુક કરો", "ecNormal": "સામાન્ય બુકિંગ", "ecNormalSub": "તારીખ અને સીટ પસંદ કરો", "ecQuick": "ક્વિક ટિકિટ", "ecQuickSub": "નામ + મોબાઇલ → 10 સેકન્ડ", "ecWa": "WhatsApp બુકિંગ", "ecWaSub": "વિનંતી · ઓફિસ પુષ્ટિ કરશે", "premiumFront": "આગળ · મુસાફરીની દિશા", "premiumRear": "પાછળ", "premiumBeyond": "સરહદોની પાર મુસાફરી", "premiumDirector": "અધ્યક્ષ / નિયામક", "premiumPromise": "તમારી મુસાફરી, અમારી જવાબદારી.", "premiumSafe": "સુરક્ષિત મુસાફરી", "premiumEasy": "સરળ બુકિંગ", "premiumLoading": "તમારી મુસાફરી તૈયાર થઈ રહી છે…", "premiumRetry": "જોડાણમાં સમય લાગે છે. ફરી લોડ કરો", "premiumSlow": "જોડાઈ રહ્યું છે. ફરી પ્રયાસ કરો અથવા આગળ વધો.", "premiumTrust": "વિશ્વાસ સાથે મુસાફરી.", "premiumPay": "સ્કેન કરીને ચૂકવો", "premiumPaid": "ચુકવણી ચકાસાયેલ", "premiumPending": "ચુકવણી ચકાસણી બાકી", "premiumVerify": "ટિકિટ ચકાસણી", "premiumDue": "બાકી રકમ"});
+I18N.gu = Object.assign({}, I18N.en, {"bbRoute": "ભારત ⇄ નેપાળ યાત્રા સેવા", "bbTag": "તમારો ભરોસાપાત્ર યાત્રા સાથી", "bbF1": "AC સ્લીપર", "bbF2": "મોબાઇલ ચાર્જિંગ", "bbF3": "સુરક્ષિત યાત્રા", "bbF4": "યાત્રાનો આરામ", "vipEyebrow": "VIP પ્રાઈવેટ સ્લીપર", "vipTitle": "આખું કેબિન તમારું", "vipF1": "AC સ્લીપર", "vipF2": "મોબાઇલ ચાર્જિંગ", "vipF3": "ખાસગી અને સુરક્ષિત", "vipF4": "પરિવારનો આરામ", "vipBook": "VIP પ્રાઈવેટ બુક કરો", "vipCheck": "સીટ ખાલી છે? જુઅો", "ecTitle": "તમારી ટિકિટ બુક કરો", "ecNormal": "સામાન્ય બુકિંગ", "ecNormalSub": "તારીખ અને સીટ પસંદ કરો", "ecQuick": "ક્વિક ટિકિટ", "ecQuickSub": "નામ + મોબાઇલ → 10 સેકન્ડ", "ecWa": "WhatsApp બુકિંગ", "ecWaSub": "વિનંતી · ઓફિસ પુષ્ટિ કરશે", "premiumFront": "આગળ · મુસાફરીની દિશા", "premiumRear": "પાછળ", "premiumBeyond": "સરહદોની પાર મુસાફરી", "premiumDirector": "અધ્યક્ષ / નિયામક", "premiumPromise": "તમારી મુસાફરી, અમારી જવાબદારી.", "premiumSafe": "સુરક્ષિત મુસાફરી", "premiumEasy": "સરળ બુકિંગ", "premiumLoading": "તમારી મુસાફરી તૈયાર થઈ રહી છે…", "premiumRetry": "જોડાણમાં સમય લાગે છે. ફરી લોડ કરો", "premiumSlow": "જોડાઈ રહ્યું છે. ફરી પ્રયાસ કરો અથવા આગળ વધો.", "premiumTrust": "વિશ્વાસ સાથે મુસાફરી.", "premiumPay": "સ્કેન કરીને ચૂકવો", "premiumPaid": "ચુકવણી ચકાસાયેલ", "premiumPending": "ચુકવણી ચકાસણી બાકી", "premiumVerify": "ટિકિટ ચકાસણી", "premiumDue": "બાકી રકમ"});
 function t(k) { const d = I18N[LANG] || I18N.en; const s = (k in d) ? d[k] : I18N.en[k]; return s == null ? k : s; }
 function tf(k, vars) { let s = t(k); Object.keys(vars || {}).forEach(v => { s = s.split('{' + v + '}').join(vars[v]); }); return s; }
 function applyLang() {

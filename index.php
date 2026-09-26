@@ -141,6 +141,49 @@ try {
     $boot['stats'] = ['tickets' => 0];
 }
 
+/* ---------------------------------------------------------------------
+ *  PRICING (26 Sep 2026): the fare board and the advance-booking offer.
+ *
+ *  The page has always carried its own fare table so a seat summary can be
+ *  drawn instantly and offline. That copy held ONE price per direction; the
+ *  board now depends on which pickup, so the copy would have been wrong for
+ *  eight of the nine Gujarat towns. The server therefore hands over the
+ *  ANSWERS (a small from|to => amount map, eighteen entries) rather than the
+ *  rules, and the page prefers them over its packaged table.
+ *
+ *  The offer travels as well, because the home page's offer card is drawn
+ *  from it — so switching the offer off in Admin removes the card, and
+ *  changing 10% to 15% changes what the card says, with no deploy.
+ *
+ *  Never blocks the page: any failure simply leaves the page on its
+ *  packaged table and hides the offer card.
+ * ------------------------------------------------------------------- */
+try {
+    require_once INCLUDE_PATH . '/fare.php';   // bootstrap.php does not load it
+    $advNow = Fare::advanceOffer();
+    $boot['pricing'] = [
+        'board' => Fare::fareBoardMap(),
+        'offer' => [
+            // `live` folds in the switch, a positive percentage and today's
+            // date against the window — the card asks nothing else.
+            'live'    => (bool) $advNow['live'],
+            'hours'   => (int) $advNow['hours'],
+            'percent' => (float) $advNow['percent'],
+            'max'     => (float) $advNow['max'],
+            'modes'   => (string) $advNow['modes'],
+            'title'   => (string) $advNow['title'],
+            'text'    => (string) $advNow['text'],
+            'until'   => (string) $advNow['to'],
+        ],
+        'vip' => [
+            'single' => (float) (Settings::getArray('cabin_pricing', Fare::pricing())['private']['single_1pax']['offline'] ?? 0),
+            'double' => (float) (Settings::getArray('cabin_pricing', Fare::pricing())['private']['double_2pax']['offline'] ?? 0),
+        ],
+    ];
+} catch (Throwable $e) {
+    $boot['pricing'] = ['board' => [], 'offer' => ['live' => false], 'vip' => []];
+}
+
 /* Web Push (13 Sep 2026): the VAPID public key the phone needs to subscribe
    for delay alerts / reminders / "ticket ready". The pair is generated once
    on first use and lives in the settings table (never public); only the

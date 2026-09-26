@@ -892,7 +892,7 @@ function renderCheckout() {
   const cabinLegs = legs.filter(l => l.bookingType && l.cabinType);
   let cabinTotal = 0;
   const cabinRows = cabinLegs.map(l => {
-    const cf = calcCabinFare(l.cabinType, l.bookingType, l.seats.length, true, (routeById(l.routeId) || {}).to, l.fareOverride);
+    const cf = calcCabinFare(l.cabinType, l.bookingType, l.seats.length, true, (routeById(l.routeId) || {}).to, l.fareOverride, (routeById(l.routeId) || {}).from);
     cabinTotal += cf.total;
     return '<div class="sum-row"><span>' + cf.emoji + ' ' + cf.label + '</span><b>' + inr(cf.total) + '</b></div>'
       + (l.sharingTier ? '<div class="sum-row"><span>Sharing tier · साझा टियर</span><b>' + sharingTierLabel(l.sharingTier) + '</b></div>' : '')
@@ -912,11 +912,27 @@ function renderCheckout() {
     coView.classList.toggle('sharing-mode', !hasPrivateLeg && cabinLegs.some(l => l.bookingType === 'sharing'));
   }
 
+  /* The advance-booking offer (26 Sep 2026). The SERVER decides whether this
+     booking qualifies — it measures the hours against the real departure clock
+     and reads the office's own hours / percentage / dates — so the page never
+     computes it. refreshServerQuote() below fills these in and re-renders.
+     Until it answers (or if it never does) they are zero and the checkout
+     behaves exactly as it did before. */
+  Flow.advanceCut = 0;
+  Flow.advanceTitle = '';
+  Flow.srvQuote = null;
+
   const checkoutTotals = () => {
-    const tierDisc = (tierInfo && tierInfo.tier.discountPct > 0) ? Math.round(fareBase * tierInfo.tier.discountPct / 100) : 0;
-    const afterTier = fareBase - tierDisc;
+    /* The order the server applies discounts in (Fare::quote): base, advance
+       offer, then the loyalty tier, then points. Kept identical here so the
+       amount on screen and the amount charged agree to the rupee. */
+    const advCut    = Math.max(0, Math.min(Number(Flow.advanceCut) || 0, fareBase));
+    const afterAdv  = fareBase - advCut;
+    const tierDisc  = (tierInfo && tierInfo.tier.discountPct > 0) ? Math.round(afterAdv * tierInfo.tier.discountPct / 100) : 0;
+    const afterTier = afterAdv - tierDisc;
     const red = Flow.usePoints ? loyaltyRedemption(me, (me && me.loyaltyPoints) || 0, afterTier) : { points: 0, rupees: 0 };
-    return { tierDisc: tierDisc, tierName: tierInfo ? tierInfo.tier.icon + ' ' + tierInfo.tier.name : '',
+    return { advCut: advCut, advTitle: String(Flow.advanceTitle || ''),
+             tierDisc: tierDisc, tierName: tierInfo ? tierInfo.tier.icon + ' ' + tierInfo.tier.name : '',
              points: red.points, pointsValue: red.rupees, total: Math.max(1, afterTier - red.rupees),
              fareBad: !fareOk(fareBase) };
   };
@@ -954,6 +970,11 @@ function renderCheckout() {
   const updatePayment = () => {
     const x = checkoutTotals();
     let rows = useCabin ? cabinRows : fareRowsHTML(f);
+    /* The advance-booking offer, named the way the office named it. */
+    if (x.advCut > 0) {
+      rows += '<div class="sum-row disc"><span>🎉 ' + esc(x.advTitle || t('aoRow') || 'Advance booking offer')
+            + '</span><b>− ' + inr(x.advCut) + '</b></div>';
+    }
     if (x.tierDisc > 0) rows += '<div class="sum-row disc"><span>' + tf('loyRowTier', { t: tierInfo.tier.icon + ' ' + tierInfo.tier.name }) + '</span><b>− ' + inr(x.tierDisc) + '</b></div>';
     if (x.pointsValue > 0) rows += '<div class="sum-row disc"><span>' + t('loyRowPoints') + ' (' + x.points + ')</span><b>− ' + inr(x.pointsValue) + '</b></div>';
     /* opt-in points checkbox — only when the user has enough points */
@@ -964,9 +985,24 @@ function renderCheckout() {
     }
     /* Math.max(1, …) above would turn a fare that failed to load into a
        payable ₹1; say so instead and let submitBooking refuse. */
+    /* THE FOUR LINES THAT MUST APPEAR BEFORE PAYMENT (owner, 26 Sep 2026):
+       original fare, discount %, discount amount, final fare. Built from the
+       numbers just used, so it can never disagree with the rows above it. */
+    const origFare = Math.round(fareBase);
+    const discAmt  = Math.max(0, origFare - Math.round(x.total));
+    const discPct  = origFare > 0 ? Math.round(discAmt * 1000 / origFare) / 10 : 0;
+    const fourLines = discAmt > 0
+      ? '<div class="sum-four">'
+        + '<div class="sum-row"><span>' + esc(t('rowOrigFare') || 'Original fare') + '</span><b>' + inr(origFare) + '</b></div>'
+        + '<div class="sum-row disc"><span>' + esc(t('rowDiscPct') || 'Discount') + '</span><b>' + discPct + '%</b></div>'
+        + '<div class="sum-row disc"><span>' + esc(t('rowDiscAmt') || 'Discount amount') + '</span><b>− ' + inr(discAmt) + '</b></div>'
+        + '<div class="sum-row total"><span>' + esc(t('rowFinalFare') || 'Final fare') + '</span><b>' + inr(x.total) + '</b></div>'
+        + '</div>'
+      : '<div class="sum-row total"><span>' + t('rowTotal') + '</span><b>' + inr(x.total) + '</b></div>';
+
     $('#coFareRows').innerHTML = x.fareBad
       ? '<div class="sum-row total"><span style="color:var(--bad)">' + esc(t('fareNA')) + '</span><b>—</b></div>'
-      : rows + '<div class="sum-row total"><span>' + t('rowTotal') + '</span><b>' + inr(x.total) + '</b></div>';
+      : rows + fourLines;
     const chk = $('#loyUseChk');
     if (chk) chk.onchange = () => { Flow.usePoints = chk.checked; updatePayment(); };
     flipNumber($('#payAmount'), x.total, x.fareBad ? (() => '—') : inr, $('#bpAmt'));
@@ -1009,6 +1045,41 @@ function renderCheckout() {
   };
   Flow.checkoutTotals = checkoutTotals;   // submitBooking reads the same maths
   updatePayment();
+
+  /* ---- THE AUTHORITATIVE QUOTE (26 Sep 2026) ----------------------
+     Everything above is the page's own instant estimate. /api/quote.php is
+     the code that will actually charge: it prices off the passenger's real
+     boarding stop, applies the office's advance-booking offer against this
+     bus's departure clock, and returns the four display lines already worked
+     out. We take its advance discount and re-render.
+
+     Deliberately non-blocking and failure-tolerant: no network, an older
+     server, or any error leaves the estimate on screen exactly as before.
+     BookingService::create() re-prices on submit regardless, so this can only
+     make the screen agree with the bill sooner — never disagree with it. */
+  const refreshServerQuote = async () => {
+    const l = legs && legs[0];
+    if (!l || !l.seats || !l.seats.length) return;
+    try {
+      const res = await shgApi.post('/quote.php', {
+        routeCode: l.routeId, scheduleId: l.sid || 0,
+        seats: l.seats.slice(), travelDate: l.date || '',
+        bookingMode: l.bookingType || undefined,
+        cabinType: l.cabinType || undefined,
+        boarding: l.boarding || '', drop: l.drop || '',
+        phone: (typeof USER !== 'undefined' && USER && USER.phone) ? USER.phone : ''
+      });
+      Flow.srvQuote = res || null;
+      const adv = (res && res.advance) || {};
+      const cut = Math.round(Number(adv.amount) || 0);
+      if (cut !== Math.round(Number(Flow.advanceCut) || 0) || (adv.title || '') !== Flow.advanceTitle) {
+        Flow.advanceCut = cut;
+        Flow.advanceTitle = String(adv.title || '');
+        updatePayment();
+      }
+    } catch (e) { /* estimate stands */ }
+  };
+  refreshServerQuote();
 
   setPayMethod(PAY_METHOD);
   $('#payMethodUpi').onclick = () => setPayMethod('upi');
@@ -1320,7 +1391,7 @@ async function submitBooking() {
     booking.bookingType = out.bookingType;
     booking.cabinType = out.cabinType;
     if (out.sharingTier) booking.sharingTier = out.sharingTier;
-    const cf = calcCabinFare(out.cabinType, out.bookingType, out.seats.length, true, (routeById(out.routeId) || {}).to, out.fareOverride);
+    const cf = calcCabinFare(out.cabinType, out.bookingType, out.seats.length, true, (routeById(out.routeId) || {}).to, out.fareOverride, (routeById(out.routeId) || {}).from);
     booking.cabinFare = cf.total;
     booking.cabinLabel = cf.label;
   }
@@ -2075,10 +2146,10 @@ function renderStatus(id) {
   <div class="status-card tk2${conf ? ' confirm-success' : ''}" id="ticketCard" data-pnr="${esc(b.id)}">
     <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo.png?v=20260926j" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo.png?v=20260926k" alt="" loading="lazy" decoding="async">
         <div><b>${esc(CONFIG.company.name || 'S HARI GLOBAL PRIVATE LIMITED')}</b><small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
       </div>
-      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20260926j" width="600" height="312" alt="" decoding="async">
+      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20260926k" width="600" height="312" alt="" decoding="async">
     </div>
     <div class="premium-ticket-status">${pill2}${b.ticketNumber ? '<span>' + esc(b.ticketNumber) + '</span>' : ''}</div>
     ${(typeof routeOverviewSVG === 'function') ? routeOverviewSVG({ from: (isNepalPoint(r.from) ? r.from : (parseBP(b.boarding || '').name || r.from)), to: (isNepalPoint(r.to) ? r.to : (parseBP(b.drop || '').name || r.to)), compact: true }) : ''}

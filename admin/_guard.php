@@ -132,6 +132,11 @@ function admin_nav(): array
         ['href' => 'payments.php',     'icon' => 'card',      'label' => 'Verify Payments',  'perm' => 'payments.view',  'section' => 'Payments'],
         ['href' => 'refunds.php',      'icon' => 'refund',    'label' => 'Refunds',          'perm' => 'refunds.view',   'section' => 'Payments'],
         ['href' => 'offers.php',       'icon' => 'star',      'label' => 'Offers & Discounts','perm' => 'payments.view',  'section' => 'Payments'],
+        /* 26 Sep 2026: every price the office changes, on one screen — the
+           point-to-point board, the VIP cabin rates and the advance-booking
+           offer. commissions.view because the page also carries the office's
+           own WhatsApp control numbers; a ticket window holds payments.view. */
+        ['href' => 'pricing.php',      'icon' => 'banknote',  'label' => '💰 Fares & offers', 'perm' => 'commissions.view', 'section' => 'Payments', 'hot' => true],
 
         // Reports
         // 24 Sep 2026: the assistant with hands, full-screen — reports and

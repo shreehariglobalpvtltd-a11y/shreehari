@@ -140,49 +140,59 @@ body{margin:0;background:#FFFFFF}
 .splash-phone{display:inline-flex;align-items:center;gap:8px;margin-top:22px;padding:10px 22px;border-radius:999px;background:#FFF1E4;border:1px solid rgba(240,124,31,.34);color:#C25E10;font-family:'Cinzel',Georgia,serif;font-size:17px;font-weight:800;letter-spacing:.03em;text-decoration:none;opacity:0;transform:translateY(10px)}
 @media (max-width:400px){.splash-logo{width:min(52vw,132px)}.splash-title{font-size:clamp(23px,7.6vw,32px)}.splash-ceo b{font-size:15.5px}}
 </style>
-  <link rel="preload" as="image" href="/assets/img/logo.png?v=20260926j" fetchpriority="high">
-  <link rel="stylesheet" href="/assets/css/app.css?v=20260926j">
-  <link rel="stylesheet" href="/assets/css/views.css?v=20260926j">
+  <link rel="preload" as="image" href="/assets/img/logo.png?v=20260926k" fetchpriority="high">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260926k">
+  <link rel="stylesheet" href="/assets/css/views.css?v=20260926k">
   <!-- The shell pass (24 Sep 2026): header + logo, motion, elevation and
        the sound/haptics switches. Loads LAST on purpose — every rule in it
        is meant to win on equal specificity without an !important war, and
        removing this one line reverts the whole pass. -->
-  <link rel="stylesheet" href="/assets/css/premium.css?v=20260926j">
+  <link rel="stylesheet" href="/assets/css/premium.css?v=20260926k">
+  <!-- VIP private sleeper, the advance-booking offer card and the four
+       facility chips (26 Sep 2026). Loads after premium.css so its chip
+       animations win on equal specificity; removing this one line reverts
+       the whole block to static. No images: the cabin is inline SVG. -->
+  <link rel="stylesheet" href="/assets/css/vip.css?v=20260926k">
 <!-- App bundle: `defer` keeps the same execution order and still runs after the
      document is parsed, but placing the tags in <head> lets the browser start
      fetching ~1 MB of JS with the FIRST bytes of HTML instead of after it has
      parsed ~190 KB of markup (perf pass, 11 Sep 2026). -->
-<script defer src="/assets/js/01-boot.js?v=20260926j"></script>
-<script defer src="/assets/js/02-config.js?v=20260926j"></script>
-<script defer src="/assets/js/03-accounts.js?v=20260926j"></script>
-<script defer src="/assets/js/04-i18n.js?v=20260926j"></script>
-<script defer src="/assets/js/05-router.js?v=20260926j"></script>
-<script defer src="/assets/js/06-results.js?v=20260926j"></script>
-<script defer src="/assets/js/07-checkout.js?v=20260926j"></script>
-<script defer src="/assets/js/14-counter.js?v=20260926j"></script>
-<script defer src="/assets/js/08-signin.js?v=20260926j"></script>
-<script defer src="/assets/js/10-track.js?v=20260926j"></script>
-<script defer src="/assets/js/11-pdf-ticket.js?v=20260926j"></script>
-<script defer src="/assets/js/13-admin-routes.js?v=20260926j"></script>
+<script defer src="/assets/js/01-boot.js?v=20260926k"></script>
+<script defer src="/assets/js/02-config.js?v=20260926k"></script>
+<script defer src="/assets/js/03-accounts.js?v=20260926k"></script>
+<script defer src="/assets/js/04-i18n.js?v=20260926k"></script>
+<script defer src="/assets/js/05-router.js?v=20260926k"></script>
+<script defer src="/assets/js/06-results.js?v=20260926k"></script>
+<script defer src="/assets/js/07-checkout.js?v=20260926k"></script>
+<script defer src="/assets/js/14-counter.js?v=20260926k"></script>
+<script defer src="/assets/js/08-signin.js?v=20260926k"></script>
+<script defer src="/assets/js/10-track.js?v=20260926k"></script>
+<script defer src="/assets/js/11-pdf-ticket.js?v=20260926k"></script>
+<script defer src="/assets/js/13-admin-routes.js?v=20260926k"></script>
 <!-- 13 Sep 2026: PWA layer — install sheet, Web Push, border prep card,
      split-pay, 7-day seat-fill chart. Last on purpose: it reads the globals
      the files above define and every hook it adds is optional. -->
-<script defer src="/assets/js/17-pwa.js?v=20260926j"></script>
-<script defer src="/assets/js/18-journey.js?v=20260926j"></script>
+<script defer src="/assets/js/17-pwa.js?v=20260926k"></script>
+<script defer src="/assets/js/18-journey.js?v=20260926k"></script>
 <!-- Premium feel (24 Sep 2026). MUST stay after 13-admin-routes.js: it
      takes over that file's SFX object in place, which means the binding has
      to exist by the time this runs. defer preserves document order. -->
-<script defer src="/assets/js/19-premium.js?v=20260926j"></script>
+<script defer src="/assets/js/19-premium.js?v=20260926k"></script>
 <!-- The four facility chips, told as a story (26 Sep 2026). MUST stay after
      19-premium.js: each scene plays its own voice through that file's sound
      engine, so window.SHGFeel has to exist first. defer keeps document order.
      Nothing here runs until a chip is tapped - the home page stays still,
      which is the other half of the same owner's brief. -->
-<script defer src="/assets/js/20-feature-story.js?v=20260926j"></script>
+<script defer src="/assets/js/20-feature-story.js?v=20260926k"></script>
 <!-- 26 Sep 2026 - the traveller's own card: a round photo kept ONLY on this
      handset, the country flag in front of it (which really does re-file the
      account as +91 or +977), and the name the ticket prints. -->
-<script defer src="/assets/js/21-me.js?v=20260926j"></script>
+<script defer src="/assets/js/21-me.js?v=20260926k"></script>
+<!-- 26 Sep 2026 — the VIP private highlight and the advance-booking offer
+     card. Fills the offer card from the server's own settings (so no offer
+     running means no card and no claim), points both VIP buttons at the
+     PRIVATE seat flow, and animates the cabin only while it is on screen. -->
+<script defer src="/assets/js/22-vip.js?v=20260926k"></script>
 <meta property="og:title" content="Surat to Nepal Bus (Rupaidiha / Nepalgunj) — AC Sleeper | S Hari Global">
 <meta property="og:description" content="Direct AC Sleeper coach from Gujarat (India) to the Rupaidiha (India–Nepal) border. Boarding at Surat, Kamrej, Ankleshwar, Bharuch, Vadodara, Anand, Nadiad, Emli Bhupal & Ahmedabad (S Hari Parking, Nana Chiloda). Book online at one fixed fair price. Private & sharing cabins.">
 <meta property="og:type" content="website">
@@ -213,20 +223,20 @@ body{margin:0;background:#FFFFFF}
      same font-display:swap, so the brand face still arrives late and the
      text is readable in Georgia from the first frame, exactly as before.
      Cinzel is SIL OFL 1.1, which allows hosting it ourselves. -->
-<link rel="preload" as="font" type="font/woff2" href="/assets/fonts/cinzel-latin.woff2?v=20260926j" crossorigin>
-<style>@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20260926j) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20260926j) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20260926j) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20260926j) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}</style>
+<link rel="preload" as="font" type="font/woff2" href="/assets/fonts/cinzel-latin.woff2?v=20260926k" crossorigin>
+<style>@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20260926k) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20260926k) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20260926k) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20260926k) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}</style>
 <title>Surat to Nepal Bus (Rupaidiha / Nepalgunj) — AC Sleeper daily | S Hari Global Pvt Ltd</title>
 <meta name="description" content="सूरत से नेपाल बस · सुरत देखि नेपाल बस — daily AC sleeper from Surat, Kamrej, Ankleshwar, Bharuch, Vadodara, Anand, Nadiad & Ahmedabad to the Rupaidiha (Nepalgunj) border. Book online, on WhatsApp or by phone. Registered Indian company, Mehsana.">
 <!-- Real brand favicon, not the emoji placeholder. PNG first for the tab
      strip, the SVG kept as the scalable fallback. -->
-<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon-32.png?v=20260926j">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon-32.png?v=20260926k">
 <link rel="icon" type="image/svg+xml" href="/icon-shg.svg">
 <!-- PWA / offline navigator: installable app + service-worker cached maps -->
 <link rel="manifest" href="/manifest.webmanifest">
 <!-- iOS ignores SVG here and silently falls back to a screenshot of the
      page, which is why the home-screen icon looked like a web page.
      A 180px opaque PNG is the only thing Safari will use. -->
-<link rel="apple-touch-icon" sizes="180x180" href="/assets/img/apple-touch-icon.png?v=20260926j">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/img/apple-touch-icon.png?v=20260926k">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SHG Bus">
@@ -321,7 +331,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <circle class="sm-dot sm-dot-b" cx="259.3" cy="84.4" r="3.6"/>
     </svg>
     <div class="splash-brand"><i class="splash-aura" aria-hidden="true"></i>
-      <img src="/assets/img/logo.png?v=20260926j" alt="S Hari Global Pvt Ltd" class="splash-logo" width="440" height="321" fetchpriority="high" decoding="sync">
+      <img src="/assets/img/logo.png?v=20260926k" alt="S Hari Global Pvt Ltd" class="splash-logo" width="440" height="321" fetchpriority="high" decoding="sync">
       <div class="splash-title" id="splashTitle">S Hari Global Pvt Ltd</div>
     </div>
     <div class="splash-tagline" id="splashTagline">Gujarat ⇄ Rupaidiha · India–Nepal Transport</div>
@@ -331,10 +341,10 @@ s.addEventListener('click',function(e){e.preventDefault();
     <div class="splash-mantra" aria-hidden="true">ॐ नमो भगवते वासुदेवाय</div>
     <div class="premium-border"><span>INDIA · GUJARAT</span><span data-i18n="premiumBeyond">Travel Beyond Borders</span><span>NEPAL · NEPALGUNJ</span></div>
     <div class="splash-ceo">
-      <img src="/assets/img/ceo.jpg?v=20260926j" class="splash-ceo-photo" width="720" height="1001" decoding="async" alt="Sher Bahadur Bishwokarma">
+      <img src="/assets/img/ceo.jpg?v=20260926k" class="splash-ceo-photo" width="720" height="1001" decoding="async" alt="Sher Bahadur Bishwokarma">
       <div><span data-i18n="premiumDirector">CHAIRMAN / DIRECTOR</span><b>Sher Bahadur Bishwokarma</b><span>S HARI GLOBAL</span><span class="splash-ceo-num">📞 +91 97264 01507</span></div>
     </div>
-    <div class="premium-fleet" aria-hidden="true"><div class="premium-road"></div><img class="fleet-main" src="/assets/img/bus-shg-sm.webp?v=20260926j" width="600" height="312" alt=""><img class="fleet-second" src="/assets/img/bus-shg-sm.webp?v=20260926j" width="600" height="312" alt=""></div>
+    <div class="premium-fleet" aria-hidden="true"><div class="premium-road"></div><img class="fleet-main" src="/assets/img/bus-shg-sm.webp?v=20260926k" width="600" height="312" alt=""><img class="fleet-second" src="/assets/img/bus-shg-sm.webp?v=20260926k" width="600" height="312" alt=""></div>
     <p class="premium-promise" data-i18n="premiumPromise">Your Journey, Our Responsibility.</p>
     <!-- The attribution line the owner asked for (24 Sep 2026). The brief
          wrote the surname as "Bishnowlara" and asked us to check it against
@@ -377,7 +387,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <!-- Scene 1 — CEO introduction FIRST (sabai bhanda pehle) -->
       <div class="intro-scene" id="introS1">
         <div class="ceo-intro">
-          <div class="ceo-intro-photo"><img id="introCeoImg" src="/assets/img/ceo-sm.webp?v=20260926j" alt="Sher Bahadur Bishwokarma" loading="lazy" decoding="async" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="ceo-intro-initials" style="display:none">SB</span></div>
+          <div class="ceo-intro-photo"><img id="introCeoImg" src="/assets/img/ceo-sm.webp?v=20260926k" alt="Sher Bahadur Bishwokarma" loading="lazy" decoding="async" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="ceo-intro-initials" style="display:none">SB</span></div>
           <div class="ceo-intro-name">Sher Bahadur Bishwokarma</div>
           <div class="ceo-intro-title">👑 Founder &amp; CEO · Director</div>
           <div class="intro-company">S HARI GLOBAL PVT LTD</div>
@@ -537,7 +547,7 @@ s.addEventListener('click',function(e){e.preventDefault();
          "S HARI GLOBAL" under the bus, and setting the words twice beside
          each other is the tell of a logo that was bolted on. -->
     <a class="brand" href="#/" data-scroll="top" aria-label="S Hari Global Pvt Ltd — Home">
-      <img id="logoNav" src="/assets/img/logo.png?v=20260926j" alt="S Hari Global Pvt Ltd Logo" width="440" height="321" decoding="async">
+      <img id="logoNav" src="/assets/img/logo.png?v=20260926k" alt="S Hari Global Pvt Ltd Logo" width="440" height="321" decoding="async">
     </a>
     <nav class="nav-links" aria-label="Main">
       <a class="nav-link" href="#/" data-scroll="top"><svg class="ic"><use href="#i-home"/></svg> Home</a>
@@ -665,11 +675,17 @@ s.addEventListener('click',function(e){e.preventDefault();
     <p class="bb-route"><span aria-hidden="true">🇮🇳</span> <span data-i18n="bbRoute">India ⇄ Nepal Travel Service</span> <span aria-hidden="true">🇳🇵</span></p>
     <p class="bb-name" lang="en">S HARI GLOBAL <small>PVT LTD</small></p>
     <p class="bb-tag" data-i18n="bbTag">Your trusted travel partner</p>
-    <ul class="bb-feats" aria-label="Coach facilities">
-      <li><span class="bb-ic" aria-hidden="true">❄️</span><span data-i18n="bbF1">AC Sleeper</span></li>
-      <li><span class="bb-ic" aria-hidden="true">📍</span><span data-i18n="bbF2">Live GPS</span></li>
-      <li><span class="bb-ic" aria-hidden="true">⚡</span><span data-i18n="bbF3">USB Charging</span></li>
-      <li><span class="bb-ic" aria-hidden="true">🛡️</span><span data-i18n="bbF4">Safe Travel</span></li>
+    <!-- The four the owner named, 26 Sep 2026: AC Sleeper, Mobile Charging,
+         Safe Travel, Travel Comfort. Each icon has its own small CSS
+         animation (bb-anim in vip.css) and each chip still opens the
+         eighteen-second film at the matching act - see ORDER / CHIP_ACT in
+         20-feature-story.js. Live GPS did not go away: it is the Track Bus
+         card above and act 4 of that film. -->
+    <ul class="bb-feats bb-anim" aria-label="Coach facilities">
+      <li><span class="bb-ic bb-ac" aria-hidden="true">❄️</span><span data-i18n="bbF1">AC Sleeper</span></li>
+      <li><span class="bb-ic bb-chg" aria-hidden="true">🔌</span><span data-i18n="bbF2">Mobile Charging</span></li>
+      <li><span class="bb-ic bb-safe" aria-hidden="true">🛡️</span><span data-i18n="bbF3">Safe Travel</span></li>
+      <li><span class="bb-ic bb-cmf" aria-hidden="true">🛋️</span><span data-i18n="bbF4">Travel Comfort</span></li>
     </ul>
    </div>
   </section>
@@ -692,6 +708,161 @@ s.addEventListener('click',function(e){e.preventDefault();
         <b data-i18n="ecWa">WhatsApp Booking</b>
         <small data-i18n="ecWaSub">Request · office confirms</small>
       </button>
+    </div>
+  </section>
+
+  <!-- ============ 🎉 ADVANCE BOOKING OFFER (26 Sep 2026) ============
+       Dashain / Tihar: book N hours before departure, save P%. Every word,
+       the percentage, the hours and the dates come from Admin → Fares &
+       offers and ride in SHG_BOOT.pricing.offer, so switching the offer off
+       removes this card and changing 10% to 15% changes what it says — with
+       no deploy and no second copy of the rule.
+
+       Ships HIDDEN. 22-vip.js reveals it only when the server says the offer
+       is live today, so a page with no offer running costs nothing and makes
+       no claim. The lamps are five CSS dots; there is no image here. -->
+  <section class="container adv-offer" id="advOffer" hidden aria-labelledby="advOfferTitle">
+    <div class="ao-card">
+      <div class="ao-lamps" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="ao-mark" aria-hidden="true">
+        <span class="ao-pct" id="aoPct">10%</span>
+        <span class="ao-off">OFF</span>
+      </div>
+      <div class="ao-copy">
+        <span class="ao-eyebrow" id="aoEyebrow">दशैँ · तिहार</span>
+        <h2 class="ao-title" id="advOfferTitle">Advance booking offer</h2>
+        <p class="ao-text" id="aoText"></p>
+        <p class="ao-until" id="aoUntil" hidden></p>
+      </div>
+      <div class="ao-actions">
+        <button type="button" class="btn btn-orange ao-go" id="aoBook" data-scroll="search-anchor">
+          <span data-i18n="aoBook">Book early &amp; save</span> →
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ⭐ VIP PRIVATE SLEEPER — MAIN HIGHLIGHT (26 Sep 2026) ============
+       The owner asked for private booking to be one of the home page's main
+       highlights, with a light animation that SHOWS what you are buying: a
+       cabin nobody else is in, air conditioning, a charging point, and room
+       for a family to travel together.
+
+       It is drawn, not photographed — one inline SVG and CSS keyframes, so
+       the whole block adds no network request and no decode. Nothing moves
+       until the card is actually on screen (22-vip.js adds .is-live through
+       an IntersectionObserver) and nothing moves at all under
+       prefers-reduced-motion, so the home page stays as fast as it was.
+
+       The two buttons are the point of the block: both put the customer in
+       the PRIVATE flow, not the sharing one — see SHG_VIP_INTENT in
+       22-vip.js and the one line it changes in 06-results.js. -->
+  <section class="container vip-hl" id="vipHighlight" aria-labelledby="vipHlTitle">
+    <div class="vip-card">
+      <span class="vip-ribbon">⭐ VIP</span>
+
+      <div class="vip-stage" aria-hidden="true">
+        <svg viewBox="0 0 360 200" width="100%" height="100%" role="presentation" focusable="false">
+          <defs>
+            <linearGradient id="vipShell" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#1e3a8a"/><stop offset="1" stop-color="#0b1b45"/>
+            </linearGradient>
+            <linearGradient id="vipBerth" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stop-color="#f8fafc"/><stop offset="1" stop-color="#dbe4f0"/>
+            </linearGradient>
+            <linearGradient id="vipCurtain" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stop-color="#b3121a"/><stop offset="1" stop-color="#7f0c12"/>
+            </linearGradient>
+            <clipPath id="vipClip"><rect x="14" y="20" width="332" height="162" rx="18"/></clipPath>
+          </defs>
+
+          <!-- the cabin -->
+          <rect x="14" y="20" width="332" height="162" rx="18" fill="url(#vipShell)"/>
+          <g clip-path="url(#vipClip)">
+            <!-- window, and the road going past it -->
+            <rect class="vip-win" x="34" y="38" width="120" height="58" rx="10" fill="#0a1638"/>
+            <g class="vip-road">
+              <circle cx="60" cy="52" r="1.6" fill="#ffd97d"/>
+              <circle cx="96" cy="66" r="1.2" fill="#ffd97d"/>
+              <circle cx="128" cy="48" r="1.4" fill="#ffd97d"/>
+              <circle cx="78" cy="84" r="1.1" fill="#ffd97d"/>
+            </g>
+            <rect x="34" y="38" width="120" height="58" rx="10" fill="none" stroke="#31509b" stroke-width="2"/>
+
+            <!-- AC vent, with air actually coming out of it -->
+            <rect x="188" y="34" width="130" height="12" rx="6" fill="#0a1638" stroke="#31509b" stroke-width="1.5"/>
+            <g class="vip-air" stroke="#7fd3ff" stroke-width="2.4" stroke-linecap="round" fill="none">
+              <path d="M206 52 q8 10 0 20"/>
+              <path d="M240 52 q8 10 0 20"/>
+              <path d="M274 52 q8 10 0 20"/>
+              <path d="M306 52 q8 10 0 20"/>
+            </g>
+
+            <!-- the berth, and two people resting on it -->
+            <rect x="34" y="120" width="290" height="40" rx="14" fill="url(#vipBerth)"/>
+            <rect x="44" y="108" width="52" height="22" rx="10" fill="#ffffff" opacity=".92"/>
+            <g class="vip-pax" fill="#20336b">
+              <circle cx="122" cy="120" r="11"/>
+              <path d="M104 160 q18 -26 36 0 z"/>
+              <circle cx="168" cy="122" r="9"/>
+              <path d="M153 160 q15 -22 30 0 z"/>
+              <circle cx="206" cy="124" r="7"/>
+              <path d="M194 160 q12 -18 24 0 z"/>
+            </g>
+
+            <!-- a phone on charge, the level rising inside it -->
+            <g class="vip-charge">
+              <rect x="286" y="112" width="26" height="44" rx="5" fill="#0a1638" stroke="#7fd3ff" stroke-width="1.6"/>
+              <rect class="vip-batt" x="289" y="115" width="20" height="38" rx="3" fill="#39d98a"/>
+              <path d="M299 122 l-5 10 h4 l-3 9 8 -12 h-4 z" fill="#0a1638"/>
+              <path class="vip-cord" d="M299 156 q-4 16 -26 16" stroke="#7fd3ff" stroke-width="2" fill="none" stroke-linecap="round"/>
+            </g>
+
+            <!-- the privacy curtain, closing and opening -->
+            <g class="vip-curtain">
+              <rect x="14" y="20" width="176" height="162" fill="url(#vipCurtain)"/>
+              <g stroke="#8f0c12" stroke-width="1.2" opacity=".55">
+                <path d="M46 20 V182"/><path d="M78 20 V182"/><path d="M110 20 V182"/><path d="M142 20 V182"/><path d="M174 20 V182"/>
+              </g>
+            </g>
+            <!-- the rail it hangs from -->
+            <rect x="14" y="20" width="332" height="6" fill="#31509b"/>
+          </g>
+          <rect x="14" y="20" width="332" height="162" rx="18" fill="none" stroke="#31509b" stroke-width="2"/>
+          <!-- "only yours" lock -->
+          <g class="vip-lock">
+            <circle cx="322" cy="168" r="14" fill="#b3121a"/>
+            <rect x="316" y="165" width="12" height="10" rx="2" fill="#fff"/>
+            <path d="M318 165 v-3 a4 4 0 0 1 8 0 v3" stroke="#fff" stroke-width="2" fill="none"/>
+          </g>
+        </svg>
+      </div>
+
+      <div class="vip-body">
+        <span class="vip-eyebrow" data-i18n="vipEyebrow">VIP PRIVATE SLEEPER</span>
+        <h2 class="vip-title" id="vipHlTitle" data-i18n="vipTitle">The whole cabin is yours</h2>
+        <p class="vip-sub" data-i18n="vipSub">No strangers in your cabin. Air conditioning, a charging point by the berth, a curtain you close yourself — comfortable enough for a family or a couple to travel as one.</p>
+        <ul class="vip-feats">
+          <li><span aria-hidden="true">❄️</span><span data-i18n="vipF1">AC Sleeper</span></li>
+          <li><span aria-hidden="true">🔌</span><span data-i18n="vipF2">Mobile Charging</span></li>
+          <li><span aria-hidden="true">🔒</span><span data-i18n="vipF3">Private &amp; Safe</span></li>
+          <li><span aria-hidden="true">🛋️</span><span data-i18n="vipF4">Family Comfort</span></li>
+        </ul>
+        <p class="vip-price" id="vipPrice" hidden></p>
+        <div class="vip-ctas">
+          <!-- data-bkmode + data-scroll reuse the plumbing the entry cards
+               already use (05-router.js): the first unfolds the normal search
+               card, the second scrolls to it. 22-vip.js adds the one thing
+               that is new — the PRIVATE intent the seat view then honours. -->
+          <button type="button" class="btn btn-orange vip-go" id="vipBookBtn"
+                  data-bkmode="regular" data-scroll="search-anchor">
+            <span data-i18n="vipBook">Book VIP Private</span> →
+          </button>
+          <button type="button" class="btn btn-ghost vip-chk" id="vipCheckBtn"
+                  data-bkmode="regular" data-scroll="search-anchor" data-i18n="vipCheck">Check availability</button>
+        </div>
+        <p class="vip-note" data-i18n="vipNote">One coach, one seat list — a cabin booked here is closed to everyone else at once.</p>
+      </div>
     </div>
   </section>
 
@@ -782,7 +953,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <div class="ra3-ground"><div class="ra3-road"><i class="ra3-stripes"></i><i class="ra3-edge t"></i><i class="ra3-edge b"></i></div></div>
       <div class="ra3-bus"><div class="ra3-body">
         <span class="ra3-shadow"></span>
-        <img src="/assets/img/bus-side.svg?v=20260926j" alt="" width="640" height="200" decoding="async" fetchpriority="low">
+        <img src="/assets/img/bus-side.svg?v=20260926k" alt="" width="640" height="200" decoding="async" fetchpriority="low">
         <span class="ra3-beam"></span>
       </div></div>
       <div class="ra3-tag">≈1,375 km · via Rupaidiha Border 🛃</div>
@@ -975,7 +1146,7 @@ s.addEventListener('click',function(e){e.preventDefault();
   <div class="container" style="margin-top:26px">
     <div class="founder-card founder-highlight reveal">
       <div class="founder-avatar-wrap">
-        <img id="ceoHeroImg" src="/assets/img/ceo.jpg?v=20260926j" alt="Sher Bahadur Bishwokarma — CEO &amp; Director" loading="lazy" decoding="async" style="width:100%;height:100%;border-radius:50%;object-fit:cover;padding:0" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <img id="ceoHeroImg" src="/assets/img/ceo.jpg?v=20260926k" alt="Sher Bahadur Bishwokarma — CEO &amp; Director" loading="lazy" decoding="async" style="width:100%;height:100%;border-radius:50%;object-fit:cover;padding:0" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
         <span class="founder-initials" style="display:none">SB</span>
         <button type="button" id="ceoPhotoBtn" title="CEO photo यहाँबाट upload गर्नुहोस् — gallery बाट छान्ने बित्तिकै save हुन्छ" style="position:absolute;bottom:-2px;right:-2px;width:30px;height:30px;border-radius:50%;border:2px solid var(--card);background:var(--orange);color:#fff;font-size:14px;cursor:pointer;line-height:1;padding:0">📷</button>
         <input type="file" id="ceoPhotoFile" accept="image/*" style="display:none">
@@ -1745,11 +1916,11 @@ s.addEventListener('click',function(e){e.preventDefault();
         </div>
         <div class="vcard-grid">
           <figure class="vcard">
-            <a class="vcard-img" href="/assets/img/card-en.jpg?v=20260926j" target="_blank" rel="noopener"><img src="/assets/img/card-en-sm.jpg?v=20260926j" srcset="/assets/img/card-en-sm.jpg?v=20260926j 720w, /assets/img/card-en.jpg?v=20260926j 1600w" sizes="(max-width:640px) 92vw, 500px" alt="S Hari Global Pvt Ltd visiting card — English" width="1600" height="914" loading="lazy" decoding="async"></a>
+            <a class="vcard-img" href="/assets/img/card-en.jpg?v=20260926k" target="_blank" rel="noopener"><img src="/assets/img/card-en-sm.jpg?v=20260926k" srcset="/assets/img/card-en-sm.jpg?v=20260926k 720w, /assets/img/card-en.jpg?v=20260926k 1600w" sizes="(max-width:640px) 92vw, 500px" alt="S Hari Global Pvt Ltd visiting card — English" width="1600" height="914" loading="lazy" decoding="async"></a>
             <figcaption><span data-i18n="vcEn">🇮🇳 English card</span><span class="vcard-btns"><a class="btn btn-ghost btn-sm" href="/assets/img/card-en.jpg" download="S-Hari-Global-Card-EN.jpg">💾 <span data-i18n="vcSave">Save</span></a><button type="button" class="btn btn-wa btn-sm" data-vc-share="en">📤 <span data-i18n="vcShare">Share on WhatsApp</span></button></span></figcaption>
           </figure>
           <figure class="vcard">
-            <a class="vcard-img" href="/assets/img/card-ne.jpg?v=20260926j" target="_blank" rel="noopener"><img src="/assets/img/card-ne-sm.jpg?v=20260926j" srcset="/assets/img/card-ne-sm.jpg?v=20260926j 720w, /assets/img/card-ne.jpg?v=20260926j 1600w" sizes="(max-width:640px) 92vw, 500px" alt="एस हरी ग्लोबल प्रा. लि. भिजिटिङ कार्ड — नेपाली" width="1600" height="914" loading="lazy" decoding="async"></a>
+            <a class="vcard-img" href="/assets/img/card-ne.jpg?v=20260926k" target="_blank" rel="noopener"><img src="/assets/img/card-ne-sm.jpg?v=20260926k" srcset="/assets/img/card-ne-sm.jpg?v=20260926k 720w, /assets/img/card-ne.jpg?v=20260926k 1600w" sizes="(max-width:640px) 92vw, 500px" alt="एस हरी ग्लोबल प्रा. लि. भिजिटिङ कार्ड — नेपाली" width="1600" height="914" loading="lazy" decoding="async"></a>
             <figcaption><span data-i18n="vcNe">🇳🇵 Nepali card</span><span class="vcard-btns"><a class="btn btn-ghost btn-sm" href="/assets/img/card-ne.jpg" download="S-Hari-Global-Card-NE.jpg">💾 <span data-i18n="vcSave">Save</span></a><button type="button" class="btn btn-wa btn-sm" data-vc-share="ne">📤 <span data-i18n="vcShare">Share on WhatsApp</span></button></span></figcaption>
           </figure>
         </div>
@@ -2757,7 +2928,7 @@ s.addEventListener('click',function(e){e.preventDefault();
     </div>
     <div class="f-dev">Developed by <strong>Dileep Sunar</strong> · <a href="https://wa.me/919173401507" target="_blank" rel="noopener noreferrer">💬 WhatsApp +91 91734 01507</a> · <a href="https://www.facebook.com/dileep.soonaar/" target="_blank" rel="noopener noreferrer">Facebook</a></div>
     <div class="f-ceo reveal">
-      <img id="ceoPhoto" src="/assets/img/ceo.jpg?v=20260926j" alt="Sher Bahadur Bishwokarma — Founder &amp; CEO" loading="lazy" decoding="async" onerror="this.style.display='none'">
+      <img id="ceoPhoto" src="/assets/img/ceo.jpg?v=20260926k" alt="Sher Bahadur Bishwokarma — Founder &amp; CEO" loading="lazy" decoding="async" onerror="this.style.display='none'">
       <span>🕉️ <span id="ceoMantra"></span> — <strong id="ceoName"></strong>, Founder &amp; CEO
         <button id="mantraBtn" type="button" title="Play mantra chant · मन्त्र सुन्नुहोस्" aria-label="Play mantra chant">🔊</button>
       </span>

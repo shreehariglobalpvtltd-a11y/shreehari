@@ -74,6 +74,8 @@ if (!defined('SHG_APP')) {
 require_once INCLUDE_PATH . '/companydocs.php';
 require_once INCLUDE_PATH . '/aihandoff.php';
 require_once INCLUDE_PATH . '/aiverify.php';
+require_once INCLUDE_PATH . '/fare.php';
+require_once INCLUDE_PATH . '/airules.php';
 require_once __DIR__ . '/personname.php';
 
 final class AiTools
@@ -589,6 +591,40 @@ final class AiTools
                 ['days' => ['integer', 'How many days ahead, 1–14 (default 7)']]);
         }
 
+        /* =============================================================
+           26 Sep 2026 — VIP PRIVATE, PUBLIC SHARING, LIVE SEATS, FARES,
+           THE ADVANCE OFFER. The assistant could already PLAN and SELL a
+           ticket, but it had no way to answer the three questions people
+           actually open WhatsApp to ask: what does it cost, is there a seat,
+           and is there an offer. It was answering them from the system
+           prompt, which is how a bot invents a price.
+
+           All three are read-only and every number comes from the same code
+           the checkout charges from — Fare for money, Seats for the coach.
+           Available to a customer, an agent and the office alike.
+        ============================================================= */
+        $t[] = self::spec('fare_quote',
+            'WHAT A JOURNEY COSTS, from the live fare board — VIP PRIVATE SLEEPER (a whole cabin, nobody else in it) or PUBLIC SHARING SLEEPER (per person). Give the pickup, the destination, how many travellers and the date. Returns the original fare, the advance-booking discount if that date qualifies, and the final fare. Use for "kati paisa", "bhada kati", "Surat bata Rupaidiha kati", "private cabin ko rate", "VIP kati parcha". NEVER state a fare without calling this.',
+            [
+                'from'       => ['string', 'Pickup point, e.g. Surat, Ahmedabad, Vadodara, Rupaidiha'],
+                'to'         => ['string', 'Destination, e.g. Rupaidiha or a Gujarat town'],
+                'mode'       => ['string', 'private for a VIP private cabin, sharing for the public sleeper (default sharing)'],
+                'passengers' => ['integer', 'How many travellers (default 1)'],
+                'date'       => ['string', 'YYYY-MM-DD travel date — needed to work out the advance discount'],
+                'cabin'      => ['string', 'single or double, for a private cabin (default single)'],
+            ], ['from', 'to']);
+
+        $t[] = self::spec('seat_availability',
+            'LIVE SEATS on a date: how many are free right now as a PUBLIC SHARING berth and as a VIP PRIVATE cabin, for every bus that runs. One coach, one inventory — a cabin sold privately closes the berths inside it and vice-versa, and this reports that truth. Use for "seat khali cha", "bholi thau cha", "private cabin available cha", "bus full cha ki".',
+            [
+                'date'      => ['string', 'YYYY-MM-DD (default today)'],
+                'direction' => ['string', 'to_nepal (Gujarat → Rupaidiha) or to_india (Rupaidiha → Gujarat); blank = both'],
+            ]);
+
+        $t[] = self::spec('current_offers',
+            'THE OFFERS RUNNING TODAY: the advance-booking discount (how many hours before departure it needs, what percentage it takes off, until when, and whether VIP private counts) plus any standing festival offer. Use for "offer cha ki", "chhut kati", "Dashain offer", "discount kasari paucha", "advance book garda sasto hunchha?".',
+            []);
+
         if ($role === 'admin') {
             $t[] = self::spec('site_visitors',
                 'WEBSITE AND APP TRAFFIC, live: how many people are on the site right now, visits and page views per day, searches, empty searches, checkout drop-offs, quick-ticket opens, app installs, and tickets per 100 visits — with a chart. Use for "kati customer le visit gare", "aaja website ma kati manche", conversion, "kaha bata manche harauchan".',
@@ -687,6 +723,28 @@ final class AiTools
                         'reason'  => ['string', 'Why, in plain words — the passenger reads this'],
                         'confirm' => ['boolean', 'True only after the office said ho to the preview'],
                     ], ['pnr', 'reason']);
+
+                /* 26 Sep 2026 — MONEY RULES BY MESSAGE. Three gates decide
+                   whether these are offered at all (AiRules::mayCommand):
+                   an office account, the wa_rules_control switch, and this
+                   number being on wa_rules_numbers. The model only names the
+                   intent; AiRules validates, previews, writes and audits. */
+                if (AiRules::mayCommand($ctx)['ok']) {
+                    $t[] = self::spec('rules_read',
+                        'READ BACK the company's money rules: every fare on the board, the VIP private cabin rates, and the advance-booking offer (hours, percentage, dates, which modes, whether it is running). Read-only. Use for "fare settings dekhau", "ahile ko rate kati cha", "offer ko setting".',
+                        []);
+
+                    $t[] = self::spec('rules_change',
+                        'CHANGE ONE money rule. Call it ONCE with no confirm to see exactly what would change, read that back word for word, and only after the admin answers ho in the NEXT message call again with confirm true. Two shapes: a FARE — what=fare with from, to and value ("Ahmedabad to Rupaidiha fare 2100 gara"); or a SETTING — what=setting with key and value. Keys: advance_offer_on (on/off), advance_offer_hours, advance_offer_percent, advance_offer_from, advance_offer_to, advance_offer_max_inr, advance_offer_text, fare_to_nepal, fare_to_india. You do not validate anything and you never compute a new price — say what was asked for and let the server check it.',
+                        [
+                            'what'    => ['string', 'fare or setting'],
+                            'from'    => ['string', 'with what=fare: the pickup'],
+                            'to'      => ['string', 'with what=fare: the destination'],
+                            'key'     => ['string', 'with what=setting: the setting name, exactly as listed'],
+                            'value'   => ['string', 'The new value, as the admin said it'],
+                            'confirm' => ['boolean', 'True ONLY after the admin answered ho to the preview in a later message'],
+                        ], ['what']);
+                }
 
                 $t[] = self::spec('office_agent_status',
                     'ACTIVATE or DEACTIVATE an agent / counter account (Admin → Staff toggle). A deactivated agent cannot sell or sign in anywhere. Preview first (no confirm), then confirm true after ho in the next message. Never for a superadmin or for yourself.',
@@ -815,6 +873,13 @@ final class AiTools
                 'office_settle_cod' => self::officeSettleCod($args, $ctx),
                 'office_reject'    => self::officeReject($args, $ctx),
                 'office_agent_status' => self::officeAgentStatus($args, $ctx),
+                // 26 Sep 2026 — pricing, live seats, offers, and the office's
+                // own rule changes (deterministic; see includes/airules.php).
+                'fare_quote'       => self::fareQuote($args, $ctx),
+                'seat_availability' => self::seatAvailability($args, $ctx),
+                'current_offers'   => self::currentOffers($args, $ctx),
+                'rules_read'       => self::rulesRead($args, $ctx),
+                'rules_change'     => self::rulesChange($args, $ctx),
                 'record_feedback'  => self::recordFeedback($args, $ctx),
                 'sales_report'     => self::salesReport($args, $ctx),
                 'occupancy_report' => self::occupancyReport($args, $ctx),
@@ -3166,6 +3231,309 @@ final class AiTools
     }
 
     /** A refusal the model must read out, not an error. */
+    /* =================================================================
+     *  FARES, LIVE SEATS, OFFERS  (26 Sep 2026)
+     *
+     *  The three questions people open WhatsApp to ask. Read-only, and every
+     *  number comes from the code that actually charges — Fare for money,
+     *  Seats for the coach. The model is never asked to do the arithmetic,
+     *  because a fare it invents is a fare the office has to honour.
+     * ================================================================= */
+
+    /**
+     * The route that carries a journey, for its departure clock and its id.
+     * Direction is read off the destination — routes has no direction column,
+     * and Rupaidiha is the only Nepal-side point the company may sell.
+     *
+     * @return array<string,mixed>|null
+     */
+    private static function routeForJourney(string $fromC, string $toC): ?array
+    {
+        $wantOutbound = Fare::isNepalPoint($toC);
+        try {
+            foreach (Database::fetchAll('SELECT * FROM routes WHERE is_active = 1 ORDER BY sort_order, id') as $r) {
+                $isOutbound = Fare::isNepalPoint(Fare::canonicalPoint((string) $r['to_city']));
+                if ($isOutbound === $wantOutbound) {
+                    return $r;
+                }
+            }
+        } catch (Throwable $e) {
+            Logger::exception($e, 'ai');
+        }
+        return null;
+    }
+
+    /** Live availability for one schedule in both booking modes. */
+    private static function bothModes(int $scheduleId): array
+    {
+        $sharing = Seats::availabilityForSchedule($scheduleId, 'sharing');
+        $private = Seats::availabilityForSchedule($scheduleId, 'private');
+        return [
+            'sharingFree' => (int) $sharing['availableCount'],
+            'sharingTotal' => (int) $sharing['total'],
+            'privateFree' => (int) $private['availableCount'],
+            'privateTotal' => (int) $private['total'],
+        ];
+    }
+
+    private static function fareQuote(array $args, array $ctx): array
+    {
+        $fromC = Fare::canonicalPoint((string) ($args['from'] ?? ''));
+        $toC   = Fare::canonicalPoint((string) ($args['to'] ?? ''));
+        if ($fromC === '' || $toC === '') {
+            return self::no('Which journey? Ask them where they are getting on and where they are going.');
+        }
+        if (Fare::pkey($fromC) === Fare::pkey($toC)) {
+            return self::no('Those are the same place — ask again where they are travelling from and to.');
+        }
+
+        $mode = ((string) ($args['mode'] ?? 'sharing')) === 'private' ? 'private' : 'sharing';
+        $pax  = max(1, min(20, (int) ($args['passengers'] ?? 1)));
+        $cab  = ((string) ($args['cabin'] ?? 'single')) === 'double' ? 'double' : 'single';
+        $date = self::cleanDate((string) ($args['date'] ?? ''));
+
+        $route = self::routeForJourney($fromC, $toC);
+        $depTime = $route !== null ? (string) $route['dep_time'] : '';
+
+        /* The bus actually running that date may carry its own clock. */
+        if ($route !== null && $date !== '') {
+            $sch = Database::fetch(
+                'SELECT dep_time_override FROM schedules WHERE route_id = :r AND travel_date = :d ORDER BY id LIMIT 1',
+                ['r' => (int) $route['id'], 'd' => $date]
+            );
+            if ($sch !== null && trim((string) ($sch['dep_time_override'] ?? '')) !== '') {
+                $depTime = (string) $sch['dep_time_override'];
+            }
+        }
+
+        $cabin   = Fare::cabinFare($cab, $mode, $pax, true, $toC, 4, $fromC);
+        $base    = (float) $cabin['total'];
+        $perUnit = $mode === 'private'
+            ? ($cabin['cabins'] > 0 ? round($base / (int) $cabin['cabins']) : $base)
+            : (float) $cabin['perPerson'];
+
+        $quote = Fare::quote(
+            $base,
+            $pax,
+            0,
+            0,
+            0,
+            '',
+            (string) ($ctx['phone'] ?? ''),
+            $route !== null ? (int) $route['id'] : null,
+            ['travelDate' => $date, 'departureTime' => $depTime, 'bookingMode' => $mode]
+        );
+
+        $adv  = (float) ($quote['advanceDiscount'] ?? 0);
+        $say  = ($mode === 'private' ? 'VIP private ' . $cab . ' cabin' : 'Public sharing sleeper')
+              . ', ' . $fromC . ' → ' . $toC . ', ' . $pax . ' traveller' . ($pax === 1 ? '' : 's')
+              . ($date !== '' ? ' on ' . $date : '') . ': '
+              . 'original ' . inr((float) $quote['originalFare'])
+              . ', discount ' . inr((float) $quote['discountAmount'])
+              . ', pay ' . inr((float) $quote['finalFare']) . '.';
+        if ($adv > 0) {
+            $say .= ' The advance-booking offer took off ' . inr($adv) . '.';
+        } elseif ($date !== '') {
+            $say .= ' ' . (string) ($quote['advanceWhy'] ?? '');
+        } else {
+            $say .= ' Ask which date they travel — the advance offer depends on it.';
+        }
+
+        return [
+            'ok'   => true,
+            'say'  => $say,
+            'data' => [
+                'from' => $fromC, 'to' => $toC, 'mode' => $mode, 'cabin' => $mode === 'private' ? $cab : null,
+                'passengers' => $pax, 'date' => $date,
+                'label' => (string) $cabin['label'],
+                'perPerson' => $mode === 'sharing' ? $perUnit : null,
+                'perCabin'  => $mode === 'private' ? $perUnit : null,
+                'originalFare'    => (float) $quote['originalFare'],
+                'discountAmount'  => (float) $quote['discountAmount'],
+                'discountPercent' => (float) $quote['discountPercent'],
+                'finalFare'       => (float) $quote['finalFare'],
+                'advanceDiscount' => $adv,
+                'advanceTitle'    => (string) ($quote['advanceTitle'] ?? ''),
+                'advanceWhy'      => (string) ($quote['advanceWhy'] ?? ''),
+                'offerApplied'    => (string) ($quote['couponCode'] ?? ''),
+                'nprEstimate'     => nprEstimate((float) $quote['finalFare']),
+            ],
+            'media' => null,
+        ];
+    }
+
+    private static function seatAvailability(array $args, array $ctx): array
+    {
+        $date = self::cleanDate((string) ($args['date'] ?? ''));
+        if ($date === '') {
+            $date = todayISO();
+        }
+        $dir = mb_strtolower(trim((string) ($args['direction'] ?? '')));
+
+        $rows = [];
+        try {
+            foreach (Database::fetchAll(
+                'SELECT s.id, s.travel_date, s.status, s.is_blocked, s.dep_time_override,
+                        r.id AS route_id, r.from_city, r.to_city, r.dep_time, r.route_code
+                   FROM schedules s
+                   JOIN routes r ON r.id = s.route_id
+                  WHERE s.travel_date = :d AND r.is_active = 1
+                  ORDER BY COALESCE(s.dep_time_override, r.dep_time), s.id',
+                ['d' => $date]
+            ) as $s) {
+                if ((string) $s['status'] === 'cancelled' || (int) $s['is_blocked'] === 1) {
+                    continue;
+                }
+                $outbound = Fare::isNepalPoint(Fare::canonicalPoint((string) $s['to_city']));
+                if ($dir === 'to_nepal' && !$outbound) {
+                    continue;
+                }
+                if ($dir === 'to_india' && $outbound) {
+                    continue;
+                }
+                $free = self::bothModes((int) $s['id']);
+                $rows[] = [
+                    'date'      => (string) $s['travel_date'],
+                    'from'      => (string) $s['from_city'],
+                    'to'        => (string) $s['to_city'],
+                    'departs'   => substr(trim((string) ($s['dep_time_override'] ?? '')) !== ''
+                                          ? (string) $s['dep_time_override'] : (string) $s['dep_time'], 0, 5),
+                    'direction' => $outbound ? 'to_nepal' : 'to_india',
+                ] + $free;
+            }
+        } catch (Throwable $e) {
+            Logger::exception($e, 'ai');
+            return self::no('The seat map could not be read just now. Give the office number.');
+        }
+
+        if ($rows === []) {
+            return [
+                'ok'   => true,
+                'say'  => 'No bus runs on ' . $date . (($dir !== '') ? ' in that direction' : '') . '. Offer the next date.',
+                'data' => ['date' => $date, 'buses' => []],
+                'media' => null,
+            ];
+        }
+
+        $parts = [];
+        foreach ($rows as $r) {
+            $parts[] = $r['from'] . ' → ' . $r['to'] . ' ' . $r['departs']
+                     . ': ' . $r['sharingFree'] . ' of ' . $r['sharingTotal'] . ' sharing berths free, '
+                     . $r['privateFree'] . ' of ' . $r['privateTotal'] . ' VIP private cabins free';
+        }
+
+        return [
+            'ok'   => true,
+            'say'  => $date . ' — ' . implode('; ', $parts)
+                    . '. One coach, one inventory: a cabin sold privately closes the berths inside it, so these two numbers move together.',
+            'data' => ['date' => $date, 'buses' => $rows],
+            'media' => null,
+        ];
+    }
+
+    private static function currentOffers(array $args, array $ctx): array
+    {
+        $a = Fare::advanceOffer();
+        $pct = rtrim(rtrim(number_format($a['percent'], 2, '.', ''), '0'), '.');
+
+        $lines = [];
+        if ($a['live']) {
+            $lines[] = $a['title'] . ': book ' . $a['hours'] . ' hours or more before departure and save ' . $pct . '%'
+                     . ($a['max'] > 0 ? ' (up to ' . inr($a['max']) . ')' : '')
+                     . ($a['modes'] === 'all' ? ', on the public sharing sleeper AND the VIP private cabin' : ', on ' . $a['modes'] . ' only')
+                     . ($a['to'] !== '' ? ', until ' . $a['to'] : '') . '.';
+        } else {
+            $lines[] = 'There is no advance-booking discount running today.';
+        }
+        foreach (Fare::runningOffers() as $o) {
+            $lines[] = Fare::offerLine($o);
+        }
+
+        return [
+            'ok'   => true,
+            'say'  => implode(' ', $lines),
+            'data' => [
+                'advance' => [
+                    'running' => (bool) $a['live'], 'hours' => (int) $a['hours'],
+                    'percent' => (float) $a['percent'], 'max' => (float) $a['max'],
+                    'modes' => (string) $a['modes'], 'from' => (string) $a['from'], 'to' => (string) $a['to'],
+                    'title' => (string) $a['title'], 'text' => (string) $a['text'],
+                ],
+                'coupons' => Fare::runningOffers(),
+            ],
+            'media' => null,
+        ];
+    }
+
+    /* =================================================================
+     *  The office's own rule changes — see includes/airules.php for why
+     *  the model is not trusted with any part of this except the reading
+     *  of the sentence.
+     * ================================================================= */
+
+    private static function rulesRead(array $args, array $ctx): array
+    {
+        $gate = AiRules::mayCommand($ctx);
+        if (!$gate['ok']) {
+            return self::no($gate['why']);
+        }
+        return [
+            'ok'    => true,
+            'say'   => AiRules::summary(),
+            'data'  => AiRules::read(),
+            'media' => null,
+        ];
+    }
+
+    private static function rulesChange(array $args, array $ctx): array
+    {
+        $gate = AiRules::mayCommand($ctx);
+        if (!$gate['ok']) {
+            return self::no($gate['why']);
+        }
+
+        $proposal = AiRules::propose([
+            'what'  => (string) ($args['what'] ?? ''),
+            'from'  => (string) ($args['from'] ?? ''),
+            'to'    => (string) ($args['to'] ?? ''),
+            'key'   => (string) ($args['key'] ?? ''),
+            'value' => $args['value'] ?? null,
+        ]);
+        if (!$proposal['ok']) {
+            return self::no((string) $proposal['why']);
+        }
+        $change = $proposal['change'];
+
+        /* Step one: describe it and park it. Nothing is written. */
+        if (($args['confirm'] ?? false) !== true) {
+            self::stage($ctx, 'rules', $change);
+            return [
+                'ok'    => true,
+                'say'   => (string) $proposal['say'] . ' Read this back exactly and wait for ho before calling again with confirm true.',
+                'data'  => ['preview' => $change],
+                'media' => null,
+            ];
+        }
+
+        /* Step two: the admin must actually have answered, in their own
+           message. A confirm flag from the model is not consent — the same
+           rule office_settle_cod follows. */
+        if (!self::saidYes($ctx)) {
+            return self::no('The office has not replied ho to that preview in a new message. A confirm flag alone is not consent.');
+        }
+        $staged = self::takeStage($ctx, 'rules');
+        if ($staged === null) {
+            return self::no('Preview the change first (rules_change with no confirm), then get a ho in the next message.');
+        }
+        /* The staged change and the one now being asked for must be the SAME
+           change, or a yes to one edit would sign off a different one. */
+        if (json_encode($staged) !== json_encode($change)) {
+            return self::no('That is not the change that was previewed. Preview this exact one again and ask for ho.');
+        }
+
+        $res = AiRules::apply($change, $ctx);
+        return ['ok' => (bool) $res['ok'], 'say' => (string) $res['say'], 'data' => (array) $res['data'], 'media' => null];
+    }
     private static function no(string $why): array
     {
         return ['ok' => false, 'say' => $why, 'data' => [], 'media' => null];

@@ -413,8 +413,13 @@ final class QuickTicket
             // The canonical "Name @ HH:MM" label create() checks and prints.
             $boardLabel = trim($chosen['name']) . ($chosen['time'] !== '' ? ' @ ' . substr($chosen['time'], 0, 5) : '');
             $display    = Boarding::stopDisplay($boardLabel, (string) ($route['from_city'] ?? ''));
+            /* 26 Sep 2026: the plan now carries the passenger's own boarding
+               label and the travel date into the fare, so Quick Ticket quotes
+               the point-to-point board and the advance-booking offer exactly
+               as the checkout and the counter do. */
             $fare       = self::fareFor($route, $chosenSchedule, $seatPick['bookingMode'], count($seatPick['seats']),
-                                        normalisePhone((string) ($opts['phone'] ?? '')));
+                                        normalisePhone((string) ($opts['phone'] ?? '')),
+                                        $boardLabel, $date, $depTime);
 
             $aheadNames = array_map(static fn(array $s): string => $s['name'], $ahead);
 
@@ -653,12 +658,24 @@ final class QuickTicket
      * @return array{perSeat: float, base: float, total: float, groupDiscount: float, tax: float, fee: float, label: string,
      *               couponDiscount: float, offerCode: string, offerTitle: string}
      */
-    private static function fareFor(array $route, array $schedule, ?string $mode, int $count, string $phone = ''): array
-    {
+    private static function fareFor(
+        array $route,
+        array $schedule,
+        ?string $mode,
+        int $count,
+        string $phone = '',
+        string $boardingLabel = '',
+        string $travelDate = '',
+        string $departureTime = ''
+    ): array {
         $perSeat = (float) ($route['base_fare'] ?? 0);
         $label   = 'Seat';
+        /* The board prices a Nana Chiloda pickup differently from a Surat one
+           (26 Sep 2026), so the passenger's own stop decides, exactly as in
+           BookingService::priceBooking(). */
+        $ends = Fare::journeyPoints($route, $boardingLabel, '');
         if ($mode === 'sharing') {
-            $cf = Fare::cabinFare('single', 'sharing', $count, true, (string) ($route['to_city'] ?? ''));
+            $cf = Fare::cabinFare('single', 'sharing', $count, true, (string) ($route['to_city'] ?? ''), 4, $ends['from']);
             if (($cf['perPerson'] ?? 0) > 0) {
                 $perSeat = (float) $cf['perPerson'];
             }
@@ -669,7 +686,11 @@ final class QuickTicket
             $perSeat = $override;
         }
         $base  = round($perSeat * $count, 2);
-        $quote = Fare::quote($base, $count, 0, 0, 0, '', $phone, (int) $route['id']);
+        $quote = Fare::quote($base, $count, 0, 0, 0, '', $phone, (int) $route['id'], [
+            'travelDate'    => $travelDate,
+            'departureTime' => $departureTime !== '' ? $departureTime : Fare::departureTime($schedule, $route),
+            'bookingMode'   => $mode,
+        ]);
 
         // The office offer that applied, by its own title (breakdown label).
         $offerCut   = (float) ($quote['couponDiscount'] ?? 0);
@@ -694,6 +715,13 @@ final class QuickTicket
             'couponDiscount' => $offerCut,
             'offerCode'      => (string) ($quote['couponCode'] ?? ''),
             'offerTitle'     => $offerTitle,
+            'advanceDiscount' => (float) ($quote['advanceDiscount'] ?? 0),
+            'advancePercent'  => (float) ($quote['advancePercent'] ?? 0),
+            'advanceTitle'    => (string) ($quote['advanceTitle'] ?? ''),
+            'originalFare'    => (float) ($quote['originalFare'] ?? $quote['base']),
+            'discountAmount'  => (float) ($quote['discountAmount'] ?? 0),
+            'discountPercent' => (float) ($quote['discountPercent'] ?? 0),
+            'finalFare'       => (float) ($quote['finalFare'] ?? $quote['total']),
         ];
     }
 

@@ -547,7 +547,7 @@ function loadTermsData(cb) {
   if (window.__shgTermsQueue) { window.__shgTermsQueue.push(cb); return; }
   window.__shgTermsQueue = [cb];
   var el = document.createElement('script');
-  el.src = '/assets/js/terms-data.js?v=20260926j';
+  el.src = '/assets/js/terms-data.js?v=20260926k';
   el.onload = function () {
     TERMS_DATA = window.TERMS_DATA || [];
     window.__shgTermsReady = true;
@@ -1299,11 +1299,51 @@ function sharingDir() {
     toIndia: live('fare_to_india', Math.max(0, Math.round(Number(base.toIndia) || 1800)))
   };
 }
-/* Sharing per-person base fare (offline) for a destination. Heading INTO
-   Nepal (towards Rupaidiha) costs the outbound fare; heading back into
-   India costs the return fare. Anything not on the Nepal list is treated
-   as India-side, which is the safe default for a Gujarat operator. */
-function sharingBasePP(toCity) {
+/* The comparison key for a place — the same normalisation Fare::pkey()
+   does on the server: drop a "@ 21:00" pickup time, drop "[lat,lng]", drop
+   every separator, lowercase. "S Hari Parking, Nana Chiloda @ 21:00" and
+   "shariparking" then name the same stop. */
+function farePkey(s) {
+  return String(s == null ? '' : s)
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/@.*$/, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, '')
+    .toLowerCase();
+}
+
+/* Sharing per-person base fare for a journey.
+
+   Until 26 Sep 2026 this was one number per DIRECTION. The owner's board is
+   finer than that — a pickup below Ahmedabad pays more than Ahmedabad itself,
+   and the return leg is not the mirror of the outbound — so keeping a copy of
+   the rule here would have been wrong for eight of the nine Gujarat towns.
+
+   index.php therefore ships the ANSWERS in SHG_BOOT.pricing.board: a small
+   "fromKey|toKey" -> amount map built by Fare::fareBoardMap(), the same code
+   the checkout charges from. This looks the pair up, falls back to the
+   destination's catch-all line, and only then to the two directional rows, so
+   an older install (or an offline first paint) prices exactly as it used to.
+
+   The SERVER still decides what is charged: it prices off the passenger's
+   real boarding stop, which may not be the town they searched from. This is
+   the page's instant estimate, and /api/quote.php is asked before payment. */
+function fareBoardMap() {
+  try {
+    const p = window.SHG_BOOT && window.SHG_BOOT.pricing;
+    const b = p && p.board;
+    return (b && typeof b === 'object') ? b : null;
+  } catch (e) { return null; }
+}
+
+function sharingBasePP(toCity, fromCity) {
+  const board = fareBoardMap();
+  if (board) {
+    const tk = farePkey(toCity);
+    const hit = board[farePkey(fromCity) + '|' + tk];
+    if (Number(hit) > 0) return Math.round(Number(hit));
+    const any = board['*|' + tk];
+    if (Number(any) > 0) return Math.round(Number(any));
+  }
   const d = sharingDir();
   return isNepalPoint(toCity) ? d.toNepal : d.toIndia;
 }
@@ -1311,8 +1351,8 @@ function sharingBasePP(toCity) {
    price equals the offline base. Kept as a function so every caller reads one
    flat number in one place; the `online` flag no longer changes it. (Note the
    old `|| 5` fallback would have reinstated 5% whenever the pct was 0.) */
-function sharingPP(toCity, online) {
-  return sharingBasePP(toCity);
+function sharingPP(toCity, online, fromCity) {
+  return sharingBasePP(toCity, fromCity);
 }
 /* `perSeatOverride` (4 Sep 2026): the office can give ONE departure its own
    per-seat price on the Bus Calendar (schedules.fare_override). When the
@@ -1320,7 +1360,7 @@ function sharingPP(toCity, online) {
    sharing fare here so the seat summary and the checkout total match what
    the server will actually charge. Private cabins keep the cabin price list,
    and every daily bus passes 0/undefined and prices exactly as before. */
-function calcCabinFare(cabinType, bookingType, passengers, isOnline, toCity, perSeatOverride) {
+function calcCabinFare(cabinType, bookingType, passengers, isOnline, toCity, perSeatOverride, fromCity) {
   const pricing = CONFIG.cabinPricing;
   const ovr = Number(perSeatOverride) > 0 ? Number(perSeatOverride) : 0;
   if (bookingType === 'private') {
@@ -1340,7 +1380,7 @@ function calcCabinFare(cabinType, bookingType, passengers, isOnline, toCity, per
     // Per-person is a flat, direction-based fare (2000 to Nepal / 1800 to
     // India), same across every sharing tier — no online discount — unless
     // this particular departure was given its own price by the office.
-    const off = ovr > 0 ? ovr : sharingBasePP(toCity);
+    const off = ovr > 0 ? ovr : sharingBasePP(toCity, fromCity);
     const perPerson = off;
     const total = perPerson * passengers;
     const offTotal = off * passengers;
