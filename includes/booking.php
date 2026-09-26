@@ -66,6 +66,105 @@ final class BookingService
      * per request so a live server that has not run the migration keeps
      * booking normally (the flag is simply not stored).
      */
+    /**
+     * Has database/upgrade-2026-09-counter-desks.sql been applied? Until it
+     * has, a sale is written exactly as before — the file may be deployed
+     * first and the SQL run after, in either order, with no failed ticket.
+     */
+    private static function deskColumns(): bool
+    {
+        static $has = null;
+        if ($has === null) {
+            try {
+                $has = Database::fetch("SHOW COLUMNS FROM bookings LIKE 'counter_code'") !== null;
+            } catch (Throwable $e) {
+                $has = false;
+            }
+        }
+        return $has;
+    }
+
+    /** The same question for the payment row's local-money columns. */
+    private static function tenderColumns(): bool
+    {
+        static $has = null;
+        if ($has === null) {
+            try {
+                $has = Database::fetch("SHOW COLUMNS FROM payments LIKE 'local_currency'") !== null;
+            } catch (Throwable $e) {
+                $has = false;
+            }
+        }
+        return $has;
+    }
+
+    /**
+     * WHERE this ticket was sold, frozen onto the booking, plus what the
+     * customer was quoted in their own money at a Nepal desk.
+     *
+     * The desk used to be read back at print time through the seller's
+     * admin_profiles row — today's desk for that person — so moving a clerk
+     * from Surat to Rajkot moved every ticket they had ever sold and last
+     * month's Surat sheet changed. An online sale has no desk and is left
+     * NULL; a desk nobody has assigned yet is left NULL too, because a wrong
+     * town on a ticket is worse than no town.
+     *
+     * @return array<string,mixed> merged into the bookings insert
+     */
+    private static function deskStamp(?int $sellerAdminId, float $totalInr): array
+    {
+        if (!self::deskColumns()) {
+            return [];
+        }
+        $code = CounterDesk::codeForSale($sellerAdminId);
+        if ($code === null) {
+            return [];
+        }
+        $out = ['counter_code' => $code];
+
+        /* INR stays the currency the books run in. At an NPR desk we also
+           freeze what the window actually said out loud, with the rate used
+           at that second — so a rate change tomorrow can never rewrite what
+           this passenger was charged. */
+        $fx = CounterDesk::convert($totalInr, $code);
+        if ($fx['currency'] !== 'INR') {
+            $out['fx_currency'] = $fx['currency'];
+            $out['fx_rate']     = $fx['rate'];
+            $out['fx_total']    = $fx['amount'];
+        }
+
+        return $out;
+    }
+
+    /**
+     * What the drawer physically received, when that is not rupees.
+     * payments.amount stays the INR the ledger sums; local_amount is the
+     * NPR the clerk counted, so a Nepalgunj day sheet balances in the money
+     * that is actually in the box.
+     *
+     * @return array<string,mixed> merged into the payments insert
+     */
+    private static function tenderStamp(?int $sellerAdminId, float $amountInr): array
+    {
+        if (!self::tenderColumns()) {
+            return [];
+        }
+        $code = CounterDesk::codeForSale($sellerAdminId);
+        if ($code === null) {
+            return [];
+        }
+        $fx = CounterDesk::convert($amountInr, $code);
+        if ($fx['currency'] === 'INR') {
+            return [];
+        }
+
+        return [
+            'local_currency' => $fx['currency'],
+            'local_amount'   => $fx['amount'],
+            'fx_rate'        => $fx['rate'],
+        ];
+    }
+
     private static function paxSpecialColumn(): bool
     {
         static $has = null;
@@ -183,6 +282,16 @@ final class BookingService
             }
             $sellerSource  = in_array($seller['source'] ?? '', ['agent', 'counter', 'admin'], true) ? (string) $seller['source'] : 'counter';
             $counterMethod = in_array($seller['paymentMethod'] ?? '', ['cash', 'upi', 'esewa', 'bank'], true) ? (string) $seller['paymentMethod'] : 'cash';
+            /* A desk with no bank account of its own takes cash (26 Sep 2026).
+               Refusing here, on the one path every app sale goes through, is
+               the only place it cannot be worked around from a browser. */
+            $sellerDesk = CounterDesk::codeForSale($sellerId);
+            if ($sellerDesk !== null && !CounterDesk::allowsMethod($sellerDesk, $counterMethod)) {
+                throw new RuntimeException(
+                    CounterDesk::label($sellerDesk) . ' takes '
+                    . implode(' / ', CounterDesk::allowedMethods($sellerDesk) ?? []) . ' only.'
+                );
+            }
             $counterNote   = Security::clean((string) ($seller['note'] ?? ''), 255);
             $referralCodeClean = '';           // the seller IS the agent; a typed code is ignored
             $soldByAdminId     = $sellerId;
@@ -473,7 +582,7 @@ final class BookingService
 
             $expiryMinutes = Settings::getInt('booking_expiry_minutes', 120);
 
-            $bookingId = Database::insert('bookings', [
+            $bookingId = Database::insert('bookings', self::deskStamp($seller !== null ? $sellerId : null, (float) $pricing['total']) + [
                 'pnr'             => $pnr,
                 'user_id'         => $userId,
                 'trip_type'       => !empty($request['returnLeg']) ? 'round' : 'oneway',
@@ -597,7 +706,7 @@ final class BookingService
             $paymentMethod = self::normaliseMethod($request['paymentMethod'] ?? 'upi');
 
             Database::insert('payments', $seller !== null
-                ? [ // counter sale: the money is already in hand -> verified now, by the seller
+                ? self::tenderStamp($sellerId, (float) $pricing['total']) + [ // counter sale: the money is already in hand -> verified now, by the seller
                     'booking_id'  => $bookingId,
                     'payment_ref' => generatePaymentRef(),
                     'method'      => $counterMethod,
@@ -873,7 +982,7 @@ final class BookingService
             );
 
             $pnr = nextTicketNo((string) $route['route_code']);
-            $bid = Database::insert('bookings', [
+            $bid = Database::insert('bookings', self::deskStamp($adminId ?: null, (float) $total) + [
                 'pnr'           => $pnr,
                 'trip_type'     => 'oneway',
                 'booking_mode'  => $bookingMode,
@@ -950,7 +1059,7 @@ final class BookingService
                 ]);
             }
 
-            Database::insert('payments', [
+            Database::insert('payments', self::tenderStamp($adminId ?: null, (float) $total) + [
                 'booking_id'  => $bid,
                 'payment_ref' => generatePaymentRef(),
                 'method'      => $method,

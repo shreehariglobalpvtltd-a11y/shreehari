@@ -156,7 +156,7 @@ final class PassengerDocs
 
         $ym     = date('Y') . '/' . date('m');
         $subDir = UPLOAD_PATH . '/' . self::SUBDIR . '/' . $ym;
-        if (!ensureDir($subDir)) {
+        if (!ensurePrivateDir($subDir)) {       // an ID scan is never fetched directly
             throw new RuntimeException('Could not create the upload folder.');
         }
 

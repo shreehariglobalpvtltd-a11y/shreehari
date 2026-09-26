@@ -1055,7 +1055,7 @@ final class AgentWallet
         }
 
         $dir = UPLOAD_PATH . '/agents-kyc';
-        ensureDir($dir);
+        ensurePrivateDir($dir);                 // KYC papers are served only by admin/agent-kyc-file.php
 
         $filename = Security::safeFilename($ext);
         if (!move_uploaded_file((string) $file['tmp_name'], $dir . '/' . $filename)) {

@@ -419,6 +419,69 @@ final class Settings
      *
      * @return array<string,string>
      * ================================================================= */
+    /**
+     * The company as the DESK that cut this ticket must name it.
+     *
+     * Owner, 26 Sep 2026: "Nepalgunj bata ticket katda tesma naam … Shree
+     * Hari Global Pvt Ltd Nepal, Puspalal Chowk lekhnu paryo … tei bata
+     * ticket kateko Nepal ko number aaunu paryo ticket ma."
+     *
+     * A ticket sold at a Nepal window is issued by the Nepal entity: its
+     * name, its office, its phone and its registration — not the Gujarat
+     * CIN and not the Mehsana number, which are the wrong company to call
+     * from Nepalgunj. Everything else (the website, the e-mail, the coach,
+     * the route) is one company and does not change.
+     *
+     * Most specific wins: the DESK's own phone/address (Counters &
+     * collection) beats the country-level nepal_* rows, which beat the
+     * Indian identity. An Indian desk, and every online sale, is byte for
+     * byte what it was before.
+     */
+    public static function companyFor(?string $counterCode): array
+    {
+        $co   = self::company();
+        $code = mb_strtoupper(trim((string) $counterCode));
+        if ($code === '' || !class_exists('CounterDesk')) {
+            return $co;
+        }
+        $desk = CounterDesk::get($code);
+        if ($desk === null || ($desk['country'] ?? 'IN') !== 'NP') {
+            return $co;
+        }
+
+        $s = static fn(string $k): string => trim(self::getString($k, ''));
+        $pick = static fn(string ...$vals): string => (static function (array $v): string {
+            foreach ($v as $one) { if (trim($one) !== '') { return trim($one); } }
+            return '';
+        })($vals);
+
+        $name = $pick($s('nepal_company'), $co['name']);
+        $co['name']      = $name;
+        $co['legal']     = $pick($s('nepal_company_legal'), $s('nepal_company'), $co['legal']);
+        $co['legalNe']   = $pick($s('nepal_company_ne'), $co['legalNe']);
+        $co['address']   = $pick((string) ($desk['address'] ?? ''), $s('nepal_office'), $co['address']);
+        $co['addressNe'] = $pick($s('nepal_office_ne'), $co['addressNe']);
+        $co['phone']     = $pick((string) ($desk['phone'] ?? ''), $s('nepal_phone'), $co['phone']);
+        /* Digits only, and only when there are enough of them to be a real
+           number — a half-filled placeholder must not print as +97798. */
+        $waDigits = static function (string $v): string {
+            $d = preg_replace('/\D/', '', $v) ?? '';
+            return strlen($d) >= 10 ? $d : '';
+        };
+        $co['whatsapp']  = $pick($waDigits($s('nepal_whatsapp')),
+                                 $waDigits((string) ($desk['phone'] ?? '')),
+                                 $waDigits($s('nepal_phone')),
+                                 $co['whatsapp']);
+        /* A Nepali ticket must not carry an Indian CIN. When the Nepal
+           registration is not on file yet the line is simply dropped —
+           printing the wrong registration is worse than printing none. */
+        $co['cin']      = $s('nepal_reg');
+        $co['regLabel'] = 'Reg.';
+        $co['country']  = 'NP';
+
+        return $co;
+    }
+
     public static function company(): array
     {
         $s = static fn(string $k, string $d): string => trim(self::getString($k, '')) !== ''
@@ -439,6 +502,8 @@ final class Settings
             // is the newer, document-specific name. Prefer the specific one.
             'operator'  => $s('company_operator', $s('company_ceo', 'Sher Bahadur Bishwakarma')),
             'operatorNe'=> $s('company_operator_ne', 'शेर बहादुर विश्वकर्मा'),
+            'regLabel'  => 'CIN',
+            'country'   => 'IN',
             'counters'  => $s('company_counters',
                 'Mehsana +91 91048 01507 · Ahmedabad +91 91570 01507 · Baroda +91 97264 01507 · Surat +91 73059 01507'),
         ];

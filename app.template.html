@@ -108,6 +108,15 @@ body{margin:0;background:#FFFFFF}
 .splash-title .ltr{display:inline-block}
 .splash-title .gold{color:#F07C1F}
 .splash-tagline{margin-top:14px;font-size:13.5px;color:#5B6B85;letter-spacing:.07em;font-weight:600;opacity:1}
+/* The blessing (26 Sep 2026): a golden aura breathing behind the logo and the
+   mantra line in shimmering gold. Pure CSS, no image; still under reduced motion. */
+.splash-brand{position:relative}
+.splash-aura{position:absolute;left:50%;top:26%;width:min(62vw,250px);height:min(62vw,250px);transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle,rgba(246,199,68,.46) 0%,rgba(240,124,31,.18) 42%,rgba(240,124,31,0) 70%);filter:blur(7px);animation:spAura 3.2s ease-in-out infinite;pointer-events:none;z-index:-1}
+@keyframes spAura{0%,100%{transform:translate(-50%,-50%) scale(.9);opacity:.7}50%{transform:translate(-50%,-50%) scale(1.1);opacity:1}}
+.splash-mantra{margin-top:10px;font-family:'Noto Sans Devanagari','Mukta','Hind',system-ui,sans-serif;font-size:clamp(15px,4.4vw,21px);font-weight:700;letter-spacing:.05em;line-height:1.5;background:linear-gradient(90deg,#A8680F 0%,#F6C744 32%,#FFF6CF 50%,#F6C744 68%,#A8680F 100%);background-size:220% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;animation:spShimmer 3.6s linear infinite}
+@keyframes spShimmer{to{background-position:-220% 0}}
+@media (prefers-reduced-motion:reduce){.splash-aura,.splash-mantra{animation:none}}
+[data-theme="dark"] .splash-aura{opacity:.55}
 .splash-road{position:relative;width:min(70vw,280px);height:54px;margin:16px auto 0;overflow:hidden}
 .splash-road::before{content:"";position:absolute;left:0;right:0;bottom:0;height:9px;border-radius:5px;background:#2B3342}
 .splash-road::after{content:"";position:absolute;left:0;right:0;bottom:4px;height:2px;background:repeating-linear-gradient(90deg,#F6C744 0 14px,transparent 14px 26px)}
@@ -131,39 +140,49 @@ body{margin:0;background:#FFFFFF}
 .splash-phone{display:inline-flex;align-items:center;gap:8px;margin-top:22px;padding:10px 22px;border-radius:999px;background:#FFF1E4;border:1px solid rgba(240,124,31,.34);color:#C25E10;font-family:'Cinzel',Georgia,serif;font-size:17px;font-weight:800;letter-spacing:.03em;text-decoration:none;opacity:0;transform:translateY(10px)}
 @media (max-width:400px){.splash-logo{width:min(52vw,132px)}.splash-title{font-size:clamp(23px,7.6vw,32px)}.splash-ceo b{font-size:15.5px}}
 </style>
-  <link rel="preload" as="image" href="/assets/img/logo.png?v=20260925a" fetchpriority="high">
-  <link rel="stylesheet" href="/assets/css/app.css?v=20260925a">
-  <link rel="stylesheet" href="/assets/css/views.css?v=20260925a">
+  <link rel="preload" as="image" href="/assets/img/logo.png?v=20260926k" fetchpriority="high">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260926k">
+  <link rel="stylesheet" href="/assets/css/views.css?v=20260926k">
   <!-- The shell pass (24 Sep 2026): header + logo, motion, elevation and
        the sound/haptics switches. Loads LAST on purpose — every rule in it
        is meant to win on equal specificity without an !important war, and
        removing this one line reverts the whole pass. -->
-  <link rel="stylesheet" href="/assets/css/premium.css?v=20260925a">
+  <link rel="stylesheet" href="/assets/css/premium.css?v=20260926k">
 <!-- App bundle: `defer` keeps the same execution order and still runs after the
      document is parsed, but placing the tags in <head> lets the browser start
      fetching ~1 MB of JS with the FIRST bytes of HTML instead of after it has
      parsed ~190 KB of markup (perf pass, 11 Sep 2026). -->
-<script defer src="/assets/js/01-boot.js?v=20260925a"></script>
-<script defer src="/assets/js/02-config.js?v=20260925a"></script>
-<script defer src="/assets/js/03-accounts.js?v=20260925a"></script>
-<script defer src="/assets/js/04-i18n.js?v=20260925a"></script>
-<script defer src="/assets/js/05-router.js?v=20260925a"></script>
-<script defer src="/assets/js/06-results.js?v=20260925a"></script>
-<script defer src="/assets/js/07-checkout.js?v=20260925a"></script>
-<script defer src="/assets/js/14-counter.js?v=20260925a"></script>
-<script defer src="/assets/js/08-signin.js?v=20260925a"></script>
-<script defer src="/assets/js/10-track.js?v=20260925a"></script>
-<script defer src="/assets/js/11-pdf-ticket.js?v=20260925a"></script>
-<script defer src="/assets/js/13-admin-routes.js?v=20260925a"></script>
+<script defer src="/assets/js/01-boot.js?v=20260926k"></script>
+<script defer src="/assets/js/02-config.js?v=20260926k"></script>
+<script defer src="/assets/js/03-accounts.js?v=20260926k"></script>
+<script defer src="/assets/js/04-i18n.js?v=20260926k"></script>
+<script defer src="/assets/js/05-router.js?v=20260926k"></script>
+<script defer src="/assets/js/06-results.js?v=20260926k"></script>
+<script defer src="/assets/js/07-checkout.js?v=20260926k"></script>
+<script defer src="/assets/js/14-counter.js?v=20260926k"></script>
+<script defer src="/assets/js/08-signin.js?v=20260926k"></script>
+<script defer src="/assets/js/10-track.js?v=20260926k"></script>
+<script defer src="/assets/js/11-pdf-ticket.js?v=20260926k"></script>
+<script defer src="/assets/js/13-admin-routes.js?v=20260926k"></script>
 <!-- 13 Sep 2026: PWA layer — install sheet, Web Push, border prep card,
      split-pay, 7-day seat-fill chart. Last on purpose: it reads the globals
      the files above define and every hook it adds is optional. -->
-<script defer src="/assets/js/17-pwa.js?v=20260925a"></script>
-<script defer src="/assets/js/18-journey.js?v=20260925a"></script>
+<script defer src="/assets/js/17-pwa.js?v=20260926k"></script>
+<script defer src="/assets/js/18-journey.js?v=20260926k"></script>
 <!-- Premium feel (24 Sep 2026). MUST stay after 13-admin-routes.js: it
      takes over that file's SFX object in place, which means the binding has
      to exist by the time this runs. defer preserves document order. -->
-<script defer src="/assets/js/19-premium.js?v=20260925a"></script>
+<script defer src="/assets/js/19-premium.js?v=20260926k"></script>
+<!-- The four facility chips, told as a story (26 Sep 2026). MUST stay after
+     19-premium.js: each scene plays its own voice through that file's sound
+     engine, so window.SHGFeel has to exist first. defer keeps document order.
+     Nothing here runs until a chip is tapped - the home page stays still,
+     which is the other half of the same owner's brief. -->
+<script defer src="/assets/js/20-feature-story.js?v=20260926k"></script>
+<!-- 26 Sep 2026 - the traveller's own card: a round photo kept ONLY on this
+     handset, the country flag in front of it (which really does re-file the
+     account as +91 or +977), and the name the ticket prints. -->
+<script defer src="/assets/js/21-me.js?v=20260926k"></script>
 <meta property="og:title" content="Surat to Nepal Bus (Rupaidiha / Nepalgunj) — AC Sleeper | S Hari Global">
 <meta property="og:description" content="Direct AC Sleeper coach from Gujarat (India) to the Rupaidiha (India–Nepal) border. Boarding at Surat, Kamrej, Ankleshwar, Bharuch, Vadodara, Anand, Nadiad, Emli Bhupal & Ahmedabad (S Hari Parking, Nana Chiloda). Book online at one fixed fair price. Private & sharing cabins.">
 <meta property="og:type" content="website">
@@ -194,20 +213,20 @@ body{margin:0;background:#FFFFFF}
      same font-display:swap, so the brand face still arrives late and the
      text is readable in Georgia from the first frame, exactly as before.
      Cinzel is SIL OFL 1.1, which allows hosting it ourselves. -->
-<link rel="preload" as="font" type="font/woff2" href="/assets/fonts/cinzel-latin.woff2?v=20260925a" crossorigin>
-<style>@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20260925a) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20260925a) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20260925a) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20260925a) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}</style>
+<link rel="preload" as="font" type="font/woff2" href="/assets/fonts/cinzel-latin.woff2?v=20260926k" crossorigin>
+<style>@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20260926k) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20260926k) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20260926k) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20260926k) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}</style>
 <title>Surat to Nepal Bus (Rupaidiha / Nepalgunj) — AC Sleeper daily | S Hari Global Pvt Ltd</title>
 <meta name="description" content="सूरत से नेपाल बस · सुरत देखि नेपाल बस — daily AC sleeper from Surat, Kamrej, Ankleshwar, Bharuch, Vadodara, Anand, Nadiad & Ahmedabad to the Rupaidiha (Nepalgunj) border. Book online, on WhatsApp or by phone. Registered Indian company, Mehsana.">
 <!-- Real brand favicon, not the emoji placeholder. PNG first for the tab
      strip, the SVG kept as the scalable fallback. -->
-<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon-32.png?v=20260925a">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon-32.png?v=20260926k">
 <link rel="icon" type="image/svg+xml" href="/icon-shg.svg">
 <!-- PWA / offline navigator: installable app + service-worker cached maps -->
 <link rel="manifest" href="/manifest.webmanifest">
 <!-- iOS ignores SVG here and silently falls back to a screenshot of the
      page, which is why the home-screen icon looked like a web page.
      A 180px opaque PNG is the only thing Safari will use. -->
-<link rel="apple-touch-icon" sizes="180x180" href="/assets/img/apple-touch-icon.png?v=20260925a">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/img/apple-touch-icon.png?v=20260926k">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SHG Bus">
@@ -295,21 +314,27 @@ s.addEventListener('click',function(e){e.preventDefault();
          the brand while the app boots (17 Sep 2026). Inline opacity:0 keeps it
          invisible until views.css animates it, so the first paint is unchanged. -->
     <svg class="splash-map" viewBox="0 0 540 310" aria-hidden="true" style="opacity:0">
-      <path class="sm-in" pathLength="1" d="M141,12 L125,32 L108,58 L88,78 L64,102 L40,128 L25,142 L47,150 L38,163 L62,172 L82,162 L96,175 L104,192 L118,226 L138,258 L163,290 L184,301 L206,278 L228,252 L246,232 L270,208 L300,190 L332,172 L352,166 L364,158 L372,146 L370,130 L380,120 L396,116 L424,120 L425,142 L440,134 L448,110 L468,120 L500,102 L516,92 L472,84 L436,98 L400,104 L378,106 L366,116 L330,114 L296,106 L261,101 L229,92 L219,76 L200,58 L172,38 Z"/>
-      <path class="sm-np" pathLength="1" d="M229,92 L246,76 L272,80 L302,86 L334,94 L368,100 L366,116 L330,114 L296,106 L261,101 Z"/>
-      <path class="sm-route" pathLength="1" d="M24,296 L64,264 L98,246 L126,232 L440,78"/>
+      <path class="sm-in" pathLength="1" d="M190.1,17.1L196.7,10L213.7,9L233.6,20.2L237.4,34.3L232.6,51.6L253.4,62.7L244.9,76.9L253.4,83L267.6,89.1L281.8,91.1L298.9,99.2L310.2,101.3L320.6,97.2L328.2,92.1L330.1,97.2L343.3,97.2L357.5,96.2L371.7,91.1L385.9,86.1L400.1,80L408.6,83L405.7,94.2L401,100.3L387.8,105.3L382.1,113.4L379.3,124.6L370.7,134.7L363.2,145.9L360.3,128.6L353.7,123.6L349.9,134.7L337.6,145.9L328.2,148.9L312.1,150.9L305.5,165.1L292.2,171.2L281.8,183.4L265.7,197.6L252.5,207.7L245.9,236.1L243,252.3L237.4,264.5L233.6,274.6L227,278.7L220.3,287.1L214.7,278.7L208,265.5L203.3,250.3L195.7,237.1L190.1,218.9L184.4,210.8L176.8,186.4L174.9,165.1L176.8,158L174,149.9L171.2,146.9L168.3,152L158.9,157L149.4,158L140.9,149.9L139,141.8L147.5,139.8L155.1,136.8L157.9,133.7L149.4,130.7L137.1,129.7L132.4,126.6L138,122.6L149.4,122.6L157.9,115.5L159.8,87.1L170.2,76.9L181.6,68.8L192,54.6L192.9,39.4Z"/>
+      <path class="sm-np" pathLength="1" d="M244.6,63.2L252.5,62.7L262,60.7L270.5,63.7L278,72.9L283.7,71.9L292.2,79L300.7,84L307.4,84L311.1,87.1L321.6,86.1L321.6,97.2L310.2,101.3L298.9,99.2L287.5,95.2L275.2,91.1L262,86.1L252.5,79L244.5,76.9Z"/>
+      <path class="sm-route" pathLength="1" d="M176.2,154.3L173.8,135.5L193.2,119.7L204.2,96.1L225.2,93.4L253,96.7L259.3,84.4"/>
+      <circle class="sm-dot sm-dot-a" cx="173.8" cy="135.5" r="3.6"/>
+      <circle class="sm-dot sm-dot-b" cx="259.3" cy="84.4" r="3.6"/>
     </svg>
-    <div class="splash-brand">
-      <img src="/assets/img/logo.png?v=20260925a" alt="S Hari Global Pvt Ltd" class="splash-logo" width="440" height="321" fetchpriority="high" decoding="sync">
+    <div class="splash-brand"><i class="splash-aura" aria-hidden="true"></i>
+      <img src="/assets/img/logo.png?v=20260926k" alt="S Hari Global Pvt Ltd" class="splash-logo" width="440" height="321" fetchpriority="high" decoding="sync">
       <div class="splash-title" id="splashTitle">S Hari Global Pvt Ltd</div>
     </div>
     <div class="splash-tagline" id="splashTagline">Gujarat ⇄ Rupaidiha · India–Nepal Transport</div>
+    <!-- The blessing line (owner, 26 Sep 2026: "Bishnu Bhagwan ko naam mantra").
+         Golden shimmer in CSS above; the bell + spoken mantra play on the first
+         touch (19-premium.js, MANTRA) because a browser will not sound before one. -->
+    <div class="splash-mantra" aria-hidden="true">ॐ नमो भगवते वासुदेवाय</div>
     <div class="premium-border"><span>INDIA · GUJARAT</span><span data-i18n="premiumBeyond">Travel Beyond Borders</span><span>NEPAL · NEPALGUNJ</span></div>
     <div class="splash-ceo">
-      <img src="/assets/img/ceo.jpg?v=20260925a" class="splash-ceo-photo" width="720" height="1001" decoding="async" alt="Sher Bahadur Bishwokarma">
+      <img src="/assets/img/ceo.jpg?v=20260926k" class="splash-ceo-photo" width="720" height="1001" decoding="async" alt="Sher Bahadur Bishwokarma">
       <div><span data-i18n="premiumDirector">CHAIRMAN / DIRECTOR</span><b>Sher Bahadur Bishwokarma</b><span>S HARI GLOBAL</span><span class="splash-ceo-num">📞 +91 97264 01507</span></div>
     </div>
-    <div class="premium-fleet" aria-hidden="true"><div class="premium-road"></div><img class="fleet-main" src="/assets/img/bus-shg-sm.webp?v=20260925a" width="600" height="312" alt=""><img class="fleet-second" src="/assets/img/bus-shg-sm.webp?v=20260925a" width="600" height="312" alt=""></div>
+    <div class="premium-fleet" aria-hidden="true"><div class="premium-road"></div><img class="fleet-main" src="/assets/img/bus-shg-sm.webp?v=20260926k" width="600" height="312" alt=""><img class="fleet-second" src="/assets/img/bus-shg-sm.webp?v=20260926k" width="600" height="312" alt=""></div>
     <p class="premium-promise" data-i18n="premiumPromise">Your Journey, Our Responsibility.</p>
     <!-- The attribution line the owner asked for (24 Sep 2026). The brief
          wrote the surname as "Bishnowlara" and asked us to check it against
@@ -352,7 +377,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <!-- Scene 1 — CEO introduction FIRST (sabai bhanda pehle) -->
       <div class="intro-scene" id="introS1">
         <div class="ceo-intro">
-          <div class="ceo-intro-photo"><img id="introCeoImg" src="/assets/img/ceo-sm.webp?v=20260925a" alt="Sher Bahadur Bishwokarma" loading="lazy" decoding="async" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="ceo-intro-initials" style="display:none">SB</span></div>
+          <div class="ceo-intro-photo"><img id="introCeoImg" src="/assets/img/ceo-sm.webp?v=20260926k" alt="Sher Bahadur Bishwokarma" loading="lazy" decoding="async" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="ceo-intro-initials" style="display:none">SB</span></div>
           <div class="ceo-intro-name">Sher Bahadur Bishwokarma</div>
           <div class="ceo-intro-title">👑 Founder &amp; CEO · Director</div>
           <div class="intro-company">S HARI GLOBAL PVT LTD</div>
@@ -512,7 +537,7 @@ s.addEventListener('click',function(e){e.preventDefault();
          "S HARI GLOBAL" under the bus, and setting the words twice beside
          each other is the tell of a logo that was bolted on. -->
     <a class="brand" href="#/" data-scroll="top" aria-label="S Hari Global Pvt Ltd — Home">
-      <img id="logoNav" src="/assets/img/logo.png?v=20260925a" alt="S Hari Global Pvt Ltd Logo" width="440" height="321" decoding="async">
+      <img id="logoNav" src="/assets/img/logo.png?v=20260926k" alt="S Hari Global Pvt Ltd Logo" width="440" height="321" decoding="async">
     </a>
     <nav class="nav-links" aria-label="Main">
       <a class="nav-link" href="#/" data-scroll="top"><svg class="ic"><use href="#i-home"/></svg> Home</a>
@@ -757,7 +782,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <div class="ra3-ground"><div class="ra3-road"><i class="ra3-stripes"></i><i class="ra3-edge t"></i><i class="ra3-edge b"></i></div></div>
       <div class="ra3-bus"><div class="ra3-body">
         <span class="ra3-shadow"></span>
-        <img src="/assets/img/bus-side.svg?v=20260925a" alt="" width="640" height="200" decoding="async" fetchpriority="low">
+        <img src="/assets/img/bus-side.svg?v=20260926k" alt="" width="640" height="200" decoding="async" fetchpriority="low">
         <span class="ra3-beam"></span>
       </div></div>
       <div class="ra3-tag">≈1,375 km · via Rupaidiha Border 🛃</div>
@@ -950,7 +975,7 @@ s.addEventListener('click',function(e){e.preventDefault();
   <div class="container" style="margin-top:26px">
     <div class="founder-card founder-highlight reveal">
       <div class="founder-avatar-wrap">
-        <img id="ceoHeroImg" src="/assets/img/ceo.jpg?v=20260925a" alt="Sher Bahadur Bishwokarma — CEO &amp; Director" loading="lazy" decoding="async" style="width:100%;height:100%;border-radius:50%;object-fit:cover;padding:0" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <img id="ceoHeroImg" src="/assets/img/ceo.jpg?v=20260926k" alt="Sher Bahadur Bishwokarma — CEO &amp; Director" loading="lazy" decoding="async" style="width:100%;height:100%;border-radius:50%;object-fit:cover;padding:0" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
         <span class="founder-initials" style="display:none">SB</span>
         <button type="button" id="ceoPhotoBtn" title="CEO photo यहाँबाट upload गर्नुहोस् — gallery बाट छान्ने बित्तिकै save हुन्छ" style="position:absolute;bottom:-2px;right:-2px;width:30px;height:30px;border-radius:50%;border:2px solid var(--card);background:var(--orange);color:#fff;font-size:14px;cursor:pointer;line-height:1;padding:0">📷</button>
         <input type="file" id="ceoPhotoFile" accept="image/*" style="display:none">
@@ -1633,6 +1658,26 @@ s.addEventListener('click',function(e){e.preventDefault();
         <div class="duo-divider"><i class="in"></i><i class="np"></i></div>
       </div>
 
+      <!-- HELP DESK (26 Sep 2026, owner: "help desk chalauna sajilo, msg
+           optimise"): one tap picks the question, the WhatsApp sheet opens with
+           it already written, and the office receives it through the API sender
+           (api/wa-request.php). Wired by [data-wa-open] in 05-router.js. -->
+      <div class="c-card reveal help-desk" id="helpDesk">
+        <div class="hd-head"><span aria-hidden="true">💬</span><div><b data-i18n="hdTitle">Message the office — one tap</b><small data-i18n="hdSub">Pick a topic · we reply on WhatsApp</small></div></div>
+        <div class="hd-chips" role="group" aria-label="Quick questions">
+          <button type="button" class="hd-chip" data-wa-open="help" data-wa-note-key="hdQ1">🎫 <span data-i18n="hdQ1">Where is my ticket?</span></button>
+          <button type="button" class="hd-chip" data-wa-open="help" data-wa-note-key="hdQ2">🕒 <span data-i18n="hdQ2">What time is the bus today?</span></button>
+          <button type="button" class="hd-chip" data-wa-open="help" data-wa-note-key="hdQ3">💸 <span data-i18n="hdQ3">Refund / cancel</span></button>
+          <button type="button" class="hd-chip" data-wa-open="help" data-wa-note-key="hdQ4">🧳 <span data-i18n="hdQ4">Luggage / parcel</span></button>
+          <button type="button" class="hd-chip" data-wa-open="correction" data-wa-note-key="hdQ5">✏️ <span data-i18n="hdQ5">Change name or date</span></button>
+          <button type="button" class="hd-chip" data-wa-open="help">💬 <span data-i18n="hdQ6">Something else</span></button>
+        </div>
+        <div class="hd-row">
+          <a class="btn btn-wa" href="https://wa.me/919104801507?text=Namaste%20%F0%9F%99%8F%20S%20Hari%20Global" target="_blank" rel="noopener">💬 <span data-i18n="hdWa">WhatsApp office</span></a>
+          <a class="btn btn-ghost" href="tel:+919104801507">📞 <span data-i18n="hdCall">Call office</span></a>
+        </div>
+      </div>
+
       <!-- OFFICE CARDS -->
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px;margin-bottom:24px">
         <!-- 🇮🇳 MEHSANA HEAD OFFICE -->
@@ -1700,11 +1745,11 @@ s.addEventListener('click',function(e){e.preventDefault();
         </div>
         <div class="vcard-grid">
           <figure class="vcard">
-            <a class="vcard-img" href="/assets/img/card-en.jpg?v=20260925a" target="_blank" rel="noopener"><img src="/assets/img/card-en-sm.jpg?v=20260925a" srcset="/assets/img/card-en-sm.jpg?v=20260925a 720w, /assets/img/card-en.jpg?v=20260925a 1600w" sizes="(max-width:640px) 92vw, 500px" alt="S Hari Global Pvt Ltd visiting card — English" width="1600" height="914" loading="lazy" decoding="async"></a>
+            <a class="vcard-img" href="/assets/img/card-en.jpg?v=20260926k" target="_blank" rel="noopener"><img src="/assets/img/card-en-sm.jpg?v=20260926k" srcset="/assets/img/card-en-sm.jpg?v=20260926k 720w, /assets/img/card-en.jpg?v=20260926k 1600w" sizes="(max-width:640px) 92vw, 500px" alt="S Hari Global Pvt Ltd visiting card — English" width="1600" height="914" loading="lazy" decoding="async"></a>
             <figcaption><span data-i18n="vcEn">🇮🇳 English card</span><span class="vcard-btns"><a class="btn btn-ghost btn-sm" href="/assets/img/card-en.jpg" download="S-Hari-Global-Card-EN.jpg">💾 <span data-i18n="vcSave">Save</span></a><button type="button" class="btn btn-wa btn-sm" data-vc-share="en">📤 <span data-i18n="vcShare">Share on WhatsApp</span></button></span></figcaption>
           </figure>
           <figure class="vcard">
-            <a class="vcard-img" href="/assets/img/card-ne.jpg?v=20260925a" target="_blank" rel="noopener"><img src="/assets/img/card-ne-sm.jpg?v=20260925a" srcset="/assets/img/card-ne-sm.jpg?v=20260925a 720w, /assets/img/card-ne.jpg?v=20260925a 1600w" sizes="(max-width:640px) 92vw, 500px" alt="एस हरी ग्लोबल प्रा. लि. भिजिटिङ कार्ड — नेपाली" width="1600" height="914" loading="lazy" decoding="async"></a>
+            <a class="vcard-img" href="/assets/img/card-ne.jpg?v=20260926k" target="_blank" rel="noopener"><img src="/assets/img/card-ne-sm.jpg?v=20260926k" srcset="/assets/img/card-ne-sm.jpg?v=20260926k 720w, /assets/img/card-ne.jpg?v=20260926k 1600w" sizes="(max-width:640px) 92vw, 500px" alt="एस हरी ग्लोबल प्रा. लि. भिजिटिङ कार्ड — नेपाली" width="1600" height="914" loading="lazy" decoding="async"></a>
             <figcaption><span data-i18n="vcNe">🇳🇵 Nepali card</span><span class="vcard-btns"><a class="btn btn-ghost btn-sm" href="/assets/img/card-ne.jpg" download="S-Hari-Global-Card-NE.jpg">💾 <span data-i18n="vcSave">Save</span></a><button type="button" class="btn btn-wa btn-sm" data-vc-share="ne">📤 <span data-i18n="vcShare">Share on WhatsApp</span></button></span></figcaption>
           </figure>
         </div>
@@ -2712,7 +2757,7 @@ s.addEventListener('click',function(e){e.preventDefault();
     </div>
     <div class="f-dev">Developed by <strong>Dileep Sunar</strong> · <a href="https://wa.me/919173401507" target="_blank" rel="noopener noreferrer">💬 WhatsApp +91 91734 01507</a> · <a href="https://www.facebook.com/dileep.soonaar/" target="_blank" rel="noopener noreferrer">Facebook</a></div>
     <div class="f-ceo reveal">
-      <img id="ceoPhoto" src="/assets/img/ceo.jpg?v=20260925a" alt="Sher Bahadur Bishwokarma — Founder &amp; CEO" loading="lazy" decoding="async" onerror="this.style.display='none'">
+      <img id="ceoPhoto" src="/assets/img/ceo.jpg?v=20260926k" alt="Sher Bahadur Bishwokarma — Founder &amp; CEO" loading="lazy" decoding="async" onerror="this.style.display='none'">
       <span>🕉️ <span id="ceoMantra"></span> — <strong id="ceoName"></strong>, Founder &amp; CEO
         <button id="mantraBtn" type="button" title="Play mantra chant · मन्त्र सुन्नुहोस्" aria-label="Play mantra chant">🔊</button>
       </span>
@@ -2796,9 +2841,19 @@ s.addEventListener('click',function(e){e.preventDefault();
       <div class="wa-req-row wa-req-pax" id="waReqPaxRow"><label for="waReqPax" data-i18n="waReqPax">Passengers</label>
         <select id="waReqPax"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></div>
       <label class="wa-req-field" for="waReqNote"><span id="waReqNoteLabel" data-i18n="waReqNotePh">Anything to add? (optional)</span><textarea id="waReqNote" rows="2" maxlength="300"></textarea></label>
-      <a class="wa-row wa-row-hot" id="waBookLink" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">💬</span><div><b data-i18n="waReqChat">Continue in WhatsApp →</b><small data-i18n="waReqChatSub">Review the message, then tap Send in WhatsApp</small></div></a>
-      <button type="submit" class="wa-req-go" id="waReqGo" data-i18n="waReqGo">📨 Send to the office on WhatsApp</button>
+      <!-- 26 Sep 2026 (owner: "WhatsApp API bata matra jaos, redirect sano side ma"):
+           the server send is THE button; the passenger's own wa.me chat is the
+           small line under it. On success the form gives way to #waReqDone. -->
+      <button type="submit" class="wa-req-go" id="waReqGo" data-i18n="waReqGo">📨 Send request</button>
       <div class="wa-req-msg" id="waReqMsg" role="status" aria-live="polite" hidden></div>
+      <a class="wa-req-alt" id="waBookLink" target="_blank" rel="noopener noreferrer" data-i18n="waReqChat">or send from my own WhatsApp →</a>
+      <div class="wa-req-done" id="waReqDone" hidden>
+        <span class="wa-req-done-ic" aria-hidden="true">✅</span>
+        <b data-i18n="waReqDoneT">Sent to the office ✅</b>
+        <small data-i18n="waReqDoneS">We reply on your WhatsApp shortly.</small>
+        <a class="wa-req-alt" id="waDoneChat" target="_blank" rel="noopener noreferrer" data-i18n="waReqDoneChat">Open the office chat →</a>
+        <button type="button" class="wa-req-ok" id="waReqOk" data-i18n="waReqOk">OK</button>
+      </div>
       <p class="wa-req-hint" data-i18n="waReqPrivacy">Your details are shared with S Hari Global only when you send. A request does not confirm a seat or change a ticket.</p>
     </form>
     <div class="wa-grid">

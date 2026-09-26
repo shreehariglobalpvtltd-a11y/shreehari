@@ -199,7 +199,7 @@ final class ChalaniPng
         if (is_file($path) && filesize($path) > 0) {
             return ['path' => $path, 'file' => $file, 'page' => $page, 'pages' => $pages, 'fresh' => false, 'fingerprint' => $fp];
         }
-        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+        if (!ensurePrivateDir($dir)) {          // guard written beside the data, 25 Sep 2026
             throw new RuntimeException('Cannot create the chalani folder.');
         }
 

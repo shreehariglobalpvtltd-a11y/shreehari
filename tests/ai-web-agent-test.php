@@ -332,8 +332,27 @@ try {
      *  6. The entry point and the wiring
      * ================================================================ */
     echo "\n== the entry point ==\n";
-    check('with no key the web agent is off', AiAgent::webEnabled() === false);
+    /* 26 Sep 2026 — "no key" stopped meaning "no brain". The assistant can
+       now think on a model running on this server (AiAgent's 'local'
+       provider, llama.cpp on 127.0.0.1), which has no key by definition,
+       so webEnabled() asks hasBrain() rather than counting cloud keys.
+       This block is about the KEYLESS CLOUD case, so it has to put the
+       local brain down first — otherwise the check passes or fails
+       depending on whether somebody left ai_local_on switched on, which
+       is exactly how this test started failing. */
+    Settings::set('ai_local_on', false, 'bool', 'ai', false);
+    Settings::flush();
+    check('with no key and no local brain the web agent is off', AiAgent::webEnabled() === false);
     check('  and answers null, never throws', AiAgent::handleWeb($guest, 'namaste', 'ne') === null);
+    /* The other half of that contract, and the reason the change was made:
+       the local brain alone is enough to run the assistant. Nothing here
+       calls the model — webEnabled() must not probe it, because a health
+       check on every message would be a round trip on the hot path. */
+    Settings::set('ai_local_on', true, 'bool', 'ai', false);
+    Settings::flush();
+    check('  the local brain alone turns it on, with no key at all', AiAgent::webEnabled() === true);
+    Settings::set('ai_local_on', false, 'bool', 'ai', false);
+    Settings::flush();
     Settings::set('anthropic_api_key', 'sk-ant-test-not-a-real-key', 'string', 'ai', false);
     Settings::flush();
     check('with a key it is on', AiAgent::webEnabled() === true);

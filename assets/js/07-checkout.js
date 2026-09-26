@@ -283,7 +283,7 @@ function coScrollInvalid() {
 function coGoStep(n) {
   if (n === 2) {
     const dv = validateCheckoutDetails();
-    if (dv.blocked) { toast('⛔ This number is blocked from booking — contact office +91 91048 01507'); SFX.error(); return; }
+    if (dv.blocked) { toast(tf('numBlocked', { p: ((DB.settings && DB.settings.phone) || CONFIG.phone) })); SFX.error(); return; }
     if (!dv.ok) { coFixToast(dv); return; }
     /* Name + mobile ARE the sign-in: establish the traveller's session in
        the background while they look at the payment step, so the booking
@@ -1108,7 +1108,7 @@ async function submitBooking() {
   const phone = dv.phone, email = dv.email, idNum = dv.idNum;
   const phoneVal = dv.phoneVal;
   if (dv.blocked) {
-    toast('⛔ This number is blocked from booking — contact office +91 91048 01507');
+    toast(tf('numBlocked', { p: ((DB.settings && DB.settings.phone) || CONFIG.phone) }));
     SFX.error(); shgHaptic('error');
     return;
   }
@@ -1287,11 +1287,11 @@ async function submitBooking() {
     const msgEl = $('#cAgentCodeMsg');
     if (apiResult.agent.applied) {
       const label = apiResult.agent.label || 'Agent code applied';
-      toast('🎟️ ' + label + ' · applied');
-      if (msgEl) { msgEl.textContent = '✓ ' + label + ' · applied'; msgEl.style.color = 'var(--good)'; msgEl.hidden = false; }
+      toast('🎟️ ' + tf('agentCodeOk', { c: label }));
+      if (msgEl) { msgEl.textContent = '✓ ' + tf('agentCodeOk', { c: label }); msgEl.style.color = 'var(--good)'; msgEl.hidden = false; }
     } else if (agentCodeInput) {
-      toast('Agent code not recognised — booked as direct sale.');
-      if (msgEl) { msgEl.textContent = 'Agent code not recognised — booked as direct sale.'; msgEl.style.color = 'var(--muted)'; msgEl.hidden = false; }
+      toast(t('agentCodeNo'));
+      if (msgEl) { msgEl.textContent = t('agentCodeNo'); msgEl.style.color = 'var(--muted)'; msgEl.hidden = false; }
     }
   }
 
@@ -1374,7 +1374,11 @@ async function submitBooking() {
   Flow.paxIndividual = false;   // the next party starts under one name again
   location.hash = '#/ticket/' + id;
   toast(t('tSubmitted'));
-  SFX.success(); shgHaptic('success');
+  /* 25 Sep 2026 (owner: a sound "ticket katne bela ma"). The moment the
+     PNR exists is the ticket coming off the book, so it gets the ticket
+     voice — the tear plus the confirmation bells — not the generic
+     success chime this shared with a dozen smaller wins. */
+  SFX.ticket(); shgHaptic('ticket');
   /* Notification centre entry (additive — guarded so booking flow never breaks) */
   try {
     if (typeof pushNotif === 'function') {
@@ -2071,10 +2075,10 @@ function renderStatus(id) {
   <div class="status-card tk2${conf ? ' confirm-success' : ''}" id="ticketCard" data-pnr="${esc(b.id)}">
     <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo.png?v=20260925a" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo.png?v=20260926k" alt="" loading="lazy" decoding="async">
         <div><b>${esc(CONFIG.company.name || 'S HARI GLOBAL PRIVATE LIMITED')}</b><small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
       </div>
-      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20260925a" width="600" height="312" alt="" decoding="async">
+      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20260926k" width="600" height="312" alt="" decoding="async">
     </div>
     <div class="premium-ticket-status">${pill2}${b.ticketNumber ? '<span>' + esc(b.ticketNumber) + '</span>' : ''}</div>
     ${(typeof routeOverviewSVG === 'function') ? routeOverviewSVG({ from: (isNepalPoint(r.from) ? r.from : (parseBP(b.boarding || '').name || r.from)), to: (isNepalPoint(r.to) ? r.to : (parseBP(b.drop || '').name || r.to)), compact: true }) : ''}

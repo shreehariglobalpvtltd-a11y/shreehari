@@ -428,7 +428,10 @@ $k    = CSRF_TOKEN_NAME;
 /* The desks the office has defined, for the counter picker on each row.
    Edited in Admin → Settings → counter_locations, one "CODE|Name" per
    line, so a new window (Birgunj, Butwal) is added without a deploy. */
-$counterLocs = Settings::counterLocations();
+/* 26 Sep 2026: read the desk TABLE (it falls back to the old settings row on
+   a database whose migration has not run), so a desk added on Counters &
+   collection is offered here immediately. */
+$counterLocs = CounterDesk::options(true);
 
 /* ── Pending Agent Applications ─────────────────────────────────── */
 $pending = Database::fetchAll(

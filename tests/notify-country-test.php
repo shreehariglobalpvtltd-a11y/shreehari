@@ -245,6 +245,7 @@ if ($route !== null) {
         $waRow = Database::fetch(
             "SELECT to_number, status FROM message_logs
               WHERE booking_id = :b AND channel = 'whatsapp'
+                AND (purpose IS NULL OR purpose = 'ticket')
               ORDER BY id DESC LIMIT 1",
             ['b' => $bid]
         );
