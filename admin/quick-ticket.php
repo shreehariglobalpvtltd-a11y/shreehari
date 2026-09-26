@@ -741,6 +741,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       + '<div><small>Boarding · चढ्ने ठाउँ</small><b>' + esc(plan.boardingCode) + ' · ' + esc(plan.boardingName) + '</b><em>' + esc(plan.boardingTime || '') + (plan.departsInMin != null ? ' · ' + inLabel(plan.departsInMin) : '') + '</em></div>'
       + '<div><small>Seat' + ((plan.seats || []).length > 1 ? 's' : '') + '</small><b>' + esc(seatsTxt) + '</b><em>' + esc(plan.seatsLeft) + ' free · ' + esc(plan.coach) + '</em></div>'
       + '<div class="big"><small>Fare · भाडा</small><b>' + money(f.total) + nprNote(f.total) + '</b><em>' + esc(plan.seatCount) + ' × ' + money(f.perSeat) + (f.groupDiscount > 0 ? ' · group −' + money(f.groupDiscount) : '') + (f.fee > 0 ? ' + fee ' + money(f.fee) : '') + '</em></div>'
+      + (f.advanceDiscount > 0 ? '<div><small>Offer · छुट</small><b>−' + money(f.advanceDiscount) + '</b><em>' + esc(f.advanceTitle || 'Advance booking offer') + (f.advancePercent > 0 ? ' · ' + esc(f.advancePercent) + '%' : '') + '</em></div>' : '')
       + '</div>'
       + '<div class="qt-why">' + (plan.matchedDesk ? '📍 Desk pickup remembered — <b>' + esc(plan.boardingName) + '</b>.' : '📍 First pickup still ahead. Tap a stop under Options → Boarding to make it this desk\'s default.') + '</div>';
     if (plan.alternatives && plan.alternatives.length) {
@@ -942,6 +943,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       + '<div><small>Boarding</small><b>' + esc(d.boardingCode) + ' · ' + esc(d.boardingName) + '</b><em>' + esc(d.boardingTime) + '</em></div>'
       + '<div><small>Seat' + ((d.seats || []).length > 1 ? 's' : '') + '</small><b>' + esc(seatLabelJoin(d.seats, 'sleeper', 'sharing')) + '</b></div>'
       + '<div class="big"><small>Fare</small><b>' + esc(d.totalLabel) + nprNote(d.total) + '</b><em>received · ' + esc(st.pay) + '</em></div>'
+      + (d.advanceDiscount > 0 ? '<div><small>Offer · छुट</small><b>−' + money(d.advanceDiscount) + '</b><em>advance booking</em></div>' : '')
       + '</div>'
       + '<div class="qt-wa ' + waCls + '">' + waTxt + (wa.link ? ' <a class="btn" href="' + esc(wa.link) + '" target="_blank" rel="noopener">💬 Send on WhatsApp</a>' : '') + '</div>'
       + '<div class="qt-actions">'

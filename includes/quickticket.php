@@ -1194,6 +1194,8 @@ final class QuickTicket
             'seats'        => $seats !== [] ? $seats : $plan['seats'],
             'total'        => $total,
             'totalLabel'   => inr($total),
+            // the advance-booking offer as its own figure on the desk's result card (26 Sep 2026 follow-up)
+            'advanceDiscount' => (float) ($booking['advance_discount'] ?? 0),
             'date'         => (string) $plan['date'],
             'dateLabel'    => (string) $plan['dateLabel'],
             'depTime'      => (string) $plan['depTime'],

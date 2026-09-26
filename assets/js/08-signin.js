@@ -226,7 +226,7 @@ async function refreshMyBookingsFromServer(force) {
         method: b.payment.method || (cur.payment || {}).method,
         reason: b.payment.reason
       });
-      const next = Object.assign({}, cur, { status: b.status, total: b.total, codFlag: b.codFlag,
+      const next = Object.assign({}, cur, { status: b.status, total: b.total, advanceDiscount: b.advanceDiscount || 0, codFlag: b.codFlag,
         ticketNumber: b.ticketNumber || cur.ticketNumber || '', payment: pay,
         trackUrl: b.trackUrl || cur.trackUrl || null,
         createdAt: cur.createdAt || b.createdAt });
@@ -380,6 +380,7 @@ function myBookingCard(b) {
       <small>${fmtDate(b.date)}</small>
     </div>
     <div class="mybk-route">${esc(parseBP(b.boarding).name || r.from || '?')} <em>→</em> ${esc(parseBP(b.drop).name || r.to || '?')} · ${seatLabelJoin(b.seats, r.type, b.bookingType)} · <b>${inr(b.total)}</b></div>
+    ${Number(b.advanceDiscount) > 0 ? '<div class="mybk-offer" style="font-size:12px;font-weight:700;color:var(--orange,#e0762a)">🎉 ' + esc(t('aoRow')) + ' −' + inr(b.advanceDiscount) + '</div>' : ''}
     <div class="mybk-actions">
       <a class="btn btn-blue btn-sm" href="#/ticket/${esc(b.id)}">🎫 ${t('st5')}</a>
       ${b.status === 'confirmed' ? '<button class="btn btn-ghost btn-sm" type="button" data-mypdf="' + esc(b.id) + '">' + t('btnPdf') + '</button>' : ''}

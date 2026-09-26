@@ -1300,7 +1300,7 @@ if (Notify::usablePhone($b['contact_phone'] ?? '') !== '') {
     <h2>Fare &amp; payment</h2>
     <table>
       <tr><th>Base total</th><td><?= Security::e(inr((float) $b['base_total'])) ?></td></tr>
-      <?php foreach ([['group_discount','Group discount'],['coupon_discount', ((string)($b['coupon_code'] ?? '') !== '' ? 'Coupon' : 'Discount')],['tier_discount','Member discount'],['points_value','Loyalty points']] as $d): ?>
+      <?php foreach ([['group_discount','Group discount'],['coupon_discount', ((string)($b['coupon_code'] ?? '') !== '' ? 'Coupon' : 'Discount')],['tier_discount','Member discount'],['points_value','Loyalty points'],['advance_discount','Advance booking offer']] as $d): ?>
         <?php if ((float) ($b[$d[0]] ?? 0) > 0): ?>
           <tr><th><?= $d[1] ?></th><td>− <?= Security::e(inr((float) $b[$d[0]])) ?></td></tr>
         <?php endif; ?>

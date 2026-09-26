@@ -1436,6 +1436,16 @@ final class Ticket
             $ow = self::gdWidth(18, $offerTxt);
             self::gdText($im, 18, $W - 88 - $ow, 1192 + $grow, $gold, $offerTxt, true);
         }
+        /* The advance-booking offer on its own line (26 Sep 2026 follow-up):
+           the passenger booked early and this is what that earned them. It
+           sits above the SAVED line inside the fare band, right-aligned, so a
+           coupon and the offer can both be read. */
+        $advCut = (float) ($booking['advance_discount'] ?? 0);
+        if ($advCut > 0) {
+            $advTxt = 'अग्रिम बुकिङ छुट  ·  ADVANCE OFFER − ₹ ' . number_format($advCut);
+            $aw = self::gdWidth(15, $advTxt);
+            self::gdText($im, 15, $W - 88 - $aw, 1172 + $grow, $gold, $advTxt, true);
+        }
 
         /* Separate, labelled QR cards. Integer modules + four-module quiet
            zones stay crisp in the original PNG and WhatsApp's image copy. */
@@ -2156,13 +2166,20 @@ final class Ticket
         $fxCurPdf = strtoupper((string) ($booking['fx_currency'] ?? ''));
         $fxTotPdf = (float) ($booking['fx_total'] ?? 0);
         $discPdf  = (float) ($booking['coupon_discount'] ?? 0);
+        /* The advance-booking offer is named on that line too (26 Sep 2026
+           follow-up): "Offer" beside "Disc", so early booking reads as its
+           own saving. The invoice page itemises it in full. */
+        $advPdf   = (float) ($booking['advance_discount'] ?? 0);
         if ($fxCurPdf !== '' && $fxTotPdf > 0) {
+            $cuts = ($discPdf > 0 ? '  -  Disc ' . self::latin(inr($discPdf)) : '')
+                  . ($advPdf > 0 ? '  -  Offer ' . self::latin(inr($advPdf)) : '');
             $fxLine = $fxCurPdf . ' ' . number_format($fxTotPdf)
-                . ($discPdf > 0 ? '  -  Disc ' . self::latin(inr($discPdf))
-                                : '  @ ' . number_format((float) ($booking['fx_rate'] ?? 0), 2));
+                . ($cuts !== '' ? $cuts : '  @ ' . number_format((float) ($booking['fx_rate'] ?? 0), 2));
             $pdf->text($W - 205, $boardY + 42, $fxLine, 8, 'F1', [255, 226, 168]);
-        } elseif ($discPdf > 0) {
-            $pdf->text($W - 205, $boardY + 42, 'Base ' . inr((float) $booking['base_total']) . '  -  Disc ' . inr($discPdf), 8, 'F1', [220, 210, 195]);
+        } elseif ($discPdf > 0 || $advPdf > 0) {
+            $pdf->text($W - 205, $boardY + 42, 'Base ' . inr((float) $booking['base_total'])
+                . ($discPdf > 0 ? '  -  Disc ' . inr($discPdf) : '')
+                . ($advPdf > 0 ? '  -  Offer ' . inr($advPdf) : ''), 8, 'F1', [220, 210, 195]);
         }
         // Fare by passenger count (4 Sep 2026): "3 x Rs 2,000" for a party,
         // so the family sees how the total was built; a solo ticket keeps
@@ -2372,6 +2389,7 @@ final class Ticket
         ];
         if ((float) $booking['group_discount'] > 0) $rows[] = ['Group discount', -(float) $booking['group_discount']];
         if ((float) $booking['coupon_discount'] > 0) $rows[] = [((string) ($booking['coupon_code'] ?? '') !== '' ? 'Coupon ' . $booking['coupon_code'] : 'Discount'), -(float) $booking['coupon_discount']];
+        if ((float) ($booking['advance_discount'] ?? 0) > 0) $rows[] = ['Advance booking offer', -(float) $booking['advance_discount']];
         if ((float) $booking['tier_discount'] > 0)   $rows[] = [($booking['tier_name'] ?? 'Member') . ' discount', -(float) $booking['tier_discount']];
         if ((float) $booking['points_value'] > 0)    $rows[] = ['Loyalty points redeemed', -(float) $booking['points_value']];
         if ((float) $booking['tax_amount'] > 0)      $rows[] = ['Taxes', (float) $booking['tax_amount']];
