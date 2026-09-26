@@ -462,9 +462,15 @@ final class Settings
         $co['address']   = $pick((string) ($desk['address'] ?? ''), $s('nepal_office'), $co['address']);
         $co['addressNe'] = $pick($s('nepal_office_ne'), $co['addressNe']);
         $co['phone']     = $pick((string) ($desk['phone'] ?? ''), $s('nepal_phone'), $co['phone']);
-        $co['whatsapp']  = $pick(preg_replace('/\D/', '', $s('nepal_whatsapp')) ?? '',
-                                 preg_replace('/\D/', '', (string) ($desk['phone'] ?? '')) ?? '',
-                                 preg_replace('/\D/', '', $s('nepal_phone')) ?? '',
+        /* Digits only, and only when there are enough of them to be a real
+           number — a half-filled placeholder must not print as +97798. */
+        $waDigits = static function (string $v): string {
+            $d = preg_replace('/\D/', '', $v) ?? '';
+            return strlen($d) >= 10 ? $d : '';
+        };
+        $co['whatsapp']  = $pick($waDigits($s('nepal_whatsapp')),
+                                 $waDigits((string) ($desk['phone'] ?? '')),
+                                 $waDigits($s('nepal_phone')),
                                  $co['whatsapp']);
         /* A Nepali ticket must not carry an Indian CIN. When the Nepal
            registration is not on file yet the line is simply dropped —

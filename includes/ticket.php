@@ -1491,7 +1491,10 @@ final class Ticket
            x stops at 727: the QR card's left edge is W-60-(qr+24) and the
            widest realistic QR still leaves it at 751, so the strip can never
            run under the code no matter which QR version the payload picks. */
-        $tileR = $payUpi !== '' ? 560 : 727;
+        /* 740, not 727 (26 Sep 2026): the tile carries a desk name, a phone
+           and a timestamp now. The QR card's left edge is 751 at the widest
+           realistic QR version, so 740 still cannot run under it. */
+        $tileR = $payUpi !== '' ? 560 : 740;
         /* 26 Sep 2026: the tile grew by one line so the DESK can be named in
            full with its own phone, and the moment the ticket was cut printed
            under it. Both were asked for by name. */
@@ -1522,20 +1525,23 @@ final class Ticket
         $deskName  = self::display((string) ($issued['locName'] ?? ''));
         $deskPhone = self::display((string) ($issued['deskPhone'] ?? ''));
         $cutTxt    = ($issued['issuedAt'] ?? '') !== '' ? 'काटिएको  ' . self::latin((string) $issued['issuedAt']) : '';
+        $cutSz     = 13;   // the time is the smaller of the two — the desk name is what a passenger reads
         if ($deskName !== '' || $deskPhone !== '' || $cutTxt !== '') {
-            $cutW    = $cutTxt !== '' ? self::gdWidth(15, $cutTxt) + 24 : 0;
+            $cutW    = $cutTxt !== '' ? self::gdWidth($cutSz, $cutTxt) + 22 : 0;
             $maxDesk = $tileR - 24 - 82 - $cutW;
             $tail    = $deskPhone !== '' ? '  ·  ' . $deskPhone : '';
             while ($deskName !== '' && self::gdWidth(15, $deskName . $tail) > $maxDesk) {
                 $deskName = rtrim(mb_substr($deskName, 0, max(1, mb_strlen($deskName) - 2)));
                 if (mb_strlen($deskName) <= 3) { $deskName = ''; break; }
             }
+            /* A name cut mid-word used to leave "Nepalgunj -" hanging. */
+            $deskName = rtrim($deskName, " 	-–—·,");
             $deskTxt = $deskName !== '' ? $deskName . $tail : ltrim($tail, ' ·');
             if (trim($deskTxt) !== '') {
                 self::gdText($im, 15, 82, 1554 + $grow + $qrExt, $mut, trim($deskTxt), false);
             }
             if ($cutTxt !== '') {
-                self::gdText($im, 15, $tileR - 16 - self::gdWidth(15, $cutTxt), 1554 + $grow + $qrExt, $mut, $cutTxt, false);
+                self::gdText($im, $cutSz, $tileR - 16 - self::gdWidth($cutSz, $cutTxt), 1555 + $grow + $qrExt, $mut, $cutTxt, false);
             }
         }
 
@@ -1724,13 +1730,13 @@ final class Ticket
      *  tickets drawn at 23:43/23:44 IST with the old seat labels were never
      *  redrawn. tests/chalani-png-test.php and tests/ticket-cache-test.php
      *  assert a past moment. */
-    private const PNG_LAYOUT_CHANGED = '2026-09-26 13:03:00';   // IST: the desk that cut it, its own number and the minute, in a taller issuer tile; the Nepal entity in the header. Before: a Nepal desk's NPR beside the rupee in the fare band. Before: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
+    private const PNG_LAYOUT_CHANGED = '2026-09-26 13:06:00';   // IST: the desk that cut it, its own number and the minute, in a taller issuer tile; the Nepal entity in the header. Before: a Nepal desk's NPR beside the rupee in the fare band. Before: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
      *  seat box + stub pick up the current seat labels without a manual purge
      *  (23 Sep 2026: the two-floor grid A1-F6 / A7-F12). */
-    private const PDF_LAYOUT_CHANGED = '2026-09-26 13:03:00';   // IST: the desk, its number and the minute under ISSUED BY; the Nepal entity in the band. Before: a Nepal desk's NPR on the fare box line. Before: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
+    private const PDF_LAYOUT_CHANGED = '2026-09-26 13:06:00';   // IST: the desk, its number and the minute under ISSUED BY; the Nepal entity in the band. Before: a Nepal desk's NPR on the fare box line. Before: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
 
     /**
      * How many passengers the ticket names one by one before it stops and
