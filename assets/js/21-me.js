@@ -46,9 +46,29 @@
 
   function me() { return (typeof USER !== 'undefined' && USER) ? USER : null; }
 
-  function flagOf() {
+  function countryOf() {
     var u = me();
-    return (u && u.country === 'NP') ? '🇳🇵' : '🇮🇳';
+    return (u && u.country === 'NP') ? 'NP' : 'IN';
+  }
+
+  /* Drawn, not typed. The flag emoji is a pair of regional-indicator letters
+     and Windows ships no glyph for it, so a desk PC (and the owner's own
+     laptop) renders "NP" / "IN" as plain letters where a phone shows a flag.
+     These two circles look the same everywhere. */
+  function flagSvg(cc, px) {
+    if (cc === 'NP') {
+      return '<svg viewBox="0 0 24 24" width="' + px + '" height="' + px + '" aria-hidden="true">' +
+        '<circle cx="12" cy="12" r="11" fill="#DC143C" stroke="#003893" stroke-width="2"/>' +
+        '<path d="M12 4.2a3.6 3.6 0 1 0 2.8 5.9A4.4 4.4 0 0 1 12 4.2z" fill="#fff"/>' +
+        '<circle cx="12" cy="16.2" r="2.6" fill="#fff"/>' +
+        '</svg>';
+    }
+    return '<svg viewBox="0 0 24 24" width="' + px + '" height="' + px + '" aria-hidden="true">' +
+      '<circle cx="12" cy="12" r="11" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>' +
+      '<path d="M12 1a11 11 0 0 1 10.1 6.7H1.9A11 11 0 0 1 12 1z" fill="#FF9933"/>' +
+      '<path d="M1.9 16.3h20.2A11 11 0 0 1 12 23a11 11 0 0 1-10.1-6.7z" fill="#138808"/>' +
+      '<circle cx="12" cy="12" r="3.1" fill="none" stroke="#000080" stroke-width="1.5"/>' +
+      '</svg>';
   }
 
   function initial() {
@@ -95,13 +115,15 @@
     var inner = ph
       ? '<img src="' + ph + '" alt="">'
       : '<span style="font-size:' + Math.round(px * 0.42) + 'px">' + initial() + '</span>';
+    var badge = Math.round(fs + 8);
+    var mark  = '<i class="me-flag" aria-hidden="true" style="width:' + badge + 'px;height:' + badge + 'px;font-style:normal' +
+                (opts.flagSelect ? ';pointer-events:none' : '') + '">' + flagSvg(countryOf(), badge - 4) + '</i>';
     var flag = opts.flagSelect
-      ? '<select class="me-flag" data-me-flag aria-label="Country / देश" style="width:' + (fs + 8) + 'px;height:' + (fs + 8) + 'px;font-size:' + fs + 'px">' +
-          '<option value="IN"' + (flagOf() === '🇮🇳' ? ' selected' : '') + '>🇮🇳</option>' +
-          '<option value="NP"' + (flagOf() === '🇳🇵' ? ' selected' : '') + '>🇳🇵</option>' +
-        '</select>' +
-        '<i class="me-flag" aria-hidden="true" style="width:' + (fs + 8) + 'px;height:' + (fs + 8) + 'px;font-size:' + fs + 'px;font-style:normal;pointer-events:none">' + flagOf() + '</i>'
-      : '<i class="me-flag" aria-hidden="true" style="width:' + (fs + 8) + 'px;height:' + (fs + 8) + 'px;font-size:' + fs + 'px;font-style:normal">' + flagOf() + '</i>';
+      ? '<select class="me-flag" data-me-flag aria-label="Country / देश" style="width:' + badge + 'px;height:' + badge + 'px;font-size:' + fs + 'px">' +
+          '<option value="IN"' + (countryOf() === 'IN' ? ' selected' : '') + '>India +91</option>' +
+          '<option value="NP"' + (countryOf() === 'NP' ? ' selected' : '') + '>Nepal +977</option>' +
+        '</select>' + mark
+      : mark;
 
     return '<span class="me-av" data-me-av>' +
              '<span class="me-ring" style="width:' + px + 'px;height:' + px + 'px">' + inner + '</span>' +
@@ -157,9 +179,9 @@
         ? '<img src="' + ph + '" alt="">'
         : '<span style="font-size:' + Math.round(px * 0.42) + 'px">' + initial() + '</span>';
       var fl = el.querySelector('i.me-flag');
-      if (fl) { fl.textContent = flagOf(); }
+      if (fl) { fl.innerHTML = flagSvg(countryOf(), Math.max(12, parseInt(fl.style.width, 10) - 4)); }
       var sel = el.querySelector('select[data-me-flag]');
-      if (sel) { sel.value = (flagOf() === '🇳🇵') ? 'NP' : 'IN'; }
+      if (sel) { sel.value = countryOf(); }
     }
   }
 
