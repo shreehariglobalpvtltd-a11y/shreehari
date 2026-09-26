@@ -836,3 +836,26 @@ html.shg-awake .topbar-logo img,html.shg-awake .nav .logo-img{
 html.shg-awake .txt-gold,html.shg-awake .txt-silver,html.shg-awake .txt-diamond,
 html.shg-awake .hero.is-live .grad{animation-name:hd-sheen}
 html.shg-awake #routeAnim.is-live .ra3-bus{animation-name:ra3Drive}
+
+
+/* ---------------------------------------------------------------------
+   12. THE LOADING BAR (27 Sep 2026)
+   -------------------------------------------------------------------
+   shgApi._fetch (02-config.js) puts class net-busy on <html> once a
+   request has been in flight for 250 ms and takes it off when none is
+   left. This draws the answer: a 2 px navy → saffron bar sweeping along
+   the very top, indeterminate, transform-only. Nothing is laid out, no
+   element is added — it is the root's own ::after. Reduced motion and
+   app_motion_on = 0: the same bar, full width, standing still.
+   ------------------------------------------------------------------- */
+html.net-busy::after{
+  content:"";position:fixed;left:0;top:0;z-index:10000;pointer-events:none;
+  width:30vw;height:2px;border-radius:0 2px 2px 0;
+  background:linear-gradient(90deg,var(--brand-navy),var(--brand-saffron));
+  transform:translateX(-100%);will-change:transform;
+  animation:netBusy 1.1s cubic-bezier(.4,0,.2,1) infinite;
+}
+@keyframes netBusy{from{transform:translateX(-100%)}to{transform:translateX(100vw)}}
+:root[data-theme="dark"].net-busy::after{background:linear-gradient(90deg,var(--brand-amber),var(--brand-saffron))}
+@media (prefers-reduced-motion:reduce){html.net-busy::after{animation:none;transform:none;width:100%}}
+html.no-motion.net-busy::after{animation:none;transform:none;width:100%}

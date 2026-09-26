@@ -878,10 +878,47 @@ const shgApi = {
   /* Fallback lines follow the app language; a server message is shown as sent. */
   _msg(k, en) { try { const s = typeof t === 'function' ? t(k) : ''; return s && s !== k ? s : en; } catch (e) { return en; } },
   _slow: 'The network is slow right now — please check your connection and try again. · नेटवर्क ढिलो छ, फेरि प्रयास गर्नुहोस्।',
+  /* THE LOADING BAR (27 Sep 2026). Every request through _fetch is counted.
+     Once one has been in flight for 250 ms, <html> gets class net-busy and
+     premium.css §12 draws a 2 px bar along the top until the count is back
+     at zero — so a quick answer shows nothing and a slow link is visibly
+     "working" instead of silent. A request that passes 600 ms also announces
+     itself once (shg:netslow); 19-premium.js answers with one soft tick
+     behind the Sound switch and app_load_sound_on. Bookkeeping only: it
+     never throws into a caller, never awaits, never delays a response. */
+  _pending: 0, _busyTimer: null,
+  _netStart() {
+    var h = { slow: null };
+    try {
+      this._pending++;
+      if (this._pending === 1 && !this._busyTimer) {
+        this._busyTimer = setTimeout(() => {
+          this._busyTimer = null;
+          if (this._pending > 0) document.documentElement.classList.add('net-busy');
+        }, 250);
+      }
+      h.slow = setTimeout(() => {
+        h.slow = null;
+        try { document.dispatchEvent(new CustomEvent('shg:netslow')); } catch (e) {}
+      }, 600);
+    } catch (e) {}
+    return h;
+  },
+  _netEnd(h) {
+    try {
+      if (h && h.slow) { clearTimeout(h.slow); h.slow = null; }
+      this._pending = Math.max(0, this._pending - 1);
+      if (this._pending === 0) {
+        if (this._busyTimer) { clearTimeout(this._busyTimer); this._busyTimer = null; }
+        document.documentElement.classList.remove('net-busy');
+      }
+    } catch (e) {}
+  },
   async _fetch(url, init, ms) {
     const ctl = (typeof AbortController === 'function') ? new AbortController() : null;
     if (ctl) init.signal = ctl.signal;
     const timer = ctl ? setTimeout(() => ctl.abort(), ms) : null;
+    const net = shgApi._netStart();
     try {
       return await fetch(url, init);
     } catch (e) {
@@ -891,6 +928,7 @@ const shgApi = {
       throw e;
     } finally {
       if (timer) clearTimeout(timer);
+      shgApi._netEnd(net);
     }
   },
   /* 11 Sep 2026 (perf pass): a 419 means the session token the page was
