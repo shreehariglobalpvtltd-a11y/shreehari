@@ -39,6 +39,15 @@
   var PANEL = STAFF.panelUrl || '/admin/';
   var WHO = STAFF.code ? (STAFF.code + ' · ' + (STAFF.name || '')) : (STAFF.name || 'staff');
   var CAN = !!STAFF.canSell;
+  /* The window this clerk is at, and the money it takes (26 Sep 2026). */
+  var DESK    = STAFF.desk || null;
+  var DESKCUR = (DESK && DESK.currency) || 'INR';
+  var DESKFX  = (DESK && Number(DESK.rate)) || 1;
+  var PAYOK   = (DESK && DESK.methods) || null;   // null = this desk takes anything
+  function deskMoney(inr) {
+    if (DESKCUR === 'INR' || !Number(inr)) return '';
+    return 'NPR ' + Math.round(Number(inr) * DESKFX).toLocaleString('en-IN');
+  }
 
   /* Bulk booking (5 Sep 2026): a selling staff session lifts the per-booking
      seat cap to the staff cap the boot payload carries (default 20). Runs
@@ -64,6 +73,9 @@
     var el = document.createElement('div');
     el.id = 'counterBar';
     el.innerHTML = '<span class="cb-who">🧾 <b>Counter mode</b> · ' + (CAN ? 'selling as <b>' + esc(WHO) + '</b>' : esc(WHO) + ' · <i>view only — your role cannot sell</i>')
+      + (DESK ? ' · <b>📍 ' + esc(DESK.label || DESK.name || DESK.code) + '</b>'
+              + (DESKCUR !== 'INR' ? ' <small style="opacity:.85">· ' + esc(DESKCUR) + ' @ ' + esc(String(DESKFX)) + '</small>' : '')
+          : ' · <small style="opacity:.85">⚠️ no desk set</small>')
       + (CTR_VER ? ' <small style="opacity:.65">· v' + esc(CTR_VER) + '</small>' : '') + '</span>'
       + '<span class="cb-links">'
       /* ⚡ Quick Ticket (6 Sep 2026): the desk's fast lane — name + mobile
@@ -345,10 +357,13 @@
       el.id = 'ctrPanel';
       el.innerHTML = '<h4>🧾 Received at counter · काउन्टरमा लिएको</h4>'
         + '<div class="ctr-pays">'
-        + '<button type="button" class="ctr-pay on" data-pay="cash">💵 Cash</button>'
-        + '<button type="button" class="ctr-pay" data-pay="upi">📱 UPI received</button>'
-        + '<button type="button" class="ctr-pay" data-pay="esewa">🇳🇵 eSewa received</button>'
-        + '<button type="button" class="ctr-pay" data-pay="bank">🏦 Bank</button>'
+        /* A desk with no bank account of its own is not offered one. The
+           register refuses it anyway (includes/booking.php), but a button
+           that cannot work should not be on the screen. */
+        + (!PAYOK || PAYOK.indexOf('cash')  >= 0 ? '<button type="button" class="ctr-pay on" data-pay="cash">💵 Cash</button>' : '')
+        + (!PAYOK || PAYOK.indexOf('upi')   >= 0 ? '<button type="button" class="ctr-pay" data-pay="upi">📱 UPI received</button>' : '')
+        + (!PAYOK || PAYOK.indexOf('esewa') >= 0 ? '<button type="button" class="ctr-pay" data-pay="esewa">🇳🇵 eSewa received</button>' : '')
+        + (!PAYOK || PAYOK.indexOf('bank')  >= 0 ? '<button type="button" class="ctr-pay" data-pay="bank">🏦 Bank</button>' : '')
         + '</div>'
         + '<div class="ctr-row"><label style="font-size:12px;font-weight:700">Discount</label>'
         + '<input type="number" id="ctrDiscVal" min="0" step="1" placeholder="0" inputmode="numeric">'
@@ -459,7 +474,10 @@
     el.innerHTML = '<b>' + seats + ' seat' + (seats === 1 ? '' : 's') + '</b><span>·</span>' + fmt(total)
       + '<span>·</span>' + esc(payLbl)
       + (off > 0 ? '<span>·</span>discount − ' + fmt(off) + '<span>·</span><b>≈ ' + fmt(Math.max(1, total - off)) + ' to collect</b>'
-                 : '<span>·</span><b>' + fmt(total) + ' to collect</b>');
+                 : '<span>·</span><b>' + fmt(total) + ' to collect</b>')
+      /* At a Nepal window the clerk says the NPR out loud and takes NPR, so
+         it belongs beside the rupee on the very line they read from. */
+      + (function () { var n = deskMoney(Math.max(0, total - off)); return n ? '<span>·</span><b style="color:#fde68a">' + esc(n) + '</b>' : ''; })();
   }
 
   function ctrConfirm() {

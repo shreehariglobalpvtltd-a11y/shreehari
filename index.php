@@ -106,6 +106,24 @@ if ($staffRow !== null) {
         'maxSeats'       => Settings::getInt('counter_max_seats_per_booking', 20),
         'panelUrl'       => Auth::isCounterAgent() ? '/admin/agent.php' : '/admin/',
     ];
+    /* Which WINDOW this clerk is at (26 Sep 2026). Counter mode is the main
+       sale screen and it knew the person but not the place, so a Nepalgunj
+       clerk had no way to see that they were taking NPR — while the sale was
+       already being stamped with the desk server-side. The methods the desk
+       may take travel too, so a cash-only window does not offer UPI at all. */
+    $deskNow = CounterDesk::forAdmin($staffId);
+    if ($deskNow['code'] !== '' || $deskNow['name'] !== '') {
+        $deskCur = CounterDesk::currency((string) $deskNow['code']);
+        $boot['staff']['desk'] = [
+            'code'     => $deskNow['code'],
+            'name'     => $deskNow['name'],
+            'label'    => CounterDesk::label((string) $deskNow['code'], (string) $deskNow['name']),
+            'country'  => (string) (CounterDesk::get((string) $deskNow['code'])['country'] ?? 'IN'),
+            'currency' => $deskCur,
+            'rate'     => $deskCur === 'INR' ? 1.0 : CounterDesk::rate((string) $deskNow['code']),
+            'methods'  => CounterDesk::allowedMethods((string) $deskNow['code']),
+        ];
+    }
 }
 
 /* Home page (12 Sep 2026): the QuickBot card shows how many tickets the
