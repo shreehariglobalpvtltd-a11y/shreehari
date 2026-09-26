@@ -605,6 +605,46 @@ if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['
     }
 }
 
+/* ---- WhatsApp ticket QR + SMS ticket link (26 Sep 2026) -----------
+   wa_qr: the desk shows the passenger a QR. Scanning it opens OUR WhatsApp
+   with "TICKET <code>" typed in; the passenger sends it (they write first,
+   we never do) and the bot answers with the ticket, whichever phone they
+   use. The code is minted only when pressed, lives 30 minutes, works once.
+   sms_link: fallback when WhatsApp cannot reach them. Both sit after the
+   agent scope guard ($b is null for a booking the agent did not sell), are
+   CSRF-checked and need the same right as "Resend WhatsApp ticket". */
+$waQr = null;
+if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($_POST['action'] ?? '', ['wa_qr', 'sms_link'], true)) {
+    $act = (string) $_POST['action'];
+    if (!Security::verifyCsrf()) {
+        $flash = ['bad', 'Session expired — please try again.'];
+    } elseif (($b['status'] ?? '') !== 'confirmed') {
+        $flash = ['bad', 'Tickets can only be sent for confirmed bookings.'];
+    } elseif (!Auth::can('payments.verify')) {
+        $flash = ['bad', 'Your role cannot send tickets.'];
+    } elseif ($act === 'wa_qr') {
+        try {
+            require_once INCLUDE_PATH . '/wachat.php';
+            if (!WaChat::enabled() || WaChat::ticketNumber() === '') {
+                $flash = ['bad', 'WhatsApp ticket codes are off (wa_chat_on) or no WhatsApp number is set.'];
+            } else {
+                $code = WaChat::mint((int) $b['id'], 'staff', (int) $admin['id']);
+                $link = WaChat::buildLink($code);
+                $waQr = ['code' => $code, 'link' => $link, 'qr' => WaChat::buildQr($link), 'ttl' => WaChat::ttlMinutes()];
+                Logger::audit('booking.wa_qr', 'booking', $pnr, null, ['source' => 'staff'],
+                    'WhatsApp ticket QR shown by admin #' . $admin['id']);
+            }
+        } catch (Throwable $e) {
+            $flash = ['bad', $e->getMessage()];
+        }
+    } else {
+        $r = Notify::smsTicketLink($b);
+        $flash = [$r['ok'] ? 'ok' : 'bad', $r['detail']];
+        Logger::audit('booking.sms_link', 'booking', $pnr, null, ['ok' => $r['ok']],
+            'Ticket link by SMS by admin #' . $admin['id']);
+    }
+}
+
 /* ---- Cash on delivery: record the money as collected --------------
    COD confirms on submit so the passenger's ticket works, but the fare is
    still owed and the payment row stays 'cod_pending'. This is the only place
@@ -865,6 +905,20 @@ if (!empty($waManualLink)) {
        . '&#128172; Open WhatsApp</a></div>';
 }
 
+if ($waQr !== null) {
+    // Shown once, straight after pressing "WhatsApp QR". Reloading the page
+    // does not re-show it; press again for a fresh code.
+    echo '<div class="card" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;padding:16px 18px;margin-bottom:14px">'
+       . '<img src="' . Security::e($waQr['qr']) . '" width="200" height="200" alt="WhatsApp ticket QR" style="image-rendering:pixelated;background:#fff;padding:6px;border-radius:8px">'
+       . '<div style="flex:1;min-width:220px">'
+       . '<h3 style="margin:0 0 6px">📲 WhatsApp ticket QR</h3>'
+       . '<p style="margin:0 0 6px">Code: <b style="font-size:20px;letter-spacing:3px">' . Security::e($waQr['code']) . '</b>'
+       . ' · valid ' . (int) $waQr['ttl'] . ' min, works once.</p>'
+       . '<p class="muted" style="margin:0 0 6px;font-size:13px">Customer le yo QR scan gari message pathaunchha. S Hari le pahile message pathaundaina.<br>'
+       . 'ग्राहकले QR स्क्यान गरी "TICKET ' . Security::e($waQr['code']) . '" पठाएपछि टिकट WhatsApp मै आउँछ।</p>'
+       . '<a class="btn ghost" target="_blank" rel="noopener" href="' . Security::e($waQr['link']) . '">Open link</a>'
+       . '</div></div>';
+}
 $leg = $b['legs'][0] ?? [];
 $pay = $b['payment'] ?? [];
 $csrf = Security::e(Security::csrfToken());
@@ -1830,6 +1884,14 @@ $ticket = $b['ticket'] ?? null;
         <?php else: ?>
           <span class="wa-pill wa-muted" title="No WhatsApp message has been sent for this booking yet.">⏳ WA not sent yet</span>
         <?php endif; ?>
+      </form>
+      <form method="post" style="display:inline">
+        <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+        <button class="btn ghost" type="submit" name="action" value="wa_qr" title="Passenger scans it and sends the code, so they write first">🔳 WhatsApp QR</button>
+      </form>
+      <form method="post" style="display:inline" onsubmit="return confirm('Send the ticket link to <?= Security::e((string) $b['contact_phone']) ?> by SMS?')">
+        <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+        <button class="btn ghost" type="submit" name="action" value="sms_link">✉️ SMS ticket link</button>
       </form>
     <?php endif; ?>
   <?php elseif ($b['status'] === 'pending'): ?>

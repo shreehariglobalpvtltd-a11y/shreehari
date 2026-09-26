@@ -1663,6 +1663,18 @@ final class BookingService
             );
         }
 
+        /* 26 Sep 2026: a signed gateway webhook may already have reported
+           this UTR. If so the office sees a "possible match" badge; the
+           booking still waits for a person (includes/paywebhook.php). */
+        if ($utr !== '') {
+            try {
+                require_once INCLUDE_PATH . '/paywebhook.php';
+                PayWebhook::onProof((int) $booking['id'], $utr);
+            } catch (Throwable $e) {
+                Logger::exception($e);
+            }
+        }
+
         self::notifyAdmin('💳', 'Payment proof · ' . $pnr, 'UTR ' . ($utr ?: '—') . ' submitted for verification.', (int) $booking['id']);
 
         Logger::audit('payment.proof', 'booking', $pnr, null, null, 'UTR ' . $utr);

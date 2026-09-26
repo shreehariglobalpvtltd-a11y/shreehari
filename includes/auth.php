@@ -992,6 +992,17 @@ final class Auth
             return false;
         }
 
+        return self::rowCan($admin, $permission);
+    }
+
+    /**
+     * The same permission test for an admins row that is not the signed-in
+     * session (26 Sep 2026: WhatsApp office commands identify the staff
+     * member by their phone). `permissions` may be the decoded array or the
+     * JSON column as stored.
+     */
+    public static function rowCan(array $admin, string $permission): bool
+    {
         $role = (string) ($admin['role'] ?? '');
 
         if ($role === 'superadmin') {
@@ -999,7 +1010,11 @@ final class Auth
         }
 
         $rolePerms  = self::ROLE_PERMISSIONS[$role] ?? [];
-        $extraPerms = is_array($admin['permissions'] ?? null) ? $admin['permissions'] : [];
+        $extra      = $admin['permissions'] ?? null;
+        if (is_string($extra)) {
+            $extra = json_decode($extra, true);
+        }
+        $extraPerms = is_array($extra) ? $extra : [];
 
         return in_array($permission, $rolePerms, true)
             || in_array($permission, $extraPerms, true);

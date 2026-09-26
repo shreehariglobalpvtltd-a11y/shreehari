@@ -715,6 +715,23 @@ function sqlSearchClause(array $arms, string $text, array &$params, string $pref
 }
 
 
+/* May the current caller see THIS booking in full? (26 Sep 2026, moved out
+   of api/track.php so the WhatsApp-code endpoint asks the same question.)
+   Yes when the phone typed matches the booking, the signed-in customer owns
+   it, or a staff member entitled to it is viewing. A staff session alone is
+   not enough: a counter agent sees only what they sold, scoped by
+   bookings.sold_by_admin_id exactly as admin/booking-view.php does. */
+function shg_booking_viewer_owns(array $detail, string $phoneDigits): bool
+{
+    $scopeId   = Auth::bookingScopeAdminId();
+    $staffSees = Auth::isAdmin()
+        && ($scopeId === null || (int) ($detail['sold_by_admin_id'] ?? 0) === $scopeId);
+
+    return ($phoneDigits !== '' && $phoneDigits === (string) $detail['contact_phone'])
+        || (Auth::isUser() && (int) (Auth::user()['id'] ?? 0) === (int) ($detail['user_id'] ?? -1))
+        || $staffSees;
+}
+
 /* WhatsApp delivery state of the ticket message for ONE booking (ticket
    page, 17 Sep 2026): the passenger reads "sent to WhatsApp ••••1507" or an
    honest "could not deliver — send it yourself" instead of guessing whether
