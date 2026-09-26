@@ -2875,7 +2875,11 @@ final class BookingService
             ['b' => $booking['id']]
         );
         $booking['payment'] = Database::fetch(
-            'SELECT method, mode, amount, utr_number, status FROM payments WHERE booking_id = :b ORDER BY id DESC LIMIT 1',
+            'SELECT method, mode, amount, utr_number, status'
+            /* what a Nepal drawer physically took, frozen with the sale (26 Sep 2026);
+               read only where the column exists so an un-migrated checkout still answers */
+            . (CounterDesk::frozenColumns()['payments'] ? ', local_currency, local_amount, fx_rate' : '')
+            . ' FROM payments WHERE booking_id = :b ORDER BY id DESC LIMIT 1',
             ['b' => $booking['id']]
         );
         $booking['seats'] = array_map('strval', pluck(

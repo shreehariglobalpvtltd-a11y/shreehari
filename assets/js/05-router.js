@@ -1592,7 +1592,8 @@ function servedPoints(points) {
 function renderFareBoard() {
   const box = $('#fareBoard'); if (!box) return;
   const mp   = CONFIG.mainPoints || { india: [], nepal: [] };
-  const d    = sharingDir();
+  /* The directional pair is no longer read here: every row is priced from
+     the board by its own pair (26 Sep 2026). */
   const hub  = (mp.nepal || ['Rupaidiha'])[0];
   const pct  = onlinePct();
 
@@ -1603,18 +1604,38 @@ function renderFareBoard() {
     return tm ? p + ' · ' + fmt12h(tm) : p;
   };
 
-  /* One direction card: the headline per-person price, then every main
-     point on the far side listed against it — now with departure time. */
-  const card = (cls, flagFrom, flagTo, title, points, toward, base) => {
-    const now = onlinePP(base);
+  /* One direction card, taking the journeys it lists as explicit
+     [from, to] pairs.
+
+     26 Sep 2026: EVERY ROW IS PRICED ON ITS OWN, and the return card lists
+     every Gujarat destination instead of only the first one.
+
+     This card used to print a single directional number against every town.
+     That was true while the fare was directional; it is not true any more.
+     A Surat pickup is ₹2,200 and Ahmedabad ₹2,000, so the board was quoting
+     eight of the nine Gujarat towns ₹200 UNDER what the checkout charges —
+     the customer read one price and was asked for another. And coming back,
+     only "Rupaidiha → Surat" was ever shown, so a passenger travelling to
+     Ahmedabad never saw their own ₹1,800.
+
+     sharingBasePP(to, from) is the same lookup the seat summary, the checkout
+     and the counter use, so this board cannot disagree with the bill. The
+     headline shows the range when the rows differ rather than picking one. */
+  const card = (cls, flagFrom, flagTo, title, pairs) => {
+    const each = pairs
+      .filter(pr => pr[0] && pr[1] && pr[0] !== pr[1])
+      .map(pr => ({ from: pr[0], to: pr[1], fare: onlinePP(sharingBasePP(pr[1], pr[0])) }));
+    const fares = each.map(x => x.fare).filter(v => v > 0);
+    if (!each.length) { return ''; }
+    const lo = fares.length ? Math.min.apply(null, fares) : 0;
+    const hi = fares.length ? Math.max.apply(null, fares) : 0;
     return '<div class="fb-dir ' + cls + '">'
       + '<div class="fb-dir-t"><b>' + flagFrom + ' ' + esc(title) + ' ' + flagTo + '</b>'
-      + '<span class="fb-price"><span class="p">' + inr(now) + '</span>'
-      + (base > now ? '<span class="w">' + inr(base) + '</span>' : '')
-      + '<span class="n">' + nprEst(now) + ' · ' + t('fbPerPerson') + '</span></span></div>'
-      + points.map(p => '<button type="button" class="fb-row" data-fb-from="' + esc(p) + '" data-fb-to="' + esc(toward) + '">'
-          + '<span class="c">' + esc(pointWithTime(p)) + ' → ' + esc(toward) + '</span>'
-          + '<span class="k">' + inr(now) + ' · ' + nprEst(now) + '</span></button>').join('')
+      + '<span class="fb-price"><span class="p">' + inr(lo) + (hi > lo ? '–' + inr(hi) : '') + '</span>'
+      + '<span class="n">' + nprEst(lo) + ' · ' + t('fbPerPerson') + '</span></span></div>'
+      + each.map(x => '<button type="button" class="fb-row" data-fb-from="' + esc(x.from) + '" data-fb-to="' + esc(x.to) + '">'
+          + '<span class="c">' + esc(pointWithTime(x.from)) + ' → ' + esc(x.to) + '</span>'
+          + '<span class="k">' + inr(x.fare) + ' · ' + nprEst(x.fare) + '</span></button>').join('')
       + '</div>';
   };
 
@@ -1623,11 +1644,13 @@ function renderFareBoard() {
     + (pct > 0 ? '<span class="fb-off">' + tf('offPill', { pct: pct }) + '</span>' : '') + '</div>'
     + '<p class="fb-sub">' + tf('fbLead', { pct: pct }) + '</p>'
     + '<div class="fb-dirs">'
-    + card('go',   '🇮🇳', '🇳🇵', t('fbGoing'),  servedPoints(mp.india), hub,                       d.toNepal)
-    /* Return card points AT a single Gujarat hub: the FIRST canonical main
-       point (Surat), which is also the return route's real endpoint. */
-    + card('back', '🇳🇵', '🇮🇳', t('fbComing'), servedPoints(mp.nepal),
-           ((mp.india || [])[0] || ''), d.toIndia)
+    + card('go',   '🇮🇳', '🇳🇵', t('fbGoing'),
+           servedPoints(mp.india).map(p => [p, hub]))
+    /* Coming back: the border to EVERY Gujarat drop, each at its own fare
+       (Ahmedabad ₹1,800, the towns below it ₹2,200). Listing only the first
+       one hid the cheaper Ahmedabad fare from the people paying it. */
+    + card('back', '🇳🇵', '🇮🇳', t('fbComing'),
+           servedPoints(mp.india).map(p => [hub, p]))
     + '</div>'
     + '<div class="fb-foot"><span class="fb-chip">🤝 ' + t('fbSharing') + '</span>'
     + '<span>' + t('fbNote') + '</span></div>';

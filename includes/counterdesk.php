@@ -91,6 +91,51 @@ final class CounterDesk
     }
 
     /**
+     * Are the frozen-money columns there? bookings.fx_total is what the
+     * customer was quoted at a Nepal window, payments.local_amount what the
+     * drawer took. Pages read them only when present, so a checkout whose
+     * SQL has not run shows the rupee alone rather than a 500.
+     *
+     * @return array{bookings:bool,payments:bool}
+     */
+    public static function frozenColumns(): array
+    {
+        static $has = null;
+        if ($has === null) {
+            $has = ['bookings' => false, 'payments' => false];
+            try {
+                $has['bookings'] = Database::fetch("SHOW COLUMNS FROM bookings LIKE 'fx_total'") !== null;
+                $has['payments'] = Database::fetch("SHOW COLUMNS FROM payments LIKE 'local_amount'") !== null;
+            } catch (Throwable $e) {
+                // an unreadable schema reads as "not there" — the rupee still prints
+            }
+        }
+        return $has;
+    }
+
+    /**
+     * The money frozen on a row, as text — or '' when that sale was in rupees.
+     *
+     * A Nepal desk writes what it quoted on the booking (fx_currency/fx_total)
+     * and what it took on the payment (local_currency/local_amount). This
+     * prints that figure and NEVER converts: a rupee row has nothing to show,
+     * and an NPR row shows the NPR written at the second of the sale, whatever
+     * the peg is today. That is the whole point of freezing it.
+     */
+    public static function frozen(?array $row, string $curKey = 'fx_currency', string $amtKey = 'fx_total'): string
+    {
+        if ($row === null) {
+            return '';
+        }
+        $cur = strtoupper(trim((string) ($row[$curKey] ?? '')));
+        $amt = (float) ($row[$amtKey] ?? 0);
+        if ($cur === '' || $cur === 'INR' || $amt <= 0) {
+            return '';
+        }
+        return self::format($amt, $cur);
+    }
+
+    /**
      * Every desk, code => row. Rows always carry code, name, country,
      * currency, fx_rate, phone, address, is_active, sort_order.
      *
