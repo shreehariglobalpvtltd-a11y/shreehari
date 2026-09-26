@@ -464,6 +464,141 @@ function ensureDir(string $path): bool
 }
 
 /**
+ * The guard an Apache server reads before serving anything out of a folder
+ * that holds people's documents. Kept in one place so every copy says the
+ * same thing. 25 Sep 2026.
+ */
+const PRIVATE_DIR_HTACCESS = <<<'HTA'
+# Written by the application. Everything in this folder is somebody's
+# document — a departure sheet with names and mobiles, an ID scan, a KYC
+# paper — and is served ONLY through a PHP page that checks who is asking
+# (admin/challan.php, admin/manifest.php, admin/passenger-doc.php,
+# admin/agent-kyc-file.php, or download-chalan.php with a signed link).
+# Nothing here may be fetched directly, and nothing here may ever run.
+#
+# The matching nginx rules live in deploy/nginx-shreehariglobal.in.conf.
+# This file is what protects the folder on Apache, and on any server whose
+# nginx config has not been updated yet.
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+    php_flag engine off
+</IfModule>
+RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .php8 .phar
+AddType text/plain .php .phtml .phar
+HTA;
+
+/** Nothing under uploads/ may ever run; public pictures stay readable. */
+const UPLOADS_TREE_HTACCESS = <<<'HTA'
+# Written by the application. Nothing in the uploads tree may execute: an
+# upload is data, and a folder that accepts files from the internet must
+# never be able to run one. The four private folders (challan, chalani,
+# passengers, agents-kyc) additionally deny all access through their own
+# .htaccess; a picture attached to a social post stays readable, because
+# Facebook and Instagram fetch it from a public URL.
+<FilesMatch "\.(php|phtml|php[0-9]|phar|pht|shtml|cgi|pl|py|asp|aspx|jsp)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+    php_flag engine off
+</IfModule>
+RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .php8 .phar
+AddType text/plain .php .phtml .phar
+Options -Indexes -ExecCGI
+HTA;
+
+/**
+ * Create a directory that holds private documents, and leave the guard
+ * beside the data.
+ *
+ * The uploads tree is not in git — it is made at runtime, one folder per
+ * day or per booking — so a rule written once at install time protects
+ * nothing a month later. Writing the guard at the moment the folder is
+ * created means the protection travels with the data, on Apache, on a
+ * server whose nginx config is a release behind, and on a copy somebody
+ * restored from a backup into a different host.
+ *
+ * Returns false only when the directory itself could not be made; a guard
+ * that cannot be written is logged, never fatal, because refusing to save
+ * a passenger's document would be the worse failure.
+ */
+function ensurePrivateDir(string $path): bool
+{
+    if (!ensureDir($path)) {
+        return false;
+    }
+    // The guard belongs at the ROOT of each private tree: Apache applies a
+    // directory's .htaccess to everything beneath it, so uploads/challan/
+    // covers uploads/challan/2026-10-22/ without a file per day.
+    $root = privateUploadRoot($path) ?? $path;
+
+    // The tree-wide rule first, so it is restored even when this folder's
+    // own guard is already in place — a server restored from a backup of
+    // the data alone has the folders but not the rules.
+    $uploads = defined('UPLOAD_PATH') ? UPLOAD_PATH : dirname($root);
+    if (is_dir($uploads) && !is_file($uploads . '/.htaccess')) {
+        @file_put_contents($uploads . '/.htaccess', UPLOADS_TREE_HTACCESS . "\n");
+    }
+
+    $file = rtrim($root, '/') . '/.htaccess';
+    if (is_file($file) && str_contains((string) @file_get_contents($file), 'Require all denied')) {
+        return true;
+    }
+    if (@file_put_contents($file, PRIVATE_DIR_HTACCESS . "\n") === false) {
+        try {
+            Logger::warning('Could not write the .htaccess guard for a private upload folder', ['dir' => $root], 'security');
+        } catch (Throwable $e) { /* logging must never stop a save */ }
+    }
+    // An index file as well, so a server with directory listing on shows
+    // nothing rather than the whole day's paperwork.
+    $index = rtrim($root, '/') . '/index.html';
+    if (!is_file($index)) {
+        @file_put_contents($index, "<!doctype html><title>Not available</title>\n");
+    }
+    return true;
+}
+
+/**
+ * Which private tree is this path inside? Returns the tree's root, or null
+ * when the path is not under one of them.
+ */
+function privateUploadRoot(string $path): ?string
+{
+    $real = rtrim(str_replace('\\', '/', $path), '/');
+    foreach (['challan', 'chalani', 'passengers', 'agents-kyc', 'wa-inbound'] as $tree) {
+        $needle = '/uploads/' . $tree;
+        $at = strpos($real, $needle);
+        if ($at !== false) {
+            return substr($real, 0, $at + strlen($needle));
+        }
+    }
+    return null;
+}
+
+/**
  * Human file size.
  */
 function fileSizeLabel(int $bytes): string
@@ -580,6 +715,23 @@ function sqlSearchClause(array $arms, string $text, array &$params, string $pref
 }
 
 
+/* May the current caller see THIS booking in full? (26 Sep 2026, moved out
+   of api/track.php so the WhatsApp-code endpoint asks the same question.)
+   Yes when the phone typed matches the booking, the signed-in customer owns
+   it, or a staff member entitled to it is viewing. A staff session alone is
+   not enough: a counter agent sees only what they sold, scoped by
+   bookings.sold_by_admin_id exactly as admin/booking-view.php does. */
+function shg_booking_viewer_owns(array $detail, string $phoneDigits): bool
+{
+    $scopeId   = Auth::bookingScopeAdminId();
+    $staffSees = Auth::isAdmin()
+        && ($scopeId === null || (int) ($detail['sold_by_admin_id'] ?? 0) === $scopeId);
+
+    return ($phoneDigits !== '' && $phoneDigits === (string) $detail['contact_phone'])
+        || (Auth::isUser() && (int) (Auth::user()['id'] ?? 0) === (int) ($detail['user_id'] ?? -1))
+        || $staffSees;
+}
+
 /* WhatsApp delivery state of the ticket message for ONE booking (ticket
    page, 17 Sep 2026): the passenger reads "sent to WhatsApp ••••1507" or an
    honest "could not deliver — send it yourself" instead of guessing whether
@@ -593,7 +745,13 @@ function shg_wa_last(int $bookingId): ?array
     }
     try {
         $row = Database::fetch(
-            "SELECT status, to_number, error, created_at FROM message_logs WHERE booking_id = :b AND channel = 'whatsapp' ORDER BY id DESC LIMIT 1",
+            /* The office's own rows about this booking (an admin note, the
+               26 Sep 2026 delivery-fallback alert) are not the passenger's
+               ticket — the badge must show the PASSENGER's last attempt. */
+            "SELECT status, to_number, error, created_at FROM message_logs
+              WHERE booking_id = :b AND channel = 'whatsapp'
+                AND (purpose IS NULL OR purpose NOT IN ('delivery_fallback', 'admin_note'))
+              ORDER BY id DESC LIMIT 1",
             [':b' => $bookingId]
         );
     } catch (Throwable $e) {

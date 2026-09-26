@@ -446,6 +446,11 @@ final class Notify
                         ? 'provider refused the send: ' . mb_substr(self::$lastProviderError, 0, 300) . ' - click-to-chat link only'
                         : 'provider refused the send - click-to-chat link only')),
         ] + $meta);
+        /* 26 Sep 2026: a passenger's ticket that the sender refused is handed
+           to the office right now (see deliveryFallback). */
+        self::deliveryFallback($bookingId, $number, (string) ($meta['purpose'] ?? ''),
+            $paused ? 'sender paused' : ($driver === 'click_to_chat' ? 'no WhatsApp API configured'
+            : 'sender refused' . (self::$lastProviderError !== '' ? ': ' . mb_substr(self::$lastProviderError, 0, 120) : '')));
         return $link;
     }
 
@@ -785,10 +790,31 @@ final class Notify
             '3' => $dateLine,
             '4' => $boardLine          !== '' ? $boardLine          : '-',
             '5' => $seatLine,
-            '6' => inr((float) ($booking['total_amount'] ?? 0)),
+            '6' => self::bookingMoney($booking),
             // {{7}} is the template's IMAGE header — the ticket PNG itself.
             '7' => Ticket::imageUrl($pnr),
         ];
+    }
+
+    /**
+     * The money on a message, the way the passenger was charged it.
+     *
+     * The ticket PICTURE has carried the NPR since 26 Sep, but every WhatsApp
+     * body still said only the rupee — so a Nepalgunj passenger read "₹2,000"
+     * in the message and "NPR 3,200" on the image attached to it. The rupee
+     * stays first (it is what the company accounts in) and the money they
+     * actually handed over follows it, at the rate frozen on that ticket.
+     */
+    public static function bookingMoney(array $booking): string
+    {
+        $txt = inr((float) ($booking['total_amount'] ?? 0));
+        $cur = strtoupper((string) ($booking['fx_currency'] ?? ''));
+        $amt = (float) ($booking['fx_total'] ?? 0);
+        if ($cur !== '' && $cur !== 'INR' && $amt > 0) {
+            $txt .= ' · ' . $cur . ' ' . number_format($amt);
+        }
+
+        return $txt;
     }
 
     public static function resendTicketWhatsApp(array $booking): array
@@ -803,7 +829,7 @@ final class Notify
         $ticketUrl = Ticket::imageUrl($pnr);      // carries the §25 download key
         $text = "🚌 " . $company . "\n"
               . "तपाईंको बुकिङ " . $pnr . " पक्का भयो ✅\n"
-              . "जम्मा: " . inr((float) ($booking['total_amount'] ?? 0)) . "\n"
+              . "जम्मा: " . self::bookingMoney($booking) . "\n"
               . "तपाईंको टिकट (फोटो): " . $ticketUrl . "\n"
               . "प्रिन्ट गर्ने (PDF): " . Ticket::downloadUrl($pnr) . "\n"
               . "राम्रो यात्रा होस्! 🙏";
@@ -840,6 +866,43 @@ final class Notify
         }
         return ['ok' => false,
             'detail' => 'WhatsApp send failed. Use Settings → "Test WhatsApp" to see the exact Twilio error, or check logs/ (channel: whatsapp).'];
+    }
+
+    /**
+     * SMS fallback for the ticket (26 Sep 2026): when WhatsApp cannot reach
+     * the passenger, the desk sends the keyed ticket-image link by SMS. Same
+     * link the WhatsApp ticket carries (Ticket::imageUrl, download key
+     * included); plain ASCII so it stays one or two GSM segments. Never
+     * throws.
+     *
+     * @return array{ok: bool, detail: string}
+     */
+    public static function smsTicketLink(array $booking): array
+    {
+        if (!Settings::getBool('sms_enabled', false)) {
+            return ['ok' => false, 'detail' => 'SMS is switched off in Settings (sms_enabled).'];
+        }
+        $phone = self::usablePhone($booking['contact_phone'] ?? '');
+        if ($phone === '') {
+            return ['ok' => false, 'detail' => 'This booking has no usable contact phone number on file.'];
+        }
+        if (($booking['status'] ?? '') !== 'confirmed') {
+            return ['ok' => false, 'detail' => 'The ticket link can only be sent for a confirmed booking.'];
+        }
+        $pnr  = (string) ($booking['pnr'] ?? '');
+        $text = Settings::getString('company_name', APP_NAME) . ': your ticket ' . $pnr . "\n"
+              . Ticket::imageUrl($pnr) . "\n"
+              . 'Tapaiko ticket mathi ko link ma cha. Subha yatra!';
+        try {
+            $ok = self::sms($phone, $text, self::countryHint($booking),
+                isset($booking['id']) && (int) $booking['id'] > 0 ? (int) $booking['id'] : null);
+        } catch (Throwable $e) {
+            Logger::exception($e);
+            $ok = false;
+        }
+        return $ok
+            ? ['ok' => true,  'detail' => 'Ticket link sent by SMS to ' . $phone . '.']
+            : ['ok' => false, 'detail' => 'SMS send failed. Use Settings -> "Test SMS" to see the provider error.'];
     }
 
     /**
@@ -931,7 +994,7 @@ final class Notify
         unset($en); // customer message is Nepali-only; $en kept for logs/readability above
         $text = "🚌 " . $company . "\n"
               . $np . "\n"
-              . "जम्मा: " . inr((float) ($booking['total_amount'] ?? 0)) . " (उही)\n"
+              . "जम्मा: " . self::bookingMoney($booking) . " (उही)\n"
               . "तपाईंको नयाँ टिकट (फोटो): " . $ticketUrl . "\n"
               . "प्रिन्ट गर्ने (PDF): " . Ticket::downloadUrl($pnr) . "\n"
               . "नयाँ टिकट लिएर जानुहोला। राम्रो यात्रा होस्! 🙏";
@@ -1558,7 +1621,10 @@ final class Notify
         // staff 2FA texts read "… code: 123456 …"; the digits are masked
         // before the row is written, so admin/messages-log.php can show the
         // delivery status without handing any reader a live second factor.
-        $body = preg_replace('/(code\D{0,12}?)(\d{4,8})/iu', '$1••••', $body) ?? $body;
+        /* 26 Sep 2026: the word is कोड, not "code", in every OTP this app
+           actually sends — so the redaction never fired and every login code
+           was sitting in message_logs in clear. */
+        $body = preg_replace('/((?:code|कोड|ओटिपी|OTP)\D{0,12}?)(\d{4,8})/iu', '$1••••', $body) ?? $body;
         // 24 Sep 2026: the same for a one-time link token (step-up verification,
         // document share) — the bot's reply carrying it is logged here too.
         $body = preg_replace('~([?&]t=)[A-Za-z0-9]{16,}~', '$1[hidden]', $body) ?? $body;
@@ -1683,7 +1749,7 @@ final class Notify
         $pnr       = (string) $booking['pnr'];
         $bid       = (int) ($booking['id'] ?? 0);
         $facts     = self::ticketFacts($booking);
-        $amount    = inr((float) ($booking['total_amount'] ?? 0));
+        $amount    = self::bookingMoney($booking);
         $ticketUrl = Ticket::imageUrl($pnr);      // PNG first; PDF linked below
 
         // Journey date · departure time, when known.
@@ -1856,6 +1922,113 @@ final class Notify
      * if configured). Falls back to a click-to-chat link stored in the
      * app log so a staff member can send it in one tap.
      */
+    /**
+     * THE OFFICE GETS THE TICKET WHEN THE PASSENGER CANNOT (26 Sep 2026).
+     *
+     * Owner: "error bhayo bhane 9104801507 yo WhatsApp ma data send gardine
+     * — yo name lai yo ticket send gardinu bhanera ticket link ra number
+     * deu". A ticket WhatsApp refused used to become a 'failed' row and a
+     * line in a log; the desk found out when the passenger rang. Now the
+     * office WhatsApp (admin_whatsapp — the head-office number) gets one
+     * message: who, which number, the ticket picture link, and a
+     * tap-to-forward link that opens the passenger's chat with the ticket
+     * text already written. The admin e-mail gets the same words, because
+     * when the sender itself is down the office WhatsApp is down with it.
+     *
+     * Reached from every place a ticket dies: the sender refusing it here
+     * (whatsapp() above), Meta's or Twilio's status callback flipping a row
+     * to failed later, and cron/whatsapp-retry.php giving up. Only for
+     * passenger tickets (purpose ticket / ticket_change / resend, or the
+     * legacy empty purpose with a booking); never for the office's own
+     * alerts, so a dead sender cannot loop on itself. At most one alert per
+     * booking per wa_delivery_fallback_hours (default 24), counted from the
+     * delivery_fallback rows this writes. Never throws.
+     */
+    public static function deliveryFallback(?int $bookingId, string $toNumber, string $purpose, string $reason): void
+    {
+        try {
+            if ($bookingId === null || $bookingId <= 0) {
+                return;
+            }
+            if (!Settings::getBool('wa_delivery_fallback_on', true)) {
+                return;
+            }
+            if (!in_array($purpose, ['ticket', 'ticket_change', 'resend', ''], true)) {
+                return;
+            }
+            $hours  = max(1, Settings::getInt('wa_delivery_fallback_hours', 24));
+            $recent = (int) Database::scalar(
+                "SELECT COUNT(*) FROM message_logs
+                  WHERE booking_id = :b AND purpose = 'delivery_fallback'
+                    AND created_at >= DATE_SUB(NOW(), INTERVAL :h HOUR)",
+                ['b' => $bookingId, 'h' => $hours], 0
+            );
+            if ($recent > 0) {
+                return;
+            }
+            $b = Database::fetch(
+                'SELECT id, pnr, contact_phone, contact_country_code, status FROM bookings WHERE id = :i',
+                ['i' => $bookingId]
+            );
+            if ($b === null || (string) $b['status'] === 'cancelled') {
+                return;
+            }
+            $lead = Database::fetch(
+                'SELECT full_name FROM booking_passengers WHERE booking_id = :b ORDER BY is_primary DESC, id ASC LIMIT 1',
+                ['b' => $bookingId]
+            );
+            $leg = Database::fetch(
+                'SELECT bl.travel_date, r.from_city, r.to_city
+                   FROM booking_legs bl
+                   JOIN schedules s ON s.id = bl.schedule_id
+                   JOIN routes r    ON r.id = s.route_id
+                  WHERE bl.booking_id = :b
+                  ORDER BY bl.id ASC LIMIT 1',
+                ['b' => $bookingId]
+            );
+            $pnr    = (string) $b['pnr'];
+            $name   = trim((string) ($lead['full_name'] ?? ''));
+            $digits = preg_replace('/\D+/', '', $toNumber) ?: self::intlDigits((string) $b['contact_phone'], (string) ($b['contact_country_code'] ?? ''));
+            $company   = Settings::getString('company_name', APP_NAME);
+            $ticketUrl = Ticket::imageUrl($pnr);
+            $forward   = 'https://wa.me/' . $digits . '?text=' . rawurlencode(
+                '🎫 ' . $company . " — तपाईंको टिकट " . $pnr . "\n" . $ticketUrl
+            );
+            $lines = [
+                '⚠️ टिकट WhatsApp मा गएन — हातले पठाइदिनुहोस्',
+                '🎫 ' . $pnr,
+                '🧑 ' . ($name !== '' ? $name : '—'),
+                '📱 +' . $digits,
+            ];
+            if ($leg !== null) {
+                $lines[] = '🚌 ' . $leg['from_city'] . ' → ' . $leg['to_city'] . ' · ' . date('d M Y', (int) strtotime((string) $leg['travel_date']));
+            }
+            $lines[] = '📄 टिकट: ' . $ticketUrl;
+            $lines[] = '👉 यो नम्बरमा टिकट पठाउन थिच्नुहोस्: ' . $forward;
+            $lines[] = '🛠 Admin: ' . appUrl('admin/booking-view.php?id=' . $bookingId);
+            $lines[] = 'कारण: ' . mb_substr($reason, 0, 160);
+            $text = implode("\n", $lines);
+
+            $office = Settings::getString('admin_whatsapp', Settings::officePhone());
+            if (trim($office) !== '') {
+                self::whatsapp($office, $text, null, null, [], $bookingId, ['purpose' => 'delivery_fallback']);
+            }
+            $email = Settings::getString('admin_email', Settings::getString('company_email', ''));
+            if ($email !== '') {
+                self::email(
+                    $email,
+                    'टिकट WhatsApp मा गएन · ' . $pnr . ' — हातले पठाउनुहोस्',
+                    self::wrapEmail('Ticket not delivered · ' . $pnr,
+                        '<p>WhatsApp could not deliver this ticket. Please forward it to the passenger.</p>'
+                        . '<pre style="font-family:monospace;font-size:13px;white-space:pre-wrap">' . e($text) . '</pre>'),
+                    $text
+                );
+            }
+        } catch (Throwable $e) {
+            Logger::warning('Delivery fallback not sent: ' . $e->getMessage(), ['booking' => $bookingId], 'whatsapp');
+        }
+    }
+
     /**
      * A one-line note to the office (21 Sep 2026, owner: "admin update de
      * rakhos").
@@ -2076,7 +2249,7 @@ final class Notify
         $company = Settings::getString('company_name', APP_NAME);
         $pnr     = (string) ($booking['pnr'] ?? '');
         $total   = (float) ($booking['total_amount'] ?? 0);
-        $amount  = inr($total);
+        $amount  = self::bookingMoney($booking);
         $phone   = self::usablePhone($booking['contact_phone'] ?? '');
 
         if (Settings::getBool('whatsapp_notify_customer', true) && $phone !== '') {
@@ -2158,7 +2331,7 @@ final class Notify
         $reviewUrl  = appUrl('admin/payments.php?pnr=' . urlencode($pnr));
 
         $text = "🧾 भुक्तानी प्रमाण अपलोड भयो · " . $pnr . "\n"
-              . "जम्मा: " . inr((float) ($booking['total_amount'] ?? 0)) . "\n"
+              . "जम्मा: " . self::bookingMoney($booking) . "\n"
               . ($kind !== '' ? "प्रमाण: " . $kind . "\n" : '')
               . "जाँच्नुहोस्: " . $reviewUrl;
 

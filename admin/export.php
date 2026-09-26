@@ -44,6 +44,15 @@ if ($customerParam !== '' && $formatParam === 'pdf') {
 
 admin_boot('bookings.view');
 
+/* 26 Sep 2026: an agent's download is scoped to their own sales by
+   Auth::bookingScopeAdminId(), but role 'counter' is NOT scoped and holds no
+   reports.export — so this file handed a single ticket window the contact
+   phone and e-mail of every passenger the company has ever carried. Anyone
+   unscoped must hold the export permission. */
+if (Auth::bookingScopeAdminId() === null && !Auth::can('reports.export') && !Auth::isSuperadmin()) {
+    admin_boot('reports.export');
+}
+
 $q      = Security::clean($_GET['q'] ?? '', 60);
 $status = Security::clean($_GET['status'] ?? '', 20);
 $from   = Security::clean($_GET['from'] ?? '', 10);

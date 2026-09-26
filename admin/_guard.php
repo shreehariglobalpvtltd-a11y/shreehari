@@ -140,7 +140,12 @@ function admin_nav(): array
         ['href' => 'ai-copilot.php',   'icon' => 'msg',    'label' => '🤖 AI Sahayak',     'perm' => 'bookings.view',  'section' => 'Reports', 'hot' => true],
         ['href' => 'analytics.php',    'icon' => 'chart',  'label' => 'Analytics',        'perm' => 'dashboard.view', 'section' => 'Reports'],
         ['href' => 'feedback.php',     'icon' => 'star',      'label' => 'Ratings',          'perm' => 'dashboard.view', 'section' => 'Reports'],
-        ['href' => 'accounting.php',   'icon' => 'banknote',    'label' => 'Accounting',       'perm' => 'payments.view',  'section' => 'Reports'],
+        // 26 Sep 2026: the day-book is the COMPANY's book — collections,
+        // what agents are owed, who is holding our cash. A counter desk holds
+        // payments.view, so that permission was handing every window the whole
+        // company's money. commissions.view is the office's own.
+        ['href' => 'accounting.php',   'icon' => 'banknote',    'label' => 'Accounting',       'perm' => 'commissions.view', 'section' => 'Reports'],
+        ['href' => 'counters.php',     'icon' => 'map-pin',     'label' => 'Counters & collection', 'perm' => 'dashboard.view', 'section' => 'Reports'],
         ['href' => 'messages-log.php', 'icon' => 'msg',       'label' => 'Message Log',      'perm' => 'dashboard.view', 'section' => 'Reports'],
         ['href' => 'wa-pending.php',   'icon' => 'msg',       'label' => 'Tickets to hand over','perm'=> 'bookings.view',  'section' => 'Payments'],
 
@@ -152,6 +157,7 @@ function admin_nav(): array
         ['href' => 'ai-activity.php',  'icon' => 'msg',       'label' => 'AI Activity',      'perm' => 'dashboard.view', 'section' => 'Settings'],
         // 24 Sep 2026: the approved documents vault the assistant may quote and send.
         ['href' => 'company-docs.php', 'icon' => 'doc',       'label' => 'Company Documents','perm' => 'dashboard.view', 'section' => 'Settings'],
+        ['href' => 'ai-usage.php',     'icon' => 'msg',       'label' => 'AI Usage',         'perm' => 'dashboard.view', 'section' => 'Settings'],
 
         // Map — routes, stops, head office and the driver's live position (5 Sep 2026).
         ['href' => 'map.php',          'icon' => 'map-pin',      'label' => 'Live Map',         'perm' => 'schedules.view', 'section' => 'Map'],

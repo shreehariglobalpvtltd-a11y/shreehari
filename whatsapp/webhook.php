@@ -155,7 +155,7 @@ function wh_status(array $st): void
     }
 
     $row = Database::fetch(
-        'SELECT id, booking_id FROM message_logs WHERE provider_ref = :ref ORDER BY id DESC LIMIT 1',
+        'SELECT id, booking_id, purpose, to_number FROM message_logs WHERE provider_ref = :ref ORDER BY id DESC LIMIT 1',
         ['ref' => $wamid]
     );
     if ($row === null) {
@@ -196,6 +196,9 @@ function wh_status(array $st): void
         Logger::warning('WhatsApp delivery FAILED (Meta, async)', [
             'wamid' => $wamid, 'booking' => $row['booking_id'], 'code' => $code,
         ], 'whatsapp');
+        /* 26 Sep 2026: the office gets the ticket to forward by hand. */
+        Notify::deliveryFallback((int) ($row['booking_id'] ?? 0), (string) ($row['to_number'] ?? ''),
+            (string) ($row['purpose'] ?? ''), 'Meta: ' . (string) $error);
     }
 }
 

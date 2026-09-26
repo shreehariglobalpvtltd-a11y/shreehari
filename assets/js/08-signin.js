@@ -34,7 +34,13 @@ function setUser(u) {
   /* Signing out drops any ticket kept for offline use. These are cached on
      phones but also on the shared counter machine, and the next passenger
      at that desk must not be able to open the previous one's ticket. */
-  if (!u) { try { swMsg({ type: 'shg-clear-tickets' }); } catch (e) {} }
+  if (!u) {
+    try { swMsg({ type: 'shg-clear-tickets' }); } catch (e) {}
+    /* …and the photo draft taken before a number was typed (21-me.js keeps a
+       signed-in traveller's own photo under their number, so it is not the
+       next person's to see). */
+    try { if (typeof meForget === 'function') meForget(); } catch (e) {}
+  }
   updateNavUser();
 }
 function updateNavUser() {
@@ -79,6 +85,7 @@ function openLoginModal() {
   openModal(`
     <h3 class="m-title">👤 ${t('qlTitle')}</h3>
     <p class="m-sub">${t('qlP')}</p>
+    ${typeof meAvatarPicker === 'function' ? meAvatarPicker() : ''}
     <div class="field"><label for="qlName">${t('lblName')}</label><input id="qlName" autocomplete="name" autocapitalize="words" maxlength="120" value="${esc(savedName)}"><div class="err">${t('errName')}</div></div>
     <div class="field"><label for="otpPhone">${t('lblPhone')}</label>
       <div style="display:flex;gap:8px;align-items:stretch">
@@ -429,9 +436,15 @@ function renderMyBookings() {
     }
     box.innerHTML = `
       <div class="my-hello">
-        <div>
-          <b>${uPhone ? t('myHello') + ' +' + ((USER && USER.country === 'NP') ? '977' : '91') + ' ' + esc(uPhone) : '🎫 All Bookings'}</b>
-          ${trips ? '<small>⭐ ' + tf('myTripsN', { n: trips }) + '</small>' : ''}
+        <div class="me-card">
+          ${uPhone && typeof meAvatarHtml === 'function' ? meAvatarHtml(52, { pick: true, flagSelect: true }) : ''}
+          <div class="me-who">
+            <b>${uPhone ? ((USER && USER.name) ? esc(USER.name) : t('myHello')) : '🎫 All Bookings'}</b>
+            ${uPhone
+              ? '<small>' + ((USER && USER.country === 'NP') ? '🇳🇵 +977 ' : '🇮🇳 +91 ') + esc(uPhone)
+                  + (trips ? ' · ⭐ ' + tf('myTripsN', { n: trips }) : '') + '</small>'
+              : (trips ? '<small>⭐ ' + tf('myTripsN', { n: trips }) + '</small>' : '')}
+          </div>
         </div>
         ${uPhone ? '<button class="btn btn-ghost btn-sm" type="button" id="myLogoutBtn">' + t('myLogout') + '</button>' : ''}
       </div>

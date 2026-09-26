@@ -283,7 +283,7 @@ function coScrollInvalid() {
 function coGoStep(n) {
   if (n === 2) {
     const dv = validateCheckoutDetails();
-    if (dv.blocked) { toast('⛔ This number is blocked from booking — contact office +91 91048 01507'); SFX.error(); return; }
+    if (dv.blocked) { toast(tf('numBlocked', { p: ((DB.settings && DB.settings.phone) || CONFIG.phone) })); SFX.error(); return; }
     if (!dv.ok) { coFixToast(dv); return; }
     /* Name + mobile ARE the sign-in: establish the traveller's session in
        the background while they look at the payment step, so the booking
@@ -1108,7 +1108,7 @@ async function submitBooking() {
   const phone = dv.phone, email = dv.email, idNum = dv.idNum;
   const phoneVal = dv.phoneVal;
   if (dv.blocked) {
-    toast('⛔ This number is blocked from booking — contact office +91 91048 01507');
+    toast(tf('numBlocked', { p: ((DB.settings && DB.settings.phone) || CONFIG.phone) }));
     SFX.error(); shgHaptic('error');
     return;
   }
@@ -1287,11 +1287,11 @@ async function submitBooking() {
     const msgEl = $('#cAgentCodeMsg');
     if (apiResult.agent.applied) {
       const label = apiResult.agent.label || 'Agent code applied';
-      toast('🎟️ ' + label + ' · applied');
-      if (msgEl) { msgEl.textContent = '✓ ' + label + ' · applied'; msgEl.style.color = 'var(--good)'; msgEl.hidden = false; }
+      toast('🎟️ ' + tf('agentCodeOk', { c: label }));
+      if (msgEl) { msgEl.textContent = '✓ ' + tf('agentCodeOk', { c: label }); msgEl.style.color = 'var(--good)'; msgEl.hidden = false; }
     } else if (agentCodeInput) {
-      toast('Agent code not recognised — booked as direct sale.');
-      if (msgEl) { msgEl.textContent = 'Agent code not recognised — booked as direct sale.'; msgEl.style.color = 'var(--muted)'; msgEl.hidden = false; }
+      toast(t('agentCodeNo'));
+      if (msgEl) { msgEl.textContent = t('agentCodeNo'); msgEl.style.color = 'var(--muted)'; msgEl.hidden = false; }
     }
   }
 
@@ -1374,7 +1374,11 @@ async function submitBooking() {
   Flow.paxIndividual = false;   // the next party starts under one name again
   location.hash = '#/ticket/' + id;
   toast(t('tSubmitted'));
-  SFX.success(); shgHaptic('success');
+  /* 25 Sep 2026 (owner: a sound "ticket katne bela ma"). The moment the
+     PNR exists is the ticket coming off the book, so it gets the ticket
+     voice — the tear plus the confirmation bells — not the generic
+     success chime this shared with a dozen smaller wins. */
+  SFX.ticket(); shgHaptic('ticket');
   /* Notification centre entry (additive — guarded so booking flow never breaks) */
   try {
     if (typeof pushNotif === 'function') {
@@ -2026,7 +2030,7 @@ function renderStatus(id) {
       const waAsk = conf
         ? 'मेरो बुकिङ ' + b.id + ' को टिकट पठाउनुहोस्।'
         : 'मेरो बुकिङ ' + b.id + ' को भुक्तानी QR र टिकट पठाउनुहोस्।';
-      waGetBtn = '<a class="btn btn-wa tk2-wide" target="_blank" rel="noopener" href="https://wa.me/'
+      waGetBtn = '<a class="btn btn-wa tk2-wide" id="waGetBtn" target="_blank" rel="noopener" href="https://wa.me/'
         + bizWa + '?text=' + encodeURIComponent(waAsk) + '">🎫 WhatsApp मा टिकट पाउनुहोस्</a>';
     }
   } catch (e) {}
@@ -2071,10 +2075,10 @@ function renderStatus(id) {
   <div class="status-card tk2${conf ? ' confirm-success' : ''}" id="ticketCard" data-pnr="${esc(b.id)}">
     <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo.png?v=20260925a" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo.png?v=20260926k" alt="" loading="lazy" decoding="async">
         <div><b>${esc(CONFIG.company.name || 'S HARI GLOBAL PRIVATE LIMITED')}</b><small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
       </div>
-      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20260925a" width="600" height="312" alt="" decoding="async">
+      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20260926k" width="600" height="312" alt="" decoding="async">
     </div>
     <div class="premium-ticket-status">${pill2}${b.ticketNumber ? '<span>' + esc(b.ticketNumber) + '</span>' : ''}</div>
     ${(typeof routeOverviewSVG === 'function') ? routeOverviewSVG({ from: (isNepalPoint(r.from) ? r.from : (parseBP(b.boarding || '').name || r.from)), to: (isNepalPoint(r.to) ? r.to : (parseBP(b.drop || '').name || r.to)), compact: true }) : ''}
@@ -2188,6 +2192,40 @@ function renderStatus(id) {
   }
   const rbk = $('#retBookBtn'); if (rbk) rbk.onclick = () => rebookFrom(id, true);
   const wb = $('#waBtn'); if (wb) wb.onclick = () => waShare(id);
+  /* One-time WhatsApp code (26 Sep 2026, api/wa-ticket-code.php). For a
+     confirmed ticket the button asks the server for a 30-minute code and
+     turns into a link to our WhatsApp with "TICKET K7QM2P" typed in. The
+     passenger presses send, so they always write first; the bot answers
+     with the ticket even when this phone is not the one used at booking.
+     No redirect: the passenger taps the link themselves. Any failure
+     leaves the old PNR link in place, which still works for the booking's
+     own number. */
+  const wg = $('#waGetBtn');
+  if (wg && conf) {
+    wg.addEventListener('click', async function waCode(ev) {
+      if (wg.dataset.coded === '1') return;              // second tap: follow the link
+      ev.preventDefault();
+      wg.style.pointerEvents = 'none';
+      try {
+        const d = await shgApi.post('/wa-ticket-code.php', { pnr: b.id, phone: digits((b.contact && b.contact.phone) || '') });
+        if (d && d.link) {
+          wg.href = d.link;
+          wg.dataset.coded = '1';
+          wg.textContent = '📲 WhatsApp खोल्नुहोस् र पठाउनुहोस्';
+          const note = document.createElement('p');
+          note.className = 'muted tk2-wide';
+          note.style.cssText = 'font-size:12.5px;margin:4px 0 0;text-align:center';
+          note.textContent = 'टिकट WhatsApp मा पाउन माथिको बटन थिच्नुहोस्, अनि "' + d.message + '" पठाउनुहोस्। यो कोड '
+            + Math.round((d.expiresIn || 1800) / 60) + ' मिनेटसम्म एक पटक मात्र चल्छ।';
+          wg.insertAdjacentElement('afterend', note);
+        }
+      } catch (e) {
+        wg.dataset.coded = '1';                          // fall back to the PNR link
+      } finally {
+        wg.style.pointerEvents = '';
+      }
+    });
+  }
   const cb = $('#cancelBtn'); if (cb) cb.onclick = () => openCancelModal(id);
   /* 17-pwa.js wiring (13 Sep 2026): border checklist ticks + print, push
      opt-in, split-pay modal. Each guarded — the ticket never depends on them. */
