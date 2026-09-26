@@ -112,14 +112,60 @@
       var bits = [];
       if (Number(o.hours) > 0) { bits.push(o.hours + 'h+'); }
       if (o.until) { bits.push(shortDate(o.until)); }
-      if (Number(o.max) > 0) { bits.push('max ' + money(o.max)); }
+      if (Number(o.max) > 0) { bits.push('max ' + money(o.max) + (String(o.maxPer || 'booking') === 'passenger' ? ' / passenger' : '')); }
+      if (o.route) { bits.push(String(o.route) + ' only'); }
+      if (o.date) { bits.push(shortDate(o.date) + ' departure only'); }
       if (String(o.modes || 'all') === 'private') { bits.push('VIP private only'); }
       if (String(o.modes || 'all') === 'sharing') { bits.push('sharing only'); }
       if (bits.length) { el.textContent = bits.join(' · '); el.hidden = false; }
       else { el.hidden = true; }
     }
 
+    paintCountdown(o.until);
+
     sec.hidden = false;
+  }
+
+  /* ---------------------------------------------------------------- *
+   *  1b. The countdown — Nepali first, then English — to the last day
+   *  the offer runs (the office's "Runs until"). An open-ended offer has
+   *  nothing to count, so the line stays hidden. Refreshes once a minute;
+   *  the day the offer ends it counts hours, then minutes.
+   * ---------------------------------------------------------------- */
+  var countTimer = null;
+
+  function countdownText(msLeft) {
+    if (!(msLeft > 0)) { return ''; }
+    var mins  = Math.floor(msLeft / 60000);
+    var days  = Math.floor(mins / 1440);
+    var hours = Math.floor((mins % 1440) / 60);
+    var m     = mins % 60;
+    var ne = 'अफर सकिन ' + (days > 0 ? days + ' दिन ' : '')
+           + (days > 0 || hours > 0 ? hours + ' घण्टा ' : '')
+           + (days === 0 ? m + ' मिनेट ' : '') + 'बाँकी';
+    var en = (days > 0 ? days + 'd ' : '') + (days > 0 || hours > 0 ? hours + 'h ' : '')
+           + (days === 0 ? m + 'm ' : '') + 'left';
+    return ne + ' · ' + en;
+  }
+
+  function paintCountdown(untilIso) {
+    var el = $id('aoCount');
+    if (!el) { return; }
+    if (countTimer) { clearInterval(countTimer); countTimer = null; }
+    var end = untilIso ? Date.parse(String(untilIso) + 'T23:59:59') : NaN;
+    if (isNaN(end)) { el.hidden = true; el.textContent = ''; return; }
+    var tick = function () {
+      var txt = countdownText(end - Date.now());
+      if (!txt) {
+        el.hidden = true; el.textContent = '';
+        if (countTimer) { clearInterval(countTimer); countTimer = null; }
+        return;
+      }
+      el.textContent = '⏳ ' + txt;
+      el.hidden = false;
+    };
+    tick();
+    countTimer = setInterval(tick, 60000);
   }
 
   /* ---------------------------------------------------------------- *

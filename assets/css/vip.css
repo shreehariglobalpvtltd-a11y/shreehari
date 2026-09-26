@@ -98,6 +98,7 @@
 .ao-title  { margin: 6px 0 4px; font-size: 20px; line-height: 1.25; font-family: var(--f-display, inherit); }
 .ao-text   { margin: 0; font-size: 14px; line-height: 1.55; opacity: .95; }
 .ao-until  { margin: 6px 0 0; font-size: 12px; font-weight: 700; opacity: .85; }
+.ao-count  { margin: 8px 0 0; font-size: 13px; font-weight: 800; letter-spacing: .2px; }
 .ao-actions .btn { white-space: nowrap; }
 
 @media (max-width: 720px) {
