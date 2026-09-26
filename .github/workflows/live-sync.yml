@@ -29,9 +29,13 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
+# Same group as main's "Deploy to VPS" (deploy.yml). Older branches use
+# vps-deploy, so the first step also refuses while any Deploy to VPS run
+# is queued or running, and the server script takes a flock.
 concurrency:
-  group: vps-deploy
+  group: deploy-live
   cancel-in-progress: false
 
 jobs:
@@ -42,6 +46,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: No other deploy running
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          busy="$(for s in queued in_progress waiting pending requested; do
+                    gh run list -R "$GITHUB_REPOSITORY" --workflow deploy.yml --status "$s" --json databaseId -q '.[].databaseId'
+                  done | grep -c . || true)"
+          [ "$busy" = 0 ] || { echo "::error::a Deploy to VPS run is queued or running; try again after it finishes"; exit 1; }
+          echo "no Deploy to VPS run in flight"
 
       - name: Read the request
         id: req
@@ -92,7 +106,7 @@ jobs:
         run: |
           set -o pipefail
           { printf 'SITE=%q\n' "$SITE"; cat deploy/live-remote-state.sh; } \
-            | ssh -i ~/.ssh/id_deploy -p "${PORT:-22}" -o BatchMode=yes "$VUSER@$HOST" bash -s | tee /tmp/state.txt
+            | ssh -i ~/.ssh/id_deploy -p "${PORT:-22}" -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=8 "$VUSER@$HOST" bash -s | tee /tmp/state.txt
           grep -q '^HEAD=' /tmp/state.txt || { echo "::error::no git state from the webroot"; exit 1; }
           grep -E '^(GITDIR|HEAD|SHALLOW)=' /tmp/state.txt | sed 's/^/LIVE_/' >> "$GITHUB_ENV"
 
@@ -104,7 +118,7 @@ jobs:
           VUSER: ${{ secrets.VPS_USER }}
           PORT:  ${{ secrets.VPS_PORT }}
         run: |
-          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/id_deploy -p ${PORT:-22} -o BatchMode=yes"
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/id_deploy -p ${PORT:-22} -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=8"
           git fetch --no-tags --upload-pack="git -c safe.directory='*' upload-pack" \
             "ssh://$VUSER@$HOST$LIVE_GITDIR" "+HEAD:refs/live/head"
           [ "$(git rev-parse refs/live/head)" = "$LIVE_HEAD" ] || { echo "::error::fetched commit is not the live HEAD"; exit 1; }
@@ -131,6 +145,9 @@ jobs:
       - name: Snapshot — publish as a tag
         if: steps.req.outputs.action == 'snapshot'
         run: |
+          # GITHUB_TOKEN may not push commits that change workflow files.
+          wf="$(git log --format= --name-only refs/live/head --not --remotes=origin --tags -- .github/workflows | grep -c . || true)"
+          [ "$wf" = 0 ] || { echo "::error::server-only commits change .github/workflows ($wf path(s)); GITHUB_TOKEN cannot push them. Push this one from a session with a personal token."; exit 1; }
           tag="live-$(date -u +%Y%m%d-%H%M)"
           git push origin "refs/live/head:refs/tags/$tag"
           echo "Published $LIVE_HEAD as tag $tag"
@@ -171,7 +188,7 @@ jobs:
               "$SITE" "$GITHUB_SHA" "$EXPECT" "$GITHUB_REF_NAME" "https://github.com/$GITHUB_REPOSITORY.git" "$DRY"
             printf 'SWITCHES=%q\n' "wa_chat_on payment_webhook_on payment_webhook_autoconfirm wa_admin_commands_on ai_local_on"
             cat deploy/live-remote-deploy.sh
-          } | ssh -i ~/.ssh/id_deploy -p "${PORT:-22}" -o BatchMode=yes "$VUSER@$HOST" bash -s
+          } | ssh -i ~/.ssh/id_deploy -p "${PORT:-22}" -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=8 "$VUSER@$HOST" bash -s
 
       - name: Site health
         if: always()
