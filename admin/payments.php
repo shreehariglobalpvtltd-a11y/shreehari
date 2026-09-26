@@ -113,12 +113,19 @@ $pendingCount = (int) Database::fetch(
     "SELECT COUNT(*) AS c FROM bookings WHERE status='pending'"
 )['c'];
 
+/* The NPR a Nepal desk quoted today, summed exactly as frozen on each sale —
+   never the rupee times today's peg. Only where the column exists (26 Sep 2026). */
+$frozen = CounterDesk::frozenColumns();
+$nprSel = $frozen['bookings']
+    ? ", COALESCE(SUM(CASE WHEN fx_currency='NPR' THEN fx_total ELSE 0 END),0) AS npr"
+    : ", 0 AS npr";
 $approvedRow = Database::fetch(
-    "SELECT COUNT(*) AS c, COALESCE(SUM(total_amount),0) AS t
+    "SELECT COUNT(*) AS c, COALESCE(SUM(total_amount),0) AS t{$nprSel}
        FROM bookings WHERE status='confirmed' AND confirmed_at >= CURDATE() AND confirmed_at < CURDATE() + INTERVAL 1 DAY"
 );
 $approvedCount = (int) $approvedRow['c'];
 $approvedTotal = (float) $approvedRow['t'];
+$approvedNpr   = (float) $approvedRow['npr'];   // same window as "Collection Today" below
 
 $rejectedCount = (int) Database::fetch(
     "SELECT COUNT(*) AS c FROM bookings WHERE status='rejected' AND updated_at >= CURDATE() AND updated_at < CURDATE() + INTERVAL 1 DAY"
@@ -229,8 +236,12 @@ if ($isDate($fDateTo)) {
 
 $orderBy = ($tab === 'pending') ? 'b.created_at ASC' : 'b.created_at DESC';
 
+/* A Nepal desk's NPR sits beside the rupee on the row; select it only where
+   the migration has run, so an older database still lists. */
+$fxSel = ($frozen['bookings'] ? ' b.fx_currency, b.fx_total,' : '')
+       . ($frozen['payments'] ? ' p.local_currency, p.local_amount,' : '');
 $sql = "SELECT b.id, b.pnr, b.status, b.total_amount, b.contact_phone, b.source,
-               b.sold_by_admin_id, b.is_cod, b.created_at, b.booking_mode, b.refund_status,
+               b.sold_by_admin_id, b.is_cod, b.created_at, b.booking_mode, b.refund_status,{$fxSel}
                p.method, p.utr_number, p.payer_name, p.status AS pay_status,
                p.reject_reason, p.verified_at,
                r.from_city, r.to_city, r.route_code,
@@ -315,6 +326,8 @@ tr.row-done td{background:var(--hover)}
   .pay-filter{flex-direction:column}
   .pay-filter label,.pay-filter input,.pay-filter select{width:100%}
 }
+.npr-line{font-size:11px;color:#b45309;font-weight:800}
+:root[data-theme="dark"] .npr-line{color:#fcd34d}
 </style>
 
 <!-- Summary Cards -->
@@ -333,7 +346,7 @@ tr.row-done td{background:var(--hover)}
     <span class="hicon">✅</span>
     <div class="hk">Approved Today</div>
     <div class="hv" data-stat="approved"><?= $approvedCount ?></div>
-    <div class="hsub"><?= Security::e(inr($approvedTotal)) ?></div>
+    <div class="hsub"><?= Security::e(inr($approvedTotal)) ?><?php if ($approvedNpr > 0): ?> · <span class="npr-line"><?= Security::e(CounterDesk::format($approvedNpr, 'NPR')) ?> quoted in NPR</span><?php endif; ?></div>
   </div>
   <div class="hcard hc-red">
     <span class="hicon">✕</span>
@@ -350,6 +363,7 @@ tr.row-done td{background:var(--hover)}
     <span class="hicon">📈</span>
     <div class="hk">Collection Today</div>
     <div class="hv"><?= Security::e(inr($collectionTotal)) ?></div>
+    <?php if ($approvedNpr > 0): ?><div class="hsub"><span class="npr-line">incl. <?= Security::e(CounterDesk::format($approvedNpr, 'NPR')) ?> quoted in NPR</span> · books stay in ₹</div><?php endif; ?>
   </div>
 </div>
 
@@ -509,6 +523,7 @@ tr.row-done td{background:var(--hover)}
         <!-- Amount -->
         <td>
           <strong><?= Security::e(inr((float) $q['total_amount'])) ?></strong>
+          <?php if (($fxQ = CounterDesk::frozen($q)) !== ''): ?><div class="npr-line" title="quoted in NPR at the desk — frozen on the sale, the rupee above is the book figure"><?= Security::e($fxQ) ?></div><?php endif; ?>
           <?php if ($isCod): ?><div><span class="pill" style="color:#7a4a00;background:#ffe6c7;font-size:10px">COD</span></div><?php endif; ?>
         </td>
         <!-- Payment: method + UTR/payer -->

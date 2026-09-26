@@ -14,13 +14,16 @@ declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 $admin = admin_boot('dashboard.view');
 
-/* 1 INR = 1.6 NPR — the app already defines this peg in config; only
-   fall back if some environment hasn't (avoids a redefinition fatal). */
-if (!defined('NPR_PER_INR')) {
-    define('NPR_PER_INR', 1.6);
-}
+/* The peg is Admin → Settings → npr_per_inr — the row the desk, api/quote.php
+   and Accounting read — not the literal that used to be compiled in here. It
+   divides ONLY legacy rows whose stored currency is NPR; a Nepal desk's sale
+   (26 Sep 2026) is stored in rupees with its NPR frozen beside it. Rendered
+   into SQL as a fixed-format number so a setting can never carry text in. */
+$peg = Settings::getFloat('npr_per_inr', defined('NPR_PER_INR') ? (float) NPR_PER_INR : 1.6);
+if ($peg <= 0) { $peg = 1.6; }
+$pegSql = sprintf('%.4F', $peg);
 /** SQL fragment: total_amount expressed in INR regardless of stored currency. */
-const REV_INR = "SUM(CASE WHEN currency='NPR' THEN total_amount/" . NPR_PER_INR . " ELSE total_amount END)";
+$REV_INR = "SUM(CASE WHEN currency='NPR' THEN total_amount/$pegSql ELSE total_amount END)";
 
 /* Confirmed for money purposes = confirmed OR completed. */
 $paidStatuses = "'confirmed','completed'";
@@ -30,7 +33,7 @@ $d30s = date('Y-m-d 00:00:00', strtotime('-29 days'));
 
 /* ---- KPI cards (last 30 days) ------------------------------------- */
 $revenue30 = (float) Database::scalar(
-    "SELECT COALESCE(" . REV_INR . ",0) FROM bookings
+    "SELECT COALESCE(" . $REV_INR . ",0) FROM bookings
       WHERE status IN ($paidStatuses) AND confirmed_at >= :d0",
     ['d0' => $d30s]
 );
@@ -53,7 +56,7 @@ $avgFare = $confirmed30 > 0 ? $revenue30 / $confirmed30 : 0.0;
 
 /* ---- Chart 1: revenue per day, last 30 days ----------------------- */
 $revRows = Database::fetchAll(
-    "SELECT DATE(confirmed_at) d, " . REV_INR . " rev
+    "SELECT DATE(confirmed_at) d, " . $REV_INR . " rev
        FROM bookings
       WHERE status IN ($paidStatuses) AND confirmed_at >= :d0
       GROUP BY DATE(confirmed_at)",
@@ -137,7 +140,7 @@ $routeRows = Database::fetchAll(
             COUNT(DISTINCT b.id)            AS tickets,
             COALESCE(SUM(bl.seat_count), 0) AS seats,
             SUM(CASE WHEN b.currency = 'NPR'
-                     THEN b.total_amount / " . NPR_PER_INR . "
+                     THEN b.total_amount / " . $pegSql . "
                      ELSE b.total_amount END) AS rev,
             COUNT(DISTINCT bl.schedule_id)  AS trips
        FROM bookings b
@@ -180,7 +183,7 @@ foreach (Database::fetchAll(
 $unattributed = Database::fetch(
     "SELECT COUNT(*) AS n,
             SUM(CASE WHEN b.currency = 'NPR'
-                     THEN b.total_amount / " . NPR_PER_INR . "
+                     THEN b.total_amount / " . $pegSql . "
                      ELSE b.total_amount END) AS rev
        FROM bookings b
       WHERE b.status IN ($paidStatuses)
@@ -252,7 +255,7 @@ admin_header('Analytics', 'analytics');
 
 <div class="an-grid">
   <div class="panel wide">
-    <div class="an-head"><h2>Revenue — last 30 days (₹, NPR converted @ 1:<?= NPR_PER_INR ?>)</h2>
+    <div class="an-head"><h2>Revenue — last 30 days (₹, legacy NPR rows converted @ 1:<?= Security::e((string) $peg) ?>)</h2>
       <button class="an-export" type="button" data-export="revChart" data-name="revenue-30d">Export PNG</button></div>
     <div class="an-body"><div class="an-canvas"><canvas id="revChart"></canvas></div></div>
   </div>
@@ -286,7 +289,7 @@ admin_header('Analytics', 'analytics');
   <h2>Route earnings</h2>
   <p class="muted" style="margin-top:-6px">
     Confirmed and completed sales, counted against the outbound leg so a round
-    trip is not double-counted. NPR converted at the same 1&nbsp;:&nbsp;<?= NPR_PER_INR ?> peg
+    trip is not double-counted. NPR converted at the same 1&nbsp;:&nbsp;<?= Security::e((string) $peg) ?> peg (Settings → npr_per_inr)
     used everywhere else on this page, so these totals reconcile with Accounting.
   </p>
 

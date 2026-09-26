@@ -1307,7 +1307,15 @@ if (Notify::usablePhone($b['contact_phone'] ?? '') !== '') {
       <?php endforeach; ?>
       <?php if ((float) ($b['tax_amount'] ?? 0) > 0): ?><tr><th>Tax</th><td><?= Security::e(inr((float) $b['tax_amount'])) ?></td></tr><?php endif; ?>
       <tr><th>Total</th><td><strong style="font-size:17px"><?= Security::e(inr((float) $b['total_amount'])) ?></strong></td></tr>
-      <tr><th>Method</th><td><?= Security::e(strtoupper((string) ($pay['method'] ?? '—'))) ?> · <?= admin_pill((string) ($pay['status'] ?? 'pending')) ?></td></tr>
+      <?php /* A Nepal desk quoted this sale in NPR and froze that figure on the row
+               (26 Sep 2026). Print what was frozen — never today's peg times the rupee. */
+            $fxQuoted = CounterDesk::frozen($b);
+            $fxTaken  = CounterDesk::frozen($pay, 'local_currency', 'local_amount'); ?>
+      <?php if ($fxQuoted !== ''): ?>
+        <tr><th>Quoted at the desk</th><td><strong style="font-size:15px;color:#b45309"><?= Security::e($fxQuoted) ?></strong>
+          <span class="muted" style="font-size:12px">· ₹1 = NPR <?= Security::e(rtrim(rtrim(number_format((float) ($b['fx_rate'] ?? 0), 4, '.', ''), '0'), '.')) ?>, frozen when the ticket was cut<?= CounterDesk::stampColumn() && (string) ($b['counter_code'] ?? '') !== '' ? ' at ' . Security::e(CounterDesk::label((string) $b['counter_code'])) : '' ?></span></td></tr>
+      <?php endif; ?>
+      <tr><th>Method</th><td><?= Security::e(strtoupper((string) ($pay['method'] ?? '—'))) ?> · <?= admin_pill((string) ($pay['status'] ?? 'pending')) ?><?php if ($fxTaken !== ''): ?> · took <strong style="color:#b45309"><?= Security::e($fxTaken) ?></strong> in the drawer<?php endif; ?></td></tr>
       <tr><th>UTR / Ref</th><td class="mono"><?= Security::e($pay['utr_number'] ?? '—') ?></td></tr>
       <?php if ($hasProof): ?>
       <tr><th>Payment proof</th><td><a class="btn ghost" style="font-size:12px;padding:5px 12px" href="/admin/screenshot.php?id=<?= (int) ($b['id'] ?? 0) ?>" target="_blank" rel="noopener">🖼️ View proof</a></td></tr>

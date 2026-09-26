@@ -29,9 +29,14 @@ $admin = admin_boot('commissions.view');
 
 $base = '';
 
-if (!defined('NPR_PER_INR')) {
-    define('NPR_PER_INR', 1.6);
-}
+/* The peg is Admin → Settings → npr_per_inr — the row the desk and
+   api/quote.php read; the literal 1.6 that used to sit here could not be
+   changed from the office. It converts ONLY legacy rows whose stored
+   currency is NPR. A Nepal desk's sale (26 Sep 2026) is stored in rupees
+   with the NPR it quoted frozen beside it — that figure is printed as
+   written further down, never re-converted. */
+$peg = Settings::getFloat('npr_per_inr', defined('NPR_PER_INR') ? (float) NPR_PER_INR : 1.6);
+if ($peg <= 0) { $peg = 1.6; }
 
 /* ---- Window: default today; presets for month / last 30 days -------- */
 $from = Security::clean($_GET['from'] ?? '', 10);
@@ -42,7 +47,7 @@ if ($from > $to) { [$from, $to] = [$to, $from]; }   // tolerate a reversed pair
 
 $paidStatuses = "'confirmed','completed'";
 $inrOf = static fn(float $amt, ?string $cur): float =>
-    strtoupper((string) $cur) === 'NPR' ? $amt / NPR_PER_INR : $amt;
+    strtoupper((string) $cur) === 'NPR' ? $amt / $peg : $amt;
 
 /* =====================================================================
  *  1. Collections — every confirmed booking whose money landed in the
@@ -54,9 +59,12 @@ $codPending      = ['count' => 0, 'amount' => 0.0];
 $grossCollected  = 0.0;
 $confirmedCount  = 0;   // all confirmed/completed in window (incl. COD pending)
 $collectedCount  = 0;   // only those whose money is actually in (pairs with $grossCollected)
+$nprQuoted       = 0.0; // the NPR a Nepal desk quoted on collected sales, summed exactly as frozen
+$nprQuotedCount  = 0;
+$hasFx           = CounterDesk::frozenColumns()['bookings'];
 try {
     $rows = Database::fetchAll(
-        "SELECT b.total_amount, b.currency, b.is_cod,
+        "SELECT b.total_amount, b.currency, b.is_cod," . ($hasFx ? " b.fx_currency, b.fx_total," : '') . "
                 (SELECT p2.method FROM payments p2 WHERE p2.booking_id = b.id ORDER BY p2.id DESC LIMIT 1) AS method,
                 (SELECT p2.status FROM payments p2 WHERE p2.booking_id = b.id ORDER BY p2.id DESC LIMIT 1) AS pay_status
            FROM bookings b
@@ -83,6 +91,10 @@ try {
         $collectByMethod[$key]['amount'] += $amt;
         $grossCollected += $amt;
         $collectedCount++;
+        if ($hasFx && strtoupper((string) ($r['fx_currency'] ?? '')) === 'NPR' && (float) ($r['fx_total'] ?? 0) > 0) {
+            $nprQuoted += (float) $r['fx_total'];
+            $nprQuotedCount++;
+        }
     }
 } catch (Throwable $e) {
     // leave the section empty — the page still renders
@@ -196,6 +208,8 @@ admin_header('Accounting', 'accounting');
   .acc-tot td{font-weight:800;border-top:2px solid var(--line)}
   @media(max-width:820px){.acc-grid{grid-template-columns:1fr}}
   @media print{header.tb,nav.side,.acc-tools,.no-print{display:none!important}main.wrap{margin:0!important;padding:0!important;max-width:none!important}}
+.npr-line{color:#b45309;font-weight:800}
+:root[data-theme="dark"] .npr-line{color:#fcd34d}
 </style>
 
 <form class="acc-tools no-print" method="get">
@@ -210,10 +224,10 @@ admin_header('Accounting', 'accounting');
   <button class="btn ghost" type="button" onclick="window.print()">🖨️ Print</button>
 </form>
 
-<p class="muted" style="margin-top:-6px">Day-book for <strong><?= Security::e($rangeLabel) ?></strong> · money shown in ₹ (NPR converted @ 1:<?= NPR_PER_INR ?>).</p>
+<p class="muted" style="margin-top:-6px">Day-book for <strong><?= Security::e($rangeLabel) ?></strong> · money shown in ₹ · a Nepal desk's NPR is printed beside it exactly as frozen on each sale · legacy NPR-currency rows converted @ 1:<?= Security::e((string) $peg) ?> (Settings → npr_per_inr).</p>
 
 <div class="cards">
-  <div class="card"><div class="k">Collected (money in)</div><div class="v"><?= Security::e(inr($grossCollected)) ?><br><small><?= $collectedCount ?> paid · <?= $confirmedCount ?> confirmed</small></div></div>
+  <div class="card"><div class="k">Collected (money in)</div><div class="v"><?= Security::e(inr($grossCollected)) ?><br><small><?= $collectedCount ?> paid · <?= $confirmedCount ?> confirmed<?php if ($nprQuoted > 0): ?> · <span class="npr-line"><?= Security::e(CounterDesk::format($nprQuoted, 'NPR')) ?> quoted in NPR</span><?php endif; ?></small></div></div>
   <div class="card"><div class="k">COD still to collect</div><div class="v"><?= Security::e(inr($codPending['amount'])) ?><br><small><?= $codPending['count'] ?> booking<?= $codPending['count'] === 1 ? '' : 's' ?></small></div></div>
   <div class="card"><div class="k">Commission payable</div><div class="v"><?= Security::e(inr($commissionAccrued)) ?><br><small>accrued this period</small></div></div>
   <div class="card"><div class="k">Refunds out</div><div class="v"><?= Security::e(inr($refunds['amount'])) ?><br><small><?= $refunds['count'] ?> refund<?= $refunds['count'] === 1 ? '' : 's' ?></small></div></div>
@@ -329,6 +343,9 @@ admin_header('Accounting', 'accounting');
   <h2>Period summary</h2>
   <table>
     <tr><th>Money collected (verified)</th><td class="acc-num"><?= Security::e(inr($grossCollected)) ?></td></tr>
+    <?php if ($nprQuoted > 0): ?>
+    <tr><th>… of which quoted in NPR at a Nepal desk <span class="muted" style="font-weight:500">(<?= (int) $nprQuotedCount ?> ticket<?= $nprQuotedCount === 1 ? '' : 's' ?>, as frozen on each sale — the rupee above is already the book figure; the drawer count is on <a href="<?= $base ?>/admin/counters.php">Counters &amp; collection</a>)</span></th><td class="acc-num npr-line"><?= Security::e(CounterDesk::format($nprQuoted, 'NPR')) ?></td></tr>
+    <?php endif; ?>
     <tr><th>COD still to collect</th><td class="acc-num"><?= Security::e(inr($codPending['amount'])) ?></td></tr>
     <tr><th>Refunds paid out</th><td class="acc-num">− <?= Security::e(inr($refunds['amount'])) ?></td></tr>
     <tr><th>Agent commission payable (accrued)</th><td class="acc-num">− <?= Security::e(inr($commissionAccrued)) ?></td></tr>

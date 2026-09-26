@@ -107,6 +107,7 @@ const CORE_SUITES = [
     'counter-mode-test.php'        => 'the desk sells through the same engine',
     'counter-role-test.php'        => 'the counter role sees only what it may',
     'counter-location-test.php'    => 'the desk a ticket was cut at: the list, the label, and both renders',
+    'npr-beside-rupee-test.php'    => 'a Nepal desk’s NPR is read back as frozen on booking-view, payments, the day-book and the dashboard; the peg comes from Settings',
     'counter-grace-test.php'       => 'counter may sell past the public cut-off',
     'counter-discount-test.php'    => 'counter discount is capped server-side',
     'agent-isolation-test.php'     => 'an agent never reads another agent’s book',

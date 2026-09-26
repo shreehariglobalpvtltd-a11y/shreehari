@@ -169,7 +169,13 @@ try {
     check('  pickup label carries its time ("Name @ HH:MM")', preg_match('/@ \d\d:\d\d$/', (string) $p['boarding']) === 1, (string) $p['boarding']);
     $firstStop = (string) ($stops[0]['name'] ?? $out['from_city']);
     check('  first pickup by default', Boarding::townKey((string) $p['boarding']) === Boarding::townKey($firstStop), (string) $p['boardingName']);
-    check('  fare per seat = the toNepal direction fare', abs((float) $p['fare']['perSeat'] - (float) $dir['toNepal']) < 0.01, (string) $p['fare']['perSeat']);
+    /* 26 Sep 2026: priced from the point board for THIS plan's own pickup,
+       not from one number per direction — a Surat pickup and an Ahmedabad
+       one no longer cost the same. */
+    $wantPP = Fare::pointFare((string) $p['boarding'], (string) $p['to']);
+    check('  fare per seat = the board fare for this pickup',
+        abs((float) $p['fare']['perSeat'] - $wantPP) < 0.01,
+        (string) $p['fare']['perSeat'] . ' vs board ' . $wantPP);
     $q = Fare::quote((float) $p['fare']['perSeat'], 1, 0, 0, 0, '', '', $rid);
     check('  total = Fare::quote of that base', abs((float) $p['fare']['total'] - (float) $q['total']) < 0.01, (string) $p['fare']['total']);
     check('  no women-only berth for an unstated gender', !in_array($p['seats'][0], Seats::femaleSeats('sleeper'), true), $p['seats'][0]);
@@ -189,7 +195,12 @@ try {
     if ($ret !== null) {
         $r = QuickTicket::plan(['date' => $D, 'direction' => 'toIndia']);
         check('return direction picks the return route', $r['direction'] === 'toIndia' && (int) $r['routeId'] === (int) $ret['id'], $r['from'] . ' → ' . $r['to']);
-        check('  priced at the toIndia fare', abs((float) $r['fare']['perSeat'] - (float) $dir['toIndia']) < 0.01, (string) $r['fare']['perSeat']);
+        /* Coming back it is the DROP that is the Gujarat end, so the board
+           is asked for the route's own pair. */
+        $wantRet = Fare::pointFare((string) $r['from'], (string) $r['to']);
+        check('  priced at the board fare for the return pair',
+            abs((float) $r['fare']['perSeat'] - $wantRet) < 0.01,
+            (string) $r['fare']['perSeat'] . ' vs board ' . $wantRet);
     } else {
         echo "  SKIP  no active return route\n";
     }
@@ -234,7 +245,9 @@ try {
     check('a man never gets a women-only berth', !in_array($mm['seats'][0], Seats::femaleSeats('sleeper'), true), $mm['seats'][0]);
     $pair = QuickTicket::plan(['date' => $D, 'direction' => 'toNepal', 'seats' => 2]);
     check('a pair shares one cabin', count($pair['seats']) === 2 && Seats::unitKey($pair['seats'][0]) === Seats::unitKey($pair['seats'][1]), implode(',', $pair['seats']));
-    check('  priced for two', abs((float) $pair['fare']['base'] - 2 * (float) $dir['toNepal']) < 0.01, (string) $pair['fare']['base']);
+    $wantPair = 2 * Fare::pointFare((string) $pair['boarding'], (string) $pair['to']);
+    check('  priced for two', abs((float) $pair['fare']['base'] - $wantPair) < 0.01,
+        (string) $pair['fare']['base'] . ' vs board ' . $wantPair);
 
     /* ================================================================
      *  5. refusals
@@ -324,8 +337,13 @@ try {
     check('a party of two gets two seats', count($resP['seats']) === 2, implode(',', $resP['seats']));
     $names = array_map('strval', pluck(Database::fetchAll('SELECT full_name FROM booking_passengers WHERE booking_id = :b ORDER BY is_primary DESC, id', ['b' => (int) $resP['bookingId']]), 'full_name'));
     check('  second passenger numbered after the buyer', $names === ['Quick Test Family', 'Quick Test Family (2)'], implode(' | ', $names));
-    $qP = Fare::quote(2 * (float) $dir['toNepal'], 2, 0, 0, 0, '', '', $rid);
-    check('  total = Fare::quote for two', abs((float) $resP['total'] - (float) $qP['total']) < 0.01, (string) $resP['total']);
+    /* The invariant worth guarding is not a figure: it is that the bot
+       CHARGED what it QUOTED. Ask the planner for the same journey and
+       compare the sale against its own quote. */
+    $planP = QuickTicket::plan(['date' => $D3, 'direction' => 'toNepal', 'seats' => 2]);
+    check('  charged exactly what the plan quoted for two',
+        abs((float) $resP['total'] - (float) $planP['fare']['total']) < 0.01,
+        (string) $resP['total'] . ' vs quoted ' . $planP['fare']['total']);
 
     /* ================================================================
      *  6b. the PASSENGER's own Quick Ticket (6 Sep 2026, "for everyone")

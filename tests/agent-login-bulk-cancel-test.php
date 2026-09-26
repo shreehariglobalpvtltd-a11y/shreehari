@@ -344,7 +344,8 @@ try {
         'contact' => ['phone' => PHONE], 'bookingMode' => 'sharing', 'paymentMethod' => 'upi',
         'isCod' => false, 'boarding' => '', 'referralCode' => '',
     ]);
-    $normal = Fare::cabinFare('single', 'sharing', 1, true, (string) $route['to_city'])['perPerson'];
+    $normal = Fare::cabinFare('single', 'sharing', 1, true, (string) $route['to_city'], 4,
+                              (string) $route['from_city'])['perPerson'];
     check('the daily bus still charges the normal fare',
         (float) $bd['total_amount'] === (float) $normal, 'charged ' . $bd['total_amount'] . ' vs ' . $normal);
     /* ================================================================
