@@ -181,10 +181,18 @@ foreach ($spellings as $s) {
 }
 check('all ' . count($spellings) . ' spellings of the Ahmedabad stop price at 2000', $allSame);
 
-check('an unknown town falls through to the @india catch-all, not to silence',
-    (int) Fare::pointFare('Somewhere Else', 'Rupaidiha') === 1800
-    || (int) Fare::pointFare('Somewhere Else', 'Rupaidiha') === 2200,
-    (string) Fare::pointFare('Somewhere Else', 'Rupaidiha'));
+/* A stop the office has added to route_stops but not to main_points must
+   inherit the board rather than slip out from under it — the strict reading
+   of @india charged such a pickup ₹2,000, two hundred less than the Surat
+   pickup beside it. */
+check('a pickup that is not on the points list still pays the @india rule',
+    (int) Fare::pointFare('Somewhere In Gujarat', 'Rupaidiha') === 2200,
+    (string) Fare::pointFare('Somewhere In Gujarat', 'Rupaidiha'));
+check('... and it is never cheaper than a listed pickup',
+    Fare::pointFare('Somewhere In Gujarat', 'Rupaidiha') >= Fare::pointFare($AMD, 'Rupaidiha'));
+check('a blank pickup matches no zone, so the directional fallback stands',
+    (int) Fare::pointFare('', 'Rupaidiha') === 2000,
+    (string) Fare::pointFare('', 'Rupaidiha'));
 
 /* First-match-wins is the whole safety of an @india catch-all. */
 echo "\n-- 1c. first match wins ------------------------------------------\n";

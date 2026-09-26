@@ -249,19 +249,27 @@ final class Fare
         return $raw;
     }
 
-    /** True when the point is on the India side of the board. */
+    /**
+     * True when the point is on the INDIA SIDE of the border.
+     *
+     * Deliberately "not Nepal" rather than "on the india list". The service is
+     * licensed Gujarat to the Rupaidiha border and no further, so every place
+     * that is not the Nepal side is the India side — including a pickup the
+     * office has added to route_stops but not yet to main_points.
+     *
+     * The strict reading cost money: an unlisted Gujarat stop matched no rule
+     * at all, fell through to the directional fallback, and was charged
+     * ₹2,000 — two hundred rupees LESS than the Surat pickup beside it,
+     * because a rule that names @india had quietly stopped applying to it.
+     * A new stop should inherit the board, not slip out from under it.
+     */
     public static function isIndiaPoint(?string $city): bool
     {
-        $key = self::pkey(self::canonicalPoint($city));
-        if ($key === '') {
+        $canon = self::canonicalPoint($city);
+        if (self::pkey($canon) === '') {
             return false;
         }
-        foreach ((array) (self::mainPoints()['india'] ?? []) as $p) {
-            if (self::pkey((string) $p) === $key) {
-                return true;
-            }
-        }
-        return false;
+        return !self::isNepalPoint($canon);
     }
 
     /**
