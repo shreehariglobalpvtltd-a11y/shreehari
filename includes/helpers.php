@@ -810,6 +810,9 @@ function shg_customer_payload(array $detail): array
         // The advance-booking offer as its own figure (26 Sep 2026 follow-up),
         // so My Bookings can name what early booking saved on this ticket.
         'advanceDiscount' => (float) ($detail['advance_discount'] ?? 0),
+        // The advance-booking offer as its own figure (26 Sep 2026 follow-up),
+        // so My Bookings can name what early booking saved on this ticket.
+        'advanceDiscount' => (float) ($detail['advance_discount'] ?? 0),
         'farePerSeat' => (float) ($detail['fare_per_seat'] ?? 0),
         'currency'    => $detail['currency'],
         'paidAmount' => (float) Database::scalar("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE booking_id = :b AND status = 'verified'", ['b' => (int) $detail['id']], 0),
