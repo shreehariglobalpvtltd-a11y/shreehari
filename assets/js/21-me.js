@@ -95,12 +95,29 @@
       '</svg>';
   }
 
+  /* The letter of the name, or a drawn silhouette. Not the 👤 emoji: the
+     same lesson as the flags — a desk PC renders it as a box or a grey blob
+     where a phone renders a person. */
   function initial() {
     var u = me();
     var n = (u && u.name ? String(u.name) : '').trim();
     if (n) { return n.charAt(0).toUpperCase(); }
     var p = (u && u.phone ? String(u.phone) : '').trim();
-    return p ? p.charAt(0) : '👤';
+    return p ? p.charAt(0) : '';
+  }
+  function faceSvg(px) {
+    return '<svg viewBox="0 0 24 24" width="' + Math.round(px * 0.62) + '" height="' + Math.round(px * 0.62) + '" aria-hidden="true">' +
+      '<circle cx="12" cy="8.6" r="4.1" fill="rgba(255,255,255,.92)"/>' +
+      '<path d="M3.6 21.4a8.4 8.4 0 0 1 16.8 0z" fill="rgba(255,255,255,.92)"/>' +
+      '</svg>';
+  }
+  function innerFor(px) {
+    var ph = readPhoto();
+    if (ph) { return '<img src="' + ph + '" alt="">'; }
+    var ini = initial();
+    return ini
+      ? '<span style="font-size:' + Math.round(px * 0.42) + 'px">' + ini + '</span>'
+      : '<span>' + faceSvg(px) + '</span>';
   }
 
   function injectCss() {
@@ -134,11 +151,8 @@
     injectCss();
     opts = opts || {};
     var px  = Math.max(28, size || 44);
-    var ph  = readPhoto();
-    var fs  = Math.round(px * 0.34);
-    var inner = ph
-      ? '<img src="' + ph + '" alt="">'
-      : '<span style="font-size:' + Math.round(px * 0.42) + 'px">' + initial() + '</span>';
+    var fs    = Math.round(px * 0.34);
+    var inner = innerFor(px);
     var badge = Math.round(fs + 8);
     var mark  = '<i class="me-flag" aria-hidden="true" style="width:' + badge + 'px;height:' + badge + 'px;font-style:normal' +
                 (opts.flagSelect ? ';pointer-events:none' : '') + '">' + flagSvg(countryOf(), badge - 4) + '</i>';
@@ -198,10 +212,7 @@
       var ring = el.querySelector('.me-ring');
       if (!ring) { continue; }
       var px = parseInt(ring.style.width, 10) || 44;
-      var ph = readPhoto();
-      ring.innerHTML = ph
-        ? '<img src="' + ph + '" alt="">'
-        : '<span style="font-size:' + Math.round(px * 0.42) + 'px">' + initial() + '</span>';
+      ring.innerHTML = innerFor(px);
       var fl = el.querySelector('i.me-flag');
       if (fl) { fl.innerHTML = flagSvg(countryOf(), Math.max(12, parseInt(fl.style.width, 10) - 4)); }
       var sel = el.querySelector('select[data-me-flag]');
