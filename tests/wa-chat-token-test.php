@@ -16,6 +16,8 @@
  *    8. buildQr() returns a PNG data URI
  *    9. ordinary sentences ("ticket chahiyo") are never read as a code
  *   10. WaBot answers a live code with the ticket, a dead one without
+ *   11. the ticket page (07-checkout.js) still carries the button + call — the
+ *       client half that a merge dropped on 26 Sep while every PHP test stayed green
  *
  *  Writes only rows tagged to a throwaway booking it creates and removes.
  * =====================================================================
@@ -128,6 +130,13 @@ try {
     $again = WaBot::reply($stranger, 'TICKET ' . $fresh);
     wc_check('WaBot refuses the same code twice and leaks no PNR',
         !str_contains($again['text'], $pnr) && $again['media'] === null);
+
+    // 11. the client half. Server, table and this suite all survived a merge on
+    //     26 Sep 2026 while the button and its call vanished from the ticket page;
+    //     nothing PHP-side can notice that, so read the JS source.
+    $client = (string) file_get_contents(dirname(__DIR__) . '/assets/js/07-checkout.js');
+    wc_check('ticket page anchor carries id="waGetBtn"', str_contains($client, 'id="waGetBtn"'));
+    wc_check('ticket page asks /wa-ticket-code.php for the code', str_contains($client, "shgApi.post('/wa-ticket-code.php'"));
 } catch (Throwable $e) {
     wc_check('no exception', false, get_class($e) . ': ' . $e->getMessage());
 } finally {
