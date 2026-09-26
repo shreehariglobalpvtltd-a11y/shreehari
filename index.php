@@ -122,6 +122,10 @@ if ($staffRow !== null) {
             'currency' => $deskCur,
             'rate'     => $deskCur === 'INR' ? 1.0 : CounterDesk::rate((string) $deskNow['code']),
             'methods'  => CounterDesk::allowedMethods((string) $deskNow['code']),
+            /* The run this window sells, so the screen opens on it rather
+               than on whichever route happens to be first (26 Sep 2026). */
+            'direction' => CounterDesk::direction((string) $deskNow['code']),
+            'from'      => CounterDesk::defaultFrom((string) $deskNow['code']),
         ];
     }
 }

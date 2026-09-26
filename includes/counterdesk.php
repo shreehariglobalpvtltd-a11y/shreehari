@@ -147,6 +147,35 @@ final class CounterDesk
         return $v === 'NP' ? '🇳🇵' : '🇮🇳';
     }
 
+    /**
+     * The run this desk sells, when it only really sells one.
+     *
+     * Owner, 26 Sep 2026, looking at a demo ticket that read Surat →
+     * Rupaidiha: "khai ta ticket mai Surat to Rupaidiha lekhieko chha, yesto
+     * sano mistake nahunu paryo." He is right. A window at Nepalgunj serves
+     * passengers standing in Nepal: they board at Rupaidiha and travel INTO
+     * India. A Gujarat window serves the opposite. Leaving that to the clerk
+     * every single sale is how the wrong direction eventually gets sold.
+     *
+     * '' = this desk sells both and the screen stays on Auto. The clerk can
+     * always override the chip — a Nepalgunj customer buying a relative's
+     * return leg is a real sale, not a mistake.
+     *
+     * @return string 'toNepal' | 'toIndia' | ''
+     */
+    public static function direction(string $code): string
+    {
+        $d = (string) (self::get($code)['default_direction'] ?? '');
+
+        return in_array($d, ['toNepal', 'toIndia'], true) ? $d : '';
+    }
+
+    /** The town this desk's passengers board at — prefills the counter search. */
+    public static function defaultFrom(string $code): string
+    {
+        return trim((string) (self::get($code)['default_from'] ?? ''));
+    }
+
     /** The money this desk collects: INR or NPR. Unknown desk = INR. */
     public static function currency(string $code): string
     {
@@ -348,6 +377,9 @@ final class CounterDesk
             'currency'   => $currency,
             'fx_rate'    => $rate,
             'allowed_methods' => self::cleanMethods($in['allowed_methods'] ?? null),
+            'default_direction' => in_array($in['default_direction'] ?? '', ['toNepal', 'toIndia'], true)
+                ? (string) $in['default_direction'] : null,
+            'default_from'      => trim(Security::clean((string) ($in['default_from'] ?? ''), 80)) ?: null,
             'phone'      => trim(Security::clean((string) ($in['phone'] ?? ''), 40)) ?: null,
             'address'    => trim(Security::clean((string) ($in['address'] ?? ''), 190)) ?: null,
             'is_active'  => empty($in['is_active']) ? 0 : 1,
@@ -464,6 +496,8 @@ final class CounterDesk
                 'sort_order' => (int) $r['sort_order'],
                 'note'       => (string) ($r['note'] ?? ''),
                 'allowed_methods' => (string) ($r['allowed_methods'] ?? ''),
+                'default_direction' => (string) ($r['default_direction'] ?? ''),
+                'default_from'      => (string) ($r['default_from'] ?? ''),
             ];
         }
 
@@ -496,6 +530,8 @@ final class CounterDesk
                 'sort_order' => ($i += 10),
                 'note'       => '',
                 'allowed_methods' => '',
+                'default_direction' => $np ? 'toIndia' : '',
+                'default_from'      => '',
             ];
         }
 

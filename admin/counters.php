@@ -68,6 +68,8 @@ if ($canEdit && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     'currency'   => $_POST['currency'] ?? '',
                     'fx_rate'    => $_POST['fx_rate'] ?? '',
                     'allowed_methods' => $_POST['methods'] ?? null,
+                    'default_direction' => $_POST['default_direction'] ?? '',
+                    'default_from'      => $_POST['default_from'] ?? '',
                     'phone'      => $_POST['phone'] ?? '',
                     'address'    => $_POST['address'] ?? '',
                     'note'       => $_POST['note'] ?? '',
@@ -330,6 +332,16 @@ $e = static fn($v): string => Security::e((string) $v);
           <?php endforeach; ?>
         </span>
       </label>
+      <label>The run it sells
+        <select name="default_direction">
+          <option value="" <?= ($editing['default_direction'] ?? '') === '' ? 'selected' : '' ?>>Both — screen stays on Auto</option>
+          <option value="toNepal" <?= ($editing['default_direction'] ?? '') === 'toNepal' ? 'selected' : '' ?>>🇮🇳→🇳🇵 Going (Gujarat → Rupaidiha)</option>
+          <option value="toIndia" <?= ($editing['default_direction'] ?? '') === 'toIndia' ? 'selected' : '' ?>>🇳🇵→🇮🇳 Return (Rupaidiha → Gujarat)</option>
+        </select>
+      </label>
+      <label>Passengers board at
+        <input type="text" name="default_from" maxlength="80" placeholder="Rupaidiha" value="<?= $e($editing['default_from'] ?? '') ?>">
+      </label>
       <label>Phone <input type="text" name="phone" maxlength="40" value="<?= $e($editing['phone'] ?? '') ?>"></label>
       <label>Address <input type="text" name="address" maxlength="190" value="<?= $e($editing['address'] ?? '') ?>"></label>
       <label>Order <input type="number" name="sort_order" value="<?= (int) ($editing['sort_order'] ?? 0) ?>"></label>
@@ -344,7 +356,10 @@ $e = static fn($v): string => Security::e((string) $v);
     </div>
     <p class="ctr-note" style="margin:10px 0 0">
       A Nepal desk quotes and collects NPR; the company's books stay in rupees and both numbers are
-      kept on every ticket. A desk with only <b>CASH</b> ticked refuses a UPI or bank sale at the
+      kept on every ticket. <b>The run it sells</b> is what the sale screen opens on — a Nepalgunj
+      window serves passengers standing in Nepal, so it opens on the RETURN run and on Rupaidiha,
+      the town they actually board at. Nepalgunj is a selling window, never a bus stop. The clerk
+      can still change it: a customer buying a relative's outbound leg is a real sale. A desk with only <b>CASH</b> ticked refuses a UPI or bank sale at the
       register itself, not just in the browser — that is the Nepalgunj rule, since the company has
       no Nepali account. Staff are put on a desk in
       <a href="<?= $base ?>/admin/staff.php">Staff &amp; Approvals</a>.
@@ -412,6 +427,11 @@ $e = static fn($v): string => Security::e((string) $v);
               <?php if ($isNp): ?><div class="ctr-note">1 ₹ = <?= $e(CounterDesk::rate($code)) ?></div><?php endif; ?>
               <?php $onlyM = CounterDesk::allowedMethods($code);
                     if ($onlyM !== null): ?><div class="ctr-note">💵 <?= $e(implode(' / ', $onlyM)) ?> only</div><?php endif; ?>
+              <?php $dirC = CounterDesk::direction($code);
+                    if ($dirC !== ''): ?><div class="ctr-note"><?= $dirC === 'toIndia' ? '🇳🇵→🇮🇳 return run' : '🇮🇳→🇳🇵 going run' ?><?php
+                      $fromC = CounterDesk::defaultFrom($code);
+                      if ($fromC !== '') { echo ' · boards ' . $e($fromC); }
+                    ?></div><?php endif; ?>
             <?php endif; ?></td>
         <td><?= (int) $s['tickets'] ?></td>
         <td><?= (int) $s['seats'] ?></td>

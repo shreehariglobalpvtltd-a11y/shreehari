@@ -273,6 +273,23 @@ if (trim($savedMirror) !== '') {
 Settings::flush();
 CounterDesk::flush();
 
+/* ---- 5. the run a desk sells -------------------------------------- */
+
+check('Nepalgunj opens on the RETURN run - its customers board in Rupaidiha and travel into India',
+    CounterDesk::direction('NPJ') === 'toIndia', CounterDesk::direction('NPJ') ?: '(none)');
+check('...and the counter search opens on Rupaidiha, the town they board at',
+    CounterDesk::defaultFrom('NPJ') === 'Rupaidiha', CounterDesk::defaultFrom('NPJ') ?: '(none)');
+/* "Nepalgunj ticket katne matra ho, chadne Rupaidiha nai ho" (owner, 26 Sep).
+   If this ever goes red, somebody activated a run that BOARDS at Nepalgunj —
+   which may be a real decision one day, but it must be a decision, not a
+   side effect of opening a desk there. */
+check('no live run boards at Nepalgunj - the desk sells, Rupaidiha boards',
+    !Database::exists("SELECT 1 FROM routes WHERE is_active = 1 AND from_city LIKE :s",
+        ['s' => '%Nepalgunj%']));
+check('a Gujarat desk is left on Auto and sells both runs',
+    CounterDesk::direction('SRT') === '' && CounterDesk::direction('MSA') === '');
+check('an unknown desk has no direction of its own', CounterDesk::direction('ZZZ') === '');
+
 /* ---- 5a. a desk with no bank account takes cash ------------------- */
 
 check('Nepalgunj is cash only', CounterDesk::allowedMethods('NPJ') === ['cash'],

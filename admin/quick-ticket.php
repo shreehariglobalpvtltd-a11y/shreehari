@@ -67,6 +67,11 @@ $deskLabel = $deskCode === '' && $deskWhere['name'] === ''
     ? ''
     : CounterDesk::label($deskCode, (string) $deskWhere['name']);
 $deskFlag  = $deskCode === '' ? '📍' : CounterDesk::flag($deskCode);
+/* The run this window sells. A Nepalgunj desk opens on the RETURN chip —
+   its customers stand in Nepal, board at Rupaidiha and travel into India —
+   so the commonest sale is one tap, and the wrong direction takes a
+   deliberate tap rather than an inattentive one. */
+$deskDir   = CounterDesk::direction($deskCode);
 $waDriver = Settings::getString('whatsapp_driver', 'click_to_chat');
 $waReady  = $waDriver === 'twilio'
     ? (Settings::getString('twilio_account_sid', '') !== ''
@@ -384,9 +389,9 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
         <summary>⚙️ Options · <span id="qtOptSum">auto</span></summary>
         <div class="qt-row"><span class="qt-k">Direction</span>
           <div class="chips" id="qtDir">
-            <button type="button" class="on" data-v="">Auto</button>
-            <button type="button" data-v="toNepal">🇮🇳→🇳🇵 Going</button>
-            <button type="button" data-v="toIndia">🇳🇵→🇮🇳 Return</button>
+            <button type="button" class="<?= $deskDir === '' ? 'on' : '' ?>" data-v="">Auto</button>
+            <button type="button" class="<?= $deskDir === 'toNepal' ? 'on' : '' ?>" data-v="toNepal">🇮🇳→🇳🇵 Going</button>
+            <button type="button" class="<?= $deskDir === 'toIndia' ? 'on' : '' ?>" data-v="toIndia">🇳🇵→🇮🇳 Return</button>
           </div></div>
         <div class="qt-row"><span class="qt-k">Date</span>
           <div class="chips" id="qtDate">
@@ -569,7 +574,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
   }
   function seatLabelJoin(seats, coach, mode){ return (seats||[]).map(function(s){return seatLabel(s,coach,mode);}).join(', '); }
 
-  var st = { direction: '', date: '', boarding: '', seats: 1, gender: '', pay: 'cash', cc: 'IN', prefer: [], preferPhone: '' };
+  var st = { direction: <?= json_encode($deskDir) ?>, date: '', boarding: '', seats: 1, gender: '', pay: 'cash', cc: 'IN', prefer: [], preferPhone: '' };
   var lastBot = null;   // the last QuickBot answer (for the "same as last time" tap)
   try {
     st.boarding = localStorage.getItem('shg_qt_boarding') || '';

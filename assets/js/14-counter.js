@@ -185,7 +185,26 @@
       di.removeAttribute('max');
     }
     var p = new URLSearchParams(location.search);
-    if (!p.get('from') && !p.get('to') && !p.get('date')) return;
+    /* No deep link, but this window only really sells one run: open the
+       search on the town its passengers board at (26 Sep 2026). A Nepalgunj
+       clerk should not have to remember that the bus leaves from Rupaidiha
+       and not from Surat — the owner saw that mistake on a demo ticket and
+       said, rightly, that it must not be possible to make by accident.
+       Nothing is searched; only the FROM box is set, and the clerk may
+       change it like any other day. */
+    if (!p.get('from') && !p.get('to') && !p.get('date')) {
+      if (DESK && DESK.from) {
+        var t0 = 0;
+        var pre = setInterval(function () {
+          t0++;
+          var fs0 = $q('#fromSel');
+          if (!fs0 || fs0.options.length === 0) { if (t0 > 40) clearInterval(pre); return; }
+          clearInterval(pre);
+          if (!fs0.value || fs0.selectedIndex <= 0) { setSelect(fs0, DESK.from); }
+        }, 250);
+      }
+      return;
+    }
     // Deep link from the admin seat map (5 Sep 2026): &sid= names the exact
     // departure (0 / absent = daily bus) and &seat= a seat to pre-select, so
     // "book this bus" is one click with nothing to retype.
