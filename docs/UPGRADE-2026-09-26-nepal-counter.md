@@ -186,7 +186,14 @@ allowed methods), so the main seat-map sale screen shows **📍 Nepalgunj — Bu
 NPR @ 1.6** on its bar and puts the NPR beside the rupee on the "to collect" line. A clerk with
 no desk assigned is told so, there and on Quick Ticket. Asset stamp `20260926h`, `sw-v170`.
 
-### 3.11 A Nepali agent's login code no longer goes to India
+### 3.11 The WhatsApp message says the NPR too
+
+The ticket picture carried the NPR; every WhatsApp body still said only the rupee, so a
+Nepalgunj passenger read "₹2,000" in the message and "NPR 3,200" on the image attached to it.
+`Notify::bookingMoney()` now puts both on the approved template's `{{6}}` and on every
+free-text ticket, reissue and payment body.
+
+### 3.12 A Nepali agent's (and admin's) login code no longer goes to India
 
 `Auth::agentLoginStart()` sent the OTP with no country hint after `normalisePhone()` had
 stripped the 977, so the sender prepended the default 91. The country now comes from the
@@ -222,6 +229,17 @@ stored number, and failing that from the desk the agent sits at.
 | 7 | Public site's NPR is a browser hardcode (`CONFIG.nprPerInr = 1.6`) that Settings cannot change | the three pegs (config constant, settings row, JS literal) should be one | S |
 
 ---
+
+### 3.13 Three more, found by the adversarial pass over this branch's own work
+
+- The traveller's photo was filed under one global key, so on a counter machine or a family
+  phone the previous person's face sat on the next person's card. It is keyed by the NUMBER
+  now; a photo added before signing in is a draft that is promoted to the account, and signing
+  out drops the draft. Verified in a browser.
+- The **admin second factor** had the same country bug as the agent login — fixed the same way.
+- The OTP redaction in `message_logs` matched the word "code", while every code this app sends
+  is labelled **कोड** — so login codes were being kept in clear. The pattern now covers
+  कोड / ओटिपी / OTP.
 
 ## 6. Live risks worth the owner's decision
 
