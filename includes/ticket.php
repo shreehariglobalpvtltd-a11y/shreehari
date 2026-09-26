@@ -1369,6 +1369,17 @@ final class Ticket
         self::gdText($im, 17, 88, 1192 + $grow, $gold, 'जम्मा भाडा  ·  TOTAL FARE', false);
         $amt = $currency . ' ' . number_format((float) ($booking['total_amount'] ?? 0), 2);
         self::gdText($im, 36, 88, 1236 + $grow, $white, $amt, true);
+        /* A Nepal window quoted this in NPR and took NPR (26 Sep 2026). The
+           rupee stays the figure the company accounts in; beside it goes the
+           money the passenger actually handed over, at the rate frozen on
+           this ticket — so the passenger's own number is on their own ticket
+           and nobody has to convert anything at the door. */
+        $fxCur = strtoupper((string) ($booking['fx_currency'] ?? ''));
+        $fxTot = (float) ($booking['fx_total'] ?? 0);
+        if ($fxCur !== '' && $fxCur !== $currency && $fxTot > 0) {
+            self::gdText($im, 25, 88 + self::gdWidth(36, $amt) + 26, 1234 + $grow, $gold,
+                $fxCur . ' ' . number_format($fxTot), true);
+        }
         $fps = (float) ($booking['fare_per_seat'] ?? 0);
         /* Never fewer than the list above it names: a private cabin holds more
            berths than passengers, and a booking whose seat rows lag its passenger
@@ -1644,13 +1655,13 @@ final class Ticket
      *  tickets drawn at 23:43/23:44 IST with the old seat labels were never
      *  redrawn. tests/chalani-png-test.php and tests/ticket-cache-test.php
      *  assert a past moment. */
-    private const PNG_LAYOUT_CHANGED = '2026-09-24 10:30:00';   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
+    private const PNG_LAYOUT_CHANGED = '2026-09-26 11:30:00';   // IST: a Nepal desk's NPR beside the rupee in the fare band. Before: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
      *  seat box + stub pick up the current seat labels without a manual purge
      *  (23 Sep 2026: the two-floor grid A1-F6 / A7-F12). */
-    private const PDF_LAYOUT_CHANGED = '2026-09-24 10:30:00';   // IST: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
+    private const PDF_LAYOUT_CHANGED = '2026-09-26 11:30:00';   // IST: a Nepal desk's NPR on the fare box line. Before: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
 
     /**
      * How many passengers the ticket names one by one before it stops and
@@ -2057,9 +2068,20 @@ final class Ticket
         $pdf->roundedRect($W - 220, $boardY, 180, 70, 8, self::BROWN, true);
         self::devText($pdf, $W - 205, $boardY + 10, $paid ? 'जम्मा रकम' : 'बाँकी रकम', 9, $F7, self::GOLD);
         $pdf->text($W - 205, $boardY + 28, inr((float) $booking['total_amount']), 22, 'F2', [255, 255, 255]);
-        // Base → Discount breakdown (Task 9) when a counter discount was applied.
-        if ((float) ($booking['coupon_discount'] ?? 0) > 0) {
-            $pdf->text($W - 205, $boardY + 42, 'Base ' . inr((float) $booking['base_total']) . '  -  Disc ' . inr((float) $booking['coupon_discount']), 8, 'F1', [220, 210, 195]);
+        /* One line under the amount, shared by the two things that can need
+           it. A Nepal desk's NPR wins the space when both apply: the rupee
+           breakdown is already on the invoice, but the NPR the passenger paid
+           appears nowhere else on the page. */
+        $fxCurPdf = strtoupper((string) ($booking['fx_currency'] ?? ''));
+        $fxTotPdf = (float) ($booking['fx_total'] ?? 0);
+        $discPdf  = (float) ($booking['coupon_discount'] ?? 0);
+        if ($fxCurPdf !== '' && $fxTotPdf > 0) {
+            $fxLine = $fxCurPdf . ' ' . number_format($fxTotPdf)
+                . ($discPdf > 0 ? '  -  Disc ' . self::latin(inr($discPdf))
+                                : '  @ ' . number_format((float) ($booking['fx_rate'] ?? 0), 2));
+            $pdf->text($W - 205, $boardY + 42, $fxLine, 8, 'F1', [255, 226, 168]);
+        } elseif ($discPdf > 0) {
+            $pdf->text($W - 205, $boardY + 42, 'Base ' . inr((float) $booking['base_total']) . '  -  Disc ' . inr($discPdf), 8, 'F1', [220, 210, 195]);
         }
         // Fare by passenger count (4 Sep 2026): "3 x Rs 2,000" for a party,
         // so the family sees how the total was built; a solo ticket keeps

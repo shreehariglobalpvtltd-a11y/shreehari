@@ -49,19 +49,24 @@ $maxDisc  = Settings::getFloat('counter_max_discount_pct', 15.0);
    the NPR figure to say out loud while taking cash, so the peg travels to
    the page and the desk prints "≈ NPR x" UNDER the rupee total. It is a
    conversion aid and is labelled as one: nothing is stored in NPR.
-   npr_per_inr lives in Admin → Settings; 0 switches the line off. */
-$nprPeg   = Settings::getFloat('npr_per_inr', NPR_PER_INR);
+   npr_per_inr lives in Admin → Settings; 0 switches the line off.
+
+   26 Sep 2026: the peg used to travel to EVERY clerk, so a Baroda window was
+   offered an NPR figure it will never take. The line now belongs to the desk:
+   it appears only where the desk collects NPR, and it uses THAT desk's rate
+   (a border window may buy Nepali rupees at its own rate — counters.php). */
+$deskWhere = CounterDesk::forAdmin((int) ($admin['id'] ?? 0));
+$deskCode  = (string) $deskWhere['code'];
+$deskCur   = CounterDesk::currency($deskCode);
+$nprPeg    = $deskCur === 'NPR' ? CounterDesk::rate($deskCode) : 0.0;
 /* Which desk this clerk is signed in at (24 Sep 2026) — the same label the
-   tickets they issue will carry. Read straight off their own profile; a
-   staff member with no counter set simply sees no badge. */
-$deskRow   = Database::fetch(
-    'SELECT counter_name, counter_code FROM admin_profiles WHERE admin_id = :id',
-    ['id' => (int) ($admin['id'] ?? 0)]
-);
-$deskLabel = $deskRow === null ? '' : Settings::counterLabel(
-    (string) ($deskRow['counter_code'] ?? ''),
-    (string) ($deskRow['counter_name'] ?? '')
-);
+   tickets they issue will carry. A staff member with no counter set simply
+   sees no badge; a Nepal desk is flagged, because a clerk who is signed in at
+   the wrong window must see it before the first sale, not after. */
+$deskLabel = $deskCode === '' && $deskWhere['name'] === ''
+    ? ''
+    : CounterDesk::label($deskCode, (string) $deskWhere['name']);
+$deskFlag  = $deskCode === '' ? '📍' : CounterDesk::flag($deskCode);
 $waDriver = Settings::getString('whatsapp_driver', 'click_to_chat');
 $waReady  = $waDriver === 'twilio'
     ? (Settings::getString('twilio_account_sid', '') !== ''
@@ -307,7 +312,9 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
              on every ticket sold here, shown before the first keystroke so a
              clerk signed in at the wrong desk sees it immediately rather
              than after a passenger reads it off their ticket. -->
-        <span class="qt-desk">📍 <?= Security::e($deskLabel) ?></span>
+        <span class="qt-desk"><?= $deskFlag ?> <?= Security::e($deskLabel) ?><?php
+          if ($deskCur !== 'INR') { echo ' · ' . Security::e($deskCur) . ' @ ' . Security::e((string) $nprPeg); }
+        ?></span>
       <?php endif; ?>
       <h2>Name + Mobile → Auto Suggest → One Tap → Ticket</h2>
       <p>एउटै लाइनमा लेख्नुहोस् — "Ram Bahadur 9876543210 2 seats Mehsana kal" — वा नाम + मोबाइल मात्र। QuickBot ले यात्रीको पुराना टिकट र desk को pattern बाट route, date, boarding, seats, best seat र fare आफैँ भर्छ; तपाईं एक पटक Confirm थिच्नुहोस् — ticket बन्छ, WhatsApp जान्छ।</p>
@@ -462,7 +469,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
   var CSRF = <?= json_encode($csrf) ?>;
   var CAN = <?= $canSell ? 'true' : 'false' ?>;
   var MAX_DISC = <?= json_encode($maxDisc) ?>;
-  var NPR_PEG  = <?= json_encode($nprPeg) ?>;   // 0 = do not show the NPR line
+  var NPR_PEG  = <?= json_encode($nprPeg) ?>;   // 0 = this desk takes rupees, no NPR line
   var $ = function (s, r) { return (r || document).querySelector(s); };
   var $$ = function (s, r) {
     var root = typeof r === 'string' ? document.querySelector(r) : (r || document);
