@@ -273,6 +273,32 @@ if (trim($savedMirror) !== '') {
 Settings::flush();
 CounterDesk::flush();
 
+/* ---- 6. the doors a window must not hold open ---------------------- */
+
+$root = dirname(__DIR__);
+$src  = static fn(string $rel): string => (string) @file_get_contents($root . '/' . $rel);
+
+$perms        = (new ReflectionClass('Auth'))->getConstant('ROLE_PERMISSIONS');
+$counterPerms = $perms['counter'] ?? [];
+check('a counter window holds no company export', !in_array('reports.export', $counterPerms, true));
+check('...no agent commission ledger', !in_array('commissions.view', $counterPerms, true));
+check('...no coupon editing', !in_array('coupons.edit', $counterPerms, true));
+check('...and no revenue dashboard', !in_array('dashboard.view', $counterPerms, true));
+
+check('the company day-book asks for commissions.view, not payments.view',
+    str_contains($src('admin/accounting.php'), "admin_boot('commissions.view')")
+    && !str_contains($src('admin/accounting.php'), "admin_boot('payments.view')"));
+check('the passenger CSV refuses anyone unscoped without reports.export',
+    str_contains($src('admin/export.php'), "Auth::bookingScopeAdminId() === null && !Auth::can('reports.export')"));
+check('offers checks the permission its own refusal text promises',
+    str_contains($src('admin/offers.php'), "Auth::can('coupons.edit')"));
+check('the sidebar no longer offers Accounting on payments.view',
+    str_contains($src('admin/_guard.php'), "'label' => 'Accounting',       'perm' => 'commissions.view'"));
+check('Counters & collection is on the office menu',
+    str_contains($src('admin/_guard.php'), "'counters.php'"));
+check('the register can be filtered by desk',
+    str_contains($src('admin/bookings.php'), "ctrFlt"));
+
 echo "\n" . ($FAIL === 0
     ? "\033[32m  {$PASS} passed, 0 failed\033[0m\n\n"
     : "\033[31m  {$PASS} passed, {$FAIL} failed\033[0m\n\n");
