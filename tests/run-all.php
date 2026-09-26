@@ -196,6 +196,8 @@ const CORE_SUITES = [
     'ai-client-test.php'          => 'AI client: rules first, local model, redaction, usage log without text',
     // 27 Sep 2026, registered with the one-request bundle it guards (B, C, F need :8899 and skip themselves without it).
     'bundle-test.php'              => 'one bundled script + stylesheet: the manifest matches the template, nothing committed after the build, the switch, it refuses a stale bundle',
+    // 27 Sep 2026, registered with the eleven no-reader settings rows it removes.
+    'dead-switches-test.php'       => 'the eleven settings rows nothing reads: one idempotent DELETE, no reader in PHP/JS, gone from this database',
 ];
 
 /**
