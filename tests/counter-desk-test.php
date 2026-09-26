@@ -273,6 +273,68 @@ if (trim($savedMirror) !== '') {
 Settings::flush();
 CounterDesk::flush();
 
+/* ---- 5b. the Nepalgunj drawer counts Nepali notes ------------------ */
+
+require_once INCLUDE_PATH . '/countershift.php';
+
+$npr = CounterShift::denominationsFor('NPR');
+check('the pad offered for an NPR drawer is the Nepali one',
+    in_array(1000, $npr, true) && !in_array(200, $npr, true));
+check('...and INR keeps the Indian one',
+    in_array(200, CounterShift::denominationsFor('INR'), true));
+check('two 1000 notes count as 2000 in Nepal',
+    abs(CounterShift::sumDenominations([1000 => 2], 'NPR') - 2000.0) < 0.001);
+
+$refused = false;
+try { CounterShift::sumDenominations([200 => 1], 'NPR'); }
+catch (Throwable $e) { $refused = str_contains($e->getMessage(), '200'); }
+check('a 200 note is refused on a Nepali pad - Nepal does not have one', $refused);
+check('...and accepted on an Indian one',
+    abs(CounterShift::sumDenominations([200 => 1], 'INR') - 200.0) < 0.001);
+
+$aidS = (int) Database::scalar(
+    "SELECT id FROM admins WHERE is_active=1 ORDER BY (role='superadmin') DESC, id ASC LIMIT 1", [], 0
+);
+if ($aidS > 0 && Database::fetch("SHOW COLUMNS FROM counter_shifts LIKE 'counter_code'") !== null) {
+    $wasRow  = Database::fetch('SELECT counter_code FROM admin_profiles WHERE admin_id = :a', ['a' => $aidS]);
+    $openNow = CounterShift::current($aidS);
+    if ($openNow !== null) {
+        Database::update('counter_shifts', ['is_open' => null, 'closed_at' => date('Y-m-d H:i:s')], 'id = :i', ['i' => (int) $openNow['id']]);
+    }
+    if ($wasRow !== null) {
+        Database::update('admin_profiles', ['counter_code' => 'NPJ', 'counter_name' => 'Nepalgunj - Bus Park'], 'admin_id = :a', ['a' => $aidS]);
+    } else {
+        Database::insert('admin_profiles', ['admin_id' => $aidS, 'counter_code' => 'NPJ', 'counter_name' => 'Nepalgunj - Bus Park']);
+    }
+    CounterDesk::flush();
+
+    try {
+        $sh = CounterShift::open($aidS, 500.0, 'desk test');
+        check('a drawer opened at Nepalgunj is stamped with the desk',
+            (string) ($sh['counter_code'] ?? '') === 'NPJ', 'code=' . (string) ($sh['counter_code'] ?? ''));
+        check('...and counts NPR', CounterShift::currencyOf($sh) === 'NPR', 'cur=' . CounterShift::currencyOf($sh));
+        check('the cashier is offered the 1000 note at that drawer',
+            in_array(1000, CounterShift::denominationsFor(CounterShift::currencyOf($sh)), true));
+        Database::delete('counter_shifts', 'id = :i', ['i' => (int) $sh['id']]);
+    } catch (Throwable $e) {
+        check('the Nepalgunj drawer opened without throwing', false, $e->getMessage());
+    } finally {
+        if ($wasRow !== null) {
+            Database::update('admin_profiles',
+                ['counter_code' => ($wasRow['counter_code'] ?? '') !== '' ? $wasRow['counter_code'] : null],
+                'admin_id = :a', ['a' => $aidS]);
+        } else {
+            Database::delete('admin_profiles', 'admin_id = :a', ['a' => $aidS]);
+        }
+        if ($openNow !== null) {
+            Database::update('counter_shifts', ['is_open' => 1, 'closed_at' => null], 'id = :i', ['i' => (int) $openNow['id']]);
+        }
+        CounterDesk::flush();
+    }
+} else {
+    echo "  \033[33mSKIP\033[0m  counter_shifts has no desk columns on this database\n";
+}
+
 /* ---- 6. the doors a window must not hold open ---------------------- */
 
 $root = dirname(__DIR__);
