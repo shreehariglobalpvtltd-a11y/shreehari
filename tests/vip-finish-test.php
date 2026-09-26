@@ -64,6 +64,19 @@ function check(string $l, bool $ok, string $extra = ''): void
     }
 }
 
+/** The text operators inside a PDF: every FlateDecode stream inflated and joined. */
+function pdfText(string $raw): string
+{
+    $out = '';
+    if (preg_match_all('/stream\r?\n(.*?)\r?\nendstream/s', $raw, $m)) {
+        foreach ($m[1] as $chunk) {
+            $inf = @gzuncompress($chunk);
+            $out .= ($inf !== false ? $inf : $chunk) . "\n";
+        }
+    }
+    return $out;
+}
+
 $ROOT   = dirname(__DIR__);
 $ini    = $ROOT . '/.claude/php-dev.ini';
 $render = static function (string $page, array $get = []) use ($ini): string {
@@ -180,15 +193,15 @@ try {
         }
         try {
             $pdf = Ticket::pdfPath($bid, true);
-            $raw = (string) file_get_contents($pdf);
-            check('the PDF ticket names the offer on its fare line', str_contains($raw, 'Offer'), basename($pdf));
+            $txt = pdfText((string) file_get_contents($pdf));
+            check('the PDF ticket names the offer on its fare line', preg_match('/Offer[^)]*200/', $txt) === 1, basename($pdf));
         } catch (Throwable $e) {
             check('the PDF ticket names the offer on its fare line', false, $e->getMessage());
         }
         try {
             $inv = Ticket::invoicePath($bid, true);
-            $raw = (string) file_get_contents($inv);
-            check('the invoice itemises "Advance booking offer"', str_contains($raw, 'Advance booking offer'), basename($inv));
+            $txt = pdfText((string) file_get_contents($inv));
+            check('the invoice itemises "Advance booking offer"', str_contains($txt, 'Advance booking offer'), basename($inv));
         } catch (Throwable $e) {
             check('the invoice itemises "Advance booking offer"', false, $e->getMessage());
         }
