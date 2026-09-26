@@ -253,6 +253,12 @@
  *  The band (premium.css) already lays these out. All that is added
  *  here is one small motion per icon, so the section reads as
  *  animated without anything moving position.
+ *
+ *  27 Sep 2026: these four run only while the band is on screen AND
+ *  the visitor is active — premium.css §11 pauses them otherwise
+ *  (html.shg-awake + .is-live, set by 22-vip.js). A pause freezes the
+ *  CURRENT frame, so every keyframe below has its resting pose at 0%:
+ *  a paused icon looks exactly like an icon that never moved.
  * ---------------------------------------------------------------- */
 .bb-anim .bb-ic { display: inline-block; will-change: transform; }
 .bb-anim .bb-ac   { animation: bbSpin 7s linear infinite; }
@@ -261,9 +267,9 @@
 .bb-anim .bb-cmf  { animation: bbSway 4.2s ease-in-out infinite; }
 
 @keyframes bbSpin { from { transform: rotate(0);    } to { transform: rotate(360deg); } }
-@keyframes bbBolt { 0%, 100% { opacity: .55; transform: scale(.95); } 45% { opacity: 1; transform: scale(1.14); } }
+@keyframes bbBolt { 0%, 100% { opacity: 1; transform: scale(1); } 45% { opacity: .7; transform: scale(1.14); } }
 @keyframes bbBeat { 0%, 100% { transform: scale(1); } 40% { transform: scale(1.12); } 60% { transform: scale(1.04); } }
-@keyframes bbSway { 0%, 100% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }
+@keyframes bbSway { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-6deg); } 75% { transform: rotate(6deg); } }
 
 /* ---------------------------------------------------------------- *
  *  4. NOTHING MOVES IF THE VISITOR ASKED FOR THAT

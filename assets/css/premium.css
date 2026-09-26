@@ -761,3 +761,78 @@ html.no-motion *,html.no-motion *::before,html.no-motion *::after{
   transition-duration:1ms!important;
 }
 html.no-motion{scroll-behavior:auto}
+
+
+/* ---------------------------------------------------------------------
+   11. STILLNESS AT REST (27 Sep 2026 — the owner's 25 Sep rule)
+   -------------------------------------------------------------------
+   The 11 Sep phone pass switched most hero decoration off below 761px;
+   what still looped for ever on the home page were the four brand-band
+   chip icons, the fab pulses, the QuickBot pulses, the road scene, the
+   route strip, the VIP cabin — and on desktop the rays, the particles,
+   the metallic sheens, the gleam on every orange button.
+
+   Two classes decide now, both set by 22-vip.js:
+     .is-live      on a home block that is on screen (IntersectionObserver)
+     html.shg-awake for six seconds after the splash and after every
+                    touch, key, wheel or scroll
+   A decoration runs only with BOTH. Otherwise it is paused where it
+   stands (animation-play-state, compositor-only, no restart jump), so
+   nothing loops off screen and nothing loops on an idle screen. Fixed
+   chrome (the fabs, the ribbon divider, the nav logo) has no block to
+   be inside, so it follows the awake window alone.
+
+   Every keyframe paused here has its resting pose at 0%. The exceptions
+   are handled in (b): the sheens slide a background-position and sit off
+   the text at frame 0, the coach starts invisible — those are switched
+   off and parked instead.
+   ------------------------------------------------------------------- */
+/* a) Freeze in place. */
+.hero-fx .hero-ray,.hero-fx .hero-glow,.hero-fx .hero-pt,.hero-wm,
+.hero-qt-cta,.qt-badge,.qt-route b,.hero-live-ticker .live-dot,
+.bb-anim .bb-ic,
+.btn-orange::after,.hd-shine::before,.txt-diamond::after,
+.founder-card::before,.founder-avatar-wrap,.f-ceo img,.flag-card .fl,.flag-bus-bridge .bus-run,
+.ra3-sun,.ra3-cloud,.ra3-far i,.ra3-near i,.ra3-stripes,.ra3-edge,.ra3-body img,.ra3-shadow,.ra3-pin,
+.shg-live i,.shg-rail::after,.shg-stop i,.shg-bus,.shg-bus-i,
+.is-live .ao-lamps i,.is-live .ao-mark,
+.is-live .vip-curtain,.is-live .vip-air path,.is-live .vip-batt,.is-live .vip-cord,
+.is-live .vip-road,.is-live .vip-pax,.is-live .vip-lock,
+.whatsapp-fab,.sos-fab.show,.credit-div,.topbar-logo img,.nav .logo-img{
+  animation-play-state:paused;
+}
+/* b) Switch off and park: frame 0 would hide them. 40% is the pose the
+      11 Sep phone pass gives the sheens; the coach parks mid-road as it
+      does under prefers-reduced-motion (views.css). */
+.txt-gold,.txt-silver,.txt-diamond,.hero .grad{animation-name:none;background-position:40% 0}
+.ra3-bus{animation-name:none;transform:translate3d(40%,0,0);opacity:1}
+
+/* c) Run: on screen AND awake. */
+html.shg-awake .hero.is-live .hero-fx .hero-ray,
+html.shg-awake .hero.is-live .hero-fx .hero-glow,
+html.shg-awake .hero.is-live .hero-fx .hero-pt,
+html.shg-awake .hero.is-live .hero-wm,
+html.shg-awake .hero.is-live .hero-qt-cta,
+html.shg-awake .is-live .qt-badge,
+html.shg-awake .is-live .qt-route b,
+html.shg-awake .hero-live-ticker.is-live .live-dot,
+html.shg-awake .brand-band.is-live .bb-anim .bb-ic,
+html.shg-awake .is-live .btn-orange::after,
+html.shg-awake .is-live .hd-shine::before,
+html.shg-awake .is-live .txt-diamond::after,
+html.shg-awake .founder-card.is-live::before,
+html.shg-awake .founder-card.is-live .founder-avatar-wrap,
+html.shg-awake .f-ceo.is-live img,
+html.shg-awake .flag-cards.is-live .flag-card .fl,
+html.shg-awake .flag-bus-bridge.is-live .bus-run,
+html.shg-awake #routeAnim.is-live :is(.ra3-sun,.ra3-cloud,.ra3-far i,.ra3-near i,.ra3-stripes,.ra3-edge,.ra3-body img,.ra3-shadow,.ra3-pin),
+html.shg-awake .shg-hero.is-live :is(.shg-live i,.shg-stop i,.shg-bus,.shg-bus-i),
+html.shg-awake .shg-hero.is-live .shg-rail::after,
+html.shg-awake .is-live :is(.ao-lamps i,.ao-mark,.vip-curtain,.vip-air path,.vip-batt,.vip-cord,.vip-road,.vip-pax,.vip-lock),
+html.shg-awake .whatsapp-fab,html.shg-awake .sos-fab.show,html.shg-awake .credit-div,
+html.shg-awake .topbar-logo img,html.shg-awake .nav .logo-img{
+  animation-play-state:running;
+}
+html.shg-awake .txt-gold,html.shg-awake .txt-silver,html.shg-awake .txt-diamond,
+html.shg-awake .hero.is-live .grad{animation-name:hd-sheen}
+html.shg-awake #routeAnim.is-live .ra3-bus{animation-name:ra3Drive}
