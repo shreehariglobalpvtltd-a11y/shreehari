@@ -731,7 +731,7 @@ final class AiTools
                    intent; AiRules validates, previews, writes and audits. */
                 if (AiRules::mayCommand($ctx)['ok']) {
                     $t[] = self::spec('rules_read',
-                        'READ BACK the company's money rules: every fare on the board, the VIP private cabin rates, and the advance-booking offer (hours, percentage, dates, which modes, whether it is running). Read-only. Use for "fare settings dekhau", "ahile ko rate kati cha", "offer ko setting".',
+                        'READ BACK the money rules of the company: every fare on the board, the VIP private cabin rates, and the advance-booking offer (hours, percentage, dates, which modes, whether it is running). Read-only. Use for "fare settings dekhau", "ahile ko rate kati cha", "offer ko setting".',
                         []);
 
                     $t[] = self::spec('rules_change',
