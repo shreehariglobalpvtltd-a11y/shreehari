@@ -307,6 +307,13 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
   <section class="qt-hero">
     <div class="qt-hero-l">
       <span class="qt-badge">🤖 QuickBot Ticket — 10-Second Booking</span>
+      <?php if ($deskLabel === '' && $canSell): ?>
+        <?php /* A sale by a clerk with no desk is stamped with no place and,
+                 at a Nepal window, carries no NPR — the ticket and the day
+                 sheet both lose the counter. Say so here rather than let it
+                 be discovered in the month's book. (26 Sep 2026) */ ?>
+        <span class="qt-desk" style="background:rgba(248,113,113,.25);border-color:rgba(254,202,202,.6)">⚠️ कुनै काउन्टर तोकिएको छैन · no desk set</span>
+      <?php endif; ?>
       <?php if ($deskLabel !== ''): ?>
         <!-- Which window this is (24 Sep 2026). The same string that prints
              on every ticket sold here, shown before the first keystroke so a

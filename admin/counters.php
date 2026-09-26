@@ -115,11 +115,19 @@ if (!Security::isValidDate($to))   { $to   = todayISO(); }
 if ($from > $to) { [$from, $to] = [$to, $from]; }
 $t1 = addDaysISO($to, 1);
 
-/* The desk a row belongs to: the code frozen on the sale, else the seller's
+/* The desk a SALE belongs to: the code frozen on the sale, else the seller's
    desk today (marked in the UI as a fallback), else blank = online. */
 $codeExpr = $hasStamp
     ? "COALESCE(NULLIF(b.counter_code,''), ap.counter_code, '')"
     : "COALESCE(ap.counter_code, '')";
+
+/* The desk a COLLECTION belongs to is a different question, and the one a
+   cashier actually asks: whose drawer did this money go into? A ticket sold
+   at Nepalgunj and paid on boarding, or settled later at the Surat window,
+   is Surat's cash — crediting it to Nepalgunj would leave both drawers
+   wrong. So the money follows the person who verified it, and only falls
+   back to the selling desk when that person has no desk of their own. */
+$takenExpr = "COALESCE(NULLIF(apv.counter_code,''), " . ($hasStamp ? "NULLIF(b.counter_code,''), " : '') . "ap.counter_code, '')";
 
 $sold    = [];   // code => ['tickets','seats','inr','npr','stamped']
 $taken   = [];   // code => ['cash'=>inr, ...] verified money
@@ -153,12 +161,13 @@ try {
     }
 
     $rows = Database::fetchAll(
-        "SELECT $codeExpr AS code, p.method,
+        "SELECT $takenExpr AS code, p.method,
                 COALESCE(SUM(p.amount), 0) AS inr" .
                 ($hasLocal ? ", COALESCE(SUM(CASE WHEN p.local_currency = 'NPR' THEN p.local_amount ELSE 0 END), 0) AS npr" : ", 0 AS npr") . "
            FROM payments p
            JOIN bookings b ON b.id = p.booking_id
-           LEFT JOIN admin_profiles ap ON ap.admin_id = b.sold_by_admin_id
+           LEFT JOIN admin_profiles ap  ON ap.admin_id  = b.sold_by_admin_id
+           LEFT JOIN admin_profiles apv ON apv.admin_id = p.verified_by
           WHERE p.status = 'verified'
             AND p.verified_at >= :f AND p.verified_at < :t1
           GROUP BY code, p.method",
@@ -432,6 +441,9 @@ $e = static fn($v): string => Security::e((string) $v);
     Every figure is the rupee the company accounts in. A Nepal desk's line also shows the NPR it
     quoted and the NPR actually in its drawer, at the rate frozen on each ticket — so the two books
     agree without anyone converting anything by hand.
+    <br><b>Sold</b> is the desk that cut the ticket; <b>cash in</b> is the desk whose drawer the money
+    went into. They differ on purpose: a ticket sold here and paid on boarding, or settled at another
+    window, is that window's cash.
   </p>
 </div>
 <?php admin_footer();
