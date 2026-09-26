@@ -19,7 +19,13 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
-$admin = admin_boot('payments.view');
+/* 26 Sep 2026: commissions.view, not payments.view. This page is the whole
+   company's money — every desk's collections, the agent commission owed, who
+   is holding our cash, who is waiting for a payout. Role 'counter' holds
+   payments.view (it verifies the cash it just took) and is NOT scoped to its
+   own desk, so a Nepalgunj window could read Surat's day. Per-desk figures
+   live on admin/counters.php. */
+$admin = admin_boot('commissions.view');
 
 $base = '';
 

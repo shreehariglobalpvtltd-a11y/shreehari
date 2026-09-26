@@ -38,6 +38,9 @@ $agentFilter     = Security::clean($_GET['agent'] ?? '', 20);
 $busFilter       = Security::clean($_GET['bus'] ?? '', 40);
 $payStatusFilter = Security::clean($_GET['pay_status'] ?? '', 20);
 $payMethodFilter = Security::clean($_GET['pay_method'] ?? '', 20);
+// Which counter cut it (26 Sep 2026). Sales made before the desk was frozen
+// on the booking fall back to the seller's desk today.
+$counterFilter   = mb_strtoupper(Security::clean($_GET['counter'] ?? '', 16));
 $page            = max(1, (int) ($_GET['p'] ?? 1));
 $PER_PAGE        = 50;
 
@@ -154,6 +157,13 @@ if ($sourceFilter !== '' && isset($sourceMap[$sourceFilter])) {
 if ($scopeId === null && $agentFilter !== '' && ctype_digit($agentFilter)) {
     $where[] = 'b.sold_by_admin_id = :agentFlt';
     $params['agentFlt'] = (int) $agentFilter;
+}
+// Counter filter — the desk the ticket was cut at.
+if ($counterFilter !== '' && CounterDesk::stampColumn()) {
+    $where[] = "COALESCE(NULLIF(b.counter_code,''),
+                         (SELECT ap9.counter_code FROM admin_profiles ap9
+                           WHERE ap9.admin_id = b.sold_by_admin_id)) = :ctrFlt";
+    $params['ctrFlt'] = $counterFilter;
 }
 // Bus filter — exact bus_number match via the outbound leg's schedule.
 if ($busFilter !== '') {
@@ -428,6 +438,19 @@ $canEdit   = Auth::can('bookings.edit');
               $label = ($code !== '' ? $code . ' ' : '') . ($ag['full_name'] ?: $ag['username']);
           ?>
             <option value="<?= (int) $ag['id'] ?>" <?= $agentFilter === (string) $ag['id'] ? 'selected' : '' ?>><?= Security::e($label) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <?php endif; ?>
+      <?php if (CounterDesk::stampColumn() && CounterDesk::all(true) !== []): ?>
+      <div class="filter-group">
+        <span class="flbl">Counter</span>
+        <select name="counter">
+          <option value="">All counters</option>
+          <?php foreach (CounterDesk::all() as $cCode => $cD): ?>
+            <option value="<?= Security::e($cCode) ?>" <?= $counterFilter === $cCode ? 'selected' : '' ?>>
+              <?= CounterDesk::flag($cCode) ?> <?= Security::e($cD['name']) ?> (<?= Security::e($cCode) ?>)
+            </option>
           <?php endforeach; ?>
         </select>
       </div>

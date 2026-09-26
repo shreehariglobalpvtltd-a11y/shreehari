@@ -55,6 +55,24 @@ final class CounterDesk
         self::$cache = null;
     }
 
+    /**
+     * Is the desk frozen on the sale yet? (bookings.counter_code). Pages ask
+     * this before offering a desk filter, so a database whose migration has
+     * not run shows no filter rather than a 500.
+     */
+    public static function stampColumn(): bool
+    {
+        static $has = null;
+        if ($has === null) {
+            try {
+                $has = Database::fetch("SHOW COLUMNS FROM bookings LIKE 'counter_code'") !== null;
+            } catch (Throwable $e) {
+                $has = false;
+            }
+        }
+        return $has;
+    }
+
     /** Does the real table exist? False on a checkout whose SQL is not applied. */
     public static function hasTable(): bool
     {
