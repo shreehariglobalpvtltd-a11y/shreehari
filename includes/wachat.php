@@ -43,7 +43,7 @@ final class WaChat
     /** The office switch (settings.wa_chat_on). */
     public static function enabled(): bool
     {
-        return Settings::getBool('wa_chat_on', true);
+        return Settings::getBool('wa_chat_on', false);
     }
 
     /** Minutes a code stays valid (settings.wa_chat_token_ttl_min, 5..1440). */

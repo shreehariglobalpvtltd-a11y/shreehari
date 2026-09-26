@@ -54,6 +54,10 @@ $cleanup = static fn () => Database::run('DELETE FROM wa_chat_tokens WHERE booki
 $cleanup();
 Database::run("DELETE FROM rate_limits WHERE bucket = 'wa_ticket_code_try'");
 
+/* The feature ships switched off; the bot half below needs it on. */
+$switchWas = Settings::get('wa_chat_on');
+Settings::set('wa_chat_on', '1', 'bool', 'whatsapp');
+
 try {
     // 1. mint
     $code = WaChat::mint($bid);
@@ -127,6 +131,7 @@ try {
 } catch (Throwable $e) {
     wc_check('no exception', false, get_class($e) . ': ' . $e->getMessage());
 } finally {
+    Settings::set('wa_chat_on', $switchWas ? '1' : '0', 'bool', 'whatsapp');
     $cleanup();
     Database::run("DELETE FROM rate_limits WHERE bucket = 'wa_ticket_code_try'");
 }

@@ -15,7 +15,7 @@
 --                   customer always writes first (that opens WhatsApp's 24 h
 --                   window), we never message first. Only the SHA-256 of the
 --                   code is stored, a code lives 30 minutes and works once.
---  settings         wa_chat_on (office switch), wa_chat_token_ttl_min and
+--  settings         wa_chat_on (office switch, ships OFF), wa_chat_token_ttl_min and
 --                   wa_ticket_number (the WhatsApp number the code is sent
 --                   to, blank = company_whatsapp / company_phone).
 --
@@ -42,6 +42,6 @@ CREATE TABLE IF NOT EXISTS `wa_chat_tokens` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT IGNORE INTO `settings` (`skey`,`svalue`,`stype`,`sgroup`,`label`,`is_public`) VALUES
-('wa_chat_on',            '1',  'bool',   'whatsapp', 'One-time WhatsApp ticket codes (customer writes first, we never message first)', 0),
+('wa_chat_on',            '0',  'bool',   'whatsapp', 'One-time WhatsApp ticket codes (customer writes first, we never message first)', 0),
 ('wa_chat_token_ttl_min', '30', 'int',    'whatsapp', 'Minutes a WhatsApp ticket code stays valid', 0),
 ('wa_ticket_number',      '',   'string', 'whatsapp', 'WhatsApp number the ticket code is sent to (blank = company WhatsApp)', 0);
