@@ -94,7 +94,17 @@ final class AiRules
         return ['ok' => true, 'why' => ''];
     }
 
-    /** @return array<int, string> the authorised numbers, normalised */
+    /**
+     * The authorised numbers, normalised and de-duplicated.
+     *
+     * The de-duplication uses each number as an array KEY, and PHP turns a
+     * numeric-string key into an int — so array_keys() handed back
+     * [9726401507, …] as integers and the strict in_array() below refused
+     * the office's own number. Cast back explicitly; this list is compared
+     * against a normalised phone STRING everywhere it is used.
+     *
+     * @return array<int, string>
+     */
     public static function allowedNumbers(): array
     {
         $out = [];
@@ -104,7 +114,7 @@ final class AiRules
                 $out[$d] = true;
             }
         }
-        return array_keys($out);
+        return array_map('strval', array_keys($out));
     }
 
     /* =================================================================
@@ -361,7 +371,11 @@ final class AiRules
                 return $v === '1' ? 'ON' : 'OFF';
             }
             if (str_contains($k, 'percent')) {
-                return rtrim(rtrim($v, '0'), '.') . '%';
+                /* rtrim($v, '0') on the plain string "10" left "1", so the
+                   preview read "1% becomes 12%" for a live 10% offer — the
+                   one number an admin is most likely to be confirming.
+                   Trim only what follows a decimal point. */
+                return rtrim(rtrim(number_format((float) $v, 2, '.', ''), '0'), '.') . '%';
             }
             if ($k === 'advance_offer_hours') {
                 return $v . ' hours';
