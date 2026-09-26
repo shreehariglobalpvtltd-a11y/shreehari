@@ -48,7 +48,12 @@ final class Auth
             // Secrets (API keys, tokens) stay write-only for everyone.
             'settings.manage',
             'customers.view', 'coupons.view', 'coupons.edit',
-            'reports.view', 'liveops.view', 'liveops.edit',
+            /* 26 Sep 2026: a manager could read the ticket register but not
+               export it, and the new export gate (anyone unscoped needs
+               reports.export) turned that inconsistency into a 403 on a
+               button they can see. A branch manager who already holds
+               staff.manage and settings.manage may take the CSV. */
+            'reports.view', 'reports.export', 'liveops.view', 'liveops.edit',
             'messages.view', 'support.view', 'support.reply',
             'tickets.scan', 'waitlist.view',
         ],
