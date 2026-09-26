@@ -194,6 +194,8 @@ const CORE_SUITES = [
     'wa-admin-command-test.php'   => 'WA office commands: staff number + permission, CANCEL never cancels',
     'notifier-test.php'           => 'Notifier: office alerts rate-limited, customers only inside their 24 h window',
     'ai-client-test.php'          => 'AI client: rules first, local model, redaction, usage log without text',
+    // 27 Sep 2026, registered with the one-request bundle it guards (B, C, F need :8899 and skip themselves without it).
+    'bundle-test.php'              => 'one bundled script + stylesheet: the manifest matches the template, nothing committed after the build, the switch, it refuses a stale bundle',
 ];
 
 /**

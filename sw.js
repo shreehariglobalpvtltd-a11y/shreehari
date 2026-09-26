@@ -48,6 +48,11 @@ var PRECACHE = [
   '/assets/img/logo.png?v=' + ASSET_VER,
   '/assets/css/app.css?v=' + ASSET_VER,
   '/assets/css/views.css?v=' + ASSET_VER,
+  /* 27 Sep 2026: the one-request bundle (behind bundle_assets_on). Precached
+     beside the separate files it falls back to, so a phone that installed
+     with the switch either way still opens offline. */
+  '/assets/dist/app.min.js?v=' + ASSET_VER,
+  '/assets/dist/app.min.css?v=' + ASSET_VER,
   '/assets/css/premium.css?v=' + ASSET_VER,
   '/assets/js/19-premium.js?v=' + ASSET_VER,
   '/assets/js/01-boot.js?v=' + ASSET_VER,
