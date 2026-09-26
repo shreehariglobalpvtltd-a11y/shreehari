@@ -545,7 +545,20 @@ final class Auth
         $text = Settings::getString('company_name', APP_NAME)
               . ' एजेन्ट लगइन कोड: ' . $otp['code'] . "\n"
               . OTP_EXPIRY_MINUTES . ' मिनेट सम्म मान्य। यो कोड कसैलाई नबताउनुहोस्।';
-        Notify::whatsapp($phone, $text);
+        /* India and Nepal share the 10-digit mobile format, and normalisePhone
+           has just stripped any prefix — so with no hint the sender prepends
+           the default 91 and a Nepali agent's LOGIN CODE goes to whoever owns
+           that number in India. Take the country from the number as it is
+           stored, and failing that from the desk the agent sits at: a clerk at
+           Nepalgunj is +977. (26 Sep 2026) */
+        $hint = resolvePhoneCountry('', (string) ($admin['phone'] ?? ''));
+        if ($hint === '') {
+            $deskCode = CounterDesk::forAdmin((int) $admin['id'])['code'];
+            if ($deskCode !== '' && CounterDesk::dialCode($deskCode) === '977') {
+                $hint = 'NP';
+            }
+        }
+        Notify::whatsapp($phone, $text, null, $hint !== '' ? $hint : null);
         if (Settings::getBool('sms_send_otp', false)) {
             Notify::sms($phone, $text);
         }
@@ -921,6 +934,37 @@ final class Auth
     public static function bookingScopeAdminId(): ?int
     {
         return self::isCounterAgent() ? (int) (self::admin()['id'] ?? 0) : null;
+    }
+
+    /**
+     * The counter code every LIST of tickets, payments and passengers must be
+     * pinned to, or null when this staff member may read the whole company.
+     *
+     * A ticketing AGENT is scoped to themselves (above). A company WINDOW is a
+     * different shape: two clerks may share the Nepalgunj desk and each must
+     * see the desk's whole day, while neither should read Surat's. So the key
+     * is the place, not the person.
+     *
+     * Deliberately OFF by default (counter_desk_isolation). Until the owner
+     * switches it on from Counters & collection, every desk reads the company
+     * book exactly as it did before — and a desk with no code assigned is
+     * never scoped, because "nowhere" would silently hide every ticket.
+     *
+     * NOT applied to the bus: the manifest, the seat map and the trips board
+     * stay shared, because the bus is shared. This separates the BOOKS.
+     */
+    public static function deskScopeCode(): ?string
+    {
+        $admin = self::admin();
+        if ($admin === null || (string) ($admin['role'] ?? '') !== 'counter') {
+            return null;
+        }
+        if (!Settings::getBool('counter_desk_isolation', false)) {
+            return null;
+        }
+        $code = CounterDesk::forAdmin((int) ($admin['id'] ?? 0))['code'];
+
+        return $code === '' ? null : $code;
     }
 
     /**

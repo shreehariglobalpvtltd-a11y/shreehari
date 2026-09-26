@@ -158,6 +158,15 @@ if ($scopeId === null && $agentFilter !== '' && ctype_digit($agentFilter)) {
     $where[] = 'b.sold_by_admin_id = :agentFlt';
     $params['agentFlt'] = (int) $agentFilter;
 }
+// Desk isolation (26 Sep 2026, ships OFF): a counter window sees its own
+// desk's register only. Applied before the user's own filter so it cannot be
+// widened by hand-editing the query string.
+$deskScope = Auth::deskScopeCode();
+if ($deskScope !== null && CounterDesk::stampColumn()) {
+    $where[] = CounterDesk::scopeClause('b');
+    $params['deskScope'] = $deskScope;
+    $counterFilter = $deskScope;
+}
 // Counter filter — the desk the ticket was cut at.
 if ($counterFilter !== '' && CounterDesk::stampColumn()) {
     $where[] = "COALESCE(NULLIF(b.counter_code,''),

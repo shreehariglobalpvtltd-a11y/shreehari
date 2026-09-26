@@ -220,6 +220,20 @@ final class CounterDesk
     }
 
     /**
+     * The WHERE fragment that pins a bookings query to one desk.
+     *
+     * Reads the code frozen on the sale and falls back to the seller's desk
+     * today for rows written before the stamp existed — the same expression
+     * the counter book and the register filter use, kept in one place so the
+     * three can never drift apart.
+     */
+    public static function scopeClause(string $alias = 'b', string $param = 'deskScope'): string
+    {
+        return "COALESCE(NULLIF({$alias}.counter_code,''),"
+             . " (SELECT apd.counter_code FROM admin_profiles apd WHERE apd.admin_id = {$alias}.sold_by_admin_id)) = :{$param}";
+    }
+
+    /**
      * The desk a staff member is signed in at: ['code'=>..,'name'=>..] with
      * blanks when they have not been given one. Reads admin_profiles, which
      * is where staff.php and agents.php already write it.

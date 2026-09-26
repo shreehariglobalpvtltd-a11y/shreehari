@@ -62,6 +62,14 @@ if ($scopeId !== null) {
     $where[] = 'b.sold_by_admin_id = :scope';
     $params['scope'] = $scopeId;
 }
+/* Desk isolation (26 Sep 2026, ships OFF): a counter window's passenger list
+   is its own desk's. The bus MANIFEST is deliberately not scoped — the bus is
+   shared, and the clerk boarding it must see every passenger on board. */
+$deskScope = Auth::deskScopeCode();
+if ($deskScope !== null && CounterDesk::stampColumn()) {
+    $where[] = CounterDesk::scopeClause('b');
+    $params['deskScope'] = $deskScope;
+}
 if ($phone !== '') {
     $where[] = 'b.contact_phone = :phone';
     $params['phone'] = $phone;

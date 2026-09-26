@@ -153,6 +153,14 @@ $agentCodes = Settings::getArray('agent_codes', []);
 $where  = [];
 $params = [];
 
+/* Desk isolation (26 Sep 2026, ships OFF): a counter window verifies the money
+   its OWN desk took. An office role is never scoped. */
+$deskScope = Auth::deskScopeCode();
+if ($deskScope !== null && CounterDesk::stampColumn()) {
+    $where[] = CounterDesk::scopeClause('b');
+    $params['deskScope'] = $deskScope;
+}
+
 /* Tab filter */
 switch ($tab) {
     case 'pending':

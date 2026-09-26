@@ -82,6 +82,14 @@ if ($canEdit && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 CounterDesk::deactivate($code);
                 Logger::audit('counter.close', 'counter_location', $code, null, [], 'desk closed by admin #' . (int) $admin['id']);
                 $flash = ['ok', 'Desk ' . $code . ' closed. Its old tickets keep their place.'];
+            } elseif ($action === 'isolation') {
+                $on = !empty($_POST['on']);
+                Settings::set('counter_desk_isolation', $on ? '1' : '0', 'bool', 'agent');
+                Logger::audit('counter.isolation', 'setting', 'counter_desk_isolation', null, ['on' => $on],
+                    'desk isolation ' . ($on ? 'ON' : 'OFF') . ' by admin #' . (int) $admin['id']);
+                $flash = ['ok', $on
+                    ? 'Desk isolation is ON — a counter login now sees only its own desk\'s register, payments and passengers.'
+                    : 'Desk isolation is OFF — every counter login sees the whole company register again.'];
             } elseif ($action === 'reopen') {
                 $code = mb_strtoupper(Security::clean((string) ($_POST['code'] ?? ''), 16));
                 $row  = CounterDesk::get($code);
@@ -321,6 +329,25 @@ $e = static fn($v): string => Security::e((string) $v);
       kept on every ticket. Staff are put on a desk in
       <a href="<?= $base ?>/admin/staff.php">Staff &amp; Approvals</a>.
     </p>
+  </form>
+</div>
+<?php endif; ?>
+
+<?php if ($canEdit): $iso = Settings::getBool('counter_desk_isolation', false); ?>
+<div class="ctr-form" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+  <div style="flex:1;min-width:240px">
+    <b><?= $iso ? '🔒' : '🔓' ?> Desk isolation — <?= $iso ? 'ON' : 'OFF' ?></b>
+    <div class="ctr-note">
+      ON: a <em>counter</em> login sees only its own desk's ticket register, payments and passenger
+      list. The bus manifest, seat map and trips board stay shared — the bus is shared, and the
+      clerk boarding it must see everyone on board. The office is never scoped.
+    </div>
+  </div>
+  <form method="post" style="margin:0">
+    <?= Security::csrfField() ?>
+    <input type="hidden" name="action" value="isolation">
+    <input type="hidden" name="on" value="<?= $iso ? '' : '1' ?>">
+    <button class="btn <?= $iso ? 'ghost' : 'ok' ?>" type="submit"><?= $iso ? 'Switch off' : 'Switch on' ?></button>
   </form>
 </div>
 <?php endif; ?>

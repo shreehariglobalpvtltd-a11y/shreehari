@@ -137,3 +137,19 @@ SET @s := IF(@c = 0,
   'ALTER TABLE `counter_shifts` ADD COLUMN `counter_code` VARCHAR(16) NULL COMMENT ''desk this drawer belongs to, frozen at open'' AFTER `admin_id`, ADD COLUMN `currency` CHAR(3) NOT NULL DEFAULT ''INR'' COMMENT ''money this drawer counts - NPR at a Nepal desk'' AFTER `counter_code`',
   'DO 0');
 PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
+-- ---------------------------------------------------------------------
+-- 6. Two settings rows the desks need
+-- ---------------------------------------------------------------------
+-- The 24 Sep migration seeded counter_locations with stype 'text', which the
+-- settings ENUM does not have, so MySQL stored an empty type. Harmless for a
+-- plain string read, but Settings::set() refuses to write it back.
+UPDATE `settings` SET `stype` = 'string'
+ WHERE `skey` = 'counter_locations'
+   AND `stype` NOT IN ('string','int','float','bool','json');
+
+-- Desk isolation ships OFF: until the office switches it on from Counters &
+-- collection, every counter login reads the company register exactly as before.
+INSERT IGNORE INTO `settings` (`skey`,`svalue`,`stype`,`sgroup`,`label`,`is_public`) VALUES
+ ('counter_desk_isolation','0','bool','agent',
+  'A counter login sees only its own desk''s ticket register, payments and passenger list. The bus manifest and seat map stay shared.',0);
