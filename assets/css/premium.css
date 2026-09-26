@@ -688,3 +688,40 @@ footer{background:linear-gradient(180deg,var(--brand-navy) 0%,var(--brand-navy-9
 :root[data-theme="dark"] .pay-amt .big,
 :root[data-theme="dark"] .bus-card .depTime-big,
 :root[data-theme="dark"] .rules-summary summary{color:#DCE8FF}
+
+
+/* ---------------------------------------------------------------------
+   9. THE SIGNATURE OPENING — three lines on the splash (27 Sep 2026)
+   -------------------------------------------------------------------
+   Owner: one opening with marketing words; the splash had shrunk to the
+   length of the boot ticks and nobody saw it. Splash.rotate() in
+   13-admin-routes.js writes three .sp-line spans into #splashPromise (the
+   hero title, the brand-band tagline, the promise — strings the app already
+   has) and moves .in / .out between them 450 ms apart. All three share one
+   grid cell, so the block is as tall as its tallest line and nothing below
+   it shifts when a line changes. Opacity + translateY only.
+
+   Reduced motion: views.css's "#splash *{animation:none}" already silences
+   the keyframes; the rule at the end keeps the line VISIBLE (its resting
+   state is opacity:0), and Splash.rotate() leaves just the promise line.
+   ------------------------------------------------------------------- */
+.premium-promise.sp-lines{display:grid;justify-items:center}
+.sp-lines .sp-line{
+  grid-area:1/1;display:block;max-width:100%;
+  opacity:0;transform:translateY(10px);will-change:transform,opacity;
+  font-family:var(--f-body);
+}
+.sp-lines .sp-line.in{animation:spLineIn .46s var(--m-spring) both}
+.sp-lines .sp-line.out{animation:spLineOut .32s var(--m-exit) both}
+@keyframes spLineIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes spLineOut{from{opacity:1;transform:none}to{opacity:0;transform:translateY(-8px)}}
+/* Devanagari on the opening screen: no tracking (it cuts the shirorekha),
+   a line-height a matra fits in. The elements carry their own lang
+   attribute (Splash.localise), so this applies before <html lang> is set. */
+.sp-lines .sp-line:is(:lang(ne),:lang(hi)){letter-spacing:normal;line-height:1.45}
+#splash .splash-title:is(:lang(ne),:lang(hi)),
+#splash .splash-tagline:is(:lang(ne),:lang(hi)){letter-spacing:normal;line-height:1.4}
+@media (prefers-reduced-motion:reduce){
+  .sp-lines .sp-line{opacity:1;transform:none}
+  .sp-lines .sp-line.out{opacity:0}
+}

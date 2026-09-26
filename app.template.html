@@ -308,7 +308,12 @@ s.addEventListener('click',function(e){e.preventDefault();
 
 <!-- ============ [HTML] SPLASH SCREEN — cold launch cinematic ============ -->
 <div class="splash" id="splash">
-<script>try{if(sessionStorage.getItem('shg:splashed') || (location.hash && location.hash !== '#/' && location.hash !== '#'))document.getElementById('splash').classList.add('done')}catch(e){}</script>
+<script>(function(){try{var h=location.hash,skip=!!(h&&h!=='#/'&&h!=='#');if(!skip&&sessionStorage.getItem('shg:splashed')){skip=(Date.now()-(+localStorage.getItem('shg:splashAt')||0))<21600000}if(skip)document.getElementById('splash').classList.add('done')}catch(e){}})();</script>
+<!-- ^ Deep links skip the opening. Within one browser session it is shown
+     once — unless the last showing (shg:splashAt, written by Splash.finish)
+     is more than six hours old, so a phone that opens the app morning and
+     evening sees it twice a day, not once per install. Same rule, same
+     numbers, in Splash.init (13-admin-routes.js). -->
   <div class="float-hero-wrap" style="position:absolute;inset:0;height:auto;margin:0;opacity:.55" aria-hidden="true">
     <span class="float-item float-flag-in" style="top:16%;left:10%">🇮🇳</span>
     <span class="float-item float-om" style="top:12%;left:auto;right:12%">🕉️</span>
@@ -334,7 +339,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <img src="/assets/img/logo.png?v=20260926m" alt="S Hari Global Pvt Ltd" class="splash-logo" width="440" height="321" fetchpriority="high" decoding="sync">
       <div class="splash-title" id="splashTitle">S Hari Global Pvt Ltd</div>
     </div>
-    <div class="splash-tagline" id="splashTagline">Gujarat ⇄ Rupaidiha · India–Nepal Transport</div>
+    <div class="splash-tagline" id="splashTagline" data-i18n="splashTagline">Gujarat ⇄ Rupaidiha · India–Nepal Transport</div>
     <!-- The blessing line (owner, 26 Sep 2026: "Bishnu Bhagwan ko naam mantra").
          Golden shimmer in CSS above; the bell + spoken mantra play on the first
          touch (19-premium.js, MANTRA) because a browser will not sound before one. -->
@@ -345,7 +350,13 @@ s.addEventListener('click',function(e){e.preventDefault();
       <div><span data-i18n="premiumDirector">CHAIRMAN / DIRECTOR</span><b>Sher Bahadur Bishwokarma</b><span>S HARI GLOBAL</span><span class="splash-ceo-num">📞 +91 97264 01507</span></div>
     </div>
     <div class="premium-fleet" aria-hidden="true"><div class="premium-road"></div><img class="fleet-main" src="/assets/img/bus-shg-sm.webp?v=20260926m" width="600" height="312" alt=""><img class="fleet-second" src="/assets/img/bus-shg-sm.webp?v=20260926m" width="600" height="312" alt=""></div>
-    <p class="premium-promise" data-i18n="premiumPromise">Your Journey, Our Responsibility.</p>
+    <!-- The signature opening (27 Sep 2026): three marketing lines the app
+         already says elsewhere — the hero title, the brand-band tagline, the
+         promise — enter one after another inside the 1.4 s floor
+         (Splash.rotate in 13-admin-routes.js; premium.css §9). The English
+         hero line is seeded so the first frame is never blank. No data-i18n
+         on this element: applyLang() would wipe the rotating lines. -->
+    <p class="premium-promise sp-lines" id="splashPromise" lang="en"><span class="sp-line in">Two nations. One road. One journey.</span></p>
     <!-- The attribution line the owner asked for (24 Sep 2026). The brief
          wrote the surname as "Bishnowlara" and asked us to check it against
          the approved company details: every other place the company signs

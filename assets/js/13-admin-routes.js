@@ -630,13 +630,21 @@ const Splash = {
   el: null, bar: null, status: null, skip: null, done: false,
   progress: 0, tasks: 0, completed: 0, startTs: 0, dataReady: false,
   trailer: false, soundOn: false, _ac: null,
-  /* A floor, not a wait. Long enough that the logo doesn't flash past on a
-     fast connection, short enough that nobody is ever held back by it —
-     this used to be 5000, so a booking that had loaded in 300ms still sat
-     behind four and a half seconds of branding. Sep-2 mobile pass:
-     dropped to 500ms so a phone paint feels instant; the logo still
-     registers because the letter-by-letter animation runs in parallel. */
-  minDuration: 500,
+  /* A floor, not a wait. This used to be 5000, then 500 (Sep-2 mobile
+     pass), then 0 — at which point the opening lasted exactly as long as the
+     six boot ticks, often under a second, and the owner "never saw the
+     starting animation" (26 Sep 2026). 1400 ms is long enough for the three
+     marketing lines below to enter (0 / 450 / 900 ms) and be read, and
+     still shorter than the shortest real boot on a slow link. The hide is
+     max(boot, floor): never shorter than the boot, never much longer. */
+  minDuration: 1400,
+  /* Within one browser session the opening is shown once — unless the last
+     showing is older than this, so a phone that opens the app morning and
+     evening sees it twice a day, not once per install. The inline script in
+     app.template.html applies the same rule before the first paint. */
+  REPEAT_MS: 6 * 60 * 60 * 1000,
+  ROTATE_MS: 450,
+  lineTimers: [],
   /* First visit: show the brand briefly while data loads. Staff sign-in
      has its own link; passengers need not wait for a portal chooser. */
   portalMs: 600,
@@ -654,7 +662,10 @@ const Splash = {
     this.startTs = performance.now();
     if (!this.el) { this.done = true; return; }
     var splashed = false;
-    try { splashed = !!sessionStorage.getItem('shg:splashed'); } catch (e) {}
+    try {
+      var seenAt = parseInt(localStorage.getItem('shg:splashAt') || '0', 10) || 0;
+      splashed = !!sessionStorage.getItem('shg:splashed') && (Date.now() - seenAt) < this.REPEAT_MS;
+    } catch (e) {}
     if (splashed) {
       this.el.style.display = 'none';
       this.done = true;
@@ -677,8 +688,6 @@ const Splash = {
          clean logo + name + phone intro stands alone. */
       var _intro = $('#introScenes'); if (_intro) _intro.style.display = 'none';
     }
-    // No marketing countdown: initialization owns the lifetime of this screen.
-    this.minDuration = 0;
     if (this.el.classList.contains('done')) { this.done = true; this.el.style.display = 'none'; return; }
     const sb = $('#splashSound');
     if (sb) sb.addEventListener('click', () => {
@@ -687,7 +696,9 @@ const Splash = {
       sb.classList.toggle('on', this.soundOn);
       if (this.soundOn) this.chime(1);
     });
+    this.localise();
     this.animateTitle();
+    this.rotate();
     if (this.skip) {
       setTimeout(() => { this.skip.classList.add('show'); }, this.trailer ? 2500 : 600);
       this.skip.addEventListener('click', () => this.finish());
@@ -804,6 +815,90 @@ const Splash = {
     reveal('#splashPhone', 210);
     /* (the skip button is revealed separately in init(), at 1.2s) */
   },
+  /* The opening in the visitor's language (27 Sep 2026). Title and tagline
+     are seeded in English in the HTML so they paint on the first frame; here
+     they take the selected language BEFORE the letters animate. applyLang()
+     runs later in init() and must not touch the title (no data-i18n on it:
+     innerHTML would wipe the letter spans mid-reveal). The element's own
+     lang attribute makes premium.css §6 apply (Devanagari face, no tracking)
+     before <html lang> is set. Nothing here is a new string: t() falls back
+     to English, so a missing key leaves the seeded text alone. */
+  localise() {
+    if (typeof t !== 'function') return;
+    var lang = (typeof LANG === 'string' && LANG) || 'en';
+    var put = function (id, key) {
+      var el = $(id); if (!el) return;
+      var s = t(key);
+      if (!s || s === key) return;
+      if (el.textContent.trim() !== s) el.textContent = s;
+      el.setAttribute('lang', lang);
+    };
+    put('#splashTitle', 'splashTitle');
+    put('#splashTagline', 'splashTagline');
+  },
+  /* THE SIGNATURE OPENING (owner, 26 Sep 2026: one opening with marketing
+     words). Three lines the app already says — the hero title, the brand
+     band tagline, the promise — enter one after another, ROTATE_MS apart,
+     inside the minDuration floor. Opacity + translateY only (premium.css
+     §9), so the compositor does all of it. Nepali when the app is in
+     Nepali, else the selected language. Reduced motion: no keyframes, the
+     static frame keeps the promise line. */
+  lines() {
+    if (typeof t !== 'function') return [];
+    var strip = function (s) {
+      return String(s || '').replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+    };
+    var out = [];
+    ['heroTitle', 'bbTag', 'premiumPromise'].forEach(function (k) {
+      var s = strip(t(k));
+      if (s && s !== k && out.indexOf(s) < 0) out.push(s);
+    });
+    return out;
+  },
+  reducedMotion() {
+    try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
+    catch (e) { return false; }
+  },
+  rotate() {
+    var box = $('#splashPromise');
+    if (!box) return;
+    var lines = this.lines();
+    if (!lines.length) return;
+    box.setAttribute('lang', (typeof LANG === 'string' && LANG) || 'en');
+    if (this.reducedMotion()) {
+      box.textContent = '';
+      var one = document.createElement('span');
+      one.className = 'sp-line in';
+      one.textContent = lines[lines.length - 1];
+      box.appendChild(one);
+      return;
+    }
+    /* The seeded English line is kept in place when it IS line one, so it
+       does not leave and re-enter; every other line is built here. */
+    var first = box.firstElementChild;
+    var keepFirst = !!(first && first.classList.contains('sp-line') && first.textContent.trim() === lines[0]);
+    if (keepFirst) { while (first.nextSibling) box.removeChild(first.nextSibling); }
+    else { box.textContent = ''; }
+    var spans = [];
+    lines.forEach(function (txt, i) {
+      if (i === 0 && keepFirst) { spans.push(first); return; }
+      var s = document.createElement('span');
+      s.className = 'sp-line' + (i === 0 ? ' in' : '');
+      s.textContent = txt;
+      box.appendChild(s);
+      spans.push(s);
+    });
+    var self = this;
+    spans.forEach(function (s, i) {
+      if (i === 0) return;
+      self.lineTimers.push(setTimeout(function () {
+        if (self.done) return;
+        spans[i - 1].classList.remove('in'); spans[i - 1].classList.add('out');
+        s.classList.add('in');
+      }, i * self.ROTATE_MS));
+    });
+  },
   /* The 2-second staff window. Purely additive: it rides on top of the
      splash the visitor was already watching, so a passenger who ignores it
      reaches the booking screen at exactly the same moment they would have
@@ -894,13 +989,17 @@ const Splash = {
     this.stopPortal();
     if (this.bar) this.bar.style.width = '100%';
     if (this.status) { this.status.style.opacity = '0'; setTimeout(() => { if (this.status) this.status.textContent = '✓ Ready'; this.status.style.opacity = '1'; }, 200); }
-    try { sessionStorage.setItem('shg:splashed', '1'); } catch (e) {}
+    try { sessionStorage.setItem('shg:splashed', '1'); localStorage.setItem('shg:splashAt', String(Date.now())); } catch (e) {}
+    this.lineTimers.forEach(clearTimeout); this.lineTimers = [];
     /* Hand the role picker over AS the splash fades, not after it. The two
        used to be strictly sequential (300ms pause + 1100ms fade = 1.4s of
        nothing), which is what made the launch feel slow even once the data
        was ready. The picker is now already on screen behind the fade. */
     setTimeout(() => {
       if (this.el) this.el.classList.add('done');
+      /* 27 Sep 2026: the home page's six-second "awake" window (22-vip.js,
+         stillness at rest) starts from this moment. */
+      try { document.dispatchEvent(new CustomEvent('shg:splashdone')); } catch (e) {}
       RoleGate.init().maybeShow();
       /* Boot time the owner can actually check: navigation → the moment the
          role picker is usable. Paint metrics lie in a background tab; this
