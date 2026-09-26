@@ -79,6 +79,7 @@ function openLoginModal() {
   openModal(`
     <h3 class="m-title">👤 ${t('qlTitle')}</h3>
     <p class="m-sub">${t('qlP')}</p>
+    ${typeof meAvatarPicker === 'function' ? meAvatarPicker() : ''}
     <div class="field"><label for="qlName">${t('lblName')}</label><input id="qlName" autocomplete="name" autocapitalize="words" maxlength="120" value="${esc(savedName)}"><div class="err">${t('errName')}</div></div>
     <div class="field"><label for="otpPhone">${t('lblPhone')}</label>
       <div style="display:flex;gap:8px;align-items:stretch">
@@ -429,9 +430,15 @@ function renderMyBookings() {
     }
     box.innerHTML = `
       <div class="my-hello">
-        <div>
-          <b>${uPhone ? t('myHello') + ' +' + ((USER && USER.country === 'NP') ? '977' : '91') + ' ' + esc(uPhone) : '🎫 All Bookings'}</b>
-          ${trips ? '<small>⭐ ' + tf('myTripsN', { n: trips }) + '</small>' : ''}
+        <div class="me-card">
+          ${uPhone && typeof meAvatarHtml === 'function' ? meAvatarHtml(52, { pick: true, flagSelect: true }) : ''}
+          <div class="me-who">
+            <b>${uPhone ? ((USER && USER.name) ? esc(USER.name) : t('myHello')) : '🎫 All Bookings'}</b>
+            ${uPhone
+              ? '<small>' + ((USER && USER.country === 'NP') ? '🇳🇵 +977 ' : '🇮🇳 +91 ') + esc(uPhone)
+                  + (trips ? ' · ⭐ ' + tf('myTripsN', { n: trips }) : '') + '</small>'
+              : (trips ? '<small>⭐ ' + tf('myTripsN', { n: trips }) + '</small>' : '')}
+          </div>
         </div>
         ${uPhone ? '<button class="btn btn-ghost btn-sm" type="button" id="myLogoutBtn">' + t('myLogout') + '</button>' : ''}
       </div>
