@@ -479,6 +479,10 @@ final class AiRules
                 ['value' => json_encode($clean)],
                 sprintf('%s → %s set to %s by %s', $c['from'], $c['to'], inr((float) $c['amount']), $tag)
             );
+            self::notifyOthers($ctx, sprintf(
+                'Fare board: %s → %s is now %s (was %s) — changed by %s. Reply "fare settings dekhau" to read the board.',
+                $c['from'], $c['to'], inr((float) $c['amount']), inr((float) $c['before']), $tag
+            ));
 
             return [
                 'ok'   => true,
@@ -515,6 +519,10 @@ final class AiRules
                 sprintf('%s changed from %s to %s by %s', $spec['label'],
                         $old === '' ? '(blank)' : $old, $value === '' ? '(blank)' : $value, $tag)
             );
+            self::notifyOthers($ctx, sprintf(
+                'Offer setting: %s changed from %s to %s by %s.',
+                $spec['label'], $old === '' ? '(blank)' : $old, $value === '' ? '(blank)' : $value, $tag
+            ));
 
             return [
                 'ok'   => true,
@@ -525,5 +533,34 @@ final class AiRules
         }
 
         return ['ok' => false, 'say' => 'Nothing recognisable to change.', 'data' => []];
+    }
+
+    /**
+     * Tell the OTHER authorised numbers what just changed (26 Sep 2026
+     * follow-up). Two people may command the board; the one who did not
+     * press ho should hear about it in the same minute, on the same channel.
+     * Never fails the write — a message that cannot go out is logged by
+     * Notify and dropped. Returns how many sends were attempted and accepted.
+     */
+    public static function notifyOthers(array $ctx, string $line): int
+    {
+        $sender = normalisePhone((string) ($ctx['phone'] ?? ''));
+        $sent   = 0;
+        if (!class_exists('Notify')) {
+            require_once __DIR__ . '/notify.php';
+        }
+        foreach (self::allowedNumbers() as $n) {
+            if ($n === $sender) {
+                continue;
+            }
+            try {
+                if (Notify::whatsapp($n, $line, null, null, [], null, ['purpose' => 'rules_alert'])) {
+                    $sent++;
+                }
+            } catch (Throwable $e) {
+                // the change itself is already saved and audited
+            }
+        }
+        return $sent;
     }
 }

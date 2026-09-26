@@ -3492,6 +3492,16 @@ final class AiTools
             return self::no($gate['why']);
         }
 
+        /* Attempt rate limit (26 Sep 2026 follow-up): eight fare-change
+           calls in ten minutes from one number is a runaway conversation or
+           a stolen phone, not the office at work — a half-hour lockout either
+           way. Counted per NUMBER, not per admin: the number is what a thief
+           holds. The office can always use Admin → Fares & offers. */
+        $digits = normalisePhone((string) ($ctx['phone'] ?? ''));
+        if (!Security::rateLimit('rules_change', $digits !== '' ? $digits : 'unknown', 8, 600, 1800)) {
+            return self::no('Too many fare-change attempts from this number. Wait 30 minutes, or change it on Admin → Fares & offers.');
+        }
+
         $proposal = AiRules::propose([
             'what'  => (string) ($args['what'] ?? ''),
             'from'  => (string) ($args['from'] ?? ''),
