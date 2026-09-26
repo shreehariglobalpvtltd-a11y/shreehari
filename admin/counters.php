@@ -67,6 +67,7 @@ if ($canEdit && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     'country'    => $_POST['country'] ?? 'IN',
                     'currency'   => $_POST['currency'] ?? '',
                     'fx_rate'    => $_POST['fx_rate'] ?? '',
+                    'allowed_methods' => $_POST['methods'] ?? null,
                     'phone'      => $_POST['phone'] ?? '',
                     'address'    => $_POST['address'] ?? '',
                     'note'       => $_POST['note'] ?? '',
@@ -321,6 +322,14 @@ $e = static fn($v): string => Security::e((string) $v);
       </label>
     </div>
     <div class="row">
+      <label style="grid-column:span 2">Money it may take
+        <?php $mAllowed = $editing !== null ? (CounterDesk::allowedMethods((string) $editing['code']) ?? CounterDesk::METHODS) : CounterDesk::METHODS; ?>
+        <span style="display:flex;gap:12px;flex-wrap:wrap;padding-top:6px;text-transform:none;font-weight:600">
+          <?php foreach (CounterDesk::METHODS as $mth): ?>
+            <label class="chk" style="gap:5px"><input type="checkbox" name="methods[]" value="<?= $e($mth) ?>" <?= in_array($mth, $mAllowed, true) ? 'checked' : '' ?>> <?= $e(strtoupper($mth)) ?></label>
+          <?php endforeach; ?>
+        </span>
+      </label>
       <label>Phone <input type="text" name="phone" maxlength="40" value="<?= $e($editing['phone'] ?? '') ?>"></label>
       <label>Address <input type="text" name="address" maxlength="190" value="<?= $e($editing['address'] ?? '') ?>"></label>
       <label>Order <input type="number" name="sort_order" value="<?= (int) ($editing['sort_order'] ?? 0) ?>"></label>
@@ -335,7 +344,9 @@ $e = static fn($v): string => Security::e((string) $v);
     </div>
     <p class="ctr-note" style="margin:10px 0 0">
       A Nepal desk quotes and collects NPR; the company's books stay in rupees and both numbers are
-      kept on every ticket. Staff are put on a desk in
+      kept on every ticket. A desk with only <b>CASH</b> ticked refuses a UPI or bank sale at the
+      register itself, not just in the browser — that is the Nepalgunj rule, since the company has
+      no Nepali account. Staff are put on a desk in
       <a href="<?= $base ?>/admin/staff.php">Staff &amp; Approvals</a>.
     </p>
   </form>
@@ -399,6 +410,8 @@ $e = static fn($v): string => Security::e((string) $v);
         <td><?php if ($code === ''): ?><span class="cur-inr">₹ INR</span>
             <?php else: ?><span class="<?= $isNp ? 'cur-npr' : 'cur-inr' ?>"><?= $isNp ? 'रू NPR' : '₹ INR' ?></span>
               <?php if ($isNp): ?><div class="ctr-note">1 ₹ = <?= $e(CounterDesk::rate($code)) ?></div><?php endif; ?>
+              <?php $onlyM = CounterDesk::allowedMethods($code);
+                    if ($onlyM !== null): ?><div class="ctr-note">💵 <?= $e(implode(' / ', $onlyM)) ?> only</div><?php endif; ?>
             <?php endif; ?></td>
         <td><?= (int) $s['tickets'] ?></td>
         <td><?= (int) $s['seats'] ?></td>

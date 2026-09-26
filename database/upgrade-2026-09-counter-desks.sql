@@ -153,3 +153,19 @@ UPDATE `settings` SET `stype` = 'string'
 INSERT IGNORE INTO `settings` (`skey`,`svalue`,`stype`,`sgroup`,`label`,`is_public`) VALUES
  ('counter_desk_isolation','0','bool','agent',
   'A counter login sees only its own desk''s ticket register, payments and passenger list. The bus manifest and seat map stay shared.',0);
+
+-- ---------------------------------------------------------------------
+-- 7. A desk with no bank account of its own
+-- ---------------------------------------------------------------------
+-- Nepalgunj has no Nepali gateway and no Nepali bank account: it collects
+-- cash. NULL keeps a desk unrestricted, so every existing desk is unchanged.
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'counter_locations' AND COLUMN_NAME = 'allowed_methods');
+SET @s := IF(@c = 0,
+  'ALTER TABLE `counter_locations` ADD COLUMN `allowed_methods` VARCHAR(80) NULL COMMENT ''comma list of cash,upi,esewa,bank this desk may take - NULL means all'' AFTER `fx_rate`',
+  'DO 0');
+PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
+-- The three Nepal desks are cash-only until the company has a Nepali account.
+UPDATE `counter_locations` SET `allowed_methods` = 'cash'
+ WHERE `code` IN ('NPJ','NPJD','KHL') AND `allowed_methods` IS NULL;

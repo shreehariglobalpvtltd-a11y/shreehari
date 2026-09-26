@@ -273,6 +273,16 @@ if (trim($savedMirror) !== '') {
 Settings::flush();
 CounterDesk::flush();
 
+/* ---- 5a. a desk with no bank account takes cash ------------------- */
+
+check('Nepalgunj is cash only', CounterDesk::allowedMethods('NPJ') === ['cash'],
+    implode(',', CounterDesk::allowedMethods('NPJ') ?? ['(all)']));
+check('...so the register refuses UPI there', !CounterDesk::allowsMethod('NPJ', 'upi'));
+check('...and takes cash', CounterDesk::allowsMethod('NPJ', 'cash'));
+check('an Indian desk has no rule and takes everything',
+    CounterDesk::allowedMethods('SRT') === null
+    && CounterDesk::allowsMethod('SRT', 'upi') && CounterDesk::allowsMethod('SRT', 'cash'));
+
 /* ---- 5b. the Nepalgunj drawer counts Nepali notes ------------------ */
 
 require_once INCLUDE_PATH . '/countershift.php';

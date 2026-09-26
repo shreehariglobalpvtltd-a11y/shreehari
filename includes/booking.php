@@ -282,6 +282,16 @@ final class BookingService
             }
             $sellerSource  = in_array($seller['source'] ?? '', ['agent', 'counter', 'admin'], true) ? (string) $seller['source'] : 'counter';
             $counterMethod = in_array($seller['paymentMethod'] ?? '', ['cash', 'upi', 'esewa', 'bank'], true) ? (string) $seller['paymentMethod'] : 'cash';
+            /* A desk with no bank account of its own takes cash (26 Sep 2026).
+               Refusing here, on the one path every app sale goes through, is
+               the only place it cannot be worked around from a browser. */
+            $sellerDesk = CounterDesk::codeForSale($sellerId);
+            if ($sellerDesk !== null && !CounterDesk::allowsMethod($sellerDesk, $counterMethod)) {
+                throw new RuntimeException(
+                    CounterDesk::label($sellerDesk) . ' takes '
+                    . implode(' / ', CounterDesk::allowedMethods($sellerDesk) ?? []) . ' only.'
+                );
+            }
             $counterNote   = Security::clean((string) ($seller['note'] ?? ''), 255);
             $referralCodeClean = '';           // the seller IS the agent; a typed code is ignored
             $soldByAdminId     = $sellerId;

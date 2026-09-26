@@ -46,6 +46,9 @@ final class CounterDesk
     /** Currency symbols as a clerk writes them. */
     public const SYMBOL = ['INR' => '₹', 'NPR' => 'रू'];
 
+    /** The ways a counter can take money, as includes/booking.php names them. */
+    public const METHODS = ['cash', 'upi', 'esewa', 'bank'];
+
     /** @var array<string,array<string,mixed>>|null code => desk */
     private static ?array $cache = null;
 
@@ -149,6 +152,41 @@ final class CounterDesk
     {
         $c = strtoupper((string) (self::get($code)['currency'] ?? 'INR'));
         return isset(self::DENOMINATIONS[$c]) ? $c : 'INR';
+    }
+
+    /**
+     * The payment methods this desk may take, or null for "all of them".
+     *
+     * The owner's Nepalgunj window has no Nepali payment gateway and no
+     * Nepali bank account: it collects cash. Until now nothing stopped a
+     * clerk there tapping UPI, which would have put money in the books that
+     * never existed in any account.
+     *
+     * @return list<string>|null
+     */
+    public static function allowedMethods(string $code): ?array
+    {
+        $raw = trim((string) (self::get($code)['allowed_methods'] ?? ''));
+        if ($raw === '') {
+            return null;
+        }
+        $out = [];
+        foreach (explode(',', $raw) as $m) {
+            $m = strtolower(trim($m));
+            if ($m !== '' && in_array($m, self::METHODS, true)) {
+                $out[] = $m;
+            }
+        }
+
+        return $out === [] ? null : array_values(array_unique($out));
+    }
+
+    /** May this desk take this money? A desk with no rule may take anything. */
+    public static function allowsMethod(string $code, string $method): bool
+    {
+        $allowed = self::allowedMethods($code);
+
+        return $allowed === null || in_array(strtolower($method), $allowed, true);
     }
 
     /** Dialing code of the desk's country — 977 for Nepal, 91 for India. */
@@ -309,6 +347,7 @@ final class CounterDesk
             'country'    => $country,
             'currency'   => $currency,
             'fx_rate'    => $rate,
+            'allowed_methods' => self::cleanMethods($in['allowed_methods'] ?? null),
             'phone'      => trim(Security::clean((string) ($in['phone'] ?? ''), 40)) ?: null,
             'address'    => trim(Security::clean((string) ($in['address'] ?? ''), 190)) ?: null,
             'is_active'  => empty($in['is_active']) ? 0 : 1,
@@ -370,6 +409,24 @@ final class CounterDesk
 
     /* ----------------------------------------------------------------- */
 
+    /** "cash,upi" from a posted list; null (= all) when nothing is ticked. */
+    private static function cleanMethods(mixed $in): ?string
+    {
+        $list = is_array($in) ? $in : (is_string($in) ? explode(',', $in) : []);
+        $out  = [];
+        foreach ($list as $m) {
+            $m = strtolower(trim((string) $m));
+            if (in_array($m, self::METHODS, true)) {
+                $out[$m] = true;
+            }
+        }
+        if ($out === [] || count($out) === count(self::METHODS)) {
+            return null;   // all of them is the same as no rule
+        }
+
+        return implode(',', array_keys($out));
+    }
+
     private static function normaliseCode(string $code): string
     {
         $code = mb_strtoupper(trim($code));
@@ -406,6 +463,7 @@ final class CounterDesk
                 'is_active'  => (int) $r['is_active'],
                 'sort_order' => (int) $r['sort_order'],
                 'note'       => (string) ($r['note'] ?? ''),
+                'allowed_methods' => (string) ($r['allowed_methods'] ?? ''),
             ];
         }
 
@@ -437,6 +495,7 @@ final class CounterDesk
                 'is_active'  => 1,
                 'sort_order' => ($i += 10),
                 'note'       => '',
+                'allowed_methods' => '',
             ];
         }
 
