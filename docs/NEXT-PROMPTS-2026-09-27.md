@@ -29,6 +29,8 @@ asset stamp with `node deploy/bump-asset-ver.js <old> <new> <sw-vNNN> "<note>"`.
 
 ## 1 · NPR admin bharika sabai screen ma
 
+> ✅ **Done 26 Sep 2026** — in `feat/nepal-counter-npr` (commits 7c3bca1 · 819b46c · a376fa8, alongside the VIP work), suite `tests/npr-beside-rupee-test.php` (20 checks, 4 pages rendered). Not yet deployed — the branch must first merge live's lineage (554adf6, PR #5 + #6).
+
 ```
 A Nepal desk's sale already stores fx_currency/fx_rate/fx_total on the booking and
 local_currency/local_amount on the payment, but only admin/counters.php and the ticket read
