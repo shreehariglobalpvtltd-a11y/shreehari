@@ -583,6 +583,7 @@ final class Ticket
             'label'    => $label,
             'line'     => implode('  ·  ', $parts),
             'location' => $location,          // "Nepalgunj — Bus Park (NPJ)"
+            'locName'  => $locName !== '' ? $locName : $location,
             'locCode'  => mb_strtoupper($locCode),
         ];
     }
@@ -1073,7 +1074,7 @@ final class Ticket
             ? upiLink($upiVpa, Settings::getString('upi_name', APP_NAME), $settlement['due'], (string) ($booking['pnr'] ?? '')) : '';
         $qrExt = $payUpi !== '' ? 350 : 270;
 
-        $W = 1080; $H = 1620 + $grow + $qrExt;
+        $W = 1080; $H = 1644 + $grow + $qrExt;   // +24: the issuer tile gained the desk line (26 Sep 2026)
         $im = imagecreatetruecolor($W, $H);
 
         $navy   = imagecolorallocate($im, 18, 38, 78);
@@ -1134,10 +1135,16 @@ final class Ticket
            "company ko name ko tala location lekhne thau"). */
         $issued = self::issuedBy($booking);
 
-        $brand = self::latinUpper($co['name']);
-        $bSz   = 30;
-        foreach ([30, 27, 24, 21] as $try) { $bSz = $try; if (self::gdWidth($try, $brand) <= $W - 60 - $bx) { break; } }
-        self::gdText($im, $bSz, $bx, 122, $white, $clampTo($bSz, $brand, $W - 60 - $bx), true);
+        /* 26 Sep 2026: the width was measured to the PAGE edge while the
+           ISSUED-BY chip sits 268px in from it, so a longer company name —
+           "Shree Hari Global Pvt Ltd Nepal", the name a Nepalgunj ticket
+           must carry — printed straight under the chip. The brand now stops
+           where the chip starts, and may go down to 18px to do it. */
+        $brand   = self::latinUpper($co['name']);
+        $brandMax = $chipX1 - 20 - $bx;
+        $bSz     = 30;
+        foreach ([30, 27, 24, 21, 19, 18] as $try) { $bSz = $try; if (self::gdWidth($try, $brand) <= $brandMax) { break; } }
+        self::gdText($im, $bSz, $bx, 122, $white, $clampTo($bSz, $brand, $brandMax), true);
         self::gdText($im, 19, $bx, 162, $gold,
             $clampTo(19, 'E-TICKET  ·  INDIA-NEPAL BUS SERVICE', $chipX1 - 24 - $bx), false);
         /* The desk this ticket was cut at, directly under the company name.
@@ -1472,7 +1479,7 @@ final class Ticket
             'Due: ' . $currency . ' ' . number_format($settlement['due'], 2), true);
         self::gdText($im, 19, 60, 1398 + $grow + $qrExt - 90, $ink, 'Support: ' . self::latin($co['phone']), true);
         self::gdText($im, 18, 60, 1428 + $grow + $qrExt - 90, $orange, self::latin($co['web']), true);
-        $wa = Settings::officeWhatsApp();
+        $wa = (string) ($co['whatsapp'] ?? Settings::officeWhatsApp());
         if ($wa !== '') { self::gdText($im, 16, 60, 1456 + $grow + $qrExt - 90, $green, 'WhatsApp: +' . $wa, true); }
 
         /* Who cut it, in full — name, code and the agent's own phone, with
@@ -1508,19 +1515,24 @@ final class Ticket
         /* The desk by name and number, and when the ticket was cut. The desk
            gives ground before the time does: a passenger can read the town
            off the header band, but nothing else on the ticket says WHEN. */
-        $deskBits = array_values(array_filter([
-            self::display($issued['location'] ?? ''),
-            self::display($issued['deskPhone'] ?? ''),
-        ], static fn(string $s): bool => $s !== ''));
-        $cutTxt   = ($issued['issuedAt'] ?? '') !== '' ? 'काटिएको  ' . self::latin((string) $issued['issuedAt']) : '';
-        if ($deskBits !== [] || $cutTxt !== '') {
-            $deskTxt = implode('  ·  ', $deskBits);
-            $maxDesk = $tileR - 24 - 82 - ($cutTxt !== '' ? self::gdWidth(15, $cutTxt) + 24 : 0);
-            while ($deskTxt !== '' && self::gdWidth(15, $deskTxt) > $maxDesk) {
-                $deskTxt = rtrim(mb_substr($deskTxt, 0, max(1, mb_strlen($deskTxt) - 2))) . '…';
+        /* The NAME gives ground, never the number: a passenger who has to
+           ring the window needs the digits, and the town is already in the
+           header band. The code in brackets is dropped too — it is on the
+           orange chip two lines up. */
+        $deskName  = self::display((string) ($issued['locName'] ?? ''));
+        $deskPhone = self::display((string) ($issued['deskPhone'] ?? ''));
+        $cutTxt    = ($issued['issuedAt'] ?? '') !== '' ? 'काटिएको  ' . self::latin((string) $issued['issuedAt']) : '';
+        if ($deskName !== '' || $deskPhone !== '' || $cutTxt !== '') {
+            $cutW    = $cutTxt !== '' ? self::gdWidth(15, $cutTxt) + 24 : 0;
+            $maxDesk = $tileR - 24 - 82 - $cutW;
+            $tail    = $deskPhone !== '' ? '  ·  ' . $deskPhone : '';
+            while ($deskName !== '' && self::gdWidth(15, $deskName . $tail) > $maxDesk) {
+                $deskName = rtrim(mb_substr($deskName, 0, max(1, mb_strlen($deskName) - 2)));
+                if (mb_strlen($deskName) <= 3) { $deskName = ''; break; }
             }
-            if ($deskTxt !== '') {
-                self::gdText($im, 15, 82, 1554 + $grow + $qrExt, $mut, $deskTxt, false);
+            $deskTxt = $deskName !== '' ? $deskName . $tail : ltrim($tail, ' ·');
+            if (trim($deskTxt) !== '') {
+                self::gdText($im, 15, 82, 1554 + $grow + $qrExt, $mut, trim($deskTxt), false);
             }
             if ($cutTxt !== '') {
                 self::gdText($im, 15, $tileR - 16 - self::gdWidth(15, $cutTxt), 1554 + $grow + $qrExt, $mut, $cutTxt, false);
@@ -1529,13 +1541,13 @@ final class Ticket
 
         /* Footer notes on the cream */
         $n1 = 'सरकारी परिचयपत्र अनिवार्य  ·  बस छुट्नु ३० मिनेट अगाडि आउनुहोस्';
-        self::gdText($im, 17, (int) (($W - self::gdWidth(17, $n1)) / 2), 1578 + $grow + $qrExt, $mut, $n1, false);
+        self::gdText($im, 17, (int) (($W - self::gdWidth(17, $n1)) / 2), 1600 + $grow + $qrExt, $mut, $n1, false);
         $cin = (string) ($co['cin'] ?? '');
         $n2  = self::display($co['name'])
              . ($cin !== '' ? '  ·  ' . ($co['regLabel'] ?? 'CIN') . ' ' . $cin : '')
              . (($co['country'] ?? 'IN') === 'NP' && trim((string) $co['address']) !== ''
                  ? '  ·  ' . self::latin((string) $co['address']) : '');
-        self::gdText($im, 16, (int) (($W - self::gdWidth(16, $n2)) / 2), 1606 + $grow + $qrExt, $mut, $n2, false);
+        self::gdText($im, 16, (int) (($W - self::gdWidth(16, $n2)) / 2), 1628 + $grow + $qrExt, $mut, $n2, false);
 
         /* CORRECTED / DUPLICATE band in the 36px margin above the header. */
         $markTxt = self::markText($ticket, $mark);
@@ -1712,13 +1724,13 @@ final class Ticket
      *  tickets drawn at 23:43/23:44 IST with the old seat labels were never
      *  redrawn. tests/chalani-png-test.php and tests/ticket-cache-test.php
      *  assert a past moment. */
-    private const PNG_LAYOUT_CHANGED = '2026-09-26 11:30:00';   // IST: a Nepal desk's NPR beside the rupee in the fare band. Before: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
+    private const PNG_LAYOUT_CHANGED = '2026-09-26 13:03:00';   // IST: the desk that cut it, its own number and the minute, in a taller issuer tile; the Nepal entity in the header. Before: a Nepal desk's NPR beside the rupee in the fare band. Before: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
      *  seat box + stub pick up the current seat labels without a manual purge
      *  (23 Sep 2026: the two-floor grid A1-F6 / A7-F12). */
-    private const PDF_LAYOUT_CHANGED = '2026-09-26 11:30:00';   // IST: a Nepal desk's NPR on the fare box line. Before: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
+    private const PDF_LAYOUT_CHANGED = '2026-09-26 13:03:00';   // IST: the desk, its number and the minute under ISSUED BY; the Nepal entity in the band. Before: a Nepal desk's NPR on the fare box line. Before: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
 
     /**
      * How many passengers the ticket names one by one before it stops and
