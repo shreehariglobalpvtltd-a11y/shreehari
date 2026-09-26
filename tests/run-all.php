@@ -222,6 +222,8 @@ const NODE_SUITES = [
     'offline-ticket-test.js' => 'the ticket survives a deploy and works offline',
     'lazy-retry-test.js'     => 'failed lazy downloads remain retryable without duplicate actions',
     'seat-label-parity.js'   => 'the browser prints the same seat labels as the server',
+    'feature-story-check.js' => 'the brand film: valid paints, balanced stage, eight acts in three languages',
+    'motion-check.js'        => 'motion guardrails: no new layout/paint animation, dead splash code stays dead, the opening and the loading bar',
 ];
 
 /** Need the dev server on :8899 as well as the database. */
