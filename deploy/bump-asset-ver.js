@@ -11,7 +11,9 @@ if (!OLD || !NEW) { console.error('usage: bump-asset-ver.js <old> <new> [swVersi
 
 const ROOT = process.cwd();
 const EXT = new Set(['.html', '.js', '.php', '.webmanifest', '.css']);
-const SKIP = new Set(['.git', 'node_modules', 'assets/generated', 'tmp', 'output']);
+// .claude holds other sessions' git worktrees (26 Sep 2026): a bump from the repo root
+// must never rewrite their files, or their half-finished work ships with ours.
+const SKIP = new Set(['.git', '.claude', 'node_modules', 'assets/generated', 'tmp', 'output']);
 
 const touched = [];
 (function walk(dir) {
