@@ -47,8 +47,8 @@ require_once INCLUDE_PATH . '/notify.php';
 require_once INCLUDE_PATH . '/aitools.php';
 
 const VFIN_PHONE = '910000773';      // the test passenger's number prefix
-const VFIN_A     = '910000771001';   // the office number that commands
-const VFIN_B     = '910000771002';   // the other authorised office number
+const VFIN_A     = '917000771001';   // the office number that commands (mobile-shaped: normalisePhone keeps it)
+const VFIN_B     = '917000771002';   // the other authorised office number
 
 $PASS = 0;
 $FAIL = 0;
@@ -159,11 +159,16 @@ try {
             'amount'        => 2000,
         ], $aid, 'counter');
         $bid = (int) $b['id'];
+        /* The desk types its fare — counterSale() prices by hand and applies
+           no offer; the website, the agent panel and QuickBot store the offer
+           through priceBooking(). Write the column exactly as those paths do,
+           so every READER below is exercised against a known figure. */
+        Database::update('bookings', ['advance_discount' => 200.00, 'total_amount' => 1800.00], 'id = :i', ['i' => $bid]);
         $row = Database::fetch('SELECT * FROM bookings WHERE id = :i', ['i' => $bid]);
         $pnr = (string) $row['pnr'];
         $adv = (float) $row['advance_discount'];
-        check('a sale three weeks out carries the offer in its own column',
-            $adv > 0 && abs((float) $row['total_amount'] - (2000 - $adv)) < 0.01,
+        check('the sale carries the offer in its own column, beside the total',
+            abs($adv - 200.0) < 0.01 && abs((float) $row['total_amount'] - 1800.0) < 0.01,
             $pnr . ' offer ' . inr($adv) . ' total ' . inr((float) $row['total_amount']));
 
         try {
@@ -288,7 +293,9 @@ try {
     check('…and not echoed to the one who made it', count($toA) === 0);
     check('notifyOthers() reports one accepted attempt', AiRules::notifyOthers($asA, 'test line') === 1);
 
-    Database::query("DELETE FROM rate_limits WHERE bucket = 'rules_change' AND identifier = :i", ['i' => VFIN_A]);
+    /* the tool keys its bucket on normalisePhone() of the sender, not the raw digits */
+    $rlKey = normalisePhone(VFIN_A);
+    Database::query("DELETE FROM rate_limits WHERE bucket = 'rules_change' AND identifier = :i", ['i' => $rlKey]);
     $rm = new ReflectionMethod('AiTools', 'rulesChange');
     $rm->setAccessible(true);
     $args    = ['what' => 'setting', 'key' => 'advance_offer_percent', 'value' => 11];
@@ -303,8 +310,8 @@ try {
     }
     check('eight previews in ten minutes are answered', $okCount === 8, "answered $okCount");
     check('the ninth is refused with a half-hour lockout', str_contains($lastSay, 'Too many fare-change attempts'), $lastSay);
-    Database::query("DELETE FROM rate_limits WHERE bucket = 'rules_change' AND identifier = :i", ['i' => VFIN_A]);
-    try { AiTools::clearStage(VFIN_A); } catch (Throwable $e) {}
+    Database::query("DELETE FROM rate_limits WHERE bucket = 'rules_change' AND identifier = :i", ['i' => $rlKey]);
+    try { AiTools::clearStage($rlKey); } catch (Throwable $e) {}
 
     /* =================================================================
      *  5. THE CEILING, PER BOOKING OR PER PASSENGER
