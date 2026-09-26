@@ -1,8 +1,16 @@
 # Nepalgunj counter, per-desk books, NPR — 26 Sep 2026
 
-Branch `feat/nepal-counter-npr` (on the VPS bare repo as `wip`).
-Base = the live commit `058f3aa` (`release/deploy-local-brain-20260926-050442`).
-Nothing here is live yet.
+**LIVE since 26 Sep 2026, 12:51 IST.** Deployed with `deploy/go-live.sh nepal-counter`
+in two releases: `release/nepal-counter-20260926-124108` (the counter work) and
+`release/nepal-counter-20260926-125120` (the sign-in middle way, §8).
+Backups: `/root/backups/pre-nepal-counter-20260926-124108` and `…-125120`.
+Rollback is one command: `bash deploy/go-live.sh --rollback`.
+
+Branch `feat/nepal-counter-npr`, in the VPS bare repo as `nepal-counter` (and `wip`).
+Base = the previous live commit `058f3aa`, which it contains — the deploy removed nothing.
+
+Migrations applied on live: `upgrade-2026-09-counter-desks.sql`,
+`upgrade-2026-09-26-login-otp.sql`. Asset stamp `20260926j`, `sw-v172`.
 
 ---
 
@@ -240,6 +248,36 @@ stored number, and failing that from the desk the agent sits at.
 - The OTP redaction in `message_logs` matched the word "code", while every code this app sends
   is labelled **कोड** — so login codes were being kept in clear. The pattern now covers
   कोड / ओटिपी / OTP.
+
+## 5b. Live now — what changed for whom, today
+
+Nothing changes for anyone until a desk is assigned: **no staff account on live has a
+counter_code yet** (checked after the deploy), so every sale is stamped with no place and
+behaves exactly as it did yesterday. Desk isolation is OFF. To start Nepalgunj, follow §4.
+
+Two things DID change for existing staff, both deliberate:
+
+- a `counter` login no longer opens **Accounting** or the **passenger CSV**, and cannot edit
+  **Offers** (§3.4). Live has one counter account.
+- a **manager** may now export the register they could already read (that gate was
+  inconsistent before and the new export rule would have turned it into a 403).
+
+## 8. The sign-in middle way — the owner's second decision
+
+Asked on 26 Sep whether to keep sign-in at name + mobile with no code, the owner chose the
+middle way, and it is live:
+
+- a **new** number still signs in with one tap — the 4 Sep rule, untouched;
+- a number that **already has confirmed tickets** is proven once with a WhatsApp code;
+- a sale by **signed-in staff** is never asked — at a window the clerk is the proof, and a
+  walk-in may not have their phone with them;
+- `login_otp_for_returning` (ON) switches the whole rule off from Settings if a provider
+  outage ever makes it a wall.
+
+Proven over real HTTP against the test instance: a new number → `verified`; the same number
+after one confirmed ticket → `needsOtp`; that ticket cancelled → `verified` again (an
+abandoned booking must not lock a number); the switch off → `verified`.
+`tests/login-middle-way-test.php` 11/11, and it passes against the live database.
 
 ## 6. Live risks worth the owner's decision
 
