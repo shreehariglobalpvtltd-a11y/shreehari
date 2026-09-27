@@ -1,17 +1,17 @@
 {
   "note": "Written by tools/build.mjs. Do not edit by hand. includes/assetbundle.php reads it at serve time; tests/bundle-test.php checks it.",
   "builtFor": "app.template.html",
-  "builtAt": "2026-09-27T05:33:08.960Z",
-  "stamp": "20260927a",
+  "builtAt": "2026-09-27T07:10:21.230Z",
+  "stamp": "20260927b",
   "minifier": {
     "js": "concat",
     "css": "strip-comments-whitespace"
   },
   "js": {
     "output": "assets/dist/app.min.js",
-    "bytes": 1124515,
-    "sha256": "600cf185510841ef1ccd98da72de40b790c78a7d6e02464eb6659db53b9c3f6c",
-    "rawBytes": 1123931,
+    "bytes": 1124662,
+    "sha256": "3fd5a4fa170bbb48fc71534d599b5140d147a085caed12766c99dd30d4d62bd2",
+    "rawBytes": 1124078,
     "sources": [
       {
         "file": "assets/js/01-boot.js",
@@ -21,7 +21,7 @@
       {
         "file": "assets/js/02-config.js",
         "bytes": 83862,
-        "sha256": "867ffad6c1bd842c448e23a032fa5485e1b3826ae0a6f262ad524e20dcf22551"
+        "sha256": "f6e916a1f7cb0afc50faa33a084935a37927149b92044e89e575223f4bead98d"
       },
       {
         "file": "assets/js/03-accounts.js",
@@ -30,13 +30,13 @@
       },
       {
         "file": "assets/js/04-i18n.js",
-        "bytes": 201423,
-        "sha256": "3515ec3ce5b8f1bea44b99c2652d35d69cac8c3ea351a0d00766266c8629fcb1"
+        "bytes": 201570,
+        "sha256": "d55628802134aec7db83d59278fe78079a34e146490a0648f7e267a0e98a8974"
       },
       {
         "file": "assets/js/05-router.js",
         "bytes": 145435,
-        "sha256": "70edc4c04b26ebb326f306f641237fd7a9fbdc3d9b00c6bbca0a763cf19cc58e"
+        "sha256": "1f0b49a00172bb3c234da4987317e7910c51e63d94e50a17eb680f0a47610211"
       },
       {
         "file": "assets/js/06-results.js",
@@ -46,7 +46,7 @@
       {
         "file": "assets/js/07-checkout.js",
         "bytes": 136261,
-        "sha256": "ae9bfa9cbc107c0438aec1c1102b65a7e46837c3963bf2867f23d4a932c5a50d"
+        "sha256": "06b06e5d25d116d8d386b79f460b328f83b2bdf2b8ae22dcaedfaf50227cafac"
       },
       {
         "file": "assets/js/14-counter.js",
@@ -76,7 +76,7 @@
       {
         "file": "assets/js/17-pwa.js",
         "bytes": 48947,
-        "sha256": "254381385960856135a7f51ea81e247069f3fdee3123e87af9b7eacc8cd1741c"
+        "sha256": "92870d03beaee49a483f4348f0b205682735c0a1b3edb126b86c67e37ea3b878"
       },
       {
         "file": "assets/js/18-journey.js",
