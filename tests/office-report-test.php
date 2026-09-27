@@ -119,8 +119,9 @@ try {
     $after = (int) Database::scalar("SELECT COUNT(*) FROM message_logs WHERE id > :i AND purpose = 'office_report'", ['i' => $logFrom], 0);
     orp_check('due slot = sent to both numbers', $mid - $before === 2, ($mid - $before) . ' rows');
     orp_check('…and not again in the same slot', $after === $mid && str_contains($out2, 'no slot due'), trim($out2));
-    orp_check('the slot is recorded', Settings::getString('office_report_last', '') === date('Y-m-d') . ' ' . date('H:i')
-        || str_starts_with(Settings::getString('office_report_last', ''), date('Y-m-d')));
+    // Read the row itself: the cron ran in another process, this one's Settings cache is older.
+    $lastSent = (string) Database::scalar("SELECT svalue FROM settings WHERE skey = 'office_report_last'", [], '');
+    orp_check('the slot is recorded (at most once)', str_starts_with($lastSent, date('Y-m-d') . ' '), $lastSent);
 } catch (Throwable $e) {
     orp_check('no exception', false, get_class($e) . ': ' . $e->getMessage());
 } finally {
