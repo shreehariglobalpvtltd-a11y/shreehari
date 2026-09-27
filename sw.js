@@ -48,6 +48,11 @@ var PRECACHE = [
   '/assets/img/logo.png?v=' + ASSET_VER,
   '/assets/css/app.css?v=' + ASSET_VER,
   '/assets/css/views.css?v=' + ASSET_VER,
+  /* 27 Sep 2026: the one-request bundle (behind bundle_assets_on). Precached
+     beside the separate files it falls back to, so a phone that installed
+     with the switch either way still opens offline. */
+  '/assets/dist/app.min.js?v=' + ASSET_VER,
+  '/assets/dist/app.min.css?v=' + ASSET_VER,
   '/assets/css/premium.css?v=' + ASSET_VER,
   '/assets/js/19-premium.js?v=' + ASSET_VER,
   '/assets/js/01-boot.js?v=' + ASSET_VER,
@@ -76,6 +81,11 @@ var PRECACHE = [
   /* 26 Sep 2026: the round photo + flag card. Precached because the photo it
      draws is already on the device - the card must still render offline. */
   '/assets/js/21-me.js?v=' + ASSET_VER,
+  /* 26 Sep 2026 (precached 27 Sep): the VIP private highlight and the
+     advance-offer card - both load from the head, so a repeat visit must
+     not wait on the network for them any more than for 19-premium.js. */
+  '/assets/js/22-vip.js?v=' + ASSET_VER,
+  '/assets/css/vip.css?v=' + ASSET_VER,
   '/assets/css/journey.css?v=' + ASSET_VER,
   '/assets/img/bus-side.svg?v=' + ASSET_VER,
   /* 26 Sep 2026 — the four facility stories. Precached because the
