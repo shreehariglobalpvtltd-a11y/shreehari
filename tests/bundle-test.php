@@ -178,6 +178,15 @@ if ($home['code'] !== 200) {
     echo "\n  SKIP  no server at " . BASE . " — B, C and F not run\n";
 } else {
     echo "\n-- B. the switch --\n";
+    /* 27 Sep 2026: a checkout writes the sources and assets/dist in no
+       particular order and can take longer than the 2 s tolerance, so on a
+       freshly refreshed test copy a source may look "newer" than a bundle
+       that is byte-for-byte current (section A already proved it by sha256).
+       Pin the built time the way a fresh `node tools/build.mjs` would. */
+    foreach (['assets/dist/app.min.js', 'assets/dist/app.min.css'] as $out) {
+        @touch($ROOT . '/' . $out);
+    }
+    clearstatcache();
     $set(false);
     $off = get('/');
     $sep = 0;
