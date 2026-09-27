@@ -983,6 +983,20 @@ final class WaBot
         $l   = [];
         $l[] = '🙏 नमस्ते ' . ($name !== '' ? $name . ' जी' : 'साथी') . ' — ' . Settings::getString('company_name', APP_NAME)
              . ' स्टाफ सहायक (' . ($role === 'admin' ? 'admin' : 'staff') . ')';
+        if ($role === 'admin') {
+            /* 27 Sep 2026: the office sees today at a glance before it asks —
+               the same figures as "aaja ko report" and the office report. */
+            try {
+                require_once INCLUDE_PATH . '/reportchart.php';
+                $d   = ReportChart::data(todayISO(), 1)['today'];
+                $l[] = '📊 आज: ' . $d['tickets'] . ' टिकट · ' . $d['seats'] . ' सिट · ' . inr($d['revenue'])
+                     . ' · Payment बाँकी: ' . $d['pending'];
+            } catch (Throwable $e) {
+            }
+            if (Settings::getBool('office_report_on', false)) {
+                $l[] = '🕖 अफिस रिपोर्ट आफैं आउँछ: ' . Settings::getString('office_report_times', '07:00,13:00,20:00') . ' (IST)';
+            }
+        }
         $l[] = '';
         $l[] = 'यहीँ लेख्नुहोस्:';
         $l[] = '1️⃣ टिकट हेर्न → PNR पठाउनुहोस् (SHG-XXXX-XXXX-XXXX)';
@@ -994,6 +1008,9 @@ final class WaBot
         }
         if (Settings::getBool('wa_bulk_on', false)) {
             $l[] = '📋 धेरै टिकट एकैपटक → "FORMAT"';
+        }
+        if ($role === 'admin' && Settings::getBool('wa_admin_commands_on', false)) {
+            $l[] = '✅ भुक्तानी → "VERIFY SHG-…" · "REJECT SHG-… कारण" · "COD SHG-…"';
         }
         $l[] = '';
         $l[] = '🔗 Admin: ' . appUrl('admin/');

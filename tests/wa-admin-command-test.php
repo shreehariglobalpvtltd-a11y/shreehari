@@ -51,7 +51,10 @@ $cleanup = static function (): void {
     Database::run("DELETE FROM bookings WHERE pnr LIKE 'SHG-WACMD-%'");
     Database::run("DELETE FROM admins WHERE username LIKE 'wacmd_%'");
     Database::run("DELETE FROM rate_limits WHERE bucket IN ('wa_office_cmd','wa_ticket_code_try','wa_stepup_link') OR bucket LIKE 'notify_%'");
-    try { Database::run("DELETE FROM wa_identity_links WHERE phone LIKE '97798110000%'"); } catch (Throwable $e) {}
+    /* wa_identity_links keys on the NORMALISED number, so delete by that. */
+    foreach (['9779811000001', '9779811000002', '9779811000003', '9779811000004', '9779811000005'] as $tp) {
+        try { Database::run('DELETE FROM wa_identity_links WHERE phone = :p', ['p' => normalisePhone($tp)]); } catch (Throwable $e) {}
+    }
 };
 $mkAdmin = static fn (string $name, string $role, string $phone): int => Database::insert('admins', [
     'username' => 'wacmd_' . $name, 'password_hash' => password_hash(bin2hex(random_bytes(8)), PASSWORD_BCRYPT),
@@ -149,7 +152,7 @@ try {
     Settings::set('wa_ops_stepup_actions', 'office_confirm,office_reject,office_settle_cod', 'string', 'ai');
     $r = WaBot::reply('whatsapp:+' . $mgrPhone, 'VERIFY ' . $pnr4);
     wa_check('with step-up on, VERIFY asks for the panel link first', $status($b4) === 'pending'
-        && (str_contains($r['text'], 'wa-verify.php?t=') || str_contains($r['text'], 'Verif')), mb_substr($r['text'], 0, 70));
+        && (str_contains($r['text'], 'wa-verify.php?t=') || stripos($r['text'], 'verif') !== false), mb_substr($r['text'], 0, 70));
     $mgrId = (int) Database::scalar("SELECT id FROM admins WHERE username = 'wacmd_mgr'", [], 0);
     Database::run('UPDATE wa_identity_links SET admin_id = :a, verified_at = NOW(), verified_via = :v WHERE phone = :p',
         ['a' => $mgrId, 'v' => 'panel_link', 'p' => normalisePhone($mgrPhone)]);

@@ -1972,7 +1972,7 @@ final class AiAgent
                 . "assistant: the number first, then one line of meaning. Use office_day for the day's sales and how "
                 . "full each bus is, office_search to find a booking, office_alerts for what needs attention.\n"
                 . "When they ask an open question ('aaja kasto cha?'), call office_day and office_alerts, then give "
-                . "them the three things that matter in three lines.\n"
+                . "them the three things that matter in three lines — buses today (sold / free), money, what is waiting — then ONE suggested next action, and end with what they can type next (aaja ko report · bholi kati seat khali · VERIFY SHG-…). If occupancy_report is on your list, use it with days 2 for tomorrow's seats.\n"
                 . "PEOPLE: office_agent for one agent (by code, name or mobile — their day, wallet, cash owed, last "
                 . "sales), office_agents for all of them, office_customer for one passenger's history by mobile, "
                 . "office_payout_requests for the payout queue. The office may read and change ANY booking: find_ticket, "

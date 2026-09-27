@@ -193,6 +193,7 @@ const CORE_SUITES = [
     'wa-chat-token-test.php'      => 'WA chat tokens: mint/verify/expire/replay, customer always writes first',
     'payment-webhook-test.php'    => 'Payment webhook: HMAC, idempotent, hint-only unless auto-confirm is on',
     'wa-admin-command-test.php'   => 'WA office commands: staff number + permission, CANCEL never cancels',
+    'wa-staff-menu-test.php'      => 'WA staff menu on hi: links, assistant lines, the office sees today at a glance',
     'notifier-test.php'           => 'Notifier: office alerts rate-limited, customers only inside their 24 h window',
     'ai-client-test.php'          => 'AI client: rules first, local model, redaction, usage log without text',
     // 27 Sep 2026, registered with the one-request bundle it guards (B, C, F need :8899 and skip themselves without it).

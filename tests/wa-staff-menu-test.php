@@ -42,6 +42,9 @@ check('says how to get it again', str_contains($menu, '"menu"'));
 check('fits a WhatsApp message', mb_strlen($menu) < 1500, (string) mb_strlen($menu));
 $admin = WaBot::staffMenu(['name' => '', 'role' => 'admin']);
 check('admin role shown', str_contains($admin, '(admin)'));
+check('the office sees today at a glance', str_contains($admin, '📊 आज:') && str_contains($admin, 'टिकट'));
+check('…and staff do not', !str_contains($menu, '📊 आज:'));
+check('office menu still fits a WhatsApp message', mb_strlen($admin) < 1500, (string) mb_strlen($admin));
 check('no name → साथी', str_contains($admin, 'साथी'));
 /* Assistant lines only while the assistant is on. */
 $aiOn = false;
