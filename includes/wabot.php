@@ -762,15 +762,24 @@ final class WaBot
         if (!Settings::getBool('wa_admin_commands_on', false)) {
             return null;
         }
-        $admin = null;
+        /* 27 Sep 2026: the rule AiTools::whoIs() already applies — exactly one
+           active account on this number, its first password set, not locked.
+           The first match used to win, so a handset shared by two accounts,
+           or an account nobody had ever signed in to, could confirm money
+           through a channel that never asks for a password. */
+        $matches = [];
         foreach (Database::fetchAll(
-            "SELECT id, username, role, permissions, phone FROM admins
+            "SELECT id, username, role, permissions, phone, must_change_pw, locked_until FROM admins
               WHERE is_active = 1 AND role <> 'agent' AND phone IS NOT NULL AND phone <> ''"
         ) as $row) {
             if (normalisePhone((string) $row['phone']) === $senderDigits) {
-                $admin = $row;
-                break;
+                $matches[] = $row;
             }
+        }
+        $admin = count($matches) === 1 ? $matches[0] : null;
+        if ($admin !== null && ((int) ($admin['must_change_pw'] ?? 1) !== 0
+            || (!empty($admin['locked_until']) && strtotime((string) $admin['locked_until']) > time()))) {
+            $admin = null;
         }
         if ($admin === null) {
             return null;
@@ -784,6 +793,26 @@ final class WaBot
         $perm = $verb === 'REJECT' ? 'payments.reject' : 'payments.verify';
         if (!Auth::rowCan($admin, $perm)) {
             return "🔒 Your role cannot " . strtolower($verb) . " bookings. Use the admin panel or ask a manager.";
+        }
+
+        /* The same step-up the assistant asks for before these actions
+           (AiVerify, wa_ops_stepup_on + wa_ops_stepup_actions): a fresh
+           one-time link opened in the signed-in staff panel. A lost or
+           SIM-swapped handset alone can no longer confirm a payment. */
+        require_once INCLUDE_PATH . '/aiverify.php';
+        $tool = $verb === 'REJECT' ? 'office_reject' : ($verb === 'COD' ? 'office_settle_cod' : 'office_confirm');
+        $vctx = ['phone' => $senderDigits, 'adminId' => (int) $admin['id'], 'role' => 'admin'];
+        if (AiVerify::needs($tool, $vctx) && !AiVerify::isFresh($vctx)) {
+            $c    = AiVerify::challenge($vctx);
+            $link = (string) ($c['data']['link'] ?? '');
+            if ($link !== '') {
+                return "🔐 Verify first: open this link where you are signed in to the staff panel, then send the command again. It works once, for 10 minutes:\n" . $link;
+            }
+            if (!empty($c['data']['already_sent'])) {
+                return "🔐 A verification link was already sent (valid until " . date('H:i', (int) strtotime((string) $c['data']['expires_at']))
+                    . "). Open it in the signed-in staff panel, then send the command again.";
+            }
+            return "🔐 Verification is needed and no link can be issued right now. Use the admin panel.";
         }
 
         $b = BookingService::findByPnr($pnr);
