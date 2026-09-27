@@ -189,6 +189,7 @@ const CORE_SUITES = [
     // 23 Sep 2026 (UI v3, ported by the 24 Sep integration), registered with the card it guards.
     'seat-status-png-test.php'    => 'the live seat-status card: draws every berth, no names, cached on the fingerprint, off by default',
     // 26 Sep 2026, registered with the one-time WhatsApp ticket codes it guards.
+    'office-report-test.php'      => 'office WhatsApp report: two numbers, each slot once, figures = the register, no names',
     'wa-chat-token-test.php'      => 'WA chat tokens: mint/verify/expire/replay, customer always writes first',
     'payment-webhook-test.php'    => 'Payment webhook: HMAC, idempotent, hint-only unless auto-confirm is on',
     'wa-admin-command-test.php'   => 'WA office commands: staff number + permission, CANCEL never cancels',
@@ -234,6 +235,7 @@ const NODE_SUITES = [
 const HTTP_SUITES = [
     'e2e-booking-test.php'        => 'whole ticket lifecycle over real HTTP',
     'role-gates-test.php'         => 'every admin page enforces its permission',
+    'staff-door-test.php'         => '/desk and /staff: one link to Quick Ticket for every selling role',
     'counter-mode-http-test.php'  => 'staff selling through the customer SPA',
     'feedback-test.php'           => 'post-journey rating: who may rate, and once',
     'beacon-test.php'             => 'the product beacon stores behaviour, never people',

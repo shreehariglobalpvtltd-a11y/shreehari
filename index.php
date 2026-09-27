@@ -37,6 +37,20 @@ if ($legalPath === '/bus' || str_starts_with($legalPath, '/bus/') || str_starts_
     require_once INCLUDE_PATH . '/routepages.php';
     RoutePages::dispatch($legalPath);
 }
+/* 27 Sep 2026: one staff door. A counter clerk, an agent or the office types
+   one short link — /desk (or /staff). Signed in: straight to Quick Ticket, the
+   mobile sale screen every selling role shares; a role that cannot sell lands
+   on its own admin home. Not signed in: the sign-in page, which returns to
+   Quick Ticket. The SPA counter mode is deliberately NOT the landing — the
+   admin pages enforce a forced password change, the shell does not. */
+if ($legalPath === '/desk' || $legalPath === '/staff') {
+    header('Cache-Control: no-store');
+    $deskAdmin = Auth::admin();
+    $deskTo    = $deskAdmin === null ? 'login.php?next=quick-ticket.php'
+        : (Auth::rowCan($deskAdmin, 'bookings.view') ? 'quick-ticket.php' : '');
+    header('Location: /admin/' . $deskTo, true, 302);
+    exit;
+}
 
 $user = Auth::user();
 
