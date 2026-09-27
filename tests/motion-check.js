@@ -275,6 +275,8 @@ const config = read('assets/js/02-config.js');
 check(/html\.net-busy::after\s*\{[^}]*animation:\s*netBusy/.test(stripComments(premium)), 'html.net-busy::after draws the loading bar with @keyframes netBusy');
 check(config.includes("classList.add('net-busy')") && config.includes("classList.remove('net-busy')") && /_netEnd\(net\)/.test(config) && /finally\s*\{[^}]*_netEnd/.test(config),
   'shgApi._fetch counts requests and clears net-busy in finally');
+check(/_quiet\(url\)/.test(config) && config.includes('(seats|track|kv|') && config.includes('const net = shgApi._quiet(url) ? null : shgApi._netStart();') && config.includes('if (net) shgApi._netEnd(net);'),
+  'background polls (/seats.php, /track.php, /kv.php) never light the bar or tick');
 check(/}, 250\);/.test(config) && /}, 600\);/.test(config) && config.includes("new CustomEvent('shg:netslow')"),
   'the bar waits 250 ms and the slow event 600 ms');
 

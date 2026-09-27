@@ -169,7 +169,7 @@ echo "\n-- E. the service worker --\n";
 $sw = (string) file_get_contents($ROOT . '/sw.js');
 preg_match("/^var ASSET_VER = '([^']+)';/m", $sw, $mv);
 $ver = $mv[1] ?? '';
-check('sw.js precaches both bundle files', str_contains($sw, "'/assets/dist/app.min.js?v=' + ASSET_VER") && str_contains($sw, "'/assets/dist/app.min.css?v=' + ASSET_VER"));
+check('sw.js does not precache the bundle while it is off (no 1.5 MB extra on install)', !str_contains($sw, "'/assets/dist/app.min.js?v=' + ASSET_VER") && !str_contains($sw, "'/assets/dist/app.min.css?v=' + ASSET_VER"));
 check('…and still precaches the separate files it falls back to', str_contains($sw, "'/assets/js/01-boot.js?v=' + ASSET_VER") && str_contains($sw, "'/assets/css/app.css?v=' + ASSET_VER"));
 check('the template and the worker agree on the stamp', $ver !== '' && ($tplStamps[0] ?? '') === $ver, $ver);
 

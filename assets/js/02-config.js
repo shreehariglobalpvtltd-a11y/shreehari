@@ -887,6 +887,14 @@ const shgApi = {
      behind the Sound switch and app_load_sound_on. Bookkeeping only: it
      never throws into a caller, never awaits, never delays a response. */
   _pending: 0, _busyTimer: null,
+  /* 27 Sep 2026: background polls never light the bar or tick. The seat map
+     re-reads /seats.php every 8 s, a pending ticket /track.php every 20 s,
+     the driver map writes /kv.php: on a slow line each would flash the bar
+     (and sound) while the passenger is only looking. Their screens carry
+     their own state, so the bar is kept for what the visitor just asked for. */
+  _quiet(url) {
+    return /\/(seats|track|kv|beacon|push|seat-events|log-error|heartbeat)\.php/.test(String(url || ''));
+  },
   _netStart() {
     var h = { slow: null };
     try {
@@ -918,7 +926,7 @@ const shgApi = {
     const ctl = (typeof AbortController === 'function') ? new AbortController() : null;
     if (ctl) init.signal = ctl.signal;
     const timer = ctl ? setTimeout(() => ctl.abort(), ms) : null;
-    const net = shgApi._netStart();
+    const net = shgApi._quiet(url) ? null : shgApi._netStart();
     try {
       return await fetch(url, init);
     } catch (e) {
@@ -928,7 +936,7 @@ const shgApi = {
       throw e;
     } finally {
       if (timer) clearTimeout(timer);
-      shgApi._netEnd(net);
+      if (net) shgApi._netEnd(net);
     }
   },
   /* 11 Sep 2026 (perf pass): a 419 means the session token the page was
