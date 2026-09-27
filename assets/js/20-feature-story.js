@@ -45,7 +45,7 @@
     var s = doc.getElementsByTagName('script');
     return s[s.length - 1] || null;
   })();
-  var m = /^(.*\/assets\/)js\/[^\/?#]+(\?[^#]*)?/.exec((me && me.src) || '');
+  var m = /^(.*\/assets\/)(?:js|dist)\/[^\/?#]+(\?[^#]*)?/.exec((me && me.src) || '');
   var base = m ? m[1] : '/assets/';
   var stamp = (m && m[2]) || '';
 

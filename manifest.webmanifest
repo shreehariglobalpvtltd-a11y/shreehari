@@ -19,19 +19,19 @@
   ],
   "icons": [
     {
-      "src": "/assets/img/icon-192.png?v=20260927b",
+      "src": "/assets/img/icon-192.png?v=20260927c",
       "type": "image/png",
       "sizes": "192x192",
       "purpose": "any"
     },
     {
-      "src": "/assets/img/icon-512.png?v=20260927b",
+      "src": "/assets/img/icon-512.png?v=20260927c",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "any"
     },
     {
-      "src": "/assets/img/icon-maskable-512.png?v=20260927b",
+      "src": "/assets/img/icon-maskable-512.png?v=20260927c",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "maskable"
@@ -60,6 +60,12 @@
       "short_name": "S Hari Map",
       "url": "/#/nav",
       "description": "India-Nepal map navigator and live bus tracking"
+    },
+    {
+      "name": "Staff desk · काउन्टर",
+      "short_name": "Desk",
+      "url": "/desk",
+      "description": "Counter, agent and office sign-in, straight to Quick Ticket"
     }
   ]
 }

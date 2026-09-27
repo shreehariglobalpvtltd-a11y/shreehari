@@ -63,7 +63,7 @@
      badge can never lie, and support can diagnose "stale tab" in seconds. */
   var CTR_VER = (function () {
     try {
-      var s = document.querySelector('script[src*="14-counter"]');
+      var s = document.querySelector('script[src*="14-counter"],script[src*="/assets/dist/app.min.js"]');
       return (s && (s.src.match(/[?&]v=([\w-]+)/) || [])[1]) || '';
     } catch (e) { return ''; }
   })();

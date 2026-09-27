@@ -489,7 +489,7 @@ function loadMapLibre() {
 function shgLazyLoad() {
   if (window._shgLazyP) return window._shgLazyP;
   window._shgLazyP = new Promise(function (resolve, reject) {
-    var me = document.querySelector('script[src*="13-admin-routes.js"]');
+    var me = document.querySelector('script[src*="13-admin-routes.js"],script[src*="/assets/dist/app.min.js"]');
     var ver = me ? ((me.getAttribute('src') || '').split('?v=')[1] || '') : '';
     var s = document.createElement('script');
     s.src = '/assets/js/16-lazy.js' + (ver ? '?v=' + encodeURIComponent(ver) : '');
@@ -1926,7 +1926,7 @@ var SN_HOME={lat:28.6132,lng:81.6087,label:'Sigane ko ghar'};
 var SN_NAV_P=null, SN_NAV_LOADED=false;
 function snNavLoad(){
   if(SN_NAV_P) return SN_NAV_P;
-  var ver=''; try{ var sc=document.querySelector('script[src*="13-admin-routes.js"]'); var m=sc&&sc.getAttribute('src').match(/[?&]v=([^&]+)/); ver=m?m[1]:''; }catch(e){}
+  var ver=''; try{ var sc=document.querySelector('script[src*="13-admin-routes.js"],script[src*="/assets/dist/app.min.js"]'); var m=sc&&sc.getAttribute('src').match(/[?&]v=([^&]+)/); ver=m?m[1]:''; }catch(e){}
   SN_NAV_P=new Promise(function(res,rej){
     var s=document.createElement('script'); s.src='/assets/js/15-nav.js'+(ver?'?v='+encodeURIComponent(ver):''); s.async=true;
     s.onload=function(){ SN_NAV_LOADED=true; res(); };

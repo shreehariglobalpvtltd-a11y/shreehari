@@ -37,7 +37,7 @@
 
   /* Where was I loaded from? → asset base + cache stamp (the v= query). */
   var me = doc.currentScript || (function () { var s = doc.getElementsByTagName('script'); return s[s.length - 1] || null; })();
-  var m = /^(.*\/assets\/)js\/[^\/?#]+(\?[^#]*)?/.exec((me && me.src) || '');
+  var m = /^(.*\/assets\/)(?:js|dist)\/[^\/?#]+(\?[^#]*)?/.exec((me && me.src) || '');
   var base = m ? m[1] : '/assets/', stamp = (m && m[2]) || '';
 
   var strip = null, img = null, labA = null, labB = null, flagA = null, flagB = null;

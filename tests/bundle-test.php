@@ -247,5 +247,16 @@ if ($home['code'] !== 200) {
     $set($was);
 }
 
+echo "\n-- G. every script that reads its own stamp also finds it in the bundle --\n";
+$js13 = (string) file_get_contents($ROOT . '/assets/js/13-admin-routes.js');
+$js14 = (string) file_get_contents($ROOT . '/assets/js/14-counter.js');
+$js18 = (string) file_get_contents($ROOT . '/assets/js/18-journey.js');
+$js20 = (string) file_get_contents($ROOT . '/assets/js/20-feature-story.js');
+check('13-admin-routes.js: both lazy loaders (16-lazy, 15-nav) accept the bundle script', substr_count($js13, 'script[src*="/assets/dist/app.min.js"]') === 2);
+check('14-counter.js: the version badge accepts the bundle script', str_contains($js14, 'script[src*="/assets/dist/app.min.js"]'));
+check('18-journey.js and 20-feature-story.js: the stamp regex accepts assets/dist/', str_contains($js18, '(?:js|dist)') && str_contains($js20, '(?:js|dist)'));
+$fake = '/assets/dist/app.min.js?v=20260927z';
+check('…and that regex really returns the stamp for the bundle URL', preg_match('#^(.*/assets/)(?:js|dist)/[^/?\#]+(\?[^\#]*)?#', $fake, $mm) === 1 && ($mm[2] ?? '') === '?v=20260927z');
+
 echo "\n----------------------------------------\n$PASS passed, $FAIL failed\n";
 exit($FAIL === 0 ? 0 : 1);
