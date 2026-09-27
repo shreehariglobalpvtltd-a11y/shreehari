@@ -35,7 +35,20 @@
 .bb-feats li > .bb-open::after{
   content:"▶";display:block;font-size:8px;line-height:1;margin-top:3px;
   color:rgba(255,255,255,.7);letter-spacing:.1em;
+  opacity:0;transform:translateY(3px);
 }
+/* 27 Sep 2026: the play mark appears when the band scrolls into view
+   (.is-live from 22-vip.js), one chip after the next, and then stays —
+   a cue that the chips open something, not a loop. The film itself still
+   starts only on a tap (25 Sep decision). */
+.brand-band.is-live .bb-feats li > .bb-open::after{animation:bbHint .5s cubic-bezier(.2,.8,.2,1) .2s both}
+.brand-band.is-live .bb-feats li:nth-child(2) > .bb-open::after{animation-delay:.32s}
+.brand-band.is-live .bb-feats li:nth-child(3) > .bb-open::after{animation-delay:.44s}
+.brand-band.is-live .bb-feats li:nth-child(4) > .bb-open::after{animation-delay:.56s}
+.bb-feats li > .bb-open:hover::after,.bb-feats li > .bb-open:focus-visible::after{opacity:1;transform:none}
+@keyframes bbHint{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.bb-feats li > .bb-open::after{opacity:1;transform:none;animation:none!important}}
+html.no-motion .bb-feats li > .bb-open::after{opacity:1;transform:none}
 .bb-feats li > .bb-open:active{transform:scale(.96)}
 .bb-feats li:has(> .bb-open:focus-visible){outline:2px solid #fff;outline-offset:2px}
 

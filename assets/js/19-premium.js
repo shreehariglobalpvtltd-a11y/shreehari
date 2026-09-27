@@ -386,8 +386,31 @@
      gesture. Building it on the FIRST one (rather than on the first sound)
      means the first sound is on time instead of being the one that gets
      swallowed. */
+  var gestured = false;
   ['pointerdown', 'keydown', 'touchstart'].forEach(function (ev) {
-    window.addEventListener(ev, function () { ctx(); welcome(); }, { passive: true, once: false });
+    window.addEventListener(ev, function () { gestured = true; ctx(); welcome(); }, { passive: true, once: false });
+  });
+
+  /* -------------------------------------------------------------------
+     THE WORKING TICK  (27 Sep 2026 — with the loading bar)
+     -----------------------------------------------------------------
+     shgApi._fetch (02-config.js) fires shg:netslow once for every request
+     that is still in flight after 600 ms. The answer is one soft tick —
+     the quietest voice here (peak 0.024), 45 ms, no tail — so a slow link
+     is heard as "working" rather than as silence. Four things silence it:
+     the per-device Sound switch (Feel.play), the office switch
+     app_load_sound_on (public bool; absent row = on), a background tab,
+     and the autoplay rule: nothing before the first gesture, because a
+     context built earlier is suspended and the tick would be swallowed
+     anyway — better not to schedule it at all.
+     ----------------------------------------------------------------- */
+  VOICES.working = function () { voice(880, 0, 0.045, 0.024, 'sine'); };
+  function loadSoundOn() {
+    try { return typeof shgSwitchOn !== 'function' || shgSwitchOn('app_load_sound_on'); } catch (e) { return true; }
+  }
+  document.addEventListener('shg:netslow', function () {
+    if (!gestured || !loadSoundOn()) return;
+    Feel.play('working');
   });
 
   /* -------------------------------------------------------------------

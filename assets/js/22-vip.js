@@ -224,13 +224,29 @@
 
   /* ---------------------------------------------------------------- *
    *  4. Animate only what is on screen
+   *  27 Sep 2026: not just the VIP cabin and the offer card any more —
+   *  every home block that carries a looping decoration is watched, and
+   *  premium.css §11 lets those decorations run only while the block is
+   *  .is-live AND the page is awake (section 5 below).
    * ---------------------------------------------------------------- */
+  var LIVE_TARGETS = [
+    '#vipHighlight .vip-card', '#advOffer .ao-card',
+    '#brandBand .brand-band',               /* the four chip icons */
+    '.hero', '.hero-live-ticker',           /* rays, particles, glow, the CTA pulse */
+    '.qt-banner',                           /* QuickBot badge and route line */
+    '#routeAnim', '.shg-hero',              /* the road scene, the route strip */
+    '.founder-card', '.f-ceo',              /* the CEO rings */
+    '.flag-cards', '.flag-bus-bridge'       /* the waving flags, the bus */
+  ];
+  var liveIo = null;
   function wireLiveness() {
     var targets = [];
-    var vip = doc.querySelector('#vipHighlight .vip-card');
-    var ao  = doc.querySelector('#advOffer .ao-card');
-    if (vip) { targets.push(vip); }
-    if (ao)  { targets.push(ao); }
+    LIVE_TARGETS.forEach(function (sel) {
+      var found = doc.querySelectorAll(sel);
+      for (var i = 0; i < found.length; i++) {
+        if (targets.indexOf(found[i]) < 0) { targets.push(found[i]); }
+      }
+    });
     if (!targets.length) { return; }
 
     if (typeof window.IntersectionObserver !== 'function') {
@@ -238,13 +254,62 @@
       return;
     }
 
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (en) {
-        en.target.classList.toggle('is-live', en.isIntersecting);
-      });
-    }, { rootMargin: '80px 0px', threshold: 0.12 });
+    if (!liveIo) {
+      liveIo = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          en.target.classList.toggle('is-live', en.isIntersecting);
+        });
+      }, { rootMargin: '80px 0px', threshold: 0.12 });
+    }
+    targets.forEach(function (el) { liveIo.observe(el); });
+  }
 
-    targets.forEach(function (el) { io.observe(el); });
+  /* ---------------------------------------------------------------- *
+   *  5. Awake, then still (27 Sep 2026 — the owner's 25 Sep rule: the
+   *  home page stays still at rest)
+   *
+   *  The looping decorations — chip icons, hero rays, the fab pulses,
+   *  the road scene, the cabin — run only while somebody is here: for
+   *  AWAKE_MS after the splash has gone (Splash.finish dispatches
+   *  shg:splashdone) and for AWAKE_MS after every touch, key or wheel.
+   *  Then html.shg-awake drops and premium.css §11 pauses them where
+   *  they stand: nothing loops off screen, nothing loops on an idle
+   *  screen. A hidden tab is still at once. Adding a class is all this
+   *  does — the CSS decides what "still" looks like for each element.
+   * ---------------------------------------------------------------- */
+  var AWAKE_MS = 6000, awakeTimer = null, lastWake = 0;
+  var root = doc.documentElement;
+
+  function sleep() {
+    root.classList.remove('shg-awake');
+    if (awakeTimer) { clearTimeout(awakeTimer); awakeTimer = null; }
+  }
+  function wake() {
+    var now = Date.now();
+    /* scroll/wheel fire dozens of times a second; re-arming the timer once
+       a second is plenty and keeps the handler free. */
+    if (awakeTimer && now - lastWake < 1000) { return; }
+    lastWake = now;
+    root.classList.add('shg-awake');
+    if (awakeTimer) { clearTimeout(awakeTimer); }
+    awakeTimer = setTimeout(sleep, AWAKE_MS);
+  }
+  function splashGone() {
+    var sp = $id('splash');
+    if (!sp || sp.classList.contains('done') || sp.style.display === 'none') { return true; }
+    try { return typeof Splash === 'object' && !!Splash && Splash.done === true; } catch (e) { return false; }
+  }
+  function wireAwake() {
+    ['pointerdown', 'touchstart', 'keydown', 'wheel', 'scroll'].forEach(function (ev) {
+      window.addEventListener(ev, wake, { passive: true });
+    });
+    doc.addEventListener('shg:splashdone', wake);
+    doc.addEventListener('visibilitychange', function () {
+      if (doc.hidden) { sleep(); } else { wake(); }
+    });
+    /* Deep link or second view of the session: the splash is already gone,
+       so the six-second window starts now. */
+    if (splashGone()) { wake(); }
   }
 
   function init() {
@@ -252,10 +317,11 @@
     paintVipPrice();
     wireButtons();
     wireLiveness();
+    wireAwake();
   }
 
   if (doc.readyState === 'loading') { doc.addEventListener('DOMContentLoaded', init); }
   else { init(); }
 
-  window.SHG_VIP = { init: init, paintOffer: paintOffer, wantPrivate: wantPrivate };
+  window.SHG_VIP = { init: init, paintOffer: paintOffer, wantPrivate: wantPrivate, wake: wake, wireLiveness: wireLiveness };
 })();

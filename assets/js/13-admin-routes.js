@@ -629,19 +629,21 @@ const RoleGate = {
 const Splash = {
   el: null, bar: null, status: null, skip: null, done: false,
   progress: 0, tasks: 0, completed: 0, startTs: 0, dataReady: false,
-  trailer: false, soundOn: false, _ac: null,
-  /* A floor, not a wait. Long enough that the logo doesn't flash past on a
-     fast connection, short enough that nobody is ever held back by it —
-     this used to be 5000, so a booking that had loaded in 300ms still sat
-     behind four and a half seconds of branding. Sep-2 mobile pass:
-     dropped to 500ms so a phone paint feels instant; the logo still
-     registers because the letter-by-letter animation runs in parallel. */
-  minDuration: 500,
-  /* First visit: show the brand briefly while data loads. Staff sign-in
-     has its own link; passengers need not wait for a portal chooser. */
-  portalMs: 600,
-  portalTimer: null,
-  featTimer: null,
+  /* A floor, not a wait. This used to be 5000, then 500 (Sep-2 mobile
+     pass), then 0 — at which point the opening lasted exactly as long as the
+     six boot ticks, often under a second, and the owner "never saw the
+     starting animation" (26 Sep 2026). 1400 ms is long enough for the three
+     marketing lines below to enter (0 / 450 / 900 ms) and be read, and
+     still shorter than the shortest real boot on a slow link. The hide is
+     max(boot, floor): never shorter than the boot, never much longer. */
+  minDuration: 1400,
+  /* Within one browser session the opening is shown once — unless the last
+     showing is older than this, so a phone that opens the app morning and
+     evening sees it twice a day, not once per install. The inline script in
+     app.template.html applies the same rule before the first paint. */
+  REPEAT_MS: 6 * 60 * 60 * 1000,
+  ROTATE_MS: 450,
+  lineTimers: [],
   messages: [
     'Checking session…', 'Loading trip data…', 'Preparing routes…',
     'Caching map tiles…', 'Almost ready…'
@@ -654,42 +656,26 @@ const Splash = {
     this.startTs = performance.now();
     if (!this.el) { this.done = true; return; }
     var splashed = false;
-    try { splashed = !!sessionStorage.getItem('shg:splashed'); } catch (e) {}
+    try {
+      var seenAt = parseInt(localStorage.getItem('shg:splashAt') || '0', 10) || 0;
+      splashed = !!sessionStorage.getItem('shg:splashed') && (Date.now() - seenAt) < this.REPEAT_MS;
+    } catch (e) {}
     if (splashed) {
       this.el.style.display = 'none';
       this.done = true;
       RoleGate.init().maybeShow();   // splash skipped this session — still ask
       return;
     }
-    /* V5: the long (34s) first-visit cinematic trailer is disabled by default
-       for a fast, snappy launch. The trailer code below is preserved — flip
-       ENABLE_INTRO_TRAILER to true (or restore the localStorage check) to bring
-       it back. */
-    var ENABLE_INTRO_TRAILER = false;
-    try { this.trailer = ENABLE_INTRO_TRAILER && !localStorage.getItem('shg:introSeen'); } catch (e) { this.trailer = false; }
-    if (this.trailer) {
-      this.minDuration = 38000;
-      try { localStorage.setItem('shg:introSeen', '1'); } catch (e) {}
-      this.runScenes();
-    } else {
-      /* Fast splash: the cinematic trailer DOM is preserved (flip
-         ENABLE_INTRO_TRAILER to restore it) but kept out of layout so the
-         clean logo + name + phone intro stands alone. */
-      var _intro = $('#introScenes'); if (_intro) _intro.style.display = 'none';
-    }
-    // No marketing countdown: initialization owns the lifetime of this screen.
-    this.minDuration = 0;
     if (this.el.classList.contains('done')) { this.done = true; this.el.style.display = 'none'; return; }
-    const sb = $('#splashSound');
-    if (sb) sb.addEventListener('click', () => {
-      this.soundOn = !this.soundOn;
-      sb.textContent = this.soundOn ? '🔊 Sound On' : '🔇 Sound';
-      sb.classList.toggle('on', this.soundOn);
-      if (this.soundOn) this.chime(1);
-    });
+    /* app_motion_on = 0 (Admin -> Settings -> Site, 27 Sep 2026): no floor
+       and no rotating lines — the opening lasts exactly as long as the boot,
+       as it did before. Absent row = on (shgSwitchOn, 02-config.js). */
+    if (!this.motion()) this.minDuration = 0;
+    this.localise();
     this.animateTitle();
+    this.rotate();
     if (this.skip) {
-      setTimeout(() => { this.skip.classList.add('show'); }, this.trailer ? 2500 : 600);
+      setTimeout(() => { this.skip.classList.add('show'); }, 600);
       this.skip.addEventListener('click', () => this.finish());
     }
     this.recoveryTimer = setTimeout(() => {
@@ -698,56 +684,6 @@ const Splash = {
       const retry = $('#splashRetry'); if (retry) retry.hidden = false;
       if (this.skip) this.skip.classList.add('show');
     }, 8000);
-  },
-  /* Trailer — 6 scenes, 24s total. CEO first → India → Nepal → both → map → features.
-     Tight, smooth, skip naparos jasto chhoto. */
-  runScenes() {
-    const mb = $('#introMapBox');
-    if (mb && typeof trackMapSVG === 'function') { try { mb.innerHTML = trackMapSVG(0, false); } catch (e) {} }
-    const ci = $('#introCeoImg');
-    try { const saved = localStorage.getItem('shg:ceoPhoto'); if (saved && ci) ci.src = saved; } catch (e) {}
-    const caps = ['👑 CEO — Sher Bahadur Bishwokarma', '🇮🇳 INDIA', '🇳🇵 NEPAL', '🚌 दुई देश · एक यात्रा', '🗺️ Route — AMD → NPJ', '☕ Refreshment Halt', '🎫 Book in 3 Taps', '🕉️ ॐ नमो नारायणाय · शुभ यात्रा'];
-    [3000, 7500, 11500, 15500, 20000, 25000, 30000, 35000].forEach((t2, i) => {
-      setTimeout(() => {
-        if (this.done) return;
-        for (let k = 1; k <= 8; k++) {
-          const sc = $('#introS' + k);
-          if (sc) sc.classList.toggle('on', k === i + 1);
-        }
-        if (this.status) this.status.textContent = caps[i];
-        this.chime(i + 1);
-      }, t2);
-    });
-  },
-  /* Scene sounds — only after the user taps the Sound chip (no autoplay).
-     Scene 1: deep flag-reveal gong · Scene 2: 6 ascending blips synced to
-     the feature badges popping in · other scenes: soft two-note chime. */
-  _note(f, at, dur, vol, type) {
-    const ac = this._ac, o = ac.createOscillator(), g = ac.createGain();
-    o.type = type || 'sine'; o.frequency.value = f;
-    g.gain.setValueAtTime(0, at);
-    g.gain.linearRampToValueAtTime(vol, at + .04);
-    g.gain.linearRampToValueAtTime(0, at + dur);
-    o.connect(g); g.connect(ac.destination);
-    o.start(at); o.stop(at + dur + .05);
-  },
-  chime(step) {
-    if (!this.soundOn) return;
-    try {
-      const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
-      if (!this._ac) this._ac = new AC();
-      const t0 = this._ac.currentTime;
-      if (step === 1) {                      /* flag reveal — warm gong */
-        this._note(196, t0, 1.4, .16, 'sine');
-        this._note(392, t0 + .1, 1.2, .1, 'sine');
-        this._note(587.33, t0 + .25, 1, .07, 'triangle');
-      } else if (step === 3) {               /* feature badges — 6 rising blips */
-        [660, 740, 830, 932, 1046, 1174].forEach((f, i) => this._note(f, t0 + .5 + i * .25, .22, .1, 'triangle'));
-      } else {
-        this._note(523.25, t0, .5, .13, 'sine');
-        this._note(659.25, t0 + .12, .5, .1, 'sine');
-      }
-    } catch (e) {}
   },
   animateTitle() {
     /* Premium intro — a clean logo → name → phone reveal. Brand name and
@@ -804,73 +740,92 @@ const Splash = {
     reveal('#splashPhone', 210);
     /* (the skip button is revealed separately in init(), at 1.2s) */
   },
-  /* The 2-second staff window. Purely additive: it rides on top of the
-     splash the visitor was already watching, so a passenger who ignores it
-     reaches the booking screen at exactly the same moment they would have
-     anyway. Tapping Agent or Admin leaves for the staff sign-in, which
-     decides from the ACCOUNT what that person may actually do — picking
-     "Admin" here is a routing hint, never a promotion. */
-  armPortal() {
-    var wrap = document.getElementById('splashPortal');
-    if (!wrap) return;
-    var bar = document.getElementById('spBar');
-    var cnt = document.getElementById('spCount');
-    var self = this;
-
-    wrap.hidden = false;
-    setTimeout(function () { wrap.classList.add('show'); }, 250);
-
-    /* Only the "Book now" (data-portal=customer) button remains — Agent and
-       Admin pills were removed 2026-08-29 (master-prompt §2). Keep the
-       click wiring for the customer button so a first-time visitor can skip
-       the brand hold; any other pill added back later would still be
-       handled here without changes. */
-    Array.prototype.forEach.call(wrap.querySelectorAll('[data-portal]'), function (b) {
-      b.addEventListener('click', function () {
-        var role = b.getAttribute('data-portal');
-        self.stopPortal();
-        try { localStorage.setItem(RoleGate.KEY, role || 'customer'); } catch (e) {}
-        if (role === 'customer' || !role) { self.finish(); return; }
-        var base = ((window.SHG_BOOT && window.SHG_BOOT.appUrl) || location.origin).replace(/\/+$/, '');
-        location.href = base + '/admin/login.php?portal=' + encodeURIComponent(role);
-      });
-    });
-
-    /* Drain the bar with one transition rather than a per-frame timer — it
-       runs on the compositor, so a slow phone spends its CPU on the data
-       load underneath instead of on this animation. */
-    if (bar) {
-      bar.style.transition = 'transform ' + this.portalMs + 'ms linear';
-      requestAnimationFrame(function () {
-        requestAnimationFrame(function () { bar.style.transform = 'scaleX(0)'; });
-      });
-    }
-    /* Cycle the feature lines. Paced so every line gets one turn inside the
-       hold rather than racing through all four. */
-    var feats = wrap.querySelectorAll('#spFeats li');
-    if (feats.length > 1) {
-      var fi = 0;
-      var every = Math.max(1100, Math.floor(this.portalMs / feats.length));
-      this.featTimer = setInterval(function () {
-        feats[fi].classList.remove('on');
-        fi = (fi + 1) % feats.length;
-        feats[fi].classList.add('on');
-      }, every);
-    }
-
-    var left = Math.round(this.portalMs / 1000);
-    if (cnt) cnt.textContent = String(left);
-    this.portalTimer = setInterval(function () {
-      left--;
-      if (cnt) cnt.textContent = String(Math.max(0, left));
-      if (left <= 0) self.stopPortal();
-    }, 1000);
+  /* The opening in the visitor's language (27 Sep 2026). Title and tagline
+     are seeded in English in the HTML so they paint on the first frame; here
+     they take the selected language BEFORE the letters animate. applyLang()
+     runs later in init() and must not touch the title (no data-i18n on it:
+     innerHTML would wipe the letter spans mid-reveal). The element's own
+     lang attribute makes premium.css §6 apply (Devanagari face, no tracking)
+     before <html lang> is set. Nothing here is a new string: t() falls back
+     to English, so a missing key leaves the seeded text alone. */
+  localise() {
+    if (typeof t !== 'function') return;
+    var lang = (typeof LANG === 'string' && LANG) || 'en';
+    var put = function (id, key) {
+      var el = $(id); if (!el) return;
+      var s = t(key);
+      if (!s || s === key) return;
+      if (el.textContent.trim() !== s) el.textContent = s;
+      el.setAttribute('lang', lang);
+    };
+    put('#splashTitle', 'splashTitle');
+    put('#splashTagline', 'splashTagline');
   },
-  stopPortal() {
-    if (this.portalTimer) { clearInterval(this.portalTimer); this.portalTimer = null; }
-    if (this.featTimer) { clearInterval(this.featTimer); this.featTimer = null; }
-    var wrap = document.getElementById('splashPortal');
-    if (wrap) wrap.classList.remove('show');
+  /* THE SIGNATURE OPENING (owner, 26 Sep 2026: one opening with marketing
+     words). Three lines the app already says — the hero title, the brand
+     band tagline, the promise — enter one after another, ROTATE_MS apart,
+     inside the minDuration floor. Opacity + translateY only (premium.css
+     §9), so the compositor does all of it. Nepali when the app is in
+     Nepali, else the selected language. Reduced motion: no keyframes, the
+     static frame keeps the promise line. */
+  lines() {
+    if (typeof t !== 'function') return [];
+    var strip = function (s) {
+      return String(s || '').replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+    };
+    var out = [];
+    ['heroTitle', 'bbTag', 'premiumPromise'].forEach(function (k) {
+      var s = strip(t(k));
+      if (s && s !== k && out.indexOf(s) < 0) out.push(s);
+    });
+    return out;
+  },
+  reducedMotion() {
+    try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
+    catch (e) { return false; }
+  },
+  motion() {
+    try { return typeof shgSwitchOn !== 'function' || shgSwitchOn('app_motion_on'); } catch (e) { return true; }
+  },
+  rotate() {
+    var box = $('#splashPromise');
+    if (!box) return;
+    var lines = this.lines();
+    if (!lines.length) return;
+    box.setAttribute('lang', (typeof LANG === 'string' && LANG) || 'en');
+    if (this.reducedMotion() || !this.motion()) {
+      box.textContent = '';
+      var one = document.createElement('span');
+      one.className = 'sp-line in';
+      one.textContent = lines[lines.length - 1];
+      box.appendChild(one);
+      return;
+    }
+    /* The seeded English line is kept in place when it IS line one, so it
+       does not leave and re-enter; every other line is built here. */
+    var first = box.firstElementChild;
+    var keepFirst = !!(first && first.classList.contains('sp-line') && first.textContent.trim() === lines[0]);
+    if (keepFirst) { while (first.nextSibling) box.removeChild(first.nextSibling); }
+    else { box.textContent = ''; }
+    var spans = [];
+    lines.forEach(function (txt, i) {
+      if (i === 0 && keepFirst) { spans.push(first); return; }
+      var s = document.createElement('span');
+      s.className = 'sp-line' + (i === 0 ? ' in' : '');
+      s.textContent = txt;
+      box.appendChild(s);
+      spans.push(s);
+    });
+    var self = this;
+    spans.forEach(function (s, i) {
+      if (i === 0) return;
+      self.lineTimers.push(setTimeout(function () {
+        if (self.done) return;
+        spans[i - 1].classList.remove('in'); spans[i - 1].classList.add('out');
+        s.classList.add('in');
+      }, i * self.ROTATE_MS));
+    });
   },
   tick(label) {
     this.completed++;
@@ -891,16 +846,19 @@ const Splash = {
     if (this.done) return;
     this.done = true;
     clearTimeout(this.recoveryTimer);
-    this.stopPortal();
     if (this.bar) this.bar.style.width = '100%';
     if (this.status) { this.status.style.opacity = '0'; setTimeout(() => { if (this.status) this.status.textContent = '✓ Ready'; this.status.style.opacity = '1'; }, 200); }
-    try { sessionStorage.setItem('shg:splashed', '1'); } catch (e) {}
+    try { sessionStorage.setItem('shg:splashed', '1'); localStorage.setItem('shg:splashAt', String(Date.now())); } catch (e) {}
+    this.lineTimers.forEach(clearTimeout); this.lineTimers = [];
     /* Hand the role picker over AS the splash fades, not after it. The two
        used to be strictly sequential (300ms pause + 1100ms fade = 1.4s of
        nothing), which is what made the launch feel slow even once the data
        was ready. The picker is now already on screen behind the fade. */
     setTimeout(() => {
       if (this.el) this.el.classList.add('done');
+      /* 27 Sep 2026: the home page's six-second "awake" window (22-vip.js,
+         stillness at rest) starts from this moment. */
+      try { document.dispatchEvent(new CustomEvent('shg:splashdone')); } catch (e) {}
       RoleGate.init().maybeShow();
       /* Boot time the owner can actually check: navigation → the moment the
          role picker is usable. Paint metrics lie in a background tab; this

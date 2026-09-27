@@ -815,6 +815,30 @@ const store = {
    Every call throws a plain Error with a toast()-ready message on
    failure — callers never need to inspect the envelope themselves.
 ================================================================ */
+/* Office switches the browser reads (27 Sep 2026). A PUBLIC bool row in the
+   settings table (is_public = 1) rides in SHG_BOOT.settings as true / false
+   (Settings::get casts 'bool' rows). The rule for every switch that gates a
+   nicety — motion, the loading tick — is "absent = ON": a site that has not
+   run the upgrade SQL behaves exactly like one that has and left the switch
+   on, so a row only ever needs to exist to turn something OFF. Only false,
+   0 and '0' mean off, the same test 19-premium.js applies to app_mantra_on.
+   Never throws. */
+function shgSwitchOn(key) {
+  try {
+    var st = window.SHG_BOOT && window.SHG_BOOT.settings;
+    if (st && Object.prototype.hasOwnProperty.call(st, key)) {
+      var v = st[key];
+      return !(v === false || v === 0 || v === '0');
+    }
+  } catch (e) {}
+  return true;
+}
+/* app_motion_on = 0 (Admin -> Settings -> Site): every entrance is instant
+   — premium.css §10 "html.no-motion" — and the splash keeps no floor. Stamped
+   here, in the second script, so the very first view already renders without
+   motion; the class is only ever added, never toggled at runtime. */
+try { if (!shgSwitchOn('app_motion_on')) document.documentElement.classList.add('no-motion'); } catch (e) {}
+
 /* Haptics (4 Sep 2026): a short buzz on the taps that matter — a seat
    picked, a booking sent, a refusal. Android Chrome only (iOS Safari has no
    vibrate API); silent under prefers-reduced-motion and wherever the OS
@@ -854,10 +878,47 @@ const shgApi = {
   /* Fallback lines follow the app language; a server message is shown as sent. */
   _msg(k, en) { try { const s = typeof t === 'function' ? t(k) : ''; return s && s !== k ? s : en; } catch (e) { return en; } },
   _slow: 'The network is slow right now — please check your connection and try again. · नेटवर्क ढिलो छ, फेरि प्रयास गर्नुहोस्।',
+  /* THE LOADING BAR (27 Sep 2026). Every request through _fetch is counted.
+     Once one has been in flight for 250 ms, <html> gets class net-busy and
+     premium.css §12 draws a 2 px bar along the top until the count is back
+     at zero — so a quick answer shows nothing and a slow link is visibly
+     "working" instead of silent. A request that passes 600 ms also announces
+     itself once (shg:netslow); 19-premium.js answers with one soft tick
+     behind the Sound switch and app_load_sound_on. Bookkeeping only: it
+     never throws into a caller, never awaits, never delays a response. */
+  _pending: 0, _busyTimer: null,
+  _netStart() {
+    var h = { slow: null };
+    try {
+      this._pending++;
+      if (this._pending === 1 && !this._busyTimer) {
+        this._busyTimer = setTimeout(() => {
+          this._busyTimer = null;
+          if (this._pending > 0) document.documentElement.classList.add('net-busy');
+        }, 250);
+      }
+      h.slow = setTimeout(() => {
+        h.slow = null;
+        try { document.dispatchEvent(new CustomEvent('shg:netslow')); } catch (e) {}
+      }, 600);
+    } catch (e) {}
+    return h;
+  },
+  _netEnd(h) {
+    try {
+      if (h && h.slow) { clearTimeout(h.slow); h.slow = null; }
+      this._pending = Math.max(0, this._pending - 1);
+      if (this._pending === 0) {
+        if (this._busyTimer) { clearTimeout(this._busyTimer); this._busyTimer = null; }
+        document.documentElement.classList.remove('net-busy');
+      }
+    } catch (e) {}
+  },
   async _fetch(url, init, ms) {
     const ctl = (typeof AbortController === 'function') ? new AbortController() : null;
     if (ctl) init.signal = ctl.signal;
     const timer = ctl ? setTimeout(() => ctl.abort(), ms) : null;
+    const net = shgApi._netStart();
     try {
       return await fetch(url, init);
     } catch (e) {
@@ -867,6 +928,7 @@ const shgApi = {
       throw e;
     } finally {
       if (timer) clearTimeout(timer);
+      shgApi._netEnd(net);
     }
   },
   /* 11 Sep 2026 (perf pass): a 419 means the session token the page was
