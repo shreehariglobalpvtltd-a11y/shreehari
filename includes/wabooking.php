@@ -86,6 +86,23 @@ final class WaBooking
             }
         }
 
+        /* A BARE GREETING (28 Sep 2026, owner: "hi lekhe vane kasaile ticket
+           book garna chaheko"). "hi" carries no booking word and no seat
+           count, so looksLikeRequest() rightly refuses it and it fell all
+           the way to the canned menu — which lists what the number can do
+           and asks for nothing back.
+
+           Answer it instead with the one line that books a ticket. No state
+           is written: this is a reply, not the start of a conversation, so
+           whatever they send next is read fresh by the passes below and a
+           question still reaches the assistant. Only an EXACT greeting gets
+           here — "hi 2 seat nepal" already satisfies looksLikeRequest(). */
+        if ($state === null
+            && Settings::getBool('wa_greet_booking', false)
+            && self::isGreeting($text)) {
+            return self::out(self::say('greeting', $lang));
+        }
+
         // Nothing in progress and nothing bookable in the message — let the
         // PNR lookup, the assistant or the menu answer instead.
         if ($state === null && !self::looksLikeRequest($text)) {
@@ -380,6 +397,26 @@ final class WaBooking
     private static function say(string $key, string $lang): string
     {
         $t = [
+            /* A bare "hi" used to reach the canned menu, which lists what
+               the number can do and asks for nothing. This answers the
+               question the greeting is actually opening with, and shows the
+               ONE line that books a ticket — a worked example, because a
+               passenger copies an example far more readily than they follow
+               an instruction. (28 Sep 2026) */
+            'greeting' => [
+                'en' => "🙏 Namaste! I can book your ticket right here.\n\n"
+                      . "Send it in one message: how many seats, which way, which day — and the time if you have one.\n\n"
+                      . "Example: 2 seat Surat to Nepal, 25 tarikh, beluka 7 baje",
+                'hi' => "🙏 नमस्ते! मैं आपका टिकट यहीं बना सकता हूँ।\n\n"
+                      . "एक ही संदेश में भेजिए: कितनी सीट, किस तरफ, किस दिन — समय हो तो वह भी।\n\n"
+                      . "जैसे: 2 सीट सूरत से नेपाल, 25 तारीख, शाम 7 बजे",
+                'ne' => "🙏 नमस्ते! म तपाईंको टिकट यहीँ बनाउन सक्छु।\n\n"
+                      . "एउटै सन्देशमा पठाउनुहोस्: कति सिट, कुन तर्फ, कुन दिन — समय भए त्यो पनि।\n\n"
+                      . "जस्तै: २ सिट सुरत बाट नेपाल, २५ तारिख, बेलुका ७ बजे",
+                'gu' => "🙏 નમસ્તે! હું તમારી ટિકિટ અહીં જ બુક કરી શકું છું.\n\n"
+                      . "એક જ સંદેશમાં મોકલો: કેટલી સીટ, કઈ તરફ, કયા દિવસે — સમય હોય તો તે પણ.\n\n"
+                      . "દા.ત.: 2 સીટ સુરત થી નેપાળ, 25 તારીખ, સાંજે 7 વાગ્યે",
+            ],
             'askName' => [
                 'en' => 'What name should the ticket be in?',
                 'hi' => 'टिकट किस नाम से बनाएँ?',
@@ -971,6 +1008,36 @@ Example: Ram Bahadur 35, Sita Gurung 30",
      * swallowed the next message as the passenger's name. A question goes to
      * the assistant unless it also says book / ticket / seat.
      */
+    /**
+     * Is the WHOLE message just a greeting? (28 Sep 2026)
+     *
+     * Exact match on the letters, after punctuation, digits and emoji are
+     * dropped — so "hi", "hi!", "🙏 namaste" all qualify and "hi 2 seat
+     * nepal" does not (it reduces to "hi seat nepal", which is not in the
+     * list, and looksLikeRequest() claims it anyway).
+     *
+     * Deliberately a closed list rather than a prefix test: "hi" must not
+     * catch "hire", and a message that merely OPENS with a greeting is a
+     * real request whose facts the passes below should read.
+     */
+    private static function isGreeting(string $text): bool
+    {
+        $t = mb_strtolower(trim($text));
+        $t = (string) preg_replace('/[^\p{L}\p{M}\s]+/u', ' ', $t);
+        $t = trim((string) preg_replace('/\s+/u', ' ', $t));
+        if ($t === '' || mb_strlen($t) > 30) {
+            return false;
+        }
+
+        return in_array($t, [
+            'hi', 'hii', 'hiii', 'hello', 'helo', 'hellow', 'hey', 'hai', 'yo',
+            'namaste', 'namaskar', 'namaskaar', 'ram ram', 'jay shree ram', 'jai shree ram',
+            'good morning', 'good afternoon', 'good evening', 'gm', 'gud morning',
+            'नमस्ते', 'नमस्कार', 'हेलो', 'हैलो', 'हाय', 'राम राम', 'जय श्री राम',
+            'નમસ્તે', 'નમસ્કાર', 'હેલો', 'હાય', 'કેમ છો', 'જય શ્રી રામ',
+        ], true);
+    }
+
     private static function looksLikeRequest(string $text): bool
     {
         $t    = mb_strtolower(trim($text));
@@ -981,6 +1048,17 @@ Example: Ram Bahadur 35, Sita Gurung 30",
                 $said = true;
                 break;
             }
+        }
+        /* The list above trusts सिट and चाहियो but not the way most people
+           actually type them. "namaste 2 sit chahiyo" carried a seat count
+           and a request word and was still refused, because only the
+           Devanagari spellings were listed. (28 Sep 2026)
+
+           Matched on word boundaries, not as substrings like the list
+           above: "sit" inside "visit" and "site" is not a booking, and
+           str_contains() cannot tell the difference. */
+        if (!$said && preg_match('/(?<![\p{L}\p{M}])(sit|sits|tikat|tiket|tikit|tkt|chahiyo|chahiye|chaiyo|chaiye|chahincha|chahinchha|joiye|joie)(?![\p{L}\p{M}])/u', $t) === 1) {
+            $said = true;
         }
         if ($said) {
             return true;

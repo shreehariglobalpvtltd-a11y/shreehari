@@ -152,6 +152,9 @@ const CORE_SUITES = [
     'ai-kb-test.php'              => 'the knowledge base: audience scope, the ai_kb_on switch, an honest redacted miss',
     // 28 Sep 2026, registered with the admin AI panel it guards.
     'ai-panel-test.php'           => 'the panel door: role, liveness, the /api/ temp-password case, separate staging',
+    // 28 Sep 2026, registered with the WhatsApp seller gaps they guard.
+    'bot-time-test.php'           => 'the time of day is read, and a time word is never the passenger name',
+    'wa-advance-test.php'         => 'a bare hello opens a booking, and a near-miss pickup never guesses between two towns',
 ];
 
 /**

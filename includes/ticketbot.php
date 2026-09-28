@@ -594,7 +594,15 @@ final class TicketBot
     {
         $raw = trim((string) preg_replace('/\s+/u', ' ', $text));
         $out = ['name' => '', 'phone' => '', 'country' => '', 'seats' => 0, 'date' => '', 'direction' => '',
-                'boarding' => '', 'gender' => '', 'pay' => '', 'agentCode' => '', 'found' => [], 'residual' => '', 'lang' => 'en'];
+                'boarding' => '', 'gender' => '', 'pay' => '', 'agentCode' => '', 'found' => [], 'residual' => '', 'lang' => 'en',
+                // 28 Sep 2026 — what the passenger said about WHEN. `time` is
+                // 24-hour and only set when it is unambiguous; `timeHour` is
+                // the literal hour they wrote, so a caller can ask "bihana ki
+                // beluka?" rather than guess a bus twelve hours out.
+                'time' => '', 'timeOfDay' => '', 'timeText' => '', 'timeHour' => -1,
+                // "rupaydiha → rupaidiha" when a near-miss spelling was
+                // repaired, so the desk card and the passenger can both see it.
+                'boardingFuzzy' => ''];
         if ($raw === '') {
             return $out;
         }
@@ -827,6 +835,123 @@ final class TicketBot
             $lower = (string) preg_replace('/(?<![\p{L}\p{M}])' . preg_quote($tok, '/') . '' . self::NB . '/u', ' ', $lower);
         }
 
+        /* TIME OF DAY (28 Sep 2026) — "beluka 7 baje", "7pm", "19:30", "शाम 7 बजे".
+
+           Two reasons this pass exists, and the second is the urgent one:
+
+           1. Passengers say when they want to travel, and nothing read it.
+              The departure came only from the schedule, so "bihana ko bus"
+              and "beluka ko bus" planned identically.
+
+           2. Until this pass, the words fell through every other pass and
+              landed in the RESIDUAL — which is the passenger's name. So
+              "beluka 7 baje 2 seat nepal" printed a ticket for BELUKA BAJE,
+              and "raati 9 baje surat" for RAATI BAJE SURAT. Exactly the
+              failure the date pass already guards against ("Ram Kal") and
+              the boarding pass guards against with looksLikePlace().
+
+           An hour is only ever read next to a clock word, am/pm or a part of
+           the day — never a bare number, which is a seat count or a date and
+           is claimed by the passes either side of this one.
+
+           An hour with NO part of the day and no am/pm is genuinely
+           ambiguous (7 baje is 07:00 or 19:00), so `time` is left empty and
+           `timeHour` carries the literal hour. Guessing would put a
+           passenger on a bus twelve hours from the one they meant. */
+        $periodWords = [
+            'bihana' => 'morning', 'bihan' => 'morning', 'morning' => 'morning', 'subah' => 'morning',
+            'savar' => 'morning', 'savare' => 'morning', 'bihana ko' => 'morning',
+            'diuso' => 'afternoon', 'diusoo' => 'afternoon', 'afternoon' => 'afternoon',
+            'dopahar' => 'afternoon', 'noon' => 'afternoon', 'madhyanha' => 'afternoon',
+            'beluka' => 'evening', 'belukaa' => 'evening', 'sanjha' => 'evening', 'saanjh' => 'evening',
+            'evening' => 'evening', 'sham' => 'evening', 'shyam' => 'evening',
+            'raati' => 'night', 'rati' => 'night', 'raat' => 'night', 'night' => 'night',
+            // Devanagari (Hindi / Nepali)
+            'बिहान' => 'morning', 'बिहानै' => 'morning', 'सुबह' => 'morning', 'प्रातः' => 'morning',
+            'दिउँसो' => 'afternoon', 'दिउसो' => 'afternoon', 'दोपहर' => 'afternoon', 'मध्यान्ह' => 'afternoon',
+            'बेलुका' => 'evening', 'बेलुकी' => 'evening', 'साँझ' => 'evening', 'सांझ' => 'evening', 'शाम' => 'evening',
+            'राति' => 'night', 'राती' => 'night', 'रात' => 'night',
+            // Gujarati
+            'સવારે' => 'morning', 'સવાર' => 'morning',
+            'બપોરે' => 'afternoon', 'બપોર' => 'afternoon',
+            'સાંજે' => 'evening', 'સાંજ' => 'evening',
+            'રાત્રે' => 'night', 'રાત' => 'night',
+        ];
+        // Longest first, so "bihana ko" is tried before "bihana".
+        uksort($periodWords, static fn(string $a, string $b): int => mb_strlen($b) <=> mb_strlen($a));
+
+        $timeText = [];
+        foreach ($periodWords as $word => $period) {
+            if (preg_match('/(?<![\p{L}\p{M}])' . preg_quote($word, '/') . self::NB . '/u', $lower)) {
+                $out['timeOfDay'] = $period;
+                $timeText[]       = $word;
+                $lower = (string) preg_replace(
+                    '/(?<![\p{L}\p{M}])' . preg_quote($word, '/') . self::NB . '/u', ' ', $lower, 1);
+                break;
+            }
+        }
+
+        // The clock word in each language. "baje" also appears as "baje ko".
+        $clock = '(?:baje|baj|bajey|बजे|बज्यो|बजी|वागे|વાગ્યે|વાગે|o\'?clock)';
+        $hour  = -1;
+        $min   = 0;
+        $meri  = '';                                  // 'am' | 'pm' when written
+        // A written clock face ("06:15", "19:30") is already unambiguous —
+        // nobody writes 06:15 meaning a quarter past six in the evening. Only
+        // a BARE hour beside a clock word ("7 baje") needs asking about.
+        $onClock = false;
+
+        if (preg_match('/(?<!\d)([01]?\d|2[0-3])\s*[:.]\s*([0-5]\d)\s*(am|pm|a\.m\.|p\.m\.)?/iu', $lower, $m)) {
+            $hour    = (int) $m[1];
+            $min     = (int) $m[2];
+            $meri    = isset($m[3]) ? strtolower(substr(trim($m[3]), 0, 1)) . 'm' : '';
+            $onClock = true;
+            $timeText[] = trim($m[0]);
+            $lower = str_replace($m[0], ' ', $lower);
+        } elseif (preg_match('/(?<!\d)([01]?\d|2[0-3])\s*(am|pm|a\.m\.|p\.m\.)/iu', $lower, $m)) {
+            $hour = (int) $m[1];
+            $meri = strtolower(substr(trim($m[2]), 0, 1)) . 'm';
+            $timeText[] = trim($m[0]);
+            $lower = str_replace($m[0], ' ', $lower);
+        } elseif (preg_match('/(?<!\d)([01]?\d|2[0-3])\s*' . $clock . self::NB . '/iu', $lower, $m)) {
+            $hour = (int) $m[1];
+            $timeText[] = trim($m[0]);
+            $lower = str_replace($m[0], ' ', $lower);
+        }
+
+        // A clock word with no hour beside it ("baje ko bus") is still not a name.
+        $lower = (string) preg_replace('/(?<![\p{L}\p{M}])' . $clock . self::NB . '/iu', ' ', $lower);
+
+        if ($hour >= 0) {
+            $out['timeHour'] = $hour;
+            $h = $hour;
+            if ($meri === 'am') {
+                $h = ($hour === 12) ? 0 : $hour;
+            } elseif ($meri === 'pm') {
+                $h = ($hour === 12) ? 12 : $hour + 12;
+            } elseif ($onClock || $hour > 12) {
+                $h = $hour;                                   // already 24-hour
+            } else {
+                switch ($out['timeOfDay']) {
+                    case 'morning':   $h = ($hour === 12) ? 0 : $hour; break;
+                    case 'afternoon': $h = ($hour >= 1 && $hour <= 6) ? $hour + 12 : $hour; break;
+                    case 'evening':   $h = ($hour >= 1 && $hour <= 11) ? $hour + 12 : $hour; break;
+                    case 'night':     $h = ($hour >= 7 && $hour <= 11) ? $hour + 12 : (($hour === 12) ? 0 : $hour); break;
+                    default:          $h = -1; break;         // ambiguous on purpose — see above
+                }
+            }
+            if ($h >= 0 && $h <= 23) {
+                $out['time']     = sprintf('%02d:%02d', $h, $min);
+                $out['found'][]  = 'time';
+            }
+        }
+        if ($timeText !== []) {
+            $out['timeText'] = trim(implode(' ', $timeText));
+            if ($out['timeOfDay'] !== '' && !in_array('time', $out['found'], true)) {
+                $out['found'][] = 'time';
+            }
+        }
+
         /* seats — a number next to a seat / person word, "x3", "for 3", or a
            number word ("dui jana"). "jane"/"jana" alone mean "going", so only
            the counted form "2 jana" is a party size. */
@@ -970,6 +1095,29 @@ final class TicketBot
                     $lower = (string) preg_replace('/(?<![\p{L}\p{M}])' . preg_quote($alias, '/') . '' . self::NB . '/u', ' ', $lower, 1);
                     break 2;
                 }
+            }
+        }
+
+        /* Nothing matched exactly. The alias list is generous but finite, so
+           one slipped letter ("rupaydiha") used to leave the town in the
+           residual, where it became the passenger's NAME. Try once more,
+           allowing a letter or two — see fuzzyStop() for the five rules that
+           keep it from guessing a town confidently and wrongly.
+
+           OFF by default (wa_fuzzy_stops): it changes which bus a live
+           passenger is offered, so the office turns it on deliberately and
+           watches the desk cards for a day. */
+        if ($out['boarding'] === '' && Settings::getBool('wa_fuzzy_stops', false)) {
+            $near = self::fuzzyStop($lower, self::stopCatalogue());
+            if ($near !== []) {
+                $out['boarding']      = $near['value'];
+                $out['found'][]       = 'boarding';
+                // Kept so the desk card and the confirmation can SHOW the
+                // repair: a silent correction is the one a passenger cannot
+                // catch before the seat is taken.
+                $out['boardingFuzzy'] = $near['token'] . ' → ' . $near['alias'];
+                $lower = (string) preg_replace(
+                    '/(?<![\p{L}\p{M}])' . preg_quote($near['token'], '/') . self::NB . '/u', ' ', $lower, 1);
             }
         }
 
@@ -1478,6 +1626,89 @@ final class TicketBot
      *
      * @return list<array{value: string, name: string, code: string, aliases: list<string>}>
      */
+    /**
+     * A pickup whose spelling is ALMOST one we know. (28 Sep 2026)
+     *
+     * The alias table below is generous but finite: "rupaidiha / rupaideha /
+     * rupediha" are hand-listed, so "rupaydiha" — one letter out — matched
+     * nothing and the town became the passenger's name. This is the safety
+     * net under that list.
+     *
+     * Selling a seat from the wrong town is expensive, so it is deliberately
+     * timid, and every rule below exists to stop a confident wrong answer:
+     *
+     *  · roman letters only. levenshtein() counts BYTES, so on Devanagari or
+     *    Gujarati it measures something that is not letters at all — a
+     *    2-byte "distance" there can be a single character.
+     *  · the token must be 5+ letters. At four, "amod" and "anand" are one
+     *    edit apart and both are real places.
+     *  · one edit up to six letters, two from seven. Distance scales with
+     *    length or long names match each other.
+     *  · the alias must be a similar LENGTH (±2), so "surat" cannot land on
+     *    "s hari parking".
+     *  · and the winner must be UNIQUE. If two different stops tie at the
+     *    same distance, we do not know which was meant, so we say nothing
+     *    and let the desk ask. A tie between aliases of the SAME stop is
+     *    not a tie — both point at one pickup.
+     *
+     * Pure: no database, no settings, so it is unit-testable on its own.
+     *
+     * @param  array<int, array{value: string, aliases: array<int, string>}> $catalogue
+     * @return array{value: string, alias: string, token: string, dist: int}|array{}
+     */
+    public static function fuzzyStop(string $text, array $catalogue): array
+    {
+        $tokens = preg_split('/[^a-z]+/', mb_strtolower($text), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $best   = null;
+        $rival  = null;                       // best from a DIFFERENT stop
+
+        foreach ($tokens as $token) {
+            $len = strlen($token);
+            if ($len < 5) {
+                continue;
+            }
+            $budget = $len <= 6 ? 1 : 2;
+
+            foreach ($catalogue as $stop) {
+                $value = (string) ($stop['value'] ?? '');
+                if ($value === '') {
+                    continue;
+                }
+                foreach ((array) ($stop['aliases'] ?? []) as $alias) {
+                    $alias = (string) $alias;
+                    // Roman aliases only, and only ones of a comparable length.
+                    if ($alias === '' || !preg_match('/^[a-z][a-z ]*$/', $alias)
+                        || abs(strlen($alias) - $len) > 2) {
+                        continue;
+                    }
+                    $d = levenshtein($token, $alias);
+                    if ($d === 0 || $d > $budget) {
+                        continue;             // 0 is the exact pass's job, not ours
+                    }
+                    $hit = ['value' => $value, 'alias' => $alias, 'token' => $token, 'dist' => $d];
+                    if ($best === null || $d < $best['dist']) {
+                        if ($best !== null && $best['value'] !== $value) {
+                            $rival = $best;
+                        }
+                        $best = $hit;
+                    } elseif ($value !== $best['value'] && ($rival === null || $d < $rival['dist'])) {
+                        $rival = $hit;
+                    }
+                }
+            }
+        }
+
+        if ($best === null) {
+            return [];
+        }
+        // Two different towns equally close: we do not know which, so say nothing.
+        if ($rival !== null && $rival['dist'] === $best['dist']) {
+            return [];
+        }
+
+        return $best;
+    }
+
     public static function stopCatalogue(): array
     {
         static $cat = null;
