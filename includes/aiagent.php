@@ -152,6 +152,103 @@ final class AiAgent
         }
     }
 
+    /**
+     * Is the assistant available inside the admin panel?
+     *
+     * Deliberately NOT gated on wa_agent_on: the office may well want the
+     * assistant at their own desk long before they open it to WhatsApp,
+     * and tying the two together would make that impossible.
+     */
+    public static function panelEnabled(): bool
+    {
+        return Settings::getBool('ai_panel_on', false)
+            && function_exists('curl_init')
+            && (self::anthropicKey() !== '' || self::geminiKey() !== '');
+    }
+
+    /**
+     * Answer one question typed into admin/ai-agent.php. (28 Sep 2026)
+     *
+     * handle() above is the WhatsApp twin of this. Four things differ:
+     *
+     *   · identity comes from the signed-in SESSION (whoIsAdmin) rather
+     *     than from a phone number that matched a row in `admins`
+     *   · the channel is 'panel', so admin/ai-activity.php tells the two
+     *     apart with no change to that screen — it already reads c.channel
+     *   · memory, turn counter and rate limits are all keyed 'panel:<id>',
+     *     so a conversation at the desk is not the conversation on the
+     *     phone, and neither can confirm the other's parked quote
+     *   · the answer keeps its markdown. forWhatsApp() exists because
+     *     WhatsApp prints ** as two asterisks; a browser does not.
+     *
+     * @return array{text: string, media: ?string}|null null = switched off,
+     *         refused, rate-limited, or the model could not answer. The
+     *         caller turns that into one flat sentence.
+     */
+    public static function handlePanel(int $adminId, string $text): ?array
+    {
+        $text = trim($text);
+        if ($text === '' || !self::panelEnabled()) {
+            return null;
+        }
+
+        require_once INCLUDE_PATH . '/aitools.php';
+        require_once INCLUDE_PATH . '/aiprompt.php';
+        require_once INCLUDE_PATH . '/quickticket.php';
+        require_once INCLUDE_PATH . '/notify.php';
+
+        $ctx = AiTools::whoIsAdmin($adminId);
+        if ($ctx['role'] === 'customer') {
+            // Signed in, but not an account fit to hold office tools:
+            // suspended, still on a temporary password, locked, or a role
+            // outside the four whoIs() has always named. See whoIsAdmin().
+            Logger::warning('AI panel refused a session', ['admin' => $adminId], 'whatsapp');
+            return null;
+        }
+
+        $who                = 'panel:' . $adminId;
+        $ctx['channel']     = 'panel';
+        // Confirmation comes from the typed message, never model arguments.
+        $ctx['messageText'] = $text;
+        $ctx['raw_text']    = $text;
+
+        /* A person working at the desk never reaches these; a stuck browser
+           tab retrying does. */
+        $daily = max(5, Settings::getInt('ai_panel_daily_cap', 200));
+        if (!Security::rateLimit('ai_panel_day', $who, $daily, 86400)
+            || !Security::rateLimit('ai_panel', $who, 20, 60)) {
+            Logger::warning('AI panel rate limit hit', ['admin' => $adminId, 'role' => $ctx['role']], 'whatsapp');
+            return null;
+        }
+
+        if (self::isReset($text)) {
+            self::forget($who);
+            return ['text' => "🙏 ठिक छ, नयाँ बाट सुरु गरौँ। What would you like to know?", 'media' => null];
+        }
+
+        try {
+            $history     = self::loadHistory($who);
+            $ctx['turn'] = self::bumpTurn($who);
+            $history[]   = ['role' => 'user', 'content' => mb_substr($text, 0, 1500)];
+
+            $answer = self::converse($ctx, $history, Settings::getInt('ai_panel_max_tools', 8));
+            if ($answer === null || trim((string) $answer['text']) === '') {
+                return null;
+            }
+
+            $history[] = ['role' => 'assistant', 'content' => $answer['text']];
+            self::saveHistory($who, $history);
+
+            return [
+                'text'  => mb_substr(trim((string) $answer['text']), 0, 4000),
+                'media' => $answer['media'],
+            ];
+        } catch (Throwable $e) {
+            Logger::error('AI panel failed: ' . $e->getMessage(), ['admin' => $adminId], 'whatsapp');
+            return null;
+        }
+    }
+
     /** Forget one sender's conversation and any parked quote. */
     public static function forget(string $phoneDigits): void
     {
@@ -176,9 +273,13 @@ final class AiAgent
      * answers in words or the budget runs out.
      *
      * @param array<int, array{role: string, content: mixed}> $history
+     * @param ?int $toolBudget how many tool calls one message may spend.
+     *        null = the WhatsApp allowance (wa_agent_max_tools). The panel
+     *        passes its own, because an office question legitimately costs
+     *        more buttons than a passenger's does.
      * @return array{text: string, media: ?string}|null
      */
-    private static function converse(array $ctx, array $history): ?array
+    private static function converse(array $ctx, array $history, ?int $toolBudget = null): ?array
     {
         require_once INCLUDE_PATH . '/aiturn.php';
         self::$deadline = microtime(true) + self::TURN_BUDGET_SEC;
@@ -187,7 +288,7 @@ final class AiAgent
                 static fn(string $system, array $messages, array $tools) => self::ask($system, $messages, $tools, $ctx),
                 static fn(string $name, array $args) => AiTools::run($name, $args, $ctx),
                 self::systemPrompt($ctx), $history, AiTools::catalogue($ctx),
-                Settings::getInt('wa_agent_max_tools', 6), self::$deadline
+                $toolBudget ?? Settings::getInt('wa_agent_max_tools', 6), self::$deadline
             );
         } finally {
             self::$deadline = null;
@@ -970,9 +1071,18 @@ final class AiAgent
                 . "full each bus is, office_search to find a booking, office_alerts for what needs attention.\n"
                 . "When they ask an open question ('aaja kasto cha?'), call office_day and office_alerts, then give "
                 . "them the three things that matter in three lines.\n";
-            $base .= "MARKETING: marketing_draft saves an unsent campaign; marketing_preview shows the verified template and consenting audience. "
-                . "Read the exact confirmation command returned by preview. marketing_send may only queue after the admin sends that command in a later message. "
-                . "marketing_status distinguishes queued, provider-accepted, delivered, failed and unknown. Never say a draft or queued campaign was delivered.\n";
+            /* A MARKETING paragraph used to sit here naming marketing_draft,
+               marketing_preview, marketing_send and marketing_status. None
+               of those four is in AiTools::catalogue() or its dispatch, so
+               every one came back "This assistant cannot do that" and the
+               assistant argued with the office about buttons it had been
+               told it owned. Removed 28 Sep 2026.
+
+               Putting it back means adding the tools first — and they
+               cannot send anything until WaMarketing::consentMessage() is
+               wired into wabot.php and Meta has APPROVED a marketing
+               template with a STOP line. Until both are true, a prompt
+               describing them is a promise the code cannot keep. */
         }
 
         return $base;
