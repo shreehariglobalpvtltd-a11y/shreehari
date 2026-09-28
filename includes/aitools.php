@@ -169,6 +169,112 @@ final class AiTools
         return $out;
     }
 
+    /**
+     * The same context, for an admin who is signed in to the PANEL rather
+     * than writing from a phone. (28 Sep 2026)
+     *
+     *   whoIs()      trusts a PHONE   — one exact match in `admins`, active,
+     *                                   initialised, unlocked.
+     *   whoIsAdmin() trusts a SESSION — Auth has already checked the password.
+     *
+     * It then applies EVERY OTHER gate whoIs() applies, because a session is
+     * not a substitute for an account being fit to hold power. Two of those
+     * matter more here than on WhatsApp:
+     *
+     *  · must_change_pw. Auth::requireAdmin() deliberately lets a
+     *    not-yet-initialised account through on a /api/ URL (it answers JSON
+     *    instead of redirecting to the password form), and this endpoint
+     *    lives under /api/. So the check has to happen HERE — a temporary
+     *    password handed out over the phone must not reach the office tools
+     *    through the JSON door.
+     *
+     *  · the role allow-list. `dashboard.view` is held by roles that were
+     *    never meant to run office tools (accountant, support). whoIs() has
+     *    always named the four roles it accepts, so this does too; anything
+     *    else comes back 'customer', which the panel treats as a refusal.
+     *
+     * Fails closed: any doubt returns the untrusted default.
+     *
+     * @return array{role: string, admin: ?array<string,mixed>, adminId: int,
+     *               scopeAdminId: ?int, name: string, phone: string, stageKey: string}
+     */
+    public static function whoIsAdmin(int $adminId): array
+    {
+        $out = [
+            'role'         => 'customer',
+            'admin'        => null,
+            'adminId'      => 0,
+            'scopeAdminId' => null,
+            'name'         => '',
+            'phone'        => '',
+            // Never the bare phone: the panel and WhatsApp must not share a
+            // parked quote. See stageKey().
+            'stageKey'     => 'panel:' . $adminId,
+        ];
+        if ($adminId <= 0) {
+            return $out;
+        }
+
+        try {
+            $admin = Database::fetch(
+                'SELECT id, full_name, phone, role, is_active, must_change_pw, locked_until
+                   FROM admins WHERE id = :id LIMIT 1',
+                ['id' => $adminId]
+            );
+            if ($admin === null
+                || (int) ($admin['is_active'] ?? 0) !== 1
+                || (int) ($admin['must_change_pw'] ?? 1) !== 0
+                || (!empty($admin['locked_until']) && strtotime((string) $admin['locked_until']) > time())
+                || !in_array((string) $admin['role'], ['agent', 'counter', 'manager', 'superadmin'], true)) {
+                return $out;
+            }
+
+            // Same mapping whoIs() makes: the counter agent keeps staff
+            // powers over their own book only.
+            $scoped = in_array((string) $admin['role'], ['agent', 'counter'], true);
+
+            $out['admin']        = $admin;
+            $out['adminId']      = (int) $admin['id'];
+            $out['name']         = (string) $admin['full_name'];
+            // Kept real so ai_agent_calls.phone stays truthful and the tools
+            // that compare a ctx phone against the admin's own still work.
+            $out['phone']        = normalisePhone((string) ($admin['phone'] ?? ''));
+            $out['role']         = $scoped ? 'staff' : 'admin';
+            $out['scopeAdminId'] = $scoped ? (int) $admin['id'] : null;
+        } catch (Throwable $e) {
+            Logger::exception($e, 'whatsapp');
+            // Fail closed — a database wobble must not hand out an admin role.
+            $out['role']         = 'customer';
+            $out['admin']        = null;
+            $out['adminId']      = 0;
+            $out['scopeAdminId'] = null;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Which key a parked quote is filed under.
+     *
+     * It used to be the sender's phone number, which was right while
+     * WhatsApp was the only way in. The panel changed that: the same
+     * manager now has two channels with two independent turn counters, and
+     * takeStage()'s "quoted and sold in one breath" check compares turn
+     * numbers. Sharing one key across both would make that comparison
+     * meaningless — a fare quoted on WhatsApp could be confirmed from the
+     * panel without the second message the check exists to require.
+     *
+     * So a ctx may carry its own stageKey (whoIsAdmin() sets 'panel:<id>')
+     * and the phone stays the default for every WhatsApp ctx, which keeps
+     * clearStage($phoneDigits) working unchanged for its existing callers.
+     */
+    private static function stageKey(array $ctx): string
+    {
+        $k = trim((string) ($ctx['stageKey'] ?? ''));
+
+        return $k !== '' ? $k : (string) ($ctx['phone'] ?? '');
+    }
+
     /* =================================================================
      *  The catalogue handed to the model
      * ================================================================= */
@@ -1780,10 +1886,10 @@ final class AiTools
 
         try {
             $done = Database::update('kv_store', ['kvalue' => $row, 'updated_by' => 'aiagent'],
-                'kscope = :s AND kkey = :k', ['s' => 'wa_stage', 'k' => (string) $ctx['phone']]);
+                'kscope = :s AND kkey = :k', ['s' => 'wa_stage', 'k' => self::stageKey($ctx)]);
             if ($done === 0) {
                 Database::insertIgnore('kv_store', [
-                    'kscope' => 'wa_stage', 'kkey' => (string) $ctx['phone'],
+                    'kscope' => 'wa_stage', 'kkey' => self::stageKey($ctx),
                     'kvalue' => $row, 'updated_by' => 'aiagent',
                 ]);
             }
@@ -1798,7 +1904,7 @@ final class AiTools
         try {
             $row = Database::fetch(
                 'SELECT kvalue FROM kv_store WHERE kscope = :s AND kkey = :k',
-                ['s' => 'wa_stage', 'k' => (string) $ctx['phone']]
+                ['s' => 'wa_stage', 'k' => self::stageKey($ctx)]
             );
         } catch (Throwable $e) {
             return null;

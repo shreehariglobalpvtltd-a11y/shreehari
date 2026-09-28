@@ -138,6 +138,7 @@ function admin_nav(): array
         ['href' => 'settings.php',     'icon' => 'cog',       'label' => 'Settings',         'perm' => 'dashboard.view', 'section' => 'Settings'],
         ['href' => 'activity-log.php', 'icon' => 'shield',    'label' => 'Activity & Security','perm'=> 'dashboard.view', 'section' => 'Settings'],
         ['href' => 'health.php',       'icon' => 'alert',     'label' => 'System Health',    'perm' => 'dashboard.view', 'section' => 'Settings'],
+        ['href' => 'ai-agent.php',     'icon' => 'msg',       'label' => 'AI Assistant',     'perm' => 'dashboard.view', 'section' => 'Settings'],
         ['href' => 'ai-knowledge.php', 'icon' => 'doc',       'label' => 'AI Knowledge',     'perm' => 'dashboard.view', 'section' => 'Settings'],
         ['href' => 'ai-activity.php',  'icon' => 'msg',       'label' => 'AI Activity',      'perm' => 'dashboard.view', 'section' => 'Settings'],
 
