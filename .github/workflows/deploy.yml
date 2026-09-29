@@ -82,12 +82,12 @@ jobs:
           DRY:    ${{ inputs.dry_run }}
         run: |
           set -o pipefail
-          ssh -i ~/.ssh/id_deploy -p "${PORT:-22}" -o BatchMode=yes "$USER@$HOST" bash -s << 'REMOTE'
+          ssh -i ~/.ssh/id_deploy -p "${PORT:-22}" -o BatchMode=yes "$USER@$HOST" bash -s -- "$SITE" "$BRANCH" "$DRY" << 'REMOTE'
           set -euo pipefail
 
-          SITE="$SITE"
-          BRANCH="$BRANCH"
-          DRY="$DRY"
+          SITE="$1"
+          BRANCH="$2"
+          DRY="$3"
           REPO="https://github.com/shreehariglobalpvtltd-a11y/shreehari.git"
           SITE_PARENT="$(dirname "$SITE")"
           NEW_DIR="$SITE_PARENT/new_html_deploy"
