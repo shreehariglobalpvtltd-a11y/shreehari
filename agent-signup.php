@@ -321,6 +321,14 @@ textarea{min-height:70px;resize:vertical;font-size:14px}
            value="<?= Security::e($_POST['referral'] ?? '') ?>">
     <div class="hint">If someone referred you, enter their SHG code here.</div>
 
+    <p style="font-size:12px;color:#8a9ab5;margin-top:18px;line-height:1.6;text-align:center">
+      By submitting, you agree to the
+      <a href="/agreements/partner-agreement-en.html" target="_blank" style="color:#178A50;font-weight:600">Agent Partner Agreement</a>
+      · आवेदन पेश गरेर तपाईं
+      <a href="/agreements/partner-agreement-ne.html" target="_blank" style="color:#178A50;font-weight:600">एजेन्ट सम्झौता</a>
+      मा सहमत हुनुहुन्छ।
+    </p>
+
     <button type="submit" class="submit-btn">
       🚀 Submit Application · आवेदन दें
     </button>
@@ -332,6 +340,7 @@ textarea{min-height:70px;resize:vertical;font-size:14px}
 
 <div class="foot">
   <a href="/">← Customer Booking</a>
+  <a href="/agreements/partner-agreement-en.html">Agreement</a>
   <a href="/admin/login.php?portal=agent">Agent Login 🎟️</a>
   <span><?= Security::e($company) ?></span>
 </div>
