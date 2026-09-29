@@ -1560,6 +1560,15 @@ function renderPricingCards() {
     if (best > 0) { line.textContent = tf('pcSaveLine', { a: inr(best) }); line.hidden = false; }
     else { line.textContent = ''; line.hidden = true; }
   }
+
+  /* 29 Sep 2026: both cards above are written with class="reveal", which is
+     opacity:0 until the IntersectionObserver adds .in. A redraw replaces the
+     old (already-revealed) nodes with fresh invisible ones, so whoever fired
+     the redraw has to hand them back to the observer. Boot happens to call
+     observeReveals() later; the admin fare-save path (13-admin-routes.js)
+     does not, so saving a fare made both pricing cards VANISH until reload.
+     renderResults() has always done this for its own cards — same rule. */
+  if (typeof observeReveals === 'function') observeReveals();
 }
 
 /* Only advertise a town a bus actually calls at.
