@@ -167,7 +167,7 @@ jobs:
               fi
             done
           else
-            for f in "$NEW_DIR"/database/upgrade-*.sql 2>/dev/null; do
+            for f in "$NEW_DIR"/database/upgrade-*.sql; do
               [ -f "$f" ] && echo "[DRY] Would apply: $(basename $f)"
             done || echo "[DRY] Would check and apply pending migrations"
           fi
