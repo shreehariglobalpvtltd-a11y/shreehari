@@ -324,6 +324,11 @@ try {
             'discountValue' => (float) ($in['discountValue'] ?? 0),
             'note'          => $in['note'] ?? '',
             'passengers'    => $in['passengers'] ?? null,
+            // Agent picker: 0 = no agent (direct), >0 = specific agent admin id.
+            // Only accepted from non-agent staff — an agent's own session cannot
+            // re-attribute their sale to a different agent.
+            'pickedAgentId' => (isset($in['pickedAgentId']) && ((string) ($staff['role'] ?? '')) !== 'agent')
+                                ? (int) $in['pickedAgentId'] : -1,
         ];
         $result = QuickTicket::sell($input, $staff);
 

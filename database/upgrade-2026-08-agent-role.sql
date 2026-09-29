@@ -13,7 +13,7 @@
 SET NAMES utf8mb4;
 
 ALTER TABLE `admins`
-  MODIFY `role` ENUM('superadmin','manager','accountant','support','scanner','official','agent')
+  MODIFY `role` ENUM('superadmin','manager','accountant','support','scanner','official','agent','counter')
   NOT NULL DEFAULT 'support';
 
 INSERT IGNORE INTO `admins`
