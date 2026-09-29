@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS `pnr_counters` (
 -- orphan every counter-agent account. Keeping both lists identical makes the
 -- order these two are applied in irrelevant.
 ALTER TABLE `admins`
-  MODIFY `role` ENUM('superadmin','manager','accountant','support','scanner','official','agent')
+  MODIFY `role` ENUM('superadmin','manager','accountant','support','scanner','official','agent','counter')
   NOT NULL DEFAULT 'support';
 
 
