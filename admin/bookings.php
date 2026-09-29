@@ -247,8 +247,17 @@ function format_agent_code(array $agentCodes, ?int $adminId): string
 }
 
 /** Payment status pill (payments.status). */
-function pay_status_pill(?string $st): string
+function pay_status_pill(?string $st, bool $proofIn = false): string
 {
+    /* 23 Sep 2026 (UI/UX v3 brief §7): once the passenger has sent proof
+       (UTR or screenshot) the booking is parked for review - expires_at is
+       NULL, see BookingService::holdForAdminReview() - so the desk sees
+       "Verification pending" rather than the same "Unverified" it shows a
+       booking nobody has paid for yet. Same payments.status value ('pending');
+       only the label changes. */
+    if ($st === 'pending' && $proofIn) {
+        return '<span class="pill" style="color:#7a3e00;background:#ffe3c2">Verification pending</span>';
+    }
     $map = [
         'verified'    => ['Paid', '#0a6b3b', '#d7f4e3'],
         'pending'     => ['Unverified', '#8a6d00', '#fff4d1'],
@@ -573,7 +582,7 @@ $canEdit   = Auth::can('bookings.edit');
           <div class="muted mono" style="font-size:11px"><?= Security::e((string) $b['contact_phone']) ?></div></td>
         <td data-label="Seats" class="mono"><?= Security::e(($seatToks = array_filter(explode(' ', (string) ($b['seats'] ?? '')), static fn($t) => $t !== '')) ? implode(' ', array_map(static fn($t) => Seats::displayLabel((string) $t, 'sleeper', (string) ($b['booking_mode'] ?? 'sharing')), $seatToks)) : '—') ?><?= !empty($b['booking_mode']) && $b['booking_mode'] === 'private' ? ' <span class="pill" style="background:#efeaff;color:#5a3fb0;font-size:10px">Private</span>' : '' ?></td>
         <td data-label="Sold via"><?= $soldVia ?></td>
-        <td data-label="Payment"><?= pay_status_pill($b['pay_status'] ?? null) ?><div class="muted" style="font-size:11px;margin-top:3px"><?= Security::e(strtoupper((string) ($b['pay_method'] ?: ((int) ($b['is_cod'] ?? 0) === 1 ? 'COD' : '—')))) ?></div></td>
+        <td data-label="Payment"><?= pay_status_pill($b['pay_status'] ?? null, (string) ($b['status'] ?? '') === 'pending' && empty($b['expires_at'])) ?><div class="muted" style="font-size:11px;margin-top:3px"><?= Security::e(strtoupper((string) ($b['pay_method'] ?: ((int) ($b['is_cod'] ?? 0) === 1 ? 'COD' : '—')))) ?></div></td>
         <td data-label="Amount"><?= Security::e(inr((float) $b['total_amount'])) ?></td>
         <td data-label="Status"><?= admin_pill((string) $b['status']) ?></td>
         <td data-label="Actions"><div class="tk-acts">

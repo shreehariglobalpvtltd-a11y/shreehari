@@ -15,10 +15,10 @@ function shg_export_csv(string $filename, array $header, array $data): void
     header('Cache-Control: no-store');
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF");
-    fputcsv($out, $header);
+    csv_put($out, $header);
     foreach ($data as $row) {
         // Formula-injection guard: a cell starting with = + - @ is prefixed.
-        fputcsv($out, array_map(static function ($v): string {
+        csv_put($out, array_map(static function ($v): string {
             $s = (string) $v;
             return ($s !== '' && strpbrk($s[0], '=+-@') !== false) ? "'" . $s : $s;
         }, array_values($row)));

@@ -57,7 +57,8 @@ try {
     // The operator named this model in the master prompt (cost: this is a
     // bus company's FAQ bot, not a coding agent). Changeable in Admin →
     // Settings without a deploy.
-    $model = Settings::getString('ai_model', 'claude-sonnet-4-6');
+    // claude-sonnet-5: half the price of the sonnet-4-6 default this shipped with.
+    $model = Settings::getString('ai_model', 'claude-sonnet-5');
 
     /* ---- Validate the conversation from the browser ---------------- */
     $raw = Response::field('messages', []);
@@ -91,12 +92,17 @@ try {
     $system = ai_system_prompt();
 
     /* ---- Relay to the Anthropic Messages API ----------------------- */
-    $payload = json_encode([
+    $req = [
         'model'      => $model,
-        'max_tokens' => 420,
+        'max_tokens' => 1024,   // thinking + text share this cap on Sonnet 5
         'system'     => $system,
         'messages'   => $messages,
-    ], JSON_UNESCAPED_UNICODE);
+    ];
+    if (!str_contains(strtolower($model), 'haiku') && !str_contains(strtolower($model), 'sonnet-4-5')) {
+        $req['thinking']      = ['type' => 'adaptive'];
+        $req['output_config'] = ['effort' => 'low'];
+    }
+    $payload = json_encode($req, JSON_UNESCAPED_UNICODE);
 
     $ch = curl_init('https://api.anthropic.com/v1/messages');
     curl_setopt_array($ch, [

@@ -32,7 +32,17 @@ $pdo  = Database::pdo();
 $fail = 0;
 foreach ($stmts as $stmt) {
     try {
-        $pdo->exec($stmt);
+        /* 24 Sep 2026: query() + closeCursor() instead of exec(). The guarded
+           ALTERs (SET @sql := IF(...) / PREPARE / EXECUTE) return a one-row
+           "already present" result set, and exec() left it unbuffered, so the
+           NEXT statement died with "Cannot execute queries while other
+           unbuffered queries are active" and every guarded migration reported
+           a false failure through this helper. */
+        $st = $pdo->query($stmt);
+        if ($st instanceof PDOStatement) {
+            try { $st->fetchAll(); } catch (Throwable $ignored) {}
+            $st->closeCursor();
+        }
         echo 'OK  ' . substr(preg_replace('/\s+/', ' ', $stmt) ?? '', 0, 64) . "\n";
     } catch (Throwable $e) {
         $fail++;

@@ -148,7 +148,7 @@ $commissionRange = (float) Database::scalar(
 
 /* ---- The sales themselves ------------------------------------------- */
 $rows = Database::fetchAll(
-    "SELECT b.pnr, b.status, b.total_amount, b.contact_phone, b.created_at, b.source,
+    "SELECT b.pnr, b.status, b.total_amount, b.contact_phone, b.created_at, b.source, b.booking_mode,
             r.from_city, r.to_city, bl.travel_date,
             (SELECT GROUP_CONCAT(bs.seat_no ORDER BY bs.seat_no SEPARATOR ' ')
                FROM booking_seats bs WHERE bs.booking_id = b.id) AS seats,
@@ -358,7 +358,7 @@ admin_header($isOwn ? 'My Sales' : 'Sales · ' . (string) ($viewing['full_name']
           <div class="muted mono" style="font-size:11px"><?= Security::e(maskPhone((string) $b['contact_phone'])) ?></div></span></td>
         <td data-label="Route / Travel"><span><?= Security::e(($b['from_city'] ?? '—') . ' → ' . ($b['to_city'] ?? '—')) ?>
           <div class="muted"><?= $b['travel_date'] ? Security::e(formatDate((string) $b['travel_date'])) : '' ?></div></span></td>
-        <td class="mono" data-label="Seats"><span><?= Security::e((string) ($b['seats'] ?: '—')) ?>
+        <td class="mono" data-label="Seats"><span><?= Security::e((string) ($b['seats'] ? Seats::displayLabels(explode(' ', (string) $b['seats']), 'sleeper', (string) ($b['booking_mode'] ?? 'sharing'), ' ') : '—')) ?>
           <div class="muted" style="font-size:11px"><?= (int) $b['seat_count'] ?> seat<?= (int) $b['seat_count'] === 1 ? '' : 's' ?></div></span></td>
         <td data-label="Amount"><?= Security::e(inr((float) $b['total_amount'])) ?></td>
         <td data-label="Source"><span class="src-badge <?= Security::e((string) ($b['source'] ?? 'web')) ?>"><?= Security::e(ucfirst((string) ($b['source'] ?? 'web'))) ?></span></td>

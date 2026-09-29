@@ -29,6 +29,13 @@ if (in_array($legalPath, ['/privacy-policy', '/privacy', '/terms-of-service', '/
     require_once INCLUDE_PATH . '/legal.php';
     LegalPages::render(LegalPages::ROUTES[$legalPath]);
 }
+/* 24 Sep 2026: server-rendered route pages (/bus, /bus/<slug>, /hi/bus/…,
+   /ne/bus/…) and the two dynamic sitemaps — what a search engine reads. */
+if ($legalPath === '/bus' || str_starts_with($legalPath, '/bus/') || str_starts_with($legalPath, '/hi/bus') || str_starts_with($legalPath, '/ne/bus')
+    || $legalPath === '/sitemap-routes.xml' || $legalPath === '/sitemap-pages.xml') {
+    require_once INCLUDE_PATH . '/routepages.php';
+    RoutePages::dispatch($legalPath);
+}
 
 $user = Auth::user();
 
@@ -58,6 +65,15 @@ $boot = [
     // itself stays server-side (api/ai-proxy.php). Drives the "AI" badge
     // and whether the bot escalates unmatched questions to the proxy.
     'ai'       => Settings::getString('anthropic_api_key', '') !== '',
+    // The contact button on every screen (24 Sep 2026): call / WhatsApp the
+    // office without hunting for the number.
+    'contact'  => ['phone' => Settings::officePhone(), 'wa' => Settings::officeWhatsApp()],
+    // 24 Sep 2026: the assistant WITH HANDS (api/ai-chat.php) — tools, role
+    // by sign-in, reports and graphs. Either brain's key will do. When true
+    // the widget asks the agent first and keeps the rule engine as its
+    // offline fallback; when false it behaves exactly as before.
+    'aiAgent'  => Settings::getBool('ai_web_agent_on', false)
+                  && (Settings::getString('anthropic_api_key', '') !== '' || Settings::getString('gemini_api_key', '') !== ''),
     'settings' => Settings::publicSettings(),
     'user'     => $user !== null ? [
         'phone'  => $user['phone'] ?? '',

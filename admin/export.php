@@ -246,9 +246,9 @@ header('Cache-Control: no-store');
 
 $out = fopen('php://output', 'wb');
 fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel reads Unicode (Nepali/Hindi) names
-fputcsv($out, $header);
+csv_put($out, $header);
 foreach ($data as $row) {
-    fputcsv($out, $row);
+    csv_put($out, $row);
 }
 fclose($out);
 exit;

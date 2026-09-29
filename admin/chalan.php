@@ -136,6 +136,8 @@ $hrefChalaniP1  = $base . '/admin/manifest.php?' . $q($manifestQs + ['format' =>
 $hrefChalaniPrt = $base . '/admin/manifest.php?' . $q($manifestQs + ['format' => 'chalani']);
 $hrefChallan    = $base . '/admin/challan.php?' . $q(['sid' => $sid]);
 $hrefChallanDl  = $base . '/admin/challan.php?' . $q(['sid' => $sid, 'dl' => 1]);
+$hrefStatus     = $base . '/admin/challan.php?' . $q(['sid' => $sid, 'doc' => 'status']);
+$hrefStatusDl   = $base . '/admin/challan.php?' . $q(['sid' => $sid, 'doc' => 'status', 'dl' => 1]);
 $hrefManifest   = $base . '/admin/manifest.php?' . $q($manifestQs);
 $hrefSeats      = $base . '/admin/seatmap.php?' . $q(['sid' => $sid]);
 
@@ -249,6 +251,15 @@ admin_page_head(
       <a class="btn ghost" href="<?= $hrefChalaniPrt ?>" target="_blank" rel="noopener"><svg class="a-ic"><use href="#a-printer"/></svg>Print</a>
     </div>
     <div class="text-xs muted" style="padding:0 16px 12px">The office's printed form: crew fields, passenger table, cash line, signatures.</div>
+  </div>
+  <div class="ch-doc">
+    <div class="ch-doc-h"><svg class="a-ic" style="color:var(--wa-600,#128C7E)"><use href="#a-image"/></svg>Seat status card — live colours, no names <span class="pill st-info nodot">PNG</span></div>
+    <div class="ch-prev"><a href="<?= $hrefStatus ?>" target="_blank" rel="noopener" title="Open full size"><img src="<?= $hrefStatus ?>" alt="Seat status card" loading="lazy"></a></div>
+    <div class="ch-acts">
+      <a class="btn" href="<?= $hrefStatusDl ?>"><svg class="a-ic"><use href="#a-download"/></svg>Download PNG</a>
+      <a class="btn ghost" href="<?= $hrefStatus ?>&amp;fresh=1" target="_blank" rel="noopener"><svg class="a-ic"><use href="#a-external"/></svg>Redraw now</a>
+    </div>
+    <div class="text-xs muted" style="padding:0 16px 12px">The card the office / agent WhatsApp receives on every confirmed or cancelled booking (Settings → seat_status_wa_on). Safe for an agent group: sold / free / private / held counts only.</div>
   </div>
 </div>
 

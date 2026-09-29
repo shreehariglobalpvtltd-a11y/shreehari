@@ -396,6 +396,66 @@ final class Fare
         return $best;
     }
 
+    /**
+     * The offers running TODAY that every passenger gets automatically
+     * (auto_apply = 1) — what the WhatsApp assistant may tell people about
+     * (23 Sep 2026). Typed-code coupons are deliberately left out: a code the
+     * office hands to one group must not be broadcast by a bot.
+     *
+     * Read-only. The discount itself is still decided by autoOffer() /
+     * couponDiscount() at quote and sale time, never by this list.
+     *
+     * @return list<array{code:string, title:string, type:string, value:float, max:float, min:float, routeId:?int, until:string, left:?int}>
+     */
+    public static function runningOffers(?int $routeId = null): array
+    {
+        try {
+            $today = todayISO();
+            $rows  = Database::fetchAll(
+                "SELECT code, title, discount_type, discount_value, max_discount, min_amount, route_id, valid_until,
+                        usage_limit, used_count
+                   FROM coupons
+                  WHERE is_active = 1 AND auto_apply = 1
+                    AND (valid_from  IS NULL OR valid_from  <= :d1)
+                    AND (valid_until IS NULL OR valid_until >= :d2)
+                    AND (usage_limit IS NULL OR used_count < usage_limit)
+                  ORDER BY id DESC LIMIT 10",
+                ['d1' => $today, 'd2' => $today]
+            );
+        } catch (Throwable $e) {
+            return [];      // no coupons table / column yet: simply no offer
+        }
+        $out = [];
+        foreach ($rows as $r) {
+            if ($routeId !== null && $r['route_id'] !== null && (int) $r['route_id'] !== $routeId) {
+                continue;
+            }
+            $out[] = [
+                'code'    => (string) $r['code'],
+                'title'   => trim((string) ($r['title'] ?? '')) !== '' ? (string) $r['title'] : (string) $r['code'],
+                'type'    => (string) $r['discount_type'] === 'percent' ? 'percent' : 'flat',
+                'value'   => (float) $r['discount_value'],
+                'max'     => (float) ($r['max_discount'] ?? 0),
+                'min'     => (float) ($r['min_amount'] ?? 0),
+                'routeId' => $r['route_id'] !== null ? (int) $r['route_id'] : null,
+                'until'   => (string) ($r['valid_until'] ?? ''),
+                'left'    => $r['usage_limit'] !== null ? max(0, (int) $r['usage_limit'] - (int) $r['used_count']) : null,
+            ];
+        }
+        return $out;
+    }
+
+    /** One plain line for an offer: "Dashain offer — ₹200 off (bookings of ₹1,500+), until 30 Oct". */
+    public static function offerLine(array $o): string
+    {
+        $amt = $o['type'] === 'percent'
+            ? rtrim(rtrim(number_format($o['value'], 2), '0'), '.') . '% off' . ($o['max'] > 0 ? ' (up to ' . inr($o['max']) . ')' : '')
+            : inr($o['value']) . ' off';
+        return $o['title'] . ' — ' . $amt
+            . ($o['min'] > 0 ? ', on bookings of ' . inr($o['min']) . '+' : '')
+            . ($o['until'] !== '' ? ', until ' . date('j M', (int) strtotime($o['until'])) : '');
+    }
+
     public static function couponDiscount(string $code, float $subtotal, string $phone, ?int $routeId = null): array
     {
         $code = strtoupper(Security::clean($code, 40));

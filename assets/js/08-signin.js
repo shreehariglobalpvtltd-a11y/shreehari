@@ -221,6 +221,7 @@ async function refreshMyBookingsFromServer(force) {
       });
       const next = Object.assign({}, cur, { status: b.status, total: b.total, codFlag: b.codFlag,
         ticketNumber: b.ticketNumber || cur.ticketNumber || '', payment: pay,
+        trackUrl: b.trackUrl || cur.trackUrl || null,
         createdAt: cur.createdAt || b.createdAt });
       if (JSON.stringify(next) !== JSON.stringify(cur)) { DB.bookings[at] = next; changed = true; }
     });

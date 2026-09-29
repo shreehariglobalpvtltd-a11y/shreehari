@@ -271,7 +271,12 @@ if ($flash !== null) {
 .seat-grid{display:flex;flex-direction:column;gap:12px;padding:18px}
 .seat-grid .sg-deck{display:flex;flex-direction:column;gap:4px}
 .seat-grid .sg-deck-head{font-size:11px;font-weight:700;color:var(--mut);letter-spacing:.04em;text-transform:uppercase}
+.seat-grid .sg-deck .floor-head{margin:0 0 6px;padding:6px 10px;font-size:12px}
 .seat-grid .sg-cells{display:grid;grid-template-columns:repeat(auto-fill,minmax(32px,1fr));gap:4px}
+/* One physical row per line: 4 left | aisle | 2 right (sleeper), as the coach sits. */
+.seat-grid .sg-rows{display:flex;flex-direction:column;gap:4px}
+.seat-grid .sg-row{display:flex;gap:4px;align-items:center}
+.seat-grid .sg-aisle{flex:0 0 14px;text-align:center;font-size:10px;font-weight:800;color:var(--fl,var(--mut))}
 .seat-cell{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:6px;font-size:10px;font-weight:700;font-family:ui-monospace,Menlo,Consolas,monospace;cursor:default;transition:transform .1s}
 .seat-cell:hover{transform:scale(1.15)}
 .seat-open{background:#d7f4e3;color:#0a6b3b}
@@ -590,21 +595,31 @@ $occColor   = $occPercent >= 80 ? '#0a6b3b' : ($occPercent >= 50 ? '#c99200' : '
       };
     ?>
     <div class="seat-grid">
-      <?php foreach ($tdLayout['decks'] as $deck): ?>
-        <div class="sg-deck">
+      <?php foreach ($tdLayout['decks'] as $deck):
+        // Lower Floor (1F) blue / Upper Floor (2F) green (admin/_guard.php .floor-*);
+        // cells print the passenger-facing label (A1 / A7), never the stored L1 / U1.
+        $tdFloor = in_array($deck['key'], ['L', 'U'], true) ? (string) $deck['key'] : '';
+      ?>
+        <div class="sg-deck<?= $tdFloor !== '' ? ' floor-' . $tdFloor : '' ?>">
           <?php if (count($tdLayout['decks']) > 1): ?>
-            <div class="sg-deck-head"><?= Security::e((string) $deck['label']) ?></div>
+            <div class="floor-head"><?= Security::e((string) $deck['label']) ?><span class="fh-range"><?= Security::e(Seats::floorRange($tdFloor, $coachForLayout)) ?></span></div>
           <?php endif; ?>
-          <div class="sg-cells">
+          <div class="sg-rows">
             <?php foreach ($deck['rows'] as $row): ?>
-              <?php foreach (array_merge($row['left'] ?? [], $row['right'] ?? []) as $sid):
-                if (!isset($map[$sid])) continue;
-                $s = $map[$sid];
-              ?>
-                <div class="seat-cell <?= $statusFor((string) $s['status']) ?>" title="<?= Security::e($sid . ' — ' . ucfirst((string) $s['status'])) ?><?= !empty($s['passenger']) ? ' · ' . Security::e((string) $s['passenger']) : '' ?>">
-                  <?= Security::e($sid) ?>
-                </div>
+              <div class="sg-row">
+              <?php foreach ([$row['left'] ?? [], $row['right'] ?? []] as $side => $ids): ?>
+                <?php if ($side === 1): ?><span class="sg-aisle"><?= $tdFloor !== '' ? Security::e(trim(str_replace('Row', '', (string) ($row['label'] ?? '')))) : '' ?></span><?php endif; ?>
+                <?php foreach ($ids as $sid):
+                  if (!isset($map[$sid])) continue;
+                  $s = $map[$sid];
+                  $sLbl = Seats::displayLabel((string) $sid, $coachForLayout, 'sharing');
+                ?>
+                  <div class="seat-cell <?= $statusFor((string) $s['status']) ?>" title="<?= Security::e($sLbl . ' — ' . ucfirst((string) $s['status'])) ?><?= !empty($s['passenger']) ? ' · ' . Security::e((string) $s['passenger']) : '' ?>">
+                    <?= Security::e($sLbl) ?>
+                  </div>
+                <?php endforeach; ?>
               <?php endforeach; ?>
+              </div>
             <?php endforeach; ?>
           </div>
         </div>

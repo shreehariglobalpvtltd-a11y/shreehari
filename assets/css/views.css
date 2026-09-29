@@ -327,6 +327,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
   .whatsapp-fab svg{width:26px;height:26px}
 }
 @media print{.whatsapp-fab{display:none!important}}
+.whatsapp-fab[hidden]{display:none}
 
 /* ---------- [CSS] AI ASSISTANT — floating chat FAB (bottom-left) + glass panel ---------- */
 .ai-fab{position:fixed;left:16px;bottom:24px;z-index:90;width:52px;height:52px;border-radius:50%;border:2px solid #fff;background:linear-gradient(135deg,var(--blue,#1A3A6A),#F07C1F);color:#fff;font-size:24px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 6px 20px rgba(26,58,106,.4);transition:transform .2s ease}
@@ -864,7 +865,49 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
   /* Quick Ticket first, above the normal search card and the hero. The id
      selector outranks the :not() rule above. */
   #view-home > #quick-ticket{order:1;width:100%;min-width:0;margin-top:14px}
+  /* Phase B (24 Sep 2026): the three booking doors lead everything on a
+     phone - above QuickBot (1), the search card (2) and the hero (3). */
+  #view-home > #entryCards{order:0;width:100%;min-width:0;margin-top:12px}
 }
+
+/* =========================================================================
+   PHASE B (24 Sep 2026): THREE BOOKING DOORS - #entryCards on the home view.
+   Blue = normal (seat map), orange = QuickBot, green = WhatsApp request.
+   Mobile-first: three equal columns from 320px up; white text on every
+   card stays above 4.5:1 (blue #2E5FA8 6.3, orange #C2410C 5.2, green
+   #15803D 5.0). min-height sits on .ec-grid .ec-card so it outranks
+   app.css button[type=button]{min-height:44px}; the hover lift is
+   hover-capable pointers only, so a tapped card does not stay lifted.
+   ========================================================================= */
+.entry-cards{margin:16px auto 8px}
+.ec-head{margin:0 0 8px;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;text-align:center;color:var(--muted)}
+.ec-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.ec-card{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:5px;margin:0;padding:14px 6px 12px;
+  border:0;border-radius:18px;color:#fff;text-align:center;font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  box-shadow:0 6px 18px rgba(16,24,40,.16);transition:transform .15s ease,box-shadow .15s ease}
+.ec-grid .ec-card{min-height:118px}
+@media (hover:hover){.ec-card:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(16,24,40,.22)}}
+.ec-card:active{transform:scale(.97)}
+.ec-card:focus-visible{outline:3px solid #12264E;outline-offset:3px}
+:root[data-theme="dark"] .ec-card:focus-visible{outline-color:#FFB020}
+.ec-ico{display:grid;place-items:center;width:42px;height:42px;border-radius:13px;background:rgba(255,255,255,.18);font-size:23px;line-height:1}
+.ec-card b{font-size:14px;font-weight:800;line-height:1.2;overflow-wrap:anywhere}
+.ec-card small{font-size:11.5px;font-weight:600;line-height:1.3;opacity:.95;overflow-wrap:anywhere}
+.ec-normal{background:linear-gradient(135deg,#2E5FA8 0%,#1A3A6A 100%)}
+.ec-quick{background:linear-gradient(135deg,#C2410C 0%,#9A3412 100%)}
+.ec-wa{background:linear-gradient(135deg,#15803D 0%,#0E5C2F 100%)}
+@media (min-width:761px){
+  .entry-cards{margin:22px auto 10px}
+  .ec-grid{gap:16px}
+  .ec-card{display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;column-gap:14px;row-gap:2px;
+    align-items:center;justify-items:start;padding:16px 18px;text-align:left}
+  .ec-grid .ec-card{min-height:92px}
+  .ec-ico{grid-row:1 / span 2;width:52px;height:52px;font-size:28px}
+  .ec-card b{font-size:17px;align-self:end}
+  .ec-card small{font-size:13px;align-self:start}
+}
+:root[data-theme="dark"] .ec-card{box-shadow:0 6px 18px rgba(0,0,0,.45)}
+@media (prefers-reduced-motion:reduce){.ec-card{transition:none}.ec-card:hover,.ec-card:active{transform:none}}
 
 /* =========================================================================
    [Round-3] BUS-CARD — TIME-prominent hierarchy
@@ -2501,7 +2544,6 @@ a,button,.btn,.nav a,.tab-btn,.pm-tab,.bt-pill,.tier-pill,.proof-tab,.trip-pill{
   .seat-row.slp-shr6{grid-template-columns:repeat(4,minmax(0,1fr)) 16px repeat(2,minmax(0,1fr));gap:4px}
   .berth-labels6{grid-template-columns:4fr 16px 2fr}
   .seat-row.slp-shr6 .seat{font-size:11px;min-width:0}
-  .seat-row.slp-shr6 .seat::before{font-size:8px;margin-right:1px}
   /* The one non-seat thing that still didn't fit the coach: this label is a
      long unbreakable line (`white-space:nowrap`, views.css:694) and measured
      266px inside a 252px frame at 320px. Let it wrap instead. */
@@ -3544,19 +3586,22 @@ body.bk-regular .qt-collapsed{display:flex}
 .upi-app{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:8px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-weight:800;font-size:13px;text-decoration:none;touch-action:manipulation}
 .upi-app i{font-style:normal;font-size:16px}
 
-/* -- SHG Sahayak, WhatsApp-style -- */
-.ai-head{background:linear-gradient(120deg,#075E54,#128C7E)}
-.ai-msgs{background-color:#ECE5DD;background-image:radial-gradient(rgba(0,0,0,.035) 1px,transparent 1px);background-size:18px 18px}
-.ai-msg.user{background:#DCF8C6;color:#111B21;border:1px solid #CFE9BA}
-.ai-msg.bot{background:#FFFFFF;color:#111B21;border-color:#E6E1DA}
-.ai-msg a{color:#027EB5}
-.ai-send{background:#00A884;border-color:#00A884}
+/* -- SHG Sahayak, on the brand (24 Sep 2026; was WhatsApp green). The skin
+   reads the palette tokens, so the logo palette - the default - paints the
+   chat navy / royal / orange-gold exactly like the rest of the app. -- */
+.ai-head{background:linear-gradient(110deg,var(--blue-deep,#0C306C) 0%,var(--blue,#0054A8) 72%,var(--blue-800,#003C90) 100%);border-bottom:3px solid var(--orange,#F07800)}
+.ai-msgs{background-color:var(--blue-50,#EEF4FC);background-image:radial-gradient(rgba(0,84,168,.09) 1px,transparent 1px);background-size:18px 18px}
+.ai-msg.user{background:linear-gradient(135deg,var(--blue,#0054A8),var(--blue-deep,#0C306C));color:#fff;border:1px solid transparent}
+.ai-msg.bot{background:var(--card,#fff);color:var(--ink);border-color:var(--blue-100,#DCE8F7);box-shadow:0 1px 3px rgba(12,48,108,.06)}
+.ai-msg a{color:var(--orange-600,#E05500)}
+.ai-msg.user a{color:#FFD9A8}
+.ai-send{background:linear-gradient(135deg,var(--orange,#F07800),var(--gold,#FFB703));border-color:transparent;color:#fff;box-shadow:0 4px 12px rgba(240,120,0,.3)}
 .ai-chip{min-height:44px;display:inline-flex;align-items:center}
-.ai-call-cta{background:#128C7E;box-shadow:none;margin-left:6px}
-:root[data-theme="dark"] .ai-msgs{background-color:#0B141A;background-image:radial-gradient(rgba(255,255,255,.03) 1px,transparent 1px)}
-:root[data-theme="dark"] .ai-msg.user{background:#005C4B;color:#E9EDEF;border-color:#005C4B}
-:root[data-theme="dark"] .ai-msg.bot{background:#202C33;color:#E9EDEF;border-color:#202C33}
-:root[data-theme="dark"] .ai-msg a{color:#53BDEB}
+.ai-call-cta{background:var(--blue,#0054A8);box-shadow:none;margin-left:6px}
+:root[data-theme="dark"] .ai-msgs{background-color:#0B1628;background-image:radial-gradient(rgba(255,255,255,.04) 1px,transparent 1px)}
+:root[data-theme="dark"] .ai-msg.user{background:linear-gradient(135deg,#0054A8,#0C306C);color:#E9EDEF;border-color:transparent}
+:root[data-theme="dark"] .ai-msg.bot{background:#152238;color:#E9EDEF;border-color:#1C2E4A}
+:root[data-theme="dark"] .ai-msg a{color:#FFB703}
 
 /* -- assistant unread badge -- */
 .ai-fab{overflow:visible}
@@ -3570,8 +3615,15 @@ body.bk-regular .qt-collapsed{display:flex}
    Dark:  page #0A0A1A, cards #1A1A2E, primary #FF8C42, text #F5F5F5. */
 :root[data-day="brand"]{--blue:#23305A;--blue-deep:#0A0A1A;--blue-800:#1A1A2E;--blue-100:#E4E6EE;--blue-50:#F4F5F9;--orange:#FF6B00;--orange-600:#E05E00;--orange-100:#FFE7D4;--bg:#F5F5F5;--card:#FFFFFF;--ink:#1A1A1A;--line:#E6E6EA}
 /* -- logo palette (20 Sep 2026), the default: measured from assets/img/logo.png -- */
-:root[data-day="logo"]{--blue:#0054A8;--blue-deep:#0C306C;--blue-800:#003C90;--blue-100:#DCE8F7;--blue-50:#EEF4FC;--orange:#F07800;--orange-600:#E05500;--orange-100:#FDE8D2}
-:root[data-theme="dark"][data-day="logo"]{--blue:#5B9BE8;--blue-800:#A9C8F0;--blue-100:#1C2E4A;--blue-50:#132238;--orange:#FF8A1F;--orange-600:#F56A00;--orange-100:#3A2410}
+/* 24 Sep 2026 (owner: "color haru ajhai rich, logo matching theme"): the
+   same measured logo colours, now with the logo's full range - the globe's
+   deep navy and royal blue, the arrow's orange running into gold - plus
+   the two brand gradients every accent surface below is painted with. */
+:root[data-day="logo"]{--blue:#0054A8;--blue-deep:#0C306C;--blue-800:#0B3F8F;--blue-100:#D9E7FA;--blue-50:#EEF4FC;--orange:#F07800;--orange-600:#D95F00;--orange-100:#FFE4C7;--gold:#FFB703;--sky:#2D7BE0;--bg:#F3F7FD;--line:#DCE6F4;
+  --grad-brand:linear-gradient(135deg,#0C306C 0%,#0054A8 58%,#2D7BE0 100%);--grad-warm:linear-gradient(135deg,#F07800 0%,#FFB703 100%);
+  --shadow-sm:0 1px 3px rgba(12,48,108,.08),0 4px 16px rgba(12,48,108,.08);--shadow-md:0 6px 24px rgba(12,48,108,.11),0 12px 36px rgba(12,48,108,.08)}
+:root[data-theme="dark"][data-day="logo"]{--blue:#5B9BE8;--blue-800:#A9C8F0;--blue-100:#1C2E4A;--blue-50:#132238;--orange:#FF8A1F;--orange-600:#F56A00;--orange-100:#3A2410;--gold:#FFC533;--sky:#5B9BE8;
+  --grad-brand:linear-gradient(135deg,#0A2A5E 0%,#0054A8 60%,#2D7BE0 100%);--grad-warm:linear-gradient(135deg,#FF8A1F 0%,#FFC533 100%)}
 :root[data-theme="dark"][data-day="brand"]{--bg:#0A0A1A;--card:#1A1A2E;--ink:#F5F5F5;--muted:#A6A6C0;--line:#2A2A44;--orange:#FF8C42;--orange-600:#FF7A26;--orange-100:#3A2616;--blue:#8C9BD6;--blue-50:#1F1F36;--blue-100:#2A2A48;--blue-800:#C7CBE6;--blue-deep:#05050F}
 
 /* -- assistant header on a phone (13 Sep 2026): five controls beside the
@@ -3785,10 +3837,27 @@ body.wa-open{overflow:hidden}
 /* ===== Seat screen: seats first (owner, 20 Sep 2026: "seat haru surumai dekhinu
    parcha, kun mathi kun tala, nepali ma ni thaha hunu parcha") ===== */
 .legend .lg-lu{font-weight:700;white-space:nowrap}
-.legend .lg-lu b{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:6px;background:var(--blue,#1E5AA8);color:#fff;font-size:11px}
-.deck-block[data-deck="L"] .deck-head{background:#E8F1FF;border:1.5px solid #B9D3F7;color:#12306A}
-.deck-block[data-deck="U"] .deck-head{background:#FFF1E4;border:1.5px solid #FFCF9E;color:#7A3A06}
-:root[data-theme="dark"] .deck-block[data-deck="U"] .deck-head{background:#2A1A0C;border-color:#5A3514;color:#FFC98F}
+.legend .lg-lu b{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 4px;border-radius:6px;background:#1E5AA8;color:#fff;font-size:11px}
+.legend .lg-lu b.lg-2f{background:#15803D}
+/* ===== Two floors, one grid (owner, 23 Sep 2026): Lower Floor (1F) A1–F6 in
+   BLUE, Upper Floor (2F) A7–F12 in GREEN. Only the floor chrome and the FREE
+   berth take the floor colour — selected / booked / held / women / emergency /
+   private keep their own status colours, so every state still reads the same
+   on both floors. ===== */
+.deck-block{--fl:#1E5AA8;--fl-bg:#F2F7FF;--fl-line:#C3D8F5;--fl-ink:#12306A;border:1.5px solid var(--fl-line);border-radius:18px;padding:10px;background:var(--fl-bg)}
+.deck-block[data-deck="U"]{--fl:#15803D;--fl-bg:#F1FAF4;--fl-line:#B9E2C7;--fl-ink:#0E4A25}
+:root[data-theme="dark"] .deck-block{--fl:#2F6FD0;--fl-bg:rgba(47,111,208,.08);--fl-line:#27466F;--fl-ink:#BFD5FA}
+:root[data-theme="dark"] .deck-block[data-deck="U"]{--fl:#1F8F4E;--fl-bg:rgba(31,143,78,.08);--fl-line:#245B3A;--fl-ink:#B5EBC8}
+.deck-block .deck-head,.deck-block[data-deck] .deck-head,:root[data-theme="dark"] .deck-block[data-deck] .deck-head{background:var(--fl);border:0;color:#fff;border-radius:12px;box-shadow:0 3px 10px rgba(18,38,78,.14)}
+.deck-head .dh-range{margin-left:auto;font-family:var(--f-code);font-size:12px;font-weight:800;background:rgba(255,255,255,.22);padding:2px 9px;border-radius:999px;white-space:nowrap}
+.deck-block .cabin-card{border-color:var(--fl-line);border-radius:14px;box-shadow:0 1px 4px rgba(18,38,78,.05)}
+.deck-block .cab-no{color:var(--fl)}
+.deck-block .seat{border-radius:12px}
+.deck-block .seat:not(.sel):not(.bkd):not(.hold):not(.reserved):not(.fem):not(.pvt):not(.u-fem):not(.u-male){background:#fff;border-color:var(--fl-line);color:var(--fl-ink);font-weight:800}
+:root[data-theme="dark"] .deck-block .seat:not(.sel):not(.bkd):not(.hold):not(.reserved):not(.fem):not(.pvt):not(.u-fem):not(.u-male){background:#0A0E1A;border-color:var(--fl-line);color:var(--fl-ink)}
+.deck-block .seat:not(.sel):not(.bkd):not(.hold):not(.reserved):not(.fem):not(.pvt):not(.u-fem):not(.u-male)::before{background:var(--fl-line)}
+@media (max-width:760px){.deck-block{padding:6px;border-radius:14px}}
+@media (max-width:430px){.deck-block{padding:3px;border-width:1px}}
 .seat-quick{margin:0 0 14px;padding:12px;border-radius:14px;border:1.5px solid var(--orange,#F07C1F);background:rgba(240,124,31,.07);display:grid;gap:8px}
 .seat-quick[hidden]{display:none}
 .sq-title{font-weight:800;font-size:14px}
@@ -3828,3 +3897,178 @@ body.wa-open{overflow:hidden}
   #view-seats .booking-type-toggle .bt-pill{min-height:44px;padding-top:6px;padding-bottom:6px}
   #view-seats .seat-pref-row{margin-bottom:8px}
 }
+/* Premium travel surfaces. Geometry and availability remain server-owned. */
+.premium-pay-card{margin:20px;padding:20px;border:1px solid #f3c99e;border-top:4px solid #ff7a16;border-radius:16px;background:white;color:#14284b;display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap}
+.premium-pay-card h3{color:#b94b00;font-size:16px;margin-bottom:8px}.premium-pay-card p{overflow-wrap:anywhere;font-size:13px;margin:10px 0}
+#premiumPayQr{width:220px;text-align:center;flex-shrink:0}#premiumPayQr img{width:100%;height:auto;display:block}#premiumPayQr small{font-size:11px;color:#526680}
+@media(max-width:520px){.premium-pay-card{justify-content:center}.premium-pay-card>div:first-child{width:100%}}
+:root{--premium-navy:#102A56;--premium-blue:#0863B8;--premium-orange:#FF7A16;--premium-green:#087D54}
+.premium-ticket-head{background:linear-gradient(115deg,#102A56,#0863B8);color:#fff;min-height:126px;position:relative;overflow:hidden;gap:18px}
+.premium-ticket-head .tk2-brand{flex:1;min-width:0;align-items:center}
+.premium-ticket-head .tk2-brand img{width:76px;height:64px;object-fit:contain;background:white;padding:6px;border-radius:12px}
+.premium-ticket-head .tk2-brand b{color:white;font-size:17px;line-height:1.5}
+.premium-ticket-head .tk2-brand small{color:#e0efff;line-height:1.6}
+.premium-ticket-head em{display:block;font-style:normal;color:#ffd8b8;font-size:12px;margin-top:5px}
+.premium-ticket-bus{width:180px;height:auto;object-fit:contain;align-self:flex-end;filter:drop-shadow(0 8px 8px #102a5640)}
+.premium-ticket-status{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;padding:14px 20px;background:#f0f7ff}
+.premium-ticket-status .off{background:#ffeaed;color:#b51229}
+.premium-ticket-status .ok{background:#def4e9;color:#087d54}
+.tk2{max-width:900px;box-shadow:0 18px 54px #102a5610}
+.tk2 .tk2-hero{background:#fff;color:#14284b;padding:24px}
+.tk2 .tk2-pnr{font-size:clamp(18px,4vw,27px);color:#102a56;letter-spacing:.03em;flex-wrap:wrap;overflow-wrap:anywhere}
+.tk2 .tk2-pnr small{color:#526680;font-size:12px}
+.tk2 .tk2-route{padding:22px 16px;background:#f0f7ff;border:1px solid #d9e9fa;border-radius:16px}
+.tk2 .tk2-city span,.tk2 .tk2-city small{color:#425a79;white-space:normal;overflow:visible;overflow-wrap:anywhere}
+.tk2 .tk2-city span{font-size:15px;font-weight:700}
+.tk2 .tk2-arrow{color:#0863b8}.tk2 .tk2-arrow i{border-color:#ff7a16}
+.tk2 .tk2-date{color:#14284b}
+.tk2 .tk2-fare{margin:18px 20px;padding:20px;border-radius:16px;background:linear-gradient(120deg,#102a56,#0863b8);align-items:center;flex-wrap:wrap}
+.tk2 .tk2-fare .lbl,.tk2 .tk2-fare .sub{color:#e0efff}.tk2 .tk2-fare .amt{color:#fff;font-size:36px}
+.premium-passengers{padding:0 20px}.premium-passengers table{width:100%;table-layout:fixed}
+.premium-passengers th:nth-child(2){width:46%}.premium-passengers td{overflow-wrap:anywhere;vertical-align:top;white-space:normal}
+.premium-passengers td:first-child{color:#0863b8;font-weight:800}.premium-passengers td:nth-child(2){font-weight:700}
+.premium-payment-state{margin:16px 20px;padding:14px 16px;border:1px solid #f7d2a6;border-radius:12px;background:#fff8ed;color:#8b4b07;display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;overflow-wrap:anywhere}
+.premium-payment-state.paid{background:#eefaf4;color:#087d54;border-color:#b8e4d0}
+.premium-ticket-support{padding:18px 20px;display:flex;flex-wrap:wrap;gap:8px 18px;justify-content:center;color:#425a79;background:#f0f7ff;font-size:12px}
+.premium-ticket-support b{color:#102a56}
+.tk2 .sum-row b{min-width:0;overflow-wrap:anywhere}
+.coach-end{display:flex;justify-content:space-between;padding:10px 12px;color:var(--fl-ink);font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.coach-front{border-bottom:2px solid var(--fl-line);border-radius:50% 50% 0 0;margin-bottom:12px;background:linear-gradient(180deg,#ffffffa0,transparent)}
+.coach-rear{justify-content:center;border-top:2px solid var(--fl-line);margin-top:12px}
+#view-seats .deck-block{padding:14px;border-radius:36px 36px 24px 24px;border:2px solid var(--fl-line);box-shadow:0 8px 24px #102a5608}
+#view-seats .deck-block .cab-head{padding:4px 2px;min-height:20px;background:transparent;border:0}
+#view-seats .deck-block .cab-head .cab-cap,#view-seats .deck-block .cab-head .cab-price{display:none}
+#view-seats .deck-block .cabin-card{background:transparent;border:0;box-shadow:none;padding:0;margin-bottom:10px}
+#view-seats .deck-block .seat-row.slp-shr6{grid-template-columns:repeat(4,minmax(0,1fr)) 24px repeat(2,minmax(0,1fr));gap:6px}
+#view-seats .deck-block .seat{min-height:62px;min-width:0;border-radius:10px;font-size:13px;position:relative;padding:9px 2px 17px}
+#view-seats .deck-block .seat:not(.sel):not(.bkd):not(.hold):not(.reserved):not(.fem):not(.pvt):not(.u-fem):not(.u-male){background:var(--fl-bg);border:2px solid var(--fl);color:var(--fl-ink)}
+#view-seats .seat.sel{background:#ff7a16!important;color:#102a56!important;border-color:#c45400!important}
+#view-seats .seat.sel::after{content:'✓';position:absolute;right:3px;bottom:1px;font-size:13px}
+#view-seats .seat.bkd{background:#e3e7ed;color:#586577;border-color:#b8c0cc;opacity:1}
+#view-seats .seat.bkd::after{content:'×';position:absolute;bottom:1px;right:4px}
+#view-seats .seat.hold{background:#fff0d2!important;color:#7a520b!important;border-color:#bd8f35!important}
+#view-seats .seat.hold::after{content:'▣'}
+#view-seats .seat.reserved{background:#374151!important;color:#fff!important;border-color:#374151!important}
+#view-seats .seat.reserved::after{content:'—';position:absolute;bottom:0;right:4px}
+#view-seats .seat:focus-visible,.deck-tab:focus-visible{outline:3px solid #ff7a16;outline-offset:3px}
+#splash{background:radial-gradient(ellipse at 50% 10%,#fff 20%,#f0f7ff 75%,#dcecff);color:#102a56;overflow:auto;padding:24px 12px;justify-content:safe center}
+#splash .splash-content{width:min(100%,700px);max-width:700px;padding:0 12px}
+#splash .splash-logo{width:94px;filter:none;animation:premiumRise .4s ease both}
+#splash .splash-brand{gap:8px}#splash .splash-title{color:#102a56;font-size:clamp(24px,5vw,34px)}
+#splash .splash-tagline{margin-top:6px;font-size:11px;letter-spacing:.09em;color:#425a79}
+.premium-border{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:20px 0 8px;font-size:10px;font-weight:800;color:#0863b8;letter-spacing:.06em}
+.premium-border span:nth-child(2){font-size:14px;color:#102a56;letter-spacing:0}
+#splash .splash-ceo{position:relative;flex-direction:row;justify-content:center;gap:18px;margin:10px auto -30px;z-index:1;animation:premiumRise .55s ease both;text-align:left}
+#splash .splash-ceo-photo{width:140px;height:194px;border:0;border-radius:70px 70px 12px 12px;object-fit:contain;object-position:center;box-shadow:0 0 0 8px #ffffff90,0 10px 36px #0863b819;margin:0}
+#splash .splash-ceo b{font-family:var(--f-body);font-size:17px;max-width:210px;display:block;margin:7px 0;color:#102a56}
+#splash .splash-ceo span{font-size:10px;color:#526680;letter-spacing:.1em}
+.premium-fleet{position:relative;height:165px;isolation:isolate;z-index:2}
+.premium-fleet img{position:absolute;object-fit:contain;height:auto;bottom:12px;filter:drop-shadow(0 10px 8px #102a561f)}
+.premium-fleet .fleet-main{width:59%;left:0;z-index:2;animation:premiumBusLeft .65s ease both}
+.premium-fleet .fleet-second{width:42%;right:0;bottom:24px;animation:premiumBusRight .65s ease both}
+.premium-road{position:absolute;bottom:1px;left:-2%;width:104%;height:58px;border-radius:50%;background:#d6e3f2;border-bottom:5px solid #a9c2de;transform:rotate(-3deg)}
+.premium-road::after{content:'';position:absolute;inset:20px 5% 15px;border-bottom:2px dashed #fff;border-radius:50%}
+.premium-promise{font-size:clamp(20px,4vw,27px);font-weight:800;color:#102a56;margin:12px 0}
+.premium-services{display:flex;flex-wrap:wrap;gap:8px 18px;justify-content:center;font-size:11px;color:#526680}
+.premium-services span::before{content:'✓';margin-right:5px;color:#087d54}
+.premium-loading{margin:18px auto 0;max-width:300px;font-size:11px;color:#526680}
+.premium-progress{height:4px;margin:10px 0;background:#d6e3f2;border-radius:4px;overflow:hidden}
+.premium-progress i{height:100%;width:8%;display:block;background:linear-gradient(90deg,#0863b8,#ff7a16);transition:width .2s}
+#splashRetry:not([hidden]){display:block;color:#0863b8;text-decoration:underline;margin-top:12px}
+#splash .splash-phone{margin-top:12px;padding:6px 18px;font-size:14px}
+#splash .splash-skip{margin-top:8px;color:#425a79}
+#splash .splash-map{opacity:.15!important;top:42%;width:100%}
+@keyframes premiumRise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes premiumBusLeft{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:none}}
+@keyframes premiumBusRight{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+@media(max-width:600px){.premium-ticket-bus{width:110px}.premium-ticket-head .tk2-brand{gap:8px}.premium-ticket-head .tk2-brand img{width:48px;height:48px}.premium-ticket-head .tk2-brand b{font-size:12px}.premium-ticket-head .tk2-brand small{font-size:10px}.tk2 .tk2-hero{padding:16px}.tk2 .tk2-ess{display:flex;flex-direction:column-reverse}.tk2 .tk2-tiles{width:100%}.tk2 .tk2-qr{width:150px;align-self:center}.premium-ticket-status{padding:12px 16px}.premium-fleet{height:125px}.premium-border{gap:6px;font-size:8px}.premium-border span:nth-child(2){font-size:11px}#view-seats .deck-block{padding:10px 6px}#view-seats .deck-block .seat-row.slp-shr6{gap:4px;grid-template-columns:repeat(4,minmax(0,1fr)) 18px repeat(2,minmax(0,1fr))}#view-seats .deck-block .seat{min-height:58px;font-size:11px}.tk2 .tk2-city b{font-size:25px}}
+@media(max-height:700px){#splash .splash-logo{width:62px}#splash .splash-ceo-photo{width:92px;height:128px}.premium-border{margin-top:12px}.premium-fleet{height:110px;max-width:430px;margin:auto}.premium-promise{margin:7px 0}.premium-loading{margin-top:10px}}
+@media(prefers-reduced-motion:reduce){#splash *,#splash *::before,#splash *::after{animation:none!important;transition:none!important;transform:none}.premium-fleet img,#splash .splash-logo,#splash .splash-ceo{opacity:1}}
+@media print{.premium-ticket-head,.tk2 .tk2-fare{print-color-adjust:exact;-webkit-print-color-adjust:exact}.tk2{max-width:none;box-shadow:none}.premium-passengers tr,.tk2-tile,.tk2-qr{break-inside:avoid}.tk2-more::details-content{content-visibility:visible}.tk2 .tk2-links,.tk2-more>summary{display:none!important}.premium-ticket-support a{color:#102a56}}
+
+/* ── Contact dial (24 Sep 2026) — the office one tap away on every screen ── */
+.ct-fab{position:fixed;right:16px;bottom:96px;z-index:90;width:52px;height:52px;border-radius:50%;border:2px solid #fff;background:linear-gradient(135deg,#178A50,#25D366);color:#fff;font-size:22px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 6px 20px rgba(23,138,80,.4);transition:transform .2s ease}
+.ct-fab:hover{transform:scale(1.06)}
+.ct-fab[aria-expanded="true"]{transform:rotate(12deg) scale(1.04)}
+@media (max-width:760px){.ct-fab{bottom:calc(76px + env(safe-area-inset-bottom) + 68px)}}
+.ct-fab[hidden]{display:none}
+.ct-sheet{position:fixed;inset:0;z-index:95;background:rgba(18,38,78,.45);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);display:flex;align-items:flex-end;justify-content:center;padding:0 0 calc(12px + env(safe-area-inset-bottom))}
+.ct-sheet[hidden]{display:none}
+.ct-card{width:min(520px,calc(100% - 24px));background:var(--card);color:var(--ink);border-radius:22px;padding:16px 16px 14px;box-shadow:var(--shadow-lg);animation:ctUp .25s var(--ease-decel)}
+@keyframes ctUp{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
+.ct-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.ct-head b{font-size:17px}
+.ct-x{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--bg);color:var(--muted);font-size:15px;cursor:pointer}
+.ct-sub{color:var(--muted);font-size:12.5px;margin:4px 0 12px}
+.ct-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ct-btn{display:flex;align-items:center;gap:10px;min-height:56px;padding:10px 12px;border-radius:16px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-weight:800;font-size:14px;text-decoration:none;cursor:pointer;text-align:left}
+.ct-btn span{font-size:22px;line-height:1}
+.ct-btn b{line-height:1.2}
+.ct-call{background:#E9F4FF;border-color:#BBD6F3;color:#12264E}
+.ct-wa{background:#E7F9EE;border-color:#B9E6C9;color:#0F5F38}
+.ct-chat{background:#FFF1E4;border-color:#F3D3B0;color:#8A4B12}
+.ct-cb{background:#F1EEFB;border-color:#D6CDF2;color:#3E2E7A}
+.ct-cb-form{margin-top:12px;display:grid;gap:10px}
+.ct-cb-form label{display:grid;gap:4px;font-size:12.5px;color:var(--muted);font-weight:700}
+.ct-cb-form input{min-height:46px;border:1px solid var(--line);border-radius:12px;padding:0 12px;font-size:16px;background:var(--card);color:var(--ink)}
+.ct-send{justify-content:center;background:var(--blue);border-color:var(--blue);color:#fff}
+.ct-note{font-size:13px;color:var(--muted);min-height:1em;margin:0}
+.ct-note.ok{color:var(--ok);font-weight:700}
+.ct-note.bad{color:var(--bad);font-weight:700}
+@media (prefers-color-scheme:dark){.ct-call{background:#16294a;border-color:#27406b;color:#dbe8ff}.ct-wa{background:#0f3a26;border-color:#1f6a45;color:#c9f5da}.ct-chat{background:#4a2a10;border-color:#7a4a20;color:#ffe2c4}.ct-cb{background:#2c2350;border-color:#4a3c85;color:#e6dfff}}
+@media print{.ct-fab,.ct-sheet{display:none!important}}
+
+
+/* ================================================================
+   [CSS] 61. 24 Sep 2026 — AI SAHAYAK PRO + LOGO-RICH THEME
+   The assistant with hands (charts, pictures, action buttons, a full-
+   screen mode, a role badge) and the brand gradients on the surfaces
+   people see first: hero, buttons, top bar, footer, cards, chat. Scoped
+   to the logo palette so a hand-picked palette keeps its own look.
+================================================================ */
+/* -- widget: role badge, expand, charts, media, actions, bullet lists -- */
+.ai-role{font-size:9px;letter-spacing:.1em;background:var(--orange,#F07800);color:#fff;padding:2px 7px;border-radius:999px;vertical-align:middle;font-weight:800}
+.ai-panel.max{left:12px;right:12px;bottom:12px;top:12px;width:auto;height:auto;max-height:none;border-radius:18px}
+@media (max-width:760px){.ai-panel.max{left:6px;right:6px;top:6px;bottom:6px}}
+.ai-panel.max .ai-msg{max-width:min(720px,88%)}
+.ai-msg.ai-chart{max-width:96%;width:96%;padding:9px 10px 6px}
+.ai-panel.max .ai-msg.ai-chart{max-width:min(760px,92%);width:min(760px,92%)}
+.ai-chart-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;font-size:12.5px}
+.ai-chart-box{position:relative;height:190px}
+.ai-panel.max .ai-chart-box{height:300px}
+.ai-chart-dl{flex:0 0 auto;background:var(--blue-50,#EEF4FC);border:1px solid var(--blue-100,#DCE8F7);color:var(--blue-800,#0B3F8F);padding:3px 9px;border-radius:8px;font-size:11.5px;font-weight:800;cursor:pointer;min-height:0}
+.ai-chart-dl:hover{background:var(--blue-100,#DCE8F7)}
+.ai-media img{display:block;max-width:100%;border-radius:10px;border:1px solid var(--line)}
+.ai-actions{display:flex;flex-wrap:wrap;gap:6px}
+.ai-act{display:inline-flex;align-items:center;gap:5px;padding:8px 12px;border-radius:10px;background:var(--grad-warm,linear-gradient(135deg,#F07800,#FFB703));color:#fff!important;font-weight:800;font-size:12.5px;text-decoration:none;box-shadow:0 4px 12px rgba(240,120,0,.28)}
+.ai-act:active{transform:scale(.97)}
+.ai-msg .ai-ul{margin:4px 0 2px 16px;padding:0}
+.ai-msg .ai-ul li{margin:2px 0}
+/* -- the floating button wears the whole logo: globe blue into arrow orange -- */
+.ai-fab{background:linear-gradient(135deg,var(--blue-deep,#0C306C) 0%,var(--blue,#0054A8) 55%,var(--orange,#F07800) 100%);box-shadow:0 8px 22px rgba(12,48,108,.4)}
+.ai-chip{background:var(--blue-50,#EEF4FC);color:var(--blue-800,#0B3F8F);border-color:var(--blue-100,#DCE8F7)}
+.ai-chip:hover{background:var(--blue-100,#DCE8F7)}
+.ai-mic{background:var(--blue-50,#EEF4FC);color:var(--blue-800,#0B3F8F)}
+.ai-head select{background:rgba(255,255,255,.14)}
+
+/* Integration 24 Sep 2026: the branch's "brand gradients on the app surfaces"
+   (topbar, hero, .btn-orange, .btn-blue, footer, cards) are left out: at
+   :root[data-day] specificity they beat premium.css section 8, which owns
+   the contrast-checked CTA (#BF4C00 on light, amber on navy). */
+/* -- chart fallback table (no chart library), and the phone header --
+   On a 375px phone the header holds avatar · title · ⛶ · 🔇 · 🗑️ · lang · ✕;
+   the badges go and the controls tighten so "SHG Sahayak" stays readable. */
+.ai-chart-box.ai-chart-txt{height:auto;max-height:260px;overflow:auto}
+.ai-tbl{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:4px}
+.ai-tbl th{text-align:right;font-weight:800;color:var(--blue-800,#0B3F8F);padding:3px 6px;border-bottom:1px solid var(--line)}
+.ai-tbl th:first-child{text-align:left}
+.ai-tbl td{padding:3px 6px;border-bottom:1px solid var(--line)}
+.ai-tbl td.n{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+@media (max-width:420px){
+  .ai-head #aiPoweredBadge,.ai-head .ai-role{display:none}
+  .ai-head .ai-close{padding:3px;min-width:28px;min-height:30px;font-size:14px}
+  .ai-head select{max-width:60px;padding:2px 3px}
+  .ai-head b{font-size:13px}
+}
+/* full-screen chat sits above the staff counter-mode strip (#counterBar, z 1200) */
+.ai-panel.max{z-index:1250}
