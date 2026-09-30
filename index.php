@@ -123,6 +123,7 @@ if ($staffRow !== null) {
                 ];
             }
         }
+        usort($agentList, static fn(array $x, array $y): int => strnatcmp($x['code'], $y['code']));
         $boot['staff']['agents'] = $agentList;
     } catch (Throwable $e) {
         $boot['staff']['agents'] = [];

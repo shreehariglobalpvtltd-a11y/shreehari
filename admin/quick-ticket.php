@@ -93,6 +93,7 @@ foreach ($agentRows as $ar) {
         ];
     }
 }
+usort($agentList, static fn(array $x, array $y): int => strnatcmp($x['code'], $y['code']));
 $commFlat   = AgentWallet::flatMode();
 $commDirect = Settings::getFloat('agent_flat_direct', 200.0);
 $commJoint  = Settings::getFloat('agent_flat_joint', 400.0);

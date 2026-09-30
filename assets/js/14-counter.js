@@ -80,6 +80,8 @@
       + '#ctrPanel{border:2px solid #178A50;border-radius:14px;padding:14px;margin:12px 0;background:#f3fbf6}'
       + ':root[data-theme="dark"] #ctrPanel{background:#0f2a1c}'
       + '#ctrPanel h4{margin:0 0 10px;font-size:15px}'
+      + '#ctrPanel .ctr-agent{margin:12px 0 4px;padding:10px;border:1.5px dashed #178A50;border-radius:12px;background:var(--card,#fff)}'
+      + '#ctrPanel .ctr-agent.invalid{border-color:var(--bad,#c00)}'
       + '.ctr-pays{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}'
       + '.ctr-pay{flex:1 1 120px;min-height:48px;border:2px solid var(--line,#dde3ee);border-radius:10px;background:var(--card,#fff);font-weight:700;font-size:14px;cursor:pointer;color:inherit}'
       + '.ctr-pay.on{background:#178A50;color:#fff;border-color:#178A50}'
@@ -354,7 +356,7 @@
         + '<input type="number" id="ctrDiscVal" min="0" step="1" placeholder="0" inputmode="numeric">'
         + '<select id="ctrDiscType"><option value="flat">₹ off</option><option value="percent">% off</option></select>'
         + '<input type="text" id="ctrNote" maxlength="255" placeholder="Note (optional) · receipt no, remarks"></div>'
-        + '<div class="ctr-note">Max discount ' + esc(maxPct) + '% of the fare (server re-checks). The booking is <b>confirmed immediately</b>, the ticket goes to the passenger\'s WhatsApp and the sale is credited to <b>' + esc(WHO) + '</b>.</div>';
+        + '<div class="ctr-note">Max discount ' + esc(maxPct) + '% of the fare (server re-checks). The booking is <b>confirmed immediately</b>, the ticket goes to the passenger\'s WhatsApp and the sale is credited to the <b>agent chosen above</b> (Other = company code). Cash stays with <b>' + esc(WHO) + '</b>.</div>';
       // One screen (17 Sep 2026): the panel lives on step 1, right above the
       // Confirm button — the desk never has to open the customer's payment step.
       var nav0 = $q('#coStep1 .flow-actions');
@@ -375,12 +377,23 @@
     }
     oneScreen();
 
-    // Agent selection is MANDATORY at the counter / admin desk.
+    // Agent selection is MANDATORY at the counter / admin desk, and sits in
+    // the payment panel, right under Cash / UPI / eSewa / Bank.
     var ac = $q('#cAgentCode');
     if (ac) {
       var field = ac.closest('.field') || ac.parentElement;
+      var pays = $q('#ctrPanel .ctr-pays');
+      if (field && pays && field.parentNode !== pays.parentNode) {
+        var oldCard = field.parentNode;
+        field.classList.add('ctr-agent');
+        pays.parentNode.insertBefore(field, pays.nextSibling);
+        if (oldCard && oldCard.classList && oldCard.classList.contains('co-card') && !oldCard.querySelector('.field')) oldCard.style.display = 'none';
+      }
+      var otherBtn = $q('#cAgentOther'); if (otherBtn) otherBtn.style.display = 'none';
       var agents = (STAFF.agents || []);
-      if (agents.length > 0) {
+      if (ac.tagName === 'SELECT') {
+        // already the desk dropdown - keep the desk's choice across re-renders
+      } else if (agents.length > 0) {
         var sel = document.createElement('select');
         sel.id = 'cAgentCode';
         sel.style.cssText = 'width:100%;font-size:16px;padding:10px 12px;border:1.5px solid var(--line,#dde3ee);border-radius:12px;background:var(--card,#fff);color:inherit';
