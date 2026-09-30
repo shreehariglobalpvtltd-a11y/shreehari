@@ -37,7 +37,9 @@ INSERT INTO `route_stops`
   (`route_id`, `stop_type`, `stop_name`, `landmark`, `stop_time`,
    `latitude`, `longitude`, `is_border`, `is_meal_halt`, `sort_order`)
 SELECT r.`id`, 'boarding', s.`stop_name`, s.`landmark`,
-       ADDTIME(r.`dep_time`, s.`offset_from_dep`),
+       IF(ADDTIME(r.`dep_time`, s.`offset_from_dep`) >= '24:00:00',
+          SUBTIME(ADDTIME(r.`dep_time`, s.`offset_from_dep`), '24:00:00'),
+          ADDTIME(r.`dep_time`, s.`offset_from_dep`)),
        s.`lat`, s.`lng`, 0, 0, s.`ord`
   FROM `routes` r
   CROSS JOIN (
