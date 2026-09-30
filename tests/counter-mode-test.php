@@ -206,6 +206,13 @@ try {
             check('  the desk keeps no commission on it', (float) Database::scalar(
                 "SELECT COALESCE(SUM(amount),0) FROM agent_ledger WHERE booking_id = :b AND account = 'commission' AND agent_admin_id = :d",
                 ['b' => (int) $bc1['id'], 'd' => $deskId], 0) == 0.0);
+            /* 30 Sep 2026: crediting the agent at the moment of sale is not a
+               correction, so a new desk ticket must not print CORRECTED · REV 1. */
+            $revOf = static fn(int $bid): int => (int) Database::scalar('SELECT reissue_count FROM tickets WHERE booking_id = :b', ['b' => $bid], -1);
+            check('  a new desk ticket is not marked CORRECTED (REV 0)', $revOf((int) $bc1['id']) === 0, (string) $revOf((int) $bc1['id']));
+            $bc1Row = Database::fetch('SELECT * FROM bookings WHERE id = :i', ['i' => (int) $bc1['id']]) ?? [];
+            AgentWallet::reassignSeller($bc1Row, 0, $deskId);
+            check('  a later change of agent still marks it CORRECTED (REV 1)', $revOf((int) $bc1['id']) === 1, (string) $revOf((int) $bc1['id']));
             Settings::set('company_agent_code', $label, 'string', 'agent', false); Settings::flush();
             $bc2 = BookingService::create($req(['U13'], '11', ['referralCode' => 'OTHER']), $desk);
             check('"Other" goes to the company agent code', (int) $bc2['sold_by_admin_id'] === $coded);

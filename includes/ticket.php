@@ -740,8 +740,12 @@ final class Ticket
      * The ticket_number and PNR are DELIBERATELY preserved (the passenger
      * already holds that number); only the trip-bound fields change. Cached
      * PDF/invoice paths are nulled so the next download regenerates them.
+     *
+     * $countRevision=false refreshes the ticket without printing CORRECTED
+     * TICKET · REV n (30 Sep 2026): used when the desk credits the agent in
+     * the same request that made the sale, before anyone has seen a copy.
      */
-    public static function reissue(int $bookingId): void
+    public static function reissue(int $bookingId, bool $countRevision = true): void
     {
         $existing = Database::fetch('SELECT * FROM tickets WHERE booking_id = :b LIMIT 1', ['b' => $bookingId]);
         if ($existing === null) {
@@ -780,6 +784,9 @@ final class Ticket
            re-rendered ticket prints CORRECTED · REV n so an older copy on a phone or
            a WhatsApp chat is recognisably superseded. A missing column (migration not
            run) must never break the reissue itself. */
+        if (!$countRevision) {
+            return;
+        }
         try {
             Database::query('UPDATE tickets SET reissue_count = reissue_count + 1, reissued_at = NOW() WHERE booking_id = :b', ['b' => $bookingId]);
         } catch (Throwable $e) {

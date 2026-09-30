@@ -1514,11 +1514,16 @@ final class AgentWallet
      * Passing 0/null as $newAgentId detaches the sale to the office: the old
      * seller's commission is reversed (netted to zero), cash left untouched.
      *
+     * $atSale (30 Sep 2026): true only when the desk credits the picked agent
+     * in the same request that made the sale (BookingService::attributeDeskSale).
+     * Nobody has seen that ticket yet, so it is refreshed WITHOUT counting a
+     * revision; otherwise every new desk ticket printed "CORRECTED TICKET · REV 1".
+     *
      * @param array<string,mixed> $booking a bookings row (needs id, pnr,
      *                                      sold_by_admin_id, status, total_amount)
      * @return array{old:int, new:int, commission:float}
      */
-    public static function reassignSeller(array $booking, int $newAgentId, int $by = 0): array
+    public static function reassignSeller(array $booking, int $newAgentId, int $by = 0, bool $atSale = false): array
     {
         $bookingId = (int) ($booking['id'] ?? 0);
         if ($bookingId <= 0) {
@@ -1623,7 +1628,7 @@ final class AgentWallet
             $pnr !== '' ? $pnr : (string) $bookingId,
             ['sold_by_admin_id' => $oldAgentId],
             ['sold_by_admin_id' => $newAgentId, 'commission' => $commission, 'status' => $status],
-            'Selling agent changed by admin #' . $by
+            ($atSale ? 'Desk sale credited to agent by admin #' : 'Selling agent changed by admin #') . $by
         );
 
         // The ticket prints ISSUED BY / AGENT CODE: drop the cached PNG/PDF so
@@ -1632,7 +1637,7 @@ final class AgentWallet
             if (!class_exists('Ticket')) {
                 require_once __DIR__ . '/ticket.php';
             }
-            Ticket::reissue($bookingId);
+            Ticket::reissue($bookingId, !$atSale);
         } catch (Throwable $e) {
             Logger::warning('Ticket reissue after agent change failed', ['pnr' => $pnr, 'e' => $e->getMessage()]);
         }
