@@ -135,6 +135,8 @@ const CORE_SUITES = [
     'governor-spine-test.php'      => 'the AI may only touch the data lane; every fault names itself',
     'delivery-sentinel-test.php'   => 'a delivery outage names the right fault, in owner language',
     'whatsapp-retry-policy-test.php' => 'a recovered Meta sender releases the failed-ticket backlog',
+    // 30 Sep 2026, registered with the office alert it guards.
+    'wa-fail-alert-test.php'       => 'a failed passenger WhatsApp pages the office once, with the ticket link',
     // 13 Sep 2026, registered with the PWA master upgrade it guards.
     'webpush-test.php'             => 'Web Push: RFC 8291 vectors, VAPID signature, subscription store',
     // 19 Sep 2026, registered with the night data audit it guards.

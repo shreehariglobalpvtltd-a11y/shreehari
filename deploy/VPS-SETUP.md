@@ -143,6 +143,10 @@ sudo systemctl restart php8.3-fpm
 # Trip reminders (12h / 2h / departed / border / arrived).
 */10 * * * * /usr/bin/php /var/www/shreehariglobal.in/public_html/cron/reminders.php >/dev/null 2>&1
 
+# Tell the office WhatsApp (admin_whatsapp) when a passenger's WhatsApp
+# fails: PNR, failed mobile, ticket link. One alert per booking per day.
+*/5 * * * * /usr/bin/php /var/www/shreehariglobal.in/public_html/cron/wa-fail-alert.php >/dev/null 2>&1
+
 # Nightly gzipped database backup into backup/ (web-denied), 02:15.
 15 2 * * * /usr/bin/php /var/www/shreehariglobal.in/public_html/cron/backup.php >/dev/null 2>&1
 

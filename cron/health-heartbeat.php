@@ -46,6 +46,8 @@ const EXPECTED = [
                               'what'  => 'Unpaid seat holds are not being released — seats stay stuck as "pending" and the bus looks full when it is not.'],
     'whatsapp-retry.php'  => ['every' => 15,   'grace' => 60,   'severity' => Health::WARN,
                               'what'  => 'Tickets whose WhatsApp failed are no longer being retried — the backlog will not drain by itself.'],
+    'wa-fail-alert.php'   => ['every' => 5,    'grace' => 30,   'severity' => Health::WARN,
+                              'what'  => 'The office is no longer told when a passenger\'s WhatsApp fails — failed tickets will go unnoticed until someone opens Tickets to hand over.'],
     'alerts.php'          => ['every' => 30,   'grace' => 90,   'severity' => Health::WARN,
                               'what'  => 'Capacity and low-seat alerts have stopped.'],
     'reminders.php'       => ['every' => 10,   'grace' => 50,   'severity' => Health::WARN,
