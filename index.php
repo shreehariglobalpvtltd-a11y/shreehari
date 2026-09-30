@@ -87,6 +87,9 @@ if ($staffRow !== null) {
         'maxDiscountPct' => Settings::getFloat('counter_max_discount_pct', 15.0),
         'maxSeats'       => Settings::getInt('counter_max_seats_per_booking', 20),
         'panelUrl'       => Auth::isCounterAgent() ? '/admin/agent.php' : '/admin/',
+        'commFlat'       => AgentWallet::flatMode(),
+        'commDirect'     => Settings::getFloat('agent_flat_direct', 200.0),
+        'commJoint'      => Settings::getFloat('agent_flat_joint', 400.0),
     ];
     try {
         $agentRows = Database::fetchAll(
@@ -94,9 +97,14 @@ if ($staffRow !== null) {
         );
         $agentList = [];
         foreach ($agentRows as $ar) {
-            $aCode = AgentWallet::agentCodeLabel((int) $ar['id']);
+            $aid  = (int) $ar['id'];
+            $aCode = AgentWallet::agentCodeLabel($aid);
             if ($aCode) {
-                $agentList[] = ['code' => $aCode, 'name' => (string) ($ar['full_name'] ?: $ar['username'])];
+                $agentList[] = [
+                    'code' => $aCode,
+                    'name' => (string) ($ar['full_name'] ?: $ar['username']),
+                    'type' => AgentWallet::agentTypeFor($aid),
+                ];
             }
         }
         $boot['staff']['agents'] = $agentList;

@@ -393,6 +393,7 @@
         sel.addEventListener('change', function () {
           if (field) field.classList.remove('invalid');
           try { if (typeof coSyncContinue === 'function') coSyncContinue(); } catch (e) {}
+          ctrSummary();
         });
         var lbl = field && field.querySelector('label');
         if (lbl) lbl.innerHTML = 'एजेन्ट छान्नुहोस् · Select Agent <small style="color:var(--bad)">(अनिवार्य / required)</small>';
@@ -477,10 +478,18 @@
     if (dv > 0 && total > 0) off = dt === 'percent' ? Math.round(total * Math.min(dv, maxPct) / 100) : Math.min(dv, total);
     var payLbl = { cash: '💵 Cash', upi: '📱 UPI received', esewa: '🇳🇵 eSewa received', bank: '🏦 Bank' }[CTR.pay] || CTR.pay;
     var fmt = function (n) { try { return inr(n); } catch (e) { return '₹' + n; } };
+    var commLine = '';
+    var agSel = $q('#cAgentCode');
+    if (agSel && agSel.value && seats > 0 && STAFF.commFlat) {
+      var selAgent = (STAFF.agents || []).find(function (a) { return a.code === agSel.value; });
+      var rate = (selAgent && selAgent.type === 'joint') ? Number(STAFF.commJoint || 400) : Number(STAFF.commDirect || 200);
+      commLine = '<span>·</span><small style="color:var(--good)">💰 ' + esc(agSel.value) + ' कमिशन ' + fmt(rate) + ' × ' + seats + ' = ' + fmt(rate * seats) + '</small>';
+    }
     el.innerHTML = '<b>' + seats + ' seat' + (seats === 1 ? '' : 's') + '</b><span>·</span>' + fmt(total)
       + '<span>·</span>' + esc(payLbl)
       + (off > 0 ? '<span>·</span>discount − ' + fmt(off) + '<span>·</span><b>≈ ' + fmt(Math.max(1, total - off)) + ' to collect</b>'
-                 : '<span>·</span><b>' + fmt(total) + ' to collect</b>');
+                 : '<span>·</span><b>' + fmt(total) + ' to collect</b>')
+      + commLine;
   }
 
   function ctrConfirm() {
@@ -551,8 +560,10 @@
       var isBook = CAN && typeof path === 'string' && path.indexOf('/book.php') === 0 && body && typeof body === 'object';
       if (isBook) {
         var dv = parseFloat(($q('#ctrDiscVal') || {}).value) || 0;
+        var agSel = $q('#cAgentCode');
         body = Object.assign({}, body, {
           counterPayment: CTR.pay,
+          agentCode: agSel ? (agSel.value || '').trim() : '',
           discountType: dv > 0 ? (($q('#ctrDiscType') || {}).value || 'flat') : '',
           discountValue: dv,
           note: (($q('#ctrNote') || {}).value || '').trim(),

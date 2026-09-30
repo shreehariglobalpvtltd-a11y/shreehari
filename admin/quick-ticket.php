@@ -63,11 +63,19 @@ try {
 } catch (Throwable $e) {}
 $agentList = [];
 foreach ($agentRows as $ar) {
-    $aCode = AgentWallet::agentCodeLabel((int) $ar['id']);
+    $aid   = (int) $ar['id'];
+    $aCode = AgentWallet::agentCodeLabel($aid);
     if ($aCode) {
-        $agentList[] = ['code' => $aCode, 'name' => (string) ($ar['full_name'] ?: $ar['username'])];
+        $agentList[] = [
+            'code' => $aCode,
+            'name' => (string) ($ar['full_name'] ?: $ar['username']),
+            'type' => AgentWallet::agentTypeFor($aid),
+        ];
     }
 }
+$commFlat   = AgentWallet::flatMode();
+$commDirect = Settings::getFloat('agent_flat_direct', 200.0);
+$commJoint  = Settings::getFloat('agent_flat_joint', 400.0);
 
 // Today's quick tickets — a counter agent sees only their own.
 $scope  = Auth::bookingScopeAdminId();
@@ -454,6 +462,10 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
   var CSRF = <?= json_encode($csrf) ?>;
   var CAN = <?= $canSell ? 'true' : 'false' ?>;
   var MAX_DISC = <?= json_encode($maxDisc) ?>;
+  var AGENTS = <?= json_encode($agentList, JSON_UNESCAPED_UNICODE) ?>;
+  var COMM_FLAT = <?= $commFlat ? 'true' : 'false' ?>;
+  var COMM_DIRECT = <?= json_encode($commDirect) ?>;
+  var COMM_JOINT = <?= json_encode($commJoint) ?>;
   var $ = function (s, r) { return (r || document).querySelector(s); };
   var $$ = function (s, r) {
     var root = typeof r === 'string' ? document.querySelector(r) : (r || document);
@@ -541,6 +553,8 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
     var v = parseFloat(this.value) || 0;
     if ($('#qtDiscType').value === 'percent' && v > MAX_DISC) this.value = String(MAX_DISC);
   });
+  var qtAg = $('#qtAgent');
+  if (qtAg) qtAg.addEventListener('change', function () { renderPlan(); });
 
   function dateValue() {
     if (st.date === 'today') return isoOffset(0);
@@ -620,6 +634,12 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
     return 'in ' + Math.floor(h / 24) + 'd ' + (h % 24) + 'h';
   }
   function money(n) { return '₹' + Number(n || 0).toLocaleString('en-IN'); }
+  function commLine(seats) {
+    var ag = $('#qtAgent'); if (!ag || !ag.value || !COMM_FLAT || !seats) return '';
+    var sel = AGENTS.find(function (a) { return a.code === ag.value; });
+    var rate = (sel && sel.type === 'joint') ? COMM_JOINT : COMM_DIRECT;
+    return '<div style="margin-top:2px"><small>💰 कमिशन · Commission</small><b style="color:#178A50">' + money(rate * seats) + '</b><em>' + esc(ag.value) + ' · ' + money(rate) + ' × ' + seats + ' seat' + (seats > 1 ? 's' : '') + '</em></div>';
+  }
   function renderPlan() {
     if (!plan) return;
     var f = plan.fare || {};
@@ -634,6 +654,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       + '<div><small>Boarding · चढ्ने ठाउँ</small><b>' + esc(plan.boardingCode) + ' · ' + esc(plan.boardingName) + '</b><em>' + esc(plan.boardingTime || '') + (plan.departsInMin != null ? ' · ' + inLabel(plan.departsInMin) : '') + '</em></div>'
       + '<div><small>Seat' + ((plan.seats || []).length > 1 ? 's' : '') + '</small><b>' + esc(seatsTxt) + '</b><em>' + esc(plan.seatsLeft) + ' free · ' + esc(plan.coach) + '</em></div>'
       + '<div class="big"><small>Fare · भाडा</small><b>' + money(f.total) + '</b><em>' + esc(plan.seatCount) + ' × ' + money(f.perSeat) + (f.groupDiscount > 0 ? ' · group −' + money(f.groupDiscount) : '') + (f.fee > 0 ? ' + fee ' + money(f.fee) : '') + '</em></div>'
+      + commLine(plan.seatCount)
       + '</div>'
       + '<div class="qt-why">' + (plan.matchedDesk ? '📍 Desk pickup remembered — <b>' + esc(plan.boardingName) + '</b>.' : '📍 First pickup still ahead. Tap a stop under Options → Boarding to make it this desk\'s default.') + '</div>';
     if (plan.alternatives && plan.alternatives.length) {
