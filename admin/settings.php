@@ -272,6 +272,16 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
      Help text only — the keys come from database/upgrade-2026-09-wa-templates.sql. */
   $waTplHelp = 'A business-initiated message (the office writes first) only reaches WhatsApp through an approved Twilio Content template — one per purpose, its HX… SID pasted here. Blank = free text, which WhatsApp delivers only inside the 24-hour window after this number last wrote to us; outside it the button hands the message to the staff phone (wa.me) instead of burning a send that would fail.';
   $waHelp = [
+      'wa_delivery_fallback_on'             => 'When a passenger\'s ticket cannot be delivered on WhatsApp (sender refused it, Meta/Twilio reported it failed, or the retry gave up), the office WhatsApp and the admin e-mail get the passenger\'s name, number, the ticket link and a one-tap forward link.',
+      'wa_delivery_fallback_hours'          => 'At most one such alert per booking in this many hours.',
+      'wa_staff_menu_on'                    => 'A member of staff who writes hi / namaste / menu / help on the WhatsApp number gets the staff menu with links into this panel instead of the passenger greeting. Staff = an admins record with role admin/counter, the office numbers in Settings, and the numbers below.',
+      'wa_staff_menu_numbers'               => 'Extra numbers that get the staff menu, comma separated (e.g. the director\'s own phone, which the agents list knows only as an agent).',
+      'app_mantra_on'                       => 'The app\'s opening blessing: a temple bell and the spoken mantra on the first touch. Visitors can still switch it off in the app menu; this turns it off for everyone.',
+      /* 27 Sep 2026 — the motion pass (docs/UPGRADE-2026-09-27-motion-feel.md).
+         Both rows come from database/upgrade-2026-09-27-motion-switches.sql;
+         the browser treats a MISSING row as on. */
+      'app_motion_on'                       => 'एपको चाल · The 1.4-second signature opening with its three marketing lines, the enter animation on every screen, and the home-page loops that run while the visitor is active. Off = every entrance is instant and the opening lasts only as long as the boot. Visitors who asked their phone for reduced motion never see the motion either way.',
+      'app_load_sound_on'                   => 'लोडिङ आवाज · One soft tick when a request has been waiting longer than 0.6 s (the 2-pixel loading bar along the top shows either way). Still behind each visitor\'s own Sound switch in the app menu.',
       'wa_admin_tools_enabled'              => 'Shows the "Send on WhatsApp" buttons on the agent, booking, manifest and dashboard pages. Every press previews first, then sends through the WhatsApp API (Twilio / Cloud API) or opens wa.me on the staff phone; each attempt is logged under Messages with its purpose.',
       'twilio_content_sid_agent_statement'  => $waTplHelp . ' Used for agent statements, booking history, commission, advance / loan balance and the daily / monthly summaries.',
       'twilio_content_sid_payment_reminder' => $waTplHelp . ' Used for agent and customer payment reminders and the outstanding-balance message.',

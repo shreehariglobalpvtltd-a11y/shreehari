@@ -106,6 +106,14 @@ $fMethod   = Security::clean($_GET['method'] ?? '', 20);
 $fSource   = Security::clean($_GET['src'] ?? '', 20);
 $fDateFrom = Security::clean($_GET['from'] ?? '', 10);
 $fDateTo   = Security::clean($_GET['to'] ?? '', 10);
+$fHint     = ($_GET['hint'] ?? '') === 'possible_match' ? 'possible_match' : '';
+
+/* payments.match_hint arrives with upgrade-2026-09-26-payment-engine.sql.
+   Until that has run, the page reads exactly what it always did. */
+$hasHint = Database::exists(
+    "SELECT 1 FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payments' AND COLUMN_NAME = 'match_hint'"
+);
 $isDate    = static fn (string $d): bool => preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) === 1;
 
 /* ---- Summary cards (efficient separate queries) ----------------- */
@@ -113,12 +121,19 @@ $pendingCount = (int) Database::fetch(
     "SELECT COUNT(*) AS c FROM bookings WHERE status='pending'"
 )['c'];
 
+/* The NPR a Nepal desk quoted today, summed exactly as frozen on each sale —
+   never the rupee times today's peg. Only where the column exists (26 Sep 2026). */
+$frozen = CounterDesk::frozenColumns();
+$nprSel = $frozen['bookings']
+    ? ", COALESCE(SUM(CASE WHEN fx_currency='NPR' THEN fx_total ELSE 0 END),0) AS npr"
+    : ", 0 AS npr";
 $approvedRow = Database::fetch(
-    "SELECT COUNT(*) AS c, COALESCE(SUM(total_amount),0) AS t
+    "SELECT COUNT(*) AS c, COALESCE(SUM(total_amount),0) AS t{$nprSel}
        FROM bookings WHERE status='confirmed' AND confirmed_at >= CURDATE() AND confirmed_at < CURDATE() + INTERVAL 1 DAY"
 );
 $approvedCount = (int) $approvedRow['c'];
 $approvedTotal = (float) $approvedRow['t'];
+$approvedNpr   = (float) $approvedRow['npr'];   // same window as "Collection Today" below
 
 $rejectedCount = (int) Database::fetch(
     "SELECT COUNT(*) AS c FROM bookings WHERE status='rejected' AND updated_at >= CURDATE() AND updated_at < CURDATE() + INTERVAL 1 DAY"
@@ -152,6 +167,14 @@ $agentCodes = Settings::getArray('agent_codes', []);
 /* ---- Build main query ------------------------------------------- */
 $where  = [];
 $params = [];
+
+/* Desk isolation (26 Sep 2026, ships OFF): a counter window verifies the money
+   its OWN desk took. An office role is never scoped. */
+$deskScope = Auth::deskScopeCode();
+if ($deskScope !== null && CounterDesk::stampColumn()) {
+    $where[] = CounterDesk::scopeClause('b');
+    $params['deskScope'] = $deskScope;
+}
 
 /* Tab filter */
 switch ($tab) {
@@ -209,6 +232,11 @@ if (in_array($fSource, $validSources, true)) {
     $params['fSource'] = $fSource;
 }
 
+/* Possible match: a signed webhook reported money for this booking (hint only) */
+if ($fHint !== '' && $hasHint) {
+    $where[] = "p.match_hint = 'possible_match'";
+}
+
 /* Date range (travel date) */
 if ($isDate($fDateFrom)) {
     $where[] = 'bl.travel_date >= :fDateFrom';
@@ -221,10 +249,15 @@ if ($isDate($fDateTo)) {
 
 $orderBy = ($tab === 'pending') ? 'b.created_at ASC' : 'b.created_at DESC';
 
+/* A Nepal desk's NPR sits beside the rupee on the row; select it only where
+   the migration has run, so an older database still lists. */
+$fxSel = ($frozen['bookings'] ? ' b.fx_currency, b.fx_total,' : '')
+       . ($frozen['payments'] ? ' p.local_currency, p.local_amount,' : '');
 $sql = "SELECT b.id, b.pnr, b.status, b.total_amount, b.contact_phone, b.source,
-               b.sold_by_admin_id, b.is_cod, b.created_at, b.booking_mode, b.refund_status,
+               b.sold_by_admin_id, b.is_cod, b.created_at, b.booking_mode, b.refund_status,{$fxSel}
                p.method, p.utr_number, p.payer_name, p.status AS pay_status,
                p.reject_reason, p.verified_at,
+               " . ($hasHint ? 'p.match_hint, p.match_note' : 'NULL AS match_hint, NULL AS match_note') . ",
                r.from_city, r.to_city, r.route_code,
                bl.travel_date,
                bu.bus_name,
@@ -256,8 +289,9 @@ $filterQs = array_filter([
     'src'    => $fSource,
     'from'   => $isDate($fDateFrom) ? $fDateFrom : '',
     'to'     => $isDate($fDateTo)   ? $fDateTo   : '',
+    'hint'   => $fHint,
 ]);
-$hasFilters = ($fSearch !== '' || $fRoute > 0 || $fAgent > 0 || $fMethod !== '' || $fSource !== '' || $isDate($fDateFrom) || $isDate($fDateTo));
+$hasFilters = ($fSearch !== '' || $fRoute > 0 || $fAgent > 0 || $fMethod !== '' || $fSource !== '' || $isDate($fDateFrom) || $isDate($fDateTo) || $fHint !== '');
 
 function tabUrl(string $tabName, array $filterQs): string
 {
@@ -307,6 +341,8 @@ tr.row-done td{background:var(--hover)}
   .pay-filter{flex-direction:column}
   .pay-filter label,.pay-filter input,.pay-filter select{width:100%}
 }
+.npr-line{font-size:11px;color:#b45309;font-weight:800}
+:root[data-theme="dark"] .npr-line{color:#fcd34d}
 </style>
 
 <!-- Summary Cards -->
@@ -325,7 +361,7 @@ tr.row-done td{background:var(--hover)}
     <span class="hicon">✅</span>
     <div class="hk">Approved Today</div>
     <div class="hv" data-stat="approved"><?= $approvedCount ?></div>
-    <div class="hsub"><?= Security::e(inr($approvedTotal)) ?></div>
+    <div class="hsub"><?= Security::e(inr($approvedTotal)) ?><?php if ($approvedNpr > 0): ?> · <span class="npr-line"><?= Security::e(CounterDesk::format($approvedNpr, 'NPR')) ?> quoted in NPR</span><?php endif; ?></div>
   </div>
   <div class="hcard hc-red">
     <span class="hicon">✕</span>
@@ -342,6 +378,7 @@ tr.row-done td{background:var(--hover)}
     <span class="hicon">📈</span>
     <div class="hk">Collection Today</div>
     <div class="hv"><?= Security::e(inr($collectionTotal)) ?></div>
+    <?php if ($approvedNpr > 0): ?><div class="hsub"><span class="npr-line">incl. <?= Security::e(CounterDesk::format($approvedNpr, 'NPR')) ?> quoted in NPR</span> · books stay in ₹</div><?php endif; ?>
   </div>
 </div>
 
@@ -421,6 +458,15 @@ tr.row-done td{background:var(--hover)}
       <option value="admin"   <?= $fSource === 'admin' ? 'selected' : '' ?>>Admin</option>
     </select>
   </label>
+  <?php if ($hasHint): ?>
+  <label>
+    Hint
+    <select name="hint">
+      <option value="">Any</option>
+      <option value="possible_match" <?= $fHint === 'possible_match' ? 'selected' : '' ?>>🟡 Possible match</option>
+    </select>
+  </label>
+  <?php endif; ?>
   <div style="display:flex;gap:8px;align-items:end;padding-bottom:1px">
     <button class="btn" type="submit">Apply</button>
     <?php if ($hasFilters): ?><a class="btn ghost" href="?tab=<?= Security::e($tab) ?>">Clear</a><?php endif; ?>
@@ -501,6 +547,7 @@ tr.row-done td{background:var(--hover)}
         <!-- Amount -->
         <td>
           <strong><?= Security::e(inr((float) $q['total_amount'])) ?></strong>
+          <?php if (($fxQ = CounterDesk::frozen($q)) !== ''): ?><div class="npr-line" title="quoted in NPR at the desk — frozen on the sale, the rupee above is the book figure"><?= Security::e($fxQ) ?></div><?php endif; ?>
           <?php if ($isCod): ?><div><span class="pill" style="color:#7a4a00;background:#ffe6c7;font-size:10px">COD</span></div><?php endif; ?>
         </td>
         <!-- Payment: method + UTR/payer -->
@@ -511,6 +558,10 @@ tr.row-done td{background:var(--hover)}
           <?php endif; ?>
           <?php if (!empty($q['payer_name'])): ?>
             <div class="muted" style="font-size:11px"><?= Security::e($q['payer_name']) ?></div>
+          <?php endif; ?>
+          <?php if (($q['match_hint'] ?? '') === 'possible_match' && ($q['status'] ?? '') === 'pending'): ?>
+            <div><span class="pill" style="color:#7a5a00;background:#fff3c4;font-size:10px"
+                       title="<?= Security::e('Hint only, verify before approving. ' . (string) ($q['match_note'] ?? '')) ?>">🟡 POSSIBLE MATCH</span></div>
           <?php endif; ?>
           <?php
             /* QR / pay-link activity. Absence of it on an old pending booking

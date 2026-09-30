@@ -67,11 +67,13 @@ $rows = Database::fetchAll(
     "SELECT b.*,
             m.error AS last_error, m.created_at AS last_try,
             (SELECT MIN(bl.travel_date) FROM booking_legs bl WHERE bl.booking_id = b.id) AS travel_date,
-            (SELECT COUNT(*) FROM message_logs t WHERE t.booking_id = b.id AND t.channel = 'whatsapp') AS tries
+            (SELECT COUNT(*) FROM message_logs t WHERE t.booking_id = b.id AND t.channel = 'whatsapp'
+                AND (t.purpose IS NULL OR t.purpose NOT IN ('delivery_fallback', 'admin_note'))) AS tries
        FROM bookings b
        JOIN message_logs m
          ON m.id = (SELECT m2.id FROM message_logs m2
                      WHERE m2.booking_id = b.id AND m2.channel = 'whatsapp'
+                       AND (m2.purpose IS NULL OR m2.purpose NOT IN ('delivery_fallback', 'admin_note'))
                      ORDER BY m2.id DESC LIMIT 1)
       WHERE b.status = 'confirmed'
         AND m.status = 'failed'

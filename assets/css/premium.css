@@ -688,3 +688,174 @@ footer{background:linear-gradient(180deg,var(--brand-navy) 0%,var(--brand-navy-9
 :root[data-theme="dark"] .pay-amt .big,
 :root[data-theme="dark"] .bus-card .depTime-big,
 :root[data-theme="dark"] .rules-summary summary{color:#DCE8FF}
+
+
+/* ---------------------------------------------------------------------
+   9. THE SIGNATURE OPENING — three lines on the splash (27 Sep 2026)
+   -------------------------------------------------------------------
+   Owner: one opening with marketing words; the splash had shrunk to the
+   length of the boot ticks and nobody saw it. Splash.rotate() in
+   13-admin-routes.js writes three .sp-line spans into #splashPromise (the
+   hero title, the brand-band tagline, the promise — strings the app already
+   has) and moves .in / .out between them 450 ms apart. All three share one
+   grid cell, so the block is as tall as its tallest line and nothing below
+   it shifts when a line changes. Opacity + translateY only.
+
+   Reduced motion: views.css's "#splash *{animation:none}" already silences
+   the keyframes; the rule at the end keeps the line VISIBLE (its resting
+   state is opacity:0), and Splash.rotate() leaves just the promise line.
+   ------------------------------------------------------------------- */
+.premium-promise.sp-lines{display:grid;justify-items:center}
+.sp-lines .sp-line{
+  grid-area:1/1;display:block;max-width:100%;
+  opacity:0;transform:translateY(10px);will-change:transform,opacity;
+  font-family:var(--f-body);
+}
+.sp-lines .sp-line.in{animation:spLineIn .46s var(--m-spring) both}
+.sp-lines .sp-line.out{animation:spLineOut .32s var(--m-exit) both}
+@keyframes spLineIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes spLineOut{from{opacity:1;transform:none}to{opacity:0;transform:translateY(-8px)}}
+/* Devanagari on the opening screen: no tracking (it cuts the shirorekha),
+   a line-height a matra fits in. The elements carry their own lang
+   attribute (Splash.localise), so this applies before <html lang> is set. */
+.sp-lines .sp-line:is(:lang(ne),:lang(hi)){letter-spacing:normal;line-height:1.45}
+#splash .splash-title:is(:lang(ne),:lang(hi)),
+#splash .splash-tagline:is(:lang(ne),:lang(hi)){letter-spacing:normal;line-height:1.4}
+@media (prefers-reduced-motion:reduce){
+  .sp-lines .sp-line{opacity:1;transform:none}
+  .sp-lines .sp-line.out{opacity:0}
+}
+
+
+/* ---------------------------------------------------------------------
+   10. ONE ENTER MOTION (27 Sep 2026)
+   -------------------------------------------------------------------
+   Owner: "an entrance animation on every screen". Every screen already had
+   one — viewIn (app.css), fadeDown for menus and the modal, sheetUp,
+   waSheetUp, ctUp for the sheets — five shapes, five durations, five
+   curves. They now all point at ONE keyframe, shgEnter, with the tokens
+   from section 1 (--m-base 190 ms, --m-spring), so a view, a menu, a modal
+   and a sheet all arrive the same way. Opacity + translateY only.
+
+   KEPT AS IS: #view-seats / #view-checkout on phones stay on flowViewIn
+   (app.css ~1593, an ID rule that outranks this one on animation-name): a
+   transform on those views would un-pin their fixed action bar. Only the
+   name is theirs — duration and curve below are shared.
+
+   OFF SWITCH: app_motion_on (public bool, Admin -> Settings -> Site).
+   02-config.js stamps html.no-motion when it is 0, and the app then
+   behaves exactly as it does for a visitor who asked for reduced motion:
+   1 ms, one pass, nothing invisible. Absent row = on.
+   ------------------------------------------------------------------- */
+@keyframes shgEnter{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.view.active{animation:shgEnter var(--m-base) var(--m-spring) both}
+.shg-modal.open,.mobile-menu.open,.nav-drop-list,.notif-panel.open{
+  animation:shgEnter var(--m-base) var(--m-spring) both;
+}
+.ai-panel.open,.wa-sheet-card,.ct-card{
+  animation:shgEnter var(--m-slow) var(--m-spring) both;
+}
+html.no-motion *,html.no-motion *::before,html.no-motion *::after{
+  animation-duration:1ms!important;
+  animation-iteration-count:1!important;
+  transition-duration:1ms!important;
+}
+html.no-motion{scroll-behavior:auto}
+
+
+/* ---------------------------------------------------------------------
+   11. STILLNESS AT REST (27 Sep 2026 — the owner's 25 Sep rule)
+   -------------------------------------------------------------------
+   The 11 Sep phone pass switched most hero decoration off below 761px;
+   what still looped for ever on the home page were the four brand-band
+   chip icons, the fab pulses, the QuickBot pulses, the road scene, the
+   route strip, the VIP cabin — and on desktop the rays, the particles,
+   the metallic sheens, the gleam on every orange button.
+
+   Two classes decide now, both set by 22-vip.js:
+     .is-live      on a home block that is on screen (IntersectionObserver)
+     html.shg-awake for six seconds after the splash and after every
+                    touch, key, wheel or scroll
+   A decoration runs only with BOTH. Otherwise it is paused where it
+   stands (animation-play-state, compositor-only, no restart jump), so
+   nothing loops off screen and nothing loops on an idle screen. Fixed
+   chrome (the fabs, the ribbon divider, the nav logo) has no block to
+   be inside, so it follows the awake window alone.
+
+   Every keyframe paused here has its resting pose at 0%. The exceptions
+   are handled in (b): the sheens slide a background-position and sit off
+   the text at frame 0, the coach starts invisible — those are switched
+   off and parked instead.
+   ------------------------------------------------------------------- */
+/* a) Freeze in place. */
+.hero-fx .hero-ray,.hero-fx .hero-glow,.hero-fx .hero-pt,.hero-wm,
+.hero-qt-cta,.qt-badge,.qt-route b,.hero-live-ticker .live-dot,
+.bb-anim .bb-ic,
+.btn-orange::after,.hd-shine::before,.txt-diamond::after,
+.founder-card::before,.founder-avatar-wrap,.f-ceo img,.flag-card .fl,.flag-bus-bridge .bus-run,
+.ra3-sun,.ra3-cloud,.ra3-far i,.ra3-near i,.ra3-stripes,.ra3-edge,.ra3-body img,.ra3-shadow,.ra3-pin,
+.shg-live i,.shg-rail::after,.shg-stop i,.shg-bus,.shg-bus-i,
+.is-live .ao-lamps i,.is-live .ao-mark,
+.is-live .vip-curtain,.is-live .vip-air path,.is-live .vip-batt,.is-live .vip-cord,
+.is-live .vip-road,.is-live .vip-pax,.is-live .vip-lock,
+.whatsapp-fab,.sos-fab.show,.credit-div,.topbar-logo img,.nav .logo-img{
+  animation-play-state:paused;
+}
+/* b) Switch off and park: frame 0 would hide them. 40% is the pose the
+      11 Sep phone pass gives the sheens; the coach parks mid-road as it
+      does under prefers-reduced-motion (views.css). */
+.txt-gold,.txt-silver,.txt-diamond,.hero .grad{animation-name:none;background-position:40% 0}
+.ra3-bus{animation-name:none;transform:translate3d(40%,0,0);opacity:1}
+
+/* c) Run: on screen AND awake. */
+html.shg-awake .hero.is-live .hero-fx .hero-ray,
+html.shg-awake .hero.is-live .hero-fx .hero-glow,
+html.shg-awake .hero.is-live .hero-fx .hero-pt,
+html.shg-awake .hero.is-live .hero-wm,
+html.shg-awake .hero.is-live .hero-qt-cta,
+html.shg-awake .is-live .qt-badge,
+html.shg-awake .is-live .qt-route b,
+html.shg-awake .hero-live-ticker.is-live .live-dot,
+html.shg-awake .brand-band.is-live .bb-anim .bb-ic,
+html.shg-awake .is-live .btn-orange::after,
+html.shg-awake .is-live .hd-shine::before,
+html.shg-awake .is-live .txt-diamond::after,
+html.shg-awake .founder-card.is-live::before,
+html.shg-awake .founder-card.is-live .founder-avatar-wrap,
+html.shg-awake .f-ceo.is-live img,
+html.shg-awake .flag-cards.is-live .flag-card .fl,
+html.shg-awake .flag-bus-bridge.is-live .bus-run,
+html.shg-awake #routeAnim.is-live :is(.ra3-sun,.ra3-cloud,.ra3-far i,.ra3-near i,.ra3-stripes,.ra3-edge,.ra3-body img,.ra3-shadow,.ra3-pin),
+html.shg-awake .shg-hero.is-live :is(.shg-live i,.shg-stop i,.shg-bus,.shg-bus-i),
+html.shg-awake .shg-hero.is-live .shg-rail::after,
+html.shg-awake .is-live :is(.ao-lamps i,.ao-mark,.vip-curtain,.vip-air path,.vip-batt,.vip-cord,.vip-road,.vip-pax,.vip-lock),
+html.shg-awake .whatsapp-fab,html.shg-awake .sos-fab.show,html.shg-awake .credit-div,
+html.shg-awake .topbar-logo img,html.shg-awake .nav .logo-img{
+  animation-play-state:running;
+}
+html.shg-awake .txt-gold,html.shg-awake .txt-silver,html.shg-awake .txt-diamond,
+html.shg-awake .hero.is-live .grad{animation-name:hd-sheen}
+html.shg-awake #routeAnim.is-live .ra3-bus{animation-name:ra3Drive}
+
+
+/* ---------------------------------------------------------------------
+   12. THE LOADING BAR (27 Sep 2026)
+   -------------------------------------------------------------------
+   shgApi._fetch (02-config.js) puts class net-busy on <html> once a
+   request has been in flight for 250 ms and takes it off when none is
+   left. This draws the answer: a 2 px navy → saffron bar sweeping along
+   the very top, indeterminate, transform-only. Nothing is laid out, no
+   element is added — it is the root's own ::after. Reduced motion and
+   app_motion_on = 0: the same bar, full width, standing still.
+   ------------------------------------------------------------------- */
+html.net-busy::after{
+  content:"";position:fixed;left:0;top:0;z-index:10000;pointer-events:none;
+  width:30vw;height:2px;border-radius:0 2px 2px 0;
+  background:linear-gradient(90deg,var(--brand-navy),var(--brand-saffron));
+  transform:translateX(-100%);will-change:transform;
+  animation:netBusy 1.1s cubic-bezier(.4,0,.2,1) infinite;
+}
+@keyframes netBusy{from{transform:translateX(-100%)}to{transform:translateX(100vw)}}
+:root[data-theme="dark"].net-busy::after{background:linear-gradient(90deg,var(--brand-amber),var(--brand-saffron))}
+@media (prefers-reduced-motion:reduce){html.net-busy::after{animation:none;transform:none;width:100%}}
+html.no-motion.net-busy::after{animation:none;transform:none;width:100%}

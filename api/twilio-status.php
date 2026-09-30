@@ -105,7 +105,7 @@ if ($final === '') {
 }
 
 $row = Database::fetch(
-    'SELECT id, booking_id, status FROM message_logs WHERE provider_ref = :ref ORDER BY id DESC LIMIT 1',
+    'SELECT id, booking_id, status, purpose, to_number FROM message_logs WHERE provider_ref = :ref ORDER BY id DESC LIMIT 1',
     ['ref' => $sid]
 );
 if ($row === null) {
@@ -139,6 +139,9 @@ if ($final === 'failed') {
         'booking' => $row['booking_id'],
         'code'    => $errNum,
     ], 'whatsapp');
+    /* 26 Sep 2026: the office gets the ticket to forward by hand. */
+    Notify::deliveryFallback((int) ($row['booking_id'] ?? 0), (string) ($row['to_number'] ?? ''),
+        (string) ($row['purpose'] ?? ''), 'Twilio: ' . (string) $error);
 }
 
 ts_done();

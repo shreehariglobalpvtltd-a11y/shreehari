@@ -1,572 +1,15 @@
-
 /* ================================================================
-   [JS] 13. ADMIN — routes editor (incl. crew contact), settings
-   (UPI, eSewa, notice banner), messages.
+   [JS] 13. TRACKERS, SPLASH, LAZY LOADER, PAYMENT PROOF, BOOT
+
+   27 Sep 2026: the in-app routes editor / settings / messages screens
+   and the in-app payment-approval queue that used to open this file
+   were deleted. #/admin and #/shg-ctrl have redirected to the real,
+   RBAC-protected /admin/ panel since shg-v56 (05-router.js), so no
+   route rendered them and no other file called them (grep, 27 Sep).
+   What is left: the hidden CIN-tap door to #/shg-ctrl, the splash,
+   the tracker links and temples, the MapLibre + lazy chunk loaders,
+   the payment-proof card and form the checkout still opens, and boot.
 ================================================================ */
-
-/* §2 purge (shg-v56): 09-agent.js and 12-admin-panel.js removed from
-   the customer bundle. These stubs keep any leftover caller from
-   throwing — they are no-ops because #/admin and #/shg-ctrl now
-   redirect to the real /admin/ panel in the router. */
-if (typeof renderAgentGateOrApp === 'undefined')
-  window.renderAgentGateOrApp = function () {};
-if (typeof renderAdminGateOrApp === 'undefined')
-  window.renderAdminGateOrApp = function () {};
-if (typeof ADMIN_ON === 'undefined')
-  window.ADMIN_ON = false;
-function routeFormFields(r) {
-  const v = (x) => esc(x == null ? '' : x);
-  return `
-    <div class="field"><label>From</label><input data-f="from" value="${v(r.from)}"></div>
-    <div class="field"><label>To</label><input data-f="to" value="${v(r.to)}"></div>
-    <div class="field span2"><label>Coach name <small style="color:var(--muted);font-weight:400">· Duplicate names OK — use unique bus number</small></label><input data-f="busName" value="${v(r.busName)}"></div>
-    <div class="field"><label>Coach number</label><input data-f="busNo" value="${v(r.busNo)}"></div>
-    <div class="field"><label>Type</label><select data-f="type">
-      <option value="seater"${r.type === 'seater' ? ' selected' : ''}>AC Seater (40)</option>
-      <option value="sleeper"${r.type === 'sleeper' ? ' selected' : ''}>AC Sleeper (30)</option></select></div>
-    <div class="field"><label>Route path</label><select data-f="pathId">
-      <option value="via_gorakhpur"${(r.pathId || 'via_gorakhpur') === 'via_gorakhpur' ? ' selected' : ''}>Via Gorakhpur</option>
-      <option value="via_bahraich"${r.pathId === 'via_bahraich' ? ' selected' : ''}>Via Bahraich</option></select></div>
-    <div class="field"><label>Departure</label><input data-f="depTime" value="${v(r.depTime)}"></div>
-    <div class="field"><label>Arrival</label><input data-f="arrTime" value="${v(r.arrTime)}"></div>
-    <div class="field"><label>Days later</label><input data-f="dayOffset" type="number" min="0" max="2" value="${r.dayOffset || 0}"></div>
-    <div class="field"><label>Duration label</label><input data-f="duration" value="${v(r.duration)}"></div>
-    <div class="field"><label>Fare (₹)</label><input data-f="fare" type="number" min="0" value="${r.fare || 0}"></div>
-    <div class="field"><label>Amenities</label><input data-f="amenities" value="${v((r.amenities || []).join(', '))}"></div>
-    <div class="field"><label>Driver/conductor name</label><input data-f="crewName" value="${v(r.crewName)}" placeholder="Printed on the ticket"></div>
-    <div class="field"><label>Driver/conductor phone</label><input data-f="crewPhone" value="${v(r.crewPhone)}" placeholder="+91 …"></div>
-    <div class="field span2"><label>Boarding points <small>(comma-sep · "Name · Landmark @ HH:MM [lat,lng]" — optional [lat,lng] powers the passenger distance calculator)</small></label><input data-f="boarding" value="${v((r.boarding || []).join(', '))}"></div>
-    <div class="field span2"><label>Drop points <small>(comma-sep · "Name · Landmark @ HH:MM [lat,lng]")</small></label><input data-f="drop" value="${v((r.drop || []).join(', '))}"></div>`;
-}
-function readRouteForm(box) {
-  const g = (f) => { const el = box.querySelector('[data-f="' + f + '"]'); return el ? el.value.trim() : ''; };
-  /* split on commas EXCEPT the one inside a "[lat,lng]" pair */
-  const list = (f) => g(f).split(/,(?![^\[]*\])/).map(s => s.trim()).filter(Boolean);
-  return {
-    from: g('from'), to: g('to'), busName: g('busName'), busNo: g('busNo'),
-    type: g('type') || 'seater', depTime: g('depTime'), arrTime: g('arrTime'),
-    dayOffset: parseInt(g('dayOffset'), 10) || 0, duration: g('duration'),
-    fare: parseInt(g('fare'), 10) || 0,
-    crewName: g('crewName'), crewPhone: g('crewPhone'),
-    pathId: g('pathId') || 'via_gorakhpur',
-    amenities: list('amenities'), boarding: list('boarding'), drop: list('drop')
-  };
-}
-function validRoute(r) { return r.from && r.to && r.busName && r.depTime && r.arrTime && r.fare > 0 && r.boarding.length && r.drop.length; }
-
-function renderAdminRoutes() {
-  $('#routesList').innerHTML = DB.routes.map(r => `
-    <div class="rt-card" data-rid="${r.id}">
-      <div class="rt-head">
-        <b style="font-family:var(--f-display);font-size:17px">${esc(r.from)} → ${esc(r.to)} <small style="color:var(--muted);font-weight:500">· ${esc(r.busName)}</small></b>
-        <label class="rt-active"><input type="checkbox" data-f="active"${r.active ? ' checked' : ''}> Active (shown in search)</label>
-      </div>
-      <div class="rt-form">${routeFormFields(r)}
-        <div class="span4" style="display:flex;gap:10px">
-          <button class="btn btn-blue btn-sm" data-act="save">💾 Save route</button>
-          <button class="btn btn-ghost btn-sm" data-act="del">🗑 Delete</button>
-        </div>
-      </div>
-    </div>`).join('');
-
-  $('#routesList').onclick = (e) => {
-    const btn = e.target.closest('[data-act]'); if (!btn) return;
-    const card = btn.closest('.rt-card'); const rid = card.getAttribute('data-rid');
-    const idx = DB.routes.findIndex(r => r.id === rid); if (idx < 0) return;
-    if (btn.getAttribute('data-act') === 'save') {
-      const upd = readRouteForm(card);
-      if (!validRoute(upd)) { toast('Fill From, To, coach name, times, fare, and at least one boarding & drop point.'); return; }
-      upd.id = rid;
-      upd.active = card.querySelector('[data-f="active"]').checked;
-      DB.routes[idx] = upd;
-      persist('routes'); populateCitySelects();
-      audit('Route saved', upd.from + ' → ' + upd.to + ' · ' + upd.busName + ' · ₹' + upd.fare);
-      toast('Route saved ✓');
-    } else {
-      const used = DB.bookings.some(b => (b.routeId === rid || (b.ret && b.ret.routeId === rid)) && b.status !== 'rejected' && b.status !== 'cancelled');
-      if (used) { toast('This route has active bookings — mark it inactive instead of deleting.'); return; }
-      if (!confirm('Delete this route permanently?')) return;
-      const gone = DB.routes[idx];
-      DB.routes.splice(idx, 1);
-      persist('routes'); populateCitySelects(); renderAdminRoutes();
-      audit('Route deleted', (gone ? gone.from + ' → ' + gone.to + ' · ' + gone.busName : rid));
-      toast('Route deleted.');
-    }
-  };
-
-  $('#addRouteBtn').onclick = () => {
-    const box = $('#addRouteForm');
-    const nr = readRouteForm(box);
-    if (!validRoute(nr)) { toast('Fill From, To, coach name, times, fare, and at least one boarding & drop point.'); return; }
-    nr.id = 'r' + Date.now(); nr.active = true;
-    DB.routes.push(nr);
-    persist('routes'); populateCitySelects(); renderAdminRoutes();
-    $$('#addRouteForm input').forEach(i => i.value = '');
-    audit('Route added', nr.from + ' → ' + nr.to + ' · ' + nr.busName + ' · ₹' + nr.fare);
-    toast('New route added — it is now live in the search box ✓');
-  };
-}
-
-/* The eight contact-number slots in Admin -> Settings. Rendered from the
-   saved list rather than written out in the markup, so adding a ninth line
-   later is a constant change, not eight more <div>s. */
-function renderNumberSlots() {
-  const wrap = $('#setNumsWrap'); if (!wrap) return;
-  const nums = contactNumbers();
-  wrap.innerHTML = '<div class="num-admin">' + nums.map(function (n, i) {
-    return '<div class="num-row">'
-      + '<input class="num-lbl" data-num-label="' + i + '" placeholder="Label (Booking / Nepalgunj office…)" value="' + esc(n.label) + '">'
-      + '<input class="num-val" data-num-val="' + i + '" placeholder="+91 …" value="' + esc(n.num) + '" inputmode="tel">'
-      + '<label class="num-ck"><input type="checkbox" data-num-wa="' + i + '"' + (n.wa ? ' checked' : '') + '> WhatsApp</label>'
-      + '<label class="num-ck"><input type="checkbox" data-num-show="' + i + '"' + (n.show ? ' checked' : '') + '> Show</label>'
-      + '</div>';
-  }).join('') + '</div>';
-}
-
-/* Read the eight slots back out of the form. */
-function readNumberSlots() {
-  const out = [];
-  for (let i = 0; i < NUM_SLOTS; i++) {
-    const lbl = $('[data-num-label="' + i + '"]'), val = $('[data-num-val="' + i + '"]');
-    if (!lbl || !val) return null;   // form not rendered - keep what is saved
-    out.push({
-      label: lbl.value.trim().slice(0, 40),
-      num:   val.value.trim().slice(0, 24),
-      wa:    !!($('[data-num-wa="' + i + '"]') || {}).checked,
-      show:  !!($('[data-num-show="' + i + '"]') || {}).checked
-    });
-  }
-  return out;
-}
-
-function renderAdminSettings() {
-  const st = S();
-  $('#setUpiId').value = st.upiId; $('#setUpiName').value = st.upiName;
-  $('#setEsewaId').value = st.esewaId; $('#setEsewaName').value = st.esewaName;
-  $('#setPhone').value = st.phone; $('#setEmail').value = st.email;
-  /* V7 — Google Maps key is an operator setting now (see #setGmapsKey) */
-  if ($('#setGmapsKey')) $('#setGmapsKey').value = st.googleMapsApiKey || '';
-  $('#setNoticeOn').checked = !!st.noticeOn;
-  $('#setNoticeText').value = st.noticeText || '';
-  $('#setSpeed').value = st.assumedTravelSpeedKmh;
-  $('#setTimeout').value = st.sessionTimeoutMin;
-  if ($('#settingBhagwanImg')) $('#settingBhagwanImg').value = st.bhagwanImg || DB.settings.bhagwanImg || '';
-  if ($('#setBlacklist')) $('#setBlacklist').value = (st.blacklist || []).join(', ');
-  if ($('#setDefaultLang')) $('#setDefaultLang').value = st.defaultLang || 'ne';
-  if ($('#setTemplesDefaultOn')) $('#setTemplesDefaultOn').checked = st.templesDefaultOn !== false;
-  renderNumberSlots();
-
-  /* — main-point fares (the two numbers the whole fare board runs on) — */
-  const mf = sharingDir();
-  const mp = CONFIG.mainPoints || { india: [], nepal: [] };
-  if ($('#mfIndiaList')) $('#mfIndiaList').textContent = (mp.india || []).join(', ');
-  if ($('#mfNepalList')) $('#mfNepalList').textContent = (mp.nepal || []).join(', ');
-  if ($('#setFareToNepal')) $('#setFareToNepal').value = mf.toNepal;
-  if ($('#setFareToIndia')) $('#setFareToIndia').value = mf.toIndia;
-  const mfPrev = () => {
-    const box = $('#mfPreview'); if (!box) return;
-    const pct = (CONFIG.cabinPricing.onlineDiscountPct || 5);
-    const rd = (el, fb) => Math.max(0, Math.round(parseFloat(($(el) || {}).value) || fb));
-    const go = rd('#setFareToNepal', mf.toNepal), back = rd('#setFareToIndia', mf.toIndia);
-    const on = (v) => Math.round(v * (1 - pct / 100));
-    box.innerHTML = 'Passengers will see — <b>Going:</b> ' + inr(on(go)) + ' online <small>(counter ' + inr(go) + ')</small>'
-      + ' · <b>Coming:</b> ' + inr(on(back)) + ' online <small>(counter ' + inr(back) + ')</small>'
-      + ' · ' + nprEst(on(go)) + ' / ' + nprEst(on(back));
-  };
-  mfPrev();
-  ['#setFareToNepal', '#setFareToIndia'].forEach(sel => { const el = $(sel); if (el) el.oninput = mfPrev; });
-
-  /* — loyalty tier thresholds — */
-  const tiers = st.loyaltyTiers || CONFIG.loyaltyTiers;
-  $('#tierEditor').innerHTML = '<div class="rt-form">' + tiers.map((tr, i) =>
-    '<div class="field"><label>' + esc(tr.icon + ' ' + tr.name) + '</label>'
-    + '<div style="display:flex;gap:8px"><input data-tier-min="' + i + '" type="number" min="0" value="' + tr.min + '" title="Minimum lifetime points" style="flex:1;padding:11px;border:1.5px solid var(--line);border-radius:11px;background:#FBFCFE">'
-    + '<input data-tier-disc="' + i + '" type="number" min="0" max="20" value="' + tr.discountPct + '" title="Checkout discount %" style="width:84px;padding:11px;border:1.5px solid var(--line);border-radius:11px;background:#FBFCFE">'
-    + '<span style="align-self:center;font-size:12px;color:var(--muted)">%</span></div></div>').join('') + '</div>';
-
-  /* — commission rules (feed computeReferralCommission, section 4d) — */
-  const cr = CR();
-  $('#crMode').value = cr.mode; $('#crFlat').value = cr.flat;
-  $('#crPercent').value = cr.percent; $('#crWindow').value = cr.windowDays;
-  const pr = cr.perRoute || {};
-  $('#crPerRouteBox').innerHTML = '<b style="font-size:13px">Per-route override <small style="color:var(--muted);font-weight:500">(leave blank to use the base rule)</small></b>'
-    + '<div class="rt-form" style="margin-top:8px">'
-    + DB.routes.map(r => {
-      const o = pr[r.id] || {};
-      return '<div class="field"><label>' + esc(r.from + ' → ' + r.to + ' · ' + r.busName) + '</label>'
-        + '<div style="display:flex;gap:8px"><select data-crr-mode="' + r.id + '" style="flex:1;padding:11px;border:1.5px solid var(--line);border-radius:11px;background:#FBFCFE">'
-        + '<option value=""' + (o.mode == null ? ' selected' : '') + '>Base rule</option>'
-        + '<option value="flat"' + (o.mode === 'flat' ? ' selected' : '') + '>Flat ₹</option>'
-        + '<option value="percent"' + (o.mode === 'percent' ? ' selected' : '') + '>% of fare</option></select>'
-        + '<input data-crr-val="' + r.id + '" type="number" min="0" placeholder="amount" value="' + (o.mode === 'percent' ? (o.percent || '') : (o.flat || '')) + '" style="width:110px;padding:11px;border:1.5px solid var(--line);border-radius:11px;background:#FBFCFE"></div></div>';
-    }).join('') + '</div>';
-  const bonuses = cr.bonuses || [];
-  $('#crBonusBox').innerHTML = '<b style="font-size:13px">Festival / date-range bonus <small style="color:var(--muted);font-weight:500">(extra ₹ per seat when the journey date falls in the range)</small></b>'
-    + (bonuses.length ? bonuses.map((b, i) => '<div class="sum-row"><span>🎉 ' + esc(b.label || 'Bonus') + ' · ' + esc(b.from) + ' → ' + esc(b.to) + '</span><b>+' + inr(b.extra) + '/seat <button class="btn btn-ghost btn-sm" data-crbdel="' + i + '">🗑</button></b></div>').join('') : '')
-    + '<div class="rt-form" style="margin-top:8px">'
-    + '<div class="field"><label>Label</label><input id="crbLabel" placeholder="Dashain bonus"></div>'
-    + '<div class="field"><label>From</label><input id="crbFrom" type="date"></div>'
-    + '<div class="field"><label>To</label><input id="crbTo" type="date"></div>'
-    + '<div class="field"><label>Extra ₹ / seat</label><input id="crbExtra" type="number" min="0" placeholder="20"></div>'
-    + '<div class="span4"><button class="btn btn-ghost btn-sm" id="crbAdd" type="button">＋ Add bonus</button></div></div>';
-
-  $('#crBonusBox').onclick = (e) => {
-    const del = e.target.closest('[data-crbdel]');
-    if (del) {
-      const list = (DB.commissionRules.bonuses || []).slice();
-      list.splice(parseInt(del.getAttribute('data-crbdel'), 10), 1);
-      DB.commissionRules = Object.assign({}, DB.commissionRules, { bonuses: list });
-      persist('commissionRules');
-      audit('Commission bonus removed', '');
-      renderAdminSettings();
-      return;
-    }
-    if (e.target.closest('#crbAdd')) {
-      const label = $('#crbLabel').value.trim(), from = $('#crbFrom').value, to = $('#crbTo').value;
-      const extra = Math.round(parseFloat($('#crbExtra').value));
-      if (!from || !to || !(extra > 0) || to < from) { toast('Fill label, valid date range and a positive ₹ amount.'); return; }
-      const list = (DB.commissionRules.bonuses || []).concat([{ label: label || 'Festival bonus', from: from, to: to, extra: extra }]);
-      DB.commissionRules = Object.assign({}, DB.commissionRules, { bonuses: list });
-      persist('commissionRules');
-      audit('Commission bonus added', (label || 'Festival bonus') + ' ' + from + '→' + to + ' +₹' + extra + '/seat');
-      renderAdminSettings();
-    }
-  };
-
-  $('#saveSettingsBtn').onclick = () => {
-    DB.settings = {
-      upiId: $('#setUpiId').value.trim() || CONFIG.upiId,
-      upiName: $('#setUpiName').value.trim() || CONFIG.upiName,
-      esewaId: $('#setEsewaId').value.trim() || CONFIG.esewaId,
-      esewaName: $('#setEsewaName').value.trim() || CONFIG.esewaName,
-      /* No adminPin / agentPin here on purpose. This object is written to
-         the shared kv_store `settings` row, and that row is in
-         KV_PUBLIC_READ — /api/kv.php?action=get&key=settings answers it to
-         anyone, signed in or not. Saving a password here published it.
-         Staff passwords live in the admin_users table (bcrypt) and are
-         changed at Admin -> Staff -> Change password. */
-      phone: $('#setPhone').value.trim() || CONFIG.phone,
-      /* V7 — operator-set Google Maps key (blank = free Photon/Nominatim search) */
-      googleMapsApiKey: ($('#setGmapsKey') ? $('#setGmapsKey').value.trim() : (DB.settings.googleMapsApiKey || '')),
-      email: $('#setEmail').value.trim() || CONFIG.email,
-      bhagwanImg: ($('#settingBhagwanImg') || {}).value ? $('#settingBhagwanImg').value.trim() : (DB.settings.bhagwanImg || ''),
-      noticeOn: $('#setNoticeOn').checked,
-      noticeText: $('#setNoticeText').value.trim(),
-      assumedTravelSpeedKmh: Math.max(10, parseInt($('#setSpeed').value, 10) || CONFIG.booking.assumedTravelSpeedKmh),
-      sessionTimeoutMin: Math.max(0, parseInt($('#setTimeout').value, 10) || 0),
-      defaultLang: ($('#setDefaultLang') ? $('#setDefaultLang').value : 'ne'),
-      templesDefaultOn: ($('#setTemplesDefaultOn') ? $('#setTemplesDefaultOn').checked : true),
-      /* 🚫 blacklist: keep last-10 digits of each entry (tolerates +91 prefixes), 10-digit only, deduped */
-      blacklist: ($('#setBlacklist') ? $('#setBlacklist').value : '').split(',')
-        .map(x => { const d = digits(x); return d.length > 10 ? d.slice(-10) : d; })
-        .filter((x, i, a) => /^\d{10}$/.test(x) && a.indexOf(x) === i),
-      /* Must be listed here: this literal REPLACES DB.settings wholesale, so
-         a key that is not rebuilt is wiped the next time anyone presses Save. */
-      contactNumbers: readNumberSlots() || DB.settings.contactNumbers || contactNumbers(),
-      mainFares: {
-        toNepal: Math.max(0, Math.round(parseFloat(($('#setFareToNepal') || {}).value)) || sharingDir().toNepal),
-        toIndia: Math.max(0, Math.round(parseFloat(($('#setFareToIndia') || {}).value)) || sharingDir().toIndia)
-      },
-      loyaltyTiers: (S().loyaltyTiers || CONFIG.loyaltyTiers).map((tr, i) => ({
-        name: tr.name, icon: tr.icon,
-        min: Math.max(0, parseInt(($('[data-tier-min="' + i + '"]') || {}).value, 10) || 0),
-        discountPct: Math.min(20, Math.max(0, parseFloat(($('[data-tier-disc="' + i + '"]') || {}).value) || 0))
-      }))
-    };
-    persist('settings');
-    /* The board and the live strip both read sharingDir(), so repaint them
-       now — an operator who changes a fare should see the passenger-facing
-       price move on the same click, not on the next reload. */
-    if (typeof renderContactStrip === 'function') renderContactStrip();
-    if (typeof renderFareBoard === 'function') renderFareBoard();
-    if (typeof renderPricingCards === 'function') renderPricingCards();
-    if (typeof renderFareLive === 'function') renderFareLive();
-    /* commission rules live in their own store key */
-    const perRoute = {};
-    DB.routes.forEach(r => {
-      const mode = ($('[data-crr-mode="' + r.id + '"]') || {}).value || '';
-      const val = parseFloat(($('[data-crr-val="' + r.id + '"]') || {}).value);
-      if (mode && val >= 0 && !isNaN(val)) perRoute[r.id] = mode === 'percent' ? { mode: 'percent', percent: val } : { mode: 'flat', flat: val };
-    });
-    DB.commissionRules = Object.assign({}, DB.commissionRules, {
-      mode: $('#crMode').value,
-      flat: Math.max(0, Math.round(parseFloat($('#crFlat').value)) || 0),
-      percent: Math.max(0, parseFloat($('#crPercent').value) || 0),
-      windowDays: Math.max(1, parseInt($('#crWindow').value, 10) || CONFIG.referral.windowDays),
-      perRoute: perRoute
-    });
-    persist('commissionRules');
-    try { sessionStorage.removeItem('shg:noticeHide'); } catch (e) {}
-    renderNotice();
-    audit('Settings saved', 'Payments, notice, speed ' + DB.settings.assumedTravelSpeedKmh + ' km/h, commission ' + DB.commissionRules.mode + ' ' + (DB.commissionRules.mode === 'percent' ? DB.commissionRules.percent + '%' : '₹' + DB.commissionRules.flat));
-    renderAdminAudit();
-    applyBhagwanImg();
-    toast('Settings saved ✓ (new bookings will use the updated payment IDs)');
-  };
-}
-
-function renderAdminLiveOps() {
-  const box = $('#liveOpsBody'); if (!box) return;
-  const today = todayISO();
-  const routes = DB.routes.filter(r => r.active);
-  const routeOpt = (sel) => routes.map(r => '<option value="' + r.id + '"' + (r.id === sel ? ' selected' : '') + '>' + esc(r.from + ' → ' + r.to + ' · ' + r.depTime) + '</option>').join('');
-
-  /* delay notices */
-  const delayRows = (DB.delays || []).slice().sort((a, b) => (b.date > a.date ? 1 : -1)).slice(0, 8).map((d, i) => {
-    const r = routeById(d.routeId) || {};
-    return '<div class="sum-row"><span>' + esc((r.from || '?') + ' → ' + (r.to || '?')) + ' · ' + fmtDate(d.date) + (d.note ? ' · ' + esc(d.note) : '') + '</span><b>~' + d.delayMinutes + ' min <button class="btn btn-ghost btn-sm" data-deldelay="' + i + '">🗑</button></b></div>';
-  }).join('');
-
-  /* expenses: this month total + per-trip list */
-  const now = Date.now();
-  const expMonth = DB.tripExpenses.filter(x => sameMonth(new Date(x.date + 'T00:00').getTime(), now))
-    .reduce((s, x) => s + (x.diesel || 0) + (x.toll || 0) + (x.driver || 0) + (x.misc || 0), 0);
-  const expRows = DB.tripExpenses.slice(0, 10).map((x, i) => {
-    const r = routeById(x.routeId) || {};
-    const tot = (x.diesel || 0) + (x.toll || 0) + (x.driver || 0) + (x.misc || 0);
-    return '<div class="sum-row"><span>' + esc(x.date) + ' · ' + esc((r.from || '?') + ' → ' + (r.to || '?')) + (x.note ? ' · ' + esc(x.note) : '')
-      + '<br><small style="color:var(--muted)">⛽ ' + inr(x.diesel || 0) + ' · 🛣 ' + inr(x.toll || 0) + ' · 👨‍✈️ ' + inr(x.driver || 0) + ' · 📦 ' + inr(x.misc || 0) + '</small></span><b>' + inr(tot) + ' <button class="btn btn-ghost btn-sm" data-delexp="' + i + '">🗑</button></b></div>';
-  }).join('');
-
-  box.innerHTML = `
-    <div class="rt-card">
-      <div class="rt-head"><b style="font-family:var(--f-display);font-size:17px">⏰ Delay notice</b></div>
-      <p style="font-size:12.5px;color:var(--muted);margin-bottom:10px">Passengers with a confirmed booking on this route + date see a banner on their ticket. Pull-based — no SMS is sent.</p>
-      <div class="rt-form">
-        <div class="field span2"><label>Route</label><select id="dlRoute">${routeOpt('')}</select></div>
-        <div class="field"><label>Journey date</label><input id="dlDate" type="date" value="${today}"></div>
-        <div class="field"><label>Delay (minutes)</label><input id="dlMin" type="number" min="5" max="1440" placeholder="20"></div>
-        <div class="field span4"><label>Note (optional, shown to passengers)</label><input id="dlNote" placeholder="Border rush — bus running behind schedule"></div>
-        <div class="span4"><button class="btn btn-blue btn-sm" id="dlSave" type="button">⏰ Publish delay notice</button></div>
-      </div>
-      ${delayRows ? '<div style="margin-top:12px">' + delayRows + '</div>' : ''}
-    </div>
-
-    <div class="rt-card">
-      <div class="rt-head"><b style="font-family:var(--f-display);font-size:17px">🧾 Trip expense log</b>
-        <span class="badge">This month: ${inr(expMonth)}</span></div>
-      <p style="font-size:12.5px;color:var(--muted);margin-bottom:10px">Per-trip running costs — data shape matches the leased-bus profit/loss calculator so figures can feed it later.</p>
-      <div class="rt-form">
-        <div class="field"><label>Date</label><input id="exDate" type="date" value="${today}"></div>
-        <div class="field span2"><label>Route</label><select id="exRoute">${routeOpt('')}</select></div>
-        <div class="field"><label>Diesel (₹)</label><input id="exDiesel" type="number" min="0" placeholder="0"></div>
-        <div class="field"><label>Toll (₹)</label><input id="exToll" type="number" min="0" placeholder="0"></div>
-        <div class="field"><label>Driver (₹)</label><input id="exDriver" type="number" min="0" placeholder="0"></div>
-        <div class="field"><label>Misc (₹)</label><input id="exMisc" type="number" min="0" placeholder="0"></div>
-        <div class="field"><label>Note</label><input id="exNote" placeholder="optional"></div>
-        <div class="span4"><button class="btn btn-blue btn-sm" id="exSave" type="button">💾 Add expense entry</button></div>
-      </div>
-      ${expRows ? '<div style="margin-top:12px">' + expRows + '</div>' : ''}
-    </div>`;
-
-  /* — delay wiring — */
-  $('#dlSave').onclick = () => {
-    const rid = $('#dlRoute').value, date = $('#dlDate').value;
-    const min = parseInt($('#dlMin').value, 10);
-    if (!rid || !date || !(min > 0)) { toast('Pick route, date and delay minutes.'); return; }
-    DB.delays = (DB.delays || []).filter(d => !(d.routeId === rid && d.date === date));   // one notice per trip
-    DB.delays.unshift({ routeId: rid, date: date, delayMinutes: min, note: $('#dlNote').value.trim() });
-    persist('delays');
-    const r = routeById(rid) || {};
-    audit('Delay notice published', (r.from || '?') + ' → ' + (r.to || '?') + ' · ' + date + ' · ~' + min + ' min');
-    toast('Delay notice published ✓');
-    renderAdminLiveOps(); renderAdminAudit();
-  };
-  box.onclick = (e) => {
-    const dd = e.target.closest('[data-deldelay]');
-    if (dd) {
-      const sorted = (DB.delays || []).slice().sort((a, b) => (b.date > a.date ? 1 : -1));
-      const gone = sorted[parseInt(dd.getAttribute('data-deldelay'), 10)];
-      DB.delays = DB.delays.filter(x => x !== gone);
-      persist('delays'); audit('Delay notice removed', gone ? gone.date + ' ~' + gone.delayMinutes + ' min' : '');
-      renderAdminLiveOps(); return;
-    }
-    const dx = e.target.closest('[data-delexp]');
-    if (dx) {
-      DB.tripExpenses.splice(parseInt(dx.getAttribute('data-delexp'), 10), 1);
-      persist('tripExpenses'); audit('Expense entry removed', '');
-      renderAdminLiveOps();
-    }
-  };
-
-  /* — expenses wiring — */
-  $('#exSave').onclick = () => {
-    const date = $('#exDate').value, rid = $('#exRoute').value;
-    const n = (id) => Math.max(0, Math.round(parseFloat($(id).value) || 0));
-    const entry = { date: date, routeId: rid, diesel: n('#exDiesel'), toll: n('#exToll'), driver: n('#exDriver'), misc: n('#exMisc'), note: $('#exNote').value.trim(), at: Date.now() };
-    if (!date || !rid || (entry.diesel + entry.toll + entry.driver + entry.misc) <= 0) { toast('Pick date, route and at least one cost.'); return; }
-    DB.tripExpenses.unshift(entry);
-    persist('tripExpenses');
-    audit('Trip expense logged', date + ' · ₹' + (entry.diesel + entry.toll + entry.driver + entry.misc));
-    toast('Expense entry added ✓');
-    renderAdminLiveOps(); renderAdminAudit();
-  };
-
-  /* — Firebase Live Trips — create, monitor, force-end — */
-  var cityOpts = ROUTE_STOPS.map(function(s) { return '<option value="' + s.name + '">' + s.name + ' (' + s.lat.toFixed(2) + ', ' + s.lng.toFixed(2) + ')</option>'; }).join('');
-  var oc = $('#ltOverrideCity');
-  if (oc) oc.innerHTML = cityOpts;
-
-  /* Per-trip driver code. The box used to be hardcoded to 'SHG@2026' — the
-     same string as the old admin password — and printed it to whoever opened
-     Live Ops. Nothing server-side ever checked it (api/track.php has no PIN
-     test), so it was never a lock; making it per-trip at least stops one
-     leaked screenshot from reading like the company password. */
-  function tripDriverPin() {
-    var n = 0;
-    try { n = Math.floor(crypto.getRandomValues(new Uint32Array(1))[0] / 4295); }
-    catch (e) { n = Math.floor(Math.random() * 1000000); }
-    return String(n % 1000000).padStart(6, '0');
-  }
-  var lp = $('#ltPin');
-  if (lp) lp.value = tripDriverPin();
-
-  $('#ltCreateBtn').onclick = function() {
-    var defRoute = ROUTE_STOPS.length >= 2 ? (ROUTE_STOPS[0].name + ' → ' + ROUTE_STOPS[ROUTE_STOPS.length - 1].name) : '';
-    var route = ($('#ltRoute') || {}).value || defRoute;
-    var date = ($('#ltDate') || {}).value;
-    var time = ($('#ltTime') || {}).value || '08:15';
-    var driver = ($('#ltDriver') || {}).value || 'Driver';
-    var vehicle = ($('#ltVehicle') || {}).value || '';
-    if (!date) { toast('Pick a date'); return; }
-    var tripId = 'SHG-' + date.replace(/-/g, '') + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
-    var tripData = { route: route, departureTime: date + ' ' + time, driverName: driver, vehicleNo: vehicle, status: 'pending', createdAt: Date.now() };
-    if (typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length) {
-      var db = firebase.database();
-      db.ref('activeTrips/' + tripId).set(tripData);
-      db.ref('trips/' + tripId + '/meta').set(tripData);
-    }
-    var localTrips = [];
-    try { localTrips = JSON.parse(localStorage.getItem('shg:livetrips') || '[]'); } catch (e) {}
-    localTrips.unshift({ id: tripId, ...tripData });
-    try { localStorage.setItem('shg:livetrips', JSON.stringify(localTrips)); } catch (e) {}
-    $('#ltCreateMsg').textContent = 'Trip ' + tripId + ' created ✓ · Driver PIN: ' + (($('#ltPin') || {}).value || tripDriverPin());
-    audit('Trip created', tripId + ' · ' + route + ' · ' + date);
-    ltRefreshTable();
-  };
-
-  function ltRefreshTable() {
-    var tbody = $('#ltTableBody');
-    if (!tbody) return;
-    if (typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length) {
-      firebase.database().ref('activeTrips').once('value').then(function(snap) {
-        var data = snap.val();
-        ltRenderRows(data, tbody);
-      });
-    } else {
-      var local = [];
-      try { local = JSON.parse(localStorage.getItem('shg:livetrips') || '[]'); } catch (e) {}
-      var obj = {};
-      local.forEach(function(t) { obj[t.id] = t; });
-      ltRenderRows(obj, tbody);
-    }
-    var sel = $('#ltOverrideTrip');
-    if (sel) {
-      if (typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length) {
-        firebase.database().ref('activeTrips').once('value').then(function(snap) {
-          var d = snap.val() || {};
-          sel.innerHTML = '<option value="">Select trip…</option>' + Object.keys(d).map(function(id) { return '<option value="' + id + '">' + id + '</option>'; }).join('');
-        });
-      }
-    }
-  }
-
-  function ltRenderRows(data, tbody) {
-    if (!data || !Object.keys(data).length) {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--muted)">No active trips</td></tr>';
-      return;
-    }
-    var html = '';
-    Object.keys(data).forEach(function(id) {
-      var t = data[id];
-      var statusCls = t.status === 'active' ? 'color:var(--ok)' : (t.status === 'complete' ? 'color:var(--muted)' : 'color:var(--warn)');
-      html += '<tr style="border-bottom:1px solid var(--line)">'
-        + '<td style="padding:8px;font-family:var(--f-code);font-size:12px">' + id + '</td>'
-        + '<td style="padding:8px">' + (t.route || '—') + '</td>'
-        + '<td style="padding:8px">' + (t.driverName || '—') + '</td>'
-        + '<td style="padding:8px;font-size:12px">—</td>'
-        + '<td style="padding:8px">—</td>'
-        + '<td style="padding:8px;font-weight:700;' + statusCls + '">' + (t.status || 'pending') + '</td>'
-        + '<td style="padding:8px"><button class="btn btn-danger-ghost btn-sm" data-forceend="' + id + '">🛑 End</button></td>'
-        + '</tr>';
-    });
-    tbody.innerHTML = html;
-    tbody.querySelectorAll('[data-forceend]').forEach(function(btn) {
-      btn.onclick = function() {
-        var tid = btn.getAttribute('data-forceend');
-        if (!confirm('Force-end trip ' + tid + '?')) return;
-        if (typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length) {
-          firebase.database().ref('trips/' + tid + '/meta/status').set('complete');
-          firebase.database().ref('trips/' + tid + '/liveLocation').remove();
-          firebase.database().ref('activeTrips/' + tid + '/status').set('complete');
-        }
-        audit('Trip force-ended', tid);
-        toast('Trip ' + tid + ' ended');
-        ltRefreshTable();
-      };
-    });
-  }
-
-  $('#ltOverrideBtn').onclick = function() {
-    var tid = ($('#ltOverrideTrip') || {}).value;
-    var city = ($('#ltOverrideCity') || {}).value;
-    if (!tid || !city) { toast('Select trip and city'); return; }
-    var idx = ROUTE_STOPS.findIndex(function(s) { return s.name === city; });
-    var stop = idx >= 0 ? ROUTE_STOPS[idx] : null;
-    if (!stop) return;
-    var next = (idx >= 0 && idx < ROUTE_STOPS.length - 1) ? ROUTE_STOPS[idx + 1] : null;
-    if (typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length) {
-      firebase.database().ref('trips/' + tid + '/liveLocation').set({ lat: stop.lat, lng: stop.lng, bearing: null, speed: 0, accuracy: 999, ts: Date.now() });
-    }
-    postLocation({ lat: stop.lat, lng: stop.lng, bearing: null, ts: Date.now() });
-    /* Cross-device: also write the manual position to the shared server KV so
-       EVERY passenger's phone sees it — not just tabs of this browser. The
-       `livebus` key is public-read (api/kv.php KV_PUBLIC_READ) and only an
-       admin can write it. Passengers poll it in the Trip Companion
-       (tcInitManualLive). Works with NO Firebase, NO driver GPS. */
-    var tripLabel = '';
-    try { var to = $('#ltOverrideTrip'); tripLabel = to && to.selectedOptions[0] ? to.selectedOptions[0].textContent : ''; } catch (e) {}
-    try {
-      store.set('shg:livebus', {
-        tid: tid, tripLabel: tripLabel,
-        stop: stop.name, stopIdx: idx, totalStops: ROUTE_STOPS.length,
-        next: next ? next.name : '', lat: stop.lat, lng: stop.lng,
-        km: stop.km || 0, totalKm: LIVE_TOTAL_KM,
-        at: Date.now(), by: (USER && USER.name) || 'staff'
-      });
-    } catch (e) {}
-    $('#ltOverrideMsg').textContent = 'Position set to ' + city + ' ✓ — passengers now see it live';
-    audit('Manual live position', tid + ' → ' + city);
-  };
-
-  ltRefreshTable();
-}
-
-function renderAdminMessages() {
-  const box = $('#messagesList');
-  if (!DB.messages.length) { box.innerHTML = '<p style="color:var(--muted);font-size:14px;padding:14px 4px">No enquiries yet — messages from the contact form will appear here.</p>'; return; }
-  box.innerHTML = DB.messages.map(m => `
-    <div class="msg-card">
-      <div class="msg-head"><b>${esc(m.name)}</b><span class="badge">${esc(m.topic)}</span><small>${new Date(m.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</small></div>
-      <p>${esc(m.msg)}</p>
-      <small>📞 ${esc(m.phone)}</small>
-    </div>`).join('');
-}
-
-/* §7: the in-app control route is now a launcher into the real, RBAC-protected
-   staff Admin Panel (/admin/). The old client-side PIN was trivially bypassable
-   (plaintext, devtools) and only unlocked a local mirror; every authoritative
-   action (payment approve/reject, ticket issuance) happens server-side after a
-   real staff sign-in. The local #adminApp panel is kept in the DOM but is no
-   longer reachable from this gate. */
-function goRealAdmin() {
-  var base = (window.SHG_BOOT && window.SHG_BOOT.appUrl) || location.origin;
-  window.open(base.replace(/\/$/, '') + '/admin/', '_blank', 'noopener');
-  toast('Opening the secure staff Admin Panel — sign in there.');
-}
-{ const _ob = $('#adminOpenReal'); if (_ob) _ob.addEventListener('click', goRealAdmin); }
-{ const _lo = $('#adminLogout'); if (_lo) _lo.addEventListener('click', () => { ADMIN_ON = false; renderAdminGateOrApp(); toast('Panel locked 🔒'); }); }
-
 /* Hidden admin access: tap CIN number 5x within 3s */
 (function(){
   var ct=0,tm=0;
@@ -580,18 +23,6 @@ function goRealAdmin() {
     if(ct>=5){ct=0;location.hash='#/shg-ctrl';}
   });
 })();
-/* §2 purge: .atab and #pvBell were inside the removed #view-admin section.
-   The selectors now return empty / null, so these are guarded. */
-$$('.atab[data-tab]').forEach(tb => tb.addEventListener('click', () => {
-  $$('.atab[data-tab]').forEach(x => x.classList.toggle('on', x === tb));
-  $$('.admin-tabpane').forEach(p => p.classList.toggle('hide', p.id !== 'tab-' + tb.getAttribute('data-tab')));
-}));
-{ const _pv = $('#pvBell'); if (_pv) _pv.addEventListener('click', function() {
-  $$('.atab[data-tab]').forEach(x => x.classList.toggle('on', x.getAttribute('data-tab') === 'payments'));
-  $$('.admin-tabpane').forEach(p => p.classList.toggle('hide', p.id !== 'tab-payments'));
-  if (typeof renderAdminPayments === 'function') renderAdminPayments();
-}); }
-
 /* ================================================================
    [JS] 14A. SPLASH SCREEN — letter-by-letter cinematic cold launch
 ================================================================ */
@@ -629,19 +60,21 @@ const RoleGate = {
 const Splash = {
   el: null, bar: null, status: null, skip: null, done: false,
   progress: 0, tasks: 0, completed: 0, startTs: 0, dataReady: false,
-  trailer: false, soundOn: false, _ac: null,
-  /* A floor, not a wait. Long enough that the logo doesn't flash past on a
-     fast connection, short enough that nobody is ever held back by it —
-     this used to be 5000, so a booking that had loaded in 300ms still sat
-     behind four and a half seconds of branding. Sep-2 mobile pass:
-     dropped to 500ms so a phone paint feels instant; the logo still
-     registers because the letter-by-letter animation runs in parallel. */
-  minDuration: 500,
-  /* First visit: show the brand briefly while data loads. Staff sign-in
-     has its own link; passengers need not wait for a portal chooser. */
-  portalMs: 600,
-  portalTimer: null,
-  featTimer: null,
+  /* A floor, not a wait. This used to be 5000, then 500 (Sep-2 mobile
+     pass), then 0 — at which point the opening lasted exactly as long as the
+     six boot ticks, often under a second, and the owner "never saw the
+     starting animation" (26 Sep 2026). 1400 ms is long enough for the three
+     marketing lines below to enter (0 / 450 / 900 ms) and be read, and
+     still shorter than the shortest real boot on a slow link. The hide is
+     max(boot, floor): never shorter than the boot, never much longer. */
+  minDuration: 1400,
+  /* Within one browser session the opening is shown once — unless the last
+     showing is older than this, so a phone that opens the app morning and
+     evening sees it twice a day, not once per install. The inline script in
+     app.template.html applies the same rule before the first paint. */
+  REPEAT_MS: 6 * 60 * 60 * 1000,
+  ROTATE_MS: 450,
+  lineTimers: [],
   messages: [
     'Checking session…', 'Loading trip data…', 'Preparing routes…',
     'Caching map tiles…', 'Almost ready…'
@@ -654,42 +87,26 @@ const Splash = {
     this.startTs = performance.now();
     if (!this.el) { this.done = true; return; }
     var splashed = false;
-    try { splashed = !!sessionStorage.getItem('shg:splashed'); } catch (e) {}
+    try {
+      var seenAt = parseInt(localStorage.getItem('shg:splashAt') || '0', 10) || 0;
+      splashed = !!sessionStorage.getItem('shg:splashed') && (Date.now() - seenAt) < this.REPEAT_MS;
+    } catch (e) {}
     if (splashed) {
       this.el.style.display = 'none';
       this.done = true;
       RoleGate.init().maybeShow();   // splash skipped this session — still ask
       return;
     }
-    /* V5: the long (34s) first-visit cinematic trailer is disabled by default
-       for a fast, snappy launch. The trailer code below is preserved — flip
-       ENABLE_INTRO_TRAILER to true (or restore the localStorage check) to bring
-       it back. */
-    var ENABLE_INTRO_TRAILER = false;
-    try { this.trailer = ENABLE_INTRO_TRAILER && !localStorage.getItem('shg:introSeen'); } catch (e) { this.trailer = false; }
-    if (this.trailer) {
-      this.minDuration = 38000;
-      try { localStorage.setItem('shg:introSeen', '1'); } catch (e) {}
-      this.runScenes();
-    } else {
-      /* Fast splash: the cinematic trailer DOM is preserved (flip
-         ENABLE_INTRO_TRAILER to restore it) but kept out of layout so the
-         clean logo + name + phone intro stands alone. */
-      var _intro = $('#introScenes'); if (_intro) _intro.style.display = 'none';
-    }
-    // No marketing countdown: initialization owns the lifetime of this screen.
-    this.minDuration = 0;
     if (this.el.classList.contains('done')) { this.done = true; this.el.style.display = 'none'; return; }
-    const sb = $('#splashSound');
-    if (sb) sb.addEventListener('click', () => {
-      this.soundOn = !this.soundOn;
-      sb.textContent = this.soundOn ? '🔊 Sound On' : '🔇 Sound';
-      sb.classList.toggle('on', this.soundOn);
-      if (this.soundOn) this.chime(1);
-    });
+    /* app_motion_on = 0 (Admin -> Settings -> Site, 27 Sep 2026): no floor
+       and no rotating lines — the opening lasts exactly as long as the boot,
+       as it did before. Absent row = on (shgSwitchOn, 02-config.js). */
+    if (!this.motion()) this.minDuration = 0;
+    this.localise();
     this.animateTitle();
+    this.rotate();
     if (this.skip) {
-      setTimeout(() => { this.skip.classList.add('show'); }, this.trailer ? 2500 : 600);
+      setTimeout(() => { this.skip.classList.add('show'); }, 600);
       this.skip.addEventListener('click', () => this.finish());
     }
     this.recoveryTimer = setTimeout(() => {
@@ -698,56 +115,6 @@ const Splash = {
       const retry = $('#splashRetry'); if (retry) retry.hidden = false;
       if (this.skip) this.skip.classList.add('show');
     }, 8000);
-  },
-  /* Trailer — 6 scenes, 24s total. CEO first → India → Nepal → both → map → features.
-     Tight, smooth, skip naparos jasto chhoto. */
-  runScenes() {
-    const mb = $('#introMapBox');
-    if (mb && typeof trackMapSVG === 'function') { try { mb.innerHTML = trackMapSVG(0, false); } catch (e) {} }
-    const ci = $('#introCeoImg');
-    try { const saved = localStorage.getItem('shg:ceoPhoto'); if (saved && ci) ci.src = saved; } catch (e) {}
-    const caps = ['👑 CEO — Sher Bahadur Bishwokarma', '🇮🇳 INDIA', '🇳🇵 NEPAL', '🚌 दुई देश · एक यात्रा', '🗺️ Route — AMD → NPJ', '☕ Refreshment Halt', '🎫 Book in 3 Taps', '🕉️ ॐ नमो नारायणाय · शुभ यात्रा'];
-    [3000, 7500, 11500, 15500, 20000, 25000, 30000, 35000].forEach((t2, i) => {
-      setTimeout(() => {
-        if (this.done) return;
-        for (let k = 1; k <= 8; k++) {
-          const sc = $('#introS' + k);
-          if (sc) sc.classList.toggle('on', k === i + 1);
-        }
-        if (this.status) this.status.textContent = caps[i];
-        this.chime(i + 1);
-      }, t2);
-    });
-  },
-  /* Scene sounds — only after the user taps the Sound chip (no autoplay).
-     Scene 1: deep flag-reveal gong · Scene 2: 6 ascending blips synced to
-     the feature badges popping in · other scenes: soft two-note chime. */
-  _note(f, at, dur, vol, type) {
-    const ac = this._ac, o = ac.createOscillator(), g = ac.createGain();
-    o.type = type || 'sine'; o.frequency.value = f;
-    g.gain.setValueAtTime(0, at);
-    g.gain.linearRampToValueAtTime(vol, at + .04);
-    g.gain.linearRampToValueAtTime(0, at + dur);
-    o.connect(g); g.connect(ac.destination);
-    o.start(at); o.stop(at + dur + .05);
-  },
-  chime(step) {
-    if (!this.soundOn) return;
-    try {
-      const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
-      if (!this._ac) this._ac = new AC();
-      const t0 = this._ac.currentTime;
-      if (step === 1) {                      /* flag reveal — warm gong */
-        this._note(196, t0, 1.4, .16, 'sine');
-        this._note(392, t0 + .1, 1.2, .1, 'sine');
-        this._note(587.33, t0 + .25, 1, .07, 'triangle');
-      } else if (step === 3) {               /* feature badges — 6 rising blips */
-        [660, 740, 830, 932, 1046, 1174].forEach((f, i) => this._note(f, t0 + .5 + i * .25, .22, .1, 'triangle'));
-      } else {
-        this._note(523.25, t0, .5, .13, 'sine');
-        this._note(659.25, t0 + .12, .5, .1, 'sine');
-      }
-    } catch (e) {}
   },
   animateTitle() {
     /* Premium intro — a clean logo → name → phone reveal. Brand name and
@@ -804,73 +171,92 @@ const Splash = {
     reveal('#splashPhone', 210);
     /* (the skip button is revealed separately in init(), at 1.2s) */
   },
-  /* The 2-second staff window. Purely additive: it rides on top of the
-     splash the visitor was already watching, so a passenger who ignores it
-     reaches the booking screen at exactly the same moment they would have
-     anyway. Tapping Agent or Admin leaves for the staff sign-in, which
-     decides from the ACCOUNT what that person may actually do — picking
-     "Admin" here is a routing hint, never a promotion. */
-  armPortal() {
-    var wrap = document.getElementById('splashPortal');
-    if (!wrap) return;
-    var bar = document.getElementById('spBar');
-    var cnt = document.getElementById('spCount');
-    var self = this;
-
-    wrap.hidden = false;
-    setTimeout(function () { wrap.classList.add('show'); }, 250);
-
-    /* Only the "Book now" (data-portal=customer) button remains — Agent and
-       Admin pills were removed 2026-08-29 (master-prompt §2). Keep the
-       click wiring for the customer button so a first-time visitor can skip
-       the brand hold; any other pill added back later would still be
-       handled here without changes. */
-    Array.prototype.forEach.call(wrap.querySelectorAll('[data-portal]'), function (b) {
-      b.addEventListener('click', function () {
-        var role = b.getAttribute('data-portal');
-        self.stopPortal();
-        try { localStorage.setItem(RoleGate.KEY, role || 'customer'); } catch (e) {}
-        if (role === 'customer' || !role) { self.finish(); return; }
-        var base = ((window.SHG_BOOT && window.SHG_BOOT.appUrl) || location.origin).replace(/\/+$/, '');
-        location.href = base + '/admin/login.php?portal=' + encodeURIComponent(role);
-      });
-    });
-
-    /* Drain the bar with one transition rather than a per-frame timer — it
-       runs on the compositor, so a slow phone spends its CPU on the data
-       load underneath instead of on this animation. */
-    if (bar) {
-      bar.style.transition = 'transform ' + this.portalMs + 'ms linear';
-      requestAnimationFrame(function () {
-        requestAnimationFrame(function () { bar.style.transform = 'scaleX(0)'; });
-      });
-    }
-    /* Cycle the feature lines. Paced so every line gets one turn inside the
-       hold rather than racing through all four. */
-    var feats = wrap.querySelectorAll('#spFeats li');
-    if (feats.length > 1) {
-      var fi = 0;
-      var every = Math.max(1100, Math.floor(this.portalMs / feats.length));
-      this.featTimer = setInterval(function () {
-        feats[fi].classList.remove('on');
-        fi = (fi + 1) % feats.length;
-        feats[fi].classList.add('on');
-      }, every);
-    }
-
-    var left = Math.round(this.portalMs / 1000);
-    if (cnt) cnt.textContent = String(left);
-    this.portalTimer = setInterval(function () {
-      left--;
-      if (cnt) cnt.textContent = String(Math.max(0, left));
-      if (left <= 0) self.stopPortal();
-    }, 1000);
+  /* The opening in the visitor's language (27 Sep 2026). Title and tagline
+     are seeded in English in the HTML so they paint on the first frame; here
+     they take the selected language BEFORE the letters animate. applyLang()
+     runs later in init() and must not touch the title (no data-i18n on it:
+     innerHTML would wipe the letter spans mid-reveal). The element's own
+     lang attribute makes premium.css §6 apply (Devanagari face, no tracking)
+     before <html lang> is set. Nothing here is a new string: t() falls back
+     to English, so a missing key leaves the seeded text alone. */
+  localise() {
+    if (typeof t !== 'function') return;
+    var lang = (typeof LANG === 'string' && LANG) || 'en';
+    var put = function (id, key) {
+      var el = $(id); if (!el) return;
+      var s = t(key);
+      if (!s || s === key) return;
+      if (el.textContent.trim() !== s) el.textContent = s;
+      el.setAttribute('lang', lang);
+    };
+    put('#splashTitle', 'splashTitle');
+    put('#splashTagline', 'splashTagline');
   },
-  stopPortal() {
-    if (this.portalTimer) { clearInterval(this.portalTimer); this.portalTimer = null; }
-    if (this.featTimer) { clearInterval(this.featTimer); this.featTimer = null; }
-    var wrap = document.getElementById('splashPortal');
-    if (wrap) wrap.classList.remove('show');
+  /* THE SIGNATURE OPENING (owner, 26 Sep 2026: one opening with marketing
+     words). Three lines the app already says — the hero title, the brand
+     band tagline, the promise — enter one after another, ROTATE_MS apart,
+     inside the minDuration floor. Opacity + translateY only (premium.css
+     §9), so the compositor does all of it. Nepali when the app is in
+     Nepali, else the selected language. Reduced motion: no keyframes, the
+     static frame keeps the promise line. */
+  lines() {
+    if (typeof t !== 'function') return [];
+    var strip = function (s) {
+      return String(s || '').replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+    };
+    var out = [];
+    ['heroTitle', 'bbTag', 'premiumPromise'].forEach(function (k) {
+      var s = strip(t(k));
+      if (s && s !== k && out.indexOf(s) < 0) out.push(s);
+    });
+    return out;
+  },
+  reducedMotion() {
+    try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
+    catch (e) { return false; }
+  },
+  motion() {
+    try { return typeof shgSwitchOn !== 'function' || shgSwitchOn('app_motion_on'); } catch (e) { return true; }
+  },
+  rotate() {
+    var box = $('#splashPromise');
+    if (!box) return;
+    var lines = this.lines();
+    if (!lines.length) return;
+    box.setAttribute('lang', (typeof LANG === 'string' && LANG) || 'en');
+    if (this.reducedMotion() || !this.motion()) {
+      box.textContent = '';
+      var one = document.createElement('span');
+      one.className = 'sp-line in';
+      one.textContent = lines[lines.length - 1];
+      box.appendChild(one);
+      return;
+    }
+    /* The seeded English line is kept in place when it IS line one, so it
+       does not leave and re-enter; every other line is built here. */
+    var first = box.firstElementChild;
+    var keepFirst = !!(first && first.classList.contains('sp-line') && first.textContent.trim() === lines[0]);
+    if (keepFirst) { while (first.nextSibling) box.removeChild(first.nextSibling); }
+    else { box.textContent = ''; }
+    var spans = [];
+    lines.forEach(function (txt, i) {
+      if (i === 0 && keepFirst) { spans.push(first); return; }
+      var s = document.createElement('span');
+      s.className = 'sp-line' + (i === 0 ? ' in' : '');
+      s.textContent = txt;
+      box.appendChild(s);
+      spans.push(s);
+    });
+    var self = this;
+    spans.forEach(function (s, i) {
+      if (i === 0) return;
+      self.lineTimers.push(setTimeout(function () {
+        if (self.done) return;
+        spans[i - 1].classList.remove('in'); spans[i - 1].classList.add('out');
+        s.classList.add('in');
+      }, i * self.ROTATE_MS));
+    });
   },
   tick(label) {
     this.completed++;
@@ -891,16 +277,19 @@ const Splash = {
     if (this.done) return;
     this.done = true;
     clearTimeout(this.recoveryTimer);
-    this.stopPortal();
     if (this.bar) this.bar.style.width = '100%';
     if (this.status) { this.status.style.opacity = '0'; setTimeout(() => { if (this.status) this.status.textContent = '✓ Ready'; this.status.style.opacity = '1'; }, 200); }
-    try { sessionStorage.setItem('shg:splashed', '1'); } catch (e) {}
+    try { sessionStorage.setItem('shg:splashed', '1'); localStorage.setItem('shg:splashAt', String(Date.now())); } catch (e) {}
+    this.lineTimers.forEach(clearTimeout); this.lineTimers = [];
     /* Hand the role picker over AS the splash fades, not after it. The two
        used to be strictly sequential (300ms pause + 1100ms fade = 1.4s of
        nothing), which is what made the launch feel slow even once the data
        was ready. The picker is now already on screen behind the fade. */
     setTimeout(() => {
       if (this.el) this.el.classList.add('done');
+      /* 27 Sep 2026: the home page's six-second "awake" window (22-vip.js,
+         stillness at rest) starts from this moment. */
+      try { document.dispatchEvent(new CustomEvent('shg:splashdone')); } catch (e) {}
       RoleGate.init().maybeShow();
       /* Boot time the owner can actually check: navigation → the moment the
          role picker is usable. Paint metrics lie in a background tab; this
@@ -1100,7 +489,7 @@ function loadMapLibre() {
 function shgLazyLoad() {
   if (window._shgLazyP) return window._shgLazyP;
   window._shgLazyP = new Promise(function (resolve, reject) {
-    var me = document.querySelector('script[src*="13-admin-routes.js"]');
+    var me = document.querySelector('script[src*="13-admin-routes.js"],script[src*="/assets/dist/app.min.js"]');
     var ver = me ? ((me.getAttribute('src') || '').split('?v=')[1] || '') : '';
     var s = document.createElement('script');
     s.src = '/assets/js/16-lazy.js' + (ver ? '?v=' + encodeURIComponent(ver) : '');
@@ -1147,23 +536,13 @@ function cleanupTracker() { /* idem */ }
 })();
 
 /* ================================================================
-   [JS] 13b. PAYMENT VERIFICATION — submission, admin queue,
-   approve/reject, EmailJS, WhatsApp, notification bell
+   [JS] 13b. PAYMENT PROOF — the customer's proof form (pvOpenForm,
+   opened from 07-checkout.js) and the one-click proof card on checkout
 ================================================================ */
 const PV = {
   submissions: [],
-  logs: [],
-  bellAudio: null,
-  emailjsLoaded: false
+  logs: []
 };
-
-const PV_EMAILJS_SERVICE  = '';
-const PV_EMAILJS_TEMPLATE_SUBMIT = '';
-const PV_EMAILJS_TEMPLATE_APPROVE = '';
-const PV_EMAILJS_TEMPLATE_REJECT = '';
-const PV_EMAILJS_PUBLIC_KEY = '';
-const PV_ADMIN_EMAIL = 'booking@shariglobal.com';
-const PV_WHATSAPP_NUM = '';
 
 /* ---- Payment Proof Card — one-click proof on checkout page ---- */
 var PP = { thumb: '', file: null, compressed: false };
@@ -1408,21 +787,6 @@ function pvGenId() {
   return 'PV-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
 }
 
-function pvLoadEmailJS() {
-  if (PV.emailjsLoaded || !PV_EMAILJS_PUBLIC_KEY) return;
-  var s = document.createElement('script');
-  s.src = 'https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js';
-  s.onload = function() {
-    if (window.emailjs) { window.emailjs.init(PV_EMAILJS_PUBLIC_KEY); PV.emailjsLoaded = true; }
-  };
-  document.head.appendChild(s);
-}
-
-function pvSendEmail(templateId, params) {
-  if (!PV.emailjsLoaded || !PV_EMAILJS_SERVICE || !templateId) return Promise.resolve();
-  return window.emailjs.send(PV_EMAILJS_SERVICE, templateId, params).catch(function() {});
-}
-
 function pvOpenForm(bookingId) {
   /* A REJECTED booking must always be able to re-submit. Its local PV record
      is very likely still marked 'pending' (nothing syncs PV submission status
@@ -1482,16 +846,6 @@ function pvCloseForm() { $('#pvOverlay').classList.remove('show'); }
     $('#pvOverlay').addEventListener('click', function(e) { if (e.target === this) pvCloseForm(); });
 
     $('#pvSubmitBtn').addEventListener('click', pvSubmit);
-
-    var rsel = $('#pvrReason');
-    if (rsel) rsel.addEventListener('change', function() {
-      var cw = $('#pvrCustomWrap');
-      if (this.value === 'other') cw.classList.remove('hide'); else cw.classList.add('hide');
-    });
-    var pvrCancel = $('#pvrCancel');
-    if (pvrCancel) pvrCancel.addEventListener('click', function() { $('#pvrOverlay').classList.remove('show'); });
-    var pvrConfirm = $('#pvrConfirm');
-    if (pvrConfirm) pvrConfirm.addEventListener('click', pvDoReject);
   });
 })();
 
@@ -1579,23 +933,6 @@ async function pvSubmit() {
   PV.submissions.push(sub);
   persist('paymentSubmissions');
 
-  var booking = DB.bookings.find(function(b) { return b.id === bookingId; });
-  var emailParams = {
-    booking_id: bookingId,
-    verification_id: sub.id,
-    utr: sub.utr,
-    sender_name: sub.sender,
-    mobile: sub.mobile,
-    passenger_name: booking ? booking.passengers.map(function(p) { return p.name; }).join(', ') : '',
-    route: booking ? (booking.from + ' → ' + booking.to) : '',
-    amount: booking ? ('₹' + booking.total) : '',
-    date: booking ? booking.date : '',
-    to_email: PV_ADMIN_EMAIL
-  };
-  pvSendEmail(PV_EMAILJS_TEMPLATE_SUBMIT, emailParams);
-
-  pvNotifyAdmin(sub);
-
   var vlog = { id: sub.id, action: 'submitted', ts: Date.now(), by: 'customer', detail: 'UTR: ' + sub.utr };
   PV.logs.push(vlog);
   persist('verificationLogs');
@@ -1606,152 +943,6 @@ async function pvSubmit() {
   $('#pvSuccessBody').classList.remove('hide');
   $('#pvVerId').textContent = sub.id;
   SFX.success();
-}
-
-function pvNotifyAdmin(sub) {
-  try {
-    if (typeof pushNotif === 'function')
-      pushNotif('💳', 'New payment proof', sub.bookingId + ' — UTR: ' + sub.utr + ' — verify in Admin → Payments');
-  } catch (e) {}
-  pvUpdateBell();
-  pvPlayBell();
-}
-
-function pvUpdateBell() {
-  var cnt = PV.submissions.filter(function(s) { return s.status === 'pending'; }).length;
-  var el = $('#pvBellCount');
-  if (!el) return;
-  el.textContent = cnt;
-  el.classList.toggle('show', cnt > 0);
-}
-
-function pvPlayBell() {
-  try {
-    if (!PV.bellAudio) {
-      var actx = new (window.AudioContext || window.webkitAudioContext)();
-      var osc = actx.createOscillator();
-      var gain = actx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(880, actx.currentTime);
-      osc.frequency.setValueAtTime(1100, actx.currentTime + 0.1);
-      gain.gain.setValueAtTime(0.3, actx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.5);
-      osc.connect(gain); gain.connect(actx.destination);
-      osc.start(actx.currentTime);
-      osc.stop(actx.currentTime + 0.5);
-    }
-  } catch (e) {}
-}
-
-function renderAdminPayments() {
-  var list = $('#pvQueueList');
-  if (!list) return;
-  pvUpdateBell();
-
-  var searchVal = ($('#pvSearch') ? $('#pvSearch').value.toLowerCase() : '');
-  var filterVal = ($('#pvFilter') ? $('#pvFilter').value : 'all');
-
-  var items = PV.submissions.slice().sort(function(a, b) { return b.ts - a.ts; });
-  if (filterVal !== 'all') items = items.filter(function(s) { return s.status === filterVal; });
-  if (searchVal) items = items.filter(function(s) {
-    return (s.bookingId + ' ' + s.sender + ' ' + s.utr + ' ' + s.id).toLowerCase().includes(searchVal);
-  });
-
-  if (!items.length) { list.innerHTML = '<p style="text-align:center;color:var(--muted);padding:40px 0">No payment submissions ' + (filterVal !== 'all' ? 'with status "' + filterVal + '"' : 'yet') + '.</p>'; return; }
-
-  list.innerHTML = items.map(function(s) {
-    var booking = DB.bookings.find(function(b) { return b.id === s.bookingId; });
-    var statusClass = s.status;
-    var badgeClass = s.status;
-    var badgeText = s.status === 'pending' ? '⏳ Pending' : s.status === 'approved' ? '✅ Approved' : '❌ Rejected';
-
-    var html = '<div class="pvq-card ' + statusClass + '" data-pvid="' + s.id + '">';
-    html += '<div class="pvq-head"><span class="badge ' + badgeClass + '">' + badgeText + '</span>';
-    html += '<span style="font-family:var(--f-code);font-size:12px;color:var(--muted)">' + s.id + '</span>';
-    html += '<span style="margin-left:auto;font-size:12px;color:var(--muted)">' + new Date(s.ts).toLocaleString() + '</span></div>';
-
-    html += '<div class="pvq-grid">';
-    html += '<div><span class="lbl">Booking ID</span><div class="val">' + s.bookingId + '</div></div>';
-    html += '<div><span class="lbl">UTR / Ref</span><div class="val">' + (s.utr || '—') + '</div></div>';
-    html += '<div><span class="lbl">Sender</span><div class="val">' + (s.sender || '—') + '</div></div>';
-    html += '<div><span class="lbl">Mobile</span><div class="val">' + (s.mobile || '—') + '</div></div>';
-    if (booking) {
-      html += '<div><span class="lbl">Route</span><div class="val">' + booking.from + ' → ' + booking.to + '</div></div>';
-      html += '<div><span class="lbl">Amount</span><div class="val">₹' + booking.total + '</div></div>';
-      html += '<div><span class="lbl">Passengers</span><div class="val">' + booking.passengers.map(function(p) { return p.name; }).join(', ') + '</div></div>';
-      html += '<div><span class="lbl">Date</span><div class="val">' + booking.date + '</div></div>';
-    }
-    html += '</div>';
-
-    if (s.screenshot) html += '<img class="pvq-shot" src="' + s.screenshot + '" alt="Payment screenshot" onclick="pvViewShot(this.src)">';
-
-    html += '<div class="pvq-actions">';
-    if (s.status === 'pending') {
-      html += '<button class="pvq-approve" onclick="pvApprove(\'' + s.id + '\')">✅ Verify in Admin Panel</button>';
-    }
-    if (s.status === 'rejected' && s.rejectReason) {
-      html += '<span style="font-size:12px;color:var(--bad)">Reason: ' + s.rejectReason + '</span>';
-    }
-    var waMsg = 'Hello, I submitted payment for booking ' + s.bookingId + ' (UTR: ' + s.utr + '). Verification ID: ' + s.id + '. Please verify.';
-    var waNum = PV_WHATSAPP_NUM || (booking && booking.contact ? booking.contact.phone.replace(/\D/g, '') : '');
-    html += '<a class="pvq-wa" href="https://wa.me/' + waNum + '?text=' + encodeURIComponent(waMsg) + '" target="_blank" rel="noopener">💬 WhatsApp</a>';
-    html += '<button class="pvq-view" onclick="pvViewShot(\'' + (s.screenshot || '') + '\')">🔍 View</button>';
-    html += '</div></div>';
-    return html;
-  }).join('');
-}
-
-function pvViewShot(src) {
-  if (!src) return;
-  var w = window.open('', '_blank', 'width=600,height=800');
-  w.document.write('<html><head><title>Payment Screenshot</title><style>body{margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh}img{max-width:100%;max-height:100vh;object-fit:contain}</style></head><body><img src="' + src + '"></body></html>');
-}
-
-/* Approving/rejecting a real payment must go through the real backend —
-   BookingService::confirm()/reject() is what actually issues the signed
-   ticket, claims the seats and sends the customer their PDF. Flipping a
-   status flag here only would "confirm" a booking with no ticket behind
-   it. So this queue is informational; the decision itself happens in the
-   real, RBAC-protected Admin Panel. */
-function pvGotoRealAdmin(bookingId) {
-  /* §7: the single hand-off into the real RBAC-gated staff admin. Per-booking
-     view carries the reversible Payment-review panel (§4); the pending-only
-     queue is reachable from the admin nav for the daily verification pass. */
-  var base = (window.SHG_BOOT && window.SHG_BOOT.appUrl) || (location.origin);
-  var path = bookingId
-    ? '/admin/booking-view.php?pnr=' + encodeURIComponent(bookingId)
-    : '/admin/payments.php';
-  window.open(base.replace(/\/$/, '') + path, '_blank', 'noopener');
-  toast('Opening the secure staff Admin Panel — sign in there to approve, reject or reverse this payment.');
-}
-
-function pvApprove(subId) {
-  var sub = PV.submissions.find(function(s) { return s.id === subId; });
-  pvGotoRealAdmin(sub ? sub.bookingId : '');
-}
-
-function pvShowReject(subId) {
-  var sub = PV.submissions.find(function(s) { return s.id === subId; });
-  pvGotoRealAdmin(sub ? sub.bookingId : '');
-}
-
-function pvDoReject() {
-  var subId = $('#pvrSubId') ? $('#pvrSubId').value : '';
-  var sub = PV.submissions.find(function(s) { return s.id === subId; });
-  var el = $('#pvrOverlay'); if (el) el.classList.remove('show');
-  pvGotoRealAdmin(sub ? sub.bookingId : '');
-}
-
-function pvAuditLog(msg) {
-  try {
-    if (typeof auditLog === 'function') auditLog(msg);
-  } catch (e) {}
-}
-
-function pvSetupSearch() {
-  var si = $('#pvSearch'), fi = $('#pvFilter');
-  if (si) si.addEventListener('input', renderAdminPayments);
-  if (fi) fi.addEventListener('change', renderAdminPayments);
 }
 
 /* ================================================================
@@ -2735,7 +1926,7 @@ var SN_HOME={lat:28.6132,lng:81.6087,label:'Sigane ko ghar'};
 var SN_NAV_P=null, SN_NAV_LOADED=false;
 function snNavLoad(){
   if(SN_NAV_P) return SN_NAV_P;
-  var ver=''; try{ var sc=document.querySelector('script[src*="13-admin-routes.js"]'); var m=sc&&sc.getAttribute('src').match(/[?&]v=([^&]+)/); ver=m?m[1]:''; }catch(e){}
+  var ver=''; try{ var sc=document.querySelector('script[src*="13-admin-routes.js"],script[src*="/assets/dist/app.min.js"]'); var m=sc&&sc.getAttribute('src').match(/[?&]v=([^&]+)/); ver=m?m[1]:''; }catch(e){}
   SN_NAV_P=new Promise(function(res,rej){
     var s=document.createElement('script'); s.src='/assets/js/15-nav.js'+(ver?'?v='+encodeURIComponent(ver):''); s.async=true;
     s.onload=function(){ SN_NAV_LOADED=true; res(); };

@@ -283,7 +283,7 @@ function coScrollInvalid() {
 function coGoStep(n) {
   if (n === 2) {
     const dv = validateCheckoutDetails();
-    if (dv.blocked) { toast('⛔ This number is blocked from booking — contact office +91 91048 01507'); SFX.error(); return; }
+    if (dv.blocked) { toast(tf('numBlocked', { p: ((DB.settings && DB.settings.phone) || CONFIG.phone) })); SFX.error(); return; }
     if (!dv.ok) { coFixToast(dv); return; }
     /* Name + mobile ARE the sign-in: establish the traveller's session in
        the background while they look at the payment step, so the booking
@@ -892,7 +892,7 @@ function renderCheckout() {
   const cabinLegs = legs.filter(l => l.bookingType && l.cabinType);
   let cabinTotal = 0;
   const cabinRows = cabinLegs.map(l => {
-    const cf = calcCabinFare(l.cabinType, l.bookingType, l.seats.length, true, (routeById(l.routeId) || {}).to, l.fareOverride);
+    const cf = calcCabinFare(l.cabinType, l.bookingType, l.seats.length, true, (routeById(l.routeId) || {}).to, l.fareOverride, (routeById(l.routeId) || {}).from);
     cabinTotal += cf.total;
     return '<div class="sum-row"><span>' + cf.emoji + ' ' + cf.label + '</span><b>' + inr(cf.total) + '</b></div>'
       + (l.sharingTier ? '<div class="sum-row"><span>Sharing tier · साझा टियर</span><b>' + sharingTierLabel(l.sharingTier) + '</b></div>' : '')
@@ -912,11 +912,27 @@ function renderCheckout() {
     coView.classList.toggle('sharing-mode', !hasPrivateLeg && cabinLegs.some(l => l.bookingType === 'sharing'));
   }
 
+  /* The advance-booking offer (26 Sep 2026). The SERVER decides whether this
+     booking qualifies — it measures the hours against the real departure clock
+     and reads the office's own hours / percentage / dates — so the page never
+     computes it. refreshServerQuote() below fills these in and re-renders.
+     Until it answers (or if it never does) they are zero and the checkout
+     behaves exactly as it did before. */
+  Flow.advanceCut = 0;
+  Flow.advanceTitle = '';
+  Flow.srvQuote = null;
+
   const checkoutTotals = () => {
-    const tierDisc = (tierInfo && tierInfo.tier.discountPct > 0) ? Math.round(fareBase * tierInfo.tier.discountPct / 100) : 0;
-    const afterTier = fareBase - tierDisc;
+    /* The order the server applies discounts in (Fare::quote): base, advance
+       offer, then the loyalty tier, then points. Kept identical here so the
+       amount on screen and the amount charged agree to the rupee. */
+    const advCut    = Math.max(0, Math.min(Number(Flow.advanceCut) || 0, fareBase));
+    const afterAdv  = fareBase - advCut;
+    const tierDisc  = (tierInfo && tierInfo.tier.discountPct > 0) ? Math.round(afterAdv * tierInfo.tier.discountPct / 100) : 0;
+    const afterTier = afterAdv - tierDisc;
     const red = Flow.usePoints ? loyaltyRedemption(me, (me && me.loyaltyPoints) || 0, afterTier) : { points: 0, rupees: 0 };
-    return { tierDisc: tierDisc, tierName: tierInfo ? tierInfo.tier.icon + ' ' + tierInfo.tier.name : '',
+    return { advCut: advCut, advTitle: String(Flow.advanceTitle || ''),
+             tierDisc: tierDisc, tierName: tierInfo ? tierInfo.tier.icon + ' ' + tierInfo.tier.name : '',
              points: red.points, pointsValue: red.rupees, total: Math.max(1, afterTier - red.rupees),
              fareBad: !fareOk(fareBase) };
   };
@@ -954,6 +970,11 @@ function renderCheckout() {
   const updatePayment = () => {
     const x = checkoutTotals();
     let rows = useCabin ? cabinRows : fareRowsHTML(f);
+    /* The advance-booking offer, named the way the office named it. */
+    if (x.advCut > 0) {
+      rows += '<div class="sum-row disc"><span>🎉 ' + esc(x.advTitle || t('aoRow') || 'Advance booking offer')
+            + '</span><b>− ' + inr(x.advCut) + '</b></div>';
+    }
     if (x.tierDisc > 0) rows += '<div class="sum-row disc"><span>' + tf('loyRowTier', { t: tierInfo.tier.icon + ' ' + tierInfo.tier.name }) + '</span><b>− ' + inr(x.tierDisc) + '</b></div>';
     if (x.pointsValue > 0) rows += '<div class="sum-row disc"><span>' + t('loyRowPoints') + ' (' + x.points + ')</span><b>− ' + inr(x.pointsValue) + '</b></div>';
     /* opt-in points checkbox — only when the user has enough points */
@@ -964,9 +985,24 @@ function renderCheckout() {
     }
     /* Math.max(1, …) above would turn a fare that failed to load into a
        payable ₹1; say so instead and let submitBooking refuse. */
+    /* THE FOUR LINES THAT MUST APPEAR BEFORE PAYMENT (owner, 26 Sep 2026):
+       original fare, discount %, discount amount, final fare. Built from the
+       numbers just used, so it can never disagree with the rows above it. */
+    const origFare = Math.round(fareBase);
+    const discAmt  = Math.max(0, origFare - Math.round(x.total));
+    const discPct  = origFare > 0 ? Math.round(discAmt * 1000 / origFare) / 10 : 0;
+    const fourLines = discAmt > 0
+      ? '<div class="sum-four">'
+        + '<div class="sum-row"><span>' + esc(t('rowOrigFare') || 'Original fare') + '</span><b>' + inr(origFare) + '</b></div>'
+        + '<div class="sum-row disc"><span>' + esc(t('rowDiscPct') || 'Discount') + '</span><b>' + discPct + '%</b></div>'
+        + '<div class="sum-row disc"><span>' + esc(t('rowDiscAmt') || 'Discount amount') + '</span><b>− ' + inr(discAmt) + '</b></div>'
+        + '<div class="sum-row total"><span>' + esc(t('rowFinalFare') || 'Final fare') + '</span><b>' + inr(x.total) + '</b></div>'
+        + '</div>'
+      : '<div class="sum-row total"><span>' + t('rowTotal') + '</span><b>' + inr(x.total) + '</b></div>';
+
     $('#coFareRows').innerHTML = x.fareBad
       ? '<div class="sum-row total"><span style="color:var(--bad)">' + esc(t('fareNA')) + '</span><b>—</b></div>'
-      : rows + '<div class="sum-row total"><span>' + t('rowTotal') + '</span><b>' + inr(x.total) + '</b></div>';
+      : rows + fourLines;
     const chk = $('#loyUseChk');
     if (chk) chk.onchange = () => { Flow.usePoints = chk.checked; updatePayment(); };
     flipNumber($('#payAmount'), x.total, x.fareBad ? (() => '—') : inr, $('#bpAmt'));
@@ -1009,6 +1045,41 @@ function renderCheckout() {
   };
   Flow.checkoutTotals = checkoutTotals;   // submitBooking reads the same maths
   updatePayment();
+
+  /* ---- THE AUTHORITATIVE QUOTE (26 Sep 2026) ----------------------
+     Everything above is the page's own instant estimate. /api/quote.php is
+     the code that will actually charge: it prices off the passenger's real
+     boarding stop, applies the office's advance-booking offer against this
+     bus's departure clock, and returns the four display lines already worked
+     out. We take its advance discount and re-render.
+
+     Deliberately non-blocking and failure-tolerant: no network, an older
+     server, or any error leaves the estimate on screen exactly as before.
+     BookingService::create() re-prices on submit regardless, so this can only
+     make the screen agree with the bill sooner — never disagree with it. */
+  const refreshServerQuote = async () => {
+    const l = legs && legs[0];
+    if (!l || !l.seats || !l.seats.length) return;
+    try {
+      const res = await shgApi.post('/quote.php', {
+        routeCode: l.routeId, scheduleId: l.sid || 0,
+        seats: l.seats.slice(), travelDate: l.date || '',
+        bookingMode: l.bookingType || undefined,
+        cabinType: l.cabinType || undefined,
+        boarding: l.boarding || '', drop: l.drop || '',
+        phone: (typeof USER !== 'undefined' && USER && USER.phone) ? USER.phone : ''
+      });
+      Flow.srvQuote = res || null;
+      const adv = (res && res.advance) || {};
+      const cut = Math.round(Number(adv.amount) || 0);
+      if (cut !== Math.round(Number(Flow.advanceCut) || 0) || (adv.title || '') !== Flow.advanceTitle) {
+        Flow.advanceCut = cut;
+        Flow.advanceTitle = String(adv.title || '');
+        updatePayment();
+      }
+    } catch (e) { /* estimate stands */ }
+  };
+  refreshServerQuote();
 
   setPayMethod(PAY_METHOD);
   $('#payMethodUpi').onclick = () => setPayMethod('upi');
@@ -1108,7 +1179,7 @@ async function submitBooking() {
   const phone = dv.phone, email = dv.email, idNum = dv.idNum;
   const phoneVal = dv.phoneVal;
   if (dv.blocked) {
-    toast('⛔ This number is blocked from booking — contact office +91 91048 01507');
+    toast(tf('numBlocked', { p: ((DB.settings && DB.settings.phone) || CONFIG.phone) }));
     SFX.error(); shgHaptic('error');
     return;
   }
@@ -1287,11 +1358,11 @@ async function submitBooking() {
     const msgEl = $('#cAgentCodeMsg');
     if (apiResult.agent.applied) {
       const label = apiResult.agent.label || 'Agent code applied';
-      toast('🎟️ ' + label + ' · applied');
-      if (msgEl) { msgEl.textContent = '✓ ' + label + ' · applied'; msgEl.style.color = 'var(--good)'; msgEl.hidden = false; }
+      toast('🎟️ ' + tf('agentCodeOk', { c: label }));
+      if (msgEl) { msgEl.textContent = '✓ ' + tf('agentCodeOk', { c: label }); msgEl.style.color = 'var(--good)'; msgEl.hidden = false; }
     } else if (agentCodeInput) {
-      toast('Agent code not recognised — booked as direct sale.');
-      if (msgEl) { msgEl.textContent = 'Agent code not recognised — booked as direct sale.'; msgEl.style.color = 'var(--muted)'; msgEl.hidden = false; }
+      toast(t('agentCodeNo'));
+      if (msgEl) { msgEl.textContent = t('agentCodeNo'); msgEl.style.color = 'var(--muted)'; msgEl.hidden = false; }
     }
   }
 
@@ -1320,7 +1391,7 @@ async function submitBooking() {
     booking.bookingType = out.bookingType;
     booking.cabinType = out.cabinType;
     if (out.sharingTier) booking.sharingTier = out.sharingTier;
-    const cf = calcCabinFare(out.cabinType, out.bookingType, out.seats.length, true, (routeById(out.routeId) || {}).to, out.fareOverride);
+    const cf = calcCabinFare(out.cabinType, out.bookingType, out.seats.length, true, (routeById(out.routeId) || {}).to, out.fareOverride, (routeById(out.routeId) || {}).from);
     booking.cabinFare = cf.total;
     booking.cabinLabel = cf.label;
   }
@@ -1374,7 +1445,11 @@ async function submitBooking() {
   Flow.paxIndividual = false;   // the next party starts under one name again
   location.hash = '#/ticket/' + id;
   toast(t('tSubmitted'));
-  SFX.success(); shgHaptic('success');
+  /* 25 Sep 2026 (owner: a sound "ticket katne bela ma"). The moment the
+     PNR exists is the ticket coming off the book, so it gets the ticket
+     voice — the tear plus the confirmation bells — not the generic
+     success chime this shared with a dozen smaller wins. */
+  SFX.ticket(); shgHaptic('ticket');
   /* Notification centre entry (additive — guarded so booking flow never breaks) */
   try {
     if (typeof pushNotif === 'function') {
@@ -2026,7 +2101,7 @@ function renderStatus(id) {
       const waAsk = conf
         ? 'मेरो बुकिङ ' + b.id + ' को टिकट पठाउनुहोस्।'
         : 'मेरो बुकिङ ' + b.id + ' को भुक्तानी QR र टिकट पठाउनुहोस्।';
-      waGetBtn = '<a class="btn btn-wa tk2-wide" target="_blank" rel="noopener" href="https://wa.me/'
+      waGetBtn = '<a class="btn btn-wa tk2-wide" id="waGetBtn" target="_blank" rel="noopener" href="https://wa.me/'
         + bizWa + '?text=' + encodeURIComponent(waAsk) + '">🎫 WhatsApp मा टिकट पाउनुहोस्</a>';
     }
   } catch (e) {}
@@ -2071,10 +2146,10 @@ function renderStatus(id) {
   <div class="status-card tk2${conf ? ' confirm-success' : ''}" id="ticketCard" data-pnr="${esc(b.id)}">
     <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo.png?v=20260925a" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo.png?v=20260927c" alt="" loading="lazy" decoding="async">
         <div><b>${esc(CONFIG.company.name || 'S HARI GLOBAL PRIVATE LIMITED')}</b><small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
       </div>
-      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20260925a" width="600" height="312" alt="" decoding="async">
+      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20260927c" width="600" height="312" alt="" decoding="async">
     </div>
     <div class="premium-ticket-status">${pill2}${b.ticketNumber ? '<span>' + esc(b.ticketNumber) + '</span>' : ''}</div>
     ${(typeof routeOverviewSVG === 'function') ? routeOverviewSVG({ from: (isNepalPoint(r.from) ? r.from : (parseBP(b.boarding || '').name || r.from)), to: (isNepalPoint(r.to) ? r.to : (parseBP(b.drop || '').name || r.to)), compact: true }) : ''}
@@ -2188,6 +2263,40 @@ function renderStatus(id) {
   }
   const rbk = $('#retBookBtn'); if (rbk) rbk.onclick = () => rebookFrom(id, true);
   const wb = $('#waBtn'); if (wb) wb.onclick = () => waShare(id);
+  /* One-time WhatsApp code (26 Sep 2026, api/wa-ticket-code.php). For a
+     confirmed ticket the button asks the server for a 30-minute code and
+     turns into a link to our WhatsApp with "TICKET K7QM2P" typed in. The
+     passenger presses send, so they always write first; the bot answers
+     with the ticket even when this phone is not the one used at booking.
+     No redirect: the passenger taps the link themselves. Any failure
+     leaves the old PNR link in place, which still works for the booking's
+     own number. */
+  const wg = $('#waGetBtn');
+  if (wg && conf) {
+    wg.addEventListener('click', async function waCode(ev) {
+      if (wg.dataset.coded === '1') return;              // second tap: follow the link
+      ev.preventDefault();
+      wg.style.pointerEvents = 'none';
+      try {
+        const d = await shgApi.post('/wa-ticket-code.php', { pnr: b.id, phone: digits((b.contact && b.contact.phone) || '') });
+        if (d && d.link) {
+          wg.href = d.link;
+          wg.dataset.coded = '1';
+          wg.textContent = '📲 WhatsApp खोल्नुहोस् र पठाउनुहोस्';
+          const note = document.createElement('p');
+          note.className = 'muted tk2-wide';
+          note.style.cssText = 'font-size:12.5px;margin:4px 0 0;text-align:center';
+          note.textContent = 'टिकट WhatsApp मा पाउन माथिको बटन थिच्नुहोस्, अनि "' + d.message + '" पठाउनुहोस्। यो कोड '
+            + Math.round((d.expiresIn || 1800) / 60) + ' मिनेटसम्म एक पटक मात्र चल्छ।';
+          wg.insertAdjacentElement('afterend', note);
+        }
+      } catch (e) {
+        wg.dataset.coded = '1';                          // fall back to the PNR link
+      } finally {
+        wg.style.pointerEvents = '';
+      }
+    });
+  }
   const cb = $('#cancelBtn'); if (cb) cb.onclick = () => openCancelModal(id);
   /* 17-pwa.js wiring (13 Sep 2026): border checklist ticks + print, push
      opt-in, split-pay modal. Each guarded — the ticket never depends on them. */

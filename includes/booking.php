@@ -66,6 +66,125 @@ final class BookingService
      * per request so a live server that has not run the migration keeps
      * booking normally (the flag is simply not stored).
      */
+    /**
+     * Has database/upgrade-2026-09-counter-desks.sql been applied? Until it
+     * has, a sale is written exactly as before — the file may be deployed
+     * first and the SQL run after, in either order, with no failed ticket.
+     */
+    private static function deskColumns(): bool
+    {
+        static $has = null;
+        if ($has === null) {
+            try {
+                $has = Database::fetch("SHOW COLUMNS FROM bookings LIKE 'counter_code'") !== null;
+            } catch (Throwable $e) {
+                $has = false;
+            }
+        }
+        return $has;
+    }
+
+    /**
+     * Does `bookings` carry advance_discount yet
+     * (database/upgrade-2026-09-vip-advance.sql)? Same deploy-in-either-order
+     * rule as deskColumns(): until the SQL is run the offer is still granted
+     * and still reduces total_amount — only its own column is skipped, so no
+     * passenger is overcharged by a migration that has not landed.
+     */
+    private static function advanceColumn(): bool
+    {
+        static $has = null;
+        if ($has === null) {
+            try {
+                $has = Database::fetch("SHOW COLUMNS FROM bookings LIKE 'advance_discount'") !== null;
+            } catch (Throwable $e) {
+                $has = false;
+            }
+        }
+        return $has;
+    }
+
+    /** The same question for the payment row's local-money columns. */
+    private static function tenderColumns(): bool
+    {
+        static $has = null;
+        if ($has === null) {
+            try {
+                $has = Database::fetch("SHOW COLUMNS FROM payments LIKE 'local_currency'") !== null;
+            } catch (Throwable $e) {
+                $has = false;
+            }
+        }
+        return $has;
+    }
+
+    /**
+     * WHERE this ticket was sold, frozen onto the booking, plus what the
+     * customer was quoted in their own money at a Nepal desk.
+     *
+     * The desk used to be read back at print time through the seller's
+     * admin_profiles row — today's desk for that person — so moving a clerk
+     * from Surat to Rajkot moved every ticket they had ever sold and last
+     * month's Surat sheet changed. An online sale has no desk and is left
+     * NULL; a desk nobody has assigned yet is left NULL too, because a wrong
+     * town on a ticket is worse than no town.
+     *
+     * @return array<string,mixed> merged into the bookings insert
+     */
+    private static function deskStamp(?int $sellerAdminId, float $totalInr): array
+    {
+        if (!self::deskColumns()) {
+            return [];
+        }
+        $code = CounterDesk::codeForSale($sellerAdminId);
+        if ($code === null) {
+            return [];
+        }
+        $out = ['counter_code' => $code];
+
+        /* INR stays the currency the books run in. At an NPR desk we also
+           freeze what the window actually said out loud, with the rate used
+           at that second — so a rate change tomorrow can never rewrite what
+           this passenger was charged. */
+        $fx = CounterDesk::convert($totalInr, $code);
+        if ($fx['currency'] !== 'INR') {
+            $out['fx_currency'] = $fx['currency'];
+            $out['fx_rate']     = $fx['rate'];
+            $out['fx_total']    = $fx['amount'];
+        }
+
+        return $out;
+    }
+
+    /**
+     * What the drawer physically received, when that is not rupees.
+     * payments.amount stays the INR the ledger sums; local_amount is the
+     * NPR the clerk counted, so a Nepalgunj day sheet balances in the money
+     * that is actually in the box.
+     *
+     * @return array<string,mixed> merged into the payments insert
+     */
+    private static function tenderStamp(?int $sellerAdminId, float $amountInr): array
+    {
+        if (!self::tenderColumns()) {
+            return [];
+        }
+        $code = CounterDesk::codeForSale($sellerAdminId);
+        if ($code === null) {
+            return [];
+        }
+        $fx = CounterDesk::convert($amountInr, $code);
+        if ($fx['currency'] === 'INR') {
+            return [];
+        }
+
+        return [
+            'local_currency' => $fx['currency'],
+            'local_amount'   => $fx['amount'],
+            'fx_rate'        => $fx['rate'],
+        ];
+    }
+
     private static function paxSpecialColumn(): bool
     {
         static $has = null;
@@ -183,6 +302,16 @@ final class BookingService
             }
             $sellerSource  = in_array($seller['source'] ?? '', ['agent', 'counter', 'admin'], true) ? (string) $seller['source'] : 'counter';
             $counterMethod = in_array($seller['paymentMethod'] ?? '', ['cash', 'upi', 'esewa', 'bank'], true) ? (string) $seller['paymentMethod'] : 'cash';
+            /* A desk with no bank account of its own takes cash (26 Sep 2026).
+               Refusing here, on the one path every app sale goes through, is
+               the only place it cannot be worked around from a browser. */
+            $sellerDesk = CounterDesk::codeForSale($sellerId);
+            if ($sellerDesk !== null && !CounterDesk::allowsMethod($sellerDesk, $counterMethod)) {
+                throw new RuntimeException(
+                    CounterDesk::label($sellerDesk) . ' takes '
+                    . implode(' / ', CounterDesk::allowedMethods($sellerDesk) ?? []) . ' only.'
+                );
+            }
             $counterNote   = Security::clean((string) ($seller['note'] ?? ''), 255);
             $referralCodeClean = '';           // the seller IS the agent; a typed code is ignored
             $soldByAdminId     = $sellerId;
@@ -419,7 +548,15 @@ final class BookingService
             }
 
             /* ---- Price it (server-authoritative) ------------------ */
-            $pricing = self::priceBooking($route, $seats, $bookingMode, $request, $phone, $schedule);
+            /* 26 Sep 2026: the passenger's OWN boarding / drop stop and the
+               travel date go in too. The point-to-point board prices a
+               Nana Chiloda pickup differently from a Surat one, and the
+               advance-booking offer is decided against this date and this
+               bus's departure clock. */
+            $pricing = self::priceBooking(
+                $route, $seats, $bookingMode, $request, $phone, $schedule,
+                $boardingStop, $dropStop, $travelDate
+            );
 
             // Counter discount (flat or % off the pre-discount base), clamped to
             // the admin-set cap — the same rule the old counter form applied.
@@ -473,7 +610,13 @@ final class BookingService
 
             $expiryMinutes = Settings::getInt('booking_expiry_minutes', 120);
 
-            $bookingId = Database::insert('bookings', [
+            /* The advance-booking offer, in its own column when the migration
+               has landed (see advanceColumn()). */
+            $advanceCol = self::advanceColumn() && (float) ($pricing['advanceDiscount'] ?? 0) > 0
+                ? ['advance_discount' => round((float) $pricing['advanceDiscount'], 2)]
+                : [];
+
+            $bookingId = Database::insert('bookings', $advanceCol + self::deskStamp($seller !== null ? $sellerId : null, (float) $pricing['total']) + [
                 'pnr'             => $pnr,
                 'user_id'         => $userId,
                 'trip_type'       => !empty($request['returnLeg']) ? 'round' : 'oneway',
@@ -597,7 +740,7 @@ final class BookingService
             $paymentMethod = self::normaliseMethod($request['paymentMethod'] ?? 'upi');
 
             Database::insert('payments', $seller !== null
-                ? [ // counter sale: the money is already in hand -> verified now, by the seller
+                ? self::tenderStamp($sellerId, (float) $pricing['total']) + [ // counter sale: the money is already in hand -> verified now, by the seller
                     'booking_id'  => $bookingId,
                     'payment_ref' => generatePaymentRef(),
                     'method'      => $counterMethod,
@@ -794,7 +937,7 @@ final class BookingService
             // (Gujarat→Rupaidiha) / toIndia 1800 (return). Without $toCity,
             // cabinFare() defaulted to the toIndia rate, mispricing every
             // toNepal counter sale by ₹200 (M1).
-            $cf = Fare::cabinFare('single', 'sharing', 1, false, (string) ($route['to_city'] ?? ''));
+            $cf = Fare::cabinFare('single', 'sharing', 1, false, (string) ($route['to_city'] ?? ''), 4, (string) ($route['from_city'] ?? ''));
             if (($cf['perPerson'] ?? 0) > 0) {
                 $perSeat = (float) $cf['perPerson'];
             }
@@ -873,7 +1016,7 @@ final class BookingService
             );
 
             $pnr = nextTicketNo((string) $route['route_code']);
-            $bid = Database::insert('bookings', [
+            $bid = Database::insert('bookings', self::deskStamp($adminId ?: null, (float) $total) + [
                 'pnr'           => $pnr,
                 'trip_type'     => 'oneway',
                 'booking_mode'  => $bookingMode,
@@ -950,7 +1093,7 @@ final class BookingService
                 ]);
             }
 
-            Database::insert('payments', [
+            Database::insert('payments', self::tenderStamp($adminId ?: null, (float) $total) + [
                 'booking_id'  => $bid,
                 'payment_ref' => generatePaymentRef(),
                 'method'      => $method,
@@ -1518,6 +1661,18 @@ final class BookingService
                 $pnr,
                 'Payment proof received - awaiting admin verification'
             );
+        }
+
+        /* 26 Sep 2026: a signed gateway webhook may already have reported
+           this UTR. If so the office sees a "possible match" badge; the
+           booking still waits for a person (includes/paywebhook.php). */
+        if ($utr !== '') {
+            try {
+                require_once INCLUDE_PATH . '/paywebhook.php';
+                PayWebhook::onProof((int) $booking['id'], $utr);
+            } catch (Throwable $e) {
+                Logger::exception($e);
+            }
         }
 
         self::notifyAdmin('💳', 'Payment proof · ' . $pnr, 'UTR ' . ($utr ?: '—') . ' submitted for verification.', (int) $booking['id']);
@@ -2732,7 +2887,11 @@ final class BookingService
             ['b' => $booking['id']]
         );
         $booking['payment'] = Database::fetch(
-            'SELECT method, mode, amount, utr_number, status FROM payments WHERE booking_id = :b ORDER BY id DESC LIMIT 1',
+            'SELECT method, mode, amount, utr_number, status'
+            /* what a Nepal drawer physically took, frozen with the sale (26 Sep 2026);
+               read only where the column exists so an un-migrated checkout still answers */
+            . (CounterDesk::frozenColumns()['payments'] ? ', local_currency, local_amount, fx_rate' : '')
+            . ' FROM payments WHERE booking_id = :b ORDER BY id DESC LIMIT 1',
             ['b' => $booking['id']]
         );
         $booking['seats'] = array_map('strval', pluck(
@@ -2792,8 +2951,17 @@ final class BookingService
      * @param array<string, mixed> $request
      * @return array<string, mixed>
      */
-    private static function priceBooking(array $route, array $seats, ?string $bookingMode, array $request, string $phone, ?array $schedule = null): array
-    {
+    private static function priceBooking(
+        array $route,
+        array $seats,
+        ?string $bookingMode,
+        array $request,
+        string $phone,
+        ?array $schedule = null,
+        string $boardingStop = '',
+        string $dropStop = '',
+        string $travelDate = ''
+    ): array {
         $seatCount = count($seats);
         $isSleeper = ($schedule !== null ? Seats::effectiveCoach($schedule, $route) : (string) $route['coach_type']) === 'sleeper';
 
@@ -2805,9 +2973,14 @@ final class BookingService
         // when the office set one. Private cabins keep the cabin price list.
         $override = self::scheduleFareOverride($schedule);
 
+        /* The two ends the FARE BOARD reasons about: on the outbound leg the
+           passenger's boarding stop is the Gujarat end, on the return it is
+           their drop. Falls back to the route's own cities. */
+        $ends = Fare::journeyPoints($route, $boardingStop, $dropStop);
+
         if ($isSleeper && $bookingMode !== null) {
             $cabinType = ($request['cabinType'] ?? 'single') === 'double' ? 'double' : 'single';
-            $cabin     = Fare::cabinFare($cabinType, $bookingMode, $seatCount, true, (string) ($route['to_city'] ?? ''));
+            $cabin     = Fare::cabinFare($cabinType, $bookingMode, $seatCount, true, (string) ($route['to_city'] ?? ''), 4, $ends['from']);
             if ($override !== null && $bookingMode === 'sharing') {
                 $base    = round($override * $seatCount, 2);
                 $perSeat = $override;
@@ -2840,7 +3013,12 @@ final class BookingService
             $pointsAvailable,
             (string) ($request['couponCode'] ?? ''),
             $phone,
-            (int) $route['id']
+            (int) $route['id'],
+            [
+                'travelDate'    => $travelDate,
+                'departureTime' => Fare::departureTime($schedule, $route),
+                'bookingMode'   => $bookingMode,
+            ]
         );
 
         return [
@@ -2861,6 +3039,18 @@ final class BookingService
             'tax'             => $quote['tax'],
             'total'           => $quote['total'],
             'cabinLabel'      => $cabinLabel,
+            /* 26 Sep 2026 — the advance-booking offer and the four lines every
+               screen prints before payment. Carried through so the counter, the
+               agent panel and the confirmation all read one calculation. */
+            'advanceDiscount' => $quote['advanceDiscount'] ?? 0.0,
+            'advancePercent'  => $quote['advancePercent'] ?? 0.0,
+            'advanceTitle'    => $quote['advanceTitle'] ?? '',
+            'originalFare'    => $quote['originalFare'] ?? $quote['base'],
+            'discountAmount'  => $quote['discountAmount'] ?? 0.0,
+            'discountPercent' => $quote['discountPercent'] ?? 0.0,
+            'finalFare'       => $quote['finalFare'] ?? $quote['total'],
+            'fareFrom'        => $ends['from'],
+            'fareTo'          => $ends['to'],
         ];
     }
 

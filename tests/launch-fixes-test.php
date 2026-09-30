@@ -62,16 +62,18 @@ try {
         $b = BookingService::counterSale($toNepal, (int) $sch['id'], TD, ['L5'],
             ['name' => 'M1 Nepal', 'phone' => '9198765432', 'gender' => 'Male', 'paymentMethod' => 'cash'],
             $adminId, 'counter');
-        check("M1: toNepal counter fare = toNepal rate ({$dir['toNepal']}) — got {$b['fare_per_seat']}",
-            (float) $b['fare_per_seat'] === (float) $dir['toNepal']);
+        $wantN = Fare::pointFare((string) $toNepal['from_city'], (string) $toNepal['to_city']);
+        check("M1: toNepal counter fare = the board fare for that pair ({$wantN}) — got {$b['fare_per_seat']}",
+            abs((float) $b['fare_per_seat'] - $wantN) < 0.01);
     }
     if ($toIndia) {
         $sch = Seats::schedule((int) $toIndia['id'], TD);
         $b = BookingService::counterSale($toIndia, (int) $sch['id'], TD, ['L6'],
             ['name' => 'M1 India', 'phone' => '9198765432', 'gender' => 'Male', 'paymentMethod' => 'cash'],
             $adminId, 'counter');
-        check("M1: toIndia counter fare = toIndia rate ({$dir['toIndia']}) — got {$b['fare_per_seat']}",
-            (float) $b['fare_per_seat'] === (float) $dir['toIndia']);
+        $wantI = Fare::pointFare((string) $toIndia['from_city'], (string) $toIndia['to_city']);
+        check("M1: toIndia counter fare = the board fare for that pair ({$wantI}) — got {$b['fare_per_seat']}",
+            abs((float) $b['fare_per_seat'] - $wantI) < 0.01);
     }
 
     /* ---- M2 — uncollected COD cancel parks NO refund ------------------- */

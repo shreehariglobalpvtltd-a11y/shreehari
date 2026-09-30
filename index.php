@@ -18,6 +18,7 @@ declare(strict_types=1);
 
 define('SHG_APP', true);
 require_once __DIR__ . '/includes/bootstrap.php';
+require_once INCLUDE_PATH . '/assetbundle.php';
 
 /* ---------------------------------------------------------------------
  *  Bootstrap payload for the browser.
@@ -35,6 +36,20 @@ if ($legalPath === '/bus' || str_starts_with($legalPath, '/bus/') || str_starts_
     || $legalPath === '/sitemap-routes.xml' || $legalPath === '/sitemap-pages.xml') {
     require_once INCLUDE_PATH . '/routepages.php';
     RoutePages::dispatch($legalPath);
+}
+/* 27 Sep 2026: one staff door. A counter clerk, an agent or the office types
+   one short link — /desk (or /staff). Signed in: straight to Quick Ticket, the
+   mobile sale screen every selling role shares; a role that cannot sell lands
+   on its own admin home. Not signed in: the sign-in page, which returns to
+   Quick Ticket. The SPA counter mode is deliberately NOT the landing — the
+   admin pages enforce a forced password change, the shell does not. */
+if ($legalPath === '/desk' || $legalPath === '/staff') {
+    header('Cache-Control: no-store');
+    $deskAdmin = Auth::admin();
+    $deskTo    = $deskAdmin === null ? 'login.php?next=quick-ticket.php'
+        : (Auth::rowCan($deskAdmin, 'bookings.view') ? 'quick-ticket.php' : '');
+    header('Location: /admin/' . $deskTo, true, 302);
+    exit;
 }
 
 $user = Auth::user();
@@ -106,6 +121,28 @@ if ($staffRow !== null) {
         'maxSeats'       => Settings::getInt('counter_max_seats_per_booking', 20),
         'panelUrl'       => Auth::isCounterAgent() ? '/admin/agent.php' : '/admin/',
     ];
+    /* Which WINDOW this clerk is at (26 Sep 2026). Counter mode is the main
+       sale screen and it knew the person but not the place, so a Nepalgunj
+       clerk had no way to see that they were taking NPR — while the sale was
+       already being stamped with the desk server-side. The methods the desk
+       may take travel too, so a cash-only window does not offer UPI at all. */
+    $deskNow = CounterDesk::forAdmin($staffId);
+    if ($deskNow['code'] !== '' || $deskNow['name'] !== '') {
+        $deskCur = CounterDesk::currency((string) $deskNow['code']);
+        $boot['staff']['desk'] = [
+            'code'     => $deskNow['code'],
+            'name'     => $deskNow['name'],
+            'label'    => CounterDesk::label((string) $deskNow['code'], (string) $deskNow['name']),
+            'country'  => (string) (CounterDesk::get((string) $deskNow['code'])['country'] ?? 'IN'),
+            'currency' => $deskCur,
+            'rate'     => $deskCur === 'INR' ? 1.0 : CounterDesk::rate((string) $deskNow['code']),
+            'methods'  => CounterDesk::allowedMethods((string) $deskNow['code']),
+            /* The run this window sells, so the screen opens on it rather
+               than on whichever route happens to be first (26 Sep 2026). */
+            'direction' => CounterDesk::direction((string) $deskNow['code']),
+            'from'      => CounterDesk::defaultFrom((string) $deskNow['code']),
+        ];
+    }
 }
 
 /* Home page (12 Sep 2026): the QuickBot card shows how many tickets the
@@ -117,6 +154,58 @@ try {
     $boot['stats'] = ['tickets' => (int) ($stRow[0]['n'] ?? 0)];
 } catch (Throwable $e) {
     $boot['stats'] = ['tickets' => 0];
+}
+
+/* ---------------------------------------------------------------------
+ *  PRICING (26 Sep 2026): the fare board and the advance-booking offer.
+ *
+ *  The page has always carried its own fare table so a seat summary can be
+ *  drawn instantly and offline. That copy held ONE price per direction; the
+ *  board now depends on which pickup, so the copy would have been wrong for
+ *  eight of the nine Gujarat towns. The server therefore hands over the
+ *  ANSWERS (a small from|to => amount map, eighteen entries) rather than the
+ *  rules, and the page prefers them over its packaged table.
+ *
+ *  The offer travels as well, because the home page's offer card is drawn
+ *  from it — so switching the offer off in Admin removes the card, and
+ *  changing 10% to 15% changes what the card says, with no deploy.
+ *
+ *  Never blocks the page: any failure simply leaves the page on its
+ *  packaged table and hides the offer card.
+ * ------------------------------------------------------------------- */
+try {
+    require_once INCLUDE_PATH . '/fare.php';   // bootstrap.php does not load it
+    $advNow = Fare::advanceOffer();
+    /* A one-route offer names its route on the card (26 Sep 2026 follow-up). */
+    $advRoute = '';
+    if ((int) ($advNow['routeId'] ?? 0) > 0) {
+        $advR = Database::fetch('SELECT from_city, to_city FROM routes WHERE id = :i LIMIT 1', ['i' => (int) $advNow['routeId']]);
+        $advRoute = $advR !== null ? (string) $advR['from_city'] . ' → ' . (string) $advR['to_city'] : '';
+    }
+    $boot['pricing'] = [
+        'board' => Fare::fareBoardMap(),
+        'offer' => [
+            // `live` folds in the switch, a positive percentage and today's
+            // date against the window — the card asks nothing else.
+            'live'    => (bool) $advNow['live'],
+            'hours'   => (int) $advNow['hours'],
+            'percent' => (float) $advNow['percent'],
+            'max'     => (float) $advNow['max'],
+            'modes'   => (string) $advNow['modes'],
+            'title'   => (string) $advNow['title'],
+            'text'    => (string) $advNow['text'],
+            'until'   => (string) $advNow['to'],
+            'route'   => $advRoute,
+            'date'    => (string) ($advNow['date'] ?? ''),
+            'maxPer'  => (string) ($advNow['maxPer'] ?? 'booking'),
+        ],
+        'vip' => [
+            'single' => (float) (Settings::getArray('cabin_pricing', Fare::pricing())['private']['single_1pax']['offline'] ?? 0),
+            'double' => (float) (Settings::getArray('cabin_pricing', Fare::pricing())['private']['double_2pax']['offline'] ?? 0),
+        ],
+    ];
+} catch (Throwable $e) {
+    $boot['pricing'] = ['board' => [], 'offer' => ['live' => false], 'vip' => []];
 }
 
 /* Web Push (13 Sep 2026): the VAPID public key the phone needs to subscribe
@@ -273,6 +362,12 @@ $stripped = preg_replace('/<!--(?!\[if).*?-->/s', '', $html);
 if (is_string($stripped) && $stripped !== '') {
     $html = preg_replace('/\n[ \t]*\n(?:[ \t]*\n)+/', "\n\n", $stripped) ?: $stripped;
 }
+
+/* One script and one stylesheet instead of twenty-two, when the office has
+   turned bundle_assets_on on AND the committed bundle still matches the
+   template exactly (includes/assetbundle.php). Off, absent, or stale, and
+   the page is served exactly as before. 27 Sep 2026. */
+$html = AssetBundle::apply($html);
 
 $pos = stripos($html, '</head>');
 if ($pos !== false) {

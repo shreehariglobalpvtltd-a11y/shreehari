@@ -44,6 +44,17 @@ $stats = [
     'totalPax'     => (int) Database::scalar("SELECT COUNT(*) FROM booking_passengers bp JOIN bookings b ON b.id=bp.booking_id WHERE b.status='confirmed' AND b.confirmed_at>=:d0 AND b.confirmed_at<:d1", ['d0' => $today, 'd1' => $todayEnd]),
 ];
 
+/* A Nepal desk's sale is a rupee in the books with the NPR it quoted frozen
+   beside it (26 Sep 2026). Sum that frozen figure over the same windows as
+   the rupee tiles — never the rupee times today's peg — and only where the
+   column exists, so an older database still draws the dashboard. */
+$nprToday = 0.0;
+$nprMonth = 0.0;
+if (CounterDesk::frozenColumns()['bookings']) {
+    $nprToday = (float) Database::scalar("SELECT COALESCE(SUM(fx_total),0) FROM bookings WHERE status='confirmed' AND fx_currency='NPR' AND confirmed_at>=:d0 AND confirmed_at<:d1", ['d0' => $today, 'd1' => $todayEnd]);
+    $nprMonth = (float) Database::scalar("SELECT COALESCE(SUM(fx_total),0) FROM bookings WHERE status='confirmed' AND fx_currency='NPR' AND confirmed_at>=:m0 AND confirmed_at<:m1", ['m0' => $monthStart, 'm1' => $monthEnd]);
+}
+
 /* The four explicitly-named cards the master prompt asks for: active buses,
    active agents, cancelled today, commission this month. Each is a cheap
    scalar; agent_ledger ships in an upgrade migration, so its query is guarded
@@ -239,7 +250,7 @@ admin_page_head(
     <span class="hicon"><svg class="a-ic xl"><use href="#a-rupee"/></svg></span>
     <div class="hk">Revenue today</div>
     <div class="hv"><?= $e(inr($stats['revenueToday'])) ?></div>
-    <div class="hsub"><?= (int) $stats['seatsToday'] ?> seats confirmed</div>
+    <div class="hsub"><?= (int) $stats['seatsToday'] ?> seats confirmed<?php if ($nprToday > 0): ?> · <b style="color:#fde68a"><?= $e(CounterDesk::format($nprToday, 'NPR')) ?></b> quoted in NPR<?php endif; ?></div>
   </div>
   <div class="hcard hc-orange">
     <span class="hicon"><svg class="a-ic xl"><use href="#a-clock"/></svg></span>
@@ -252,7 +263,7 @@ admin_page_head(
     <span class="hicon"><svg class="a-ic xl"><use href="#a-chart-up"/></svg></span>
     <div class="hk">Revenue this month</div>
     <div class="hv"><?= $e(inr($stats['revenueMonth'])) ?></div>
-    <div class="hsub"><?= (int) $stats['confirmed'] ?> total confirmed</div>
+    <div class="hsub"><?= (int) $stats['confirmed'] ?> total confirmed<?php if ($nprMonth > 0): ?> · <b style="color:#fde68a"><?= $e(CounterDesk::format($nprMonth, 'NPR')) ?></b> quoted in NPR<?php endif; ?></div>
   </div>
   <div class="hcard hc-blue">
     <span class="hicon"><svg class="a-ic xl"><use href="#a-handshake"/></svg></span>

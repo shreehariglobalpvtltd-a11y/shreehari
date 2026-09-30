@@ -323,6 +323,51 @@ final class ChalaniPdf
             $pdf->line($sx, $ly, $sx + $sw, $ly, self::LINE, 0.6);
             $txtC($sx, $sx + $sw, $ly + 8, $lab, 6.8, false, self::MUTE);
         }
+        /* ---- per-counter split (owner, 26 Sep 2026: "chalani ma ni
+               chuttinu paryo") ------------------------------------------
+           One bus carries tickets cut at several windows, and the office
+           settling the trip has to know whose money is whose. Printed only
+           when a desk is actually involved — a single online-only sheet
+           gains nothing from a one-line table. A Nepal desk's cash is also
+           shown in the NPR it was taken in. */
+        $byC = $totals['byCounter'] ?? [];
+        $hasDesk = false;
+        foreach ($byC as $code => $_c) { if ((string) $code !== '') { $hasDesk = true; break; } }
+        if ($hasDesk && count($byC) > 0) {
+            $y += $boxesH + 10;
+            $blockH = 26 + count($byC) * 11;
+            if ($y + $blockH + 8 > $limit) { $footer(); $pdf->newPage(); $y = $header(); }
+            $pdf->roundedRect($M, $y, $inner, $blockH, 4, self::NAVY, false);
+            $txt($M + 8, $y + 11, 'काउन्टर अनुसार संकलन', 7.8, true, self::NAVY);
+
+            $cName = $M + 10;
+            $cPax  = $M + $inner * 0.52;
+            $cTkt  = $M + $inner * 0.66;
+            $cCash = $M + $inner * 0.81;
+            $cOnl  = $M + $inner - 10;
+
+            $cy = $y + 22;
+            $txtR($cPax, $cy, 'यात्रु', 6.6, false, self::MUTE);
+            $txtR($cTkt, $cy, 'टिकट', 6.6, false, self::MUTE);
+            $txtR($cCash, $cy, 'नगद', 6.6, false, self::MUTE);
+            $txtR($cOnl, $cy, 'अनलाइन', 6.6, false, self::MUTE);
+            $cy += 10;
+
+            foreach ($byC as $c) {
+                $label = ((string) ($c['code'] ?? '') !== '' ? $c['code'] . ' · ' : '') . (string) ($c['name'] ?? '');
+                $txt($cName, $cy, $fit($label, 7.0, $cPax - $cName - 30), 7.0, false, self::INK);
+                $txtR($cPax, $cy, $neDigits((string) (int) ($c['pax'] ?? 0)), 7.0);
+                $txtR($cTkt, $cy, '₹ ' . number_format((float) ($c['ticket'] ?? 0)), 7.0);
+                $txtR($cCash, $cy, '₹ ' . number_format((float) ($c['cash'] ?? 0)), 7.0);
+                $txtR($cOnl, $cy, '₹ ' . number_format((float) ($c['online'] ?? 0)), 7.0);
+                if ((float) ($c['localCash'] ?? 0) > 0) {
+                    $txt($cName + 4, $cy + 7.4, 'नगद रू ' . number_format((float) $c['localCash']), 6.4, false, self::MUTE);
+                    $cy += 4;
+                }
+                $cy += 11;
+            }
+        }
+
         $footer();
 
         /* ---- send ---------------------------------------------------- */

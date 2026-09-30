@@ -59,7 +59,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     throw new RuntimeException('That shift is not yours to close.');
                 }
                 $denoms = [];
-                foreach (CounterShift::DENOMINATIONS as $d) {
+                foreach (CounterShift::denominationsFor(CounterShift::currencyOf($row)) as $d) {
                     $denoms[$d] = (int) ($_POST['d' . $d] ?? 0);
                 }
                 $closed = CounterShift::close(
@@ -106,6 +106,14 @@ if ($on && $closed === null) {
     $shift = $shift ?? CounterShift::current($me);
 }
 $live    = $shift !== null ? CounterShift::live($shift) : null;
+
+/* The money THIS drawer holds (26 Sep 2026). A Nepalgunj window counts NPR:
+   printing a rupee sign over a Nepali count is simply a wrong number. An
+   unassigned desk, and every Indian desk, is unchanged. */
+$shiftCur  = CounterShift::currencyOf($closed ?? $shift ?? ['currency' => CounterDesk::currency(CounterDesk::forAdmin($me)['code'])]);
+$deskNotes = CounterShift::denominationsFor($shiftCur);
+$curSym    = CounterDesk::SYMBOL[$shiftCur] ?? '';
+$mc        = static fn(float $v, string $cur = ''): string => CounterDesk::format($v, $cur !== '' ? $cur : $shiftCur);
 $history = $on ? CounterShift::recent($isOffice ? null : $me, 60) : [];
 $whoName = static fn(array $r): string => (string) ($r['admin_name'] ?? '') !== '' ? (string) $r['admin_name'] : ('#' . (int) $r['admin_id']);
 
@@ -162,18 +170,18 @@ admin_header('Shift & Cash', 'shift');
 <?php elseif ($closed !== null):
   $ver = CounterShift::verdict((float) $closed['variance']); ?>
   <div class="sh-result sh-diff <?= $ver ?>">
-    <h2><?= $ver === 'ok' ? '✅ Drawer matches · नगद मिल्यो' : ($ver === 'short' ? '🔴 Short by ' . Security::e(inr(abs((float) $closed['variance']))) . ' · कम' : '🟠 Over by ' . Security::e(inr((float) $closed['variance'])) . ' · बढी') ?></h2>
+    <h2><?= $ver === 'ok' ? '✅ Drawer matches · नगद मिल्यो' : ($ver === 'short' ? '🔴 Short by ' . Security::e($mc(abs((float) $closed['variance']))) . ' · कम' : '🟠 Over by ' . Security::e($mc((float) $closed['variance'])) . ' · बढी') ?></h2>
     Shift closed <?= Security::e(substr((string) $closed['closed_at'], 0, 16)) ?>
   </div>
   <div class="panel">
     <h2>Shift slip</h2>
     <div class="sh-sum">
-      <div><small>Opening cash</small><b><?= Security::e(inr((float) $closed['opening_cash'])) ?></b></div>
-      <div><small>Cash sales</small><b><?= Security::e(inr((float) $closed['cash_sales'])) ?></b></div>
-      <div><small>Cash paid out</small><b><?= Security::e(inr((float) $closed['cash_paid_out'])) ?></b></div>
-      <div><small>Should be in drawer</small><b><?= Security::e(inr((float) $closed['expected_cash'])) ?></b></div>
-      <div><small>Counted</small><b><?= Security::e(inr((float) $closed['counted_cash'])) ?></b></div>
-      <div><small>UPI / bank (not in drawer)</small><b><?= Security::e(inr((float) $closed['upi_sales'])) ?></b></div>
+      <div><small>Opening cash</small><b><?= Security::e($mc((float) $closed['opening_cash'])) ?></b></div>
+      <div><small>Cash sales</small><b><?= Security::e($mc((float) $closed['cash_sales'])) ?></b></div>
+      <div><small>Cash paid out</small><b><?= Security::e($mc((float) $closed['cash_paid_out'])) ?></b></div>
+      <div><small>Should be in drawer</small><b><?= Security::e($mc((float) $closed['expected_cash'])) ?></b></div>
+      <div><small>Counted</small><b><?= Security::e($mc((float) $closed['counted_cash'])) ?></b></div>
+      <div><small>UPI / bank (not in drawer)</small><b><?= Security::e($mc((float) $closed['upi_sales'])) ?></b></div>
       <div><small>Tickets</small><b><?= (int) $closed['tickets'] ?></b></div>
       <div><small>Seats</small><b><?= (int) $closed['seats'] ?></b></div>
     </div>
@@ -204,11 +212,11 @@ admin_header('Shift & Cash', 'shift');
     <h2><?= $mine ? 'Your shift is open' : 'Open shift of ' . Security::e((string) (Database::scalar('SELECT full_name FROM admins WHERE id = :i', ['i' => (int) $shift['admin_id']], '') ?: '#' . $shift['admin_id'])) ?>
       <span class="muted" style="font-size:13px;font-weight:500"> · since <?= Security::e(substr((string) $shift['opened_at'], 0, 16)) ?></span></h2>
     <div class="sh-sum">
-      <div><small>Cash taken · नगद</small><b><?= Security::e(inr($live['cash'])) ?></b></div>
-      <div><small>UPI / bank</small><b><?= Security::e(inr($live['upi'])) ?></b></div>
+      <div><small>Cash taken · नगद</small><b><?= Security::e($mc($live['cash'])) ?></b></div>
+      <div><small>UPI / bank</small><b><?= Security::e($mc($live['upi'])) ?></b></div>
       <div><small>Tickets · seats</small><b><?= (int) $live['tickets'] ?> · <?= (int) $live['seats'] ?></b></div>
-      <div><small>Opening cash</small><b><?= Security::e(inr((float) $shift['opening_cash'])) ?></b></div>
-      <div style="grid-column:span 2"><small>Should be in the drawer now · दराजमा हुनुपर्ने</small><b id="shExpected" data-v="<?= number_format($live['expected'], 2, '.', '') ?>"><?= Security::e(inr($live['expected'])) ?></b></div>
+      <div><small>Opening cash</small><b><?= Security::e($mc((float) $shift['opening_cash'])) ?></b></div>
+      <div style="grid-column:span 2"><small>Should be in the drawer now · दराजमा हुनुपर्ने</small><b id="shExpected" data-v="<?= number_format($live['expected'], 2, '.', '') ?>"><?= Security::e($mc($live['expected'])) ?></b></div>
     </div>
     <?php if ($live['cancelled'] > 0): ?>
       <p class="muted" style="font-size:13px">ℹ️ <?= (int) $live['cancelled'] ?> ticket(s) you took money for were cancelled. If you gave cash back from the drawer, enter it under “Cash paid out”.</p>
@@ -225,13 +233,13 @@ admin_header('Shift & Cash', 'shift');
 
       <p class="muted" style="margin:0;font-size:13px">Tap how many of each note you have — or just type the total below. · कति वटा नोट छ लेख्नुहोस्, वा तल जम्मा रकम लेख्नुहोस्।</p>
       <div class="sh-pad">
-        <?php foreach (CounterShift::DENOMINATIONS as $d): ?>
-          <label><span>₹<?= $d ?></span><input type="text" inputmode="numeric" pattern="[0-9]*" name="d<?= $d ?>" data-d="<?= $d ?>" autocomplete="off" placeholder="0" aria-label="Number of <?= $d ?> rupee notes"></label>
+        <?php foreach ($deskNotes as $d): ?>
+          <label><span><?= Security::e($curSym) ?><?= $d ?></span><input type="text" inputmode="numeric" pattern="[0-9]*" name="d<?= $d ?>" data-d="<?= $d ?>" autocomplete="off" placeholder="0" aria-label="Number of <?= $d ?> <?= Security::e($shiftCur) ?> notes"></label>
         <?php endforeach; ?>
       </div>
 
       <div class="sh-big">
-        <label>Counted cash · गनेको नगद (₹)
+        <label>Counted cash · गनेको नगद (<?= Security::e($curSym !== '' ? $curSym : $shiftCur) ?>)
           <input type="text" name="counted_cash" id="shCounted" inputmode="decimal" autocomplete="off" value="" required>
         </label>
       </div>
@@ -299,22 +307,23 @@ admin_header('Shift & Cash', 'shift');
         <tbody>
         <?php foreach ($history as $h):
           $open = (int) ($h['is_open'] ?? 0) === 1;
-          $ver  = $open ? 'open' : CounterShift::verdict((float) $h['variance']); ?>
+          $ver  = $open ? 'open' : CounterShift::verdict((float) $h['variance']);
+          $hCur = CounterShift::currencyOf($h); ?>
           <tr>
             <?php if ($isOffice): ?><td data-label="Who"><?= Security::e($whoName($h)) ?></td><?php endif; ?>
             <td data-label="Opened" data-sort="<?= Security::e((string) $h['opened_at']) ?>"><?= Security::e(substr((string) $h['opened_at'], 0, 16)) ?></td>
             <td data-label="Closed"><?= $open ? '—' : Security::e(substr((string) $h['closed_at'], 0, 16)) ?></td>
             <td data-label="Tickets" class="num"><?= $open ? '…' : (int) $h['tickets'] ?></td>
-            <td data-label="Cash sales" class="num"><?= $open ? '…' : Security::e(inr((float) $h['cash_sales'])) ?></td>
-            <td data-label="UPI" class="num"><?= $open ? '…' : Security::e(inr((float) $h['upi_sales'])) ?></td>
-            <td data-label="Expected" class="num"><?= $open ? '…' : Security::e(inr((float) $h['expected_cash'])) ?></td>
-            <td data-label="Counted" class="num"><?= $open ? '…' : Security::e(inr((float) $h['counted_cash'])) ?></td>
+            <td data-label="Cash sales" class="num"><?= $open ? '…' : Security::e($mc((float) $h['cash_sales'], $hCur)) ?></td>
+            <td data-label="UPI" class="num"><?= $open ? '…' : Security::e($mc((float) $h['upi_sales'], $hCur)) ?></td>
+            <td data-label="Expected" class="num"><?= $open ? '…' : Security::e($mc((float) $h['expected_cash'], $hCur)) ?></td>
+            <td data-label="Counted" class="num"><?= $open ? '…' : Security::e($mc((float) $h['counted_cash'], $hCur)) ?></td>
             <td data-label="Result">
               <?php if ($open): ?>
                 <span class="sh-pill open">open</span>
                 <?php if ($isOffice && (int) $h['admin_id'] !== $me): ?> <a href="<?= $base ?>/admin/shift.php?shift=<?= (int) $h['id'] ?>" style="font-size:12.5px">close for them</a><?php endif; ?>
               <?php else: ?>
-                <span class="sh-pill <?= $ver ?>"><?= $ver === 'ok' ? 'matches' : ($ver === 'short' ? 'short ' . Security::e(inr(abs((float) $h['variance']))) : 'over ' . Security::e(inr((float) $h['variance']))) ?></span>
+                <span class="sh-pill <?= $ver ?>"><?= $ver === 'ok' ? 'matches' : ($ver === 'short' ? 'short ' . Security::e($mc(abs((float) $h['variance']), $hCur)) : 'over ' . Security::e($mc((float) $h['variance']), $hCur)) ?></span>
               <?php endif; ?>
             </td>
           </tr>

@@ -85,7 +85,7 @@ try {
 
     Response::success(['sent' => $sent], $sent
         ? 'Sent — the office will reply on WhatsApp shortly. / पठाइयो — कार्यालयले छिट्टै WhatsApp मा जवाफ दिनेछ।'
-        : 'Saved, but WhatsApp is busy — please tap “Open WhatsApp”. / WhatsApp व्यस्त छ — “WhatsApp खोल्नुहोस्” थिच्नुहोस्।');
+        : 'WhatsApp is busy — please use the small link to send from your own WhatsApp. / WhatsApp व्यस्त छ — तलको सानो लिङ्कबाट आफ्नै WhatsApp बाट पठाउनुहोस्।');
 } catch (Throwable $e) {
     Response::serverError($e);
 }

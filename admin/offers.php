@@ -18,7 +18,11 @@ declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 $admin = admin_boot('payments.view');
 
-$canManage = Auth::isSuperadmin() || Auth::can('payments.verify');
+/* 26 Sep 2026: the page's own refusal says "only a manager or super-admin",
+   but payments.verify is held by 'counter' and 'official' too — so a ticket
+   window could create a company-wide discount. coupons.edit is the manager's
+   own permission and matches what the text promises. */
+$canManage = Auth::isSuperadmin() || Auth::can('coupons.edit');
 $flash     = null;
 
 /* ---------------- actions ---------------- */

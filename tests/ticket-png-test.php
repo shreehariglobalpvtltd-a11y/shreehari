@@ -124,7 +124,12 @@ check('a cached PNG is re-rendered after a layout change', str_contains($src('in
    (WhatsApp re-encodes to JPEG and eats thin light-grey small print), so
    that is what it now asserts, at whatever y the layout puts it. */
 check('small print sized for WhatsApp recompression',
-    preg_match('/self::gdText\(\$im, 20, 82, 1530 \+ \$grow[^,]*, \$ink, \$who, true\);/', $src('includes/ticket.php')) === 1
+    /* 26 Sep 2026: the y was still pinned to 1530 — the exact mistake the
+       comment above describes, made again. The issuer tile grew a line for
+       the desk's number and the time it was cut, and the seller line moved
+       to 1526. Match the SIZE and the COLOUR at whatever y the layout puts
+       it, which is what this check exists to protect. */
+    preg_match('/self::gdText\(\$im, 20, 82, 1\d{3} \+ \$grow[^,]*, \$ink, \$who, true\);/', $src('includes/ticket.php')) === 1
     && str_contains($src('includes/ticket.php'), 'imagecolorallocate($im, 84, 96, 118)'));
 check('auto-download toast no longer says PDF', !preg_match("/autoDlToast: '[^']*PDF/u", $src('assets/js/04-i18n.js')));
 

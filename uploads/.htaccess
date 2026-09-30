@@ -1,0 +1,27 @@
+# Written by the application. Nothing in the uploads tree may execute: an
+# upload is data, and a folder that accepts files from the internet must
+# never be able to run one. The four private folders (challan, chalani,
+# passengers, agents-kyc) additionally deny all access through their own
+# .htaccess; a picture attached to a social post stays readable, because
+# Facebook and Instagram fetch it from a public URL.
+<FilesMatch "\.(php|phtml|php[0-9]|phar|pht|shtml|cgi|pl|py|asp|aspx|jsp)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+    php_flag engine off
+</IfModule>
+RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .php8 .phar
+AddType text/plain .php .phtml .phar
+Options -Indexes -ExecCGI

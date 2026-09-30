@@ -547,7 +547,7 @@ function loadTermsData(cb) {
   if (window.__shgTermsQueue) { window.__shgTermsQueue.push(cb); return; }
   window.__shgTermsQueue = [cb];
   var el = document.createElement('script');
-  el.src = '/assets/js/terms-data.js?v=20260925a';
+  el.src = '/assets/js/terms-data.js?v=20260927c';
   el.onload = function () {
     TERMS_DATA = window.TERMS_DATA || [];
     window.__shgTermsReady = true;
@@ -815,6 +815,30 @@ const store = {
    Every call throws a plain Error with a toast()-ready message on
    failure — callers never need to inspect the envelope themselves.
 ================================================================ */
+/* Office switches the browser reads (27 Sep 2026). A PUBLIC bool row in the
+   settings table (is_public = 1) rides in SHG_BOOT.settings as true / false
+   (Settings::get casts 'bool' rows). The rule for every switch that gates a
+   nicety — motion, the loading tick — is "absent = ON": a site that has not
+   run the upgrade SQL behaves exactly like one that has and left the switch
+   on, so a row only ever needs to exist to turn something OFF. Only false,
+   0 and '0' mean off, the same test 19-premium.js applies to app_mantra_on.
+   Never throws. */
+function shgSwitchOn(key) {
+  try {
+    var st = window.SHG_BOOT && window.SHG_BOOT.settings;
+    if (st && Object.prototype.hasOwnProperty.call(st, key)) {
+      var v = st[key];
+      return !(v === false || v === 0 || v === '0');
+    }
+  } catch (e) {}
+  return true;
+}
+/* app_motion_on = 0 (Admin -> Settings -> Site): every entrance is instant
+   — premium.css §10 "html.no-motion" — and the splash keeps no floor. Stamped
+   here, in the second script, so the very first view already renders without
+   motion; the class is only ever added, never toggled at runtime. */
+try { if (!shgSwitchOn('app_motion_on')) document.documentElement.classList.add('no-motion'); } catch (e) {}
+
 /* Haptics (4 Sep 2026): a short buzz on the taps that matter — a seat
    picked, a booking sent, a refusal. Android Chrome only (iOS Safari has no
    vibrate API); silent under prefers-reduced-motion and wherever the OS
@@ -854,10 +878,55 @@ const shgApi = {
   /* Fallback lines follow the app language; a server message is shown as sent. */
   _msg(k, en) { try { const s = typeof t === 'function' ? t(k) : ''; return s && s !== k ? s : en; } catch (e) { return en; } },
   _slow: 'The network is slow right now — please check your connection and try again. · नेटवर्क ढिलो छ, फेरि प्रयास गर्नुहोस्।',
+  /* THE LOADING BAR (27 Sep 2026). Every request through _fetch is counted.
+     Once one has been in flight for 250 ms, <html> gets class net-busy and
+     premium.css §12 draws a 2 px bar along the top until the count is back
+     at zero — so a quick answer shows nothing and a slow link is visibly
+     "working" instead of silent. A request that passes 600 ms also announces
+     itself once (shg:netslow); 19-premium.js answers with one soft tick
+     behind the Sound switch and app_load_sound_on. Bookkeeping only: it
+     never throws into a caller, never awaits, never delays a response. */
+  _pending: 0, _busyTimer: null,
+  /* 27 Sep 2026: background polls never light the bar or tick. The seat map
+     re-reads /seats.php every 8 s, a pending ticket /track.php every 20 s,
+     the driver map writes /kv.php: on a slow line each would flash the bar
+     (and sound) while the passenger is only looking. Their screens carry
+     their own state, so the bar is kept for what the visitor just asked for. */
+  _quiet(url) {
+    return /\/(seats|track|kv|beacon|push|seat-events|log-error|heartbeat)\.php/.test(String(url || ''));
+  },
+  _netStart() {
+    var h = { slow: null };
+    try {
+      this._pending++;
+      if (this._pending === 1 && !this._busyTimer) {
+        this._busyTimer = setTimeout(() => {
+          this._busyTimer = null;
+          if (this._pending > 0) document.documentElement.classList.add('net-busy');
+        }, 250);
+      }
+      h.slow = setTimeout(() => {
+        h.slow = null;
+        try { document.dispatchEvent(new CustomEvent('shg:netslow')); } catch (e) {}
+      }, 600);
+    } catch (e) {}
+    return h;
+  },
+  _netEnd(h) {
+    try {
+      if (h && h.slow) { clearTimeout(h.slow); h.slow = null; }
+      this._pending = Math.max(0, this._pending - 1);
+      if (this._pending === 0) {
+        if (this._busyTimer) { clearTimeout(this._busyTimer); this._busyTimer = null; }
+        document.documentElement.classList.remove('net-busy');
+      }
+    } catch (e) {}
+  },
   async _fetch(url, init, ms) {
     const ctl = (typeof AbortController === 'function') ? new AbortController() : null;
     if (ctl) init.signal = ctl.signal;
     const timer = ctl ? setTimeout(() => ctl.abort(), ms) : null;
+    const net = shgApi._quiet(url) ? null : shgApi._netStart();
     try {
       return await fetch(url, init);
     } catch (e) {
@@ -867,6 +936,7 @@ const shgApi = {
       throw e;
     } finally {
       if (timer) clearTimeout(timer);
+      if (net) shgApi._netEnd(net);
     }
   },
   /* 11 Sep 2026 (perf pass): a 419 means the session token the page was
@@ -1299,11 +1369,51 @@ function sharingDir() {
     toIndia: live('fare_to_india', Math.max(0, Math.round(Number(base.toIndia) || 1800)))
   };
 }
-/* Sharing per-person base fare (offline) for a destination. Heading INTO
-   Nepal (towards Rupaidiha) costs the outbound fare; heading back into
-   India costs the return fare. Anything not on the Nepal list is treated
-   as India-side, which is the safe default for a Gujarat operator. */
-function sharingBasePP(toCity) {
+/* The comparison key for a place — the same normalisation Fare::pkey()
+   does on the server: drop a "@ 21:00" pickup time, drop "[lat,lng]", drop
+   every separator, lowercase. "S Hari Parking, Nana Chiloda @ 21:00" and
+   "shariparking" then name the same stop. */
+function farePkey(s) {
+  return String(s == null ? '' : s)
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/@.*$/, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, '')
+    .toLowerCase();
+}
+
+/* Sharing per-person base fare for a journey.
+
+   Until 26 Sep 2026 this was one number per DIRECTION. The owner's board is
+   finer than that — a pickup below Ahmedabad pays more than Ahmedabad itself,
+   and the return leg is not the mirror of the outbound — so keeping a copy of
+   the rule here would have been wrong for eight of the nine Gujarat towns.
+
+   index.php therefore ships the ANSWERS in SHG_BOOT.pricing.board: a small
+   "fromKey|toKey" -> amount map built by Fare::fareBoardMap(), the same code
+   the checkout charges from. This looks the pair up, falls back to the
+   destination's catch-all line, and only then to the two directional rows, so
+   an older install (or an offline first paint) prices exactly as it used to.
+
+   The SERVER still decides what is charged: it prices off the passenger's
+   real boarding stop, which may not be the town they searched from. This is
+   the page's instant estimate, and /api/quote.php is asked before payment. */
+function fareBoardMap() {
+  try {
+    const p = window.SHG_BOOT && window.SHG_BOOT.pricing;
+    const b = p && p.board;
+    return (b && typeof b === 'object') ? b : null;
+  } catch (e) { return null; }
+}
+
+function sharingBasePP(toCity, fromCity) {
+  const board = fareBoardMap();
+  if (board) {
+    const tk = farePkey(toCity);
+    const hit = board[farePkey(fromCity) + '|' + tk];
+    if (Number(hit) > 0) return Math.round(Number(hit));
+    const any = board['*|' + tk];
+    if (Number(any) > 0) return Math.round(Number(any));
+  }
   const d = sharingDir();
   return isNepalPoint(toCity) ? d.toNepal : d.toIndia;
 }
@@ -1311,8 +1421,8 @@ function sharingBasePP(toCity) {
    price equals the offline base. Kept as a function so every caller reads one
    flat number in one place; the `online` flag no longer changes it. (Note the
    old `|| 5` fallback would have reinstated 5% whenever the pct was 0.) */
-function sharingPP(toCity, online) {
-  return sharingBasePP(toCity);
+function sharingPP(toCity, online, fromCity) {
+  return sharingBasePP(toCity, fromCity);
 }
 /* `perSeatOverride` (4 Sep 2026): the office can give ONE departure its own
    per-seat price on the Bus Calendar (schedules.fare_override). When the
@@ -1320,7 +1430,7 @@ function sharingPP(toCity, online) {
    sharing fare here so the seat summary and the checkout total match what
    the server will actually charge. Private cabins keep the cabin price list,
    and every daily bus passes 0/undefined and prices exactly as before. */
-function calcCabinFare(cabinType, bookingType, passengers, isOnline, toCity, perSeatOverride) {
+function calcCabinFare(cabinType, bookingType, passengers, isOnline, toCity, perSeatOverride, fromCity) {
   const pricing = CONFIG.cabinPricing;
   const ovr = Number(perSeatOverride) > 0 ? Number(perSeatOverride) : 0;
   if (bookingType === 'private') {
@@ -1340,7 +1450,7 @@ function calcCabinFare(cabinType, bookingType, passengers, isOnline, toCity, per
     // Per-person is a flat, direction-based fare (2000 to Nepal / 1800 to
     // India), same across every sharing tier — no online discount — unless
     // this particular departure was given its own price by the office.
-    const off = ovr > 0 ? ovr : sharingBasePP(toCity);
+    const off = ovr > 0 ? ovr : sharingBasePP(toCity, fromCity);
     const perPerson = off;
     const total = perPerson * passengers;
     const offTotal = off * passengers;

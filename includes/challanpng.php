@@ -280,7 +280,11 @@ final class ChallanPng
         }
 
         $dir = dirname($path);
-        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+        // ensurePrivateDir leaves the .htaccess guard at the root of the
+        // challan tree: this sheet carries passenger names and mobiles, and
+        // uploads/ is not in git, so the protection has to be written next
+        // to the data rather than installed once. (25 Sep 2026.)
+        if (!ensurePrivateDir($dir)) {
             throw new RuntimeException('Cannot create the challan folder.');
         }
         [$w, $h] = self::draw($sched, $data, $path);

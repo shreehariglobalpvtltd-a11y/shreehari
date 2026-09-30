@@ -99,7 +99,9 @@ function cleanup(array $ids, int $rid, string $date): void {
 
 echo "\n=== Agent login · bulk cancel · manual bus (4 Sep 2026) ===\n\n";
 
-$route = Database::fetch("SELECT id, route_code, to_city, coach_type FROM routes WHERE coach_type = 'sleeper' AND is_active = 1 ORDER BY id LIMIT 1");
+/* from_city joined the SELECT on 26 Sep 2026: the fare now depends on which
+   pickup, so working out "the normal fare" needs the route's own origin. */
+$route = Database::fetch("SELECT id, route_code, from_city, to_city, coach_type FROM routes WHERE coach_type = 'sleeper' AND is_active = 1 ORDER BY id LIMIT 1");
 if ($route === null) { echo "no active sleeper route\n"; exit(1); }
 $rid = (int) $route['id'];
 
@@ -344,7 +346,8 @@ try {
         'contact' => ['phone' => PHONE], 'bookingMode' => 'sharing', 'paymentMethod' => 'upi',
         'isCod' => false, 'boarding' => '', 'referralCode' => '',
     ]);
-    $normal = Fare::cabinFare('single', 'sharing', 1, true, (string) $route['to_city'])['perPerson'];
+    $normal = Fare::cabinFare('single', 'sharing', 1, true, (string) $route['to_city'], 4,
+                              (string) $route['from_city'])['perPerson'];
     check('the daily bus still charges the normal fare',
         (float) $bd['total_amount'] === (float) $normal, 'charged ' . $bd['total_amount'] . ' vs ' . $normal);
     /* ================================================================

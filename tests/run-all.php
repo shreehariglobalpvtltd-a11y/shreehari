@@ -87,6 +87,8 @@ const CORE_SUITES = [
     'cross-mode-integrity-test.php' => 'admin seat mutations reason in beds, not labels',
     'cross-mode-seat-sync-test.php' => 'private cabin ⇄ sharing beds: one physical inventory',
     'cross-mode-hold-test.php'     => 'a hold in one mode blocks the bed in the other',
+    // added 2026-09-26 with the work it guards
+    'vip-advance-test.php'         => 'VIP private + public sharing on one inventory; the point fare board; the 24h/10% advance offer; who may change it by WhatsApp',
     'seat-layout-test.php'         => 'one 4+2 physical shape everywhere',
     'seat-label-test.php'          => 'two floors, one grid: A1..F6 / A7..F12, 72 unique, stored ids unchanged',
     'seat-block-test.php'          => 'a berth taken out of service stays out',
@@ -105,6 +107,8 @@ const CORE_SUITES = [
     'counter-mode-test.php'        => 'the desk sells through the same engine',
     'counter-role-test.php'        => 'the counter role sees only what it may',
     'counter-location-test.php'    => 'the desk a ticket was cut at: the list, the label, and both renders',
+    'npr-beside-rupee-test.php'    => 'a Nepal desk’s NPR is read back as frozen on booking-view, payments, the day-book and the dashboard; the peg comes from Settings',
+    'vip-finish-test.php'          => 'the advance offer finished: its own line everywhere, the pricing preview box, one-route / one-date offers, per-passenger ceiling, WhatsApp change alerts + rate limit, Gujarati, the countdown',
     'counter-grace-test.php'       => 'counter may sell past the public cut-off',
     'counter-discount-test.php'    => 'counter discount is capped server-side',
     'agent-isolation-test.php'     => 'an agent never reads another agent’s book',
@@ -116,6 +120,7 @@ const CORE_SUITES = [
     'agent-login-bulk-cancel-test.php' => 'agent sign-in + bulk cancel',
     'public-agent-code-resolver-test.php' => 'a customer-typed SHG-### resolves safely',
     'admin-security-test.php'      => 'the admin door refuses what it should',
+    'uploads-private-test.php'     => 'nobody reads a departure sheet, ID scan or KYC paper by guessing its URL',
     'admin-2fa-test.php'           => 'opt-in admin 2FA',
     'login-name-mobile-test.php'   => 'sign in by name + mobile',
     'settings-json-test.php'       => 'stype=json rows survive a save uneaten',
@@ -183,6 +188,18 @@ const CORE_SUITES = [
     'ai-web-agent-test.php'       => 'the website assistant: identity by session, per-channel selling switch, reports scoped, feedback filed, audit',
     // 23 Sep 2026 (UI v3, ported by the 24 Sep integration), registered with the card it guards.
     'seat-status-png-test.php'    => 'the live seat-status card: draws every berth, no names, cached on the fingerprint, off by default',
+    // 26 Sep 2026, registered with the one-time WhatsApp ticket codes it guards.
+    'office-report-test.php'      => 'office WhatsApp report: two numbers, each slot once, figures = the register, no names',
+    'wa-chat-token-test.php'      => 'WA chat tokens: mint/verify/expire/replay, customer always writes first',
+    'payment-webhook-test.php'    => 'Payment webhook: HMAC, idempotent, hint-only unless auto-confirm is on',
+    'wa-admin-command-test.php'   => 'WA office commands: staff number + permission, CANCEL never cancels',
+    'wa-staff-menu-test.php'      => 'WA staff menu on hi: links, assistant lines, the office sees today at a glance',
+    'notifier-test.php'           => 'Notifier: office alerts rate-limited, customers only inside their 24 h window',
+    'ai-client-test.php'          => 'AI client: rules first, local model, redaction, usage log without text',
+    // 27 Sep 2026, registered with the one-request bundle it guards (B, C, F need :8899 and skip themselves without it).
+    'bundle-test.php'              => 'one bundled script + stylesheet: the manifest matches the template, nothing committed after the build, the switch, it refuses a stale bundle',
+    // 27 Sep 2026, registered with the eleven no-reader settings rows it removes.
+    'dead-switches-test.php'       => 'the eleven settings rows nothing reads: one idempotent DELETE, no reader in PHP/JS, gone from this database',
 ];
 
 /**
@@ -211,12 +228,15 @@ const NODE_SUITES = [
     'offline-ticket-test.js' => 'the ticket survives a deploy and works offline',
     'lazy-retry-test.js'     => 'failed lazy downloads remain retryable without duplicate actions',
     'seat-label-parity.js'   => 'the browser prints the same seat labels as the server',
+    'feature-story-check.js' => 'the brand film: valid paints, balanced stage, eight acts in three languages',
+    'motion-check.js'        => 'motion guardrails: no new layout/paint animation, dead splash code stays dead, the opening and the loading bar',
 ];
 
 /** Need the dev server on :8899 as well as the database. */
 const HTTP_SUITES = [
     'e2e-booking-test.php'        => 'whole ticket lifecycle over real HTTP',
     'role-gates-test.php'         => 'every admin page enforces its permission',
+    'staff-door-test.php'         => '/desk and /staff: one link to Quick Ticket for every selling role',
     'counter-mode-http-test.php'  => 'staff selling through the customer SPA',
     'feedback-test.php'           => 'post-journey rating: who may rate, and once',
     'beacon-test.php'             => 'the product beacon stores behaviour, never people',

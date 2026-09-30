@@ -74,6 +74,32 @@ try {
             Response::invalid(['name' => 'Please enter your name.']);
         }
 
+        /* THE MIDDLE WAY (owner's decision, 26 Sep 2026).
+           A NEW number stays one tap — that is what makes this app fast on a
+           phone and at a window, and it is the owner's rule from 4 Sep. A
+           number that ALREADY HAS TICKETS is somebody's travel history and
+           their name on a ticket: knowing ten digits was enough to read it
+           all, and to overwrite the name on file. That one is proven with a
+           code, once.
+
+           Staff selling at a desk are exempt: the clerk standing there IS the
+           proof, and a walk-in cannot be asked to read a code off a phone they
+           may not have with them. `login_otp_for_returning` switches the whole
+           rule off from Settings if a provider outage ever makes it a wall. */
+        $returning = $existing !== null
+            && Auth::admin() === null
+            && Settings::getBool('login_otp_for_returning', true)
+            && Database::exists(
+                "SELECT 1 FROM bookings WHERE contact_phone = :p AND status IN ('confirmed','completed') LIMIT 1",
+                ['p' => $phone]
+            );
+        if ($returning) {
+            Response::success(
+                ['needsOtp' => true, 'verified' => false],
+                'यो नम्बरमा टिकट छ — सुरक्षाका लागि कोड पठाउँछौं। / This number has tickets on it, so we will send a code.'
+            );
+        }
+
         $user = Auth::loginUser($phone, $name, $country);
         Response::success([
             'needsOtp' => false,

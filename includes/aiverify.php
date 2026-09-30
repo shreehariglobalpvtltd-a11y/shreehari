@@ -63,7 +63,13 @@ final class AiVerify
     /** The tools that need a fresh verification, from Settings. @return list<string> */
     public static function actions(): array
     {
-        $raw = Settings::getString('wa_ops_stepup_actions', 'office_confirm,cancel_ticket,fix_ticket,company_doc_send,agent_day,office_day');
+        /* 26 Sep 2026: rules_change joins the list. It moves the fare board
+           and the festival discount for every channel at once, which is a
+           bigger lever than any single ticket on this list, so when step-up
+           is enabled it must be behind the same one-time link. The default
+           string is only used when no wa_ops_stepup_actions row exists —
+           a site that has already customised the list keeps its own. */
+        $raw = Settings::getString('wa_ops_stepup_actions', 'office_confirm,cancel_ticket,fix_ticket,company_doc_send,agent_day,office_day,rules_change');
         $out = [];
         foreach (explode(',', $raw) as $t) {
             $t = strtolower(trim($t));

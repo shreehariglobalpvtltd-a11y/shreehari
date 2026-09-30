@@ -869,11 +869,11 @@ function initQuickTicket() {
      (the desk runs the same QuickBot engine with the desk's own options). */
   if (staff) {
     var badge = $id('qtBadge');
-    if (badge) { badge.textContent = '🤖 QuickBot desk · staff'; badge.removeAttribute('data-i18n'); }
+    if (badge) { badge.textContent = t('qbDeskBadge'); badge.removeAttribute('data-i18n'); }
     var btn = $id('qtSend');
-    if (btn) { btn.textContent = '🤖 Open the QuickBot desk →'; btn.removeAttribute('data-i18n'); }
+    if (btn) { btn.textContent = t('qbDeskOpen'); btn.removeAttribute('data-i18n'); }
     var cta = $id('heroQtCta');
-    if (cta) { cta.textContent = '🤖 QuickBot desk →'; cta.removeAttribute('data-i18n'); cta.removeAttribute('data-scroll'); cta.href = '/admin/quick-ticket.php'; }
+    if (cta) { cta.textContent = t('qbDeskCta'); cta.removeAttribute('data-i18n'); cta.removeAttribute('data-scroll'); cta.href = '/admin/quick-ticket.php'; }
     form.classList.remove('qt-onetap');
     var lineS = $id('qtLine'); if (lineS) lineS.hidden = true;
     var lineW = $id('qtLineWrap'); if (lineW) lineW.hidden = true;
@@ -1115,7 +1115,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20260925a" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20260927c" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'
@@ -1496,7 +1496,7 @@ function renderFareLive() {
   const from = fromEl.value, to = toEl.value;
   if (!from || !to || from === to) { box.classList.remove('on'); return; }
 
-  const base = sharingBasePP(to);
+  const base = sharingBasePP(to, from);
   const now  = onlinePP(base);
   const save = base - now;
   const goingOut = isNepalPoint(to);
@@ -1627,7 +1627,8 @@ function servedPoints(points) {
 function renderFareBoard() {
   const box = $('#fareBoard'); if (!box) return;
   const mp   = CONFIG.mainPoints || { india: [], nepal: [] };
-  const d    = sharingDir();
+  /* The directional pair is no longer read here: every row is priced from
+     the board by its own pair (26 Sep 2026). */
   const hub  = (mp.nepal || ['Rupaidiha'])[0];
   const pct  = onlinePct();
 
@@ -1638,18 +1639,38 @@ function renderFareBoard() {
     return tm ? p + ' · ' + fmt12h(tm) : p;
   };
 
-  /* One direction card: the headline per-person price, then every main
-     point on the far side listed against it — now with departure time. */
-  const card = (cls, flagFrom, flagTo, title, points, toward, base) => {
-    const now = onlinePP(base);
+  /* One direction card, taking the journeys it lists as explicit
+     [from, to] pairs.
+
+     26 Sep 2026: EVERY ROW IS PRICED ON ITS OWN, and the return card lists
+     every Gujarat destination instead of only the first one.
+
+     This card used to print a single directional number against every town.
+     That was true while the fare was directional; it is not true any more.
+     A Surat pickup is ₹2,200 and Ahmedabad ₹2,000, so the board was quoting
+     eight of the nine Gujarat towns ₹200 UNDER what the checkout charges —
+     the customer read one price and was asked for another. And coming back,
+     only "Rupaidiha → Surat" was ever shown, so a passenger travelling to
+     Ahmedabad never saw their own ₹1,800.
+
+     sharingBasePP(to, from) is the same lookup the seat summary, the checkout
+     and the counter use, so this board cannot disagree with the bill. The
+     headline shows the range when the rows differ rather than picking one. */
+  const card = (cls, flagFrom, flagTo, title, pairs) => {
+    const each = pairs
+      .filter(pr => pr[0] && pr[1] && pr[0] !== pr[1])
+      .map(pr => ({ from: pr[0], to: pr[1], fare: onlinePP(sharingBasePP(pr[1], pr[0])) }));
+    const fares = each.map(x => x.fare).filter(v => v > 0);
+    if (!each.length) { return ''; }
+    const lo = fares.length ? Math.min.apply(null, fares) : 0;
+    const hi = fares.length ? Math.max.apply(null, fares) : 0;
     return '<div class="fb-dir ' + cls + '">'
       + '<div class="fb-dir-t"><b>' + flagFrom + ' ' + esc(title) + ' ' + flagTo + '</b>'
-      + '<span class="fb-price"><span class="p">' + inr(now) + '</span>'
-      + (base > now ? '<span class="w">' + inr(base) + '</span>' : '')
-      + '<span class="n">' + nprEst(now) + ' · ' + t('fbPerPerson') + '</span></span></div>'
-      + points.map(p => '<button type="button" class="fb-row" data-fb-from="' + esc(p) + '" data-fb-to="' + esc(toward) + '">'
-          + '<span class="c">' + esc(pointWithTime(p)) + ' → ' + esc(toward) + '</span>'
-          + '<span class="k">' + inr(now) + ' · ' + nprEst(now) + '</span></button>').join('')
+      + '<span class="fb-price"><span class="p">' + inr(lo) + (hi > lo ? '–' + inr(hi) : '') + '</span>'
+      + '<span class="n">' + nprEst(lo) + ' · ' + t('fbPerPerson') + '</span></span></div>'
+      + each.map(x => '<button type="button" class="fb-row" data-fb-from="' + esc(x.from) + '" data-fb-to="' + esc(x.to) + '">'
+          + '<span class="c">' + esc(pointWithTime(x.from)) + ' → ' + esc(x.to) + '</span>'
+          + '<span class="k">' + inr(x.fare) + ' · ' + nprEst(x.fare) + '</span></button>').join('')
       + '</div>';
   };
 
@@ -1658,11 +1679,13 @@ function renderFareBoard() {
     + (pct > 0 ? '<span class="fb-off">' + tf('offPill', { pct: pct }) + '</span>' : '') + '</div>'
     + '<p class="fb-sub">' + tf('fbLead', { pct: pct }) + '</p>'
     + '<div class="fb-dirs">'
-    + card('go',   '🇮🇳', '🇳🇵', t('fbGoing'),  servedPoints(mp.india), hub,                       d.toNepal)
-    /* Return card points AT a single Gujarat hub: the FIRST canonical main
-       point (Surat), which is also the return route's real endpoint. */
-    + card('back', '🇳🇵', '🇮🇳', t('fbComing'), servedPoints(mp.nepal),
-           ((mp.india || [])[0] || ''), d.toIndia)
+    + card('go',   '🇮🇳', '🇳🇵', t('fbGoing'),
+           servedPoints(mp.india).map(p => [p, hub]))
+    /* Coming back: the border to EVERY Gujarat drop, each at its own fare
+       (Ahmedabad ₹1,800, the towns below it ₹2,200). Listing only the first
+       one hid the cheaper Ahmedabad fare from the people paying it. */
+    + card('back', '🇳🇵', '🇮🇳', t('fbComing'),
+           servedPoints(mp.india).map(p => [hub, p]))
     + '</div>'
     + '<div class="fb-foot"><span class="fb-chip">🤝 ' + t('fbSharing') + '</span>'
     + '<span>' + t('fbNote') + '</span></div>';
@@ -2604,6 +2627,9 @@ if (store.local && !store.remote) {
     lastFocus = document.activeElement;
     var bk = document.getElementById('waBookLink');
     if (bk) bk.href = officeNum() ? waUrl(officeNum(), '') : '#';
+    /* 26 Sep 2026: a fresh sheet every time — the "sent" card and the
+       "API down" emphasis belonged to the previous request. */
+    if (req) { req.classList.remove('sent', 'api-down'); var dn0 = document.getElementById('waReqDone'); if (dn0) dn0.hidden = true; }
     fillReq();
     sheet.hidden = false;
     document.body.classList.add('wa-open');
@@ -2621,7 +2647,8 @@ if (store.local && !store.remote) {
     sheet.addEventListener('click', function (e) {
       var tgt = e.target;
       if (tgt.closest('#waSheetBg') || tgt.closest('#waSheetClose')) { closeSheet(); return; }
-      if (!e.defaultPrevented && (tgt.closest('a.wa-row') || tgt.closest('.wa-pin'))) setTimeout(closeSheet, 150);
+      if (tgt.closest('#waReqOk')) { closeSheet(); return; }
+      if (!e.defaultPrevented && (tgt.closest('a.wa-row') || tgt.closest('.wa-pin') || tgt.closest('#waBookLink') || tgt.closest('#waDoneChat'))) setTimeout(closeSheet, 150);
     });
     document.addEventListener('keydown', function (e) {
       if (sheet.hidden) return;
@@ -2634,7 +2661,9 @@ if (store.local && !store.remote) {
     });
   }
   /* One-tap request (owner, 19 Sep 2026): the server's WhatsApp sender delivers it
-     to the office (api/wa-request.php); the wa.me row below stays as the fallback. */
+     to the office (api/wa-request.php). 26 Sep 2026: that send is the only big
+     button; the wa.me link is a small line under it that grows only when the
+     API send has failed. Success swaps the form for the #waReqDone card. */
   var req = document.getElementById('waReq');
   var reqType = 'booking';
   function tripInfo() {
@@ -2733,8 +2762,21 @@ if (store.local && !store.remote) {
       var label = go ? go.textContent : '';
       if (go) { go.disabled = true; go.textContent = t('waReqBusy'); }
       shgApi.post('/wa-request.php', body).then(function (d) {
-        say(d && d.sent ? t('waReqSent') : t('waReqFail'), !(d && d.sent));
+        if (d && d.sent) {
+          /* Delivered through the office's own sender: the form gives way to
+             a tick, and the passenger's own chat stays one small tap away. */
+          var dn = document.getElementById('waReqDone'), dc = document.getElementById('waDoneChat');
+          if (dc) dc.href = officeNum() ? waUrl(officeNum(), composeBooking()) : '#';
+          if (dn) dn.hidden = false;
+          req.classList.add('sent');
+          say('', false);
+          try { if (window.SHGFeel) window.SHGFeel.fire('success'); } catch (e2) {}
+        } else {
+          req.classList.add('api-down');
+          say(t('waReqFail'), true);
+        }
       }).catch(function (err) {
+        if (!(err && err.status === 422)) req.classList.add('api-down');
         say((err && err.status !== 422 && err.message) || t('waReqNeed'), true);
       }).then(function () { if (go) { go.disabled = false; go.textContent = label; } });
     });
@@ -2753,7 +2795,14 @@ if (store.local && !store.remote) {
   document.querySelectorAll('[data-wa-open]').forEach(function (button) {
     button.addEventListener('click', function () {
       setReqType(button.getAttribute('data-wa-open')); openSheet();
-      document.getElementById('waReqName').focus({ preventScroll: true });
+      /* Help-desk chips (26 Sep 2026) carry the question as an i18n key, so
+         the note arrives already written in the passenger's language and a
+         returning passenger only has to press Send. */
+      var nk = button.getAttribute('data-wa-note-key');
+      if (nk) { var nt = document.getElementById('waReqNote'); if (nt) nt.value = t(nk); }
+      var nm = document.getElementById('waReqName');
+      var target = (nm && !nm.value.trim()) ? nm : (nk && contactPhone() ? document.getElementById('waReqGo') : nm);
+      if (target) { try { target.focus({ preventScroll: true }); } catch (e) {} }
     });
   });
 

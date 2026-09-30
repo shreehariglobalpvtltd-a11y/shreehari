@@ -147,8 +147,13 @@ $commissionRange = (float) Database::scalar(
 );
 
 /* ---- The sales themselves ------------------------------------------- */
+/* The advance-booking offer as its own line (26 Sep 2026 follow-up); read
+   only where the column exists so an un-migrated database still lists. */
+$hasAdvCol = false;
+try { $hasAdvCol = Database::fetch("SHOW COLUMNS FROM bookings LIKE 'advance_discount'") !== null; } catch (Throwable $e) {}
 $rows = Database::fetchAll(
     "SELECT b.pnr, b.status, b.total_amount, b.contact_phone, b.created_at, b.source, b.booking_mode,
+            " . ($hasAdvCol ? 'b.advance_discount' : '0 AS advance_discount') . ",
             r.from_city, r.to_city, bl.travel_date,
             (SELECT GROUP_CONCAT(bs.seat_no ORDER BY bs.seat_no SEPARATOR ' ')
                FROM booking_seats bs WHERE bs.booking_id = b.id) AS seats,
@@ -360,7 +365,7 @@ admin_header($isOwn ? 'My Sales' : 'Sales · ' . (string) ($viewing['full_name']
           <div class="muted"><?= $b['travel_date'] ? Security::e(formatDate((string) $b['travel_date'])) : '' ?></div></span></td>
         <td class="mono" data-label="Seats"><span><?= Security::e((string) ($b['seats'] ? Seats::displayLabels(explode(' ', (string) $b['seats']), 'sleeper', (string) ($b['booking_mode'] ?? 'sharing'), ' ') : '—')) ?>
           <div class="muted" style="font-size:11px"><?= (int) $b['seat_count'] ?> seat<?= (int) $b['seat_count'] === 1 ? '' : 's' ?></div></span></td>
-        <td data-label="Amount"><?= Security::e(inr((float) $b['total_amount'])) ?></td>
+        <td data-label="Amount"><?= Security::e(inr((float) $b['total_amount'])) ?><?php if ((float) ($b['advance_discount'] ?? 0) > 0): ?><div class="muted" style="font-size:11px">offer −<?= Security::e(inr((float) $b['advance_discount'])) ?></div><?php endif; ?></td>
         <td data-label="Source"><span class="src-badge <?= Security::e((string) ($b['source'] ?? 'web')) ?>"><?= Security::e(ucfirst((string) ($b['source'] ?? 'web'))) ?></span></td>
         <td data-label="Status"><?= admin_pill((string) $b['status']) ?></td>
         <td class="muted" data-label="Sold"><?= Security::e(timeAgo((string) $b['created_at'])) ?></td>
