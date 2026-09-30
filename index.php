@@ -101,11 +101,34 @@ if ($staffRow !== null) {
         'code'           => AgentWallet::agentCodeLabel($staffId) ?: null,
         'canSell'        => Auth::can('bookings.edit') || Auth::can('schedules.edit') || Auth::isSuperadmin(),
         'maxDiscountPct' => Settings::getFloat('counter_max_discount_pct', 15.0),
-        // Staff bulk cap (5 Sep 2026): one party, one name, up to this many
-        // seats. Deliberately NOT a public setting — guests never see it.
         'maxSeats'       => Settings::getInt('counter_max_seats_per_booking', 20),
         'panelUrl'       => Auth::isCounterAgent() ? '/admin/agent.php' : '/admin/',
+        'commFlat'       => AgentWallet::flatMode(),
+        'commDirect'     => Settings::getFloat('agent_flat_direct', 200.0),
+        'commJoint'      => Settings::getFloat('agent_flat_joint', 400.0),
     ];
+    try {
+        $agentRows = Database::fetchAll(
+            "SELECT id, username, full_name FROM admins WHERE role = 'agent' AND is_active = 1 ORDER BY full_name, username"
+        );
+        $agentList = [];
+        foreach ($agentRows as $ar) {
+            $aid  = (int) $ar['id'];
+            $aCode = AgentWallet::agentCodeLabel($aid);
+            if ($aCode) {
+                $agentList[] = [
+                    'code' => $aCode,
+                    'name' => (string) ($ar['full_name'] ?: $ar['username']),
+                    'type' => AgentWallet::agentTypeFor($aid),
+                    'co'   => AgentWallet::isCompanyCode($aCode),
+                ];
+            }
+        }
+        usort($agentList, static fn(array $x, array $y): int => strnatcmp($x['code'], $y['code']));
+        $boot['staff']['agents'] = $agentList;
+    } catch (Throwable $e) {
+        $boot['staff']['agents'] = [];
+    }
 }
 
 /* Home page (12 Sep 2026): the QuickBot card shows how many tickets the

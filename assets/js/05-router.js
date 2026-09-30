@@ -565,23 +565,14 @@ function servedTownKeys(dir) {
 }
 
 function gujaratTownsFor(dir) {
-  /* When the server has responded, show its boarding-stop names directly —
-     these are the EXACT names from route_stops, matching what the booking
-     search and boarding cut-off use. The old logic intersected CONFIG's
-     short names (Surat, Vadodara, Emli Bhupal) with the server's compound
-     names (Surat — Kamrej Circle, Barauda, Limbli / Bhupal) through
-     townKeyJS(), which only keeps the first segment before — or -.
-     The two naming conventions diverged, so the intersection shrank the
-     picker from 9 towns to 1–3 instead of confirming them. Using the
-     server names directly makes the picker always show every stop the
-     live routes actually call at. (30 Sep 2026) */
-  const srvNames = dir === 'go' ? SrvStops.goNames : SrvStops.backNames;
-  if (srvNames && srvNames.length) return srvNames;
-
-  /* Pre-paint fallback (before the timetable API responds): show the
-     CONFIG canonical list so the picker is not empty on first render. */
+  /* Every canonical stop IS a daily stop — show the full list always.
+     The bus calls at ALL mainPoints.india towns on every run, so filtering
+     against server data only hid real stops when a migration was missing
+     (Kamrej, Ankleshwar etc. disappeared from the picker). */
   const canonical = ((CONFIG.mainPoints || {}).india || []).filter(Boolean);
-  if (canonical.length) return canonical;
+  if (canonical.length) {
+    return canonical;
+  }
 
   // mainPoints misconfigured/empty — fall back to the routes' endpoint cities
   const out = [];
@@ -1115,7 +1106,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20260925a" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20260930a" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'
