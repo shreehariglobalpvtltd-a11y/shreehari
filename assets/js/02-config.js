@@ -415,16 +415,11 @@ const CONFIG = {
      Adding a town here puts it on the fare board and prices it correctly;
      it does not by itself create a bus, which stays a Manage Routes job. */
   mainPoints: {
-    /* The five PERMANENT Gujarat-side stops of the daily run, in the order
-       the coach reaches them. These names are canonical: they must read the
-       same here, on the ticket, in Admin and in route_stops, so no alias
-       may be introduced. Search matches a town against the route's real
-       STOPS, so all five find the one daily bus.
-       ⚠️ SINGLE SOURCE OF TRUTH — every display (homepage picker, fare board,
-       boarding dropdown, ticket, PDF, admin, agent) reads from here or from
-       the boarding arrays in seedRoutes() below. Change names HERE, they
-       propagate everywhere. */
-    india: ['Surat', 'Kamrej', 'Ankleshwar', 'Bharuch', 'Vadodara', 'Anand', 'Nadiad', 'Emli Bhupal', 'S Hari Parking, Nana Chiloda'],
+    /* The seven Gujarat-side stops of the daily run, matching the company
+       banner, in the order the coach reaches them. */
+
+
+    india: ['Surat', 'Kamrej', 'Ankeshwar', 'Bharuch', 'Vadodara', 'Nadiad', 'Chiloda (AMD)'],
     /* Rupaidiha is the ONLY Nepal-side point the company may sell today: the service is licensed to the India-side border and no further. Nepalgunj, Kohalpur and Lumbini Pradesh are a FUTURE extension — listing them here put them on the public fare board and in the search boxes as if they were bookable. Add them back the day the permit exists. */
     nepal: ['Rupaidiha']
   },
@@ -972,17 +967,15 @@ function seedRoutes() {
       busName: 'SHG Gandaki Sleeper', busNo: 'GJ-02-T-5580', type: 'sleeper',
       pathId: 'via_bahraich',
       depTime: '13:00', arrTime: '', dayOffset: 1, duration: '', fare: 2000,
-      configVer: 5,   // reseed guard — bump when stop names change
+      configVer: 6,   // reseed guard — bump when stop names change
       boarding: [
         'Surat · Bus stand / designated point @ 13:00 [21.170,72.831]',
         'Kamrej · Shiv Shakti Hotel @ 13:30 [21.2729662,72.9555969]',
-        'Ankleshwar · Ada Bridge @ 15:00',
+        'Ankeshwar · Ada Bridge @ 15:00',
         'Bharuch · Somnath Mahadev Mandir @ 16:00',
         'Vadodara · Golden Chokdi @ 17:00 [22.307,73.181]',
-        'Anand · Pipal Chautra @ 18:30',
-        'Nadiad · Nadiad Bridge – under bridge @ 20:00',
-        'Emli Bhupal · Taj Hotel @ 21:00',
-        'S Hari Parking, Nana Chiloda (Amd) @ 23:00 [23.171,72.623]'
+        'Nadiad · Nadiad Bridge – under bridge @ 19:00',
+        'Chiloda (AMD) · S Hari Parking, Nana Chiloda @ 21:00 [23.171,72.623]'
       ],
       drop: ['Rupaidiha · India-Nepal border checkpoint [28.060,81.617]'],
       amenities: ['AC Sleeper', 'Blanket', 'Charging Point', 'Water Bottle'],
@@ -994,18 +987,16 @@ function seedRoutes() {
       busName: 'SHG Gandaki Sleeper', busNo: 'GJ-02-T-5580', type: 'sleeper',
       pathId: 'via_bahraich',
       depTime: '18:00', arrTime: '', dayOffset: 1, duration: '', fare: 1800,
-      configVer: 5,
+      configVer: 6,
       boarding: ['Rupaidiha · India-Nepal border checkpoint @ 18:00 [28.060,81.617]'],
       drop: [
-        'S Hari Parking, Nana Chiloda (Amd) [23.171,72.623]',
-        'Emli Bhupal · Taj Hotel',
+        'Chiloda (AMD) · S Hari Parking, Nana Chiloda [23.171,72.623]',
         'Nadiad · Nadiad Bridge – under bridge',
-        'Anand · Pipal Chautra',
         'Vadodara · Golden Chokdi [22.307,73.181]',
         'Bharuch · Somnath Mahadev Mandir',
-        'Ankleshwar · Ada Bridge',
+        'Ankeshwar · Ada Bridge',
         'Kamrej · Shiv Shakti Hotel [21.2729662,72.9555969]',
-        'Surat · Bus stand / designated point [21.170,72.831]'
+        'Surat · Bus stand / final drop [21.170,72.831]'
       ],
       amenities: ['AC Sleeper', 'Blanket', 'Charging Point', 'Water Bottle'],
       crewName: '', crewPhone: '',
@@ -1121,10 +1112,10 @@ function nepaliTime(t24) {
    Surat) for a passenger boarding at Nana Chiloda; now it shows their stop.
    No \p{..} regex here: an old WebView would fail to parse the whole file. */
 var STOP_CODES = [
-  ['nana chiloda', 'AMD', 'Nana Chiloda'], ['hari parking', 'AMD', 'Nana Chiloda'], ['ahmedabad', 'AMD', 'Ahmedabad'],
-  ['emli', 'EMB', null], ['bhupal', 'EMB', null], ['mehsana', 'MSN', 'Mehsana'], ['surat', 'STV', 'Surat'],
+  ['chiloda', 'AMD', 'Chiloda (AMD)'], ['nana chiloda', 'AMD', 'Chiloda (AMD)'], ['hari parking', 'AMD', 'Chiloda (AMD)'], ['ahmedabad', 'AMD', 'Ahmedabad'],
+  ['emli', 'AMD', 'Chiloda (AMD)'], ['bhupal', 'AMD', 'Chiloda (AMD)'], ['mehsana', 'MSN', 'Mehsana'], ['surat', 'STV', 'Surat'],
   ['baroda', 'BRC', 'Baroda'], ['barauda', 'BRC', 'Baroda'], ['vadodara', 'BRC', 'Vadodara'],
-  ['kamrej', 'KMJ', 'Kamrej'], ['ankleshwar', 'AKV', 'Ankleshwar'], ['bharuch', 'BRH', 'Bharuch'], ['anand', 'ANA', 'Anand'], ['nadiad', 'NAD', 'Nadiad'],
+  ['kamrej', 'KMJ', 'Kamrej'], ['ankeshwar', 'AKV', 'Ankeshwar'], ['ankleshwar', 'AKV', 'Ankeshwar'], ['bharuch', 'BRH', 'Bharuch'], ['anand', 'ANA', 'Anand'], ['nadiad', 'NAD', 'Nadiad'],
   ['rupaidiha', 'RPD', 'Rupaidiha'], ['jamunaha', 'RPD', 'Jamunaha'], ['nepalgunj', 'NPJ', 'Nepalgunj'], ['nepalganj', 'NPJ', 'Nepalgunj'],
   ['kohalpur', 'KHL', 'Kohalpur'], ['lucknow', 'LKO', 'Lucknow'], ['bahraich', 'BRK', 'Bahraich'], ['gorakhpur', 'GKP', 'Gorakhpur'],
   ['kathmandu', 'KTM', 'Kathmandu'], ['delhi', 'DEL', 'Delhi'], ['jaipur', 'JAI', 'Jaipur'], ['udaipur', 'UDR', 'Udaipur']

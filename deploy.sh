@@ -126,19 +126,20 @@ if [[ "$DO_BACKUP" == true || -n "$MIGRATE_FILE" ]]; then
   BACKUP_NAME="shg-backup-$(date '+%Y%m%d-%H%M%S').sql.gz"
   BACKUP_PATH="/var/www/shreehariglobal.in/backups"
   # Read DB creds from the VPS bootstrap
-  ssh ${SSH_OPTS} "${VPS_USER}@${VPS_HOST}" bash -c "'
-    mkdir -p ${BACKUP_PATH}
-    # Grab creds from the live config.php (the only DB password source)
-    DB_HOST=\$(grep -oP \"(?<=DB_HOST.{0,20})['\\\"]\\K[^'\\\"]+\" /var/www/shreehariglobal.in/public_html/config/config.php | head -1)
-    DB_NAME=\$(grep -oP \"(?<=DB_NAME.{0,20})['\\\"]\\K[^'\\\"]+\" /var/www/shreehariglobal.in/public_html/config/config.php | head -1)
-    DB_USER=\$(grep -oP \"(?<=DB_USER.{0,20})['\\\"]\\K[^'\\\"]+\" /var/www/shreehariglobal.in/public_html/config/config.php | head -1)
-    DB_PASS=\$(grep -oP \"(?<=DB_PASS.{0,20})['\\\"]\\K[^'\\\"]+\" /var/www/shreehariglobal.in/public_html/config/config.php | head -1)
-    mysqldump -h \"\${DB_HOST:-localhost}\" -u \"\${DB_USER}\" -p\"\${DB_PASS}\" \"\${DB_NAME}\" --single-transaction --routines --triggers 2>/dev/null | gzip > ${BACKUP_PATH}/${BACKUP_NAME}
-    SIZE=\$(du -sh ${BACKUP_PATH}/${BACKUP_NAME} | cut -f1)
-    echo \"✅  Backup saved: ${BACKUP_PATH}/${BACKUP_NAME} (\${SIZE})\"
-    # Keep only last 10 backups
-    ls -1t ${BACKUP_PATH}/shg-backup-*.sql.gz 2>/dev/null | tail -n +11 | xargs rm -f 2>/dev/null
-  '"
+  ssh ${SSH_OPTS} "${VPS_USER}@${VPS_HOST}" bash -s "${BACKUP_PATH}" "${BACKUP_NAME}" <<'BACKUP_REMOTE'
+    set -e
+    BACKUP_PATH="$1"; BACKUP_NAME="$2"
+    mkdir -p "${BACKUP_PATH}"
+    CFG=/var/www/shreehariglobal.in/public_html/config/config.php
+    DB_HOST=$(awk -F"'" '/DB_HOST/{print $4}' "$CFG")
+    DB_NAME=$(awk -F"'" '/DB_NAME/{print $4}' "$CFG")
+    DB_USER=$(awk -F"'" '/DB_USER/{print $4}' "$CFG")
+    DB_PASS=$(awk -F"'" '/DB_PASS/{print $4}' "$CFG")
+    mysqldump -h "${DB_HOST:-localhost}" -u "${DB_USER}" -p"${DB_PASS}" "${DB_NAME}" --single-transaction --routines --triggers 2>/dev/null | gzip > "${BACKUP_PATH}/${BACKUP_NAME}"
+    SIZE=$(du -sh "${BACKUP_PATH}/${BACKUP_NAME}" | cut -f1)
+    echo "Backup saved: ${BACKUP_PATH}/${BACKUP_NAME} (${SIZE})"
+    ls -1t "${BACKUP_PATH}"/shg-backup-*.sql.gz 2>/dev/null | tail -n +11 | xargs rm -f 2>/dev/null
+BACKUP_REMOTE
   echo ""
 fi
 
@@ -212,21 +213,23 @@ case "$MODE" in
       "${SCRIPT_DIR}/${MIGRATE_FILE}" \
       "${VPS_USER}@${VPS_HOST}:/tmp/shg-migrate.sql"
     # Execute it
-    ssh ${SSH_OPTS} "${VPS_USER}@${VPS_HOST}" bash -c "'
-      DB_HOST=\$(grep -oP \"(?<=DB_HOST.{0,20})['\\\"]\\K[^'\\\"]+\" /var/www/shreehariglobal.in/public_html/config/config.php | head -1)
-      DB_NAME=\$(grep -oP \"(?<=DB_NAME.{0,20})['\\\"]\\K[^'\\\"]+\" /var/www/shreehariglobal.in/public_html/config/config.php | head -1)
-      DB_USER=\$(grep -oP \"(?<=DB_USER.{0,20})['\\\"]\\K[^'\\\"]+\" /var/www/shreehariglobal.in/public_html/config/config.php | head -1)
-      DB_PASS=\$(grep -oP \"(?<=DB_PASS.{0,20})['\\\"]\\K[^'\\\"]+\" /var/www/shreehariglobal.in/public_html/config/config.php | head -1)
-      mysql -h \"\${DB_HOST:-localhost}\" -u \"\${DB_USER}\" -p\"\${DB_PASS}\" \"\${DB_NAME}\" < /tmp/shg-migrate.sql 2>&1
-      RC=\$?
+    ssh ${SSH_OPTS} "${VPS_USER}@${VPS_HOST}" bash <<'MIGRATE_REMOTE'
+      set -e
+      CFG=/var/www/shreehariglobal.in/public_html/config/config.php
+      DB_HOST=$(awk -F"'" '/DB_HOST/{print $4}' "$CFG")
+      DB_NAME=$(awk -F"'" '/DB_NAME/{print $4}' "$CFG")
+      DB_USER=$(awk -F"'" '/DB_USER/{print $4}' "$CFG")
+      DB_PASS=$(awk -F"'" '/DB_PASS/{print $4}' "$CFG")
+      mysql -h "${DB_HOST:-localhost}" -u "${DB_USER}" -p"${DB_PASS}" "${DB_NAME}" < /tmp/shg-migrate.sql 2>&1
+      RC=$?
       rm -f /tmp/shg-migrate.sql
-      if [ \$RC -eq 0 ]; then
-        echo \"✅  Migration applied successfully.\"
+      if [ $RC -eq 0 ]; then
+        echo "Migration applied successfully."
       else
-        echo \"❌  Migration failed (exit \$RC) — check output above.\"
+        echo "Migration failed (exit $RC) — check output above."
         exit 1
       fi
-    '"
+MIGRATE_REMOTE
     ;;
 esac
 
