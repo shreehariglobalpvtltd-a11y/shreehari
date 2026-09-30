@@ -203,13 +203,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 /* ---------- the register ---------- */
 // admin_profiles.kyc_status only exists once upgrade-2026-09-agent-kyc.sql has
 // run; selecting it blindly would 500 the whole register on an older database.
-$kycSel = AgentWallet::kycAvailable() ? 'p.kyc_status,' : "'none' AS kyc_status,";
+$kycSel = AgentWallet::kycAvailable() ? 'p.kyc_status, p.kyc_doc_path,' : "'none' AS kyc_status, '' AS kyc_doc_path,";
 $rows = Database::fetchAll(
     "SELECT a.id, a.username, a.full_name, a.phone, a.email, a.is_active, a.last_login_at, a.created_at,
             p.display_phone, p.whatsapp, p.counter_name, p.agent_kind, p.contact_person, p.address, p.id_type, p.id_number,
             p.cash_limit, p.daily_booking_limit, p.suspended_reason, p.suspended_at, p.joined_on, p.payout_method, p.payout_account, p.notes, p.photo_path, $kycSel
             (SELECT COUNT(*) FROM bookings b WHERE b.sold_by_admin_id = a.id AND b.status IN ('confirmed','completed')) AS sales,
             (SELECT COUNT(*) FROM bookings b WHERE b.sold_by_admin_id = a.id) AS sales_all,
+            (SELECT COUNT(*) FROM booking_passengers bp JOIN bookings b ON b.id = bp.booking_id
+              WHERE b.sold_by_admin_id = a.id AND b.status IN ('confirmed','completed')) AS pax,
             (SELECT COALESCE(SUM(b.total_amount), 0) FROM bookings b WHERE b.sold_by_admin_id = a.id AND b.status IN ('confirmed','completed')) AS revenue,
             (SELECT MAX(b.created_at) FROM bookings b WHERE b.sold_by_admin_id = a.id) AS last_sale
        FROM admins a
@@ -243,6 +245,10 @@ foreach ($rows as &$r) {
     // positive = the agent owes the company on balance), taken from the grouped
     // read above so the register stays one query rather than one per agent.
     $r['net']     = round($r['cash_bal'] - $r['comm_due'], 2);
+    $r['salary']  = AgentWallet::salaryFor($id);
+    $r['advance'] = (float) (AgentWallet::advanceSummary($id)['outstanding'] ?? 0);
+    $r['has_id']  = (string) ($r['kyc_doc_path'] ?? '') !== '';
+    $r['has_agr'] = AgentWallet::agreementPath($id) !== '';
     $r['kyc']     = in_array((string) ($r['kyc_status'] ?? ''), AgentWallet::KYC_STATUSES, true) ? (string) $r['kyc_status'] : 'none';
     // Settlement overdue (agent_settlement_due_days, 0 = off). Only agents actually
     // holding cash are asked, so this costs nothing while the rule is off.
@@ -354,11 +360,11 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
 <table class="dt no-card" data-controls="agCtl">
   <thead><tr>
     <th data-type="num">#</th><th>Type</th><th>Code</th><th>Name</th><th>Contact</th><th>WhatsApp</th>
-    <th data-type="num">Wallet ₹</th><th data-type="num">Net position</th><th data-type="num">Commission</th><th data-type="num">Sales</th><th>KYC</th><th>Status</th><th data-nosort>Actions</th>
+    <th data-type="num">Wallet ₹</th><th data-type="num">Net position</th><th data-type="num">Commission</th><th data-type="num">Sales</th><th data-type="num">Salary ₹</th><th data-type="num">Advance ₹</th><th>ID · Agreement</th><th>KYC</th><th>Status</th><th data-nosort>Actions</th>
   </tr></thead>
   <tbody>
   <?php if ($rows === []): ?>
-    <tr><td colspan="13" class="muted" style="padding:22px;white-space:normal">No agents yet — add one on Staff &amp; Agents, or approve an application from the public agent sign-up form.</td></tr>
+    <tr><td colspan="16" class="muted" style="padding:22px;white-space:normal">No agents yet — add one on Staff &amp; Agents, or approve an application from the public agent sign-up form.</td></tr>
   <?php endif; ?>
   <?php foreach ($rows as $i => $r):
     $rid = 'a' . (int) $r['id'];
@@ -373,8 +379,8 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
       <td data-sort="<?= $e($r['kind']) ?>"><?= $isOrg
             ? '<span class="pill" style="background:#e2ecfb;color:#1c3b72">🏢 Org</span>'
             : '<span class="pill" style="background:#d7f4e3;color:#0a6b3b">👤 Person</span>' ?></td>
-      <td class="mono"><?= $r['code'] !== '' ? '<span class="pill" style="background:#efeaff;color:#5a3fb0">' . $e($r['code']) . '</span>' : '<span class="muted">—</span>' ?></td>
-      <td><b><?= $e($r['full_name'] ?: $r['username']) ?></b>
+      <td class="mono"><?= $r['code'] !== '' ? (AgentWallet::isCompanyCode($r['code']) ? '<span class="pill" style="background:#7c3aed;color:#fff" title="Company (Pvt Ltd)">🏢 ' : '<span class="pill" style="background:#ea580c;color:#fff" title="Individual agent">👤 ') . $e($r['code']) . '</span>' : '<span class="muted">—</span>' ?></td>
+      <td><a href="/admin/agent-360.php?agent=<?= (int) $r['id'] ?>" style="color:inherit"><b><?= $e($r['full_name'] ?: $r['username']) ?></b></a>
         <?php if ($isOrg && !empty($r['contact_person'])): ?><div class="muted" style="font-size:11.5px">👤 <?= $e($r['contact_person']) ?></div><?php endif; ?>
         <?php if (!empty($r['counter_name'])): ?><div class="muted" style="font-size:11.5px">📍 <?= $e($r['counter_name']) ?></div><?php endif; ?></td>
       <td class="mono"><?= $e($r['phone'] ?: $r['display_phone'] ?: '—') ?></td>
@@ -387,10 +393,13 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
         <?php if ((int) $r['overdue'] > 0): ?><div><span class="pill st-bad" title="Cash held past agent_settlement_due_days">Settlement overdue <?= (int) $r['overdue'] ?>d</span></div><?php endif; ?>
       </td>
       <td class="num" data-sort="<?= (float) $r['rate_sort'] ?>"><b><?= $e($r['rate']) ?></b><div class="muted" style="font-size:11px"><?= $e($r['rate_note']) ?></div></td>
-      <td class="num" data-sort="<?= (int) $r['sales'] ?>"><b><?= (int) $r['sales'] ?></b><div class="muted" style="font-size:11px">₹<?= number_format((float) $r['revenue']) ?></div></td>
+      <td class="num" data-sort="<?= (int) $r['sales'] ?>"><b><?= (int) $r['sales'] ?></b><div class="muted" style="font-size:11px">₹<?= number_format((float) $r['revenue']) ?> · <?= (int) $r['pax'] ?> pax</div></td>
+      <td class="num" data-sort="<?= (float) $r['salary'] ?>"><?= $r['salary'] > 0 ? number_format($r['salary']) : '<span class="muted">—</span>' ?></td>
+      <td class="num" data-sort="<?= (float) $r['advance'] ?>"><?= $r['advance'] > 0 ? '<b style="color:#b45309">' . number_format($r['advance']) . '</b>' : '<span class="muted">0</span>' ?></td>
+      <td data-sort="<?= ($r['has_id'] ? 1 : 0) + ($r['has_agr'] ? 1 : 0) ?>" style="white-space:nowrap"><?= $r['has_id'] ? '<a href="/admin/agent-kyc-file.php?agent=' . (int) $r['id'] . '&amp;slot=1" target="_blank" title="ID card">🪪 ✓</a>' : '<span class="muted" title="No ID card">🪪 ✗</span>' ?> · <?= $r['has_agr'] ? '<a href="/admin/agent-kyc-file.php?agent=' . (int) $r['id'] . '&amp;slot=3" target="_blank" title="Signed agreement">📄 ✓</a>' : '<a class="muted" href="/admin/agent-360.php?agent=' . (int) $r['id'] . '&amp;tab=profile" title="Upload the agreement">📄 ✗</a>' ?></td>
       <td data-sort="<?= $e($r['kyc']) ?>"><?php if ($r['kyc'] === 'verified'): ?><span class="pill st-ok">Verified</span><?php elseif ($r['kyc'] === 'submitted'): ?><span class="pill st-warn">Submitted</span><?php elseif ($r['kyc'] === 'rejected'): ?><span class="pill st-bad">Rejected</span><?php else: ?><span class="pill st-muted">None</span><?php endif; ?></td>
       <td data-sort="<?= $e($r['status']) ?>"><?php if ($r['status'] === 'active'): ?><span class="pill" style="background:#d7f4e3;color:#0a6b3b">Active</span><?php elseif ($r['status'] === 'pending'): ?><span class="pill" style="background:#fef3c7;color:#92400e">Pending</span><?php else: ?><span class="pill" style="background:#f7dcdc;color:#8a1f1f">Deactivated</span><?php endif; ?></td>
-      <td><span class="dt-acts">
+      <td style="min-width:290px"><span class="dt-acts">
         <button type="button" class="btn ghost" data-dt-toggle="<?= $rid ?>v">👁 View</button>
         <?php if ($canManage): ?><button type="button" class="btn ghost" data-dt-toggle="<?= $rid ?>e">✏️ Edit</button><?php endif; ?>
         <a class="btn ghost" href="agent-360.php?agent=<?= (int) $r['id'] ?>" title="Agent 360: wallet, statement, settlements, loans, deposits, KYC">💼 Wallet</a>
@@ -408,7 +417,7 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
         <?php endif; ?>
       </span></td>
     </tr>
-    <tr class="dt-x" id="<?= $rid ?>v" hidden><td colspan="13">
+    <tr class="dt-x" id="<?= $rid ?>v" hidden><td colspan="16">
       <div class="dt-grid">
         <div class="kv"><label>Serial · type · code</label><b><?= $r['serial'] === null ? 'not assigned' : '#' . (int) $r['serial'] ?> · <?= $e(AgentWallet::kindLabel($r['kind'])) ?> · <?= $e($r['code'] ?: '—') ?></b></div>
         <div class="kv"><label>Name · login username</label><b><?= $e($r['full_name']) ?> <span class="muted mono">· <?= $e($r['username']) ?></span></b></div>
@@ -439,7 +448,7 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
       </div>
     </td></tr>
     <?php if ($canManage): ?>
-    <tr class="dt-x" id="<?= $rid ?>e" hidden><td colspan="13">
+    <tr class="dt-x" id="<?= $rid ?>e" hidden><td colspan="16">
       <form method="post">
         <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="action" value="edit"><input type="hidden" name="id" value="<?= (int) $r['id'] ?>">
         <div class="dt-grid">
