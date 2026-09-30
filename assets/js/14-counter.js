@@ -388,7 +388,8 @@
           + agents.map(function (a) {
             var selected = (STAFF.code && a.code === STAFF.code) ? ' selected' : '';
             return '<option value="' + esc(a.code) + '"' + selected + '>' + esc(a.code) + ' · ' + esc(a.name) + '</option>';
-          }).join('');
+          }).join('')
+          + '<option value="OTHER">अन्य / Other (Direct Sale)</option>';
         ac.parentNode.replaceChild(sel, ac);
         sel.addEventListener('change', function () {
           if (field) field.classList.remove('invalid');
@@ -480,7 +481,7 @@
     var fmt = function (n) { try { return inr(n); } catch (e) { return '₹' + n; } };
     var commLine = '';
     var agSel = $q('#cAgentCode');
-    if (agSel && agSel.value && seats > 0 && STAFF.commFlat) {
+    if (agSel && agSel.value && agSel.value !== 'OTHER' && seats > 0 && STAFF.commFlat) {
       var selAgent = (STAFF.agents || []).find(function (a) { return a.code === agSel.value; });
       var rate = (selAgent && selAgent.type === 'joint') ? Number(STAFF.commJoint || 400) : Number(STAFF.commDirect || 200);
       commLine = '<span>·</span><small style="color:var(--good)">💰 ' + esc(agSel.value) + ' कमिशन ' + fmt(rate) + ' × ' + seats + ' = ' + fmt(rate * seats) + '</small>';
