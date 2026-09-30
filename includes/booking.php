@@ -728,7 +728,7 @@ final class BookingService
             if ($row === null) {
                 return $booking;
             }
-            AgentWallet::reassignSeller($row, $agentId, $by);
+            AgentWallet::reassignSeller($row, $agentId, $by, true);   // at sale: not a correction
             $booking['sold_by_admin_id'] = $agentId;
         } catch (Throwable $e) {
             Logger::warning('Desk sale agent attribution failed', [

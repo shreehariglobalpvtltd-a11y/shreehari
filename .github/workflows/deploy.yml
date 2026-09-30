@@ -38,6 +38,12 @@ on:
         required: false
         default: ''
         type: string
+      nginx:
+        description: 'apply = add the 30 Sep 2026 deny rules to the live nginx site (backup, nginx -t, auto-undo) · skip = leave nginx alone'
+        required: false
+        default: 'skip'
+        type: choice
+        options: [skip, apply]
 
 permissions:
   contents: read
@@ -123,6 +129,58 @@ jobs:
             chown -R www-data:www-data includes admin api whatsapp cron database docs 2>/dev/null || true
             echo "server-side php -l ok, ownership set"
           REMOTE
+
+      # 30 Sep 2026: cron/wa-fail-alert.php does nothing until it is scheduled.
+      # Adds its line once, to the SAME crontab that already runs
+      # whatsapp-retry.php (so it runs as the same user). Idempotent: a line
+      # that is already there is left alone; no matching crontab → warning only.
+      - name: Schedule the failed-WhatsApp office alert
+        if: ${{ inputs.mode == 'full' }}
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PATH: ${{ secrets.VPS_PATH }}
+        run: |
+          ssh -i ~/.ssh/shg_deploy -o StrictHostKeyChecking=no "$VPS_USER@$VPS_HOST" bash -s "$VPS_PATH" <<'REMOTE'
+            set -e
+            [ -f "$1/cron/wa-fail-alert.php" ] || { echo "wa-fail-alert.php not deployed, nothing to schedule"; exit 0; }
+            line="*/5 * * * * /usr/bin/php $1/cron/wa-fail-alert.php >/dev/null 2>&1"
+            for u in root www-data; do
+              cur="$(crontab -u "$u" -l 2>/dev/null || true)"
+              if printf '%s\n' "$cur" | grep -q 'whatsapp-retry.php'; then
+                if printf '%s\n' "$cur" | grep -q 'wa-fail-alert.php'; then
+                  echo "wa-fail-alert already scheduled for $u"
+                else
+                  printf '%s\n%s\n' "$cur" "$line" | crontab -u "$u" -
+                  echo "wa-fail-alert scheduled every 5 minutes for $u"
+                fi
+                exit 0
+              fi
+            done
+            echo "::warning::No crontab runs whatsapp-retry.php; add this line by hand: $line"
+          REMOTE
+
+      # 30 Sep 2026: the live nginx file has certbot edits, so it is patched in
+      # place by deploy/nginx-add-deny-rules.sh (backup, nginx -t, reload,
+      # health check, restore on any failure), never replaced.
+      - name: Add the nginx deny rules
+        if: ${{ inputs.mode == 'full' && inputs.nginx == 'apply' }}
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PATH: ${{ secrets.VPS_PATH }}
+          SITE_URL: ${{ secrets.SITE_URL }}
+        run: |
+          ssh -i ~/.ssh/shg_deploy -o StrictHostKeyChecking=no "$VPS_USER@$VPS_HOST" bash -s "$VPS_PATH" < deploy/nginx-add-deny-rules.sh
+          site="${SITE_URL:-https://www.shreehariglobal.in}"
+          for p in /deploy.sh /admin/index.php.bak.20260828-152722; do
+            c="$(curl -s -o /dev/null -w '%{http_code}' "$site$p")"
+            echo "$p -> $c"
+            [ "$c" = 404 ] || { echo "::error::$p still answers $c"; exit 1; }
+          done
+          c="$(curl -s -o /dev/null -w '%{http_code}' "$site/")"
+          echo "/ -> $c"
+          [ "$c" = 200 ] || { echo "::error::home page answers $c"; exit 1; }
 
       - name: Backup + migration
         if: ${{ inputs.mode == 'full' && inputs.migrate != '' }}

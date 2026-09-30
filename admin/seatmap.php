@@ -141,6 +141,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             // for every Seats:: call below (the map is the sharing namespace).
             $seatLbl    = Seats::displayLabel($seat, $coach, 'sharing');
 
+            // Block / unblock / release change the bus for EVERY seller, so they
+            // are office work (30 Sep 2026): an agent sells and reseats only.
+            if (in_array($action, ['block', 'unblock', 'release'], true) && Auth::isCounterAgent()) {
+                throw new RuntimeException('Only office staff can block, unblock or release seats.');
+            }
             if ($action === 'block') {
                 Seats::blockSeat($scheduleId, $seat, (string) ($_POST['reason'] ?? ''), (int) $admin['id']);
                 $flash = ['ok', 'Seat ' . $seatLbl . ' taken out of service.'];
@@ -280,6 +285,8 @@ $bookedSeats = array_values(array_filter(array_keys($map), static fn($s) => $map
 $csrf = Security::e(Security::csrfToken());
 $k    = CSRF_TOKEN_NAME;
 $canEdit = Auth::can('schedules.edit');
+// Block / unblock / release hold: office staff only, never an agent (see the POST guard).
+$canSeatOps = $canEdit && !Auth::isCounterAgent();
 // Female-preferred is company-wide seating policy, not a property of this
 // trip — so it needs routes.edit, which a counter agent does not hold. Kept
 // separate from $canEdit so the control is hidden rather than 403-ing.
@@ -868,7 +875,9 @@ if ($legendStops !== []): ?>
            Fields, names and action values are unchanged. */ ?>
   <div class="qa-tabs" role="tablist">
     <button type="button" class="qa-tab"        data-qa-tab="counter"  role="tab" aria-selected="true">🎫 Counter booking</button>
+    <?php if ($canSeatOps): ?>
     <button type="button" class="qa-tab"        data-qa-tab="block"    role="tab" aria-selected="false">🚫 Block seat</button>
+    <?php endif; ?>
     <button type="button" class="qa-tab"        data-qa-tab="transfer" role="tab" aria-selected="false">🔁 Transfer</button>
   </div>
   <div class="qa-tab-body">
@@ -895,6 +904,7 @@ if ($legendStops !== []): ?>
       <span class="muted" style="font-size:12px">Runs the same availability + shared-cabin gender checks as online booking.</span>
     </form>
 
+    <?php if ($canSeatOps): ?>
     <form method="post" data-qa-pane="block" class="qa-pane" hidden>
       <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
       <input type="hidden" name="route" value="<?= $routeId ?>"><input type="hidden" name="date" value="<?= Security::e($date) ?>">
@@ -906,6 +916,7 @@ if ($legendStops !== []): ?>
       <input type="text" name="reason" placeholder="Reason (e.g. broken berth)" maxlength="191">
       <button class="btn bad" type="submit" name="action" value="block" onclick="return confirm('Take this seat out of service?')">Block seat</button>
     </form>
+    <?php endif; ?>
 
     <form method="post" data-qa-pane="transfer" class="qa-pane" hidden>
       <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
@@ -1045,13 +1056,13 @@ if ($legendStops !== []): ?>
         <td>
           <?php if ($canEdit): ?>
           <div class="row-actions">
-            <?php if ($s['status'] === 'held'): ?>
+            <?php if ($s['status'] === 'held' && $canSeatOps): ?>
               <form method="post" style="display:inline"><input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="route" value="<?= $routeId ?>"><input type="hidden" name="date" value="<?= Security::e($date) ?>"><input type="hidden" name="seat" value="<?= Security::e($seat) ?>">
                 <button class="btn ghost" type="submit" name="action" value="release" style="padding:5px 10px">Release hold</button></form>
-            <?php elseif ($s['status'] === 'blocked'): ?>
+            <?php elseif ($s['status'] === 'blocked' && $canSeatOps): ?>
               <form method="post" style="display:inline"><input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="route" value="<?= $routeId ?>"><input type="hidden" name="date" value="<?= Security::e($date) ?>"><input type="hidden" name="seat" value="<?= Security::e($seat) ?>">
                 <button class="btn ok" type="submit" name="action" value="unblock" style="padding:5px 10px">Unblock</button></form>
-            <?php elseif ($s['status'] === 'open'): ?>
+            <?php elseif ($s['status'] === 'open' && $canSeatOps): ?>
               <form method="post" style="display:inline"><input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="route" value="<?= $routeId ?>"><input type="hidden" name="date" value="<?= Security::e($date) ?>"><input type="hidden" name="seat" value="<?= Security::e($seat) ?>"><input type="hidden" name="reason" value="">
                 <button class="btn ghost bad" type="submit" name="action" value="block" style="padding:5px 10px" onclick="return confirm('Block seat <?= Security::e(Seats::displayLabel((string) $seat, $coach, 'sharing')) ?>?')">Block</button></form>
             <?php else: ?>
@@ -1102,6 +1113,7 @@ if ($legendStops !== []): ?>
      quick-action forms / one-click endpoints already on the page, so it
      inherits their CSRF + schedules.edit guards and adds no new backend. */
   var SM_CAN_EDIT  = <?= $canEdit ? 'true' : 'false' ?>;
+  var SM_SEAT_OPS  = <?= $canSeatOps ? 'true' : 'false' ?>;   // block / unblock / release: office staff only
   var seatMenu     = document.getElementById('seatMenu');
   var seatBackdrop = document.getElementById('seatMenuBackdrop');
   var bvBase       = <?= json_encode($base . '/admin/booking-view.php?pnr=') ?>;
@@ -1168,7 +1180,7 @@ if ($legendStops !== []): ?>
       if(SM_CAN_EDIT){
         seatMenu.appendChild(smBtn('🎫','Book walk-in / cash',function(){prefillCounter(seat);}));
         seatMenu.appendChild(smLink('🧾','Book in app (multi-seat / UPI)',ctrBase+'&seat='+encodeURIComponent(seat)+'#/'));
-        seatMenu.appendChild(smBtn('🚫','Take out of service',function(){submitSeatAction('block',seat,{label:seatLbl});},true));
+        if(SM_SEAT_OPS) seatMenu.appendChild(smBtn('🚫','Take out of service',function(){submitSeatAction('block',seat,{label:seatLbl});},true));
       } else { seatMenu.appendChild(smNote('Available · view only')); }
     } else if(status==='booked'){
       if(mine && pnr){
@@ -1179,10 +1191,10 @@ if ($legendStops !== []): ?>
         seatMenu.appendChild(smLink('❌','Cancel booking',bvBase+encodeURIComponent(pnr),true));
       } else { seatMenu.appendChild(smNote('🔒 Sold by another agent')); }
     } else if(status==='held'){
-      if(SM_CAN_EDIT) seatMenu.appendChild(smBtn('⏳','Release hold',function(){submitSeatAction('release',seat,{confirm:'Release the hold on '+seatLbl+'?'});}));
+      if(SM_SEAT_OPS) seatMenu.appendChild(smBtn('⏳','Release hold',function(){submitSeatAction('release',seat,{confirm:'Release the hold on '+seatLbl+'?'});}));
       else seatMenu.appendChild(smNote('Held · view only'));
     } else if(status==='blocked'){
-      if(SM_CAN_EDIT) seatMenu.appendChild(smBtn('✅','Put back in service',function(){submitSeatAction('unblock',seat,{confirm:'Put '+seatLbl+' back in service?'});}));
+      if(SM_SEAT_OPS) seatMenu.appendChild(smBtn('✅','Put back in service',function(){submitSeatAction('unblock',seat,{confirm:'Put '+seatLbl+' back in service?'});}));
       else seatMenu.appendChild(smNote('Out of service'));
     } else if(status==='staff'){
       seatMenu.appendChild(smNote('🛡️ Staff / emergency reserved'));
