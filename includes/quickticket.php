@@ -365,7 +365,9 @@ final class QuickTicket
             // The pickup: the desk's own town when the run calls there, else the first still ahead.
             $chosen = null;
             if ($wantStop !== '') {
-                foreach ($ahead as $s) {
+                // Staff may name a pickup the bus has already passed (a late or
+                // paper ticket from Surat after 13:00); create() lets staff past the cut-off.
+                foreach (($customer ? $ahead : $list) as $s) {
                     if (self::stopMatches($s['name'], $wantStop)) {
                         $chosen = $s;
                         break;
