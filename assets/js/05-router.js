@@ -515,13 +515,29 @@ function loadSrvStops() {
   shgTimetableGet('').then(function (d) {
     const data = (d && d.routes) ? d : (d && d.data) || {};
     const go = Object.create(null), back = Object.create(null);
+    /* Also store the raw stop names and times the server sent, keyed by
+       direction. gujaratTownsFor() uses the names to populate the picker
+       directly — no CONFIG intersection needed, and no naming-convention
+       mismatch can shrink the list. (30 Sep 2026) */
+    const goNames = [], backNames = [];
+    const goTimes = Object.create(null), backTimes = Object.create(null);
     (data.routes || []).forEach(function (r) {
       const outbound = isNepalPoint(r.to) && !isNepalPoint(r.from);
       const inbound  = isNepalPoint(r.from) && !isNepalPoint(r.to);
-      if (outbound) (r.boarding || []).forEach(function (b) { go[townKeyJS(b.name)] = true; });
-      if (inbound)  (r.drop     || []).forEach(function (b) { back[townKeyJS(b.name)] = true; });
+      if (outbound) (r.boarding || []).forEach(function (b) {
+        var k = townKeyJS(b.name);
+        if (!go[k]) { go[k] = true; goNames.push(b.name); }
+        if (b.time) goTimes[k] = b.time;
+      });
+      if (inbound) (r.drop || []).forEach(function (b) {
+        var k = townKeyJS(b.name);
+        if (!back[k]) { back[k] = true; backNames.push(b.name); }
+        if (b.time) backTimes[k] = b.time;
+      });
     });
     SrvStops.go = go; SrvStops.back = back;
+    SrvStops.goNames = goNames; SrvStops.backNames = backNames;
+    SrvStops.goTimes = goTimes; SrvStops.backTimes = backTimes;
     if (typeof populatePointSel === 'function') populatePointSel();
   }).catch(function () { /* offline — local catalogue still drives the picker */ });
 }
@@ -549,18 +565,23 @@ function servedTownKeys(dir) {
 }
 
 function gujaratTownsFor(dir) {
-  /* The five canonical stops ARE the daily run — prefer the subset a live
-     route confirms (self-healing while data catches up), but when the
-     intersection is empty (stale KV, timetable not loaded yet) offer the
-     FULL canonical list rather than the routes' endpoint cities: the one
-     daily bus always calls at all five, so canonical is never a lie, while
-     an endpoint-only list would hide four real pickups. */
+  /* When the server has responded, show its boarding-stop names directly —
+     these are the EXACT names from route_stops, matching what the booking
+     search and boarding cut-off use. The old logic intersected CONFIG's
+     short names (Surat, Vadodara, Emli Bhupal) with the server's compound
+     names (Surat — Kamrej Circle, Barauda, Limbli / Bhupal) through
+     townKeyJS(), which only keeps the first segment before — or -.
+     The two naming conventions diverged, so the intersection shrank the
+     picker from 9 towns to 1–3 instead of confirming them. Using the
+     server names directly makes the picker always show every stop the
+     live routes actually call at. (30 Sep 2026) */
+  const srvNames = dir === 'go' ? SrvStops.goNames : SrvStops.backNames;
+  if (srvNames && srvNames.length) return srvNames;
+
+  /* Pre-paint fallback (before the timetable API responds): show the
+     CONFIG canonical list so the picker is not empty on first render. */
   const canonical = ((CONFIG.mainPoints || {}).india || []).filter(Boolean);
-  if (canonical.length) {
-    const served = servedTownKeys(dir);
-    const usable = canonical.filter(c => served[townKeyJS(c)]);
-    return usable.length ? usable : canonical;
-  }
+  if (canonical.length) return canonical;
 
   // mainPoints misconfigured/empty — fall back to the routes' endpoint cities
   const out = [];
@@ -594,7 +615,12 @@ function rebuildPickupTimes() {
   });
 }
 function pickupTimeFor(city) {
-  return _pickupTimes[townKeyJS(city)] || '';
+  var k = townKeyJS(city);
+  /* Prefer the server-provided times from route_stops (they match the
+     names gujaratTownsFor now returns); fall back to seed data. */
+  if (SrvStops.goTimes && SrvStops.goTimes[k]) return SrvStops.goTimes[k];
+  if (SrvStops.backTimes && SrvStops.backTimes[k]) return SrvStops.backTimes[k];
+  return _pickupTimes[k] || '';
 }
 /* Format a 24h time as 12h AM/PM for customer-facing display. */
 function fmt12h(t24) {
