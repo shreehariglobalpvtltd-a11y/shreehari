@@ -538,11 +538,11 @@ if (($_GET['export'] ?? '') === 'ledger') {
 
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel reads Devanagari/₹ correctly
-    fputcsv($out, ['Date', 'Entry', 'Account', 'Booking / Ref', 'Note', 'Amount (signed)', 'Recorded by']);
+    csv_put($out, ['Date', 'Entry', 'Account', 'Booking / Ref', 'Note', 'Amount (signed)', 'Recorded by']);
     $running = 0.0;
     foreach ($rows as $r) {
         $running += (float) $r['amount'];
-        fputcsv($out, [
+        csv_put($out, [
             (string) $r['created_at'],
             (string) $r['entry_type'],
             (string) $r['account'],
@@ -552,8 +552,8 @@ if (($_GET['export'] ?? '') === 'ledger') {
             (string) ($r['by_name'] ?? ''),
         ]);
     }
-    fputcsv($out, []);
-    fputcsv($out, ['', '', '', '', 'Net movement in window', number_format($running, 2, '.', ''), '']);
+    csv_put($out, []);
+    csv_put($out, ['', '', '', '', 'Net movement in window', number_format($running, 2, '.', ''), '']);
     fclose($out);
     exit;
 }
@@ -669,7 +669,7 @@ if (Auth::isCounterAgent()) {
 
 /* ---- This agent's recent sales -------------------------------------- */
 $recent = Database::fetchAll(
-    "SELECT b.pnr, b.status, b.total_amount, b.contact_phone, b.created_at, b.source,
+    "SELECT b.pnr, b.status, b.total_amount, b.contact_phone, b.created_at, b.source, b.booking_mode,
             r.from_city, r.to_city, bl.travel_date,
             (SELECT GROUP_CONCAT(bs.seat_no ORDER BY bs.seat_no SEPARATOR ' ')
                FROM booking_seats bs WHERE bs.booking_id = b.id) AS seats
@@ -1536,7 +1536,7 @@ if ($flash !== null) {
             echo $agSeats === ''
                 ? '—'
                 : Security::e(implode(' ', array_map(
-                    static fn($s) => Seats::displayLabel((string) $s),
+                    static fn($s) => Seats::displayLabel((string) $s, 'sleeper', (string) ($b['booking_mode'] ?? 'sharing')),
                     explode(' ', $agSeats)
                 )));
           ?></td>

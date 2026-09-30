@@ -504,19 +504,19 @@ if (($_GET['export'] ?? '') === 'csv') {
     header('Cache-Control: no-store');
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF");   // UTF-8 BOM so Excel reads ₹ / Devanagari
-    fputcsv($out, ['Agent', (string) ($agent['full_name'] ?: $agent['username']), 'Code', AgentWallet::agentCodeLabel($agentId), 'Window', $stmtFrom . ' to ' . $stmtTo, 'Account', $accLabel]);
-    fputcsv($out, []);
-    fputcsv($out, ['Date', 'Entry', 'Account', 'Booking / Ref', 'Note', 'Amount (signed)', 'Balance after (that account)', 'Recorded by']);
+    csv_put($out, ['Agent', (string) ($agent['full_name'] ?: $agent['username']), 'Code', AgentWallet::agentCodeLabel($agentId), 'Window', $stmtFrom . ' to ' . $stmtTo, 'Account', $accLabel]);
+    csv_put($out, []);
+    csv_put($out, ['Date', 'Entry', 'Account', 'Booking / Ref', 'Note', 'Amount (signed)', 'Balance after (that account)', 'Recorded by']);
     if ($stmtAcc === '') {
-        fputcsv($out, [$stmtFrom, 'Opening balance', 'commission', '', '', '', number_format(AgentWallet::openingBalance($agentId, $stmtFrom, 'commission'), 2, '.', ''), '']);
-        fputcsv($out, [$stmtFrom, 'Opening balance', 'cash', '', '', '', number_format(AgentWallet::openingBalance($agentId, $stmtFrom, 'cash'), 2, '.', ''), '']);
+        csv_put($out, [$stmtFrom, 'Opening balance', 'commission', '', '', '', number_format(AgentWallet::openingBalance($agentId, $stmtFrom, 'commission'), 2, '.', ''), '']);
+        csv_put($out, [$stmtFrom, 'Opening balance', 'cash', '', '', '', number_format(AgentWallet::openingBalance($agentId, $stmtFrom, 'cash'), 2, '.', ''), '']);
     } else {
-        fputcsv($out, [$stmtFrom, 'Opening balance', $stmtAcc, '', '', '', number_format((float) $st['opening'], 2, '.', ''), '']);
+        csv_put($out, [$stmtFrom, 'Opening balance', $stmtAcc, '', '', '', number_format((float) $st['opening'], 2, '.', ''), '']);
     }
     foreach ($st['rows'] as $r) {
         [, $label] = a360_ledger_look((string) $r['entry_type'], (string) ($r['ref'] ?? ''));
         $after = (string) $r['account'] === 'cash' ? (float) $r['running_cash'] : (float) $r['running_commission'];
-        fputcsv($out, [
+        csv_put($out, [
             (string) $r['created_at'],
             $label,
             (string) $r['account'],
@@ -527,15 +527,15 @@ if (($_GET['export'] ?? '') === 'csv') {
             (string) ($r['by_name'] ?? ''),
         ]);
     }
-    fputcsv($out, []);
+    csv_put($out, []);
     $closeC = $st['rows'] !== [] ? (float) end($st['rows'])['running_commission'] : AgentWallet::openingBalance($agentId, $stmtFrom, 'commission');
     $closeK = $st['rows'] !== [] ? (float) end($st['rows'])['running_cash']       : AgentWallet::openingBalance($agentId, $stmtFrom, 'cash');
     if ($stmtAcc === '') {
-        fputcsv($out, [$stmtTo, 'Closing balance', 'commission', '', 'company owes agent', '', number_format($closeC, 2, '.', ''), '']);
-        fputcsv($out, [$stmtTo, 'Closing balance', 'cash', '', 'agent owes company', '', number_format($closeK, 2, '.', ''), '']);
-        fputcsv($out, [$stmtTo, 'Net position', 'cash - commission', '', 'positive = agent owes the company', '', number_format((float) $st['closing'], 2, '.', ''), '']);
+        csv_put($out, [$stmtTo, 'Closing balance', 'commission', '', 'company owes agent', '', number_format($closeC, 2, '.', ''), '']);
+        csv_put($out, [$stmtTo, 'Closing balance', 'cash', '', 'agent owes company', '', number_format($closeK, 2, '.', ''), '']);
+        csv_put($out, [$stmtTo, 'Net position', 'cash - commission', '', 'positive = agent owes the company', '', number_format((float) $st['closing'], 2, '.', ''), '']);
     } else {
-        fputcsv($out, [$stmtTo, 'Closing balance', $stmtAcc, '', '', '', number_format((float) $st['closing'], 2, '.', ''), '']);
+        csv_put($out, [$stmtTo, 'Closing balance', $stmtAcc, '', '', '', number_format((float) $st['closing'], 2, '.', ''), '']);
     }
     fclose($out);
     exit;

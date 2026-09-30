@@ -515,13 +515,29 @@ function loadSrvStops() {
   shgTimetableGet('').then(function (d) {
     const data = (d && d.routes) ? d : (d && d.data) || {};
     const go = Object.create(null), back = Object.create(null);
+    /* Also store the raw stop names and times the server sent, keyed by
+       direction. gujaratTownsFor() uses the names to populate the picker
+       directly — no CONFIG intersection needed, and no naming-convention
+       mismatch can shrink the list. (30 Sep 2026) */
+    const goNames = [], backNames = [];
+    const goTimes = Object.create(null), backTimes = Object.create(null);
     (data.routes || []).forEach(function (r) {
       const outbound = isNepalPoint(r.to) && !isNepalPoint(r.from);
       const inbound  = isNepalPoint(r.from) && !isNepalPoint(r.to);
-      if (outbound) (r.boarding || []).forEach(function (b) { go[townKeyJS(b.name)] = true; });
-      if (inbound)  (r.drop     || []).forEach(function (b) { back[townKeyJS(b.name)] = true; });
+      if (outbound) (r.boarding || []).forEach(function (b) {
+        var k = townKeyJS(b.name);
+        if (!go[k]) { go[k] = true; goNames.push(b.name); }
+        if (b.time) goTimes[k] = b.time;
+      });
+      if (inbound) (r.drop || []).forEach(function (b) {
+        var k = townKeyJS(b.name);
+        if (!back[k]) { back[k] = true; backNames.push(b.name); }
+        if (b.time) backTimes[k] = b.time;
+      });
     });
     SrvStops.go = go; SrvStops.back = back;
+    SrvStops.goNames = goNames; SrvStops.backNames = backNames;
+    SrvStops.goTimes = goTimes; SrvStops.backTimes = backTimes;
     if (typeof populatePointSel === 'function') populatePointSel();
   }).catch(function () { /* offline — local catalogue still drives the picker */ });
 }
@@ -590,7 +606,12 @@ function rebuildPickupTimes() {
   });
 }
 function pickupTimeFor(city) {
-  return _pickupTimes[townKeyJS(city)] || '';
+  var k = townKeyJS(city);
+  /* Prefer the server-provided times from route_stops (they match the
+     names gujaratTownsFor now returns); fall back to seed data. */
+  if (SrvStops.goTimes && SrvStops.goTimes[k]) return SrvStops.goTimes[k];
+  if (SrvStops.backTimes && SrvStops.backTimes[k]) return SrvStops.backTimes[k];
+  return _pickupTimes[k] || '';
 }
 /* Format a 24h time as 12h AM/PM for customer-facing display. */
 function fmt12h(t24) {
@@ -1085,7 +1106,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20260920l" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20260925a" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'
@@ -1327,7 +1348,31 @@ function initQuickTicket() {
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!mic || !line || !SR || line.hidden) return;
     mic.hidden = false; if (wrap) wrap.classList.add('has-mic');
-    var rec = null;
+    var rec = null, hush = null, cap = null;
+
+    /* 24 Sep 2026 (owner: "understand different speaking styles … short or
+       incomplete sentences"). The single biggest accuracy problem here was
+       not the parser — it was that this ran in the default one-shot mode.
+       Android ends recognition at the FIRST pause, and a booking is spoken
+       with pauses in it: "Ram Bahadur … nau aath saat … dui sit … bholi".
+       Everything after the first gap was simply never heard, and the desk
+       blamed the parser for a line it was never given.
+
+       continuous:true keeps the session open across those gaps; a 2.2s
+       hush timer after the last FINAL result closes it so nobody has to
+       find the stop button, and a 20s cap means a phone left face-down in
+       a pocket cannot hold the microphone open. */
+    function stopSoon(ms) {
+      clearTimeout(hush);
+      hush = setTimeout(function () { try { if (rec) rec.stop(); } catch (e) {} }, ms);
+    }
+    function done() {
+      clearTimeout(hush); clearTimeout(cap);
+      mic.classList.remove('listening');
+      mic.setAttribute('aria-pressed', 'false');
+      rec = null;
+    }
+
     mic.addEventListener('click', function () {
       if (rec) { try { rec.stop(); } catch (e) {} return; }
       try {
@@ -1335,17 +1380,47 @@ function initQuickTicket() {
         var map = { en: 'en-IN', hi: 'hi-IN', ne: 'ne-NP', gu: 'gu-IN' };
         rec.lang = map[typeof LANG === 'string' ? LANG : 'ne'] || 'en-IN';
         rec.interimResults = true; rec.maxAlternatives = 1;
+        try { rec.continuous = true; } catch (e) { /* older engines ignore it */ }
         mic.classList.add('listening');
+        mic.setAttribute('aria-pressed', 'true');
+        try { if (window.SHGFeel) window.SHGFeel.fire('select'); } catch (e) {}
+
         rec.onresult = function (ev) {
-          var out = '';
-          for (var i = 0; i < ev.results.length; i++) out += ev.results[i][0].transcript;
+          var out = '', final = false;
+          for (var i = 0; i < ev.results.length; i++) {
+            out += ev.results[i][0].transcript;
+            if (ev.results[i].isFinal) final = true;
+          }
           line.value = out;
           line.dispatchEvent(new Event('input', { bubbles: true }));
+          /* A pause AFTER something was actually heard ends the turn; while
+             the speaker is still mid-phrase the timer keeps being pushed
+             out, which is what lets a sentence with gaps arrive whole. */
+          if (final) stopSoon(2200);
         };
-        rec.onend = function () { mic.classList.remove('listening'); rec = null; };
-        rec.onerror = function () { mic.classList.remove('listening'); rec = null; toast(t('qtMicErr')); };
+        rec.onspeechend = function () { stopSoon(1200); };
+        rec.onend = function () {
+          done();
+          try { if (window.SHGFeel) window.SHGFeel.fire('tap'); } catch (e) {}
+        };
+        rec.onerror = function (ev) {
+          var why = ev && ev.error;
+          done();
+          /* "aborted" is the user tapping stop — not a failure to report.
+             A refused microphone needs its own sentence, because telling
+             somebody to "speak again" when the browser has blocked the mic
+             is the most frustrating message the app could give. */
+          if (why === 'aborted') return;
+          if (why === 'not-allowed' || why === 'service-not-allowed') {
+            toast('🎤 ' + t('qtMicErr'));
+            return;
+          }
+          toast(t('qtMicErr'));
+          try { if (window.SHGFeel) window.SHGFeel.fire('error'); } catch (e) {}
+        };
         rec.start();
-      } catch (e) { mic.classList.remove('listening'); rec = null; }
+        cap = setTimeout(function () { try { if (rec) rec.stop(); } catch (e) {} }, 20000);
+      } catch (e) { done(); }
     });
   })();
   if (line) {
@@ -1502,6 +1577,15 @@ function renderPricingCards() {
     if (best > 0) { line.textContent = tf('pcSaveLine', { a: inr(best) }); line.hidden = false; }
     else { line.textContent = ''; line.hidden = true; }
   }
+
+  /* 29 Sep 2026: both cards above are written with class="reveal", which is
+     opacity:0 until the IntersectionObserver adds .in. A redraw replaces the
+     old (already-revealed) nodes with fresh invisible ones, so whoever fired
+     the redraw has to hand them back to the observer. Boot happens to call
+     observeReveals() later; the admin fare-save path (13-admin-routes.js)
+     does not, so saving a fare made both pricing cards VANISH until reload.
+     renderResults() has always done this for its own cards — same rule. */
+  if (typeof observeReveals === 'function') observeReveals();
 }
 
 /* Only advertise a town a bus actually calls at.
@@ -1881,12 +1965,21 @@ const SeatSrv = {
 
     const prev = this._snap[k];
     const sid = this._sid();
-    const p = shgApi.post('/seats.php', sid
+    const body = sid
         ? { routeCode: routeId, date: date, bookingMode: bookingMode, scheduleId: sid }
-        : { routeCode: routeId, date: date, bookingMode: bookingMode })
+        : { routeCode: routeId, date: date, bookingMode: bookingMode };
+    /* Tell the server which seat version we hold: when nothing changed it
+       answers "unchanged" in ~200 bytes instead of re-sending the map. */
+    if (prev && prev.ver) body.ver = prev.ver;
+    const p = shgApi.post('/seats.php', body)
       .then((d) => {
+        if (d && d.unchanged) {
+          if (prev) prev.at = Date.now();
+          return false;
+        }
         const next = {
           sid: sid,
+          ver: d.ver || '',
           booked:  d.booked  || [],
           locked:  d.locked  || [],
           blocked: (d.blocked || []).concat(d.staff || []),
@@ -2246,17 +2339,54 @@ function myHoldExpiry() {
 ================================================================ */
 const SeatPoll = {
   EVERY_MS: 8000,
+  /* While the live stream is connected the poll is only a safety net. */
+  SLOW_MS: 30000,
   _t: null,
   _ctx: null,
+  _es: null,
 
   start(routeId, date) {
     this.stop();
     if (!routeId || !date) return;
     this._ctx = { routeId: routeId, date: date };
     this._t = setInterval(() => this._tick(), this.EVERY_MS);
+    this._listen();
   },
 
-  stop() { clearInterval(this._t); this._t = null; this._ctx = null; },
+  stop() { clearInterval(this._t); this._t = null; this._ctx = null; this._closeStream(); },
+
+  /* Live seat events (24 Sep 2026): when the office switches seat_events_on,
+     the server pushes "seats" the second a booking or hold lands on this
+     departure and the map refreshes at once — customer, counter and office
+     agree within about a second. Off, or on a browser without EventSource,
+     the 8 s poll carries on exactly as before. */
+  _listen() {
+    if (!this._ctx || this._es || document.hidden) return;
+    if (!window.EventSource || !seatEventsOn()) return;
+    const c = this._ctx;
+    const sid = SeatSrv._sid();
+    const qs = 'routeCode=' + encodeURIComponent(c.routeId) + '&date=' + encodeURIComponent(c.date)
+             + (sid ? '&scheduleId=' + encodeURIComponent(sid) : '');
+    let es;
+    try { es = new EventSource('/api/seat-events.php?' + qs); } catch (e) { return; }
+    this._es = es;
+    es.addEventListener('seats', () => this._tick());
+    es.addEventListener('bye', () => { /* the server ended its turn; the browser reconnects */ });
+    es.onopen = () => {
+      clearInterval(this._t);
+      this._t = setInterval(() => this._tick(), this.SLOW_MS);
+    };
+    es.onerror = () => {
+      if (es.readyState === 2) {               // CLOSED for good (404 = switched off, 429)
+        this._closeStream();
+        if (this._ctx) { clearInterval(this._t); this._t = setInterval(() => this._tick(), this.EVERY_MS); }
+      }
+    };
+  },
+
+  _closeStream() {
+    if (this._es) { try { this._es.close(); } catch (e) { /* already closed */ } this._es = null; }
+  },
 
   _tick() {
     if (!this._ctx) return this.stop();
@@ -2290,9 +2420,20 @@ const SeatPoll = {
 };
 document.addEventListener('visibilitychange', () => {
   /* Coming back to the tab, refresh at once rather than waiting out the
-     interval — the map on screen is exactly as old as the time away. */
-  if (!document.hidden && SeatPoll._ctx) SeatPoll._tick();
+     interval — the map on screen is exactly as old as the time away. A
+     hidden tab drops its live stream (a phone in a pocket must not hold a
+     server worker) and picks it up again on return. */
+  if (document.hidden) { SeatPoll._closeStream(); return; }
+  if (SeatPoll._ctx) { SeatPoll._tick(); SeatPoll._listen(); }
 });
+
+/** Has the office switched on live seat events? (public setting, shipped in SHG_BOOT) */
+function seatEventsOn() {
+  try {
+    const v = window.SHG_BOOT && window.SHG_BOOT.settings && window.SHG_BOOT.settings.seat_events_on;
+    return v === true || v === 1 || v === '1';
+  } catch (e) { return false; }
+}
 
 /* ================================================================
    LIVE TICKET STATUS (17 Sep 2026)

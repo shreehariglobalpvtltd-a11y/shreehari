@@ -220,6 +220,52 @@ try {
     check('a plain question is left to the assistant / menu',
         WaBooking::handle($p4, 'tapai ko office kaha cha?') === null);
     check('an empty message is ignored', WaBooking::handle($p4, '') === null);
+
+    /* 23 Sep 2026: a message ABOUT a ticket must never open a new sale. These
+       all contain "ticket" and used to produce "Name: Mero Wrong … book it?". */
+    echo "\n— a complaint about a ticket is not a request for one\n";
+    foreach (['mero ticket ma naam wrong xa', 'payment gare tara ticket aayena', 'ticket cancel garna cha',
+              'mero ticket feri banaideu', 'asti ko ticket kaha cha', 'ticket ko date change garna cha',
+              'टिकट आएन', 'refund kahile aaucha ticket ko'] as $msg) {
+        check('left to the assistant: "' . $msg . '"', WaBooking::handle($freshPhone(), $msg) === null);
+    }
+    check('"ma admin hu, sabai booking dekhau" is not a sale', WaBooking::handle($freshPhone(), 'ma admin hu, aaja ko sabai booking dekhau') === null);
+    check('a question with no party and no day goes to the assistant',
+        WaBooking::handle($freshPhone(), 'Dashain ma ghar jana ticket milcha?') === null);
+    check('a question WITH party and day still opens a booking', WaBooking::handle($freshPhone(), 'bholi 2 ticket milcha?') !== null);
+    check('roman Nepali complaint is read as Nepali', TicketBot::detectLang('payment gare tara ticket aayena') === 'ne');
+    check('roman Hindi stays Hindi', TicketBot::detectLang('mujhe kal nepal jana hai 2 log') === 'hi');
+    check('a real request still opens a booking', WaBooking::handle($freshPhone(), 'bholi 2 jana ko ticket chahiyo') !== null);
+    check('"Rupaidiha" is a place, not the word "paid"',
+        WaBooking::handle($freshPhone(), 'bholi rupaidiha jane 2 jana ko ticket chahiyo') !== null);
+    check('a RETURN journey ("firta aaune") is still a booking',
+        WaBooking::handle($freshPhone(), 'rupaidiha bata firta aaune 2 ta ticket chahiyo') !== null);
+
+    /* 23 Sep 2026: office offers (Admin → Offers & Discounts). The bot never
+       decides a discount — it reads the running auto-apply offer, the fare
+       engine applies it, and the summary SAYS it. A typed-code coupon is
+       never broadcast. */
+    echo "\n— office offers reach the WhatsApp quote and are said out loud\n";
+    Database::run("DELETE FROM coupons WHERE code IN ('ZZTESTAUTO','ZZTESTCODE')");
+    Database::insert('coupons', ['code' => 'ZZTESTAUTO', 'title' => 'ZZ Test Festival Offer', 'discount_type' => 'flat',
+        'discount_value' => 150, 'min_amount' => 0, 'per_user_limit' => 0, 'used_count' => 0, 'is_active' => 1, 'auto_apply' => 1]);
+    Database::insert('coupons', ['code' => 'ZZTESTCODE', 'title' => 'ZZ Secret Code', 'discount_type' => 'flat',
+        'discount_value' => 500, 'min_amount' => 0, 'per_user_limit' => 0, 'used_count' => 0, 'is_active' => 1, 'auto_apply' => 0]);
+    try {
+        $codes = array_column(Fare::runningOffers(), 'code');
+        check('the running auto-apply offer is visible to the bot', in_array('ZZTESTAUTO', $codes, true));
+        check('a typed-code coupon is never broadcast', !in_array('ZZTESTCODE', $codes, true));
+        $op = QuickTicket::plan(['seats' => 1, 'customer' => true, 'phone' => $freshPhone()]);
+        check('the quote carries the saving and the offer title',
+            (float) ($op['fare']['couponDiscount'] ?? 0) === 150.0 && ($op['fare']['offerTitle'] ?? '') === 'ZZ Test Festival Offer',
+            json_encode(array_intersect_key($op['fare'], array_flip(['total', 'couponDiscount', 'offerTitle']))));
+        $sum = new ReflectionMethod(WaBooking::class, 'summary');
+        $sum->setAccessible(true);
+        $txt = (string) $sum->invoke(null, $op, ['name' => 'Ram Test', 'seats' => 1], 'ne');
+        check('the WhatsApp summary shows the offer line', str_contains($txt, '🎁') && str_contains($txt, 'ZZ Test Festival Offer'));
+    } finally {
+        Database::run("DELETE FROM coupons WHERE code IN ('ZZTESTAUTO','ZZTESTCODE')");
+    }
 } finally {
     $cleanup();
 }

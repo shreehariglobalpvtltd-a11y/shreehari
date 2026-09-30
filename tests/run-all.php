@@ -88,6 +88,7 @@ const CORE_SUITES = [
     'cross-mode-seat-sync-test.php' => 'private cabin ⇄ sharing beds: one physical inventory',
     'cross-mode-hold-test.php'     => 'a hold in one mode blocks the bed in the other',
     'seat-layout-test.php'         => 'one 4+2 physical shape everywhere',
+    'seat-label-test.php'          => 'two floors, one grid: A1..F6 / A7..F12, 72 unique, stored ids unchanged',
     'seat-block-test.php'          => 'a berth taken out of service stays out',
     'per-seat-cancel-test.php'     => 'cancelling one seat leaves the rest intact',
     'emergency-seat-test.php'      => 'the emergency berth is never sold',
@@ -103,6 +104,7 @@ const CORE_SUITES = [
     'missed-bus-test.php'          => 'the 24h grace after a departure',
     'counter-mode-test.php'        => 'the desk sells through the same engine',
     'counter-role-test.php'        => 'the counter role sees only what it may',
+    'counter-location-test.php'    => 'the desk a ticket was cut at: the list, the label, and both renders',
     'counter-grace-test.php'       => 'counter may sell past the public cut-off',
     'counter-discount-test.php'    => 'counter discount is capped server-side',
     'agent-isolation-test.php'     => 'an agent never reads another agent’s book',
@@ -147,9 +149,40 @@ const CORE_SUITES = [
     'wa-local-booking-test.php'    => 'the WhatsApp ticket engine sells with no AI key at all',
     // 20 Sep 2026, registered with the WhatsApp assistant it guards.
     'wa-agent-test.php'            => 'the WhatsApp assistant: role, switch, quote-then-confirm, ownership, audit',
+    // 24 Sep 2026 — the assistant as the company's manager for staff.
+    'wa-login-test.php'            => 'WhatsApp sign-in: password + code, session, revoke, the door stays shut when off',
+    'wa-bulk-test.php'             => 'bulk tickets from one list: every name and number read by code, one ho sells them all',
+    'wa-manager-tools-test.php'    => 'pinned name + number, the seller\'s own sales and wallet, the office over agents and customers',
     // 22 Sep 2026, registered with the knowledge base it guards.
     'ai-turn-test.php'            => 'the tool loop is bounded: budget, deadline, no repeated write on retry',
     'ai-kb-test.php'              => 'the knowledge base: audience scope, the ai_kb_on switch, an honest redacted miss',
+    // 23 Sep 2026, registered with the on-VPS everyday answers it guards.
+    'wa-faq-test.php'             => 'everyday WhatsApp answers from the live tables, no AI: personal left to the assistant',
+    'seatmap-test.php'            => 'the customer seat picture: signed link, status only (never names), same count as the challan',
+    'report-chart-test.php'       => 'the office report chart: figures = the register, signed link, office numbers only',
+    'wa-voice-test.php'           => 'voice notes: the Gemini request, the cleaned transcript, the typed-message path',
+    // 24 Sep 2026, registered with the three homepage booking cards it guards.
+    'home-entry-test.php'         => 'three booking doors open the existing flows; every home/sheet label exists in en/hi/ne',
+    // 24 Sep 2026, registered with the pdfPath() fix it guards.
+    'ticket-cache-test.php'       => 'a ticket PNG/PDF older than its layout stamp is redrawn once, and only once',
+    // 24 Sep 2026, registered with the removal of the downloadable admin source backups.
+    'public-files-test.php'       => 'no backup copy of PHP source where the web server can hand it out',
+    'devshape-test.php'           => 'Nepali on the PNG / PDF documents is shaped by HarfBuzz, and falls back safely',
+    // 24 Sep 2026, registered with the operations-manager stage it guards.
+    'company-docs-test.php'       => 'the documents vault: encrypted at rest, masked in chat, clearance by role, one-time links, honest sends',
+    'wa-ops-manager-test.php'     => 'human handoff (SUP-…), step-up gate on money tools, catalogue by switch, attachments, consent',
+    // 24 Sep 2026, registered with the per-request session check it guards.
+    'admin-session-revalidate-test.php' => 'a deactivated or demoted staff member loses it on the next request, not the next login',
+    'money-guards-test.php'        => 'paper-ticket cap, agent-only commission, no proof downgrade, coupon redemption, second void, hold cap',
+    'seat-events-test.php'         => 'live seat events: the version moves only when seats move; unchanged answers; the stream',
+    'whereis-test.php'             => '"Where is my bus?": honest status, three doors, the keyed page, its JSON, trackUrl in the app payload',
+    'contact-layer-test.php'       => 'the contact dial on every screen; "call me back" reaches the office inbox; labels in three languages',
+    'route-pages-test.php'         => 'search-facing route pages in en / hi / ne from the live tables; JSON-LD, hreflang, sitemaps, robots',
+    // 24 Sep 2026, registered with the website / app assistant they guard.
+    'ai-chart-test.php'           => 'the report picture: every chart shape paints, an empty block never does, the sweep',
+    'ai-web-agent-test.php'       => 'the website assistant: identity by session, per-channel selling switch, reports scoped, feedback filed, audit',
+    // 23 Sep 2026 (UI v3, ported by the 24 Sep integration), registered with the card it guards.
+    'seat-status-png-test.php'    => 'the live seat-status card: draws every berth, no names, cached on the fingerprint, off by default',
 ];
 
 /**
@@ -177,6 +210,7 @@ const NODE_SUITES = [
     'i18n-check.js'          => 'en/hi/ne key parity',
     'offline-ticket-test.js' => 'the ticket survives a deploy and works offline',
     'lazy-retry-test.js'     => 'failed lazy downloads remain retryable without duplicate actions',
+    'seat-label-parity.js'   => 'the browser prints the same seat labels as the server',
 ];
 
 /** Need the dev server on :8899 as well as the database. */

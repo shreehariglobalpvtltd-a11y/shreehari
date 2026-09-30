@@ -103,13 +103,19 @@ function admin_nav(): array
         ['href' => 'agent-passengers.php','icon' => 'id-card','label' => $agentView ? 'My Passengers' : 'Agent Passengers','perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents'],
         ['href' => 'agent-offline.php','icon' => 'notepad',   'label' => 'Paper Tickets',    'perm' => $agentView ? 'bookings.view' : 'commissions.view',  'section' => 'Agents'],
         ['href' => 'agent-ranking.php','icon' => 'trophy',    'label' => 'Agent Ranking',    'perm' => 'dashboard.view', 'section' => 'Agents'],
-        ['href' => 'staff.php',        'icon' => 'user-cog',  'label' => 'Staff & Approvals', 'perm' => 'staff.manage',  'section' => 'Agents'],
+        // staff.php itself admits only a super-admin (it says so on the page),
+        // so the item is shown only to one — a manager used to see a link
+        // that refused them every time.
+        ['href' => 'staff.php',        'icon' => 'user-cog',  'label' => 'Staff & Approvals', 'perm' => Auth::isSuperadmin() ? 'dashboard.view' : '__superadmin_only__',  'section' => 'Agents'],
 
         // Customers — leads and the people who travelled. An agent's own
         // bookings are scoped by sold_by_admin_id, but an unclaimed lead has
         // no seller so it belongs to the office.
         ['href' => 'customers.php',    'icon' => 'user',     'label' => 'Customers',        'perm' => 'customers.view', 'section' => 'Customers'],
         ['href' => 'enquiries.php',    'icon' => 'mail',      'label' => 'Enquiries',        'perm' => 'customers.view', 'section' => 'Customers'],
+        // 24 Sep 2026: requests the WhatsApp assistant handed to people (SUP-…).
+        ['href' => 'support-inbox.php','icon' => 'msg',       'label' => 'Support Inbox',    'perm' => 'support.view',   'section' => 'Customers'],
+        ['href' => 'promo-card.php',   'icon' => 'image',     'label' => 'Promo card',       'perm' => 'dashboard.view', 'section' => 'Payments'],
 
         // Buses — fleet, the day-by-day schedule and the crew.
         ['href' => 'calendar.php',     'icon' => 'calendar',  'label' => 'Bus Calendar',     'perm' => 'schedules.manage','section' => 'Buses'],
@@ -128,6 +134,10 @@ function admin_nav(): array
         ['href' => 'offers.php',       'icon' => 'star',      'label' => 'Offers & Discounts','perm' => 'payments.view',  'section' => 'Payments'],
 
         // Reports
+        // 24 Sep 2026: the assistant with hands, full-screen — reports and
+        // graphs for the office, their own book for an agent (bookings.view
+        // so a counter agent finds it too; the server scopes every answer).
+        ['href' => 'ai-copilot.php',   'icon' => 'msg',    'label' => '🤖 AI Sahayak',     'perm' => 'bookings.view',  'section' => 'Reports', 'hot' => true],
         ['href' => 'analytics.php',    'icon' => 'chart',  'label' => 'Analytics',        'perm' => 'dashboard.view', 'section' => 'Reports'],
         ['href' => 'feedback.php',     'icon' => 'star',      'label' => 'Ratings',          'perm' => 'dashboard.view', 'section' => 'Reports'],
         ['href' => 'accounting.php',   'icon' => 'banknote',    'label' => 'Accounting',       'perm' => 'payments.view',  'section' => 'Reports'],
@@ -140,6 +150,8 @@ function admin_nav(): array
         ['href' => 'health.php',       'icon' => 'alert',     'label' => 'System Health',    'perm' => 'dashboard.view', 'section' => 'Settings'],
         ['href' => 'ai-knowledge.php', 'icon' => 'doc',       'label' => 'AI Knowledge',     'perm' => 'dashboard.view', 'section' => 'Settings'],
         ['href' => 'ai-activity.php',  'icon' => 'msg',       'label' => 'AI Activity',      'perm' => 'dashboard.view', 'section' => 'Settings'],
+        // 24 Sep 2026: the approved documents vault the assistant may quote and send.
+        ['href' => 'company-docs.php', 'icon' => 'doc',       'label' => 'Company Documents','perm' => 'dashboard.view', 'section' => 'Settings'],
 
         // Map — routes, stops, head office and the driver's live position (5 Sep 2026).
         ['href' => 'map.php',          'icon' => 'map-pin',      'label' => 'Live Map',         'perm' => 'schedules.view', 'section' => 'Map'],
@@ -151,6 +163,19 @@ function admin_nav(): array
 /**
  * Render the page head, top bar and sidebar. Call once at the top.
  */
+/**
+ * Is a nav item the page being shown? Exact file-name match: 'agent' used
+ * to light up agent.php AND agents.php, agent-sales.php, agent-passengers.php,
+ * agent-offline.php and agent-ranking.php at once (substring match).
+ */
+function admin_nav_is_active(string $href, string $active): bool
+{
+    if ($active === '' || str_starts_with($href, '/')) {
+        return false;
+    }
+    return pathinfo($href, PATHINFO_FILENAME) === $active;
+}
+
 function admin_header(string $title, string $active = ''): void
 {
     $admin = Auth::admin() ?? [];
@@ -170,7 +195,7 @@ function admin_header(string $title, string $active = ''): void
     // Design system v2 (17 Sep 2026): Inter for the UI (CSP already allows
     // fonts.googleapis.com / fonts.gstatic.com), swap so text never blocks;
     // the system stack in --f-ui covers offline desks and Devanagari.
-    echo '<meta name="theme-color" content="#12264E">';
+    echo '<meta name="theme-color" content="#0C306C">';
     // 17 Sep 2026: the CSRF token for the panel's JSON tools (WhatsApp sends).
     echo '<meta name="csrf" content="' . Security::e(Security::csrfToken()) . '">';
     echo '<link rel="preconnect" href="https://fonts.googleapis.com">';
@@ -252,7 +277,7 @@ function admin_header(string $title, string $active = ''): void
     // and the payments badge span (#navBadgePayments) that the live poll needs.
     $renderLink = static function (array $item) use ($active, $base): void {
         $cls = [];
-        if ($active !== '' && !str_starts_with($item['href'], '/') && str_contains($item['href'], $active)) {
+        if (admin_nav_is_active($item['href'], $active)) {
             $cls[] = 'on';
         }
         if (!empty($item['hot'])) {
@@ -290,7 +315,7 @@ function admin_header(string $title, string $active = ''): void
         // set from localStorage on top of this (see admin_nav_js).
         $activeSec = '';
         foreach ($items as $item) {
-            if ($active !== '' && str_contains($item['href'], $active)) { $activeSec = (string) ($item['section'] ?? ''); break; }
+            if (admin_nav_is_active($item['href'], $active)) { $activeSec = (string) ($item['section'] ?? ''); break; }
         }
         foreach ($groups as $sec => $groupItems) {
             if ($sec === '') { foreach ($groupItems as $item) { $renderLink($item); } continue; }
@@ -346,7 +371,7 @@ function admin_mobile_nav(array $items, string $active = ''): string
     $slot = static function (?array $it, string $label, string $icon, string $tone, string $active, bool $fab = false): string {
         if ($it === null) { return '<a class="mn-empty" aria-hidden="true"></a>'; }
         $url = str_starts_with($it['href'], '/') ? $it['href'] : '/admin/' . $it['href'];
-        $on  = ($active !== '' && !str_starts_with($it['href'], '/') && str_contains($it['href'], $active)) ? ' on' : '';
+        $on  = admin_nav_is_active($it['href'], $active) ? ' on' : '';
         if ($fab) {
             return '<a class="fab" href="' . $url . '" aria-label="' . Security::e($label) . '"><span class="mn-fab"><svg class="a-ic"><use href="#a-' . $icon . '"/></svg></span><span class="mn-fab-l">' . Security::e($label) . '</span></a>';
         }
@@ -1157,8 +1182,8 @@ function admin_css(): string
     return <<<'CSS'
 *{box-sizing:border-box}
 :root{
-  --navy:#12264E;--navy-700:#1C3B72;--blue:#2E5FA8;--blue-600:#24508F;--blue-100:#E3ECF9;--blue-50:#F0F5FC;
-  --orange:#F07C1F;--orange-600:#D96A10;--orange-100:#FCE9D6;--orange-50:#FFF5EC;
+  --navy:#0C306C;--navy-700:#0B3F8F;--blue:#0054A8;--blue-600:#003C90;--blue-100:#D9E7FA;--blue-50:#EEF4FC;
+  --orange:#F07800;--orange-600:#D95F00;--orange-100:#FFE4C7;--orange-50:#FFF4E8;--gold:#FFB703;
   --ink:#16233C;--ink-2:#2B3A55;--mut:#6B7688;--mut-2:#98A2B3;--line:#E4E9F1;--line-2:#D5DCE8;
   --bg:#F4F6FB;--card:#FFFFFF;--head:#F8FAFD;--hover:#EEF2FA;--soft:#F6F8FC;
   --ok:#178A50;--ok-bg:#E4F6EC;--warn:#B7791F;--warn-bg:#FFF4D6;--bad:#C53030;--bad-bg:#FBE3E3;
@@ -1192,7 +1217,7 @@ a:hover{color:var(--blue-600)}
 
 /* ── Top bar ─────────────────────────────────────────────────────────── */
 .tb{position:sticky;top:0;z-index:30;height:var(--tb-h);display:flex;align-items:center;gap:12px;padding:0 16px;
-    background:linear-gradient(90deg,var(--navy) 0%,var(--navy-700) 100%);color:#fff;box-shadow:0 2px 12px rgba(10,22,50,.28)}
+    background:linear-gradient(90deg,var(--navy) 0%,var(--navy-700) 62%,var(--blue) 100%);color:#fff;box-shadow:0 2px 12px rgba(10,22,50,.28);border-bottom:3px solid var(--orange)}
 .tb .brand{display:inline-flex;align-items:center;gap:9px;color:#fff;font-weight:800;font-size:15.5px;letter-spacing:-.01em;white-space:nowrap}
 .tb .brand-logo{width:30px;height:30px;object-fit:contain;background:#fff;border-radius:9px;padding:3px;box-shadow:0 1px 3px rgba(0,0,0,.25);flex:0 0 auto}
 .tb .brand span{color:#FFC08A;font-weight:600;font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin-left:2px}
@@ -1618,5 +1643,15 @@ details.advanced-section[open]>summary::before{content:'▼ '}
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}}
 @media print{.tb,.side,.scrim,.mnav,.no-print{display:none !important}.wrap{margin:0;padding:0;max-width:none}.panel,.card{box-shadow:none;break-inside:avoid}}
+/* Seat floors (23 Sep 2026) — one look on every admin seat surface: Lower Floor
+   (1F) A1–F6 BLUE, Upper Floor (2F) A7–F12 GREEN. Only the floor frame and its
+   heading take the floor colour; seat status colours stay as each page sets them. */
+.floor-L{--fl:#1E5AA8;--fl-bg:#F2F7FF;--fl-line:#C3D8F5}
+.floor-U{--fl:#15803D;--fl-bg:#F1FAF4;--fl-line:#B9E2C7}
+:root[data-theme="dark"] .floor-L{--fl:#2F6FD0;--fl-bg:rgba(47,111,208,.08);--fl-line:#27466F}
+:root[data-theme="dark"] .floor-U{--fl:#1F8F4E;--fl-bg:rgba(31,143,78,.08);--fl-line:#245B3A}
+.floor-L,.floor-U{background:var(--fl-bg);border:1.5px solid var(--fl-line);border-radius:var(--r);padding:10px}
+.floor-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px;padding:8px 12px;border-radius:10px;background:var(--fl,var(--navy));color:#fff;font-weight:800;font-size:13.5px;letter-spacing:.01em}
+.floor-head .fh-range{margin-left:auto;font-family:var(--f-mono);font-size:12px;background:rgba(255,255,255,.22);padding:2px 9px;border-radius:999px;white-space:nowrap}
 CSS;
 }

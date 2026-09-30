@@ -518,6 +518,24 @@ final class BookingService
                 'expires_at'      => ($isCod || $seller !== null) ? null : date('Y-m-d H:i:s', time() + $expiryMinutes * 60),
             ]);
 
+            /* Redeem the coupon WITH the booking, in the same transaction.
+               Fare::couponDiscount() checked usage_limit and per_user_limit
+               against coupons.used_count and coupon_redemptions — and nothing
+               ever wrote either, so a "first 50 bookings" or "once per
+               customer" coupon was unlimited. */
+            if ((string) ($pricing['couponCode'] ?? '') !== '' && (float) ($pricing['couponDiscount'] ?? 0) > 0) {
+                $couponRow = Database::fetch('SELECT id FROM coupons WHERE code = :c LIMIT 1', ['c' => (string) $pricing['couponCode']]);
+                if ($couponRow !== null) {
+                    Database::run('UPDATE coupons SET used_count = used_count + 1 WHERE id = :id', ['id' => (int) $couponRow['id']]);
+                    Database::insert('coupon_redemptions', [
+                        'coupon_id'  => (int) $couponRow['id'],
+                        'booking_id' => $bookingId,
+                        'user_phone' => (string) Database::scalar('SELECT contact_phone FROM bookings WHERE id = :id', ['id' => $bookingId], ''),
+                        'amount'     => round((float) $pricing['couponDiscount'], 2),
+                    ]);
+                }
+            }
+
             /* ---- Outbound leg ------------------------------------- */
             $legRow = [
                 'booking_id'    => $bookingId,
@@ -1467,6 +1485,15 @@ final class BookingService
         );
         if ($payment === null) {
             throw new RuntimeException('No payment record for this booking.');
+        }
+
+        /* Already paid: a second proof (a re-tap on the pay page, a screenshot
+           sent twice, or a stranger who knows the PNR) used to write
+           payments.status back to 'pending' on a CONFIRMED, verified booking,
+           dropping a paid ticket into the verify queue and letting a reject
+           there cancel it. Money that is in hand stays verified. */
+        if (in_array((string) $payment['status'], ['verified', 'settled'], true)) {
+            throw new RuntimeException('This booking is already paid and confirmed — no more proof is needed. / यो टिकटको भुक्तानी पहिले नै पुष्टि भइसक्यो।');
         }
 
         $utr        = Security::clean($data['utr'] ?? '', 60);
@@ -2484,16 +2511,32 @@ final class BookingService
                 $perSeatCommission = AgentWallet::commissionForBooking($perSeatFare, $soldBy, 1);
                 if ($perSeatCommission > 0) {
                     try {
-                        Database::insert('agent_ledger', [
-                            'agent_admin_id' => $soldBy,
-                            'booking_id'     => $bookingId,
-                            'account'        => 'commission',
-                            'entry_type'     => 'commission_void',
-                            'amount'         => -$perSeatCommission,
-                            'note'           => 'Per-seat cancel: seat ' . $seatNo . ' voided',
-                            'ref'            => $locked['pnr'] ?? '',
-                            'created_by'     => $adminId,
-                        ]);
+                        /* UNIQUE(booking_id, entry_type) allows ONE void row per
+                           booking, so the second seat cancelled on a family
+                           ticket used to throw a duplicate-key error that was
+                           only logged — the agent kept that seat's commission.
+                           A second void now tops up the first. */
+                        $existingVoid = Database::fetch(
+                            "SELECT id, amount, note FROM agent_ledger WHERE booking_id = :b AND entry_type = 'commission_void' LIMIT 1",
+                            ['b' => $bookingId]
+                        );
+                        if ($existingVoid !== null) {
+                            Database::update('agent_ledger', [
+                                'amount' => round((float) $existingVoid['amount'] - $perSeatCommission, 2),
+                                'note'   => (string) $existingVoid['note'] . '; seat ' . $seatNo . ' voided',
+                            ], 'id = :id', ['id' => (int) $existingVoid['id']]);
+                        } else {
+                            Database::insert('agent_ledger', [
+                                'agent_admin_id' => $soldBy,
+                                'booking_id'     => $bookingId,
+                                'account'        => 'commission',
+                                'entry_type'     => 'commission_void',
+                                'amount'         => -$perSeatCommission,
+                                'note'           => 'Per-seat cancel: seat ' . $seatNo . ' voided',
+                                'ref'            => $locked['pnr'] ?? '',
+                                'created_by'     => $adminId,
+                            ]);
+                        }
                     } catch (Throwable $e) {
                         Logger::error('Per-seat commission void failed', ['e' => $e->getMessage()]);
                     }

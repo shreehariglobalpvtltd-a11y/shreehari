@@ -57,8 +57,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
 /* Confirmed, still travelling, and the newest WhatsApp attempt failed —
    the same shape cron/whatsapp-retry.php uses to decide who is owed. */
+/* A counter agent sees only the tickets they sold (bookings.view reaches
+   this page, and the register rule is "an agent never reads another
+   agent's book"); the office sees everyone's. b.* rides along so the
+   WhatsApp number can be built per row without a second SELECT. */
+$scopeId  = Auth::bookingScopeAdminId();
+$scopeSql = $scopeId !== null ? ' AND b.sold_by_admin_id = :scope' : '';
 $rows = Database::fetchAll(
-    "SELECT b.id, b.pnr, b.contact_phone, b.total_amount,
+    "SELECT b.*,
             m.error AS last_error, m.created_at AS last_try,
             (SELECT MIN(bl.travel_date) FROM booking_legs bl WHERE bl.booking_id = b.id) AS travel_date,
             (SELECT COUNT(*) FROM message_logs t WHERE t.booking_id = b.id AND t.channel = 'whatsapp') AS tries
@@ -69,9 +75,11 @@ $rows = Database::fetchAll(
                      ORDER BY m2.id DESC LIMIT 1)
       WHERE b.status = 'confirmed'
         AND m.status = 'failed'
-        AND EXISTS (SELECT 1 FROM booking_legs bl WHERE bl.booking_id = b.id AND bl.travel_date >= CURDATE())
+        AND EXISTS (SELECT 1 FROM booking_legs bl WHERE bl.booking_id = b.id AND bl.travel_date >= CURDATE())"
+    . $scopeSql . "
       ORDER BY travel_date ASC, b.id DESC
-      LIMIT 200"
+      LIMIT 200",
+    $scopeId !== null ? ['scope' => $scopeId] : []
 );
 
 /** The message the desk will send, already written. */
@@ -142,9 +150,8 @@ admin_header('Tickets to hand over', 'wa-pending');
   <?php else: foreach ($rows as $r):
       /* whatsappNumberFor() applies the booking's own country hint, so a
          Nepali number does not get a 91 glued to the front. */
-      $bk     = Database::fetch('SELECT * FROM bookings WHERE id = :i', ['i' => (int) $r['id']]) ?? [];
-      $intl   = Notify::usablePhone((string) $r['contact_phone']) !== '' && $bk !== []
-              ? Notify::whatsappNumberFor($bk)
+      $intl   = Notify::usablePhone((string) $r['contact_phone']) !== ''
+              ? Notify::whatsappNumberFor($r)
               : '';
       $msg    = $composeFor($r);
       $link   = $intl !== '' ? whatsappLink($intl, $msg) : '';
