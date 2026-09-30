@@ -175,7 +175,7 @@ final class BookingService
            discount. Pricing, seat rules, gender lock, boarding cut-off and the
            ticket are the same code path a customer runs, so a 5-seat family
            pays the same at the counter as online. */
-        $sellerId = null; $sellerSource = 'web'; $counterMethod = null; $counterNote = '';
+        $sellerId = null; $sellerSource = 'web'; $counterMethod = null; $counterNote = ''; $deskAgentCode = '';
         if ($seller !== null) {
             $sellerId = (int) ($seller['adminId'] ?? 0);
             if ($sellerId <= 0) {
@@ -184,6 +184,7 @@ final class BookingService
             $sellerSource  = in_array($seller['source'] ?? '', ['agent', 'counter', 'admin'], true) ? (string) $seller['source'] : 'counter';
             $counterMethod = in_array($seller['paymentMethod'] ?? '', ['cash', 'upi', 'esewa', 'bank'], true) ? (string) $seller['paymentMethod'] : 'cash';
             $counterNote   = Security::clean((string) ($seller['note'] ?? ''), 255);
+            $deskAgentCode = $referralCodeClean;   // office/counter desk: credited after the sale (attributeDeskSale)
             $referralCodeClean = '';           // the seller IS the agent; a typed code is ignored
             $soldByAdminId     = $sellerId;
             $agentOverride     = Boarding::agentGraceOpen($routeId, $travelDate, self::LATE_BOOK_HOURS);
@@ -673,6 +674,10 @@ final class BookingService
                 try { Ticket::issue((int) $booking['id']); }
                 catch (Throwable $e) { Logger::error('Ticket::issue (counter) failed', ['e' => $e->getMessage()]); }
                 AgentWallet::accrue($booking);
+                // Before the WhatsApp fan-out, so the ticket sent already names the agent.
+                if ($sellerSource !== 'agent' && !AgentWallet::isAgentRow((int) $sellerId)) {
+                    $booking = self::attributeDeskSale($booking, $deskAgentCode, (int) $sellerId);
+                }
             }
 
             /* COD does NOT queue for payment verification — it is confirmed on
@@ -695,6 +700,41 @@ final class BookingService
             }
         }
 
+        return $booking;
+    }
+
+    /**
+     * Every office/counter sale belongs to an agent: the one picked at the
+     * desk, else the company's own code (setting company_agent_code, default
+     * SHG-0001) for "Other" / blank / unknown. Goes through reassignSeller,
+     * so only commission moves — the cash stays with the staff who took it.
+     * Never fails a sale that is already made.
+     *
+     * @param array<string,mixed> $booking
+     * @return array<string,mixed>
+     */
+    private static function attributeDeskSale(array $booking, string $code, int $by): array
+    {
+        try {
+            $code    = strtoupper(trim($code));
+            $agentId = ($code !== '' && $code !== 'OTHER') ? AgentWallet::resolveAgentCodeFromString($code) : null;
+            if ($agentId === null) {
+                $agentId = AgentWallet::resolveAgentCodeFromString(Settings::getString('company_agent_code', 'SHG-0001'));
+            }
+            if ($agentId === null || $agentId === (int) ($booking['sold_by_admin_id'] ?? 0)) {
+                return $booking;
+            }
+            $row = Database::fetch('SELECT * FROM bookings WHERE id = :i', ['i' => (int) ($booking['id'] ?? 0)]);
+            if ($row === null) {
+                return $booking;
+            }
+            AgentWallet::reassignSeller($row, $agentId, $by);
+            $booking['sold_by_admin_id'] = $agentId;
+        } catch (Throwable $e) {
+            Logger::warning('Desk sale agent attribution failed', [
+                'pnr' => (string) ($booking['pnr'] ?? ''), 'code' => $code, 'e' => $e->getMessage(),
+            ]);
+        }
         return $booking;
     }
 

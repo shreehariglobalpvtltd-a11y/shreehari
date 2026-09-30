@@ -759,6 +759,7 @@ final class QuickTicket
             : (in_array($defaultPay, ['cash', 'upi', 'esewa', 'bank'], true) ? $defaultPay : 'cash');
         $note  = Security::clean((string) ($input['note'] ?? ''), 160);
         $given = is_array($input['passengers'] ?? null) ? array_values($input['passengers']) : [];
+        $deskAgent = strtoupper(Security::clean((string) ($input['agentCode'] ?? ''), 20));
 
         $opts = [
             'direction' => (string) ($input['direction'] ?? ''),
@@ -789,7 +790,7 @@ final class QuickTicket
         $exclude = [];
         for ($attempt = 1; $attempt <= 2; $attempt++) {
             $plan    = self::plan($opts + ['exclude' => $exclude]);
-            $request = self::requestFor($plan, $name, $phone, $gender, $idType, $given, '', $country);
+            $request = self::requestFor($plan, $name, $phone, $gender, $idType, $given, $deskAgent, $country);
             try {
                 $booking = BookingService::create($request, $seller);
                 break;

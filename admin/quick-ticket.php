@@ -441,6 +441,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
           <?php foreach ($agentList as $ag): ?>
             <option value="<?= Security::e($ag['code']) ?>"<?= $ag['code'] === $staffCode ? ' selected' : '' ?>><?= Security::e($ag['code'] . ' · ' . $ag['name']) ?></option>
           <?php endforeach; ?>
+          <option value="OTHER">अन्य / Other (Direct Sale — company)</option>
         </select>
       </div>
 
@@ -740,7 +741,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
   }
   function money(n) { return '₹' + Number(n || 0).toLocaleString('en-IN'); }
   function commLine(seats) {
-    var ag = $('#qtAgent'); if (!ag || !ag.value || !COMM_FLAT || !seats) return '';
+    var ag = $('#qtAgent'); if (!ag || !ag.value || ag.value === 'OTHER' || !COMM_FLAT || !seats) return '';
     var sel = AGENTS.find(function (a) { return a.code === ag.value; });
     var rate = (sel && sel.type === 'joint') ? COMM_JOINT : COMM_DIRECT;
     return '<div style="margin-top:2px"><small>💰 कमिशन · Commission</small><b style="color:#178A50">' + money(rate * seats) + '</b><em>' + esc(ag.value) + ' · ' + money(rate) + ' × ' + seats + ' seat' + (seats > 1 ? 's' : '') + '</em></div>';
