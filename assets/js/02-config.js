@@ -547,7 +547,7 @@ function loadTermsData(cb) {
   if (window.__shgTermsQueue) { window.__shgTermsQueue.push(cb); return; }
   window.__shgTermsQueue = [cb];
   var el = document.createElement('script');
-  el.src = '/assets/js/terms-data.js?v=20260920l';
+  el.src = '/assets/js/terms-data.js?v=20260930a';
   el.onload = function () {
     TERMS_DATA = window.TERMS_DATA || [];
     window.__shgTermsReady = true;
@@ -577,13 +577,14 @@ function renderTerms() {
     h += '<summary class="tc-head" style="border-left:4px solid ' + s.color + '">';
     h += '<span class="tc-letter">' + s.letter + '</span>';
     h += '<span class="tc-emoji">' + s.emoji + '</span>';
-    h += '<span class="tc-title">' + s.t_ne + ' / ' + s.t_hi + ' / ' + s.t_en + '</span>';
+    h += '<span class="tc-title">' + s.t_ne + ' / ' + s.t_hi + (s.t_gu ? ' / ' + s.t_gu : '') + ' / ' + s.t_en + '</span>';
     h += '<span class="tc-arrow">▼</span>';
     h += '</summary>';
     h += '<div class="tc-body">';
     h += '<div class="tc-sum">';
     h += '<p><span class="tc-lang">NE</span> ' + s.s_ne + '</p>';
     h += '<p><span class="tc-lang">HI</span> ' + s.s_hi + '</p>';
+    if (s.s_gu) h += '<p><span class="tc-lang">GU</span> ' + s.s_gu + '</p>';
     h += '<p><span class="tc-lang">EN</span> ' + s.s_en + '</p>';
     h += '</div>';
     h += '<div class="tc-clauses">';
@@ -972,7 +973,7 @@ function seedRoutes() {
       busName: 'SHG Gandaki Sleeper', busNo: 'GJ-02-T-5580', type: 'sleeper',
       pathId: 'via_bahraich',
       depTime: '13:00', arrTime: '', dayOffset: 1, duration: '', fare: 2000,
-      configVer: 5,   // reseed guard — bump when stop names change
+      configVer: 7,   // reseed guard — bump when stop names change
       boarding: [
         'Surat · Bus stand / designated point @ 13:00 [21.170,72.831]',
         'Kamrej · Shiv Shakti Hotel @ 13:30 [21.2729662,72.9555969]',
@@ -994,7 +995,7 @@ function seedRoutes() {
       busName: 'SHG Gandaki Sleeper', busNo: 'GJ-02-T-5580', type: 'sleeper',
       pathId: 'via_bahraich',
       depTime: '18:00', arrTime: '', dayOffset: 1, duration: '', fare: 1800,
-      configVer: 5,
+      configVer: 7,
       boarding: ['Rupaidiha · India-Nepal border checkpoint @ 18:00 [28.060,81.617]'],
       drop: [
         'S Hari Parking, Nana Chiloda (Amd) [23.171,72.623]',
@@ -1121,10 +1122,10 @@ function nepaliTime(t24) {
    Surat) for a passenger boarding at Nana Chiloda; now it shows their stop.
    No \p{..} regex here: an old WebView would fail to parse the whole file. */
 var STOP_CODES = [
-  ['nana chiloda', 'AMD', 'Nana Chiloda'], ['hari parking', 'AMD', 'Nana Chiloda'], ['ahmedabad', 'AMD', 'Ahmedabad'],
+  ['nana chiloda', 'AMD', 'Nana Chiloda'], ['hari parking', 'AMD', 'Nana Chiloda'], ['ahmedabad', 'AMD', 'Ahmedabad'], ['chiloda', 'AMD', 'Nana Chiloda'],
   ['emli', 'EMB', null], ['bhupal', 'EMB', null], ['mehsana', 'MSN', 'Mehsana'], ['surat', 'STV', 'Surat'],
   ['baroda', 'BRC', 'Baroda'], ['barauda', 'BRC', 'Baroda'], ['vadodara', 'BRC', 'Vadodara'],
-  ['kamrej', 'KMJ', 'Kamrej'], ['ankleshwar', 'AKV', 'Ankleshwar'], ['bharuch', 'BRH', 'Bharuch'], ['anand', 'ANA', 'Anand'], ['nadiad', 'NAD', 'Nadiad'],
+  ['kamrej', 'KMJ', 'Kamrej'], ['ankleshwar', 'AKV', 'Ankleshwar'], ['ankeshwar', 'AKV', 'Ankleshwar'], ['bharuch', 'BRH', 'Bharuch'], ['anand', 'ANA', 'Anand'], ['nadiad', 'NAD', 'Nadiad'],
   ['rupaidiha', 'RPD', 'Rupaidiha'], ['jamunaha', 'RPD', 'Jamunaha'], ['nepalgunj', 'NPJ', 'Nepalgunj'], ['nepalganj', 'NPJ', 'Nepalgunj'],
   ['kohalpur', 'KHL', 'Kohalpur'], ['lucknow', 'LKO', 'Lucknow'], ['bahraich', 'BRK', 'Bahraich'], ['gorakhpur', 'GKP', 'Gorakhpur'],
   ['kathmandu', 'KTM', 'Kathmandu'], ['delhi', 'DEL', 'Delhi'], ['jaipur', 'JAI', 'Jaipur'], ['udaipur', 'UDR', 'Udaipur']

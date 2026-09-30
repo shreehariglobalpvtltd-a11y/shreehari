@@ -39,6 +39,7 @@ final class Boarding
     private const STOP_CODES = [
         'nana chiloda' => ['AMD', 'Nana Chiloda'],
         'hari parking' => ['AMD', 'Nana Chiloda'],
+        'chiloda'      => ['AMD', 'Nana Chiloda'],
         'ahmedabad'    => ['AMD', 'Ahmedabad'],
         'emli'         => ['EMB', null],
         'bhupal'       => ['EMB', null],
@@ -49,6 +50,7 @@ final class Boarding
         'vadodara'     => ['BRC', 'Vadodara'],
         'kamrej'       => ['KMJ', 'Kamrej'],
         'ankleshwar'   => ['AKV', 'Ankleshwar'],
+        'ankeshwar'    => ['AKV', 'Ankleshwar'],
         'bharuch'      => ['BRH', 'Bharuch'],
         'anand'        => ['ANA', 'Anand'],
         'nadiad'       => ['NAD', 'Nadiad'],

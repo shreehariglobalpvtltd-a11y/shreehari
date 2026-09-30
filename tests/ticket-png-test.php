@@ -92,7 +92,8 @@ $root = dirname(__DIR__);
 $src  = static fn(string $p): string => (string) file_get_contents($root . '/' . $p);
 check('download-ticket.php serves ?img=1', str_contains($src('download-ticket.php'), "_GET['img']"));
 check('notify confirm links the image', substr_count($src('includes/notify.php'), 'Ticket::imageUrl') >= 3);
-check('checkout relaxes the phone rule at the counter only', str_contains($src('assets/js/07-checkout.js'), "ctrSell ? (phoneVal === '' || /^\\d{8,15}\$/.test(phoneVal)) : /^\\d{10}\$/.test(phoneVal)"));
+check('checkout relaxes the phone rule at the counter only (customers: +91 6-9 / +977 9x)', str_contains($src('assets/js/07-checkout.js'), "ctrSell ? (phoneVal === '' || /^\\d{8,15}\$/.test(phoneVal)) : coPhoneShapeOk(phoneVal)")
+    && str_contains($src('assets/js/07-checkout.js'), "return cc === '977' ? /^9[6-9]/.test(phv) : /^[6-9]/.test(phv);"));
 check('app auto-download ships the image', str_contains($src('assets/js/07-checkout.js'), 'downloadTicketImage(b); } catch'));
 check('reissue deletes the stale rendered files', str_contains($src('includes/ticket.php'), "@unlink(TICKET_PATH . '/ticket_' . \$pnr . '.png')"));
 check('share fetches the server PNG', str_contains($src('assets/js/11-pdf-ticket.js'), 'serverTicketPngBlob'));

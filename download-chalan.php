@@ -36,7 +36,7 @@ try {
     Security::requireRateLimit('chalan_dl', Security::clientIp(), 40, 60);
 
     $sid  = (int) ($_GET['sid'] ?? 0);
-    $doc  = ($_GET['doc'] ?? '') === 'chalani' ? 'chalani' : 'challan';
+    $doc  = in_array((string) ($_GET['doc'] ?? ''), ['chalani', 'status'], true) ? (string) $_GET['doc'] : 'challan';
     $page = max(1, min(50, (int) ($_GET['page'] ?? 1)));
     $exp  = (int) ($_GET['exp'] ?? 0);
     $key  = Security::clean($_GET['k'] ?? '', 64);
@@ -64,6 +64,13 @@ try {
 
     if ($doc === 'challan') {
         $res = ChallanPng::render($sid, 'whatsapp', null, false);
+        Response::inline($res['path'], 'image/png');
+    }
+    /* 23 Sep 2026: the live seat-status card (no passenger details) that the
+       office / agent WhatsApp receives on every booking - same signed link. */
+    if ($doc === 'status') {
+        require_once INCLUDE_PATH . '/seatstatuspng.php';
+        $res = SeatStatusPng::render($sid, false);
         Response::inline($res['path'], 'image/png');
     }
 

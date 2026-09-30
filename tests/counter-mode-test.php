@@ -177,6 +177,57 @@ try {
     check('source counter accepted', ($b6['source'] ?? '') === 'counter');
     throws('seller without an admin id is refused', fn() => BookingService::create($req(['U7'], '8'), ['adminId' => 0, 'paymentMethod' => 'cash']), 'staff');
 
+    echo "-- 6c. Office desk sale is credited to the chosen agent, else the company code --\n";
+    $coded = null;
+    foreach (Database::fetchAll("SELECT id FROM admins WHERE role = 'agent' AND is_active = 1 AND (locked_until IS NULL OR locked_until < NOW()) ORDER BY id") as $ag) {
+        if (AgentWallet::agentCodeFor((int) $ag['id']) !== null) { $coded = (int) $ag['id']; break; }
+    }
+    $tempCode = false;
+    if ($coded === null) {
+        for ($c = AgentWallet::AGENT_CODE_MAX; $c > AgentWallet::AGENT_CODE_MAX - 50; $c--) {
+            if (AgentWallet::adminForAgentCode($c) === null) { AgentWallet::setAgentCode($agentId, $c); $coded = $agentId; $tempCode = true; break; }
+        }
+    }
+    if ($coded !== null) {
+        $deskId = (int) Database::scalar('SELECT id FROM admins WHERE username = :u', ['u' => 'cm-desk'], 0);
+        if ($deskId === 0) {
+            $deskId = (int) Database::insert('admins', [
+                'username' => 'cm-desk', 'password_hash' => password_hash('Cm@12345', PASSWORD_BCRYPT),
+                'full_name' => 'Counter Mode Desk', 'role' => 'manager', 'is_active' => 1, 'must_change_pw' => 0,
+            ]);
+        }
+        $label   = AgentWallet::agentCodeLabel($coded);
+        $oldComp = Settings::getString('company_agent_code', 'SHG-0001');
+        $desk    = ['adminId' => $deskId, 'source' => 'counter', 'paymentMethod' => 'cash'];
+        try {
+            $bc1 = BookingService::create($req(['U12'], '10', ['referralCode' => strtolower($label)]), $desk);
+            check('desk sale with a picked agent is sold by that agent', (int) $bc1['sold_by_admin_id'] === $coded
+                && (int) Database::scalar('SELECT sold_by_admin_id FROM bookings WHERE id = :i', ['i' => (int) $bc1['id']], 0) === $coded, $label);
+            check('  the desk keeps no commission on it', (float) Database::scalar(
+                "SELECT COALESCE(SUM(amount),0) FROM agent_ledger WHERE booking_id = :b AND account = 'commission' AND agent_admin_id = :d",
+                ['b' => (int) $bc1['id'], 'd' => $deskId], 0) == 0.0);
+            Settings::set('company_agent_code', $label, 'string', 'agent', false); Settings::flush();
+            $bc2 = BookingService::create($req(['U13'], '11', ['referralCode' => 'OTHER']), $desk);
+            check('"Other" goes to the company agent code', (int) $bc2['sold_by_admin_id'] === $coded);
+            $bc3 = BookingService::create($req(['U14'], '12'), $desk);
+            check('a blank code also goes to the company agent code', (int) $bc3['sold_by_admin_id'] === $coded);
+            Settings::set('company_agent_code', 'SHG-9999', 'string', 'agent', false); Settings::flush();
+            $bc4 = BookingService::create($req(['U15'], '13', ['referralCode' => 'OTHER']), $desk);
+            check('no usable company code → the sale stays with the desk, never fails', ($bc4['status'] ?? '') === 'confirmed' && (int) $bc4['sold_by_admin_id'] === $deskId);
+        } finally {
+            Settings::set('company_agent_code', $oldComp, 'string', 'agent', false); Settings::flush();
+            foreach (Database::fetchAll("SELECT id FROM bookings WHERE contact_phone LIKE '" . CM_PHONE . "%'") as $r) {
+                try { Database::delete('agent_ledger', 'booking_id = :b', ['b' => (int) $r['id']]); } catch (Throwable $e) {}
+            }
+            Database::update('bookings', ['sold_by_admin_id' => null], "contact_phone LIKE '" . CM_PHONE . "%' AND sold_by_admin_id = :d", ['d' => $deskId]);
+            try { Database::delete('agent_ledger', 'agent_admin_id = :a', ['a' => $deskId]); } catch (Throwable $e) {}
+            try { Database::delete('admins', 'id = :i', ['i' => $deskId]); } catch (Throwable $e) {}
+            if ($tempCode) { AgentWallet::setAgentCode($agentId, null); }
+        }
+    } else {
+        echo "  SKIP  no agent with an assigned code in this database\n";
+    }
+
     echo "-- 6b. Seat-map walk-in without a phone + paper register cap --
 ";
     $b6b = BookingService::create($req(['U9'], '', ['contact' => ['phone' => '']]), $seller());

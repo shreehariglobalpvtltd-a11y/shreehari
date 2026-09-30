@@ -48,9 +48,10 @@ $codPending      = ['count' => 0, 'amount' => 0.0];
 $grossCollected  = 0.0;
 $confirmedCount  = 0;   // all confirmed/completed in window (incl. COD pending)
 $collectedCount  = 0;   // only those whose money is actually in (pairs with $grossCollected)
+$incomeByDay     = [];  // Y-m-d => money in that day
 try {
     $rows = Database::fetchAll(
-        "SELECT b.total_amount, b.currency, b.is_cod,
+        "SELECT b.total_amount, b.currency, b.is_cod, DATE(b.confirmed_at) AS d,
                 (SELECT p2.method FROM payments p2 WHERE p2.booking_id = b.id ORDER BY p2.id DESC LIMIT 1) AS method,
                 (SELECT p2.status FROM payments p2 WHERE p2.booking_id = b.id ORDER BY p2.id DESC LIMIT 1) AS pay_status
            FROM bookings b
@@ -71,6 +72,7 @@ try {
             continue;
         }
 
+        $incomeByDay[(string) $r['d']] = ($incomeByDay[(string) $r['d']] ?? 0.0) + $amt;
         $key = $method === 'cod' ? 'cash' : $method;   // a settled COD is cash in the drawer
         if (!isset($collectByMethod[$key])) { $collectByMethod[$key] = ['count' => 0, 'amount' => 0.0]; }
         $collectByMethod[$key]['count']++;
@@ -172,6 +174,80 @@ foreach ($openReqs as &$oq) {
 }
 unset($oq);
 
+/* =====================================================================
+ *  7. Daily expenses (30 Sep 2026, "kati kamai, kati kharcha"). Stored in
+ *     trip_expenses (schema.sql) against the daily bus: the category picks
+ *     the column (diesel / toll / driver_pay), anything else goes to misc
+ *     with the category written in front of the note.
+ * ===================================================================== */
+$expCats  = ['diesel' => 'Diesel · डिजेल', 'toll' => 'Toll · टोल', 'driver' => 'Driver / crew · ड्राइभर', 'salary' => 'Salary · तलब', 'office' => 'Office / rent · अफिस', 'other' => 'Other · अन्य'];
+$canSpend = Auth::isSuperadmin() || Auth::can('payments.verify');
+$expFlash = null;
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($_POST['action'] ?? '', ['add_expense', 'delete_expense'], true)) {
+    try {
+        if (!Security::verifyCsrf()) {
+            throw new RuntimeException('Session expired — please try again.');
+        }
+        if (!$canSpend) {
+            throw new RuntimeException('You may not record expenses.');
+        }
+        if ($_POST['action'] === 'delete_expense') {
+            $eid = (int) ($_POST['id'] ?? 0);
+            $old = Database::fetch('SELECT * FROM trip_expenses WHERE id = :i', ['i' => $eid]);
+            if ($old !== null) {
+                Database::delete('trip_expenses', 'id = :i', ['i' => $eid]);
+                Logger::audit('expense.delete', 'trip_expenses', (string) $eid, $old, null, 'Expense deleted');
+            }
+            $expFlash = ['ok', 'Expense deleted.'];
+        } else {
+            $eDate = Security::clean($_POST['exp_date'] ?? '', 10);
+            $cat   = (string) ($_POST['category'] ?? '');
+            $amt   = round((float) ($_POST['amount'] ?? 0), 2);
+            $note  = Security::clean($_POST['note'] ?? '', 200);
+            if (!Security::isValidDate($eDate) || !isset($expCats[$cat]) || $amt <= 0) {
+                throw new RuntimeException('Enter the date, the kind of expense and an amount above 0.');
+            }
+            $routeId = (int) Database::scalar('SELECT id FROM routes WHERE is_active = 1 ORDER BY sort_order, id LIMIT 1', [], 0);
+            if ($routeId <= 0) {
+                throw new RuntimeException('No active route to file the expense against.');
+            }
+            $col = ['diesel' => 'diesel', 'toll' => 'toll', 'driver' => 'driver_pay'][$cat] ?? 'misc';
+            $row = ['route_id' => $routeId, 'expense_date' => $eDate, $col => $amt, 'total' => $amt,
+                    'note' => $col === 'misc' ? ('[' . $cat . '] ' . $note) : $note, 'created_by' => (int) ($admin['id'] ?? 0)];
+            $id  = Database::insert('trip_expenses', $row);
+            Logger::audit('expense.add', 'trip_expenses', (string) $id, null, $row, 'Expense recorded');
+            $expFlash = ['ok', 'Expense of ' . inr($amt) . ' recorded for ' . formatDate($eDate) . '.'];
+        }
+    } catch (Throwable $e) {
+        $expFlash = ['bad', $e->getMessage()];
+    }
+}
+$expenses     = [];
+$expenseTotal = 0.0;
+$expenseByDay = [];
+try {
+    $expenses = Database::fetchAll(
+        'SELECT e.*, a.full_name AS by_name, a.username AS by_user FROM trip_expenses e
+           LEFT JOIN admins a ON a.id = e.created_by
+          WHERE e.expense_date BETWEEN :f AND :t ORDER BY e.expense_date DESC, e.id DESC',
+        ['f' => $from, 't' => $to]
+    );
+    foreach ($expenses as &$ex) {
+        $ex['cat'] = (float) $ex['diesel'] > 0 ? 'diesel' : ((float) $ex['toll'] > 0 ? 'toll' : ((float) $ex['driver_pay'] > 0 ? 'driver' : 'other'));
+        if ($ex['cat'] === 'other' && preg_match('/^\[(\w+)\]\s*(.*)$/', (string) $ex['note'], $m) && isset($expCats[$m[1]])) {
+            $ex['cat']  = $m[1];
+            $ex['note'] = $m[2];
+        }
+        $expenseTotal += (float) $ex['total'];
+        $expenseByDay[(string) $ex['expense_date']] = ($expenseByDay[(string) $ex['expense_date']] ?? 0.0) + (float) $ex['total'];
+    }
+    unset($ex);
+} catch (Throwable $e) {
+    $expenses = [];
+}
+$days = array_unique(array_merge(array_keys($incomeByDay), array_keys($expenseByDay)));
+rsort($days);
+
 $isToday = ($from === $to && $from === todayISO());
 $rangeLabel = $from === $to ? formatDate($from) : (formatDate($from) . ' → ' . formatDate($to));
 
@@ -212,6 +288,7 @@ admin_header('Accounting', 'accounting');
   <div class="card"><div class="k">Commission payable</div><div class="v"><?= Security::e(inr($commissionAccrued)) ?><br><small>accrued this period</small></div></div>
   <div class="card"><div class="k">Refunds out</div><div class="v"><?= Security::e(inr($refunds['amount'])) ?><br><small><?= $refunds['count'] ?> refund<?= $refunds['count'] === 1 ? '' : 's' ?></small></div></div>
   <div class="card"><div class="k">Cash held by agents</div><div class="v"><?= Security::e(inr($cashInHandTotal)) ?><br><small>awaiting handover</small></div></div>
+  <div class="card"><div class="k">Expenses · खर्च</div><div class="v"><?= Security::e(inr($expenseTotal)) ?><br><small><?= count($expenses) ?> entr<?= count($expenses) === 1 ? 'y' : 'ies' ?></small></div></div>
   <div class="card"><div class="k">Payout requests open</div><div class="v"><?= count($openReqs) ?><br><small><?= $openReqs !== [] ? Security::e(inr($openReqTotal)) . ' asked for' : 'nothing waiting' ?></small></div></div>
 </div>
 
@@ -319,6 +396,58 @@ admin_header('Accounting', 'accounting');
   </div>
 </div>
 
+<div class="panel" id="expenses">
+  <h2>💸 Expenses · दैनिक खर्च</h2>
+  <?php if ($expFlash !== null): ?><div class="flash <?= Security::e($expFlash[0]) ?>" style="margin:0 18px 10px"><?= Security::e($expFlash[1]) ?></div><?php endif; ?>
+  <?php if ($canSpend): ?>
+  <form method="post" action="#expenses" class="acc-tools no-print" style="padding:0 18px">
+    <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= Security::e(Security::csrfToken()) ?>">
+    <input type="hidden" name="action" value="add_expense">
+    <label>Date<input type="date" name="exp_date" value="<?= Security::e($to) ?>" required></label>
+    <label>Kind<select name="category" style="display:block;margin-top:4px"><?php foreach ($expCats as $ck => $cl): ?><option value="<?= $ck ?>"><?= Security::e($cl) ?></option><?php endforeach; ?></select></label>
+    <label>Amount ₹<input type="number" name="amount" min="1" step="0.01" required style="display:block;margin-top:4px;width:120px"></label>
+    <label style="flex:1;min-width:180px">Note<input type="text" name="note" maxlength="200" placeholder="bill no, pump, who was paid" style="display:block;margin-top:4px;width:100%"></label>
+    <button class="btn" type="submit">➕ Add expense</button>
+  </form>
+  <?php endif; ?>
+  <table>
+    <thead><tr><th>Date</th><th>Kind</th><th>Note</th><th>By</th><th class="acc-num">Amount</th><?php if ($canSpend): ?><th class="no-print"></th><?php endif; ?></tr></thead>
+    <tbody>
+    <?php if ($expenses === []): ?>
+      <tr><td colspan="6" class="muted" style="text-align:center;padding:14px">No expenses recorded for <?= Security::e($rangeLabel) ?>.</td></tr>
+    <?php endif; ?>
+    <?php foreach ($expenses as $ex): ?>
+      <tr>
+        <td><?= Security::e(formatDate((string) $ex['expense_date'])) ?></td>
+        <td><?= Security::e($expCats[$ex['cat']] ?? $ex['cat']) ?></td>
+        <td><?= Security::e((string) $ex['note']) ?></td>
+        <td class="muted"><?= Security::e((string) ($ex['by_name'] ?: $ex['by_user'] ?: '')) ?></td>
+        <td class="acc-num"><?= Security::e(inr((float) $ex['total'])) ?></td>
+        <?php if ($canSpend): ?><td class="no-print"><form method="post" action="#expenses" onsubmit="return confirm('Delete this expense?')"><input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= Security::e(Security::csrfToken()) ?>"><input type="hidden" name="action" value="delete_expense"><input type="hidden" name="id" value="<?= (int) $ex['id'] ?>"><button class="btn ghost btn-sm" type="submit">🗑</button></form></td><?php endif; ?>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+    <?php if ($expenses !== []): ?><tfoot><tr class="acc-tot"><td colspan="4">Total expenses</td><td class="acc-num"><?= Security::e(inr($expenseTotal)) ?></td><?php if ($canSpend): ?><td></td><?php endif; ?></tr></tfoot><?php endif; ?>
+  </table>
+</div>
+
+<?php if ($days !== []): ?>
+<div class="panel">
+  <h2>📅 Day by day · दिनदिनैको हिसाब</h2>
+  <table>
+    <thead><tr><th>Date</th><th class="acc-num">Money in · आम्दानी</th><th class="acc-num">Expenses · खर्च</th><th class="acc-num">Net · बाँकी</th></tr></thead>
+    <tbody>
+    <?php foreach ($days as $d): $in = (float) ($incomeByDay[$d] ?? 0); $out = (float) ($expenseByDay[$d] ?? 0); ?>
+      <tr><td><?= Security::e(formatDate($d)) ?></td><td class="acc-num"><?= Security::e(inr($in)) ?></td><td class="acc-num"><?= Security::e(inr($out)) ?></td>
+          <td class="acc-num" style="font-weight:700;color:<?= $in - $out < 0 ? '#b91c1c' : '#0a6b3b' ?>"><?= Security::e(inr($in - $out)) ?></td></tr>
+    <?php endforeach; ?>
+    </tbody>
+    <tfoot><tr class="acc-tot"><td>Total</td><td class="acc-num"><?= Security::e(inr(array_sum($incomeByDay))) ?></td><td class="acc-num"><?= Security::e(inr($expenseTotal)) ?></td><td class="acc-num"><?= Security::e(inr(array_sum($incomeByDay) - $expenseTotal)) ?></td></tr></tfoot>
+  </table>
+  <p class="muted" style="padding:10px 18px;font-size:12px;margin:0">Money in = verified payments on confirmed tickets (COD not yet collected is left out). Refunds and agent commission are in the summary below.</p>
+</div>
+<?php endif; ?>
+
 <div class="panel">
   <h2>Period summary</h2>
   <table>
@@ -327,6 +456,8 @@ admin_header('Accounting', 'accounting');
     <tr><th>Refunds paid out</th><td class="acc-num">− <?= Security::e(inr($refunds['amount'])) ?></td></tr>
     <tr><th>Agent commission payable (accrued)</th><td class="acc-num">− <?= Security::e(inr($commissionAccrued)) ?></td></tr>
     <tr class="acc-tot"><th>Net after refunds &amp; commission</th><td class="acc-num"><?= Security::e(inr($grossCollected - $refunds['amount'] - $commissionAccrued)) ?></td></tr>
+    <tr><th>Expenses (diesel, toll, salary, office…)</th><td class="acc-num">− <?= Security::e(inr($expenseTotal)) ?></td></tr>
+    <tr class="acc-tot"><th>Net after expenses · खुद नाफा</th><td class="acc-num"><?= Security::e(inr($grossCollected - $refunds['amount'] - $commissionAccrued - $expenseTotal)) ?></td></tr>
   </table>
   <p class="muted" style="padding:10px 18px;font-size:12px;margin:0">
     Commission is what agents <em>earned</em> this period (payable through their wallet), not what was paid out. Use <a href="<?= $base ?>/admin/agent-ranking.php">Agent Ranking</a> and each agent's wallet for payouts and handovers.

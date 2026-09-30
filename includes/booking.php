@@ -175,7 +175,7 @@ final class BookingService
            discount. Pricing, seat rules, gender lock, boarding cut-off and the
            ticket are the same code path a customer runs, so a 5-seat family
            pays the same at the counter as online. */
-        $sellerId = null; $sellerSource = 'web'; $counterMethod = null; $counterNote = '';
+        $sellerId = null; $sellerSource = 'web'; $counterMethod = null; $counterNote = ''; $deskAgentCode = '';
         if ($seller !== null) {
             $sellerId = (int) ($seller['adminId'] ?? 0);
             if ($sellerId <= 0) {
@@ -184,6 +184,7 @@ final class BookingService
             $sellerSource  = in_array($seller['source'] ?? '', ['agent', 'counter', 'admin'], true) ? (string) $seller['source'] : 'counter';
             $counterMethod = in_array($seller['paymentMethod'] ?? '', ['cash', 'upi', 'esewa', 'bank'], true) ? (string) $seller['paymentMethod'] : 'cash';
             $counterNote   = Security::clean((string) ($seller['note'] ?? ''), 255);
+            $deskAgentCode = $referralCodeClean;   // office/counter desk: credited after the sale (attributeDeskSale)
             $referralCodeClean = '';           // the seller IS the agent; a typed code is ignored
             $soldByAdminId     = $sellerId;
             $agentOverride     = Boarding::agentGraceOpen($routeId, $travelDate, self::LATE_BOOK_HOURS);
@@ -518,6 +519,24 @@ final class BookingService
                 'expires_at'      => ($isCod || $seller !== null) ? null : date('Y-m-d H:i:s', time() + $expiryMinutes * 60),
             ]);
 
+            /* Redeem the coupon WITH the booking, in the same transaction.
+               Fare::couponDiscount() checked usage_limit and per_user_limit
+               against coupons.used_count and coupon_redemptions — and nothing
+               ever wrote either, so a "first 50 bookings" or "once per
+               customer" coupon was unlimited. */
+            if ((string) ($pricing['couponCode'] ?? '') !== '' && (float) ($pricing['couponDiscount'] ?? 0) > 0) {
+                $couponRow = Database::fetch('SELECT id FROM coupons WHERE code = :c LIMIT 1', ['c' => (string) $pricing['couponCode']]);
+                if ($couponRow !== null) {
+                    Database::run('UPDATE coupons SET used_count = used_count + 1 WHERE id = :id', ['id' => (int) $couponRow['id']]);
+                    Database::insert('coupon_redemptions', [
+                        'coupon_id'  => (int) $couponRow['id'],
+                        'booking_id' => $bookingId,
+                        'user_phone' => (string) Database::scalar('SELECT contact_phone FROM bookings WHERE id = :id', ['id' => $bookingId], ''),
+                        'amount'     => round((float) $pricing['couponDiscount'], 2),
+                    ]);
+                }
+            }
+
             /* ---- Outbound leg ------------------------------------- */
             $legRow = [
                 'booking_id'    => $bookingId,
@@ -655,6 +674,10 @@ final class BookingService
                 try { Ticket::issue((int) $booking['id']); }
                 catch (Throwable $e) { Logger::error('Ticket::issue (counter) failed', ['e' => $e->getMessage()]); }
                 AgentWallet::accrue($booking);
+                // Before the WhatsApp fan-out, so the ticket sent already names the agent.
+                if ($sellerSource !== 'agent' && !AgentWallet::isAgentRow((int) $sellerId)) {
+                    $booking = self::attributeDeskSale($booking, $deskAgentCode, (int) $sellerId);
+                }
             }
 
             /* COD does NOT queue for payment verification — it is confirmed on
@@ -677,6 +700,41 @@ final class BookingService
             }
         }
 
+        return $booking;
+    }
+
+    /**
+     * Every office/counter sale belongs to an agent: the one picked at the
+     * desk, else the company's own code (setting company_agent_code, default
+     * SHG-0001) for "Other" / blank / unknown. Goes through reassignSeller,
+     * so only commission moves — the cash stays with the staff who took it.
+     * Never fails a sale that is already made.
+     *
+     * @param array<string,mixed> $booking
+     * @return array<string,mixed>
+     */
+    private static function attributeDeskSale(array $booking, string $code, int $by): array
+    {
+        try {
+            $code    = strtoupper(trim($code));
+            $agentId = ($code !== '' && $code !== 'OTHER') ? AgentWallet::resolveAgentCodeFromString($code) : null;
+            if ($agentId === null) {
+                $agentId = AgentWallet::resolveAgentCodeFromString(Settings::getString('company_agent_code', 'SHG-0001'));
+            }
+            if ($agentId === null || $agentId === (int) ($booking['sold_by_admin_id'] ?? 0)) {
+                return $booking;
+            }
+            $row = Database::fetch('SELECT * FROM bookings WHERE id = :i', ['i' => (int) ($booking['id'] ?? 0)]);
+            if ($row === null) {
+                return $booking;
+            }
+            AgentWallet::reassignSeller($row, $agentId, $by);
+            $booking['sold_by_admin_id'] = $agentId;
+        } catch (Throwable $e) {
+            Logger::warning('Desk sale agent attribution failed', [
+                'pnr' => (string) ($booking['pnr'] ?? ''), 'code' => $code, 'e' => $e->getMessage(),
+            ]);
+        }
         return $booking;
     }
 
@@ -1467,6 +1525,15 @@ final class BookingService
         );
         if ($payment === null) {
             throw new RuntimeException('No payment record for this booking.');
+        }
+
+        /* Already paid: a second proof (a re-tap on the pay page, a screenshot
+           sent twice, or a stranger who knows the PNR) used to write
+           payments.status back to 'pending' on a CONFIRMED, verified booking,
+           dropping a paid ticket into the verify queue and letting a reject
+           there cancel it. Money that is in hand stays verified. */
+        if (in_array((string) $payment['status'], ['verified', 'settled'], true)) {
+            throw new RuntimeException('This booking is already paid and confirmed — no more proof is needed. / यो टिकटको भुक्तानी पहिले नै पुष्टि भइसक्यो।');
         }
 
         $utr        = Security::clean($data['utr'] ?? '', 60);
@@ -2484,16 +2551,32 @@ final class BookingService
                 $perSeatCommission = AgentWallet::commissionForBooking($perSeatFare, $soldBy, 1);
                 if ($perSeatCommission > 0) {
                     try {
-                        Database::insert('agent_ledger', [
-                            'agent_admin_id' => $soldBy,
-                            'booking_id'     => $bookingId,
-                            'account'        => 'commission',
-                            'entry_type'     => 'commission_void',
-                            'amount'         => -$perSeatCommission,
-                            'note'           => 'Per-seat cancel: seat ' . $seatNo . ' voided',
-                            'ref'            => $locked['pnr'] ?? '',
-                            'created_by'     => $adminId,
-                        ]);
+                        /* UNIQUE(booking_id, entry_type) allows ONE void row per
+                           booking, so the second seat cancelled on a family
+                           ticket used to throw a duplicate-key error that was
+                           only logged — the agent kept that seat's commission.
+                           A second void now tops up the first. */
+                        $existingVoid = Database::fetch(
+                            "SELECT id, amount, note FROM agent_ledger WHERE booking_id = :b AND entry_type = 'commission_void' LIMIT 1",
+                            ['b' => $bookingId]
+                        );
+                        if ($existingVoid !== null) {
+                            Database::update('agent_ledger', [
+                                'amount' => round((float) $existingVoid['amount'] - $perSeatCommission, 2),
+                                'note'   => (string) $existingVoid['note'] . '; seat ' . $seatNo . ' voided',
+                            ], 'id = :id', ['id' => (int) $existingVoid['id']]);
+                        } else {
+                            Database::insert('agent_ledger', [
+                                'agent_admin_id' => $soldBy,
+                                'booking_id'     => $bookingId,
+                                'account'        => 'commission',
+                                'entry_type'     => 'commission_void',
+                                'amount'         => -$perSeatCommission,
+                                'note'           => 'Per-seat cancel: seat ' . $seatNo . ' voided',
+                                'ref'            => $locked['pnr'] ?? '',
+                                'created_by'     => $adminId,
+                            ]);
+                        }
                     } catch (Throwable $e) {
                         Logger::error('Per-seat commission void failed', ['e' => $e->getMessage()]);
                     }

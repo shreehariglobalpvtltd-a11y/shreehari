@@ -363,6 +363,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     $uploaded[] = $slot;
                 }
             }
+            if (isset($_FILES['agreement_doc']) && (int) ($_FILES['agreement_doc']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+                AgentWallet::saveAgreementDoc($targetId, $_FILES['agreement_doc']);
+                $uploaded[] = 'agreement';
+            }
             $status = strtolower(trim((string) ($_POST['kyc_status'] ?? '')));
             $note   = Security::clean($_POST['kyc_note'] ?? '', 255);
             $exp    = trim((string) ($_POST['id_expires_on'] ?? ''));
@@ -504,19 +508,19 @@ if (($_GET['export'] ?? '') === 'csv') {
     header('Cache-Control: no-store');
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF");   // UTF-8 BOM so Excel reads ₹ / Devanagari
-    fputcsv($out, ['Agent', (string) ($agent['full_name'] ?: $agent['username']), 'Code', AgentWallet::agentCodeLabel($agentId), 'Window', $stmtFrom . ' to ' . $stmtTo, 'Account', $accLabel]);
-    fputcsv($out, []);
-    fputcsv($out, ['Date', 'Entry', 'Account', 'Booking / Ref', 'Note', 'Amount (signed)', 'Balance after (that account)', 'Recorded by']);
+    csv_put($out, ['Agent', (string) ($agent['full_name'] ?: $agent['username']), 'Code', AgentWallet::agentCodeLabel($agentId), 'Window', $stmtFrom . ' to ' . $stmtTo, 'Account', $accLabel]);
+    csv_put($out, []);
+    csv_put($out, ['Date', 'Entry', 'Account', 'Booking / Ref', 'Note', 'Amount (signed)', 'Balance after (that account)', 'Recorded by']);
     if ($stmtAcc === '') {
-        fputcsv($out, [$stmtFrom, 'Opening balance', 'commission', '', '', '', number_format(AgentWallet::openingBalance($agentId, $stmtFrom, 'commission'), 2, '.', ''), '']);
-        fputcsv($out, [$stmtFrom, 'Opening balance', 'cash', '', '', '', number_format(AgentWallet::openingBalance($agentId, $stmtFrom, 'cash'), 2, '.', ''), '']);
+        csv_put($out, [$stmtFrom, 'Opening balance', 'commission', '', '', '', number_format(AgentWallet::openingBalance($agentId, $stmtFrom, 'commission'), 2, '.', ''), '']);
+        csv_put($out, [$stmtFrom, 'Opening balance', 'cash', '', '', '', number_format(AgentWallet::openingBalance($agentId, $stmtFrom, 'cash'), 2, '.', ''), '']);
     } else {
-        fputcsv($out, [$stmtFrom, 'Opening balance', $stmtAcc, '', '', '', number_format((float) $st['opening'], 2, '.', ''), '']);
+        csv_put($out, [$stmtFrom, 'Opening balance', $stmtAcc, '', '', '', number_format((float) $st['opening'], 2, '.', ''), '']);
     }
     foreach ($st['rows'] as $r) {
         [, $label] = a360_ledger_look((string) $r['entry_type'], (string) ($r['ref'] ?? ''));
         $after = (string) $r['account'] === 'cash' ? (float) $r['running_cash'] : (float) $r['running_commission'];
-        fputcsv($out, [
+        csv_put($out, [
             (string) $r['created_at'],
             $label,
             (string) $r['account'],
@@ -527,15 +531,15 @@ if (($_GET['export'] ?? '') === 'csv') {
             (string) ($r['by_name'] ?? ''),
         ]);
     }
-    fputcsv($out, []);
+    csv_put($out, []);
     $closeC = $st['rows'] !== [] ? (float) end($st['rows'])['running_commission'] : AgentWallet::openingBalance($agentId, $stmtFrom, 'commission');
     $closeK = $st['rows'] !== [] ? (float) end($st['rows'])['running_cash']       : AgentWallet::openingBalance($agentId, $stmtFrom, 'cash');
     if ($stmtAcc === '') {
-        fputcsv($out, [$stmtTo, 'Closing balance', 'commission', '', 'company owes agent', '', number_format($closeC, 2, '.', ''), '']);
-        fputcsv($out, [$stmtTo, 'Closing balance', 'cash', '', 'agent owes company', '', number_format($closeK, 2, '.', ''), '']);
-        fputcsv($out, [$stmtTo, 'Net position', 'cash - commission', '', 'positive = agent owes the company', '', number_format((float) $st['closing'], 2, '.', ''), '']);
+        csv_put($out, [$stmtTo, 'Closing balance', 'commission', '', 'company owes agent', '', number_format($closeC, 2, '.', ''), '']);
+        csv_put($out, [$stmtTo, 'Closing balance', 'cash', '', 'agent owes company', '', number_format($closeK, 2, '.', ''), '']);
+        csv_put($out, [$stmtTo, 'Net position', 'cash - commission', '', 'positive = agent owes the company', '', number_format((float) $st['closing'], 2, '.', ''), '']);
     } else {
-        fputcsv($out, [$stmtTo, 'Closing balance', $stmtAcc, '', '', '', number_format((float) $st['closing'], 2, '.', ''), '']);
+        csv_put($out, [$stmtTo, 'Closing balance', $stmtAcc, '', '', '', number_format((float) $st['closing'], 2, '.', ''), '']);
     }
     fclose($out);
     exit;
@@ -1288,6 +1292,7 @@ details.a360-rows>summary{cursor:pointer;font-size:12.5px;color:var(--blue);font
             <dt>Note</dt><dd><?= $e($profile['kyc_note'] ?: '—') ?></dd>
             <dt>Expires</dt><dd><?= $profile['id_expires_on'] ? $e(formatDate((string) $profile['id_expires_on'], 'j M Y')) . ((string) $profile['id_expires_on'] < todayISO() ? ' <span class="pill st-bad">expired</span>' : '') : '<span class="muted">—</span>' ?></dd>
             <dt>Document 1</dt><dd><?= (string) ($profile['kyc_doc_path'] ?? '') !== '' ? '<a class="btn ghost sm" href="' . $base . '/admin/agent-kyc-file.php?agent=' . $agentId . '&amp;slot=1" target="_blank"><svg class="a-ic"><use href="#a-eye"/></svg> View ID document</a>' : '<span class="muted">not on file</span>' ?></dd>
+            <dt>Agreement</dt><dd><?= AgentWallet::agreementPath($agentId) !== '' ? '<a class="btn ghost sm" href="' . $base . '/admin/agent-kyc-file.php?agent=' . $agentId . '&amp;slot=3" target="_blank"><svg class="a-ic"><use href="#a-eye"/></svg> View signed agreement</a>' : '<span class="muted">not on file</span>' ?></dd>
             <dt>Document 2</dt><dd><?= (string) ($profile['kyc_doc2_path'] ?? '') !== '' ? '<a class="btn ghost sm" href="' . $base . '/admin/agent-kyc-file.php?agent=' . $agentId . '&amp;slot=2" target="_blank"><svg class="a-ic"><use href="#a-eye"/></svg> View back / address proof</a>' : '<span class="muted">not on file</span>' ?></dd>
           </dl>
           <?php if ($canManage): ?>
@@ -1303,6 +1308,7 @@ details.a360-rows>summary{cursor:pointer;font-size:12.5px;color:var(--blue);font
                 <div class="field"><label>ID expires on</label><input class="inp" type="date" name="id_expires_on" value="<?= $e($profile['id_expires_on'] ?? '') ?>"></div>
                 <div class="field"><label>ID document (front)</label><input type="file" name="kyc_doc1" accept="image/jpeg,image/png,image/webp,application/pdf"></div>
                 <div class="field"><label>Back side / address proof</label><input type="file" name="kyc_doc2" accept="image/jpeg,image/png,image/webp,application/pdf"></div>
+                <div class="field"><label>Signed agreement · सम्झौता</label><input type="file" name="agreement_doc" accept="image/jpeg,image/png,image/webp,application/pdf"></div>
               </div>
               <div class="field" style="margin-top:10px"><label>Verifier note</label><input class="inp" type="text" name="kyc_note" maxlength="255" value="<?= $e($profile['kyc_note'] ?? '') ?>" placeholder="why rejected / what to fix / what was checked"></div>
               <div class="form-actions">

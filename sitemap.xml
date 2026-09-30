@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://www.shreehariglobal.in/</loc><lastmod>2026-09-20</lastmod><changefreq>daily</changefreq><priority>1.0</priority></url>
-  <url><loc>https://www.shreehariglobal.in/privacy-policy</loc><lastmod>2026-09-18</lastmod><changefreq>monthly</changefreq><priority>0.3</priority></url>
-  <url><loc>https://www.shreehariglobal.in/terms-of-service</loc><lastmod>2026-09-18</lastmod><changefreq>monthly</changefreq><priority>0.3</priority></url>
-  <url><loc>https://www.shreehariglobal.in/data-deletion</loc><lastmod>2026-09-18</lastmod><changefreq>yearly</changefreq><priority>0.2</priority></url>
-</urlset>
+<!-- A sitemap index (24 Sep 2026): the static pages and the route pages
+     (generated from the live routes table in three languages) live in two
+     child sitemaps served by index.php. -->
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap><loc>https://www.shreehariglobal.in/sitemap-pages.xml</loc></sitemap>
+  <sitemap><loc>https://www.shreehariglobal.in/sitemap-routes.xml</loc></sitemap>
+</sitemapindex>

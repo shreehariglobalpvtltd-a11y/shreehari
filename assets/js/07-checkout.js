@@ -140,6 +140,16 @@ function autoFillFromPhone() {
    SAME submitBooking() payload — this is a UI/state split, not a new model.
    validateCheckoutDetails() is the single details validator, shared by the
    "Continue to Payment" gate and the final submit, so they never drift. */
+/* 23 Sep 2026 (UI v3 brief §7, ported 24 Sep): a customer's number must look
+   like a real mobile for the country picked - India +91 starts 6-9, Nepal +977
+   starts 9 (96/97/98 today) - not merely be ten digits. Staff counters keep
+   their looser rule (walk-ins, international numbers). */
+function coPhoneShapeOk(phv) {
+  if (!/^\d{10}$/.test(phv)) return false;
+  const cc = ($('#cCountry') && $('#cCountry').value) || '91';
+  return cc === '977' ? /^9[6-9]/.test(phv) : /^[6-9]/.test(phv);
+}
+
 function validateCheckoutDetails() {
   let ok = true;
   const passengers = $$('.pax-row').map((row, i) => {
@@ -186,7 +196,7 @@ function validateCheckoutDetails() {
      10-digit rule and blocking the desk with "check the highlighted
      fields". Customers online keep the strict Indian-mobile rule. */
   const ctrSell = !!(window.SHG_BOOT && window.SHG_BOOT.staff && window.SHG_BOOT.staff.canSell);
-  const pOk = ctrSell ? (phoneVal === '' || /^\d{8,15}$/.test(phoneVal)) : /^\d{10}$/.test(phoneVal);
+  const pOk = ctrSell ? (phoneVal === '' || /^\d{8,15}$/.test(phoneVal)) : coPhoneShapeOk(phoneVal);
   const eOk = !email.value.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim());
   const iOk = idNum.value.trim() === '' || idNum.value.trim().length >= 4;
   phone.closest('.field').classList.toggle('invalid', !pOk);
@@ -211,6 +221,13 @@ function validateCheckoutDetails() {
   const tnc = ctrSell ? true : (tncEl && tncEl.checked);
   const tncErrEl = $('#tncErr'); if (tncErrEl) tncErrEl.style.display = (ctrSell || tnc) ? 'none' : 'block';
   if (!tnc) { fails.push('नियम / T&C'); ok = false; }
+
+  if (ctrSell) {
+    const agEl = $('#cAgentCode');
+    const agOk = !agEl || (agEl.value || '').trim().length > 0;
+    if (agEl) agEl.closest('.field').classList.toggle('invalid', !agOk);
+    if (!agOk) { fails.push('एजेन्ट कोड / Agent Code'); ok = false; }
+  }
 
   return { ok: ok, blocked: blocked, passengers: passengers, phone: phone, email: email, idNum: idNum, phoneVal: phoneVal, fails: fails };
 }
@@ -245,7 +262,7 @@ function coSyncContinue() {
   const phv = ph ? digits(ph.value) : '';
   // Counter sale: phone optional / international (mirrors validateCheckoutDetails).
   const ctrSell2 = !!(window.SHG_BOOT && window.SHG_BOOT.staff && window.SHG_BOOT.staff.canSell);
-  if (ctrSell2 ? (phv !== '' && !/^\d{8,15}$/.test(phv)) : !/^\d{10}$/.test(phv)) ready = false;
+  if (ctrSell2 ? (phv !== '' && !/^\d{8,15}$/.test(phv)) : !coPhoneShapeOk(phv)) ready = false;
   /* blacklisted numbers are refused on click, so don't offer an enabled button */
   if (ready && ((DB.settings && DB.settings.blacklist) || []).indexOf(phv) >= 0) ready = false;
   const em = $('#cEmail');
@@ -255,6 +272,10 @@ function coSyncContinue() {
   // Counter session: T&C is the desk's responsibility, not a gate (mirrors
   // validateCheckoutDetails — the two entry points must never disagree).
   if (!ctrSell2) { const tnc = $('#agreeTnc'); if (!tnc || !tnc.checked) ready = false; }
+  if (ctrSell2) {
+    const acEl = $('#cAgentCode');
+    if (acEl && !(acEl.value || '').trim()) ready = false;
+  }
   btn.disabled = !ready;
 }
 /* Switch between step 1 (details) and step 2 (payment). Going forward runs the
@@ -1074,6 +1095,11 @@ function renderCheckout() {
      details never loses entered data. */
   var coCont = $('#coContinueBtn'); if (coCont) coCont.onclick = () => coGoStep(2);
   var coBackD = $('#coBackToDetailsBtn'); if (coBackD) coBackD.onclick = () => coGoStep(1);
+  var agOtherBtn = $('#cAgentOther');
+  if (agOtherBtn) agOtherBtn.onclick = function () {
+    var ac = $('#cAgentCode');
+    if (ac) { ac.value = 'OTHER'; ac.closest('.field').classList.remove('invalid'); coSyncContinue(); }
+  };
   var coS1 = $('#coStep1');
   if (coS1 && !coS1._coSynced) { coS1.addEventListener('input', coSyncContinue); coS1.addEventListener('change', coSyncContinue); coS1._coSynced = true; }
   coSyncContinue();
@@ -1406,6 +1432,8 @@ function bookingFromServer(d, phone) {
   const seats = ((out.seats && out.seats.length) ? out.seats : (d.seats || [])).slice();
   const b = {
     id: d.pnr,
+    currency: d.currency || 'INR',
+    paidAmount: Number(d.paidAmount || 0),
     createdAt: (typeof d.createdAt === 'number' && d.createdAt > 0) ? d.createdAt : Date.now(),
     routeId: out.routeCode || '',
     date: out.date || '',
@@ -1424,6 +1452,7 @@ function bookingFromServer(d, phone) {
     status: d.status,
     codFlag: !!d.isCod,
     ticketNumber: d.ticketNumber || '',
+    trackUrl: d.trackUrl || null,
     /* WhatsApp delivery of the ticket (track.php → shg_wa_last, 17 Sep 2026):
        null = nothing sent yet, {ok,last4,status,code} otherwise. */
     wa: (d.wa === undefined) ? undefined : (d.wa || null),
@@ -1455,10 +1484,14 @@ async function syncBooking(b) {
   let changed = false;
   if (d.status && b.status !== d.status) { b.status = d.status; changed = true; }
   if (typeof d.total === 'number' && b.total !== d.total) { b.total = d.total; changed = true; }
+  if (typeof d.paidAmount === 'number' && b.paidAmount !== d.paidAmount) { b.paidAmount = d.paidAmount; changed = true; }
+  if (d.currency && b.currency !== d.currency) { b.currency = d.currency; changed = true; }
   if (d.ticketNumber && b.ticketNumber !== d.ticketNumber) { b.ticketNumber = d.ticketNumber; changed = true; }
+  if (d.trackUrl !== undefined && b.trackUrl !== (d.trackUrl || null)) { b.trackUrl = d.trackUrl || null; changed = true; }
   if (typeof d.isCod === 'boolean' && !!b.codFlag !== d.isCod) { b.codFlag = d.isCod; changed = true; }
   b.payment = b.payment || {};
   if (d.payment) {
+    if (b.payment.utr !== (d.payment.utr || '')) { b.payment.utr = d.payment.utr || ''; changed = true; }
     if (d.payment.status && b.payment.status !== d.payment.status) { b.payment.status = d.payment.status; changed = true; }
     if (d.payment.method && b.payment.method !== d.payment.method) { b.payment.method = d.payment.method; changed = true; }
     /* The rejection reason is what the ticket page shows a customer whose
@@ -1920,6 +1953,16 @@ function renderStatus(id) {
   }
   const crewBox = crewBits.length ? '<div class="crew-box">👨‍✈️ <div><small>' + t('tkCrew') + '</small>' + crewBits.join('<br>') + '</div></div>' : '';
 
+  /* "Where is my bus?" (24 Sep 2026): the keyed public page with the live
+     position and minutes to THIS passenger's stop, plus a one-tap share so
+     the family at home can watch the same page. Only on a confirmed ticket. */
+  const whereBox = (b.status === 'confirmed' && b.trackUrl)
+    ? '<div class="crew-box where-box">📍 <div><small>' + t('tkWhereT') + '</small>'
+      + '<a class="btn btn-blue btn-sm" href="' + esc(b.trackUrl) + '" target="_blank" rel="noopener" style="margin:6px 8px 0 0">' + t('tkWhereBtn') + '</a>'
+      + '<a class="btn btn-ghost btn-sm" href="https://wa.me/?text=' + encodeURIComponent(t('tkWhereShare') + ' ' + b.trackUrl) + '" target="_blank" rel="noopener" style="margin-top:6px">' + t('tkWhereFam') + '</a>'
+      + '</div></div>'
+    : '';
+
   /* Delay banner — pull-based: admin publishes {routeId, date, delayMinutes}
      in Live Ops; any matching confirmed booking shows it here. */
   const delay = (b.status === 'confirmed') ? (DB.delays || []).find(d => d.routeId === b.routeId && d.date === b.date) : null;
@@ -2027,18 +2070,29 @@ function renderStatus(id) {
     + '<a class="btn btn-ghost" href="#/">' + t('btnHome') + '</a>';
   const pax2 = (lead2.name ? esc(lead2.name) : '—') + (lead2.special ? ' <span class="chip" style="font-size:11px;padding:2px 8px">' + esc(t('patientTag')) + '</span>' : '');
   const phone2 = digits((b.contact && b.contact.phone) || '');
+  const currency2 = b.currency || 'INR';
+  const money2 = amount => currency2 + ' ' + Number(amount || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const paymentKnown2 = typeof b.paidAmount === 'number';
+  const paid2 = Math.max(0, Number(b.paidAmount || 0));
+  const due2 = Math.max(0, Number(b.total || 0) - paid2);
+  const merchant2 = S();
+  const payUrl2 = paymentKnown2 && due2 > 0 && currency2 === 'INR' && merchant2.upiId && (b.status === 'pending' || conf)
+    ? 'upi://pay?pa=' + encodeURIComponent(merchant2.upiId) + '&pn=' + encodeURIComponent(merchant2.upiName || '') + '&am=' + due2.toFixed(2) + '&cu=INR&tn=' + encodeURIComponent(b.id) : '';
+  const paymentCard2 = payUrl2 ? '<section class="premium-pay-card"><div><h3>' + esc(t('premiumPay')) + '</h3><b>' + esc(money2(due2)) + '</b><p>' + esc(merchant2.upiName || '') + '<br>' + esc(merchant2.upiId) + '</p><a class="btn btn-orange" href="' + esc(payUrl2) + '">' + esc(t('premiumPay')) + '</a></div><div id="premiumPayQr"><small>' + esc(t('premiumPending')) + '</small></div></section>' : '';
+
   body.innerHTML = `
   ${delayBanner}
   ${borderCard}
   ${stepper}
-  <div class="status-card tk2${conf ? ' confirm-success' : ''}" id="ticketCard">
-    <div class="tk2-head">
+  <div class="status-card tk2${conf ? ' confirm-success' : ''}" id="ticketCard" data-pnr="${esc(b.id)}">
+    <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo.png?v=20260920l" alt="" loading="lazy" decoding="async">
-        <div><b>S HARI GLOBAL PVT LTD</b><small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small></div>
+        <img src="/assets/img/logo.png?v=20260930a" alt="" loading="lazy" decoding="async">
+        <div><b>${esc(CONFIG.company.name || 'S HARI GLOBAL PRIVATE LIMITED')}</b><small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
       </div>
-      ${pill2}
+      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20260930a" width="600" height="312" alt="" decoding="async">
     </div>
+    <div class="premium-ticket-status">${pill2}${b.ticketNumber ? '<span>' + esc(b.ticketNumber) + '</span>' : ''}${b.agentCode ? '<span style="background:var(--orange-100,#fff2e0);color:var(--orange-800,#7a3d00);padding:2px 10px;border-radius:20px;font-size:12px;font-family:var(--f-code)">🏷️ ' + esc(b.agentCode) + '</span>' : ''}</div>
     ${(typeof routeOverviewSVG === 'function') ? routeOverviewSVG({ from: (isNepalPoint(r.from) ? r.from : (parseBP(b.boarding || '').name || r.from)), to: (isNepalPoint(r.to) ? r.to : (parseBP(b.drop || '').name || r.to)), compact: true }) : ''}
     <div class="tk2-hero">
       <div class="tk2-pnr"><span>${esc(b.id)}</span><small>${esc(r.busName || '')}${r.busNo ? ' · ' + esc(r.busNo) : ''}</small></div>
@@ -2059,7 +2113,10 @@ function renderStatus(id) {
         <div class="tk2-tile wide"><small>👤 ${esc(t('tkPaxLbl'))}</small><b>${pax2}</b>${phone2 ? '<em>+91 ' + esc(phone2) + (paxN2 > 1 ? ' · ' + paxN2 + ' ' + esc(t('coPax')) : '') + '</em>' : ''}</div>
       </div>
     </div>
-    <div class="tk2-fare"><div><span class="lbl">${esc(t('tkFareT'))}</span><div class="amt">${inr(b.total)}</div></div><div class="sub">${fareSub2}</div></div>
+    <div class="tk2-fare"><div><span class="lbl">${esc(t('tkFareT'))}</span><div class="amt">${esc(money2(b.total))}</div></div><div class="sub">${fareSub2}</div></div>
+    <div class="premium-passengers"><table class="pax-table"><thead><tr><th>${t('tkSeats')}</th><th>${t('coPax')}</th><th>${t('lblAge')}</th><th>${t('lblGender')}</th></tr></thead><tbody>${paxRows}</tbody></table></div>
+    <div class="premium-payment-state ${due2 <= 0 ? 'paid' : ''}"><b>${esc(t(due2 <= 0 ? 'premiumPaid' : 'premiumPending'))}</b><span>${esc(money2(paid2))} · ${esc(t('premiumDue'))}: ${esc(money2(due2))}</span><span>${esc(payRefLabel(b))}</span></div>
+    ${paymentCard2}
     <div class="tk2-actions">${primary2}</div>
     <details class="tk2-more">
       <summary>${esc(t('tkMore'))}</summary>
@@ -2068,12 +2125,13 @@ function renderStatus(id) {
         <div class="sum-row"><span>${t('tkCoach')}</span><b>${esc(r.busName || '')} · ${esc(r.busNo || '')}</b></div>
         <div class="sum-row"><span>${t('tkPayRef')}</span><b style="font-family:var(--f-code)">${esc(payRefLabel(b))}</b></div>
         ${bookedByRow}
+        ${b.agentCode ? '<div class="sum-row"><span>एजेन्ट कोड · Agent</span><b style="font-family:var(--f-code)">' + esc(b.agentCode) + '</b></div>' : ''}
         <div class="sum-row"><span>${t('tkBoard')}</span><b>${esc(bpShort(b.boarding))}</b></div>
         <div class="sum-row"><span>${t('tkDrop')}</span><b>${esc(bpShort(b.drop))}</b></div>
         ${fareRows}
       </div>
       ${retBlock}
-      <table class="pax-table"><thead><tr><th>${t('tkSeats')}</th><th>${t('coPax')}</th><th>${t('lblAge')}</th><th>${t('lblGender')}</th></tr></thead><tbody>${paxRows}</tbody></table>
+      ${whereBox}
       ${crewBox}
       ${soon ? distanceWidgetHTML(b) : ''}
       ${soon ? '<div class="wx-box" id="wxBox"><small>' + tf('wxTitle', { c: esc(parseBP(b.drop).name || '') }) + '</small><b>…</b></div>' : ''}
@@ -2082,17 +2140,24 @@ function renderStatus(id) {
       <div class="tk2-company"><b>🇮🇳 S HARI GLOBAL PVT LTD 🇳🇵</b> · ${esc(CONFIG.company.mantra)}<br>CIN: ${esc(CONFIG.company.cin)}${CONFIG.company.gstin ? ' · GSTIN: ' + esc(CONFIG.company.gstin) : ''} · CEO: ${esc(CONFIG.company.ceo || '')}<br>☎ ${t('supportLbl')}: <a href="tel:${esc(digits(S().phone))}">${esc(S().phone)}</a> · <a href="mailto:${esc(S().email)}">${esc(S().email)}</a></div>
     </details>
     ${conf ? '<div class="tk2-foot"><div class="bp-barcode">' + barcodeSVG(b.id) + '<span class="bp-bc-id">' + esc(b.id) + '</span></div><div class="tk2-thanks">' + t('tkThanks') + '</div></div>' : ''}
+    <div class="premium-ticket-support"><b>${esc(t('premiumTrust'))}</b><a href="tel:${esc(digits(S().phone))}">${esc(S().phone)}</a><span>${esc(location.host)}</span></div>
     ${extra}
   </div>
   ${pushCard}
   ${rateBox}`;
 
+  if (payUrl2) makeQR(payUrl2, 240).then(url => {
+    const box = $('#premiumPayQr');
+    if (!box || box.closest('[data-pnr]').dataset.pnr !== b.id || !url) return;
+    const img = new Image(); img.src = url; img.width = 240; img.height = 240; img.alt = t('premiumPay');
+    box.prepend(img);
+  });
   if (b.status === 'confirmed') { var tc = $('#ticketCard'); if (tc) requestAnimationFrame(function () { tc.classList.add('confirm-anim'); }); }
   if ((b.status === 'pending' || b.status === 'confirmed') && depTimestamp(b) > Date.now()) loadDestinationWeather(b);
   if (b.status === 'confirmed') {
     makeQR(ticketQrPayload(b, r), 150).then(url => {
       if (!url) return;
-      const box = $('#tkQrBox'); if (!box) return;
+      const box = $('#tkQrBox'); if (!box || box.closest('[data-pnr]').dataset.pnr !== b.id) return;
       const img = new Image(); img.src = url; img.width = 150; img.height = 150; img.alt = 'Ticket QR';
       box.insertBefore(img, box.firstChild);
     });

@@ -324,6 +324,7 @@ try {
             'discountValue' => (float) ($in['discountValue'] ?? 0),
             'note'          => $in['note'] ?? '',
             'passengers'    => $in['passengers'] ?? null,
+            'agentCode'     => Security::clean($in['agentCode'] ?? '', 20),
         ];
         $result = QuickTicket::sell($input, $staff);
 

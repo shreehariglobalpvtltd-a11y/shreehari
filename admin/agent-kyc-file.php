@@ -22,7 +22,7 @@ require __DIR__ . '/_guard.php';
 $admin = admin_boot();   // signed-in staff; the document-level gate is below
 
 $agentId = (int) ($_GET['agent'] ?? 0);
-$slot    = ((string) ($_GET['slot'] ?? '1')) === '2' ? '2' : '1';
+$slot    = in_array((string) ($_GET['slot'] ?? '1'), ['2', '3'], true) ? (string) $_GET['slot'] : '1';   // 3 = signed agreement
 
 $deny = static function (int $code, string $msg): never {
     http_response_code($code);
@@ -40,7 +40,7 @@ if ($agentId <= 0 || !AgentWallet::kycAvailable()) {
 }
 
 $profile = AgentWallet::profile($agentId);
-$rel     = (string) ($profile[$slot === '2' ? 'kyc_doc2_path' : 'kyc_doc_path'] ?? '');
+$rel     = $slot === '3' ? AgentWallet::agreementPath($agentId) : (string) ($profile[$slot === '2' ? 'kyc_doc2_path' : 'kyc_doc_path'] ?? '');
 
 // The stored path must be exactly what saveKycDoc() writes: 'agents-kyc/<file>'.
 // Anything else — a traversal, an absolute path, a photo path — is a 404,

@@ -461,6 +461,38 @@ final class AgentWallet
     }
 
     /** "SHG-0027" — the form printed on tickets. Empty when none is issued. */
+    /**
+     * Is this admins row a counter agent (role = agent)? Cached per request:
+     * accrue(), assertMaySell() and the statements ask several times.
+     */
+    public static function isAgentRow(int $adminId): bool
+    {
+        static $cache = [];
+        if ($adminId <= 0) {
+            return false;
+        }
+        if (!array_key_exists($adminId, $cache)) {
+            try {
+                $role = (string) Database::scalar('SELECT role FROM admins WHERE id = :id', ['id' => $adminId], '');
+            } catch (Throwable $e) {
+                $role = '';
+            }
+            $cache[$adminId] = $role === 'agent';
+        }
+        return $cache[$adminId];
+    }
+
+    /**
+     * SHG codes 1..agent_company_max_code (default 10) belong to the company
+     * itself (the private limited's own desks); higher codes are individual
+     * agents. Only drives colour/icon in the panels, never money.
+     */
+    public static function isCompanyCode(string $label): bool
+    {
+        return preg_match('/(\d+)$/', $label, $m) === 1
+            && (int) $m[1] <= Settings::getInt('agent_company_max_code', 10);
+    }
+
     public static function agentCodeLabel(int $adminId): string
     {
         $code = self::agentCodeFor($adminId);
@@ -769,6 +801,17 @@ final class AgentWallet
         if (array_key_exists('whatsapp', $data))       { $clean['whatsapp']       = self::cleanPhone((string) $data['whatsapp']); }
         if (array_key_exists('display_email', $data))  { $clean['display_email']  = Security::email((string) $data['display_email']); }
         if (array_key_exists('counter_name', $data))   { $clean['counter_name']   = Security::clean((string) $data['counter_name'], 120); }
+        /* The desk's short code — NPJ, MSA, RPD (24 Sep 2026). Upper-cased
+           and reduced to letters, digits and a dash, because it is printed
+           on a ticket and read back over a phone: a code with a space or an
+           emoji in it is a code nobody can say. Free text on purpose — a new
+           desk can be given one before anybody edits the counter_locations
+           list, which only supplies the suggestions. */
+        if (array_key_exists('counter_code', $data)) {
+            $cc = mb_strtoupper(trim((string) $data['counter_code']));
+            $cc = preg_replace('/[^A-Z0-9\-]/', '', $cc) ?? '';
+            $clean['counter_code'] = mb_substr($cc, 0, 16);
+        }
         if (array_key_exists('agent_kind', $data))     { $clean['agent_kind']     = self::normaliseKind((string) $data['agent_kind']); }
         if (array_key_exists('contact_person', $data)) { $clean['contact_person'] = Security::clean((string) $data['contact_person'], 120); }
         if (array_key_exists('address', $data))        { $clean['address']        = Security::clean((string) $data['address'], 255); }
@@ -1051,6 +1094,50 @@ final class AgentWallet
         return $path;
     }
 
+    /** Signed agreement file (relative path under uploads/agents-kyc/), or ''. */
+    public static function agreementPath(int $adminId): string
+    {
+        $map = Settings::getArray('agent_agreements', []);
+        return (string) ($map[(string) $adminId] ?? '');
+    }
+
+    /**
+     * Store the agent's signed agreement next to the KYC documents (same
+     * private folder, same viewer). Kept in the agent_agreements setting
+     * like agent_salaries, so no table change is needed on the live server.
+     */
+    public static function saveAgreementDoc(int $adminId, array $file): string
+    {
+        if ($adminId <= 0) {
+            throw new RuntimeException('Choose an agent first.');
+        }
+        $check = Security::validateUpload($file);
+        if (!$check['ok']) {
+            throw new RuntimeException($check['error'] ?? 'Upload failed.');
+        }
+        $ext = strtolower((string) ($check['ext'] ?? ''));
+        if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'pdf'], true)) {
+            throw new RuntimeException('The agreement must be a JPG, PNG, WEBP image or a PDF.');
+        }
+        $dir = UPLOAD_PATH . '/agents-kyc';
+        ensureDir($dir);
+        $filename = Security::safeFilename($ext);
+        if (!move_uploaded_file((string) $file['tmp_name'], $dir . '/' . $filename)) {
+            throw new RuntimeException('Could not save the agreement.');
+        }
+        $path = 'agents-kyc/' . $filename;
+        $map  = Settings::getArray('agent_agreements', []);
+        $old  = (string) ($map[(string) $adminId] ?? '');
+        if ($old !== '' && str_starts_with($old, 'agents-kyc/')) {
+            @unlink(UPLOAD_PATH . '/' . $old);
+        }
+        $map[(string) $adminId] = $path;
+        Settings::set('agent_agreements', $map, 'json', 'agent', false);
+        Logger::audit('agent.agreement', 'admin', (string) $adminId, null,
+            ['ext' => $ext, 'size' => (int) ($check['size'] ?? 0)], 'Agent agreement uploaded');
+        return $path;
+    }
+
     /**
      * The office's verdict on an agent's KYC: 'verified' (stamps who / when),
      * 'rejected' (with the reason in $note so the agent knows what to fix),
@@ -1183,7 +1270,24 @@ final class AgentWallet
      */
     public static function assertMaySell(int $adminId, int $routeId): void
     {
-        if ($adminId <= 0 || !Auth::isCounterAgent()) {
+        /* Who is bound: a signed-in counter agent (their own sale), or an
+           agent sold FOR by a channel with no admin session at all — the
+           WhatsApp assistant's staff_sell, which used to bypass every route
+           list and daily cap. An office member (manager, owner) selling
+           under an agent's code from their own screen is not bound. */
+        if ($adminId <= 0) {
+            return;
+        }
+        if (Auth::admin() !== null) {
+            if (!Auth::isCounterAgent()) {
+                return;                     // the office selling under an agent's code
+            }
+        } elseif (PHP_SAPI === 'cli') {
+            return;                         // tests and cron act as the office
+        }
+        // A web request with no admin session can only be a machine channel
+        // (the WhatsApp webhook) selling AS the agent: bound like the agent.
+        if (!self::isAgentRow($adminId)) {
             return;
         }
 
@@ -1256,6 +1360,19 @@ final class AgentWallet
             $bookingId = (int) ($booking['id'] ?? 0);
             if ($agentId <= 0 || $bookingId <= 0) {
                 return;   // an online sale has no counter agent
+            }
+            /* Only a counter AGENT earns commission and owes cash through
+               this ledger. sold_by_admin_id is stamped for every staff
+               seller — the owner, a manager, a company ticket window — and
+               each of them used to accrue ₹200 a seat of phantom commission
+               plus a cash_due row, so the agent reports and the accounting
+               page counted office sales as agent liabilities. */
+            /* Integration 24 Sep 2026: behind commission_agent_only (OFF).
+               On live the owner's and the counter's own sales carry these rows
+               (≈ ₹10 lakh of cash_due across 272 bookings) and the reports read
+               them; stopping them is the owner's accounting call, not a merge's. */
+            if (Settings::getBool('commission_agent_only', false) && !self::isAgentRow($agentId)) {
+                return;
             }
 
             /* Reversal-aware (§4 reversible payment review).
@@ -1508,6 +1625,17 @@ final class AgentWallet
             ['sold_by_admin_id' => $newAgentId, 'commission' => $commission, 'status' => $status],
             'Selling agent changed by admin #' . $by
         );
+
+        // The ticket prints ISSUED BY / AGENT CODE: drop the cached PNG/PDF so
+        // the next open or WhatsApp send renders the corrected ticket.
+        try {
+            if (!class_exists('Ticket')) {
+                require_once __DIR__ . '/ticket.php';
+            }
+            Ticket::reissue($bookingId);
+        } catch (Throwable $e) {
+            Logger::warning('Ticket reissue after agent change failed', ['pnr' => $pnr, 'e' => $e->getMessage()]);
+        }
 
         return ['old' => $oldAgentId, 'new' => $newAgentId, 'commission' => $commission];
     }
@@ -3010,6 +3138,35 @@ final class AgentWallet
         // has to be settled before commission is worked out — not derived a
         // second, possibly different way when the row is inserted.
         $paxCount = max(1, (int) ($data['paxCount'] ?? max(1, count($seats))));
+
+        /* Commission is paid per passenger, so an uncapped count is a way to
+           pay yourself: 500 passengers on one paper ticket at ₹1 was accepted
+           and credited ₹200 × 500 to the agent's own wallet. A paper ticket
+           is one party, so it obeys the counter's party cap, and the money
+           collected must be at least a quarter of the cheapest fare per head
+           — a real discount still passes, an invented sale does not. */
+        $partyCap = max(1, Settings::getInt('counter_max_seats_per_booking', 20));
+        if ($paxCount > $partyCap) {
+            throw new RuntimeException('A paper ticket may carry at most ' . $partyCap . ' passengers. Enter the rest as a second ticket.');
+        }
+        if ($seats !== [] && count($seats) > $partyCap) {
+            throw new RuntimeException('A paper ticket may carry at most ' . $partyCap . ' seats.');
+        }
+        require_once __DIR__ . '/fare.php';
+        $cheapest = 0.0;
+        try {
+            $dir = Fare::dirFares();
+            $cheapest = (float) min(array_filter(array_map('floatval', (array) $dir), static fn(float $v): bool => $v > 0) ?: [0.0]);
+        } catch (Throwable $e) {
+            $cheapest = 0.0;
+        }
+        $floor = round($cheapest * 0.25 * $paxCount, 2);
+        if ($floor > 0 && $amount < $floor) {
+            throw new RuntimeException(
+                'The fare collected (' . inr($amount) . ') is too low for ' . $paxCount
+                . ' passenger(s) — at least ' . inr($floor) . ' is expected. Check the passenger count.'
+            );
+        }
 
         // Refuse the duplicate up front so the agent gets a clear message
         // instead of a raw constraint violation from deep inside a booking.

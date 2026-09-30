@@ -23,7 +23,7 @@ $user = Database::fetch('SELECT * FROM users WHERE phone = :p LIMIT 1', ['p' => 
 
 $rows = Database::fetchAll(
     "SELECT b.id, b.pnr, b.status, b.source, b.total_amount, b.contact_phone, b.contact_email,
-            b.created_at, b.sold_by_admin_id,
+            b.created_at, b.sold_by_admin_id, b.booking_mode,
             r.from_city, r.to_city, bl.travel_date, bl.boarding_stop,
             (SELECT GROUP_CONCAT(bs.seat_no ORDER BY bs.seat_no SEPARATOR ' ')
                FROM booking_seats bs WHERE bs.booking_id = b.id) AS seats,
@@ -165,7 +165,7 @@ admin_header('Customer · ' . ($name !== '' ? $name : '+' . $cc . ' ' . $phone),
         <td class="mono" data-label="PNR"><a href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode((string) $r['pnr']) ?>"><?= Security::e((string) $r['pnr']) ?></a></td>
         <td data-label="Route / Travel"><span><?= Security::e(($r['from_city'] ?? '—') . ' → ' . ($r['to_city'] ?? '—')) ?>
           <div class="muted"><?= $r['travel_date'] ? Security::e(formatDate((string) $r['travel_date'])) : '' ?><?= !empty($r['boarding_stop']) ? ' · ' . Security::e((string) $r['boarding_stop']) : '' ?></div></span></td>
-        <td class="mono" data-label="Seats"><?= Security::e((string) ($r['seats'] ?: '—')) ?></td>
+        <td class="mono" data-label="Seats"><?= Security::e((string) ($r['seats'] ? Seats::displayLabels(explode(' ', (string) $r['seats']), 'sleeper', (string) ($r['booking_mode'] ?? 'sharing'), ' ') : '—')) ?></td>
         <td data-label="Passenger"><?= Security::e((string) ($r['passenger'] ?? '—')) ?></td>
         <td data-label="Amount"><?= Security::e(inr((float) $r['total_amount'])) ?></td>
         <td data-label="Paid via"><span class="muted"><?= Security::e(strtoupper((string) ($r['pay_method'] ?? '—'))) ?></span>
