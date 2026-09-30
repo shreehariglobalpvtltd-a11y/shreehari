@@ -549,17 +549,13 @@ function servedTownKeys(dir) {
 }
 
 function gujaratTownsFor(dir) {
-  /* The five canonical stops ARE the daily run — prefer the subset a live
-     route confirms (self-healing while data catches up), but when the
-     intersection is empty (stale KV, timetable not loaded yet) offer the
-     FULL canonical list rather than the routes' endpoint cities: the one
-     daily bus always calls at all five, so canonical is never a lie, while
-     an endpoint-only list would hide four real pickups. */
+  /* Every canonical stop IS a daily stop — show the full list always.
+     The bus calls at ALL mainPoints.india towns on every run, so filtering
+     against server data only hid real stops when a migration was missing
+     (Kamrej, Ankleshwar etc. disappeared from the picker). */
   const canonical = ((CONFIG.mainPoints || {}).india || []).filter(Boolean);
   if (canonical.length) {
-    const served = servedTownKeys(dir);
-    const usable = canonical.filter(c => served[townKeyJS(c)]);
-    return usable.length ? usable : canonical;
+    return canonical;
   }
 
   // mainPoints misconfigured/empty — fall back to the routes' endpoint cities

@@ -212,6 +212,15 @@ function validateCheckoutDetails() {
   const tncErrEl = $('#tncErr'); if (tncErrEl) tncErrEl.style.display = (ctrSell || tnc) ? 'none' : 'block';
   if (!tnc) { fails.push('नियम / T&C'); ok = false; }
 
+  if (ctrSell) {
+    const agEl = $('#cAgentCode');
+    if (agEl && agEl.tagName === 'SELECT' && !agEl.value) {
+      agEl.closest('.field').classList.add('invalid');
+      fails.push('एजेन्ट / Agent');
+      ok = false;
+    }
+  }
+
   return { ok: ok, blocked: blocked, passengers: passengers, phone: phone, email: email, idNum: idNum, phoneVal: phoneVal, fails: fails };
 }
 /* The specific version of "fix the highlighted fields": name the fields. */
@@ -255,6 +264,10 @@ function coSyncContinue() {
   // Counter session: T&C is the desk's responsibility, not a gate (mirrors
   // validateCheckoutDetails — the two entry points must never disagree).
   if (!ctrSell2) { const tnc = $('#agreeTnc'); if (!tnc || !tnc.checked) ready = false; }
+  if (ctrSell2) {
+    const agEl2 = $('#cAgentCode');
+    if (agEl2 && agEl2.tagName === 'SELECT' && !agEl2.value) ready = false;
+  }
   btn.disabled = !ready;
 }
 /* Switch between step 1 (details) and step 2 (payment). Going forward runs the

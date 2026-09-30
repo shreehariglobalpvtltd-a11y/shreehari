@@ -52,6 +52,23 @@ $waReady  = $waDriver === 'twilio'
         && Settings::getString('whatsapp_phone_id', '') !== '');
 $who = trim((string) ($admin['full_name'] ?? ($admin['username'] ?? 'staff')));
 
+require_once INCLUDE_PATH . '/agentwallet.php';
+$staffId    = (int) ($admin['id'] ?? 0);
+$staffCode  = AgentWallet::agentCodeLabel($staffId) ?: '';
+$agentRows  = [];
+try {
+    $agentRows = Database::fetchAll(
+        "SELECT id, username, full_name FROM admins WHERE role = 'agent' AND is_active = 1 ORDER BY full_name, username"
+    );
+} catch (Throwable $e) {}
+$agentList = [];
+foreach ($agentRows as $ar) {
+    $aCode = AgentWallet::agentCodeLabel((int) $ar['id']);
+    if ($aCode) {
+        $agentList[] = ['code' => $aCode, 'name' => (string) ($ar['full_name'] ?: $ar['username'])];
+    }
+}
+
 // Today's quick tickets — a counter agent sees only their own.
 $scope  = Auth::bookingScopeAdminId();
 $params = ['d0' => todayISO()];
@@ -374,6 +391,16 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
         <div class="qt-hint">Max discount <?= Security::e((string) $maxDisc) ?>% (server re-checks). Boarding choice is remembered on this desk.</div>
       </details>
 
+      <div class="qt-row" style="margin:10px 0">
+        <span class="qt-k" style="font-weight:700">एजेन्ट · Agent <small style="color:#e53e3e">(अनिवार्य / required)</small></span>
+        <select id="qtAgent" class="qt-in" style="max-width:320px" required>
+          <option value="">— एजेन्ट छान्नुहोस् / Select Agent —</option>
+          <?php foreach ($agentList as $ag): ?>
+            <option value="<?= Security::e($ag['code']) ?>"<?= $ag['code'] === $staffCode ? ' selected' : '' ?>><?= Security::e($ag['code'] . ' · ' . $ag['name']) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+
       <button type="submit" class="qt-go" id="qtGo" <?= $canSell ? '' : 'disabled' ?>>⚡ Confirm &amp; Issue Ticket →</button>
       <div class="qt-hint">Enter in the line = confirm · The sale confirms instantly (cash / UPI already received at the desk), the ticket PNG + PDF are ready and the WhatsApp goes, credited to <b><?= Security::e($who) ?></b>.</div>
     </form>
@@ -672,10 +699,8 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
   function hideErr() { $('#qtErr').hidden = true; }
   function validate(name, phone) {
     if (name.length < 2) return 'Passenger name लेख्नुहोस् · Enter the passenger name.';
+    var ag = $('#qtAgent'); if (ag && !ag.value) return 'एजेन्ट छान्नुहोस् · Please select an agent.';
     var d = phone.replace(/\D/g, '');
-    /* A walk-in with no phone still gets a ticket at the desk (owner ask,
-       point 9): blank is allowed and the server stores the walk-in
-       placeholder. A number that IS typed must still be a real one. */
     if (d === '') return '';
     if (st.cc === 'NP') {
       if (!(d.length === 10 || (d.length === 13 && d.indexOf('977') === 0))) return 'Nepali mobile: 10 digits (98XXXXXXXX) or +977 98XXXXXXXX.';
@@ -709,6 +734,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
     api({
       action: 'sell', name: name, phone: fullPhone(phone), country: st.cc, gender: st.gender, seats: st.seats, prefer: st.prefer,
       direction: st.direction, date: dateValue(), boarding: st.boarding, pay: st.pay,
+      agentCode: ($('#qtAgent') ? $('#qtAgent').value : ''),
       discountType: dv > 0 ? $('#qtDiscType').value : '', discountValue: dv, note: $('#qtNote').value.trim(),
       // 🤖 what the bot proposed for this sale (null when it proposed nothing) — scores the outcome loop
       bot: botPrefill || undefined,

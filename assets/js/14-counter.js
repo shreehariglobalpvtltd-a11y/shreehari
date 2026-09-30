@@ -375,12 +375,33 @@
     }
     oneScreen();
 
-    // The seller IS the agent: fix the agent-code box to their own code.
+    // Agent selection is MANDATORY at the counter / admin desk.
     var ac = $q('#cAgentCode');
     if (ac) {
       var field = ac.closest('.field') || ac.parentElement;
-      if (STAFF.code) { ac.value = STAFF.code; ac.readOnly = true; }
-      else if (field) { field.style.display = 'none'; }
+      var agents = (STAFF.agents || []);
+      if (agents.length > 0) {
+        var sel = document.createElement('select');
+        sel.id = 'cAgentCode';
+        sel.style.cssText = 'width:100%;font-size:16px;padding:10px 12px;border:1.5px solid var(--line,#dde3ee);border-radius:12px;background:var(--card,#fff);color:inherit';
+        sel.innerHTML = '<option value="">— एजेन्ट छान्नुहोस् / Select Agent —</option>'
+          + agents.map(function (a) {
+            var selected = (STAFF.code && a.code === STAFF.code) ? ' selected' : '';
+            return '<option value="' + esc(a.code) + '"' + selected + '>' + esc(a.code) + ' · ' + esc(a.name) + '</option>';
+          }).join('');
+        ac.parentNode.replaceChild(sel, ac);
+        sel.addEventListener('change', function () {
+          if (field) field.classList.remove('invalid');
+          try { if (typeof coSyncContinue === 'function') coSyncContinue(); } catch (e) {}
+        });
+        var lbl = field && field.querySelector('label');
+        if (lbl) lbl.innerHTML = 'एजेन्ट छान्नुहोस् · Select Agent <small style="color:var(--bad)">(अनिवार्य / required)</small>';
+        if (field) field.classList.remove('field-optional');
+        var hint = field && field.querySelector('.hint');
+        if (hint) hint.textContent = 'काउन्टर / एडमिन बिक्रीमा एजेन्ट चयन अनिवार्य छ। · Agent selection is mandatory for counter/admin sales.';
+      } else if (STAFF.code) {
+        ac.value = STAFF.code; ac.readOnly = true;
+      } else if (field) { field.style.display = 'none'; }
     }
     // Do not pre-fill the passenger phone with the staff member's own customer login.
     try {

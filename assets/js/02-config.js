@@ -577,13 +577,14 @@ function renderTerms() {
     h += '<summary class="tc-head" style="border-left:4px solid ' + s.color + '">';
     h += '<span class="tc-letter">' + s.letter + '</span>';
     h += '<span class="tc-emoji">' + s.emoji + '</span>';
-    h += '<span class="tc-title">' + s.t_ne + ' / ' + s.t_hi + ' / ' + s.t_en + '</span>';
+    h += '<span class="tc-title">' + s.t_ne + ' / ' + s.t_hi + (s.t_gu ? ' / ' + s.t_gu : '') + ' / ' + s.t_en + '</span>';
     h += '<span class="tc-arrow">▼</span>';
     h += '</summary>';
     h += '<div class="tc-body">';
     h += '<div class="tc-sum">';
     h += '<p><span class="tc-lang">NE</span> ' + s.s_ne + '</p>';
     h += '<p><span class="tc-lang">HI</span> ' + s.s_hi + '</p>';
+    if (s.s_gu) h += '<p><span class="tc-lang">GU</span> ' + s.s_gu + '</p>';
     h += '<p><span class="tc-lang">EN</span> ' + s.s_en + '</p>';
     h += '</div>';
     h += '<div class="tc-clauses">';
