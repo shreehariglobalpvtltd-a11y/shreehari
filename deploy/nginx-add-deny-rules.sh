@@ -3,10 +3,10 @@
 #  nginx-add-deny-rules.sh — runs ON THE VPS (Deploy to VPS → nginx=apply).
 #
 #  Adds the 30 Sep 2026 deny rules (dated .bak copies, deploy/, *.sh,
-#  *.conf) to the LIVE nginx config: right after EVERY `root <site>;` line
-#  in every enabled site file and shared snippet, so each server block that
-#  serves the site folder (www, the bare domain, the .network staff door)
-#  gets them. The live files have certbot edits, so they are patched in
+#  *.conf) to the LIVE nginx config: right after EVERY server-level
+#  `root <site>;` line in every enabled site file, so each server block that
+#  serves the site folder (www, the .network staff door) gets them. A root
+#  set inside a location block is left alone. The live files have certbot edits, so they are patched in
 #  place, never replaced by deploy/nginx-shreehariglobal.in.conf.
 #
 #  Safe by construction:
@@ -26,7 +26,7 @@ set -euo pipefail
 
 SITE_ROOT="${1:?site root path required}"
 SITE_ROOT="${SITE_ROOT%/}"
-SITES="${SITES:-/etc/nginx/sites-enabled/* /etc/nginx/conf.d/*.conf /etc/nginx/snippets/*.conf}"
+SITES="${SITES:-/etc/nginx/sites-enabled/* /etc/nginx/conf.d/*.conf}"
 NGINX_TEST="${NGINX_TEST:-nginx -t}"
 NGINX_RELOAD="${NGINX_RELOAD:-systemctl reload nginx}"
 BACKUP_DIR="${BACKUP_DIR:-/root/backups/nginx}"
@@ -35,15 +35,37 @@ CHECK_URL="${CHECK_URL:-https://www.shreehariglobal.in/}"
 CHECK_RESOLVE="${CHECK_RESOLVE-www.shreehariglobal.in:443:127.0.0.1}"
 MARKER='SHG deny rules 2026-09-30'
 
-is_root_line='$1 == "root" && ($2 == r ";" || $2 == r "/;")'
+# A SERVER-LEVEL `root <site>;` line: the innermost open block is `server`.
+# A root inside a location (e.g. `location = /sw.js { root ...; }`) must not
+# get the rules: nginx refuses a regex location inside an exact one, and a
+# nested rule would not guard the rest of the server anyway (30 Sep 2026,
+# Deploy to VPS #47). Braces are tracked per character with comments cut;
+# the directive in front of each `{` names the block.
+SERVER_ROOT_AWK='
+    function scan(s,    i, c, w) {
+        sub(/#.*/, "", s)
+        for (i = 1; i <= length(s); i++) {
+            c = substr(s, i, 1)
+            if (c == "{")      { split(stmt, w); stack[++sp] = w[1]; stmt = "" }
+            else if (c == "}") { if (sp > 0) sp--; stmt = "" }
+            else if (c == ";") { stmt = "" }
+            else               { stmt = stmt c }
+        }
+        stmt = stmt " "
+    }
+    {
+        target = ($1 == "root" && ($2 == r ";" || $2 == r "/;") && sp > 0 && stack[sp] == "server")
+        scan($0)
+    }
+'
 
-# Every file (by real path, once) that sets `root <site>;` somewhere.
+# Every file (by real path, once) with a server-level `root <site>;`.
 files=()
 for f in $SITES; do
     [ -f "$f" ] || continue
     real="$(readlink -f "$f")"
     case " ${files[*]-} " in *" $real "*) continue ;; esac
-    if awk -v r="$SITE_ROOT" "$is_root_line { found = 1 } END { exit !found }" "$real"; then
+    if awk -v r="$SITE_ROOT" "$SERVER_ROOT_AWK"' target { found = 1 } END { exit !found }' "$real"; then
         files+=("$real")
     fi
 done
@@ -80,7 +102,7 @@ for file in "${files[@]}"; do
     new="$(mktemp)"
     # 1) drop any block an earlier run inserted (blank line + marker comment
     #    + 1 more comment line + 4 location lines);
-    # 2) insert one fresh block after EVERY `root <site>;` line, so the
+    # 2) insert one fresh block after EVERY server-level `root <site>;`, so the
     #    rules sit ahead of every regex location in each server block
     #    (nginx uses the first regex match).
     awk -v m="$MARKER" '
@@ -89,15 +111,13 @@ for file in "${files[@]}"; do
         index($0, m) { held = 0; skip = 5; next }
         { if (held) { print hl; held = 0 } print }
         END { if (held) print hl }
-    ' "$file" | awk -v r="$SITE_ROOT" -v rf="$rules" "
-        $is_root_line {
-            print
+    ' "$file" | awk -v r="$SITE_ROOT" -v rf="$rules" "$SERVER_ROOT_AWK"'
+        { print }
+        target {
             while ((getline l < rf) > 0) print l
             close(rf)
-            next
         }
-        { print }
-    " > "$new"
+    ' > "$new"
 
     if cmp -s "$new" "$file"; then
         echo "unchanged (rules already in place): $file"
