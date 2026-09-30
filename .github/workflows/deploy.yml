@@ -124,6 +124,36 @@ jobs:
             echo "server-side php -l ok, ownership set"
           REMOTE
 
+      # 30 Sep 2026: cron/wa-fail-alert.php does nothing until it is scheduled.
+      # Adds its line once, to the SAME crontab that already runs
+      # whatsapp-retry.php (so it runs as the same user). Idempotent: a line
+      # that is already there is left alone; no matching crontab → warning only.
+      - name: Schedule the failed-WhatsApp office alert
+        if: ${{ inputs.mode == 'full' }}
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PATH: ${{ secrets.VPS_PATH }}
+        run: |
+          ssh -i ~/.ssh/shg_deploy -o StrictHostKeyChecking=no "$VPS_USER@$VPS_HOST" bash -s "$VPS_PATH" <<'REMOTE'
+            set -e
+            [ -f "$1/cron/wa-fail-alert.php" ] || { echo "wa-fail-alert.php not deployed, nothing to schedule"; exit 0; }
+            line="*/5 * * * * /usr/bin/php $1/cron/wa-fail-alert.php >/dev/null 2>&1"
+            for u in root www-data; do
+              cur="$(crontab -u "$u" -l 2>/dev/null || true)"
+              if printf '%s\n' "$cur" | grep -q 'whatsapp-retry.php'; then
+                if printf '%s\n' "$cur" | grep -q 'wa-fail-alert.php'; then
+                  echo "wa-fail-alert already scheduled for $u"
+                else
+                  printf '%s\n%s\n' "$cur" "$line" | crontab -u "$u" -
+                  echo "wa-fail-alert scheduled every 5 minutes for $u"
+                fi
+                exit 0
+              fi
+            done
+            echo "::warning::No crontab runs whatsapp-retry.php; add this line by hand: $line"
+          REMOTE
+
       - name: Backup + migration
         if: ${{ inputs.mode == 'full' && inputs.migrate != '' }}
         run: bash deploy.sh --backup --migrate "${{ inputs.migrate }}"
