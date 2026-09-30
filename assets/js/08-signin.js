@@ -372,7 +372,7 @@ function myBookingCard(b) {
       ${(function () { try { return window.SHGBorder ? window.SHGBorder.badge(b) : ''; } catch (e) { return ''; } })()}
       <small>${fmtDate(b.date)}</small>
     </div>
-    <div class="mybk-route">${esc(parseBP(b.boarding).name || r.from || '?')} <em>→</em> ${esc(parseBP(b.drop).name || r.to || '?')} · ${seatLabelJoin(b.seats, r.type, b.bookingType)} · <b>${inr(b.total)}</b></div>
+    <div class="mybk-route">${esc(parseBP(b.boarding).name || r.from || '?')} <em>→</em> ${esc(parseBP(b.drop).name || r.to || '?')} · ${seatLabelJoin(b.seats, r.type, b.bookingType)} · <b>${inr(b.total)}</b>${b.agentCode ? ' · <span style="font-family:var(--f-code);font-size:12px;color:var(--orange-800,#7a3d00)">🏷️ ' + esc(b.agentCode) + '</span>' : ''}</div>
     <div class="mybk-actions">
       <a class="btn btn-blue btn-sm" href="#/ticket/${esc(b.id)}">🎫 ${t('st5')}</a>
       ${b.status === 'confirmed' ? '<button class="btn btn-ghost btn-sm" type="button" data-mypdf="' + esc(b.id) + '">' + t('btnPdf') + '</button>' : ''}
