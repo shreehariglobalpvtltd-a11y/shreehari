@@ -40,7 +40,7 @@ $agents = [];
 foreach (Database::fetchAll("SELECT id, username, full_name FROM admins WHERE role = 'agent' AND is_active = 1 ORDER BY full_name, username") as $a) {
     $label = AgentWallet::agentCodeLabel((int) $a['id']);
     if ($label !== '') {
-        $agents[(int) $a['id']] = ['code' => $label, 'name' => (string) ($a['full_name'] ?: $a['username'])];
+        $agents[(int) $a['id']] = ['code' => $label, 'name' => (string) ($a['full_name'] ?: $a['username']), 'co' => AgentWallet::isCompanyCode($label)];
     }
 }
 uasort($agents, static fn($x, $y) => strnatcmp($x['code'], $y['code']));
@@ -164,7 +164,7 @@ $agentOptions = static function (int $selected) use ($agents, $companyId): strin
     $html = '';
     foreach ($agents as $id => $a) {
         $html .= '<option value="' . $id . '"' . ($id === $selected ? ' selected' : '') . '>'
-            . Security::e($a['code'] . ' · ' . $a['name'] . ($id === $companyId ? ' (company / Other)' : '')) . '</option>';
+            . Security::e(($a['co'] ? '🏢 ' : '👤 ') . $a['code'] . ' · ' . $a['name'] . ($id === $companyId ? ' (company / Other)' : '')) . '</option>';
     }
     return $html;
 };

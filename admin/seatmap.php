@@ -292,7 +292,7 @@ if ($canAssign) {
     foreach (Database::fetchAll("SELECT id, username, full_name FROM admins WHERE role = 'agent' AND is_active = 1") as $a) {
         $lbl = AgentWallet::agentCodeLabel((int) $a['id']);
         if ($lbl !== '') {
-            $smAgents[] = ['id' => (int) $a['id'], 'code' => $lbl, 'name' => (string) ($a['full_name'] ?: $a['username'])];
+            $smAgents[] = ['id' => (int) $a['id'], 'code' => $lbl, 'name' => (string) ($a['full_name'] ?: $a['username']), 'co' => AgentWallet::isCompanyCode($lbl)];
         }
     }
     usort($smAgents, static fn(array $x, array $y): int => strnatcmp($x['code'], $y['code']));
@@ -350,6 +350,15 @@ function seatmap_agent_code(array $codes, ?int $adminId): string
         return '';
     }
     return 'SHG-' . str_pad((string) $codes[$adminId], 4, '0', STR_PAD_LEFT);
+}
+
+/** 'co' for the company's own codes (1..agent_company_max_code, default 10), 'in' for individual agents. */
+function seatmap_agent_band(string $code): string
+{
+    if (!preg_match('/(\d+)$/', $code, $m)) {
+        return '';
+    }
+    return (int) $m[1] <= Settings::getInt('agent_company_max_code', 10) ? 'co' : 'in';
 }
 
 /** Source badge for the bookings panel — mirrors trip-dashboard.php. */
@@ -488,6 +497,15 @@ function seatmap_seat_div(array $s, array $femalePref, array $agentCodes, string
     if ($info !== '') {
         $html .= '<span class="seat-info">' . Security::e($info) . '</span>';
     }
+    if ($status === 'booked' && !empty($s['mine'])) {
+        $agc = (string) ($s['agentCode'] ?? '');
+        if ($agc === '' && !empty($s['soldById'])) {
+            $agc = seatmap_agent_code($agentCodes, (int) $s['soldById']);
+        }
+        if ($agc !== '') {
+            $html .= '<span class="seat-ag ag-' . seatmap_agent_band($agc) . '">' . Security::e(ltrim(preg_replace('/^SHG-?/', '', $agc) ?? '', '0')) . '</span>';
+        }
+    }
     $html .= '</div>';
     return $html;
 }
@@ -518,6 +536,12 @@ admin_header('Seat Map', 'seatmap');
 .seat:hover{transform:scale(1.05);box-shadow:0 2px 8px rgba(0,0,0,.15)}
 .seat-no{font-weight:800;font-size:13px;font-family:ui-monospace,'Cascadia Code',Consolas,monospace}
 .seat-info{font-size:10px;color:inherit;opacity:.8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.seat{position:relative}
+.seat-ag{position:absolute;top:2px;right:2px;min-width:16px;padding:0 3px;border-radius:8px;font-size:9px;font-weight:800;line-height:14px;text-align:center;color:#fff}
+.seat-ag.ag-co{background:#7c3aed}
+.seat-ag.ag-in{background:#ea580c}
+.ag-key{display:inline-flex;align-items:center;gap:6px;margin-left:10px;font-size:12px}
+.ag-key i{display:inline-block;width:14px;height:14px;border-radius:7px}
 .seat:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
 
 /* ---- Pickup point: the SECOND channel ------------------------------------
@@ -742,7 +766,7 @@ $smToday = todayISO();
     <select name="agent_id" id="smAgent">
       <option value="">— choose agent —</option>
       <?php foreach ($smAgents as $ag): ?>
-        <option value="<?= $ag['id'] ?>"><?= Security::e($ag['code'] . ' · ' . $ag['name'] . ($ag['id'] === $smCompanyId ? ' (company / Other)' : '')) ?></option>
+        <option value="<?= $ag['id'] ?>"><?= Security::e(($ag['co'] ? '🏢 ' : '👤 ') . $ag['code'] . ' · ' . $ag['name'] . ($ag['id'] === $smCompanyId ? ' (company / Other)' : '')) ?></option>
       <?php endforeach; ?>
     </select>
     <button type="submit" class="btn btn-ok" id="smAssignGo">💾 Assign</button>
@@ -801,6 +825,8 @@ $smToday = todayISO();
   <span><i class="seat-blocked"></i> 🚫 Blocked</span>
   <span><i class="seat-staff"></i> 🛡️ Emergency</span>
   <span><i class="seat-female"></i> Female pref.</span>
+  <span class="ag-key"><i style="background:#7c3aed"></i> Company agent (SHG 1–<?= (int) Settings::getInt('agent_company_max_code', 10) ?>)</span>
+  <span class="ag-key"><i style="background:#ea580c"></i> Individual agent</span>
 </div>
 <?php
 /* Pickup key. Built with the SAME walk Seats::adminSeatMap uses to assign
@@ -1233,7 +1259,8 @@ if ($legendStops !== []): ?>
   var _pollRoute = <?= (int) $routeId ?>;
   var _pollDate  = <?= json_encode($date, JSON_UNESCAPED_SLASHES) ?>;
   var _pollUrl   = <?= json_encode($base . '/admin/api/seatmap-poll.php') ?>;
-  var _pollSid   = <?= (int) $sidReq ?>;   // extra bus on the same date (0 = daily bus)
+  var _pollSid   = <?= (int) $sidReq ?>;
+  var AG_CO_MAX  = <?= (int) Settings::getInt('agent_company_max_code', 10) ?>;   // extra bus on the same date (0 = daily bus)
 
   function pollSeats(){
     if (document.hidden) return;  // save bandwidth when tab is in background
@@ -1317,6 +1344,13 @@ if ($legendStops !== []): ?>
             el.dataset.mine = '0';
             el.dataset.pnr  = '';
           }
+          var agEl = el.querySelector('.seat-ag'), agc = (info.status === 'booked' && info.agentCode) ? String(info.agentCode) : '';
+          if (agc) {
+            var agn = parseInt(agc.replace(/\D/g, ''), 10) || 0;
+            if (!agEl) { agEl = document.createElement('span'); el.appendChild(agEl); }
+            agEl.className = 'seat-ag ag-' + (agn <= AG_CO_MAX ? 'co' : 'in');
+            agEl.textContent = String(agn);
+          } else if (agEl) { agEl.remove(); }
           el.title = rebuildTip(el.dataset.seatLabel || el.dataset.seat, info);
           el.setAttribute('aria-label', el.title);
 

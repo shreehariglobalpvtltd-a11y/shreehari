@@ -90,6 +90,7 @@ foreach ($agentRows as $ar) {
             'code' => $aCode,
             'name' => (string) ($ar['full_name'] ?: $ar['username']),
             'type' => AgentWallet::agentTypeFor($aid),
+            'co'   => AgentWallet::isCompanyCode($aCode),
         ];
     }
 }
@@ -440,7 +441,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
         <select id="qtAgent" class="qt-in" style="max-width:320px" required>
           <option value="">— एजेन्ट छान्नुहोस् / Select Agent —</option>
           <?php foreach ($agentList as $ag): ?>
-            <option value="<?= Security::e($ag['code']) ?>"<?= $ag['code'] === $staffCode ? ' selected' : '' ?>><?= Security::e($ag['code'] . ' · ' . $ag['name']) ?></option>
+            <option value="<?= Security::e($ag['code']) ?>"<?= $ag['code'] === $staffCode ? ' selected' : '' ?>><?= Security::e(($ag['co'] ? '🏢 ' : '👤 ') . $ag['code'] . ' · ' . $ag['name']) ?></option>
           <?php endforeach; ?>
           <option value="OTHER">अन्य / Other (Direct Sale — company)</option>
         </select>

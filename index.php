@@ -120,6 +120,7 @@ if ($staffRow !== null) {
                     'code' => $aCode,
                     'name' => (string) ($ar['full_name'] ?: $ar['username']),
                     'type' => AgentWallet::agentTypeFor($aid),
+                    'co'   => AgentWallet::isCompanyCode($aCode),
                 ];
             }
         }

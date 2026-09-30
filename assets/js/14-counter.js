@@ -400,7 +400,7 @@
         sel.innerHTML = '<option value="">— एजेन्ट छान्नुहोस् / Select Agent —</option>'
           + agents.map(function (a) {
             var selected = (STAFF.code && a.code === STAFF.code) ? ' selected' : '';
-            return '<option value="' + esc(a.code) + '"' + selected + '>' + esc(a.code) + ' · ' + esc(a.name) + '</option>';
+            return '<option value="' + esc(a.code) + '"' + selected + '>' + (a.co ? '🏢 ' : '👤 ') + esc(a.code) + ' · ' + esc(a.name) + '</option>';
           }).join('')
           + '<option value="OTHER">अन्य / Other (Direct Sale — company)</option>';
         ac.parentNode.replaceChild(sel, ac);

@@ -482,6 +482,17 @@ final class AgentWallet
         return $cache[$adminId];
     }
 
+    /**
+     * SHG codes 1..agent_company_max_code (default 10) belong to the company
+     * itself (the private limited's own desks); higher codes are individual
+     * agents. Only drives colour/icon in the panels, never money.
+     */
+    public static function isCompanyCode(string $label): bool
+    {
+        return preg_match('/(\d+)$/', $label, $m) === 1
+            && (int) $m[1] <= Settings::getInt('agent_company_max_code', 10);
+    }
+
     public static function agentCodeLabel(int $adminId): string
     {
         $code = self::agentCodeFor($adminId);
@@ -1083,6 +1094,50 @@ final class AgentWallet
         return $path;
     }
 
+    /** Signed agreement file (relative path under uploads/agents-kyc/), or ''. */
+    public static function agreementPath(int $adminId): string
+    {
+        $map = Settings::getArray('agent_agreements', []);
+        return (string) ($map[(string) $adminId] ?? '');
+    }
+
+    /**
+     * Store the agent's signed agreement next to the KYC documents (same
+     * private folder, same viewer). Kept in the agent_agreements setting
+     * like agent_salaries, so no table change is needed on the live server.
+     */
+    public static function saveAgreementDoc(int $adminId, array $file): string
+    {
+        if ($adminId <= 0) {
+            throw new RuntimeException('Choose an agent first.');
+        }
+        $check = Security::validateUpload($file);
+        if (!$check['ok']) {
+            throw new RuntimeException($check['error'] ?? 'Upload failed.');
+        }
+        $ext = strtolower((string) ($check['ext'] ?? ''));
+        if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'pdf'], true)) {
+            throw new RuntimeException('The agreement must be a JPG, PNG, WEBP image or a PDF.');
+        }
+        $dir = UPLOAD_PATH . '/agents-kyc';
+        ensureDir($dir);
+        $filename = Security::safeFilename($ext);
+        if (!move_uploaded_file((string) $file['tmp_name'], $dir . '/' . $filename)) {
+            throw new RuntimeException('Could not save the agreement.');
+        }
+        $path = 'agents-kyc/' . $filename;
+        $map  = Settings::getArray('agent_agreements', []);
+        $old  = (string) ($map[(string) $adminId] ?? '');
+        if ($old !== '' && str_starts_with($old, 'agents-kyc/')) {
+            @unlink(UPLOAD_PATH . '/' . $old);
+        }
+        $map[(string) $adminId] = $path;
+        Settings::set('agent_agreements', $map, 'json', 'agent', false);
+        Logger::audit('agent.agreement', 'admin', (string) $adminId, null,
+            ['ext' => $ext, 'size' => (int) ($check['size'] ?? 0)], 'Agent agreement uploaded');
+        return $path;
+    }
+
     /**
      * The office's verdict on an agent's KYC: 'verified' (stamps who / when),
      * 'rejected' (with the reason in $note so the agent knows what to fix),
@@ -1570,6 +1625,17 @@ final class AgentWallet
             ['sold_by_admin_id' => $newAgentId, 'commission' => $commission, 'status' => $status],
             'Selling agent changed by admin #' . $by
         );
+
+        // The ticket prints ISSUED BY / AGENT CODE: drop the cached PNG/PDF so
+        // the next open or WhatsApp send renders the corrected ticket.
+        try {
+            if (!class_exists('Ticket')) {
+                require_once __DIR__ . '/ticket.php';
+            }
+            Ticket::reissue($bookingId);
+        } catch (Throwable $e) {
+            Logger::warning('Ticket reissue after agent change failed', ['pnr' => $pnr, 'e' => $e->getMessage()]);
+        }
 
         return ['old' => $oldAgentId, 'new' => $newAgentId, 'commission' => $commission];
     }
