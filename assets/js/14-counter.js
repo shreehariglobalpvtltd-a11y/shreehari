@@ -389,7 +389,7 @@
             var selected = (STAFF.code && a.code === STAFF.code) ? ' selected' : '';
             return '<option value="' + esc(a.code) + '"' + selected + '>' + esc(a.code) + ' · ' + esc(a.name) + '</option>';
           }).join('')
-          + '<option value="OTHER">अन्य / Other (Direct Sale)</option>';
+          + '<option value="OTHER">अन्य / Other (Direct Sale — company)</option>';
         ac.parentNode.replaceChild(sel, ac);
         sel.addEventListener('change', function () {
           if (field) field.classList.remove('invalid');
