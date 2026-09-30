@@ -1995,15 +1995,16 @@ s.addEventListener('click',function(e){e.preventDefault();
            invalid code never blocks the checkout — the customer just sees
            a small note and the booking completes as a direct sale. -->
       <div class="co-card">
-        <div class="field field-optional">
-          <label for="cAgentCode">एजेन्ट कोड · Agent Code <small>(optional / ऐच्छिक)</small></label>
+        <div class="field" id="agentCodeField">
+          <label for="cAgentCode">एजेन्ट कोड · Agent Code <small style="color:var(--danger,#c00)">*</small></label>
           <input id="cAgentCode" maxlength="20" autocomplete="off"
                  inputmode="text" spellcheck="false"
                  placeholder="e.g. SHG-027"
-                 style="text-transform:uppercase">
+                 style="text-transform:uppercase" required>
           <div class="hint" style="font-size:12px;color:var(--muted);margin-top:4px">
-            एजेन्टको सिफारिशमा टिकट काट्दै हुनुहुन्छ? कोड यहाँ राख्नुहोस्।
+            एजेन्ट कोड अनिवार्य छ। एजेन्ट नभए "अन्य / Other" थिच्नुहोस्।
           </div>
+          <button type="button" id="cAgentOther" class="btn btn-ghost btn-sm" style="margin-top:6px;font-size:13px">🔘 अन्य / Other (Direct Sale)</button>
           <div id="cAgentCodeMsg" style="font-size:12px;margin-top:6px" hidden></div>
         </div>
       </div>
