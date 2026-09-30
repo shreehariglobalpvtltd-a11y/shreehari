@@ -38,6 +38,12 @@ on:
         required: false
         default: ''
         type: string
+      nginx:
+        description: 'apply = add the 30 Sep 2026 deny rules to the live nginx site (backup, nginx -t, auto-undo) · skip = leave nginx alone'
+        required: false
+        default: 'skip'
+        type: choice
+        options: [skip, apply]
 
 permissions:
   contents: read
@@ -153,6 +159,28 @@ jobs:
             done
             echo "::warning::No crontab runs whatsapp-retry.php; add this line by hand: $line"
           REMOTE
+
+      # 30 Sep 2026: the live nginx file has certbot edits, so it is patched in
+      # place by deploy/nginx-add-deny-rules.sh (backup, nginx -t, reload,
+      # health check, restore on any failure), never replaced.
+      - name: Add the nginx deny rules
+        if: ${{ inputs.mode == 'full' && inputs.nginx == 'apply' }}
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PATH: ${{ secrets.VPS_PATH }}
+          SITE_URL: ${{ secrets.SITE_URL }}
+        run: |
+          ssh -i ~/.ssh/shg_deploy -o StrictHostKeyChecking=no "$VPS_USER@$VPS_HOST" bash -s "$VPS_PATH" < deploy/nginx-add-deny-rules.sh
+          site="${SITE_URL:-https://www.shreehariglobal.in}"
+          for p in /deploy.sh /admin/index.php.bak.20260828-152722; do
+            c="$(curl -s -o /dev/null -w '%{http_code}' "$site$p")"
+            echo "$p -> $c"
+            [ "$c" = 404 ] || { echo "::error::$p still answers $c"; exit 1; }
+          done
+          c="$(curl -s -o /dev/null -w '%{http_code}' "$site/")"
+          echo "/ -> $c"
+          [ "$c" = 200 ] || { echo "::error::home page answers $c"; exit 1; }
 
       - name: Backup + migration
         if: ${{ inputs.mode == 'full' && inputs.migrate != '' }}
