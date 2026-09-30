@@ -222,6 +222,44 @@ check('manager block attempt is no longer refused as super-admin-only',
 check('… it reaches the customer lookup (uid 0 → "Customer not found")', str_contains($blk['body'], 'Customer not found'));
 
 /* ---------------------------------------------------------------- */
+/* 30 Sep 2026: blocking a seat, putting it back or releasing a hold changes
+   the bus for EVERY seller, so the seat map keeps them for office staff. An
+   agent still sells and reseats their own passengers there. */
+echo "\n=== 4b. Seat map: block / unblock / release is office work ===\n";
+$smRoute = (int) pdo()->query('SELECT id FROM routes WHERE is_active = 1 ORDER BY id LIMIT 1')->fetchColumn();
+$smDate  = '2099-10-17';
+$smUrl   = '/admin/seatmap.php?route=' . $smRoute . '&date=' . $smDate;
+$smHadSched = (bool) pdo()->query('SELECT COUNT(*) FROM schedules WHERE route_id = ' . $smRoute . " AND travel_date = '$smDate'")->fetchColumn();
+$mSm = req('GET', $smUrl, ['jar' => $mgrJar]);
+check('manager opens the seat map', $mSm['code'] === 200, 'HTTP ' . $mSm['code']);
+check('manager sees the Block seat control', str_contains($mSm['body'], 'name="action" value="block"'));
+$smSeat = preg_match('~Choose an open seat…</option>\s*<option value="([A-Z0-9]+)"~u', $mSm['body'], $sm) ? $sm[1] : '';
+check('an open seat to test with', $smSeat !== '');
+$smSid  = (int) pdo()->query('SELECT id FROM schedules WHERE route_id = ' . $smRoute . " AND travel_date = '$smDate' ORDER BY id LIMIT 1")->fetchColumn();
+$blocked = static fn(): bool => (bool) pdo()->query('SELECT COUNT(*) FROM seat_blocks WHERE schedule_id = ' . $smSid . ' AND seat_no = ' . pdo()->quote($smSeat))->fetchColumn();
+$aSm = req('GET', $smUrl, ['jar' => $agentJar]);
+check('agent still opens the seat map', $aSm['code'] === 200, 'HTTP ' . $aSm['code']);
+check('agent sees no Block / Release / Unblock controls', !str_contains($aSm['body'], 'name="action" value="block"') && str_contains($aSm['body'], 'var SM_SEAT_OPS  = false'));
+check('agent still sees the counter booking form', str_contains($aSm['body'], 'data-qa-pane="counter"'));
+$smPost = static fn(string $jar, string $body, string $act): array => req('POST', '/admin/seatmap.php', ['jar' => $jar, 'form' => [
+    'shg_csrf' => csrfOf($body), 'route' => $smRoute, 'date' => $smDate, 'action' => $act, 'seat' => $smSeat, 'reason' => 'role-gate test',
+]]);
+$r = $smPost($agentJar, $aSm['body'], 'block');
+check('agent POST block is refused', str_contains($r['body'], 'Only office staff can block') && !$blocked(), 'HTTP ' . $r['code']);
+$r = $smPost($agentJar, $aSm['body'], 'release');
+check('agent POST release is refused', str_contains($r['body'], 'Only office staff can block'), 'HTTP ' . $r['code']);
+$r = $smPost($mgrJar, $mSm['body'], 'block');
+check('manager blocks the seat', $blocked(), 'HTTP ' . $r['code']);
+$r = $smPost($agentJar, $aSm['body'], 'unblock');
+check('agent POST unblock is refused, the seat stays blocked', str_contains($r['body'], 'Only office staff can block') && $blocked(), 'HTTP ' . $r['code']);
+$r = $smPost($mgrJar, $mSm['body'], 'unblock');
+check('manager puts the seat back in service', !$blocked(), 'HTTP ' . $r['code']);
+try {
+    pdo()->exec('DELETE FROM seat_blocks WHERE schedule_id = ' . $smSid);
+    if (!$smHadSched && $smSid > 0) { pdo()->exec('DELETE FROM schedules WHERE id = ' . $smSid . ' AND NOT EXISTS (SELECT 1 FROM booking_seats WHERE schedule_id = ' . $smSid . ')'); }
+} catch (Throwable $e) {}
+
+/* ---------------------------------------------------------------- */
 echo "\n=== 5. Customer app exposes the staff door ===\n";
 $home = req('GET', '/', ['jar' => $guest]);
 check('customer home renders', $home['code'] === 200, 'HTTP ' . $home['code']);
