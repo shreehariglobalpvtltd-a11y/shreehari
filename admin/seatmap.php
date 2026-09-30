@@ -12,6 +12,7 @@
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/tripstatus.php';   // TripStatus::editableFor() (5 Sep 2026: explicit, not via another include)
+require_once INCLUDE_PATH . '/agentwallet.php';
 $admin = admin_boot('schedules.view');
 
 $base  = '';   // root-relative: the panel must stay on the request host (.in or the .network staff door)
@@ -174,6 +175,42 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     . ' from ' . Seats::displayLabel((string) $res['from'], $coach, 'sharing')
                     . ' → ' . Seats::displayLabel((string) $res['to'], $coach, 'sharing')
                     . ' (' . $res['pnr'] . ').'];
+            } elseif ($action === 'assign_agent') {
+                // Same rule and path as booking-view / Assign Agents: commission
+                // follows the agent, cash stays with whoever collected it, logged.
+                if (!Auth::isSuperadmin()) {
+                    throw new RuntimeException('Only a super-admin can change the agent on a ticket.');
+                }
+                $agentId = (int) ($_POST['agent_id'] ?? 0);
+                if (AgentWallet::agentCodeLabel($agentId) === ''
+                    || !Database::exists("SELECT 1 FROM admins WHERE id = :i AND role = 'agent' AND is_active = 1", ['i' => $agentId])) {
+                    throw new RuntimeException('Choose an agent.');
+                }
+                $picked = array_values(array_unique(array_filter(array_map(
+                    static fn($x): string => strtoupper(Security::clean((string) $x, 10)),
+                    (array) ($_POST['seats'] ?? [])
+                ))));
+                if ($picked === []) {
+                    throw new RuntimeException('Select at least one booked seat.');
+                }
+                $params = ['sid' => $scheduleId];
+                $in     = [];
+                foreach ($picked as $i => $sn) { $in[] = ':s' . $i; $params['s' . $i] = $sn; }
+                $rows = Database::fetchAll(
+                    'SELECT DISTINCT b.* FROM booking_seats bs JOIN bookings b ON b.id = bs.booking_id
+                      WHERE bs.schedule_id = :sid AND bs.released_at IS NULL AND bs.seat_no IN (' . implode(',', $in) . ')',
+                    $params
+                );
+                $moved = 0; $comm = 0.0;
+                foreach ($rows as $row) {
+                    if ((int) ($row['sold_by_admin_id'] ?? 0) === $agentId) { continue; }
+                    $res = AgentWallet::reassignSeller($row, $agentId, (int) $admin['id']);
+                    $moved++;
+                    $comm += (float) $res['commission'];
+                }
+                $flash = ['ok', $moved . ' ticket' . ($moved === 1 ? '' : 's') . ' (' . count($picked) . ' seat' . (count($picked) === 1 ? '' : 's') . ') → '
+                    . AgentWallet::agentCodeLabel($agentId)
+                    . ($comm > 0 ? ' · commission re-posted ' . inr($comm) : '') . '. Cash-in-hand is not moved.'];
             } else {
                 $flash = ['bad', 'Unknown action.'];
             }
@@ -247,6 +284,20 @@ $canEdit = Auth::can('schedules.edit');
 // trip — so it needs routes.edit, which a counter agent does not hold. Kept
 // separate from $canEdit so the control is hidden rather than 403-ing.
 $canPolicy = Auth::can('routes.edit');
+
+// Agents for "select seats → assign agent" (super-admin only, like booking-view).
+$canAssign = Auth::isSuperadmin();
+$smAgents  = [];
+if ($canAssign) {
+    foreach (Database::fetchAll("SELECT id, username, full_name FROM admins WHERE role = 'agent' AND is_active = 1") as $a) {
+        $lbl = AgentWallet::agentCodeLabel((int) $a['id']);
+        if ($lbl !== '') {
+            $smAgents[] = ['id' => (int) $a['id'], 'code' => $lbl, 'name' => (string) ($a['full_name'] ?: $a['username'])];
+        }
+    }
+    usort($smAgents, static fn(array $x, array $y): int => strnatcmp($x['code'], $y['code']));
+}
+$smCompanyId = AgentWallet::resolveAgentCodeFromString(Settings::getString('company_agent_code', 'SHG-0001'));
 
 /* ---- Visual map: one layout, both surfaces (unified 29 Aug 2026) --
  *
@@ -413,6 +464,11 @@ function seatmap_seat_div(array $s, array $femalePref, array $agentCodes, string
         $html .= ' data-mine="' . ($mine ? '1' : '0') . '"';
         if ($mine && !empty($s['pnr'])) {
             $html .= ' data-pnr="' . Security::e((string) $s['pnr']) . '"';
+            $agCode = (string) ($s['agentCode'] ?? '');
+            if ($agCode === '' && !empty($s['soldById'])) {
+                $agCode = seatmap_agent_code($agentCodes, (int) $s['soldById']);
+            }
+            $html .= ' data-agent="' . Security::e($agCode) . '"';
         }
     }
     // role/tabindex/aria-label: the cells were click-only <div>s carrying a
@@ -602,6 +658,17 @@ admin_header('Seat Map', 'seatmap');
 .seat-menu .sm-item .sm-ic{width:20px;text-align:center;flex-shrink:0}
 .seat-menu .sm-note{padding:8px 12px;font-size:12.5px;color:var(--mut,#666)}
 @media(pointer:coarse){.seat-menu .sm-item{min-height:44px}}
+.sm-dates{display:flex;gap:6px;overflow-x:auto;padding:4px 2px 10px;margin:0 0 6px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
+.sm-day{flex:0 0 auto;min-width:54px;display:flex;flex-direction:column;align-items:center;gap:1px;padding:6px 8px;border:1.5px solid var(--line,#dde3ee);border-radius:12px;background:var(--card,#fff);color:inherit;text-decoration:none;scroll-snap-align:start}
+.sm-day b{font-size:18px;line-height:1.1}
+.sm-day small{font-size:11px;opacity:.75}
+.sm-day.past{opacity:.6}
+.sm-day.on{background:#1b4fa0;border-color:#1b4fa0;color:#fff;opacity:1}
+.sm-assign{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:6px 0 10px}
+.sm-assign select{min-width:220px}
+.sm-selecting .seat-booked{cursor:copy}
+.sm-selecting .seat-booked[data-agent=""]{outline:2px dashed #d33;outline-offset:-3px}
+.seat.sm-picked{box-shadow:0 0 0 3px #1b4fa0 inset,0 0 0 2px #fff;transform:scale(.96)}
 </style>
 <?php
 
@@ -626,6 +693,24 @@ if ($flash !== null) {
   <a class="btn ghost" href="/admin/chalan.php?<?= Security::e(http_build_query(array_filter(['sid' => $sidReq > 0 ? $sidReq : null, 'date' => $date]))) ?>" title="Bus chalan — the seat picture and the Nepali waybill: preview, PDF / PNG, WhatsApp">📋 Bus Chalan</a>
   <?php endif; ?>
 </form>
+<?php
+/* Date strip like the home page: tap a day instead of opening the picker.
+   Three days back (late/paper tickets) and 26 ahead; the date box above
+   still reaches any other day. */
+$smToday = todayISO();
+?>
+<nav class="sm-dates" aria-label="Journey date">
+  <?php for ($i = -3; $i <= 26; $i++):
+      $d  = addDaysISO($smToday, $i);
+      $ts = strtotime($d);
+      $on = $d === $date; ?>
+    <a class="sm-day<?= $on ? ' on' : '' ?><?= $i < 0 ? ' past' : '' ?>" href="?<?= Security::e(http_build_query(['route' => $routeId, 'date' => $d])) ?>"<?= $on ? ' aria-current="date"' : '' ?>>
+      <small><?= $i === 0 ? 'Today' : ($i === 1 ? 'Tmrw' : date('D', $ts)) ?></small>
+      <b><?= date('j', $ts) ?></b>
+      <small><?= date('M', $ts) ?></small>
+    </a>
+  <?php endfor; ?>
+</nav>
 
 <?php if ($route === null): ?>
   <div class="panel"><h2>No route selected</h2></div>
@@ -641,6 +726,30 @@ if ($flash !== null) {
   <?php endif; ?>
 </div>
 
+<?php if ($hasVisual && $canAssign && $smAgents !== []): ?>
+<form method="post" class="sm-assign" id="smAssign">
+  <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+  <input type="hidden" name="route" value="<?= $routeId ?>">
+  <input type="hidden" name="date" value="<?= Security::e($date) ?>">
+  <?php if ($sidReq > 0): ?><input type="hidden" name="sid" value="<?= $sidReq ?>"><?php endif; ?>
+  <input type="hidden" name="action" value="assign_agent">
+  <button type="button" class="btn" id="smSelToggle">☑️ Select seats · एजेन्ट लगाउने</button>
+  <span class="sm-assign-tools" hidden>
+    <button type="button" class="btn ghost btn-sm" id="smSelNoAgent">Without agent</button>
+    <button type="button" class="btn ghost btn-sm" id="smSelAll">All booked</button>
+    <button type="button" class="btn ghost btn-sm" id="smSelClear">Clear</button>
+    <b id="smSelCount">0 seats</b> →
+    <select name="agent_id" id="smAgent">
+      <option value="">— choose agent —</option>
+      <?php foreach ($smAgents as $ag): ?>
+        <option value="<?= $ag['id'] ?>"><?= Security::e($ag['code'] . ' · ' . $ag['name'] . ($ag['id'] === $smCompanyId ? ' (company / Other)' : '')) ?></option>
+      <?php endforeach; ?>
+    </select>
+    <button type="submit" class="btn btn-ok" id="smAssignGo">💾 Assign</button>
+  </span>
+  <span class="muted sm-assign-hint" hidden>Tap booked seats to select them. Red dashed = no agent yet. Commission moves; cash stays with the collector.</span>
+</form>
+<?php endif; ?>
 <?php if ($hasVisual): ?>
 <div class="seatmap-visual">
   <?php foreach ($layout['decks'] as $deck):
@@ -1039,6 +1148,7 @@ if ($legendStops !== []): ?>
       if(mine && pnr){
         seatMenu.appendChild(smLink('🎟️','View / manage ticket',bvBase+encodeURIComponent(pnr)));
         if(SM_CAN_EDIT) seatMenu.appendChild(smBtn('🔁','Change seat',function(){prefillTransfer(seat);}));
+        if(window.smAssignSeat && document.getElementById('smAssign')) seatMenu.appendChild(smBtn('👤','Change agent'+(el.dataset.agent?' ('+el.dataset.agent+')':' (none)'),function(){window.smAssignSeat(seat);}));
         seatMenu.appendChild(smLink('✏️','Edit passenger',bvBase+encodeURIComponent(pnr)));
         seatMenu.appendChild(smLink('❌','Cancel booking',bvBase+encodeURIComponent(pnr),true));
       } else { seatMenu.appendChild(smNote('🔒 Sold by another agent')); }
@@ -1065,8 +1175,56 @@ if ($legendStops !== []): ?>
     seatMenu.style.left=left+'px'; seatMenu.style.top=top+'px';
   }
 
+  (function(){ var d = document.querySelector('.sm-day.on'); if (d && d.parentNode) d.parentNode.scrollLeft = d.offsetLeft - d.parentNode.offsetLeft - 60; })();
+
+  /* ── Select seats → assign agent (super-admin) ──────────────────── */
+  var smForm = document.getElementById('smAssign'), smOn = false;
+  var smVisual = document.querySelector('.seatmap-visual');
+  function smPickable(el){ return el.dataset.status === 'booked' && !!el.dataset.pnr; }
+  function smCount(){
+    var n = document.querySelectorAll('.seat.sm-picked').length, c = document.getElementById('smSelCount');
+    if (c) c.textContent = n + ' seat' + (n === 1 ? '' : 's');
+  }
+  function smSetMode(on){
+    smOn = on;
+    if (smVisual) smVisual.classList.toggle('sm-selecting', on);
+    if (!smForm) return;
+    smForm.querySelector('.sm-assign-tools').hidden = !on;
+    smForm.querySelector('.sm-assign-hint').hidden = !on;
+    document.getElementById('smSelToggle').textContent = on ? '✖ Done selecting' : '☑️ Select seats · एजेन्ट लगाउने';
+    if (!on) document.querySelectorAll('.seat.sm-picked').forEach(function(x){ x.classList.remove('sm-picked'); });
+    smCount();
+  }
+  function smPickWhere(test){
+    document.querySelectorAll('.seat[data-seat]').forEach(function(x){ if (smPickable(x)) x.classList.toggle('sm-picked', test(x)); });
+    smCount();
+  }
+  window.smAssignSeat = function(seat){
+    smSetMode(true);
+    smPickWhere(function(x){ return x.dataset.seat === seat; });
+    if (smForm) { smForm.scrollIntoView({behavior:'smooth', block:'center'}); var a = document.getElementById('smAgent'); if (a) a.focus(); }
+  };
+  if (smForm) {
+    document.getElementById('smSelToggle').addEventListener('click', function(){ smSetMode(!smOn); });
+    document.getElementById('smSelAll').addEventListener('click', function(){ smPickWhere(function(){ return true; }); });
+    document.getElementById('smSelNoAgent').addEventListener('click', function(){ smPickWhere(function(x){ return (x.dataset.agent || '') === ''; }); });
+    document.getElementById('smSelClear').addEventListener('click', function(){ smPickWhere(function(){ return false; }); });
+    smForm.addEventListener('submit', function(e){
+      var picked = document.querySelectorAll('.seat.sm-picked'), ag = document.getElementById('smAgent');
+      if (!picked.length) { e.preventDefault(); alert('Tap the booked seats to select them first.'); return; }
+      if (!ag.value) { e.preventDefault(); alert('Choose the agent.'); return; }
+      if (!confirm('Assign ' + picked.length + ' seat(s) to ' + ag.options[ag.selectedIndex].text + '? Whole tickets move; commission follows.')) { e.preventDefault(); return; }
+      smForm.querySelectorAll('input[name="seats[]"]').forEach(function(x){ x.remove(); });
+      picked.forEach(function(x){ var i = document.createElement('input'); i.type = 'hidden'; i.name = 'seats[]'; i.value = x.dataset.seat; smForm.appendChild(i); });
+    });
+  }
+
   document.querySelectorAll('.seat[data-seat]').forEach(function(el){
-    el.addEventListener('click', function(e){ e.stopPropagation(); openSeatMenu(this); });
+    el.addEventListener('click', function(e){
+      e.stopPropagation();
+      if (smOn) { if (smPickable(this)) { this.classList.toggle('sm-picked'); smCount(); } return; }
+      openSeatMenu(this);
+    });
   });
   if(seatBackdrop) seatBackdrop.addEventListener('click', closeSeatMenu);
   document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeSeatMenu(); });
@@ -1137,13 +1295,15 @@ if ($legendStops !== []): ?>
           var info = data.seats[el.dataset.seat];
           if (!info) return;
           var wasFemale = el.classList.contains('seat-female');
+          var wasPicked = el.classList.contains('sm-picked') && info.status === 'booked' && !!info.pnr;
           // The pickup class must be re-applied from the POLL, not preserved
           // from the old className: a seat that changed hands can change stop
           // (or lose one), and this assignment wipes every class each tick.
           var hue = (typeof info.stopHue === 'number') ? info.stopHue : -1;
           el.className = 'seat seat-' + info.status
                        + (wasFemale ? ' seat-female' : '')
-                       + (info.stop && hue >= 0 ? ' stop-c' + (hue % 8) : '');
+                       + (info.stop && hue >= 0 ? ' stop-c' + (hue % 8) : '')
+                       + (wasPicked ? ' sm-picked' : '');
           el.dataset.status = info.status;
           el.dataset.stop   = info.stop || '';
           // Keep the click-popover honest for a seat that changed hands
@@ -1152,6 +1312,7 @@ if ($legendStops !== []): ?>
           if (info.status === 'booked') {
             el.dataset.mine = info.pnr ? '1' : '0';
             el.dataset.pnr  = info.pnr || '';
+            el.dataset.agent = info.agentCode || '';
           } else {
             el.dataset.mine = '0';
             el.dataset.pnr  = '';
