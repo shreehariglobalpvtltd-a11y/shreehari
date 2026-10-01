@@ -51,9 +51,18 @@ if (!Security::isValidDate($date)) {
     $date = todayISO();
 }
 $sid = (int) ($_GET['sid'] ?? 0);
+$busId = max(0, (int) ($_GET['bus'] ?? 0));
+$buses = Database::fetchAll('SELECT id, bus_name, bus_number FROM buses ORDER BY is_active DESC, bus_name, id');
 
 /* ---- one departure by id wins; it also fixes the date ------------------ */
 $trip = $sid > 0 ? ChallanPng::schedule($sid) : null;
+if ($trip !== null && $busId > 0) {
+    $effectiveBus = (int) Database::scalar(
+        'SELECT COALESCE(s.bus_id, r.bus_id) FROM schedules s JOIN routes r ON r.id = s.route_id WHERE s.id = :sid',
+        ['sid' => $sid], 0
+    );
+    if ($effectiveBus !== $busId) { $trip = null; $sid = 0; }
+}
 if ($trip !== null) {
     $date = (string) $trip['travel_date'];
 }
@@ -71,8 +80,9 @@ $departures = Database::fetchAll(
        LEFT JOIN buses bu  ON bu.id = COALESCE(s.bus_id, r.bus_id)
        LEFT JOIN drivers d ON d.id = s.driver_id
       WHERE s.travel_date = :d AND r.is_active = 1
+        AND (:all_buses = 0 OR COALESCE(s.bus_id, r.bus_id) = :bus)
       ORDER BY COALESCE(s.dep_time_override, r.dep_time) ASC, s.slot ASC, r.id ASC",
-    ['d' => $date]
+    ['d' => $date, 'all_buses' => $busId, 'bus' => $busId]
 );
 if ($trip === null && $departures !== []) {
     $sid  = (int) $departures[0]['id'];
@@ -88,11 +98,12 @@ $stillRunning = Database::fetchAll(
        FROM schedules s
        JOIN routes r ON r.id = s.route_id
       WHERE r.is_active = 1 AND s.travel_date <> :d AND s.status <> 'cancelled'
+        AND (:all_buses = 0 OR COALESCE(s.bus_id, r.bus_id) = :bus)
         AND TIMESTAMP(s.travel_date, COALESCE(s.dep_time_override, r.dep_time)) <= NOW()
         AND TIMESTAMP(s.travel_date, COALESCE(s.dep_time_override, r.dep_time)) + INTERVAL 24 HOUR >= NOW()
       ORDER BY s.travel_date DESC, dep_time ASC
       LIMIT 8",
-    ['d' => $date]
+    ['d' => $date, 'all_buses' => $busId, 'bus' => $busId]
 );
 
 /* ---- the variation, worked out — never chosen by hand ------------------ */
@@ -177,7 +188,15 @@ admin_page_head(
   <h2><svg class="a-ic"><use href="#a-bus"/></svg> 1 · Which bus?</h2>
   <div class="panel-body">
     <form method="get" class="ch-pick">
-      <label>Travel date<input type="date" name="date" value="<?= Security::e($date) ?>" onchange="this.form.submit()"></label>
+      <label>Travel date<input type="date" name="date" value="<?= Security::e($date) ?>" onchange="if(this.form.sid)this.form.sid.value='';this.form.submit()"></label>
+      <label>Bus · बस
+        <select name="bus" onchange="if(this.form.sid)this.form.sid.value='';this.form.submit()">
+          <option value="0">All buses · सबै बस</option>
+          <?php foreach ($buses as $bus): ?>
+            <option value="<?= (int) $bus['id'] ?>" <?= (int) $bus['id'] === $busId ? 'selected' : '' ?>><?= Security::e($bus['bus_name'] . ' · ' . $bus['bus_number']) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
       <?php if ($departures !== []): ?>
       <label>Departure
         <select name="sid" onchange="this.form.submit()">
@@ -207,7 +226,7 @@ admin_page_head(
 </div>
 
 <?php if ($trip === null): ?>
-  <?= admin_empty('No departure on ' . formatDate($date), 'Pick another date, or add the trip on the Bus Calendar first.', '🚌',
+  <?= admin_empty('No departure on ' . formatDate($date), 'No trip is assigned to the selected bus on this date. Pick another date or assign this bus to a trip on the Bus Calendar.', '🚌',
         '<a class="btn" href="' . $base . '/admin/calendar.php"><svg class="a-ic"><use href="#a-calendar"/></svg>Bus Calendar</a>') ?>
 <?php else: ?>
 

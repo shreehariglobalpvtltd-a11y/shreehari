@@ -517,6 +517,17 @@ function seatmap_seat_div(array $s, array $femalePref, array $agentCodes, string
     return $html;
 }
 
+$mapDepartures = Database::fetchAll(
+    "SELECT s.id, s.slot, s.status, r.from_city, r.to_city,
+            COALESCE(s.dep_time_override, r.dep_time) AS dep_time,
+            bu.bus_number, bu.bus_name
+       FROM schedules s JOIN routes r ON r.id = s.route_id
+       LEFT JOIN buses bu ON bu.id = COALESCE(s.bus_id, r.bus_id)
+      WHERE s.travel_date = :d AND (r.is_active = 1 OR s.id = :selected)
+      ORDER BY dep_time, s.slot, s.id",
+    ['d' => $date, 'selected' => $scheduleId]
+);
+
 admin_header('Seat Map', 'seatmap');
 
 ?>
@@ -708,17 +719,18 @@ if ($flash !== null) {
 }
 ?>
 <form method="get" class="toolbar">
-  <label>Bus / route
-    <select name="route" onchange="this.form.submit()">
-      <?php foreach ($routes as $r): ?>
-        <option value="<?= (int) $r['id'] ?>" <?= (int) $r['id'] === $routeId ? 'selected' : '' ?>>
-          <?= Security::e($r['route_code'] . ' · ' . $r['from_city'] . ' → ' . $r['to_city'] . ' (' . ucfirst((string) $r['coach_type']) . ')') ?>
-          <?= (int) $r['is_active'] === 1 ? '' : ' — inactive' ?>
-        </option>
+  <input type="hidden" name="route" value="<?= $routeId ?>">
+  <label>Bus / route · बस नम्बर र रुट
+    <select name="sid" onchange="this.form.submit()">
+      <?php if ($mapDepartures === []): ?>
+      <option value="">यस मितिमा बसको यात्रा छैन · मिति छान्नुहोस्</option>
+      <?php endif; ?>
+      <?php foreach ($mapDepartures as $departure): ?>
+      <option value="<?= (int) $departure['id'] ?>" <?= (int) $departure['id'] === $scheduleId ? 'selected' : '' ?>><?= Security::e(($departure['bus_number'] ?: 'Bus not assigned') . ' · ' . ($departure['bus_name'] ?? '') . ' · ' . substr((string) $departure['dep_time'], 0, 5) . ' · ' . $departure['from_city'] . ' → ' . $departure['to_city'] . ((int) $departure['slot'] > 1 ? ' · Extra #' . (int) $departure['slot'] : '') . ' · ' . $departure['status']) ?></option>
       <?php endforeach; ?>
     </select>
   </label>
-  <label>Date <input type="date" name="date" value="<?= Security::e($date) ?>" onchange="this.form.submit()"></label>
+  <label>Date <input type="date" name="date" value="<?= Security::e($date) ?>" onchange="if(this.form.sid)this.form.sid.value='';this.form.submit()"></label>
   <button class="btn ghost" type="submit">Load</button>
   <?php if (Auth::bookingScopeAdminId() === null): ?>
   <a class="btn ghost" href="/admin/chalan.php?<?= Security::e(http_build_query(array_filter(['sid' => $sidReq > 0 ? $sidReq : null, 'date' => $date]))) ?>" title="Bus chalan — the seat picture and the Nepali waybill: preview, PDF / PNG, WhatsApp">📋 Bus Chalan</a>
@@ -761,8 +773,8 @@ $smToday = todayISO();
 <form method="post" class="sm-assign" id="smAssign">
   <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
   <input type="hidden" name="route" value="<?= $routeId ?>">
-  <input type="hidden" name="date" value="<?= Security::e($date) ?>">
-  <?php if ($sidReq > 0): ?><input type="hidden" name="sid" value="<?= $sidReq ?>"><?php endif; ?>
+  <input type="hidden" name="date" value="<?= Security::e($date) ?>"><input type="hidden" name="sid" value="<?= $scheduleId ?>">
+
   <input type="hidden" name="action" value="assign_agent">
   <button type="button" class="btn" id="smSelToggle">☑️ Select seats · एजेन्ट लगाउने</button>
   <span class="sm-assign-tools" hidden>
@@ -884,7 +896,7 @@ if ($legendStops !== []): ?>
 
     <form method="post" data-qa-pane="counter" class="qa-pane">
       <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
-      <input type="hidden" name="route" value="<?= $routeId ?>"><input type="hidden" name="date" value="<?= Security::e($date) ?>">
+      <input type="hidden" name="route" value="<?= $routeId ?>"><input type="hidden" name="date" value="<?= Security::e($date) ?>"><input type="hidden" name="sid" value="<?= $scheduleId ?>">
       <a class="btn" style="margin-bottom:8px" href="/index.php?<?= Security::e(http_build_query(array_filter(['counter' => 1, 'from' => (string) ($route['from_city'] ?? ''), 'to' => (string) ($route['to_city'] ?? ''), 'date' => $date, 'sid' => $sidReq > 0 ? $sidReq : null]))) ?>#/" title="Several seats, passenger details, UPI/cash received — the same seat map customers use">🧾 Sell several seats in the app →</a>
       <b>🎫 Counter booking (walk-in / cash)</b>
       <select name="seat" id="counterSeatSel" required>
@@ -907,7 +919,7 @@ if ($legendStops !== []): ?>
     <?php if ($canSeatOps): ?>
     <form method="post" data-qa-pane="block" class="qa-pane" hidden>
       <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
-      <input type="hidden" name="route" value="<?= $routeId ?>"><input type="hidden" name="date" value="<?= Security::e($date) ?>">
+      <input type="hidden" name="route" value="<?= $routeId ?>"><input type="hidden" name="date" value="<?= Security::e($date) ?>"><input type="hidden" name="sid" value="<?= $scheduleId ?>">
       <b>🚫 Take a seat out of service</b>
       <select name="seat" required>
         <option value="">Choose an open seat…</option>
@@ -920,7 +932,7 @@ if ($legendStops !== []): ?>
 
     <form method="post" data-qa-pane="transfer" class="qa-pane" hidden>
       <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
-      <input type="hidden" name="route" value="<?= $routeId ?>"><input type="hidden" name="date" value="<?= Security::e($date) ?>">
+      <input type="hidden" name="route" value="<?= $routeId ?>"><input type="hidden" name="date" value="<?= Security::e($date) ?>"><input type="hidden" name="sid" value="<?= $scheduleId ?>">
       <b>🔁 Transfer / reseat a passenger</b>
       <select name="seat" required>
         <option value="">From booked seat…</option>
@@ -1046,7 +1058,7 @@ if ($legendStops !== []): ?>
           <?php if ($canPolicy): ?>
           <form method="post" style="display:inline">
             <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
-            <input type="hidden" name="route" value="<?= $routeId ?>"><input type="hidden" name="date" value="<?= Security::e($date) ?>">
+            <input type="hidden" name="route" value="<?= $routeId ?>"><input type="hidden" name="date" value="<?= Security::e($date) ?>"><input type="hidden" name="sid" value="<?= $scheduleId ?>">
             <input type="hidden" name="seat" value="<?= Security::e($seat) ?>">
             <input type="hidden" name="on" value="<?= $isFem ? '0' : '1' ?>">
             <button class="btn ghost" type="submit" name="action" value="female" style="padding:5px 10px"><?= $isFem ? '♀ on' : '♀ off' ?></button>
@@ -1057,13 +1069,13 @@ if ($legendStops !== []): ?>
           <?php if ($canEdit): ?>
           <div class="row-actions">
             <?php if ($s['status'] === 'held' && $canSeatOps): ?>
-              <form method="post" style="display:inline"><input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="route" value="<?= $routeId ?>"><input type="hidden" name="date" value="<?= Security::e($date) ?>"><input type="hidden" name="seat" value="<?= Security::e($seat) ?>">
+              <form method="post" style="display:inline"><input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="route" value="<?= $routeId ?>"><input type="hidden" name="date" value="<?= Security::e($date) ?>"><input type="hidden" name="sid" value="<?= $scheduleId ?>"><input type="hidden" name="seat" value="<?= Security::e($seat) ?>">
                 <button class="btn ghost" type="submit" name="action" value="release" style="padding:5px 10px">Release hold</button></form>
             <?php elseif ($s['status'] === 'blocked' && $canSeatOps): ?>
-              <form method="post" style="display:inline"><input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="route" value="<?= $routeId ?>"><input type="hidden" name="date" value="<?= Security::e($date) ?>"><input type="hidden" name="seat" value="<?= Security::e($seat) ?>">
+              <form method="post" style="display:inline"><input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="route" value="<?= $routeId ?>"><input type="hidden" name="date" value="<?= Security::e($date) ?>"><input type="hidden" name="sid" value="<?= $scheduleId ?>"><input type="hidden" name="seat" value="<?= Security::e($seat) ?>">
                 <button class="btn ok" type="submit" name="action" value="unblock" style="padding:5px 10px">Unblock</button></form>
             <?php elseif ($s['status'] === 'open' && $canSeatOps): ?>
-              <form method="post" style="display:inline"><input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="route" value="<?= $routeId ?>"><input type="hidden" name="date" value="<?= Security::e($date) ?>"><input type="hidden" name="seat" value="<?= Security::e($seat) ?>"><input type="hidden" name="reason" value="">
+              <form method="post" style="display:inline"><input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="route" value="<?= $routeId ?>"><input type="hidden" name="date" value="<?= Security::e($date) ?>"><input type="hidden" name="sid" value="<?= $scheduleId ?>"><input type="hidden" name="seat" value="<?= Security::e($seat) ?>"><input type="hidden" name="reason" value="">
                 <button class="btn ghost bad" type="submit" name="action" value="block" style="padding:5px 10px" onclick="return confirm('Block seat <?= Security::e(Seats::displayLabel((string) $seat, $coach, 'sharing')) ?>?')">Block</button></form>
             <?php else: ?>
               <span class="muted">—</span>
@@ -1086,7 +1098,7 @@ if ($legendStops !== []): ?>
 <form method="post" id="seatActForm" style="display:none">
   <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
   <input type="hidden" name="route" value="<?= $routeId ?>">
-  <input type="hidden" name="date" value="<?= Security::e($date) ?>">
+  <input type="hidden" name="date" value="<?= Security::e($date) ?>"><input type="hidden" name="sid" value="<?= $scheduleId ?>">
   <input type="hidden" name="seat"   id="seatActSeat"   value="">
   <input type="hidden" name="reason" id="seatActReason" value="">
   <input type="hidden" name="action" id="seatActAction" value="">
