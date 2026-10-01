@@ -441,6 +441,10 @@ if ($todayBus === null) {
 
   <!-- Action buttons -->
   <div class="bus-actions">
+    <?php if (Auth::can('bookings.view') && Auth::bookingScopeAdminId() === null): ?>
+    <a href="<?= $base ?>/admin/chalan.php?bus=<?= (int) $bus['id'] ?>&amp;date=<?= urlencode(todayISO()) ?>"
+       class="btn btn-blue btn-sm">🧾 चालानी / Chalan</a>
+    <?php endif; ?>
     <!-- View seat map (today) -->
     <a href="<?= $base ?>/admin/seatmap.php?date=<?= urlencode(todayISO()) ?>"
        class="btn btn-blue btn-sm">🗺️ Seat Map</a>
