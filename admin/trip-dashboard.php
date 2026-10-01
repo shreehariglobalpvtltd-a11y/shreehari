@@ -473,7 +473,7 @@ if ($allDaySchedules !== []) {
                  which seatmap.php would let override route AND date. */ ?>
         <a href="<?= $base ?>/admin/seatmap.php?route=<?= $ds['route_id'] ?? '' ?>&date=<?= urlencode($date) ?>&sid=<?= $sid ?>"
            class="btn btn-blue btn-sm">🗺️ Seat Map</a>
-        <a href="?route=<?= (int)($ds['route_id'] ?? 0) ?>&date=<?= urlencode($date) ?>"
+        <a href="?route=<?= (int)($ds['route_id'] ?? 0) ?>&date=<?= urlencode($date) ?>&sid=<?= $sid ?>"
            class="btn btn-ghost btn-sm">📊 Detail</a>
       </td>
     </tr>
@@ -491,11 +491,12 @@ if ($allDaySchedules !== []) {
 
 <form method="get" class="toolbar">
   <label>Route
-    <select name="route" onchange="this.form.submit()">
+    <select name="route" onchange="if(this.form.sid)this.form.sid.value='';this.form.submit()">
       <?php if ($routes === []): ?>
         <option value="">No routes found</option>
       <?php endif; ?>
       <?php foreach ($routes as $r): ?>
+      <?php if ((int) $r['is_active'] !== 1 && (int) $r['id'] !== $routeId) { continue; } ?>
         <option value="<?= (int) $r['id'] ?>" <?= (int) $r['id'] === $routeId ? 'selected' : '' ?>>
           <?= Security::e($r['route_code'] . ' · ' . $r['from_city'] . ' → ' . $r['to_city'] . ' (' . ucfirst((string) $r['coach_type']) . ')') ?>
           <?= (int) $r['is_active'] === 1 ? '' : ' — inactive' ?>
@@ -503,7 +504,15 @@ if ($allDaySchedules !== []) {
       <?php endforeach; ?>
     </select>
   </label>
-  <label>Date <input type="date" name="date" value="<?= Security::e($date) ?>" onchange="this.form.submit()"></label>
+  <label>Date <input type="date" name="date" value="<?= Security::e($date) ?>" onchange="if(this.form.sid)this.form.sid.value='';this.form.submit()"></label>
+  <label>Bus / route · बस नम्बर र रुट
+    <select name="sid" onchange="this.form.submit()">
+      <option value="">Route's daily bus · नियमित बस</option>
+      <?php foreach ($allDaySchedules as $departure): ?>
+      <option value="<?= (int) $departure['schedule_id'] ?>" <?= (int) $departure['schedule_id'] === $scheduleId ? 'selected' : '' ?>><?= Security::e(($departure['bus_number'] ?: 'Bus not assigned') . ' · ' . $departure['bus_name'] . ' · ' . substr((string) $departure['dep_time'], 0, 5) . ' · ' . $departure['from_city'] . ' → ' . $departure['to_city']) ?></option>
+      <?php endforeach; ?>
+    </select>
+  </label>
   <button class="btn ghost" type="submit">Load</button>
 </form>
 
