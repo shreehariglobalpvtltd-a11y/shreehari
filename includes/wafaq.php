@@ -327,7 +327,8 @@ final class WaFaq
             foreach ($routes as $r) {
                 foreach ($r['board'] as $s) {
                     $name = mb_strtolower($s['name']);
-                    if ($want === $name || str_contains($name, $want) || str_contains($want, $name)) {
+                    if ($want === $name || str_contains($name, $want) || str_contains($want, $name)
+                        || Boarding::stopDisplay($want)['code'] === Boarding::stopDisplay($s['name'])['code']) {
                         $at = self::short($s['name']);
                         return self::t($lang,
                             $at . ' बाट ' . $r['to'] . ' जाने बस हरेक दिन ' . self::clock($s['time']) . ' मा छुट्छ। ' . $early,
