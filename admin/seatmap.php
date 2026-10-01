@@ -731,7 +731,7 @@ if ($flash !== null) {
     </select>
   </label>
   <label>Date <input type="date" name="date" value="<?= Security::e($date) ?>" onchange="if(this.form.sid)this.form.sid.value='';this.form.submit()"></label>
-  <label>Bus departure · बसको यात्रा
+  <label>Bus / route · बस नम्बर र रुट
     <select name="sid" onchange="this.form.submit()">
       <option value="">Route's daily bus · नियमित बस</option>
       <?php foreach ($mapDepartures as $departure): ?>
