@@ -6,7 +6,9 @@
  *  session and exactly as before for a guest.
  *
  *    • index.php: guest boot has NO `staff` key; a signed-in agent's boot
- *      carries staff {code, canSell, panelUrl} + the shared seat cap
+ *      carries staff {id, code, canSell, panelUrl, agents} + the shared
+ *      seat cap; QuickBot keys the remembered agent on the same staff id
+ *      (desk memory, 1 Oct 2026)
  *    • /api/search.php: staff see the board without an agent code
  *    • /api/book.php: guest sending counterPayment → 403; agent session
  *      with counterPayment → confirmed + counter:true + adminUrl; the
@@ -135,6 +137,13 @@ try {
     check('staff boot present for the agent', is_array($ab) && is_array($ab['staff'] ?? null));
     check('staff.canSell true, panelUrl = agent.php', !empty($ab['staff']['canSell']) && ($ab['staff']['panelUrl'] ?? '') === '/admin/agent.php', json_encode($ab['staff'] ?? null));
     check('staff boot ships the bulk cap (maxSeats)', (int) ($ab['staff']['maxSeats'] ?? 0) >= 7, 'maxSeats=' . ($ab['staff']['maxSeats'] ?? '?'));
+    /* Desk memory (1 Oct 2026, U4): counter mode keys the remembered agent on
+       staff.id (localStorage shg_ctr_agent_<id>) and fills the dropdown from
+       staff.agents; QuickBot's page must key the SAME entry on the same id
+       so the two desks always agree on the agent. */
+    check('staff boot ships id + the agent picker list (desk memory key shg_ctr_agent_<id>)', (int) ($ab['staff']['id'] ?? 0) === $agentId && is_array($ab['staff']['agents'] ?? null), 'id=' . ($ab['staff']['id'] ?? '?') . ' agents=' . count($ab['staff']['agents'] ?? []));
+    $qtp = req($a, 'GET', '/admin/quick-ticket.php');
+    check('QuickBot desk keys the remembered agent on the same staff id', $qtp['code'] === 200 && str_contains($qtp['body'], 'var STAFF_ID = ' . $agentId . ';') && str_contains($qtp['body'], "'shg_ctr_agent_' + STAFF_ID") && str_contains($qtp['body'], 'id="qtAgent"'), 'HTTP ' . $qtp['code']);
     $csrfA = (string) ($ab['csrf'] ?? '');
 
     $srch = req($a, 'POST', '/api/search.php', ['json' => ['shg_csrf' => $csrfA, 'from' => $route['from_city'], 'to' => $route['to_city'], 'date' => $D]]);

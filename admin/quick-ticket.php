@@ -433,7 +433,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
             <select id="qtDiscType"><option value="flat">₹ off</option><option value="percent">% off</option></select>
             <input type="text" id="qtNote" maxlength="120" placeholder="Note (optional) · receipt no.">
           </div></div>
-        <div class="qt-hint">Max discount <?= Security::e((string) $maxDisc) ?>% (server re-checks). Boarding choice is remembered on this desk.</div>
+        <div class="qt-hint">Max discount <?= Security::e((string) $maxDisc) ?>% (server re-checks). Boarding, payment and agent choices are remembered on this desk.</div>
       </details>
 
       <div class="qt-row" style="margin:10px 0">
@@ -498,6 +498,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
 (function () {
   'use strict';
   var CSRF = <?= json_encode($csrf) ?>;
+  var STAFF_ID = <?= (int) $staffId ?>;   // desk memory key owner (shg_ctr_agent_<id>, shared with counter mode)
   var CAN = <?= $canSell ? 'true' : 'false' ?>;
   var MAX_DISC = <?= json_encode($maxDisc) ?>;
   var AGENTS = <?= json_encode($agentList, JSON_UNESCAPED_UNICODE) ?>;
@@ -660,7 +661,24 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
     if ($('#qtDiscType').value === 'percent' && v > MAX_DISC) this.value = String(MAX_DISC);
   });
   var qtAg = $('#qtAgent');
-  if (qtAg) qtAg.addEventListener('change', function () { renderPlan(); });
+  /* Agent picked once, remembered per clerk (1 Oct 2026, owner R3b) — the
+     SAME localStorage key counter mode reads (14-counter.js KEY_AGENT), so
+     the two desks always agree. The server-rendered default (the clerk's
+     own code) stands until a remembered pick exists; a code that left the
+     list leaves the select untouched and validate() asks. */
+  var AGENT_KEY = 'shg_ctr_agent_' + STAFF_ID;
+  if (qtAg) {
+    try {
+      var agWant = localStorage.getItem(AGENT_KEY) || '';
+      for (var ai = 0; agWant && ai < qtAg.options.length; ai++) {
+        if (qtAg.options[ai].value === agWant) { qtAg.value = agWant; break; }
+      }
+    } catch (e) {}
+    qtAg.addEventListener('change', function () {
+      try { if (qtAg.value) localStorage.setItem(AGENT_KEY, qtAg.value); else localStorage.removeItem(AGENT_KEY); } catch (e) {}
+      renderPlan();
+    });
+  }
 
   function dateValue() {
     if (st.date === 'today') return isoOffset(0);

@@ -17,7 +17,16 @@
        screen; the agent code is fixed to the seller's own code
      • /api/book.php gets counterPayment + discount; the server confirms
        the booking, marks the payment verified and issues the ticket
-     • the ticket screen gets "Sell another" / "Open in panel" buttons
+     • the ticket screen gets "Same bus · next ticket" / "Same date · choose
+       another bus" / "Sell another" (re-runs the search) / "Open in panel"
+     • desk memory (1 Oct 2026, owner R3b): the agent picked once is kept per
+       clerk (localStorage shg_ctr_agent_<id>, shared with QuickBot), so are
+       the payment chip and boarding/drop (QuickBot's shg_qt_pay /
+       shg_qt_boarding keys); the last sale's departure lives in
+       sessionStorage so a reload keeps the "Same bus" buttons. The
+       PASSENGER is never remembered (owner rule, 6 Sep: forgetPassenger).
+     • seat view: "Confirm counter sale" shortcut runs Continue → checkout →
+       the one-screen confirm through the app's own handlers (owner R3c)
 
    Everything is a no-op unless window.SHG_BOOT.staff is present (index.php
    only adds it for a staff session), so the customer bundle is unchanged.
@@ -35,7 +44,29 @@
   /* last = the departure the previous sale went on ({from,to,date,sid,rid}),
      for "Same bus · next ticket"; confirmWatch = the timer that mirrors the
      real submit button's outcome onto the one-screen confirm button. */
-  var CTR = { pay: 'cash', lastPnr: '', lastAdminUrl: '', lastDraft: '', last: null, confirmWatch: null };
+  var CTR = { pay: 'cash', lastPnr: '', lastAdminUrl: '', lastDraft: '', last: null, confirmWatch: null, seatWatch: null, rcTick: 0 };
+  /* Desk memory (1 Oct 2026, owner: "select/search an agent once … eliminate
+     repeated entry"). What is remembered is the DESK's own setup — agent,
+     payment chip, boarding/drop — never the passenger (forgetPassenger).
+       KEY_AGENT  per clerk, read/written by QuickBot's #qtAgent too
+       KEY_PAY / KEY_BOARD  QuickBot's own keys (quick-ticket.php) so the two
+                  desks agree; KEY_DROP has no QuickBot twin
+       KEY_LAST   the last sale's departure, per TAB (sessionStorage) so a
+                  second desk tab never inherits another clerk's bus */
+  var KEY_AGENT = 'shg_ctr_agent_' + (STAFF.id || 0);
+  var KEY_PAY = 'shg_qt_pay', KEY_BOARD = 'shg_qt_boarding', KEY_DROP = 'shg_ctr_drop', KEY_LAST = 'shg:ctr:last';
+  var PAYS = ['cash', 'upi', 'esewa', 'bank'];
+  var PAY_LBL = { cash: '💵 Cash', upi: '📱 UPI received', esewa: '🇳🇵 eSewa received', bank: '🏦 Bank' };
+  function lsGet(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+  function lsSet(k, v) { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) {} }
+  (function () { var p0 = lsGet(KEY_PAY); if (PAYS.indexOf(p0) >= 0) CTR.pay = p0; })();
+  function loadLast() {
+    try {
+      var j = JSON.parse(sessionStorage.getItem(KEY_LAST) || 'null');
+      if (j && j.from && j.to && j.date) CTR.last = { from: String(j.from), to: String(j.to), date: String(j.date), sid: parseInt(j.sid, 10) || 0, rid: String(j.rid || '') };
+    } catch (e) {}
+  }
+  function saveLast() { try { if (CTR.last) sessionStorage.setItem(KEY_LAST, JSON.stringify(CTR.last)); } catch (e) {} }
   var PANEL = STAFF.panelUrl || '/admin/';
   var WHO = STAFF.code ? (STAFF.code + ' · ' + (STAFF.name || '')) : (STAFF.name || 'staff');
   var CAN = !!STAFF.canSell;
@@ -99,7 +130,8 @@
       + ':root[data-theme="dark"] #ctrQuick{background:#0f2a1c}'
       + '.ctr-q-lbl{font-size:12.5px;font-weight:700;margin-bottom:6px}.ctr-q-lbl small{font-weight:500;color:var(--muted,#6b7688)}'
       + '.ctr-q-row{display:flex;gap:8px;flex-wrap:wrap}'
-      + '.ctr-q-row input{flex:1 1 130px;min-width:0;font-size:16px;padding:10px 12px;border:1px solid var(--line,#dde3ee);border-radius:9px;background:var(--card,#fff);color:inherit}';
+      + '.ctr-q-row input{flex:1 1 130px;min-width:0;font-size:16px;padding:10px 12px;border:1px solid var(--line,#dde3ee);border-radius:9px;background:var(--card,#fff);color:inherit}'
+      + '#ctrSeatConfirm{flex:1 1 100%;min-height:48px}';
     document.head.appendChild(st);
     $q('#cbSellAnother').addEventListener('click', function () {
       try { if (typeof releaseMyLocks === 'function') releaseMyLocks(); } catch (e) {}
@@ -190,6 +222,9 @@
       var okFrom = setSelect(fs, p.get('from')), okTo = setSelect(ts, p.get('to'));
       if (p.get('date') && di) { di.value = p.get('date'); try { di.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {} }
       if (okFrom && okTo && di && di.value) {
+        // The link's departure is the desk's target: "Same bus" / "Same
+        // date" work even when the first sale on it fails (1 Oct 2026).
+        if (CAN) { CTR.last = { from: fs.value, to: ts.value, date: di.value, sid: wantSid, rid: '' }; saveLast(); }
         try { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); } catch (e) {}
         // Auto-select ONLY when the link explicitly named a departure or a
         // seat. Legacy from/to/date links (agent panel "Sell seats",
@@ -347,10 +382,8 @@
       el.id = 'ctrPanel';
       el.innerHTML = '<h4>🧾 Received at counter · काउन्टरमा लिएको</h4>'
         + '<div class="ctr-pays">'
-        + '<button type="button" class="ctr-pay on" data-pay="cash">💵 Cash</button>'
-        + '<button type="button" class="ctr-pay" data-pay="upi">📱 UPI received</button>'
-        + '<button type="button" class="ctr-pay" data-pay="esewa">🇳🇵 eSewa received</button>'
-        + '<button type="button" class="ctr-pay" data-pay="bank">🏦 Bank</button>'
+        // the chip the desk used last time is lit (CTR.pay ← shg_qt_pay)
+        + PAYS.map(function (k) { return '<button type="button" class="ctr-pay' + (CTR.pay === k ? ' on' : '') + '" data-pay="' + k + '">' + PAY_LBL[k] + '</button>'; }).join('')
         + '</div>'
         + '<div class="ctr-row"><label style="font-size:12px;font-weight:700">Discount</label>'
         + '<input type="number" id="ctrDiscVal" min="0" step="1" placeholder="0" inputmode="numeric">'
@@ -365,6 +398,7 @@
       el.addEventListener('click', function (e) {
         var b = e.target.closest('.ctr-pay'); if (!b) return;
         CTR.pay = b.getAttribute('data-pay') || 'cash';
+        lsSet(KEY_PAY, CTR.pay);
         el.querySelectorAll('.ctr-pay').forEach(function (x) { x.classList.toggle('on', x === b); });
         ctrSummary();
       });
@@ -394,21 +428,33 @@
       if (ac.tagName === 'SELECT') {
         // already the desk dropdown - keep the desk's choice across re-renders
       } else if (agents.length > 0) {
+        /* Picked once, remembered per clerk (1 Oct 2026, owner R3b): the last
+           choice lives in localStorage under shg_ctr_agent_<staff id> — the
+           key QuickBot's #qtAgent reads and writes too — so a reload, the
+           "New version" refresh or a fresh tab never asks again. The clerk's
+           own SHG code is the fallback; an agent no longer on the list leaves
+           the select blank and the validator asks. The server still checks
+           the code and falls back to the company code. */
+        var want = lsGet(KEY_AGENT) || STAFF.code || '';
         var sel = document.createElement('select');
         sel.id = 'cAgentCode';
         sel.style.cssText = 'width:100%;font-size:16px;padding:10px 12px;border:1.5px solid var(--line,#dde3ee);border-radius:12px;background:var(--card,#fff);color:inherit';
         sel.innerHTML = '<option value="">— एजेन्ट छान्नुहोस् / Select Agent —</option>'
           + agents.map(function (a) {
-            var selected = (STAFF.code && a.code === STAFF.code) ? ' selected' : '';
+            var selected = (want && a.code === want) ? ' selected' : '';
             return '<option value="' + esc(a.code) + '"' + selected + '>' + (a.co ? '🏢 ' : '👤 ') + esc(a.code) + ' · ' + esc(a.name) + '</option>';
           }).join('')
-          + '<option value="OTHER">अन्य / Other (Direct Sale — company)</option>';
+          + '<option value="OTHER"' + (want === 'OTHER' ? ' selected' : '') + '>अन्य / Other (Direct Sale — company)</option>';
         ac.parentNode.replaceChild(sel, ac);
         sel.addEventListener('change', function () {
+          lsSet(KEY_AGENT, sel.value);
           if (field) field.classList.remove('invalid');
           try { if (typeof coSyncContinue === 'function') coSyncContinue(); } catch (e) {}
           ctrSummary();
         });
+        // the remembered pick is in: let the readiness check and the summary's commission line see it
+        try { if (typeof coSyncContinue === 'function') coSyncContinue(); } catch (e) {}
+        ctrSummary();
         var lbl = field && field.querySelector('label');
         if (lbl) lbl.innerHTML = 'एजेन्ट छान्नुहोस् · Select Agent <small style="color:var(--bad)">(अनिवार्य / required)</small>';
         if (field) field.classList.remove('field-optional');
@@ -490,7 +536,7 @@
     var maxPct = Number(STAFF.maxDiscountPct || 15);
     var off = 0;
     if (dv > 0 && total > 0) off = dt === 'percent' ? Math.round(total * Math.min(dv, maxPct) / 100) : Math.min(dv, total);
-    var payLbl = { cash: '💵 Cash', upi: '📱 UPI received', esewa: '🇳🇵 eSewa received', bank: '🏦 Bank' }[CTR.pay] || CTR.pay;
+    var payLbl = PAY_LBL[CTR.pay] || CTR.pay;
     var fmt = function (n) { try { return inr(n); } catch (e) { return '₹' + n; } };
     var commLine = '';
     var agSel = $q('#cAgentCode');
@@ -551,8 +597,27 @@
       + '<div class="ctr-q-row">'
       + '<input id="ctrQuickName" type="text" maxlength="80" placeholder="Name" autocomplete="off" autocapitalize="words">'
       + '<input id="ctrQuickPhone" type="tel" inputmode="numeric" maxlength="15" placeholder="Mobile (optional)" autocomplete="off">'
-      + '</div>';
+      + '</div>'
+      /* One tap from the seat map to the ticket (1 Oct 2026, owner R3c). The
+         button presses the app's own Continue (Flow.legs, boarding and drop
+         are built exactly as a manual tap), waits until renderCheckout has
+         painted THIS draft, then presses the one-screen confirm — so the real
+         validator, the capture-phase submit guard, submitBooking and the
+         /api/book.php payload are untouched. A refused detail (no name, no
+         agent) leaves the desk on the checkout with the field highlighted,
+         where ID, age and per-seat names can still be edited; Continue →
+         still opens the checkout without confirming. */
+      + '<div class="ctr-q-row" style="margin-top:8px"><button type="button" class="btn btn-orange" id="ctrSeatConfirm" disabled>🧾 Confirm counter sale →</button></div>'
+      + '<div class="ctr-note">Confirm here = ticket at once · Continue → = open the checkout to edit ID / age / per-seat names</div>';
     card.insertBefore(el, nav);
+    var cont0 = $q('#continueBtn'), scb = $q('#ctrSeatConfirm');
+    if (cont0 && scb) {
+      var mirror = function () { scb.disabled = cont0.disabled; };   // same readiness as Continue (seats picked, fare good)
+      mirror();
+      try { new MutationObserver(mirror).observe(cont0, { attributes: true, attributeFilter: ['disabled'] }); } catch (e) {}
+      scb.addEventListener('click', seatConfirm);
+    }
+    rememberStops();
     if (!document._ctrQuickGuard) {
       document._ctrQuickGuard = true;
       // capture phase on the document: runs before the app's own Continue
@@ -564,6 +629,68 @@
         try { window.SHG_QUICK = (nm || ph) ? { name: nm, phone: ph } : null; } catch (e2) {}
       }, true);
     }
+  }
+
+  function seatConfirm() {
+    var cont = $q('#continueBtn'); if (!cont || cont.disabled) return;
+    var nmEl = $q('#ctrQuickName');
+    if (nmEl && !nmEl.value.trim()) {
+      try { toast('यात्रीको नाम लेख्नुहोस् · Passenger name first'); } catch (e) {}
+      nmEl.focus(); return;
+    }
+    var round = false; try { round = Flow.tripType === 'round' && Flow.legIndex === 0; } catch (e) {}
+    var tick = CTR.rcTick;
+    cont.click();            // capture guard → SHG_QUICK; 06-results builds the leg and routes to #/checkout
+    if (round) return;       // the return leg's seat view comes next — confirm from there
+    var n = 0;
+    clearInterval(CTR.seatWatch);
+    CTR.seatWatch = setInterval(function () {
+      n++;
+      if (n > 50) { clearInterval(CTR.seatWatch); CTR.seatWatch = null; return; }   // ~5 s: Continue refused (it toasted) — stay put
+      // wait for THIS render: renderCheckout bumps rcTick after it (and decorateCheckout) ran
+      if ((location.hash || '') !== '#/checkout' || CTR.rcTick === tick || !$q('#ctrConfirmBtn')) return;
+      clearInterval(CTR.seatWatch); CTR.seatWatch = null;
+      ctrConfirm();
+    }, 100);
+  }
+
+  /* ---- 3d. Boarding / drop remembered per desk (1 Oct 2026, owner R3b) ----
+     Under the SAME localStorage key QuickBot uses (shg_qt_boarding, stored as
+     the stop NAME and matched by town the way Boarding::townKey does), so the
+     two desks agree; the drop has no QuickBot twin (shg_ctr_drop). Written
+     when the clerk picks a stop, re-applied after every renderSeats (which
+     refills both selects with the route defaults). "Other" is never
+     remembered, and a select sitting on Other is left alone. The server
+     still validates the posted stop (BookingService::defaultBoardingStop). */
+  function stopKey(s) {
+    s = String(s || '').replace(/\[[^\]]*\]/g, ' ').replace(/@.*$/, ' ');
+    s = s.split(/[\u2014\u2013\-\u00b7|,(]/)[0];
+    return s.replace(/[^A-Za-z0-9\u0900-\u097F]+/g, '').toLowerCase();
+  }
+  function stopName(v) { try { return (typeof parseBP === 'function' && parseBP(v).name) || v; } catch (e) { return v; } }
+  function rememberStops() {
+    if (document._ctrStopGuard) return;
+    document._ctrStopGuard = true;
+    document.addEventListener('change', function (e) {
+      var el = e.target; if (!el || !el.id) return;
+      var key = el.id === 'boardingSel' ? KEY_BOARD : (el.id === 'dropSel' ? KEY_DROP : '');
+      if (!key) return;
+      var v = String(el.value || '');
+      if (!v || v === '__other__') return;
+      lsSet(key, stopName(v));
+    });
+  }
+  function recallStops() {
+    if (!CAN) return;
+    [['#boardingSel', KEY_BOARD], ['#dropSel', KEY_DROP]].forEach(function (pair) {
+      var sel = $q(pair[0]), want = lsGet(pair[1]);
+      if (!sel || !want || sel.value === '__other__') return;
+      var k = stopKey(want); if (!k) return;
+      for (var i = 0; i < sel.options.length; i++) {
+        var v = sel.options[i].value;
+        if (v !== '__other__' && (v === want || stopKey(v) === k)) { if (sel.selectedIndex !== i) sel.selectedIndex = i; break; }
+      }
+    });
   }
 
   /* ---- 4. Payload + result hooks ---------------------------------- */
@@ -600,6 +727,7 @@
               sid: parseInt(body.scheduleId, 10) || 0,
               rid: (leg0 && leg0.routeId) || ''
             };
+            saveLast();
           } catch (e) {}
           forgetPassenger();   // this sale's passenger never rides into the next one
           // submitBooking() stores the local record right after this resolves
@@ -628,41 +756,31 @@
     var body = $q('#statusBody'); if (!body || $q('#ctrActions')) return;
     var b = null; try { b = DB.bookings.find(function (x) { return x.id === id; }); } catch (e) {}
     var adminUrl = (b && b.counter && b.counter.adminUrl) || ('/admin/booking-view.php?pnr=' + encodeURIComponent(id));
+    var L = CTR.last;
     var el = document.createElement('div');
     el.id = 'ctrActions';
-    el.innerHTML = (CTR.last ? '<a class="btn btn-orange" href="#/results" id="ctrSameBus">🚌 Same bus · next ticket</a>' : '')
-      + '<a class="btn ' + (CTR.last ? 'btn-blue' : 'btn-orange') + '" href="#/" id="ctrSellAnother">🧾 Sell another · अर्को टिकट</a>'
+    /* Three ways on (1 Oct 2026, owner R3d: "provide 'Book another ticket'
+       while retaining the same date/route and allowing another bus/seat
+       selection immediately"): the same departure again, the same date's
+       board to pick another bus, or a fresh search that keeps the from/to/
+       date already set. The first two need a remembered sale (CTR.last,
+       kept in sessionStorage so a reload does not lose them). */
+    el.innerHTML = (L ? '<a class="btn btn-orange" href="#/results" id="ctrSameBus">🚌 Same bus · next ticket</a>'
+                      + '<a class="btn btn-blue" href="#/results" id="ctrSameDate">📅 Same date · choose another bus</a>' : '')
+      + '<a class="btn ' + (L ? 'btn-blue' : 'btn-orange') + '" href="#/" id="ctrSellAnother">🧾 Sell another · अर्को टिकट</a>'
       + '<a class="btn btn-blue" href="' + esc(adminUrl) + '">📋 Open in panel</a>'
       + '<a class="btn" href="' + esc(PANEL) + '">← Back to panel</a>';
     body.insertBefore(el, body.firstChild);
-    $q('#ctrSellAnother').addEventListener('click', function () {
-      try { if (typeof releaseMyLocks === 'function') releaseMyLocks(); } catch (e) {}
-      try { Flow.route = null; Flow.seats = []; Flow.legs = []; Flow.legIndex = 0; Flow.draftId = ''; Flow.paxIndividual = false; } catch (e) {}
-      forgetPassenger();
-    });
+    $q('#ctrSellAnother').addEventListener('click', function (e) { if (sellAnother()) e.preventDefault(); });
     var same = $q('#ctrSameBus');
-    if (same) same.addEventListener('click', function (e) { e.preventDefault(); sameBus(); });
+    if (same) same.addEventListener('click', function (e) { e.preventDefault(); sameBus(true); });
+    var sameDate = $q('#ctrSameDate');
+    if (sameDate) sameDate.addEventListener('click', function (e) { e.preventDefault(); sameBus(false); });
   }
 
-  /* "Same bus · next ticket" (17 Sep 2026): the desk sells ticket after
-     ticket on ONE departure, and "Sell another" threw the bus and date
-     away every time. Re-run the search the last sale came from and let
-     autoPick tap the same card — every step goes through the app's own
-     handlers (results click → seat map with fresh occupancy: SeatSrv was
-     invalidated by submitBooking), so holds and pricing behave exactly as
-     a manual tap. No server involvement. */
-  function sameBus() {
-    var L = CTR.last; if (!L || !L.from || !L.to || !L.date) return;
-    try { if (typeof releaseMyLocks === 'function') releaseMyLocks(); } catch (e) {}
-    forgetPassenger();
-    try {
-      if (typeof setTripType === 'function') setTripType('one');
-      Flow.from = L.from; Flow.to = L.to; Flow.date = L.date; Flow.retDate = '';
-      Flow.route = null; Flow.seats = []; Flow.legs = []; Flow.legIndex = 0; Flow.draftId = '';
-      Flow.scheduleId = L.sid || 0; Flow.fareOverride = 0; Flow.paxIndividual = false;
-      Flow.shotThumb = ''; Flow.shotBlob = null;
-    } catch (e) { return; }
-    // keep the search card in step, so "Change search" starts from this bus
+  /* Put the remembered departure back on the search card, so "Change
+     search" starts from this bus. */
+  function setSearchCard(L) {
     try {
       var fs = $q('#fromSel'), ts = $q('#toSel'), di = $q('#dateInput');
       var setOpt = function (sel, v) {
@@ -672,16 +790,66 @@
       setOpt(fs, L.from); setOpt(ts, L.to);
       if (di) { di.value = L.date; try { if (typeof markDateChip === 'function') markDateChip(); } catch (e2) {} }
     } catch (e) {}
+  }
+
+  /* "Sell another" (1 Oct 2026): keep the route and date the desk is working
+     on. With a remembered sale (or from/to/date still on the search card)
+     the search is re-run through the form's OWN submit handler — one coach
+     on the board opens its seat map at once (Flow.autoSkip, 06-results.js) —
+     instead of parking on the home page. Returns true when it navigated. */
+  function sellAnother() {
+    try { if (typeof releaseMyLocks === 'function') releaseMyLocks(); } catch (e) {}
+    try { Flow.route = null; Flow.seats = []; Flow.legs = []; Flow.legIndex = 0; Flow.draftId = ''; Flow.paxIndividual = false; } catch (e) {}
+    forgetPassenger();
+    var form = $q('#searchForm'), fs = $q('#fromSel'), ts = $q('#toSel'), di = $q('#dateInput');
+    if (!form || !fs || !ts || !di) return false;
+    var L = CTR.last;
+    if (L && L.from && L.to && L.date) setSearchCard(L);
+    if (!fs.value || !ts.value || !di.value || fs.value === ts.value) return false;   // nothing to re-run: home it is
+    try {
+      var ri = $q('#retInput');
+      if (Flow.tripType === 'round' && !(ri && ri.value) && typeof setTripType === 'function') setTripType('one');
+    } catch (e) {}
+    try { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); } catch (e) { return false; }
+    return true;
+  }
+
+  /* "Same bus · next ticket" (17 Sep 2026): the desk sells ticket after
+     ticket on ONE departure, and "Sell another" threw the bus and date
+     away every time. Re-run the search the last sale came from and let
+     autoPick tap the same card — every step goes through the app's own
+     handlers (results click → seat map with fresh occupancy: SeatSrv was
+     invalidated by submitBooking), so holds and pricing behave exactly as
+     a manual tap. No server involvement. */
+  function sameBus(pick) {
+    var L = CTR.last; if (!L || !L.from || !L.to || !L.date) return;
+    try { if (typeof releaseMyLocks === 'function') releaseMyLocks(); } catch (e) {}
+    forgetPassenger();
+    try {
+      if (typeof setTripType === 'function') setTripType('one');
+      Flow.from = L.from; Flow.to = L.to; Flow.date = L.date; Flow.retDate = '';
+      Flow.route = null; Flow.seats = []; Flow.legs = []; Flow.legIndex = 0; Flow.draftId = '';
+      Flow.scheduleId = L.sid || 0; Flow.fareOverride = 0; Flow.paxIndividual = false;
+      Flow.shotThumb = ''; Flow.shotBlob = null;
+      // the board stays up: autoPick taps the same card (pick) or the clerk
+      // picks another bus (!pick) — never 06-results' single-coach auto-enter
+      Flow.autoSkip = false;
+    } catch (e) { return; }
+    setSearchCard(L);   // keep the search card in step, so "Change search" starts from this bus
     location.hash = '#/results';
     if (location.hash === '#/results') { try { if (typeof router === 'function') router(); } catch (e) {} }
-    autoPick(L.sid || 0, '', L.rid || '');
+    if (pick) autoPick(L.sid || 0, '', L.rid || '');
   }
 
   /* ---- 6. Wire the hooks once the app's globals exist -------------- */
   function wrap() {
     if (typeof renderCheckout === 'function') {
       var rc = renderCheckout;
-      window.renderCheckout = function () { var r = rc.apply(this, arguments); try { decorateCheckout(); } catch (e) {} return r; };
+      window.renderCheckout = function () { var r = rc.apply(this, arguments); try { decorateCheckout(); } catch (e) {} CTR.rcTick++; return r; };
+    }
+    if (typeof renderSeats === 'function') {
+      var rsv = renderSeats;
+      window.renderSeats = function () { var r = rsv.apply(this, arguments); try { recallStops(); } catch (e) {} return r; };
     }
     if (typeof renderStatus === 'function') {
       var rs = renderStatus;
@@ -702,6 +870,7 @@
        customer sign-in when counter mode starts (setUser(null) also tells the
        service worker to forget cached tickets — right on a shared machine). */
     try { if (CAN && typeof setUser === 'function' && typeof USER !== 'undefined' && USER) setUser(null); } catch (e) {}
+    try { loadLast(); } catch (e) {}   // "Same bus" / "Same date" survive a reload (sessionStorage, per tab)
     try { bar(); } catch (e) {}
     try { wrap(); } catch (e) {}
     try { prefill(); } catch (e) {}
