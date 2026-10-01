@@ -17,6 +17,7 @@ $base   = '';
 $flash  = null;
 $canEdit = Auth::can('routes.edit') || Auth::can('schedules.manage') || Auth::isSuperadmin();
 require_once INCLUDE_PATH . '/schedulemaker.php';
+require_once INCLUDE_PATH . '/fleet.php';
 
 /**
  * Put one bus on the road for ONE date (owner ask, 1 Oct 2026: "1 tarik kai
@@ -177,15 +178,55 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
             /* ── Run a bus on ONE date (1 Oct 2026) ── */
             } elseif ($act === 'run_on_date') {
-                $flash = ['ok', shg_run_bus_on_date(
-                    (int) ($_POST['bus_id'] ?? 0),
-                    (int) ($_POST['route_id'] ?? 0),
-                    trim((string) ($_POST['run_date'] ?? '')),
-                    trim((string) ($_POST['dep_time'] ?? '')),
-                    trim((string) ($_POST['fare'] ?? '')),
-                    ((string) ($_POST['replace'] ?? '')) === '1',
-                    (int) $admin['id']
-                )];
+                // One date, or a festival stretch (Dashain / Tihar: "2 ta gadi
+                // jaanchha") — the same bus on every date from → till.
+                $from = trim((string) ($_POST['run_date'] ?? ''));
+                $till = trim((string) ($_POST['run_date_to'] ?? ''));
+                if ($till === '' || $till === $from) {
+                    $flash = ['ok', shg_run_bus_on_date(
+                        (int) ($_POST['bus_id'] ?? 0),
+                        (int) ($_POST['route_id'] ?? 0),
+                        $from,
+                        trim((string) ($_POST['dep_time'] ?? '')),
+                        trim((string) ($_POST['fare'] ?? '')),
+                        ((string) ($_POST['replace'] ?? '')) === '1',
+                        (int) $admin['id']
+                    )];
+                } else {
+                    if (!Security::isValidDate($from) || !Security::isValidDate($till)) {
+                        throw new RuntimeException('Choose valid From and Till dates.');
+                    }
+                    if ($till < $from) {
+                        throw new RuntimeException('"Till" date must be on or after the "From" date.');
+                    }
+                    $days = Fleet::dayIndex($till, $from) + 1;
+                    if ($days > 60) {
+                        throw new RuntimeException('Up to 60 days at a time, please.');
+                    }
+                    $okDates = [];
+                    $skipped = [];
+                    for ($i = 0; $i < $days; $i++) {
+                        $d = addDaysISO($from, $i);
+                        try {
+                            shg_run_bus_on_date(
+                                (int) ($_POST['bus_id'] ?? 0),
+                                (int) ($_POST['route_id'] ?? 0),
+                                $d,
+                                trim((string) ($_POST['dep_time'] ?? '')),
+                                trim((string) ($_POST['fare'] ?? '')),
+                                ((string) ($_POST['replace'] ?? '')) === '1',
+                                (int) $admin['id']
+                            );
+                            $okDates[] = $d;
+                        } catch (Throwable $e) {
+                            $skipped[] = $d . ' (' . $e->getMessage() . ')';
+                        }
+                    }
+                    $msg = count($okDates) . ' of ' . $days . ' date(s) done'
+                        . ($okDates !== [] ? ': ' . $okDates[0] . ($okDates !== [] && count($okDates) > 1 ? ' … ' . end($okDates) : '') . '.' : '.')
+                        . ($skipped !== [] ? ' Skipped: ' . implode('; ', array_slice($skipped, 0, 5)) . (count($skipped) > 5 ? ' …' : '') : '');
+                    $flash = [$okDates !== [] ? 'ok' : 'bad', $msg];
+                }
 
             /* ── Update ── */
             } elseif ($act === 'update') {
@@ -447,7 +488,7 @@ if ($todayBus === null) {
 <!-- ── Run a bus on ONE date (1 Oct 2026) ───────────────────────── -->
 <div class="panel" id="runOnDatePanel" style="margin-bottom:16px;border-left:5px solid #2E5FA8">
   <h2 style="margin:0 0 4px">🗓️ Run a bus on one date · एक दिनको लागि बस थप्नुहोस्</h2>
-  <p style="margin:0 0 12px;font-size:13px;color:var(--mut)">Pick the date, the way it goes and the bus. If that day has no bus yet it becomes the day's bus; if it already has one, this runs as an <b>extra bus</b>. Booking opens at once.</p>
+  <p style="margin:0 0 12px;font-size:13px;color:var(--mut)">Pick the date, the way it goes and the bus. If that day has no bus yet it becomes the day's bus; if it already has one, this runs as an <b>extra bus</b>. Booking opens at once. Festival rush (Dashain / Tihar)? Fill <b>Till date</b> too and the bus is added on every date in between.</p>
   <?php if ($runRoutes === []): ?>
     <div class="flash bad" style="margin:0">No active route — switch a route on in <a href="routes.php">Routes</a> first.</div>
   <?php elseif ($activeBuses === []): ?>
@@ -459,6 +500,10 @@ if ($todayBus === null) {
     <div class="form-group">
       <label>Date *</label>
       <input type="date" name="run_date" required min="<?= Security::e(todayISO()) ?>" value="<?= Security::e(todayISO()) ?>">
+    </div>
+    <div class="form-group">
+      <label>Till date (optional)</label>
+      <input type="date" name="run_date_to" min="<?= Security::e(todayISO()) ?>" title="Dashain / Tihar: fill this to run the bus on every date from → till (max 60 days)">
     </div>
     <div class="form-group">
       <label>Route *</label>
