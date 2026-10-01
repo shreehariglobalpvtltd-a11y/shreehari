@@ -162,6 +162,7 @@ final class BookingService
            requires the bus to have actually departed AND still be inside 24h —
            it can never open a future/未-departed or a long-past trip. */
         $referralCodeClean = strtoupper(Security::clean($request['referralCode'] ?? '', 20));
+        if ($referralCodeClean === 'OTHER') { $referralCodeClean = ''; }   // legacy "no agent" sentinel = direct sale
         $soldByAdminId     = $referralCodeClean !== ''
             ? AgentWallet::resolveAgentCodeFromString($referralCodeClean)
             : null;

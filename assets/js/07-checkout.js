@@ -1095,11 +1095,18 @@ function renderCheckout() {
      details never loses entered data. */
   var coCont = $('#coContinueBtn'); if (coCont) coCont.onclick = () => coGoStep(2);
   var coBackD = $('#coBackToDetailsBtn'); if (coBackD) coBackD.onclick = () => coGoStep(1);
+  /* 1 Oct 2026: the agent code is OPTIONAL for a direct customer. The
+     button only clears a typed code (shown while something is typed); the
+     old 'OTHER' sentinel is gone — an empty code IS a direct sale. */
   var agOtherBtn = $('#cAgentOther');
-  if (agOtherBtn) agOtherBtn.onclick = function () {
-    var ac = $('#cAgentCode');
-    if (ac) { ac.value = 'OTHER'; ac.closest('.field').classList.remove('invalid'); coSyncContinue(); }
-  };
+  var agCodeIn = $('#cAgentCode');
+  if (agOtherBtn && agCodeIn && agCodeIn.tagName === 'INPUT') {
+    var agSync = function () { agOtherBtn.hidden = !(agCodeIn.value || '').trim(); };
+    agCodeIn.addEventListener('input', agSync); agSync();
+    agOtherBtn.onclick = function () {
+      agCodeIn.value = ''; agCodeIn.closest('.field').classList.remove('invalid'); agSync(); coSyncContinue();
+    };
+  }
   var coS1 = $('#coStep1');
   if (coS1 && !coS1._coSynced) { coS1.addEventListener('input', coSyncContinue); coS1.addEventListener('change', coSyncContinue); coS1._coSynced = true; }
   coSyncContinue();
@@ -1201,11 +1208,12 @@ async function submitBooking() {
      commission field. */
   const me = USER ? userByPhone(USER.phone) : null;
   const agentCodeEl = $('#cAgentCode');
-  const agentCodeInput = agentCodeEl ? (agentCodeEl.value || '').trim().toUpperCase() : '';
+  let agentCodeInput = agentCodeEl ? (agentCodeEl.value || '').trim().toUpperCase() : '';
+  if (agentCodeInput === 'OTHER') agentCodeInput = '';   // legacy sentinel = direct sale
   const refCode = agentCodeInput || pendingRefCode() || (me && me.role === 'agent' ? me.refCode : '');
   // Remember a typed agent code so future searches already surface departed
   // buses (agent late-booking).
-  if (agentCodeInput && typeof persistAgentCode === 'function') { persistAgentCode(agentCodeInput); }
+  // (persisted below only once the server confirms the code resolved to a real agent)
 
   const f = calcFare(legs);
   const x = Flow.checkoutTotals ? Flow.checkoutTotals() : { tierDisc: 0, points: 0, pointsValue: 0, total: f.total };
@@ -1303,6 +1311,7 @@ async function submitBooking() {
     const msgEl = $('#cAgentCodeMsg');
     if (apiResult.agent.applied) {
       const label = apiResult.agent.label || 'Agent code applied';
+      if (agentCodeInput && typeof persistAgentCode === 'function') { persistAgentCode(agentCodeInput); }
       toast('🎟️ ' + label + ' · applied');
       if (msgEl) { msgEl.textContent = '✓ ' + label + ' · applied'; msgEl.style.color = 'var(--good)'; msgEl.hidden = false; }
     } else if (agentCodeInput) {

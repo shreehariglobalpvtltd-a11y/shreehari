@@ -107,9 +107,11 @@ try {
         // referralCode is the historic field; agentCode is the new §3 input.
         // A non-empty agentCode wins; both go through the same server-side
         // resolver in BookingService::create.
-        'referralCode'    => (string) (($input['agentCode'] ?? '') !== ''
-            ? $input['agentCode']
-            : ($input['referralCode'] ?? '')),
+        // 1 Oct 2026: 'OTHER' was the old "no agent" sentinel of the checkout
+        // form; it is a direct sale and must never be stored as a code.
+        'referralCode'    => (static function (string $c): string {
+            return strtoupper(trim($c)) === 'OTHER' ? '' : $c;
+        })((string) (($input['agentCode'] ?? '') !== '' ? $input['agentCode'] : ($input['referralCode'] ?? ''))),
         'paymentMethod'   => $input['paymentMethod'] ?? 'upi',
         'isCod'           => !empty($input['isCod']),
     ];
