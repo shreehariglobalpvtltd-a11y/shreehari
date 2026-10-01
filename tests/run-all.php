@@ -138,6 +138,7 @@ const CORE_SUITES = [
     'delivery-sentinel-test.php'   => 'a delivery outage names the right fault, in owner language',
     'whatsapp-retry-policy-test.php' => 'a recovered Meta sender releases the failed-ticket backlog',
     // 30 Sep 2026, registered with the office alert it guards.
+    'wa-request-result-test.php' => 'API delivery succeeds only on true; manual click-to-chat is not sent',
     'wa-fail-alert-test.php'       => 'a failed passenger WhatsApp pages the office once, with the ticket link',
     // 13 Sep 2026, registered with the PWA master upgrade it guards.
     'webpush-test.php'             => 'Web Push: RFC 8291 vectors, VAPID signature, subscription store',
@@ -555,9 +556,9 @@ if ($failed !== []) {
     echo "\n  Output from the failing suites:\n";
     foreach ($failed as $file => $out) {
         echo "\n  ── {$file} " . str_repeat('─', max(0, 40 - strlen($file))) . "\n";
-        // The tail is where the assertions and the summary live.
+        // Keep every failure assertion visible; an early failure may be outside the tail.
         $lines = explode("\n", rtrim($out));
-        foreach (array_slice($lines, -25) as $line) {
+        foreach ($lines as $line) {
             echo '  ' . $line . "\n";
         }
     }

@@ -60,10 +60,16 @@ $ask = static fn(string $n, string $q): ?array => WaFaq::answer(FAQ_P . $n, $q);
 
 /* ---- what the tables say (so the test never hard-codes a fare or a time) ---- */
 $toNp = Settings::getInt('fare_to_nepal', 2000);
-$stop = static function (string $like): ?array {
-    return Database::fetch("SELECT s.stop_name, s.stop_time FROM route_stops s JOIN routes r ON r.id = s.route_id
-                             WHERE r.is_active = 1 AND s.stop_type = 'boarding' AND s.stop_name LIKE :n
-                             ORDER BY s.id LIMIT 1", ['n' => '%' . $like . '%']);
+$stop = static function (string $town): ?array {
+    // Match the booking engine's aliases and the FAQ's route priority;
+    // a LIKE Vadodara lookup misses Barauda/Baroda on the primary route.
+    $code = Boarding::stopDisplay($town)['code'];
+    foreach (Database::fetchAll("SELECT s.stop_name, s.stop_time FROM route_stops s JOIN routes r ON r.id = s.route_id
+                                 WHERE r.is_active = 1 AND s.stop_type = 'boarding' AND s.stop_time IS NOT NULL
+                                 ORDER BY r.sort_order, r.dep_time, s.sort_order, s.id") as $row) {
+        if (Boarding::stopDisplay($row['stop_name'])['code'] === $code) { return $row; }
+    }
+    return null;
 };
 $clock = static fn(?array $s): string => $s === null ? '??' : date('g:i A', (int) strtotime((string) $s['stop_time']));
 
@@ -80,6 +86,7 @@ check('2 people: the total is worked out', $r !== null && str_contains($r['text'
 
 /* ---- timing -------------------------------------------------------- */
 $vad = $stop('Vadodara');
+check('an active Baroda/Vadodara boarding fixture exists', $vad !== null);
 $r = $ask('04', 'baroda bata bus kati baje chhutcha?');
 check('Baroda → the Vadodara pickup time from route_stops', $r !== null && str_contains($r['text'], $clock($vad)), (string) ($r['text'] ?? ''));
 check('"chhutcha" (departs) is not mistaken for "chhut" (discount)', $r !== null && $r['intent'] === 'timing', (string) ($r['intent'] ?? ''));

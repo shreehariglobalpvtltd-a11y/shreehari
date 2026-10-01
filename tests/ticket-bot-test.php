@@ -252,6 +252,9 @@ try {
      *  4. patterns() — aggregated, cached
      * ================================================================ */
     echo "\n== patterns(): aggregated + cached ==\n";
+    // Two of the four earlier sales were cancelled. Add a third verified
+    // sale rather than relying on unrelated pre-existing database rows.
+    $sell(['name' => 'Bot Test Sita', 'phone' => TB_PHONE . '004', 'date' => $D2, 'boarding' => $firstTown, 'gender' => 'Female']);
     $pt = TicketBot::patterns(true);
     check('the window holds the sales just made', (int) $pt['sample'] >= 3 && (int) $pt['repeat'] >= 1, 'sample ' . $pt['sample'] . ' · repeat ' . $pt['repeat']);
     $codes = array_map(static fn(array $x): string => (string) $x['code'], $pt['stops']);
