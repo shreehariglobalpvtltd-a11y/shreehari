@@ -555,9 +555,9 @@ if ($failed !== []) {
     echo "\n  Output from the failing suites:\n";
     foreach ($failed as $file => $out) {
         echo "\n  ── {$file} " . str_repeat('─', max(0, 40 - strlen($file))) . "\n";
-        // The tail is where the assertions and the summary live.
+        // Keep every failure assertion visible; an early failure may be outside the tail.
         $lines = explode("\n", rtrim($out));
-        foreach (array_slice($lines, -25) as $line) {
+        foreach ($lines as $line) {
             echo '  ' . $line . "\n";
         }
     }
