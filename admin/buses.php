@@ -15,7 +15,90 @@ require __DIR__ . '/_guard.php';
 $admin  = admin_boot('schedules.view');
 $base   = '';
 $flash  = null;
-$canEdit = Auth::can('routes.edit') || Auth::isSuperadmin();
+$canEdit = Auth::can('routes.edit') || Auth::can('schedules.manage') || Auth::isSuperadmin();
+require_once INCLUDE_PATH . '/schedulemaker.php';
+
+/**
+ * Put one bus on the road for ONE date (owner ask, 1 Oct 2026: "1 tarik kai
+ * ni bus add garna milos manually easily"). No rotation, no seeder — just
+ * this bus, this route, this day.
+ *
+ *   • no trip yet on that route + date  → creates the day's trip with this bus
+ *   • a trip already there              → adds it as an EXTRA bus (slot 2, 3 …)
+ *   • $replace = true                   → swaps the day's main bus instead,
+ *                                         guarded by Seats::assertBusSwapSafe
+ *
+ * @return string the flash message
+ */
+function shg_run_bus_on_date(int $busId, int $routeId, string $date, string $dep, string $fare, bool $replace, int $adminId): string
+{
+    if ($busId <= 0) { throw new RuntimeException('Choose a bus.'); }
+    if ($routeId <= 0) { throw new RuntimeException('Choose a route (which way the bus goes).'); }
+    if (!Security::isValidDate($date)) { throw new RuntimeException('Choose a valid date.'); }
+    if ($date < todayISO()) { throw new RuntimeException('That date has already passed — choose today or a later date.'); }
+
+    $bus = Database::fetch('SELECT id, bus_name, bus_number, is_active FROM buses WHERE id = :i', ['i' => $busId]);
+    if ($bus === null) { throw new RuntimeException('That bus no longer exists.'); }
+    if ((int) $bus['is_active'] !== 1) {
+        throw new RuntimeException('Bus "' . $bus['bus_name'] . '" is inactive / under maintenance — activate it first.');
+    }
+    $label = $bus['bus_name'] . ' (' . $bus['bus_number'] . ')';
+
+    // The same coach cannot be two places at once on one day.
+    $clash = Database::fetch(
+        "SELECT s.id, r.from_city, r.to_city FROM schedules s JOIN routes r ON r.id = s.route_id
+          WHERE s.bus_id = :b AND s.travel_date = :d AND s.status <> 'cancelled' LIMIT 1",
+        ['b' => $busId, 'd' => $date]
+    );
+
+    $main = Database::fetch(
+        'SELECT id, bus_id FROM schedules WHERE route_id = :r AND travel_date = :d AND slot = 1 LIMIT 1',
+        ['r' => $routeId, 'd' => $date]
+    );
+
+    if ($replace && $main !== null) {
+        $sid = (int) $main['id'];
+        if ((int) ($main['bus_id'] ?? 0) === $busId) {
+            return 'Bus ' . $label . ' is already the main bus on ' . $date . '.';
+        }
+        if ($clash !== null) {
+            throw new RuntimeException('Bus ' . $label . ' already runs ' . $clash['from_city'] . ' → ' . $clash['to_city'] . ' on ' . $date . '.');
+        }
+        $check = Seats::assertBusSwapSafe($sid, $busId);
+        Database::transaction(static function () use ($sid, $busId, $check): void {
+            Database::update('schedules', ['bus_id' => $busId], 'id = :id', ['id' => $sid]);
+            if ((int) $check['newTotalSeats'] > 0) {
+                Database::update('schedules', ['total_seats' => (int) $check['newTotalSeats']], 'id = :id', ['id' => $sid]);
+            }
+        });
+        Logger::audit('trip.swap_bus', 'schedule', (string) $sid, ['bus_id' => $main['bus_id'] ?? null],
+            ['bus_id' => $busId, 'via' => 'fleet.run_on_date'], 'by admin #' . $adminId);
+        return 'Done — ' . $label . ' is now the main bus on ' . $date . '.';
+    }
+
+    if ($clash !== null) {
+        throw new RuntimeException('Bus ' . $label . ' already runs ' . $clash['from_city'] . ' → ' . $clash['to_city'] . ' on ' . $date . '.');
+    }
+
+    $opts = ['bus_id' => $busId];
+    if ($main !== null) {
+        $opts['slot'] = ScheduleMaker::nextFreeSlot($routeId, $date);
+    }
+    if ($dep !== '')  { $opts['dep_time_override'] = $dep; }
+    if ($fare !== '') { $opts['fare_override'] = $fare; }
+
+    $res = ScheduleMaker::insertOne($routeId, $date, $opts);
+    Logger::audit('trip.add', 'schedule', (string) $res['id'], null,
+        ['route_id' => $routeId, 'travel_date' => $date, 'bus_id' => $busId, 'slot' => $opts['slot'] ?? 1,
+         'dep_time_override' => $opts['dep_time_override'] ?? null, 'fare_override' => $opts['fare_override'] ?? null,
+         'via' => 'fleet.run_on_date'],
+        'added by admin #' . $adminId);
+
+    return 'Done — ' . $label . ' runs on ' . $date
+        . ($main !== null ? ' as extra bus #' . (int) $opts['slot'] : '')
+        . ($res['dep_time'] ? ' at ' . $res['dep_time'] : '')
+        . '. It is open for booking now.';
+}
 
 /* ── Seat model catalogue ─────────────────────────────────────────── */
 const SEAT_MODELS = [
@@ -79,6 +162,30 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 ]);
                 Logger::audit('bus.create', 'admin', $number, null, ['model' => $model, 'seats' => $seats], 'by admin#' . $admin['id']);
                 $flash = ['ok', 'Bus "' . $name . '" added — ' . $seats . ' seats, ' . $floors . ' floor(s).'];
+
+                // Optional: put the new bus straight on one date.
+                $runDate = trim((string) ($_POST['run_date'] ?? ''));
+                if ($runDate !== '') {
+                    try {
+                        $flash = ['ok', 'Bus "' . $name . '" added. ' . shg_run_bus_on_date(
+                            (int) $newId, (int) ($_POST['run_route_id'] ?? 0), $runDate,
+                            trim((string) ($_POST['run_dep'] ?? '')), '', false, (int) $admin['id'])];
+                    } catch (Throwable $e) {
+                        $flash = ['bad', 'Bus "' . $name . '" was added to the fleet, but not put on ' . $runDate . ': ' . $e->getMessage()];
+                    }
+                }
+
+            /* ── Run a bus on ONE date (1 Oct 2026) ── */
+            } elseif ($act === 'run_on_date') {
+                $flash = ['ok', shg_run_bus_on_date(
+                    (int) ($_POST['bus_id'] ?? 0),
+                    (int) ($_POST['route_id'] ?? 0),
+                    trim((string) ($_POST['run_date'] ?? '')),
+                    trim((string) ($_POST['dep_time'] ?? '')),
+                    trim((string) ($_POST['fare'] ?? '')),
+                    ((string) ($_POST['replace'] ?? '')) === '1',
+                    (int) $admin['id']
+                )];
 
             /* ── Update ── */
             } elseif ($act === 'update') {
@@ -197,6 +304,14 @@ $buses = Database::fetchAll(
        FROM buses b
       ORDER BY b.is_active DESC, b.id ASC"
 );
+
+/* Active routes for the "run on one date" picker — inactive routes cannot
+   take a trip (ScheduleMaker refuses them), so they are not offered. */
+$runRoutes = Database::fetchAll(
+    "SELECT id, route_code, from_city, to_city, TIME_FORMAT(dep_time, '%H:%i') AS dep
+       FROM routes WHERE is_active = 1 ORDER BY sort_order, id"
+);
+$activeBuses = array_values(array_filter($buses, static fn(array $b): bool => (int) $b['is_active'] === 1));
 
 $csrf = Security::e(Security::csrfToken());
 $k    = CSRF_TOKEN_NAME;
@@ -327,6 +442,58 @@ if ($todayBus === null) {
 
 @media(max-width:600px){.bus-grid{grid-template-columns:1fr}.bus-floors{flex-direction:column}}
 </style>
+
+<?php if ($canEdit): ?>
+<!-- ── Run a bus on ONE date (1 Oct 2026) ───────────────────────── -->
+<div class="panel" id="runOnDatePanel" style="margin-bottom:16px;border-left:5px solid #2E5FA8">
+  <h2 style="margin:0 0 4px">🗓️ Run a bus on one date · एक दिनको लागि बस थप्नुहोस्</h2>
+  <p style="margin:0 0 12px;font-size:13px;color:var(--mut)">Pick the date, the way it goes and the bus. If that day has no bus yet it becomes the day's bus; if it already has one, this runs as an <b>extra bus</b>. Booking opens at once.</p>
+  <?php if ($runRoutes === []): ?>
+    <div class="flash bad" style="margin:0">No active route — switch a route on in <a href="routes.php">Routes</a> first.</div>
+  <?php elseif ($activeBuses === []): ?>
+    <div class="flash bad" style="margin:0">No active bus — add one with <b>+ Add New Bus</b> below.</div>
+  <?php else: ?>
+  <form method="post" class="form-grid" style="align-items:end" onsubmit="this.querySelector('[type=submit]').disabled=true">
+    <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+    <input type="hidden" name="action" value="run_on_date">
+    <div class="form-group">
+      <label>Date *</label>
+      <input type="date" name="run_date" required min="<?= Security::e(todayISO()) ?>" value="<?= Security::e(todayISO()) ?>">
+    </div>
+    <div class="form-group">
+      <label>Route *</label>
+      <select name="route_id" required>
+        <?php foreach ($runRoutes as $r): ?>
+          <option value="<?= (int) $r['id'] ?>"><?= Security::e($r['from_city'] . ' → ' . $r['to_city'] . ' · ' . $r['dep']) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Bus *</label>
+      <select name="bus_id" required>
+        <?php foreach ($activeBuses as $b): ?>
+          <option value="<?= (int) $b['id'] ?>"><?= Security::e($b['bus_name'] . ' · ' . $b['bus_number']) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Departure (optional)</label>
+      <input type="time" name="dep_time" title="Leave empty to use the route's normal time">
+    </div>
+    <div class="form-group">
+      <label>Fare ₹ (optional)</label>
+      <input type="number" name="fare" min="0" step="1" placeholder="normal fare" title="Leave empty to use the normal fare">
+    </div>
+    <div class="form-group">
+      <label style="text-transform:none;letter-spacing:0;font-weight:600;display:flex;gap:6px;align-items:center;cursor:pointer">
+        <input type="checkbox" name="replace" value="1" style="width:auto"> Replace that day's main bus instead
+      </label>
+      <button type="submit" class="btn btn-ok" style="width:100%;min-height:44px;font-weight:800;margin-top:6px">✅ Put bus on this date</button>
+    </div>
+  </form>
+  <?php endif; ?>
+</div>
+<?php endif; ?>
 
 <!-- ── Date-wise Bus Assignment Banner ──────────────────────────── -->
 <div class="panel" style="margin-bottom:0">
@@ -588,6 +755,29 @@ if ($todayBus === null) {
             </select>
           </div>
         </div>
+        <?php if ($runRoutes !== []): ?>
+        <div class="form-section">
+          <h3>🗓️ Run it on a date (optional)</h3>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Date</label>
+              <input type="date" name="run_date" min="<?= Security::e(todayISO()) ?>" title="Leave empty to only add the bus to the fleet">
+            </div>
+            <div class="form-group">
+              <label>Route</label>
+              <select name="run_route_id">
+                <?php foreach ($runRoutes as $r): ?>
+                  <option value="<?= (int) $r['id'] ?>"><?= Security::e($r['from_city'] . ' → ' . $r['to_city'] . ' · ' . $r['dep']) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Departure (optional)</label>
+              <input type="time" name="run_dep">
+            </div>
+          </div>
+        </div>
+        <?php endif; ?>
         <!-- Live preview -->
         <div class="form-section" id="addPreview">
           <h3>Layout Preview</h3>
