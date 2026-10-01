@@ -1,0 +1,28 @@
+# Written by the application. Everything in this folder is somebody's
+# document — a departure sheet with names and mobiles, an ID scan, a KYC
+# paper — and is served ONLY through a PHP page that checks who is asking
+# (admin/challan.php, admin/manifest.php, admin/passenger-doc.php,
+# admin/agent-kyc-file.php, or download-chalan.php with a signed link).
+# Nothing here may be fetched directly, and nothing here may ever run.
+#
+# The matching nginx rules live in deploy/nginx-shreehariglobal.in.conf.
+# This file is what protects the folder on Apache, and on any server whose
+# nginx config has not been updated yet.
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+    php_flag engine off
+</IfModule>
+RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .php8 .phar
+AddType text/plain .php .phtml .phar

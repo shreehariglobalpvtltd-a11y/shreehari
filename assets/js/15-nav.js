@@ -74,7 +74,7 @@ var SN_TEMPLES=[
 function ensureMapLibre(cb){
   loadMapLibre()
     .then(function(){ SN.loading=false; cb(); })
-    .catch(function(){ SN.loading=false; toast('Failed to load map engine'); });
+    .catch(function(){ SN.loading=false; toast(t('mapEngineFail')); });
 }
 
 function renderNav(){
@@ -820,12 +820,12 @@ function initNavApp(){
       var staffOk=!!(window.SHG_BOOT&&window.SHG_BOOT.staff);
       snToast(staffOk?'📡 Sharing the bus position with every passenger — allow GPS access':'📡 Sharing on this phone only. Sign in as staff at shreehariglobal.network to broadcast to passengers.');
       if(SN.watchId==null) s('#snLocate').click();
-    } else snToast('📡 Broadcast stopped');
+    } else snToast(t('navBcastOff'));
   };
   function snTrackTick(){
-    if(!SN.trackLastTs){ s('#snTrackUpd').textContent='waiting for driver…'; return; }
+    if(!SN.trackLastTs){ s('#snTrackUpd').textContent=t('navWaitDriver'); return; }
     var secs=Math.round((Date.now()-SN.trackLastTs)/1000);
-    s('#snTrackUpd').textContent=secs<5?'just now':(secs<60?secs+'s ago':Math.round(secs/60)+'m ago');
+    s('#snTrackUpd').textContent=secs<5?t('navJustNow'):(secs<60?tf('navSecAgo',{n:secs}):tf('navMinAgo',{n:Math.round(secs/60)}));
   }
   s('#snTrackToggle').onclick=function(){
     SN.trackingMode=!SN.trackingMode;

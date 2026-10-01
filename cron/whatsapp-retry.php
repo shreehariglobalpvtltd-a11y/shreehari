@@ -237,9 +237,12 @@ foreach ($due as $row) {
     }
 }
 
-// Passengers this job has given up on — surfaced so they can be called.
-$exhausted = (int) Database::scalar(
-    "SELECT COUNT(*)
+// Passengers this job has given up on — surfaced so they can be called, and
+// (26 Sep 2026) handed to the office WhatsApp with the ticket link so the
+// desk can forward it by hand. Notify::deliveryFallback keeps that to one
+// message per booking per day.
+$givenUp = Database::fetchAll(
+    "SELECT b.id
        FROM bookings b
        JOIN message_logs m
          ON m.id = (SELECT m2.id FROM message_logs m2
@@ -252,15 +255,20 @@ $exhausted = (int) Database::scalar(
                      WHERE bl.booking_id = b.id AND bl.travel_date >= CURDATE())
         AND (SELECT COUNT(*) FROM message_logs t
               WHERE t.booking_id = b.id AND t.channel = 'whatsapp'
-                AND t.status IN ('sent','failed')" . $purposeT . ") >= :max",
-    ['max' => MAX_TRIES],
-    0
+                AND t.status IN ('sent','failed')" . $purposeT . ") >= :max
+      ORDER BY b.id DESC
+      LIMIT 50",
+    ['max' => MAX_TRIES]
 );
+$exhausted = count($givenUp);
 
 if ($exhausted > 0) {
     Logger::warning('WhatsApp retry gave up on ' . $exhausted . ' upcoming booking(s)', [
         'max_tries' => MAX_TRIES,
     ], 'whatsapp');
+    foreach ($givenUp as $g) {
+        Notify::deliveryFallback((int) $g['id'], '', 'ticket', 'WhatsApp retry gave up after ' . MAX_TRIES . ' attempts');
+    }
 }
 
 if ($unreachable > 0) {

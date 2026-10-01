@@ -39,6 +39,15 @@
   var PANEL = STAFF.panelUrl || '/admin/';
   var WHO = STAFF.code ? (STAFF.code + ' · ' + (STAFF.name || '')) : (STAFF.name || 'staff');
   var CAN = !!STAFF.canSell;
+  /* The window this clerk is at, and the money it takes (26 Sep 2026). */
+  var DESK    = STAFF.desk || null;
+  var DESKCUR = (DESK && DESK.currency) || 'INR';
+  var DESKFX  = (DESK && Number(DESK.rate)) || 1;
+  var PAYOK   = (DESK && DESK.methods) || null;   // null = this desk takes anything
+  function deskMoney(inr) {
+    if (DESKCUR === 'INR' || !Number(inr)) return '';
+    return 'NPR ' + Math.round(Number(inr) * DESKFX).toLocaleString('en-IN');
+  }
 
   /* Bulk booking (5 Sep 2026): a selling staff session lifts the per-booking
      seat cap to the staff cap the boot payload carries (default 20). Runs
@@ -64,6 +73,9 @@
     var el = document.createElement('div');
     el.id = 'counterBar';
     el.innerHTML = '<span class="cb-who">🧾 <b>Counter mode</b> · ' + (CAN ? 'selling as <b>' + esc(WHO) + '</b>' : esc(WHO) + ' · <i>view only — your role cannot sell</i>')
+      + (DESK ? ' · <b>📍 ' + esc(DESK.label || DESK.name || DESK.code) + '</b>'
+              + (DESKCUR !== 'INR' ? ' <small style="opacity:.85">· ' + esc(DESKCUR) + ' @ ' + esc(String(DESKFX)) + '</small>' : '')
+          : ' · <small style="opacity:.85">⚠️ no desk set</small>')
       + (CTR_VER ? ' <small style="opacity:.65">· v' + esc(CTR_VER) + '</small>' : '') + '</span>'
       + '<span class="cb-links">'
       /* ⚡ Quick Ticket (6 Sep 2026): the desk's fast lane — name + mobile
@@ -133,7 +145,7 @@
           var a = document.createElement('a');
           a.id = 'cbUpdate'; a.href = '#';
           a.style.background = '#F07C1F';
-          a.textContent = '🔄 New version — tap to refresh';
+          a.textContent = t('ctrUpdate');
           a.addEventListener('click', function (e) { e.preventDefault(); location.reload(); });
           links.insertBefore(a, links.firstChild);
         }
@@ -173,7 +185,26 @@
       di.removeAttribute('max');
     }
     var p = new URLSearchParams(location.search);
-    if (!p.get('from') && !p.get('to') && !p.get('date')) return;
+    /* No deep link, but this window only really sells one run: open the
+       search on the town its passengers board at (26 Sep 2026). A Nepalgunj
+       clerk should not have to remember that the bus leaves from Rupaidiha
+       and not from Surat — the owner saw that mistake on a demo ticket and
+       said, rightly, that it must not be possible to make by accident.
+       Nothing is searched; only the FROM box is set, and the clerk may
+       change it like any other day. */
+    if (!p.get('from') && !p.get('to') && !p.get('date')) {
+      if (DESK && DESK.from) {
+        var t0 = 0;
+        var pre = setInterval(function () {
+          t0++;
+          var fs0 = $q('#fromSel');
+          if (!fs0 || fs0.options.length === 0) { if (t0 > 40) clearInterval(pre); return; }
+          clearInterval(pre);
+          if (!fs0.value || fs0.selectedIndex <= 0) { setSelect(fs0, DESK.from); }
+        }, 250);
+      }
+      return;
+    }
     // Deep link from the admin seat map (5 Sep 2026): &sid= names the exact
     // departure (0 / absent = daily bus) and &seat= a seat to pre-select, so
     // "book this bus" is one click with nothing to retype.
@@ -304,11 +335,11 @@
     if (cp && !cp.hasAttribute('data-ctr')) {
       cp.setAttribute('data-ctr', '1');
       cp.maxLength = 15;
-      cp.placeholder = 'optional · WhatsApp ticket ko lagi';
+      cp.placeholder = t('ctrPhonePh');
       var cpl = cp.closest('.field') && cp.closest('.field').querySelector('label');
-      if (cpl) cpl.innerHTML = 'Mobile <small>(optional at counter · +977 pani milcha)</small>';
+      if (cpl) cpl.innerHTML = t('ctrPhoneLbl');
       var cpe = cp.closest('.field') && cp.closest('.field').querySelector('.err');
-      if (cpe) cpe.textContent = 'Blank OK — or 8-15 digits (Indian / Nepali).';
+      if (cpe) cpe.textContent = t('ctrPhoneErr');
     }
 
     var card = $q('#payCard'); if (!card) return;
@@ -320,7 +351,7 @@
     var tabsWrap = $q('#payMethodUpi') && $q('#payMethodUpi').parentElement; if (tabsWrap) tabsWrap.style.display = 'none';
 
     var btn = $q('#submitBookingBtn');
-    if (btn) { btn.textContent = '🧾 Confirm counter sale →'; btn.removeAttribute('data-i18n'); }
+    if (btn) { btn.textContent = t('ctrConfirm'); btn.removeAttribute('data-i18n'); }
 
     /* Belt and braces (5 Sep 2026): re-assert the proof-free 'cod' path and
        the auto-accepted T&C at the very moment of submit — a document-level
@@ -345,10 +376,13 @@
       el.id = 'ctrPanel';
       el.innerHTML = '<h4>🧾 Received at counter · काउन्टरमा लिएको</h4>'
         + '<div class="ctr-pays">'
-        + '<button type="button" class="ctr-pay on" data-pay="cash">💵 Cash</button>'
-        + '<button type="button" class="ctr-pay" data-pay="upi">📱 UPI received</button>'
-        + '<button type="button" class="ctr-pay" data-pay="esewa">🇳🇵 eSewa received</button>'
-        + '<button type="button" class="ctr-pay" data-pay="bank">🏦 Bank</button>'
+        /* A desk with no bank account of its own is not offered one. The
+           register refuses it anyway (includes/booking.php), but a button
+           that cannot work should not be on the screen. */
+        + (!PAYOK || PAYOK.indexOf('cash')  >= 0 ? '<button type="button" class="ctr-pay on" data-pay="cash">💵 Cash</button>' : '')
+        + (!PAYOK || PAYOK.indexOf('upi')   >= 0 ? '<button type="button" class="ctr-pay" data-pay="upi">📱 UPI received</button>' : '')
+        + (!PAYOK || PAYOK.indexOf('esewa') >= 0 ? '<button type="button" class="ctr-pay" data-pay="esewa">🇳🇵 eSewa received</button>' : '')
+        + (!PAYOK || PAYOK.indexOf('bank')  >= 0 ? '<button type="button" class="ctr-pay" data-pay="bank">🏦 Bank</button>' : '')
         + '</div>'
         + '<div class="ctr-row"><label style="font-size:12px;font-weight:700">Discount</label>'
         + '<input type="number" id="ctrDiscVal" min="0" step="1" placeholder="0" inputmode="numeric">'
@@ -407,7 +441,7 @@
     if (cont && !cont.hasAttribute('data-ctr')) {
       cont.setAttribute('data-ctr', '1');
       cont.removeAttribute('data-i18n');
-      cont.textContent = '🧾 Received at counter →';
+      cont.textContent = t('ctrReceived');
       cont.style.display = 'none';
     }
     var stepLbl = document.querySelector('#co2Step .cs2[data-step="2"] span');
@@ -427,7 +461,7 @@
     if (nav && !$q('#ctrConfirmBtn')) {
       var cb = document.createElement('button');
       cb.type = 'button'; cb.id = 'ctrConfirmBtn'; cb.className = 'btn btn-orange';
-      cb.textContent = '🧾 Confirm counter sale →';
+      cb.textContent = t('ctrConfirm');
       nav.appendChild(cb);
       cb.addEventListener('click', ctrConfirm);
     }
@@ -459,7 +493,10 @@
     el.innerHTML = '<b>' + seats + ' seat' + (seats === 1 ? '' : 's') + '</b><span>·</span>' + fmt(total)
       + '<span>·</span>' + esc(payLbl)
       + (off > 0 ? '<span>·</span>discount − ' + fmt(off) + '<span>·</span><b>≈ ' + fmt(Math.max(1, total - off)) + ' to collect</b>'
-                 : '<span>·</span><b>' + fmt(total) + ' to collect</b>');
+                 : '<span>·</span><b>' + fmt(total) + ' to collect</b>')
+      /* At a Nepal window the clerk says the NPR out loud and takes NPR, so
+         it belongs beside the rupee on the very line they read from. */
+      + (function () { var n = deskMoney(Math.max(0, total - off)); return n ? '<span>·</span><b style="color:#fde68a">' + esc(n) + '</b>' : ''; })();
   }
 
   function ctrConfirm() {

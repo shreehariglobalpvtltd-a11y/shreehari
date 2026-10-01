@@ -1,0 +1,243 @@
+/* ================================================================
+   feature-story.css — the S Hari Global brand film (v3, 26 Sep 2026)
+
+   WHAT THIS IS
+   ------------
+   The four facility chips on the phone brand band open ONE film of
+   about eighteen seconds: a glowing Earth, a zoom down to India and
+   Nepal, the company's road with the coach moving along it, then the
+   four facilities each as a scene, and a closing card with the logo,
+   the coach and the call to book. Eight acts. The projector in
+   20-feature-story.js writes data-act on the stage; every visual
+   change in the film is a rule in this file keyed on that number.
+
+   THE TWO RULES IT OBEYS
+   ----------------------
+   1. Nothing here runs until a chip is tapped, and the panel is
+      removed on close — the home page keeps the stillness the owner
+      asked for on 25 Sep. No keyframe in this file can reach an
+      element outside .fs-wrap.
+   2. Brand palette: deep blue, white, red. Gold appears only on the
+      logo itself. Every accent that used to be orange is now red.
+
+   Everything is CSS + inline SVG. The film loads no image except the
+   two the app already precaches (logo, coach), on the last act only.
+   Reduced motion: transitions off, the film steps between still
+   frames, the coach sits at the end of its road.
+================================================================ */
+
+/* ---- the chips become buttons ---------------------------------- */
+.bb-feats li > .bb-open{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  width:100%;padding:0;border:0;background:none;color:inherit;font:inherit;
+  cursor:pointer;-webkit-tap-highlight-color:transparent;
+}
+.bb-feats li > .bb-open::after{
+  content:"▶";display:block;font-size:8px;line-height:1;margin-top:3px;
+  color:rgba(255,255,255,.7);letter-spacing:.1em;
+}
+.bb-feats li > .bb-open:active{transform:scale(.96)}
+.bb-feats li:has(> .bb-open:focus-visible){outline:2px solid #fff;outline-offset:2px}
+
+/* ---- the panel -------------------------------------------------- */
+.fs-wrap{
+  position:fixed;inset:0;z-index:9000;display:flex;align-items:flex-end;justify-content:center;
+  background:rgba(3,8,22,.78);
+  -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
+}
+.fs-card{
+  position:relative;width:100%;max-width:520px;max-height:94vh;overflow-y:auto;
+  border-radius:22px 22px 0 0;padding:0 0 16px;color:#fff;
+  background:linear-gradient(180deg,#071A44 0%,#050F2C 55%,#030817 100%);
+  box-shadow:0 -12px 40px rgba(0,0,0,.6);
+  animation:fsUp .28s cubic-bezier(.2,.8,.3,1) both;
+}
+@media (min-width:600px){
+  .fs-wrap{align-items:center}
+  .fs-card{border-radius:22px}
+}
+@keyframes fsUp{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
+
+.fs-close{
+  position:absolute;top:10px;right:10px;z-index:5;width:36px;height:36px;border-radius:50%;
+  border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.12);color:#fff;
+  font-size:19px;line-height:1;cursor:pointer;
+}
+.fs-close:active{transform:scale(.94)}
+
+/* ---- the stage -------------------------------------------------- */
+.fs-stage{
+  position:relative;height:236px;overflow:hidden;border-radius:22px 22px 0 0;
+  background:#040B22;
+}
+@media (min-width:600px){.fs-stage{height:270px}}
+.fs-stage svg{display:block;width:100%;height:100%}
+
+/* eighteen seconds, drawn */
+.fs-bar{position:absolute;left:0;right:0;top:0;height:3px;z-index:4;background:rgba(255,255,255,.14)}
+.fs-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#E11D2E,#FF6B6B)}
+
+/* ---- the words over the picture --------------------------------- */
+.fs-caption{
+  position:absolute;left:0;right:0;bottom:0;z-index:3;
+  padding:44px 16px 14px;pointer-events:none;text-align:center;
+  background:linear-gradient(180deg,transparent,rgba(3,8,22,.55) 40%,rgba(3,8,22,.94));
+}
+.fs-caption b{
+  display:block;
+  font-size:clamp(20px,6vw,27px);font-weight:900;line-height:1.25;
+  color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.8);
+  opacity:0;transform:translateY(12px);
+}
+.fs-caption small{
+  display:block;margin-top:5px;
+  font-size:clamp(12.5px,3.6vw,14.5px);font-weight:600;line-height:1.45;
+  color:#BFD2F5;text-shadow:0 1px 8px rgba(0,0,0,.8);
+  opacity:0;transform:translateY(8px);
+}
+.fs-caption.in b{animation:fsLine .6s cubic-bezier(.2,.9,.3,1) both}
+.fs-caption.in small{animation:fsLine .6s cubic-bezier(.2,.9,.3,1) .18s both}
+@keyframes fsLine{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+/* the brand line on the first act wears the display face */
+.fs-caption.fs-brand b{font-family:var(--f-display,Cinzel,serif);letter-spacing:.06em;font-size:clamp(18px,5.4vw,24px)}
+.fs-caption.fs-brand small{color:#FFB3B8}
+
+/* ---- below the stage -------------------------------------------- */
+.fs-body{padding:12px 16px 0;text-align:center}
+/* the four facilities as a progress strip: which scene is on now */
+.fs-strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:0;padding:0;list-style:none}
+.fs-strip button{
+  padding:8px 4px;border-radius:12px;border:1px solid rgba(255,255,255,.14);
+  background:rgba(255,255,255,.06);color:#BFD2F5;font:inherit;font-size:11.5px;font-weight:700;line-height:1.3;
+  cursor:pointer;min-width:0;min-height:0;transition:background .3s,color .3s,border-color .3s;
+}
+.fs-strip button i{display:block;font-style:normal;font-size:16px;margin-bottom:2px}
+.fs-strip button.on{background:#E11D2E;border-color:#FF6B6B;color:#fff}
+.fs-strip button.done{color:#fff;border-color:rgba(255,255,255,.3)}
+
+.fs-cta{
+  display:none;margin:14px auto 4px;padding:13px 22px;border-radius:14px;border:0;
+  background:linear-gradient(135deg,#E11D2E,#B3111F);color:#fff;
+  font:inherit;font-size:16px;font-weight:900;line-height:1.2;cursor:pointer;
+  box-shadow:0 8px 24px rgba(225,29,46,.4);
+  animation:fsCta .5s cubic-bezier(.2,.9,.3,1) both;
+}
+.fs-card.ended .fs-cta{display:inline-block}
+.fs-cta:active{transform:scale(.97)}
+@keyframes fsCta{from{opacity:0;transform:translateY(10px) scale(.96)}to{opacity:1;transform:none}}
+
+.fs-nav{display:flex;gap:10px;justify-content:center;align-items:center;margin-top:12px}
+.fs-nav button{
+  width:34px;height:34px;min-width:0;min-height:0;padding:0;border:0;border-radius:50%;cursor:pointer;
+  background:rgba(255,255,255,.10);color:#fff;font-size:14px;line-height:1;
+  display:flex;align-items:center;justify-content:center;
+}
+.fs-nav button:active{transform:scale(.92)}
+.fs-nav .fs-time{font-size:11px;color:#8FA6CF;font-variant-numeric:tabular-nums;min-width:38px;text-align:center}
+
+/* ================================================================
+   THE ACTS.  Every act group is present in the SVG and hidden; the
+   act number on the stage turns them on and off with a cross-fade.
+   Only elements inside .fs-stage are ever addressed.
+================================================================ */
+.fs-stage .act{opacity:0;transition:opacity .75s ease}
+.fs-stage .act-stars{opacity:1}
+
+/* Act 0 — Earth in space. Act 1 — the zoom. Act 2 — Earth gone, map up. */
+.fs-stage .act-earth{opacity:1;transform-box:view-box;transform-origin:202px 106px;
+  transition:opacity .9s ease,transform 2.6s cubic-bezier(.4,0,.2,1)}
+.fs-stage[data-act="1"] .act-earth{transform:scale(2.8)}
+.fs-stage[data-act="1"] .fs-globe{animation-play-state:paused}
+.fs-stage[data-act="2"] .act-earth,
+.fs-stage[data-act="3"] .act-earth,.fs-stage[data-act="4"] .act-earth,
+.fs-stage[data-act="5"] .act-earth,.fs-stage[data-act="6"] .act-earth,
+.fs-stage[data-act="7"] .act-earth{opacity:0;transform:scale(3.4)}
+.fs-stage[data-act="2"] .act-stars{opacity:.5}
+.fs-stage[data-act="3"] .act-stars,.fs-stage[data-act="5"] .act-stars,.fs-stage[data-act="6"] .act-stars{opacity:0}
+
+/* the globe turns, slowly; the satellite in the other direction */
+.fs-globe{transform-box:view-box;transform-origin:180px 110px;animation:fsSpin 40s linear infinite}
+.fs-sat{transform-box:view-box;transform-origin:180px 110px;animation:fsSpin 11s linear infinite reverse}
+.fs-star{transform-box:fill-box;transform-origin:center;animation:fsTwinkle 3.2s ease-in-out infinite}
+.fs-star:nth-of-type(2n){animation-delay:1s}
+.fs-star:nth-of-type(3n){animation-delay:2s}
+@keyframes fsSpin{to{transform:rotate(360deg)}}
+@keyframes fsTwinkle{0%,100%{opacity:.25}50%{opacity:.95}}
+
+/* Act 2 (route) and act 4 (GPS) — the flat map, the road drawing itself,
+   the coach travelling it. */
+.fs-stage[data-act="2"] .act-map,.fs-stage[data-act="4"] .act-map{opacity:1}
+.fs-route{stroke-dasharray:1;stroke-dashoffset:1}
+.fs-stage[data-act="2"] .fs-route,.fs-stage[data-act="4"] .fs-route{animation:fsDraw 1.8s cubic-bezier(.4,0,.2,1) forwards}
+@keyframes fsDraw{to{stroke-dashoffset:0}}
+.fs-ping{transform-box:fill-box;transform-origin:center;animation:fsPing 2.2s ease-out infinite}
+.fs-ping2{animation-delay:.75s}
+.fs-ping3{animation-delay:1.5s}
+@keyframes fsPing{0%{transform:scale(.4);opacity:.9}100%{transform:scale(2.8);opacity:0}}
+.fs-live{animation:fsBlink 1.4s ease-in-out infinite}
+@keyframes fsBlink{0%,100%{opacity:1}50%{opacity:.25}}
+/* the GPS act shows the tracking chrome (readout, LIVE, rings); the
+   route act shows just the road and the coach */
+.fs-gpsui{opacity:0;transition:opacity .6s ease}
+.fs-stage[data-act="4"] .fs-gpsui{opacity:1}
+
+/* Act 3 — the sleeper. */
+.fs-stage[data-act="3"] .act-ac{opacity:1}
+.fs-breathe{transform-box:view-box;transform-origin:180px 156px;animation:fsBreathe 4.2s ease-in-out infinite}
+@keyframes fsBreathe{0%,100%{transform:scaleY(1)}50%{transform:scaleY(1.035)}}
+.fs-puff{stroke-dasharray:5 7;animation:fsPuff 1.6s linear infinite}
+.fs-puff:nth-of-type(2){animation-delay:.5s}
+.fs-puff:nth-of-type(3){animation-delay:1s}
+@keyframes fsPuff{to{stroke-dashoffset:-24}}
+.fs-curtain{transform-box:view-box;transform-origin:302px 118px;animation:fsCurtain 6s ease-in-out infinite}
+@keyframes fsCurtain{0%,100%{transform:scaleX(1)}50%{transform:scaleX(.93)}}
+.fs-zzz{transform-box:fill-box;transform-origin:center;animation:fsZzz 4s ease-out infinite}
+.fs-zzz:nth-of-type(2){animation-delay:1.3s}
+.fs-zzz:nth-of-type(3){animation-delay:2.6s}
+@keyframes fsZzz{0%{transform:translate(0,0) scale(.7);opacity:0}25%{opacity:.9}100%{transform:translate(16px,-30px) scale(1.15);opacity:0}}
+
+/* Act 5 — charging. The wire fills, the battery follows. */
+.fs-stage[data-act="5"] .act-usb{opacity:1}
+.fs-fill-wire{stroke-dasharray:240;stroke-dashoffset:240}
+.fs-stage[data-act="5"] .fs-fill-wire{animation:fsWireFill 2.4s ease-out both}
+@keyframes fsWireFill{from{stroke-dashoffset:240}to{stroke-dashoffset:0}}
+.fs-batt-fill{transform-box:fill-box;transform-origin:left center;transform:scaleX(.08)}
+.fs-stage[data-act="5"] .fs-batt-fill{animation:fsCharge 2.6s .6s ease-out both}
+@keyframes fsCharge{from{transform:scaleX(.08)}to{transform:scaleX(1)}}
+.fs-bolt{transform-box:fill-box;transform-origin:center;animation:fsBoltPulse 1.2s ease-in-out infinite}
+@keyframes fsBoltPulse{0%,100%{opacity:.55;transform:scale(1)}50%{opacity:1;transform:scale(1.12)}}
+.fs-glow{animation:fsBoltPulse 2s ease-in-out infinite}
+
+/* Act 6 — the highway, and the shield. */
+.fs-stage[data-act="6"] .act-safe{opacity:1}
+.fs-lane{stroke-dasharray:18 22;animation:fsLane .55s linear infinite}
+@keyframes fsLane{to{stroke-dashoffset:-40}}
+.fs-shield-in{transform-box:fill-box;transform-origin:center;transform:scale(.6);opacity:0}
+.fs-stage[data-act="6"] .fs-shield-in{animation:fsShieldIn .9s .5s cubic-bezier(.2,.9,.3,1.2) both}
+@keyframes fsShieldIn{from{transform:scale(.6);opacity:0}to{transform:none;opacity:1}}
+.fs-ring{transform-box:fill-box;transform-origin:center;animation:fsPing 2.6s ease-out infinite}
+.fs-ring2{animation-delay:1.3s}
+.fs-check{stroke-dasharray:40;stroke-dashoffset:40}
+.fs-stage[data-act="6"] .fs-check{animation:fsCheck .7s 1.3s ease-out forwards}
+@keyframes fsCheck{to{stroke-dashoffset:0}}
+
+/* Act 7 — the end card: logo, coach, road. */
+.fs-stage[data-act="7"] .act-end{opacity:1}
+.fs-stage[data-act="7"] .act-stars{opacity:.6}
+.fs-end-logo{transform-box:fill-box;transform-origin:center;transform:scale(.85);opacity:0}
+.fs-stage[data-act="7"] .fs-end-logo{animation:fsShieldIn .8s .2s cubic-bezier(.2,.9,.3,1.2) both}
+.fs-end-bus{transform:translateX(60px);opacity:0}
+.fs-stage[data-act="7"] .fs-end-bus{animation:fsBusIn 1.1s .5s cubic-bezier(.2,.8,.3,1) both}
+@keyframes fsBusIn{from{transform:translateX(60px);opacity:0}to{transform:none;opacity:1}}
+
+/* ---- reduced motion: a film of still frames ---------------------- */
+@media (prefers-reduced-motion:reduce){
+  .fs-card,.fs-stage *,.fs-cta{animation:none!important;transition:none!important}
+  .fs-caption b,.fs-caption small{opacity:1;transform:none}
+  .fs-route{stroke-dashoffset:0}
+  .fs-fill-wire{stroke-dashoffset:0}
+  .fs-batt-fill{transform:scaleX(1)}
+  .fs-shield-in,.fs-end-logo,.fs-end-bus{transform:none;opacity:1}
+  .fs-check{stroke-dashoffset:0}
+  .fs-bar i{transition:none!important}
+}

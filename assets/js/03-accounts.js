@@ -463,6 +463,6 @@ setInterval(() => {
     setUser(null);
     if (location.hash === '#/my') renderMyBookings();
     else if (location.hash === '#/admin' || location.hash === '#/shg-ctrl') { location.hash = '#/'; }
-    toast('Signed out after inactivity 🔒');
+    toast(t('sessionTimeout'));
   }
 }, 60000);

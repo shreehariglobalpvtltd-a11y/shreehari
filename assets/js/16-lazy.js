@@ -601,7 +601,7 @@ function initFullMapLeaflet(el, hasCluster) {
     FM.you = L.circleMarker(ev.latlng, { radius: 8, color: '#fff', weight: 2.5, fillColor: '#4285F4', fillOpacity: 1 }).addTo(map);
     map.flyTo(ev.latlng, Math.max(map.getZoom(), 10));
   });
-  map.on('locationerror', function () { if (typeof toast === 'function') toast('📍 Location permission needed.'); });
+  map.on('locationerror', function () { if (typeof toast === 'function') toast(t('locPermNeed')); });
 }
 /* Nepal mandir guide — Surkhet → Kathmandu corridor first, then national
    icons; India list follows. Rendered inside the map bottom sheet. */
@@ -1288,7 +1288,7 @@ function tcFetchWeather() {
   if (TC.wxFetched || !TC_OWM_KEY) {
     if (!TC_OWM_KEY) {
       $('#tcWxOriginTemp').textContent = '—';
-      $('#tcWxOriginCond').textContent = 'Set OWM key for live weather';
+      $('#tcWxOriginCond').textContent = t('wxKeyHint');
       $('#tcWxDestTemp').textContent = '—';
       $('#tcWxDestCond').textContent = '';
     }
@@ -1316,7 +1316,7 @@ function tcStartLeaveBy() {
   var b = TC.booking;
   if (!b || !b.date || TC.phase > 1) return;
   if (!navigator.geolocation) {
-    $('#tcLeaveByDist').textContent = 'GPS not available';
+    $('#tcLeaveByDist').textContent = t('gpsNA');
     return;
   }
   navigator.geolocation.getCurrentPosition(function(pos) {
@@ -1338,7 +1338,7 @@ function tcStartLeaveBy() {
       $('#tcLeaveByTime').style.color = 'var(--warn)';
     }
   }, function() {
-    $('#tcLeaveByDist').textContent = 'Allow GPS to calculate';
+    $('#tcLeaveByDist').textContent = t('gpsAllow');
   }, { enableHighAccuracy: false, timeout: 8000 });
 }
 
@@ -1426,7 +1426,7 @@ function tcInitLiveMap() {
   if (!mapDiv) return;
   loadMapLibre()
     .then(function () { if (!TC.map) tcBuildMap(mapDiv); })
-    .catch(function () { toast('Failed to load map engine'); });
+    .catch(function () { toast(t('mapEngineFail')); });
 }
 
 function tcBuildMap(container) {
@@ -1620,8 +1620,8 @@ function tcUpdateHaltStatus(status) {
         if (d < bestD) { bestD = d; nearest = s; }
       });
     }
-    var name = nearest ? nearest.name : 'a stop';
-    $('#tcHaltText').textContent = 'Bus is halted at ' + name;
+    var name = nearest ? nearest.name : t('aStop');
+    $('#tcHaltText').textContent = tf('busHaltedAt', { s: name });
   }
   if (status === 'complete') {
     TC.phase = 3;
@@ -1661,7 +1661,7 @@ function tcCheckBusNearMe(paxLat, paxLng) {
   if (dist < 10) {
     var banner = $('#tcGeoBanner');
     if (banner && !banner.classList.contains('show')) {
-      banner.textContent = '🚌 Your bus is ' + dist.toFixed(1) + ' km away!';
+      banner.textContent = tf('busKmAway', { km: dist.toFixed(1) });
       banner.className = 'tc-geobanner show near';
       if (TC.geoT) clearTimeout(TC.geoT);
       TC.geoT = setTimeout(function() { banner.classList.remove('show'); }, 6000);
@@ -3074,7 +3074,7 @@ document.addEventListener('click', function(e) {
         input.value = said;
         send(said);
       };
-      try { rec.start(); } catch (e) { toast('🎤 Voice not available'); }
+      try { rec.start(); } catch (e) { toast('🎤 ' + t('micNA')); }
     });
   }
 
@@ -3092,7 +3092,7 @@ document.addEventListener('click', function(e) {
       rec.lang = 'hi-IN'; rec.interimResults = false;
       vsBtn.textContent = '🔴';
       rec.onend = function () { vsBtn.textContent = '🎤'; };
-      rec.onerror = function () { vsBtn.textContent = '🎤'; toast('🎤 Voice not available — please type'); };
+      rec.onerror = function () { vsBtn.textContent = '🎤'; toast('🎤 ' + t('micNA') + ' — ' + t('micType')); };
       rec.onresult = function (ev) {
         const said = (ev.results[0][0].transcript || '').toLowerCase();
         toast('🎤 "' + said + '"');

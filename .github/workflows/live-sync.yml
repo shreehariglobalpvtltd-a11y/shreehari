@@ -1,0 +1,198 @@
+# =====================================================================
+#  Live sync — for a VPS whose webroot runs commits that never reached
+#  GitHub (deployed from a local session with go-live.sh).
+#
+#  Runs only when .github/live-sync/request changes on this branch, and
+#  does exactly what that file asks:
+#
+#    action=snapshot   READ-ONLY on the server. Fetches the live commit
+#                      into the runner, runs deploy/live-gate.sh (the repo
+#                      is public: config, uploads, tickets, invoices,
+#                      keys, dumps and secret-looking strings block it),
+#                      and only on PASS pushes it as tag live-<UTC stamp>.
+#
+#    action=deploy     expect_live=<40-hex>  dry_run=true|false
+#                      Runs deploy/live-remote-deploy.sh on the server with
+#                      TARGET = the commit that carries this request. It
+#                      refuses unless the webroot is still on expect_live,
+#                      nothing is mid-change and TARGET fast-forwards it.
+#
+#  Needs the Deploy to VPS secrets: VPS_SSH_KEY (raw or base64), VPS_HOST,
+#  VPS_USER, VPS_PATH, optional VPS_PORT.
+# =====================================================================
+name: Live sync
+
+on:
+  push:
+    branches: [claude/project-thread-a55oyq]
+    paths: ['.github/live-sync/request']
+
+permissions:
+  contents: write
+  actions: read
+
+# Same group as main's "Deploy to VPS" (deploy.yml). Older branches use
+# vps-deploy, so the first step also refuses while any Deploy to VPS run
+# is queued or running, and the server script takes a flock.
+concurrency:
+  group: deploy-live
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: No other deploy running
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          busy="$(for s in queued in_progress waiting pending requested; do
+                    gh run list -R "$GITHUB_REPOSITORY" --workflow deploy.yml --status "$s" --json databaseId -q '.[].databaseId'
+                  done | grep -c . || true)"
+          [ "$busy" = 0 ] || { echo "::error::a Deploy to VPS run is queued or running; try again after it finishes"; exit 1; }
+          echo "no Deploy to VPS run in flight"
+
+      - name: Read the request
+        id: req
+        run: |
+          f=.github/live-sync/request
+          get() { sed -n "s/^$1=//p" "$f" | head -1 | tr -d '\r[:space:]'; }
+          action="$(get action)"; expect="$(get expect_live)"; dry="$(get dry_run)"
+          case "$action" in
+            snapshot) ;;
+            deploy)
+              [[ "$expect" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::deploy needs expect_live=<40-hex>"; exit 1; }
+              [ "$dry" = true ] || [ "$dry" = false ] || { echo "::error::deploy needs dry_run=true|false"; exit 1; }
+              git merge-base --is-ancestor "$expect" "$GITHUB_SHA" \
+                || { echo "::error::this commit does not contain expect_live $expect"; exit 1; } ;;
+            *) echo "::error::action must be snapshot or deploy"; exit 1 ;;
+          esac
+          { echo "action=$action"; echo "expect=$expect"; echo "dry=$dry"; } >> "$GITHUB_OUTPUT"
+          echo "action=$action expect_live=$expect dry_run=$dry target=$GITHUB_SHA"
+
+      - name: Setup SSH
+        env:
+          KEY:  ${{ secrets.VPS_SSH_KEY }}
+          HOST: ${{ secrets.VPS_HOST }}
+          PORT: ${{ secrets.VPS_PORT }}
+        run: |
+          [ -n "$KEY" ] && [ -n "$HOST" ] || { echo "::error::VPS_SSH_KEY / VPS_HOST missing"; exit 1; }
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          key_ok() { ssh-keygen -y -f ~/.ssh/id_deploy > /dev/null 2>&1 < /dev/null; }
+          if ! key_ok && base64 -d < ~/.ssh/id_deploy > ~/.ssh/id_deploy.dec 2>/dev/null; then
+            mv ~/.ssh/id_deploy.dec ~/.ssh/id_deploy; chmod 600 ~/.ssh/id_deploy
+          fi
+          rm -f ~/.ssh/id_deploy.dec
+          key_ok || { echo "::error::VPS_SSH_KEY is not a usable private key"; exit 1; }
+          for i in 1 2 3; do
+            ssh-keyscan -T 10 -p "${PORT:-22}" -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null && break
+            sleep 10
+          done
+          [ -s ~/.ssh/known_hosts ] || { echo "::error::No host key from the VPS"; exit 1; }
+
+      - name: Server state (read-only)
+        env:
+          HOST:  ${{ secrets.VPS_HOST }}
+          VUSER: ${{ secrets.VPS_USER }}
+          PORT:  ${{ secrets.VPS_PORT }}
+          SITE:  ${{ secrets.VPS_PATH }}
+        run: |
+          set -o pipefail
+          { printf 'SITE=%q\n' "$SITE"; cat deploy/live-remote-state.sh; } \
+            | ssh -i ~/.ssh/id_deploy -p "${PORT:-22}" -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=8 "$VUSER@$HOST" bash -s | tee /tmp/state.txt
+          grep -q '^HEAD=' /tmp/state.txt || { echo "::error::no git state from the webroot"; exit 1; }
+          grep -E '^(GITDIR|HEAD|SHALLOW)=' /tmp/state.txt | sed 's/^/LIVE_/' >> "$GITHUB_ENV"
+
+      # ------------------------------------------------------------ snapshot
+      - name: Snapshot — fetch the live commit (read-only on the server)
+        if: steps.req.outputs.action == 'snapshot'
+        env:
+          HOST:  ${{ secrets.VPS_HOST }}
+          VUSER: ${{ secrets.VPS_USER }}
+          PORT:  ${{ secrets.VPS_PORT }}
+        run: |
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/id_deploy -p ${PORT:-22} -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=8"
+          git fetch --no-tags --upload-pack="git -c safe.directory='*' upload-pack" \
+            "ssh://$VUSER@$HOST$LIVE_GITDIR" "+HEAD:refs/live/head"
+          [ "$(git rev-parse refs/live/head)" = "$LIVE_HEAD" ] || { echo "::error::fetched commit is not the live HEAD"; exit 1; }
+          # A shallow webroot hands over a shallow history. The cut-off
+          # commits' parents are normally already here from GitHub, so the
+          # graft can go; if one is missing, the push would be refused.
+          if [ -f .git/shallow ]; then
+            missing=0
+            while read -r c; do
+              for p in $(git cat-file -p "$c" | sed -n 's/^parent //p'); do
+                git cat-file -e "$p^{commit}" 2>/dev/null || missing=1
+              done
+            done < .git/shallow
+            [ "$missing" = 0 ] || { echo "::error::the live history is shallow and reaches commits GitHub does not have"; exit 1; }
+            rm -f .git/shallow
+          fi
+          git fsck --connectivity-only --no-dangling refs/live/head >/dev/null || { echo "::error::live history is incomplete"; exit 1; }
+          echo "live HEAD $LIVE_HEAD fetched ($(git rev-list --count refs/live/head --not --remotes=origin --tags) commit(s) not on GitHub)"
+
+      - name: Snapshot — gate (public repo)
+        if: steps.req.outputs.action == 'snapshot'
+        run: bash deploy/live-gate.sh refs/live/head
+
+      - name: Snapshot — publish as a tag
+        if: steps.req.outputs.action == 'snapshot'
+        run: |
+          # GITHUB_TOKEN may not push commits that change workflow files.
+          wf="$(git log --format= --name-only refs/live/head --not --remotes=origin --tags -- .github/workflows | grep -c . || true)"
+          [ "$wf" = 0 ] || { echo "::error::server-only commits change .github/workflows ($wf path(s)); GITHUB_TOKEN cannot push them. Push this one from a session with a personal token."; exit 1; }
+          tag="live-$(date -u +%Y%m%d-%H%M)"
+          git push origin "refs/live/head:refs/tags/$tag"
+          echo "Published $LIVE_HEAD as tag $tag"
+
+      - name: Snapshot — report
+        if: steps.req.outputs.action == 'snapshot'
+        run: |
+          L=refs/live/head
+          echo "=== Relation to GitHub"
+          for b in main claude/project-thread-a55oyq codex/ai-company-manager-20260921 claude/shreehari-global-upgrade-myl45u; do
+            r="origin/$b"; git rev-parse -q --verify "$r" >/dev/null || { echo "$b: missing"; continue; }
+            echo "$b: merge-base=$(git merge-base "$L" "$r" | cut -c1-9) live-only=$(git rev-list --count "$r..$L") branch-only=$(git rev-list --count "$L..$r")"
+          done
+          echo "=== Server-only commits (newest first)"
+          git log --format='%h %ci %s' "$L" --not --remotes=origin | head -80
+          echo "=== Stamps on the live commit"
+          git show "$L:sw.js" | grep -m1 -oE "var VERSION = '[^']*'" || true
+          git show "$L:sw.js" | grep -m1 -oE "var ASSET_VER = '[^']*'" || true
+          echo "=== Migrations on live that main lacks"
+          git diff --name-only --diff-filter=A origin/main "$L" -- database/ || true
+          echo "=== Diff stat: main -> live"
+          git diff --stat=160 origin/main "$L" | tail -80
+
+      # ------------------------------------------------------------ deploy
+      - name: ${{ steps.req.outputs.dry == 'true' && 'Deploy — DRY RUN' || 'Deploy' }}
+        if: steps.req.outputs.action == 'deploy'
+        env:
+          HOST:   ${{ secrets.VPS_HOST }}
+          VUSER:  ${{ secrets.VPS_USER }}
+          PORT:   ${{ secrets.VPS_PORT }}
+          SITE:   ${{ secrets.VPS_PATH }}
+          EXPECT: ${{ steps.req.outputs.expect }}
+          DRY:    ${{ steps.req.outputs.dry }}
+        run: |
+          set -o pipefail
+          {
+            printf 'SITE=%q\nTARGET=%q\nEXPECT_LIVE=%q\nFETCH_REF=%q\nREPO_URL=%q\nDRY=%q\n' \
+              "$SITE" "$GITHUB_SHA" "$EXPECT" "$GITHUB_REF_NAME" "https://github.com/$GITHUB_REPOSITORY.git" "$DRY"
+            printf 'SWITCHES=%q\n' "wa_chat_on payment_webhook_on payment_webhook_autoconfirm wa_admin_commands_on ai_local_on"
+            cat deploy/live-remote-deploy.sh
+          } | ssh -i ~/.ssh/id_deploy -p "${PORT:-22}" -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=8 "$VUSER@$HOST" bash -s
+
+      - name: Site health
+        if: always()
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 https://www.shreehariglobal.in/ || echo 000)
+          echo "https://www.shreehariglobal.in/ -> HTTP $code"
+          [ "$code" = "200" ] || echo "::warning::Site returned $code"

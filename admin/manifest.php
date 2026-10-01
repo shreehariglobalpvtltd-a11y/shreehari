@@ -114,6 +114,9 @@ if ($trip !== null) {
                 b.booking_mode,
                 b.id AS booking_id, b.pnr, b.contact_phone, b.status AS booking_status,
                 b.source, b.is_cod, b.total_amount, b.base_total, b.sold_by_admin_id, b.created_at,
+                " . (CounterDesk::stampColumn()
+                      ? "COALESCE(NULLIF(b.counter_code,''), apd.counter_code, '') AS counter_code,"
+                      : "COALESCE(apd.counter_code, '') AS counter_code,") . "
                 bl.boarding_stop, bl.drop_stop,
                 p.status AS pay_status, p.method AS pay_method,
                 t.ticket_number, t.scanned_at, t.is_void,
@@ -125,6 +128,7 @@ if ($trip !== null) {
                  SELECT p2.id FROM payments p2 WHERE p2.booking_id = b.id ORDER BY p2.id DESC LIMIT 1)
            LEFT JOIN tickets t  ON t.booking_id = b.id
            LEFT JOIN admins ad  ON ad.id = b.sold_by_admin_id
+           LEFT JOIN admin_profiles apd ON apd.admin_id = b.sold_by_admin_id
           WHERE " . implode(' AND ', $where) . "
           ORDER BY LENGTH(bp.seat_no), bp.seat_no",
         $params
@@ -410,10 +414,42 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
             if ($baseAmt > 0) { $tDisc += max(0.0, $baseAmt - (float) ($r['total_amount'] ?? 0)); }
         }
     }
+    /* Per DESK, on the document that actually crosses the border (owner,
+       26 Sep 2026: "chalani ma ni chuttinu paryo"). One bus carries tickets
+       cut at Mehsana, Surat and Nepalgunj; the office settling the trip has
+       to know whose money is whose, and a Nepal desk's line also carries the
+       NPR it actually took at the rate frozen on those tickets. */
+    $byCounter = [];
+    foreach ($rows as $r) {
+        $code = (string) ($r['counter_code'] ?? '');
+        $m    = $money($r);
+        if (!isset($byCounter[$code])) {
+            $desk = $code !== '' ? CounterDesk::get($code) : null;
+            $byCounter[$code] = [
+                'code'     => $code,
+                'name'     => $desk['name'] ?? ($code !== '' ? $code : 'अनलाइन / काउन्टर बाहेक'),
+                'currency' => $desk['currency'] ?? 'INR',
+                'flag'     => $code !== '' ? CounterDesk::flag($code) : '',
+                'pax'      => 0, 'ticket' => 0.0, 'cash' => 0.0, 'online' => 0.0,
+            ];
+        }
+        $byCounter[$code]['pax']++;
+        $byCounter[$code]['ticket'] += $m['ticket'];
+        $byCounter[$code]['cash']   += $m['cash'];
+        $byCounter[$code]['online'] += $m['online'];
+    }
+    foreach ($byCounter as $code => $c) {
+        $byCounter[$code]['localCash'] = $c['currency'] === 'INR'
+            ? 0.0
+            : CounterDesk::convert((float) $c['cash'], (string) $code)['amount'];
+    }
+    uasort($byCounter, static fn(array $a, array $b): int => $b['ticket'] <=> $a['ticket']);
+
     $totals = [
         'passengers' => count($rows), 'ticket' => $tTicket, 'cash' => $tCash,
         'online' => $tOnline, 'discount' => $tDisc, 'net' => $tCash + $tOnline,
         'chalaniNo' => $chalaniNo,
+        'byCounter' => $byCounter,
     ];
 
     /* Boarding points line, from the route's own stop rows. Built twice: the

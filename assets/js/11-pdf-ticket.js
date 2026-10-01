@@ -31,7 +31,7 @@ function waitForJsPDF(btn) {
   }
   return jsPdfPromise.then(function (ok) {
     if (btn) { btn.disabled = false; btn.innerHTML = origHTML; }
-    if (!ok) toast('PDF library failed to load — check your internet connection and retry.');
+    if (!ok) toast(t('pdfLibFail'));
     return ok;
   });
 }
@@ -362,7 +362,7 @@ function downloadTicketImage(b) {
       a.download = 'SHG-Ticket-' + b.id + '.jpg';
       a.href = cv.toDataURL('image/jpeg', 0.92);
       a.click();
-    }).catch(() => toast('Could not generate ticket image — try the PDF instead.'));
+    }).catch(() => toast(t('tkImgFail')));
   });
 }
 async function shareTicket(b) {
@@ -387,7 +387,7 @@ async function shareTicket(b) {
     }
     await navigator.share(shareData);
   } catch (e) {
-    if (e && e.name !== 'AbortError') toast('Sharing was cancelled or is not available on this device.');
+    if (e && e.name !== 'AbortError') toast(t('shareOff'));
   }
 }
 
@@ -437,7 +437,7 @@ async function downloadTicketPDF(b) {
     return;
   } catch (e) { /* refused / offline: draw it here */ }
   if (!(await waitForJsPDF($('#pdfBtn')))) return;
-  toast('Preparing your ticket…');
+  toast(t('tkPrep'));
   const r = routeById(b.routeId) || {};
   const rr = b.ret ? (routeById(b.ret.routeId) || {}) : null;
   const doc = new window.jspdf.jsPDF({ unit: 'pt', format: 'a4' });
@@ -785,7 +785,7 @@ async function downloadTimetablePDF() {
 
 async function downloadRouteMapPDF() {
   if (!(await waitForJsPDF(null))) return;
-  toast('Preparing route map…');
+  toast(t('mapPrep'));
   var doc = new window.jspdf.jsPDF({ unit: 'pt', format: 'a4' });
   var W = 595.28, mx = 40, y = 40;
   doc.setFillColor(18, 38, 78); doc.rect(0, 0, W, 55, 'F');
@@ -830,5 +830,5 @@ async function downloadRouteMapPDF() {
   doc.text('S Hari Global Pvt Ltd · CIN: ' + CONFIG.company.cin + ' · CEO: ' + (CONFIG.company.ceo || ''), mx, y);
   doc.text('Route data from OpenStreetMap. Distances approximate.', mx, y + 12);
   doc.save('SHG-Route-Map.pdf');
-  toast('Route map downloaded!');
+  toast(t('mapSaved'));
 }

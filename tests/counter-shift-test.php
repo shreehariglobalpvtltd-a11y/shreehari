@@ -79,6 +79,21 @@ if (!$hasTable) {
 } else {
     $A = (int) $admins[0]['id'];
     $B = (int) $admins[1]['id'];
+
+    /* This suite is written in rupees: the pad has a 200 and no 1000. Since
+       26 Sep a drawer counts the money of the DESK its cashier sits at, so if
+       $A happens to be assigned to Nepalgunj on this database the pad is NPR
+       and half of these assertions are wrong for the right reason. Park both
+       cashiers at no desk for the duration, and put them back afterwards.
+       The NPR drawer has its own coverage in counter-desk-test.php. */
+    $deskWas = [];
+    foreach ([$A, $B] as $who) {
+        $deskWas[$who] = Database::fetch('SELECT counter_code, counter_name FROM admin_profiles WHERE admin_id = :a', ['a' => $who]);
+        if ($deskWas[$who] !== null) {
+            Database::update('admin_profiles', ['counter_code' => null], 'admin_id = :a', ['a' => $who]);
+        }
+    }
+    CounterDesk::flush();
     $cleanup();
     try {
         $sid = (int) Seats::schedule((int) $route['id'], SH_DATE)['id'];
@@ -186,6 +201,14 @@ if (!$hasTable) {
         check('unexpected error: ' . $e->getMessage() . ' @ ' . basename($e->getFile()) . ':' . $e->getLine(), false);
     } finally {
         $cleanup();
+        foreach ($deskWas as $who => $row) {
+            if ($row !== null) {
+                Database::update('admin_profiles',
+                    ['counter_code' => ($row['counter_code'] ?? '') !== '' ? $row['counter_code'] : null],
+                    'admin_id = :a', ['a' => (int) $who]);
+            }
+        }
+        CounterDesk::flush();
     }
 }
 

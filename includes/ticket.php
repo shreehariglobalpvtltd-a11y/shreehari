@@ -530,12 +530,35 @@ final class Ticket
            on it would say a counter issued something a customer issued for
            themselves. Falls back to the company city so a desk that has not
            been given a location yet still prints somewhere true. */
-        $locName = trim((string) ($booking['agent_counter'] ?? ''));
-        $locCode = trim((string) ($booking['agent_counter_code'] ?? ''));
-        $location = $kind === 'online' ? '' : Settings::counterLabel($locCode, $locName);
+        /* 26 Sep 2026: prefer the code FROZEN on the sale. The profile join
+           is today's desk for that person, so a clerk who moved towns used to
+           take every ticket they had ever sold with them. */
+        $stamped  = trim((string) ($booking['counter_code'] ?? ''));
+        $locCode  = $stamped !== '' ? $stamped : trim((string) ($booking['agent_counter_code'] ?? ''));
+        $locName  = trim((string) ($booking['agent_counter'] ?? ''));
+        if ($stamped !== '') {
+            $deskRow = CounterDesk::get($stamped);
+            if ($deskRow !== null) { $locName = (string) $deskRow['name']; }
+        }
+        $location = $kind === 'online' ? '' : CounterDesk::label($locCode, $locName);
         if ($location === '' && $kind !== 'online') {
             $location = trim((string) Settings::getString('company_city', ''));
         }
+
+        /* The desk's OWN number, clearly, so a passenger holding this ticket
+           rings the window that sold it rather than an office 1,500 km away
+           (owner, 26 Sep 2026: "jun desk ho tesko naam number clearly
+           mention"). Filled in Admin -> Counters & collection. */
+        $deskPhone = '';
+        if ($locCode !== '') {
+            $deskPhone = trim((string) (CounterDesk::get($locCode)['phone'] ?? ''));
+        }
+
+        /* WHEN it was cut (same ask: "ticket kateko timing ni mention"). The
+           moment the sale was confirmed — for a counter sale that is the
+           moment the clerk pressed Confirm and took the money. */
+        $cutTs    = strtotime((string) ($booking['confirmed_at'] ?? '')) ?: strtotime((string) ($booking['created_at'] ?? ''));
+        $issuedAt = $cutTs ? date('d M Y, g:i A', $cutTs) : '';
 
         $parts = array_values(array_filter([$name, $code, $phone], static fn(string $s): bool => $s !== ''));
 
@@ -551,13 +574,16 @@ final class Ticket
         };
 
         return [
-            'kind'     => $kind,
-            'code'     => $code,
-            'name'     => $name,
-            'phone'    => $phone,
+            'kind'      => $kind,
+            'code'      => $code,
+            'name'      => $name,
+            'phone'     => $phone,
+            'deskPhone' => $deskPhone,
+            'issuedAt'  => $issuedAt,
             'label'    => $label,
             'line'     => implode('  ·  ', $parts),
             'location' => $location,          // "Nepalgunj — Bus Park (NPJ)"
+            'locName'  => $locName !== '' ? $locName : $location,
             'locCode'  => mb_strtoupper($locCode),
         ];
     }
@@ -1048,7 +1074,7 @@ final class Ticket
             ? upiLink($upiVpa, Settings::getString('upi_name', APP_NAME), $settlement['due'], (string) ($booking['pnr'] ?? '')) : '';
         $qrExt = $payUpi !== '' ? 350 : 270;
 
-        $W = 1080; $H = 1620 + $grow + $qrExt;
+        $W = 1080; $H = 1644 + $grow + $qrExt;   // +24: the issuer tile gained the desk line (26 Sep 2026)
         $im = imagecreatetruecolor($W, $H);
 
         $navy   = imagecolorallocate($im, 18, 38, 78);
@@ -1079,7 +1105,11 @@ final class Ticket
            down, so the two brand lines beside it are clamped to stop short
            of it. The name itself steps down a size instead — a longer
            company_name must never run under the code. */
-        $co     = Settings::company();
+        /* The identity belongs to the DESK that cut it (26 Sep 2026): a
+           ticket sold at Nepalgunj is issued by the Nepal entity, with the
+           Nepal office and a Nepal number on it. An Indian desk and every
+           online sale are unchanged. */
+        $co     = Settings::companyFor($booking['counter_code'] ?? null);
         $chipX1 = $W - 60 - 268;
 
         $logo = self::logoFile();
@@ -1105,10 +1135,16 @@ final class Ticket
            "company ko name ko tala location lekhne thau"). */
         $issued = self::issuedBy($booking);
 
-        $brand = self::latinUpper($co['name']);
-        $bSz   = 30;
-        foreach ([30, 27, 24, 21] as $try) { $bSz = $try; if (self::gdWidth($try, $brand) <= $W - 60 - $bx) { break; } }
-        self::gdText($im, $bSz, $bx, 122, $white, $clampTo($bSz, $brand, $W - 60 - $bx), true);
+        /* 26 Sep 2026: the width was measured to the PAGE edge while the
+           ISSUED-BY chip sits 268px in from it, so a longer company name —
+           "Shree Hari Global Pvt Ltd Nepal", the name a Nepalgunj ticket
+           must carry — printed straight under the chip. The brand now stops
+           where the chip starts, and may go down to 18px to do it. */
+        $brand   = self::latinUpper($co['name']);
+        $brandMax = $chipX1 - 20 - $bx;
+        $bSz     = 30;
+        foreach ([30, 27, 24, 21, 19, 18] as $try) { $bSz = $try; if (self::gdWidth($try, $brand) <= $brandMax) { break; } }
+        self::gdText($im, $bSz, $bx, 122, $white, $clampTo($bSz, $brand, $brandMax), true);
         self::gdText($im, 19, $bx, 162, $gold,
             $clampTo(19, 'E-TICKET  ·  INDIA-NEPAL BUS SERVICE', $chipX1 - 24 - $bx), false);
         /* The desk this ticket was cut at, directly under the company name.
@@ -1369,6 +1405,17 @@ final class Ticket
         self::gdText($im, 17, 88, 1192 + $grow, $gold, 'जम्मा भाडा  ·  TOTAL FARE', false);
         $amt = $currency . ' ' . number_format((float) ($booking['total_amount'] ?? 0), 2);
         self::gdText($im, 36, 88, 1236 + $grow, $white, $amt, true);
+        /* A Nepal window quoted this in NPR and took NPR (26 Sep 2026). The
+           rupee stays the figure the company accounts in; beside it goes the
+           money the passenger actually handed over, at the rate frozen on
+           this ticket — so the passenger's own number is on their own ticket
+           and nobody has to convert anything at the door. */
+        $fxCur = strtoupper((string) ($booking['fx_currency'] ?? ''));
+        $fxTot = (float) ($booking['fx_total'] ?? 0);
+        if ($fxCur !== '' && $fxCur !== $currency && $fxTot > 0) {
+            self::gdText($im, 25, 88 + self::gdWidth(36, $amt) + 26, 1234 + $grow, $gold,
+                $fxCur . ' ' . number_format($fxTot), true);
+        }
         $fps = (float) ($booking['fare_per_seat'] ?? 0);
         /* Never fewer than the list above it names: a private cabin holds more
            berths than passengers, and a booking whose seat rows lag its passenger
@@ -1430,9 +1477,9 @@ final class Ticket
             'Paid: ' . $currency . ' ' . number_format($settlement['paid'], 2), true);
         self::gdText($im, 18, $infoX, ($payUpi !== '' ? 1810 : 1380) + $grow, $ink,
             'Due: ' . $currency . ' ' . number_format($settlement['due'], 2), true);
-        self::gdText($im, 19, 60, 1398 + $grow + $qrExt - 90, $ink, 'Support: ' . Settings::officePhone(), true);
+        self::gdText($im, 19, 60, 1398 + $grow + $qrExt - 90, $ink, 'Support: ' . self::latin($co['phone']), true);
         self::gdText($im, 18, 60, 1428 + $grow + $qrExt - 90, $orange, self::latin($co['web']), true);
-        $wa = Settings::officeWhatsApp();
+        $wa = (string) ($co['whatsapp'] ?? Settings::officeWhatsApp());
         if ($wa !== '') { self::gdText($im, 16, 60, 1456 + $grow + $qrExt - 90, $green, 'WhatsApp: +' . $wa, true); }
 
         /* Who cut it, in full — name, code and the agent's own phone, with
@@ -1444,9 +1491,15 @@ final class Ticket
            x stops at 727: the QR card's left edge is W-60-(qr+24) and the
            widest realistic QR still leaves it at 751, so the strip can never
            run under the code no matter which QR version the payload picks. */
-        $tileR = $payUpi !== '' ? 560 : 727;
-        self::gdRounded($im, 60, 1472 + $grow + $qrExt, $tileR, 1541 + $grow + $qrExt, 14, $tile);
-        imagefilledrectangle($im, 60, 1486 + $grow + $qrExt, 66, 1527 + $grow + $qrExt, $orange);
+        /* 740, not 727 (26 Sep 2026): the tile carries a desk name, a phone
+           and a timestamp now. The QR card's left edge is 751 at the widest
+           realistic QR version, so 740 still cannot run under it. */
+        $tileR = $payUpi !== '' ? 560 : 740;
+        /* 26 Sep 2026: the tile grew by one line so the DESK can be named in
+           full with its own phone, and the moment the ticket was cut printed
+           under it. Both were asked for by name. */
+        self::gdRounded($im, 60, 1472 + $grow + $qrExt, $tileR, 1566 + $grow + $qrExt, 14, $tile);
+        imagefilledrectangle($im, 60, 1486 + $grow + $qrExt, 66, 1552 + $grow + $qrExt, $orange);
         self::gdText($im, 15, 82, 1500 + $grow + $qrExt, $mut, 'टिकट काट्ने  ·  ' . $issued['label'], false);
         $chip  = self::latinUpper($issued['code']);
         $chipW = self::gdWidth(20, $chip) + 34;
@@ -1460,14 +1513,48 @@ final class Ticket
         $who     = $whoPh !== '' ? $whoName . '  ·  ' . $whoPh : $whoName;
         $maxWho = $tileR - 16 - $chipW - 20 - 82;
         while ($who !== '' && self::gdWidth(20, $who) > $maxWho) { $who = mb_substr($who, 0, mb_strlen($who) - 2) . '…'; }
-        self::gdText($im, 20, 82, 1530 + $grow + $qrExt, $ink, $who, true);
+        self::gdText($im, 20, 82, 1526 + $grow + $qrExt, $ink, $who, true);
+
+        /* The desk by name and number, and when the ticket was cut. The desk
+           gives ground before the time does: a passenger can read the town
+           off the header band, but nothing else on the ticket says WHEN. */
+        /* The NAME gives ground, never the number: a passenger who has to
+           ring the window needs the digits, and the town is already in the
+           header band. The code in brackets is dropped too — it is on the
+           orange chip two lines up. */
+        $deskName  = self::display((string) ($issued['locName'] ?? ''));
+        $deskPhone = self::display((string) ($issued['deskPhone'] ?? ''));
+        $cutTxt    = ($issued['issuedAt'] ?? '') !== '' ? 'काटिएको  ' . self::latin((string) $issued['issuedAt']) : '';
+        $cutSz     = 13;   // the time is the smaller of the two — the desk name is what a passenger reads
+        if ($deskName !== '' || $deskPhone !== '' || $cutTxt !== '') {
+            $cutW    = $cutTxt !== '' ? self::gdWidth($cutSz, $cutTxt) + 22 : 0;
+            $maxDesk = $tileR - 24 - 82 - $cutW;
+            $tail    = $deskPhone !== '' ? '  ·  ' . $deskPhone : '';
+            /* The name is printed WHOLE or not at all. It is already in the
+               header band in full, so half of it here ("Nepalgunj - Puspal")
+               buys nothing and reads like a bug; the number and the time are
+               what this line exists for. */
+            if ($deskName !== '' && self::gdWidth(15, $deskName . $tail) > $maxDesk) {
+                $deskName = '';
+            }
+            $deskTxt = $deskName !== '' ? $deskName . $tail : ltrim($tail, ' ·');
+            if (trim($deskTxt) !== '') {
+                self::gdText($im, 15, 82, 1554 + $grow + $qrExt, $mut, trim($deskTxt), false);
+            }
+            if ($cutTxt !== '') {
+                self::gdText($im, $cutSz, $tileR - 16 - self::gdWidth($cutSz, $cutTxt), 1555 + $grow + $qrExt, $mut, $cutTxt, false);
+            }
+        }
 
         /* Footer notes on the cream */
         $n1 = 'सरकारी परिचयपत्र अनिवार्य  ·  बस छुट्नु ३० मिनेट अगाडि आउनुहोस्';
-        self::gdText($im, 17, (int) (($W - self::gdWidth(17, $n1)) / 2), 1578 + $grow + $qrExt, $mut, $n1, false);
-        $cin = Settings::getString('company_cin', '');
-        $n2  = self::display($co['name']) . ($cin !== '' ? '  ·  CIN ' . $cin : '');
-        self::gdText($im, 16, (int) (($W - self::gdWidth(16, $n2)) / 2), 1606 + $grow + $qrExt, $mut, $n2, false);
+        self::gdText($im, 17, (int) (($W - self::gdWidth(17, $n1)) / 2), 1600 + $grow + $qrExt, $mut, $n1, false);
+        $cin = (string) ($co['cin'] ?? '');
+        $n2  = self::display($co['name'])
+             . ($cin !== '' ? '  ·  ' . ($co['regLabel'] ?? 'CIN') . ' ' . $cin : '')
+             . (($co['country'] ?? 'IN') === 'NP' && trim((string) $co['address']) !== ''
+                 ? '  ·  ' . self::latin((string) $co['address']) : '');
+        self::gdText($im, 16, (int) (($W - self::gdWidth(16, $n2)) / 2), 1628 + $grow + $qrExt, $mut, $n2, false);
 
         /* CORRECTED / DUPLICATE band in the 36px margin above the header. */
         $markTxt = self::markText($ticket, $mark);
@@ -1644,13 +1731,13 @@ final class Ticket
      *  tickets drawn at 23:43/23:44 IST with the old seat labels were never
      *  redrawn. tests/chalani-png-test.php and tests/ticket-cache-test.php
      *  assert a past moment. */
-    private const PNG_LAYOUT_CHANGED = '2026-09-24 10:30:00';   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
+    private const PNG_LAYOUT_CHANGED = '2026-09-26 13:07:00';   // IST: the desk that cut it, its own number and the minute, in a taller issuer tile; the Nepal entity in the header. Before: a Nepal desk's NPR beside the rupee in the fare band. Before: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
      *  seat box + stub pick up the current seat labels without a manual purge
      *  (23 Sep 2026: the two-floor grid A1-F6 / A7-F12). */
-    private const PDF_LAYOUT_CHANGED = '2026-09-24 10:30:00';   // IST: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
+    private const PDF_LAYOUT_CHANGED = '2026-09-26 13:07:00';   // IST: the desk, its number and the minute under ISSUED BY; the Nepal entity in the band. Before: a Nepal desk's NPR on the fare box line. Before: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
 
     /**
      * How many passengers the ticket names one by one before it stops and
@@ -1752,8 +1839,11 @@ final class Ticket
         $W   = $pdf->width();
         $seats = self::seatNumbers((int) $booking['id']);
 
-        $company = Settings::getString('company_name', 'S Hari Global Pvt Ltd');
-        $cin     = Settings::getString('company_cin', '');
+        /* The desk that cut it is the issuer (26 Sep 2026): a Nepalgunj
+           ticket carries the Nepal entity, its office and a Nepal number. */
+        $coPdf   = Settings::companyFor($booking['counter_code'] ?? null);
+        $company = $coPdf['name'];
+        $cin     = (string) ($coPdf['cin'] ?? '');
 
         /* Register Devanagari font for Nepali headings. */
         self::registerDevanagariFont($pdf);
@@ -1811,7 +1901,9 @@ final class Ticket
         $pdf->text($textX, 20, strtoupper($company), 17, 'F2', [255, 255, 255]);
         self::devText($pdf, $textX, 44, 'भारत–नेपाल बस सेवा', 11, $F7, self::GOLD);
         if ($cin !== '') {
-            $pdf->text($textX, 68, 'CIN: ' . $cin, 7.5, 'F1', [200, 190, 170]);
+            /* "CIN" is the Indian companies register. A Nepalgunj ticket
+               carries the Nepal registration under its own label. */
+            $pdf->text($textX, 68, ($coPdf['regLabel'] ?? 'CIN') . ': ' . $cin, 7.5, 'F1', [200, 190, 170]);
         }
         /* The desk, directly under the company name (owner, 24 Sep 2026:
            "company ko name ko tala location lekhne thau"). It takes the last
@@ -2057,9 +2149,20 @@ final class Ticket
         $pdf->roundedRect($W - 220, $boardY, 180, 70, 8, self::BROWN, true);
         self::devText($pdf, $W - 205, $boardY + 10, $paid ? 'जम्मा रकम' : 'बाँकी रकम', 9, $F7, self::GOLD);
         $pdf->text($W - 205, $boardY + 28, inr((float) $booking['total_amount']), 22, 'F2', [255, 255, 255]);
-        // Base → Discount breakdown (Task 9) when a counter discount was applied.
-        if ((float) ($booking['coupon_discount'] ?? 0) > 0) {
-            $pdf->text($W - 205, $boardY + 42, 'Base ' . inr((float) $booking['base_total']) . '  -  Disc ' . inr((float) $booking['coupon_discount']), 8, 'F1', [220, 210, 195]);
+        /* One line under the amount, shared by the two things that can need
+           it. A Nepal desk's NPR wins the space when both apply: the rupee
+           breakdown is already on the invoice, but the NPR the passenger paid
+           appears nowhere else on the page. */
+        $fxCurPdf = strtoupper((string) ($booking['fx_currency'] ?? ''));
+        $fxTotPdf = (float) ($booking['fx_total'] ?? 0);
+        $discPdf  = (float) ($booking['coupon_discount'] ?? 0);
+        if ($fxCurPdf !== '' && $fxTotPdf > 0) {
+            $fxLine = $fxCurPdf . ' ' . number_format($fxTotPdf)
+                . ($discPdf > 0 ? '  -  Disc ' . self::latin(inr($discPdf))
+                                : '  @ ' . number_format((float) ($booking['fx_rate'] ?? 0), 2));
+            $pdf->text($W - 205, $boardY + 42, $fxLine, 8, 'F1', [255, 226, 168]);
+        } elseif ($discPdf > 0) {
+            $pdf->text($W - 205, $boardY + 42, 'Base ' . inr((float) $booking['base_total']) . '  -  Disc ' . inr($discPdf), 8, 'F1', [220, 210, 195]);
         }
         // Fare by passenger count (4 Sep 2026): "3 x Rs 2,000" for a party,
         // so the family sees how the total was built; a solo ticket keeps
@@ -2144,6 +2247,20 @@ final class Ticket
         } else {
             $pdf->text(400, $cY + 14, self::latin($issuedTxt), 9, 'F1', self::INK);
         }
+        /* The desk by name and number, and the moment it was cut (owner,
+           26 Sep 2026). Two short lines rather than one long one: a Nepali
+           desk name plus a +977 number does not fit beside the seller. */
+        $deskLine2 = implode('  ·  ', array_filter([
+            self::latin((string) ($issued['location'] ?? '')),
+            self::latin((string) ($issued['deskPhone'] ?? '')),
+        ], static fn(string $s): bool => $s !== ''));
+        if ($deskLine2 !== '') {
+            $pdf->text(400, $cY + 26, $pdf->textWidth($deskLine2, 7.5, 'F1') > $issuedW
+                ? mb_substr($deskLine2, 0, 46) . '..' : $deskLine2, 7.5, 'F1', self::MUTE);
+        }
+        if ((string) ($issued['issuedAt'] ?? '') !== '') {
+            $pdf->text(400, $cY + 36, 'Issued  ' . self::latin((string) $issued['issuedAt']), 7.5, 'F1', self::MUTE);
+        }
 
         /* ==============================================================
            OFFICE CONTACTS
@@ -2202,7 +2319,7 @@ final class Ticket
 
         // (5 Sep 2026) The ticket number / fare line and the second copy of the
         // office numbers were removed here: both already print above.
-        $pdf->text($noteX, $footY + 74, 'Help: ' . self::latin(Settings::officePhone()) . '  ·  shreehariglobal.in', 7.5, 'F1', self::MUTE);
+        $pdf->text($noteX, $footY + 74, 'Help: ' . self::latin($coPdf['phone']) . '  ·  shreehariglobal.in', 7.5, 'F1', self::MUTE);
 
         // Thank you footer
         self::devCenter($pdf, 40, $W - 40, $pdf->height() - 18, 'धन्यवाद · शुभ यात्रा · Thank you · ' . $company, 9, $F7, self::ORANGE);

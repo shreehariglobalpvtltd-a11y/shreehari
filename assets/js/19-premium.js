@@ -42,6 +42,7 @@
 
   var LS_SOUND = 'shg:sound';
   var LS_HAPTIC = 'shg:haptics';
+  var LS_MANTRA = 'shg:mantra';       /* the opening blessing (26 Sep 2026) */
 
   function read(key) {
     /* Default ON — both were already on before this file existed, so a
@@ -109,6 +110,55 @@
     } catch (e) {}
   }
 
+  /* A voice with its own attack. voice() above is fixed at 6ms, which is
+     right for every UI sound and wrong for a swell: the temple bell needs
+     no attack at all, the conch needs half a second. */
+  function swell(freq, at, attack, dur, vol, type) {
+    var c = ctx();
+    if (!c || !master) return;
+    try {
+      var t0 = c.currentTime + at;
+      var o = c.createOscillator(), g = c.createGain();
+      o.type = type || 'sine';
+      o.frequency.setValueAtTime(freq, t0);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(Math.max(vol, 0.0002), t0 + Math.max(0.004, attack));
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g); g.connect(master);
+      o.start(t0);
+      o.stop(t0 + dur + 0.02);
+    } catch (e) {}
+  }
+
+  /* A very short filtered noise burst — the only non-tonal texture here.
+     It is what makes the ticket sound like a ticket being torn off the
+     book rather than one more chime: 70ms of band-passed noise under the
+     bells. The buffer is built once and reused, so repeated tickets at a
+     busy counter cost one allocation, not forty. */
+  var noiseBuf = null;
+  function noise(at, dur, vol, centre) {
+    var c = ctx();
+    if (!c || !master) return;
+    try {
+      if (!noiseBuf) {
+        var n = Math.floor(c.sampleRate * 0.4);
+        noiseBuf = c.createBuffer(1, n, c.sampleRate);
+        var d = noiseBuf.getChannelData(0);
+        for (var i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+      }
+      var t0 = c.currentTime + at;
+      var s = c.createBufferSource(); s.buffer = noiseBuf;
+      var bp = c.createBiquadFilter(); bp.type = 'bandpass';
+      bp.frequency.value = centre || 2600; bp.Q.value = 0.9;
+      var g = c.createGain();
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(Math.max(vol, 0.0002), t0 + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      s.connect(bp); bp.connect(g); g.connect(master);
+      s.start(t0); s.stop(t0 + dur + 0.02);
+    } catch (e) {}
+  }
+
   /* The palette. Kept deliberately narrow: a company app is not a game,
      and five recognisable sounds are easier to live with than fifteen. */
   var VOICES = {
@@ -133,10 +183,76 @@
       voice(783.99, 0.15, 0.30, 0.06, 'sine');
       voice(1567.98, 0.16, 0.34, 0.018, 'sine');   /* air, an octave + fifth up */
     },
-    /* The ticket itself exists. Success, plus one held bell above it. */
+    /* The ticket itself exists. Success, plus one held bell above it.
+       25 Sep 2026 (owner: "ticket katne bela ma") — a 70ms tear of
+       band-passed noise now opens it, so the counter hears the ticket
+       come off the book and then the confirmation bells. The tear is
+       quiet (0.03) and lands BEFORE the first bell, which is why the
+       arpeggio is pushed back by 60ms rather than played on top of it. */
     ticket: function () {
-      VOICES.success();
-      voice(1046.5, 0.30, 0.42, 0.030, 'triangle');
+      noise(0, 0.07, 0.030, 3000);
+      voice(523.25, 0.06, 0.16, 0.06, 'sine');
+      voice(659.25, 0.135, 0.16, 0.055, 'sine');
+      voice(783.99, 0.21, 0.30, 0.06, 'sine');
+      voice(1567.98, 0.22, 0.34, 0.018, 'sine');
+      voice(1046.5, 0.36, 0.42, 0.030, 'triangle');
+    },
+    /* THE FOUR FACILITY STORIES (owner, 26 Sep 2026: "animation …
+       sound pani hos … manche lai attractive lagos"). Each scene gets
+       its own signature rather than one generic chime, because the
+       whole point of the panel is that the four facilities feel like
+       four different things. They are all quiet and all under 500ms —
+       this plays when a finger opens a card, not in the background. */
+    /* GPS: a radar sweep. Two pings, the second higher, like a
+       contact returning. */
+    storyGps: function () {
+      voice(1318.51, 0, 0.09, 0.040, 'sine');
+      voice(1760.00, 0.10, 0.13, 0.030, 'sine');
+      voice(2637.02, 0.20, 0.20, 0.012, 'sine');
+    },
+    /* CHARGING: current arriving. A low surge under a bright spark. */
+    storyCharge: function () {
+      voice(110, 0, 0.26, 0.045, 'sawtooth');
+      voice(880, 0.06, 0.09, 0.030, 'square');
+      voice(1760, 0.14, 0.22, 0.022, 'triangle');
+    },
+    /* AC SLEEPER: the softest of the four — a warm fifth, no attack
+       edge at all. It should feel like lying down. */
+    storyAc: function () {
+      voice(329.63, 0, 0.42, 0.034, 'sine');
+      voice(493.88, 0.10, 0.44, 0.026, 'sine');
+      voice(659.25, 0.22, 0.40, 0.016, 'sine');
+    },
+    /* SAFE TRAVEL: a calm two-note confirmation, the shape a hospital
+       or a help desk uses — reassurance, not alarm. */
+    storySafe: function () {
+      voice(587.33, 0, 0.16, 0.045, 'triangle');
+      voice(783.99, 0.13, 0.30, 0.038, 'sine');
+    },
+    /* THE APP OPENING (owner, 25 Sep 2026: "khulne bela ma"). A warm
+       low-to-high fifth with a soft bell over it — a doorway, not a
+       fanfare. It plays at most once per browser session (see WELCOME
+       below), so re-entering a view never repeats it, and it is the
+       quietest of the set because it arrives unasked. */
+    welcome: function () {
+      voice(261.63, 0, 0.55, 0.030, 'sine');
+      voice(392.00, 0.09, 0.50, 0.026, 'sine');
+      voice(783.99, 0.20, 0.55, 0.026, 'triangle');
+      voice(1174.66, 0.30, 0.60, 0.012, 'sine');
+    },
+    /* THE BLESSING (owner, 26 Sep 2026: "boot ma Bishnu Bhagwan ko naam
+       mantra, bhagwan ko sound"). One strike of a temple bell — the
+       inharmonic partials a real ghanta rings with, fading over two and a
+       half seconds — over a conch-like swell a fifth below. The mantra is
+       spoken over it (MANTRA, further down). Once per visit, on the first
+       touch, and only while Sound and Mantra are both on. */
+    blessing: function () {
+      swell(528, 0, 0.004, 2.6, 0.050, 'sine');
+      swell(1056, 0, 0.004, 1.9, 0.026, 'sine');
+      swell(1457, 0, 0.004, 1.3, 0.016, 'sine');
+      swell(2150, 0, 0.004, 0.8, 0.008, 'sine');
+      swell(196, 0.15, 0.55, 2.4, 0.034, 'triangle');
+      swell(294, 0.25, 0.60, 2.2, 0.016, 'sine');
     }
   };
 
@@ -149,7 +265,12 @@
     notify: [8, 30, 8],
     error: [26, 40, 26],
     success: [10, 34, 16],
-    ticket: [12, 28, 12, 28, 26]
+    ticket: [12, 28, 12, 28, 26],
+    welcome: [6, 40, 10],
+    storyGps: [6, 24, 6],
+    storyCharge: [14, 18, 8],
+    storyAc: 8,
+    storySafe: [8, 26, 8]
   };
 
   var Feel = {
@@ -182,6 +303,56 @@
       } catch (e) {}
     }
   };
+
+  /* -------------------------------------------------------------------
+     THE MUSIC BED  (26 Sep 2026 — the brand film)
+     -----------------------------------------------------------------
+     "Light cinematic background music" with no audio file: a pad of
+     three detuned sines an octave apart, a slow breathing LFO on its
+     gain, and a filtered-noise whoosh for each scene change. It is
+     deliberately faint (peak ~0.03) — a bed, not a track — and it is
+     the one sound here that is long-lived, so it has its own start/stop
+     rather than going through play(), and stop() is what close() calls.
+     Nothing here plays if the Sound switch is off. */
+  var bed = null;
+  Feel.bed = {
+    start: function () {
+      if (bed || !read(LS_SOUND)) return;
+      var c = ctx();
+      if (!c || !master) return;
+      try {
+        var g = c.createGain();
+        g.gain.setValueAtTime(0.0001, c.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.028, c.currentTime + 2.2);
+        var lfo = c.createOscillator(), lg = c.createGain();
+        lfo.type = 'sine'; lfo.frequency.value = 0.11; lg.gain.value = 0.009;
+        lfo.connect(lg); lg.connect(g.gain);
+        var oscs = [[110, 'sine', 1], [164.81, 'sine', .55], [220.4, 'triangle', .22]].map(function (v) {
+          var o = c.createOscillator(), og = c.createGain();
+          o.type = v[1]; o.frequency.value = v[0]; og.gain.value = v[2];
+          o.connect(og); og.connect(g); o.start(); return o;
+        });
+        var lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900;
+        g.connect(lp); lp.connect(master);
+        lfo.start();
+        bed = { g: g, oscs: oscs, lfo: lfo };
+      } catch (e) { bed = null; }
+    },
+    stop: function () {
+      if (!bed) return;
+      var b = bed; bed = null;
+      try {
+        var c = ctx(); var t = c ? c.currentTime : 0;
+        b.g.gain.cancelScheduledValues(t);
+        b.g.gain.setValueAtTime(Math.max(b.g.gain.value, 0.0001), t);
+        b.g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
+        setTimeout(function () { try { b.oscs.forEach(function (o) { o.stop(); }); b.lfo.stop(); } catch (e) {} }, 1000);
+      } catch (e) {}
+    }
+  };
+  /* A scene change: a short, soft sweep. */
+  VOICES.whoosh = function () { noise(0, 0.42, 0.024, 900); noise(0.05, 0.3, 0.014, 2400); };
+  BUZZ.whoosh = 5;
 
   window.SHGFeel = Feel;
 
@@ -216,8 +387,78 @@
      means the first sound is on time instead of being the one that gets
      swallowed. */
   ['pointerdown', 'keydown', 'touchstart'].forEach(function (ev) {
-    window.addEventListener(ev, function () { ctx(); }, { passive: true, once: false });
+    window.addEventListener(ev, function () { ctx(); welcome(); }, { passive: true, once: false });
   });
+
+  /* -------------------------------------------------------------------
+     THE OPENING SOUND  (owner, 25 Sep 2026)
+     -----------------------------------------------------------------
+     A browser will not let a page make a noise before the visitor has
+     touched it, so "play a sound when the app opens" cannot literally
+     mean document load — that sound is discarded by the autoplay policy
+     and the owner would hear silence. It is therefore armed at load and
+     released on the first real gesture (the same gesture that builds the
+     AudioContext, one line above), which is the first moment the app is
+     allowed to speak. sessionStorage keeps it to once per visit: a tab
+     left open all day at the counter greets once, not on every reload of
+     a view. The Sound switch in the menu silences it like everything
+     else, because it goes through Feel.play(). */
+  var WELCOME_KEY = 'shg:welcomed';
+  var welcomed = false;
+  try { welcomed = sessionStorage.getItem(WELCOME_KEY) === '1'; } catch (e) {}
+  function welcome() {
+    if (welcomed) return;
+    welcomed = true;
+    try { sessionStorage.setItem(WELCOME_KEY, '1'); } catch (e) {}
+    /* One frame later: the gesture that released it is usually also a tap
+       on a control that plays its own 'tap', and two voices in the same
+       millisecond hit the 45ms rate limit — the greeting would lose. */
+    setTimeout(function () {
+      if (mantraOn()) {
+        Feel.play('blessing'); Feel.buzz('welcome');
+        setTimeout(sayMantra, 380);
+      } else {
+        Feel.fire('welcome');
+      }
+    }, 90);
+  }
+  Feel.welcome = welcome;
+
+  /* -------------------------------------------------------------------
+     THE MANTRA  (owner, 26 Sep 2026: "boot ma Bishnu Bhagwan ko naam mantra")
+     -----------------------------------------------------------------
+     "ॐ नमो भगवते वासुदेवाय", spoken by the handset's own Nepali or Hindi
+     voice over the bell. No audio file, nothing downloaded. Three things
+     silence it: the Sound switch, the Mantra switch beside it in the menu
+     (remembered per device), and the office switch app_mantra_on, which
+     the admin turns off for everyone from Settings → Site. */
+  function mantraOn() {
+    try {
+      var st = window.SHG_BOOT && window.SHG_BOOT.settings;
+      if (st && Object.prototype.hasOwnProperty.call(st, 'app_mantra_on')
+          && (st.app_mantra_on === false || String(st.app_mantra_on) === '0')) return false;
+    } catch (e) {}
+    return read(LS_SOUND) && read(LS_MANTRA);
+  }
+  function sayMantra() {
+    if (!mantraOn() || document.hidden) return;
+    try {
+      var ss = window.speechSynthesis;
+      if (!ss || !window.SpeechSynthesisUtterance) return;
+      var u = new SpeechSynthesisUtterance('ॐ नमो भगवते वासुदेवाय');
+      u.lang = 'hi-IN'; u.rate = 0.78; u.pitch = 0.85; u.volume = 0.9;
+      var vs = ss.getVoices ? ss.getVoices() : [], pick = null;
+      for (var i = 0; i < vs.length; i++) {
+        var l = String(vs[i].lang || '').toLowerCase();
+        if (l.indexOf('ne') === 0) { pick = vs[i]; break; }
+        if (!pick && (l.indexOf('hi') === 0 || l.indexOf('mr') === 0)) pick = vs[i];
+      }
+      if (pick) u.voice = pick;
+      ss.speak(u);
+    } catch (e) {}
+  }
+  Feel.mantra = mantraOn;
+  Feel.setMantra = function (on) { write(LS_MANTRA, on); if (on) { Feel.play('blessing'); setTimeout(sayMantra, 380); } };
 
   /* -------------------------------------------------------------------
      THE COMPACT LANGUAGE PILL  (phones — see premium.css §2)
@@ -336,6 +577,7 @@
 
     menu.appendChild(row('🔊 आवाज · Sound', Feel.sound, Feel.setSound));
     menu.appendChild(row('📳 कम्पन · Vibration', Feel.haptics, Feel.setHaptics));
+    menu.appendChild(row('🙏 मन्त्र · Mantra', read(LS_MANTRA), Feel.setMantra));
   }
 
   /* -------------------------------------------------------------------

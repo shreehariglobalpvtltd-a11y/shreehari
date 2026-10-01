@@ -20,6 +20,22 @@ function renderAdminGateOrApp() {
 }
 function renderAdminAll() { renderAdminStats(); renderAdminCharts(); renderAdminBookings(); renderAdminWaitlist(); renderAdminAgents(); renderAdminRoutes(); renderAdminLiveOps(); renderAdminSettings(); renderAdminMessages(); renderAdminAudit(); renderAdminPayments(); pvSetupSearch(); }
 
+/* A booking's seats as a HUMAN reads them. Seat ids are stored canonically
+   (L1..L36 / U1..U36) and the rest of the app prints the grid label
+   (A1..F6 lower, A7..F12 upper) through seatLabel() in 06-results.js —
+   this table and its CSV export were the last two places that still
+   printed the raw id, which is one of the places an "L" could still be
+   seen (owner, 25 Sep 2026). b.ret carries its own routeId, so a return
+   leg on a different coach type is labelled against ITS coach. */
+function admSeats(b, glue, modeFallback) {
+  var list = (b && b.seats) || [];
+  if (!list.length) return '';
+  var r = (typeof routeById === 'function' && routeById(b.routeId)) || {};
+  var mode = (b && b.bookingType) || modeFallback || 'sharing';
+  if (typeof seatLabelJoin === 'function') return seatLabelJoin(list, r.type || 'sleeper', mode, glue);
+  return list.join(glue);
+}
+
 function sameDay(ts, ref) { const a = new Date(ts), b = new Date(ref); return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
 function sameMonth(ts, ref) { const a = new Date(ts), b = new Date(ref); return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth(); }
 function weekStart(ref) { const d = new Date(ref); const day = (d.getDay() + 6) % 7; d.setHours(0, 0, 0, 0); return d.getTime() - day * 86400000; }  // Monday 00:00
@@ -150,7 +166,7 @@ function renderAdminBookings() {
       return '<tr><td><b style="font-family:var(--f-code)">' + esc(b.id) + '</b>' + (b.ret ? ' <span class="chip orange" title="Round trip">⇄</span>' : '') + '<br><small>' + new Date(b.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</small></td>'
         + '<td>' + esc((r.from || '?') + ' → ' + (r.to || '?')) + '<br><small>' + fmtDate(b.date) + (b.ret ? ' · ↩ ' + fmtDate(b.ret.date) : '') + '</small></td>'
         + '<td>' + b.passengers.map(p => esc(p.name)).join('<br>') + '<br><small>📞 ' + esc(b.contact.phone) + '</small>' + repeat + '</td>'
-        + '<td>' + b.seats.join(', ') + (b.ret ? '<br><small>↩ ' + b.ret.seats.join(', ') + '</small>' : '') + '</td>'
+        + '<td>' + admSeats(b, ', ') + (b.ret ? '<br><small>↩ ' + admSeats(b.ret, ', ', b.bookingType) + '</small>' : '') + '</td>'
         + '<td><b>' + inr(b.total) + '</b>' + (b.discount > 0 ? '<br><small style="color:var(--ok)">−' + inr(b.discount) + ' group</small>' : '') + (b.bookingType ? '<br><span class="badge" title="' + esc(b.cabinLabel || '') + '">' + (b.bookingType === 'private' ? '🔒 ' : '👥 ') + esc(b.cabinLabel || (b.bookingType === 'private' ? 'Private Cabin' : 'Sharing Seat')) + '</span>' : '') + '</td>'
         + '<td>' + proof + '<br>' + method + '</td>'
         + '<td>' + stBadge + '</td>'
@@ -204,7 +220,7 @@ function exportBookingsCSV() {
       b.id, new Date(b.createdAt).toLocaleString('en-IN'),
       (r.from || '') + ' -> ' + (r.to || ''), b.date, b.ret ? b.ret.date : '',
       (b.passengers || []).map(p => p.name + ' (' + p.age + p.gender[0] + ')').join('; '),
-      b.contact && b.contact.phone, b.seats.join(' '), b.ret ? b.ret.seats.join(' ') : '',
+      b.contact && b.contact.phone, admSeats(b, ' '), b.ret ? admSeats(b.ret, ' ', b.bookingType) : '',
       bpShort(b.boarding), bpShort(b.drop),
       b.payment.method || 'upi', b.payment.utr || (b.payment.mode === 'screenshot' ? 'screenshot' : ''),
       b.baseTotal || b.total, b.discount || 0, b.total, b.status,
