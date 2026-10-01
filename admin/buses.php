@@ -198,6 +198,20 @@ $buses = Database::fetchAll(
       ORDER BY b.is_active DESC, b.id ASC"
 );
 
+$fleetDate = Security::clean($_GET['date'] ?? todayISO(), 10);
+if (!Security::isValidDate($fleetDate)) { $fleetDate = todayISO(); }
+$busTrips = [];
+foreach (Database::fetchAll(
+    "SELECT s.id, COALESCE(s.bus_id, r.bus_id) AS vehicle_id,
+            r.from_city, r.to_city, COALESCE(s.dep_time_override, r.dep_time) AS dep_time, s.slot
+       FROM schedules s JOIN routes r ON r.id = s.route_id
+      WHERE s.travel_date = :d AND r.is_active = 1
+      ORDER BY dep_time, s.slot, s.id",
+    ['d' => $fleetDate]
+) as $busTrip) {
+    $busTrips[(int) $busTrip['vehicle_id']][] = $busTrip;
+}
+
 $csrf = Security::e(Security::csrfToken());
 $k    = CSRF_TOKEN_NAME;
 
@@ -442,12 +456,17 @@ if ($todayBus === null) {
   <!-- Action buttons -->
   <div class="bus-actions">
     <?php if (Auth::can('bookings.view') && Auth::bookingScopeAdminId() === null): ?>
-    <a href="<?= $base ?>/admin/chalan.php?bus=<?= (int) $bus['id'] ?>&amp;date=<?= urlencode(todayISO()) ?>"
+    <a href="<?= $base ?>/admin/chalan.php?bus=<?= (int) $bus['id'] ?>&amp;date=<?= urlencode($fleetDate) ?>"
        class="btn btn-blue btn-sm">🧾 चालानी / Chalan</a>
     <?php endif; ?>
-    <!-- View seat map (today) -->
-    <a href="<?= $base ?>/admin/seatmap.php?date=<?= urlencode(todayISO()) ?>"
-       class="btn btn-blue btn-sm">🗺️ Seat Map</a>
+    <?php foreach ($busTrips[(int) $bus['id']] ?? [] as $busTrip): ?>
+    <a href="<?= $base ?>/admin/seatmap.php?sid=<?= (int) $busTrip['id'] ?>"
+       class="btn btn-blue btn-sm">🗺️ Seat Map · <?= Security::e(substr((string) $busTrip['dep_time'], 0, 5) . ' · ' . $busTrip['from_city'] . ' → ' . $busTrip['to_city'] . ((int) $busTrip['slot'] > 1 ? ' · Extra #' . (int) $busTrip['slot'] : '')) ?></a>
+    <?php endforeach; ?>
+    <?php if (empty($busTrips[(int) $bus['id']])): ?>
+    <span class="muted">यस मितिमा यो बसको यात्रा छैन।</span>
+    <a href="<?= $base ?>/admin/calendar.php" class="btn btn-ghost btn-sm">📅 Bus Calendar</a>
+    <?php endif; ?>
     <!-- View in trip dashboard -->
     <a href="<?= $base ?>/admin/trip-dashboard.php?date=<?= urlencode(todayISO()) ?>"
        class="btn btn-ghost btn-sm">📅 Trip View</a>
