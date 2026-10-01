@@ -14,35 +14,6 @@ $flash = null;
 $waManualLink = '';   // click-to-chat URL when no WhatsApp API is configured
 
 /**
- * Drop the cached ticket + invoice PDFs so the next download regenerates
- * them from the edited booking (5 Sep 2026 — every edit path calls this;
- * before, only the passenger edit cleared the ticket and nothing cleared
- * the invoice).
- */
-function bv_invalidate_pdfs(int $bookingId, string $pnr): void
-{
-    if (defined('TICKET_PATH')) {
-        $p = TICKET_PATH . '/ticket_' . $pnr . '.pdf';
-        if (is_file($p)) { @unlink($p); }
-    }
-    if (defined('INVOICE_PATH')) {
-        $p = INVOICE_PATH . '/invoice_' . $pnr . '.pdf';
-        if (is_file($p)) { @unlink($p); }
-    }
-    /* The PNG is the PRIMARY ticket now (5 Sep 2026) — the one WhatsApp links —
-       and it carries the name, mobile, pickup and payment pill. Until 10 Sep it
-       was left cached here, so an edited passenger kept receiving the OLD
-       picture. Dropped with the PDFs: Ticket::pngPath() redraws on next open. */
-    if (defined('TICKET_PATH')) {
-        $p = TICKET_PATH . '/ticket_' . $pnr . '.png';
-        if (is_file($p)) { @unlink($p); }
-    }
-    try {
-        Database::update('tickets', ['pdf_path' => null, 'invoice_path' => null, 'png_path' => ''], 'booking_id = :b', ['b' => $bookingId]);
-    } catch (Throwable $e) { /* no ticket row yet (pending) — nothing cached */ }
-}
-
-/**
  * May the signed-in staff member cancel the booking behind this PNR?
  * (4 Sep 2026 — agent bulk-cancel.)
  *
@@ -61,29 +32,27 @@ function bv_may_cancel(string $pnr): bool
     return Auth::mayCancelBooking($row);
 }
 
-/* ---- Regenerate the ticket after an edit (UI v3, 23 Sep; ported 24 Sep) --
-   Every edit re-mints the QR (REV n+1, old files dropped) and redraws the PNG
-   at once, so every link - and the picture bv_notify_edit() sends - is the
-   corrected ticket; Ticket::imageUrl() carries ?r=REV so WhatsApp and browsers
-   do not reuse a cached copy. The re-SEND that UI v3 added here is left out on
-   purpose: bv_notify_edit() already tells the passenger (notify_ticket_edit),
-   and two messages for one correction is the duplicate the owner asked us to
-   remove. Nothing here can fail the edit itself. */
-function bv_regen_ticket(int $bookingId, string $pnr): string
+/* ---- Regenerate the ticket after an edit (UI v3, 23 Sep; ported 24 Sep;
+   ONE hook since 1 Oct 2026) -------------------------------------------
+   Every edit goes through TicketSync::afterBookingChange(): the QR is
+   re-minted (REV n+1, old PNG/PDF/invoice gone), the PNG redrawn at once so
+   every link is the corrected ticket, ONE audit row carries the desk's
+   reason, and - for the kinds the passenger must hear about, or when
+   $notify is true - Notify::ticketChanged() is sent and its REAL outcome
+   reported in the flash (the first-ticket idempotency guard used to swallow
+   it while this page said "notified"). The plain re-SEND stays on the
+   resend_wa button: two messages for one correction is the duplicate the
+   owner asked us to remove. Nothing here can fail the edit itself. */
+function bv_sync_ticket(int $bookingId, string $pnr, string $kind, array $ctx = [], ?bool $notify = null, string $reason = ''): string
 {
     try {
-        if (!Database::exists('SELECT 1 FROM tickets WHERE booking_id = :b', ['b' => $bookingId])) {
-            bv_invalidate_pdfs($bookingId, $pnr);
-            return ' Ticket is issued at confirmation and will carry these details.';
+        $opts = ['reason' => $reason];
+        if ($notify !== null) {
+            $opts['notify'] = $notify;
         }
-        Ticket::reissue($bookingId);
-        bv_invalidate_pdfs($bookingId, $pnr);
-        try { Ticket::pngPath($bookingId, true); } catch (Throwable $e) { Logger::warning('Ticket redraw after edit failed', ['pnr' => $pnr, 'err' => $e->getMessage()]); }
-        $rev = (int) Database::scalar('SELECT reissue_count FROM tickets WHERE booking_id = :b', ['b' => $bookingId], 0);
-        return ' Ticket regenerated' . ($rev > 0 ? ' (REV ' . $rev . ')' : '') . ' - old PNG/PDF replaced.';
+        return TicketSync::note(TicketSync::afterBookingChange($bookingId, $kind, $ctx, $opts));
     } catch (Throwable $e) {
         Logger::warning('Ticket regeneration after edit failed', ['pnr' => $pnr, 'err' => $e->getMessage()]);
-        bv_invalidate_pdfs($bookingId, $pnr);
         return ' Ticket PNG and PDF regenerate on next open.';
     }
 }
@@ -92,11 +61,15 @@ function bv_regen_ticket(int $bookingId, string $pnr): string
 function bv_log_message(int $bookingId, string $to, string $status, string $provider, string $note): void
 {
     try {
-        Database::insert('message_logs', [
+        $row = [
             'booking_id' => $bookingId, 'channel' => 'whatsapp', 'provider' => $provider,
             'to_number' => substr($to, 0, 32), 'body' => mb_substr('Ticket resend (admin)', 0, 1000),
             'status' => $status, 'provider_ref' => '', 'error' => $note !== '' ? mb_substr($note, 0, 255) : null,
-        ]);
+        ];
+        // purpose (1 Oct 2026): a staff resend must never count as the FIRST
+        // ticket for the idempotency guard or the retry cron.
+        try { Database::insert('message_logs', $row + ['purpose' => 'ticket_resend']); }
+        catch (Throwable $e) { Database::insert('message_logs', $row); }
     } catch (Throwable $e) { /* message_logs is informational */ }
 }
 
@@ -142,46 +115,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
     }
 }
 
-/* ---- Edit passenger details (bookings.edit permission) -------------- */
-/**
- * After an edit, tell the passenger WHAT changed (SHG AI BRAIN 1.6 "notify
- * customer of the change", 10 Sep 2026; worded since 17 Sep 2026). Until now
- * every edit re-sent the plain "is CONFIRMED" ticket, so a passenger moved to
- * another berth got a new picture with no word about why. Notify::ticketChanged()
- * is the same delivery path (PNG + PDF links, template vars, message_logs row)
- * with a first line naming the change — seat A → B, corrected passenger
- * details, updated contact — and it links the PNG that bv_invalidate_pdfs()
- * just dropped, so the picture they receive is the corrected one.
- *
- * $what is one of ticketChanged()'s kinds this page raises — 'passenger' |
- * 'seat' | 'contact'; $ctx carries display strings (name, old, new). Best
- * effort: a WhatsApp outage never blocks the edit, and the outcome is written
- * to the audit trail either way (booking.edit_notify). Off via settings
- * notify_ticket_edit = 0. The plain ticket resend stays on the resend_wa button.
- */
-function bv_notify_edit(int $bookingId, string $pnr, string $what, array $ctx = []): string
-{
-    if (!Settings::getBool('notify_ticket_edit', true)) {
-        return '';
-    }
-    try {
-        $fresh = BookingService::detail($pnr);
-        if ($fresh === null || (string) ($fresh['status'] ?? '') !== 'confirmed') {
-            return '';
-        }
-        $r = Notify::ticketChanged($fresh, $what, $ctx);
-        Logger::audit('booking.edit_notify', 'booking', $pnr, null,
-            ['what' => $what, 'ctx' => $ctx, 'ok' => (bool) ($r['ok'] ?? false), 'to' => (string) ($fresh['contact_phone'] ?? '')],
-            (string) ($r['detail'] ?? ''));
-        return ($r['ok'] ?? false)
-            ? ' Passenger notified on WhatsApp — the message names the change and links the updated ticket.'
-            : ' (WhatsApp not sent: ' . truncate((string) ($r['detail'] ?? 'unknown'), 120) . ')';
-    } catch (Throwable $e) {
-        Logger::error('Edit notify failed: ' . $e->getMessage(), ['pnr' => $pnr]);
-        return '';
-    }
-}
-
+/* ---- Edit passenger details (bookings.edit permission) --------------
+   After an edit the passenger is told WHAT changed (SHG AI BRAIN 1.6, 10 Sep
+   2026; worded 17 Sep 2026) by Notify::ticketChanged() - since 1 Oct 2026
+   sent from TicketSync (bv_sync_ticket above) together with the regeneration,
+   so the picture they receive is the corrected one and the flash reports the
+   real delivery outcome. Off via settings notify_ticket_edit = 0. */
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'edit_passenger') {
     if (!Security::verifyCsrf()) {
         $flash = ['bad', 'Session expired — please try again.'];
@@ -333,17 +272,18 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
                    exactly as a seat change does — otherwise the PNG on the
                    passenger's phone keeps a QR signed for a number the booking
                    no longer has (17 Sep 2026). Before the cache drop below. */
-                $regenNote = bv_regen_ticket($bid, $pnr);   // any edit: new QR / REV, dropped caches, redrawn PNG
-
                 Logger::audit('booking.edit_passenger', 'booking', $pnr, $oldVals, $newVals,
                     'Edited ' . implode(', ', $changes) . ' by admin #' . $admin['id'], $reason);
+                // Any edit: new QR / REV, dropped caches, redrawn PNG, one audit row.
                 // A phone / email change is a 'contact' notice (it reaches the NEW
                 // number); anything else is a 'passenger' notice naming who changed.
-                $notice = bv_notify_edit($bid, $pnr, isset($upd['contact_phone']) || isset($upd['contact_email']) ? 'contact' : 'passenger', [
+                // notify=true: office-side kinds by default, but this desk edit has
+                // always told the passenger (settings notify_ticket_edit).
+                $regenNote = bv_sync_ticket($bid, $pnr, isset($upd['contact_phone']) || isset($upd['contact_email']) ? 'contact' : 'passenger', [
                     'name' => implode(', ', array_unique($paxNames)),
                     'new'  => implode(', ', $changes),
-                ]);
-                $flash = ['ok', 'Booking details updated: ' . implode(', ', $changes) . '.' . $regenNote . $notice];
+                ], true, $reason);
+                $flash = ['ok', 'Booking details updated: ' . implode(', ', $changes) . '.' . $regenNote];
             }
         } catch (Throwable $e) {
             $flash = ['bad', $e->getMessage()];
@@ -462,16 +402,16 @@ if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['
             if (!in_array($fromSeat, array_map('strval', $legRow['seats'] ?? []), true)) {
                 throw new RuntimeException('Seat ' . Seats::displayLabel($fromSeat, $coach, (string) ($b['booking_mode'] ?? 'sharing')) . ' is not on this booking.');
             }
-            $res = Seats::transferSeat($sid, $fromSeat, $toSeat, $coach, (int) $admin['id']);
-            Ticket::reissue((int) $b['id']);            // QR carries the seat list; PDFs regenerate
-            bv_invalidate_pdfs((int) $b['id'], $pnr);
+            $seatReason = Security::clean($_POST['reason'] ?? '', 255);
+            // transferSeat() owns the ticket (TicketSync 'seat', after its commit):
+            // QR re-minted ONCE - this page used to reissue a second time, so one
+            // seat change printed REV +2 - PNG redrawn, audited with the reason,
+            // passenger told. Its real outcome is read back for the flash.
+            $res = Seats::transferSeat($sid, $fromSeat, $toSeat, $coach, (int) $admin['id'], $seatReason);
             Logger::audit('booking.seat_change', 'booking', $pnr, ['seat' => $res['from'] ?? $fromSeat], ['seat' => $res['to'] ?? $toSeat],
-                'Seat changed on the ticket page by admin #' . $admin['id'], Security::clean($_POST['reason'] ?? '', 255));
-            $notice = bv_notify_edit((int) $b['id'], $pnr, 'seat', [
-                'old' => Seats::displayLabel((string) ($res['from'] ?? $fromSeat), $coach, (string) ($b['booking_mode'] ?? 'sharing')),
-                'new' => Seats::displayLabel((string) ($res['to'] ?? $toSeat), $coach, (string) ($b['booking_mode'] ?? 'sharing')),
-            ]);
-            $flash = ['ok', 'Seat changed ' . Seats::displayLabel((string) ($res['from'] ?? $fromSeat), $coach, (string) ($b['booking_mode'] ?? 'sharing')) . ' → ' . Seats::displayLabel((string) ($res['to'] ?? $toSeat), $coach, (string) ($b['booking_mode'] ?? 'sharing')) . '. Ticket QR, PNG and PDF re-issued.' . $notice];
+                'Seat changed on the ticket page by admin #' . $admin['id'], $seatReason);
+            $notice = TicketSync::note(TicketSync::last((int) $b['id']));
+            $flash = ['ok', 'Seat changed ' . Seats::displayLabel((string) ($res['from'] ?? $fromSeat), $coach, (string) ($b['booking_mode'] ?? 'sharing')) . ' → ' . Seats::displayLabel((string) ($res['to'] ?? $toSeat), $coach, (string) ($b['booking_mode'] ?? 'sharing')) . '.' . $notice];
             $b = BookingService::detail($pnr);
         } catch (Throwable $e) {
             $flash = ['bad', $e->getMessage()];
@@ -506,7 +446,9 @@ if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['
                 Database::update('payments', $upd, 'id = :i', ['i' => $payId]);
                 Logger::audit('payment.edit', 'payment', (string) $payId, $oldVals, $newVals, 'Payment details edited on ' . $pnr . ' by admin #' . $admin['id']);
                 // the invoice prints the method, the ticket PNG the payment pill
-                $flash = ['ok', 'Payment record updated (' . implode(', ', array_keys($upd)) . ').' . bv_regen_ticket((int) $b['id'], $pnr)];
+                // (office-side: REV + redraw + audit, no passenger message)
+                $flash = ['ok', 'Payment record updated (' . implode(', ', array_keys($upd)) . ').'
+                    . bv_sync_ticket((int) $b['id'], $pnr, 'payment', ['new' => implode(', ', array_keys($upd))], null, $note)];
             }
             $b = BookingService::detail($pnr);
         } catch (Throwable $e) {
@@ -760,9 +702,9 @@ if ($b !== null && $isSuperHere && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'PO
             if ($oldVals === [] && $newVals === []) {
                 $flash = ['ok', 'Nothing changed.'];
             } else {
-                $contactRegen = bv_regen_ticket((int) $b['id'], $pnr);   // any edit: new QR / REV, redrawn
+                $contactReason = Security::clean($_POST['reason'] ?? '', 255);
                 Logger::audit('booking.edit_contact', 'booking', $pnr, $oldVals, $newVals, 'superadmin contact edit by admin #' . $admin['id'],
-                    Security::clean($_POST['reason'] ?? '', 255));
+                    $contactReason);
                 // Say what changed; an internal note alone is not the passenger's business.
                 $contactWhat = [];
                 if (isset($upd['contact_phone'])) { $contactWhat[] = 'phone'; }
@@ -770,9 +712,11 @@ if ($b !== null && $isSuperHere && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'PO
                 foreach (array_keys($newVals) as $nk) {
                     if (str_starts_with((string) $nk, 'pax #')) { $contactWhat[] = 'passenger name'; break; }
                 }
-                $notice = $contactWhat === [] ? ''
-                    : bv_notify_edit((int) $b['id'], $pnr, $contactWhat === ['passenger name'] ? 'passenger' : 'contact', ['new' => implode(', ', $contactWhat)]);
-                $flash = ['ok', 'Booking details updated.' . $contactRegen . $notice];
+                // Any edit: new QR / REV, redrawn PNG, one audit row; the passenger
+                // is told only when something THEY see changed.
+                $contactRegen = bv_sync_ticket((int) $b['id'], $pnr, $contactWhat === ['passenger name'] ? 'passenger' : 'contact',
+                    ['new' => implode(', ', $contactWhat)], $contactWhat !== [], $contactReason);
+                $flash = ['ok', 'Booking details updated.' . $contactRegen];
             }
             $b = BookingService::detail($pnr);
         } catch (Throwable $e) { $flash = ['bad', $e->getMessage()]; }
@@ -832,6 +776,14 @@ if ($isSuperHere && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST[
                 // recomputed the same way BookingService::cancel() does it —
                 // otherwise the shared-cabin gender flag would linger after
                 // the last female was hard-deleted.
+                // The rendered PNG/PDF/invoice must not outlive the row (they were
+                // orphaned on disk before): void + unlink through the one hook.
+                try { TicketSync::afterBookingChange($bid, 'delete', [], ['reason' => 'superadmin permanent delete']); }
+                catch (Throwable $e) { Logger::warning('Ticket cleanup before hard delete failed', ['pnr' => $pnr, 'e' => $e->getMessage()]); }
+                // The rendered PNG/PDF/invoice must not outlive the row (they were
+                // orphaned on disk before): void + unlink through the one hook.
+                try { TicketSync::afterBookingChange($bid, 'delete', [], ['reason' => 'superadmin permanent delete']); }
+                catch (Throwable $e) { Logger::warning('Ticket cleanup before hard delete failed', ['pnr' => $pnr, 'e' => $e->getMessage()]); }
                 Database::transaction(static function () use ($bid, $b): void {
                     Seats::releaseBooking($bid);
                     Database::update('commissions', ['status' => 'void'], 'booking_id = :b', ['b' => $bid]);

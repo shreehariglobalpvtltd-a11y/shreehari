@@ -88,9 +88,13 @@ $icon   = 'ℹ️';
 if ($authed && $booking !== null) {
     $status  = strtolower((string) ($booking['status'] ?? ''));
     $scanned = (string) ($booking['ticket']['scanned_at'] ?? '');
-    if (in_array($status, ['cancelled', 'rejected'], true)) {
+    // tickets.is_void (1 Oct 2026): set by TicketSync when a booking is
+    // cancelled / rejected / deleted, cleared on re-approval. A voided ticket
+    // never reads VALID here even if the booking row has since moved on.
+    $voided  = (int) ($booking['ticket']['is_void'] ?? 0) === 1;
+    if (in_array($status, ['cancelled', 'rejected'], true) || $voided) {
         $state = 'cancelled';
-        $title = 'Cancelled — रद्द';
+        $title = $voided && !in_array($status, ['cancelled', 'rejected'], true) ? 'Voided — रद्द' : 'Cancelled — रद्द';
         $sub   = 'This ticket is not valid for travel.';
         $color = '#dc2626';
         $icon  = '❌';

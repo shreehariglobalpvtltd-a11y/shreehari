@@ -22,6 +22,18 @@ final class Database
     /** Nesting depth so nested transaction() calls do not double-commit. */
     private static int $txDepth = 0;
 
+    /**
+     * Work parked until the OUTERMOST transaction commits (1 Oct 2026).
+     * Ticket regeneration, WhatsApp sends and other side effects that read
+     * committed rows or touch the filesystem register here from inside a
+     * closure; commit() flushes the list once the COMMIT has gone through,
+     * rollBack() discards it - so a deadlock retry never re-runs them and a
+     * rolled-back move never deletes a rendered ticket.
+     *
+     * @var list<callable>
+     */
+    private static array $afterCommit = [];
+
     private function __construct() {}
 
     /**
@@ -230,8 +242,57 @@ final class Database
     {
         if (self::$txDepth > 0) {
             self::$txDepth--;
-            if (self::$txDepth === 0 && self::pdo()->inTransaction()) {
-                self::pdo()->commit();
+            if (self::$txDepth === 0) {
+                if (self::pdo()->inTransaction()) {
+                    self::pdo()->commit();
+                }
+                self::flushAfterCommit();
+            }
+        }
+    }
+
+    /** Inside any Database::begin()/transaction() nesting right now? */
+    public static function inTransaction(): bool
+    {
+        return self::$txDepth > 0;
+    }
+
+    /**
+     * Run $fn now when no transaction is open, otherwise right after the
+     * outermost COMMIT succeeds (discarded if it rolls back). A callback
+     * that throws is logged and never disturbs the others or the caller.
+     */
+    public static function afterCommit(callable $fn): void
+    {
+        if (self::$txDepth === 0) {
+            $fn();
+            return;
+        }
+        self::$afterCommit[] = $fn;
+    }
+
+    /** Pending afterCommit() callbacks (tests and diagnostics). */
+    public static function pendingAfterCommit(): int
+    {
+        return count(self::$afterCommit);
+    }
+
+    private static function flushAfterCommit(): void
+    {
+        if (self::$afterCommit === []) {
+            return;
+        }
+        // Take the list first: a callback may open its own transaction and
+        // queue more work, which then flushes with THAT commit.
+        $queue = self::$afterCommit;
+        self::$afterCommit = [];
+        foreach ($queue as $fn) {
+            try {
+                $fn();
+            } catch (Throwable $e) {
+                if (class_exists('Logger', false)) {
+                    Logger::error('afterCommit callback failed', ['error' => $e->getMessage(), 'file' => $e->getFile() . ':' . $e->getLine()]);
+                }
             }
         }
     }
@@ -244,6 +305,7 @@ final class Database
                 self::pdo()->rollBack();
             }
         }
+        self::$afterCommit = [];   // nothing the failed attempt queued may run
     }
 
     /**

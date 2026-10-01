@@ -133,11 +133,17 @@ if (str_contains($bookingSrc, 'Logger::audit') && str_contains($bookingSrc, 'boo
     }
 }
 
-// Check ticket reissue
-if (str_contains($bookingSrc, 'Ticket::issue') || str_contains($bookingSrc, 'reissue')) {
-    pass('Reissues ticket after seat removal');
+// Check ticket regeneration (1 Oct 2026: through the one TicketSync hook,
+// after the commit, with the refund in the passenger's notice)
+if (str_contains($bookingSrc, "TicketSync::afterBookingChange(\$bookingId, 'seat_cancelled'")) {
+    pass('Regenerates the ticket after seat removal (TicketSync seat_cancelled)');
 } else {
-    skip('Ticket reissue (may be handled externally)');
+    fail('Missing TicketSync seat_cancelled call in cancelSeat');
+}
+if (!str_contains($bookingSrc, 'Ticket::reissue(')) {
+    pass('No hand-rolled Ticket::reissue() left in booking.php');
+} else {
+    fail('booking.php still calls Ticket::reissue() directly');
 }
 
 /* ──────────────────────────────────────────────────────────────────────

@@ -1631,15 +1631,22 @@ final class AgentWallet
             ($atSale ? 'Desk sale credited to agent by admin #' : 'Selling agent changed by admin #') . $by
         );
 
-        // The ticket prints ISSUED BY / AGENT CODE: drop the cached PNG/PDF so
-        // the next open or WhatsApp send renders the corrected ticket.
+        // The ticket prints ISSUED BY / AGENT CODE: regenerate it through the
+        // one hook (1 Oct 2026) — new link, PNG redrawn before any WhatsApp
+        // fetch, one audit row. Silent at the moment of sale (nobody has seen
+        // that ticket, so no CORRECTED · REV 1); the passenger is not messaged
+        // for an office-side attribution change.
         try {
-            if (!class_exists('Ticket')) {
-                require_once __DIR__ . '/ticket.php';
+            if (!class_exists('TicketSync')) {
+                require_once __DIR__ . '/ticketsync.php';
             }
-            Ticket::reissue($bookingId, !$atSale);
+            TicketSync::afterBookingChange($bookingId, 'agent', ['old' => $oldAgentId, 'new' => $newAgentId], [
+                'silent' => $atSale,
+                'notify' => false,
+                'reason' => $atSale ? 'Desk sale credited to agent' : 'Selling agent changed by admin #' . $by,
+            ]);
         } catch (Throwable $e) {
-            Logger::warning('Ticket reissue after agent change failed', ['pnr' => $pnr, 'e' => $e->getMessage()]);
+            Logger::warning('Ticket sync after agent change failed', ['pnr' => $pnr, 'e' => $e->getMessage()]);
         }
 
         return ['old' => $oldAgentId, 'new' => $newAgentId, 'commission' => $commission];

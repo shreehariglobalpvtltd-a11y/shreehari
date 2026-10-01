@@ -54,6 +54,13 @@ final class Notify
     private static string $lastProviderError = '';
 
     /** @return list<array{to: string, ok: bool, link: ?string, driver: string, reason: string}> */
+    /** Did the most recent whatsapp() call short-circuit on the idempotency guard? */
+    private static function lastSendSuppressed(): bool
+    {
+        $last = self::$journal !== [] ? self::$journal[count(self::$journal) - 1] : null;
+        return $last !== null && (string) ($last['reason'] ?? '') === 'idempotent';
+    }
+
     public static function whatsappJournal(): array
     {
         return self::$journal;
@@ -317,12 +324,18 @@ final class Notify
            on a booking whose confirmation went out cleanly, this returns
            the earlier success without touching the driver again. Applies
            ONLY to purpose=ticket: staff tools (agent statements, reminders)
-           deliberately re-send. The manual Resend button uses
-           resendTicketWhatsApp() and passes purpose=ticket, so it is also
-           protected — a customer who actually needs a resend is served
-           either by cron/whatsapp-retry.php (only fires on a FAILED latest
-           row) or by the button after the earlier row is marked failed by
-           the delivery callback. */
+           deliberately re-send.
+
+           1 Oct 2026 (R3f, G1): the manual Resend button (resendTicketWhatsApp,
+           purpose=ticket_resend) and every "your ticket CHANGED" notice
+           (ticketChanged, purpose=ticket_update) used to pass purpose=ticket
+           too, so once the first ticket had gone out every correction notice
+           and every resend was silently swallowed here while the caller
+           audited "sent". They now carry their own purposes and are never
+           guarded; cron/whatsapp-retry.php knows the new purposes as well.
+           Should the guard ever fire for one of them, the journal entry below
+           (reason 'idempotent') is what they read back to report
+           'suppressed' instead of claiming delivery. */
         if (($meta['purpose'] ?? '') === 'ticket' && $bookingId && (int) $bookingId > 0) {
             try {
                 $prior = Database::fetch(
@@ -819,8 +832,11 @@ final class Notify
             self::countryHint($booking),
             self::ticketTemplateVars($booking),
             isset($booking['id']) && (int) $booking['id'] > 0 ? (int) $booking['id'] : null,
-            ['purpose' => 'ticket']
+            ['purpose' => 'ticket_resend']
         );
+        if (self::lastSendSuppressed()) {
+            return ['ok' => false, 'detail' => 'suppressed (idempotent) — the earlier ticket to this number is still recorded as sent, nothing new went out.'];
+        }
         if ($res === true) {
             return ['ok' => true, 'detail' => 'Ticket re-sent to ' . $booking['contact_phone'] . ' on WhatsApp.'];
         }
@@ -860,14 +876,17 @@ final class Notify
      * so. Never throws; best effort like the button it mirrors.
      *
      * @param array<string,mixed> $booking FULL BookingService::detail() array
-     * @param string $what 'reschedule' | 'missed_rebook' | 'seat' | 'passenger' | 'contact'
+     * @param string $what 'reschedule' | 'missed_rebook' | 'seat' | 'seat_cancelled' |
+     *        'passenger' | 'contact' | 'payment' | 'agent' | 'paid' | 'stops' |
+     *        'trip_change' | 'reconfirm' (the TicketSync kinds, 1 Oct 2026)
      * @param array<string,mixed> $ctx oldDate, newDate, seats (string|array),
-     *        oldSeats, old, new, name — all optional, all display strings
+     *        oldSeats, old, new, name, seat, refund — all optional, all display strings
      * @return array{ok: bool, detail: string, link?: string}
      */
     public static function ticketChanged(array $booking, string $what, array $ctx = []): array
     {
-        if (!in_array($what, ['reschedule', 'missed_rebook', 'seat', 'passenger', 'contact'], true)) {
+        if (!in_array($what, ['reschedule', 'missed_rebook', 'seat', 'seat_cancelled', 'passenger', 'contact',
+                              'payment', 'agent', 'paid', 'stops', 'trip_change', 'reconfirm'], true)) {
             return ['ok' => false, 'detail' => 'Unknown ticket change kind "' . $what . '" — nothing sent.'];
         }
         $company = Settings::getString('company_name', APP_NAME);
@@ -921,6 +940,36 @@ final class Notify
                 $en = 'Contact details on ticket ' . $pnr . ' have been UPDATED' . ($seats !== '' ? ': ' . $seats : '');
                 $np = 'टिकट ' . $pnr . ' को सम्पर्क विवरण मिलाइयो।';
                 break;
+            case 'seat_cancelled':
+                $cSeat   = $seatStr($ctx['seat'] ?? '');
+                $cRefund = trim((string) ($ctx['refund'] ?? ''));
+                $en = 'Seat ' . $cSeat . ' on ticket ' . $pnr . ' has been CANCELLED' . ($seats !== '' ? '; remaining seat(s) ' . $seats : '')
+                    . ($cRefund !== '' ? '; refund ' . $cRefund : '');
+                $np = 'टिकट ' . $pnr . ' को सिट ' . $cSeat . ' रद्द भयो।'
+                    . ($seats !== '' ? ' बाँकी सिट: ' . $seats . '।' : '')
+                    . ($cRefund !== '' ? ' फिर्ता: ' . $cRefund . '।' : '');
+                break;
+            case 'stops':
+                $en = 'Boarding / drop point on ticket ' . $pnr . ' has been UPDATED' . ($seats !== '' ? ': ' . $seats : '');
+                $np = 'टिकट ' . $pnr . ' को चढ्ने / ओर्लने ठाउँ मिलाइयो' . ($seats !== '' ? ': ' . $seats : '') . '।';
+                break;
+            case 'trip_change':
+                $en = 'Your trip on ticket ' . $pnr . ' has CHANGED' . ($seats !== '' ? ': ' . $seats : '') . ($newDate !== '' ? ' · ' . $newDate : '');
+                $np = 'टिकट ' . $pnr . ' को बस / समय बदलियो' . ($seats !== '' ? ': ' . $seats : '') . ($newDate !== '' ? ' · ' . $newDate : '') . '।';
+                break;
+            case 'reconfirm':
+                $en = 'Your ticket ' . $pnr . ' is CONFIRMED again';
+                $np = 'तपाईंको टिकट ' . $pnr . ' फेरि पक्का भयो।';
+                break;
+            case 'payment':
+            case 'paid':
+                $en = 'Payment details on ticket ' . $pnr . ' have been UPDATED';
+                $np = 'टिकट ' . $pnr . ' को भुक्तानी विवरण मिलाइयो।';
+                break;
+            case 'agent':
+                $en = 'Ticket ' . $pnr . ' has been re-issued';
+                $np = 'टिकट ' . $pnr . ' फेरि जारी गरियो।';
+                break;
             default: // passenger
                 $en = 'Passenger details on ticket ' . $pnr . ' have been UPDATED' . ($name !== '' ? ' (' . $name . ')' : '');
                 $np = 'टिकट ' . $pnr . ' को यात्रु विवरण मिलाइयो।';
@@ -943,8 +992,11 @@ final class Notify
             self::countryHint($booking),
             self::ticketTemplateVars($booking),
             isset($booking['id']) && (int) $booking['id'] > 0 ? (int) $booking['id'] : null,
-            ['purpose' => 'ticket']
+            ['purpose' => 'ticket_update']
         );
+        if (self::lastSendSuppressed()) {
+            return ['ok' => false, 'detail' => 'suppressed (idempotent) — the change notice was not sent.'];
+        }
         if ($res === true) {
             return ['ok' => true, 'detail' => 'Change notice (' . $what . ') sent to ' . $booking['contact_phone'] . ' on WhatsApp.'];
         }

@@ -15,10 +15,11 @@
  *   Step 1 — pick route + travel date (page reloads with seats visible).
  *   Step 2 — tick seats, fill passenger cards, submit.
  *
- * Extra fields not accepted by counterSale() itself (id_type, id_number,
- * boarding_stop, drop_stop, boarding_time) are written by a small
- * post-sale UPDATE — the core sale stays untouched so its regression
- * suite still covers it.
+ * Boarding / drop point and the contact's government ID ride WITH the
+ * sale (1 Oct 2026, R3f G7): counterSale() writes them before the ticket
+ * is issued and the WhatsApp / email goes out, so the first ticket already
+ * shows the passenger's own stop. They used to be a post-sale UPDATE that
+ * the already-rendered ticket and the already-sent message never saw.
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
@@ -144,6 +145,29 @@ if ($canCreate && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['a
             $note   = Security::clean((string) ($_POST['note'] ?? ''), 255);
             $source = Auth::isCounterAgent() ? 'agent' : 'admin';
 
+            /* Boarding / drop / government ID go INTO the sale (1 Oct 2026, R3f
+               G7) so the leg and the booking are right before Ticket::issue()
+               and the WhatsApp / email fan-out; they used to be a post-sale
+               UPDATE the first ticket never saw. A typed boarding point that
+               names a configured pickup town lands on that stop (with its
+               time); any other text is kept verbatim via the 'Other' contract
+               create() and counterSale() share. */
+            $idType    = Security::clean((string) ($_POST['id_type']   ?? ''), 60);
+            $idNumber  = Security::clean((string) ($_POST['id_number'] ?? ''), 60);
+            $boarding  = Security::clean((string) ($_POST['boarding_stop'] ?? ''), 191);
+            $dropStop  = Security::clean((string) ($_POST['drop_stop']     ?? ''), 191);
+            $stopData  = ['drop' => $dropStop, 'idType' => $idType, 'idNum' => $idNumber];
+            if ($boarding !== '') {
+                $known = false;
+                $want  = Boarding::townKey($boarding);
+                foreach (Boarding::stopsFor($routeId) as $stop) {
+                    if ($want !== '' && Boarding::townKey((string) ($stop['name'] ?? '')) === $want) { $known = true; break; }
+                }
+                $stopData += $known
+                    ? ['boarding' => $boarding]
+                    : ['boarding' => BookingService::BOARDING_OTHER, 'boardingOther' => $boarding];
+            }
+
             $booking = BookingService::counterSale(
                 $route,
                 (int) $schedule['id'],
@@ -161,41 +185,10 @@ if ($canCreate && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['a
                     'discountValue' => (float) ($_POST['discount_value'] ?? 0),
                     'passengers'    => $passengers,
                     'note'          => $note,
-                ],
+                ] + $stopData,
                 (int) $admin['id'],
                 $source
             );
-
-            /* Post-sale UPDATE for fields counterSale doesn't accept yet:
-               government-ID pair on the booking, boarding/drop on the
-               outbound leg. Kept as UPDATEs rather than extending the
-               tested counterSale signature — this page is the only
-               caller that captures these today. */
-            $idType    = Security::clean((string) ($_POST['id_type']   ?? ''), 60);
-            $idNumber  = Security::clean((string) ($_POST['id_number'] ?? ''), 60);
-            $boarding  = Security::clean((string) ($_POST['boarding_stop'] ?? ''), 191);
-            $dropStop  = Security::clean((string) ($_POST['drop_stop']     ?? ''), 191);
-
-            if ($idType !== '' || $idNumber !== '') {
-                Database::update('bookings',
-                    ['id_type' => $idType ?: null, 'id_number' => $idNumber ?: null],
-                    'id = :id', ['id' => (int) $booking['id']]
-                );
-            }
-            if ($boarding !== '' || $dropStop !== '') {
-                Database::update('booking_legs',
-                    ['boarding_stop' => $boarding ?: null, 'drop_stop' => $dropStop ?: null],
-                    'booking_id = :b AND leg_type = \'outbound\'',
-                    ['b' => (int) $booking['id']]
-                );
-            }
-            if ($idType !== '' || $idNumber !== '' || $boarding !== '' || $dropStop !== '') {
-                // The sale itself is audited inside counterSale(); this records
-                // the post-sale amendment so the trail shows the ID + stops too.
-                Logger::audit('booking.counter_details', 'booking', (string) $booking['pnr'], null,
-                    array_filter(['id_type' => $idType, 'id_number' => $idNumber, 'boarding_stop' => $boarding, 'drop_stop' => $dropStop]),
-                    'ID / stops captured at the counter');
-            }
 
             /* Straight to the ticket — the admin's next action is almost
                always "print / share the confirmation", not to book another. */

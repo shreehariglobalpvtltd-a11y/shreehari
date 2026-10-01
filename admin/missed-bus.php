@@ -63,28 +63,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
             $newCoach   = Seats::coachForSchedule($newScheduleId);
             $newMode    = (string) ($b['booking_mode'] ?? 'sharing');
             $seatLabels = array_map(static fn($s) => Seats::displayLabel((string) $s, $newCoach, $newMode), $seats);
-            $flash = ['ok', 'Missed-bus rebooked to ' . formatDate($newDate) . ' · seat(s) ' . implode(', ', $seatLabels) . '. Ticket re-issued and logged.'];
-            $b = BookingService::detail($pnr);
             /* 17 Sep 2026: the passenger is told they were moved (old date →
                new date · seats) with the re-issued PNG — the missed-bus page
-               used to send nothing at all. Same best-effort block as
-               reschedule.php: an outage never undoes the rebooking. */
-            if ($b !== null && Settings::getBool('notify_ticket_edit', true) && (string) ($b['status'] ?? '') === 'confirmed') {
-                try {
-                    require_once INCLUDE_PATH . '/notify.php';
-                    $nr = Notify::ticketChanged($b, 'missed_rebook', [
-                        'oldDate' => $oldDate,
-                        'newDate' => $newDate,
-                        'seats'   => $seatLabels,
-                    ]);
-                    Logger::audit('booking.edit_notify', 'booking', $pnr, null,
-                        ['what' => 'missed_rebook', 'ok' => (bool) ($nr['ok'] ?? false), 'to' => (string) ($b['contact_phone'] ?? '')],
-                        (string) ($nr['detail'] ?? ''));
-                    $flash[1] .= ($nr['ok'] ?? false) ? ' Passenger notified on WhatsApp.' : ' (WhatsApp not sent: ' . truncate((string) ($nr['detail'] ?? ''), 120) . ')';
-                } catch (Throwable $e) {
-                    Logger::error('Missed-bus notify failed: ' . $e->getMessage(), ['pnr' => $pnr]);
-                }
-            }
+               used to send nothing at all. Since 1 Oct 2026 TicketSync sends it
+               inside rebookMissedLeg() right after the commit; this page only
+               reports the real outcome (see reschedule.php). */
+            $flash = ['ok', 'Missed-bus rebooked to ' . formatDate($newDate) . ' · seat(s) ' . implode(', ', $seatLabels) . '. Logged.'
+                . TicketSync::note(TicketSync::last((int) $b['id']))];
+            $b = BookingService::detail($pnr);
         } catch (Throwable $e) {
             $flash = ['bad', $e->getMessage()];
         }

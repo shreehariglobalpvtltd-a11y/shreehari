@@ -804,9 +804,16 @@ Example: Ram Bahadur 35, Sita Gurung 30",
                like it had been ignored. The ticket self-heals on next open;
                the passenger is told the name is fixed either way. */
             try {
-                Ticket::reissue($bid);
+                if (!class_exists('TicketSync')) { require_once INCLUDE_PATH . '/ticketsync.php'; }
+                // One hook (1 Oct 2026): new QR + REV n, PNG redrawn, audited.
+                // notify=false — the reply below carries the corrected picture.
+                TicketSync::afterBookingChange($bid, 'passenger', ['name' => $new], [
+                    'notify' => false,
+                    'actor'  => 'whatsapp:' . $who,
+                    'reason' => 'Name corrected in the WhatsApp chat right after the sale',
+                ]);
             } catch (Throwable $e) {
-                Logger::error('Ticket reissue after WhatsApp rename failed: ' . $e->getMessage(),
+                Logger::error('Ticket sync after WhatsApp rename failed: ' . $e->getMessage(),
                     ['pnr' => $sold['pnr']], 'whatsapp');
             }
             Logger::audit('booking.rename_wabooking', 'booking', $sold['pnr'],

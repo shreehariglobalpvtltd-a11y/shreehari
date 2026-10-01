@@ -204,6 +204,11 @@ self.addEventListener('fetch', function (event) {
         if (res && res.ok && (res.headers.get('content-type') || '').indexOf('image/') === 0) {
           await cache.put(key, res.clone());
           await trimCache(TICKET_CACHE, MAX_TICKETS);
+        } else if (res && (res.status === 403 || res.status === 410)) {
+          /* 1 Oct 2026: the server says this ticket is not (or no longer)
+             valid - cancelled, rejected, voided. The saved copy must not be
+             shown at the gate, so it is dropped here. */
+          try { await cache.delete(key); } catch (e) {}
         }
         return res;
       });
@@ -216,7 +221,8 @@ self.addEventListener('fetch', function (event) {
       var slow = new Promise(function (r) { setTimeout(function () { r(null); }, TICKET_WAIT_MS); });
       try {
         var res = await Promise.race([net, slow]);
-        return (res && res.ok) ? res : hit;
+        // A definite 403/410 (voided / not confirmed) outranks the saved copy.
+        return (res && (res.ok || res.status === 403 || res.status === 410)) ? res : hit;
       } catch (e) {
         return hit;
       }

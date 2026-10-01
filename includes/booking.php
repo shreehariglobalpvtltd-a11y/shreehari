@@ -22,6 +22,10 @@ if (!defined('SHG_APP')) {
 // or reverse it, so it is a hard dependency of this service rather than
 // something each entry point has to remember to include.
 require_once __DIR__ . '/agentwallet.php';
+// Every booking change below ends in TicketSync::afterBookingChange() (1 Oct
+// 2026): the one place that re-mints the QR, redraws the PNG, voids a
+// cancelled ticket, audits and tells the passenger - after the commit.
+require_once __DIR__ . '/ticketsync.php';
 
 final class BookingService
 {
@@ -896,6 +900,18 @@ final class BookingService
             ? self::manualStop($data['boardingOther'] ?? '', 'boarding')
             : null;
 
+        /* Drop point + the contact's government ID (1 Oct 2026, R3f G7): the
+           full desk form (admin/new-booking.php) used to write these with a
+           post-sale UPDATE — after the ticket was issued and the WhatsApp /
+           email had gone out carrying the default stop. They are part of the
+           sale now, so the first render is the right one. Same 'drop' /
+           'dropOther' contract as create(); a plain label is stored as typed. */
+        $dropStop = (string) ($data['drop'] ?? '') === self::BOARDING_OTHER
+            ? self::manualStop($data['dropOther'] ?? '', 'drop')
+            : (Security::clean((string) ($data['drop'] ?? ''), 191) ?: null);
+        $contactIdType = self::paxIdField($data['idType'] ?? '', '');
+        $contactIdNum  = self::paxIdField($data['idNum'] ?? '', '');
+
         /* The closure reads $data for the boarding hint (boarding / originTown)
            it hands defaultBoardingStop() below, so $data MUST be in its use-list.
            It was not, and because `??` also swallows an undefined variable no
@@ -905,7 +921,7 @@ final class BookingService
         $booking = Database::transaction(function () use (
             $route, $scheduleId, $date, $seats, $passengers, $name, $phone, $gender,
             $coach, $bookingMode, $perSeat, $base, $discount, $total, $method, $note, $adminId, $source, $allowStaffSeats,
-            $counterCountryCode, $boardingOther, $data
+            $counterCountryCode, $boardingOther, $data, $dropStop, $contactIdType, $contactIdNum
         ): array {
             Seats::assertAvailable($scheduleId, $seats, 'admin-counter-' . $adminId, $allowStaffSeats, $bookingMode);
             Seats::assertGenderAllowed(
@@ -934,6 +950,8 @@ final class BookingService
                 // Who sold it — powers the agent panel and the wallet ledger.
                 // Older rows stay NULL (unattributed history).
                 'sold_by_admin_id' => $adminId ?: null,
+                'id_type'       => $contactIdType,
+                'id_number'     => $contactIdNum,
                 'ip_address'    => Security::clientIp(),
             ]);
 
@@ -968,6 +986,7 @@ final class BookingService
                     (string) ($data['boarding'] ?? $data['originTown'] ?? ''),
                     (string) ($route['from_city'] ?? '')
                 ),
+                'drop_stop'     => $dropStop,
                 'fare_per_seat' => $perSeat,
                 'seat_count'    => count($seats),
                 'leg_total'     => $total,
@@ -1016,7 +1035,10 @@ final class BookingService
             AgentWallet::accrue($booking);
 
             Logger::audit('booking.counter', 'booking', $pnr, null,
-                ['seats' => implode(',', $seats), 'amount' => $total, 'source' => $source],
+                array_filter([
+                    'seats' => implode(',', $seats), 'amount' => $total, 'source' => $source,
+                    'drop_stop' => $dropStop, 'id_type' => $contactIdType, 'id_number' => $contactIdNum,
+                ], static fn($v): bool => $v !== null && $v !== ''),
                 'counter sale by admin #' . $adminId . ($note !== '' ? ' · ' . $note : ''));
 
             return $booking;
@@ -1447,11 +1469,20 @@ final class BookingService
                 Database::update('booking_passengers', ['seat_no' => $newSeatNos[$i]], 'id = :id', ['id' => (int) $p['id']]);
             }
 
-            // 6) Re-mint the signed ticket QR + drop the cached PDF (guarded —
-            //    a ticket hiccup must never roll back the move; the PDF self-
-            //    heals on the next download regardless).
-            try { Ticket::reissue($bookingId); }
-            catch (Throwable $e) { Logger::error('Leg-move ticket reissue failed', ['e' => $e->getMessage()]); }
+            // 6) Ticket: new signed QR, PNG redrawn, one audit row and the
+            //    passenger's change notice — ONE hook. TicketSync parks itself
+            //    on Database::afterCommit() while this transaction is open, so
+            //    it runs right after the COMMIT: a deadlock retry cannot bump
+            //    REV twice and a rollback never deletes a rendered ticket.
+            $tsKind = $auditAction === 'booking.missed_rebook' ? 'missed_rebook' : 'reschedule';
+            $tsLbl  = static fn(array $list): array => array_map(
+                static fn($s): string => Seats::displayLabel((string) $s, $coach, $bookingMode), $list);
+            TicketSync::afterBookingChange($bookingId, $tsKind, [
+                'oldDate'  => $oldDate,
+                'newDate'  => $newDate,
+                'seats'    => $tsLbl($newSeatNos),
+                'oldSeats' => $tsLbl($oldSeats),
+            ], ['reason' => $reason]);
 
             $newAudit = [
                 'schedule' => $newScheduleId, 'date' => $newDate, 'seats' => implode(',', $newSeatNos),
@@ -1466,12 +1497,8 @@ final class BookingService
             return ['booking' => $fresh, 'changed' => true];
         });
 
-        // Post-commit: force-regenerate the cached PDF so the next download /
-        // resend is already truthful. Outside the txn — the renderer reads
-        // committed rows only. Guarded — never fail the move on it.
-        try { Ticket::pdfPath($bookingId, true); }
-        catch (Throwable $e) { Logger::error('Leg-move PDF regen failed', ['e' => $e->getMessage()]); }
-
+        // The ticket work (QR, PNG, audit, passenger notice) already ran in
+        // the afterCommit flush above; the PDF re-renders on its next open.
         return $result;
     }
 
@@ -1789,6 +1816,7 @@ final class BookingService
             // confirmed booking is the valuable record; the ticket row is derived
             // and self-heals, because every read path (pdfPath/invoicePath) calls
             // issue() again on the next download.
+            $hadTicket = Database::exists('SELECT 1 FROM tickets WHERE booking_id = :b', ['b' => $bookingId]);
             try { Ticket::issue($bookingId); }
             catch (Throwable $e) {
                 Logger::error(
@@ -1796,6 +1824,15 @@ final class BookingService
                     ['booking' => $bookingId, 'pnr' => (string) ($booking['pnr'] ?? ''), 'e' => $e->getMessage()],
                     'ticket'
                 );
+            }
+            if ($hadTicket) {
+                /* Re-approval (rejected → confirmed, or a superadmin reset to
+                   pending): issue() returned the OLD row — voided by reject(),
+                   or still caching the pre-reversal render. Lift the void and
+                   redraw from the live rows after this commit. Silent: nothing
+                   the passenger holds is being corrected, and booking.approved
+                   below delivers the ticket, so no second message. */
+                TicketSync::afterBookingChange($bookingId, 'reconfirm', [], ['silent' => true, 'notify' => false, 'reason' => $note]);
             }
 
             self::reconcileRedeemedPoints($booking, true); // re-charge points a prior reject refunded (§4)
@@ -1891,23 +1928,13 @@ final class BookingService
                 'admin_note'  => $note !== '' ? Security::clean($note, 255) : 'Cash collected',
             ], 'id = :id', ['id' => $payment['id']]);
 
-            /* The cached ticket PDF still carries the CASH-DUE band; drop the
-               cache so the next download regenerates it saying PAID. */
-            if (defined('TICKET_PATH')) {
-                $stale = TICKET_PATH . '/ticket_' . $booking['pnr'] . '.pdf';
-                if (is_file($stale)) {
-                    @unlink($stale);
-                }
-                /* The PNG is the primary ticket (5 Sep 2026) and carries the
-                   same CASH-DUE pill; the codSettled WhatsApp promises it "now
-                   shows PAID". Until 10 Sep the PNG cache was NOT dropped here,
-                   so the promise was false. Ticket::pngPath() redraws on next open. */
-                $stalePng = TICKET_PATH . '/ticket_' . $booking['pnr'] . '.png';
-                if (is_file($stalePng)) {
-                    @unlink($stalePng);
-                }
-            }
-            Database::update('tickets', ['pdf_path' => '', 'png_path' => ''], 'booking_id = :b', ['b' => $bookingId]);
+            /* The cached ticket PNG/PDF still carry the CASH-DUE pill and the
+               codSettled WhatsApp promises the ticket "now shows PAID". One hook
+               redraws it right after this commit — silently (collecting the fare
+               is not a correction, so no CORRECTED · REV banner) and with no
+               second message (booking.cod_settled below sends the receipt). It
+               also gives the picture a new URL, so nothing cached is re-served. */
+            TicketSync::afterBookingChange($bookingId, 'paid', [], ['silent' => true, 'notify' => false, 'reason' => $note]);
 
             // A COD booking is normally already confirmed; a counter sale that
             // was somehow left pending is confirmed here so the ticket issues.
@@ -2020,7 +2047,11 @@ final class BookingService
                     $bookingId);
             }
 
-            Logger::audit('booking.reject', 'booking', (string) $booking['pnr'], ['status' => $old], ['status' => 'rejected'], $reason);
+            // A rejected booking's ticket is voided (files gone, is_void = 1)
+            // after this commit; confirm() lifts the void on a re-approval.
+            TicketSync::afterBookingChange($bookingId, 'void', [], ['reason' => $reason]);
+
+            Logger::audit('booking.reject', 'booking', (string) $booking['pnr'], ['status' => $old], ['status' => 'rejected'], $reason, $reason);
 
             return [
                 'booking' => Database::fetch('SELECT * FROM bookings WHERE id = :id', ['id' => $bookingId]) ?? [],
@@ -2302,7 +2333,11 @@ final class BookingService
                 self::notifyAdmin('🚫', 'Booking cancelled · ' . $pnr, ucfirst($actor) . ' cancelled. Refund due: ' . inr($refund['amount']), (int) $booking['id']);
             }
 
-            Logger::audit('booking.cancel', 'booking', $pnr, null, null, $reason . ' | refund ' . inr($refund['amount']));
+            // The ticket must stop looking live (R3f, G6): voided, rendered
+            // PNG/PDF/invoice removed, audited — after this commit.
+            TicketSync::afterBookingChange((int) $booking['id'], 'void', [], ['reason' => $reason, 'actor' => $actor]);
+
+            Logger::audit('booking.cancel', 'booking', $pnr, null, null, $reason . ' | refund ' . inr($refund['amount']), $reason);
 
             return [
                 'booking' => Database::fetch('SELECT * FROM bookings WHERE id = :id', ['id' => $booking['id']]),
@@ -2374,7 +2409,7 @@ final class BookingService
         }
 
         $booking = Database::transaction(static function () use ($bookingId, $reason): array {
-            $booking = Database::fetchForUpdate('SELECT * FROM bookings WHERE id = :id', ['id' => $bookingId]);
+            $booking = Database::fetchForUpdate('SELECT * FROM bookings WHERE id = :id', ['id' => $bookingId])[0] ?? null;
             if ($booking === null) {
                 throw new RuntimeException('Booking not found.');
             }
@@ -2405,10 +2440,12 @@ final class BookingService
                 'Superadmin force-cancelled this booking. Seats released, commission voided, no refund computed.',
                 $bookingId);
 
+            TicketSync::afterBookingChange($bookingId, 'void', [], ['reason' => $reason, 'actor' => 'superadmin force-cancel']);
+
             Logger::audit('booking.force_cancel', 'booking', (string) $booking['pnr'],
                 ['status' => (string) $booking['status']],
                 ['status' => 'cancelled', 'reason' => $reason],
-                'superadmin force-cancel');
+                'superadmin force-cancel', $reason);
 
             return (array) Database::fetch('SELECT * FROM bookings WHERE id = :id', ['id' => $bookingId]);
         });
@@ -2509,7 +2546,7 @@ final class BookingService
 
         /* ---- Transaction: release seat, adjust totals, void commission -- */
         $result = Database::transaction(function () use (
-            $bookingId, $seatNo, $booking, $newTotal, $perSeatFare, $refund, $adminId, $reason, $seatCount
+            $bookingId, $seatNo, $booking, $newTotal, $perSeatFare, $refund, $adminId, $reason, $seatCount, $liveSeatNos
         ): array {
             // Lock the booking row.
             $locked = Database::fetchForUpdate('SELECT * FROM bookings WHERE id = :id', ['id' => $bookingId])[0] ?? null;
@@ -2584,9 +2621,18 @@ final class BookingService
                 }
             }
 
-            // 6) Re-issue the ticket to reflect the updated seat list.
-            try { Ticket::reissue($bookingId); }
-            catch (Throwable $e) { Logger::error('Per-seat cancel ticket reissue failed', ['e' => $e->getMessage()]); }
+            // 6) Ticket: the seat list changed, so the QR, the PNG and the
+            //    passenger's copy must follow — one hook, run after this commit,
+            //    with the refund slab in the notice (R3e).
+            $tsMode  = (string) ($locked['booking_mode'] ?? 'sharing') ?: 'sharing';
+            $tsSid   = (int) Database::scalar("SELECT schedule_id FROM booking_legs WHERE booking_id = :b AND leg_type = 'outbound' ORDER BY id LIMIT 1", ['b' => $bookingId], 0);
+            $tsCoach = $tsSid > 0 ? Seats::coachForSchedule($tsSid) : 'sleeper';
+            $tsLbl   = static fn(string $s): string => Seats::displayLabel($s, $tsCoach, $tsMode);
+            TicketSync::afterBookingChange($bookingId, 'seat_cancelled', [
+                'seat'   => $tsLbl($seatNo),
+                'seats'  => array_map($tsLbl, array_values(array_diff($liveSeatNos, [$seatNo]))),
+                'refund' => inr((float) $refund['amount']),
+            ], ['reason' => $reason]);
 
             Logger::audit('booking.cancel_seat', 'booking', (string) $locked['pnr'],
                 ['seat' => $seatNo, 'seats_before' => $seatCount, 'total_before' => (float) $locked['total_amount']],
@@ -2600,10 +2646,7 @@ final class BookingService
             ];
         });
 
-        // Post-commit: drop cached ticket PDF so next download reflects the change.
-        try { Ticket::pdfPath($bookingId, true); }
-        catch (Throwable $e) { Logger::error('Per-seat cancel PDF regen failed', ['e' => $e->getMessage()]); }
-
+        // Ticket QR / PNG / audit / notice ran in the afterCommit flush above.
         return $result;
     }
 

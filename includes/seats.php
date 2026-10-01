@@ -2342,7 +2342,7 @@ final class Seats
      * @return array{pnr:string, from:string, to:string, passenger:string}
      * @throws RuntimeException (user-safe)
      */
-    public static function transferSeat(int $scheduleId, string $fromSeat, string $toSeat, string $coachType, int $adminId): array
+    public static function transferSeat(int $scheduleId, string $fromSeat, string $toSeat, string $coachType, int $adminId, string $reason = ''): array
     {
         $fromSeat = strtoupper(Security::clean($fromSeat, 10));
         $toSeat   = strtoupper(Security::clean($toSeat, 10));
@@ -2354,7 +2354,7 @@ final class Seats
             throw new RuntimeException('Choose a different destination seat.');
         }
 
-        return Database::transaction(function () use ($scheduleId, $fromSeat, $toSeat, $coachType, $adminId): array {
+        return Database::transaction(function () use ($scheduleId, $fromSeat, $toSeat, $coachType, $adminId, $reason): array {
             $row = Database::fetch(
                 'SELECT bs.booking_id, b.pnr, b.booking_mode, b.sold_by_admin_id,
                         bp.id AS pax_id, bp.gender, bp.full_name
@@ -2422,7 +2422,7 @@ final class Seats
             self::recomputeUnitLock($scheduleId, self::unitKey($fromSeat, $coachType, $tsMode), $coachType);
             self::recomputeUnitLock($scheduleId, self::unitKey($toSeat, $coachType, $tsMode), $coachType);
 
-            Logger::audit('seat.transfer', 'booking', (string) $row['pnr'], ['seat' => $fromSeat], ['seat' => $toSeat], 'reseat ' . ($row['full_name'] ?? ''));
+            Logger::audit('seat.transfer', 'booking', (string) $row['pnr'], ['seat' => $fromSeat], ['seat' => $toSeat], 'reseat ' . ($row['full_name'] ?? ''), $reason);
 
             /* The passenger is holding a picture of the OLD berth. Every other
                path that moves a seat re-mints the ticket (a leg move, a
@@ -2434,13 +2434,22 @@ final class Seats
                has changed hands either way, and a stale render is a smaller
                problem than a rolled-back transfer.
 
-               ticket.php is not a dependency of the seat engine, so it is
-               required on demand — every real entry point already has it. */
+               1 Oct 2026: through TicketSync — the one hook every booking
+               change uses. It parks itself on Database::afterCommit(), so the
+               QR re-mint, PNG redraw, audit row and the passenger's "your seat
+               changed" WhatsApp all run right after THIS transaction commits
+               (a rollback leaves the old ticket untouched), and the caller
+               must not reissue again — booking-view used to, so one seat
+               change printed REV +2. ticketsync.php is not a dependency of the
+               seat engine, so it is required on demand. */
             try {
-                if (!class_exists('Ticket')) { require_once __DIR__ . '/ticket.php'; }
-                Ticket::reissue((int) $row['booking_id']);
+                if (!class_exists('TicketSync')) { require_once __DIR__ . '/ticketsync.php'; }
+                TicketSync::afterBookingChange((int) $row['booking_id'], 'seat', [
+                    'old' => self::displayLabel($fromSeat, $coachType, $tsMode),
+                    'new' => self::displayLabel($toSeat, $coachType, $tsMode),
+                ], ['reason' => $reason]);
             } catch (Throwable $e) {
-                Logger::error('Seat-transfer ticket reissue failed', ['e' => $e->getMessage(), 'pnr' => (string) $row['pnr']]);
+                Logger::error('Seat-transfer ticket sync failed', ['e' => $e->getMessage(), 'pnr' => (string) $row['pnr']]);
             }
 
             return [

@@ -1492,13 +1492,21 @@ final class AiTools
             'UPDATE booking_passengers SET full_name = :n WHERE id = :id AND booking_id = :b',
             ['n' => $new, 'id' => (int) $target['id'], 'b' => $bid]
         );
-        Ticket::reissue($bid);                       // new QR, cached PNG/PDF dropped, REV n
         Logger::audit('booking.rename_whatsapp', 'booking', $pnr,
             ['full_name' => $was], ['full_name' => $new],
             'Passenger name corrected from WhatsApp by ' . ($ctx['phone'] ?? '') . ' (' . ($ctx['role'] ?? '') . ')');
 
+        // One hook (1 Oct 2026): new QR + REV n, PNG redrawn, audited, and the
+        // passenger sent the corrected ticket (notify forced — the bot has just
+        // promised it). Its REAL outcome decides what the bot says next.
+        if (!class_exists('TicketSync')) { require_once __DIR__ . '/ticketsync.php'; }
+        $sync   = TicketSync::afterBookingChange($bid, 'passenger', ['name' => $new], [
+            'notify' => true,
+            'actor'  => 'whatsapp:' . ($ctx['phone'] ?? ''),
+            'reason' => 'Passenger name corrected from WhatsApp',
+        ]);
         $fresh  = BookingService::detail($pnr) ?? $detail;
-        $sent   = Notify::ticketChanged($fresh, 'passenger', ['name' => $new]);
+        $sent   = ['ok' => (bool) ($sync['notified'] ?? false), 'detail' => (string) ($sync['notifyDetail'] ?? '')];
 
         return [
             'ok'   => true,
@@ -1626,17 +1634,28 @@ final class AiTools
                 ['date' => self::outboundLeg($detail)['travel_date'], 'phone' => $detail['contact_phone']],
                 ['changed' => $changed], 'WhatsApp correction by ' . $ctx['phone'] . ': ' . $reason);
             if (isset($changed['date'])) {
-                // Owns the seat locks, gender rules, fare preservation and ticket reissue.
+                // Owns the seat locks, gender rules, fare preservation and the
+                // ticket (TicketSync 'reschedule' — new QR, PNG, audit, passenger
+                // notice with old → new date, all after THIS commit).
                 BookingService::rebookLeg($bid, (int) $proposal['scheduleId'], $proposal['seats'],
                     $proposal['date'], (int) ($ctx['adminId'] ?? 0), $reason, 'outbound');
             } else {
-                Ticket::reissue($bid);
+                // The QR is signed over the phone: regenerate after the commit
+                // and send the corrected ticket to the NEW number.
+                if (!class_exists('TicketSync')) { require_once __DIR__ . '/ticketsync.php'; }
+                TicketSync::afterBookingChange($bid, 'contact', ['new' => 'phone'], [
+                    'notify' => true,
+                    'actor'  => 'whatsapp:' . $ctx['phone'],
+                    'reason' => $reason,
+                ]);
             }
             return ['bookingId' => $bid, 'changed' => $changed];
         });
         $bid = (int) $result['bookingId'];
         $fresh = BookingService::detail($pnr);
-        $sent = ['ok' => false];
+        // The ticket work ran in the afterCommit flush; read its true outcome.
+        $sync = class_exists('TicketSync') ? TicketSync::last($bid) : null;
+        $sent = ['ok' => (bool) ($sync['notified'] ?? false), 'detail' => (string) ($sync['notifyDetail'] ?? '')];
         try {
             Notify::adminNote('✏️ टिकट सच्चियो (WhatsApp)', [
                 'PNR' => $pnr, 'बदलियो' => implode(', ', array_keys($result['changed'])),
@@ -1644,17 +1663,6 @@ final class AiTools
             ], $bid);
         } catch (Throwable $e) {
             Logger::warning('Admin note after fix_ticket failed: ' . $e->getMessage(), [], 'whatsapp');
-        }
-        if ($fresh !== null) {
-            try {
-                $sent = Notify::ticketChanged($fresh, isset($result['changed']['date']) ? 'reschedule' : 'contact', [
-                    'oldDate' => $result['changed']['date']['was'] ?? '',
-                    'newDate' => $result['changed']['date']['now'] ?? '',
-                    'seats' => self::outboundLeg($fresh)['seats'] ?? [],
-                ]);
-            } catch (Throwable $e) {
-                Logger::warning('Ticket send after fix_ticket failed: ' . $e->getMessage(), [], 'whatsapp');
-            }
         }
         return [
             'ok' => true,

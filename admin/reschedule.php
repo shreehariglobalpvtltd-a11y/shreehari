@@ -84,29 +84,17 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
             $newCoach   = Seats::coachForSchedule($newScheduleId);
             $newMode    = (string) ($b['booking_mode'] ?? 'sharing');
             $seatLabels = array_map(static fn($s) => Seats::displayLabel((string) $s, $newCoach, $newMode), $seats);
-            $flash = ['ok', 'Rescheduled to ' . formatDate($newDate) . ' · seat(s) ' . implode(', ', $seatLabels) . '. Ticket re-issued.'];
-            // Re-fetch so the "current trip" card below shows the NEW leg.
-            $b = BookingService::detail($pnr);
             /* The passenger learns of the new date from us, not at the bus (SHG AI
                BRAIN 1.6, 10 Sep 2026) — and since 17 Sep 2026 the message SAYS
                the date moved (old → new · seats) with the freshly re-issued PNG.
-               Best effort — an outage never undoes the reschedule. */
-            if ($b !== null && Settings::getBool('notify_ticket_edit', true) && (string) ($b['status'] ?? '') === 'confirmed') {
-                try {
-                    require_once INCLUDE_PATH . '/notify.php';
-                    $nr = Notify::ticketChanged($b, 'reschedule', [
-                        'oldDate' => $oldDate,
-                        'newDate' => $newDate,
-                        'seats'   => $seatLabels,
-                    ]);
-                    Logger::audit('booking.edit_notify', 'booking', $pnr, null,
-                        ['what' => 'reschedule', 'leg' => $legType, 'ok' => (bool) ($nr['ok'] ?? false), 'to' => (string) ($b['contact_phone'] ?? '')],
-                        (string) ($nr['detail'] ?? ''));
-                    $flash[1] .= ($nr['ok'] ?? false) ? ' Passenger notified on WhatsApp.' : ' (WhatsApp not sent: ' . truncate((string) ($nr['detail'] ?? ''), 120) . ')';
-                } catch (Throwable $e) {
-                    Logger::error('Reschedule notify failed: ' . $e->getMessage(), ['pnr' => $pnr]);
-                }
-            }
+               Since 1 Oct 2026 that notice is sent by TicketSync inside
+               rebookLeg() — right after the commit, with the redrawn PNG — so this
+               page reports its REAL outcome: the first-ticket idempotency guard
+               used to swallow the message while this page audited "sent". */
+            $flash = ['ok', 'Rescheduled to ' . formatDate($newDate) . ' · seat(s) ' . implode(', ', $seatLabels) . '.'
+                . TicketSync::note(TicketSync::last((int) $b['id']))];
+            // Re-fetch so the "current trip" card below shows the NEW leg.
+            $b = BookingService::detail($pnr);
         } catch (Throwable $e) {
             $flash = ['bad', $e->getMessage()];
         }

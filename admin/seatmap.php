@@ -175,11 +175,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     throw new RuntimeException('Trip is ' . ($tGate['label'] ?? 'closed') . ' — seat transfers are locked.');
                 }
                 $to    = strtoupper(Security::clean($_POST['to_seat'] ?? '', 10));
-                $res   = Seats::transferSeat($scheduleId, $seat, $to, $coach, (int) $admin['id']);
+                $res   = Seats::transferSeat($scheduleId, $seat, $to, $coach, (int) $admin['id'], Security::clean($_POST['reason'] ?? '', 255));
+                // transferSeat() re-minted the ticket and told the passenger (TicketSync
+                // 'seat', after its commit); say what actually happened.
                 $flash = ['ok', 'Moved ' . ($res['passenger'] ?: $res['pnr'])
                     . ' from ' . Seats::displayLabel((string) $res['from'], $coach, 'sharing')
                     . ' → ' . Seats::displayLabel((string) $res['to'], $coach, 'sharing')
-                    . ' (' . $res['pnr'] . ').'];
+                    . ' (' . $res['pnr'] . ').' . TicketSync::note(TicketSync::last())];
             } elseif ($action === 'assign_agent') {
                 // Same rule and path as booking-view / Assign Agents: commission
                 // follows the agent, cash stays with whoever collected it, logged.

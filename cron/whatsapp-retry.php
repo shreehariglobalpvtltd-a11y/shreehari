@@ -95,15 +95,19 @@ if (str_contains($fromNow, '14155238886')) {
    rows may drive this job — a refused agent statement must neither halt the
    sender-level probe nor make a confirmed booking's ticket look failed. The
    column arrives with upgrade-2026-09-wa-templates.sql; before it exists
-   every row is a ticket row and the filter is a no-op. */
+   every row is a ticket row and the filter is a no-op.
+   1 Oct 2026: the manual Resend (ticket_resend) and the "your ticket
+   changed" notice (ticket_update) carry their own purposes now, so the
+   first-ticket idempotency guard no longer swallows them; both are ticket
+   deliveries and a failed one is rescued here exactly like the first. */
 $hasPurpose = (int) Database::scalar(
     "SELECT COUNT(*) FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'message_logs' AND COLUMN_NAME = 'purpose'",
     [], 0
 ) > 0;
-$purposeM  = $hasPurpose ? " AND (purpose IS NULL OR purpose = 'ticket')" : '';
-$purposeM2 = $hasPurpose ? " AND (m2.purpose IS NULL OR m2.purpose = 'ticket')" : '';
-$purposeT  = $hasPurpose ? " AND (t.purpose IS NULL OR t.purpose = 'ticket')" : '';
+$purposeM  = $hasPurpose ? " AND (purpose IS NULL OR purpose IN ('ticket','ticket_update','ticket_resend'))" : '';
+$purposeM2 = $hasPurpose ? " AND (m2.purpose IS NULL OR m2.purpose IN ('ticket','ticket_update','ticket_resend'))" : '';
+$purposeT  = $hasPurpose ? " AND (t.purpose IS NULL OR t.purpose IN ('ticket','ticket_update','ticket_resend'))" : '';
 
 $lastFail = Database::fetch(
     "SELECT id, error, created_at FROM message_logs

@@ -347,7 +347,8 @@ check('the report PDF can reach the Devanagari face', str_contains($rsrc, "regis
    was the one that did not, so the passenger kept a picture of the old
    berth while the chalani showed the new one. */
 $ssrc = (string) file_get_contents(dirname(__DIR__) . '/includes/seats.php');
-check('a seat transfer re-mints the ticket', str_contains($ssrc, 'Ticket::reissue((int) $row[\'booking_id\'])'));
+check('a seat transfer re-mints the ticket (through the one TicketSync hook, 1 Oct 2026)',
+    str_contains($ssrc, "TicketSync::afterBookingChange((int) \$row['booking_id'], 'seat'"));
 
 /* The chalani page cache hashed twelve columns and drew eighteen. */
 $fpRows = [[

@@ -52,6 +52,22 @@ try {
         exit('The ticket becomes available once your payment is verified.');
     }
 
+    /* A voided ticket (cancelled / rejected / hard-deleted, 1 Oct 2026) is
+       gone for good at this URL: 410, which also tells sw.js to drop the
+       copy it saved for offline use. */
+    if ((int) Database::scalar('SELECT COALESCE(MAX(is_void), 0) FROM tickets WHERE booking_id = :b', ['b' => (int) $booking['id']], 0) === 1) {
+        http_response_code(410);
+        exit('This ticket has been voided and is no longer valid.');
+    }
+
+    /* A voided ticket (cancelled / rejected / hard-deleted, 1 Oct 2026) is
+       gone for good at this URL: 410, which also tells sw.js to drop the
+       copy it saved for offline use. */
+    if ((int) Database::scalar('SELECT COALESCE(MAX(is_void), 0) FROM tickets WHERE booking_id = :b', ['b' => (int) $booking['id']], 0) === 1) {
+        http_response_code(410);
+        exit('This ticket has been voided and is no longer valid.');
+    }
+
     /* ---- Who may take this PDF? (see the file header) -------------- */
     $token   = Security::clean($_GET['k'] ?? '', 64);
     $allowed = Ticket::checkDownloadToken($pnr, $token);

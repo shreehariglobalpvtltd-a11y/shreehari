@@ -442,21 +442,65 @@ final class Ticket
     {
         /* 23 Sep 2026: ?r=<revision> - a corrected ticket gets a NEW url, so
            WhatsApp and browsers fetch the redrawn picture instead of the copy
-           they cached under the old one. Per-request memo: the lists call this
-           once per row. download-ticket.php ignores the parameter. */
-        static $rev = [];
-        if (!array_key_exists($pnr, $rev)) {
-            try {
-                $rev[$pnr] = (int) Database::scalar(
-                    'SELECT t.reissue_count FROM tickets t JOIN bookings b ON b.id = t.booking_id WHERE b.pnr = :p LIMIT 1',
-                    ['p' => $pnr], 0);
-            } catch (Throwable $e) { $rev[$pnr] = 0; }
-        }
+           they cached under the old one. download-ticket.php ignores both
+           parameters; sw.js keys its cache on the PNR alone.
+
+           1 Oct 2026 (R3f, G8): the link now changes on EVERY regeneration,
+           not only on a counted correction - &r= is always present and &v= is
+           a short tag over the signed hash and the last refresh time, so a
+           silent refresh (agent credited at sale, cash collected, a layout
+           re-render) also gets a URL nobody has cached. The per-request memo
+           (the lists call this once per row) is a class property so
+           forgetRevision() can drop it when the same request re-mints the
+           ticket after already linking it (an AI turn: lookup, then fix). */
+        $v = self::revisionTag($pnr);
         return appUrl(
             'download-ticket.php?pnr=' . urlencode($pnr)
             . '&img=1&k=' . self::downloadToken($pnr)
-            . ($rev[$pnr] > 0 ? '&r=' . $rev[$pnr] : '')
+            . '&r=' . $v['rev']
+            . ($v['tag'] !== '' ? '&v=' . $v['tag'] : '')
         );
+    }
+
+    /** @var array<string, array{rev:int, tag:string}> per-request memo behind imageUrl() */
+    private static array $revMemo = [];
+
+    /**
+     * @return array{rev:int, tag:string} revision count + an 8-char content tag
+     *         ('' when the booking has no ticket row yet)
+     */
+    public static function revisionTag(string $pnr): array
+    {
+        if (!array_key_exists($pnr, self::$revMemo)) {
+            $row = null;
+            try {
+                $row = Database::fetch(
+                    'SELECT t.reissue_count, t.qr_hash, t.reissued_at, t.issued_at
+                       FROM tickets t JOIN bookings b ON b.id = t.booking_id
+                      WHERE b.pnr = :p LIMIT 1',
+                    ['p' => $pnr]
+                );
+            } catch (Throwable $e) {
+                $row = null;
+            }
+            self::$revMemo[$pnr] = $row === null
+                ? ['rev' => 0, 'tag' => '']
+                : [
+                    'rev' => (int) ($row['reissue_count'] ?? 0),
+                    'tag' => substr(sha1((string) ($row['qr_hash'] ?? '') . '|' . (string) ($row['reissued_at'] ?? '') . '|' . (string) ($row['issued_at'] ?? '')), 0, 8),
+                ];
+        }
+        return self::$revMemo[$pnr];
+    }
+
+    /** Drop the imageUrl() memo for one PNR (or all) so the next link is fresh. */
+    public static function forgetRevision(?string $pnr = null): void
+    {
+        if ($pnr === null) {
+            self::$revMemo = [];
+            return;
+        }
+        unset(self::$revMemo[$pnr]);
     }
 
     /**
@@ -783,17 +827,23 @@ final class Ticket
         /* Revision count + time (19 Sep 2026, owner: 'correction lekhnu paryo'): the
            re-rendered ticket prints CORRECTED · REV n so an older copy on a phone or
            a WhatsApp chat is recognisably superseded. A missing column (migration not
-           run) must never break the reissue itself. */
-        if (!$countRevision) {
-            return;
-        }
+           run) must never break the reissue itself.
+
+           1 Oct 2026: a silent refresh still stamps reissued_at (markText() only
+           prints it when the count is > 0), so imageUrl()'s version tag - and with
+           it every WhatsApp / browser URL - changes on this regeneration too. The
+           audit row is written by TicketSync::afterBookingChange(), the one
+           orchestrator every booking change now goes through: one
+           `ticket.regenerated` row per change, carrying the kind, the reason the
+           desk typed and whether the passenger was told. */
         try {
-            Database::query('UPDATE tickets SET reissue_count = reissue_count + 1, reissued_at = NOW() WHERE booking_id = :b', ['b' => $bookingId]);
+            Database::query($countRevision
+                ? 'UPDATE tickets SET reissue_count = reissue_count + 1, reissued_at = NOW() WHERE booking_id = :b'
+                : 'UPDATE tickets SET reissued_at = NOW() WHERE booking_id = :b', ['b' => $bookingId]);
         } catch (Throwable $e) {
             Logger::exception($e);
         }
-
-        Logger::audit('ticket.reissue', 'booking', (string) ($booking['pnr'] ?? ''), null, null, 'Ticket QR + PDF re-minted after reschedule');
+        self::forgetRevision($pnr);
     }
 
     /**
