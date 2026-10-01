@@ -719,26 +719,18 @@ if ($flash !== null) {
 }
 ?>
 <form method="get" class="toolbar">
-  <label>Route · रुट
-    <select name="route" onchange="if(this.form.sid)this.form.sid.value='';this.form.submit()">
-      <?php foreach ($routes as $r): ?>
-      <?php if ((int) $r['is_active'] !== 1 && (int) $r['id'] !== $routeId) { continue; } ?>
-        <option value="<?= (int) $r['id'] ?>" <?= (int) $r['id'] === $routeId ? 'selected' : '' ?>>
-          <?= Security::e($r['route_code'] . ' · ' . $r['from_city'] . ' → ' . $r['to_city'] . ' (' . ucfirst((string) $r['coach_type']) . ')') ?>
-          <?= (int) $r['is_active'] === 1 ? '' : ' — inactive' ?>
-        </option>
-      <?php endforeach; ?>
-    </select>
-  </label>
-  <label>Date <input type="date" name="date" value="<?= Security::e($date) ?>" onchange="if(this.form.sid)this.form.sid.value='';this.form.submit()"></label>
+  <input type="hidden" name="route" value="<?= $routeId ?>">
   <label>Bus / route · बस नम्बर र रुट
     <select name="sid" onchange="this.form.submit()">
-      <option value="">Route's daily bus · नियमित बस</option>
+      <?php if ($mapDepartures === []): ?>
+      <option value="">यस मितिमा बसको यात्रा छैन · मिति छान्नुहोस्</option>
+      <?php endif; ?>
       <?php foreach ($mapDepartures as $departure): ?>
       <option value="<?= (int) $departure['id'] ?>" <?= (int) $departure['id'] === $scheduleId ? 'selected' : '' ?>><?= Security::e(($departure['bus_number'] ?: 'Bus not assigned') . ' · ' . ($departure['bus_name'] ?? '') . ' · ' . substr((string) $departure['dep_time'], 0, 5) . ' · ' . $departure['from_city'] . ' → ' . $departure['to_city'] . ((int) $departure['slot'] > 1 ? ' · Extra #' . (int) $departure['slot'] : '') . ' · ' . $departure['status']) ?></option>
       <?php endforeach; ?>
     </select>
   </label>
+  <label>Date <input type="date" name="date" value="<?= Security::e($date) ?>" onchange="if(this.form.sid)this.form.sid.value='';this.form.submit()"></label>
   <button class="btn ghost" type="submit">Load</button>
   <?php if (Auth::bookingScopeAdminId() === null): ?>
   <a class="btn ghost" href="/admin/chalan.php?<?= Security::e(http_build_query(array_filter(['sid' => $sidReq > 0 ? $sidReq : null, 'date' => $date]))) ?>" title="Bus chalan — the seat picture and the Nepali waybill: preview, PDF / PNG, WhatsApp">📋 Bus Chalan</a>
