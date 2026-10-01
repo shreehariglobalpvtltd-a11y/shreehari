@@ -73,6 +73,8 @@ const CORE_SUITES = [
     'ticket-bot-test.php'          => 'AI Ticket Bot: learns from verified sales, never lifts a rule',
     'brain-test.php'               => 'Passive Brain: predicts the calls, parks the requests, never sells',
     'notify-country-test.php'      => 'the ticket WhatsApp/SMS reaches the right country (+977 vs +91)',
+    // back in the battery 1 Oct 2026 (was KNOWN_STALE with a stale expectation)
+    'automation-test.php'          => 'EventBus, exactly-once claims, .ics, agent OTP door, alerts + daily-summary crons',
 
     /* Registered 8 Sep 2026. These 33 suites existed and passed but were never
        in the battery — 35 of the 53 test files in this directory were orphans,
@@ -200,7 +202,8 @@ const CORE_SUITES = [
  *       later women-only rule now reserves, so book.php correctly returns 409.
  */
 const KNOWN_STALE = [
-    'automation-test.php'          => '7/49 fail on unmodified code — stale expectations',
+    // automation-test.php left this list 1 Oct 2026: 48/49 passed on unmodified
+    // code, the one red check asserted the pre-6-Sep OTP rule — fixed, registered.
     'boarding-stop-fix-test.php'   => '3/17 fail: hard-codes L1, now women-reserved',
 ];
 

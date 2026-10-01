@@ -21,10 +21,13 @@ function check(string $l, bool $ok, string $d = ''): void {
     else     { $FAIL++; echo "  \033[31mFAIL\033[0m  $l" . ($d !== '' ? " — $d" : '') . "\n"; }
 }
 $CSRF = '';
+// 1 Oct 2026: the jar lives in the OS temp dir — '/tmp' does not exist for PHP on Windows,
+// so the session cookie was never kept and every POST answered 419.
+define('CT_JAR', sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'shg_ct_' . getmypid() . '.cookies');
 function req(string $method, string $path, ?array $json = null): array {
     global $CSRF;
     $ch = curl_init(BASE . $path);
-    $o = [CURLOPT_RETURNTRANSFER => true, CURLOPT_CUSTOMREQUEST => $method, CURLOPT_TIMEOUT => 20, CURLOPT_COOKIEJAR => '/tmp/ct-jar', CURLOPT_COOKIEFILE => '/tmp/ct-jar'];
+    $o = [CURLOPT_RETURNTRANSFER => true, CURLOPT_CUSTOMREQUEST => $method, CURLOPT_TIMEOUT => 20, CURLOPT_COOKIEJAR => CT_JAR, CURLOPT_COOKIEFILE => CT_JAR];
     if ($json !== null) { $o[CURLOPT_POSTFIELDS] = json_encode($json); $o[CURLOPT_HTTPHEADER] = ['Content-Type: application/json', 'X-CSRF-Token: ' . $CSRF]; }
     curl_setopt_array($ch, $o);
     $b = (string) curl_exec($ch); $c = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
@@ -35,7 +38,7 @@ Database::delete('enquiries', 'phone = :p', ['p' => PHONE]);
 Database::delete('rate_limits', "bucket LIKE 'enquiry%'");
 
 echo "\n=== Contact layer ===\n\n";
-@unlink('/tmp/ct-jar');
+@unlink(CT_JAR);
 $home = req('GET', '/index.php');
 $cfg  = json_decode(req('GET', '/api/config.php')['body'], true) ?: [];
 $CSRF = (string) ($cfg['data']['csrfToken'] ?? '');

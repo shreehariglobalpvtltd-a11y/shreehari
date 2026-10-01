@@ -135,7 +135,17 @@ check('the outlines are the same bytes (glyf identical)', (static function () us
 /* ---- 2. HarfBuzz forms the conjuncts --------------------------------- */
 $words = ['यात्रु', 'जम्मा', 'कृष्ण', 'श्रेष्ठ', 'कार्यालय', 'सिता'];
 $local = DevShape::shapeLocal($words);
-check('libharfbuzz loads through FFI in the CLI', is_array($local), is_array($local) ? '' : 'install libharfbuzz0b');
+/* 1 Oct 2026: on a developer machine without libharfbuzz (Windows) the shaping
+   checks are reported as SKIP, not FAIL. CI exports SHG_REQUIRE_DEVSHAPE=1, so a
+   runner missing the library still fails the battery. */
+$HB_REQUIRED = getenv('SHG_REQUIRE_DEVSHAPE') === '1';
+$HB_OK       = is_array($local);
+function hb(string $l, bool $ok, string $d = ''): void {
+    global $HB_OK, $HB_REQUIRED;
+    if ($HB_OK || $HB_REQUIRED) { check($l, $ok, $d); return; }
+    echo "  SKIP  $l — libharfbuzz not available on this machine\n";
+}
+hb('libharfbuzz loads through FFI in the CLI', is_array($local), is_array($local) ? '' : 'install libharfbuzz0b');
 if (is_array($local)) {
     $cmapGlyphs = array_flip(array_values($a));
     foreach (array_slice($words, 0, 5) as $i => $w) {
@@ -160,7 +170,7 @@ $out = stream_get_contents($pipes[1]);
 fclose($pipes[1]); fclose($pipes[2]);
 proc_close($proc);
 $child = json_decode((string) $out, true);
-check('the CLI child answers with the same glyphs as in-process shaping', is_array($child) && ($child['runs'] ?? null) == $local);
+hb('the CLI child answers with the same glyphs as in-process shaping', is_array($child) && ($child['runs'] ?? null) == $local);
 
 /* ---- 4. GD draws the shaped text ------------------------------------- */
 if (is_array($local)) {
@@ -193,7 +203,7 @@ try {
     $want = is_array($local) ? sprintf('%04X', $local[0]['g'][0][0]) : 'none';
     check('Pdf::textCID renders Devanagari', strlen($bytes) > 1000);
     $expect = is_array($local) ? array_sum(array_column($local[0]['g'], 1)) / $local[0]['upem'] * 14 : -1;
-    check('the PDF width is the shaped width', $w1 > 0 && abs($w1 - $expect) < 0.05, sprintf('%.2f pt, HarfBuzz %.2f pt', $w1, $expect));
+    hb('the PDF width is the shaped width', $w1 > 0 && abs($w1 - $expect) < 0.05, sprintf('%.2f pt, HarfBuzz %.2f pt', $w1, $expect));
     $stream = '';
     if (preg_match_all('~stream\r?\n(.*?)\r?\nendstream~s', $bytes, $m)) {
         foreach ($m[1] as $chunk) {
@@ -201,15 +211,28 @@ try {
             $stream .= $z !== false ? $z : $chunk;
         }
     }
-    check('the page stream positions shaped glyph runs (Tm + Tj)', str_contains($stream, ' Tm') && str_contains($stream, '<' . $want));
+    hb('the page stream positions shaped glyph runs (Tm + Tj)', str_contains($stream, ' Tm') && str_contains($stream, '<' . $want));
 } catch (Throwable $e) {
     check('Pdf::textCID renders Devanagari', false, $e->getMessage());
 }
 
 /* ---- 6. switched off: nothing breaks --------------------------------- */
-$code = 'require "' . addslashes(dirname(__DIR__)) . '/includes/bootstrap.php"; '
+$code = 'require ' . var_export(dirname(__DIR__) . '/includes/bootstrap.php', true) . '; '
       . 'var_export([DevShape::shape("यात्रु"), DevShape::gdWidth(20, "यात्रु")]);';
-$off = shell_exec('SHG_DEVSHAPE_OFF=1 ' . escapeshellarg(is_executable($php) ? $php : PHP_BINARY) . ' -r ' . escapeshellarg($code) . ' 2>&1');
+$off = (static function () use ($php, $code): string {
+    // 1 Oct 2026: the switch travels as a real environment variable (proc_open env),
+    // not as a 'VAR=x cmd' shell prefix that only POSIX shells understand.
+    $env = array_merge(getenv(), ['SHG_DEVSHAPE_OFF' => '1']);
+    $ini = php_ini_loaded_file();
+    $cmd = [is_executable($php) ? $php : PHP_BINARY];
+    if ($ini) { $cmd[] = '-c'; $cmd[] = $ini; }
+    $cmd[] = '-r'; $cmd[] = $code;
+    $p = proc_open($cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, null, $env);
+    if (!is_resource($p)) { return 'proc_open failed'; }
+    $out = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
+    fclose($pipes[1]); fclose($pipes[2]); proc_close($p);
+    return (string) $out;
+})();
 check('SHG_DEVSHAPE_OFF=1: shape() is null and callers fall back', is_string($off) && str_contains($off, 'NULL') && !str_contains($off, 'Fatal'), trim((string) $off));
 check('the old path is still there (dev_shape fallback in gdText/gdWidth/textCID)',
     substr_count((string) file_get_contents(dirname(__DIR__) . '/includes/ticket.php'), '$text = dev_shape($text);') >= 2

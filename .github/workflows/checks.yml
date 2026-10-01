@@ -108,6 +108,8 @@ jobs:
           for i in $(seq 1 30); do curl -sf -o /dev/null http://127.0.0.1:8899/index.php && break; sleep 1; done
           curl -s -o /dev/null -w "dev server: HTTP %{http_code}\n" http://127.0.0.1:8899/index.php
       - name: Run the battery
+        env:
+          SHG_REQUIRE_DEVSHAPE: '1'   # the HarfBuzz checks may SKIP on a dev laptop, never here
         run: php tests/run-all.php --http
       - name: Server log on failure
         if: failure()
