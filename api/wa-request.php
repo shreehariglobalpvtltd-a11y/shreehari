@@ -78,7 +78,8 @@ try {
     $sent  = false;
     if ($admin !== '') {
         $r    = Notify::whatsapp($admin, implode("\n", $lines), null, 'IN', [], null, ['kind' => 'wa_request']);
-        $sent = $r !== false;
+        // A click-to-chat URL is a manual fallback, not an API delivery.
+        $sent = $r === true;
     }
 
     Logger::audit('wa.request', 'lead', $intl, null, ['type' => $type, 'sent' => $sent], 'Website WhatsApp request');
