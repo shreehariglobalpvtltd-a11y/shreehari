@@ -284,6 +284,7 @@ try {
     $bid    = (int) $booking['id'];
     $before = Database::fetch('SELECT id, full_name, seat_no FROM booking_passengers WHERE booking_id = :b ORDER BY id LIMIT 1', ['b' => $bid]);
 
+    $revBefore = (int) Database::scalar('SELECT COALESCE(reissue_count, 0) FROM tickets WHERE booking_id = :b ORDER BY id DESC LIMIT 1', ['b' => $bid], 0);
     $bad = AiTools::run('rename_passenger', ['pnr' => $pnr, 'new_name' => 'Sita 99'], $ctxFor(WA_CUST, 6));
     check('a name with digits in it is refused', $bad['ok'] === false, $bad['say']);
 
@@ -296,8 +297,13 @@ try {
     check('  the date and the fare did not move',
         (string) ($fresh['legs'][0]['travel_date'] ?? '') === $D1
         && abs((float) $fresh['total_amount'] - (float) $booking['total_amount']) < 0.01);
-    check('  the cached ticket picture was dropped, so the next one redraws',
-        (string) Database::scalar('SELECT COALESCE(png_path, \'\') FROM tickets WHERE booking_id = :b ORDER BY id DESC LIMIT 1', ['b' => $bid], '') === '');
+    /* 2 Oct 2026: TicketSync re-mints the ticket and redraws the PNG at once
+       (eager, after commit) instead of leaving png_path empty for the next
+       request - same guarantee: no pre-rename picture survives. */
+    $tk = Database::fetch('SELECT COALESCE(png_path, \'\') AS p, COALESCE(reissue_count, 0) AS r FROM tickets WHERE booking_id = :b ORDER BY id DESC LIMIT 1', ['b' => $bid]) ?: ['p' => '', 'r' => 0];
+    check('  the ticket was re-minted and the old picture replaced (redrawn, or dropped for the next request)',
+        (int) $tk['r'] > $revBefore && ((string) $tk['p'] === '' || is_file((string) $tk['p']) || is_file(TICKET_PATH . '/' . basename((string) $tk['p']))),
+        'rev ' . $revBefore . ' -> ' . $tk['r']);
     check('  and the correction is in the audit log',
         Database::exists("SELECT 1 FROM audit_logs WHERE action = 'booking.rename_whatsapp' AND entity_id = :p", ['p' => $pnr]));
 

@@ -344,7 +344,11 @@ try {
         'contact' => ['phone' => PHONE], 'bookingMode' => 'sharing', 'paymentMethod' => 'upi',
         'isCod' => false, 'boarding' => '', 'referralCode' => '',
     ]);
-    $normal = Fare::cabinFare('single', 'sharing', 1, true, (string) $route['to_city'])['perPerson'];
+    /* 1 Oct 2026 (owner ask): "the normal fare" is now the fare of the pickup
+       the booking landed on (Admin -> Routes per-pickup fare, default first
+       stop) - the direction fare only for a pickup with no fare of its own. */
+    $bdLeg  = Database::fetch('SELECT boarding_stop FROM booking_legs WHERE booking_id = :b ORDER BY id LIMIT 1', ['b' => (int) $bd['id']]);
+    $normal = Fare::perSeatFor($route, (string) ($bdLeg['boarding_stop'] ?? ''), '');
     check('the daily bus still charges the normal fare',
         (float) $bd['total_amount'] === (float) $normal, 'charged ' . $bd['total_amount'] . ' vs ' . $normal);
     /* ================================================================

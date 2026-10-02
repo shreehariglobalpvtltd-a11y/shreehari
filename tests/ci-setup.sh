@@ -64,7 +64,7 @@ php tests/ci-fixtures.php --owner
 
 echo "== upgrades (sql) =="
 fails=0
-for f in database/upgrade-2026-08-*.sql database/upgrade-2026-09-*.sql; do
+for f in database/upgrade-2026-08-*.sql database/upgrade-2026-09-*.sql database/upgrade-2026-1*-*.sql; do
   if php tests/apply-sql.php "$f" > /tmp/shg-apply.log 2>&1; then
     printf "   ok   %s\n" "$f"
   else
@@ -78,10 +78,10 @@ done
 # to admin_profiles, which agent-panel creates a few files later; agent-kyc
 # adds kyc_* AFTER photo_path, which admin-security adds). Every file is
 # idempotent (IF NOT EXISTS / PREPARE guards), so re-running is harmless.
-for f in database/upgrade-2026-08-*.sql database/upgrade-2026-09-*.sql; do
+for f in database/upgrade-2026-08-*.sql database/upgrade-2026-09-*.sql database/upgrade-2026-1*-*.sql; do
   "${MYSQL[@]}" --force "$DB_NAME" < "$f" > /dev/null 2>&1 || true
 done
-for f in database/upgrade-2026-08-*.sql database/upgrade-2026-09-*.sql; do
+for f in database/upgrade-2026-08-*.sql database/upgrade-2026-09-*.sql database/upgrade-2026-1*-*.sql; do
   php tests/apply-sql.php "$f" > /dev/null 2>&1 || "${MYSQL[@]}" --force "$DB_NAME" < "$f" > /dev/null 2>&1 || true
 done
 # Last word on which coach sells: upgrade-2026-08-one-daily-bus.sql (the owner's
@@ -98,6 +98,9 @@ done
 
 echo "== fixtures =="
 php tests/ci-fixtures.php
+# Per-pickup fares + Rajkot (1 Oct 2026): the fixtures above may add stops, so
+# seed their fares again (the migration only fills NULL fares - idempotent).
+php tests/apply-sql.php database/upgrade-2026-10-01-stop-fares.sql > /dev/null 2>&1 || "${MYSQL[@]}" --force "$DB_NAME" < database/upgrade-2026-10-01-stop-fares.sql > /dev/null 2>&1 || true
 
 echo "== tables: $("${MYSQL[@]}" -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$DB_NAME'") =="
 [[ $fails -eq 0 ]] || { echo "$fails upgrade script(s) failed"; exit 1; }

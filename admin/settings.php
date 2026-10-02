@@ -181,12 +181,12 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
   <div class="panel" id="faresPanel">
     <h2>💰 Fares &amp; booking rules <span class="muted" style="font-weight:400">· भाडा · the numbers that change, in one place</span></h2>
     <div class="fp-grid">
-      <label>Fare Gujarat → Rupaidiha (₹ / person)
+      <label>Default fare Gujarat → Rupaidiha (₹ / person)
         <input type="number" name="s[fare_to_nepal]" min="1" max="100000" step="1" value="<?= (int) round($dirFares['toNepal']) ?>" <?= $fpRo ?> <?= $fpHave('fare_to_nepal') ? '' : $fpMissing ?>>
-        <small>toNepal · “jane” · sharing sleeper, per person</small></label>
-      <label>Fare Rupaidiha → Gujarat (₹ / person)
+        <small>toNepal · “jane” · for a pickup with no fare of its own</small></label>
+      <label>Default fare Rupaidiha → Gujarat (₹ / person)
         <input type="number" name="s[fare_to_india]" min="1" max="100000" step="1" value="<?= (int) round($dirFares['toIndia']) ?>" <?= $fpRo ?> <?= $fpHave('fare_to_india') ? '' : $fpMissing ?>>
-        <small>toIndia · “aune” · sharing sleeper, per person</small></label>
+        <small>toIndia · “aune” · for a drop with no fare of its own</small></label>
       <label>Private Single cabin (₹)
         <input type="number" name="fp_private_single" min="1" max="100000" step="1" value="<?= (int) round($fpSingle) ?>" <?= $fpRo ?>>
         <small>1 passenger · online = offline</small></label>
@@ -204,8 +204,32 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
         <small>agents / admin may discount up to this</small></label>
     </div>
     <div style="padding:0 18px 14px"><small class="muted">Changes apply to the next search and the next counter sale. Agent commission (₹200 direct / ₹400 team) is set on the Agent Panel. Save with the button at the bottom.</small></div>
+    <?php
+    /* Pickup points & fares (owner ask, 1 Oct 2026): each pickup carries its
+       own fare + ON/OFF in Admin -> Routes; the two numbers above are only the
+       default for a pickup left blank. A link, not a form — this panel sits
+       inside the settings form. */
+    $pkLoc = Boarding::bootLocations();
+    $pkGo  = (array) ($pkLoc['go'] ?? []);
+    ?>
+    <div class="pk-card">
+      <div>
+        <b>📍 Pickup points &amp; fares</b>
+        <small class="muted">Every pickup's own fare, ON/OFF, order and edit — Rajkot included. Customers, agents, the counter and the AI see only the pickups switched ON, at the fare set there.</small>
+        <?php if ($pkGo !== []): ?>
+        <div class="pk-chips">
+          <?php foreach ($pkGo as $pk): ?>
+            <span><?= Security::e((string) $pk['name']) ?> · <b><?= Security::e(inr((float) ($pk['fare'] ?? $dirFares['toNepal']))) ?></b><?= ($pk['fare'] ?? null) === null ? ' <em class="muted">default</em>' : '' ?></span>
+          <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+      </div>
+      <?php if (Auth::can('routes.view')): ?>
+      <a class="btn" href="routes.php#pickups">Manage pickup points →</a>
+      <?php endif; ?>
+    </div>
   </div>
-  <style>.fp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;padding:16px 18px}.fp-grid label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.3px}.fp-grid input{padding:10px 12px;border:1px solid var(--line);border-radius:9px;font-size:16px;font-weight:700;background:var(--card);color:var(--ink);min-width:0}.fp-grid input:disabled{opacity:.5}.fp-grid small{font-weight:500;text-transform:none;letter-spacing:0}</style>
+  <style>.fp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;padding:16px 18px}.fp-grid label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.3px}.fp-grid input{padding:10px 12px;border:1px solid var(--line);border-radius:9px;font-size:16px;font-weight:700;background:var(--card);color:var(--ink);min-width:0}.fp-grid input:disabled{opacity:.5}.fp-grid small{font-weight:500;text-transform:none;letter-spacing:0}.pk-card{display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:0 18px 16px;padding:12px 14px;border:1px dashed var(--line);border-radius:10px;background:var(--hover)}.pk-card small{display:block;margin-top:2px}.pk-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.pk-chips span{font-size:12px;padding:3px 8px;border-radius:999px;background:var(--card);border:1px solid var(--line)}</style>
 
 
   <?php

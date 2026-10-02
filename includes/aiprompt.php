@@ -40,18 +40,23 @@ function ai_system_prompt(): string
             'SELECT id, from_city, to_city, dep_time FROM routes WHERE is_active = 1 ORDER BY sort_order, dep_time'
         );
         foreach ($routes as $r) {
+            // Only the stops switched ON in Admin -> Routes, each with its own
+            // fare when the office set one (1 Oct 2026) — the AI quotes exactly
+            // what the checkout charges.
             $stops = Database::fetchAll(
-                'SELECT stop_type, stop_name, stop_time FROM route_stops WHERE route_id = :r ORDER BY stop_type, sort_order',
+                'SELECT stop_type, stop_name, stop_time, ' . (Boarding::hasStopControls() ? 'fare' : 'NULL AS fare')
+                    . ' FROM route_stops WHERE route_id = :r' . Boarding::activeSql() . ' ORDER BY stop_type, sort_order, id',
                 ['r' => (int) $r['id']]
             );
             $board = [];
             $drop  = [];
             foreach ($stops as $st) {
-                $t = ($st['stop_time'] !== null && $st['stop_time'] !== '') ? ' ' . substr((string) $st['stop_time'], 0, 5) : '';
+                $t = ($st['stop_time'] !== null && $st['stop_time'] !== '') ? ' ' . substr((string) $st['stop_time'], 0, 5) : ' (time: ask the office)';
+                $f = ($st['fare'] ?? null) !== null && (float) $st['fare'] > 0 ? ' ₹' . (int) round((float) $st['fare']) : '';
                 if ((string) $st['stop_type'] === 'boarding') {
-                    $board[] = (string) $st['stop_name'] . $t;
+                    $board[] = (string) $st['stop_name'] . $t . $f;
                 } else {
-                    $drop[] = (string) $st['stop_name'];
+                    $drop[] = (string) $st['stop_name'] . $f;
                 }
             }
             $to = strcasecmp((string) $r['to_city'], 'Nepalgunj') === 0 ? 'Rupaidiha (India–Nepal border)' : (string) $r['to_city'];
@@ -63,8 +68,9 @@ function ai_system_prompt(): string
         // the fallback lines below still stand
     }
     if ($routeLines === []) {
-        $routeLines[] = '- Surat → Rupaidiha (India–Nepal border), daily. Pickups: Surat 13:00 · Kamrej 13:30 · Ankleshwar 15:00 · Bharuch 16:00 · Vadodara 17:00 · Anand 18:30 · Nadiad 20:00 · Emli Bhupal 21:00 · S Hari Parking, Nana Chiloda (Ahmedabad) 23:00.';
-        $routeLines[] = '- Rupaidiha → Surat, departs 18:00 daily.';
+        // No hard-coded copy of the pickups any more (1 Oct 2026): when the
+        // live list cannot be read the assistant must not guess one.
+        $routeLines[] = '- The route list could not be read right now. Do not name pickups or times; give the office number ' . $phone . '.';
     }
 
     $fareNp = Settings::getInt('fare_to_nepal', 2000);
@@ -104,7 +110,7 @@ function ai_system_prompt(): string
         . "ANSWER ONLY about this bus service: booking, seats and cabins, fares, timings and pickups, the border crossing, luggage, payments, cancellations and refunds, tracking, offices. For anything else say politely, in the user's language, that you only help with the bus service, and give the office number.\n\n"
         . "FACTS (the only facts you may state; never invent a time, price or rule that is not here):\n"
         . "Routes and timings:\n" . implode("\n", $routeLines) . "\n"
-        . "Fares: sharing sleeper ₹{$fareNp} per person towards Nepal, ₹{$fareIn} per person towards India; a private cabin from ₹{$priv}. Same price online and at the counter.\n"
+        . "Fares: sharing sleeper per person = the ₹ amount written after each pickup / drop above; a stop with no amount costs the default ₹{$fareNp} towards Nepal, ₹{$fareIn} towards India; a private cabin from ₹{$priv}. Same price online and at the counter.\n"
         . "Payment: {$pay}. An online ticket is confirmed after the payment is verified, usually within minutes.\n"
         . "Refund by cancellation time: " . implode(' · ', $slabTxt) . ". Money returns to the same account in 5–7 working days.\n"
         . "Boarding: reach the pickup 60 minutes early; booking for a pickup closes {$cutoff} minutes before its time.\n"

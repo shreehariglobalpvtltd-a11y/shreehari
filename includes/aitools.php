@@ -322,6 +322,18 @@ final class AiTools
      * @param array<string,mixed> $ctx from whoIs()
      * @return array<int, array<string,mixed>>
      */
+    /** "Surat, Vadodara, Rajkot, S Hari Parking …" — the live ON pickups (Boarding::locations, 1 Oct 2026). */
+    private static function pickupExamples(): string
+    {
+        $names = [];
+        foreach ((array) (Boarding::bootLocations()['go'] ?? []) as $s) {
+            $names[] = (string) ($s['name'] ?? '');
+        }
+        $names = array_values(array_filter($names, 'strlen'));
+
+        return $names !== [] ? implode(', ', $names) : 'Surat, Vadodara, S Hari Parking';
+    }
+
     public static function catalogue(array $ctx): array
     {
         $role    = (string) ($ctx['role'] ?? 'customer');
@@ -395,7 +407,7 @@ final class AiTools
                 'seats'     => ['integer', 'How many berths (1–6)'],
                 'date'      => ['string', "Travel date as YYYY-MM-DD. Leave empty for the next catchable bus."],
                 'direction' => ['string', "toNepal = Gujarat→Rupaidiha ('jane'), toIndia = Rupaidiha→Gujarat ('aaune'). Empty = decide from the pickup."],
-                'boarding'  => ['string', 'Pickup town or stop as the passenger said it, e.g. Surat, Vadodara, Mehsana, S Hari Parking'],
+                'boarding'  => ['string', 'Pickup town or stop as the passenger said it, e.g. ' . self::pickupExamples()],
                 'gender'    => ['string', 'Male, Female or Other — needed for a shared cabin berth'],
                 'name'      => ['string', 'The passenger\'s full name, exactly as they gave it, if already known'],
                 'phone'     => ['string', 'Desk sale only: the passenger\'s mobile, with +977 when it is a Nepali number'],

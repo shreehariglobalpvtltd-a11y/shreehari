@@ -2035,7 +2035,7 @@ final class Seats
         $stopIndex = [];
         $routeId   = (int) (self::scheduleById($scheduleId)['route_id'] ?? 0);
         if ($routeId > 0) {
-            foreach (Boarding::stopsFor($routeId) as $i => $st) {
+            foreach (Boarding::allStopsFor($routeId, 'boarding') as $i => $st) {   // ON + OFF stops (display)
                 $key = Boarding::townKey((string) ($st['name'] ?? ''));
                 if ($key !== '' && !isset($stopIndex[$key])) {
                     $stopIndex[$key] = $i;

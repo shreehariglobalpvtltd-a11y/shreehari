@@ -72,6 +72,7 @@ const CORE_SUITES = [
     'quick-ticket-test.php'        => 'name + mobile → auto bus/seat/fare → confirmed ticket',
     'counter-desk-memory-test.php' => 'desk remembers agent / payment / boarding once, never the passenger; same bus · same date · sell another',
     'ticket-sync-test.php'         => 'every booking change regenerates the ticket once, after commit; void on cancel; honest change notice',
+    'locations-consistency-test.php' => 'one pickup list: Admin ON/OFF + per-pickup fare reach search, pickers, booking, AI; Rajkot back',
     'ticket-bot-test.php'          => 'AI Ticket Bot: learns from verified sales, never lifts a rule',
     'brain-test.php'               => 'Passive Brain: predicts the calls, parks the requests, never sells',
     'notify-country-test.php'      => 'the ticket WhatsApp/SMS reaches the right country (+977 vs +91)',

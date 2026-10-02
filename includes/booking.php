@@ -331,6 +331,24 @@ final class BookingService
         $dropStop = $dropIsOther
             ? self::manualStop($request['dropOther'] ?? '', 'drop')
             : Security::clean($request['drop'] ?? '', 191);
+        /* Admin-managed pickups (owner ask, 1 Oct 2026): a configured label
+           must name a stop of THIS route that is switched ON in Admin ->
+           Routes. Before this any non-empty text was accepted and quietly
+           priced and timed as the route origin. A route with no stop rows of
+           that type, the route's own endpoint city and the "Other" sentinel
+           keep working exactly as before (Boarding::labelStatus). Every
+           channel — website, counter, agent, QuickTicket, TicketBot, WhatsApp
+           and the AI — books through here, so all of them inherit the gate. */
+        if (!$boardingIsOther && Boarding::labelStatus($route, $boardingStop, 'boarding') !== 'ok') {
+            throw new RuntimeException('This pickup is not available for this route. / यो चढ्ने ठाउँ यो रुटमा उपलब्ध छैन — अर्को ठाउँ छान्नुहोस्।');
+        }
+        if (!$dropIsOther && $dropStop !== '' && Boarding::labelStatus($route, $dropStop, 'drop') !== 'ok') {
+            throw new RuntimeException('This drop point is not available for this route. / यो ओर्लने ठाउँ यो रुटमा उपलब्ध छैन — अर्को ठाउँ छान्नुहोस्।');
+        }
+        // The stop that prices the seat (Fare::stopFare): an "Other" pickup is
+        // priced by the town the passenger searched from, when that is a stop.
+        $fareBoarding = $boardingIsOther ? $originTown : $boardingStop;
+        $fareDrop     = $dropIsOther ? '' : $dropStop;
         // A manual pickup has no time of its own: the searched town's configured
         // stop time (what the cut-off below is judged by) is stamped on the leg
         // so the ticket prints THAT pickup time, not the route origin's departure.
@@ -373,6 +391,7 @@ final class BookingService
         $booking = Database::transaction(function () use (
             $route, $routeId, $travelDate, $scheduleIdReq, $seats, $passengers,
             $contact, $phone, $bookingMode, $isCod, $request, $token, $boardingStop, $dropStop, $boardingTime,
+            $fareBoarding, $fareDrop,
             $referralCodeClean, $soldByAdminId,
             $seller, $sellerId, $sellerSource, $counterMethod, $counterNote, $allowStaffSeats
         ): array {
@@ -425,7 +444,7 @@ final class BookingService
             }
 
             /* ---- Price it (server-authoritative) ------------------ */
-            $pricing = self::priceBooking($route, $seats, $bookingMode, $request, $phone, $schedule);
+            $pricing = self::priceBooking($route, $seats, $bookingMode, $request, $phone, $schedule, $fareBoarding, $fareDrop);
 
             // Counter discount (flat or % off the pre-discount base), clamped to
             // the admin-set cap — the same rule the old counter form applied.
@@ -839,7 +858,14 @@ final class BookingService
             // (Gujarat→Rupaidiha) / toIndia 1800 (return). Without $toCity,
             // cabinFare() defaulted to the toIndia rate, mispricing every
             // toNepal counter sale by ₹200 (M1).
-            $cf = Fare::cabinFare('single', 'sharing', 1, false, (string) ($route['to_city'] ?? ''));
+            // The pickup's own fare (Admin -> Routes, 1 Oct 2026) when the
+            // register names a configured stop; else the direction default.
+            $cfStop = Fare::stopFare(
+                (int) $route['id'],
+                (string) (($data['boarding'] ?? '') !== '' && ($data['boarding'] ?? '') !== self::BOARDING_OTHER ? $data['boarding'] : ($data['originTown'] ?? '')),
+                (string) ($data['drop'] ?? '')
+            );
+            $cf = Fare::cabinFare('single', 'sharing', 1, false, (string) ($route['to_city'] ?? ''), 4, $cfStop);
             if (($cf['perPerson'] ?? 0) > 0) {
                 $perSeat = (float) $cf['perPerson'];
             }
@@ -2876,7 +2902,7 @@ final class BookingService
      * @param array<string, mixed> $request
      * @return array<string, mixed>
      */
-    private static function priceBooking(array $route, array $seats, ?string $bookingMode, array $request, string $phone, ?array $schedule = null): array
+    private static function priceBooking(array $route, array $seats, ?string $bookingMode, array $request, string $phone, ?array $schedule = null, ?string $boardingStop = null, ?string $dropStop = null): array
     {
         $seatCount = count($seats);
         $isSleeper = ($schedule !== null ? Seats::effectiveCoach($schedule, $route) : (string) $route['coach_type']) === 'sleeper';
@@ -2891,7 +2917,13 @@ final class BookingService
 
         if ($isSleeper && $bookingMode !== null) {
             $cabinType = ($request['cabinType'] ?? 'single') === 'double' ? 'double' : 'single';
-            $cabin     = Fare::cabinFare($cabinType, $bookingMode, $seatCount, true, (string) ($route['to_city'] ?? ''));
+            /* Price precedence (1 Oct 2026): this bus's own fare_override >
+               the passenger's pickup fare set in Admin -> Routes (Fare::stopFare
+               — Emli/Bhupal + Ahmedabad 2000, other Gujarat pickups 2200) > the
+               direction default (Admin -> Settings). Private cabins keep the
+               cabin price list; cabinFare() ignores the stop fare for them. */
+            $stopFare  = $bookingMode === 'sharing' ? Fare::stopFare((int) $route['id'], $boardingStop, $dropStop) : null;
+            $cabin     = Fare::cabinFare($cabinType, $bookingMode, $seatCount, true, (string) ($route['to_city'] ?? ''), 4, $stopFare);
             if ($override !== null && $bookingMode === 'sharing') {
                 $base    = round($override * $seatCount, 2);
                 $perSeat = $override;

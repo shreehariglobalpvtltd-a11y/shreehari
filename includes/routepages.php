@@ -81,7 +81,7 @@ final class RoutePages
     {
         $rid = (int) $r['id'];
         $stops = Database::fetchAll(
-            'SELECT stop_type, stop_name, landmark, stop_time, latitude, longitude FROM route_stops WHERE route_id = :r ORDER BY stop_type DESC, sort_order, id',
+            'SELECT stop_type, stop_name, landmark, stop_time, latitude, longitude FROM route_stops WHERE route_id = :r' . Boarding::activeSql() . ' ORDER BY stop_type DESC, sort_order, id',
             ['r' => $rid]
         );
         $boarding = array_values(array_filter($stops, static fn(array $s): bool => $s['stop_type'] === 'boarding'));
@@ -91,6 +91,12 @@ final class RoutePages
         $toNepal = in_array(strtolower(trim((string) $r['to_city'])), self::NEPAL_SIDE, true);
         $dir     = Fare::dirFares();
         $sharing = (float) ($toNepal ? $dir['toNepal'] : $dir['toIndia']);
+        // The route's own origin / destination pickup fare (Admin -> Routes,
+        // 1 Oct 2026) when the office set one — what that passenger pays.
+        $own = Fare::stopFare($rid, (string) $r['from_city'], (string) $r['to_city']);
+        if ($own !== null) {
+            $sharing = $own;
+        }
         $cp      = Settings::getArray('cabin_pricing', []);
         $single  = (float) ($cp['private']['single_1pax']['online'] ?? $cp['private']['single_1pax']['offline'] ?? 0);
         $double  = (float) ($cp['private']['double_2pax']['online'] ?? $cp['private']['double_2pax']['offline'] ?? 0);

@@ -52,17 +52,8 @@ try {
           WHERE r.is_active = 1 AND (b.id IS NULL OR b.is_active = 1)
           ORDER BY r.sort_order, r.dep_time'
     );
-    $servesTown = static function (int $routeId, string $type, string $town): bool {
-        static $cache = [];
-        $key = $routeId . '|' . $type;
-        if (!isset($cache[$key])) {
-            $cache[$key] = array_map(
-                static fn(array $r): string => Boarding::townKey((string) $r['stop_name']),
-                Database::fetchAll('SELECT stop_name FROM route_stops WHERE route_id = :r AND stop_type = :t', ['r' => $routeId, 't' => $type])
-            );
-        }
-        return in_array(Boarding::townKey($town), $cache[$key], true);
-    };
+    // The same ON-stops-only test api/search.php uses (Boarding, 1 Oct 2026).
+    $servesTown = static fn(int $routeId, string $type, string $town): bool => Boarding::servesTown($routeId, $type, $town);
     $matches = static function (array $route, string $side, array $wanted) use ($servesTown): bool {
         $cityCol = $side === 'boarding' ? 'from_city' : 'to_city';
         foreach ($wanted as $town) {

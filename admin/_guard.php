@@ -128,6 +128,8 @@ function admin_nav(): array
 
         // Routes
         ['href' => 'routes.php',       'icon' => 'route',      'label' => 'Routes',           'perm' => 'routes.view',    'section' => 'Routes'],
+        // 1 Oct 2026: each pickup's fare + ON/OFF + order (the stop editor on Routes).
+        ['href' => 'routes.php#pickups','icon' => 'map-pin',   'label' => 'Pickup points & fares','perm' => 'routes.view', 'section' => 'Settings'],
 
         // Payments — money in, money back.
         ['href' => 'payments.php',     'icon' => 'card',      'label' => 'Verify Payments',  'perm' => 'payments.view',  'section' => 'Payments'],

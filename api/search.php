@@ -111,21 +111,8 @@ try {
           ORDER BY r.sort_order, r.dep_time'
     );
 
-    /** Does this town name appear among a route's stops of the given type? */
-    $servesTown = static function (int $routeId, string $type, string $town): bool {
-        static $cache = [];
-        $key = $routeId . '|' . $type;
-        if (!isset($cache[$key])) {
-            $cache[$key] = array_map(
-                static fn(array $r): string => Boarding::townKey((string) $r['stop_name']),
-                Database::fetchAll(
-                    'SELECT stop_name FROM route_stops WHERE route_id = :r AND stop_type = :t',
-                    ['r' => $routeId, 't' => $type]
-                )
-            );
-        }
-        return in_array(Boarding::townKey($town), $cache[$key], true);
-    };
+    /** Does this town name an ON stop of the given type on the route? (Admin ON/OFF, 1 Oct 2026) */
+    $servesTown = static fn(int $routeId, string $type, string $town): bool => Boarding::servesTown($routeId, $type, $town);
 
     /** Either endpoint city, or a stop the coach calls at. */
     $matches = static function (array $route, string $side, array $wanted) use ($servesTown): bool {
@@ -181,9 +168,12 @@ try {
 
         $availability = Seats::availability($routeId, $date, 'sharing', (int) $schedule['id']);
 
+        // Only the stops switched ON in Admin -> Routes (1 Oct 2026), each
+        // with its own fare (NULL = the direction default).
         $stops = Database::fetchAll(
-            'SELECT stop_type, stop_name, landmark, stop_time, latitude, longitude, is_border, is_meal_halt
-               FROM route_stops WHERE route_id = :r ORDER BY stop_type, sort_order',
+            'SELECT stop_type, stop_name, landmark, stop_time, latitude, longitude, is_border, is_meal_halt, '
+              . (Boarding::hasStopControls() ? 'fare' : 'NULL AS fare') . '
+               FROM route_stops WHERE route_id = :r' . Boarding::activeSql() . ' ORDER BY stop_type, sort_order, id',
             ['r' => $routeId]
         );
 
@@ -246,6 +236,21 @@ try {
             }
             return $out;
         };
+        /* Per-pickup fares (owner ask, 1 Oct 2026), index-aligned with the
+           boarding / drop label lists: the number the office set on that stop
+           in Admin -> Routes, or null = the direction default (fareDefault).
+           Only the priced side carries them — the boarding stops going to
+           Nepal, the drop stops coming back — exactly as Fare::stopFare()
+           charges, so the seat page can quote the real price per pickup. */
+        $pricedSide    = Fare::routeDir($route) === 'toNepal' ? 'boarding' : 'drop';
+        $fareOf        = static fn(array $s): ?float => $s['fare'] !== null && (float) $s['fare'] > 0 ? round((float) $s['fare'], 2) : null;
+        $boardingFares = $pricedSide === 'boarding' ? array_map($fareOf, $boarding) : array_fill(0, count($boarding), null);
+        $dropFares     = $pricedSide === 'drop' ? array_map($fareOf, $drop) : array_fill(0, count($drop), null);
+        $fareDefault   = (float) Fare::dirFares()[Fare::routeDir($route)];
+        $priced        = $pricedSide === 'boarding' ? $boardingFares : $dropFares;
+        $fareFrom      = $priced === [] ? $fareDefault
+            : (float) min(array_map(static fn(?float $f): float => $f ?? $fareDefault, $priced));
+
         $boarding = array_map($encodeStop, $boarding);
         $drop     = array_map($encodeStop, $drop);
 
@@ -382,6 +387,12 @@ try {
             'totalSeats'   => $totalSeats,
             'boarding'     => $boarding,
             'drop'         => $drop,
+            'boardingFares'=> $boardingFares,
+            'dropFares'    => $dropFares,
+            // Sharing per-seat: the direction default (a stop with no fare of
+            // its own) and the lowest pickup fare on this bus ("from ₹…").
+            'fareDefault'  => $fareDefault,
+            'fareFrom'     => (float) (BookingService::scheduleFareOverride($schedule) ?? $fareFrom),
             'boardingIdx'  => $boardingIdx,
             'dropIdx'      => $dropIdx,
             'status'       => $schedule['status'],

@@ -547,7 +547,7 @@ function loadTermsData(cb) {
   if (window.__shgTermsQueue) { window.__shgTermsQueue.push(cb); return; }
   window.__shgTermsQueue = [cb];
   var el = document.createElement('script');
-  el.src = '/assets/js/terms-data.js?v=20260930a';
+  el.src = '/assets/js/terms-data.js?v=20261002a';
   el.onload = function () {
     TERMS_DATA = window.TERMS_DATA || [];
     window.__shgTermsReady = true;
@@ -1128,8 +1128,22 @@ var STOP_CODES = [
   ['kamrej', 'KMJ', 'Kamrej'], ['ankleshwar', 'AKV', 'Ankleshwar'], ['ankeshwar', 'AKV', 'Ankleshwar'], ['bharuch', 'BRH', 'Bharuch'], ['anand', 'ANA', 'Anand'], ['nadiad', 'NAD', 'Nadiad'],
   ['rupaidiha', 'RPD', 'Rupaidiha'], ['jamunaha', 'RPD', 'Jamunaha'], ['nepalgunj', 'NPJ', 'Nepalgunj'], ['nepalganj', 'NPJ', 'Nepalgunj'],
   ['kohalpur', 'KHL', 'Kohalpur'], ['lucknow', 'LKO', 'Lucknow'], ['bahraich', 'BRK', 'Bahraich'], ['gorakhpur', 'GKP', 'Gorakhpur'],
-  ['kathmandu', 'KTM', 'Kathmandu'], ['delhi', 'DEL', 'Delhi'], ['jaipur', 'JAI', 'Jaipur'], ['udaipur', 'UDR', 'Udaipur']
+  ['kathmandu', 'KTM', 'Kathmandu'], ['delhi', 'DEL', 'Delhi'], ['jaipur', 'JAI', 'Jaipur'], ['udaipur', 'UDR', 'Udaipur'],
+  ['rajkot', 'RJT', 'Rajkot']
 ];
+/* ONE location list (owner R3g, 1 Oct 2026): the pickups switched ON in
+   Admin -> Routes ride the page boot (SHG_BOOT.locations, from
+   Boarding::locations()). They replace the packaged CONFIG.mainPoints.india
+   so the fare board, the picker and every other reader show exactly the
+   pickups the server sells — Rajkot included, an OFF stop never. */
+(function adoptBootLocations() {
+  try {
+    var L = window.SHG_BOOT && window.SHG_BOOT.locations;
+    if (L && Array.isArray(L.india) && L.india.length && typeof CONFIG !== 'undefined' && CONFIG.mainPoints) {
+      CONFIG.mainPoints.india = L.india.slice();
+    }
+  } catch (e) { /* no boot payload — keep the packaged list */ }
+})();
 function stopTown(lead) {
   var t = String(lead || '').split(/\s+[\u2014\u2013-]\s+/)[0].trim();
   if (t.indexOf(',') >= 0) { var ps = t.split(',').map(function (x) { return x.trim(); }).filter(Boolean); t = ps[ps.length - 1] || t; }
@@ -1315,15 +1329,69 @@ function sharingBasePP(toCity) {
 function sharingPP(toCity, online) {
   return sharingBasePP(toCity);
 }
+/* Per-pickup fares (owner ask, 1 Oct 2026). Each Gujarat pickup can carry its
+   own per-seat sharing fare set in Admin -> Routes (Emli/Bhupal + Ahmedabad
+   2000, the rest 2200). api/search.php ships them index-aligned with the
+   stop lists (boardingFares / dropFares); going to Nepal the BOARDING stop
+   prices the seat, coming back the DROP stop — exactly Fare::stopFare() on
+   the server. 0 = no fare of its own (the direction default applies). */
+function stopFareFor(r, boarding, drop) {
+  if (!r) return 0;
+  var toNepal = isNepalPoint(r.to);
+  var list = (toNepal ? r.boarding : r.drop) || [];
+  var fares = (toNepal ? r.boardingFares : r.dropFares) || [];
+  var want = String((toNepal ? boarding : drop) || '');
+  if (!want || want === '__other__') return 0;
+  var i = list.indexOf(want);
+  if (i < 0 && typeof townKeyJS === 'function') {
+    var k = townKeyJS(want);
+    for (var j = 0; j < list.length; j++) { if (townKeyJS(list[j]) === k) { i = j; break; } }
+  }
+  var f = i >= 0 ? Number(fares[i]) : 0;
+  return f > 0 ? Math.round(f) : 0;
+}
+/* The fare for a Gujarat town from the boot location list (fare board,
+   homepage strip). dir 'go' = Gujarat -> Nepal pickups, 'back' = drops. */
+function locationFare(town, dir) {
+  try {
+    var L = window.SHG_BOOT && window.SHG_BOOT.locations;
+    var list = L ? (dir === 'back' ? L.back : L.go) : null;
+    if (!list || !list.length) return 0;
+    var k = typeof townKeyJS === 'function' ? townKeyJS(town) : String(town || '').toLowerCase();
+    for (var i = 0; i < list.length; i++) {
+      var n = list[i] && list[i].name;
+      if (n === town || (typeof townKeyJS === 'function' && townKeyJS(n) === k)) {
+        var f = Number(list[i].fare);
+        return f > 0 ? Math.round(f) : 0;
+      }
+    }
+  } catch (e) { /* fall through */ }
+  return 0;
+}
+/* What a search result card should quote: this bus's own price, else the
+   SEARCHED pickup's fare (boardingIdx / dropIdx from the server), else the
+   lowest pickup fare on the bus, else the direction default. */
+function srvCardFare(srv, toCity) {
+  if (!srv) return 0;
+  if (Number(srv.fareOverride) > 0) return Math.round(Number(srv.fareOverride));
+  var toNepal = isNepalPoint(toCity || srv.to);
+  var fares = (toNepal ? srv.boardingFares : srv.dropFares) || [];
+  var idx = toNepal ? srv.boardingIdx : srv.dropIdx;
+  if (typeof idx === 'number' && idx >= 0 && Number(fares[idx]) > 0) return Math.round(Number(fares[idx]));
+  if (typeof idx === 'number' && idx >= 0 && Number(srv.fareDefault) > 0) return Math.round(Number(srv.fareDefault));
+  return Number(srv.fareFrom) > 0 ? Math.round(Number(srv.fareFrom)) : 0;
+}
 /* `perSeatOverride` (4 Sep 2026): the office can give ONE departure its own
    per-seat price on the Bus Calendar (schedules.fare_override). When the
    customer has picked such a bus, that number replaces the directional
    sharing fare here so the seat summary and the checkout total match what
    the server will actually charge. Private cabins keep the cabin price list,
    and every daily bus passes 0/undefined and prices exactly as before. */
-function calcCabinFare(cabinType, bookingType, passengers, isOnline, toCity, perSeatOverride) {
+function calcCabinFare(cabinType, bookingType, passengers, isOnline, toCity, perSeatOverride, stopFare) {
   const pricing = CONFIG.cabinPricing;
-  const ovr = Number(perSeatOverride) > 0 ? Number(perSeatOverride) : 0;
+  /* Precedence = the server's (BookingService::priceBooking): this bus's own
+     price > the pickup's own fare (stopFare, 1 Oct 2026) > direction default. */
+  const ovr = Number(perSeatOverride) > 0 ? Number(perSeatOverride) : (Number(stopFare) > 0 ? Number(stopFare) : 0);
   if (bookingType === 'private') {
     const key = cabinType === 'single' ? 'single_1pax' : 'double_2pax';
     const p = pricing.private[key];

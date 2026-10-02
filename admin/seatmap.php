@@ -844,7 +844,7 @@ $smToday = todayISO();
    the two ever drift, the legend starts lying, which is worse than no legend. */
 $legendStops = [];
 if ($routeId > 0) {
-    foreach (Boarding::stopsFor($routeId) as $i => $st) {
+    foreach (Boarding::allStopsFor($routeId, 'boarding') as $i => $st) {   // ON + OFF, same walk as Seats::adminSeatMap
         $key = Boarding::townKey((string) ($st['name'] ?? ''));
         if ($key === '' || isset($legendStops[$key])) {
             continue;

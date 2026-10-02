@@ -227,8 +227,12 @@ try {
     check('  gender from the recorded tickets', ($s['prefill']['gender'] ?? '') === 'Male' && ($s['fields']['gender']['source'] ?? '') === 'history');
     check('  the date is NEVER taken from history', ($s['prefill']['date'] ?? 'x') === '' && ($s['fields']['date']['source'] ?? '') === 'auto');
     check('  a live plan comes back, on the remembered pickup', is_array($s['plan']) && ($s['plan']['matchedDesk'] ?? false) === true && count($s['plan']['seats']) === 1, (string) ($s['plan']['boarding'] ?? $s['planError']));
-    $q = Fare::quote((float) $dir['toNepal'], 1, 0, 0, 0, '', '', $rid);
-    check('  the fare is the engine\'s own quote — untouched', abs((float) ($s['plan']['fare']['total'] ?? 0) - (float) $q['total']) < 0.01 && abs((float) ($s['plan']['fare']['perSeat'] ?? 0) - (float) $dir['toNepal']) < 0.01, (string) ($s['plan']['fare']['total'] ?? ''));
+    /* 1 Oct 2026 (owner ask): the engine prices the REMEMBERED pickup at its
+       own Admin fare (Fare::perSeatFor) - the direction fare only when that
+       pickup has none of its own. */
+    $pp = Fare::perSeatFor($out, (string) ($s['plan']['boarding'] ?? ''), '');
+    $q = Fare::quote($pp, 1, 0, 0, 0, '', '', $rid);
+    check('  the fare is the engine\'s own quote — untouched', abs((float) ($s['plan']['fare']['total'] ?? 0) - (float) $q['total']) < 0.01 && abs((float) ($s['plan']['fare']['perSeat'] ?? 0) - $pp) < 0.01, (string) ($s['plan']['fare']['total'] ?? ''));
     check('  confidence + reasons are reported', (float) $s['confidence'] > 0.5 && count($s['reasons']) >= 1, (string) $s['confidence'] . ' · ' . implode(' | ', $s['reasons']));
     $s = TicketBot::suggest(['phone' => TB_PHONE . '001', 'boarding' => $firstTown, 'name' => 'Typed Name', 'gender' => 'Female'], $staffRow);
     check('explicit input beats history (name, pickup, gender)',

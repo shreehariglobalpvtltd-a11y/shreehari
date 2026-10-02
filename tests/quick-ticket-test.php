@@ -169,7 +169,11 @@ try {
     check('  pickup label carries its time ("Name @ HH:MM")', preg_match('/@ \d\d:\d\d$/', (string) $p['boarding']) === 1, (string) $p['boarding']);
     $firstStop = (string) ($stops[0]['name'] ?? $out['from_city']);
     check('  first pickup by default', Boarding::townKey((string) $p['boarding']) === Boarding::townKey($firstStop), (string) $p['boardingName']);
-    check('  fare per seat = the toNepal direction fare', abs((float) $p['fare']['perSeat'] - (float) $dir['toNepal']) < 0.01, (string) $p['fare']['perSeat']);
+    /* 1 Oct 2026 (owner ask): each pickup carries its own fare in Admin ->
+       Routes (Emli/Bhupal + Ahmedabad 2000, other Gujarat pickups 2200), so
+       the expectation is the CHOSEN pickup's fare (Fare::perSeatFor), which
+       is the direction fare only for a pickup with no fare of its own. */
+    check('  fare per seat = the chosen pickup fare (Fare::perSeatFor)', abs((float) $p['fare']['perSeat'] - Fare::perSeatFor($out, (string) $p['boarding'], '')) < 0.01, (string) $p['fare']['perSeat']);
     $q = Fare::quote((float) $p['fare']['perSeat'], 1, 0, 0, 0, '', '', $rid);
     check('  total = Fare::quote of that base', abs((float) $p['fare']['total'] - (float) $q['total']) < 0.01, (string) $p['fare']['total']);
     check('  no women-only berth for an unstated gender', !in_array($p['seats'][0], Seats::femaleSeats('sleeper'), true), $p['seats'][0]);
@@ -234,7 +238,7 @@ try {
     check('a man never gets a women-only berth', !in_array($mm['seats'][0], Seats::femaleSeats('sleeper'), true), $mm['seats'][0]);
     $pair = QuickTicket::plan(['date' => $D, 'direction' => 'toNepal', 'seats' => 2]);
     check('a pair shares one cabin', count($pair['seats']) === 2 && Seats::unitKey($pair['seats'][0]) === Seats::unitKey($pair['seats'][1]), implode(',', $pair['seats']));
-    check('  priced for two', abs((float) $pair['fare']['base'] - 2 * (float) $dir['toNepal']) < 0.01, (string) $pair['fare']['base']);
+    check('  priced for two (the pickup own fare x 2)', abs((float) $pair['fare']['base'] - 2 * Fare::perSeatFor($out, (string) $pair['boarding'], '')) < 0.01, (string) $pair['fare']['base']);
 
     /* ================================================================
      *  5. refusals
@@ -324,7 +328,7 @@ try {
     check('a party of two gets two seats', count($resP['seats']) === 2, implode(',', $resP['seats']));
     $names = array_map('strval', pluck(Database::fetchAll('SELECT full_name FROM booking_passengers WHERE booking_id = :b ORDER BY is_primary DESC, id', ['b' => (int) $resP['bookingId']]), 'full_name'));
     check('  second passenger numbered after the buyer', $names === ['Quick Test Family', 'Quick Test Family (2)'], implode(' | ', $names));
-    $qP = Fare::quote(2 * (float) $dir['toNepal'], 2, 0, 0, 0, '', '', $rid);
+    $qP = Fare::quote(2 * Fare::perSeatFor($out, (string) ($resP['boarding'] ?? ''), ''), 2, 0, 0, 0, '', '', $rid);   // per-pickup fare, 1 Oct 2026
     check('  total = Fare::quote for two', abs((float) $resP['total'] - (float) $qP['total']) < 0.01, (string) $resP['total']);
 
     /* ================================================================

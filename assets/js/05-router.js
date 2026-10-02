@@ -565,10 +565,19 @@ function servedTownKeys(dir) {
 }
 
 function gujaratTownsFor(dir) {
-  /* Every canonical stop IS a daily stop — show the full list always.
-     The bus calls at ALL mainPoints.india towns on every run, so filtering
-     against server data only hid real stops when a migration was missing
-     (Kamrej, Ankleshwar etc. disappeared from the picker). */
+  /* 1 Oct 2026 (owner R3g): the server's ONE location list first — the
+     pickups switched ON in Admin -> Routes, in Admin order (Rajkot included,
+     an OFF stop never). 'back' lists the return route's own destination
+     first, so a Rupaidiha -> Surat search still finds the bus whose only
+     drop row is "Gujarat". */
+  const L = (window.SHG_BOOT && window.SHG_BOOT.locations) || null;
+  const bootList = L ? (dir === 'back' ? L.back : L.go) : null;
+  if (bootList && bootList.length) {
+    const names = bootList.map(s => s && s.name).filter(Boolean);
+    if (names.length) return names;
+  }
+  if (dir !== 'back' && SrvStops.goNames && SrvStops.goNames.length) return SrvStops.goNames.slice();
+  /* Last resort: the packaged list (offline first paint, no boot payload). */
   const canonical = ((CONFIG.mainPoints || {}).india || []).filter(Boolean);
   if (canonical.length) {
     return canonical;
@@ -611,6 +620,11 @@ function pickupTimeFor(city) {
      names gujaratTownsFor now returns); fall back to seed data. */
   if (SrvStops.goTimes && SrvStops.goTimes[k]) return SrvStops.goTimes[k];
   if (SrvStops.backTimes && SrvStops.backTimes[k]) return SrvStops.backTimes[k];
+  try {
+    var L = window.SHG_BOOT && window.SHG_BOOT.locations;
+    var hit = L && (L.go || []).concat(L.back || []).filter(function (s) { return s && s.time && townKeyJS(s.name) === k; })[0];
+    if (hit) return hit.time;
+  } catch (e) { /* fall through */ }
   return _pickupTimes[k] || '';
 }
 /* Format a 24h time as 12h AM/PM for customer-facing display. */
@@ -1106,7 +1120,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20260930a" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261002a" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'
@@ -1487,10 +1501,13 @@ function renderFareLive() {
   const from = fromEl.value, to = toEl.value;
   if (!from || !to || from === to) { box.classList.remove('on'); return; }
 
-  const base = sharingBasePP(to);
-  const now  = onlinePP(base);
-  const save = base - now;
   const goingOut = isNepalPoint(to);
+  /* The picked pickup's own fare (Admin -> Routes, 1 Oct 2026) — the price
+     the checkout will charge for THAT town; else the direction default. */
+  const ownFare = locationFare(goingOut ? from : to, goingOut ? 'go' : 'back');
+  const base = ownFare > 0 ? ownFare : sharingBasePP(to);
+  const now  = ownFare > 0 ? ownFare : onlinePP(base);
+  const save = base - now;
   /* How many buses actually serve this pair. Exact from/to equality alone
      showed "0 बस" for Baroda / S Hari Parking / Nana Chiloda / Mehsana — genuine
      pickups of the one daily run whose from is Surat — so a mid-route town
@@ -1631,16 +1648,22 @@ function renderFareBoard() {
 
   /* One direction card: the headline per-person price, then every main
      point on the far side listed against it — now with departure time. */
-  const card = (cls, flagFrom, flagTo, title, points, toward, base) => {
-    const now = onlinePP(base);
+  /* priceOf (1 Oct 2026): a per-row price — each Gujarat pickup may carry
+     its own fare from Admin -> Routes; the headline then reads "from" the
+     cheapest row. Without it every row shows the direction fare as before. */
+  const card = (cls, flagFrom, flagTo, title, points, toward, base, priceOf) => {
+    const rowPrice = (p) => { const f = priceOf ? priceOf(p) : 0; return f > 0 ? f : onlinePP(base); };
+    const prices = points.map(rowPrice);
+    const now = prices.length ? Math.min.apply(null, prices) : onlinePP(base);
+    const varies = prices.some(v => v !== now);
     return '<div class="fb-dir ' + cls + '">'
       + '<div class="fb-dir-t"><b>' + flagFrom + ' ' + esc(title) + ' ' + flagTo + '</b>'
-      + '<span class="fb-price"><span class="p">' + inr(now) + '</span>'
-      + (base > now ? '<span class="w">' + inr(base) + '</span>' : '')
+      + '<span class="fb-price"><span class="p">' + (varies ? '<small>' + esc(t('fbFrom')) + '</small> ' : '') + inr(now) + '</span>'
+      + (!varies && base > now ? '<span class="w">' + inr(base) + '</span>' : '')
       + '<span class="n">' + nprEst(now) + ' · ' + t('fbPerPerson') + '</span></span></div>'
-      + points.map(p => '<button type="button" class="fb-row" data-fb-from="' + esc(p) + '" data-fb-to="' + esc(toward) + '">'
+      + points.map((p, i) => '<button type="button" class="fb-row" data-fb-from="' + esc(p) + '" data-fb-to="' + esc(toward) + '">'
           + '<span class="c">' + esc(pointWithTime(p)) + ' → ' + esc(toward) + '</span>'
-          + '<span class="k">' + inr(now) + ' · ' + nprEst(now) + '</span></button>').join('')
+          + '<span class="k">' + inr(prices[i]) + ' · ' + nprEst(prices[i]) + '</span></button>').join('')
       + '</div>';
   };
 
@@ -1649,11 +1672,11 @@ function renderFareBoard() {
     + (pct > 0 ? '<span class="fb-off">' + tf('offPill', { pct: pct }) + '</span>' : '') + '</div>'
     + '<p class="fb-sub">' + tf('fbLead', { pct: pct }) + '</p>'
     + '<div class="fb-dirs">'
-    + card('go',   '🇮🇳', '🇳🇵', t('fbGoing'),  servedPoints(mp.india), hub,                       d.toNepal)
+    + card('go',   '🇮🇳', '🇳🇵', t('fbGoing'),  servedPoints(gujaratTownsFor('go')), hub,         d.toNepal, p => locationFare(p, 'go'))
     /* Return card points AT a single Gujarat hub: the FIRST canonical main
        point (Surat), which is also the return route's real endpoint. */
     + card('back', '🇳🇵', '🇮🇳', t('fbComing'), servedPoints(mp.nepal),
-           ((mp.india || [])[0] || ''), d.toIndia)
+           (gujaratTownsFor('back')[0] || (mp.india || [])[0] || ''), d.toIndia)
     + '</div>'
     + '<div class="fb-foot"><span class="fb-chip">🤝 ' + t('fbSharing') + '</span>'
     + '<span>' + t('fbNote') + '</span></div>';
@@ -2129,8 +2152,15 @@ const SrvCatalog = {
     if (res.fare) r.fare = res.fare;
     if (res.crewName) r.crewName = res.crewName;
     if (res.crewPhone) r.crewPhone = res.crewPhone;
-    if (res.boarding && res.boarding.length) r.boarding = res.boarding.map(stopLine);
-    if (res.drop && res.drop.length) r.drop = res.drop.map(stopLine);
+    /* The server's stop lists are FINAL (1 Oct 2026): they carry only the
+       pickups switched ON in Admin, and create() refuses any other label —
+       so an empty list must clear the seeded catalogue lines, never keep
+       them. Each list travels with its index-aligned per-pickup fares. */
+    if (Array.isArray(res.boarding)) r.boarding = res.boarding.map(stopLine);
+    if (Array.isArray(res.drop)) r.drop = res.drop.map(stopLine);
+    r.boardingFares = Array.isArray(res.boardingFares) ? res.boardingFares.slice() : [];
+    r.dropFares = Array.isArray(res.dropFares) ? res.dropFares.slice() : [];
+    r.fareDefault = Number(res.fareDefault) || 0;
     /* Propagate boardingIdx/dropIdx so the seat-map dropdown pre-selects
        the stop matching the customer's searched origin. Without this the
        dropdown always fell back to index 0 (Surat). */

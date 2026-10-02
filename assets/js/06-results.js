@@ -180,7 +180,10 @@ function renderResults(instant) {
       /* A departure the office priced itself (Bus Calendar → Price) shows
          THAT number, because it is what the server will charge for it. */
       const busFare = Number((srv && srv.fareOverride) || r._fare || 0);
-      const perPersonFare = busFare > 0 ? busFare : (r.type === 'sleeper' ? sharingPP(r.to, true) : r.fare);
+      /* The searched pickup's own fare (Admin -> Routes, 1 Oct 2026) when the
+         server sent one — what this passenger will actually be charged. */
+      const pickFare = r.type === 'sleeper' ? srvCardFare(srv, r.to) : 0;
+      const perPersonFare = busFare > 0 ? busFare : (r.type === 'sleeper' ? (pickFare > 0 ? pickFare : sharingPP(r.to, true)) : r.fare);
       const fareKnown = fareOk(perPersonFare);
       const availState    = left <= 0 ? 'gone' : (left <= 10 ? 'low' : 'ok');
       const seatsPillTxt  = left <= 0
@@ -222,7 +225,7 @@ function renderResults(instant) {
         <div class="bc-fare">
           <span class="amt">${fareKnown ? inr(perPersonFare) : '—'}</span>
           <span class="npr">${!fareKnown ? '' : r.type === 'sleeper' ? nprEst(perPersonFare) + ' /person' : nprEst(r.fare) + ' / ' + t('rowSeats').toLowerCase()}</span>
-          ${r.type === 'sleeper' ? (fareKnown ? '<div class="cabin-price-tag"><span class="sharing-price">🤝 Sharing from ' + inr(busFare > 0 ? busFare : sharingPP(r.to, true)) + '/person</span></div>' : '') + '<div class="cabin-price-tag"><span class="private-price">🔒 Private from ' + inr(CONFIG.cabinPricing.private.single_1pax.online) + '/cabin</span></div>' + (busFare <= 0 && sharingBasePP(r.to) > sharingPP(r.to, true) ? '<div class="save-badge">💸 ' + tf('saveOnline', { a: inr(sharingBasePP(r.to) - sharingPP(r.to, true)) }) + '</div>' : '') : ''}
+          ${r.type === 'sleeper' ? (fareKnown ? '<div class="cabin-price-tag"><span class="sharing-price">🤝 Sharing from ' + inr(perPersonFare) + '/person</span></div>' : '') + '<div class="cabin-price-tag"><span class="private-price">🔒 Private from ' + inr(CONFIG.cabinPricing.private.single_1pax.online) + '/cabin</span></div>' + (busFare <= 0 && sharingBasePP(r.to) > sharingPP(r.to, true) ? '<div class="save-badge">💸 ' + tf('saveOnline', { a: inr(sharingBasePP(r.to) - sharingPP(r.to, true)) }) + '</div>' : '') : ''}
           <span class="left" style="color:${left <= 5 ? 'var(--bad)' : 'var(--ok)'}">${left <= 0 ? t('resSoldOut') : (r.type === 'sleeper' && cabinsLeft <= 4 ? '<b style="color:var(--bad)">Only ' + cabinsLeft + ' cabins left!</b>' : left + ' ' + t('resLeft'))}</span>
           ${cta}
         </div>
@@ -238,6 +241,8 @@ function renderResults(instant) {
         busName: x.busName || baseR.busName, busNo: x.busNumber || baseR.busNo,
         boarding: (x.boarding && x.boarding.length) ? x.boarding : baseR.boarding,
         drop: (x.drop && x.drop.length) ? x.drop : baseR.drop,
+        boardingFares: (x.boarding && x.boarding.length) ? (x.boardingFares || []) : baseR.boardingFares,
+        dropFares: (x.drop && x.drop.length) ? (x.dropFares || []) : baseR.dropFares,
         _sid: x.scheduleId, _slot: x.slot, _fare: Number(x.fareOverride || 0)
       });
       return cardHTML(r2, x, true);
@@ -327,6 +332,8 @@ $('#resultsList').addEventListener('click', (e) => {
         busName: _x.busName || Flow.route.busName, busNo: _x.busNumber || Flow.route.busNo,
         boarding: (_x.boarding && _x.boarding.length) ? _x.boarding : Flow.route.boarding,
         drop: (_x.drop && _x.drop.length) ? _x.drop : Flow.route.drop,
+        boardingFares: (_x.boarding && _x.boarding.length) ? (_x.boardingFares || []) : Flow.route.boardingFares,
+        dropFares: (_x.drop && _x.drop.length) ? (_x.dropFares || []) : Flow.route.dropFares,
         extraBus: true, slot: _x.slot, fare: Flow.fareOverride > 0 ? Flow.fareOverride : Flow.route.fare
       });
     }
@@ -780,13 +787,25 @@ function syncOtherStop(sel, inputId, label, legKey, keep, restoreText) {
     return on;
   };
   show();
-  sel.onchange = () => { if (show()) { try { inp.focus(); } catch (e) {} } };
+  sel.onchange = () => {
+    if (show()) { try { inp.focus(); } catch (e) {} }
+    /* Each pickup may carry its own fare (Admin -> Routes, 1 Oct 2026):
+       re-quote the seat summary for the stop just chosen. */
+    if (typeof updateSeatSummary === 'function' && Flow.route) { try { updateSeatSummary(); } catch (e) {} }
+  };
   inp.oninput = () => { if (field) field.classList.remove('invalid'); };
 }
 
 /* The text behind an Other choice: '' when a configured stop is selected,
    the tidied text when it is long enough, false (field marked, toast shown)
    when it is not. Mirrors BookingService::manualStop — min 3, max 120. */
+/* The per-seat fare of the pickup / drop currently chosen on the seat view
+   (0 = none of its own, the direction default applies). */
+function curStopFare() {
+  const b = $('#boardingSel'), d = $('#dropSel');
+  return stopFareFor(Flow.route, b ? b.value : '', d ? d.value : '');
+}
+
 function otherStopText(sel, inputId, errKey) {
   if (!sel || sel.value !== BOARD_OTHER) return '';
   const inp = $(inputId);
@@ -829,7 +848,7 @@ function renderSeats(instant) {
   if (Flow.tripType === 'round') info += ' · ' + t(ctx.ret ? 'tkRet' : 'tkOut') + ' (' + (Flow.legIndex + 1) + '/2)';
   $('#seatRouteInfo').textContent = info;
   var ssi = $('#seatStickyInfo');
-  if (ssi) ssi.innerHTML = '<span class="sfi-route">' + esc(ctx.from) + ' → ' + esc(ctx.to) + '</span><span class="sfi-date">' + fmtDate(ctx.date) + ' · ' + esc(r.busName) + '</span><span class="sfi-fare">' + (function (v) { return fareOk(v) ? (r.type === 'sleeper' ? 'from ' : '') + inr(v) : '—'; })(r.type === 'sleeper' ? sharingPP(ctx.to, true) : r.fare) + '</span>';
+  if (ssi) ssi.innerHTML = '<span class="sfi-route">' + esc(ctx.from) + ' → ' + esc(ctx.to) + '</span><span class="sfi-date">' + fmtDate(ctx.date) + ' · ' + esc(r.busName) + '</span><span class="sfi-fare">' + (function (v) { return fareOk(v) ? (r.type === 'sleeper' ? 'from ' : '') + inr(v) : '—'; })(r.type === 'sleeper' ? (Flow.fareOverride > 0 ? Flow.fareOverride : (stopFareFor(r, (r.boarding || [])[r.boardingIdx > 0 ? r.boardingIdx : 0], (r.drop || [])[r.dropIdx > 0 ? r.dropIdx : 0]) || sharingPP(ctx.to, true))) : r.fare) + '</span>';
   $('#sumRoute').textContent = ctx.from + ' → ' + ctx.to;
   $('#sumDate').textContent = fmtDate(ctx.date);
   $('#sumBus').textContent = r.busName + ' (' + r.busNo + ')';
@@ -855,6 +874,11 @@ function renderSeats(instant) {
     b: otherStopChosen($('#boardingSel'), legKey),
     d: otherStopChosen($('#dropSel'), legKey)
   };
+  /* A redraw of the SAME leg (occupancy poll, cabin toggle) keeps the stop the
+     passenger picked — it prices the seat now (1 Oct 2026), so silently
+     snapping back to the searched stop would change the quoted fare. */
+  const keepSel = (sel) => (sel && sel.getAttribute('data-leg') === legKey && sel.value && sel.value !== BOARD_OTHER) ? sel.value : '';
+  const keptB = keepSel($('#boardingSel')), keptD = keepSel($('#dropSel'));
   fill($('#boardingSel'), r.boarding);
   fill($('#dropSel'), r.drop);
 
@@ -874,6 +898,8 @@ function renderSeats(instant) {
   if (dSel && typeof r.dropIdx === 'number' && r.dropIdx >= 0 && r.dropIdx < dSel.options.length) {
     dSel.selectedIndex = r.dropIdx;
   }
+  if (bSel && keptB && $$('option', bSel).some(o => o.value === keptB)) bSel.value = keptB;
+  if (dSel && keptD && $$('option', dSel).some(o => o.value === keptD)) dSel.value = keptD;
   /* The Other option goes LAST and only now, after the index pre-select, so
      the server's boardingIdx / dropIdx keep addressing configured stops only.
      A leg already carried past Continue (Flow.legs) restores its typed text
@@ -971,8 +997,10 @@ function renderSeats(instant) {
     /* Real directional per-person fare — what the server will actually
        charge (was showing a stale flat tier price). Offline vs online are
        both shown so the 5% online saving is visible while picking a berth. */
-    const PP_OFF  = sharingBasePP(ctx.to);
-    const PP_ON   = sharingPP(ctx.to, true);
+    /* The chosen pickup's own fare (1 Oct 2026) or this bus's price wins. */
+    const PP_OWN  = Flow.fareOverride > 0 ? Flow.fareOverride : curStopFare();
+    const PP_OFF  = PP_OWN > 0 ? PP_OWN : sharingBasePP(ctx.to);
+    const PP_ON   = PP_OWN > 0 ? PP_OWN : sharingPP(ctx.to, true);
     const PP_SAVE = Math.max(0, PP_OFF - PP_ON);
 
     /* Physical layout — server-owned since 29 Aug 2026. `layout.decks[i].rows`
@@ -1310,7 +1338,8 @@ function renderSeats(instant) {
       routeId: r.id, date: ctx.date, seats: Flow.seats.slice(),
       boarding: bOther || $('#boardingSel').value, drop: dOther || $('#dropSel').value, fare: r.fare,
       sid: Flow.scheduleId || 0,  // extra bus on this date (Bus Calendar, 5 Sep 2026); 0 = daily bus
-      fareOverride: Flow.fareOverride || 0   // this bus's own per-seat price; 0 = the normal fare
+      fareOverride: Flow.fareOverride || 0,  // this bus's own per-seat price; 0 = the normal fare
+      stopFare: bOther ? 0 : curStopFare()   // the pickup's own fare (Admin -> Routes); 0 = default
     };
     // The same text again as a flag: the checkout then posts the '__other__'
     // sentinel + boardingOther / dropOther (see submitBooking in 07-checkout).
@@ -1340,7 +1369,7 @@ function renderSeats(instant) {
 function currentLegs() {
   const legs = Flow.legs.slice(0, Flow.legIndex);
   if (Flow.route && Flow.seats.length) {
-    legs.push({ routeId: Flow.route.id, date: legCtx().date, seats: Flow.seats, fare: Flow.route.fare, sid: Flow.scheduleId || 0, fareOverride: Flow.fareOverride || 0 });
+    legs.push({ routeId: Flow.route.id, date: legCtx().date, seats: Flow.seats, fare: Flow.route.fare, sid: Flow.scheduleId || 0, fareOverride: Flow.fareOverride || 0, stopFare: curStopFare() });
   }
   return legs.filter(Boolean);
 }
@@ -1377,13 +1406,13 @@ function updateSeatSummary() {
     const seatLabels = Flow.seats;
     const hasDouble = seatLabels.some(s => /^D/i.test(s));
     const cabinType = hasDouble ? 'double' : 'single';
-    const cf = calcCabinFare(cabinType, Flow.bookingType, Flow.seats.length, true, Flow.route && Flow.route.to, Flow.fareOverride);
+    const cf = calcCabinFare(cabinType, Flow.bookingType, Flow.seats.length, true, Flow.route && Flow.route.to, Flow.fareOverride, curStopFare());
     recapTotal = cf.total;
     let rows = '<div class="sum-row"><span>' + cf.emoji + ' ' + cf.label + '</span><b>' + inr(cf.total) + '</b></div>';
     if (cf.saved > 0) rows += '<div class="sum-row disc"><span>🌐 Online Discount</span><b>− ' + inr(cf.saved) + '</b></div>';
     rows += '<div class="sum-row"><span>' + tf('rowPaxFare', { n: Flow.seats.length, f: inr(cf.perPerson) }) + '</span><b>' + inr(cf.total) + '</b></div>';
     const altMode = Flow.bookingType === 'sharing' ? 'private' : 'sharing';
-    const altCf = calcCabinFare(cabinType, altMode, Flow.seats.length, true, Flow.route && Flow.route.to, Flow.fareOverride);
+    const altCf = calcCabinFare(cabinType, altMode, Flow.seats.length, true, Flow.route && Flow.route.to, Flow.fareOverride, curStopFare());
     rows += '<div class="sum-row" style="border-top:1px dashed var(--line);padding-top:6px;margin-top:4px;opacity:.7"><span>' + altCf.emoji + ' ' + (altMode === 'sharing' ? 'Sharing' : 'Private') + '</span><b>' + inr(altCf.total) + '</b></div>';
     rows += '<div class="sum-row" style="opacity:.7"><span>' + (altMode === 'sharing' ? '🤝 per person' : '🔒 per person') + '</span><b>' + inr(altCf.perPerson) + '</b></div>';
     $('#fareRows').innerHTML = rows;

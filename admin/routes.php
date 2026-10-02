@@ -75,41 +75,52 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
                 Database::query("UPDATE routes SET from_city='Surat', to_city='Rupaidiha', dep_time='13:00:00', duration_text='' WHERE id=:i", ['i' => $OUT]);
                 Database::query("UPDATE routes SET from_city='Rupaidiha', to_city='Surat', dep_time='18:00:00', duration_text='' WHERE id=:i", ['i' => $RET]);
 
-                Database::query("DELETE FROM route_stops WHERE route_id=:i AND stop_type='boarding'", ['i' => $OUT]);
-                foreach ($stops as $st) {
+                /* 1 Oct 2026: stops are SEEDED here only when a route has none of
+                   that type. This button used to DELETE every pickup and
+                   re-insert a typed list — which would wipe Rajkot, every
+                   per-pickup fare and every ON/OFF the office set in the stop
+                   editor below. Existing stops are now left exactly as they are. */
+                $none = static fn(int $rid, string $type): bool => (int) Database::scalar(
+                    'SELECT COUNT(*) FROM route_stops WHERE route_id = :i AND stop_type = :t',
+                    ['i' => $rid, 't' => $type], 0
+                ) === 0;
+                if ($none($OUT, 'boarding')) {
+                    foreach ($stops as $st) {
+                        Database::insert('route_stops', [
+                            'route_id' => $OUT, 'stop_type' => 'boarding', 'stop_name' => $st[0],
+                            'landmark' => $st[1], 'stop_time' => $st[2], 'latitude' => $st[3], 'longitude' => $st[4],
+                            'is_border' => 0, 'is_meal_halt' => 0, 'sort_order' => $st[5],
+                        ]);
+                    }
+                }
+                if ($none($OUT, 'drop')) {
                     Database::insert('route_stops', [
-                        'route_id' => $OUT, 'stop_type' => 'boarding', 'stop_name' => $st[0],
-                        'landmark' => $st[1], 'stop_time' => $st[2], 'latitude' => $st[3], 'longitude' => $st[4],
-                        'is_border' => 0, 'is_meal_halt' => 0, 'sort_order' => $st[5],
+                        'route_id' => $OUT, 'stop_type' => 'drop', 'stop_name' => 'Rupaidiha',
+                        'landmark' => 'India-Nepal border checkpoint', 'stop_time' => null,
+                        'latitude' => 28.0600, 'longitude' => 81.6170, 'is_border' => 1, 'is_meal_halt' => 0, 'sort_order' => 1,
                     ]);
                 }
-                Database::query("DELETE FROM route_stops WHERE route_id=:i AND stop_type='drop'", ['i' => $OUT]);
-                Database::insert('route_stops', [
-                    'route_id' => $OUT, 'stop_type' => 'drop', 'stop_name' => 'Rupaidiha',
-                    'landmark' => 'India-Nepal border checkpoint', 'stop_time' => null,
-                    'latitude' => 28.0600, 'longitude' => 81.6170, 'is_border' => 1, 'is_meal_halt' => 0, 'sort_order' => 1,
-                ]);
-
-                Database::query("DELETE FROM route_stops WHERE route_id=:i AND stop_type='boarding'", ['i' => $RET]);
-                Database::insert('route_stops', [
-                    'route_id' => $RET, 'stop_type' => 'boarding', 'stop_name' => 'Rupaidiha',
-                    'landmark' => 'India-Nepal border checkpoint', 'stop_time' => '18:00:00',
-                    'latitude' => 28.0600, 'longitude' => 81.6170, 'is_border' => 1, 'is_meal_halt' => 0, 'sort_order' => 1,
-                ]);
-                Database::query("DELETE FROM route_stops WHERE route_id=:i AND stop_type='drop'", ['i' => $RET]);
-                $ord = 1;
-                foreach (array_reverse($stops) as $st) {
+                if ($none($RET, 'boarding')) {
                     Database::insert('route_stops', [
-                        'route_id' => $RET, 'stop_type' => 'drop', 'stop_name' => $st[0],
-                        'landmark' => $st[1], 'stop_time' => null, 'latitude' => $st[3], 'longitude' => $st[4],
-                        'is_border' => 0, 'is_meal_halt' => 0, 'sort_order' => $ord++,
+                        'route_id' => $RET, 'stop_type' => 'boarding', 'stop_name' => 'Rupaidiha',
+                        'landmark' => 'India-Nepal border checkpoint', 'stop_time' => '18:00:00',
+                        'latitude' => 28.0600, 'longitude' => 81.6170, 'is_border' => 1, 'is_meal_halt' => 0, 'sort_order' => 1,
+                    ]);
+                }
+                if ($none($RET, 'drop')) {
+                    // Owner, 1 Oct 2026: the return trip drops at "Gujarat" only.
+                    Database::insert('route_stops', [
+                        'route_id' => $RET, 'stop_type' => 'drop', 'stop_name' => 'Gujarat',
+                        'landmark' => null, 'stop_time' => null, 'latitude' => null, 'longitude' => null,
+                        'is_border' => 0, 'is_meal_halt' => 0, 'sort_order' => 1,
                     ]);
                 }
             });
+            Boarding::flush();
 
             Logger::audit('routes.daily_setup', 'routes', (string) $OUT, null,
                 ['outbound' => $OUT, 'return' => $RET], 'Daily service applied from Admin - Routes');
-            $flash = ['ok', 'Daily service set: one sleeper out (13:00) and one back (18:00), with the nine pickup points.'];
+            $flash = ['ok', 'Daily service set: one sleeper out (13:00) and one back (18:00). Existing pickup points, fares and ON/OFF were kept.'];
         } catch (Throwable $e) {
             $flash = ['bad', $e->getMessage()];
         }
@@ -308,6 +319,123 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
  *  and audit. These replace the "in-app admin console" note.
  * ------------------------------------------------------------------- */
 
+/* Pickup fare / coordinates from a stop form (1 Oct 2026). Blank = NULL
+   (the direction default from Admin -> Settings for a fare). */
+$stopFareIn = static function (mixed $v): ?float {
+    $v = trim((string) $v);
+    if ($v === '') {
+        return null;
+    }
+    if (!is_numeric($v) || (float) $v < 1 || (float) $v > 100000) {
+        throw new RuntimeException('Enter the pickup fare as a rupee amount between 1 and 100000, or leave it blank for the default.');
+    }
+    return round((float) $v, 2);
+};
+$stopCoordIn = static function (mixed $v, float $limit, string $what): ?float {
+    $v = trim((string) $v);
+    if ($v === '') {
+        return null;
+    }
+    if (!is_numeric($v) || abs((float) $v) > $limit) {
+        throw new RuntimeException('Enter a valid ' . $what . ' (decimal degrees), or leave it blank.');
+    }
+    return round((float) $v, 7);
+};
+
+/* ── Pickup fares: one Save for a whole list (1 Oct 2026, owner ask) ──
+   fare[<stop id>] => rupees, blank = the direction default. Only rows of the
+   posted route + type are touched; the audit row carries every change. */
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'save_stop_fares') {
+    if (!Security::verifyCsrf()) {
+        $flash = ['bad', 'Session expired - please try again.'];
+    } else {
+        try {
+            Auth::requireAdmin('routes.edit');
+            if (!Boarding::hasStopControls()) {
+                throw new RuntimeException('Run database/upgrade-2026-10-01-stop-fares.sql first - the fare column does not exist yet.');
+            }
+            $rid      = (int) ($_POST['route_id'] ?? 0);
+            $stopType = ($_POST['stop_type'] ?? '') === 'drop' ? 'drop' : 'boarding';
+            $posted   = is_array($_POST['fare'] ?? null) ? $_POST['fare'] : [];
+            $rows     = Database::fetchAll(
+                'SELECT id, stop_name, fare FROM route_stops WHERE route_id = :r AND stop_type = :t',
+                ['r' => $rid, 't' => $stopType]
+            );
+            $before = $after = [];
+            $plan   = [];
+            foreach ($rows as $row) {
+                $sid = (int) $row['id'];
+                if (!array_key_exists((string) $sid, $posted) && !array_key_exists($sid, $posted)) {
+                    continue;
+                }
+                $new = $stopFareIn($posted[$sid] ?? $posted[(string) $sid] ?? '');
+                $old = $row['fare'] !== null ? round((float) $row['fare'], 2) : null;
+                if ($new === $old) {
+                    continue;
+                }
+                $plan[$sid] = $new;
+                $before[(string) $row['stop_name']] = $old;
+                $after[(string) $row['stop_name']]  = $new;
+            }
+            if ($plan === []) {
+                $flash = ['ok', 'No fare changed.'];
+            } else {
+                Database::transaction(static function () use ($plan): void {
+                    foreach ($plan as $sid => $fare) {
+                        Database::update('route_stops', ['fare' => $fare], 'id = :id', ['id' => $sid]);
+                    }
+                });
+                Boarding::flush();
+                Logger::audit('route_stop.fares', 'routes', (string) $rid, $before, $after,
+                    'Pickup fares changed on route ' . $rid . ' (' . count($plan) . ' stop' . (count($plan) === 1 ? '' : 's') . ')');
+                $flash = ['ok', 'Saved ' . count($plan) . ' pickup fare' . (count($plan) === 1 ? '' : 's') . '. New bookings are charged the new price; existing bookings keep theirs.'];
+            }
+        } catch (Throwable $e) {
+            $flash = ['bad', $e->getMessage()];
+        }
+    }
+}
+
+/* ── Pickup ON / OFF (1 Oct 2026, owner ask) ──
+   OFF hides the stop from search, the pickers, the counter, QuickTicket and
+   the AI, and create() refuses it; the row and every booking that names it
+   stay. The last ON stop of a list cannot be switched off (the route would
+   have nowhere to sell) — switch the route off instead. */
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'toggle_stop') {
+    if (!Security::verifyCsrf()) {
+        $flash = ['bad', 'Session expired - please try again.'];
+    } else {
+        try {
+            Auth::requireAdmin('routes.edit');
+            if (!Boarding::hasStopControls()) {
+                throw new RuntimeException('Run database/upgrade-2026-10-01-stop-fares.sql first - the ON/OFF column does not exist yet.');
+            }
+            $stopId = (int) ($_POST['stop_id'] ?? 0);
+            $stop   = Database::fetch('SELECT * FROM route_stops WHERE id = :id', ['id' => $stopId]);
+            if ($stop === null) { throw new RuntimeException('Stop not found.'); }
+            $turnOn = (int) $stop['is_active'] !== 1;
+            if (!$turnOn) {
+                $onLeft = (int) Database::scalar(
+                    'SELECT COUNT(*) FROM route_stops WHERE route_id = :r AND stop_type = :t AND is_active = 1 AND id <> :id',
+                    ['r' => (int) $stop['route_id'], 't' => (string) $stop['stop_type'], 'id' => $stopId], 0
+                );
+                if ($onLeft === 0) {
+                    throw new RuntimeException('"' . $stop['stop_name'] . '" is the last ' . $stop['stop_type'] . ' point switched ON on this route - keep at least one ON (switch the whole route off instead).');
+                }
+            }
+            Database::update('route_stops', ['is_active' => $turnOn ? 1 : 0], 'id = :id', ['id' => $stopId]);
+            Boarding::flush();
+            Logger::audit('route_stop.toggle', 'routes', (string) $stop['route_id'],
+                ['stop' => $stop['stop_name'], 'is_active' => (int) $stop['is_active']],
+                ['stop' => $stop['stop_name'], 'is_active' => $turnOn ? 1 : 0],
+                ($turnOn ? 'Switched ON stop: ' : 'Switched OFF stop: ') . $stop['stop_name']);
+            $flash = ['ok', ($turnOn ? 'ON: ' : 'OFF: ') . $stop['stop_name'] . ($turnOn ? ' is on sale again.' : ' is no longer offered (existing bookings are unchanged).')];
+        } catch (Throwable $e) {
+            $flash = ['bad', $e->getMessage()];
+        }
+    }
+}
+
 /* ── Add a stop ── */
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'add_stop') {
     if (!Security::verifyCsrf()) {
@@ -331,27 +459,40 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
                 $timeVal = strlen($time) === 5 ? $time . ':00' : $time;
             }
 
+            if (Database::fetch('SELECT id FROM routes WHERE id = :r', ['r' => $rid]) === null) {
+                throw new RuntimeException('Route not found.');
+            }
+            $fareVal = $stopFareIn($_POST['fare'] ?? '');
+            $latVal  = $stopCoordIn($_POST['latitude'] ?? '', 90.0, 'latitude');
+            $lngVal  = $stopCoordIn($_POST['longitude'] ?? '', 180.0, 'longitude');
+
             // Get the next sort_order for this route+type
             $maxOrder = (int) Database::scalar(
                 'SELECT COALESCE(MAX(sort_order), 0) FROM route_stops WHERE route_id = :r AND stop_type = :t',
                 ['r' => $rid, 't' => $stopType], 0
             );
 
-            Database::insert('route_stops', [
+            $row = [
                 'route_id'     => $rid,
                 'stop_type'    => $stopType,
                 'stop_name'    => $name,
                 'landmark'     => $landmark !== '' ? $landmark : null,
                 'stop_time'    => $timeVal,
-                'latitude'     => null,
-                'longitude'    => null,
+                'latitude'     => $latVal,
+                'longitude'    => $lngVal,
                 'is_border'    => !empty($_POST['is_border']) ? 1 : 0,
                 'is_meal_halt' => !empty($_POST['is_meal_halt']) ? 1 : 0,
                 'sort_order'   => $maxOrder + 1,
-            ]);
+            ];
+            if (Boarding::hasStopControls()) {
+                $row['fare']      = $fareVal;
+                $row['is_active'] = 1;
+            }
+            Database::insert('route_stops', $row);
+            Boarding::flush();
 
             Logger::audit('route_stop.add', 'routes', (string) $rid, null,
-                ['stop' => $name, 'type' => $stopType, 'time' => $timeVal],
+                ['stop' => $name, 'type' => $stopType, 'time' => $timeVal, 'fare' => $fareVal],
                 'Added ' . $stopType . ' stop: ' . $name);
             $flash = ['ok', 'Added ' . $stopType . ' stop: ' . $name . '.'];
         } catch (Throwable $e) {
@@ -384,17 +525,30 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
             $old = Database::fetch('SELECT * FROM route_stops WHERE id = :id', ['id' => $stopId]);
             if ($old === null) { throw new RuntimeException('Stop not found.'); }
 
-            Database::update('route_stops', [
+            $set = [
                 'stop_name'    => $name,
                 'landmark'     => $landmark !== '' ? $landmark : null,
                 'stop_time'    => $timeVal,
                 'is_border'    => !empty($_POST['is_border']) ? 1 : 0,
                 'is_meal_halt' => !empty($_POST['is_meal_halt']) ? 1 : 0,
-            ], 'id = :id', ['id' => $stopId]);
+            ];
+            // Map position (1 Oct 2026) — only when the form carries the fields.
+            if (array_key_exists('latitude', $_POST) || array_key_exists('longitude', $_POST)) {
+                $set['latitude']  = $stopCoordIn($_POST['latitude'] ?? '', 90.0, 'latitude');
+                $set['longitude'] = $stopCoordIn($_POST['longitude'] ?? '', 180.0, 'longitude');
+            }
+            if (array_key_exists('fare', $_POST) && Boarding::hasStopControls()) {
+                $set['fare'] = $stopFareIn($_POST['fare']);
+            }
+            Database::update('route_stops', $set, 'id = :id', ['id' => $stopId]);
+            Boarding::flush();
 
             Logger::audit('route_stop.edit', 'routes', (string) ($old['route_id'] ?? 0),
-                ['stop' => $old['stop_name'], 'time' => $old['stop_time']],
-                ['stop' => $name, 'time' => $timeVal],
+                ['stop' => $old['stop_name'], 'landmark' => $old['landmark'], 'time' => $old['stop_time'],
+                 'lat' => $old['latitude'], 'lng' => $old['longitude'], 'fare' => $old['fare'] ?? null],
+                ['stop' => $name, 'landmark' => $set['landmark'], 'time' => $timeVal,
+                 'lat' => $set['latitude'] ?? $old['latitude'], 'lng' => $set['longitude'] ?? $old['longitude'],
+                 'fare' => array_key_exists('fare', $set) ? $set['fare'] : ($old['fare'] ?? null)],
                 'Edited stop: ' . $old['stop_name'] . ' → ' . $name);
             $flash = ['ok', 'Stop updated: ' . $name . '.'];
         } catch (Throwable $e) {
@@ -413,6 +567,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
             $stopId = (int) ($_POST['stop_id'] ?? 0);
             $old = Database::fetch('SELECT * FROM route_stops WHERE id = :id', ['id' => $stopId]);
             if ($old === null) { throw new RuntimeException('Stop not found.'); }
+            /* 1 Oct 2026: pickups are switched OFF, not deleted — bookings,
+               tickets and the seat-map colours name the stop by its text. */
+            if (Boarding::hasStopControls()) {
+                throw new RuntimeException('Stops are not deleted any more - switch "' . $old['stop_name'] . '" OFF instead (bookings that name it stay intact).');
+            }
 
             Database::delete('route_stops', 'id = :id', ['id' => $stopId]);
 
@@ -472,6 +631,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
                 Database::update('route_stops', ['sort_order' => (int) $a['sort_order']], 'id = :id', ['id' => (int) $b['id']]);
             });
 
+            Boarding::flush();
             // Validate time sequence after move
             $updated = Database::fetchAll(
                 'SELECT stop_name, stop_time FROM route_stops WHERE route_id = :r AND stop_type = :t ORDER BY sort_order',
@@ -527,9 +687,9 @@ foreach ($routes as $rr) { if ((int) $rr['is_active'] === 1) { $activeCount++; }
     <p class="muted" style="font-size:13px;margin:0 0 12px">
       <b><?= (int) $activeCount ?></b> route<?= $activeCount === 1 ? '' : 's' ?> active right now.
       This sets the real operation: <b>one sleeper Surat &rarr; Rupaidiha at 13:00</b> and
-      <b>one back at 18:00</b>, with the five permanent stops
-      (Surat &middot; Baroda &middot; S Hari Parking &middot; Nana Chiloda &middot;
-      Mehsana) and <b>Rupaidiha as the last point</b>.
+      <b>one back at 18:00</b>, with <b>Rupaidiha as the last point</b>.
+      Pickup points are only created for a route that has none &mdash; the pickups, fares
+      and ON/OFF you set in <a href="#pickups">Pickup points &amp; fares</a> below are kept.
       Every other route is switched off &mdash; nothing is deleted, and no booking, ticket
       or payment is touched. Reversible: switch a route back on any time.
     </p>
@@ -662,6 +822,17 @@ foreach ($routes as $rr) { if ((int) $rr['is_active'] === 1) { $activeCount++; }
 .stop-node .stop-time{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:var(--mut);min-width:50px}
 .stop-node .stop-landmark{font-size:12px;color:var(--mut);font-style:italic}
 .stop-node .stop-badges span{font-size:10px;padding:2px 6px;border-radius:4px;margin-right:4px}
+.stop-node.off .stop-name,.stop-node.off .stop-time,.stop-node.off .stop-landmark{opacity:.5;text-decoration:line-through}
+.stop-node .stop-fare{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:var(--mut)}
+.stop-node .stop-fare input{width:92px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;font-size:14px;font-weight:700;background:var(--card);color:var(--ink)}
+.stop-node .stop-fare input::placeholder{font-weight:400;color:var(--mut)}
+.stop-onoff{font-weight:800;min-width:54px}
+.stop-onoff.on{background:#0a6b3b;color:#fff;border-color:#0a6b3b}
+.stop-onoff.offb{background:#8a8a8a;color:#fff;border-color:#8a8a8a}
+.off-badge{background:#eee;color:#555}
+:root[data-theme="dark"] .off-badge{background:#333;color:#bbb}
+.stop-fare-save{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:-8px 0 14px}
+.pickup-intro{padding:12px 18px;font-size:13px}
 .stop-node .stop-badges .border-badge{background:#fff4d1;color:#8a6d00}
 .stop-node .stop-badges .meal-badge{background:#e6f7e6;color:#0a6b3b}
 :root[data-theme="dark"] .stop-node .stop-badges .border-badge{background:#4a3d00;color:#ffe28a}
@@ -672,11 +843,11 @@ foreach ($routes as $rr) { if ((int) $rr['is_active'] === 1) { $activeCount++; }
 .stop-controls{display:flex;gap:4px;margin-left:auto}
 .stop-controls form{margin:0}
 .stop-controls .btn{font-size:11px;padding:3px 8px;min-height:32px}
-.stop-add-form{display:grid;grid-template-columns:1fr 1fr auto auto;gap:8px;align-items:end;padding:12px 0;border-top:1px solid var(--line);margin-top:8px}
+.stop-add-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;align-items:end;padding:12px 0;border-top:1px solid var(--line);margin-top:8px}
 .stop-edit-form{display:none;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end;padding:10px 12px;margin:2px 0 6px;background:var(--hover);border:1px dashed var(--line);border-radius:10px}
 .stop-edit-form.open{display:grid}
 .stop-edit-form label{font-size:11px;color:var(--mut);display:block;margin-bottom:2px}
-.stop-edit-form input[type=text],.stop-edit-form input[type=time]{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px}
+.stop-edit-form input[type=text],.stop-edit-form input[type=time],.stop-edit-form input[type=number]{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px}
 .stop-edit-form .chk-row{display:flex;gap:12px;font-size:13px;align-items:center}
 .stop-add-form label{font-size:11px;font-weight:700;color:var(--mut);display:block;margin-bottom:2px}
 .stop-add-form input,.stop-add-form select{padding:7px 10px;border:1px solid var(--line);border-radius:7px;font-size:13px;background:var(--card);color:var(--ink);width:100%}
@@ -695,21 +866,41 @@ foreach ($routes as $rr) { if ((int) $rr['is_active'] === 1) { $activeCount++; }
 }
 </style>
 
+<?php
+$stopControls = Boarding::hasStopControls();
+$dirFaresNow  = Fare::dirFares();
+?>
+<div class="panel" id="pickups">
+  <h2>📍 Pickup points &amp; fares <span class="muted" style="font-weight:400">· चढ्ने ठाउँ र भाडा</span></h2>
+  <div class="pickup-intro muted">
+    Every pickup the website, the counter, agents, QuickTicket and the AI sell comes from the lists below.
+    Type a <b>fare</b> for a pickup (blank = the default fare from <a href="settings.php#faresPanel">Settings</a>:
+    Gujarat → Rupaidiha <b><?= Security::e(inr($dirFaresNow['toNepal'])) ?></b>, Rupaidiha → Gujarat <b><?= Security::e(inr($dirFaresNow['toIndia'])) ?></b>),
+    switch a pickup <b>ON / OFF</b>, reorder it with ▲▼ or edit it with ✎. Stops are never deleted — OFF keeps old bookings intact.
+    <?php if (!$stopControls): ?><br><b style="color:var(--bad)">Run database/upgrade-2026-10-01-stop-fares.sql to enable fares and ON/OFF.</b><?php endif; ?>
+  </div>
+</div>
 <?php foreach ($routes as $r):
   $rid = (int) $r['id'];
   $boarding = $routeStops[$rid]['boarding'] ?? [];
   $drops    = $routeStops[$rid]['drop'] ?? [];
   $canEdit  = Auth::can('routes.edit');
   $csrf_val = Security::e(Security::csrfToken());
+  // The list that carries the per-pickup fare: boarding going to Nepal, drop coming back.
+  $pricedType = Fare::routeDir($r) === 'toNepal' ? 'boarding' : 'drop';
+  $defFare    = (float) $dirFaresNow[Fare::routeDir($r)];
 ?>
 <div class="panel stop-editor" id="stops-<?= $rid ?>">
-  <h2><?= Security::e($r['route_code'] . ' · ' . $r['from_city'] . ' → ' . $r['to_city']) ?> — Stops</h2>
+  <h2><?= Security::e($r['route_code'] . ' · ' . $r['from_city'] . ' → ' . $r['to_city']) ?> — Stops<?= (int) $r['is_active'] === 1 ? '' : ' <span class="muted" style="font-weight:400">(route OFF)</span>' ?></h2>
 
-  <?php foreach (['boarding' => $boarding, 'drop' => $drops] as $type => $stops): ?>
+  <?php foreach (['boarding' => $boarding, 'drop' => $drops] as $type => $stops):
+    $priced   = $stopControls && $type === $pricedType;
+    $fareForm = 'fares-' . $rid . '-' . $type;
+  ?>
   <div style="padding:0 18px 18px">
     <h3>
       <?= $type === 'boarding' ? '🟢 Boarding points / चढ्ने ठाउँ' : '🔴 Drop points / ओर्लिने ठाउँ' ?>
-      <span class="muted" style="font-weight:400;font-size:13px">(<?= count($stops) ?>)</span>
+      <span class="muted" style="font-weight:400;font-size:13px">(<?= count($stops) ?>)<?= $priced ? ' · fare per seat, blank = default ' . Security::e(inr($defFare)) : '' ?></span>
     </h3>
 
     <?php if ($stops === []): ?>
@@ -725,7 +916,8 @@ foreach ($routes as $rr) { if ((int) $rr['is_active'] === 1) { $activeCount++; }
           }
           if ($st['stop_time'] !== null) { $prevTime = $st['stop_time']; }
         ?>
-        <div class="stop-node">
+        <?php $stOn = !$stopControls || (int) ($st['is_active'] ?? 1) === 1; ?>
+        <div class="stop-node<?= $stOn ? '' : ' off' ?>">
           <span class="stop-time">
             <?= $st['stop_time'] !== null ? Security::e(substr((string) $st['stop_time'], 0, 5)) : '—' ?>
             <?php if ($timeWarn): ?><span class="time-warn">⚠️ Out of sequence!</span><?php endif; ?>
@@ -737,9 +929,19 @@ foreach ($routes as $rr) { if ((int) $rr['is_active'] === 1) { $activeCount++; }
           <span class="stop-badges">
             <?php if ((int) ($st['is_border'] ?? 0) === 1): ?><span class="border-badge">Border</span><?php endif; ?>
             <?php if ((int) ($st['is_meal_halt'] ?? 0) === 1): ?><span class="meal-badge">Meal</span><?php endif; ?>
+            <?php if (!$stOn): ?><span class="off-badge">OFF</span><?php endif; ?>
           </span>
+          <?php if ($priced): ?>
+          <label class="stop-fare" title="Per-seat sharing fare for this pickup - blank = default <?= Security::e(inr($defFare)) ?>">₹
+            <input type="number" form="<?= $fareForm ?>" name="fare[<?= (int) $st['id'] ?>]" min="1" max="100000" step="1" inputmode="numeric"
+                   value="<?= ($st['fare'] ?? null) !== null ? (int) round((float) $st['fare']) : '' ?>" placeholder="<?= (int) round($defFare) ?>" <?= $canEdit ? '' : 'readonly' ?>>
+          </label>
+          <?php endif; ?>
           <?php if ($canEdit): ?>
           <div class="stop-controls">
+            <?php if ($stopControls): ?>
+            <form method="post"><input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= $csrf_val ?>"><input type="hidden" name="action" value="toggle_stop"><input type="hidden" name="stop_id" value="<?= (int) $st['id'] ?>"><button class="btn stop-onoff <?= $stOn ? 'on' : 'offb' ?>" type="submit" title="<?= $stOn ? 'On sale - click to switch OFF' : 'Switched off - click to switch ON' ?>"><?= $stOn ? 'ON' : 'OFF' ?></button></form>
+            <?php endif; ?>
             <?php if ($idx > 0): ?>
             <form method="post"><input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= $csrf_val ?>"><input type="hidden" name="action" value="move_stop"><input type="hidden" name="stop_id" value="<?= (int) $st['id'] ?>"><input type="hidden" name="direction" value="up"><button class="btn" type="submit" title="Move up">▲</button></form>
             <?php endif; ?>
@@ -747,7 +949,9 @@ foreach ($routes as $rr) { if ((int) $rr['is_active'] === 1) { $activeCount++; }
             <form method="post"><input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= $csrf_val ?>"><input type="hidden" name="action" value="move_stop"><input type="hidden" name="stop_id" value="<?= (int) $st['id'] ?>"><input type="hidden" name="direction" value="down"><button class="btn" type="submit" title="Move down">▼</button></form>
             <?php endif; ?>
             <button class="btn" type="button" title="Edit stop" onclick="toggleStopEdit(<?= (int) $st['id'] ?>)">✎</button>
+            <?php if (!$stopControls): ?>
             <form method="post" onsubmit="return confirm('Remove stop <?= Security::e((string) $st['stop_name']) ?>?')"><input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= $csrf_val ?>"><input type="hidden" name="action" value="delete_stop"><input type="hidden" name="stop_id" value="<?= (int) $st['id'] ?>"><button class="btn bad" type="submit" title="Delete">✕</button></form>
+            <?php endif; ?>
           </div>
           <?php endif; ?>
         </div>
@@ -761,6 +965,8 @@ foreach ($routes as $rr) { if ((int) $rr['is_active'] === 1) { $activeCount++; }
           <div><label>Stop name</label><input type="text" name="stop_name" required maxlength="191" value="<?= Security::e((string) $st['stop_name']) ?>"></div>
           <div><label>Landmark</label><input type="text" name="landmark" maxlength="191" value="<?= Security::e((string) ($st['landmark'] ?? '')) ?>"></div>
           <div><label>Time (HH:MM)</label><input type="time" name="stop_time" value="<?= $st['stop_time'] !== null ? Security::e(substr((string) $st['stop_time'], 0, 5)) : '' ?>"></div>
+          <div><label>Latitude</label><input type="number" name="latitude" step="0.0000001" min="-90" max="90" value="<?= $st['latitude'] !== null ? Security::e((string) (float) $st['latitude']) : '' ?>" placeholder="22.3039"></div>
+          <div><label>Longitude</label><input type="number" name="longitude" step="0.0000001" min="-180" max="180" value="<?= $st['longitude'] !== null ? Security::e((string) (float) $st['longitude']) : '' ?>" placeholder="70.8022"></div>
           <div>
             <label>Flags</label>
             <div class="chk-row">
@@ -776,6 +982,16 @@ foreach ($routes as $rr) { if ((int) $rr['is_active'] === 1) { $activeCount++; }
         <?php endif; ?>
         <?php endforeach; ?>
       </div>
+      <?php if ($priced && $canEdit): ?>
+      <form method="post" id="<?= $fareForm ?>" class="stop-fare-save">
+        <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= $csrf_val ?>">
+        <input type="hidden" name="action" value="save_stop_fares">
+        <input type="hidden" name="route_id" value="<?= $rid ?>">
+        <input type="hidden" name="stop_type" value="<?= $type ?>">
+        <button class="btn ok" type="submit">💾 Save pickup fares</button>
+        <small class="muted">blank = default <?= Security::e(inr($defFare)) ?> · new bookings only — existing tickets keep the price they were sold at</small>
+      </form>
+      <?php endif; ?>
     <?php endif; ?>
 
     <?php if ($canEdit): ?>
@@ -789,6 +1005,11 @@ foreach ($routes as $rr) { if ((int) $rr['is_active'] === 1) { $activeCount++; }
         <div><label>Stop name</label><input type="text" name="stop_name" required maxlength="191" placeholder="e.g. Mehsana — Silver Complex"></div>
         <div><label>Landmark</label><input type="text" name="landmark" maxlength="191" placeholder="Optional landmark"></div>
         <div><label>Time (HH:MM)</label><input type="time" name="stop_time" placeholder="13:00"></div>
+        <?php if ($priced): ?>
+        <div><label>Fare ₹ / seat</label><input type="number" name="fare" min="1" max="100000" step="1" placeholder="<?= (int) round($defFare) ?> (default)"></div>
+        <?php endif; ?>
+        <div><label>Latitude</label><input type="number" name="latitude" step="0.0000001" min="-90" max="90" placeholder="optional"></div>
+        <div><label>Longitude</label><input type="number" name="longitude" step="0.0000001" min="-180" max="180" placeholder="optional"></div>
         <div>
           <label>&nbsp;</label>
           <div class="chk-row">

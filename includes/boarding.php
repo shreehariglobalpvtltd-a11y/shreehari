@@ -66,7 +66,124 @@ final class Boarding
         'delhi'        => ['DEL', 'Delhi'],
         'jaipur'       => ['JAI', 'Jaipur'],
         'udaipur'      => ['UDR', 'Udaipur'],
+        'rajkot'       => ['RJT', 'Rajkot'],
     ];
+
+    /**
+     * Nepal-side towns, in townKey() form. Decides which side of the border
+     * a route's endpoint is on, so Boarding::locations() can split the pickup
+     * list into the Gujarat side and the Nepal side without reading Fare (which
+     * is not loaded on every page). The `main_points` setting's 'nepal' list,
+     * when the office ever sets one, is honoured on top of this.
+     */
+    private const NEPAL_KEYS = [
+        'rupaidiha', 'jamunaha', 'nepalgunj', 'nepalganj', 'kohalpur',
+        'kathmandu', 'lumbini', 'butwal', 'bhairahawa', 'dhangadhi',
+    ];
+
+    /** @var array<string, array<int, array<string, mixed>>> per-request stop cache */
+    private static array $stopCache = [];
+
+    /** @var array<string, mixed>|null per-request Boarding::locations() cache */
+    private static ?array $locCache = null;
+
+    /** @var bool|null do route_stops.fare / is_active exist yet? */
+    private static ?bool $hasControls = null;
+
+    /**
+     * Forget the per-request caches. Admin edits call this so the page that
+     * saved a change renders the new state; tests call it between steps.
+     */
+    public static function flush(): void
+    {
+        self::$stopCache = [];
+        self::$locCache  = null;
+        self::$hasControls = null;
+    }
+
+    /**
+     * True once database/upgrade-2026-10-01-stop-fares.sql has run (the
+     * route_stops.fare and route_stops.is_active columns exist). Every query
+     * below reads through this, so code deployed a minute before the
+     * migration keeps selling exactly as before instead of failing on an
+     * unknown column.
+     */
+    public static function hasStopControls(): bool
+    {
+        if (self::$hasControls === null) {
+            try {
+                self::$hasControls = (int) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'route_stops'
+                        AND COLUMN_NAME IN ('fare', 'is_active')",
+                    [],
+                    0
+                ) === 2;
+            } catch (Throwable $e) {
+                self::$hasControls = false;
+            }
+        }
+
+        return self::$hasControls;
+    }
+
+    /** SQL select-list fragment for fare + is_active that works before the migration too. */
+    private static function controlCols(string $alias = ''): string
+    {
+        $p = $alias !== '' ? $alias . '.' : '';
+
+        return self::hasStopControls()
+            ? $p . 'fare AS fare, ' . $p . 'is_active AS is_active'
+            : 'NULL AS fare, 1 AS is_active';
+    }
+
+    /** " AND is_active = 1" once the column exists, '' before the migration. */
+    public static function activeSql(string $alias = ''): string
+    {
+        return self::hasStopControls() ? ' AND ' . ($alias !== '' ? $alias . '.' : '') . 'is_active = 1' : '';
+    }
+
+    /** Is this city on the Nepal side of the border? */
+    public static function isNepalTown(string $city): bool
+    {
+        $k = self::townKey($city);
+        if ($k === '') {
+            return false;
+        }
+        if (in_array($k, self::NEPAL_KEYS, true)) {
+            return true;
+        }
+        $mp = Settings::getArray('main_points', []);
+        foreach ((array) ($mp['nepal'] ?? []) as $n) {
+            if (is_string($n) && self::townKey($n) === $k) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * 'toNepal' for a Gujarat -> Rupaidiha route, 'toIndia' for the return.
+     *
+     * @param array<string, mixed> $route routes row (from_city, to_city)
+     */
+    public static function routeDirection(array $route): string
+    {
+        return self::isNepalTown((string) ($route['to_city'] ?? ''))
+            && !self::isNepalTown((string) ($route['from_city'] ?? ''))
+            ? 'toNepal' : 'toIndia';
+    }
+
+    /**
+     * Which stop list carries the per-pickup fare on a route: the BOARDING
+     * stops going to Nepal (the passenger's Gujarat pickup), the DROP stops
+     * coming back (their Gujarat drop).
+     */
+    public static function pricedType(array $route): string
+    {
+        return self::routeDirection($route) === 'toNepal' ? 'boarding' : 'drop';
+    }
 
     /**
      * Minutes before a pickup that it stops being sellable. A passenger
@@ -157,16 +274,20 @@ final class Boarding
      */
     public static function stopsFor(int $routeId): array
     {
-        static $cache = [];
-        if (isset($cache[$routeId])) {
-            return $cache[$routeId];
+        $ck = 'b|' . $routeId;
+        if (isset(self::$stopCache[$ck])) {
+            return self::$stopCache[$ck];
         }
 
+        /* Only stops switched ON in Admin (route_stops.is_active, 1 Oct 2026):
+           this list is what search, the counter, QuickTicket, the bots and the
+           cut-off sell from. A stop switched OFF keeps its row (old bookings
+           carry its text) — allStopsFor() still sees it for display. */
         $rows = Database::fetchAll(
-            "SELECT stop_name, stop_time, sort_order
+            "SELECT stop_name, stop_time, sort_order, " . self::controlCols() . "
                FROM route_stops
-              WHERE route_id = :r AND stop_type = 'boarding'
-              ORDER BY sort_order ASC",
+              WHERE route_id = :r AND stop_type = 'boarding'" . self::activeSql() . "
+              ORDER BY sort_order ASC, id ASC",
             ['r' => $routeId]
         );
 
@@ -176,10 +297,228 @@ final class Boarding
                 'name'  => (string) $r['stop_name'],
                 'time'  => $r['stop_time'] !== null ? (string) $r['stop_time'] : null,
                 'order' => (int) $r['sort_order'],
+                'fare'  => $r['fare'] !== null && (float) $r['fare'] > 0 ? round((float) $r['fare'], 2) : null,
             ];
         }
 
-        return $cache[$routeId] = $out;
+        return self::$stopCache[$ck] = $out;
+    }
+
+    /**
+     * Every stop row of a route and type, ON and OFF, in Admin order — for
+     * DISPLAY of existing bookings (seat-map pickup colours, legends), never
+     * for selling.
+     *
+     * @return array<int, array{id: int, name: string, landmark: string, time: ?string, order: int, fare: ?float, active: bool}>
+     */
+    public static function allStopsFor(int $routeId, string $type = 'boarding'): array
+    {
+        $type = $type === 'drop' ? 'drop' : 'boarding';
+        $ck   = 'all|' . $type . '|' . $routeId;
+        if (isset(self::$stopCache[$ck])) {
+            return self::$stopCache[$ck];
+        }
+        $rows = Database::fetchAll(
+            "SELECT id, stop_name, landmark, stop_time, sort_order, " . self::controlCols() . "
+               FROM route_stops
+              WHERE route_id = :r AND stop_type = :t
+              ORDER BY sort_order ASC, id ASC",
+            ['r' => $routeId, 't' => $type]
+        );
+        $out = [];
+        foreach ($rows as $r) {
+            $out[] = [
+                'id'       => (int) $r['id'],
+                'name'     => (string) $r['stop_name'],
+                'landmark' => (string) ($r['landmark'] ?? ''),
+                'time'     => $r['stop_time'] !== null ? (string) $r['stop_time'] : null,
+                'order'    => (int) $r['sort_order'],
+                'fare'     => $r['fare'] !== null && (float) $r['fare'] > 0 ? round((float) $r['fare'], 2) : null,
+                'active'   => (int) $r['is_active'] === 1,
+            ];
+        }
+
+        return self::$stopCache[$ck] = $out;
+    }
+
+    /**
+     * The stop row a label names on a route, matched the way the cut-off
+     * matches it: an exact stop_name first, else the same townKey() — an ON
+     * row before an OFF one. Null when the route has no such stop. The row
+     * carries its fare and is_active so callers can price and gate with it.
+     *
+     * @return array{id: int, name: string, landmark: string, time: ?string, order: int, fare: ?float, active: bool}|null
+     */
+    public static function stopRow(int $routeId, string $label, string $type = 'boarding'): ?array
+    {
+        $label = trim($label);
+        if ($routeId <= 0 || $label === '') {
+            return null;
+        }
+        $rows = self::allStopsFor($routeId, $type);
+        foreach ($rows as $row) {
+            if (strcasecmp($row['name'], $label) === 0) {
+                return $row;
+            }
+        }
+        $want = self::townKey($label);
+        if ($want === '') {
+            return null;
+        }
+        $off = null;
+        foreach ($rows as $row) {
+            if (self::townKey($row['name']) !== $want) {
+                continue;
+            }
+            if ($row['active']) {
+                return $row;
+            }
+            $off ??= $row;
+        }
+
+        return $off;
+    }
+
+    /**
+     * Boarding::locations() for the page boot payload (SHG_BOOT.locations /
+     * api/config.php). Never throws: a database hiccup ships empty lists and
+     * the app falls back to its packaged CONFIG.mainPoints.
+     *
+     * @return array<string, mixed>
+     */
+    public static function bootLocations(): array
+    {
+        try {
+            return self::locations();
+        } catch (Throwable $e) {
+            return ['india' => [], 'nepal' => [], 'go' => [], 'back' => []];
+        }
+    }
+
+    /**
+     * Does this town name an ON stop of the given type on this route?
+     * (api/search.php and api/occupancy.php used to carry byte-identical
+     * copies of this closure that also matched stops switched OFF.)
+     */
+    public static function servesTown(int $routeId, string $type, string $town): bool
+    {
+        $want = self::townKey($town);
+        if ($want === '') {
+            return false;
+        }
+        foreach (self::allStopsFor($routeId, $type) as $s) {
+            if ($s['active'] && self::townKey($s['name']) === $want) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * May this route sell this boarding / drop label? (create()'s gate.)
+     *
+     *   'ok'       an ON stop of the route, or a route that has no stop rows
+     *              of this type at all (old routes keep selling as before), or
+     *              the route's own endpoint city when no stop row names it;
+     *   'off'      the stop exists but the office switched it OFF;
+     *   'unknown'  the route has stops and none of them is this town.
+     */
+    public static function labelStatus(array $route, string $label, string $type = 'boarding'): string
+    {
+        $type    = $type === 'drop' ? 'drop' : 'boarding';
+        $routeId = (int) ($route['id'] ?? 0);
+        if (trim($label) === '' || self::allStopsFor($routeId, $type) === []) {
+            return 'ok';
+        }
+        $row = self::stopRow($routeId, $label, $type);
+        if ($row !== null) {
+            return $row['active'] ? 'ok' : 'off';
+        }
+        $endpoint = (string) ($route[$type === 'boarding' ? 'from_city' : 'to_city'] ?? '');
+        if ($endpoint !== '' && self::townKey($endpoint) === self::townKey($label)) {
+            return 'ok';
+        }
+
+        return 'unknown';
+    }
+
+    /**
+     * THE location list (owner R3g, 1 Oct 2026): every place the company
+     * sells, built from the ON stops of the ACTIVE routes in Admin order.
+     * The homepage picker, the fare board, Fare::mainPoints(), the AI and
+     * WhatsApp answers all read this — no second hard-coded copy.
+     *
+     *   go     Gujarat pickups of the Gujarat -> Nepal routes, with time + fare
+     *   back   Gujarat drops of the return routes (the route's own to_city
+     *          first, so a "Rupaidiha -> Surat" search still finds the bus
+     *          when the drop is a single "Gujarat" row)
+     *   india  go ∪ back names (Gujarat side), deduped by townKey
+     *   nepal  the Nepal-side points (Rupaidiha)
+     *
+     * @return array{india: string[], nepal: string[], go: array<int, array{name: string, time: ?string, fare: ?float}>, back: array<int, array{name: string, time: ?string, fare: ?float}>}
+     */
+    public static function locations(): array
+    {
+        if (self::$locCache !== null) {
+            return self::$locCache;
+        }
+        $go = $back = $nepal = [];
+        $seenGo = $seenBack = $seenNp = [];
+        $add = static function (array &$list, array &$seen, string $name, ?string $time = null, ?float $fare = null): void {
+            $name = trim($name);
+            $k    = self::townKey($name);
+            if ($name === '' || $k === '' || isset($seen[$k])) {
+                return;
+            }
+            $seen[$k] = true;
+            $list[]   = ['name' => $name, 'time' => $time !== null ? substr($time, 0, 5) : null, 'fare' => $fare];
+        };
+
+        try {
+            $routes = Database::fetchAll('SELECT id, from_city, to_city FROM routes WHERE is_active = 1 ORDER BY sort_order, id');
+        } catch (Throwable $e) {
+            $routes = [];
+        }
+        foreach ($routes as $r) {
+            $rid = (int) $r['id'];
+            $dir = self::routeDirection($r);
+            if ($dir === 'toNepal') {
+                $stops = array_values(array_filter(self::allStopsFor($rid, 'boarding'), static fn(array $s): bool => $s['active']));
+                if ($stops === [] && self::allStopsFor($rid, 'boarding') === []) {
+                    $add($go, $seenGo, (string) $r['from_city']);
+                }
+                foreach ($stops as $s) {
+                    $add($go, $seenGo, $s['name'], $s['time'], $s['fare']);
+                }
+                $add($nepal, $seenNp, (string) $r['to_city']);
+            } else {
+                $add($back, $seenBack, (string) $r['to_city']);
+                foreach (self::allStopsFor($rid, 'drop') as $s) {
+                    if ($s['active']) {
+                        $add($back, $seenBack, $s['name'], $s['time'], $s['fare']);
+                    }
+                }
+                $add($nepal, $seenNp, (string) $r['from_city']);
+            }
+        }
+
+        $india = [];
+        $seenIn = [];
+        foreach (array_merge($go, $back) as $s) {
+            $k = self::townKey($s['name']);
+            if (!isset($seenIn[$k])) {
+                $seenIn[$k] = true;
+                $india[]    = $s['name'];
+            }
+        }
+
+        return self::$locCache = [
+            'india' => $india,
+            'nepal' => array_map(static fn(array $s): string => $s['name'], $nepal),
+            'go'    => $go,
+            'back'  => $back,
+        ];
     }
 
     /**

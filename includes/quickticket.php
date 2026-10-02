@@ -416,7 +416,7 @@ final class QuickTicket
             $boardLabel = trim($chosen['name']) . ($chosen['time'] !== '' ? ' @ ' . substr($chosen['time'], 0, 5) : '');
             $display    = Boarding::stopDisplay($boardLabel, (string) ($route['from_city'] ?? ''));
             $fare       = self::fareFor($route, $chosenSchedule, $seatPick['bookingMode'], count($seatPick['seats']),
-                                        normalisePhone((string) ($opts['phone'] ?? '')));
+                                        normalisePhone((string) ($opts['phone'] ?? '')), $boardLabel);
 
             $aheadNames = array_map(static fn(array $s): string => $s['name'], $ahead);
 
@@ -655,12 +655,15 @@ final class QuickTicket
      * @return array{perSeat: float, base: float, total: float, groupDiscount: float, tax: float, fee: float, label: string,
      *               couponDiscount: float, offerCode: string, offerTitle: string}
      */
-    private static function fareFor(array $route, array $schedule, ?string $mode, int $count, string $phone = ''): array
+    private static function fareFor(array $route, array $schedule, ?string $mode, int $count, string $phone = '', string $boarding = ''): array
     {
         $perSeat = (float) ($route['base_fare'] ?? 0);
         $label   = 'Seat';
         if ($mode === 'sharing') {
-            $cf = Fare::cabinFare('single', 'sharing', $count, true, (string) ($route['to_city'] ?? ''));
+            // The pickup's own fare (Admin -> Routes, 1 Oct 2026) — the same
+            // stop price BookingService::priceBooking() charges at the sale.
+            $cf = Fare::cabinFare('single', 'sharing', $count, true, (string) ($route['to_city'] ?? ''), 4,
+                                  Fare::stopFare((int) $route['id'], $boarding, ''));
             if (($cf['perPerson'] ?? 0) > 0) {
                 $perSeat = (float) $cf['perPerson'];
             }

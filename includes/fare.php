@@ -64,19 +64,51 @@ final class Fare
     }
 
     /**
-     * The towns on each side of the border. The browser keeps the same list
-     * in CONFIG.mainPoints; this copy is the one that decides money, because
-     * a client can send any city name it likes.
+     * The towns on each side of the border.
+     *
+     * 1 Oct 2026 (owner R3g): the Gujarat side is no longer a typed list — it
+     * is Boarding::locations()['india'], i.e. the stops switched ON in
+     * Admin -> Routes on the active routes, so a pickup added there (Rajkot)
+     * appears here with no deploy. The `main_points` setting still wins when
+     * the office ever fills it; the packaged list is only the last resort for
+     * a database with no route stops at all.
      *
      * @return array{india: string[], nepal: string[]}
      */
     public static function mainPoints(): array
     {
-        return Settings::getArray('main_points', [
-            'india' => ['Surat', 'Kamrej', 'Ankleshwar', 'Bharuch', 'Vadodara', 'Anand', 'Nadiad', 'Emli Bhupal', 'S Hari Parking, Nana Chiloda'],
-            // Rupaidiha is the ONLY Nepal-side point the company may sell today: the service is licensed to the India-side border and no further. Nepalgunj, Kohalpur and Lumbini Pradesh are a FUTURE extension — listing them here put them on the public fare board and in the search boxes as if they were bookable. Add them back the day the permit exists.
-            'nepal' => ['Rupaidiha'],
-        ]);
+        $over  = Settings::getArray('main_points', []);
+        $india = array_values(array_filter((array) ($over['india'] ?? []), static fn($v): bool => is_string($v) && trim($v) !== ''));
+        if ($india === []) {
+            try {
+                $india = Boarding::locations()['india'];
+            } catch (Throwable $e) {
+                $india = [];
+            }
+        }
+        if ($india === []) {
+            $india = ['Surat', 'Kamrej', 'Ankleshwar', 'Bharuch', 'Vadodara', 'Anand', 'Nadiad', 'Emli Bhupal', 'S Hari Parking, Nana Chiloda'];
+        }
+
+        return ['india' => $india, 'nepal' => self::nepalPoints()];
+    }
+
+    /**
+     * The Nepal-side points. Rupaidiha is the ONLY Nepal-side point the
+     * company may sell today: the service is licensed to the India-side border
+     * and no further. Nepalgunj, Kohalpur and Lumbini Pradesh are a FUTURE
+     * extension — listing them put them on the public fare board and in the
+     * search boxes as if they were bookable. Add them back the day the permit
+     * exists (the `main_points` setting's 'nepal' list).
+     *
+     * @return string[]
+     */
+    private static function nepalPoints(): array
+    {
+        $over  = Settings::getArray('main_points', []);
+        $nepal = array_values(array_filter((array) ($over['nepal'] ?? []), static fn($v): bool => is_string($v) && trim($v) !== ''));
+
+        return $nepal !== [] ? $nepal : ['Rupaidiha'];
     }
 
     /**
@@ -87,8 +119,60 @@ final class Fare
      */
     public static function isNepalPoint(?string $city): bool
     {
-        $nepal = self::mainPoints()['nepal'] ?? [];
-        return in_array((string) $city, $nepal, true);
+        return in_array((string) $city, self::nepalPoints(), true);
+    }
+
+    /** 'toNepal' | 'toIndia' — the pricing direction of a routes row (by its to_city). */
+    public static function routeDir(array $route): string
+    {
+        return self::isNepalPoint((string) ($route['to_city'] ?? '')) ? 'toNepal' : 'toIndia';
+    }
+
+    /**
+     * The per-seat sharing fare the office set on THIS pickup (owner ask,
+     * 1 Oct 2026: Emli/Bhupal + Ahmedabad 2000, every other Gujarat pickup
+     * 2200). Going to Nepal the passenger's BOARDING stop decides it; coming
+     * back, their DROP stop. Null when the stop has no fare of its own, is
+     * switched OFF, is an "Other" text or is not a stop of this route — the
+     * caller then charges the direction default (dirFares()).
+     */
+    public static function stopFare(int $routeId, ?string $boardingLabel, ?string $dropLabel): ?float
+    {
+        static $routes = [];
+        if ($routeId <= 0) {
+            return null;
+        }
+        if (!array_key_exists($routeId, $routes)) {
+            $routes[$routeId] = Database::fetch('SELECT id, from_city, to_city FROM routes WHERE id = :r LIMIT 1', ['r' => $routeId]);
+        }
+        $route = $routes[$routeId];
+        if ($route === null) {
+            return null;
+        }
+        $toNepal = self::routeDir($route) === 'toNepal';
+        $label   = trim((string) ($toNepal ? $boardingLabel : $dropLabel));
+        if ($label === '' || $label === '__other__') {
+            return null;
+        }
+        $row = Boarding::stopRow($routeId, $label, $toNepal ? 'boarding' : 'drop');
+        if ($row === null || !$row['active'] || $row['fare'] === null) {
+            return null;
+        }
+
+        return (float) $row['fare'] > 0 ? round((float) $row['fare'], 2) : null;
+    }
+
+    /**
+     * Per-seat sharing fare for a booking on $route from $boarding to $drop:
+     * the pickup's own fare (stopFare) when the office set one, else the
+     * direction default. A per-departure schedules.fare_override still wins
+     * over both — callers apply it on top (BookingService::priceBooking).
+     */
+    public static function perSeatFor(array $route, ?string $boarding, ?string $drop): float
+    {
+        $sf = self::stopFare((int) ($route['id'] ?? 0), $boarding, $drop);
+
+        return $sf ?? (float) self::dirFares()[self::routeDir($route)];
     }
 
     /**
@@ -143,7 +227,7 @@ final class Fare
      * gets a "short run" discount off the base fare (business rule set
      * in Admin → Settings → sharing_short_run_*).
      */
-    public static function cabinFare(string $cabinType, string $bookingType, int $passengers, bool $isOnline = true, ?string $toCity = null, int $stopCount = 4): array
+    public static function cabinFare(string $cabinType, string $bookingType, int $passengers, bool $isOnline = true, ?string $toCity = null, int $stopCount = 4, ?float $perPersonBase = null): array
     {
         $passengers = max(1, $passengers);
         $pricing    = self::pricing();
@@ -205,6 +289,11 @@ final class Fare
             // in Admin -> Settings.
             $dir      = self::dirFares();
             $base     = self::isNepalPoint($toCity) ? $dir['toNepal'] : $dir['toIndia'];
+            // The passenger's own pickup fare (Fare::stopFare, 1 Oct 2026)
+            // replaces the direction default when the caller knows it.
+            if ($perPersonBase !== null && $perPersonBase > 0) {
+                $base = round($perPersonBase, 2);
+            }
 
             $minFullStops = Settings::getInt('sharing_short_run_min_stops', 3);
             $shortCut     = Settings::getFloat('sharing_short_run_discount_inr', 200.0);

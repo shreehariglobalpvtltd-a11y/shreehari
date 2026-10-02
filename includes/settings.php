@@ -440,7 +440,7 @@ final class Settings
             'operator'  => $s('company_operator', $s('company_ceo', 'Sher Bahadur Bishwakarma')),
             'operatorNe'=> $s('company_operator_ne', 'शेर बहादुर विश्वकर्मा'),
             'counters'  => $s('company_counters',
-                'Mehsana +91 91048 01507 · Ahmedabad +91 91570 01507 · Baroda +91 97264 01507 · Surat +91 73059 01507'),
+                'Mehsana +91 91048 01507 · Ahmedabad +91 91570 01507 · Baroda +91 97264 01507 · Surat +91 73059 01507 · Rajkot +91 94268 27507'),
         ];
     }
 

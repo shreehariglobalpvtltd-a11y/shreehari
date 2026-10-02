@@ -16,6 +16,8 @@ try {
     // A CSRF token so the SPA can post to write endpoints.
     $public['csrfToken'] = Security::csrfToken();
     $public['appUrl']    = APP_URL;
+    // The pickup list with per-pickup fares (Boarding::locations, 1 Oct 2026).
+    $public['locations'] = Boarding::bootLocations();
 
     // Signed-in identity, if any.
     $user = Auth::user();

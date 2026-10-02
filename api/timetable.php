@@ -51,10 +51,11 @@ try {
         $ph = []; $pp = [];
         foreach ($routes as $i => $r) { $ph[] = ':r' . $i; $pp['r' . $i] = (int) $r['id']; }
         foreach (Database::fetchAll(
-            'SELECT route_id, stop_type, stop_name, landmark, stop_time, is_border, is_meal_halt, latitude, longitude
+            'SELECT route_id, stop_type, stop_name, landmark, stop_time, is_border, is_meal_halt, latitude, longitude, '
+              . (Boarding::hasStopControls() ? 'fare' : 'NULL AS fare') . '
                FROM route_stops
-              WHERE route_id IN (' . implode(',', $ph) . ')
-              ORDER BY route_id, stop_type, sort_order',
+              WHERE route_id IN (' . implode(',', $ph) . ')' . Boarding::activeSql() . '
+              ORDER BY route_id, stop_type, sort_order, id',
             $pp
         ) as $s) {
             $stopsByRoute[(int) $s['route_id']][] = $s;
@@ -81,6 +82,9 @@ try {
                 // instead of a hand-typed copy in the JS. Null when unknown.
                 'lat'      => $s['latitude']  !== null ? (float) $s['latitude']  : null,
                 'lng'      => $s['longitude'] !== null ? (float) $s['longitude'] : null,
+                // The pickup's own per-seat sharing fare set in Admin -> Routes
+                // (1 Oct 2026); null = the direction default.
+                'fare'     => $s['fare'] !== null && (float) $s['fare'] > 0 ? (float) $s['fare'] : null,
             ];
 
             if ($s['stop_type'] === 'boarding') {

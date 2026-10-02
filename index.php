@@ -75,6 +75,9 @@ $boot = [
     'aiAgent'  => Settings::getBool('ai_web_agent_on', false)
                   && (Settings::getString('anthropic_api_key', '') !== '' || Settings::getString('gemini_api_key', '') !== ''),
     'settings' => Settings::publicSettings(),
+    // The ONE pickup list (Admin -> Routes, ON stops of active routes, with
+    // time + per-pickup fare) — the homepage picker and fare board read it.
+    'locations' => Boarding::bootLocations(),
     'user'     => $user !== null ? [
         'phone'  => $user['phone'] ?? '',
         'name'   => $user['full_name'] ?? ($user['name'] ?? ''),

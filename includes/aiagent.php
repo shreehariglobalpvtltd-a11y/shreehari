@@ -1348,7 +1348,7 @@ final class AiAgent
            . "E. When it genuinely fits the conversation, ONE line about why travelling with us is good: our own "
            . "AC sleeper buses, direct Gujarat–Nepal border with no bus change, fixed fare that is the same "
            . "online and at the counter, ticket on WhatsApp, live tracking, cash-at-boarding allowed, our own "
-           . "counters in Mehsana / Ahmedabad / Baroda / Surat, and staff who speak Nepali.\n"
+           . "counters in " . self::counterTowns() . ", and staff who speak Nepali.\n"
            . "F. Attach that line to a real moment: after answering their question, or when they are comparing, "
            . "or when they say they travel often. Never open with it, never repeat it in the same conversation, "
            . "never send it to somebody who is upset or mid-complaint.\n"
@@ -1365,6 +1365,26 @@ final class AiAgent
      * step-up verification — each paragraph appears only when its switch
      * is on, so the model is never briefed about a button it cannot press.
      */
+    /**
+     * "Mehsana / Ahmedabad / Baroda / Surat / Rajkot" — the towns of the
+     * office's own counters, read from the company_counters setting (the line
+     * the chalani prints) with the phone numbers taken out, so a desk added in
+     * Settings reaches the assistant without a code change (1 Oct 2026).
+     */
+    private static function counterTowns(): string
+    {
+        $raw   = Settings::company()['counters'] ?? '';
+        $towns = [];
+        foreach (preg_split('/\s*[·|,;]\s*/u', (string) $raw) ?: [] as $part) {
+            $t = trim((string) preg_replace('/\+?\d[\d\s\-]{5,}\d/u', '', $part));
+            if ($t !== '' && !in_array($t, $towns, true)) {
+                $towns[] = $t;
+            }
+        }
+
+        return $towns !== [] ? implode(' / ', $towns) : 'Gujarat';
+    }
+
     private static function opsBriefing(array $ctx): string
     {
         $role  = (string) ($ctx['role'] ?? 'customer');

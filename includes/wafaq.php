@@ -77,6 +77,7 @@ final class WaFaq
         'anand' => 'anand', 'nadiad' => 'nadiad', 'emli' => 'emli', 'bhupal' => 'emli',
         'rupaidiha' => 'rupaidiha', 'rupdia' => 'rupaidiha', 'rupaidha' => 'rupaidiha', 'rupediha' => 'rupaidiha',
         'rupaidiya' => 'rupaidiha', 'jamunaha' => 'rupaidiha', 'nepalgunj' => 'rupaidiha', 'nepalganj' => 'rupaidiha',
+        'rajkot' => 'rajkot',
     ];
 
     public static function enabled(): bool
@@ -277,8 +278,45 @@ final class WaFaq
 
         $lines = [];
         if ($dir !== 'toIndia') {
-            $lines[] = 'Gujarat → Nepal (Rupaidiha): ' . inr($toNp) . $per
-                     . ($seats > 1 ? ' · ' . $seats . self::t($lang, ' जनाको ', ' लोगों का ', ' people: ') . inr($toNp * $seats) : '');
+            /* Per-pickup fares (owner ask, 1 Oct 2026): each Gujarat pickup
+               carries its own price in Admin -> Routes (Emli/Bhupal + Ahmedabad
+               2000, the rest 2200). A named pickup gets its own number; else
+               the price groups, cheapest first, each with its pickups. */
+            $go   = (array) (Boarding::bootLocations()['go'] ?? []);
+            $want = self::origin(' ' . self::norm($text) . ' ');
+            if ($want === '') {
+                $want = mb_strtolower(trim((string) ($p['boarding'] ?? '')));
+            }
+            $pick = null;
+            if ($want !== '') {
+                foreach ($go as $s) {
+                    $name = mb_strtolower((string) $s['name']);
+                    if (str_contains($name, $want) || str_contains($want, Boarding::townKey((string) $s['name']))) {
+                        $pick = $s;
+                        break;
+                    }
+                }
+            }
+            $fareOf = static fn(array $s): int => (int) round((float) (($s['fare'] ?? null) ?: $toNp));
+            $short  = static fn(array $s): string => (string) (Boarding::stopDisplay((string) $s['name'])['name'] ?: $s['name']);
+            $groups = [];
+            if ($pick !== null) {
+                $groups[$fareOf($pick)] = [$short($pick)];
+            } else {
+                foreach ($go as $s) {
+                    $groups[$fareOf($s)][] = $short($s);
+                }
+                ksort($groups);
+            }
+            if ($groups === []) {
+                $groups[$toNp] = [];
+            }
+            $multi = count($groups) > 1;
+            foreach ($groups as $amt => $names) {
+                $lines[] = 'Gujarat → Nepal (Rupaidiha): ' . inr($amt) . $per
+                         . ($seats > 1 ? ' · ' . $seats . self::t($lang, ' जनाको ', ' लोगों का ', ' people: ') . inr($amt * $seats) : '')
+                         . (($multi || $pick !== null) && $names !== [] ? ' — ' . implode(', ', $names) : '');
+            }
         }
         if ($dir !== 'toNepal') {
             $lines[] = 'Nepal → Gujarat: ' . inr($toIn) . $per
@@ -465,7 +503,7 @@ final class WaFaq
             foreach (Database::fetchAll('SELECT id, from_city, to_city FROM routes WHERE is_active = 1 ORDER BY sort_order, dep_time') as $r) {
                 $board = [];
                 foreach (Database::fetchAll(
-                    "SELECT stop_name, stop_time FROM route_stops WHERE route_id = :r AND stop_type = 'boarding' ORDER BY sort_order",
+                    "SELECT stop_name, stop_time FROM route_stops WHERE route_id = :r AND stop_type = 'boarding'" . Boarding::activeSql() . " ORDER BY sort_order, id",
                     ['r' => (int) $r['id']]) as $s) {
                     if ((string) ($s['stop_time'] ?? '') !== '') {
                         $board[] = ['name' => (string) $s['stop_name'], 'time' => (string) $s['stop_time']];

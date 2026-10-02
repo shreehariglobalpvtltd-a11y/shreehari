@@ -2,7 +2,7 @@
 /**
  * POST /api/quote.php — authoritative price preview before payment.
  * Body: { routeId, seats[], bookingMode?, cabinType?, couponCode?,
- *         pointsRequested?, phone? }
+ *         pointsRequested?, phone?, boarding?, drop? }
  */
 
 declare(strict_types=1);
@@ -60,7 +60,12 @@ try {
         // one flat fare with no online discount (removed 26 Aug 2026). Without
         // $toCity this preview mis-quoted the reverse leg; the authoritative
         // charge in booking.php already passes to_city.
-        $cabin   = Fare::cabinFare($cabinType, $bookingMode, $seatCount, true, (string) ($route['to_city'] ?? ''));
+        // The chosen pickup / drop's own fare (Admin -> Routes, 1 Oct 2026),
+        // exactly as BookingService::priceBooking() charges it.
+        $stopFare = $bookingMode === 'sharing'
+            ? Fare::stopFare($routeId, Security::clean(Response::field('boarding', ''), 191), Security::clean(Response::field('drop', ''), 191))
+            : null;
+        $cabin   = Fare::cabinFare($cabinType, $bookingMode, $seatCount, true, (string) ($route['to_city'] ?? ''), 4, $stopFare);
         $base    = $cabin['total'];
         $perSeat = $seatCount > 0 ? round($base / $seatCount, 2) : $base;
         $label   = $cabin['label'];
