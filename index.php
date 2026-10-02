@@ -29,6 +29,13 @@ if (in_array($legalPath, ['/privacy-policy', '/privacy', '/terms-of-service', '/
     require_once INCLUDE_PATH . '/legal.php';
     LegalPages::render(LegalPages::ROUTES[$legalPath]);
 }
+/* 2 Oct 2026: the refund & cancellation policy at a plain URL (the page itself
+   was added on live overnight as refund-policy.php; /refund-policy used to
+   fall through to the homepage). */
+if ($legalPath === '/refund-policy') {
+    require __DIR__ . '/refund-policy.php';
+    exit;
+}
 /* 24 Sep 2026: server-rendered route pages (/bus, /bus/<slug>, /hi/bus/…,
    /ne/bus/…) and the two dynamic sitemaps — what a search engine reads. */
 if ($legalPath === '/bus' || str_starts_with($legalPath, '/bus/') || str_starts_with($legalPath, '/hi/bus') || str_starts_with($legalPath, '/ne/bus')
