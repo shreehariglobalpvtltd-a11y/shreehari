@@ -96,6 +96,10 @@ EXCLUDES=(
   --exclude='node_modules/'
   --exclude='*.md'
   --exclude='tests/'
+  # 2 Oct 2026: docs/ holds internal audit maps (JSON) that nginx does not
+  # block — only *.md is denied — so the folder never goes to the webroot.
+  --exclude='docs/'
+  --exclude='.github/'
   --exclude='SHG-*.zip'
   --exclude='SHG-*.pdf'
   --exclude='SHG-*.txt'
