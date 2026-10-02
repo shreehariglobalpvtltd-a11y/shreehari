@@ -34,7 +34,7 @@ const LANGS = ['ne', 'hi', 'en', 'gu'];
 const TYPES = ['org', 'ind'];
 const FILE = { org: 'partner-agreement', ind: 'agent-agreement' };
 const DOC_CODE = { org: 'P', ind: 'A' };
-const VERSION = 'v2';
+const VERSION = 'v2.2';
 const API_APPLY = '/api/agreement-apply.php';
 const API_DIR = '/api/agent-directory.php';
 /* Fields the application API requires (client-side check; the server checks again). */

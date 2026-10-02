@@ -1,12 +1,12 @@
 /*
- * S Hari Global — agreement templates, content (27 Sep 2026, v2.1).
+ * S Hari Global — agreement templates, content (27 Sep 2026, v2.1; v2.2 on 2 Oct 2026 adds the owner's 22222.docx points).
  * Source: "Agreement - Nepali (B&W)_20260926_180135_0000.pdf" (4 pages,
  * booking-service contract), plus the points from the owner's own drafts
  * ("shari agrement for pvt.pdf" = the Pvt. Ltd. agent form, "rule for agg.pdf"
  * = the numbered B2B rules) that the source did not have. The Gujarati
  * wording follows the owner's Gujarati letterhead version of the contract.
  * Clause numbering is identical across the four languages; every language has
- * the same 11 sections and the same clause count per section, which build.js
+ * the same 15 sections and the same clause count per section, which build.js
  * checks before writing anything.
  *
  * The wording is plain, spoken language (short sentences, everyday words,
@@ -85,13 +85,13 @@ T.en = {
     idType: 'Type of ID', idTypes: ['Aadhaar card', 'Citizenship certificate', 'Passport', 'Voter ID', 'Other'], idNo: 'ID number *',
     panInd: 'PAN (if you have one)', agentId: 'Agent code / login ID (if given)',
     photo: 'Photo (optional)', photoOrg: 'Photo of the person signing (optional)',
-    a4: '4. Period of the agreement', start: 'Start date', end: 'End date', termNote: '11 months — clause 8.1',
+    a4: '4. Period of the agreement', start: 'Start date', end: 'End date', termNote: '11 months — clause 11.1',
     a5: '5. Bank / UPI details (for your payment)', accName: 'Account holder’s name', bank: 'Bank and branch', accNo: 'Account number', ifsc: 'IFSC / SWIFT', upi: 'UPI / eSewa / wallet ID',
     sigHead: 'Signatures and witnesses', fp: 'First party (Company)', forCo: 'For S HARI GLOBAL PRIVATE LIMITED',
     spOrg: 'Second party (Partner organization)', spInd: 'Second party (Agent)', forOrg: 'For the partner organization',
     name: 'Name', sign: 'Signature', seal: 'Company seal', sealOrg: 'Seal (if any)', dateL: 'Date', address: 'Address', witness: 'Witness',
     thumbR: 'Right thumbprint', thumbL: 'Left thumbprint',
-    gHead: 'Guarantors (clause 11.3)', gNp: 'Nepal guarantor', gIn: 'India guarantor',
+    gHead: 'Guarantors (clause 15.3)', gNp: 'Nepal guarantor', gIn: 'India guarantor',
     gId: 'ID no. (citizenship / Aadhaar / PAN)', gAddr: 'Address and mobile', gSign: 'Signature / thumbprint',
   },
   need: {
@@ -135,17 +135,31 @@ T.en = {
         'Security deposit, if any: ₹[[org_dep||5em]]. It is returned only after this Agreement ends and all accounts are settled. Tax that the Company cuts as the law requires cannot be claimed from the Company later.',
         'If a ticket is cancelled or refunded, its commission is taken back and the accounts are adjusted; no commission can be claimed on it. If the Company cancels a ticket or empties a seat without a proper reason, it returns the passenger’s money and still pays the Partner’s commission on that ticket. No commission is paid on a ticket made outside the Company’s system or its approved ticket books.',
       ]],
+      ['Bus running schedule and minimum passengers', [
+        'If the Company decides to run the bus every day, each bus must carry at least 40 passengers. If it does not, the Company’s bus runs once every 2 days. The Partner must bring passengers to fit this schedule.',
+        'The Partner must work to grow the business, not only for the commission.',
+      ]],
       ['Passenger money, daily handover and matching the accounts', [
         'The Partner must write down every amount it takes from passengers, in cash or online. Every day, it must give the Company the full account, and the full ticket money must reach the Company’s account within [[c31_hours|24|3em]] hours.',
         'Passenger money must not be held back or delayed on any excuse. If it is late, the Company may close the Partner’s login ID at once. Only the Company pays commission, as its system and accounts show; the Partner must not keep its commission out of the passengers’ money.',
         'The Partner must keep proof of every amount it receives (cash, UPI or bank) and show it whenever the Company asks.',
         'Before each monthly payment, the bookings and accounts must be matched. Any difference must be written down and settled in that same payment.',
       ]],
-      ['Fares, discounts, tickets and service to passengers', [
+      ['Office attendance on the set timetable', [
+        'The Partner’s staff who work on Company bookings must be present at the office or counter on the timetable the Company sets.',
+        'Absence without a reason is not accepted. If it happens again and again, the Company may take disciplinary action.',
+      ]],
+      ['Checks that must be done before every departure', [
+        'Before every bus leaves, these must be confirmed: (1) the full details of every passenger travelling on the bus; (2) the pickup points and the meal stops for the route (Surat → Rupaidiha); (3) the phone number of the staff travelling on the bus.',
+      ]],
+      ['Online ticket system, fares, discounts and service to passengers', [
         'The Partner must use only the fares, discounts, offers, services and facilities that the Company approves. Tickets must be issued only through the Company’s system or from ticket books the Company approves. Not even one rupee more than the fare shown in the Company’s system may be taken from a passenger; if more is taken, the Partner alone is responsible.',
         'Passengers must be given correct information. No false or misleading advertising, publicity or promises may be made. For any service, fare, discount or offer that the Company has not approved, the Partner is fully responsible, and the Company may take the necessary legal action.',
         'The Partner and its staff must treat every passenger with respect and honesty and speak politely: no quarrels, threats or abuse. They must follow the Company’s service procedures.',
         'The Partner must follow the rules and instructions on fares, routes, booking, payment and discounts that the Company gives from time to time. It must do nothing unethical or illegal and nothing that spoils the Company’s name, and nothing, directly or indirectly, that causes loss to the Company or its people, such as plotting or false talk against them.',
+        'After a booking, an SMS or WhatsApp message goes to the passenger’s phone number by itself.',
+        'Seats are booked online, and the passenger gets the very seat that was booked.',
+        'Passengers can book a seat themselves at www.shreehariglobal.in, or book through the Company’s staff or an agent.',
       ]],
       ['Company name, logo, ticket design, photos and publicity material', [
         'Without the Company’s written permission, the Partner and anyone acting for it must not use, copy or misuse the name (S Hari Global / Shree Hari Global), logo, brand, website, photos, ticket design, identity or advertising and publicity material of S HARI GLOBAL PRIVATE LIMITED, whether on boards, leaflets, social media, groups, pages or anywhere else.',
@@ -154,7 +168,7 @@ T.en = {
       ]],
       ['Keeping information secret', [
         'The Partner must keep the Company’s passenger data, fare lists, agent lists, system logins and other business information secret, both during this Agreement and after it ends. It must not give them to any other person or to a competing company.',
-        'Passenger details (name, phone, ID and booking) may be used only for the booking; they must not be given or sold to anyone or used for any other business. The Partner must not send the Company’s passengers to another bus or travel company, or take the Company’s customers, agents or staff to another company. For [[c62_years||2.5em]] years after this Agreement ends, the Partner must still not divert the Company’s customers; secrecy continues as in 6.1.',
+        'Passenger details (name, phone, ID and booking) may be used only for the booking; they must not be given or sold to anyone or used for any other business. The Partner must not send the Company’s passengers to another bus or travel company, or take the Company’s customers, agents or staff to another company. For [[c62_years||2.5em]] years after this Agreement ends, the Partner must still not divert the Company’s customers; secrecy continues as in 9.1.',
         'Login IDs and passwords given by the Company may be used only by authorized users and must not be shared with anyone else. Keeping them safe is the Partner’s job: everything done from its ID, including a wrong name, seat or date, is the Partner’s responsibility.',
       ]],
       ['Breaking the rules, losses, written notice and deductions', [
@@ -166,7 +180,8 @@ T.en = {
         'Because this work runs in both Nepal and India, the Partner will have one or two guarantors in Nepal and one or two in India, named at the end of this Agreement. If the Partner does not pay or runs away, the guarantors are jointly liable for the dues and the loss.',
       ]],
       ['How long the Agreement lasts, renewal and ending it', [
-        'This Agreement lasts for 11 (eleven) months from the start date written in Part A.',
+        'This Agreement lasts for 11 (eleven) months from the start date written in Part A. During this time the Partner must not join another company or break this Agreement.',
+        'While this 11-month Agreement stands, the Partner is paid what is due under the rules even if the business is closed for a time. This does not apply if the business closes because of government papers or a legal problem, or because of the carelessness or rule-breaking of the Partner or its staff, or a loss they cause to the Company.',
         'When the term ends, it is fully the Company’s choice whether to renew this Agreement. The Company decides after looking at the Partner’s work, conduct and ability, and at its own needs.',
         'To end this Agreement before the 11 months are over, the Partner needs a reasonable cause and must give at least 30 (thirty) days’ written notice. It must also settle all accounts; the Agreement ends only after that settlement.',
         'If the Partner leaves without notice, does not hand over money, commits fraud, sends customers elsewhere, misuses the Company’s name, brand, system or money, or seriously breaks the rules, the Company may close its login ID and end this Agreement at once. It may also take the necessary action under its rules and the applicable law.',
@@ -174,6 +189,11 @@ T.en = {
       ['Handing back accounts, ticket books, logins and money', [
         'When this Agreement ends, the Partner must at once stop using the Company’s logo, boards, ticket material and login, and within 7 days take down all boards, logos and material. It must hand over to the Company the full accounts, any Company money it still holds, documents, ticket books, login access and all Company material and goods, and give any help needed for the handover.',
         'After the final matching of accounts, the money owed between the two parties must be settled.',
+      ]],
+      ['Payment cycle', [
+        'The Partner’s commission is paid each month on the day written in clause 2.2.',
+        'Advance: if needed, between the 13th and the 15th of each month, an advance of up to 30% of the commission due can be taken.',
+        'This rule applies equally to every partner, agent and staff member.',
       ]],
       ['Change in law, disputes and courts', [
         'If a change in government rules, the Companies Act, transport law or any other applicable law makes it impossible to continue this Agreement, both parties may end it after they match the accounts and pay what they owe each other.',
@@ -201,9 +221,14 @@ T.en = {
       ]],
       ['Target, payment amount and payment dates', [
         'Monthly booking target: [[ind_target|150|3.5em]] passengers. If the Agent meets the target, the fixed monthly payment is ₹[[ind_fixed|75,000|5.5em]]. If the Agent books fewer passengers than the target, the payment is [[ind_pct|30|2.5em]]% of the total fare money the Company received from the Agent’s bookings in that month.',
-        'On the 15th of each month, the Company must pay an advance of 30% to 40% of the fixed monthly payment. On the 5th of the next month, after the bookings and accounts are matched, the Company must pay the balance: the month’s payment minus the advance. All payments are made by bank transfer, cheque or UPI. Before paying, the Company deducts TDS and other taxes as the law requires.',
+        'Between the 13th and the 15th of each month, the Company pays an advance of up to 30% of the fixed monthly payment. On the 5th of the next month, after the bookings and accounts are matched, the Company must pay the balance: the month’s payment minus the advance. All payments are made by bank transfer, cheque or UPI. Before paying, the Company deducts TDS and other taxes as the law requires.',
         'Security deposit, if any: ₹[[ind_dep||5em]]. It is returned only after this Agreement ends and all accounts are settled. Tax that the Company cuts as the law requires cannot be claimed from the Company later.',
         'A cancelled or refunded ticket is not counted toward the target or the fare money in clause 2.1, and the accounts are adjusted; no pay can be claimed for it. If the Company cancels a ticket or empties a seat without a proper reason, it returns the passenger’s money and the ticket still counts for the Agent. No pay is due for a ticket made outside the Company’s system or its approved ticket books.',
+        'The Agent’s commission is 30% of the travel turnover from the Agent’s bookings, that is, of the fare money the Company receives for them. It is not a fixed amount: the more the turnover, the more the Agent earns. If a monthly target and a fixed payment are written in clause 2.1, that month’s pay follows clause 2.1.',
+      ]],
+      ['Bus running schedule and minimum passengers', [
+        'If the Company decides to run the bus every day, each bus must carry at least 40 passengers. If it does not, the Company’s bus runs once every 2 days. The Agent must bring passengers to fit this schedule.',
+        'The Agent must work to grow the business, not only for the commission.',
       ]],
       ['Passenger money, daily handover and matching the accounts', [
         'The Agent must write down every amount taken from passengers, in cash or online. Every day, the Agent must give the Company the full account, and the full ticket money must reach the Company’s account within [[c31_hours|24|3em]] hours.',
@@ -211,11 +236,21 @@ T.en = {
         'The Agent must keep proof of every amount received (cash, UPI or bank) and show it whenever the Company asks.',
         'Before each monthly payment, the bookings and accounts must be matched. Any difference must be written down and settled in that same payment.',
       ]],
-      ['Fares, discounts, tickets and service to passengers', [
+      ['Office attendance on the set timetable', [
+        'The Agent and the staff who work with the Agent must be present at the office or counter on the timetable the Company sets.',
+        'Absence without a reason is not accepted. If it happens again and again, the Company may take disciplinary action.',
+      ]],
+      ['Checks that must be done before every departure', [
+        'Before every bus leaves, these must be confirmed: (1) the full details of every passenger travelling on the bus; (2) the pickup points and the meal stops for the route (Surat → Rupaidiha); (3) the phone number of the staff travelling on the bus.',
+      ]],
+      ['Online ticket system, fares, discounts and service to passengers', [
         'The Agent must use only the fares, discounts, offers, services and facilities that the Company approves. Tickets must be issued only through the Company’s system or from ticket books the Company approves. Not even one rupee more than the fare shown in the Company’s system may be taken from a passenger; if more is taken, the Agent alone is responsible.',
         'Passengers must be given correct information. No false or misleading advertising, publicity or promises may be made. For any service, fare, discount or offer that the Company has not approved, the Agent is fully responsible, and the Company may take the necessary legal action.',
         'The Agent must treat every passenger with respect and honesty and speak politely: no quarrels, threats or abuse. The Agent must follow the Company’s service procedures.',
         'The Agent must follow the rules and instructions on fares, routes, booking, payment and discounts that the Company gives from time to time. The Agent must do nothing unethical or illegal and nothing that spoils the Company’s name, and nothing, directly or indirectly, that causes loss to the Company or its people, such as plotting or false talk against them.',
+        'After a booking, an SMS or WhatsApp message goes to the passenger’s phone number by itself.',
+        'Seats are booked online, and the passenger gets the very seat that was booked.',
+        'Passengers can book a seat themselves at www.shreehariglobal.in, or book through the Company’s staff or an agent.',
       ]],
       ['Company name, logo, ticket design, photos and publicity material', [
         'Without the Company’s written permission, the Agent and anyone acting for the Agent must not use, copy or misuse the name (S Hari Global / Shree Hari Global), logo, brand, website, photos, ticket design, identity or advertising and publicity material of S HARI GLOBAL PRIVATE LIMITED, whether on boards, leaflets, social media, groups, pages or anywhere else.',
@@ -224,7 +259,7 @@ T.en = {
       ]],
       ['Keeping information secret', [
         'The Agent must keep the Company’s passenger data, fare lists, agent lists, system logins and other business information secret, both during this Agreement and after it ends. The Agent must not give them to any other person or to a competing company.',
-        'Passenger details (name, phone, ID and booking) may be used only for the booking; they must not be given or sold to anyone or used for any other business. The Agent must not send the Company’s passengers to another bus or travel company, or take the Company’s customers, agents or staff to another company. For [[c62_years||2.5em]] years after this Agreement ends, the Agent must still not divert the Company’s customers; secrecy continues as in 6.1.',
+        'Passenger details (name, phone, ID and booking) may be used only for the booking; they must not be given or sold to anyone or used for any other business. The Agent must not send the Company’s passengers to another bus or travel company, or take the Company’s customers, agents or staff to another company. For [[c62_years||2.5em]] years after this Agreement ends, the Agent must still not divert the Company’s customers; secrecy continues as in 9.1.',
         'Login IDs and passwords given by the Company are for the Agent’s own use only and must not be shared with anyone else. Keeping them safe is the Agent’s job: everything done from the Agent’s ID, including a wrong name, seat or date, is the Agent’s responsibility.',
       ]],
       ['Breaking the rules, losses, written notice and deductions', [
@@ -235,7 +270,8 @@ T.en = {
         'Because this work runs in both Nepal and India, the Agent will have one or two guarantors in Nepal and one or two in India, named at the end of this Agreement. If the Agent does not pay or runs away, the guarantors are jointly liable for the dues and the loss.',
       ]],
       ['How long the Agreement lasts, renewal and ending it', [
-        'This Agreement lasts for 11 (eleven) months from the start date written in Part A.',
+        'This Agreement lasts for 11 (eleven) months from the start date written in Part A. During this time the Agent must not join another company or break this Agreement.',
+        'While this 11-month Agreement stands, the Agent is paid as the rules say even if the business is closed for a time. This does not apply if the business closes because of government papers or a legal problem, or because of the carelessness or rule-breaking of the Agent or the staff, or a loss they cause to the Company.',
         'When the term ends, it is fully the Company’s choice whether to renew this Agreement. The Company decides after looking at the Agent’s work, conduct and ability, and at its own needs.',
         'To end this Agreement before the 11 months are over, the Agent needs a reasonable cause and must give at least 30 (thirty) days’ written notice. The Agent must also settle all accounts; the Agreement ends only after that settlement.',
         'If the Agent leaves without notice, does not hand over money, commits fraud, sends customers elsewhere, misuses the Company’s name, brand, system or money, or seriously breaks the rules, the Company may close the Agent’s login ID and end this Agreement at once. It may also take the necessary action under its rules and the applicable law.',
@@ -243,6 +279,11 @@ T.en = {
       ['Handing back accounts, ticket books, logins and money', [
         'When this Agreement ends, the Agent must at once stop using the Company’s logo, boards, ticket material and login, and within 7 days take down all boards, logos and material. The Agent must hand over to the Company the full accounts, any Company money the Agent still holds, documents, ticket books, login access and all Company material and goods, and give any help needed for the handover.',
         'After the final matching of accounts, the money owed between the two parties must be settled.',
+      ]],
+      ['Pay cycle', [
+        'The monthly pay is paid on the 5th of each month.',
+        'Advance: between the 13th and the 15th of each month, an advance of up to 30% of the total pay can be taken.',
+        'This rule applies equally to every agent and every staff member.',
       ]],
       ['Change in law, disputes and courts', [
         'If a change in government rules, the Companies Act, transport law or any other applicable law makes it impossible to continue this Agreement, both parties may end it after they match the accounts and pay what they owe each other.',
@@ -303,13 +344,13 @@ T.ne = {
     idType: 'परिचयपत्रको किसिम', idTypes: ['आधार कार्ड', 'नागरिकता', 'राहदानी (पासपोर्ट)', 'मतदाता परिचयपत्र', 'अन्य'], idNo: 'परिचयपत्र नम्बर *',
     panInd: 'PAN (भए)', agentId: 'एजेन्ट कोड / लगइन ID (दिइएको भए)',
     photo: 'फोटो (नभए पनि हुन्छ)', photoOrg: 'हस्ताक्षर गर्ने व्यक्तिको फोटो (नभए पनि हुन्छ)',
-    a4: '4. सम्झौताको अवधि', start: 'सुरु मिति', end: 'सकिने मिति', termNote: '11 महिना — दफा 8.1',
+    a4: '4. सम्झौताको अवधि', start: 'सुरु मिति', end: 'सकिने मिति', termNote: '11 महिना — दफा 11.1',
     a5: '5. बैंक / UPI विवरण (तपाईंको भुक्तानीका लागि)', accName: 'खातावालाको नाम', bank: 'बैंक र शाखा', accNo: 'खाता नम्बर', ifsc: 'IFSC / SWIFT', upi: 'UPI / eSewa / वालेट ID',
     sigHead: 'हस्ताक्षर र साक्षी', fp: 'पहिलो पक्ष (कम्पनी)', forCo: 'S HARI GLOBAL PRIVATE LIMITED को तर्फबाट',
     spOrg: 'दोस्रो पक्ष (साझेदार संस्था)', spInd: 'दोस्रो पक्ष (एजेन्ट)', forOrg: 'साझेदार संस्थाको तर्फबाट',
     name: 'नाम', sign: 'हस्ताक्षर', seal: 'कम्पनीको छाप', sealOrg: 'छाप (भए)', dateL: 'मिति', address: 'ठेगाना', witness: 'साक्षी',
     thumbR: 'दायाँ औंठाछाप', thumbL: 'बायाँ औंठाछाप',
-    gHead: 'जमानीकर्ता (दफा 11.3)', gNp: 'नेपालको जमानीकर्ता', gIn: 'भारतको जमानीकर्ता',
+    gHead: 'जमानीकर्ता (दफा 15.3)', gNp: 'नेपालको जमानीकर्ता', gIn: 'भारतको जमानीकर्ता',
     gId: 'परिचयपत्र नं. (नागरिकता / आधार / PAN)', gAddr: 'ठेगाना र मोबाइल', gSign: 'हस्ताक्षर / औंठाछाप',
   },
   need: {
@@ -353,17 +394,31 @@ T.ne = {
         'धरौटी रकम (भए): ₹[[org_dep||5em]]। सम्झौता सकिएर सबै हिसाब मिलाइसकेपछि मात्र यो रकम फिर्ता हुन्छ। कानुनअनुसार कम्पनीले काटेको कर पछि कम्पनीसँग दाबी गर्न पाइँदैन।',
         'टिकट रद्द वा रिफन्ड भएमा त्यसको कमिसन फिर्ता लिइन्छ र हिसाब मिलाइन्छ; त्यस टिकटको कमिसन माग्न पाइँदैन। कम्पनीले उचित कारणबिना टिकट रद्द गरेमा वा सिट खाली गराएमा कम्पनीले यात्रुको पैसा फिर्ता गर्छ र साझेदार संस्थालाई त्यस टिकटको कमिसन पनि दिन्छ। कम्पनीको सिस्टम वा स्वीकृत टिकट बुकबाहेक अन्यत्रबाट काटिएको टिकटमा कमिसन पाइँदैन।',
       ]],
+      ['बस चल्ने तालिका र न्यूनतम यात्रु', [
+        'कम्पनीले हरेक दिन बस चलाउने निर्णय गरेमा हरेक बसमा कम्तीमा 40 जना यात्रु हुनैपर्छ। त्यति नभए कम्पनीको बस हरेक 2 दिनमा एक पटक चल्छ। साझेदार संस्थाले यही तालिकाअनुसार यात्रु जुटाउनुपर्छ।',
+        'साझेदार संस्थाले कमिसनका लागि मात्र होइन, व्यवसाय बढाउने उद्देश्यले काम गर्नुपर्छ।',
+      ]],
       ['यात्रुको पैसा, हरेक दिन बुझाउने र हिसाब मिलाउने', [
         'साझेदार संस्थाले यात्रुबाट लिएको हरेक रकम, नगद होस् वा अनलाइन, लेखेर राख्नुपर्छ। हरेक दिन पूरा हिसाब कम्पनीलाई दिनुपर्छ र टिकटको पूरा पैसा [[c31_hours|24|3em]] घण्टाभित्र कम्पनीको खातामा पुग्नुपर्छ।',
         'यात्रुको पैसा कुनै बहानामा रोक्न वा ढिलो गर्न पाइँदैन। ढिलो भएमा कम्पनीले साझेदार संस्थाको लगइन ID तुरुन्तै बन्द गर्न सक्छ। कमिसन कम्पनीले मात्र आफ्नो सिस्टम र हिसाबअनुसार दिन्छ; साझेदार संस्थाले यात्रुको पैसाबाट आफ्नो कमिसन आफैं काटेर राख्न पाउँदैन।',
         'साझेदार संस्थाले पाएको हरेक रकमको प्रमाण (नगद, UPI वा बैंक) राख्नुपर्छ र कम्पनीले मागेको बेला देखाउनुपर्छ।',
         'हरेक महिनाको भुक्तानीअघि बुकिङ र हिसाब मिलाउनुपर्छ। कुनै फरक देखिए त्यो लिखित रूपमा राख्नुपर्छ र त्यही भुक्तानीमा मिलाउनुपर्छ।',
       ]],
-      ['भाडा, छुट, टिकट र यात्रुसँगको व्यवहार', [
+      ['तोकिएको समयतालिकाअनुसार कार्यालयमा उपस्थिति', [
+        'कम्पनीको बुकिङमा काम गर्ने साझेदार संस्थाका कर्मचारी कम्पनीले तोकेको समयतालिकाअनुसार कार्यालय वा काउन्टरमा उपस्थित हुनुपर्छ।',
+        'बिनाकारण अनुपस्थित हुन पाइँदैन। बारम्बार यस्तो भएमा कम्पनीले अनुशासनको कारबाही गर्न सक्छ।',
+      ]],
+      ['बस छुट्नुअघि अनिवार्य रूपमा गर्नुपर्ने काम', [
+        'हरेक बस छुट्नुअघि यी कुरा अनिवार्य रूपमा पक्का हुनुपर्छ: (1) बसमा जाने सबै यात्रुको पूरा विवरण; (2) रुटअनुसार यात्रु चढाउने ठाउँ र खाना खाने ठाउँ (सुरत → रुपैडिहा); (3) बसमा जाने कर्मचारीको फोन नम्बर।',
+      ]],
+      ['अनलाइन टिकट प्रणाली, भाडा, छुट र यात्रुसँगको व्यवहार', [
         'साझेदार संस्थाले कम्पनीबाट स्वीकृत भाडा, छुट, अफर, सेवा र सुविधा मात्र प्रयोग गर्नुपर्छ। टिकट कम्पनीको सिस्टम वा कम्पनीले स्वीकृत गरेको टिकट बुकबाट मात्र काट्नुपर्छ। कम्पनीको सिस्टममा देखिएको भाडाभन्दा एक रुपैयाँ पनि बढी यात्रुबाट लिन पाइँदैन; बढी लिएमा त्यसको जिम्मेवारी साझेदार संस्थाको मात्र हुन्छ।',
         'यात्रुलाई सही जानकारी दिनुपर्छ। झुटो वा भ्रम पार्ने प्रचार वा वाचा गर्न पाइँदैन। कम्पनीले स्वीकृत नगरेको कुनै पनि सेवा, भाडा, छुट वा अफरको पूरा जिम्मेवारी साझेदार संस्थाकै हुन्छ र कम्पनीले आवश्यक कानुनी कारबाही गर्न सक्छ।',
         'साझेदार संस्था र यसका कर्मचारीले हरेक यात्रुसँग आदर, इमानदारी र नम्र भाषामा व्यवहार गर्नुपर्छ; झगडा, धम्की वा गाली गर्न पाइँदैन। उनीहरूले कम्पनीले तोकेको सेवाको तरिका मान्नुपर्छ।',
         'कम्पनीले समय-समयमा दिने भाडा, रुट, बुकिङ, भुक्तानी र छुटसम्बन्धी नियम र निर्देशन साझेदार संस्थाले मान्नुपर्छ। अनैतिक वा गैरकानुनी काम, कम्पनीको नाम बिगार्ने काम र कम्पनी वा कम्पनीका मानिसलाई प्रत्यक्ष वा अप्रत्यक्ष रूपमा घाटा हुने काम (जस्तै षड्यन्त्र वा गलत प्रचार) गर्न पाइँदैन।',
+        'बुकिङ भएपछि यात्रुको फोन नम्बरमा आफैं SMS वा WhatsApp सन्देश जान्छ।',
+        'सिट बुकिङ अनलाइन हुन्छ र यात्रुले बुक गरेकै सिट पाउँछ।',
+        'यात्रुले www.shreehariglobal.in मा गएर आफैं सिट बुक गर्न सक्छ वा कम्पनीका कर्मचारी वा एजेन्टमार्फत बुक गराउन सक्छ।',
       ]],
       ['कम्पनीको नाम, लोगो, टिकट डिजाइन, फोटो र प्रचार सामग्री', [
         'कम्पनीको लिखित अनुमतिबिना साझेदार संस्थाले वा यसको तर्फबाट काम गर्ने कसैले पनि S HARI GLOBAL PRIVATE LIMITED को नाम (S HARI GLOBAL / SHREE HARI GLOBAL), लोगो, ब्रान्ड, वेबसाइट, फोटो, टिकट डिजाइन, पहिचान वा प्रचार सामग्री बोर्ड, पर्चा, सामाजिक सञ्जाल, ग्रुप, पेज वा अन्य कतै पनि प्रयोग गर्न, नक्कल गर्न वा दुरुपयोग गर्न पाउँदैन।',
@@ -372,7 +427,7 @@ T.ne = {
       ]],
       ['जानकारी गोप्य राख्ने', [
         'साझेदार संस्थाले कम्पनीका यात्रुको विवरण, भाडा सूची, एजेन्ट सूची, सिस्टम लगइन र व्यवसायका अरू जानकारी सम्झौता चलुन्जेल र सकिएपछि पनि गोप्य राख्नुपर्छ। यी कुरा अरू कुनै व्यक्ति वा प्रतिस्पर्धी कम्पनीलाई दिन पाइँदैन।',
-        'यात्रुको विवरण (नाम, फोन, परिचयपत्र र बुकिङ) बुकिङका लागि मात्र प्रयोग गर्न पाइन्छ; कसैलाई दिन, बेच्न वा अरू व्यवसायमा प्रयोग गर्न पाइँदैन। साझेदार संस्थाले कम्पनीका यात्रुलाई अर्को बस वा ट्राभल्स कम्पनीमा पठाउन पाउँदैन, न कम्पनीका ग्राहक, एजेन्ट वा कर्मचारीलाई अर्को कम्पनीमा लैजान पाउँछ। सम्झौता सकिएको [[c62_years||2.5em]] वर्षसम्म पनि साझेदार संस्थाले कम्पनीका ग्राहक अन्यत्र लैजान पाउँदैन; गोपनीयता दफा 6.1 अनुसार कायम रहन्छ।',
+        'यात्रुको विवरण (नाम, फोन, परिचयपत्र र बुकिङ) बुकिङका लागि मात्र प्रयोग गर्न पाइन्छ; कसैलाई दिन, बेच्न वा अरू व्यवसायमा प्रयोग गर्न पाइँदैन। साझेदार संस्थाले कम्पनीका यात्रुलाई अर्को बस वा ट्राभल्स कम्पनीमा पठाउन पाउँदैन, न कम्पनीका ग्राहक, एजेन्ट वा कर्मचारीलाई अर्को कम्पनीमा लैजान पाउँछ। सम्झौता सकिएको [[c62_years||2.5em]] वर्षसम्म पनि साझेदार संस्थाले कम्पनीका ग्राहक अन्यत्र लैजान पाउँदैन; गोपनीयता दफा 9.1 अनुसार कायम रहन्छ।',
         'कम्पनीले दिएको लगइन ID र पासवर्ड अधिकार पाएका प्रयोगकर्ताले मात्र चलाउन पाउँछन् र यी अरू कसैलाई दिन पाइँदैन। यिनलाई सुरक्षित राख्ने जिम्मा साझेदार संस्थाको हो: यसको ID बाट भएको हरेक काम, गलत नाम, सिट वा मिति समेत, साझेदार संस्थाकै जिम्मेवारी हुन्छ।',
       ]],
       ['नियम तोडेमा, नोक्सानी, लिखित सूचना र कट्टी', [
@@ -384,7 +439,8 @@ T.ne = {
         'यो काम नेपाल र भारत दुवैतिर हुने भएकाले साझेदार संस्थाका लागि नेपालबाट एक वा दुई जना र भारतबाट एक वा दुई जना जमानीकर्ता रहनेछन्, जसको नाम यस सम्झौताको अन्त्यमा लेखिन्छ। साझेदार संस्थाले पैसा नतिरेमा वा भागेमा बाँकी रकम र नोक्सानी तिर्ने जिम्मा जमानीकर्ताहरूको पनि संयुक्त रूपमा हुन्छ।',
       ]],
       ['सम्झौताको अवधि, नवीकरण र अन्त्य', [
-        'यो सम्झौता भाग क मा लेखिएको सुरु मितिदेखि 11 (एघार) महिनासम्म लागू रहन्छ।',
+        'यो सम्झौता भाग क मा लेखिएको सुरु मितिदेखि 11 (एघार) महिनासम्म लागू रहन्छ। यस अवधिमा साझेदार संस्थाले अर्को कुनै कम्पनीसँग जोडिन वा यो सम्झौता तोड्न पाउँदैन।',
+        'कम्पनीसँगको 11 महिनाको सम्झौता कायम रहेसम्म व्यवसाय केही समय बन्द भए पनि साझेदार संस्थालाई नियमअनुसार पाउनुपर्ने रकम दिइन्छ। तर सरकारी कागजात वा कानुनी समस्याका कारण, अथवा साझेदार संस्था वा यसका कर्मचारीको लापरबाही, नियम तोडेको कारण वा उनीहरूले कम्पनीलाई गराएको नोक्सानीका कारण व्यवसाय बन्द भएमा यो नियम लागू हुँदैन।',
         'अवधि सकिएपछि सम्झौता नवीकरण गर्ने कि नगर्ने भन्ने पूरा अधिकार कम्पनीको हुन्छ। कम्पनीले साझेदार संस्थाको काम, व्यवहार, क्षमता र आफ्नो आवश्यकता हेरेर यो निर्णय गर्छ।',
         'अवधि नसकिँदै सम्झौता अन्त्य गर्न साझेदार संस्थासँग उचित कारण हुनुपर्छ र साझेदार संस्थाले कम्तीमा 30 (तीस) दिनअघि लिखित सूचना दिनुपर्छ। साथै सबै हिसाब चुक्ता गर्नुपर्छ; हिसाब चुक्ता भएपछि मात्र सम्झौता अन्त्य हुन्छ।',
         'साझेदार संस्थाले सूचना नदिई सम्झौता छाडेमा, पैसा नबुझाएमा, ठगी गरेमा, ग्राहक अन्यत्र पठाएमा, कम्पनीको नाम, ब्रान्ड, सिस्टम वा पैसाको दुरुपयोग गरेमा वा नियम गम्भीर रूपमा तोडेमा, कम्पनीले यसको लगइन ID बन्द गरी सम्झौता तुरुन्तै अन्त्य गर्न सक्छ। साथै, कम्पनीको नियम र लागू कानुनअनुसार आवश्यक कारबाही पनि गर्न सक्छ।',
@@ -392,6 +448,11 @@ T.ne = {
       ['हिसाब, टिकट बुक, लगइन र बाँकी पैसा फिर्ता बुझाउने', [
         'सम्झौता सकिएपछि साझेदार संस्थाले कम्पनीको लोगो, बोर्ड, टिकट सामग्री र लगइनको प्रयोग तुरुन्तै बन्द गर्नुपर्छ र 7 दिनभित्र सबै बोर्ड, लोगो र सामग्री हटाउनुपर्छ। कम्पनीको पूरा हिसाब, आफूसँग रहेको कम्पनीको पैसा, कागजात, टिकट बुक, लगइन र कम्पनीका सबै सामग्री तथा सामान कम्पनीलाई बुझाउनुपर्छ र यसका लागि चाहिने सहयोग गर्नुपर्छ।',
         'अन्तिम हिसाब मिलाएपछि दुवै पक्षबीचको लेनदेन सकाउनुपर्छ।',
+      ]],
+      ['भुक्तानीको चक्र', [
+        'साझेदार संस्थाको कमिसन हरेक महिना दफा 2.2 मा लेखिएको तारिखमा दिइन्छ।',
+        'पेस्की: आवश्यक परे हरेक महिनाको 13 देखि 15 तारिखभित्र पाउनुपर्ने कमिसनको बढीमा 30% सम्म पेस्की लिन सकिन्छ।',
+        'यो नियम सबै साझेदार, एजेन्ट र कर्मचारीलाई एकै किसिमले लागू हुन्छ।',
       ]],
       ['कानुन बदलिएमा, विवाद र अदालत', [
         'सरकारी नियम, कम्पनी ऐन, यातायात कानुन वा अरू कुनै लागू कानुन बदलिएर यो सम्झौता चलाउन नसकिने भएमा, दुवै पक्षले आपसको लेनदेन, बाँकी भुक्तानी र हिसाब मिलाएर सम्झौता अन्त्य गर्न सक्छन्।',
@@ -419,9 +480,14 @@ T.ne = {
       ]],
       ['लक्ष्य, पारिश्रमिक र भुक्तानीको मिति', [
         'मासिक बुकिङ लक्ष्य: [[ind_target|150|3.5em]] यात्रु। लक्ष्य पूरा भए एजेन्टले निश्चित मासिक पारिश्रमिक ₹[[ind_fixed|75,000|5.5em]] पाउँछ। लक्ष्यभन्दा कम यात्रु बुक भए, एजेन्टले त्यस महिना आफ्नो बुकिङबाट कम्पनीलाई आएको कुल यात्रु भाडा रकमको [[ind_pct|30|2.5em]]% पाउँछ।',
-        'हरेक महिनाको 15 तारिखमा कम्पनीले निश्चित मासिक पारिश्रमिकको 30% देखि 40% सम्म पेस्की दिनुपर्छ। अर्को महिनाको 5 तारिखमा, बुकिङ र हिसाब मिलाएपछि, कम्पनीले त्यस महिनाको पारिश्रमिकबाट पेस्की घटाएर बाँकी रकम दिनुपर्छ। सबै भुक्तानी बैंक ट्रान्सफर, चेक वा UPI बाट हुन्छ। भुक्तानी गर्नुअघि कम्पनीले कानुनअनुसार TDS र अरू कर काट्छ।',
+        'हरेक महिनाको 13 देखि 15 तारिखभित्र कम्पनीले निश्चित मासिक पारिश्रमिकको बढीमा 30% सम्म पेस्की दिन्छ। अर्को महिनाको 5 तारिखमा, बुकिङ र हिसाब मिलाएपछि, कम्पनीले त्यस महिनाको पारिश्रमिकबाट पेस्की घटाएर बाँकी रकम दिनुपर्छ। सबै भुक्तानी बैंक ट्रान्सफर, चेक वा UPI बाट हुन्छ। भुक्तानी गर्नुअघि कम्पनीले कानुनअनुसार TDS र अरू कर काट्छ।',
         'धरौटी रकम (भए): ₹[[ind_dep||5em]]। सम्झौता सकिएर सबै हिसाब मिलाइसकेपछि मात्र यो रकम फिर्ता हुन्छ। कानुनअनुसार कम्पनीले काटेको कर पछि कम्पनीसँग दाबी गर्न पाइँदैन।',
         'रद्द वा रिफन्ड भएको टिकट दफा 2.1 को लक्ष्य वा भाडा रकममा गनिँदैन र हिसाब मिलाइन्छ; त्यसको पारिश्रमिक माग्न पाइँदैन। कम्पनीले उचित कारणबिना टिकट रद्द गरेमा वा सिट खाली गराएमा कम्पनीले यात्रुको पैसा फिर्ता गर्छ र त्यो टिकट एजेन्टको हिसाबमा गनिन्छ। कम्पनीको सिस्टम वा स्वीकृत टिकट बुकबाहेक अन्यत्रबाट काटिएको टिकटमा पारिश्रमिक पाइँदैन।',
+        'एजेन्टको कमिसन एजेन्टको बुकिङबाट भएको यात्रा टर्नओभरको, अर्थात् ती बुकिङबापत कम्पनीलाई आएको भाडा रकमको 30% हुन्छ। यो निश्चित रकम होइन: जति टर्नओभर, त्यति कमाइ। दफा 2.1 मा मासिक लक्ष्य र निश्चित पारिश्रमिक लेखिएको भए त्यस महिनाको पारिश्रमिक दफा 2.1 अनुसार हुन्छ।',
+      ]],
+      ['बस चल्ने तालिका र न्यूनतम यात्रु', [
+        'कम्पनीले हरेक दिन बस चलाउने निर्णय गरेमा हरेक बसमा कम्तीमा 40 जना यात्रु हुनैपर्छ। त्यति नभए कम्पनीको बस हरेक 2 दिनमा एक पटक चल्छ। एजेन्टले यही तालिकाअनुसार यात्रु जुटाउनुपर्छ।',
+        'एजेन्टले कमिसनका लागि मात्र होइन, व्यवसाय बढाउने उद्देश्यले काम गर्नुपर्छ।',
       ]],
       ['यात्रुको पैसा, हरेक दिन बुझाउने र हिसाब मिलाउने', [
         'एजेन्टले यात्रुबाट लिएको हरेक रकम, नगद होस् वा अनलाइन, लेखेर राख्नुपर्छ। हरेक दिन पूरा हिसाब कम्पनीलाई दिनुपर्छ र टिकटको पूरा पैसा [[c31_hours|24|3em]] घण्टाभित्र कम्पनीको खातामा पुग्नुपर्छ।',
@@ -429,11 +495,21 @@ T.ne = {
         'एजेन्टले पाएको हरेक रकमको प्रमाण (नगद, UPI वा बैंक) राख्नुपर्छ र कम्पनीले मागेको बेला देखाउनुपर्छ।',
         'हरेक महिनाको भुक्तानीअघि बुकिङ र हिसाब मिलाउनुपर्छ। कुनै फरक देखिए त्यो लिखित रूपमा राख्नुपर्छ र त्यही भुक्तानीमा मिलाउनुपर्छ।',
       ]],
-      ['भाडा, छुट, टिकट र यात्रुसँगको व्यवहार', [
+      ['तोकिएको समयतालिकाअनुसार कार्यालयमा उपस्थिति', [
+        'एजेन्ट र एजेन्टसँग काम गर्ने कर्मचारी कम्पनीले तोकेको समयतालिकाअनुसार कार्यालय वा काउन्टरमा उपस्थित हुनुपर्छ।',
+        'बिनाकारण अनुपस्थित हुन पाइँदैन। बारम्बार यस्तो भएमा कम्पनीले अनुशासनको कारबाही गर्न सक्छ।',
+      ]],
+      ['बस छुट्नुअघि अनिवार्य रूपमा गर्नुपर्ने काम', [
+        'हरेक बस छुट्नुअघि यी कुरा अनिवार्य रूपमा पक्का हुनुपर्छ: (1) बसमा जाने सबै यात्रुको पूरा विवरण; (2) रुटअनुसार यात्रु चढाउने ठाउँ र खाना खाने ठाउँ (सुरत → रुपैडिहा); (3) बसमा जाने कर्मचारीको फोन नम्बर।',
+      ]],
+      ['अनलाइन टिकट प्रणाली, भाडा, छुट र यात्रुसँगको व्यवहार', [
         'एजेन्टले कम्पनीबाट स्वीकृत भाडा, छुट, अफर, सेवा र सुविधा मात्र प्रयोग गर्नुपर्छ। टिकट कम्पनीको सिस्टम वा कम्पनीले स्वीकृत गरेको टिकट बुकबाट मात्र काट्नुपर्छ। कम्पनीको सिस्टममा देखिएको भाडाभन्दा एक रुपैयाँ पनि बढी यात्रुबाट लिन पाइँदैन; बढी लिएमा त्यसको जिम्मेवारी एजेन्टको मात्र हुन्छ।',
         'यात्रुलाई सही जानकारी दिनुपर्छ। झुटो वा भ्रम पार्ने प्रचार वा वाचा गर्न पाइँदैन। कम्पनीले स्वीकृत नगरेको कुनै पनि सेवा, भाडा, छुट वा अफरको पूरा जिम्मेवारी एजेन्टकै हुन्छ र कम्पनीले आवश्यक कानुनी कारबाही गर्न सक्छ।',
         'एजेन्टले हरेक यात्रुसँग आदर, इमानदारी र नम्र भाषामा व्यवहार गर्नुपर्छ; झगडा, धम्की वा गाली गर्न पाइँदैन। एजेन्टले कम्पनीले तोकेको सेवाको तरिका मान्नुपर्छ।',
         'कम्पनीले समय-समयमा दिने भाडा, रुट, बुकिङ, भुक्तानी र छुटसम्बन्धी नियम र निर्देशन एजेन्टले मान्नुपर्छ। अनैतिक वा गैरकानुनी काम, कम्पनीको नाम बिगार्ने काम र कम्पनी वा कम्पनीका मानिसलाई प्रत्यक्ष वा अप्रत्यक्ष रूपमा घाटा हुने काम (जस्तै षड्यन्त्र वा गलत प्रचार) गर्न पाइँदैन।',
+        'बुकिङ भएपछि यात्रुको फोन नम्बरमा आफैं SMS वा WhatsApp सन्देश जान्छ।',
+        'सिट बुकिङ अनलाइन हुन्छ र यात्रुले बुक गरेकै सिट पाउँछ।',
+        'यात्रुले www.shreehariglobal.in मा गएर आफैं सिट बुक गर्न सक्छ वा कम्पनीका कर्मचारी वा एजेन्टमार्फत बुक गराउन सक्छ।',
       ]],
       ['कम्पनीको नाम, लोगो, टिकट डिजाइन, फोटो र प्रचार सामग्री', [
         'कम्पनीको लिखित अनुमतिबिना एजेन्टले वा एजेन्टको तर्फबाट काम गर्ने कसैले पनि S HARI GLOBAL PRIVATE LIMITED को नाम (S HARI GLOBAL / SHREE HARI GLOBAL), लोगो, ब्रान्ड, वेबसाइट, फोटो, टिकट डिजाइन, पहिचान वा प्रचार सामग्री बोर्ड, पर्चा, सामाजिक सञ्जाल, ग्रुप, पेज वा अन्य कतै पनि प्रयोग गर्न, नक्कल गर्न वा दुरुपयोग गर्न पाउँदैन।',
@@ -442,7 +518,7 @@ T.ne = {
       ]],
       ['जानकारी गोप्य राख्ने', [
         'एजेन्टले कम्पनीका यात्रुको विवरण, भाडा सूची, एजेन्ट सूची, सिस्टम लगइन र व्यवसायका अरू जानकारी सम्झौता चलुन्जेल र सकिएपछि पनि गोप्य राख्नुपर्छ। यी कुरा अरू कुनै व्यक्ति वा प्रतिस्पर्धी कम्पनीलाई दिन पाइँदैन।',
-        'यात्रुको विवरण (नाम, फोन, परिचयपत्र र बुकिङ) बुकिङका लागि मात्र प्रयोग गर्न पाइन्छ; कसैलाई दिन, बेच्न वा अरू व्यवसायमा प्रयोग गर्न पाइँदैन। एजेन्टले कम्पनीका यात्रुलाई अर्को बस वा ट्राभल्स कम्पनीमा पठाउन पाउँदैन, न कम्पनीका ग्राहक, एजेन्ट वा कर्मचारीलाई अर्को कम्पनीमा लैजान पाउँछ। सम्झौता सकिएको [[c62_years||2.5em]] वर्षसम्म पनि एजेन्टले कम्पनीका ग्राहक अन्यत्र लैजान पाउँदैन; गोपनीयता दफा 6.1 अनुसार कायम रहन्छ।',
+        'यात्रुको विवरण (नाम, फोन, परिचयपत्र र बुकिङ) बुकिङका लागि मात्र प्रयोग गर्न पाइन्छ; कसैलाई दिन, बेच्न वा अरू व्यवसायमा प्रयोग गर्न पाइँदैन। एजेन्टले कम्पनीका यात्रुलाई अर्को बस वा ट्राभल्स कम्पनीमा पठाउन पाउँदैन, न कम्पनीका ग्राहक, एजेन्ट वा कर्मचारीलाई अर्को कम्पनीमा लैजान पाउँछ। सम्झौता सकिएको [[c62_years||2.5em]] वर्षसम्म पनि एजेन्टले कम्पनीका ग्राहक अन्यत्र लैजान पाउँदैन; गोपनीयता दफा 9.1 अनुसार कायम रहन्छ।',
         'कम्पनीले दिएको लगइन ID र पासवर्ड एजेन्ट आफैंले मात्र चलाउन पाउँछ र यी अरू कसैलाई दिन पाइँदैन। यिनलाई सुरक्षित राख्ने जिम्मा एजेन्टको हो: एजेन्टको ID बाट भएको हरेक काम, गलत नाम, सिट वा मिति समेत, एजेन्टकै जिम्मेवारी हुन्छ।',
       ]],
       ['नियम तोडेमा, नोक्सानी, लिखित सूचना र कट्टी', [
@@ -453,7 +529,8 @@ T.ne = {
         'यो काम नेपाल र भारत दुवैतिर हुने भएकाले एजेन्टका लागि नेपालबाट एक वा दुई जना र भारतबाट एक वा दुई जना जमानीकर्ता रहनेछन्, जसको नाम यस सम्झौताको अन्त्यमा लेखिन्छ। एजेन्टले पैसा नतिरेमा वा भागेमा बाँकी रकम र नोक्सानी तिर्ने जिम्मा जमानीकर्ताहरूको पनि संयुक्त रूपमा हुन्छ।',
       ]],
       ['सम्झौताको अवधि, नवीकरण र अन्त्य', [
-        'यो सम्झौता भाग क मा लेखिएको सुरु मितिदेखि 11 (एघार) महिनासम्म लागू रहन्छ।',
+        'यो सम्झौता भाग क मा लेखिएको सुरु मितिदेखि 11 (एघार) महिनासम्म लागू रहन्छ। यस अवधिमा एजेन्टले अर्को कुनै कम्पनीसँग जोडिन वा यो सम्झौता तोड्न पाउँदैन।',
+        'कम्पनीसँगको 11 महिनाको सम्झौता कायम रहेसम्म व्यवसाय केही समय बन्द भए पनि एजेन्टलाई नियमअनुसार पारिश्रमिक दिइन्छ। तर सरकारी कागजात वा कानुनी समस्याका कारण, अथवा एजेन्ट वा कर्मचारीको लापरबाही, नियम तोडेको कारण वा उनीहरूले कम्पनीलाई गराएको नोक्सानीका कारण व्यवसाय बन्द भएमा यो नियम लागू हुँदैन।',
         'अवधि सकिएपछि सम्झौता नवीकरण गर्ने कि नगर्ने भन्ने पूरा अधिकार कम्पनीको हुन्छ। कम्पनीले एजेन्टको काम, व्यवहार, क्षमता र आफ्नो आवश्यकता हेरेर यो निर्णय गर्छ।',
         'अवधि नसकिँदै सम्झौता अन्त्य गर्न एजेन्टसँग उचित कारण हुनुपर्छ र एजेन्टले कम्तीमा 30 (तीस) दिनअघि लिखित सूचना दिनुपर्छ। साथै सबै हिसाब चुक्ता गर्नुपर्छ; हिसाब चुक्ता भएपछि मात्र सम्झौता अन्त्य हुन्छ।',
         'एजेन्टले सूचना नदिई सम्झौता छाडेमा, पैसा नबुझाएमा, ठगी गरेमा, ग्राहक अन्यत्र पठाएमा, कम्पनीको नाम, ब्रान्ड, सिस्टम वा पैसाको दुरुपयोग गरेमा वा नियम गम्भीर रूपमा तोडेमा, कम्पनीले एजेन्टको लगइन ID बन्द गरी सम्झौता तुरुन्तै अन्त्य गर्न सक्छ। साथै, कम्पनीको नियम र लागू कानुनअनुसार आवश्यक कारबाही पनि गर्न सक्छ।',
@@ -461,6 +538,11 @@ T.ne = {
       ['हिसाब, टिकट बुक, लगइन र बाँकी पैसा फिर्ता बुझाउने', [
         'सम्झौता सकिएपछि एजेन्टले कम्पनीको लोगो, बोर्ड, टिकट सामग्री र लगइनको प्रयोग तुरुन्तै बन्द गर्नुपर्छ र 7 दिनभित्र सबै बोर्ड, लोगो र सामग्री हटाउनुपर्छ। कम्पनीको पूरा हिसाब, आफूसँग रहेको कम्पनीको पैसा, कागजात, टिकट बुक, लगइन र कम्पनीका सबै सामग्री तथा सामान कम्पनीलाई बुझाउनुपर्छ र यसका लागि चाहिने सहयोग गर्नुपर्छ।',
         'अन्तिम हिसाब मिलाएपछि दुवै पक्षबीचको लेनदेन सकाउनुपर्छ।',
+      ]],
+      ['तलब / पारिश्रमिक भुक्तानीको चक्र', [
+        'मासिक तलब / पारिश्रमिक हरेक महिनाको 5 तारिखमा दिइन्छ।',
+        'पेस्की: हरेक महिनाको 13 देखि 15 तारिखभित्र कुल पारिश्रमिकको बढीमा 30% सम्म पेस्की लिन सकिन्छ।',
+        'यो नियम सबै एजेन्ट र कर्मचारीलाई एकै किसिमले लागू हुन्छ।',
       ]],
       ['कानुन बदलिएमा, विवाद र अदालत', [
         'सरकारी नियम, कम्पनी ऐन, यातायात कानुन वा अरू कुनै लागू कानुन बदलिएर यो सम्झौता चलाउन नसकिने भएमा, दुवै पक्षले आपसको लेनदेन, बाँकी भुक्तानी र हिसाब मिलाएर सम्झौता अन्त्य गर्न सक्छन्।',
@@ -521,13 +603,13 @@ T.hi = {
     idType: 'पहचान पत्र का प्रकार', idTypes: ['आधार कार्ड', 'नागरिकता प्रमाणपत्र', 'पासपोर्ट', 'वोटर ID', 'अन्य'], idNo: 'पहचान पत्र का नंबर *',
     panInd: 'PAN (अगर हो)', agentId: 'एजेंट कोड / लॉगिन ID (अगर मिली हो)',
     photo: 'फ़ोटो (ज़रूरी नहीं)', photoOrg: 'हस्ताक्षर करने वाले की फ़ोटो (ज़रूरी नहीं)',
-    a4: '4. अनुबंध की अवधि', start: 'शुरू होने की तारीख', end: 'खत्म होने की तारीख', termNote: '11 महीने — धारा 8.1',
+    a4: '4. अनुबंध की अवधि', start: 'शुरू होने की तारीख', end: 'खत्म होने की तारीख', termNote: '11 महीने — धारा 11.1',
     a5: '5. बैंक / UPI की जानकारी (आपके पेमेंट के लिए)', accName: 'खाताधारक का नाम', bank: 'बैंक और ब्रांच', accNo: 'खाता नंबर', ifsc: 'IFSC / SWIFT', upi: 'UPI / eSewa / वॉलेट ID',
     sigHead: 'हस्ताक्षर और गवाह', fp: 'पहला पक्ष (कंपनी)', forCo: 'S HARI GLOBAL PRIVATE LIMITED की ओर से',
     spOrg: 'दूसरा पक्ष (पार्टनर संस्था)', spInd: 'दूसरा पक्ष (एजेंट)', forOrg: 'पार्टनर संस्था की ओर से',
     name: 'नाम', sign: 'हस्ताक्षर', seal: 'कंपनी की मुहर', sealOrg: 'मुहर (अगर हो)', dateL: 'तारीख', address: 'पता', witness: 'गवाह',
     thumbR: 'दाएँ अंगूठे का निशान', thumbL: 'बाएँ अंगूठे का निशान',
-    gHead: 'ज़मानतदार (धारा 11.3)', gNp: 'नेपाल का ज़मानतदार', gIn: 'भारत का ज़मानतदार',
+    gHead: 'ज़मानतदार (धारा 15.3)', gNp: 'नेपाल का ज़मानतदार', gIn: 'भारत का ज़मानतदार',
     gId: 'पहचान पत्र नं. (नागरिकता / आधार / PAN)', gAddr: 'पता और मोबाइल', gSign: 'हस्ताक्षर / अंगूठे का निशान',
   },
   need: {
@@ -571,17 +653,31 @@ T.hi = {
         'सिक्योरिटी डिपॉज़िट (अगर हो): ₹[[org_dep||5em]]। यह अनुबंध खत्म होने और पूरा हिसाब निपटने के बाद ही लौटाया जाएगा। कानून के मुताबिक कंपनी जो टैक्स काटती है, उसका दावा बाद में कंपनी से नहीं किया जा सकता।',
         'टिकट रद्द या रिफ़ंड होने पर उसका कमीशन वापस लिया जाएगा और हिसाब ठीक किया जाएगा; उस टिकट पर कमीशन नहीं माँगा जा सकता। अगर कंपनी बिना सही कारण के टिकट रद्द करे या सीट खाली कराए, तो कंपनी यात्री का पैसा लौटाएगी और पार्टनर संस्था को उस टिकट का कमीशन भी देगी। कंपनी के सिस्टम या मंज़ूर टिकट बुक के बाहर काटे गए टिकट पर कोई कमीशन नहीं मिलेगा।',
       ]],
+      ['बस चलने का शेड्यूल और कम-से-कम यात्री', [
+        'अगर कंपनी हर दिन बस चलाने का फ़ैसला करे, तो हर बस में कम-से-कम 40 यात्री होने ज़रूरी हैं। ऐसा न होने पर कंपनी की बस हर 2 दिन में एक बार चलेगी। पार्टनर संस्था को इसी शेड्यूल के मुताबिक यात्री जुटाने होंगे।',
+        'पार्टनर संस्था सिर्फ़ कमीशन के लिए नहीं, बल्कि कारोबार बढ़ाने के इरादे से काम करेगी।',
+      ]],
       ['यात्रियों का पैसा, रोज़ जमा और हिसाब मिलान', [
         'पार्टनर संस्था यात्रियों से ली गई हर रकम, नकद हो या ऑनलाइन, लिखकर रखेगी। वह रोज़ पूरा हिसाब कंपनी को देगी और टिकट का पूरा पैसा [[c31_hours|24|3em]] घंटे के अंदर कंपनी के खाते में पहुँचाएगी।',
         'यात्रियों का पैसा किसी भी बहाने से रोका नहीं जाएगा और न देर से दिया जाएगा। देर होने पर कंपनी पार्टनर संस्था की लॉगिन ID तुरंत बंद कर सकती है। कमीशन सिर्फ़ कंपनी अपने सिस्टम और हिसाब के मुताबिक देगी; पार्टनर संस्था यात्रियों के पैसे में से अपना कमीशन खुद काटकर नहीं रखेगी।',
         'पार्टनर संस्था को मिली हर रकम (नकद, UPI या बैंक) का सबूत वह रखेगी और कंपनी के माँगने पर दिखाएगी।',
         'हर महीने के पेमेंट से पहले बुकिंग और हिसाब का मिलान होगा। कोई फ़र्क मिले तो उसे लिखकर रखा जाएगा और उसी पेमेंट में निपटाया जाएगा।',
       ]],
-      ['किराया, छूट, टिकट और यात्रियों से व्यवहार', [
+      ['तय टाइम-टेबल के मुताबिक ऑफ़िस में हाज़िरी', [
+        'कंपनी की बुकिंग पर काम करने वाले पार्टनर संस्था के कर्मचारी कंपनी के तय टाइम-टेबल के मुताबिक ऑफ़िस या काउंटर पर हाज़िर रहेंगे।',
+        'बिना कारण गैरहाज़िर रहना मंज़ूर नहीं है। बार-बार ऐसा होने पर कंपनी अनुशासन की कार्रवाई कर सकती है।',
+      ]],
+      ['बस छूटने से पहले ज़रूरी काम', [
+        'हर बस छूटने से पहले ये बातें ज़रूर पक्की होनी चाहिए: (1) बस में जाने वाले सभी यात्रियों का पूरा विवरण; (2) रूट के मुताबिक यात्रियों को बैठाने की जगह और खाना खाने की जगह (सूरत → रुपईडीहा); (3) बस में जाने वाले कर्मचारी का फ़ोन नंबर।',
+      ]],
+      ['ऑनलाइन टिकट सिस्टम, किराया, छूट और यात्रियों से व्यवहार', [
         'पार्टनर संस्था सिर्फ़ वही किराया, छूट, ऑफ़र, सेवाएँ और सुविधाएँ देगी, जिन्हें कंपनी ने मंज़ूर किया हो। टिकट सिर्फ़ कंपनी के सिस्टम से या कंपनी की मंज़ूर की हुई टिकट बुक से काटे जाएँगे। कंपनी के सिस्टम में दिखे किराए से एक रुपया भी ज़्यादा यात्री से नहीं लिया जाएगा; ज़्यादा लेने पर पूरी ज़िम्मेदारी सिर्फ़ पार्टनर संस्था की होगी।',
         'यात्रियों को सही जानकारी दी जाएगी। झूठा या गुमराह करने वाला प्रचार या वादा नहीं किया जाएगा। कंपनी ने जिसे मंज़ूर न किया हो, ऐसी किसी भी सेवा, किराए, छूट या ऑफ़र की पूरी ज़िम्मेदारी पार्टनर संस्था की होगी और कंपनी ज़रूरी कानूनी कार्रवाई कर सकती है।',
         'पार्टनर संस्था और उसके कर्मचारी हर यात्री से इज़्ज़त, ईमानदारी और नम्र भाषा में पेश आएँगे; झगड़ा, धमकी या गाली-गलौज नहीं करेंगे। वे सेवा के लिए कंपनी के तय तरीके मानेंगे।',
         'कंपनी समय-समय पर किराए, रूट, बुकिंग, पेमेंट और छूट के बारे में जो नियम और निर्देश दे, पार्टनर संस्था उन्हें मानेगी। वह कोई अनैतिक या गैरकानूनी काम, कंपनी का नाम खराब करने वाला काम और कंपनी या उसके लोगों को सीधे या परोक्ष रूप से नुकसान पहुँचाने वाला काम (जैसे साज़िश या झूठा प्रचार) नहीं करेगी।',
+        'बुकिंग होते ही यात्री के फ़ोन नंबर पर अपने-आप SMS या WhatsApp मैसेज जाता है।',
+        'सीट की बुकिंग ऑनलाइन होती है और यात्री को वही सीट मिलती है जो बुक की गई थी।',
+        'यात्री www.shreehariglobal.in पर जाकर खुद सीट बुक कर सकते हैं या कंपनी के कर्मचारी या एजेंट के ज़रिए बुकिंग करा सकते हैं।',
       ]],
       ['कंपनी का नाम, लोगो, टिकट डिज़ाइन, फ़ोटो और प्रचार सामग्री', [
         'कंपनी की लिखित इजाज़त के बिना पार्टनर संस्था या उसकी ओर से काम करने वाला कोई भी व्यक्ति S HARI GLOBAL PRIVATE LIMITED का नाम (S HARI GLOBAL / SHREE HARI GLOBAL), लोगो, ब्रांड, वेबसाइट, फ़ोटो, टिकट डिज़ाइन, पहचान या प्रचार सामग्री बोर्ड, पर्चे, सोशल मीडिया, ग्रुप, पेज या कहीं और न इस्तेमाल करेगा, न उसकी नकल करेगा और न उसका गलत इस्तेमाल करेगा।',
@@ -590,7 +686,7 @@ T.hi = {
       ]],
       ['जानकारी गुप्त रखना', [
         'पार्टनर संस्था कंपनी के यात्रियों का डेटा, किराया सूची, एजेंट सूची, सिस्टम लॉगिन और कारोबार की दूसरी जानकारी अनुबंध के दौरान और खत्म होने के बाद भी गुप्त रखेगी। यह जानकारी वह किसी और व्यक्ति या किसी मुकाबले वाली (प्रतियोगी) कंपनी को नहीं देगी।',
-        'यात्रियों की जानकारी (नाम, फ़ोन, पहचान पत्र और बुकिंग) सिर्फ़ बुकिंग के लिए इस्तेमाल होगी; इसे किसी को देना, बेचना या किसी और कारोबार में इस्तेमाल करना मना है। पार्टनर संस्था कंपनी के यात्रियों को किसी दूसरी बस या ट्रैवल कंपनी में नहीं भेजेगी और कंपनी के ग्राहकों, एजेंटों या कर्मचारियों को किसी दूसरी कंपनी में नहीं ले जाएगी। अनुबंध खत्म होने के बाद [[c62_years||2.5em]] साल तक भी पार्टनर संस्था कंपनी के ग्राहकों को कहीं और नहीं ले जाएगी; गोपनीयता धारा 6.1 के मुताबिक बनी रहेगी।',
+        'यात्रियों की जानकारी (नाम, फ़ोन, पहचान पत्र और बुकिंग) सिर्फ़ बुकिंग के लिए इस्तेमाल होगी; इसे किसी को देना, बेचना या किसी और कारोबार में इस्तेमाल करना मना है। पार्टनर संस्था कंपनी के यात्रियों को किसी दूसरी बस या ट्रैवल कंपनी में नहीं भेजेगी और कंपनी के ग्राहकों, एजेंटों या कर्मचारियों को किसी दूसरी कंपनी में नहीं ले जाएगी। अनुबंध खत्म होने के बाद [[c62_years||2.5em]] साल तक भी पार्टनर संस्था कंपनी के ग्राहकों को कहीं और नहीं ले जाएगी; गोपनीयता धारा 9.1 के मुताबिक बनी रहेगी।',
         'कंपनी के दिए लॉगिन ID और पासवर्ड सिर्फ़ अधिकृत लोग इस्तेमाल करेंगे और इन्हें किसी और को नहीं दिया जाएगा। इन्हें सुरक्षित रखना पार्टनर संस्था का काम है: उसकी ID से हुआ हर काम, गलत नाम, सीट या तारीख भी, पार्टनर संस्था की ज़िम्मेदारी होगा।',
       ]],
       ['नियम तोड़ना, नुकसान, लिखित नोटिस और कटौती', [
@@ -602,7 +698,8 @@ T.hi = {
         'यह काम नेपाल और भारत दोनों जगह चलता है, इसलिए पार्टनर संस्था के लिए नेपाल से एक या दो और भारत से एक या दो ज़मानतदार होंगे, जिनके नाम इस अनुबंध के अंत में लिखे जाएँगे। अगर पार्टनर संस्था पैसा न चुकाए या भाग जाए, तो बकाया और नुकसान चुकाने की ज़िम्मेदारी ज़मानतदारों की भी मिलकर होगी।',
       ]],
       ['अनुबंध की अवधि, फिर से अनुबंध और खत्म करना', [
-        'यह अनुबंध भाग क में लिखी शुरू होने की तारीख से 11 (ग्यारह) महीने तक लागू रहेगा।',
+        'यह अनुबंध भाग क में लिखी शुरू होने की तारीख से 11 (ग्यारह) महीने तक लागू रहेगा। इस अवधि में पार्टनर संस्था किसी दूसरी कंपनी से नहीं जुड़ेगी और यह अनुबंध नहीं तोड़ेगी।',
+        'कंपनी के साथ 11 महीने का अनुबंध बना रहने तक, कारोबार कुछ समय के लिए बंद होने पर भी पार्टनर संस्था को नियम के मुताबिक बकाया रकम मिलेगी। लेकिन अगर कारोबार सरकारी कागज़ात या कानूनी समस्या की वजह से बंद हो, अथवा पार्टनर संस्था या उसके कर्मचारियों की लापरवाही, नियम तोड़ने या उनकी वजह से कंपनी को हुए नुकसान के कारण बंद हो, तो यह नियम लागू नहीं होगा।',
         'अवधि पूरी होने पर अनुबंध फिर से करना है या नहीं, यह पूरी तरह कंपनी तय करेगी। कंपनी पार्टनर संस्था का काम, व्यवहार, काबिलियत और अपनी ज़रूरत देखकर फ़ैसला करेगी।',
         'अवधि पूरी होने से पहले अनुबंध खत्म करने के लिए पार्टनर संस्था के पास वाजिब कारण होना चाहिए और उसे कम-से-कम 30 (तीस) दिन पहले लिखित नोटिस देना होगा। साथ ही उसे पूरा हिसाब चुकता करना होगा; हिसाब चुकता होने के बाद ही अनुबंध खत्म होगा।',
         'अगर पार्टनर संस्था बिना नोटिस के छोड़ दे, पैसा न सौंपे, धोखाधड़ी करे, ग्राहकों को कहीं और भेजे, कंपनी के नाम, ब्रांड, सिस्टम या पैसे का गलत इस्तेमाल करे या नियम गंभीर रूप से तोड़े, तो कंपनी उसकी लॉगिन ID बंद करके अनुबंध तुरंत खत्म कर सकती है। साथ ही, कंपनी अपने नियमों और लागू कानून के मुताबिक ज़रूरी कार्रवाई भी कर सकती है।',
@@ -610,6 +707,11 @@ T.hi = {
       ['हिसाब, टिकट बुक, लॉगिन और बकाया पैसा लौटाना', [
         'अनुबंध खत्म होने पर पार्टनर संस्था कंपनी के लोगो, बोर्ड, टिकट सामग्री और लॉगिन का इस्तेमाल तुरंत बंद करेगी और 7 दिन के अंदर सारे बोर्ड, लोगो और सामग्री हटा देगी। वह कंपनी को पूरा हिसाब, अपने पास रखा कंपनी का पैसा, कागज़ात, टिकट बुक, लॉगिन और कंपनी की सारी सामग्री और सामान सौंपेगी और सौंपने में ज़रूरी मदद करेगी।',
         'आखिरी हिसाब मिलान के बाद दोनों पक्षों के बीच का लेन-देन निपटा दिया जाएगा।',
+      ]],
+      ['पेमेंट का चक्र', [
+        'पार्टनर संस्था का कमीशन हर महीने धारा 2.2 में लिखी तारीख को दिया जाएगा।',
+        'एडवांस: ज़रूरत हो तो हर महीने की 13 से 15 तारीख के बीच बकाया कमीशन का ज़्यादा-से-ज़्यादा 30% तक एडवांस लिया जा सकता है।',
+        'यह नियम सभी पार्टनर संस्थाओं, एजेंटों और कर्मचारियों पर एक जैसा लागू होगा।',
       ]],
       ['कानून में बदलाव, विवाद और अदालत', [
         'अगर सरकारी नियम, कंपनी अधिनियम, परिवहन कानून या किसी दूसरे लागू कानून में बदलाव से यह अनुबंध चलाना मुमकिन न रहे, तो दोनों पक्ष आपसी लेन-देन, बकाया पेमेंट और हिसाब निपटाकर इसे खत्म कर सकते हैं।',
@@ -637,9 +739,14 @@ T.hi = {
       ]],
       ['टारगेट, मेहनताना और पेमेंट की तारीखें', [
         'महीने का बुकिंग टारगेट: [[ind_target|150|3.5em]] यात्री। टारगेट पूरा होने पर तय मासिक मेहनताना ₹[[ind_fixed|75,000|5.5em]] मिलेगा। अगर एजेंट टारगेट से कम यात्री बुक करे, तो उसे उस महीने अपनी बुकिंग से कंपनी को मिले कुल किराए का [[ind_pct|30|2.5em]]% मिलेगा।',
-        'हर महीने की 15 तारीख को कंपनी तय मासिक मेहनताने का 30% से 40% तक एडवांस देगी। अगले महीने की 5 तारीख को, बुकिंग और हिसाब के मिलान के बाद, कंपनी उस महीने के मेहनताने में से एडवांस घटाकर बाकी रकम देगी। सारे पेमेंट बैंक ट्रांसफ़र, चेक या UPI से होंगे। पेमेंट से पहले कंपनी कानून के मुताबिक TDS और दूसरे टैक्स काटेगी।',
+        'हर महीने की 13 से 15 तारीख के बीच कंपनी तय मासिक मेहनताने का ज़्यादा-से-ज़्यादा 30% तक एडवांस देगी। अगले महीने की 5 तारीख को, बुकिंग और हिसाब के मिलान के बाद, कंपनी उस महीने के मेहनताने में से एडवांस घटाकर बाकी रकम देगी। सारे पेमेंट बैंक ट्रांसफ़र, चेक या UPI से होंगे। पेमेंट से पहले कंपनी कानून के मुताबिक TDS और दूसरे टैक्स काटेगी।',
         'सिक्योरिटी डिपॉज़िट (अगर हो): ₹[[ind_dep||5em]]। यह अनुबंध खत्म होने और पूरा हिसाब निपटने के बाद ही लौटाया जाएगा। कानून के मुताबिक कंपनी जो टैक्स काटती है, उसका दावा बाद में कंपनी से नहीं किया जा सकता।',
         'रद्द या रिफ़ंड हुआ टिकट धारा 2.1 के टारगेट या किराए की रकम में नहीं गिना जाएगा और हिसाब ठीक किया जाएगा; उसके लिए मेहनताना नहीं माँगा जा सकता। अगर कंपनी बिना सही कारण के टिकट रद्द करे या सीट खाली कराए, तो कंपनी यात्री का पैसा लौटाएगी और वह टिकट एजेंट के हिसाब में गिना जाएगा। कंपनी के सिस्टम या मंज़ूर टिकट बुक के बाहर काटे गए टिकट पर कोई मेहनताना नहीं मिलेगा।',
+        'एजेंट का कमीशन उसकी बुकिंग से हुए यात्रा टर्नओवर का, यानी उन बुकिंग के लिए कंपनी को मिले किराए का 30% होगा। यह तय रकम नहीं है: जितना टर्नओवर, उतनी कमाई। अगर धारा 2.1 में महीने का टारगेट और तय मेहनताना लिखा गया हो, तो उस महीने का मेहनताना धारा 2.1 के मुताबिक होगा।',
+      ]],
+      ['बस चलने का शेड्यूल और कम-से-कम यात्री', [
+        'अगर कंपनी हर दिन बस चलाने का फ़ैसला करे, तो हर बस में कम-से-कम 40 यात्री होने ज़रूरी हैं। ऐसा न होने पर कंपनी की बस हर 2 दिन में एक बार चलेगी। एजेंट को इसी शेड्यूल के मुताबिक यात्री जुटाने होंगे।',
+        'एजेंट सिर्फ़ कमीशन के लिए नहीं, बल्कि कारोबार बढ़ाने के इरादे से काम करेगा।',
       ]],
       ['यात्रियों का पैसा, रोज़ जमा और हिसाब मिलान', [
         'एजेंट यात्रियों से ली गई हर रकम, नकद हो या ऑनलाइन, लिखकर रखेगा। वह रोज़ पूरा हिसाब कंपनी को देगा और टिकट का पूरा पैसा [[c31_hours|24|3em]] घंटे के अंदर कंपनी के खाते में पहुँचाएगा।',
@@ -647,11 +754,21 @@ T.hi = {
         'एजेंट को मिली हर रकम (नकद, UPI या बैंक) का सबूत वह रखेगा और कंपनी के माँगने पर दिखाएगा।',
         'हर महीने के पेमेंट से पहले बुकिंग और हिसाब का मिलान होगा। कोई फ़र्क मिले तो उसे लिखकर रखा जाएगा और उसी पेमेंट में निपटाया जाएगा।',
       ]],
-      ['किराया, छूट, टिकट और यात्रियों से व्यवहार', [
+      ['तय टाइम-टेबल के मुताबिक ऑफ़िस में हाज़िरी', [
+        'एजेंट और उसके साथ काम करने वाले कर्मचारी कंपनी के तय टाइम-टेबल के मुताबिक ऑफ़िस या काउंटर पर हाज़िर रहेंगे।',
+        'बिना कारण गैरहाज़िर रहना मंज़ूर नहीं है। बार-बार ऐसा होने पर कंपनी अनुशासन की कार्रवाई कर सकती है।',
+      ]],
+      ['बस छूटने से पहले ज़रूरी काम', [
+        'हर बस छूटने से पहले ये बातें ज़रूर पक्की होनी चाहिए: (1) बस में जाने वाले सभी यात्रियों का पूरा विवरण; (2) रूट के मुताबिक यात्रियों को बैठाने की जगह और खाना खाने की जगह (सूरत → रुपईडीहा); (3) बस में जाने वाले कर्मचारी का फ़ोन नंबर।',
+      ]],
+      ['ऑनलाइन टिकट सिस्टम, किराया, छूट और यात्रियों से व्यवहार', [
         'एजेंट सिर्फ़ वही किराया, छूट, ऑफ़र, सेवाएँ और सुविधाएँ देगा, जिन्हें कंपनी ने मंज़ूर किया हो। टिकट सिर्फ़ कंपनी के सिस्टम से या कंपनी की मंज़ूर की हुई टिकट बुक से काटे जाएँगे। कंपनी के सिस्टम में दिखे किराए से एक रुपया भी ज़्यादा यात्री से नहीं लिया जाएगा; ज़्यादा लेने पर पूरी ज़िम्मेदारी सिर्फ़ एजेंट की होगी।',
         'यात्रियों को सही जानकारी दी जाएगी। झूठा या गुमराह करने वाला प्रचार या वादा नहीं किया जाएगा। कंपनी ने जिसे मंज़ूर न किया हो, ऐसी किसी भी सेवा, किराए, छूट या ऑफ़र की पूरी ज़िम्मेदारी एजेंट की होगी और कंपनी ज़रूरी कानूनी कार्रवाई कर सकती है।',
         'एजेंट हर यात्री से इज़्ज़त, ईमानदारी और नम्र भाषा में पेश आएगा; झगड़ा, धमकी या गाली-गलौज नहीं करेगा। वह सेवा के लिए कंपनी के तय तरीके मानेगा।',
         'कंपनी समय-समय पर किराए, रूट, बुकिंग, पेमेंट और छूट के बारे में जो नियम और निर्देश दे, एजेंट उन्हें मानेगा। वह कोई अनैतिक या गैरकानूनी काम, कंपनी का नाम खराब करने वाला काम और कंपनी या उसके लोगों को सीधे या परोक्ष रूप से नुकसान पहुँचाने वाला काम (जैसे साज़िश या झूठा प्रचार) नहीं करेगा।',
+        'बुकिंग होते ही यात्री के फ़ोन नंबर पर अपने-आप SMS या WhatsApp मैसेज जाता है।',
+        'सीट की बुकिंग ऑनलाइन होती है और यात्री को वही सीट मिलती है जो बुक की गई थी।',
+        'यात्री www.shreehariglobal.in पर जाकर खुद सीट बुक कर सकते हैं या कंपनी के कर्मचारी या एजेंट के ज़रिए बुकिंग करा सकते हैं।',
       ]],
       ['कंपनी का नाम, लोगो, टिकट डिज़ाइन, फ़ोटो और प्रचार सामग्री', [
         'कंपनी की लिखित इजाज़त के बिना एजेंट या उसकी ओर से काम करने वाला कोई भी व्यक्ति S HARI GLOBAL PRIVATE LIMITED का नाम (S HARI GLOBAL / SHREE HARI GLOBAL), लोगो, ब्रांड, वेबसाइट, फ़ोटो, टिकट डिज़ाइन, पहचान या प्रचार सामग्री बोर्ड, पर्चे, सोशल मीडिया, ग्रुप, पेज या कहीं और न इस्तेमाल करेगा, न उसकी नकल करेगा और न उसका गलत इस्तेमाल करेगा।',
@@ -660,7 +777,7 @@ T.hi = {
       ]],
       ['जानकारी गुप्त रखना', [
         'एजेंट कंपनी के यात्रियों का डेटा, किराया सूची, एजेंट सूची, सिस्टम लॉगिन और कारोबार की दूसरी जानकारी अनुबंध के दौरान और खत्म होने के बाद भी गुप्त रखेगा। यह जानकारी वह किसी और व्यक्ति या किसी मुकाबले वाली (प्रतियोगी) कंपनी को नहीं देगा।',
-        'यात्रियों की जानकारी (नाम, फ़ोन, पहचान पत्र और बुकिंग) सिर्फ़ बुकिंग के लिए इस्तेमाल होगी; इसे किसी को देना, बेचना या किसी और कारोबार में इस्तेमाल करना मना है। एजेंट कंपनी के यात्रियों को किसी दूसरी बस या ट्रैवल कंपनी में नहीं भेजेगा और कंपनी के ग्राहकों, एजेंटों या कर्मचारियों को किसी दूसरी कंपनी में नहीं ले जाएगा। अनुबंध खत्म होने के बाद [[c62_years||2.5em]] साल तक भी एजेंट कंपनी के ग्राहकों को कहीं और नहीं ले जाएगा; गोपनीयता धारा 6.1 के मुताबिक बनी रहेगी।',
+        'यात्रियों की जानकारी (नाम, फ़ोन, पहचान पत्र और बुकिंग) सिर्फ़ बुकिंग के लिए इस्तेमाल होगी; इसे किसी को देना, बेचना या किसी और कारोबार में इस्तेमाल करना मना है। एजेंट कंपनी के यात्रियों को किसी दूसरी बस या ट्रैवल कंपनी में नहीं भेजेगा और कंपनी के ग्राहकों, एजेंटों या कर्मचारियों को किसी दूसरी कंपनी में नहीं ले जाएगा। अनुबंध खत्म होने के बाद [[c62_years||2.5em]] साल तक भी एजेंट कंपनी के ग्राहकों को कहीं और नहीं ले जाएगा; गोपनीयता धारा 9.1 के मुताबिक बनी रहेगी।',
         'कंपनी के दिए लॉगिन ID और पासवर्ड सिर्फ़ एजेंट खुद इस्तेमाल करेगा और इन्हें किसी और को नहीं दिया जाएगा। इन्हें सुरक्षित रखना एजेंट का काम है: एजेंट की ID से हुआ हर काम, गलत नाम, सीट या तारीख भी, एजेंट की ज़िम्मेदारी होगा।',
       ]],
       ['नियम तोड़ना, नुकसान, लिखित नोटिस और कटौती', [
@@ -671,7 +788,8 @@ T.hi = {
         'यह काम नेपाल और भारत दोनों जगह चलता है, इसलिए एजेंट के लिए नेपाल से एक या दो और भारत से एक या दो ज़मानतदार होंगे, जिनके नाम इस अनुबंध के अंत में लिखे जाएँगे। अगर एजेंट पैसा न चुकाए या भाग जाए, तो बकाया और नुकसान चुकाने की ज़िम्मेदारी ज़मानतदारों की भी मिलकर होगी।',
       ]],
       ['अनुबंध की अवधि, फिर से अनुबंध और खत्म करना', [
-        'यह अनुबंध भाग क में लिखी शुरू होने की तारीख से 11 (ग्यारह) महीने तक लागू रहेगा।',
+        'यह अनुबंध भाग क में लिखी शुरू होने की तारीख से 11 (ग्यारह) महीने तक लागू रहेगा। इस अवधि में एजेंट किसी दूसरी कंपनी से नहीं जुड़ेगा और यह अनुबंध नहीं तोड़ेगा।',
+        'कंपनी के साथ 11 महीने का अनुबंध बना रहने तक, कारोबार कुछ समय के लिए बंद होने पर भी एजेंट को नियम के मुताबिक मेहनताना मिलेगा। लेकिन अगर कारोबार सरकारी कागज़ात या कानूनी समस्या की वजह से बंद हो, अथवा एजेंट या कर्मचारियों की लापरवाही, नियम तोड़ने या उनकी वजह से कंपनी को हुए नुकसान के कारण बंद हो, तो यह नियम लागू नहीं होगा।',
         'अवधि पूरी होने पर अनुबंध फिर से करना है या नहीं, यह पूरी तरह कंपनी तय करेगी। कंपनी एजेंट का काम, व्यवहार, काबिलियत और अपनी ज़रूरत देखकर फ़ैसला करेगी।',
         'अवधि पूरी होने से पहले अनुबंध खत्म करने के लिए एजेंट के पास वाजिब कारण होना चाहिए और उसे कम-से-कम 30 (तीस) दिन पहले लिखित नोटिस देना होगा। साथ ही उसे पूरा हिसाब चुकता करना होगा; हिसाब चुकता होने के बाद ही अनुबंध खत्म होगा।',
         'अगर एजेंट बिना नोटिस के छोड़ दे, पैसा न सौंपे, धोखाधड़ी करे, ग्राहकों को कहीं और भेजे, कंपनी के नाम, ब्रांड, सिस्टम या पैसे का गलत इस्तेमाल करे या नियम गंभीर रूप से तोड़े, तो कंपनी एजेंट की लॉगिन ID बंद करके अनुबंध तुरंत खत्म कर सकती है। साथ ही, कंपनी अपने नियमों और लागू कानून के मुताबिक ज़रूरी कार्रवाई भी कर सकती है।',
@@ -679,6 +797,11 @@ T.hi = {
       ['हिसाब, टिकट बुक, लॉगिन और बकाया पैसा लौटाना', [
         'अनुबंध खत्म होने पर एजेंट कंपनी के लोगो, बोर्ड, टिकट सामग्री और लॉगिन का इस्तेमाल तुरंत बंद करेगा और 7 दिन के अंदर सारे बोर्ड, लोगो और सामग्री हटा देगा। वह कंपनी को पूरा हिसाब, अपने पास रखा कंपनी का पैसा, कागज़ात, टिकट बुक, लॉगिन और कंपनी की सारी सामग्री और सामान सौंपेगा और सौंपने में ज़रूरी मदद करेगा।',
         'आखिरी हिसाब मिलान के बाद दोनों पक्षों के बीच का लेन-देन निपटा दिया जाएगा।',
+      ]],
+      ['तनख्वाह / मेहनताने के भुगतान का चक्र', [
+        'मासिक तनख्वाह / मेहनताना हर महीने की 5 तारीख को दिया जाएगा।',
+        'एडवांस: हर महीने की 13 से 15 तारीख के बीच कुल मेहनताने का ज़्यादा-से-ज़्यादा 30% तक एडवांस लिया जा सकता है।',
+        'यह नियम सभी एजेंटों और कर्मचारियों पर एक जैसा लागू होगा।',
       ]],
       ['कानून में बदलाव, विवाद और अदालत', [
         'अगर सरकारी नियम, कंपनी अधिनियम, परिवहन कानून या किसी दूसरे लागू कानून में बदलाव से यह अनुबंध चलाना मुमकिन न रहे, तो दोनों पक्ष आपसी लेन-देन, बकाया पेमेंट और हिसाब निपटाकर इसे खत्म कर सकते हैं।',
@@ -739,13 +862,13 @@ T.gu = {
     idType: 'ઓળખપત્રનો પ્રકાર', idTypes: ['આધાર કાર્ડ', 'નાગરિકતા પ્રમાણપત્ર', 'પાસપોર્ટ', 'મતદાર ઓળખપત્ર', 'અન્ય'], idNo: 'ઓળખપત્ર નંબર *',
     panInd: 'PAN (હોય તો)', agentId: 'એજન્ટ કોડ / લોગિન ID (આપ્યો હોય તો)',
     photo: 'ફોટો (જરૂરી નથી)', photoOrg: 'સહી કરનાર વ્યક્તિનો ફોટો (જરૂરી નથી)',
-    a4: '4. કરારની મુદત', start: 'શરૂઆતની તારીખ', end: 'પૂરી થવાની તારીખ', termNote: '11 મહિના — કલમ 8.1',
+    a4: '4. કરારની મુદત', start: 'શરૂઆતની તારીખ', end: 'પૂરી થવાની તારીખ', termNote: '11 મહિના — કલમ 11.1',
     a5: '5. બેંક / UPI વિગતો (તમારી ચુકવણી માટે)', accName: 'ખાતેદારનું નામ', bank: 'બેંક અને શાખા', accNo: 'ખાતા નંબર', ifsc: 'IFSC / SWIFT', upi: 'UPI / eSewa / વૉલેટ ID',
     sigHead: 'સહી અને સાક્ષીઓ', fp: 'પ્રથમ પક્ષ (કંપની)', forCo: 'S HARI GLOBAL PRIVATE LIMITED તરફથી',
     spOrg: 'દ્વિતીય પક્ષ (ભાગીદાર સંસ્થા)', spInd: 'દ્વિતીય પક્ષ (એજન્ટ)', forOrg: 'ભાગીદાર સંસ્થા તરફથી',
     name: 'નામ', sign: 'સહી', seal: 'કંપનીનો સિક્કો', sealOrg: 'સિક્કો (હોય તો)', dateL: 'તારીખ', address: 'સરનામું', witness: 'સાક્ષી',
     thumbR: 'જમણા અંગૂઠાનું નિશાન', thumbL: 'ડાબા અંગૂઠાનું નિશાન',
-    gHead: 'જામીનદારો (કલમ 11.3)', gNp: 'નેપાળના જામીનદાર', gIn: 'ભારતના જામીનદાર',
+    gHead: 'જામીનદારો (કલમ 15.3)', gNp: 'નેપાળના જામીનદાર', gIn: 'ભારતના જામીનદાર',
     gId: 'ઓળખપત્ર નં. (નાગરિકતા / આધાર / PAN)', gAddr: 'સરનામું અને મોબાઇલ', gSign: 'સહી / અંગૂઠાનું નિશાન',
   },
   need: {
@@ -789,17 +912,31 @@ T.gu = {
         'સિક્યોરિટી ડિપોઝિટ (હોય તો): ₹[[org_dep||5em]]. કરાર પૂરો થાય અને બધો હિસાબ પતી જાય પછી જ તે પાછી મળશે. કાયદા મુજબ કંપનીએ કાપેલા ટેક્સનો દાવો પછીથી કંપની પાસે કરી શકાશે નહીં.',
         'ટિકિટ રદ અથવા રિફંડ થાય તો તેનું કમિશન પાછું લેવાશે અને હિસાબ સરભર થશે; એ ટિકિટ પર કમિશન માગી શકાશે નહીં. કંપની યોગ્ય કારણ વગર ટિકિટ રદ કરે અથવા સીટ ખાલી કરાવે, તો કંપની મુસાફરના પૈસા પાછા આપશે અને ભાગીદાર સંસ્થાને એ ટિકિટનું કમિશન પણ આપશે. કંપનીની સિસ્ટમ કે મંજૂર ટિકિટ બુક સિવાય બીજે કપાયેલી ટિકિટ પર કોઈ કમિશન મળશે નહીં.',
       ]],
+      ['બસ ચાલવાનું સમયપત્રક અને ઓછામાં ઓછા મુસાફરો', [
+        'કંપની દરરોજ બસ ચલાવવાનો નિર્ણય લે, તો દરેક બસમાં ઓછામાં ઓછા 40 મુસાફરો હોવા જરૂરી છે. એટલા ન હોય તો કંપનીની બસ દર 2 દિવસે એક વાર ચાલશે. ભાગીદાર સંસ્થાએ આ જ સમયપત્રક મુજબ મુસાફરો ભેગા કરવા પડશે.',
+        'ભાગીદાર સંસ્થા માત્ર કમિશન માટે નહીં, પણ વ્યવસાય વધારવાના હેતુથી કામ કરશે.',
+      ]],
       ['મુસાફરોના પૈસા, રોજ જમા કરાવવા અને હિસાબની ચકાસણી', [
         'ભાગીદાર સંસ્થા મુસાફરો પાસેથી લીધેલી દરેક રકમ, રોકડ હોય કે ઓનલાઇન, લખીને રાખશે. તે રોજ પૂરો હિસાબ કંપનીને આપશે અને ટિકિટના પૂરા પૈસા [[c31_hours|24|3em]] કલાકની અંદર કંપનીના ખાતામાં પહોંચાડશે.',
         'મુસાફરોના પૈસા કોઈ પણ બહાને રોકી શકાશે નહીં કે મોડા આપી શકાશે નહીં. મોડું થાય તો કંપની ભાગીદાર સંસ્થાનું લોગિન ID તરત બંધ કરી શકે છે. કમિશન ફક્ત કંપની જ પોતાની સિસ્ટમ અને હિસાબ મુજબ આપશે; ભાગીદાર સંસ્થા મુસાફરોના પૈસામાંથી પોતાનું કમિશન જાતે કાપીને રાખશે નહીં.',
         'ભાગીદાર સંસ્થા મળેલી દરેક રકમનો પુરાવો (રોકડ, UPI અથવા બેંક) રાખશે અને કંપની માગે ત્યારે બતાવશે.',
         'દર મહિનાની ચુકવણી પહેલાં બુકિંગ અને હિસાબની ચકાસણી થશે. કોઈ ફરક દેખાય તો તે લેખિતમાં નોંધાશે અને એ જ ચુકવણીમાં પતાવવામાં આવશે.',
       ]],
-      ['ભાડું, છૂટ, ટિકિટ અને મુસાફરો સાથે વર્તન', [
+      ['નક્કી કરેલા સમયપત્રક મુજબ ઓફિસમાં હાજરી', [
+        'કંપનીના બુકિંગ પર કામ કરતા ભાગીદાર સંસ્થાના કર્મચારીઓ કંપનીએ નક્કી કરેલા સમયપત્રક મુજબ ઓફિસ અથવા કાઉન્ટર પર હાજર રહેશે.',
+        'કારણ વગર ગેરહાજર રહેવું માન્ય નથી. વારંવાર આવું થાય તો કંપની શિસ્તભંગની કાર્યવાહી કરી શકે છે.',
+      ]],
+      ['બસ ઉપડે તે પહેલાં ફરજિયાત કરવાનાં કામ', [
+        'દરેક બસ ઉપડે તે પહેલાં આ બાબતો ફરજિયાત પાકી થવી જોઈએ: (1) બસમાં જતા બધા મુસાફરોની પૂરી વિગત; (2) રૂટ મુજબ મુસાફરોને બેસાડવાની જગ્યા અને જમવાની જગ્યા (સુરત → રૂપઈડીહા); (3) બસમાં જતા કર્મચારીનો ફોન નંબર.',
+      ]],
+      ['ઓનલાઇન ટિકિટ સિસ્ટમ, ભાડું, છૂટ અને મુસાફરો સાથે વર્તન', [
         'ભાગીદાર સંસ્થા કંપનીએ મંજૂર કરેલાં ભાડાં, છૂટ, ઑફર, સેવાઓ અને સુવિધાઓ જ આપશે. ટિકિટ ફક્ત કંપનીની સિસ્ટમથી અથવા કંપનીએ મંજૂર કરેલી ટિકિટ બુકમાંથી જ કાપવામાં આવશે. કંપનીની સિસ્ટમમાં દેખાતા ભાડા કરતાં એક રૂપિયો પણ વધારે મુસાફર પાસેથી લઈ શકાશે નહીં; વધારે લેવાય તો તેની પૂરી જવાબદારી ફક્ત ભાગીદાર સંસ્થાની રહેશે.',
         'મુસાફરોને સાચી માહિતી આપવામાં આવશે. ખોટો કે ગેરમાર્ગે દોરનારો પ્રચાર કે વચન આપવામાં આવશે નહીં. કંપનીએ મંજૂર ન કરી હોય એવી કોઈ પણ સેવા, ભાડું, છૂટ કે ઑફરની પૂરી જવાબદારી ભાગીદાર સંસ્થાની રહેશે અને કંપની જરૂરી કાનૂની કાર્યવાહી કરી શકે છે.',
         'ભાગીદાર સંસ્થા અને તેના કર્મચારીઓ દરેક મુસાફર સાથે માન, પ્રામાણિકતા અને નમ્ર ભાષામાં વર્તશે; ઝઘડો, ધમકી કે ગાળાગાળી કરશે નહીં. તેઓ કંપનીએ નક્કી કરેલી સેવાની રીતનું પાલન કરશે.',
         'કંપની સમયાંતરે ભાડાં, રૂટ, બુકિંગ, ચુકવણી અને છૂટ અંગે જે નિયમો અને સૂચનાઓ આપે, તેનું ભાગીદાર સંસ્થા પાલન કરશે. તે કોઈ અનૈતિક કે ગેરકાયદે કામ, કંપનીનું નામ બગાડે એવું કામ અને કંપની કે તેના લોકોને સીધું કે આડકતરું નુકસાન થાય એવું કામ (જેમ કે કાવતરું કે ખોટો પ્રચાર) કરશે નહીં.',
+        'બુકિંગ થતાં જ મુસાફરના ફોન નંબર પર આપમેળે SMS અથવા WhatsApp મેસેજ જાય છે.',
+        'સીટ બુકિંગ ઓનલાઇન થાય છે અને મુસાફરને બુક કરેલી એ જ સીટ મળે છે.',
+        'મુસાફરો www.shreehariglobal.in પર જઈને જાતે સીટ બુક કરી શકે છે અથવા કંપનીના કર્મચારી કે એજન્ટ મારફતે બુકિંગ કરાવી શકે છે.',
       ]],
       ['કંપનીનું નામ, લોગો, ટિકિટ ડિઝાઇન, ફોટા અને પ્રચાર સામગ્રી', [
         'કંપનીની લેખિત પરવાનગી વગર ભાગીદાર સંસ્થા કે તેના તરફથી કામ કરતી કોઈ પણ વ્યક્તિ S HARI GLOBAL PRIVATE LIMITED નું નામ (S HARI GLOBAL / SHREE HARI GLOBAL), લોગો, બ્રાન્ડ, વેબસાઇટ, ફોટા, ટિકિટ ડિઝાઇન, ઓળખ કે પ્રચાર સામગ્રી બોર્ડ, પત્રિકા, સોશિયલ મીડિયા, ગ્રુપ, પેજ કે બીજે ક્યાંય વાપરી શકશે નહીં, તેની નકલ કરી શકશે નહીં કે તેનો દુરુપયોગ કરી શકશે નહીં.',
@@ -808,7 +945,7 @@ T.gu = {
       ]],
       ['માહિતીની ગુપ્તતા', [
         'ભાગીદાર સંસ્થા કંપનીના મુસાફરોની માહિતી, ભાડાની યાદી, એજન્ટોની યાદી, સિસ્ટમ લોગિન અને વ્યવસાયની બીજી માહિતી કરાર દરમિયાન અને કરાર પૂરો થયા પછી પણ ગુપ્ત રાખશે. આ માહિતી તે બીજી કોઈ વ્યક્તિ કે હરીફ કંપનીને આપશે નહીં.',
-        'મુસાફરોની વિગતો (નામ, ફોન, ઓળખપત્ર અને બુકિંગ) ફક્ત બુકિંગ માટે જ વાપરી શકાય છે; તે કોઈને આપી, વેચી કે બીજા વ્યવસાયમાં વાપરી શકાશે નહીં. ભાગીદાર સંસ્થા કંપનીના મુસાફરોને બીજી બસ કે ટ્રાવેલ્સ કંપનીમાં મોકલશે નહીં અને કંપનીના ગ્રાહકો, એજન્ટો કે કર્મચારીઓને બીજી કંપનીમાં લઈ જશે નહીં. કરાર પૂરો થયા પછી [[c62_years||2.5em]] વર્ષ સુધી પણ ભાગીદાર સંસ્થા કંપનીના ગ્રાહકોને બીજે વાળશે નહીં; ગુપ્તતા કલમ 6.1 મુજબ ચાલુ રહેશે.',
+        'મુસાફરોની વિગતો (નામ, ફોન, ઓળખપત્ર અને બુકિંગ) ફક્ત બુકિંગ માટે જ વાપરી શકાય છે; તે કોઈને આપી, વેચી કે બીજા વ્યવસાયમાં વાપરી શકાશે નહીં. ભાગીદાર સંસ્થા કંપનીના મુસાફરોને બીજી બસ કે ટ્રાવેલ્સ કંપનીમાં મોકલશે નહીં અને કંપનીના ગ્રાહકો, એજન્ટો કે કર્મચારીઓને બીજી કંપનીમાં લઈ જશે નહીં. કરાર પૂરો થયા પછી [[c62_years||2.5em]] વર્ષ સુધી પણ ભાગીદાર સંસ્થા કંપનીના ગ્રાહકોને બીજે વાળશે નહીં; ગુપ્તતા કલમ 9.1 મુજબ ચાલુ રહેશે.',
         'કંપનીએ આપેલા લોગિન ID અને પાસવર્ડ ફક્ત અધિકૃત વ્યક્તિઓ જ વાપરશે અને તે બીજા કોઈને આપવામાં આવશે નહીં. તેને સુરક્ષિત રાખવાની જવાબદારી ભાગીદાર સંસ્થાની છે: તેના ID પરથી થયેલું દરેક કામ, ખોટું નામ, સીટ કે તારીખ સહિત, ભાગીદાર સંસ્થાની જવાબદારી રહેશે.',
       ]],
       ['નિયમ ભંગ, નુકસાન, લેખિત જાણ અને કપાત', [
@@ -820,7 +957,8 @@ T.gu = {
         'આ કામ નેપાળ અને ભારત બંને જગ્યાએ ચાલે છે, એટલે ભાગીદાર સંસ્થા માટે નેપાળમાંથી એક કે બે અને ભારતમાંથી એક કે બે જામીનદાર રહેશે, જેમનાં નામ આ કરારના અંતે લખાશે. ભાગીદાર સંસ્થા પૈસા ન ચૂકવે કે ભાગી જાય, તો બાકી રકમ અને નુકસાન ચૂકવવાની જવાબદારી જામીનદારોની પણ સંયુક્ત રીતે રહેશે.',
       ]],
       ['કરારની મુદત, રિન્યુઅલ અને સમાપ્તિ', [
-        'આ કરાર ભાગ ક માં લખેલી શરૂઆતની તારીખથી 11 (અગિયાર) મહિના સુધી લાગુ રહેશે.',
+        'આ કરાર ભાગ ક માં લખેલી શરૂઆતની તારીખથી 11 (અગિયાર) મહિના સુધી લાગુ રહેશે. આ મુદત દરમિયાન ભાગીદાર સંસ્થા બીજી કોઈ કંપની સાથે જોડાઈ શકશે નહીં અને આ કરાર તોડી શકશે નહીં.',
+        'કંપની સાથેનો 11 મહિનાનો કરાર ચાલુ રહે ત્યાં સુધી, વ્યવસાય થોડા સમય માટે બંધ રહે તો પણ ભાગીદાર સંસ્થાને નિયમ મુજબ મળવાપાત્ર રકમ મળશે. પરંતુ સરકારી કાગળો કે કાનૂની સમસ્યાને કારણે, અથવા ભાગીદાર સંસ્થા કે તેના કર્મચારીઓની બેદરકારી, નિયમ ભંગ કે તેમના કારણે કંપનીને થયેલા નુકસાનને કારણે વ્યવસાય બંધ થાય, તો આ નિયમ લાગુ પડશે નહીં.',
         'મુદત પૂરી થાય ત્યારે કરાર રિન્યુ કરવો કે નહીં, તે સંપૂર્ણપણે કંપની નક્કી કરશે. કંપની ભાગીદાર સંસ્થાનું કામ, વર્તન, ક્ષમતા અને પોતાની જરૂરિયાત જોઈને નિર્ણય લેશે.',
         'મુદત પૂરી થાય તે પહેલાં કરાર સમાપ્ત કરવા ભાગીદાર સંસ્થા પાસે યોગ્ય કારણ હોવું જોઈએ અને તેણે ઓછામાં ઓછા 30 (ત્રીસ) દિવસ પહેલાં લેખિત જાણ કરવી પડશે. સાથે જ તેણે બધો હિસાબ ચૂકતે કરવો પડશે; હિસાબ ચૂકતે થયા પછી જ કરાર સમાપ્ત થશે.',
         'ભાગીદાર સંસ્થા જાણ કર્યા વગર છોડી દે, પૈસા ન સોંપે, છેતરપિંડી કરે, ગ્રાહકોને બીજે મોકલે, કંપનીના નામ, બ્રાન્ડ, સિસ્ટમ કે પૈસાનો દુરુપયોગ કરે અથવા નિયમોનો ગંભીર ભંગ કરે, તો કંપની તેનું લોગિન ID બંધ કરીને કરાર તરત સમાપ્ત કરી શકે છે. સાથે જ, કંપની પોતાના નિયમો અને લાગુ કાયદા મુજબ જરૂરી કાર્યવાહી પણ કરી શકે છે.',
@@ -828,6 +966,11 @@ T.gu = {
       ['હિસાબ, ટિકિટ બુક, લોગિન અને બાકી પૈસા પાછા સોંપવા', [
         'કરાર પૂરો થાય ત્યારે ભાગીદાર સંસ્થા કંપનીના લોગો, બોર્ડ, ટિકિટ સામગ્રી અને લોગિનનો ઉપયોગ તરત બંધ કરશે અને 7 દિવસમાં બધાં બોર્ડ, લોગો અને સામગ્રી હટાવી લેશે. તે કંપનીને પૂરો હિસાબ, પોતાની પાસે રહેલા કંપનીના પૈસા, દસ્તાવેજો, ટિકિટ બુક, લોગિન અને કંપનીની બધી સામગ્રી અને સામાન સોંપશે અને સોંપણીમાં જરૂરી મદદ કરશે.',
         'છેલ્લી હિસાબ ચકાસણી પછી બંને પક્ષો વચ્ચેની લેવડદેવડ પતાવી દેવામાં આવશે.',
+      ]],
+      ['ચુકવણીનું ચક્ર', [
+        'ભાગીદાર સંસ્થાનું કમિશન દર મહિને કલમ 2.2 માં લખેલી તારીખે ચૂકવવામાં આવશે.',
+        'એડવાન્સ: જરૂર પડે તો દર મહિનાની 13 થી 15 તારીખ વચ્ચે મળવાપાત્ર કમિશનના વધુમાં વધુ 30% સુધી એડવાન્સ લઈ શકાશે.',
+        'આ નિયમ બધી ભાગીદાર સંસ્થાઓ, એજન્ટ અને કર્મચારીઓને એકસરખો લાગુ પડશે.',
       ]],
       ['કાયદામાં ફેરફાર, વિવાદ અને અદાલત', [
         'સરકારી નિયમો, કંપની કાયદો, પરિવહન કાયદો કે બીજા કોઈ લાગુ કાયદામાં ફેરફારને કારણે આ કરાર ચાલુ રાખવો શક્ય ન રહે, તો બંને પક્ષો પરસ્પર લેવડદેવડ, બાકી ચુકવણી અને હિસાબ પતાવીને કરાર સમાપ્ત કરી શકે છે.',
@@ -855,9 +998,14 @@ T.gu = {
       ]],
       ['લક્ષ્યાંક, મહેનતાણું અને ચુકવણીની તારીખો', [
         'માસિક બુકિંગ લક્ષ્યાંક: [[ind_target|150|3.5em]] મુસાફરો. લક્ષ્યાંક પૂરો થાય તો એજન્ટને નિશ્ચિત માસિક મહેનતાણું ₹[[ind_fixed|75,000|5.5em]] મળશે. એજન્ટ લક્ષ્યાંક કરતાં ઓછા મુસાફરો બુક કરે, તો તે મહિને એજન્ટના બુકિંગથી કંપનીને મળેલી કુલ ભાડાની રકમના [[ind_pct|30|2.5em]]% મળશે.',
-        'દર મહિનાની 15 તારીખે કંપની નિશ્ચિત માસિક મહેનતાણાના 30% થી 40% સુધી એડવાન્સ આપશે. આવતા મહિનાની 5 તારીખે, બુકિંગ અને હિસાબની ચકાસણી પછી, કંપની તે મહિનાના મહેનતાણામાંથી એડવાન્સ બાદ કરીને બાકીની રકમ આપશે. બધી ચુકવણી બેંક ટ્રાન્સફર, ચેક અથવા UPI દ્વારા થશે. ચુકવણી પહેલાં કંપની કાયદા મુજબ TDS અને બીજા ટેક્સ કાપશે.',
+        'દર મહિનાની 13 થી 15 તારીખ વચ્ચે કંપની નિશ્ચિત માસિક મહેનતાણાના વધુમાં વધુ 30% સુધી એડવાન્સ આપશે. આવતા મહિનાની 5 તારીખે, બુકિંગ અને હિસાબની ચકાસણી પછી, કંપની તે મહિનાના મહેનતાણામાંથી એડવાન્સ બાદ કરીને બાકીની રકમ આપશે. બધી ચુકવણી બેંક ટ્રાન્સફર, ચેક અથવા UPI દ્વારા થશે. ચુકવણી પહેલાં કંપની કાયદા મુજબ TDS અને બીજા ટેક્સ કાપશે.',
         'સિક્યોરિટી ડિપોઝિટ (હોય તો): ₹[[ind_dep||5em]]. કરાર પૂરો થાય અને બધો હિસાબ પતી જાય પછી જ તે પાછી મળશે. કાયદા મુજબ કંપનીએ કાપેલા ટેક્સનો દાવો પછીથી કંપની પાસે કરી શકાશે નહીં.',
         'રદ કે રિફંડ થયેલી ટિકિટ કલમ 2.1 ના લક્ષ્યાંક કે ભાડાની રકમમાં ગણાશે નહીં અને હિસાબ સરભર થશે; તેના માટે મહેનતાણું માગી શકાશે નહીં. કંપની યોગ્ય કારણ વગર ટિકિટ રદ કરે અથવા સીટ ખાલી કરાવે, તો કંપની મુસાફરના પૈસા પાછા આપશે અને એ ટિકિટ એજન્ટના હિસાબમાં ગણાશે. કંપનીની સિસ્ટમ કે મંજૂર ટિકિટ બુક સિવાય બીજે કપાયેલી ટિકિટ પર કોઈ મહેનતાણું મળશે નહીં.',
+        'એજન્ટનું કમિશન એજન્ટના બુકિંગથી થયેલા મુસાફરી ટર્નઓવરના, એટલે કે એ બુકિંગ માટે કંપનીને મળેલા ભાડાના 30% રહેશે. આ નિશ્ચિત રકમ નથી: જેટલું ટર્નઓવર, એટલી કમાણી. કલમ 2.1 માં માસિક લક્ષ્યાંક અને નિશ્ચિત મહેનતાણું લખેલું હોય, તો તે મહિનાનું મહેનતાણું કલમ 2.1 મુજબ રહેશે.',
+      ]],
+      ['બસ ચાલવાનું સમયપત્રક અને ઓછામાં ઓછા મુસાફરો', [
+        'કંપની દરરોજ બસ ચલાવવાનો નિર્ણય લે, તો દરેક બસમાં ઓછામાં ઓછા 40 મુસાફરો હોવા જરૂરી છે. એટલા ન હોય તો કંપનીની બસ દર 2 દિવસે એક વાર ચાલશે. એજન્ટે આ જ સમયપત્રક મુજબ મુસાફરો ભેગા કરવા પડશે.',
+        'એજન્ટ માત્ર કમિશન માટે નહીં, પણ વ્યવસાય વધારવાના હેતુથી કામ કરશે.',
       ]],
       ['મુસાફરોના પૈસા, રોજ જમા કરાવવા અને હિસાબની ચકાસણી', [
         'એજન્ટ મુસાફરો પાસેથી લીધેલી દરેક રકમ, રોકડ હોય કે ઓનલાઇન, લખીને રાખશે. તે રોજ પૂરો હિસાબ કંપનીને આપશે અને ટિકિટના પૂરા પૈસા [[c31_hours|24|3em]] કલાકની અંદર કંપનીના ખાતામાં પહોંચાડશે.',
@@ -865,11 +1013,21 @@ T.gu = {
         'એજન્ટ મળેલી દરેક રકમનો પુરાવો (રોકડ, UPI અથવા બેંક) રાખશે અને કંપની માગે ત્યારે બતાવશે.',
         'દર મહિનાની ચુકવણી પહેલાં બુકિંગ અને હિસાબની ચકાસણી થશે. કોઈ ફરક દેખાય તો તે લેખિતમાં નોંધાશે અને એ જ ચુકવણીમાં પતાવવામાં આવશે.',
       ]],
-      ['ભાડું, છૂટ, ટિકિટ અને મુસાફરો સાથે વર્તન', [
+      ['નક્કી કરેલા સમયપત્રક મુજબ ઓફિસમાં હાજરી', [
+        'એજન્ટ અને એજન્ટ સાથે કામ કરતા કર્મચારીઓ કંપનીએ નક્કી કરેલા સમયપત્રક મુજબ ઓફિસ અથવા કાઉન્ટર પર હાજર રહેશે.',
+        'કારણ વગર ગેરહાજર રહેવું માન્ય નથી. વારંવાર આવું થાય તો કંપની શિસ્તભંગની કાર્યવાહી કરી શકે છે.',
+      ]],
+      ['બસ ઉપડે તે પહેલાં ફરજિયાત કરવાનાં કામ', [
+        'દરેક બસ ઉપડે તે પહેલાં આ બાબતો ફરજિયાત પાકી થવી જોઈએ: (1) બસમાં જતા બધા મુસાફરોની પૂરી વિગત; (2) રૂટ મુજબ મુસાફરોને બેસાડવાની જગ્યા અને જમવાની જગ્યા (સુરત → રૂપઈડીહા); (3) બસમાં જતા કર્મચારીનો ફોન નંબર.',
+      ]],
+      ['ઓનલાઇન ટિકિટ સિસ્ટમ, ભાડું, છૂટ અને મુસાફરો સાથે વર્તન', [
         'એજન્ટ કંપનીએ મંજૂર કરેલાં ભાડાં, છૂટ, ઑફર, સેવાઓ અને સુવિધાઓ જ આપશે. ટિકિટ ફક્ત કંપનીની સિસ્ટમથી અથવા કંપનીએ મંજૂર કરેલી ટિકિટ બુકમાંથી જ કાપવામાં આવશે. કંપનીની સિસ્ટમમાં દેખાતા ભાડા કરતાં એક રૂપિયો પણ વધારે મુસાફર પાસેથી લઈ શકાશે નહીં; વધારે લેવાય તો તેની પૂરી જવાબદારી ફક્ત એજન્ટની રહેશે.',
         'મુસાફરોને સાચી માહિતી આપવામાં આવશે. ખોટો કે ગેરમાર્ગે દોરનારો પ્રચાર કે વચન આપવામાં આવશે નહીં. કંપનીએ મંજૂર ન કરી હોય એવી કોઈ પણ સેવા, ભાડું, છૂટ કે ઑફરની પૂરી જવાબદારી એજન્ટની રહેશે અને કંપની જરૂરી કાનૂની કાર્યવાહી કરી શકે છે.',
         'એજન્ટ દરેક મુસાફર સાથે માન, પ્રામાણિકતા અને નમ્ર ભાષામાં વર્તશે; ઝઘડો, ધમકી કે ગાળાગાળી કરશે નહીં. એજન્ટ કંપનીએ નક્કી કરેલી સેવાની રીતનું પાલન કરશે.',
         'કંપની સમયાંતરે ભાડાં, રૂટ, બુકિંગ, ચુકવણી અને છૂટ અંગે જે નિયમો અને સૂચનાઓ આપે, તેનું એજન્ટ પાલન કરશે. એજન્ટ કોઈ અનૈતિક કે ગેરકાયદે કામ, કંપનીનું નામ બગાડે એવું કામ અને કંપની કે તેના લોકોને સીધું કે આડકતરું નુકસાન થાય એવું કામ (જેમ કે કાવતરું કે ખોટો પ્રચાર) કરશે નહીં.',
+        'બુકિંગ થતાં જ મુસાફરના ફોન નંબર પર આપમેળે SMS અથવા WhatsApp મેસેજ જાય છે.',
+        'સીટ બુકિંગ ઓનલાઇન થાય છે અને મુસાફરને બુક કરેલી એ જ સીટ મળે છે.',
+        'મુસાફરો www.shreehariglobal.in પર જઈને જાતે સીટ બુક કરી શકે છે અથવા કંપનીના કર્મચારી કે એજન્ટ મારફતે બુકિંગ કરાવી શકે છે.',
       ]],
       ['કંપનીનું નામ, લોગો, ટિકિટ ડિઝાઇન, ફોટા અને પ્રચાર સામગ્રી', [
         'કંપનીની લેખિત પરવાનગી વગર એજન્ટ કે એજન્ટ તરફથી કામ કરતી કોઈ પણ વ્યક્તિ S HARI GLOBAL PRIVATE LIMITED નું નામ (S HARI GLOBAL / SHREE HARI GLOBAL), લોગો, બ્રાન્ડ, વેબસાઇટ, ફોટા, ટિકિટ ડિઝાઇન, ઓળખ કે પ્રચાર સામગ્રી બોર્ડ, પત્રિકા, સોશિયલ મીડિયા, ગ્રુપ, પેજ કે બીજે ક્યાંય વાપરી શકશે નહીં, તેની નકલ કરી શકશે નહીં કે તેનો દુરુપયોગ કરી શકશે નહીં.',
@@ -878,7 +1036,7 @@ T.gu = {
       ]],
       ['માહિતીની ગુપ્તતા', [
         'એજન્ટ કંપનીના મુસાફરોની માહિતી, ભાડાની યાદી, એજન્ટોની યાદી, સિસ્ટમ લોગિન અને વ્યવસાયની બીજી માહિતી કરાર દરમિયાન અને કરાર પૂરો થયા પછી પણ ગુપ્ત રાખશે. આ માહિતી એજન્ટ બીજી કોઈ વ્યક્તિ કે હરીફ કંપનીને આપશે નહીં.',
-        'મુસાફરોની વિગતો (નામ, ફોન, ઓળખપત્ર અને બુકિંગ) ફક્ત બુકિંગ માટે જ વાપરી શકાય છે; તે કોઈને આપી, વેચી કે બીજા વ્યવસાયમાં વાપરી શકાશે નહીં. એજન્ટ કંપનીના મુસાફરોને બીજી બસ કે ટ્રાવેલ્સ કંપનીમાં મોકલશે નહીં અને કંપનીના ગ્રાહકો, એજન્ટો કે કર્મચારીઓને બીજી કંપનીમાં લઈ જશે નહીં. કરાર પૂરો થયા પછી [[c62_years||2.5em]] વર્ષ સુધી પણ એજન્ટ કંપનીના ગ્રાહકોને બીજે વાળશે નહીં; ગુપ્તતા કલમ 6.1 મુજબ ચાલુ રહેશે.',
+        'મુસાફરોની વિગતો (નામ, ફોન, ઓળખપત્ર અને બુકિંગ) ફક્ત બુકિંગ માટે જ વાપરી શકાય છે; તે કોઈને આપી, વેચી કે બીજા વ્યવસાયમાં વાપરી શકાશે નહીં. એજન્ટ કંપનીના મુસાફરોને બીજી બસ કે ટ્રાવેલ્સ કંપનીમાં મોકલશે નહીં અને કંપનીના ગ્રાહકો, એજન્ટો કે કર્મચારીઓને બીજી કંપનીમાં લઈ જશે નહીં. કરાર પૂરો થયા પછી [[c62_years||2.5em]] વર્ષ સુધી પણ એજન્ટ કંપનીના ગ્રાહકોને બીજે વાળશે નહીં; ગુપ્તતા કલમ 9.1 મુજબ ચાલુ રહેશે.',
         'કંપનીએ આપેલા લોગિન ID અને પાસવર્ડ ફક્ત એજન્ટ પોતે જ વાપરશે અને તે બીજા કોઈને આપવામાં આવશે નહીં. તેને સુરક્ષિત રાખવાની જવાબદારી એજન્ટની છે: એજન્ટના ID પરથી થયેલું દરેક કામ, ખોટું નામ, સીટ કે તારીખ સહિત, એજન્ટની જવાબદારી રહેશે.',
       ]],
       ['નિયમ ભંગ, નુકસાન, લેખિત જાણ અને કપાત', [
@@ -889,7 +1047,8 @@ T.gu = {
         'આ કામ નેપાળ અને ભારત બંને જગ્યાએ ચાલે છે, એટલે એજન્ટ માટે નેપાળમાંથી એક કે બે અને ભારતમાંથી એક કે બે જામીનદાર રહેશે, જેમનાં નામ આ કરારના અંતે લખાશે. એજન્ટ પૈસા ન ચૂકવે કે ભાગી જાય, તો બાકી રકમ અને નુકસાન ચૂકવવાની જવાબદારી જામીનદારોની પણ સંયુક્ત રીતે રહેશે.',
       ]],
       ['કરારની મુદત, રિન્યુઅલ અને સમાપ્તિ', [
-        'આ કરાર ભાગ ક માં લખેલી શરૂઆતની તારીખથી 11 (અગિયાર) મહિના સુધી લાગુ રહેશે.',
+        'આ કરાર ભાગ ક માં લખેલી શરૂઆતની તારીખથી 11 (અગિયાર) મહિના સુધી લાગુ રહેશે. આ મુદત દરમિયાન એજન્ટ બીજી કોઈ કંપની સાથે જોડાઈ શકશે નહીં અને આ કરાર તોડી શકશે નહીં.',
+        'કંપની સાથેનો 11 મહિનાનો કરાર ચાલુ રહે ત્યાં સુધી, વ્યવસાય થોડા સમય માટે બંધ રહે તો પણ એજન્ટને નિયમ મુજબ મહેનતાણું મળશે. પરંતુ સરકારી કાગળો કે કાનૂની સમસ્યાને કારણે, અથવા એજન્ટ કે કર્મચારીઓની બેદરકારી, નિયમ ભંગ કે તેમના કારણે કંપનીને થયેલા નુકસાનને કારણે વ્યવસાય બંધ થાય, તો આ નિયમ લાગુ પડશે નહીં.',
         'મુદત પૂરી થાય ત્યારે કરાર રિન્યુ કરવો કે નહીં, તે સંપૂર્ણપણે કંપની નક્કી કરશે. કંપની એજન્ટનું કામ, વર્તન, ક્ષમતા અને પોતાની જરૂરિયાત જોઈને નિર્ણય લેશે.',
         'મુદત પૂરી થાય તે પહેલાં કરાર સમાપ્ત કરવા એજન્ટ પાસે યોગ્ય કારણ હોવું જોઈએ અને એજન્ટે ઓછામાં ઓછા 30 (ત્રીસ) દિવસ પહેલાં લેખિત જાણ કરવી પડશે. સાથે જ એજન્ટે બધો હિસાબ ચૂકતે કરવો પડશે; હિસાબ ચૂકતે થયા પછી જ કરાર સમાપ્ત થશે.',
         'એજન્ટ જાણ કર્યા વગર છોડી દે, પૈસા ન સોંપે, છેતરપિંડી કરે, ગ્રાહકોને બીજે મોકલે, કંપનીના નામ, બ્રાન્ડ, સિસ્ટમ કે પૈસાનો દુરુપયોગ કરે અથવા નિયમોનો ગંભીર ભંગ કરે, તો કંપની એજન્ટનું લોગિન ID બંધ કરીને કરાર તરત સમાપ્ત કરી શકે છે. સાથે જ, કંપની પોતાના નિયમો અને લાગુ કાયદા મુજબ જરૂરી કાર્યવાહી પણ કરી શકે છે.',
@@ -897,6 +1056,11 @@ T.gu = {
       ['હિસાબ, ટિકિટ બુક, લોગિન અને બાકી પૈસા પાછા સોંપવા', [
         'કરાર પૂરો થાય ત્યારે એજન્ટ કંપનીના લોગો, બોર્ડ, ટિકિટ સામગ્રી અને લોગિનનો ઉપયોગ તરત બંધ કરશે અને 7 દિવસમાં બધાં બોર્ડ, લોગો અને સામગ્રી હટાવી લેશે. એજન્ટ કંપનીને પૂરો હિસાબ, પોતાની પાસે રહેલા કંપનીના પૈસા, દસ્તાવેજો, ટિકિટ બુક, લોગિન અને કંપનીની બધી સામગ્રી અને સામાન સોંપશે અને સોંપણીમાં જરૂરી મદદ કરશે.',
         'છેલ્લી હિસાબ ચકાસણી પછી બંને પક્ષો વચ્ચેની લેવડદેવડ પતાવી દેવામાં આવશે.',
+      ]],
+      ['પગાર / મહેનતાણાની ચુકવણીનું ચક્ર', [
+        'માસિક પગાર / મહેનતાણું દર મહિનાની 5 તારીખે ચૂકવવામાં આવશે.',
+        'એડવાન્સ: દર મહિનાની 13 થી 15 તારીખ વચ્ચે કુલ મહેનતાણાના વધુમાં વધુ 30% સુધી એડવાન્સ લઈ શકાશે.',
+        'આ નિયમ બધા એજન્ટ અને કર્મચારીઓને એકસરખો લાગુ પડશે.',
       ]],
       ['કાયદામાં ફેરફાર, વિવાદ અને અદાલત', [
         'સરકારી નિયમો, કંપની કાયદો, પરિવહન કાયદો કે બીજા કોઈ લાગુ કાયદામાં ફેરફારને કારણે આ કરાર ચાલુ રાખવો શક્ય ન રહે, તો બંને પક્ષો પરસ્પર લેવડદેવડ, બાકી ચુકવણી અને હિસાબ પતાવીને કરાર સમાપ્ત કરી શકે છે.',

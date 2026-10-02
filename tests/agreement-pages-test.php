@@ -142,7 +142,7 @@ foreach (PAGES as $type => $base) {
         }
 
         // print: A4, running footer with page X / Y and the document code
-        $code = 'SHG-AGR-' . ($type === 'org' ? 'P' : 'A') . '-' . strtoupper($lang) . ' v2';
+        $code = 'SHG-AGR-' . ($type === 'org' ? 'P' : 'A') . '-' . strtoupper($lang) . ' v2.2';
         check("{$name}: A4 with page X / Y footer",
             str_contains($html, '@page{size:A4;') && str_contains($html, 'counter(page) " / " counter(pages)'));
         check("{$name}: document code {$code} in the footer", str_contains($html, "@bottom-center{content:\"{$code}\""));
@@ -158,8 +158,8 @@ foreach (PAGES as $type => $base) {
             && str_contains($html, 'www.shreehariglobal.in'));
         check("{$name}: a sent form cannot be sent twice; a timeout says so", str_contains($html, 'U.sentBtn; btn.disabled = true;') && str_contains($html, 'U.applyUnsure'));
         check("{$name}: signature block kept on one page", str_contains($html, '.sigwrap{break-inside:avoid'));
-        check("{$name}: 11 sections, pay terms in the Schedule box",
-            substr_count($html, '<h3 class="sh"><span class="no">') === 11 && substr_count($html, '<div class="sched">') === 1);
+        check("{$name}: 15 sections (v2.2), pay terms in the Schedule box",
+            substr_count($html, '<h3 class="sh"><span class="no">') === 15 && substr_count($html, '<div class="sched">') === 1);
     }
 }
 

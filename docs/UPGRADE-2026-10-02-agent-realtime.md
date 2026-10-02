@@ -110,6 +110,33 @@ Calendar's `?sid=`.
 - `tools/agreements/` (content.js + build.js) is the source of the pages; build.js
   now emits the live script tag. `deploy.sh` excludes `tools/`.
 
+## Round 4 — agreements v2.2 from the owner's 22222.docx
+
+The owner sent his agent agreement (Word, Hindi/Nepali) "add these points, and
+the same for Pvt Ltd". Both agreements now have the docx's 15 sections, in all
+four languages (tools/agreements/content.js → build.js, document code v2.2):
+
+| # | Section | Change |
+|---|---|---|
+| 2 | Pay | Agent: 2.2 advance now "13th–15th, up to 30%" (was "15th, 30–40%"); new 2.5 "30% of the travel turnover — not fixed; if 2.1's target + fixed pay is written, 2.1 decides" |
+| 3 | Bus running schedule and minimum passengers | NEW: daily bus needs 40 per bus, else a bus every 2 days; grow the business, not only commission |
+| 5 | Office attendance on the set timetable | NEW |
+| 6 | Checks before every departure | NEW: passenger details, pickup + meal stops (Surat → Rupaidiha), staff phone |
+| 7 | Online ticket system, fares … (old 4) | +3: automatic SMS / WhatsApp, the booked seat is the seat, self-booking on the website |
+| 11 | Term (old 8) | 11.1 + "no other company / no breaking it in the 11 months"; NEW 11.2 business closed for a time → still paid, except government papers / legal problem / own negligence |
+| 13 | Pay cycle | NEW: pay on the 5th; advance 13th–15th up to 30%; same for everyone (Partner: commission on the 2.2 day) |
+
+Renumbered: old 3→4, 4→7, 5–7→8–10, 8→11, 9→12, 10→14, 11→15; the cross
+references follow (Part A "11 months — clause 11.1", guarantors "clause 15.3",
+secrecy "as in 9.1"). The Partner agreement got the same sections, adapted
+(commission instead of salary; no 30%-turnover clause — its 2.1 has the rate
+fields). lint-text.js / the page tests now expect 15 sections.
+
+⚠️ agreement_points rows are keyed by point NUMBER. Before any future rebuild
+that renumbers, check `SELECT * FROM agreement_points` (it was empty on live
+when v2.2 shipped) and move rows to their new numbers. The Hindi agreement PDF
+(includes/agreementpdf.php) has its own text and is unchanged.
+
 ## Tests
 
 `tests/live-sync-test.php` (33 checks, registered in run-all CORE): version moves on

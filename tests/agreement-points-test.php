@@ -36,14 +36,14 @@ foreach (array_keys(AgreementText::DOCS) as $d) {
         $pts  = AgreementText::points($d, $l);
         $bad  = array_filter($pts, static fn(array $p): bool => AgreementText::validate($p['text'], $p['keys']) !== null);
         $html = (string) @file_get_contents(AgreementText::file($d, $l));
-        check("$d-$l: 11 sections, 40+ points, each point valid as built", count($secs) === 11 && count($pts) >= 40 && $bad === [],
+        check("$d-$l: 15 sections (v2.2), 50+ points, each point valid as built", count($secs) === 15 && count($pts) >= 50 && $bad === [],
             count($secs) . ' sections · ' . count($pts) . ' points');
         check("$d-$l: the page loads the corrections script", str_contains($html, '/assets/js/agreement-live.js'));
     }
 }
 $en = AgreementText::points('partner', 'en');
 check('a blank is shown as {{name}}', str_contains($en['2.1']['text'], '{{org_rate}}'), $en['2.1']['text']);
-check('a radio pair is two blanks name=value', $en['7.3']['keys'] === ['c73=yes', 'c73=no']);
+check('a radio pair (10.3 since v2.2) is two blanks name=value', $en['10.3']['keys'] === ['c73=yes', 'c73=no']);
 check('the point numbers are the same in all four languages',
     array_keys(AgreementText::points('agent', 'ne')) === array_keys(AgreementText::points('agent', 'gu'))
     && array_keys(AgreementText::points('partner', 'hi')) === array_keys($en));

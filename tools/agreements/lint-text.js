@@ -289,7 +289,7 @@ for (const [path, en] of perLang.en) {
 for (const ty of ['org', 'ind']) {
   for (const lg of LANGS) {
     const secs = T[lg][ty].sections;
-    if (secs.length !== 11) report(lg, `${ty}.sections`, `${secs.length} sections (must be 11)`);
+    if (secs.length !== 15) report(lg, `${ty}.sections`, `${secs.length} sections (must be 15 since v2.2)`);
     secs.forEach((sec, i) => {
       const ref = T.en[ty].sections[i];
       if (ref && sec[1].length !== ref[1].length) report(lg, `${ty}.sections.${i}`, `${sec[1].length} clauses, English has ${ref[1].length}`);
