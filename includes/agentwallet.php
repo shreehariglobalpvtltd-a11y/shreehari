@@ -500,6 +500,38 @@ final class AgentWallet
     }
 
     /**
+     * Is this sale already credited to ANOTHER agent? Returns that agent's
+     * code ("SHG-0007", or "AGENT #42" when un-numbered), '' when the ticket
+     * is free to take: no seller, an office / counter seller, the company's
+     * own "Other" code, or already the agent it is going to.
+     *
+     * 2 Oct 2026: on 1 Oct a bulk "Select seats → assign agent" on the seat
+     * map credited 10 tickets to SHG-0006 — and silently took three berths
+     * (A11, A12, D10) that had been SHG-0007's since the minute they were
+     * sold, with their commission. The bulk tools now skip such tickets
+     * unless the operator explicitly says to take them too.
+     *
+     * @param array<string,mixed> $booking needs sold_by_admin_id
+     */
+    public static function heldByOtherAgent(array $booking, int $newAgentId): string
+    {
+        $cur = (int) ($booking['sold_by_admin_id'] ?? 0);
+        if ($cur <= 0 || $cur === $newAgentId) {
+            return '';
+        }
+        $company = self::resolveAgentCodeFromString(Settings::getString('company_agent_code', 'SHG-0001'));
+        if ($company !== null && $cur === $company) {
+            return '';
+        }
+        $role = (string) Database::scalar('SELECT role FROM admins WHERE id = :i', ['i' => $cur], '');
+        if ($role !== 'agent') {
+            return '';
+        }
+        $label = self::agentCodeLabel($cur);
+        return $label !== '' ? $label : 'AGENT #' . $cur;
+    }
+
+    /**
      * Renumber every agent to a clean 1..N sequence (owner ask, 2 Sep 2026:
      * "0001 bata suru, S Hari Global ko 1 ma"). Order: agents that already
      * hold a code, by that code ascending (so the lowest existing number —

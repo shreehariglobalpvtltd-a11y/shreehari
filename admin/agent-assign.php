@@ -59,12 +59,20 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $changes[(int) $bid] = (int) $aid;
         }
         $bulkAgent = (int) ($_POST['bulk_agent'] ?? 0);
+        // Ticked rows going to the bulk agent. A row whose own Agent select was
+        // changed is an explicit, one-ticket decision and stays as typed.
+        $bulkIds = [];
         if ($bulkAgent > 0) {
             foreach ((array) ($_POST['ids'] ?? []) as $bid) {
                 $changes[(int) $bid] = $bulkAgent;
+                $bulkIds[(int) $bid] = true;
             }
         }
-        $moved = 0; $same = 0; $comm = 0.0; $errors = [];
+        // 2 Oct 2026: a bulk move never takes a ticket already credited to
+        // ANOTHER agent unless "move_owned" is ticked (seat map, 1 Oct: three
+        // of SHG-0007's berths rode along with a pick for SHG-0006).
+        $moveOwned = (string) ($_POST['move_owned'] ?? '') === '1';
+        $moved = 0; $same = 0; $comm = 0.0; $errors = []; $skipped = [];
         foreach ($changes as $bid => $aid) {
             if ($bid <= 0 || !isset($agents[$aid])) {
                 continue;
@@ -77,6 +85,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $same++;
                 continue;
             }
+            if (isset($bulkIds[$bid]) && !$moveOwned) {
+                $holder = AgentWallet::heldByOtherAgent($row, $aid);
+                if ($holder !== '') {
+                    $skipped[] = (string) $row['pnr'] . ' (' . $holder . ')';
+                    continue;
+                }
+            }
             try {
                 $res = AgentWallet::reassignSeller($row, $aid, (int) $admin['id']);
                 $moved++;
@@ -85,15 +100,21 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $errors[] = (string) $row['pnr'] . ': ' . $e->getMessage();
             }
         }
+        $skipNote = $skipped !== []
+            ? ' NOT moved — already another agent\'s ticket: ' . implode(', ', array_slice($skipped, 0, 12))
+              . (count($skipped) > 12 ? ' …' : '') . '. Tick “also take tickets that belong to another agent” to move them too.'
+            : '';
         if ($moved === 0 && $errors === []) {
-            $flash = ['bad', 'Nothing changed — tick tickets and choose an agent, or change a row\'s agent.'];
+            $flash = $skipped !== []
+                ? ['warn', 'Nothing moved.' . $skipNote]
+                : ['bad', 'Nothing changed — tick tickets and choose an agent, or change a row\'s agent.'];
         } else {
             $msg = $moved . ' ticket' . ($moved === 1 ? '' : 's') . ' moved to the chosen agent'
-                . ($comm > 0 ? ' · commission re-posted ' . inr($comm) : '') . '. Cash-in-hand is not moved.';
+                . ($comm > 0 ? ' · commission re-posted ' . inr($comm) : '') . '. Cash-in-hand is not moved.' . $skipNote;
             if ($errors !== []) {
                 $msg .= ' Not moved: ' . implode('; ', array_slice($errors, 0, 5));
             }
-            $flash = [$errors === [] ? 'ok' : 'bad', $msg];
+            $flash = [$errors !== [] ? 'bad' : ($skipped !== [] ? 'warn' : 'ok'), $msg];
         }
     }
 }
@@ -112,8 +133,10 @@ if ($only === 'none') {
     $params['ag'] = (int) $only;
 }
 if ($q !== '') {
-    $where[] = '(b.pnr LIKE :q OR b.contact_phone LIKE :q OR EXISTS (SELECT 1 FROM booking_passengers x WHERE x.booking_id = b.id AND x.full_name LIKE :q))';
-    $params['q'] = '%' . $q . '%';
+    // Three distinct names: with native prepares (db.php) a named placeholder
+    // binds ONCE, so the old triple :q made every search here throw.
+    $where[] = '(b.pnr LIKE :q1 OR b.contact_phone LIKE :q2 OR EXISTS (SELECT 1 FROM booking_passengers x WHERE x.booking_id = b.id AND x.full_name LIKE :q3))';
+    $params['q1'] = $params['q2'] = $params['q3'] = '%' . $q . '%';
 }
 
 $rows = Database::fetchAll(
@@ -211,6 +234,9 @@ admin_page_head('हरेक टिकटमा एजेन्ट · Every tic
       <option value="0">— choose agent —</option>
       <?= $agentOptions($companyId ?? 0) ?>
     </select>
+    <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600" title="Off: ticked tickets that already belong to another agent are skipped by the bulk move. A row's own Agent box always applies.">
+      <input type="checkbox" name="move_owned" value="1" id="moveOwned"> also take tickets that belong to another agent
+    </label>
     <button class="btn btn-ok" type="submit" onclick="return confirmSave()">💾 Save changes</button>
     <span class="muted" style="font-size:12px">Commission moves to the new agent; cash stays with whoever collected it. Every change is logged.</span>
   </div>
@@ -298,7 +324,22 @@ admin_page_head('हरेक टिकटमा एजेन्ट · Every tic
     if (n > 0 && (!b || b.value === '0')) { alert('Choose the agent for the ticked tickets.'); return false; }
     if (n === 0 && edits === 0) { alert('Tick tickets or change a row’s agent first.'); return false; }
     var total = n + edits;
-    return confirm('Move ' + total + ' ticket(s) to the chosen agent? Commission moves with them.');
+    // Ticked tickets that already carry ANOTHER agent (not the company "Other"
+    // code) — skipped by the server unless "also take…" is ticked.
+    var companyId = <?= json_encode((string) (int) ($companyId ?? 0)) ?>, owned = 0;
+    checks.forEach(function (c) {
+      if (!c.checked) return;
+      var s = c.closest('tr').querySelector('.rowAgent'), orig = s ? (s.getAttribute('data-orig') || '0') : '0';
+      if (orig !== '0' && orig !== companyId && b && orig !== b.value) owned++;
+    });
+    var take = document.getElementById('moveOwned') && document.getElementById('moveOwned').checked;
+    var msg = 'Move ' + total + ' ticket(s) to the chosen agent? Commission moves with them.';
+    if (owned > 0) {
+      msg += take
+        ? '\n\n⚠️ ' + owned + ' of the ticked tickets already belong to ANOTHER agent — they will be TAKEN from that agent.'
+        : '\n\n' + owned + ' of the ticked tickets already belong to ANOTHER agent and will be SKIPPED (tick “also take…” to move them).';
+    }
+    return confirm(msg);
   };
 })();
 </script>

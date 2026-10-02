@@ -208,16 +208,31 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                       WHERE bs.schedule_id = :sid AND bs.released_at IS NULL AND bs.seat_no IN (' . implode(',', $in) . ')',
                     $params
                 );
-                $moved = 0; $comm = 0.0;
+                // 2 Oct 2026: a ticket already credited to ANOTHER agent is not
+                // taken by a bulk pick unless the operator ticked "move_owned"
+                // (and saw the list in the confirm). On 1 Oct three of
+                // SHG-0007's berths rode along with a pick for SHG-0006.
+                $moveOwned = (string) ($_POST['move_owned'] ?? '') === '1';
+                $moved = 0; $comm = 0.0; $skipped = [];
                 foreach ($rows as $row) {
                     if ((int) ($row['sold_by_admin_id'] ?? 0) === $agentId) { continue; }
+                    $holder = AgentWallet::heldByOtherAgent($row, $agentId);
+                    if ($holder !== '' && !$moveOwned) {
+                        $skipped[] = (string) $row['pnr'] . ' (' . $holder . ')';
+                        continue;
+                    }
                     $res = AgentWallet::reassignSeller($row, $agentId, (int) $admin['id']);
                     $moved++;
                     $comm += (float) $res['commission'];
                 }
-                $flash = ['ok', $moved . ' ticket' . ($moved === 1 ? '' : 's') . ' (' . count($picked) . ' seat' . (count($picked) === 1 ? '' : 's') . ') → '
+                $msg = $moved . ' ticket' . ($moved === 1 ? '' : 's') . ' → '
                     . AgentWallet::agentCodeLabel($agentId)
-                    . ($comm > 0 ? ' · commission re-posted ' . inr($comm) : '') . '. Cash-in-hand is not moved.'];
+                    . ($comm > 0 ? ' · commission re-posted ' . inr($comm) : '') . '. Cash-in-hand is not moved.';
+                if ($skipped !== []) {
+                    $msg .= ' NOT moved — already another agent\'s ticket: ' . implode(', ', $skipped)
+                          . '. To move those too, tick “also take tickets that belong to another agent”.';
+                }
+                $flash = [$skipped !== [] ? 'warn' : 'ok', $msg];
             } else {
                 $flash = ['bad', 'Unknown action.'];
             }
@@ -762,6 +777,7 @@ admin_header('Seat Map', 'seatmap');
 }
 .sm-assign{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:6px 0 10px}
 .sm-assign select{min-width:220px}
+.sm-owned{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:4px 8px;border-radius:8px;background:var(--head,#f5f7fb)}
 .sm-selecting .seat-booked{cursor:copy}
 .sm-selecting .seat-booked[data-agent=""]{outline:2px dashed #d33;outline-offset:-3px}
 .seat.sm-picked{box-shadow:0 0 0 3px #1b4fa0 inset,0 0 0 2px #fff;transform:scale(.96)}
@@ -859,12 +875,15 @@ $smToday = todayISO();
     <select name="agent_id" id="smAgent">
       <option value="">— choose agent —</option>
       <?php foreach ($smAgents as $ag): ?>
-        <option value="<?= $ag['id'] ?>"><?= Security::e(($ag['co'] ? '🏢 ' : '👤 ') . $ag['code'] . ' · ' . $ag['name'] . ($ag['id'] === $smCompanyId ? ' (company / Other)' : '')) ?></option>
+        <option value="<?= $ag['id'] ?>" data-code="<?= Security::e($ag['code']) ?>"><?= Security::e(($ag['co'] ? '🏢 ' : '👤 ') . $ag['code'] . ' · ' . $ag['name'] . ($ag['id'] === $smCompanyId ? ' (company / Other)' : '')) ?></option>
       <?php endforeach; ?>
     </select>
+    <label class="sm-owned" title="Off: seats that already carry another agent's code are skipped, so a pick for one agent can never quietly take another agent's passengers (and commission).">
+      <input type="checkbox" name="move_owned" value="1" id="smMoveOwned"> also take tickets that belong to another agent · अर्को एजेन्टको टिकट पनि सार्ने
+    </label>
     <button type="submit" class="btn btn-ok" id="smAssignGo">💾 Assign</button>
   </span>
-  <span class="muted sm-assign-hint" hidden>Tap booked seats to select them. Red dashed = no agent yet. Commission moves; cash stays with the collector.</span>
+  <span class="muted sm-assign-hint" hidden>Tap booked seats to select them. Red dashed = no agent yet. A seat that already shows another agent's number is skipped unless you tick “also take…”. Commission moves; cash stays with the collector.</span>
 </form>
 <?php endif; ?>
 <?php if ($hasVisual): ?>
@@ -1200,6 +1219,8 @@ if ($legendStops !== []): ?>
      inherits their CSRF + schedules.edit guards and adds no new backend. */
   var SM_CAN_EDIT  = <?= $canEdit ? 'true' : 'false' ?>;
   var SM_SEAT_OPS  = <?= $canSeatOps ? 'true' : 'false' ?>;   // block / unblock / release: office staff only
+  // The company's own "Other" code — a berth carrying it is free to re-credit.
+  var SM_COMPANY_CODE = <?= json_encode($smCompanyId !== null ? AgentWallet::agentCodeLabel((int) $smCompanyId) : '') ?>;
   var seatMenu     = document.getElementById('seatMenu');
   var seatBackdrop = document.getElementById('seatMenuBackdrop');
   var bvBase       = <?= json_encode($base . '/admin/booking-view.php?pnr=') ?>;
@@ -1422,7 +1443,22 @@ if ($legendStops !== []): ?>
       var picked = document.querySelectorAll('.seat.sm-picked'), ag = document.getElementById('smAgent');
       if (!picked.length) { e.preventDefault(); alert('Tap the booked seats to select them first.'); return; }
       if (!ag.value) { e.preventDefault(); alert('Choose the agent.'); return; }
-      if (!confirm('Assign ' + picked.length + ' seat(s) to ' + ag.options[ag.selectedIndex].text + '? Whole tickets move; commission follows.')) { e.preventDefault(); return; }
+      // Name every picked berth that already carries ANOTHER agent's code
+      // (2 Oct 2026). The company "Other" code is free to take, like no code.
+      var opt = ag.options[ag.selectedIndex], toCode = opt.getAttribute('data-code') || '';
+      var owned = [];
+      picked.forEach(function(x){
+        var c = x.dataset.agent || '';
+        if (c && c !== toCode && c !== SM_COMPANY_CODE) owned.push((x.dataset.seatLabel || x.dataset.seat) + ' (' + c + ')');
+      });
+      var takeOwned = document.getElementById('smMoveOwned') && document.getElementById('smMoveOwned').checked;
+      var msg = 'Assign ' + picked.length + ' seat(s) to ' + opt.text + '? Whole tickets move; commission follows.';
+      if (owned.length) {
+        msg += takeOwned
+          ? '\n\n⚠️ These already belong to ANOTHER agent and will be TAKEN from them:\n' + owned.join(', ')
+          : '\n\nThese already belong to ANOTHER agent and will be SKIPPED (tick “also take…” to move them):\n' + owned.join(', ');
+      }
+      if (!confirm(msg)) { e.preventDefault(); return; }
       smForm.querySelectorAll('input[name="seats[]"]').forEach(function(x){ x.remove(); });
       picked.forEach(function(x){ var i = document.createElement('input'); i.type = 'hidden'; i.name = 'seats[]'; i.value = x.dataset.seat; smForm.appendChild(i); });
     });

@@ -794,6 +794,87 @@ if ($recent !== []) {
     $recentMulti = $rDates !== [] ? admin_multi_bus_days(min($rDates), max($rDates)) : [];
 }
 
+/* ---- Tickets moved between agents (2 Oct 2026) -----------------------
+   Owner: "13 jana haina, 16 hunu parchha". Three of code 07's berths had
+   been moved to code 06 by a bulk seat-map pick on 1 Oct, and nothing on
+   this panel said so — the tickets simply vanished from the count. Every
+   move of a ticket AWAY from this agent, or onto them FROM another agent,
+   is listed here from the audit log (the routine "desk sale credited to an
+   agent" at the counter is not a move between agents and is left out). */
+$agentMoves = [];
+try {
+    $mvRows = Database::fetchAll(
+        "SELECT a.entity_id AS pnr, a.created_at, a.actor_name, a.old_value, a.new_value
+           FROM audit_logs a
+          WHERE a.action = 'booking.reassign_agent' AND a.entity_type = 'booking' AND a.created_at >= :since
+            AND (JSON_UNQUOTE(JSON_EXTRACT(a.old_value, '$.sold_by_admin_id')) = :a1
+                 OR JSON_UNQUOTE(JSON_EXTRACT(a.new_value, '$.sold_by_admin_id')) = :a2)
+          ORDER BY a.id DESC LIMIT 60",
+        ['since' => addDaysISO($today, -30), 'a1' => (string) $viewId, 'a2' => (string) $viewId]
+    );
+    $agentRole = static function (int $id): string {
+        static $memo = [];
+        if (!isset($memo[$id])) {
+            $memo[$id] = $id > 0 ? (string) Database::scalar('SELECT role FROM admins WHERE id = :i', ['i' => $id], '') : '';
+        }
+        return $memo[$id];
+    };
+    foreach ($mvRows as $mv) {
+        $old = (int) ((json_decode((string) $mv['old_value'], true)['sold_by_admin_id'] ?? 0) ?: 0);
+        $new = (int) ((json_decode((string) $mv['new_value'], true)['sold_by_admin_id'] ?? 0) ?: 0);
+        $away = $old === $viewId && $new !== $viewId;
+        $in   = $new === $viewId && $old !== $viewId && $agentRole($old) === 'agent';
+        if (!$away && !$in) {
+            continue;
+        }
+        $agentMoves[] = ['pnr' => (string) $mv['pnr'], 'when' => (string) $mv['created_at'], 'by' => (string) ($mv['actor_name'] ?? ''),
+                         'old' => $old, 'new' => $new, 'away' => $away];
+    }
+    // Seats, journey day and bus for those tickets — one read.
+    if ($agentMoves !== []) {
+        $ph = []; $pp = [];
+        foreach (array_values(array_unique(array_column($agentMoves, 'pnr'))) as $i => $p) { $ph[] = ':p' . $i; $pp['p' . $i] = $p; }
+        $mvInfo = [];
+        foreach (Database::fetchAll(
+            "SELECT b.pnr, b.status, b.booking_mode, bl.travel_date, s.slot, s.route_id, r.coach_type,
+                    COALESCE(bus.bus_number, '') AS bus_number, COALESCE(bus.bus_name, '') AS bus_name,
+                    (SELECT GROUP_CONCAT(bs.seat_no ORDER BY bs.seat_no SEPARATOR ' ') FROM booking_seats bs
+                      WHERE bs.booking_id = b.id AND bs.released_at IS NULL) AS seats
+               FROM bookings b
+               JOIN booking_legs bl ON bl.booking_id = b.id AND bl.leg_type = 'outbound'
+               JOIN schedules s ON s.id = bl.schedule_id
+               JOIN routes r ON r.id = s.route_id
+               LEFT JOIN buses bus ON bus.id = COALESCE(s.bus_id, r.bus_id)
+              WHERE b.pnr IN (" . implode(',', $ph) . ')',
+            $pp
+        ) as $mi) {
+            $mvInfo[(string) $mi['pnr']] = $mi;
+        }
+        $mvMulti = [];
+        $mvDates = array_filter(array_map(static fn(array $x): string => (string) $x['travel_date'], $mvInfo));
+        if ($mvDates !== []) { $mvMulti = admin_multi_bus_days(min($mvDates), max($mvDates)); }
+        foreach ($agentMoves as &$mv) {
+            $mi = $mvInfo[$mv['pnr']] ?? null;
+            $mv['date']  = $mi['travel_date'] ?? '';
+            $mv['bus']   = $mi !== null ? admin_bus_tag((int) $mi['slot'], (string) $mi['bus_number'], (string) $mi['bus_name'],
+                               isset($mvMulti[(int) $mi['route_id'] . '|' . (string) $mi['travel_date']])) : '';
+            $seatTxt     = trim((string) ($mi['seats'] ?? ''));
+            $mv['seats'] = $seatTxt === '' ? '' : Seats::displayLabels(explode(' ', $seatTxt), (string) ($mi['coach_type'] ?? 'sleeper'),
+                               (string) (($mi['booking_mode'] ?? '') ?: 'sharing'), ' ');
+            $mv['pax']   = $seatTxt === '' ? 0 : count(explode(' ', $seatTxt));
+            $mv['status'] = (string) ($mi['status'] ?? '');
+        }
+        unset($mv);
+    }
+} catch (Throwable $e) {
+    $agentMoves = [];
+}
+$codeOrOffice = static function (int $id): string {
+    if ($id <= 0) { return 'Office'; }
+    $c = AgentWallet::agentCodeLabel($id);
+    return $c !== '' ? $c : 'Office';
+};
+
 $agentList = $isSupervisor
     ? Database::fetchAll("SELECT id, username, full_name FROM admins WHERE role = 'agent' ORDER BY full_name, username")
     : [];
@@ -929,6 +1010,14 @@ if ($isOwn) {
 .tc-table{width:100%;border-collapse:collapse}
 .tc-table th,.tc-table td{padding:7px 8px;border-bottom:1px solid var(--line);font-size:12.5px;text-align:left;vertical-align:top}
 .tc-links{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+/* Tickets moved between agents (2 Oct 2026). */
+.mv-table{width:100%;border-collapse:collapse}
+.mv-table th,.mv-table td{padding:8px 10px;border-bottom:1px solid var(--line);font-size:12.5px;text-align:left;vertical-align:top}
+.mv-table tr.mv-away td:first-child{box-shadow:inset 3px 0 0 #b02a2a}
+.mv-table tr.mv-in td:first-child{box-shadow:inset 3px 0 0 #0a6b3b}
+.mv-tag{font-size:11px;font-weight:700}
+.mv-away .mv-tag{color:#b02a2a}.mv-in .mv-tag{color:#0a6b3b}
+[data-theme="dark"] .mv-away .mv-tag{color:#fca5a5}[data-theme="dark"] .mv-in .mv-tag{color:#6ee7b7}
 @media(max-width:640px){
   .trip-card summary{grid-template-columns:64px minmax(0,1fr) 58px;gap:8px}
   .tc-tk{grid-column:2 / -1}
@@ -1087,6 +1176,33 @@ $tripCard = static function (array $t) use ($today, $base): void {
     <?php endif; ?>
   </div>
 </div>
+
+<?php if ($agentMoves !== []):
+    $awayPax = array_sum(array_map(static fn(array $m): int => $m['away'] ? (int) $m['pax'] : 0, $agentMoves)); ?>
+<div class="panel" id="agentMoves">
+  <h2>🔁 Tickets moved between agents · एजेन्ट परिवर्तन
+    <span class="muted" style="font-size:12px;font-weight:500;margin-left:auto">last 30 days<?= $awayPax > 0 ? ' · ' . $awayPax . ' जना moved away' : '' ?></span></h2>
+  <div style="overflow-x:auto">
+  <table class="no-card mv-table">
+    <thead><tr><th>When</th><th>Ticket</th><th>Journey · Bus</th><th>Seats</th><th>Change</th><th>By</th></tr></thead>
+    <tbody>
+    <?php foreach ($agentMoves as $mv): ?>
+      <tr class="<?= $mv['away'] ? 'mv-away' : 'mv-in' ?>">
+        <td style="white-space:nowrap"><?= Security::e(date('j M, g:i A', strtotime($mv['when']))) ?></td>
+        <td class="mono"><a href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode($mv['pnr']) ?>"><?= Security::e($mv['pnr']) ?></a>
+          <?php if (($mv['status'] ?? '') !== '' && $mv['status'] !== 'confirmed'): ?> <?= admin_pill((string) $mv['status']) ?><?php endif; ?></td>
+        <td><?= $mv['date'] !== '' ? Security::e(formatDate($mv['date'])) : '—' ?><?= $mv['bus'] !== '' ? '<div class="muted" style="font-size:11.5px">🚌 ' . Security::e($mv['bus']) . '</div>' : '' ?></td>
+        <td class="mono"><?= Security::e($mv['seats'] !== '' ? $mv['seats'] : '—') ?></td>
+        <td style="white-space:nowrap"><b><?= Security::e($codeOrOffice($mv['old'])) ?></b> → <b><?= Security::e($codeOrOffice($mv['new'])) ?></b>
+          <div class="mv-tag"><?= $mv['away'] ? 'moved AWAY from this agent' : 'taken FROM another agent' ?></div></td>
+        <td class="muted"><?= Security::e($mv['by'] !== '' ? $mv['by'] : 'system') ?></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+  </div>
+</div>
+<?php endif; ?>
 
 <?php if ($isOwn && Auth::isCounterAgent()): ?>
 <div class="panel" id="payoutRequest">

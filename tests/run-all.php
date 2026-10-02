@@ -197,6 +197,7 @@ const CORE_SUITES = [
     'payroll-test.php'            => 'staff payroll: one settlement a month, advances recovered oldest-first, counter refused, CSV',
     // 2 Oct 2026 (agent panel real-time sync), registered with what it guards.
     'live-sync-test.php'          => 'live sync: a reseat / name / agent / bus / cancel moves the panel version; seat card privacy; bus tabs',
+    'agent-move-guard-test.php'   => 'bulk agent assign skips another agent\'s tickets unless told; the panel lists tickets moved away',
 ];
 
 /**
