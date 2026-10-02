@@ -147,3 +147,28 @@ sale basis.
 ## Round 7 — office WhatsApp report restored
 
 includes/officereport.php + cron/office-report.php (27 Sep, dropped by the 1 Oct deploy) ported as-is, plus: capacity from the departure's coach (was 0/0 with no bus) and no empty rows for switched-off routes. Live dry-run checked; crontab line re-enabled 2 Oct 18:33 (backup /root/backups/crontab-before-office-report-*). Slots 07:00 / 13:00 / 20:00 IST to admin_whatsapp + ceo_whatsapp (+ office_report_numbers); off switch: Admin -> Settings -> office_report_on.
+
+## Round 8 — offer switch, desk-form offer, empty extra bus, address required (release-20261002-s11)
+
+Base: release-20261002-s10 + the discount-switch commits (503ef79, 0c8c2f8 cherry-picked).
+Deployed 8 files only (booking.php, officereport.php, agentapplications.php, seatmap.php,
+4 agent-agreement pages) after md5 = base on live; backup /root/backups/pre-s11-20261002-192910.tgz.
+
+- Offer: `advance_offer_*` settings were never read by live code (27 Sep engine not ported).
+  Owner: keep it OFF, manual by dates -> `advance_offer_on` set 0 on live; the dated switch is
+  Admin -> Offers (auto-apply, valid_from/until), already in Fare::quote() for web, counter
+  create() and QuickBot. counterSale() (desk form) now takes it too when no amount/discount was
+  typed, and redeems it. tests/auto-offer-test.php 13/13.
+- Commission on online agent-code bookings: the rule (agentwallet.php accrue) pays only once
+  money is in hand; SHG-2026-00474 is COD, payment cod_pending. 26 web COD agent bookings
+  (mostly 3-8 Sep, travelled) were never marked "COD collected" -> no commission. Owner to decide.
+- Seat-map bus tabs hide a slot 2+ bus that ran empty on a past date; office report skips
+  slot 2+ buses with 0 sold (1 Oct id 2216 gone from the report).
+- Agent agreement: permanent address required (generator + 4 pages + validate()).
+- github-sync-20261002 (VPS bare repo) = s11 + live-only files (admin AI assistant, stamp
+  20261003b) — fast-forward of GitHub main, 63 ahead / 0 behind.
+
+⚠️ Live webroot is a checkout of `claude/quirky-ramanujan-emtd6f` (140eae2) with s10/s11 files
+on top; a full-tree deploy of s10/s11 would drop admin/ai-agent.php. Deploy files, not trees.
+⚠️ Live asset stamps are inconsistent since the discount deploy (template 20261003b, sw ASSET_VER
+and 4 JS files 20261002b; VERSION 'shg-v165.166'). Harmless cache misses; asset-version-test fails 2.
