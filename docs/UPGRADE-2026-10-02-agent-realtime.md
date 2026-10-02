@@ -143,3 +143,7 @@ when v2.2 shipped) and move rows to their new numbers. The Hindi agreement PDF
 reseat / name fix / agent change / bus swap / cancel, not across agents; SeatVersion
 moves on a reseat; scope pinning; seat card privacy over HTTP; bus tabs; journey vs
 sale basis.
+
+## Round 7 — office WhatsApp report restored
+
+includes/officereport.php + cron/office-report.php (27 Sep, dropped by the 1 Oct deploy) ported as-is, plus: capacity from the departure's coach (was 0/0 with no bus) and no empty rows for switched-off routes. Live dry-run checked; crontab line re-enabled 2 Oct 18:33 (backup /root/backups/crontab-before-office-report-*). Slots 07:00 / 13:00 / 20:00 IST to admin_whatsapp + ceo_whatsapp (+ office_report_numbers); off switch: Admin -> Settings -> office_report_on.
