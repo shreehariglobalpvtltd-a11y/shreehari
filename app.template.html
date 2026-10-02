@@ -553,6 +553,7 @@ s.addEventListener('click',function(e){e.preventDefault();
   <a href="#/my"><svg class="ic"><use href="#i-list"/></svg> My Bookings</a>
   <a href="#/" data-scroll="timetable"><svg class="ic"><use href="#i-clock"/></svg> समय तालिका · Timetable</a>
   <a href="/agent-signup.php"><svg class="ic"><use href="#i-users"/></svg> एजेन्ट बन्नुहोस् · Become an Agent</a>
+  <a href="/agreements/"><svg class="ic"><use href="#i-doc"/></svg> एजेन्ट / साझेदार सम्झौता · Agent agreements</a>
   <a href="/admin/login.php" rel="nofollow"><svg class="ic"><use href="#i-lock"/></svg> एजेन्ट / स्टाफ लगइन · Agent / Staff sign-in</a>
   <a href="#/" data-scroll="contact"><svg class="ic"><use href="#i-phone"/></svg> Contact</a>
   <hr style="border:none;border-top:1px dashed var(--line);margin:4px 0">
@@ -1127,6 +1128,19 @@ s.addEventListener('click',function(e){e.preventDefault();
   </div>
 
   <!-- ============ OUR SERVICES ============ -->
+  <!-- ============ AGENT / PARTNER AGREEMENT - one quiet link (27 Sep 2026, restored 2 Oct 2026) ============
+       The owner's "apply for an agreement" button, at the foot of the visible
+       home above the "About" toggle, in that toggle's card look (.home-more-btn)
+       so it adds no CSS. Opens /agreements/: the Agent and the Partner (Pvt Ltd)
+       agreement in Nepali / Hindi / English / Gujarati - read, fill, send. -->
+  <div class="container home-more-bar">
+    <a class="home-more-btn" id="agrApplyCta" href="/agreements/" style="text-decoration:none">
+      <span class="hm-ic" aria-hidden="true">🤝</span>
+      <span class="hm-tx"><b>एजेन्ट वा साझेदार बन्नुहोस् — आवेदन दिनुहोस्</b><small>Agent / Partner agreement · सम्झौता पढ्नुहोस्, फाराम भर्नुहोस् र पठाउनुहोस्।</small></span>
+      <span class="hm-ch" aria-hidden="true">›</span>
+    </a>
+  </div>
+
   <!-- ============ MINIMAL HOME: company/route brochure collapsed by default ============
        The booking funnel above (search, fares, cabins, quick actions, trust)
        is all a passenger needs to buy a ticket in seconds — the app-first,
@@ -2683,6 +2697,7 @@ s.addEventListener('click',function(e){e.preventDefault();
           <li><a href="#/" data-scroll="search-anchor" data-i18n="navBook">Search buses</a></li>
           <li><a href="#/my" data-i18n="navMy">My Bookings</a></li>
           <li><a href="/admin/login.php" rel="nofollow" data-i18n="navStaff">Agent / Staff sign-in</a></li>
+          <li><a href="/agreements/" rel="nofollow">Agent agreements · सम्झौता</a></li>
           <li><a href="#/" data-scroll="faq" data-i18n="navFaq">FAQ</a></li>
           <li><a href="#/" data-scroll="contact" data-i18n="navContact">Contact &amp; support</a></li>
           <li><a href="tel:+919104801507">Call +91 91048 01507</a></li>

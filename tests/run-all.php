@@ -198,6 +198,10 @@ const CORE_SUITES = [
     // 2 Oct 2026 (agent panel real-time sync), registered with what it guards.
     'live-sync-test.php'          => 'live sync: a reseat / name / agent / bus / cancel moves the panel version; seat card privacy; bus tabs',
     'agent-move-guard-test.php'   => 'bulk agent assign skips another agent\'s tickets unless told; the panel lists tickets moved away',
+    // 27 Sep 2026 agreements, restored 2 Oct 2026 with the editable points.
+    'agreement-points-test.php'   => 'agreement points: 8 pages parse, blanks kept, save / reset / hide / add, the API',
+    'agreement-pages-test.php'    => '/agreements/ pages: noindex, own scripts only, apply + directory contract, build.js match',
+    'agreement-pdf-test.php'      => 'Hindi agreement PDF: validation, shaped Devanagari, two pages (needs HarfBuzz, as devshape)',
 ];
 
 /**
@@ -238,6 +242,7 @@ const HTTP_SUITES = [
     'beacon-test.php'             => 'the product beacon stores behaviour, never people',
     'pwa-http-test.php'           => 'PWA layer: push key + subscribe gates, seat fill, split-pay, offline page',
     'travel-info-test.php'        => '/travel-info: three languages, FAQ JSON-LD, sitemap entry, no PHP noise',
+    'agreement-apply-test.php'    => 'agreement applications: token, limits, honeypot, retry, office screen, public list privacy',
 ];
 
 /* ---------------------------------------------------------------------

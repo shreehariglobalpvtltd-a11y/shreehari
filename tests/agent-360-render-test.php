@@ -111,7 +111,8 @@ check('the agent dashboard still links the QuickBot desk', str_contains($ag, '/a
 echo "\n=== admin/agents.php + admin/accounting.php — wired to the 360 view ===\n";
 $ags = $src('admin/agents.php');
 check("register 'Wallet' button opens agent-360", str_contains($ags, 'href="agent-360.php?agent=<?= (int) $r[\'id\']'));
-check('register has a KYC column', str_contains($ags, '<th>KYC</th>') && str_contains($ags, "data-kyc="));
+// 2 Oct 2026: the column reads "KYC · papers" since the register went to one line per agent.
+check('register has a KYC column', str_contains($ags, '<th>KYC') && str_contains($ags, "data-kyc="));
 check('register shows the net position', str_contains($ags, 'Net position') && str_contains($ags, "\$r['net']"));
 check("register flags 'Settlement overdue'", str_contains($ags, 'AgentWallet::settlementOverdueDays(') && str_contains($ags, 'Settlement overdue'));
 check('register only selects kyc_status once the migration has run', str_contains($ags, 'AgentWallet::kycAvailable()'));

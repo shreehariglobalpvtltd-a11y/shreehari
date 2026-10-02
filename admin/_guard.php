@@ -102,6 +102,12 @@ function admin_nav(): array
         ['href' => 'agent.php',        'icon' => 'wallet', 'label' => $agentView ? 'My Dashboard' : 'Agent Panel',    'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents'],
         ['href' => 'agent-sales.php',  'icon' => 'chart-up',        'label' => $agentView ? 'My Sales' : 'Agent Sales',        'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents'],
         ['href' => 'agent-assign.php', 'icon' => 'user-cog',  'label' => 'Assign Agents',    'perm' => $agentView ? '__superadmin_only__' : 'commissions.view', 'section' => 'Agents'],
+        // 27 Sep 2026 agreements, restored 2 Oct 2026 (a later deploy had dropped
+        // them): applications + KYC + agreement status, the editable agreement
+        // points the public /agreements/ pages show, and the Hindi agreement PDF.
+        ['href' => 'agreements.php',   'icon' => 'handshake', 'label' => '🤝 Agreements & KYC', 'perm' => $agentView ? '__superadmin_only__' : 'customers.view', 'section' => 'Agents'],
+        ['href' => 'agreement-points.php', 'icon' => 'doc',   'label' => '📜 Agreement points', 'perm' => $agentView ? '__superadmin_only__' : 'dashboard.view', 'section' => 'Agents'],
+        ['href' => 'agreement-pdf.php','icon' => 'notepad',   'label' => 'Agreement PDF (Hindi)', 'perm' => 'staff.manage', 'section' => 'Agents'],
         ['href' => 'agent-passengers.php','icon' => 'id-card','label' => $agentView ? 'My Passengers' : 'Agent Passengers','perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents'],
         ['href' => 'agent-offline.php','icon' => 'notepad',   'label' => 'Paper Tickets',    'perm' => $agentView ? 'bookings.view' : 'commissions.view',  'section' => 'Agents'],
         ['href' => 'agent-ranking.php','icon' => 'trophy',    'label' => 'Agent Ranking',    'perm' => 'dashboard.view', 'section' => 'Agents'],

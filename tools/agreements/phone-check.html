@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<!--
+  phone-check.html — pdf.sh opens this in headless Chrome (--allow-file-access-from-files --dump-dom).
+  Every generated page is loaded in an iframe 360 / 390 / 414 / 768 px wide; the report lists the page
+  width against the viewport (OVERFLOW = horizontal scroll), the toolbar height and the smallest input
+  font (must be >= 16 px so phones do not zoom). ?site=<file URL of a folder> checks another build.
+-->
+<html><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>phone check</title>
+<style>iframe{border:0;height:900px;display:block;margin:0 0 4px}</style></head>
+<body>
+<pre id="out">running</pre>
+<div id="frames"></div>
+<script>
+var PAGES = ['partner-agreement-ne', 'partner-agreement-hi', 'partner-agreement-en', 'partner-agreement-gu', 'agent-agreement-ne', 'agent-agreement-hi', 'agent-agreement-en', 'agent-agreement-gu', 'index'];
+var WIDTHS = [360, 390, 414, 768];
+var m = /[?&]site=([^&#]+)/.exec(location.search);
+var base = m ? decodeURIComponent(m[1]).replace(/\/?$/, '/') : location.href.replace(/tools\/agreements\/phone-check\.html.*$/, 'agreements/');
+var lines = [], pending = 0;
+/* ?view=<page>&w=390&h=6000 shows one page in an exact-width frame, for screenshots (headless Chrome
+   keeps a minimum window width, so --window-size=390 alone does not give a 390 px viewport). */
+var v = /[?&]view=([\w-]+)/.exec(location.search);
+if (v) {
+  var q = function (k, d) { var r = new RegExp('[?&]' + k + '=(\\d+)').exec(location.search); return r ? +r[1] : d; };
+  PAGES = []; document.getElementById('out').style.display = 'none'; document.body.style.margin = '0';
+  var one = document.createElement('iframe');
+  one.style.width = q('w', 390) + 'px'; one.style.height = q('h', 6000) + 'px';
+  one.src = base + v[1] + '.html?blank=1' + (/[?&]bw=1/.test(location.search) ? '#bw' : '');
+  document.getElementById('frames').appendChild(one);
+}
+PAGES.forEach(function (p) {
+  WIDTHS.forEach(function (w) {
+    pending++;
+    var f = document.createElement('iframe');
+    f.style.width = w + 'px';
+    f.onload = function () {
+      setTimeout(function () {
+        var d = f.contentDocument, vw = f.contentWindow.innerWidth, sw = d.documentElement.scrollWidth;
+        var wide = [].filter.call(d.querySelectorAll('body *'), function (e) {
+          var r = e.getBoundingClientRect(), cs = f.contentWindow.getComputedStyle(e);
+          return r.width > 0 && r.right > vw + 0.5 && cs.position !== 'fixed' && !e.closest('.hp') && cs.display !== 'none';
+        }).slice(0, 4).map(function (e) { return e.tagName + '.' + e.className + '@' + Math.round(e.getBoundingClientRect().right); });
+        var tb = d.querySelector('.tb'), tbh = tb ? Math.round(tb.getBoundingClientRect().height) : 0;
+        var inputs = [].map.call(d.querySelectorAll('.f input:not([type=radio]):not([type=checkbox])'), function (i) { return parseFloat(f.contentWindow.getComputedStyle(i).fontSize); });
+        var minIn = inputs.length ? Math.min.apply(null, inputs) : 0;
+        lines.push(p + ' @' + w + ': vw=' + vw + ' scrollWidth=' + sw + (sw > vw ? ' OVERFLOW' : ' ok') + ' toolbar=' + tbh + 'px minInputFont=' + minIn + 'px' +
+          (minIn && minIn < 16 ? ' SMALL' : '') + (wide.length ? ' wide=' + wide.join(' ') : ''));
+        if (--pending === 0) { lines.sort(); document.getElementById('out').textContent = 'DONE\n' + lines.join('\n'); }
+      }, 1500);
+    };
+    f.src = base + p + '.html?blank=1';
+    document.getElementById('frames').appendChild(f);
+  });
+});
+</script>
+</body></html>

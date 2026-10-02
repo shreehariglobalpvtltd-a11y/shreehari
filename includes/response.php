@@ -28,13 +28,27 @@ final class Response
     /** Opt-in per endpoint (public, identical-for-everyone data only). 0 = no-store. */
     public static int $publicCacheSeconds = 0;
 
+    /**
+     * Opt-in per endpoint: the most bytes input() reads from a JSON body.
+     * Past it the request ends with 413 before anything is decoded. 0 = no
+     * bound (every older endpoint). (27 Sep 2026, agreement applications;
+     * ported 2 Oct 2026 with api/agreement-apply.php.)
+     */
+    public static int $maxInputBytes = 0;
+
     public static function json(array $payload, int $status = 200): never
     {
         if (!headers_sent()) {
             http_response_code($status);
             header('Content-Type: application/json; charset=utf-8');
             if (self::$publicCacheSeconds > 0 && $status === 200) {
-                header('Cache-Control: public, max-age=' . self::$publicCacheSeconds);
+                /* "public" only when this answer carries no Set-Cookie: a
+                   first-time visitor's answer also starts a PHP session, and a
+                   shared cache that stored it would hand that session cookie to
+                   the next visitor. Such an answer is cached by the visitor's
+                   own browser only. */
+                $cookie = preg_grep('/^Set-Cookie:/i', headers_list()) !== [];
+                header('Cache-Control: ' . ($cookie ? 'private' : 'public') . ', max-age=' . self::$publicCacheSeconds);
             } else {
                 header('Cache-Control: no-store, no-cache, must-revalidate');
                 header('Pragma: no-cache');
@@ -153,7 +167,13 @@ final class Response
         $contentType = strtolower((string) ($_SERVER['CONTENT_TYPE'] ?? ''));
 
         if (str_contains($contentType, 'application/json')) {
-            $raw = file_get_contents('php://input');
+            $max = self::$maxInputBytes;
+            $raw = $max > 0
+                ? file_get_contents('php://input', false, null, 0, $max + 1)
+                : file_get_contents('php://input');
+            if ($max > 0 && is_string($raw) && strlen($raw) > $max) {
+                self::error('That is too large to send.', 413);
+            }
             if ($raw !== false && $raw !== '') {
                 $decoded = json_decode($raw, true);
                 if (is_array($decoded)) {

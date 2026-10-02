@@ -100,6 +100,9 @@ EXCLUDES=(
   # block — only *.md is denied — so the folder never goes to the webroot.
   --exclude='docs/'
   --exclude='.github/'
+  # 2 Oct 2026: tools/ holds the agreement page builder and its internal
+  # legal-review notes (HTML nginx would serve) - source, never the webroot.
+  --exclude='tools/'
   --exclude='SHG-*.zip'
   --exclude='SHG-*.pdf'
   --exclude='SHG-*.txt'

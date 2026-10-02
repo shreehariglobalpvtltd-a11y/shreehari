@@ -342,6 +342,7 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
   <select data-dt-filter="kyc" aria-label="KYC"><option value="">Any KYC</option><option value="verified">KYC verified</option><option value="submitted">KYC submitted</option><option value="rejected">KYC rejected</option><option value="none">No KYC</option></select>
   <a class="btn ghost" href="agents.php?export=csv">⬇ CSV</a>
   <a class="btn ghost" href="agents.php?export=xlsx">⬇ Excel</a>
+  <a class="btn ghost" href="agreements.php" title="Applications from the website, KYC and agreement status of every agent and partner">🤝 Agreements &amp; KYC</a>
   <?php if ($canManage): ?><a class="btn" href="staff.php#addStaff">＋ New agent</a><?php endif; ?>
   <span class="dt-count"></span>
 </div>
@@ -356,15 +357,52 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
 <?php endforeach; ?>
 </datalist>
 
+<?php /* 2 Oct 2026 (owner: "scroll garnu parchha, button haru kasto chha — refined
+         banaidinus"): 16 columns and ten buttons per row made every row five
+         lines tall and pushed the actions off the right edge. Now nine columns,
+         one line per agent: who (code + type + name, and the status when it is
+         not Active), contact, sales, commission, wallet / net, salary /
+         advance, KYC · papers, and three controls — View, Edit and a ⋯ menu holding the rest. Same data,
+         same filters, same sort; the detail and edit rows are unchanged. */ ?>
+<style>
+.ag-t td{vertical-align:middle;padding:8px 10px}
+.ag-t td.ag-who{white-space:normal;min-width:200px;max-width:280px}
+.ag-who .ag-code{display:inline-flex;align-items:center;gap:4px;font:800 11.5px/1 ui-monospace,Consolas,monospace;padding:4px 8px;border-radius:999px;color:#fff;vertical-align:middle}
+.ag-code.co{background:#7c3aed}.ag-code.in{background:#ea580c}.ag-code.none{background:var(--line);color:var(--mut)}
+.ag-who .ag-kind{font-size:11px;font-weight:700;color:var(--mut);margin-left:6px;vertical-align:middle}
+.ag-who .ag-nm{display:block;font-weight:700;margin-top:3px;color:inherit;text-decoration:none;line-height:1.25}
+.ag-who .ag-nm:hover{text-decoration:underline}
+.ag-who .ag-sub{display:block;font-size:11.5px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ag-t .ag-2l b{display:block;line-height:1.25}
+.ag-t .ag-2l small{display:block;font-size:11px;color:var(--mut);line-height:1.3}
+.ag-t .ag-wa{display:inline-flex;align-items:center;gap:4px;font-size:12px;text-decoration:none}
+.ag-papers .ag-docs{margin-top:3px;display:flex;gap:8px}
+.ag-papers .ag-docs a,.ag-papers .ag-docs span{font-size:12px;text-decoration:none}
+.ag-acts{display:inline-flex;align-items:center;gap:4px}
+.ag-acts .btn{padding:5px 10px;font-size:12.5px;min-height:32px}
+.ag-more{position:relative;display:inline-block}
+.ag-more>summary{list-style:none;cursor:pointer;padding:5px 11px;font-size:15px;line-height:1;min-height:32px;display:inline-flex;align-items:center}
+.ag-more>summary::-webkit-details-marker{display:none}
+.ag-menu{position:fixed;z-index:70;min-width:230px;background:var(--card);border:1px solid var(--line);border-radius:12px;
+  box-shadow:0 14px 40px rgba(0,0,0,.22);padding:6px;display:flex;flex-direction:column;gap:2px}
+.ag-menu a,.ag-menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:0;border-radius:8px;
+  padding:7px 11px;font:600 13px/1.2 inherit;color:var(--ink);text-decoration:none;cursor:pointer;min-height:auto}
+.ag-menu a:hover,.ag-menu button:hover{background:var(--hover)}
+.ag-menu form{margin:0}
+.ag-menu hr{border:0;border-top:1px solid var(--line);margin:4px 2px}
+.ag-menu .danger{color:#b02a2a}.ag-menu .ok{color:#0a6b3b}
+@media (pointer:coarse){.ag-acts .btn,.ag-more>summary{min-height:44px}.ag-menu a,.ag-menu button{min-height:44px}}
+</style>
 <div class="dt-wrap">
-<table class="dt no-card" data-controls="agCtl">
+<table class="dt no-card ag-t" data-controls="agCtl">
   <thead><tr>
-    <th data-type="num">#</th><th>Type</th><th>Code</th><th>Name</th><th>Contact</th><th>WhatsApp</th>
-    <th data-type="num">Wallet ₹</th><th data-type="num">Net position</th><th data-type="num">Commission</th><th data-type="num">Sales</th><th data-type="num">Salary ₹</th><th data-type="num">Advance ₹</th><th>ID · Agreement</th><th>KYC</th><th>Status</th><th data-nosort>Actions</th>
+    <th data-type="num">#</th><th>Agent</th><th>Contact</th>
+    <th data-type="num">Sales</th><th data-type="num">Commission</th><th data-type="num">Wallet · net</th><th data-type="num">Salary · adv.</th>
+    <th>KYC · papers</th><th data-nosort>Actions</th>
   </tr></thead>
   <tbody>
   <?php if ($rows === []): ?>
-    <tr><td colspan="16" class="muted" style="padding:22px;white-space:normal">No agents yet — add one on Staff &amp; Agents, or approve an application from the public agent sign-up form.</td></tr>
+    <tr><td colspan="9" class="muted" style="padding:22px;white-space:normal">No agents yet — add one on Staff &amp; Agents, or approve an application from the public agent sign-up form.</td></tr>
   <?php endif; ?>
   <?php foreach ($rows as $i => $r):
     $rid = 'a' . (int) $r['id'];
@@ -376,48 +414,56 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
   ?>
     <tr data-search="<?= $e($search) ?>" data-kind="<?= $e($r['kind']) ?>" data-status="<?= $e($r['status']) ?>" data-city="<?= $e($r['counter_name']) ?>" data-sold="<?= (int) $r['sales'] > 0 ? '1' : '0' ?>" data-kyc="<?= $e($r['kyc']) ?>"<?= $r['status'] === 'inactive' ? ' style="opacity:.75"' : '' ?>>
       <td class="num" data-sort="<?= $r['serial'] === null ? 99999 : (int) $r['serial'] ?>"><?= $r['serial'] === null ? '<span class="muted">—</span>' : '<b>' . (int) $r['serial'] . '</b>' ?></td>
-      <td data-sort="<?= $e($r['kind']) ?>"><?= $isOrg
-            ? '<span class="pill" style="background:#e2ecfb;color:#1c3b72">🏢 Org</span>'
-            : '<span class="pill" style="background:#d7f4e3;color:#0a6b3b">👤 Person</span>' ?></td>
-      <td class="mono"><?= $r['code'] !== '' ? (AgentWallet::isCompanyCode($r['code']) ? '<span class="pill" style="background:#7c3aed;color:#fff" title="Company (Pvt Ltd)">🏢 ' : '<span class="pill" style="background:#ea580c;color:#fff" title="Individual agent">👤 ') . $e($r['code']) . '</span>' : '<span class="muted">—</span>' ?></td>
-      <td><a href="/admin/agent-360.php?agent=<?= (int) $r['id'] ?>" style="color:inherit"><b><?= $e($r['full_name'] ?: $r['username']) ?></b></a>
-        <?php if ($isOrg && !empty($r['contact_person'])): ?><div class="muted" style="font-size:11.5px">👤 <?= $e($r['contact_person']) ?></div><?php endif; ?>
-        <?php if (!empty($r['counter_name'])): ?><div class="muted" style="font-size:11.5px">📍 <?= $e($r['counter_name']) ?></div><?php endif; ?></td>
-      <td class="mono"><?= $e($r['phone'] ?: $r['display_phone'] ?: '—') ?></td>
-      <td class="mono"><?= $waDigits !== '' ? '<a href="https://wa.me/' . $e($waDigits) . '" target="_blank" rel="noopener" title="Open WhatsApp chat">💬 ' . $e($r['wa']) . '</a>' : '<span class="muted">—</span>' ?></td>
-      <td class="num" data-sort="<?= $r['comm_due'] ?>"><b><?= number_format($r['comm_due']) ?></b><div class="muted" style="font-size:11px">cash ₹<?= number_format($r['cash_bal']) ?></div></td>
-      <td class="num" data-sort="<?= $r['net'] ?>">
-        <?php if ($r['net'] > 0.009): ?><b style="color:#b06a00">₹<?= number_format($r['net']) ?></b><div class="muted" style="font-size:11px">agent owes</div>
-        <?php elseif ($r['net'] < -0.009): ?><b style="color:#2E5FA8">₹<?= number_format(abs($r['net'])) ?></b><div class="muted" style="font-size:11px">company owes</div>
-        <?php else: ?><span class="muted">settled</span><?php endif; ?>
-        <?php if ((int) $r['overdue'] > 0): ?><div><span class="pill st-bad" title="Cash held past agent_settlement_due_days">Settlement overdue <?= (int) $r['overdue'] ?>d</span></div><?php endif; ?>
+      <td class="ag-who" data-sort="<?= $e(strtolower((string) ($r['full_name'] ?: $r['username']))) ?>">
+        <?php $codeBand = $r['code'] === '' ? 'none' : (AgentWallet::isCompanyCode($r['code']) ? 'co' : 'in'); ?>
+        <span class="ag-code <?= $codeBand ?>" title="<?= $codeBand === 'co' ? 'Company band (SHG 1–' . (int) Settings::getInt('agent_company_max_code', 10) . ')' : ($codeBand === 'in' ? 'Individual agent' : 'No SHG code yet') ?>"><?= $r['code'] !== '' ? $e($r['code']) : 'no code' ?></span><span class="ag-kind"><?= $isOrg ? '🏢 Org' : '👤 Person' ?></span><?php if ($r['status'] === 'pending'): ?> <span class="pill" style="background:#fef3c7;color:#92400e;font-size:10.5px">Pending</span><?php elseif ($r['status'] !== 'active'): ?> <span class="pill" style="background:#f7dcdc;color:#8a1f1f;font-size:10.5px">Deactivated</span><?php endif; ?>
+        <a class="ag-nm" href="/admin/agent-360.php?agent=<?= (int) $r['id'] ?>"><?= $e($r['full_name'] ?: $r['username']) ?></a>
+        <?php $sub = array_values(array_filter([($isOrg && !empty($r['contact_person'])) ? '👤 ' . $r['contact_person'] : '', !empty($r['counter_name']) ? '📍 ' . $r['counter_name'] : ''])); ?>
+        <?php if ($sub !== []): ?><span class="ag-sub" title="<?= $e(implode(' · ', $sub)) ?>"><?= $e(implode(' · ', $sub)) ?></span><?php endif; ?>
       </td>
-      <td class="num" data-sort="<?= (float) $r['rate_sort'] ?>"><b><?= $e($r['rate']) ?></b><div class="muted" style="font-size:11px"><?= $e($r['rate_note']) ?></div></td>
-      <td class="num" data-sort="<?= (int) $r['sales'] ?>"><b><?= (int) $r['sales'] ?></b><div class="muted" style="font-size:11px">₹<?= number_format((float) $r['revenue']) ?> · <?= (int) $r['pax'] ?> pax</div></td>
-      <td class="num" data-sort="<?= (float) $r['salary'] ?>"><?= $r['salary'] > 0 ? number_format($r['salary']) : '<span class="muted">—</span>' ?></td>
-      <td class="num" data-sort="<?= (float) $r['advance'] ?>"><?= $r['advance'] > 0 ? '<b style="color:#b45309">' . number_format($r['advance']) . '</b>' : '<span class="muted">0</span>' ?></td>
-      <td data-sort="<?= ($r['has_id'] ? 1 : 0) + ($r['has_agr'] ? 1 : 0) ?>" style="white-space:nowrap"><?= $r['has_id'] ? '<a href="/admin/agent-kyc-file.php?agent=' . (int) $r['id'] . '&amp;slot=1" target="_blank" title="ID card">🪪 ✓</a>' : '<span class="muted" title="No ID card">🪪 ✗</span>' ?> · <?= $r['has_agr'] ? '<a href="/admin/agent-kyc-file.php?agent=' . (int) $r['id'] . '&amp;slot=3" target="_blank" title="Signed agreement">📄 ✓</a>' : '<a class="muted" href="/admin/agent-360.php?agent=' . (int) $r['id'] . '&amp;tab=profile" title="Upload the agreement">📄 ✗</a>' ?></td>
-      <td data-sort="<?= $e($r['kyc']) ?>"><?php if ($r['kyc'] === 'verified'): ?><span class="pill st-ok">Verified</span><?php elseif ($r['kyc'] === 'submitted'): ?><span class="pill st-warn">Submitted</span><?php elseif ($r['kyc'] === 'rejected'): ?><span class="pill st-bad">Rejected</span><?php else: ?><span class="pill st-muted">None</span><?php endif; ?></td>
-      <td data-sort="<?= $e($r['status']) ?>"><?php if ($r['status'] === 'active'): ?><span class="pill" style="background:#d7f4e3;color:#0a6b3b">Active</span><?php elseif ($r['status'] === 'pending'): ?><span class="pill" style="background:#fef3c7;color:#92400e">Pending</span><?php else: ?><span class="pill" style="background:#f7dcdc;color:#8a1f1f">Deactivated</span><?php endif; ?></td>
-      <td style="min-width:290px"><span class="dt-acts">
-        <button type="button" class="btn ghost" data-dt-toggle="<?= $rid ?>v">👁 View</button>
-        <?php if ($canManage): ?><button type="button" class="btn ghost" data-dt-toggle="<?= $rid ?>e">✏️ Edit</button><?php endif; ?>
-        <a class="btn ghost" href="agent-360.php?agent=<?= (int) $r['id'] ?>" title="Agent 360: wallet, statement, settlements, loans, deposits, KYC">💼 Wallet</a>
-        <a class="btn ghost" href="agent-sales.php?agent=<?= (int) $r['id'] ?>">📊 Sales</a>
-        <a class="btn ghost" href="agent.php?agent=<?= (int) $r['id'] ?>#tierRatesForm" title="Commission tier, override and rates">💰 Commission</a>
-        <?php if ($canManage): ?><a class="btn ghost" href="agent.php?agent=<?= (int) $r['id'] ?>#loginCredentials" title="View or reset their email, username and password">🔑 Login</a><?php endif; ?>
-        <a class="btn ghost" href="bookings.php?agent=<?= (int) $r['id'] ?>" title="Every ticket this agent sold">🎫 Tickets</a>
-        <?php /* 17 Sep 2026: one-click WhatsApp — this month's statement, and a payment
-                 reminder only while the row's net position (above) says the agent owes.
-                 Both render nothing when wa_admin_tools_enabled is off or the role may not send. */ ?>
-        <?= admin_wa_button('agent_statement', ['agent' => (int) $r['id'], 'from' => date('Y-m-01'), 'to' => todayISO()], 'Statement', ['class' => 'btn ghost', 'title' => 'This month\'s account statement to the agent on WhatsApp — opens a preview first']) ?>
-        <?php if ($r['net'] > 0.009): ?><?= admin_wa_button('agent_payment_reminder', ['agent' => (int) $r['id']], 'Remind', ['class' => 'btn ghost', 'title' => 'Ask the agent to hand over the cash they hold — opens a preview first']) ?><?php endif; ?>
-        <?php if ($canManage && (int) $r['id'] !== $selfId): ?>
-          <form method="post" style="display:inline" onsubmit="return confirm('<?= $r['status'] === 'active' ? 'Deactivate this agent? They can no longer sign in or sell.' : 'Activate this agent?' ?>')"><input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="id" value="<?= (int) $r['id'] ?>"><button class="btn <?= $r['status'] === 'active' ? 'danger' : 'ok' ?>" name="action" value="toggle"><?= $r['status'] === 'active' ? '⏸ Deactivate' : '▶ Activate' ?></button></form>
-        <?php endif; ?>
+      <td class="ag-2l"><b class="mono"><?= $e($r['phone'] ?: $r['display_phone'] ?: '—') ?></b>
+        <?= $waDigits !== '' ? '<a class="ag-wa" href="https://wa.me/' . $e($waDigits) . '" target="_blank" rel="noopener" title="Open WhatsApp chat">💬 ' . $e($r['wa']) . '</a>' : '<small>no WhatsApp</small>' ?></td>
+      <td class="num ag-2l" data-sort="<?= (int) $r['sales'] ?>"><b><?= (int) $r['sales'] ?></b><small>₹<?= number_format((float) $r['revenue']) ?> · <?= (int) $r['pax'] ?> pax</small></td>
+      <td class="num ag-2l" data-sort="<?= (float) $r['rate_sort'] ?>"><b><?= $e($r['rate']) ?></b><small><?= $e($r['rate_note']) ?></small></td>
+      <td class="num ag-2l" data-sort="<?= $r['net'] ?>">
+        <?php if ($r['net'] > 0.009): ?><b style="color:#b06a00">₹<?= number_format($r['net']) ?> agent owes</b>
+        <?php elseif ($r['net'] < -0.009): ?><b style="color:#2E5FA8">₹<?= number_format(abs($r['net'])) ?> company owes</b>
+        <?php else: ?><b class="muted" style="font-weight:600">settled</b><?php endif; ?>
+        <small>due ₹<?= number_format($r['comm_due']) ?> · cash ₹<?= number_format($r['cash_bal']) ?><?= (int) $r['overdue'] > 0 ? ' · <b style="display:inline;color:#b02a2a">overdue ' . (int) $r['overdue'] . 'd</b>' : '' ?></small>
+      </td>
+      <td class="num ag-2l" data-sort="<?= (float) $r['salary'] ?>"><b><?= $r['salary'] > 0 ? '₹' . number_format($r['salary']) : '<span class="muted" style="font-weight:500">—</span>' ?></b><small>adv. <?= $r['advance'] > 0 ? '<b style="display:inline;color:#b45309">₹' . number_format($r['advance']) . '</b>' : '₹0' ?></small></td>
+      <td class="ag-papers" data-sort="<?= $e($r['kyc']) ?>"><div>
+        <?php if ($r['kyc'] === 'verified'): ?><span class="pill st-ok">KYC ✓</span><?php elseif ($r['kyc'] === 'submitted'): ?><span class="pill st-warn">KYC waiting</span><?php elseif ($r['kyc'] === 'rejected'): ?><span class="pill st-bad">KYC rejected</span><?php else: ?><span class="pill st-muted">No KYC</span><?php endif; ?></div>
+        <div class="ag-docs"><?= $r['has_id'] ? '<a href="/admin/agent-kyc-file.php?agent=' . (int) $r['id'] . '&amp;slot=1" target="_blank" title="ID card on file">🪪✓</a>' : '<span class="muted" title="No ID card">🪪✗</span>' ?>
+        <?= $r['has_agr'] ? '<a href="/admin/agent-kyc-file.php?agent=' . (int) $r['id'] . '&amp;slot=3" target="_blank" title="Signed agreement on file">📄✓</a>' : '<a class="muted" href="/admin/agent-360.php?agent=' . (int) $r['id'] . '&amp;tab=profile" title="No signed agreement — upload it">📄✗</a>' ?></div>
+      </td>
+      <td><span class="ag-acts">
+        <button type="button" class="btn ghost" data-dt-toggle="<?= $rid ?>v" title="Everything about this agent">👁 View</button>
+        <details class="ag-more">
+          <summary class="btn ghost" title="More actions" aria-label="More actions for <?= $e($r['full_name'] ?: $r['username']) ?>">⋯</summary>
+          <div class="ag-menu" role="menu">
+            <?php if ($canManage): ?><button type="button" data-ag-edit="<?= $rid ?>e" role="menuitem">✏️ Edit details</button><hr><?php endif; ?>
+            <a href="agent-360.php?agent=<?= (int) $r['id'] ?>" role="menuitem">💼 Wallet &amp; 360 view</a>
+            <a href="agent.php?agent=<?= (int) $r['id'] ?>" role="menuitem">🧭 Agent panel (as they see it)</a>
+            <a href="agent-sales.php?agent=<?= (int) $r['id'] ?>" role="menuitem">📊 Sales</a>
+            <a href="bookings.php?agent=<?= (int) $r['id'] ?>" role="menuitem">🎫 Every ticket sold</a>
+            <a href="agent.php?agent=<?= (int) $r['id'] ?>#tierRatesForm" role="menuitem">💰 Commission rate</a>
+            <?php if ($canManage): ?><a href="agent.php?agent=<?= (int) $r['id'] ?>#loginCredentials" role="menuitem">🔑 Login / password</a><?php endif; ?>
+            <?php /* 17 Sep 2026: one-click WhatsApp — this month's statement, and a payment
+                     reminder only while the row's net position says the agent owes. Both
+                     render nothing when wa_admin_tools_enabled is off or the role may not send. */ ?>
+            <?php $waS = admin_wa_button('agent_statement', ['agent' => (int) $r['id'], 'from' => date('Y-m-01'), 'to' => todayISO()], 'Statement on WhatsApp', ['class' => '', 'title' => 'This month\'s account statement to the agent on WhatsApp — opens a preview first']);
+                  $waR = $r['net'] > 0.009 ? admin_wa_button('agent_payment_reminder', ['agent' => (int) $r['id']], 'Cash reminder on WhatsApp', ['class' => '', 'title' => 'Ask the agent to hand over the cash they hold — opens a preview first']) : ''; ?>
+            <?php if ($waS !== '' || $waR !== ''): ?><hr><?= $waS ?><?= $waR ?><?php endif; ?>
+            <?php if ($canManage && (int) $r['id'] !== $selfId): ?>
+              <hr>
+              <form method="post" onsubmit="return confirm('<?= $r['status'] === 'active' ? 'Deactivate this agent? They can no longer sign in or sell.' : 'Activate this agent?' ?>')"><input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="id" value="<?= (int) $r['id'] ?>"><button class="<?= $r['status'] === 'active' ? 'danger' : 'ok' ?>" name="action" value="toggle" role="menuitem"><?= $r['status'] === 'active' ? '⏸ Deactivate' : '▶ Activate' ?></button></form>
+            <?php endif; ?>
+          </div>
+        </details>
       </span></td>
     </tr>
-    <tr class="dt-x" id="<?= $rid ?>v" hidden><td colspan="16">
+    <tr class="dt-x" id="<?= $rid ?>v" hidden><td colspan="9">
       <div class="dt-grid">
         <div class="kv"><label>Serial · type · code</label><b><?= $r['serial'] === null ? 'not assigned' : '#' . (int) $r['serial'] ?> · <?= $e(AgentWallet::kindLabel($r['kind'])) ?> · <?= $e($r['code'] ?: '—') ?></b></div>
         <div class="kv"><label>Name · login username</label><b><?= $e($r['full_name']) ?> <span class="muted mono">· <?= $e($r['username']) ?></span></b></div>
@@ -448,7 +494,7 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
       </div>
     </td></tr>
     <?php if ($canManage): ?>
-    <tr class="dt-x" id="<?= $rid ?>e" hidden><td colspan="16">
+    <tr class="dt-x" id="<?= $rid ?>e" hidden><td colspan="9">
       <form method="post">
         <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>"><input type="hidden" name="action" value="edit"><input type="hidden" name="id" value="<?= (int) $r['id'] ?>">
         <div class="dt-grid">
@@ -493,4 +539,50 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
   </tbody>
 </table>
 </div>
+<script>
+/* The ⋯ menu (2 Oct 2026): a <details> whose panel is placed with position:fixed
+   next to its button, so the table's own scroll box never clips it. One open
+   at a time; a click elsewhere, Escape or a scroll closes it. */
+(function(){
+  var menus = document.querySelectorAll('.ag-more');
+  function place(d){
+    var s = d.querySelector('summary'), m = d.__menu; if (!s || !m) return;
+    var r = s.getBoundingClientRect(), vw = window.innerWidth, vh = window.innerHeight;
+    var w = m.offsetWidth, h = m.offsetHeight;
+    // Below the button if it fits, else above, else beside it (left), never
+    // over the button itself and never past the window edge.
+    var left = Math.min(Math.max(8, r.right - w), vw - w - 8), top;
+    if (r.bottom + 6 + h <= vh - 8)      { top = r.bottom + 6; }
+    else if (r.top - 6 - h >= 8)         { top = r.top - 6 - h; }
+    else { top = Math.min(Math.max(8, r.top + r.height / 2 - h / 2), vh - h - 8); left = Math.max(8, r.left - w - 6); }
+    m.style.left = left + 'px'; m.style.top = top + 'px';
+  }
+  /* The panel moves to <body> while open: an ancestor of the table carries a
+     transform, and position:fixed inside a transformed box is measured from
+     that box, not the window - the menu opened far off to the right. */
+  function park(d){ var m = d.__menu; if (m && m.parentNode !== d) d.appendChild(m); }
+  function closeAll(except){ menus.forEach(function(d){ if (d !== except && d.open) { d.open = false; park(d); } }); }
+  menus.forEach(function(d){
+    d.__menu = d.querySelector('.ag-menu');
+    d.addEventListener('toggle', function(){
+      if (d.open) { closeAll(d); document.body.appendChild(d.__menu); place(d); } else { park(d); }
+    });
+    // Edit lives in the menu now; it opens the row's edit panel itself (the
+    // table's own toggle handler cannot see a click inside <body>).
+    var ed = d.__menu.querySelector('[data-ag-edit]');
+    if (ed) ed.addEventListener('click', function(){
+      var x = document.getElementById(ed.getAttribute('data-ag-edit')); closeAll(null); if (!x) return;
+      var open = x.hidden, r = x.previousElementSibling;
+      while (r && r.classList.contains('dt-x')) r = r.previousElementSibling;
+      for (var n = r ? r.nextElementSibling : null; n && n.classList.contains('dt-x'); n = n.nextElementSibling) n.hidden = true;
+      x.hidden = !open;
+      if (open) { x.scrollIntoView({block: 'nearest'}); var f = x.querySelector('input:not([type=hidden]),select'); if (f) f.focus(); }
+    });
+  });
+  document.addEventListener('click', function(e){ if (!e.target.closest('.ag-more') && !e.target.closest('.ag-menu')) closeAll(null); });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeAll(null); });
+  window.addEventListener('scroll', function(e){ if (!(e.target && e.target.closest && e.target.closest('.ag-menu'))) closeAll(null); }, true);
+  window.addEventListener('resize', function(){ closeAll(null); });
+})();
+</script>
 <?php admin_footer(); ?>

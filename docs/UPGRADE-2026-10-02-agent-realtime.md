@@ -59,6 +59,57 @@ Calendar's `?sid=`.
   a reseat UPDATEs `seat_no` in place, so it never fired for a seat change. Now
   includes a berth checksum.
 
+## Round 2 (same day) — "13 jana haina, 16"
+
+- The owner counted 16 for code 07 across the 1 Oct buses; the panel said 13. The
+  audit log showed why: a seat-map bulk pick "Select seats → assign agent →
+  SHG-0006" at **1 Oct 18:54:46** (10 tickets at once) also took
+  **SHG-2026-00453 (D10)** and **SHG-2026-00454 (A11, A12)**, which had been
+  credited to SHG-0007 at sale (30 Sep 20:40 / 20:47). Restored to 07 on the
+  owner's request with the same AgentWallet::reassignSeller path (commission
+  +₹600 to 07, −₹600 from 06, cash untouched, tickets re-made silently); audit
+  rows `booking.agent_restore`. Backup of the rows:
+  `/root/backups/agent07-restore-20261002-*`.
+- **Guard (release-20261002-s4):** bulk assign on the seat map and on Assign
+  Agents now SKIPS a ticket already credited to another agent (named in the
+  flash) unless "also take tickets that belong to another agent" is ticked; the
+  confirm lists those seats either way. The company "Other" code is free to take.
+- Agent panel: "🔁 Tickets moved between agents" (30 days, from the audit log).
+- Assign Agents search was broken: `:q` bound three times under native prepares.
+
+## Round 3 — Agents page, agreements back, editable agreement points
+
+- **Agents register (`admin/agents.php`)**: 16 columns and ten buttons per row
+  made rows five lines tall with the actions off-screen. Now nine columns, one
+  line per agent (code + type + name + status when not active, contact, sales,
+  commission, wallet · net, salary · advance, KYC · papers) and **👁 View + ⋯**;
+  the ⋯ menu (Edit, Wallet & 360, agent panel, sales, tickets, commission,
+  login, WhatsApp statement / reminder, deactivate) is placed on `<body>` so the
+  table's scroll box never clips it. Fits a 1366 px laptop without sideways scroll.
+- **Agreements restored.** The 27 Sep release `release-agreements-v21b`
+  (`/root/shg-site.git`, never in the GitHub lineage) had `/agreements/` — the
+  Agent and the Partner (Pvt Ltd) agreement in Nepali / Hindi / English /
+  Gujarati, an online application (`api/agreement-apply.php`, AGR-numbers),
+  the office screen `admin/agreements.php` (applications, KYC, agreement
+  status, public list), `api/agent-directory.php` and the Hindi agreement PDF
+  (`admin/agreement-pdf.php`). The 1 Oct deploy from the GitHub lineage dropped
+  all of it; the database side (`agent_applications`, `admin_profiles`
+  agreement columns) was still live. Ported as-is, plus `Response::$maxInputBytes`.
+  NOT ported: v21b's `Security::clientIp()` trusted-proxy change (behind the
+  Hostinger front it would give every visitor the same rate-limit address).
+- **Editable points**: Admin → Agents → **📜 Agreement points**
+  (`admin/agreement-points.php`). Per agreement and language: every point in a
+  box — change the words, hide, back to original, or add a point under a
+  section. `{{name}}` marks a form box and must stay exactly once. Changes live
+  in `agreement_points` (migration `upgrade-2026-10-02-agreement-points.sql`);
+  `/assets/js/agreement-live.js` on each page fetches
+  `/api/agreement-points.php` (60 s cache) and applies them, moving the page's own
+  input boxes so typed values stay. The Hindi PDF generator has its own text and
+  does not follow these edits.
+- Links back on the website: side menu, a home card above "About", footer.
+- `tools/agreements/` (content.js + build.js) is the source of the pages; build.js
+  now emits the live script tag. `deploy.sh` excludes `tools/`.
+
 ## Tests
 
 `tests/live-sync-test.php` (33 checks, registered in run-all CORE): version moves on
