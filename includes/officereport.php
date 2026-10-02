@@ -102,7 +102,8 @@ final class OfficeReport
         $have = [];
         try {
             foreach (Database::fetchAll(
-                "SELECT s.route_id, r.from_city, r.to_city, s.is_blocked, s.status,
+                "SELECT s.route_id, r.from_city, r.to_city, s.is_blocked, s.status, r.is_active,
+                        COALESCE(s.coach_type_override, r.coach_type) AS coach,
                         COALESCE(s.dep_time_override, r.dep_time) AS dep_time,
                         COALESCE(bus.total_seats, rb.total_seats, 0) AS bus_seats,
                         (SELECT COUNT(*) FROM booking_seats bs WHERE bs.schedule_id = s.id AND bs.released_at IS NULL) AS sold
@@ -118,8 +119,22 @@ final class OfficeReport
                 if ((string) $r['status'] === 'cancelled') {
                     continue;
                 }
+                // 2 Oct 2026: an empty schedule row on a route the office has
+                // switched off is not a bus that runs - keep it out of the report.
+                if ((int) $r['is_active'] !== 1 && (int) $r['sold'] === 0) {
+                    continue;
+                }
+                // Capacity from the coach the departure runs (schedules.total_seats
+                // and an unassigned bus both said 0, printing "0/0 sold").
+                $cap = 0;
+                try {
+                    require_once INCLUDE_PATH . '/seats.php';
+                    $cap = count(Seats::seatIds((string) $r['coach'], 'sharing'));
+                } catch (Throwable $e) {
+                }
+                if ($cap <= 0) { $cap = (int) $r['bus_seats']; }
                 $out[] = self::row((string) $r['from_city'], (string) $r['to_city'], (string) $r['dep_time'],
-                    (int) $r['sold'], (int) $r['bus_seats'], (int) $r['is_blocked'] === 1);
+                    (int) $r['sold'], $cap, (int) $r['is_blocked'] === 1);
             }
         } catch (Throwable $e) {
             // no schedules table on a bare database: the route fill below still reports
