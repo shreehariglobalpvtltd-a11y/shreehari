@@ -898,6 +898,19 @@ final class BookingService
             $discount = min($raw, $cap, $base);   // never negative, never above the cap or the fare
         }
 
+        // The office's running offer (Admin → Offers, auto-apply) reaches the
+        // desk form too — but never a register line that typed the amount
+        // actually collected, and never on top of a clerk's own discount.
+        $offerCode = null;
+        $amountTyped = isset($data['amount']) && (float) $data['amount'] > 0;
+        if ($discount <= 0 && !$amountTyped && $base > 0) {
+            $auto = Fare::autoOffer($base, $phone, (int) $route['id']);
+            if (!empty($auto['ok'])) {
+                $discount  = min(round((float) $auto['amount'], 2), $base);
+                $offerCode = (string) $auto['code'];
+            }
+        }
+
         $total   = round($base - $discount, 2);
         $perSeat = round($total / count($seats), 2);   // post-discount, per seat
 
@@ -947,7 +960,7 @@ final class BookingService
         $booking = Database::transaction(function () use (
             $route, $scheduleId, $date, $seats, $passengers, $name, $phone, $gender,
             $coach, $bookingMode, $perSeat, $base, $discount, $total, $method, $note, $adminId, $source, $allowStaffSeats,
-            $counterCountryCode, $boardingOther, $data, $dropStop, $contactIdType, $contactIdNum
+            $counterCountryCode, $boardingOther, $data, $dropStop, $contactIdType, $contactIdNum, $offerCode
         ): array {
             Seats::assertAvailable($scheduleId, $seats, 'admin-counter-' . $adminId, $allowStaffSeats, $bookingMode);
             Seats::assertGenderAllowed(
@@ -967,6 +980,7 @@ final class BookingService
                 // Counter discount is stored in coupon_discount so it flows,
                 // with no extra plumbing, to the booking-view breakdown and the
                 // invoice line-items. total_amount is the post-discount payable.
+                'coupon_code'     => $offerCode,
                 'coupon_discount' => $discount,
                 'total_amount'  => $total,
                 'currency'      => 'INR',
@@ -1019,6 +1033,19 @@ final class BookingService
             ]);
 
             Seats::claim($scheduleId, $seats, $bid, $lid);
+
+            if ($offerCode !== null) {
+                $couponRow = Database::fetch('SELECT id FROM coupons WHERE code = :c LIMIT 1', ['c' => $offerCode]);
+                if ($couponRow !== null) {
+                    Database::run('UPDATE coupons SET used_count = used_count + 1 WHERE id = :id', ['id' => (int) $couponRow['id']]);
+                    Database::insert('coupon_redemptions', [
+                        'coupon_id'  => (int) $couponRow['id'],
+                        'booking_id' => $bid,
+                        'user_phone' => $phone !== '' ? $phone : '0000000000',
+                        'amount'     => $discount,
+                    ]);
+                }
+            }
 
             foreach ($passengers as $i => $pax) {
                 Database::insert('booking_passengers', [

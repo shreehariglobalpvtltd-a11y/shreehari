@@ -232,7 +232,7 @@ try {
     aa_check('a token from another session = 419', $r['code'] === 419, 'HTTP ' . $r['code']);
     $r = aa_post($jar, $tok, ['type' => 'ind', 'lang' => 'en', 'fields' => []]);
     aa_check('missing fields = 422', $r['code'] === 422 && ($r['json']['ok'] ?? true) === false, 'HTTP ' . $r['code']);
-    aa_check('…naming p_name, p_phone, p_area and p_idno', array_keys($r['json']['fields'] ?? []) === ['p_name', 'p_phone', 'p_area', 'p_idno'],
+    aa_check('…naming p_name, p_phone, p_area, p_idno and p_addr', array_keys($r['json']['fields'] ?? []) === ['p_name', 'p_phone', 'p_area', 'p_idno', 'p_addr'],
         implode(',', array_keys($r['json']['fields'] ?? [])));
     $r = aa_post($jar, $tok, ['type' => 'org', 'lang' => 'ne', 'fields' => ['p_name' => 'X', 'p_phone' => '9999700001', 'p_area' => 'Y']]);
     aa_check('an organization without its representative = 422 on p_rep, in Nepali',

@@ -350,7 +350,7 @@ html.bw .bar{background:#fff;color:#000;border:.3mm solid #000}
     <label class="photo" id="photo"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="4" fill="currentColor"/><path d="M4 21c.6-4.4 3.9-7 8-7s7.4 2.6 8 7" fill="currentColor"/></svg><span>फोटो (नभए पनि हुन्छ)</span><span class="no-print tap">थिचेर फोटो राख्नुहोस्</span><img alt=""><input type="file" accept="image/*" id="photoIn" aria-label="फोटो (नभए पनि हुन्छ)"><button type="button" class="rm no-print" id="photoRm">हटाउनुहोस्</button></label>
   </div>
   <div class="grid more">
-    <div class="f" style="--p:12;--s:12"><label for="i_p_addr">स्थायी ठेगाना</label><textarea id="i_p_addr" name="p_addr" rows="2"></textarea></div>
+    <div class="f" style="--p:12;--s:12"><label for="i_p_addr">स्थायी ठेगाना<b class="rq" aria-hidden="true">*</b></label><textarea id="i_p_addr" name="p_addr" rows="2" aria-required="true"></textarea></div>
     <div class="f" style="--p:12;--s:12"><label for="i_p_addr2">हालको ठेगाना (फरक भए)</label><input id="i_p_addr2" type="text" name="p_addr2"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_phone">मोबाइल नम्बर<b class="rq" aria-hidden="true">*</b></label><input id="i_p_phone" type="tel" name="p_phone" inputmode="tel" autocomplete="tel" aria-required="true"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_email">इमेल</label><input id="i_p_email" type="email" name="p_email" inputmode="email" autocomplete="email"></div>
@@ -695,7 +695,7 @@ html.bw .bar{background:#fff;color:#000;border:.3mm solid #000}
     clearErrs(); status('', ''); btn.textContent = label; btn.disabled = false;
     fields().forEach(mark); mirrors(); say(U.cleared);
   });
-})({"id":"ind-ne","type":"ind","lang":"ne","api":"/api/agreement-apply.php","req":["p_name","p_phone","p_area","p_idno"],"ui":{"saved":"यस फोनमा सेभ भयो","cleared":"फारम खाली भयो","confirmClear":"यस फारमका सबै कुरा मेटाउने हो?","required":"कृपया यो भर्नुहोस्","applying":"पठाउँदै…","applied":"आवेदन पुग्यो। तपाईंको आवेदन नम्बर {ref} हो। यो नम्बर राखिराख्नुहोस्। कार्यालयबाट तपाईंलाई फोन आउनेछ।","applyFail":"पठाउन सकिएन। विवरण जाँचेर फेरि प्रयास गर्नुहोस्।","applyOffline":"अनलाइन पठाउन यो फारम www.shreehariglobal.in मा खोल्नुहोस्।","applyUnsure":"अहिलेसम्म जवाफ आएन। फारम कार्यालयमा पुगिसकेको हुन सक्छ, त्यसैले अहिले फेरि नपठाउनुहोस्। जाँच्न 9104801507 मा फोन गर्नुहोस्।","sentBtn":"पठाइयो ✓"}});
+})({"id":"ind-ne","type":"ind","lang":"ne","api":"/api/agreement-apply.php","req":["p_name","p_phone","p_area","p_idno","p_addr"],"ui":{"saved":"यस फोनमा सेभ भयो","cleared":"फारम खाली भयो","confirmClear":"यस फारमका सबै कुरा मेटाउने हो?","required":"कृपया यो भर्नुहोस्","applying":"पठाउँदै…","applied":"आवेदन पुग्यो। तपाईंको आवेदन नम्बर {ref} हो। यो नम्बर राखिराख्नुहोस्। कार्यालयबाट तपाईंलाई फोन आउनेछ।","applyFail":"पठाउन सकिएन। विवरण जाँचेर फेरि प्रयास गर्नुहोस्।","applyOffline":"अनलाइन पठाउन यो फारम www.shreehariglobal.in मा खोल्नुहोस्।","applyUnsure":"अहिलेसम्म जवाफ आएन। फारम कार्यालयमा पुगिसकेको हुन सक्छ, त्यसैले अहिले फेरि नपठाउनुहोस्। जाँच्न 9104801507 मा फोन गर्नुहोस्।","sentBtn":"पठाइयो ✓"}});
 </script>
 <script src="/assets/js/agreement-live.js?v=20261002" defer></script>
 </body>

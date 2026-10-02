@@ -273,6 +273,12 @@ if ($route !== null) {
     $dayBusFill = $dayBuses !== []
         ? Seats::occupiedBedsFor(array_map(static fn(array $x): int => (int) $x['id'], $dayBuses))
         : [];
+    // An extra bus that ran empty on a past date (1 Oct: slot 2, nobody on it)
+    // is noise in the tabs; a future empty extra stays so it can be sold.
+    if ($date < todayISO()) {
+        $dayBuses = array_values(array_filter($dayBuses, static fn(array $x): bool =>
+            (int) $x['slot'] <= 1 || (int) $x['id'] === $scheduleId || (int) ($dayBusFill[(int) $x['id']] ?? 0) > 0));
+    }
 
     /* Booking list for this trip — same query shape as trip-dashboard.php
        so the two screens tell the same story. Scoped like the seat map:

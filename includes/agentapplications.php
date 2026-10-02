@@ -80,7 +80,8 @@ final class AgentApplications
     /** Required on top of p_name / p_phone / p_area, per type. */
     public const REQUIRED = [
         'org' => ['p_name', 'p_phone', 'p_area', 'p_rep'],
-        'ind' => ['p_name', 'p_phone', 'p_area', 'p_idno'],
+        // Permanent address is starred in the owner's agent agreement (22222.docx).
+        'ind' => ['p_name', 'p_phone', 'p_area', 'p_idno', 'p_addr'],
     ];
 
     /**
@@ -547,7 +548,7 @@ final class AgentApplications
         if ($type === null) {
             // Without a type we cannot know the fourth required field — ask
             // for the three every agreement needs, nothing more.
-            unset($errors['p_idno']);
+            unset($errors['p_idno'], $errors['p_addr']);
         }
 
         // The length is checked on the number as it will be STORED: +91 /

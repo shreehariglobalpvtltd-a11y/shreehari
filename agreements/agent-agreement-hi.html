@@ -350,7 +350,7 @@ html.bw .bar{background:#fff;color:#000;border:.3mm solid #000}
     <label class="photo" id="photo"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="4" fill="currentColor"/><path d="M4 21c.6-4.4 3.9-7 8-7s7.4 2.6 8 7" fill="currentColor"/></svg><span>फ़ोटो (ज़रूरी नहीं)</span><span class="no-print tap">टैप करके फ़ोटो जोड़ें</span><img alt=""><input type="file" accept="image/*" id="photoIn" aria-label="फ़ोटो (ज़रूरी नहीं)"><button type="button" class="rm no-print" id="photoRm">हटाएँ</button></label>
   </div>
   <div class="grid more">
-    <div class="f" style="--p:12;--s:12"><label for="i_p_addr">स्थायी पता</label><textarea id="i_p_addr" name="p_addr" rows="2"></textarea></div>
+    <div class="f" style="--p:12;--s:12"><label for="i_p_addr">स्थायी पता<b class="rq" aria-hidden="true">*</b></label><textarea id="i_p_addr" name="p_addr" rows="2" aria-required="true"></textarea></div>
     <div class="f" style="--p:12;--s:12"><label for="i_p_addr2">अभी का पता (अगर अलग हो)</label><input id="i_p_addr2" type="text" name="p_addr2"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_phone">मोबाइल नंबर<b class="rq" aria-hidden="true">*</b></label><input id="i_p_phone" type="tel" name="p_phone" inputmode="tel" autocomplete="tel" aria-required="true"></div>
     <div class="f" style="--p:4;--s:6"><label for="i_p_email">ईमेल</label><input id="i_p_email" type="email" name="p_email" inputmode="email" autocomplete="email"></div>
@@ -695,7 +695,7 @@ html.bw .bar{background:#fff;color:#000;border:.3mm solid #000}
     clearErrs(); status('', ''); btn.textContent = label; btn.disabled = false;
     fields().forEach(mark); mirrors(); say(U.cleared);
   });
-})({"id":"ind-hi","type":"ind","lang":"hi","api":"/api/agreement-apply.php","req":["p_name","p_phone","p_area","p_idno"],"ui":{"saved":"इस फ़ोन में सेव हो गया","cleared":"फ़ॉर्म खाली हो गया","confirmClear":"इस फ़ॉर्म की सारी जानकारी मिटा दें?","required":"कृपया यह भरें","applying":"भेजा जा रहा है…","applied":"आवेदन मिल गया। आपका आवेदन नंबर {ref} है। यह नंबर संभालकर रखें। ऑफ़िस से आपको फ़ोन आएगा।","applyFail":"भेजा नहीं जा सका। जानकारी जाँचकर फिर से कोशिश करें।","applyOffline":"ऑनलाइन भेजने के लिए यह फ़ॉर्म www.shreehariglobal.in पर खोलें।","applyUnsure":"अभी तक जवाब नहीं आया। फ़ॉर्म शायद ऑफ़िस पहुँच चुका है, इसलिए अभी दोबारा न भेजें। जाँचने के लिए 9104801507 पर फ़ोन करें।","sentBtn":"भेज दिया ✓"}});
+})({"id":"ind-hi","type":"ind","lang":"hi","api":"/api/agreement-apply.php","req":["p_name","p_phone","p_area","p_idno","p_addr"],"ui":{"saved":"इस फ़ोन में सेव हो गया","cleared":"फ़ॉर्म खाली हो गया","confirmClear":"इस फ़ॉर्म की सारी जानकारी मिटा दें?","required":"कृपया यह भरें","applying":"भेजा जा रहा है…","applied":"आवेदन मिल गया। आपका आवेदन नंबर {ref} है। यह नंबर संभालकर रखें। ऑफ़िस से आपको फ़ोन आएगा।","applyFail":"भेजा नहीं जा सका। जानकारी जाँचकर फिर से कोशिश करें।","applyOffline":"ऑनलाइन भेजने के लिए यह फ़ॉर्म www.shreehariglobal.in पर खोलें।","applyUnsure":"अभी तक जवाब नहीं आया। फ़ॉर्म शायद ऑफ़िस पहुँच चुका है, इसलिए अभी दोबारा न भेजें। जाँचने के लिए 9104801507 पर फ़ोन करें।","sentBtn":"भेज दिया ✓"}});
 </script>
 <script src="/assets/js/agreement-live.js?v=20261002" defer></script>
 </body>

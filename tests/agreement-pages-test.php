@@ -60,7 +60,7 @@ const API_FIELDS = [
 const LANGS = ['ne', 'hi', 'en', 'gu'];
 const REQUIRED = [
     'org' => ['p_name', 'p_phone', 'p_area', 'p_rep'],
-    'ind' => ['p_name', 'p_phone', 'p_area', 'p_idno'],
+    'ind' => ['p_name', 'p_phone', 'p_area', 'p_idno', 'p_addr'],
 ];
 const OWN = [
     'org' => ['p_rep', 'p_rep_desig', 'p_rep_phone', 'p_type', 'p_office', 'p_dir_id', 'org_rate', 'org_pct', 'org_target', 'org_fixed', 'org_day', 'org_dep'],

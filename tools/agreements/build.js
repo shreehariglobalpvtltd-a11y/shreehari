@@ -38,7 +38,7 @@ const VERSION = 'v2.2';
 const API_APPLY = '/api/agreement-apply.php';
 const API_DIR = '/api/agent-directory.php';
 /* Fields the application API requires (client-side check; the server checks again). */
-const REQUIRED = { org: ['p_name', 'p_phone', 'p_area', 'p_rep'], ind: ['p_name', 'p_phone', 'p_area', 'p_idno'] };
+const REQUIRED = { org: ['p_name', 'p_phone', 'p_area', 'p_rep'], ind: ['p_name', 'p_phone', 'p_area', 'p_idno', 'p_addr'] };
 
 const TYPE_LABEL = {
   org: { ne: 'साझेदार संस्था', hi: 'पार्टनर संस्था', en: 'Partner organization', gu: 'ભાગીદાર સંસ્થા' },
@@ -550,7 +550,7 @@ function page(lg, ty) {
     ${photoBox}
   </div>
   <div class="grid more">
-    ${fld(lg, 'permAddr', 'p_addr', { area: true, ac: 'street-address' })}
+    ${fld(lg, 'permAddr', 'p_addr', { area: true, ac: 'street-address', req: rq('p_addr') })}
     ${fld(lg, 'curAddr', 'p_addr2')}
     ${fld(lg, 'mobile', 'p_phone', { p: 4, s: 6, type: 'tel', im: 'tel', ac: 'tel', req: rq('p_phone') })}
     ${fld(lg, 'email', 'p_email', { p: 4, s: 6, type: 'email', im: 'email', ac: 'email' })}

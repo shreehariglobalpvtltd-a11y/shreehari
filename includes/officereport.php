@@ -102,7 +102,7 @@ final class OfficeReport
         $have = [];
         try {
             foreach (Database::fetchAll(
-                "SELECT s.route_id, r.from_city, r.to_city, s.is_blocked, s.status, r.is_active,
+                "SELECT s.route_id, s.slot, r.from_city, r.to_city, s.is_blocked, s.status, r.is_active,
                         COALESCE(s.coach_type_override, r.coach_type) AS coach,
                         COALESCE(s.dep_time_override, r.dep_time) AS dep_time,
                         COALESCE(bus.total_seats, rb.total_seats, 0) AS bus_seats,
@@ -122,6 +122,10 @@ final class OfficeReport
                 // 2 Oct 2026: an empty schedule row on a route the office has
                 // switched off is not a bus that runs - keep it out of the report.
                 if ((int) $r['is_active'] !== 1 && (int) $r['sold'] === 0) {
+                    continue;
+                }
+                // Nor is an extra bus (slot 2+) nobody is booked on.
+                if ((int) ($r['slot'] ?? 1) > 1 && (int) $r['sold'] === 0) {
                     continue;
                 }
                 // Capacity from the coach the departure runs (schedules.total_seats
