@@ -67,7 +67,7 @@ T.en = {
     verified: 'KYC verified', signed: 'Agreement signed', required: 'Please fill this in',
   },
   co: {
-    office: 'Shop No. 9, 10, 12, Silver Complex, Near Circuit House, Mehsana – 384002, Gujarat, India',
+    office: 'Shop No. 9, 12, 13, Silver Complex, Near Circuit House, Mehsana – 384002, Gujarat, India',
   },
   f: {
     a1: '1. Agreement details', agrType: 'Type of agreement', agrNo: 'Agreement no.', date: 'Date of agreement', place: 'Place',
@@ -326,7 +326,7 @@ T.ne = {
     verified: 'KYC जाँच भएको', signed: 'सम्झौतामा हस्ताक्षर भएको', required: 'कृपया यो भर्नुहोस्',
   },
   co: {
-    office: 'पसल नं. 9, 10, 12, सिल्भर कम्प्लेक्स, सर्किट हाउस नजिक, मेहसाणा – 384002, गुजरात, भारत',
+    office: 'पसल नं. 9, 12, 13, सिल्भर कम्प्लेक्स, सर्किट हाउस नजिक, मेहसाणा – 384002, गुजरात, भारत',
   },
   f: {
     a1: '1. सम्झौताको विवरण', agrType: 'सम्झौताको किसिम', agrNo: 'सम्झौता नं.', date: 'सम्झौता मिति', place: 'ठाउँ',
@@ -585,7 +585,7 @@ T.hi = {
     verified: 'KYC जाँच पूरी', signed: 'अनुबंध पर हस्ताक्षर हुए', required: 'कृपया यह भरें',
   },
   co: {
-    office: 'दुकान नं. 9, 10, 12, सिल्वर कॉम्प्लेक्स, सर्किट हाउस के पास, मेहसाणा – 384002, गुजरात, भारत',
+    office: 'दुकान नं. 9, 12, 13, सिल्वर कॉम्प्लेक्स, सर्किट हाउस के पास, मेहसाणा – 384002, गुजरात, भारत',
   },
   f: {
     a1: '1. अनुबंध की जानकारी', agrType: 'अनुबंध का प्रकार', agrNo: 'अनुबंध नं.', date: 'अनुबंध की तारीख', place: 'जगह',
@@ -844,7 +844,7 @@ T.gu = {
     verified: 'KYC તપાસ થઈ', signed: 'કરાર પર સહી થઈ', required: 'કૃપા કરીને આ ભરો',
   },
   co: {
-    office: 'દુકાન નં. 9, 10, 12, સિલ્વર કોમ્પ્લેક્સ, સર્કિટ હાઉસ પાસે, મહેસાણા – 384002, ગુજરાત, ભારત',
+    office: 'દુકાન નં. 9, 12, 13, સિલ્વર કોમ્પ્લેક્સ, સર્કિટ હાઉસ પાસે, મહેસાણા – 384002, ગુજરાત, ભારત',
   },
   f: {
     a1: '1. કરારની વિગતો', agrType: 'કરારનો પ્રકાર', agrNo: 'કરાર નં.', date: 'કરારની તારીખ', place: 'સ્થળ',

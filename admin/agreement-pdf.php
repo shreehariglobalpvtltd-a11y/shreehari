@@ -42,7 +42,7 @@ admin_header('Hindi agreement PDF', 'agreement-pdf');
 <?php endfor; ?></fieldset>
 <p><label>कमीशन प्रकार <select name="commission_type"><option value="fixed">प्रति टिकट निश्चित राशि</option><option value="percent" <?= ($values['commission_type'] ?? '') === 'percent' ? 'selected' : '' ?>>मूल किराये का प्रतिशत</option></select></label>
 <label>दर <input type="number" name="commission_rate" min="0.01" max="9999999.99" step="0.01" value="<?= $field('commission_rate') ?>" required></label></p>
-<p>दंड शर्त: धोखाधड़ी, गबन या अनधिकृत वसूली से हुए प्रमाणित वित्तीय नुकसान का 10 गुना; लागू कानून के अधीन।</p>
+<p>कटौती की शर्त: रिकॉर्ड से प्रमाणित वास्तविक नुकसान, लिखित सूचना के बाद; नुकसान का 10% अतिरिक्त केवल तभी जब कंपनी कानूनी सलाह के बाद "लागू" पर निशान लगाए।</p>
 <button type="submit" style="padding:12px 20px;background:#99232b;color:white;border:0;border-radius:6px">हिंदी PDF डाउनलोड करें</button>
 </form></main>
 <?php admin_footer(); ?>
