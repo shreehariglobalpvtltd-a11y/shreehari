@@ -1,0 +1,377 @@
+{
+ "area": "Seat locking / concurrency / fares / refunds / commissions (R3h) — worktree C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6 @ 5e63651 (read-only inspection; local suites run against shari_test on :3307)",
+ "files": [
+  {
+   "path": "includes/seats.php",
+   "role": "Seat engine: lock/release (physical-bed holds), assertAvailable (schedule-row FOR UPDATE + LOCK IN SHARE MODE cross-mode gate), claim (INSERT IGNORE on UNIQUE), releaseBooking/releaseLeg/releaseSingleSeat, gender unit locks, transferSeat, blockSeat, assertBusSwapSafe"
+  },
+  {
+   "path": "includes/booking.php",
+   "role": "BookingService: create (one path for customer/counter/agent/QuickBot), counterSale (paper register), rebookLeg/rebookMissedLeg/performLegMove, confirm/settleCod/reject/reclaimSeatsFor, cancel/forceCancel/cancelSeat/bulkCancel, submitPaymentProof/holdForAdminReview, priceBooking"
+  },
+  {
+   "path": "includes/fare.php",
+   "role": "Fare::dirFares/cabinFare (direction fares), quote (discount order), refundFor (slabs from settings refund_slabs), referralCommission"
+  },
+  {
+   "path": "includes/agentwallet.php",
+   "role": "Commission ledger: accrue/voidFor/isCashSale/reassignSeller/commissionForBooking, UNIQUE(booking_id, entry_type) semantics"
+  },
+  {
+   "path": "includes/quickticket.php",
+   "role": "QuickTicket::sell/sellCustomer — plan + BookingService::create with one seat-clash retry; customerUndo"
+  },
+  {
+   "path": "includes/db.php",
+   "role": "Database::transaction (3 retries on 1213/1205/1020), fetchForUpdate, insertIgnore, nested txDepth"
+  },
+  {
+   "path": "includes/seatversion.php",
+   "role": "SeatVersion fingerprint used by api/seats.php 'unchanged' short-circuit and the SSE stream"
+  },
+  {
+   "path": "includes/dataaudit.php",
+   "role": "Nightly integrity audit: seatDoubleBed (cross-mode), seatCounterDrift, passenger/seat parity, cancelled-but-paid commission"
+  },
+  {
+   "path": "api/lock.php",
+   "role": "Hold/release endpoint (mode-aware, 120/min IP limit)"
+  },
+  {
+   "path": "api/seats.php",
+   "role": "Availability snapshot + ver short-circuit"
+  },
+  {
+   "path": "api/seat-events.php",
+   "role": "SSE stream of SeatVersion (behind seat_events_on=0)"
+  },
+  {
+   "path": "api/occupancy.php",
+   "role": "7-14 day fill chart via Seats::availability"
+  },
+  {
+   "path": "api/book.php",
+   "role": "Customer + counter-mode checkout → BookingService::create"
+  },
+  {
+   "path": "api/cancel.php",
+   "role": "Customer/staff cancel → BookingService::cancel"
+  },
+  {
+   "path": "api/split-pay.php",
+   "role": "Split-pay shares — informational only, never confirms or releases"
+  },
+  {
+   "path": "cron/expire.php",
+   "role": "Expired holds + unpaid-pending sweep with proof guard and guarded UPDATE"
+  },
+  {
+   "path": "admin/refunds.php",
+   "role": "Refund desk: approve/deny/reopen against bookings.refund_* (no atomic guard)"
+  },
+  {
+   "path": "admin/booking-view.php",
+   "role": "Per-seat cancel, seat change (transferSeat), confirm/reject/settleCod/forceCancel, passenger edits with gender-lock recompute"
+  },
+  {
+   "path": "admin/seatmap.php",
+   "role": "Walk-in sale via create(), block/unblock, release hold, transfer"
+  },
+  {
+   "path": "admin/trip-dashboard.php",
+   "role": "Bus swap: assertBusSwapSafe outside the write transaction"
+  },
+  {
+   "path": "admin/api/schedule-action.php",
+   "role": "Trip cancel (releases holds only), bus swap, route change"
+  },
+  {
+   "path": "database/schema.sql",
+   "role": "UNIQUE uq_seat_per_schedule(schedule_id,seat_no), uq_lock_seat, uq_sched_unit, uq_block_seat"
+  },
+  {
+   "path": "database/upgrade-2026-09-24-bookings-admin-note.sql",
+   "role": "Adds bookings.admin_note (present locally)"
+  },
+  {
+   "path": "database/upgrade-2026-08-paid-pending-hold.sql",
+   "role": "Repair script for paid-pending expiry"
+  },
+  {
+   "path": "tests/double-booking-race-test.php",
+   "role": "6 real OS processes per scenario; 10/10 PASS locally"
+  },
+  {
+   "path": "tests/cross-mode-integrity-test.php",
+   "role": "transfer/block/bus-swap reason in beds; 10/10 PASS"
+  },
+  {
+   "path": "tests/cross-mode-hold-test.php",
+   "role": "holds in physical namespace; 32/32 PASS"
+  },
+  {
+   "path": "tests/cross-mode-seat-sync-test.php",
+   "role": "private⇄sharing one inventory; 28/28 PASS"
+  },
+  {
+   "path": "tests/gender-lock-test.php",
+   "role": "cabin gender lock + concurrent block on row lock; 10/10 PASS"
+  },
+  {
+   "path": "tests/seat-transfer-test.php",
+   "role": "reseat keeps counts/locks; 9/9 PASS"
+  },
+  {
+   "path": "tests/paid-pending-hold-test.php",
+   "role": "paid seat never swept; 14/14 PASS"
+  },
+  {
+   "path": "tests/agent-wallet-test.php",
+   "role": "commission once, void on cancel, cash untouched; 62/62 PASS"
+  },
+  {
+   "path": "tests/money-guards-test.php",
+   "role": "M1-M6 money guards; 22/22 PASS"
+  },
+  {
+   "path": "tests/reschedule-test.php",
+   "role": "leg move rollback safety; 43/43 PASS"
+  },
+  {
+   "path": "tests/per-seat-cancel-test.php",
+   "role": "source-inspection only (no DB) 40/40; does not exercise refund arithmetic"
+  },
+  {
+   "path": "tests/run-all.php",
+   "role": "CORE_SUITES includes all of the above; CI battery job runs it against MariaDB 10.11 (.github/workflows/checks.yml)"
+  }
+ ],
+ "current_behavior": "Storage and constraints. booking_seats carries UNIQUE uq_seat_per_schedule(schedule_id, seat_no) (database/schema.sql:381; confirmed by SHOW INDEX on shari_test), seat_locks carries uq_lock_seat (schema.sql:267), schedule_unit_locks uq_sched_unit, seat_blocks uq_block_seat, agent_ledger uq_ledger_booking_type(booking_id, entry_type) (local SHOW CREATE TABLE). bookings.admin_note exists in the tree (database/upgrade-2026-09-24-bookings-admin-note.sql, `ADD COLUMN IF NOT EXISTS admin_note`) and in the local DB (information_schema listing shows admin_note after cancel_reason); BookingService::cancelSeat writes it (includes/booking.php:2536). Live DB column presence could not be verified (no DB/ssh access), but live = this tree and per-seat cancel would 500 if missing.\n\nNamespaces. booking_seats stores each booking's own MODE label (private cabin \"L4\" vs sharing beds \"L7\",\"L8\"); seat_locks stores PHYSICAL beds since 4 Sep (seats.php:1120-1176). Seats::bookedPhysical (seats.php:730-765) joins bookings.booking_mode and expands labels to beds; this is the single occupancy truth for the seat map, the sale gate and DataAudit::seatDoubleBed (dataaudit.php:147-199).\n\nIs a double booking impossible at the DB level? Only for the same label. Seats::claim (seats.php:1363-1392) does `Database::insertIgnore('booking_seats', …)` and throws \"Seat X was booked by someone else moments ago\" when the row belongs to another booking — InnoDB arbitrates. Cross-mode (private vs sharing on the same mattress) is NOT a DB constraint: the code says so itself (seats.php:1273-1283 \"the UNIQUE index on booking_seats alone would not catch them\"). It is closed transactionally: Seats::assertAvailable does `Database::fetchForUpdate('SELECT id FROM schedules WHERE id = :s')` then `bookedPhysical($scheduleId, true)` with `LOCK IN SHARE MODE` (seats.php:1283, 1345-1351) inside Database::transaction (db.php:282-345, 3 retries on deadlock/lock-wait/1020). tests/double-booking-race-test.php (6 OS processes, scenarios A-D incl. customer vs counterSale) passes 10/10 locally; cross-mode suites pass 10/32/28.\n\nPaths. Every live sale funnels through BookingService::create (booking.php:98-702): api/book.php (customer and counter mode), admin/seatmap.php:71, admin/new-booking/quick-ticket via QuickTicket::sell/sellCustomer (quickticket.php:717-950, one retry on seat clash), WhatsApp bot (wabooking.php:303 → sellCustomer), OfflineQueue replay (offlinequeue.php:130 → QuickTicket::sell), AI tools (aitools.php: QuickTicket/BookingService only). counterSale (booking.php:762-1040) is the paper register only and takes the same assertAvailable → assertGenderAllowed → claim sequence. Reschedule/missed-bus use performLegMove (booking.php:1392-1470): booking row FOR UPDATE → releaseLeg → assertAvailable → gender → claim → Ticket::reissue. Seat transfer (seats.php:2345-2460) and per-seat cancel (booking.php:2443-2615) run under row locks. Split-pay (api/split-pay.php) only records claims. No file outside includes/seats.php writes seat_locks/booking_seats except through these calls (grep of admin/, api/, cron/, includes/).\n\nHolds and expiry. Seats::lock (seats.php:1044-1178) sweeps expired rows, enforces the party cap (6 public / 20 staff), acquires beds in order with `INSERT … ON DUPLICATE KEY UPDATE lock_token = IF(expires_at < NOW() OR lock_token = VALUES(lock_token), …)` and rolls back a half-won cabin. Hold = seat_hold_minutes (30, local settings). A pending online booking claims booking_seats immediately with expires_at = now + booking_expiry_minutes (120) (booking.php:467-505); counter/COD bookings get expires_at NULL. submitPaymentProof/attachScreenshot call holdForAdminReview (booking.php:1667-1680) which NULLs expires_at only when real proof exists; cron/expire.php:27-60 re-checks NOT EXISTS UTR/screenshot and expires via a guarded UPDATE (`status='pending' AND expires_at < NOW()`) before releaseBooking — paid-pending-hold-test 14/14. Whether expire.php actually runs on the VPS could not be verified; cron/health-heartbeat.php:45 expects it every 5 min (CRITICAL).\n\nFares. priceBooking (booking.php:2835-2905): schedules.fare_override wins for sharing; Fare::cabinFare prices sharing by direction (fare.php:101-125, 196-230: toNepal 2000 / toIndia 1800 from settings fare_to_nepal/fare_to_india); Fare::quote applies group → coupon/auto-offer → tier → points → tax → fee (fare.php:640-727). Counter discount is clamped to counter_max_discount_pct (booking.php:427-440).\n\nRefunds. cancel() (booking.php:2230-2325) refunds only when a payments row is 'verified' and status is confirmed, via Fare::refundFor(total_amount, leg.travel_date, r.dep_time) with slabs from settings refund_slabs (local: 96h/90%, 48/75, 24/50, 6/25, 0/0; same source read by legal.php:173). cancelSeat computes perSeatFare = total/liveSeats and accumulates refund_amount. admin/refunds.php approves/denies by editing bookings.refund_amount/refund_status/refund_ref.\n\nCommissions. AgentWallet::accrue (agentwallet.php:1352-1437) runs post-commit for counter sales (booking.php:676), at confirm for online non-COD (1814), at settleCod (1934); it deletes a prior commission_void, inserts one 'commission' row (flat per seat by default: agent_commission_mode=flat_per_seat) and a 'cash_due' row when isCashSale (is_cod or cash method). voidFor inserts the negative row; reassignSeller UPDATEs ownership in place (1526-1660). attributeDeskSale (booking.php:678-742) moves a non-agent desk sale's commission to company_agent_code SHG-0001. commission_agent_only defaults 0 (settings), so office/manager sales still accrue.",
+ "gaps": [
+  {
+   "id": "G1",
+   "req": "R3h",
+   "title": "Cross-mode double booking is enforced by transaction serialisation, not by a DB constraint",
+   "evidence": "includes/seats.php:1273-1283 \"two overlapping bookings in different modes have DIFFERENT labels, so the UNIQUE index on booking_seats alone would not catch them — both could pass the read and both claim()\"; seats.php:1363-1392 claim() inserts the MODE label; database/schema.sql:13-14 claims \"double-booking impossible at the database level\". Only assertAvailable's `Database::fetchForUpdate('SELECT id FROM schedules WHERE id = :s')` (seats.php:1283) + `LOCK IN SHARE MODE` (seats.php:745) stand between a private L4 and sharing L7/L8. DataAudit::seatDoubleBed (dataaudit.php:147-199) exists precisely because this can drift.",
+   "severity": "medium",
+   "proposed_change": "Add a physical-bed firewall table `booking_seat_beds (schedule_id, bed VARCHAR(10), booking_id, UNIQUE(schedule_id, bed))` populated inside Seats::claim() from Seats::physicalSeats(label, booking_mode, coach) (claim needs the mode: pass it from create/counterSale/performLegMove/reclaimSeatsFor) and deleted in releaseBooking/releaseLeg/releaseSingleSeat and transferSeat; backfill with an idempotent upgrade (INSERT IGNORE from booking_seats JOIN bookings). Keep assertAvailable as is; the new UNIQUE makes a cross-mode oversell an InnoDB error even if a future path bypasses the gate.",
+   "files_to_change": [
+    "includes/seats.php",
+    "includes/booking.php",
+    "database/upgrade-2026-10-xx-booking-seat-beds.sql",
+    "tests/double-booking-race-test.php"
+   ],
+   "risk": "Schema migration on live data; every seat write path must maintain the second table (transferSeat moves label AND beds). Backfill must run before the constraint is relied on.",
+   "test": "Extend tests/double-booking-race-test.php with scenario E: 3 private-L4 vs 3 sharing-L7 racers → exactly one wins, booking_seat_beds has one row per bed."
+  },
+  {
+   "id": "G2",
+   "req": "R3h",
+   "title": "Gender-lock recompute reads booking_seats labels without the booking mode — a private cabin's label poisons the sharing cabin with the same number (CONFIRMED by probe)",
+   "evidence": "includes/seats.php:1576-1620 seatGenders(): `FROM booking_seats bs JOIN booking_passengers bp … WHERE bs.schedule_id = :s AND bs.released_at IS NULL AND bs.seat_no IN (…)` — no join on bookings.booking_mode. seats.php:1764-1790 recomputeUnitsForSeats and :2528 releaseSingleSeat call `self::unitKey((string) $r['seat_no'])` with the default sharing mode (unitKey's own comment at 1507-1520 describes exactly this bug). Rolled-back probe on shari_test: private booking L4 (beds L7+L8, Female) → `Seats::recomputeUnitLock($sid,'L-2','sleeper')` → schedule_unit_locks L-2 = 'female_only' → `assertGenderAllowed(…, ['L3'], ['Male'])` REFUSED \"This shared cabin already has a female passenger\" although beds L3/L4 are physically empty. Trigger: any release/transfer/edit in cabin L-2 while a private L4 exists.",
+   "severity": "medium",
+   "proposed_change": "In seatGenders() JOIN bookings b and exclude `b.booking_mode = 'private'` rows (private cabins are exempt from the rule and occupy different beds) — or expand each row through Seats::physicalSeats(seat_no, b.booking_mode, coach) and keep only rows whose beds intersect unitSeats(). In recomputeUnitsForSeats()/releaseSingleSeat()/releaseBooking() pass the booking's mode to unitKey() (the mode is one scalar away: bookings.booking_mode).",
+   "files_to_change": [
+    "includes/seats.php"
+   ],
+   "risk": "Low — only changes which rows feed the recompute; the create path (assertGenderAllowed) is unaffected.",
+   "test": "tests/gender-lock-test.php: add 'private L4 (Female) next door does not lock sharing cabin L-2'; re-run cross-mode-seat-sync-test."
+  },
+  {
+   "id": "G3",
+   "req": "R3h",
+   "title": "Refund bookkeeping on bookings.refund_amount is overwritten / re-opened across per-seat cancels and the final cancel — an already-paid refund can be shown as due again",
+   "evidence": "includes/booking.php:2529-2534 cancelSeat: `$newRefundTotal = round($existingRefund + $refund['amount'], 2); … 'refund_status' => $newRefundTotal > 0 ? 'pending' : …` — if seat 1's refund was already 'processed' (paid) by admin/refunds.php, seat 2's cancel sets refund_amount = paid + new and status back to 'pending', so the desk shows the paid portion as due again. booking.php:2279-2280 cancel(): `'refund_amount' => $refund['amount'], 'refund_status' => $refund['amount'] > 0 ? 'pending' : 'none'` overwrites whatever per-seat refund was accumulated/processed. admin/refunds.php:60-64 pays `$amount` from that single column.",
+   "severity": "high",
+   "proposed_change": "Keep a per-event refund ledger: new table `booking_refunds (id, booking_id, seat_no NULL, amount, status pending|processed|denied, ref, created_by, created_at)`; cancelSeat/cancel INSERT a row, refunds.php processes rows (not the booking column); bookings.refund_amount becomes a derived SUM for display. Minimal interim fix: in cancelSeat never regress 'processed' → 'pending' (if $locked['refund_status']==='processed' store the new seat's refund separately and audit it) and in cancel() add to, not overwrite, an existing pending amount while leaving processed amounts untouched.",
+   "files_to_change": [
+    "includes/booking.php",
+    "admin/refunds.php",
+    "database/upgrade-2026-10-xx-booking-refunds.sql",
+    "tests/per-seat-cancel-test.php"
+   ],
+   "risk": "Money path; needs a backfill for bookings whose refund_status is already processed. The current per-seat-cancel-test is source-inspection only, so a DB-backed test must be written.",
+   "test": "New DB-backed case: 3-seat confirmed+verified booking → cancelSeat(A) → approve refund → cancelSeat(B) → desk shows only B's amount pending; then cancel() → only the remaining seat's slab is pending; total refunded never exceeds total paid."
+  },
+  {
+   "id": "G4",
+   "req": "R3h",
+   "title": "Staff and operator cancellations apply the customer penalty slabs — $byCustomer only changes the notification label",
+   "evidence": "includes/booking.php:2246-2273 computes `Fare::refundFor((float) $booking['total_amount'], …)` unconditionally; the only use of $byCustomer is booking.php:2297 `$actor = $byCustomer ? 'customer' : 'admin';`. api/cancel.php:58-61 claims \"Staff waive the customer-facing cancellation penalty\" — the engine does not. admin/api/schedule-action.php:198-211 trip cancel: \"Booked/paid seats (booking_seats) are deliberately untouched — the owner decides per-PNR in Refund Desk\", so bookings on a company-cancelled trip later go through cancel()/bulkCancel (booking.php:2187 `self::cancel($pnr, $reason, false)`) and get 0-25% refunds inside 24h. forceCancel (2368-2440) gives 0 and says 'handle by hand'.",
+   "severity": "medium",
+   "proposed_change": "Add a refund-policy parameter to cancel(): `string $policy = 'slab'|'full'|'none'`; api/cancel.php passes 'full' when $staffMayCancel (matching its comment), bulkCancel passes the caller's choice, and schedule-action.php trip cancel offers a 'cancel all bookings with full refund' step (via bulkCancel with 'full'). Record the policy in the audit new_value.",
+   "files_to_change": [
+    "includes/booking.php",
+    "api/cancel.php",
+    "admin/api/schedule-action.php",
+    "admin/bookings.php"
+   ],
+   "risk": "Owner must confirm the operator-cancellation refund rule (100%?). Agents cancelling their own sales should probably keep 'slab' — gate 'full' on bookings.cancel permission.",
+   "test": "tests/money-guards-test.php: staff cancel of a confirmed+verified booking 2h before departure → refund 100% when policy 'full', 25% when customer."
+  },
+  {
+   "id": "G5",
+   "req": "R3h",
+   "title": "SeatVersion does not change after a seat transfer, so live maps and the api/seats.php 'unchanged' short-circuit serve stale seats",
+   "evidence": "includes/seatversion.php:32-35 hashes `COUNT(*), MAX(id)` of booking_seats, holds, blocks and `schedules.status,is_blocked,bus_id,coach_type_override,updated_at`. Seats::transferSeat (seats.php:2404-2422) only does `Database::update('booking_seats', ['seat_no' => $toSeat], …)` and `booking_passengers` — count, max id and schedules.updated_at are all unchanged. api/seats.php:49-55 returns `['unchanged' => true]` when the client's ver matches; api/seat-events.php:118-130 only emits on a changed ver. A customer polling after a reseat keeps seeing the old berth sold and the new one free until something else changes.",
+   "severity": "medium",
+   "proposed_change": "In transferSeat (inside the transaction) touch the departure: `Database::run('UPDATE schedules SET updated_at = NOW() WHERE id = :s', …)` — or make SeatVersion fold `MD5(GROUP_CONCAT(seat_no ORDER BY seat_no))` of live booking_seats into the hash so any label change bumps it.",
+   "files_to_change": [
+    "includes/seats.php",
+    "includes/seatversion.php",
+    "tests/seat-events-test.php"
+   ],
+   "risk": "Low; one extra indexed UPDATE per transfer.",
+   "test": "tests/seat-events-test.php: capture SeatVersion::of(sid), transferSeat L3→L7, assert the version changed."
+  },
+  {
+   "id": "G6",
+   "req": "R3h",
+   "title": "A customer COD booking carrying an agent code posts cash_due to the agent when the crew settles the cash",
+   "evidence": "includes/booking.php:500 `'sold_by_admin_id'=> $soldByAdminId` is stamped for an ONLINE booking whose referralCode resolved (booking.php:263-266) and `'is_cod' => $isCod ? 1 : 0`. settleCod → `AgentWallet::accrue($booking)` (booking.php:1934). agentwallet.php:1413-1423 `if ($total > 0 && self::isCashSale($bookingId, $booking)) { insertEntry([... 'entry_type' => 'cash_due', 'amount' => $total …]) }` and isCashSale (1478-1483) returns true for `is_cod === 1` — the referral agent never held that cash (it was collected by the crew/counter, payments.verified_by = the settling admin).",
+   "severity": "medium",
+   "proposed_change": "In AgentWallet::accrue post cash_due only for staff sales: `in_array($booking['source'], ['counter','agent','admin'], true)` (or payments.verified_by === sold_by_admin_id). Commission still accrues for the referral.",
+   "files_to_change": [
+    "includes/agentwallet.php",
+    "tests/agent-wallet-test.php"
+   ],
+   "risk": "Low; check whether any live agent is legitimately expected to hold cash for app-COD referrals (owner).",
+   "test": "tests/agent-wallet-test.php: online isCod booking with agentCode → settleCod → ledger has 'commission' and NO 'cash_due'."
+  },
+  {
+   "id": "G7",
+   "req": "R3h",
+   "title": "Per-seat cancel inserts a commission_void even when no commission was ever accrued, and ignores commission_agent_only",
+   "evidence": "includes/booking.php:2560-2595 `$soldBy = (int) ($locked['sold_by_admin_id'] ?? 0); if ($soldBy > 0 && AgentWallet::enabled()) { $perSeatCommission = AgentWallet::commissionForBooking($perSeatFare, $soldBy, 1); … insert 'commission_void' }` — no check that an 'commission' row exists (pending online booking, COD not yet settled) and no `commission_agent_only`/isAgentRow gate that accrue() applies (agentwallet.php:1372-1374). accrue() later deletes the void (1386-1390), so it self-heals only if the booking is eventually settled; otherwise the agent carries a phantom negative.",
+   "severity": "low",
+   "proposed_change": "Void only when `SELECT amount FROM agent_ledger WHERE booking_id=:b AND entry_type='commission'` exists, and derive the share from that row (amount × 1/seatsBefore) rather than re-rating at today's rate.",
+   "files_to_change": [
+    "includes/booking.php"
+   ],
+   "risk": "Low.",
+   "test": "tests/money-guards-test.php M5 extension: per-seat cancel on a pending agent-code booking leaves agent_ledger empty."
+  },
+  {
+   "id": "G8",
+   "req": "R3h",
+   "title": "cancelSeat computes the fare share and refund from an unlocked pre-transaction read",
+   "evidence": "includes/booking.php:2470-2510 `$liveSeats = Database::fetchAll(…)`, `$perSeatFare = round((float) $booking['total_amount'] / $seatCount, 2); $newTotal = …` run BEFORE `Database::transaction` (2515) which then `fetchForUpdate`s the row but still writes the stale `$newTotal`/`$refund` (2531-2533). Two staff cancelling different seats of one booking at once both subtract from the same total.",
+   "severity": "low",
+   "proposed_change": "Move the live-seat count, per-seat fare and refund computation inside the closure after fetchForUpdate; recompute total_amount from $locked.",
+   "files_to_change": [
+    "includes/booking.php"
+   ],
+   "risk": "None functional.",
+   "test": "DB-backed per-seat-cancel case running two cancelSeat calls sequentially from two 'admins' and asserting total_amount = total − 2×share."
+  },
+  {
+   "id": "G9",
+   "req": "R3h",
+   "title": "Refund slab hours use the route's dep_time, ignoring schedules.dep_time_override (extra buses) and the passenger's own pickup time",
+   "evidence": "includes/booking.php:2259-2265 `SELECT l.travel_date, r.dep_time FROM booking_legs l JOIN schedules s … JOIN routes r` and 2493-2500 (cancelSeat) — the extra-bus override that create() itself honours (`$chosenSchedule['dep_time_override']`, booking.php:316-322) is not used, so a 20:00 extra bus cancelled at 14:00 is judged against the 13:00 daily departure.",
+   "severity": "low",
+   "proposed_change": "Select `COALESCE(s.dep_time_override, r.dep_time) AS dep_time` in both queries (optionally COALESCE(l.boarding_time, …) first).",
+   "files_to_change": [
+    "includes/booking.php"
+   ],
+   "risk": "None.",
+   "test": "money-guards: extra bus with dep_time_override 20:00, cancel at T-7h → 25% slab, not 0%."
+  },
+  {
+   "id": "G10",
+   "req": "R3h",
+   "title": "Bus-swap safety check runs outside the write transaction (check-then-act)",
+   "evidence": "admin/trip-dashboard.php:54-65 `$check = Seats::assertBusSwapSafe($sid, $busId); Database::transaction(static function () … { Database::update('schedules', ['bus_id' => $busId] …` and admin/api/schedule-action.php:979-985 same shape; assertBusSwapSafe is read-only with no row lock (seats.php:2208-2340). A sale committing between the check and the UPDATE is not counted.",
+   "severity": "low",
+   "proposed_change": "Run assertBusSwapSafe inside the transaction after `Database::fetchForUpdate('SELECT id FROM schedules WHERE id = :s')` — the same lock the sale gate takes, so the swap and any concurrent sale serialise.",
+   "files_to_change": [
+    "admin/trip-dashboard.php",
+    "admin/api/schedule-action.php",
+    "includes/seats.php"
+   ],
+   "risk": "Low; the fleet is all 72-bed sleepers today so capacity refusal is rare.",
+   "test": "tests/cross-mode-integrity-test.php bus-swap section: assert the schedule row is locked (SELECT … FOR UPDATE NOWAIT from a second connection fails during the swap)."
+  },
+  {
+   "id": "G11",
+   "req": "R3h",
+   "title": "Refund desk approve/deny is not atomic — two approvals both pass the guard and both notify the customer",
+   "evidence": "admin/refunds.php:35-45 reads `$booking = Database::fetch(…)` then checks `refund_status === 'processed'`; the write at :60-64 is `Database::update('bookings', ['refund_amount' => $amount, 'refund_status' => 'processed', 'refund_ref' => $ref], 'id = :i')` without the status in the WHERE and without rowCount checking; Notify::refundProcessed fires regardless.",
+   "severity": "low",
+   "proposed_change": "`UPDATE … WHERE id = :i AND refund_status IN ('pending','denied')`; if rowCount === 0 throw 'already processed'; same for deny.",
+   "files_to_change": [
+    "admin/refunds.php"
+   ],
+   "risk": "None.",
+   "test": "HTTP test posting approve twice → second answer 'already processed', one notification row."
+  },
+  {
+   "id": "G12",
+   "req": "R3h",
+   "title": "commission_agent_only defaults OFF, so manager/superadmin/office counter sales still mint commission + cash_due rows (owner decision pending)",
+   "evidence": "includes/agentwallet.php:1372-1374 `if (Settings::getBool('commission_agent_only', false) && !self::isAgentRow($agentId)) { return; }` with the comment \"On live the owner's and the counter's own sales carry these rows (≈ ₹10 lakh of cash_due across 272 bookings)\"; local settings row commission_agent_only=0. attributeDeskSale (booking.php:716-742) re-owns only the commission row to SHG-0001; the cash_due stays on the office member.",
+   "severity": "low",
+   "proposed_change": "Owner sign-off, then: default the setting ON (upgrade SQL sets it), and ship a one-time reconciliation script that voids commission rows whose agent_admin_id is not an agent row and reports (not deletes) the cash_due rows for accounting.",
+   "files_to_change": [
+    "database/upgrade-2026-10-xx-commission-agent-only.sql",
+    "includes/agentwallet.php"
+   ],
+   "risk": "Changes historic agent statements; must be a reversible adjustment, never a delete (UNIQUE(booking_id, entry_type) rule).",
+   "test": "money-guards M2 already covers both switch states; add an assertion on the default."
+  },
+  {
+   "id": "G13",
+   "req": "R3h",
+   "title": "'Short run' sharing discount setting is dead — no caller passes $stopCount to Fare::cabinFare",
+   "evidence": "includes/fare.php:146 `cabinFare(…, int $stopCount = 4)` and :209-212 apply `sharing_short_run_discount_inr` only when `$stopCount < $minFullStops`; every caller omits it: includes/booking.php:2850, includes/booking.php:837, includes/quickticket.php:663, api/quote.php:63. Settings sharing_short_run_min_stops=3 / discount 200 exist locally and are editable, so a configured fare rule has no effect.",
+   "severity": "low",
+   "proposed_change": "Either compute stopCount from the chosen boarding/drop (route_stops positions) in priceBooking and api/quote.php and pass it, or remove the two settings and the branch so the admin cannot configure a rule that never applies.",
+   "files_to_change": [
+    "includes/booking.php",
+    "api/quote.php",
+    "includes/quickticket.php",
+    "includes/fare.php"
+   ],
+   "risk": "Owner must say whether the short-run discount is a live rule.",
+   "test": "tests/fares-settings-test.php: Surat→border with 2 stops prices base−200 when enabled."
+  },
+  {
+   "id": "G14",
+   "req": "R3e",
+   "title": "schedules.seats_booked counts label rows, not beds — 'free' seat counts in the reschedule/missed-bus pickers are overstated when private cabins are sold",
+   "evidence": "includes/seats.php:1388-1396 `SET seats_booked = (SELECT COUNT(*) FROM booking_seats WHERE schedule_id = :s1 AND released_at IS NULL)`; admin/reschedule.php:186 `SUM(s.total_seats - s.seats_booked) AS free`; admin/missed-bus.php:153 `(s.total_seats - s.seats_booked) AS free`. A private cabin is 1 row / 2 beds. (api/search.php:313-314 correctly derives seats_booked from availability.)",
+   "severity": "low",
+   "proposed_change": "Recompute seats_booked from count(Seats::bookedPhysical($sid)) in claim()/release paths, or make the two pickers read Seats::availabilityForSchedule()['availableCount'].",
+   "files_to_change": [
+    "includes/seats.php",
+    "admin/reschedule.php",
+    "admin/missed-bus.php"
+   ],
+   "risk": "None.",
+   "test": "cross-mode-seat-sync-test: after a private L4 sale, seats_booked == 2."
+  }
+ ],
+ "already_satisfied": [
+  "Same-label double booking is impossible at the DB level: UNIQUE uq_seat_per_schedule(schedule_id, seat_no) (database/schema.sql:381, SHOW INDEX on shari_test) + Seats::claim INSERT IGNORE with owner check (includes/seats.php:1363-1392); tests/double-booking-race-test.php 10/10 PASS locally with 6 real OS processes per scenario (customers, lazy schedule creation with UNIQUE(route_id,travel_date,slot), customer-vs-counterSale, hold race).",
+  "Cross-mode (private vs sharing) oversell is closed transactionally: assertAvailable takes the schedule row FOR UPDATE and a LOCK IN SHARE MODE read of occupancy (seats.php:1283, 1345-1351); claim/transfer/block/bus-swap all reason in physical beds; cross-mode-integrity 10/10, cross-mode-hold 32/32, cross-mode-seat-sync 28/28 PASS; nightly DataAudit::seatDoubleBed (dataaudit.php:147-199) re-checks with the same expansion.",
+  "Holds: seat_locks UNIQUE uq_lock_seat (schema.sql:267); physical-bed holds acquired in order with partial-cabin rollback (seats.php:1120-1176); per-visitor party cap (seats.php:1056-1072, money-guards M6); expired rows swept on every lock() and by cron/expire.php:17; api/lock.php rate-limited 120/min.",
+  "Paid-but-pending is never swept: holdForAdminReview NULLs expires_at only on real proof (booking.php:1667-1680, 1549-1555, 1648-1652); cron/expire.php:27-60 uses NOT EXISTS utr/screenshot and a guarded UPDATE (`status='pending' AND expires_at < NOW()`) before Seats::releaseBooking; expired/completed/cancelled refuse new proof (booking.php:1494-1496); paid-pending-hold-test 14/14 PASS; cron/health-heartbeat.php:45 flags expire.php CRITICAL if not run every 5 min.",
+  "Every sale/edit path goes through BookingService/Seats (no raw seat writes): api/book.php, admin/seatmap.php:71/150-178, QuickTicket::sell/sellCustomer → create (quickticket.php:794-813, 908-925), WaBooking::sell → sellCustomer (wabooking.php:303), OfflineQueue → QuickTicket::sell (offlinequeue.php:130), aitools → QuickTicket/BookingService only, admin/booking-view.php → cancelSeat/transferSeat/forceCancel/confirm/reject/settleCod, split-pay informational only (api/split-pay.php:19-26), trip cancel releases holds via Seats::releaseAllHolds (schedule-action.php:211).",
+  "Reschedule / missed-bus: performLegMove locks the booking row, re-reads seats inside the txn, releaseLeg → assertAvailable → assertGenderAllowed → claim → Ticket::reissue (booking.php:1392-1470); reschedule-test 43/43 PASS including rollback on a failed move.",
+  "Gender rule serialised by schedule_unit_locks FOR UPDATE (seats.php:1623-1703); gender-lock-test 10/10 PASS incl. 'a concurrent booking into the same cabin blocks on the row lock'; booking-view gender edits recompute with the booking's mode (admin/booking-view.php:310-315).",
+  "Commission ledger: UNIQUE uq_ledger_booking_type(booking_id, entry_type) (local DDL); accrue() idempotent, restores a prior void, flat-per-seat from live seat rows (agentwallet.php:1352-1437); voidFor on cancel/reject/forceCancel (booking.php:1992, 2290, 2404); reassignSeller UPDATEs ownership in place and re-rates (agentwallet.php:1526-1660); per-seat cancel tops up one void row (booking.php:2566-2586); agent-wallet-test 62/62, money-guards 22/22 PASS; DataAudit flags cancelled-but-paid commission (dataaudit.php:450-500).",
+  "Refunds: single slab source settings.refund_slabs (local: 96h/90, 48/75, 24/50, 6/25, 0/0) read by Fare::refundFor (fare.php:524-568), legal.php:173 and routepages.php:97; refund only when a payments row is 'verified' (booking.php:2256-2262, cancelSeat 2486-2489); refunds.php caps approval at total_amount and audits every decision.",
+  "Fares: direction-based sharing fare with per-schedule fare_override (booking.php:2835-2860, fare.php:101-125); counter discount clamped to counter_max_discount_pct (booking.php:427-440); coupon redemption written with the booking (booking.php:508-521, money-guards M4); counterSale prices toNepal/toIndia correctly (booking.php:837).",
+  "bookings.admin_note: upgrade database/upgrade-2026-09-24-bookings-admin-note.sql exists in this tree and the column exists in shari_test (information_schema listing); BookingService::cancelSeat writes it (booking.php:2536).",
+  "Deadlocks/lock-waits are retried with jittered backoff (db.php:282-345: 40001/1213/1205/1020, 3 attempts) and rule violations are never retried; losers get human messages (race test: 'These seats have just been taken: E6')."
+ ],
+ "open_questions": [
+  "Owner decision for G4: what refund applies when the company cancels a trip or staff cancel a booking (100%?) — today the customer slabs apply regardless of who cancels, and schedule-action.php trip cancel leaves every booking confirmed.",
+  "Owner decision for G12: flip commission_agent_only ON and reconcile historic manager/office ledger rows (memory notes live commission inflated ~Rs 63,400 by staff-seller rows; code comment cites ≈₹10 lakh cash_due across 272 bookings)? Needs an adjustment-only script, never deletes.",
+  "Is the 'short run' sharing discount (sharing_short_run_* settings) a live business rule? It is configurable but never applied (G13).",
+  "Round trips: BookingService::create sets trip_type='round' when returnLeg is present (booking.php:480) but never creates a return leg or seats, and api/book.php does not pass returnLeg; rebookLeg accepts legType 'return'. Is return-leg selling in scope? If not, drop the flag.",
+  "Could not verify on live: that cron/expire.php is scheduled on the VPS (no ssh) — admin/health.php heartbeat (cron/health-heartbeat.php:45) would show it; and that bookings.admin_note exists on the live DB (per-seat cancel would 500 if it did not).",
+  "G1 (DB-level physical-bed firewall) is a schema change on live data with a backfill; decide whether the transactional gate + nightly DataAudit is acceptable or the extra table is wanted.",
+  "tests/per-seat-cancel-test.php is source-inspection only (no DB); the refund arithmetic in G3/G7/G8 has no executable coverage today — a DB-backed suite is needed before touching that code."
+ ]
+}

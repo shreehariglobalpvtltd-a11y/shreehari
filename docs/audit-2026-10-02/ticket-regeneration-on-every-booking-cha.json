@@ -1,0 +1,387 @@
+{
+ "area": "Ticket regeneration on every booking change (R3f, R3e): includes/ticket.php issue/reissue/PNG/PDF caches, every mutating path in includes/booking.php + admin pages + AI/WhatsApp tools, download/verify endpoints, notify resend paths, sw.js ticket cache, audit rows",
+ "files": [
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/ticket.php",
+   "role": "Ticket engine: qrPayload (:35-62), verifyQrPayload (:360-396), downloadToken/imageUrl ?r=REV (:411-466), issue (:699-727), reissue (:748-795), pdfPath/invoicePath/pngPath + layout stamps (:802-914, :1654/:1660), renderWithLock .lock (:1504-1527), markText CORRECTED REV (:1743-1754), PNG QR = keyed verify URL (:1402), PDF QR = signed pipe payload (:1972)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/booking.php",
+   "role": "All booking mutations: create (:98-715, Ticket::issue :674/:690), counterSale (:762-1057), rebookLeg/rebookMissedLeg → performLegMove (:1059-1480, reissue :1452 inside txn, pdfPath force :1471), confirm (:1705-1850), settleCod (:1855-1950 cache drop :1893-1909), reject (:1959-2040), bulkCancel/cancel/forceCancel (:2128-2440), cancelSeat (:2443-2607, reissue :2587), markBoarded (:2624-2700)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/notify.php",
+   "role": "WhatsApp/email delivery; idempotency guard on purpose=ticket (:313-345); resendTicketWhatsApp (:794-845); ticketChanged (:868-960); bookingConfirmed (:1680-1815, pdfPath attach :1746); codSettled (:2272-2290)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/events.php",
+   "role": "EventBus post-commit listeners: booking.created/approved/rejected/cancelled/cod_settled (:236-315)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/seats.php",
+   "role": "transferSeat (:2345-2460) reissues inside its own txn (:2441); releaseSingleSeat (:2469)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/agentwallet.php",
+   "role": "reassignSeller audit + Ticket::reissue($id, !$atSale) (:1626-1646)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/aitools.php",
+   "role": "AI rename_passenger (:1490-1515) and fix_ticket (:1590-1668): reissue + Notify::ticketChanged; imageUrl memo use (:871)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/wabooking.php",
+   "role": "WhatsApp post-sale rename: reissue (:807), audit, reply with imageUrl media (:840-842)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/quickticket.php",
+   "role": "Desk/QuickBot sale result: eager Ticket::pngPath (:1146), keyed URLs (:1183-1186)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/admin/booking-view.php",
+   "role": "bv_invalidate_pdfs (:22-42), bv_regen_ticket (:71-88), bv_notify_edit (:160-183); handlers cancel (:104), cancel_seat (:123), edit_passenger (:185-350), change_seat (:443-480), edit_payment (:486-512), resend_wa (:580-608), cod_settle (:612), review (:633), force_cancel (:674), reset_pending (:692), edit_contact (:720-780), reassign_agent (:786), hard_delete (:811-850)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/admin/reschedule.php",
+   "role": "rebookLeg caller (:80) + Notify::ticketChanged('reschedule') (:97) + booking.edit_notify audit (:102)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/admin/missed-bus.php",
+   "role": "rebookMissedLeg caller (:60) + ticketChanged('missed_rebook') (:75)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/admin/seatmap.php",
+   "role": "transfer action (:171-182) → Seats::transferSeat, no passenger notice; assign_agent (:183-200)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/admin/new-booking.php",
+   "role": "counterSale (:150-170) then post-sale UPDATE of boarding/drop/ID (:176-200) after ticket issue + WhatsApp"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/admin/payments.php",
+   "role": "approve/reject/cod_settle → BookingService (:55-80)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/admin/refunds.php",
+   "role": "refund approve/deny/reopen: bookings.refund_* only, audit with reason=note (:25-100); no ticket effect"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/admin/api/schedule-action.php",
+   "role": "Trip-level mutations: cancel_trip (:153-240), set_dep_time (:398-460), change_route (:470-560), set_bus (:966-1000) — zero Ticket:: calls"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/admin/buses.php",
+   "role": "Bus swap writes schedules.bus_id (:70) — no ticket reissue"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/admin/trip-dashboard.php",
+   "role": "Bus assign/unassign (:56, :89) — no ticket reissue"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/tripnotify.php",
+   "role": "notifyCancellation (:538-595) messages passengers; bookings/tickets untouched"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/download-ticket.php",
+   "role": "Keyed download: status gate (:51), 3-tier auth (:56-90), invoice/img/view/dup/print branches (:92-120); ignores ?r"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/verify-ticket.php",
+   "role": "Public status page from QR: verifyQrPayload (:42), no-store headers (:164-168), links imageUrl/downloadUrl (:252-253)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/response.php",
+   "role": "download() Cache-Control private,max-age=0,must-revalidate (:194); inline() private,no-cache (:214); no ETag/Last-Modified"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/sw.js",
+   "role": "TICKET_CACHE network-first race 4s (:38-40, :145-158, :174-220), key strips k and r; shg-cache-ticket/shg-clear-tickets (:385-420); PDF/invoice passthrough (:229-233)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/js/11-pdf-ticket.js",
+   "role": "Client canvas fallback buildTicketCanvas (:92) used when server PNG fetch fails (:360-382); cacheTicketOffline (:326-331)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/logger.php",
+   "role": "Logger::audit(action, entity, id, old, new, detail, reason='') captures actor_type/id/name/role from session (:143-196)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/db.php",
+   "role": "Database::transaction(callable, attempts=3) with nesting depth; no afterCommit hook (:282)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/pay.php",
+   "role": "UPI deep-link redirect + PayEvents log only; no ticket/booking mutation"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/api/cancel.php",
+   "role": "Customer/staff cancel → BookingService::cancel (:57)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/api/payment.php",
+   "role": "Payment proof → submitPaymentProof/attachScreenshot; booking stays pending, no ticket"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/api/split-pay.php",
+   "role": "Informational payment_shares only; never confirms or touches tickets"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/seatversion.php",
+   "role": "Seat-map fingerprint for api/seats + seat-events; unrelated to ticket caches"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/qr.php",
+   "role": "Self-contained QR generator (matrix/png/dataUri); no state"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/deploy/nginx-shreehariglobal.in.conf",
+   "role": "deny all for /tickets/ and /invoice/ (:111-112); live returns 404 (verified)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/tests/ticket-png-test.php",
+   "role": "Covers pngPath cache + reissue clearing png/pdf columns and unlink (:68-98)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/tests/ticket-cache-test.php",
+   "role": "Layout-stamp one-time re-render"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/tests/reschedule-test.php",
+   "role": "Asserts QR payload/hash change on rebookLeg (:114-120)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/tests/gupshup-send-test.php",
+   "role": "Locks the purpose=ticket idempotency guard (:107-113) — the guard that also swallows change notices"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/database/upgrade-2026-09-19-ticket-revisions.sql",
+   "role": "tickets.reissue_count / reissued_at columns (present in local DB)"
+  }
+ ],
+ "current_behavior": "ENGINE. A ticket row is minted once per booking by Ticket::issue() (ticket.php:699-727): ticket_number + signed pipe payload `SHG-TICKET|PNR|date|seats|from->to|phone|ticketNo|n|dep_time|bus_number|sig` (:35-62; dep_time = COALESCE(s.dep_time_override, r.dep_time) and bus_number come from loadBooking :1533-1560). Ticket::reissue($id, $countRevision=true) (:748-795) re-mints qr_payload/qr_hash with the SAME ticket_number, nulls pdf_path/png_path/invoice_path, unlinks tickets/ticket_PNR.{pdf,png} + invoice, bumps reissue_count/reissued_at (unless $countRevision=false) and writes audit `ticket.reissue`. pngPath/pdfPath (:802-914) call issue() (idempotent), serve the cached file when the column is non-empty, the file exists and its mtime is newer than PNG/PDF_LAYOUT_CHANGED (:1654/:1660), else render under a sibling .lock (renderWithLock :1504-1527; .lock files are never removed). The PNG prints CORRECTED TICKET · REV n (markText :1743-1754), a DEP time + bus strip (:1262-1265) and a PAID/PAYMENT DUE pill from the latest payments row (:1154, :1429). IMPORTANT NUANCE: the PNG's QR is the keyed verify URL `verify-ticket.php?pnr&k=downloadToken(pnr)` (:1402, token = HMAC of PNR only :411-414) — it NEVER changes on a correction; only the PDF prints the signed pipe payload (:1972). Both validate through verifyQrPayload (:360-396) and the gate reads live DB state, so a stale picture still scans \"valid\" — the REV banner is the only visual cue. Public links: downloadUrl (PDF), imageUrl (PNG, adds `&r=<reissue_count>` only when >0, memoised per request in a static array :441-466); download-ticket.php ignores r, refuses non-confirmed bookings (:51), and Response::download sends `Cache-Control: private, max-age=0, must-revalidate` with no ETag/Last-Modified (response.php:194; verified locally — 188,934-byte PNG, fresh fetch each time), inline `private, no-cache` (:214). Live: /tickets/*.png → nginx 404 (conf:111), keyless download → 302 to #/my, verify-ticket → no-store. sw.js: only `/download-ticket.php?img=` is cached (TICKET_CACHE, max 10, key strips k AND r :145-158), network-first with a 4 s race (:39, :200-220); PDF/invoice/admin/api are passthrough (:229-233); the SPA's share/download fall back to a client canvas drawn from localStorage when the server PNG fetch fails (11-pdf-ticket.js:360-382, 07-checkout.js:1590-1602). Audit: Logger::audit(action, entity, id, old, new, detail, reason='') fills actor_type/id/name/role from the admin or user session, 'system' for webhook/AI paths (logger.php:143-196); `reason` is only populated when a caller passes the 7th arg.\n\nMATRIX — a) PNG regenerated, b) QR/verify payload refreshed, c) cached PNG/PDF + link invalidated, d) resend, e) audit with reason+actor:\n1. Online confirm (payments.php:63 / booking-view:642 → confirm :1705-1850): a lazy (Twilio fetch of imageUrl renders) · b first mint issue() :1792 inside txn · c n/a · d YES booking.approved → Notify::bookingConfirmed events.php:264/notify.php:1680-1815 (media = imageUrl; PDF rendered+cached for email :1746) · e yes `booking.confirm` :1827, note in detail, reason col empty.\n2. Counter/QuickBot/WA sale (create :674-690 + attributeDeskSale → reassignSeller reissue(.., false) agentwallet:1640; counterSale :1009; QuickTicket::result eager pngPath :1146): a yes(QuickBot)/lazy(new-booking) · b yes · c n/a · d yes booking.approved · e yes `booking.counter`.\n3. new-booking.php post-sale stops/ID UPDATE (:176-200) after counterSale already issued + notified: a NO · b n/a (QR has no stops) · c NO (email PDF cached at :1746 keeps default stop; PNG big letters read boarding_stop :82-104) · d NO (WA text already sent with defaultBoardingStop :964) · e yes `booking.counter_details`, no reason.\n4. Reschedule (reschedule.php:80 → rebookLeg → performLegMove :1392-1480): a PARTIAL (PDF force post-commit :1471, PNG lazy) · b yes reissue :1452 INSIDE txn · c yes (unlink+null+REV → ?r) · d PARTIAL ticketChanged :97 — swallowed, see G1 · e yes `booking.reschedule` with reason :1461-1466 + `ticket.reissue`.\n5. Missed-bus (missed-bus.php:60 → rebookMissedLeg): same as 4; reason '' (:1279), `booking.edit_notify` :80.\n6. AI fix_ticket (aitools:1590-1668): date → rebookLeg; contact → update + reissue :1633 inside txn · d PARTIAL ticketChanged :1653 (G1) · e `booking.fix_whatsapp` :1627 actor=system, reason inside detail.\n7. AI rename (aitools:1490-1515) / WA post-sale rename (wabooking:787-842): a lazy · b yes · c yes · d AI: PARTIAL (G1); wabooking: YES (webhook reply carries imageUrl media :840) · e `booking.rename_whatsapp`/`booking.rename_wabooking`, actor=system.\n8. Seat transfer from seat map (seatmap.php:178 → Seats::transferSeat :2345-2460): a lazy · b yes reissue :2441 inside txn · c yes · d NO · e `seat.transfer` :2425 detail only, no reason.\n9. Seat change from booking-view (change_seat :443-480): transferSeat reissues (:2441) AND the page reissues again (:466) → REV +2 per change · a lazy (bv_invalidate_pdfs only, not bv_regen_ticket) · b yes · c yes · d PARTIAL bv_notify_edit('seat') :469 (G1) · e yes with reason :468.\n10. Per-seat cancel (booking-view:133 → cancelSeat :2443-2607): a PARTIAL (PDF force :2603) · b yes :2587 inside txn · c yes · d NO (no event, no notice) · e `booking.cancel_seat` :2590 reason inside detail.\n11. Passenger/contact edit (edit_passenger :185-350, edit_contact :720-780): a YES bv_regen_ticket → reissue + pngPath(force) :79-81 · b yes (phone is in the payload) · c yes · d PARTIAL bv_notify_edit (G1) · e yes with reason :338/:764.\n12. Payment edit (edit_payment :486-512): a yes bv_regen_ticket :509 (REV bumped though QR unchanged) · b yes · c yes · d NO · e `payment.edit`, no reason.\n13. Reassign agent (booking-view:786 / seatmap assign_agent / reassignSeller :1626-1646): a lazy · b yes (no REV when atSale) · c yes · d NO · e `booking.reassign_agent`, no reason.\n14. COD settle (settleCod :1855-1950): a lazy (unlink :1893-1907, columns '' :1909) · b n/a · c PARTIAL (no REV → same URL) · d yes booking.cod_settled → codSettled text link :2272-2290 · e `booking.cod.settle`.\n15. Cancel / force-cancel / reject / bulk / undo (cancel :2230-2330, forceCancel :2368-2440, reject :1959-2040, api/cancel.php:57): a no (files stay) · b no — tickets.is_void is NEVER written anywhere (grep) · c PARTIAL: download refused by status :51, verify page shows state, SW/WhatsApp copies persist · d yes booking.cancelled/rejected events · e yes, reason folded into detail (:2313) not the reason column.\n16. Re-approve after reject/reset_pending (confirm :1705; reset_pending :692-716): a NO — issue() returns the old row (:701-704), png_path intact → pre-reject render served · b no · c no · d yes booking.approved (but G1 if an earlier 'sent' row exists) · e yes.\n17. Trip-level: set_dep_time (schedule-action:398-460), set_bus (:966-1000), change_route (:470-560), buses.php:70, trip-dashboard.php:56/89, cancel_trip (:153-240 + TripNotify :538-595): a/b/c NO for every booking on the schedule (payload carries dep_time+bus_number; PNG prints them) · d delay/cancel notice via TripNotify only; dep/bus change silent · e `trip.*` audits on the schedule entity only.\n18. markBoarded (:2624-2700): scan_count/scanned_at only · e `ticket.board`/`ticket.rescan`. 19. hard_delete (:811-850): ticket row cascades, files left on disk. 20. refunds.php: no ticket effect, reason=note. 21. Manual resend (resend_wa :580-608 → resendTicketWhatsApp :794-845): purpose=ticket → G1; audit `booking.resend_wa` records 'sent' even when short-circuited. 22. Layout-stamp re-render: silent, same URL.\n\nSTALE-CACHE RISKS: same filename ticket_<PNR>.png/.pdf reused forever; invalidation = unlink + null column; URL only changes via ?r when reissue_count>0 (not for settleCod, atSale attribution, layout re-render); imageUrl's per-request memo returns the OLD ?r if reissue happens later in the same request (an AI turn calling a lookup tool :871 then fix_ticket :1633); reissue inside Database::transaction (retry ×3 on deadlock db.php:282) can bump REV twice and deletes files even if the txn rolls back (self-heals); SW returns the saved copy when a cold re-render exceeds 4 s or offline; client canvas fallback draws pre-edit localStorage data; PDF liveStatus pill is time-dependent yet cached; .lock files accumulate. pay.php, api/payment.php, api/split-pay.php, seatversion.php never touch tickets.",
+ "gaps": [
+  {
+   "id": "G1",
+   "req": "R3f",
+   "title": "Every 'ticket changed' WhatsApp and the manual Resend are silently swallowed by the purpose=ticket idempotency guard once the first ticket was 'sent'",
+   "evidence": "includes/notify.php:326-338 `if (($meta['purpose'] ?? '') === 'ticket' && $bookingId ...) { $prior = ... ORDER BY id DESC LIMIT 1; if ($prior['status'] === 'sent') { self::$journal[] = [... 'reason' => 'idempotent']; return true; } }` — ticketChanged() passes `['purpose' => 'ticket']` (notify.php:930-936) and resendTicketWhatsApp() too (:822). Reproduced locally (rolled back): with a prior sent row, Notify::ticketChanged($detail,'seat',…) returned {ok:true, detail:'Change notice (seat) sent…'}, wrote NO message_logs row, journal reason 'idempotent'. Callers then audit 'sent': admin/reschedule.php:97-104, admin/missed-bus.php:75-82, admin/booking-view.php:160-183 (bv_notify_edit), :589-601 (resend_wa), includes/aitools.php:1502/:1653.",
+   "severity": "high",
+   "proposed_change": "In Notify::whatsapp keep the guard only for the first confirmation: pass a distinct purpose from ticketChanged ('ticket_update') and resendTicketWhatsApp ('ticket_resend'), or honour `$meta['force'] === true` to skip the guard; have whatsapp-retry.php's purpose filter include the new purposes. Make ticketChanged/resend return ok=false with detail 'suppressed (idempotent)' if the guard ever fires, so the audit row and flash stop claiming delivery.",
+   "files_to_change": [
+    "includes/notify.php",
+    "cron/whatsapp-retry.php",
+    "admin/booking-view.php",
+    "admin/reschedule.php",
+    "admin/missed-bus.php",
+    "includes/aitools.php"
+   ],
+   "risk": "Duplicate ticket on a genuine double confirm is still prevented (bookingConfirmed keeps purpose=ticket); change notices will now actually send, which costs Twilio/Meta messages — gate on settings notify_ticket_edit as today.",
+   "test": "Extend tests/gupshup-send-test.php (or new tests/notify-ticket-changed-test.php): insert a 'sent' purpose=ticket row, call Notify::ticketChanged → expect a NEW message_logs row (status sent/failed) and ok reflecting the driver, not the guard; keep the existing duplicate-ticket assertion (:107-113) green."
+  },
+  {
+   "id": "G2",
+   "req": "R3f",
+   "title": "Trip-level changes (departure time, bus swap, route change, trip cancel) never regenerate the tickets of the bookings on that schedule",
+   "evidence": "admin/api/schedule-action.php:444-445 `Database::update('schedules', ['dep_time_override' => $newOverride] …)`, :981 `['bus_id' => $busId]`, :548 `['route_id' => $newRoute]`; admin/buses.php:70; admin/trip-dashboard.php:56/:89 — zero `Ticket::` references in any of these files (grep -c = 0). Yet the QR payload carries dep_time and bus_number (includes/ticket.php:57-58, loadBooking :1536-1538) and the PNG strip prints 'DEP g:i A · bus' (:1262-1265). includes/tripnotify.php:538-595 only messages passengers; cancel_trip leaves bookings confirmed (:147-149 comment).",
+   "severity": "high",
+   "proposed_change": "Add Ticket::reissueForSchedule(int $sid, string $kind, array $ctx, int $actor) that loops confirmed/pending bookings on the schedule and calls afterBookingChange() (G3) with notify=true for dep_time/bus changes (kind 'trip_change') and kind 'trip_cancelled' (void) for cancel_trip; call it from handleSetDepTime, handleSetBus, handleChangeRoute, buses.php:70, trip-dashboard.php:56/89 after the schedules UPDATE commits.",
+   "files_to_change": [
+    "includes/ticket.php",
+    "admin/api/schedule-action.php",
+    "admin/buses.php",
+    "admin/trip-dashboard.php",
+    "includes/tripnotify.php"
+   ],
+   "risk": "A bus swap on a full coach re-renders ~40 PNGs synchronously (~0.3-1 s each on GD) — do the renders lazily (reissue only, eager PNG optional) or queue them; REV banner will appear on every passenger's ticket after an operational change — confirm wording with the owner.",
+   "test": "New tests/trip-change-ticket-test.php: confirmed booking on schedule → set_dep_time/set_bus via handler functions → tickets.qr_payload contains the new HH:MM / bus number, png_path null, reissue_count +1; cancel_trip → is_void=1 (after G6)."
+  },
+  {
+   "id": "G3",
+   "req": "R3f",
+   "title": "No single afterBookingChange() hook — 13 call sites hand-roll reissue/unlink/notify with different subsets (a-e) and three different REV behaviours",
+   "evidence": "includes/booking.php:1452 + :1471 (performLegMove: reissue in txn, PDF only post-commit); :2587 + :2603 (cancelSeat, no notice); includes/seats.php:2441 (transferSeat reissue, no notice) AND admin/booking-view.php:466 (second reissue → REV +2 per seat change); booking-view.php:71-88 bv_regen_ticket (eager PNG) vs :466-467 (no eager PNG); includes/agentwallet.php:1640 `Ticket::reissue($bookingId, !$atSale)`; includes/aitools.php:1495, :1633; includes/wabooking.php:807; settleCod :1893-1909 hand-unlinks; booking-view.php:22-42 bv_invalidate_pdfs duplicates reissue's unlink.",
+   "severity": "high",
+   "proposed_change": "Create includes/ticketsync.php `TicketSync::afterBookingChange(int $bookingId, string $kind, array $ctx = [], array $opts = [])` (kinds: reschedule|missed_rebook|seat|passenger|contact|payment|agent|paid|stops|trip_change|reconfirm|void|delete). Steps: (1) if Database::$txDepth>0 enqueue via a new Database::afterCommit(callable) and return; (2) load booking + ticket; no ticket → unlink stray files, return; (3) kind void/delete → tickets.is_void=1, unlink, no regen; reconfirm → is_void=0; (4) Ticket::reissue($id, $opts['silent'] ? false : true) (new QR, unlink, REV); (5) Ticket::forgetRevision($pnr) to bust the imageUrl memo; (6) eager Ticket::pngPath($id,true) (PDF lazy unless $opts['pdf']); (7) one audit row `ticket.regenerated` with old/new rev+payload, kind, detail, reason=$opts['reason'] (actor from session; for AI/webhook pass $opts['actor'] into detail); (8) if status confirmed && $opts['notify'] !== false && Settings notify_ticket_edit → Notify::ticketChanged(fresh, kind, ctx) with purpose ticket_update and audit `booking.edit_notify`; (9) EventBus::emit('ticket.regenerated', …) for web-push/SW purge; return ['rev'=>n,'imageUrl'=>…,'notified'=>bool,'detail'=>…]. Replace every hand-rolled block above with one call; delete bv_invalidate_pdfs/bv_regen_ticket, the second reissue at booking-view:466, and settleCod's unlink block.",
+   "files_to_change": [
+    "includes/ticketsync.php (new)",
+    "includes/db.php",
+    "includes/ticket.php",
+    "includes/booking.php",
+    "includes/seats.php",
+    "includes/agentwallet.php",
+    "includes/aitools.php",
+    "includes/wabooking.php",
+    "admin/booking-view.php",
+    "admin/reschedule.php",
+    "admin/missed-bus.php",
+    "admin/seatmap.php",
+    "admin/new-booking.php"
+   ],
+   "risk": "Moving reissue out of the transaction changes ordering: tests/reschedule-test.php:114-120 read qr_payload right after rebookLeg (fine post-commit); counter-mode-test.php:212-215 pins REV 0 at sale and REV 1 on later agent change — keep 'silent' for atSale.",
+   "test": "New tests/ticket-sync-test.php (functional, every kind → columns/files/REV/audit/message_logs) plus a source-guard check in tests/ticket-png-test.php style: grep that no file outside ticketsync.php calls Ticket::reissue/unlink(TICKET_PATH) directly."
+  },
+  {
+   "id": "G4",
+   "req": "R3f",
+   "title": "Regeneration runs inside DB transactions: double REV on deadlock retry, files deleted on rollback, and the PNG (the primary ticket) is never eagerly re-rendered on reschedule/seat/cancel-seat paths",
+   "evidence": "includes/db.php:282 `transaction(callable $callback, int $attempts = 3)` re-runs the closure; includes/booking.php:1452 `try { Ticket::reissue($bookingId); }` is inside the closure; :1471 `Ticket::pdfPath($bookingId, true)` post-commit regenerates only the PDF; :2587/:2603 same; includes/seats.php:2441 inside transferSeat's transaction; includes/aitools.php:1633 inside Database::transaction. Ticket::reissue :775-779 `@unlink(...)` executes immediately.",
+   "severity": "medium",
+   "proposed_change": "Add Database::afterCommit(callable) (queue flushed when $txDepth returns to 0 after commit, discarded on rollback) and have TicketSync defer to it; eager pngPath(force) post-commit so Twilio/the desk never hit a cold render (the SW 4 s race, sw.js:39, otherwise returns the stale copy).",
+   "files_to_change": [
+    "includes/db.php",
+    "includes/ticketsync.php (new)",
+    "includes/booking.php",
+    "includes/seats.php",
+    "includes/aitools.php"
+   ],
+   "risk": "Post-commit failures no longer roll anything back — acceptable because the ticket is derived data and self-heals on next open (same rationale as confirm :1773-1790).",
+   "test": "tests/ticket-sync-test.php: run a reschedule inside an outer Database::transaction that throws → assert reissue_count unchanged and cached file still present; then commit path → exactly +1."
+  },
+  {
+   "id": "G5",
+   "req": "R3e",
+   "title": "Seat-map transfer, per-seat cancel, payment edit and agent reassignment regenerate the ticket but never tell the passenger; change_seat bumps REV twice",
+   "evidence": "admin/seatmap.php:171-182 (transfer) — flash only; includes/booking.php:2443-2607 cancelSeat emits no event and admin/booking-view.php:123-140 sends nothing; booking-view.php:486-512 edit_payment → bv_regen_ticket, no bv_notify_edit; :786-806 reassign_agent, no notice; :465-466 `Seats::transferSeat(...)` (reissues at seats.php:2441) then `Ticket::reissue((int) $b['id'])` again.",
+   "severity": "medium",
+   "proposed_change": "Route all four through TicketSync::afterBookingChange with kinds seat/seat_cancelled/payment/agent; add 'seat_cancelled' and 'payment' wording to Notify::ticketChanged (:868-920); make the agent/payment kinds notify=false by default (passenger-irrelevant) but still REV-bump and audit; remove the duplicate reissue at booking-view:466.",
+   "files_to_change": [
+    "admin/seatmap.php",
+    "admin/booking-view.php",
+    "includes/booking.php",
+    "includes/notify.php"
+   ],
+   "risk": "Per-seat cancel notice must state the refund slab (cancelSeat returns $refund) — reuse Notify::bookingCancelled wording.",
+   "test": "Extend tests/seat-transfer-test.php and tests/per-seat-cancel-test.php (:136-140 currently SKIPs the ticket check) to assert reissue_count +1 exactly and a message_logs row with purpose ticket_update."
+  },
+  {
+   "id": "G6",
+   "req": "R3f",
+   "title": "Cancelled/rejected bookings keep a live-looking ticket: is_void is never set, cached PNG/PDF stay on disk, and a re-approval serves the pre-rejection render",
+   "evidence": "grep is_void → only readers (admin/scan.php:116, booking.php:2644, manifest.php:238); no writer. includes/booking.php:2230-2330 cancel(), :2368-2440 forceCancel(), :1959-2040 reject() never touch tickets or TICKET_PATH; confirm() :1792 `Ticket::issue($bookingId)` returns the existing row (:701-704) with png_path intact, so a booking edited/reclaimed between reject and re-approve can serve the old file. download-ticket.php:51 only blocks by status; sw.js TICKET_CACHE and WhatsApp copies persist.",
+   "severity": "medium",
+   "proposed_change": "TicketSync kind 'void' from cancel/forceCancel/reject (post-commit): tickets.is_void=1, unlink PNG/PDF/invoice, null columns, audit; kind 'reconfirm' from confirm() when $old === 'rejected' and from reset_pending→confirm: is_void=0 + reissue(silent) + eager PNG. Have verify-ticket.php and scan.php read is_void and the SW purge the PNR on a 403/voided answer.",
+   "files_to_change": [
+    "includes/booking.php",
+    "includes/ticketsync.php (new)",
+    "verify-ticket.php",
+    "admin/scan.php",
+    "sw.js"
+   ],
+   "risk": "Hard-delete cascade already removes the row; voiding must not block refunds.php (reads bookings only).",
+   "test": "tests/ticket-sync-test.php: cancel → is_void=1 and files gone; reject then confirm → reissue_count unchanged but png_path null and file re-rendered after the edit."
+  },
+  {
+   "id": "G7",
+   "req": "R3f",
+   "title": "Counter desk (admin/new-booking.php) writes boarding/drop AFTER the ticket was issued and the WhatsApp/email went out, with no regeneration",
+   "evidence": "admin/new-booking.php:150-170 `BookingService::counterSale(...)` (issues the ticket :1009, emits booking.approved :1052-1054 → Notify::bookingConfirmed → WhatsApp text with boarding stop + PDF cached for email at notify.php:1746) and only then :186-190 `Database::update('booking_legs', ['boarding_stop' => $boarding ?: null, 'drop_stop' => $dropStop ?: null], ...)`; counterSale writes defaultBoardingStop at booking.php:964. The PNG's big letters read boarding_stop/drop_stop (ticket.php:82-104).",
+   "severity": "medium",
+   "proposed_change": "Extend counterSale()'s $customer array with boarding/drop/idType/idNumber (booking.php:762, leg insert :955-970) so the leg is correct before Ticket::issue and the fan-out; drop the post-sale UPDATE. Until then, call TicketSync::afterBookingChange($id,'stops',[],['silent'=>true,'notify'=>false]) after the UPDATE.",
+   "files_to_change": [
+    "admin/new-booking.php",
+    "includes/booking.php"
+   ],
+   "risk": "counterSale signature is covered by tests/counter-mode-test.php — add keys as optional.",
+   "test": "Extend tests/counter-mode-test.php: sale with boarding 'Rajkot' → booking_legs.boarding_stop = Rajkot before any notify; rendered PNG filename exists only after the leg is right."
+  },
+  {
+   "id": "G8",
+   "req": "R3f",
+   "title": "Download link does not change for every regeneration (?r only when reissue_count>0, and the per-request memo can emit the old revision)",
+   "evidence": "includes/ticket.php:447-460 `static $rev = []; if (!array_key_exists($pnr, $rev)) {...}` and `($rev[$pnr] > 0 ? '&r=' . $rev[$pnr] : '')`; settleCod (booking.php:1893-1909) and reissue(…, false) (agentwallet.php:1640) and layout re-renders change the picture without a new URL; includes/aitools.php:871 calls imageUrl before :1633 reissues in the same request.",
+   "severity": "low",
+   "proposed_change": "Make the cache-buster a content version `&v=<reissue_count>-<unix mtime or updated_at>` added always; add Ticket::forgetRevision($pnr) (clears the memo) and call it at the end of reissue(); keep download-ticket.php ignoring the parameter.",
+   "files_to_change": [
+    "includes/ticket.php"
+   ],
+   "risk": "WhatsApp previews are keyed by URL, so every regen now produces a new preview — intended.",
+   "test": "tests/ticket-png-test.php: imageUrl differs after reissue(false) and after settleCod-style cache drop; memo cleared within one process."
+  },
+  {
+   "id": "G9",
+   "req": "R3f",
+   "title": "Service-worker ticket cache can return the pre-change image when the fresh render is slow or the phone is offline, and nothing purges it after a regeneration",
+   "evidence": "sw.js:39 `TICKET_WAIT_MS = 4000`, :200-220 race `Promise.race([net, slow])` returns `hit` when the network loses; :152-158 ticketKey strips k and r so one entry per PNR; no handler deletes an entry on correction (only shg-clear-tickets :419).",
+   "severity": "low",
+   "proposed_change": "Keep `r`/`v` in ticketKey so a corrected ticket is a new entry (trimCache evicts the old), and on TicketSync 'ticket.regenerated' send a WebPush/postMessage {type:'shg-ticket-updated', pnr} that deletes the entry and pre-fetches the new one; eager pngPath (G4) keeps the network under 4 s.",
+   "files_to_change": [
+    "sw.js",
+    "assets/js/11-pdf-ticket.js",
+    "includes/webpush.php",
+    "includes/ticketsync.php (new)"
+   ],
+   "risk": "SW VERSION must be bumped (sw.js:19) and asset ver per memory rule.",
+   "test": "tests/offline-ticket-test.js (exists) — add a case: cache entry under r=1, request r=2 → miss → network."
+  },
+  {
+   "id": "G10",
+   "req": "R3f",
+   "title": "Audit trail records the correction but the 'reason' column and actor are inconsistent across paths",
+   "evidence": "includes/booking.php:2313 `Logger::audit('booking.cancel', 'booking', $pnr, null, null, $reason . ' | refund ' . inr(...))` (reason in detail, 7th arg unused); :1279 rebookMissedLeg passes '' reason; includes/seats.php:2425 `'reseat ' . ($row['full_name'] ?? '')` no reason; includes/agentwallet.php:1626-1634 no reason; AI/webhook paths run with no session so actor_type='system' (logger.php:153-169) and the phone lives only in detail text (aitools.php:1497-1499); Ticket::reissue's own row (:794) has no kind/actor context.",
+   "severity": "low",
+   "proposed_change": "TicketSync writes one `ticket.regenerated` row per change with old/new {rev, qr_payload}, kind, ctx, detail and reason (7th arg), and accepts $opts['actor'] ('whatsapp:+91…', 'cron') appended to detail; pass $reason as the 7th arg in cancel/forceCancel/cancelSeat/transferSeat/reassignSeller.",
+   "files_to_change": [
+    "includes/ticketsync.php (new)",
+    "includes/booking.php",
+    "includes/seats.php",
+    "includes/agentwallet.php",
+    "includes/logger.php"
+   ],
+   "risk": "None functional; admin/activity-log.php may want a filter on the new action.",
+   "test": "tests/ticket-sync-test.php asserts audit_logs.reason and actor_role populated for a desk reschedule and detail carries the WhatsApp phone for an AI rename."
+  },
+  {
+   "id": "G11",
+   "req": "R3f",
+   "title": "Rendered files are orphaned on hard delete and .lock files accumulate in tickets/",
+   "evidence": "admin/booking-view.php:834-838 deletes the booking (tickets row cascades, schema.sql:509) but never unlinks ticket_<PNR>.png/.pdf or invoice; includes/ticket.php:1504-1527 renderWithLock opens `$path . '.lock'` with 'c' and never removes it (local tickets/ shows five .lock files for four missing PNGs).",
+   "severity": "low",
+   "proposed_change": "TicketSync kind 'delete' unlinks all three files before the DELETE; renderWithLock unlinks the .lock after LOCK_UN (or reuse one lock per PNR dir); add a nightly cron sweep for files whose PNR has no booking.",
+   "files_to_change": [
+    "admin/booking-view.php",
+    "includes/ticket.php",
+    "cron/expire.php"
+   ],
+   "risk": "Unlinking the lock while another process holds the fd is safe on Linux (inode stays until closed).",
+   "test": "tests/ticket-png-test.php: after pngPath no .lock remains; hard-delete leaves no ticket_<PNR>.* in TICKET_PATH."
+  },
+  {
+   "id": "G12",
+   "req": "R3f",
+   "title": "A second ticket renderer on the client draws from localStorage when the server PNG is refused/slow, so a corrected ticket can be shared with pre-edit data",
+   "evidence": "assets/js/11-pdf-ticket.js:92 `async function buildTicketCanvas(b)` used at :360-382 (download) and :379-381 (share) and assets/js/07-checkout.js:1598-1602 as the fallback whenever serverTicketPngBlob() rejects (any non-200, e.g. a keyless 302 or a >timeout render).",
+   "severity": "low",
+   "proposed_change": "Replace the canvas fallback with the SW-cached server PNG (caches.match(ticketKey)) and, if absent, a plain text share; when buildTicketCanvas must stay (offline first-visit), refresh `b` from api/track.php first and stamp 'OFFLINE COPY · verify at QR'.",
+   "files_to_change": [
+    "assets/js/11-pdf-ticket.js",
+    "assets/js/07-checkout.js"
+   ],
+   "risk": "Removes offline share for a never-cached ticket; cacheTicketOffline (:326-331) already pre-caches confirmed tickets so the gap is small.",
+   "test": "Playwright/offline-ticket-test.js: with the server returning 500, share uses the cached PNG blob, not a canvas."
+  }
+ ],
+ "already_satisfied": [
+  "Ticket::reissue() re-mints qr_payload/qr_hash keeping ticket_number, nulls pdf/png/invoice columns, unlinks tickets/ticket_<PNR>.{pdf,png} + invoice, bumps reissue_count/reissued_at and audits 'ticket.reissue' (includes/ticket.php:748-795); covered by tests/ticket-png-test.php:74-98 and tests/reschedule-test.php:114-120.",
+  "The regenerated PNG/PDF print 'CORRECTED TICKET · REV n · <time> · REPLACES EARLIER COPIES' (ticket.php:1743-1754) and the office DUPLICATE COPY render never overwrites the passenger's file (:870-887).",
+  "Ticket::imageUrl() appends &r=<reissue_count> so WhatsApp/browsers fetch a new URL after a counted correction (ticket.php:441-466); download-ticket.php ignores it safely.",
+  "Reschedule, missed-bus, per-seat cancel, seat transfer (both entry points), booking-view passenger/contact/payment edits, agent reassignment, AI rename/fix_ticket and WhatsApp post-sale rename all DO call Ticket::reissue (booking.php:1452, :2587; seats.php:2441; booking-view.php:79, :466; agentwallet.php:1640; aitools.php:1495, :1633; wabooking.php:807) — the engine exists, it is the orchestration/notify layer that is inconsistent.",
+  "booking-view edits regenerate eagerly: bv_regen_ticket → reissue + pngPath(force) and report REV in the flash (admin/booking-view.php:71-88).",
+  "COD settlement drops the cached PNG and PDF so the PAID pill re-renders (booking.php:1893-1909) and tells the customer via booking.cod_settled (events.php:308, notify.php:2272-2290).",
+  "download-ticket.php enforces keyed access (3-tier, :56-90), refuses non-confirmed bookings (:51), rate-limits (:40); Response::download sends 'Cache-Control: private, max-age=0, must-revalidate' and inline 'private, no-cache' (response.php:194/:214) — verified locally on http://localhost:8951 and live (keyless → 302, /tickets/ → 404).",
+  "nginx denies /tickets/ and /invoice/ (deploy/nginx-shreehariglobal.in.conf:111-112, live 404 confirmed) and deploy.sh:88 excludes tickets/ from sync, so rendered files are only reachable through download-ticket.php.",
+  "sw.js caches ONLY the ticket PNG, network-first since 19 Sep (sw.js:174-220); PDF, invoice, verify page and admin are passthrough (:229-233, :289-294); verify-ticket.php sends no-store (:164-168).",
+  "Layout changes force a one-time re-render of every cached PNG/PDF via PNG_/PDF_LAYOUT_CHANGED stamps (ticket.php:813, :902); tests/ticket-cache-test.php covers both.",
+  "Concurrent renders are serialised by a per-file flock (renderWithLock :1504-1527) and Ticket::issue is tolerant of the UNIQUE(booking_id) race (confirm :1773-1790).",
+  "Every mutation path writes an audit_logs row with actor_type/actor_id/actor_name/actor_role captured automatically from the session (logger.php:143-196); desk reschedule, passenger edit, seat change and contact edit already pass the typed reason (booking.php:1461-1466; booking-view.php:338, :468, :764).",
+  "Post-commit EventBus fan-out (events.php:236-315) delivers confirm/cod/cancel/reject messages outside the transaction, and the change-notice wording exists for reschedule/missed_rebook/seat/passenger/contact (notify.php:868-920) — it only needs the guard fix (G1) to actually go out.",
+  "QuickTicket pre-renders the PNG at sale so the desk and Twilio never wait on a cold render (quickticket.php:1146)."
+ ],
+ "open_questions": [
+  "Owner intent for operational trip changes (G2): on a departure-time or bus change should EVERY passenger receive a re-issued ticket (REV n banner + WhatsApp), or only a delay notice with silent regeneration? The REV banner wording 'CORRECTED TICKET' may alarm passengers for an office-side bus swap.",
+  "Live message_logs cannot be inspected (no ssh/DB access): how many change notices since 21 Sep were swallowed by the idempotency guard (journal reason 'idempotent') — the local reproduction proves the mechanism, the live count is unknown.",
+  "Cold PNG render time on the VPS (GD + HarfBuzz shaping) vs the SW's 4 s TICKET_WAIT_MS — could not measure without ssh; if renders exceed 4 s on a busy box the SW serves the stale copy on first open after a correction.",
+  "Should cancellation/rejection void the ticket row (is_void=1) and purge the SW copy, or is 'download refused by status + verify page shows CANCELLED' the intended behaviour? Today is_void is a dead column.",
+  "Template-only WhatsApp senders (twilio_content_sid / cloud_api template) cannot carry the change line (notify.php:881-891) — does the owner want a second approved template 'ticket_updated' submitted to Meta so corrections are not sent as a plain re-send?",
+  "Should the client-side canvas ticket (assets/js/11-pdf-ticket.js buildTicketCanvas) be retired now that the server PNG is cached by the service worker, or kept for first-visit offline cases?"
+ ]
+}

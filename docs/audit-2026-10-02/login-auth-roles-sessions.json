@@ -1,0 +1,319 @@
+{
+ "area": "LOGIN / AUTH / ROLES / SESSIONS (R5) — staff + agent sign-in, OTP/2FA, recovery, hashing, sessions, throttling, server-side role enforcement",
+ "files": [
+  {
+   "path": "includes/auth.php",
+   "role": "Auth class: ROLE_PERMISSIONS matrix (27-111), adminLogin + opt-in WhatsApp 2FA (154-341), agent code+OTP door (471-588), agent email+username+password door (604-668), setStaffCredentials (684-768), session read/idle/revalidate (790-854), can()/requireAdmin() (929-1052), issueOtp/verifyOtp (1066-1159), customer loginUser (1166-1250)"
+  },
+  {
+   "path": "admin/login.php",
+   "role": "Single staff login page: portal chooser, admin username+password, admin 2FA step, agent pw door (default) and agent OTP door (?auth=otp); 'Forgot your details? The office can reset' + office phone (305, 341)"
+  },
+  {
+   "path": "includes/security.php",
+   "role": "CSRF (106-151), DB-backed atomic rateLimit (264-330), bcrypt hashPassword/verifyPassword (451-459), HMAC sign (465-473), clientIp trusting forwarded headers (480-493), CSP/HSTS headers (27-70)"
+  },
+  {
+   "path": "includes/bootstrap.php",
+   "role": "Session cookie params Secure/HttpOnly/SameSite=Lax, strict mode, 3h lifetime, 30-min id rotation (168-198); HTTPS enforcement (205-210)"
+  },
+  {
+   "path": "includes/loginlog.php",
+   "role": "admin_login_events rows for every outcome, httpOnly device cookie + admin_devices, audit mirror of failures"
+  },
+  {
+   "path": "admin/_guard.php",
+   "role": "admin_boot() -> Auth::requireAdmin(perm); nav filtered by Auth::can (61-161); change-password link hygiene (243-255)"
+  },
+  {
+   "path": "admin/change-password.php",
+   "role": "Self-service password change, forced-change gate (OTP sessions skip current pw), self-service 2FA on/off"
+  },
+  {
+   "path": "admin/staff.php",
+   "role": "Superadmin-only POSTs: create staff (37-130), resetpw (151-176), setcreds via Auth::setStaffCredentials (177-205), setphone, reset_2fa (261-272)"
+  },
+  {
+   "path": "includes/notify.php",
+   "role": "Notify::email (86-108) native SMTP client (126-260) or mail() fallback; whatsapp() returns true or a click-to-chat LINK on failure (297-449); sms() gated by sms_enabled (1405-1433); emailTest (2488-2510); wrapEmail (2852)"
+  },
+  {
+   "path": "includes/walogin.php",
+   "role": "WhatsApp-chat staff login (wa_login_on, default OFF); password + mandatory OTP for office roles"
+  },
+  {
+   "path": "api/otp.php",
+   "role": "Customer sign-in: action=quick (name+mobile, no OTP) and request/verify OTP; sms_send_otp default true here"
+  },
+  {
+   "path": "agent-signup.php",
+   "role": "Public agent application -> inactive admins row with random placeholder hash; office issues password later"
+  },
+  {
+   "path": "config/config.sample.php",
+   "role": "SESSION_NAME/LIFETIME 3h, CSRF_TOKEN_NAME, MAX_LOGIN_ATTEMPTS 5, LOGIN_LOCKOUT_MIN 15, OTP_LENGTH 6 / EXPIRY 10 / RESEND 60"
+  },
+  {
+   "path": "database/schema.sql",
+   "role": "admins (username, email UNIQUE, phone, role ENUM, permissions JSON, failed_logins, locked_until, must_change_pw); settings"
+  },
+  {
+   "path": "database/seed.sql",
+   "role": "Defaults: smtp_host '' / smtp_port 587 / smtp_user / smtp_pass / smtp_secure tls / mail_from_name (111-116), email_enabled 1 (119), sms_send_otp 1 (109)"
+  },
+  {
+   "path": "admin/settings.php",
+   "role": "Generic settings editor; secrets (token|secret|_pass$|password|api_key) write-only (62-65, 293-312); Test-email panel (448-462)"
+  },
+  {
+   "path": "admin/accounting.php",
+   "role": "Company day-book gated only on payments.view (22) — reachable by counter/official"
+  },
+  {
+   "path": "admin/offers.php",
+   "role": "Discount offers; manage if payments.verify (20-21) — counter can edit"
+  },
+  {
+   "path": "admin/export.php",
+   "role": "Bookings CSV/XLSX gated on bookings.view (45); scope only for agent role (54)"
+  },
+  {
+   "path": "api/cancel.php",
+   "role": "Public cancel: phone match OR owner user OR bookings.cancel (41-49)"
+  },
+  {
+   "path": "api/kv.php",
+   "role": "Shared KV writes require dashboard.view except livebus (61-64, 191-193)"
+  },
+  {
+   "path": "api/whatsapp-webhook.php",
+   "role": "Twilio X-Twilio-Signature HMAC validation (92)"
+  },
+  {
+   "path": "api/twilio-status.php",
+   "role": "Twilio signature validation (69)"
+  },
+  {
+   "path": "tests/admin-security-test.php",
+   "role": "LoginLog outcomes + device tracking via real Auth::adminLogin"
+  },
+  {
+   "path": "tests/admin-2fa-test.php",
+   "role": "Opt-in 2FA: default off, pending step, verify, no-phone fallback (does NOT cover delivery failure)"
+  },
+  {
+   "path": "tests/role-gates-test.php",
+   "role": "HTTP: login chooser, portals, every admin page enforces its permission"
+  },
+  {
+   "path": "tests/counter-role-test.php",
+   "role": "Counter role has no dashboard/commissions/reports.export; agent-money wall; mayCancelBooking"
+  },
+  {
+   "path": "tests/forced-password-change-test.php",
+   "role": "HTTP: must_change_pw bounces every HTML page"
+  },
+  {
+   "path": "tests/admin-session-revalidate-test.php",
+   "role": "Deactivated/demoted staff lose the session within 30s"
+  },
+  {
+   "path": "tests/wa-login-test.php",
+   "role": "WhatsApp door stays shut when off; OTP for office roles"
+  },
+  {
+   "path": "tests/ci-fixtures.php",
+   "role": "superadmin / Admin@12345 (SHG_ADMIN_PW); no counter/official/manager fixture rows"
+  }
+ ],
+ "current_behavior": "**(1) Does any staff login REQUIRE a paid SMS OTP today? No.** admin/login.php has four doors. Default office door = username + password only: `Auth::adminLogin()` (includes/auth.php:154-263) verifies bcrypt and calls `finishAdminSession()` unless the account id is in the `admin_2fa_ids` JSON setting (auth.php:230, 350-364). 2FA is opt-in per account (change-password.php:26-40 self-service; staff.php:261-272 superadmin can switch it off) and DEFAULT OFF; local fixture DB has `admin_2fa_ids = []` (live value could not be verified — no DB access). When 2FA is on the code goes to WhatsApp and, if `sms_send_otp` is true, also to Twilio SMS (auth.php:233-240; seed.sql:109 seeds `sms_send_otp = 1`). Default agent door (`?portal=agent`) = email + username + password, \"no OTP, no WhatsApp\" (`Auth::agentPasswordLogin`, auth.php:604-668; login.php:114-118). The older agent code + registered mobile + WhatsApp OTP door is one click away (`?auth=otp`, auth.php:521-588; also sends paid SMS when `sms_send_otp`, auth.php:549-551). WhatsApp-chat login (includes/walogin.php) is behind `wa_login_on` (default 0, walogin.php:63-66) and always demands an OTP for manager/superadmin (walogin.php:59, 250). **What happens when Twilio is down:** `adminLogin` only checks that the OTP row was MINTED (`!empty($otp['ok'])`, auth.php:234) and ignores `Notify::whatsapp()`'s return; that method never throws — on a paused/unconfigured/refused sender it logs a click-to-chat link and returns the link string (notify.php:428-449). So a 2FA-enabled admin is held at `admin_2fa_pending` with no code in hand; the \"no lockout\" branch (auth.php:251-253) only fires on mint failure. Rescue = another superadmin on staff.php `reset_2fa`; if the only superadmin has 2FA on, there is no in-app path.\n\n**(2) Password recovery:** none for staff. No forgot-password route, no reset table/token (`grep -ri forgot|password_reset` finds only the login-page text), no CLI tool. login.php:305 says \"Forgot your details? The office can view or reset your email, username and password\" and :341 shows the office phone. Resets are superadmin-only: staff.php `resetpw` (151-176) and `setcreds` (177-205) → `Auth::setStaffCredentials` (auth.php:684-768, clears locked_until); agent.php Login-credentials panel (staff.manage). **Email IS implemented and configurable:** `Notify::email()` (notify.php:86-108) uses a native fsockopen SMTP client with STARTTLS/SSL + AUTH LOGIN (126-260) when `smtp_host` is set, else PHP `mail()`; keys `smtp_host/port/user/pass/secure`, `mail_from_name`, `email_enabled` are seeded (seed.sql:111-119), editable in admin/settings.php with `smtp_pass` write-only (settings.php:62-65, 293-312), and a \"Test email (Gmail SMTP)\" panel calls `Notify::emailTest` (settings.php:448-462; notify.php:2488-2510). Nothing in auth uses email today. Local `smtp_host` is empty; live value could not be verified.\n\n**(3) Hashing / sessions / throttling:** passwords bcrypt via `Security::hashPassword` cost 11 (security.php:451-459); staff.php create/resetpw use `password_hash(PASSWORD_DEFAULT)` directly (staff.php:74, 170). Unknown-user timing is equalised with a dummy verify (auth.php:187). OTP codes stored bcrypt-hashed, 6 digits, 10 min, max 5 attempts (auth.php:1090-1100; otp_codes.max_attempts default 5). Session: name SHGSESSID, cookie Secure (when HTTPS)/HttpOnly/SameSite=Lax, `use_strict_mode`, 3h lifetime (bootstrap.php:168-184; live `Set-Cookie: … Max-Age=10800; path=/; secure; HttpOnly; SameSite=Lax` verified by curl), id rotated every 30 min (bootstrap.php:187-192), regenerated on login (auth.php:412), logout (782), password change (change-password.php:93); idle timeout `session_timeout_min` = 45 (auth.php:799-803); admins row re-read every 30 s so deactivation/role change bites within half a minute (auth.php:818-851). HSTS + CSP sent live. Throttling: per-IP DB buckets `admin_login`/`agent_pw_login`/`agent_otp` 5 per 5 min then 15-min block (auth.php:164, 526, 615) and `admin_2fa_verify`/`agent_otp_verify` 10 per 10 min (285, 569); per-ACCOUNT `failed_logins` → `locked_until` 15 min after 5 (auth.php:204-211, 650-655); OTP issue 1/min, 6/hour per identifier (1075-1079). The rate_limits upsert is atomic (security.php:282-297). `Security::clientIp()` trusts CF-Connecting-IP / X-Real-IP / X-Forwarded-For from any client (security.php:483-489); whether nginx overwrites them is not in the repo (could not verify). CSRF: session token, `hash_equals`, header or POST (security.php:127-140); login form carries it (login.php:127).\n\n**(4) Server-side role enforcement — sampled endpoints:** admin/accounting.php `admin_boot('payments.view')` (22); admin/payments.php payments.view + `requireAdmin('payments.verify'|'payments.reject')` per action (15, 62-67); admin/refunds.php refunds.view + refunds.process on POST (18, 29); admin/staff.php dashboard.view, every POST refused unless superadmin (12-33); admin/export.php bookings.view, agent-scoped only (45, 54); admin/offers.php payments.view, manage on payments.verify (19-21); admin/api/schedule-action.php schedules.manage (47); admin/api/bulk-cancel.php bookings.view + `Auth::mayCancelBooking` (27); api/cancel.php phone-match OR owner OR bookings.cancel (41-49); api/kv.php writes need dashboard.view except `livebus` (61-64, 191); api/quick-ticket.php & api/book.php `isSellingStaff()` (quick-ticket.php:81, book.php:29); api/push.php other-phone lookup needs dashboard.view (137). `requireAdmin` returns JSON 401/403 for `/api/` URIs and a branded 403 page otherwise (auth.php:977-1052). **Financial pages reachable by counter/official:** `counter` holds `payments.view/verify/reject` (auth.php:91-92) and `official` holds `payments.view` (79), so both open admin/accounting.php (company-wide collections, commissions owed, refunds, agent cash) and counter can manage offers; counter also gets the unscoped bookings export (export.php:45,54) because `bookingScopeAdminId()` scopes only role=agent (auth.php:921-924). `reports.export` is declared for accountant (auth.php:60) but enforced nowhere outside tests.",
+ "gaps": [
+  {
+   "id": "G1",
+   "req": "R5",
+   "title": "No staff password recovery at all — only a superadmin can reset; locked-out superadmin has no path",
+   "evidence": "admin/login.php:305 `Forgot your details? The office can view or reset your email, username and password.`; admin/login.php:341 `Help / locked out? … +91 91048 01507`; no route/table: `grep -ri \"forgot|password_reset|reset_token\"` hits only that text; staff.php:151-176 (`resetpw`) and 177-205 (`setcreds`) are inside `elseif (!$isSuper) { 'Only a super-admin can manage staff.' }` (staff.php:32-33); Notify::email exists (includes/notify.php:86-108) but no auth path calls it.",
+   "severity": "high",
+   "proposed_change": "Add a signed-link email reset reusing existing helpers. (a) `admin/forgot-password.php`: GET shows username-or-email field; POST: `Security::verifyCsrf()`, `Security::rateLimit('pw_forgot_ip', ip, 5, 900, 900)` + `rateLimit('pw_forgot_acct', adminId, 3, 3600)`; look up `admins WHERE (username=:u OR LOWER(email)=:u) AND is_active=1 AND email IS NOT NULL`; ALWAYS render the same 'If that account has an email on file, a link has been sent' (no enumeration); if found call new `Auth::issuePasswordReset(int $adminId): string` which inserts into existing `otp_codes` (identifier `pwreset:<id>`, purpose `reset`, channel `email` — both enum values already exist, schema.sql otp_codes) with `code_hash = password_hash($nonce)`, expires 30 min, after `UPDATE otp_codes SET is_used=1` for older reset rows; token = `$id . '.' . $exp . '.' . $nonce . '.' . Security::sign(\"$id.$exp.$nonce\")` (HMAC APP_KEY, security.php:465); send with `Notify::email($email, 'Reset your password', Notify::wrapEmail(...link...))`; if it returns false → `Logger::audit('admin.pwreset.undeliverable')` and show the office phone as fallback. `LoginLog`-style audit `admin.pwreset.requested`. (b) `admin/reset-password.php?t=`: new `Auth::verifyResetToken(string $t): ?int` = split, `Security::verifySignature`, expiry, fetch latest unused `pwreset:<id>` row, `password_verify($nonce, code_hash)`, attempts++ like verifyOtp; on POST (CSRF, min 8, confirm) call existing `Auth::setStaffCredentials($id, ['password'=>$new, 'must_change'=>false], 0)` (clears failed_logins/locked_until and audits, auth.php:730-767), mark row `is_used=1`, `session_regenerate_id(true)`, redirect to login with notice. (c) login.php: replace the line-305 text with a `Forgot password?` link on the admin and agent-pw forms. (d) Setting `staff_pw_reset_enabled` (bool, group security, default 1) and surface `Notify::emailTest` status on staff.php so the office knows SMTP is wired. No new table, no new secrets.",
+   "files_to_change": [
+    "includes/auth.php",
+    "admin/login.php",
+    "admin/forgot-password.php (new)",
+    "admin/reset-password.php (new)",
+    "database/seed.sql (one settings row)",
+    "admin/staff.php (SMTP-status banner, optional)"
+   ],
+   "risk": "Low-medium: enumeration if messages differ (keep one message); link usable once and 30 min; depends on SMTP being configured on live (unverified) — keep the office-phone fallback text when Notify::email returns false. Token must be bound to APP_KEY so a config change invalidates outstanding links (acceptable).",
+   "test": "New tests/password-reset-test.php (CLI, drives Auth::issuePasswordReset/verifyResetToken with email_enabled=0 so no mail leaves; expired/used/tampered token refused; setStaffCredentials clears locked_until) + extend tests/role-gates-test.php with HTTP GET/POST of both pages and the no-enumeration message; add to tests/run-all.php."
+  },
+  {
+   "id": "G2",
+   "req": "R5",
+   "title": "Opt-in 2FA strands the admin when the code is minted but NOT delivered (Twilio down / sender paused / click-to-chat) — the 'no lockout' guarantee is not honoured",
+   "evidence": "includes/auth.php:233-249 `$otp = self::issueOtp(...); if (!empty($otp['ok'])) { … Notify::whatsapp($phone, $text); … $_SESSION['admin_2fa_pending'] = …; return ['ok'=>false,'twofa'=>true] }` — return of Notify::whatsapp ignored; includes/notify.php:428-449 on any driver failure `$link = whatsappLink(...); … return $link;` (never throws); the fallback at auth.php:251-253 (`Code could not be minted — degrade to password-only`) only covers mint failure. Local `whatsapp_driver = twilio` with empty `twilio_account_sid` (settings), i.e. every send would fall through to the link.",
+   "severity": "high",
+   "proposed_change": "In `adminLogin()` and `adminLogin2faResend()` capture delivery: `$sent = (Notify::whatsapp(...) === true); if (Settings::getBool('staff_otp_sms', false)) { $sent = Notify::sms(...) || $sent; }` (and email, see G3); if `!$sent` → `Logger::audit('admin.2fa.delivery_failed', …)` and fall through to `finishAdminSession()` exactly like the no-phone branch, OR (stricter option behind a setting `admin_2fa_strict`) return `['ok'=>false,'error'=>'Could not deliver the code — ask a super-admin to reset 2FA']` without holding the session. Keep `issueOtp` as is.",
+   "files_to_change": [
+    "includes/auth.php",
+    "tests/admin-2fa-test.php"
+   ],
+   "risk": "Low: only affects accounts that opted in; audit row makes a degraded login visible. Decide with owner whether delivery failure = password-only (availability) or refuse (strict).",
+   "test": "Extend tests/admin-2fa-test.php: set `whatsapp_driver=click_to_chat` (Notify returns a link) → adminLogin must return ok=true (or the strict error), never `twofa=true`; assert audit row admin.2fa.delivery_failed."
+  },
+  {
+   "id": "G3",
+   "req": "R5",
+   "title": "No optional EMAIL OTP — the second factor is hard-wired to WhatsApp (+ paid SMS when sms_send_otp)",
+   "evidence": "includes/auth.php:233 `self::issueOtp('admin:' . $id, 'login', 'whatsapp')`; auth.php:239-240 `Notify::whatsapp(...); if (Settings::getBool('sms_send_otp', false)) { Notify::sms(...); }`; Auth::setAdmin2fa requires a PHONE (auth.php:375-381); otp_codes.channel enum already has 'email' (schema) and Notify::email exists (notify.php:86).",
+   "severity": "medium",
+   "proposed_change": "Add per-account channel: store `admin_2fa_channels` JSON `{<adminId>: 'whatsapp'|'email'}` next to `admin_2fa_ids` (Settings::set json, same pattern as S2FA_KEY, auth.php:350-388); `Auth::setAdmin2fa(int $id, bool $on, int $by, string $channel='whatsapp')` requires phone for whatsapp, `admins.email` for email. In adminLogin/Resend: `$channel = self::admin2faChannel($id)`; `issueOtp('admin:'.$id, 'login', $channel)`; deliver by `Notify::email($admin['email'], $company.' login code', Notify::wrapEmail('Login code', '<p style=\"font-size:28px\">'.$code.'</p>…'))` or WhatsApp; apply G2's delivered-check. change-password.php 2FA panel: add a WhatsApp/Email radio (needs the matching contact on file). `adminLogin2faVerify` unchanged (same identifier). Also split the SMS switch: new `staff_otp_sms` (default 0) used by the staff doors instead of `sms_send_otp` (auth.php:240, 339, 549) so an agent OTP login does not trigger a paid SMS by default.",
+   "files_to_change": [
+    "includes/auth.php",
+    "admin/change-password.php",
+    "admin/staff.php (show channel in reset_2fa row)",
+    "database/seed.sql (staff_otp_sms, admin_2fa_channels)"
+   ],
+   "risk": "Low: additive; existing ids default to whatsapp. Email OTP depends on SMTP configured (surface emailTest result on the panel).",
+   "test": "tests/admin-2fa-test.php: enable with channel=email on a throwaway admin with email + `email_enabled=0` → expect password-only completion + delivery_failed audit; with a Notify stub (or `smtp_host` to a local sink) → pending step then verify."
+  },
+  {
+   "id": "G4",
+   "req": "R5",
+   "title": "Company financial day-book and offer management reachable by counter and official roles",
+   "evidence": "admin/accounting.php:22 `$admin = admin_boot('payments.view');` (no isCounterAgent/scope check anywhere in the file); includes/auth.php:90-92 counter role grants `'payments.view', 'payments.verify', 'payments.reject'`; auth.php:78-79 official grants `'payments.view', …`; admin/offers.php:19-21 `admin_boot('payments.view'); $canManage = Auth::isSuperadmin() || Auth::can('payments.verify');` — counter passes $canManage. Role comment at auth.php:87-89 promises counter has 'NO dashboard.view (revenue KPIs), NO commissions.view'. Verified statically only (no counter fixture in local DB to exercise over HTTP).",
+   "severity": "medium",
+   "proposed_change": "Gate accounting.php on `reports.view` (held by manager/accountant/superadmin, auth.php:51,60) — `admin_boot('reports.view')` — and the nav item likewise (_guard.php:144 `'perm' => 'payments.view'` → `'reports.view'`); in offers.php set `$canManage = Auth::isSuperadmin() || Auth::can('coupons.edit')` (manager already has coupons.edit, auth.php:50) and gate the page on `coupons.view`/`payments.view` for read. Optionally add 'accounting.view' to ROLE_PERMISSIONS if the owner wants finer control.",
+   "files_to_change": [
+    "admin/accounting.php",
+    "admin/offers.php",
+    "admin/_guard.php"
+   ],
+   "risk": "Low: only narrows access; make sure the accountant role still reaches both (it has reports.view; add coupons.edit to accountant if offers management is theirs).",
+   "test": "Extend tests/counter-role-test.php (role list at :73) and tests/role-gates-test.php: counter + official GET /admin/accounting.php → 403; counter POST offers → refused; accountant/manager → 200."
+  },
+  {
+   "id": "G5",
+   "req": "R5",
+   "title": "`reports.export` is never enforced — counter role can download the whole company bookings file (names, phones, fares)",
+   "evidence": "includes/auth.php:60 declares `'reports.export'` for accountant; `grep -rn reports.export` outside tests hits only auth.php:60 and includes/ai/Identity.php:8; admin/export.php:45 `admin_boot('bookings.view');` then :54 `$scopeId = Auth::bookingScopeAdminId();` which is null for every role except agent (auth.php:921-924); counter has bookings.view (auth.php:91). export.php's own header (:9-11) warns an unscoped export 'hands … one file containing every passenger's name, phone, email and fare'.",
+   "severity": "medium",
+   "proposed_change": "In admin/export.php after line 45: `if (Auth::bookingScopeAdminId() === null && !Auth::can('reports.export') && !Auth::isSuperadmin()) { Auth::requireAdmin('reports.export'); }` (agents keep their scoped export); add `reports.export` to manager in ROLE_PERMISSIONS (auth.php:28-54) so the office keeps working; hide the Export buttons on bookings.php for roles without it.",
+   "files_to_change": [
+    "admin/export.php",
+    "includes/auth.php",
+    "admin/bookings.php (button visibility)"
+   ],
+   "risk": "Low; confirm which roles the owner wants exporting (manager yes, counter no).",
+   "test": "tests/export-filters-test.php or counter-role-test.php: counter GET export.php → 403; manager → CSV; agent → scoped CSV unchanged."
+  },
+  {
+   "id": "G6",
+   "req": "R5",
+   "title": "Per-IP login throttle and login-log IP trust client-supplied forwarded headers (spoofable)",
+   "evidence": "includes/security.php:483-489 `foreach (['HTTP_CF_CONNECTING_IP','HTTP_X_REAL_IP','HTTP_X_FORWARDED_FOR'] as $header) { if (!empty($_SERVER[$header])) { … return $candidate; } }` with no trusted-proxy check; used by every `Security::rateLimit('admin_login', $ip…)` (auth.php:164, 526, 615) and `LoginLog::record` ip_address (loginlog.php:147). No nginx config in repo to confirm the proxy overwrites these (could not verify). Per-account lockout (auth.php:204-211) still caps guesses at 5 per 15 min per account.",
+   "severity": "medium",
+   "proposed_change": "Honour forwarded headers only when `REMOTE_ADDR` is a configured trusted proxy: add `define('TRUSTED_PROXIES', '127.0.0.1,::1')` to config.sample.php (nginx + php-fpm on the same VPS talk over loopback/socket) and in `clientIp()` check `in_array($_SERVER['REMOTE_ADDR'], explode(',', TRUSTED_PROXIES))` before reading the headers; otherwise return REMOTE_ADDR. Keep header order (CF first).",
+   "files_to_change": [
+    "includes/security.php",
+    "config/config.sample.php",
+    "config/config.php on VPS (deploy note)"
+   ],
+   "risk": "Medium if the VPS nginx passes the real IP only through X-Real-IP from a non-loopback address — verify `nginx -T` on the VPS (fastcgi_param REMOTE_ADDR) before enabling; default to loopback-trusted so behaviour is unchanged on the current single-box setup.",
+   "test": "tests/admin-security-test.php: set `$_SERVER['REMOTE_ADDR']='203.0.113.9'` + `HTTP_X_FORWARDED_FOR='1.2.3.4'` → `Security::clientIp()` must return 203.0.113.9; with REMOTE_ADDR 127.0.0.1 → 1.2.3.4."
+  },
+  {
+   "id": "G7",
+   "req": "R5",
+   "title": "Forced password change gate is skipped for every `/api/` URI, so a temporary-password holder can still sell/cancel/send through the JSON endpoints",
+   "evidence": "includes/auth.php:1004-1008 `if (!empty($_SESSION[ADMIN_SESSION_KEY]['must_change_pw']) && !$wantsJson && !in_array($file, ['change-password.php','logout.php'])) { Response::redirect('admin/change-password.php'); }` where `$wantsJson = str_contains(REQUEST_URI, '/api/')` (auth.php:981); admin/api/bulk-cancel.php:27, admin/api/wa-send.php:34, api/quick-ticket.php:58-81 all pass through requireAdmin/Auth::admin() with no extra check.",
+   "severity": "low",
+   "proposed_change": "In requireAdmin(): when must_change_pw and `$wantsJson` → `Response::forbidden('Password change required. Open /admin/change-password.php first.')` (status 403 with a `code: 'must_change_pw'`); counter-mode JS (14-counter.js) can surface that message.",
+   "files_to_change": [
+    "includes/auth.php",
+    "assets/js/14-counter.js (message only)"
+   ],
+   "risk": "Low: only affects accounts flagged must_change_pw, which already cannot open any HTML page.",
+   "test": "tests/forced-password-change-test.php: flagged admin POST /admin/api/bulk-cancel.php and /api/quick-ticket.php → 403 JSON."
+  },
+  {
+   "id": "G8",
+   "req": "R5",
+   "title": "staff.php quick reset bypasses the single credential writer: does not clear the lockout and hashes with a different cost",
+   "evidence": "admin/staff.php:169-172 `Database::update('admins', ['password_hash' => password_hash($pw, PASSWORD_DEFAULT), 'must_change_pw' => $mustChange], …)` — no `failed_logins`/`locked_until` reset; staff.php:74 create uses `password_hash($pw, PASSWORD_DEFAULT)`; versus includes/auth.php:735-737 setStaffCredentials `'password_hash' => Security::hashPassword($password), 'failed_logins' => 0, 'locked_until' => null` and security.php:453 cost 11.",
+   "severity": "low",
+   "proposed_change": "Route `resetpw` and `create` through `Auth::setStaffCredentials($id, ['password'=>$pw, 'must_change'=>$mustChange], (int)$admin['id'])` / `Security::hashPassword()` so a reset also unlocks the account (the usual reason the office resets).",
+   "files_to_change": [
+    "admin/staff.php"
+   ],
+   "risk": "None functional; audit action name changes from staff.resetpw to staff.credentials (keep an extra Logger::audit('staff.resetpw') line if the Activity lens filters on it).",
+   "test": "tests/admin-security-test.php: lock an account (5 bad passwords), reset via the same code path, assert locked_until NULL and login succeeds."
+  },
+  {
+   "id": "G9",
+   "req": "R5",
+   "title": "Staff OTP doors send a paid Twilio SMS by default because the seed sets sms_send_otp = 1",
+   "evidence": "database/seed.sql:109 `('sms_send_otp','1','bool','notify','Send OTP login codes by SMS',0)`; includes/auth.php:240 and :339 and :549-551 `if (Settings::getBool('sms_send_otp', false)) { Notify::sms($phone, $text); }`; api/otp.php:119 customer path defaults true.",
+   "severity": "low",
+   "proposed_change": "Introduce `staff_otp_sms` (bool, default 0) and use it in the three staff sites (auth.php:240, 339, 549); leave `sms_send_otp` for customers. Document on Settings → notify.",
+   "files_to_change": [
+    "includes/auth.php",
+    "database/seed.sql"
+   ],
+   "risk": "None: staff OTP doors still deliver by WhatsApp (and email after G3).",
+   "test": "admin-2fa-test / agent-login test: with staff_otp_sms=0 no Notify::sms journal entry."
+  },
+  {
+   "id": "G10",
+   "req": "R5",
+   "title": "Logout is a GET without CSRF (forced-logout nuisance) and the CSRF token is not rotated at sign-in",
+   "evidence": "admin/logout.php:10 `Auth::adminLogout();` on any GET; includes/security.php:106-112 csrfToken() reuses the pre-login `$_SESSION[CSRF_TOKEN_NAME]` (session_regenerate_id keeps data, auth.php:412).",
+   "severity": "low",
+   "proposed_change": "In finishAdminSession(): `unset($_SESSION[CSRF_TOKEN_NAME])` before `session_regenerate_id(true)` so a fresh token is minted post-login; make logout.php accept POST+CSRF (header link becomes a tiny form) or at least require `?t=<csrf>`.",
+   "files_to_change": [
+    "includes/auth.php",
+    "admin/logout.php",
+    "admin/_guard.php (logout link)"
+   ],
+   "risk": "Low; counter-mode JS reads the token from /api/csrf.php each load so rotation is harmless.",
+   "test": "tests/admin-security-test.php: token before/after adminLogin differ; GET logout without token → 405/redirect without ending the session."
+  },
+  {
+   "id": "G11",
+   "req": "R5",
+   "title": "Password policy is length-8 only; no common-password/breach check and no 'invalidate other sessions' after a reset",
+   "evidence": "includes/auth.php:732 `if (strlen($password) < 8)`; admin/change-password.php:74; admin/staff.php:62,163; sessions are file-based with no server-side revocation list — Auth::admin() revalidates role/active (auth.php:818-851) but not a password-changed stamp.",
+   "severity": "low",
+   "proposed_change": "Add a shared `Security::checkPassword(string $pw, string $username): ?string` (min 10 for office roles, not equal to username/company name, not in a small top-100 list) used by setStaffCredentials/change-password/staff.php; add `admins.pw_changed_at` (migration) stamped by setStaffCredentials and compared in the 30-s revalidation (session stores `pw_at` at login; mismatch → sign out). Pairs with G1 so a reset logs out a hijacked session.",
+   "files_to_change": [
+    "includes/security.php",
+    "includes/auth.php",
+    "admin/change-password.php",
+    "admin/staff.php",
+    "database/upgrade-2026-10-auth.sql (new)"
+   ],
+   "risk": "Migration needed; keep comparison tolerant when column missing.",
+   "test": "tests/admin-session-revalidate-test.php: change password via setStaffCredentials → an existing session with the old stamp is revoked on next Auth::admin()."
+  }
+ ],
+ "already_satisfied": [
+  "No staff login path mandates a paid SMS OTP: office door is username+password (auth.php:154-263), agent default door is email+username+password with 'no OTP, no WhatsApp' (auth.php:604-668; login.php:114-118); 2FA is opt-in via admin_2fa_ids (auth.php:350-364), local value `[]`; WaLogin behind wa_login_on=0 (walogin.php:63-66).",
+  "Password hashing is bcrypt (Security::hashPassword cost 11, security.php:451-459); unknown-user timing equalised with a dummy password_verify (auth.php:187, 630); OTPs stored bcrypt-hashed, 6 digits, 10-min expiry, 5 attempts (auth.php:1090-1100; otp_codes.max_attempts=5).",
+  "Session hygiene: SHGSESSID cookie Secure/HttpOnly/SameSite=Lax, use_strict_mode, use_only_cookies, 3h lifetime (bootstrap.php:168-184; live header verified: `secure; HttpOnly; SameSite=Lax; Max-Age=10800`), id rotated every 30 min (bootstrap.php:187-192), regenerated on login/logout/password change (auth.php:412, 782; change-password.php:93), idle timeout session_timeout_min=45 (auth.php:799-803), 30-s revalidation signs out deactivated/locked/deleted accounts (auth.php:818-851, tests/admin-session-revalidate-test.php).",
+  "Throttling and lockout: per-IP DB buckets for admin_login / agent_pw_login / agent_otp (5 per 5 min, 15-min block; auth.php:164, 526, 615) and *_verify (10 per 10 min; auth.php:285, 569); per-ACCOUNT failed_logins → locked_until 15 min after 5 (auth.php:204-211, 650-655); OTP issue limits 1/min, 6/h per identifier (auth.php:1075-1079); atomic rate_limits upsert (security.php:282-297); throttled attempts are logged (auth.php:169).",
+  "Every sign-in outcome is recorded with IP/UA/device (includes/loginlog.php:133-178), new-device detection via httpOnly device cookie (loginlog.php:50-83, 188-232), audit rows admin.login / admin.logout / admin.2fa.* / agent.login (auth.php:453-460, 773, 247, 665).",
+  "Server-side role matrix in one place (auth.php:27-111) with superadmin implicit; requireAdmin answers JSON 401/403 for /api/ and a branded 403 page otherwise (auth.php:977-1052); nav is a filter only, pages enforce their own permission (admin_boot list in files); counter agents are scoped by bookingScopeAdminId (auth.php:921-924); peer-superadmin takeover blocked (staff.php:158-162, 187-188); staff management POSTs superadmin-only (staff.php:32-33); shared KV writes need dashboard.view (api/kv.php:61-64, 191).",
+  "Forced password change is enforced for HTML pages and the OTP-door deadlock is solved (auth.php:1004-1008; change-password.php:53-70) with HTTP tests (forced-password-change-test.php, otp-forced-password-test.php).",
+  "CSRF on every state-changing form/endpoint incl. the login form and agent-signup (security.php:127-151; login.php:127; agent-signup.php:40); HSTS, CSP, nosniff, frame-ancestors live (security.php:27-70, verified by curl).",
+  "Email sending is implemented and configurable without Composer: native SMTP client with STARTTLS/SSL + AUTH LOGIN, mail() fallback (notify.php:86-260), settings smtp_host/port/user/pass/secure, mail_from_name, email_enabled seeded (seed.sql:111-119), secrets write-only in Settings UI (settings.php:62-65, 293-312), and a Test-email panel (settings.php:448-462 → Notify::emailTest 2488-2510). Only the SMTP values on live are unverified.",
+  "Twilio webhooks validate X-Twilio-Signature (api/whatsapp-webhook.php:92, api/twilio-status.php:69); CRON scripts need CRON_TOKEN (config.sample.php:142).",
+  "Test coverage already in tests/run-all.php: admin-security-test (118), admin-2fa-test (119), counter-role-test (106), wa-login-test (156), admin-session-revalidate-test (178), role-gates-test (222, HTTP), forced-password-change + otp-forced-password (68-69), agent-login-bulk-cancel (116)."
+ ],
+ "open_questions": [
+  "Live values of admin_2fa_ids, smtp_host/smtp_user, whatsapp_driver, sms_send_otp and wa_login_on could not be verified (no DB/SSH); locally: 2FA list empty, smtp_host empty, whatsapp_driver=twilio with empty twilio_account_sid. If any live superadmin has 2FA on while the WABA is disabled (memory: Twilio 63112), G2 is an active lockout risk.",
+  "Which mailbox will send recovery mail — company_email on local is shreehariglobalpvtltd@gmail.com (Gmail needs an App Password in smtp_pass); should recovery also be allowed for superadmin accounts (today none exists) and should an agent's recovery mail go to the office instead of the agent?",
+  "Does the VPS nginx overwrite X-Forwarded-For / X-Real-IP / CF-Connecting-IP before php-fpm (config not in repo)? Decides whether G6 is exploitable today.",
+  "Owner intent for the counter role: may a company ticket window see the company day-book (accounting.php) and export the full bookings file, or should those be office-only (G4/G5)?",
+  "R2 cross-area: shreehariglobal.network currently serves the full admin (live `/` → 302 `/admin/`, login page 200 with its own host-only SHGSESSID) — two login doors with separate cookies; if .network becomes redirect-only, the admin nav's root-relative links (admin/_guard.php:230, 'stay on whichever host') can be simplified.",
+  "Is a short-lived email/WhatsApp OTP also wanted for the AGENT password door (optional 2FA for agents is currently only reachable through change-password.php on their own session)?"
+ ]
+}

@@ -1,0 +1,331 @@
+{
+ "area": "UI / HOMEPAGE / NAV / BRAND / PWA (R4) — read-only map of worktree 5e63651 (byte-identical to live)",
+ "files": [
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/app.template.html",
+   "role": "2901-line SPA shell: head/icons (l.13-213), inline splash CSS (l.67-139), SVG icon sprite (l.216-245), splash DOM (l.260-424), divine-bar/topbar/credit-ribbon/num-strip (l.433-500), header+nav (l.504-544), mobile menu (l.545-562), home view (l.576-1733), 8 other views, footer (l.2653-2711), bottom nav (l.2725-2731), WA/contact/AI sheets"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/index.php",
+   "role": "front controller: builds SHG_BOOT, SEO head/JSON-LD (logo = /assets/img/logo.png, og = og-shg.png), strips HTML comments at serve time (l.272-280), splices into first </head>"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/css/app.css",
+   "role": "144 KB base: tokens :root l.23-71, 7 day palettes l.74-80, topbar/divine/credit l.122-258, nav/brand l.318-344 (#logoNav display:none!important l.323), hero + hero-fx l.368-514, phone block l.1226-1245, 26 keyframes"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/css/views.css",
+   "role": "328 KB: route-anim 3D scene l.1-80, phone home ordering l.842-870, entry cards l.872-900, perf-pass animation kill list l.3193-3268 (.nav-inner .brand display:none l.3268), pwa sheet l.3434-3447, splash v2 l.3800-3990, 98 keyframes"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/css/premium.css",
+   "role": "36 KB shell pass loaded last: motion tokens §1, header/logo restore §2 (#logoNav display:block!important l.141; .brand img 36px phone / 50px desktop), Devanagari §6, brand band §7, brand palette --brand-* §8 (l.~520-690)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/js/05-router.js",
+   "role": "data-scroll handler + openHomeMore (l.136-150, 735-760), bottom-nav updateBottomNav/click (l.168-205), hamburger (l.372-376), nav .scrolled (l.364-369), initBookMode (l.800-870)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/js/13-admin-routes.js",
+   "role": "Splash controller (l.640-910: ENABLE_INTRO_TRAILER=false, minDuration 0, portalMs 600), data-logo-clone filler (l.2114-2130), sw.js registration (l.2615)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/js/19-premium.js",
+   "role": "sound/haptics engine, phone language pill buildLangMini (l.~230-300, label bug), Sound/Vibration rows appended to #mobileMenu"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/js/17-pwa.js",
+   "role": "SHGInstall install sheet l.48-141 (Android beforeinstallprompt, iOS Safari steps, 25 s/6 s delay, 30-day dismiss), push card l.222-240"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/js/04-i18n.js",
+   "role": "LANG default = 'ne' (l.1215-1230), applyLang (l.1234), pwa* strings en l.383-392 / hi l.781-790 / ne l.1179-1188, nav/bn labels"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/js/15-nav.js",
+   "role": "NOT site navigation: the MapLibre #/nav navigator (SN namespace, temples, routing). Loaded on demand; irrelevant to header/nav IA"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/manifest.webmanifest",
+   "role": "PWA manifest: 4 icons (192 any, 512 any, 512 maskable, icon-shg.svg any), standalone, portrait, 3 shortcuts, no screenshots/display_override/monochrome"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/sw.js",
+   "role": "VERSION shg-v163, ASSET_VER 20260930a, PRECACHE l.47-85 (logo.png, css, js, bus-side.svg, cinzel, ceo-sm.webp, offline.html, offline-desk.html), navigate network-first 3.5 s, push icon icon-192"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/icon-shg.svg",
+   "role": "512 SVG bus-on-navy mark with ॐ — DIFFERENT artwork from logo.png; used as rel=icon svg + manifest icon"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/img",
+   "role": "logo.png 440x321 P-PNG (full logo with lettering), favicon-32.png, icon-192/512/maskable-512, apple-touch-icon 180, og-shg.png 1200x630, bus-shg*.webp/png, bus-side.svg, ceo.jpg/ceo-sm.webp, card-en/ne(-sm).jpg"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/favicon.ico",
+   "role": "16+32 ICO of the full logo (lettering squashed)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/offline.html",
+   "role": "SW fallback page (logo.png 44px, theme-color #1A3A6A, reads shg:bookings)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/offline-desk.html",
+   "role": "counter offline request desk (no logo, theme-color #1A3A6A)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/.htaccess",
+   "role": "Expires 7d css/js, 30d images; sw.js no-store, manifest no-cache, AddType webmanifest (l.83-110)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/tests/pwa-http-test.php",
+   "role": "existing HTTP suite: manifest fields, maskable icon exists, sw precache, offline.html — extend for icon sizes/safe zone/root apple-touch/theme-color"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/tests/asset-version-test.php",
+   "role": "guards every ?v= stamp == sw.js ASSET_VER — any new icon/logo file must carry the stamp"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/routepages.php",
+   "role": "server-rendered /bus pages: only favicon-32 + theme-color #12264E (l.382-383), no manifest/apple-touch"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/admin/_guard.php",
+   "role": "admin head: favicon-32 + apple-touch-icon + theme-color #0C306C (l.194-199), no manifest"
+  }
+ ],
+ "current_behavior": "**Serving.** index.php reads app.template.html, strips HTML comments (index.php:272-280) and injects SEO head + SHG_BOOT before the first `</head>`. Served home = 189,685 B (48.9 KB gz), 2,767 elements; the home view alone is 75 KB / 1,152 elements / 178 inline `style=` / 162 emoji; the splash is 146 elements. Boot payload: 15 deferred scripts = 1,062 KB JS (339 KB gz) + app.css 144 KB + views.css 328 KB + premium.css 36 KB = 509 KB CSS (129 KB gz). Only one webfont (Cinzel, self-hosted, app.template.html:180-185).\n\n**Chrome above the content (measured in the local pane).** Desktop 1366 px: `.divine-bar` 31 + `.topbar` 50 + `.credit-ribbon` 38 + `.num-strip` 59 + `#nav` 77 = **255 px of five stacked strips** before the hero (app.template.html:433-544). Phone 375 px: divine 25 + credit ribbon 31 + nav 55 = **111 px** (topbar/num-strip hidden by premium.css:171-172, views.css:3262-3270; the number pills are moved INTO the nav row and scroll horizontally). Sticky `.nav` (app.css:318) + fixed `.bottom-nav` 85 px (views.css/app.css:1408,1499). Office phone printed 9× and the CEO number 5× in the template.\n\n**Logo.** `#logoNav` = `/assets/img/logo.png` 440×321 palette-PNG (app.template.html:514-516); app.css:323 hides it with `display:none!important`, premium.css:141 re-shows it; height 36 px phone / 50 px desktop (premium.css §2). Measured with PIL: the \"S HARI GLOBAL\" cap-height is 34 px of 321 (10.6 %), so at 36 px it renders ≈3.8 px tall and at 50 px ≈5.3 px (desktop pane: 69×50 px box) — the lettering is never readable in the header. Readable wordmarks exist only as HTML text: hero `<h1 class=\"hero-brand-row\"><img data-logo-clone><span>S HARI GLOBAL PVT LTD</span>` (l.595) and the phone-only `#brandBand .bb-name` (l.638-650, premium.css §7). `[data-logo-clone]` imgs (hero, checkout l.2139, footer l.2658, 16-lazy.js:660) are filled from #logoNav by 13-admin-routes.js:2114-2130. There is no SVG/vector full logo and no horizontal lockup.\n\n**Icons.** Head: favicon-32.png, icon-shg.svg (rel icon svg), manifest, apple-touch-icon 180 (/assets/img/), apple-mobile-web-app-* metas, theme-color #0C306C (l.17, 203-213). manifest.webmanifest icons: icon-192 any, icon-512 any, icon-maskable-512 maskable, icon-shg.svg any. All PNG icons are the FULL logo on white (art spans 84 %×62 % in icon-512, 60 %×44 % in maskable-512, 80 %×58 % in apple-touch); icon-shg.svg is a different bus-on-navy drawing. Live probes: /favicon.ico 200, /assets/img/* 200, **/apple-touch-icon.png 404**, /browserconfig.xml → falls through to index.php (200 HTML). No apple-touch-startup-image, no monochrome icon, no manifest `screenshots`/`display_override`. theme-color drift: #0C306C (app, admin), #1A3A6A (offline*.html), #12264E (routepages.php:382).\n\n**Brand colour sources (three).** app.css:23-71 `--blue:#0054A8 --blue-deep:#0C306C --orange:#F07800 --gold:#FFB703`; app.css:74-80 seven `data-day` palettes (violet, teal, bronze…) picked by the 🎨 palette button + `shg:palette` pre-paint (app.template.html:23-31); premium.css §8 `--brand-navy/royal/saffron/amber/gold` as FIXED hex on hero/strips/QuickBot/footer so the picker only re-tints links/chips/seat map. Dark theme via `data-theme`.\n\n**Nav categories.** Desktop `.nav-links` (l.517-539): Home · Book(scroll #search-anchor) · Maps ▾ [S Hari Map & Live Bus Tracker, About Us] · My Bookings · Timetable(scroll) · Contact(scroll) · Sign in · 🔔 · Book Now. Mobile `#mobileMenu` (l.545-562) 13 links: Home, Book Tickets, 🤖 QuickBot, About Us, Map, My Bookings, Timetable, Become an Agent, Agent/Staff sign-in, Contact, Terms, Sign in, Notifications + Sound/Vibration switches (19-premium.js). `.bottom-nav` (l.2725-2731): Home · Book · My Trips · Navigate · Help — Help scrolls to `#contact` (05-router.js:193-199) which sits inside `#homeMore[hidden]`; verified in the pane: tapping Help on home leaves `homeMore.hidden=true`, scrollY 0. Footer (l.2653-2711): Company / Booking / Registered office lists. Phone language pill shows \"EN\" while `LANG='ne'` on a first visit (19-premium.js `currentLang()` reads `localStorage shg:lang || html.lang` before applyLang sets it; verified).\n\n**Home IA.** DOM order (l.576-1733): #top hero → #brandBand → #entryCards → .wa-ticket-highlight → #quick-ticket → .ra-wrap (#routeAnim) → #nextTripBox → #search-anchor → #homeRouteMap → #heroActions → #homeExtra[hidden: #fareBoard, founder card, #styleHighlight, #quick-actions 12 tiles, .shg-hero] → #trust → .home-more-bar → #homeMore[hidden: #services #story #about #faq #whyUs #facilities #testimonials #pricing #company #timetable #agent-apply #contact #vcard #contactForm]. Phone CSS reorders (views.css:848-870, premium.css §7): brandBand(-1) entryCards(0) quick-ticket(1) search-wrap(2) hero(3) then DOM. Measured phone heights: brandBand 185, entryCards 200, quick-ticket **835**, search card **906**, hero 538, wa-highlight 294, route-anim 204, homeRouteMap **794**, heroActions 308, trust 556, more-bar 68 → page 6,597 px with both accordions closed. Above the fold (812 px, 111 px chrome, 85 px bottom nav): brand band + three doors + the top ~70 px of QuickBot. Desktop (768 px): 255 px chrome + hero 434 px; nothing else above the fold; page 4,997 px.\n\n**Animations.** 133 `@keyframes` (app 26, views 98, premium 2, journey 7), 92 `infinite` declarations, 227 `animation:` and 206 `transition:` declarations, 98 `!important`. Running on the home view: **46 on desktop**, **16 on phone** after the 11 Sep \"perf pass\" kill list (views.css:3205-3215) — ra3Sun/Cloud/Far/Near/Lane/Edge/Drive/Shadow/Bob (route scene, views.css:1-60), qtPulse×2, qtBus, rovFloat/rovPulse (home route map), livePulse, waFabPulse. Splash on every cold visit: logo + CEO photo (ceo.jpg 69 KB eager at 82 px) + two bus images + feature strip; intro trailer DOM (8 scenes, l.350-420) shipped but disabled (`ENABLE_INTRO_TRAILER=false`, 13-admin-routes.js:666).\n\n**PWA.** sw.js precaches app code, logo, bus-side.svg, Cinzel, ceo-sm.webp, offline.html, offline-desk.html; navigate network-first with 3.5 s fallback. Install: Android/desktop Chrome `beforeinstallprompt` held and a bottom sheet shown after 25 s (first visit) / 6 s, only on #/ or #/my, 30-day quiet after dismiss (17-pwa.js:48-141); iOS Safari gets a 3-step Share sheet; other browsers only get toast `pwaNotNow: \"Open this site in Chrome or Safari to install the app\"`. No manual Install entry in any menu/footer (grep SHGInstall: only the push card calls it). CI: manifest JSON parse + i18n-check (checks.yml:43-56); tests/pwa-http-test.php asserts manifest fields + a maskable icon exists.",
+ "gaps": [
+  {
+   "id": "UI-01",
+   "req": "R4",
+   "title": "Company-name lettering in the header logo is 4–5 px tall (unreadable); no horizontal lockup or vector logo",
+   "evidence": "premium.css §2: `.brand img{height:46px}` / phone `.brand img{height:36px}` / desktop `.brand img{height:50px}`; app.template.html:514 `<img id=\"logoNav\" src=\"/assets/img/logo.png\" width=\"440\" height=\"321\">`. PIL: wordmark cap-height 34/321 px → 3.8 px at 36 px, 5.3 px at 50 px (pane measured #logoNav 69×50). Only readable wordmarks are HTML text: hero h1 (l.595, desktop-first) and #brandBand .bb-name (phone only, premium.css §7).",
+   "severity": "high",
+   "proposed_change": "Ship a horizontal lockup: (a) cut a mark-only square from the artwork (globe+arrow+bus, no text) as `assets/img/mark.svg` (or mark-256.png if no vector exists) and (b) render the wordmark as text in the header: `.brand` = `<img mark 40px> + <span class=\"brand-word\">S HARI GLOBAL<small>PVT LTD</small></span>` in Cinzel 800 18–22 px (premium.css §2 already owns .brand; add .brand-word rule; keep #logoNav as the data-logo-clone master but swap its src to the mark). Keep #brandBand on phone but drop the duplicated hero h1 wordmark on phone (see UI-04). Add `?v=` stamps (asset-version-test).",
+   "files_to_change": [
+    "app.template.html (l.512-516 .brand)",
+    "assets/css/premium.css (§2)",
+    "assets/img/mark.svg (new)",
+    "sw.js PRECACHE",
+    "tests/asset-version-test.php"
+   ],
+   "risk": "data-logo-clone consumers (hero, checkout l.2139, footer l.2658, 16-lazy.js:660) inherit whatever #logoNav shows — the ticket/checkout clone must keep the FULL logo (point them at logo.png explicitly).",
+   "test": "extend tests/pwa-http-test.php: GET / contains `.brand-word` text 'S HARI GLOBAL' and the mark asset returns 200 with the current ?v= stamp"
+  },
+  {
+   "id": "UI-02",
+   "req": "R4",
+   "title": "Icon set is three different artworks and the maskable/launcher icons carry illegible lettering",
+   "evidence": "manifest.webmanifest icons: icon-192/512 any (full logo on white), icon-maskable-512 (full logo, art only 60 %×44 % of canvas — lettering ≈20 px cap at 512, ≈2 px at 48 dp), `/icon-shg.svg` purpose any (bus-on-navy + ॐ, different drawing); app.template.html:203-204 favicon-32.png (full logo in 32 px) + icon-shg.svg. favicon.ico = 16/32 of the full logo.",
+   "severity": "high",
+   "proposed_change": "Generate ONE square mark (UI-01 asset) and regenerate from it: favicon.ico (16/32/48), favicon-32.png, icon-192.png, icon-512.png (any, solid #FFFFFF or navy bg), icon-maskable-512.png (artwork inside the central 80 % safe zone, full-bleed bg), icon-monochrome-512.png (purpose monochrome for Android 13 themed icons), apple-touch-icon.png 180 (opaque bg, no transparency). Replace icon-shg.svg with the same mark as SVG (or drop it from manifest). Bump ?v= on all and sw.js ASSET_VER.",
+   "files_to_change": [
+    "assets/img/icon-*.png",
+    "assets/img/apple-touch-icon.png",
+    "assets/img/favicon-32.png",
+    "favicon.ico",
+    "icon-shg.svg",
+    "manifest.webmanifest",
+    "app.template.html:203-210",
+    "sw.js (ASSET_VER)"
+   ],
+   "risk": "Installed PWAs keep the old icon until re-install on Android (icon cached by launcher); push notifications use /assets/img/icon-192.png (sw.js:440-441) — keep the path.",
+   "test": "tests/pwa-http-test.php: for each manifest icon GET → 200, getimagesizefromstring == declared sizes, PNG; maskable: sample corner pixel alpha 255 (no transparency); add a safe-zone check (non-bg pixels bbox within 10–90 %)"
+  },
+  {
+   "id": "UI-03",
+   "req": "R4",
+   "title": "Per-platform icon/head gaps: root apple-touch-icon 404, no iOS startup image, no manifest screenshots/display_override/monochrome, icon tags absent on server-rendered pages, theme-color drift",
+   "evidence": "Live: `GET /apple-touch-icon.png` → 404, `/apple-touch-icon-precomposed.png` → 404; manifest has no `screenshots`, `display_override`, `monochrome`; includes/routepages.php:382-383 only favicon-32 + theme-color #12264E; includes/legal.php:319 `rel=\"icon\" href=\"/favicon.ico\"` only; agent-signup.php:150 stamp ?v=20260827b (stale); offline.html:6/offline-desk.html:7 theme-color #1A3A6A vs #0C306C (app.template.html:17, admin/_guard.php:199).",
+   "severity": "medium",
+   "proposed_change": "(1) New `includes/head-icons.php` echoing the identical icon/manifest/apple/theme-color block; include it from index.php (replace l.203-213 of the template with a placeholder spliced in, or keep template lines and reuse the partial in legal.php, routepages.php, agent-signup.php, track.php, admin/_guard.php). (2) .htaccess: `RewriteRule ^apple-touch-icon(-precomposed)?(-\\d+x\\d+)?\\.png$ /assets/img/apple-touch-icon.png [L]`. (3) manifest: add `screenshots` [2× 1080×1920 form_factor narrow, 1× 1280×800 wide], `display_override:[\"standalone\",\"minimal-ui\"]`, monochrome icon, `theme_color` unchanged. (4) Set every theme-color to #0C306C. (5) Windows: no msapplication tiles needed (Edge/Chrome use the manifest); document that in the install sheet copy (UI-09).",
+   "files_to_change": [
+    "includes/head-icons.php (new)",
+    "index.php",
+    "includes/legal.php",
+    "includes/routepages.php",
+    "agent-signup.php",
+    "track.php",
+    "admin/_guard.php",
+    ".htaccess",
+    "manifest.webmanifest",
+    "offline.html",
+    "offline-desk.html"
+   ],
+   "risk": "Screenshots must be real captures of the current UI (Chrome rejects wrong aspect ratios); the .htaccess rule must stay below the existing deny rules.",
+   "test": "tests/pwa-http-test.php: /apple-touch-icon.png 200 image/png; manifest screenshots each 200 and sizes match; tests/route-pages-test.php: /bus/<slug> contains rel=manifest + apple-touch-icon; grep-style assert that every theme-color in the tree equals one value"
+  },
+  {
+   "id": "UI-04",
+   "req": "R4",
+   "title": "Home page is 6.6k px tall on a phone with seven duplicated booking entry points; a Zepto/Zomato-style single-card layout needs cuts by section id",
+   "evidence": "Pane measurement (375 px): quick-ticket 835 px, search card 906 px, #top hero 538 px (app.css:1218 `.hero-grid{padding:56px 22px 150px}` — 150 px dead bottom padding from the old overlap, views.css:862 now sets search-wrap margin 14px), .wa-ticket-highlight 294 px, .ra-wrap 204 px, #homeRouteMap 794 px (`aria-hidden`, decorative), heroActions 308 px, #trust 556 px; docH 6597. Book CTAs: #entryCards ×3 (l.652-671), .wa-ticket-highlight ×2 (l.673-694), #qtSend/#qtCollapsed (l.728,745), #searchForm + #waBookBtn (l.780-868), #heroActions .ha-book (l.911), nav Book + Book Now (l.518,537), bottom-nav Book (l.2727), plus #quick-actions 12 tiles and .shg-hero CTAs inside #homeExtra.",
+   "severity": "high",
+   "proposed_change": "Concrete IA for #view-home (phone and desktop): keep `#brandBand` (make it the desktop hero too — drop `.brand-wrap{display:none}` in premium.css §7 and delete `#top` hero on both; it duplicates the band); turn `#entryCards` into a 3-tab selector that shows ONE card at a time — tab1 = `#search-anchor` (default), tab2 = `#quick-ticket`, tab3 opens `#waSheet` (initBookMode in 05-router.js:800-870 already toggles bk-regular/bk-quick; add the tab styling + hide the inactive card instead of folding it to #qtCollapsed); delete `.wa-ticket-highlight` (door 3 covers it); move `.ra-wrap` (#routeAnim) and `#homeRouteMap` into `#homeMore`; replace `#heroActions` (4 big cards) with a 1-row horizontal chip strip (My Bookings · Track bus · Timetable · Help) under the card; collapse `#trust` to a single-line strip 'Registered Pvt Ltd · CIN U52291GJ2026PTC174029 · Mehsana' (full badges go into #about); keep `.home-more-bar` + `#homeMore`. Target phone height with accordions closed ≈ 111 + 185 + 60 + ~520 + 60 + 40 + 68 ≈ 1,050 px (one and a half screens).",
+   "files_to_change": [
+    "app.template.html (l.576-1143)",
+    "assets/css/views.css (l.842-900 ordering, l.3762-3780 wa-highlight)",
+    "assets/css/premium.css (§7 .brand-wrap)",
+    "assets/css/app.css (l.368-514 hero, l.1218)",
+    "assets/js/05-router.js (initBookMode, data-scroll targets 'company'/'timetable'/'contact' must still openHomeMore)"
+   ],
+   "risk": "#fromSel/#toSel/#dateInput ids are read by results/checkout — keep them; the data-scroll handler auto-opens #homeMore for targets inside it (05-router.js:146-150) — anything moved into #homeMore keeps working; tests/home-entry-test.php and tests/quick-ticket-test.php assert the three doors and QuickBot ids exist.",
+   "test": "tests/home-entry-test.php (extend): home contains exactly one visible booking card per mode, #top absent, #homeRouteMap inside #homeMore; add a node/jsdom-free size guard in tests/pwa-http-test.php: served home < 140 KB and element count < 2,000"
+  },
+  {
+   "id": "UI-05",
+   "req": "R4",
+   "title": "Five stacked header strips (255 px desktop / 111 px phone) repeat the mantra and phone numbers before any content",
+   "evidence": "app.template.html:433-500: `.divine-bar` (mantra), `.topbar` (mantra again + lang/theme/palette + tel + mailto), `.credit-ribbon` (CEO WhatsApp + office tel), `#numStrip` (up to 8 numbers), then `<header class=\"nav\">`. Pane: desktop tops 0/31/81/119/178, nav ends at 255 px. Office number appears 9× in the template; premium.css:171 already hides .topbar on phones because 'its mantra duplicated the divine bar'.",
+   "severity": "medium",
+   "proposed_change": "Keep ONE 22–24 px `.divine-bar` (owner's mantra) and the `.nav` row only: delete `.topbar` everywhere (lang/theme controls already exist as the phone pill — reuse `buildLangMini()` on desktop too, or put EN/हिं/ने + 🌙 inside the nav row); move `.credit-ribbon` content to the footer `.f-ceo` block (already there) and the WA sheet; render `#numInner` as ONE 'Call office' pill in the nav (the other numbers live in #waSheet .wa-grid). Remove the 🎨 palette button + the 7 data-day palettes (UI-10). Result: ~24 + 60 = 84 px of chrome on both breakpoints.",
+   "files_to_change": [
+    "app.template.html (l.433-500)",
+    "assets/css/app.css (l.122-258, 318-344)",
+    "assets/css/premium.css (§2, §8b)",
+    "assets/js/19-premium.js (buildLangMini guard `max-width:760px`)",
+    "assets/js/05-router.js / 02-config.js (init() moves #numInner into the nav row — keep or simplify)"
+   ],
+   "risk": "The theme button `.theme-btn` and palette pop are wired in 03-accounts.js applyTheme(); the number strip is admin-controlled (Settings → Contact numbers) — keep the setting, change only the rendering.",
+   "test": "tests/pwa-http-test.php: served home has no `.topbar`; a cheap height assert is not possible server-side — add a comment-anchored grep that `.credit-ribbon` is absent from the header region"
+  },
+  {
+   "id": "UI-06",
+   "req": "R4",
+   "title": "Three navigation menus disagree, the bottom-nav Help tab is dead on the home page, and the phone language pill shows the wrong language",
+   "evidence": "Desktop nav l.517-539 (8 items incl. 'Maps ▾' holding 'About Us'); #mobileMenu l.545-562 (13 links incl. 'Become an Agent', 'Agent / Staff sign-in', 'QuickBot'); .bottom-nav l.2725-2731 (Home/Book/My Trips/Navigate/Help); footer l.2660-2683. 05-router.js:193-199: `const target = k === 'book' ? 'search-anchor' : (k === 'help' ? 'contact' : 'top'); ... el.scrollIntoView(...)` — #contact is inside `#homeMore[hidden]`; verified in pane: click Help → homeMore.hidden true, scrollY 0. 19-premium.js currentLang(): `localStorage.getItem('shg:lang') || document.documentElement.lang || 'en'` runs at DOMContentLoaded before applyLang() sets lang='ne' → pill 'EN' while page is Nepali (verified: htmlLang 'ne', pill 'EN').",
+   "severity": "medium",
+   "proposed_change": "One nav model: `const NAV = [{key:'book',label:t('bnBook'),go:'#/'},{key:'trips',…'#/my'},{key:'track',…'#/nav'},{key:'help',…opens #ctSheet (ContactDial) or openHomeMore()+#contact},{key:'about',…openHomeMore()+#about}]` in 05-router.js rendering `.nav-links`, `#mobileMenu` and `.bottom-nav` from it; categories: Book · My Trips · Track · Help · About, plus Sign in; staff links ('Agent / Staff sign-in', 'Become an Agent') stay only in the footer and the mobile menu tail. Fix Help: in the bn-item handler call `window.openHomeMore()` before scrolling when the target is inside #homeMore, or route 'help' to `#ctFab`/`#waSheet`. Fix the pill: in buildLangMini use `(typeof LANG!=='undefined'&&LANG)||…` and re-label on `applyLang` (expose a `shg:lang` event or call label() from applyLang()).",
+   "files_to_change": [
+    "assets/js/05-router.js (l.168-205, 136-150)",
+    "assets/js/19-premium.js (buildLangMini)",
+    "assets/js/04-i18n.js (applyLang tail: dispatch 'shg:langchange')",
+    "app.template.html (l.517-562, 2725-2731)"
+   ],
+   "risk": "updateBottomNav() hash→tab map must stay truthful for the funnel (#/results etc. = Book); tests/i18n-check.js scans data-i18n keys — new labels need en/hi/ne entries.",
+   "test": "tests/i18n-check.js (keys); new tests/nav-model-test.js (node): parse the served home, assert the same label set appears in .nav-links, #mobileMenu and .bottom-nav and that Help's handler references openHomeMore or ctSheet"
+  },
+  {
+   "id": "UI-07",
+   "req": "R4",
+   "title": "Animation bloat: 133 keyframes / 92 infinite loops, 46 running on desktop home and 16 on phone after the 'perf pass'",
+   "evidence": "Counts via grep: app.css 26 @keyframes, views.css 98, premium.css 2, journey.css 7; `infinite` ×92. Pane `document.getAnimations()` running on home: desktop 46 (hd-sheen, creditSpin, hd-gleam, heroRay, heroGlow, heroFloat, heroWm, qtPulse, qtBus, ra3Sun/Cloud/Far/Near/PinFloat/Lane/Edge/Drive/Shadow/Bob, livePulse, rovFloat, rovPulse, ceoRing, waFabPulse); phone 16 (ra3* ×10, qtPulse ×2, qtBus, rov* ×3, livePulse, waFabPulse). The kill list views.css:3205-3215 names `.ra-edge,.ra-wheel` (old classes) and misses the ra3-* scene (views.css:20-60) and rov* (views.css:2811-2851, 3672).",
+   "severity": "medium",
+   "proposed_change": "Policy: at most ONE continuous animation per screen (the live dot). Concretely: delete the #routeAnim 3D scene (l.749-765 + views.css:1-80) and the .rov-3d float/pulse (views.css:2811,2851,3672) or render both as static SVG; drop `.hero-fx`/`.orb`/`.hero-wm` markup (l.580-590) instead of hiding it; remove qtPulse on #heroQtCta/#qtBadge (views.css:3078), waFabPulse (views.css:320), creditSpin (app.css:281), hd-sheen/hd-gleam metallic text (app.css:268-275), ceoRing (views.css:1337); keep splashContentIn, viewIn/flowViewIn, sheetUp, skel, spinners, livePulse. Delete the dead intro trailer DOM (#introScenes l.350-420, .float-hero-wrap l.264-273) and its CSS (views.css:1315-1370 float*/intro*/flag*/chakra*), since ENABLE_INTRO_TRAILER is hard-coded false (13-admin-routes.js:666).",
+   "files_to_change": [
+    "assets/css/views.css",
+    "assets/css/app.css",
+    "app.template.html (l.264-273, 350-420, 580-590, 749-765, 883)",
+    "assets/js/13-admin-routes.js (runScenes dead path)",
+    "assets/js/10-track.js (renderHomeRouteMap)"
+   ],
+   "risk": "prefers-reduced-motion rules reference these classes (harmless when removed); tests/home-entry-test.php may reference #routeAnim — check before deleting.",
+   "test": "new tests/motion-budget-test.js (node): count `infinite` in the served CSS set < 25 and `@keyframes` < 60; manual: pane `document.getAnimations().filter(a=>a.playState==='running').length <= 2` on #/"
+  },
+  {
+   "id": "UI-08",
+   "req": "R4",
+   "title": "Boot bulk: 1.06 MB JS + 509 KB CSS + 190 KB HTML on every open; eager 69 KB CEO JPEG for an 82 px splash avatar; dead splash markup",
+   "evidence": "Byte counts (python): deferred JS 1,062,161 B (338,829 gz), CSS 508,796 B (128,676 gz), served HTML 189,685 B (48,954 gz), 2,767 elements. app.template.html:300 `<img src=\"/assets/img/ceo.jpg\" class=\"splash-ceo-photo\" width=\"720\" height=\"1001\" decoding=\"async\">` (not lazy; ceo-sm.webp 26 KB exists and is used at l.352); ceo.jpg referenced 3× in the home document; views.css `.topbar-logo img,.nav .logo-img` (l.1206) and many `.float-*`/`.intro-*` rules style elements that no longer render; bus-shg.webp (74 KB) and bus-shg-sm.png (257 KB) are not referenced by the home document (other uses not verified).",
+   "severity": "medium",
+   "proposed_change": "(1) Use ceo-sm.webp for the splash and founder card, `loading=\"lazy\"` on footer/founder copies. (2) Remove the splash extras: .float-hero-wrap, #introScenes, #splashPortal, .premium-fleet (two 600 px bus images), .splash-map — keep logo + title + progress (matches the 'fast splash' branch in 13-admin-routes.js:671-676). (3) After UI-04/UI-07 deletions run a dead-CSS pass on views.css (PurgeCSS against the templates + JS string classes) — expect >100 KB raw reduction. (4) Convert logo.png to a 2× WebP + the SVG mark. Do NOT change the 15-script order (19-premium must follow 13-admin-routes, app.template.html:160-166).",
+   "files_to_change": [
+    "app.template.html (splash l.260-424)",
+    "assets/css/views.css (splash v2 l.3800-3990, l.1315-1370)",
+    "assets/js/13-admin-routes.js (Splash object)",
+    "sw.js PRECACHE (ceo-sm.webp already there)"
+   ],
+   "risk": "The splash is hidden by sessionStorage `shg:splashed` and the inline boot script (l.261) — keep that line; tests/pwa-http-test.php checks `17-pwa.js?v=` presence only.",
+   "test": "tests/pwa-http-test.php: add served-home size/element budget; tests/asset-version-test.php already guards stamps"
+  },
+  {
+   "id": "UI-09",
+   "req": "R4",
+   "title": "PWA install is auto-prompt only (no manual Install entry), non-Safari iOS / desktop / in-app browsers get nothing honest, no platform-limitations copy",
+   "evidence": "17-pwa.js:112-139: Android sheet after `visits >= 2 ? 6000 : 25000` ms and only when hash is #/ or #/my; dismiss → 30-day quiet (`DKEY`); iOS only when `isIOSSafari`; `show()` else `say(T('pwaNotNow'))` = 'Open this site in Chrome or Safari to install the app' (04-i18n.js:385). grep SHGInstall across template/js: only the push card (17-pwa.js:239) calls it; #mobileMenu/footer have no Install link. No limitations text for iOS (push only after install on iOS ≥16.4, no vibrate, no beforeinstallprompt), Windows (Edge/Chrome address-bar install; Firefox cannot), Android WebView/WhatsApp in-app browser (cannot install).",
+   "severity": "medium",
+   "proposed_change": "Add `📲 Install app · एप इन्स्टल` to #mobileMenu, the footer Booking list and the desktop nav overflow, calling `SHGInstall.show()`. Extend SHGInstall.show() with a platform switch: android+deferred → prompt; iOS Safari → steps; iOS other browser → 'Open in Safari, then Share → Add to Home Screen'; desktop Chrome/Edge → 'Click the install icon in the address bar (⊕) or ⋮ → Install app'; Firefox/Safari desktop → 'Installing is not supported in this browser; bookmark instead'; in-app browsers (UA contains 'wv', 'FBAN', 'Instagram', 'WhatsApp') → 'Open in Chrome'. Add an honest limitations paragraph per platform (push/offline ticket/haptics) as i18n keys pwaLimIos/pwaLimWin/pwaLimAndroid. Keep the 25 s/6 s auto timing.",
+   "files_to_change": [
+    "assets/js/17-pwa.js (SHGInstall)",
+    "assets/js/04-i18n.js (en/hi/ne keys)",
+    "app.template.html (#mobileMenu l.545-562, footer l.2660-2683)",
+    "assets/css/views.css (.pwa-sheet l.3434-3447)"
+   ],
+   "risk": "tests/i18n-check.js fails on any new data-i18n key missing a language; iOS detection on iPadOS desktop-mode UA is unreliable — treat Mac UA with touch points > 1 as iPad.",
+   "test": "tests/pwa-http-test.php: home contains the Install menu entry; tests/i18n-check.js for the new keys; manual device matrix (Android Chrome, iPhone Safari, iPhone Chrome, Windows Edge, Windows Firefox) recorded in docs/"
+  },
+  {
+   "id": "UI-10",
+   "req": "R4",
+   "title": "Brand colours are defined in three places and a visitor-facing palette picker can repaint the site off-brand",
+   "evidence": "app.css:23-50 `--blue:#0054A8; --blue-deep:#0C306C; --orange:#F07800; --gold:#FFB703`; app.css:74-80 seven `:root[data-day=\"0..6\"]` palettes (teal #1B6B93, violet #5B4FA8, bronze #8B5A3C …); views.css `:root[data-day=\"logo\"]`; premium.css §8 `--brand-navy #0C306C --brand-royal #0054A8 --brand-saffron #F07800 --brand-amber #FFB547` applied as fixed hex because 'this band IS the brand, and must not turn purple'; app.template.html:443 🎨 `.palette-btn` + pre-paint `shg:palette` (l.23-31); theme-color drift (UI-03).",
+   "severity": "low",
+   "proposed_change": "Make premium.css §8 the single source: move `--brand-*` to the top of app.css :root, define `--blue: var(--brand-royal)` etc., delete the seven data-day palettes and the palette button/pop (keep data-theme light/dark), and in the pre-paint script drop the `data-day` stamp. Keep seat-map state colours untouched (they read --orange/--blue — verify the mapped values match).",
+   "files_to_change": [
+    "assets/css/app.css (l.23-80)",
+    "assets/css/views.css (data-day='logo' block, .palette-* l.444-452)",
+    "assets/css/premium.css (§8 header)",
+    "app.template.html (l.23-31, l.443)",
+    "assets/js/03-accounts.js (palette pick in init/applyTheme)"
+   ],
+   "risk": "Users who stored `shg:palette` keep a stale key (harmless once the attribute is ignored); contrast figures in premium.css §8 were measured against the logo palette — unchanged.",
+   "test": "tests/pwa-http-test.php: served CSS contains exactly one `--brand-navy` definition and no `data-day=\"1\"` rule; existing visual checks none"
+  },
+  {
+   "id": "UI-11",
+   "req": "R4",
+   "title": "Hero on phone keeps 150 px of dead bottom padding and duplicates the brand band",
+   "evidence": "app.css:1218 `@media (max-width:1020px){.hero-grid{padding:56px 22px 150px}` (written for the search card overlapping the hero via `.search-wrap{margin-top:-70px}` app.css:1234) but views.css:862 now orders the search card ABOVE the hero with `margin-top:14px`; pane: #top 538 px on phone, placed 4th. Brand band (premium.css §7) already carries name, route, tagline and the same four facilities (bbF1-4 vs heroFeat1-4).",
+   "severity": "low",
+   "proposed_change": "Covered by UI-04 (delete #top on phone, promote #brandBand to both breakpoints). If #top is kept on desktop, set `.hero-grid{padding:40px 22px 48px}` at ≤1020 px and remove `.search-wrap{margin-top:-70px}`.",
+   "files_to_change": [
+    "assets/css/app.css (l.1218, 1234)",
+    "assets/css/views.css (l.859-862)"
+   ],
+   "risk": "None beyond UI-04.",
+   "test": "manual pane measurement; no server-side assert possible"
+  },
+  {
+   "id": "UI-12",
+   "req": "R4",
+   "title": "Icon/PWA assertions in CI are shallow (manifest parses, 'a maskable icon exists')",
+   "evidence": ".github/workflows/checks.yml:43-44 `node -e \"JSON.parse(... manifest.webmanifest)\"`; tests/pwa-http-test.php:128-137 checks name/display/start and that some icon has purpose maskable; nothing checks that icon files exist with the declared pixel sizes, that apple-touch-icon resolves at the root, or that the head tags are identical across index/routepages/legal.",
+   "severity": "low",
+   "proposed_change": "Extend tests/pwa-http-test.php with: every manifest icon + apple-touch-icon fetched → 200, `getimagesizefromstring()` equals declared size, maskable corner alpha opaque; `/apple-touch-icon.png` 200; head icon block of `/`, `/bus`, `/privacy-policy` contains the same `rel=\"manifest\"` and `apple-touch-icon` lines; theme-color identical. Run it in CI (checks.yml already runs the HTTP suites via tests/run-all.php --http — verify it is listed in run-all.php).",
+   "files_to_change": [
+    "tests/pwa-http-test.php",
+    "tests/run-all.php (if not registered)",
+    ".github/workflows/checks.yml"
+   ],
+   "risk": "The CI PHP needs gd for getimagesize on PNG (getimagesize works without gd for PNG headers).",
+   "test": "the suite itself"
+  }
+ ],
+ "already_satisfied": [
+  "Manifest exists and is valid JSON, served as application/manifest+json with no-cache; CI parses it (checks.yml:43-44; .htaccess:101-110); live GET /manifest.webmanifest 200.",
+  "Android icon set present: icon-192.png (192×192), icon-512.png (512×512) purpose any, icon-maskable-512.png (512×512) purpose maskable, all served 200 on live with max-age=604800 and ?v=20260930a stamps guarded by tests/asset-version-test.php.",
+  "iOS: `<link rel=\"apple-touch-icon\" sizes=\"180x180\">` → 180×180 opaque PNG (app.template.html:210, verified with PIL, corner pixel opaque white), apple-mobile-web-app-capable/status-bar-style/title metas (l.211-213), `viewport-fit=cover` and safe-area handling (l.16).",
+  "Favicons: favicon.ico (16+32) and favicon-32.png + SVG fallback linked (l.203-204); both 200 on live.",
+  "Service worker: versioned caches (shg-v163), precache of the whole app bundle, logo, font, offline.html and offline-desk.html; network-first navigate with 3.5 s shell fallback; ticket cache spared across versions; push handlers; no-store headers on sw.js (.htaccess:97-99); stuck-client rescue script (template l.40-64).",
+  "Install sheet exists for Android/desktop Chrome (beforeinstallprompt held, custom sheet, 44 px targets) and iOS Safari (3-step Share sheet), localized en/hi/ne, never on first paint (25 s first visit / 6 s after), never over checkout, 30-day quiet after dismiss, appinstalled handling (17-pwa.js:48-141).",
+  "Brand colour tokens measured from the logo with documented WCAG contrast, loaded last in premium.css §8; dark theme with pre-paint to avoid white flash (template l.18-36).",
+  "Logo is back in the header on both breakpoints (premium.css §2 overrides app.css:323 and views.css:3268) and is reused everywhere via data-logo-clone (13-admin-routes.js:2114-2130); OG share card 1200×630 with full logo + lettering (og-shg.png) wired by index.php:160-200.",
+  "Phone brand band (#brandBand) prints the company name in readable Cinzel 19–24 px with route/tagline/facilities (premium.css §7).",
+  "Responsive breakpoints at 760/520/400 px with a dedicated phone ordering (views.css:848-870), hamburger menu, 5-tab bottom nav with truthful active state through the funnel (05-router.js:168-187), 44 px touch floors, touch-action manipulation (premium.css §1).",
+  "prefers-reduced-motion honoured globally (premium.css §1 1 ms rule; views.css/app.css per-block rules) and a phone kill list for hero particles/orbs/sheens (views.css:3205-3215); content-visibility on long sections (views.css:698).",
+  "Home brochure sections are already collapsed behind #homeMore and extras behind #homeExtra (template l.938, 1143; 05-router.js:735-760) with auto-open for deep links.",
+  "Single self-hosted webfont (Cinzel latin/latin-ext, display:swap, preloaded); body text uses system fonts; Devanagari legibility pass (premium.css §6).",
+  "Offline fallback pages exist and are branded (offline.html with logo + saved tickets; offline-desk.html for counters).",
+  "Serve-time stripping of ~27 KB HTML comments (index.php:272-280); deferred script tags in <head> for early fetch; libraries (QR, jsPDF, MapLibre) lazy-loaded."
+ ],
+ "open_questions": [
+  "Does the owner have the logo as a vector/original (AI/PDF/high-res) so a mark-only icon and a horizontal lockup can be cut cleanly? If not, the mark must be re-traced from logo.png (440×321) or the OG card.",
+  "Must the ॐ divine bar remain the first strip on every screen (it was an explicit owner ask) and must the CEO credit ribbon stay in the header, or may it move to the footer/WA sheet (UI-05)?",
+  "Keep the visitor-facing 🎨 7-day palette picker, or lock the site to the brand palette (UI-10)? The brief's 'brand colours' reads as lock.",
+  "Which three real-device screenshots (2 phone 1080×1920, 1 wide 1280×800) should be captured for the manifest `screenshots` field, and after which redesign step?",
+  "Are assets/img/bus-shg.webp (74 KB) and bus-shg-sm.png (257 KB) used anywhere outside the home document (ticket PNG, admin, WhatsApp)? Not referenced by the served home; could not verify other uses.",
+  "Should the desktop keep a hero at all, or should #brandBand become the hero on every breakpoint (UI-04 proposes the latter)?",
+  "Is tests/pwa-http-test.php registered in tests/run-all.php --http so CI actually runs it? (not verified)"
+ ]
+}

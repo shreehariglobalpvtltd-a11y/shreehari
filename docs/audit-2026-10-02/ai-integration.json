@@ -1,0 +1,329 @@
+{
+ "area": "AI integration (R6): identity, provider ladder, intent routing, tools/confirmation/audit, diagnostics",
+ "files": [
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/api/ai-chat.php",
+   "role": "Web/app/admin chat endpoint: CSRF + per-IP limits, identity via AiTools::whoIsWeb, 503 when no key, 502 when the agent returns null"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/api/ai-proxy.php",
+   "role": "Legacy toolless Anthropic-only relay used by the widget only on a rule-engine miss; dead on live (no Anthropic key, SHG_BOOT.ai=false)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/api/whatsapp-webhook.php",
+   "role": "Twilio-signed webhook; sender number -> WaBot::reply"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/aiagent.php",
+   "role": "The agent loop: handleWeb/handle, provider ladder (cerebras,grok,gemini,openrouter,anthropic), Gemini model ladder, system prompt assembly per role/channel, kv_store memory + turn counter"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/aitools.php",
+   "role": "Identity (whoIs / whoIsWeb), role+switch-filtered tool catalogue, run() gate, every tool, quote staging, ai_agent_calls audit"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/aiturn.php",
+   "role": "Bounded tool loop; WRITE_TOOLS list decides what is reported after a provider failure"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/aiprompt.php",
+   "role": "ai_system_prompt(): live routes/stops/fares/slabs + website STYLE rules (👉 Book CTA); hard-coded pickup fallback line without Rajkot"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/aichat.php",
+   "role": "Toolless WhatsApp fallback brain (gemini-first); prompt rule 4 tells the model to ask for date/seats/boarding and promise the desk will confirm"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/aigovernor.php",
+   "role": "Allow-list + bounds + shadow mode for LEARNING-JOB settings writes; not required by any runtime code (tests only)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/aiverify.php",
+   "role": "Step-up verification gate for staff money tools (wa_ops_stepup_on, default off)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/aihandoff.php",
+   "role": "handoff_to_staff / handoff_status (SUP- tickets), behind wa_ops_handoff_on"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/aiknowledge.php",
+   "role": "AiKb: ai_kb_articles search by role, ai_unanswered_questions logging, behind ai_kb_on"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/wabot.php",
+   "role": "WhatsApp dispatch order: WaLogin -> marketing consent -> voice -> bulk(staff) -> WaBooking(local-first) -> WaFaq -> AiAgent -> AiChat -> TicketBrain draft -> menu"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/wabooking.php",
+   "role": "Deterministic WhatsApp sale conversation; looksLikeRequest/isAboutExistingTicket/isQuestion keyword intent lists"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/ticketbrain.php",
+   "role": "capture(): turns any message with a stop/date/seat word into a brain_drafts row -> 'request received, desk will send your ticket' reply"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/ticketbot.php",
+   "role": "parse()/suggest()/stopCatalogue(): message parser; stop aliases from Boarding::stopsFor + hard-coded alias table"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/wafaq.php",
+   "role": "No-AI everyday answers (fare/time/offers/contact/KB) on WhatsApp, behind wa_faq_on (default off)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/ai/Identity.php",
+   "role": "Dead gen-2 scaffold (bootstrap.php requires 6 missing modules); nothing requires includes/ai/*"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/database/upgrade-2026-09-ai-manager.sql",
+   "role": "Orphan ai_manager_* settings and ai_conversations/ai_messages/ai_provider_state tables no PHP reads"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/js/16-lazy.js",
+   "role": "Chat widget: askAgent -> rule engine INTENTS (substring match) -> ai-proxy -> WhatsApp handoff; silent on agent failure"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/admin/ai-copilot.php",
+   "role": "Full-screen staff/office chat on the same endpoint; shows '⚠️ busy' on 502"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/admin/ai-activity.php",
+   "role": "Reads ai_agent_calls (tool calls only) + WhatsApp sign-ins; no provider-failure view"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/admin/ai-knowledge.php",
+   "role": "KB curation + ai_kb_on toggle"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/index.php",
+   "role": "SHG_BOOT.ai / SHG_BOOT.aiAgent flags (ai_web_agent_on default false here, true in AiAgent::webEnabled)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/tests/ai-turn-test.php",
+   "role": "Offline loop tests (CI direct)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/tests/ai-web-agent-test.php",
+   "role": "Identity/catalogue/report tests; the sale step deliberately uses the WhatsApp ctx (web staging untested)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/tests/wa-agent-test.php",
+   "role": "Quote-then-confirm on WhatsApp (same-turn refused, reuse refused) — phone-keyed only"
+  }
+ ],
+ "current_behavior": "IDENTITY. On the website/app/admin the endpoint never reads identity from the message: api/ai-chat.php:51 `$ctx = AiTools::whoIsWeb();` → includes/aitools.php:237-290. It checks `Auth::admin()` (ADMIN_SESSION_KEY, includes/auth.php:790) first: roles agent/counter → role 'staff' with `scopeAdminId` = their id; manager/superadmin → 'admin'; any other admin role (support, scanner…) keeps customer tools (aitools.php:258-269). Then `Auth::user()` (USER_SESSION_KEY, auth.php:1263) → 'customer' with `phone` from the OTP session; otherwise a guest keyed by a hashed PHP session id (aitools.php:286-287). Admin pages and the SPA share one session cookie (includes/bootstrap.php:169), so admin/ai-copilot.php and the floating widget hit the same endpoint with the same identity. The JS `roleOf()` (assets/js/16-lazy.js:2305) is cosmetic. On WhatsApp the Twilio-signed sender number (api/whatsapp-webhook.php:114-143) is resolved by `AiTools::whoIs` (aitools.php:105-210) against `admins.phone` (or a WaLogin session when wa_login_on). A phone typed in chat is only ever a tool argument for staff (my_tickets/office_customer); ownership is re-checked in `mayRead` (aitools.php:3147-3160).\n\nPROVIDERS. `AiAgent::webEnabled` (includes/aiagent.php:103-108) = ai_web_agent_on AND (anthropic OR gemini key); `enabled()` for WhatsApp (89-95) = wa_agent_on AND any of five keys. `buildLadder` (516-535) with ai_model_ladder='auto' tries cerebras → grok → gemini → openrouter → anthropic (cheap first); `ask()` (470-505) steps to the next brain on any null; Gemini has its own 3.8→3.5-flash ladder with one 503 retry and no 429 retry (701-852). When every brain fails `AiTurn::run` returns null and api/ai-chat.php:71 answers 502 \"busy\"; with no key at all it answers 503 (ai-chat.php:45-49). Live evidence: SHG_BOOT shows `\"ai\":false,\"aiAgent\":true` (no Anthropic key, agent on with another key); a guest probe \"Rajkot bata bus kati baje chha?\" returned HTTP 502, \"mero commission kati bhayo?\" returned a correct polite refusal. Three other brains exist: the toolless `AiChat` (includes/aichat.php:43-74, gemini-first, WhatsApp only), the Anthropic-only api/ai-proxy.php (dead on live), and the rule engine `answerIntent` in 16-lazy.js:2136-2163.\n\nRULE-BASED FALLBACK / \"I WILL BOOK A TICKET\". There is no literal phrase; the collapse comes from four places. (a) WhatsApp with the model unavailable: includes/wabot.php:378-408 calls `TicketBrain::capture`, which makes a draft whenever the parser found seats/date/direction/boarding (ticketbrain.php:936-939) or any word of a broad list ('want','need','jana','milcha','khali'… ticketbrain.php:1066-1074) and replies \"तपाईंको अनुरोध प्राप्त भयो… डेस्कले बस, सिट र भाडा पक्का गरेर तपाईंको टिकट यहीँ छिट्टै पठाउनेछ\" (wabot.php:401-407). (b) `WaBooking::looksLikeRequest` (wabooking.php:1036-1083) runs BEFORE the model (wa_local_first=1, wabot.php:283-288) and opens a sale on any booking word that is not phrased as a question. (c) The toolless prompt rule 4 (aichat.php:155-157): \"tell the passenger what to send (date, how many seats, boarding point) and say the desk confirms it\". (d) The agent's customer briefing when selling is off (aiagent.php:1634-1637): \"use plan_ticket to tell them the bus and the fare, and say our desk will confirm the seat and send the ticket here shortly\", plus the base STYLE rule to end every answer with a 👉 Book line (aiprompt.php:119). On the website the rule engine's 'book' intent (16-lazy.js:1790) is substring-matched (2159) so \"seat number galat cha\" gets \"Booking is easy…\".\n\nINTENT COVERAGE. No classifier exists; the model picks from the role/switch-filtered catalogue (aitools.php:325-703). Present as tools: booking status (find_ticket, my_tickets), quote (plan_ticket — which also STAGES a sale, 971-983), cancel/refund (refund_quote, cancel_ticket), changes (rename_passenger; quote_ticket_fix/fix_ticket for date/phone only; pickup/berth/bus → \"desk\"), commission/wallet (my_wallet, agent_day, my_sales, request_payout; office_agent/office_agents), ops (office_day/alerts, sales_report, occupancy_report, site_visitors, agent_leaderboard; office_confirm/settle_cod/reject/agent_status behind wa_agent_admin_write=0), KB (ai_kb_on=0), handoff/docs/step-up (wa_ops_* all 0). Route enquiry has no tool: it relies on the prompt facts built from routes/route_stops (aiprompt.php:38-61) and on bus_eta. Three further keyword vocabularies route intents before the model on WhatsApp (wabooking.php:1051-1140, ticketbrain.php:1066-1074, wafaq.php) and one in JS — none shared.\n\nTOOLS/CONFIRMATION/AUDIT. Gate order in `AiTools::run` (aitools.php:752-773): catalogue membership (role + switch), AiVerify step-up (off by default), then the tool. Writes: issue_ticket, staff_sell, bulk_issue, cancel_ticket, rename_passenger, fix_ticket, request_payout, office_confirm, office_settle_cod, office_reject, office_agent_status, marketing_*, handoff_to_staff, record_feedback, company_doc_send. Consent enforcement is uneven: fix_ticket needs confirm:true AND a bare yes in the person's message AND a row-locked next-turn stage (1574-1597); payout/settle/reject/agent_status need `saidYes` (2407, 2780, 2828, 2888); issue_ticket/staff_sell/cancel_ticket need only the model's confirm flag plus a next-turn staged quote (1216-1237, 1273-1324, 1384-1391); office_confirm needs only the model flag and role admin — no staging at all (2170-2192). Every call lands in ai_agent_calls (3282-3316) and admin/ai-activity.php lists it. Runtime-verified bug (local DB, reflection probe): on the web channel the quote is staged under `stageKey` ('web-staff-N', 3199/3202) but `takeStage` clears by phone (3257), so the quote survives the sale and a later \"ho\" can press staff_sell/issue_ticket again within 15 minutes; QuickTicket::sell has no repeat guard (customer path only, quickticket.php:893/1066).\n\nDIAGNOSTICS. Provider failures go to Logger ('AI agent HTTP …', channel 'whatsapp', aiagent.php:1156-1161; 'brain unavailable' 501; 'Web agent failed' 185) → logs/<date>.log and app_logs (includes/logger.php:88-101). No admin page reads app_logs (only admin/api/schedule-action.php), admin/health.php and cron/alerts.php have no AI check; ai-activity.php shows tool rows only, so a dead brain looks like \"no activity\". The widget swallows the 502 silently (16-lazy.js:2497-2508); the copilot shows \"⚠️ The assistant is busy\" (ai-copilot.php:238). AiGovernor (includes/aigovernor.php) is an allow-list for learning-job settings writes and is required by nothing but tests/governor-spine-test.php:30. includes/ai/* is a dead gen-2 scaffold and ai_manager_* settings/tables are orphaned. cron/ai-warm.php does not exist (could not verify any AI cron).",
+ "gaps": [
+  {
+   "id": "G1",
+   "req": "R6",
+   "title": "No intent layer: route/fare/change/commission questions collapse into the booking path when the model is down or selling is off",
+   "evidence": "includes/wabot.php:378-408 `TicketBrain::capture(...)` → reply \"तपाईंको अनुरोध प्राप्त भयो… डेस्कले बस, सिट र भाडा पक्का गरेर तपाईंको टिकट यहीँ छिट्टै पठाउनेछ\"; includes/ticketbrain.php:936-939 `$hard = array_intersect($found, ['seats','date','direction','boarding']); if ($hard === [] && !self::looksLikeRequest($text)) return null;` and 1066-1074 word list ('want','need','jana','milcha','khali'…); includes/aichat.php:155-157 \"tell the passenger what to send (date, how many seats, boarding point) and say the desk confirms it\"; includes/aiagent.php:1634-1637 \"use plan_ticket to tell them the bus and the fare, and say our desk will confirm the seat\"; assets/js/16-lazy.js:1790 `{ k: ['book','seat','booking','बुक','सिट','सीट',…]` matched by substring at 2159",
+   "severity": "high",
+   "proposed_change": "Add includes/aiintent.php `AiIntent::classify(string $text, array $ctx): array{intent,confidence,slots}` — one deterministic table that absorbs the four keyword vocabularies (wabooking.php:1051-1140, ticketbrain.php:1066-1074, wafaq.php FARE/TIME/…, 16-lazy.js INTENTS/TIME_WORDS/HUMAN_WORDS) with intents greet, route_enquiry, fare, availability, book_new, booking_status, ticket_change, cancel_refund, payment, commission_wallet, ops_report, ops_action, complaint_handoff, company_info, smalltalk, other. In AiAgent::converse pass `$ctx['intent']` into systemPrompt (one INTENT line + the matching playbook paragraph) and into AiTools::catalogue to restrict the tool list by an intent→tools map (route_enquiry never sees plan_ticket/issue_ticket). In wabot.php:378-408 only call TicketBrain::capture when intent===book_new with confidence ≥ 0.7; otherwise answer route/fare via WaFaq (make wa_faq_on default 1) or the menu. Expose the same table to the widget (SHG_BOOT.intents or /api/ai-intents.php) so answerIntent uses word-boundary matching and the shared list.",
+   "files_to_change": [
+    "includes/aiintent.php (new)",
+    "includes/aiagent.php",
+    "includes/aitools.php",
+    "includes/wabot.php",
+    "includes/wabooking.php",
+    "includes/ticketbrain.php",
+    "includes/wafaq.php",
+    "assets/js/16-lazy.js",
+    "index.php"
+   ],
+   "risk": "Over-strict classifier drops real sales; mitigate by keeping book_new when seats AND (date|direction) are parsed, and by logging intent into ai_agent_calls.args for review.",
+   "test": "New tests/ai-intent-test.php (offline table: 40 real messages → intent); extend tests/wa-local-booking-test.php with 'Rajkot bata bus kati baje chha?' → no draft, timing answer."
+  },
+  {
+   "id": "G2",
+   "req": "R6",
+   "title": "Web-channel staged quote is never consumed — a second 'ho' can resell the same quote (runtime-verified locally)",
+   "evidence": "includes/aitools.php:3253-3260 `takeStage(): $payload = self::peekStage($ctx,$kind); if ($payload !== null) { self::clearStage((string) ($ctx['phone'] ?? '')); }` while stage() writes kkey = `self::stageKey($ctx)` (3199, 3202 = 'web-staff-N' / 'web-guest-…'). Probe: after stage() key=[\"web-staff-5\"]; takeStage #1 → PAYLOAD; keys still [\"web-staff-5\"]; takeStage #2 (next turn) → PAYLOAD AGAIN. QuickTicket::sell (quickticket.php:717) has no repeat guard; only sellCustomer calls assertCustomerNotRepeating (893).",
+   "severity": "high",
+   "proposed_change": "In takeStage() delete by `self::stageKey($ctx)` (make clearStage accept the key, keep the phone overload for forget()). Add a repeat guard in QuickTicket::sell mirroring assertCustomerNotRepeating (same passenger phone + route + date within 60 min, staff can override with an explicit `force` only from the counter UI).",
+   "files_to_change": [
+    "includes/aitools.php",
+    "includes/quickticket.php"
+   ],
+   "risk": "Low; WhatsApp path unchanged because there stageKey === phone.",
+   "test": "Extend tests/ai-web-agent-test.php: run plan_ticket + staff_sell with the WEB ctx (stageKey 'web-staff-N'), then staff_sell again on turn+1 → must be refused ('No quote is open')."
+  },
+  {
+   "id": "G3",
+   "req": "R6",
+   "title": "Consequential writes accept the model's confirm flag without the person's own yes (issue_ticket, staff_sell, cancel_ticket); office_confirm has no staging at all",
+   "evidence": "includes/aitools.php:1216-1217 `if (($args['confirm'] ?? false) !== true) return self::no('The passenger has not confirmed yet…')` (no messageText check); 1384-1391 cancel_ticket likewise; 2170-2192 office_confirm: `if (($args['confirm'] ?? false) !== true) … if role !== 'admin' … BookingService::confirm(...)` — no stage, no saidYes; contrast fix_ticket 1574 `if (($args['confirm'] ?? false) !== true || !self::correctionConfirmed($ctx))`",
+   "severity": "high",
+   "proposed_change": "Apply the fix_ticket standard uniformly: in issueTicket/staffSell/cancelTicket require `self::saidYes($ctx)` (bare yes / ho / हो in the CURRENT message, optionally followed by the PNR) in addition to the staged turn; give office_confirm a preview step (stage kind 'office_confirm' with pnr + amount, confirm only on next turn with saidYes), the same shape officeSettleCod already uses (2750-2797).",
+   "files_to_change": [
+    "includes/aitools.php",
+    "includes/aiagent.php (prompt lines 1624-1637, 1712-1718 to describe the two-step)"
+   ],
+   "risk": "A passenger who writes 'ho, Ram Thapa' (name with the yes) would be refused — widen correctionConfirmed to allow a trailing name when the stage has no pinned name.",
+   "test": "tests/wa-agent-test.php: add 'confirm:true with messageText \"bholi ko ticket?\" is refused'; 'office_confirm without a preview turn is refused'."
+  },
+  {
+   "id": "G4",
+   "req": "R6",
+   "title": "AiTurn::WRITE_TOOLS misses half the mutating tools, so a provider failure after e.g. office_reject or request_payout reports nothing",
+   "evidence": "includes/aiturn.php:17-18 `WRITE_TOOLS = ['issue_ticket','staff_sell','cancel_ticket','rename_passenger','fix_ticket','office_confirm','resend_ticket','marketing_send']`; 84-87 `if ($outcomes === [] || !$wrote) { return null; }` — bulk_issue, request_payout, office_settle_cod, office_reject, office_agent_status, record_feedback, handoff_to_staff, company_doc_send, marketing_draft are absent, yet AiTools::run executes them (aitools.php:794-818).",
+   "severity": "medium",
+   "proposed_change": "Declare `writes => true` in AiTools::spec() for every mutating tool and have AiAgent::converse pass `array_column(array_filter($tools, fn($t)=>!empty($t['writes'])),'name')` into AiTurn::run (new parameter) instead of the constant.",
+   "files_to_change": [
+    "includes/aiturn.php",
+    "includes/aitools.php",
+    "includes/aiagent.php"
+   ],
+   "risk": "None functional; only changes the post-failure report.",
+   "test": "tests/ai-turn-test.php: provider failure after 'office_reject' must return the Results-so-far text, not null."
+  },
+  {
+   "id": "G5",
+   "req": "R6",
+   "title": "No admin-facing diagnostics for AI provider failures; a dead brain shows as 'no activity' and the widget fails silently",
+   "evidence": "includes/aiagent.php:1156-1161 `Logger::error('AI agent HTTP ' . $http, [...], 'whatsapp')`; includes/logger.php:88-101 writes logs/<date>.log + app_logs; grep: only admin/api/schedule-action.php reads app_logs; admin/ai-activity.php:65-81 queries ai_agent_calls only; assets/js/16-lazy.js:2498-2505 `askAgent(q).then(function (answered) { … if (answered) return; const r = answerIntent(q); …` (no notice); live probe returned HTTP 502 on a plain timing question.",
+   "severity": "high",
+   "proposed_change": "(1) In AiAgent::http() and ask() record each provider attempt in a small table (reuse the orphan `ai_provider_state` from database/upgrade-2026-09-ai-manager.sql or add ai_provider_calls: provider, model, http, ms, ok, error_head) via AiTools::logCall-style helper. (2) Add a 'Brain health' panel at the top of admin/ai-activity.php (last 24 h per provider: calls, ok %, last error) and an AI row on admin/health.php. (3) cron/alerts.php: N consecutive failures in 15 min → one office WhatsApp/email. (4) api/ai-chat.php: distinguish 503 (not configured) from 502 (all brains failed, with `data.reason` = 'quota'|'timeout'|'network') and let 16-lazy.js show one line 'AI offline — rule answers' above the rule reply.",
+   "files_to_change": [
+    "includes/aiagent.php",
+    "admin/ai-activity.php",
+    "admin/health.php",
+    "cron/alerts.php",
+    "api/ai-chat.php",
+    "assets/js/16-lazy.js",
+    "database/ (new upgrade sql)"
+   ],
+   "risk": "Low; purely additive logging. Keep key values and request bodies out of the rows.",
+   "test": "Extend tests/ai-web-agent-test.php: with a fake unreachable key, one handleWeb() call writes a provider row with ok=0; ai-activity renders the panel (render-admin harness)."
+  },
+  {
+   "id": "G6",
+   "req": "R6",
+   "title": "AiGovernor is not wired to anything; the real allow-list is scattered across catalogue() ifs and settings switches",
+   "evidence": "grep: `require_once INCLUDE_PATH . '/aigovernor.php'` appears only in tests/governor-spine-test.php:30; includes/aigovernor.php:58-78 TUNABLES are brain_*/ai_bot_*/bot.* keys; tool permissions live in includes/aitools.php:325-703 (`if ($staff && $mayCut)`, `if ($role === 'admin')`, `if ($mayWrite)`…) and AiVerify::actions() (aiverify.php:64-66) is a separate comma-list setting.",
+   "severity": "medium",
+   "proposed_change": "Add `AiGovernor::TOOL_POLICY` = [tool => ['roles'=>[...], 'switch'=>'ai_web_sell|wa_agent_sell|…', 'writes'=>bool, 'consent'=>'none|flag|yes', 'stepup'=>bool, 'intents'=>[...]]] and a `AiGovernor::allowed(string $tool, array $ctx): ?string` (null = ok, else refusal reason) that catalogue() and run() both call; AiVerify::needs() reads the policy's stepup flag. Keep DENY_PATTERNS. This makes aigovernor the single place a reviewer reads to know what the AI may touch.",
+   "files_to_change": [
+    "includes/aigovernor.php",
+    "includes/aitools.php",
+    "includes/aiverify.php"
+   ],
+   "risk": "Refactor touches every tool branch; do it as a pure extraction with the existing wa-agent/ai-web-agent/wa-ops-manager suites as the oracle.",
+   "test": "tests/governor-spine-test.php: TOOL_POLICY covers every name in AiTools::run's match; catalogue($ctx) === names allowed by policy for guest/customer/staff/admin × switches."
+  },
+  {
+   "id": "G7",
+   "req": "R6",
+   "title": "Route enquiries have no read-only tool; plan_ticket both answers and stages a sale",
+   "evidence": "includes/aitools.php:971-983 planTicket() always calls `self::stage($ctx, 'sale', [...])`; catalogue has no timetable/stops/availability tool (325-703); facts only via the prompt (includes/aiprompt.php:38-61) and the hard-coded fallback at aiprompt.php:66.",
+   "severity": "medium",
+   "proposed_change": "Add read-only `route_info` (routes, boarding stops with times from Boarding::stopsFor, drops, next departures, seats left per date via QuickTicket::plan in a no-stage mode) and map intents route_enquiry/availability/fare to it; keep plan_ticket for book_new only. Reuse Boarding::stopsFor / QuickTicket::routes so the answer is the same source the booking screen uses (R3g).",
+   "files_to_change": [
+    "includes/aitools.php",
+    "includes/quickticket.php (plan() flag noStage)",
+    "includes/aiagent.php"
+   ],
+   "risk": "Low.",
+   "test": "tests/ai-web-agent-test.php: guest asks route_info → ok, no wa_stage row written."
+  },
+  {
+   "id": "G8",
+   "req": "R3g",
+   "title": "AI surfaces carry hard-coded location lists beside the live route_stops source (Rajkot missing from them)",
+   "evidence": "includes/aiprompt.php:66 fallback line 'Pickups: Surat 13:00 · Kamrej … Nana Chiloda 23:00' (no Rajkot); includes/aiagent.php:1350-1351 \"our own counters in Mehsana / Ahmedabad / Baroda / Surat\"; includes/aitools.php:398 plan_ticket boarding example 'Surat, Vadodara, Mehsana, S Hari Parking'; includes/ticketbot.php:1494-1510 alias table for 12 codes only (names still come from Boarding::stopsFor at 1513-1538); assets/js/16-lazy.js:2113-2134 SHG_DISTRICTS and the WHERE table; Rajkot appears only as a geocode row at 16-lazy.js:184.",
+   "severity": "medium",
+   "proposed_change": "Build those strings from Boarding::stopsFor()/QuickTicket::routes() (and a 'counters' setting) at prompt time; drop the aiprompt.php:66 fallback in favour of 'routes not configured' wording; move TicketBot $extra aliases into a route_stops.aliases column or a settings JSON keyed by Boarding::townKey so a new stop like Rajkot gets aliases from Admin.",
+   "files_to_change": [
+    "includes/aiprompt.php",
+    "includes/aiagent.php",
+    "includes/aitools.php",
+    "includes/ticketbot.php",
+    "assets/js/16-lazy.js"
+   ],
+   "risk": "Low; prompt text only plus one alias source.",
+   "test": "tests/ai-web-agent-test.php: add a route stop 'Rajkot' in fixtures → ai_system_prompt() contains Rajkot, TicketBot::parse('Rajkot bata 2 seat') boarding resolves."
+  },
+  {
+   "id": "G9",
+   "req": "R2",
+   "title": "Dead gen-2 AI scaffold and orphan settings/tables violate 'one data source, modular code'",
+   "evidence": "includes/ai/bootstrap.php requires Provider/Tools/Conversation/Queue/Assets/Gateway which do not exist (ls: only Identity, Knowledge, Language, Privacy); grep shows no file requires includes/ai/*; settings ai_manager_* (26 keys) and tables ai_conversations, ai_messages, ai_provider_state, ai_action_confirmations, ai_provider_usage, ai_daily_metrics, ai_jobs, ai_generated_assets are referenced only by database/upgrade-2026-09-ai-manager.sql.",
+   "severity": "low",
+   "proposed_change": "Delete includes/ai/* and the ai_manager_* settings rows (keep the ai_kb_* tables AiKb uses); either drop the orphan tables in a new upgrade sql or repurpose ai_provider_state for G5.",
+   "files_to_change": [
+    "includes/ai/ (remove)",
+    "database/ (new cleanup sql)"
+   ],
+   "risk": "None at runtime; confirm no deploy script references them.",
+   "test": "tests/public-files-test.php style check: no require of includes/ai; run-all green."
+  },
+  {
+   "id": "G10",
+   "req": "R6",
+   "title": "Three model/provider settings with different defaults and a boot-flag default mismatch",
+   "evidence": "includes/aiagent.php:105 `Settings::getBool('ai_web_agent_on', true)` vs index.php:75 `Settings::getBool('ai_web_agent_on', false)` vs seed '0' (database/upgrade-2026-09-24-ai-sahayak-pro.sql:31); ai_model default 'claude-opus-5' (aichat.php:321) vs 'claude-sonnet-5' (ai-proxy.php:61, aiagent.php:554 ai_agent_model); AiChat picks gemini-first by ai_provider (aichat.php:58-74) while AiAgent ignores ai_provider and uses ai_model_ladder (516-535).",
+   "severity": "low",
+   "proposed_change": "One `AiConfig` helper (in aiagent.php) exposing webEnabled()/waEnabled()/ladder()/model(provider) with one default each; index.php and ai-copilot.php call it; retire AiChat (G1 makes WaFaq + AiAgent cover its job) or make it use AiAgent::ask().",
+   "files_to_change": [
+    "includes/aiagent.php",
+    "includes/aichat.php",
+    "index.php",
+    "admin/ai-copilot.php",
+    "api/ai-proxy.php"
+   ],
+   "risk": "Low.",
+   "test": "tests/ai-web-agent-test.php: SHG_BOOT.aiAgent === AiAgent::webEnabled() for on/off."
+  },
+  {
+   "id": "G11",
+   "req": "R1",
+   "title": "CI never exercises the web-channel sale staging or the office write gates",
+   "evidence": "tests/ai-web-agent-test.php:236-243 `$agentWa = AiTools::whoIs(WEB_AGENT) + ['channel' => 'whatsapp'];` (comment: 'the sale itself goes through the WhatsApp desk path'); tests/wa-agent-test.php:385 only checks office_confirm is refused while the switch is OFF; no test for AiTurn WRITE_TOOLS completeness.",
+   "severity": "medium",
+   "proposed_change": "Add the G2/G3/G4 cases to the existing suites (they run in .github/workflows/checks.yml:111 via run-all --http) without weakening any existing check.",
+   "files_to_change": [
+    "tests/ai-web-agent-test.php",
+    "tests/wa-agent-test.php",
+    "tests/ai-turn-test.php"
+   ],
+   "risk": "None.",
+   "test": "The new checks themselves."
+  },
+  {
+   "id": "G12",
+   "req": "R6",
+   "title": "'Book this seat' action discards the quote the AI just produced",
+   "evidence": "includes/aiagent.php:252-255 `if (isset($d['seatsLeft'], $d['totalLabel']) && !isset($d['pnr'])) { $add('🎫 Book this seat', '#/'); }` — plan_ticket data has date/direction/pickup/seatCount but the href carries none.",
+   "severity": "low",
+   "proposed_change": "Build the href as `#/?date=…&dir=…&from=…&seats=…` (or the existing search hash the SPA already parses) so the booking screen opens pre-filled (R3c).",
+   "files_to_change": [
+    "includes/aiagent.php",
+    "assets/js/05-router.js (if the hash params are not already read)"
+   ],
+   "risk": "Low.",
+   "test": "tests/ai-web-agent-test.php: plan_ticket outcome → actions[0].href contains the quoted date."
+  }
+ ],
+ "already_satisfied": [
+  "Identity comes from the authenticated session, never the message: api/ai-chat.php:51 + includes/aitools.php:237-290 (admin session → staff/admin, OTP user → customer with phone, else hashed-session guest); tests/ai-web-agent-test.php:190-201 cover all four cases incl. a support-role session getting no office powers.",
+  "WhatsApp identity is the Twilio-signed sender number (api/whatsapp-webhook.php:69-124) resolved against admins.phone with active/unlocked/role checks (aitools.php:160-191); shared or suspended staff numbers get no privileges.",
+  "Role-scoped tool catalogue and a re-checked gate on every call: aitools.php:325-703 (guest: no issue_ticket; agent: own book only via scopeAdminId; admin: whole company) and run():758-764 'not permitted for role' refusal with an audit row.",
+  "Money switches default OFF: ai_web_sell=0, wa_agent_sell=0, wa_agent_admin_write=0 (local DB rows; aitools.php:297-302, 663) so no sale or payment confirmation can happen from chat until the office opts in.",
+  "Quote-then-confirm staging on WhatsApp works and is tested: same-turn sale refused, no-flag refused, next-message 'ho' sells once, reuse refused (tests/wa-agent-test.php:229-252); fix_ticket is the strongest gate (confirm flag + bare yes + row-locked next-turn stage, aitools.php:1574-1597).",
+  "Ownership checks on every booking read/write: mayRead/mayWrite (aitools.php:3147-3166) — customer only their contact_phone, staff only their sold_by_admin_id.",
+  "Every tool call (allowed or refused) is audited in ai_agent_calls with role/channel/tool/args/ok/detail/ms/booking_id (aitools.php:3282-3316) and shown in admin/ai-activity.php; step-up refusals also log (769-772).",
+  "Provider fallback ladder with bounded turn budget and dedupe: five brains (aiagent.php:516-535), Gemini model ladder with 503 retry (701-852), AiTurn deadline/limit/fingerprint so a retry never repeats a write (aiturn.php:20-75), covered by tests/ai-turn-test.php in CI.",
+  "Prompts forbid invention: 'USE A TOOL… never guess a number', 'Read tool results back exactly', offers only from Fare::runningOffers(), empty visiting-card keys omitted (aiagent.php:1207-1258, 1412-1428, 1528-1535); live probe of 'mero commission kati bhayo?' as a guest gave a correct refusal with the office number.",
+  "Keys never reach the browser: all *_api_key rows are is_public=0; index.php:67/75 exposes booleans only; the system prompt is server-owned (ai-chat.php, ai-proxy.php:90-92).",
+  "Rate limiting on both layers: per-IP 30/5 min + 600/day (ai-chat.php:42-43) and per-identity 20/5 min + daily cap (aiagent.php:147-155); WhatsApp 15/60 burst and daily caps (333-344).",
+  "Human handoff, step-up verification, document vault and KB exist as switch-gated modules with tests (wa-ops-manager-test, ai-kb-test, company-docs-test) — the architecture for 'permission-controlled DB tools' is in place, it is the policy table and the consent uniformity that are missing (G3, G6)."
+ ],
+ "open_questions": [
+  "Which provider keys are set on live? SHG_BOOT shows aiAgent:true and ai:false (no Anthropic key); the guest probe got a 502 on the first message, consistent with a free-tier quota/overload — could not verify which brain or why without server logs.",
+  "Is wa_agent_on (the WhatsApp agent) switched on in production? Local DB has it 0; no public evidence either way. If it is off, every WhatsApp message goes WaBooking → AiChat → TicketBrain draft, i.e. the 'I will book a ticket' path in G1 is the live behaviour.",
+  "Which exact wording did the owner see as 'I will book a ticket to everything' — the WhatsApp Nepali draft reply (wabot.php:401-407), the website rule-engine 'Booking is easy…' (16-lazy.js:1791), or the model steering from the selling-off briefing (aiagent.php:1634-1637)? All three exist; the fix in G1 covers all, but the acceptance test should quote the real transcript.",
+  "Should office writes over the WEB chat require step-up (wa_ops_stepup_on, default off) given the panel session already passed a password — or is the staged preview + explicit yes (G3) enough?",
+  "Is the counter list 'Mehsana / Ahmedabad / Baroda / Surat' (aiagent.php:1351) still true, and does Rajkot have a counter — needed to decide whether counters become a setting or derive from route_stops (G8).",
+  "May the orphan ai_manager_* settings and ai_conversations/ai_messages/ai_provider_state tables be dropped, or does the owner intend to finish the gen-2 'AI manager' (includes/ai/*)?",
+  "cron/ai-warm.php named in the brief does not exist in this tree — was it ever deployed, or is it a planned warm-up job for the provider ladder?"
+ ]
+}

@@ -1,0 +1,301 @@
+{
+ "area": "COUNTER and AGENT booking flows (R3b agent-once + retained details, R3d book-another, R3c compact flow), incl. role gating",
+ "files": [
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/js/14-counter.js",
+   "role": "Counter mode overlay on the customer SPA: counter bar, deep-link prefill/autoPick, agent dropdown (moved into payment panel by 41a80d0), one-screen confirm, seat-view quick Name/Mobile line, /book.php payload hook, ticket-screen 'Same bus · next ticket' / 'Sell another'"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/js/07-checkout.js",
+   "role": "Shared checkout: renderCheckout (SHG_QUICK prefill, draft id), validateCheckoutDetails/coSyncContinue (agent mandatory only for staff), coGoStep, submitBooking (referralCode/agentCode, persistAgentCode)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/js/06-results.js",
+   "role": "Results board (data-sel/data-sid cards, autoSkip) and seat view (boardingSel/dropSel defaults, Continue → Flow.legs, customer-only #seatQuick)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/js/05-router.js",
+   "role": "Flow object, search submit handler, populateCitySelects/applyDirection (hidden #fromSel/#toSel the deep link drives), home route"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/js/03-accounts.js",
+   "role": "pendingRefCode / agentSearchCode / persistAgentCode (localStorage shg_agent_code) — written by submitBooking, never read back by counter mode"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/js/08-signin.js",
+   "role": "ensureCustomerSession — guarded so a selling staff tab never signs in as the passenger (line 140)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/js/09-agent.js",
+   "role": "DEAD: customer-side referral-agent dashboard; not in the script bundle locally or on live (app.template.html has no tag; live HTML confirms) — only comments reference it"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/app.template.html",
+   "role": "Search card (hidden #fromSel/#toSel, #pointSel, #sAgentCode late-book field), seat view (#seatQuick, boardingSel/dropSel, #continueBtn), checkout step 1/2 markup incl. #cAgentCode 'required *' input; loads 14-counter.js for everyone (line 153)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/index.php",
+   "role": "Builds SHG_BOOT.staff (canSell, code, maxSeats, maxDiscountPct, panelUrl, commFlat/commDirect/commJoint, agents[]) whenever Auth::admin() exists — ?counter=1 is a URL marker only (no server use)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/api/book.php",
+   "role": "Counter branch: session-detected canSell, counterPayment → $seller{adminId, source agent|counter, paymentMethod, discount, note}; agentCode wins over referralCode; any date for sellers; returns counter:true + adminUrl"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/booking.php",
+   "role": "BookingService::create seller branch (sold_by=staff, typed code kept as $deskAgentCode), post-commit Ticket::issue + AgentWallet::accrue + attributeDeskSale (company_agent_code fallback); legacy counterSale()"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/agentwallet.php",
+   "role": "resolveAgentCodeFromString, agentCodeLabel, isAgentRow, accrue (commission + cash_due; commission_agent_only gate default OFF), reassignSeller (moves commission rows, re-rates, Ticket::reissue), assertMaySell"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/admin/quick-ticket.php",
+   "role": "QuickBot desk: name+mobile → server picks bus/pickup/seat; mandatory #qtAgent select (default = staff's own code); 'Next ticket' keeps chips/agent; boarding+pay remembered in localStorage"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/api/quick-ticket.php",
+   "role": "Staff 'sell' action → QuickTicket::sell($input incl. agentCode, $staff); customer_* doors also accept agentCode"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/quickticket.php",
+   "role": "QuickTicket::sell builds $seller (source from staff row/isCounterAgent) and passes the picked agentCode as referralCode into BookingService::create"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/admin/new-booking.php",
+   "role": "GET redirects to /index.php?counter=1&from&to&date#/ (route from_city/to_city); ?legacy=1 keeps the old 5-step form (BookingService::counterSale, no agent picker, contact_phone 'required')"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/admin/seatmap.php",
+   "role": "Third staff sale surface: one-seat walk-in pane (seatmap_counter_book → BookingService::create, cash only, boarding '', NO agent field) + 'Sell several seats in the app' deep link (&sid=) + assign_agent action (superadmin)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/admin/agent.php",
+   "role": "Agent dashboard: QuickBot card + per-trip 'Sell seats →' deep links (counter=1&from&to&date)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/admin/agent-assign.php",
+   "role": "PR #13 Assign Agents: per-date list, bulk/per-row reassign via AgentWallet::reassignSeller; commissions.view to view, superadmin to change, counter agent refused"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/admin/booking-view.php",
+   "role": "Per-ticket 'Assign / change selling agent' form (superadmin) → reassignSeller"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/admin/_guard.php",
+   "role": "Nav + mobile FAB: '+ New Booking' → /index.php?counter=1#/, QuickBot 'hot', Assign Agents gated commissions.view / superadmin-only for agents"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/auth.php",
+   "role": "ROLE_PERMISSIONS matrix, can(), isSellingStaff(), isCounterAgent(), bookingScopeAdminId(), 403 landing per role"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/countershift.php",
+   "role": "Shift & cash drawer — reads payments.verified_by; not on the sale path (counter_shift_on default off)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/tests/counter-mode-test.php",
+   "role": "Engine coverage incl. 6c desk attribution (picked agent / OTHER / blank / unusable company code)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/tests/counter-mode-http-test.php",
+   "role": "HTTP coverage: agent session sells via /api/book.php with counterPayment, links on agent.php, new-booking redirect (no agentCode posted)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/tests/quick-ticket-test.php",
+   "role": "QuickTicket::sell / sellCustomer coverage (staff sell never passes agentCode)"
+  }
+ ],
+ "current_behavior": "**Surfaces.** Staff sell through FOUR paths: (1) COUNTER MODE = the customer SPA with `SHG_BOOT.staff` present (index.php:93-131 adds it for any admin session; `?counter=1` is only a URL marker, nothing server-side reads it). app.template.html:153 loads 14-counter.js for every visitor; it no-ops without `SHG_BOOT.staff` (14-counter.js:29-31). (2) QUICKBOT admin/quick-ticket.php → api/quick-ticket.php `sell` → QuickTicket::sell (quickticket.php:717-815). (3) SEAT MAP walk-in pane admin/seatmap.php:886-905 → seatmap_counter_book (seatmap.php:51-96). (4) legacy admin/new-booking.php?legacy=1 (BookingService::counterSale). All four end in BookingService::create($request,$seller) except (4). Verified locally (curl as superadmin): `/admin/new-booking.php?route=1&date=2026-10-05` → 302 `index.php?counter=1&from=Ahmedabad&to=Nepalgunj&date=2026-10-05#/`.\n\n**(1) Agent selection today.** index.php:110-127 ships `staff.agents` = active `role='agent'` rows that hold an SHG code (code/name/type/co), sorted by code; `staff.code` = the seller's own code or null (index.php:101). Local payload for superadmin: `code: null, agents:[{SHG-0001 \"Agent One (demo)\"}]`. In decorateCheckout (14-counter.js:380-420, commit 41a80d0) the static `<input id=\"cAgentCode\">` (app.template.html:1985-1997) is replaced ONCE by a `<select>` (options: blank \"Select Agent\", each agent, `OTHER`), moved under the Cash/UPI/eSewa/Bank chips inside `#ctrPanel`, and on later renders is left alone (\"keep the desk's choice across re-renders\", line 394-395) — so the choice survives sale after sale WITHIN the tab. Default = the staff's own code only if they have one (`selected` at line 402); otherwise blank, and validateCheckoutDetails (07-checkout.js:225-230) + coSyncContinue (275-278) refuse the sale until picked. Nothing persists the pick: on reload/new tab the select is rebuilt blank (CTR.pay 'cash' also resets, line 38). submitBooking does call `persistAgentCode(agentCodeInput)` → localStorage `shg_agent_code` (07-checkout.js:1208, 03-accounts.js:89-94), but 14-counter.js never reads it; it only feeds agentSearchCode() for departed-bus searches (and will store the literal \"OTHER\"). hookApi (14-counter.js:570-611) posts `counterPayment, agentCode, discountType/Value, note` on top of submitBooking's payload (api/book.php:110-148 — agentCode wins, seller built from the SESSION). Server (booking.php:178-194): `sold_by_admin_id = staff id`, typed code kept as `$deskAgentCode`; after commit (booking.php:668-680) Ticket::issue → AgentWallet::accrue (commission + cash_due rows for the STAFF, commission_agent_only default OFF, agentwallet.php:1369-1371) → attributeDeskSale (booking.php:708-742) resolves the picked code, else `company_agent_code` (SHG-0001), and reassignSeller moves the commission rows to that agent (cash_due stays with the desk; Ticket::reissue with atSale so REV stays 0). A desk that is itself `role='agent'` skips attribution and keeps its own sale. QuickBot has the same mandatory `#qtAgent` select (quick-ticket.php:439-447, validate 841) → quickticket.php:764,797 passes it as referralCode. Seat-map walk-in has NO agent field (seatmap.php:886-905) → always credited to the company code.\n\n**Passenger details retention.** Seat view gets a staff-only `#ctrQuick` Name/Mobile line (14-counter.js:543-567); a capture-phase click on `#continueBtn` writes `window.SHG_QUICK={name,phone}`; renderCheckout (07-checkout.js:781-791) fills the lead name + `#cPhone` (+gender/age if present — ctrQuick sends none). decorateCheckout blanks `#cPhone/#cEmail/#idNum/#ctrDiscVal/#ctrNote` once per new draft id and then re-puts SHG_QUICK.phone (14-counter.js:255-274); after a sale `forgetPassenger()` clears SHG_QUICK and the quick inputs (604, 116-119) — by design the desk never inherits the previous passenger (owner, 6 Sep). All repeat-customer prefills (PaxMemory, saved contact, CheckoutDraft restore, USER name/phone, country picker) are disabled for staff via isCounterSale() (07-checkout.js:15-17, 94, 103, 118, 512, 725, 753-758, 773, 801); ensureCustomerSession returns early for staff (08-signin.js:140); start() calls setUser(null) (14-counter.js:704). Boarding/drop come from the seat view selects, which are re-filled with the route's defaults on every renderSeats (06-results.js:855-859) — not remembered per desk (QuickBot DOES remember boarding + pay in localStorage: quick-ticket.php:603-604,637,655). On a failed submit the flow returns to step 1 with everything intact (07-checkout.js:1155-1157; 14-counter.js:525-532).\n\n**(2) After a sale.** api/book.php returns `counter:true, adminUrl`; hookApi stores CTR.last {from,to,date,sid,rid} in memory (14-counter.js:595-603) and patches the local record. decorateStatus (627-645) adds: \"🚌 Same bus · next ticket\" (only if CTR.last is set), \"🧾 Sell another\" (href `#/`, resets Flow, keeps the static search inputs but requires tapping Search again), \"Open in panel\", \"Back to panel\". sameBus() (654-678) re-runs the same from/to/date search and autoPick(sid,'',rid) clicks the matching card at once → seat map with fresh occupancy (SeatSrv invalidated at 07-checkout.js:1317). There is no \"same date, choose a different bus\" action, and CTR.last dies on reload. QuickBot \"Next ticket\" (quick-ticket.php:987-992) hides the result and keeps direction/date/boarding/seats/pay/agent chips; name/phone/discount/note are cleared (885-887).\n\n**(3) Clicks / screens.** Deep link (agent.php:1486, seatmap.php:889, new-booking redirect, 14-counter.js:165-204 prefill → auto-submits search; autoPick only when `&sid`/`&seat` given): link → results → card tap (autoSkip to seats only on a fresh search with exactly one bookable card, 06-results.js:256-260) → seat tap(s) or \"How many seats?\" → type name(+phone) → Continue → \"Confirm counter sale\" (ctrConfirm = coGoStep(2)+real submit, 14-counter.js:509-533; T&C auto-accepted, phone optional 8-15 digits, cash chip default, agent select, discount, note all on step 1) → ticket. ≈5 taps, 4 views. From \"+ New Booking\" nav: + direction/town/date/Search ≈8 taps. QuickBot: type name(+mobile) → one Confirm (agent pre-selected only if the staff has a code). Seat map walk-in: route/date → seat menu \"Book walk-in / cash\" (seatmap.php:1181, prefillCounter) → name/gender/phone → Book seat + confirm dialog; one seat, cash only, no boarding, no agent. Prefills: from/to/date/sid/seat from the URL (route endpoint cities, which populateCitySelects puts in #fromSel/#toSel, 05-router.js:431-444); agent = own code; payment = cash; maxSeats 20 (14-counter.js:47-50); boarding/drop = route defaults.\n\n**(4) Gating.** canSell = bookings.edit || schedules.edit || superadmin (index.php:102, api/book.php:29, Auth::isSellingStaff auth.php:897-903) → superadmin, manager, counter, agent sell; accountant/support/scanner/official get the bar in \"view only\" (14-counter.js:66) and a 403 on counterPayment (api/book.php:119-121). admin pages: new-booking/quick-ticket/agent.php/bookings/shift/booking-view `bookings.view`; quick-ticket's Confirm disabled unless isSellingStaff (quick-ticket.php:450); seatmap `schedules.view`, its POST `schedules.edit` (seatmap.php:~144), assign_agent superadmin (183-187); agent-assign.php `commissions.view` + counter agent refused + superadmin to change (agent-assign.php:16-25, 54); booking-view reassign superadmin (786); nav hides Assign Agents from agents (_guard.php:103). Counter agents are data-scoped by bookingScopeAdminId (auth.php:923-926).",
+ "gaps": [
+  {
+   "id": "CA-1",
+   "req": "R3b",
+   "title": "Agent pick is lost on every reload / new tab for staff without their own SHG code",
+   "evidence": "index.php:101 `'code' => AgentWallet::agentCodeLabel($staffId) ?: null` (local superadmin payload: code: null); 14-counter.js:400-405 `'<option value=\"\">— एजेन्ट छान्नुहोस् / Select Agent —</option>' + agents.map(... selected = (STAFF.code && a.code === STAFF.code))`; 14-counter.js:38 `CTR = { pay: 'cash', ... }`; 07-checkout.js:1208 `persistAgentCode(agentCodeInput)` writes localStorage shg_agent_code but 14-counter.js never reads it; quick-ticket.php:445 same default rule for #qtAgent. The counter bar's own '🔄 New version — tap to refresh' (14-counter.js:132-140) forces exactly this reload mid-shift.",
+   "severity": "high",
+   "proposed_change": "In decorateCheckout when building the select (14-counter.js:396-406): preselect from `localStorage['shg_ctr_agent_'+STAFF.id]` (fallback STAFF.code), and write that key in the select's change handler (line 407) — same for CTR.pay. Do the same in quick-ticket.php (#qtAgent, after line 662) using the same key so both desks share one remembered agent. Optionally add `admin_profiles.default_agent_code` editable on staff.php and ship it as `staff.defaultAgent` from index.php so it survives device changes. Stop persistAgentCode from storing 'OTHER' (07-checkout.js:1208: skip when agentCodeInput==='OTHER').",
+   "files_to_change": [
+    "assets/js/14-counter.js",
+    "admin/quick-ticket.php",
+    "assets/js/07-checkout.js",
+    "index.php"
+   ],
+   "risk": "Low — client-side only; server still validates the code and falls back to the company code.",
+   "test": "Extend tests/counter-mode-http-test.php: GET /index.php?counter=1 as an agent and assert `staff.agents` + `staff.code`; add a JS-free check that index.php ships `defaultAgent` if the profile column is added. Browser check of the select default after reload."
+  },
+  {
+   "id": "CA-2",
+   "req": "R3b",
+   "title": "Seat-map walk-in sale and legacy form have no agent picker — silently credited to the company code",
+   "evidence": "admin/seatmap.php:886-905 counter pane fields: seat, pax_name, pax_gender, pax_phone, discount — no agent; seatmap.php:71-96 `seatmap_counter_book` posts no referralCode; booking.php:719-722 `$agentId = ($code !== '' && $code !== 'OTHER') ? ... : null; if ($agentId === null) { $agentId = resolveAgentCodeFromString(Settings::getString('company_agent_code','SHG-0001')); }`; admin/new-booking.php:313-331 legacy form likewise has no agent field and `contact_phone ... required` contradicts its own comment at 115-120.",
+   "severity": "high",
+   "proposed_change": "Either (a) retire the seat-map one-seat pane: make 'Book walk-in / cash' (seatmap.php:1181 prefillCounter) open the existing deep link `/index.php?counter=1&from&to&date&sid&seat=` (autoPick already selects the seat, 14-counter.js:218-242) so every live sale uses the one checkout with the agent select; or (b) add the same `<select name=\"agent_code\">` (built from a shared AgentWallet::pickerList(), see CA-8) to the pane and pass it as `'referralCode' => $post['agent_code']` in seatmap_counter_book. Remove or redirect `?legacy=1` (new-booking.php:32) once (a) is in.",
+   "files_to_change": [
+    "admin/seatmap.php",
+    "admin/new-booking.php",
+    "includes/agentwallet.php"
+   ],
+   "risk": "Medium — the seat-map pane is used by agents on departed buses (TripStatus::counterBookableWithin); the deep link already supports staff any-date, but verify sid handling for extra buses.",
+   "test": "tests/seatmap-test.php or a new tests/seatmap-counter-agent-test.php: POST action=counter with agent_code → sold_by_admin_id = that agent (mirror counter-mode-test.php 6c)."
+  },
+  {
+   "id": "CA-3",
+   "req": "R3d",
+   "title": "No 'same date/route, choose another bus' path after a counter sale; 'Sell another' needs a new Search",
+   "evidence": "14-counter.js:633-634 only two paths: `#ctrSameBus` (shown only `CTR.last ?`) and `#ctrSellAnother` href=\"#/\"; sameBus() 14-counter.js:675-677 `location.hash = '#/results'; ... autoPick(L.sid || 0, '', L.rid || '')` — autoPick clicks the matching card immediately (218-231), so the results board with other buses on that date is never offered; 'Sell another' resets Flow (640) and lands on home where the search form still holds from/to/date but the clerk must tap Search again (05-router.js:1882-1896).",
+   "severity": "medium",
+   "proposed_change": "In decorateStatus add a third button '📅 Same date · choose bus' that calls sameBus(false) where the `false` skips autoPick (leave the results list up); make 'Sell another' re-submit the search form when from/to/date are still set (dispatch 'submit' on #searchForm as prefill() does at 193) instead of stopping on home; show both buttons also on the seat view's summary card for staff (decorateSeats) so the operator can hop bus/seat without going back to the ticket screen.",
+   "files_to_change": [
+    "assets/js/14-counter.js"
+   ],
+   "risk": "Low — reuses existing handlers; autoPick timing already tolerant (40×250ms).",
+   "test": "Manual/browser: sell → 'Same date · choose bus' shows results with ≥2 cards when an extra bus exists (Bus Calendar fixture); add an assertion in counter-mode-http-test that the ticket page HTML contains the ctrActions ids is not possible (client-rendered) — document as manual check."
+  },
+  {
+   "id": "CA-4",
+   "req": "R3d",
+   "title": "'Same bus · next ticket' context lives only in memory — gone after reload or when the ticket is reopened",
+   "evidence": "14-counter.js:38 `CTR = { ..., last: null, ... }`; 597-602 sets `CTR.last` inside the /book.php promise; 633 `(CTR.last ? '<a ... id=\"ctrSameBus\">' : '')`.",
+   "severity": "medium",
+   "proposed_change": "Persist CTR.last to sessionStorage (`shg:ctr:last`) when set and read it back in start(); keep it per tab (sessionStorage) so a second desk tab does not inherit it. Also seed it from the deep-link params in prefill() so a sale that started from agent.php 'Sell seats' has a 'same bus' target even if the first sale fails.",
+   "files_to_change": [
+    "assets/js/14-counter.js"
+   ],
+   "risk": "Low.",
+   "test": "Browser: sell, reload the ticket URL, 'Same bus' button still present and re-enters the departure."
+  },
+  {
+   "id": "CA-5",
+   "req": "R3c",
+   "title": "Counter sale still spans 4 views (home → results → seats → checkout) with ~5 taps; passenger line and confirm are on different screens",
+   "evidence": "14-counter.js:535-567 `#ctrQuick` (name+mobile only) sits on #view-seats and only hands over on `#continueBtn`; 14-counter.js:439-473 oneScreen() collapses checkout step 2 but the confirm button is on #view-checkout; 06-results.js:256-260 autoSkip to the seat map happens only on a fresh search with one card and no `sid`; 14-counter.js:199 autoPick only when `wantSid > 0 || wantSeat !== ''`, so legacy from/to/date links always stop at the results list.",
+   "severity": "medium",
+   "proposed_change": "For staff, extend decorateSeats: add the agent select, payment chips and a '🧾 Confirm counter sale' button to the seat summary card that (1) runs the existing #continueBtn click (so Flow.legs/boarding/drop are built exactly as today), (2) waits for renderCheckout, (3) calls ctrConfirm(). Keep the checkout reachable for edits (ID, age, per-seat names). Also let deep links auto-enter the daily bus when the board has exactly one bookable card (reuse Flow.autoSkip: set it in prefill() before dispatching submit).",
+   "files_to_change": [
+    "assets/js/14-counter.js"
+   ],
+   "risk": "Medium — must not bypass validateCheckoutDetails or the capture-phase submit guard; keep every step through existing handlers.",
+   "test": "Manual browser pass + counter-mode-http-test unchanged (server contract unchanged)."
+  },
+  {
+   "id": "CA-6",
+   "req": "R3b",
+   "title": "Boarding/drop and payment chip are not remembered per desk in counter mode (QuickBot remembers them)",
+   "evidence": "06-results.js:858-859 `fill($('#boardingSel'), r.boarding); fill($('#dropSel'), r.drop);` on every renderSeats; quick-ticket.php:603-604 `st.boarding = localStorage.getItem('shg_qt_boarding')`, 637 `localStorage.setItem('shg_qt_pay', v)`; 14-counter.js has no equivalent; index.php ships no desk location (quick-ticket.php:59-67 reads admin_profiles.counter_code only for the badge).",
+   "severity": "medium",
+   "proposed_change": "Ship `staff.desk = {code,name}` from index.php (same admin_profiles lookup as quick-ticket.php:59-67) and in decorateSeats preselect #boardingSel to the stop whose town matches the desk (reuse localStorage 'shg_qt_boarding' as the shared key so QuickBot and counter mode agree); remember CTR.pay in localStorage with the same 'shg_qt_pay' key.",
+   "files_to_change": [
+    "index.php",
+    "assets/js/14-counter.js"
+   ],
+   "risk": "Low; the server still backfills/validates boarding (BookingService::defaultBoardingStop).",
+   "test": "Browser: pick boarding once, sell, 'Same bus' → boarding preselected. Cross-check with the R3g location audit so the desk code maps to a canonical stop."
+  },
+  {
+   "id": "CA-7",
+   "req": "R3e",
+   "title": "Office-desk sales accrue commission/cash_due for the STAFF seller first, then get reassigned — phantom staff commission when the picked/company code is unusable",
+   "evidence": "booking.php:676-680 `AgentWallet::accrue($booking); if ($sellerSource !== 'agent' && !AgentWallet::isAgentRow((int) $sellerId)) { $booking = self::attributeDeskSale(...); }`; agentwallet.php:1369-1371 `if (Settings::getBool('commission_agent_only', false) && !self::isAgentRow($agentId)) { return; }` (default OFF; local settings show commission_agent_only=0); tests/counter-mode-test.php:223 'no usable company code → the sale stays with the desk' (sold_by = desk, and accrue already minted the desk's commission row); memory note: live commission inflated by staff-seller rows.",
+   "severity": "medium",
+   "proposed_change": "Resolve the final seller BEFORE the insert: in create() seller branch (booking.php:179-194) compute `$creditId = resolvedDeskAgent($deskAgentCode) ?? $sellerId` for non-agent staff and stamp `sold_by_admin_id = $creditId` while keeping `payments.verified_by = $sellerId` and the audit 'sold at desk by #staff, credited to #agent'; then accrue once and drop the post-commit reassign+reissue churn. Keep attributeDeskSale only as the fallback. Decide with the owner whether commission_agent_only should be ON on live (accounting call per the 24 Sep note).",
+   "files_to_change": [
+    "includes/booking.php",
+    "includes/agentwallet.php"
+   ],
+   "risk": "Medium-high — touches the ledger and the ticket's ISSUED BY line; must keep agent_ledger UNIQUE(booking_id,entry_type) semantics and cash_due staying with the desk.",
+   "test": "tests/counter-mode-test.php 6c (assert no commission row for the desk even when the company code is unusable), tests/agent-wallet-test.php, tests/agent-reassign-test.php."
+  },
+  {
+   "id": "CA-8",
+   "req": "R2",
+   "title": "Four copies of the 'active agents with an SHG code' picker list with different sorts",
+   "evidence": "index.php:110-127 (strnatcmp by code), admin/quick-ticket.php:79-95 (same block duplicated), admin/agent-assign.php:39-46 (uasort strnatcmp), admin/booking-view.php:916-925 (`usort ... codeNum <=> codeNum`).",
+   "severity": "low",
+   "proposed_change": "Add `AgentWallet::pickerList(bool $withType=true): array` returning [{id,code,name,type,co}] sorted by numeric code and use it in all four places (and in CA-2's seat-map pane).",
+   "files_to_change": [
+    "includes/agentwallet.php",
+    "index.php",
+    "admin/quick-ticket.php",
+    "admin/agent-assign.php",
+    "admin/booking-view.php"
+   ],
+   "risk": "Low.",
+   "test": "tests/agent-wallet-test.php: pickerList excludes inactive/locked/uncoded agents and is code-sorted."
+  },
+  {
+   "id": "CA-9",
+   "req": "R3b",
+   "title": "Desk quick line captures no gender, so women-only / shared-cabin refusals surface only at checkout",
+   "evidence": "14-counter.js:550-554 `#ctrQuick` has only `#ctrQuickName` and `#ctrQuickPhone`; 564 `window.SHG_QUICK = { name: nm, phone: ph }`; the customer `#seatQuick` with ♀/♂ pills is hidden for staff (06-results.js:1423-1424 `box.hidden = !Flow.seats.length || desk`); renderCheckout already applies `_q.gender` (07-checkout.js:787-788).",
+   "severity": "low",
+   "proposed_change": "Add the two gender pills to #ctrQuick and include `gender` in SHG_QUICK (and the pre-existing seat-view gender warning at 07-checkout.js:851-890 then fires on the checkout immediately). Alternatively un-hide #seatQuick for staff instead of maintaining a second widget.",
+   "files_to_change": [
+    "assets/js/14-counter.js"
+   ],
+   "risk": "Low.",
+   "test": "Manual browser; no server change."
+  },
+  {
+   "id": "CA-10",
+   "req": "R3a",
+   "title": "Customer checkout markup declares the agent code mandatory although only staff are validated on it (cross-area, seen in the shared checkout)",
+   "evidence": "app.template.html:1987-1993 `<label for=\"cAgentCode\">एजेन्ट कोड · Agent Code <small style=\"color:var(--danger,#c00)\">*</small></label><input id=\"cAgentCode\" ... required>` and hint 'एजेन्ट कोड अनिवार्य छ। एजेन्ट नभए \"अन्य / Other\" थिच्नुहोस्'; 07-checkout.js:225-230 enforces it only when `ctrSell`; api/quick-ticket.php:126,171 customer_plan/customer_sell also accept agentCode.",
+   "severity": "low",
+   "proposed_change": "For non-staff sessions hide the agent card or relabel it optional (remove `required` and the red *), keep the optional referral behaviour (api/book.php agentNotice). Owner of R3a should confirm; listed here because the same element becomes the counter dropdown.",
+   "files_to_change": [
+    "app.template.html",
+    "assets/js/07-checkout.js"
+   ],
+   "risk": "Low.",
+   "test": "tests/counter-mode-http-test.php guest booking without agentCode still 200/pending (already asserted at counter-mode-test.php:127)."
+  },
+  {
+   "id": "CA-11",
+   "req": "R3b",
+   "title": "Counter-mode agent selection and QuickBot agentCode have no automated coverage",
+   "evidence": "tests/counter-mode-http-test.php:143 posts `['counterPayment' => 'upi', 'discountType' => 'flat', 'discountValue' => 200, 'note' => ...]` with no agentCode; tests/quick-ticket-test.php:270-323 every `QuickTicket::sell(...)` call omits agentCode; the engine-level 6c test exists (counter-mode-test.php:180-225) but the HTTP/API doors are untested.",
+   "severity": "low",
+   "proposed_change": "Add to counter-mode-http-test: a manager session posting `agentCode` (and `OTHER`) through /api/book.php → sold_by_admin_id = picked agent / company; add to quick-ticket-test: QuickTicket::sell with agentCode by a non-agent staff row.",
+   "files_to_change": [
+    "tests/counter-mode-http-test.php",
+    "tests/quick-ticket-test.php"
+   ],
+   "risk": "None.",
+   "test": "The additions themselves; run via `php tests/run-all.php --http` (CI step at .github/workflows/checks.yml:111)."
+  },
+  {
+   "id": "CA-12",
+   "req": "R2",
+   "title": "Dead customer-side agent dashboard file still in the tree",
+   "evidence": "assets/js/09-agent.js (247 lines) is not referenced by app.template.html (no script tag) and absent from the live bundle list fetched from https://www.shreehariglobal.in/ (01,02,03,04,05,06,07,14,08,10,11,13,17,18,19 only); it reads DB.commissions/payoutRequests local-storage mirrors that no live surface writes.",
+   "severity": "low",
+   "proposed_change": "Delete assets/js/09-agent.js (and verify 12-admin-panel.js likewise) after grepping for `renderAgentGateOrApp`/`openPayoutModal` callers.",
+   "files_to_change": [
+    "assets/js/09-agent.js"
+   ],
+   "risk": "Low — confirm no reference via grep before removal.",
+   "test": "tests/run-all.php bundle/asset checks; curl the SPA and grep for 09-agent."
+  }
+ ],
+ "already_satisfied": [
+  "R3b: the agent is picked ONCE in a dropdown placed under the payment chips and the element is not rebuilt between sales within a tab — 14-counter.js:380-420 ('already the desk dropdown - keep the desk's choice across re-renders', commit 41a80d0); mandatory on the client (07-checkout.js:225-230, 275-278) and on QuickBot (quick-ticket.php:841); options list = active agents with codes, sorted by code, company codes marked 🏢 (index.php:110-127).",
+  "R3b: passenger name/mobile typed on the seat view ride into the checkout (14-counter.js:556-566 → window.SHG_QUICK → 07-checkout.js:781-791; phone re-applied after the per-draft blanking at 14-counter.js:270-273); a failed submit returns to step 1 with all fields intact (07-checkout.js:1155-1157, 14-counter.js:531).",
+  "R3b (owner rule 6 Sep): the desk never inherits the previous passenger — forgetPassenger() after each sale (14-counter.js:116-119, 604), per-draft blanking (255-274), all repeat-customer prefills off for staff (07-checkout.js isCounterSale() at 94,103,118,512,725,753-758,773,801), ensureCustomerSession guarded (08-signin.js:140), setUser(null) on start (14-counter.js:704).",
+  "R3c: checkout collapsed to one screen for staff — #ctrPanel (cash/UPI/eSewa/bank chips, discount, note, agent) sits on step 1, 'Continue to Payment' hidden, cloned 'Confirm counter sale' runs the REAL validator + submit (14-counter.js:439-533); T&C auto-accepted and not a gate for staff (07-checkout.js:220-223), phone optional 8-15 digits (199, 265), 20-seat cap (14-counter.js:47-50, booking.php:116).",
+  "R3d (partial): 'Same bus · next ticket' re-runs the same from/to/date and re-enters the same departure with fresh occupancy (14-counter.js:647-678, autoPick 218-242, SeatSrv.invalidate at 07-checkout.js:1317); QuickBot 'Next ticket' keeps direction/date/boarding/seats/pay/agent and remembers boarding + pay per desk (quick-ticket.php:603-604, 637, 655, 987-992).",
+  "Deep links: new-booking.php → 302 `index.php?counter=1&from&to&date#/` (verified locally), agent.php:1486 'Sell seats →' and seatmap.php:889 'Sell several seats in the app →' carry from/to/date(/sid); prefill() auto-submits the search and `&sid`/`&seat` auto-select the departure and seat (14-counter.js:165-242); covered by tests/counter-mode-http-test.php:124-131.",
+  "Server contract: counter sale detected from the SESSION (api/book.php:28-31, 117-121 → 403 for guests), seller stamped sold_by/source, payment inserted verified by the seller, status confirmed, ticket issued, WhatsApp fan-out, commission accrued and desk sale credited to the picked agent or company code (booking.php:178-194, 600-611, 668-690, 708-742); covered by tests/counter-mode-test.php (6c: picked agent / OTHER / blank / unusable code) and tests/counter-mode-http-test.php:143-158; both in tests/run-all.php (lines 105, 223) which CI runs with --http.",
+  "Role gating: canSell = bookings.edit|schedules.edit|superadmin (index.php:102, api/book.php:29, auth.php:897-903) → superadmin/manager/counter/agent sell; others see 'view only' (14-counter.js:66) and are refused server-side; agent-assign.php commissions.view to view, superadmin to change, counter agent refused (agent-assign.php:16-25,54); seatmap POST needs schedules.edit, assign_agent superadmin (seatmap.php:183-187); booking-view reassign superadmin (786); counter agents data-scoped (auth.php:923-926); 403 pages land per role (auth.php:1028-1034). tests/role-gates-test.php covers quick-ticket + seatmap doors.",
+  "Agent change after sale (R3e): Assign Agents page (PR #13, bulk + per-row) and booking-view/seat-map actions all go through AgentWallet::reassignSeller which moves commission rows, re-rates, leaves cash with the collector, audits and re-renders the ticket (agentwallet.php:1526-1675, Ticket::reissue at 1664); tests/agent-reassign-test.php + counter-mode-test.php:198-207 (REV 0 at sale, REV 1 on later change).",
+  "Counter shift (includes/countershift.php) is off the sale path and reads payments.verified_by — nothing in it can drop booking state."
+ ],
+ "open_questions": [
+  "Does the owner's superadmin login on LIVE hold an SHG agent code? If not (as locally: code null), every reload forces an agent pick (CA-1). Could not verify — needs a staff session on live.",
+  "Which desk surface is primary on live: counter mode or QuickBot? The mobile FAB and dashboard favour QuickBot (_guard.php:366, admin/index.php:212-213). The fix order for R3b/R3d should follow the real usage (ask the owner / check payments.admin_note LIKE 'Quick Ticket%' share).",
+  "Is `commission_agent_only` ON on live, and does `company_agent_code` resolve to an active agent there? Both drive CA-7; local shows 0 / SHG-0001 → 'Agent One (demo)'. Memory notes say live commission is inflated by staff-seller rows — the owner's accounting decision is still pending.",
+  "Should the seat-map one-seat walk-in pane and `new-booking.php?legacy=1` be retired entirely (CA-2 option a), given the owner's 'one booking flow for every role' rule in 14-counter.js:5-10?",
+  "Deep links pass route endpoint cities (from_city/to_city); whether every configured pickup location (R3g, e.g. Rajkot) is reachable through #pointSel/#fromSel after applyDirection is another agent's area — counter mode only sets what populateCitySelects/applyDirection already hold (05-router.js:431-444, 642-658).",
+  "agent-assign.php labels office counter-mode sales as 'COUNTER' (api/book.php:138 source='counter' for any non-agent staff) and only the legacy form writes 'admin'/'OFFICE' (new-booking.php:145) — confirm the intended source taxonomy before relabelling."
+ ]
+}

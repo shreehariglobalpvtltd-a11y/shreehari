@@ -1,0 +1,228 @@
+{
+ "area": "Customer booking flow end to end (R3a, R3c, R3h partly) — home search → results → seats → checkout (details + payment) → ticket status; agent-code requirement; boarding/drop source; persistence",
+ "files": [
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/app.template.html",
+   "role": "All SPA views: #view-home (576, #searchForm 780-877, QuickBot #qtForm 716-728), #view-results (1735), #view-seats (1759, #boardingSel/#dropSel/#seatQuick), #view-checkout (1898; #coStep1 details, #agreeTnc, agent-code card 1985-1997 with `required` + red * + 'अनिवार्य' hint + #cAgentOther, #payCard step 2), #view-status (2153), payment-proof overlay #pvOverlay (2160-2200)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/js/05-router.js",
+   "role": "Flow object (6, in-memory), showView (47), router/hash table (80-131), simple search town picker gujaratTownsFor/populatePointSel/initSimpleSearch (567-680), search submit (1881-1896, sets Flow.autoSkip), SrvCatalog.load → /search.php with agentCode (2053-2075), SeatSrv hold/release → /lock.php (1925-2291), QuickBot customer path (887-1300)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/js/06-results.js",
+   "role": "renderResults + bus cards + autoSkip (75-261), data-sel click → #/seats (299-349), renderSeats: boarding/drop select fill + boardingIdx preselect + Other (837-884), seatQuick name/phone (1421-1447), Continue → legData → #/checkout (1284-1334)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/js/07-checkout.js",
+   "role": "isCounterSale (15), validateCheckoutDetails (160-232; agent gate under if(ctrSell) 226-230), coSyncContinue (243-281), coGoStep + ensureCustomerSession (291-311), CheckoutDraft sessionStorage (413-493), renderCheckout (606-1110; pax rows, prefill chain, Other button 1099-1103), submitBooking (1113-1400; refCode 1192-1208, pre-book /search.php 1245, /book.php 1279-1297, agent toast 1301-1311, /payment.php 1352-1374, → #/ticket 1392)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/js/03-accounts.js",
+   "role": "captureReferralFromURL/pendingRefCode (54-62), agentSearchCode (71-85), persistAgentCode → localStorage shg_agent_code (89-94)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/js/02-config.js",
+   "role": "CONFIG.mainPoints.india hard-coded town list (417-430), seedRoutes() hard-coded boarding/drop strings for r2/r7 (964-1013), alias table (1125-1128), shgApi csrf/post (834-905)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/js/18-journey.js",
+   "role": "Decorative 'bus on the road' strip only on results/seats; no booking logic; no agent-code references"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/js/16-lazy.js",
+   "role": "No agent-code/referral logic; only hit is Rajkot coordinates in a map city table (184) — the sole 'Rajkot' in the repo"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/js/08-signin.js",
+   "role": "ensureCustomerSession (130-156) → /api/otp.php action 'quick' (name+mobile sign-in, no OTP); My Bookings"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/assets/js/14-counter.js",
+   "role": "Staff-only decoration: replaces #cAgentCode input with an agent SELECT (382-398); not loaded for customers' logic but included in bundle"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/api/search.php",
+   "role": "Town→route matching via from_city or route_stops (93-150), agentMode (30-32), boarding/drop list from route_stops + Boarding::isOpen filter + encodeStop + boardingIdx/dropIdx (184-273), result JSON shape (383-390)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/api/book.php",
+   "role": "POST create: referralCode/agentCode optional alias (107-112), seller only from session (117-148), agent notice (177-186)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/api/lock.php",
+   "role": "hold/release/releaseAll seat_locks by Auth::lockToken; 409 with failed seats"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/api/quote.php",
+   "role": "Authoritative price preview (could not verify the SPA calls it)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/api/payment.php",
+   "role": "Payment proof (UTR/screenshot) after booking"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/api/otp.php",
+   "role": "action 'quick' (59-100): name+mobile → Auth::loginUser, no OTP"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/api/quick-ticket.php",
+   "role": "Second customer path: customer_plan/customer_sell (80-205) with optional agentCode (126,171)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/booking.php",
+   "role": "BookingService::create (98-700): validation, referral resolve (164-170), seller override (178-194), gates, boarding/drop + Other + defaultBoardingStop (300-345), transaction + assertAvailable + gender/women rules (367-420), referral_code stored (503), attributeDeskSale 'OTHER' (720)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/seats.php",
+   "role": "lock (1044-1175, INSERT…ON DUPLICATE KEY on seat_locks), assertAvailable with fetchForUpdate on schedules (1256-1360), claim insertIgnore on booking_seats UNIQUE (1363-1399)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/fare.php",
+   "role": "Fare::mainPoints() server copy of the town list (73-80, settings key main_points)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/includes/agentwallet.php",
+   "role": "resolveAgentCodeFromString: SHG-NNNN pattern + active agent, else null (direct sale)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/index.php",
+   "role": "SHG_BOOT; staff block (canSell, agents list) only when Auth::admin() (88-120) — anonymous page has no staff key"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/database/schema.sql",
+   "role": "UNIQUE uq_lock_seat (267) and uq_seat_per_schedule (381)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/tests/e2e-booking-test.php",
+   "role": "HTTP guest booking without referralCode (226-238) — suite to extend"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/tests/double-booking-race-test.php",
+   "role": "Race test for the DB seat firewall (run-all CORE)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/tests/boarding-stop-fix-test.php",
+   "role": "Boarding-stop tests (run-all notes 3/17 fail: hard-codes L1 now women-reserved)"
+  },
+  {
+   "path": "C:/S HARI PRJECT'/public_html/.claude/worktrees/ai-ticketing-multi-user-600cd6/tests/run-all.php",
+   "role": "CORE + HTTP suites; CI runs `php tests/run-all.php --http` (.github/workflows/checks.yml:111)"
+  }
+ ],
+ "current_behavior": "(1) AGENT CODE. The checkout card app.template.html:1986-1996 renders `#cAgentCode` with the HTML `required` attribute, a red `*`, the hint \"एजेन्ट कोड अनिवार्य छ। एजेन्ट नभए \"अन्य / Other\" थिच्नुहोस्।\" and a `#cAgentOther` \"Other (Direct Sale)\" button. The live site serves identical markup (curl https://www.shreehariglobal.in/ lines 1782-1792). Nothing hides it for customers (no CSS hit for agentCodeField; only 14-counter.js:382-398 swaps it for a SELECT in staff sessions). BUT the JS gate is staff-only: 07-checkout.js:226-230 `if (ctrSell) { const agEl = $('#cAgentCode'); const agOk = !agEl || (agEl.value||'').trim().length > 0; … fails.push('एजेन्ट कोड / Agent Code') }` and coSyncContinue 07-checkout.js:276-279 `if (ctrSell2) { … if (acEl && !(acEl.value||'').trim()) ready = false; }`, where ctrSell = `SHG_BOOT.staff.canSell` (07-checkout.js:198) and index.php:88-99 adds `staff` only when `Auth::admin() !== null`. The `required` attribute is inert: #view-checkout (1898-2150) sits in no `<form>` (forms close at 728, 877, 1723, 2792, 2832) and the buttons are type=\"button\". History: b9e8c75 (PR #12) made the check unconditional for everyone and added `required`/Other; 2c7e509 (later the same day) rewrote it as `if (ctrSell)`; the merge ea39cbc kept the staff-only gate plus the customer-facing \"mandatory\" markup. Server: api/book.php:110-112 treats referralCode/agentCode as optional; booking.php:164-166 resolves via AgentWallet::resolveAgentCodeFromString (null → direct sale), stores `referral_code` as typed (booking.php:503). Verified on localhost:8951: referralCode \"\" → 200 pnr SHG-2026-00133, agent:null, DB referral_code NULL; \"OTHER\" → 200, agent:{applied:false}, DB referral_code='OTHER'; \"SHG-9999\" → 200, applied:false. So a direct customer CAN book with no code, but the UI tells them it is mandatory; pressing Other sets value 'OTHER' (07-checkout.js:1099-1103) → submitBooking persists `shg_agent_code='OTHER'` in localStorage (1208, 03-accounts.js:89-94) which rides on every later /search.php call (05-router.js:2063-2064) and shows the toast \"Agent code not recognised — booked as direct sale.\" (1308-1311).\n\n(2) SCREENS / CLICKS. Router 05-router.js:122-124: '#/results' needs Flow.date, '#/seats' needs Flow.route, '#/checkout' needs Flow.legs — else redirect home. Flow is an in-memory const (05-router.js:6). Path: HOME #searchForm (date strip tap, direction pill default \"Going to Nepal\", #pointSel town, \"Search buses\" → 05-router.js:1881-1896 sets Flow.autoSkip) → RESULTS (06-results.js:200-202 \"Select\" button; with one bookable card autoSkip clicks it and `location.replace('#/seats')` 256-261/349, so the results screen is normally skipped) → SEATS (seat tap holds via SeatSrv → /api/lock.php 05-router.js:2240; #seatQuick name/phone/gender appears once a seat is picked, 06-results.js:1421-1433, written to window.SHG_QUICK; #boardingSel/#dropSel pre-selected by server boardingIdx 869-876; Continue 1284-1334) → CHECKOUT step 1 #coStep1 (#cPhone + #cCountry, optional email/ID, Quick Rules, #agreeTnc, pax rows: ONE lead name for the group, age/gender optional, per-seat names opt-in 07-checkout.js:612-690, agent-code card, \"Continue to Payment\" → coGoStep(2) 291-311 which silently signs the customer in via /api/otp.php 'quick' with name+mobile, no OTP, otp.php:59-100) → step 2 #payCard (UPI/eSewa/Link/COD tabs, QR, proof = screenshot upload or UTR, \"Confirm your seat\" → submitBooking: proof required unless COD 1133-1163, client dup confirm, re-POST /search.php to resolve numeric routeId 1245, POST /api/book.php 1279-1297, POST /api/payment.php with proof 1352-1374, hash '#/ticket/PNR' 1392) → STATUS #view-status. Happy-path count: 4 screens (home, seats, checkout×2 panels, ticket) + results when >1 bus; ≈10-12 taps and 2-3 typed fields (name, phone, agent code/Other, UTR). Name+mobile capture points: QuickBot card #qtName/#qtPhone (second path via /api/quick-ticket.php customer_plan/customer_sell), seat view #seatQuick, checkout #paxRows/.pxName + #cPhone; later ones are prefilled from SHG_QUICK (07-checkout.js:782-790), PaxMemory, shg_cust_contact (720-745), USER (749-756). #pvOverlay (template 2186-2194) asks Sender Name + Mobile again on proof resubmission (its trigger not traced).\n\n(3) TERMS: #agreeTnc checkbox inside checkout step 1 (template ~1966) with a link to #/terms; enforced only for non-staff at 07-checkout.js:218-221 and 273; restored by CheckoutDraft.\n\n(4) BOARDING/DROP: api/search.php:184-250 reads route_stops (boarding/drop by sort_order), drops departed pickups (Boarding::isOpen), encodes \"Name · Landmark @ HH:MM [lat,lng]\", computes boardingIdx/dropIdx by Boarding::townKey (252-273). Client fills selects from the SrvCatalog-absorbed route (06-results.js:844-859) but falls back to the hard-coded seedRoutes arrays (02-config.js:977-1010; 06-results.js:239-240, 328-329). The home town picker is NOT from the server: gujaratTownsFor returns CONFIG.mainPoints.india verbatim (05-router.js:572-575; 02-config.js:427), a hard-coded JS list duplicated server-side in Fare::mainPoints (fare.php:75-80). Local search JSON (date +2d): results[0] = {routeId:2, routeCode:'r2', scheduleId:75, slot, extraBus, from,to, busName, busNumber, coachType, depTime, arrTime, duration, dayOffset, fare:2799, fareOverride, amenities[], seatsLeft, totalSeats, boarding[10 strings], drop[1], boardingIdx:0, dropIdx:0, status, delayMinutes, state, date}; wrapper {date, requestedDate, nextAvailable, nextAvailableStop, from, to, count}. Live boarding list for r2: Surat, Kamrej, Ankleshwar, Bharuch, Vadodara, Anand, Nadiad, Emli Bhupal, S Hari Parking Nana Chiloda — no Rajkot; live from=Rajkot → count 0; 'Rajkot' exists in the repo only as map coordinates (16-lazy.js:184).\n\n(5) PERSISTENCE: Flow (route/date/seats/legs/coStep) is memory-only → any reload lands on home. CheckoutDraft (07-checkout.js:413-493) saves pax names/age/gender, phone, email, idType/idNum, tnc to sessionStorage keyed shg:codraft:route:date:seats, restored in renderCheckout (801) — but keyFor needs Flow.legs[0], so it never survives a reload; it does not save agent code, payment method, UTR, screenshot (Flow.shotThumb) or boarding/drop. Seat holds live server-side 30 min (config.local.php:65, seat_hold_minutes) keyed by the session lock token.\n\n(R3h) Hold: Seats::lock INSERT…ON DUPLICATE KEY on UNIQUE uq_lock_seat (seats.php:1132-1139, schema.sql:267). Create: Database::transaction + fetchForUpdate on the schedules row (seats.php:1271) + assertAvailable + claim insertIgnore on UNIQUE uq_seat_per_schedule with collision throw (seats.php:1366-1385, schema.sql:381); gender/women-only rules in the same transaction (booking.php:383-420). Server total is authoritative (apiResult.total used 07-checkout.js:1325).",
+ "gaps": [
+  {
+   "id": "G1",
+   "req": "R3a",
+   "title": "Customer checkout presents Agent Code as mandatory (red *, `required`, 'अनिवार्य' hint, Other button) although neither JS nor server enforces it for customers; 'Other' pollutes data and shows a confusing toast",
+   "evidence": "app.template.html:1987-1994 `<label for=\"cAgentCode\">एजेन्ट कोड · Agent Code <small style=\"color:var(--danger,#c00)\">*</small></label> <input id=\"cAgentCode\" … required>` + hint `एजेन्ट कोड अनिवार्य छ। एजेन्ट नभए \"अन्य / Other\" थिच्नुहोस्।`; 07-checkout.js:226-230 gate only `if (ctrSell)`; 07-checkout.js:1099-1103 `ac.value = 'OTHER'`; 1208 `persistAgentCode(agentCodeInput)`; 1308-1311 toast 'Agent code not recognised — booked as direct sale.'; local POST referralCode 'OTHER' → bookings.referral_code='OTHER'. Live index identical (lines 1782-1792).",
+   "severity": "high",
+   "proposed_change": "app.template.html: drop `required`, the red `*` and the mandatory hint; relabel '(optional / ऐच्छिक)' and give the card `hidden` by default, shown by 14-counter.js only for canSell sessions (it already rebuilds the field there). 07-checkout.js renderCheckout: make #cAgentOther clear the value ('') instead of 'OTHER' (or remove the button for customers); in submitBooking only call persistAgentCode when apiResult.agent.applied === true, and skip the 'not recognised' toast when the typed value is '' or 'OTHER'. api/book.php:110-112 / booking.php:164: normalise 'OTHER' to '' before storing referral_code so customer rows stay NULL.",
+   "files_to_change": [
+    "app.template.html",
+    "assets/js/07-checkout.js",
+    "api/book.php",
+    "includes/booking.php"
+   ],
+   "risk": "Low. Staff path unchanged (14-counter.js replaces the field and 07-checkout.js keeps the ctrSell gate). Counter desk 'OTHER' semantics live in booking.php:720 attributeDeskSale and only apply when $seller !== null.",
+   "test": "tests/e2e-booking-test.php: add checks that a guest book.php with referralCode '' and 'OTHER' both succeed with data.agent null/applied=false and bookings.referral_code IS NULL; tests/home-entry-test.php (or a new checkout-markup test): assert the served index has no `required` on #cAgentCode and the label contains 'optional'."
+  },
+  {
+   "id": "G2",
+   "req": "R3g",
+   "title": "Rajkot absent from every location list; the customer town picker and the server stop list are separate hard-coded copies, so a town can be in one and not the other",
+   "evidence": "02-config.js:427 `india: ['Surat','Kamrej','Ankleshwar','Bharuch','Vadodara','Anand','Nadiad','Emli Bhupal','S Hari Parking, Nana Chiloda']`; fare.php:75-80 same list as PHP default for setting main_points; 05-router.js:572-575 `const canonical = ((CONFIG.mainPoints||{}).india||[]).filter(Boolean); if (canonical.length) return canonical;` (picker never consults route_stops); 02-config.js:977-1010 seedRoutes hard-coded boarding strings used as fallback at 06-results.js:239-240/328-329; search.php:114-150 matches a town only via routes.from_city or route_stops rows; live GET /api/search.php?from=Rajkot&to=Rupaidiha → count 0; local route_stops for r2 has 10 boarding rows, none Rajkot; settings counter_locations and quick_ticket_customer_boarding are further independent lists; 02-config.js:1125-1128 alias table is yet another.",
+   "severity": "high",
+   "proposed_change": "Make route_stops (admin-editable) the single source: in index.php boot (or api/config.php) emit `SHG_BOOT.locations = {india:[…], nepal:[…]}` derived from route_stops of active routes (boarding for toNepal routes, drop for return routes, ordered by sort_order) with main_points as override only; change gujaratTownsFor (05-router.js:567) to read SHG_BOOT.locations first; delete the seedRoutes boarding/drop fallback in 06-results.js (use server lists only, show an error if empty). Data: add Rajkot (time, landmark, lat/lng) as route_stops rows for r2 (boarding) and r7 (drop) via Admin → Routes; verify live DB names (they differ from local fixtures).",
+   "files_to_change": [
+    "index.php",
+    "assets/js/05-router.js",
+    "assets/js/02-config.js",
+    "assets/js/06-results.js",
+    "includes/fare.php",
+    "api/search.php"
+   ],
+   "risk": "Medium: Fare::isNepalPoint and direction pricing read mainPoints.nepal — keep 'nepal' list intact; counter/agent/AI flows (other areas) also read these lists and must switch to the same boot payload in the same pass.",
+   "test": "New tests/locations-consistency-test.php (CORE): for every town the boot payload advertises, assert search.php returns ≥1 result for a future date and the town appears in results[].boarding/drop; extend tests/boarding-stop-fix-test.php (fix its L1 hard-code noted in run-all.php:204 first)."
+  },
+  {
+   "id": "G3",
+   "req": "R3c",
+   "title": "Booking state (Flow) is memory-only: a reload, app switch or pull-to-refresh on seats/checkout drops the passenger back to the home page and CheckoutDraft cannot restore",
+   "evidence": "05-router.js:6 `const Flow = {` (no persistence); 05-router.js:122-124 `else if (h === '#/checkout') { if (!Flow.legs.length) { location.hash = '#/'; return; } …}`; 07-checkout.js:414-420 `keyFor() { var out = Flow.legs && Flow.legs[0]; if (!out) return ''; …}` so restore() is keyed on state that no longer exists after reload; CheckoutDraft.save omits agent code, payment method, UTR, Flow.shotThumb, boarding/drop (427-445).",
+   "severity": "medium",
+   "proposed_change": "Persist a minimal Flow snapshot ({from,to,date,routeId,scheduleId,seats,legs,bookingType,coStep}) to sessionStorage on every mutation (search submit, seat pick, Continue, coGoStep) and rehydrate before router() runs on boot; on '#/checkout' with a rehydrated Flow re-issue the seat hold (SeatSrv already batches holds) and let CheckoutDraft restore; include payment method + UTR in the draft (not the screenshot).",
+   "files_to_change": [
+    "assets/js/05-router.js",
+    "assets/js/06-results.js",
+    "assets/js/07-checkout.js"
+   ],
+   "risk": "Low-medium: stale snapshots must be invalidated by date/route and by the 30-min hold window; counter sessions must not rehydrate a customer's snapshot (isCounterSale guard as in 07-checkout.js:801).",
+   "test": "Browser-level check via tests/http-router.php dev server + a new JS test (pattern: tests/offline-ticket-test.js) that seeds sessionStorage and asserts router lands on #/checkout; e2e-booking-test.php unchanged."
+  },
+  {
+   "id": "G4",
+   "req": "R3b",
+   "title": "Passenger name and mobile can be asked on up to three screens (QuickBot card, seat view #seatQuick, checkout) and again in the proof-resubmission overlay",
+   "evidence": "app.template.html:721-724 `#qtName`/`#qtPhone` (required); 1813-1821 `#seatQuick` with `#sqName`/`#sqPhone` shown once a seat is picked (06-results.js:1421-1433); 1916-1928 `#cPhone` and pax rows `.pxName` (07-checkout.js:620-626); 2186-2194 `#pvSender`/`#pvMobile` in #pvOverlay. Prefill chain exists (07-checkout.js:782-790, 720-756) but each box is a separate entry point.",
+   "severity": "medium",
+   "proposed_change": "Keep one capture point for customers: either make #seatQuick the only name/phone entry and render checkout step 1 with those fields read-only + 'edit' link, or drop #seatQuick and keep checkout. Remove name/mobile from #pvOverlay (the PNR already identifies the booking; payment.php needs only utr/screenshot/payerName).",
+   "files_to_change": [
+    "app.template.html",
+    "assets/js/06-results.js",
+    "assets/js/07-checkout.js"
+   ],
+   "risk": "Low; SHG_QUICK hand-off already carries the values. Rebook/return flows (rebookFrom 07-checkout.js:562-604) set SHG_QUICK and keep working.",
+   "test": "tests/e2e-booking-test.php unchanged (API); add a markup assertion in tests/home-entry-test.php that only one customer-facing phone input is visible per view."
+  },
+  {
+   "id": "G5",
+   "req": "R3c",
+   "title": "Every booking submit re-calls /api/search.php just to translate the client route code to the numeric routeId the results snapshot already holds",
+   "evidence": "07-checkout.js:1242-1252 `const searchRes = await shgApi.post('/search.php', …); const match = … find(rr => rr.routeCode === out.routeId && !rr.extraBus); realRouteId = match.routeId;` while search.php results already carry `routeId:2` and SrvCatalog absorbs them (05-router.js:2064-2075).",
+   "severity": "low",
+   "proposed_change": "Store `routeIdSrv: match.routeId` in legData at Continue (06-results.js:1309-1314, from SrvCatalog.snap(...).byCode[r.id]) and use it in submitBooking; keep the re-search only as a fallback when the field is missing. Saves one request + one DB round per booking (also R7).",
+   "files_to_change": [
+    "assets/js/06-results.js",
+    "assets/js/07-checkout.js"
+   ],
+   "risk": "Low: book.php/BookingService still validate route, schedule and date server-side.",
+   "test": "tests/e2e-booking-test.php (HTTP) continues to cover book.php; manual network tab check for one fewer /search.php call."
+  },
+  {
+   "id": "G6",
+   "req": "R3a",
+   "title": "'Other' leaves a persistent agent-code marker that rides on every subsequent search for that browser",
+   "evidence": "03-accounts.js:71-75 `var stored = (localStorage.getItem('shg_agent_code')||'')…; if (stored) return stored;` and 05-router.js:2063-2064 `const _ac = agentSearchCode(); shgApi.post('/search.php', _ac ? {…, agentCode:_ac} : {…})`; set by 07-checkout.js:1208 for any typed/pressed value including 'OTHER'.",
+   "severity": "low",
+   "proposed_change": "Fold into G1: persist only when the server confirmed `agent.applied`; clear shg_agent_code when applied === false.",
+   "files_to_change": [
+    "assets/js/07-checkout.js",
+    "assets/js/03-accounts.js"
+   ],
+   "risk": "None for customers; agents who typed a valid code keep the late-booking convenience.",
+   "test": "Covered by G1's e2e additions (server side); JS behaviour is a manual check."
+  }
+ ],
+ "already_satisfied": [
+  "Server never requires an agent code for a customer: api/book.php:110-112 treats agentCode/referralCode as optional; booking.php:164-170 resolves or nulls it; verified by three local bookings (none/OTHER/unknown) all returning 200 with PNRs SHG-2026-00133..135, source='web', sold_by_admin_id NULL.",
+  "Customer-side JS gate asks only for: lead name ≥2 chars, 10-digit mobile matching country rule, optional email/ID shape, T&C tick (07-checkout.js:160-232, 243-281); the agent-code check is inside `if (ctrSell)` so an anonymous customer's Continue button enables without it.",
+  "Live site == this worktree for the customer checkout markup (live https://www.shreehariglobal.in/ lines 1782-1792 match app.template.html:1986-1996; bundle stamp 20260930a).",
+  "Results screen auto-skips to the seat map when exactly one bookable coach exists (06-results.js:256-261; search submit sets Flow.autoSkip 05-router.js:1894), so the typical customer sees home → seats → checkout → ticket.",
+  "Boarding/drop come from the server's route_stops via api/search.php:184-250 as canonical strings, with the searched town pre-selected through boardingIdx/dropIdx (search.php:252-273; 06-results.js:869-876); 'Other' free-text pickup/drop is supported end to end behind the '__other__' sentinel (06-results.js:738-760, 1303-1318; booking.php:300-345).",
+  "Entered details persist during checkout: CheckoutDraft debounced sessionStorage save/restore (07-checkout.js:413-493, 801-816); step 1 ↔ step 2 only hide/show panels so nothing is re-rendered (coGoStep 07-checkout.js:291-311); PaxMemory (localStorage shg:pax) and shg_cust_contact prefill repeat customers (07-checkout.js:720-745).",
+  "Group booking under one name with optional per-seat names (07-checkout.js:612-690) keeps the form short; terms shown as Quick Rules + expandable Advanced Rules + one checkbox.",
+  "Concurrency: seat holds via seat_locks UNIQUE(schedule_id,seat_no) with token-aware ON DUPLICATE KEY (seats.php:1132-1139; schema.sql:267); booking runs in Database::transaction with fetchForUpdate on the schedules row, assertAvailable, and claim insertIgnore on booking_seats UNIQUE (seats.php:1271, 1366-1385; schema.sql:381); gender/women-only rules enforced in the same transaction (booking.php:383-420); covered by tests/double-booking-race-test.php and cross-mode-* suites in run-all CORE.",
+  "Server total is authoritative at book time (api/book.php returns total; 07-checkout.js:1325 uses apiResult.total), payment proof is forwarded immediately after booking (07-checkout.js:1352-1374) so Admin → Verify Payments sees it.",
+  "Search API JSON shape confirmed locally and live (identical fields; see current_behavior) — the client already receives numeric routeId and scheduleId per result."
+ ],
+ "open_questions": [
+  "Owner intent: PR #12 (b9e8c75) made the agent code mandatory for everyone; 2c7e509 scoped it to counter sales; the merge kept counter-only enforcement with customer-facing 'mandatory' UI. R3a says customers must not need it — confirm the customer card should be optional/hidden (G1) rather than enforced.",
+  "Which location names are canonical? Live route_stops for r2 use 'Vadodara · Golden Chokdi', 'Emli Bhupal · Taj Hotel', 'S Hari Parking, Nana Chiloda (Amd)' while the local CI fixtures use 'Barauda', 'Limbli / Bhupal', 'Hari Pvt. Ltd. Parking - Nana Chiloda', 'Mehsana Head Office - Silver Complex'. The lead needs the owner's authoritative ~8-9 list (with Rajkot's time/landmark/coords) before touching route_stops.",
+  "Does the SPA ever call /api/quote.php? I did not find a call in 07-checkout.js's submit path (client calcFare + server total at book time); could not verify whether the checkout total preview is ever server-quoted before the Confirm tap.",
+  "Trigger for #pvOverlay (sender name + mobile re-entry) was not traced; confirm whether a customer can reach it during the first booking or only from My Bookings resubmission.",
+  "Initial date value on the home date strip (today vs booking_open_from) was not verified from code; the click count assumes today is pre-selected.",
+  "Cosmetic: book.php 409 for staff seat L5 reads 'Seat A5 is reserved…' (Seats::displayLabel mapping) — outside this area but may confuse the seat-display work (memory: LA1/UA1 labels)."
+ ]
+}
