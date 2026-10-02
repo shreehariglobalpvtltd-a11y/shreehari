@@ -93,3 +93,12 @@ an agent / counter.
 - `.chip.on` is hard to read in dark mode on every admin page (fixed only on
   Analytics).
 - `reports.export` permission exists but nothing checks it.
+
+## Deploy record (2 Oct 2026, 11:30–11:45 IST)
+- Branch `release-20261002-s2` in /var/repos/shg.git (901a901 → 01fa942 → 52959ed → 5ae645b). NOT on GitHub (no push credentials on this machine) — a GitHub "Deploy to VPS" run of any GitHub branch would revert this AND release-20261002.
+- Pre-deploy backup: `/root/backups/pre-deploy-20261002-113048/` (db-shari.sql.gz, code.tar.gz, rsync.log). Drift check vs release-20261002: none.
+- 27 files written; migrations applied: perf-indexes, staff-payroll. php-fpm reloaded; /, /travel-info, /admin/login.php, /api/csrf.php, /sw.js → 200.
+- ⚠️ docs/audit-2026-10-02/*.json reached the webroot and answered 200 for ~12 min (internal audit maps, no credentials) — moved to /root/archive; deploy.sh now excludes docs/ and .github/.
+- nginx: the www vhost is CRLF, so nginx-add-deny-rules.sh never matched it (only .network had the rules). Rules inserted by hand (backup /root/backups/nginx/shreehariglobal.in.20261002-113254, nginx -t OK); the script now handles CRLF. /deploy.sh, /deploy/*, *.sh, *.conf, *.bak → 404.
+- VPS tidy applied (785 MB archived, stray php -S :8899 stopped, ai-warm/office-report cron lines commented, /root/SERVER-MAP.md). Static sitemap-pages.xml (00:19 overnight file) archived; the dynamic one now lists /refund-policy and /agent-signup.php too.
+- Seen in the live log, NOT caused by this deploy: from 11:20 every Twilio SMS fails with 401 "account … with status 4 is not active" — the Twilio account itself is inactive. Owner to check the Twilio console / billing.
