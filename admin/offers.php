@@ -93,10 +93,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                         $flash = ['ok', 'Offer ' . $code . ' created.'];
                     }
                 }
-            }
-
-            /* ── Automatic discount switches (2 Oct 2026) ── */
             } elseif ($act === 'discount_switches') {
+            /* ── Automatic discount switches (2 Oct 2026) ── */
                 $switches = ['group_discount_on', 'loyalty_tier_discount_on', 'sharing_short_run_on'];
                 foreach ($switches as $sw) {
                     $val = !empty($_POST[$sw]) ? '1' : '0';
