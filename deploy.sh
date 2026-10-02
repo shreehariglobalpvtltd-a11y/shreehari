@@ -124,7 +124,10 @@ REMOTE="${VPS_USER}@${VPS_HOST}:${VPS_PATH}/"
 if [[ "$DO_BACKUP" == true || -n "$MIGRATE_FILE" ]]; then
   echo "💾  Taking remote DB backup..."
   BACKUP_NAME="shg-backup-$(date '+%Y%m%d-%H%M%S').sql.gz"
-  BACKUP_PATH="/var/www/shreehariglobal.in/backups"
+  # 2 Oct 2026: every backup on the VPS lives under /root/backups (one place,
+  # root-only, outside the web folder) — this used to be a backups/ folder
+  # beside public_html. The old folder was moved to /root/backups/older/.
+  BACKUP_PATH="/root/backups/deploy-db"
   # Read DB creds from the VPS bootstrap
   ssh ${SSH_OPTS} "${VPS_USER}@${VPS_HOST}" bash -s "${BACKUP_PATH}" "${BACKUP_NAME}" <<'BACKUP_REMOTE'
     set -e

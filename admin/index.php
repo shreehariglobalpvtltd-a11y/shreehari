@@ -16,6 +16,7 @@ Auth::requireAdmin('dashboard.view');
 // admin/api/live-status.php share one derivation.
 require_once INCLUDE_PATH . '/tripstatus.php';
 require_once INCLUDE_PATH . '/tripnotify.php';
+require_once INCLUDE_PATH . '/aiwatch.php';   // AI Watch panel (2 Oct 2026)
 
 $base      = '';   // root-relative: the panel must stay on the request host (.in or the .network staff door)
 $today     = todayISO();
@@ -225,6 +226,11 @@ admin_page_head(
 <?php if (!$isTodayView): ?>
   <div class="flash warn"><svg class="a-ic"><use href="#a-info"/></svg>You are viewing <b><?= $e(formatDate($today)) ?></b>. Live bus status and the payment badge only update on today's view.</div>
 <?php endif; ?>
+
+<?php /* AI Watch (2 Oct 2026): what needs a person right now, most urgent
+   first, each with a one-tap button. Live view only - a past snapshot
+   has nothing left to act on. */ ?>
+<?php if ($isTodayView) { echo AiWatch::render(AiWatch::forOffice()); } ?>
 
 <!-- QuickBot promo (the desk's fast lane) -->
 <a class="promo" href="/admin/quick-ticket.php">

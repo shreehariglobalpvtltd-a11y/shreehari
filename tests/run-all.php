@@ -191,6 +191,10 @@ const CORE_SUITES = [
     'ai-web-agent-test.php'       => 'the website assistant: identity by session, per-channel selling switch, reports scoped, feedback filed, audit',
     // 23 Sep 2026 (UI v3, ported by the 24 Sep integration), registered with the card it guards.
     'seat-status-png-test.php'    => 'the live seat-status card: draws every berth, no names, cached on the fingerprint, off by default',
+    // 2 Oct 2026 (session 2), registered with the features they guard.
+    'aiwatch-test.php'            => 'AI Watch: ranked to-dos from live data, permission-gated, escaped, seller list scoped',
+    'analytics-range-test.php'    => 'analytics date window, KPIs, berth/deck fill, CSV export',
+    'payroll-test.php'            => 'staff payroll: one settlement a month, advances recovered oldest-first, counter refused, CSV',
 ];
 
 /**
@@ -230,6 +234,7 @@ const HTTP_SUITES = [
     'feedback-test.php'           => 'post-journey rating: who may rate, and once',
     'beacon-test.php'             => 'the product beacon stores behaviour, never people',
     'pwa-http-test.php'           => 'PWA layer: push key + subscribe gates, seat fill, split-pay, offline page',
+    'travel-info-test.php'        => '/travel-info: three languages, FAQ JSON-LD, sitemap entry, no PHP noise',
 ];
 
 /* ---------------------------------------------------------------------

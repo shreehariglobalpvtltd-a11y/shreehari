@@ -323,6 +323,13 @@ echo '<span id="liveNewBookings" data-since="'
         : Database::scalar('SELECT COALESCE(MAX(id),0) FROM bookings', [], 0))
    . '" hidden></span>';
 
+// AI Watch (2 Oct 2026): this list is the COUNTER desk's home screen, so its
+// own to-do sits on top - unfiltered first page only, never on a search.
+if (($admin['role'] ?? '') === 'counter' && $q === '' && $status === '' && $page === 1) {
+    require_once INCLUDE_PATH . '/aiwatch.php';
+    echo AiWatch::render(AiWatch::forSeller((int) $admin['id']), '🤖 AI Watch — your desk');
+}
+
 if ($scopeId !== null) {
     echo '<p class="muted" style="font-size:12.5px;margin:-6px 0 14px">'
        . 'Showing only the tickets you sold. Company-wide figures are not part of the agent portal.</p>';

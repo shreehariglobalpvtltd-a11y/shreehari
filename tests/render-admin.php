@@ -46,7 +46,12 @@ $_SERVER['HTTP_HOST']      = 'localhost';
 define('SHG_APP', true);
 require_once dirname(__DIR__) . '/includes/bootstrap.php';
 
-$admin = Database::fetch("SELECT * FROM admins WHERE is_active = 1 ORDER BY id LIMIT 1");
+// SHG_RENDER_AS=<username> renders the page as that staff member (an agent's
+// or counter's own view); default = the first active admin.
+$as    = (string) (getenv('SHG_RENDER_AS') ?: '');
+$admin = $as !== ''
+    ? Database::fetch('SELECT * FROM admins WHERE is_active = 1 AND username = :u', ['u' => $as])
+    : Database::fetch("SELECT * FROM admins WHERE is_active = 1 ORDER BY id LIMIT 1");
 if ($admin === null) { fwrite(STDERR, "no active admin in the database\n"); exit(1); }
 
 $_SESSION[ADMIN_SESSION_KEY] = [

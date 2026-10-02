@@ -460,7 +460,7 @@ HTML;
     public static function sitemapPages(): never
     {
         $base = rtrim(APP_URL, '/');
-        $rows = [['/', 'daily', '1.0'], ['/privacy-policy', 'monthly', '0.3'], ['/terms-of-service', 'monthly', '0.3'], ['/data-deletion', 'yearly', '0.2']];
+        $rows = [['/', 'daily', '1.0'], ['/travel-info', 'monthly', '0.6'], ['/privacy-policy', 'monthly', '0.3'], ['/terms-of-service', 'monthly', '0.3'], ['/data-deletion', 'yearly', '0.2']];
         $x = '<?xml version="1.0" encoding="UTF-8"?>' . "\n" . '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
         foreach ($rows as [$p, $f, $pr]) {
             $x .= '  <url><loc>' . htmlspecialchars($base . $p, ENT_XML1) . '</loc><lastmod>' . date('Y-m-d') . '</lastmod><changefreq>' . $f . '</changefreq><priority>' . $pr . '</priority></url>' . "\n";

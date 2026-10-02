@@ -734,6 +734,12 @@ admin_page_head(
 if ($flash !== null) {
     echo '<div class="flash ' . $flash[0] . '">' . Security::e($flash[1]) . '</div>';
 }
+// AI Watch (2 Oct 2026): the agent's own to-do - payments to collect, cash
+// to hand over, tomorrow's passengers, free berths to sell. Own view only.
+if ($isOwn) {
+    require_once INCLUDE_PATH . '/aiwatch.php';
+    echo AiWatch::render(AiWatch::forSeller($selfId), '🤖 AI Watch — your desk');
+}
 ?>
 <?php if ($isSupervisor && $agentList !== []): ?>
 <form method="get" class="toolbar">

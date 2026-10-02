@@ -321,6 +321,35 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
 :root[data-theme="dark"] .qt-alert{background:#1e293b;color:#cbd5e1}
 :root[data-theme="dark"] .qt-alert.high{background:#450a0a;color:#fecaca}
 :root[data-theme="dark"] .qt-alert.warn{background:#451a03;color:#fde68a}
+/* Phone (2 Oct 2026, owner: "2-3 click ma ticket"): the hero + WhatsApp note
+   were ~770 px tall, so the QuickBot line opened a full screen below the fold.
+   On a phone the hero is one slim row and the note one line — the line, name
+   and mobile are on the first screen and Confirm is one thumb-scroll away. */
+.qt-short{display:none}
+.qt-sum{display:none}
+@media(max-width:820px){
+  .qt-sum:not([hidden]){display:block;margin:12px 0 0;padding:10px 12px;border-radius:12px;background:var(--blue-50);border:1px solid var(--blue-100);font-size:14px;line-height:1.5;color:var(--ink)}
+  .qt-sum-fare{color:var(--ok);font-size:16px}
+  .qt-sum a{font-weight:700;white-space:nowrap}
+  .qt-row>.qt-k{flex:1 1 100%}
+  #qtAgent{max-width:none !important;flex:1 1 100%}
+  .wrap > h1{display:none}
+  .qt-hero{padding:10px 12px;gap:8px;margin-bottom:10px;border-radius:14px;flex-wrap:nowrap}
+  .qt-hero::before{display:none}
+  .qt-hero h2,.qt-hero p,.qt-stepper{display:none}
+  .qt-hero-l{min-width:0;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .qt-badge{animation:none;font-size:11px}
+  .qt-desk{margin-left:0}
+  .qt-clock{min-width:50px;height:50px;border-width:2px;flex:0 0 auto}
+  .qt-clock span{font-size:16px}
+  .qt-clock small{font-size:9px}
+  .qt-voice{min-height:44px;padding:0 10px;font-size:12px;flex:0 0 auto;align-self:center}
+  #qtWaNote{font-size:12.5px;padding-top:9px;padding-bottom:9px;margin-bottom:10px}
+  .qt-long{display:none}
+  .qt-short{display:inline}
+  .qt-in{min-height:56px;font-size:18px}
+  .qt-go{min-height:62px;font-size:18px}
+}
 </style>
 
 <div class="qt">
@@ -352,7 +381,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
     <div class="flash bad">Your role can open this desk but cannot sell. Ask the office for a selling login (counter / agent / manager).</div>
   <?php endif; ?>
   <?php if (!$waReady): ?>
-    <div class="flash warn" id="qtWaNote">💬 Automatic WhatsApp is <b>not live yet</b> — the Twilio WhatsApp sender (KYC) is still pending. Every ticket still gets a one-tap <b>Send on WhatsApp</b> button below; once the sender is approved in Settings, tickets go out by themselves.</div>
+    <div class="flash warn" id="qtWaNote">💬 Automatic WhatsApp is <b>not live yet</b><span class="qt-long"> — the Twilio WhatsApp sender (KYC) is still pending. Every ticket still gets a one-tap <b>Send on WhatsApp</b> button below; once the sender is approved in Settings, tickets go out by themselves.</span><span class="qt-short"> — tap <b>Send on WhatsApp</b> after each ticket.</span></div>
   <?php endif; ?>
 
   <!-- 🌙 Passive Brain (7 Sep 2026): what the 02:00 job left here.
@@ -447,6 +476,11 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
         </select>
       </div>
 
+      <!-- Phone summary (2 Oct 2026): on a phone the suggestion card sits
+           BELOW this form, so the clerk sees what Confirm will sell right
+           here — date · pickup · seat · fare. Hidden on desktop (the card
+           is beside the form there). -->
+      <div class="qt-sum" id="qtSum" hidden aria-live="polite"></div>
       <button type="submit" class="qt-go" id="qtGo" <?= $canSell ? '' : 'disabled' ?>>⚡ Confirm &amp; Issue Ticket →</button>
       <div class="qt-hint">Enter in the line = confirm · The sale confirms instantly (cash / UPI already received at the desk), the ticket PNG + PDF are ready and the WhatsApp goes, credited to <b><?= Security::e($who) ?></b>.</div>
     </form>
@@ -725,6 +759,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
           plan = null;
           submitAfterPlan = false;       // Enter on a line that could not be read must not sell on the next refresh
           $('#qtPlanState').textContent = '⚠️';
+          if ($('#qtSum')) $('#qtSum').hidden = true;
           $('#qtPlanBody').innerHTML = '<div class="qt-noplan">' + esc(j.error || 'No bus can be sold right now.') + '</div>';
           return;
         }
@@ -736,6 +771,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
           plan = null;
           submitAfterPlan = false;
           $('#qtPlanState').textContent = '⚠️';
+          if ($('#qtSum')) $('#qtSum').hidden = true;
           $('#qtPlanBody').innerHTML = '<div class="qt-noplan">' + esc(d.planError || 'No bus can be sold right now.') + '</div>';
           return;
         }
@@ -800,6 +836,13 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       });
     }
     $('#qtPlanBody').innerHTML = html;
+    var sum = $('#qtSum');
+    if (sum) {
+      sum.innerHTML = '🚌 <b>' + esc(plan.dateLabel) + '</b> · ' + esc(plan.boardingCode) + ' ' + esc(plan.boardingTime || plan.depTime || '')
+        + ' · 💺 <b>' + esc(seatsTxt) + '</b> · <b class="qt-sum-fare">' + money(f.total) + '</b>'
+        + ' <a href="#qtPlan">details ↓</a>';
+      sum.hidden = false;
+    }
     $$('button[data-alt]', $('#qtPlanBody')).forEach(function (b) {
       b.addEventListener('click', function () {
         var dir = this.getAttribute('data-alt');

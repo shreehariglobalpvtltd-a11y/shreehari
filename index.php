@@ -36,6 +36,12 @@ if ($legalPath === '/refund-policy') {
     require __DIR__ . '/refund-policy.php';
     exit;
 }
+/* 2 Oct 2026: India ⇄ Nepal border travel info (documents, crossing, FAQ)
+   at a plain URL — same pattern as the refund policy above. */
+if ($legalPath === '/travel-info') {
+    require __DIR__ . '/travel-info.php';
+    exit;
+}
 /* 24 Sep 2026: server-rendered route pages (/bus, /bus/<slug>, /hi/bus/…,
    /ne/bus/…) and the two dynamic sitemaps — what a search engine reads. */
 if ($legalPath === '/bus' || str_starts_with($legalPath, '/bus/') || str_starts_with($legalPath, '/hi/bus') || str_starts_with($legalPath, '/ne/bus')

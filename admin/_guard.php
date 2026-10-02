@@ -144,6 +144,10 @@ function admin_nav(): array
         ['href' => 'analytics.php',    'icon' => 'chart',  'label' => 'Analytics',        'perm' => 'dashboard.view', 'section' => 'Reports'],
         ['href' => 'feedback.php',     'icon' => 'star',      'label' => 'Ratings',          'perm' => 'dashboard.view', 'section' => 'Reports'],
         ['href' => 'accounting.php',   'icon' => 'banknote',    'label' => 'Accounting',       'perm' => 'payments.view',  'section' => 'Reports'],
+        // 2 Oct 2026: salary + advances for staff without a panel login. reports.view,
+        // not payments.view — the counter / official desks hold payments.view and
+        // must not read everyone's salary (the page refuses them too).
+        ['href' => 'payroll.php',      'icon' => 'rupee',       'label' => 'Staff Payroll',    'perm' => 'reports.view',   'section' => 'Reports'],
         ['href' => 'messages-log.php', 'icon' => 'msg',       'label' => 'Message Log',      'perm' => 'dashboard.view', 'section' => 'Reports'],
         ['href' => 'wa-pending.php',   'icon' => 'msg',       'label' => 'Tickets to hand over','perm'=> 'bookings.view',  'section' => 'Payments'],
 
@@ -1656,5 +1660,60 @@ details.advanced-section[open]>summary::before{content:'▼ '}
 .floor-L,.floor-U{background:var(--fl-bg);border:1.5px solid var(--fl-line);border-radius:var(--r);padding:10px}
 .floor-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px;padding:8px 12px;border-radius:10px;background:var(--fl,var(--navy));color:#fff;font-weight:800;font-size:13.5px;letter-spacing:.01em}
 .floor-head .fh-range{margin-left:auto;font-family:var(--f-mono);font-size:12px;background:rgba(255,255,255,.22);padding:2px 9px;border-radius:999px;white-space:nowrap}
+
+/* ── Flash = flowing text (2 Oct 2026) ───────────────────────────────── */
+/* A flex .flash turned every text run and <b> into its own column, so on a
+   phone "Automatic WhatsApp is / not live yet / — the Twilio…" stood in three
+   squeezed columns. Text now flows; the leading icon floats, the × sits in the
+   corner. */
+.flash{display:block;padding-right:42px}
+.flash>.a-ic:first-child{float:left;margin:1px 10px 0 0}
+.flash::after{content:"";display:table;clear:both}
+.flash .flash-x{position:absolute;top:9px;right:8px;margin:0;min-width:32px;min-height:32px;padding:0}
+
+/* ── Phone comfort (2 Oct 2026, owner: "mobile bata easy, button thulo") ─ */
+/* Big thumb targets everywhere a desk works from a phone: 48 px buttons and
+   fields, 16 px text, labels that wrap instead of running off the card, a
+   taller bottom bar and the quick actions as two-up tiles. Phones only —
+   desktops keep the dense layout. */
+@media(max-width:820px){
+  .btn{min-height:48px;padding:11px 16px;font-size:15px;border-radius:12px;white-space:normal;text-align:center}
+  .btn .a-ic{width:19px;height:19px}
+  .btn.sm,.btn-sm,.btn.btn-sm{min-height:44px;padding:9px 13px;font-size:14px}
+  .btn.link{min-height:44px}
+  /* :where() = zero specificity, so a page's own field sizes still win */
+  :where(input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not([type=hidden]),select){min-height:48px}
+  :where(input[type=checkbox],input[type=radio]){width:22px;height:22px}
+  :where(textarea){min-height:96px}
+  .side a{min-height:52px;font-size:15px;padding:11px 12px}
+  .side-toggle{min-height:44px;font-size:12px}
+  .mnav{padding:7px 8px calc(7px + env(safe-area-inset-bottom))}
+  .mnav a{min-height:58px;font-size:12px;gap:4px}
+  .mnav a .a-ic{width:25px;height:25px}
+  .mnav a.fab .mn-fab{width:58px;height:58px;margin-top:-28px}
+  .mnav a.fab .a-ic{width:27px;height:27px}
+  body.has-mnav .wrap{padding-bottom:110px}
+  .quick-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .qa{min-height:64px;padding:12px;font-size:14.5px;justify-content:flex-start;border-radius:14px}
+  .qa .qa-icon{width:38px;height:38px;font-size:22px}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .kpi{padding:12px;gap:10px}
+  .tb .who a,.theme-tog{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+  .tb-search{height:44px}
+  .tb-search input{font-size:16px}
+  table.card-table tbody td .btn{min-height:44px}
+  /* A register (.dt) keeps cells on one line on a desk; as phone cards a long
+     offer / route name must wrap instead of pushing the card off-screen. */
+  table.card-table tbody td{white-space:normal;flex-wrap:wrap}
+  table.card-table tbody td>*{min-width:0;overflow-wrap:anywhere}
+}
+/* Small phones: the logo alone is the brand, so menu · logo · avatar · theme ·
+   key · sign-out share ONE row and the search sits right under it (the top
+   bar was three rows, ~170 px, before any work showed). */
+@media(max-width:560px){
+  .tb .brand{font-size:0;gap:0}
+  .tb .brand span{display:none}
+  .tb .who{gap:2px}
+}
 CSS;
 }
