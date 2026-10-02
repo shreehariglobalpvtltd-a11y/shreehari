@@ -94,6 +94,18 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     }
                 }
             }
+
+            /* ── Automatic discount switches (2 Oct 2026) ── */
+            } elseif ($act === 'discount_switches') {
+                $switches = ['group_discount_on', 'loyalty_tier_discount_on', 'sharing_short_run_on'];
+                foreach ($switches as $sw) {
+                    $val = !empty($_POST[$sw]) ? '1' : '0';
+                    Settings::set($sw, $val, 'bool', 'booking', true);
+                }
+                Settings::flush();
+                Logger::audit('offer.discount_switches', 'settings', '', null, null, json_encode(array_map(fn($s) => !empty($_POST[$s]) ? 'on' : 'off', array_combine($switches, $switches))));
+                $flash = ['ok', 'Discount switches saved.'];
+            }
         } catch (Throwable $e) {
             Logger::exception($e);
             $flash = ['bad', 'That did not save — please try again.'];
@@ -136,6 +148,17 @@ admin_header('Offers & Discounts', 'offers');
   .pill-auto{background:#e7f6ec;color:#0a7c2f;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:600}
   .pill-code{background:#eef1f7;color:#41506b;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:600}
   .pill-off{background:#f3f4f6;color:#6b7280;border-radius:999px;padding:2px 8px;font-size:11px}
+  .sw-panel{background:#fff;border:1px solid #e5e9f0;border-radius:12px;padding:16px;margin-bottom:20px}
+  .sw-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f3f4f6}
+  .sw-row:last-child{border-bottom:none}
+  .sw-row label{margin:0;flex:1;font-size:14px;font-weight:500;cursor:pointer}
+  .sw-row small{color:#66708a;font-size:12px;display:block;font-weight:400;margin-top:2px}
+  .sw-toggle{position:relative;width:44px;height:24px;flex-shrink:0}
+  .sw-toggle input{opacity:0;position:absolute;width:0;height:0}
+  .sw-toggle .slider{position:absolute;inset:0;background:#d1d5db;border-radius:24px;transition:.2s;cursor:pointer}
+  .sw-toggle .slider::before{content:'';position:absolute;width:18px;height:18px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.2s}
+  .sw-toggle input:checked+.slider{background:#0a7c2f}
+  .sw-toggle input:checked+.slider::before{transform:translateX(20px)}
 </style>
 
 <?php if ($flash !== null): ?>
@@ -148,6 +171,66 @@ admin_header('Offers & Discounts', 'offers');
   <div class="of-card"><div class="hv"><?= $usedToday ?></div><div class="muted">Discounted bookings today</div></div>
   <div class="of-card"><div class="hv"><?= Security::e(inr($givenToday)) ?></div><div class="muted">Discount given today</div></div>
 </div>
+
+<?php
+/* ── Automatic discount switches (2 Oct 2026) ──
+   Group, tier and short-run discounts fire ONLY when the office has flipped
+   each one ON here. The setting rows may not exist yet (first visit after
+   the upgrade) — getBool defaults to false, which is the safe state. */
+$swGroup   = Settings::getBool('group_discount_on', false);
+$swTier    = Settings::getBool('loyalty_tier_discount_on', false);
+$swShort   = Settings::getBool('sharing_short_run_on', false);
+
+$gdPct     = Settings::getFloat('group_discount_percent', 5.0);
+$gdMin     = Settings::getInt('group_discount_min_seats', 5);
+$srCut     = Settings::getFloat('sharing_short_run_discount_inr', 200.0);
+?>
+<?php if ($canManage): ?>
+<form method="post" class="sw-panel">
+  <?= Security::csrfField() ?>
+  <input type="hidden" name="action" value="discount_switches">
+  <h3 style="margin:0 0 6px">Automatic discount rules</h3>
+  <p class="muted" style="margin:0 0 10px;font-size:13px">
+    These run on every booking — no code needed. Each one fires only when its switch is ON.<br>
+    The numeric thresholds (seats, percent, amount) are managed in <a href="settings.php">Settings → Booking</a>.
+  </p>
+
+  <div class="sw-row">
+    <div class="sw-toggle">
+      <input type="checkbox" id="sw_group" name="group_discount_on" value="1" <?= $swGroup ? 'checked' : '' ?>>
+      <span class="slider" onclick="this.previousElementSibling.click()"></span>
+    </div>
+    <label for="sw_group">
+      Group discount
+      <small><?= (int) $gdMin ?>+ seats → <?= rtrim(rtrim(number_format($gdPct, 2), '0'), '.') ?>% off the base fare</small>
+    </label>
+  </div>
+
+  <div class="sw-row">
+    <div class="sw-toggle">
+      <input type="checkbox" id="sw_tier" name="loyalty_tier_discount_on" value="1" <?= $swTier ? 'checked' : '' ?>>
+      <span class="slider" onclick="this.previousElementSibling.click()"></span>
+    </div>
+    <label for="sw_tier">
+      Loyalty tier discount
+      <small>Gold / Platinum / Diamond members get 2–5% off</small>
+    </label>
+  </div>
+
+  <div class="sw-row">
+    <div class="sw-toggle">
+      <input type="checkbox" id="sw_short" name="sharing_short_run_on" value="1" <?= $swShort ? 'checked' : '' ?>>
+      <span class="slider" onclick="this.previousElementSibling.click()"></span>
+    </div>
+    <label for="sw_short">
+      Short-run sharing cut
+      <small>Sharing cabin — ₹<?= number_format($srCut, 0) ?> off when fewer than <?= Settings::getInt('sharing_short_run_min_stops', 3) ?> stops</small>
+    </label>
+  </div>
+
+  <button class="btn" type="submit" style="margin-top:12px">Save switches</button>
+</form>
+<?php endif; ?>
 
 <?php if ($canManage): ?>
 <form method="post" class="of-form">

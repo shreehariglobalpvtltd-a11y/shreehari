@@ -295,9 +295,10 @@ final class Fare
                 $base = round($perPersonBase, 2);
             }
 
+            // Off unless the office switches it on (2 Oct 2026, see autoDiscountOn()).
             $minFullStops = Settings::getInt('sharing_short_run_min_stops', 3);
             $shortCut     = Settings::getFloat('sharing_short_run_discount_inr', 200.0);
-            if ($stopCount > 0 && $stopCount < $minFullStops && $shortCut > 0) {
+            if (self::autoDiscountOn('sharing_short_run_on') && $stopCount > 0 && $stopCount < $minFullStops && $shortCut > 0) {
                 $base = max(0.0, $base - $shortCut);
             }
 
@@ -325,6 +326,39 @@ final class Fare
     }
 
     /**
+     * The automatic discounts — money off that nobody types or picks — run
+     * ONLY when the office has switched them on (owner, 2 Oct 2026: "yesto
+     * kura haru maile on gare xi matr chalu hos"). Until then the group
+     * discount had no switch at all: its percent row (5%, seeded 4 Aug) took
+     * 5% off every 5+ seat booking, counter and web alike, while the sleeper
+     * checkout showed the full fare. A missing row reads as OFF.
+     *
+     *   group_discount_on        group discount (group_discount_min_seats / _percent)
+     *   loyalty_tier_discount_on member tier % (loyalty_tiers)
+     *   sharing_short_run_on     short-run cut (sharing_short_run_*)
+     *
+     * Switches live on Admin → Offers & Discounts. Office offers (coupons
+     * flagged auto_apply) keep their own per-offer ON/OFF there.
+     */
+    public static function autoDiscountOn(string $key): bool
+    {
+        return Settings::getBool($key, false);
+    }
+
+    /** Group discount for $seatCount seats on $base — 0 while the switch is off. */
+    public static function groupDiscount(float $base, int $seatCount): float
+    {
+        if (!self::autoDiscountOn('group_discount_on')) {
+            return 0.0;
+        }
+        $minSeats = Settings::getInt('group_discount_min_seats', 5);
+        $percent  = Settings::getFloat('group_discount_percent', 5.0);
+        return ($minSeats > 0 && $percent > 0 && $seatCount >= $minSeats)
+            ? round($base * $percent / 100)
+            : 0.0;
+    }
+
+    /**
      * Seater / simple per-seat pricing, plus the group discount.
      *
      * @return array{base: float, groupDiscount: float, fee: float, total: float, perSeat: float}
@@ -334,11 +368,7 @@ final class Fare
         $seatCount = max(1, $seatCount);
         $base      = $farePerSeat * $seatCount;
 
-        $minSeats  = Settings::getInt('group_discount_min_seats', 5);
-        $percent   = Settings::getFloat('group_discount_percent', 5.0);
-        $groupCut  = ($minSeats > 0 && $seatCount >= $minSeats)
-            ? round($base * $percent / 100)
-            : 0.0;
+        $groupCut  = self::groupDiscount($base, $seatCount);
 
         $fee = Settings::getFloat('booking_fee', 0.0);
 
@@ -389,7 +419,7 @@ final class Fare
     public static function tierDiscount(float $subtotal, int $lifetimePoints): array
     {
         $tier = self::tierForPoints($lifetimePoints);
-        $pct  = $tier['discountPct'];
+        $pct  = self::autoDiscountOn('loyalty_tier_discount_on') ? $tier['discountPct'] : 0.0;
 
         return [
             'amount'   => $pct > 0 ? round($subtotal * $pct / 100) : 0.0,
@@ -738,10 +768,8 @@ final class Fare
     ): array {
         $breakdown = [['label' => 'Base fare', 'amount' => $baseAmount]];
 
-        // 1. Group discount
-        $minSeats     = Settings::getInt('group_discount_min_seats', 5);
-        $groupPct     = Settings::getFloat('group_discount_percent', 5.0);
-        $groupCut     = ($minSeats > 0 && $seatCount >= $minSeats) ? round($baseAmount * $groupPct / 100) : 0.0;
+        // 1. Group discount (only when switched on)
+        $groupCut     = self::groupDiscount($baseAmount, $seatCount);
         $running      = $baseAmount - $groupCut;
 
         if ($groupCut > 0) {

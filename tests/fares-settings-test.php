@@ -149,5 +149,61 @@ if (!function_exists('curl_init')) {
     @unlink($jar);
 }
 
+echo "\n=== C. Automatic discount switches (2 Oct 2026) ===\n";
+
+/* Save originals so we can restore them. */
+$origGroupOn = Settings::get('group_discount_on', null);
+$origTierOn  = Settings::get('loyalty_tier_discount_on', null);
+$origShortOn = Settings::get('sharing_short_run_on', null);
+$origGroupPct = Settings::getFloat('group_discount_percent', 5.0);
+$origGroupMin = Settings::getInt('group_discount_min_seats', 5);
+
+/* Ensure the numeric settings exist so the test is meaningful. */
+Settings::set('group_discount_percent', 5, 'float', 'booking', true);
+Settings::set('group_discount_min_seats', 5, 'int', 'booking', true);
+Settings::flush();
+
+/* C1: switches OFF → Fare::groupDiscount returns 0 for 5 seats. */
+Settings::set('group_discount_on', '0', 'bool', 'booking', true);
+Settings::flush();
+$gd = Fare::groupDiscount(2000, 5);
+check('group OFF: 5×₹2000 → groupDiscount = 0', $gd === 0.0, 'got ' . $gd);
+
+/* C2: switch ON → Fare::groupDiscount returns 5% of 2000 = 100 for 5 seats. */
+Settings::set('group_discount_on', '1', 'bool', 'booking', true);
+Settings::flush();
+$gd = Fare::groupDiscount(2000, 5);
+check('group ON: 5×₹2000 → groupDiscount = 100', $gd === 100.0, 'got ' . $gd);
+
+/* C3: below threshold → even ON = 0. */
+$gd2 = Fare::groupDiscount(2000, 4);
+check('group ON but 4 seats (below 5): groupDiscount = 0', $gd2 === 0.0, 'got ' . $gd2);
+
+/* C4: tier switch OFF → autoDiscountOn returns false. */
+Settings::set('loyalty_tier_discount_on', '0', 'bool', 'booking', true);
+Settings::flush();
+check('tier OFF: autoDiscountOn = false', !Fare::autoDiscountOn('loyalty_tier_discount_on'));
+
+/* C5: tier switch ON → autoDiscountOn returns true. */
+Settings::set('loyalty_tier_discount_on', '1', 'bool', 'booking', true);
+Settings::flush();
+check('tier ON: autoDiscountOn = true', Fare::autoDiscountOn('loyalty_tier_discount_on'));
+
+/* C6: short-run switch OFF → autoDiscountOn returns false. */
+Settings::set('sharing_short_run_on', '0', 'bool', 'booking', true);
+Settings::flush();
+check('short-run OFF: autoDiscountOn = false', !Fare::autoDiscountOn('sharing_short_run_on'));
+
+/* Restore originals. */
+if ($origGroupOn !== null) { Settings::set('group_discount_on', $origGroupOn, 'bool', 'booking', true); }
+else { try { Database::query("DELETE FROM settings WHERE skey = 'group_discount_on'"); } catch (Throwable $e) {} }
+if ($origTierOn !== null) { Settings::set('loyalty_tier_discount_on', $origTierOn, 'bool', 'booking', true); }
+else { try { Database::query("DELETE FROM settings WHERE skey = 'loyalty_tier_discount_on'"); } catch (Throwable $e) {} }
+if ($origShortOn !== null) { Settings::set('sharing_short_run_on', $origShortOn, 'bool', 'booking', true); }
+else { try { Database::query("DELETE FROM settings WHERE skey = 'sharing_short_run_on'"); } catch (Throwable $e) {} }
+Settings::set('group_discount_percent', $origGroupPct, 'float', 'booking', true);
+Settings::set('group_discount_min_seats', $origGroupMin, 'int', 'booking', true);
+Settings::flush();
+
 echo "\n$PASS passed, $FAIL failed\n";
 exit($FAIL === 0 ? 0 : 1);

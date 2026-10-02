@@ -1379,7 +1379,7 @@ function fareRowsHTML(f) {
   /* Fare by passenger count: "2 passenger(s) × ₹2,000" reads at a glance. */
   const perSeat = f.perSeat || (f.seats ? Math.round(f.base / f.seats) : 0);
   let rows = '<div class="sum-row"><span>' + tf('rowPaxFare', { n: f.seats, f: inr(perSeat) }) + '</span><b>' + inr(f.base) + '</b></div>';
-  if (f.discount > 0) rows += '<div class="sum-row disc"><span>' + t('rowGroup') + ' (' + gd.percent + '%)</span><b>− ' + inr(f.discount) + '</b></div>';
+  if (gd.on && f.discount > 0) rows += '<div class="sum-row disc"><span>' + t('rowGroup') + ' (' + gd.percent + '%)</span><b>− ' + inr(f.discount) + '</b></div>';
   rows += '<div class="sum-row"><span>' + t('rowFee') + '</span><b>' + (f.fee > 0 ? inr(f.fee) : t('feeFree')) + '</b></div>';
   return rows;
 }

@@ -347,7 +347,7 @@ const CONFIG = {
   booking: {
     seatHoldMinutes: 30,          // picked seats stay locked for one visitor this long
     maxSeats: 6,
-    groupDiscount: { minSeats: 5, percent: 5 },  // ← group booking: 5+ seats → 5% off
+    groupDiscount: { on: false, minSeats: 5, percent: 5 },  // OFF until Admin → Offers & Discounts switches it on (server-fed below)
     bookingFee: 0,                // per-booking fee in ₹ (0 shows as "Free")
     loyaltyTrips: 3,              // confirmed trips after which "welcome back" shows
     refundSlabs: [                // must match the Terms & Conditions page
@@ -495,6 +495,32 @@ CONFIG.roundTripOn = false;
   if (v === undefined || v === null) return;
   CONFIG.roundTripOn = (v === true || v === 1 || v === '1' || String(v).toLowerCase() === 'true');
 })();
+
+/* Automatic discounts (2 Oct 2026): a group or member-tier discount is quoted
+   only when the office switched it on — the same public switches
+   Fare::autoDiscountOn() bills from (Settings::publicSettings() always ships
+   them). Before this the page had no switch at all and the server took 5% off
+   every 5+ seat booking. Nothing shipped = off. */
+CONFIG.loyaltyTierDiscountOn = false;
+(function applyServerAutoDiscounts() {
+  var s = null;
+  try { s = window.SHG_BOOT && window.SHG_BOOT.settings; } catch (e) { s = null; }
+  if (!s) return;
+  var on = function (v) { return v === true || v === 1 || v === '1' || String(v).toLowerCase() === 'true'; };
+  var gd = CONFIG.booking.groupDiscount;
+  gd.on = on(s.group_discount_on);
+  var n = parseInt(s.group_discount_min_seats, 10), p = parseFloat(s.group_discount_percent);
+  if (n >= 0) gd.minSeats = n;
+  if (p >= 0) gd.percent = p;
+  CONFIG.loyaltyTierDiscountOn = on(s.loyalty_tier_discount_on);
+})();
+
+/* Group discount in ₹ for `seats` seats on `base` — 0 while switched off.
+   Mirror of Fare::groupDiscount(). */
+function groupCut(base, seats) {
+  const gd = CONFIG.booking.groupDiscount;
+  return (gd.on && gd.minSeats > 0 && gd.percent > 0 && seats >= gd.minSeats) ? Math.round(base * gd.percent / 100) : 0;
+}
 
 (function applyServerPricing() {
   var srv = null;
@@ -1276,8 +1302,7 @@ function refundInfo(b) {
 function calcFare(legs) {
   let base = 0, seats = 0;
   legs.forEach(l => { base += l.seats.length * l.fare; seats += l.seats.length; });
-  const gd = CONFIG.booking.groupDiscount;
-  const discount = seats >= gd.minSeats ? Math.round(base * gd.percent / 100) : 0;
+  const discount = groupCut(base, seats);
   const fee = CONFIG.booking.bookingFee || 0;
   /* perSeat: the rate the "N passengers × ₹fare" line shows (first leg). */
   return { base: base, seats: seats, discount: discount, fee: fee, total: base - discount + fee,

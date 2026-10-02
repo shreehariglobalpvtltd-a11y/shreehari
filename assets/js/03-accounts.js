@@ -235,6 +235,12 @@ function tierFor(points) {
   let cur = tiers[0], next = null;
   tiers.forEach(tr => { if (points >= tr.min) cur = tr; });
   next = tiers.find(tr => tr.min > points) || null;
+  /* The tier % is money off at checkout: shown and applied only while the
+     office has the member discount switched on (2 Oct 2026). */
+  if (!CONFIG.loyaltyTierDiscountOn) {
+    cur = Object.assign({}, cur, { discountPct: 0 });
+    if (next) next = Object.assign({}, next, { discountPct: 0 });
+  }
   return { tier: cur, next: next };
 }
 function awardPoints(user, change, reason, bookingId) {

@@ -924,7 +924,7 @@ function renderCheckout() {
   }
 
   const checkoutTotals = () => {
-    const tierDisc = (tierInfo && tierInfo.tier.discountPct > 0) ? Math.round(fareBase * tierInfo.tier.discountPct / 100) : 0;
+    const tierDisc = (CONFIG.loyaltyTierDiscountOn && tierInfo && tierInfo.tier.discountPct > 0) ? Math.round(fareBase * tierInfo.tier.discountPct / 100) : 0;
     const afterTier = fareBase - tierDisc;
     const red = Flow.usePoints ? loyaltyRedemption(me, (me && me.loyaltyPoints) || 0, afterTier) : { points: 0, rupees: 0 };
     return { tierDisc: tierDisc, tierName: tierInfo ? tierInfo.tier.icon + ' ' + tierInfo.tier.name : '',

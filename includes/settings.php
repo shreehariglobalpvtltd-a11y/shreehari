@@ -310,6 +310,13 @@ final class Settings
             $out['round_trip_on'] = false;
         }
 
+        /* Automatic discounts (2 Oct 2026): the page quotes a group / member
+           discount only when the office switched it on — same answer as
+           Fare::autoDiscountOn(), present even before the upgrade row exists. */
+        foreach (['group_discount_on', 'loyalty_tier_discount_on', 'sharing_short_run_on'] as $k) {
+            $out[$k] = self::getBool($k, false);
+        }
+
         // A dialable business number, never the Cloud API phone ID or token.
         // Chat must go to the configured sender so the booking bot receives it;
         // admin_whatsapp is a notification recipient and may be a different desk.
