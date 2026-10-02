@@ -311,6 +311,12 @@ function booking_wa_message(array $b, string $base): string
 
 admin_header($scopeId !== null ? 'My Tickets' : 'Tickets', 'bookings');
 
+// Live sync (2 Oct 2026): an EDIT to a ticket already on this list (seat,
+// name, agent, cancel, bus) never raised the new-bookings pill below, which
+// only watches for new ids. This anchor raises a Refresh pill for those too.
+// An agent is pinned to their own book by LiveSync::scopeFor().
+echo LiveSync::anchor('all', 'pill');
+
 // Live "new bookings" pill baseline (P2): admin_poll_js() reads this anchor and
 // shows a Refresh pill when a booking with a higher id appears, so the office
 // sees new bookings within ~15s without hitting reload. Harmless on roles that

@@ -29,4 +29,16 @@ $maxBooking = $scopeId !== null
     ? (int) Database::scalar('SELECT COALESCE(MAX(id), 0) FROM bookings WHERE sold_by_admin_id = :s', ['s' => $scopeId], 0)
     : (int) Database::scalar('SELECT COALESCE(MAX(id), 0) FROM bookings');
 
-echo json_encode(['pending' => $pending, 'maxBooking' => $maxBooking]);
+$out = ['pending' => $pending, 'maxBooking' => $maxBooking];
+
+// 2 Oct 2026 — live sync. A page that dropped LiveSync::anchor() sends its
+// scope; the answer is the scope's current fingerprint and the page reloads
+// (or offers to) when it moved. scopeFor() pins a counter agent to their own
+// book whatever they ask for, so the hash can never describe someone else's.
+$sync = LiveSync::scopeFor((string) ($_GET['sync'] ?? ''));
+if ($sync !== '') {
+    $out['sync'] = $sync;
+    $out['ver']  = LiveSync::version($sync);
+}
+
+echo json_encode($out);

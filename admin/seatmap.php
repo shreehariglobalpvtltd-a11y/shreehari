@@ -232,11 +232,32 @@ $coach       = $route ? (string) $route['coach_type'] : 'sleeper';
 $scheduleId  = 0;
 $map         = [];
 $tripBookings = [];
+$dayBuses    = [];
+$dayBusFill  = [];
 if ($route !== null) {
     $schedule   = Seats::scheduleFor($routeId, $date, $sidReq > 0 ? $sidReq : null);
     $scheduleId = (int) $schedule['id'];
     $coach      = Seats::effectiveCoach($schedule, $route);   // this departure's own coach
     $map        = Seats::adminSeatMap($scheduleId, $coach);
+
+    /* Every bus on this route + date (2 Oct 2026). On 1 Oct the office ran
+       the daily bus AND an extra one; this page only ever drew the daily bus
+       unless you came in through the Bus Calendar with ?sid=, so the second
+       coach — and every seat sold on it — was invisible from here. One tab
+       per departure, each with its own fill. */
+    $dayBuses = Database::fetchAll(
+        "SELECT s.id, s.slot, s.status, COALESCE(b.bus_name, '') AS bus_name, COALESCE(b.bus_number, '') AS bus_number,
+                COALESCE(s.dep_time_override, r.dep_time) AS dep_time
+           FROM schedules s
+           JOIN routes r ON r.id = s.route_id
+           LEFT JOIN buses b ON b.id = COALESCE(s.bus_id, r.bus_id)
+          WHERE s.route_id = :r AND s.travel_date = :d AND (s.status <> 'cancelled' OR s.id = :cur)
+          ORDER BY s.slot, s.id",
+        ['r' => $routeId, 'd' => $date, 'cur' => $scheduleId]
+    );
+    $dayBusFill = $dayBuses !== []
+        ? Seats::occupiedBedsFor(array_map(static fn(array $x): int => (int) $x['id'], $dayBuses))
+        : [];
 
     /* Booking list for this trip — same query shape as trip-dashboard.php
        so the two screens tell the same story. Scoped like the seat map:
@@ -697,6 +718,48 @@ admin_header('Seat Map', 'seatmap');
 .sm-day small{font-size:11px;opacity:.75}
 .sm-day.past{opacity:.6}
 .sm-day.on{background:#1b4fa0;border-color:#1b4fa0;color:#fff;opacity:1}
+/* Buses on this date (2 Oct 2026) — one tab per departure on route + date. */
+.sm-buses{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 14px}
+.sm-buses-lab{font-size:12.5px;font-weight:700;color:var(--mut,#666)}
+.sm-bus{display:flex;flex-direction:column;gap:1px;padding:7px 12px;border:1.5px solid var(--line,#dde3ee);border-radius:12px;
+  background:var(--card,#fff);color:inherit;text-decoration:none;min-width:120px}
+.sm-bus b{font-size:13.5px}.sm-bus small{font-size:11.5px;opacity:.75}
+.sm-bus.on{background:#0f766e;border-color:#0f766e;color:#fff}
+.sm-bus.on small{opacity:.9}
+
+/* Seat detail card inside the click-a-seat popover (2 Oct 2026). */
+.seat-menu.has-detail{width:min(440px,94vw);max-width:94vw;max-height:86vh;overflow:auto}
+/* Phone: stay clear of the bottom tab bar (it sits above the popover). */
+@media(max-width:560px){.seat-menu.has-detail{max-height:calc(100vh - 120px);max-height:calc(100dvh - 120px)}}
+.sd{padding:2px 4px 6px;font-size:13px;line-height:1.4}
+.sd-load{padding:10px 12px;color:var(--mut,#666);font-size:12.5px}
+.sd-top{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:4px 8px 8px}
+.sd-pnr{font-family:ui-monospace,Consolas,monospace;font-weight:800;font-size:14px}
+.sd-pax{list-style:none;margin:0 0 8px;padding:0 4px;display:flex;flex-direction:column;gap:3px}
+.sd-pax li{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:9px;background:var(--head,#f5f7fb)}
+.sd-pax li.this{background:#fff4d1;outline:1.5px solid #f2c94c}
+.sd-pax li.gone{opacity:.55;text-decoration:line-through}
+.sd-pax .sd-seat{font-family:ui-monospace,Consolas,monospace;font-weight:800;min-width:34px}
+.sd-pax .sd-nm{font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.sd-pax .sd-gx{font-size:11.5px;opacity:.75;white-space:nowrap}
+.sd-grid{display:grid;grid-template-columns:auto 1fr;gap:5px 10px;margin:0;padding:4px 8px}
+.sd-grid dt{font-size:12px;color:var(--mut,#666);white-space:nowrap}
+.sd-grid dd{margin:0;font-weight:600;min-width:0;overflow-wrap:anywhere}
+.sd-grid dd small{font-weight:500;opacity:.75}
+.sd-hist{margin:8px 4px 0;padding:6px 8px;border-top:1px solid var(--line,#e5e7eb);font-size:12px}
+.sd-hist b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut,#666);margin-bottom:3px}
+.sd-hist div{padding:2px 0}
+.sd-links{display:flex;flex-wrap:wrap;gap:6px;padding:8px 6px 4px}
+.sd-links a{display:inline-flex;align-items:center;gap:5px;padding:6px 10px;border-radius:9px;border:1px solid var(--line,#dde3ee);
+  font-size:12.5px;font-weight:700;text-decoration:none;color:inherit;background:var(--card,#fff)}
+.sd-links a:hover{background:var(--hover,#eef2fa)}
+.sd-due{color:#b02a2a;font-weight:800}
+[data-theme="dark"] .sd-pax li.this{background:#4a3d00;color:#ffe28a;outline-color:#8a6d00}
+[data-theme="dark"] .sd-due{color:#fca5a5}
+@media(prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .sd-pax li.this{background:#4a3d00;color:#ffe28a;outline-color:#8a6d00}
+  :root:not([data-theme="light"]) .sd-due{color:#fca5a5}
+}
 .sm-assign{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:6px 0 10px}
 .sm-assign select{min-width:220px}
 .sm-selecting .seat-booked{cursor:copy}
@@ -707,6 +770,13 @@ admin_header('Seat Map', 'seatmap');
 
 if ($flash !== null) {
     echo '<div class="flash ' . $flash[0] . '">' . Security::e($flash[1]) . '</div>';
+}
+// Live sync (2 Oct 2026): the tiles already repaint every 15 s; the tables
+// below (bookings on this trip, all seats, the quick-action seat lists) are
+// server-drawn, so a change made elsewhere — another desk, an agent, the
+// office — raises a Refresh pill instead of leaving them quietly stale.
+if ($route !== null && $scheduleId > 0) {
+    echo LiveSync::anchor('sched:' . $scheduleId, 'pill');
 }
 ?>
 <form method="get" class="toolbar">
@@ -744,6 +814,20 @@ $smToday = todayISO();
     </a>
   <?php endfor; ?>
 </nav>
+<?php if (count($dayBuses) > 1): ?>
+<nav class="sm-buses" aria-label="Buses on this date">
+  <span class="sm-buses-lab">🚌 <?= count($dayBuses) ?> buses this date · यो दिन <?= count($dayBuses) ?> वटा बस:</span>
+  <?php foreach ($dayBuses as $dbus):
+      $dbId = (int) $dbus['id'];
+      $dbOn = $dbId === $scheduleId;
+      $dbNm = trim((string) $dbus['bus_number']) !== '' ? (string) $dbus['bus_number'] : (string) $dbus['bus_name']; ?>
+    <a class="sm-bus<?= $dbOn ? ' on' : '' ?>" href="?<?= Security::e(http_build_query(['route' => $routeId, 'date' => $date, 'sid' => $dbId])) ?>"<?= $dbOn ? ' aria-current="page"' : '' ?>>
+      <b>Bus <?= (int) $dbus['slot'] ?><?= $dbNm !== '' ? ' · ' . Security::e($dbNm) : '' ?></b>
+      <small><?= (int) ($dayBusFill[$dbId] ?? 0) ?> sold · <?= Security::e(formatTime($dbus['dep_time'] ?? null)) ?><?= (string) $dbus['status'] === 'cancelled' ? ' · cancelled' : '' ?></small>
+    </a>
+  <?php endforeach; ?>
+</nav>
+<?php endif; ?>
 
 <?php if ($route === null): ?>
   <div class="panel"><h2>No route selected</h2></div>
@@ -1178,6 +1262,17 @@ if ($legendStops !== []): ?>
     var bm=bMap[status]||[status,'#eee','#333'];
     head.innerHTML='<span class="sm-seat">'+smEsc(seatLbl)+'</span><span class="sm-badge" style="background:'+bm[1]+';color:'+bm[2]+'">'+smEsc(bm[0])+'</span>';
     seatMenu.appendChild(head);
+    seatMenu.classList.remove('has-detail');
+    // Full ticket card for a berth the viewer may read (their own sale, or
+    // the office) — and the reason for a blocked one. Loaded on demand from
+    // admin/api/seat-detail.php so the map itself stays light.
+    if((status==='booked' && mine && pnr) || status==='blocked'){
+      var det=document.createElement('div'); det.className='sd';
+      det.innerHTML='<div class="sd-load">⏳ Loading ticket details…</div>';
+      seatMenu.appendChild(det);
+      if(status==='booked') seatMenu.classList.add('has-detail');
+      loadSeatDetail(seat, det, el);
+    }
     if(status==='open'){
       if(SM_CAN_EDIT){
         seatMenu.appendChild(smBtn('🎫','Book walk-in / cash',function(){prefillCounter(seat);}));
@@ -1202,17 +1297,91 @@ if ($legendStops !== []): ?>
       seatMenu.appendChild(smNote('🛡️ Staff / emergency reserved'));
     }
   }
-  function openSeatMenu(el){
-    if(!seatMenu) return;
-    buildSeatMenu(el);
-    seatBackdrop.classList.add('on'); seatMenu.classList.add('on');
+  /* ── Seat detail card (2 Oct 2026) ─────────────────────────────── */
+  var SD_URL   = <?= json_encode($base . '/admin/api/seat-detail.php') ?>;
+  var SD_SCHED = <?= (int) $scheduleId ?>;   // the departure on screen (daily or extra bus)
+  var sdReq    = 0;
+  function sdRow(dt, dd){ return dd ? '<dt>'+dt+'</dt><dd>'+dd+'</dd>' : ''; }
+  function renderSeatDetail(box, d){
+    if(d.status==='blocked'){
+      box.innerHTML = d.blockReason || d.blockedBy
+        ? '<dl class="sd-grid">'+sdRow('🚫 Reason', smEsc(d.blockReason||'—'))+sdRow('👤 By', smEsc(d.blockedBy||'—')+(d.blockedAt?' <small>· '+smEsc(d.blockedAt)+'</small>':''))+'</dl>'
+        : '';
+      return;
+    }
+    var b=d.booking; if(!b){ box.innerHTML='<div class="sd-load">No ticket found on this berth any more — the map will refresh.</div>'; return; }
+    var st={confirmed:['Confirmed','#e7f6ee','#0a6b3b'],pending:['Pending','#fff4d1','#8a6d00'],cancelled:['Cancelled','#fde2e2','#991b1b'],completed:['Completed','#e2ecfb','#1c3b72']}[b.status]||[b.status,'#eee','#333'];
+    var h='<div class="sd-top"><span class="sd-pnr">'+smEsc(b.pnr)+'</span>'
+        +'<span class="sm-badge" style="margin:0;background:'+st[1]+';color:'+st[2]+'">'+smEsc(st[0])+'</span>'
+        +(b.mode==='private'?'<span class="sm-badge" style="margin:0;background:#efeaff;color:#5a3fb0">Private'+(b.cabin?' · '+smEsc(b.cabin):'')+'</span>':'')
+        +'</div>';
+    // Every passenger on the ticket; the one on THIS berth highlighted.
+    h+='<ul class="sd-pax">';
+    (b.passengers||[]).forEach(function(p){
+      var gx=[p.gender?p.gender.charAt(0):'', p.age?String(p.age):''].filter(Boolean).join(' ');
+      h+='<li class="'+(p['this']?'this':'')+(p.cancelled?' gone':'')+'">'
+        +'<span class="sd-seat">'+smEsc(p.seat||'—')+'</span>'
+        +'<span class="sd-nm">'+(p.primary?'★ ':'')+smEsc(p.name)+'</span>'
+        +'<span class="sd-gx">'+smEsc(gx)+(p.boarded?' · ✅ boarded':'')+(p.cancelled?' · cancelled':'')+'</span></li>';
+    });
+    h+='</ul><dl class="sd-grid">';
+    var ph=b.phone?('<a href="tel:'+smEsc((b.phoneCc?'+'+b.phoneCc:'')+b.phone)+'">'+smEsc(b.phone)+'</a>'
+        +(b.waNumber?' · <a href="https://wa.me/'+smEsc(b.waNumber)+'" target="_blank" rel="noopener">WhatsApp</a>':'')):'';
+    h+=sdRow('📞 Mobile', ph);
+    h+=sdRow('🚌 Bus', smEsc(b.trip.date)+(b.trip.dep?' · '+smEsc(b.trip.dep):'')+'<br><small>'+smEsc(b.trip.route)+(b.trip.bus?' · '+smEsc(b.trip.bus):'')+(b.trip.leg==='return'?' · return leg':'')+'</small>');
+    h+=sdRow('🟢 Pickup', b.boarding?((b.boardCode?'<b>'+smEsc(b.boardCode)+'</b> · ':'')+smEsc(b.boarding)+(b.boardTime?' <small>@ '+smEsc(b.boardTime)+'</small>':'')):'<small>not recorded</small>');
+    h+=sdRow('🔴 Drop', b.drop?((b.dropCode?'<b>'+smEsc(b.dropCode)+'</b> · ':'')+smEsc(b.drop)):'');
+    h+=sdRow('🪑 Seats', smEsc((b.seatsHere||[]).join(', '))+' <small>('+(b.seatsHere||[]).length+' on this bus)</small>');
+    h+=sdRow('💰 Fare', smEsc(b.total)+(b.discount?' <small>(discount '+smEsc(b.discount)+')</small>':'')
+        +'<br><small>Paid '+smEsc(b.paid)+(b.payMethod?' · '+smEsc(b.payMethod):'')+(b.payStatus?' · '+smEsc(b.payStatus):'')+'</small>'
+        +(b.due?' <span class="sd-due">· Due '+smEsc(b.due)+'</span>':'')+(b.cod?' <small>· COD</small>':'')
+        +(b.refund?'<br><small>Refund '+smEsc(b.refund)+'</small>':''));
+    var sl=b.seller||{};
+    h+=sdRow(sl.kind==='agent'?'👤 Agent':'🏢 Sold by', '<b>'+smEsc(sl.code||'')+'</b>'+(sl.name?' · '+smEsc(sl.name):'')+' <small>('+smEsc(sl.label||'')+(sl.location?' · '+smEsc(sl.location):'')+')</small>'
+        +(b.commission?'<br><small>Commission on this ticket: '+smEsc(b.commission)+'</small>':''));
+    h+=sdRow('🧾 Booked', smEsc(b.bookedAt)+' <small>· '+smEsc(b.source)+' · '+smEsc(b.bookedAgo)+'</small>');
+    if(b.note) h+=sdRow('📝 Note', smEsc(b.note));
+    h+='</dl>';
+    if(b.history && b.history.length){
+      h+='<div class="sd-hist"><b>Recent changes · पछिल्ला परिवर्तन</b>';
+      b.history.forEach(function(x){ h+='<div>• '+smEsc(x.what)+' <small>— '+smEsc(x.who||'system')+' · '+smEsc(x.when)+'</small></div>'; });
+      h+='</div>';
+    }
+    h+='<div class="sd-links">'
+      +(b.links.png?'<a href="'+smEsc(b.links.png)+'" target="_blank" rel="noopener">🖼️ Ticket image</a>':'')
+      +(b.links.pdf?'<a href="'+smEsc(b.links.pdf)+'" target="_blank" rel="noopener">📄 PDF</a>':'')
+      +'</div>';
+    box.innerHTML=h;
+  }
+  function loadSeatDetail(seat, box, el){
+    var my=++sdReq;
+    fetch(SD_URL+'?sid='+SD_SCHED+'&seat='+encodeURIComponent(seat), {credentials:'same-origin', headers:{'Accept':'application/json'}})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(my!==sdReq || !seatMenu.classList.contains('on')) return;   // another seat was opened meanwhile
+        if(!d || !d.ok){ box.innerHTML='<div class="sd-load">'+smEsc((d&&d.error)||'Could not load details.')+'</div>'; return; }
+        renderSeatDetail(box, d);
+        placeSeatMenu(el);
+      })
+      .catch(function(){ if(my===sdReq) box.innerHTML='<div class="sd-load">Could not load details — check the connection.</div>'; });
+  }
+
+  function placeSeatMenu(el){
     var r=el.getBoundingClientRect(), mw=seatMenu.offsetWidth, mh=seatMenu.offsetHeight, vw=window.innerWidth, vh=window.innerHeight, left, top;
-    if(vw<=560){ left=(vw-mw)/2; top=Math.max(10,(vh-mh)/2); }
+    // A phone, or a tall detail card: centre it rather than hang it off the tile.
+    if(vw<=560 && seatMenu.classList.contains('has-detail')){ left=(vw-mw)/2; top=10; }
+    else if(vw<=560 || (seatMenu.classList.contains('has-detail') && mh>vh*0.6)){ left=(vw-mw)/2; top=Math.max(10,(vh-mh)/2); }
     else{
       left=r.left; if(left+mw>vw-8) left=vw-mw-8; if(left<8) left=8;
       top=r.bottom+6; if(top+mh>vh-8) top=r.top-mh-6; if(top<8) top=8;
     }
     seatMenu.style.left=left+'px'; seatMenu.style.top=top+'px';
+  }
+  function openSeatMenu(el){
+    if(!seatMenu) return;
+    buildSeatMenu(el);
+    seatBackdrop.classList.add('on'); seatMenu.classList.add('on');
+    placeSeatMenu(el);
   }
 
   (function(){ var d = document.querySelector('.sm-day.on'); if (d && d.parentNode) d.parentNode.scrollLeft = d.offsetLeft - d.parentNode.offsetLeft - 60; })();
@@ -1264,6 +1433,10 @@ if ($legendStops !== []): ?>
       e.stopPropagation();
       if (smOn) { if (smPickable(this)) { this.classList.toggle('sm-picked'); smCount(); } return; }
       openSeatMenu(this);
+    });
+    // The tiles are role="button" tabindex="0" — Enter / Space open them too.
+    el.addEventListener('keydown', function(e){
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.click(); }
     });
   });
   if(seatBackdrop) seatBackdrop.addEventListener('click', closeSeatMenu);

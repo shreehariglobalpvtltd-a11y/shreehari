@@ -91,12 +91,33 @@ switch ($preset) {
         break;
 }
 
+/* ---- Which day a ticket belongs to (2 Oct 2026) ----------------------
+   'journey' = the day the passenger travels (outbound leg), 'sale' = the
+   day the ticket was cut. The page only knew the sale day, so the owner's
+   "yesterday" (yesterday's bus) showed nothing for an agent whose tickets
+   were cut the day before — or credited to them later from the seat map,
+   which keeps the original sale date. Journey is the default now: it is
+   how the desk, the chalani and the owner count; Sale stays one tap away
+   for "what did I sell today". */
+$basis    = (string) ($_GET['basis'] ?? 'journey') === 'sale' ? 'sale' : 'journey';
+$basisCol = $basis === 'sale' ? 'b.created_at' : 'blx.travel_date';
+// LEFT on the sale basis so a booking is never dropped for want of a leg row.
+$joinSql  = ($basis === 'sale' ? ' LEFT' : '') . " JOIN booking_legs blx ON blx.booking_id = b.id AND blx.leg_type = 'outbound'";
+// A sale cannot be in the future, a journey can: on the journey basis "this
+// week / this month / all" run to the END of the period, so next Friday's
+// passengers are counted in this week instead of vanishing until Friday.
+if ($basis === 'journey') {
+    if ($preset === 'week')  { $to = date('Y-m-d', strtotime('monday next week')); }
+    if ($preset === 'month') { $to = date('Y-m-01', strtotime('first day of next month')); }
+    if ($preset === 'all')   { $to = addDaysISO($today, 400); }
+}
+
 /* ---- Filters -------------------------------------------------------- */
 $q      = Security::clean($_GET['q'] ?? '', 60);
 $status = Security::clean($_GET['status'] ?? '', 20);
 $valid  = ['pending', 'confirmed', 'cancelled', 'rejected', 'expired'];
 
-$where  = ['b.sold_by_admin_id = :agent', 'b.created_at >= :from', 'b.created_at < :to'];
+$where  = ['b.sold_by_admin_id = :agent', $basisCol . ' >= :from', $basisCol . ' < :to'];
 $params = ['agent' => $viewId, 'from' => $from, 'to' => $to];
 
 if ($q !== '') {
@@ -124,50 +145,86 @@ $report = Database::fetch(
             COALESCE(SUM(CASE WHEN b.status = 'confirmed' THEN 1 ELSE 0 END), 0) AS confirmed,
             COALESCE(SUM(CASE WHEN b.status = 'confirmed' THEN b.total_amount ELSE 0 END), 0) AS revenue,
             COALESCE(SUM(CASE WHEN b.status = 'cancelled' THEN 1 ELSE 0 END), 0) AS cancelled
-       FROM bookings b" . $whereSql,
+       FROM bookings b" . $joinSql . $whereSql,
     $params
 ) ?? ['tickets' => 0, 'confirmed' => 0, 'revenue' => 0, 'cancelled' => 0];
 
 $seatsSold = (int) Database::scalar(
     "SELECT COUNT(*) FROM booking_seats bs
-       JOIN bookings b ON b.id = bs.booking_id" . $whereSql . " AND b.status = 'confirmed'",
+       JOIN bookings b ON b.id = bs.booking_id" . $joinSql . $whereSql . " AND b.status = 'confirmed' AND bs.released_at IS NULL",
     $params,
     0
 );
 
 // Commission for the same window, read from the ledger rather than
-// recomputed from a percentage — see includes/agentwallet.php.
-$commissionRange = (float) Database::scalar(
-    "SELECT COALESCE(SUM(amount), 0) FROM agent_ledger
-      WHERE agent_admin_id = :a AND account = 'commission'
-        AND entry_type IN ('commission','commission_void')
-        AND created_at >= :from AND created_at < :to",
-    ['a' => $viewId, 'from' => $from, 'to' => $to],
-    0
-);
+// recomputed from a percentage — see includes/agentwallet.php. On the
+// journey basis the window is the travel day of the ticket each row is for.
+$commissionRange = (float) ($basis === 'sale'
+    ? Database::scalar(
+        "SELECT COALESCE(SUM(amount), 0) FROM agent_ledger
+          WHERE agent_admin_id = :a AND account = 'commission'
+            AND entry_type IN ('commission','commission_void')
+            AND created_at >= :from AND created_at < :to",
+        ['a' => $viewId, 'from' => $from, 'to' => $to],
+        0
+    )
+    : Database::scalar(
+        "SELECT COALESCE(SUM(l.amount), 0) FROM agent_ledger l
+           JOIN booking_legs blx ON blx.booking_id = l.booking_id AND blx.leg_type = 'outbound'
+          WHERE l.agent_admin_id = :a AND l.account = 'commission'
+            AND l.entry_type IN ('commission','commission_void')
+            AND blx.travel_date >= :from AND blx.travel_date < :to",
+        ['a' => $viewId, 'from' => $from, 'to' => $to],
+        0
+    ));
+
+/* The same window counted the OTHER way — so "0 sold yesterday" can say
+   "but 13 of your passengers travelled yesterday" instead of looking empty. */
+$otherCol   = $basis === 'sale' ? 'blx.travel_date' : 'b.created_at';
+$otherCount = Database::fetch(
+    "SELECT COUNT(DISTINCT b.id) AS tickets,
+            (SELECT COUNT(*) FROM booking_seats bs JOIN bookings b2 ON b2.id = bs.booking_id
+               JOIN booking_legs bl2 ON bl2.booking_id = b2.id AND bl2.leg_type = 'outbound'
+              WHERE b2.sold_by_admin_id = :agent2 AND bs.released_at IS NULL AND b2.status IN ('confirmed','pending','completed')
+                AND " . ($basis === 'sale' ? 'bl2.travel_date' : 'b2.created_at') . " >= :from2
+                AND " . ($basis === 'sale' ? 'bl2.travel_date' : 'b2.created_at') . " < :to2) AS pax
+       FROM bookings b" . $joinSql . "
+      WHERE b.sold_by_admin_id = :agent AND $otherCol >= :from AND $otherCol < :to",
+    ['agent' => $viewId, 'from' => $from, 'to' => $to, 'agent2' => $viewId, 'from2' => $from, 'to2' => $to]
+) ?? ['tickets' => 0, 'pax' => 0];
 
 /* ---- The sales themselves ------------------------------------------- */
 $rows = Database::fetchAll(
     "SELECT b.pnr, b.status, b.total_amount, b.contact_phone, b.created_at, b.source, b.booking_mode,
-            r.from_city, r.to_city, bl.travel_date,
+            r.from_city, r.to_city, bl.travel_date, s.route_id, s.slot,
+            COALESCE(bus.bus_name, '') AS bus_name, COALESCE(bus.bus_number, '') AS bus_number,
             (SELECT GROUP_CONCAT(bs.seat_no ORDER BY bs.seat_no SEPARATOR ' ')
-               FROM booking_seats bs WHERE bs.booking_id = b.id) AS seats,
-            (SELECT COUNT(*) FROM booking_seats bs WHERE bs.booking_id = b.id) AS seat_count,
+               FROM booking_seats bs WHERE bs.booking_id = b.id AND bs.released_at IS NULL) AS seats,
+            (SELECT COUNT(*) FROM booking_seats bs WHERE bs.booking_id = b.id AND bs.released_at IS NULL) AS seat_count,
             (SELECT bp.full_name FROM booking_passengers bp
               WHERE bp.booking_id = b.id AND bp.is_primary = 1 LIMIT 1) AS passenger
-       FROM bookings b
+       FROM bookings b" . $joinSql . "
        LEFT JOIN booking_legs bl ON bl.booking_id = b.id AND bl.leg_type = 'outbound'
        LEFT JOIN schedules s ON s.id = bl.schedule_id
-       LEFT JOIN routes r ON r.id = s.route_id"
-    . $whereSql . ' ORDER BY b.id DESC LIMIT 300',
+       LEFT JOIN routes r ON r.id = s.route_id
+       LEFT JOIN buses bus ON bus.id = COALESCE(s.bus_id, r.bus_id)"
+    . $whereSql . ($basis === 'sale' ? ' ORDER BY b.id DESC' : ' ORDER BY blx.travel_date DESC, b.id DESC') . ' LIMIT 300',
     $params
 );
+$rowsMulti = [];
+if ($rows !== []) {
+    $rDates    = array_filter(array_map(static fn(array $r): string => (string) ($r['travel_date'] ?? ''), $rows));
+    $rowsMulti = $rDates !== [] ? admin_multi_bus_days(min($rDates), max($rDates)) : [];
+}
 
 /* ---- Day-by-day breakdown for the range ----------------------------- */
+$dayExpr = $basis === 'sale' ? 'DATE(b.created_at)' : 'blx.travel_date';
 $daily = Database::fetchAll(
-    "SELECT DATE(b.created_at) AS d, COUNT(*) AS tickets,
-            COALESCE(SUM(CASE WHEN b.status = 'confirmed' THEN b.total_amount ELSE 0 END), 0) AS revenue
-       FROM bookings b" . $whereSql . " GROUP BY DATE(b.created_at) ORDER BY d DESC LIMIT 31",
+    "SELECT $dayExpr AS d, COUNT(*) AS tickets,
+            COALESCE(SUM(CASE WHEN b.status = 'confirmed' THEN b.total_amount ELSE 0 END), 0) AS revenue,
+            COALESCE(SUM(CASE WHEN b.status IN ('confirmed','pending','completed')
+                THEN (SELECT COUNT(*) FROM booking_seats bs WHERE bs.booking_id = b.id AND bs.released_at IS NULL) ELSE 0 END), 0) AS pax
+       FROM bookings b" . $joinSql . $whereSql . " GROUP BY $dayExpr ORDER BY d DESC LIMIT 31",
     $params
 );
 
@@ -178,8 +235,8 @@ $agentList = $isSupervisor && $scopeId === null
 $viewing = Database::fetch('SELECT username, full_name FROM admins WHERE id = :id', ['id' => $viewId]) ?? [];
 
 /** Keep the current filters when linking elsewhere. */
-$carry = static function (array $over = []) use ($preset, $customFrom, $customTo, $q, $status, $viewId, $isSupervisor, $scopeId): string {
-    $base = ['range' => $preset, 'from' => $customFrom, 'to' => $customTo, 'q' => $q, 'status' => $status];
+$carry = static function (array $over = []) use ($preset, $customFrom, $customTo, $q, $status, $viewId, $isSupervisor, $scopeId, $basis): string {
+    $base = ['range' => $preset, 'from' => $customFrom, 'to' => $customTo, 'q' => $q, 'status' => $status, 'basis' => $basis === 'sale' ? 'sale' : ''];
     if ($isSupervisor && $scopeId === null) { $base['agent'] = $viewId; }
     return http_build_query(array_filter(array_merge($base, $over), static fn($v) => $v !== '' && $v !== null));
 };
@@ -226,8 +283,37 @@ admin_header($isOwn ? 'My Sales' : 'Sales · ' . (string) ($viewing['full_name']
 @media(max-width:900px){
   .dash-hero{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 }
+/* Journey / sale date switch (2 Oct 2026). */
+.basis-sw{display:inline-flex;border:1.5px solid var(--line);border-radius:12px;overflow:hidden;margin:0 0 12px}
+.basis-sw a{padding:8px 14px;font-size:13px;font-weight:700;text-decoration:none;color:inherit;background:var(--card)}
+.basis-sw a + a{border-left:1.5px solid var(--line)}
+.basis-sw a.on{background:#0f766e;color:#fff}
+.basis-hint{margin:-4px 0 14px;padding:9px 13px;border-radius:10px;background:#e6f4f1;color:#0b4f48;font-size:13px}
+.basis-hint a{font-weight:800;color:inherit}
+[data-theme="dark"] .basis-hint{background:#0b3b36;color:#bdeee5}
+.bus-mini{font-size:11px;font-weight:700;color:#0f766e}
+[data-theme="dark"] .bus-mini{color:#7fe0d0}
 </style>
+<?= LiveSync::anchor('agent:' . $viewId, 'auto') ?>
+<nav class="basis-sw" aria-label="Count tickets by">
+  <a href="<?= $base ?>/admin/agent-sales.php?<?= Security::e($carry(['basis' => null])) ?>" class="<?= $basis === 'journey' ? 'on' : '' ?>"<?= $basis === 'journey' ? ' aria-current="true"' : '' ?>>🚌 Journey date · यात्रा मिति</a>
+  <a href="<?= $base ?>/admin/agent-sales.php?<?= Security::e($carry(['basis' => 'sale'])) ?>" class="<?= $basis === 'sale' ? 'on' : '' ?>"<?= $basis === 'sale' ? ' aria-current="true"' : '' ?>>🧾 Sale date · टिकट काटेको मिति</a>
+</nav>
+<?php /* Only for the plain window — the cross count ignores the search box and
+         the status filter, so with either set it would compare unlike things. */
+      if ($q === '' && $status === '' && (int) ($otherCount['tickets'] ?? 0) !== (int) $report['tickets']): ?>
+  <div class="basis-hint">
+    <?php if ($basis === 'journey'): ?>
+      Counted by the day the ticket was <b>cut</b>, the same window has <?= (int) $otherCount['tickets'] ?> ticket<?= (int) $otherCount['tickets'] === 1 ? '' : 's' ?> · <?= (int) $otherCount['pax'] ?> जना —
+      <a href="<?= $base ?>/admin/agent-sales.php?<?= Security::e($carry(['basis' => 'sale'])) ?>">show by sale date</a>.
+    <?php else: ?>
+      Counted by the day the passengers <b>travel</b>, the same window has <?= (int) $otherCount['tickets'] ?> ticket<?= (int) $otherCount['tickets'] === 1 ? '' : 's' ?> · <?= (int) $otherCount['pax'] ?> जना —
+      <a href="<?= $base ?>/admin/agent-sales.php?<?= Security::e($carry(['basis' => null])) ?>">show by journey date</a>.
+    <?php endif; ?>
+  </div>
+<?php endif; ?>
 <form class="toolbar" method="get">
+  <?php if ($basis === 'sale'): ?><input type="hidden" name="basis" value="sale"><?php endif; ?>
   <?php if ($agentList !== []): ?>
     <select name="agent" title="Agent">
       <?php foreach ($agentList as $a): ?>
@@ -272,9 +358,9 @@ admin_header($isOwn ? 'My Sales' : 'Sales · ' . (string) ($viewing['full_name']
   $expToEx = substr((string) $to, 0, 10);
   $expTo   = ($preset === 'custom' && $isDate($customTo))   ? $customTo   : ($isDate($expToEx) ? addDaysISO($expToEx, -1) : $today);
   ?>
-  <a class="btn ghost" style="margin-left:auto"
+  <a class="btn ghost" style="margin-left:auto" title="The PDF and the CSV list tickets by the day they were cut (sale date)"
      href="<?= $base ?>/admin/agent-sales.php?<?= Security::e($carry(['format' => 'pdf'])) ?>">📄 Download PDF</a>
-  <a class="btn ghost"
+  <a class="btn ghost" title="The PDF and the CSV list tickets by the day they were cut (sale date)"
      href="<?= $base ?>/admin/export.php?<?= Security::e(http_build_query(['q' => $q, 'status' => $status, 'from' => $expFrom, 'to' => $expTo, 'agent' => $scopeId === null ? $viewId : ''])) ?>">⬇️ Export CSV</a>
 </form>
 
@@ -299,24 +385,25 @@ admin_header($isOwn ? 'My Sales' : 'Sales · ' . (string) ($viewing['full_name']
   </div>
   <div class="hcard hc-navy">
     <span class="hicon">💺</span>
-    <div class="hk">Seats sold</div>
+    <div class="hk">Passengers · जना</div>
     <div class="hv"><?= $seatsSold ?></div>
-    <div class="hsub">on confirmed tickets</div>
+    <div class="hsub">seats on confirmed tickets</div>
   </div>
 </div>
 
 <p class="muted" style="font-size:12.5px;margin:-8px 0 18px">
   <?= Security::e($presets[$preset]) ?> · <?= Security::e(formatDate($from)) ?>
   to <?= Security::e(formatDate(addDaysISO($to, -1))) ?>
+  · by <?= $basis === 'sale' ? 'the day the ticket was cut' : 'the day the passenger travels' ?>
   <?= $isOwn ? '· your own sales only' : '' ?>
 </p>
 
 <?php if ($daily !== []): ?>
 <div class="dash-panel" style="margin-bottom:24px">
-  <div class="dp-head">📅 Day by Day</div>
+  <div class="dp-head">📅 Day by Day · <?= $basis === 'sale' ? 'sale date' : 'journey date' ?></div>
   <div style="overflow-x:auto">
   <table>
-    <thead><tr><th>Date</th><th>Tickets</th><th style="text-align:right">Revenue</th><th style="width:40%">Share</th></tr></thead>
+    <thead><tr><th>Date</th><th>Tickets</th><th>जना</th><th style="text-align:right">Revenue</th><th style="width:40%">Share</th></tr></thead>
     <tbody>
     <?php
       $peak = 0.0;
@@ -327,6 +414,7 @@ admin_header($isOwn ? 'My Sales' : 'Sales · ' . (string) ($viewing['full_name']
       <tr>
         <td><strong><?= Security::e(formatDate((string) $d['d'])) ?></strong></td>
         <td><?= (int) $d['tickets'] ?></td>
+        <td><?= (int) ($d['pax'] ?? 0) ?></td>
         <td style="text-align:right"><?= Security::e(inr((float) $d['revenue'])) ?></td>
         <td>
           <div class="occ-bar" style="height:10px;margin:0">
@@ -357,7 +445,10 @@ admin_header($isOwn ? 'My Sales' : 'Sales · ' . (string) ($viewing['full_name']
         <td data-label="Passenger"><span><?= Security::e((string) ($b['passenger'] ?? '—')) ?>
           <div class="muted mono" style="font-size:11px"><?= Security::e(maskPhone((string) $b['contact_phone'])) ?></div></span></td>
         <td data-label="Route / Travel"><span><?= Security::e(($b['from_city'] ?? '—') . ' → ' . ($b['to_city'] ?? '—')) ?>
-          <div class="muted"><?= $b['travel_date'] ? Security::e(formatDate((string) $b['travel_date'])) : '' ?></div></span></td>
+          <div class="muted"><?= $b['travel_date'] ? Security::e(formatDate((string) $b['travel_date'])) : '' ?></div>
+          <?php $rBus = !empty($b['travel_date']) ? admin_bus_tag((int) ($b['slot'] ?? 1), (string) ($b['bus_number'] ?? ''), (string) ($b['bus_name'] ?? ''),
+                    isset($rowsMulti[(int) ($b['route_id'] ?? 0) . '|' . (string) $b['travel_date']])) : '';
+                if ($rBus !== ''): ?><div class="bus-mini">🚌 <?= Security::e($rBus) ?></div><?php endif; ?></span></td>
         <td class="mono" data-label="Seats"><span><?= Security::e((string) ($b['seats'] ? Seats::displayLabels(explode(' ', (string) $b['seats']), 'sleeper', (string) ($b['booking_mode'] ?? 'sharing'), ' ') : '—')) ?>
           <div class="muted" style="font-size:11px"><?= (int) $b['seat_count'] ?> seat<?= (int) $b['seat_count'] === 1 ? '' : 's' ?></div></span></td>
         <td data-label="Amount"><?= Security::e(inr((float) $b['total_amount'])) ?></td>

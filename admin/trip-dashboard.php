@@ -243,6 +243,9 @@ admin_header('Date View', 'trip-dashboard');
 if ($flash !== null) {
     echo '<div class="flash ' . $flash[0] . '">' . Security::e($flash[1]) . '</div>';
 }
+// Live sync (2 Oct 2026): every bus on the date is drawn from the database
+// once; a sale, seat move or bus swap made elsewhere raises a Refresh pill.
+echo LiveSync::anchor('all', 'pill');
 ?>
 <style>
 /* ---- Summary cards with colored left border ---- */

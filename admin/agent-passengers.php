@@ -174,6 +174,9 @@ admin_header(
     . ($view === 'manifest' ? 'Passengers' : 'Customers'),
     'agent-passengers'
 );
+// Live sync (2 Oct 2026): a seat moved, a name fixed or a ticket credited to
+// this agent elsewhere refreshes this list on its own.
+echo LiveSync::anchor('agent:' . $viewId, 'auto');
 ?>
 <style>
 .dash-hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px}

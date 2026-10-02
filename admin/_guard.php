@@ -30,6 +30,7 @@ require_once INCLUDE_PATH . '/notify.php';
 require_once INCLUDE_PATH . '/tripnotify.php';
 require_once INCLUDE_PATH . '/agentwallet.php';
 require_once INCLUDE_PATH . '/reportpdf.php';
+require_once INCLUDE_PATH . '/livesync.php';
 
 /**
  * Require a signed-in admin (optionally with a permission) and return them.
@@ -688,11 +689,89 @@ function admin_poll_js(): string
     el.style.display = 'flex';
   }
 
+  /* Live sync (2 Oct 2026): a page that dropped #liveSync (LiveSync::anchor)
+     sends its scope with every poll. When the database fingerprint moves —
+     a seat changed, an agent assigned, a name fixed, a ticket moved to the
+     other bus — a read-only board reloads itself once the viewer is idle
+     (scroll and open sections kept); a page with forms only offers a pill. */
+  var syncEl = document.getElementById('liveSync');
+  var syncBusy = false, lastTouch = 0, typed = false;
+  ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(function (ev) {
+    document.addEventListener(ev, function () { lastTouch = Date.now(); }, { passive: true, capture: true });
+  });
+  document.addEventListener('input', function (e) {
+    var t = e.target;
+    // A search box that filters the list in place is not a half-typed form.
+    if (t && t.closest && t.closest('form') && !t.closest('[data-sync-ignore]')) typed = true;
+  }, true);
+  function syncIdle() {
+    var a = document.activeElement;
+    if (typed) return false;
+    if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return false;
+    if (document.querySelector('.seat-menu.on, dialog[open], .wa-sheet.on, .modal.on, .sm-selecting')) return false;
+    return Date.now() - lastTouch > 6000;
+  }
+  function syncPill() {
+    var el = document.getElementById('liveSyncPill');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'liveSyncPill';
+      el.className = 'live-toast sync';
+      el.setAttribute('role', 'status');
+      el.innerHTML = '<span>🔄 Data changed in the system (डाटा बदलियो).</span><button type="button">Refresh</button>';
+      el.querySelector('button').onclick = syncReload;
+      document.body.appendChild(el);
+    }
+    el.style.display = 'flex';
+  }
+  function syncReload() {
+    try {
+      var open = [];
+      document.querySelectorAll('details[id][open]').forEach(function (d) { open.push(d.id); });
+      sessionStorage.setItem('shg_sync_restore', JSON.stringify({ p: location.pathname + location.search, y: window.scrollY, o: open }));
+    } catch (e) {}
+    // A GET of the same address, never reload(): a page drawn from a POST
+    // (seat map after a transfer, settle desk after a payout) would re-send
+    // that form on reload — i.e. do the action twice.
+    location.replace(location.pathname + location.search);
+  }
+  function syncChanged() {
+    if (syncBusy) return;
+    if ((syncEl.getAttribute('data-mode') || 'auto') === 'auto' && syncIdle()) {
+      syncBusy = true;
+      syncReload();
+    } else {
+      syncPill();
+    }
+  }
+  (function syncRestore() {
+    var raw = null;
+    try { raw = sessionStorage.getItem('shg_sync_restore'); sessionStorage.removeItem('shg_sync_restore'); } catch (e) {}
+    if (!raw) return;
+    var s = null; try { s = JSON.parse(raw); } catch (e) {}
+    if (!s || s.p !== location.pathname + location.search) return;
+    (s.o || []).forEach(function (id) { var d = document.getElementById(id); if (d) d.open = true; });
+    window.scrollTo(0, s.y || 0);
+    var t = document.createElement('div');
+    t.className = 'live-toast sync';
+    t.setAttribute('role', 'status');
+    t.innerHTML = '<span>✅ Updated just now — showing the latest data (भर्खरै अपडेट).</span>';
+    document.body.appendChild(t);
+    t.style.display = 'flex';
+    setTimeout(function () { t.style.transition = 'opacity .4s'; t.style.opacity = '0'; setTimeout(function () { t.remove(); }, 420); }, 3500);
+  })();
+
   function poll() {
-    fetch('pending-count.php', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+    var url = 'pending-count.php';
+    if (syncEl) url += '?sync=' + encodeURIComponent(syncEl.getAttribute('data-scope') || '');
+    fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (j) {
         if (!j || typeof j.pending !== 'number') return;
+        if (syncEl && typeof j.ver === 'string' && j.ver !== '' && j.ver !== 'err'
+            && j.ver !== (syncEl.getAttribute('data-ver') || '')) {
+          syncChanged();
+        }
         // New-bookings pill (only on pages that supply the baseline anchor).
         var anchor = document.getElementById('liveNewBookings');
         if (anchor && typeof j.maxBooking === 'number') {
@@ -718,7 +797,10 @@ function admin_poll_js(): string
   poll();
   // 15s — "within seconds" per the ask, still gentle on the single VPS (two
   // cheap scalar reads per tick). Skips work while the tab is hidden.
-  setInterval(function () { if (!document.hidden) poll(); }, 15000);
+  // A live-sync page ticks every 10 s and checks at once when it comes back
+  // into view (the phone was in a pocket while the office changed things).
+  setInterval(function () { if (!document.hidden) poll(); }, syncEl ? 10000 : 15000);
+  if (syncEl) document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
 })();
 JS;
 }
@@ -863,6 +945,51 @@ function admin_pill(string $status, string $label = ''): string
     [$cls, $text] = $map[$s] ?? ['st-muted', ucfirst($s)];
     if ($label !== '') { $text = $label; }
     return '<span class="pill ' . $cls . '">' . Security::e($text) . '</span>';
+}
+
+/**
+ * Route + date pairs that carry MORE than one bus (2 Oct 2026). On 1 Oct the
+ * office ran the daily Surat bus and an extra one; berth C1 then exists on
+ * both, so a list that prints "1 Oct · C1" without the bus says nothing.
+ * One grouped read for a date window; key "routeId|Y-m-d" => bus count.
+ *
+ * @return array<string, int>
+ */
+function admin_multi_bus_days(string $from, string $to): array
+{
+    $out = [];
+    try {
+        foreach (Database::fetchAll(
+            "SELECT route_id, travel_date, COUNT(*) AS n FROM schedules
+              WHERE travel_date >= :f AND travel_date <= :t AND status <> 'cancelled'
+              GROUP BY route_id, travel_date HAVING COUNT(*) > 1",
+            ['f' => $from, 't' => $to]
+        ) as $r) {
+            $out[(int) $r['route_id'] . '|' . (string) $r['travel_date']] = (int) $r['n'];
+        }
+    } catch (Throwable $e) {
+        return [];
+    }
+    return $out;
+}
+
+/**
+ * "Bus 2 · GJ05AB1234" — which coach a ticket rides. The slot is named when
+ * the day has several buses on the route (or it is an extra bus at all); the
+ * number plate / name follows when the schedule has a bus. '' when there is
+ * nothing worth saying (a plain one-bus day with no bus assigned).
+ */
+function admin_bus_tag(int $slot, string $busNumber, string $busName = '', bool $multi = false): string
+{
+    $bits = [];
+    if ($multi || $slot > 1) {
+        $bits[] = 'Bus ' . max(1, $slot);
+    }
+    $plate = trim($busNumber) !== '' ? trim($busNumber) : trim($busName);
+    if ($plate !== '') {
+        $bits[] = $plate;
+    }
+    return implode(' · ', $bits);
 }
 
 /**
@@ -1584,6 +1711,9 @@ details.advanced-section[open]>summary::before{content:'▼ '}
 .live-toast.pay{top:66px}.live-toast.book{top:112px;background:var(--ok)}
 .live-toast button{background:var(--orange);border:0;color:#fff;padding:6px 10px;border-radius:7px;font-weight:700;cursor:pointer;font-size:12px;font-family:inherit}
 .live-toast.book button{background:#fff;color:var(--ok)}
+.live-toast.sync{top:158px;background:#0f766e}
+.live-toast.sync button{background:#fff;color:#0f766e}
+@media(max-width:640px){.live-toast.sync{left:12px;right:12px;max-width:none;top:auto;bottom:calc(84px + env(safe-area-inset-bottom,0px))}}
 .flash .flash-x{margin-left:auto;background:none;border:0;color:inherit;opacity:.6;cursor:pointer;font-size:16px;line-height:1;padding:0 2px}
 .flash .flash-x:hover{opacity:1}
 @media(max-width:900px){

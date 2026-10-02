@@ -601,13 +601,32 @@ function agent_stat(string $expr, int $adminId, string $from, string $to, string
     );
 }
 
+/**
+ * Passengers (जना) on this agent's live tickets sold in a window — the
+ * number the owner counts by. A ticket for four is one booking but four
+ * people; the cards below used to print only the booking count.
+ */
+function agent_pax(int $adminId, string $from, string $to): int
+{
+    return (int) Database::scalar(
+        "SELECT COUNT(*) FROM booking_seats bs JOIN bookings b ON b.id = bs.booking_id
+          WHERE b.sold_by_admin_id = :a AND b.created_at >= :f AND b.created_at < :t
+            AND b.status IN ('confirmed','pending','completed') AND bs.released_at IS NULL",
+        ['a' => $adminId, 'f' => $from, 't' => $to],
+        0
+    );
+}
+
 $monthlyTarget = Settings::getFloat('agent_target_monthly', 0.0);
 $stats = [
     'todayCount' => (int) agent_stat('COUNT(*)', $viewId, $today, $todayEnd),
     'todayMoney' => agent_stat('SUM(total_amount)', $viewId, $today, $todayEnd, "AND status = 'confirmed'"),
+    'todayPax'   => agent_pax($viewId, $today, $todayEnd),
     'weekCount'  => (int) agent_stat('COUNT(*)', $viewId, $weekStart, $todayEnd),
+    'weekPax'    => agent_pax($viewId, $weekStart, $todayEnd),
     'monthCount' => (int) agent_stat('COUNT(*)', $viewId, $monthStart, $monthEnd),
     'monthMoney' => agent_stat('SUM(total_amount)', $viewId, $monthStart, $monthEnd, "AND status = 'confirmed'"),
+    'monthPax'   => agent_pax($viewId, $monthStart, $monthEnd),
 ];
 
 /* 7-day bookings sparkline for THIS agent (admin/index.php $spark pattern —
@@ -642,13 +661,15 @@ if ($override['mode'] === 'flat') {
 
 /* ---- Upcoming departures the agent can still sell into -------------- */
 $upcoming = Database::fetchAll(
-    "SELECT s.id AS schedule_id, s.travel_date, s.total_seats, s.route_id,
-            r.route_code, r.from_city, r.to_city, r.dep_time, r.coach_type,
+    "SELECT s.id AS schedule_id, s.travel_date, s.total_seats, s.route_id, s.slot,
+            r.route_code, r.from_city, r.to_city, COALESCE(s.dep_time_override, r.dep_time) AS dep_time, r.coach_type,
+            COALESCE(bus.bus_name, '') AS bus_name, COALESCE(bus.bus_number, '') AS bus_number,
             (SELECT COUNT(*) FROM booking_seats bs WHERE bs.schedule_id = s.id AND bs.released_at IS NULL) AS sold
        FROM schedules s
        JOIN routes r ON r.id = s.route_id
+       LEFT JOIN buses bus ON bus.id = COALESCE(s.bus_id, r.bus_id)
       WHERE s.travel_date >= :d AND s.status = 'scheduled'
-      ORDER BY s.travel_date ASC, r.dep_time ASC
+      ORDER BY s.travel_date ASC, COALESCE(s.dep_time_override, r.dep_time) ASC, s.slot ASC
       LIMIT 8",
     ['d' => $today]
 );
@@ -667,20 +688,111 @@ if (Auth::isCounterAgent()) {
     $upcoming = array_values(array_filter($upcoming, static fn(array $u): bool => AgentWallet::maySellRoute($selfId, (int) $u['route_id'])));
 }
 
+/* ---- This agent's passengers by JOURNEY date (2 Oct 2026) -------------
+   Owner: "07 code Shiv Shanti ko data herne ho bhane 16 jana ticket ta hijo
+   ko i chha, kina dekhako chhaina?" Every figure on this panel was keyed to
+   the day a ticket was CUT (bookings.created_at). Tickets cut on 30 Sep for
+   the 1 Oct bus — and tickets the office credits to an agent later from the
+   seat map, which keep their original sale date — were therefore missing
+   from "today", "this month" and "yesterday" exactly when the owner looked
+   for them. This list is keyed to the day the passenger TRAVELS, one card
+   per bus (a date can carry the daily bus and extra buses), so "yesterday's
+   bus: 13 जना" is on the page whatever day the tickets were cut. */
+$tripFrom = addDaysISO($today, -7);
+$tripTo   = addDaysISO($today, 30);
+$tripRows = Database::fetchAll(
+    "SELECT bl.id AS leg_id, bl.schedule_id, bl.travel_date, bl.leg_type, bl.seat_count AS leg_seats,
+            s.slot, s.status AS trip_status, s.route_id,
+            r.route_code, r.from_city, r.to_city, r.coach_type,
+            COALESCE(s.dep_time_override, r.dep_time) AS dep_time,
+            COALESCE(bus.bus_name, '') AS bus_name, COALESCE(bus.bus_number, '') AS bus_number,
+            b.id AS booking_id, b.pnr, b.status, b.total_amount, b.booking_mode, b.created_at,
+            (SELECT GROUP_CONCAT(bs.seat_no ORDER BY bs.seat_no SEPARATOR ' ')
+               FROM booking_seats bs WHERE bs.leg_id = bl.id AND bs.released_at IS NULL) AS seats,
+            (SELECT COUNT(*) FROM booking_seats bs WHERE bs.leg_id = bl.id AND bs.released_at IS NULL) AS live_seats,
+            (SELECT GROUP_CONCAT(bp.full_name ORDER BY bp.is_primary DESC, bp.id SEPARATOR ', ')
+               FROM booking_passengers bp WHERE bp.booking_id = b.id) AS names
+       FROM bookings b
+       JOIN booking_legs bl ON bl.booking_id = b.id
+       JOIN schedules s ON s.id = bl.schedule_id
+       JOIN routes r ON r.id = s.route_id
+       LEFT JOIN buses bus ON bus.id = COALESCE(s.bus_id, r.bus_id)
+      WHERE b.sold_by_admin_id = :a AND bl.travel_date >= :f AND bl.travel_date <= :t
+        AND b.status IN ('confirmed','pending','completed','cancelled')
+      ORDER BY bl.travel_date, dep_time, s.slot, b.id",
+    ['a' => $viewId, 'f' => $tripFrom, 't' => $tripTo]
+);
+$multiBus = admin_multi_bus_days($tripFrom, $tripTo);
+$trips    = [];
+foreach ($tripRows as $tr) {
+    $sid = (int) $tr['schedule_id'];
+    if (!isset($trips[$sid])) {
+        $trips[$sid] = [
+            'sid'      => $sid,
+            'slot'     => (int) $tr['slot'],
+            'date'     => (string) $tr['travel_date'],
+            'routeId'  => (int) $tr['route_id'],
+            'route'    => (string) $tr['from_city'] . ' → ' . (string) $tr['to_city'],
+            'code'     => (string) $tr['route_code'],
+            'coach'    => (string) $tr['coach_type'],
+            'dep'      => $tr['dep_time'],
+            'bus'      => admin_bus_tag((int) $tr['slot'], (string) $tr['bus_number'], (string) $tr['bus_name'],
+                              isset($multiBus[(int) $tr['route_id'] . '|' . (string) $tr['travel_date']])),
+            'status'   => (string) $tr['trip_status'],
+            'pax'      => 0, 'tickets' => 0, 'money' => 0.0,
+            'cxTickets'=> 0, 'cxSeats' => 0,
+            'rows'     => [],
+        ];
+    }
+    $live = !in_array((string) $tr['status'], ['cancelled'], true);
+    if ($live) {
+        $trips[$sid]['pax']     += (int) $tr['live_seats'];
+        $trips[$sid]['tickets'] += 1;
+        if ((string) $tr['status'] === 'confirmed' || (string) $tr['status'] === 'completed') {
+            $trips[$sid]['money'] += (float) $tr['total_amount'];
+        }
+    } else {
+        $trips[$sid]['cxTickets'] += 1;
+        $trips[$sid]['cxSeats']   += (int) $tr['leg_seats'];
+    }
+    $trips[$sid]['rows'][] = $tr;
+}
+// Today and the coming days first (soonest at the top), then the past week
+// newest first — so yesterday's bus sits right under today's.
+$tripsAhead = array_values(array_filter($trips, static fn(array $t): bool => $t['date'] >= $today));
+$tripsPast  = array_values(array_filter($trips, static fn(array $t): bool => $t['date'] < $today));
+// Newest day first, but Bus 1 before Bus 2 within a day.
+usort($tripsPast, static fn(array $x, array $y): int => [$y['date'], (string) $x['dep'], $x['slot']] <=> [$x['date'], (string) $y['dep'], $y['slot']]);
+$paxOn = static function (string $d) use ($trips): int {
+    $n = 0;
+    foreach ($trips as $t) { if ($t['date'] === $d) { $n += $t['pax']; } }
+    return $n;
+};
+$stats['paxYesterday'] = $paxOn(addDaysISO($today, -1));
+$stats['paxToday']     = $paxOn($today);
+$stats['paxAhead']     = array_sum(array_map(static fn(array $t): int => $t['date'] > $today ? $t['pax'] : 0, $trips));
+
 /* ---- This agent's recent sales -------------------------------------- */
 $recent = Database::fetchAll(
     "SELECT b.pnr, b.status, b.total_amount, b.contact_phone, b.created_at, b.source, b.booking_mode,
-            r.from_city, r.to_city, bl.travel_date,
+            r.from_city, r.to_city, bl.travel_date, s.route_id, s.slot,
+            COALESCE(bus.bus_name, '') AS bus_name, COALESCE(bus.bus_number, '') AS bus_number,
             (SELECT GROUP_CONCAT(bs.seat_no ORDER BY bs.seat_no SEPARATOR ' ')
-               FROM booking_seats bs WHERE bs.booking_id = b.id) AS seats
+               FROM booking_seats bs WHERE bs.booking_id = b.id AND bs.released_at IS NULL) AS seats
        FROM bookings b
        LEFT JOIN booking_legs bl ON bl.booking_id = b.id AND bl.leg_type = 'outbound'
        LEFT JOIN schedules s ON s.id = bl.schedule_id
        LEFT JOIN routes r ON r.id = s.route_id
+       LEFT JOIN buses bus ON bus.id = COALESCE(s.bus_id, r.bus_id)
       WHERE b.sold_by_admin_id = :a
       ORDER BY b.id DESC LIMIT 15",
     ['a' => $viewId]
 );
+$recentMulti = [];
+if ($recent !== []) {
+    $rDates = array_filter(array_map(static fn(array $r): string => (string) ($r['travel_date'] ?? ''), $recent));
+    $recentMulti = $rDates !== [] ? admin_multi_bus_days(min($rDates), max($rDates)) : [];
+}
 
 $agentList = $isSupervisor
     ? Database::fetchAll("SELECT id, username, full_name FROM admins WHERE role = 'agent' ORDER BY full_name, username")
@@ -792,6 +904,35 @@ if ($isOwn) {
 /* Panel headings that carry a button: flex so the button wraps under the
    title on a phone instead of floating over it. */
 .panel h2{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+
+/* Passengers by journey date (2 Oct 2026) — one card per bus. */
+.tc-wrap{padding:12px 16px 16px;display:flex;flex-direction:column;gap:8px}
+.tc-sec{font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);margin:6px 2px 0}
+.trip-card{border:1px solid var(--line);border-radius:14px;background:var(--card);overflow:hidden}
+.trip-card.is-today{border-color:#2E5FA8;box-shadow:inset 4px 0 0 #2E5FA8}
+.trip-card summary{display:grid;grid-template-columns:86px minmax(0,1fr) 78px minmax(0,170px);gap:10px;align-items:center;
+  padding:11px 14px;cursor:pointer;list-style:none}
+.trip-card summary::-webkit-details-marker{display:none}
+.trip-card summary:hover{background:var(--head)}
+.trip-card[open] summary{border-bottom:1px solid var(--line);background:var(--head)}
+.tc-date b{display:block;font-size:15px}
+.tc-date em{font-style:normal;font-size:11.5px;color:var(--mut)}
+.tc-route{font-weight:700;min-width:0}
+.tc-route small{font-weight:500;color:var(--mut)}
+.tc-bus{display:inline-block;margin-left:4px;font-size:11.5px;font-weight:700;padding:1px 8px;border-radius:999px;background:#e6f4f1;color:#0f766e}
+[data-theme="dark"] .tc-bus{background:#0b3b36;color:#7fe0d0}
+.tc-pax b{font-size:20px;color:#0a6b3b}
+[data-theme="dark"] .tc-pax b{color:#6ee7b7}
+.tc-tk{font-size:12.5px}
+.tc-tk small,.tc-cx{display:block;color:#b02a2a;font-size:11.5px}
+.tc-body{padding:10px 12px 12px;overflow-x:auto}
+.tc-table{width:100%;border-collapse:collapse}
+.tc-table th,.tc-table td{padding:7px 8px;border-bottom:1px solid var(--line);font-size:12.5px;text-align:left;vertical-align:top}
+.tc-links{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+@media(max-width:640px){
+  .trip-card summary{grid-template-columns:64px minmax(0,1fr) 58px;gap:8px}
+  .tc-tk{grid-column:2 / -1}
+}
 </style>
 
 <!-- ============ WALLET ============ -->
@@ -869,11 +1010,82 @@ if ($isOwn) {
   </div>
 </div>
 
+<?= LiveSync::anchor('agent:' . $viewId, 'auto') ?>
 <div class="kpis">
-  <?= admin_kpi("Today's bookings", (string) $stats['todayCount'], inr($stats['todayMoney']) . ' collected', 'ticket', 'blue') ?>
-  <?= admin_kpi('This month', $stats['monthCount'] . ' · ' . inr($stats['monthMoney']), inr($summary['earnedMonth']) . ' commission this month', 'calendar', 'green') ?>
+  <?= admin_kpi("Today's bookings", $stats['todayCount'] . ' · ' . $stats['todayPax'] . ' जना', inr($stats['todayMoney']) . ' collected · cut today', 'ticket', 'blue') ?>
+  <?= admin_kpi('This month', $stats['monthCount'] . ' · ' . $stats['monthPax'] . ' जना', inr($stats['monthMoney']) . ' · ' . inr($summary['earnedMonth']) . ' commission', 'calendar', 'green') ?>
   <?= admin_kpi('Commission pay', $payLabel, $paySub, 'percent', 'violet') ?>
-  <?= admin_kpi('This week', (string) $stats['weekCount'], 'bookings sold', 'chart-up', 'teal') ?>
+  <?= admin_kpi('This week', $stats['weekCount'] . ' · ' . $stats['weekPax'] . ' जना', 'bookings cut this week', 'chart-up', 'teal') ?>
+</div>
+<?php /* Journey-day counts (2 Oct 2026) — the cards above count the day a
+         ticket was CUT; the owner counts the bus a passenger RIDES. */ ?>
+<div class="kpis">
+  <?= admin_kpi("Yesterday's bus · हिजो", $stats['paxYesterday'] . ' जना', 'passengers who travelled ' . formatDate(addDaysISO($today, -1)), 'bus', 'teal', null, '#tripsByJourney') ?>
+  <?= admin_kpi("Today's bus · आज", $stats['paxToday'] . ' जना', 'passengers travelling today', 'bus', 'blue', null, '#tripsByJourney') ?>
+  <?= admin_kpi('Upcoming · आउँदै', $stats['paxAhead'] . ' जना', 'booked for the next 30 days', 'calendar', 'green', null, '#tripsByJourney') ?>
+</div>
+
+<?php
+/** One trip card — a departure with this agent's passengers on it. */
+$tripCard = static function (array $t) use ($today, $base): void {
+    $dayTag = match (true) {
+        $t['date'] === $today                  => 'आज · Today',
+        $t['date'] === addDaysISO($today, -1)  => 'हिजो · Yesterday',
+        $t['date'] === addDaysISO($today, 1)   => 'भोलि · Tomorrow',
+        default                                => date('D', strtotime($t['date'])),
+    };
+    $seatHref = $base . '/admin/seatmap.php?' . http_build_query(['route' => $t['routeId'], 'date' => $t['date'], 'sid' => $t['sid']]);
+    ?>
+    <details class="trip-card<?= $t['date'] === $today ? ' is-today' : '' ?>" id="trip-<?= (int) $t['sid'] ?>">
+      <summary>
+        <span class="tc-date"><b><?= Security::e(date('j M', strtotime($t['date']))) ?></b><em><?= Security::e($dayTag) ?></em></span>
+        <span class="tc-route"><?= Security::e($t['route']) ?> <small><?= Security::e(formatTime($t['dep'] ?? null)) ?></small>
+          <?php if ($t['bus'] !== ''): ?><span class="tc-bus">🚌 <?= Security::e($t['bus']) ?></span><?php endif; ?></span>
+        <span class="tc-pax"><b><?= (int) $t['pax'] ?></b> जना</span>
+        <span class="tc-tk"><?= (int) $t['tickets'] ?> ticket<?= $t['tickets'] === 1 ? '' : 's' ?> · <?= Security::e(inr($t['money'])) ?>
+          <?php if ($t['cxTickets'] > 0): ?><small class="tc-cx">+<?= (int) $t['cxTickets'] ?> cancelled (<?= (int) $t['cxSeats'] ?> seat<?= $t['cxSeats'] === 1 ? '' : 's' ?>)</small><?php endif; ?></span>
+      </summary>
+      <div class="tc-body">
+        <table class="no-card tc-table">
+          <thead><tr><th>PNR</th><th>Passengers</th><th>Seats</th><th>Amount</th><th>Status</th></tr></thead>
+          <tbody>
+          <?php foreach ($t['rows'] as $r):
+              $mode = (string) ($r['booking_mode'] ?? '') ?: 'sharing';
+              $seatTxt = trim((string) ($r['seats'] ?? ''));
+          ?>
+            <tr>
+              <td class="mono"><a href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode((string) $r['pnr']) ?>"><?= Security::e((string) $r['pnr']) ?></a>
+                <?php if ((string) $r['leg_type'] === 'return'): ?><div class="muted" style="font-size:11px">return leg</div><?php endif; ?></td>
+              <td><?= Security::e((string) ($r['names'] ?? '—')) ?></td>
+              <td class="mono"><?= $seatTxt === '' ? '—' : Security::e(Seats::displayLabels(explode(' ', $seatTxt), (string) $t['coach'], $mode, ' ')) ?></td>
+              <td><?= Security::e(inr((float) $r['total_amount'])) ?></td>
+              <td><?= admin_pill((string) $r['status']) ?></td>
+            </tr>
+          <?php endforeach; ?>
+          </tbody>
+        </table>
+        <div class="tc-links">
+          <a class="btn ghost btn-sm" href="<?= Security::e($seatHref) ?>">🗺️ Seat map of this bus</a>
+          <a class="btn ghost btn-sm" href="<?= $base ?>/admin/bookings.php?<?= Security::e(http_build_query(['travel_from' => $t['date'], 'travel_to' => $t['date']])) ?>">🎫 All tickets that day</a>
+        </div>
+      </div>
+    </details>
+    <?php
+};
+?>
+<div class="panel" id="tripsByJourney">
+  <h2>🚌 Passengers by journey date · यात्रा मिति अनुसार
+    <span class="muted" style="font-size:12px;font-weight:500;margin-left:auto">last 7 days + next 30 · tap a bus for names &amp; seats</span></h2>
+  <div class="tc-wrap">
+    <?php if ($trips === []): ?>
+      <p class="muted" style="margin:0;padding:6px 2px">No passengers travelling between <?= Security::e(formatDate($tripFrom)) ?> and <?= Security::e(formatDate($tripTo)) ?>.</p>
+    <?php else: ?>
+      <?php if ($tripsAhead !== []): ?><div class="tc-sec">Today &amp; upcoming · आज र आउँदै</div><?php endif; ?>
+      <?php foreach ($tripsAhead as $t) { $tripCard($t); } ?>
+      <?php if ($tripsPast !== []): ?><div class="tc-sec">Past 7 days · पछिल्ला ७ दिन</div><?php endif; ?>
+      <?php foreach ($tripsPast as $t) { $tripCard($t); } ?>
+    <?php endif; ?>
+  </div>
 </div>
 
 <?php if ($isOwn && Auth::isCounterAgent()): ?>
@@ -1481,7 +1693,8 @@ if ($isOwn) {
           <td><strong><?= Security::e(formatDate($u['travel_date'])) ?></strong>
             <div class="muted"><?= Security::e(formatTime($u['dep_time'])) ?></div></td>
           <td><?= Security::e($u['from_city'] . ' → ' . $u['to_city']) ?>
-            <div class="muted mono"><?= Security::e($u['route_code']) ?> · <?= Security::e(ucfirst((string) $u['coach_type'])) ?></div></td>
+            <div class="muted mono"><?= Security::e($u['route_code']) ?> · <?= Security::e(ucfirst((string) $u['coach_type'])) ?></div>
+            <?php $uBus = admin_bus_tag((int) ($u['slot'] ?? 1), (string) ($u['bus_number'] ?? ''), (string) ($u['bus_name'] ?? '')); if ($uBus !== ''): ?><div class="muted" style="font-size:11.5px">🚌 <?= Security::e($uBus) ?></div><?php endif; ?></td>
           <td><strong><?= $sold ?></strong><span class="muted"> / <?= $tot ?></span></td>
           <td style="min-width:110px">
             <div style="height:6px;border-radius:99px;background:var(--line);overflow:hidden" title="<?= $fpct ?>% full">
@@ -1489,7 +1702,7 @@ if ($isOwn) {
             </div>
             <div class="muted" style="font-size:11px;margin-top:2px"><?= $fpct ?>% full</div>
           </td>
-          <td><a class="btn" href="<?= $base ?>/index.php?<?= Security::e(http_build_query(['counter' => 1, 'from' => (string) $u['from_city'], 'to' => (string) $u['to_city'], 'date' => (string) $u['travel_date']])) ?>#/" style="padding:6px 12px" title="Opens the booking app in counter mode: pick seats on the map, fill passengers, take cash/UPI">Sell seats →</a></td>
+          <td><a class="btn" href="<?= $base ?>/index.php?<?= Security::e(http_build_query(['counter' => 1, 'from' => (string) $u['from_city'], 'to' => (string) $u['to_city'], 'date' => (string) $u['travel_date']] + ((int) ($u['slot'] ?? 1) > 1 ? ['sid' => (int) $u['schedule_id']] : []))) ?>#/" style="padding:6px 12px" title="Opens the booking app in counter mode: pick seats on the map, fill passengers, take cash/UPI">Sell seats →</a></td>
         </tr>
       <?php endforeach; endif; ?>
     </tbody>
@@ -1536,7 +1749,10 @@ if ($isOwn) {
         <tr>
           <td class="mono" data-label="PNR"><a href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode((string) $b['pnr']) ?>"><?= Security::e((string) $b['pnr']) ?></a></td>
           <td data-label="Route / Date"><span><?= Security::e(($b['from_city'] ?? '—') . ' → ' . ($b['to_city'] ?? '—')) ?>
-            <div class="muted"><?= $b['travel_date'] ? Security::e(formatDate($b['travel_date'])) : '' ?></div></span></td>
+            <div class="muted"><?= $b['travel_date'] ? Security::e(formatDate($b['travel_date'])) : '' ?><?php
+              $rBus = !empty($b['travel_date']) ? admin_bus_tag((int) ($b['slot'] ?? 1), (string) ($b['bus_number'] ?? ''), (string) ($b['bus_name'] ?? ''),
+                          isset($recentMulti[(int) ($b['route_id'] ?? 0) . '|' . (string) $b['travel_date']])) : '';
+              echo $rBus !== '' ? ' · 🚌 ' . Security::e($rBus) : ''; ?></div></span></td>
           <td class="mono" data-label="Seats"><?php
             $agSeats = (string) ($b['seats'] ?? '');
             echo $agSeats === ''
