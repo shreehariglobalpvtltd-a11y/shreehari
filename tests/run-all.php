@@ -202,6 +202,8 @@ const CORE_SUITES = [
     'agreement-points-test.php'   => 'agreement points: 8 pages parse, blanks kept, save / reset / hide / add, the API',
     'agreement-pages-test.php'    => '/agreements/ pages: noindex, own scripts only, apply + directory contract, build.js match',
     'agreement-pdf-test.php'      => 'Hindi agreement PDF: validation, shaped Devanagari, two pages (needs HarfBuzz, as devshape)',
+    // 27 Sep 2026 office report, restored 2 Oct 2026.
+    'office-report-test.php'      => 'the office WhatsApp report: slots, grace, once per slot, numbers, Nepali text',
 ];
 
 /**
