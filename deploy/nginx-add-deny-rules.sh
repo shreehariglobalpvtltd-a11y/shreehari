@@ -54,7 +54,10 @@ SERVER_ROOT_AWK='
         stmt = stmt " "
     }
     {
-        target = ($1 == "root" && ($2 == r ";" || $2 == r "/;") && sp > 0 && stack[sp] == "server")
+        # 2 Oct 2026: the live www vhost is CRLF, so $2 ended in "\r" and the
+        # www server block was never matched (only .network got the rules).
+        r2 = $2; sub(/\r$/, "", r2)
+        target = ($1 == "root" && (r2 == r ";" || r2 == r "/;") && sp > 0 && stack[sp] == "server")
         scan($0)
     }
 '
