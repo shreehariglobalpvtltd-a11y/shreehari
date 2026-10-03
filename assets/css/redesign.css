@@ -164,7 +164,9 @@ body { color: var(--ink); font-family: var(--font-sans); }
 .mobile-menu a { color: var(--ink) !important; min-height: var(--tap-min); display: flex !important; align-items: center; gap: 10px; border-radius: var(--radius-sm); }
 .mobile-menu a:hover { background: var(--surface-hover) !important; }
 .mobile-menu .mm-hot { background: var(--royal-tint) !important; color: var(--royal-strong) !important; }
-.num-strip { background: var(--surface-sunken) !important; border-bottom: 1px solid var(--line) !important; }
+.num-strip { background: var(--navy) !important; background-image: none !important; border-bottom: 1px solid rgba(255, 255, 255, .12) !important; }
+.num-strip .num-pill { background: rgba(255, 255, 255, .08) !important; border: 1px solid rgba(255, 255, 255, .16) !important; color: var(--on-navy) !important; box-shadow: none !important; }
+.num-strip .num-pill * { color: inherit !important; opacity: 1 !important; }
 .notice-bar { background: var(--royal-tint) !important; color: var(--ink) !important; border-bottom: 1px solid var(--royal-soft) !important; animation: none !important; }
 .notice-bar .megaphone { display: none !important; }
 .skip-link:focus { background: var(--navy) !important; color: var(--on-navy) !important; }
@@ -515,3 +517,6 @@ footer .f-ceo { background: rgba(255, 255, 255, .06) !important; border-color: r
 #counterBar a, #counterBar button { min-height: 44px !important; border-radius: var(--radius-sm) !important; background: rgba(255, 255, 255, .14) !important; color: #FFFFFF !important; box-shadow: none !important; }
 #counterBar #cbQuick { background: var(--royal) !important; color: #FFFFFF !important; }
 :root[data-theme="dark"] #counterBar #cbQuick { background: var(--royal-strong) !important; color: var(--on-royal) !important; }
+
+/* the bus-on-the-road strip on results / seats: decorative — results come first on a phone */
+@media (max-width: 760px) { .shg-journey { display: none !important; } }
