@@ -423,20 +423,32 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
            past figure is corrected with the signed adjustment below. */
         } elseif ($action === 'rate_set' || $action === 'rate_reset') {
             $needManage();
+            /* Oct 2026 (owner brief §7): every rate change carries a reason, and
+               the audit row keeps the EFFECTIVE rate before and after (not just
+               the override), the user and the time. Sold tickets are never
+               re-rated — the change applies from the next ticket. */
+            $reason = Security::clean((string) ($_POST['rate_reason'] ?? ''), 255);
+            if (mb_strlen($reason) < 5) {
+                throw new RuntimeException('Write a short reason (at least 5 characters) for the rate change — it is kept in the history.');
+            }
+            $old = AgentReport::rateCard($targetId);
             if ($action === 'rate_reset') {
                 AgentWallet::setCommissionOverride($targetId, null, null, $selfId);
-                $rc = AgentReport::rateCard($targetId);
-                a360_flash('ok', 'Commission back on the company tier — ' . $rc['label'] . ' from the next ticket. Sold tickets keep what they earned.');
             } else {
                 $raw = trim((string) ($_POST['rate_flat'] ?? ''));
                 if ($raw === '' || !is_numeric($raw)) {
                     throw new RuntimeException('Enter the commission in ₹ per passenger.');
                 }
-                $old  = AgentReport::rateCard($targetId);
-                $flat = round((float) $raw, 2);
-                AgentWallet::setCommissionOverride($targetId, 'flat', $flat, $selfId);
-                a360_flash('ok', 'Commission set to ' . inr($flat) . ' per passenger (was ' . $old['label'] . ') — applies from the next ticket. Sold tickets keep what they earned.');
+                AgentWallet::setCommissionOverride($targetId, 'flat', round((float) $raw, 2), $selfId);
             }
+            $rc = AgentReport::rateCard($targetId);
+            Logger::audit('agent.commission_rate', 'admin', (string) $targetId,
+                ['rate' => $old['label'], 'mode' => $old['mode'], 'basis' => $old['sub'] ?? ''],
+                ['rate' => $rc['label'], 'mode' => $rc['mode'], 'basis' => $rc['sub'] ?? ''],
+                'Commission rate changed (applies from the next ticket)', $reason);
+            a360_flash('ok', $action === 'rate_reset'
+                ? 'Commission back on the company tier — ' . $rc['label'] . ' from the next ticket (was ' . $old['label'] . '). Sold tickets keep what they earned.'
+                : 'Commission set to ' . $rc['label'] . ' (was ' . $old['label'] . ') — applies from the next ticket. Sold tickets keep what they earned.');
             a360_go($targetId, $backTab);
 
         } elseif ($action === 'comm_adjust') {
@@ -450,6 +462,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             if (mb_strlen($note) < 5) {
                 throw new RuntimeException('Write a short reason (at least 5 characters) for this commission change.');
             }
+            $balBefore = AgentWallet::balances($targetId)['commission'];
             AgentWallet::record($targetId, 'adjustment', $amt, [
                 'account'   => 'commission',
                 'direction' => $dir,
@@ -457,6 +470,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 'ref'       => 'ADJ commission',
                 'by'        => $selfId,
             ]);
+            // Oct 2026: the reason and the balance before/after, in the history.
+            Logger::audit('agent.commission_adjust', 'admin', (string) $targetId,
+                ['commission_balance' => $balBefore],
+                ['commission_balance' => AgentWallet::balances($targetId)['commission'], 'change' => ($dir === 'credit' ? $amt : -$amt)],
+                'Commission ' . ($dir === 'credit' ? 'added' : 'deducted'), $note);
             a360_flash('ok', ($dir === 'credit' ? 'Added ' : 'Deducted ') . inr($amt) . ' ' . ($dir === 'credit' ? 'to' : 'from')
                 . ' the commission balance. Balance now ' . inr(AgentWallet::balances($targetId)['commission']) . '.');
             a360_go($targetId, $backTab);
@@ -1101,14 +1119,16 @@ $imgData = [
               <button class="st up" type="button" data-step="10" aria-label="Plus 10">+10</button>
               <button class="st up" type="button" data-step="50" aria-label="Plus 50">+50</button>
             </div>
+            <label class="rp-reason" for="rpReason" style="display:block;margin-top:8px;font-size:12.5px;color:var(--mut)">Reason (kept in the history)</label>
+            <input type="text" name="rate_reason" id="rpReason" maxlength="255" minlength="5" placeholder="e.g. new agreement from 1 Nov" style="width:100%" aria-describedby="rpReasonHint">
             <div class="rp-row" style="margin-top:8px">
-              <button class="btn sm" type="submit" onclick="return confirm('Set this agent\'s commission to ₹' + document.getElementById('rpRate').value + ' per passenger from the next ticket?')">Save ₹ / passenger</button>
+              <button class="btn sm" type="submit" onclick="if((document.getElementById('rpReason').value||'').trim().length<5){alert('Write a short reason first (at least 5 characters).');document.getElementById('rpReason').focus();return false}return confirm('Set this agent\'s commission to ₹' + document.getElementById('rpRate').value + ' per passenger from the next ticket?')">Save ₹ / passenger</button>
               <?php if ($rate['mode'] !== 'tier'): ?>
-                <button class="btn ghost sm" type="submit" name="action" value="rate_reset" formnovalidate onclick="return confirm('Put this agent back on the company tier (<?= $e(inr($rate['tier'])) ?> / pax)?')">Use company tier (<?= $e(inr($rate['tier'])) ?>)</button>
+                <button class="btn ghost sm" type="submit" name="action" value="rate_reset" formnovalidate onclick="if((document.getElementById('rpReason').value||'').trim().length<5){alert('Write a short reason first (at least 5 characters).');document.getElementById('rpReason').focus();return false}return confirm('Put this agent back on the company tier (<?= $e(inr($rate['tier'])) ?> / pax)?')">Use company tier (<?= $e(inr($rate['tier'])) ?>)</button>
               <?php endif; ?>
             </div>
           </form>
-          <p class="hint">Applies from the <b>next ticket</b>. Tickets already sold keep the commission they earned — fix an old figure with “Add / deduct” below.</p>
+          <p class="hint" id="rpReasonHint">Applies from the <b>next ticket</b>. Tickets already sold keep the commission they earned — fix an old figure with “Add / deduct” below. Every change, with its reason, is listed on the <a href="/admin/agent-statement.php?agent=<?= (int) $agentId ?>">statement page</a>.</p>
         <?php else: ?>
           <p class="hint">Only a staff manager or super-admin can change the rate.</p>
         <?php endif; ?>

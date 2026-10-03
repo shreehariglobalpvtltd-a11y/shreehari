@@ -37,7 +37,50 @@ require_once INCLUDE_PATH . '/livesync.php';
  */
 function admin_boot(string $permission = ''): array
 {
-    return Auth::requireAdmin($permission);
+    $admin = Auth::requireAdmin($permission);
+    admin_once_guard();
+    return $admin;
+}
+
+/**
+ * One form submission = one save (Oct 2026). admin_save_guard_js() stamps every
+ * POST form with a one-time token (_once). If the SAME token arrives again — a
+ * double tap, a browser refresh that re-posts, a retry on a slow line — the
+ * repeat is not processed: the admin is sent back to the page (GET, ?dup=1),
+ * which shows the state the first submission produced and a short note. So a
+ * repeated tap can never create a second ticket, payment or ledger entry.
+ * Forms posted without a token (API clients, tests, old cached pages) are
+ * handled exactly as before.
+ */
+function admin_once_guard(): void
+{
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+        return;
+    }
+    $n = (string) ($_POST['_once'] ?? '');
+    if ($n === '' || preg_match('/^[A-Za-z0-9]{16,48}$/', $n) !== 1 || session_status() !== PHP_SESSION_ACTIVE) {
+        return;
+    }
+    $seen = $_SESSION['shg_once'] ?? [];
+    if (!is_array($seen)) {
+        $seen = [];
+    }
+    if (isset($seen[$n])) {
+        $uri = (string) ($_SERVER['REQUEST_URI'] ?? '/admin/');
+        if (!str_starts_with($uri, '/')) {
+            $uri = '/admin/';
+        }
+        $uri = preg_replace('/([?&])dup=1(&|$)/', '$1', $uri) ?? $uri;
+        $uri = rtrim($uri, '?&');
+        header('Location: ' . $uri . (str_contains($uri, '?') ? '&' : '?') . 'dup=1', true, 303);
+        exit;
+    }
+    $seen[$n] = time();
+    if (count($seen) > 300) {
+        asort($seen);
+        $seen = array_slice($seen, -200, null, true);
+    }
+    $_SESSION['shg_once'] = $seen;
 }
 
 /**
@@ -63,34 +106,64 @@ function admin_nav(): array
 {
     $agentView = Auth::isCounterAgent();
 
-    // 5 Sep 2026: the sidebar is grouped the way the owner names the work —
-    // Tickets · Agents · Customers · Buses · Routes · Payments · Reports ·
-    // Settings · Map. The first item of every group is its register; the
-    // rest are the working screens that hang off it. Nothing was removed,
-    // only re-homed, so every old bookmark still resolves.
+    // Oct 2026 redesign: eight areas, in the order the day's work runs —
+    // Dashboard · Bookings & tickets · Seat management · Trips, buses & chalani ·
+    // Agents & counters · Ledger & payments · Expenses & reports · Settings.
+    // Every link, label and permission gate is exactly as before; only the
+    // group each item lives under changed, so every bookmark still resolves.
+    // (5 Sep 2026 grouping: Tickets · Agents · Customers · Buses · Routes ·
+    // Payments · Reports · Settings · Map.)
     $all = [
         ['href' => 'index.php',        'icon' => 'dashboard', 'label' => 'Dashboard',        'perm' => 'dashboard.view', 'section' => ''],
 
         // Tickets — everything that is, or becomes, a ticket.
-        ['href' => 'bookings.php',     'icon' => 'ticket',    'label' => $agentView ? 'My Tickets' : 'Tickets', 'perm' => 'bookings.view', 'section' => 'Tickets'],
+        ['href' => 'bookings.php',     'icon' => 'ticket',    'label' => $agentView ? 'My Tickets' : 'Tickets', 'perm' => 'bookings.view', 'section' => 'Bookings & tickets'],
         // 3 Sep 2026: "+ New Booking" opens the customer app in COUNTER MODE —
         // the same seat map + checkout customers use, with the staff session
         // recognised (see assets/js/14-counter.js). Root-relative so it stays
         // on the host the staff signed in on (.in or the .network door).
         // new-booking.php now redirects there (?legacy=1 keeps the old form).
-        ['href' => '/index.php?counter=1#/', 'icon' => 'plus', 'label' => '+ New Booking', 'perm' => 'bookings.view', 'section' => 'Tickets'],
+        ['href' => '/index.php?counter=1#/', 'icon' => 'plus', 'label' => '+ New Booking', 'perm' => 'bookings.view', 'section' => 'Bookings & tickets'],
         // 6 Sep 2026: ⚡ Quick Ticket — name + mobile → the server picks the
         // bus, pickup, seat and fare → confirmed sale → PNG ticket → WhatsApp.
         // Flagged `hot` so every desk finds it at a glance (see $renderLink).
-        ['href' => 'quick-ticket.php', 'icon' => 'ticket-alt', 'label' => '🤖 QuickBot Ticket', 'perm' => 'bookings.view', 'section' => 'Tickets', 'hot' => true],
-        ['href' => 'shift.php',        'icon' => 'coins',      'label' => 'Shift & Cash',      'perm' => 'bookings.view', 'section' => 'Tickets'],
-        ['href' => 'offline-requests.php', 'icon' => 'notepad', 'label' => 'Offline Desk',     'perm' => 'bookings.view', 'section' => 'Tickets'],
-        ['href' => 'seatmap.php',      'icon' => 'seat',      'label' => 'Seat Map',         'perm' => 'schedules.view', 'section' => 'Tickets'],
-        ['href' => 'manifest.php',     'icon' => 'clipboard', 'label' => 'Passenger Manifest', 'perm' => 'bookings.view', 'section' => 'Tickets'],
+        ['href' => 'quick-ticket.php', 'icon' => 'ticket-alt', 'label' => '🤖 QuickBot Ticket', 'perm' => 'bookings.view', 'section' => 'Bookings & tickets', 'hot' => true],
+        ['href' => 'offline-requests.php', 'icon' => 'notepad', 'label' => 'Offline Desk',     'perm' => 'bookings.view', 'section' => 'Bookings & tickets'],
+        ['href' => 'passengers.php',   'icon' => 'id-card',   'label' => 'Passengers',         'perm' => 'bookings.view', 'section' => 'Bookings & tickets'],
+        ['href' => 'scan.php',         'icon' => 'scan',    'label' => 'Scan Ticket',      'perm' => 'tickets.scan',   'section' => 'Bookings & tickets'],
+
+        // Customers — leads and the people who travelled. An agent's own
+        // bookings are scoped by sold_by_admin_id, but an unclaimed lead has
+        // no seller so it belongs to the office.
+        ['href' => 'customers.php',    'icon' => 'user',     'label' => 'Customers',        'perm' => 'customers.view', 'section' => 'Bookings & tickets'],
+        // 3 Oct 2026: date-wise ledger of every booking by customer, and the
+        // duplicate finder (same person on two numbers / spelling variants).
+        // Office pages — both refuse a counter agent's session.
+        ['href' => 'customer-ledger.php', 'icon' => 'notepad', 'label' => 'Customer Ledger', 'perm' => $agentView ? '__superadmin_only__' : 'customers.view', 'section' => 'Bookings & tickets'],
+        ['href' => 'customer-duplicates.php', 'icon' => 'users', 'label' => 'Duplicate customers', 'perm' => $agentView ? '__superadmin_only__' : 'customers.view', 'section' => 'Bookings & tickets'],
+        ['href' => 'enquiries.php',    'icon' => 'mail',      'label' => 'Enquiries',        'perm' => 'customers.view', 'section' => 'Bookings & tickets'],
+        // 24 Sep 2026: requests the WhatsApp assistant handed to people (SUP-…).
+        ['href' => 'support-inbox.php','icon' => 'msg',       'label' => 'Support Inbox',    'perm' => 'support.view',   'section' => 'Bookings & tickets'],
+        ['href' => 'wa-pending.php',   'icon' => 'msg',       'label' => 'Tickets to hand over','perm'=> 'bookings.view',  'section' => 'Bookings & tickets'],
+        ['href' => 'seatmap.php',      'icon' => 'seat',      'label' => 'Seat Map',         'perm' => 'schedules.view', 'section' => 'Seat management'],
+        ['href' => 'manifest.php',     'icon' => 'clipboard', 'label' => 'Passenger Manifest', 'perm' => 'bookings.view', 'section' => 'Seat management'],
         // 17 Sep 2026: every departure document on one hub (PDF / PNG / WhatsApp).
-        ['href' => 'chalan.php',       'icon' => 'doc',       'label' => 'Bus Chalan',         'perm' => 'bookings.view', 'section' => 'Tickets'],
-        ['href' => 'passengers.php',   'icon' => 'id-card',   'label' => 'Passengers',         'perm' => 'bookings.view', 'section' => 'Tickets'],
-        ['href' => 'scan.php',         'icon' => 'scan',    'label' => 'Scan Ticket',      'perm' => 'tickets.scan',   'section' => 'Tickets'],
+        ['href' => 'chalan.php',       'icon' => 'doc',       'label' => 'Bus Chalan',         'perm' => 'bookings.view', 'section' => 'Trips, buses & chalani'],
+
+        // Buses — fleet, the day-by-day schedule and the crew.
+        ['href' => 'calendar.php',     'icon' => 'calendar',  'label' => 'Bus Calendar',     'perm' => 'schedules.manage','section' => 'Trips, buses & chalani'],
+        ['href' => 'buses.php',        'icon' => 'bus',       'label' => 'Bus Fleet',        'perm' => 'schedules.view', 'section' => 'Trips, buses & chalani'],
+        ['href' => 'schedule.php',     'icon' => 'calendar-plus','label' => 'Schedule Manager','perm' => 'schedules.manage','section' => 'Trips, buses & chalani'],
+        ['href' => 'trips.php',        'icon' => 'clock',     'label' => 'Trips Board',      'perm' => 'schedules.view', 'section' => 'Trips, buses & chalani'],
+        ['href' => 'trip-dashboard.php','icon' => 'grid', 'label' => 'Date View',        'perm' => 'schedules.view', 'section' => 'Trips, buses & chalani'],
+        ['href' => 'drivers.php',      'icon' => 'user-solo', 'label' => 'Drivers & Crew',   'perm' => 'drivers.view',   'section' => 'Trips, buses & chalani'],
+
+        // Routes
+        ['href' => 'routes.php',       'icon' => 'route',      'label' => 'Routes',           'perm' => 'routes.view',    'section' => 'Trips, buses & chalani'],
+
+        // Map — routes, stops, head office and the driver's live position (5 Sep 2026).
+        ['href' => 'map.php',          'icon' => 'map-pin',      'label' => 'Live Map',         'perm' => 'schedules.view', 'section' => 'Trips, buses & chalani'],
+        ['href' => 'shift.php',        'icon' => 'coins',      'label' => 'Shift & Cash',      'perm' => 'bookings.view', 'section' => 'Agents & counters'],
 
         // Agents — the register first (office roles only — the page itself
         // refuses a counter agent's session), then the working screens.
@@ -98,72 +171,49 @@ function admin_nav(): array
         // bookings.view — an agent still sees their own pages, but the new
         // counter role (and support) must not browse other sellers' money.
         // The pages enforce the same rule server-side; this only hides nav.
-        ['href' => 'agents.php',       'icon' => 'users',  'label' => 'Agents',           'perm' => 'commissions.view', 'section' => 'Agents'],
-        ['href' => 'agent.php',        'icon' => 'wallet', 'label' => $agentView ? 'My Dashboard' : 'Agent Panel',    'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents'],
-        ['href' => 'agent-sales.php',  'icon' => 'chart-up',        'label' => $agentView ? 'My Sales' : 'Agent Sales',        'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents'],
-        ['href' => 'agent-assign.php', 'icon' => 'user-cog',  'label' => 'Assign Agents',    'perm' => $agentView ? '__superadmin_only__' : 'commissions.view', 'section' => 'Agents'],
+        ['href' => 'agents.php',       'icon' => 'users',  'label' => 'Agents',           'perm' => 'commissions.view', 'section' => 'Agents & counters'],
+        ['href' => 'agent.php',        'icon' => 'wallet', 'label' => $agentView ? 'My Dashboard' : 'Agent Panel',    'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents & counters'],
+        ['href' => 'agent-sales.php',  'icon' => 'chart-up',        'label' => $agentView ? 'My Sales' : 'Agent Sales',        'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents & counters'],
+        // Oct 2026: the agent statement — on screen and as branded PNG pages (own statement only for an agent).
+        ['href' => 'agent-statement.php', 'icon' => 'notepad', 'label' => $agentView ? 'My Statement' : 'Agent statement', 'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents & counters'],
+        ['href' => 'agent-assign.php', 'icon' => 'user-cog',  'label' => 'Assign Agents',    'perm' => $agentView ? '__superadmin_only__' : 'commissions.view', 'section' => 'Agents & counters'],
         // 27 Sep 2026 agreements, restored 2 Oct 2026 (a later deploy had dropped
         // them): applications + KYC + agreement status, the editable agreement
         // points the public /agreements/ pages show, and the Hindi agreement PDF.
-        ['href' => 'agreements.php',   'icon' => 'handshake', 'label' => '🤝 Agreements & KYC', 'perm' => $agentView ? '__superadmin_only__' : 'customers.view', 'section' => 'Agents'],
-        ['href' => 'agreement-points.php', 'icon' => 'doc',   'label' => '📜 Agreement points', 'perm' => $agentView ? '__superadmin_only__' : 'dashboard.view', 'section' => 'Agents'],
-        ['href' => 'agreement-pdf.php','icon' => 'notepad',   'label' => 'Agreement PDF (Hindi)', 'perm' => 'staff.manage', 'section' => 'Agents'],
-        ['href' => 'agent-passengers.php','icon' => 'id-card','label' => $agentView ? 'My Passengers' : 'Agent Passengers','perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents'],
-        ['href' => 'agent-offline.php','icon' => 'notepad',   'label' => 'Paper Tickets',    'perm' => $agentView ? 'bookings.view' : 'commissions.view',  'section' => 'Agents'],
-        ['href' => 'agent-ranking.php','icon' => 'trophy',    'label' => 'Agent Ranking',    'perm' => 'dashboard.view', 'section' => 'Agents'],
-        // 3 Oct 2026: agent ledger vs bookings — where a stored row no longer matches.
-        ['href' => 'ledger-check.php', 'icon' => 'chart-up',  'label' => 'Ledger मिलान',     'perm' => $agentView ? '__superadmin_only__' : 'commissions.view', 'section' => 'Agents'],
+        ['href' => 'agreements.php',   'icon' => 'handshake', 'label' => '🤝 Agreements & KYC', 'perm' => $agentView ? '__superadmin_only__' : 'customers.view', 'section' => 'Agents & counters'],
+        ['href' => 'agreement-points.php', 'icon' => 'doc',   'label' => '📜 Agreement points', 'perm' => $agentView ? '__superadmin_only__' : 'dashboard.view', 'section' => 'Agents & counters'],
+        ['href' => 'agreement-pdf.php','icon' => 'notepad',   'label' => 'Agreement PDF (Hindi)', 'perm' => 'staff.manage', 'section' => 'Agents & counters'],
+        ['href' => 'agent-passengers.php','icon' => 'id-card','label' => $agentView ? 'My Passengers' : 'Agent Passengers','perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents & counters'],
+        ['href' => 'agent-offline.php','icon' => 'notepad',   'label' => 'Paper Tickets',    'perm' => $agentView ? 'bookings.view' : 'commissions.view',  'section' => 'Agents & counters'],
+        ['href' => 'agent-ranking.php','icon' => 'trophy',    'label' => 'Agent Ranking',    'perm' => 'dashboard.view', 'section' => 'Agents & counters'],
         // staff.php itself admits only a super-admin (it says so on the page),
         // so the item is shown only to one — a manager used to see a link
         // that refused them every time.
-        ['href' => 'staff.php',        'icon' => 'user-cog',  'label' => 'Staff & Approvals', 'perm' => Auth::isSuperadmin() ? 'dashboard.view' : '__superadmin_only__',  'section' => 'Agents'],
-
-        // Customers — leads and the people who travelled. An agent's own
-        // bookings are scoped by sold_by_admin_id, but an unclaimed lead has
-        // no seller so it belongs to the office.
-        ['href' => 'customers.php',    'icon' => 'user',     'label' => 'Customers',        'perm' => 'customers.view', 'section' => 'Customers'],
-        // 3 Oct 2026: date-wise ledger of every booking by customer, and the
-        // duplicate finder (same person on two numbers / spelling variants).
-        // Office pages — both refuse a counter agent's session.
-        ['href' => 'customer-ledger.php', 'icon' => 'notepad', 'label' => 'Customer Ledger', 'perm' => $agentView ? '__superadmin_only__' : 'customers.view', 'section' => 'Customers'],
-        ['href' => 'customer-duplicates.php', 'icon' => 'users', 'label' => 'Duplicate customers', 'perm' => $agentView ? '__superadmin_only__' : 'customers.view', 'section' => 'Customers'],
-        ['href' => 'enquiries.php',    'icon' => 'mail',      'label' => 'Enquiries',        'perm' => 'customers.view', 'section' => 'Customers'],
-        // 24 Sep 2026: requests the WhatsApp assistant handed to people (SUP-…).
-        ['href' => 'support-inbox.php','icon' => 'msg',       'label' => 'Support Inbox',    'perm' => 'support.view',   'section' => 'Customers'],
-        ['href' => 'promo-card.php',   'icon' => 'image',     'label' => 'Promo card',       'perm' => 'dashboard.view', 'section' => 'Payments'],
-
-        // Buses — fleet, the day-by-day schedule and the crew.
-        ['href' => 'calendar.php',     'icon' => 'calendar',  'label' => 'Bus Calendar',     'perm' => 'schedules.manage','section' => 'Buses'],
-        ['href' => 'buses.php',        'icon' => 'bus',       'label' => 'Bus Fleet',        'perm' => 'schedules.view', 'section' => 'Buses'],
-        ['href' => 'schedule.php',     'icon' => 'calendar-plus','label' => 'Schedule Manager','perm' => 'schedules.manage','section' => 'Buses'],
-        ['href' => 'trips.php',        'icon' => 'clock',     'label' => 'Trips Board',      'perm' => 'schedules.view', 'section' => 'Buses'],
-        ['href' => 'trip-dashboard.php','icon' => 'grid', 'label' => 'Date View',        'perm' => 'schedules.view', 'section' => 'Buses'],
-        ['href' => 'drivers.php',      'icon' => 'user-solo', 'label' => 'Drivers & Crew',   'perm' => 'drivers.view',   'section' => 'Buses'],
-
-        // Routes
-        ['href' => 'routes.php',       'icon' => 'route',      'label' => 'Routes',           'perm' => 'routes.view',    'section' => 'Routes'],
-        // 1 Oct 2026: each pickup's fare + ON/OFF + order (the stop editor on Routes).
-        ['href' => 'routes.php#pickups','icon' => 'map-pin',   'label' => 'Pickup points & fares','perm' => 'routes.view', 'section' => 'Settings'],
+        ['href' => 'staff.php',        'icon' => 'user-cog',  'label' => 'Staff & Approvals', 'perm' => Auth::isSuperadmin() ? 'dashboard.view' : '__superadmin_only__',  'section' => 'Agents & counters'],
+        // 3 Oct 2026: agent ledger vs bookings — where a stored row no longer matches.
+        ['href' => 'ledger-check.php', 'icon' => 'chart-up',  'label' => 'Ledger मिलान',     'perm' => $agentView ? '__superadmin_only__' : 'commissions.view', 'section' => 'Ledger & payments'],
 
         // Payments — money in, money back.
-        ['href' => 'payments.php',     'icon' => 'card',      'label' => 'Verify Payments',  'perm' => 'payments.view',  'section' => 'Payments'],
-        ['href' => 'refunds.php',      'icon' => 'refund',    'label' => 'Refunds',          'perm' => 'refunds.view',   'section' => 'Payments'],
-        ['href' => 'offers.php',       'icon' => 'star',      'label' => 'Offers & Discounts','perm' => 'payments.view',  'section' => 'Payments'],
+        ['href' => 'payments.php',     'icon' => 'card',      'label' => 'Verify Payments',  'perm' => 'payments.view',  'section' => 'Ledger & payments'],
+        ['href' => 'refunds.php',      'icon' => 'refund',    'label' => 'Refunds',          'perm' => 'refunds.view',   'section' => 'Ledger & payments'],
+        ['href' => 'offers.php',       'icon' => 'star',      'label' => 'Offers & Discounts','perm' => 'payments.view',  'section' => 'Ledger & payments'],
 
         // Reports
         // 24 Sep 2026: the assistant with hands, full-screen — reports and
         // graphs for the office, their own book for an agent (bookings.view
         // so a counter agent finds it too; the server scopes every answer).
-        ['href' => 'ai-copilot.php',   'icon' => 'msg',    'label' => '🤖 AI Sahayak',     'perm' => 'bookings.view',  'section' => 'Reports', 'hot' => true],
-        ['href' => 'analytics.php',    'icon' => 'chart',  'label' => 'Analytics',        'perm' => 'dashboard.view', 'section' => 'Reports'],
-        ['href' => 'feedback.php',     'icon' => 'star',      'label' => 'Ratings',          'perm' => 'dashboard.view', 'section' => 'Reports'],
-        ['href' => 'accounting.php',   'icon' => 'banknote',    'label' => 'Accounting',       'perm' => 'payments.view',  'section' => 'Reports'],
+        ['href' => 'ai-copilot.php',   'icon' => 'msg',    'label' => '🤖 AI Sahayak',     'perm' => 'bookings.view',  'section' => 'Expenses & reports', 'hot' => true],
+        ['href' => 'analytics.php',    'icon' => 'chart',  'label' => 'Analytics',        'perm' => 'dashboard.view', 'section' => 'Expenses & reports'],
+        ['href' => 'feedback.php',     'icon' => 'star',      'label' => 'Ratings',          'perm' => 'dashboard.view', 'section' => 'Expenses & reports'],
+        ['href' => 'accounting.php',   'icon' => 'banknote',    'label' => 'Accounting',       'perm' => 'payments.view',  'section' => 'Expenses & reports'],
         // 2 Oct 2026: salary + advances for staff without a panel login. reports.view,
         // not payments.view — the counter / official desks hold payments.view and
         // must not read everyone's salary (the page refuses them too).
-        ['href' => 'payroll.php',      'icon' => 'rupee',       'label' => 'Staff Payroll',    'perm' => 'reports.view',   'section' => 'Reports'],
-        ['href' => 'messages-log.php', 'icon' => 'msg',       'label' => 'Message Log',      'perm' => 'dashboard.view', 'section' => 'Reports'],
-        ['href' => 'wa-pending.php',   'icon' => 'msg',       'label' => 'Tickets to hand over','perm'=> 'bookings.view',  'section' => 'Payments'],
+        ['href' => 'payroll.php',      'icon' => 'rupee',       'label' => 'Staff Payroll',    'perm' => 'reports.view',   'section' => 'Expenses & reports'],
+        ['href' => 'messages-log.php', 'icon' => 'msg',       'label' => 'Message Log',      'perm' => 'dashboard.view', 'section' => 'Expenses & reports'],
+        ['href' => 'promo-card.php',   'icon' => 'image',     'label' => 'Promo card',       'perm' => 'dashboard.view', 'section' => 'Settings'],
+        // 1 Oct 2026: each pickup's fare + ON/OFF + order (the stop editor on Routes).
+        ['href' => 'routes.php#pickups','icon' => 'map-pin',   'label' => 'Pickup points & fares','perm' => 'routes.view', 'section' => 'Settings'],
 
         // Settings
         ['href' => 'settings.php',     'icon' => 'cog',       'label' => 'Settings',         'perm' => 'dashboard.view', 'section' => 'Settings'],
@@ -173,9 +223,6 @@ function admin_nav(): array
         ['href' => 'ai-activity.php',  'icon' => 'msg',       'label' => 'AI Activity',      'perm' => 'dashboard.view', 'section' => 'Settings'],
         // 24 Sep 2026: the approved documents vault the assistant may quote and send.
         ['href' => 'company-docs.php', 'icon' => 'doc',       'label' => 'Company Documents','perm' => 'dashboard.view', 'section' => 'Settings'],
-
-        // Map — routes, stops, head office and the driver's live position (5 Sep 2026).
-        ['href' => 'map.php',          'icon' => 'map-pin',      'label' => 'Live Map',         'perm' => 'schedules.view', 'section' => 'Map'],
     ];
 
     return array_values(array_filter($all, static fn(array $i): bool => $i['perm'] === '' || Auth::can($i['perm'])));
@@ -209,7 +256,7 @@ function admin_header(string $title, string $active = ''): void
     $company = Settings::getString('company_name', APP_NAME);
 
     echo '<!doctype html><html lang="en"><head><meta charset="utf-8">';
-    echo '<meta name="viewport" content="width=device-width, initial-scale=1">';
+    echo '<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">';
     echo '<title>' . Security::e($title) . ' · ' . Security::e($company) . ' Admin</title>';
     echo '<link rel="icon" type="image/png" href="/assets/img/favicon-32.png">';
     echo '<link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png">';
@@ -219,10 +266,14 @@ function admin_header(string $title, string $active = ''): void
     echo '<meta name="theme-color" content="#0C306C">';
     // 17 Sep 2026: the CSRF token for the panel's JSON tools (WhatsApp sends).
     echo '<meta name="csrf" content="' . Security::e(Security::csrfToken()) . '">';
-    echo '<link rel="preconnect" href="https://fonts.googleapis.com">';
-    echo '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>';
-    echo '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">';
+    // Oct 2026 redesign: the S Hari Global design system (the same tokens and
+    // sg- components as the customer app) loads first; the panel's own rules
+    // follow, then admin.css restyles the shell on top. The UI uses the
+    // device's own font now (no webfont download on a slow counter line).
+    $av = '20261003d';
+    echo '<link rel="stylesheet" href="/assets/css/ds.css?v=' . $av . '">';
     echo '<style>' . admin_css() . '</style>';
+    echo '<link rel="stylesheet" href="/assets/css/admin.css?v=' . $av . '">';
     // Apply saved/system theme before <body> paints (no flash), + the toggle.
     echo '<script>(function(){try{var t=localStorage.getItem("shg_admin_theme");'
        . 'if(t!=="dark"&&t!=="light")t=(window.matchMedia&&matchMedia("(prefers-color-scheme:dark)").matches)?"dark":"light";'
@@ -359,6 +410,9 @@ function admin_header(string $title, string $active = ''): void
     echo admin_mobile_nav($items, $active);
 
     echo '<main class="wrap"><h1>' . Security::e($title) . '</h1>';
+    if (($_GET['dup'] ?? '') === '1') {
+        echo '<div class="flash warn" role="status">That was a repeated tap on a form that had already been sent. It was not saved a second time — this page shows the result of the first one.</div>';
+    }
 }
 
 /**
@@ -445,6 +499,9 @@ function admin_footer(): void
     // own mobile layout (.sm-table) or opt out (.no-card), have no thead, or
     // whose rows do not line up with the header are left exactly as they are.
     echo '<script>' . admin_cards_js() . '</script>';
+    // Oct 2026: one save per tap, honest "Saving…" state, keep what was typed
+    // if the line drops, and keep inputs clear of the phone keyboard.
+    echo '<script>' . admin_save_guard_js() . '</script>';
     // 17 Sep 2026: every flash gets a dismiss ×; success flashes fade after 7 s
     // (errors and warnings stay until dismissed — the desk must read them).
     echo '<script>(function(){document.querySelectorAll(".flash").forEach(function(f){'
@@ -572,6 +629,92 @@ HTML;
  * (a section is open if it is server-active OR in the remembered set), and
  * persists every toggle. Pure presentation — no links, perms or DOM ids change.
  */
+/**
+ * Save guard (Oct 2026, owner brief §4). For every POST form on the page:
+ *  - a one-time token _once is added at submit (see admin_once_guard());
+ *  - a page-navigating submit puts the button into "Saving…" and ignores
+ *    further taps until the server answers — success is what the next page
+ *    shows (its flash / updated values), never assumed here;
+ *  - if the answer never comes (slow or dropped line) the button returns as
+ *    "Try again" after 20 s, still carrying the SAME token, so a retry of a
+ *    submission that did arrive is recognised and not saved twice;
+ *  - what was typed is kept in this tab (sessionStorage, never passwords or
+ *    files) and offered back if the page comes back without a success note.
+ * Forms whose own script handles the submit (preventDefault) are left alone
+ * apart from getting a fresh token.
+ * Also: body.kb-open while the on-screen keyboard is up (admin.css moves the
+ * bottom bar out of the way so the field and its Save stay visible).
+ */
+function admin_save_guard_js(): string
+{
+    return <<<'JS'
+(function () {
+  function tok() { var a = new Uint8Array(16); (window.crypto || window.msCrypto).getRandomValues(a); return Array.prototype.map.call(a, function (b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
+  var KEY = 'shg_unsent:' + location.pathname;
+  function isPost(f) { return (f.getAttribute('method') || '').toLowerCase() === 'post'; }
+  function fields(f) {
+    var out = {};
+    Array.prototype.forEach.call(f.elements, function (el) {
+      if (!el.name || el.name === '_once' || el.type === 'password' || el.type === 'file' || el.type === 'hidden' || el.type === 'submit' || el.type === 'button') return;
+      if ((el.type === 'checkbox' || el.type === 'radio')) { out[el.name + '|' + el.value] = el.checked ? '1' : '0'; return; }
+      out[el.name] = el.value;
+    });
+    return out;
+  }
+  document.addEventListener('submit', function (e) {
+    var f = e.target; if (!f || f.tagName !== 'FORM' || !isPost(f)) return;
+    if (f.dataset.sending === '1') { e.preventDefault(); e.stopImmediatePropagation(); return; }
+    var t = f.querySelector('input[name="_once"]');
+    if (!t) { t = document.createElement('input'); t.type = 'hidden'; t.name = '_once'; f.appendChild(t); }
+    if (!t.value || f.dataset.ajax === '1') t.value = tok();
+  }, true);
+  document.addEventListener('submit', function (e) {
+    var f = e.target; if (!f || f.tagName !== 'FORM' || !isPost(f)) return;
+    if (e.defaultPrevented) { f.dataset.ajax = '1'; return; }
+    f.dataset.sending = '1'; f.setAttribute('aria-busy', 'true');
+    var btn = e.submitter || f.querySelector('button[type=submit],input[type=submit],button:not([type])');
+    try { sessionStorage.setItem(KEY, JSON.stringify({ t: Date.now(), i: Array.prototype.indexOf.call(document.forms, f), v: fields(f) })); } catch (_) {}
+    setTimeout(function () {
+      if (btn) { btn.dataset.label = btn.dataset.label || (btn.tagName === 'INPUT' ? btn.value : btn.innerHTML); btn.classList.add('is-saving'); if (btn.tagName === 'INPUT') btn.value = 'Saving…'; else btn.textContent = 'Saving…'; btn.disabled = true; }
+    }, 0);
+    setTimeout(function () {
+      if (!document.body.contains(f)) return;
+      f.dataset.sending = ''; f.removeAttribute('aria-busy');
+      if (btn) { btn.disabled = false; btn.classList.remove('is-saving'); if (btn.tagName === 'INPUT') btn.value = 'Try again'; else btn.textContent = 'Try again'; }
+    }, 20000);
+  });
+  window.addEventListener('pageshow', function (ev) {
+    if (ev.persisted) Array.prototype.forEach.call(document.forms, function (f) { f.dataset.sending = ''; f.removeAttribute('aria-busy'); });
+  });
+  document.addEventListener('DOMContentLoaded', offerRestore);
+  if (document.readyState !== 'loading') offerRestore();
+  function offerRestore() {
+    var raw; try { raw = sessionStorage.getItem(KEY); } catch (_) { return; }
+    if (!raw) return;
+    var d; try { d = JSON.parse(raw); } catch (_) { return; }
+    var ok = document.querySelector('.flash.ok') || /[?&](saved|ok|done|dup)=/.test(location.search);
+    if (ok || !d || Date.now() - d.t > 30 * 60 * 1000) { try { sessionStorage.removeItem(KEY); } catch (_) {} return; }
+    var f = document.forms[d.i]; if (!f || !isPost(f)) return;
+    var differs = Object.keys(d.v).some(function (k) { var p = k.split('|'); var el = f.elements[p[0]]; if (!el) return false; if (p.length > 1) return false; return el.value !== d.v[k]; });
+    if (!differs) { try { sessionStorage.removeItem(KEY); } catch (_) {} return; }
+    var note = document.createElement('div'); note.className = 'save-note'; note.setAttribute('role', 'status');
+    note.innerHTML = '<span>Your last save on this page did not show a confirmation. What you typed is kept.</span><button type="button" class="btn sm">Restore</button><button type="button" class="btn ghost sm">Dismiss</button>';
+    f.parentNode.insertBefore(note, f);
+    note.querySelectorAll('button')[0].onclick = function () {
+      Object.keys(d.v).forEach(function (k) { var p = k.split('|'); var els = f.querySelectorAll('[name="' + p[0].replace(/"/g, '') + '"]'); Array.prototype.forEach.call(els, function (el) { if (p.length > 1) { if (el.value === p[1]) el.checked = d.v[k] === '1'; } else el.value = d.v[k]; }); });
+      note.remove(); try { sessionStorage.removeItem(KEY); } catch (_) {}
+    };
+    note.querySelectorAll('button')[1].onclick = function () { note.remove(); try { sessionStorage.removeItem(KEY); } catch (_) {} };
+  }
+  if (window.visualViewport) {
+    var vv = window.visualViewport;
+    var sync = function () { var a = document.activeElement; var typing = a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName); document.body.classList.toggle('kb-open', !!typing && (window.innerHeight - vv.height) > 140); };
+    vv.addEventListener('resize', sync); document.addEventListener('focusin', function () { setTimeout(sync, 250); }); document.addEventListener('focusout', function () { setTimeout(sync, 250); });
+  }
+})();
+JS;
+}
+
 /** Auto card-table for phones — see admin_footer(). */
 function admin_cards_js(): string
 {
@@ -588,7 +731,10 @@ function admin_cards_js(): string
   var tables = document.querySelectorAll('table');
   for (var k = 0; k < tables.length; k++) {
     var t = tables[k];
-    if (t.classList.contains('card-table') || /(^|\s)(no-card|sm-table)(\s|$)/.test(t.className)) continue;
+    // Oct 2026: a spreadsheet register (table.dt) is carded on a phone as well —
+    // its search + filters still drive the rows; only the layout changes.
+    var isDt = t.classList.contains('dt');
+    if (t.classList.contains('card-table') || /(^|\s)sm-table(\s|$)/.test(t.className) || (!isDt && /(^|\s)no-card(\s|$)/.test(t.className))) continue;
     if (!t.tHead || !t.tHead.rows[0]) continue;
     var ths = t.tHead.rows[0].cells, labels = [];
     for (var i = 0; i < ths.length; i++) labels.push((ths[i].textContent || '').replace(/\s+/g, ' ').trim());
@@ -1330,29 +1476,26 @@ function admin_css(): string
 {
     return <<<'CSS'
 *{box-sizing:border-box}
-:root{
-  --navy:#0C306C;--navy-700:#0B3F8F;--blue:#0054A8;--blue-600:#003C90;--blue-100:#D9E7FA;--blue-50:#EEF4FC;
-  --orange:#F07800;--orange-600:#D95F00;--orange-100:#FFE4C7;--orange-50:#FFF4E8;--gold:#FFB703;
-  --ink:#16233C;--ink-2:#2B3A55;--mut:#6B7688;--mut-2:#98A2B3;--line:#E4E9F1;--line-2:#D5DCE8;
-  --bg:#F4F6FB;--card:#FFFFFF;--head:#F8FAFD;--hover:#EEF2FA;--soft:#F6F8FC;
-  --ok:#178A50;--ok-bg:#E4F6EC;--warn:#B7791F;--warn-bg:#FFF4D6;--bad:#C53030;--bad-bg:#FBE3E3;
-  --info:#2E5FA8;--info-bg:#E3ECF9;--wa:#25D366;--wa-600:#1DB558;--wa-bg:#E6FAEE;--violet:#6D4FC2;--violet-bg:#EEE9FB;--teal:#0E8C7F;--teal-bg:#E0F5F2;
-  --r-xs:8px;--r-sm:10px;--r:14px;--r-lg:18px;--r-xl:22px;
-  --sh-1:0 1px 2px rgba(18,38,78,.06),0 1px 6px rgba(18,38,78,.05);
-  --sh-2:0 4px 14px rgba(18,38,78,.08),0 2px 6px rgba(18,38,78,.05);
-  --sh-3:0 14px 34px rgba(18,38,78,.14),0 4px 12px rgba(18,38,78,.06);
-  --ease:cubic-bezier(.4,0,.2,1);--dur:.18s;
-  --f-ui:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,'Noto Sans Devanagari',sans-serif;
-  --f-mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
-  --side-w:236px;--tb-h:58px;
+/* Oct 2026 redesign: every value comes from the S Hari Global design system
+   (assets/css/ds.css, light + dark). These are the panel's own names for those
+   tokens, so the 52 pages with their own inline styles repaint unchanged.
+   --navy, --ink, --ink-2 and --line are used straight from ds.css. The
+   selector matches ds.css's specificity so these win by order in both themes. */
+:root,:root[data-theme]{
+  --navy-700:var(--royal-strong);--blue:var(--royal);--blue-600:var(--royal-strong);--blue-100:var(--royal-soft);--blue-50:var(--royal-tint);
+  --orange:var(--royal);--orange-600:var(--royal-strong);--orange-100:var(--royal-soft);--orange-50:var(--royal-tint);--gold:var(--warning);
+  --mut:var(--muted);--mut-2:var(--muted);--line-2:var(--line-strong);
+  --bg:var(--page);--card:var(--surface);--head:var(--surface-sunken);--hover:var(--surface-hover);--soft:var(--surface-sunken);
+  --ok:var(--success);--ok-bg:var(--success-soft);--warn:var(--warning);--warn-bg:var(--warning-soft);--bad:var(--danger);--bad-bg:var(--danger-soft);
+  --info:var(--royal);--info-bg:var(--royal-tint);--wa:var(--success);--wa-600:var(--success);--wa-bg:var(--success-soft);--violet:var(--refund);--violet-bg:var(--refund-soft);--teal:#0B6E64;--teal-bg:#E0F5F2;
+  --r-xs:var(--radius-xs);--r-sm:var(--radius-sm);--r:var(--radius-md);--r-lg:var(--radius-lg);--r-xl:var(--radius-xl);
+  --sh-1:var(--shadow-1);--sh-2:var(--shadow-2);--sh-3:var(--shadow-3);
+  --ease:cubic-bezier(.4,0,.2,1);--dur:.15s;
+  --f-ui:var(--font-sans);
+  --f-mono:var(--font-mono);
+  --side-w:var(--sidenav-w);--tb-h:var(--appbar-h);
 }
-:root[data-theme="dark"]{
-  --ink:#E8F0FB;--ink-2:#C9D4E6;--mut:#93A4BE;--mut-2:#6F819C;--line:#22314A;--line-2:#2C3D5A;
-  --bg:#0B1220;--card:#111D33;--head:#0F1A2E;--hover:#182741;--soft:#0E192C;
-  --blue-100:#1B2F55;--blue-50:#152645;--orange-100:#3B2610;--orange-50:#2C1D0F;
-  --ok-bg:#12321F;--warn-bg:#3A2B0E;--bad-bg:#3B1717;--info-bg:#1B2F55;--wa-bg:#0F3320;--violet-bg:#261E45;--teal-bg:#0F2E2B;
-  --sh-1:0 1px 2px rgba(0,0,0,.35);--sh-2:0 4px 14px rgba(0,0,0,.35);--sh-3:0 14px 34px rgba(0,0,0,.5);
-}
+:root[data-theme="dark"]{--teal:#4FC3B5;--teal-bg:#0F2E2B}
 html{overflow-x:hidden;-webkit-text-size-adjust:100%}@supports(overflow:clip){html{overflow-x:clip}}
 body{margin:0;font-family:var(--f-ui);font-size:14px;line-height:1.45;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;font-feature-settings:"cv11","ss01"}
 body,.side,.card,.panel,.panel h2,th,.toolbar input,.toolbar select,.btn.ghost{transition:background-color .2s,color .2s,border-color .2s}

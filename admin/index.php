@@ -35,6 +35,13 @@ $todayEnd  = addDaysISO($today, 1);
 $monthStart = date('Y-m-01');
 $monthEnd   = date('Y-m-01', strtotime('+1 month'));
 
+require_once INCLUDE_PATH . '/moneysummary.php';
+/* Oct 2026 redesign: the money tiles read MoneySummary, which uses the exact
+   definitions of admin/accounting.php (collected excludes cash still to be
+   collected; NPR converted at the owner's npr_per_inr). */
+$moneyDay   = MoneySummary::window($today, $today);
+$moneyMonth = MoneySummary::window($monthStart, addDaysISO($monthEnd, -1));
+
 $stats = [
     'pendingPay'   => (int) Database::scalar("SELECT COUNT(*) FROM bookings WHERE status='pending'"),
     'todayBookings'=> (int) Database::scalar("SELECT COUNT(*) FROM bookings WHERE created_at>=:d0 AND created_at<:d1", ['d0' => $today, 'd1' => $todayEnd]),
@@ -239,34 +246,60 @@ admin_page_head(
   <span class="promo-cta">Open desk →</span>
 </a>
 
-<!-- Money strip (gradient hero tiles) -->
-<div class="dash-hero">
-  <div class="hcard hc-green">
-    <span class="hicon"><svg class="a-ic xl"><use href="#a-rupee"/></svg></span>
-    <div class="hk">Revenue today</div>
-    <div class="hv"><?= $e(inr($stats['revenueToday'])) ?></div>
-    <div class="hsub"><?= (int) $stats['seatsToday'] ?> seats confirmed</div>
-  </div>
-  <div class="hcard hc-orange">
-    <span class="hicon"><svg class="a-ic xl"><use href="#a-clock"/></svg></span>
-    <div class="hk">Awaiting verification</div>
-    <div class="hv"><?= (int) $stats['pendingPay'] ?></div>
-    <div class="hsub">payments to review</div>
-    <?php if ($stats['pendingPay'] > 0): ?><a class="hlink" href="<?= $base ?>/admin/payments.php">Review now →</a><?php endif; ?>
-  </div>
-  <div class="hcard hc-navy">
-    <span class="hicon"><svg class="a-ic xl"><use href="#a-chart-up"/></svg></span>
-    <div class="hk">Revenue this month</div>
-    <div class="hv"><?= $e(inr($stats['revenueMonth'])) ?></div>
-    <div class="hsub"><?= (int) $stats['confirmed'] ?> total confirmed</div>
-  </div>
-  <div class="hcard hc-blue">
-    <span class="hicon"><svg class="a-ic xl"><use href="#a-handshake"/></svg></span>
-    <div class="hk">Commission this month</div>
-    <div class="hv"><?= $e(inr($commissionMonth)) ?></div>
-    <div class="hsub">accrued to agents</div>
-    <a class="hlink" href="<?= $base ?>/admin/agents.php">Agent wallets →</a>
-  </div>
+<!-- Money for the day and the month (Oct 2026 redesign). Each tile says what
+     it counts — the same definitions as Accounting, so the two always agree. -->
+<?php $accDay = $base . '/admin/accounting.php?from=' . rawurlencode($today) . '&to=' . rawurlencode($today); ?>
+<?php $accMonth = $base . '/admin/accounting.php?from=' . rawurlencode($monthStart) . '&to=' . rawurlencode(addDaysISO($monthEnd, -1)); ?>
+<h2 class="dash-sec">Money · <?= $isTodayView ? 'today' : $e(formatDate($today)) ?></h2>
+<div class="sg sg-stats dash-money">
+  <a class="sg-stat" href="<?= $e($accDay) ?>">
+    <span class="sg-stat__label">Collected</span>
+    <span class="sg-stat__value"><?= $e(inr($moneyDay['collected'])) ?></span>
+    <span class="sg-stat__def">Money actually received: <?= (int) $moneyDay['collectedCount'] ?> confirmed booking<?= $moneyDay['collectedCount'] === 1 ? '' : 's' ?>, cash still to collect not counted</span>
+  </a>
+  <a class="sg-stat" href="<?= $e($accDay) ?>">
+    <span class="sg-stat__label">Confirmed fares</span>
+    <span class="sg-stat__value"><?= $e(inr($moneyDay['confirmedFare'])) ?></span>
+    <span class="sg-stat__def">Fare of the <?= (int) $moneyDay['confirmedCount'] ?> booking<?= $moneyDay['confirmedCount'] === 1 ? '' : 's' ?> confirmed this day (revenue, collected or not) · <?= (int) $stats['seatsToday'] ?> seats</span>
+  </a>
+  <a class="sg-stat<?= ($moneyDay['codPending'] + $moneyMonth['agentCash']) > 0.5 ? ' sg-stat--attention' : '' ?>" href="<?= $base ?>/admin/payments.php">
+    <span class="sg-stat__label">Still to collect</span>
+    <span class="sg-stat__value"><?= $e(inr($moneyDay['codPending'] + $moneyMonth['agentCash'])) ?></span>
+    <span class="sg-stat__def"><?= $e(inr($moneyDay['codPending'])) ?> cash on boarding (<?= (int) $moneyDay['codCount'] ?>) + <?= $e(inr($moneyMonth['agentCash'])) ?> held by agents now</span>
+  </a>
+  <a class="sg-stat<?= $stats['pendingPay'] > 0 ? ' sg-stat--attention' : '' ?>" href="<?= $base ?>/admin/payments.php">
+    <span class="sg-stat__label">To verify</span>
+    <span class="sg-stat__value"><?= (int) $stats['pendingPay'] ?></span>
+    <span class="sg-stat__def">Bookings waiting for payment verification<?= $stats['pendingPay'] > 0 ? ' — open Verify payments' : '' ?></span>
+  </a>
+</div>
+<h2 class="dash-sec">Money · <?= $e(date('F Y', strtotime($monthStart))) ?></h2>
+<div class="sg sg-stats dash-money">
+  <a class="sg-stat" href="<?= $e($accMonth) ?>">
+    <span class="sg-stat__label">Collected</span>
+    <span class="sg-stat__value"><?= $e(inr($moneyMonth['collected'])) ?></span>
+    <span class="sg-stat__def">Money received this month (same rule as above)</span>
+  </a>
+  <a class="sg-stat" href="<?= $e($accMonth) ?>">
+    <span class="sg-stat__label">Confirmed fares</span>
+    <span class="sg-stat__value"><?= $e(inr($moneyMonth['confirmedFare'])) ?></span>
+    <span class="sg-stat__def"><?= (int) $moneyMonth['confirmedCount'] ?> bookings confirmed this month (revenue)</span>
+  </a>
+  <a class="sg-stat" href="<?= $base ?>/admin/agents.php">
+    <span class="sg-stat__label">Commission</span>
+    <span class="sg-stat__value"><?= $e(inr($commissionMonth)) ?></span>
+    <span class="sg-stat__def">Accrued to agents this month, net of reversals (agent ledger)</span>
+  </a>
+  <a class="sg-stat" href="<?= $e($accMonth) ?>">
+    <span class="sg-stat__label">Profit</span>
+    <?php if ($moneyMonth['expenseRows'] === 0): ?>
+    <span class="sg-stat__value is-na">Not available</span>
+    <span class="sg-stat__def">No expenses recorded this month. Add diesel, toll, crew and office costs in Accounting to see profit.</span>
+    <?php else: ?>
+    <span class="sg-stat__value is-na">See Accounting</span>
+    <span class="sg-stat__def"><?= $e(inr($moneyMonth['expenses'])) ?> expenses recorded (<?= (int) $moneyMonth['expenseRows'] ?>). Accounting shows net after expenses &amp; salaries.</span>
+    <?php endif; ?>
+  </a>
 </div>
 
 <!-- Operations strip (light KPI tiles; the four trip tiles are live-updated) -->
