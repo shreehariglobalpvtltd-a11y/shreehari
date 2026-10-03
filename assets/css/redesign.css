@@ -1,0 +1,331 @@
+/* =====================================================================
+   S HARI GLOBAL REDESIGN — Oct 2026 (customer app, shreehariglobal.in)
+
+   Loads LAST, after app.css / views.css / premium.css and ds.css. It does
+   three jobs, in this order:
+     1. Points every legacy colour/type/shadow token at the design-system
+        tokens in ds.css, so the ~1,300 existing var(--blue)/var(--orange)/
+        var(--card)... references repaint in the one brand without touching
+        the rules that use them. The 7 day-palettes are retired (the
+        pre-paint script no longer stamps data-day).
+     2. Switches off decoration the brief rules out: looping motion, sheen
+        text, rays/particles, gradients on surfaces and buttons.
+     3. Restyles the booking screens with the sg- component rules.
+   Element ids and JS hooks are untouched; only presentation changes.
+   Source of truth for every value: the "S Hari Global" design system
+   (tokens.json -> ds.css). Do not add raw colours here — use tokens.
+   ===================================================================== */
+
+/* ---------- 1. Legacy tokens -> design-system tokens ----------
+   The selector list matches the specificity of every legacy palette rule
+   (:root[data-theme] 0,2,0 · :root[data-theme][data-day] 0,3,0) so this map
+   wins by order even if an old client still stamps data-day. */
+:root, :root[data-theme], :root[data-day], :root[data-theme][data-day] {
+  /* blues (logo) */
+  --blue: var(--royal);
+  --blue-deep: var(--navy);
+  --blue-800: var(--royal-strong);
+  --blue-100: var(--royal-soft);
+  --blue-50: var(--royal-tint);
+  --sky: var(--royal);
+  --brand-navy: var(--navy);
+  --brand-navy-950: var(--navy);
+  --brand-royal: var(--royal);
+  --brand-royal-700: var(--royal-strong);
+  /* the old orange was the primary-action colour: actions are royal now */
+  --orange: var(--royal);
+  --orange-600: var(--royal-strong);
+  --orange-100: var(--royal-tint);
+  --orange-200: var(--royal-soft);
+  --shg-orange: var(--royal);
+  --shg-orange-l: var(--royal-tint);
+  --brand-saffron: var(--royal);
+  --brand-saffron-700: var(--royal-strong);
+  --brand-saffron-800: var(--royal);
+  --brand-saffron-900: var(--royal-strong);
+  --brand-amber: var(--on-navy-muted);
+  --brand-gold: var(--on-navy-muted);
+  --brand-cream: var(--royal-tint);
+  --gold: var(--orange);
+  /* gradients become flat brand fills */
+  --grad-brand: var(--navy);
+  --grad-warm: var(--royal);
+  /* neutrals + status */
+  --bg: var(--page);
+  --card: var(--surface);
+  --surface-2: var(--surface-sunken);
+  --text: var(--ink);
+  --fg: var(--ink);
+  --ok: var(--success);
+  --warn: var(--warning);
+  --bad: var(--danger);
+  /* type: Cinzel is the wordmark only; everything else is the device sans */
+  --f-display: var(--font-sans);
+  --f-body: var(--font-sans);
+  --f-code: var(--font-mono);
+  --f-deva: var(--font-sans);
+  /* shape + depth */
+  --r: var(--radius-lg);
+  --r-sm: var(--radius-md);
+  --shadow-sm: var(--shadow-1);
+  --shadow-md: var(--shadow-2);
+  --shadow-lg: var(--shadow-3);
+  --e-1: var(--shadow-1);
+  --e-2: var(--shadow-2);
+  --e-3: var(--shadow-3);
+  /* motion: one short vocabulary */
+  --dur-fast: 150ms;
+  --dur-base: 250ms;
+  --dur-slow: 250ms;
+  --m-quick: 120ms;
+  --m-base: 150ms;
+  --m-slow: 250ms;
+  --sheen-speed: 0s;
+  --sparkle-speed: 0s;
+}
+/* --ink / --muted / --line share their names with the design system: ds.css
+   loads after views.css, so its per-theme values already win. */
+html,:root[data-theme="dark"], :root[data-theme="dark"] body, body { background: var(--page); }
+body { color: var(--ink); font-family: var(--font-sans); }
+
+/* ---------- 2. Decoration off ----------
+   Looping motion that carries no information (sheen text, rays, particles,
+   floating flags, a bus that drives forever, a pulsing logo) is switched
+   off. Kept: loading spinners and skeletons, the assistant's typing dots,
+   the mic "listening" state, and live-location pulses on the tracking map,
+   because each of those tells the user something is happening now. */
+.txt-gold, .txt-silver, .txt-diamond, .txt-diamond::after, .hd-shine::before,
+.credit-div, .lh-route .lh-pin, .btn-orange::after, .hero-wm, .hero .grad,
+.hero-fx, .hero-fx *, .flag-card .fl, .flag-bus-bridge .bus-run,
+.status-band.pending .big-ico, .trk-hl-mini .pulse-ring,
+.ra3-far i, .ra3-near i, .ra3-bus, .ra3-body img,
+.shg-live i, .shg-rail::after, .shg-stop i, .shg-bus, .shg-bus-i,
+.hero-live-ticker .live-dot, .whatsapp-fab, .premium-mode .vip-badge,
+.splash::before, .splash-motif, .shg-dash, .topbar-logo img, .nav .logo-img, #logoNav,
+.splash .motif svg, .founder-avatar-wrap, .float-bus, .float-flag-in, .float-flag-np,
+.float-om, .float-trident, .float-lotus, .float-wheel, .float-mountain,
+.founder-card::before, .f-ceo img, .intro-flag, .intro-icon-big, .flag-big, .chakra, .flag-bus,
+.tc-hero.shimmer, .tc-card.urgent, .lt-eta-hero .leh-ic, .tc-livebus .tlb-ic,
+.rov-3d, .rov-line, .hero-qt-cta, .qt-route b, .paystep li.now i,
+.jy-far, .jy-near, .stagger-item, .reveal, .orb {
+  animation: none !important;
+}
+.txt-gold, .txt-silver, .txt-diamond {
+  background: none !important; -webkit-text-fill-color: currentColor !important; color: inherit !important; filter: none !important;
+}
+.reveal, .stagger-item { opacity: 1 !important; transform: none !important; }
+.glow-orange, .glow-blue { filter: none !important; }
+/* decorative layers: hidden outright */
+.hero-fx, .orb, .hero-wm, .bhagwan-hero-bg, .float-hero-wrap, .intro-scenes, .shg-aura,
+.splash-map, .premium-fleet, .credit-div { display: none !important; }
+/* buttons and surfaces lose their gradients and glows */
+.btn-orange, .btn-blue, .btn-primary, .nav-cta, .btn-search, .qt-banner .btn-orange, .ai-send {
+  background: var(--royal) !important; background-image: none !important; color: var(--on-royal) !important;
+  box-shadow: none !important; border-color: transparent !important; text-shadow: none !important;
+}
+.btn-orange:hover, .btn-blue:hover, .btn-primary:hover, .btn-search:hover { background: var(--royal-strong) !important; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+
+/* ---------- 3. App shell ---------- */
+/* Divine-name line: first on every screen (owner's wish), one quiet line. */
+.divine-bar { background: var(--surface-sunken) !important; border-bottom: 1px solid var(--line) !important; padding: 4px 0 !important; text-align: center; }
+.divine-bar .divine-name { color: var(--muted) !important; font: 600 12px/18px var(--font-sans) !important; letter-spacing: 0 !important; text-shadow: none !important; background: none !important; -webkit-text-fill-color: currentColor !important; }
+/* Top utility row: desktop only (language, theme, phone). The palette picker is retired. */
+.topbar .mantra, .topbar .palette-wrap, .topbar a[href^="mailto:"] { display: none !important; }
+@media (max-width: 899px) { .topbar { display: none !important; } }
+.topbar { background: var(--surface) !important; color: var(--ink-2) !important; border-bottom: 1px solid var(--line); font-size: 13px; }
+.topbar a { color: var(--royal) !important; font-weight: 700; }
+.topbar .lang-btn, .topbar .theme-btn { background: var(--surface) !important; color: var(--ink) !important; border: 1px solid var(--line-control) !important; border-radius: var(--radius-sm) !important; min-height: 32px; box-shadow: none !important; }
+.topbar .lang-btn.on { background: var(--royal-soft) !important; color: var(--royal-strong) !important; border-color: var(--royal) !important; }
+/* CEO credit ribbon: the director and office numbers live in Help and the footer. */
+.credit-ribbon { display: none !important; }
+/* App bar */
+.nav, .nav.scrolled { background: var(--navy) !important; border-bottom: 3px solid var(--red) !important; box-shadow: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+.nav .nav-inner { min-height: var(--appbar-h) !important; gap: 12px !important; }
+.nav .brand { display: inline-flex !important; align-items: center; gap: 10px; text-decoration: none; min-width: 0; }
+.nav .brand-tile { width: 46px; height: 40px; border-radius: var(--radius-xs); background: #FFFFFF; display: grid; place-items: center; flex: none; overflow: hidden; }
+.nav .brand-tile #logoNav { display: block !important; width: 42px !important; height: 34px !important; max-width: none !important; object-fit: contain; margin: 0 !important; filter: none !important; box-shadow: none !important; background: none !important; padding: 0 !important; border-radius: 0 !important; }
+.nav .brand-word { display: flex; flex-direction: column; color: var(--on-navy); line-height: 1.1; white-space: nowrap; }
+.nav .brand-word b { font: 800 16px/20px var(--font-brand); letter-spacing: .02em; }
+.nav .brand-word small { font: 600 11px/14px var(--font-sans); color: var(--on-navy-muted); letter-spacing: .02em; }
+.nav .nav-link, .nav .nav-drop-btn { color: var(--on-navy-muted) !important; font-weight: 700 !important; border-radius: var(--radius-sm); }
+.nav .nav-link:hover, .nav .nav-drop-btn:hover { color: var(--on-navy) !important; background: rgba(255, 255, 255, .08) !important; }
+.nav .nav-cta { display: none !important; }
+.nav .nav-bell { color: var(--on-navy) !important; background: transparent !important; }
+.nav .hamburger span { background: var(--on-navy) !important; }
+.nav .hamburger { background: transparent !important; border: 1px solid rgba(255, 255, 255, .28) !important; border-radius: var(--radius-sm) !important; }
+.nav .num-inner, .nav .num-pill { display: none !important; }
+.nav .lang-mini { background: transparent !important; color: var(--on-navy) !important; border: 1px solid rgba(255, 255, 255, .28) !important; box-shadow: none !important; }
+.nav .nav-drop-list { background: var(--surface) !important; border: 1px solid var(--line) !important; box-shadow: var(--shadow-2) !important; border-radius: var(--radius-md) !important; }
+.nav .nav-drop-list a { color: var(--ink) !important; }
+.mobile-menu { background: var(--surface) !important; border-bottom: 1px solid var(--line) !important; box-shadow: var(--shadow-2) !important; }
+.mobile-menu a { color: var(--ink) !important; min-height: var(--tap-min); display: flex !important; align-items: center; gap: 10px; border-radius: var(--radius-sm); }
+.mobile-menu a:hover { background: var(--surface-hover) !important; }
+.mobile-menu .mm-hot { background: var(--royal-tint) !important; color: var(--royal-strong) !important; }
+.num-strip { background: var(--surface-sunken) !important; border-bottom: 1px solid var(--line) !important; }
+.notice-bar { background: var(--royal-tint) !important; color: var(--ink) !important; border-bottom: 1px solid var(--royal-soft) !important; animation: none !important; }
+.notice-bar .megaphone { display: none !important; }
+.skip-link:focus { background: var(--navy) !important; color: var(--on-navy) !important; }
+:focus-visible { outline: 3px solid var(--focus) !important; outline-offset: 2px !important; }
+
+/* ---------- 4. Home: booking first ----------
+   One column on every width: the booking panel, your next trip, the two
+   other ways to book, QuickBot, facilities, then everything else. */
+#view-home.active { display: flex !important; flex-direction: column; }
+#view-home > * { order: 10 !important; }
+#view-home > .search-wrap { order: 0 !important; }
+#view-home > #nextTripBox { order: 1 !important; }
+#view-home > #entryCards { order: 2 !important; }
+#view-home > #quick-ticket { order: 3 !important; }
+#view-home > #brandBand { order: 4 !important; }
+/* decorative or duplicated blocks */
+#view-home > .hero, #view-home > .wa-ticket-highlight, #view-home > .ra-wrap, #routeAnim, #homeRouteMap,
+#heroLiveTicker, .intl-badge { display: none !important; }
+/* unverifiable claims and hard-coded prices stay out until the office confirms them */
+#styleHighlight, #whyUs, #facilities, #testimonials { display: none !important; }
+/* the customer page never shows staff-only controls */
+#pvrOverlay, #ceoPhotoBtn { display: none !important; }
+
+/* Booking panel */
+#view-home > .search-wrap { margin-top: var(--space-4) !important; padding-top: 0 !important; }
+#view-home .search-card.simple-search {
+  background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-xl) !important;
+  box-shadow: var(--shadow-2) !important; padding: var(--space-4) !important; display: grid !important; gap: var(--space-3) !important; margin: 0 !important;
+}
+#view-home .search-card::before, #view-home .search-card::after { display: none !important; }
+.search-card .sp-head { display: grid; gap: 2px; order: -2; }
+.search-card .sp-title { margin: 0; font: 800 22px/28px var(--font-sans); color: var(--ink); letter-spacing: 0; }
+.search-card .sp-sub { margin: 0; font: 500 13px/18px var(--font-sans); color: var(--muted); }
+/* direction: a segmented control */
+.search-card .dir-toggle { display: grid !important; grid-template-columns: 1fr 1fr; gap: 4px !important; padding: 4px !important; background: var(--surface-sunken) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-md) !important; margin: 0 !important; order: -1; }
+.search-card .dir-pill { min-height: 52px !important; border: 0 !important; border-radius: var(--radius-sm) !important; background: transparent !important; color: var(--ink-2) !important; box-shadow: none !important; display: flex !important; flex-direction: column; align-items: center; justify-content: center; gap: 0; padding: 6px 8px !important; }
+.search-card .dir-pill.on { background: var(--surface) !important; color: var(--royal) !important; box-shadow: var(--shadow-1) !important; outline: 1.5px solid var(--royal); outline-offset: -1.5px; }
+.search-card .dir-pill .dp-fl { display: none !important; }
+.search-card .dir-pill b { font: 700 14px/18px var(--font-sans) !important; color: inherit !important; }
+.search-card .dir-pill small { font: 500 12px/16px var(--font-sans) !important; color: var(--muted) !important; opacity: 1 !important; }
+/* date strip: chips */
+.search-card .date-strip-30 { display: flex !important; gap: 8px !important; overflow-x: auto; scrollbar-width: none; padding: 2px 0 4px !important; margin: 0 !important; background: none !important; border: 0 !important; }
+.search-card .date-strip-30::-webkit-scrollbar { display: none; }
+.search-card .d-btn { flex: none !important; min-width: 58px !important; min-height: 64px !important; border-radius: var(--radius-md) !important; border: 1.5px solid var(--line-control) !important; background: var(--surface) !important; color: var(--ink) !important; box-shadow: none !important; display: flex !important; flex-direction: column; align-items: center; justify-content: center; gap: 0; padding: 4px 6px !important; }
+.search-card .d-btn .d-day, .search-card .d-btn .d-mo, .search-card .d-btn .d-bs { font: 600 11px/14px var(--font-sans) !important; color: var(--muted) !important; }
+.search-card .d-btn .d-num { font: 800 18px/22px var(--font-sans) !important; color: inherit !important; font-variant-numeric: tabular-nums; }
+.search-card .d-btn.on { background: var(--royal) !important; border-color: var(--royal-strong) !important; color: var(--on-royal) !important; }
+.search-card .d-btn.on .d-day, .search-card .d-btn.on .d-mo, .search-card .d-btn.on .d-bs { color: var(--on-royal) !important; }
+.search-card .d-btn.past, .search-card .d-btn.sold-out { opacity: .5; border-style: dashed !important; }
+.search-card .d-btn.today:not(.on) { border-color: var(--royal) !important; }
+/* labels + controls */
+.search-card .s-field label, .search-card .s-lbl { display: block; font: 700 13px/18px var(--font-sans) !important; color: var(--ink-2) !important; margin: 0 0 6px !important; text-transform: none !important; letter-spacing: 0 !important; }
+.search-card .s-field .box { border: 1.5px solid var(--line-control) !important; border-radius: var(--radius-md) !important; background: var(--surface) !important; min-height: var(--tap-min); box-shadow: none !important; }
+.search-card .s-field .box:focus-within { border-color: var(--royal) !important; box-shadow: 0 0 0 3px var(--royal-soft) !important; }
+.search-card .s-field select, .search-card .s-field input { font: 600 16px/22px var(--font-sans) !important; color: var(--ink) !important; background: transparent !important; min-height: 44px; }
+.search-card .s-field-date-input { margin: 0 !important; }
+.search-card .s-field-date-input label { font-weight: 600 !important; color: var(--muted) !important; }
+.search-card .search-grid { display: grid !important; grid-template-columns: minmax(0, 1fr) auto !important; gap: var(--space-3) !important; align-items: end !important; margin: 0 !important; }
+.search-card .s-field-town { grid-column: 1 / 2; }
+.search-card .s-field-pax { grid-column: 2 / 3; }
+.search-card .s-field-pax .sg-stepper { height: var(--tap-min); }
+.search-card .s-field-pax .sg-stepper button { height: 100%; width: 46px; }
+.search-card .s-field-pax .sg-stepper .ic { width: 18px; height: 18px; }
+.search-card .btn-search { grid-column: 1 / -1; width: 100% !important; min-height: 56px !important; border-radius: var(--radius-md) !important; font: 800 16px/20px var(--font-sans) !important; display: flex !important; align-items: center; justify-content: center; gap: 8px; margin: 0 !important; letter-spacing: 0 !important; text-transform: none !important; }
+.search-card .btn-search .ic { width: 20px; height: 20px; }
+.search-card .s-wa-row { margin: 0 !important; }
+.search-card .s-wa-btn { width: 100%; min-height: 44px !important; background: transparent !important; color: var(--royal) !important; border: 0 !important; box-shadow: none !important; font-weight: 700 !important; display: flex !important; flex-direction: row !important; gap: 6px; align-items: center; justify-content: center; }
+.search-card .s-wa-btn small { display: none !important; }
+.search-card .s-agent-latebook { order: 20; margin: 0 !important; }
+.search-card .s-agent-latebook summary { color: var(--muted) !important; font-size: 12.5px !important; min-height: 32px; display: flex; align-items: center; }
+.search-card .fare-live { background: var(--royal-tint) !important; border: 1px solid var(--royal-soft) !important; border-radius: var(--radius-md) !important; color: var(--ink) !important; box-shadow: none !important; }
+.search-card .fare-live:empty { display: none !important; }
+.search-card .search-note { color: var(--muted) !important; font-size: 12.5px !important; line-height: 18px; margin: 0 !important; }
+.search-card .search-note .route-dash { display: none !important; }
+@media (min-width: 900px) {
+  #view-home .search-card.simple-search { padding: var(--space-6) !important; }
+  .search-card .search-grid { grid-template-columns: minmax(0, 1.4fr) auto minmax(0, 1fr) !important; }
+  .search-card .btn-search { grid-column: auto; }
+}
+
+/* Next trip */
+#nextTripBox:not([hidden]) { margin-top: var(--space-4); }
+
+/* Other ways to book */
+#view-home > #entryCards { margin-top: var(--space-6) !important; }
+.entry-cards .ec-head { font: 700 16px/22px var(--font-sans) !important; color: var(--ink) !important; margin: 0 0 var(--space-3) !important; text-align: left !important; }
+.entry-cards .ec-head::after { display: none !important; }
+.entry-cards .ec-grid { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: var(--space-3) !important; }
+.entry-cards .ec-grid .ec-card { min-height: 72px !important; display: flex !important; flex-direction: row !important; align-items: center !important; text-align: left !important; gap: 10px !important; padding: 12px !important; border-radius: var(--radius-lg) !important; background: var(--surface) !important; border: 1px solid var(--line) !important; box-shadow: var(--shadow-1) !important; color: var(--ink) !important; }
+.entry-cards .ec-card:hover { border-color: var(--royal) !important; transform: none !important; }
+.entry-cards .ec-ico { width: 40px !important; height: 40px !important; border-radius: var(--radius-sm) !important; background: var(--royal-tint) !important; color: var(--royal) !important; display: grid !important; place-items: center; flex: none; font-size: 0 !important; box-shadow: none !important; }
+.entry-cards .ec-ico .ic { width: 20px; height: 20px; }
+.entry-cards .ec-txt { display: flex; flex-direction: column; min-width: 0; }
+.entry-cards .ec-card b { font: 700 14px/18px var(--font-sans) !important; color: var(--ink) !important; }
+.entry-cards .ec-card small { font: 500 12px/16px var(--font-sans) !important; color: var(--muted) !important; opacity: 1 !important; }
+
+/* QuickBot: a plain card under the booking panel */
+#view-home > #quick-ticket { margin-top: var(--space-6) !important; }
+#quick-ticket .qt-banner { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-1) !important; color: var(--ink) !important; padding: var(--space-4) !important; }
+#quick-ticket .qt-banner::before, #quick-ticket .qt-banner::after { display: none !important; }
+#quick-ticket .qt-badge { background: var(--royal-tint) !important; color: var(--royal-strong) !important; border: 0 !important; box-shadow: none !important; font-weight: 700 !important; }
+#quick-ticket .bk-switch, #quick-ticket .qt-alt { background: transparent !important; color: var(--royal) !important; border: 1px solid var(--line-control) !important; box-shadow: none !important; }
+#quick-ticket .qt-ai, #quick-ticket .qt-steps { display: none !important; }
+#quick-ticket h3 { font: 700 16px/22px var(--font-sans) !important; color: var(--ink) !important; }
+#quick-ticket p { color: var(--muted) !important; }
+#quick-ticket input { border: 1.5px solid var(--line-control) !important; border-radius: var(--radius-md) !important; background: var(--surface) !important; color: var(--ink) !important; min-height: var(--tap-min); font-size: 16px !important; box-shadow: none !important; }
+#quick-ticket .qt-mic { background: var(--surface) !important; color: var(--royal) !important; border: 1px solid var(--line-control) !important; box-shadow: none !important; }
+#qtCollapsed { background: var(--surface) !important; color: var(--ink) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-1) !important; }
+#qtCollapsed b { color: var(--ink) !important; }
+
+/* Facilities (the four printed on the company visiting card) */
+#view-home > #brandBand { display: block !important; margin-top: var(--space-6) !important; }
+#brandBand .brand-band { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-1) !important; padding: var(--space-4) !important; color: var(--ink) !important; text-align: left !important; }
+#brandBand .brand-band::before, #brandBand .brand-band::after { display: none !important; }
+#brandBand .bb-route, #brandBand .bb-name { display: none !important; }
+#brandBand .bb-tag { font: 700 16px/22px var(--font-sans) !important; color: var(--ink) !important; margin: 0 0 var(--space-3) !important; }
+#brandBand .bb-feats { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: var(--space-2) !important; margin: 0 !important; padding: 0 !important; list-style: none; }
+#brandBand .bb-feats li { display: flex !important; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px !important; border-radius: var(--radius-sm) !important; background: var(--surface-sunken) !important; border: 1px solid var(--line) !important; color: var(--ink) !important; font: 600 13.5px/18px var(--font-sans) !important; box-shadow: none !important; }
+#brandBand .bb-ic { display: none !important; }
+#brandBand .bb-feats li::before { content: ""; width: 16px; height: 16px; flex: none; background: var(--success); -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7'/%3E%3C/svg%3E") center / contain no-repeat; }
+
+/* Shortcut cards duplicate the bottom bar on a phone */
+@media (max-width: 899px) { #heroActions { display: none !important; } }
+.hero-actions .ha-card { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-1) !important; color: var(--ink) !important; }
+.hero-actions .ha-card:hover { border-color: var(--royal) !important; transform: none !important; }
+.hero-actions .ha-ico { background: var(--royal-tint) !important; color: var(--royal) !important; box-shadow: none !important; }
+.hero-actions .ha-card b { color: var(--ink) !important; }
+.hero-actions .ha-card small { color: var(--muted) !important; }
+
+/* Bottom navigation (phone): Home, Book, My Tickets, Help */
+.bottom-nav { background: var(--surface) !important; border-top: 1px solid var(--line) !important; box-shadow: var(--shadow-2) !important; backdrop-filter: none !important; }
+.bottom-nav .bn-item { color: var(--muted) !important; font: 700 12px/14px var(--font-sans) !important; min-height: var(--bottomnav-h) !important; background: transparent !important; }
+.bottom-nav .bn-item .bi { display: grid !important; place-items: center; width: 56px; height: 30px; border-radius: var(--radius-pill); background: transparent !important; box-shadow: none !important; transform: none !important; }
+.bottom-nav .bn-item.on { color: var(--royal) !important; }
+.bottom-nav .bn-item.on .bi { background: var(--royal-soft) !important; }
+.bottom-nav .bn-item::after, .bottom-nav .bn-item.on::after, .bottom-nav .bn-item::before { display: none !important; }
+
+/* Booking panel, phone layout: town on its own row, passengers as one row
+   (label left, stepper right), then the button. The calendar input is the
+   fallback for dates beyond the strip, so it is one compact row. */
+@media (max-width: 899px) {
+  .search-card .search-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .search-card .s-field-town, .search-card .s-field-pax { grid-column: 1 / -1 !important; }
+  .search-card .s-field-pax { display: flex !important; align-items: center; justify-content: space-between; gap: var(--space-3); }
+  .search-card .s-field-pax .s-lbl { margin: 0 !important; }
+}
+.search-card .s-field-date-input { display: grid !important; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-3); }
+.search-card .s-field-date-input label { margin: 0 !important; white-space: nowrap; }
+.search-card .s-field-date-input .box { min-height: 44px !important; }
+.search-card .s-field-date-input .date-chips { grid-column: 1 / -1; }
+.search-card .s-field-date-input .date-chips:empty { display: none; }
+/* trip summary under the button: real fare for the chosen town */
+.search-card .fare-live.on { display: flex !important; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 12px 14px !important; font-size: 13.5px; }
+.search-card .fare-live .fl-dir { font-weight: 700; color: var(--ink); }
+.search-card .fare-live .fl-buses { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--surface) !important; color: var(--royal-strong) !important; border: 1px solid var(--royal-soft) !important; font-weight: 700; font-size: 12.5px; }
+.search-card .fare-live .fl-buses.none { color: var(--danger) !important; border-color: var(--danger-soft) !important; }
+.search-card .fare-live .fl-amt { font: 800 20px/24px var(--font-sans); color: var(--ink) !important; font-variant-numeric: tabular-nums; }
+.search-card .fare-live .fl-lbl, .search-card .fare-live .fl-npr { color: var(--muted) !important; font-size: 12px; }
+.search-card .fare-live .fl-was { color: var(--muted) !important; text-decoration: line-through; }
+.search-card .fare-live .fl-save { color: var(--warm-ink) !important; font-weight: 700; }
+.search-card .fare-live .fl-off { background: var(--orange) !important; color: var(--on-orange) !important; border-radius: var(--radius-pill); padding: 1px 8px; margin-right: 6px; }
+/* floating buttons sit above the bottom bar and stay small */
+.whatsapp-fab, .ai-fab { width: 48px !important; height: 48px !important; box-shadow: var(--shadow-2) !important; }
+.ai-fab { background: var(--navy) !important; color: var(--on-navy) !important; border: 2px solid var(--surface) !important; }

@@ -174,10 +174,9 @@ function updateBottomNav(h) {
     home:  is('#/', '', '#'),
     // The whole booking funnel is "Book".
     book:  is('#/results', '#/seats', '#/checkout'),
-    // A finished ticket belongs with the passenger's trips.
-    trips: is('#/my') || starts('#/ticket/'),
-    // Live tracking of a specific trip is still the navigator.
-    nav:   is('#/nav') || starts('#/trip/'),
+    // A finished ticket, its live trip and the map all belong to My Tickets
+    // (Oct 2026: the bar is Home · Book · My Tickets · Help).
+    trips: is('#/my', '#/nav') || starts('#/ticket/') || starts('#/trip/'),
     help:  is('#/terms'),
   };
 
@@ -1526,9 +1525,8 @@ function renderFareLive() {
   }).length;
 
   box.innerHTML =
-      '<span class="fl-dir">' + (goingOut ? '🇮🇳 → 🇳🇵' : '🇳🇵 → 🇮🇳') + ' '
-    + esc(from) + ' → ' + esc(to) + '</span>'
-    + '<span class="fl-buses' + (nBuses ? '' : ' none') + '">🚌 ' + (nBuses === 1 ? t('flBus1') : tf('flBusN', { n: nBuses })) + '</span>'
+      '<span class="fl-dir">' + esc(from) + ' → ' + esc(to) + '</span>'
+    + '<span class="fl-buses' + (nBuses ? '' : ' none') + '"><svg class="ic" aria-hidden="true"><use href="#i-bus"/></svg> ' + (nBuses === 1 ? t('flBus1') : tf('flBusN', { n: nBuses })) + '</span>'
     + '<span style="flex:1"></span>'
     + '<span><span class="fl-lbl">' + t('flPerPerson') + '</span><br>'
     + '<span class="fl-amt">' + inr(now) + '</span> '
@@ -1902,8 +1900,31 @@ document.addEventListener('click', (e) => {
   try { di.dispatchEvent(new Event('change', { bubbles: true })); } catch (_) {}
   markDateChip();
 });
+/* Passengers stepper on the booking panel (Oct 2026 redesign). Defaults to 1,
+   remembered for this tab, capped by the configured seats-per-booking limit.
+   It is a hint for the seat screen only: it never holds a seat by itself. */
+(function initPaxStepper() {
+  const out = $('#paxCount'), minus = $('#paxMinus'), plus = $('#paxPlus');
+  if (!out || !minus || !plus) return;
+  const cap = () => Math.max(1, Math.min(10, parseInt(CONFIG.booking.maxSeats, 10) || 6));
+  let n = 1;
+  try { n = parseInt(sessionStorage.getItem('shg:pax'), 10) || 1; } catch (_) {}
+  const paint = () => {
+    n = Math.max(1, Math.min(cap(), n));
+    out.textContent = String(n);
+    minus.disabled = n <= 1;
+    plus.disabled = n >= cap();
+    Flow.pax = n;
+    try { sessionStorage.setItem('shg:pax', String(n)); } catch (_) {}
+  };
+  minus.addEventListener('click', () => { n--; paint(); });
+  plus.addEventListener('click', () => { n++; paint(); });
+  paint();
+})();
 $('#searchForm').addEventListener('submit', (e) => {
   e.preventDefault();
+  const paxOut = $('#paxCount');
+  Flow.pax = paxOut ? Math.max(1, parseInt(paxOut.textContent, 10) || 1) : 1;
   Flow.from = $('#fromSel').value; Flow.to = $('#toSel').value; Flow.date = $('#dateInput').value;
   Flow.retDate = $('#retInput').value;
   if (!Flow.date) { toast(t('tPickDate')); return; }

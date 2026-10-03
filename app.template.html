@@ -6,7 +6,7 @@
      the tag is parsed, so the very first frame is brand blue instead of the
      browser's default white. Nothing else can paint that early — the main
      stylesheet is ~111KB and must be fully parsed before it applies. -->
-<html lang="en" style="background:#0E1E40">
+<html lang="en" style="background:#F4F6FB">
 <head>
 <meta charset="UTF-8">
 <!-- viewport-fit=cover is load-bearing: without it iOS resolves every
@@ -28,12 +28,13 @@
     var d = document.documentElement, t = localStorage.getItem('shg:theme');
     if (!t) t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
     d.setAttribute('data-theme', t === 'dark' ? 'dark' : 'light');
-    var p = localStorage.getItem('shg:palette');
-    d.setAttribute('data-day', p === 'auto' ? String(new Date().getDay()) : (p || 'logo'));
+    /* Oct 2026 redesign: one brand every day. The seven day-palettes are
+       retired, so no data-day is stamped (a stale shg:palette is ignored). */
+    d.removeAttribute('data-day');
     if (t === 'dark') {
-      d.style.background = '#000';
+      d.style.background = '#0B1220';
       var m = document.querySelector('meta[name="theme-color"]');
-      if (m) m.setAttribute('content', '#000000');
+      if (m) m.setAttribute('content', '#0F1A2E');
     }
   } catch (e) { /* storage blocked — light theme, exactly as before */ }
 })();
@@ -78,58 +79,11 @@
 })();
 </script>
 <style>
-/* ---------- CRITICAL BOOT CSS — must stay FIRST and tiny ----------
-   Only what is needed to paint the splash on the very first frame. These
-   rules are byte-identical to their copies in the "SPLASH v2" block at the
-   end of views.css, so when the main stylesheet lands nothing moves.
-   Do not grow this block: its value is parsing in well under a millisecond. */
-html{background:#FFFFFF}
-body{margin:0;background:#FFFFFF}
-.splash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;
-  background:#FFFFFF;
-  background-image:radial-gradient(115% 78% at 50% -8%,#FFF4E7 0%,#FFFFFF 58%)}
-/* Dark ground for the first frame too (4 Sep 2026): data-theme is stamped
-   by the pre-paint script above, so a dark-mode phone never flashes white.
-   The .splash rule is byte-identical to its copy in views.css. */
-:root[data-theme="dark"]{background:#000}
-:root[data-theme="dark"] body{background:#000}
-[data-theme="dark"] .splash{background:#0B1424;background-image:radial-gradient(115% 78% at 50% -8%,#16233C 0%,#0B1424 58%)}
-/* Hidden state must ALSO live here: if views.css stalls, the splash would
-   otherwise stay a full-screen z-9999 tap blocker until JS force-hides it. */
-.splash.done{opacity:0;visibility:hidden;pointer-events:none}
-.splash .float-hero-wrap,.splash .intro-scenes{display:none!important}
-.splash-content{position:relative;z-index:1;text-align:center;padding:0 24px;max-width:520px;opacity:0;transform:translateY(14px);animation:splashContentIn .28s .02s cubic-bezier(.4,0,.2,1) forwards}
-@keyframes splashContentIn{to{opacity:1;transform:none}}
-.splash-brand{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px}
-.splash-logo{width:min(44vw,164px);height:auto;flex:0 0 auto;object-fit:contain;opacity:1;
-  filter:drop-shadow(0 16px 34px rgba(18,38,78,.18))}
-.splash-title{font-family:'Cinzel',Georgia,serif;font-size:clamp(26px,7vw,42px);font-weight:800;color:#12264E;letter-spacing:.015em;line-height:1.06;text-align:center;opacity:1}
-.splash-title .ltr{display:inline-block}
-.splash-title .gold{color:#F07C1F}
-.splash-tagline{margin-top:14px;font-size:13.5px;color:#5B6B85;letter-spacing:.07em;font-weight:600;opacity:1}
-.splash-road{position:relative;width:min(70vw,280px);height:54px;margin:16px auto 0;overflow:hidden}
-.splash-road::before{content:"";position:absolute;left:0;right:0;bottom:0;height:9px;border-radius:5px;background:#2B3342}
-.splash-road::after{content:"";position:absolute;left:0;right:0;bottom:4px;height:2px;background:repeating-linear-gradient(90deg,#F6C744 0 14px,transparent 14px 26px)}
-.splash-road img{position:absolute;z-index:1;left:50%;bottom:5px;width:144px;height:auto;margin-left:-72px;animation:splashBus 1.3s cubic-bezier(.2,.7,.3,1) .15s both}
-@keyframes splashBus{from{transform:translateX(-75vw)}to{transform:none}}
-@media (prefers-reduced-motion:reduce){.splash-road img{animation:none}}
-@media (max-height:620px){.splash-road{display:none}}
-.splash.intro7 .splash-logo{animation:spLogoSpin 1.5s cubic-bezier(.2,.8,.2,1) both}
-@keyframes spLogoSpin{0%{opacity:0;transform:perspective(700px) rotateY(-200deg) scale(.55)}55%{opacity:1;transform:perspective(700px) rotateY(18deg) scale(1.06)}100%{opacity:1;transform:none}}
-.splash.intro7 .splash-road img{animation:spBusWhoosh 1.7s cubic-bezier(.12,.8,.2,1) .5s both}
-@keyframes spBusWhoosh{0%{transform:translateX(-90vw) skewX(-14deg);filter:blur(4px)}68%{transform:translateX(14px) skewX(5deg);filter:blur(0)}84%{transform:translateX(-5px) skewX(-1.5deg)}100%{transform:none}}
-.splash.intro7 .splash-road::after{animation:spLane .45s linear infinite}
-@keyframes spLane{to{background-position:-26px 0}}
-.splash.intro7 .splash-ceo{animation:spCeoIn .9s cubic-bezier(.2,.8,.2,1) 2.4s both}
-@keyframes spCeoIn{from{opacity:0;transform:translateY(18px) scale(.9)}to{opacity:1;transform:none}}
-@media (prefers-reduced-motion:reduce){.splash.intro7 .splash-logo,.splash.intro7 .splash-road img,.splash.intro7 .splash-road::after,.splash.intro7 .splash-ceo{animation:none}}
-.splash-ceo{margin-top:18px;display:flex;flex-direction:column;gap:3px;align-items:center;line-height:1.3}
-.splash-ceo-photo{width:82px;height:82px;border-radius:50%;object-fit:cover;object-position:center top;border:3px solid #F07C1F;box-shadow:0 6px 24px rgba(18,38,78,.28);margin-bottom:6px;flex:0 0 auto}
-.splash-ceo b{font-family:'Cinzel',Georgia,serif;font-size:17px;font-weight:700;color:#12264E;letter-spacing:.02em}
-.splash-ceo span{font-size:12px;font-weight:600;color:#5C6B85;letter-spacing:.05em}
-.splash-phone{display:inline-flex;align-items:center;gap:8px;margin-top:22px;padding:10px 22px;border-radius:999px;background:#FFF1E4;border:1px solid rgba(240,124,31,.34);color:#C25E10;font-family:'Cinzel',Georgia,serif;font-size:17px;font-weight:800;letter-spacing:.03em;text-decoration:none;opacity:0;transform:translateY(10px)}
-@media (max-width:400px){.splash-logo{width:min(52vw,132px)}.splash-title{font-size:clamp(23px,7.6vw,32px)}.splash-ceo b{font-size:15.5px}}
+/* ---------- CRITICAL BOOT CSS (Oct 2026 redesign) — first frame only ----------
+   The splash screen is gone: the booking screen is the first thing painted.
+   These two colours are the design-system "page" token in each theme. */
+html,body{margin:0;background:#F4F6FB}
+:root[data-theme="dark"],:root[data-theme="dark"] body{background:#0B1220}
 </style>
   <link rel="preload" as="image" href="/assets/img/logo.png?v=20261003d" fetchpriority="high">
   <link rel="stylesheet" href="/assets/css/app.css?v=20261003d">
@@ -139,6 +93,11 @@ body{margin:0;background:#FFFFFF}
        is meant to win on equal specificity without an !important war, and
        removing this one line reverts the whole pass. -->
   <link rel="stylesheet" href="/assets/css/premium.css?v=20261003d">
+  <!-- Oct 2026 redesign: the S Hari Global design system (tokens + shared sg-
+       components, also used by the company app) and the customer-app layer
+       that points every legacy token at it. Both load LAST. -->
+  <link rel="stylesheet" href="/assets/css/ds.css?v=20261003d">
+  <link rel="stylesheet" href="/assets/css/redesign.css?v=20261003d">
 <!-- App bundle: `defer` keeps the same execution order and still runs after the
      document is parsed, but placing the tags in <head> lets the browser start
      fetching ~1 MB of JS with the FIRST bytes of HTML instead of after it has
@@ -263,6 +222,10 @@ body{margin:0;background:#FFFFFF}
     <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
     <symbol id="i-radar" viewBox="0 0 24 24"><path d="M19.07 4.93a10 10 0 1 0 3.24 8.6"/><path d="M15 9a4 4 0 1 0 1.14 5.14"/><path d="M22 4 12 14.01l-3-3"/></symbol>
     <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 20l1.3-3.9A8 8 0 1 1 8 18.7z"/><path d="M9 10.5h6M9 13.5h4"/></symbol>
     <symbol id="i-scroll" viewBox="0 0 24 24"><path d="M15 3H6a2 2 0 0 0-2 2v3h4"/><path d="M18 3a3 3 0 0 1 3 3v13H8v2a2 2 0 0 1-2 2h11a3 3 0 0 0 3-3V6a3 3 0 0 0-3-3z"/></symbol>
   </defs>
 </svg>
@@ -279,163 +242,8 @@ s.addEventListener('click',function(e){e.preventDefault();
 });})();
 </script>
 
-<!-- ============ [HTML] SPLASH SCREEN — cold launch cinematic ============ -->
-<div class="splash" id="splash">
-<script>try{if(sessionStorage.getItem('shg:splashed') || (location.hash && location.hash !== '#/' && location.hash !== '#'))document.getElementById('splash').classList.add('done')}catch(e){}</script>
-  <div class="float-hero-wrap" style="position:absolute;inset:0;height:auto;margin:0;opacity:.55" aria-hidden="true">
-    <span class="float-item float-flag-in" style="top:16%;left:10%">🇮🇳</span>
-    <span class="float-item float-om" style="top:12%;left:auto;right:12%">🕉️</span>
-    <span class="float-item float-lotus" style="top:72%;left:12%">🪷</span>
-    <span class="float-item float-flag-np" style="top:70%;right:10%">🇳🇵</span>
-    <span class="float-item float-mountain" style="top:42%;right:5%">🏔️</span>
-    <span class="float-item float-wheel" style="top:46%;left:5%">☸️</span>
-    <span class="float-item float-lotus" style="top:30%;left:22%">🚩</span>
-    <span class="float-item float-om" style="top:58%;left:auto;right:22%">🏹</span>
-  </div>
-  <div class="splash-content">
-    <!-- India–Nepal outline + the Gujarat→Rupaidiha road draw themselves behind
-         the brand while the app boots (17 Sep 2026). Inline opacity:0 keeps it
-         invisible until views.css animates it, so the first paint is unchanged. -->
-    <svg class="splash-map" viewBox="0 0 540 310" aria-hidden="true" style="opacity:0">
-      <path class="sm-in" pathLength="1" d="M141,12 L125,32 L108,58 L88,78 L64,102 L40,128 L25,142 L47,150 L38,163 L62,172 L82,162 L96,175 L104,192 L118,226 L138,258 L163,290 L184,301 L206,278 L228,252 L246,232 L270,208 L300,190 L332,172 L352,166 L364,158 L372,146 L370,130 L380,120 L396,116 L424,120 L425,142 L440,134 L448,110 L468,120 L500,102 L516,92 L472,84 L436,98 L400,104 L378,106 L366,116 L330,114 L296,106 L261,101 L229,92 L219,76 L200,58 L172,38 Z"/>
-      <path class="sm-np" pathLength="1" d="M229,92 L246,76 L272,80 L302,86 L334,94 L368,100 L366,116 L330,114 L296,106 L261,101 Z"/>
-      <path class="sm-route" pathLength="1" d="M24,296 L64,264 L98,246 L126,232 L440,78"/>
-    </svg>
-    <div class="splash-brand">
-      <img src="/assets/img/logo.png?v=20261003d" alt="S Hari Global Pvt Ltd" class="splash-logo" width="440" height="321" fetchpriority="high" decoding="sync">
-      <div class="splash-title" id="splashTitle">S Hari Global Pvt Ltd</div>
-    </div>
-    <div class="splash-tagline" id="splashTagline">Gujarat ⇄ Rupaidiha · India–Nepal Transport</div>
-    <div class="premium-border"><span>INDIA · GUJARAT</span><span data-i18n="premiumBeyond">Travel Beyond Borders</span><span>NEPAL · NEPALGUNJ</span></div>
-    <div class="splash-ceo">
-      <img src="/assets/img/ceo.jpg?v=20261003d" class="splash-ceo-photo" width="720" height="1001" decoding="async" alt="Sher Bahadur Bishwokarma">
-      <div><span data-i18n="premiumDirector">CHAIRMAN / DIRECTOR</span><b>Sher Bahadur Bishwokarma</b><span>S HARI GLOBAL</span><span class="splash-ceo-num">📞 +91 97264 01507</span></div>
-    </div>
-    <div class="premium-fleet" aria-hidden="true"><div class="premium-road"></div><img class="fleet-main" src="/assets/img/bus-shg-sm.webp?v=20261003d" width="600" height="312" alt=""><img class="fleet-second" src="/assets/img/bus-shg-sm.webp?v=20261003d" width="600" height="312" alt=""></div>
-    <p class="premium-promise" data-i18n="premiumPromise">Your Journey, Our Responsibility.</p>
-    <!-- The attribution line the owner asked for (24 Sep 2026). The brief
-         wrote the surname as "Bishnowlara" and asked us to check it against
-         the approved company details: every other place the company signs
-         itself in this app — admin/login.php, the footer, the CEO card, the
-         ticket — reads Sher Bahadur Bishwokarma, so that is the spelling
-         used here. Styled in premium.css. -->
-    <div class="splash-by">By <b>Sher Bahadur Bishwokarma</b></div>
-    <div class="premium-services"><span data-i18n="premiumSafe">Safe Travel</span><span data-i18n="heroFeat1">AC Sleeper</span><span data-i18n="premiumEasy">Easy Booking</span><span data-i18n="supportLbl">Support</span></div>
-    <div class="premium-loading" role="status"><span id="splashStatus" data-i18n="premiumLoading">Preparing your journey…</span><div class="premium-progress"><i id="splashBar"></i></div><a id="splashRetry" href="" hidden data-i18n="premiumRetry">Connection is taking longer. Reload</a></div>
-    <a class="splash-phone" id="splashPhone" href="#"><span class="sp-ico">📞</span><span class="sp-num"></span></a>
-
-    <!-- PORTAL STRIP — the 2-second window in which staff can peel off to
-         their own sign-in. Nobody has to touch it: the bar drains, the
-         splash finishes and the visitor lands in the customer app. It sits
-         INSIDE the splash on purpose, so offering the choice costs zero
-         extra time on the way to the booking screen. -->
-    <div class="splash-portal" id="splashPortal" hidden>
-      <!-- The feature strip is the reason the brand screen is allowed to hold
-           for ~6s on a first visit: it is not dead branding time, it tells a
-           first-time visitor what the app does while the data loads behind
-           it. One line at a time, swapped on a CSS fade. -->
-      <ul class="sp-feats" id="spFeats" aria-hidden="true">
-        <li class="on">🎫 <b>15 second</b> ma ticket · Book in 15 seconds</li>
-        <li>🗺️ <b>Live map</b> · bus kaha cha herne · Live bus tracking</li>
-        <li>💸 <b>एकै भाडा</b> · One fixed fare price — online & offline same</li>
-        <li>🛏️ Sleeper &amp; <b>Private cabin</b> · Gujarat ⇄ Rupaidiha</li>
-      </ul>
-      <div class="sp-hint" id="spHint">यात्री हो भने केही गर्नु पर्दैन · Opening in <span id="spCount">1</span>s</div>
-      <div class="sp-pills">
-        <button type="button" class="sp-pill sp-pill-go" data-portal="customer"><span>🎫</span> Book now</button>
-        <!-- Agent/Admin pills removed from public splash (2026-08-29): staff
-             sign in at /admin/ directly. Customer surface must be free of
-             any agent/admin affordance per master-prompt §2. -->
-      </div>
-      <div class="sp-track"><i id="spBar"></i></div>
-    </div>
-
-    <div class="intro-scenes" id="introScenes" aria-hidden="true">
-      <!-- Scene 1 — CEO introduction FIRST (sabai bhanda pehle) -->
-      <div class="intro-scene" id="introS1">
-        <div class="ceo-intro">
-          <div class="ceo-intro-photo"><img id="introCeoImg" src="/assets/img/ceo-sm.webp?v=20261003d" alt="Sher Bahadur Bishwokarma" loading="lazy" decoding="async" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="ceo-intro-initials" style="display:none">SB</span></div>
-          <div class="ceo-intro-name">Sher Bahadur Bishwokarma</div>
-          <div class="ceo-intro-title">👑 Founder &amp; CEO · Director</div>
-          <div class="intro-company">S HARI GLOBAL PVT LTD</div>
-          <div class="ceo-intro-route">Gujarat ⇄ Rupaidiha · India–Nepal Transport</div>
-        </div>
-      </div>
-      <!-- Scene 2 — India flag pehle (palo-palo) -->
-      <div class="intro-scene" id="introS2">
-        <div class="flag-solo">
-          <div class="flag-big flag-big-in"><span class="chakra">☸</span></div>
-          <div class="flag-name"><i>I</i><i>N</i><i>D</i><i>I</i><i>A</i></div>
-        </div>
-      </div>
-      <!-- Scene 3 — Nepal flag (palo-palo) -->
-      <div class="intro-scene" id="introS3">
-        <div class="flag-solo">
-          <div class="flag-big flag-big-np"><span class="np-sym">☀</span><span class="np-sym moon">🌙</span></div>
-          <div class="flag-name"><i>N</i><i>E</i><i>P</i><i>A</i><i>L</i></div>
-        </div>
-      </div>
-      <!-- Scene 4 — Both flags + bus → "दुई देश एक यात्रा" -->
-      <div class="intro-scene" id="introS4">
-        <div class="flag-duo">
-          <div class="flag-col"><div class="flag-big flag-big-in flag-sm"><span class="chakra">☸</span></div></div>
-          <div class="flag-bus">🚌</div>
-          <div class="flag-col"><div class="flag-big flag-big-np flag-sm"><span class="np-sym">☀</span><span class="np-sym moon">🌙</span></div></div>
-        </div>
-        <div class="intro-text">दुई देश · एक सडक · एक यात्रा</div>
-      </div>
-      <!-- Scene 5 — REAL route map draws itself -->
-      <div class="intro-scene" id="introS5">
-        <div class="intro-text" style="margin-bottom:2px">🗺️ Gujarat → Rupaidiha · ≈1,375 km</div>
-        <div id="introMapBox"></div>
-        <div class="intro-sub">Real road route · 16 stops · Rupaidiha border 🛃</div>
-      </div>
-      <!-- Scene 6 — Highway refreshment halt (generic; no restaurant branding) -->
-      <div class="intro-scene" id="introS6">
-        <div class="intro-icon-big">☕</div>
-        <div class="intro-text">Refreshment Halt</div>
-        <div class="intro-sub">Midway break on NH-48 · Chiloda–Mehsana</div>
-        <div class="feat-grid" style="margin-top:10px">
-          <span class="feat-badge">☕ Tea &amp; Snacks</span>
-          <span class="feat-badge">🚌 Bus Parking</span>
-          <span class="feat-badge">🧼 Clean Washrooms</span>
-          <span class="feat-badge">🛌 Leg Stretch</span>
-        </div>
-        <div class="intro-sub" style="margin-top:6px">Time to freshen up before the long haul</div>
-      </div>
-      <!-- Scene 7 — Ticket booking demo -->
-      <div class="intro-scene" id="introS7">
-        <div class="intro-icon-big">🎫</div>
-        <div class="intro-text">Book in 3 Taps</div>
-        <div class="intro-sub">Online · Offline · No Login Required</div>
-        <div class="feat-grid" style="margin-top:10px">
-          <span class="feat-badge">🛏️ Sleeper Cabin</span>
-          <span class="feat-badge">🔒 Private</span>
-          <span class="feat-badge">🤝 Sharing</span>
-          <span class="feat-badge">💳 UPI / eSewa</span>
-        </div>
-        <div class="feat-grid" style="margin-top:6px">
-          <span class="feat-badge">🛰️ Live Tracking</span>
-          <span class="feat-badge">📱 Offline Mode</span>
-        </div>
-      </div>
-      <!-- Scene 8 — Hindu dharma blessing + CTA -->
-      <div class="intro-scene" id="introS8">
-        <div class="intro-icon-big">🕉️</div>
-        <div class="intro-text" style="font-size:1.3em">ॐ नमो नारायणाय</div>
-        <div class="intro-text" style="margin-top:8px">जय श्री राम 🙏 शुभ यात्रा</div>
-        <div class="intro-sub" style="margin-top:10px">दुई देश · एक सडक · सुरक्षित यात्रा</div>
-        <div class="feat-grid" style="margin-top:10px">
-          <span class="feat-badge">🗺️ Live Map</span>
-          <span class="feat-badge">🎫 Online Ticket</span>
-          <span class="feat-badge">📞 24/7 Support</span>
-        </div>
-        <div class="intro-sub" style="margin-top:8px;font-size:1.1em;font-weight:700;color:var(--orange)">Book Now!</div>
-      </div>
-    </div>
-    <button class="splash-skip" id="splashSkip" type="button">Tap to skip</button>
-  </div>
-</div>
+<!-- Splash screen removed (Oct 2026 redesign): the booking screen paints first.
+     Splash.init() in 13-admin-routes.js treats a missing #splash as done. -->
 
 <!-- Role Gate removed 2026-08-29 (master-prompt §2 — customer surface must be
      free of any agent/admin affordance). Sign-in taps now open the OTP modal
@@ -449,7 +257,7 @@ s.addEventListener('click',function(e){e.preventDefault();
      stands in the footer; nothing there is removed. ============ -->
 <div class="divine-bar" role="note" aria-label="भगवानको नाम · Blessing">
   <div class="container">
-    <span class="divine-name">🕉️ ॐ नमो नारायणाय · जय श्री राम · जय अम्बे 🙏 शुभ यात्रा</span>
+    <span class="divine-name">ॐ नमो नारायणाय · जय श्री राम · जय अम्बे · शुभ यात्रा</span>
   </div>
 </div>
 
@@ -514,7 +322,8 @@ s.addEventListener('click',function(e){e.preventDefault();
          "S HARI GLOBAL" under the bus, and setting the words twice beside
          each other is the tell of a logo that was bolted on. -->
     <a class="brand" href="#/" data-scroll="top" aria-label="S Hari Global Pvt Ltd — Home">
-      <img id="logoNav" src="/assets/img/logo.png?v=20261003d" alt="S Hari Global Pvt Ltd Logo" width="440" height="321" decoding="async">
+      <span class="brand-tile"><img id="logoNav" src="/assets/img/logo.png?v=20261003d" alt="S Hari Global Pvt Ltd Logo" width="440" height="321" decoding="async"></span>
+      <span class="brand-word" aria-hidden="true"><b>S HARI GLOBAL</b><small>Gujarat ⇄ Rupaidiha</small></span>
     </a>
     <nav class="nav-links" aria-label="Main">
       <a class="nav-link" href="#/" data-scroll="top"><svg class="ic"><use href="#i-home"/></svg> Home</a>
@@ -578,6 +387,130 @@ s.addEventListener('click',function(e){e.preventDefault();
 ================================================================ -->
 <section class="view active" id="view-home">
 
+  <!-- ============ SEARCH CARD ============ -->
+  <div class="container search-wrap" id="search-anchor">
+    <form class="search-card simple-search" id="searchForm" autocomplete="off" aria-labelledby="spTitle">
+      <div class="sp-head">
+        <h1 class="sp-title" id="spTitle" data-i18n="spTitle">Book your bus</h1>
+        <p class="sp-sub" data-i18n="spSub">Gujarat ⇄ Rupaidiha · direct AC sleeper coach</p>
+      </div>
+      <!-- ============================================================
+           SIMPLE SEARCH (redesign 2026-08-25) — this coach runs ONE road,
+           Gujarat ⇄ Rupaidiha. So the passenger's whole choice is: जाने or
+           फर्किने, and which Gujarat town. The two free-form From/To dropdowns
+           (a city pair you could get wrong, and 3 extra controls on the first
+           screen) are gone from view.
+
+           They are NOT deleted — #fromSel / #toSel / #retInput / #swapBtn /
+           #voiceSearchBtn stay in the DOM inside #legacyPair (hidden), because
+           results, live fare and checkout all still read #fromSel / #toSel as
+           the single source of truth. The direction toggle + one town picker
+           below simply drive those hidden selects (see initSimpleSearch in
+           05-router.js), so every downstream screen is untouched.
+      ============================================================ -->
+      <div class="trip-toggle" role="group" aria-label="Trip type" style="display:none">
+        <button type="button" class="trip-pill on" id="tripOne" data-i18n="sOneWay">One-way</button>
+        <button type="button" class="trip-pill" id="tripRound" data-i18n="sRound">Round trip</button>
+        <!-- Round trip is gated by the public setting round_trip_on (17 Sep 2026):
+             while it is off 05-router hides the pill and shows this note instead. -->
+        <small class="trip-note hide" id="roundOffNote" data-i18n="roundOffNote">Return journey is booked as a separate ticket — we offer it as soon as this ticket is confirmed.</small>
+      </div>
+      <div id="legacyPair" hidden aria-hidden="true">
+        <select id="fromSel"></select>
+        <select id="toSel"></select>
+        <button type="button" id="swapBtn" tabindex="-1" aria-hidden="true">⇅</button>
+        <div id="retField" class="hide"><input type="date" id="retInput"></div>
+        <button type="button" id="voiceSearchBtn" tabindex="-1" aria-hidden="true">🎤</button>
+      </div>
+
+      <!-- ROUND-3 (2026-08-28) — the widget now leads with the DATE.
+           Order below is: 30-day date strip → date input (calendar fallback) →
+           direction toggle → Gujarat town picker → Search. The old .date-chips
+           (3-day quick pick, still populated by renderDateChips) sits inside the
+           .s-field for backwards-compat; hidden on mobile once #dateStrip30
+           has 30 buttons. Do NOT rename any id — 05-router / 06-results still
+           read #fromSel / #toSel / #dateInput as the single source of truth. -->
+
+      <!-- 30-day horizontal date strip (JS populates in 05-router::renderDateStrip30) -->
+      <div class="date-strip-30" id="dateStrip30" role="group" aria-label="Journey date · 30-day picker"></div>
+
+      <!-- Calendar fallback for a custom future date beyond the strip -->
+      <div class="s-field s-field-date-input">
+        <label for="dateInput" data-i18n="sDate">Journey date</label>
+        <div class="box no-caret"><input type="date" id="dateInput" required></div>
+        <div class="date-chips" id="dateChips" role="group" aria-label="Quick journey date"></div>
+      </div>
+
+      <!-- Agent late-booking (owner ask, 3 Sep 2026): a COUNTER agent enters
+           their SHG code here to also see and book a bus within 24h of its
+           departure. Optional — ordinary customers leave it blank and nothing
+           changes. Persisted so the agent enters it once. The departed-bus
+           booking is always re-checked server-side against a valid code. -->
+      <details class="s-field s-agent-latebook" style="margin-top:-2px">
+        <summary style="font-size:12.5px;color:var(--mut,#6b7688);cursor:pointer;list-style:none">
+          🎟️ <span data-i18n="agentLateSummary">एजेन्ट हो? छुटेको बस बुक गर्न कोड राख्नुहोस् · Agent? Enter code to book a departed bus</span>
+        </summary>
+        <div class="box no-caret" style="margin-top:6px">
+          <input id="sAgentCode" maxlength="20" autocomplete="off" inputmode="text"
+                 placeholder="SHG-027" style="text-transform:uppercase">
+        </div>
+      </details>
+
+      <!-- DIRECTION — the only two journeys this coach makes -->
+      <div class="dir-toggle" role="group" aria-label="Direction · दिशा">
+        <button type="button" class="dir-pill on" id="dirGo">
+          <span class="dp-fl" aria-hidden="true">🇮🇳 → 🇳🇵</span>
+          <b data-i18n="dirGo">Going to Nepal</b>
+          <small>Gujarat → Rupaidiha</small>
+        </button>
+        <button type="button" class="dir-pill" id="dirBack">
+          <span class="dp-fl" aria-hidden="true">🇳🇵 → 🇮🇳</span>
+          <b data-i18n="dirBack">Returning</b>
+          <small>Rupaidiha → Gujarat</small>
+        </button>
+      </div>
+
+      <div class="search-grid simple simple-town-only">
+        <div class="s-field s-field-town">
+          <label for="pointSel" id="pointLabel" data-i18n="sBoard">Boarding town (Gujarat)</label>
+          <div class="box"><select id="pointSel" required></select></div>
+        </div>
+        <!-- Passengers (Oct 2026 redesign): defaults to 1. Carried to the seat
+             screen, where it pre-highlights the "How many seats?" picker. It
+             never holds a seat by itself — seats are held only when tapped. -->
+        <div class="s-field s-field-pax">
+          <span class="s-lbl" id="paxLbl" data-i18n="sPax">Passengers</span>
+          <div class="sg-stepper" role="group" aria-labelledby="paxLbl">
+            <button type="button" id="paxMinus" data-i18n-title="paxLess" aria-label="One fewer passenger"><svg class="ic" aria-hidden="true"><use href="#i-minus"/></svg></button>
+            <output id="paxCount" aria-live="polite">1</output>
+            <button type="button" id="paxPlus" data-i18n-title="paxMore" aria-label="One more passenger"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></button>
+          </div>
+        </div>
+        <button class="btn btn-orange btn-search" id="searchBtn" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg> <span data-i18n="sSearch">Find Bus / बस खोज्नुहोस्</span></button>
+      </div>
+      <!-- One-tap WhatsApp booking (17 Sep 2026): the message carries the date,
+           direction and town chosen above; handled in 05-router (WhatsApp sheet). -->
+      <div class="s-wa-row">
+        <button type="button" class="btn btn-wa s-wa-btn" id="waBookBtn"><b data-i18n="sWaBook">💬 Book on WhatsApp</b><small data-i18n="sWaBookSub">date · direction · pickup auto-filled</small></button>
+      </div>
+
+      <!-- Sweet trip summary — direction, town → Rupaidiha, per-person fare and
+           how many buses run that day, all before anyone presses Search. -->
+      <div class="fare-live" id="fareLive" aria-live="polite"></div>
+      <div class="search-note">
+        <span class="route-dash" style="min-width:150px"><span class="dot"></span><span class="line"></span><span class="dot end"></span></span>
+        <span data-i18n="sNote">Direct international coach · Border crossing at Rupaidiha ⇄ Jamunaha · Carry a valid government photo ID.</span>
+      </div>
+    </form>
+  </div>
+  <!-- Your next journey — filled by renderNextTrip() when a signed-in
+       traveller has an upcoming confirmed ticket. Deliberately a single
+       card that LINKS to #/trip/<PNR> rather than a second dashboard: the
+       full journey timeline already lives there, and two views of one trip
+       would drift apart. -->
+  <div class="container" id="nextTripBox" hidden></div>
+
+
   <!-- ============ HERO ============ -->
   <div class="hero" id="top">
     <div class="bhagwan-hero-bg" aria-hidden="true"></div>
@@ -595,7 +528,7 @@ s.addEventListener('click',function(e){e.preventDefault();
     <div class="container hero-grid">
       <div class="hero-copy">
         <span class="eyebrow"><span style="font-size:22px;vertical-align:middle;margin-right:6px">🇮🇳</span> Gujarat ⇄ Rupaidiha <span style="font-size:22px;vertical-align:middle;margin-left:6px">🇳🇵</span></span>
-        <h1 class="hero-brand hero-brand-row"><img data-logo-clone alt="S Hari Global Pvt Ltd logo" class="hero-brand-logo"><span>S HARI GLOBAL PVT LTD</span></h1>
+        <p class="hero-brand hero-brand-row"><img data-logo-clone alt="S Hari Global Pvt Ltd logo" class="hero-brand-logo"><span>S HARI GLOBAL PVT LTD</span></p>
         <p class="hero-brand-np">S Hari Global <span class="npdot">·</span> Nepal</p>
         <p class="hero-slogan" data-i18n="heroTitle">Two nations. One road. <span class="grad">One&nbsp;journey.</span></p>
         <p class="hero-sub" data-i18n="heroSub">Direct <b>Gujarat → Rupaidiha</b> coach. Book your seat, pay by UPI or eSewa — with a registered Indian company.</p>
@@ -653,22 +586,17 @@ s.addEventListener('click',function(e){e.preventDefault();
   </section>
 
   <section class="container entry-cards" id="entryCards" aria-labelledby="entryCardsTitle">
-    <h2 class="ec-head" id="entryCardsTitle" data-i18n="ecTitle">Book your ticket</h2>
+    <h2 class="ec-head" id="entryCardsTitle" data-i18n="ecTitleAlt">Other ways to book</h2>
     <div class="ec-grid">
-      <button type="button" class="ec-card ec-normal" data-bkmode="regular">
-        <span class="ec-ico" aria-hidden="true">🪑</span>
-        <b data-i18n="ecNormal">Normal Booking</b>
-        <small data-i18n="ecNormalSub">Pick date &amp; seat</small>
-      </button>
       <button type="button" class="ec-card ec-quick" data-bkmode="quick">
-        <span class="ec-ico" aria-hidden="true">⚡</span>
-        <b data-i18n="ecQuick">Quick Ticket</b>
-        <small data-i18n="ecQuickSub">Name + mobile → 10 sec</small>
+        <span class="ec-ico" aria-hidden="true"><svg class="ic"><use href="#i-ticket"/></svg></span>
+        <span class="ec-txt"><b data-i18n="ecQuick">Quick Ticket</b>
+        <small data-i18n="ecQuickSub">Name + mobile → 10 sec</small></span>
       </button>
       <button type="button" class="ec-card ec-wa" data-wa-open="booking" aria-haspopup="dialog" aria-controls="waSheet">
-        <span class="ec-ico" aria-hidden="true">💬</span>
-        <b data-i18n="ecWa">WhatsApp Booking</b>
-        <small data-i18n="ecWaSub">Request · office confirms</small>
+        <span class="ec-ico" aria-hidden="true"><svg class="ic"><use href="#i-chat"/></svg></span>
+        <span class="ec-txt"><b data-i18n="ecWa">WhatsApp Booking</b>
+        <small data-i18n="ecWaSub">Request · office confirms</small></span>
       </button>
     </div>
   </section>
@@ -767,118 +695,6 @@ s.addEventListener('click',function(e){e.preventDefault();
     </div>
   </div>
 
-  <!-- Your next journey — filled by renderNextTrip() when a signed-in
-       traveller has an upcoming confirmed ticket. Deliberately a single
-       card that LINKS to #/trip/<PNR> rather than a second dashboard: the
-       full journey timeline already lives there, and two views of one trip
-       would drift apart. -->
-  <div class="container" id="nextTripBox" hidden></div>
-
-  <!-- ============ SEARCH CARD ============ -->
-  <div class="container search-wrap" id="search-anchor">
-    <span class="intl-badge">
-      <span class="bar"><i style="background:var(--saffron)"></i><i style="background:#fff;border:1px solid #E4E9F2"></i><i style="background:var(--igreen)"></i><i style="background:var(--ncrimson)"></i><i style="background:var(--nblue)"></i></span>
-      🇮🇳 India ↔ 🇳🇵 Nepal · International Bus Route
-    </span>
-    <form class="search-card simple-search" id="searchForm" autocomplete="off">
-      <!-- ============================================================
-           SIMPLE SEARCH (redesign 2026-08-25) — this coach runs ONE road,
-           Gujarat ⇄ Rupaidiha. So the passenger's whole choice is: जाने or
-           फर्किने, and which Gujarat town. The two free-form From/To dropdowns
-           (a city pair you could get wrong, and 3 extra controls on the first
-           screen) are gone from view.
-
-           They are NOT deleted — #fromSel / #toSel / #retInput / #swapBtn /
-           #voiceSearchBtn stay in the DOM inside #legacyPair (hidden), because
-           results, live fare and checkout all still read #fromSel / #toSel as
-           the single source of truth. The direction toggle + one town picker
-           below simply drive those hidden selects (see initSimpleSearch in
-           05-router.js), so every downstream screen is untouched.
-      ============================================================ -->
-      <div class="trip-toggle" role="group" aria-label="Trip type" style="display:none">
-        <button type="button" class="trip-pill on" id="tripOne" data-i18n="sOneWay">One-way</button>
-        <button type="button" class="trip-pill" id="tripRound" data-i18n="sRound">Round trip</button>
-        <!-- Round trip is gated by the public setting round_trip_on (17 Sep 2026):
-             while it is off 05-router hides the pill and shows this note instead. -->
-        <small class="trip-note hide" id="roundOffNote" data-i18n="roundOffNote">Return journey is booked as a separate ticket — we offer it as soon as this ticket is confirmed.</small>
-      </div>
-      <div id="legacyPair" hidden aria-hidden="true">
-        <select id="fromSel"></select>
-        <select id="toSel"></select>
-        <button type="button" id="swapBtn" tabindex="-1" aria-hidden="true">⇅</button>
-        <div id="retField" class="hide"><input type="date" id="retInput"></div>
-        <button type="button" id="voiceSearchBtn" tabindex="-1" aria-hidden="true">🎤</button>
-      </div>
-
-      <!-- ROUND-3 (2026-08-28) — the widget now leads with the DATE.
-           Order below is: 30-day date strip → date input (calendar fallback) →
-           direction toggle → Gujarat town picker → Search. The old .date-chips
-           (3-day quick pick, still populated by renderDateChips) sits inside the
-           .s-field for backwards-compat; hidden on mobile once #dateStrip30
-           has 30 buttons. Do NOT rename any id — 05-router / 06-results still
-           read #fromSel / #toSel / #dateInput as the single source of truth. -->
-
-      <!-- 30-day horizontal date strip (JS populates in 05-router::renderDateStrip30) -->
-      <div class="date-strip-30" id="dateStrip30" role="group" aria-label="Journey date · 30-day picker"></div>
-
-      <!-- Calendar fallback for a custom future date beyond the strip -->
-      <div class="s-field s-field-date-input">
-        <label for="dateInput" data-i18n="sDate">Journey date</label>
-        <div class="box no-caret"><input type="date" id="dateInput" required></div>
-        <div class="date-chips" id="dateChips" role="group" aria-label="Quick journey date"></div>
-      </div>
-
-      <!-- Agent late-booking (owner ask, 3 Sep 2026): a COUNTER agent enters
-           their SHG code here to also see and book a bus within 24h of its
-           departure. Optional — ordinary customers leave it blank and nothing
-           changes. Persisted so the agent enters it once. The departed-bus
-           booking is always re-checked server-side against a valid code. -->
-      <details class="s-field s-agent-latebook" style="margin-top:-2px">
-        <summary style="font-size:12.5px;color:var(--mut,#6b7688);cursor:pointer;list-style:none">
-          🎟️ <span data-i18n="agentLateSummary">एजेन्ट हो? छुटेको बस बुक गर्न कोड राख्नुहोस् · Agent? Enter code to book a departed bus</span>
-        </summary>
-        <div class="box no-caret" style="margin-top:6px">
-          <input id="sAgentCode" maxlength="20" autocomplete="off" inputmode="text"
-                 placeholder="SHG-027" style="text-transform:uppercase">
-        </div>
-      </details>
-
-      <!-- DIRECTION — the only two journeys this coach makes -->
-      <div class="dir-toggle" role="group" aria-label="Direction · दिशा">
-        <button type="button" class="dir-pill on" id="dirGo">
-          <span class="dp-fl" aria-hidden="true">🇮🇳 → 🇳🇵</span>
-          <b data-i18n="dirGo">Going to Nepal</b>
-          <small>Gujarat → Rupaidiha</small>
-        </button>
-        <button type="button" class="dir-pill" id="dirBack">
-          <span class="dp-fl" aria-hidden="true">🇳🇵 → 🇮🇳</span>
-          <b data-i18n="dirBack">Returning</b>
-          <small>Rupaidiha → Gujarat</small>
-        </button>
-      </div>
-
-      <div class="search-grid simple simple-town-only">
-        <div class="s-field s-field-town">
-          <label for="pointSel" id="pointLabel" data-i18n="sBoard">Boarding town (Gujarat)</label>
-          <div class="box"><select id="pointSel" required></select></div>
-        </div>
-        <button class="btn btn-orange btn-search" type="submit" data-i18n="sSearch">Search buses →</button>
-      </div>
-      <!-- One-tap WhatsApp booking (17 Sep 2026): the message carries the date,
-           direction and town chosen above; handled in 05-router (WhatsApp sheet). -->
-      <div class="s-wa-row">
-        <button type="button" class="btn btn-wa s-wa-btn" id="waBookBtn"><b data-i18n="sWaBook">💬 Book on WhatsApp</b><small data-i18n="sWaBookSub">date · direction · pickup auto-filled</small></button>
-      </div>
-
-      <!-- Sweet trip summary — direction, town → Rupaidiha, per-person fare and
-           how many buses run that day, all before anyone presses Search. -->
-      <div class="fare-live" id="fareLive" aria-live="polite"></div>
-      <div class="search-note">
-        <span class="route-dash" style="min-width:150px"><span class="dot"></span><span class="line"></span><span class="dot end"></span></span>
-        <span data-i18n="sNote">Direct international coach · Border crossing at Rupaidiha ⇄ Jamunaha · Carry a valid government photo ID.</span>
-      </div>
-    </form>
-  </div>
   <!-- Route overview card (5 Sep 2026): real India–Nepal geography with the
        chosen boarding town and destination, an animated bus on the arc and a
        perspective tilt. Filled by renderHomeRouteMap() (10-track.js) and
@@ -2746,9 +2562,8 @@ s.addEventListener('click',function(e){e.preventDefault();
 <!-- ============ [HTML] MOBILE: sticky Book Now + bottom nav ============ -->
 <nav class="bottom-nav" aria-label="Mobile navigation">
   <button type="button" class="bn-item on" data-bn="home"><span class="bi"><svg class="ic ic-lg"><use href="#i-home"/></svg></span><span data-i18n="bnHome">Home</span></button>
-  <button type="button" class="bn-item" data-bn="book"><span class="bi"><svg class="ic ic-lg"><use href="#i-ticket"/></svg></span><span data-i18n="bnBook">Book</span></button>
-  <button type="button" class="bn-item" data-bn="trips"><span class="bi"><svg class="ic ic-lg"><use href="#i-luggage"/></svg></span><span data-i18n="bnTrips">My Trips</span></button>
-  <button type="button" class="bn-item" data-bn="nav"><span class="bi"><svg class="ic ic-lg"><use href="#i-compass"/></svg></span><span data-i18n="bnNav">Navigate</span></button>
+  <button type="button" class="bn-item" data-bn="book"><span class="bi"><svg class="ic ic-lg"><use href="#i-bus"/></svg></span><span data-i18n="bnBook">Book</span></button>
+  <button type="button" class="bn-item" data-bn="trips"><span class="bi"><svg class="ic ic-lg"><use href="#i-ticket"/></svg></span><span data-i18n="bnTickets">My Tickets</span></button>
   <button type="button" class="bn-item" data-bn="help"><span class="bi"><svg class="ic ic-lg"><use href="#i-headset"/></svg></span><span data-i18n="bnHelp">Help</span></button>
 </nav>
 

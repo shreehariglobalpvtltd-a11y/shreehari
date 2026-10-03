@@ -1280,8 +1280,22 @@ function renderSeats(instant) {
     countPicker.onclick = (e) => {
       const b = e.target.closest('.scp-n'); if (!b) return;
       $$('.scp-n', countPicker).forEach(x => x.classList.toggle('on', x === b));
+      const h = $('.scp-hint', countPicker); if (h) h.hidden = true;
       suggestSeats(parseInt(b.getAttribute('data-n'), 10));
     };
+    /* Oct 2026 redesign: the passenger count chosen on the booking panel is
+       carried here as a highlight + one-line hint. Nothing is selected or
+       held until the passenger taps — the server hold starts on that tap. */
+    const wantPax = parseInt(Flow.pax, 10) || 1;
+    let paxHint = $('.scp-hint', countPicker);
+    if (!paxHint) { paxHint = document.createElement('p'); paxHint.className = 'scp-hint'; countPicker.appendChild(paxHint); }
+    if (wantPax > 1 && !Flow.seats.length && wantPax <= maxN) {
+      $$('.scp-n', countPicker).forEach(x => x.classList.toggle('on', parseInt(x.getAttribute('data-n'), 10) === wantPax));
+      paxHint.textContent = tf('paxHint', { n: wantPax });
+      paxHint.hidden = false;
+    } else {
+      paxHint.hidden = true;
+    }
   }
   /* Patient / birami chip (4 Sep 2026): lower deck + aisle-side suggestion
      and a priority-boarding flag on the lead passenger. */

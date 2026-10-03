@@ -1758,9 +1758,8 @@ function pvSetupSearch() {
    [JS] 14. BOOT — load (or seed) data, then start the router
 ================================================================ */
 async function init() {
-  // Colour theme: a saved palette (0–6) overrides the auto day-of-week rotation.
-  (function () { var p = null; try { p = localStorage.getItem('shg:palette'); } catch (e) {}
-    document.documentElement.setAttribute('data-day', p === 'auto' ? String(new Date().getDay()) : (p || 'logo')); })();
+  // Oct 2026 redesign: one brand every day — the day-palettes are retired.
+  document.documentElement.removeAttribute('data-day');
   Splash.init();
   Splash.setTotal(6);   // matches the number of Splash.tick() calls below
 
@@ -2247,33 +2246,10 @@ document.addEventListener('click', function (e) {
   else arm();
 })();
 
-/* ================================================================
-   [JS] v4.0 PATCH C1 — live journey ticker under the hero search card.
-   Confirmed bookings now live in the DATABASE, not in every browser
-   (the v3.1 seat-truth fix), so a guest's local list says nothing about
-   company volume. The figure is therefore a deterministic seeded count
-   (stable within a week, slowly growing) plus whatever this visitor's
-   own confirmed trips add — honest enough for social proof, zero
-   requests, works offline.
-================================================================ */
-(function () {
-  function arm() {
-    var anchor = document.getElementById('search-anchor');
-    if (!anchor || document.getElementById('heroLiveTicker')) return;
-    var week = Math.floor(Date.now() / (7 * 86400000));       // week ordinal
-    var seeded = 210 + (week * 37) % 90;                       // 210–299, changes weekly
-    var own = 0;
-    try { own = (DB.bookings || []).filter(function (b) { return b.status === 'confirmed'; }).length; } catch (e) {}
-    var el = document.createElement('div');
-    el.className = 'hero-live-ticker';
-    el.id = 'heroLiveTicker';
-    el.innerHTML = '<span class="live-dot"></span><span><b>' + (seeded + own)
-      + '+</b> passengers travelled this week · यो हप्ता यात्रा गरे</span>';
-    anchor.appendChild(el);
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', arm);
-  else arm();
-})();
+/* (Oct 2026 redesign) The "N+ passengers travelled this week" ticker that
+   lived here is removed: its number was a seeded weekly figure, not data,
+   and the brief forbids invented passenger counts. The real issued-ticket
+   count (SHG_BOOT.stats.tickets) is still shown by QuickBot (#qtAiCount). */
 
 /* ================================================================
    [JS] PWA POLISH (Blueprint Module 6) — custom install banner and an
