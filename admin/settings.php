@@ -274,7 +274,7 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
       <?= $arNum('agent_flat_joint', 'Flat commission — team / organisation', 'per passenger, flat scheme', 400, '0', '10000', '1', '₹') ?>
       <?= $arNum('agent_commission_percent', 'Company commission %', 'percent scheme default; a per-agent override on the Agent Panel wins', 5, '0', '100', '0.5', '%') ?>
       <?= $arNum('agent_advance_max', 'Advance / loan cap per agent', '0 = no cap. Refuses an advance that would take the agent above this', 0, '0', '10000000', '1', '₹') ?>
-      <?= $arNum('agent_advance_recover_pct', 'Recovery share of each payout', '100 = commission nets the advance in full (today)', 100, '0', '100', '1', '%') ?>
+      <?= $arNum('agent_advance_recover_pct', 'Recovery share of each payout', 'Recorded as the agreed plan. The ledger always nets an advance from commission in full', 100, '0', '100', '1', '%') ?>
       <?= $arNum('agent_payout_min', 'Minimum payout', '0 = any amount. Paying the whole balance is always allowed', 0, '0', '10000000', '1', '₹') ?>
       <?= $arNum('agent_settlement_due_days', 'Settlement due in', '0 = never flag. Cash held longer shows “settlement overdue”', 0, '0', '365', '1', 'days') ?>
       <?= $arNum('agent_settle_reminder_days', 'WhatsApp reminder after', '0 = off. Once cash is overdue this many days, the daily cron (cron/wa-reminders.php) sends the agent one payment reminder a day', 0, '0', '365', '1', 'days') ?>

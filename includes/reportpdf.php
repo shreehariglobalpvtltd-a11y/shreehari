@@ -645,7 +645,7 @@ final class ReportPdf
         $sub = ($rangeLabel !== '' ? $rangeLabel : (formatDate($from) . ' - ' . formatDate($to)))
              . ($journey ? ' (by journey date)' : ' (by booking date)');
         $rpt = new self(
-            'AGENT SALES REPORT',
+            'AGENT SALES & ACCOUNT',
             $agentName . ' (' . ($agentCode ?: 'Staff') . ') | ' . $sub
         );
 
@@ -702,11 +702,103 @@ final class ReportPdf
             ]);
         }
 
+        /* 3 Oct 2026: the ACCOUNT, not only the sales. This PDF is what goes
+           to the agent on WhatsApp as their "account statement", and it never
+           showed what they were paid, what they owe in cash, or a loan,
+           advance or salary. Every line below is the agent ledger for the
+           period (by entry date), from the same AgentWallet::statement()
+           the Agent 360 screen shows, so the two always agree. */
+        self::agentAccountSection($rpt, $agentAdminId, $from, $to);
+
         $filename = 'agent-report-' . ($agentCode ?: 'staff') . '-' . $from . '-to-' . $to . '.pdf';
         Logger::audit('agent.report.pdf', 'admin', (string) $agentAdminId,
             null, null, (int) $report['tickets'] . ' tickets, ' . $from . ' to ' . $to);
 
         return ['rpt' => $rpt, 'filename' => $filename];
+    }
+
+    /**
+     * Opening balance -> each kind of movement -> closing balance, for the
+     * commission account (what the company owes the agent) and the cash
+     * account (what the agent holds for the company), plus open loans.
+     */
+    private static function agentAccountSection(self $rpt, int $agentAdminId, string $from, string $to): void
+    {
+        try {
+            $c = AgentWallet::statement($agentAdminId, $from, $to, 'commission');
+            $k = AgentWallet::statement($agentAdminId, $from, $to, 'cash');
+        } catch (Throwable $e) {
+            return;
+        }
+        $sum = ['earned' => 0.0, 'reversed' => 0.0, 'salary' => 0.0, 'advance' => 0.0, 'repaid' => 0.0, 'adjust' => 0.0, 'payout' => 0.0];
+        foreach ($c['rows'] as $row) {
+            $amt = (float) $row['amount'];
+            $ref = strtoupper((string) ($row['ref'] ?? ''));
+            switch ((string) $row['entry_type']) {
+                case 'commission':      $sum['earned']   += $amt; break;
+                case 'commission_void': $sum['reversed'] += $amt; break;
+                case 'payout':          $sum['payout']   += $amt; break;
+                default:
+                    if (str_starts_with($ref, 'SALARY'))      { $sum['salary'] += $amt; }
+                    elseif (str_starts_with($ref, 'ADVANCE')) { $amt < 0 ? $sum['advance'] += $amt : $sum['repaid'] += $amt; }
+                    else                                      { $sum['adjust'] += $amt; }
+            }
+        }
+        $cash = ['collected' => 0.0, 'handed' => 0.0, 'adjust' => 0.0];
+        foreach ($k['rows'] as $row) {
+            $amt = (float) $row['amount'];
+            switch ((string) $row['entry_type']) {
+                case 'cash_due':      $cash['collected'] += $amt; break;
+                case 'cash_handover': $cash['handed']    += $amt; break;
+                default:              $cash['adjust']    += $amt;
+            }
+        }
+        $sign = static fn(float $v): string => ($v < 0 ? '- ' : '') . inr(abs($v));
+
+        $rpt->sectionHeading('Account - wallet for this period (by entry date)');
+        $rpt->setColumns([
+            ['label' => 'Commission account (company owes agent)', 'width' => 300],
+            ['label' => 'Amount', 'width' => 120, 'align' => 'R'],
+        ]);
+        $rpt->tableHeader();
+        $lines = [
+            ['Balance at start', $sign((float) $c['opening'])],
+            ['+ Commission earned', $sign($sum['earned'])],
+            ['- Reversed (cancelled tickets)', $sign($sum['reversed'])],
+        ];
+        if (abs($sum['salary']) > 0.004)  { $lines[] = ['+ Salary credited', $sign($sum['salary'])]; }
+        if (abs($sum['advance']) > 0.004) { $lines[] = ['- Advance / loan given', $sign($sum['advance'])]; }
+        if (abs($sum['repaid']) > 0.004)  { $lines[] = ['+ Loan repaid / written off', $sign($sum['repaid'])]; }
+        if (abs($sum['adjust']) > 0.004)  { $lines[] = ['+/- Corrections', $sign($sum['adjust'])]; }
+        $lines[] = ['- Paid out to agent', $sign($sum['payout'])];
+        foreach ($lines as $i => $ln) { $rpt->tableRow($ln, $i % 2 === 1); }
+        $rpt->tableTotals(['Balance at end', $sign((float) $c['closing'])]);
+
+        $rpt->setColumns([
+            ['label' => 'Cash account (agent holds for company)', 'width' => 300],
+            ['label' => 'Amount', 'width' => 120, 'align' => 'R'],
+        ]);
+        $rpt->tableHeader();
+        $cl = [
+            ['Cash held at start', $sign((float) $k['opening'])],
+            ['+ Cash collected on tickets', $sign($cash['collected'])],
+            ['- Cash handed over', $sign($cash['handed'])],
+        ];
+        if (abs($cash['adjust']) > 0.004) { $cl[] = ['+/- Corrections', $sign($cash['adjust'])]; }
+        foreach ($cl as $i => $ln) { $rpt->tableRow($ln, $i % 2 === 1); }
+        $rpt->tableTotals(['Cash held at end', $sign((float) $k['closing'])]);
+
+        $net = round((float) $k['closing'] - (float) $c['closing'], 2);
+        $open = 0.0;
+        try {
+            AgentWallet::syncLoanRecovery($agentAdminId);   // display figures, same as the 360 page
+            foreach (AgentWallet::loans($agentAdminId) as $l) {
+                if ((string) ($l['status'] ?? '') === 'open') { $open += (float) ($l['outstanding'] ?? 0); }
+            }
+        } catch (Throwable $e) { /* loans register absent */ }
+        $info = [['Net position at end', $net > 0 ? 'Agent owes company ' . inr($net) : ($net < 0 ? 'Company owes agent ' . inr(-$net) : 'Settled (0)')]];
+        if ($open > 0.004) { $info[] = ['Loans / advances still open', inr($open)]; }
+        $rpt->infoBlock($info);
     }
 
     /** §14 — stream the Agent Sales Report PDF to the browser (the historic entry point). */

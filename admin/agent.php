@@ -1359,9 +1359,9 @@ $tripCard = static function (array $t) use ($today, $base): void {
                placeholder="Amount" required style="width:110px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">
         <select name="recover_mode" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px"
                 onchange="var v=this.form.querySelector('[name=recover_value]');v.disabled=this.value==='full';v.placeholder=this.value==='percent'?'%':'₹ / payout'">
-          <option value="full">Recover: full</option>
-          <option value="fixed">Recover: ₹ per payout</option>
-          <option value="percent">Recover: % of payout</option>
+          <option value="full">Recover: from commission (automatic)</option>
+          <option value="fixed">Plan: ₹ per payout (reminder)</option>
+          <option value="percent">Plan: % of payout (reminder)</option>
         </select>
         <input type="number" name="recover_value" step="0.01" min="0" placeholder="—" disabled
                style="width:90px;padding:8px 10px;border:1px solid var(--line);border-radius:8px">

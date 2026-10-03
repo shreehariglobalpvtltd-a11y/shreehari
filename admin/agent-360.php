@@ -657,9 +657,9 @@ function a360_form_head(string $tab, string $action, int $agentId, string $csrf,
 function a360_recover_label(array $l): string
 {
     return match ((string) ($l['recover_mode'] ?? 'full')) {
-        'fixed'   => inr((float) $l['recover_value']) . ' per payout',
-        'percent' => rtrim(rtrim(number_format((float) $l['recover_value'], 2), '0'), '.') . '% of each payout',
-        default   => 'commission nets it in full',
+        'fixed'   => 'plan ' . inr((float) $l['recover_value']) . ' per payout · nets from commission',
+        'percent' => 'plan ' . rtrim(rtrim(number_format((float) $l['recover_value'], 2), '0'), '.') . '% of each payout · nets from commission',
+        default   => 'commission nets it automatically',
     };
 }
 
@@ -1039,13 +1039,14 @@ details.a360-rows>summary{cursor:pointer;font-size:12.5px;color:var(--blue);font
           <div class="field"><label>Amount ₹</label><input class="inp" type="number" name="amount" step="0.01" min="0.01" required></div>
           <div class="field"><label>Recovery</label>
             <select class="inp" name="recover_mode" onchange="var v=this.form.querySelector('[name=recover_value]');v.disabled=this.value==='full';v.placeholder=this.value==='percent'?'% of each payout':(this.value==='fixed'?'₹ per payout':'')">
-              <option value="full">Full — commission nets it</option>
-              <option value="fixed">Fixed ₹ per payout</option>
-              <option value="percent">% of each payout</option>
+              <option value="full">Automatic — commission nets it</option>
+              <option value="fixed">Plan: fixed ₹ per payout (reminder)</option>
+              <option value="percent">Plan: % of each payout (reminder)</option>
             </select></div>
           <div class="field"><label>Recovery value</label><input class="inp" type="number" name="recover_value" step="0.01" min="0" disabled placeholder="—"></div>
         </div>
         <div class="field" style="margin-top:10px"><label>Note</label><input class="inp" type="text" name="note" maxlength="255" placeholder="what it is for"></div>
+        <p class="muted" style="font-size:12px;margin:8px 0 0">How recovery works (3 Oct 2026): the amount is taken off the agent's commission balance at once, so every commission they earn repays it automatically and a payout is only possible once the balance is above zero. A "plan" of ₹ or % per payout is printed on the loan as the agreed instalment — use <b>Repay</b> for money they hand back in cash.</p>
         <div class="form-actions"><button class="btn" type="submit"><svg class="a-ic"><use href="#a-loan"/></svg> Issue</button></div>
       </form>
       <form method="post" onsubmit="return confirm('Record this cash repayment?')">

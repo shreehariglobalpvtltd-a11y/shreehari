@@ -34,9 +34,13 @@ if (!defined('NPR_PER_INR')) {
     define('NPR_PER_INR', 1.6);
 }
 /** SQL fragment: total_amount expressed in INR regardless of stored currency. */
-const REV_INR = "SUM(CASE WHEN currency='NPR' THEN total_amount/" . NPR_PER_INR . " ELSE total_amount END)";
+/* 3 Oct 2026: the peg from Admin > Settings (npr_per_inr), like the quote,
+   the counter, payroll and accounting — not the config constant. */
+$__peg = Settings::getFloat('npr_per_inr', (float) NPR_PER_INR);
+define('SHG_AN_PEG', $__peg > 0 ? $__peg : (float) NPR_PER_INR);
+const REV_INR = "SUM(CASE WHEN currency='NPR' THEN total_amount/" . SHG_AN_PEG . " ELSE total_amount END)";
 /** Same peg, for queries that alias the bookings table as b. */
-const REV_INR_B = "SUM(CASE WHEN b.currency='NPR' THEN b.total_amount/" . NPR_PER_INR . " ELSE b.total_amount END)";
+const REV_INR_B = "SUM(CASE WHEN b.currency='NPR' THEN b.total_amount/" . SHG_AN_PEG . " ELSE b.total_amount END)";
 /** Rows in one CSV download — the same ceiling admin/export.php uses. */
 const AN_CSV_CAP = 10000;
 
@@ -761,7 +765,7 @@ admin_page_head(
   <?= admin_kpi(
       'Revenue',
       inr($revenue),
-      $confirmedN > 0 ? 'avg ' . inr($avgFare) . ' per booking · NPR @ 1:' . NPR_PER_INR : 'INR · NPR converted @ 1:' . NPR_PER_INR,
+      $confirmedN > 0 ? 'avg ' . inr($avgFare) . ' per booking · NPR @ 1:' . SHG_AN_PEG : 'INR · NPR converted @ 1:' . SHG_AN_PEG,
       'rupee',
       'green'
   ) ?>
@@ -791,7 +795,7 @@ admin_page_head(
   </div>
 
   <div class="panel wide">
-    <div class="an-head"><h2>Revenue per day<span class="an-sub">₹, paid bookings, NPR converted @ 1:<?= NPR_PER_INR ?></span></h2>
+    <div class="an-head"><h2>Revenue per day<span class="an-sub">₹, paid bookings, NPR converted @ 1:<?= SHG_AN_PEG ?></span></h2>
       <button class="an-export" type="button" data-export="revChart" data-name="revenue-per-day">Export PNG</button></div>
     <div class="an-body"><div class="an-canvas"><canvas id="revChart" aria-label="Revenue per day"></canvas></div></div>
   </div>
@@ -853,7 +857,7 @@ admin_page_head(
   <p class="muted" style="margin-top:0">
     Confirmed and completed sales paid in this window, counted against the
     outbound leg so a round trip is not double-counted. NPR converted at the
-    same 1&nbsp;:&nbsp;<?= NPR_PER_INR ?> peg used everywhere else on this page,
+    same 1&nbsp;:&nbsp;<?= SHG_AN_PEG ?> peg used everywhere else on this page,
     so these totals reconcile with Accounting.
   </p>
 
