@@ -329,3 +329,180 @@ body { color: var(--ink); font-family: var(--font-sans); }
 /* floating buttons sit above the bottom bar and stay small */
 .whatsapp-fab, .ai-fab { width: 48px !important; height: 48px !important; box-shadow: var(--shadow-2) !important; }
 .ai-fab { background: var(--navy) !important; color: var(--on-navy) !important; border: 2px solid var(--surface) !important; }
+
+/* ---------- 5. Booking flow: shared header ---------- */
+.flow-head { background: var(--navy) !important; background-image: none !important; color: var(--on-navy) !important; border-bottom: 0 !important; padding: var(--space-4) 0 var(--space-3) !important; }
+.flow-head::before, .flow-head::after { display: none !important; }
+.flow-head h2 { font: 800 20px/26px var(--font-sans) !important; color: var(--on-navy) !important; letter-spacing: 0 !important; margin: 0 !important; }
+.flow-head .sub { color: var(--on-navy-muted) !important; font: 500 13px/18px var(--font-sans) !important; margin: 2px 0 0 !important; }
+.flow-head .steps { display: flex !important; gap: 6px !important; margin-top: var(--space-3) !important; overflow-x: auto; scrollbar-width: none; }
+.flow-head .steps::-webkit-scrollbar { display: none; }
+.flow-head .step { flex: none; display: inline-flex !important; align-items: center; gap: 6px; padding: 4px 10px 4px 4px !important; border-radius: var(--radius-pill) !important; background: rgba(255, 255, 255, .08) !important; color: var(--on-navy-muted) !important; font: 700 12px/16px var(--font-sans) !important; border: 0 !important; box-shadow: none !important; }
+.flow-head .step .n { width: 22px; height: 22px; border-radius: 50%; display: grid !important; place-items: center; background: rgba(255, 255, 255, .14) !important; color: var(--on-navy) !important; font: 800 11px/1 var(--font-sans) !important; border: 0 !important; }
+.flow-head .step.now { background: var(--surface) !important; color: var(--royal) !important; }
+.flow-head .step.now .n { background: var(--royal) !important; color: var(--on-royal) !important; }
+.flow-head .step.done .n { background: var(--success) !important; color: #FFFFFF !important; }
+:root[data-theme="dark"] .flow-head .step.done .n { color: var(--page) !important; }
+.flow-body { background: var(--page) !important; }
+
+/* ---------- 6. Results ---------- */
+.res-toolbar { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-1) !important; padding: 12px 14px !important; }
+.res-toolbar .rt-route { font: 700 16px/22px var(--font-sans) !important; color: var(--ink) !important; }
+.res-toolbar .rt-date { color: var(--muted) !important; font-size: 13px !important; }
+.bus-card { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-1) !important; color: var(--ink) !important; }
+.bus-card:hover { border-color: var(--royal) !important; transform: none !important; box-shadow: var(--shadow-1) !important; }
+.bus-card::before, .bus-card::after { display: none !important; }
+.bus-card .depTime-big, .bus-card .bc-time .t { font: 800 22px/26px var(--font-sans) !important; color: var(--ink) !important; font-variant-numeric: tabular-nums; }
+.bus-card .dur, .bus-card .busno, .bus-card .bc-points { color: var(--muted) !important; }
+.bus-card h3 { font: 700 16px/22px var(--font-sans) !important; color: var(--ink) !important; }
+.bus-card .bc-fare .amt { font: 800 22px/26px var(--font-sans) !important; color: var(--ink) !important; font-variant-numeric: tabular-nums; }
+.bus-card .bc-fare .npr, .bus-card .bc-fare .left { color: var(--muted) !important; }
+.bus-card .seats-avail-pill { border-radius: var(--radius-pill) !important; font-weight: 700 !important; }
+.bus-card .seats-avail-pill.ok { background: var(--success-soft) !important; color: var(--success) !important; border-color: transparent !important; }
+.bus-card .seats-avail-pill.low { background: var(--warning-soft) !important; color: var(--warning) !important; border-color: transparent !important; }
+.bus-card .seats-avail-pill.gone { background: var(--danger-soft) !important; color: var(--danger) !important; border-color: transparent !important; }
+.bus-card .chip, .bus-card .badge, .bus-card .vbadge { background: var(--surface-sunken) !important; color: var(--ink-2) !important; border: 1px solid var(--line) !important; box-shadow: none !important; }
+.bus-card .save-badge { background: var(--orange-soft) !important; color: var(--warm-ink) !important; border: 0 !important; }
+.bus-card button[data-sel] { min-height: var(--tap-min) !important; border-radius: var(--radius-md) !important; }
+.bus-card.is-sold-out { opacity: .7; }
+.skel-card { background: var(--surface) !important; border-color: var(--line) !important; }
+.empty-state { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; color: var(--ink) !important; }
+/* the decorative bus-on-the-road strip on results and seats */
+.jy-wrap, .jy-strip, .journey-strip, #jyStrip { display: none !important; }
+
+/* ---------- 7. Seat map ---------- */
+.seat-panel { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-1) !important; }
+.booking-type-toggle { background: var(--surface-sunken) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-md) !important; padding: 4px !important; box-shadow: none !important; }
+.booking-type-toggle .bt-pill { min-height: 44px !important; border-radius: var(--radius-sm) !important; background: transparent !important; color: var(--ink-2) !important; border: 0 !important; box-shadow: none !important; font-weight: 700 !important; }
+.booking-type-toggle .bt-pill.on { background: var(--surface) !important; color: var(--royal) !important; box-shadow: var(--shadow-1) !important; outline: 1.5px solid var(--royal); outline-offset: -1.5px; }
+.deck-tabs .deck-tab { min-height: 44px !important; border-radius: var(--radius-sm) !important; border: 1.5px solid var(--line-control) !important; background: var(--surface) !important; color: var(--ink) !important; box-shadow: none !important; font-weight: 700 !important; }
+.deck-tabs .deck-tab.on, .deck-tabs .deck-tab[aria-selected="true"] { background: var(--royal) !important; color: var(--on-royal) !important; border-color: var(--royal-strong) !important; }
+.seat-count-picker { background: var(--surface-sunken) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-md) !important; }
+.seat-count-picker .scp-n { min-width: 44px !important; height: 44px !important; border-radius: var(--radius-sm) !important; border: 1.5px solid var(--line-control) !important; background: var(--surface) !important; color: var(--ink) !important; }
+.seat-count-picker .scp-n.on { background: var(--royal) !important; border-color: var(--royal-strong) !important; color: var(--on-royal) !important; }
+.seat-count-picker .scp-hint { flex-basis: 100%; margin: 4px 0 0; font: 600 13px/18px var(--font-sans); color: var(--royal-strong); }
+.seat-count-picker .scp-hint[hidden] { display: none; }
+.pref-chip { min-height: 44px !important; border-radius: var(--radius-pill) !important; border: 1.5px solid var(--line-control) !important; background: var(--surface) !important; color: var(--ink) !important; }
+.pref-chip.on { background: var(--royal-soft) !important; border-color: var(--royal) !important; color: var(--royal-strong) !important; }
+.seat-pick-status { background: var(--royal-tint) !important; border: 1px solid var(--royal-soft) !important; color: var(--ink) !important; border-radius: var(--radius-md) !important; }
+.seat-pick-status.ok { background: var(--success-soft) !important; border-color: transparent !important; color: var(--ink) !important; }
+.seat-pick-status.warn { background: var(--warning-soft) !important; border-color: transparent !important; color: var(--ink) !important; }
+#seatAutoPick { background: var(--surface) !important; color: var(--royal) !important; border: 1.5px solid var(--line-control) !important; box-shadow: none !important; min-height: 44px; }
+.women-safe-strip { display: none !important; }
+.deck-block .deck-head, .deck-head { background: var(--navy) !important; background-image: none !important; color: var(--on-navy) !important; border-radius: var(--radius-sm) !important; box-shadow: none !important; }
+.deck-head .dh-range { background: rgba(255, 255, 255, .14) !important; color: var(--on-navy) !important; }
+.cabin-card { background: var(--surface) !important; border: 1px solid var(--line) !important; box-shadow: none !important; }
+.cabin-card:has(.seat.sel) { border-color: var(--royal) !important; box-shadow: none !important; }
+.seat-row.slp-shr:has(.seat.sel), .seat-row.slp-pvt:has(.seat.sel) { background: var(--royal-tint) !important; box-shadow: none !important; }
+.cab-free { background: var(--success-soft) !important; color: var(--success) !important; border-color: transparent !important; }
+.cab-free.cab-full { background: var(--danger-soft) !important; color: var(--danger) !important; }
+/* states: each one differs by fill, border style AND a mark, never colour alone */
+#view-seats .seat { background: var(--surface) !important; border: 1.5px solid var(--line-control) !important; color: var(--ink) !important; box-shadow: none !important; min-height: 48px; transition: background-color .15s, border-color .15s !important; }
+#view-seats .seat:not(:disabled):hover { border-color: var(--royal) !important; background: var(--royal-tint) !important; transform: none !important; }
+#view-seats .seat.sel { background: var(--royal) !important; border-color: var(--royal-strong) !important; color: var(--on-royal) !important; animation: none !important; }
+#view-seats .seat.sel.holding { background: var(--royal-tint) !important; color: var(--royal-strong) !important; border: 2px dashed var(--royal) !important; }
+#view-seats .seat.sel.hold-wait { background: var(--warning-soft) !important; color: var(--warning) !important; border: 2px dashed var(--warning) !important; }
+#view-seats .seat.bkd { background: var(--seat-booked) !important; border-color: var(--seat-booked) !important; color: var(--seat-booked-ink) !important; text-decoration: line-through; }
+#view-seats .seat.hold { background: var(--warning-soft) !important; background-image: none !important; border: 1.5px dashed var(--warning) !important; color: var(--warning) !important; text-decoration: none; }
+#view-seats .seat.reserved { background: var(--danger-soft) !important; border-color: var(--danger) !important; color: var(--danger) !important; }
+#view-seats .seat.u-fem:not(.sel):not(.bkd), #view-seats .seat.fem:not(.sel):not(.bkd):not(.reserved) { background: var(--seat-ladies) !important; border-color: var(--seat-ladies-line) !important; color: var(--seat-ladies-ink) !important; }
+#view-seats .seat.u-male:not(.sel):not(.bkd) { background: var(--seat-gents) !important; border-color: var(--seat-gents-ink) !important; color: var(--seat-gents-ink) !important; }
+#view-seats .seat.pvt:not(.sel):not(.bkd):not(.reserved):not(.u-fem):not(.u-male) { background: var(--royal-tint) !important; border-color: var(--royal) !important; border-style: dashed !important; color: var(--royal-strong) !important; }
+#view-seats .seat.bkd.xmode { background: var(--surface-sunken) !important; border: 1.5px dashed var(--line-control) !important; color: var(--muted) !important; text-decoration: none; }
+#view-seats .seat.suggested { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--royal) !important; animation: none !important; }
+.legend, .legend-sticky { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-md) !important; box-shadow: none !important; color: var(--ink-2) !important; }
+.legend .lg { border-radius: 5px !important; border: 1.5px solid var(--line-control) !important; background: var(--surface) !important; box-shadow: none !important; }
+.legend .lg.sel { background: var(--royal) !important; border-color: var(--royal-strong) !important; }
+.legend .lg.bkd { background: var(--seat-booked) !important; border-color: var(--seat-booked) !important; }
+.legend .lg.hold { background: var(--warning-soft) !important; border: 1.5px dashed var(--warning) !important; }
+.legend .lg.u-fem, .legend .lg.fem { background: var(--seat-ladies) !important; border-color: var(--seat-ladies-line) !important; }
+.legend .lg.u-male { background: var(--seat-gents) !important; border-color: var(--seat-gents-ink) !important; }
+.legend .lg.pvt { background: var(--royal-tint) !important; border: 1.5px dashed var(--royal) !important; }
+.legend b, .legend .lg-2f { background: var(--navy) !important; color: var(--on-navy) !important; border-radius: 5px; padding: 0 5px; }
+
+/* summary card + sticky action bar (seats and checkout) */
+.sum-card { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-1) !important; color: var(--ink) !important; }
+.sum-card::before, .sum-card::after { display: none !important; }
+.sum-card h3 { font: 800 18px/24px var(--font-sans) !important; color: var(--ink) !important; }
+.sum-row { border-color: var(--line) !important; }
+.sum-row span { color: var(--muted) !important; }
+.sum-row b { color: var(--ink) !important; }
+.sum-row.total b, #sumFare { font: 800 22px/26px var(--font-sans) !important; color: var(--ink) !important; font-variant-numeric: tabular-nums; }
+.hold-pill { background: var(--warning-soft) !important; color: var(--warning) !important; border: 0 !important; border-radius: var(--radius-pill) !important; font-weight: 700 !important; animation: none !important; }
+.seat-quick { background: var(--royal-tint) !important; border: 1px solid var(--royal-soft) !important; border-radius: var(--radius-md) !important; }
+.seat-quick input, .sum-card select, .sum-card .bp-other, .field select, .field input, .field textarea { border: 1.5px solid var(--line-control) !important; border-radius: var(--radius-md) !important; background: var(--surface) !important; color: var(--ink) !important; min-height: var(--tap-min); font-size: 16px !important; box-shadow: none !important; }
+.seat-quick .sq-g button, .tier-pill { min-height: 44px !important; border-radius: var(--radius-sm) !important; border: 1.5px solid var(--line-control) !important; background: var(--surface) !important; color: var(--ink) !important; box-shadow: none !important; }
+.seat-quick .sq-g button.on, .seat-quick .sq-g button[aria-pressed="true"], .tier-pill.on, .tier-pill[aria-pressed="true"] { background: var(--royal-soft) !important; border-color: var(--royal) !important; color: var(--royal-strong) !important; }
+.vip-badge, .vip-priority-chip { display: none !important; }
+.occ-bar { background: var(--surface-hover) !important; }
+.occ-fill { background: var(--royal) !important; }
+.flow-actions .fa-recap { font: 700 13.5px/18px var(--font-sans) !important; color: var(--ink) !important; }
+.flow-actions .btn-ghost, #seatBackBtn { background: var(--surface) !important; color: var(--royal) !important; border: 1.5px solid var(--line-control) !important; box-shadow: none !important; }
+.btn:disabled, .btn[disabled] { opacity: .45 !important; cursor: not-allowed !important; }
+.flow-head .steps { flex-wrap: nowrap !important; }
+.flow-head .step::after { display: none !important; }
+.flow-head .step span:last-child { font-size: 12px !important; white-space: nowrap; }
+@media (max-width: 420px) { .flow-head .step:not(.now) span:last-child { display: none; } .flow-head .step:not(.now) { padding: 4px !important; } }
+
+/* ---------- 8. Ticket screen ---------- */
+#ticketCard, .status-card.tk2 { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-1) !important; color: var(--ink) !important; overflow: hidden; }
+#ticketCard .tk2-head { background: var(--navy) !important; background-image: none !important; color: var(--on-navy) !important; border-bottom: 3px solid var(--red) !important; }
+#ticketCard .tk2-head * { color: inherit; }
+#ticketCard .tk2-pill { border-radius: var(--radius-pill) !important; font-weight: 700 !important; border: 0 !important; box-shadow: none !important; }
+#ticketCard .tk2-pill.ok { background: var(--success-soft) !important; color: var(--success) !important; }
+#ticketCard .tk2-pill.pend { background: var(--warning-soft) !important; color: var(--warning) !important; }
+#ticketCard .tk2-pill.bad { background: var(--danger-soft) !important; color: var(--danger) !important; }
+#ticketCard .tk2-pill.off { background: var(--surface-sunken) !important; color: var(--muted) !important; }
+#ticketCard .tk2-tile, #ticketCard .tk2-ess > div { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-md) !important; box-shadow: none !important; }
+#ticketCard .tk2-fare, #ticketCard .premium-pay-card { border-radius: var(--radius-lg) !important; box-shadow: none !important; }
+#ticketCard .tk2-fare { background: var(--navy) !important; background-image: none !important; color: var(--on-navy) !important; }
+#ticketCard .premium-payment-state { border-radius: var(--radius-md) !important; box-shadow: none !important; }
+/* the passenger table always fits the card */
+#ticketCard .pax-table { width: 100% !important; table-layout: fixed; border-collapse: collapse; font-size: 13.5px; }
+#ticketCard .pax-table th { font: 700 11px/14px var(--font-sans) !important; color: var(--muted) !important; text-transform: uppercase; letter-spacing: .03em; white-space: normal !important; overflow-wrap: anywhere; padding: 8px 6px !important; background: var(--surface-sunken) !important; }
+#ticketCard .pax-table td { padding: 8px 6px !important; overflow-wrap: anywhere; border-color: var(--line) !important; }
+#ticketCard .pax-table th:first-child, #ticketCard .pax-table td:first-child { width: 22%; }
+#ticketCard .pax-table th:nth-child(3), #ticketCard .pax-table td:nth-child(3) { width: 14%; }
+#ticketCard .pax-table th:nth-child(4), #ticketCard .pax-table td:nth-child(4) { width: 22%; }
+/* actions: one primary (Download), the rest secondary, three across */
+#ticketCard .tk2-actions { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: var(--space-2) !important; }
+#ticketCard .tk2-actions > .btn { min-height: 56px !important; white-space: normal !important; font: 700 13px/16px var(--font-sans) !important; padding: 6px 8px !important; border-radius: var(--radius-md) !important; text-align: center; display: flex !important; align-items: center; justify-content: center; margin: 0 !important; width: auto !important; }
+#ticketCard .tk2-actions > .tk2-wide { grid-column: 1 / -1; min-height: var(--tap-min) !important; }
+#ticketCard .tk2-actions > .btn.btn-blue, #ticketCard .tk2-actions > .btn.btn-wa, #ticketCard .tk2-actions > .btn.btn-ghost,
+#ticketCard .btn.btn-ghost, #ticketCard .btn.btn-wa {
+  background: var(--surface) !important; color: var(--royal) !important; border: 1.5px solid var(--line-control) !important; box-shadow: none !important;
+}
+#ticketCard .tk2-more summary { min-height: var(--tap-min); display: flex; align-items: center; color: var(--royal) !important; font-weight: 700; }
+#ticketCard .rate-card { border-radius: var(--radius-md) !important; box-shadow: none !important; }
+/* status / not-found screens */
+#statusBody .empty-state, #view-status .empty-state { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; }
+
+/* ---------- 9. My Tickets ---------- */
+.mybk-card { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-1) !important; color: var(--ink) !important; }
+.mybk-card:hover { border-color: var(--royal) !important; transform: none !important; }
+.my-tabs .my-tab { min-height: 44px !important; border-radius: var(--radius-sm) !important; }
+.my-tabs .my-tab.on { background: var(--surface) !important; color: var(--royal) !important; box-shadow: var(--shadow-1) !important; }
+.loy-card { background: var(--surface) !important; background-image: none !important; color: var(--ink) !important; border: 1px solid var(--line) !important; box-shadow: var(--shadow-1) !important; }
+.loy-card * { color: inherit !important; }
+
+/* ---------- 10. Footer ---------- */
+footer { background: var(--navy) !important; background-image: none !important; color: var(--on-navy-muted) !important; border-top: 3px solid var(--red) !important; }
+footer .f-flagline { display: none !important; }
+footer a { color: var(--on-navy) !important; }
+footer h4, footer h5, footer b, footer strong { color: var(--on-navy) !important; }
+footer .f-ceo { background: rgba(255, 255, 255, .06) !important; border-color: rgba(255, 255, 255, .12) !important; box-shadow: none !important; }
+/* every page clears the bottom bar on a phone */
+@media (max-width: 899px) { body:not(.in-flow) footer { padding-bottom: calc(var(--bottomnav-h) + env(safe-area-inset-bottom, 0) + 16px) !important; } }
+
+/* ---------- 11. Shared controls inside the customer app ---------- */
+.shg-modal .m-box, .wa-sheet-card, .ct-sheet > div, .ai-panel { border-radius: var(--radius-xl) var(--radius-xl) 0 0 !important; box-shadow: var(--shadow-3) !important; }
+@media (min-width: 640px) { .shg-modal .m-box { border-radius: var(--radius-xl) !important; } }
+.shg-modal .m-box, .wa-sheet-card { background: var(--surface) !important; color: var(--ink) !important; }
+.wa-req input, .wa-req select, .wa-req textarea { border: 1.5px solid var(--line-control) !important; border-radius: var(--radius-md) !important; min-height: var(--tap-min); font-size: 16px !important; background: var(--surface) !important; color: var(--ink) !important; }
+#toast { background: var(--navy) !important; color: var(--on-navy) !important; border-radius: var(--radius-sm) !important; box-shadow: var(--shadow-3) !important; }
+.btn { border-radius: var(--radius-md); }
+.btn-ghost { background: var(--surface) !important; color: var(--royal) !important; border: 1.5px solid var(--line-control) !important; box-shadow: none !important; }
+.btn-wa { box-shadow: none !important; }
+.badge.ok, .badge.confirmed { background: var(--success-soft) !important; color: var(--success) !important; }
+.badge.pend, .badge.pending { background: var(--warning-soft) !important; color: var(--warning) !important; }
+.badge.bad, .badge.cancelled { background: var(--danger-soft) !important; color: var(--danger) !important; }

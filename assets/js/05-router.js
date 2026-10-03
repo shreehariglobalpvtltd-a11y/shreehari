@@ -2287,10 +2287,18 @@ const SeatLock = {
 
     Object.keys(mine).forEach(k => {
       const j = mine[k];
+      /* Oct 2026 redesign: a tapped seat reads "holding…" until the SERVER
+         grants the hold — selected is never shown as secured before that. */
+      const btns = j.seats.map(s => document.querySelector('#view-seats .seat[data-id="' + s + '"]')).filter(Boolean);
+      btns.forEach(b => { if (!b.dataset.held) { b.classList.add('holding'); b.setAttribute('aria-busy', 'true'); } });
       jobs.push(
         shgApi.post('/lock.php', { action: 'hold', routeCode: j.routeId, date: j.date, seats: j.seats, bookingMode: j.mode, scheduleId: j.schId || undefined })
-          .then(d => { if (d && d.expiresAt) this._accept(d); })
-          .catch(err => this._refused(j, err))
+          .then(d => {
+            if (d && d.expiresAt) this._accept(d);
+            this._retry = 0;
+            btns.forEach(b => { b.classList.remove('holding', 'hold-wait'); b.removeAttribute('aria-busy'); b.dataset.held = '1'; });
+          })
+          .catch(err => this._refused(j, err, btns))
       );
     });
 
@@ -2312,9 +2320,18 @@ const SeatLock = {
      back out of the selection and repaint from the database's truth.
      An error carrying no `failed` list is a network blip, not a
      conflict, so the selection is left alone. */
-  _refused(job, err) {
+  _refused(job, err, btns) {
     const failed = (err && err.data && err.data.failed) || [];
-    if (!failed.length) return;
+    if (!failed.length) {
+      /* No conflict list = the server was not reached. The seat stays
+         selected but visibly NOT held; retry a few times, then say so. */
+      this._retry = (this._retry || 0) + 1;
+      (btns || []).forEach(b => b.classList.add('hold-wait'));
+      if (this._retry <= 3) setTimeout(() => this.schedule(), 2000 * this._retry);
+      else toast(t('tHoldOffline'));
+      return;
+    }
+    (btns || []).forEach(b => { b.classList.remove('holding', 'hold-wait'); b.removeAttribute('aria-busy'); });
 
     failed.forEach(seat => {
       const ix = (Flow.seats || []).indexOf(seat);
