@@ -41,6 +41,9 @@ require_once INCLUDE_PATH . '/moneysummary.php';
    collected; NPR converted at the owner's npr_per_inr). */
 $moneyDay   = MoneySummary::window($today, $today);
 $moneyMonth = MoneySummary::window($monthStart, addDaysISO($monthEnd, -1));
+// Company-wide money (tiles + revenue chart) is shown to the accounts roles
+// only — the same reports.view gate as Accounting and Payroll.
+$seeMoney   = Auth::can('reports.view');
 
 $stats = [
     'pendingPay'   => (int) Database::scalar("SELECT COUNT(*) FROM bookings WHERE status='pending'"),
@@ -250,6 +253,7 @@ admin_page_head(
      it counts — the same definitions as Accounting, so the two always agree. -->
 <?php $accDay = $base . '/admin/accounting.php?from=' . rawurlencode($today) . '&to=' . rawurlencode($today); ?>
 <?php $accMonth = $base . '/admin/accounting.php?from=' . rawurlencode($monthStart) . '&to=' . rawurlencode(addDaysISO($monthEnd, -1)); ?>
+<?php if ($seeMoney): ?>
 <h2 class="dash-sec">Money · <?= $isTodayView ? 'today' : $e(formatDate($today)) ?></h2>
 <div class="sg sg-stats dash-money">
   <a class="sg-stat" href="<?= $e($accDay) ?>">
@@ -301,6 +305,16 @@ admin_page_head(
     <?php endif; ?>
   </a>
 </div>
+<?php else: ?>
+<div class="sg sg-stats dash-money">
+  <a class="sg-stat<?= $stats['pendingPay'] > 0 ? ' sg-stat--attention' : '' ?>" href="<?= $base ?>/admin/payments.php">
+    <span class="sg-stat__label">To verify</span>
+    <span class="sg-stat__value"><?= (int) $stats['pendingPay'] ?></span>
+    <span class="sg-stat__def">Bookings waiting for payment verification</span>
+  </a>
+</div>
+<p class="muted text-sm">Company money figures are shown to the accounts roles (manager, accountant, super-admin).</p>
+<?php endif; ?>
 
 <!-- Operations strip (light KPI tiles; the four trip tiles are live-updated) -->
 <div class="kpis">
@@ -324,6 +338,7 @@ admin_page_head(
 
 <!-- Revenue chart + channel donut -->
 <div class="dash-grid two-one">
+  <?php if ($seeMoney): ?>
   <div class="dash-panel">
     <div class="dp-head"><svg class="a-ic" style="color:var(--blue)"><use href="#a-chart"/></svg>Revenue — last 7 days</div>
     <div class="dp-body">
@@ -341,6 +356,7 @@ admin_page_head(
       </div>
     </div>
   </div>
+  <?php endif; ?>
 
   <div class="dash-panel">
     <div class="dp-head"><svg class="a-ic" style="color:var(--blue)"><use href="#a-layers"/></svg>Today by channel</div>

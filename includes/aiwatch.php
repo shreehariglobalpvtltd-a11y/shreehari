@@ -372,7 +372,7 @@ final class AiWatch
     /** Yesterday's coach ran (it sold seats) but no expense was written down. */
     private static function expensesMissing(): array
     {
-        if (!self::can('payments.view')) {
+        if (!self::can('payments.view') || !self::can('reports.view')) {   // Accounting needs reports.view (Oct 2026)
             return [];
         }
         $y = addDaysISO(todayISO(), -1);

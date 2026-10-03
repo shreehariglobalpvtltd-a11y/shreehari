@@ -205,7 +205,7 @@ function admin_nav(): array
         ['href' => 'ai-copilot.php',   'icon' => 'msg',    'label' => '🤖 AI Sahayak',     'perm' => 'bookings.view',  'section' => 'Expenses & reports', 'hot' => true],
         ['href' => 'analytics.php',    'icon' => 'chart',  'label' => 'Analytics',        'perm' => 'dashboard.view', 'section' => 'Expenses & reports'],
         ['href' => 'feedback.php',     'icon' => 'star',      'label' => 'Ratings',          'perm' => 'dashboard.view', 'section' => 'Expenses & reports'],
-        ['href' => 'accounting.php',   'icon' => 'banknote',    'label' => 'Accounting',       'perm' => 'payments.view',  'section' => 'Expenses & reports'],
+        ['href' => 'accounting.php',   'icon' => 'banknote',    'label' => 'Accounting',       'perm' => 'reports.view',   'section' => 'Expenses & reports'],
         // 2 Oct 2026: salary + advances for staff without a panel login. reports.view,
         // not payments.view — the counter / official desks hold payments.view and
         // must not read everyone's salary (the page refuses them too).

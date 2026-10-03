@@ -1854,7 +1854,7 @@ function renderStatus(id) {
       var pvSub = PV.submissions.find(function(s) { return s.bookingId === b.id && s.status === 'pending'; });
       var verId = pvSub ? esc(pvSub.id) : esc(b.id);
       extra = '<div class="pp-status show waiting" style="margin-bottom:14px"><div class="pp-st-ico">⏳</div><div class="pp-st-title">Waiting for Verification...</div>'
-        + '<div class="pp-st-sub">Average verification time: <b>' + esc(CONFIG.verifyTimeText || '1–3 minutes') + '</b><br>Reference: <b>' + verId + '</b><br>Our team will confirm your ticket shortly.<br>'
+        + '<div class="pp-st-sub">Usually verified <b>' + esc(CONFIG.verifyTimeText || 'within 30 minutes (9 AM–9 PM IST)') + '</b><br>Reference: <b>' + verId + '</b><br>Our team will confirm your ticket shortly.<br>'
         + '<a href="#" onclick="event.preventDefault(); pvOpenForm(\'' + esc(b.id) + '\')" style="font-size:12px;color:var(--muted);text-decoration:underline">Resend payment proof if needed</a></div></div>';
     }
   } else if (b.status === 'confirmed') {

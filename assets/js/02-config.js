@@ -340,7 +340,7 @@ const CONFIG = {
   email: 'shreehariglobalpvtltd@gmail.com',
   adminWhatsApp: '918735881507',
   adminEmail: 'booking@shariglobal.com',
-  verifyTimeText: '1–3 minutes',
+  verifyTimeText: 'within 30 minutes (9 AM–9 PM IST)',   // same promise as the FAQ and the pay screen (Oct 2026)
   allowScreenshotUpload: true,
   maxUploadSizeMB: 10,
   nprPerInr: 1.6,                 // fixed INR→NPR peg used for fare estimates

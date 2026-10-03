@@ -23,6 +23,10 @@
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 $admin = admin_boot('payments.view');
+// Oct 2026: company-wide money (collections, expenses, salaries, agents' cash)
+// is for the accounts roles — the same gate as Payroll. Counter and official
+// desks keep payments.view to verify a customer's payment on Verify Payments.
+Auth::requireAdmin('reports.view');
 
 $base = '';
 
