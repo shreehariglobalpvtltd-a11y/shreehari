@@ -135,6 +135,7 @@ final class DataAudit
             'money.confirmed_unpaid'   => [self::class, 'moneyConfirmedUnpaid'],
             'wallet.not_reversed'      => [self::class, 'walletNotReversed'],
             'wallet.voided_but_live'   => [self::class, 'walletVoidedButLive'],
+            'wallet.ledger_mismatch'   => [self::class, 'walletLedgerMismatch'],
             'hold.unswept'             => [self::class, 'holdUnswept'],
         ];
     }
@@ -460,10 +461,11 @@ final class DataAudit
                JOIN agent_ledger c ON c.booking_id = b.id AND c.entry_type = 'commission' AND c.amount > 0
               WHERE b.status IN ('cancelled','rejected')
                 AND COALESCE(b.cancelled_at, b.updated_at) >= :s
-                AND NOT EXISTS (
-                      SELECT 1 FROM agent_ledger v
-                       WHERE v.booking_id = b.id AND v.entry_type = 'commission_void'
-                    )
+                /* 3 Oct 2026: NET still positive. A per-seat cancel writes a
+                   partial void, so the old test (no void row at all) missed a
+                   ticket whose remaining seats were cancelled later. */
+                AND c.amount + COALESCE((SELECT SUM(v.amount) FROM agent_ledger v
+                       WHERE v.booking_id = b.id AND v.entry_type = 'commission_void'), 0) > 0
               LIMIT 200",
             ['s' => $since . ' 00:00:00']
         );
@@ -492,7 +494,11 @@ final class DataAudit
             "SELECT b.id
                FROM bookings b
                JOIN agent_ledger v ON v.booking_id = b.id AND v.entry_type = 'commission_void'
+              JOIN agent_ledger c ON c.booking_id = b.id AND c.entry_type = 'commission'
               WHERE b.status IN ('confirmed','completed') AND b.created_at >= :s
+                /* 3 Oct 2026: a per-seat cancel leaves a PARTIAL void on a live
+                   ticket by design — only a full reversal is a fault. */
+                AND c.amount + v.amount <= 0
               LIMIT 200",
             ['s' => $since . ' 00:00:00']
         );
@@ -507,6 +513,37 @@ final class DataAudit
             'fix'      => "1. Open each booking below and check it really is confirmed.\n2. Post an Adjustment on the agent's statement for the commission amount, PNR as the reference.",
             'ids'      => self::sample(array_column($rows, 'id')),
             'count'    => count($rows),
+        ];
+    }
+
+    /**
+     * The rest of LedgerCheck (3 Oct 2026): rows of deleted bookings,
+     * commission missing on a paid sale, cash held that does not match the
+     * payment method. Recent bookings only, like every check here; the
+     * all-time list and the fixes are on Admin > Ledger मिलान.
+     */
+    public static function walletLedgerMismatch(string $since, string $today): ?array
+    {
+        require_once __DIR__ . '/ledgercheck.php';
+        $ids = []; $n = 0; $parts = [];
+        foreach (['orphan', 'not_credited', 'cash_mismatch'] as $kind) {
+            $rows = LedgerCheck::find($kind, $since);
+            if ($rows === []) { continue; }
+            $n += count($rows);
+            $parts[] = count($rows) . ' × ' . LedgerCheck::KINDS[$kind][0];
+            foreach ($rows as $r) { if ($kind !== 'orphan') { $ids[] = (int) $r['booking_id']; } }
+        }
+        if ($n === 0) {
+            return null;
+        }
+
+        return [
+            'severity' => Health::WARN,
+            'title'    => $n . ' agent ledger row(s) no longer match their booking',
+            'detail'   => implode('; ', $parts) . '. Agent balances and statements add these rows up, so they are off until corrected.',
+            'fix'      => "Open Admin > Agents > Ledger मिलान — each line shows the ledger now and what it should be, with a Fix button (super-admin).",
+            'ids'      => self::sample($ids),
+            'count'    => $n,
         ];
     }
 

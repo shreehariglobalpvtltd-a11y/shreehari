@@ -569,8 +569,15 @@ final class ReportPdf
      * Agent name/code, date range, summary cards (tickets, revenue,
      * commission, seats), then the booking table.
      */
-    private static function buildAgentReport(int $agentAdminId, string $from, string $to, string $rangeLabel = ''): array
+    private static function buildAgentReport(int $agentAdminId, string $from, string $to, string $rangeLabel = '', string $basis = 'sale'): array
     {
+        /* 3 Oct 2026: the Agent Sales page counts by JOURNEY date by default
+           and its PDF counted by booking date for the same range, so the two
+           disagreed. The page now passes its basis; 'sale' stays the default
+           for the WhatsApp statement and the historic entry point. */
+        $journey = $basis === 'journey';
+        $dc      = $journey ? 'blj.travel_date' : 'b.created_at';
+        $jj      = $journey ? " JOIN booking_legs blj ON blj.booking_id = b.id AND blj.leg_type = 'outbound'" : '';
         $agent = Database::fetch(
             'SELECT id, username, full_name, role FROM admins WHERE id = :id',
             ['id' => $agentAdminId]
@@ -590,24 +597,30 @@ final class ReportPdf
                     COALESCE(SUM(CASE WHEN b.status = 'confirmed' THEN 1 ELSE 0 END), 0) AS confirmed,
                     COALESCE(SUM(CASE WHEN b.status = 'confirmed' THEN b.total_amount ELSE 0 END), 0) AS revenue,
                     COALESCE(SUM(CASE WHEN b.status = 'cancelled' THEN 1 ELSE 0 END), 0) AS cancelled
-               FROM bookings b
-              WHERE b.sold_by_admin_id = :agent AND b.created_at >= :from AND b.created_at < :to",
+               FROM bookings b" . $jj . "
+              WHERE b.sold_by_admin_id = :agent AND " . $dc . " >= :from AND " . $dc . " < :to",
             ['agent' => $agentAdminId, 'from' => $from, 'to' => $toExcl]
         ) ?? ['tickets' => 0, 'confirmed' => 0, 'revenue' => 0, 'cancelled' => 0];
 
         $seatsSold = (int) Database::scalar(
             "SELECT COUNT(*) FROM booking_seats bs
-               JOIN bookings b ON b.id = bs.booking_id
-              WHERE b.sold_by_admin_id = :agent AND b.created_at >= :from AND b.created_at < :to AND b.status = 'confirmed'",
+               JOIN bookings b ON b.id = bs.booking_id" . $jj . "
+              WHERE b.sold_by_admin_id = :agent AND " . $dc . " >= :from AND " . $dc . " < :to AND b.status = 'confirmed'",
             ['agent' => $agentAdminId, 'from' => $from, 'to' => $toExcl],
             0
         );
 
         $commission = (float) Database::scalar(
-            "SELECT COALESCE(SUM(amount), 0) FROM agent_ledger
-              WHERE agent_admin_id = :a AND account = 'commission'
-                AND entry_type IN ('commission','commission_void')
-                AND created_at >= :from AND created_at < :to",
+            $journey
+                ? "SELECT COALESCE(SUM(l.amount), 0) FROM agent_ledger l
+                     JOIN booking_legs blj ON blj.booking_id = l.booking_id AND blj.leg_type = 'outbound'
+                    WHERE l.agent_admin_id = :a AND l.account = 'commission'
+                      AND l.entry_type IN ('commission','commission_void')
+                      AND blj.travel_date >= :from AND blj.travel_date < :to"
+                : "SELECT COALESCE(SUM(amount), 0) FROM agent_ledger
+                    WHERE agent_admin_id = :a AND account = 'commission'
+                      AND entry_type IN ('commission','commission_void')
+                      AND created_at >= :from AND created_at < :to",
             ['a' => $agentAdminId, 'from' => $from, 'to' => $toExcl],
             0
         );
@@ -624,12 +637,13 @@ final class ReportPdf
                LEFT JOIN booking_legs bl ON bl.booking_id = b.id AND bl.leg_type = 'outbound'
                LEFT JOIN schedules s ON s.id = bl.schedule_id
                LEFT JOIN routes r ON r.id = s.route_id
-              WHERE b.sold_by_admin_id = :agent AND b.created_at >= :from AND b.created_at < :to
-              ORDER BY b.id DESC LIMIT 500",
+              WHERE b.sold_by_admin_id = :agent AND " . ($journey ? 'bl.travel_date' : 'b.created_at') . " >= :from AND " . ($journey ? 'bl.travel_date' : 'b.created_at') . " < :to
+              ORDER BY " . ($journey ? 'bl.travel_date DESC, ' : '') . "b.id DESC LIMIT 500",
             ['agent' => $agentAdminId, 'from' => $from, 'to' => $toExcl]
         );
 
-        $sub = $rangeLabel !== '' ? $rangeLabel : (formatDate($from) . ' - ' . formatDate($to));
+        $sub = ($rangeLabel !== '' ? $rangeLabel : (formatDate($from) . ' - ' . formatDate($to)))
+             . ($journey ? ' (by journey date)' : ' (by booking date)');
         $rpt = new self(
             'AGENT SALES REPORT',
             $agentName . ' (' . ($agentCode ?: 'Staff') . ') | ' . $sub
@@ -696,10 +710,10 @@ final class ReportPdf
     }
 
     /** §14 — stream the Agent Sales Report PDF to the browser (the historic entry point). */
-    public static function agentReport(int $agentAdminId, string $from, string $to, string $rangeLabel = ''): void
+    public static function agentReport(int $agentAdminId, string $from, string $to, string $rangeLabel = '', string $basis = 'sale'): void
     {
         try {
-            $b = self::buildAgentReport($agentAdminId, $from, $to, $rangeLabel);
+            $b = self::buildAgentReport($agentAdminId, $from, $to, $rangeLabel, $basis);
         } catch (RuntimeException $e) {
             http_response_code(404);
             exit(Security::e($e->getMessage()));

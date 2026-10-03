@@ -2547,7 +2547,10 @@ final class AiTools
                     COALESCE(SUM(b.total_amount),0) AS amount,
                     COALESCE(SUM(CASE WHEN p.method = 'cash' THEN b.total_amount ELSE 0 END),0) AS cash
                FROM bookings b
+               /* 3 Oct 2026: the latest payment only — a booking with two
+                  payment rows was counted twice in tickets and amount. */
                LEFT JOIN payments p ON p.booking_id = b.id
+                    AND p.id = (SELECT MAX(p2.id) FROM payments p2 WHERE p2.booking_id = b.id)
               WHERE b.sold_by_admin_id = :a
                 AND DATE(b.created_at) = :d
                 AND b.status IN ('confirmed','completed')",

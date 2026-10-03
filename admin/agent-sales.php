@@ -243,9 +243,11 @@ $carry = static function (array $over = []) use ($preset, $customFrom, $customTo
 
 /* ---- PDF download (§14) ------------------------------------------------ */
 if (($_GET['format'] ?? '') === 'pdf') {
-    $pdfFrom = ($preset === 'custom' && $isDate($customFrom)) ? $customFrom : substr((string) $from, 0, 10);
-    $pdfTo   = ($preset === 'custom' && $isDate($customTo))   ? $customTo   : $today;
-    ReportPdf::agentReport($viewId, $pdfFrom, $pdfTo, $presets[$preset] ?? '');
+    // 3 Oct 2026: the PDF covers exactly the page's window ($to is
+    // exclusive) on the page's basis — journey or sale — so the two agree.
+    $pdfFrom = substr((string) $from, 0, 10);
+    $pdfTo   = addDaysISO(substr((string) $to, 0, 10), -1);
+    ReportPdf::agentReport($viewId, $pdfFrom, $pdfTo, $presets[$preset] ?? '', $basis);
     // ^ never returns (streams + exit)
 }
 

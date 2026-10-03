@@ -38,7 +38,7 @@ $totals  = CustomerBook::totals($f);
 $pages   = max(1, (int) ceil($totals['bookings'] / $PER));
 if ($page > $pages) { $page = $pages; }
 
-$header = ['Journey date', 'Booked on', 'PNR', 'Ticket no', 'Customer', 'Mobile', 'Passengers', 'Seats', 'From', 'To', 'Route', 'Bus', 'Agent / source', 'Fare (Rs)', 'Paid (Rs)', 'Payment', 'Status', 'Refund (Rs)'];
+$header = ['Journey date', 'Booked on', 'PNR', 'Ticket no', 'Customer', 'Mobile', 'Passengers', 'Seats', 'From', 'To', 'Route', 'Bus', 'Agent / source', 'Fare (Rs)', 'Paid (Rs)', 'Payment', 'Status', 'Refund (Rs)', 'Commission (Rs)'];
 $flat = static function (array $r): array {
     return [
         (string) ($r['travel_date'] ?? ''), substr((string) $r['created_at'], 0, 16), (string) $r['pnr'], (string) ($r['ticket_no'] ?? ''),
@@ -47,16 +47,17 @@ $flat = static function (array $r): array {
         (string) $r['seller_label'], (float) $r['total_amount'], (float) $r['paid_amount'], (string) $r['pay_label'],
         (string) $r['status'] . ((string) $r['refund_status'] !== 'none' ? ' / refund ' . $r['refund_status'] : ''),
         (float) $r['refund_amount'],
+        (float) $r['commission'],
     ];
 };
 if ($export === 'csv' || $export === 'xlsx') {
     $rows = CustomerBook::ledger($f, 20000, 0);
     $data = array_map($flat, $rows);
     $data[] = ['TOTAL', '', $totals['bookings'] . ' bookings', '', $totals['customers'] . ' numbers', '', $totals['pax'], $totals['seats'] . ' seats', '', '', '', '', '',
-               $totals['fare'], $totals['paid'], '', $totals['sold'] . ' sold / ' . $totals['cancelled'] . ' cancelled', $totals['refunds']];
+               $totals['fare'], $totals['paid'], '', $totals['sold'] . ' sold / ' . $totals['cancelled'] . ' cancelled', $totals['refunds'], $totals['commission']];
     Logger::audit('customer.ledger_export', 'customer', $export, null, ['rows' => count($rows), 'filters' => array_filter($f, static fn($v) => $v !== '' && $v !== 0 && $v !== [])], 'customer ledger exported');
     $name = 'SHG-customer-ledger-' . ($f['phones'] !== [] ? $f['phones'][0] . '-' : '') . date('Y-m-d');
-    if ($export === 'xlsx') { shg_export_xlsx($name . '.xlsx', 'Customer ledger', $header, $data, [6, 13, 14, 17]); }
+    if ($export === 'xlsx') { shg_export_xlsx($name . '.xlsx', 'Customer ledger', $header, $data, [6, 13, 14, 17, 18]); }
     shg_export_csv($name . '.csv', $header, $data);
 }
 
@@ -123,6 +124,7 @@ admin_header('Customer Ledger', 'customer-ledger');
   <div class="card"><div class="k">Fare (sold)</div><div class="v"><?= $e(inr($totals['fare'])) ?></div></div>
   <div class="card"><div class="k">Paid (verified)</div><div class="v"><?= $e(inr($totals['paid'])) ?></div></div>
   <div class="card"><div class="k">Cancelled · refunds</div><div class="v"><?= (int) $totals['cancelled'] ?> · <?= $e(inr($totals['refunds'])) ?></div></div>
+  <div class="card"><div class="k">Agent commission (net)</div><div class="v"><?= $e(inr($totals['commission'])) ?></div></div>
 </div>
 
 <div class="cl-quick" role="group" aria-label="Quick dates">
@@ -200,11 +202,11 @@ admin_header('Customer Ledger', 'customer-ledger');
 <table class="dt no-card" data-controls="clCtl">
   <thead><tr>
     <th>Date</th><th>Ticket / PNR</th><th>Customer</th><th>Mobile</th><th data-type="num">Pax</th><th>Seats</th>
-    <th>From</th><th>To</th><th>Agent / source</th><th data-type="num">Fare ₹</th><th>Payment</th><th>Status</th>
+    <th>From</th><th>To</th><th>Agent / source</th><th data-type="num">Fare ₹</th><th data-type="num">Comm. ₹</th><th>Payment</th><th>Status</th>
   </tr></thead>
   <tbody>
   <?php if ($rows === []): ?>
-    <tr><td colspan="12" class="muted" style="padding:22px;white-space:normal">No bookings match these filters.</td></tr>
+    <tr><td colspan="13" class="muted" style="padding:22px;white-space:normal">No bookings match these filters.</td></tr>
   <?php endif; ?>
   <?php foreach ($rows as $r):
     $dateMain = $f['date_mode'] === 'booking' ? substr((string) $r['created_at'], 0, 10) : (string) ($r['travel_date'] ?? '');
@@ -222,6 +224,7 @@ admin_header('Customer Ledger', 'customer-ledger');
       <td><?= $e($r['to_label'] ?: '—') ?><?php if (!empty($r['bus_number'])): ?><div class="cl-sub">🚌 <?= $e($r['bus_number']) ?></div><?php endif; ?></td>
       <td><?= $e($r['seller_label']) ?></td>
       <td class="num" data-sort="<?= (float) $r['total_amount'] ?>"><?= number_format((float) $r['total_amount']) ?><?php if ((float) $r['refund_amount'] > 0): ?><div class="cl-sub">refund <?= number_format((float) $r['refund_amount']) ?></div><?php endif; ?></td>
+      <td class="num" data-sort="<?= (float) $r['commission'] ?>"><?= (float) $r['commission'] != 0.0 ? number_format((float) $r['commission']) : '<span class="muted">—</span>' ?></td>
       <td><?= $e($r['pay_label']) ?></td>
       <td><?= admin_pill((string) $r['status']) ?><?php if ((string) $r['refund_status'] !== 'none'): ?><div class="cl-sub">refund <?= $e($r['refund_status']) ?></div><?php endif; ?></td>
     </tr>
@@ -235,6 +238,7 @@ admin_header('Customer Ledger', 'customer-ledger');
       <td><?= number_format($totals['seats']) ?> seats</td>
       <td colspan="3"><?= (int) $totals['sold'] ?> sold · <?= (int) $totals['cancelled'] ?> cancelled</td>
       <td class="num"><?= number_format($totals['fare']) ?></td>
+      <td class="num"><?= number_format($totals['commission']) ?></td>
       <td colspan="2">paid <?= $e(inr($totals['paid'])) ?><?= $totals['refunds'] > 0 ? ' · refunded ' . $e(inr($totals['refunds'])) : '' ?></td>
     </tr>
   </tfoot>
@@ -250,5 +254,5 @@ admin_header('Customer Ledger', 'customer-ledger');
   </span>
 </div>
 <?php endif; ?>
-<p class="muted" style="font-size:12px;margin-top:8px">Fare counts confirmed and completed tickets only; Paid counts verified payments. Every figure is read live from the bookings — a cancellation, refund or seat change shows here on the next refresh. Customer and mobile are as written on the ticket; open a mobile for the customer's full profile.</p>
+<p class="muted" style="font-size:12px;margin-top:8px">Fare counts confirmed and completed tickets only; Paid counts verified payments; Commission is the seller's net credit on each ticket from the agent ledger (choose an agent above for that agent's date-wise sales and commission). Every figure is read live from the bookings — a cancellation, refund or seat change shows here on the next refresh. Customer and mobile are as written on the ticket; open a mobile for the customer's full profile.</p>
 <?php admin_footer(); ?>

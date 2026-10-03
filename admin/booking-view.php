@@ -445,6 +445,12 @@ if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['
             } else {
                 Database::update('payments', $upd, 'id = :i', ['i' => $payId]);
                 Logger::audit('payment.edit', 'payment', (string) $payId, $oldVals, $newVals, 'Payment details edited on ' . $pnr . ' by admin #' . $admin['id']);
+                // 3 Oct 2026: a method corrected between cash and UPI/bank moves
+                // the seller's "cash held" with it (it was decided only at sale).
+                if (isset($upd['method'])) {
+                    $fresh = Database::fetch('SELECT * FROM bookings WHERE id = :i', ['i' => (int) $b['id']]);
+                    if ($fresh !== null) { AgentWallet::syncCashDue($fresh, 'payment method corrected'); }
+                }
                 // the invoice prints the method, the ticket PNG the payment pill
                 // (office-side: REV + redraw + audit, no passenger message)
                 $flash = ['ok', 'Payment record updated (' . implode(', ', array_keys($upd)) . ').'
@@ -651,6 +657,9 @@ if ($b !== null && $isSuperHere && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'PO
                     Database::update('payments', ['status' => 'pending'], 'id = :i', ['i' => $lastPayId]);
                 }
             }
+            // 3 Oct 2026: back to pending = not sold yet, so the seller's
+            // commission is reversed; confirming again restores it (accrue()).
+            AgentWallet::voidFor($b, 'booking set back to pending');
             Logger::audit('booking.reset_pending', 'booking', $pnr, ['status' => (string) $b['status'], 'payment' => $oldPayStatus], ['status' => 'pending', 'payment' => 'pending'], 'superadmin reset to pending');
             $flash = ['ok', 'Booking reset to PENDING — it will now show in the payment verification queue.'];
             $b = BookingService::detail($pnr);
@@ -787,7 +796,11 @@ if ($isSuperHere && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST[
                 Database::transaction(static function () use ($bid, $b): void {
                     Seats::releaseBooking($bid);
                     Database::update('commissions', ['status' => 'void'], 'booking_id = :b', ['b' => $bid]);
-                    AgentWallet::voidFor($b, 'booking hard-deleted');
+                    // 3 Oct 2026: agent_ledger has no foreign key — remove the
+                    // booking's commission AND cash-held rows with it (audited),
+                    // instead of leaving a reversed commission and a cash_due
+                    // for a ticket that no longer exists.
+                    AgentWallet::purgeBookingRows($bid, 'booking hard-deleted');
                     Database::run("DELETE FROM bookings WHERE id = :id", ['id' => $bid]);
                 });
                 Logger::audit('booking.hard_delete', 'booking', $pnr, ['status' => (string) $b['status'], 'amount' => (float) $b['total_amount'], 'phone' => (string) $b['contact_phone']], null, 'superadmin permanent delete');

@@ -2638,8 +2638,19 @@ final class BookingService
             //    The commission was accrued as a lump sum; insert a proportional
             //    void entry so the agent's dashboard stays accurate.
             $soldBy = (int) ($locked['sold_by_admin_id'] ?? 0);
-            if ($soldBy > 0 && AgentWallet::enabled()) {
-                $perSeatCommission = AgentWallet::commissionForBooking($perSeatFare, $soldBy, 1);
+            /* 3 Oct 2026: reverse a share of the commission that was actually
+               CREDITED — not today's rate, and nothing at all when none was
+               credited (a pending or unsettled cash-on-delivery ticket used to
+               get a negative row of its own). The void never exceeds it. */
+            $credited = $soldBy > 0 && AgentWallet::enabled()
+                ? Database::fetch("SELECT agent_admin_id, amount FROM agent_ledger WHERE booking_id = :b AND entry_type = 'commission' LIMIT 1", ['b' => $bookingId])
+                : null;
+            if ($credited !== null && (float) $credited['amount'] > 0) {
+                $alreadyVoid = (float) Database::scalar("SELECT COALESCE(SUM(amount), 0) FROM agent_ledger WHERE booking_id = :b AND entry_type = 'commission_void'", ['b' => $bookingId], 0);
+                $remaining   = round((float) $credited['amount'] + $alreadyVoid, 2);
+                // what is still credited, shared over the seats still on the ticket
+                $perSeatCommission = round($remaining / max(1, $seatCount), 2);
+                $soldBy = (int) $credited['agent_admin_id'];
                 if ($perSeatCommission > 0) {
                     try {
                         /* UNIQUE(booking_id, entry_type) allows ONE void row per

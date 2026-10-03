@@ -381,7 +381,8 @@ final class CustomerBook
                     (SELECT py.status FROM payments py WHERE py.booking_id = b.id ORDER BY py.id DESC LIMIT 1) AS pay_status,
                     (SELECT py.method FROM payments py WHERE py.booking_id = b.id ORDER BY py.id DESC LIMIT 1) AS pay_method,
                     (SELECT COALESCE(SUM(pv.amount), 0) FROM payments pv WHERE pv.booking_id = b.id AND pv.status = 'verified') AS paid_amount,
-                    (SELECT t.ticket_number FROM tickets t WHERE t.booking_id = b.id ORDER BY t.id DESC LIMIT 1) AS ticket_no
+                    (SELECT t.ticket_number FROM tickets t WHERE t.booking_id = b.id ORDER BY t.id DESC LIMIT 1) AS ticket_no,
+                    (SELECT COALESCE(SUM(al.amount), 0) FROM agent_ledger al WHERE al.booking_id = b.id AND al.entry_type IN ('commission','commission_void')) AS commission
             " . self::FROM . "
             WHERE " . $where . "
             ORDER BY " . $order . "
@@ -403,7 +404,7 @@ final class CustomerBook
      * Totals over EXACTLY the rows ledger() would return (all pages).
      *
      * @param array<string,mixed> $f
-     * @return array{bookings:int,pax:int,seats:int,sold:int,fare:float,paid:float,cancelled:int,refunds:float,customers:int}
+     * @return array{bookings:int,pax:int,seats:int,sold:int,fare:float,paid:float,cancelled:int,refunds:float,customers:int,commission:float}
      */
     public static function totals(array $f, ?int $scopeId = null): array
     {
@@ -418,7 +419,8 @@ final class CustomerBook
                     COALESCE(SUM(CASE WHEN b.status IN ('confirmed','completed') THEN b.total_amount ELSE 0 END), 0) AS fare,
                     COALESCE(SUM((SELECT COALESCE(SUM(pv.amount), 0) FROM payments pv WHERE pv.booking_id = b.id AND pv.status = 'verified')), 0) AS paid,
                     COALESCE(SUM(b.status = 'cancelled'), 0) AS cancelled,
-                    COALESCE(SUM(CASE WHEN b.refund_status = 'processed' THEN b.refund_amount ELSE 0 END), 0) AS refunds
+                    COALESCE(SUM(CASE WHEN b.refund_status = 'processed' THEN b.refund_amount ELSE 0 END), 0) AS refunds,
+                    COALESCE(SUM((SELECT COALESCE(SUM(al.amount), 0) FROM agent_ledger al WHERE al.booking_id = b.id AND al.entry_type IN ('commission','commission_void'))), 0) AS commission
             " . self::FROM . "
             WHERE " . $where,
             $p
@@ -433,6 +435,9 @@ final class CustomerBook
             'paid'      => (float) ($row['paid'] ?? 0),
             'cancelled' => (int) ($row['cancelled'] ?? 0),
             'refunds'   => (float) ($row['refunds'] ?? 0),
+            // Net agent commission on these bookings, read from the same
+            // ledger rows every agent statement adds up (3 Oct 2026).
+            'commission' => (float) ($row['commission'] ?? 0),
         ];
     }
 

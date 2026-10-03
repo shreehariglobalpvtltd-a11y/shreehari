@@ -1452,6 +1452,29 @@ final class AgentWallet
                 ]);
             }
 
+            /* 3 Oct 2026: re-approved AFTER a per-seat cancel. Dropping the
+               reversal above restored the commission row, which still covers
+               the seats the ticket had at sale — the agent would be paid for a
+               seat that no longer travels. Keep the net at what the ticket
+               earns today (never more than was first credited). */
+            if ($unvoided > 0) {
+                $orig = (float) Database::scalar(
+                    "SELECT amount FROM agent_ledger WHERE booking_id = :b AND entry_type = 'commission'",
+                    ['b' => $bookingId], 0
+                );
+                if ($orig > $comm) {
+                    self::insertEntry([
+                        'agent_admin_id' => $agentId,
+                        'booking_id'     => $bookingId,
+                        'account'        => 'commission',
+                        'entry_type'     => 'commission_void',
+                        'amount'         => round($comm - $orig, 2),
+                        'note'           => 'Seats cancelled earlier stay reversed (' . ($booking['pnr'] ?? '') . ')',
+                        'ref'            => (string) ($booking['pnr'] ?? ''),
+                    ]);
+                }
+            }
+
             // Cash across the counter is money the agent now holds for us.
             if ($total > 0 && self::isCashSale($bookingId, $booking)) {
                 self::insertEntry([
@@ -1491,6 +1514,29 @@ final class AgentWallet
                 return;
             }
 
+            /* 3 Oct 2026: a per-seat cancel already wrote a PARTIAL void
+               (BookingService::cancelSeat). UNIQUE(booking_id, entry_type)
+               made the insert below a silent no-op, so cancelling the rest of
+               the ticket left the agent holding the remaining seats'
+               commission. Top the existing void up to the full amount so the
+               booking nets to exactly zero. */
+            $full = -1 * round((float) $earned['amount'], 2);
+            $void = Database::fetch(
+                "SELECT id, amount, note FROM agent_ledger WHERE booking_id = :b AND entry_type = 'commission_void' LIMIT 1",
+                ['b' => $bookingId]
+            );
+            if ($void !== null) {
+                if (round((float) $void['amount'], 2) > $full) {
+                    Database::update('agent_ledger', [
+                        'amount' => $full,
+                        'note'   => mb_substr((string) $void['note'] . '; rest reversed — ' . ($reason !== '' ? $reason : 'booking cancelled'), 0, 255),
+                    ], 'id = :i', ['i' => (int) $void['id']]);
+                    Logger::audit('agent.commission_void_topup', 'booking', (string) ($booking['pnr'] ?? $bookingId),
+                        ['void' => (float) $void['amount']], ['void' => $full], 'Partial reversal completed — ' . $reason);
+                }
+                return;
+            }
+
             self::insertEntry([
                 'agent_admin_id' => (int) $earned['agent_admin_id'],
                 'booking_id'     => $bookingId,
@@ -1520,6 +1566,97 @@ final class AgentWallet
         );
 
         return in_array($method, self::CASH_METHODS, true);
+    }
+
+    /**
+     * Is the fare actually collected? False only for a cash-on-delivery
+     * booking whose cash has not been marked collected (settleCod()), which
+     * is exactly when confirm() holds the commission back.
+     */
+    public static function moneyInHand(int $bookingId, array $booking = []): bool
+    {
+        $isCod = array_key_exists('is_cod', $booking)
+            ? (int) $booking['is_cod'] === 1
+            : (int) Database::scalar('SELECT is_cod FROM bookings WHERE id = :b', ['b' => $bookingId], 0) === 1;
+        if (!$isCod) {
+            return true;
+        }
+        $st = (string) Database::scalar(
+            'SELECT status FROM payments WHERE booking_id = :b ORDER BY id DESC LIMIT 1',
+            ['b' => $bookingId], ''
+        );
+        return $st === 'verified';
+    }
+
+    /**
+     * Keep the booking's cash_due row in step with HOW it was paid
+     * (3 Oct 2026). The payment method can be corrected after the sale
+     * (booking-view "edit payment"); cash_due was only ever decided at
+     * accrual, so a sale first keyed as cash and corrected to UPI kept
+     * the seller "owing" money they never held — and the reverse.
+     *
+     * @return string 'added' | 'removed' | '' (nothing to do)
+     */
+    public static function syncCashDue(array $booking, string $why = ''): string
+    {
+        try {
+            if (!self::enabled()) { return ''; }
+            $bookingId = (int) ($booking['id'] ?? 0);
+            if ($bookingId <= 0) { return ''; }
+            $row = Database::fetch(
+                "SELECT id, agent_admin_id, amount FROM agent_ledger WHERE booking_id = :b AND entry_type = 'cash_due' LIMIT 1",
+                ['b' => $bookingId]
+            );
+            $live  = in_array((string) ($booking['status'] ?? ''), ['confirmed', 'completed'], true);
+            $total = (float) ($booking['total_amount'] ?? 0);
+            $cash  = self::isCashSale($bookingId, $booking);
+            $pnr   = (string) ($booking['pnr'] ?? '');
+
+            if ($row !== null && !$cash) {
+                Database::delete('agent_ledger', 'id = :i', ['i' => (int) $row['id']]);
+                Logger::audit('agent.cash_due_removed', 'booking', $pnr, ['cash_due' => (float) $row['amount'], 'agent' => (int) $row['agent_admin_id']], null,
+                    'Payment is not cash any more — cash held removed' . ($why !== '' ? ' (' . $why . ')' : ''));
+                return 'removed';
+            }
+            $seller = (int) ($booking['sold_by_admin_id'] ?? 0);
+            if ($row === null && $cash && $live && $total > 0 && $seller > 0) {
+                if (Settings::getBool('commission_agent_only', false) && !self::isAgentRow($seller)) {
+                    return '';
+                }
+                self::insertEntry([
+                    'agent_admin_id' => $seller,
+                    'booking_id'     => $bookingId,
+                    'account'        => 'cash',
+                    'entry_type'     => 'cash_due',
+                    'amount'         => $total,
+                    'note'           => 'Cash collected for ' . $pnr . ($why !== '' ? ' (' . $why . ')' : ''),
+                    'ref'            => $pnr,
+                ]);
+                Logger::audit('agent.cash_due_added', 'booking', $pnr, null, ['cash_due' => $total, 'agent' => $seller],
+                    'Payment is cash — cash held recorded' . ($why !== '' ? ' (' . $why . ')' : ''));
+                return 'added';
+            }
+        } catch (Throwable $e) {
+            Logger::error('AgentWallet::syncCashDue failed', ['booking' => $booking['pnr'] ?? '', 'err' => $e->getMessage()], 'agent');
+        }
+        return '';
+    }
+
+    /**
+     * Remove every ledger row of a booking that no longer exists (hard
+     * delete, 3 Oct 2026). booking_id has no foreign key here, so the rows
+     * used to survive the delete and keep counting in the seller's
+     * commission and cash-held balances. The rows go to the audit log first.
+     */
+    public static function purgeBookingRows(int $bookingId, string $why = ''): int
+    {
+        if ($bookingId <= 0) { return 0; }
+        $rows = Database::fetchAll('SELECT id, agent_admin_id, entry_type, amount, ref, created_at FROM agent_ledger WHERE booking_id = :b', ['b' => $bookingId]);
+        if ($rows === []) { return 0; }
+        $n = Database::delete('agent_ledger', 'booking_id = :b', ['b' => $bookingId]);
+        Logger::audit('agent.ledger_purged', 'booking', (string) ($rows[0]['ref'] ?: $bookingId), ['rows' => $rows], null,
+            'Ledger rows of a deleted booking removed' . ($why !== '' ? ' — ' . $why : ''));
+        return $n;
     }
 
     /**
@@ -1578,7 +1715,10 @@ final class AgentWallet
 
         // Commission is only earned once a booking is actually paid/travelled.
         $status     = strtolower((string) ($booking['status'] ?? ''));
-        $eligible   = in_array($status, ['confirmed', 'completed'], true);
+        // 3 Oct 2026: an unsettled cash-on-delivery booking is confirmed but
+        // no money is in hand yet — confirm() holds its commission until
+        // settleCod(); reassigning it must not pay early.
+        $eligible   = in_array($status, ['confirmed', 'completed'], true) && self::moneyInHand($bookingId, $booking);
         $total      = (float) ($booking['total_amount'] ?? 0);
         $pnr        = (string) ($booking['pnr'] ?? '');
         $commission = 0.0;
@@ -2796,9 +2936,17 @@ final class AgentWallet
                     COALESCE(SUM(CASE WHEN entry_type = 'cash_handover'   THEN -amount END), 0) AS handedOver,
                     COALESCE(SUM(CASE WHEN entry_type = 'commission'
                                        AND created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
+                                      THEN amount END), 0)
+                    /* 3 Oct 2026: NET — less the reversals of the sales made
+                       this month (a ticket sold and cancelled this month earned 0).
+                       Every earned-this-month figure reads this one sum. */
+                  + COALESCE(SUM(CASE WHEN entry_type = 'commission_void'
+                                       AND booking_id IN (SELECT c2.booking_id FROM agent_ledger c2
+                                                           WHERE c2.agent_admin_id = :a2 AND c2.entry_type = 'commission'
+                                                             AND c2.created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01'))
                                       THEN amount END), 0) AS earnedMonth
                    FROM agent_ledger WHERE agent_admin_id = :a",
-                ['a' => $adminId]
+                ['a' => $adminId, 'a2' => $adminId]
             );
         } catch (Throwable $e) {
             return $zero;

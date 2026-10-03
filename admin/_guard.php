@@ -111,6 +111,8 @@ function admin_nav(): array
         ['href' => 'agent-passengers.php','icon' => 'id-card','label' => $agentView ? 'My Passengers' : 'Agent Passengers','perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Agents'],
         ['href' => 'agent-offline.php','icon' => 'notepad',   'label' => 'Paper Tickets',    'perm' => $agentView ? 'bookings.view' : 'commissions.view',  'section' => 'Agents'],
         ['href' => 'agent-ranking.php','icon' => 'trophy',    'label' => 'Agent Ranking',    'perm' => 'dashboard.view', 'section' => 'Agents'],
+        // 3 Oct 2026: agent ledger vs bookings — where a stored row no longer matches.
+        ['href' => 'ledger-check.php', 'icon' => 'chart-up',  'label' => 'Ledger मिलान',     'perm' => $agentView ? '__superadmin_only__' : 'commissions.view', 'section' => 'Agents'],
         // staff.php itself admits only a super-admin (it says so on the page),
         // so the item is shown only to one — a manager used to see a link
         // that refused them every time.

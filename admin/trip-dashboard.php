@@ -174,11 +174,13 @@ if ($route !== null) {
                SUM(CASE WHEN b.status='confirmed' THEN b.total_amount ELSE 0 END) AS revenue,
                SUM(CASE WHEN b.status='pending' THEN b.total_amount ELSE 0 END) AS pending_amount,
                SUM(CASE WHEN b.is_cod=1 AND p.status='cod_pending' THEN b.total_amount ELSE 0 END) AS cod_due
-             FROM booking_seats bs
-             JOIN bookings b ON b.id = bs.booking_id
+             FROM bookings b
              LEFT JOIN payments p ON p.booking_id = b.id
                   AND p.id = (SELECT MAX(p2.id) FROM payments p2 WHERE p2.booking_id = b.id)
-             WHERE bs.schedule_id = :sid AND bs.released_at IS NULL" . $scopeWhere,
+             /* 3 Oct 2026: once per BOOKING. Joining booking_seats added a
+                3-seat ticket's whole fare three times to the bus's revenue. */
+             WHERE b.id IN (SELECT bs.booking_id FROM booking_seats bs
+                             WHERE bs.schedule_id = :sid AND bs.released_at IS NULL)" . $scopeWhere,
             ['sid' => $scheduleId] + $scopeParams
         );
         $revenue    = (float) ($fin['revenue'] ?? 0);
