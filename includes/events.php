@@ -268,6 +268,15 @@ final class EventBus
             }
             $notify();
             Notify::bookingConfirmed($booking);
+            // 3 Oct 2026: AiSensy ticket confirmation (whatsapp/aisensy.php).
+            // Default mode 'fallback' = only when the main driver missed the
+            // customer. Never allowed to break the confirmation fan-out.
+            try {
+                require_once dirname(__DIR__) . '/whatsapp/aisensy.php';
+                AiSensyAPI::onBookingConfirmed($booking);
+            } catch (Throwable $e) {
+                Logger::warning('AiSensy hook failed', ['err' => $e->getMessage()], 'whatsapp');
+            }
             Notify::agentBookingApproved($booking);
             self::seatStatusCard($booking, 'approved');
         });
