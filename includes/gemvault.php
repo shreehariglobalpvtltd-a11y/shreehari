@@ -120,8 +120,10 @@ final class GemVault
             $ch  = in_array($channel, self::CHANNELS, true) ? $channel : '';
             $now = date('Y-m-d H:i:s');
 
+            // SELECT * so name_locked is read where the 3 Oct 2026 migration
+            // has run and simply absent (= unlocked) where it has not.
             $existing = Database::fetch(
-                'SELECT phone, full_name, country_code, channels, user_id FROM user_profiles WHERE phone = :p LIMIT 1',
+                'SELECT * FROM user_profiles WHERE phone = :p LIMIT 1',
                 ['p' => $phone]
             );
 
@@ -150,10 +152,14 @@ final class GemVault
                not wipe the name the customer gave at sign-in. */
             $update = ['last_seen_at' => $now];
 
-            if ($clean !== '' && $clean !== (string) ($existing['full_name'] ?? '')) {
+            if ($clean !== '' && $clean !== (string) ($existing['full_name'] ?? '')
+                && empty($existing['name_locked'])) {
                 // The name typed most recently is the name that prints on the
                 // ticket, so a corrected spelling wins — same rule as
-                // Auth::loginUser().
+                // Auth::loginUser(). Except when the office fixed the spelling
+                // on the customer profile (name_locked, 3 Oct 2026): then a
+                // desk typing "RAM" on the next sale must not undo it. The
+                // ticket itself still prints whatever was typed for it.
                 $update['full_name'] = $clean;
             }
             if ($cc !== '' && $cc !== (string) ($existing['country_code'] ?? '')) {

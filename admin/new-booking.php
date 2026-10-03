@@ -38,6 +38,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET' && !isset($_GET['legacy'])) 
         if ($rr !== null) { $qs['from'] = (string) $rr['from_city']; $qs['to'] = (string) $rr['to_city']; }
     }
     if (Security::isValidDate((string) ($_GET['date'] ?? ''))) { $qs['date'] = (string) $_GET['date']; }
+    // Customer 360 "New booking" (3 Oct 2026): the customer's name + mobile
+    // ride along and land in the seat view's quick passenger line.
+    $cphone = normalisePhone((string) ($_GET['cphone'] ?? ''));
+    if ($cphone !== '' && Security::isValidPhone($cphone, true)) { $qs['cphone'] = $cphone; }
+    $cname = trim(Security::clean($_GET['cname'] ?? '', 80));
+    if ($cname !== '') { $qs['cname'] = $cname; }
     Response::redirect('index.php?' . http_build_query($qs) . '#/');
 }
 

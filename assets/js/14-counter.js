@@ -207,6 +207,12 @@
       di.removeAttribute('max');
     }
     var p = new URLSearchParams(location.search);
+    /* Customer 360 → "New booking" (3 Oct 2026): the customer's name and
+       mobile wait here and fill the seat view's quick passenger line ONCE
+       (decorateSeats), so a returning customer is not retyped. */
+    if (CAN && (p.get('cname') || p.get('cphone'))) {
+      CTR.pax = { name: String(p.get('cname') || '').slice(0, 80), phone: String(p.get('cphone') || '').replace(/[^0-9]/g, '').slice(0, 15) };
+    }
     if (!p.get('from') && !p.get('to') && !p.get('date')) return;
     // Deep link from the admin seat map (5 Sep 2026): &sid= names the exact
     // departure (0 / absent = daily bus) and &seat= a seat to pre-select, so
@@ -610,6 +616,12 @@
       + '<div class="ctr-q-row" style="margin-top:8px"><button type="button" class="btn btn-orange" id="ctrSeatConfirm" disabled>🧾 Confirm counter sale →</button></div>'
       + '<div class="ctr-note">Confirm here = ticket at once · Continue → = open the checkout to edit ID / age / per-seat names</div>';
     card.insertBefore(el, nav);
+    if (CTR.pax) {
+      var pn0 = $q('#ctrQuickName'), pp0 = $q('#ctrQuickPhone');
+      if (pn0 && CTR.pax.name) pn0.value = CTR.pax.name;
+      if (pp0 && CTR.pax.phone) pp0.value = CTR.pax.phone;
+      CTR.pax = null;
+    }
     var cont0 = $q('#continueBtn'), scb = $q('#ctrSeatConfirm');
     if (cont0 && scb) {
       var mirror = function () { scb.disabled = cont0.disabled; };   // same readiness as Continue (seats picked, fare good)

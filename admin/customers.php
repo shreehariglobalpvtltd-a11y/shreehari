@@ -238,6 +238,8 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
     <option value="">Any bookings</option><option value="0">No booking yet</option><option value="1">1 booking</option><option value="2">Repeat (2+)</option>
   </select>
   <input type="month" data-dt-filter="lastym" data-dt-mode="min" aria-label="Last booking from" title="Last booking from (month)">
+  <a class="btn ghost" href="customer-ledger.php" title="Date-wise ledger of every booking by customer">📒 Ledger</a>
+  <a class="btn ghost" href="customer-duplicates.php" title="Same person on two numbers, name spelling variants">👥 Duplicates</a>
   <a class="btn ghost" href="customers.php?export=csv<?= $q !== '' ? '&amp;q=' . urlencode($q) : '' ?>">⬇ CSV</a>
   <a class="btn ghost" href="customers.php?export=xlsx<?= $q !== '' ? '&amp;q=' . urlencode($q) : '' ?>">⬇ Excel</a>
   <span class="dt-count"></span>
@@ -275,7 +277,7 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
       <td><span class="dt-acts">
         <button type="button" class="btn ghost" data-dt-toggle="<?= $rid ?>v">👁 View</button>
         <?php if ($canManage): ?><button type="button" class="btn ghost" data-dt-toggle="<?= $rid ?>e">✏️ Edit</button><?php endif; ?>
-        <a class="btn ghost" href="customer-view.php?phone=<?= urlencode((string) $r['phone']) ?>">📋 History</a>
+        <a class="btn ghost" href="customer-view.php?phone=<?= urlencode((string) $r['phone']) ?>" title="Customer 360: profile, journeys, passengers, payments, refunds">📋 Profile</a>
         <a class="btn ghost" href="passengers.php?phone=<?= urlencode((string) $r['phone']) ?>" title="Every traveller booked from this number — name, age, ID, photo / document (17 Sep 2026)">🧍 Passengers</a>
       </span></td>
     </tr>
@@ -337,5 +339,5 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
   </span>
 </div>
 <?php endif; ?>
-<p class="muted" style="font-size:12px;margin-top:8px">Every booking collects the traveller's name and mobile (sign-in) and the boarding details; document type / number are optional at booking and can be completed here. Mobile numbers are never edited — they are the login identity and the key on every ticket.</p>
+<p class="muted" style="font-size:12px;margin-top:8px">Every booking collects the traveller's name and mobile (sign-in) and the boarding details; document type / number are optional at booking and can be completed here. Mobile numbers on tickets are never rewritten — a customer's new number is set on their profile (📋 Profile → Change mobile number), which keeps the old number linked so the history stays together.</p>
 <?php admin_footer(); ?>

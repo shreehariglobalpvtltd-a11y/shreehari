@@ -120,6 +120,11 @@ function admin_nav(): array
         // bookings are scoped by sold_by_admin_id, but an unclaimed lead has
         // no seller so it belongs to the office.
         ['href' => 'customers.php',    'icon' => 'user',     'label' => 'Customers',        'perm' => 'customers.view', 'section' => 'Customers'],
+        // 3 Oct 2026: date-wise ledger of every booking by customer, and the
+        // duplicate finder (same person on two numbers / spelling variants).
+        // Office pages — both refuse a counter agent's session.
+        ['href' => 'customer-ledger.php', 'icon' => 'notepad', 'label' => 'Customer Ledger', 'perm' => $agentView ? '__superadmin_only__' : 'customers.view', 'section' => 'Customers'],
+        ['href' => 'customer-duplicates.php', 'icon' => 'users', 'label' => 'Duplicate customers', 'perm' => $agentView ? '__superadmin_only__' : 'customers.view', 'section' => 'Customers'],
         ['href' => 'enquiries.php',    'icon' => 'mail',      'label' => 'Enquiries',        'perm' => 'customers.view', 'section' => 'Customers'],
         // 24 Sep 2026: requests the WhatsApp assistant handed to people (SUP-…).
         ['href' => 'support-inbox.php','icon' => 'msg',       'label' => 'Support Inbox',    'perm' => 'support.view',   'section' => 'Customers'],
@@ -830,12 +835,14 @@ function admin_search_js(): string
   function iconFor(type) {
     return type === 'booking' ? '🎫' : type === 'passenger' ? '👤' :
            type === 'ticket'  ? '🎟️' : type === 'bus'      ? '🚌' :
-           type === 'route'   ? '🛣️' : type === 'agent'    ? '🧑‍💼' : '🔎';
+           type === 'route'   ? '🛣️' : type === 'agent'    ? '🧑‍💼' :
+           type === 'customer' ? '📇' : type === 'payment' ? '💳' : '🔎';
   }
   function labelFor(type) {
     return type === 'booking' ? 'Bookings' : type === 'passenger' ? 'Passengers' :
            type === 'ticket'  ? 'Tickets'  : type === 'bus'       ? 'Buses'      :
-           type === 'route'   ? 'Routes'   : type === 'agent'      ? 'Agents'     : 'Results';
+           type === 'route'   ? 'Routes'   : type === 'agent'      ? 'Agents'     :
+           type === 'customer' ? 'Customers' : type === 'payment' ? 'Transactions' : 'Results';
   }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g,
     function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }

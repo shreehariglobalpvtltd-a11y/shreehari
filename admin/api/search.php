@@ -15,6 +15,7 @@
 declare(strict_types=1);
 require dirname(__DIR__) . '/_guard.php';
 $admin = admin_boot('bookings.view');
+require_once INCLUDE_PATH . '/customerbook.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -32,11 +33,26 @@ $scopeSql = $scopeId !== null ? ' AND b.sold_by_admin_id = :agentId ' : '';
 $scopeParam = $scopeId !== null ? ['agentId' => $scopeId] : [];
 
 $like  = '%' . $q . '%';
+/* Mobile with spaces / dashes, or just its last 4–6 digits (3 Oct 2026). */
+$qDigits   = preg_replace('/\D/', '', $q) ?? '';
+$phoneLike = strlen($qDigits) >= 4 ? '%' . $qDigits . '%' : $like;
 
 /* PDO here does NOT emulate prepares (see PDOAttr in db.php), so the
    same named placeholder cannot be reused in a single statement — 4x :q
    crashes with SQLSTATE HY093. Every LIKE arm gets its own bound key. */
 $rows = [];
+
+/* --- Customers first (3 Oct 2026): one row per customer, by any part of
+   the mobile or a name — opens the Customer 360 page. ----------------- */
+foreach (($scopeId === null ? CustomerBook::searchCustomers($q, null, $suggest ? 3 : 30) : []) as $cu) {
+    $rows[] = [
+        'type'     => 'customer',
+        'title'    => ($cu['name'] !== '' ? $cu['name'] : 'Customer') . ($cu['customer_id'] !== '' ? ' · ' . $cu['customer_id'] : ''),
+        'subtitle' => '+' . $cu['phone'] . ' · ' . $cu['bookings'] . ' booking' . ($cu['bookings'] === 1 ? '' : 's') . ' · ' . $cu['pax'] . ' pax',
+        'meta'     => $cu['last_travel'] !== '' ? date('d M', strtotime($cu['last_travel'])) : '',
+        'href'     => '/admin/customer-view.php?phone=' . urlencode($cu['phone']),
+    ];
+}
 
 /* --- Bookings by PNR / phone / email / passenger name via join ------ */
 $bookings = Database::fetchAll(
@@ -53,7 +69,7 @@ $bookings = Database::fetchAll(
     . $scopeSql .
    " ORDER BY (b.pnr = :qexact) DESC, b.id DESC
       LIMIT " . (int) $limit,
-    ['qA' => $like, 'qB' => $like, 'qC' => $like, 'qD' => $like, 'qexact' => $q] + $scopeParam
+    ['qA' => $like, 'qB' => $phoneLike, 'qC' => $like, 'qD' => $like, 'qexact' => $q] + $scopeParam
 );
 foreach ($bookings as $b) {
     $rows[] = [
@@ -108,6 +124,17 @@ foreach ($pax as $p) {
         'subtitle' => (string) $p['pnr'] . ' · ' . (string) $p['contact_phone'],
         'meta'     => trim(($p['from_city'] ?? '') . '→' . ($p['to_city'] ?? ''), ' →'),
         'href'     => '/admin/booking-view.php?pnr=' . urlencode((string) $p['pnr']),
+    ];
+}
+
+/* --- Transactions: payment ref / UTR / payer phone (3 Oct 2026) ----- */
+foreach (CustomerBook::searchTransactions($q, $scopeId, $suggest ? 3 : 30) as $tx) {
+    $rows[] = [
+        'type'     => 'payment',
+        'title'    => inr((float) $tx['amount']) . ' · ' . strtoupper((string) $tx['method']) . ' · ' . (string) $tx['pnr'],
+        'subtitle' => (string) ($tx['utr_number'] ?: $tx['payment_ref']) . ' · ' . (string) $tx['contact_phone'],
+        'meta'     => strtoupper((string) $tx['status']),
+        'href'     => '/admin/booking-view.php?pnr=' . urlencode((string) $tx['pnr']),
     ];
 }
 

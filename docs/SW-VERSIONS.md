@@ -4,6 +4,7 @@ Moved out of `sw.js` on 2 Oct 2026: the history used to live on the `var VERSION
 
 The CURRENT version and its note stay on the `var VERSION` line in `sw.js`; this file holds the ones before it. Newest first. Each line: version — what shipped with it (as written at the time).
 
+- **shg-v165.166** — 2 Oct 2026: stamp b - the overnight live deploy reused 20261002a for older files
 - **shg-v164 and earlier** — 2 Oct 2026: per-pickup fares + ON/OFF + Rajkot, TicketSync regeneration, counter desk memory, agent code optional for customers
 - **shg-v163 and earlier** — 30 Sep 2026: agent on every desk sale (Other -> company code), counter/QuickBot commission line, Assign Agents page, merge with main. asset ver 20261002b.
 - **shg-v162 and earlier** — // INTEGRATION (25 Sep 2026): wa-manager, money guards + where-is-my-bus + route pages, AI Sahayak Pro chat widget, UI v3 working features - every new switch OFF

@@ -11,6 +11,7 @@
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 $admin = admin_boot('bookings.view');
+require_once INCLUDE_PATH . '/customerbook.php';
 $base = '';
 
 $q = trim((string) ($_GET['q'] ?? ''));
@@ -19,7 +20,7 @@ admin_header('Search results', 'search');
 
 if ($q === '' || mb_strlen($q) < 2) {
     echo '<div class="panel"><h2>🔎 Global search</h2>'
-       . '<div style="padding:20px">Type a query of two or more characters in the top-bar search — PNR, phone, passenger name, seat, bus number, route code, or agent SHG code.</div></div>';
+       . '<div style="padding:20px">Type a query of two or more characters in the top-bar search — mobile (the last 4–6 digits are enough), customer or passenger name, PNR, ticket number, payment reference / UTR, seat, bus number, route code, or agent SHG code.</div></div>';
     admin_footer();
     exit;
 }
@@ -28,6 +29,10 @@ $scopeId = Auth::bookingScopeAdminId();
 $scopeSql = $scopeId !== null ? ' AND b.sold_by_admin_id = :agentId ' : '';
 $scopeParam = $scopeId !== null ? ['agentId' => $scopeId] : [];
 $like  = '%' . $q . '%';
+/* A mobile typed with spaces or dashes ("98 1234 5678") matches on its
+   digits (3 Oct 2026); the last 4–6 digits alone find the customer too. */
+$qDigits = preg_replace('/\D/', '', $q) ?? '';
+$phoneLike = strlen($qDigits) >= 4 ? '%' . $qDigits . '%' : $like;
 /* PDO real-prepare mode rejects a placeholder reused twice in one
    statement (HY093). Every LIKE arm gets its own key. */
 
@@ -45,7 +50,7 @@ $bookings = Database::fetchAll(
                          WHERE bp.booking_id=b.id AND bp.full_name LIKE :qD))"
     . $scopeSql .
    " ORDER BY b.id DESC LIMIT 30",
-    ['qA' => $like, 'qB' => $like, 'qC' => $like, 'qD' => $like] + $scopeParam
+    ['qA' => $like, 'qB' => $phoneLike, 'qC' => $like, 'qD' => $like] + $scopeParam
 );
 
 $tickets = Database::fetchAll(
@@ -111,7 +116,15 @@ if ($scopeId === null && preg_match('/^\s*(?:SHG[-\s]?)?0*(\d{1,4})\s*$/i', $q, 
     }
 }
 
-$total = count($bookings) + count($tickets) + count($passengers) + count($buses) + count($routes) + count($agents);
+/* --- Customers (3 Oct 2026) — one row per customer (main number, its
+   linked numbers folded in), by any part of the mobile or a name. --- */
+// Office only: the profile page refuses a counter agent's session.
+$customers = $scopeId === null ? CustomerBook::searchCustomers($q, null, 30) : [];
+
+/* --- Transactions: payment reference, UTR, payer phone, PNR ---------- */
+$transactions = CustomerBook::searchTransactions($q, $scopeId, 30);
+
+$total = count($customers) + count($transactions) + count($bookings) + count($tickets) + count($passengers) + count($buses) + count($routes) + count($agents);
 $qE    = Security::e($q);
 ?>
 <style>
@@ -138,7 +151,7 @@ $qE    = Security::e($q);
 
 <div class="gsr-hdr">
   <h2>Results for "<?= $qE ?>"</h2>
-  <small><?= $total ?> match<?= $total === 1 ? '' : 'es' ?> across bookings, tickets, passengers, agents, buses, and routes.</small>
+  <small><?= $total ?> match<?= $total === 1 ? '' : 'es' ?> across customers, tickets, passengers, agents, transactions, buses, and routes.</small>
 </div>
 
 <?php if ($total === 0): ?>
@@ -146,6 +159,21 @@ $qE    = Security::e($q);
     Nothing matched "<?= $qE ?>".<br><br>
     Try a shorter substring, or search a different field — PNR, phone, ticket number, seat (L5 / U12), bus number, or route code.
   </div>
+<?php endif; ?>
+
+<?php if ($customers): ?>
+<div class="gsr-sec"><h3>👤 Customers (<?= count($customers) ?>)</h3><div class="gsr-list">
+<?php foreach ($customers as $cu): ?>
+<a href="<?= $base ?>/admin/customer-view.php?phone=<?= urlencode((string) $cu['phone']) ?>">
+  <span class="gsr-icon">👤</span>
+  <div class="gsr-title"><?= Security::e($cu['name'] !== '' ? (string) $cu['name'] : 'Customer') ?><?php if ($cu['customer_id'] !== ''): ?> <span class="mono" style="font-size:11px;color:var(--mut)"><?= Security::e((string) $cu['customer_id']) ?></span><?php endif; ?>
+    <small class="mono">+<?= Security::e((string) $cu['phone']) ?><?= count($cu['phones']) > 1 ? ' · also ' . Security::e(implode(', ', array_slice($cu['phones'], 1))) : '' ?></small>
+  </div>
+  <div class="gsr-sub"><?= (int) $cu['bookings'] ?> booking<?= (int) $cu['bookings'] === 1 ? '' : 's' ?> · <?= (int) $cu['pax'] ?> pax · <?= inr((float) $cu['spend']) ?><?= $cu['last_travel'] !== '' ? ' · last ' . Security::e(date('d M Y', strtotime((string) $cu['last_travel']))) : '' ?></div>
+  <div class="gsr-pill">Customer</div>
+</a>
+<?php endforeach; ?>
+</div></div>
 <?php endif; ?>
 
 <?php if ($agents): ?>
@@ -203,6 +231,21 @@ $qE    = Security::e($q);
   </div>
   <div class="gsr-sub"><?= date('d M Y', strtotime((string) $t['issued_at'])) ?></div>
   <div class="gsr-pill">Issued</div>
+</a>
+<?php endforeach; ?>
+</div></div>
+<?php endif; ?>
+
+<?php if ($transactions): ?>
+<div class="gsr-sec"><h3>💳 Transactions (<?= count($transactions) ?>)</h3><div class="gsr-list">
+<?php foreach ($transactions as $tx): ?>
+<a href="<?= $base ?>/admin/booking-view.php?pnr=<?= urlencode((string) $tx['pnr']) ?>">
+  <span class="gsr-icon">💳</span>
+  <div class="gsr-title"><?= Security::e(($tx['currency'] === 'NPR' ? 'रू ' : '') . inr((float) $tx['amount'])) ?> · <?= Security::e(strtoupper((string) $tx['method'])) ?>
+    <small class="mono"><?= Security::e((string) ($tx['utr_number'] ?: $tx['payment_ref'])) ?> · <?= Security::e((string) $tx['pnr']) ?> · <?= Security::e((string) $tx['contact_phone']) ?></small>
+  </div>
+  <div class="gsr-sub"><?= date('d M Y', strtotime((string) $tx['created_at'])) ?></div>
+  <div class="gsr-pill"><?= admin_pill((string) $tx['status']) ?></div>
 </a>
 <?php endforeach; ?>
 </div></div>
