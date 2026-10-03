@@ -349,20 +349,67 @@ final class AiSensyAPI
                 return;
             }
 
-            if (self::mode() === 'fallback' && class_exists('Notify')) {
+            if (class_exists('Notify')) {
                 $want = substr(preg_replace('/\D+/', '', $number) ?? '', -10);
                 foreach (Notify::whatsappJournal() as $j) {
                     $got = substr(preg_replace('/\D+/', '', (string) ($j['to'] ?? '')) ?? '', -10);
-                    if (!empty($j['ok']) && $got !== '' && $got === $want) {
-                        return;   // main driver reached the customer — nothing to do
+                    if ($got === '' || $got !== $want || empty($j['ok'])) {
+                        continue;
+                    }
+                    // 'idempotent' = this ticket already went out earlier: never resend.
+                    // fallback: the main driver accepted it — nothing to do.
+                    if (self::mode() === 'fallback' || (string) ($j['reason'] ?? '') === 'idempotent') {
+                        return;
                     }
                 }
             }
 
+            // One AiSensy ticket per PNR (re-fired approvals, webhook duplicates).
+            if (!Security::rateLimit('ais_ticket', $pnr, 1, 2592000)) {
+                return;
+            }
+
             $f = self::bookingFacts($bid);
             $name = $f['name'] !== '' ? $f['name'] : 'Passenger';
-            self::sendTicketConfirmation($number, $name, $f['from'] ?: '-', $f['to'] ?: '-',
+            $r = self::sendTicketConfirmation($number, $name, $f['from'] ?: '-', $f['to'] ?: '-',
                 $f['date'] ?: '-', $f['seats'] ?: '-', $pnr);
+            $how = 'template';
+
+            /* Template refused (still PENDING with Meta, or paused): try the same
+               facts as free text + the ticket image link. WhatsApp delivers that
+               only inside the 24 h window after the passenger last wrote to the
+               AiSensy number; outside it this fails too and is just logged. */
+            if (!$r['success']) {
+                $link = '';
+                try {
+                    if (!class_exists('Ticket') && defined('INCLUDE_PATH') && is_file(INCLUDE_PATH . '/ticket.php')) {
+                        require_once INCLUDE_PATH . '/ticket.php';
+                    }
+                    $link = class_exists('Ticket') ? (string) Ticket::imageUrl($pnr) : '';
+                } catch (Throwable $ignored) {
+                    $link = '';
+                }
+                $r = self::sendText($number,
+                    "S Hari Global Pvt Ltd - Ticket confirmed\n"
+                    . 'Dear ' . $name . ",\n"
+                    . 'Route: ' . ($f['from'] ?: '-') . ' -> ' . ($f['to'] ?: '-') . "\n"
+                    . 'Date: ' . ($f['date'] ?: '-') . "\n"
+                    . 'Seat: ' . ($f['seats'] ?: '-') . "\n"
+                    . 'Ticket ID: ' . $pnr
+                    . ($link !== '' ? "\nTicket: " . $link : '')
+                    . "\nHelp: +919157001507");
+                $how = 'text';
+            }
+
+            if (class_exists('Notify')) {
+                Notify::logOutbound(self::normalizePhone($number), 'AiSensy ticket ' . $pnr . ' (' . $how . ')', $r['success'] ? 'sent' : 'failed', [
+                    'provider'  => 'aisensy',
+                    'bookingId' => $bid,
+                    'sid'       => $r['message_id'],
+                    'purpose'   => 'aisensy_ticket',
+                    'error'     => $r['success'] ? null : mb_substr((string) $r['error'], 0, 250),
+                ]);
+            }
         } catch (Throwable $e) {
             self::log('ERROR', (string) ($booking['contact_phone'] ?? ''), self::TPL_TICKET,
                 ['error' => $e->getMessage(), 'pnr' => (string) ($booking['pnr'] ?? '')]);
