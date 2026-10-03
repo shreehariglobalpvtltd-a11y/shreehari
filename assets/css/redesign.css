@@ -506,3 +506,12 @@ footer .f-ceo { background: rgba(255, 255, 255, .06) !important; border-color: r
 .badge.ok, .badge.confirmed { background: var(--success-soft) !important; color: var(--success) !important; }
 .badge.pend, .badge.pending { background: var(--warning-soft) !important; color: var(--warning) !important; }
 .badge.bad, .badge.cancelled { background: var(--danger-soft) !important; color: var(--danger) !important; }
+
+/* ---------- 12. Counter mode bar (staff selling in the customer app) ----------
+   India desk: navy. Nepal desk: solid crimson, so the desk side is obvious
+   without a gradient; the words "Counter mode" / "Nepal counter" say it too. */
+#counterBar { background: var(--navy) !important; background-image: none !important; border-bottom: 3px solid var(--red); box-shadow: none !important; }
+#counterBar.cb-nepal { background: #8E1B2E !important; background-image: none !important; border-bottom-color: var(--navy); }
+#counterBar a, #counterBar button { min-height: 44px !important; border-radius: var(--radius-sm) !important; background: rgba(255, 255, 255, .14) !important; color: #FFFFFF !important; box-shadow: none !important; }
+#counterBar #cbQuick { background: var(--royal) !important; color: #FFFFFF !important; }
+:root[data-theme="dark"] #counterBar #cbQuick { background: var(--royal-strong) !important; color: var(--on-royal) !important; }

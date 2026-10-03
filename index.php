@@ -341,4 +341,12 @@ if ($pos !== false) {
 }
 
 header('Content-Type: text/html; charset=UTF-8');
+/* Oct 2026: a page that carries a signed-in customer's or staff member's data
+   (phone, name, CSRF token, the staff agent list) is marked personal, and
+   sw.js never stores it as the offline shell — only the anonymous page is
+   kept. Never cache it anywhere else either. */
+if (!empty($boot['user']) || !empty($boot['staff'])) {
+    header('X-SHG-Personal: 1');
+    header('Cache-Control: private, no-store');
+}
 echo $html;

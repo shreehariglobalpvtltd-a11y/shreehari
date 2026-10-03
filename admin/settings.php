@@ -122,6 +122,30 @@ $boolKeys = array_values(array_map(static fn($r) => $r['skey'],
 $csrf = Security::e(Security::csrfToken());
 $k    = CSRF_TOKEN_NAME;
 
+/* Oct 2026 redesign: each stored group gets a plain title and one sentence on
+   what it controls. Unknown groups fall back to their stored name. */
+$groupInfo = [
+    'booking'    => ['Booking rules', 'Seat holds, limits and the discount switches every sale uses.'],
+    'payment'    => ['Payment', 'How customers pay: UPI, eSewa, payment links and pay at boarding.'],
+    'pricing'    => ['Fares (advanced)', 'Cabin prices and fare tables. Everyday fares are in "Fares & booking rules" above.'],
+    'whatsapp'   => ['WhatsApp messaging', 'How tickets and notices are sent on WhatsApp (Meta Cloud API / Twilio).'],
+    'aisensy'    => ['WhatsApp via AiSensy', 'The AiSensy sender used alongside or instead of the main WhatsApp line.'],
+    'notify'     => ['Notifications', 'Which messages go out (ticket, reminders, office reports) and to whom.'],
+    'company'    => ['Company details', 'Legal name, address, phone numbers and documents printed on tickets and chalani.'],
+    'site'       => ['Website', 'What the public website shows: notices, contact numbers, features.'],
+    'app'        => ['App', 'Customer app behaviour and switches.'],
+    'agent'      => ['Agents', 'Agent sign-up, commission defaults and settlement.'],
+    'agents'     => ['Agents', 'Agent sign-up, commission defaults and settlement.'],
+    'ai'         => ['AI assistant', 'The Sahayak assistant on the website and in the office.'],
+    'security'   => ['Access & security', 'Sign-in protection and who may do what.'],
+    'reports'    => ['Reports', 'Scheduled office reports and what they include.'],
+    'referral'   => ['Referrals', 'Customer referral rewards.'],
+    'loyalty'    => ['Loyalty', 'Customer loyalty tiers and rewards.'],
+    'realtime'   => ['Live updates', 'How often screens refresh seat and booking changes.'],
+    'automation' => ['Automation', 'Background jobs: reminders, expiries, retries.'],
+    'general'    => ['General', 'Everything else.'],
+];
+
 admin_header('Settings', 'settings');
 
 if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::e($flash[1]) . '</div>'; }
@@ -129,6 +153,16 @@ if (!$canEdit) { echo '<div class="flash bad">Your role can view settings but no
 
 $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
 ?>
+<nav class="sg set-jump" aria-label="Settings sections">
+  <p class="set-lede">Each section says what it controls. Changes apply after <b>Save all settings</b>; the page then confirms with “Settings saved.” Pickup points and their fares are on <a href="routes.php#pickups">Routes → Pickup points &amp; fares</a>.</p>
+  <div class="sg-chips">
+    <a class="sg-chip" href="#faresPanel">Fares &amp; booking rules</a>
+    <a class="sg-chip" href="routes.php#pickups">Pickup points &amp; fares</a>
+    <a class="sg-chip" href="#agentRulesPanel">Agent rules</a>
+    <?php foreach (array_keys($groups) as $g): ?><a class="sg-chip" href="#grp-<?= Security::e((string) $g) ?>"><?= Security::e($groupInfo[$g][0] ?? ucfirst((string) $g)) ?></a><?php endforeach; ?>
+    <a class="sg-chip" href="#waTestPanel">Test messages</a>
+  </div>
+</nav>
 
 <!-- ── CEO / Brand Photo Upload ── -->
 <?php if ($canEdit): ?>
@@ -305,9 +339,10 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
   ];
   ?>
   <?php foreach ($groups as $group => $items): ?>
-    <div class="panel">
-      <h2><?= Security::e(ucfirst((string) $group)) ?></h2>
-      <table>
+    <div class="panel set-group" id="grp-<?= Security::e((string) $group) ?>">
+      <h2><?= Security::e($groupInfo[$group][0] ?? ucfirst((string) $group)) ?></h2>
+      <p class="muted set-why"><?= Security::e($groupInfo[$group][1] ?? 'Settings stored under "' . $group . '".') ?></p>
+      <table class="set-table no-card">
         <?php foreach ($items as $r):
           $key = (string) $r['skey'];
           if (in_array($key, $fpKeys, true)) { continue; }   // shown in the Fares panel above
@@ -322,9 +357,10 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
           </th>
           <td>
             <?php if ($r['stype'] === 'bool'): ?>
-              <label style="display:flex;align-items:center;gap:8px">
-                <input type="checkbox" name="s[<?= Security::e($key) ?>]" value="1" <?= $val === '1' ? 'checked' : '' ?> <?= $canEdit ? '' : 'disabled' ?>>
-                <span class="muted"><?= $val === '1' ? 'Enabled' : 'Disabled' ?></span>
+              <label class="set-switch">
+                <input type="checkbox" role="switch" name="s[<?= Security::e($key) ?>]" value="1" <?= $val === '1' ? 'checked' : '' ?> <?= $canEdit ? '' : 'disabled' ?> data-saved="<?= $val === '1' ? '1' : '0' ?>">
+                <span class="set-knob" aria-hidden="true"></span>
+                <span class="set-state"><?= $val === '1' ? 'On' : 'Off' ?></span>
               </label>
             <?php elseif ($isJson): ?>
               <textarea name="s[<?= Security::e($key) ?>]" rows="2" style="width:100%;font-family:ui-monospace,monospace;font-size:12px;padding:8px;border:1px solid var(--line);border-radius:8px" <?= $canEdit ? '' : 'readonly' ?>><?= Security::e($val) ?></textarea>
@@ -347,9 +383,49 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
   <?php endforeach; ?>
 
   <?php if ($canEdit): ?>
-    <div class="toolbar"><button class="btn" type="submit">💾 Save all settings</button></div>
+    <div class="toolbar save-sticky"><span class="set-dirty" id="setDirty" hidden>You have unsaved changes</span><button class="btn" type="submit">Save all settings</button></div>
   <?php endif; ?>
 </form>
+<style>
+.set-jump { margin: -6px 0 14px; display: grid; gap: 8px; }
+.set-lede { margin: 0; color: var(--muted); font-size: 13.5px; }
+.set-jump .sg-chip { text-decoration: none; }
+.set-why { margin: -4px 0 10px; font-size: 13px; }
+.set-switch { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; position: relative; }
+.set-switch input { position: absolute; opacity: 0; width: 52px; height: 32px; margin: 0; cursor: pointer; }
+.set-knob { width: 52px; height: 32px; border-radius: 16px; background: var(--surface-sunken); border: 1.5px solid var(--line-control); position: relative; flex: none; transition: background-color .15s; }
+.set-knob::after { content: ""; position: absolute; top: 3px; left: 3px; width: 23px; height: 23px; border-radius: 50%; background: var(--line-control); transition: transform .15s; }
+.set-switch input:checked + .set-knob { background: var(--royal); border-color: var(--royal); }
+.set-switch input:checked + .set-knob::after { transform: translateX(20px); background: var(--on-royal); }
+.set-switch input:focus-visible + .set-knob { outline: 3px solid var(--focus); outline-offset: 2px; }
+.set-state { font-weight: 700; font-size: 13.5px; }
+.set-state.is-unsaved { color: var(--warning); }
+.set-dirty { margin-right: auto; color: var(--warning); font-weight: 700; font-size: 13.5px; }
+@media (max-width: 820px) {
+  .set-table, .set-table tbody, .set-table tr, .set-table th, .set-table td { display: block; width: 100% !important; }
+  .set-table tr { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .set-table th { border: 0 !important; padding: 0 0 6px !important; background: none !important; text-align: left; }
+  .set-table td { border: 0 !important; padding: 0 !important; }
+  .set-table input[type=text], .set-table input[type=password], .set-table textarea { max-width: 100% !important; }
+  .save-sticky { display: flex; gap: 10px; align-items: center; justify-content: flex-end; }
+}
+</style>
+<script>
+(function () {
+  var dirty = document.getElementById('setDirty'), n = 0;
+  document.querySelectorAll('.set-switch input').forEach(function (cb) {
+    cb.addEventListener('change', function () {
+      var st = cb.parentNode.querySelector('.set-state'), changed = (cb.checked ? '1' : '0') !== cb.getAttribute('data-saved');
+      st.textContent = (cb.checked ? 'On' : 'Off') + (changed ? ' · not saved yet' : '');
+      st.classList.toggle('is-unsaved', changed);
+      mark();
+    });
+  });
+  var form = dirty && dirty.closest('form');
+  if (form) form.addEventListener('input', mark);
+  function mark() { if (dirty) dirty.hidden = false; }
+})();
+</script>
 
 <?php if ($canEdit):
   $testPhone = Settings::officePhone();

@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v165.168';   // 3 Oct 2026: Nepal-side counter desk (Nepal -> India default, NPR line) in 14-counter.js
+var VERSION = 'shg-v166';   // Oct 2026 redesign: design system, booking-first home, company app, agent PNG statement
 var SHELL_CACHE = 'shg-shell-' + VERSION;
 /* How long a returning visitor waits for a fresh document before the
    cached app shell opens instead (see the navigate handler). */
@@ -43,12 +43,14 @@ var MAX_TICKETS = 10;
    never go stale: a new build changes the URL and the old cache is dropped
    with the old VERSION. This is what makes a re-open feel instant — the
    ~1 MB of app code is read from disk instead of the network. */
-var ASSET_VER = '20261003d';
+var ASSET_VER = '20261004a';
 var PRECACHE = [
   '/assets/img/logo.png?v=' + ASSET_VER,
   '/assets/css/app.css?v=' + ASSET_VER,
   '/assets/css/views.css?v=' + ASSET_VER,
   '/assets/css/premium.css?v=' + ASSET_VER,
+  '/assets/css/ds.css?v=' + ASSET_VER,
+  '/assets/css/redesign.css?v=' + ASSET_VER,
   '/assets/js/19-premium.js?v=' + ASSET_VER,
   '/assets/js/01-boot.js?v=' + ASSET_VER,
   '/assets/js/02-config.js?v=' + ASSET_VER,
@@ -303,7 +305,10 @@ self.addEventListener('fetch', function (event) {
       try { cache = await caches.open(SHELL_CACHE); } catch (e) {}
       var shellPromise = (isShell && cache) ? cache.match('/').catch(function () { return null; }) : Promise.resolve(null);
       var netPromise = fetch(req).then(function (res) {
-        if (isShell && cache && res && res.ok && res.type !== 'opaqueredirect') {
+        /* Oct 2026: never keep a personalised page (signed-in customer or
+           staff — index.php marks it X-SHG-Personal) as the offline shell. */
+        var personal = res && res.headers && res.headers.get('X-SHG-Personal') === '1';
+        if (isShell && cache && res && res.ok && res.type !== 'opaqueredirect' && !personal) {
           try { event.waitUntil(cache.put('/', res.clone())); } catch (e) {}
         }
         return res;

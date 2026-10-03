@@ -238,6 +238,23 @@ button.alt{background:none;color:<?= $skin['sea'] ?>;margin-top:10px;min-height:
 .ceo-strip div{line-height:1.4}
 .ceo-strip b{display:block;font-size:13px;color:#12264E;font-weight:700}
 .ceo-strip span{font-size:11.5px;color:#8794AB;font-weight:600}
+/* Oct 2026 redesign: one brand on every door — the design-system light values
+   (navy ground with the red rule, royal action, 1.5px control borders, a
+   visible focus ring). The per-portal skin still sets the heading text. */
+body{background:#0C306C !important;background-image:none !important;border-top:3px solid #DC143C}
+.box{box-shadow:0 14px 34px rgba(0,0,0,.28);border-radius:22px}
+h1{color:#16233C}
+.sub,.who,.ch small{color:#5C6B85}
+input{border:1.5px solid #7D8AA0}
+input:focus{border-color:#0054A8;box-shadow:0 0 0 3px #D9E7FA}
+button:not(.alt){background:#0054A8 !important}
+button:not(.alt):hover{background:#003C90 !important;filter:none}
+button.alt,.foot a{color:#0054A8}
+.ch{border-color:#D5DCE8}
+.ch:hover,.ch:focus,.ch-agent:hover,.ch-agent:focus{border-color:#0054A8;transform:none}
+.ceo-strip img{border-color:#0054A8}
+:focus-visible{outline:3px solid #0054A8;outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
 </style></head>
 <body>
 <form class="box" method="post" autocomplete="off">
