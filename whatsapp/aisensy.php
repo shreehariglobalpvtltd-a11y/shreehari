@@ -53,6 +53,7 @@ final class AiSensyAPI
     public const DEFAULT_PROJECT_ID = '6ac0f921f6a7bf2dfb5d9594';
 
     public const TPL_TICKET   = 'shg_ticket_confirmed';
+    public const TPL_TICKET_IMAGE = 'shg_ticket_image';   // same 6 vars + ticket PNG header
     public const TPL_REMINDER = 'shg_departure_reminder';
     public const TPL_CANCEL   = 'shg_booking_cancelled';
 
@@ -171,7 +172,7 @@ final class AiSensyAPI
      *
      * @param list<string|int|float> $params body variables {{1}}..{{n}} in order
      */
-    public static function sendMessage(string $phone, string $templateName, array $params = []): array
+    public static function sendMessage(string $phone, string $templateName, array $params = [], ?string $headerImage = null): array
     {
         $out = ['success' => false, 'message_id' => '', 'http' => 0, 'error' => '', 'response' => null];
 
@@ -204,8 +205,15 @@ final class AiSensyAPI
             'language' => ['policy' => 'deterministic', 'code' => self::config('AISENSY_TEMPLATE_LANG', 'aisensy_template_lang', 'en')],
             'name'     => $templateName,
         ];
+        $components = [];
+        if ($headerImage !== null && preg_match('#^https://#i', $headerImage)) {
+            $components[] = ['type' => 'header', 'parameters' => [['type' => 'image', 'image' => ['link' => $headerImage]]]];
+        }
         if ($parameters !== []) {
-            $template['components'] = [['type' => 'body', 'parameters' => $parameters]];
+            $components[] = ['type' => 'body', 'parameters' => $parameters];
+        }
+        if ($components !== []) {
+            $template['components'] = $components;
         }
         return self::post($to, $templateName, $key, ['to' => $to, 'type' => 'template', 'template' => $template], $out);
     }
@@ -420,33 +428,46 @@ final class AiSensyAPI
 
             $f = self::bookingFacts($bid);
             $name = $f['name'] !== '' ? $f['name'] : 'Passenger';
-            $r = self::sendTicketConfirmation($number, $name, $f['from'] ?: '-', $f['to'] ?: '-',
-                $f['date'] ?: '-', $f['seats'] ?: '-', $pnr);
-            $how = 'template';
-
-            /* Template refused (still PENDING with Meta, or paused): try the same
-               facts as free text + the ticket image link. WhatsApp delivers that
-               only inside the 24 h window after the passenger last wrote to the
-               AiSensy number; outside it this fails too and is just logged. */
-            if (!$r['success']) {
-                $link = '';
-                try {
-                    if (!class_exists('Ticket') && defined('INCLUDE_PATH') && is_file(INCLUDE_PATH . '/ticket.php')) {
-                        require_once INCLUDE_PATH . '/ticket.php';
-                    }
-                    $link = class_exists('Ticket') ? (string) Ticket::imageUrl($pnr) : '';
-                } catch (Throwable $ignored) {
-                    $link = '';
+            $link = '';
+            try {
+                if (!class_exists('Ticket') && defined('INCLUDE_PATH') && is_file(INCLUDE_PATH . '/ticket.php')) {
+                    require_once INCLUDE_PATH . '/ticket.php';
                 }
-                $r = self::sendText($number,
-                    "S Hari Global Pvt Ltd - Ticket confirmed\n"
-                    . 'Dear ' . $name . ",\n"
-                    . 'Route: ' . ($f['from'] ?: '-') . ' -> ' . ($f['to'] ?: '-') . "\n"
-                    . 'Date: ' . ($f['date'] ?: '-') . "\n"
-                    . 'Seat: ' . ($f['seats'] ?: '-') . "\n"
-                    . 'Ticket ID: ' . $pnr
-                    . ($link !== '' ? "\nTicket: " . $link : '')
-                    . "\nHelp: +919157001507");
+                $link = class_exists('Ticket') ? (string) Ticket::imageUrl($pnr) : '';
+            } catch (Throwable $ignored) {
+                $link = '';
+            }
+            $vars = [$name, $f['from'] ?: '-', $f['to'] ?: '-', $f['date'] ?: '-', $f['seats'] ?: '-', $pnr];
+
+            /* Order (owner 3 Oct: "ticket direct PNG ma jane"):
+                 1. shg_ticket_image  — approved template, ticket PNG as the header
+                 2. shg_ticket_confirmed — text template (no picture)
+                 3. the PNG itself with the facts as caption  } WhatsApp delivers
+                 4. plain text + link                         } these only inside
+                                                                the 24 h window */
+            $r = ['success' => false];
+            $how = '';
+            if ($link !== '') {
+                $r = self::sendMessage($number, self::tpl('aisensy_tpl_ticket_image', self::TPL_TICKET_IMAGE), $vars, $link);
+                $how = 'image template';
+            }
+            if (!$r['success']) {
+                $r = self::sendTicketConfirmation($number, ...$vars);
+                $how = 'template';
+            }
+            $caption = "S Hari Global Pvt Ltd - Ticket confirmed\n"
+                . 'Dear ' . $name . ",\n"
+                . 'Route: ' . ($f['from'] ?: '-') . ' -> ' . ($f['to'] ?: '-') . "\n"
+                . 'Date: ' . ($f['date'] ?: '-') . "\n"
+                . 'Seat: ' . ($f['seats'] ?: '-') . "\n"
+                . 'Ticket ID: ' . $pnr . "\n"
+                . 'Help: +919157001507';
+            if (!$r['success'] && $link !== '') {
+                $r = self::sendImage($number, $link, $caption);
+                $how = 'image';
+            }
+            if (!$r['success']) {
+                $r = self::sendText($number, $caption . ($link !== '' ? "\nTicket: " . $link : ''));
                 $how = 'text';
             }
 
