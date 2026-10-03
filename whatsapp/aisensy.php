@@ -316,6 +316,55 @@ final class AiSensyAPI
     }
 
     /* -----------------------------------------------------------------
+     *  Staff messages (admin/api/wa-send.php): agent statement / summaries,
+     *  bus chalani to the crew, office summaries.
+     * ----------------------------------------------------------------- */
+
+    public const TPL_AGENT  = 'shg_agent_statement';   // {{1}} name {{2}} what {{3}} summary {{4}} link
+    public const TPL_CHALAN = 'shg_bus_chalani';       // {{1}} what {{2}} details {{3}} link
+    public const TPL_OFFICE = 'shg_office_update';     // {{1}} report {{2}} details
+
+    /**
+     * Send one composed WaTemplates message through AiSensy: the approved
+     * template for its audience first, then (template still in review / no
+     * template) the full text, which WhatsApp delivers inside a 24 h window.
+     *
+     * @param array $msg WaTemplates::compose() output
+     * @return array sendMessage()-style result + 'how' => template|text
+     */
+    public static function sendStaffMessage(array $msg, string $audience): array
+    {
+        $to    = (string) ($msg['intl'] ?? '') !== '' ? (string) $msg['intl'] : (string) ($msg['to'] ?? '');
+        $label = trim((string) ($msg['label'] ?? 'Update'));
+        $text  = trim((string) ($msg['text'] ?? ''));
+        $media = trim((string) ($msg['mediaUrl'] ?? ''));
+        $name  = trim((string) ($msg['recipientName'] ?? ''));
+        // One template variable cannot hold a newline.
+        $flat  = trim((string) preg_replace('/\s*\R\s*/u', ' - ', $text));
+        $flat  = mb_substr($flat !== '' ? $flat : '-', 0, 700);
+        $link  = $media !== '' ? $media : '-';
+
+        $r = match ($audience) {
+            'agent'  => self::sendMessage($to, self::tpl('aisensy_tpl_agent', self::TPL_AGENT), [$name !== '' ? $name : 'Agent', $label, $flat, $link]),
+            'crew'   => self::sendMessage($to, self::tpl('aisensy_tpl_chalan', self::TPL_CHALAN), [$label, $flat, $link]),
+            default  => self::sendMessage($to, self::tpl('aisensy_tpl_office', self::TPL_OFFICE), [$label, mb_substr($flat . ($media !== '' ? ' - ' . $media : ''), 0, 700)]),
+        };
+        if ($r['success']) {
+            return $r + ['how' => 'template'];
+        }
+
+        // Free-text fallback (24 h window only): picture with caption, or text + link.
+        if ($media !== '' && (string) ($msg['mediaType'] ?? '') === 'image' && mb_strlen($text) <= 1024) {
+            $r = self::sendImage($to, $media, $text);
+            if ($r['success']) {
+                return $r + ['how' => 'text'];
+            }
+        }
+        $r = self::sendText($to, $text . ($media !== '' && !str_contains($text, $media) ? "\n" . $media : ''));
+        return $r + ['how' => 'text'];
+    }
+
+    /* -----------------------------------------------------------------
      *  Booking hook (includes/events.php, booking.approved)
      * ----------------------------------------------------------------- */
 

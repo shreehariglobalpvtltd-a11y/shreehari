@@ -216,6 +216,36 @@ $res = Notify::whatsapp(
     $meta
 );
 
+/* 3 Oct 2026 — AiSensy (whatsapp/aisensy.php) for staff messages: agent
+   statements and summaries, the bus chalani to the crew, office summaries.
+   aisensy_mode 'always' sends it there too (Meta accepts but then fails
+   async on 131042 while its billing is broken); 'fallback' only when the
+   main driver refused. A delivered AiSensy copy counts as sent. Never
+   allowed to break this endpoint. */
+try {
+    if (in_array($audience, ['agent', 'office', 'crew'], true)) {
+        require_once ROOT_PATH . '/whatsapp/aisensy.php';
+        $aisMode = AiSensyAPI::mode();
+        if (AiSensyAPI::enabled() && ($aisMode === 'always' || ($aisMode === 'fallback' && $res !== true))) {
+            $ais = AiSensyAPI::sendStaffMessage($msg, $audience);
+            Notify::logOutbound(AiSensyAPI::normalizePhone((string) ($msg['intl'] ?: $msg['to'])), $msg['text'], $ais['success'] ? 'sent' : 'failed', [
+                'provider'       => 'aisensy',
+                'sid'            => $ais['message_id'],
+                'purpose'        => $purpose,
+                'admin_id'       => $adminId,
+                'agent_admin_id' => $msg['agentId'],
+                'media_url'      => $msg['mediaUrl'],
+                'error'          => $ais['success'] ? null : mb_substr('AiSensy ' . $ais['how'] . ': ' . (string) $ais['error'], 0, 250),
+            ]);
+            if ($ais['success'] && $res !== true) {
+                $res = true;   // the AiSensy copy reached them
+            }
+        }
+    }
+} catch (Throwable $e) {
+    Logger::warning('AiSensy staff send failed', ['purpose' => $purpose, 'err' => $e->getMessage()], 'whatsapp');
+}
+
 if ($res === true) {
     Logger::audit('wa.send', 'message', $purpose . ':' . $targetKey, null,
         ['to' => $msg['intl'], 'purpose' => $purpose, 'result' => 'sent', 'media' => $msg['mediaUrl']], 'sent by admin #' . $adminId);
