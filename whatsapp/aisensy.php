@@ -207,8 +207,51 @@ final class AiSensyAPI
         if ($parameters !== []) {
             $template['components'] = [['type' => 'body', 'parameters' => $parameters]];
         }
-        $body = ['to' => $to, 'type' => 'template', 'template' => $template];
+        return self::post($to, $templateName, $key, ['to' => $to, 'type' => 'template', 'template' => $template], $out);
+    }
 
+    /**
+     * Free-form text — WhatsApp delivers it ONLY inside the 24 h window after
+     * the customer last wrote to us (bot replies). Outside it use a template.
+     */
+    public static function sendText(string $phone, string $text): array
+    {
+        $out = ['success' => false, 'message_id' => '', 'http' => 0, 'error' => '', 'response' => null];
+        $to  = self::normalizePhone($phone);
+        $key = self::apiKey();
+        $text = trim($text);
+        if ($to === '' || $key === '' || $text === '') {
+            $out['error'] = $to === '' ? 'invalid phone number' : ($key === '' ? 'AISENSY_API_KEY not configured' : 'empty text');
+            self::log('SKIP', $to !== '' ? $to : $phone, 'text', $out);
+            return $out;
+        }
+        return self::post($to, 'text', $key, [
+            'to' => $to, 'type' => 'text', 'recipient_type' => 'individual',
+            'text' => ['preview_url' => true, 'body' => mb_substr($text, 0, 4096)],
+        ], $out);
+    }
+
+    /** Image by public URL (+ optional caption) — same 24 h window rule as sendText(). */
+    public static function sendImage(string $phone, string $imageUrl, string $caption = ''): array
+    {
+        $out = ['success' => false, 'message_id' => '', 'http' => 0, 'error' => '', 'response' => null];
+        $to  = self::normalizePhone($phone);
+        $key = self::apiKey();
+        if ($to === '' || $key === '' || !preg_match('#^https://#i', $imageUrl)) {
+            $out['error'] = $to === '' ? 'invalid phone number' : ($key === '' ? 'AISENSY_API_KEY not configured' : 'image URL must be https');
+            self::log('SKIP', $to !== '' ? $to : $phone, 'image', $out);
+            return $out;
+        }
+        $image = ['link' => $imageUrl];
+        if (trim($caption) !== '') {
+            $image['caption'] = mb_substr(trim($caption), 0, 1024);
+        }
+        return self::post($to, 'image', $key, ['to' => $to, 'type' => 'image', 'recipient_type' => 'individual', 'image' => $image], $out);
+    }
+
+    /** POST one message; retries once on a network failure or AiSensy 5xx (a 4xx is final). */
+    private static function post(string $to, string $label, string $key, array $body, array $out): array
+    {
         $url = self::API_BASE . self::projectId() . '/messages';
         for ($attempt = 1; $attempt <= 2; $attempt++) {
             $r = self::request('POST', $url, $key, $body);
@@ -220,7 +263,7 @@ final class AiSensyAPI
                 $j = is_array($r['json']) ? $r['json'] : [];
                 $out['success']    = true;
                 $out['message_id'] = (string) ($j['messages'][0]['id'] ?? ($j['id'] ?? ($j['message_id'] ?? ($j['submitted_message_id'] ?? ''))));
-                self::log('SENT', $to, $templateName, $out);
+                self::log('SENT', $to, $label, $out);
                 return $out;
             }
 
@@ -228,13 +271,12 @@ final class AiSensyAPI
             $out['error'] = $r['curl'] !== ''
                 ? 'network: ' . $r['curl']
                 : (string) ($j['message'] ?? ($j['error']['message'] ?? ('HTTP ' . $r['http'])));
-            // Retry once on a network failure or AiSensy 5xx; a 4xx is final.
             if (!($r['http'] === 0 || $r['http'] >= 500) || $attempt === 2) {
                 break;
             }
             usleep(400000);
         }
-        self::log('FAIL', $to, $templateName, $out);
+        self::log('FAIL', $to, $label, $out);
         return $out;
     }
 
@@ -434,7 +476,7 @@ final class AiSensyAPI
     }
 
     /** One line per call to logs/aisensy.log. The API key is never written. */
-    private static function log(string $status, string $to, string $template, array $info): void
+    public static function log(string $status, string $to, string $template, array $info): void
     {
         try {
             $dir = defined('LOG_PATH') ? LOG_PATH : dirname(__DIR__) . '/logs';
