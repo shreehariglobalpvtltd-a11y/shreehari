@@ -110,6 +110,22 @@ $staffRow = Auth::admin();
 if ($staffRow !== null) {
     require_once INCLUDE_PATH . '/agentwallet.php';
     $staffId = (int) ($staffRow['id'] ?? 0);
+    /* The desk this clerk sits at (3 Oct 2026): a Nepal-side desk (NPJ,
+       Rupaidiha …) sells Nepal → India by default — 14-counter.js opens on
+       the return run and shows the NPR to collect. */
+    $deskCode = '';
+    $deskName = '';
+    try {
+        $dRow = Database::fetch('SELECT counter_code, counter_name FROM admin_profiles WHERE admin_id = :a', ['a' => $staffId]);
+        $deskCode = (string) ($dRow['counter_code'] ?? '');
+        $deskName = (string) ($dRow['counter_name'] ?? '');
+    } catch (Throwable $e) {
+        try {   // counter_code arrives with upgrade-2026-09-counter-locations.sql
+            $deskName = (string) Database::scalar('SELECT counter_name FROM admin_profiles WHERE admin_id = :a', ['a' => $staffId], '');
+        } catch (Throwable $e2) {
+            $deskName = '';
+        }
+    }
     $boot['staff'] = [
         'id'             => $staffId,
         'name'           => (string) ($staffRow['full_name'] ?? ($staffRow['username'] ?? '')),
@@ -122,6 +138,12 @@ if ($staffRow !== null) {
         'commFlat'       => AgentWallet::flatMode(),
         'commDirect'     => Settings::getFloat('agent_flat_direct', 200.0),
         'commJoint'      => Settings::getFloat('agent_flat_joint', 400.0),
+        'desk'           => [
+            'code' => $deskCode,
+            'name' => Settings::counterLabel($deskCode, $deskName),
+            'side' => Settings::isNepalDesk($deskCode, $deskName) ? 'nepal' : 'india',
+        ],
+        'nprRate'        => Settings::getFloat('npr_per_inr', defined('NPR_PER_INR') ? (float) NPR_PER_INR : 1.6),
     ];
     try {
         $agentRows = Database::fetchAll(

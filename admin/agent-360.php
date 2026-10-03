@@ -29,6 +29,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
+require_once INCLUDE_PATH . '/agentreport.php';
 $admin = admin_boot('customers.view');
 Auth::requireAdmin('commissions.view');
 if (Auth::isCounterAgent()) {
@@ -45,6 +46,7 @@ $canManage = Auth::can('staff.manage');         // may verify KYC / set the requ
 $base      = '';   // root-relative: the panel must stay on the request host (.in or the .network staff door)
 
 $tabs = [
+    'report'      => 'Report · रिपोर्ट',
     'overview'    => 'Overview',
     'statement'   => 'Statement',
     'settlements' => 'Settlements',
@@ -59,9 +61,9 @@ $agentId = (int) ($_GET['agent'] ?? 0);
 if ($agentId <= 0 && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $agentId = (int) ($_POST['agent_id'] ?? 0);
 }
-$tab = (string) ($_GET['tab'] ?? ($_POST['tab'] ?? 'overview'));
+$tab = (string) ($_GET['tab'] ?? ($_POST['tab'] ?? 'report'));
 if (!isset($tabs[$tab])) {
-    $tab = 'overview';
+    $tab = 'report';
 }
 
 $agent = null;
@@ -190,7 +192,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $targetId = (int) ($_POST['agent_id'] ?? 0);
     $backTab  = (string) ($_POST['tab'] ?? $tab);
     if (!isset($tabs[$backTab])) {
-        $backTab = 'overview';
+        $backTab = 'report';
     }
 
     if (!Security::verifyCsrf()) {
@@ -412,6 +414,108 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             a360_flash('ok', $status === 'verified' ? 'KYC marked verified.' : 'KYC rejected — the note is on the profile for the agent.');
             a360_go($targetId, 'profile');
 
+        /* ---- Report tab controls (3 Oct 2026, owner: "commission panel
+           mai ghat bad, edit, enable disable, admin bata agent code change").
+           Same writers and the same rights as admin/agent.php and the
+           register (agents.php) — this only puts them one click from the
+           agent's figures. A rate change moves FUTURE sales only: every
+           sold ticket keeps the commission written to its ledger row; a
+           past figure is corrected with the signed adjustment below. */
+        } elseif ($action === 'rate_set' || $action === 'rate_reset') {
+            $needManage();
+            if ($action === 'rate_reset') {
+                AgentWallet::setCommissionOverride($targetId, null, null, $selfId);
+                $rc = AgentReport::rateCard($targetId);
+                a360_flash('ok', 'Commission back on the company tier — ' . $rc['label'] . ' from the next ticket. Sold tickets keep what they earned.');
+            } else {
+                $raw = trim((string) ($_POST['rate_flat'] ?? ''));
+                if ($raw === '' || !is_numeric($raw)) {
+                    throw new RuntimeException('Enter the commission in ₹ per passenger.');
+                }
+                $old  = AgentReport::rateCard($targetId);
+                $flat = round((float) $raw, 2);
+                AgentWallet::setCommissionOverride($targetId, 'flat', $flat, $selfId);
+                a360_flash('ok', 'Commission set to ' . inr($flat) . ' per passenger (was ' . $old['label'] . ') — applies from the next ticket. Sold tickets keep what they earned.');
+            }
+            a360_go($targetId, $backTab);
+
+        } elseif ($action === 'comm_adjust') {
+            // One signed correction on the commission account, tagged 'ADJ'
+            // exactly like admin/agent.php's correction form.
+            $needPay();
+            $notSelf();
+            $dir  = (($_POST['direction'] ?? 'credit') === 'debit') ? 'debit' : 'credit';
+            $amt  = round(abs((float) ($_POST['amount'] ?? 0)), 2);
+            $note = Security::clean((string) ($_POST['note'] ?? ''), 255);
+            if (mb_strlen($note) < 5) {
+                throw new RuntimeException('Write a short reason (at least 5 characters) for this commission change.');
+            }
+            AgentWallet::record($targetId, 'adjustment', $amt, [
+                'account'   => 'commission',
+                'direction' => $dir,
+                'note'      => $note,
+                'ref'       => 'ADJ commission',
+                'by'        => $selfId,
+            ]);
+            a360_flash('ok', ($dir === 'credit' ? 'Added ' : 'Deducted ') . inr($amt) . ' ' . ($dir === 'credit' ? 'to' : 'from')
+                . ' the commission balance. Balance now ' . inr(AgentWallet::balances($targetId)['commission']) . '.');
+            a360_go($targetId, $backTab);
+
+        } elseif ($action === 'code_set') {
+            $needManage();
+            $raw = trim((string) ($_POST['agent_code'] ?? ''));
+            if ($raw !== '' && (!ctype_digit($raw) || (int) $raw < AgentWallet::AGENT_CODE_MIN || (int) $raw > AgentWallet::AGENT_CODE_MAX)) {
+                throw new RuntimeException('The agent code must be a number between ' . AgentWallet::AGENT_CODE_MIN . ' and ' . AgentWallet::AGENT_CODE_MAX . '.');
+            }
+            $before = AgentWallet::agentCodeLabel($targetId);
+            AgentWallet::setAgentCode($targetId, $raw === '' ? null : (int) $raw, $selfId);   // throws on a duplicate; audited as agent.code_set
+            $after = AgentWallet::agentCodeLabel($targetId);
+            a360_flash('ok', $after === '' ? 'Agent code removed.' : 'Agent code is now ' . $after . ($before !== '' && $before !== $after ? ' (was ' . $before . ')' : '') . '. Tickets and the agent panel show the new code.');
+            a360_go($targetId, $backTab);
+
+        } elseif ($action === 'toggle_active') {
+            $needManage();
+            if ($targetId === $selfId) {
+                throw new RuntimeException('You cannot disable your own account.');
+            }
+            $to = (int) $agent['is_active'] === 1 ? 0 : 1;
+            Database::update('admins', ['is_active' => $to], 'id = :id', ['id' => $targetId]);
+            Logger::audit($to ? 'agent.activate' : 'agent.deactivate', 'admin', (string) $agent['username'], null, null, 'agent 360');
+            a360_flash('ok', $to ? 'Agent enabled — they can sign in and sell again.' : 'Agent disabled — they can no longer sign in or sell. Their tickets, wallet and history stay.');
+            a360_go($targetId, $backTab);
+
+        } elseif ($action === 'edit_basic') {
+            // Name, mobile, WhatsApp, counter — the four fields the office
+            // fixes most; everything else stays on the register's Edit.
+            $needManage();
+            $nm    = trim(Security::clean($_POST['full_name'] ?? '', 120));
+            $phone = preg_replace('/\D/', '', (string) ($_POST['phone'] ?? '')) ?? '';
+            $wa    = AgentWallet::cleanPhone((string) ($_POST['whatsapp'] ?? ''));
+            $city  = trim(Security::clean($_POST['counter_name'] ?? '', 120));
+            if (mb_strlen($nm) < 2) {
+                throw new RuntimeException('Enter the agent\'s name.');
+            }
+            if (strlen($phone) < 10 || strlen($phone) > 15) {
+                throw new RuntimeException('Enter a valid mobile number.');
+            }
+            if (Database::exists('SELECT 1 FROM admins WHERE phone = :p AND id <> :id LIMIT 1', ['p' => $phone, 'id' => $targetId])) {
+                throw new RuntimeException('That mobile number belongs to another staff account.');
+            }
+            $before = ['full_name' => $agent['full_name'], 'phone' => $agent['phone'],
+                       'whatsapp' => $profile['whatsapp'] ?? null, 'city' => $profile['counter_name'] ?? null];
+            Database::update('admins', ['full_name' => $nm, 'phone' => $phone], 'id = :id', ['id' => $targetId]);
+            Database::run(
+                'INSERT INTO admin_profiles (admin_id, display_phone, whatsapp, counter_name)
+                      VALUES (:aid, :dp, :wa, :cn)
+                 ON DUPLICATE KEY UPDATE display_phone = :dp2, whatsapp = :wa2, counter_name = :cn2',
+                ['aid' => $targetId, 'dp' => $phone, 'wa' => $wa ?: null, 'cn' => $city ?: null,
+                 'dp2' => $phone, 'wa2' => $wa ?: null, 'cn2' => $city ?: null]
+            );
+            Logger::audit('agent.edit', 'admin', (string) $agent['username'], $before,
+                ['full_name' => $nm, 'phone' => $phone, 'whatsapp' => $wa, 'city' => $city], 'agent 360 quick edit');
+            a360_flash('ok', 'Agent details saved.');
+            a360_go($targetId, $backTab);
+
         } else {
             throw new RuntimeException('Unknown action.');
         }
@@ -566,6 +670,16 @@ $kind       = AgentWallet::normaliseKind((string) ($profile['agent_kind'] ?? Age
 $pct        = AgentWallet::commissionPercentFor($agentId);
 $override   = AgentWallet::commissionOverrideFor($agentId);
 $statement  = AgentWallet::statement($agentId, $stmtFrom, $stmtTo, $stmtAcc);
+/* Report tab window (3 Oct 2026) — its own rfrom/rto so it never fights
+   the Statement tab's from/to. */
+$repWin = AgentReport::window(
+    (string) ($_GET['range'] ?? 'month'),
+    (string) ($_GET['rfrom'] ?? ''),
+    (string) ($_GET['rto'] ?? ''),
+    (string) ($_GET['basis'] ?? 'journey')
+);
+$report = AgentReport::build($agentId, $repWin);
+$rate   = AgentReport::rateCard($agentId);
 $settlements = array_values(array_filter(
     AgentWallet::entries($agentId, 500),
     static fn(array $r): bool => in_array((string) $r['entry_type'], ['payout', 'cash_handover'], true)
@@ -772,6 +886,486 @@ details.a360-rows>summary{cursor:pointer;font-size:12.5px;color:var(--blue);font
     <a href="<?= $e($pageUrl . '&tab=' . $key) ?>" data-tab="<?= $e($key) ?>" class="<?= $key === $tab ? 'on' : '' ?>"><?= $e($label) ?><?= $cnt > 0 ? '<span class="a360-cnt">' . $cnt . '</span>' : '' ?></a>
   <?php endforeach; ?>
 </div>
+
+<!-- ============ REPORT (3 Oct 2026) ============
+     The tab the agent's name opens on: what they sold and earned for any
+     window, the controls the office reaches for most (commission rate ±,
+     a signed commission correction, agent code, enable / disable, quick
+     edit), and a one-tap image statement drawn in the browser (canvas —
+     instant, and the browser shapes Nepali correctly). -->
+<?php
+$rt   = $report['totals'];
+$rq   = static function (array $over = []) use ($pageUrl, $repWin): string {
+    $p = ['tab' => 'report', 'range' => $repWin['preset'], 'basis' => $repWin['basis'] === 'sale' ? 'sale' : ''];
+    if ($repWin['preset'] === 'custom') { $p['rfrom'] = $repWin['from']; $p['rto'] = $repWin['last']; }
+    $p = array_merge($p, $over);
+    return $pageUrl . '&' . http_build_query(array_filter($p, static fn($v) => $v !== '' && $v !== null));
+};
+$pdfUrl = $base . '/admin/agent-sales.php?' . http_build_query(['agent' => $agentId, 'range' => 'custom', 'from' => $repWin['from'], 'to' => $repWin['last'], 'basis' => $repWin['basis'], 'format' => 'pdf']);
+$rateNum = (int) round($rate['flat']);
+/* Everything the image statement draws — the same numbers the tab shows. */
+$imgData = [
+    'company' => Settings::getString('company_name', APP_NAME),
+    'phone'   => Settings::getString('company_phone', ''),
+    'agent'   => $name,
+    'code'    => $code,
+    'counter' => (string) ($profile['counter_name'] ?? ''),
+    'period'  => $repWin['label'],
+    'basis'   => $repWin['basis'] === 'sale' ? 'by sale date' : 'by journey date',
+    'rate'    => $rate['label'],
+    'made'    => date('j M Y, g:i A'),
+    'totals'  => $rt,
+    'balance' => ['commission' => $balances['commission'], 'cash' => $balances['cash'], 'net' => $net['net']],
+    'days'    => array_slice($report['days'], 0, 31),
+    'buses'   => array_slice($report['buses'], 0, 31),
+    'tickets' => array_map(static fn(array $t): array => [
+        'pnr' => $t['pnr'], 'd' => $t['travel'], 'p' => $t['passenger'], 's' => $t['seats'], 'n' => $t['pax'],
+        'a' => $t['amount'], 'c' => $t['commission'], 'st' => $t['status'],
+    ], array_slice($report['tickets'], 0, 60)),
+    'ticketsAll' => count($report['tickets']),
+    'file'    => 'statement-' . preg_replace('/[^a-z0-9]+/i', '-', ($code !== '' ? $code . '-' : '') . $name) . '-' . $repWin['from'] . '_' . $repWin['last'] . '.png',
+];
+?>
+<section class="a360-tab" data-tab="report"<?= $tab === 'report' ? '' : ' hidden' ?>>
+  <style>
+  .rp-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .rp-bar .chip-l{display:inline-flex;align-items:center;padding:7px 13px;border-radius:999px;border:1.5px solid var(--line);background:var(--card);color:inherit;font-size:13px;font-weight:700;text-decoration:none}
+  .rp-bar .chip-l.on{background:var(--navy,#0f2a4a);border-color:var(--navy,#0f2a4a);color:#fff}
+  .rp-bar form{display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .rp-bar input[type=date]{padding:6px 8px;border:1.5px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-size:13px}
+  .rp-basis{display:inline-flex;border:1.5px solid var(--line);border-radius:12px;overflow:hidden}
+  .rp-basis a{padding:7px 12px;font-size:12.5px;font-weight:700;text-decoration:none;color:inherit;background:var(--card)}
+  .rp-basis a+a{border-left:1.5px solid var(--line)}
+  .rp-basis a.on{background:#0f766e;color:#fff}
+  .rp-period{font-size:13px;color:var(--mut);margin:10px 0 0}
+  .rp-period b{color:var(--ink)}
+  .rp-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .rp-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;align-items:start}
+  @media(max-width:1000px){.rp-grid{grid-template-columns:minmax(0,1fr)}}
+  .rp-ctl{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;display:flex;flex-direction:column;gap:14px}
+  .rp-ctl h3{margin:0;font-size:15px;font-weight:800;display:flex;align-items:center;gap:8px}
+  .rp-box{border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--soft)}
+  .rp-box>b{display:block;font-size:13px;margin-bottom:6px}
+  .rp-box .hint{font-size:11.5px;color:var(--mut);margin:6px 0 0;line-height:1.45}
+  .rp-rate{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .rp-rate .now{font-size:22px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .rp-step{display:flex;gap:6px;align-items:center;margin-top:8px}
+  .rp-step button.st{min-width:46px;padding:8px 0;border-radius:10px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font-weight:800;cursor:pointer}
+  .rp-step button.st.dn{color:var(--bad)} .rp-step button.st.up{color:var(--ok)}
+  .rp-step input{width:90px;text-align:center;font-weight:800;font-size:16px;padding:8px;border:1.5px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink)}
+  .rp-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .rp-row input,.rp-row select{padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-size:13px;min-width:0}
+  .rp-edit{display:grid;gap:6px}
+  .rp-edit input{width:100%;padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-size:13px}
+  .rp-tbl td,.rp-tbl th{white-space:nowrap}
+  .rp-tbl tfoot td{font-weight:800;border-top:2px solid var(--line)}
+  #rpImgModal{position:fixed;inset:0;z-index:9999;background:rgba(10,20,35,.72);display:flex;align-items:flex-start;justify-content:center;padding:18px;overflow:auto}
+  #rpImgModal[hidden]{display:none}
+  #rpImgModal .box{background:var(--card);border-radius:16px;padding:14px;max-width:760px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+  #rpImgModal img{width:100%;height:auto;border-radius:10px;border:1px solid var(--line);display:block;margin-top:10px}
+  #rpImgModal .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  </style>
+
+  <div class="panel">
+    <div class="panel-body">
+      <div class="rp-bar">
+        <?php foreach (AgentReport::PRESETS as $pk => $pl): if ($pk === 'custom') { continue; } ?>
+          <a class="chip-l<?= $repWin['preset'] === $pk ? ' on' : '' ?>" href="<?= $e($rq(['range' => $pk, 'rfrom' => null, 'rto' => null])) ?>"><?= $e($pl) ?></a>
+        <?php endforeach; ?>
+        <form method="get" action="<?= $e($base . '/admin/agent-360.php') ?>">
+          <input type="hidden" name="agent" value="<?= $agentId ?>">
+          <input type="hidden" name="tab" value="report">
+          <input type="hidden" name="range" value="custom">
+          <?php if ($repWin['basis'] === 'sale'): ?><input type="hidden" name="basis" value="sale"><?php endif; ?>
+          <input type="date" name="rfrom" value="<?= $e($repWin['from']) ?>" aria-label="From date">
+          <span class="muted">→</span>
+          <input type="date" name="rto" value="<?= $e($repWin['last'] > todayISO() && $repWin['preset'] !== 'custom' ? $repWin['last'] : $repWin['last']) ?>" aria-label="To date">
+          <button class="btn sm<?= $repWin['preset'] === 'custom' ? '' : ' ghost' ?>" type="submit">Show</button>
+        </form>
+        <span class="rp-basis" style="margin-left:auto">
+          <a class="<?= $repWin['basis'] === 'journey' ? 'on' : '' ?>" href="<?= $e($rq(['basis' => null])) ?>" title="Count by the day the passenger travels">🚌 Journey date</a>
+          <a class="<?= $repWin['basis'] === 'sale' ? 'on' : '' ?>" href="<?= $e($rq(['basis' => 'sale'])) ?>" title="Count by the day the ticket was cut">🧾 Sale date</a>
+        </span>
+      </div>
+      <p class="rp-period"><b><?= $e($repWin['label']) ?></b> · <?= $repWin['basis'] === 'sale' ? 'tickets cut in this period' : 'passengers travelling in this period' ?> · current rate <b><?= $e($rate['label']) ?></b> <span class="muted">(<?= $e($rate['sub']) ?>)</span></p>
+      <div class="rp-acts no-print">
+        <button class="btn" type="button" id="rpImgBtn"><svg class="a-ic"><use href="#a-download"/></svg> 📷 Statement image</button>
+        <a class="btn ghost" href="<?= $e($pdfUrl) ?>"><svg class="a-ic"><use href="#a-ledger"/></svg> PDF</a>
+        <button class="btn ghost" type="button" onclick="window.print()">🖨 Print</button>
+        <a class="btn ghost" href="<?= $e($base . '/admin/agent-sales.php?' . http_build_query(['agent' => $agentId, 'range' => 'custom', 'from' => $repWin['from'], 'to' => $repWin['last'], 'basis' => $repWin['basis']])) ?>"><svg class="a-ic"><use href="#a-chart-up"/></svg> Full sales book</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="kpis">
+    <?= admin_kpi('Passengers · जना', number_format((int) $rt['pax']), (int) $rt['tickets'] . ' ticket' . ((int) $rt['tickets'] === 1 ? '' : 's') . ((int) $rt['cancelled'] > 0 ? ' · ' . (int) $rt['cancelled'] . ' cancelled' : ''), 'users', 'navy') ?>
+    <?= admin_kpi('Sales · बिक्री', inr((float) $rt['sale']), (int) $rt['confirmed'] . ' confirmed' . ((int) $rt['pending'] > 0 ? ' · ' . (int) $rt['pending'] . ' pending' : ''), 'rupee', 'blue') ?>
+    <?= admin_kpi('Commission · कमिसन', inr((float) $rt['commission']), (int) $rt['pax'] > 0 ? 'avg ' . inr(round((float) $rt['commission'] / max(1, (int) $rt['pax']))) . ' / pax' : 'on these tickets', 'coins', 'green') ?>
+    <?= admin_kpi('Company keeps', inr((float) $rt['company']), 'sales − commission', 'chart-up', 'violet') ?>
+    <?php if (abs((float) $rt['adjust']) > 0.009): ?>
+      <?= admin_kpi('Corrections', ((float) $rt['adjust'] < 0 ? '−' : '+') . inr(abs((float) $rt['adjust'])), 'manual ± in this period', 'ledger', 'orange') ?>
+    <?php endif; ?>
+    <?= admin_kpi('Commission due now', inr($balances['commission']), ((float) $rt['payout'] > 0 ? 'paid ' . inr((float) $rt['payout']) . ' in period · ' : '') . 'cash held ' . inr($balances['cash']), 'wallet', 'teal') ?>
+  </div>
+
+  <div class="rp-grid">
+    <div style="min-width:0;display:flex;flex-direction:column;gap:18px">
+      <?php if ($report['buses'] !== []): ?>
+      <div class="panel" style="margin:0">
+        <h2><svg class="a-ic"><use href="#a-bus"/></svg> Bus by bus <span class="muted" style="font-weight:500">· journey date</span></h2>
+        <div class="tbl-scroll">
+          <table class="rp-tbl">
+            <thead><tr><th>Date</th><th>Route</th><th>Bus</th><th class="num">जना</th><th class="num">Sales</th><th class="num">Commission</th></tr></thead>
+            <tbody>
+            <?php foreach ($report['buses'] as $b): ?>
+              <tr>
+                <td><?= $e($b['d'] !== '' ? formatDate($b['d'], 'D j M') : '—') ?></td>
+                <td><?= $e($b['route'] ?: '—') ?><?= (int) $b['slot'] > 1 ? ' <span class="pill st-info nodot">Bus ' . (int) $b['slot'] . '</span>' : '' ?></td>
+                <td class="mono"><?= $e($b['bus'] ?: '—') ?></td>
+                <td class="num fw7"><?= (int) $b['pax'] ?></td>
+                <td class="num money"><?= $e(inr((float) $b['sale'])) ?></td>
+                <td class="num money"><?= $e(inr((float) $b['commission'])) ?></td>
+              </tr>
+            <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <?php endif; ?>
+
+      <div class="panel" style="margin:0">
+        <h2><svg class="a-ic"><use href="#a-calendar"/></svg> Day by day</h2>
+        <div class="tbl-scroll">
+          <table class="rp-tbl">
+            <thead><tr><th>Date</th><th class="num">Tickets</th><th class="num">जना</th><th class="num">Sales</th><th class="num">Commission</th></tr></thead>
+            <tbody>
+            <?php if ($report['days'] === []): ?>
+              <tr><td colspan="5"><?= admin_empty('Nothing in this period', 'Pick another range above, or switch Journey / Sale date.', '🗓️') ?></td></tr>
+            <?php else: foreach ($report['days'] as $d): ?>
+              <tr>
+                <td><?= $e(formatDate($d['d'], 'D j M Y')) ?></td>
+                <td class="num"><?= (int) $d['tickets'] ?></td>
+                <td class="num fw7"><?= (int) $d['pax'] ?></td>
+                <td class="num money"><?= $e(inr((float) $d['sale'])) ?></td>
+                <td class="num money"><?= $e(inr((float) $d['commission'])) ?></td>
+              </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+            <?php if ($report['days'] !== []): ?>
+            <tfoot><tr><td>Total</td><td class="num"><?= (int) $rt['tickets'] ?></td><td class="num"><?= (int) $rt['pax'] ?></td><td class="num money"><?= $e(inr((float) $rt['sale'])) ?></td><td class="num money"><?= $e(inr((float) $rt['commission'])) ?></td></tr></tfoot>
+            <?php endif; ?>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel" style="margin:0">
+        <h2><svg class="a-ic"><use href="#a-ticket"/></svg> Tickets <span class="muted" style="font-weight:500">· <?= count($report['tickets']) ?><?= $report['truncated'] ? '+ (first 2000)' : '' ?></span></h2>
+        <div class="tbl-scroll" style="max-height:520px;overflow:auto">
+          <table class="rp-tbl">
+            <thead><tr><th>PNR</th><th>Journey</th><th>Passenger</th><th>Seats</th><th class="num">जना</th><th class="num">Amount</th><th class="num">Commission</th><th>Status</th></tr></thead>
+            <tbody>
+            <?php if ($report['tickets'] === []): ?>
+              <tr><td colspan="8"><?= admin_empty('No tickets in this period', '', '🎫') ?></td></tr>
+            <?php else: foreach ($report['tickets'] as $t): ?>
+              <tr>
+                <td class="mono"><a href="<?= $e($base . '/admin/bookings.php?q=' . rawurlencode($t['pnr'])) ?>"><?= $e($t['pnr']) ?></a></td>
+                <td><?= $e($t['travel'] !== '' ? formatDate($t['travel'], 'j M') : '—') ?> <span class="muted"><?= $e($t['route']) ?></span></td>
+                <td><?= $e($t['passenger'] ?: '—') ?></td>
+                <td class="mono"><?= $e($t['seats'] ?: '—') ?></td>
+                <td class="num"><?= (int) $t['pax'] ?></td>
+                <td class="num money"><?= $e(inr((float) $t['amount'])) ?></td>
+                <td class="num money"><?= abs((float) $t['commission']) > 0.009 ? $e(inr((float) $t['commission'])) : '<span class="muted">—</span>' ?></td>
+                <td><?= admin_pill($t['status']) ?></td>
+              </tr>
+            <?php endforeach; endif; ?>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---- Commission & control ---- -->
+    <aside class="rp-ctl no-print">
+      <h3><svg class="a-ic"><use href="#a-percent"/></svg> Commission &amp; control</h3>
+
+      <div class="rp-box">
+        <b>Commission rate · कमिसन दर</b>
+        <div class="rp-rate"><span class="now"><?= $e($rate['label']) ?></span> <span class="muted" style="font-size:12px">(<?= $e($rate['sub']) ?>)</span></div>
+        <?php if ($canManage): ?>
+          <form method="post" id="rpRateForm">
+            <?= a360_form_head('report', 'rate_set', $agentId, $csrf, $k) ?>
+            <div class="rp-step">
+              <button class="st dn" type="button" data-step="-50" aria-label="Minus 50">−50</button>
+              <button class="st dn" type="button" data-step="-10" aria-label="Minus 10">−10</button>
+              <input type="number" name="rate_flat" id="rpRate" min="0" max="10000" step="1" value="<?= $rateNum ?>" aria-label="Rupees per passenger" required>
+              <button class="st up" type="button" data-step="10" aria-label="Plus 10">+10</button>
+              <button class="st up" type="button" data-step="50" aria-label="Plus 50">+50</button>
+            </div>
+            <div class="rp-row" style="margin-top:8px">
+              <button class="btn sm" type="submit" onclick="return confirm('Set this agent\'s commission to ₹' + document.getElementById('rpRate').value + ' per passenger from the next ticket?')">Save ₹ / passenger</button>
+              <?php if ($rate['mode'] !== 'tier'): ?>
+                <button class="btn ghost sm" type="submit" name="action" value="rate_reset" formnovalidate onclick="return confirm('Put this agent back on the company tier (<?= $e(inr($rate['tier'])) ?> / pax)?')">Use company tier (<?= $e(inr($rate['tier'])) ?>)</button>
+              <?php endif; ?>
+            </div>
+          </form>
+          <p class="hint">Applies from the <b>next ticket</b>. Tickets already sold keep the commission they earned — fix an old figure with “Add / deduct” below.</p>
+        <?php else: ?>
+          <p class="hint">Only a staff manager or super-admin can change the rate.</p>
+        <?php endif; ?>
+      </div>
+
+      <?php if ($showSettle): ?>
+      <div class="rp-box">
+        <b>Add / deduct commission · थप / घटाउ</b>
+        <form method="post">
+          <?= a360_form_head('report', 'comm_adjust', $agentId, $csrf, $k) ?>
+          <div class="rp-row">
+            <select name="direction" aria-label="Add or deduct"><option value="credit">＋ Add</option><option value="debit">− Deduct</option></select>
+            <input type="number" name="amount" min="1" step="1" placeholder="₹ amount" style="width:110px" required>
+          </div>
+          <div class="rp-row" style="margin-top:6px">
+            <input type="text" name="note" maxlength="255" placeholder="Reason (bonus, short cash, wrong rate…)" style="flex:1" required minlength="5">
+            <button class="btn sm" type="submit" onclick="return confirm('Record this commission change?')">Save</button>
+          </div>
+        </form>
+        <p class="hint">Commission due now <b><?= $e(inr($balances['commission'])) ?></b>. Every change is on the statement and the audit trail.</p>
+      </div>
+      <?php endif; ?>
+
+      <?php if ($canManage): ?>
+      <div class="rp-box">
+        <b>Agent code · एजेन्ट कोड</b>
+        <form method="post" class="rp-row">
+          <?= a360_form_head('report', 'code_set', $agentId, $csrf, $k) ?>
+          <span class="pill st-violet nodot mono"><?= $e($code ?: 'none') ?></span>
+          <input type="number" name="agent_code" min="<?= AgentWallet::AGENT_CODE_MIN ?>" max="<?= AgentWallet::AGENT_CODE_MAX ?>" step="1" value="<?= AgentWallet::agentCodeFor($agentId) ?? '' ?>" placeholder="number" style="width:100px">
+          <button class="btn sm" type="submit" onclick="return confirm('Change this agent\'s code? New tickets and the panel show the new code.')">Change</button>
+        </form>
+        <p class="hint">Number <?= AgentWallet::AGENT_CODE_MIN ?>–<?= AgentWallet::AGENT_CODE_MAX ?>, must be unused. Blank = remove the code.</p>
+      </div>
+
+      <div class="rp-box">
+        <b>Status · स्थिति</b>
+        <form method="post" class="rp-row">
+          <?= a360_form_head('report', 'toggle_active', $agentId, $csrf, $k) ?>
+          <?= admin_pill($isActive ? 'active' : 'inactive') ?>
+          <?php if ($agentId !== $selfId): ?>
+            <button class="btn sm <?= $isActive ? 'danger' : 'ok' ?>" type="submit" onclick="return confirm('<?= $isActive ? 'Disable this agent? They can no longer sign in or sell.' : 'Enable this agent again?' ?>')"><?= $isActive ? '⏸ Disable' : '▶ Enable' ?></button>
+          <?php endif; ?>
+        </form>
+      </div>
+
+      <div class="rp-box">
+        <details>
+          <summary style="cursor:pointer;font-weight:800;font-size:13px">✏️ Edit details · विवरण</summary>
+          <form method="post" class="rp-edit" style="margin-top:8px">
+            <?= a360_form_head('report', 'edit_basic', $agentId, $csrf, $k) ?>
+            <label class="muted" style="font-size:12px">Name<input name="full_name" maxlength="120" value="<?= $e($agent['full_name']) ?>" required></label>
+            <label class="muted" style="font-size:12px">Mobile<input name="phone" inputmode="tel" maxlength="20" value="<?= $e($agent['phone']) ?>" required></label>
+            <label class="muted" style="font-size:12px">WhatsApp<input name="whatsapp" inputmode="tel" maxlength="20" value="<?= $e($profile['whatsapp'] ?? '') ?>" placeholder="same as mobile"></label>
+            <label class="muted" style="font-size:12px">City / counter<input name="counter_name" maxlength="120" value="<?= $e($profile['counter_name'] ?? '') ?>"></label>
+            <div class="rp-row"><button class="btn sm" type="submit">Save details</button>
+              <a class="btn ghost sm" href="<?= $e($base . '/admin/agents.php') ?>">More fields on the register</a></div>
+          </form>
+        </details>
+      </div>
+      <?php endif; ?>
+    </aside>
+  </div>
+
+  <div id="rpImgModal" hidden role="dialog" aria-modal="true" aria-label="Statement image">
+    <div class="box">
+      <div class="bar">
+        <b style="font-size:15px">📷 Statement image</b>
+        <span class="muted" style="font-size:12px"><?= $e($repWin['label']) ?></span>
+        <span style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn wa sm" type="button" id="rpImgShare"><svg class="a-ic"><use href="#a-whatsapp"/></svg> Share</button>
+          <a class="btn sm" id="rpImgDl" download><svg class="a-ic"><use href="#a-download"/></svg> Download</a>
+          <button class="btn ghost sm" type="button" id="rpImgClose">Close</button>
+        </span>
+      </div>
+      <img id="rpImg" alt="Agent statement image">
+    </div>
+  </div>
+  <script type="application/json" id="rpImgData"><?= json_encode($imgData, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
+  <script>
+  (function () {
+    /* −50/−10/+10/+50 steppers on the rate box. */
+    var rate = document.getElementById('rpRate');
+    document.querySelectorAll('#rpRateForm [data-step]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        if (!rate) { return; }
+        var v = Math.max(0, Math.min(10000, (parseInt(rate.value, 10) || 0) + parseInt(b.getAttribute('data-step'), 10)));
+        rate.value = v;
+      });
+    });
+
+    /* ---- Image statement: drawn on a canvas in the browser ---- */
+    var D; try { D = JSON.parse(document.getElementById('rpImgData').textContent); } catch (e) { return; }
+    var btn = document.getElementById('rpImgBtn'), modal = document.getElementById('rpImgModal');
+    var img = document.getElementById('rpImg'), dl = document.getElementById('rpImgDl');
+    var lastBlob = null;
+    function inr(v) {
+      v = Math.round(Number(v) || 0); var neg = v < 0; v = Math.abs(v);
+      var s = String(v), last3 = s.slice(-3), rest = s.slice(0, -3);
+      if (rest) { last3 = ',' + last3; rest = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ','); }
+      return (neg ? '−' : '') + '₹' + rest + last3;
+    }
+    function fdate(iso) {
+      if (!iso) { return '—'; }
+      var p = iso.split('-'), m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return parseInt(p[2], 10) + ' ' + m[parseInt(p[1], 10) - 1];
+    }
+    function draw() {
+      var W = 1080, P = 48, F = '"Noto Sans Devanagari","Nirmala UI","Segoe UI",Arial,sans-serif';
+      var T = D.totals, days = D.days || [], buses = D.buses || [], tix = D.tickets || [];
+      var rowH = 40;
+      /* Generous height first; the unused tail is cut off at the end. */
+      var H = 700
+            + (buses.length ? 160 + (buses.length + 2) * rowH : 0)
+            + (days.length ? 160 + (days.length + 3) * rowH : 0)
+            + (tix.length ? 160 + (tix.length + 3) * rowH : 0)
+            + 200;
+      var c = document.createElement('canvas'); c.width = W; c.height = H;
+      var g = c.getContext('2d');
+      function txt(s, x, y, size, color, weight, align) {
+        g.font = (weight || 400) + ' ' + size + 'px ' + F; g.fillStyle = color || '#0f172a';
+        g.textAlign = align || 'left'; g.textBaseline = 'alphabetic'; g.fillText(String(s), x, y);
+      }
+      function fit(s, size, weight, maxW) {
+        s = String(s || ''); g.font = (weight || 400) + ' ' + size + 'px ' + F;
+        if (g.measureText(s).width <= maxW) { return s; }
+        while (s.length > 1 && g.measureText(s + '…').width > maxW) { s = s.slice(0, -1); }
+        return s + '…';
+      }
+      function rr(x, y, w, h, r, fill, stroke) {
+        g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
+        g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+        if (fill) { g.fillStyle = fill; g.fill(); } if (stroke) { g.strokeStyle = stroke; g.lineWidth = 2; g.stroke(); }
+      }
+      g.fillStyle = '#f4f6fb'; g.fillRect(0, 0, W, H);
+      // Header band
+      var grd = g.createLinearGradient(0, 0, W, 0); grd.addColorStop(0, '#0f2a4a'); grd.addColorStop(1, '#1e4f8a');
+      g.fillStyle = grd; g.fillRect(0, 0, W, 210);
+      txt(fit(D.company, 40, 800, W - 2 * P), P, 70, 40, '#ffffff', 800);
+      txt('AGENT STATEMENT · एजेन्ट विवरण', P, 112, 24, '#ffd27a', 700);
+      txt(fit(D.agent + (D.code ? '  ·  ' + D.code : ''), 34, 800, W - 2 * P), P, 165, 34, '#ffffff', 800);
+      if (D.counter) { txt(fit(D.counter, 20, 400, 360), W - P, 165, 20, '#c9d8ee', 400, 'right'); }
+      // Period strip
+      var y = 240;
+      rr(P, y, W - 2 * P, 64, 14, '#ffffff', '#dbe3ef');
+      txt('📅 ' + D.period, P + 22, y + 41, 24, '#0f172a', 800);
+      txt(D.basis + '  ·  rate ' + D.rate, W - P - 22, y + 41, 19, '#475569', 600, 'right');
+      // KPI boxes
+      y = 330;
+      var k = [
+        ['जना · Passengers', String(T.pax), '#0f2a4a'],
+        ['बिक्री · Sales', inr(T.sale), '#1d4ed8'],
+        ['कमिसन · Commission', inr(T.commission), '#047857']
+      ];
+      var bw = (W - 2 * P - 2 * 20) / 3;
+      k.forEach(function (it, i) {
+        var x = P + i * (bw + 20); rr(x, y, bw, 120, 16, '#ffffff', '#dbe3ef');
+        txt(it[0], x + 20, y + 38, 19, '#64748b', 700);
+        txt(fit(it[1], 40, 800, bw - 40), x + 20, y + 92, 40, it[2], 800);
+      });
+      y += 140;
+      // Sub totals row
+      rr(P, y, W - 2 * P, 120, 16, '#ffffff', '#dbe3ef');
+      var sub = [
+        ['Tickets', String(T.tickets) + (T.cancelled ? '  (' + T.cancelled + ' cancelled)' : '')],
+        ['Company keeps', inr(T.company)],
+        ['Commission due now', inr(D.balance.commission)],
+        ['Cash held now', inr(D.balance.cash)]
+      ];
+      var sw = (W - 2 * P) / 4;
+      sub.forEach(function (it, i) {
+        var x = P + i * sw + 20;
+        txt(it[0], x, y + 42, 17, '#64748b', 700);
+        txt(fit(it[1], 26, 800, sw - 30), x, y + 86, 26, '#0f172a', 800);
+      });
+      y += 150;
+      if (Math.abs(T.adjust) > 0.009 || T.payout > 0.009) {
+        txt((Math.abs(T.adjust) > 0.009 ? 'Corrections in period: ' + (T.adjust < 0 ? '' : '+') + inr(T.adjust) + '    ' : '') + (T.payout > 0.009 ? 'Paid out in period: ' + inr(T.payout) : ''), P, y - 6, 19, '#92400e', 700);
+        y += 20;
+      }
+      function table(title, cols, rows, foot) {
+        txt(title, P, y + 30, 26, '#0f2a4a', 800); y += 50;
+        rr(P, y, W - 2 * P, (rows.length + 1 + (foot ? 1 : 0)) * rowH + 8, 12, '#ffffff', '#dbe3ef');
+        var x0 = P + 18, yy = y + 30;
+        cols.forEach(function (cc) { txt(cc[0], cc[2] === 'right' ? x0 + cc[1] : x0 + cc[1], yy, 17, '#64748b', 800, cc[2] || 'left'); });
+        yy += rowH;
+        rows.forEach(function (r, ri) {
+          if (ri % 2 === 0) { g.fillStyle = '#f8fafc'; g.fillRect(P + 2, yy - 28, W - 2 * P - 4, rowH); }
+          cols.forEach(function (cc, ci) { txt(fit(r[ci], 19, ci === 0 ? 700 : 500, cc[3] || 300), x0 + cc[1], yy, 19, r.color && ci === cols.length - 1 ? r.color : '#0f172a', ci === 0 ? 700 : 500, cc[2] || 'left'); });
+          yy += rowH;
+        });
+        if (foot) {
+          g.fillStyle = '#e8eef8'; g.fillRect(P + 2, yy - 28, W - 2 * P - 4, rowH);
+          cols.forEach(function (cc, ci) { txt(foot[ci] || '', x0 + cc[1], yy, 19, '#0f172a', 800, cc[2] || 'left'); });
+          yy += rowH;
+        }
+        y = yy + 22;
+      }
+      var CW = W - 2 * P - 36;
+      if (buses.length) {
+        table('🚌 Bus by bus', [['Date', 0, 'left', 100], ['Route', 100, 'left', 330], ['Bus', 440, 'left', 170], ['जना', 690, 'right', 60], ['Sales', 830, 'right', 130], ['Commission', CW, 'right', 110]],
+          buses.map(function (b) { return [fdate(b.d), b.route + (b.slot > 1 ? ' (Bus ' + b.slot + ')' : ''), b.bus || '—', String(b.pax), inr(b.sale), inr(b.commission)]; }), null);
+      }
+      if (days.length) {
+        table('🗓 Day by day', [['Date', 0, 'left', 200], ['Tickets', CW - 480, 'right', 100], ['जना', CW - 330, 'right', 80], ['Sales', CW - 160, 'right', 150], ['Commission', CW, 'right', 150]],
+          days.map(function (d) { return [fdate(d.d), String(d.tickets), String(d.pax), inr(d.sale), inr(d.commission)]; }),
+          ['Total', String(T.tickets), String(T.pax), inr(T.sale), inr(T.commission)]);
+      }
+      if (tix.length) {
+        var rows = tix.map(function (t) {
+          var r = [t.pnr, fdate(t.d), t.p || '—', t.s || '—', inr(t.a), t.st === 'confirmed' || t.st === 'completed' ? inr(t.c) : t.st];
+          if (!(t.st === 'confirmed' || t.st === 'completed')) { r.color = '#b91c1c'; }
+          return r;
+        });
+        if (D.ticketsAll > tix.length) { rows.push(['+ ' + (D.ticketsAll - tix.length) + ' more', '', '', '', '', '']); }
+        table('🎫 Tickets', [['PNR', 0, 'left', 200], ['Date', 205, 'left', 90], ['Passenger', 300, 'left', 250], ['Seats', 560, 'left', 120], ['Amount', CW - 150, 'right', 120], ['Comm.', CW, 'right', 120]], rows, null);
+      }
+      // Cut to the content, then the footer band on the final canvas.
+      var bodyH = Math.min(H, y + 10), outH = bodyH + 70;
+      var c2 = document.createElement('canvas'); c2.width = W; c2.height = outH; var g2 = c2.getContext('2d');
+      g2.drawImage(c, 0, 0, W, bodyH, 0, 0, W, bodyH);
+      c = c2; g = g2;
+      g.fillStyle = '#0f2a4a'; g.fillRect(0, outH - 70, W, 70);
+      txt('Generated ' + D.made + (D.phone ? '  ·  ' + D.phone : ''), P, outH - 28, 18, '#c9d8ee', 500);
+      txt('Net: ' + (D.balance.net > 0.009 ? 'agent owes ' + inr(D.balance.net) : (D.balance.net < -0.009 ? 'company owes ' + inr(-D.balance.net) : 'settled')), W - P, outH - 28, 18, '#ffd27a', 700, 'right');
+      return c;
+    }
+    function open() {
+      var go = function () {
+        var c = draw();
+        c.toBlob(function (blob) {
+          lastBlob = blob;
+          var url = URL.createObjectURL(blob);
+          img.src = url; dl.href = url; dl.setAttribute('download', D.file);
+          modal.hidden = false;
+        }, 'image/png');
+      };
+      if (document.fonts && document.fonts.load) {
+        Promise.all([document.fonts.load('800 20px "Noto Sans Devanagari"'), document.fonts.load('400 20px "Noto Sans Devanagari"')]).then(go, go);
+      } else { go(); }
+    }
+    if (btn) { btn.addEventListener('click', open); }
+    document.getElementById('rpImgClose').addEventListener('click', function () { modal.hidden = true; });
+    modal.addEventListener('click', function (ev) { if (ev.target === modal) { modal.hidden = true; } });
+    document.getElementById('rpImgShare').addEventListener('click', function () {
+      if (!lastBlob) { return; }
+      var file = new File([lastBlob], D.file, { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: 'Agent statement', text: D.agent + ' · ' + D.period }).catch(function () {});
+      } else {
+        dl.click();
+        alert('Image downloaded — attach it in WhatsApp. (Direct share works on phones.)');
+      }
+    });
+  })();
+  </script>
+</section>
 
 <!-- ============ OVERVIEW ============ -->
 <section class="a360-tab" data-tab="overview"<?= $tab === 'overview' ? '' : ' hidden' ?>>
@@ -1389,7 +1983,7 @@ details.a360-rows>summary{cursor:pointer;font-size:12.5px;color:var(--blue);font
   function show(key, push) {
     var found = false;
     secs.forEach(function (s) { if (s.getAttribute('data-tab') === key) { found = true; } });
-    if (!found) { key = 'overview'; }
+    if (!found) { key = 'report'; }
     secs.forEach(function (s) { s.hidden = s.getAttribute('data-tab') !== key; });
     links.forEach(function (a) { a.classList.toggle('on', a.getAttribute('data-tab') === key); });
     if (push && window.history && history.replaceState) {

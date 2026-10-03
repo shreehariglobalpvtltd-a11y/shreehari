@@ -70,6 +70,35 @@
   var PANEL = STAFF.panelUrl || '/admin/';
   var WHO = STAFF.code ? (STAFF.code + ' · ' + (STAFF.name || '')) : (STAFF.name || 'staff');
   var CAN = !!STAFF.canSell;
+  /* Nepal-side desk (3 Oct 2026, owner: "Nepalgunj ko lagi fully optimised
+     counter … Gujarat ko just opposite"). The desk on the clerk's profile
+     decides the side (Staff → desk NPJ / Rupaidiha …); the bar's switch
+     overrides it for this browser. A Nepal desk opens on the RETURN run
+     (Nepal → India), wears a red bar so nobody sells the wrong way, and
+     every total shows the NPR to collect (fares stay in INR). */
+  var DESK = STAFF.desk || {};
+  var KEY_SIDE = 'shg_ctr_side_' + (STAFF.id || 0);
+  var SIDE = (lsGet(KEY_SIDE) === 'nepal' || lsGet(KEY_SIDE) === 'india') ? lsGet(KEY_SIDE) : (DESK.side === 'nepal' ? 'nepal' : 'india');
+  var NPR_RATE = Number(STAFF.nprRate) > 0 ? Number(STAFF.nprRate) : 0;
+  function nprText(inrAmt) {
+    if (!NPR_RATE || !(Number(inrAmt) > 0)) return '';
+    return 'NPR ' + Math.round(Number(inrAmt) * NPR_RATE).toLocaleString('en-IN');
+  }
+  /* Point the home search at this desk's side: Nepal → India ('back') for a
+     Nepal desk, India → Nepal ('go') otherwise. Waits for the router's
+     direction controls; never overrides a deep link (from/to in the URL)
+     or a remembered "same bus" sale. */
+  function applySide(force) {
+    var p = new URLSearchParams(location.search);
+    if (!force && (p.get('from') || p.get('to'))) return;
+    var tries = 0;
+    var timer = setInterval(function () {
+      tries++;
+      if (typeof setSearchDir !== 'function' || !$q('#dirBack')) { if (tries > 40) clearInterval(timer); return; }
+      clearInterval(timer);
+      try { setSearchDir(SIDE === 'nepal' ? 'back' : 'go'); } catch (e) {}
+    }, 250);
+  }
 
   /* Bulk booking (5 Sep 2026): a selling staff session lifts the per-booking
      seat cap to the staff cap the boot payload carries (default 20). Runs
@@ -94,9 +123,16 @@
     if ($q('#counterBar')) return;
     var el = document.createElement('div');
     el.id = 'counterBar';
-    el.innerHTML = '<span class="cb-who">🧾 <b>Counter mode</b> · ' + (CAN ? 'selling as <b>' + esc(WHO) + '</b>' : esc(WHO) + ' · <i>view only — your role cannot sell</i>')
+    var nep = SIDE === 'nepal';
+    el.className = nep ? 'cb-nepal' : 'cb-india';
+    el.innerHTML = '<span class="cb-who">' + (nep ? '🇳🇵' : '🧾') + ' <b>' + (nep ? 'Nepal counter' : 'Counter mode') + '</b>'
+      + (DESK.name ? ' <small style="opacity:.8">· ' + esc(DESK.name) + '</small>' : '')
+      + ' · ' + (CAN ? 'selling as <b>' + esc(WHO) + '</b>' : esc(WHO) + ' · <i>view only — your role cannot sell</i>')
+      + ' <span class="cb-dir" title="Default direction for this desk">' + (nep ? '🇳🇵 Nepal → India 🇮🇳' : '🇮🇳 India → Nepal 🇳🇵') + '</span>'
+      + (nep && NPR_RATE ? ' <small style="opacity:.8">· ₹1 = NPR ' + esc(String(NPR_RATE)) + '</small>' : '')
       + (CTR_VER ? ' <small style="opacity:.65">· v' + esc(CTR_VER) + '</small>' : '') + '</span>'
       + '<span class="cb-links">'
+      + (CAN ? '<a href="#" id="cbSide" title="Switch this browser to the other side of the border">' + (nep ? '⇄ India side' : '⇄ Nepal side') + '</a>' : '')
       /* ⚡ Quick Ticket (6 Sep 2026): the desk's fast lane — name + mobile
          only, the server picks the bus / pickup / seat / fare, confirms and
          sends the PNG on WhatsApp. Lives in the panel; linked from here so a
@@ -107,6 +143,9 @@
     var st = document.createElement('style');
     st.textContent = '#counterBar{position:sticky;top:0;z-index:1200;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;justify-content:space-between;padding:8px 14px;background:#0C3B2A;color:#fff;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,.25)}'
       + '#counterBar a{color:#fff;font-weight:700;text-decoration:none;padding:6px 10px;border-radius:8px;background:rgba(255,255,255,.14);min-height:36px;display:inline-flex;align-items:center}'
+      + '#counterBar.cb-nepal{background:linear-gradient(90deg,#8E1B2E,#1F3A93)}'
+      + '#counterBar .cb-dir{display:inline-block;margin-left:4px;padding:2px 9px;border-radius:999px;background:rgba(255,255,255,.18);font-weight:800;white-space:nowrap}'
+      + '.ctr-npr{display:inline-block;padding:2px 8px;border-radius:8px;background:#1F3A93;color:#fff;font-weight:800}'
       + '#counterBar .cb-links{display:flex;gap:8px;flex-wrap:wrap}'
       + '#ctrPanel{border:2px solid #178A50;border-radius:14px;padding:14px;margin:12px 0;background:#f3fbf6}'
       + ':root[data-theme="dark"] #ctrPanel{background:#0f2a1c}'
@@ -133,6 +172,17 @@
       + '.ctr-q-row input{flex:1 1 130px;min-width:0;font-size:16px;padding:10px 12px;border:1px solid var(--line,#dde3ee);border-radius:9px;background:var(--card,#fff);color:inherit}'
       + '#ctrSeatConfirm{flex:1 1 100%;min-height:48px}';
     document.head.appendChild(st);
+    var sw = $q('#cbSide');
+    if (sw) sw.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      SIDE = SIDE === 'nepal' ? 'india' : 'nepal';
+      lsSet(KEY_SIDE, SIDE === (DESK.side === 'nepal' ? 'nepal' : 'india') ? '' : SIDE);   // back to the desk default = forget the override
+      CTR.last = null; try { sessionStorage.removeItem(KEY_LAST); } catch (e) {}
+      el.remove(); bar();
+      try { location.hash = '#/'; } catch (e) {}
+      applySide(true);
+      try { ctrSummary(); } catch (e) {}
+    });
     $q('#cbSellAnother').addEventListener('click', function () {
       try { if (typeof releaseMyLocks === 'function') releaseMyLocks(); } catch (e) {}
       try { Flow.route = null; Flow.seats = []; Flow.legs = []; Flow.legIndex = 0; Flow.draftId = ''; Flow.paxIndividual = false; } catch (e) {}
@@ -551,10 +601,13 @@
       var rate = (selAgent && selAgent.type === 'joint') ? Number(STAFF.commJoint || 400) : Number(STAFF.commDirect || 200);
       commLine = '<span>·</span><small style="color:var(--good)">💰 ' + esc(agSel.value) + ' कमिशन ' + fmt(rate) + ' × ' + seats + ' = ' + fmt(rate * seats) + '</small>';
     }
+    var due = off > 0 ? Math.max(1, total - off) : total;
+    var npr = SIDE === 'nepal' ? nprText(due) : '';
     el.innerHTML = '<b>' + seats + ' seat' + (seats === 1 ? '' : 's') + '</b><span>·</span>' + fmt(total)
       + '<span>·</span>' + esc(payLbl)
-      + (off > 0 ? '<span>·</span>discount − ' + fmt(off) + '<span>·</span><b>≈ ' + fmt(Math.max(1, total - off)) + ' to collect</b>'
+      + (off > 0 ? '<span>·</span>discount − ' + fmt(off) + '<span>·</span><b>≈ ' + fmt(due) + ' to collect</b>'
                  : '<span>·</span><b>' + fmt(total) + ' to collect</b>')
+      + (npr ? '<span>·</span><span class="ctr-npr" title="Fare is in INR; NPR at the rate in Admin → Settings">≈ ' + esc(npr) + '</span>' : '')
       + commLine;
   }
 
@@ -817,7 +870,7 @@
     if (!form || !fs || !ts || !di) return false;
     var L = CTR.last;
     if (L && L.from && L.to && L.date) setSearchCard(L);
-    if (!fs.value || !ts.value || !di.value || fs.value === ts.value) return false;   // nothing to re-run: home it is
+    if (!fs.value || !ts.value || !di.value || fs.value === ts.value) { applySide(true); return false; }   // nothing to re-run: home it is, on this desk's side
     try {
       var ri = $q('#retInput');
       if (Flow.tripType === 'round' && !(ri && ri.value) && typeof setTripType === 'function') setTripType('one');
@@ -886,6 +939,7 @@
     try { bar(); } catch (e) {}
     try { wrap(); } catch (e) {}
     try { prefill(); } catch (e) {}
+    try { if (CAN && !(CTR.last && CTR.last.from)) applySide(false); } catch (e) {}
     try { decorateSeats(); } catch (e) {}   // the seat view's summary card is static markup — once is enough
     // Already on the checkout / ticket screen when this ran late? Decorate now.
     try { if (location.hash === '#/checkout') decorateCheckout(); } catch (e) {}

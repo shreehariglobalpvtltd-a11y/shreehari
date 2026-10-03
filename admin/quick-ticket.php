@@ -62,6 +62,12 @@ $deskLabel = $deskRow === null ? '' : Settings::counterLabel(
     (string) ($deskRow['counter_code'] ?? ''),
     (string) ($deskRow['counter_name'] ?? '')
 );
+/* A Nepal-side desk (3 Oct 2026) starts on "Return" (Nepal -> India)
+   instead of Auto; the clerk can still tap Going / Auto. */
+$deskNepal = $deskRow !== null && Settings::isNepalDesk(
+    (string) ($deskRow['counter_code'] ?? ''),
+    (string) ($deskRow['counter_name'] ?? '')
+);
 $waDriver = Settings::getString('whatsapp_driver', 'click_to_chat');
 $waReady  = $waDriver === 'twilio'
     ? (Settings::getString('twilio_account_sid', '') !== ''
@@ -426,9 +432,9 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
         <summary>⚙️ Options · <span id="qtOptSum">auto</span></summary>
         <div class="qt-row"><span class="qt-k">Direction</span>
           <div class="chips" id="qtDir">
-            <button type="button" class="on" data-v="">Auto</button>
+            <button type="button"<?= $deskNepal ? '' : ' class="on"' ?> data-v="">Auto</button>
             <button type="button" data-v="toNepal">🇮🇳→🇳🇵 Going</button>
-            <button type="button" data-v="toIndia">🇳🇵→🇮🇳 Return</button>
+            <button type="button"<?= $deskNepal ? ' class="on"' : '' ?> data-v="toIndia">🇳🇵→🇮🇳 Return</button>
           </div></div>
         <div class="qt-row"><span class="qt-k">Date</span>
           <div class="chips" id="qtDate">
@@ -632,7 +638,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
   }
   function seatLabelJoin(seats, coach, mode){ return (seats||[]).map(function(s){return seatLabel(s,coach,mode);}).join(', '); }
 
-  var st = { direction: '', date: '', boarding: '', seats: 1, gender: '', pay: 'cash', cc: 'IN', prefer: [], preferPhone: '' };
+  var st = { direction: <?= $deskNepal ? "'toIndia'" : "''" ?>, date: '', boarding: '', seats: 1, gender: '', pay: 'cash', cc: 'IN', prefer: [], preferPhone: '' };
   var lastBot = null;   // the last QuickBot answer (for the "same as last time" tap)
   try {
     st.boarding = localStorage.getItem('shg_qt_boarding') || '';

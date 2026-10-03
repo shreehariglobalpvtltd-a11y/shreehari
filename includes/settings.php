@@ -520,6 +520,51 @@ final class Settings
     }
 
     /**
+     * Desks on the NEPAL side of the border (3 Oct 2026, owner: "Nepalgunj
+     * ko lagi counter … ticket Nepal bata pathauda Nepal to India, Gujarat
+     * ko just opposite"). A clerk at one of these sells the RETURN run by
+     * default: counter mode opens on Nepal → India, QuickBot pre-picks
+     * "Return", and the desk sees the NPR to collect beside every rupee
+     * total. Fares stay in INR everywhere — nothing here touches money.
+     *
+     * Setting `counter_nepal_desks` = comma list of desk codes; the default
+     * covers the Nepal desks the counter_locations seed ships with.
+     *
+     * @return list<string>
+     */
+    public static function nepalDeskCodes(): array
+    {
+        $raw = trim(self::getString('counter_nepal_desks', ''));
+        if ($raw === '') {
+            $raw = 'NPJ,NPJD,RPD,KHL';   // a blank box means "the default", never "no Nepal desks"
+        }
+        $out = [];
+        foreach (preg_split('/[\s,;|]+/', mb_strtoupper($raw)) ?: [] as $c) {
+            $c = trim($c);
+            if ($c !== '' && !in_array($c, $out, true)) {
+                $out[] = mb_substr($c, 0, 16);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Is this desk on the Nepal side? By code first (the desk picker on
+     * Staff), else by a free-typed counter name that names a Nepal town —
+     * an agent whose "City / counter" says "Nepalgunj" is a Nepal desk too.
+     */
+    public static function isNepalDesk(string $code, string $name = ''): bool
+    {
+        $code = mb_strtoupper(trim($code));
+        if ($code !== '') {
+            return in_array($code, self::nepalDeskCodes(), true);
+        }
+
+        return $name !== '' && preg_match('/nepalg[au]nj|rupaidiha|kohalpur|khajura|\bbanke\b|नेपालगञ्ज|नेपालगंज|रुपैडिहा/iu', $name) === 1;
+    }
+
+    /**
      * Drop the in-memory cache — used by long-running cron scripts.
      */
     public static function flush(): void

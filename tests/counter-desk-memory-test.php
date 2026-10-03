@@ -57,7 +57,7 @@ check('"Sell another" (#ctrSellAnother)', has($js, 'id="ctrSellAnother"'));
 check('Same date leaves the board up: autoPick only when the same bus is wanted', preg_match('/function sameBus\(pick\)/', $js) === 1 && has($js, 'if (pick) autoPick(L.sid || 0, \'\', L.rid || \'\');'));
 check('Same bus / Same date never let the board auto-enter a single coach', has($js, 'Flow.autoSkip = false;'));
 check('Sell another re-runs the search through the form\'s own submit', has($js, 'function sellAnother()') && has($js, "form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))"));
-check('Sell another falls back to home only when from/to/date are not set', has($js, "if (!fs.value || !ts.value || !di.value || fs.value === ts.value) return false;"));
+check('Sell another falls back to home only when from/to/date are not set', has($js, "if (!fs.value || !ts.value || !di.value || fs.value === ts.value) { applySide(true); return false; }"));
 check('last sale persisted per tab in sessionStorage (shg:ctr:last)', has($js, "KEY_LAST = 'shg:ctr:last'") && has($js, 'sessionStorage.setItem(KEY_LAST') && has($js, 'sessionStorage.getItem(KEY_LAST'));
 check('… read back at start, so a reload keeps the buttons', preg_match('/function start\(\) \{.*?loadLast\(\);.*?bar\(\);/s', $js) === 1);
 check('… seeded from the deep link (from/to/date/sid) too', has($js, "CTR.last = { from: fs.value, to: ts.value, date: di.value, sid: wantSid, rid: '' }; saveLast();"));

@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v165.167';   // 3 Oct 2026: customer 360 New booking fills the desk quick line; ASSET_VER realigned with the template (was 20261002b vs 20261003b)
+var VERSION = 'shg-v165.168';   // 3 Oct 2026: Nepal-side counter desk (Nepal -> India default, NPR line) in 14-counter.js
 var SHELL_CACHE = 'shg-shell-' + VERSION;
 /* How long a returning visitor waits for a fresh document before the
    cached app shell opens instead (see the navigate handler). */
@@ -43,7 +43,7 @@ var MAX_TICKETS = 10;
    never go stale: a new build changes the URL and the old cache is dropped
    with the old VERSION. This is what makes a re-open feel instant — the
    ~1 MB of app code is read from disk instead of the network. */
-var ASSET_VER = '20261003c';
+var ASSET_VER = '20261003d';
 var PRECACHE = [
   '/assets/img/logo.png?v=' + ASSET_VER,
   '/assets/css/app.css?v=' + ASSET_VER,

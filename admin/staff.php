@@ -895,7 +895,7 @@ if ($pageIds !== []) {
                     $seen = $seen || $selected;
                 ?>
                   <option value="<?= Security::e($cc . '|' . $cn) ?>"<?= $selected ? ' selected' : '' ?>>
-                    <?= Security::e($cc . ' · ' . $cn) ?>
+                    <?= Settings::isNepalDesk($cc) ? '🇳🇵 ' : '' ?><?= Security::e($cc . ' · ' . $cn) ?><?= Settings::isNepalDesk($cc) ? ' (Nepal → India)' : '' ?>
                   </option>
                 <?php endforeach; ?>
                 <?php /* A desk set before the list carried it must not be

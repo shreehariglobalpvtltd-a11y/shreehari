@@ -1166,8 +1166,16 @@ final class Ticket
         $bSz   = 30;
         foreach ([30, 27, 24, 21] as $try) { $bSz = $try; if (self::gdWidth($try, $brand) <= $W - 60 - $bx) { break; } }
         self::gdText($im, $bSz, $bx, 122, $white, $clampTo($bSz, $brand, $W - 60 - $bx), true);
+        /* Which way this ticket runs (3 Oct 2026, owner: "Nepal bata pathauda
+           ticket ma ni Nepal to India"): the return run says so in the band
+           instead of the fixed "Gujarat <-> Rupaidiha" both runs printed. */
+        if (!class_exists('Boarding')) {
+            require_once __DIR__ . '/boarding.php';
+        }
+        $toIndia  = Boarding::routeDirection(['from_city' => (string) ($booking['from_city'] ?? ''), 'to_city' => (string) ($booking['to_city'] ?? '')]) === 'toIndia';
+        $corridor = $toIndia ? 'Nepal -> India  ·  Rupaidiha -> Gujarat' : 'India -> Nepal  ·  Gujarat -> Rupaidiha';
         self::gdText($im, 19, $bx, 162, $gold,
-            $clampTo(19, 'E-TICKET  ·  INDIA-NEPAL BUS SERVICE', $chipX1 - 24 - $bx), false);
+            $clampTo(19, $toIndia ? 'E-TICKET  ·  NEPAL -> INDIA' : 'E-TICKET  ·  INDIA -> NEPAL', $chipX1 - 24 - $bx), false);
         /* The desk this ticket was cut at, directly under the company name.
            A Nepalgunj walk-in should be able to see which window sold it
            without reading the small print. No desk (an online sale, or a
@@ -1181,10 +1189,13 @@ final class Ticket
            is set in 60px letters in the middle of the ticket (STV -> RPD)
            and the website is printed in full beside the QR. With no desk
            the line is exactly what it always was. */
-        $brandSub = 'Gujarat <-> Rupaidiha  ·  ' . self::latin($co['web']);
+        $brandSub = $corridor . '  ·  ' . self::latin($co['web']);
+        if (self::gdWidth(16, $brandSub) > $chipX1 - 24 - $bx) {
+            $brandSub = $corridor;
+        }
         if ($deskLine !== '') {
             foreach ([
-                $deskLine . '  ·  Gujarat <-> Rupaidiha',
+                $deskLine . '  ·  ' . $corridor,
                 $deskLine . '  ·  ' . self::latin($co['web']),
                 $deskLine,
             ] as $try) {
@@ -1426,6 +1437,15 @@ final class Ticket
         self::gdText($im, 17, 88, 1192 + $grow, $gold, 'जम्मा भाडा  ·  TOTAL FARE', false);
         $amt = $currency . ' ' . number_format((float) ($booking['total_amount'] ?? 0), 2);
         self::gdText($im, 36, 88, 1236 + $grow, $white, $amt, true);
+        /* A ticket cut at a Nepal-side desk (3 Oct 2026) also says what the
+           passenger paid in NPR — the fare stays INR; this is the same
+           "≈ NPR" conversion aid the desk saw, at Admin → Settings' rate. */
+        $nprRate = Settings::getFloat('npr_per_inr', defined('NPR_PER_INR') ? (float) NPR_PER_INR : 1.6);
+        if ($currency === 'INR' && $nprRate > 0 && ($issued['kind'] ?? '') !== 'online'
+            && Settings::isNepalDesk((string) ($booking['agent_counter_code'] ?? ''), (string) ($booking['agent_counter'] ?? ''))) {
+            $nprTxt = '(NPR ' . number_format(round((float) ($booking['total_amount'] ?? 0) * $nprRate)) . ')';   // the font has no U+2248
+            self::gdText($im, 20, 88 + self::gdWidth(36, $amt) + 22, 1230 + $grow, $gold, $nprTxt, true);
+        }
         $fps = (float) ($booking['fare_per_seat'] ?? 0);
         /* Never fewer than the list above it names: a private cabin holds more
            berths than passengers, and a booking whose seat rows lag its passenger
