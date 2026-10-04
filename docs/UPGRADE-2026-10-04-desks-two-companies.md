@@ -12,6 +12,8 @@ Branch `desks-20261004`. **LIVE** on 4 Oct 2026 (owner: "deploy ni gardinu"):
 
 | release-20261004-d6 | 13:38 | **Admin → Settings → Company details** (both companies, Nepal logo upload, Nepal eSewa / bank; blank = India) and **Agents & counters → My desk** (a counter edits its own desk's phone / hours / address / map). Edits redraw cached tickets. Stamp 20261004h / shg-v173. |
 
+| release-20261004-d7 | 14:33 | Desk isolation wired (switch on Counters & collection, still OFF): a counter sees only its desk's register / payments / passengers. Accounting: read-only **By company** panel. Home: reviews marked public on Admin → Ratings show above "More about us" (none yet → hidden). Stamp 20261004i / shg-v174. |
+
 Live already carried `nepal_company` = "Shree Hari Global Pvt Ltd Nepal" and `nepal_office` = "Puspalal Chowk, Nepalgunj"
 (set 26 Sep), so Nepal-desk tickets print that letterhead since d1. Left as is; the office edits it on Company details.
 
