@@ -237,7 +237,7 @@ final class RoutePages
 
         return '<section class="card corridor" data-corr><h2>' . $e($m['t']) . '</h2>'
             . '<div class="corr-art"><svg viewBox="36 145 590 315" role="img" aria-label="' . $e($m['aria']) . '">'
-            . '<image data-href="/assets/img/anim/shg-map-bg.svg?v=20261004j" x="0" y="0" width="960" height="720"/>'
+            . '<image data-href="/assets/img/anim/shg-map-bg.svg?v=20261004p" x="0" y="0" width="960" height="720"/>'
             . '<path class="c-glow" d="' . $path . '"/><path class="c-track" d="' . $path . '"/>'
             . '<g aria-hidden="true">' . $dots . $pulse . $stops
             . '<text class="c-cty" x="340" y="445">' . $e($m['in']) . '</text><text class="c-cty" x="495" y="176">' . $e($m['np']) . '</text>'
