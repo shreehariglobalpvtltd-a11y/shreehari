@@ -8,6 +8,18 @@ Branch `desks-20261004`. **LIVE** on 4 Oct 2026 (owner: "deploy ni gardinu"):
 | release-20261004-d2 | 13:01 | Migration tolerates the OLDER live `counter_locations` table (26 Sep build had left it without entity / lang / map_url / hours). |
 | release-20261004-d3 | 13:03 | Live had `payments.local_*` + `counter_shifts.counter_code` already, so the grouped ALTERs skipped `payments.entity` / `counter_shifts.entity`; every stamp now asks `CounterDesk::hasColumn()` first and the migration adds each column alone. No counter sale or error happened between d1 and d3. |
 | release-20261004-d4 | 13:06 | Design: route pages + travel-info on ds.css tokens, route corridor scene on every route page. |
+| release-20261004-d5 | 13:23 | Speed: no entrance fade on the first view + heading/subtitle in the visitor's language at first paint (LCP was the late i18n swap). Campaign deep links `?src=&dir=&town=&date=` + `landing` beacon. Stamp 20261004g / shg-v172. |
+
+**Speed, measured on live** (headless Chrome, 375 px, 1.6 Mbps / 150 ms RTT, 4x CPU): LCP was the booking
+heading at 6.2–7.2 s (it faded in from opacity 0, so Chrome only counted the Nepali swap after every deferred
+script). After d5 the heading paints in Nepali at first paint; LCP is now the note under the search button at
+~4.7–5.8 s. What is left is bandwidth: 20 deferred scripts (475 KB) download beside the page. Next step: load
+only the active language from 04-i18n.js (~205 KB raw, all languages) and lazy-load 13-admin-routes.js /
+11-pdf-ticket.js on the customer home.
+
+**Campaign links:** `https://www.shreehariglobal.in/?src=fb-surat&dir=back&town=chiloda&date=2026-10-20`
+(`dir` = go | back, `town` = any part of a stop name, `date` = YYYY-MM-DD, today or later). Not `?ref=` — that is
+the agent code.
 
 All three migrations are applied on live. Backups: `/root/backups/pre-deploy-release-20261004-d{1..4}-*`.
 Also done on the VPS: the `github-actions-deploy` SSH key was removed from root's authorized_keys
