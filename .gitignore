@@ -30,6 +30,3 @@ output/
 *.bak
 *.bak.*
 .env
-
-# SHARI NAV map data lives on the server (/srv/shg-nav), never in git
-/navdata/
