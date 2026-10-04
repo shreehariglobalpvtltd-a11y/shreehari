@@ -160,6 +160,12 @@ if ($staffRow !== null) {
             'entity'   => CounterDesk::entity($deskCode),
             'lang'     => CounterDesk::lang($deskCode),
             'from'     => CounterDesk::defaultFrom($deskCode),
+            // The account this desk's customer pays into (Company details page).
+            'pay'      => (static function () use ($deskCode): array {
+                $co = Settings::companyFor($deskCode, null);
+                return ['upi' => (string) $co['payUpi'], 'esewa' => (string) $co['payEsewa'],
+                        'esewaName' => (string) $co['payEsewaName'], 'bank' => (string) $co['payBank']];
+            })(),
         ],
         'nprRate'        => Settings::getFloat('npr_per_inr', defined('NPR_PER_INR') ? (float) NPR_PER_INR : 1.6),
     ];

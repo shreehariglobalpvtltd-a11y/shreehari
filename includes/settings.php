@@ -294,6 +294,12 @@ final class Settings
      * page for every role that can open Settings) and the audit mask missed
      * smtp_pass ("pass", not "password").
      */
+    /** Company or desk details changed: cached tickets redraw on their next open. */
+    public static function touchTicketIdentity(): void
+    {
+        self::set('ticket_identity_changed_at', (string) time(), 'int', 'company');
+    }
+
     public static function isSecretKey(string $key): bool
     {
         return preg_match('/(token|secret|password|_pass$|api_?key|_private$|private_key)/i', $key) === 1;
@@ -542,6 +548,18 @@ final class Settings
                 'tz'        => 'NPT',
             ]);
         }
+
+        /* Where the customer pays (4 Oct 2026). The Nepal company's own eSewa /
+           bank once the office has typed them on Admin -> Company details;
+           until then the India company's account, exactly as before. */
+        $npEsewa = $g('nepal_esewa_id');
+        $npBank  = $g('nepal_bank');
+        $useNp   = $sale === 'NP';
+        $out['payUpi']       = $g('upi_id');
+        $out['payEsewa']     = $useNp && $npEsewa !== '' ? $npEsewa : $g('esewa_id');
+        $out['payEsewaName'] = $useNp && $npEsewa !== '' ? $g('nepal_esewa_name') : '';
+        $out['payBank']      = $useNp && $npBank !== '' ? $npBank : '';
+        $out['payOwnNepal']  = $useNp && ($npEsewa !== '' || $npBank !== '');
 
         $out['otherHelp'] = $out['entity'] === 'NP'
             ? ['label' => 'India', 'phone' => $india['phone']]

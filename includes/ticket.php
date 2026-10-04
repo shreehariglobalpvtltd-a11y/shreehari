@@ -678,6 +678,17 @@ final class Ticket
             . (($co['tz'] ?? 'IST') === 'NPT' ? ' (' . date('g:i A', $ts + 15 * 60) . ' NPT)' : '');
     }
 
+    /**
+     * A cached ticket file older than this redraws once: the later of the
+     * layout stamp and the last time the office edited the company details
+     * (Admin -> Company details / a desk's contact), so a corrected address or
+     * a new logo reaches tickets that were already drawn (4 Oct 2026).
+     */
+    private static function staleBefore(string $layoutStamp): int
+    {
+        return max((int) strtotime($layoutStamp), Settings::getInt('ticket_identity_changed_at', 0));
+    }
+
     public static function logoFile(string $prefer = ''): ?string
     {
         foreach ([$prefer, Settings::getString('company_logo', ''), 'assets/img/logo.png'] as $cand) {
@@ -926,7 +937,7 @@ final class Ticket
         /* A PDF rendered before the layout last changed is stale — mirrors the
            PNG staleness check so a seat-label change re-renders each ticket ONCE
            on its next open rather than serving the pre-change document forever. */
-        $stale = is_file($path) && (int) @filemtime($path) < (int) strtotime(self::PDF_LAYOUT_CHANGED);
+        $stale = is_file($path) && (int) @filemtime($path) < self::staleBefore(self::PDF_LAYOUT_CHANGED);
         if (!$force && !$stale && is_file($path) && !empty($ticket['pdf_path'])) {
             return $path;
         }
@@ -955,7 +966,7 @@ final class Ticket
 
         // Same staleness rule as the ticket PDF: a cached invoice older than the
         // last layout change redraws once (it had no stamp before 4 Oct 2026).
-        $stale = is_file($path) && (int) @filemtime($path) < (int) strtotime(self::PDF_LAYOUT_CHANGED);
+        $stale = is_file($path) && (int) @filemtime($path) < self::staleBefore(self::PDF_LAYOUT_CHANGED);
         if (!$force && !$stale && is_file($path) && !empty($ticket['invoice_path'])) {
             return $path;
         }
@@ -1018,7 +1029,7 @@ final class Ticket
            line, fitted stop names). Compared by file mtime against a stamp
            bumped on every layout change, so an already-issued ticket
            re-renders ONCE on its next open instead of never. */
-        $stale = is_file($path) && (int) @filemtime($path) < (int) strtotime(self::PNG_LAYOUT_CHANGED);
+        $stale = is_file($path) && (int) @filemtime($path) < self::staleBefore(self::PNG_LAYOUT_CHANGED);
         if (!$force && !$stale && is_file($path) && !empty($ticket['png_path'])) {
             return $path;
         }

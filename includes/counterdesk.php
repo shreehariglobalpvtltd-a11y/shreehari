@@ -514,6 +514,7 @@ final class CounterDesk
 
         self::flush();
         self::syncSettingsMirror();
+        Settings::touchTicketIdentity();   // the desk's phone / address print on its tickets
 
         return $code;
     }

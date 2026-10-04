@@ -65,6 +65,19 @@
       if (!PAYS.length) PAYS = ['cash'];
     }
   })();
+  /* Which account the customer pays into at this desk (4 Oct 2026) - the
+     Nepal company's own eSewa / bank once the office has typed them on
+     Admin -> Company details, else the India account. Shown, never sent. */
+  function showPayTo() {
+    var box = document.getElementById('ctrPayTo'); if (!box) return;
+    var pay = (STAFF.desk && STAFF.desk.pay) || {};
+    var line = '';
+    if (CTR.pay === 'esewa' && pay.esewa) line = '🇳🇵 eSewa: <b>' + esc(pay.esewa) + '</b>' + (pay.esewaName ? ' · ' + esc(pay.esewaName) : '');
+    else if (CTR.pay === 'upi' && pay.upi) line = '📱 UPI: <b>' + esc(pay.upi) + '</b>';
+    else if (CTR.pay === 'bank' && pay.bank) line = '🏦 ' + esc(pay.bank);
+    box.innerHTML = line;
+    box.hidden = line === '';
+  }
   var PAY_LBL = { cash: '💵 Cash', upi: '📱 UPI received', esewa: '🇳🇵 eSewa received', bank: '🏦 Bank' };
   function lsGet(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
   function lsSet(k, v) { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) {} }
@@ -456,6 +469,7 @@
         // the chip the desk used last time is lit (CTR.pay ← shg_qt_pay)
         + PAYS.map(function (k) { return '<button type="button" class="ctr-pay' + (CTR.pay === k ? ' on' : '') + '" data-pay="' + k + '">' + PAY_LBL[k] + '</button>'; }).join('')
         + '</div>'
+        + '<div class="ctr-note" id="ctrPayTo" aria-live="polite"></div>'
         + '<div class="ctr-row"><label style="font-size:12px;font-weight:700">Discount</label>'
         + '<input type="number" id="ctrDiscVal" min="0" step="1" placeholder="0" inputmode="numeric">'
         + '<select id="ctrDiscType"><option value="flat">₹ off</option><option value="percent">% off</option></select>'
@@ -466,10 +480,12 @@
       var nav0 = $q('#coStep1 .flow-actions');
       if (nav0 && nav0.parentNode) nav0.parentNode.insertBefore(el, nav0);
       else if (btn && btn.parentElement) btn.parentElement.insertBefore(el, btn); else card.appendChild(el);
+      showPayTo();
       el.addEventListener('click', function (e) {
         var b = e.target.closest('.ctr-pay'); if (!b) return;
         CTR.pay = b.getAttribute('data-pay') || 'cash';
         lsSet(KEY_PAY, CTR.pay);
+        showPayTo();
         el.querySelectorAll('.ctr-pay').forEach(function (x) { x.classList.toggle('on', x === b); });
         ctrSummary();
       });

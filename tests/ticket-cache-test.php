@@ -61,6 +61,11 @@ $pngStamp = (int) strtotime((string) $rc->getConstant('PNG_LAYOUT_CHANGED'));
 $pdfStamp = (int) strtotime((string) $rc->getConstant('PDF_LAYOUT_CHANGED'));
 check('PNG_LAYOUT_CHANGED is a real moment in the past', $pngStamp > 0 && $pngStamp <= time(), date('c', $pngStamp));
 check('PDF_LAYOUT_CHANGED is a real moment in the past', $pdfStamp > 0 && $pdfStamp <= time(), date('c', $pdfStamp));
+/* 4 Oct 2026: an edit on Admin -> Company details / a desk's contact also
+   makes older files stale (ticket_identity_changed_at) - the later of the two wins. */
+$idStamp  = Settings::getInt('ticket_identity_changed_at', 0);
+$pngStamp = max($pngStamp, $idStamp);
+$pdfStamp = max($pdfStamp, $idStamp);
 
 $row = Database::fetch(
     "SELECT b.id FROM bookings b

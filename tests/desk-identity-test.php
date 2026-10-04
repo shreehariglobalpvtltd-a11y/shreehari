@@ -55,7 +55,8 @@ if (!CounterDesk::hasTable() || Database::fetch("SELECT 1 FROM settings WHERE sk
     exit(0);
 }
 
-$keys  = ['nepal_company', 'nepal_company_ne', 'nepal_office', 'nepal_phone', 'nepal_pan', 'nepal_reg', 'nepal_whatsapp', 'nepal_logo'];
+$keys  = ['nepal_company', 'nepal_company_ne', 'nepal_office', 'nepal_phone', 'nepal_pan', 'nepal_reg', 'nepal_whatsapp', 'nepal_logo',
+          'nepal_esewa_id', 'nepal_esewa_name', 'nepal_bank'];
 $saved = [];
 foreach ($keys as $k) {
     $saved[$k] = Settings::getString($k, '');
@@ -116,6 +117,18 @@ try {
     check('a blank Nepal phone falls back to a real India number, never an empty line', $np3['phone'] === $india['phone']);
     $put(['nepal_phone' => '+977 81 000000', 'nepal_pan' => '000000000']);
 
+    /* ---- 3b: where the customer pays --------------------------------- */
+    $put(['nepal_esewa_id' => '', 'nepal_bank' => '']);
+    $indiaEsewa = Settings::getString('esewa_id', '');
+    check('with no Nepal account a Nepal desk shows the India eSewa', Settings::companyFor('NPJ', 'NP')['payEsewa'] === $indiaEsewa);
+    $put(['nepal_esewa_id' => 'TEST-ESEWA-1', 'nepal_esewa_name' => 'Test Holder', 'nepal_bank' => 'Test Bank 123']);
+    $pNp = Settings::companyFor('NPJ', 'NP');
+    check('once typed, a Nepal desk shows the Nepal eSewa and bank',
+        $pNp['payEsewa'] === 'TEST-ESEWA-1' && $pNp['payEsewaName'] === 'Test Holder' && $pNp['payBank'] === 'Test Bank 123' && $pNp['payOwnNepal'] === true);
+    check('...and an India desk keeps the India account', Settings::companyFor('SRT', 'IN')['payEsewa'] === $indiaEsewa
+        && Settings::companyFor('SRT', 'IN')['payBank'] === '');
+    $put(['nepal_esewa_id' => '', 'nepal_esewa_name' => '', 'nepal_bank' => '']);
+
     /* ---- 4: the stamp wins ------------------------------------------ */
     check('the entity frozen on the booking wins over the desk\'s entity today',
         Settings::companyFor('SRT', 'NP')['entity'] === 'NP' && Settings::companyFor('NPJ', 'IN')['entity'] === 'IN');
@@ -159,6 +172,18 @@ check('a cached invoice redraws after a layout change', str_contains($t, "!empty
 check('no office number is typed into the app\'s fallback ticket', !preg_match('/\+91 9\d{4} \d{5}/', $src('assets/js/11-pdf-ticket.js')));
 check('the verify page names the issuing company', str_contains($src('verify-ticket.php'), 'Settings::companyFor('));
 check('the WhatsApp ticket texts lead with the issuing company', substr_count($src('includes/notify.php'), 'Settings::companyFor(') >= 4);
+
+/* ---- 7: editable any time, by the office and by the counter ----------- */
+$co = $src('admin/company.php'); $md = $src('admin/my-desk.php');
+check('Company details saves only with the Settings permission', str_contains($co, 'Auth::canManageSettings()') && str_contains($co, 'if ($canEdit &&'));
+check('...every change is an old -> new audit row', str_contains($co, "Logger::audit('company.details'"));
+check('...a blank India field keeps the built-in value', str_contains($co, "if (\$isIndia && \$v === '')"));
+check('...and an edit redraws cached tickets', substr_count($co, 'Settings::touchTicketIdentity()') >= 3
+    && str_contains($t, 'self::staleBefore(self::PNG_LAYOUT_CHANGED)'));
+check('My desk: a clerk edits only phone, hours, address and map',
+    str_contains($md, "'phone'   => \$_POST['phone']") && !preg_match('/\$_POST\[.(entity|currency|allowed_methods|methods|fx_rate|country)/', $md));
+check('...only the office may pick another desk', str_contains($md, 'if ($isOffice && isset($_REQUEST[\'desk\']))'));
+check('...and it is on the menu', str_contains($src('admin/_guard.php'), "'my-desk.php'") && str_contains($src('admin/_guard.php'), "'company.php'"));
 
 echo "\n" . ($FAIL === 0
     ? "\033[32m  {$PASS} passed, 0 failed\033[0m\n\n"

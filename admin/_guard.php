@@ -173,6 +173,8 @@ function admin_nav(): array
         ['href' => 'shift.php',        'icon' => 'coins',      'label' => 'Shift & Cash',      'perm' => 'bookings.view', 'section' => 'Agents & counters'],
         // 4 Oct 2026: every desk as a row (country, money, company, hours) and the book split by desk.
         ['href' => 'counters.php',     'icon' => 'map-pin',    'label' => 'Counters & collection', 'perm' => 'reports.view', 'section' => 'Agents & counters'],
+        // 4 Oct 2026: a counter keeps its own desk's phone / hours / address / map.
+        ['href' => 'my-desk.php',      'icon' => 'map-pin',    'label' => 'My desk',          'perm' => 'bookings.view', 'section' => 'Agents & counters'],
 
         // Agents — the register first (office roles only — the page itself
         // refuses a counter agent's session), then the working screens.
@@ -226,6 +228,8 @@ function admin_nav(): array
 
         // Settings
         ['href' => 'settings.php',     'icon' => 'cog',       'label' => 'Settings',         'perm' => 'dashboard.view', 'section' => 'Settings'],
+        // 4 Oct 2026: both companies' details, logo and payment account in one form.
+        ['href' => 'company.php',      'icon' => 'cog',       'label' => 'Company details',  'perm' => 'dashboard.view', 'section' => 'Settings'],
         ['href' => 'activity-log.php', 'icon' => 'shield',    'label' => 'Activity & Security','perm'=> 'dashboard.view', 'section' => 'Settings'],
         ['href' => 'health.php',       'icon' => 'alert',     'label' => 'System Health',    'perm' => 'dashboard.view', 'section' => 'Settings'],
         ['href' => 'ai-knowledge.php', 'icon' => 'doc',       'label' => 'AI Knowledge',     'perm' => 'dashboard.view', 'section' => 'Settings'],
@@ -279,7 +283,7 @@ function admin_header(string $title, string $active = ''): void
     // sg- components as the customer app) loads first; the panel's own rules
     // follow, then admin.css restyles the shell on top. The UI uses the
     // device's own font now (no webfont download on a slow counter line).
-    $av = '20261004g';
+    $av = '20261004h';
     echo '<link rel="stylesheet" href="/assets/css/ds.css?v=' . $av . '">';
     echo '<style>' . admin_css() . '</style>';
     echo '<link rel="stylesheet" href="/assets/css/admin.css?v=' . $av . '">';
