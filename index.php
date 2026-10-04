@@ -106,6 +106,14 @@ $boot = [
    (attribution, cash/UPI-received payment, counter discount; see
    assets/js/14-counter.js). The key is only added when staff is present, so
    the anonymous page stays byte-identical. */
+/* The help numbers the app's own fallback ticket prints (4 Oct 2026) - the
+   same list the server ticket uses, instead of four numbers typed into JS. */
+try {
+    $boot['help'] = Settings::helpContacts(Settings::companyFor(null, null), 4);
+} catch (Throwable $e) {
+    $boot['help'] = [];
+}
+
 $staffRow = Auth::admin();
 if ($staffRow !== null) {
     require_once INCLUDE_PATH . '/agentwallet.php';

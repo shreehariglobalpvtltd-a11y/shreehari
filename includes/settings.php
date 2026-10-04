@@ -546,6 +546,58 @@ final class Settings
     }
 
     /**
+     * Up to $max help numbers as [place, phone] - desks that carry a phone
+     * first (the issuing company's own, then the rest), else the office's
+     * company_counters line, and always the OTHER side's help number when
+     * one is set. The one list every printed ticket and the app's own
+     * fallback ticket read (4 Oct 2026).
+     *
+     * @return list<array{0:string,1:string}>
+     */
+    public static function helpContacts(array $co, int $max = 4): array
+    {
+        $out  = [];
+        $seen = [];
+        $add  = static function (string $place, string $phone) use (&$out, &$seen): void {
+            $key = preg_replace('/\D/', '', $phone) ?? '';
+            if ($place === '' || strlen($key) < 8 || isset($seen[$key])) {
+                return;
+            }
+            $seen[$key] = true;
+            $out[] = [$place, $phone];
+        };
+        $short = static fn(string $name): string => trim((string) preg_split('/\s+[\x{2014}\x{2013}-]\s+/u', $name)[0]);
+
+        $desks = class_exists('CounterDesk', false) ? CounterDesk::all(true) : [];
+        usort($desks, static fn(array $a, array $b): int =>
+            [($a['entity'] ?? 'IN') === $co['entity'] ? 0 : 1, (int) $a['sort_order']]
+            <=> [($b['entity'] ?? 'IN') === $co['entity'] ? 0 : 1, (int) $b['sort_order']]);
+        foreach ($desks as $d) {
+            $add($short((string) $d['name']), trim((string) ($d['phone'] ?? '')));
+        }
+        if ($out === []) {
+            foreach (preg_split('/\s*[\x{00B7}|;]\s*/u', (string) ($co['counters'] ?? '')) ?: [] as $part) {
+                if (preg_match('/^(.*?)\s*(\+?\d[\d ]{7,})$/u', trim($part), $m) === 1) {
+                    $add(trim($m[1]), trim($m[2]));
+                }
+            }
+        }
+        $out = array_slice($out, 0, $max);
+
+        $other = $co['otherHelp'] ?? null;
+        if (is_array($other) && ($other['phone'] ?? '') !== '') {
+            $key = preg_replace('/\D/', '', (string) $other['phone']) ?? '';
+            if (!isset($seen[$key]) || !in_array($key, array_map(
+                static fn(array $r): string => preg_replace('/\D/', '', $r[1]) ?? '', $out), true)) {
+                if (count($out) >= $max) { array_pop($out); }
+                $out[] = [(string) $other['label'], (string) $other['phone']];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * The counter locations the office has defined, as code => name.
      *
      * Owner ask (24 Sep 2026): "counter mode lai location haru ni add garna

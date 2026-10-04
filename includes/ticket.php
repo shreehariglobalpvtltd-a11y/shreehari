@@ -534,7 +534,7 @@ final class Ticket
         if (!class_exists('AgentWallet')) {
             require_once __DIR__ . '/agentwallet.php';
         }
-        $company  = Settings::getString('company_name', APP_NAME);
+        $company  = (string) self::companyOf($booking)['name'];   // the ISSUING company (4 Oct 2026)
         $soldById = (int) ($booking['sold_by_admin_id'] ?? 0);
         $name     = trim((string) ($booking['agent_name'] ?? ''));
         $phone    = trim((string) ($booking['agent_phone'] ?? ''));
@@ -632,9 +632,55 @@ final class Ticket
      * admin-set company_logo path wins, otherwise the site logo — but PDF
      * embedding only handles PNG/JPEG, so other formats fall through.
      */
-    public static function logoFile(): ?string
+    /**
+     * The letterhead for THIS booking (4 Oct 2026): the company frozen on the
+     * sale (bookings.entity) and the desk frozen on it (bookings.counter_code).
+     * An unstamped row - every online sale and everything before the stamp -
+     * is the India company, exactly as before. One answer for the PNG, the
+     * PDF, the invoice, the verify page and the WhatsApp text.
+     *
+     * @return array<string,mixed> see Settings::companyFor()
+     */
+    public static function companyOf(array $booking): array
     {
-        foreach ([Settings::getString('company_logo', ''), 'assets/img/logo.png'] as $cand) {
+        return Settings::companyFor(
+            (string) ($booking['counter_code'] ?? ''),
+            (string) ($booking['entity'] ?? '')
+        );
+    }
+
+    /**
+     * Up to four help numbers for the foot of a printed ticket, as
+     * [place, phone]. One contact truth: desks that carry a phone in the desk
+     * table come first (the issuing company's own, then the rest); when no
+     * desk has one yet, the office's own company_counters line is used. The
+     * OTHER side's help number is always among them when the office has set
+     * one, so a passenger across the border has someone to ring. Nothing is
+     * hard-coded here any more.
+     *
+     * @return list<array{0:string,1:string}>
+     */
+    public static function helpContacts(array $co, int $max = 4): array
+    {
+        return Settings::helpContacts($co, $max);
+    }
+
+    /** "6:00 PM IST" - and the Nepal clock beside it on a Nepal company's ticket. */
+    public static function zonedTime(string $hhmm, array $co): string
+    {
+        $ts = strtotime($hhmm);
+        if ($hhmm === '' || $ts === false) {
+            return '';
+        }
+        // Every boarding point is in India, so the timetable is India time.
+        // Nepal runs 15 minutes ahead; a Nepalgunj passenger reads NPT.
+        return date('g:i A', $ts) . ' IST'
+            . (($co['tz'] ?? 'IST') === 'NPT' ? ' (' . date('g:i A', $ts + 15 * 60) . ' NPT)' : '');
+    }
+
+    public static function logoFile(string $prefer = ''): ?string
+    {
+        foreach ([$prefer, Settings::getString('company_logo', ''), 'assets/img/logo.png'] as $cand) {
             if ($cand === '' || preg_match('#^https?://#i', $cand) === 1) {
                 continue;
             }
@@ -907,11 +953,14 @@ final class Ticket
         $filename = 'invoice_' . $booking['pnr'] . '.pdf';
         $path     = INVOICE_PATH . '/' . $filename;
 
-        if (!$force && is_file($path) && !empty($ticket['invoice_path'])) {
+        // Same staleness rule as the ticket PDF: a cached invoice older than the
+        // last layout change redraws once (it had no stamp before 4 Oct 2026).
+        $stale = is_file($path) && (int) @filemtime($path) < (int) strtotime(self::PDF_LAYOUT_CHANGED);
+        if (!$force && !$stale && is_file($path) && !empty($ticket['invoice_path'])) {
             return $path;
         }
 
-        self::renderWithLock($path, !$force, static function () use ($booking, $ticket, $path, $filename) {
+        self::renderWithLock($path, !$force && !$stale, static function () use ($booking, $ticket, $path, $filename) {
             self::renderInvoicePdf($booking)->save($path);
             Database::update('tickets', ['invoice_path' => $filename], 'id = :id', ['id' => $ticket['id']]);
         });
@@ -1125,7 +1174,7 @@ final class Ticket
             ? upiLink($upiVpa, Settings::getString('upi_name', APP_NAME), $settlement['due'], (string) ($booking['pnr'] ?? '')) : '';
         $qrExt = $payUpi !== '' ? 350 : 270;
 
-        $W = 1080; $H = 1620 + $grow + $qrExt;
+        $W = 1080; $H = 1648 + $grow + $qrExt;   // +28 (4 Oct 2026): the address line under the company name in the footer
         $im = imagecreatetruecolor($W, $H);
 
         $navy   = imagecolorallocate($im, 18, 38, 78);
@@ -1156,10 +1205,10 @@ final class Ticket
            down, so the two brand lines beside it are clamped to stop short
            of it. The name itself steps down a size instead — a longer
            company_name must never run under the code. */
-        $co     = Settings::company();
+        $co     = self::companyOf($booking);   // the ISSUING company - India or Nepal (4 Oct 2026)
         $chipX1 = $W - 60 - 268;
 
-        $logo = self::logoFile();
+        $logo = self::logoFile((string) $co['logo']);
         $bx = 60;
         if ($logo !== null) {
             self::gdRounded($im, 60, 66, 220, 224, 16, $white);
@@ -1184,8 +1233,11 @@ final class Ticket
 
         $brand = self::latinUpper($co['name']);
         $bSz   = 30;
-        foreach ([30, 27, 24, 21] as $try) { $bSz = $try; if (self::gdWidth($try, $brand) <= $W - 60 - $bx) { break; } }
-        self::gdText($im, $bSz, $bx, 122, $white, $clampTo($bSz, $brand, $W - 60 - $bx), true);
+        /* Stops short of the chip / pay pill on the right (4 Oct 2026): a
+           longer company name - the Nepal company's - ran under the pill. */
+        $brandMax = $chipX1 - 24 - $bx;
+        foreach ([30, 27, 24, 21, 18] as $try) { $bSz = $try; if (self::gdWidth($try, $brand) <= $brandMax) { break; } }
+        self::gdText($im, $bSz, $bx, 122, $white, $clampTo($bSz, $brand, $brandMax), true);
         /* Which way this ticket runs (3 Oct 2026, owner: "Nepal bata pathauda
            ticket ma ni Nepal to India"): the return run says so in the band
            instead of the fixed "Gujarat <-> Rupaidiha" both runs printed. */
@@ -1343,9 +1395,12 @@ final class Ticket
         $dep  = $ends['dep'] !== '' ? $ends['dep'] : substr((string) ($booking['dep_time'] ?? ''), 0, 5);
         $dt   = formatDate((string) ($booking['travel_date'] ?? ''), 'D, j M Y');
         $bus  = trim((string) ($booking['bus_number'] ?? ''));
-        $strip = strtoupper($dt) . '  ·  DEP ' . ($dep !== '' ? date('g:i A', (int) strtotime($dep)) : formatTime($booking['dep_time'] ?? null))
+        $depTxt = $dep !== '' ? self::zonedTime($dep, $co) : '';
+        $strip = strtoupper($dt) . '  ·  DEP ' . ($depTxt !== '' ? $depTxt : formatTime($booking['dep_time'] ?? null))
                . ($bus !== '' ? '  ·  BUS ' . $bus : '');
-        self::gdText($im, 22, (int) (($W - self::gdWidth(22, $strip)) / 2), 690, $ink, $strip, true);
+        $stripSz = 22;
+        foreach ([22, 20, 18, 16] as $try) { $stripSz = $try; if (self::gdWidth($try, $strip) <= $W - 150) { break; } }
+        self::gdText($im, $stripSz, (int) (($W - self::gdWidth($stripSz, $strip)) / 2), 690, $ink, $strip, true);
 
         /* Perforation */
         for ($x = 76; $x < $W - 76; $x += 26) {
@@ -1536,9 +1591,19 @@ final class Ticket
             'Paid: ' . $currency . ' ' . number_format($settlement['paid'], 2), true);
         self::gdText($im, 18, $infoX, ($payUpi !== '' ? 1810 : 1380) + $grow, $ink,
             'Due: ' . $currency . ' ' . number_format($settlement['due'], 2), true);
-        self::gdText($im, 19, 60, 1398 + $grow + $qrExt - 90, $ink, 'Support: ' . Settings::officePhone(), true);
+        /* The desk's own number when it has one, else the issuing company's -
+           and the OTHER side's help number beside it, so the ticket works on
+           both sides of the border. Blanks are simply not printed. */
+        $supPhone = (string) (($co['desk']['phone'] ?? '') !== '' ? $co['desk']['phone'] : $co['phone']);
+        $supLine  = 'Support: ' . self::latin($supPhone);
+        if (is_array($co['otherHelp'] ?? null) && ($co['otherHelp']['phone'] ?? '') !== '') {
+            $supLine .= '  ·  ' . $co['otherHelp']['label'] . ': ' . self::latin((string) $co['otherHelp']['phone']);
+        }
+        $supSz = 19;
+        foreach ([19, 17, 15] as $try) { $supSz = $try; if (self::gdWidth($try, $supLine) <= ($payUpi !== '' ? 480 : 650)) { break; } }
+        self::gdText($im, $supSz, 60, 1398 + $grow + $qrExt - 90, $ink, $clampTo($supSz, $supLine, $payUpi !== '' ? 480 : 650), true);
         self::gdText($im, 18, 60, 1428 + $grow + $qrExt - 90, $orange, self::latin($co['web']), true);
-        $wa = Settings::officeWhatsApp();
+        $wa = (string) $co['whatsapp'];
         if ($wa !== '') { self::gdText($im, 16, 60, 1456 + $grow + $qrExt - 90, $green, 'WhatsApp: +' . $wa, true); }
 
         /* Who cut it, in full — name, code and the agent's own phone, with
@@ -1571,9 +1636,16 @@ final class Ticket
         /* Footer notes on the cream */
         $n1 = 'सरकारी परिचयपत्र अनिवार्य  ·  बस छुट्नु ३० मिनेट अगाडि आउनुहोस्';
         self::gdText($im, 17, (int) (($W - self::gdWidth(17, $n1)) / 2), 1578 + $grow + $qrExt, $mut, $n1, false);
-        $cin = Settings::getString('company_cin', '');
-        $n2  = self::display($co['name']) . ($cin !== '' ? '  ·  CIN ' . $cin : '');
+        $n2  = self::display($co['name'])
+             . ((string) $co['regNo'] !== '' ? '  ·  ' . $co['regLabel'] . ' ' . self::latin((string) $co['regNo']) : '');
         self::gdText($im, 16, (int) (($W - self::gdWidth(16, $n2)) / 2), 1606 + $grow + $qrExt, $mut, $n2, false);
+        /* The address: the desk's own when the office has typed one, else the
+           issuing company's registered address. Left out when both are blank. */
+        $n3 = self::latin((string) (($co['desk']['address'] ?? '') !== '' ? $co['desk']['address'] : $co['address']));
+        if ($n3 !== '') {
+            $n3 = $clampTo(14, $n3, $W - 140);
+            self::gdText($im, 14, (int) (($W - self::gdWidth(14, $n3)) / 2), 1632 + $grow + $qrExt, $mut, $n3, false);
+        }
 
         /* CORRECTED / DUPLICATE band in the 36px margin above the header. */
         $markTxt = self::markText($ticket, $mark);
@@ -1750,13 +1822,13 @@ final class Ticket
      *  tickets drawn at 23:43/23:44 IST with the old seat labels were never
      *  redrawn. tests/chalani-png-test.php and tests/ticket-cache-test.php
      *  assert a past moment. */
-    private const PNG_LAYOUT_CHANGED = '2026-09-24 10:30:00';   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
+    private const PNG_LAYOUT_CHANGED = '2026-10-04 12:15:00';   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
      *  seat box + stub pick up the current seat labels without a manual purge
      *  (23 Sep 2026: the two-floor grid A1-F6 / A7-F12). */
-    private const PDF_LAYOUT_CHANGED = '2026-09-24 10:30:00';   // IST: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
+    private const PDF_LAYOUT_CHANGED = '2026-10-04 12:15:00';   // IST: per-company letterhead, help numbers from the desk table (no hard-coded offices), INVOICE vs TAX INVOICE. Was 2026-09-24 10:30:00:   // IST: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
 
     /**
      * How many passengers the ticket names one by one before it stops and
@@ -1858,8 +1930,9 @@ final class Ticket
         $W   = $pdf->width();
         $seats = self::seatNumbers((int) $booking['id']);
 
-        $company = Settings::getString('company_name', 'S Hari Global Pvt Ltd');
-        $cin     = Settings::getString('company_cin', '');
+        $coId    = self::companyOf($booking);   // the ISSUING company (4 Oct 2026)
+        $company = self::latin((string) $coId['name']);
+        $cin     = (string) $coId['regNo'];
 
         /* Register Devanagari font for Nepali headings. */
         self::registerDevanagariFont($pdf);
@@ -1908,16 +1981,21 @@ final class Ticket
         // owner asked for. Text shifts right only when the logo is there,
         // so a missing file degrades to the old text-only band.
         $textX = 40;
-        $logo  = self::logoFile();
+        $logo  = self::logoFile((string) $coId['logo']);
         if ($logo !== null) {
             $pdf->rect(36, 14, 84, 66, [255, 255, 255], true);
             $pdf->image($logo, 41, 20, 74, 54);   // 440x321 source — keep the aspect
             $textX = 134;
         }
-        $pdf->text($textX, 20, strtoupper($company), 17, 'F2', [255, 255, 255]);
+        /* The name stops short of the title block at W-220 (4 Oct 2026): a
+           longer company name - the Nepal company's - ran under it. Helvetica
+           Bold capitals average ~0.68 em, so the size steps down to fit. */
+        $coSz = 17.0;
+        while ($coSz > 9 && mb_strlen($company) * $coSz * 0.68 > ($W - 232 - $textX)) { $coSz -= 0.5; }
+        $pdf->text($textX, 20, strtoupper($company), $coSz, 'F2', [255, 255, 255]);
         self::devText($pdf, $textX, 44, 'भारत–नेपाल बस सेवा', 11, $F7, self::GOLD);
         if ($cin !== '') {
-            $pdf->text($textX, 68, 'CIN: ' . $cin, 7.5, 'F1', [200, 190, 170]);
+            $pdf->text($textX, 68, $coId['regLabel'] . ': ' . self::latin($cin), 7.5, 'F1', [200, 190, 170]);
         }
         /* The desk, directly under the company name (owner, 24 Sep 2026:
            "company ko name ko tala location lekhne thau"). It takes the last
@@ -2256,18 +2334,17 @@ final class Ticket
            ============================================================== */
         $officeY = $cY + 32;
         $pdf->line(40, $officeY - 4, $W - 40, $officeY - 4, self::LINE, 0.5);
-        $offices = [
-            ['Mehsana',   '+91 91048 01507'],
-            ['Ahmedabad', '+91 91570 01507'],
-            ['Baroda',    '+91 87358 81507'],
-            ['Surat',     '+91 73593 01507'],
-        ];
+        /* 4 Oct 2026: four Gujarat numbers used to be typed in here (two of
+           them disagreed with the office's own list) and no Nepal number at
+           all. One contact truth now - see helpContacts(). */
+        $offices = self::helpContacts($coId, 4);
         $colW2 = ($W - 80) / 2;
         foreach ($offices as $i => [$oName, $oNum]) {
             $ox = 40 + ($i % 2) * $colW2;
             $oy = $officeY + (int) floor($i / 2) * 13;
+            $oName = self::latin($oName);
             $pdf->text($ox, $oy, $oName . ': ', 7.5, 'F2', self::INK);
-            $pdf->text($ox + 56, $oy, $oNum, 7.5, 'F1', self::INK);
+            $pdf->text($ox + max(56, 8 + 4.3 * mb_strlen($oName)), $oy, self::latin($oNum), 7.5, 'F1', self::INK);
         }
 
         /* ==============================================================
@@ -2308,7 +2385,7 @@ final class Ticket
 
         // (5 Sep 2026) The ticket number / fare line and the second copy of the
         // office numbers were removed here: both already print above.
-        $pdf->text($noteX, $footY + 74, 'Help: ' . self::latin(Settings::officePhone()) . '  ·  shreehariglobal.in', 7.5, 'F1', self::MUTE);
+        $pdf->text($noteX, $footY + 74, 'Help: ' . self::latin((string) (($coId['desk']['phone'] ?? '') !== '' ? $coId['desk']['phone'] : $coId['phone'])) . '  ·  ' . self::latin((string) $coId['web']), 7.5, 'F1', self::MUTE);
 
         // Thank you footer
         self::devCenter($pdf, 40, $W - 40, $pdf->height() - 18, 'धन्यवाद · शुभ यात्रा · Thank you · ' . $company, 9, $F7, self::ORANGE);
@@ -2321,24 +2398,26 @@ final class Ticket
         $pdf = new Pdf();
         $W   = $pdf->width();
 
-        $company = Settings::getString('company_name', 'S Hari Global Pvt Ltd');
-        $address = Settings::getString('company_address', '');
-        $cin     = Settings::getString('company_cin', '');
-        $gstin   = Settings::getString('company_gstin', '');
+        $coId    = self::companyOf($booking);   // the ISSUING company (4 Oct 2026)
+        $company = self::latin((string) $coId['name']);
+        $address = self::latin((string) $coId['address']);
+        $cin     = (string) $coId['regNo'];
+        $gstin   = (string) $coId['gstin'];
 
         $pdf->rect(0, 0, $W, 70, self::NAVY, true);
         $invTextX = 40;
-        $invLogo  = self::logoFile();
+        $invLogo  = self::logoFile((string) $coId['logo']);
         if ($invLogo !== null) {
             $pdf->rect(36, 10, 70, 50, [255, 255, 255], true);
             $pdf->image($invLogo, 40, 14, 62, 45);   // 440x321 source — keep the aspect
             $invTextX = 118;
         }
         $pdf->text($invTextX, 20, strtoupper($company), 16, 'F2', [255, 255, 255]);
-        $pdf->textRight($W - 40, 22, 'TAX INVOICE', 16, 'F2', self::GOLD);
+        // "TAX INVOICE" is a claim: only a company with a GSTIN on file may make it.
+        $pdf->textRight($W - 40, 22, $gstin !== '' ? 'TAX INVOICE' : 'INVOICE', 16, 'F2', self::GOLD);
 
         $pdf->textBlock(40, 84, 320, $address, 9, 'F1', self::MUTE);
-        if ($cin !== '')   $pdf->text(40, 120, 'CIN: ' . $cin, 9, 'F1', self::INK);
+        if ($cin !== '')   $pdf->text(40, 120, $coId['regLabel'] . ': ' . self::latin($cin), 9, 'F1', self::INK);
         if ($gstin !== '') $pdf->text(40, 134, 'GSTIN: ' . $gstin, 9, 'F1', self::INK);
 
         $pdf->textRight($W - 40, 84, 'Invoice for PNR: ' . $booking['pnr'], 10, 'F2', self::INK);

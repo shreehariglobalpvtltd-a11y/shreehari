@@ -268,12 +268,7 @@ async function buildTicketCanvas(b) {
   var infoX = pad + 260;
   g.fillStyle = NAVY; g.font = 'bold 20px sans-serif';
   g.fillText('सम्पर्क  ·  OFFICE CONTACTS', infoX, y + 24);
-  var offices = [
-    ['Mehsana',   '+91 91048 01507'],
-    ['Ahmedabad', '+91 91570 01507'],
-    ['Baroda',    '+91 87358 81507'],
-    ['Surat',     '+91 73593 01507']
-  ];
+  var offices = ((window.SHG_BOOT && Array.isArray(SHG_BOOT.help)) ? SHG_BOOT.help : [])   /* one contact list, from the server (4 Oct 2026) */;
   g.fillStyle = INK; g.font = '18px sans-serif';
   offices.forEach(function (o, i) {
     var ox = infoX + (i % 2) * ((W - pad - infoX) / 2);
@@ -679,12 +674,7 @@ async function downloadTicketPDF(b) {
   _dt(doc, hasDev, infoX, qrY + 10, 'सम्पर्क  ·  OFFICE CONTACTS', 'SAMPARK  ·  OFFICE CONTACTS');
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
   doc.setTextColor(INK[0], INK[1], INK[2]);
-  var offices = [
-    ['Mehsana',   '+91 91048 01507'],
-    ['Ahmedabad', '+91 91570 01507'],
-    ['Baroda',    '+91 87358 81507'],
-    ['Surat',     '+91 73593 01507']
-  ];
+  var offices = ((window.SHG_BOOT && Array.isArray(SHG_BOOT.help)) ? SHG_BOOT.help : [])   /* one contact list, from the server (4 Oct 2026) */;
   offices.forEach(function (o, i) {
     var ox = infoX + (i % 2) * ((W - 40 - infoX) / 2);
     var oy = qrY + 28 + Math.floor(i / 2) * 14;

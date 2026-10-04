@@ -835,7 +835,7 @@ final class Notify
     {
         $facts   = self::ticketFacts($booking);
         $pnr     = (string) ($booking['pnr'] ?? '');
-        $company = Settings::getString('company_name', APP_NAME);
+        $company = (string) Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''))['name'];   // the company that issued THIS ticket (4 Oct 2026)
 
         $board = $facts['boardingStop'] !== ''
             ? $facts['boardingStop']
@@ -897,7 +897,7 @@ final class Notify
 
     public static function resendTicketWhatsApp(array $booking): array
     {
-        $company = Settings::getString('company_name', APP_NAME);
+        $company = (string) Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''))['name'];   // the company that issued THIS ticket (4 Oct 2026)
         $pnr     = (string) ($booking['pnr'] ?? '');
         if (self::usablePhone($booking['contact_phone'] ?? '') === '') {
             return ['ok' => false, 'detail' => 'This booking has no usable contact phone number on file.'];
@@ -980,7 +980,7 @@ final class Notify
                               'payment', 'agent', 'paid', 'stops', 'trip_change', 'reconfirm'], true)) {
             return ['ok' => false, 'detail' => 'Unknown ticket change kind "' . $what . '" — nothing sent.'];
         }
-        $company = Settings::getString('company_name', APP_NAME);
+        $company = (string) Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''))['name'];   // the company that issued THIS ticket (4 Oct 2026)
         $pnr     = (string) ($booking['pnr'] ?? '');
         if (self::usablePhone($booking['contact_phone'] ?? '') === '') {
             return ['ok' => false, 'detail' => 'This booking has no usable contact phone number on file.'];
@@ -1822,7 +1822,7 @@ final class Notify
 
     public static function bookingConfirmed(array $booking): void
     {
-        $company   = Settings::getString('company_name', APP_NAME);
+        $company   = (string) Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''))['name'];   // the company that issued THIS ticket (4 Oct 2026)
         $pnr       = (string) $booking['pnr'];
         $bid       = (int) ($booking['id'] ?? 0);
         $facts     = self::ticketFacts($booking);
@@ -2113,7 +2113,7 @@ final class Notify
         if (!Settings::getBool('whatsapp_notify_customer', true) || empty($booking['contact_phone'])) {
             return;
         }
-        $company = Settings::getString('company_name', APP_NAME);
+        $company = (string) Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''))['name'];   // the company that issued THIS ticket (4 Oct 2026)
         $pnr     = (string) ($booking['pnr'] ?? '');
         $text = "↩️ " . $company . "\n"
               . "टिकट " . $pnr . " रद्द भयो — केही तिर्नु पर्दैन।\n"
@@ -2216,7 +2216,7 @@ final class Notify
             return;
         }
 
-        $company = Settings::getString('company_name', APP_NAME);
+        $company = (string) Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''))['name'];   // the company that issued THIS ticket (4 Oct 2026)
         $pnr     = (string) ($booking['pnr'] ?? '');
         $total   = (float) ($booking['total_amount'] ?? 0);
         $amount  = inr($total);
@@ -2418,7 +2418,7 @@ final class Notify
             return;
         }
 
-        $company = Settings::getString('company_name', APP_NAME);
+        $company = (string) Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''))['name'];   // the company that issued THIS ticket (4 Oct 2026)
         $pnr     = (string) ($booking['pnr'] ?? '');
         $amount  = inr((float) ($booking['total_amount'] ?? 0));
         $phone   = self::usablePhone($booking['contact_phone'] ?? '');
@@ -2728,7 +2728,7 @@ final class Notify
         }
         $facts += ['route' => '', 'date' => '', 'depTime' => '', 'seats' => '', 'boarding' => ''];
 
-        $company = Settings::getString('company_name', APP_NAME);
+        $company = (string) Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''))['name'];   // the company that issued THIS ticket (4 Oct 2026)
         $pnr     = (string) ($booking['pnr'] ?? '');
         $hint    = self::countryHint($booking);
         $bid     = (int) ($booking['id'] ?? 0);
@@ -2906,7 +2906,7 @@ final class Notify
             return;
         }
 
-        $company = Settings::getString('company_name', APP_NAME);
+        $company = (string) Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''))['name'];   // the company that issued THIS ticket (4 Oct 2026)
         $pnr     = (string) ($booking['pnr'] ?? '');
         $money   = inr($amount);
 

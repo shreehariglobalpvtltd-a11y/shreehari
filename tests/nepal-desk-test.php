@@ -38,7 +38,14 @@ try {
     Settings::set('counter_nepal_desks', 'KTM, BRG', 'string', 'counter');
     Settings::flush();
     check('override list: KTM is Nepal side', Settings::isNepalDesk('KTM'));
-    check('override list replaces the default (NPJ no longer listed)', !Settings::isNepalDesk('NPJ'));
+    /* 4 Oct 2026: a desk that has a ROW in the desk table answers from its
+       row (default_direction); the legacy list only decides codes the table
+       has never heard of, and everything on a database without the table. */
+    if (CounterDesk::hasTable() && CounterDesk::get('NPJ') !== null) {
+        check('a desk in the table answers from its own row, not the legacy list', Settings::isNepalDesk('NPJ'));
+    } else {
+        check('override list replaces the default (NPJ no longer listed)', !Settings::isNepalDesk('NPJ'));
+    }
 } finally {
     Settings::set('counter_nepal_desks', $old, 'string', 'counter');
     Settings::flush();
@@ -54,7 +61,9 @@ check('index.php boot carries desk.side from isNepalDesk', str_contains($index, 
 check('index.php boot carries the NPR rate', str_contains($index, "'nprRate'"));
 check('counter JS: Nepal desk opens on the return run', str_contains($js, "setSearchDir(SIDE === 'nepal' ? 'back' : 'go')"));
 check('counter JS: a deep link (from/to) is never overridden', str_contains($js, "if (!force && (p.get('from') || p.get('to'))) return;"));
-check('counter JS: NPR line on the summary for a Nepal desk', str_contains($js, "var npr = SIDE === 'nepal' ? nprText(due) : '';"));
+check('counter JS: NPR line on the summary follows the desk\'s money', str_contains($js, "var npr = showNpr() ? nprText(due) : '';"));
+check('counter JS: an older boot payload keeps the side rule', str_contains($js, "return DESK.currency ? DESK.currency === 'NPR' : SIDE === 'nepal';"));
+check('counter JS: the pay chips follow the desk', str_contains($js, 'STAFF.desk.methods'));
 check('counter JS: per-browser side switch', str_contains($js, "id=\"cbSide\""));
 check('ticket: direction from Boarding::routeDirection', str_contains($tk, "Boarding::routeDirection(['from_city'"));
 check('ticket: NEPAL -> INDIA band on the return run', str_contains($tk, "'E-TICKET  ·  NEPAL -> INDIA'"));

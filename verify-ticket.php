@@ -171,7 +171,13 @@ header('X-Frame-Options: DENY');
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: no-referrer');
 
-$company = Settings::getString('company_name', 'S Hari Global Pvt Ltd');
+/* The verify page names the company that ISSUED the ticket (4 Oct 2026) -
+   but only to someone entitled to see the ticket; a stranger with a bare
+   PNR gets the site's own name and learns nothing about the sale. */
+$issuer  = ($authed && $booking !== null)
+    ? Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''))
+    : Settings::companyFor(null, null);
+$company = (string) $issuer['name'];
 ?><!doctype html>
 <html lang="en">
 <head>
@@ -260,7 +266,8 @@ $company = Settings::getString('company_name', 'S Hari Global Pvt Ltd');
   <?php endif; ?>
 
   <div class="foot">
-    Suspect fraud? Contact the office: <a href="tel:+919104801507">+91 91048 01507</a><br>
+    <?php $vPh = (string) $issuer['phone']; $vTel = (string) preg_replace('/[^0-9+]/', '', $vPh); ?>
+    Suspect fraud? Contact the office: <a href="tel:<?= htmlspecialchars($vTel, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($vPh, ENT_QUOTES, 'UTF-8') ?></a><br>
     <?= date('Y') ?> <?= htmlspecialchars($company, ENT_QUOTES, 'UTF-8') ?>
   </div>
 </div>
