@@ -10,6 +10,11 @@ Branch `desks-20261004`. **LIVE** on 4 Oct 2026 (owner: "deploy ni gardinu"):
 | release-20261004-d4 | 13:06 | Design: route pages + travel-info on ds.css tokens, route corridor scene on every route page. |
 | release-20261004-d5 | 13:23 | Speed: no entrance fade on the first view + heading/subtitle in the visitor's language at first paint (LCP was the late i18n swap). Campaign deep links `?src=&dir=&town=&date=` + `landing` beacon. Stamp 20261004g / shg-v172. |
 
+| release-20261004-d6 | 13:38 | **Admin → Settings → Company details** (both companies, Nepal logo upload, Nepal eSewa / bank; blank = India) and **Agents & counters → My desk** (a counter edits its own desk's phone / hours / address / map). Edits redraw cached tickets. Stamp 20261004h / shg-v173. |
+
+Live already carried `nepal_company` = "Shree Hari Global Pvt Ltd Nepal" and `nepal_office` = "Puspalal Chowk, Nepalgunj"
+(set 26 Sep), so Nepal-desk tickets print that letterhead since d1. Left as is; the office edits it on Company details.
+
 **Speed, measured on live** (headless Chrome, 375 px, 1.6 Mbps / 150 ms RTT, 4x CPU): LCP was the booking
 heading at 6.2–7.2 s (it faded in from opacity 0, so Chrome only counted the Nepali swap after every deferred
 script). After d5 the heading paints in Nepali at first paint; LCP is now the note under the search button at
