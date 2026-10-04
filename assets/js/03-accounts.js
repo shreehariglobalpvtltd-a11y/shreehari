@@ -386,26 +386,64 @@ function describeWhereAmI(onUpdate) {
    [JS] 4g. DARK MODE — data-theme="dark" on <html>, tokens override
    in CSS section 26. Applies site-wide; persisted per device.
 ================================================================ */
-function applyTheme(mode) {
-  const dark = mode === 'dark';
-  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-  /* The phone's status bar / address bar follows the page: OLED black in
-     dark mode, brand navy in light (4 Sep 2026 — it used to stay navy). */
-  document.documentElement.style.background = dark ? '#000' : '';
+/* Three displays (4 Oct 2026): light · dark · AMOLED. AMOLED is stamped as
+   data-theme="dark" + data-display="amoled" so every dark rule still
+   applies and assets/css/depth.css only swaps the tokens to a pure-black
+   ground. The browser cannot tell whether a screen is AMOLED, so it is an
+   explicit choice only; with nothing saved the system light/dark is used.
+   The value is written raw: it used to go through store.set as well, which
+   JSON-encoded it ('"dark"'), so the pre-paint check missed it and a saved
+   dark theme came back light on the next visit. */
+const SHG_THEMES = ['light', 'dark', 'amoled'];
+function readSavedTheme() {
+  try {
+    const raw = (localStorage.getItem('shg:theme') || '').replace(/"/g, '');
+    return SHG_THEMES.indexOf(raw) >= 0 ? raw : '';
+  } catch (e) { return ''; }
+}
+function currentTheme() {
+  const d = document.documentElement;
+  if (d.getAttribute('data-display') === 'amoled') return 'amoled';
+  return d.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+}
+function applyTheme(mode, save) {
+  if (SHG_THEMES.indexOf(mode) < 0) mode = 'light';
+  const d = document.documentElement;
+  const dark = mode !== 'light';
+  d.setAttribute('data-theme', dark ? 'dark' : 'light');
+  if (mode === 'amoled') d.setAttribute('data-display', 'amoled'); else d.removeAttribute('data-display');
+  /* The phone's status bar / address bar follows the page. */
+  d.style.background = mode === 'amoled' ? '#000' : (dark ? '#0B1220' : '');
   const tc = document.querySelector('meta[name="theme-color"]');
-  if (tc) tc.setAttribute('content', dark ? '#000000' : '#1A3A6A');
-  $$('.theme-btn').forEach(b => { b.textContent = dark ? '☀️' : '🌙'; b.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode'); });
-  try { localStorage.setItem('shg:theme', mode); } catch (e) {}
-  store.set('shg:theme', mode);
+  if (tc) tc.setAttribute('content', mode === 'amoled' ? '#000000' : (dark ? '#0F1A2E' : '#0C306C'));
+  /* The topbar button cycles light → dark → AMOLED; it shows the next one. */
+  const next = { light: ['🌙', 'Switch to dark mode'], dark: ['⚫', 'Switch to AMOLED black mode'], amoled: ['☀️', 'Switch to light mode'] }[mode];
+  $$('.theme-btn').forEach(b => { b.textContent = next[0]; b.setAttribute('aria-label', next[1]); b.setAttribute('title', next[1]); });
+  $$('[data-theme-set]').forEach(b => {
+    const on = b.getAttribute('data-theme-set') === mode;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-checked', on ? 'true' : 'false');
+  });
+  if (save !== false) { try { localStorage.setItem('shg:theme', mode); } catch (e) {} }
 }
 (function initTheme() {
-  let mode = 'light';
-  try { mode = localStorage.getItem('shg:theme') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch (e) {}
-  applyTheme(mode);
+  let mode = readSavedTheme();
+  if (!mode) {
+    try { mode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; } catch (e) { mode = 'light'; }
+    applyTheme(mode, false);           /* follow the system until the user picks one */
+  } else {
+    applyTheme(mode);                  /* also rewrites an old '"dark"' value raw */
+  }
 })();
 document.addEventListener('click', (e) => {
+  const set = e.target.closest('[data-theme-set]');
+  if (set) {
+    applyTheme(set.getAttribute('data-theme-set'));
+    return;
+  }
   if (!e.target.closest('.theme-btn')) return;
-  applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  const cur = currentTheme();
+  applyTheme(cur === 'light' ? 'dark' : (cur === 'dark' ? 'amoled' : 'light'));
 });
 
 /* Palette picker (Part 8): the 7 tuned day-palettes (data-day 0–6) become a

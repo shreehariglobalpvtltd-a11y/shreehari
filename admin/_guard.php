@@ -289,14 +289,27 @@ function admin_header(string $title, string $active = ''): void
     echo '<link rel="stylesheet" href="/assets/css/ds.css?v=' . $av . '">';
     echo '<style>' . admin_css() . '</style>';
     echo '<link rel="stylesheet" href="/assets/css/admin.css?v=' . $av . '">';
+    // 4 Oct 2026: pop-out depth (every theme) + the AMOLED display. Loads last.
+    echo '<link rel="stylesheet" href="/assets/css/depth.css?v=' . $av . '">';
     // Apply saved/system theme before <body> paints (no flash), + the toggle.
-    echo '<script>(function(){try{var t=localStorage.getItem("shg_admin_theme");'
-       . 'if(t!=="dark"&&t!=="light")t=(window.matchMedia&&matchMedia("(prefers-color-scheme:dark)").matches)?"dark":"light";'
-       . 'document.documentElement.setAttribute("data-theme",t);}catch(e){}})();'
+    // 4 Oct 2026: three displays, light -> dark -> AMOLED (pure black). AMOLED
+    // is data-theme="dark" + data-display="amoled", so every dark rule and the
+    // chart colour checks (data-theme==="dark") keep working; depth.css swaps
+    // the tokens. Nothing saved = follow the device's light/dark setting.
+    echo '<script>function shgThemeApply(t){var d=document.documentElement;'
+       . 'd.setAttribute("data-theme",t==="light"?"light":"dark");'
+       . 'if(t==="amoled")d.setAttribute("data-display","amoled");else d.removeAttribute("data-display");'
+       . 'var m=document.querySelector("meta[name=theme-color]");if(m)m.setAttribute("content",t==="amoled"?"#000000":(t==="dark"?"#0F1A2E":"#0C306C"));'
+       . 'var L={light:"Switch to dark mode",dark:"Switch to AMOLED black mode",amoled:"Switch to light mode"}[t]||"";'
+       . 'var b=document.querySelectorAll(".theme-tog");for(var i=0;i<b.length;i++){b[i].setAttribute("aria-label",L);b[i].setAttribute("title",L);}}'
+       . '(function(){try{var t=localStorage.getItem("shg_admin_theme");'
+       . 'if(t!=="dark"&&t!=="light"&&t!=="amoled")t=(window.matchMedia&&matchMedia("(prefers-color-scheme:dark)").matches)?"dark":"light";'
+       . 'shgThemeApply(t);document.addEventListener("DOMContentLoaded",function(){shgThemeApply(t);});}catch(e){}})();'
        . 'function shgTheme(){try{var d=document.documentElement,'
-       . 'n=d.getAttribute("data-theme")==="dark"?"light":"dark";'
-       . 'd.setAttribute("data-theme",n);localStorage.setItem("shg_admin_theme",n);}catch(e){}}</script>';
-    echo '</head><body>';
+       . 'c=d.getAttribute("data-display")==="amoled"?"amoled":(d.getAttribute("data-theme")==="dark"?"dark":"light"),'
+       . 'n=c==="light"?"dark":(c==="dark"?"amoled":"light");'
+       . 'shgThemeApply(n);localStorage.setItem("shg_admin_theme",n);}catch(e){}}</script>';
+    echo '</head><body class="shg-adm">';
 
     // One admin-wide SVG icon sprite — sidebar, top-bar and brand row all
     // draw from this. Kept here so every admin page inherits it without

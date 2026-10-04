@@ -254,8 +254,34 @@ button.alt,.foot a{color:#0054A8}
 .ch:hover,.ch:focus,.ch-agent:hover,.ch-agent:focus{border-color:#0054A8;transform:none}
 .ceo-strip img{border-color:#0054A8}
 :focus-visible{outline:3px solid #0054A8;outline-offset:2px}
+/* 4 Oct 2026: the pop-out depth of the rest of the app (assets/css/depth.css):
+   the card is a raised slab, the button sits on a royal edge and travels
+   into it when pressed, inputs are inset wells. Follows the saved panel
+   display (light / dark / AMOLED black). */
+.box{border:1px solid #D5DEEB;border-top-color:#fff;box-shadow:inset 0 1px 0 #fff,0 2px 0 #C4CFE1,0 4px 0 #A8B6CE,0 7px 0 #8B9CBB,0 8px 0 #7B8DAE,0 20px 30px -6px rgba(0,0,0,.55)}
+input{background:#F6F8FC;box-shadow:inset 0 2px 5px rgba(12,48,108,.14),inset 0 1px 0 rgba(12,48,108,.10)}
+button:not(.alt){background:linear-gradient(180deg,#1F6CC8,#0054A8 58%,#004B98) !important;border:1px solid #3D82D6;box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 2px 0 #003C90,0 4px 0 #00347F,0 6px 0 #002B6A,0 13px 18px -5px rgba(0,52,130,.55);transition:transform .14s ease-out,box-shadow .14s ease-out;touch-action:manipulation}
+button:not(.alt):active{transform:translateY(3px);box-shadow:inset 0 3px 7px rgba(0,24,70,.35),0 1px 0 #003C90,0 3px 0 #002B6A}
+.ch{box-shadow:inset 0 1px 0 #fff,0 2px 0 #CCD6E5,0 3px 0 #B9C6DA,0 7px 9px -5px rgba(12,48,108,.28)}
+.ch:active{transform:translateY(2px)}
+:root[data-theme="dark"]{color-scheme:dark}
+:root[data-theme="dark"] body{background:#0B1220 !important}
+:root[data-display="amoled"] body{background:#000 !important}
+:root[data-theme="dark"] .box{background:linear-gradient(160deg,#1C2E4D,#111D33 60%);color:#E8F0FB;border-color:#24375A;border-top-color:#4D6694;box-shadow:inset 0 1px 0 rgba(165,195,245,.24),0 2px 0 #1C2B47,0 4px 0 #16233B,0 6px 0 #101B2F,0 8px 0 #0A1323,0 20px 30px -6px #000}
+:root[data-display="amoled"] .box{background:linear-gradient(150deg,#213146,#101822 60%);border-color:#33465F;border-top-color:#8A9DB9;box-shadow:inset 0 1px 0 rgba(183,197,220,.25),0 2px 0 #34465F,0 4px 0 #24344A,0 8px 0 #152032,0 20px 25px #000}
+:root[data-theme="dark"] h1,:root[data-theme="dark"] label,:root[data-theme="dark"] .ch,:root[data-theme="dark"] .ceo-strip b{color:#E8F0FB}
+:root[data-theme="dark"] .sub,:root[data-theme="dark"] .who,:root[data-theme="dark"] .ch small,:root[data-theme="dark"] .ceo-strip span{color:#ACBBD0}
+:root[data-theme="dark"] input{background:#080C13;color:#EEF4FF;border-color:#607697;box-shadow:inset 0 3px 7px #000}
+:root[data-theme="dark"] .ch,:root[data-theme="dark"] .ceo-strip{background:#15243E;border-color:#3A5178;box-shadow:inset 0 1px 0 rgba(165,195,245,.18),0 2px 0 #1B2A45,0 3px 0 #111D33,0 8px 10px -5px #000}
+:root[data-theme="dark"] button.alt,:root[data-theme="dark"] .foot a{color:#9ABFFF}
+:root[data-theme="dark"] .err{background:#30161B;color:#FFADB9}
+:root[data-theme="dark"] .ok{background:#0F271B;color:#8CE4B8}
+@media (prefers-reduced-motion:reduce){button:not(.alt):active,.ch:active{transform:none}}
+@media print{.box{box-shadow:none}}
 @media (prefers-reduced-motion:reduce){*{transition:none !important}}
-</style></head>
+</style>
+<script>(function(){try{var t=localStorage.getItem('shg_admin_theme');if(t==='dark'||t==='amoled'){document.documentElement.setAttribute('data-theme','dark');if(t==='amoled')document.documentElement.setAttribute('data-display','amoled');}}catch(e){}})();</script>
+</head>
 <body>
 <form class="box" method="post" autocomplete="off">
   <div class="logo"><img src="/assets/img/logo.png" alt="<?= Security::e($company) ?>" width="72" height="72"></div>

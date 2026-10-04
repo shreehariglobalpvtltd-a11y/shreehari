@@ -44,10 +44,10 @@
   var LS_HAPTIC = 'shg:haptics';
 
   function read(key) {
-    /* Default ON — both were already on before this file existed, so a
-       default of off would be a silent regression for anyone who liked
-       them. '0' is the only value that means off. */
-    try { return localStorage.getItem(key) !== '0'; } catch (e) { return true; }
+    /* Default OFF (owner brief, 4 Oct 2026: sound and vibration are each
+       the passenger's own choice, off until switched on). A saved '1'
+       keeps working, so anyone who turned them on keeps them. */
+    try { return localStorage.getItem(key) === '1'; } catch (e) { return false; }
   }
   function write(key, on) {
     try { localStorage.setItem(key, on ? '1' : '0'); } catch (e) {}

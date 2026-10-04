@@ -177,6 +177,8 @@ const CORE_SUITES = [
     'home-entry-test.php'         => 'three booking doors open the existing flows; every home/sheet label exists in en/hi/ne',
     // 4 Oct 2026, registered with the three homepage animation scenes it guards.
     'home-animation-test.php'     => 'the homepage scenes: lazy WebP/SVG only, never mirrored, honest labels, transform/opacity, pause, 4 languages',
+    // 4 Oct 2026, registered with the pop-out depth layer + AMOLED display it guards.
+    'depth-display-test.php'      => 'depth.css loads last in both apps; light/dark/AMOLED stored raw; AMOLED pairs >= 4.5:1; reduced motion keeps depth; sound/vibration default off',
     // 24 Sep 2026, registered with the pdfPath() fix it guards.
     'ticket-cache-test.php'       => 'a ticket PNG/PDF older than its layout stamp is redrawn once, and only once',
     // 24 Sep 2026, registered with the removal of the downloadable admin source backups.

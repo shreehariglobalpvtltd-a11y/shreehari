@@ -25,16 +25,20 @@
    init() exactly; those still run later and agree with this. */
 (function () {
   try {
-    var d = document.documentElement, t = localStorage.getItem('shg:theme');
-    if (!t) t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
-    d.setAttribute('data-theme', t === 'dark' ? 'dark' : 'light');
+    /* 4 Oct 2026: light · dark · AMOLED. AMOLED = data-theme="dark" +
+       data-display="amoled" (assets/css/depth.css). Quotes are stripped:
+       an older build stored the value JSON-encoded ('"dark"'). */
+    var d = document.documentElement, t = (localStorage.getItem('shg:theme') || '').replace(/"/g, '');
+    if (t !== 'light' && t !== 'dark' && t !== 'amoled') t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+    d.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
+    if (t === 'amoled') d.setAttribute('data-display', 'amoled');
     /* Oct 2026 redesign: one brand every day. The seven day-palettes are
        retired, so no data-day is stamped (a stale shg:palette is ignored). */
     d.removeAttribute('data-day');
-    if (t === 'dark') {
-      d.style.background = '#0B1220';
+    if (t !== 'light') {
+      d.style.background = t === 'amoled' ? '#000' : '#0B1220';
       var m = document.querySelector('meta[name="theme-color"]');
-      if (m) m.setAttribute('content', '#0F1A2E');
+      if (m) m.setAttribute('content', t === 'amoled' ? '#000000' : '#0F1A2E');
     }
   } catch (e) { /* storage blocked — light theme, exactly as before */ }
 })();
@@ -84,6 +88,7 @@
    These two colours are the design-system "page" token in each theme. */
 html,body{margin:0;background:#F4F6FB}
 :root[data-theme="dark"],:root[data-theme="dark"] body{background:#0B1220}
+:root[data-display="amoled"],:root[data-display="amoled"] body{background:#000}
 </style>
   <link rel="preload" as="image" href="/assets/img/logo.png?v=20261004j" fetchpriority="high">
   <link rel="stylesheet" href="/assets/css/app.css?v=20261004j">
@@ -99,6 +104,8 @@ html,body{margin:0;background:#F4F6FB}
   <link rel="stylesheet" href="/assets/css/ds.css?v=20261004j">
   <link rel="stylesheet" href="/assets/css/redesign.css?v=20261004j">
   <link rel="stylesheet" href="/assets/css/anim.css?v=20261004j">
+  <!-- 4 Oct 2026: pop-out depth in every theme + the AMOLED display. Loads LAST. -->
+  <link rel="stylesheet" href="/assets/css/depth.css?v=20261004j">
 <!-- App bundle: `defer` keeps the same execution order and still runs after the
      document is parsed, but placing the tags in <head> lets the browser start
      fetching ~1 MB of JS with the FIRST bytes of HTML instead of after it has
@@ -374,6 +381,15 @@ s.addEventListener('click',function(e){e.preventDefault();
   <a href="#/terms"><svg class="ic"><use href="#i-scroll"/></svg> Terms</a>
   <a href="#/my" id="mmUserBtn"><svg class="ic"><use href="#i-users"/></svg> Sign in</a>
   <a href="#/" id="mmNotifBtn"><svg class="ic"><use href="#i-bell"/></svg> Notifications<span class="mm-notif-badge hide" id="mmNotifBadge">0</span></a>
+  <!-- 4 Oct 2026: the display choice on phones (the topbar button is hidden under 761px). -->
+  <div class="mm-display" role="radiogroup" aria-label="Display · स्क्रिन">
+    <span class="mm-display-lbl">🖥️ स्क्रिन · Display</span>
+    <div class="mm-display-opts">
+      <button type="button" role="radio" aria-checked="false" aria-label="Light · उज्यालो" data-theme-set="light"><b aria-hidden="true">☀️</b><span>Light</span><small>उज्यालो</small></button>
+      <button type="button" role="radio" aria-checked="false" aria-label="Dark · अँध्यारो" data-theme-set="dark"><b aria-hidden="true">🌙</b><span>Dark</span><small>अँध्यारो</small></button>
+      <button type="button" role="radio" aria-checked="false" aria-label="AMOLED black · पूरा कालो" data-theme-set="amoled"><b aria-hidden="true">⚫</b><span>AMOLED</span><small>पूरा कालो</small></button>
+    </div>
+  </div>
   <!-- "Switch portal" entry removed 2026-08-29 (master-prompt §2). -->
 </div>
 
@@ -396,7 +412,7 @@ s.addEventListener('click',function(e){e.preventDefault();
   <div class="container search-wrap" id="search-anchor">
     <form class="search-card simple-search" id="searchForm" autocomplete="off" aria-labelledby="spTitle">
       <div class="sp-head">
-        <h1 class="sp-title" id="spTitle" data-i18n="spTitle">Book your bus</h1>
+        <h1 class="sp-title" id="spTitle" data-i18n="spTitle">Book your journey</h1>
         <p class="sp-sub" data-i18n="spSub">Gujarat ⇄ Rupaidiha · direct AC sleeper coach</p>
       </div>
       <!-- ============================================================
@@ -491,7 +507,7 @@ s.addEventListener('click',function(e){e.preventDefault();
             <button type="button" id="paxPlus" data-i18n-title="paxMore" aria-label="One more passenger"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></button>
           </div>
         </div>
-        <button class="btn btn-orange btn-search" id="searchBtn" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg> <span data-i18n="sSearch">Find Bus / बस खोज्नुहोस्</span></button>
+        <button class="btn btn-orange btn-search" id="searchBtn" type="submit"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg> <span data-i18n="sSearch">See buses &amp; seats</span></button>
       </div>
       <!-- One-tap WhatsApp booking (17 Sep 2026): the message carries the date,
            direction and town chosen above; handled in 05-router (WhatsApp sheet). -->

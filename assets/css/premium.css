@@ -281,7 +281,7 @@ button,.btn,a.btn,.nav-link,.bn-item,.seat,.num-pill,.lang-btn,
 /* ---------------------------------------------------------------------
    5. SOUND / HAPTICS SETTINGS ROW  (see assets/js/19-premium.js)
    -------------------------------------------------------------------
-   Both default ON but are one tap from off, and the switch is rendered
+   Both default OFF (4 Oct 2026) and are one tap from on; the switch is rendered
    into the mobile menu so it is reachable without an account.
    ------------------------------------------------------------------- */
 .feel-row{

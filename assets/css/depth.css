@@ -1,0 +1,873 @@
+/* =====================================================================
+   S HARI GLOBAL — DEPTH LAYER + AMOLED DISPLAY  (4 Oct 2026)
+
+   Loads LAST in both apps (customer: after anim.css; company/admin: after
+   admin.css). Two jobs:
+
+   1. POP-OUT DEPTH in every theme. One light source, top-left. Major
+      surfaces get a lit rim (bright top/left edge), a stacked lower edge
+      (the visible "side thickness") and a detached cast shadow, so a box
+      reads as lifted off the screen even in a still screenshot. Primary
+      actions sit on a thicker coloured edge and travel 3px into it when
+      pressed. Inputs are inset wells inside their raised parent. A
+      selected seat / date / direction lifts above its neighbours; a
+      booked seat is pressed flat.
+
+   2. AMOLED: an explicit third display choice (light · dark · AMOLED).
+      It is stamped as data-theme="dark" + data-display="amoled", so every
+      existing dark-theme rule keeps working and this file only re-points
+      the design-system tokens at a pure-black ground (#000) with opaque
+      #101822 faces. The browser cannot tell whether a panel is AMOLED, so
+      it is never switched on automatically.
+
+   Rules of the layer:
+   - Text and numbers stay flat (no text-shadow, no rotation, no blur).
+   - Static depth only: nothing loops. Motion is the 120–190ms press /
+     select response; prefers-reduced-motion keeps the depth, drops the
+     movement.
+   - Element ids, JS hooks and backend states are untouched — a seat's
+     held / booked / ladies meaning comes from the existing classes.
+   - Print and forced-colours fall back to flat, readable output.
+   ===================================================================== */
+
+/* ---------- 0. Depth tokens: light (default) ---------- */
+:root, :root[data-theme="light"] {
+  --dp-face: linear-gradient(168deg, #FFFFFF 0%, #FFFFFF 60%, #F2F6FC 100%);
+  --dp-border: #D5DEEB;
+  --dp-rim-top: #FFFFFF;
+  --dp-rim-left: #E6ECF5;
+  --dp-rim-bottom: #B9C6DA;
+  /* major panels: lit rim + 8px stacked edge + detached cast shadow */
+  --dp-panel:
+    inset 0 1px 0 #FFFFFF, inset 1px 0 0 rgba(255, 255, 255, .7),
+    0 1px 0 #D3DCEA, 0 3px 0 #C4CFE1, 0 5px 0 #B6C3D8, 0 8px 0 #A8B6CE,
+    0 16px 20px -6px rgba(12, 48, 108, .30), 0 28px 40px -18px rgba(12, 48, 108, .42);
+  /* list rows / small cards: the same light, a thinner slab */
+  --dp-card:
+    inset 0 1px 0 #FFFFFF,
+    0 1px 0 #D3DCEA, 0 3px 0 #C2CDDF, 0 5px 0 #B1BED4,
+    0 11px 14px -5px rgba(12, 48, 108, .30);
+  /* sheets / dialogs float highest */
+  --dp-sheet:
+    inset 0 1px 0 #FFFFFF,
+    0 -1px 0 #D3DCEA, 0 24px 48px -10px rgba(12, 48, 108, .45), 0 10px 18px rgba(12, 48, 108, .18);
+  /* primary action: royal face on a darker royal edge */
+  --dp-act-face: linear-gradient(180deg, #1F6CC8 0%, #0054A8 58%, #004B98 100%);
+  --dp-act-ink: #FFFFFF;
+  --dp-act-rim: #3D82D6;
+  --dp-act:
+    inset 0 1px 0 rgba(255, 255, 255, .40), inset 0 -2px 0 rgba(0, 24, 70, .22),
+    0 2px 0 #003C90, 0 4px 0 #00347F, 0 6px 0 #002B6A,
+    0 13px 18px -5px rgba(0, 52, 130, .55);
+  --dp-act-pressed:
+    inset 0 1px 0 rgba(255, 255, 255, .25), inset 0 3px 7px rgba(0, 24, 70, .35),
+    0 1px 0 #003C90, 0 3px 0 #002B6A, 0 5px 8px -3px rgba(0, 52, 130, .45);
+  /* neutral raised button (secondary actions, steppers, tabs) */
+  --dp-btn-face: linear-gradient(180deg, #FFFFFF 0%, #F1F5FB 100%);
+  --dp-btn-border: #B8C4D7;
+  --dp-btn:
+    inset 0 1px 0 #FFFFFF,
+    0 2px 0 #C6D1E2, 0 4px 0 #B3C0D6, 0 9px 12px -5px rgba(12, 48, 108, .32);
+  --dp-btn-pressed:
+    inset 0 2px 5px rgba(12, 48, 108, .16),
+    0 1px 0 #C6D1E2, 0 2px 0 #B3C0D6, 0 4px 6px -3px rgba(12, 48, 108, .25);
+  /* unselected chip / seat: a low cushion */
+  --dp-chip:
+    inset 0 1px 0 #FFFFFF,
+    0 2px 0 #CCD6E5, 0 3px 0 #B9C6DA, 0 7px 9px -5px rgba(12, 48, 108, .28);
+  /* selected chip / seat / tab: lifted on a royal edge */
+  --dp-chip-on:
+    inset 0 1px 0 rgba(255, 255, 255, .35),
+    0 2px 0 #003C90, 0 4px 0 #003077, 0 6px 0 #002660,
+    0 13px 16px -5px rgba(0, 52, 130, .55);
+  --dp-on-face: linear-gradient(180deg, #1B66C2 0%, #0054A8 100%);
+  --dp-on-ink: #FFFFFF;
+  /* booked / used: pressed flat into the surface */
+  --dp-sunk: inset 0 2px 4px rgba(12, 48, 108, .18), inset 0 1px 0 rgba(12, 48, 108, .10);
+  /* input wells */
+  --dp-field-bg: #F6F8FC;
+  --dp-field-border: #7D8AA0;
+  --dp-field: inset 0 2px 5px rgba(12, 48, 108, .14), inset 0 1px 0 rgba(12, 48, 108, .10), 0 1px 0 #FFFFFF;
+  /* app bar + bottom bar */
+  --dp-bar: 0 3px 0 #DC143C, 0 6px 0 #8E0F28, 0 12px 18px -4px rgba(12, 48, 108, .45);
+  --dp-bnav: inset 0 1px 0 #FFFFFF, 0 -1px 0 #D3DCEA, 0 -3px 0 #E4EAF3, 0 -10px 22px rgba(12, 48, 108, .20);
+  /* ground: a faint top-left light on the page */
+  --dp-ground: radial-gradient(120% 60% at 0% 0%, #FFFFFF 0%, rgba(255, 255, 255, 0) 55%);
+  --dp-press: 3px;
+  --dp-lift: -2px;
+  --dp-t: 140ms;
+}
+
+/* ---------- 0b. Depth tokens: dark ---------- */
+:root[data-theme="dark"] {
+  --dp-face: linear-gradient(160deg, #1C2E4D 0%, #132139 55%, #101C31 100%);
+  --dp-border: #24375A;
+  --dp-rim-top: #4D6694;
+  --dp-rim-left: #33496F;
+  --dp-rim-bottom: #0B1426;
+  --dp-panel:
+    inset 0 1px 0 rgba(165, 195, 245, .24), inset 1px 0 0 rgba(165, 195, 245, .10),
+    0 2px 0 #1C2B47, 0 4px 0 #16233B, 0 6px 0 #101B2F, 0 8px 0 #0A1323,
+    0 18px 26px -6px rgba(0, 0, 0, .80), 0 30px 44px -18px rgba(0, 0, 0, .70);
+  --dp-card:
+    inset 0 1px 0 rgba(165, 195, 245, .20),
+    0 2px 0 #1A2944, 0 4px 0 #132037, 0 6px 0 #0D172A,
+    0 12px 16px -5px rgba(0, 0, 0, .75);
+  --dp-sheet:
+    inset 0 1px 0 rgba(165, 195, 245, .24),
+    0 26px 50px -8px rgba(0, 0, 0, .85), 0 10px 18px rgba(0, 0, 0, .5);
+  --dp-act-face: linear-gradient(180deg, #7DB4F2 0%, #5B9BE8 58%, #4F8EDA 100%);
+  --dp-act-ink: #0B1220;
+  --dp-act-rim: #A9CCF7;
+  --dp-act:
+    inset 0 1px 0 rgba(255, 255, 255, .45), inset 0 -2px 0 rgba(10, 30, 70, .25),
+    0 2px 0 #3570BA, 0 4px 0 #285DA0, 0 6px 0 #1C4884,
+    0 14px 20px -5px rgba(0, 0, 0, .80);
+  --dp-act-pressed:
+    inset 0 1px 0 rgba(255, 255, 255, .30), inset 0 3px 7px rgba(10, 30, 70, .35),
+    0 1px 0 #3570BA, 0 3px 0 #1C4884, 0 5px 8px -3px rgba(0, 0, 0, .7);
+  --dp-btn-face: linear-gradient(180deg, #1D304F 0%, #15243E 100%);
+  --dp-btn-border: #3A5178;
+  --dp-btn:
+    inset 0 1px 0 rgba(165, 195, 245, .22),
+    0 2px 0 #1A2944, 0 4px 0 #101B30, 0 10px 14px -5px rgba(0, 0, 0, .75);
+  --dp-btn-pressed:
+    inset 0 2px 6px rgba(0, 0, 0, .45),
+    0 1px 0 #1A2944, 0 2px 0 #101B30, 0 4px 6px -3px rgba(0, 0, 0, .6);
+  --dp-chip:
+    inset 0 1px 0 rgba(165, 195, 245, .18),
+    0 2px 0 #1B2A45, 0 3px 0 #111D33, 0 8px 10px -5px rgba(0, 0, 0, .7);
+  --dp-chip-on:
+    inset 0 1px 0 rgba(255, 255, 255, .40),
+    0 2px 0 #3570BA, 0 4px 0 #285DA0, 0 6px 0 #1C4884,
+    0 14px 18px -5px rgba(0, 0, 0, .8);
+  --dp-on-face: linear-gradient(180deg, #78B0F0 0%, #5B9BE8 100%);
+  --dp-on-ink: #0B1220;
+  --dp-sunk: inset 0 2px 5px rgba(0, 0, 0, .55), inset 0 1px 0 rgba(0, 0, 0, .4);
+  --dp-field-bg: #0A1324;
+  --dp-field-border: #6B7D9B;
+  --dp-field: inset 0 3px 7px rgba(0, 0, 0, .60), inset 0 1px 0 rgba(0, 0, 0, .5), 0 1px 0 rgba(165, 195, 245, .12);
+  --dp-bar: 0 3px 0 #FF5C74, 0 6px 0 #8E2335, 0 14px 22px -4px rgba(0, 0, 0, .85);
+  --dp-bnav: inset 0 1px 0 rgba(165, 195, 245, .22), 0 -1px 0 #22314A, 0 -12px 24px rgba(0, 0, 0, .65);
+  --dp-ground: radial-gradient(120% 60% at 0% 0%, rgba(60, 100, 170, .16) 0%, rgba(60, 100, 170, 0) 55%);
+}
+
+/* ---------- 1. AMOLED display: pure-black ground, opaque lit faces ----------
+   Values from the owner's AMOLED Pop-out brief (4 Oct 2026). Every text
+   pair below is >= 4.5:1 on its face: #EEF4FF / #ACBBD0 / #9ABFFF on
+   #101822 and on #000; #FFFFFF on #28579C. */
+:root[data-display="amoled"] {
+  color-scheme: dark;
+  /* design-system tokens (ds.css) */
+  --navy: #050B16;
+  --on-navy: #FFFFFF;
+  --on-navy-muted: #B9C9E6;
+  --royal: #9ABFFF;            /* accent: links, selected text, focus */
+  --royal-strong: #C2D8FF;
+  --royal-soft: #17294A;
+  --royal-tint: #0D1A30;
+  --on-royal: #000814;
+  --red: #FF6B80;
+  --orange: #FF9A3D;
+  --on-orange: #000814;
+  --orange-soft: #2E1C0B;
+  --warm-ink: #FFC07A;
+  --page: #000000;
+  --surface: #101822;
+  --surface-sunken: #080C13;
+  --surface-hover: #1A2638;
+  --line: #2C3D55;
+  --line-strong: #3B4F6B;
+  --line-control: #607697;
+  --ink: #EEF4FF;
+  --ink-2: #D2DDED;
+  --muted: #ACBBD0;
+  --focus: #B7D3FF;
+  --success: #8CE4B8;
+  --success-soft: #0F271B;
+  --warning: #FFCF86;
+  --warning-soft: #2B2111;
+  --danger: #FFADB9;
+  --danger-soft: #30161B;
+  --on-danger: #000814;
+  --refund: #D3BCFF;
+  --refund-soft: #22183A;
+  --seat-booked: #161E2A;
+  --seat-booked-ink: #8E9DB4;
+  --seat-ladies: #331224;
+  --seat-ladies-ink: #F7B8D4;
+  --seat-ladies-line: #E8579F;
+  --seat-gents: #0E1B33;
+  --seat-gents-ink: #AECBFB;
+  --scrim: rgba(0, 0, 0, .78);
+  --shadow-1: 0 1px 0 #24344A, 0 6px 10px #000;
+  --shadow-2: 0 2px 0 #24344A, 0 10px 18px #000;
+  --shadow-3: 0 3px 0 #24344A, 0 18px 32px #000;
+  /* legacy customer tokens that are not routed through redesign.css */
+  --bg: #000000;
+  --card: #101822;
+  --surface-2: #080C13;
+  --text: #EEF4FF;
+  --fg: #EEF4FF;
+  /* depth */
+  --dp-face: linear-gradient(150deg, #213146 0%, #172334 32%, #101822 62%);
+  --dp-border: #33465F;
+  --dp-rim-top: #8A9DB9;
+  --dp-rim-left: #586E8D;
+  --dp-rim-bottom: #1C2838;
+  --dp-panel:
+    inset 0 1px 0 rgba(183, 197, 220, .25), inset 1px 0 0 rgba(138, 159, 189, .19),
+    0 2px 0 #34465F, 0 4px 0 #24344A, 0 6px 0 #1B293C, 0 8px 0 #152032,
+    0 20px 25px #000, 0 32px 46px -16px rgba(0, 0, 0, .9);
+  --dp-card:
+    inset 0 1px 0 rgba(183, 197, 220, .22),
+    0 2px 0 #30425A, 0 4px 0 #213046, 0 6px 0 #162132,
+    0 13px 16px #000;
+  --dp-sheet:
+    inset 0 1px 0 rgba(183, 197, 220, .28),
+    0 -1px 0 #33465F, 0 26px 50px #000, 0 10px 18px #000;
+  --dp-act-face: linear-gradient(180deg, #3570C0 0%, #28579C 58%, #234D8B 100%);
+  --dp-act-ink: #FFFFFF;
+  --dp-act-rim: #9ABFFF;
+  --dp-act:
+    inset 0 1px 0 rgba(255, 255, 255, .38), inset 0 -2px 0 rgba(0, 0, 0, .25),
+    0 3px 0 #142E56, 0 6px 0 #0E2244,
+    0 13px 20px #000;
+  --dp-act-pressed:
+    inset 0 1px 0 rgba(255, 255, 255, .22), inset 0 3px 8px rgba(0, 0, 0, .45),
+    0 1px 0 #142E56, 0 3px 0 #0E2244, 0 6px 10px #000;
+  --dp-btn-face: linear-gradient(150deg, #24344B 0%, #101822 70%);
+  --dp-btn-border: #7489A6;
+  --dp-btn:
+    inset 0 1px 0 #8E9DB5,
+    0 2px 0 #30415B, 0 5px 0 #172338, 0 11px 13px #000;
+  --dp-btn-pressed:
+    inset 0 1px 0 #6F80A0, inset 0 2px 6px rgba(0, 0, 0, .5),
+    0 1px 0 #30415B, 0 2px 0 #172338, 0 5px 8px #000;
+  --dp-chip:
+    inset 0 1px 0 rgba(142, 157, 181, .7),
+    0 2px 0 #2C3D56, 0 4px 0 #182437, 0 9px 11px #000;
+  --dp-chip-on:
+    inset 0 1px 0 rgba(255, 255, 255, .38),
+    0 3px 0 #142E56, 0 6px 0 #0E2244, 0 13px 20px #000;
+  --dp-on-face: linear-gradient(180deg, #3570C0 0%, #28579C 100%);
+  --dp-on-ink: #FFFFFF;
+  --dp-sunk: inset 0 3px 7px #000, inset 0 1px 0 rgba(0, 0, 0, .8);
+  --dp-field-bg: #080C13;
+  --dp-field-border: #607697;
+  --dp-field: inset 0 3px 7px #000, inset 0 1px 0 rgba(0, 0, 0, .8), 0 1px 0 rgba(138, 159, 189, .18);
+  --dp-bar: 0 3px 0 #C8243F, 0 6px 0 #5A1220, 0 14px 22px #000;
+  --dp-bnav: inset 0 1px 0 rgba(183, 197, 220, .25), 0 -1px 0 #33465F, 0 -14px 26px #000;
+  --dp-ground: radial-gradient(110% 55% at 0% 0%, rgba(40, 87, 156, .10) 0%, rgba(40, 87, 156, 0) 55%);
+}
+:root[data-display="amoled"], :root[data-display="amoled"] body { background-color: #000 !important; }
+:root[data-display="amoled"] ::selection { background: #28579C; color: #FFFFFF; }
+
+/* ---------- 2. Shared primitives (both apps; opt-in classes) ---------- */
+.shg-depth-panel {
+  background: var(--dp-face) !important;
+  border: 1px solid var(--dp-border) !important;
+  border-top-color: var(--dp-rim-top) !important;
+  border-left-color: var(--dp-rim-left) !important;
+  box-shadow: var(--dp-panel) !important;
+}
+.shg-depth-action {
+  background: var(--dp-btn-face) !important;
+  border: 1px solid var(--dp-btn-border) !important;
+  box-shadow: var(--dp-btn) !important;
+  min-height: 44px;
+  touch-action: manipulation;
+  transition: transform var(--dp-t) ease-out, box-shadow var(--dp-t) ease-out !important;
+}
+.shg-depth-action.shg-primary {
+  background: var(--dp-act-face) !important;
+  color: var(--dp-act-ink) !important;
+  border-color: var(--dp-act-rim) !important;
+  box-shadow: var(--dp-act) !important;
+}
+.shg-depth-field {
+  background: var(--dp-field-bg) !important;
+  border: 1.5px solid var(--dp-field-border) !important;
+  box-shadow: var(--dp-field) !important;
+}
+
+/* =====================================================================
+   CUSTOMER APP (shreehariglobal.in)
+   ===================================================================== */
+
+/* ---------- 3. Ground ---------- */
+body { background-image: var(--dp-ground) !important; background-repeat: no-repeat !important; background-attachment: scroll; }
+
+/* ---------- 4. App bar, flow header, bottom bar ---------- */
+.nav, .nav.scrolled { box-shadow: var(--dp-bar) !important; border-bottom-width: 0 !important; }
+.nav .brand-tile { box-shadow: inset 0 1px 0 #FFFFFF, 0 2px 0 #B9C6DA, 0 4px 0 #8FA0BE, 0 7px 10px -3px rgba(0, 0, 0, .45); }
+.nav .hamburger, .nav .lang-mini, .topbar .lang-btn, .topbar .theme-btn {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), 0 2px 0 rgba(0, 0, 0, .35), 0 4px 6px -2px rgba(0, 0, 0, .35) !important;
+  transition: transform var(--dp-t) ease-out, box-shadow var(--dp-t) ease-out;
+}
+.topbar .lang-btn, .topbar .theme-btn { box-shadow: var(--dp-chip) !important; }
+.topbar .lang-btn.on { box-shadow: var(--dp-chip-on) !important; background: var(--dp-on-face) !important; color: var(--dp-on-ink) !important; border-color: var(--dp-act-rim) !important; }
+.flow-head { box-shadow: var(--dp-bar) !important; position: relative; z-index: 2; }
+.flow-head .step.now { box-shadow: inset 0 1px 0 #FFFFFF, 0 2px 0 rgba(0, 0, 0, .25), 0 4px 0 rgba(0, 0, 0, .18) !important; }
+.bottom-nav { box-shadow: var(--dp-bnav) !important; }
+.bottom-nav .bn-item.on .bi { background: var(--dp-on-face) !important; color: var(--dp-on-ink) !important; box-shadow: var(--dp-chip-on) !important; transform: translateY(var(--dp-lift)) !important; }
+.bottom-nav .bn-item.on .bi .ic, .bottom-nav .bn-item.on .bi svg { color: var(--dp-on-ink) !important; stroke: currentColor; }
+.mobile-menu { box-shadow: var(--dp-sheet) !important; }
+/* The phone menu is sticky under the app bar and about 1,070px tall, so its
+   last rows (Display, Sound, Vibration) sat below the screen with no way to
+   reach them. It scrolls inside itself now. */
+.mobile-menu.open { max-height: calc(100vh - 80px); max-height: calc(100dvh - 80px); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+@media (max-width: 899px) {
+  .mobile-menu.open { max-height: calc(100vh - 80px - var(--bottomnav-h) - env(safe-area-inset-bottom, 0px)); max-height: calc(100dvh - 80px - var(--bottomnav-h) - env(safe-area-inset-bottom, 0px)); }
+}
+/* the floating WhatsApp / assistant / SOS buttons step aside while the menu is open */
+body:has(#mobileMenu.open) :is(.whatsapp-fab, .ai-fab, .sos-fab, .ct-fab) { visibility: hidden !important; }
+.nav .nav-drop-list { box-shadow: var(--dp-sheet) !important; }
+.whatsapp-fab, .ai-fab { box-shadow: 0 2px 0 rgba(0, 0, 0, .28), 0 4px 0 rgba(0, 0, 0, .22), 0 12px 16px -4px rgba(0, 0, 0, .45) !important; }
+#counterBar { box-shadow: var(--dp-bar) !important; }
+
+/* ---------- 5. Major raised panels ---------- */
+#view-home .search-card.simple-search,
+#quick-ticket .qt-banner, #qtCollapsed, #brandBand .brand-band,
+.res-toolbar, .seat-panel, .sum-card, #ticketCard, .status-card.tk2,
+.empty-state, #statusBody .empty-state, #view-status .empty-state,
+.loy-card, .legend-sticky,
+.shg-modal .m-box, .wa-sheet-card, .pwa-sheet, .ai-panel {
+  background-image: var(--dp-face) !important;
+  border-color: var(--dp-border) !important;
+  border-top-color: var(--dp-rim-top) !important;
+  border-left-color: var(--dp-rim-left) !important;
+}
+#view-home .search-card.simple-search, .seat-panel, .sum-card, #ticketCard, .status-card.tk2,
+#view-status .empty-state, #statusBody .empty-state {
+  box-shadow: var(--dp-panel) !important;
+}
+#view-home .search-card.simple-search { margin-bottom: 14px !important; }
+#quick-ticket .qt-banner, #qtCollapsed, #brandBand .brand-band, .res-toolbar, .empty-state, .loy-card {
+  box-shadow: var(--dp-card) !important;
+}
+.shg-modal .m-box, .wa-sheet-card, .pwa-sheet, .ai-panel { box-shadow: var(--dp-sheet) !important; }
+
+/* list cards: a thinner slab, still clearly lifted */
+.entry-cards .ec-grid .ec-card, .hero-actions .ha-card, .bus-card, .mybk-card, .cabin-card, .skel-card {
+  background-image: var(--dp-face) !important;
+  border-color: var(--dp-border) !important;
+  border-top-color: var(--dp-rim-top) !important;
+  border-left-color: var(--dp-rim-left) !important;
+  box-shadow: var(--dp-card) !important;
+}
+.bus-card, .mybk-card, .entry-cards .ec-grid .ec-card, .hero-actions .ha-card { margin-bottom: 6px; }
+.bus-card:hover, .mybk-card:hover, .entry-cards .ec-card:hover, .hero-actions .ha-card:hover { box-shadow: var(--dp-card) !important; }
+.cabin-card:has(.seat.sel) { border-color: var(--royal) !important; box-shadow: var(--dp-card), 0 0 0 2px var(--royal) !important; }
+
+/* icon tiles inside cards sit on their own little block */
+.entry-cards .ec-ico, .hero-actions .ha-ico {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .55), 0 2px 0 var(--dp-rim-bottom), 0 5px 7px -3px rgba(0, 0, 0, .35) !important;
+}
+
+/* ---------- 6. Primary actions: royal face on a thicker edge ---------- */
+.search-card .btn-search, .btn-orange, .btn-blue, .btn-primary, .btn-search, .qt-banner .btn-orange, .qt-go,
+.sg-btn--primary, #ticketCard .tk2-actions > .btn.btn-orange, #ticketCard .tk2-actions > .btn.btn-primary,
+.flow-actions .btn-orange, .flow-actions .btn-primary, .flow-actions .btn-blue {
+  background: var(--dp-act-face) !important;
+  color: var(--dp-act-ink) !important;
+  border: 1px solid var(--dp-act-rim) !important;
+  box-shadow: var(--dp-act) !important;
+  transition: transform var(--dp-t) ease-out, box-shadow var(--dp-t) ease-out, filter var(--dp-t) ease-out !important;
+  touch-action: manipulation;
+}
+.search-card .btn-search { margin-bottom: 6px !important; }
+.btn-orange:hover, .btn-blue:hover, .btn-primary:hover, .btn-search:hover, .sg-btn--primary:hover { background: var(--dp-act-face) !important; filter: brightness(1.06); }
+.search-card .btn-search .ic, .btn-search svg { color: inherit; }
+
+/* secondary / quiet actions become raised neutral keys */
+.btn-ghost, .flow-actions .btn-ghost, #seatBackBtn, #seatAutoPick, .sg-btn--secondary,
+#ticketCard .tk2-actions > .btn.btn-blue, #ticketCard .tk2-actions > .btn.btn-wa, #ticketCard .tk2-actions > .btn.btn-ghost,
+#ticketCard .btn.btn-ghost, #ticketCard .btn.btn-wa,
+#quick-ticket .bk-switch, #quick-ticket .qt-alt, #quick-ticket .qt-mic,
+.seat-quick .sq-g button, .tier-pill, .deck-tabs .deck-tab, .seat-count-picker .scp-n, .pref-chip,
+.sg-stepper, .my-tabs .my-tab {
+  background: var(--dp-btn-face) !important;
+  border-color: var(--dp-btn-border) !important;
+  box-shadow: var(--dp-btn) !important;
+  transition: transform var(--dp-t) ease-out, box-shadow var(--dp-t) ease-out !important;
+  touch-action: manipulation;
+}
+.sg-stepper { overflow: visible !important; }
+.sg-stepper button { border-radius: inherit; }
+
+/* selected chips / tabs / counts lift above their neighbours */
+.deck-tabs .deck-tab.on, .deck-tabs .deck-tab[aria-selected="true"],
+.seat-count-picker .scp-n.on, .pref-chip.on, .tier-pill.on, .tier-pill[aria-pressed="true"],
+.seat-quick .sq-g button.on, .seat-quick .sq-g button[aria-pressed="true"], .my-tabs .my-tab.on {
+  background: var(--dp-on-face) !important;
+  color: var(--dp-on-ink) !important;
+  border-color: var(--dp-act-rim) !important;
+  box-shadow: var(--dp-chip-on) !important;
+  transform: translateY(var(--dp-lift));
+}
+
+/* ---------- 7. Booking panel controls ---------- */
+/* direction: two keys in a sunken tray; the chosen one stands up */
+.search-card .dir-toggle, .booking-type-toggle, .sg-seg, .seat-count-picker {
+  background: var(--dp-field-bg) !important;
+  box-shadow: var(--dp-field) !important;
+  border-color: var(--dp-border) !important;
+}
+.search-card .dir-toggle { padding: 5px 5px 9px !important; }
+.search-card .dir-pill.on, .booking-type-toggle .bt-pill.on, .sg-seg__item[aria-selected="true"], .sg-seg__item[aria-pressed="true"] {
+  background: var(--dp-face) !important;
+  outline: 0 !important;
+  border: 1px solid var(--royal) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 2px 0 var(--royal), 0 4px 0 color-mix(in srgb, var(--royal) 70%, #000), 0 10px 12px -5px rgba(0, 0, 0, .40) !important;
+  transform: translateY(-1px);
+}
+:root[data-display="amoled"] .search-card .dir-pill.on, :root[data-display="amoled"] .booking-type-toggle .bt-pill.on {
+  background: linear-gradient(150deg, #24344B, #101822 70%) !important;
+  border-color: #9ABFFF !important;
+  box-shadow: inset 0 1px 0 #8E9DB5, 0 3px 0 #142E56, 0 6px 0 #0E2244, 0 12px 16px #000 !important;
+}
+/* date strip: every day is a key; the chosen day is lifted and royal */
+.search-card .date-strip-30 { padding: 4px 2px 14px !important; }
+.search-card .d-btn {
+  background: var(--dp-btn-face) !important;
+  border-color: var(--dp-btn-border) !important;
+  box-shadow: var(--dp-chip) !important;
+  transition: transform var(--dp-t) ease-out, box-shadow var(--dp-t) ease-out !important;
+}
+.search-card .d-btn.on {
+  background: var(--dp-on-face) !important;
+  border-color: var(--dp-act-rim) !important;
+  color: var(--dp-on-ink) !important;
+  box-shadow: var(--dp-chip-on) !important;
+  transform: translateY(var(--dp-lift));
+}
+.search-card .d-btn.on .d-day, .search-card .d-btn.on .d-mo, .search-card .d-btn.on .d-bs { color: var(--dp-on-ink) !important; opacity: .92; }
+.search-card .d-btn.past, .search-card .d-btn.sold-out { box-shadow: var(--dp-sunk) !important; background: var(--surface-sunken) !important; }
+.search-card .d-btn.today:not(.on) { border-color: var(--royal) !important; }
+.search-card .fare-live { box-shadow: var(--dp-field) !important; }
+
+/* ---------- 8. Inputs: inset wells inside the raised panel ---------- */
+.search-card .s-field .box, #quick-ticket input, .seat-quick input, .sum-card select, .sum-card .bp-other,
+.field select, .field input, .field textarea, .wa-req input, .wa-req select, .wa-req textarea,
+.sg-input, .sg-select, .ai-input input, .ai-input textarea, #aiInput {
+  background: var(--dp-field-bg) !important;
+  border-color: var(--dp-field-border) !important;
+  box-shadow: var(--dp-field) !important;
+}
+.search-card .s-field .box select, .search-card .s-field .box input { background: transparent !important; }
+.search-card .s-field .box:focus-within, #quick-ticket input:focus, .field input:focus, .field select:focus, .field textarea:focus,
+.wa-req input:focus, .wa-req select:focus, .wa-req textarea:focus, .sg-input:focus, .sg-select:focus {
+  border-color: var(--royal) !important;
+  box-shadow: var(--dp-field), 0 0 0 3px var(--royal-soft) !important;
+}
+
+/* 320px phones: the 1–6 seat-count keys (44px each) pushed the page 42px
+   sideways next to the "how many seats?" label. Label on its own row, the
+   keys in two rows of three, so every key keeps a full-size target. */
+@media (max-width: 360px) {
+  #view-seats .seat-count-picker { grid-template-columns: 1fr !important; }
+  #view-seats .seat-count-picker .scp-btns { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 8px !important; }
+  #view-seats .seat-count-picker .scp-n { min-width: 0 !important; }
+  #view-seats .flow-actions .btn { min-width: 0; flex: 1 1 0; white-space: normal; padding-left: 10px; padding-right: 10px; }
+}
+
+/* ---------- 9. Seats: cushions that stand up; booked ones are pressed flat ---------- */
+#view-seats .seat-map, #view-seats .deck-block { overflow: visible; }
+#view-seats .seat {
+  background-image: var(--dp-btn-face) !important;
+  box-shadow: var(--dp-chip) !important;
+  transition: transform var(--dp-t) ease-out, box-shadow var(--dp-t) ease-out, background-color .15s, border-color .15s !important;
+}
+#view-seats .seat.u-fem:not(.sel):not(.bkd), #view-seats .seat.fem:not(.sel):not(.bkd):not(.reserved),
+#view-seats .seat.u-male:not(.sel):not(.bkd),
+#view-seats .seat.pvt:not(.sel):not(.bkd):not(.reserved):not(.u-fem):not(.u-male) { background-image: none !important; }
+#view-seats .seat.sel:not(.holding):not(.hold-wait) {
+  background-image: var(--dp-on-face) !important;
+  color: var(--dp-on-ink) !important;
+  border-color: var(--dp-act-rim) !important;
+  box-shadow: var(--dp-chip-on) !important;
+  transform: translateY(-3px);
+}
+#view-seats .seat.sel.holding, #view-seats .seat.sel.hold-wait { background-image: none !important; box-shadow: var(--dp-chip) !important; transform: translateY(-1px); }
+#view-seats .seat.bkd, #view-seats .seat.reserved, #view-seats .seat:disabled:not(.sel) {
+  background-image: none !important;
+  box-shadow: var(--dp-sunk) !important;
+  transform: none !important;
+}
+#view-seats .seat.hold { background-image: none !important; box-shadow: var(--dp-sunk) !important; }
+#view-seats .seat.suggested:not(.sel) { box-shadow: var(--dp-chip), 0 0 0 2px var(--surface), 0 0 0 4px var(--royal) !important; }
+.legend .lg { box-shadow: 0 2px 0 var(--dp-rim-bottom) !important; }
+.legend .lg.bkd, .legend .lg.hold { box-shadow: var(--dp-sunk) !important; }
+.legend .lg.sel { background: var(--dp-on-face) !important; box-shadow: 0 2px 0 #003C90, 0 3px 0 #002660 !important; }
+.deck-block .deck-head, .deck-head { box-shadow: 0 2px 0 rgba(0, 0, 0, .35), 0 6px 10px -4px rgba(0, 0, 0, .45) !important; }
+
+/* ---------- 10. Customer sheets, help chat, toasts, menu ---------- */
+.ai-msgs { box-shadow: var(--dp-field) !important; }
+.ai-msg.bot {
+  background: var(--dp-face) !important;
+  border: 1px solid var(--dp-border) !important;
+  border-top-color: var(--dp-rim-top) !important;
+  box-shadow: 0 2px 0 var(--dp-rim-bottom), 0 6px 10px -4px rgba(0, 0, 0, .35) !important;
+}
+.ai-msg.user {
+  background: var(--dp-act-face) !important;
+  color: var(--dp-act-ink) !important;
+  border: 1px solid var(--dp-act-rim) !important;
+  box-shadow: 0 2px 0 #003C90, 0 4px 0 #002B6A, 0 8px 12px -5px rgba(0, 0, 0, .45) !important;
+}
+:root[data-theme="dark"] .ai-msg.user { box-shadow: 0 2px 0 #285DA0, 0 4px 0 #1C4884, 0 8px 12px -5px rgba(0, 0, 0, .7) !important; }
+:root[data-display="amoled"] .ai-msg.bot { background: #1D2D43 !important; border-color: #33465F !important; border-top-color: #5B7191 !important; color: #EEF4FF !important; box-shadow: 0 2px 0 #24344A, 0 8px 12px #000 !important; }
+:root[data-display="amoled"] .ai-msg.user { background: #142D31 !important; color: #EEF4FF !important; border-color: #3E6E70 !important; border-top-color: #598B8D !important; box-shadow: 0 2px 0 #0D2023, 0 8px 12px #000 !important; }
+:root[data-display="amoled"] .ai-msg.user a { color: #95E7D9 !important; }
+:root[data-display="amoled"] .ai-msgs { background: #000 !important; background-image: none !important; }
+#toast { box-shadow: 0 2px 0 rgba(0, 0, 0, .35), 0 4px 0 rgba(0, 0, 0, .25), 0 16px 26px -6px rgba(0, 0, 0, .55) !important; }
+:root[data-display="amoled"] #toast { background: #101822 !important; color: #EEF4FF !important; border: 1px solid #33465F; border-top-color: #8A9DB9; }
+
+/* phone menu: the Display row (03-accounts.js) next to Sound / Vibration */
+.mm-display { display: grid; gap: 8px; padding: 12px 0 6px; border-top: 1px dashed var(--line); margin-top: 6px; }
+.mm-display-lbl { font: 700 13.5px/18px var(--font-sans); color: var(--ink); }
+.mm-display-opts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding-bottom: 8px; }
+.mm-display-opts button {
+  min-height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  border-radius: var(--radius-md); border: 1px solid var(--dp-btn-border); background: var(--dp-btn-face); color: var(--ink);
+  box-shadow: var(--dp-chip); font: 700 13px/16px var(--font-sans); cursor: pointer; padding: 6px 4px;
+  transition: transform var(--dp-t) ease-out, box-shadow var(--dp-t) ease-out; touch-action: manipulation;
+}
+.mm-display-opts button b { font-size: 16px; line-height: 18px; font-weight: 400; }
+.mm-display-opts button small { font: 600 11px/14px var(--font-sans); color: var(--muted); }
+.mm-display-opts button.on { background: var(--dp-on-face); color: var(--dp-on-ink); border-color: var(--dp-act-rim); box-shadow: var(--dp-chip-on); transform: translateY(var(--dp-lift)); }
+.mm-display-opts button.on small { color: inherit; opacity: .9; }
+.feel-sw { box-shadow: var(--dp-field); }
+.feel-sw::after { box-shadow: inset 0 1px 0 #FFFFFF, 0 2px 0 rgba(0, 0, 0, .25), 0 3px 5px rgba(0, 0, 0, .35) !important; }
+:root[data-display="amoled"] .feel-sw { background: #1A2638; }
+:root[data-display="amoled"] .feel-sw.on { background: #1C6B47; }
+
+/* =====================================================================
+   COMPANY APP (/admin: staff, agents, counters). Body class shg-adm.
+   Data stays flat and compact; frames and primary actions carry the
+   strongest depth (owner brief: modest depth on dense screens).
+   ===================================================================== */
+.shg-adm .tb { box-shadow: var(--dp-bar) !important; border-bottom-width: 0 !important; }
+.shg-adm .tb .brand-logo { box-shadow: inset 0 1px 0 #FFFFFF, 0 2px 0 #B9C6DA, 0 4px 0 #8FA0BE, 0 6px 9px -3px rgba(0, 0, 0, .5) !important; }
+.shg-adm .tb .who .tb-av { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .4), 0 2px 0 rgba(0, 0, 0, .4), 0 4px 6px -2px rgba(0, 0, 0, .45) !important; }
+.shg-adm .side { box-shadow: inset -1px 0 0 rgba(255, 255, 255, .08), 3px 0 0 rgba(0, 0, 0, .18), 8px 0 22px -6px rgba(0, 0, 0, .40) !important; }
+.shg-adm .side a.on, .shg-adm .side a.hot.on {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .55), 0 2px 0 #9FB0CC, 0 4px 0 #6F84A8, 0 8px 12px -4px rgba(0, 0, 0, .55) !important;
+}
+:root[data-theme="dark"] .shg-adm .side a.on { box-shadow: inset 0 1px 0 rgba(165, 195, 245, .25), 0 2px 0 #24375A, 0 4px 0 #15233D, 0 8px 12px -4px rgba(0, 0, 0, .7) !important; }
+.shg-adm .side a.on span { box-shadow: 0 2px 0 rgba(0, 0, 0, .3) !important; }
+.shg-adm .mnav { box-shadow: var(--dp-bnav) !important; }
+.shg-adm .mnav a.fab .mn-fab { background: var(--dp-act-face) !important; box-shadow: var(--dp-act) !important; border: 1px solid var(--dp-act-rim); }
+.shg-adm .mnav a.fab .a-ic { color: var(--dp-act-ink) !important; }
+
+/* frames */
+.shg-adm .panel, .shg-adm .dash-panel, .shg-adm .sg-card,
+.shg-adm .modal-box, .shg-adm .bulk-box, .shg-adm .wa-card {
+  background-image: var(--dp-face) !important;
+  border-color: var(--dp-border) !important;
+  border-top-color: var(--dp-rim-top) !important;
+  border-left-color: var(--dp-rim-left) !important;
+}
+.shg-adm .panel, .shg-adm .dash-panel, .shg-adm .sg-card { box-shadow: var(--dp-panel) !important; }
+.shg-adm .modal-box, .shg-adm .bulk-box, .shg-adm .wa-card { box-shadow: var(--dp-sheet) !important; }
+.shg-adm .panel h2, .shg-adm .dash-panel .dp-head, .shg-adm .panel-foot { background-color: var(--surface-sunken) !important; }
+/* tiles: a thinner slab (numbers stay flat and aligned) */
+.shg-adm .card, .shg-adm .kpi, .shg-adm .hcard, .shg-adm .sg-stat, .shg-adm .qa, .shg-adm .promo,
+.shg-adm .lm-card, .shg-adm .md-card, .shg-adm .oq-card, .shg-adm .qt-card, .shg-adm .sh-sum {
+  background-image: var(--dp-face) !important;
+  border-color: var(--dp-border) !important;
+  border-top-color: var(--dp-rim-top) !important;
+  border-left-color: var(--dp-rim-left) !important;
+  box-shadow: var(--dp-card) !important;
+}
+.shg-adm .card:hover, .shg-adm .kpi:hover, .shg-adm .hcard:hover { box-shadow: var(--dp-card) !important; transform: none !important; }
+.shg-adm .kpi .ki, .shg-adm .hcard .hicon, .shg-adm .empty .em-ic {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 2px 0 var(--dp-rim-bottom), 0 5px 7px -3px rgba(0, 0, 0, .35) !important;
+}
+.shg-adm .cards, .shg-adm .kpis, .shg-adm .dash-hero { padding-bottom: 6px; }
+.shg-adm .flash { box-shadow: 0 2px 0 rgba(0, 0, 0, .10), 0 4px 0 rgba(0, 0, 0, .06), 0 8px 12px -6px rgba(0, 0, 0, .25) !important; }
+:root[data-theme="dark"] .shg-adm .flash { box-shadow: 0 2px 0 rgba(0, 0, 0, .5), 0 8px 12px -6px rgba(0, 0, 0, .7) !important; }
+.shg-adm .toast, .shg-adm .live-toast { box-shadow: 0 2px 0 rgba(0, 0, 0, .3), 0 4px 0 rgba(0, 0, 0, .2), 0 16px 26px -6px rgba(0, 0, 0, .5) !important; }
+/* table heads sit sunken; rows stay flat for reading */
+.shg-adm th { box-shadow: inset 0 -1px 0 var(--line-strong); }
+@media (max-width: 820px) {
+  .shg-adm table.card-table tbody tr {
+    background: var(--dp-face) !important; border: 1px solid var(--dp-border) !important; border-top-color: var(--dp-rim-top) !important;
+    box-shadow: var(--dp-card) !important; margin-bottom: 14px !important;
+  }
+}
+
+/* buttons: base .btn is the royal action */
+.shg-adm .btn, .shg-adm .sg-btn--primary {
+  background: var(--dp-act-face) !important;
+  color: var(--dp-act-ink) !important;
+  border: 1px solid var(--dp-act-rim) !important;
+  box-shadow: var(--dp-act) !important;
+  transition: transform var(--dp-t) ease-out, box-shadow var(--dp-t) ease-out, filter var(--dp-t) ease-out !important;
+  touch-action: manipulation;
+}
+.shg-adm .btn:hover { transform: none; filter: brightness(1.06); }
+.shg-adm .btn.ghost, .shg-adm .btn-ghost, .shg-adm .btn.soft, .shg-adm .sg-btn--secondary, .shg-adm .sg-btn--ghost,
+.shg-adm .seg a, .shg-adm .seg button, .shg-adm .btn-group .btn {
+  background: var(--dp-btn-face) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--dp-btn-border) !important;
+  box-shadow: var(--dp-btn) !important;
+}
+.shg-adm .btn.soft, .shg-adm .sg-btn--secondary, .shg-adm .sg-btn--ghost { color: var(--royal) !important; }
+.shg-adm .btn.ghost.danger, .shg-adm .btn-ghost.danger { color: var(--danger) !important; border-color: var(--danger) !important; }
+.shg-adm .btn.link { background: none !important; border: 0 !important; box-shadow: none !important; color: var(--royal) !important; }
+.shg-adm .btn.ok, .shg-adm .btn-ok, .shg-adm .btn.success, .shg-adm .btn.wa, .shg-adm .btn-wa, .shg-adm .sh-go.green {
+  background: linear-gradient(180deg, #1C8A55 0%, #11703F 100%) !important; color: #FFFFFF !important; border-color: #3FA874 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 2px 0 #0B5530, 0 4px 0 #084526, 0 6px 0 #06371E, 0 12px 16px -5px rgba(6, 55, 30, .5) !important;
+}
+.shg-adm .btn.bad, .shg-adm .btn.danger:not(.ghost), .shg-adm .btn-danger, .shg-adm .sh-go.red, .shg-adm .sg-btn--danger {
+  background: linear-gradient(180deg, #C83737 0%, #B42525 100%) !important; color: #FFFFFF !important; border-color: #E06A6A !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .30), 0 2px 0 #8A1B1B, 0 4px 0 #701515, 0 6px 0 #5A1010, 0 12px 16px -5px rgba(90, 16, 16, .5) !important;
+}
+.shg-adm .btn.navy {
+  background: linear-gradient(180deg, #1B417F 0%, #0C306C 100%) !important; color: #FFFFFF !important; border-color: #3D5F99 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), 0 2px 0 #08214B, 0 4px 0 #061A3B, 0 6px 0 #04132C, 0 12px 16px -5px rgba(4, 19, 44, .5) !important;
+}
+:root[data-theme="dark"] .shg-adm .btn.ok, :root[data-theme="dark"] .shg-adm .btn-ok, :root[data-theme="dark"] .shg-adm .btn.success,
+:root[data-theme="dark"] .shg-adm .btn.wa, :root[data-theme="dark"] .shg-adm .btn-wa, :root[data-theme="dark"] .shg-adm .sh-go.green {
+  background: linear-gradient(180deg, #1E8F58 0%, #16794A 100%) !important; border-color: #4FB884 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), 0 2px 0 #0E5733, 0 4px 0 #0A4428, 0 6px 0 #07331E, 0 12px 16px -5px rgba(0, 0, 0, .75) !important;
+}
+:root[data-theme="dark"] .shg-adm .btn.bad, :root[data-theme="dark"] .shg-adm .btn.danger:not(.ghost), :root[data-theme="dark"] .shg-adm .btn-danger, :root[data-theme="dark"] .shg-adm .sh-go.red {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), 0 2px 0 #8A1B1B, 0 4px 0 #701515, 0 6px 0 #5A1010, 0 12px 16px -5px rgba(0, 0, 0, .75) !important;
+}
+.shg-adm .seg a.on, .shg-adm .seg button.on, .shg-adm .btn-group .btn.on, .shg-adm .chip.on, .shg-adm .basis-sw.on {
+  background: var(--dp-on-face) !important; color: var(--dp-on-ink) !important; border-color: var(--dp-act-rim) !important;
+  box-shadow: var(--dp-chip-on) !important; transform: translateY(-1px);
+}
+.shg-adm .seg, .shg-adm .btn-group { background: var(--dp-field-bg) !important; box-shadow: var(--dp-field) !important; overflow: visible !important; padding: 4px 4px 7px; gap: 4px; }
+.shg-adm .tabs a.on { box-shadow: inset 0 -3px 0 var(--royal); }
+.shg-adm .chip { box-shadow: var(--dp-chip); }
+
+/* inputs: inset wells (checkboxes, radios, ranges keep their native look) */
+.shg-adm .wrap :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=submit]):not([type=button]):not([type=color]):not([type=hidden]):not([type=image]), select, textarea),
+.shg-adm .sg-input, .shg-adm .sg-select {
+  background-color: var(--dp-field-bg) !important;
+  border-color: var(--dp-field-border) !important;
+  box-shadow: var(--dp-field) !important;
+  color: var(--ink);
+}
+.shg-adm .wrap :is(input, select, textarea):focus { border-color: var(--royal) !important; box-shadow: var(--dp-field), 0 0 0 3px var(--royal-soft) !important; }
+.shg-adm .switch i { box-shadow: var(--dp-field); }
+.shg-adm .switch i::after { box-shadow: inset 0 1px 0 #FFFFFF, 0 2px 0 rgba(0, 0, 0, .25), 0 3px 5px rgba(0, 0, 0, .35) !important; }
+
+/* ---------- 11. Customer surfaces still painted by the legacy files ----------
+   Checkout, contact, My Tickets, reviews, the home "more" sections and the
+   sheets were white boxes from app.css / views.css. They now sit on the
+   design-system surface with the same slab as every other card, so they
+   are readable in light, dark and AMOLED alike. */
+.co-card, .c-card, .my-hello, .qr-box, .pay-card, .testi-card, .t-badge, .svc-card, .faq-item, .pricing-card,
+.occ-card, .qt-plan, .ct-card, .pp-card, .premium-pay-card, .home-more-btn, .push-card, .next-dep-banner {
+  background: var(--surface) !important;
+  background-image: var(--dp-face) !important;
+  color: var(--ink) !important;
+  border-color: var(--dp-border) !important;
+  border-top-color: var(--dp-rim-top) !important;
+  border-left-color: var(--dp-rim-left) !important;
+}
+.co-card, .c-card, .pay-card, .pp-card { box-shadow: var(--dp-panel) !important; }
+.my-hello, .qr-box, .testi-card, .t-badge, .svc-card, .faq-item, .pricing-card, .occ-card, .premium-pay-card,
+.home-more-btn, .push-card, .next-dep-banner { box-shadow: var(--dp-card) !important; }
+.qt-plan, .ct-card { box-shadow: var(--dp-sheet) !important; }
+.premium-pay-card { border-top: 4px solid var(--royal) !important; }
+.co-card { margin-bottom: 26px !important; }
+.svc-card:hover, .t-badge:hover, .faq-item:hover { transform: none !important; box-shadow: var(--dp-card) !important; }
+/* terms page: the clause sections were #fff with no dark rule */
+.tc-section, .tc-search-results, .admin-gate {
+  background: var(--surface) !important; background-image: var(--dp-face) !important; color: var(--ink) !important;
+  border-color: var(--dp-border) !important; border-top-color: var(--dp-rim-top) !important; box-shadow: var(--dp-card) !important;
+}
+.tc-section { margin-bottom: 18px !important; }
+/* the quick-summary tiles carry inline pastel fills; on a dark ground the
+   text is light, so the fill follows the theme instead */
+:root[data-theme="dark"] .terms-wrap .c-card div[style*="background:#"] { background: var(--surface-sunken) !important; border: 1px solid var(--line) !important; color: var(--ink) !important; }
+.tc-search-wrap { background: var(--dp-field-bg) !important; border-color: var(--dp-field-border) !important; box-shadow: var(--dp-field) !important; }
+.tc-head:hover { background: var(--surface-hover) !important; }
+/* notes: the status colour stays, on tokens (these had no dark rule at all) */
+.verify-note, .rules-summary, .premium-payment-state, .tk2-note.cash, .tk2-note.wait, .tk2-note.wa.warn {
+  background: var(--warning-soft) !important; color: var(--ink) !important;
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent) !important;
+  border-left: 4px solid var(--warning) !important;
+  box-shadow: var(--dp-field) !important;
+}
+.tk2-note { background: var(--royal-tint) !important; border-color: var(--royal-soft) !important; color: var(--ink) !important; }
+.tk2-note.wa.ok { background: var(--success-soft) !important; color: var(--ink) !important; border-left: 4px solid var(--success) !important; }
+.tnc-box { background: var(--royal-tint) !important; border-color: var(--royal-soft) !important; color: var(--ink) !important; box-shadow: var(--dp-field) !important; }
+.pay-amt { background: var(--surface-sunken) !important; border-color: var(--line-control) !important; color: var(--ink) !important; box-shadow: var(--dp-field) !important; }
+/* the next trip card keeps its royal fill and gains the action edge */
+.next-trip { box-shadow: var(--dp-act) !important; border: 1px solid var(--dp-act-rim) !important; }
+/* payment method picker + proof tabs: keys; the chosen one stands up */
+.pm-tab, .proof-tab, .pp-btn, .ct-btn, .wa-req-tabs button, .qt-chips button, .ai-chip {
+  background: var(--dp-btn-face) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--dp-btn-border) !important;
+  box-shadow: var(--dp-chip) !important;
+  transition: transform var(--dp-t) ease-out, box-shadow var(--dp-t) ease-out !important;
+}
+.pm-tab.on, .proof-tab.on, .wa-req-tabs button.on, .qt-chips button.on {
+  background: var(--dp-on-face) !important;
+  color: var(--dp-on-ink) !important;
+  border-color: var(--dp-act-rim) !important;
+  box-shadow: var(--dp-chip-on) !important;
+  transform: translateY(var(--dp-lift)) !important;
+}
+.pm-tabs, .proof-tabs, .wa-req-tabs { padding-bottom: 8px !important; overflow: visible !important; }
+.ai-chips { padding-bottom: 8px !important; }
+.ai-inrow input { background: var(--dp-field-bg) !important; border-color: var(--dp-field-border) !important; box-shadow: var(--dp-field) !important; font-size: 16px !important; }
+.ai-head { box-shadow: 0 3px 0 var(--red), 0 8px 12px -6px rgba(0, 0, 0, .5) !important; border-bottom: 0 !important; position: relative; z-index: 1; }
+:root[data-display="amoled"] .ai-head { background: #050B16 !important; }
+/* seat map frame: the coach body is a raised shell, its floor sunken */
+.bus-frame {
+  background: var(--surface-sunken) !important;
+  border-color: var(--dp-border) !important;
+  border-top-color: var(--dp-rim-top) !important;
+  box-shadow: var(--dp-panel) !important;
+}
+/* the continue bar on phones floats over the page on its own slab */
+@media (max-width: 899px) {
+  .flow-actions { box-shadow: var(--dp-bnav) !important; background: var(--surface) !important; }
+}
+/* sections that used plain #fff */
+.section:not(.alt) { background: transparent !important; }
+.section.alt { background: var(--surface-sunken) !important; }
+.skel { background: linear-gradient(90deg, var(--surface-sunken) 25%, var(--surface-hover) 37%, var(--surface-sunken) 63%) !important; background-size: 400% 100% !important; }
+
+/* the on-screen ticket follows the theme (print keeps paper white, below) */
+.tk2 .tk2-route { box-shadow: var(--dp-field) !important; }
+.btn-danger-ghost { box-shadow: var(--dp-btn) !important; }
+:root[data-theme="dark"] .tk2 .tk2-hero { background: var(--surface) !important; color: var(--ink) !important; }
+:root[data-theme="dark"] .tk2 .tk2-pnr { color: var(--royal-strong) !important; }
+:root[data-theme="dark"] .tk2 .tk2-pnr small, :root[data-theme="dark"] .tk2 .tk2-city span, :root[data-theme="dark"] .tk2 .tk2-city small { color: var(--muted) !important; }
+:root[data-theme="dark"] .tk2 .tk2-route { background: var(--surface-sunken) !important; border-color: var(--line) !important; }
+:root[data-theme="dark"] .tk2 .tk2-date, :root[data-theme="dark"] .premium-ticket-support b { color: var(--ink) !important; }
+:root[data-theme="dark"] .tk2 .tk2-arrow { color: var(--royal) !important; }
+:root[data-theme="dark"] .premium-ticket-status, :root[data-theme="dark"] .premium-ticket-support { background: var(--surface-sunken) !important; color: var(--muted) !important; }
+:root[data-theme="dark"] .premium-ticket-status .ok, :root[data-theme="dark"] .premium-payment-state.paid { background: var(--success-soft) !important; color: var(--success) !important; border-color: transparent !important; }
+:root[data-theme="dark"] .premium-ticket-status .off { background: var(--danger-soft) !important; color: var(--danger) !important; }
+:root[data-theme="dark"] .premium-passengers td:first-child { color: var(--royal) !important; }
+:root[data-theme="dark"] .btn-danger-ghost { background: var(--dp-btn-face) !important; color: var(--danger) !important; border-color: var(--danger) !important; }
+
+/* ---------- 12. AMOLED: hard-coded dark colours from older passes ---------- */
+:root[data-display="amoled"] .nav, :root[data-display="amoled"] .nav.scrolled,
+:root[data-display="amoled"] .flow-head, :root[data-display="amoled"] footer { background: #050B16 !important; }
+:root[data-display="amoled"] .pp-card { background: #0F271B !important; background-image: linear-gradient(150deg, #173825, #0F271B 60%) !important; border-color: #2E5A3A !important; }
+:root[data-display="amoled"] .home-more-btn, :root[data-display="amoled"] .mybk-card { background-color: #101822 !important; }
+:root[data-display="amoled"] #ctrPanel, :root[data-display="amoled"] #ctrQuick { background: #07170F !important; }
+:root[data-display="amoled"] .ctr-sum { background: #2B2111 !important; border-color: #5A4318 !important; }
+:root[data-display="amoled"] .sa-scene { background-color: #050B16; }
+:root[data-display="amoled"] .lang-mini-pop { background: #101822 !important; border-color: #33465F !important; }
+:root[data-display="amoled"] .mobile-menu { background: #050B16 !important; border-color: #33465F !important; }
+:root[data-display="amoled"] .bottom-nav { background: #050B16 !important; border-top-color: #33465F !important; }
+:root[data-display="amoled"] .topbar, :root[data-display="amoled"] .divine-bar { background: #000 !important; border-color: #1C2838 !important; }
+:root[data-display="amoled"] .legend .lg.lg-acc { background: #0F2A28 !important; border-color: #4FC3B5 !important; }
+
+/* ---------- 13. Map + help surfaces (#view-nav, Trip Companion, admin map) ----------
+   The map canvas itself is never tilted, blurred or filtered. Only the
+   floating controls and sheets get the raised treatment. */
+#view-nav .sn-cb, #view-nav .sn-ss button, #view-nav .sn-go, #view-nav .sn-ghost {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), 0 2px 0 rgba(0, 0, 0, .45), 0 4px 0 rgba(0, 0, 0, .30), 0 10px 14px -4px rgba(0, 0, 0, .55) !important;
+  transition: transform var(--dp-t) ease-out, box-shadow var(--dp-t) ease-out;
+}
+#view-nav .sn-panel, #view-nav .sn-trackcard, .tc-card, .lt-card {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), 0 -1px 0 rgba(255, 255, 255, .06), 0 3px 0 rgba(0, 0, 0, .45), 0 18px 34px -8px rgba(0, 0, 0, .65) !important;
+}
+.shg-adm .lm-top button, .shg-adm .lm-top .btn, .shg-adm #lmFollow, .shg-adm #lmFit { box-shadow: var(--dp-btn) !important; }
+.shg-adm #lmFollow.on { background: var(--dp-on-face) !important; color: var(--dp-on-ink) !important; box-shadow: var(--dp-chip-on) !important; }
+.shg-adm .maplibregl-ctrl-group { box-shadow: 0 2px 0 rgba(0, 0, 0, .25), 0 4px 0 rgba(0, 0, 0, .15), 0 10px 14px -4px rgba(0, 0, 0, .45) !important; border-radius: 10px !important; }
+.shg-adm .maplibregl-popup-content { box-shadow: 0 2px 0 rgba(0, 0, 0, .25), 0 12px 22px -6px rgba(0, 0, 0, .5) !important; border-radius: 12px !important; }
+:root[data-theme="dark"] .shg-adm .maplibregl-popup-content { background: var(--surface) !important; color: var(--ink) !important; }
+:root[data-theme="dark"] .shg-adm .maplibregl-popup-tip { border-top-color: var(--surface) !important; border-bottom-color: var(--surface) !important; }
+
+/* ---------- 14. Company app pages with light colours typed into the page ----------
+   These pages had no dark rule of their own; the tokens make them follow
+   light / dark / AMOLED like the rest of the panel. */
+:root[data-theme="dark"] .shg-adm :is(.cal-day, .cal-cell, .cal-head, .offer-card, .oc-card, .pay-row, .wa-row, .sched-row, .md-facts, .cust-card) {
+  background-color: var(--surface) !important; color: var(--ink) !important; border-color: var(--line) !important;
+}
+:root[data-display="amoled"] .shg-adm .tb, :root[data-display="amoled"] .shg-adm .side, :root[data-display="amoled"] .shg-adm .mnav { background: #050B16 !important; }
+:root[data-display="amoled"] .shg-adm .side a.on, :root[data-display="amoled"] .shg-adm .side a.hot.on { background: #17294A !important; color: #C2D8FF !important; box-shadow: inset 0 1px 0 #8E9DB5, 0 2px 0 #30415B, 0 5px 0 #172338, 0 10px 13px #000 !important; }
+:root[data-display="amoled"] .shg-adm .row-highlight { background: #2B2111 !important; }
+:root[data-display="amoled"] .shg-adm .dt-bar { background: #000 !important; }
+:root[data-display="amoled"] .shg-adm .tb-search { background: rgba(255, 255, 255, .06) !important; }
+:root[data-display="amoled"] .shg-adm #lmMap { background: #000 !important; }
+
+/* ---------- 15. Company pages found by the AMOLED audit (4 Oct 2026) ----------
+   Status pills typed with inline light colours, and page blocks that were
+   #fff with no dark rule. Same meaning, theme tokens. */
+:root[data-theme="dark"] .shg-adm .pill[style*="d7f4e3" i] { background: var(--success-soft) !important; color: var(--success) !important; }
+:root[data-theme="dark"] .shg-adm .pill[style*="fff4d1" i] { background: var(--warning-soft) !important; color: var(--warning) !important; }
+:root[data-theme="dark"] .shg-adm .pill[style*="eef2fa" i] { background: var(--royal-tint) !important; color: var(--royal-strong) !important; }
+:root[data-theme="dark"] .shg-adm .pill[style*="f7dcdc" i] { background: var(--danger-soft) !important; color: var(--danger) !important; }
+:root[data-theme="dark"] .shg-adm :is(.of-card, .of-form, .sw-panel, .wp-card) {
+  background: var(--surface) !important; background-image: var(--dp-face) !important; color: var(--ink) !important;
+  border-color: var(--dp-border) !important; border-top-color: var(--dp-rim-top) !important;
+}
+:root[data-theme="dark"] .shg-adm .of-form label { color: var(--muted) !important; }
+:root[data-theme="dark"] .shg-adm .wp-note { background: var(--warning-soft) !important; border-color: color-mix(in srgb, var(--warning) 40%, transparent) !important; color: var(--ink) !important; }
+.shg-adm :is(.of-card, .wp-card) { box-shadow: var(--dp-card) !important; }
+.shg-adm :is(.of-form, .sw-panel) { box-shadow: var(--dp-panel) !important; }
+/* QuickBot desk: numbers drawn in navy disappear on a dark ground */
+:root[data-theme="dark"] .shg-adm .qt-facts .big b { color: var(--ink) !important; }
+:root[data-theme="dark"] .shg-adm :is(.qt-cc button.on, .chips button.on) { background: var(--dp-on-face) !important; border-color: var(--dp-act-rim) !important; color: var(--dp-on-ink) !important; }
+.shg-adm :is(.qt-cc button, .chips button) { box-shadow: var(--dp-chip); }
+.shg-adm :is(.qt-cc button.on, .chips button.on) { box-shadow: var(--dp-chip-on) !important; }
+
+/* =====================================================================
+   SHARED: press response, reduced motion, colour schemes, print
+   ===================================================================== */
+/* press: the key travels into its edge; the slab under it gets shorter */
+:is(.search-card .btn-search, .btn-orange, .btn-blue, .btn-primary, .qt-go, .sg-btn--primary, .shg-adm .btn, .next-trip, .shg-depth-action.shg-primary,
+    .flow-actions .btn-orange, .mnav a.fab .mn-fab):active:not(:disabled):not([aria-disabled="true"]) {
+  transform: translateY(var(--dp-press)) !important;
+  box-shadow: var(--dp-act-pressed) !important;
+}
+:is(.btn-ghost, #seatBackBtn, #seatAutoPick, .sg-btn--secondary, .shg-adm .btn.ghost, .shg-adm .btn-ghost, .shg-adm .btn.soft,
+    .deck-tabs .deck-tab, .seat-count-picker .scp-n, .pref-chip, .tier-pill, .seat-quick .sq-g button, .my-tabs .my-tab,
+    .search-card .d-btn, .search-card .dir-pill, .booking-type-toggle .bt-pill, .pm-tab, .proof-tab, .pp-btn, .ct-btn,
+    .wa-req-tabs button, .qt-chips button, .ai-chip, .mm-display-opts button, .shg-depth-action, .shg-adm .seg a, .shg-adm .seg button,
+    #view-seats .seat:not(:disabled), .topbar .lang-btn, .topbar .theme-btn, #view-nav .sn-cb, #view-nav .sn-go):active {
+  transform: translateY(2px) !important;
+  box-shadow: var(--dp-btn-pressed) !important;
+}
+.shg-adm :is(.btn.ok, .btn-ok, .btn.success, .btn.wa, .btn-wa, .btn.bad, .btn.danger, .btn-danger, .btn.navy):active:not(:disabled) {
+  transform: translateY(var(--dp-press)) !important;
+  box-shadow: inset 0 3px 7px rgba(0, 0, 0, .35), 0 1px 0 rgba(0, 0, 0, .45), 0 3px 0 rgba(0, 0, 0, .35), 0 5px 8px -3px rgba(0, 0, 0, .45) !important;
+}
+:is(.btn, .sg-btn, .seat, .d-btn, .pm-tab):disabled, :is(.btn, .sg-btn)[aria-disabled="true"] { box-shadow: var(--dp-sunk) !important; transform: none !important; filter: none !important; }
+
+/* native controls follow the chosen theme, not only the phone's setting */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+/* reduced motion: depth stays, movement goes */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: .01ms !important; }
+  :root { --dp-lift: 0px; --dp-press: 0px; }
+  :is(button, .btn, a, .seat, .d-btn, .sg-btn, .shg-depth-action):active { transform: none !important; }
+  .search-card .d-btn.on, #view-seats .seat.sel, .deck-tabs .deck-tab.on, .mm-display-opts button.on,
+  .bottom-nav .bn-item.on .bi, .pm-tab.on, .search-card .dir-pill.on { transform: none !important; }
+}
+
+/* forced colours (Windows high contrast): flat, system colours */
+@media (forced-colors: active) {
+  * { box-shadow: none !important; background-image: none !important; text-shadow: none !important; }
+}
+
+/* print: tickets, receipts, statements and registers stay flat black on white */
+@media print {
+  :root, :root[data-theme], :root[data-display] {
+    --page: #FFFFFF; --surface: #FFFFFF; --surface-sunken: #FFFFFF; --ink: #000000; --ink-2: #111111; --muted: #333333;
+    --line: #BBBBBB; --bg: #FFFFFF; --card: #FFFFFF; color-scheme: light;
+  }
+  html, body { background: #FFFFFF !important; background-image: none !important; color: #000000 !important; }
+  * { box-shadow: none !important; text-shadow: none !important; transform: none !important; }
+  .shg-depth-panel, .co-card, .c-card, .sum-card, #ticketCard, .status-card.tk2, .panel, .dash-panel, .sg-card, .card, .kpi,
+  .bus-card, .mybk-card, .search-card { background: #FFFFFF !important; background-image: none !important; color: #000000 !important; border-color: #BBBBBB !important; }
+}

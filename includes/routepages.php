@@ -532,6 +532,15 @@ details{border-top:1px solid var(--line);padding:10px 0}details:first-of-type{bo
 .others h2{margin:14px 0 8px}
 .trust{color:var(--muted);font-size:13px;margin-top:18px}
 .list{display:grid;gap:10px}
+/* Pop-out depth (assets/css/depth.css, 4 Oct 2026) - copied, not linked: lit rim, stacked lower edge, cast shadow; the action key travels into its edge. */
+.card{border-top-color:#fff;box-shadow:inset 0 1px 0 #fff,0 1px 0 #D3DCEA,0 3px 0 #C2CDDF,0 5px 0 #B1BED4,0 11px 14px -5px rgba(12,48,108,.30);margin-bottom:16px}
+.btn{box-shadow:inset 0 1px 0 #fff,0 2px 0 #C6D1E2,0 4px 0 #B3C0D6,0 9px 12px -5px rgba(12,48,108,.32);transition:transform .14s ease-out,box-shadow .14s ease-out}
+.btn.hot{border-color:#3D82D6;box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 2px 0 #003C90,0 4px 0 #00347F,0 6px 0 #002B6A,0 13px 18px -5px rgba(0,52,130,.55)}
+.btn:active{transform:translateY(3px);box-shadow:inset 0 3px 7px rgba(0,24,70,.3),0 1px 0 #B3C0D6}
+.top{box-shadow:0 3px 0 #8E0F28,0 10px 16px -4px rgba(12,48,108,.4)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .card{border-top-color:#4D6694;box-shadow:inset 0 1px 0 rgba(165,195,245,.2),0 2px 0 #1A2944,0 4px 0 #132037,0 6px 0 #0D172A,0 12px 16px -5px rgba(0,0,0,.75)}:root:not([data-theme="light"]) .btn{box-shadow:inset 0 1px 0 rgba(165,195,245,.2),0 2px 0 #1A2944,0 4px 0 #101B30,0 10px 14px -5px rgba(0,0,0,.75)}:root:not([data-theme="light"]) .btn.hot{box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 2px 0 #3570BA,0 4px 0 #285DA0,0 6px 0 #1C4884,0 14px 20px -5px rgba(0,0,0,.8)}}
+@media (prefers-reduced-motion:reduce){.btn:active{transform:none}}
+@media print{.card,.btn,.top{box-shadow:none}}
 </style>
 </head>
 <body>

@@ -780,7 +780,8 @@
   function open() {
     sheet.hidden = false; fab.setAttribute('aria-expanded', 'true');
     var f = document.getElementById('ctCbForm'); if (f) f.hidden = true;
-    try { if (navigator.vibrate) navigator.vibrate(8); } catch (e) {}
+    /* through the one haptics switch (19-premium.js), never a raw buzz */
+    try { if (window.SHGFeel) window.SHGFeel.buzz('tap'); } catch (e) {}
     var x = document.getElementById('ctClose'); if (x) x.focus();
   }
   function close() { sheet.hidden = true; fab.setAttribute('aria-expanded', 'false'); fab.focus(); }
