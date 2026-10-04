@@ -214,6 +214,40 @@ try {
     $flash = $flash ?? ['bad', 'The book could not be read: ' . $e->getMessage()];
 }
 
+/* The same window, split by the COMPANY that issued the ticket (4 Oct 2026):
+   the entity frozen on the sale; an unstamped row is the India company, as
+   every sale was before the stamp. Collections follow the payment's entity. */
+$byEntity = ['IN' => ['tickets' => 0, 'inr' => 0.0, 'taken' => 0.0, 'npr' => 0.0],
+             'NP' => ['tickets' => 0, 'inr' => 0.0, 'taken' => 0.0, 'npr' => 0.0]];
+$hasEntity = false;
+try {
+    $hasEntity = Database::fetch("SHOW COLUMNS FROM bookings LIKE 'entity'") !== null
+              && Database::fetch("SHOW COLUMNS FROM payments LIKE 'entity'") !== null;
+    if ($hasEntity) {
+        foreach (Database::fetchAll(
+            "SELECT COALESCE(NULLIF(b.entity,''),'IN') AS e, COUNT(*) AS tickets, COALESCE(SUM(b.total_amount),0) AS inr
+               FROM bookings b
+              WHERE b.status IN ('confirmed','completed') AND b.confirmed_at >= :f AND b.confirmed_at < :t1
+              GROUP BY e", ['f' => $from, 't1' => $t1]) as $r) {
+            $k = (string) $r['e'] === 'NP' ? 'NP' : 'IN';
+            $byEntity[$k]['tickets'] += (int) $r['tickets'];
+            $byEntity[$k]['inr']     += (float) $r['inr'];
+        }
+        foreach (Database::fetchAll(
+            "SELECT COALESCE(NULLIF(p.entity,''),'IN') AS e, COALESCE(SUM(p.amount),0) AS inr,
+                    COALESCE(SUM(CASE WHEN p.local_currency = 'NPR' THEN p.local_amount ELSE 0 END),0) AS npr
+               FROM payments p
+              WHERE p.status = 'verified' AND p.verified_at >= :f AND p.verified_at < :t1
+              GROUP BY e", ['f' => $from, 't1' => $t1]) as $r) {
+            $k = (string) $r['e'] === 'NP' ? 'NP' : 'IN';
+            $byEntity[$k]['taken'] += (float) $r['inr'];
+            $byEntity[$k]['npr']   += (float) $r['npr'];
+        }
+    }
+} catch (Throwable $e) {
+    $hasEntity = false;
+}
+
 /* Staff sitting at each desk today. */
 $staffAt = [];
 try {
@@ -502,4 +536,30 @@ $e = static fn($v): string => Security::e((string) $v);
     window, is that window's cash.
   </p>
 </div>
+<?php if ($hasEntity): ?>
+<div class="panel">
+  <h2>By company · <?= $e(formatDate($from)) ?><?= $from === $to ? '' : ' → ' . $e(formatDate($to)) ?></h2>
+  <table>
+    <thead><tr><th>Company</th><th>Tickets</th><th>Sold (₹)</th><th>Collected (₹)</th><th>NPR in drawers</th></tr></thead>
+    <tbody>
+    <?php foreach (['IN' => 'India company', 'NP' => 'Nepal company'] as $ek => $el):
+        $idn = Settings::companyFor(null, $ek); ?>
+      <tr>
+        <td><span class="flagpill"><?= CounterDesk::flag($ek) ?> <?= $e($el) ?></span>
+          <div class="ctr-note"><?= $idn['entity'] === $ek ? $e($idn['name']) : 'name not set yet — Settings → company → Nepal entity name' ?></div></td>
+        <td><?= (int) $byEntity[$ek]['tickets'] ?></td>
+        <td><?= $e(inr($byEntity[$ek]['inr'])) ?></td>
+        <td><?= $e(inr($byEntity[$ek]['taken'])) ?></td>
+        <td><?= $byEntity[$ek]['npr'] > 0 ? $e(CounterDesk::format($byEntity[$ek]['npr'], 'NPR')) : '<span class="muted">—</span>' ?></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+  <p class="ctr-note" style="margin:12px 0 0">
+    A sale belongs to the company of the desk that cut it, frozen on the ticket at that moment; an online
+    sale and every ticket from before 4 Oct 2026 is the India company. Money one company collects for the
+    other is settled between them by hand — this table only shows who issued and who collected.
+  </p>
+</div>
+<?php endif; ?>
 <?php admin_footer();
