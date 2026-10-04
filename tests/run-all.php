@@ -110,6 +110,7 @@ const CORE_SUITES = [
     'counter-mode-test.php'        => 'the desk sells through the same engine',
     'counter-role-test.php'        => 'the counter role sees only what it may',
     'counter-location-test.php'    => 'the desk a ticket was cut at: the list, the label, and both renders',
+    'counter-desk-test.php'        => 'desks as data: country, money, company, the sale frozen on the booking, NPR beside the rupee',
     'counter-grace-test.php'       => 'counter may sell past the public cut-off',
     'counter-discount-test.php'    => 'counter discount is capped server-side',
     'auto-offer-test.php'          => 'dated running offer reaches quote + desk sale, never stacks',

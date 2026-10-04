@@ -576,6 +576,16 @@ final class Ticket
            been given a location yet still prints somewhere true. */
         $locName = trim((string) ($booking['agent_counter'] ?? ''));
         $locCode = trim((string) ($booking['agent_counter_code'] ?? ''));
+        /* 4 Oct 2026: the desk FROZEN on the sale wins. agent_counter* is the
+           credited seller's desk today - for a clerk's sale that is the agent
+           the commission was moved to, not the window that cut the ticket,
+           and it moves when staff move. Old rows carry no stamp and keep the
+           profile answer. */
+        $stamp = mb_strtoupper(trim((string) ($booking['counter_code'] ?? '')));
+        if ($stamp !== '') {
+            $locCode = $stamp;
+            $locName = (string) (CounterDesk::get($stamp)['name'] ?? '');
+        }
         $location = $kind === 'online' ? '' : Settings::counterLabel($locCode, $locName);
         if ($location === '' && $kind !== 'online') {
             $location = trim((string) Settings::getString('company_city', ''));
@@ -604,6 +614,16 @@ final class Ticket
             'location' => $location,          // "Nepalgunj — Bus Park (NPJ)"
             'locCode'  => mb_strtoupper($locCode),
         ];
+    }
+
+    /**
+     * The NPR frozen on a sale (bookings.fx_total), or 0 when the sale was in
+     * rupees or predates the stamp. Never converts.
+     */
+    public static function frozenNpr(array $booking): float
+    {
+        return strtoupper(trim((string) ($booking['fx_currency'] ?? ''))) === 'NPR'
+            ? max(0.0, (float) ($booking['fx_total'] ?? 0)) : 0.0;
     }
 
     /**
@@ -1441,7 +1461,16 @@ final class Ticket
            passenger paid in NPR — the fare stays INR; this is the same
            "≈ NPR" conversion aid the desk saw, at Admin → Settings' rate. */
         $nprRate = Settings::getFloat('npr_per_inr', defined('NPR_PER_INR') ? (float) NPR_PER_INR : 1.6);
-        if ($currency === 'INR' && $nprRate > 0 && ($issued['kind'] ?? '') !== 'online'
+        /* A sale stamped with its desk (4 Oct 2026) prints the NPR FROZEN on
+           it - the rate of that second, never today's - and prints nothing
+           when the desk took rupees. Only an unstamped old row still converts
+           at today's rate through the seller's profile. */
+        $nprFrozen = self::frozenNpr($booking);
+        if (trim((string) ($booking['counter_code'] ?? '')) !== '') {
+            if ($nprFrozen > 0) {
+                self::gdText($im, 20, 88 + self::gdWidth(36, $amt) + 22, 1230 + $grow, $gold, '(NPR ' . number_format($nprFrozen) . ')', true);
+            }
+        } elseif ($currency === 'INR' && $nprRate > 0 && ($issued['kind'] ?? '') !== 'online'
             && Settings::isNepalDesk((string) ($booking['agent_counter_code'] ?? ''), (string) ($booking['agent_counter'] ?? ''))) {
             $nprTxt = '(NPR ' . number_format(round((float) ($booking['total_amount'] ?? 0) * $nprRate)) . ')';   // the font has no U+2248
             self::gdText($im, 20, 88 + self::gdWidth(36, $amt) + 22, 1230 + $grow, $gold, $nprTxt, true);

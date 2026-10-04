@@ -84,6 +84,22 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 ]);
                 Logger::audit('staff.create', 'admin', $username, null, ['role' => $role], 'new staff account');
 
+                /* The desk, in the same step (4 Oct 2026): a counter login
+                   with no desk prints no town and stamps no sale, and the
+                   second form further down the page was easy to forget. */
+                $deskNote = '';
+                $newDesk  = CounterDesk::get((string) ($_POST['counter_code'] ?? ''));
+                if ($newDesk !== null && in_array($role, ['counter', 'agent', 'manager', 'superadmin'], true)) {
+                    try {
+                        AgentWallet::saveProfile($newId, ['counter_code' => $newDesk['code'], 'counter_name' => $newDesk['name']]);
+                        Logger::audit('staff.setcounter', 'admin', $username, null,
+                            ['counter' => CounterDesk::label((string) $newDesk['code'])], 'counter location set at creation');
+                        $deskNote = ' Desk: ' . CounterDesk::label((string) $newDesk['code']) . '.';
+                    } catch (Throwable $e) {
+                        Logger::error('Desk save failed on create', ['e' => $e->getMessage()], 'automation');
+                    }
+                }
+
                 $codeNote = '';
                 if ($role === 'agent') {
                     // Kind + contact + WhatsApp on the profile first, so the
@@ -119,7 +135,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     ]);
                 }
 
-                $flash = ['ok', 'Staff account "' . $username . '" created.' . $codeNote
+                $flash = ['ok', 'Staff account "' . $username . '" created.' . $deskNote . $codeNote
                               . ($role === 'agent'
                                   ? ' They sign in at the Agent Portal with ' . $email . ' + ' . $username
                                     . ' + the password you typed. Change any of the three later under Agents → Manage → Login credentials.'
@@ -641,6 +657,14 @@ if ($pageIds !== []) {
       <select name="role" id="roleSel" style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;margin-top:5px">
         <?php foreach ($ROLES as $r): ?>
           <option value="<?= $r ?>" <?= $r === 'agent' ? 'selected' : '' ?>><?= ucfirst($r) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </label>
+    <label style="display:block">Counter / desk <span class="muted" style="font-weight:400">· prints on their tickets</span>
+      <select name="counter_code" style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;margin-top:5px">
+        <option value="">— none —</option>
+        <?php foreach (CounterDesk::all(true) as $dk): ?>
+          <option value="<?= Security::e((string) $dk['code']) ?>"><?= CounterDesk::flag((string) $dk['country']) ?> <?= Security::e($dk['code'] . ' · ' . $dk['name']) ?><?= $dk['currency'] === 'NPR' ? ' (NPR)' : '' ?></option>
         <?php endforeach; ?>
       </select>
     </label>

@@ -142,6 +142,15 @@ if ($staffRow !== null) {
             'code' => $deskCode,
             'name' => Settings::counterLabel($deskCode, $deskName),
             'side' => Settings::isNepalDesk($deskCode, $deskName) ? 'nepal' : 'india',
+            /* 4 Oct 2026 - SIDE and MONEY are separate: Rupaidiha opens on the
+               return run but takes rupees. currency/rate drive the NPR hints,
+               methods the pay chips, lang the screen language. */
+            'currency' => CounterDesk::currency($deskCode),
+            'rate'     => CounterDesk::rate($deskCode),
+            'methods'  => CounterDesk::allowedMethods($deskCode),
+            'entity'   => CounterDesk::entity($deskCode),
+            'lang'     => CounterDesk::lang($deskCode),
+            'from'     => CounterDesk::defaultFrom($deskCode),
         ],
         'nprRate'        => Settings::getFloat('npr_per_inr', defined('NPR_PER_INR') ? (float) NPR_PER_INR : 1.6),
     ];

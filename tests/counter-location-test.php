@@ -72,7 +72,10 @@ Settings::set(
     'company'
 );
 Settings::flush();
-$locs = Settings::counterLocations();
+/* 4 Oct 2026: counterLocations() answers from the desk TABLE once it exists;
+   the settings row is the pre-table list and the mirror, parsed by
+   counterLocationsRaw(). The parsing rules below are the row's. */
+$locs = Settings::counterLocationsRaw();
 
 check('a normal line parses', ($locs['NPJ'] ?? '') === 'Nepalgunj — Bus Park', $locs['NPJ'] ?? '(missing)');
 check('a lower-case code is upper-cased, and both halves trimmed',

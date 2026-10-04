@@ -171,6 +171,8 @@ function admin_nav(): array
         // Map — routes, stops, head office and the driver's live position (5 Sep 2026).
         ['href' => 'map.php',          'icon' => 'map-pin',      'label' => 'Live Map',         'perm' => 'schedules.view', 'section' => 'Trips, buses & chalani'],
         ['href' => 'shift.php',        'icon' => 'coins',      'label' => 'Shift & Cash',      'perm' => 'bookings.view', 'section' => 'Agents & counters'],
+        // 4 Oct 2026: every desk as a row (country, money, company, hours) and the book split by desk.
+        ['href' => 'counters.php',     'icon' => 'map-pin',    'label' => 'Counters & collection', 'perm' => 'reports.view', 'section' => 'Agents & counters'],
 
         // Agents — the register first (office roles only — the page itself
         // refuses a counter agent's session), then the working screens.
@@ -277,7 +279,7 @@ function admin_header(string $title, string $active = ''): void
     // sg- components as the customer app) loads first; the panel's own rules
     // follow, then admin.css restyles the shell on top. The UI uses the
     // device's own font now (no webfont download on a slow counter line).
-    $av = '20261004d';
+    $av = '20261004e';
     echo '<link rel="stylesheet" href="/assets/css/ds.css?v=' . $av . '">';
     echo '<style>' . admin_css() . '</style>';
     echo '<link rel="stylesheet" href="/assets/css/admin.css?v=' . $av . '">';

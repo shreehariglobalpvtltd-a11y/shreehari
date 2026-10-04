@@ -48,7 +48,9 @@ final class Auth
             // Secrets (API keys, tokens) stay write-only for everyone.
             'settings.manage',
             'customers.view', 'coupons.view', 'coupons.edit',
-            'reports.view', 'liveops.view', 'liveops.edit',
+            // reports.export (4 Oct 2026): admin/export.php now asks for it; a
+            // manager could always download the register and still can.
+            'reports.view', 'reports.export', 'liveops.view', 'liveops.edit',
             'messages.view', 'support.view', 'support.reply',
             'tickets.scan', 'waitlist.view',
         ],

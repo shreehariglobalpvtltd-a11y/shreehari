@@ -38,6 +38,9 @@ $agentFilter     = Security::clean($_GET['agent'] ?? '', 20);
 $busFilter       = Security::clean($_GET['bus'] ?? '', 40);
 $payStatusFilter = Security::clean($_GET['pay_status'] ?? '', 20);
 $payMethodFilter = Security::clean($_GET['pay_method'] ?? '', 20);
+// Which counter cut it (4 Oct 2026). Sales made before the desk was frozen
+// on the booking fall back to the seller's desk today.
+$counterFilter   = mb_strtoupper(Security::clean($_GET['counter'] ?? '', 16));
 $page            = max(1, (int) ($_GET['p'] ?? 1));
 $PER_PAGE        = 50;
 
@@ -154,6 +157,11 @@ if ($sourceFilter !== '' && isset($sourceMap[$sourceFilter])) {
 if ($scopeId === null && $agentFilter !== '' && ctype_digit($agentFilter)) {
     $where[] = 'b.sold_by_admin_id = :agentFlt';
     $params['agentFlt'] = (int) $agentFilter;
+}
+// Counter filter — the desk the ticket was cut at (frozen stamp, else the seller's desk today).
+if ($counterFilter !== '' && CounterDesk::stampColumn()) {
+    $where[] = CounterDesk::scopeClause('b', 'ctrFlt');
+    $params['ctrFlt'] = $counterFilter;
 }
 // Bus filter — exact bus_number match via the outbound leg's schedule.
 if ($busFilter !== '') {
@@ -445,6 +453,19 @@ $canEdit   = Auth::can('bookings.edit');
         </select>
       </div>
       <?php endif; ?>
+      <?php if ($scopeId === null && CounterDesk::stampColumn() && CounterDesk::all(true) !== []): ?>
+      <div class="filter-group">
+        <span class="flbl">Counter</span>
+        <select name="counter">
+          <option value="">All counters</option>
+          <?php foreach (CounterDesk::all() as $cCode => $cD): ?>
+            <option value="<?= Security::e((string) $cCode) ?>" <?= $counterFilter === (string) $cCode ? 'selected' : '' ?>>
+              <?= CounterDesk::flag((string) $cD['country']) ?> <?= Security::e($cD['name']) ?> (<?= Security::e((string) $cCode) ?>)
+            </option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <?php endif; ?>
       <div class="filter-group">
         <span class="flbl">Sold via</span>
         <select name="source">
@@ -509,7 +530,8 @@ $canEdit   = Auth::can('bookings.edit');
       </div>
     </div>
 
-    <div class="filter-row" style="margin-top:10px">
+    <?php $mayExport = $scopeId !== null || Auth::can('reports.export') || Auth::isSuperadmin(); ?>
+    <div class="filter-row" style="margin-top:10px"<?= $mayExport ? '' : ' hidden' ?>>
       <div class="export-links">
         <a class="btn ghost" style="font-size:12px;padding:6px 10px" href="<?= $base ?>/admin/export.php?<?= Security::e(http_build_query($exportBase)) ?>">⬇️ Export CSV</a>
         <a class="btn ghost" style="font-size:12px;padding:6px 10px" href="<?= $base ?>/admin/export.php?<?= Security::e(http_build_query($exportBase + ['format' => 'xlsx'])) ?>">⬇️ Export Excel</a>

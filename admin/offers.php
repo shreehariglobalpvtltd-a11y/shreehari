@@ -18,7 +18,10 @@ declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 $admin = admin_boot('payments.view');
 
-$canManage = Auth::isSuperadmin() || Auth::can('payments.verify');
+/* 4 Oct 2026: payments.verify is held by 'counter' and 'official' too, so a
+   ticket window could create a company-wide discount. coupons.edit is the
+   manager's own permission. */
+$canManage = Auth::isSuperadmin() || Auth::can('coupons.edit');
 $flash     = null;
 
 /* ---------------- actions ---------------- */

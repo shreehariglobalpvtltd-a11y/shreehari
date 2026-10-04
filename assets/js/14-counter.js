@@ -56,10 +56,19 @@
   var KEY_AGENT = 'shg_ctr_agent_' + (STAFF.id || 0);
   var KEY_PAY = 'shg_qt_pay', KEY_BOARD = 'shg_qt_boarding', KEY_DROP = 'shg_ctr_drop', KEY_LAST = 'shg:ctr:last';
   var PAYS = ['cash', 'upi', 'esewa', 'bank'];
+  /* A desk takes only the money it may (4 Oct 2026): the desk row lists its
+     methods and the server refuses the rest, so the chips never offer them. */
+  (function () {
+    var m = STAFF.desk && STAFF.desk.methods;
+    if (m && m.length) {
+      PAYS = PAYS.filter(function (k) { return m.indexOf(k) >= 0; });
+      if (!PAYS.length) PAYS = ['cash'];
+    }
+  })();
   var PAY_LBL = { cash: '💵 Cash', upi: '📱 UPI received', esewa: '🇳🇵 eSewa received', bank: '🏦 Bank' };
   function lsGet(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
   function lsSet(k, v) { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) {} }
-  (function () { var p0 = lsGet(KEY_PAY); if (PAYS.indexOf(p0) >= 0) CTR.pay = p0; })();
+  (function () { var p0 = lsGet(KEY_PAY); if (PAYS.indexOf(p0) >= 0) CTR.pay = p0; if (PAYS.indexOf(CTR.pay) < 0) CTR.pay = PAYS[0]; })();
   function loadLast() {
     try {
       var j = JSON.parse(sessionStorage.getItem(KEY_LAST) || 'null');
@@ -79,7 +88,13 @@
   var DESK = STAFF.desk || {};
   var KEY_SIDE = 'shg_ctr_side_' + (STAFF.id || 0);
   var SIDE = (lsGet(KEY_SIDE) === 'nepal' || lsGet(KEY_SIDE) === 'india') ? lsGet(KEY_SIDE) : (DESK.side === 'nepal' ? 'nepal' : 'india');
-  var NPR_RATE = Number(STAFF.nprRate) > 0 ? Number(STAFF.nprRate) : 0;
+  /* SIDE and MONEY are separate (4 Oct 2026): Rupaidiha opens on the return
+     run but takes rupees. When the server says what the desk collects, the
+     NPR aid follows the desk's currency and its own rate; an older boot
+     payload (no desk.currency) keeps the side rule. */
+  var NPR_RATE = (DESK.currency === 'NPR' && Number(DESK.rate) > 0) ? Number(DESK.rate)
+    : (Number(STAFF.nprRate) > 0 ? Number(STAFF.nprRate) : 0);
+  function showNpr() { return DESK.currency ? DESK.currency === 'NPR' : SIDE === 'nepal'; }
   function nprText(inrAmt) {
     if (!NPR_RATE || !(Number(inrAmt) > 0)) return '';
     return 'NPR ' + Math.round(Number(inrAmt) * NPR_RATE).toLocaleString('en-IN');
@@ -129,7 +144,7 @@
       + (DESK.name ? ' <small style="opacity:.8">· ' + esc(DESK.name) + '</small>' : '')
       + ' · ' + (CAN ? 'selling as <b>' + esc(WHO) + '</b>' : esc(WHO) + ' · <i>view only — your role cannot sell</i>')
       + ' <span class="cb-dir" title="Default direction for this desk">' + (nep ? '🇳🇵 Nepal → India 🇮🇳' : '🇮🇳 India → Nepal 🇳🇵') + '</span>'
-      + (nep && NPR_RATE ? ' <small style="opacity:.8">· ₹1 = NPR ' + esc(String(NPR_RATE)) + '</small>' : '')
+      + (showNpr() && NPR_RATE ? ' <small style="opacity:.8">· ₹1 = NPR ' + esc(String(NPR_RATE)) + '</small>' : '')
       + (CTR_VER ? ' <small style="opacity:.65">· v' + esc(CTR_VER) + '</small>' : '') + '</span>'
       + '<span class="cb-links">'
       + (CAN ? '<a href="#" id="cbSide" title="Switch this browser to the other side of the border">' + (nep ? '⇄ India side' : '⇄ Nepal side') + '</a>' : '')
@@ -602,7 +617,7 @@
       commLine = '<span>·</span><small style="color:var(--good)">💰 ' + esc(agSel.value) + ' कमिशन ' + fmt(rate) + ' × ' + seats + ' = ' + fmt(rate * seats) + '</small>';
     }
     var due = off > 0 ? Math.max(1, total - off) : total;
-    var npr = SIDE === 'nepal' ? nprText(due) : '';
+    var npr = showNpr() ? nprText(due) : '';
     el.innerHTML = '<b>' + seats + ' seat' + (seats === 1 ? '' : 's') + '</b><span>·</span>' + fmt(total)
       + '<span>·</span>' + esc(payLbl)
       + (off > 0 ? '<span>·</span>discount − ' + fmt(off) + '<span>·</span><b>≈ ' + fmt(due) + ' to collect</b>'

@@ -452,6 +452,100 @@ final class Settings
     }
 
     /**
+     * WHOSE document is this? - the letterhead for one sale (4 Oct 2026).
+     *
+     * Two companies sell on this system: the India company (company_* rows)
+     * and the Nepal partner company (nepal_* rows). A ticket carries the
+     * identity of the company that ISSUED it - the entity frozen on the
+     * booking, else the desk's, else India (every online sale, and every row
+     * before the stamp existed).
+     *
+     * Returns everything company() does, for the issuing company, plus:
+     *   entity     'IN' | 'NP' - the letterhead actually returned
+     *   saleEntity 'IN' | 'NP' - the company the sale belongs to
+     *   regLabel / regNo  'CIN' + number, or 'PAN' / 'Reg.' for Nepal
+     *   gstin, logo (settings path, '' = site logo), tz ('IST' | 'NPT')
+     *   otherHelp  ['label' => 'Nepal'|'India', 'phone' => ...] or null -
+     *              the OTHER side's help number, so a passenger who crossed
+     *              the border still has someone to ring
+     *   desk       ['code','name','phone','address','hours','country'] or null
+     *
+     * NOTHING IS INVENTED. Until the office types the Nepal company's name
+     * into Admin -> Settings (nepal_company), a Nepal sale keeps the India
+     * letterhead exactly as before; any single blank Nepal field is simply
+     * left out, never borrowed from India - except the support phone, where
+     * a real India number is better than none.
+     *
+     * @return array<string,mixed>
+     */
+    public static function companyFor(?string $deskCode = null, ?string $entity = null): array
+    {
+        $g     = static fn(string $k): string => trim(self::getString($k, ''));
+        $india = self::company();
+        $code  = mb_strtoupper(trim((string) $deskCode));
+        $desk  = ($code !== '' && class_exists('CounterDesk', false)) ? CounterDesk::get($code) : null;
+
+        $sale = strtoupper(trim((string) $entity));
+        if ($sale !== 'IN' && $sale !== 'NP') {
+            $sale = $desk !== null && ($desk['entity'] ?? 'IN') === 'NP' ? 'NP' : 'IN';
+        }
+
+        $out = $india + [
+            'entity'     => 'IN',
+            'saleEntity' => $sale,
+            'regLabel'   => $india['cin'] !== '' ? 'CIN' : '',
+            'regNo'      => $india['cin'],
+            'gstin'      => $g('company_gstin'),
+            'logo'       => $g('company_logo'),
+            'tz'         => 'IST',
+        ];
+
+        $npName  = $g('nepal_company');
+        $npPhone = $g('nepal_phone');
+        if ($sale === 'NP' && $npName !== '') {
+            $pan = $g('nepal_pan');
+            $reg = $g('nepal_reg');
+            $wa  = preg_replace('/\D/', '', $g('nepal_whatsapp')) ?? '';
+            if (str_starts_with($wa, '00')) { $wa = substr($wa, 2); }
+            if (strlen($wa) === 10) { $wa = '977' . $wa; }           // a bare Nepali mobile
+            if (!preg_match('/^[1-9]\d{7,14}$/', $wa)) { $wa = ''; }
+
+            $out = array_merge($out, [
+                'entity'    => 'NP',
+                'name'      => $npName,
+                'legal'     => $npName,
+                'legalNe'   => $g('nepal_company_ne'),
+                'address'   => $g('nepal_office'),
+                'addressNe' => $g('nepal_office_ne'),
+                'phone'     => $npPhone !== '' ? $npPhone : $india['phone'],
+                'whatsapp'  => $wa,
+                'email'     => $g('nepal_email'),
+                'cin'       => '',
+                'regLabel'  => $pan !== '' ? 'PAN' : ($reg !== '' ? 'Reg.' : ''),
+                'regNo'     => $pan !== '' ? $pan : $reg,
+                'gstin'     => '',
+                'logo'      => $g('nepal_logo') !== '' ? $g('nepal_logo') : $g('company_logo'),
+                'tz'        => 'NPT',
+            ]);
+        }
+
+        $out['otherHelp'] = $out['entity'] === 'NP'
+            ? ['label' => 'India', 'phone' => $india['phone']]
+            : ($npPhone !== '' ? ['label' => 'Nepal', 'phone' => $npPhone] : null);
+
+        $out['desk'] = $desk === null ? null : [
+            'code'    => (string) $desk['code'],
+            'name'    => (string) $desk['name'],
+            'phone'   => trim((string) ($desk['phone'] ?? '')),
+            'address' => trim((string) ($desk['address'] ?? '')),
+            'hours'   => trim((string) ($desk['hours'] ?? '')),
+            'country' => (string) ($desk['country'] ?? 'IN'),
+        ];
+
+        return $out;
+    }
+
+    /**
      * The counter locations the office has defined, as code => name.
      *
      * Owner ask (24 Sep 2026): "counter mode lai location haru ni add garna
@@ -472,6 +566,28 @@ final class Settings
      * @return array<string,string> code => name, in the order written
      */
     public static function counterLocations(): array
+    {
+        /* 4 Oct 2026: the desks are a table now (includes/counterdesk.php).
+           This stays the one call every datalist and picker already makes -
+           it simply answers from the table once the migration has run, and
+           from the settings row (kept as a mirror) until then. */
+        if (class_exists('CounterDesk', false) && CounterDesk::hasTable()) {
+            $opts = CounterDesk::options(true);
+            if ($opts !== []) {
+                return $opts;
+            }
+        }
+
+        return self::counterLocationsRaw();
+    }
+
+    /**
+     * The settings row itself, parsed - the pre-table list and the mirror
+     * CounterDesk keeps in sync. Only CounterDesk should need this.
+     *
+     * @return array<string,string> code => name, in the order written
+     */
+    public static function counterLocationsRaw(): array
     {
         $raw = self::getString('counter_locations', '');
         $out = [];
@@ -511,6 +627,9 @@ final class Settings
         $name = trim($name);
         if ($name === '' && $code !== '') {
             $name = self::counterLocations()[$code] ?? '';
+            if ($name === '' && class_exists('CounterDesk', false)) {
+                $name = (string) (CounterDesk::get($code)['name'] ?? '');   // a closed desk still has its name
+            }
         }
         if ($name === '') {
             return $code;
@@ -557,6 +676,13 @@ final class Settings
     public static function isNepalDesk(string $code, string $name = ''): bool
     {
         $code = mb_strtoupper(trim($code));
+        /* With the desk table this is the SIDE question only - "does this
+           desk sell the return run?" - answered by the desk's own row.
+           Money is a separate question: CounterDesk::currency(). */
+        if ($code !== '' && class_exists('CounterDesk', false) && CounterDesk::hasTable()
+            && CounterDesk::get($code) !== null) {
+            return CounterDesk::side($code) === 'nepal';
+        }
         if ($code !== '') {
             return in_array($code, self::nepalDeskCodes(), true);
         }

@@ -72,6 +72,24 @@ $hasTable = Database::exists("SELECT 1 FROM information_schema.tables WHERE tabl
 $route    = Database::fetch("SELECT * FROM routes WHERE is_active=1 ORDER BY id LIMIT 1");
 $admins   = Database::fetchAll('SELECT id FROM admins ORDER BY id LIMIT 2');
 
+/* 4 Oct 2026: a drawer now follows its desk's money (an NPJ drawer counts
+   NPR). This suite pins the RUPEE drawer, so the two test staff sit at no
+   desk for the run and get their own desk back afterwards. */
+$savedDesks = [];
+foreach ($admins as $a) {
+    $r = Database::fetch('SELECT counter_code FROM admin_profiles WHERE admin_id = :a', ['a' => (int) $a['id']]);
+    if ($r !== null && (string) ($r['counter_code'] ?? '') !== '') {
+        $savedDesks[(int) $a['id']] = (string) $r['counter_code'];
+        Database::update('admin_profiles', ['counter_code' => null], 'admin_id = :a', ['a' => (int) $a['id']]);
+    }
+}
+register_shutdown_function(static function () use ($savedDesks): void {
+    foreach ($savedDesks as $id => $code) {
+        Database::update('admin_profiles', ['counter_code' => $code], 'admin_id = :a', ['a' => $id]);
+    }
+});
+CounterDesk::flush();
+
 if (!$hasTable) {
     check('counter_shifts exists (apply database/upgrade-2026-09-counter-shifts.sql)', false);
 } elseif ($route === null || count($admins) < 2) {
