@@ -276,6 +276,8 @@ button:not(.alt):active{transform:translateY(3px);box-shadow:inset 0 3px 7px rgb
 :root[data-theme="dark"] button.alt,:root[data-theme="dark"] .foot a{color:#9ABFFF}
 :root[data-theme="dark"] .err{background:#30161B;color:#FFADB9}
 :root[data-theme="dark"] .ok{background:#0F271B;color:#8CE4B8}
+/* the logo artwork has navy lettering: on a dark card it sits on its white tile, as in the app bar */
+:root[data-theme="dark"] .logo img{background:#fff;border-radius:16px;padding:6px;box-shadow:0 2px 0 #8FA0BE,0 6px 10px -3px #000;filter:none}
 @media (prefers-reduced-motion:reduce){button:not(.alt):active,.ch:active{transform:none}}
 @media print{.box{box-shadow:none}}
 @media (prefers-reduced-motion:reduce){*{transition:none !important}}

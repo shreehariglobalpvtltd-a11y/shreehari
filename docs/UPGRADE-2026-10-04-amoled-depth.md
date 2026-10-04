@@ -94,6 +94,16 @@ were not touched (they keep their own white layout).
   office-report, delivery-sentinel, wa-fail-alert; quick-ticket/brain flip
   between runs and pass alone).
 - Size: depth.css 56 KB, 12 KB gzipped (CSS total ≈ 163 → 175 KB gz).
+- Speed on live (throttled phone 1.6 Mbps / 150 ms / 4× CPU, cold, same
+  server, runs interleaved, depth.css blocked vs loaded): LCP median
+  3.81 s → 3.84 s (no change within noise), FCP noise ±0.5 s, DCL
+  5.65 → 6.03 s (+0.4 s style/paint work of the extra layer under 4× CPU).
+  Field (CrUX) data still to be collected.
+- Live after deploy: home + admin login 200; depth.css byte-identical to the
+  commit; sw shg-v176 / stamp 20261004p served; live home, seat map
+  (searched, no seat tapped — no hold created), My Tickets, map, terms and
+  the staff login checked in AMOLED; 0 sideways scroll, 0 JS errors.
+  Logged-in live admin pages were not opened (no live staff password used).
 
 ## Rollback
 deploy-prod.sh backup: `/root/backups/pre-deploy-release-20261004-p1-*/`
