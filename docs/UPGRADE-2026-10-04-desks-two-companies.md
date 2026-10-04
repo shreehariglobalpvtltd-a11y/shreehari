@@ -1,6 +1,21 @@
 # Upgrade 4 Oct 2026 — desks as data, the sale frozen on the ticket, two companies
 
-Branch `desks-20261004` (base `release-20261004-r2`, d75c824). **Not deployed.**
+Branch `desks-20261004`. **LIVE** on 4 Oct 2026 (owner: "deploy ni gardinu"):
+
+| Release | Time (IST) | What |
+|---|---|---|
+| release-20261004-d1 | 12:58 | 37 files: desks, sale stamp, per-company tickets, security wins. Base = `live-20261004-m3` (r2 + another session's SellerMail / Brevo m1–m3, rebuilt because the drift guard caught it). |
+| release-20261004-d2 | 13:01 | Migration tolerates the OLDER live `counter_locations` table (26 Sep build had left it without entity / lang / map_url / hours). |
+| release-20261004-d3 | 13:03 | Live had `payments.local_*` + `counter_shifts.counter_code` already, so the grouped ALTERs skipped `payments.entity` / `counter_shifts.entity`; every stamp now asks `CounterDesk::hasColumn()` first and the migration adds each column alone. No counter sale or error happened between d1 and d3. |
+| release-20261004-d4 | 13:06 | Design: route pages + travel-info on ds.css tokens, route corridor scene on every route page. |
+
+All three migrations are applied on live. Backups: `/root/backups/pre-deploy-release-20261004-d{1..4}-*`.
+Also done on the VPS: the `github-actions-deploy` SSH key was removed from root's authorized_keys
+(backup `/root/backups/authorized_keys.pre-github-removal-20261004-130702`) — the stale GitHub
+"Deploy to VPS" workflow can no longer revert live.
+
+Live NPJ row came from the 26 Sep build: name "Nepalgunj — Puspalal Chowk", allowed methods **cash only**
+(kept — it was the office's earlier rule; tick eSewa on Admin → Counters when the eSewa account is ready).
 Built from the owner's 10-point prompt (docs/PROMPT-2026-10-04-fable-nepalgunj-desks.md).
 Asset stamp `20261004e`, service worker `shg-v170`.
 
