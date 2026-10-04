@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SHG · AMOLED foundation preview</title>
+  <link rel="stylesheet" href="../../assets/css/amoled-depth.css">
+  <script defer src="../../assets/js/20-display.js"></script>
+  <style>
+    body{margin:0;padding:24px;font:16px/1.5 system-ui,sans-serif}
+    main{max-width:660px;margin:auto}
+    section{padding:24px;margin:24px 0}
+    button,select{font:inherit;padding:10px 16px;min-height:44px}
+    label{display:block;margin:20px 0}
+    select{margin-left:8px;max-width:100%}
+    .actions{display:flex;gap:16px;flex-wrap:wrap}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>S Hari Global · display preview</h1>
+    <p>Choose AMOLED depth to inspect the actual opt-in foundation.
+    This isolated page does not book or charge anything.</p>
+    <label for="display-main">Display
+      <select id="display-main" data-shg-display-control>
+        <option value="standard">Standard</option>
+        <option value="amoled">AMOLED depth</option>
+      </select>
+    </label>
+    <section class="shg-depth-panel">
+      <h2>Raised journey panel</h2>
+      <p>Opaque face, lit rim and stacked lower edge. Text remains flat.</p>
+      <label>Sample note <input class="shg-depth-field" placeholder="Local preview"></label>
+      <div class="actions">
+        <button type="button" class="shg-depth-action shg-primary">Press preview</button>
+        <button type="button" class="shg-depth-action" disabled>Unavailable</button>
+      </div>
+    </section>
+    <label for="display-secondary">Linked preference
+      <select id="display-secondary" data-shg-display-control>
+        <option value="standard">Standard</option>
+        <option value="amoled">AMOLED depth</option>
+      </select>
+    </label>
+  </main>
+</body>
+</html>
