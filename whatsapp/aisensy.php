@@ -455,6 +455,22 @@ final class AiSensyAPI
                 $r = self::sendTicketConfirmation($number, ...$vars);
                 $how = 'template';
             }
+            /* 4 Oct 2026 (owner: "ek choti hi lekhne bas, 24 free msg"): when no
+               template went through, the ticket goes free through the "hi"
+               queue - now if that number's 24 h window is open, else the moment
+               it writes to us. The second number and the counter / agent who
+               sold it are queued too (includes/waqueue.php). A blind free-form
+               send outside the window only fails later (131047), so it is not
+               attempted any more when the queue is available. */
+            if (!class_exists('WaQueue') && defined('INCLUDE_PATH') && is_file(INCLUDE_PATH . '/waqueue.php')) {
+                require_once INCLUDE_PATH . '/waqueue.php';
+            }
+            if (class_exists('WaQueue') && WaQueue::ready()) {
+                $full = Database::fetch('SELECT * FROM bookings WHERE id = :b', ['b' => $bid]) ?? $booking;
+                WaQueue::onConfirmed($full, self::normalizePhone($number), $r['success'] ? $how : '', $r['success'] ? (string) $r['message_id'] : '');
+                return;
+            }
+
             $caption = "S Hari Global Pvt Ltd - Ticket confirmed\n"
                 . 'Dear ' . $name . ",\n"
                 . 'Route: ' . ($f['from'] ?: '-') . ' -> ' . ($f['to'] ?: '-') . "\n"
@@ -484,6 +500,44 @@ final class AiSensyAPI
             self::log('ERROR', (string) ($booking['contact_phone'] ?? ''), self::TPL_TICKET,
                 ['error' => $e->getMessage(), 'pnr' => (string) ($booking['pnr'] ?? '')]);
         }
+    }
+
+    /** Public view of bookingFacts() for includes/waqueue.php. */
+    public static function facts(int $bid): array
+    {
+        return self::bookingFacts($bid);
+    }
+
+    /**
+     * What really happened to a sent message (an accepted send can still fail
+     * later): ['status' => SENT|DELIVERED|READ|FAILED|'', 'error' => text].
+     * GET /messages/{wamid}?userNumber=<intl digits>.
+     *
+     * @return array{status:string,error:string,http:int}
+     */
+    public static function messageStatus(string $wamid, string $phone): array
+    {
+        $out = ['status' => '', 'error' => '', 'http' => 0];
+        $key = self::apiKey();
+        $to  = self::normalizePhone($phone);
+        if ($key === '' || $to === '' || $wamid === '') {
+            return $out;
+        }
+        $r = self::request('GET', self::API_BASE . self::projectId() . '/messages/' . rawurlencode($wamid) . '?userNumber=' . $to, $key, null);
+        $out['http'] = $r['http'];
+        $j = is_array($r['json']) ? $r['json'] : [];
+        $m = is_array($j['message'] ?? null) ? $j['message'] : (is_array($j['data'] ?? null) ? $j['data'] : $j);
+        $out['status'] = strtoupper((string) ($m['status'] ?? ($j['status'] ?? '')));
+        $fail = $m['failureResponse'] ?? ($m['failure_response'] ?? ($m['error'] ?? null));
+        if (is_array($fail)) {
+            $out['error'] = trim((string) ($fail['code'] ?? '') . ' ' . (string) ($fail['reason'] ?? ($fail['message'] ?? ($fail['title'] ?? ''))));
+        } elseif (is_string($fail)) {
+            $out['error'] = $fail;
+        }
+        if (is_numeric($out['status'])) {
+            $out['status'] = '';   // an HTTP status, not a message status
+        }
+        return $out;
     }
 
     /**
