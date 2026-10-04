@@ -338,7 +338,8 @@ final class AiSensyAPI
         }
         $r = self::request('GET', self::API_BASE . self::projectId() . '/wa_template', $key, null);
         $j = is_array($r['json']) ? $r['json'] : [];
-        $list = $j['data'] ?? ($j['templates'] ?? (array_is_list($j) ? $j : []));
+        // AiSensy answers {template: [...], size, count}
+        $list = $j['template'] ?? ($j['data'] ?? ($j['templates'] ?? (array_is_list($j) ? $j : [])));
         $out = [];
         foreach (is_array($list) ? $list : [] as $t) {
             if (!is_array($t) || (string) ($t['name'] ?? '') === '') {
@@ -358,13 +359,17 @@ final class AiSensyAPI
                 $text = (string) ($t['text'] ?? ($t['body'] ?? ''));
             }
             preg_match_all('/\{\{(\d+)\}\}/', $text, $m);
+            $hdr = $t['header'] ?? null;
+            if (is_array($hdr) && strtoupper((string) ($hdr['format'] ?? ($hdr['type'] ?? ''))) === 'IMAGE') {
+                $image = true;
+            }
             $out[] = [
                 'name'     => (string) $t['name'],
                 'status'   => strtoupper((string) ($t['status'] ?? '')),
                 'category' => strtoupper((string) ($t['category'] ?? '')),
                 'language' => (string) ($t['language'] ?? ''),
                 'text'     => $text,
-                'vars'     => $m[1] !== [] ? max(array_map('intval', $m[1])) : 0,
+                'vars'     => $m[1] !== [] ? max(array_map('intval', $m[1])) : (int) ($t['total_parameters'] ?? 0),
                 'image'    => $image || strtoupper((string) ($t['type'] ?? '')) === 'IMAGE',
             ];
         }
