@@ -1,4 +1,4 @@
-# AMOLED Pop-out depth — 4 Oct 2026 (release-20261004-p1)
+# AMOLED Pop-out depth — 4 Oct 2026 (release-20261004-p1 … p3)
 
 Owner brief: `SHG_Complete_3D_Blueprint (2).zip` (master plan, 5 demos, 6 prompts).
 The plan carried two master prompts (§9 "light/subtle" and §18 "AMOLED
@@ -69,18 +69,18 @@ scroll, PHP notices, JS errors).
 | Customer home | booking panel (direction, 30-day strip, date input, town, passengers, search), other ways to book, QuickBot plan card, facilities, scenes, footer, bottom bar, ☰ menu + Display/Sound/Vibration | depth + AMOLED ✔, 320–1440 no sideways scroll |
 | Results → seats | single-bus auto-open, seat map lower/upper, sharing/private, seat-count, held/booked/ladies/selected, legend, sticky continue bar | ✔ (320 fixed) |
 | Ticket / My Tickets | recovered test ticket (PNR + phone), status ladder, ticket card, notes, My Tickets list + actions, "not found" state | ✔ ticket follows dark/AMOLED; print stays white |
-| Checkout / payment | rules, form, payment picker, QR/COD/proof cards, notes | CSS covered + audited classes; **not driven end-to-end** (would create a booking) |
+| Checkout / payment | driven end-to-end on the local test DB: seat → details → payment picker → Cash/COD → submit → confirmed ticket + border-prep card (light + AMOLED). No live booking. | ✔ — the payment picker lost to a `:root[data-theme="dark"] .pm-tab.on {!important}` rule in dark; fixed in p3 |
 | Help / chat | assistant panel, bubbles, quick replies, composer, contact sheet, WhatsApp sheet, toast | CSS covered; bubbles AMOLED-specific |
-| Map | customer S Hari Nav (`#view-nav`, MapLibre) controls + bottom sheet + "location blocked" state; admin Live Map controls/popups | ✔ controls; **map tiles did not load in headless** — basemap/attribution unchanged, canvas never filtered |
+| Map | customer S Hari Nav (`#view-nav`, MapLibre) controls + bottom sheet + "location blocked" state; admin Live Map controls/popups | ✔ — map renders (live + local: style loaded, tiles loaded, 111 rendered features, canvas pixels are map colours); the blank in screenshots is only the capture of a software-GL canvas. Basemap/attribution unchanged, canvas never filtered |
 | Company app | all 53 shell pages (dashboard, tickets, new booking, QuickBot desk, seat map, manifest, chalan, passengers, payments, refunds, offers, agents, agent sales/ranking/offline, staff, customers, enquiries, support inbox, message log, WA pending, missed bus, buses, drivers, calendar, schedule, trips, trip dashboard, routes, accounting, analytics, feedback, settings, activity, health, documents, company, counters, my desk, shift, offline requests, map, payroll, AI pages, ledger pages, agreements, promo card, scan, change password, search) | AMOLED + dark audit: 0 sideways scroll, 0 PHP notices, 0 JS errors; light surfaces left: the decorative phone mock-up in the booking scene, the logo tile, MapLibre's own attribution |
-| Agent / counter roles | as superadmin + Nepal counter mode | **Not logged in as an agent or counter clerk** — role menus are server-gated and unchanged; same shell CSS |
+| Agent / counter roles | logged in locally as an agent (21 menu pages: panel, sales, statement, passengers, paper tickets, QuickBot, shift, WA queue, my desk…) and as a counter clerk (26 pages incl. payments, refunds, offers, support inbox) — AMOLED + light | ✔ 0 sideways scroll / PHP notices / JS errors; last two pastel pills themed in p3 |
 | Staff login | light / dark / AMOLED | ✔ |
 | Route pages, travel-info | /bus + travel-info | ✔ (light + system dark) |
 
 Not done / outside this pass: physical AMOLED phones and real vibration
-hardware; checkout → payment → confirmed ticket on a real booking; agent and
-counter logins; PNG/PDF ticket and statement renderers are server images and
-were not touched (they keep their own white layout).
+hardware; a real (live) booking and real WhatsApp delivery; logged-in live
+admin pages (no live password used). PNG/PDF ticket and statement renderers
+are server images and were not touched (they keep their own white layout).
 
 ## Verified
 - `tests/depth-display-test.php` (new, in run-all): 49/49 — load order,
@@ -104,6 +104,21 @@ were not touched (they keep their own white layout).
   (searched, no seat tapped — no hold created), My Tickets, map, terms and
   the staff login checked in AMOLED; 0 sideways scroll, 0 JS errors.
   Logged-in live admin pages were not opened (no live staff password used).
+
+## p3 (style cost + leftovers)
+- Style-recalc cost measured on live (Performance.getMetrics, phone, 4× CPU,
+  3 runs each, depth.css blocked vs loaded): RecalcStyle ≈ 620 → 700 ms
+  (+80 ms); layout ≈ 3.2 s with or without the layer (an existing cost of the
+  home page, not this pass); DCL showed no consistent change (the +0.4 s in
+  the first A/B was noise).
+- Selector lists flattened (no `:is()`: Chrome can bucket every rule by its
+  class/id), every lift/press now reads `--dp-lift` / `--dp-press` /
+  `--dp-press-sm`, so reduced motion stops ALL movement; coloured company
+  buttons keep their own pressed edge; the admin focus ring now outranks the
+  well style; payment picker and the last pastel pills follow dark/AMOLED.
+- depth-display-test: +2 checks (no comment fragment inside a selector
+  list — such a fragment makes the browser drop the whole rule; no `:is()`).
+  Every rule verified to parse in Chrome (240/240).
 
 ## Rollback
 deploy-prod.sh backup: `/root/backups/pre-deploy-release-20261004-p1-*/`

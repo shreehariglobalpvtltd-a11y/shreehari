@@ -94,6 +94,7 @@
   /* ground: a faint top-left light on the page */
   --dp-ground: radial-gradient(120% 60% at 0% 0%, #FFFFFF 0%, rgba(255, 255, 255, 0) 55%);
   --dp-press: 3px;
+  --dp-press-sm: 2px;
   --dp-lift: -2px;
   --dp-t: 140ms;
 }
@@ -321,7 +322,10 @@ body { background-image: var(--dp-ground) !important; background-repeat: no-repe
   .mobile-menu.open { max-height: calc(100vh - 80px - var(--bottomnav-h) - env(safe-area-inset-bottom, 0px)); max-height: calc(100dvh - 80px - var(--bottomnav-h) - env(safe-area-inset-bottom, 0px)); }
 }
 /* the floating WhatsApp / assistant / SOS buttons step aside while the menu is open */
-body:has(#mobileMenu.open) :is(.whatsapp-fab, .ai-fab, .sos-fab, .ct-fab) { visibility: hidden !important; }
+body:has(#mobileMenu.open) .whatsapp-fab,
+body:has(#mobileMenu.open) .ai-fab,
+body:has(#mobileMenu.open) .sos-fab,
+body:has(#mobileMenu.open) .ct-fab { visibility: hidden !important; }
 .nav .nav-drop-list { box-shadow: var(--dp-sheet) !important; }
 .whatsapp-fab, .ai-fab { box-shadow: 0 2px 0 rgba(0, 0, 0, .28), 0 4px 0 rgba(0, 0, 0, .22), 0 12px 16px -4px rgba(0, 0, 0, .45) !important; }
 #counterBar { box-shadow: var(--dp-bar) !important; }
@@ -420,7 +424,7 @@ body:has(#mobileMenu.open) :is(.whatsapp-fab, .ai-fab, .sos-fab, .ct-fab) { visi
   outline: 0 !important;
   border: 1px solid var(--royal) !important;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 2px 0 var(--royal), 0 4px 0 color-mix(in srgb, var(--royal) 70%, #000), 0 10px 12px -5px rgba(0, 0, 0, .40) !important;
-  transform: translateY(-1px);
+  transform: translateY(calc(var(--dp-lift) / 2));
 }
 :root[data-display="amoled"] .search-card .dir-pill.on, :root[data-display="amoled"] .booking-type-toggle .bt-pill.on {
   background: linear-gradient(150deg, #24344B, #101822 70%) !important;
@@ -487,9 +491,9 @@ body:has(#mobileMenu.open) :is(.whatsapp-fab, .ai-fab, .sos-fab, .ct-fab) { visi
   color: var(--dp-on-ink) !important;
   border-color: var(--dp-act-rim) !important;
   box-shadow: var(--dp-chip-on) !important;
-  transform: translateY(-3px);
+  transform: translateY(calc(var(--dp-lift) * 1.5));
 }
-#view-seats .seat.sel.holding, #view-seats .seat.sel.hold-wait { background-image: none !important; box-shadow: var(--dp-chip) !important; transform: translateY(-1px); }
+#view-seats .seat.sel.holding, #view-seats .seat.sel.hold-wait { background-image: none !important; box-shadow: var(--dp-chip) !important; transform: translateY(calc(var(--dp-lift) / 2)); }
 #view-seats .seat.bkd, #view-seats .seat.reserved, #view-seats .seat:disabled:not(.sel) {
   background-image: none !important;
   box-shadow: var(--dp-sunk) !important;
@@ -640,21 +644,26 @@ body:has(#mobileMenu.open) :is(.whatsapp-fab, .ai-fab, .sos-fab, .ct-fab) { visi
 }
 .shg-adm .seg a.on, .shg-adm .seg button.on, .shg-adm .btn-group .btn.on, .shg-adm .chip.on, .shg-adm .basis-sw.on {
   background: var(--dp-on-face) !important; color: var(--dp-on-ink) !important; border-color: var(--dp-act-rim) !important;
-  box-shadow: var(--dp-chip-on) !important; transform: translateY(-1px);
+  box-shadow: var(--dp-chip-on) !important; transform: translateY(calc(var(--dp-lift) / 2));
 }
 .shg-adm .seg, .shg-adm .btn-group { background: var(--dp-field-bg) !important; box-shadow: var(--dp-field) !important; overflow: visible !important; padding: 4px 4px 7px; gap: 4px; }
 .shg-adm .tabs a.on { box-shadow: inset 0 -3px 0 var(--royal); }
 .shg-adm .chip { box-shadow: var(--dp-chip); }
 
 /* inputs: inset wells (checkboxes, radios, ranges keep their native look) */
-.shg-adm .wrap :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=submit]):not([type=button]):not([type=color]):not([type=hidden]):not([type=image]), select, textarea),
-.shg-adm .sg-input, .shg-adm .sg-select {
+.shg-adm .wrap input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=submit]):not([type=button]):not([type=color]):not([type=hidden]):not([type=image]),
+.shg-adm .wrap select,
+.shg-adm .wrap textarea,
+.shg-adm .sg-input,
+.shg-adm .sg-select {
   background-color: var(--dp-field-bg) !important;
   border-color: var(--dp-field-border) !important;
   box-shadow: var(--dp-field) !important;
   color: var(--ink);
 }
-.shg-adm .wrap :is(input, select, textarea):focus { border-color: var(--royal) !important; box-shadow: var(--dp-field), 0 0 0 3px var(--royal-soft) !important; }
+.shg-adm .wrap input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=submit]):not([type=button]):not([type=color]):not([type=hidden]):not([type=image]):focus,
+.shg-adm .wrap select:focus,
+.shg-adm .wrap textarea:focus { border-color: var(--royal) !important; box-shadow: var(--dp-field), 0 0 0 3px var(--royal-soft) !important; }
 .shg-adm .switch i { box-shadow: var(--dp-field); }
 .shg-adm .switch i::after { box-shadow: inset 0 1px 0 #FFFFFF, 0 2px 0 rgba(0, 0, 0, .25), 0 3px 5px rgba(0, 0, 0, .35) !important; }
 
@@ -719,6 +728,22 @@ body:has(#mobileMenu.open) :is(.whatsapp-fab, .ai-fab, .sos-fab, .ct-fab) { visi
   transform: translateY(var(--dp-lift)) !important;
 }
 .pm-tabs, .proof-tabs, .wa-req-tabs { padding-bottom: 8px !important; overflow: visible !important; }
+/* views.css styles the payment picker per theme with :root[data-theme="dark"]
+   .pm-tab(.on) {… !important} (0,4,0); match that weight so the keys look
+   the same in every theme */
+:root[data-theme] .pm-tabs .pm-tab {
+  background: var(--dp-btn-face) !important; color: var(--ink) !important;
+  border: 1px solid var(--dp-btn-border) !important; box-shadow: var(--dp-chip) !important;
+}
+:root[data-theme] .pm-tabs .pm-tab:hover { background: var(--dp-btn-face) !important; filter: brightness(1.04); }
+:root[data-theme] .pm-tabs .pm-tab.on {
+  background: var(--dp-on-face) !important; color: var(--dp-on-ink) !important;
+  border-color: var(--dp-act-rim) !important; box-shadow: var(--dp-chip-on) !important; transform: translateY(var(--dp-lift)) !important;
+}
+:root[data-theme] .pm-tabs .pm-tab.on b,
+:root[data-theme] .pm-tabs .pm-tab.on small,
+:root[data-theme] .pm-tabs .pm-tab.on .pm-sub,
+:root[data-theme] .pm-tabs .pm-tab.on span { color: inherit !important; opacity: .95; }
 .ai-chips { padding-bottom: 8px !important; }
 .ai-inrow input { background: var(--dp-field-bg) !important; border-color: var(--dp-field-border) !important; box-shadow: var(--dp-field) !important; font-size: 16px !important; }
 .ai-head { box-shadow: 0 3px 0 var(--red), 0 8px 12px -6px rgba(0, 0, 0, .5) !important; border-bottom: 0 !important; position: relative; z-index: 1; }
@@ -786,9 +811,17 @@ body:has(#mobileMenu.open) :is(.whatsapp-fab, .ai-fab, .sos-fab, .ct-fab) { visi
 :root[data-theme="dark"] .shg-adm .maplibregl-popup-tip { border-top-color: var(--surface) !important; border-bottom-color: var(--surface) !important; }
 
 /* ---------- 14. Company app pages with light colours typed into the page ----------
-   These pages had no dark rule of their own; the tokens make them follow
-   light / dark / AMOLED like the rest of the panel. */
-:root[data-theme="dark"] .shg-adm :is(.cal-day, .cal-cell, .cal-head, .offer-card, .oc-card, .pay-row, .wa-row, .sched-row, .md-facts, .cust-card) {
+   These pages had no dark rule of their own; the tokens make them follow light / dark / AMOLED like the rest of the panel. */
+:root[data-theme="dark"] .shg-adm .cal-day,
+:root[data-theme="dark"] .shg-adm .cal-cell,
+:root[data-theme="dark"] .shg-adm .cal-head,
+:root[data-theme="dark"] .shg-adm .offer-card,
+:root[data-theme="dark"] .shg-adm .oc-card,
+:root[data-theme="dark"] .shg-adm .pay-row,
+:root[data-theme="dark"] .shg-adm .wa-row,
+:root[data-theme="dark"] .shg-adm .sched-row,
+:root[data-theme="dark"] .shg-adm .md-facts,
+:root[data-theme="dark"] .shg-adm .cust-card {
   background-color: var(--surface) !important; color: var(--ink) !important; border-color: var(--line) !important;
 }
 :root[data-display="amoled"] .shg-adm .tb, :root[data-display="amoled"] .shg-adm .side, :root[data-display="amoled"] .shg-adm .mnav { background: #050B16 !important; }
@@ -805,42 +838,104 @@ body:has(#mobileMenu.open) :is(.whatsapp-fab, .ai-fab, .sos-fab, .ct-fab) { visi
 :root[data-theme="dark"] .shg-adm .pill[style*="fff4d1" i] { background: var(--warning-soft) !important; color: var(--warning) !important; }
 :root[data-theme="dark"] .shg-adm .pill[style*="eef2fa" i] { background: var(--royal-tint) !important; color: var(--royal-strong) !important; }
 :root[data-theme="dark"] .shg-adm .pill[style*="f7dcdc" i] { background: var(--danger-soft) !important; color: var(--danger) !important; }
-:root[data-theme="dark"] .shg-adm :is(.of-card, .of-form, .sw-panel, .wp-card) {
+:root[data-theme="dark"] .shg-adm .pill[style*="e2ecfb" i] { background: var(--royal-tint) !important; color: var(--royal-strong) !important; }
+:root[data-theme="dark"] .shg-adm .dup-lv.high { background: var(--danger-soft) !important; color: var(--danger) !important; }
+:root[data-theme="dark"] .shg-adm .dup-lv.check { background: var(--warning-soft) !important; color: var(--warning) !important; }
+:root[data-theme="dark"] .shg-adm .of-card,
+:root[data-theme="dark"] .shg-adm .of-form,
+:root[data-theme="dark"] .shg-adm .sw-panel,
+:root[data-theme="dark"] .shg-adm .wp-card {
   background: var(--surface) !important; background-image: var(--dp-face) !important; color: var(--ink) !important;
   border-color: var(--dp-border) !important; border-top-color: var(--dp-rim-top) !important;
 }
 :root[data-theme="dark"] .shg-adm .of-form label { color: var(--muted) !important; }
 :root[data-theme="dark"] .shg-adm .wp-note { background: var(--warning-soft) !important; border-color: color-mix(in srgb, var(--warning) 40%, transparent) !important; color: var(--ink) !important; }
-.shg-adm :is(.of-card, .wp-card) { box-shadow: var(--dp-card) !important; }
-.shg-adm :is(.of-form, .sw-panel) { box-shadow: var(--dp-panel) !important; }
+.shg-adm .of-card,
+.shg-adm .wp-card { box-shadow: var(--dp-card) !important; }
+.shg-adm .of-form,
+.shg-adm .sw-panel { box-shadow: var(--dp-panel) !important; }
 /* QuickBot desk: numbers drawn in navy disappear on a dark ground */
 :root[data-theme="dark"] .shg-adm .qt-facts .big b { color: var(--ink) !important; }
-:root[data-theme="dark"] .shg-adm :is(.qt-cc button.on, .chips button.on) { background: var(--dp-on-face) !important; border-color: var(--dp-act-rim) !important; color: var(--dp-on-ink) !important; }
-.shg-adm :is(.qt-cc button, .chips button) { box-shadow: var(--dp-chip); }
-.shg-adm :is(.qt-cc button.on, .chips button.on) { box-shadow: var(--dp-chip-on) !important; }
+:root[data-theme="dark"] .shg-adm .qt-cc button.on,
+:root[data-theme="dark"] .shg-adm .chips button.on { background: var(--dp-on-face) !important; border-color: var(--dp-act-rim) !important; color: var(--dp-on-ink) !important; }
+.shg-adm .qt-cc button,
+.shg-adm .chips button { box-shadow: var(--dp-chip); }
+.shg-adm .qt-cc button.on,
+.shg-adm .chips button.on { box-shadow: var(--dp-chip-on) !important; }
 
 /* =====================================================================
    SHARED: press response, reduced motion, colour schemes, print
    ===================================================================== */
 /* press: the key travels into its edge; the slab under it gets shorter */
-:is(.search-card .btn-search, .btn-orange, .btn-blue, .btn-primary, .qt-go, .sg-btn--primary, .shg-adm .btn, .next-trip, .shg-depth-action.shg-primary,
-    .flow-actions .btn-orange, .mnav a.fab .mn-fab):active:not(:disabled):not([aria-disabled="true"]) {
+.search-card .btn-search:active:not(:disabled):not([aria-disabled="true"]),
+.btn-orange:active:not(:disabled):not([aria-disabled="true"]),
+.btn-blue:active:not(:disabled):not([aria-disabled="true"]),
+.btn-primary:active:not(:disabled):not([aria-disabled="true"]),
+.qt-go:active:not(:disabled):not([aria-disabled="true"]),
+.sg-btn--primary:active:not(:disabled):not([aria-disabled="true"]),
+.shg-adm .btn:active:not(:disabled):not([aria-disabled="true"]),
+.next-trip:active:not(:disabled):not([aria-disabled="true"]),
+.shg-depth-action.shg-primary:active:not(:disabled):not([aria-disabled="true"]),
+.flow-actions .btn-orange:active:not(:disabled):not([aria-disabled="true"]),
+.mnav a.fab .mn-fab:active:not(:disabled):not([aria-disabled="true"]) {
   transform: translateY(var(--dp-press)) !important;
   box-shadow: var(--dp-act-pressed) !important;
 }
-:is(.btn-ghost, #seatBackBtn, #seatAutoPick, .sg-btn--secondary, .shg-adm .btn.ghost, .shg-adm .btn-ghost, .shg-adm .btn.soft,
-    .deck-tabs .deck-tab, .seat-count-picker .scp-n, .pref-chip, .tier-pill, .seat-quick .sq-g button, .my-tabs .my-tab,
-    .search-card .d-btn, .search-card .dir-pill, .booking-type-toggle .bt-pill, .pm-tab, .proof-tab, .pp-btn, .ct-btn,
-    .wa-req-tabs button, .qt-chips button, .ai-chip, .mm-display-opts button, .shg-depth-action, .shg-adm .seg a, .shg-adm .seg button,
-    #view-seats .seat:not(:disabled), .topbar .lang-btn, .topbar .theme-btn, #view-nav .sn-cb, #view-nav .sn-go):active {
-  transform: translateY(2px) !important;
+.btn-ghost:active,
+#seatBackBtn:active,
+#seatAutoPick:active,
+.sg-btn--secondary:active,
+.shg-adm .btn.ghost:active,
+.shg-adm .btn-ghost:active,
+.shg-adm .btn.soft:active,
+.deck-tabs .deck-tab:active,
+.seat-count-picker .scp-n:active,
+.pref-chip:active,
+.tier-pill:active,
+.seat-quick .sq-g button:active,
+.my-tabs .my-tab:active,
+.search-card .d-btn:active,
+.search-card .dir-pill:active,
+.booking-type-toggle .bt-pill:active,
+.pm-tab:active,
+.proof-tab:active,
+.pp-btn:active,
+.ct-btn:active,
+.wa-req-tabs button:active,
+.qt-chips button:active,
+.ai-chip:active,
+.mm-display-opts button:active,
+.shg-depth-action:active,
+.shg-adm .seg a:active,
+.shg-adm .seg button:active,
+#view-seats .seat:not(:disabled):active,
+.topbar .lang-btn:active,
+.topbar .theme-btn:active,
+#view-nav .sn-cb:active,
+#view-nav .sn-go:active,
+:root[data-theme] .pm-tabs .pm-tab:active {
+  transform: translateY(var(--dp-press-sm)) !important;
   box-shadow: var(--dp-btn-pressed) !important;
 }
-.shg-adm :is(.btn.ok, .btn-ok, .btn.success, .btn.wa, .btn-wa, .btn.bad, .btn.danger, .btn-danger, .btn.navy):active:not(:disabled) {
+.shg-adm.shg-adm .btn.ok:active:not(:disabled),
+.shg-adm.shg-adm .btn-ok:active:not(:disabled),
+.shg-adm.shg-adm .btn.success:active:not(:disabled),
+.shg-adm.shg-adm .btn.wa:active:not(:disabled),
+.shg-adm.shg-adm .btn-wa:active:not(:disabled),
+.shg-adm.shg-adm .btn.bad:active:not(:disabled),
+.shg-adm.shg-adm .btn.danger:active:not(:disabled),
+.shg-adm.shg-adm .btn-danger:active:not(:disabled),
+.shg-adm.shg-adm .btn.navy:active:not(:disabled) {
   transform: translateY(var(--dp-press)) !important;
   box-shadow: inset 0 3px 7px rgba(0, 0, 0, .35), 0 1px 0 rgba(0, 0, 0, .45), 0 3px 0 rgba(0, 0, 0, .35), 0 5px 8px -3px rgba(0, 0, 0, .45) !important;
 }
-:is(.btn, .sg-btn, .seat, .d-btn, .pm-tab):disabled, :is(.btn, .sg-btn)[aria-disabled="true"] { box-shadow: var(--dp-sunk) !important; transform: none !important; filter: none !important; }
+.btn:disabled,
+.sg-btn:disabled,
+.seat:disabled,
+.d-btn:disabled,
+.pm-tab:disabled,
+.btn[aria-disabled="true"],
+.sg-btn[aria-disabled="true"] { box-shadow: var(--dp-sunk) !important; transform: none !important; filter: none !important; }
 
 /* native controls follow the chosen theme, not only the phone's setting */
 :root[data-theme="light"] { color-scheme: light; }
@@ -849,8 +944,14 @@ body:has(#mobileMenu.open) :is(.whatsapp-fab, .ai-fab, .sos-fab, .ct-fab) { visi
 /* reduced motion: depth stays, movement goes */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: .01ms !important; }
-  :root { --dp-lift: 0px; --dp-press: 0px; }
-  :is(button, .btn, a, .seat, .d-btn, .sg-btn, .shg-depth-action):active { transform: none !important; }
+  :root { --dp-lift: 0px; --dp-press: 0px; --dp-press-sm: 0px; }
+  button:active,
+  .btn:active,
+  a:active,
+  .seat:active,
+  .d-btn:active,
+  .sg-btn:active,
+  .shg-depth-action:active { transform: none !important; }
   .search-card .d-btn.on, #view-seats .seat.sel, .deck-tabs .deck-tab.on, .mm-display-opts button.on,
   .bottom-nav .bn-item.on .bi, .pm-tab.on, .search-card .dir-pill.on { transform: none !important; }
 }

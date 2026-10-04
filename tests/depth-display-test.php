@@ -84,6 +84,12 @@ check('company app: depth.css loads after admin.css', $posAdmin !== false && $po
 check('company app: <body class="shg-adm"> scopes the panel rules', str_contains($guard, '<body class="shg-adm">'));
 check('service worker precaches depth.css', str_contains($sw, "'/assets/css/depth.css?v=' + ASSET_VER"));
 check('depth.css braces balance', substr_count($css, '{') === substr_count($css, '}'), substr_count($css, '{') . ' blocks');
+// A comment that ends in the middle of a selector list ("... */ .btn-orange,")
+// makes the browser drop the WHOLE rule; every line holding a comment end
+// must also hold its start, or start the comment itself.
+$broken = array_values(array_filter(preg_split('~\R~', $css), static fn($l) => str_contains($l, '*/') && !str_contains($l, '/*') && preg_match('~\*/\s*[.:#a-z\[]~i', $l)));
+check('no comment fragment inside a selector list', $broken === [], $broken ? substr($broken[0], 0, 80) : '');
+check('selectors are plain lists (no :is() in the hot path)', !str_contains($css, ':is('));
 
 echo "\n-- 2. theme states --\n";
 check('pre-paint accepts light / dark / amoled', str_contains($tpl, "t !== 'light' && t !== 'dark' && t !== 'amoled'"));

@@ -4,6 +4,7 @@ Moved out of `sw.js` on 2 Oct 2026: the history used to live on the `var VERSION
 
 The CURRENT version and its note stay on the `var VERSION` line in `sw.js`; this file holds the ones before it. Newest first. Each line: version — what shipped with it (as written at the time).
 
+- **shg-v176** — 4 Oct 2026: pop-out depth layer (depth.css) in every theme + AMOLED display; sound/vibration default off
 - **shg-v175** — (no note)
 - **shg-v174** — (no note)
 - **shg-v173** — (no note)
