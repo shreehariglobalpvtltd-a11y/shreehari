@@ -64,7 +64,9 @@ DRIFT=0
 for f in "${FILES[@]}"; do
   if $GIT cat-file -e "$BASE:$f" 2>/dev/null; then
     if [ -e "$LIVE/$f" ]; then
-      a=$($GIT show "$BASE:$f" | md5sum | cut -c1-32); b=$(md5sum "$LIVE/$f" | cut -c1-32)
+      # Line endings are ignored (a Windows scp writes CRLF, git stores LF):
+      # only a real content difference is someone else's change.
+      a=$($GIT show "$BASE:$f" | tr -d '' | md5sum | cut -c1-32); b=$(tr -d '' < "$LIVE/$f" | md5sum | cut -c1-32)
       [ "$a" = "$b" ] || { echo "LIVE DRIFT: $f differs from $BASE"; DRIFT=1; }
     else
       echo "LIVE DRIFT: $f is in $BASE but missing on live"; DRIFT=1
