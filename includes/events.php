@@ -277,6 +277,13 @@ final class EventBus
             } catch (Throwable $e) {
                 Logger::warning('AiSensy hook failed', ['err' => $e->getMessage()], 'whatsapp');
             }
+            // 4 Oct 2026: ticket copy by email to the agent / counter who sold it.
+            try {
+                require_once __DIR__ . '/sellermail.php';
+                SellerMail::ticketCopy($booking);
+            } catch (Throwable $e) {
+                Logger::warning('Seller ticket email hook failed', ['err' => $e->getMessage()], 'mail');
+            }
             Notify::agentBookingApproved($booking);
             self::seatStatusCard($booking, 'approved');
         });
