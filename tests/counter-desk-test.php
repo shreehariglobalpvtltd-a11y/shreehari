@@ -440,6 +440,14 @@ check('a commission rate change in the Agent Panel needs a reason',
     && str_contains($src('admin/agent.php'), 'Give a reason for the tier rate change.'));
 check('the app estimates NPR with the office rate, not a typed-in 1.6',
     str_contains($src('assets/js/02-config.js'), 'window.SHG_BOOT.npr') && str_contains($src('index.php'), "\$boot['npr']"));
+check('desk isolation is wired into the register, payments and passengers',
+    str_contains($src('includes/auth.php'), 'function deskScopeCode')
+    && str_contains($src('admin/bookings.php'), 'Auth::deskScopeCode()')
+    && str_contains($src('admin/payments.php'), 'Auth::deskScopeCode()')
+    && str_contains($src('admin/passengers.php'), 'Auth::deskScopeCode()'));
+check('...it ships OFF', Settings::getBool('counter_desk_isolation', false) === false);
+check('...and the bus manifest stays shared', !str_contains($src('admin/manifest.php'), 'deskScopeCode'));
+check('Accounting shows the by-company split read-only', str_contains($src('admin/accounting.php'), 'By company'));
 check('the staff create form sets the desk in the same step',
     str_contains($src('admin/staff.php'), 'name="counter_code"'));
 check('Counters & collection is on the office menu',

@@ -430,7 +430,8 @@ $e = static fn($v): string => Security::e((string) $v);
     <b><?= $iso ? '🔒' : '🔓' ?> Desk isolation — <?= $iso ? 'ON' : 'OFF' ?></b>
     <div class="ctr-note">
       ON: a <em>counter</em> login sees only its own desk's ticket register, payments and passenger
-      list. The bus manifest, seat map and trips board stay shared — the bus is shared, and the
+      list. Tickets sold before 4 Oct 2026 carry no desk stamp and follow the seller's desk today.
+      A clerk not put on a desk keeps seeing everything. The bus manifest, seat map and trips board stay shared — the bus is shared, and the
       clerk boarding it must see everyone on board. The office is never scoped.
     </div>
   </div>

@@ -51,6 +51,63 @@ $inrOf = static fn(float $amt, ?string $cur): float =>
     strtoupper((string) $cur) === 'NPR' ? $amt / $peg : $amt;
 
 /* =====================================================================
+ *  0. By company (4 Oct 2026) - the same window split by the company that
+ *     ISSUED each ticket (bookings.entity, frozen at sale; an unstamped row
+ *     is the India company, as every sale was before 4 Oct 2026). Read-only:
+ *     every figure below this panel is unchanged and stays company-wide.
+ *     Paper tickets, expenses, salaries and agent cash are not split yet.
+ * ===================================================================== */
+$byCo = [];
+$coSplit = false;
+try {
+    if (CounterDesk::hasColumn('bookings', 'entity')) {
+        $coSplit = true;
+        $ek = "CASE WHEN b.entity = 'NP' THEN 'NP' ELSE 'IN' END";
+        foreach (['IN', 'NP'] as $k) {
+            $byCo[$k] = ['tickets' => 0, 'collected' => 0.0, 'cod' => 0.0, 'refunds' => 0.0, 'commission' => 0.0, 'npr' => 0.0];
+        }
+        foreach (Database::fetchAll(
+            "SELECT $ek AS e, COUNT(*) AS n,
+                    COALESCE(SUM(CASE WHEN (SELECT p2.status FROM payments p2 WHERE p2.booking_id = b.id ORDER BY p2.id DESC LIMIT 1) = 'cod_pending' THEN 0 ELSE b.total_amount END), 0) AS got,
+                    COALESCE(SUM(CASE WHEN (SELECT p2.status FROM payments p2 WHERE p2.booking_id = b.id ORDER BY p2.id DESC LIMIT 1) = 'cod_pending' THEN b.total_amount ELSE 0 END), 0) AS cod
+               FROM bookings b
+              WHERE b.status IN ($paidStatuses) AND b.confirmed_at >= :f AND b.confirmed_at < :t1
+              GROUP BY e", ['f' => $from, 't1' => addDaysISO($to, 1)]) as $r) {
+            $byCo[(string) $r['e']]['tickets']   = (int) $r['n'];
+            $byCo[(string) $r['e']]['collected'] = (float) $r['got'];
+            $byCo[(string) $r['e']]['cod']       = (float) $r['cod'];
+        }
+        foreach (Database::fetchAll(
+            "SELECT $ek AS e, COALESCE(SUM(b.refund_amount), 0) AS amt
+               FROM bookings b
+              WHERE b.refund_status = 'processed' AND b.refund_amount > 0 AND b.cancelled_at >= :f AND b.cancelled_at < :t1
+              GROUP BY e", ['f' => $from, 't1' => addDaysISO($to, 1)]) as $r) {
+            $byCo[(string) $r['e']]['refunds'] = (float) $r['amt'];
+        }
+        foreach (Database::fetchAll(
+            "SELECT $ek AS e, COALESCE(SUM(l.amount), 0) AS amt
+               FROM agent_ledger l JOIN bookings b ON b.id = l.booking_id
+              WHERE l.account = 'commission' AND l.entry_type IN ('commission', 'commission_void')
+                AND l.created_at >= :f AND l.created_at < :t1
+              GROUP BY e", ['f' => $from, 't1' => addDaysISO($to, 1)]) as $r) {
+            $byCo[(string) $r['e']]['commission'] = (float) $r['amt'];
+        }
+        if (CounterDesk::hasColumn('payments', 'local_amount')) {
+            foreach (Database::fetchAll(
+                "SELECT $ek AS e, COALESCE(SUM(p.local_amount), 0) AS npr
+                   FROM payments p JOIN bookings b ON b.id = p.booking_id
+                  WHERE p.status = 'verified' AND p.local_currency = 'NPR'
+                    AND p.verified_at >= :f AND p.verified_at < :t1
+                  GROUP BY e", ['f' => $from, 't1' => addDaysISO($to, 1)]) as $r) {
+                $byCo[(string) $r['e']]['npr'] = (float) $r['npr'];
+            }
+        }
+    }
+} catch (Throwable $e) {
+    $coSplit = false;
+}
+
+/* =====================================================================
  *  1. Collections — every confirmed booking whose money landed in the
  *     window, one row per booking (so a second payment row can never
  *     double-count the fare), tagged with its latest payment method.
@@ -395,6 +452,28 @@ admin_header('Accounting', 'accounting');
 </form>
 
 <p class="muted" style="margin-top:-6px">Day-book for <strong><?= Security::e($rangeLabel) ?></strong> · money shown in ₹ (NPR converted @ 1:<?= Security::e((string) $peg) ?>, from Settings).</p>
+
+<?php if ($coSplit && ($byCo['NP']['tickets'] > 0 || $byCo['NP']['refunds'] > 0 || $byCo['NP']['commission'] != 0.0)): ?>
+<div class="panel no-break" style="margin-bottom:14px">
+  <h2>By company · कम्पनी अनुसार</h2>
+  <table>
+    <thead><tr><th>Company</th><th class="num">Tickets</th><th class="num">Collected</th><th class="num">Still to collect</th><th class="num">Refunds paid</th><th class="num">Agent commission</th><th class="num">NPR in drawers</th></tr></thead>
+    <tbody>
+    <?php foreach (['IN' => '🇮🇳 India company', 'NP' => '🇳🇵 Nepal company'] as $ck => $cl): $c = $byCo[$ck]; ?>
+      <tr><td><b><?= Security::e($cl) ?></b></td>
+        <td class="num"><?= (int) $c['tickets'] ?></td>
+        <td class="num"><?= Security::e(inr($c['collected'])) ?></td>
+        <td class="num"><?= Security::e(inr($c['cod'])) ?></td>
+        <td class="num"><?= Security::e(inr($c['refunds'])) ?></td>
+        <td class="num"><?= Security::e(inr($c['commission'])) ?></td>
+        <td class="num"><?= $c['npr'] > 0 ? Security::e(CounterDesk::format($c['npr'], 'NPR')) : '—' ?></td></tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+  <p class="muted" style="font-size:12px;margin:8px 0 0">The company that issued each ticket, frozen at sale (online and older tickets = India company).
+    Paper tickets, expenses, salaries and agent cash below are still for the whole business. Money one company collects for the other is settled between them by hand.</p>
+</div>
+<?php endif; ?>
 
 <div class="cards">
   <div class="card"><div class="k">Collected (money in)</div><div class="v"><?= Security::e(inr($grossCollected)) ?><br><small><?= $collectedCount ?> paid · <?= $confirmedCount ?> confirmed</small></div></div>

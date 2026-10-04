@@ -62,6 +62,14 @@ if ($scopeId !== null) {
     $where[] = 'b.sold_by_admin_id = :scope';
     $params['scope'] = $scopeId;
 }
+/* Desk isolation (4 Oct 2026, ships OFF - Admin -> Counters & collection):
+   a counter login sees only its own desk's passenger list (the bus manifest stays shared). Applied before the user's
+   own filters so it cannot be widened by editing the query string. */
+$deskScope = Auth::deskScopeCode();
+if ($deskScope !== null && CounterDesk::stampColumn()) {
+    $where[] = CounterDesk::scopeClause('b');
+    $params['deskScope'] = $deskScope;
+}
 if ($phone !== '') {
     $where[] = 'b.contact_phone = :phone';
     $params['phone'] = $phone;

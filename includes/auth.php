@@ -926,6 +926,31 @@ final class Auth
     }
 
     /**
+     * The desk code a COUNTER login's books are pinned to, or null.
+     *
+     * Two clerks may share the Nepalgunj desk and each must see the desk's
+     * whole day, while neither should read Surat's - so the key is the place,
+     * not the person. OFF by default (setting counter_desk_isolation, switched
+     * on Admin -> Counters & collection). A clerk with no desk is never scoped
+     * ("nowhere" would hide every ticket). The bus itself - manifest, seat map,
+     * trips board, ticket scan - stays shared: this separates the BOOKS.
+     * Ported from the finish-20260927 line (4 Oct 2026).
+     */
+    public static function deskScopeCode(): ?string
+    {
+        $admin = self::admin();
+        if ($admin === null || (string) ($admin['role'] ?? '') !== 'counter') {
+            return null;
+        }
+        if (!Settings::getBool('counter_desk_isolation', false)) {
+            return null;
+        }
+        $code = CounterDesk::forAdmin((int) ($admin['id'] ?? 0))['code'];
+
+        return $code === '' ? null : $code;
+    }
+
+    /**
      * Does the signed-in staff member hold this permission?
      */
     public static function can(string $permission): bool

@@ -416,6 +416,36 @@ if ($pos !== false) {
    the same choice 04-i18n.js makes (saved language, else a Hindi / Nepali
    phone, else Nepali). The strings are read from 04-i18n.js itself, so there
    is no second copy to drift; applyLang() later writes the same text. */
+/* Real reviews (4 Oct 2026, point 9): only feedback the office has marked
+   public on Admin -> Ratings, newest first, first name + initial only. No
+   review, no section - nothing is ever invented. Server-rendered so search
+   engines and slow phones see it without waiting for the app. */
+try {
+    $revs = Database::fetchAll(
+        "SELECT name, rating, comment, created_at FROM feedback
+          WHERE is_public = 1 AND comment IS NOT NULL AND TRIM(comment) <> ''
+          ORDER BY created_at DESC LIMIT 6"
+    );
+} catch (Throwable $e) {
+    $revs = [];
+}
+if ($revs !== []) {
+    $rv = '<section class="section" id="realReviews"><div class="container"><div class="sec-head center">'
+        . '<h2 data-i18n="revTitle">What our passengers say</h2>'
+        . '<p class="muted" data-i18n="revNote">Real reviews from passengers who travelled with us, shown with their permission.</p></div>'
+        . '<div class="testi-grid">';
+    foreach ($revs as $r) {
+        $parts = preg_split('/\s+/u', trim((string) ($r['name'] ?? ''))) ?: [];
+        $who   = $parts !== [] && $parts[0] !== '' ? $parts[0] . (isset($parts[1]) ? ' ' . mb_substr($parts[1], 0, 1) . '.' : '') : 'Passenger';
+        $stars = str_repeat('★', max(1, min(5, (int) $r['rating']))) . str_repeat('☆', 5 - max(1, min(5, (int) $r['rating'])));
+        $rv .= '<div class="testi-card"><div class="tc-text">' . htmlspecialchars(mb_substr(trim((string) $r['comment']), 0, 400), ENT_QUOTES, 'UTF-8') . '</div>'
+             . '<div class="tc-who"><span aria-label="' . (int) $r['rating'] . ' of 5">' . $stars . '</span> · ' . htmlspecialchars($who, ENT_QUOTES, 'UTF-8')
+             . ' · ' . htmlspecialchars(date('M Y', (int) strtotime((string) $r['created_at'])), ENT_QUOTES, 'UTF-8') . '</div></div>';
+    }
+    $rv .= '</div></div></section>';
+    $html = str_replace('<section class="section" id="realReviews" hidden></section>', $rv, $html);
+}
+
 $firstPaint = shg_first_paint_strings(['spTitle', 'spSub']);
 if ($firstPaint !== []) {
     $fp = '<script>(function(){try{var M=' . json_encode($firstPaint, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP)

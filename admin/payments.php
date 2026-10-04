@@ -173,6 +173,15 @@ switch ($tab) {
     // 'all' — no status filter
 }
 
+/* Desk isolation (4 Oct 2026, ships OFF - Admin -> Counters & collection):
+   a counter login sees only its own desk's payments. Applied before the user's
+   own filters so it cannot be widened by editing the query string. */
+$deskScope = Auth::deskScopeCode();
+if ($deskScope !== null && CounterDesk::stampColumn()) {
+    $where[] = CounterDesk::scopeClause('b');
+    $params['deskScope'] = $deskScope;
+}
+
 /* Search filter */
 if ($fSearch !== '') {
     $where[] = sqlSearchClause([
