@@ -66,6 +66,77 @@ CREATE TABLE IF NOT EXISTS `counter_locations` (
   KEY `ix_counter_active` (`is_active`,`sort_order`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- A database that already carries an OLDER counter_locations table (live did:
+-- the 26 Sep desk build had been applied there) keeps its rows - CREATE TABLE
+-- IF NOT EXISTS skips it - so every column this release reads is added here,
+-- one guarded ALTER each. @added_<col> remembers which ones were new, so the
+-- defaults below are written ONCE and never overwrite an office edit on re-run.
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'counter_locations' AND COLUMN_NAME = 'fx_rate');
+SET @added_fx_rate := IF(@c = 0, 1, 0);
+SET @s := IF(@c = 0, 'ALTER TABLE `counter_locations` ADD COLUMN `fx_rate` DECIMAL(10,4) NULL', 'DO 0');
+PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'counter_locations' AND COLUMN_NAME = 'allowed_methods');
+SET @added_allowed_methods := IF(@c = 0, 1, 0);
+SET @s := IF(@c = 0, 'ALTER TABLE `counter_locations` ADD COLUMN `allowed_methods` VARCHAR(80) NULL', 'DO 0');
+PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'counter_locations' AND COLUMN_NAME = 'default_direction');
+SET @added_default_direction := IF(@c = 0, 1, 0);
+SET @s := IF(@c = 0, 'ALTER TABLE `counter_locations` ADD COLUMN `default_direction` VARCHAR(10) NULL', 'DO 0');
+PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'counter_locations' AND COLUMN_NAME = 'default_from');
+SET @added_default_from := IF(@c = 0, 1, 0);
+SET @s := IF(@c = 0, 'ALTER TABLE `counter_locations` ADD COLUMN `default_from` VARCHAR(80) NULL', 'DO 0');
+PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'counter_locations' AND COLUMN_NAME = 'entity');
+SET @added_entity := IF(@c = 0, 1, 0);
+SET @s := IF(@c = 0, 'ALTER TABLE `counter_locations` ADD COLUMN `entity` CHAR(2) NOT NULL DEFAULT ''IN''', 'DO 0');
+PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'counter_locations' AND COLUMN_NAME = 'lang');
+SET @added_lang := IF(@c = 0, 1, 0);
+SET @s := IF(@c = 0, 'ALTER TABLE `counter_locations` ADD COLUMN `lang` VARCHAR(5) NULL', 'DO 0');
+PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'counter_locations' AND COLUMN_NAME = 'phone');
+SET @added_phone := IF(@c = 0, 1, 0);
+SET @s := IF(@c = 0, 'ALTER TABLE `counter_locations` ADD COLUMN `phone` VARCHAR(40) NULL', 'DO 0');
+PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'counter_locations' AND COLUMN_NAME = 'address');
+SET @added_address := IF(@c = 0, 1, 0);
+SET @s := IF(@c = 0, 'ALTER TABLE `counter_locations` ADD COLUMN `address` VARCHAR(190) NULL', 'DO 0');
+PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'counter_locations' AND COLUMN_NAME = 'map_url');
+SET @added_map_url := IF(@c = 0, 1, 0);
+SET @s := IF(@c = 0, 'ALTER TABLE `counter_locations` ADD COLUMN `map_url` VARCHAR(255) NULL', 'DO 0');
+PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'counter_locations' AND COLUMN_NAME = 'hours');
+SET @added_hours := IF(@c = 0, 1, 0);
+SET @s := IF(@c = 0, 'ALTER TABLE `counter_locations` ADD COLUMN `hours` VARCHAR(120) NULL', 'DO 0');
+PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'counter_locations' AND COLUMN_NAME = 'note');
+SET @added_note := IF(@c = 0, 1, 0);
+SET @s := IF(@c = 0, 'ALTER TABLE `counter_locations` ADD COLUMN `note` VARCHAR(255) NULL', 'DO 0');
+PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
 -- The seeded network. Rupaidiha is the INDIAN side of the border: it sells
 -- the return run (passengers board there) but collects INR for the India
 -- company. Nepalgunj, Dhamboji and Kohalpur are Nepal: NPR, Nepal company,
@@ -85,6 +156,15 @@ INSERT IGNORE INTO `counter_locations`
  ('NPJ','Nepalgunj — Pushpalal Chowk','NP','NPR','NP','ne','cash,esewa','toIndia','Rupaidiha',90),
  ('NPJD','Nepalgunj — Dhamboji Chowk','NP','NPR','NP','ne','cash,esewa','toIndia','Rupaidiha',100),
  ('KHL','Kohalpur Chowk','NP','NPR','NP','ne','cash,esewa','toIndia','Rupaidiha',110);
+
+-- Defaults for rows that existed before the new columns did (no-ops on a fresh table,
+-- where the seed above already wrote them, and on every re-run).
+UPDATE `counter_locations` SET `entity` = 'NP' WHERE @added_entity = 1 AND `country` = 'NP';
+UPDATE `counter_locations` SET `lang` = 'ne' WHERE @added_lang = 1 AND `country` = 'NP' AND `lang` IS NULL;
+UPDATE `counter_locations` SET `allowed_methods` = 'cash,esewa'
+ WHERE @added_allowed_methods = 1 AND `country` = 'NP' AND `allowed_methods` IS NULL;
+UPDATE `counter_locations` SET `default_direction` = 'toIndia', `default_from` = 'Rupaidiha'
+ WHERE @added_default_direction = 1 AND `code` IN ('NPJ','NPJD','KHL','RPD') AND `default_direction` IS NULL;
 
 -- ---------------------------------------------------------------------
 -- 2. The desk and the company, frozen on the sale
