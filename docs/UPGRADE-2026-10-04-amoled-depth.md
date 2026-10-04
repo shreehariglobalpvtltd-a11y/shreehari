@@ -111,6 +111,10 @@ are server images and were not touched (they keep their own white layout).
   (+80 ms); layout ≈ 3.2 s with or without the layer (an existing cost of the
   home page, not this pass); DCL showed no consistent change (the +0.4 s in
   the first A/B was noise).
+  After p3 (live, same method): with 653 / 807 ms vs without 782 / 565 ms
+  RecalcStyle, DCL 4.7 / 5.3 s vs 4.5 / 4.4 s — inside run-to-run noise
+  (the number of recalcs alone swings 16–100 between runs). Lab only; field
+  data (CrUX) still to be collected.
 - Selector lists flattened (no `:is()`: Chrome can bucket every rule by its
   class/id), every lift/press now reads `--dp-lift` / `--dp-press` /
   `--dp-press-sm`, so reduced motion stops ALL movement; coloured company
