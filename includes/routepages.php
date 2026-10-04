@@ -161,6 +161,98 @@ final class RoutePages
      * ---------------------------------------------------------------- */
 
     /** @return array<string,string> */
+    /**
+     * The homepage route scene, redrawn for one route page (4 Oct 2026): the
+     * same corridor, the same coordinates, with THIS page's Gujarat town lit
+     * and the dots running the way this bus runs. Inline SVG + a few lines of
+     * inline JS (no new request; the 9 KB map backdrop loads only when the
+     * card scrolls into view). transform/opacity only, paused off-screen and
+     * by its button, a still frame under reduced motion. Illustrative - says so.
+     */
+    private static function corridor(string $fromCity, string $toCity, string $lang): string
+    {
+        $mw = [
+            'en' => ['t' => 'The route', 'note' => 'Illustrative corridor — not a road map, distance or live GPS position.', 'aria' => 'Illustrative map: the bus corridor from Gujarat to Rupaidiha on the India–Nepal border', 'pause' => 'Pause', 'play' => 'Play',
+                     'surat' => 'Surat', 'vadodara' => 'Vadodara', 'ahmedabad' => 'Ahmedabad', 'rupaidiha' => 'Rupaidiha', 'in' => 'INDIA', 'np' => 'NEPAL'],
+            'hi' => ['t' => 'रूट', 'note' => 'सांकेतिक रूट — सड़क का नक्शा, दूरी या लाइव GPS नहीं।', 'aria' => 'सांकेतिक नक्शा: गुजरात से भारत–नेपाल सीमा पर रुपईडीहा तक बस का रूट', 'pause' => 'रोकें', 'play' => 'चलाएँ',
+                     'surat' => 'सूरत', 'vadodara' => 'वडोदरा', 'ahmedabad' => 'अहमदाबाद', 'rupaidiha' => 'रुपईडीहा', 'in' => 'भारत', 'np' => 'नेपाल'],
+            'ne' => ['t' => 'रुट', 'note' => 'सांकेतिक रुट — सडकको नक्सा, दूरी वा लाइभ GPS होइन।', 'aria' => 'सांकेतिक नक्सा: गुजरातदेखि भारत–नेपाल सिमानाको रुपैडिहासम्म बसको रुट', 'pause' => 'रोक्नुहोस्', 'play' => 'चलाउनुहोस्',
+                     'surat' => 'सुरत', 'vadodara' => 'वडोदरा', 'ahmedabad' => 'अहमदाबाद', 'rupaidiha' => 'रुपैडिहा', 'in' => 'भारत', 'np' => 'नेपाल'],
+        ];
+        $m = $mw[$lang] ?? $mw['en'];
+        $e = static fn(string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+
+        $pts = ['surat' => [229.61, 374.43], 'vadodara' => [238.71, 350.55], 'ahmedabad' => [222.86, 335.53], 'rupaidiha' => [457.99, 228.12]];
+        $key = static function (string $city): string {
+            $c = strtolower($city);
+            return match (true) {
+                str_contains($c, 'surat')                                  => 'surat',
+                str_contains($c, 'vadodara') || str_contains($c, 'baroda') => 'vadodara',
+                str_contains($c, 'ahmedabad')                              => 'ahmedabad',
+                str_contains($c, 'rupaidiha') || str_contains($c, 'nepalgunj') => 'rupaidiha',
+                default                                                    => '',
+            };
+        };
+        $kFrom = $key($fromCity);
+        $kTo   = $key($toCity);
+        $toIndia = $kFrom === 'rupaidiha';
+        $lit = $toIndia ? $kTo : $kFrom;   // the Gujarat end of this route
+
+        // Dots along the corridor, in the order this bus runs.
+        $sample = [];
+        $poly = [[229.61, 374.43], [238.71, 350.55], [222.86, 335.53]];
+        foreach ([[0, 1], [1, 2]] as [$a, $b]) {
+            for ($i = 0; $i < 2; $i++) {
+                $t = $i / 2;
+                $sample[] = [$poly[$a][0] + ($poly[$b][0] - $poly[$a][0]) * $t, $poly[$a][1] + ($poly[$b][1] - $poly[$a][1]) * $t];
+            }
+        }
+        $p0 = [222.86, 335.53]; $p1 = [277.86, 260.53]; $p2 = [377.99, 238.12]; $p3 = [457.99, 228.12];
+        for ($i = 0; $i <= 9; $i++) {
+            $t = $i / 9; $u = 1 - $t;
+            $sample[] = [
+                $u * $u * $u * $p0[0] + 3 * $u * $u * $t * $p1[0] + 3 * $u * $t * $t * $p2[0] + $t * $t * $t * $p3[0],
+                $u * $u * $u * $p0[1] + 3 * $u * $u * $t * $p1[1] + 3 * $u * $t * $t * $p2[1] + $t * $t * $t * $p3[1],
+            ];
+        }
+        if ($toIndia) { $sample = array_reverse($sample); }
+        $n = count($sample);
+        $dots = '';
+        foreach ($sample as $i => [$x, $y]) {
+            $dots .= sprintf('<circle class="c-dot" cx="%.1f" cy="%.1f" r="3.4" style="animation-delay:%.2fs"/>', $x, $y, $i * 2.4 / $n);
+        }
+
+        $stops = '';
+        foreach ($pts as $k => [$x, $y]) {
+            $on = $k === $lit || $k === 'rupaidiha';
+            $stops .= sprintf('<circle class="c-stop%s" cx="%.2f" cy="%.2f" r="7"/>', $on ? ' on' : '', $x, $y);
+        }
+        $lbl = static fn(string $k, float $x, float $y, string $anchor): string => sprintf(
+            '<text class="c-lbl%s" x="%.1f" y="%.1f" text-anchor="%s">%s</text>', $k === $lit ? ' on' : '', $x, $y, $anchor, $e($m[$k]));
+        $pulse = '';
+        foreach (array_unique(array_filter([$lit, 'rupaidiha'])) as $k) {
+            $pulse .= sprintf('<circle class="c-pulse" cx="%.2f" cy="%.2f" r="14"/>', $pts[$k][0], $pts[$k][1]);
+        }
+        $path = 'M229.61,374.43 L238.71,350.55 L222.86,335.53 C277.86,260.53 377.99,238.12 457.99,228.12';
+
+        return '<section class="card corridor" data-corr><h2>' . $e($m['t']) . '</h2>'
+            . '<div class="corr-art"><svg viewBox="36 145 590 315" role="img" aria-label="' . $e($m['aria']) . '">'
+            . '<image data-href="/assets/img/anim/shg-map-bg.svg?v=20261004e" x="0" y="0" width="960" height="720"/>'
+            . '<path class="c-glow" d="' . $path . '"/><path class="c-track" d="' . $path . '"/>'
+            . '<g aria-hidden="true">' . $dots . $pulse . $stops
+            . '<text class="c-cty" x="340" y="445">' . $e($m['in']) . '</text><text class="c-cty" x="495" y="176">' . $e($m['np']) . '</text>'
+            . $lbl('surat', 215.6, 402.4, 'end') . $lbl('vadodara', 254, 357, 'start') . $lbl('ahmedabad', 208.9, 321.5, 'end') . $lbl('rupaidiha', 458, 272, 'middle')
+            . '</g></svg>'
+            . '<button type="button" class="corr-pause" aria-pressed="false" data-p="' . $e($m['pause']) . '" data-g="' . $e($m['play']) . '">' . $e($m['pause']) . '</button></div>'
+            . '<p class="note">' . $e($m['note']) . '</p>'
+            . '<script>(function(){var s=document.querySelector("[data-corr]");if(!s)return;var b=s.querySelector(".corr-pause"),im=s.querySelector("image[data-href]");'
+            . 'b.addEventListener("click",function(){var p=s.classList.toggle("paused");b.setAttribute("aria-pressed",p?"true":"false");b.textContent=p?b.dataset.g:b.dataset.p;});'
+            . 'var go=function(on){s.classList.toggle("off",!on);if(on&&im&&!im.getAttribute("href")){im.setAttribute("href",im.getAttribute("data-href"));}};'
+            . 'if("IntersectionObserver" in window){new IntersectionObserver(function(es){go(es[0].isIntersecting);},{rootMargin:"200px"}).observe(s);}else{go(true);}'
+            . 'document.addEventListener("visibilitychange",function(){s.classList.toggle("off",document.hidden);});})();</script>'
+            . '</section>';
+    }
+
     private static function words(string $lang): array
     {
         $w = [
@@ -306,6 +398,7 @@ final class RoutePages
             ],
         ];
         $ldJson = json_encode($ld, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP);
+        $corridor = self::corridor((string) $r['from_city'], (string) $r['to_city'], $lang);
 
         http_response_code(200);
         header('Content-Type: text/html; charset=utf-8');
@@ -320,6 +413,7 @@ final class RoutePages
   <a class="btn wa" href="{$waLink}" target="_blank" rel="noopener">💬 {$e($w['wa'])}</a>
   <a class="btn" href="{$telLink}">📞 {$e($w['call'])} · {$e($f['phone'])}</a>
 </div>
+{$corridor}
 <section class="grid">
   <div class="card"><h2>{$e($w['timetable'])}</h2>
     <dl><dt>{$e($w['dep'])}</dt><dd>{$e($from)} · {$e($f['dep'])} · {$e($w['daily'])}</dd>
@@ -389,22 +483,41 @@ HTML);
 <link rel="icon" href="/assets/img/favicon-32.png">
 {$ld}
 <style>
-:root{--blue:#2E5FA8;--navy:#12264E;--orange:#F07C1F;--ink:#16233C;--muted:#5C6B85;--line:#E2E9F4;--bg:#F6F8FC;--card:#fff}
-@media (prefers-color-scheme:dark){:root{--ink:#F1F5FB;--muted:#A9B6CC;--line:#243352;--bg:#0E1626;--card:#16213A}}
+/* Design system tokens (assets/css/ds.css, 4 Oct 2026) - copied, not linked, so the page keeps zero blocking requests. */
+:root{--navy:#0C306C;--on-navy:#FFFFFF;--on-navy-muted:#B9C9E6;--royal:#0054A8;--royal-strong:#003C90;--royal-tint:#EEF4FC;--on-royal:#FFFFFF;--red:#DC143C;--ink:#16233C;--muted:#5C6B85;--line:#E4E9F1;--bg:#F4F6FB;--card:#FFFFFF;--wa:#11703F;--gold:#EFB544;--focus:#0054A8}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--navy:#0F1A2E;--on-navy-muted:#93A4BE;--royal:#5B9BE8;--royal-strong:#8FBFFF;--royal-tint:#152645;--on-royal:#0B1220;--red:#FF5C74;--ink:#E8F0FB;--muted:#93A4BE;--line:#22314A;--bg:#0B1220;--card:#111D33;--wa:#5FD39A;--focus:#8FBFFF}}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans Devanagari','Noto Sans',sans-serif;background:var(--bg);color:var(--ink);line-height:1.55;-webkit-font-smoothing:antialiased}
-.top{display:flex;align-items:center;justify-content:space-between;gap:10px;max-width:860px;margin:0 auto;padding:14px 16px}
-.brand{display:flex;align-items:center;gap:10px;font-weight:800;color:var(--navy);text-decoration:none}.brand img{width:34px;height:34px;border-radius:9px}
-@media (prefers-color-scheme:dark){.brand{color:#fff}}
-.langs a{font-size:13px;font-weight:700;color:var(--muted);text-decoration:none;padding:5px 9px;border-radius:999px;border:1px solid var(--line);margin-left:4px}
-.langs a[aria-current]{background:var(--blue);color:#fff;border-color:var(--blue)}
+.top{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;background:var(--navy);border-bottom:3px solid var(--red);padding:12px max(16px,calc((100% - 860px)/2 + 16px));margin-bottom:12px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;color:var(--on-navy);text-decoration:none}.brand img{width:34px;height:34px;border-radius:9px;background:#fff}
+.langs{display:flex;gap:4px}
+.langs a{display:inline-flex;align-items:center;min-height:36px;font-size:13px;font-weight:700;color:var(--on-navy);text-decoration:none;padding:4px 11px;border-radius:999px;border:1px solid rgba(255,255,255,.35)}
+.langs a[aria-current]{background:var(--royal);color:var(--on-royal);border-color:var(--royal)}
+a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 main{max-width:860px;margin:0 auto;padding:6px 16px 40px}
 h1{font-size:28px;line-height:1.2;margin:8px 0 8px}
 h2{font-size:18px;margin:0 0 10px}
 .lead{font-size:16.5px;color:var(--muted);margin-bottom:14px}
 .cta{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 16px}
-.btn{display:inline-flex;align-items:center;gap:8px;min-height:46px;padding:10px 16px;border-radius:14px;font-weight:800;text-decoration:none;border:1px solid var(--line);background:var(--card);color:var(--ink)}
-.btn.hot{background:var(--orange);border-color:var(--orange);color:#fff}.btn.wa{background:#25D366;border-color:#25D366;color:#fff}.btn.ghost{font-weight:700}
+.btn{display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:10px 18px;border-radius:14px;font-weight:800;text-decoration:none;border:1.5px solid var(--line);background:var(--card);color:var(--royal)}
+.btn:hover{background:var(--royal-tint);border-color:var(--royal)}
+.btn.hot{background:var(--royal);border-color:var(--royal);color:var(--on-royal)}.btn.hot:hover{background:var(--royal-strong)}
+.btn.wa{background:var(--wa);border-color:var(--wa);color:var(--on-royal)}.btn.ghost{font-weight:700}
+/* The corridor (4 Oct 2026): the homepage route scene, this page's town lit. transform/opacity only. */
+.corr-art{position:relative;border-radius:14px;overflow:hidden;background:#0C306C;margin-top:4px}
+.corr-art svg{display:block;width:100%;height:auto}
+.c-glow{fill:none;stroke:rgba(239,181,68,.28);stroke-width:14;stroke-linecap:round;stroke-linejoin:round}
+.c-track{fill:none;stroke:#EFB544;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+.c-stop{fill:#fff;stroke:#0C306C;stroke-width:3}.c-stop.on{fill:#EFB544}
+.c-lbl{font:700 23px -apple-system,'Segoe UI',Roboto,'Noto Sans Devanagari',sans-serif;fill:#fff;paint-order:stroke;stroke:#0C306C;stroke-width:6px;stroke-linejoin:round}
+.c-lbl.on{fill:#FFD27A}.c-cty{font:800 26px -apple-system,'Segoe UI',Roboto,sans-serif;letter-spacing:.18em;fill:rgba(255,255,255,.55)}
+.c-dot{fill:#fff;opacity:.25;animation:c-run 2.4s linear infinite}
+.c-pulse{fill:none;stroke:#EFB544;stroke-width:3;transform-box:fill-box;transform-origin:center;animation:c-pulse 2.4s ease-out infinite}
+@keyframes c-run{0%,100%{opacity:.2}12%{opacity:1}30%{opacity:.2}}
+@keyframes c-pulse{from{transform:scale(.6);opacity:.9}to{transform:scale(2.4);opacity:0}}
+.corridor.paused .c-dot,.corridor.paused .c-pulse,.corridor.off .c-dot,.corridor.off .c-pulse{animation-play-state:paused}
+@media (prefers-reduced-motion:reduce){.c-dot,.c-pulse{animation:none}.c-dot{opacity:.8}.c-pulse{opacity:0}.corr-pause{display:none}}
+.corr-pause{position:absolute;right:10px;bottom:10px;min-width:44px;min-height:44px;border-radius:999px;border:1px solid rgba(255,255,255,.5);background:rgba(12,48,108,.7);color:#fff;font:700 13px sans-serif;cursor:pointer;padding:0 12px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media (max-width:640px){.grid{grid-template-columns:1fr}}
 .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin:0 0 12px;box-shadow:0 4px 16px rgba(18,38,78,.06)}
