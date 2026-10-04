@@ -343,7 +343,9 @@ const CONFIG = {
   verifyTimeText: 'within 30 minutes (9 AM–9 PM IST)',   // same promise as the FAQ and the pay screen (Oct 2026)
   allowScreenshotUpload: true,
   maxUploadSizeMB: 10,
-  nprPerInr: 1.6,                 // fixed INR→NPR peg used for fare estimates
+  // One NPR rate source (4 Oct 2026): the office's npr_per_inr setting, sent in
+  // the boot payload. 1.6 is only the fallback when the page has no boot data.
+  nprPerInr: (window.SHG_BOOT && Number(window.SHG_BOOT.npr) > 0) ? Number(window.SHG_BOOT.npr) : 1.6,
   booking: {
     seatHoldMinutes: 30,          // picked seats stay locked for one visitor this long
     maxSeats: 6,

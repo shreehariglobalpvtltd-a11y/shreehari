@@ -349,7 +349,7 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
           $label = $r['label'] ?: ucwords(str_replace('_', ' ', $key));
           $val = (string) ($r['svalue'] ?? '');
           $isJson = $r['stype'] === 'json';
-          $isSecret = (bool) preg_match('/(token|secret|_pass$|password|api_key)/i', $key);
+          $isSecret = Settings::isSecretKey($key);   // one rule, shared with the audit mask
         ?>
         <tr>
           <th style="width:34%"><?= Security::e($label) ?>

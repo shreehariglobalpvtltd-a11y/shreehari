@@ -609,7 +609,7 @@ final class AgentWallet
      * Same store the flat engine already reads (agent_flat_direct /
      * agent_flat_joint), same call shape as the other settings writers.
      */
-    public static function setFlatRates(int $direct, int $joint, int $by = 0): void
+    public static function setFlatRates(int $direct, int $joint, int $by = 0, string $reason = ''): void
     {
         foreach (['direct' => $direct, 'team/organisation' => $joint] as $label => $v) {
             if ($v < 0 || $v > 10000) {
@@ -627,7 +627,7 @@ final class AgentWallet
             Logger::audit('agent.tier_rates', 'settings', 'agent_flat',
                 ['direct' => $oldD, 'joint' => $oldJ],
                 ['direct' => $direct, 'joint' => $joint],
-                'Tier rates changed by admin #' . $by);
+                'Tier rates changed by admin #' . $by, $reason);
         }
     }
 

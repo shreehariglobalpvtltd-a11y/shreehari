@@ -262,7 +262,9 @@ final class Settings
         // is protected but there is no reason to keep a plaintext copy of a
         // Twilio auth token or SMTP password inside it.
         $mask = static function (string $key, $value): string {
-            $sensitive = preg_match('/(token|password|secret|auth|key|api)/i', $key) === 1;
+            // isSecretKey() is the rule the Settings form uses; the older, broader
+            // pattern stays beside it so nothing that was masked stops being masked.
+            $sensitive = self::isSecretKey($key) || preg_match('/(token|password|secret|auth|key|api)/i', $key) === 1;
             $str       = is_scalar($value) ? (string) $value : json_encode($value);
             if ($str === '' || $str === false || $str === null) { return ''; }
             if (!$sensitive) {
@@ -283,6 +285,18 @@ final class Settings
         }
 
         Logger::audit('settings.update', 'settings', '', $diff === [] ? null : ['keys' => array_keys($diff)], $diff === [] ? array_keys($pairs) : $diff);
+    }
+
+    /**
+     * Is this settings key a secret - a value that is write-only in the admin
+     * form and masked in the audit log? ONE rule for both (4 Oct 2026): the
+     * form's own pattern missed push_vapid_private (it was printed into the
+     * page for every role that can open Settings) and the audit mask missed
+     * smtp_pass ("pass", not "password").
+     */
+    public static function isSecretKey(string $key): bool
+    {
+        return preg_match('/(token|secret|password|_pass$|api_?key|_private$|private_key)/i', $key) === 1;
     }
 
     /**

@@ -108,6 +108,7 @@ $boot = [
    the anonymous page stays byte-identical. */
 /* The help numbers the app's own fallback ticket prints (4 Oct 2026) - the
    same list the server ticket uses, instead of four numbers typed into JS. */
+$boot['npr'] = Settings::getFloat('npr_per_inr', defined('NPR_PER_INR') ? (float) NPR_PER_INR : 1.6);   // the one NPR rate the app estimates with
 try {
     $boot['help'] = Settings::helpContacts(Settings::companyFor(null, null), 4);
 } catch (Throwable $e) {

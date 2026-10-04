@@ -1,4 +1,8 @@
 <?php
+/* TRUSTED_PROXIES (optional, 4 Oct 2026): comma-separated IPs of reverse
+   proxies / CDN edges in front of this server. X-Forwarded-For is believed
+   ONLY from these. Leave undefined when nginx talks to PHP-FPM directly.
+   define('TRUSTED_PROXIES', '203.0.113.10,203.0.113.11'); */
 /**
  * =====================================================================
  *  S HARI GLOBAL PVT LTD — Application Configuration

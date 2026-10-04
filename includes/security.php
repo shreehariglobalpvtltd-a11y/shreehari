@@ -479,17 +479,31 @@ final class Security
 
     public static function clientIp(): string
     {
-        // Hostinger proxies real visitor IPs in these headers.
-        foreach (['HTTP_CF_CONNECTING_IP', 'HTTP_X_REAL_IP', 'HTTP_X_FORWARDED_FOR'] as $header) {
-            if (!empty($_SERVER[$header])) {
-                $candidate = trim(explode(',', (string) $_SERVER[$header])[0]);
-                if (filter_var($candidate, FILTER_VALIDATE_IP) !== false) {
-                    return $candidate;
+        $remote = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
+        $remote = filter_var($remote, FILTER_VALIDATE_IP) !== false ? $remote : '0.0.0.0';
+
+        /* 4 Oct 2026: X-Forwarded-For and friends are believed ONLY when the
+           connection itself comes from a proxy listed in TRUSTED_PROXIES
+           (config constant, comma-separated IPs). They used to be believed
+           from anyone, so any visitor could pick the IP the login rate limit,
+           the audit log and the OTP throttle saw. The VPS serves nginx ->
+           PHP-FPM directly, so REMOTE_ADDR is already the visitor and the
+           list is empty; add the proxy's address if a CDN is ever put in front. */
+        $trusted = defined('TRUSTED_PROXIES')
+            ? array_filter(array_map('trim', explode(',', (string) TRUSTED_PROXIES)))
+            : [];
+        if ($trusted !== [] && in_array($remote, $trusted, true)) {
+            foreach (['HTTP_CF_CONNECTING_IP', 'HTTP_X_REAL_IP', 'HTTP_X_FORWARDED_FOR'] as $header) {
+                if (!empty($_SERVER[$header])) {
+                    $candidate = trim(explode(',', (string) $_SERVER[$header])[0]);
+                    if (filter_var($candidate, FILTER_VALIDATE_IP) !== false) {
+                        return $candidate;
+                    }
                 }
             }
         }
-        $remote = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
-        return filter_var($remote, FILTER_VALIDATE_IP) !== false ? $remote : '0.0.0.0';
+
+        return $remote;
     }
 
     public static function userAgent(int $maxLength = 255): string

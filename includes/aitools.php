@@ -3485,7 +3485,7 @@ final class AiTools
     /** SQL: a booking's total in INR whatever currency it was sold in. */
     private static function revInrSql(string $alias = 'b'): string
     {
-        $peg = defined('NPR_PER_INR') ? (float) NPR_PER_INR : 1.6;
+        $peg = Settings::getFloat('npr_per_inr', defined('NPR_PER_INR') ? (float) NPR_PER_INR : 1.6);   // the office's rate, not a constant (4 Oct 2026)
         return "SUM(CASE WHEN {$alias}.currency = 'NPR' THEN {$alias}.total_amount / {$peg} ELSE {$alias}.total_amount END)";
     }
 

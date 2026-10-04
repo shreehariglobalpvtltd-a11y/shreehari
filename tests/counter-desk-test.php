@@ -418,6 +418,28 @@ check('a manager and an accountant can still export',
     in_array('reports.export', $perms['manager'] ?? [], true) && in_array('reports.export', $perms['accountant'] ?? [], true));
 check('Counters & collection is gated on reports.view',
     str_contains($src('admin/counters.php'), "admin_boot('reports.view')"));
+$sec = $src('includes/security.php');
+check('proxy headers are believed only from TRUSTED_PROXIES',
+    str_contains($sec, "defined('TRUSTED_PROXIES')") && str_contains($sec, 'in_array($remote, $trusted, true)'));
+$_SERVER['REMOTE_ADDR'] = '198.51.100.7';
+$_SERVER['HTTP_X_FORWARDED_FOR'] = '203.0.113.99';
+check('...so a visitor cannot pick the IP the rate limit sees',
+    defined('TRUSTED_PROXIES') || Security::clientIp() === '198.51.100.7', Security::clientIp());
+unset($_SERVER['HTTP_X_FORWARDED_FOR']);
+check('one secret-key rule: the push private key and the SMTP password are secrets',
+    Settings::isSecretKey('push_vapid_private') && Settings::isSecretKey('smtp_pass')
+    && Settings::isSecretKey('whatsapp_api_token') && Settings::isSecretKey('anthropic_api_key'));
+check('...and public values are not', !Settings::isSecretKey('push_vapid_public')
+    && !Settings::isSecretKey('whatsapp_api_version') && !Settings::isSecretKey('passenger_docs_on')
+    && !Settings::isSecretKey('company_phone'));
+check('the Settings form uses that rule', str_contains($src('admin/settings.php'), 'Settings::isSecretKey($key)'));
+check('a temporary password is refused by the API too',
+    str_contains($src('includes/auth.php'), 'Change your temporary password first.'));
+check('a commission rate change in the Agent Panel needs a reason',
+    str_contains($src('admin/agent.php'), 'Give a reason for the commission rate change.')
+    && str_contains($src('admin/agent.php'), 'Give a reason for the tier rate change.'));
+check('the app estimates NPR with the office rate, not a typed-in 1.6',
+    str_contains($src('assets/js/02-config.js'), 'window.SHG_BOOT.npr') && str_contains($src('index.php'), "\$boot['npr']"));
 check('the staff create form sets the desk in the same step',
     str_contains($src('admin/staff.php'), 'name="counter_code"'));
 check('Counters & collection is on the office menu',

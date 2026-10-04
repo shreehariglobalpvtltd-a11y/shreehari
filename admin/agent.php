@@ -185,7 +185,30 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     $fields['photo_path'] = AgentWallet::savePhoto($targetId, $_FILES['photo']);
                 }
 
+                /* A commission rate is money on every later sale: changing it
+                   needs a reason and leaves an old -> new audit row, the same
+                   rule Agent 360 already follows (4 Oct 2026). */
+                $rateAudit = null;
+                if ($canManage) {
+                    $oldPct = AgentWallet::profile($targetId)['commission_percent'] ?? null;
+                    $newRaw = trim((string) ($fields['commission_percent'] ?? ''));
+                    $oldN   = $oldPct === null || $oldPct === '' ? null : round((float) $oldPct, 2);
+                    $newN   = $newRaw === '' ? null : round((float) $newRaw, 2);
+                    if ($oldN !== $newN) {
+                        $rateReason = trim(Security::clean((string) ($_POST['rate_reason'] ?? ''), 200));
+                        if (mb_strlen($rateReason) < 3) {
+                            throw new RuntimeException('Give a reason for the commission rate change. / कमिसन दर बदल्नुको कारण लेख्नुहोस्।');
+                        }
+                        $rateAudit = [$oldN, $newN, $rateReason];
+                    }
+                }
+
                 AgentWallet::saveProfile($targetId, $fields);
+                if ($rateAudit !== null) {
+                    Logger::audit('agent.rate', 'admin', (string) $targetId,
+                        ['commission_percent' => $rateAudit[0]], ['commission_percent' => $rateAudit[1]],
+                        'Commission % changed by admin #' . $selfId, $rateAudit[2]);
+                }
 
                 // Salary lives in a setting, not on admin_profiles, so it is
                 // saved beside the profile rather than through it. Only when
@@ -496,10 +519,17 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 if (!$canManage) {
                     throw new RuntimeException('You are not allowed to change the tier rates.');
                 }
+                $tierReason  = trim(Security::clean((string) ($_POST['rate_reason'] ?? ''), 200));
+                $tierChanged = (float) (int) ($_POST['rate_direct'] ?? -1) !== Settings::getFloat('agent_flat_direct', 200.0)
+                            || (float) (int) ($_POST['rate_joint'] ?? -1) !== Settings::getFloat('agent_flat_joint', 400.0);
+                if ($tierChanged && mb_strlen($tierReason) < 3) {
+                    throw new RuntimeException('Give a reason for the tier rate change. / दर बदल्नुको कारण लेख्नुहोस्।');
+                }
                 AgentWallet::setFlatRates(
                     (int) ($_POST['rate_direct'] ?? -1),
                     (int) ($_POST['rate_joint'] ?? -1),
-                    $selfId
+                    $selfId,
+                    $tierReason
                 );
                 $flash = ['ok', 'Tier rates saved — direct ' . inr((float) (int) $_POST['rate_direct'])
                               . ' / team ' . inr((float) (int) $_POST['rate_joint']) . ' per passenger.'];
@@ -1697,11 +1727,17 @@ $tripCard = static function (array $t) use ($today, $base): void {
                    style="width:86px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink)">
             <button form="tierRatesForm" class="btn" type="submit" style="padding:8px 12px">Save</button>
           </div>
+          <input form="tierRatesForm" type="text" name="rate_reason" maxlength="200" placeholder="Reason for the change (required when a rate changes)"
+                 aria-label="Reason for the tier rate change"
+                 style="width:100%;margin-top:6px;padding:8px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink)">
           <span class="muted" style="font-size:11px">Direct ₹ / team ₹ — changes what <b>every</b> agent on the company tier earns.</span>
         </div>
         <label style="font-size:12px;color:var(--mut)">Commission % <span class="muted">(blank = company <?= rtrim(rtrim(number_format(Settings::getFloat('agent_commission_percent', 5.0), 2), '0'), '.') ?>%<?= $flatOn ? ' · only used if the tier above is switched off' : '' ?>)</span>
           <input type="number" name="commission_percent" step="0.01" min="0" max="100"
                  value="<?= $profile['commission_percent'] === null ? '' : Security::e((string) $profile['commission_percent']) ?>"
+                 style="width:100%;margin-top:4px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink)"></label>
+        <label style="font-size:12px;color:var(--mut)">Reason for a rate change <span class="muted">(required when Commission % changes · saved in the audit log)</span>
+          <input type="text" name="rate_reason" maxlength="200" placeholder="e.g. agreement renewed"
                  style="width:100%;margin-top:4px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink)"></label>
         <label style="font-size:12px;color:var(--mut)">Security deposit required ₹ <span class="muted">(0 = none)</span>
           <input type="number" name="deposit_required" step="1" min="0" max="10000000"

@@ -1004,8 +1004,13 @@ final class Auth
         $file = basename((string) ($_SERVER['SCRIPT_NAME'] ?? ''));
 
         if (!empty($_SESSION[ADMIN_SESSION_KEY]['must_change_pw'])
-            && !$wantsJson
             && !in_array($file, ['change-password.php', 'logout.php'], true)) {
+            /* 4 Oct 2026: the API was let through here, so a temporary
+               password could sell, verify payments and read registers through
+               /api/ without ever being changed. */
+            if ($wantsJson) {
+                Response::forbidden('Change your temporary password first. / पहिले अस्थायी पासवर्ड बदल्नुहोस्।');
+            }
             Response::redirect('admin/change-password.php');
         }
 
