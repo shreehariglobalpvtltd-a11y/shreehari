@@ -40,7 +40,16 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $token  = AiSensyAPI::config('AISENSY_WEBHOOK_TOKEN', 'aisensy_webhook_token');
 $given  = (string) ($_GET['token'] ?? '');
 
-if ($token === '' || !hash_equals($token, $given)) {
+/* 4 Oct 2026: two ways in.
+   - ?token= matching AISENSY_WEBHOOK_TOKEN  -> trusted as before;
+   - no token (the plain URL pasted in the AiSensy dashboard) -> every
+     customer message is VERIFIED against AiSensy itself before the bot
+     answers: its wamid must exist in OUR project, from that same number,
+     sent by the USER (GET /messages/{wamid}). Unverifiable = logged only,
+     never answered, so a forged POST can not make the bot write to anyone.
+   A wrong token is still refused outright. */
+$trusted = $token !== '' && $given !== '' && hash_equals($token, $given);
+if ($given !== '' && !$trusted) {
     http_response_code(403);
     exit;
 }
@@ -111,6 +120,46 @@ function ais_pick(array $a, array $paths): string
     return '';
 }
 
+/** Every wamid-looking string anywhere in the event (AiSensy's own ids are not fetchable). */
+function ais_wamids(mixed $v, array &$out = []): array
+{
+    if (is_array($v)) {
+        foreach ($v as $x) {
+            ais_wamids($x, $out);
+        }
+    } elseif (is_string($v) && preg_match('/^wamid\.[A-Za-z0-9+\/=_-]{10,}$/', $v)) {
+        $out[$v] = true;
+    }
+    return array_keys($out);
+}
+
+/** True when AiSensy confirms this is a real message FROM $from in our project. */
+function ais_verify(array $payload, string $from): bool
+{
+    $key = AiSensyAPI::apiKey();
+    if ($key === '' || $from === '') {
+        return false;
+    }
+    foreach (array_slice(ais_wamids($payload), 0, 3) as $w) {
+        $ch = curl_init(AiSensyAPI::API_BASE . AiSensyAPI::projectId() . '/messages/' . rawurlencode($w) . '?userNumber=' . $from);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 5, CURLOPT_TIMEOUT => 10,
+            CURLOPT_HTTPHEADER => ['X-AiSensy-Project-API-Pwd: ' . $key, 'Accept: application/json'],
+        ]);
+        $raw  = curl_exec($ch);
+        $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        $j = json_decode(is_string($raw) ? $raw : '', true);
+        if ($http === 200 && is_array($j)
+            && strtoupper((string) ($j['sender'] ?? '')) === 'USER'
+            && preg_replace('/\D/', '', (string) ($j['phone_number'] ?? '')) === $from
+            && (string) ($j['project_id'] ?? AiSensyAPI::projectId()) === AiSensyAPI::projectId()) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /**
  * Normalise the event to {from, text, id, type, sender, topic}, or null.
  * Accepts AiSensy's project webhook shape (topic + data.message) and a
@@ -169,6 +218,10 @@ try {
 
     $from = AiSensyAPI::normalizePhone($ev['from']);
     if ($from === '') {
+        exit;
+    }
+    if (!$trusted && !ais_verify($payload, $from)) {
+        ais_wh_log('UNVERIFIED (not answered) from=' . $from, $raw);
         exit;
     }
     // AiSensy may re-deliver: answer each message once.
