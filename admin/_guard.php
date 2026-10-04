@@ -173,6 +173,8 @@ function admin_nav(): array
         ['href' => 'shift.php',        'icon' => 'coins',      'label' => 'Shift & Cash',      'perm' => 'bookings.view', 'section' => 'Agents & counters'],
         // 4 Oct 2026: every desk as a row (country, money, company, hours) and the book split by desk.
         ['href' => 'counters.php',     'icon' => 'map-pin',    'label' => 'Counters & collection', 'perm' => 'reports.view', 'section' => 'Agents & counters'],
+        // 4 Oct 2026: WhatsApp tickets by "hi" - waiting / sent / delivered per number.
+        ['href' => 'wa-queue.php',     'icon' => 'msg',        'label' => 'WhatsApp tickets',  'perm' => 'bookings.view', 'section' => 'Agents & counters'],
         // 4 Oct 2026: a counter keeps its own desk's phone / hours / address / map.
         ['href' => 'my-desk.php',      'icon' => 'map-pin',    'label' => 'My desk',          'perm' => 'bookings.view', 'section' => 'Agents & counters'],
 
@@ -283,7 +285,7 @@ function admin_header(string $title, string $active = ''): void
     // sg- components as the customer app) loads first; the panel's own rules
     // follow, then admin.css restyles the shell on top. The UI uses the
     // device's own font now (no webfont download on a slow counter line).
-    $av = '20261004i';
+    $av = '20261004j';
     echo '<link rel="stylesheet" href="/assets/css/ds.css?v=' . $av . '">';
     echo '<style>' . admin_css() . '</style>';
     echo '<link rel="stylesheet" href="/assets/css/admin.css?v=' . $av . '">';

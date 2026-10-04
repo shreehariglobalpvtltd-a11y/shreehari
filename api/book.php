@@ -82,6 +82,9 @@ try {
                 (string) ($input['contact']['country'] ?? ''),
                 (string) ($input['contact']['phone'] ?? '')
             ),
+            // 4 Oct 2026: an optional second WhatsApp number (the other country).
+            'altPhone'   => (string) ($input['contact']['altPhone'] ?? ''),
+            'altCountry' => (string) ($input['contact']['altCountry'] ?? ''),
         ],
         'bookingMode'     => $input['bookingMode'] ?? null,
         'cabinType'       => $input['cabinType'] ?? null,

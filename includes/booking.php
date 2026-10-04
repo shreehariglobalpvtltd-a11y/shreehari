@@ -586,7 +586,18 @@ final class BookingService
 
             $expiryMinutes = Settings::getInt('booking_expiry_minutes', 120);
 
-            $bookingId = Database::insert('bookings', self::deskStamp($seller !== null ? $sellerId : null, (float) $pricing['total']) + [
+            /* A second WhatsApp number (4 Oct 2026): the other country's SIM, so
+               the ticket reaches India and Nepal. Kept only when it is a real
+               10-digit mobile different from the main one. */
+            $altStamp = [];
+            $altRaw = substr(preg_replace('/\D/', '', (string) ($contact['altPhone'] ?? '')) ?? '', -10);
+            if (strlen($altRaw) === 10 && preg_match('/^[6-9]/', $altRaw) && $altRaw !== $phone
+                && CounterDesk::hasColumn('bookings', 'alt_phone')) {
+                $altStamp = ['alt_phone' => $altRaw,
+                             'alt_country_code' => countryDialCode(strtoupper((string) ($contact['altCountry'] ?? '')) === 'IN' ? 'IN' : 'NP')];
+            }
+
+            $bookingId = Database::insert('bookings', $altStamp + self::deskStamp($seller !== null ? $sellerId : null, (float) $pricing['total']) + [
                 'pnr'             => $pnr,
                 'user_id'         => $userId,
                 'trip_type'       => !empty($request['returnLeg']) ? 'round' : 'oneway',

@@ -184,6 +184,18 @@ try {
     }
 
     require_once INCLUDE_PATH . '/notify.php';
+
+    /* 4 Oct 2026 - the "hi" ticket (includes/waqueue.php): this number just
+       wrote to us, so its free 24 h window is open. Every ticket waiting for
+       it goes out now, free. A short "hi" / PNR message that got its tickets
+       needs no bot menu on top. */
+    require_once INCLUDE_PATH . '/waqueue.php';
+    $gotTickets = WaQueue::onInbound($from, (string) $ev['text']);
+    $plain = trim(preg_replace('/SHG-?\s?\d{4}-?\s?\d{3,6}/i', '', (string) $ev['text']) ?? '');
+    if ($gotTickets > 0 && mb_strlen($plain) <= 25) {
+        exit;
+    }
+
     require_once INCLUDE_PATH . '/wabot.php';
     $kind  = in_array($ev['type'], ['text', 'button', 'interactive'], true) ? 'text' : $ev['type'];
     $reply = WaBot::reply('+' . $from, $ev['text'], $kind, []);

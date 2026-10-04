@@ -848,6 +848,18 @@
   }
 
   /* ---- 5. Ticket screen: staff actions ----------------------------- */
+  /* WhatsApp "hi" QR (4 Oct 2026): the customer scans it with their own
+     phone and presses send - their free 24 h window opens and the ticket
+     arrives on WhatsApp by itself (includes/waqueue.php). */
+  function waHiBox(id) {
+    var n = window.SHG_BOOT && SHG_BOOT.waHi ? String(SHG_BOOT.waHi).replace(/\D/g, '') : '';
+    if (!n || !id) return '';
+    var link = 'https://wa.me/' + n + '?text=' + encodeURIComponent('Hi ' + id);
+    return '<div class="ctr-wahi" style="display:flex;gap:12px;align-items:center;margin:10px 0;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card)">'
+      + '<img src="/qr/?scale=5&data=' + encodeURIComponent(link) + '" width="132" height="132" alt="WhatsApp QR" style="flex:none;background:#fff;border-radius:8px">'
+      + '<div style="font-size:13px;line-height:1.45"><b>📲 Customer: scan → "hi" → ticket</b><br>यात्रुको फोनले स्क्यान गरेर "hi" पठाउनुहोस् — टिकट WhatsApp मा आफैं आउँछ (निःशुल्क)।'
+      + '<br><a href="' + esc(link) + '" target="_blank" rel="noopener" style="font-weight:700">wa.me/' + esc(n) + '</a></div></div>';
+  }
   function decorateStatus(id) {
     var body = $q('#statusBody'); if (!body || $q('#ctrActions')) return;
     var b = null; try { b = DB.bookings.find(function (x) { return x.id === id; }); } catch (e) {}
@@ -865,7 +877,8 @@
                       + '<a class="btn btn-blue" href="#/results" id="ctrSameDate">📅 Same date · choose another bus</a>' : '')
       + '<a class="btn ' + (L ? 'btn-blue' : 'btn-orange') + '" href="#/" id="ctrSellAnother">🧾 Sell another · अर्को टिकट</a>'
       + '<a class="btn btn-blue" href="' + esc(adminUrl) + '">📋 Open in panel</a>'
-      + '<a class="btn" href="' + esc(PANEL) + '">← Back to panel</a>';
+      + '<a class="btn" href="' + esc(PANEL) + '">← Back to panel</a>'
+      + waHiBox(id);
     body.insertBefore(el, body.firstChild);
     $q('#ctrSellAnother').addEventListener('click', function (e) { if (sellAnother()) e.preventDefault(); });
     var same = $q('#ctrSameBus');

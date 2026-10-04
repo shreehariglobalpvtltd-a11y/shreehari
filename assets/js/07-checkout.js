@@ -1273,7 +1273,10 @@ async function submitBooking() {
       routeId: realRouteId, travelDate: out.date, seats: out.seats.slice(),
       scheduleId: out.sid || 0,   // extra bus on the same date (Bus Calendar, 5 Sep 2026); 0 = daily bus
       passengers: apiPassengers,
-      contact: { phone: phoneVal, email: email.value.trim(), idType: $('#idType').value, idNum: idNum.value.trim(), country: contactCountry() },
+      contact: { phone: phoneVal, email: email.value.trim(), idType: $('#idType').value, idNum: idNum.value.trim(), country: contactCountry(),
+        // 4 Oct 2026: optional second WhatsApp number (the other country) - the ticket goes to both.
+        altPhone: (($('#cAltPhone') || {}).value || '').replace(/\D/g, '').slice(-10),
+        altCountry: (($('#cAltCountry') || {}).value === '91') ? 'IN' : 'NP' },
       bookingMode: out.bookingType || 'sharing',
       cabinType: out.cabinType || null,
       sharingTier: out.sharingTier || null,
@@ -2096,10 +2099,10 @@ function renderStatus(id) {
   <div class="status-card tk2${conf ? ' confirm-success' : ''}" id="ticketCard" data-pnr="${esc(b.id)}">
     <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo.png?v=20261004i" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo.png?v=20261004j" alt="" loading="lazy" decoding="async">
         <div><b>${esc(CONFIG.company.name || 'S HARI GLOBAL PRIVATE LIMITED')}</b><small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
       </div>
-      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261004i" width="600" height="312" alt="" decoding="async">
+      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261004j" width="600" height="312" alt="" decoding="async">
     </div>
     <div class="premium-ticket-status">${pill2}${b.ticketNumber ? '<span>' + esc(b.ticketNumber) + '</span>' : ''}${b.agentCode ? '<span style="background:var(--orange-100,#fff2e0);color:var(--orange-800,#7a3d00);padding:2px 10px;border-radius:20px;font-size:12px;font-family:var(--f-code)">🏷️ ' + esc(b.agentCode) + '</span>' : ''}</div>
     ${(typeof routeOverviewSVG === 'function') ? routeOverviewSVG({ from: (isNepalPoint(r.from) ? r.from : (parseBP(b.boarding || '').name || r.from)), to: (isNepalPoint(r.to) ? r.to : (parseBP(b.drop || '').name || r.to)), compact: true }) : ''}
@@ -2127,6 +2130,7 @@ function renderStatus(id) {
     <div class="premium-payment-state ${due2 <= 0 ? 'paid' : ''}"><b>${esc(t(due2 <= 0 ? 'premiumPaid' : 'premiumPending'))}</b><span>${esc(money2(paid2))} · ${esc(t('premiumDue'))}: ${esc(money2(due2))}</span><span>${esc(payRefLabel(b))}</span></div>
     ${paymentCard2}
     <div class="tk2-actions">${primary2}</div>
+    ${conf && window.SHG_BOOT && SHG_BOOT.waHi ? '<a class="btn btn-block" id="tkWaHi" style="margin:8px 0 0;background:#11703F;border-color:#11703F;color:#fff" target="_blank" rel="noopener" href="https://wa.me/' + esc(String(SHG_BOOT.waHi).replace(/\D/g, '')) + '?text=' + encodeURIComponent('Hi ' + b.id) + '">💬 ' + esc(t('waHiBtn')) + '</a><p class="hint" style="margin:4px 2px 0;font-size:12px">' + esc(t('waHiNote')) + '</p>' : ''}
     <details class="tk2-more">
       <summary>${esc(t('tkMore'))}</summary>
       <div class="status-actions tk2-links">${secondary2}</div>
