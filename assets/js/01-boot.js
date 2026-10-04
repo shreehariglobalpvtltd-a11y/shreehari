@@ -42,7 +42,7 @@
   var ALLOWED = {
     view: 1, search: 1, search_empty: 1, seat_open: 1, checkout_step: 1,
     checkout_drop: 1, quick_ticket_open: 1, parse_miss: 1, offline_hit: 1,
-    install_prompt: 1, lang_switch: 1, error_boundary: 1
+    install_prompt: 1, lang_switch: 1, error_boundary: 1, landing: 1
   };
   var PROPS = [
     'from', 'to', 'view', 'step', 'field', 'lang', 'direction',

@@ -72,6 +72,7 @@ const ALLOWED_EVENTS = [
     'install_prompt',    // the PWA install prompt was shown/accepted
     'lang_switch',       // the language was changed
     'error_boundary',    // a JS error was caught by the app shell
+    'landing',           // a campaign link opened the app (?src=&town=&dir=&date=) - 4 Oct 2026
 ];
 
 /**

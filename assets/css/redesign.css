@@ -537,3 +537,7 @@ footer .f-ceo { background: rgba(255, 255, 255, .06) !important; border-color: r
 
 /* the bus-on-the-road strip on results / seats: decorative — results come first on a phone */
 @media (max-width: 760px) { .shg-journey { display: none !important; } }
+
+/* Speed (4 Oct 2026): the view the server paints first is already on screen -
+   no entrance fade. An opacity-0 start hid it from LCP until ~7 s on a phone. */
+#view-home[data-first].view.active{animation:none}

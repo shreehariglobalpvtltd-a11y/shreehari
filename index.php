@@ -334,6 +334,51 @@ HTML;
  *  (the second </head> in the file lives inside a JS string, so we only
  *  touch the first one).
  * ------------------------------------------------------------------- */
+/**
+ * The hi / ne strings for a few i18n keys, read from assets/js/04-i18n.js
+ * (its "hi: {" and "ne: {" sections, key: 'value' or key: "value"). Cached in
+ * the system temp dir by the bundle's mtime, so it costs one stat per request.
+ *
+ * @param list<string> $keys
+ * @return array<string,array<string,string>> lang => key => text
+ */
+function shg_first_paint_strings(array $keys): array
+{
+    $src = __DIR__ . '/assets/js/04-i18n.js';
+    $mt  = (int) @filemtime($src);
+    if ($mt <= 0) {
+        return [];
+    }
+    $cache = sys_get_temp_dir() . '/shg-firstpaint-' . md5(implode(',', $keys) . '|' . $mt . '|' . __DIR__) . '.json';
+    $hit = @file_get_contents($cache);
+    if (is_string($hit) && is_array($dec = json_decode($hit, true))) {
+        return $dec;
+    }
+    $js   = (string) @file_get_contents($src);
+    $hiAt = strpos($js, "\nhi: {");
+    $neAt = strpos($js, "\nne: {");
+    if ($hiAt === false || $neAt === false || $neAt < $hiAt) {
+        return [];
+    }
+    $end  = strpos($js, "\n};", $neAt);
+    $out  = [];
+    $sections = ['hi' => substr($js, $hiAt, $neAt - $hiAt), 'ne' => substr($js, $neAt, ($end === false ? strlen($js) : $end) - $neAt)];
+    foreach ($sections as $lang => $body) {
+        foreach ($keys as $k) {
+            // key: 'plain text'  or  key: "plain text" - no escapes, nothing to reinterpret
+            if (preg_match('/(?<![\w$])' . preg_quote($k, '/') . '\s*:\s*(?:\'([^\'\\\\]*)\'|"([^"\\\\]*)")/u', $body, $m) === 1) {
+                $raw = ($m[1] ?? '') !== '' ? $m[1] : ($m[2] ?? '');
+                if ($raw !== '') {
+                    $out[$lang][$k] = $raw;
+                }
+            }
+        }
+    }
+    @file_put_contents($cache . '.tmp', json_encode($out, JSON_UNESCAPED_UNICODE));
+    @rename($cache . '.tmp', $cache);
+    return $out;
+}
+
 $templatePath = __DIR__ . '/app.template.html';
 $html = @file_get_contents($templatePath);
 
@@ -356,6 +401,28 @@ if (is_string($stripped) && $stripped !== '') {
 $pos = stripos($html, '</head>');
 if ($pos !== false) {
     $html = substr($html, 0, $pos) . $inject . "\n" . substr($html, $pos);
+}
+
+/* Speed (4 Oct 2026): the booking heading is the page's largest paint. It
+   used to arrive in English and be swapped to Nepali by 04-i18n.js ~5 s later
+   on a phone, and that late swap WAS the LCP. A few-line inline script right
+   after the heading now writes the visitor's language at first paint, with
+   the same choice 04-i18n.js makes (saved language, else a Hindi / Nepali
+   phone, else Nepali). The strings are read from 04-i18n.js itself, so there
+   is no second copy to drift; applyLang() later writes the same text. */
+$firstPaint = shg_first_paint_strings(['spTitle', 'spSub']);
+if ($firstPaint !== []) {
+    $fp = '<script>(function(){try{var M=' . json_encode($firstPaint, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP)
+        . ',l=null;try{l=localStorage.getItem("shg:lang");}catch(e){}'
+        . 'if(l==="en"||l==="gu")return;'
+        . 'if(!l||!M[l]){l="ne";var n=navigator.languages||[navigator.language||""];for(var i=0;i<n.length;i++){var c=String(n[i]||"").toLowerCase().slice(0,2);if(c==="ne"||c==="hi"){l=c;break;}}}'
+        . 'var d=M[l];if(!d)return;'
+        . 'for(var k in d){var e=document.querySelector("[data-i18n=\""+k+"\"]");if(e)e.innerHTML=d[k];}}catch(e){}})();</script>';
+    $p1 = strpos($html, 'data-i18n="spSub"');
+    $p2 = $p1 === false ? false : strpos($html, '</p>', $p1);
+    if ($p2 !== false) {
+        $html = substr($html, 0, $p2 + 4) . $fp . substr($html, $p2 + 4);
+    }
 }
 
 header('Content-Type: text/html; charset=UTF-8');

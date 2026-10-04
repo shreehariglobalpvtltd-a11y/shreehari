@@ -63,7 +63,7 @@ $router = (string) file_get_contents($root . '/assets/js/05-router.js');
 $i18n   = (string) file_get_contents($root . '/assets/js/04-i18n.js');
 
 /* ---- 1. the booking panel, then the two other doors ------------------ */
-$home = preg_match('~<section class="view active" id="view-home">(.*)~s', $tpl, $hm) ? $hm[1] : '';
+$home = preg_match('~<section class="view active" id="view-home"(?: data-first)?>(.*)~s', $tpl, $hm) ? $hm[1] : '';
 $firstBlock = preg_match('~^\s*(?:<!--.*?-->\s*)*<div[^>]*\bid="([a-z-]+)"~s', $home, $fb) ? $fb[1] : '';
 check('the booking panel is the first block of the home view', $firstBlock === 'search-anchor', $firstBlock);
 check('the panel is the search form with a Find Bus button',

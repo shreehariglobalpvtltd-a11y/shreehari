@@ -686,6 +686,70 @@ function initSimpleSearch() {
   if (b && !b._wired) { b._wired = true; b.addEventListener('click', () => setSearchDir('back')); }
   if (p && !p._wired) { p._wired = true; p.addEventListener('change', applyDirection); }
   setSearchDir(searchDir);   // first paint: fill towns + sync hidden selects
+  applyCampaignLink();
+}
+
+/* ================================================================
+   CAMPAIGN DEEP LINKS (4 Oct 2026, owner's point 9)
+   ?src=fb-surat&dir=back&town=Ahmedabad&date=2026-10-12 opens the booking
+   card already pointed at that run, town and day, and reports one
+   'landing' beacon with the source - so a poster, a WhatsApp status or a
+   desk's QR can be counted. NOT ?ref= (that is the agent referral code).
+   Counter mode's own ?from/?to links are left to 14-counter.js. Anything
+   that does not match is ignored; the visitor can change all of it.
+================================================================ */
+function applyCampaignLink() {
+  let p;
+  try { p = new URLSearchParams(location.search); } catch (e) { return; }
+  if (p.get('from') || p.get('to')) return;
+  const src = (p.get('src') || '').replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 40);
+  const dirRaw = (p.get('dir') || '').toLowerCase();
+  const town = (p.get('town') || '').trim().toLowerCase();
+  const date = p.get('date') || '';
+  if (!src && !dirRaw && !town && !date) return;
+
+  const dir = /^(back|return|toindia|nepal|np)$/.test(dirRaw) ? 'back'
+            : (/^(go|going|tonepal|india|in)$/.test(dirRaw) ? 'go' : '');
+  if (dir && typeof setSearchDir === 'function') setSearchDir(dir);
+
+  const pickTown = function () {
+    const sel = $('#pointSel');
+    if (!town || !sel) return true;
+    const opt = $$('option', sel).find(function (o) { return o.value.toLowerCase().indexOf(town) === 0; })
+             || $$('option', sel).find(function (o) { return o.value.toLowerCase().indexOf(town) >= 0; });
+    if (!opt) return false;
+    if (sel.value !== opt.value) { sel.value = opt.value; applyDirection(); }
+    return true;
+  };
+  const di = $('#dateInput');
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(date + 'T00:00:00') : null;
+  const wantDate = (di && d && !isNaN(d) && d >= today) ? date : '';
+  const putDate = function () {
+    if (!wantDate || di.value === wantDate) return;
+    di.value = wantDate;
+    try { di.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+  };
+  /* The town list is refilled when the server's stop list arrives and the
+     boot sets a default date after this runs, so both are re-applied for a
+     few seconds - and never again once the visitor touches either control. */
+  let touched = false;
+  const mark = function () { touched = true; };
+  const sel0 = $('#pointSel');
+  if (sel0) sel0.addEventListener('change', function (e) { if (e.isTrusted) mark(); });
+  if (di) di.addEventListener('input', function (e) { if (e.isTrusted) mark(); });
+  pickTown(); putDate();
+  let tries = 0;
+  const tm = setInterval(function () {
+    if (touched || ++tries > 12) { clearInterval(tm); return; }
+    pickTown(); putDate();
+  }, 500);
+
+  try {
+    if (typeof window.shgBeacon === 'function') {
+      window.shgBeacon('landing', { source: src || 'link', direction: dir || 'auto', from: town ? town.slice(0, 30) : '' });
+    }
+  } catch (e) {}
 }
 
 /* ================================================================
@@ -1119,7 +1183,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261004e" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261004g" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'
