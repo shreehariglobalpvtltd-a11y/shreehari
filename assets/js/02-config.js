@@ -90,7 +90,27 @@ var MAP_CONFIG = {
     return out.slice(0, limit);
   }
 
+  /* 5 Oct 2026 — SHARI NAV search on our own server first (our pickups +
+     the OpenStreetMap places of Gujarat and the Nepalgunj border area, near
+     you first). The public geocoders are asked only when we know too little. */
+  function ownSearch(q, limit){
+    var u = '/api/nav-search.php?q=' + encodeURIComponent(q) + '&limit=' + limit;
+    try { var lp = JSON.parse(localStorage.getItem('shari:lastpos') || 'null'); if (lp && isFinite(lp.lat) && isFinite(lp.lng)) u += '&lat=' + (+lp.lat).toFixed(4) + '&lng=' + (+lp.lng).toFixed(4); } catch(e){}
+    return fetch(u, { credentials:'same-origin' }).then(function(r){ return r.ok ? r.json() : { results:[] }; })
+      .then(function(j){ return ((j && j.results) || []).filter(function(s){ return isFinite(s.lat) && isFinite(s.lng); }); })
+      .catch(function(){ return []; });
+  }
+
   function freeGeocode(q, limit){
+    return ownSearch(q, limit).then(function(mine){
+      if (mine.length >= Math.min(3, limit)) return { results: mine.slice(0, limit), provider:'via SHARI NAV' };
+      return publicGeocode(q, limit).then(function(pub){
+        return { results: dedupe(mine.concat(pub.results), limit), provider: mine.length ? 'via SHARI NAV + OpenStreetMap' : pub.provider };
+      });
+    });
+  }
+
+  function publicGeocode(q, limit){
     return Promise.all([ photon(q,limit), nominatim(q,limit) ]).then(function(res){
       var merged = dedupe(res[0].concat(res[1]), limit);
       merged.forEach(function(m){                    // graft a Devanagari alias from a nearby OSM hit
@@ -575,7 +595,7 @@ function loadTermsData(cb) {
   if (window.__shgTermsQueue) { window.__shgTermsQueue.push(cb); return; }
   window.__shgTermsQueue = [cb];
   var el = document.createElement('script');
-  el.src = '/assets/js/terms-data.js?v=20261004r';
+  el.src = '/assets/js/terms-data.js?v=20261005a';
   el.onload = function () {
     TERMS_DATA = window.TERMS_DATA || [];
     window.__shgTermsReady = true;

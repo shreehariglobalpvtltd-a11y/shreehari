@@ -226,6 +226,15 @@ final class AiHandoff
             return self::no('The request could not be recorded. Give the office number and say the person should call.');
         }
 
+        // 5 Oct 2026: the Help Desk numbers every ticket the same way (HD-0051),
+        // sets its due time and gives it to the least-busy support person.
+        try {
+            require_once __DIR__ . '/helpdesk.php';
+            $ref = HelpDesk::adopt($id);
+        } catch (Throwable $e) {
+            Logger::exception($e, 'helpdesk');
+        }
+
         Logger::audit('support.handoff', 'support_ticket', $ref, null, [
             'category' => $category, 'priority' => $priority, 'role' => $role, 'lang' => $lang,
             'phone' => maskPhone($phone), 'booking' => $bookingId,
@@ -263,9 +272,10 @@ final class AiHandoff
         if (!self::available()) {
             return self::no('Support requests are not available on this server yet.');
         }
-        $ref = strtoupper(trim((string) ($args['ref'] ?? '')));
-        if (preg_match('/^SUP-\d{6}-[A-Z0-9]{5}$/', $ref) !== 1) {
-            return self::no('Ask for the reference number (SUP-…) exactly as it was given.');
+        require_once __DIR__ . '/helpdesk.php';
+        $ref = HelpDesk::normRef((string) ($args['ref'] ?? '')) ?? '';
+        if ($ref === '') {
+            return self::no('Ask for the help desk number (HD-… or SUP-…) exactly as it was given.');
         }
         try {
             $t = Database::fetch(

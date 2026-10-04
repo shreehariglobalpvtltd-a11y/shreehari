@@ -1067,19 +1067,26 @@ var SHG_TEMPLES = [
 ];
 
 var MLG_VERSION = '4.7.1';
+/* 5 Oct 2026: the map engine is served from OUR server
+   (assets/vendor/maplibre-gl-4.7.1, unchanged upstream files, BSD licence);
+   unpkg is only the fallback if that copy cannot load. */
 function loadMapLibre() {
   if (window._mlgPromise) return window._mlgPromise;
   window._mlgPromise = new Promise(function (resolve, reject) {
     if (window.maplibregl) { resolve(window.maplibregl); return; }
-    var css = document.createElement('link');
-    css.rel = 'stylesheet';
-    css.href = 'https://unpkg.com/maplibre-gl@' + MLG_VERSION + '/dist/maplibre-gl.css';
-    document.head.appendChild(css);
-    var js = document.createElement('script');
-    js.src = 'https://unpkg.com/maplibre-gl@' + MLG_VERSION + '/dist/maplibre-gl.js';
-    js.onload  = function () { resolve(window.maplibregl); };
-    js.onerror = function () { window._mlgPromise = null; reject(new Error('MapLibre failed to load')); };
-    document.head.appendChild(js);
+    var own = '/assets/vendor/maplibre-gl-' + MLG_VERSION + '/maplibre-gl', cdn = 'https://unpkg.com/maplibre-gl@' + MLG_VERSION + '/dist/maplibre-gl';
+    function add(base, last) {
+      var css = document.createElement('link');
+      css.rel = 'stylesheet';
+      css.href = base + '.css' + (base === own ? '?v=' + MLG_VERSION : '');
+      document.head.appendChild(css);
+      var js = document.createElement('script');
+      js.src = base + '.js' + (base === own ? '?v=' + MLG_VERSION : '');
+      js.onload  = function () { if (window.maplibregl) resolve(window.maplibregl); else if (!last) add(cdn, true); else { window._mlgPromise = null; reject(new Error('MapLibre failed to load')); } };
+      js.onerror = function () { if (!last) { add(cdn, true); return; } window._mlgPromise = null; reject(new Error('MapLibre failed to load')); };
+      document.head.appendChild(js);
+    }
+    add(own, false);
   });
   return window._mlgPromise;
 }

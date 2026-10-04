@@ -147,10 +147,15 @@ function admin_nav(): array
         // duplicate finder (same person on two numbers / spelling variants).
         // Office pages — both refuse a counter agent's session.
         ['href' => 'customer-ledger.php', 'icon' => 'notepad', 'label' => 'Customer Ledger', 'perm' => $agentView ? '__superadmin_only__' : 'customers.view', 'section' => 'Bookings & tickets'],
+        // 5 Oct 2026: every number in one place (date / agent filters, export)
+        // and campaigns to a list (WhatsApp template, one-tap, SMS).
+        ['href' => 'customer-directory.php', 'icon' => 'users', 'label' => '📇 All Customers & Numbers', 'perm' => $agentView ? '__superadmin_only__' : 'customers.view', 'section' => 'Bookings & tickets'],
+        ['href' => 'campaigns.php',    'icon' => 'send',      'label' => '📣 Campaigns',       'perm' => $agentView ? '__superadmin_only__' : 'customers.view', 'section' => 'Bookings & tickets'],
         ['href' => 'customer-duplicates.php', 'icon' => 'users', 'label' => 'Duplicate customers', 'perm' => $agentView ? '__superadmin_only__' : 'customers.view', 'section' => 'Bookings & tickets'],
         ['href' => 'enquiries.php',    'icon' => 'mail',      'label' => 'Enquiries',        'perm' => 'customers.view', 'section' => 'Bookings & tickets'],
         // 24 Sep 2026: requests the WhatsApp assistant handed to people (SUP-…).
-        ['href' => 'support-inbox.php','icon' => 'msg',       'label' => 'Support Inbox',    'perm' => 'support.view',   'section' => 'Bookings & tickets'],
+        // 5 Oct 2026: the Help Desk — every customer problem, numbered HD-0051.
+        ['href' => 'support-inbox.php','icon' => 'msg',       'label' => '🛟 Help Desk',      'perm' => 'support.view',   'section' => 'Bookings & tickets'],
         ['href' => 'wa-pending.php',   'icon' => 'msg',       'label' => 'Tickets to hand over','perm'=> 'bookings.view',  'section' => 'Bookings & tickets'],
         ['href' => 'seatmap.php',      'icon' => 'seat',      'label' => 'Seat Map',         'perm' => 'schedules.view', 'section' => 'Seat management'],
         ['href' => 'manifest.php',     'icon' => 'clipboard', 'label' => 'Passenger Manifest', 'perm' => 'bookings.view', 'section' => 'Seat management'],
@@ -234,6 +239,8 @@ function admin_nav(): array
         ['href' => 'company.php',      'icon' => 'cog',       'label' => 'Company details',  'perm' => 'dashboard.view', 'section' => 'Settings'],
         ['href' => 'activity-log.php', 'icon' => 'shield',    'label' => 'Activity & Security','perm'=> 'dashboard.view', 'section' => 'Settings'],
         ['href' => 'health.php',       'icon' => 'alert',     'label' => 'System Health',    'perm' => 'dashboard.view', 'section' => 'Settings'],
+        // 5 Oct 2026: backups + Google Drive (owner / settings.manage — the page checks).
+        ['href' => 'backup.php',       'icon' => 'upload',    'label' => '☁️ Backups & Google Drive', 'perm' => 'settings.manage', 'section' => 'Settings'],
         ['href' => 'ai-knowledge.php', 'icon' => 'doc',       'label' => 'AI Knowledge',     'perm' => 'dashboard.view', 'section' => 'Settings'],
         ['href' => 'ai-activity.php',  'icon' => 'msg',       'label' => 'AI Activity',      'perm' => 'dashboard.view', 'section' => 'Settings'],
         // 24 Sep 2026: the approved documents vault the assistant may quote and send.
@@ -285,7 +292,7 @@ function admin_header(string $title, string $active = ''): void
     // sg- components as the customer app) loads first; the panel's own rules
     // follow, then admin.css restyles the shell on top. The UI uses the
     // device's own font now (no webfont download on a slow counter line).
-    $av = '20261004r';
+    $av = '20261005a';
     echo '<link rel="stylesheet" href="/assets/css/ds.css?v=' . $av . '">';
     echo '<style>' . admin_css() . '</style>';
     echo '<link rel="stylesheet" href="/assets/css/admin.css?v=' . $av . '">';
@@ -540,7 +547,78 @@ function admin_footer(): void
     // 5 Sep 2026: Excel-style list tables (Customers / Agents): search,
     // column filters, click-to-sort, sticky header, detail + edit rows.
     echo admin_datatable_assets();
+    // 5 Oct 2026: once a day, ask the owner whether to put a backup in
+    // Google Drive (Back up / Skip / every night) — admin/backup.php.
+    if (Auth::isSuperadmin() || Auth::canManageSettings()) {
+        echo admin_backup_prompt_js();
+    }
     echo '</body></html>';
+}
+
+/**
+ * The daily "back up to Google Drive?" sheet (5 Oct 2026). Shown at most
+ * once a day per browser, only when the last Drive copy is older than ~20 h
+ * and the nightly automatic copy is not doing the job. Skip = quiet until
+ * tomorrow. Nothing is sent without a tap.
+ */
+function admin_backup_prompt_js(): string
+{
+    try {
+        require_once INCLUDE_PATH . '/gdrive.php';
+        $connected = GDrive::connected();
+        $auto      = Settings::getBool('gdrive_auto', false);
+        $lastAt    = GDrive::lastAt();
+    } catch (Throwable $e) {
+        return '';
+    }
+    // The nightly copy is on and worked within ~26 h: nothing to ask.
+    if ($connected && $auto && time() - $lastAt < 26 * 3600) {
+        return '';
+    }
+    if (time() - $lastAt < 20 * 3600 || basename((string) ($_SERVER['SCRIPT_NAME'] ?? '')) === 'backup.php') {
+        return '';
+    }
+    $data = json_encode(['c' => $connected, 'csrf' => Security::csrfToken(), 'last' => $lastAt ? date('d M H:i', $lastAt) : ''], JSON_HEX_TAG | JSON_HEX_AMP);
+    return <<<HTML
+<style>
+.bkp{position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:9999;width:min(440px,calc(100% - 24px));background:var(--card,#fff);color:var(--ink,#16233c);border:1px solid var(--line,#e2e9f4);border-radius:18px;box-shadow:0 18px 48px rgba(18,38,78,.28);padding:14px 16px;font-size:14px}
+.bkp b{display:block;font-size:15px;margin-bottom:4px}.bkp p{margin:0 0 10px;color:var(--mut,#5c6b85);font-size:13px}
+.bkp .r{display:flex;gap:8px;flex-wrap:wrap}.bkp button,.bkp a{flex:1 1 auto;min-height:42px;border-radius:12px;border:1px solid var(--line,#e2e9f4);background:var(--card,#fff);color:var(--ink,#16233c);font:inherit;font-weight:700;cursor:pointer;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;padding:0 10px}
+.bkp .go{background:#2E5FA8;border-color:#2E5FA8;color:#fff}.bkp .msg{margin-top:8px;font-weight:600}
+</style>
+<script>
+(function(){
+  var D={$data}, K='shg:bkAsk', today=new Date().toISOString().slice(0,10);
+  try{ if(localStorage.getItem(K)===today) return; }catch(e){}
+  function skip(){ try{localStorage.setItem(K,today);}catch(e){} box.remove(); }
+  function post(action){ var f=new FormData(); f.append('action',action); f.append('ajax','1'); f.append('shg_csrf',D.csrf);
+    return fetch('/admin/backup.php',{method:'POST',body:f,credentials:'same-origin'}).then(function(r){return r.json();}); }
+  var box=document.createElement('div'); box.className='bkp'; box.setAttribute('role','dialog'); box.setAttribute('aria-label','Backup');
+  if(D.c){
+    box.innerHTML='<b>☁️ Google Drive मा आजको ब्याकअप राख्ने?</b><p>Back up today’s data to Google Drive'+(D.last?' · last copy '+D.last:' · no copy yet')+'</p>'
+      +'<div class="r"><button class="go" type="button" data-a="run">ब्याकअप गर्नुहोस्</button><button type="button" data-a="skip">Skip</button><button type="button" data-a="auto">हरेक रात आफैं</button></div><div class="msg" aria-live="polite"></div>';
+  } else {
+    box.innerHTML='<b>☁️ ब्याकअप Google Drive मा राख्नुहोस्</b><p>Keep a copy of the data in your own Google Drive — set up once, then one tap a day (or automatic).</p>'
+      +'<div class="r"><a class="go" href="/admin/backup.php#bkSetup">Set up</a><a href="/admin/backup.php">Save to phone</a><button type="button" data-a="skip">Skip</button></div>';
+  }
+  box.addEventListener('click',function(ev){
+    var b=ev.target.closest('button'); if(!b) return; var a=b.getAttribute('data-a'), m=box.querySelector('.msg');
+    if(a==='skip'){ skip(); return; }
+    box.querySelectorAll('button').forEach(function(x){x.disabled=true;});
+    if(m) m.textContent='…';
+    post(a==='auto'?'auto_on':'run').then(function(j){
+      if(a==='auto'){ if(m) m.textContent='✓ हरेक रात Google Drive मा जान्छ'; return a; }
+      if(j&&j.ok){ if(m) m.textContent='✓ Google Drive मा राखियो ('+(j.sizeKB||0)+' KB)'; try{localStorage.setItem(K,today);}catch(e){} }
+      else { if(m) m.textContent='✗ '+((j&&j.error)||'failed'); box.querySelectorAll('button').forEach(function(x){x.disabled=false;}); }
+      return a;
+    }).then(function(a){ if(a==='auto'){ return post('run').then(function(j){ if(m) m.textContent += j&&j.ok ? ' · आजको पनि राखियो' : ''; try{localStorage.setItem(K,today);}catch(e){} }); } })
+      .catch(function(){ if(m) m.textContent='✗ network'; box.querySelectorAll('button').forEach(function(x){x.disabled=false;}); })
+      .then(function(){ setTimeout(function(){ if(m && /✓/.test(m.textContent)) box.remove(); },4500); });
+  });
+  setTimeout(function(){ document.body.appendChild(box); }, 2500);
+})();
+</script>
+HTML;
 }
 
 /**

@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v178';   // 4 Oct 2026: notifications panel on the sheet depth
+var VERSION = 'shg-v179';   // 5 Oct 2026 — Help Desk numbers, All Customers + Campaigns, Google Drive backups, SHARI NAV on our own server (tiles, routing, search) + heading-up driving camera
 var SHELL_CACHE = 'shg-shell-' + VERSION;
 /* How long a returning visitor waits for a fresh document before the
    cached app shell opens instead (see the navigate handler). */
@@ -43,7 +43,7 @@ var MAX_TICKETS = 10;
    never go stale: a new build changes the URL and the old cache is dropped
    with the old VERSION. This is what makes a re-open feel instant — the
    ~1 MB of app code is read from disk instead of the network. */
-var ASSET_VER = '20261004r';
+var ASSET_VER = '20261005a';
 var PRECACHE = [
   '/assets/img/logo.png?v=' + ASSET_VER,
   '/assets/css/app.css?v=' + ASSET_VER,
@@ -257,6 +257,30 @@ self.addEventListener('fetch', function (event) {
       try {
         var res = await fetch(req);
         if (res && res.ok) { try { await cache.put(req, res.clone()); } catch (e) {} }
+        return res;
+      } catch (e) {
+        return hit || netError();
+      }
+    })());
+    return;
+  }
+
+  /* 5 Oct 2026 — SHARI NAV data from our own server (/navdata/): tiles,
+     fonts and icons never change under the same URL → cache-first in the
+     tile cache (so a route seen once also works with no signal); the style
+     and coverage files are refreshed from the network when there is one. */
+  if (url.origin === self.location.origin && url.pathname.indexOf('/navdata/') === 0) {
+    var navStatic = /^\/navdata\/(tiles|fonts|sprites)\//.test(url.pathname);
+    event.respondWith((async function () {
+      var cache = await caches.open(TILE_CACHE);
+      var hit = await cache.match(req);
+      if (hit && navStatic) return hit;
+      try {
+        var res = await fetch(req);
+        if (res && res.status === 200) {
+          try { await cache.put(req, res.clone()); } catch (e) {}
+          if (navStatic) trimCache(TILE_CACHE, MAX_TILES);
+        }
         return res;
       } catch (e) {
         return hit || netError();

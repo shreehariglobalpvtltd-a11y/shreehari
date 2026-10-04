@@ -323,6 +323,65 @@ final class AiSensyAPI
         return ['http' => $r['http'], 'error' => $r['curl'], 'response' => $r['json'] ?? $r['raw']];
     }
 
+    /**
+     * 5 Oct 2026 — the project's WhatsApp templates for the campaign screen:
+     * [{name, status, category, language, text, vars}] (vars = how many {{n}}).
+     * Only APPROVED ones can be sent; MARKETING ones are for offers.
+     *
+     * @return list<array{name:string,status:string,category:string,language:string,text:string,vars:int,image:bool}>
+     */
+    public static function templates(): array
+    {
+        $key = self::apiKey();
+        if ($key === '') {
+            return [];
+        }
+        $r = self::request('GET', self::API_BASE . self::projectId() . '/wa_template', $key, null);
+        $j = is_array($r['json']) ? $r['json'] : [];
+        $list = $j['data'] ?? ($j['templates'] ?? (array_is_list($j) ? $j : []));
+        $out = [];
+        foreach (is_array($list) ? $list : [] as $t) {
+            if (!is_array($t) || (string) ($t['name'] ?? '') === '') {
+                continue;
+            }
+            $text = '';
+            $image = false;
+            foreach ((array) ($t['components'] ?? []) as $c) {
+                if (strtoupper((string) ($c['type'] ?? '')) === 'BODY') {
+                    $text = (string) ($c['text'] ?? '');
+                }
+                if (strtoupper((string) ($c['type'] ?? '')) === 'HEADER' && strtoupper((string) ($c['format'] ?? '')) === 'IMAGE') {
+                    $image = true;
+                }
+            }
+            if ($text === '') {
+                $text = (string) ($t['text'] ?? ($t['body'] ?? ''));
+            }
+            preg_match_all('/\{\{(\d+)\}\}/', $text, $m);
+            $out[] = [
+                'name'     => (string) $t['name'],
+                'status'   => strtoupper((string) ($t['status'] ?? '')),
+                'category' => strtoupper((string) ($t['category'] ?? '')),
+                'language' => (string) ($t['language'] ?? ''),
+                'text'     => $text,
+                'vars'     => $m[1] !== [] ? max(array_map('intval', $m[1])) : 0,
+                'image'    => $image || strtoupper((string) ($t['type'] ?? '')) === 'IMAGE',
+            ];
+        }
+        return $out;
+    }
+
+    /** Submit a new template for Meta approval (same body the 3 Oct templates used). */
+    public static function createTemplate(array $body): array
+    {
+        $key = self::apiKey();
+        if ($key === '') {
+            return ['http' => 0, 'error' => 'AISENSY_API_KEY not configured'];
+        }
+        $r = self::request('POST', self::API_BASE . self::projectId() . '/wa_template', $key, $body);
+        return ['http' => $r['http'], 'error' => $r['curl'], 'response' => $r['json'] ?? $r['raw']];
+    }
+
     /* -----------------------------------------------------------------
      *  Staff messages (admin/api/wa-send.php): agent statement / summaries,
      *  bus chalani to the crew, office summaries.

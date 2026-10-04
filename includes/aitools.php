@@ -383,7 +383,7 @@ final class AiTools
         }
         if (AiHandoff::enabled()) {
             $t[] = self::spec('handoff_to_staff',
-                'Hand the matter to a HUMAN by opening a trackable support request (reference SUP-…). Use for: a complaint, a payment dispute, a refund outside the published rules, doubt about who the person is, a confidential document the vault would not release, a safety or emergency issue, a policy exception, anything that needs approval, or a booking problem no tool can fix. Collect the facts first (what, which booking, what they want), then call this ONCE. Read the returned reference and status back exactly. Never promise a response time.',
+                'Hand the matter to a HUMAN by opening a trackable help desk ticket (number HD-…). Use for: a complaint, a payment dispute, a refund outside the published rules, doubt about who the person is, a confidential document the vault would not release, a safety or emergency issue, a policy exception, anything that needs approval, or a booking problem no tool can fix. Collect the facts first (what, which booking, what they want), then call this ONCE. Read the returned reference and status back exactly. Never promise a response time.',
                 [
                     'category' => ['string', 'One of: ' . implode(', ', array_keys(AiHandoff::CATEGORIES))],
                     'summary'  => ['string', "The problem and what the person wants, 1–4 lines, in their words. No OTP, password or card numbers."],
@@ -391,8 +391,8 @@ final class AiTools
                     'urgent'   => ['boolean', 'True only for safety, a bus about to leave, or money stuck today'],
                 ], ['category', 'summary']);
             $t[] = self::spec('handoff_status',
-                'The current status of a support request by its SUP-… reference (own requests only for a customer or seller).',
-                ['ref' => ['string', 'The reference, e.g. SUP-260924-AB12C']], ['ref']);
+                'The current status of a help desk ticket by its number, HD-… (older ones SUP-…) (own tickets only for a customer or seller).',
+                ['ref' => ['string', 'The number, e.g. HD-0051 (or an older SUP-260924-AB12C)']], ['ref']);
         }
         if ($staff && AiVerify::enabled()) {
             $t[] = self::spec('verify_identity',

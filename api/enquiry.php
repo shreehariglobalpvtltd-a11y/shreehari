@@ -90,6 +90,35 @@ try {
         'user_agent'  => Security::userAgent(255),
     ]);
 
+    // 5 Oct 2026: a complaint or a call-me-back is also a Help Desk ticket, so
+    // the person gets a REAL number (HD-0051) they can quote and check on
+    // /help.php — the chat used to show a reference the browser made up.
+    $ticket = null;
+    if (in_array($source, ['complaint', 'callback'], true)) {
+        try {
+            require_once INCLUDE_PATH . '/helpdesk.php';
+            if (HelpDesk::on()) {
+                $cat = 'callback';
+                if ($source === 'complaint') {
+                    $cat = HelpDesk::guessCategory((string) $note);
+                }
+                $pnr = preg_match('/\b(SHG-\d{4}-\d{3,6}|SHG-?\d{3,6})\b/i', (string) $note, $m) === 1 ? strtoupper($m[1]) : '';
+                $r = HelpDesk::open([
+                    'name' => $name, 'phone' => $phone, 'category' => $cat,
+                    'country' => str_starts_with($phone, '977') ? 'NP' : (string) Response::field('country', ''),
+                    'message' => $source === 'callback' ? 'Please call me back.' . ($note !== null ? ' ' . $note : '') : (string) $note,
+                    'pnr' => $pnr, 'source' => $source === 'complaint' ? 'chat' : 'callback',
+                    'lang' => (string) Response::field('lang', 'ne'),
+                ]);
+                if ($r['ok']) {
+                    $ticket = ['ref' => $r['ref'], 'token' => $r['token'] ?? null, 'url' => HelpDesk::statusUrl((string) $r['ref'])];
+                }
+            }
+        } catch (Throwable $e) {
+            Logger::exception($e, 'helpdesk');
+        }
+    }
+
     // The quick-booking wording ("let's pick your seat") is wrong for the other
     // two desks — an applicant is not about to choose a berth.
     $message = match ($source) {
@@ -98,11 +127,15 @@ try {
         'complaint'   => 'Complaint filed — our team will get back to you.',
         default       => 'Details saved — let’s pick your seat.',
     };
+    if ($ticket !== null) {
+        $message .= ' Help desk number: ' . $ticket['ref'] . ' / सहायता नम्बर: ' . $ticket['ref'];
+    }
 
     Response::success([
         'id'         => $id,
         'travelDate' => $travelDate,
         'seats'      => $seats,
+        'ticket'     => $ticket,
     ], $message);
 } catch (Throwable $e) {
     Response::serverError($e);

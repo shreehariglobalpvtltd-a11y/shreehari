@@ -166,7 +166,8 @@ $h = AiTools::run('handoff_to_staff', [
     'summary'  => 'Paisa katiyo tara ticket aayena. OTP 482913 pani aayo. Card 4111 1111 1111 1111. Refund chahiyo.',
     'pnr'      => $myPnr,
 ], $cust);
-check('a request is opened with a SUP reference', $h['ok'] && preg_match('/^SUP-\d{6}-[A-Z0-9]{5}$/', (string) ($h['data']['ref'] ?? '')) === 1, (string) ($h['data']['ref'] ?? ''));
+// 5 Oct 2026: the Help Desk numbers every ticket HD-0051 (includes/helpdesk.php).
+check('a request is opened with a help desk number', $h['ok'] && preg_match('/^HD-\d{4,}$/', (string) ($h['data']['ref'] ?? '')) === 1, (string) ($h['data']['ref'] ?? ''));
 $ref = (string) $h['data']['ref'];
 $row = Database::fetch('SELECT * FROM support_tickets WHERE ticket_ref = :r', ['r' => $ref]);
 check('the row carries source, role, language, priority', $row !== null && $row['source'] === 'whatsapp_ai' && $row['sender_role'] === 'customer'

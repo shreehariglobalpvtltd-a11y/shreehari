@@ -62,7 +62,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $canEdit && !isset($_FIL
             /* Secrets are write-only: the form never carries the stored
                value, so an empty field means "keep what is there" and the
                word CLEAR means "remove it". Anything else is a new secret. */
-            if (preg_match('/(token|secret|_pass$|password|api_key)/i', (string) $key)) {
+            // 5 Oct 2026: the same test the form uses to hide a secret (it also
+            // covers *_private / private_key — push_vapid_private was posted
+            // blank by the masked field and wiped on every Settings save).
+            if (Settings::isSecretKey((string) $key)) {
                 if (trim($val) === '') { continue; }
                 if (trim($val) === 'CLEAR') { $val = ''; }
             }

@@ -77,6 +77,104 @@ function ensureMapLibre(cb){
     .catch(function(){ SN.loading=false; toast('Failed to load map engine'); });
 }
 
+/* ================================================================
+   SHARI NAV on OUR OWN SERVER (5 Oct 2026)
+   - map tiles, fonts, icons and styles: /navdata/ on this server, built
+     from OpenStreetMap by tools/navdata/02-build.sh (Gujarat + the
+     Nepalgunj border area, full street detail). A tile outside that area
+     comes from OpenFreeMap through the same `shgt://` source, so the map
+     never has holes; offline, whatever was seen before comes from the SW.
+   - routing: /api/nav-route.php -> Valhalla on this server (public
+     Valhalla only outside our area). Same JSON as before.
+   - search: /api/nav-search.php (our pickups + OSM places) first.
+   If /navdata is not reachable the navigator quietly uses the old styles.
+================================================================ */
+var SN_OWN = null;                                   // {meta, day, night} | false
+var SN_ROUTE_URL = '/api/nav-route.php?json=';
+function snPrepStyle(st){
+  var o = location.origin;
+  if (typeof st.glyphs === 'string' && st.glyphs.charAt(0) === '/') st.glyphs = o + st.glyphs;
+  if (typeof st.sprite === 'string' && st.sprite.charAt(0) === '/') st.sprite = o + st.sprite;
+  Object.keys(st.sources || {}).forEach(function(k){
+    var src = st.sources[k];
+    if (src && src.type === 'vector') { src.tiles = ['shgt://{z}/{x}/{y}']; delete src.url; src.maxzoom = 14; }
+  });
+  return st;
+}
+function snTileBox(z, x, y){
+  var n = Math.pow(2, z);
+  function lat(yy){ var r = Math.PI - 2 * Math.PI * yy / n; return 180 / Math.PI * Math.atan(0.5 * (Math.exp(r) - Math.exp(-r))); }
+  return [x / n * 360 - 180, lat(y + 1), (x + 1) / n * 360 - 180, lat(y)];
+}
+function snRegisterTiles(meta){
+  if (snRegisterTiles.done || typeof maplibregl === 'undefined' || !maplibregl.addProtocol) return;
+  snRegisterTiles.done = true;
+  var cov = (meta && meta.coverage) || [], fb = (meta && meta.fallbackTiles) || '';
+  var EMPTY = function(){ return { data: new ArrayBuffer(0) }; };
+  /* The driving camera moves every frame, so MapLibre often cancels a tile
+     and asks for it again a moment later. A tile download is therefore never
+     aborted (it finishes into the HTTP / service-worker cache) and one URL is
+     fetched once at a time; only MapLibre's wait is released on abort. */
+  var inflight = {}, recent = {}, order = [];
+  function grab(url, opts){
+    // the last 80 tiles stay in memory; MapLibre takes (detaches) the buffer it
+    // is handed, so every answer is a fresh copy
+    if (recent[url]) return Promise.resolve(recent[url].slice(0));
+    if (!inflight[url]) {
+      inflight[url] = fetch(url, opts).then(function(r){ return r.status === 200 ? r.arrayBuffer() : null; })
+        .then(function(d){
+          delete inflight[url];
+          if (d && d.byteLength) { recent[url] = d; order.push(url); if (order.length > 80) delete recent[order.shift()]; }
+          return d;
+        }, function(e){ delete inflight[url]; throw e; });
+    }
+    return inflight[url].then(function(d){ return d ? d.slice(0) : d; });
+  }
+  function abortable(p, sig){
+    if (!sig) return p;
+    return new Promise(function(res, rej){
+      var ab = function(){ var e = new Error('aborted'); e.name = 'AbortError'; rej(e); };
+      if (sig.aborted) { ab(); return; }
+      sig.addEventListener('abort', ab, { once: true });
+      p.then(function(v){ sig.removeEventListener('abort', ab); res(v); }, function(e){ sig.removeEventListener('abort', ab); rej(e); });
+    });
+  }
+  function inside(z, x, y){
+    if (z < 8) return false;                         // the whole-country view comes from the planet tiles
+    var b = snTileBox(z, x, y);
+    return cov.some(function(c){ return b[0] >= c[0] && b[1] >= c[1] && b[2] <= c[2] && b[3] <= c[3]; });
+  }
+  function own(z, x, y, sig){
+    return abortable(grab('/navdata/tiles/' + z + '/' + x + '/' + y + '.pbf', { credentials: 'same-origin' }), sig)
+      .then(function(d){ return d ? { data: d } : null; });
+  }
+  function planet(z, x, y, sig){
+    if (!fb) return Promise.resolve(null);
+    return abortable(grab(fb.replace('{z}', z).replace('{x}', x).replace('{y}', y), {}), sig)
+      .then(function(d){ return d ? { data: d } : null; });
+  }
+  maplibregl.addProtocol('shgt', function(params, ac){
+    var m = /shgt:\/\/(\d+)\/(\d+)\/(\d+)/.exec(params.url);
+    if (!m) return Promise.resolve(EMPTY());
+    var z = +m[1], x = +m[2], y = +m[3], sig = ac && ac.signal;
+    var first = inside(z, x, y) ? own : planet, second = first === own ? planet : own;
+    return first(z, x, y, sig)
+      .catch(function(e){ if (e && e.name === 'AbortError') throw e; return null; })
+      .then(function(r){ return r || second(z, x, y, sig).catch(function(e){ if (e && e.name === 'AbortError') throw e; return null; }); })
+      .then(function(r){ return r || EMPTY(); });
+  });
+}
+function snOwnStyles(cb){
+  if (SN_OWN !== null) { cb(); return; }
+  var done = false;
+  function finish(v){ if (done) return; done = true; SN_OWN = v || false; cb(); }
+  setTimeout(function(){ finish(false); }, 4000);
+  function get(u){ return fetch(u, { credentials: 'same-origin' }).then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }); }
+  Promise.all([get('/navdata/meta.json'), get('/navdata/style/day.json'), get('/navdata/style/night.json')])
+    .then(function(a){ snRegisterTiles(a[0]); finish({ meta: a[0], day: snPrepStyle(a[1]), night: snPrepStyle(a[2]) }); })
+    .catch(function(){ finish(false); });
+}
+
 function renderNav(){
   var loader=$('#snLoad');
   if(loader) loader.style.display='flex';
@@ -88,7 +186,7 @@ function renderNav(){
     requestAnimationFrame(function(){ requestAnimationFrame(function(){ if(SN.map) SN.map.resize(); }); });
     return;
   }
-  ensureMapLibre(function(){ initNavApp(); });
+  ensureMapLibre(function(){ snOwnStyles(function(){ initNavApp(); }); });
 }
 function cleanupNav(){
   if(SN.watchId!=null){ navigator.geolocation.clearWatch(SN.watchId); SN.watchId=null; }
@@ -111,20 +209,23 @@ function cleanupNav(){
 }
 
 function initNavApp(){
+  var GLYPHS = SN_OWN ? location.origin + '/navdata/fonts/{fontstack}/{range}.pbf' : 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
   var STYLES={
-    day:'https://tiles.openfreemap.org/styles/liberty',
-    night:'https://tiles.openfreemap.org/styles/dark',
-    sat:{version:8,glyphs:'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+    day:(SN_OWN&&SN_OWN.day)||'https://tiles.openfreemap.org/styles/liberty',
+    night:(SN_OWN&&SN_OWN.night)||'https://tiles.openfreemap.org/styles/dark',
+    sat:{version:8,glyphs:GLYPHS,
       sources:{esri:{type:'raster',tileSize:256,
         tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
         attribution:'Imagery © Esri'}},
       layers:[{id:'esri',type:'raster',source:'esri'}]},
-    terrain:{version:8,glyphs:'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+    terrain:{version:8,glyphs:GLYPHS,
       sources:{topo:{type:'raster',tileSize:256,
         tiles:['https://tile.opentopomap.org/{z}/{x}/{y}.png'],
         attribution:'© OpenTopoMap (CC-BY-SA)'}},
       layers:[{id:'topo',type:'raster',source:'topo'}]}
   };
+  /* a fresh copy each time: MapLibre keeps the object it is given */
+  function snStyleOf(k){ var v=STYLES[k]||STYLES.day; return typeof v==='object' ? JSON.parse(JSON.stringify(v)) : v; }
 
   var s=function(q){ return document.querySelector('#view-nav '+q); };
   var snEsc=function(v){ return String(v==null?'':v).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]}); };
@@ -226,7 +327,7 @@ function initNavApp(){
   try{
     if(typeof maplibregl==='undefined'||(typeof maplibregl.supported==='function'&&!maplibregl.supported())) throw new Error('webgl-unsupported');
     map=new maplibregl.Map({
-      container:'sn-map', style:STYLES[SN.currentStyle]||STYLES.day, center:[76.8,26.6], zoom:4.7, pitch:0, bearing:0,
+      container:'sn-map', style:snStyleOf(SN.currentStyle), center:[76.8,26.6], zoom:4.7, pitch:0, bearing:0,
       attributionControl:{compact:true},
       /* shg-v59 — MapLibre already defaults to inertia on drag, smooth wheel-zoom,
          and rotate on two-finger; naming them here documents the intent so a future
@@ -566,7 +667,7 @@ function initNavApp(){
     b.onclick=function(){
       var st=b.getAttribute('data-snstyle'); if(st===SN.currentStyle) return;
       document.querySelectorAll('#view-nav [data-snstyle]').forEach(function(x){x.classList.remove('on');});
-      b.classList.add('on'); SN.currentStyle=st; map.setStyle(STYLES[st]);
+      b.classList.add('on'); SN.currentStyle=st; map.setStyle(snStyleOf(st));
     };
   });
   /* [SECTION 1] reflect the auto-picked day/night choice on the style bar */
@@ -941,6 +1042,48 @@ function initNavApp(){
      way instead of easing per fix. The loop sleeps when nothing moves.
      Lite mode snaps instead (no per-frame work). */
   var SN_TAU_ME=260, SN_TAU_BUS=420, SN_TAU_CAM=380, SN_DR_CAP_MS=1600;
+  /* ---- 5 Oct 2026: driving / walking camera (Apple / Google Maps style) ----
+     While a route is being followed the map turns so the road AHEAD points
+     up, tilts, keeps the arrow in the lower third and zooms with the speed
+     — all chased smoothly every frame, so the map slides forward along the
+     road as the GPS moves instead of jumping fix to fix. A drag or a manual
+     rotate hands the camera back to the rider; 📍 / "start" takes it again. */
+  var SN_TAU_BRG=650, SN_TAU_ZM=1400, SN_TAU_PITCH=700;
+  function snNavCamOn(){
+    return !!(SN.persistFollow && !SN.camLock && !SN.userRotated && SN.routeCoords && SN.routeCoords.length>1 && SN.gpsPos);
+  }
+  function snPointAtKm(km){
+    var c=SN.routeCoords, cum=SN.routeCumKm; if(!c||!cum||c.length<2) return null;
+    km=Math.max(0,Math.min(cum[cum.length-1],km));
+    var lo=0, hi=cum.length-1;
+    while(hi-lo>1){ var mid=(lo+hi)>>1; if(cum[mid]<=km) lo=mid; else hi=mid; }
+    var seg=Math.max(1e-9,cum[hi]-cum[lo]), f=(km-cum[lo])/seg;
+    return [c[lo][0]+(c[hi][0]-c[lo][0])*f, c[lo][1]+(c[hi][1]-c[lo][1])*f];
+  }
+  function snBearing(a,b){
+    var r=Math.PI/180, y=Math.sin((b[0]-a[0])*r)*Math.cos(b[1]*r);
+    var x=Math.cos(a[1]*r)*Math.sin(b[1]*r)-Math.sin(a[1]*r)*Math.cos(b[1]*r)*Math.cos((b[0]-a[0])*r);
+    return (Math.atan2(y,x)/r+360)%360;
+  }
+  function snTargetBearing(){
+    var walk=SN.mode==='pedestrian'||SN.mode==='bicycle';
+    if(SN.routeCoords&&SN.routeCumKm){
+      var at=SN.routeProgKm||0, a=snPointAtKm(at), b=snPointAtKm(at+(walk?0.025:0.07));
+      if(a&&b&&(a[0]!==b[0]||a[1]!==b[1])) return snBearing(a,b);
+    }
+    var g=SN.gpsPos||{};
+    if(g.spd!=null&&g.spd>0.9&&g.head!=null&&!isNaN(g.head)) return g.head;
+    return SN.compassHeading!=null?SN.compassHeading:null;
+  }
+  function snTargetZoom(){
+    var g=SN.gpsPos||{}, kmh=(g.spd!=null&&!isNaN(g.spd))?g.spd*3.6:0;
+    if(kmh<6) return 18.1;
+    return Math.max(15.3,Math.min(18.1,18.5-Math.log(kmh/6)/Math.LN2*0.85));
+  }
+  function snNavPadding(on){
+    if(SN._navPad===on) return; SN._navPad=on;
+    try{ var h=map.getContainer().clientHeight||600; map.setPadding(on?{top:Math.round(h*0.42),bottom:0,left:0,right:0}:{top:0,bottom:0,left:0,right:0}); }catch(e){}
+  }
   function snPredict(t,nowMs){
     var dt=Math.min(SN_DR_CAP_MS,Math.max(0,nowMs-(t.ts||nowMs)))/1000;
     if(!(t.spd>0.7)||t.head==null||isNaN(t.head)||dt<=0) return {lng:t.lng,lat:t.lat};
@@ -961,9 +1104,17 @@ function initNavApp(){
       SN.meMarker.setLngLat([SN.meDisp.lng,SN.meDisp.lat]);
       if(Math.abs(g.lng-SN.meDisp.lng)>eps||Math.abs(g.lat-SN.meDisp.lat)>eps||(nowMs-SN.meTarget.ts)<SN_DR_CAP_MS) active=true;
       if((SN.followMe||SN.persistFollow)&&!SN.camLock){
-        var c=map.getCenter(), cc=snChase({lng:c.lng,lat:c.lat},SN.meDisp,SN_TAU_CAM,dt);
-        if(Math.abs(cc.lng-c.lng)>eps||Math.abs(cc.lat-c.lat)>eps){ map.jumpTo({center:[cc.lng,cc.lat]}); active=true; }
-      }
+        var c=map.getCenter(), cc=snChase({lng:c.lng,lat:c.lat},SN.meDisp,SN_TAU_CAM,dt), cam={}, mv=false;
+        if(Math.abs(cc.lng-c.lng)>eps||Math.abs(cc.lat-c.lat)>eps){ cam.center=[cc.lng,cc.lat]; mv=true; }
+        var nav=snNavCamOn(); snNavPadding(nav);
+        if(nav){
+          var tb=snTargetBearing();
+          if(tb!=null){ var b0=map.getBearing(), dB=snShortestArcDelta(b0,tb); if(Math.abs(dB)>0.2){ cam.bearing=b0+dB*(1-Math.exp(-dt/SN_TAU_BRG)); mv=true; } }
+          var tz=snTargetZoom(), z0=map.getZoom(); if(Math.abs(tz-z0)>0.01){ cam.zoom=z0+(tz-z0)*(1-Math.exp(-dt/SN_TAU_ZM)); mv=true; }
+          var tp=SN.lite?0:52, p0=map.getPitch(); if(Math.abs(tp-p0)>0.3){ cam.pitch=p0+(tp-p0)*(1-Math.exp(-dt/SN_TAU_PITCH)); mv=true; }
+        }
+        if(mv){ map.jumpTo(cam); active=true; }
+      } else if(SN._navPad){ snNavPadding(false); }
     }
     if(SN.busMarker&&SN.busTarget&&SN.busMarker._addedOnce){
       var gb=snPredict(SN.busTarget,nowMs);
@@ -1132,17 +1283,17 @@ function initNavApp(){
          "chops"); only a real zoom-band change is eased here. Lite keeps the
          old per-fix ease including the centre. */
       if(SN.lite) easeOpts={center:[dispLng,dispLat],zoom:tz};
-      else if(Math.abs(map.getZoom()-tz)>0.6) easeOpts={zoom:tz};
+      else if(!snNavCamOn()&&Math.abs(map.getZoom()-tz)>0.6) easeOpts={zoom:tz};
       if(SN.followMe) SN.followMe=false;
       snMotionKick();
     }
-    if(c.heading!=null&&!isNaN(c.heading)&&SN.compassMode&&!SN.userRotated&&(c.speed==null||c.speed*3.6>3)){
+    if(c.heading!=null&&!isNaN(c.heading)&&SN.compassMode&&!SN.userRotated&&!snNavCamOn()&&(c.speed==null||c.speed*3.6>3)){
       easeOpts=easeOpts||{}; easeOpts.bearing=c.heading;
     }
     /* shg-v59 — route every follow-camera move through snEase() so pan/zoom/bearing
        share ONE cubic ease-out (item #1). Slightly longer window than the previous 700ms
        so the camera visibly decelerates instead of feeling "chopped". */
-    if(easeOpts){ easeOpts.duration=Math.max(600, Math.min(900, (SN.gpsIntervalMs||1000)*0.85)); snEase(easeOpts); }
+    if(easeOpts&&!SN.camLock){ easeOpts.duration=Math.max(600, Math.min(900, (SN.gpsIntervalMs||1000)*0.85)); snEase(easeOpts); }
 
     /* arrival detection — 50m threshold */
     if(SN.dest&&SN.routeCoords&&!SN.arrived){
@@ -1185,7 +1336,13 @@ function initNavApp(){
     /* shg-v59 — tap bounce (item #7). Class toggle triggers a CSS keyframe
        so the visual response is instant even while GPS is warming up. */
     var _lb = s('#snLocate'); _lb.classList.remove('sn-bounce'); void _lb.offsetWidth; _lb.classList.add('sn-bounce');
-    if(SN.gpsPos) snEase({center:[SN.gpsPos.lng,SN.gpsPos.lat],zoom:Math.max(map.getZoom(),15),duration:800});
+    if(SN.gpsPos&&SN.routeCoords&&SN.routeCoords.length>1&&!SN.lite){
+      var _tb=snTargetBearing(), _h=map.getContainer().clientHeight||600;
+      SN._navPad=true; SN.camLock=true;
+      map.flyTo({center:[SN.gpsPos.lng,SN.gpsPos.lat],zoom:snTargetZoom(),pitch:52,bearing:_tb!=null?_tb:map.getBearing(),
+        padding:{top:Math.round(_h*0.42),bottom:0,left:0,right:0},duration:1500,curve:1.25,essential:true});
+      map.once('moveend',function(){ SN.camLock=false; snMotionKick(); });
+    } else if(SN.gpsPos) snEase({center:[SN.gpsPos.lng,SN.gpsPos.lat],zoom:Math.max(map.getZoom(),15),duration:800});
     if(SN.watchId==null){
       /* shg-v59 — persistent pulsing "locating" state on the button (item #5) instead
          of only a transient toast; cleared automatically on the first successful fix. */
@@ -1198,7 +1355,7 @@ function initNavApp(){
       },{enableHighAccuracy:true,maximumAge:0,timeout:15000});
     }
   };
-  map.on('dragstart',function(){ SN.followMe=false; SN.persistFollow=false; SN.followBus=false; s('#snLocate').classList.remove('on'); });
+  map.on('dragstart',function(){ SN.followMe=false; SN.persistFollow=false; SN.followBus=false; s('#snLocate').classList.remove('on'); snNavPadding(false); });
 
   /* search — enhanced: history, category icons, 2-char trigger, multi-language */
   /* [MAP PRO] Navigator search — one reusable Google-Maps-style autocomplete for
@@ -1244,6 +1401,17 @@ function initNavApp(){
      compact card mirrors the live ETA / distance / road already computed by updateNavCard,
      plus speed, plus a throttled CURRENT CITY (nearest known SN_STOPS). No new rAF/timers. */
   function snNearestCity(lng,lat){
+    /* 5 Oct 2026: our own place index names the area ("Nanpura · Surat");
+       asked at most every 20 s / 400 m, the corridor list answers meanwhile. */
+    var c=SN._city, now=Date.now();
+    if(!SN._cityBusy&&(!c||now-c.t>20000&&haversineKm(lat,lng,c.lat,c.lng)>0.4)){
+      SN._cityBusy=true;
+      fetch('/api/nav-search.php?city='+lat.toFixed(5)+','+lng.toFixed(5),{credentials:'same-origin'})
+        .then(function(r){return r.json();}).then(function(j){ SN._city={name:j&&j.name,lat:lat,lng:lng,t:Date.now()}; })
+        .catch(function(){ SN._city={name:null,lat:lat,lng:lng,t:Date.now()}; })
+        .then(function(){ SN._cityBusy=false; });
+    }
+    if(c&&c.name&&haversineKm(lat,lng,c.lat,c.lng)<3) return c.name;
     var best=null,bestD=Infinity;
     for(var i=0;i<SN_STOPS.length;i++){
       var d=haversineKm(lat,lng,SN_STOPS[i].lat,SN_STOPS[i].lng);
@@ -1395,7 +1563,7 @@ function initNavApp(){
     var body={locations:[{lat:SN.origin.lat,lon:SN.origin.lng},{lat:SN.dest.lat,lon:SN.dest.lng}],
       costing:SN.mode,directions_options:{units:'kilometers'}};
     var _co=snCostingOpts(); if(_co) body.costing_options=_co;
-    fetch('https://valhalla1.openstreetmap.de/route?json='+encodeURIComponent(JSON.stringify(body)))
+    fetch(SN_ROUTE_URL+encodeURIComponent(JSON.stringify(body)),{credentials:'same-origin'})
       .then(function(r){if(!r.ok)throw new Error('http');return r.json();})
       .then(function(j){
         var trip=j.trip; if(!trip||trip.status!==0)throw new Error('noroute');
@@ -1454,7 +1622,7 @@ function initNavApp(){
     var body={locations:[{lat:SN.origin.lat,lon:SN.origin.lng},{lat:SN.dest.lat,lon:SN.dest.lng}],
       costing:SN.mode,directions_options:{units:'kilometers'},alternates:2};
     var _co=snCostingOpts(); if(_co) body.costing_options=_co;
-    fetch('https://valhalla1.openstreetmap.de/route?json='+encodeURIComponent(JSON.stringify(body)))
+    fetch(SN_ROUTE_URL+encodeURIComponent(JSON.stringify(body)),{credentials:'same-origin'})
       .then(function(r){return r.json();}).then(function(j){
         var alts=j.alternates;if(!alts||!alts.length)return;
         var origCoords=SN.routeCoords,origCum=SN.routeCumKm,origTotal=SN.routeTotalKm,origMan=SN.routeManeuvers;

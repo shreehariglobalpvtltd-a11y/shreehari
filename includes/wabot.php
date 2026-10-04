@@ -66,6 +66,26 @@ final class WaBot
             }
         }
 
+        /* 5 Oct 2026 — a plain STOP / UNSUBSCRIBE / बन्द also takes the number
+           off every Campaigns list (mk_optout), whether or not the older
+           WhatsApp marketing engine below is switched on. Recorded quietly;
+           the reply below (or the bot) still answers the person. */
+        if ($senderDigits !== '' && preg_match('/^\s*(stop|unsubscribe|stop offers|offers off|बन्द|बंद|रोक्नुहोस्)\s*[.!]*\s*$/iu', $body) === 1) {
+            try {
+                if (is_file(INCLUDE_PATH . '/campaigns.php')) {
+                    require_once INCLUDE_PATH . '/campaigns.php';
+                    if (Campaigns::ready()) {
+                        Campaigns::optOut($senderDigits, 'said STOP on WhatsApp', 0);
+                        if (!Settings::getBool('wa_marketing_on', false)) {
+                            return self::out("✅ ठिक छ — अब यस्ता अफर/सूचना सन्देश पठाइने छैन।\nDone — you will not get offer messages any more.");
+                        }
+                    }
+                }
+            } catch (Throwable $e) {
+                Logger::exception($e, 'whatsapp');
+            }
+        }
+
         /* 24 Sep 2026 — marketing consent words (START OFFERS / STOP) are a
            record, not a conversation: they are written down first, exactly,
            before any engine gets to interpret them. Only when the marketing

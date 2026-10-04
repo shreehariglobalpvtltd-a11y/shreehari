@@ -76,7 +76,7 @@
       beacon('install_prompt', { source: deferred ? 'android' : 'ios' });
     }
     function head() {
-      return '<div class="pwa-head"><img src="/assets/img/icon-192.png?v=20261004r" alt="" width="52" height="52">'
+      return '<div class="pwa-head"><img src="/assets/img/icon-192.png?v=20261005a" alt="" width="52" height="52">'
         + '<div><b>' + E(T('pwaInstallT')) + '</b><small>' + E(T('pwaInstallP')) + '</small></div></div>';
     }
     function showAndroid() {
@@ -819,10 +819,13 @@
       var send = (typeof shgApi !== 'undefined' && shgApi.post)
         ? shgApi.post('/enquiry.php', body)
         : fetch('/api/enquiry.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(function (r) { return r.json(); }).then(function (j) { if (!j.ok) throw new Error(j.error || ''); return j; });
-      send.then(function () {
+      send.then(function (d) {
         msg.className = 'ct-note ok'; msg.textContent = (typeof t === 'function') ? t('ctCbOk') : 'Done — the office will call you back.';
+        /* 5 Oct 2026 — a call-me-back is a Help Desk ticket too: show its number */
+        var tk = d && (d.ticket || (d.data && d.data.ticket));
+        if (tk && tk.ref) msg.textContent += ' · ' + String(tk.ref).replace(/[^A-Z0-9-]/gi, '');
         try { if (typeof toast === 'function') toast('✅ ' + msg.textContent); } catch (e2) {}
-        setTimeout(close, 2200);
+        setTimeout(close, tk && tk.ref ? 5200 : 2200);
       }).catch(function () {
         msg.className = 'ct-note bad'; msg.textContent = (typeof t === 'function') ? t('ctCbFail') : 'Could not send — please call the office.';
       }).then(function () { btn.disabled = false; });

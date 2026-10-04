@@ -52,6 +52,8 @@ final class Auth
             // manager could always download the register and still can.
             'reports.view', 'reports.export', 'liveops.view', 'liveops.edit',
             'messages.view', 'support.view', 'support.reply',
+            // 5 Oct 2026: launch customer campaigns (admin/campaigns.php).
+            'marketing.send',
             'tickets.scan', 'waitlist.view',
         ],
         'accountant' => [

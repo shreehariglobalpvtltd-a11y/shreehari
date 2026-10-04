@@ -2845,7 +2845,22 @@ document.addEventListener('click', function(e) {
         'हल नहीं हुआ? "still not resolved" लिखें — सीधे WhatsApp पर ऑफिस से जोड़ दूँगा।',
         'समाधान भएन? "still not resolved" लेख्नुहोस् — सीधै WhatsApp मा अफिससँग जोडिदिन्छु।',
         'ઉકેલ ન આવ્યો? "still not resolved" લખો.') + '</small>';
-      shgApi.post('/enquiry.php', item).then(() => {
+      shgApi.post('/enquiry.php', item).then((d) => {
+        /* 5 Oct 2026 — the server now opens a Help Desk ticket and returns its
+           REAL number (HD-0051); the made-up SHG-C ref is only the offline fallback. */
+        const tk = d && d.ticket;
+        if (tk && tk.ref) {
+          const safeRef = String(tk.ref).replace(/[^A-Z0-9-]/gi, '');
+          const link = '/help.php?ref=' + encodeURIComponent(safeRef);
+          addMsg('✅ ' + L('Help desk number <b>' + safeRef + '</b>' + (tk.token ? ' · token #' + (+tk.token) : '') + ' — ' + this.catLabel(p.cat) + '.',
+            'सहायता नंबर <b>' + safeRef + '</b>' + (tk.token ? ' · टोकन #' + (+tk.token) : '') + ' — ' + this.catLabel(p.cat) + '।',
+            'सहायता नम्बर <b>' + safeRef + '</b>' + (tk.token ? ' · टोकन #' + (+tk.token) : '') + ' — ' + this.catLabel(p.cat) + '।',
+            'સહાય નંબર <b>' + safeRef + '</b>.')
+            + '<br>' + L('Keep this number — check the status any time: ', 'यह नंबर संभालें — स्थिति कभी भी देखें: ', 'यो नम्बर राख्नुहोस् — स्थिति जहिले पनि हेर्नुहोस्: ', 'સ્થિતિ જુઓ: ')
+            + '<a href="' + link + '" target="_blank" rel="noopener">' + L('Help Desk', 'सहायता केंद्र', 'सहायता केन्द्र', 'હેલ્પ ડેસ્ક') + '</a>'
+            + '<br>⏱️ ' + this.timeline(p.cat) + escal, 'bot');
+          return;
+        }
         addMsg('✅ ' + done + '<br>⏱️ ' + this.timeline(p.cat) + escal, 'bot');
       }).catch(() => {
         // Offline or server said no — keep it, send it later, same reference.
