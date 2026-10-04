@@ -172,6 +172,8 @@ const CORE_SUITES = [
     'wa-voice-test.php'           => 'voice notes: the Gemini request, the cleaned transcript, the typed-message path',
     // 24 Sep 2026, registered with the three homepage booking cards it guards.
     'home-entry-test.php'         => 'three booking doors open the existing flows; every home/sheet label exists in en/hi/ne',
+    // 4 Oct 2026, registered with the three homepage animation scenes it guards.
+    'home-animation-test.php'     => 'the homepage scenes: lazy WebP/SVG only, never mirrored, honest labels, transform/opacity, pause, 4 languages',
     // 24 Sep 2026, registered with the pdfPath() fix it guards.
     'ticket-cache-test.php'       => 'a ticket PNG/PDF older than its layout stamp is redrawn once, and only once',
     // 24 Sep 2026, registered with the removal of the downloadable admin source backups.
