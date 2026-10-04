@@ -120,6 +120,26 @@ final class CounterDesk
     }
 
     /**
+     * Does this table carry this column? Cached per request. Every optional
+     * stamp (entity, fx_*, local_*) asks before it writes, so a database
+     * whose migration ran only partly keeps selling (4 Oct 2026).
+     */
+    public static function hasColumn(string $table, string $column): bool
+    {
+        static $seen = [];
+        $k = $table . '.' . $column;
+        if (!isset($seen[$k])) {
+            try {
+                $seen[$k] = preg_match('/^[a-z_]+$/', $table . $column) === 1
+                    && Database::fetch('SHOW COLUMNS FROM `' . $table . '` LIKE ' . Database::pdo()->quote($column)) !== null;
+            } catch (Throwable $e) {
+                $seen[$k] = false;
+            }
+        }
+        return $seen[$k];
+    }
+
+    /**
      * The money frozen on a row, as text — or '' when that sale was in rupees.
      *
      * A Nepal desk writes what it quoted on the booking (fx_currency/fx_total)

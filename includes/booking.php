@@ -95,7 +95,10 @@ final class BookingService
         if ($code === null) {
             return [];
         }
-        $out = ['counter_code' => $code, 'entity' => CounterDesk::entity($code)];
+        $out = ['counter_code' => $code];
+        if (CounterDesk::hasColumn('bookings', 'entity')) {
+            $out['entity'] = CounterDesk::entity($code);
+        }
 
         /* INR stays the currency the books run in. At an NPR desk we also
            freeze what the window said out loud, with the rate used at that
@@ -127,7 +130,7 @@ final class BookingService
         if ($code === null) {
             return [];
         }
-        $out = ['entity' => CounterDesk::entity($code)];
+        $out = CounterDesk::hasColumn('payments', 'entity') ? ['entity' => CounterDesk::entity($code)] : [];
         $fx  = CounterDesk::convert($amountInr, $code);
         if ($fx['currency'] !== 'INR') {
             $out['local_currency'] = $fx['currency'];

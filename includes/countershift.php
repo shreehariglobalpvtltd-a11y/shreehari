@@ -115,8 +115,10 @@ final class CounterShift
             $desk = [
                 'counter_code' => $code !== '' ? $code : null,
                 'currency'     => CounterDesk::currency($code),
-                'entity'       => $code !== '' ? CounterDesk::entity($code) : null,   // whose drawer (4 Oct 2026)
             ];
+            if (CounterDesk::hasColumn('counter_shifts', 'entity')) {
+                $desk['entity'] = $code !== '' ? CounterDesk::entity($code) : null;   // whose drawer (4 Oct 2026)
+            }
         }
 
         Database::insertIgnore('counter_shifts', $desk + [

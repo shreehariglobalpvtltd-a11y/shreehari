@@ -221,6 +221,71 @@ SET @s := IF(@c = 0,
 PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
 
 -- ---------------------------------------------------------------------
+-- 5b. One guarded ALTER per column (4 Oct 2026, found on live): a database
+-- that already had the 26 Sep columns skipped the grouped ALTERs above
+-- whole, so the columns this release added beside them never arrived.
+-- ---------------------------------------------------------------------
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'counter_code');
+SET @s := IF(@c = 0, 'ALTER TABLE `bookings` ADD COLUMN `counter_code` VARCHAR(16) NULL', 'DO 0');
+PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'entity');
+SET @s := IF(@c = 0, 'ALTER TABLE `bookings` ADD COLUMN `entity` CHAR(2) NULL', 'DO 0');
+PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'fx_currency');
+SET @s := IF(@c = 0, 'ALTER TABLE `bookings` ADD COLUMN `fx_currency` CHAR(3) NULL', 'DO 0');
+PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'fx_rate');
+SET @s := IF(@c = 0, 'ALTER TABLE `bookings` ADD COLUMN `fx_rate` DECIMAL(10,4) NULL', 'DO 0');
+PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'fx_total');
+SET @s := IF(@c = 0, 'ALTER TABLE `bookings` ADD COLUMN `fx_total` DECIMAL(12,2) NULL', 'DO 0');
+PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'payments' AND COLUMN_NAME = 'local_currency');
+SET @s := IF(@c = 0, 'ALTER TABLE `payments` ADD COLUMN `local_currency` CHAR(3) NULL', 'DO 0');
+PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'payments' AND COLUMN_NAME = 'local_amount');
+SET @s := IF(@c = 0, 'ALTER TABLE `payments` ADD COLUMN `local_amount` DECIMAL(12,2) NULL', 'DO 0');
+PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'payments' AND COLUMN_NAME = 'fx_rate');
+SET @s := IF(@c = 0, 'ALTER TABLE `payments` ADD COLUMN `fx_rate` DECIMAL(10,4) NULL', 'DO 0');
+PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'payments' AND COLUMN_NAME = 'entity');
+SET @s := IF(@c = 0, 'ALTER TABLE `payments` ADD COLUMN `entity` CHAR(2) NULL', 'DO 0');
+PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'counter_shifts' AND COLUMN_NAME = 'counter_code');
+SET @s := IF(@c = 0, 'ALTER TABLE `counter_shifts` ADD COLUMN `counter_code` VARCHAR(16) NULL', 'DO 0');
+PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'counter_shifts' AND COLUMN_NAME = 'currency');
+SET @s := IF(@c = 0, 'ALTER TABLE `counter_shifts` ADD COLUMN `currency` CHAR(3) NOT NULL DEFAULT ''INR''', 'DO 0');
+PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
+SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'counter_shifts' AND COLUMN_NAME = 'entity');
+SET @s := IF(@c = 0, 'ALTER TABLE `counter_shifts` ADD COLUMN `entity` CHAR(2) NULL', 'DO 0');
+PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
+
+-- ---------------------------------------------------------------------
 -- 6. Settings rows the desks need
 -- ---------------------------------------------------------------------
 -- The 24 Sep migration seeded counter_locations with stype 'text', which the
