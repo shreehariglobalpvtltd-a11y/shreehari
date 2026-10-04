@@ -101,6 +101,20 @@ final class Notify
             return false;
         }
 
+        /* 4 Oct 2026: Brevo HTTPS API first when a key is set (the SMTP
+           login had been refusing every send with 535). Any refusal
+           falls through to SMTP / mail() exactly as before. */
+        $brevo = self::brevoKey();
+        if ($brevo !== '') {
+            try {
+                if (self::brevoSend($brevo, $toEmail, $subject, $htmlBody, $textBody, $attachments)) {
+                    return true;
+                }
+            } catch (Throwable $e) {
+                Logger::error('Brevo API error: ' . $e->getMessage(), ['to' => $toEmail], 'mail');
+            }
+        }
+
         $host = Settings::getString('smtp_host', '');
 
         try {
@@ -112,6 +126,83 @@ final class Notify
             Logger::error('Email send failed: ' . $e->getMessage(), ['to' => $toEmail], 'mail');
             return false;
         }
+    }
+
+    /**
+     * Brevo transactional-email API key (4 Oct 2026): env BREVO_API_KEY,
+     * then ROOT/.env, then the settings row brevo_api_key. Empty = not used.
+     */
+    private static function brevoKey(): string
+    {
+        $v = getenv('BREVO_API_KEY');
+        if (is_string($v) && trim($v) !== '') {
+            return trim($v);
+        }
+        $env = ROOT_PATH . '/.env';
+        if (is_readable($env)) {
+            foreach ((array) @file($env, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+                if (preg_match('/^\s*BREVO_API_KEY\s*=\s*"?([^"\s]+)"?\s*$/', (string) $line, $m)) {
+                    return $m[1];
+                }
+            }
+        }
+        return trim(Settings::getString('brevo_api_key', ''));
+    }
+
+    /**
+     * Send through Brevo's HTTPS API (POST /v3/smtp/email). Works where the
+     * SMTP login does not; attachments travel base64. The sender must be a
+     * verified sender in Brevo (company_email). Returns false on any refusal
+     * so email() can still try SMTP.
+     */
+    private static function brevoSend(string $key, string $to, string $subject, string $htmlBody, string $textBody, array $attachments): bool
+    {
+        if (!function_exists('curl_init')) {
+            return false;
+        }
+        $payload = [
+            'sender'      => [
+                'name'  => Settings::getString('mail_from_name', APP_NAME),
+                'email' => Settings::getString('company_email', 'no-reply@' . self::domain()),
+            ],
+            'to'          => [['email' => $to]],
+            'subject'     => $subject,
+            'htmlContent' => $htmlBody,
+        ];
+        if (trim($textBody) !== '') {
+            $payload['textContent'] = $textBody;
+        }
+        foreach ($attachments as $a) {
+            if (isset($a['name'], $a['data']) && (string) $a['data'] !== '') {
+                $payload['attachment'][] = ['name' => (string) $a['name'], 'content' => base64_encode((string) $a['data'])];
+            }
+        }
+        $ch = curl_init('https://api.brevo.com/v3/smtp/email');
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_IPRESOLVE      => CURL_IPRESOLVE_V4,   // one fixed address to authorise in Brevo
+            CURLOPT_HTTPHEADER     => ['api-key: ' . $key, 'accept: application/json', 'content-type: application/json'],
+            CURLOPT_POSTFIELDS     => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        ]);
+        $raw  = curl_exec($ch);
+        $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err  = $raw === false ? curl_error($ch) : '';
+        curl_close($ch);
+        if ($http >= 200 && $http < 300) {
+            Logger::info('Email sent via Brevo API', ['to' => $to, 'subject' => mb_substr($subject, 0, 80)], 'mail');
+            return true;
+        }
+        $j = json_decode(is_string($raw) ? $raw : '', true);
+        Logger::error('Brevo API send failed', [
+            'to'   => $to,
+            'http' => $http,
+            'code' => is_array($j) ? (string) ($j['code'] ?? '') : '',
+            'msg'  => mb_substr(is_array($j) ? (string) ($j['message'] ?? '') : ($err !== '' ? $err : (string) $raw), 0, 200),
+        ], 'mail');
+        return false;
     }
 
     private static function mailSend(string $to, string $subject, string $htmlBody): bool
