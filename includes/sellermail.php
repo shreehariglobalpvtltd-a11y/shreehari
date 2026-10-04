@@ -24,7 +24,7 @@ if (!defined('SHG_APP')) {
 final class SellerMail
 {
     /** @return array{ok: bool, to: string, reason: string} */
-    public static function ticketCopy(array $booking): array
+    public static function ticketCopy(array $booking, ?string $toOverride = null): array
     {
         $out = ['ok' => false, 'to' => '', 'reason' => ''];
         try {
@@ -45,6 +45,9 @@ final class SellerMail
                 ['i' => $sid]
             );
             $email = $seller !== null ? Security::email((string) ($seller['email'] ?? '')) : '';
+            if ($toOverride !== null) {
+                $email = Security::email($toOverride);   // test / manual resend to another address
+            }
             if ($email === '') {
                 $out['reason'] = 'seller has no email on their profile';
                 Logger::info('Seller ticket email skipped: no email', ['pnr' => $pnr, 'seller' => $sid], 'mail');
