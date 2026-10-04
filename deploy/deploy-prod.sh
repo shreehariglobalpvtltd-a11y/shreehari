@@ -66,7 +66,7 @@ for f in "${FILES[@]}"; do
     if [ -e "$LIVE/$f" ]; then
       # Line endings are ignored (a Windows scp writes CRLF, git stores LF):
       # only a real content difference is someone else's change.
-      a=$($GIT show "$BASE:$f" | tr -d '' | md5sum | cut -c1-32); b=$(tr -d '' < "$LIVE/$f" | md5sum | cut -c1-32)
+      a=$($GIT show "$BASE:$f" | tr -d '\r' | md5sum | cut -c1-32); b=$(tr -d '\r' < "$LIVE/$f" | md5sum | cut -c1-32)
       [ "$a" = "$b" ] || { echo "LIVE DRIFT: $f differs from $BASE"; DRIFT=1; }
     else
       echo "LIVE DRIFT: $f is in $BASE but missing on live"; DRIFT=1
