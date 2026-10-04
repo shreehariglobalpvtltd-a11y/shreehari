@@ -1,0 +1,117 @@
+/* SHG AMOLED depth foundation. Opt-in; load AFTER existing styles.
+ * This file has no effect until data-shg-display="amoled" is on <html>.
+ * It does not rotate forms, tables, map canvases or financial text.
+ */
+:root[data-shg-display="amoled"] {
+  color-scheme: dark;
+  --shg-ground: #000;
+  --shg-face: #101722;
+  --shg-raised: #192638;
+  --shg-edge: #24344c;
+  --shg-text: #edf3ff;
+  --shg-muted: #a8b7cd;
+  --shg-accent: #91b9ff;
+  --shg-action: #2858a1;
+  --shg-action-edge: #16305a;
+  --shg-rim: #596f90;
+  --shg-focus: #b7d3ff;
+  --shg-panel-shadow: inset 0 1px 0 #6b7d9b, inset 1px 0 0 #3e506d,
+    0 2px 0 #293950, 0 4px 0 #1e2a3e, 0 7px 0 #131c2b,
+    0 16px 24px #000;
+  --shg-button-shadow: inset 0 1px 0 #728aaa, 0 2px 0 #253954,
+    0 5px 0 #17253b, 0 8px 12px #000;
+  /* Adapters for the inspected customer and admin design systems. */
+  --bg: var(--shg-ground); --card: var(--shg-face);
+  --ink: var(--shg-text); --ink-2: #d2dded;
+  --mut: var(--shg-muted); --muted: var(--shg-muted); --mut-2: #9aaec7;
+  --line: #344761; --line-2: #465c7a;
+  --head: #141e2c; --soft: #0d1521; --hover: #1c2a3f;
+  --blue: #2858a1; --blue-600: #234c8b; --blue-800: #1d4178;
+  --blue-100: #1c2d48; --blue-50: #122039;
+  --orange: #a94c00; --orange-600: #8e4000;
+  --orange-100: #3c2918; --orange-50: #23190f;
+  --ok: #18633e; --ok-bg: #11271d;
+  --warn: #805600; --warn-bg: #2b2111;
+  --bad: #a83241; --bad-bg: #30161b;
+  --info: #2858a1; --info-bg: #14243d;
+  --sh-1: var(--shg-panel-shadow); --sh-2: var(--shg-panel-shadow);
+  --sh-3: var(--shg-panel-shadow);
+}
+:root[data-shg-display="amoled"][data-shg-accent="red"] {
+  --shg-accent: #ffafb8; --shg-action: #863646;
+  --shg-action-edge: #441e29; --shg-focus: #ffc0c8;
+}
+:root[data-shg-display="amoled"][data-shg-accent="teal"] {
+  --shg-accent: #87e1d2; --shg-action: #195f59;
+  --shg-action-edge: #103b36; --shg-focus: #a0f0e2;
+}
+:root[data-shg-display="amoled"][data-shg-accent="violet"] {
+  --shg-accent: #cdb5ff; --shg-action: #634586;
+  --shg-action-edge: #352648; --shg-focus: #decaff;
+}
+:root[data-shg-display="amoled"],
+:root[data-shg-display="amoled"] body { background: var(--shg-ground); color: var(--shg-text); }
+:root[data-shg-display="amoled"] a:not(.btn) { color: var(--shg-accent); }
+
+/* Component primitives. Use on audited surfaces one category at a time. */
+:root[data-shg-display="amoled"] .shg-depth-panel {
+  background: linear-gradient(155deg, var(--shg-raised), var(--shg-face) 58%);
+  color: var(--shg-text); border: 1px solid var(--shg-edge);
+  border-top-color: var(--shg-rim); border-left-color: #455b79;
+  border-radius: 20px; box-shadow: var(--shg-panel-shadow);
+}
+:root[data-shg-display="amoled"] .shg-depth-action {
+  background: linear-gradient(160deg, var(--shg-raised), var(--shg-face));
+  color: var(--shg-text); border: 1px solid var(--shg-rim);
+  border-radius: 12px; min-height: 44px;
+  box-shadow: var(--shg-button-shadow);
+  transition: transform 120ms ease-out;
+  touch-action: manipulation;
+}
+:root[data-shg-display="amoled"] .shg-depth-action.shg-primary {
+  background: var(--shg-action); color: #fff;
+  border-color: var(--shg-accent);
+  box-shadow: inset 0 1px 0 #ffffff45, 0 3px 0 var(--shg-action-edge),
+    0 6px 0 var(--shg-action-edge), 0 13px 20px #000;
+}
+:root[data-shg-display="amoled"] .shg-depth-action:active:not(:disabled) { transform: translateY(3px); }
+:root[data-shg-display="amoled"] .shg-depth-action:disabled { opacity: .6; box-shadow: none; }
+:root[data-shg-display="amoled"] :focus-visible { outline: 2px solid var(--shg-focus); outline-offset: 4px; }
+:root[data-shg-display="amoled"] .shg-depth-action[aria-pressed="true"] {
+  border-color: var(--shg-accent); background: var(--shg-action); color: #fff;
+}
+
+/* Conservative adapters. Per-page inline light surfaces still need review.
+ * These hooks are provided, but the foundation PR DOES NOT load them live.
+ */
+:root[data-shg-display="amoled"] :is(.panel,.dash-panel,.kpi,.seat-panel,.tt-card,.qa-card,.wa-sheet-card,.ct-card,.m-box,.lm-card) {
+  background: var(--shg-face); color: var(--shg-text);
+  border-color: var(--shg-edge); border-top-color: var(--shg-rim);
+  box-shadow: var(--shg-panel-shadow);
+}
+:root[data-shg-display="amoled"] :is(.side,.tb,.nav,.bottom-nav,.mnav,.ai-panel) {
+  background: #080e16; color: var(--shg-text); border-color: var(--shg-edge);
+}
+:root[data-shg-display="amoled"] :is(.toolbar input,.toolbar select,.shg-depth-field) {
+  color: var(--shg-text); background: #070b12; border: 1px solid #536b8d;
+  min-height: 44px; border-radius: 10px;
+}
+@media (hover:hover) and (pointer:fine) {
+  :root[data-shg-display="amoled"] .shg-depth-action:hover:not(:disabled) { transform: translateY(-1px); }
+}
+@media (prefers-reduced-motion:reduce) {
+  :root[data-shg-display="amoled"] .shg-depth-action { transition: none; }
+  :root[data-shg-display="amoled"] .shg-depth-action:is(:hover,:active) { transform: none; }
+}
+@media (forced-colors:active) {
+  :root[data-shg-display="amoled"] .shg-depth-panel,
+  :root[data-shg-display="amoled"] .shg-depth-action { background: Canvas; color: CanvasText; box-shadow: none; border-color: ButtonText; }
+}
+/* Tickets, receipts and printed registers keep their existing print rules. */
+@media print {
+  :root[data-shg-display="amoled"] { --bg:#fff;--card:#fff;--ink:#000;--mut:#333;--muted:#333;--line:#bbb; }
+  :root[data-shg-display="amoled"], :root[data-shg-display="amoled"] body,
+  :root[data-shg-display="amoled"] .shg-depth-panel {
+    background: #fff; color: #000; box-shadow: none; border-color: #bbb;
+  }
+}
