@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v166';   // Oct 2026 redesign: design system, booking-first home, company app, agent PNG statement
+var VERSION = 'shg-v167';   // 
 var SHELL_CACHE = 'shg-shell-' + VERSION;
 /* How long a returning visitor waits for a fresh document before the
    cached app shell opens instead (see the navigate handler). */
@@ -43,7 +43,7 @@ var MAX_TICKETS = 10;
    never go stale: a new build changes the URL and the old cache is dropped
    with the old VERSION. This is what makes a re-open feel instant — the
    ~1 MB of app code is read from disk instead of the network. */
-var ASSET_VER = '20261004a';
+var ASSET_VER = '20261004b';
 var PRECACHE = [
   '/assets/img/logo.png?v=' + ASSET_VER,
   '/assets/css/app.css?v=' + ASSET_VER,
@@ -303,7 +303,10 @@ self.addEventListener('fetch', function (event) {
     event.respondWith((async function () {
       var cache = null;
       try { cache = await caches.open(SHELL_CACHE); } catch (e) {}
-      var shellPromise = (isShell && cache) ? cache.match('/').catch(function () { return null; }) : Promise.resolve(null);
+      /* ?counter=1 is staff-only and needs the signed-in page — never race it
+         against the stored anonymous shell (it would open without counter mode). */
+      var isCounter = url.searchParams.has('counter');
+      var shellPromise = (isShell && cache && !isCounter) ? cache.match('/').catch(function () { return null; }) : Promise.resolve(null);
       var netPromise = fetch(req).then(function (res) {
         /* Oct 2026: never keep a personalised page (signed-in customer or
            staff — index.php marks it X-SHG-Personal) as the offline shell. */

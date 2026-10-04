@@ -4,6 +4,7 @@ Moved out of `sw.js` on 2 Oct 2026: the history used to live on the `var VERSION
 
 The CURRENT version and its note stay on the `var VERSION` line in `sw.js`; this file holds the ones before it. Newest first. Each line: version — what shipped with it (as written at the time).
 
+- **shg-v166** — Oct 2026 redesign: design system, booking-first home, company app, agent PNG statement
 - **shg-v165.168** — 3 Oct 2026: Nepal-side counter desk (Nepal -> India default, NPR line) in 14-counter.js
 - **shg-v165.166** — 2 Oct 2026: stamp b - the overnight live deploy reused 20261002a for older files
 - **shg-v164 and earlier** — 2 Oct 2026: per-pickup fares + ON/OFF + Rajkot, TicketSync regeneration, counter desk memory, agent code optional for customers

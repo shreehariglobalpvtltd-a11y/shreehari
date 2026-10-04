@@ -79,7 +79,7 @@ button.is-saving, .btn.is-saving { cursor: progress !important; opacity: .7; }
   table.dt.card-table th:first-child, table.dt.card-table td:first-child { position: static !important; box-shadow: none !important; }
   table.dt.card-table td { white-space: normal !important; }
   .dt-wrap:has(> table.card-table) { overflow: visible !important; border: 0 !important; background: none !important; max-height: none !important; }
-  .dt-bar { position: sticky; top: var(--appbar-h); z-index: 5; background: var(--page); padding: 8px 0; }
+  .dt-bar { background: var(--page); padding: 8px 0; }
   /* forms: the main Save stays in reach at the bottom of the screen */
   .save-sticky, form .form-actions, form .actions-row { position: sticky; bottom: 0; z-index: 6; background: var(--surface); padding: 10px 0 calc(10px + env(safe-area-inset-bottom, 0)); border-top: 1px solid var(--line); }
   body.has-mnav .save-sticky, body.has-mnav form .form-actions, body.has-mnav form .actions-row { bottom: 64px; }

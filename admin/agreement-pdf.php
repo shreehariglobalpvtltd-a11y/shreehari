@@ -28,7 +28,7 @@ admin_header('Hindi agreement PDF', 'agreement-pdf');
 <h2>सहयोग / एजेंट समझौता PDF</h2>
 <p>हिंदी दस्तावेज़ के लिए स्वीकृत विवरण भरें। डाउनलोड से बुकिंग, किराया सेटिंग या एजेंट खाते में कोई बदलाव नहीं होगा।</p>
 <?php if ($error !== ''): ?><p role="alert" style="color:#99232b"><?= Security::e($error) ?></p><?php endif; ?>
-<form method="post" action="agreement-pdf.php">
+<form method="post" action="agreement-pdf.php" data-no-guard>
 <?= Security::csrfField() ?>
 <?php foreach (['agreement_no' => ['समझौता संख्या', 40], 'agent_name' => ['एजेंट / सहयोगी का नाम', 90], 'address' => ['पता', 180], 'payment_cycle' => ['कमीशन भुगतान चक्र', 90]] as $key => [$label, $max]): ?>
 <p><label><?= $label ?><br><input name="<?= $key ?>" value="<?= $field($key) ?>" maxlength="<?= $max ?>" required style="width:100%;padding:10px"></label></p>

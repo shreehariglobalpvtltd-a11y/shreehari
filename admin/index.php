@@ -266,10 +266,10 @@ admin_page_head(
     <span class="sg-stat__value"><?= $e(inr($moneyDay['confirmedFare'])) ?></span>
     <span class="sg-stat__def">Fare of the <?= (int) $moneyDay['confirmedCount'] ?> booking<?= $moneyDay['confirmedCount'] === 1 ? '' : 's' ?> confirmed this day (revenue, collected or not) · <?= (int) $stats['seatsToday'] ?> seats</span>
   </a>
-  <a class="sg-stat<?= ($moneyDay['codPending'] + $moneyMonth['agentCash']) > 0.5 ? ' sg-stat--attention' : '' ?>" href="<?= $base ?>/admin/payments.php">
-    <span class="sg-stat__label">Still to collect</span>
-    <span class="sg-stat__value"><?= $e(inr($moneyDay['codPending'] + $moneyMonth['agentCash'])) ?></span>
-    <span class="sg-stat__def"><?= $e(inr($moneyDay['codPending'])) ?> cash on boarding (<?= (int) $moneyDay['codCount'] ?>) + <?= $e(inr($moneyMonth['agentCash'])) ?> held by agents now</span>
+  <a class="sg-stat<?= ($moneyDay['codOutstanding'] + $moneyDay['agentCash']) > 0.5 ? ' sg-stat--attention' : '' ?>" href="<?= $base ?>/admin/payments.php">
+    <span class="sg-stat__label">Still to collect · now</span>
+    <span class="sg-stat__value"><?= $e(inr($moneyDay['codOutstanding'] + $moneyDay['agentCash'])) ?></span>
+    <span class="sg-stat__def"><?= $e(inr($moneyDay['codOutstanding'])) ?> cash on boarding not yet collected (<?= (int) $moneyDay['codOutstandingCount'] ?>) + <?= $e(inr($moneyDay['agentCash'])) ?> ticket cash sellers still hold (agents, counters, office)</span>
   </a>
   <a class="sg-stat<?= $stats['pendingPay'] > 0 ? ' sg-stat--attention' : '' ?>" href="<?= $base ?>/admin/payments.php">
     <span class="sg-stat__label">To verify</span>

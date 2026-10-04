@@ -360,7 +360,7 @@ if ($flash !== null) {
   /* ---- helpers --------------------------------------------------- */
   function fields() {
     var fd = new FormData(form), o = {};
-    fd.forEach(function (v, k) { if (k !== CSRF_NAME && k !== 'ajax') o[k] = v; });
+    fd.forEach(function (v, k) { if (k !== CSRF_NAME && k !== 'ajax' && k !== '_once') o[k] = v; });
     return o;
   }
   function body(o) {

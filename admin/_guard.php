@@ -57,6 +57,13 @@ function admin_once_guard(): void
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
         return;
     }
+    // JSON / AJAX callers (the paper-ticket outbox, fetch() saves) expect a JSON
+    // answer and keep their own duplicate checks — never redirect them.
+    if (($_POST['ajax'] ?? '') === '1'
+        || stripos((string) ($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json') !== false
+        || strtolower((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest') {
+        return;
+    }
     $n = (string) ($_POST['_once'] ?? '');
     if ($n === '' || preg_match('/^[A-Za-z0-9]{16,48}$/', $n) !== 1 || session_status() !== PHP_SESSION_ACTIVE) {
         return;
@@ -270,7 +277,7 @@ function admin_header(string $title, string $active = ''): void
     // sg- components as the customer app) loads first; the panel's own rules
     // follow, then admin.css restyles the shell on top. The UI uses the
     // device's own font now (no webfont download on a slow counter line).
-    $av = '20261004a';
+    $av = '20261004b';
     echo '<link rel="stylesheet" href="/assets/css/ds.css?v=' . $av . '">';
     echo '<style>' . admin_css() . '</style>';
     echo '<link rel="stylesheet" href="/assets/css/admin.css?v=' . $av . '">';
@@ -650,7 +657,10 @@ function admin_save_guard_js(): string
     return <<<'JS'
 (function () {
   function tok() { var a = new Uint8Array(16); (window.crypto || window.msCrypto).getRandomValues(a); return Array.prototype.map.call(a, function (b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
-  var KEY = 'shg_unsent:' + location.pathname;
+  // One record = one key: the path plus its query (pnr=, agent=, …), minus the
+  // parameters a save's own redirect adds.
+  var KEY = 'shg_unsent:' + location.pathname + '?' + location.search.replace(/^\?/, '').split('&').filter(function (p) { return p && !/^(tab|saved|ok|done|dup|err|msg)=/.test(p); }).sort().join('&');
+  function formId(f) { var a = f.querySelector('input[name="action"]'); return (f.getAttribute('action') || '') + '|' + (a ? a.value : '') + '|' + (f.id || ''); }
   function isPost(f) { return (f.getAttribute('method') || '').toLowerCase() === 'post'; }
   function fields(f) {
     var out = {};
@@ -663,6 +673,7 @@ function admin_save_guard_js(): string
   }
   document.addEventListener('submit', function (e) {
     var f = e.target; if (!f || f.tagName !== 'FORM' || !isPost(f)) return;
+    if (f.hasAttribute('data-no-guard')) return;   // e.g. a POST that answers with a file download
     if (f.dataset.sending === '1') { e.preventDefault(); e.stopImmediatePropagation(); return; }
     var t = f.querySelector('input[name="_once"]');
     if (!t) { t = document.createElement('input'); t.type = 'hidden'; t.name = '_once'; f.appendChild(t); }
@@ -670,21 +681,31 @@ function admin_save_guard_js(): string
   }, true);
   document.addEventListener('submit', function (e) {
     var f = e.target; if (!f || f.tagName !== 'FORM' || !isPost(f)) return;
+    if (f.hasAttribute('data-no-guard')) return;
     if (e.defaultPrevented) { f.dataset.ajax = '1'; return; }
     f.dataset.sending = '1'; f.setAttribute('aria-busy', 'true');
     var btn = e.submitter || f.querySelector('button[type=submit],input[type=submit],button:not([type])');
-    try { sessionStorage.setItem(KEY, JSON.stringify({ t: Date.now(), i: Array.prototype.indexOf.call(document.forms, f), v: fields(f) })); } catch (_) {}
+    try { sessionStorage.setItem(KEY, JSON.stringify({ t: Date.now(), i: Array.prototype.indexOf.call(document.forms, f), id: formId(f), v: fields(f) })); } catch (_) {}
     setTimeout(function () {
       if (btn) { btn.dataset.label = btn.dataset.label || (btn.tagName === 'INPUT' ? btn.value : btn.innerHTML); btn.classList.add('is-saving'); if (btn.tagName === 'INPUT') btn.value = 'Saving…'; else btn.textContent = 'Saving…'; btn.disabled = true; }
     }, 0);
+    var gen = f.dataset.gen || '0';
     setTimeout(function () {
-      if (!document.body.contains(f)) return;
+      if (!document.body.contains(f) || (f.dataset.gen || '0') !== gen) return;
       f.dataset.sending = ''; f.removeAttribute('aria-busy');
       if (btn) { btn.disabled = false; btn.classList.remove('is-saving'); if (btn.tagName === 'INPUT') btn.value = 'Try again'; else btn.textContent = 'Try again'; }
     }, 20000);
   });
   window.addEventListener('pageshow', function (ev) {
-    if (ev.persisted) Array.prototype.forEach.call(document.forms, function (f) { f.dataset.sending = ''; f.removeAttribute('aria-busy'); });
+    if (!ev.persisted) return;
+    Array.prototype.forEach.call(document.forms, function (f) {
+      f.dataset.sending = ''; f.removeAttribute('aria-busy'); f.dataset.gen = String((+f.dataset.gen || 0) + 1);
+      var t = f.querySelector('input[name="_once"]'); if (t) t.value = '';
+      Array.prototype.forEach.call(f.querySelectorAll('.is-saving'), function (b) {
+        b.disabled = false; b.classList.remove('is-saving');
+        if (b.dataset.label != null) { if (b.tagName === 'INPUT') b.value = b.dataset.label; else b.innerHTML = b.dataset.label; }
+      });
+    });
   });
   document.addEventListener('DOMContentLoaded', offerRestore);
   if (document.readyState !== 'loading') offerRestore();
@@ -694,7 +715,7 @@ function admin_save_guard_js(): string
     var d; try { d = JSON.parse(raw); } catch (_) { return; }
     var ok = document.querySelector('.flash.ok') || /[?&](saved|ok|done|dup)=/.test(location.search);
     if (ok || !d || Date.now() - d.t > 30 * 60 * 1000) { try { sessionStorage.removeItem(KEY); } catch (_) {} return; }
-    var f = document.forms[d.i]; if (!f || !isPost(f)) return;
+    var f = document.forms[d.i]; if (!f || !isPost(f) || (d.id && formId(f) !== d.id)) return;
     var differs = Object.keys(d.v).some(function (k) { var p = k.split('|'); var el = f.elements[p[0]]; if (!el) return false; if (p.length > 1) return false; return el.value !== d.v[k]; });
     if (!differs) { try { sessionStorage.removeItem(KEY); } catch (_) {} return; }
     var note = document.createElement('div'); note.className = 'save-note'; note.setAttribute('role', 'status');

@@ -158,6 +158,8 @@ body { color: var(--ink); font-family: var(--font-sans); }
 .nav .hamburger { background: transparent !important; border: 1px solid rgba(255, 255, 255, .28) !important; border-radius: var(--radius-sm) !important; }
 .nav .num-inner, .nav .num-pill { display: none !important; }
 .nav .lang-mini { background: transparent !important; color: var(--on-navy) !important; border: 1px solid rgba(255, 255, 255, .28) !important; box-shadow: none !important; }
+/* the top utility row is hidden below 900px, so the compact language pill takes over up to there */
+@media (max-width: 899px) { .nav .lang-mini { display: block !important; } }
 .nav .nav-drop-list { background: var(--surface) !important; border: 1px solid var(--line) !important; box-shadow: var(--shadow-2) !important; border-radius: var(--radius-md) !important; }
 .nav .nav-drop-list a { color: var(--ink) !important; }
 .mobile-menu { background: var(--surface) !important; border-bottom: 1px solid var(--line) !important; box-shadow: var(--shadow-2) !important; }
@@ -176,6 +178,7 @@ body { color: var(--ink); font-family: var(--font-sans); }
    One column on every width: the booking panel, your next trip, the two
    other ways to book, QuickBot, facilities, then everything else. */
 #view-home.active { display: flex !important; flex-direction: column; }
+#view-home.active > * { width: 100%; min-width: 0; }
 #view-home > * { order: 10 !important; }
 #view-home > .search-wrap { order: 0 !important; }
 #view-home > #nextTripBox { order: 1 !important; }
@@ -274,6 +277,11 @@ body { color: var(--ink); font-family: var(--font-sans); }
 #quick-ticket p { color: var(--muted) !important; }
 #quick-ticket input { border: 1.5px solid var(--line-control) !important; border-radius: var(--radius-md) !important; background: var(--surface) !important; color: var(--ink) !important; min-height: var(--tap-min); font-size: 16px !important; box-shadow: none !important; }
 #quick-ticket .qt-mic { background: var(--surface) !important; color: var(--royal) !important; border: 1px solid var(--line-control) !important; box-shadow: none !important; }
+#quick-ticket .qt-err { background: var(--danger-soft) !important; color: var(--ink) !important; border: 1px solid var(--danger) !important; }
+#quick-ticket .qt-understood { color: var(--ink-2) !important; }
+#quick-ticket input::placeholder { color: var(--muted) !important; opacity: 1; }
+#quick-ticket .qt-me { background: var(--royal-tint) !important; border: 1px solid var(--line) !important; color: var(--ink) !important; }
+#quick-ticket .qt-me a { color: var(--royal) !important; }
 #qtCollapsed { background: var(--surface) !important; color: var(--ink) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-1) !important; }
 #qtCollapsed b { color: var(--ink) !important; }
 
@@ -327,7 +335,7 @@ body { color: var(--ink); font-family: var(--font-sans); }
 .search-card .fare-live .fl-lbl, .search-card .fare-live .fl-npr { color: var(--muted) !important; font-size: 12px; }
 .search-card .fare-live .fl-was { color: var(--muted) !important; text-decoration: line-through; }
 .search-card .fare-live .fl-save { color: var(--warm-ink) !important; font-weight: 700; }
-.search-card .fare-live .fl-off { background: var(--orange) !important; color: var(--on-orange) !important; border-radius: var(--radius-pill); padding: 1px 8px; margin-right: 6px; }
+.search-card .fare-live .fl-off { background: var(--royal) !important; color: var(--on-royal) !important; border-radius: var(--radius-pill); padding: 1px 8px; margin-right: 6px; }
 /* floating buttons sit above the bottom bar and stay small */
 .whatsapp-fab, .ai-fab { width: 48px !important; height: 48px !important; box-shadow: var(--shadow-2) !important; }
 .ai-fab { background: var(--navy) !important; color: var(--on-navy) !important; border: 2px solid var(--surface) !important; }
@@ -420,6 +428,9 @@ body { color: var(--ink); font-family: var(--font-sans); }
 .legend .lg.u-fem, .legend .lg.fem { background: var(--seat-ladies) !important; border-color: var(--seat-ladies-line) !important; }
 .legend .lg.u-male { background: var(--seat-gents) !important; border-color: var(--seat-gents-ink) !important; }
 .legend .lg.pvt { background: var(--royal-tint) !important; border: 1.5px dashed var(--royal) !important; }
+.legend .lg.lg-emerg { background: var(--danger-soft) !important; border-color: var(--danger) !important; }
+.legend .lg.lg-acc { background: #E0F7F4 !important; border-color: #00897B !important; }
+.legend .lg.bkd.xmode { background: var(--surface-sunken) !important; border: 1.5px dashed var(--line-control) !important; }
 .legend b, .legend .lg-2f { background: var(--navy) !important; color: var(--on-navy) !important; border-radius: 5px; padding: 0 5px; }
 
 /* summary card + sticky action bar (seats and checkout) */
@@ -474,6 +485,7 @@ body { color: var(--ink); font-family: var(--font-sans); }
 #ticketCard .btn.btn-ghost, #ticketCard .btn.btn-wa {
   background: var(--surface) !important; color: var(--royal) !important; border: 1.5px solid var(--line-control) !important; box-shadow: none !important;
 }
+@media print { #ticketCard .tk2-actions, #ticketCard .tk2-actions > .btn { display: none !important; } }
 #ticketCard .tk2-more summary { min-height: var(--tap-min); display: flex; align-items: center; color: var(--royal) !important; font-weight: 700; }
 #ticketCard .rate-card { border-radius: var(--radius-md) !important; box-shadow: none !important; }
 /* status / not-found screens */

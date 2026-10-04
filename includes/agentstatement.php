@@ -148,7 +148,9 @@ final class AgentStatement
             'rate'      => $rate,
             'generated' => date('Y-m-d H:i'),
         ];
-        $out['fingerprint'] = md5(json_encode([$out['agent'], $from, $to, $out['opening'], $out['closing'], $rows, AgentStatementPng::LAYOUT]));
+        $co = Settings::company();
+        $out['fingerprint'] = md5(json_encode([$out['agent'], $from, $to, $out['opening'], $out['closing'], $rows,
+            $rate['label'] ?? '', $co['legal'] ?? '', $co['cin'] ?? '', $co['phone'] ?? '', $co['web'] ?? '', AgentStatementPng::LAYOUT]));
         return $out;
     }
 
@@ -203,7 +205,7 @@ final class AgentStatement
  */
 final class AgentStatementPng
 {
-    public const LAYOUT = 'stmt-v1';
+    public const LAYOUT = 'stmt-v2';
     public const W = 1080;
     public const H = 1720;
     private const M = 48;
@@ -228,9 +230,13 @@ final class AgentStatementPng
         if (!$chunks) {
             return [[0, 0]];
         }
-        // the summary needs room: if the last page is too full, give it its own page
+        // The summary needs its real height (one line per kind present); if the
+        // last page cannot hold its rows AND the summary, the summary gets a page.
         [$s, $c] = $chunks[count($chunks) - 1];
-        $roomFor = count($chunks) === 1 ? self::SUMMARY_ROWS : self::SUMMARY_ROWS + 3;
+        $kinds   = count(array_unique(array_column($rows, 'kind')));
+        $boxH    = 300 + 46 * $kinds;                          // same formula as draw()
+        $top     = count($chunks) === 1 ? 542 : 394;           // rows start: after the opening box on page 1
+        $roomFor = max(0, intdiv((self::H - 90) - $boxH - $top - 32, self::ROW_H));
         if ($c > $roomFor) {
             $chunks[] = [$n, 0];
         }
@@ -448,7 +454,7 @@ final class AgentStatementPng
                 $sumRows[] = [$lbl[0] . ' · ' . $lbl[1] . ' (' . $s['count'] . ')', $s['amount'], $k];
             }
             $boxH = 150 + count($sumRows) * 46 + 150;
-            if ($y + $boxH > $H - 90) { $y = max(222 + 172, $H - 90 - $boxH); }
+            // pages() guarantees the box fits below the rows; never lift it over them
             self::box($im, $M, $y, $W - $M, $y + $boxH, 18, $white);
             self::t($im, 21, $M + 24, $y + 18, $ink, 'Summary  ·  सारांश', true);
             $sy = $y + 66;

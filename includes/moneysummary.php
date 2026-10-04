@@ -15,8 +15,10 @@ declare(strict_types=1);
  *   confirmedFare revenue: the fare of every confirmed/completed booking in
  *                 the window, collected or not (= collected + codPending).
  *   codPending    confirmed fares whose cash is still to be collected.
- *   agentCash     cash agents are holding for the company right now (live
- *                 agent_ledger 'cash' balance — not windowed).
+ *   agentCash     ticket cash sellers (agents, counters, office staff) hold for
+ *                 the company right now (live agent_ledger 'cash' balance).
+ *   codOutstanding  every cash-on-boarding fare not yet collected, live — the
+ *                 same query as admin/payments.php's COD tab.
  *   commission    commission accrued to agents in the window, net of voids
  *                 (agent_ledger, the single ledger source).
  *   expenses      recorded trip_expenses in the window + how many rows.
@@ -28,7 +30,7 @@ declare(strict_types=1);
  */
 final class MoneySummary
 {
-    /** @return array{collected: float, collectedCount: int, confirmedFare: float, confirmedCount: int, codPending: float, codCount: int, agentCash: float, commission: float, expenses: float, expenseRows: int, peg: float} */
+    /** @return array{codOutstanding: float, codOutstandingCount: int, collected: float, collectedCount: int, confirmedFare: float, confirmedCount: int, codPending: float, codCount: int, agentCash: float, commission: float, expenses: float, expenseRows: int, peg: float} */
     public static function window(string $from, string $to): array
     {
         $peg = Settings::getFloat('npr_per_inr', (float) NPR_PER_INR);
@@ -40,7 +42,21 @@ final class MoneySummary
             'collected' => 0.0, 'collectedCount' => 0, 'confirmedFare' => 0.0, 'confirmedCount' => 0,
             'codPending' => 0.0, 'codCount' => 0, 'agentCash' => 0.0, 'commission' => 0.0,
             'expenses' => 0.0, 'expenseRows' => 0, 'peg' => $peg,
+            'codOutstanding' => 0.0, 'codOutstandingCount' => 0,
         ];
+        try {
+            foreach (Database::fetchAll(
+                "SELECT b.total_amount, b.currency
+                   FROM bookings b
+                   JOIN payments p ON p.booking_id = b.id
+                        AND p.id = (SELECT MAX(p2.id) FROM payments p2 WHERE p2.booking_id = b.id)
+                  WHERE b.is_cod = 1 AND p.status = 'cod_pending'
+                    AND b.status NOT IN ('cancelled','rejected')"
+            ) as $r) {
+                $out['codOutstandingCount']++;
+                $out['codOutstanding'] += strtoupper((string) $r['currency']) === 'NPR' ? (float) $r['total_amount'] / $peg : (float) $r['total_amount'];
+            }
+        } catch (Throwable $e) { /* payments absent */ }
 
         try {
             $rows = Database::fetchAll(

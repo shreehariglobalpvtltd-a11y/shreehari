@@ -2,21 +2,21 @@
 :root,:root[data-theme="light"]{--navy:#0C306C;--on-navy:#FFFFFF;--on-navy-muted:#B9C9E6;--royal:#0054A8;--royal-strong:#003C90;--royal-soft:#D9E7FA;--royal-tint:#EEF4FC;--on-royal:#FFFFFF;--red:#DC143C;--orange:#F07800;--on-orange:#16233C;--orange-soft:#FFE4C7;--warm-ink:#9A4A00;--page:#F4F6FB;--surface:#FFFFFF;--surface-sunken:#F8FAFD;--surface-hover:#EEF2FA;--line:#E4E9F1;--line-strong:#D5DCE8;--line-control:#7D8AA0;--ink:#16233C;--ink-2:#2B3A55;--muted:#5C6B85;--focus:var(--royal);--success:#11703F;--success-soft:#E4F6EC;--warning:#8A5A00;--warning-soft:#FFF4D6;--danger:#B42525;--danger-soft:#FBE3E3;--on-danger:#FFFFFF;--refund:#5B3FB0;--refund-soft:#EEE9FB;--seat-booked:#E6EBF2;--seat-booked-ink:#536079;--seat-ladies:#FCE7F1;--seat-ladies-ink:#A0135A;--seat-ladies-line:#D81B77;--seat-gents:#E3EDFC;--seat-gents-ink:#12408C;--scrim:rgba(11, 18, 32, 0.55);--shadow-1:0 1px 2px rgba(18, 38, 78, 0.06), 0 1px 6px rgba(18, 38, 78, 0.05);--shadow-2:0 4px 14px rgba(18, 38, 78, 0.08), 0 2px 6px rgba(18, 38, 78, 0.05);--shadow-3:0 14px 34px rgba(18, 38, 78, 0.14), 0 4px 12px rgba(18, 38, 78, 0.06)}
 :root[data-theme="dark"]{--navy:#0F1A2E;--royal:#5B9BE8;--royal-strong:#8FBFFF;--royal-soft:#1B2F55;--royal-tint:#152645;--on-royal:#0B1220;--red:#FF5C74;--orange:#FF8A1F;--on-orange:#0B1220;--orange-soft:#3B2610;--warm-ink:#FFB15C;--page:#0B1220;--surface:#111D33;--surface-sunken:#0F1A2E;--surface-hover:#182741;--line:#22314A;--line-strong:#2C3D5A;--line-control:#6B7D9B;--ink:#E8F0FB;--ink-2:#C9D4E6;--muted:#93A4BE;--focus:var(--royal-strong);--success:#5FD39A;--success-soft:#12321F;--warning:#F2C14E;--warning-soft:#3A2B0E;--danger:#FF8A8A;--danger-soft:#3B1717;--on-danger:#0B1220;--refund:#B9A6F5;--refund-soft:#261E45;--seat-booked:#1A253B;--seat-booked-ink:#8B9AB3;--seat-ladies:#3A1526;--seat-ladies-ink:#F7B8D4;--seat-ladies-line:#E8579F;--seat-gents:#111E3A;--seat-gents-ink:#AECBFB;--scrim:rgba(0, 0, 0, 0.65);--shadow-1:0 1px 2px rgba(0, 0, 0, 0.35);--shadow-2:0 4px 14px rgba(0, 0, 0, 0.35);--shadow-3:0 14px 34px rgba(0, 0, 0, 0.5)}
 :root{--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--space-12:48px;--radius-xs:8px;--radius-sm:10px;--radius-md:14px;--radius-lg:18px;--radius-xl:22px;--radius-pill:999px;--tap-min:48px;--tap-compact:44px;--appbar-h:56px;--bottomnav-h:64px;--sidenav-w:248px;--content-max:1120px;--seat-size:48px;--font-brand:Cinzel, Georgia, serif;--font-sans:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans Devanagari", sans-serif;--font-mono:ui-monospace, "SF Mono", SFMono-Regular, "Roboto Mono", Menlo, Consolas, monospace}
-.wordmark{font-family:var(--font-brand);font-size:20px;line-height:24px;font-weight:800;letter-spacing:0.02em}
-.title-xl{font-family:var(--font-sans);font-size:28px;line-height:34px;font-weight:800;letter-spacing:-0.01em}
-.title-lg{font-family:var(--font-sans);font-size:22px;line-height:28px;font-weight:800}
-.title-md{font-family:var(--font-sans);font-size:18px;line-height:24px;font-weight:700}
-.title-sm{font-family:var(--font-sans);font-size:16px;line-height:22px;font-weight:700}
-.body{font-family:var(--font-sans);font-size:15px;line-height:22px;font-weight:400}
-.body-strong{font-family:var(--font-sans);font-size:15px;line-height:22px;font-weight:600}
-.caption{font-family:var(--font-sans);font-size:13px;line-height:18px;font-weight:500}
-.label{font-family:var(--font-sans);font-size:12px;line-height:16px;font-weight:700;letter-spacing:0.04em}
-.button{font-family:var(--font-sans);font-size:15px;line-height:20px;font-weight:700}
-.devanagari{font-family:var(--font-sans);font-size:15px;line-height:26px;font-weight:500}
-.fare{font-family:var(--font-sans);font-size:24px;line-height:28px;font-weight:800}
-.kpi{font-family:var(--font-sans);font-size:26px;line-height:30px;font-weight:800}
-.code{font-family:var(--font-mono);font-size:14px;line-height:20px;font-weight:600}
-.time{font-family:var(--font-sans);font-size:20px;line-height:24px;font-weight:800}
+.sg-t-wordmark{font-family:var(--font-brand);font-size:20px;line-height:24px;font-weight:800;letter-spacing:0.02em}
+.sg-t-title-xl{font-family:var(--font-sans);font-size:28px;line-height:34px;font-weight:800;letter-spacing:-0.01em}
+.sg-t-title-lg{font-family:var(--font-sans);font-size:22px;line-height:28px;font-weight:800}
+.sg-t-title-md{font-family:var(--font-sans);font-size:18px;line-height:24px;font-weight:700}
+.sg-t-title-sm{font-family:var(--font-sans);font-size:16px;line-height:22px;font-weight:700}
+.sg-t-body{font-family:var(--font-sans);font-size:15px;line-height:22px;font-weight:400}
+.sg-t-body-strong{font-family:var(--font-sans);font-size:15px;line-height:22px;font-weight:600}
+.sg-t-caption{font-family:var(--font-sans);font-size:13px;line-height:18px;font-weight:500}
+.sg-t-label{font-family:var(--font-sans);font-size:12px;line-height:16px;font-weight:700;letter-spacing:0.04em}
+.sg-t-button{font-family:var(--font-sans);font-size:15px;line-height:20px;font-weight:700}
+.sg-t-devanagari{font-family:var(--font-sans);font-size:15px;line-height:26px;font-weight:500}
+.sg-t-fare{font-family:var(--font-sans);font-size:24px;line-height:28px;font-weight:800}
+.sg-t-kpi{font-family:var(--font-sans);font-size:26px;line-height:30px;font-weight:800}
+.sg-t-code{font-family:var(--font-mono);font-size:14px;line-height:20px;font-weight:600}
+.sg-t-time{font-family:var(--font-sans);font-size:20px;line-height:24px;font-weight:800}
 
 /* S Hari Global design system — shared components (customer .in + company .network).
    Reads only the tokens (tokens.css). Class prefix: sg-. No gradients, no looping motion. */
