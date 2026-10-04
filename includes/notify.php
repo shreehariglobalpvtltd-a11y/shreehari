@@ -835,7 +835,7 @@ final class Notify
     {
         $facts   = self::ticketFacts($booking);
         $pnr     = (string) ($booking['pnr'] ?? '');
-        $company = Settings::getString('company_name', APP_NAME);
+        $company = (string) Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''))['name'];   // the company that issued THIS ticket (4 Oct 2026)
 
         $board = $facts['boardingStop'] !== ''
             ? $facts['boardingStop']
@@ -897,7 +897,7 @@ final class Notify
 
     public static function resendTicketWhatsApp(array $booking): array
     {
-        $company = Settings::getString('company_name', APP_NAME);
+        $company = (string) Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''))['name'];   // the company that issued THIS ticket (4 Oct 2026)
         $pnr     = (string) ($booking['pnr'] ?? '');
         if (self::usablePhone($booking['contact_phone'] ?? '') === '') {
             return ['ok' => false, 'detail' => 'This booking has no usable contact phone number on file.'];
@@ -980,7 +980,7 @@ final class Notify
                               'payment', 'agent', 'paid', 'stops', 'trip_change', 'reconfirm'], true)) {
             return ['ok' => false, 'detail' => 'Unknown ticket change kind "' . $what . '" — nothing sent.'];
         }
-        $company = Settings::getString('company_name', APP_NAME);
+        $company = (string) Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''))['name'];   // the company that issued THIS ticket (4 Oct 2026)
         $pnr     = (string) ($booking['pnr'] ?? '');
         if (self::usablePhone($booking['contact_phone'] ?? '') === '') {
             return ['ok' => false, 'detail' => 'This booking has no usable contact phone number on file.'];
@@ -1567,7 +1567,7 @@ final class Notify
 
         $res = self::smsSend($number, $message);
         self::logMessage('sms', $number, $message, $res['ok'] ? 'sent' : 'failed', [
-            'provider'  => 'twilio',
+            'provider'  => $res['provider'] ?? 'twilio',
             'sid'       => $res['sid'],
             'error'     => $res['ok'] ? null : $res['error'],
             'bookingId' => $bookingId,
@@ -1600,12 +1600,12 @@ final class Notify
 
         $res = self::smsSend($number, $msg);
         self::logMessage('sms', $number, $msg, $res['ok'] ? 'sent' : 'failed', [
-            'provider' => 'twilio', 'sid' => $res['sid'], 'error' => $res['ok'] ? null : $res['error'],
+            'provider' => $res['provider'] ?? 'twilio', 'sid' => $res['sid'], 'error' => $res['ok'] ? null : $res['error'],
         ]);
 
         if ($res['ok']) {
             return ['ok' => true, 'stage' => 'sent',
-                'detail' => 'Sent to +' . $number . ($res['sid'] !== '' ? ' (Twilio SID ' . $res['sid'] . ')' : '') . ' — check that phone.'];
+                'detail' => 'Sent to +' . $number . ($res['sid'] !== '' ? ' (' . ucfirst((string) ($res['provider'] ?? 'twilio')) . ' ref ' . $res['sid'] . ')' : '') . ' — check that phone.'];
         }
 
         return ['ok' => false, 'stage' => 'api',
@@ -1618,8 +1618,55 @@ final class Notify
      *
      * @return array{ok: bool, status: int, sid: string, code: int, error: string}
      */
+    /**
+     * Brevo transactional SMS (4 Oct 2026, owner: "mobile number ma link
+     * janu paryo"). POST /v3/transactionalSMS/sms. Used when a Brevo API key
+     * is set and sms_driver is not 'twilio' (the Twilio account is inactive).
+     * Sender = setting sms_sender (alphanumeric, max 11, default SHGLOBAL).
+     * Needs SMS credits in the Brevo account; India additionally needs a
+     * DLT-registered sender + template, or the carrier drops the SMS.
+     *
+     * @return array{ok: bool, status: int, sid: string, code: int, error: string, provider: string}
+     */
+    private static function brevoSms(string $key, string $toDigits, string $message): array
+    {
+        $sender = preg_replace('/[^A-Za-z0-9]/', '', Settings::getString('sms_sender', 'SHGLOBAL')) ?: 'SHGLOBAL';
+        $ch = curl_init('https://api.brevo.com/v3/transactionalSMS/sms');
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_IPRESOLVE      => CURL_IPRESOLVE_V4,
+            CURLOPT_HTTPHEADER     => ['api-key: ' . $key, 'accept: application/json', 'content-type: application/json'],
+            CURLOPT_POSTFIELDS     => json_encode([
+                'sender'         => substr($sender, 0, 11),
+                'recipient'      => $toDigits,
+                'content'        => mb_substr($message, 0, 640),
+                'type'           => 'transactional',
+                'unicodeEnabled' => preg_match('/[^\x00-\x7F]/', $message) === 1,
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        ]);
+        $raw  = curl_exec($ch);
+        $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err  = $raw === false ? curl_error($ch) : '';
+        curl_close($ch);
+        $j = json_decode(is_string($raw) ? $raw : '', true);
+        $j = is_array($j) ? $j : [];
+        if ($http >= 200 && $http < 300) {
+            return ['ok' => true, 'status' => $http, 'sid' => (string) ($j['messageId'] ?? ($j['reference'] ?? '')), 'code' => 0, 'error' => '', 'provider' => 'brevo'];
+        }
+        return ['ok' => false, 'status' => $http, 'sid' => '', 'code' => 0, 'provider' => 'brevo',
+            'error' => 'Brevo SMS: ' . mb_substr($err !== '' ? $err : (string) ($j['message'] ?? ('HTTP ' . $http)), 0, 200)];
+    }
+
     private static function smsSend(string $toDigits, string $message): array
     {
+        $brevo = self::brevoKey();
+        if ($brevo !== '' && Settings::getString('sms_driver', 'brevo') !== 'twilio') {
+            return self::brevoSms($brevo, $toDigits, $message);
+        }
+
         $sid   = Settings::getString('twilio_account_sid', '');
         $token = Settings::getString('twilio_auth_token', '');
         $from  = trim(Settings::getString('twilio_sms_from', ''));
@@ -1822,7 +1869,7 @@ final class Notify
 
     public static function bookingConfirmed(array $booking): void
     {
-        $company   = Settings::getString('company_name', APP_NAME);
+        $company   = (string) Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''))['name'];   // the company that issued THIS ticket (4 Oct 2026)
         $pnr       = (string) $booking['pnr'];
         $bid       = (int) ($booking['id'] ?? 0);
         $facts     = self::ticketFacts($booking);
@@ -2113,7 +2160,7 @@ final class Notify
         if (!Settings::getBool('whatsapp_notify_customer', true) || empty($booking['contact_phone'])) {
             return;
         }
-        $company = Settings::getString('company_name', APP_NAME);
+        $company = (string) Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''))['name'];   // the company that issued THIS ticket (4 Oct 2026)
         $pnr     = (string) ($booking['pnr'] ?? '');
         $text = "↩️ " . $company . "\n"
               . "टिकट " . $pnr . " रद्द भयो — केही तिर्नु पर्दैन।\n"
@@ -2216,7 +2263,7 @@ final class Notify
             return;
         }
 
-        $company = Settings::getString('company_name', APP_NAME);
+        $company = (string) Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''))['name'];   // the company that issued THIS ticket (4 Oct 2026)
         $pnr     = (string) ($booking['pnr'] ?? '');
         $total   = (float) ($booking['total_amount'] ?? 0);
         $amount  = inr($total);
@@ -2418,7 +2465,7 @@ final class Notify
             return;
         }
 
-        $company = Settings::getString('company_name', APP_NAME);
+        $company = (string) Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''))['name'];   // the company that issued THIS ticket (4 Oct 2026)
         $pnr     = (string) ($booking['pnr'] ?? '');
         $amount  = inr((float) ($booking['total_amount'] ?? 0));
         $phone   = self::usablePhone($booking['contact_phone'] ?? '');
@@ -2728,7 +2775,7 @@ final class Notify
         }
         $facts += ['route' => '', 'date' => '', 'depTime' => '', 'seats' => '', 'boarding' => ''];
 
-        $company = Settings::getString('company_name', APP_NAME);
+        $company = (string) Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''))['name'];   // the company that issued THIS ticket (4 Oct 2026)
         $pnr     = (string) ($booking['pnr'] ?? '');
         $hint    = self::countryHint($booking);
         $bid     = (int) ($booking['id'] ?? 0);
@@ -2906,7 +2953,7 @@ final class Notify
             return;
         }
 
-        $company = Settings::getString('company_name', APP_NAME);
+        $company = (string) Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''))['name'];   // the company that issued THIS ticket (4 Oct 2026)
         $pnr     = (string) ($booking['pnr'] ?? '');
         $money   = inr($amount);
 
