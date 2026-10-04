@@ -88,11 +88,15 @@ Base: release-20261003-a5. No database migration.
 - 23 admin pages + agent + counter screens at 360/390/430px: no sideways scroll,
   no PHP noise. Agent statement on live data (agent 47, 349 rows): closing
   ₹5,76,400 = wallet net.
-- Speed (throttled phone, cold, median of 5, same server): live FCP 4.0 s /
-  LCP 8.5 s → redesign FCP 2.0 s / LCP 2.0 s; +17 KB CSS.
+- Speed on live (throttled phone, cold, median of 5): before FCP 4.0 s /
+  LCP 8.5 s / 38 requests / 669 KB; after FCP 2.2 s / LCP 6.0 s / 36 requests /
+  585 KB. (Staging showed LCP 2.0 s only because its banner was the largest
+  paint; the live LCP element still paints late and is the next speed target.)
 
-## Staging
-https://shreehariglobal.network:8443 (basic auth; /root/staging-redesign/ACCESS.txt),
-/var/www/staging-redesign, DB shari_staging (user shg_staging), messaging off,
-no cron, nginx /etc/nginx/sites-available/shg-staging-redesign. Retire: remove
-the nginx file + symlink, reload, drop the DB and user.
+## Deploy (4 Oct 2026 10:20 IST)
+- Production: release-20261004-r1 = 52b4dc6 on /var/repos/shg.git, files-only
+  (28 files); every touched live file was checked equal to release-20261003-a5
+  first. Backup + rollback notes: /root/backups/pre-deploy-redesign-20261004-102013
+  (ROLLBACK.txt). No database change.
+- Staging (:8443, shari_staging) retired after the deploy: nginx site, DB, user
+  and code removed.
