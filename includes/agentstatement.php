@@ -205,14 +205,16 @@ final class AgentStatement
  */
 final class AgentStatementPng
 {
-    public const LAYOUT = 'stmt-v2';
+    public const LAYOUT = 'stmt-v3';
     public const W = 1080;
     public const H = 1720;
     private const M = 48;
     private const ROW_H = 118;
+    // Rows must end above the footer rule (H - 76) with a margin: the usable
+    // bottom is H - 90 - 32. Rows start at y 542 on page 1 (after the opening
+    // box) and at 394 on later pages: (1598-542)/118 = 8, (1598-394)/118 = 10.
     private const FIRST_ROWS = 8;
-    private const NEXT_ROWS = 11;
-    private const SUMMARY_ROWS = 4;   // rows that still fit above the summary on the last page
+    private const NEXT_ROWS = 10;
 
     /** @return array<int, array{0:int,1:int}> [start, count] per page; the summary sits on the last. */
     public static function pages(array $rows): array

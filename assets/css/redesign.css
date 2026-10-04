@@ -132,9 +132,9 @@ body { color: var(--ink); font-family: var(--font-sans); }
 /* Divine-name line: first on every screen (owner's wish), one quiet line. */
 .divine-bar { background: var(--surface-sunken) !important; border-bottom: 1px solid var(--line) !important; padding: 4px 0 !important; text-align: center; }
 .divine-bar .divine-name { color: var(--muted) !important; font: 600 12px/18px var(--font-sans) !important; letter-spacing: 0 !important; text-shadow: none !important; background: none !important; -webkit-text-fill-color: currentColor !important; }
-/* Top utility row: desktop only (language, theme, phone). The palette picker is retired. */
+/* Top utility row (language, theme, phone) down to 761px; phones use the nav's compact language pill. The palette picker is retired. */
 .topbar .mantra, .topbar .palette-wrap, .topbar a[href^="mailto:"] { display: none !important; }
-@media (max-width: 899px) { .topbar { display: none !important; } }
+@media (max-width: 760px) { .topbar { display: none !important; } }
 .topbar { background: var(--surface) !important; color: var(--ink-2) !important; border-bottom: 1px solid var(--line); font-size: 13px; }
 .topbar a { color: var(--royal) !important; font-weight: 700; }
 .topbar .lang-btn, .topbar .theme-btn { background: var(--surface) !important; color: var(--ink) !important; border: 1px solid var(--line-control) !important; border-radius: var(--radius-sm) !important; min-height: 32px; box-shadow: none !important; }
@@ -158,8 +158,8 @@ body { color: var(--ink); font-family: var(--font-sans); }
 .nav .hamburger { background: transparent !important; border: 1px solid rgba(255, 255, 255, .28) !important; border-radius: var(--radius-sm) !important; }
 .nav .num-inner, .nav .num-pill { display: none !important; }
 .nav .lang-mini { background: transparent !important; color: var(--on-navy) !important; border: 1px solid rgba(255, 255, 255, .28) !important; box-shadow: none !important; }
-/* the top utility row is hidden below 900px, so the compact language pill takes over up to there */
-@media (max-width: 899px) { .nav .lang-mini { display: block !important; } }
+/* phones: the top utility row is hidden, the nav's compact language pill takes over */
+@media (max-width: 760px) { .nav .lang-mini { display: block !important; } }
 .nav .nav-drop-list { background: var(--surface) !important; border: 1px solid var(--line) !important; box-shadow: var(--shadow-2) !important; border-radius: var(--radius-md) !important; }
 .nav .nav-drop-list a { color: var(--ink) !important; }
 .mobile-menu { background: var(--surface) !important; border-bottom: 1px solid var(--line) !important; box-shadow: var(--shadow-2) !important; }

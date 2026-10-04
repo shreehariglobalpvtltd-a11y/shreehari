@@ -277,7 +277,7 @@ function admin_header(string $title, string $active = ''): void
     // sg- components as the customer app) loads first; the panel's own rules
     // follow, then admin.css restyles the shell on top. The UI uses the
     // device's own font now (no webfont download on a slow counter line).
-    $av = '20261004b';
+    $av = '20261004c';
     echo '<link rel="stylesheet" href="/assets/css/ds.css?v=' . $av . '">';
     echo '<style>' . admin_css() . '</style>';
     echo '<link rel="stylesheet" href="/assets/css/admin.css?v=' . $av . '">';
@@ -662,6 +662,7 @@ function admin_save_guard_js(): string
   var KEY = 'shg_unsent:' + location.pathname + '?' + location.search.replace(/^\?/, '').split('&').filter(function (p) { return p && !/^(tab|saved|ok|done|dup|err|msg)=/.test(p); }).sort().join('&');
   function formId(f) { var a = f.querySelector('input[name="action"]'); return (f.getAttribute('action') || '') + '|' + (a ? a.value : '') + '|' + (f.id || ''); }
   function isPost(f) { return (f.getAttribute('method') || '').toLowerCase() === 'post'; }
+  function snap(f, s) { return JSON.stringify([fields(f), s ? (s.name || '') + '=' + (s.value || '') : '']); }
   function fields(f) {
     var out = {};
     Array.prototype.forEach.call(f.elements, function (el) {
@@ -677,7 +678,10 @@ function admin_save_guard_js(): string
     if (f.dataset.sending === '1') { e.preventDefault(); e.stopImmediatePropagation(); return; }
     var t = f.querySelector('input[name="_once"]');
     if (!t) { t = document.createElement('input'); t.type = 'hidden'; t.name = '_once'; f.appendChild(t); }
-    if (!t.value || f.dataset.ajax === '1') t.value = tok();
+    var s = snap(f, e.submitter);
+    // a new token only for a new submission: first time, AJAX forms, or changed values / another button
+    if (!t.value || f.dataset.ajax === '1' || (f.dataset.sent && f.dataset.sent !== s)) t.value = tok();
+    f.dataset.sent = s;
   }, true);
   document.addEventListener('submit', function (e) {
     var f = e.target; if (!f || f.tagName !== 'FORM' || !isPost(f)) return;
@@ -698,13 +702,14 @@ function admin_save_guard_js(): string
   });
   window.addEventListener('pageshow', function (ev) {
     if (!ev.persisted) return;
+    // the token stays: the same values sent again get ?dup=1, changed values get a new token
     Array.prototype.forEach.call(document.forms, function (f) {
       f.dataset.sending = ''; f.removeAttribute('aria-busy'); f.dataset.gen = String((+f.dataset.gen || 0) + 1);
-      var t = f.querySelector('input[name="_once"]'); if (t) t.value = '';
-      Array.prototype.forEach.call(f.querySelectorAll('.is-saving'), function (b) {
-        b.disabled = false; b.classList.remove('is-saving');
-        if (b.dataset.label != null) { if (b.tagName === 'INPUT') b.value = b.dataset.label; else b.innerHTML = b.dataset.label; }
-      });
+    });
+    // page-wide: a Save button may sit outside its form (form="…")
+    Array.prototype.forEach.call(document.querySelectorAll('.is-saving'), function (b) {
+      b.disabled = false; b.classList.remove('is-saving');
+      if (b.dataset.label != null) { if (b.tagName === 'INPUT') b.value = b.dataset.label; else b.innerHTML = b.dataset.label; }
     });
   });
   document.addEventListener('DOMContentLoaded', offerRestore);
@@ -714,7 +719,11 @@ function admin_save_guard_js(): string
     if (!raw) return;
     var d; try { d = JSON.parse(raw); } catch (_) { return; }
     var ok = document.querySelector('.flash.ok') || /[?&](saved|ok|done|dup)=/.test(location.search);
-    if (ok || !d || Date.now() - d.t > 30 * 60 * 1000) { try { sessionStorage.removeItem(KEY); } catch (_) {} return; }
+    if (ok) {
+      try { for (var i = sessionStorage.length - 1; i >= 0; i--) { var k = sessionStorage.key(i); if (k && k.indexOf('shg_unsent:' + location.pathname + '?') === 0) sessionStorage.removeItem(k); } } catch (_) {}
+      return;
+    }
+    if (!d || Date.now() - d.t > 30 * 60 * 1000) { try { sessionStorage.removeItem(KEY); } catch (_) {} return; }
     var f = document.forms[d.i]; if (!f || !isPost(f) || (d.id && formId(f) !== d.id)) return;
     var differs = Object.keys(d.v).some(function (k) { var p = k.split('|'); var el = f.elements[p[0]]; if (!el) return false; if (p.length > 1) return false; return el.value !== d.v[k]; });
     if (!differs) { try { sessionStorage.removeItem(KEY); } catch (_) {} return; }
