@@ -1567,7 +1567,7 @@ final class Notify
 
         $res = self::smsSend($number, $message);
         self::logMessage('sms', $number, $message, $res['ok'] ? 'sent' : 'failed', [
-            'provider'  => 'twilio',
+            'provider'  => $res['provider'] ?? 'twilio',
             'sid'       => $res['sid'],
             'error'     => $res['ok'] ? null : $res['error'],
             'bookingId' => $bookingId,
@@ -1600,12 +1600,12 @@ final class Notify
 
         $res = self::smsSend($number, $msg);
         self::logMessage('sms', $number, $msg, $res['ok'] ? 'sent' : 'failed', [
-            'provider' => 'twilio', 'sid' => $res['sid'], 'error' => $res['ok'] ? null : $res['error'],
+            'provider' => $res['provider'] ?? 'twilio', 'sid' => $res['sid'], 'error' => $res['ok'] ? null : $res['error'],
         ]);
 
         if ($res['ok']) {
             return ['ok' => true, 'stage' => 'sent',
-                'detail' => 'Sent to +' . $number . ($res['sid'] !== '' ? ' (Twilio SID ' . $res['sid'] . ')' : '') . ' — check that phone.'];
+                'detail' => 'Sent to +' . $number . ($res['sid'] !== '' ? ' (' . ucfirst((string) ($res['provider'] ?? 'twilio')) . ' ref ' . $res['sid'] . ')' : '') . ' — check that phone.'];
         }
 
         return ['ok' => false, 'stage' => 'api',
@@ -1618,8 +1618,55 @@ final class Notify
      *
      * @return array{ok: bool, status: int, sid: string, code: int, error: string}
      */
+    /**
+     * Brevo transactional SMS (4 Oct 2026, owner: "mobile number ma link
+     * janu paryo"). POST /v3/transactionalSMS/sms. Used when a Brevo API key
+     * is set and sms_driver is not 'twilio' (the Twilio account is inactive).
+     * Sender = setting sms_sender (alphanumeric, max 11, default SHGLOBAL).
+     * Needs SMS credits in the Brevo account; India additionally needs a
+     * DLT-registered sender + template, or the carrier drops the SMS.
+     *
+     * @return array{ok: bool, status: int, sid: string, code: int, error: string, provider: string}
+     */
+    private static function brevoSms(string $key, string $toDigits, string $message): array
+    {
+        $sender = preg_replace('/[^A-Za-z0-9]/', '', Settings::getString('sms_sender', 'SHGLOBAL')) ?: 'SHGLOBAL';
+        $ch = curl_init('https://api.brevo.com/v3/transactionalSMS/sms');
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_IPRESOLVE      => CURL_IPRESOLVE_V4,
+            CURLOPT_HTTPHEADER     => ['api-key: ' . $key, 'accept: application/json', 'content-type: application/json'],
+            CURLOPT_POSTFIELDS     => json_encode([
+                'sender'         => substr($sender, 0, 11),
+                'recipient'      => $toDigits,
+                'content'        => mb_substr($message, 0, 640),
+                'type'           => 'transactional',
+                'unicodeEnabled' => preg_match('/[^\x00-\x7F]/', $message) === 1,
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        ]);
+        $raw  = curl_exec($ch);
+        $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err  = $raw === false ? curl_error($ch) : '';
+        curl_close($ch);
+        $j = json_decode(is_string($raw) ? $raw : '', true);
+        $j = is_array($j) ? $j : [];
+        if ($http >= 200 && $http < 300) {
+            return ['ok' => true, 'status' => $http, 'sid' => (string) ($j['messageId'] ?? ($j['reference'] ?? '')), 'code' => 0, 'error' => '', 'provider' => 'brevo'];
+        }
+        return ['ok' => false, 'status' => $http, 'sid' => '', 'code' => 0, 'provider' => 'brevo',
+            'error' => 'Brevo SMS: ' . mb_substr($err !== '' ? $err : (string) ($j['message'] ?? ('HTTP ' . $http)), 0, 200)];
+    }
+
     private static function smsSend(string $toDigits, string $message): array
     {
+        $brevo = self::brevoKey();
+        if ($brevo !== '' && Settings::getString('sms_driver', 'brevo') !== 'twilio') {
+            return self::brevoSms($brevo, $toDigits, $message);
+        }
+
         $sid   = Settings::getString('twilio_account_sid', '');
         $token = Settings::getString('twilio_auth_token', '');
         $from  = trim(Settings::getString('twilio_sms_from', ''));
