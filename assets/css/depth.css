@@ -327,6 +327,7 @@ body:has(#mobileMenu.open) .ai-fab,
 body:has(#mobileMenu.open) .sos-fab,
 body:has(#mobileMenu.open) .ct-fab { visibility: hidden !important; }
 .nav .nav-drop-list { box-shadow: var(--dp-sheet) !important; }
+.notif-panel { box-shadow: var(--dp-sheet) !important; border-top-color: var(--dp-rim-top) !important; }
 .whatsapp-fab, .ai-fab { box-shadow: 0 2px 0 rgba(0, 0, 0, .28), 0 4px 0 rgba(0, 0, 0, .22), 0 12px 16px -4px rgba(0, 0, 0, .45) !important; }
 #counterBar { box-shadow: var(--dp-bar) !important; }
 

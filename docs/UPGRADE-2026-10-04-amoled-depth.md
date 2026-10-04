@@ -1,4 +1,4 @@
-# AMOLED Pop-out depth — 4 Oct 2026 (release-20261004-p1 … p3)
+# AMOLED Pop-out depth — 4 Oct 2026 (release-20261004-p1 … p4)
 
 Owner brief: `SHG_Complete_3D_Blueprint (2).zip` (master plan, 5 demos, 6 prompts).
 The plan carried two master prompts (§9 "light/subtle" and §18 "AMOLED
@@ -123,6 +123,11 @@ are server images and were not touched (they keep their own white layout).
 - depth-display-test: +2 checks (no comment fragment inside a selector
   list — such a fragment makes the browser drop the whole rule; no `:is()`).
   Every rule verified to parse in Chrome (240/240).
+
+## p4
+Notifications panel on the sheet depth (checked with the assistant chat,
+WhatsApp request sheet and notifications in AMOLED). Battery after p3: 122
+ok, 9 fail — all nine in the base's known set (env/data).
 
 ## Rollback
 deploy-prod.sh backup: `/root/backups/pre-deploy-release-20261004-p1-*/`
