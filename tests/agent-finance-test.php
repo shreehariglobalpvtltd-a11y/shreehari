@@ -192,6 +192,20 @@ try {
 
     $pend = array_values(array_filter(AgentSettlement::pending(), static fn(array $p): bool => $p['id'] === $aid));
     $ok(count($pend) === 1 && $pend[0]['commission'] === 300.0 && $pend[0]['cash'] === 100.0 && $pend[0]['net'] === 200.0, 'pending list: 300 due, 100 cash, net 200');
+    $ok($pend[0]['role'] === 'agent', 'the pending row says it is an agent');
+    /* a counter clerk holding cash is listed too - with no commission to settle here */
+    $cid = Database::insert('admins', ['username' => $uname . '_c', 'password_hash' => 'x', 'full_name' => 'ZZ Counter Test', 'role' => 'counter', 'is_active' => 1]);
+    try {
+        AgentWallet::record($cid, 'commission', 900, ['note' => 'staff-seller commission row', 'by' => 0]);
+        AgentWallet::record($cid, 'cash_due', 7000, ['note' => 'counter cash', 'by' => 0]);
+        $cp = array_values(array_filter(AgentSettlement::pending(), static fn(array $p): bool => $p['id'] === $cid));
+        $ok(count($cp) === 1 && $cp[0]['role'] === 'counter' && $cp[0]['cash'] === 7000.0 && $cp[0]['commission'] === 0.0, 'a counter holding cash is listed, commission not offered for settlement');
+        $ok($throws(static fn() => AgentSettlement::createDraft($cid, $today, $today, [], 0)) !== '', 'a settlement cannot be drafted for a non-agent');
+    } finally {
+        Database::run('DELETE FROM agent_ledger WHERE agent_admin_id = :a', ['a' => $cid]);
+        Database::run("DELETE FROM audit_logs WHERE entity_type = 'admin' AND entity_id = :a", ['a' => (string) $cid]);
+        Database::run('DELETE FROM admins WHERE id = :a', ['a' => $cid]);
+    }
     $grid = AgentSettlement::commissionGrid(3);
     $mineG = array_values(array_filter($grid['rows'], static fn(array $r): bool => $r['id'] === $aid));
     $ok(count($grid['months']) === 3 && count($mineG) === 1 && $mineG[0]['earned'] === 1500.0 && $mineG[0]['paid'] === 1150.0 && $mineG[0]['due'] === 300.0,

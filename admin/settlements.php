@@ -31,6 +31,7 @@ $self      = '/admin/settlements.php';
 $flash     = null;
 $today     = todayISO();
 $ready     = AgentSettlement::hasTable();
+$cashDays  = max(0, Settings::getInt('alert_cash_holding_days', 3));
 $dueDays   = max(1, Settings::getInt('alert_settlement_due_days', 15));   // the same number the alert uses (Admin -> Notifications)
 
 $okNotes = [
@@ -552,6 +553,7 @@ if ($agentView) {
 $tab     = in_array($_GET['tab'] ?? '', ['pending', 'register', 'grid'], true) ? (string) $_GET['tab'] : 'pending';
 $pending = AgentSettlement::pending();
 $late    = array_values(array_filter($pending, static fn(array $p): bool => $p['commission'] > 0.009 && $p['days'] > $dueDays && $p['open'] === null));
+usort($late, static fn(array $x, array $y): int => $y['days'] <=> $x['days']);
 $sumDue  = array_sum(array_column($pending, 'commission'));
 $sumCash = array_sum(array_column($pending, 'cash'));
 $counts  = ['draft' => 0, 'approved' => 0, 'disputed' => 0];
@@ -569,10 +571,10 @@ admin_page_head('Who is waiting, what each agent is owed, and every settlement f
     [], $canPay ? '<a class="btn" href="' . $e($self . '?new=-1') . '">+ New settlement</a>' : '');
 ?>
 <div class="kpis st-kpis">
-  <?= admin_kpi('Commission due', inr($sumDue), count(array_filter($pending, static fn(array $p): bool => $p['commission'] > 0.009)) . ' agents are owed', 'wallet', 'blue', null, $self . '?tab=pending') ?>
+  <?= admin_kpi('Commission due', inr($sumDue), count(array_filter($pending, static fn(array $p): bool => $p['commission'] > 0.009)) . ' agent(s) are owed', 'wallet', 'blue', null, $self . '?tab=pending') ?>
   <?= admin_kpi('Over ' . $dueDays . ' days', (string) count($late), $late !== [] ? 'longest: ' . $late[0]['name'] . ' · ' . $late[0]['days'] . ' d' : 'nobody is overdue', 'clock', $late !== [] ? 'red' : 'green', null, $self . '?tab=pending') ?>
   <?= admin_kpi('Approve / pay', $counts['draft'] . ' / ' . $counts['approved'], $counts['disputed'] > 0 ? $counts['disputed'] . ' disputed ⚠️' : 'drafts · approved', 'clipboard', $counts['disputed'] > 0 ? 'red' : 'orange', null, $self . '?tab=register&status=open') ?>
-  <?= admin_kpi('Cash with agents', inr($sumCash), 'to collect or net off', 'coins', 'teal', null, '/admin/accounting.php') ?>
+  <?= admin_kpi('Ticket cash held', inr($sumCash), 'agents, counters and the office account', 'coins', $sumCash > 0 ? 'orange' : 'teal', null, $self . '?tab=pending') ?>
   <?= admin_kpi('Paid this month', inr($paidMonth), 'through settlements', 'banknote', 'green', null, $self . '?tab=register&status=paid') ?>
 </div>
 <?php if ($late !== []): ?>
@@ -626,19 +628,20 @@ document.getElementById('stNewAgent').addEventListener('change', function () { i
     <?= Security::csrfField() ?><input type="hidden" name="action" value="batch_draft">
     <div class="tbl-scroll"><table class="card-table dt">
       <thead><tr><?php if ($canPay): ?><th class="bulk-col"><input type="checkbox" id="stAll" aria-label="Select every agent that can be drafted"></th><?php endif; ?>
-        <th>Agent</th><th>Commission due</th><th>Ticket cash held</th><th>Net</th><th>Waiting</th><th>Last paid</th><th></th></tr></thead>
+        <th>Agent / seller</th><th>Commission due</th><th>Ticket cash held</th><th>Net</th><th>Waiting</th><th>Last paid</th><th></th></tr></thead>
       <tbody>
       <?php foreach ($pending as $p): $canDraft = $canPay && $p['open'] === null && $p['commission'] > 0.009; ?>
       <tr>
         <?php if ($canPay): ?><td class="bulk-col" data-label="Select"><?php if ($canDraft): ?><input type="checkbox" class="st-cb" name="agents[]" value="<?= (int) $p['id'] ?>" aria-label="Select <?= $e($p['name']) ?>"><?php endif; ?></td><?php endif; ?>
-        <td data-label="Agent"><a href="/admin/agent-360.php?id=<?= (int) $p['id'] ?>"><b><?= $e($p['name']) ?></b></a><?= $p['code'] !== '' ? ' <span class="muted mono">' . $e($p['code']) . '</span>' : '' ?></td>
-        <td data-label="Commission due"><b><?= $e(inr($p['commission'])) ?></b></td>
-        <td data-label="Ticket cash held"><?= $p['cash'] > 0.009 ? $e(inr($p['cash'])) . ($p['cashDays'] > 0 ? ' <span class="muted">· ' . (int) $p['cashDays'] . ' d</span>' : '') : '—' ?></td>
-        <td data-label="Net"><?= $p['net'] >= 0 ? '<span style="color:#1FA35B;font-weight:700">we owe ' . $e(inr($p['net'])) . '</span>' : '<span style="color:#DC3B3B;font-weight:700">agent owes ' . $e(inr(-$p['net'])) . '</span>' ?></td>
+        <td data-label="Agent"><?php if ($p['role'] === 'agent'): ?><a href="/admin/agent-360.php?id=<?= (int) $p['id'] ?>"><b><?= $e($p['name']) ?></b></a><?php else: ?><b><?= $e($p['name']) ?></b> <span class="pill st-info" style="font-size:10.5px"><?= $e($p['role']) ?></span><?php endif; ?><?= $p['code'] !== '' ? ' <span class="muted mono">' . $e($p['code']) . '</span>' : '' ?></td>
+        <td data-label="Commission due"><?= $p['role'] === 'agent' ? '<b>' . $e(inr($p['commission'])) . '</b>' : '<span class="muted">—</span>' ?></td>
+        <td data-label="Ticket cash held"><?= $p['cash'] > 0.009 ? '<b>' . $e(inr($p['cash'])) . '</b>' . ($p['cashDays'] > 0 ? ' <span class="' . ($p['cashDays'] > $cashDays ? 'st-wait late' : 'muted') . '">· ' . (int) $p['cashDays'] . ' d</span>' : '') : '—' ?></td>
+        <td data-label="Net"><?= $p['net'] >= 0 ? '<span style="color:#1FA35B;font-weight:700">we owe ' . $e(inr($p['net'])) . '</span>' : '<span style="color:#DC3B3B;font-weight:700">' . ($p['role'] === 'agent' ? 'agent owes ' : 'to hand over ') . $e(inr(-$p['net'])) . '</span>' ?></td>
         <td data-label="Waiting"><?= $p['commission'] > 0.009 ? '<span class="st-wait' . ($p['days'] > $dueDays ? ' late' : '') . '">' . (int) $p['days'] . ' day' . ($p['days'] === 1 ? '' : 's') . '</span>' : '—' ?></td>
         <td data-label="Last paid"><?= $p['lastPaid'] !== '' ? $e(formatDate($p['lastPaid'])) : '<span class="muted">never</span>' ?></td>
         <td data-label=""><?php if ($p['open'] !== null): ?><a class="btn ghost sm" href="<?= $e($self . '?id=' . (int) $p['open']['id']) ?>">Open <?= $e($p['open']['status']) ?></a>
-          <?php elseif ($canPay): ?><a class="btn sm" href="<?= $e($self . '?new=' . (int) $p['id']) ?>">Settle →</a><?php endif; ?></td>
+          <?php elseif ($canPay && $p['role'] === 'agent'): ?><a class="btn sm" href="<?= $e($self . '?new=' . (int) $p['id']) ?>">Settle →</a>
+          <?php elseif ($p['role'] !== 'agent'): ?><a class="btn ghost sm" href="/admin/shift.php" title="A counter or office account hands its cash over on Shift &amp; Cash">Shift &amp; Cash</a><?php endif; ?></td>
       </tr>
       <?php endforeach; ?>
       </tbody>

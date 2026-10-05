@@ -507,9 +507,14 @@ final class AgentSettlement
     }
 
     /**
-     * Who is waiting to be settled: every active agent with commission due
-     * (or cash in hand), how long since they were last paid, and whether a
-     * settlement is already in progress. Sorted longest-waiting first.
+     * Who is waiting to be settled: every agent with commission due, how long
+     * since they were last paid, and whether a settlement is already in
+     * progress - plus EVERY seller who holds ticket cash, agent or not. On
+     * live the big cash sits with the counter clerks and the office account
+     * (the people who took the money), not with agents, so a list of agents
+     * alone showed nobody holding anything. A non-agent row carries role !=
+     * 'agent' and commission 0: staff commission is not settled here.
+     * Sorted longest-waiting first.
      *
      * @return list<array<string, mixed>>
      */
@@ -517,8 +522,8 @@ final class AgentSettlement
     {
         try {
             $rows = Database::fetchAll(
-                "SELECT a.id, a.full_name, a.username,
-                        COALESCE(SUM(CASE WHEN l.account = 'commission' THEN l.amount END), 0) AS commission,
+                "SELECT a.id, a.full_name, a.username, a.role,
+                        COALESCE(SUM(CASE WHEN l.account = 'commission' AND a.role = 'agent' THEN l.amount END), 0) AS commission,
                         COALESCE(SUM(CASE WHEN l.account = 'cash' THEN l.amount END), 0) AS cash,
                         MAX(CASE WHEN l.entry_type = 'payout' THEN l.created_at END) AS last_payout,
                         MIN(CASE WHEN l.entry_type = 'commission' THEN l.created_at END) AS first_commission,
@@ -526,8 +531,7 @@ final class AgentSettlement
                         MIN(CASE WHEN l.entry_type = 'cash_due' THEN l.created_at END) AS first_cash
                    FROM admins a
                    JOIN agent_ledger l ON l.agent_admin_id = a.id
-                  WHERE a.role = 'agent'
-                  GROUP BY a.id, a.full_name, a.username
+                  GROUP BY a.id, a.full_name, a.username, a.role
                  HAVING commission > 0.009 OR cash > 0.009"
             );
         } catch (Throwable $e) {
@@ -549,6 +553,7 @@ final class AgentSettlement
             $out[] = [
                 'id'         => (int) $r['id'],
                 'name'       => (string) ($r['full_name'] ?: $r['username']),
+                'role'       => (string) $r['role'],
                 'code'       => AgentWallet::agentCodeLabel((int) $r['id']),
                 'commission' => $com,
                 'cash'       => max(0.0, $cash),
@@ -559,7 +564,7 @@ final class AgentSettlement
                 'open'       => $openBy[(int) $r['id']] ?? null,
             ];
         }
-        usort($out, static fn(array $x, array $y): int => [$y['days'], $y['commission']] <=> [$x['days'], $x['commission']]);
+        usort($out, static fn(array $x, array $y): int => [max($y['days'], $y['cashDays']), $y['commission'] + $y['cash']] <=> [max($x['days'], $x['cashDays']), $x['commission'] + $x['cash']]);
         return $out;
     }
 

@@ -34,7 +34,7 @@ final class AdminAlerts
 {
     /** rule => [label, what it watches, default on, [param => [label, default]]] */
     public const RULES = [
-        'cash_holding'   => ['Agent holding cash', 'An agent holds more ticket cash than the amount, for longer than the days.', true,
+        'cash_holding'   => ['Ticket cash held too long', 'An agent, a counter or the office account holds more ticket cash than the amount, for longer than the days.', true,
                              ['amount' => ['More than ₹', 50000], 'days' => ['for more than (days)', 3]]],
         'settlement_due' => ['Commission unpaid', 'An agent has been owed commission for longer than this.', true,
                              ['days' => ['Unpaid for more than (days)', 15]]],
@@ -206,9 +206,10 @@ final class AdminAlerts
                         '/admin/settlements.php?new=' . $p['id'], '⏰');
                 }
                 if ($on('cash_holding') && $p['cash'] > $num('cash_holding', 'amount') && $p['cashDays'] > $num('cash_holding', 'days')) {
-                    $add('cash_holding', 'cash:' . $p['id'] . ':' . $week, 'Holding ' . inr($p['cash']) . ' ticket cash · ' . $who,
-                        'No cash handed over for ' . $p['cashDays'] . ' days. Collect it or net it off in a settlement.',
-                        '/admin/agent-360.php?id=' . $p['id'], '💰');
+                    $isAgent = $p['role'] === 'agent';
+                    $add('cash_holding', 'cash:' . $p['id'] . ':' . $week, 'Holding ' . inr($p['cash']) . ' ticket cash · ' . $who . ($isAgent ? '' : ' [' . $p['role'] . ']'),
+                        'No cash handed over for ' . $p['cashDays'] . ' days. ' . ($isAgent ? 'Collect it or net it off in a settlement.' : 'Record the handover so the books show what is really outstanding.'),
+                        $isAgent ? '/admin/agent-360.php?id=' . $p['id'] : '/admin/settlements.php?tab=pending', '💰');
                 }
             }
         }
