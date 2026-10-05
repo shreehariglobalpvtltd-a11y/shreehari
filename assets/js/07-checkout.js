@@ -782,8 +782,22 @@ function renderCheckout() {
     var _q = window.SHG_QUICK || null;
     if (_q) {
       var firstName = $('#paxRows .pxName');
-      if (firstName && !firstName.value && _q.name) firstName.value = _q.name;
-      if (_q.phone && !$('#cPhone').value) $('#cPhone').value = _q.phone;
+      /* 5 Oct 2026 (owner: "seat page ma name number haleni arko page ma
+         aaudaina"): the name / mobile typed for THIS ticket on the seat page
+         (or the Quick card) must win over the signed-in account and the
+         remembered contact, which had already filled both boxes above - so
+         the typed passenger was silently replaced. Forced once per typed
+         value; coming back from the seat page without retyping never undoes
+         a correction made here on the checkout. */
+      var _sig = String(_q.name || '') + '|' + String(_q.phone || '');
+      var _force = _sig !== '|' && window._shgQuickApplied !== ((typeof Flow !== 'undefined' && Flow && Flow.draftId) || '') + '#' + _sig;
+      _sig = ((typeof Flow !== 'undefined' && Flow && Flow.draftId) || '') + '#' + _sig;   // a new sale (new draft) applies it afresh
+      window._shgQuickApplied = _sig;
+      if (firstName && _q.name && (_force || !firstName.value)) {
+        firstName.value = _q.name;
+        try { firstName.dispatchEvent(new Event('input', { bubbles: true })); } catch (e2) {}
+      }
+      if (_q.phone && (_force || !$('#cPhone').value)) $('#cPhone').value = String(_q.phone).replace(/[^0-9+]/g, '');
       var g0 = $('#paxRows .pxGender'), a0 = $('#paxRows .pxAge');
       if (g0 && !g0.value && _q.gender) g0.value = _q.gender;
       if (a0 && !a0.value && _q.age) a0.value = _q.age;
@@ -2109,10 +2123,10 @@ function renderStatus(id) {
   <div class="status-card tk2${conf ? ' confirm-success' : ''}" id="ticketCard" data-pnr="${esc(b.id)}">
     <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo.png?v=20261005l" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo.png?v=20261005m" alt="" loading="lazy" decoding="async">
         <div><b>${esc(CONFIG.company.name || 'S HARI GLOBAL PRIVATE LIMITED')}</b><small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
       </div>
-      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261005l" width="600" height="312" alt="" decoding="async">
+      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261005m" width="600" height="312" alt="" decoding="async">
     </div>
     <div class="premium-ticket-status">${pill2}${b.ticketNumber ? '<span>' + esc(b.ticketNumber) + '</span>' : ''}${b.agentCode ? '<span style="background:var(--orange-100,#fff2e0);color:var(--orange-800,#7a3d00);padding:2px 10px;border-radius:20px;font-size:12px;font-family:var(--f-code)">🏷️ ' + esc(b.agentCode) + '</span>' : ''}</div>
     ${(typeof routeOverviewSVG === 'function') ? routeOverviewSVG({ from: (isNepalPoint(r.from) ? r.from : (parseBP(b.boarding || '').name || r.from)), to: (isNepalPoint(r.to) ? r.to : (parseBP(b.drop || '').name || r.to)), compact: true }) : ''}

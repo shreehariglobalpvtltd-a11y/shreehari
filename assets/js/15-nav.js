@@ -532,7 +532,23 @@ function initNavApp(){
     if(!SN.routeCoords||!SN.routeManeuvers||!SN.routeManeuvers.length){card.classList.remove('show');return;}
     var remainKm=Math.max(0,SN.routeTotalKm-distAlongKm);
     var v=snSpeedKmh();
-    s('#snNcEta').textContent=snFmtTime(remainKm/v*3600);
+    /* 5 Oct 2026: time left from the routing engine's own per-step times, so this
+       card agrees with the route summary (it said 39 h where the summary said
+       20 h 22 m - a flat 40 km/h guess). The speed guess stays only for a route
+       whose steps carry no time (an offline-restored one). */
+    var mt=SN.routeManeuvers, remSec=-1;
+    if(mt._sec==null){ mt._sec=0; for(var q=0;q<mt.length;q++) mt._sec+=(+mt[q].time||0); }
+    if(mt._sec>0){
+      var done=0;
+      for(var k=0;k<mt.length;k++){
+        var st0=mt[k]._distKm||0, st1=(k+1<mt.length)?(mt[k+1]._distKm||0):SN.routeTotalKm;
+        if(st1<=distAlongKm){ done+=(+mt[k].time||0); continue; }
+        if(st1>st0&&distAlongKm>st0) done+=(+mt[k].time||0)*Math.min(1,(distAlongKm-st0)/(st1-st0));
+        break;
+      }
+      remSec=Math.max(0,mt._sec-done);
+    }
+    s('#snNcEta').textContent=snFmtTime(remSec>=0?remSec:remainKm/v*3600);
     s('#snNcDist').textContent=remainKm<1?Math.round(remainKm*1000)+' m':remainKm.toFixed(1)+' km';
     var mv=SN.routeManeuvers, roadName='';
     for(var i=mv.length-1;i>=0;i--){ if(mv[i]._distKm<=distAlongKm&&mv[i].street_names&&mv[i].street_names.length){ roadName=mv[i].street_names.join(' / '); break; } }
@@ -1407,7 +1423,9 @@ function initNavApp(){
     if(!SN._cityBusy&&(!c||now-c.t>20000&&haversineKm(lat,lng,c.lat,c.lng)>0.4)){
       SN._cityBusy=true;
       fetch('/api/nav-search.php?city='+lat.toFixed(5)+','+lng.toFixed(5),{credentials:'same-origin'})
-        .then(function(r){return r.json();}).then(function(j){ SN._city={name:j&&j.name,lat:lat,lng:lng,t:Date.now()}; })
+        .then(function(r){return r.json();}).then(function(j){ SN._city={name:j&&j.name,lat:lat,lng:lng,t:Date.now()};
+          /* show it now: a parked phone gets no further GPS tick to refresh the card */
+          var fc=s('#snFcCity'); if(fc&&j&&j.name) fc.textContent=j.name; })
         .catch(function(){ SN._city={name:null,lat:lat,lng:lng,t:Date.now()}; })
         .then(function(){ SN._cityBusy=false; });
     }

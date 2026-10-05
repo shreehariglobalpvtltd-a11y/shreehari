@@ -873,6 +873,7 @@
       return p.then(function (res) {
         if (res && res.counter && res.pnr) {
           CTR.lastPnr = res.pnr; CTR.lastAdminUrl = res.adminUrl || '';
+          CTR.justSold = res.pnr;   // the ticket screen takes the desk back to this bus's seat map by itself
           // Remember the departure for "Same bus · next ticket" (17 Sep 2026).
           // Flow.legs[0] is still intact here: submitBooking resets Flow only
           // after this promise hands the result back.
@@ -926,6 +927,13 @@
     var b = null; try { b = DB.bookings.find(function (x) { return x.id === id; }); } catch (e) {}
     var adminUrl = (b && b.counter && b.counter.adminUrl) || ('/admin/booking-view.php?pnr=' + encodeURIComponent(id));
     var L = CTR.last;
+    /* 5 Oct 2026 (owner: "ticket kati sakepachhi feri bus ko seat map ma
+       januparchha"): right after a sale the desk goes back to the SAME bus's
+       seat map by itself, a few seconds after the ticket shows (the picture
+       has downloaded by then). Any touch on the ticket screen keeps it open;
+       only for the ticket just sold, never for one opened later. */
+    if (CTR.justSold === id && L) { CTR.justSold = ''; armReturn(id); }
+    var ret = CTR.ret && CTR.ret.pnr === id;
     var el = document.createElement('div');
     el.id = 'ctrActions';
     /* Three ways on (1 Oct 2026, owner R3d: "provide 'Book another ticket'
@@ -934,7 +942,9 @@
        board to pick another bus, or a fresh search that keeps the from/to/
        date already set. The first two need a remembered sale (CTR.last,
        kept in sessionStorage so a reload does not lose them). */
-    el.innerHTML = (L ? '<a class="btn btn-orange" href="#/results" id="ctrSameBus">🚌 Same bus · next ticket</a>'
+    el.innerHTML = (ret ? '<div class="ctr-note" id="ctrRet" style="font-size:14px;font-weight:700;margin:0 0 10px">🚌 Seat map ma farkidai · back to the seat map in <b id="ctrRetN">'
+                        + Math.max(1, Math.ceil((CTR.ret.at - Date.now()) / 1000)) + '</b>s — <span style="font-weight:500">touch the screen to stay on this ticket</span></div>' : '')
+      + (L ? '<a class="btn btn-orange" href="#/results" id="ctrSameBus">🚌 Same bus · next ticket</a>'
                       + '<a class="btn btn-blue" href="#/results" id="ctrSameDate">📅 Same date · choose another bus</a>' : '')
       + '<a class="btn ' + (L ? 'btn-blue' : 'btn-orange') + '" href="#/" id="ctrSellAnother">🧾 Sell another · अर्को टिकट</a>'
       + '<a class="btn btn-blue" href="' + esc(adminUrl) + '">📋 Open in panel</a>'
@@ -946,6 +956,29 @@
     if (same) same.addEventListener('click', function (e) { e.preventDefault(); sameBus(true); });
     var sameDate = $q('#ctrSameDate');
     if (sameDate) sameDate.addEventListener('click', function (e) { e.preventDefault(); sameBus(false); });
+  }
+
+  function cancelReturn() {
+    CTR.ret = null;
+    if (CTR.retT) { clearInterval(CTR.retT); CTR.retT = null; }
+    var b = $q('#ctrRet'); if (b && b.parentNode) b.parentNode.removeChild(b);
+  }
+  function armReturn(id) {
+    cancelReturn();
+    CTR.ret = { pnr: id, at: Date.now() + 5000 };
+    CTR.retT = setInterval(function () {
+      var r = CTR.ret;
+      if (!r || location.hash !== '#/ticket/' + r.pnr) { cancelReturn(); return; }
+      var left = Math.ceil((r.at - Date.now()) / 1000), n = $q('#ctrRetN');
+      if (n) n.textContent = Math.max(0, left);
+      if (left <= 0) { cancelReturn(); sameBus(true); }
+    }, 250);
+    if (!document._ctrRetGuard) {
+      document._ctrRetGuard = true;
+      ['pointerdown', 'keydown', 'wheel', 'touchmove'].forEach(function (ev) {
+        document.addEventListener(ev, function () { if (CTR.ret) cancelReturn(); }, { passive: true, capture: true });
+      });
+    }
   }
 
   /* Put the remembered departure back on the search card, so "Change

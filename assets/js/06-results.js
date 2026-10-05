@@ -1499,6 +1499,30 @@ function seatQuickSave() {
   });
 }
 document.addEventListener('input', (e) => { const id = e.target && e.target.id; if (id === 'sqName' || id === 'sqPhone') seatQuickSave(); });
+/* 5 Oct 2026: browser autofill, paste and some phone keyboards never fire
+   `input`, so what was on screen was not what reached the checkout. Read the
+   boxes again at the moment Continue is pressed (capture = before the app's own
+   handler routes away). */
+document.addEventListener('change', (e) => { const id = e.target && e.target.id; if (id === 'sqName' || id === 'sqPhone') seatQuickSave(); });
+/* One passenger, one value: a name / mobile corrected on the CHECKOUT is written
+   back to the hand-off and the seat page's boxes, so going back and forward
+   never brings the old spelling back. (A desk sale has its own line.) */
+document.addEventListener('input', (e) => {
+  const el = e.target; if (!el || !el.closest || !el.closest('#view-checkout')) return;
+  if (typeof isCounterSale === 'function' && isCounterSale()) return;
+  const lead = $('#paxRows .pxName');
+  if (el !== lead && el.id !== 'cPhone') return;
+  const q = Object.assign({}, window.SHG_QUICK || {});
+  if (el === lead) { q.name = el.value.trim(); const s = $('#sqName'); if (s) s.value = q.name; }
+  else { q.phone = el.value.trim(); const p = $('#sqPhone'); if (p) p.value = q.phone; }
+  window.SHG_QUICK = q;
+  try { window._shgQuickApplied = ((Flow && Flow.draftId) || '') + '#' + String(q.name || '') + '|' + String(q.phone || ''); } catch (e2) {}
+});
+document.addEventListener('click', (e) => {
+  if (!e.target || !e.target.closest || !e.target.closest('#continueBtn')) return;
+  const box = $('#seatQuick');
+  if (box && !box.hidden && ($('#sqName').value.trim() || $('#sqPhone').value.trim())) seatQuickSave();
+}, true);
 document.addEventListener('click', (e) => {
   const b = e.target && e.target.closest && e.target.closest('#seatQuick [data-sqg]');
   if (b) { seatQuickGender(b.getAttribute('data-sqg')); seatQuickSave(); }

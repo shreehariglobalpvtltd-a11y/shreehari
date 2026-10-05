@@ -110,8 +110,11 @@ var MAP_CONFIG = {
     });
   }
 
+  /* 5 Oct 2026: a public geocoder that does not answer in 4 s counts as "no
+     results" - a slow Photon / Nominatim left the shimmer up for good. */
+  function capped(p){ return Promise.race([ p, new Promise(function(res){ setTimeout(function(){ res([]); }, 4000); }) ]); }
   function publicGeocode(q, limit){
-    return Promise.all([ photon(q,limit), nominatim(q,limit) ]).then(function(res){
+    return Promise.all([ capped(photon(q,limit)), capped(nominatim(q,limit)) ]).then(function(res){
       var merged = dedupe(res[0].concat(res[1]), limit);
       merged.forEach(function(m){                    // graft a Devanagari alias from a nearby OSM hit
         if(m.localName) return;
@@ -218,7 +221,11 @@ function createLocationSearchInput(inputEl, options){
 
   function place(){
     var r = inputEl.getBoundingClientRect();
-    dd.style.left = r.left + 'px'; dd.style.top = (r.bottom + 6) + 'px'; dd.style.width = r.width + 'px';
+    /* 5 Oct 2026: never narrower than a readable row - on a phone the field can
+       be ~100 px wide and the list was unreadable. Kept inside the screen. */
+    var w = Math.max(r.width, Math.min(window.innerWidth - 16, 300));
+    var left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
+    dd.style.left = left + 'px'; dd.style.top = (r.bottom + 6) + 'px'; dd.style.width = w + 'px';
     dd.style.maxHeight = Math.max(150, Math.min(360, window.innerHeight - r.bottom - 16)) + 'px';
   }
   /* shg-v59 — show/hide toggles a class so CSS can fade+slide the dropdown in
@@ -279,7 +286,8 @@ function createLocationSearchInput(inputEl, options){
   }
   function renderResults(list, provider){
     items = list; active = -1;
-    if(!list.length){ hide(); return; }
+    /* 5 Oct 2026: say so - the shimmer used to vanish (or hang) with no answer. */
+    if(!list.length){ dd.innerHTML = '<div class="locss-ft" style="padding:12px 13px;text-align:left">No place found — try the town name, or fewer words · ठाउँ भेटिएन</div>'; show(); return; }
     dd.innerHTML = list.map(function(s,i){ return rowHtml(s,i,false); }).join('')
       + (provider ? '<div class="locss-ft">'+esc(provider)+'</div>' : '');
     wireRows(); show();
@@ -295,7 +303,7 @@ function createLocationSearchInput(inputEl, options){
     window.mapGeocode(q, maxResults).then(function(res){
       if(mine!==seq || document.activeElement!==inputEl) return;
       renderResults((res && res.results) || [], (res && res.provider) || '');
-    }).catch(function(){});
+    }).catch(function(){ if(mine===seq) renderResults([], ''); });
   }
 
   inputEl.addEventListener('input', function(){
@@ -595,7 +603,7 @@ function loadTermsData(cb) {
   if (window.__shgTermsQueue) { window.__shgTermsQueue.push(cb); return; }
   window.__shgTermsQueue = [cb];
   var el = document.createElement('script');
-  el.src = '/assets/js/terms-data.js?v=20261005l';
+  el.src = '/assets/js/terms-data.js?v=20261005m';
   el.onload = function () {
     TERMS_DATA = window.TERMS_DATA || [];
     window.__shgTermsReady = true;

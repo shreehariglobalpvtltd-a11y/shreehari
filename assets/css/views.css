@@ -1889,7 +1889,12 @@ a,button,.btn,.nav a,.tab-btn,.pm-tab,.bt-pill,.tier-pill,.proof-tab,.trip-pill{
   backdrop-filter:blur(14px);border:1px solid var(--sl);border-radius:12px;padding:10px 16px;font-size:13px;
   box-shadow:0 10px 34px rgba(0,0,0,.5);opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;max-width:80vw;text-align:center}
 #view-nav .sn-toast.show{opacity:1}
-#view-nav .sn-me{width:40px;height:40px;position:relative}
+/* 5 Oct 2026: a map marker MUST stay position:absolute (MapLibre places it with
+   a transform from the map's top-left). `position:relative` here put "my
+   location", the office pin and the live bus into normal flow, so each was drawn
+   tens of pixels away from its real spot - the wrong side of the road at street
+   zoom. absolute is still a containing block for the pulse / cone inside. */
+#view-nav .sn-me{width:40px;height:40px;position:absolute}
 #view-nav .sn-me-pulse{position:absolute;left:50%;top:50%;width:20px;height:20px;border-radius:50%;
   transform:translate(-50%,-50%);animation:snPulse 1.8s ease-out infinite;pointer-events:none}
 @keyframes snPulse{0%{transform:translate(-50%,-50%) scale(1);opacity:.5}100%{transform:translate(-50%,-50%) scale(3);opacity:0}}
@@ -1931,7 +1936,15 @@ a,button,.btn,.nav a,.tab-btn,.pm-tab,.bt-pill,.tier-pill,.proof-tab,.trip-pill{
 @media(max-width:640px){#view-nav .sn-brand small{display:none}
   #view-nav .sn-hud{bottom:auto;top:132px;min-width:0;grid-template-columns:auto auto auto}
   #view-nav .sn-hud .big{grid-column:1/-1}
-  #view-nav .sn-ss button{padding:7px 9px;font-size:11.5px}}
+  #view-nav .sn-ss button{padding:7px 9px;font-size:11.5px}
+  /* 5 Oct 2026 phone top bar: the brand words left the search box 99 px wide
+     and the style tabs ran under the 📍 / ⚙️ buttons. */
+  #view-nav .sn-brand > div{display:none}
+  #view-nav .sn-brand{padding:9px 11px}
+  #view-nav .sn-search{min-width:0}
+  #view-nav .sn-ss{max-width:calc(100% - 60px - 62px);overflow-x:auto;scrollbar-width:none}
+  #view-nav .sn-ss::-webkit-scrollbar{display:none}
+  #view-nav .sn-ss button{flex:0 0 auto}}
 
 /* ====== [SECTION 4] FOCUS NAVIGATION MODE — Apple-Maps-style clean turn-by-turn.
    All hiding is purely CSS scoped to #view-nav.sn-focus so NOTHING is destroyed and
@@ -2869,7 +2882,7 @@ body.in-flow .credit-ribbon,body.in-flow #numStrip{display:none}
    [CSS] NAV 5 Sep 2026 — office marker, bus trail ring, no-WebGL
    fallback, lite mode, offline-badge fix, dock safe-area
 ================================================================ */
-#view-nav .sn-office-m{display:flex;flex-direction:column;align-items:center;pointer-events:auto;cursor:pointer;position:relative}
+#view-nav .sn-office-m{display:flex;flex-direction:column;align-items:center;pointer-events:auto;cursor:pointer;position:absolute}
 #view-nav .sn-office-ring{position:absolute;left:50%;top:14px;width:26px;height:26px;border-radius:50%;transform:translate(-50%,-50%);
   background:rgba(240,124,31,.35);animation:snOfficeRing 2.4s ease-out infinite;pointer-events:none}
 @keyframes snOfficeRing{0%{transform:translate(-50%,-50%) scale(.7);opacity:.9}100%{transform:translate(-50%,-50%) scale(2.6);opacity:0}}
@@ -2891,7 +2904,7 @@ body.in-flow .credit-ribbon,body.in-flow #numStrip{display:none}
 .sn-office-pop .op-btn{display:flex;align-items:center;justify-content:center;gap:5px;padding:9px 8px;border-radius:10px;border:1px solid #dfe6f0;background:#f6f8fc;color:#12264E;
   font-weight:700;font-size:12.5px;text-decoration:none;cursor:pointer;font-family:inherit;min-height:40px}
 .sn-office-pop .op-btn.op-dir{background:linear-gradient(135deg,#F07C1F,#ff9a3d);border-color:transparent;color:#fff}
-#view-nav .sn-bus-m{position:relative}
+#view-nav .sn-bus-m{position:absolute}
 #view-nav .sn-bus-m::before{content:'';position:absolute;left:50%;top:50%;width:30px;height:30px;border-radius:50%;transform:translate(-50%,-50%);
   background:rgba(255,122,26,.3);animation:snOfficeRing 2s ease-out infinite;pointer-events:none;z-index:-1}
 #view-nav.sn-lite .sn-bus-m::before,#view-nav.sn-lite .sn-office-ring,#view-nav.sn-lite .sn-me-pulse{animation:none;opacity:0}

@@ -131,8 +131,100 @@ try {
              'c1' => '%' . $like . '%', 'c2' => '%' . $like . '%']
         ));
     }
+    /* 3. "<thing> <town>" in either order, and plain words for a KIND of place
+          (5 Oct 2026): "surat station", "railway station surat", "vadodara
+          bus", "pokhara bus park", and "petrol" / "atm" / "medical" near the
+          rider all answered nothing - only a name that STARTS with the whole
+          text matched. The town is found by its exact name, then the other
+          words are matched (name or kind) inside a box around it: indexed on
+          lat/lng, 5-15 ms even for Delhi. */
+    $kindsFor = static function (string $w): array {
+        static $map = [
+            'bus' => ['bus_st'], 'busstand' => ['bus_st'], 'buspark' => ['bus_st'],
+            'station' => ['railway:station'], 'railway' => ['railway:station'], 'train' => ['railway:station'], 'rail' => ['railway:station'],
+            'hospital' => ['hospital'], 'clinic' => ['clinic', 'doctors'], 'doctor' => ['clinic', 'doctors'],
+            'medical' => ['pharmacy'], 'pharmacy' => ['pharmacy'], 'chemist' => ['pharmacy'], 'medicine' => ['pharmacy'],
+            'petrol' => ['fuel'], 'pump' => ['fuel'], 'fuel' => ['fuel'], 'diesel' => ['fuel'], 'cng' => ['fuel'],
+            'atm' => ['atm'], 'bank' => ['amenity:bank'], 'police' => ['police'], 'thana' => ['police'],
+            'hotel' => ['tourism:hotel', 'guest_house'], 'lodge' => ['tourism:hotel', 'guest_house'],
+            'food' => ['restaurant', 'fast_food'], 'restaurant' => ['restaurant'], 'dhaba' => ['restaurant', 'fast_food'], 'khana' => ['restaurant', 'fast_food'],
+            'temple' => ['place_of_worship'], 'mandir' => ['place_of_worship'], 'parking' => ['parking'], 'toilet' => ['toilets'],
+        ];
+        return $map[$w] ?? [];
+    };
+    $boxSearch = static function (float $cLat, float $cLng, float $half, array $words) use ($cols, $kindsFor): array {
+        $drop = ['near', 'in', 'at', 'the', 'ko', 'ka', 'ki', 'ma', 'me', 'stand', 'adda'];
+        if (in_array('bus', $words, true)) {
+            $drop[] = 'park';                                     // "bus park" (Nepal) = bus station
+        }
+        $words = array_values(array_filter($words, static fn ($w) => !in_array($w, $drop, true) && mb_strlen($w) >= 2));
+        if ($words === []) {
+            return [];
+        }
+        $cond = [];
+        $p = ['a1' => $cLat - $half, 'a2' => $cLat + $half, 'b1' => $cLng - $half, 'b2' => $cLng + $half];
+        foreach (array_slice($words, 0, 4) as $i => $w) {
+            $lk = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $w) . '%';
+            $or = ["name LIKE :n$i", "name_en LIKE :e$i"];
+            $p["n$i"] = $lk;
+            $p["e$i"] = $lk;
+            foreach ($kindsFor($w) as $j => $frag) {
+                $or[] = "kind LIKE :k{$i}_$j";
+                $p["k{$i}_$j"] = '%' . $frag . '%';
+            }
+            $cond[] = '(' . implode(' OR ', $or) . ')';
+        }
+        $rows = Database::fetchAll(
+            "SELECT $cols FROM nav_places WHERE lat BETWEEN :a1 AND :a2 AND lng BETWEEN :b1 AND :b2 AND " . implode(' AND ', $cond) . ' LIMIT 400',
+            $p
+        );
+        foreach ($rows as &$r) {
+            $r['_d'] = ($r['lat'] - $cLat) ** 2 + (($r['lng'] - $cLng) * 0.92) ** 2;
+        }
+        unset($r);
+        return $rows;
+    };
+    $words = array_values(array_filter(preg_split('/[\s,]+/u', mb_strtolower($q)) ?: []));
+    $fixed = [];
+    if (count($words) >= 2) {
+        for ($k = min(3, count($words) - 1); $k >= 1 && $fixed === []; $k--) {
+            foreach ([[array_slice($words, 0, $k), array_slice($words, $k)], [array_slice($words, -$k), array_slice($words, 0, -$k)]] as [$tw, $rest]) {
+                $t = implode(' ', $tw);
+                $town = Database::fetch(
+                    "SELECT lat, lng, kind FROM (
+                        (SELECT lat + 0 AS lat, lng + 0 AS lng, kind FROM nav_places WHERE name = :a AND kind IN ('place:city','place:town','place:suburb','place:village') LIMIT 30)
+                        UNION ALL
+                        (SELECT lat + 0 AS lat, lng + 0 AS lng, kind FROM nav_places WHERE name_en = :b AND kind IN ('place:city','place:town','place:suburb','place:village') LIMIT 30)
+                     ) t ORDER BY FIELD(kind, 'place:city', 'place:town', 'place:suburb', 'place:village') LIMIT 1",
+                    ['a' => $t, 'b' => $t]
+                );
+                if ($town === null) {
+                    continue;
+                }
+                $half = in_array($town['kind'], ['place:city', 'place:town'], true) ? 0.2 : 0.08;
+                $hits = $boxSearch((float) $town['lat'], (float) $town['lng'], $half, $rest);
+                if ($hits !== []) {
+                    foreach ($hits as &$h) {                       // the town's own "Surat Railway Station" before a suburb halt
+                        $nm = mb_strtolower((string) $h['name'] . ' ' . (string) ($h['name_en'] ?? ''));
+                        $h['_t'] = str_contains($nm, $t) ? -2 : -1;
+                    }
+                    unset($h);
+                    $fixed = $hits;
+                    break;
+                }
+            }
+        }
+    }
+    if ($fixed === [] && $near && array_filter($words, static fn ($w) => $kindsFor($w) !== []) !== []) {
+        $fixed = $boxSearch((float) $lat, (float) $lng, 0.15, $words);     // "petrol", "atm", "bus stand" near me
+        foreach ($fixed as &$h) {
+            $h['_t'] = 1;
+        }
+        unset($h);
+    }
+
     $ql = mb_strtolower($q);
-    $wordRe = '/(^|[^\p{L}\p{M}\p{N}])' . preg_quote($ql, '/') . '($|[^\p{L}\p{M}\p{N}])/u';
+    $wordRe ='/(^|[^\p{L}\p{M}\p{N}])' . preg_quote($ql, '/') . '($|[^\p{L}\p{M}\p{N}])/u';
     $tier = static function (array $r) use ($ql, $wordRe, $near, $box, $d2): int {
         $names = [mb_strtolower((string) $r['name']), mb_strtolower((string) ($r['name_en'] ?? ''))];
         $exact = in_array($ql, $names, true);
@@ -152,6 +244,7 @@ try {
         $r['_d'] = $d2($r);
     }
     unset($r);
+    $rows = array_merge($fixed, $rows);
     usort($rows, static fn (array $a, array $b): int => [$a['_t'], $a['_d']] <=> [$b['_t'], $b['_d']]);
     $seen = [];
     foreach ($rows as $r) {

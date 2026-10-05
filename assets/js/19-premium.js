@@ -143,9 +143,9 @@
   /* Vibration patterns. Android Chrome only — iOS Safari has no vibrate
      API at all, and calling it there is a silent no-op, not an error. */
   var BUZZ = {
-    tap: 5,
-    select: 9,
-    deselect: 6,
+    tap: 12,          /* 5 Oct 2026: 5 ms could not be felt on most phones */
+    select: 18,
+    deselect: 12,
     notify: [8, 30, 8],
     error: [26, 40, 26],
     success: [10, 34, 16],
@@ -211,6 +211,25 @@
   window.shgHaptic = function (kind) {
     Feel.buzz(kind === 'tap' ? 'tap' : kind);
   };
+
+  /* 5 Oct 2026 (owner: "har chiz touch garda halka vibration, kei setting
+     garnai naparos"): one light buzz for EVERY touch of something tappable,
+     not only the handful of call sites that asked for one. On by default
+     (read() above); the menu's Vibration switch still turns it off. Touch
+     only - a mouse has nothing to buzz - and never for a disabled control. */
+  var TAPPABLE = 'button,a[href],[role="button"],[role="tab"],[role="option"],[role="menuitem"],summary,select,label,'
+    + 'input[type="checkbox"],input[type="radio"],input[type="submit"],input[type="button"],'
+    + '.btn,.seat,.chip,.card[href],[onclick],[data-nav],[data-lang],[data-snstyle]';
+  var lastTapBuzz = 0;
+  document.addEventListener('pointerdown', function (e) {
+    if (e.pointerType === 'mouse') return;
+    var t = e.target && e.target.closest ? e.target.closest(TAPPABLE) : null;
+    if (!t || t.disabled || t.getAttribute('aria-disabled') === 'true') return;
+    var now = Date.now();
+    if (now - lastTapBuzz < 70) return;
+    lastTapBuzz = now;
+    Feel.buzz('tap');
+  }, { passive: true, capture: true });
 
   /* The AudioContext can only be built once the browser has seen a real
      gesture. Building it on the FIRST one (rather than on the first sound)
