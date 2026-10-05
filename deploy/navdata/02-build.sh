@@ -8,7 +8,10 @@
 #
 #   systemd-run --unit=shg-nav-build --collect -p CPUQuota=100% -p Nice=19 \
 #     -p IOSchedulingClass=idle -p MemoryHigh=4500M -p MemoryMax=5500M \
-#     -p OOMScoreAdjust=900 bash -c 'bash 02-build.sh tiles > /srv/shg-nav/log/02.log 2>&1'
+#     -p MemorySwapMax=2G -p OOMScoreAdjust=900 bash -c 'bash 02-build.sh chunks > /srv/shg-nav/log/02.log 2>&1'
+#
+# MemorySwapMax matters: without it a hungry step (osmium extract, 5 Oct) filled
+# all 10 GB of the box's swap instead of being stopped inside its own unit.
 #
 # Needs step 1 (01-fetch-extract.sh) -> $PBF + the region's .poly files in $SRC.
 # Region = all of India + Nepal (since 5 Oct 2026; was Gujarat + Nepalgunj).
@@ -90,22 +93,42 @@ chunks() {
   python3 "$BIN/navcover.py" "$SRC"/*.poly > coverage.json
   python3 "$BIN/navchunks.py" coverage.json 6 > chunks/list.tsv
   log "chunks: $(wc -l < chunks/list.tsv)"
-  # cut the extracts, 10 per osmium pass
+  # Cut the extracts in two steps. osmium's smart strategy keeps id sets per
+  # extract: 10 extracts in one pass over the whole region took 14 GB (5 Oct
+  # 2026). So: the region -> one strip per chunk column (2 per pass), then
+  # each strip -> its chunks (small file, one pass).
   python3 - "$WORK/chunks" <<'PY'
 import json, os, sys
 d = sys.argv[1]
 rows = [l.split('\t') for l in open(os.path.join(d, 'list.tsv')).read().split('\n') if l.strip()]
 todo = [r for r in rows if not os.path.exists(os.path.join(d, r[0] + '.done')) and not os.path.exists(os.path.join(d, r[0] + '.osm.pbf'))]
-for i in range(0, len(todo), 10):
+cols = {}
+for r in todo:
+    cols.setdefault(r[0].split('_')[1], []).append(r)
+strips = []
+for x, rs in sorted(cols.items()):
+    box = [float(rs[0][1]), min(float(r[2]) for r in rs), float(rs[0][3]), max(float(r[4]) for r in rs)]
+    strips.append(('strip_' + x, box, rs))
+for i in range(0, len(strips), 2):
+    json.dump({'directory': d, 'extracts': [{'output': s[0] + '.osm.pbf', 'output_format': 'pbf', 'bbox': s[1]}
+               for s in strips[i:i + 2]]}, open(os.path.join(d, 'a-strips-%d.json' % (i // 2)), 'w'))
+for name, box, rs in strips:
     json.dump({'directory': d, 'extracts': [{'output': r[0] + '.osm.pbf', 'output_format': 'pbf',
-               'bbox': [float(r[1]), float(r[2]), float(r[3]), float(r[4])]} for r in todo[i:i + 10]]},
-              open(os.path.join(d, 'extract-%d.json' % (i // 10)), 'w'))
+               'bbox': [float(r[1]), float(r[2]), float(r[3]), float(r[4])]} for r in rs]},
+              open(os.path.join(d, 'b-' + name + '.json'), 'w'))
 PY
-  for cfg in chunks/extract-*.json; do
+  for cfg in chunks/a-strips-*.json; do
     [ -e "$cfg" ] || continue
-    log "osmium extract $cfg"
+    log "osmium extract $cfg (region -> strips)"
     osmium extract -c "$cfg" -s smart --overwrite "$PBF"
     rm -f "$cfg"
+  done
+  for cfg in chunks/b-strip_*.json; do
+    [ -e "$cfg" ] || continue
+    st="chunks/$(basename "$cfg" .json | sed 's/^b-//').osm.pbf"
+    log "osmium extract $cfg ($st -> chunks)"
+    osmium extract -c "$cfg" -s smart --overwrite "$st"
+    rm -f "$cfg" "$st"
   done
   while IFS=$'\t' read -r name w s e n; do
     [ -e "chunks/$name.done" ] && continue
