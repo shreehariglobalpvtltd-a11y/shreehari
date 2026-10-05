@@ -65,6 +65,9 @@ parse_str((string) parse_url($url, PHP_URL_QUERY), $q);
 check('the minted link verifies', ReportChart::verify((string) $q['d'], (int) $q['e'], (string) $q['k']));
 check('another date is refused', !ReportChart::verify(date('Y-m-d', strtotime('-1 day')), (int) $q['e'], (string) $q['k']));
 check('an expired link is refused', !ReportChart::verify($today, time() - 1, (string) $q['k']));
+// 5 Oct 2026: OfficeReport mints 6 h links; a 1 h ceiling 403'd them all.
+parse_str((string) parse_url(ReportChart::url($today, 6 * 3600), PHP_URL_QUERY), $q6);
+check('the office report\'s 6 h link verifies', ReportChart::verify((string) $q6['d'], (int) $q6['e'], (string) $q6['k']));
 $png = ReportChart::png($today);
 $sz  = getimagesizefromstring($png);
 check('a real 900 x 560 PNG', str_starts_with($png, "\x89PNG") && is_array($sz) && $sz[0] === 900 && $sz[1] === 560, json_encode($sz));

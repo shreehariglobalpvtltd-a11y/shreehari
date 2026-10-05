@@ -1273,9 +1273,34 @@ final class QuickTicket
            make a Cloud API failure read as "Twilio is refusing the account". */
         $pause = $driver === 'twilio' ? Notify::twilioPause() : null;
 
+        /* 5 Oct 2026: since 3 Oct the ticket really goes out on AiSensy (the
+           approved template, recorded in wa_ticket_queue / message_logs) while
+           the Meta number above refuses everything - so the desk never saw
+           "ticket sent on WhatsApp" for a ticket that had in fact gone. */
+        $sent = $hit !== null && !empty($hit['ok']);
+        $bid  = (int) ($booking['id'] ?? 0);
+        if (!$sent && $bid > 0) {
+            try {
+                $sent = Database::exists(
+                    "SELECT 1 FROM message_logs WHERE booking_id = :b AND provider = 'aisensy' AND status = 'sent'",
+                    ['b' => $bid]
+                ) || Database::exists(
+                    "SELECT 1 FROM wa_ticket_queue WHERE booking_id = :b AND role = 'customer' AND status IN ('sent','delivered','read')",
+                    ['b' => $bid]
+                );
+                if ($sent) {
+                    $driver = 'aisensy';
+                    $hit = ($hit ?? []) + ['reason' => ''];
+                    $hit['reason'] = '';
+                }
+            } catch (Throwable $e) {
+                // wa_ticket_queue missing on an older install - the Meta answer stands
+            }
+        }
+
         return [
             'attempted'   => $hit !== null,
-            'sent'        => $hit !== null && !empty($hit['ok']),
+            'sent'        => $sent,
             'driver'      => $driver,
             'configured'  => $configured,
             'to'          => $to !== '' ? '+' . $to : '',

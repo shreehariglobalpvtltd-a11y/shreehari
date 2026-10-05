@@ -175,6 +175,24 @@ const UNREACHABLE_SQL = "(m.error LIKE '%(code 63024)%' OR m.error LIKE '%(code 
                          OR m.error LIKE '%(code 21211)%' OR m.error LIKE '%(code 21614)%'
                          OR m.error LIKE '%(code 131026)%')";
 
+/* 5 Oct 2026: a ticket the customer already HAS is not "failed". Since 3 Oct
+   the ticket goes out on AiSensy (message_logs provider=aisensy, and the
+   "hi" queue wa_ticket_queue), while the Meta row for the same booking still
+   reads failed (131042). Without this every such booking was re-sent up to
+   six times - 33 dead resends on 5 Oct alone, and now that a resend goes via
+   AiSensy too, each would be a duplicate ticket on the passenger's phone. */
+$hasQueue = (int) Database::scalar(
+    "SELECT COUNT(*) FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wa_ticket_queue'",
+    [], 0
+) > 0;
+$alreadyHasTicket = " AND NOT EXISTS (SELECT 1 FROM message_logs a
+                                       WHERE a.booking_id = b.id AND a.provider = 'aisensy'
+                                         AND a.status IN ('sent','delivered','read'))"
+    . ($hasQueue ? " AND NOT EXISTS (SELECT 1 FROM wa_ticket_queue q
+                                      WHERE q.booking_id = b.id AND q.role IN ('customer','alt')
+                                        AND q.status IN ('sent','delivered','read'))" : '');
+
 $due = Database::fetchAll(
     "SELECT b.id, b.pnr, b.contact_phone,
             (SELECT COUNT(*) FROM message_logs t
@@ -187,7 +205,7 @@ $due = Database::fetchAll(
                      ORDER BY m2.id DESC LIMIT 1)
       WHERE b.status = 'confirmed'
         AND m.status = 'failed'
-        AND NOT " . UNREACHABLE_SQL . "
+        AND NOT " . UNREACHABLE_SQL . $alreadyHasTicket . "
         AND EXISTS (SELECT 1 FROM booking_legs bl
                      WHERE bl.booking_id = b.id AND bl.travel_date >= CURDATE())
       HAVING tries < :max
@@ -251,7 +269,7 @@ $exhausted = (int) Database::scalar(
                      ORDER BY m2.id DESC LIMIT 1)
       WHERE b.status = 'confirmed'
         AND m.status = 'failed'
-        AND NOT " . UNREACHABLE_SQL . "
+        AND NOT " . UNREACHABLE_SQL . $alreadyHasTicket . "
         AND EXISTS (SELECT 1 FROM booking_legs bl
                      WHERE bl.booking_id = b.id AND bl.travel_date >= CURDATE())
         AND (SELECT COUNT(*) FROM message_logs t

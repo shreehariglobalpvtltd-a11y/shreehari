@@ -544,7 +544,9 @@ if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['
             // Who re-sent what, and whether it went out (5 Sep 2026): the
             // resend used to leave no trace anywhere.
             $sendStatus = $r['ok'] ? 'sent' : ($waManualLink !== '' ? 'skipped' : 'failed');
-            bv_log_message((int) $b['id'], (string) $b['contact_phone'], $sendStatus, $waManualLink !== '' ? 'manual' : 'twilio', $r['ok'] ? '' : (string) $r['detail']);
+            if (($r['provider'] ?? '') !== 'aisensy') {   // AiSensy already wrote its own row
+                bv_log_message((int) $b['id'], (string) $b['contact_phone'], $sendStatus, $waManualLink !== '' ? 'manual' : 'twilio', $r['ok'] ? '' : (string) $r['detail']);
+            }
             Logger::audit('booking.resend_wa', 'booking', $pnr, null, ['status' => $sendStatus, 'to' => (string) $b['contact_phone']],
                 'Ticket resend on WhatsApp by admin #' . $admin['id']);
         } catch (Throwable $e) {

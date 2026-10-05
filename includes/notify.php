@@ -902,6 +902,24 @@ final class Notify
         if (self::usablePhone($booking['contact_phone'] ?? '') === '') {
             return ['ok' => false, 'detail' => 'This booking has no usable contact phone number on file.'];
         }
+        // 5 Oct 2026: the approved AiSensy ticket template first — the Meta
+        // number below has been refusing everything (131042) while the desk
+        // was told "re-sent". Falls through to the old path if AiSensy is off
+        // or refuses.
+        try {
+            if (!class_exists('AiSensyAPI') && is_file(ROOT_PATH . '/whatsapp/aisensy.php')) {
+                require_once ROOT_PATH . '/whatsapp/aisensy.php';
+            }
+            if (class_exists('AiSensyAPI')) {
+                $ais = AiSensyAPI::resendTicket($booking);
+                if ($ais['ok']) {
+                    return ['ok' => true, 'provider' => 'aisensy',
+                        'detail' => 'Ticket re-sent to +' . $ais['to'] . ' on WhatsApp (ticket photo, approved template).'];
+                }
+            }
+        } catch (Throwable $e) {
+            Logger::warning('AiSensy resend failed', ['pnr' => $pnr, 'err' => $e->getMessage()], 'whatsapp');
+        }
         // PNG first (5 Sep 2026): the image opens right in WhatsApp — no PDF
         // viewer needed. The PDF stays one line below for printing.
         $ticketUrl = Ticket::imageUrl($pnr);      // carries the §25 download key
@@ -1598,7 +1616,12 @@ final class Notify
         $msg = '✅ ' . Settings::getString('company_name', APP_NAME)
              . ' SMS test. If you can read this, your automatic ticket SMS is working.';
 
-        $res = self::smsSend($number, $msg);
+        self::$smsForce = true;
+        try {
+            $res = self::smsSend($number, $msg);
+        } finally {
+            self::$smsForce = false;
+        }
         self::logMessage('sms', $number, $msg, $res['ok'] ? 'sent' : 'failed', [
             'provider' => $res['provider'] ?? 'twilio', 'sid' => $res['sid'], 'error' => $res['ok'] ? null : $res['error'],
         ]);
@@ -1660,11 +1683,33 @@ final class Notify
             'error' => 'Brevo SMS: ' . mb_substr($err !== '' ? $err : (string) ($j['message'] ?? ('HTTP ' . $http)), 0, 200)];
     }
 
+    /** kv key of the Brevo SMS account breaker (5 Oct 2026). */
+    private const BREVO_SMS_PAUSE_KEY = 'notify.brevo_sms_pause';
+    /** smsTest() sets this so the admin test probes Brevo even while paused. */
+    private static bool $smsForce = false;
+
     private static function smsSend(string $toDigits, string $message): array
     {
         $brevo = self::brevoKey();
         if ($brevo !== '' && Settings::getString('sms_driver', 'brevo') !== 'twilio') {
-            return self::brevoSms($brevo, $toDigits, $message);
+            /* 5 Oct 2026: an ACCOUNT-level Brevo refusal (no SMS add-on / no
+               credits / IP not authorised / bad key) fails every number the
+               same way - 22 in one day, each a blocking HTTP call inside the
+               counter's Confirm. Pause an hour after one, then probe again.
+               The admin "Send test SMS" (smsTest) always tries for real. */
+            $p = self::kvGet(self::BREVO_SMS_PAUSE_KEY);
+            if (is_array($p) && (int) ($p['until'] ?? 0) > time() && !self::$smsForce) {
+                return ['ok' => false, 'status' => 0, 'sid' => '', 'code' => 0, 'provider' => 'brevo',
+                    'error' => (string) ($p['error'] ?? 'Brevo SMS paused') . ' (paused until ' . date('H:i', (int) $p['until']) . ')'];
+            }
+            $res = self::brevoSms($brevo, $toDigits, $message);
+            if (!$res['ok'] && ($res['status'] === 401 || $res['status'] === 402 || $res['status'] === 403
+                || preg_match('/addon|credit|unrecognised IP|unauthori[sz]ed|key not found/i', $res['error']) === 1)) {
+                self::kvSet(self::BREVO_SMS_PAUSE_KEY, ['until' => time() + 3600, 'error' => mb_substr($res['error'], 0, 160)]);
+            } elseif ($res['ok'] && is_array($p)) {
+                self::kvSet(self::BREVO_SMS_PAUSE_KEY, ['until' => 0, 'error' => '']);
+            }
+            return $res;
         }
 
         $sid   = Settings::getString('twilio_account_sid', '');

@@ -567,6 +567,72 @@ final class AiSensyAPI
         }
     }
 
+    /**
+     * Staff "Resend ticket" and the retry cron (5 Oct 2026). Both used to go
+     * out only on the Meta number, which has refused every message since the
+     * WABA payment problem (131042) - 44 silent failures in one day while
+     * the desk believed the ticket had gone. The approved AiSensy templates
+     * reach any number, so they go first; no once-per-PNR limit here because
+     * a resend is a deliberate second copy.
+     *
+     * @return array{ok: bool, detail: string, wamid: string, to: string}
+     */
+    public static function resendTicket(array $booking): array
+    {
+        $out = ['ok' => false, 'detail' => '', 'wamid' => '', 'to' => ''];
+        try {
+            if (!self::enabled() || self::mode() === 'off') {
+                $out['detail'] = 'AiSensy is off';
+                return $out;
+            }
+            $bid = (int) ($booking['id'] ?? 0);
+            $pnr = (string) ($booking['pnr'] ?? '');
+            $number = class_exists('Notify') ? Notify::whatsappNumberFor($booking) : '';
+            $to = self::normalizePhone($number !== '' ? $number : (string) ($booking['contact_phone'] ?? ''));
+            if ($bid <= 0 || $pnr === '' || $to === '') {
+                $out['detail'] = 'no usable phone';
+                return $out;
+            }
+            $out['to'] = $to;
+            $f = self::bookingFacts($bid);
+            $vars = [$f['name'] !== '' ? $f['name'] : 'Passenger', $f['from'] ?: '-', $f['to'] ?: '-', $f['date'] ?: '-', $f['seats'] ?: '-', $pnr];
+            $link = '';
+            try {
+                if (!class_exists('Ticket') && defined('INCLUDE_PATH') && is_file(INCLUDE_PATH . '/ticket.php')) {
+                    require_once INCLUDE_PATH . '/ticket.php';
+                }
+                $link = class_exists('Ticket') ? (string) Ticket::imageUrl($pnr) : '';
+            } catch (Throwable $ignored) {
+                $link = '';
+            }
+            $r = ['success' => false, 'message_id' => '', 'error' => ''];
+            $how = '';
+            if ($link !== '') {
+                $r = self::sendMessage($to, self::tpl('aisensy_tpl_ticket_image', self::TPL_TICKET_IMAGE), $vars, $link);
+                $how = 'image template';
+            }
+            if (!$r['success']) {
+                $r = self::sendTicketConfirmation($to, ...$vars);
+                $how = 'template';
+            }
+            if (class_exists('Notify')) {
+                Notify::logOutbound($to, 'AiSensy ticket resend ' . $pnr . ' (' . $how . ')', $r['success'] ? 'sent' : 'failed', [
+                    'provider'  => 'aisensy',
+                    'bookingId' => $bid,
+                    'sid'       => (string) $r['message_id'],
+                    'purpose'   => 'ticket_resend',
+                    'error'     => $r['success'] ? null : mb_substr((string) $r['error'], 0, 250),
+                ]);
+            }
+            $out['ok']     = (bool) $r['success'];
+            $out['wamid']  = (string) $r['message_id'];
+            $out['detail'] = $r['success'] ? $how : (string) $r['error'];
+        } catch (Throwable $e) {
+            $out['detail'] = $e->getMessage();
+        }
+        return $out;
+    }
+
     /** Public view of bookingFacts() for includes/waqueue.php. */
     public static function facts(int $bid): array
     {

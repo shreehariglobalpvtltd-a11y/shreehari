@@ -112,7 +112,10 @@ final class ReportChart
 
     public static function verify(string $end, int $exp, string $sig): bool
     {
-        if (!Security::isValidDate($end) || $exp < time() || $exp > time() + 3600 || $sig === '') {
+        // Ceiling must cover the longest link we mint: OfficeReport asks for
+        // 6 h, and the old 1 h ceiling 403'd every office chart since 2 Oct
+        // (WhatsApp "Media upload error ... 403"). The HMAC still binds exp.
+        if (!Security::isValidDate($end) || $exp < time() || $exp > time() + 86400 || $sig === '') {
             return false;
         }
         return hash_equals(self::sign($end, $exp), $sig);
