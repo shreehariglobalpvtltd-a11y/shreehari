@@ -94,9 +94,9 @@ chunks() {
   python3 "$BIN/navchunks.py" coverage.json 6 > chunks/list.tsv
   log "chunks: $(wc -l < chunks/list.tsv)"
   # Cut the extracts in two steps. osmium's smart strategy keeps id sets per
-  # extract: 10 extracts in one pass over the whole region took 14 GB (5 Oct
-  # 2026). So: the region -> one strip per chunk column (2 per pass), then
-  # each strip -> its chunks (small file, one pass).
+  # extract (~3.5 GB of id sets each, whatever the file size): 10 in one pass
+  # took 14 GB, 2 took 7 GB (5 Oct 2026). So ONE extract per pass: the region
+  # -> one strip per chunk column, then each strip (small file, quick) -> its chunks.
   python3 - "$WORK/chunks" <<'PY'
 import json, os, sys
 d = sys.argv[1]
@@ -109,15 +109,16 @@ strips = []
 for x, rs in sorted(cols.items()):
     box = [float(rs[0][1]), min(float(r[2]) for r in rs), float(rs[0][3]), max(float(r[4]) for r in rs)]
     strips.append(('strip_' + x, box, rs))
-for i in range(0, len(strips), 2):
-    json.dump({'directory': d, 'extracts': [{'output': s[0] + '.osm.pbf', 'output_format': 'pbf', 'bbox': s[1]}
-               for s in strips[i:i + 2]]}, open(os.path.join(d, 'a-strips-%d.json' % (i // 2)), 'w'))
+for s in strips:
+    json.dump({'directory': d, 'extracts': [{'output': s[0] + '.osm.pbf', 'output_format': 'pbf', 'bbox': s[1]}]},
+              open(os.path.join(d, 'a-' + s[0] + '.json'), 'w'))
 for name, box, rs in strips:
-    json.dump({'directory': d, 'extracts': [{'output': r[0] + '.osm.pbf', 'output_format': 'pbf',
-               'bbox': [float(r[1]), float(r[2]), float(r[3]), float(r[4])]} for r in rs]},
-              open(os.path.join(d, 'b-' + name + '.json'), 'w'))
+    for j, r in enumerate(rs):
+        json.dump({'directory': d, 'extracts': [{'output': r[0] + '.osm.pbf', 'output_format': 'pbf',
+                   'bbox': [float(r[1]), float(r[2]), float(r[3]), float(r[4])]}]},
+                  open(os.path.join(d, 'b-%s-%d.json' % (name, j)), 'w'))
 PY
-  for cfg in chunks/a-strips-*.json; do
+  for cfg in chunks/a-strip_*.json; do
     [ -e "$cfg" ] || continue
     log "osmium extract $cfg (region -> strips)"
     osmium extract -c "$cfg" -s smart --overwrite "$PBF"
@@ -125,11 +126,12 @@ PY
   done
   for cfg in chunks/b-strip_*.json; do
     [ -e "$cfg" ] || continue
-    st="chunks/$(basename "$cfg" .json | sed 's/^b-//').osm.pbf"
-    log "osmium extract $cfg ($st -> chunks)"
+    st="chunks/$(basename "$cfg" .json | sed -e 's/^b-//' -e 's/-[0-9]*$//').osm.pbf"
+    log "osmium extract $cfg ($st -> chunk)"
     osmium extract -c "$cfg" -s smart --overwrite "$st"
-    rm -f "$cfg" "$st"
+    rm -f "$cfg"
   done
+  rm -f chunks/strip_*.osm.pbf
   while IFS=$'\t' read -r name w s e n; do
     [ -e "chunks/$name.done" ] && continue
     [ -s "chunks/$name.osm.pbf" ] || { echo "missing chunks/$name.osm.pbf"; exit 1; }
