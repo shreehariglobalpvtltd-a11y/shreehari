@@ -1851,11 +1851,28 @@ document.addEventListener('click', function (e) {
         toast('⚠️ कृपया नाम र सन्देश लेख्नुहोस् · कृपया नाम और संदेश लिखें · Please enter name & message');
         return;
       }
-      DB.messages.unshift({ name: n.value.trim(), phone: digits(p ? p.value.trim() : ''), topic: 'SOS Complaint', msg: m.value.trim() + (bid ? ' [Booking: ' + bid + ']' : ''), at: Date.now() });
-      persist('messages');
-      closeModal();
-      try { SFX.success(); } catch (e) {}
-      toast('✅ Complaint filed — हामी चाँडै सम्पर्क गर्नेछौं · हम जल्द संपर्क करेंगे · we will contact you soon');
+      /* 5 Oct 2026: the complaint used to stay in this browser only; it is now a
+         Help Desk ticket (HD-…) the office sees at once. */
+      var ph = digits(p ? p.value.trim() : '');
+      if (ph.length < 10) {
+        try { SFX.error(); } catch (e) {}
+        toast('⚠️ १० अङ्कको मोबाइल नम्बर लेख्नुहोस् · 10 अंकों का मोबाइल नंबर लिखें · Enter a 10-digit mobile');
+        return;
+      }
+      send.disabled = true;
+      shgApi.post('/helpdesk.php', { action: 'open', name: n.value.trim(), phone: ph, category: '', via: 'chat',
+        message: 'SOS: ' + m.value.trim(), pnr: bid || '' })
+        .then(function (d) {
+          closeModal();
+          try { SFX.success(); } catch (e) {}
+          var ref = d && d.ref ? String(d.ref).replace(/[^A-Z0-9-]/gi, '') : '';
+          toast('✅ गुनासो दर्ता भयो' + (ref ? ' · नम्बर ' + ref : '') + ' — कार्यालयले छिट्टै सम्पर्क गर्नेछ · Complaint filed' + (ref ? ' (' + ref + ')' : ''));
+        })
+        .catch(function (err) {
+          send.disabled = false;
+          try { SFX.error(); } catch (e) {}
+          toast('⚠️ ' + ((err && err.message) || 'पठाउन सकिएन — कृपया +91 91048 01507 मा फोन गर्नुहोस्'));
+        });
     };
   }
 

@@ -110,6 +110,11 @@ $boot = [
    same list the server ticket uses, instead of four numbers typed into JS. */
 $boot['waHi'] = preg_replace('/\D+/', '', Settings::getString('aisensy_wa_number', '919157001507')) ?: '919157001507';   // "hi" for the free WhatsApp ticket
 $boot['npr'] = Settings::getFloat('npr_per_inr', defined('NPR_PER_INR') ? (float) NPR_PER_INR : 1.6);   // the one NPR rate the app estimates with
+// 5 Oct 2026: the Nepalgunj office line on the home banner (Company details -> Nepal phone).
+$boot['npOffice'] = [
+    'place' => trim((string) preg_replace('/,?\s*Nepalgunj$/i', '', Settings::getString('nepal_office', 'Puspalal Chowk'))) ?: 'Puspalal Chowk',
+    'phone' => trim(Settings::getString('nepal_phone', '')),
+];
 try {
     $boot['help'] = Settings::helpContacts(Settings::companyFor(null, null), 4);
 } catch (Throwable $e) {

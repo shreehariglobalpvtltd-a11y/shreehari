@@ -569,8 +569,8 @@ footer .f-ceo { background: rgba(255, 255, 255, .06) !important; border-color: r
 .th-ic { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); font-size: 13px; }
 .th-l { font: 600 10.5px/1.2 var(--font-sans, sans-serif); color: #c7d6ee; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .th-n { font: 800 12.5px/1.25 var(--font-sans, sans-serif); color: #fff; white-space: nowrap; font-variant-numeric: tabular-nums; }
-@media (min-width: 760px) {
-  #view-home > #topHero { grid-template-columns: minmax(250px, 340px) minmax(0, 1fr); align-items: stretch; gap: 14px; max-width: 1040px; margin-left: auto; margin-right: auto; }
+@media (min-width: 1000px) {
+  #view-home > #topHero { grid-template-columns: minmax(290px, 360px) minmax(0, 1fr); align-items: stretch; gap: 14px; max-width: 1040px; margin-left: auto; margin-right: auto; }
   #view-home .th-brand { display: flex; flex-direction: column; justify-content: center; padding: 18px; }
   .th-logo { width: 78px; }
   .th-name b { font-size: 25px; }
@@ -617,3 +617,64 @@ footer .f-ceo { background: rgba(255, 255, 255, .06) !important; border-color: r
 .book-help #animBooking { padding: 0; margin-top: 8px; max-width: none; }
 @media (min-width: 760px) { .book-help .bh-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } .book-help .bh-steps li:last-child { grid-column: 1 / -1; } }
 :root[data-theme="dark"] .book-help .bh-tips { background: #2a2110; color: #f5deb0; border-color: #8a6420; }
+
+/* 5 Oct 2026 · the office list, dressed up: a city badge, name + number, a call
+   button; Nepalgunj in Nepal crimson. Phones: one swipeable row of all five. */
+.th-oh { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 8px 0 6px; position: relative; z-index: 1; }
+.th-oh span { font: 900 13px/1.2 var(--font-sans, sans-serif); color: #ffd28a; letter-spacing: .02em; }
+.th-oh small { font: 600 10.5px/1.2 var(--font-sans, sans-serif); color: #9fb6d9; }
+#view-home .th-offices { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 2px 2px 6px; margin: 0 -2px;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch; grid-template-columns: none; }
+#view-home .th-offices::-webkit-scrollbar { display: none; }
+#view-home .th-offices li, #view-home .th-offices li:nth-child(n+3) { display: block; flex: 0 0 auto; scroll-snap-align: start; }
+#view-home .th-o a { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 9px; row-gap: 1px; align-items: center;
+  min-width: 190px; padding: 8px 10px; border-radius: 14px; text-decoration: none; color: #fff;
+  background: linear-gradient(135deg, rgba(255, 255, 255, .13), rgba(255, 255, 255, .05)); border: 1px solid rgba(255, 255, 255, .18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12); transition: transform .18s, background .18s; }
+#view-home .th-o a:hover { transform: translateY(-1px); background: linear-gradient(135deg, rgba(255, 255, 255, .2), rgba(255, 255, 255, .08)); }
+.th-badge { grid-row: 1 / 3; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; font: 900 14px/1 var(--font-sans, sans-serif);
+  color: #10264d; background: linear-gradient(135deg, #ffd28a, #f7a535); box-shadow: 0 3px 8px rgba(0, 0, 0, .25); }
+#view-home .th-o .th-l { grid-column: 2; font: 800 12px/1.2 var(--font-sans, sans-serif); color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.th-l small { display: block; font: 600 10px/1.25 var(--font-sans, sans-serif); color: #b9cbe6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#view-home .th-o .th-n { grid-column: 2; font: 900 13px/1.2 var(--font-sans, sans-serif); color: #ffe6b8; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.th-call { grid-column: 3; grid-row: 1 / 3; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 14px;
+  background: #25a35a; box-shadow: 0 3px 10px rgba(37, 163, 90, .45); }
+.th-np .th-badge { color: #fff; background: linear-gradient(135deg, #dc143c, #8a0c25); }
+#view-home .th-np a { border-color: rgba(220, 20, 60, .55); background: linear-gradient(135deg, rgba(220, 20, 60, .28), rgba(255, 255, 255, .05)); }
+.th-ic { display: none; }
+@media (min-width: 1000px) {
+  #view-home .th-offices { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; overflow: visible; padding: 0; margin: 0; }
+  #view-home .th-offices li, #view-home .th-offices li:nth-child(n+3) { display: block; }
+  #view-home .th-o a { min-width: 0; padding: 7px 10px; }
+  #view-home .th-o .th-l { font-size: 12.5px; }
+  #view-home .th-o .th-n { font-size: 14px; }
+}
+
+/* desktop: one line per office, and the coach grows to the brand card's height */
+@media (min-width: 1000px) {
+  #view-home .th-o a { grid-template-columns: 26px minmax(0, 1fr) auto 28px; grid-template-rows: auto; column-gap: 9px; padding: 6px 8px 6px 9px; }
+  .th-badge { grid-row: auto; width: 26px; height: 26px; font-size: 12.5px; border-radius: 8px; }
+  #view-home .th-o .th-l { grid-column: 2; }
+  #view-home .th-o .th-n { grid-column: 3; grid-row: 1; }
+  .th-call { grid-column: 4; grid-row: 1; width: 28px; height: 28px; font-size: 13px; }
+  .th-in .th-l small { display: none; }
+  .th-tag small { display: none !important; }
+  .th-oh { margin-top: 4px; }
+  #topHero > #animJourney, #topHero > #animJourney .sa-stage { height: 100%; }
+  #topHero .shg-animation.sa-top .sa-journey { aspect-ratio: auto; height: 100%; min-height: 300px; }
+}
+
+/* the Nepal row's second line (place · contact person) */
+.th-sub { grid-column: 2; grid-row: 2; font: 600 10px/1.25 var(--font-sans, sans-serif); color: #ffc9d3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.th-np .th-n { grid-row: 3; }
+.th-np .th-badge, .th-np .th-call { grid-row: 1 / 4; }
+@media (min-width: 1000px) {
+  .th-np .th-sub { grid-column: 2 / 5; grid-row: 2; }
+  .th-np .th-n { grid-row: 1; }
+  .th-np .th-badge, .th-np .th-call { grid-row: 1; }
+}
+/* tablets: the brand card above the coach, offices as one swipe row */
+@media (min-width: 760px) and (max-width: 999px) {
+  #view-home > #topHero { max-width: 760px; margin-left: auto; margin-right: auto; }
+}
+.th-in .th-sub { color: #b9cbe6; }

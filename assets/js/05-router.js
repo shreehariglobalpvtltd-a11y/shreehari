@@ -420,10 +420,20 @@ $('#contactForm').addEventListener('submit', (e) => {
   [[name, name.value.trim().length >= 2], [phone, /^\d{10}$/.test(phone.value.trim())], [msg, msg.value.trim().length >= 5]]
     .forEach(pair => { pair[0].closest('.field').classList.toggle('invalid', !pair[1]); if (!pair[1]) ok = false; });
   if (!ok) return;
-  DB.messages.unshift({ name: name.value.trim(), phone: phone.value.trim(), topic: $('#cfTopic').value, msg: msg.value.trim(), at: Date.now() });
-  persist('messages');
-  e.target.reset();
-  toast(t('tMsgSent'));
+  /* 5 Oct 2026: the message used to be saved in this browser only — it now
+     opens a Help Desk ticket, and the sender gets its number. */
+  const topic = $('#cfTopic').value || '';
+  const btn = e.target.querySelector('button[type=submit]');
+  if (btn) btn.disabled = true;
+  shgApi.post('/helpdesk.php', { action: 'open', name: name.value.trim(), phone: phone.value.trim(), via: 'web',
+    category: /bus|booking|ticket/i.test(topic) ? 'booking_help' : '', message: '[' + topic + '] ' + msg.value.trim() })
+    .then(d => {
+      e.target.reset();
+      const ref = d && d.ref ? String(d.ref).replace(/[^A-Z0-9-]/gi, '') : '';
+      toast(t('tMsgSent') + (ref ? ' · ' + ref : ''));
+    })
+    .catch(err => toast('⚠️ ' + ((err && err.message) || 'Could not send — please call the office.')))
+    .then(() => { if (btn) btn.disabled = false; });
 });
 
 /* Search box — one-way / round-trip */
@@ -849,9 +859,25 @@ function renderContactStrip() {
      offices from the same numbers (first four phone lines, not WhatsApp). */
   const sbo = document.getElementById('saOffices');
   if (sbo) {
+    /* The branch offices (first four phone lines of the strip) + the Nepalgunj
+       office: Admin -> Company details "Nepal phone" when set, else the
+       Director's 24/7 line under his name (owner, 5 Oct 2026). */
+    const row = (cls, label, sub, num) => {
+      const d = digits(num);
+      const city = String(label || '').replace(/\s*office$/i, '').trim();
+      return '<li class="th-o ' + cls + '"><a href="tel:+' + esc(d.length === 10 ? '91' + d : d) + '"><span class="th-badge">'
+        + esc((city || '?').charAt(0).toUpperCase()) + '</span><span class="th-l">' + esc(city) + '</span>'
+        + (sub ? '<span class="th-sub">' + esc(sub) + '</span>' : '') + '<span class="th-n">' + esc(num) + '</span>'
+        + '<span class="th-call" aria-hidden="true">📞</span></a></li>';
+    };
     const offs = live.filter(n => !n.wa).slice(0, 4);
-    if (offs.length) sbo.innerHTML = offs.map(n => '<li><a href="tel:+' + esc(digits(n.num)) + '"><span class="th-ic">📞</span>'
-      + '<span class="th-l">' + esc(n.label || '') + '</span><span class="th-n">' + esc(n.num) + '</span></a></li>').join('');
+    const np = (window.SHG_BOOT && SHG_BOOT.npOffice) || {};
+    const npNum = np.phone || '+91 97264 01507';
+    const npSub = (np.place || 'Puspalal Chowk') + (np.phone ? '' : ' · Sher Bahadur Bishwokarma');
+    if (offs.length) {
+      sbo.innerHTML = offs.map((n, i) => row('th-in', n.label || '', i === 0 && /mehsana/i.test(n.label || '') ? 'Head office' : '', n.num)).join('')
+        + row('th-np', 'Nepalgunj', npSub, npNum);
+    }
   }
   inner.innerHTML = live.map(n => {
     const d = digits(n.num);
@@ -1191,7 +1217,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261005e" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261005f" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'
