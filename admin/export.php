@@ -180,6 +180,28 @@ if ($payStatusFilter !== '' && in_array($payStatusFilter, $validPayStatus, true)
                          WHERE p2.booking_id = b.id AND p2.status = :payStFlt)';
     $params['payStFlt'] = $payStatusFilter;
 }
+/* 5 Oct 2026: the export now honours EVERY filter the register has. It ignored
+   Payment method and Counter (and the desk-isolation scope), so the file held
+   more rows than the screen it was exported from. */
+$payMethodFilter = Security::clean($_GET['pay_method'] ?? '', 20);
+if (in_array($payMethodFilter, ['upi', 'esewa', 'cash', 'bank', 'wallet', 'cod'], true)) {
+    $where[] = 'EXISTS (SELECT 1 FROM payments p4
+                         WHERE p4.booking_id = b.id AND p4.method = :payMtFlt)';
+    $params['payMtFlt'] = $payMethodFilter;
+}
+$counterFilter = mb_strtoupper(Security::clean($_GET['counter'] ?? '', 16));
+$deskScope = Auth::deskScopeCode();
+if ($deskScope !== null && CounterDesk::stampColumn()) {
+    $where[] = CounterDesk::scopeClause('b');
+    $params['deskScope'] = $deskScope;
+    $counterFilter = '';
+}
+if ($counterFilter !== '' && CounterDesk::stampColumn()) {
+    $where[] = CounterDesk::scopeClause('b', 'ctrFlt');
+    $params['ctrFlt'] = $counterFilter;
+}
+require_once __DIR__ . '/_booking_filters.php';
+shg_booking_extra_filters($where, $params, $_GET);
 
 $sql = "SELECT b.pnr, b.status, b.booking_mode, b.cabin_label,
                r.from_city, r.to_city, bl.travel_date, bl.boarding_stop, bl.drop_stop,

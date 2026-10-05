@@ -146,7 +146,37 @@ if ($q !== '') {
                                WHERE bq.contact_phone = p.phone AND (bq.pnr LIKE :q4 OR bpq.full_name LIKE :q5 OR bq.id_number LIKE :q6)))";
     $searchParams = ['q1' => $like, 'q2' => $like, 'q3' => $like, 'q4' => $like, 'q5' => $like, 'q6' => $like];
 }
-$total = (int) Database::scalar('SELECT COUNT(*) FROM ' . $phoneSet . $searchSql, $searchParams, 0);
+/* 5 Oct 2026 - register filters (owner: "kada filter use garna milos"): trips,
+   last-booking window, the agent who sold to them, and account status. All of
+   them narrow the count, the page AND the export, so the three always agree. */
+$aggJoin = " LEFT JOIN (SELECT bk.contact_phone,
+                         COUNT(*) AS cnt,
+                         SUM((SELECT COUNT(*) FROM booking_passengers bp WHERE bp.booking_id = bk.id)) AS pax,
+                         SUM(CASE WHEN bk.status IN ('confirmed','completed') THEN bk.total_amount ELSE 0 END) AS spent,
+                         MIN(bk.created_at) AS first_at,
+                         MAX(bk.created_at) AS last_at,
+                         MAX((SELECT MAX(bl.travel_date) FROM booking_legs bl WHERE bl.booking_id = bk.id)) AS last_travel
+                    FROM bookings bk GROUP BY bk.contact_phone) b ON b.contact_phone = p.phone";
+$fTrips  = Security::clean((string) ($_GET['trips'] ?? ''), 4);
+$fState  = Security::clean((string) ($_GET['state'] ?? ''), 12);
+$fAgent  = (int) ($_GET['agent'] ?? 0);
+$fFrom   = Security::clean((string) ($_GET['from'] ?? ''), 10);
+$fTo     = Security::clean((string) ($_GET['to'] ?? ''), 10);
+$conds   = $searchSql !== '' ? [substr($searchSql, 7)] : [];      // drop the leading " WHERE "
+$tripSql = ['0' => 'COALESCE(b.cnt, 0) = 0', '1' => 'b.cnt = 1', '2' => 'b.cnt >= 2', '5' => 'b.cnt >= 5'];
+if (isset($tripSql[$fTrips])) { $conds[] = $tripSql[$fTrips]; } else { $fTrips = ''; }
+$stateSql = ['blocked' => 'u.is_blocked = 1', 'account' => 'u.id IS NOT NULL', 'bookingonly' => 'u.id IS NULL'];
+if (isset($stateSql[$fState])) { $conds[] = $stateSql[$fState]; } else { $fState = ''; }
+if ($fAgent > 0) {
+    $conds[] = 'EXISTS (SELECT 1 FROM bookings ba WHERE ba.contact_phone = p.phone AND ba.sold_by_admin_id = :fAgent)';
+    $searchParams['fAgent'] = $fAgent;
+}
+if (Security::isValidDate($fFrom)) { $conds[] = 'b.last_at >= :fFrom'; $searchParams['fFrom'] = $fFrom; } else { $fFrom = ''; }
+if (Security::isValidDate($fTo)) { $conds[] = 'b.last_at < :fTo'; $searchParams['fTo'] = addDaysISO($fTo, 1); } else { $fTo = ''; }
+$searchSql = $conds !== [] ? ' WHERE ' . implode(' AND ', $conds) : '';
+$filterQs  = array_filter(['q' => $q, 'trips' => $fTrips, 'state' => $fState, 'agent' => $fAgent ?: '', 'from' => $fFrom, 'to' => $fTo], static fn ($v) => $v !== '');
+$custAgents = Database::fetchAll("SELECT id, full_name, username FROM admins WHERE role IN ('agent','counter') AND is_active = 1 ORDER BY full_name");
+$total = (int) Database::scalar('SELECT COUNT(*) FROM ' . $phoneSet . $aggJoin . $searchSql, $searchParams, 0);
 $pages = max(1, (int) ceil($total / $PER));
 if ($page > $pages) { $page = $pages; }
 $offset = ($page - 1) * $PER;
@@ -169,15 +199,7 @@ $rows = Database::fetchAll(
             (SELECT bb.status FROM bookings bb WHERE bb.contact_phone = p.phone ORDER BY bb.id DESC LIMIT 1) AS last_status,
             (SELECT bb.id_type FROM bookings bb WHERE bb.contact_phone = p.phone AND bb.id_type <> '' ORDER BY bb.id DESC LIMIT 1) AS b_id_type,
             (SELECT bb.id_number FROM bookings bb WHERE bb.contact_phone = p.phone AND bb.id_number <> '' ORDER BY bb.id DESC LIMIT 1) AS b_id_number
-       FROM " . $phoneSet . "
-       LEFT JOIN (SELECT bk.contact_phone,
-                         COUNT(*) AS cnt,
-                         SUM((SELECT COUNT(*) FROM booking_passengers bp WHERE bp.booking_id = bk.id)) AS pax,
-                         SUM(CASE WHEN bk.status IN ('confirmed','completed') THEN bk.total_amount ELSE 0 END) AS spent,
-                         MIN(bk.created_at) AS first_at,
-                         MAX(bk.created_at) AS last_at,
-                         MAX((SELECT MAX(bl.travel_date) FROM booking_legs bl WHERE bl.booking_id = bk.id)) AS last_travel
-                    FROM bookings bk GROUP BY bk.contact_phone) b ON b.contact_phone = p.phone"
+       FROM " . $phoneSet . $aggJoin
       . $searchSql . "
       ORDER BY COALESCE(b.last_at, u.created_at) DESC" . $limitSql,
     $searchParams
@@ -210,7 +232,7 @@ if ($export === 'csv' || $export === 'xlsx') {
 $withAcc = (int) Database::scalar("SELECT COUNT(*) FROM users WHERE role = 'customer'", [], 0);
 $blocked = (int) Database::scalar("SELECT COUNT(*) FROM users WHERE role = 'customer' AND is_blocked = 1", [], 0);
 $repeat  = (int) Database::scalar("SELECT COUNT(*) FROM (SELECT contact_phone FROM bookings WHERE contact_phone <> '' GROUP BY contact_phone HAVING COUNT(*) >= 2) x", [], 0);
-$pageUrl = static fn(int $p): string => 'customers.php?' . http_build_query(array_filter(['q' => $q, 'p' => $p]));
+$pageUrl = static fn(int $p): string => 'customers.php?' . http_build_query($filterQs + ['p' => $p]);
 $csrf    = Security::e(Security::csrfToken());
 $k       = CSRF_TOKEN_NAME;
 $e       = static fn($v): string => Security::e((string) ($v ?? ''));
@@ -227,23 +249,38 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
 
 <form method="get" class="dt-bar" id="custCtl" style="margin-bottom:10px">
   <input type="search" name="q" value="<?= $e($q) ?>" placeholder="Search name / mobile / email / PNR / document — press Enter" aria-label="Search customers" style="flex:1 1 260px;min-width:0">
+  <?php /* 5 Oct 2026: these filters used to hide rows of the CURRENT PAGE only (50 of
+           the register); they are part of the query now - count, pages and export. */ ?>
+  <select name="state" aria-label="Status" onchange="this.form.submit()">
+    <option value="">All statuses</option>
+    <option value="account" <?= $fState === 'account' ? 'selected' : '' ?>>Has an account</option>
+    <option value="bookingonly" <?= $fState === 'bookingonly' ? 'selected' : '' ?>>Booking only (no account)</option>
+    <option value="blocked" <?= $fState === 'blocked' ? 'selected' : '' ?>>Blocked</option>
+  </select>
+  <select name="trips" aria-label="Bookings" onchange="this.form.submit()">
+    <option value="">Any bookings</option>
+    <option value="0" <?= $fTrips === '0' ? 'selected' : '' ?>>No booking yet</option>
+    <option value="1" <?= $fTrips === '1' ? 'selected' : '' ?>>1 booking</option>
+    <option value="2" <?= $fTrips === '2' ? 'selected' : '' ?>>Repeat (2+)</option>
+    <option value="5" <?= $fTrips === '5' ? 'selected' : '' ?>>Regular (5+)</option>
+  </select>
+  <select name="agent" aria-label="Sold by" onchange="this.form.submit()">
+    <option value="">Any agent / counter</option>
+    <?php foreach ($custAgents as $ca): ?>
+      <option value="<?= (int) $ca['id'] ?>" <?= $fAgent === (int) $ca['id'] ? 'selected' : '' ?>><?= $e($ca['full_name'] ?: $ca['username']) ?></option>
+    <?php endforeach; ?>
+  </select>
+  <label class="muted" style="font-size:12px">Last booking <input type="date" name="from" value="<?= $e($fFrom) ?>" aria-label="Last booking from"> – <input type="date" name="to" value="<?= $e($fTo) ?>" aria-label="Last booking to"></label>
   <button class="btn" type="submit">Search</button>
-  <?php if ($q !== ''): ?><a class="btn ghost" href="customers.php">Clear</a><?php endif; ?>
+  <?php if ($filterQs !== []): ?><a class="btn ghost" href="customers.php">Clear</a><?php endif; ?>
 </form>
 <div class="dt-bar" id="custCtl2">
-  <select data-dt-filter="status" aria-label="Status">
-    <option value="">All statuses</option><option value="active">Active</option><option value="blocked">Blocked</option><option value="guest">Booking only (no account)</option>
-  </select>
-  <select data-dt-filter="trips" aria-label="Bookings">
-    <option value="">Any bookings</option><option value="0">No booking yet</option><option value="1">1 booking</option><option value="2">Repeat (2+)</option>
-  </select>
-  <input type="month" data-dt-filter="lastym" data-dt-mode="min" aria-label="Last booking from" title="Last booking from (month)">
   <a class="btn ghost" href="customer-ledger.php" title="Date-wise ledger of every booking by customer">📒 Ledger</a>
   <a class="btn ghost" href="customer-duplicates.php" title="Same person on two numbers, name spelling variants">👥 Duplicates</a>
-  <a class="btn ghost" href="customers.php?export=csv<?= $q !== '' ? '&amp;q=' . urlencode($q) : '' ?>">⬇ CSV</a>
-  <a class="btn ghost" href="customers.php?export=xlsx<?= $q !== '' ? '&amp;q=' . urlencode($q) : '' ?>">⬇ Excel</a>
+  <a class="btn ghost" href="customers.php?<?= $e(http_build_query($filterQs + ['export' => 'csv'])) ?>">⬇ CSV</a>
+  <a class="btn ghost" href="customers.php?<?= $e(http_build_query($filterQs + ['export' => 'xlsx'])) ?>">⬇ Excel</a>
   <span class="dt-count"></span>
-  <span class="muted" style="font-size:12px">· <?= number_format($total) ?> customer<?= $total === 1 ? '' : 's' ?><?= $q !== '' ? ' matching' : '' ?><?= $pages > 1 ? ' · page ' . $page . ' of ' . $pages : '' ?></span>
+  <span class="muted" style="font-size:12px">· <?= number_format($total) ?> customer<?= $total === 1 ? '' : 's' ?><?= $filterQs !== [] ? ' matching' : '' ?><?= $pages > 1 ? ' · page ' . $page . ' of ' . $pages : '' ?></span>
 </div>
 
 <div class="dt-wrap">

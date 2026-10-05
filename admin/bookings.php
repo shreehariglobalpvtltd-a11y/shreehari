@@ -192,6 +192,13 @@ if ($payMethodFilter !== '' && in_array($payMethodFilter, $validPayMethod, true)
     $params['payMtFlt'] = $payMethodFilter;
 }
 
+/* 5 Oct 2026: customer-number and ticket-reach filters, shared with the export
+   (admin/_booking_filters.php) so screen and file can never disagree. */
+require_once __DIR__ . '/_booking_filters.php';
+$xf = shg_booking_extra_filters($where, $params, $_GET);
+$phoneFilter = $xf['phone'];
+$reachFilter = $xf['reach'];
+
 $fromSql = "FROM bookings b
           LEFT JOIN booking_legs bl ON bl.booking_id = b.id AND bl.leg_type = 'outbound'
           LEFT JOIN schedules s ON s.id = bl.schedule_id
@@ -374,12 +381,18 @@ $exportBase = array_filter([
     'bus'         => $busFilter,
     'pay_status'  => in_array($payStatusFilter, $validPayStatus, true) ? $payStatusFilter : '',
     'pay_method'  => in_array($payMethodFilter, $validPayMethod, true) ? $payMethodFilter : '',
+    // 5 Oct 2026: the Counter filter was missing here - page 2 and every
+    // export silently dropped it.
+    'counter'     => $counterFilter,
+    'phone'       => $phoneFilter,
+    'reach'       => $reachFilter,
 ]);
 $hasFilters = ($q !== '' || $status !== '' || $isDate($from) || $isDate($to)
     || $routeFilter !== '' || $isDate($travelFrom) || $isDate($travelTo)
     || $sourceFilter !== '' || ($scopeId === null && $agentFilter !== '')
     || $busFilter !== '' || in_array($payStatusFilter, $validPayStatus, true)
-    || in_array($payMethodFilter, $validPayMethod, true));
+    || in_array($payMethodFilter, $validPayMethod, true)
+    || $counterFilter !== '' || $phoneFilter !== '' || $reachFilter !== '');
 $pageUrl = static fn(int $p): string => $base . '/admin/bookings.php?' . http_build_query($exportBase + ['p' => $p]);
 $csrf = Security::e(Security::csrfToken());
 $k    = CSRF_TOKEN_NAME;
@@ -513,6 +526,24 @@ $canEdit   = Auth::can('bookings.edit');
           <?php endforeach; ?>
         </select>
       </div>
+      <div class="filter-group">
+        <span class="flbl">Customer number</span>
+        <select name="phone">
+          <option value="">Any</option>
+          <option value="ok" <?= $phoneFilter === 'ok' ? 'selected' : '' ?>>✅ Has a number</option>
+          <option value="none" <?= $phoneFilter === 'none' ? 'selected' : '' ?>>📵 No number</option>
+          <option value="bad" <?= $phoneFilter === 'bad' ? 'selected' : '' ?>>⚠️ Wrong number</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <span class="flbl">WhatsApp ticket</span>
+        <select name="reach">
+          <option value="">Any</option>
+          <option value="got" <?= $reachFilter === 'got' ? 'selected' : '' ?>>✅ Customer got it</option>
+          <option value="agent" <?= $reachFilter === 'agent' ? 'selected' : '' ?>>🧾 Counter / agent got it</option>
+          <option value="nobody" <?= $reachFilter === 'nobody' ? 'selected' : '' ?>>❌ Nobody got it</option>
+        </select>
+      </div>
     </div>
 
     <details class="advanced-section" id="advFilters" open>
@@ -546,7 +577,9 @@ $canEdit   = Auth::can('bookings.edit');
       <div class="export-links">
         <a class="btn ghost" style="font-size:12px;padding:6px 10px" href="<?= $base ?>/admin/export.php?<?= Security::e(http_build_query($exportBase)) ?>">⬇️ Export CSV</a>
         <a class="btn ghost" style="font-size:12px;padding:6px 10px" href="<?= $base ?>/admin/export.php?<?= Security::e(http_build_query($exportBase + ['format' => 'xlsx'])) ?>">⬇️ Export Excel</a>
+        <?php if ($counterFilter === '' && $phoneFilter === '' && $reachFilter === '' && !in_array($payMethodFilter, $validPayMethod, true)): /* the PDF report knows fewer filters - never offer a file that would not match the screen */ ?>
         <a class="btn ghost" style="font-size:12px;padding:6px 10px" href="<?= $base ?>/admin/export.php?<?= Security::e(http_build_query($exportBase + ['format' => 'pdf'])) ?>">⬇️ Export PDF</a>
+        <?php endif; ?>
       </div>
     </div>
     </details>
