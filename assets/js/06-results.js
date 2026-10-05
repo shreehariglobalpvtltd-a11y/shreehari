@@ -1243,9 +1243,22 @@ function renderSeats(instant) {
          is what locks the seat, applies the double-cabin pair rule and
          redraws the summary. A bounded loop, because each click can take
          two berths and a full bus must not spin. */
+      /* 5 Oct 2026: the first free seat in the grid is LA1 - a women-only
+         berth. The one-tap pick handed it to every visitor, and a man who
+         then filled in the whole form was refused at "Confirm" ("Seat A1 is
+         reserved for women"). Women-only / women's-cabin berths are picked
+         only for a passenger marked Woman; men-only cabins never for her. */
+      const g = ((window.SHG_QUICK || {}).gender || '');
+      const pickFree = () => {
+        const all = Array.prototype.slice.call(grid.querySelectorAll('.seat:not([disabled]):not(.sel)'));
+        const fits = (b) => g === 'Female'
+          ? !b.classList.contains('u-male')
+          : !b.classList.contains('fem') && !b.classList.contains('u-fem');
+        return all.find(fits) || null;
+      };
       let guard = 0;
       while (Flow.seats.length < target && guard++ < CONFIG.booking.maxSeats * 3) {
-        const free = grid.querySelector('.seat:not([disabled]):not(.sel)');
+        const free = pickFree();
         if (!free) break;
         const before = Flow.seats.length;
         free.click();
@@ -1253,6 +1266,7 @@ function renderSeats(instant) {
       }
       syncAuto();
       if (Flow.seats.length) toast('✅ ' + tf('seatAutoDone', { s: seatLabelJoin(Flow.seats, r.type, Flow.bookingType) }));
+      else toast('👆 Tap a free seat on the map · नक्सामा खाली सिट छान्नुहोस्');
     };
 
     const prevClick = grid.onclick;

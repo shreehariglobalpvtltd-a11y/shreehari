@@ -45,7 +45,10 @@ final class Security
             // The booking UI loads map tiles and routing from open providers,
             // so those hosts are allowed explicitly rather than via a wildcard.
             $csp = "default-src 'self'; "
-                 . "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; "
+                 // 5 Oct 2026: googletagmanager = the Google Ads conversion tag,
+                 // loaded only when Admin -> Settings has a conversion id.
+                 . "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com https://www.googletagmanager.com https://www.googleadservices.com https://googleads.g.doubleclick.net; "
+                 . "frame-src 'self' https://td.doubleclick.net https://www.googletagmanager.com; "
                  . "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
                  . "font-src 'self' data: https://fonts.gstatic.com; "
                  . "img-src 'self' data: blob: https:; "
@@ -60,7 +63,10 @@ final class Security
                  . "https://s3.amazonaws.com "
                  . "https://api.open-meteo.com https://router.project-osrm.org "
                  // 13 Sep 2026: live INR→NPR check on the Border Crossing Prep card — keyless.
-                 . "https://open.er-api.com; "
+                 . "https://open.er-api.com "
+                 // 5 Oct 2026: Google Ads conversion pings (see script-src).
+                 . "https://www.google.com https://www.googleadservices.com https://googleads.g.doubleclick.net https://ad.doubleclick.net "
+                 . "https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com; "
                  . "worker-src 'self' blob:; "
                  . "frame-ancestors 'self'; "
                  . "base-uri 'self'; "

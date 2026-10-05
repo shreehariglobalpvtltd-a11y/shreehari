@@ -675,7 +675,96 @@ function initSimpleSearch() {
   if (p && !p._wired) { p._wired = true; p.addEventListener('change', applyDirection); }
   setSearchDir(searchDir);   // first paint: fill towns + sync hidden selects
   applyCampaignLink();
+  try { ShgAds.landing(); } catch (e) {}
 }
+
+/* ================================================================
+   PAID-AD VISITORS (5 Oct 2026, owner: "Google Ads bata ticket kinna
+   aaudainan"). Three things the site never did for an ad click:
+   1. remember WHERE the visitor came from (gclid / gad_source / utm_* /
+      fbclid / ?src=) for 30 days, so the booking can say "Google Ads";
+   2. put the booking card FIRST for that visitor - the offices card and
+      the coach animation sit above it for everyone else (owner's 5 Oct
+      layout), which on a phone is a whole screen before the date picker;
+   3. tell Google Ads when a booking (or a call / WhatsApp tap) happens,
+      once the owner pastes the conversion id in Admin -> Settings -> Website
+      (google_ads_conversion). Without that id nothing Google loads.
+================================================================ */
+const ShgAds = {
+  KEY: 'shg_ad',
+  read() {
+    try {
+      const a = JSON.parse(localStorage.getItem(this.KEY) || 'null');
+      if (a && a.t && (Date.now() - a.t) < 30 * 86400000) return a;
+    } catch (e) {}
+    return null;
+  },
+  /* What this URL says about where the visitor came from, or null. */
+  fromUrl() {
+    let p;
+    try { p = new URLSearchParams(location.search); } catch (e) { return null; }
+    const g = function (k) { return String(p.get(k) || '').replace(/[^A-Za-z0-9_.:\/-]/g, '').slice(0, 80); };
+    const click = g('gclid') || g('gbraid') || g('wbraid');
+    if (click || g('gad_source') || g('gad_campaignid')) {
+      return { src: 'google-ads', campaign: g('utm_campaign') || g('gad_campaignid'), click: click };
+    }
+    if (g('fbclid')) return { src: 'facebook', campaign: g('utm_campaign'), click: '' };
+    if (g('utm_source')) return { src: g('utm_source').toLowerCase().slice(0, 40), campaign: g('utm_campaign'), click: '' };
+    if (g('src')) return { src: 'link:' + g('src').slice(0, 34), campaign: '', click: '' };
+    return null;
+  },
+  landing() {
+    const a = this.fromUrl();
+    if (a) {
+      a.t = Date.now();
+      try { localStorage.setItem(this.KEY, JSON.stringify(a)); } catch (e) {}
+      if (a.src === 'google-ads' || a.src === 'facebook') {
+        /* Booking card first, for this visit only (redesign.css html.shg-from-ad). */
+        document.documentElement.classList.add('shg-from-ad');
+        try { if (typeof window.shgBeacon === 'function') window.shgBeacon('landing', { source: a.src, reason: a.campaign ? 'campaign' : '' }); } catch (e) {}
+      }
+    }
+    this.loadTag();
+  },
+  /* What checkout sends with the booking ({} when the visitor came direct). */
+  forBooking() {
+    const a = this.read();
+    return a ? { src: a.src || '', campaign: a.campaign || '', click: a.click || '' } : {};
+  },
+  _ids() {
+    const b = (window.SHG_BOOT && window.SHG_BOOT.gads) || null;
+    return b && b.book ? b : null;
+  },
+  /* Google's tag loads after the page is up, never in the critical path. */
+  loadTag() {
+    const ids = this._ids();
+    if (!ids || window.gtag) return;
+    const aw = ids.book.split('/')[0];
+    window.dataLayer = window.dataLayer || [];
+    window.gtag = function () { window.dataLayer.push(arguments); };
+    window.gtag('js', new Date());
+    window.gtag('config', aw);
+    const go = function () {
+      const s = document.createElement('script');
+      s.async = true; s.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(aw);
+      document.head.appendChild(s);
+    };
+    if (document.readyState === 'complete') setTimeout(go, 1500);
+    else window.addEventListener('load', function () { setTimeout(go, 1500); });
+    if (ids.contact) {
+      document.addEventListener('click', function (ev) {
+        const el = ev.target && ev.target.closest ? ev.target.closest('a[href^="tel:"], a[href*="wa.me/"], a[href*="api.whatsapp.com"]') : null;
+        if (el) { try { window.gtag('event', 'conversion', { send_to: ids.contact }); } catch (e) {} }
+      }, true);
+    }
+  },
+  booked(pnr, total) {
+    const ids = this._ids();
+    if (!ids || typeof window.gtag !== 'function') return;
+    try { window.gtag('event', 'conversion', { send_to: ids.book, value: Number(total) || 0, currency: 'INR', transaction_id: String(pnr || '') }); } catch (e) {}
+  }
+};
+window.ShgAds = ShgAds;
 
 /* ================================================================
    CAMPAIGN DEEP LINKS (4 Oct 2026, owner's point 9)
@@ -1195,7 +1284,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261005g" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261005i" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'
@@ -2354,12 +2443,19 @@ const SeatLock = {
       if (!relByKey[k]) relByKey[k] = { routeId: r.routeId, date: r.date, mode: r.mode || null, schId: r.schId || 0, seats: [] };
       relByKey[k].seats.push(r.seat);
     });
+    const relJobs = [];
     Object.keys(relByKey).forEach(k => {
       const j = relByKey[k];
-      jobs.push(shgApi.post('/lock.php', {
+      relJobs.push(shgApi.post('/lock.php', {
         action: 'release', routeCode: j.routeId, date: j.date, seats: j.seats, bookingMode: j.mode, scheduleId: j.schId || undefined
       }).catch(() => null));
     });
+    jobs.push.apply(jobs, relJobs);
+    /* 5 Oct 2026: releases land BEFORE the new hold. Sent side by side, a
+       swap at the party cap (6 picked, one tapped off, another tapped on)
+       reached the server as 7 held seats and was refused - live logs 26 Sep
+       to 4 Oct. */
+    const relDone = Promise.all(relJobs);
 
     Object.keys(mine).forEach(k => {
       const j = mine[k];
@@ -2368,7 +2464,7 @@ const SeatLock = {
       const btns = j.seats.map(s => document.querySelector('#view-seats .seat[data-id="' + s + '"]')).filter(Boolean);
       btns.forEach(b => { if (!b.dataset.held) { b.classList.add('holding'); b.setAttribute('aria-busy', 'true'); } });
       jobs.push(
-        shgApi.post('/lock.php', { action: 'hold', routeCode: j.routeId, date: j.date, seats: j.seats, bookingMode: j.mode, scheduleId: j.schId || undefined })
+        relDone.then(() => shgApi.post('/lock.php', { action: 'hold', routeCode: j.routeId, date: j.date, seats: j.seats, bookingMode: j.mode, scheduleId: j.schId || undefined }))
           .then(d => {
             if (d && d.expiresAt) this._accept(d);
             this._retry = 0;
@@ -2398,6 +2494,23 @@ const SeatLock = {
      conflict, so the selection is left alone. */
   _refused(job, err, btns) {
     const failed = (err && err.data && err.data.failed) || [];
+    if (!failed.length && err && err.data && err.data.rule) {
+      /* A rule refusal (party cap): say the server's words and take back the
+         seats it would not hold - never "you are offline". */
+      (btns || []).forEach(b => {
+        b.classList.remove('holding', 'hold-wait'); b.removeAttribute('aria-busy');
+        if (b.dataset.held) return;
+        const ix = (Flow.seats || []).indexOf(b.dataset.id);
+        if (ix >= 0) Flow.seats.splice(ix, 1);
+        b.classList.remove('sel');
+      });
+      DB.locks = (DB.locks || []).filter(l => !(l.sid === SID && l.routeId === job.routeId && l.date === job.date
+        && (btns || []).some(b => !b.dataset.held && b.dataset.id === l.seat)));
+      persist('locks');
+      toast('⚠️ ' + (err.message || ''));
+      if (typeof updateSeatSummary === 'function') updateSeatSummary();
+      return;
+    }
     if (!failed.length) {
       /* No conflict list = the server was not reached. The seat stays
          selected but visibly NOT held; retry a few times, then say so. */

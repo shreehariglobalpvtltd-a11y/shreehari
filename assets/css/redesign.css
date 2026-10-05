@@ -548,6 +548,9 @@ footer .f-ceo { background: rgba(255, 255, 255, .06) !important; border-color: r
    on the right; on a phone a slim brand card above the coach.
    ===================================================================== */
 #view-home > #topHero { order: -3 !important; margin-top: 12px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+/* 5 Oct 2026: a visitor who arrived on a Google Ads / Facebook ad click sees
+   the booking card first (ShgAds.landing in 05-router.js sets the class). */
+html.shg-from-ad #view-home > #search-anchor { order: -4 !important; margin-top: 12px; }
 #topHero > .container { padding: 0; margin: 0; max-width: none; width: auto; }
 #view-home .th-brand { display: block; position: relative; overflow: hidden; border-radius: 18px; padding: 12px 14px; color: #fff;
   background: radial-gradient(120% 140% at 0% 0%, #1e4f9c 0%, #0c2c63 55%, #071a3d 100%);

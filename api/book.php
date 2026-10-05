@@ -165,6 +165,13 @@ try {
 
     $booking = BookingService::create($request, $seller);
 
+    // 5 Oct 2026: an online booking remembers the ad / campaign link that brought
+    // the visitor (Google Ads, Facebook, ?src=). Counter sales never carry one.
+    if ($seller === null && !empty($input['ad'])) {
+        require_once dirname(__DIR__) . '/includes/adattribution.php';
+        AdAttribution::record((int) ($booking['id'] ?? 0), $input['ad']);
+    }
+
     // Payment target details for the QR / instructions screen.
     $payInfo = [
         'upiId'    => Settings::getString('upi_id', ''),

@@ -339,6 +339,9 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
       'twilio_content_sid_settlement'       => $waTplHelp . ' Used for settlement receipts and cash-settlement details.',
       'twilio_content_sid_booking_detail'   => $waTplHelp . ' Used for booking status, passenger / seat details and the bus chalan picture.',
       'wa_statement_link_days'              => 'Statement PDFs and chalan pictures go out as signed download links, not attachments. A link stops opening after this many days — the message tells the recipient so.',
+      // 5 Oct 2026: Google Ads conversion tracking (index.php boot + ShgAds in 05-router.js).
+      'google_ads_conversion'               => 'Google Ads → Goals → Conversions → New → Website → "Purchase" → "Use Google tag" → copy the send_to value, e.g. AW-123456789/AbCdEfGhIjk. When set, every online booking is reported to Google Ads (value in ₹), so the campaign learns which clicks buy tickets. Blank = Google\'s tag is not loaded at all.',
+      'google_ads_contact_conversion'       => 'Optional second conversion (category "Contact") for a tap on a phone number or WhatsApp button, same AW-…/label format. Leave blank if you only want bookings counted.',
   ];
   ?>
   <?php foreach ($groups as $group => $items): ?>

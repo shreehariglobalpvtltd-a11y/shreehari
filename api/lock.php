@@ -77,6 +77,13 @@ try {
     }
 
     Response::success($result);
+} catch (PDOException $e) {
+    Response::serverError($e);
+} catch (RuntimeException $e) {
+    // 5 Oct 2026: a rule refusal (the party cap "at most 6 seats") is the
+    // customer's to read, not a 500 - the seat map was answering it with
+    // "you seem to be offline" after three silent retries.
+    Response::json(['ok' => false, 'error' => $e->getMessage(), 'code' => 409, 'data' => ['rule' => true, 'failed' => []]], 409);
 } catch (Throwable $e) {
     Response::serverError($e);
 }

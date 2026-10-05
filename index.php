@@ -115,6 +115,15 @@ $boot['npOffice'] = [
     'place' => trim((string) preg_replace('/,?\s*Nepalgunj$/i', '', Settings::getString('nepal_office', 'Puspalal Chowk'))) ?: 'Puspalal Chowk',
     'phone' => trim(Settings::getString('nepal_phone', '')),
 ];
+/* 5 Oct 2026: Google Ads conversion ids (Admin -> Settings -> Website). The
+   app loads Google's tag ONLY when the booking id is set, and never for a
+   signed-in staff member (a counter sale is not an ad conversion). */
+$gadsOk = static fn(string $v): bool => (bool) preg_match('~^AW-\d{6,14}/[A-Za-z0-9_-]{4,60}$~', $v);
+$gadsBook = trim(Settings::getString('google_ads_conversion', ''));
+$gadsContact = trim(Settings::getString('google_ads_contact_conversion', ''));
+if ($gadsOk($gadsBook) && Auth::admin() === null) {
+    $boot['gads'] = ['book' => $gadsBook, 'contact' => $gadsOk($gadsContact) ? $gadsContact : ''];
+}
 try {
     $boot['help'] = Settings::helpContacts(Settings::companyFor(null, null), 4);
 } catch (Throwable $e) {
@@ -287,6 +296,8 @@ $inject = <<<HTML
 {$seoHead}
 <script>
 window.SHG_BOOT = {$bootJson};
+/* 5 Oct 2026: an ad click (Google Ads / Facebook) sees the booking card first - set before first paint. */
+try { if (/[?&](gclid|gbraid|wbraid|gad_source|gad_campaignid|fbclid)=/.test(location.search)) document.documentElement.classList.add('shg-from-ad'); } catch (e) {}
 (function () {
   var BOOT = window.SHG_BOOT || {};
   var API  = (BOOT.apiBase || '/api');

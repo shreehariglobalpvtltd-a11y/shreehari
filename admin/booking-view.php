@@ -1361,6 +1361,17 @@ $hasUpdated = $updatedAt !== '' && $updatedAt !== $createdAt;
       <dt>Booked by</dt>
       <dd><?= Security::e($bookedByLabel) ?></dd>
     </div>
+    <?php
+      // 5 Oct 2026: the ad / campaign link that brought this online customer.
+      require_once INCLUDE_PATH . '/adattribution.php';
+      $adSrc = AdAttribution::forBooking((int) ($b['id'] ?? 0));
+    ?>
+    <?php if ($adSrc !== null): ?>
+    <div>
+      <dt>Came from</dt>
+      <dd>📣 <?= Security::e(AdAttribution::label((string) $adSrc['src'])) ?><?php if (!empty($adSrc['campaign'])): ?> <span class="muted">· <?= Security::e((string) $adSrc['campaign']) ?></span><?php endif; ?></dd>
+    </div>
+    <?php endif; ?>
     <?php if ($agentPhone !== ''): ?>
     <div>
       <dt>Agent contact</dt>

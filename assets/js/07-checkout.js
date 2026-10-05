@@ -1291,7 +1291,9 @@ async function submitBooking() {
       pointsRequested: x.points || 0,
       referralCode: refCode,
       paymentMethod: PAY_METHOD,
-      isCod: isCod
+      isCod: isCod,
+      // 5 Oct 2026: where this visitor came from (Google Ads / Facebook / a campaign link), if anywhere.
+      ad: (window.ShgAds && window.ShgAds.forBooking) ? window.ShgAds.forBooking() : {}
     });
   } catch (e) {
     if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = submitBtnLabel; submitBtn.classList.remove('loading'); }
@@ -1303,10 +1305,18 @@ async function submitBooking() {
     try { if (e && e.fields && typeof e.fields === 'object') srvReason = Object.keys(e.fields).map(function (k) { return e.fields[k]; }).filter(Boolean).join(' · '); } catch (e2) {}
     toast(srvReason || e.message || t('errBookCreate'));
     SFX.error(); shgHaptic('error');
+    /* 5 Oct 2026: a seat the passenger may not take (women-only berth for a
+       man) can only be fixed on the seat map - go there, don't leave them
+       staring at a form with nothing to change. */
+    if (/reserved for women|women-only|महिला/i.test(String(e && e.message || ''))) {
+      setTimeout(function () { location.hash = '#/seats'; }, 1600);
+    }
     return;
   }
 
   const pnr = apiResult.pnr;   // the real, permanent booking reference
+  /* Google Ads conversion (only when the owner set the id; a counter sale is not an ad sale). */
+  if (!apiResult.counter && window.ShgAds) { try { window.ShgAds.booked(pnr, apiResult.total); } catch (e) {} }
 
   /* Agent-code applied/rejected notice (§3). Server sends only a display
      label like "SHG-027" — never the agent's name, branch, or admin id. */
@@ -2099,10 +2109,10 @@ function renderStatus(id) {
   <div class="status-card tk2${conf ? ' confirm-success' : ''}" id="ticketCard" data-pnr="${esc(b.id)}">
     <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo.png?v=20261005g" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo.png?v=20261005i" alt="" loading="lazy" decoding="async">
         <div><b>${esc(CONFIG.company.name || 'S HARI GLOBAL PRIVATE LIMITED')}</b><small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
       </div>
-      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261005g" width="600" height="312" alt="" decoding="async">
+      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261005i" width="600" height="312" alt="" decoding="async">
     </div>
     <div class="premium-ticket-status">${pill2}${b.ticketNumber ? '<span>' + esc(b.ticketNumber) + '</span>' : ''}${b.agentCode ? '<span style="background:var(--orange-100,#fff2e0);color:var(--orange-800,#7a3d00);padding:2px 10px;border-radius:20px;font-size:12px;font-family:var(--f-code)">🏷️ ' + esc(b.agentCode) + '</span>' : ''}</div>
     ${(typeof routeOverviewSVG === 'function') ? routeOverviewSVG({ from: (isNepalPoint(r.from) ? r.from : (parseBP(b.boarding || '').name || r.from)), to: (isNepalPoint(r.to) ? r.to : (parseBP(b.drop || '').name || r.to)), compact: true }) : ''}

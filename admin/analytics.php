@@ -851,6 +851,63 @@ admin_page_head(
   </div>
 </div>
 
+<?php
+/* 5 Oct 2026 (owner: "Google Ads bata ticket kinda chhainan"): where website
+   visitors stop, from the product beacon (app_events, one row per screen
+   change, anonymous visit id), and which online bookings an ad brought. */
+$funnel = [];
+$adLand = 0;
+try {
+    $fp = ['f' => $from . ' 00:00:00', 't' => $to . ' 23:59:59'];
+    $stepSql = 'SELECT COUNT(DISTINCT session_key) FROM app_events WHERE created_at BETWEEN :f AND :t AND name = \'view\' AND props LIKE :p';
+    $funnel = [
+        ['Opened the website',    (int) Database::scalar('SELECT COUNT(DISTINCT session_key) FROM app_events WHERE created_at BETWEEN :f AND :t', $fp, 0)],
+        ['Searched a bus',        (int) Database::scalar($stepSql, $fp + ['p' => '%"to":"results"%'], 0)],
+        ['Opened the seat map',   (int) Database::scalar($stepSql, $fp + ['p' => '%"to":"seats"%'], 0)],
+        ['Reached checkout',      (int) Database::scalar($stepSql, $fp + ['p' => '%"to":"checkout"%'], 0)],
+        ['Booked (ticket shown)', (int) Database::scalar($stepSql, $fp + ['p' => '%"from":"checkout","to":"ticket"%'], 0)],
+    ];
+    $adLand = (int) Database::scalar('SELECT COUNT(DISTINCT session_key) FROM app_events WHERE created_at BETWEEN :f AND :t AND name = \'landing\' AND props LIKE :p', $fp + ['p' => '%"source":"google-ads"%'], 0);
+} catch (Throwable $e) {
+    $funnel = [];
+}
+require_once INCLUDE_PATH . '/adattribution.php';
+$adRows = AdAttribution::summary(an_days($from, $to));
+$gadsSet = trim(Settings::getString('google_ads_conversion', '')) !== '';
+?>
+<div class="panel an-route">
+  <h2>Website funnel &amp; ads</h2>
+  <div class="panel-body">
+  <p class="muted" style="margin-top:0">Visits to the public website in this window and how far they got. A big drop between two steps is where customers give up.</p>
+  <?php if ($funnel === [] || $funnel[0][1] === 0): ?>
+    <div class="an-note">No website visits recorded in this window.</div>
+  <?php else: $top = max(1, $funnel[0][1]); ?>
+    <table class="tbl no-card" style="max-width:640px">
+      <?php foreach ($funnel as [$lbl, $n]): ?>
+      <tr><th style="width:45%"><?= Security::e($lbl) ?></th><td class="mono" style="width:15%"><?= $n ?></td>
+        <td><div style="height:10px;border-radius:6px;background:var(--brand,#2563eb);width:<?= max(1, (int) round($n * 100 / $top)) ?>%"></div></td>
+        <td class="muted" style="width:12%"><?= (int) round($n * 100 / $top) ?>%</td></tr>
+      <?php endforeach; ?>
+    </table>
+  <?php endif; ?>
+  <p style="margin:14px 0 6px"><b>Google Ads clicks that reached the site:</b> <?= $adLand ?>
+    <span class="muted">(counted since 5 Oct 2026)</span></p>
+  <?php if ($adRows === []): ?>
+    <p class="muted" style="margin:0">No online booking in this window came from an ad or campaign link.</p>
+  <?php else: ?>
+    <table class="tbl no-card" style="max-width:640px">
+      <tr><th>Came from</th><th>Bookings</th><th>Confirmed</th><th>₹ confirmed</th></tr>
+      <?php foreach ($adRows as $r): ?>
+      <tr><td><?= Security::e(AdAttribution::label($r['src'])) ?></td><td class="mono"><?= $r['n'] ?></td><td class="mono"><?= $r['confirmed'] ?></td><td class="mono">₹<?= number_format($r['amount']) ?></td></tr>
+      <?php endforeach; ?>
+    </table>
+  <?php endif; ?>
+  <?php if (!$gadsSet): ?>
+    <p class="muted" style="margin:10px 0 0">⚠️ Google Ads conversion id is not set, so Google Ads cannot see your bookings. Paste it in <a href="settings.php#grp-site">Settings → Website</a> (google_ads_conversion).</p>
+  <?php endif; ?>
+  </div>
+</div>
+
 <div class="panel an-route">
   <h2>Route earnings</h2>
   <div class="panel-body">
