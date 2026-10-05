@@ -272,6 +272,7 @@ final class AiSensyAPI
                 $out['success']    = true;
                 $out['message_id'] = (string) ($j['messages'][0]['id'] ?? ($j['id'] ?? ($j['message_id'] ?? ($j['submitted_message_id'] ?? ''))));
                 self::log('SENT', $to, $label, $out);
+                self::ledger($to, $label, $body, $out, '');
                 return $out;
             }
 
@@ -285,7 +286,26 @@ final class AiSensyAPI
             usleep(400000);
         }
         self::log('FAIL', $to, $label, $out);
+        self::ledger($to, $label, $body, $out, '');
         return $out;
+    }
+
+    /**
+     * 5 Oct 2026 — every send also lands in the WhatsApp Manager's ledger
+     * (includes/msgledger.php): who, which template, the words, the wamid.
+     * Silent when the ledger is not installed; never breaks a send.
+     */
+    private static function ledger(string $to, string $label, array $body, array $out, string $status): void
+    {
+        try {
+            if (!class_exists('MsgLedger') && defined('INCLUDE_PATH') && is_file(INCLUDE_PATH . '/msgledger.php')) {
+                require_once INCLUDE_PATH . '/msgledger.php';
+            }
+            if (class_exists('MsgLedger')) {
+                MsgLedger::recordAiSensy($to, $label, $body, $out, $status);
+            }
+        } catch (Throwable $ignored) {
+        }
     }
 
     /** a) Ticket confirmed: {{1}} name {{2}} from {{3}} to {{4}} date {{5}} seat {{6}} ticket id */
@@ -1002,6 +1022,10 @@ final class AiSensyAPI
                 isset($info['pnr']) ? ' | pnr=' . $info['pnr'] : ''
             );
             @file_put_contents($dir . '/aisensy.log', $line, FILE_APPEND | LOCK_EX);
+            if ($status === 'SKIP') {
+                // never reached AiSensy (bad number, no key) - still part of "who got what"
+                self::ledger($to, $template, [], $info, 'skipped');
+            }
             if (class_exists('Logger', false)) {
                 Logger::adopt($dir . '/aisensy.log');      // a root cron must not lock the website out
             }

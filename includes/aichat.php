@@ -42,40 +42,10 @@ final class AiChat
     /** No key, no cURL, or switched off in Settings — caller keeps its own reply. */
     public static function configured(): bool
     {
-        return self::apiKey() !== ''
-            && Settings::getBool('wa_ai_enabled', true)
-            && function_exists('curl_init');
-    }
-
-    /**
-     * Which brain answers. Gemini first when its key is present: Google's
-     * free tier costs nothing, which is why the owner asked for it. Claude
-     * stays fully supported — set anthropic_api_key (and leave the Gemini
-     * one empty, or set ai_provider) and nothing else changes.
-     *
-     * @return array{provider: string, key: string}
-     */
-    private static function brain(): array
-    {
-        $forced = strtolower(trim(Settings::getString('ai_provider', '')));
-        $gem    = trim(Settings::getString('gemini_api_key', ''));
-        $ant    = trim(Settings::getString('anthropic_api_key', ''));
-
-        if ($forced === 'gemini' && $gem !== '') {
-            return ['provider' => 'gemini', 'key' => $gem];
+        if (!class_exists('AiBrain')) {
+            require_once INCLUDE_PATH . '/aibrain.php';
         }
-        if ($forced === 'anthropic' && $ant !== '') {
-            return ['provider' => 'anthropic', 'key' => $ant];
-        }
-        if ($gem !== '') {
-            return ['provider' => 'gemini', 'key' => $gem];
-        }
-        return ['provider' => 'anthropic', 'key' => $ant];
-    }
-
-    private static function apiKey(): string
-    {
-        return self::brain()['key'];
+        return AiBrain::configured() && Settings::getBool('wa_ai_enabled', true);
     }
 
     /**
@@ -165,13 +135,24 @@ final class AiChat
             . "tell them to reply here with the date, how many seats and the boarding point.";
     }
 
-    /** One call to whichever brain is configured. Returns the text, or null. */
+    /**
+     * One answer from the system's one AI (includes/aibrain.php, 5 Oct
+     * 2026): Gemini / GPT / Claude in the order Settings → ai_provider says,
+     * falling through to the next key when one does not answer.
+     */
     private static function ask(string $system, array $messages): ?string
     {
-        $brain = self::brain();
-        return $brain['provider'] === 'gemini'
-            ? self::askGemini($brain['key'], $system, $messages)
-            : self::askClaude($brain['key'], $system, $messages);
+        if (!class_exists('AiBrain')) {
+            require_once INCLUDE_PATH . '/aibrain.php';
+        }
+        $r = AiBrain::text($system, $messages, self::MAX_TOKENS, 'wa_chat');
+        return $r['text'] ?? null;
+    }
+
+    /** Gemini with this class's model discovery — AiBrain's Gemini leg. */
+    public static function geminiText(string $key, string $system, array $messages, int $maxTokens = self::MAX_TOKENS): ?string
+    {
+        return self::askGemini($key, $system, $messages, $maxTokens);
     }
 
     /**
@@ -180,7 +161,7 @@ final class AiChat
      * call asks Google which models this key may use, keeps the choice in
      * settings, and re-discovers if that model ever stops answering.
      */
-    private static function askGemini(string $key, string $system, array $messages): ?string
+    private static function askGemini(string $key, string $system, array $messages, int $maxTokens = self::MAX_TOKENS): ?string
     {
         $model = trim(Settings::getString('gemini_model', ''));
         if ($model === '') {
@@ -201,7 +182,7 @@ final class AiChat
         $payload = [
             'system_instruction' => ['parts' => [['text' => $system]]],
             'contents'           => $contents,
-            'generationConfig'   => ['maxOutputTokens' => self::MAX_TOKENS, 'temperature' => 0.4],
+            'generationConfig'   => ['maxOutputTokens' => max(32, $maxTokens), 'temperature' => 0.4],
         ];
 
         [$http, $body] = self::httpJson(
@@ -313,40 +294,6 @@ final class AiChat
         Settings::set('gemini_model', $names[0]);
         Logger::info('Gemini model selected', ['model' => $names[0]], 'whatsapp');
         return $names[0];
-    }
-
-    /** One Anthropic Messages API call. Returns the text, or null. */
-    private static function askClaude(string $key, string $system, array $messages): ?string
-    {
-        $model = Settings::getString('ai_model', 'claude-opus-5');
-
-        [$http, $body] = self::httpJson('https://api.anthropic.com/v1/messages', [
-            'model'      => $model,
-            'max_tokens' => self::MAX_TOKENS,
-            'system'     => $system,
-            'messages'   => $messages,
-        ], [
-            'x-api-key: ' . $key,
-            'anthropic-version: 2023-06-01',
-            'Content-Type: application/json',
-        ]);
-
-        if ($http !== 200) {
-            Logger::error('Anthropic call failed (HTTP ' . $http . ')', [
-                'body' => mb_substr($body, 0, 300),
-            ], 'whatsapp');
-            return null;
-        }
-
-        $json = json_decode($body, true);
-        $out  = '';
-        foreach ($json['content'] ?? [] as $block) {
-            if (($block['type'] ?? '') === 'text') {
-                $out .= (string) ($block['text'] ?? '');
-            }
-        }
-
-        return trim($out) !== '' ? trim($out) : null;
     }
 
     /**

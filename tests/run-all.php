@@ -112,6 +112,7 @@ const CORE_SUITES = [
     'counter-location-test.php'    => 'the desk a ticket was cut at: the list, the label, and both renders',
     'counter-desk-test.php'        => 'desks as data: country, money, company, the sale frozen on the booking, NPR beside the rupee',
     'wa-hi-queue-test.php'         => 'WhatsApp ticket by "hi": both numbers + the clerk queued, sent when the window opens, never to strangers',
+    'wa-manager-test.php'          => 'WhatsApp Manager: every send in one book (no doubles), delivery + cost + wallet; one AI order (Gemini / GPT / Claude)',
     'desk-identity-test.php'       => 'whose ticket: India / Nepal letterhead, PAN vs CIN, help numbers, IST / NPT - nothing invented',
     'counter-grace-test.php'       => 'counter may sell past the public cut-off',
     'counter-discount-test.php'    => 'counter discount is capped server-side',

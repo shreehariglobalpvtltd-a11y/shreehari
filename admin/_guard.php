@@ -233,6 +233,8 @@ function admin_nav(): array
         // not payments.view — the counter / official desks hold payments.view and
         // must not read everyone's salary (the page refuses them too).
         ['href' => 'payroll.php',      'icon' => 'rupee',       'label' => 'Staff Payroll',    'perm' => 'reports.view',   'section' => 'Expenses & reports'],
+        // 5 Oct 2026: every message in one live book - who got what, delivered / read, cost, AiSensy wallet.
+        ['href' => 'wa-manager.php',   'icon' => 'whatsapp',  'label' => '📲 WhatsApp Manager', 'perm' => 'reports.view',  'section' => 'Expenses & reports', 'hot' => true],
         ['href' => 'messages-log.php', 'icon' => 'msg',       'label' => 'Message Log',      'perm' => 'dashboard.view', 'section' => 'Expenses & reports'],
         ['href' => 'promo-card.php',   'icon' => 'image',     'label' => 'Promo card',       'perm' => 'dashboard.view', 'section' => 'Settings'],
         // 1 Oct 2026: each pickup's fare + ON/OFF + order (the stop editor on Routes).
@@ -248,6 +250,8 @@ function admin_nav(): array
         ['href' => 'health.php',       'icon' => 'alert',     'label' => 'System Health',    'perm' => 'dashboard.view', 'section' => 'Settings'],
         // 5 Oct 2026: backups + Google Drive (owner / settings.manage — the page checks).
         ['href' => 'backup.php',       'icon' => 'upload',    'label' => '☁️ Backups & Google Drive', 'perm' => 'settings.manage', 'section' => 'Settings'],
+        // 5 Oct 2026: ONE AI for everything - pick Gemini / GPT / Claude, paste keys, test.
+        ['href' => 'ai-brain.php',     'icon' => 'cog',       'label' => '🧠 One AI (Gemini / GPT / Claude)', 'perm' => 'dashboard.view', 'section' => 'Settings'],
         ['href' => 'ai-knowledge.php', 'icon' => 'doc',       'label' => 'AI Knowledge',     'perm' => 'dashboard.view', 'section' => 'Settings'],
         ['href' => 'ai-activity.php',  'icon' => 'msg',       'label' => 'AI Activity',      'perm' => 'dashboard.view', 'section' => 'Settings'],
         // 24 Sep 2026: the approved documents vault the assistant may quote and send.
@@ -303,7 +307,7 @@ function admin_header(string $title, string $active = ''): void
     // sg- components as the customer app) loads first; the panel's own rules
     // follow, then admin.css restyles the shell on top. The UI uses the
     // device's own font now (no webfont download on a slow counter line).
-    $av = '20261005q';
+    $av = '20261006a';
     /* 5 Oct 2026 (owner, Point 12): Poppins across the panel. display=swap, so a
        slow counter line shows the device font at once and swaps when the file
        lands; Devanagari comes from the same family. The CSP already allows it. */

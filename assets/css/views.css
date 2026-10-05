@@ -2908,6 +2908,19 @@ body.in-flow .credit-ribbon,body.in-flow #numStrip{display:none}
 #view-nav .sn-bus-m::before{content:'';position:absolute;left:50%;top:50%;width:30px;height:30px;border-radius:50%;transform:translate(-50%,-50%);
   background:rgba(255,122,26,.3);animation:snOfficeRing 2s ease-out infinite;pointer-events:none;z-index:-1}
 #view-nav.sn-lite .sn-bus-m::before,#view-nav.sn-lite .sn-office-ring,#view-nav.sn-lite .sn-me-pulse{animation:none;opacity:0}
+/* 5 Oct 2026 - Fast mode is the default map: only what navigation needs.
+   The extras (satellite / terrain styles, 3D, temples, nearby-POI chips)
+   come back with "Full map" (the pill or Layers). Markers untouched -
+   a MapLibre marker element must stay position:absolute. */
+#view-nav.sn-lite .sn-ss button[data-snstyle="sat"],#view-nav.sn-lite .sn-ss button[data-snstyle="terrain"],
+#view-nav.sn-lite #sn3D,#view-nav.sn-lite #snTemples,#view-nav.sn-lite .sn-explore,#view-nav.sn-lite .sn-ly-extra{display:none}
+#view-nav .sn-fast{margin-left:4px;border:0;border-radius:999px;padding:5px 10px;min-height:30px;font-weight:800;font-size:11.5px;line-height:1;font-family:inherit;
+  letter-spacing:.02em;color:#fff;background:linear-gradient(135deg,#16a34a,#0f7a37);box-shadow:0 2px 8px rgba(22,163,74,.35);cursor:pointer;white-space:nowrap}
+#view-nav .sn-fast.off{background:linear-gradient(135deg,#64748b,#475569);box-shadow:none}
+#view-nav .sn-fast[hidden]{display:none}
+.ha-card{position:relative}
+.ha-card .ha-flag{position:absolute;top:8px;right:8px;font-style:normal;font-size:10.5px;font-weight:800;letter-spacing:.03em;
+  padding:3px 8px;border-radius:999px;background:#fff;color:#B84D00;box-shadow:0 2px 6px rgba(0,0,0,.18);pointer-events:none}
 #view-nav .sn-nomap{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;background:#0f1a2e;color:#fff;text-align:center}
 #view-nav .sn-nomap svg,#view-nav .sn-nomap .rov{max-width:min(92vw,520px)}
 #view-nav .sn-nomap-txt b{display:block;font-size:16px;margin-bottom:6px}

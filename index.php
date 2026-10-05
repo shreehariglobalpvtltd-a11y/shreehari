@@ -77,7 +77,10 @@ $boot = [
     // v4.0: is the Sahayak AI fallback configured? Boolean only — the key
     // itself stays server-side (api/ai-proxy.php). Drives the "AI" badge
     // and whether the bot escalates unmatched questions to the proxy.
-    'ai'       => Settings::getString('anthropic_api_key', '') !== '',
+    // 5 Oct 2026: any of the one AI's keys (Gemini / GPT / Claude, includes/aibrain.php) -
+    // live has only Gemini, so this was false and the widget never asked the AI.
+    'ai'       => Settings::getString('anthropic_api_key', '') !== '' || Settings::getString('gemini_api_key', '') !== ''
+                  || Settings::getString('openai_api_key', '') !== '',
     // The contact button on every screen (24 Sep 2026): call / WhatsApp the
     // office without hunting for the number.
     'contact'  => ['phone' => Settings::officePhone(), 'wa' => Settings::officeWhatsApp()],
@@ -86,7 +89,8 @@ $boot = [
     // the widget asks the agent first and keeps the rule engine as its
     // offline fallback; when false it behaves exactly as before.
     'aiAgent'  => Settings::getBool('ai_web_agent_on', false)
-                  && (Settings::getString('anthropic_api_key', '') !== '' || Settings::getString('gemini_api_key', '') !== ''),
+                  && (Settings::getString('anthropic_api_key', '') !== '' || Settings::getString('gemini_api_key', '') !== ''
+                      || Settings::getString('openai_api_key', '') !== ''),
     'settings' => Settings::publicSettings(),
     // The ONE pickup list (Admin -> Routes, ON stops of active routes, with
     // time + per-pickup fare) — the homepage picker and fare board read it.

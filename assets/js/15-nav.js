@@ -291,16 +291,15 @@ function initNavApp(){
      reduced-motion preference gets a lighter map: no tile cross-fade, no 3D
      buildings / terrain / glow layers, no temple markers, markers snap instead
      of glide. The Layers panel has a manual switch (remembered per device). */
+  /* 5 Oct 2026 — FAST MODE IS THE DEFAULT (owner: "leave Google Maps, leave
+     Apple Maps — lite, fast, quick navigation, nothing extra"). Every phone
+     opens the light map: own tiles, flat camera, no cross-fade, no 3D /
+     terrain / satellite / temple / POI extras, markers snap, canvas capped
+     at 2x pixels. "Full map" in ⚙️ → Layers brings the extras back and is
+     remembered on that phone ('shari:navlite' = '0'). */
   function snDetectLite(){
-    try{ var o=localStorage.getItem('shari:navlite'); if(o==='1') return true; if(o==='0') return false; }catch(e){}
-    try{
-      var n=navigator, conn=n.connection||n.mozConnection||n.webkitConnection;
-      if(n.deviceMemory!=null&&n.deviceMemory<=2) return true;
-      if(n.hardwareConcurrency!=null&&n.hardwareConcurrency<=2) return true;
-      if(conn&&(conn.saveData||/(^|[^0-9])(2g|3g)$/.test(String(conn.effectiveType||'')))) return true;
-      if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches) return true;
-    }catch(e){}
-    return false;
+    try{ var o=localStorage.getItem('shari:navlite'); if(o==='0') return false; }catch(e){}
+    return true;
   }
   SN.lite=snDetectLite();
   var _nv=document.getElementById('view-nav'); if(_nv) _nv.classList.toggle('sn-lite',SN.lite);
@@ -337,6 +336,10 @@ function initNavApp(){
          camera, no antialiasing. */
       dragPan:true, scrollZoom:true, doubleClickZoom:true, touchZoomRotate:true,
       fadeDuration:SN.lite?0:250, maxPitch:SN.lite?45:70, antialias:!SN.lite,
+      /* Fast mode: a 3x phone screen draws 2x (less than half the pixels, text
+         still sharp), keeps fewer tiles in memory and pre-fetches less. */
+      pixelRatio:SN.lite?Math.min(window.devicePixelRatio||1,2):(window.devicePixelRatio||1),
+      maxTileCacheSize:SN.lite?120:null, prefetchZoomDelta:SN.lite?2:4,
       /* 4 Sep 2026 — this is an India + Nepal service, so the map is fenced to
          that part of the world (Arabian Sea to Myanmar, Sri Lanka to the high
          Himalaya). Nobody can drag it off to the Atlantic on a 3G phone and
@@ -733,9 +736,14 @@ function initNavApp(){
     var d3=s('#snLy3D'); if(d3) d3.onchange=function(){ s('#sn3D').click(); d3.checked=!!SN.is3D; };
     var lt=s('#snLyLite'); if(lt){ lt.checked=!!SN.lite; lt.onchange=function(){
       try{ localStorage.setItem('shari:navlite', lt.checked?'1':'0'); }catch(e){}
-      snToast(lt.checked?'⚡ Lite mode on — reloading map…':'✨ Full mode — reloading map…');
+      snToast(lt.checked?'⚡ Fast mode — reloading map…':'✨ Full map with extras — reloading…');
       setTimeout(function(){ location.reload(); },700);
     }; }
+    var fp=s('#snFastPill'); if(fp){ fp.hidden=false; fp.classList.toggle('off',!SN.lite);
+      fp.textContent=SN.lite?'⚡ Fast':'✨ Full';
+      fp.title=SN.lite?'Fast mode: only what you need to navigate. Tap for the full map.':'Full map with extras. Tap for Fast mode.';
+      fp.onclick=function(){ if(lt){ lt.checked=!SN.lite; lt.onchange(); } };
+    }
     var stp=s('#snLyStops'); if(stp) stp.onchange=function(){ SN.presetMarkers.forEach(function(m){ var el=m.getElement(); if(el) el.style.display=stp.checked?'':'none'; }); snToast(stp.checked?'🚏 Bus stops shown':'Bus stops hidden'); };
     var poi=s('#snLyPoi'); if(poi) poi.onchange=function(){
       if(!SN.poiMarkers||!SN.poiMarkers.length){ snToast('📍 Tap a category below (Food, ATM, Hospital…) to drop nearby places'); poi.checked=false; return; }

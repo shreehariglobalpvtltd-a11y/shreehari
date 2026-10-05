@@ -90,7 +90,7 @@ final class AiAgent
     {
         return Settings::getBool('wa_agent_on', false)
             && function_exists('curl_init')
-            && (self::anthropicKey() !== '' || self::geminiKey() !== ''
+            && (self::anthropicKey() !== '' || self::geminiKey() !== '' || self::openaiKey() !== ''
                 || self::grokKey() !== '' || self::openrouterKey() !== '' || self::cerebrasKey() !== '');
     }
 
@@ -104,7 +104,7 @@ final class AiAgent
     {
         return Settings::getBool('ai_web_agent_on', true)
             && function_exists('curl_init')
-            && (self::anthropicKey() !== '' || self::geminiKey() !== '');
+            && (self::anthropicKey() !== '' || self::geminiKey() !== '' || self::openaiKey() !== '');
     }
 
     /**
@@ -478,6 +478,7 @@ final class AiAgent
                 'grok'       => self::grokKey(),
                 'openrouter' => self::openrouterKey(),
                 'cerebras'   => self::cerebrasKey(),
+                'openai'     => self::openaiKey(),
                 default      => '',
             };
             if ($key === '') {
@@ -492,6 +493,7 @@ final class AiAgent
                 'grok'       => self::askOpenAICompat($key, $system, $history, $compatTools, 'grok'),
                 'openrouter' => self::askOpenAICompat($key, $system, $history, $compatTools, 'openrouter'),
                 'cerebras'   => self::askOpenAICompat($key, $system, $history, $compatTools, 'cerebras'),
+                'openai'     => self::askOpenAICompat($key, $system, $history, $compatTools, 'openai'),
                 default      => null,
             };
 
@@ -528,8 +530,16 @@ final class AiAgent
         if (self::cerebrasKey()   !== '') { $ladder[] = 'cerebras'; }
         if (self::grokKey()       !== '') { $ladder[] = 'grok'; }
         if (self::geminiKey()     !== '') { $ladder[] = 'gemini'; }
+        if (self::openaiKey()     !== '') { $ladder[] = 'openai'; }
         if (self::openrouterKey() !== '') { $ladder[] = 'openrouter'; }
         if (self::anthropicKey()  !== '') { $ladder[] = 'anthropic'; }
+
+        /* 5 Oct 2026 — one AI for the whole system: the provider chosen in
+           Settings → ai_provider (AI Brain page) answers first here too. */
+        $pick = strtolower(trim(Settings::getString('ai_provider', 'auto')));
+        if (in_array($pick, $ladder, true)) {
+            $ladder = array_values(array_unique(array_merge([$pick], $ladder)));
+        }
 
         return $ladder;
     }
@@ -1008,6 +1018,12 @@ final class AiAgent
             'model' => 'llama-4-scout-17b-16e-instruct',
             'setting' => 'cerebras_model',
         ],
+        // 5 Oct 2026: OpenAI GPT, the third of the owner's "Gemini / Claude / GPT".
+        'openai' => [
+            'url'   => 'https://api.openai.com/v1/chat/completions',
+            'model' => 'gpt-5-mini',
+            'setting' => 'openai_model',
+        ],
     ];
 
     private static function askOpenAICompat(string $key, string $system, array $history, array $tools, string $provider): ?array
@@ -1079,6 +1095,18 @@ final class AiAgent
             'max_tokens'  => self::MAX_TOKENS,
             'temperature' => 0.3,
         ];
+        /* OpenAI's gpt-5 / o-series refuse max_tokens and temperature and
+           spend part of the budget thinking: give room, keep effort low. */
+        if ($provider === 'openai') {
+            unset($payload['max_tokens']);
+            if (preg_match('/^(gpt-5|o\d)/i', $model)) {
+                unset($payload['temperature']);
+                $payload['max_completion_tokens'] = self::MAX_TOKENS * 4;
+                $payload['reasoning_effort'] = 'low';
+            } else {
+                $payload['max_completion_tokens'] = self::MAX_TOKENS;
+            }
+        }
         if ($tools !== []) {
             $payload['tools'] = array_map(static fn(array $t): array => [
                 'type'     => 'function',
@@ -1896,6 +1924,11 @@ final class AiAgent
     private static function openrouterKey(): string
     {
         return trim(Settings::getString('openrouter_api_key', ''));
+    }
+
+    private static function openaiKey(): string
+    {
+        return trim(Settings::getString('openai_api_key', ''));
     }
 
     private static function cerebrasKey(): string

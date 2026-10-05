@@ -1,7 +1,11 @@
 <?php
 /**
  * =====================================================================
- *  POST /api/ai-proxy.php — SHG Sahayak's Claude fallback (v4.0 PATCH A1)
+ *  POST /api/ai-proxy.php — SHG Sahayak's AI fallback (v4.0 PATCH A1)
+ *
+ *  5 Oct 2026: answers through the system's ONE AI (includes/aibrain.php)
+ *  — Gemini / GPT / Claude, whichever key the owner put in. It used to
+ *  know only Claude, so with only a Gemini key on live it never answered.
  *
  *  The browser cannot call api.anthropic.com directly (CORS, and the key
  *  must never reach a client), so the chatbot posts its conversation here
@@ -29,6 +33,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/_init.php';
 
 require_once INCLUDE_PATH . '/aiprompt.php';   // ai_system_prompt(), shared with the WhatsApp bot
+require_once INCLUDE_PATH . '/aibrain.php';    // the one AI (5 Oct 2026)
 
 try {
     Security::requirePost();
@@ -39,26 +44,10 @@ try {
     Security::requireRateLimit('ai_chat', Security::clientIp(), 8, 300);
     Security::requireRateLimit('ai_chat_day', Security::clientIp(), 60, 86400);
 
-    $apiKey = Settings::getString('anthropic_api_key', '');
-    if ($apiKey === '') {
-        // Not configured — the bot degrades to rules + WhatsApp handoff.
+    if (!AiBrain::configured()) {
+        // No AI key at all (or no cURL) — the bot degrades to rules + WhatsApp handoff.
         Response::error('AI assistant is not configured.', 503);
     }
-
-    // Same 503 when the host has no cURL. Without this the undefined
-    // function is a Throwable, which Response::serverError turns into a
-    // 500 — a real error in the log for a feature that is meant to be
-    // silently optional. (Caught in testing: the dev php.ini omits cURL.)
-    if (!function_exists('curl_init')) {
-        Logger::warning('AI proxy unavailable: cURL extension is not loaded');
-        Response::error('AI assistant is unavailable on this server.', 503);
-    }
-
-    // The operator named this model in the master prompt (cost: this is a
-    // bus company's FAQ bot, not a coding agent). Changeable in Admin →
-    // Settings without a deploy.
-    // claude-sonnet-5: half the price of the sonnet-4-6 default this shipped with.
-    $model = Settings::getString('ai_model', 'claude-sonnet-5');
 
     /* ---- Validate the conversation from the browser ---------------- */
     $raw = Response::field('messages', []);
@@ -91,53 +80,13 @@ try {
        live settings and tables on every call (ai_system_prompt above). */
     $system = ai_system_prompt();
 
-    /* ---- Relay to the Anthropic Messages API ----------------------- */
-    $req = [
-        'model'      => $model,
-        'max_tokens' => 1024,   // thinking + text share this cap on Sonnet 5
-        'system'     => $system,
-        'messages'   => $messages,
-    ];
-    if (!str_contains(strtolower($model), 'haiku') && !str_contains(strtolower($model), 'sonnet-4-5')) {
-        $req['thinking']      = ['type' => 'adaptive'];
-        $req['output_config'] = ['effort' => 'low'];
-    }
-    $payload = json_encode($req, JSON_UNESCAPED_UNICODE);
-
-    $ch = curl_init('https://api.anthropic.com/v1/messages');
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => $payload,
-        CURLOPT_TIMEOUT        => 25,
-        CURLOPT_HTTPHEADER     => [
-            'Content-Type: application/json',
-            'x-api-key: ' . $apiKey,
-            'anthropic-version: 2023-06-01',
-        ],
-    ]);
-    $body = curl_exec($ch);
-    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $err  = curl_error($ch);
-    curl_close($ch);
-
-    if ($body === false || $code !== 200) {
-        Logger::warning('AI proxy upstream failure', ['http' => $code, 'err' => $err]);
+    /* ---- One AI: the provider chosen in Settings, the others as backup ---- */
+    $ans = AiBrain::text($system, $messages, 900, 'web_chat');
+    if ($ans === null) {
+        Logger::warning('AI proxy: no provider answered', ['order' => implode(',', AiBrain::order())]);
         Response::error('The assistant is busy — please try again.', 502);
     }
-
-    $data = json_decode((string) $body, true);
-
-    // A refusal or empty content is a graceful "can't help with that".
-    $text = '';
-    foreach ((array) ($data['content'] ?? []) as $block) {
-        if (($block['type'] ?? '') === 'text') {
-            $text .= (string) $block['text'];
-        }
-    }
-    if ($text === '') {
-        Response::error('The assistant could not answer that.', 502);
-    }
+    $text = $ans['text'];
 
     Response::success(['text' => $text]);
 } catch (RuntimeException $e) {

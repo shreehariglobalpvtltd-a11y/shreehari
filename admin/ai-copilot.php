@@ -26,7 +26,8 @@ $isOffice = !Auth::isCounterAgent() && (Auth::isSuperadmin() || (string) ($admin
 $first    = trim((string) ($admin['full_name'] ?? ($admin['username'] ?? '')));
 $first    = $first !== '' ? explode(' ', $first)[0] : '';
 
-$hasKey  = Settings::getString('anthropic_api_key', '') !== '' || Settings::getString('gemini_api_key', '') !== '';
+$hasKey  = Settings::getString('anthropic_api_key', '') !== '' || Settings::getString('gemini_api_key', '') !== ''
+        || Settings::getString('openai_api_key', '') !== '';
 $agentOn = Settings::getBool('ai_web_agent_on', false) && $hasKey && function_exists('curl_init');
 
 /* Quick prompts — what the office and an agent actually ask, in the
