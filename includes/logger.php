@@ -124,13 +124,37 @@ final class Logger
                 PHP_EOL
             );
 
-            @file_put_contents(
-                LOG_PATH . '/' . date('Y-m-d') . '.log',
-                $line,
-                FILE_APPEND | LOCK_EX
-            );
+            $path = LOG_PATH . '/' . date('Y-m-d') . '.log';
+            @file_put_contents($path, $line, FILE_APPEND | LOCK_EX);
+            self::adopt($path);
         } catch (Throwable) {
             // Nothing further we can safely do.
+        }
+    }
+
+    /**
+     * The root crontab runs PHP as root. A log file root creates first
+     * (just after midnight for a dated log) is root:root 0644, and the
+     * website (www-data) cannot append to it for the rest of the day.
+     * So when we are root, a root-owned file is handed to whoever owns its
+     * folder. Cheap no-op for www-data. (5 Oct 2026: whatsapp/logs/
+     * 2026-10-04.log and 2026-10-05.log were root:root.)
+     */
+    public static function adopt(string $file): void
+    {
+        if (!function_exists('posix_geteuid') || posix_geteuid() !== 0) {
+            return;
+        }
+        clearstatcache(true, $file);
+        $dir = dirname($file);
+        $uid = @fileowner($dir);
+        if ($uid === false || $uid === 0 || @fileowner($file) !== 0) {
+            return;
+        }
+        @chown($file, $uid);
+        $gid = @filegroup($dir);
+        if ($gid !== false) {
+            @chgrp($file, $gid);
         }
     }
 

@@ -100,6 +100,9 @@ if (!function_exists('waGraphPost')) {
                 $detail !== '' ? ' | ' . $detail : ''
             );
             @file_put_contents($dir . '/' . date('Y-m-d') . '.log', $line, FILE_APPEND | LOCK_EX);
+            if (class_exists('Logger', false)) {
+                Logger::adopt($dir . '/' . date('Y-m-d') . '.log');   // root cron vs website (www-data)
+            }
         } catch (Throwable $ignored) {
             // Logging must never break a send.
         }

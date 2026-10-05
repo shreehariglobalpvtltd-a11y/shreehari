@@ -733,6 +733,9 @@ final class AiSensyAPI
                 isset($info['pnr']) ? ' | pnr=' . $info['pnr'] : ''
             );
             @file_put_contents($dir . '/aisensy.log', $line, FILE_APPEND | LOCK_EX);
+            if (class_exists('Logger', false)) {
+                Logger::adopt($dir . '/aisensy.log');      // a root cron must not lock the website out
+            }
         } catch (Throwable $ignored) {
             // logging must never break a booking
         }

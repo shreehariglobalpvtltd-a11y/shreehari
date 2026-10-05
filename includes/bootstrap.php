@@ -81,6 +81,15 @@ foreach ([UPLOAD_PATH, TICKET_PATH, QR_PATH, INVOICE_PATH, BACKUP_PATH, LOG_PATH
 
 require_once INCLUDE_PATH . '/db.php';
 require_once INCLUDE_PATH . '/logger.php';
+if (PHP_SAPI === 'cli') {
+    // a root cron must not leave php_errors.log writable by root only (Logger::adopt)
+    $shgErrLog = ROOT_PATH . '/logs/php_errors.log';
+    if (!is_file($shgErrLog) && function_exists('posix_geteuid') && posix_geteuid() === 0) {
+        @touch($shgErrLog);
+    }
+    Logger::adopt($shgErrLog);
+    unset($shgErrLog);
+}
 require_once INCLUDE_PATH . '/response.php';
 require_once INCLUDE_PATH . '/security.php';
 require_once INCLUDE_PATH . '/settings.php';
