@@ -845,6 +845,14 @@ function renderContactStrip() {
   const live = contactNumbers().filter(n => n.show && digits(n.num).length >= 7);
   if (!live.length) { strip.hidden = true; inner.innerHTML = ''; return; }
 
+  /* 5 Oct 2026: the brand panel beside the coach banner lists the branch
+     offices from the same numbers (first four phone lines, not WhatsApp). */
+  const sbo = document.getElementById('saOffices');
+  if (sbo) {
+    const offs = live.filter(n => !n.wa).slice(0, 4);
+    if (offs.length) sbo.innerHTML = offs.map(n => '<li><a href="tel:+' + esc(digits(n.num)) + '"><span class="th-ic">📞</span>'
+      + '<span class="th-l">' + esc(n.label || '') + '</span><span class="th-n">' + esc(n.num) + '</span></a></li>').join('');
+  }
   inner.innerHTML = live.map(n => {
     const d = digits(n.num);
     const href = n.wa ? 'https://wa.me/' + esc(d) : 'tel:+' + esc(d);
@@ -1183,7 +1191,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261005d" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261005e" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'

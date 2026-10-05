@@ -106,9 +106,11 @@ $posQuick  = strpos($tpl, 'id="quick-ticket"');
 check('DOM order: booking panel, then the other doors, then QuickBot',
     $posCards !== false && $posQuick !== false && $posSearch !== false && $posSearch < $posCards && $posCards < $posQuick);
 
-foreach (['search-anchor', 'quick-ticket', 'quickTicket', 'waSheet', 'waBookLink', 'heroQtCta'] as $id) {
+foreach (['search-anchor', 'quick-ticket', 'quickTicket', 'waSheet', 'heroQtCta'] as $id) {
     check("#{$id} still exists", substr_count($tpl, 'id="' . $id . '"') === 1);
 }
+// 5 Oct 2026 (owner): only the API WhatsApp button stays in the request sheet.
+check('#waBookLink (wa.me fallback) is gone from the request sheet', !str_contains($tpl, 'id="waBookLink"') && str_contains($tpl, 'id="waReqGo"'));
 
 
 check("initBookMode's delegated [data-bkmode] handler is bound once",
@@ -201,7 +203,7 @@ check('the privacy line still says a request does not confirm a seat',
 foreach ($blocks as $lang => $body) {
     $chat = preg_match("~waReqChat: '([^']*)'~", $body, $c1) ? $c1[1] : '';
     $fail = preg_match("~waReqFail: '([^']*)'~", $body, $c2) ? $c2[1] : '';
-    check("{$lang}: a failed send points at the real fallback button", $chat !== '' && str_contains($fail, $chat), $chat);
+    check("{$lang}: a failed send no longer points at the removed wa.me button", $fail !== '' && ($chat === '' || !str_contains($fail, $chat)), $fail);
 }
 $gPos = strpos($i18n, 'I18N.gu = Object.assign(');
 if ($gPos !== false) {
