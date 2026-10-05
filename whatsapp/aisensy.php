@@ -336,7 +336,8 @@ final class AiSensyAPI
         if ($key === '') {
             return [];
         }
-        $r = self::request('GET', self::API_BASE . self::projectId() . '/wa_template', $key, null);
+        // limit=100: without it AiSensy returns only the first 10 templates
+        $r = self::request('GET', self::API_BASE . self::projectId() . '/wa_template?limit=100', $key, null);
         $j = is_array($r['json']) ? $r['json'] : [];
         // AiSensy answers {template: [...], size, count}
         $list = $j['template'] ?? ($j['data'] ?? ($j['templates'] ?? (array_is_list($j) ? $j : [])));
