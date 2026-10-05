@@ -2319,23 +2319,27 @@ final class Notify
                   . "फिर्ता: " . inr((float) ($refund['amount'] ?? 0)) . " (" . (int) ($refund['percent'] ?? 0) . "%)\n"
                   . ($refund['reason'] ?? '');
             $cFacts = self::ticketFacts($booking);
-            self::whatsapp((string) $booking['contact_phone'], $text, null, self::countryHint($booking), [
-                '1' => $pnr,
-                '2' => $cFacts['route'] !== '' ? $cFacts['route'] : '-',
-                '3' => $cFacts['date']  !== '' ? $cFacts['date']  : '-',
-                '4' => inr((float) ($refund['amount'] ?? 0)) . ' (' . (int) ($refund['percent'] ?? 0) . '%)',
-            ], (int) ($booking['id'] ?? 0) ?: null, ['template_name' => 'shg_booking_cancelled', 'purpose' => 'booking_cancelled']);
 
             // 5 Oct 2026: also on AiSensy's approved template while Meta refuses templates.
+            $aisSent = false;
             try {
                 if (!class_exists('AiSensyAPI') && is_file(ROOT_PATH . '/whatsapp/aisensy.php')) {
                     require_once ROOT_PATH . '/whatsapp/aisensy.php';
                 }
                 if (class_exists('AiSensyAPI')) {
-                    AiSensyAPI::cancellationFor($booking, (float) ($refund['amount'] ?? 0));
+                    $aisSent = AiSensyAPI::cancellationFor($booking, (float) ($refund['amount'] ?? 0));
                 }
             } catch (Throwable $e) {
                 Logger::warning('AiSensy cancellation notice failed', ['pnr' => $pnr, 'err' => $e->getMessage()]);
+            }
+            // On the AiSensy driver the line below would be a second copy of the same notice.
+            if (!$aisSent || Settings::getString('whatsapp_driver', '') !== 'aisensy') {
+                self::whatsapp((string) $booking['contact_phone'], $text, null, self::countryHint($booking), [
+                    '1' => $pnr,
+                    '2' => $cFacts['route'] !== '' ? $cFacts['route'] : '-',
+                    '3' => $cFacts['date']  !== '' ? $cFacts['date']  : '-',
+                    '4' => inr((float) ($refund['amount'] ?? 0)) . ' (' . (int) ($refund['percent'] ?? 0) . '%)',
+                ], (int) ($booking['id'] ?? 0) ?: null, ['template_name' => 'shg_booking_cancelled', 'purpose' => 'booking_cancelled']);
             }
         }
 
@@ -2987,18 +2991,11 @@ final class Notify
         $ok       = false;
 
         if (Settings::getBool('whatsapp_notify_customer', true)) {
-            $wa = self::whatsapp($phone, $body['whatsapp'], null, $hint);
-            if ($wa === true) {
-                $channels[] = 'wa';
-                $ok = true;
-            }
-            // A string return is the click-to-chat fallback (no driver
-            // configured) — already logged by whatsapp(); not a delivery.
-
             /* 5 Oct 2026 — the same update on AiSensy's approved template
                while aisensy_mode is "always" (Meta refuses templates, so the
-               line above reaches only a passenger who wrote in the last 24 h).
-               Never allowed to break the event. */
+               plain line below reaches only a passenger who wrote in the last
+               24 h). Never allowed to break the event. */
+            $aisSent = false;
             try {
                 if (!class_exists('AiSensyAPI') && is_file(ROOT_PATH . '/whatsapp/aisensy.php')) {
                     require_once ROOT_PATH . '/whatsapp/aisensy.php';
@@ -3009,10 +3006,22 @@ final class Notify
                     if ($ais['ok']) {
                         $channels[] = 'ais';
                         $ok = true;
+                        $aisSent = true;
                     }
                 }
             } catch (Throwable $e) {
                 Logger::warning('AiSensy trip update failed', ['pnr' => $pnr, 'event' => $event, 'err' => $e->getMessage()]);
+            }
+
+            // On the AiSensy driver this would be a second copy of the same update.
+            if (!$aisSent || Settings::getString('whatsapp_driver', '') !== 'aisensy') {
+                $wa = self::whatsapp($phone, $body['whatsapp'], null, $hint);
+                if ($wa === true) {
+                    $channels[] = 'wa';
+                    $ok = true;
+                }
+                // A string return is the click-to-chat fallback (no driver
+                // configured) — already logged by whatsapp(); not a delivery.
             }
         }
 
