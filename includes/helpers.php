@@ -60,11 +60,6 @@ function nprEstimate(float|int $inrAmount): float
     return round(((float) $inrAmount) * $peg);
 }
 
-function nprLabel(float|int $inrAmount): string
-{
-    return 'NPR ' . indianNumber(nprEstimate($inrAmount));
-}
-
 /**
  * Round to whole rupees the way the front end does.
  */
@@ -266,11 +261,6 @@ function generateSupportRef(): string
     return 'SUP-' . date('ymd') . '-' . randomChars(5);
 }
 
-function generateTripRef(string $dateIso): string
-{
-    return PNR_PREFIX . '-' . str_replace('-', '', $dateIso) . '-' . randomChars(4);
-}
-
 
 /* =====================================================================
  *  Strings
@@ -290,12 +280,6 @@ function truncate(string $text, int $length = 100, string $suffix = '…'): stri
         return $text;
     }
     return rtrim(mb_substr($text, 0, $length, 'UTF-8')) . $suffix;
-}
-
-function slugify(string $text): string
-{
-    $text = preg_replace('/[^\p{L}\p{N}]+/u', '-', $text) ?? $text;
-    return trim(strtolower($text), '-');
 }
 
 /**

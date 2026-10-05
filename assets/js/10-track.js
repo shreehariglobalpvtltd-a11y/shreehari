@@ -73,16 +73,6 @@ function trackMapSVG(pct, reverse) {
     </g>
   </svg>`;
 }
-/* Place the bus marker at N% along the path (after the SVG is in the DOM). */
-function positionTrackMarker() {
-  const path = $('#trkRoutePath'), g = $('#trkBusMarker');
-  if (!path || !g) return;
-  const pct = parseFloat(g.getAttribute('data-pct')) || 0;
-  const rev = g.getAttribute('data-rev') === '1';
-  const L = path.getTotalLength();
-  const pt = path.getPointAtLength((rev ? (100 - pct) : pct) / 100 * L);
-  g.setAttribute('transform', 'translate(' + pt.x + ',' + pt.y + ')');
-}
 function fmtMinutes(min) {
   const h = Math.floor(min / 60), m = Math.round(min % 60);
   return (h ? h + 'h ' : '') + m + 'm';
@@ -110,11 +100,6 @@ const ROV_NEPAL_D = 'M649 150 651 150 650 153 646 162 647 168 645 175 650 183 65
 const ROV_ROUTE_D = 'M187.2,373.0 L191.0,369.6 L192.7,357.8 L192.1,355.2 L197.7,335.1 L190.1,326.5 L188.1,322.3 L180.9,306.3 L173.2,292.4 L175.3,272.8 L213.8,259.2 L276.5,181.6 L343.6,172.8 L432.4,183.8 L452.1,159.6 L452.7,143.3';
 const ROV_VIA = {"Udaipur":[213.8,259.2],"Jaipur":[276.5,181.6],"Agra":[343.6,172.8],"Lucknow":[432.4,183.8]};
 function rovProject(lat, lng) { return [Math.round((20 + (lng - 67.3) * 30.222) * 10) / 10, Math.round((52 + (30.8 - lat) * 33.333) * 10) / 10]; }
-function rovCoords(name) {
-  const n = String(name || '').toLowerCase();
-  const key = Object.keys(CITY_COORDS).find(c => n.indexOf(c) >= 0) || (n.indexOf('vadodara') >= 0 ? 'barauda' : (n.indexOf('bhupal') >= 0 || n.indexOf('emli') >= 0 ? 'ahmedabad' : (n.indexOf('hari parking') >= 0 || n.indexOf('nana') >= 0 ? 'chiloda' : null)));
-  return key ? { lat: CITY_COORDS[key][0], lng: CITY_COORDS[key][1] } : null;
-}
 function rovCode(name) {
   return ({ Surat: 'STV', Rupaidiha: 'RPD', Ahmedabad: 'AMD', Nepalgunj: 'NPJ', Mehsana: 'MSN', Baroda: 'BRC', Vadodara: 'BRC', Kamrej: 'KMJ', Ankleshwar: 'AKV', Bharuch: 'BRH', Anand: 'ANA', Nadiad: 'NAD' })[String(name || '').trim()]
     || String(name || '---').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase();
@@ -322,45 +307,6 @@ function runDistanceCheck(bookingId, box) {
   }, () => {
     box.innerHTML = '<div class="verify-note">📍 <span>' + tf('distDenied', { c: label }) + '</span></div>';
   }, { timeout: 12000, maximumAge: 120000 });
-}
-function runGpsDistanceAll() {
-  var resultBox = $('#gpsDistResult');
-  var cells = document.querySelectorAll('.gps-col');
-  var headers = document.querySelectorAll('.gps-col-h');
-  if (!navigator.geolocation) {
-    if (resultBox) { resultBox.style.display = 'block'; resultBox.innerHTML = '<div class="verify-note">📡 GPS not available on this device</div>'; }
-    return;
-  }
-  if (resultBox) { resultBox.style.display = 'block'; resultBox.innerHTML = '<div class="verify-note" style="background:var(--blue-50);border-color:var(--blue-100)">⏳ <span>Locating you... · तपाईंको स्थान खोज्दै... · आपकी लोकेशन खोज रहे हैं...</span></div>'; }
-  headers.forEach(function(h) { h.style.display = 'table-cell'; });
-  cells.forEach(function(c) { c.style.display = 'table-cell'; c.textContent = '...'; });
-  navigator.geolocation.getCurrentPosition(function(pos) {
-    var lat = pos.coords.latitude, lng = pos.coords.longitude;
-    var minD = Infinity, nearest = null, nearIdx = -1;
-    cells.forEach(function(c, i) {
-      var sLat = parseFloat(c.getAttribute('data-lat'));
-      var sLng = parseFloat(c.getAttribute('data-lng'));
-      if (isNaN(sLat) || isNaN(sLng)) { c.textContent = '—'; return; }
-      var d = haversineKm(lat, lng, sLat, sLng);
-      if (d < minD) { minD = d; nearest = ROUTE_STOPS[i]; nearIdx = i; }
-      var mins = Math.round(d / 40 * 60);
-      c.innerHTML = '<b style="color:var(--blue)">' + (d < 1 ? (d * 1000).toFixed(0) + ' m' : d.toFixed(1) + ' km') + '</b><br><small style="color:var(--muted)">~' + mins + ' min</small>';
-    });
-    if (nearest && resultBox) {
-      var tr = document.querySelectorAll('#routeDistTbody tr')[nearIdx];
-      if (tr) { tr.style.background = 'var(--blue-50)'; tr.style.fontWeight = '700'; }
-      resultBox.innerHTML = '<div class="verify-note" style="background:linear-gradient(135deg,var(--blue-50),rgba(255,152,0,.08));border-color:var(--blue-100);border-left:4px solid var(--orange)">'
-        + '<b>📍 You are nearest to: ' + nearest.name + '</b>'
-        + (nearest.flag ? ' ' + nearest.flag : '')
-        + '<br><span style="font-size:14px">Distance: <b>' + (minD < 1 ? (minD * 1000).toFixed(0) + ' m' : minD.toFixed(1) + ' km') + '</b>'
-        + ' · ~' + Math.round(minD / 40 * 60) + ' min by road</span>'
-        + '<br><small style="color:var(--muted)">Your location: ' + lat.toFixed(4) + '°N, ' + lng.toFixed(4) + '°E · Haversine straight-line distance · Actual road distance may differ</small>'
-        + '</div>';
-    }
-  }, function() {
-    if (resultBox) { resultBox.innerHTML = '<div class="verify-note">📡 Location access denied. Enable GPS in your browser settings.</div>'; }
-    cells.forEach(function(c) { c.textContent = '—'; });
-  }, { timeout: 15000, maximumAge: 120000 });
 }
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-dist]'); if (!btn) return;

@@ -551,28 +551,6 @@ function loadSrvStops() {
   }).catch(function () { /* offline — local catalogue still drives the picker */ });
 }
 
-/* Every town the live routes actually call at, for a direction. */
-function servedTownKeys(dir) {
-  /* When the server has told us its stops, that answer is FINAL — mixing in
-     the local catalogue would resurrect towns the routes no longer call at.
-     The seeded catalogue still lists a Surat pickup, so merging the two
-     offered "Surat" on a server whose route_stops has no Surat, and the
-     board came back empty for the only option in the picker. */
-  const srv = dir === 'go' ? SrvStops.go : SrvStops.back;
-  if (srv) return srv;
-
-  const keys = Object.create(null);
-  (DB.routes || []).forEach(r => {
-    if (!r || !r.active) return;
-    const outbound = isNepalPoint(r.to) && !isNepalPoint(r.from);
-    const inbound  = isNepalPoint(r.from) && !isNepalPoint(r.to);
-    if (dir === 'go' ? !outbound : !inbound) return;
-    keys[townKeyJS(dir === 'go' ? r.from : r.to)] = true;
-    ((dir === 'go' ? r.boarding : r.drop) || []).forEach(line => { keys[townKeyJS(line)] = true; });
-  });
-  return keys;
-}
-
 function gujaratTownsFor(dir) {
   /* 1 Oct 2026 (owner R3g): the server's ONE location list first — the
      pickups switched ON in Admin -> Routes, in Admin order (Rajkot included,
@@ -1217,7 +1195,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261005f" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261005g" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'

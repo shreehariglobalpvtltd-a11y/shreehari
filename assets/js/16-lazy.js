@@ -29,15 +29,6 @@ var TC = {
   lastBusPos: null, targetBusPos: null, interpFrame: null,
   routeCoords: null, routeCumKm: null, routeTotalKm: 1375
 };
-var TC_FIREBASE_CONFIG = {
-  apiKey:            'YOUR_API_KEY',
-  authDomain:        'YOUR_PROJECT.firebaseapp.com',
-  databaseURL:       'https://YOUR_PROJECT-default-rtdb.firebaseio.com',
-  projectId:         'YOUR_PROJECT',
-  storageBucket:     'YOUR_PROJECT.appspot.com',
-  messagingSenderId: '000000000000',
-  appId:             '1:000000000000:web:0000000000000000'
-};
 var TC_OWM_KEY = '';  // OpenWeatherMap free API key — leave empty for demo
 
 function renderTrip(pnr) {
@@ -456,12 +447,8 @@ function tcPopulateCards() {
 /* ── WEATHER (OpenWeatherMap free tier) ── */
 function tcFetchWeather() {
   if (TC.wxFetched || !TC_OWM_KEY) {
-    if (!TC_OWM_KEY) {
-      $('#tcWxOriginTemp').textContent = '—';
-      $('#tcWxOriginCond').textContent = 'Set OWM key for live weather';
-      $('#tcWxDestTemp').textContent = '—';
-      $('#tcWxDestCond').textContent = '';
-    }
+    // no weather key configured: no card (passengers saw "Set OWM key")
+    if (!TC_OWM_KEY) { var wc = $('#tcWeatherCard'); if (wc) wc.style.display = 'none'; }
     return;
   }
   TC.wxFetched = true;
@@ -538,37 +525,9 @@ function tcInitFirebase() {
      security policy blocked its scripts anyway — every trip page paid two
      failed downloads for nothing. The passenger side now reads the shared
      `livebus` store (tcInitManualLive) plus the same-browser shim below.
-     TC_FIREBASE_CONFIG / tcListenLive stay as dormant code. */
+     The dormant Firebase listener was removed on 5 Oct 2026. */
   if (TC.phase !== 2) return;
   tcFallbackToLocalTracking();
-}
-
-function tcListenLive() {
-  var tripId = TC.tripId || TC.pnr;
-  if (!tripId) {
-    tcFallbackToLocalTracking();
-    return;
-  }
-  try {
-    var db = firebase.database();
-    var locRef = db.ref('trips/' + tripId + '/liveLocation');
-    var haltRef = db.ref('trips/' + tripId + '/meta/status');
-    var onLoc = locRef.on('value', function(snap) {
-      var d = snap.val();
-      if (!d || !d.lat) return;
-      tcUpdateBusPosition(d);
-    });
-    var onHalt = haltRef.on('value', function(snap) {
-      var status = snap.val();
-      tcUpdateHaltStatus(status);
-    });
-    TC.fbUnsub = function() {
-      locRef.off('value', onLoc);
-      haltRef.off('value', onHalt);
-    };
-  } catch (e) {
-    tcFallbackToLocalTracking();
-  }
 }
 
 function tcFallbackToLocalTracking() {

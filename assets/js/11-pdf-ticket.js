@@ -4,9 +4,6 @@
    watermark, fare breakdown, return leg & crew contact.
    Modular: edit only this function to restyle tickets.
 ================================================================ */
-function lerpColor(c1, c2, t2) {
-  return [Math.round(c1[0] + (c2[0] - c1[0]) * t2), Math.round(c1[1] + (c2[1] - c1[1]) * t2), Math.round(c1[2] + (c2[2] - c1[2]) * t2)];
-}
 /* jsPDF is ~350KB, so it is injected only when a PDF button is actually
    clicked (cdnjs → jsdelivr fallback). All 4 PDF generators await this. */
 var jsPdfPromise = null;
@@ -34,27 +31,6 @@ function waitForJsPDF(btn) {
     if (!ok) toast('PDF library failed to load — check your internet connection and retry.');
     return ok;
   });
-}
-/* ---- Devanagari font for jsPDF — lazy-loaded, cached ----
-   Rule 4: UTF-8 + full Devanagari font (NotoSansDevanagari.ttf).
-   Rule 5: if font fails to load → fall back to Roman transliteration. */
-var _devFontB64 = null;
-async function _loadDevFont(doc) {
-  try {
-    if (!_devFontB64) {
-      var r = await fetch('/assets/fonts/NotoSansDevanagari.ttf');
-      if (!r.ok) return false;
-      var buf = await r.arrayBuffer();
-      var u8 = new Uint8Array(buf);
-      var bin = '';
-      for (var i = 0; i < u8.length; i += 8192)
-        bin += String.fromCharCode.apply(null, u8.subarray(i, Math.min(i + 8192, u8.length)));
-      _devFontB64 = btoa(bin);
-    }
-    doc.addFileToVFS('NotoSansDevanagari.ttf', _devFontB64);
-    doc.addFont('NotoSansDevanagari.ttf', 'NotoSansDevanagari', 'normal');
-    return true;
-  } catch (e) { return false; }
 }
 /* What Helvetica can print (24 Sep 2026). jsPDF has no Devanagari shaping, and
    a Devanagari string handed to its standard fonts comes out as symbols
