@@ -431,6 +431,26 @@
       if (cpl) cpl.innerHTML = 'Mobile <small>(optional at counter · +977 pani milcha)</small>';
       var cpe = cp.closest('.field') && cp.closest('.field').querySelector('.err');
       if (cpe) cpe.textContent = 'Blank OK — or 8-15 digits (Indian / Nepali).';
+      /* 5 Oct 2026: 12 desk tickets in two weeks carried a 9-digit number and
+         30 in a week none at all - WhatsApp cannot deliver those. Say, while
+         typing, where THIS ticket will go; never blocks the sale. */
+      var cph = document.createElement('div');
+      cph.id = 'ctrPhoneReach';
+      cph.className = 'ctr-note';
+      cph.setAttribute('aria-live', 'polite');
+      (cp.closest('.field') || cp.parentNode).appendChild(cph);
+      var reach = function () {
+        var d = String(cp.value || '').replace(/\D/g, '').replace(/^00/, '');
+        var bare = d.replace(/^0+/, '');
+        var ok = /^[6-9]\d{9}$/.test(bare) || /^91[6-9]\d{9}$/.test(bare) || /^9779[78]\d{8}$/.test(bare);
+        if (bare === '') cph.textContent = '📵 Number chhaina — ticket counter / agent ko WhatsApp ma janchha.';
+        else if (ok) cph.textContent = '✅ Ticket yo number ko WhatsApp ma sidhai janchha.';
+        else cph.textContent = '⚠️ ' + bare.length + ' digits — number galat jasto chha (India 10 digits · Nepal 98/97…). Ticket yatru lai pugdaina, counter / agent lai janchha.';
+        cph.style.color = (bare !== '' && !ok) ? '#B4231F' : '';
+      };
+      cp.addEventListener('input', reach);
+      cp.addEventListener('change', reach);
+      reach();
     }
 
     var card = $q('#payCard'); if (!card) return;

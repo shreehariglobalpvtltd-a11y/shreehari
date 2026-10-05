@@ -188,6 +188,7 @@ $hasQueue = (int) Database::scalar(
 ) > 0;
 $alreadyHasTicket = " AND NOT EXISTS (SELECT 1 FROM message_logs a
                                        WHERE a.booking_id = b.id AND a.provider = 'aisensy'
+                                         AND (a.purpose IS NULL OR a.purpose <> 'seller_copy')
                                          AND a.status IN ('sent','delivered','read'))"
     . ($hasQueue ? " AND NOT EXISTS (SELECT 1 FROM wa_ticket_queue q
                                       WHERE q.booking_id = b.id AND q.role IN ('customer','alt')

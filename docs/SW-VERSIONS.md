@@ -4,6 +4,7 @@ Moved out of `sw.js` on 2 Oct 2026: the history used to live on the `var VERSION
 
 The CURRENT version and its note stay on the `var VERSION` line in `sw.js`; this file holds the ones before it. Newest first. Each line: version — what shipped with it (as written at the time).
 
+- **shg-v188** — counter: agent picked on the seat map, Confirm counter sale goes straight to the ticket again
 - **shg-v187** — counter mode: agent compulsory again (no silent own-code, no Other escape; server refuses a counter sale without an agent)
 - **shg-v186** — ads: Google Ads attribution + conversion tag, booking-first for ad clicks, women-seat-safe auto-pick, seat cap 409
 - **shg-v185** — dead code: GPS distance table, town-key helper, PDF colour/font helpers, dormant Firebase listener; trip weather card hidden without a key

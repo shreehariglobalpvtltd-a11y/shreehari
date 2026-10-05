@@ -69,6 +69,36 @@ if ($ready) {
     }
 }
 
+/* Where did each day's tickets end up? (5 Oct 2026) One row per sale day:
+   reached the customer (delivered / read), still only "sent", went to the
+   counter / agent instead, or reached nobody - and how many sales carried no
+   usable customer number at all, which is the usual reason for the last two. */
+$reach = [];
+if ($ready) {
+    try {
+        $reach = Database::fetchAll(
+            "SELECT DATE(b.created_at) d, COUNT(*) n,
+                    SUM(COALESCE(x.c_ok, 0)) reached,
+                    SUM(COALESCE(x.c_ok, 0) = 0 AND COALESCE(x.c_sent, 0) = 1) sent,
+                    SUM(COALESCE(x.c_ok, 0) = 0 AND COALESCE(x.c_sent, 0) = 0 AND COALESCE(x.s_ok, 0) = 1) agent,
+                    SUM(COALESCE(x.c_ok, 0) = 0 AND COALESCE(x.c_sent, 0) = 0 AND COALESCE(x.s_ok, 0) = 0) nobody,
+                    SUM(b.contact_phone NOT REGEXP '^[1-9][0-9]{9,12}$') nophone
+               FROM bookings b
+               LEFT JOIN (SELECT booking_id,
+                                 MAX(role IN ('customer','alt') AND status IN ('delivered','read')) c_ok,
+                                 MAX(role IN ('customer','alt') AND status = 'sent') c_sent,
+                                 MAX(role = 'seller' AND status IN ('sent','delivered','read')) s_ok
+                            FROM wa_ticket_queue GROUP BY booking_id) x ON x.booking_id = b.id
+              WHERE b.status IN ('confirmed','completed') AND b.created_at >= CURDATE() - INTERVAL 6 DAY"
+              . ($scope !== null ? ' AND b.sold_by_admin_id = :sc' : '') . '
+              GROUP BY d ORDER BY d DESC',
+            $scope !== null ? ['sc' => $scope] : []
+        );
+    } catch (Throwable $ex) {
+        $reach = [];
+    }
+}
+
 $hiNo = WaQueue::hiNumber();
 admin_header('WhatsApp tickets', 'wa-queue');
 ?>
@@ -118,6 +148,28 @@ admin_header('WhatsApp tickets', 'wa-queue');
     <a class="card" href="?status=<?= $e($k) ?>" style="text-decoration:none"><div class="k"><?= $e($l) ?></div><div class="v"><?= (int) ($counts[$k] ?? 0) ?></div></a>
   <?php endforeach; ?>
 </div>
+<?php if ($reach !== []): ?>
+<div class="panel">
+  <h2>Where the tickets went · टिकट कहाँ पुग्यो (7 days)</h2>
+  <table>
+    <thead><tr><th>Sale day</th><th>Tickets</th><th>✅ Customer got it</th><th>📤 Sent, not confirmed</th><th>🧾 Counter / agent got it</th><th>❌ Nobody</th><th>📵 No customer number</th></tr></thead>
+    <tbody>
+    <?php foreach ($reach as $r): $n = max(1, (int) $r['n']); ?>
+      <tr>
+        <td><?= $e(date('D j M', (int) strtotime((string) $r['d']))) ?></td>
+        <td><b><?= (int) $r['n'] ?></b></td>
+        <td><?= (int) $r['reached'] ?> <small class="muted"><?= (int) round(100 * (int) $r['reached'] / $n) ?>%</small></td>
+        <td><?= (int) $r['sent'] ?></td>
+        <td><?= (int) $r['agent'] ?></td>
+        <td><?php if ((int) $r['nobody'] > 0): ?><span class="wq-pill wq-failed"><?= (int) $r['nobody'] ?></span><?php else: ?>0<?php endif; ?></td>
+        <td><?= (int) $r['nophone'] ?></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+  <p class="muted" style="margin:8px 0 0;font-size:12.5px">A ticket with no (or a wrong) customer number goes to the counter / agent who sold it. Type the customer's WhatsApp number at the desk and it reaches them directly. · यात्रुको WhatsApp नम्बर हालेमा टिकट सिधै यात्रुकहाँ पुग्छ।</p>
+</div>
+<?php endif; ?>
 <div class="panel">
   <h2>Last 14 days <?= $status !== '' ? '· ' . $e($status) : '' ?> <?php if ($status !== ''): ?><a class="btn ghost sm" href="?">All</a><?php endif; ?></h2>
   <table>

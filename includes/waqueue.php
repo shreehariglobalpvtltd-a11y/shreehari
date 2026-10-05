@@ -398,6 +398,32 @@ final class WaQueue
     }
 
     /**
+     * The customer cannot be reached at all (no number / a number WhatsApp
+     * cannot be): the seller's copy goes out now instead of waiting for a
+     * customer failure that will never be reported. Once per ticket.
+     */
+    public static function sellerNow(array $b): bool
+    {
+        if (!self::ready() || !Settings::getBool('wa_seller_copy_on', true)) {
+            return false;
+        }
+        try {
+            $seller = self::sellerPhone($b);
+            if ($seller === '') {
+                return false;
+            }
+            $id = self::enqueue((int) ($b['id'] ?? 0), (string) ($b['pnr'] ?? ''), $seller, 'seller');
+            if ($id <= 0 || (int) Database::scalar('SELECT attempts FROM wa_ticket_queue WHERE id = :i', ['i' => $id], 0) !== 0) {
+                return false;
+            }
+            return self::tryNow($id, true);
+        } catch (Throwable $e) {
+            Logger::warning('wa queue sellerNow failed', ['e' => $e->getMessage(), 'pnr' => (string) ($b['pnr'] ?? '')]);
+            return false;
+        }
+    }
+
+    /**
      * Cron: ask AiSensy what happened to recent sends, expire old waits,
      * and queue the seller copy for a customer whose ticket failed.
      *
@@ -499,8 +525,21 @@ final class WaQueue
                 . 'सहयोग / Help: ' . (string) $co['phone'];
         }
 
-        $r = AiSensyAPI::sendImage((string) $q['phone'], $img, $caption);
-        $via = 'image';
+        /* 5 Oct 2026: the seller's copy on the approved template first. The
+           free-form picture only lands inside a 24 h window, which a clerk or
+           agent almost never has open - 14 copies waited, 1 was read. Off with
+           setting wa_seller_template_on = 0. */
+        $r = ['success' => false, 'message_id' => '', 'error' => ''];
+        $via = '';
+        if ($role === 'seller' && Settings::getBool('wa_seller_template_on', true)) {
+            $r = AiSensyAPI::ticketTemplate((string) $q['phone'], (int) $b['id'], $pnr,
+                ($f['name'] !== '' ? $f['name'] : 'Passenger') . ' (agent copy - please forward)');
+            $via = $r['how'];
+        }
+        if (!$r['success']) {
+            $r = AiSensyAPI::sendImage((string) $q['phone'], $img, $caption);
+            $via = 'image';
+        }
         if (!$r['success']) {
             $r = AiSensyAPI::sendText((string) $q['phone'], $caption . "\nटिकट / Ticket: " . $img);
             $via = 'text';

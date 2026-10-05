@@ -468,6 +468,16 @@ final class AiSensyAPI
             }
             if (self::normalizePhone($number) === '') {
                 self::log('SKIP', $number, self::TPL_TICKET, ['error' => 'no usable phone', 'pnr' => $pnr]);
+                /* 5 Oct 2026: 30 of 123 desk tickets in a week carried no
+                   customer number (0000000000) and 12 a 9-digit typo - nobody
+                   got those on WhatsApp. The counter / agent who cut it gets
+                   the ticket at once and hands it on. */
+                if (!class_exists('WaQueue') && defined('INCLUDE_PATH') && is_file(INCLUDE_PATH . '/waqueue.php')) {
+                    require_once INCLUDE_PATH . '/waqueue.php';
+                }
+                if (class_exists('WaQueue') && Security::rateLimit('ais_ticket', $pnr, 1, 2592000)) {
+                    WaQueue::sellerNow(Database::fetch('SELECT * FROM bookings WHERE id = :b', ['b' => $bid]) ?? $booking);
+                }
                 return;
             }
 
@@ -594,27 +604,8 @@ final class AiSensyAPI
                 return $out;
             }
             $out['to'] = $to;
-            $f = self::bookingFacts($bid);
-            $vars = [$f['name'] !== '' ? $f['name'] : 'Passenger', $f['from'] ?: '-', $f['to'] ?: '-', $f['date'] ?: '-', $f['seats'] ?: '-', $pnr];
-            $link = '';
-            try {
-                if (!class_exists('Ticket') && defined('INCLUDE_PATH') && is_file(INCLUDE_PATH . '/ticket.php')) {
-                    require_once INCLUDE_PATH . '/ticket.php';
-                }
-                $link = class_exists('Ticket') ? (string) Ticket::imageUrl($pnr) : '';
-            } catch (Throwable $ignored) {
-                $link = '';
-            }
-            $r = ['success' => false, 'message_id' => '', 'error' => ''];
-            $how = '';
-            if ($link !== '') {
-                $r = self::sendMessage($to, self::tpl('aisensy_tpl_ticket_image', self::TPL_TICKET_IMAGE), $vars, $link);
-                $how = 'image template';
-            }
-            if (!$r['success']) {
-                $r = self::sendTicketConfirmation($to, ...$vars);
-                $how = 'template';
-            }
+            $r   = self::ticketTemplate($to, $bid, $pnr);
+            $how = $r['how'];
             if (class_exists('Notify')) {
                 Notify::logOutbound($to, 'AiSensy ticket resend ' . $pnr . ' (' . $how . ')', $r['success'] ? 'sent' : 'failed', [
                     'provider'  => 'aisensy',
@@ -631,6 +622,40 @@ final class AiSensyAPI
             $out['detail'] = $e->getMessage();
         }
         return $out;
+    }
+
+    /**
+     * The approved ticket template to one number: the PNG-header template,
+     * then the text one. Templates reach a number with no open 24 h window.
+     * $nameAs replaces {{1}} (e.g. "Ram (agent copy)" for the seller's copy).
+     *
+     * @return array{success: bool, message_id: string, error: string, how: string}
+     */
+    public static function ticketTemplate(string $to, int $bid, string $pnr, string $nameAs = ''): array
+    {
+        $f = self::bookingFacts($bid);
+        $name = $nameAs !== '' ? $nameAs : ($f['name'] !== '' ? $f['name'] : 'Passenger');
+        $vars = [$name, $f['from'] ?: '-', $f['to'] ?: '-', $f['date'] ?: '-', $f['seats'] ?: '-', $pnr];
+        $link = '';
+        try {
+            if (!class_exists('Ticket') && defined('INCLUDE_PATH') && is_file(INCLUDE_PATH . '/ticket.php')) {
+                require_once INCLUDE_PATH . '/ticket.php';
+            }
+            $link = class_exists('Ticket') ? (string) Ticket::imageUrl($pnr) : '';
+        } catch (Throwable $ignored) {
+            $link = '';
+        }
+        $r = ['success' => false, 'message_id' => '', 'error' => ''];
+        $how = '';
+        if ($link !== '') {
+            $r = self::sendMessage($to, self::tpl('aisensy_tpl_ticket_image', self::TPL_TICKET_IMAGE), $vars, $link);
+            $how = 'image template';
+        }
+        if (!$r['success']) {
+            $r = self::sendTicketConfirmation($to, ...$vars);
+            $how = 'template';
+        }
+        return ['success' => (bool) $r['success'], 'message_id' => (string) $r['message_id'], 'error' => (string) $r['error'], 'how' => $how];
     }
 
     /** Public view of bookingFacts() for includes/waqueue.php. */
