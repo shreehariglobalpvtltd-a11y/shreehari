@@ -146,7 +146,11 @@ places() {
     nwr/amenity nwr/shop nwr/tourism nwr/office nwr/healthcare nwr/leisure nwr/historic \
     nwr/place nwr/railway=station,halt nwr/highway=bus_stop nwr/public_transport=station \
     w/highway=primary,secondary,tertiary,residential,unclassified,trunk,living_street \
-    -o poi.osm.pbf --overwrite
+    -o poi-all.osm.pbf --overwrite
+  # only named objects (and the nodes/ways they are built from): most Indian
+  # residential streets have no name, and navplaces.py skips those anyway
+  osmium tags-filter poi-all.osm.pbf nwr/name nwr/name:en -o poi.osm.pbf --overwrite
+  rm -f poi-all.osm.pbf
   log "places: export"
   osmium export poi.osm.pbf -f geojsonseq -o poi.geojsonseq --overwrite \
     -a type,id --geometry-types=point,linestring,polygon
