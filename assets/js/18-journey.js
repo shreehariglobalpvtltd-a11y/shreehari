@@ -23,7 +23,11 @@
   'use strict';
   if (window.SHG_JOURNEY) return;
   var doc = document, VIEWS = { results: 1, seats: 1 };
-  var IMG = 'img/bus-side.svg';   /* side-on coach, name + logo straight, 12 KB */
+  /* 5 Oct 2026 (owner: "home page ko jastai bus animation"): the home scene's
+     real coach photo (its rims are rotating copies of the same picture) and
+     its hills, instead of the flat drawn coach. */
+  var IMG = 'img/anim/shg-bus-main-mobile.webp';
+  var SCN = 'img/anim/shg-distant-scenery';
 
   /* Where was I loaded from? → asset base + cache stamp (the v= query). */
   var me = doc.currentScript || (function () { var s = doc.getElementsByTagName('script'); return s[s.length - 1] || null; })();
@@ -71,14 +75,17 @@
   function build() {
     var el = doc.createElement('div');
     el.setAttribute('aria-hidden', 'true');
+    var bus = base + IMG + stamp;
     el.innerHTML =
-      '<svg class="jy-mtn jy-far" viewBox="0 0 1200 100" preserveAspectRatio="none" focusable="false"><path d="M0 100V60Q30 58 60 48L95 30L128 46Q160 44 190 40L228 22L262 42Q296 40 326 36L360 14L396 38Q430 40 462 34L500 20L536 40Q568 42 598 36L636 10L672 36Q704 42 736 44L770 30L804 46Q840 48 872 42L910 24L944 44Q976 46 1010 38L1046 18L1082 42Q1118 46 1150 44L1180 40L1200 44V100Z"/></svg>' +
-      '<svg class="jy-mtn jy-near" viewBox="0 0 1200 100" preserveAspectRatio="none" focusable="false"><path d="M0 100V76Q60 62 130 68T270 60T410 70T550 58T690 68T830 56T970 66T1110 60T1200 64V100Z"/></svg>' +
+      '<picture><source media="(max-width: 759px)" srcset="' + base + SCN + '-mobile.webp' + stamp + '">'
+      + '<img class="jy-scn" alt="" decoding="async" src="' + base + SCN + '.webp' + stamp + '"></picture>' +
       '<div class="jy-road"></div>' +
       '<div class="jy-mark jy-a"><span></span></div>' +
       '<div class="jy-mark jy-b"><span></span></div>' +
-      '<div class="jy-bus"><i class="jy-shadow"></i><div class="jy-body"><img alt="" decoding="async" src="' + base + IMG + stamp + '"></div></div>';
-    img = el.querySelector('img');
+      '<div class="jy-bus"><i class="jy-shadow"></i><div class="jy-body"><img alt="" decoding="async" src="' + bus + '">'
+      + '<span class="jy-rim jy-rim-a"></span><span class="jy-rim jy-rim-b"></span></div></div>';
+    [].forEach.call(el.querySelectorAll('.jy-rim'), function (r) { r.style.backgroundImage = 'url("' + bus + '")'; });
+    img = el.querySelector('.jy-body img');
     labA = el.querySelector('.jy-a span');
     labB = el.querySelector('.jy-b span');
     return el;

@@ -3,71 +3,78 @@
    the page header of the results / seat views (owner brief, item 5).
    - transform + opacity only: every animation stays on the compositor
    - the height is fixed HERE so the space is reserved on insertion
-   - brand tokens come from app.css (day palettes too); literals = fallback
    - states set by the script: jy-wait (scene up, coach off-stage while its
-     picture loads) · jy-enter (drive-in) · jy-instant (resting state:
-     already played, reduced motion, hidden tab) · jy-paused (tab hidden)
+     picture loads) · jy-enter (drive-in) · jy-instant (already played,
+     reduced motion, hidden tab) · jy-paused (tab hidden)
+
+   5 Oct 2026 (owner: "home page ko jastai bus animation"): the same scene
+   as the home page's journey - the real coach photo with its two rims
+   turning, the asphalt rushing under it, the green hills drifting behind,
+   daylight sky - instead of the flat drawn coach standing still. Same
+   artwork files as the home scene (assets/img/anim), so nothing new is
+   downloaded by someone who came through the home page.
 ================================================================ */
 .shg-journey{position:relative;height:170px;overflow:hidden;pointer-events:none;user-select:none;-webkit-user-select:none;contain:layout paint;
   background:
-    radial-gradient(circle 8px at 66% 34%,rgba(255,224,182,.95) 0 62%,rgba(255,224,182,0) 100%),
-    radial-gradient(ellipse 36% 42% at 66% 52%,rgba(240,124,31,.34),rgba(240,124,31,0) 70%),
-    linear-gradient(180deg,var(--blue-deep,#12264E) 0%,var(--blue-800,#1C3B72) 36%,var(--blue,#2E5FA8) 64%,#7FA3DA 100%)}
+    radial-gradient(ellipse 30% 60% at 6% 0%,rgba(255,255,255,.55),rgba(255,255,255,0) 70%),
+    linear-gradient(180deg,#2F86DD 0%,#5FA6EA 38%,#A9D2F5 60%,#DCEBF3 68%,#DCEBF3 100%)}
 .shg-journey>*{position:absolute}
+.shg-journey img{max-width:none}   /* app.css img{max-width:100%} would clip the 108% scenery */
+.shg-journey picture{display:contents}
 
-/* two mountain ranges: pale far Himalaya, darker foothills, each drifting
-   a few px/min for depth (the drift is 108% wide so no edge ever shows) */
-.jy-mtn{left:-4%;width:108%;bottom:34%;display:block;will-change:transform}
-.jy-far{height:52%;fill:rgba(255,255,255,.13);animation:jyDrift 48s ease-in-out infinite alternate}
-.jy-near{height:31%;fill:rgba(18,38,78,.46);animation:jyDrift 30s ease-in-out infinite alternate}
+/* the green hills of the corridor, drifting a little for depth (108% wide so no edge shows) */
+.jy-scn{position:absolute;left:-4%;width:108%;height:58%;bottom:31%;object-fit:fill;display:block;will-change:transform;animation:jyDrift 9s ease-in-out infinite alternate}
 
-/* verge · pale edge line · asphalt, then the rolling centre dashes */
-.jy-road{left:0;right:0;bottom:0;height:34%;background:linear-gradient(180deg,#436350 0,#4B6E5A 13%,#C3CDD9 13%,#C3CDD9 15.5%,#2F3546 15.5%,#20253A 100%)}
-.jy-road::before{content:"";position:absolute;left:0;top:57%;width:calc(100% + 72px);height:3px;
-  background:repeating-linear-gradient(90deg,rgba(255,228,168,.85) 0 36px,transparent 36px 72px);
-  animation:jyRoad 2.4s linear infinite;will-change:transform}
+/* the asphalt: a double-width strip of the home scene's road tile sliding one
+   lane-mark period per loop (transform only, never background-position) */
+.jy-road{left:0;right:0;bottom:0;height:34%;overflow:hidden;background:#3d454d}
+.jy-road::before{content:"";position:absolute;left:0;top:0;width:200%;height:100%;
+  background:url("/assets/img/anim/shg-road-foreground.svg") 0 0 / 50% 100% repeat-x;
+  animation:jyRoad 1.05s linear infinite;will-change:transform}
 
 /* milestone posts with the leg's two cities (the only text in the scene) */
-.jy-mark{bottom:34%;width:2px;height:20px;background:rgba(255,255,255,.55);z-index:3}
-.jy-mark::before{content:"";position:absolute;left:-2px;top:-4px;width:6px;height:6px;border-radius:50%;background:var(--orange,#F07C1F);box-shadow:0 0 0 2px rgba(255,255,255,.22)}
-.jy-mark span{position:absolute;bottom:28px;max-width:150px;padding:4px 9px;border-radius:999px;background:rgba(18,38,78,.62);border:1px solid rgba(255,255,255,.24);color:#fff;
+.jy-mark{bottom:34%;width:2px;height:20px;background:rgba(18,38,78,.55);z-index:3}
+.jy-mark::before{content:"";position:absolute;left:-2px;top:-4px;width:6px;height:6px;border-radius:50%;background:var(--orange,#F07C1F);box-shadow:0 0 0 2px rgba(255,255,255,.5)}
+.jy-mark span{position:absolute;bottom:28px;max-width:150px;padding:4px 9px;border-radius:999px;background:rgba(18,38,78,.78);border:1px solid rgba(255,255,255,.3);color:#fff;
   font:600 10.5px/1.15 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   opacity:0;animation:jyFade .5s ease-out .25s forwards}
-/* 19 Sep 2026 (owner, wide monitor): the posts and the coach hung on the far
-   edges of a 1920px window while the heading and the seat card sat in the
-   centred 1160px column. They now stand on that column; below ~1290px the
-   max() falls back to the old percentages, so phones and laptops are unchanged. */
+/* 19 Sep 2026 (owner, wide monitor): the posts and the coach stand on the
+   centred 1160px column; below ~1290px the max() falls back to percentages. */
 .jy-a{left:max(5%,calc((100% - 1160px)/2 + 22px))}.jy-a span{left:-1px}
 .jy-b{right:max(5%,calc((100% - 1160px)/2 + 22px))}.jy-b span{right:-1px}
 
-/* the coach: X motion on the outer box, suspension bob on the inner one,
-   a soft contact shadow that breathes against the bob */
-.jy-bus{left:max(19%,calc((100% - 1160px)/2 + 190px));bottom:6%;width:260px;z-index:2;will-change:transform}
-.jy-body{position:relative;z-index:1;will-change:transform}
-.jy-body img{display:block;width:100%;height:auto}
-.jy-shadow{position:absolute;left:3%;right:5%;bottom:-2%;height:9%;border-radius:50%;background:radial-gradient(ellipse at 50% 50%,rgba(5,9,18,.55),rgba(5,9,18,.26) 45%,rgba(5,9,18,0) 72%);will-change:transform,opacity}
+/* the coach (2:1 photo, wheels at 80% of its height): X motion on the outer
+   box, suspension on the inner one, the two rims are rotating copies of the
+   photo's own rim texture, a soft contact shadow under the wheels */
+/* the strip is 132px tall inside the booking flow (views.css) - a 2:1 coach
+   208px wide is 104px tall: roof clear of the top, wheels on the lane */
+.jy-bus{left:max(19%,calc((100% - 1160px)/2 + 190px));bottom:-4%;width:208px;aspect-ratio:2/1;z-index:2;will-change:transform}
+.jy-body{position:absolute;inset:0;z-index:1;will-change:transform}
+.jy-body img{display:block;width:100%;height:100%}
+.jy-rim{position:absolute;width:5.694%;aspect-ratio:1;border-radius:50%;background-repeat:no-repeat;background-size:1756.1% 878.05%;animation:jyWheel .7s linear infinite;will-change:transform}
+.jy-rim-a{left:21.84%;top:68.50%;background-position:23.16% 77.30%}
+.jy-rim-b{left:68.82%;top:68.51%;background-position:72.97% 77.32%}
+.jy-shadow{position:absolute;left:8%;right:6%;bottom:15.5%;height:8%;border-radius:50%;background:radial-gradient(ellipse at 50% 50%,rgba(5,9,18,.6),rgba(5,9,18,.28) 45%,rgba(5,9,18,0) 72%);will-change:transform,opacity}
 
-/* states */
+/* states: the coach is always "driving" - wheels, road and hills never stop */
 .jy-wait .jy-bus{transform:translateX(calc(-50vw - 100%))}
 .jy-enter .jy-bus{animation:jyDrive 1.6s cubic-bezier(.215,.61,.355,1) both}
-.jy-enter .jy-body{animation:jyBob .32s ease-in-out 5 both,jyIdle 3.6s ease-in-out 1.7s infinite}
-.jy-enter .jy-shadow{animation:jyBreath 3.6s ease-in-out 1.7s infinite}
-.jy-instant .jy-body{animation:jyIdle 3.6s ease-in-out infinite}
-.jy-instant .jy-shadow{animation:jyBreath 3.6s ease-in-out infinite}
+.jy-enter .jy-body,.jy-instant .jy-body{animation:jyRide 2.8s ease-in-out infinite}
+.jy-enter .jy-shadow,.jy-instant .jy-shadow{animation:jyBreath 2.8s ease-in-out infinite}
 .jy-instant .jy-mark span{animation:none;opacity:1}
 .jy-paused *,.jy-paused .jy-road::before{animation-play-state:paused!important}
 
 @keyframes jyDrive{from{transform:translateX(calc(-50vw - 100%))}to{transform:translateX(0)}}
-@keyframes jyBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
-@keyframes jyIdle{0%,100%{transform:translateY(0)}50%{transform:translateY(-1px)}}
-@keyframes jyBreath{0%,100%{transform:scaleX(1);opacity:1}50%{transform:scaleX(.965);opacity:.8}}
-@keyframes jyRoad{to{transform:translateX(-72px)}}
-@keyframes jyDrift{to{transform:translateX(-3.6%)}}
+@keyframes jyRide{0%,100%{transform:translateY(0)}25%,75%{transform:translateY(-.7px)}50%{transform:translateY(.6px)}}
+@keyframes jyBreath{0%,100%{transform:scaleX(1);opacity:1}50%{transform:scaleX(.975);opacity:.82}}
+@keyframes jyRoad{to{transform:translateX(-12.5%)}}
+@keyframes jyDrift{to{transform:translateX(-1.6%)}}
+@keyframes jyWheel{to{transform:rotate(360deg)}}
 @keyframes jyFade{to{opacity:1}}
 
 @media (max-width:760px){
-  .shg-journey{height:118px}
-  .jy-bus{left:22%;width:176px}
+  .shg-journey{height:124px}
+  .jy-bus{left:20%;width:190px}
   .jy-mark{height:16px}
   .jy-mark span{bottom:23px;max-width:88px;font-size:9.5px;padding:3px 7px}
 }

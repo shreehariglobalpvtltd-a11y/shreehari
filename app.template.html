@@ -90,48 +90,48 @@ html,body{margin:0;background:#F4F6FB}
 :root[data-theme="dark"],:root[data-theme="dark"] body{background:#0B1220}
 :root[data-display="amoled"],:root[data-display="amoled"] body{background:#000}
 </style>
-  <link rel="preload" as="image" href="/assets/img/logo.png?v=20261005n" fetchpriority="high">
-  <link rel="stylesheet" href="/assets/css/app.css?v=20261005n">
-  <link rel="stylesheet" href="/assets/css/views.css?v=20261005n">
+  <link rel="preload" as="image" href="/assets/img/logo.png?v=20261005o" fetchpriority="high">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20261005o">
+  <link rel="stylesheet" href="/assets/css/views.css?v=20261005o">
   <!-- The shell pass (24 Sep 2026): header + logo, motion, elevation and
        the sound/haptics switches. Loads LAST on purpose — every rule in it
        is meant to win on equal specificity without an !important war, and
        removing this one line reverts the whole pass. -->
-  <link rel="stylesheet" href="/assets/css/premium.css?v=20261005n">
+  <link rel="stylesheet" href="/assets/css/premium.css?v=20261005o">
   <!-- Oct 2026 redesign: the S Hari Global design system (tokens + shared sg-
        components, also used by the company app) and the customer-app layer
        that points every legacy token at it. Both load LAST. -->
-  <link rel="stylesheet" href="/assets/css/ds.css?v=20261005n">
-  <link rel="stylesheet" href="/assets/css/redesign.css?v=20261005n">
-  <link rel="stylesheet" href="/assets/css/anim.css?v=20261005n">
+  <link rel="stylesheet" href="/assets/css/ds.css?v=20261005o">
+  <link rel="stylesheet" href="/assets/css/redesign.css?v=20261005o">
+  <link rel="stylesheet" href="/assets/css/anim.css?v=20261005o">
   <!-- 4 Oct 2026: pop-out depth in every theme + the AMOLED display. Loads LAST. -->
-  <link rel="stylesheet" href="/assets/css/depth.css?v=20261005n">
+  <link rel="stylesheet" href="/assets/css/depth.css?v=20261005o">
 <!-- App bundle: `defer` keeps the same execution order and still runs after the
      document is parsed, but placing the tags in <head> lets the browser start
      fetching ~1 MB of JS with the FIRST bytes of HTML instead of after it has
      parsed ~190 KB of markup (perf pass, 11 Sep 2026). -->
-<script defer src="/assets/js/01-boot.js?v=20261005n"></script>
-<script defer src="/assets/js/02-config.js?v=20261005n"></script>
-<script defer src="/assets/js/03-accounts.js?v=20261005n"></script>
-<script defer src="/assets/js/04-i18n.js?v=20261005n"></script>
-<script defer src="/assets/js/05-router.js?v=20261005n"></script>
-<script defer src="/assets/js/06-results.js?v=20261005n"></script>
-<script defer src="/assets/js/07-checkout.js?v=20261005n"></script>
-<script defer src="/assets/js/14-counter.js?v=20261005n"></script>
-<script defer src="/assets/js/08-signin.js?v=20261005n"></script>
-<script defer src="/assets/js/10-track.js?v=20261005n"></script>
-<script defer src="/assets/js/11-pdf-ticket.js?v=20261005n"></script>
-<script defer src="/assets/js/13-admin-routes.js?v=20261005n"></script>
+<script defer src="/assets/js/01-boot.js?v=20261005o"></script>
+<script defer src="/assets/js/02-config.js?v=20261005o"></script>
+<script defer src="/assets/js/03-accounts.js?v=20261005o"></script>
+<script defer src="/assets/js/04-i18n.js?v=20261005o"></script>
+<script defer src="/assets/js/05-router.js?v=20261005o"></script>
+<script defer src="/assets/js/06-results.js?v=20261005o"></script>
+<script defer src="/assets/js/07-checkout.js?v=20261005o"></script>
+<script defer src="/assets/js/14-counter.js?v=20261005o"></script>
+<script defer src="/assets/js/08-signin.js?v=20261005o"></script>
+<script defer src="/assets/js/10-track.js?v=20261005o"></script>
+<script defer src="/assets/js/11-pdf-ticket.js?v=20261005o"></script>
+<script defer src="/assets/js/13-admin-routes.js?v=20261005o"></script>
 <!-- 13 Sep 2026: PWA layer — install sheet, Web Push, border prep card,
      split-pay, 7-day seat-fill chart. Last on purpose: it reads the globals
      the files above define and every hook it adds is optional. -->
-<script defer src="/assets/js/17-pwa.js?v=20261005n"></script>
-<script defer src="/assets/js/18-journey.js?v=20261005n"></script>
+<script defer src="/assets/js/17-pwa.js?v=20261005o"></script>
+<script defer src="/assets/js/18-journey.js?v=20261005o"></script>
 <!-- Premium feel (24 Sep 2026). MUST stay after 13-admin-routes.js: it
      takes over that file's SFX object in place, which means the binding has
      to exist by the time this runs. defer preserves document order. -->
-<script defer src="/assets/js/19-premium.js?v=20261005n"></script>
-<script defer src="/assets/js/20-anim.js?v=20261005n"></script>
+<script defer src="/assets/js/19-premium.js?v=20261005o"></script>
+<script defer src="/assets/js/20-anim.js?v=20261005o"></script>
 <meta property="og:title" content="Surat to Nepal Bus (Rupaidiha / Nepalgunj) — AC Sleeper | S Hari Global">
 <meta property="og:description" content="Direct AC Sleeper coach from Gujarat (India) to the Rupaidiha (India–Nepal) border. Boarding at Surat, Kamrej, Ankleshwar, Bharuch, Vadodara, Anand, Nadiad, Emli Bhupal & Ahmedabad (S Hari Parking, Nana Chiloda). Book online at one fixed fare price. Private & sharing cabins.">
 <meta property="og:type" content="website">
@@ -162,20 +162,20 @@ html,body{margin:0;background:#F4F6FB}
      same font-display:swap, so the brand face still arrives late and the
      text is readable in Georgia from the first frame, exactly as before.
      Cinzel is SIL OFL 1.1, which allows hosting it ourselves. -->
-<link rel="preload" as="font" type="font/woff2" href="/assets/fonts/cinzel-latin.woff2?v=20261005n" crossorigin>
-<style>@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20261005n) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20261005n) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20261005n) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20261005n) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}</style>
+<link rel="preload" as="font" type="font/woff2" href="/assets/fonts/cinzel-latin.woff2?v=20261005o" crossorigin>
+<style>@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20261005o) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20261005o) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20261005o) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20261005o) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}</style>
 <title>Surat to Nepal Bus (Rupaidiha / Nepalgunj) — AC Sleeper daily | S Hari Global Pvt Ltd</title>
 <meta name="description" content="सूरत से नेपाल बस · सुरत देखि नेपाल बस — daily AC sleeper from Surat, Kamrej, Ankleshwar, Bharuch, Vadodara, Anand, Nadiad & Ahmedabad to the Rupaidiha (Nepalgunj) border. Book online, on WhatsApp or by phone. Registered Indian company, Mehsana.">
 <!-- Real brand favicon, not the emoji placeholder. PNG first for the tab
      strip, the SVG kept as the scalable fallback. -->
-<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon-32.png?v=20261005n">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon-32.png?v=20261005o">
 <link rel="icon" type="image/svg+xml" href="/icon-shg.svg">
 <!-- PWA / offline navigator: installable app + service-worker cached maps -->
 <link rel="manifest" href="/manifest.webmanifest">
 <!-- iOS ignores SVG here and silently falls back to a screenshot of the
      page, which is why the home-screen icon looked like a web page.
      A 180px opaque PNG is the only thing Safari will use. -->
-<link rel="apple-touch-icon" sizes="180x180" href="/assets/img/apple-touch-icon.png?v=20261005n">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/img/apple-touch-icon.png?v=20261005o">
 <link rel="mask-icon" href="/icon-shg.svg" color="#1A3A6A">
 <meta name="msapplication-TileColor" content="#1A3A6A">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -334,7 +334,7 @@ s.addEventListener('click',function(e){e.preventDefault();
          "S HARI GLOBAL" under the bus, and setting the words twice beside
          each other is the tell of a logo that was bolted on. -->
     <a class="brand" href="#/" data-scroll="top" aria-label="S Hari Global Pvt Ltd — Home">
-      <span class="brand-tile"><img id="logoNav" src="/assets/img/logo.png?v=20261005n" alt="S Hari Global Pvt Ltd Logo" width="440" height="321" decoding="async"></span>
+      <span class="brand-tile"><img id="logoNav" src="/assets/img/logo.png?v=20261005o" alt="S Hari Global Pvt Ltd Logo" width="440" height="321" decoding="async"></span>
       <span class="brand-word" aria-hidden="true"><b>S HARI GLOBAL</b><small>Gujarat ⇄ Rupaidiha</small></span>
     </a>
     <nav class="nav-links" aria-label="Main">
@@ -415,7 +415,7 @@ s.addEventListener('click',function(e){e.preventDefault();
   <div class="container top-hero" id="topHero">
     <aside class="th-brand" aria-label="S Hari Global Pvt Ltd">
       <div class="th-top">
-        <img class="th-logo" src="/assets/img/logo.png?v=20261005n" alt="S Hari Global Pvt Ltd logo" width="440" height="321" decoding="async">
+        <img class="th-logo" src="/assets/img/logo.png?v=20261005o" alt="S Hari Global Pvt Ltd logo" width="440" height="321" decoding="async">
         <div class="th-name"><b>S HARI GLOBAL</b><span>PVT. LTD.</span></div>
       </div>
       <p class="th-tag">Gujarat ⇄ Rupaidiha<small>AC Sleeper Coach · India ⇄ Nepal · 24×7</small></p>
@@ -438,12 +438,12 @@ s.addEventListener('click',function(e){e.preventDefault();
         <div class="sa-scene sa-journey" data-anim="journey">
           <div class="sa-art" role="img" aria-labelledby="animJourneyAria">
             <span class="sa-vh" id="animJourneyAria" data-i18n="animJAria">Animation: the S Hari Global AC sleeper coach driving along a highway</span>
-            <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-highway-bg-mobile.webp?v=20261005n" width="800" height="450"><img class="sa-land" data-src="/assets/img/anim/shg-highway-bg.webp?v=20261005n" width="1600" height="900" alt="" loading="lazy" decoding="async"></picture>
-            <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-distant-scenery-mobile.webp?v=20261005n" width="800" height="267"><img class="sa-scenery" data-src="/assets/img/anim/shg-distant-scenery.webp?v=20261005n" width="1440" height="480" alt="" loading="lazy" decoding="async"></picture>
+            <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-highway-bg-mobile.webp?v=20261005o" width="800" height="450"><img class="sa-land" data-src="/assets/img/anim/shg-highway-bg.webp?v=20261005o" width="1600" height="900" alt="" loading="lazy" decoding="async"></picture>
+            <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-distant-scenery-mobile.webp?v=20261005o" width="800" height="267"><img class="sa-scenery" data-src="/assets/img/anim/shg-distant-scenery.webp?v=20261005o" width="1440" height="480" alt="" loading="lazy" decoding="async"></picture>
             <div class="sa-road"></div>
-            <img class="sa-shadow" src="/assets/img/anim/shg-bus-shadow.svg?v=20261005n" width="960" height="110" alt="" loading="lazy" decoding="async">
+            <img class="sa-shadow" src="/assets/img/anim/shg-bus-shadow.svg?v=20261005o" width="960" height="110" alt="" loading="lazy" decoding="async">
             <div class="sa-bus">
-              <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-bus-main-mobile.webp?v=20261005n" width="800" height="400"><img data-src="/assets/img/anim/shg-bus-main.webp?v=20261005n" width="1440" height="720" alt="" loading="lazy" decoding="async"></picture>
+              <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-bus-main-mobile.webp?v=20261005o" width="800" height="400"><img data-src="/assets/img/anim/shg-bus-main.webp?v=20261005o" width="1440" height="720" alt="" loading="lazy" decoding="async"></picture>
               <span class="sa-rim sa-rim--a"></span><span class="sa-rim sa-rim--b"></span>
             </div>
           </div>
@@ -768,7 +768,7 @@ s.addEventListener('click',function(e){e.preventDefault();
         <div class="sa-art" role="img" aria-labelledby="animRouteAria">
           <span class="sa-vh" id="animRouteAria" data-i18n="animMAria">Illustrative map: a route line from Gujarat to Rupaidiha on the India–Nepal border</span>
           <svg class="sa-map-svg" viewBox="36 145 590 315" preserveAspectRatio="xMidYMid meet" aria-hidden="true" focusable="false">
-            <image class="sa-map-bg" data-href="/assets/img/anim/shg-map-bg.svg?v=20261005n" x="0" y="0" width="960" height="720"/>
+            <image class="sa-map-bg" data-href="/assets/img/anim/shg-map-bg.svg?v=20261005o" x="0" y="0" width="960" height="720"/>
             <path class="sa-route-glow" d="M229.61,374.43 L238.71,350.55 L222.86,335.53 C277.86,260.53 377.99,238.12 457.99,228.12"/>
             <path class="sa-route-track" d="M229.61,374.43 L238.71,350.55 L222.86,335.53 C277.86,260.53 377.99,238.12 457.99,228.12"/>
             <g class="sa-route-segs"></g>
@@ -779,7 +779,7 @@ s.addEventListener('click',function(e){e.preventDefault();
             <text class="sa-lbl" x="208.86" y="321.53" text-anchor="end" data-i18n="animMAhd">Ahmedabad</text>
             <text class="sa-lbl" x="457.99" y="272" text-anchor="middle" data-i18n="animMRup">Rupaidiha</text>
             <g class="sa-pulse" transform="translate(457.99 228.12)"><circle r="19"/></g>
-            <g class="sa-map-bus" transform="translate(457.99 228.12)"><image data-href="/assets/img/anim/shg-route-bus-marker.webp?v=20261005n" x="-50" y="-37" width="100" height="50"/></g>
+            <g class="sa-map-bus" transform="translate(457.99 228.12)"><image data-href="/assets/img/anim/shg-route-bus-marker.webp?v=20261005o" x="-50" y="-37" width="100" height="50"/></g>
           </svg>
         </div>
         <button type="button" class="sa-pause" data-paused="false" data-i18n-title="animPause" title="Pause animation" aria-label="Pause animation"><svg class="sa-i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg><svg class="sa-i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg></button>
@@ -836,7 +836,7 @@ s.addEventListener('click',function(e){e.preventDefault();
           <div class="sa-phone" aria-hidden="true">
             <div class="sa-screen">
               <div class="sa-ui sa-ui--route">
-                <div class="sa-ui-top"><div class="sa-brand"><img class="sa-logo" src="/assets/img/logo.png?v=20261005n" width="440" height="321" alt="" loading="lazy" decoding="async"><span lang="en"><b>S HARI GLOBAL</b><small>PRIVATE LIMITED</small></span></div><p class="sa-ui-title" data-i18n="animB1T">Book your journey</p></div>
+                <div class="sa-ui-top"><div class="sa-brand"><img class="sa-logo" src="/assets/img/logo.png?v=20261005o" width="440" height="321" alt="" loading="lazy" decoding="async"><span lang="en"><b>S HARI GLOBAL</b><small>PRIVATE LIMITED</small></span></div><p class="sa-ui-title" data-i18n="animB1T">Book your journey</p></div>
                 <div class="sa-ui-body">
                   <p class="sa-ui-sub" data-i18n="animB1S">India ⇄ Nepal · AC Sleeper</p>
                   <span class="sa-f-l" data-i18n="animBFrom">From</span><div class="sa-f" data-i18n="animBGuj">Gujarat</div>
@@ -847,7 +847,7 @@ s.addEventListener('click',function(e){e.preventDefault();
                 </div>
               </div>
               <div class="sa-ui sa-ui--berth">
-                <div class="sa-ui-top"><div class="sa-brand"><img class="sa-logo" src="/assets/img/logo.png?v=20261005n" width="440" height="321" alt="" loading="lazy" decoding="async"><span lang="en"><b>S HARI GLOBAL</b><small>PRIVATE LIMITED</small></span></div><p class="sa-ui-title" data-i18n="animB2T">Choose your berth</p></div>
+                <div class="sa-ui-top"><div class="sa-brand"><img class="sa-logo" src="/assets/img/logo.png?v=20261005o" width="440" height="321" alt="" loading="lazy" decoding="async"><span lang="en"><b>S HARI GLOBAL</b><small>PRIVATE LIMITED</small></span></div><p class="sa-ui-title" data-i18n="animB2T">Choose your berth</p></div>
                 <div class="sa-ui-body">
                   <p class="sa-ui-sub" data-i18n="animB2S">Sleeper berths · sample</p>
                   <p class="sa-deck" data-i18n="animB2Deck">Lower Floor (1F)</p>
@@ -857,7 +857,7 @@ s.addEventListener('click',function(e){e.preventDefault();
                 </div>
               </div>
               <div class="sa-ui sa-ui--details">
-                <div class="sa-ui-top"><div class="sa-brand"><img class="sa-logo" src="/assets/img/logo.png?v=20261005n" width="440" height="321" alt="" loading="lazy" decoding="async"><span lang="en"><b>S HARI GLOBAL</b><small>PRIVATE LIMITED</small></span></div><p class="sa-ui-title" data-i18n="animB3T">Passenger details</p></div>
+                <div class="sa-ui-top"><div class="sa-brand"><img class="sa-logo" src="/assets/img/logo.png?v=20261005o" width="440" height="321" alt="" loading="lazy" decoding="async"><span lang="en"><b>S HARI GLOBAL</b><small>PRIVATE LIMITED</small></span></div><p class="sa-ui-title" data-i18n="animB3T">Passenger details</p></div>
                 <div class="sa-ui-body">
                   <p class="sa-ui-sub" data-i18n="animB3S">Sample details</p>
                   <span class="sa-f-l" data-i18n="animB3Name">Passenger name</span><div class="sa-f sa-f--muted" data-i18n="animB3NameV">Your name</div>
@@ -869,7 +869,7 @@ s.addEventListener('click',function(e){e.preventDefault();
               </div>
               <div class="sa-ui sa-ui--ticket">
                 <div class="sa-ticket">
-                  <div class="sa-brand"><img class="sa-logo" src="/assets/img/logo.png?v=20261005n" width="440" height="321" alt="" loading="lazy" decoding="async"><span lang="en"><b>S HARI GLOBAL</b><small>PRIVATE LIMITED</small></span></div>
+                  <div class="sa-brand"><img class="sa-logo" src="/assets/img/logo.png?v=20261005o" width="440" height="321" alt="" loading="lazy" decoding="async"><span lang="en"><b>S HARI GLOBAL</b><small>PRIVATE LIMITED</small></span></div>
                   <span class="sa-badge" data-i18n="animB4Badge">Demo ticket</span>
                   <p class="sa-tk-route" data-i18n="animB4Route">Gujarat → Rupaidiha</p>
                   <div class="sa-tk-row"><div><small data-i18n="animB4Berth">Berth</small><b>B6</b></div><div><small data-i18n="animB4Coach">Coach</small><b data-i18n="animB4CoachV">AC Sleeper</b></div></div>
@@ -877,7 +877,7 @@ s.addEventListener('click',function(e){e.preventDefault();
                 </div>
               </div>
             </div>
-            <img class="sa-frame" src="/assets/img/anim/shg-phone-frame.svg?v=20261005n" width="420" height="820" alt="" loading="lazy" decoding="async">
+            <img class="sa-frame" src="/assets/img/anim/shg-phone-frame.svg?v=20261005o" width="420" height="820" alt="" loading="lazy" decoding="async">
             <div class="sa-wa"><div class="sa-wa-in"><span class="sa-wa-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="sa-wa-txt"><b data-i18n="animBWaT">Sample WhatsApp message</b><span data-i18n="animBWaS">This is how a ticket message looks.</span><small data-i18n="animBWaF">Sample preview · not sent</small></span></div></div>
           </div>
         </div>
@@ -974,7 +974,7 @@ s.addEventListener('click',function(e){e.preventDefault();
   <div class="container" style="margin-top:26px">
     <div class="founder-card founder-highlight reveal">
       <div class="founder-avatar-wrap">
-        <img id="ceoHeroImg" src="/assets/img/ceo.jpg?v=20261005n" alt="Sher Bahadur Bishwokarma — CEO &amp; Director" loading="lazy" decoding="async" style="width:100%;height:100%;border-radius:50%;object-fit:cover;padding:0" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <img id="ceoHeroImg" src="/assets/img/ceo.jpg?v=20261005o" alt="Sher Bahadur Bishwokarma — CEO &amp; Director" loading="lazy" decoding="async" style="width:100%;height:100%;border-radius:50%;object-fit:cover;padding:0" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
         <span class="founder-initials" style="display:none">SB</span>
         <button type="button" id="ceoPhotoBtn" title="CEO photo यहाँबाट upload गर्नुहोस् — gallery बाट छान्ने बित्तिकै save हुन्छ" style="position:absolute;bottom:-2px;right:-2px;width:30px;height:30px;border-radius:50%;border:2px solid var(--card);background:var(--orange);color:#fff;font-size:14px;cursor:pointer;line-height:1;padding:0">📷</button>
         <input type="file" id="ceoPhotoFile" accept="image/*" style="display:none">
@@ -1726,11 +1726,11 @@ s.addEventListener('click',function(e){e.preventDefault();
         </div>
         <div class="vcard-grid">
           <figure class="vcard">
-            <a class="vcard-img" href="/assets/img/card-en.jpg?v=20261005n" target="_blank" rel="noopener"><img src="/assets/img/card-en-sm.jpg?v=20261005n" srcset="/assets/img/card-en-sm.jpg?v=20261005n 720w, /assets/img/card-en.jpg?v=20261005n 1600w" sizes="(max-width:640px) 92vw, 500px" alt="S Hari Global Pvt Ltd visiting card — English" width="1600" height="914" loading="lazy" decoding="async"></a>
+            <a class="vcard-img" href="/assets/img/card-en.jpg?v=20261005o" target="_blank" rel="noopener"><img src="/assets/img/card-en-sm.jpg?v=20261005o" srcset="/assets/img/card-en-sm.jpg?v=20261005o 720w, /assets/img/card-en.jpg?v=20261005o 1600w" sizes="(max-width:640px) 92vw, 500px" alt="S Hari Global Pvt Ltd visiting card — English" width="1600" height="914" loading="lazy" decoding="async"></a>
             <figcaption><span data-i18n="vcEn">🇮🇳 English card</span><span class="vcard-btns"><a class="btn btn-ghost btn-sm" href="/assets/img/card-en.jpg" download="S-Hari-Global-Card-EN.jpg">💾 <span data-i18n="vcSave">Save</span></a><button type="button" class="btn btn-wa btn-sm" data-vc-share="en">📤 <span data-i18n="vcShare">Share on WhatsApp</span></button></span></figcaption>
           </figure>
           <figure class="vcard">
-            <a class="vcard-img" href="/assets/img/card-ne.jpg?v=20261005n" target="_blank" rel="noopener"><img src="/assets/img/card-ne-sm.jpg?v=20261005n" srcset="/assets/img/card-ne-sm.jpg?v=20261005n 720w, /assets/img/card-ne.jpg?v=20261005n 1600w" sizes="(max-width:640px) 92vw, 500px" alt="एस हरी ग्लोबल प्रा. लि. भिजिटिङ कार्ड — नेपाली" width="1600" height="914" loading="lazy" decoding="async"></a>
+            <a class="vcard-img" href="/assets/img/card-ne.jpg?v=20261005o" target="_blank" rel="noopener"><img src="/assets/img/card-ne-sm.jpg?v=20261005o" srcset="/assets/img/card-ne-sm.jpg?v=20261005o 720w, /assets/img/card-ne.jpg?v=20261005o 1600w" sizes="(max-width:640px) 92vw, 500px" alt="एस हरी ग्लोबल प्रा. लि. भिजिटिङ कार्ड — नेपाली" width="1600" height="914" loading="lazy" decoding="async"></a>
             <figcaption><span data-i18n="vcNe">🇳🇵 Nepali card</span><span class="vcard-btns"><a class="btn btn-ghost btn-sm" href="/assets/img/card-ne.jpg" download="S-Hari-Global-Card-NE.jpg">💾 <span data-i18n="vcSave">Save</span></a><button type="button" class="btn btn-wa btn-sm" data-vc-share="ne">📤 <span data-i18n="vcShare">Share on WhatsApp</span></button></span></figcaption>
           </figure>
         </div>
@@ -2754,7 +2754,7 @@ s.addEventListener('click',function(e){e.preventDefault();
     </div>
     <div class="f-dev">Developed by <strong>Dileep Sunar</strong> · <a href="https://wa.me/919104801507" target="_blank" rel="noopener noreferrer">💬 WhatsApp +91 91048 01507</a> · <a href="https://www.facebook.com/dileep.soonaar/" target="_blank" rel="noopener noreferrer">Facebook</a></div>
     <div class="f-ceo reveal">
-      <img id="ceoPhoto" src="/assets/img/ceo.jpg?v=20261005n" alt="Sher Bahadur Bishwokarma — Founder &amp; CEO" loading="lazy" decoding="async" onerror="this.style.display='none'">
+      <img id="ceoPhoto" src="/assets/img/ceo.jpg?v=20261005o" alt="Sher Bahadur Bishwokarma — Founder &amp; CEO" loading="lazy" decoding="async" onerror="this.style.display='none'">
       <span>🕉️ <span id="ceoMantra"></span> — <strong id="ceoName"></strong>, Founder &amp; CEO
         <button id="mantraBtn" type="button" title="Play mantra chant · मन्त्र सुन्नुहोस्" aria-label="Play mantra chant">🔊</button>
       </span>
