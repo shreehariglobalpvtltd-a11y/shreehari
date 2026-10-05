@@ -2133,10 +2133,10 @@ function renderStatus(id) {
   <div class="status-card tk2${conf ? ' confirm-success' : ''}" id="ticketCard" data-pnr="${esc(b.id)}">
     <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo.png?v=20261005p" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo.png?v=20261005q" alt="" loading="lazy" decoding="async">
         <div><b>${esc(CONFIG.company.name || 'S HARI GLOBAL PRIVATE LIMITED')}</b><small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
       </div>
-      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261005p" width="600" height="312" alt="" decoding="async">
+      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261005q" width="600" height="312" alt="" decoding="async">
     </div>
     <div class="premium-ticket-status">${pill2}${b.ticketNumber ? '<span>' + esc(b.ticketNumber) + '</span>' : ''}${b.agentCode ? '<span style="background:var(--orange-100,#fff2e0);color:var(--orange-800,#7a3d00);padding:2px 10px;border-radius:20px;font-size:12px;font-family:var(--f-code)">🏷️ ' + esc(b.agentCode) + '</span>' : ''}</div>
     ${(typeof routeOverviewSVG === 'function') ? routeOverviewSVG({ from: (isNepalPoint(r.from) ? r.from : (parseBP(b.boarding || '').name || r.from)), to: (isNepalPoint(r.to) ? r.to : (parseBP(b.drop || '').name || r.to)), compact: true }) : ''}
@@ -2164,6 +2164,7 @@ function renderStatus(id) {
     <div class="premium-payment-state ${due2 <= 0 ? 'paid' : ''}"><b>${esc(t(due2 <= 0 ? 'premiumPaid' : 'premiumPending'))}</b><span>${esc(money2(paid2))} · ${esc(t('premiumDue'))}: ${esc(money2(due2))}</span><span>${esc(payRefLabel(b))}</span></div>
     ${paymentCard2}
     <div class="tk2-actions">${primary2}</div>
+    ${conf && window.SHG_BOOT && SHG_BOOT.waDirect && /^[1-9]\d{9,12}$/.test(String((b.contact && b.contact.phone) || '').replace(/\D/g, '')) ? '<div id="tkWaDirect" style="margin:8px 0 0;padding:10px 12px;border-radius:12px;background:#E4F6EC;color:#11703F;font-weight:700;font-size:14px">📲 टिकट WhatsApp मा आफैं आउँछ · your ticket comes to your WhatsApp by itself (…' + esc(String(b.contact.phone).replace(/\D/g, '').slice(-4)) + ') — nothing to type.</div>' : ''}
     ${conf && window.SHG_BOOT && SHG_BOOT.waHi ? '<a class="btn btn-block" id="tkWaHi" style="margin:8px 0 0;background:#11703F;border-color:#11703F;color:#fff" target="_blank" rel="noopener" href="https://wa.me/' + esc(String(SHG_BOOT.waHi).replace(/\D/g, '')) + '?text=' + encodeURIComponent('Hi ' + b.id) + '">💬 ' + esc(t('waHiBtn')) + '</a><p class="hint" style="margin:4px 2px 0;font-size:12px">' + esc(t('waHiNote')) + '</p>' : ''}
     <details class="tk2-more">
       <summary>${esc(t('tkMore'))}</summary>

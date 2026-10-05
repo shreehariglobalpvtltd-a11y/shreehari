@@ -4,6 +4,7 @@ Moved out of `sw.js` on 2 Oct 2026: the history used to live on the `var VERSION
 
 The CURRENT version and its note stay on the `var VERSION` line in `sw.js`; this file holds the ones before it. Newest first. Each line: version — what shipped with it (as written at the time).
 
+- **shg-v193** — agent search box, WhatsApp-request tick, Nepal office card (5 Oct agent-finance release)
 - **shg-v192** — seat/results journey strip = the home scene (real coach, turning wheels, moving road)
 - **shg-v191** — next-ticket bar, clean next passenger, formatter cache, deferred QR + audio, snappy screen change
 - **shg-v190** — nav: marker position, ETA, search; counter auto-return; tap haptics; seat-page passenger reaches checkout

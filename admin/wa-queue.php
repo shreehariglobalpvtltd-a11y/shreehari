@@ -118,10 +118,10 @@ admin_header('WhatsApp tickets', 'wa-queue');
 
 <div class="wq-how">
   <b>How it works · कसरी चल्छ</b><br>
-  WhatsApp delivers a ticket free only within 24 h after that person writes to <b>+<?= $e($hiNo) ?></b>.
-  So each ticket waits here until the customer (or their second number, or the counter that sold it) sends <b>"hi"</b> — then it goes by itself.
-  Give the customer the link or QR on the ticket screen: <a href="<?= $e(WaQueue::hiLink()) ?>" target="_blank" rel="noopener"><?= $e(WaQueue::hiLink()) ?></a><br>
-  यात्रु, दोस्रो नम्बर वा टिकट काट्ने काउन्टरले +<?= $e($hiNo) ?> मा एक पटक "hi" पठाएपछि २४ घण्टासम्म टिकट निःशुल्क आफैं जान्छ।
+  <b>The ticket goes by itself.</b> The moment a ticket is sold it is sent to the customer's WhatsApp on our approved ticket message (the ticket picture) from <b>+<?= $e($hiNo) ?></b> — the customer types nothing.
+  If the customer has no number, or the number is not on WhatsApp, the copy goes to the counter / agent who sold it.<br>
+  टिकट काटिनासाथ यात्रुको WhatsApp मा आफैं जान्छ — यात्रुले केही लेख्नु पर्दैन। नम्बर नभए वा WhatsApp नभए टिकट काट्ने काउन्टर / एजेन्टलाई जान्छ।<br>
+  <small class="muted">"hi" is only a spare road: it works after the AiSensy inbound webhook (paid add-on) is switched on. Rows marked "Waiting" below are tickets from before the approved message existed.</small>
 </div>
 
 <?php if ($isSuper): ?>

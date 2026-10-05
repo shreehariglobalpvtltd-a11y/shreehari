@@ -108,7 +108,24 @@ $boot = [
    the anonymous page stays byte-identical. */
 /* The help numbers the app's own fallback ticket prints (4 Oct 2026) - the
    same list the server ticket uses, instead of four numbers typed into JS. */
-$boot['waHi'] = preg_replace('/\D+/', '', Settings::getString('aisensy_wa_number', '919157001507')) ?: '919157001507';   // "hi" for the free WhatsApp ticket
+/* 5 Oct 2026: the ticket goes out by itself on the approved WhatsApp template
+   the second it is sold (all 25 of today's did, none by "hi"), so the app no
+   longer asks every customer to "send hi" - and it could not have worked: no
+   message from a customer has ever reached us (the inbound webhook is a paid
+   add-on that is not switched on). The "hi" button and the counter's QR come
+   back by themselves once a real inbound message has been seen in the last
+   14 days, or with setting wa_hi_prompt = 1. waDirect tells the ticket screen
+   to say "sent to your WhatsApp" instead. */
+$shgHiLive = Settings::getBool('wa_hi_prompt', false);
+if (!$shgHiLive) {
+    try {
+        $shgHiLive = Database::exists('SELECT 1 FROM wa_windows WHERE last_in_at >= NOW() - INTERVAL 14 DAY LIMIT 1');
+    } catch (Throwable $e) {
+        $shgHiLive = false;   // table not there: no "hi" flow at all
+    }
+}
+$boot['waHi'] = $shgHiLive ? (preg_replace('/\D+/', '', Settings::getString('aisensy_wa_number', '919157001507')) ?: '919157001507') : '';
+$boot['waDirect'] = !$shgHiLive;
 $boot['npr'] = Settings::getFloat('npr_per_inr', defined('NPR_PER_INR') ? (float) NPR_PER_INR : 1.6);   // the one NPR rate the app estimates with
 // 5 Oct 2026: the Nepalgunj office line on the home banner (Company details -> Nepal phone).
 $boot['npOffice'] = [
