@@ -108,6 +108,31 @@ final class AdAttribution
      * Bookings per source over the last N days (admin summary).
      * @return array<int, array{src:string,n:int,confirmed:int,amount:float}>
      */
+    /**
+     * The same summary for an exact window of whole days (both inclusive) -
+     * what a report with a date range needs. summary() below is "the last N
+     * days from now", which is wrong for any window that does not end today.
+     *
+     * @return array<int, array{src:string,n:int,confirmed:int,amount:float}>
+     */
+    public static function summaryBetween(string $from, string $to): array
+    {
+        try {
+            return array_map(static fn($r) => [
+                'src' => (string) $r['src'], 'n' => (int) $r['n'], 'confirmed' => (int) $r['confirmed'], 'amount' => (float) $r['amount'],
+            ], Database::fetchAll(
+                'SELECT a.src, COUNT(*) n, SUM(b.status IN (\'confirmed\',\'completed\')) confirmed,
+                        COALESCE(SUM(CASE WHEN b.status IN (\'confirmed\',\'completed\') THEN b.total_amount END), 0) amount
+                   FROM booking_ad_source a JOIN bookings b ON b.id = a.booking_id
+                  WHERE a.created_at >= :d0 AND a.created_at < :d1
+                  GROUP BY a.src ORDER BY n DESC',
+                ['d0' => $from, 'd1' => addDaysISO($to, 1)]
+            ));
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
     public static function summary(int $days = 30): array
     {
         try {

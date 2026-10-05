@@ -60,7 +60,7 @@ $q      = Security::clean($_GET['q'] ?? '', 60);
 $status = Security::clean($_GET['status'] ?? '', 20);
 $from   = Security::clean($_GET['from'] ?? '', 10);
 $to     = Security::clean($_GET['to'] ?? '', 10);
-$valid  = ['pending', 'confirmed', 'cancelled', 'rejected', 'expired'];
+$valid  = ['pending', 'confirmed', 'completed', 'cancelled', 'rejected', 'expired'];   // 5 Oct 2026: 'completed' was missing - that export returned every status
 $isDate = static fn (string $d): bool => preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) === 1;
 
 $scopeId = Auth::bookingScopeAdminId();
@@ -78,7 +78,6 @@ $agentFilter     = Security::clean($_GET['agent'] ?? '', 20);
 $busFilter       = Security::clean($_GET['bus'] ?? '', 40);
 $payStatusFilter = Security::clean($_GET['pay_status'] ?? '', 20);
 $validPayStatus  = ['pending', 'verified', 'rejected', 'refunded', 'cod_pending'];
-$sourceMap       = ['online' => ['web', 'app'], 'agent' => ['agent'], 'counter' => ['counter'], 'admin' => ['admin']];
 $extraFilters    = [
     'route' => $routeFilter, 'travel_from' => $travelFrom, 'travel_to' => $travelTo, 'source' => $sourceFilter,
     'agent' => $agentFilter, 'bus' => $busFilter, 'pay_status' => $payStatusFilter,
@@ -155,14 +154,8 @@ if ($isDate($travelTo)) {
     $where[] = 'bl.travel_date <= :travelTo';
     $params['travelTo'] = $travelTo;
 }
-if ($sourceFilter !== '' && isset($sourceMap[$sourceFilter])) {
-    $srcParts = [];
-    foreach ($sourceMap[$sourceFilter] as $si => $sv) {
-        $srcParts[] = ':src' . $si;
-        $params['src' . $si] = $sv;
-    }
-    $where[] = 'b.source IN (' . implode(',', $srcParts) . ')';
-}
+// 5 Oct 2026: the same one-tag-per-booking channel filter as the register.
+$sourceFilter = BookingChannel::applyFilter($where, $sourceFilter);
 // Agent filter only for non-agent roles - an agent's export is already scoped.
 if ($scopeId === null && $agentFilter !== '' && ctype_digit($agentFilter)) {
     $where[] = 'b.sold_by_admin_id = :agentFlt';

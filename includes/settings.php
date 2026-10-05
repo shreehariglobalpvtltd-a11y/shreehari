@@ -630,6 +630,54 @@ final class Settings
     }
 
     /**
+     * The Nepal office's people for the home page (5 Oct 2026, owner's
+     * "Nepalgunj office contacts"): CEO, Operations (Nepalgunj) and Parking
+     * in-charge (Rupaidiha) - a name and a number each, typed on Admin ->
+     * Company details. NOTHING IS INVENTED: a row without a dialable number is
+     * left out. Only the CEO has a fallback - the Director's published 24/7
+     * line, which is the same person.
+     *
+     * A number typed with its country code is used as written; a bare
+     * 10-digit number is taken as a Nepali mobile (+977), the same rule
+     * companyFor() applies to nepal_whatsapp.
+     *
+     * @return list<array{key:string,role:string,roleNe:string,name:string,phone:string,tel:string}>
+     */
+    public static function nepalTeam(): array
+    {
+        $g    = static fn(string $k): string => trim(self::getString($k, ''));
+        $rows = [
+            ['ceo',     'CEO',                           'प्रमुख कार्यकारी',     'Sher Bahadur Bishwokarma', '+91 97264 01507'],
+            ['ops',     'Operations · Nepalgunj',        'सञ्चालन · नेपालगन्ज',  'Lokesh Mama',              ''],
+            ['parking', 'Parking in-charge · Rupaidiha', 'पार्किङ · रुपैडिहा',   'Vishal Bhai',              ''],
+        ];
+        $out = [];
+        foreach ($rows as [$key, $role, $roleNe, $defName, $defPhone]) {
+            $phone = $g('np_' . $key . '_phone');
+            if ($phone === '') {
+                $phone = $defPhone;
+            }
+            $tel = preg_replace('/\D/', '', $phone) ?? '';
+            if (str_starts_with($tel, '00')) { $tel = substr($tel, 2); }
+            if (strlen($tel) === 10) { $tel = '977' . $tel; }
+            if (!preg_match('/^[1-9]\d{9,14}$/', $tel)) {
+                continue;
+            }
+            $name  = $g('np_' . $key . '_name');
+            $out[] = [
+                'key'    => $key,
+                'role'   => $role,
+                'roleNe' => $roleNe,
+                'name'   => $name !== '' ? $name : $defName,
+                'phone'  => $phone,
+                'tel'    => $tel,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
      * The counter locations the office has defined, as code => name.
      *
      * Owner ask (24 Sep 2026): "counter mode lai location haru ni add garna

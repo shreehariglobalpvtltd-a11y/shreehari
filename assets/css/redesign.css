@@ -681,3 +681,33 @@ html.shg-from-ad #view-home > #search-anchor { order: -4 !important; margin-top:
   #view-home > #topHero { max-width: 760px; margin-left: auto; margin-right: auto; }
 }
 .th-in .th-sub { color: #b9cbe6; }
+
+/* ---------- 5 Oct 2026 · Nepal office card (CEO / Operations / Parking) under the office list ---------- */
+.th-npcard { position: relative; z-index: 1; margin-top: 8px; padding: 8px 9px 9px; border-radius: 14px;
+  background: linear-gradient(135deg, rgba(220, 20, 60, .26), rgba(255, 255, 255, .05)); border: 1px solid rgba(220, 20, 60, .55);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12); }
+.th-npcard[hidden] { display: none; }
+.th-nph { display: flex; align-items: center; gap: 7px; margin: 0 0 6px; color: #fff; }
+.th-nph b { flex: none; white-space: nowrap; font: 900 13px/1.2 var(--font-sans, sans-serif); letter-spacing: .02em; }
+.th-nph small { font: 600 10.5px/1.2 var(--font-sans, sans-serif); color: #ffc9d3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.np-flag { flex: none; display: block; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .35)); }
+.th-npl { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+.np-p { display: grid; grid-template-columns: minmax(0, 1fr) 34px 34px; gap: 6px; align-items: center; }
+.np-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; align-items: center; min-width: 0; min-height: 44px; padding: 4px 9px;
+  border-radius: 11px; text-decoration: none; color: #fff; background: rgba(255, 255, 255, .09); border: 1px solid rgba(255, 255, 255, .16); }
+.np-main .np-role { grid-column: 1; grid-row: 1; font: 700 9.5px/1.2 var(--font-sans, sans-serif); letter-spacing: .06em; text-transform: uppercase; color: #ffc9d3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-main b { grid-column: 1 / -1; grid-row: 2; font: 800 12.5px/1.25 var(--font-sans, sans-serif); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-main .np-num { grid-column: 2; grid-row: 1; font: 900 12.5px/1.25 var(--font-sans, sans-serif); color: #ffe6b8; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.np-btn { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 15px; text-decoration: none; color: #fff;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, .28), 0 6px 12px rgba(0, 0, 0, .25); transition: transform .12s, box-shadow .12s; }
+.np-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0, 0, 0, .28), 0 2px 5px rgba(0, 0, 0, .25); }
+.np-call { background: linear-gradient(180deg, #2fbf6c, #1c8f4c); }
+.np-wa { background: linear-gradient(180deg, #2fe07b, #128c4a); }
+.wa-row > span .np-flag { width: 20px; height: 24px; }
+/* phones: one swipe row, so the booking form stays on the first screen */
+@media (max-width: 759px) {
+  .th-npl { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+  .th-npl::-webkit-scrollbar { display: none; }
+  .np-p { flex: 0 0 min(88%, 310px); scroll-snap-align: start; }
+  .np-p:only-child { flex-basis: 100%; }
+}

@@ -36,7 +36,7 @@ function check(string $l, bool $ok): void {
    settings so refund_slabs is re-read from the fresh row. */
 Database::run(
     "ALTER TABLE `admins`
-      MODIFY `role` ENUM('superadmin','manager','accountant','support','scanner','official','agent','counter')
+      MODIFY `role` ENUM('superadmin','manager','accountant','support','scanner','official','agent','counter','operations','viewer')
       NOT NULL DEFAULT 'support'"
 );
 Database::run(

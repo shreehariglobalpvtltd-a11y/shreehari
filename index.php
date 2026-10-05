@@ -115,6 +115,12 @@ $boot['npOffice'] = [
     'place' => trim((string) preg_replace('/,?\s*Nepalgunj$/i', '', Settings::getString('nepal_office', 'Puspalal Chowk'))) ?: 'Puspalal Chowk',
     'phone' => trim(Settings::getString('nepal_phone', '')),
 ];
+// 5 Oct 2026: the Nepal office's people (CEO / Operations / Parking) for the home card.
+try {
+    $boot['npTeam'] = Settings::nepalTeam();
+} catch (Throwable $e) {
+    $boot['npTeam'] = [];
+}
 /* 5 Oct 2026: Google Ads conversion ids (Admin -> Settings -> Website). The
    app loads Google's tag ONLY when the booking id is set, and never for a
    signed-in staff member (a counter sale is not an ad conversion). */
@@ -186,7 +192,9 @@ if ($staffRow !== null) {
     ];
     try {
         $agentRows = Database::fetchAll(
-            "SELECT id, username, full_name FROM admins WHERE role = 'agent' AND is_active = 1 ORDER BY full_name, username"
+            "SELECT a.id, a.username, a.full_name, COALESCE(p.counter_name, '') AS city
+               FROM admins a LEFT JOIN admin_profiles p ON p.admin_id = a.id
+              WHERE a.role = 'agent' AND a.is_active = 1 ORDER BY a.full_name, a.username"
         );
         $agentList = [];
         foreach ($agentRows as $ar) {
@@ -198,6 +206,7 @@ if ($staffRow !== null) {
                     'name' => (string) ($ar['full_name'] ?: $ar['username']),
                     'type' => AgentWallet::agentTypeFor($aid),
                     'co'   => AgentWallet::isCompanyCode($aCode),
+                    'city' => trim((string) ($ar['city'] ?? '')),   // shown in the agent search box (5 Oct 2026)
                 ];
             }
         }

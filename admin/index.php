@@ -100,15 +100,14 @@ try {
     );
 } catch (Throwable $e) { $topAgents = []; }
 
-$srcRows = Database::fetchAll("SELECT source, COUNT(*) c FROM bookings WHERE created_at>=:d0 AND created_at<:d1 GROUP BY source", ['d0' => $today, 'd1' => $todayEnd]);
-$src = ['online' => 0, 'offline' => 0, 'agent' => 0];
-foreach ($srcRows as $r) {
-    $s = (string) $r['source']; $c = (int) $r['c'];
-    if ($s === 'web' || $s === 'app') $src['online'] += $c;
-    elseif ($s === 'agent') $src['agent'] += $c;
-    else $src['offline'] += $c;
-}
-$srcTotal = max(1, $src['online'] + $src['offline'] + $src['agent']);
+/* 5 Oct 2026: "today by channel" reads the ONE tag every booking carries
+   (includes/bookingchannel.php) - Online / Agent / Counter / Admin / WhatsApp /
+   Google Ads. The old split grouped the raw source column, so an agent's sale
+   through the public page with their code was counted as Online. */
+$chan      = BookingChannel::counts($today, $today);
+$chanTotal = (int) array_sum(array_column($chan, 'n'));
+$chanLink  = static fn(string $src): string => '/admin/bookings.php?' . http_build_query(['source' => $src, 'from' => $today, 'to' => $today]);
+$npTeam    = Settings::nepalTeam();
 
 $seatsTotalToday = (int) Database::scalar("SELECT COALESCE(SUM(total_seats),0) FROM schedules WHERE travel_date=:t", ['t' => $today]);
 // released_at IS NULL — match the authoritative per-trip 'sold' count (below).
@@ -237,6 +236,22 @@ admin_page_head(
   <div class="flash warn"><svg class="a-ic"><use href="#a-info"/></svg>You are viewing <b><?= $e(formatDate($today)) ?></b>. Live bus status and the payment badge only update on today's view.</div>
 <?php endif; ?>
 
+<?php /* 5 Oct 2026: the Nepal office's people, one tap to call or WhatsApp
+   (Admin -> Company details; a person shows once a number is typed). */ ?>
+<?php if ($npTeam !== []): ?>
+<div class="np-strip" aria-label="Nepal office contacts">
+  <span class="np-strip__h"><svg viewBox="0 0 26 32" width="15" height="19" aria-hidden="true"><path d="M2 2 23 15H9.6L23 30H2Z" fill="#DC143C" stroke="#003893" stroke-width="2.4" stroke-linejoin="round"/><circle cx="8" cy="12.4" r="2.2" fill="#fff"/><circle cx="8.3" cy="23.4" r="2.7" fill="#fff"/></svg>Nepal office</span>
+  <?php foreach ($npTeam as $p): ?>
+  <span class="np-strip__p">
+    <span class="np-strip__who"><small><?= $e($p['role']) ?></small><b><?= $e($p['name']) ?></b></span>
+    <a class="np-strip__b" href="tel:+<?= $e($p['tel']) ?>" aria-label="Call <?= $e($p['name']) ?>">📞 <?= $e($p['phone']) ?></a>
+    <a class="np-strip__b wa" href="https://wa.me/<?= $e($p['tel']) ?>" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp <?= $e($p['name']) ?>">💬</a>
+  </span>
+  <?php endforeach; ?>
+  <?php if (count($npTeam) < 3 && Auth::canManageSettings()): ?><a class="np-strip__add" href="/admin/company.php">+ add the missing number<?= count($npTeam) < 2 ? 's' : '' ?></a><?php endif; ?>
+</div>
+<?php endif; ?>
+
 <?php /* AI Watch (2 Oct 2026): what needs a person right now, most urgent
    first, each with a one-tap button. Live view only - a past snapshot
    has nothing left to act on. */ ?>
@@ -326,6 +341,14 @@ admin_page_head(
   <div class="kpi tone-red"><span class="ki"><svg class="a-ic"><use href="#a-x-circle"/></svg></span><div class="kt"><div class="kk">Cancelled today</div><div class="kv"><?= (int) $cancelledToday ?></div><div class="ks">bookings cancelled</div></div><?php if ($cancelledToday > 0): ?><a class="kl" href="<?= $base ?>/admin/bookings.php?status=cancelled" aria-label="Cancelled"></a><?php endif; ?></div>
 </div>
 
+<!-- Bookings today, by how they came in (5 Oct 2026) - each tile opens that list -->
+<div class="kpis kpis-chan">
+  <?= admin_kpi('Confirmed today', (string) (int) array_sum(array_column($chan, 'confirmed')), $chanTotal . ' placed · ' . (int) array_sum(array_column($chan, 'cancelled')) . ' cancelled', 'ticket', 'green', null, '/admin/bookings.php?' . http_build_query(['status' => 'confirmed', 'from' => $today, 'to' => $today])) ?>
+  <?= admin_kpi('Online customers', (string) ($chan['ONLINE']['n'] + $chan['GOOGLE_ADS']['n']), $chan['GOOGLE_ADS']['n'] > 0 ? $chan['GOOGLE_ADS']['n'] . ' from Google Ads 🎉' : 'booked on the website themselves', 'globe', 'teal', null, $chanLink('online')) ?>
+  <?= admin_kpi('Agent bookings', (string) $chan['AGENT']['n'], 'agent login or agent code', 'users', 'blue', null, $chanLink('agent')) ?>
+  <?= admin_kpi('WhatsApp requests', (string) $chan['WHATSAPP']['n'], 'booked from a WhatsApp message', 'msg', 'violet', null, $chanLink('whatsapp')) ?>
+</div>
+
 <!-- Quick actions -->
 <div class="quick-actions">
   <a class="qa" href="<?= $base ?>/admin/payments.php"><span class="qa-icon"><svg class="a-ic"><use href="#a-card"/></svg></span>Verify payments<?php if ($stats['pendingPay'] > 0): ?><span class="qa-badge"><?= (int) $stats['pendingPay'] ?></span><?php endif; ?></a>
@@ -361,29 +384,21 @@ admin_page_head(
   <div class="dash-panel">
     <div class="dp-head"><svg class="a-ic" style="color:var(--blue)"><use href="#a-layers"/></svg>Today by channel</div>
     <div class="dp-body">
-      <?php
-      $pOnline  = (int) round(($src['online']  / $srcTotal) * 100);
-      $pAgent   = (int) round(($src['agent']   / $srcTotal) * 100);
-      $pOffline = 100 - $pOnline - $pAgent;
-      ?>
       <div class="donut-wrap">
-        <svg class="donut-svg" viewBox="0 0 42 42">
+        <svg class="donut-svg" viewBox="0 0 42 42" role="img" aria-label="Bookings today by channel">
           <circle cx="21" cy="21" r="15.9" fill="none" stroke="var(--hover)" stroke-width="6"/>
-          <?php if ($src['online'] + $src['agent'] + $src['offline'] > 0): ?>
-          <circle cx="21" cy="21" r="15.9" fill="none" stroke="#27ae60" stroke-width="6"
-                  stroke-dasharray="<?= $pOnline ?> <?= 100 - $pOnline ?>" stroke-dashoffset="25" stroke-linecap="round"/>
-          <circle cx="21" cy="21" r="15.9" fill="none" stroke="#2E5FA8" stroke-width="6"
-                  stroke-dasharray="<?= $pAgent ?> <?= 100 - $pAgent ?>" stroke-dashoffset="<?= 25 - $pOnline ?>" stroke-linecap="round"/>
-          <circle cx="21" cy="21" r="15.9" fill="none" stroke="#e67e22" stroke-width="6"
-                  stroke-dasharray="<?= $pOffline ?> <?= 100 - $pOffline ?>" stroke-dashoffset="<?= 25 - $pOnline - $pAgent ?>" stroke-linecap="round"/>
-          <?php endif; ?>
-          <text x="21" y="22.5" text-anchor="middle" font-size="7" font-weight="800" fill="var(--ink)"><?= (int) $stats['todayBookings'] ?></text>
+          <?php $__acc = 0.0; foreach (BookingChannel::TAGS as $__t): $__n = $chan[$__t]['n']; if ($__n <= 0) { continue; }
+                $__pct = $__n / max(1, $chanTotal) * 100; ?>
+          <circle cx="21" cy="21" r="15.9" fill="none" stroke="<?= $e(BookingChannel::META[$__t][3]) ?>" stroke-width="6"
+                  stroke-dasharray="<?= round($__pct, 2) ?> <?= round(100 - $__pct, 2) ?>" stroke-dashoffset="<?= round(25 - $__acc, 2) ?>"/>
+          <?php $__acc += $__pct; endforeach; ?>
+          <text x="21" y="22.5" text-anchor="middle" font-size="7" font-weight="800" fill="var(--ink)"><?= $chanTotal ?></text>
           <text x="21" y="26.5" text-anchor="middle" font-size="3" fill="var(--mut)">total</text>
         </svg>
         <div class="donut-legend">
-          <div class="donut-item"><span class="donut-dot" style="background:#27ae60"></span>Online: <strong><?= (int) $src['online'] ?></strong> <span class="muted">(<?= $pOnline ?>%)</span></div>
-          <div class="donut-item"><span class="donut-dot" style="background:#2E5FA8"></span>Agent: <strong><?= (int) $src['agent'] ?></strong> <span class="muted">(<?= $pAgent ?>%)</span></div>
-          <div class="donut-item"><span class="donut-dot" style="background:#e67e22"></span>Counter: <strong><?= (int) $src['offline'] ?></strong> <span class="muted">(<?= $pOffline ?>%)</span></div>
+          <?php foreach (BookingChannel::FILTERS as $__src => $__t): $__n = $chan[$__t]['n']; ?>
+          <a class="donut-item" href="<?= $e($chanLink($__src)) ?>" style="text-decoration:none;color:inherit"><span class="donut-dot" style="background:<?= $e(BookingChannel::META[$__t][3]) ?>"></span><?= $e(BookingChannel::label($__t)) ?>: <strong><?= $__n ?></strong> <span class="muted">(<?= $chanTotal > 0 ? (int) round($__n / $chanTotal * 100) : 0 ?>%)</span></a>
+          <?php endforeach; ?>
         </div>
       </div>
       <div class="divider"></div>

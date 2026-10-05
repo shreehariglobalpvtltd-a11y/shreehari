@@ -334,6 +334,8 @@ final class WaBooking
            through to the menu and the passenger was told to ring the
            office about a ticket we had cut ten seconds earlier. */
         if ($pnr !== '') {
+            // 5 Oct 2026: a sale made inside a WhatsApp chat is a WHATSAPP booking.
+            BookingChannel::markWhatsappPnr($pnr, 'sold by the WhatsApp assistant');
             /* The language rides along: after a sale the conversation is
                cleared, so a romanised "naam galat bhayo" would be read as
                English and a Nepali customer would suddenly be answered in

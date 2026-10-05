@@ -34,13 +34,25 @@ Settings::flush();
 
 $out = [];
 
+/* 5 Oct 2026: panel alerts - agent cash held too long, commission unpaid,
+   advance above the limit, low bookings, a cancellation spike, idle agents
+   (includes/adminalerts.php; switches and numbers on Admin -> Notifications).
+   They are written to the notification centre whether or not the admin
+   WhatsApp channel works, so they run BEFORE that gate. Reads only. */
+try {
+    require_once INCLUDE_PATH . '/adminalerts.php';
+    $out['panelAlerts'] = AdminAlerts::run();
+} catch (Throwable $e) {
+    $out['panelAlerts'] = 'error: ' . $e->getMessage();
+}
+
 /* Both alert kinds go to admin WhatsApp only. If that channel is off or has
    no number, there is nowhere to deliver — bail BEFORE claiming anything, or
    every one-per-schedule/booking claim would be burned while the channel is
    down and the alert could never fire once it came back (the claim-before-gate
    trap). This mirrors the send-time gate inside Notify::lowSeatAlert. */
 if (!Notify::adminWhatsappReady()) {
-    cron_done(['skipped' => 'admin WhatsApp channel off or unconfigured']);
+    cron_done($out + ['skipped' => 'admin WhatsApp channel off or unconfigured']);
     exit(0);
 }
 

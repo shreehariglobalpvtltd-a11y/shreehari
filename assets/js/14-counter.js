@@ -557,9 +557,18 @@
         sel.innerHTML = '<option value="">— एजेन्ट छान्नुहोस् / Select Agent —</option>'
           + agents.map(function (a) {
             var selected = (want && a.code === want) ? ' selected' : '';
-            return '<option value="' + esc(a.code) + '"' + selected + '>' + (a.co ? '🏢 ' : '👤 ') + esc(a.code) + ' · ' + esc(a.name) + '</option>';
+            return '<option value="' + esc(a.code) + '"' + agentOptAttrs(a) + selected + '>' + (a.co ? '🏢 ' : '👤 ') + esc(a.code) + ' · ' + esc(a.name) + '</option>';
           }).join('');
         ac.parentNode.replaceChild(sel, ac);
+        agentPickerOn(sel);
+        /* 5 Oct 2026: say when this sale began as a WhatsApp message (channel tag). */
+        if (!$q('#cViaWa')) {
+          var waLbl = document.createElement('label');
+          waLbl.className = 'ctr-via-wa';
+          waLbl.style.cssText = 'display:flex;align-items:center;gap:10px;min-height:44px;margin-top:8px;font-size:13.5px;font-weight:600;cursor:pointer';
+          waLbl.innerHTML = '<input type="checkbox" id="cViaWa" style="width:22px;height:22px;accent-color:#25D366;flex:none"> <span>💬 WhatsApp बाट आएको request · came from a WhatsApp message</span>';
+          (sel.closest('.shg-ap') || sel).insertAdjacentElement('afterend', waLbl);
+        }
         sel.addEventListener('change', function () {
           lsSet(KEY_AGENT, sel.value);
           if (field) field.classList.remove('invalid');
@@ -786,9 +795,43 @@
     return '<div class="ctr-q-row" style="margin-top:8px"><select id="ctrQuickAgent" aria-label="Agent (required)" style="flex:1;min-width:0;font-size:15px;padding:9px 10px;border:1.5px solid var(--line,#dde3ee);border-radius:10px;background:var(--card,#fff);color:inherit">'
       + '<option value="">— एजेन्ट छान्नुहोस् / Select Agent (अनिवार्य) —</option>'
       + agents.map(function (a) {
-        return '<option value="' + esc(a.code) + '"' + (want && a.code === want ? ' selected' : '') + '>' + (a.co ? '🏢 ' : '👤 ') + esc(a.code) + ' · ' + esc(a.name) + '</option>';
+        return '<option value="' + esc(a.code) + '"' + agentOptAttrs(a) + (want && a.code === want ? ' selected' : '') + '>' + (a.co ? '🏢 ' : '👤 ') + esc(a.code) + ' · ' + esc(a.name) + '</option>';
       }).join('') + '</select></div>';
   }
+  /* 5 Oct 2026 (owner: "agent lai list bata search garera select") - the agent
+     <select>s become a search box (assets/js/agent-picker.js: name / code /
+     city). The select itself stays, so everything that reads its value is
+     unchanged; if the file cannot load, the plain list still works. */
+  function agentOptAttrs(a) {
+    return ' data-name="' + esc(a.name) + '" data-city="' + esc(a.city || '') + '" data-co="' + (a.co ? '1' : '0') + '"';
+  }
+  var PICKER_SRC = (function () {
+    try {
+      var s = document.querySelector('script[src*="14-counter.js"]');
+      if (s) return s.getAttribute('src').replace('14-counter.js', 'agent-picker.js');
+    } catch (e) {}
+    return '/assets/js/agent-picker.js';
+  })();
+  var pickerWait = null;
+  function agentPickerOn(sel) {
+    if (!sel) return;
+    if (window.shgAgentPicker) { try { window.shgAgentPicker(sel); } catch (e) {} return; }
+    if (!pickerWait) {
+      pickerWait = [];
+      var sc = document.createElement('script');
+      sc.src = PICKER_SRC;
+      sc.onload = function () { var q = pickerWait || []; pickerWait = []; q.forEach(function (el) { if (el.isConnected) { try { window.shgAgentPicker(el); } catch (e) {} } }); };
+      document.head.appendChild(sc);
+    }
+    pickerWait.push(sel);
+  }
+  /* the seat-map quick row is written as HTML - turn its select into the search box once it is in the page */
+  try {
+    new MutationObserver(function () {
+      var qa = document.getElementById('ctrQuickAgent');
+      if (qa && qa.getAttribute('data-ap') !== '1' && qa.getAttribute('data-ap-wait') !== '1') { qa.setAttribute('data-ap-wait', '1'); agentPickerOn(qa); }
+    }).observe(document.documentElement, { childList: true, subtree: true });
+  } catch (e) {}
   function seatConfirm() {
     var cont = $q('#continueBtn'); if (!cont || cont.disabled) return;
     var nmEl = $q('#ctrQuickName');
@@ -872,6 +915,7 @@
         body = Object.assign({}, body, {
           counterPayment: CTR.pay,
           agentCode: agSel ? (agSel.value || '').trim() : '',
+          viaWhatsapp: !!($q('#cViaWa') && $q('#cViaWa').checked),
           discountType: dv > 0 ? (($q('#ctrDiscType') || {}).value || 'flat') : '',
           discountValue: dv,
           note: (($q('#ctrNote') || {}).value || '').trim(),
@@ -898,6 +942,7 @@
             saveLast();
           } catch (e) {}
           forgetPassenger();   // this sale's passenger never rides into the next one
+          try { if ($q('#cViaWa')) $q('#cViaWa').checked = false; } catch (e) {}
           // submitBooking() stores the local record right after this resolves
           // (as a COD-style pending booking); mark it confirmed + paid.
           setTimeout(function () { patchLocal(res.pnr); }, 0);

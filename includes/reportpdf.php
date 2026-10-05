@@ -1000,7 +1000,6 @@ final class ReportPdf
         $busFilter       = (string) ($filters['bus'] ?? '');
         $payStatusFilter = (string) ($filters['pay_status'] ?? '');
         $validPayStatus  = ['pending', 'verified', 'rejected', 'refunded', 'cod_pending'];
-        $sourceMap       = ['online' => ['web', 'app'], 'agent' => ['agent'], 'counter' => ['counter'], 'admin' => ['admin']];
 
         $valid  = ['pending', 'confirmed', 'cancelled', 'rejected', 'expired'];
         $isDate = static fn (string $d): bool => preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) === 1;
@@ -1049,14 +1048,8 @@ final class ReportPdf
             $where[] = 'bl.travel_date <= :travelTo';
             $params['travelTo'] = $travelTo;
         }
-        if ($sourceFilter !== '' && isset($sourceMap[$sourceFilter])) {
-            $srcParts = [];
-            foreach ($sourceMap[$sourceFilter] as $si => $sv) {
-                $srcParts[] = ':src' . $si;
-                $params['src' . $si] = $sv;
-            }
-            $where[] = 'b.source IN (' . implode(',', $srcParts) . ')';
-        }
+        // 5 Oct 2026: the register's channel filter (includes/bookingchannel.php).
+        $sourceFilter = BookingChannel::applyFilter($where, $sourceFilter);
         if ($scopeId === null && $agentFilter !== '' && ctype_digit($agentFilter)) {
             $where[] = 'b.sold_by_admin_id = :agentFlt';
             $params['agentFlt'] = (int) $agentFilter;

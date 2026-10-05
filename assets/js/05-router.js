@@ -913,7 +913,30 @@ function wireHomeMore() {
   });
 }
 
+/* 5 Oct 2026: the Nepal office's people (CEO / Operations / Parking in-charge)
+   as a card under the office list - call + WhatsApp per person, from Admin ->
+   Company details (Settings::nepalTeam()). The flag is drawn: Windows has no
+   flag emoji and prints the letters "NP" instead. Returns true when shown. */
+const NP_FLAG_SVG = '<svg class="np-flag" viewBox="0 0 26 32" width="16" height="20" aria-hidden="true" focusable="false"><path d="M2 2 23 15H9.6L23 30H2Z" fill="#DC143C" stroke="#003893" stroke-width="2.4" stroke-linejoin="round"/><circle cx="8" cy="12.4" r="2.2" fill="#fff"/><circle cx="8.3" cy="23.4" r="2.7" fill="#fff"/></svg>';
+const NP_WA_SVG = '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M12 2.8a9.2 9.2 0 0 0-7.9 13.9L3 21l4.4-1.1A9.2 9.2 0 1 0 12 2.8Z"/><path fill="currentColor" d="M9 7.4c.2-.3.5-.4.8-.4h.5c.2 0 .4.2.5.4l.7 1.7c.1.2 0 .5-.1.6l-.5.6c-.1.2-.1.4 0 .5.5.9 1.4 1.7 2.4 2.2.2.1.4.1.5-.1l.6-.7c.2-.2.4-.2.6-.1l1.7.8c.2.1.4.3.4.5 0 .8-.6 1.7-1.5 1.9-1 .2-2.3-.1-3.9-1.1-1.7-1.1-2.9-2.7-3.3-4-.3-1.1 0-2.1.6-2.8Z"/></svg>';
+function renderNepalTeam() {
+  const card = document.getElementById('npTeam');
+  if (!card) return false;
+  const team = (window.SHG_BOOT && Array.isArray(SHG_BOOT.npTeam) ? SHG_BOOT.npTeam : []).filter(p => p && /^\d{10,15}$/.test(String(p.tel || '')));
+  if (!team.length) { card.hidden = true; card.innerHTML = ''; return false; }
+  const hello = encodeURIComponent('नमस्ते 🙏 S Hari Global');
+  card.innerHTML = '<p class="th-nph">' + NP_FLAG_SVG + '<b>Nepal Office</b><small>Shree Hari Global Pvt Ltd · नेपाल कार्यालय</small></p><ul class="th-npl">'
+    + team.map(p => '<li class="np-p"><a class="np-main" href="tel:+' + esc(p.tel) + '"><span class="np-role">' + esc(p.role) + '</span><b>' + esc(p.name) + '</b>'
+      + '<span class="np-num">' + esc(p.phone) + '</span></a>'
+      + '<a class="np-btn np-call" href="tel:+' + esc(p.tel) + '" aria-label="Call ' + esc(p.name) + '">📞</a>'
+      + '<a class="np-btn np-wa" href="https://wa.me/' + esc(p.tel) + '?text=' + hello + '" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp ' + esc(p.name) + '">' + NP_WA_SVG + '</a></li>').join('')
+    + '</ul>';
+  card.hidden = false;
+  return true;
+}
+
 function renderContactStrip() {
+  const npCard = renderNepalTeam();
   const strip = $('#numStrip'), inner = $('#numInner');
   if (!strip || !inner) return;
   /* A number with no digits cannot be dialled, so it stays hidden whatever
@@ -942,8 +965,10 @@ function renderContactStrip() {
     const npNum = np.phone || '+91 97264 01507';
     const npSub = (np.place || 'Puspalal Chowk') + (np.phone ? '' : ' · Sher Bahadur Bishwokarma');
     if (offs.length) {
+      /* With the Nepal card showing, the Nepalgunj line stays only when the
+         office has its own number - else it would repeat the CEO's line. */
       sbo.innerHTML = offs.map((n, i) => row('th-in', n.label || '', i === 0 && /mehsana/i.test(n.label || '') ? 'Head office' : '', n.num)).join('')
-        + row('th-np', 'Nepalgunj', npSub, npNum);
+        + (npCard && !np.phone ? '' : row('th-np', 'Nepalgunj', npSub, npNum));
     }
   }
   inner.innerHTML = live.map(n => {
@@ -1284,7 +1309,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261005o" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261005p" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'

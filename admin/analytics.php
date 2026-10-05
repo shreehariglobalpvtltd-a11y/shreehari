@@ -139,6 +139,13 @@ function an_window(array $q, string $today): array
         case 'today':
             $from = $today;
             break;
+        case 'yesterday':   // 5 Oct 2026
+            $from = $to = addDaysISO($today, -1);
+            break;
+        case 'lastmonth':   // the whole previous calendar month
+            $to   = addDaysISO(substr($today, 0, 8) . '01', -1);
+            $from = substr($to, 0, 8) . '01';
+            break;
         case 'week':
             $from = addDaysISO($today, -((int) date('N', (int) strtotime($today)) - 1));
             break;
@@ -611,6 +618,77 @@ foreach ($routeRows as $i => $rr) {
     }
 }
 
+/* ---- 5 Oct 2026: by channel · top agents · seat fill per departure ----
+   Channel = the one tag per booking (includes/bookingchannel.php), counted by
+   the date the booking was placed, like the bookings line above. */
+$chan       = BookingChannel::counts($from, $to, 'created', null, (float) SHG_AN_PEG);
+$chanTotal  = (int) array_sum(array_column($chan, 'n'));
+$chanLabels = $chanData = $chanColors = [];
+foreach (BookingChannel::TAGS as $__t) {
+    if ($chan[$__t]['n'] > 0) {
+        $chanLabels[] = BookingChannel::label($__t);
+        $chanData[]   = $chan[$__t]['n'];
+        $chanColors[] = BookingChannel::META[$__t][3];
+    }
+}
+/* Customers who booked on the website themselves, per day (Online + Google Ads). */
+$onlineByDay = BookingChannel::daily($from, $to, 'ONLINE');
+foreach (BookingChannel::daily($from, $to, 'GOOGLE_ADS') as $__d => $__n) {
+    $onlineByDay[$__d] = ($onlineByDay[$__d] ?? 0) + $__n;
+}
+$onlineData = [];
+for ($day = $from, $guard = 0; $day <= $to && $guard < 400; $day = addDaysISO($day, 1), $guard++) {
+    $onlineData[] = $onlineByDay[$day] ?? 0;
+}
+
+/* Top 10 agents: confirmed bookings placed in the window, credited seller. */
+$agentLabels = $agentData = $agentRev = [];
+foreach (an_rows(
+    "SELECT a.full_name, a.username, COUNT(*) AS n, COALESCE(" . REV_INR_B . ", 0) AS rev
+       FROM bookings b
+       JOIN admins a ON a.id = b.sold_by_admin_id AND a.role = 'agent'
+      WHERE b.status IN ($paidStatuses) AND b.created_at >= :d0 AND b.created_at < :d1
+      GROUP BY a.id, a.full_name, a.username
+      ORDER BY n DESC, rev DESC
+      LIMIT 10",
+    ['d0' => $winStart, 'd1' => $winEnd]
+) as $r) {
+    $agentLabels[] = (string) ($r['full_name'] ?: $r['username']);
+    $agentData[]   = (int) $r['n'];
+    $agentRev[]    = round((float) $r['rev'], 2);
+}
+
+/* Seat fill per departure (by TRAVEL date) - the same berth sets the "Seats
+   filled" figure above was built from, one bar per bus. Newest 40 at most. */
+$tripLabels = $tripPct = $tripNote = [];
+try {
+    if (!empty($coachOf)) {
+        $ids  = array_map('intval', array_keys($coachOf));
+        $meta = an_rows(
+            "SELECT s.id, s.travel_date, COALESCE(s.dep_time_override, r.dep_time) AS dep, r.from_city, r.to_city, bu.bus_number
+               FROM schedules s JOIN routes r ON r.id = s.route_id LEFT JOIN buses bu ON bu.id = s.bus_id
+              WHERE s.id IN (" . implode(',', $ids) . ")
+              ORDER BY s.travel_date DESC, dep DESC
+              LIMIT 40"
+        );
+        foreach (array_reverse($meta) as $m) {
+            $sid  = (int) $m['id'];
+            $cap  = (int) array_sum($capCoach[$coachOf[$sid]] ?? []);
+            $sold = isset($beds[$sid]) ? count($beds[$sid]) : 0;
+            if ($cap <= 0) {
+                continue;
+            }
+            $tripLabels[] = date('j M', (int) strtotime((string) $m['travel_date'])) . ' ' . substr((string) $m['dep'], 0, 5)
+                          . ' · ' . mb_substr((string) $m['from_city'], 0, 3) . '→' . mb_substr((string) $m['to_city'], 0, 3);
+            $tripPct[]    = an_pct($sold, $cap);
+            $tripNote[]   = $sold . ' of ' . $cap . ' berths' . (!empty($m['bus_number']) ? ' · ' . $m['bus_number'] : '');
+        }
+    }
+} catch (Throwable $e) {
+    Logger::warning('analytics: per-departure fill failed', ['error' => $e->getMessage()]);
+}
+
+$hasData = $bookingsN > 0 || $confirmedN > 0 || $cancelledN > 0 || $bedsSold > 0;
 $hasData = $bookingsN > 0 || $confirmedN > 0 || $cancelledN > 0 || $bedsSold > 0;
 
 /* Everything the front-end needs, JSON-safe for inline <script>. The
@@ -623,7 +701,10 @@ $payload = [
         'bedsSold' => $bedsSold, 'bedsOffered' => $bedsOffered, 'fillPct' => $fillPct,
         'trips'    => $tripsN, 'cancelled' => $cancelledN,
     ],
-    'daily'  => ['labels' => $dayLabels, 'bookings' => $bookData, 'revenue' => $revData],
+    'daily'  => ['labels' => $dayLabels, 'bookings' => $bookData, 'revenue' => $revData, 'online' => $onlineData],
+    'channel' => ['labels' => $chanLabels, 'data' => $chanData, 'colors' => $chanColors],
+    'agents'  => ['labels' => $agentLabels, 'data' => $agentData, 'revenue' => $agentRev],
+    'trips'   => ['labels' => $tripLabels, 'pct' => $tripPct, 'note' => $tripNote],
     'status' => ['labels' => $statusLabels, 'data' => $statusData],
     'mode'   => ['labels' => $modeLabels,   'data' => $modeData],
     'pay'    => ['labels' => $payLabels,    'data' => $payData],
@@ -654,6 +735,15 @@ admin_page_head(
   /* Date window bar */
   .an-range{padding:14px 16px;display:flex;flex-direction:column;gap:12px;overflow:visible}
   .an-chips{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .an-refresh{display:inline-flex;gap:10px;align-items:center;margin-left:auto;font-size:12.5px;flex-wrap:wrap}
+  .an-auto{display:inline-flex;gap:5px;align-items:center;min-height:40px;font-weight:600;color:var(--ink-2);cursor:pointer}
+  .an-chan-tbl{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
+  .an-chan-tbl td,.an-chan-tbl th{padding:7px 8px;border-top:1px solid var(--line);text-align:right;white-space:nowrap}
+  .an-chan-tbl td:first-child,.an-chan-tbl th:first-child{text-align:left}
+  .an-chan-tbl th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);border-top:0}
+  .an-chan-tbl a{color:inherit;text-decoration:none;font-weight:700}
+  .an-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;vertical-align:middle}
+  .an-canvas.tall{height:340px}
   .an-chips .chip{min-height:40px;padding:0 16px;font-size:13.5px;font-family:inherit;cursor:pointer;line-height:1}
   .an-chips .chip:hover{background:var(--hover);color:var(--ink)}
   /* Solid active chip: the shared .chip.on (blue-600 on blue-50) is near-invisible in dark mode. */
@@ -723,11 +813,16 @@ admin_page_head(
 
 <div class="panel an-range">
   <nav class="an-chips" aria-label="Date range">
-    <?php foreach (['today' => 'Today', 'week' => 'This week', 'month' => 'This month', '30d' => 'Last 30 days'] as $k => $lbl): ?>
+    <?php foreach (['today' => 'Today', 'yesterday' => 'Yesterday', 'week' => 'This week', 'month' => 'This month', 'lastmonth' => 'Last month', '30d' => 'Last 30 days'] as $k => $lbl): ?>
       <a class="chip<?= $win['key'] === $k ? ' on' : '' ?>" href="<?= $e($self . '?range=' . $k) ?>"<?= $win['key'] === $k ? ' aria-current="true"' : '' ?>><?= $e($lbl) ?></a>
     <?php endforeach; ?>
     <button type="button" class="chip<?= $win['key'] === 'custom' ? ' on' : '' ?>" id="anCustomBtn"
             aria-controls="anCustom" aria-expanded="<?= $win['key'] === 'custom' ? 'true' : 'false' ?>">Custom</button>
+    <span class="an-refresh">
+      <button type="button" class="chip" id="anRefresh" title="Load the latest figures now">↻ Refresh</button>
+      <label class="an-auto" title="Reload this report every 5 minutes while it is open"><input type="checkbox" id="anAuto"> auto · 5 min</label>
+      <span class="muted" id="anStamp">updated <?= $e(date('g:i A')) ?></span>
+    </span>
   </nav>
   <!-- Visible without JS; the script below folds it away unless Custom is active. -->
   <form class="an-custom" id="anCustom" method="get" action="<?= $e($self) ?>" data-open="<?= $win['key'] === 'custom' ? '1' : '0' ?>">
@@ -798,6 +893,48 @@ admin_page_head(
     <div class="an-head"><h2>Revenue per day<span class="an-sub">₹, paid bookings, NPR converted @ 1:<?= SHG_AN_PEG ?></span></h2>
       <button class="an-export" type="button" data-export="revChart" data-name="revenue-per-day">Export PNG</button></div>
     <div class="an-body"><div class="an-canvas"><canvas id="revChart" aria-label="Revenue per day"></canvas></div></div>
+  </div>
+
+  <div class="panel">
+    <div class="an-head"><h2>Bookings by channel<span class="an-sub">how each booking came in · placed in this window</span></h2>
+      <button class="an-export" type="button" data-export="chanChart" data-name="bookings-by-channel">Export PNG</button></div>
+    <div class="an-body">
+      <?php if ($chanTotal > 0): ?>
+      <div class="an-canvas"><canvas id="chanChart" aria-label="Bookings by channel"></canvas></div>
+      <table class="an-chan-tbl no-card">
+        <thead><tr><th>Channel</th><th>Bookings</th><th>Confirmed</th><th>Cancelled</th><th>₹ confirmed</th></tr></thead>
+        <tbody>
+        <?php foreach (BookingChannel::FILTERS as $__src => $__t): $__c = $chan[$__t]; ?>
+          <tr><td><a href="<?= $e('/admin/bookings.php?' . http_build_query(['source' => $__src, 'from' => $from, 'to' => $to])) ?>"><span class="an-dot" style="background:<?= $e(BookingChannel::META[$__t][3]) ?>"></span><?= $e(BookingChannel::label($__t)) ?></a></td>
+            <td><?= (int) $__c['n'] ?></td><td><?= (int) $__c['confirmed'] ?></td>
+            <td><?= (int) $__c['cancelled'] ?><?= $__c['n'] > 0 ? ' <span class="muted">(' . (int) round($__c['cancelled'] / $__c['n'] * 100) . '%)</span>' : '' ?></td>
+            <td><?= $e(inr($__c['revenue'])) ?></td></tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+      <?php else: ?><p class="muted" style="margin:0">No bookings were placed in this window.</p><?php endif; ?>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="an-head"><h2>Top agents<span class="an-sub">confirmed bookings placed in this window · top 10</span></h2>
+      <button class="an-export" type="button" data-export="agentChart" data-name="top-agents">Export PNG</button></div>
+    <div class="an-body">
+      <?php if ($agentData !== []): ?>
+      <div class="an-canvas tall"><canvas id="agentChart" aria-label="Top agents by confirmed bookings"></canvas></div>
+      <p class="muted" style="margin:10px 0 0;font-size:12.5px">Full table, commission and PDF: <a href="/admin/agent-ranking.php?from=<?= $e($from) ?>&amp;to=<?= $e($to) ?>">Agent ranking →</a></p>
+      <?php else: ?><p class="muted" style="margin:0">No agent sale was confirmed in this window.</p><?php endif; ?>
+    </div>
+  </div>
+
+  <div class="panel wide">
+    <div class="an-head"><h2>Seat fill by departure<span class="an-sub">% of berths filled on each bus travelling in this window<?= count($tripLabels) >= 40 ? ' · newest 40' : '' ?></span></h2>
+      <button class="an-export" type="button" data-export="tripChart" data-name="seat-fill-by-departure">Export PNG</button></div>
+    <div class="an-body">
+      <?php if ($tripLabels !== []): ?>
+      <div class="an-canvas"><canvas id="tripChart" aria-label="Seat fill by departure"></canvas></div>
+      <?php else: ?><p class="muted" style="margin:0">No bus travels in this window.</p><?php endif; ?>
+    </div>
   </div>
 
   <div class="panel">
@@ -872,7 +1009,7 @@ try {
     $funnel = [];
 }
 require_once INCLUDE_PATH . '/adattribution.php';
-$adRows = AdAttribution::summary(an_days($from, $to));
+$adRows = AdAttribution::summaryBetween($from, $to);   // 5 Oct 2026: the window shown, not "the last N days from now"
 $gadsSet = trim(Settings::getString('google_ads_conversion', '')) !== '';
 ?>
 <div class="panel an-route">
@@ -1054,13 +1191,17 @@ $gadsSet = trim(Settings::getString('google_ads_conversion', '')) !== '';
         type: 'line',
         data: {
           labels: DATA.daily.labels,
-          datasets: [{ label: 'Bookings', data: DATA.daily.bookings, borderColor: BLUE,
+          datasets: [{ label: 'All bookings', data: DATA.daily.bookings, borderColor: BLUE,
             backgroundColor: 'rgba(46,95,168,.12)', fill: true, tension: 0.25,
+            pointRadius: oneDay || DATA.daily.labels.length <= 31 ? 3 : 0, pointHoverRadius: 5, borderWidth: 2 },
+            // 5 Oct 2026: customers who booked on the website themselves
+            { label: 'Online customers', data: DATA.daily.online || [], borderColor: '#1FA35B',
+            backgroundColor: 'rgba(31,163,91,.10)', fill: false, tension: 0.25, borderDash: [5, 4],
             pointRadius: oneDay || DATA.daily.labels.length <= 31 ? 3 : 0, pointHoverRadius: 5, borderWidth: 2 }]
         },
         options: {
           responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
+          plugins: { legend: { display: true, position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, padding: 12 } } },
           scales: {
             x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } },
             y: { beginAtZero: true, ticks: { precision: 0 } }
@@ -1089,6 +1230,38 @@ $gadsSet = trim(Settings::getString('google_ads_conversion', '')) !== '';
             y: { beginAtZero: true, ticks: { callback: function (v) { return money(v); } } }
           }
         }
+      });
+    }
+
+    // 5 Oct 2026: by channel (own colours), top agents, seat fill per departure
+    if (el('chanChart') && DATA.channel && DATA.channel.data.length) {
+      charts.chanChart = new Chart(el('chanChart'), {
+        type: 'doughnut',
+        data: { labels: DATA.channel.labels, datasets: [{ data: DATA.channel.data, backgroundColor: DATA.channel.colors, borderWidth: 2, borderColor: CARD }] },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '58%',
+          plugins: { legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true, boxWidth: 8 } } } }
+      });
+    }
+    if (el('agentChart') && DATA.agents && DATA.agents.data.length) {
+      charts.agentChart = new Chart(el('agentChart'), {
+        type: 'bar',
+        data: { labels: DATA.agents.labels, datasets: [{ label: 'Confirmed bookings', data: DATA.agents.data, backgroundColor: BAR, hoverBackgroundColor: ORANGE, borderRadius: 5, maxBarThickness: 22 }] },
+        options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false },
+            tooltip: { callbacks: { afterLabel: function (c) { return money(DATA.agents.revenue[c.dataIndex] || 0) + ' confirmed fares'; } } } },
+          scales: { x: { beginAtZero: true, ticks: { precision: 0 } }, y: { grid: { display: false } } } }
+      });
+    }
+    if (el('tripChart') && DATA.trips && DATA.trips.pct.length) {
+      charts.tripChart = new Chart(el('tripChart'), {
+        type: 'bar',
+        data: { labels: DATA.trips.labels, datasets: [{ label: 'Berths filled %', data: DATA.trips.pct,
+          backgroundColor: DATA.trips.pct.map(function (p) { return p >= 80 ? '#1FA35B' : (p >= 40 ? '#F08423' : '#DC3B3B'); }), borderRadius: 4, maxBarThickness: 26 }] },
+        options: { responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false },
+            tooltip: { callbacks: { label: function (c) { return c.parsed.y + '% · ' + DATA.trips.note[c.dataIndex]; } } } },
+          scales: { x: { grid: { display: false }, ticks: { maxRotation: 60, autoSkip: true, maxTicksLimit: 14 } },
+                    y: { beginAtZero: true, max: 100, ticks: { callback: function (v) { return v + '%'; } } } } }
       });
     }
 
@@ -1196,6 +1369,22 @@ $gadsSet = trim(Settings::getString('google_ads_conversion', '')) !== '';
     });
   }
   ready();
+
+  /* 5 Oct 2026: Refresh now, and an optional 5-minute auto refresh (remembered
+     on this device; off by default so a report being read does not jump). */
+  (function () {
+    var btn = el('anRefresh'), box = el('anAuto'), timer = null, KEY = 'shg_an_auto';
+    function arm() {
+      clearTimeout(timer);
+      if (box && box.checked) { timer = setTimeout(function () { if (!document.hidden) { location.reload(); } else { arm(); } }, 300000); }
+    }
+    if (btn) { btn.addEventListener('click', function () { btn.disabled = true; btn.textContent = '↻ Loading…'; location.reload(); }); }
+    if (box) {
+      try { box.checked = localStorage.getItem(KEY) === '1'; } catch (e) {}
+      box.addEventListener('change', function () { try { localStorage.setItem(KEY, box.checked ? '1' : '0'); } catch (e) {} arm(); });
+      arm();
+    }
+  })();
 })();
 </script>
 <?php

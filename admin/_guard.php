@@ -208,6 +208,9 @@ function admin_nav(): array
         // so the item is shown only to one — a manager used to see a link
         // that refused them every time.
         ['href' => 'staff.php',        'icon' => 'user-cog',  'label' => 'Staff & Approvals', 'perm' => Auth::isSuperadmin() ? 'dashboard.view' : '__superadmin_only__',  'section' => 'Agents & counters'],
+        // 5 Oct 2026: settlements - who is waiting, draft -> approved -> paid -> the
+        // agent's confirmation, receipts, batch drafts (an agent sees only their own).
+        ['href' => 'settlements.php',  'icon' => 'banknote',  'label' => $agentView ? 'My Settlements' : '🧾 Settlements', 'perm' => $agentView ? 'bookings.view' : 'commissions.view', 'section' => 'Ledger & payments'],
         // 3 Oct 2026: agent ledger vs bookings — where a stored row no longer matches.
         ['href' => 'ledger-check.php', 'icon' => 'chart-up',  'label' => 'Ledger मिलान',     'perm' => $agentView ? '__superadmin_only__' : 'commissions.view', 'section' => 'Ledger & payments'],
 
@@ -237,6 +240,8 @@ function admin_nav(): array
         ['href' => 'settings.php',     'icon' => 'cog',       'label' => 'Settings',         'perm' => 'dashboard.view', 'section' => 'Settings'],
         // 4 Oct 2026: both companies' details, logo and payment account in one form.
         ['href' => 'company.php',      'icon' => 'cog',       'label' => 'Company details',  'perm' => 'dashboard.view', 'section' => 'Settings'],
+        // 5 Oct 2026: the notification centre + the alert switches (cash held, unpaid commission, …).
+        ['href' => 'notifications.php','icon' => 'bell',      'label' => '🔔 Notifications & alerts', 'perm' => 'dashboard.view', 'section' => 'Settings'],
         ['href' => 'activity-log.php', 'icon' => 'shield',    'label' => 'Activity & Security','perm'=> 'dashboard.view', 'section' => 'Settings'],
         ['href' => 'health.php',       'icon' => 'alert',     'label' => 'System Health',    'perm' => 'dashboard.view', 'section' => 'Settings'],
         // 5 Oct 2026: backups + Google Drive (owner / settings.manage — the page checks).
@@ -247,6 +252,10 @@ function admin_nav(): array
         ['href' => 'company-docs.php', 'icon' => 'doc',       'label' => 'Company Documents','perm' => 'dashboard.view', 'section' => 'Settings'],
     ];
 
+    /* 5 Oct 2026: a view-only account's menu is exactly the screens it may open. */
+    if ((Auth::admin()['role'] ?? '') === 'viewer') {
+        $all = array_filter($all, static fn(array $i): bool => in_array($i['href'], Auth::VIEWER_PAGES, true));
+    }
     return array_values(array_filter($all, static fn(array $i): bool => $i['perm'] === '' || Auth::can($i['perm'])));
 }
 
@@ -292,7 +301,12 @@ function admin_header(string $title, string $active = ''): void
     // sg- components as the customer app) loads first; the panel's own rules
     // follow, then admin.css restyles the shell on top. The UI uses the
     // device's own font now (no webfont download on a slow counter line).
-    $av = '20261005o';
+    $av = '20261005p';
+    /* 5 Oct 2026 (owner, Point 12): Poppins across the panel. display=swap, so a
+       slow counter line shows the device font at once and swaps when the file
+       lands; Devanagari comes from the same family. The CSP already allows it. */
+    echo '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>';
+    echo '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap">';
     echo '<link rel="stylesheet" href="/assets/css/ds.css?v=' . $av . '">';
     echo '<style>' . admin_css() . '</style>';
     echo '<link rel="stylesheet" href="/assets/css/admin.css?v=' . $av . '">';
@@ -310,7 +324,9 @@ function admin_header(string $title, string $active = ''): void
        . 'var L={light:"Switch to dark mode",dark:"Switch to AMOLED black mode",amoled:"Switch to light mode"}[t]||"";'
        . 'var b=document.querySelectorAll(".theme-tog:not(.snd-tog)");for(var i=0;i<b.length;i++){b[i].setAttribute("aria-label",L);b[i].setAttribute("title",L);}}'
        . '(function(){try{var t=localStorage.getItem("shg_admin_theme");'
-       . 'if(t!=="dark"&&t!=="light"&&t!=="amoled")t=(window.matchMedia&&matchMedia("(prefers-color-scheme:dark)").matches)?"dark":"light";'
+       // 5 Oct 2026 (owner): nothing chosen on this device = the dark display. The
+       // moon button still switches dark -> AMOLED -> light and the choice is kept.
+       . 'if(t!=="dark"&&t!=="light"&&t!=="amoled")t="dark";'
        . 'shgThemeApply(t);document.addEventListener("DOMContentLoaded",function(){shgThemeApply(t);});}catch(e){}})();'
        . 'function shgTheme(){try{var d=document.documentElement,'
        . 'c=d.getAttribute("data-display")==="amoled"?"amoled":(d.getAttribute("data-theme")==="dark"?"dark":"light"),'
@@ -321,7 +337,7 @@ function admin_header(string $title, string $active = ''): void
        // it on plays one short tone, which also unlocks audio on this page.
        . 'function shgAdmSoundOn(){try{return localStorage.getItem("shg_admin_sound")!=="0";}catch(e){return true;}}'
        . 'function shgAdmSoundPaint(){var on=shgAdmSoundOn(),b=document.querySelectorAll(".snd-tog");'
-       . 'for(var i=0;i<b.length;i++){b[i].textContent=on?"🔔":"🔕";b[i].setAttribute("aria-pressed",on?"true":"false");'
+       . 'for(var i=0;i<b.length;i++){b[i].textContent=on?"🔊":"🔇";b[i].setAttribute("aria-pressed",on?"true":"false");'
        . 'var L=on?"Chime ON (new booking / payment) - tap to mute":"Chime OFF - tap to turn on";b[i].setAttribute("aria-label",L);b[i].setAttribute("title",L);}}'
        . 'function shgAdmSound(){var on=!shgAdmSoundOn();try{localStorage.setItem("shg_admin_sound",on?"1":"0");}catch(e){}shgAdmSoundPaint();'
        . 'if(on){try{var C=window.AudioContext||window.webkitAudioContext,x=new C(),o=x.createOscillator(),g=x.createGain();'
@@ -376,10 +392,21 @@ function admin_header(string $title, string $active = ''): void
     foreach (preg_split('/\s+/', trim((string) ($admin['full_name'] ?: ($admin['username'] ?? 'A')))) ?: [] as $part) {
         if ($part !== '' && strlen($initials) < 2) { $initials .= mb_strtoupper(mb_substr($part, 0, 1)); }
     }
+    /* 5 Oct 2026: the bell is the notification centre now (unread count from
+       the notifications table); the chime switch beside it shows a speaker. */
+    $bell = '';
+    if (Auth::can('dashboard.view') && ($admin['role'] ?? '') !== 'viewer') {
+        require_once INCLUDE_PATH . '/adminalerts.php';
+        $nUnread = AdminAlerts::unreadCount();
+        $bell = '<a class="tb-bell' . ($nUnread > 0 ? ' has' : '') . '" href="' . $base . '/admin/notifications.php" title="Notifications" aria-label="Notifications'
+              . ($nUnread > 0 ? ' - ' . $nUnread . ' unread' : '') . '"><svg class="a-ic"><use href="#a-bell"/></svg>'
+              . ($nUnread > 0 ? '<span class="tb-bell-n">' . ($nUnread > 99 ? '99+' : $nUnread) . '</span>' : '') . '</a>';
+    }
     echo '<div class="who">'
        . '<span class="tb-av" aria-hidden="true">' . Security::e($initials ?: 'A') . '</span>'
        . '<span class="tb-name">' . $name . '</span> <em>' . $role . '</em>'
-       . '<button type="button" class="theme-tog snd-tog" onclick="shgAdmSound()" aria-pressed="true" aria-label="Chime on / off" title="Chime on / off">&#128276;</button>'
+       . $bell
+       . '<button type="button" class="theme-tog snd-tog" onclick="shgAdmSound()" aria-pressed="true" aria-label="Chime on / off" title="Chime on / off">&#128266;</button>'
        . '<script>shgAdmSoundPaint();</script>'
        . '<button type="button" class="theme-tog" onclick="shgTheme()" aria-label="Toggle dark mode" title="Dark / light mode"><svg class="a-ic"><use href="#a-theme"/></svg></button>'
        . $pwLink
@@ -548,6 +575,8 @@ function admin_footer(): void
     // own mobile layout (.sm-table) or opt out (.no-card), have no thead, or
     // whose rows do not line up with the header are left exactly as they are.
     echo '<script>' . admin_cards_js() . '</script>';
+    // 5 Oct 2026: figures count up, buttons answer the finger (ripple) - see admin_fx_js().
+    echo '<script>' . admin_fx_js() . '</script>';
     // Oct 2026: one save per tap, honest "Saving…" state, keep what was typed
     // if the line drops, and keep inputs clear of the phone keyboard.
     echo '<script>' . admin_save_guard_js() . '</script>';
@@ -859,6 +888,69 @@ JS;
 }
 
 /** Auto card-table for phones — see admin_footer(). */
+/**
+ * Small "it feels alive" touches for every panel page (5 Oct 2026, owner's
+ * Point 12), all skipped when the device asks for reduced motion:
+ *   - a plain figure on a KPI tile counts up from zero on load (rupees keep
+ *     their Indian grouping, a % keeps its sign; anything with words in it,
+ *     like "Not available" or "1 / 0", is left exactly as written);
+ *   - a tap on a button, chip or quick action leaves a ripple at the finger.
+ * Nothing here changes a value: the final text is the server's own string.
+ */
+function admin_fx_js(): string
+{
+    return <<<'JS'
+(function () {
+  var calm = false;
+  try { calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+  if (calm) return;
+
+  /* count-up */
+  var RX = /^(\u20b9\s?)?(\d[\d,]*)(\.\d+)?(%)?$/;
+  function countUp(el) {
+    if (el.children.length || el.hasAttribute('data-live-kpi') || el.getAttribute('data-fx') === 'off') return;
+    var txt = (el.textContent || '').trim(), m = RX.exec(txt);
+    if (!m) return;
+    var end = parseFloat((m[2] + (m[3] || '')).replace(/,/g, ''));
+    if (!isFinite(end) || end <= 0) return;
+    var dec = m[3] ? m[3].length - 1 : 0, t0 = null, dur = Math.min(900, 380 + Math.log(end + 1) * 60);
+    function fmt(v) { return (m[1] || '') + v.toLocaleString('en-IN', { minimumFractionDigits: dec, maximumFractionDigits: dec }) + (m[4] || ''); }
+    function step(ts) {
+      if (t0 === null) t0 = ts;
+      var p = Math.min(1, (ts - t0) / dur), e = 1 - Math.pow(1 - p, 3);
+      el.textContent = p >= 1 ? txt : fmt(dec ? end * e : Math.round(end * e));
+      if (p < 1) requestAnimationFrame(step);
+    }
+    el.style.fontVariantNumeric = 'tabular-nums';
+    requestAnimationFrame(step);
+    /* a background tab gets no frames - never leave a half-counted figure behind */
+    setTimeout(function () { el.textContent = txt; }, dur + 400);
+  }
+  function runCount() {
+    var els = document.querySelectorAll('.kpi .kv, .sg-stat__value, .cards .card .v');
+    for (var i = 0; i < els.length && i < 40; i++) countUp(els[i]);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', runCount); else runCount();
+
+  /* ripple */
+  document.addEventListener('pointerdown', function (ev) {
+    var b = ev.target && ev.target.closest ? ev.target.closest('.btn, .chip, .qa, .mnav a, .side a') : null;
+    if (!b || b.disabled) return;
+    var cs = getComputedStyle(b);
+    if (cs.position !== 'static' && cs.position !== 'relative') return;   // never re-anchor a floating / sticky control
+    var r = b.getBoundingClientRect(), d = Math.max(r.width, r.height) * 2, s = document.createElement('span');
+    var hadPos = b.style.position, hadOv = b.style.overflow;
+    if (cs.position === 'static') b.style.position = 'relative';
+    b.style.overflow = 'hidden';
+    s.className = 'fx-rip';
+    s.style.cssText = 'width:' + d + 'px;height:' + d + 'px;left:' + (ev.clientX - r.left - d / 2) + 'px;top:' + (ev.clientY - r.top - d / 2) + 'px';
+    b.appendChild(s);
+    setTimeout(function () { s.remove(); b.style.position = hadPos; b.style.overflow = hadOv; }, 520);
+  }, { passive: true });
+})();
+JS;
+}
+
 function admin_cards_js(): string
 {
     return <<<'JS'

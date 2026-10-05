@@ -12,15 +12,17 @@ require __DIR__ . '/_guard.php';
 $admin   = admin_boot('dashboard.view');
 $isSuper = Auth::isSuperadmin();
 
-$ROLES = ['agent', 'counter', 'manager', 'accountant', 'support', 'scanner', 'official', 'superadmin'];
+$ROLES = ['agent', 'counter', 'operations', 'manager', 'accountant', 'support', 'scanner', 'official', 'viewer', 'superadmin'];
 $ROLE_DESC = [
     'agent'      => 'Sells seats & transfers passengers (Seat Map + Trips). No payments/routes/settings.',
     'counter'    => 'Company ticket window: search, book, edit, reschedule, cancel (slab refunds), reprint, verify payments. No revenue dashboard, agent ledgers or fleet/staff management.',
+    'operations' => 'Operations admin: tickets, seats, buses, routes, agents register, customers. No settlements, payouts, money reports or settings.',
     'manager'    => 'Bookings, routes, schedules, customers, reports.',
-    'accountant' => 'Payments, refunds, commissions, reports.',
+    'accountant' => 'Finance admin: payments, refunds, commissions, settlements, reports. No system settings.',
     'support'    => 'Views bookings & customers, replies to messages, scans tickets.',
     'scanner'    => 'Scans tickets at boarding only.',
     'official'   => 'Verifies payments and replies to messages.',
+    'viewer'     => 'View only (partner / investor): dashboard, analytics and money reports. Cannot change anything and sees no passenger details.',
     'superadmin' => 'Full access to everything.',
 ];
 

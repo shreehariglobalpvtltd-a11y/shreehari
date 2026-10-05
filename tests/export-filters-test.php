@@ -102,7 +102,9 @@ if ($ag !== null) {
 $ps = (int) Database::scalar("SELECT COUNT(*) FROM bookings b WHERE EXISTS (SELECT 1 FROM payments p2 WHERE p2.booking_id = b.id AND p2.status = 'verified')", [], 0);
 $r = req('GET', '/admin/export.php?pay_status=verified');
 check('pay_status=verified → ' . $ps . ' rows', csvRows($r['body']) === $ps, 'csv=' . csvRows($r['body']));
-$src = (int) Database::scalar("SELECT COUNT(*) FROM bookings WHERE source IN ('web','app') AND status = 'confirmed'", [], 0);
+/* 5 Oct 2026: "online" is the ONLINE channel tag now (includes/bookingchannel.php) -
+   a self-booked web sale; an agent-code sale and a Google Ads sale are their own tags. */
+$src = (int) Database::scalar("SELECT COUNT(*) FROM bookings b WHERE (" . BookingChannel::sqlExpr('b') . ") = 'ONLINE' AND b.status = 'confirmed'", [], 0);
 $r = req('GET', '/admin/export.php?source=online&status=confirmed');
 check('source=online&status=confirmed → ' . $src . ' rows', csvRows($r['body']) === $src, 'csv=' . csvRows($r['body']));
 $r = req('GET', '/admin/export.php?format=xlsx&pay_status=verified');

@@ -84,7 +84,9 @@ $staffCode  = AgentWallet::agentCodeLabel($staffId) ?: '';
 $agentRows  = [];
 try {
     $agentRows = Database::fetchAll(
-        "SELECT id, username, full_name FROM admins WHERE role = 'agent' AND is_active = 1 ORDER BY full_name, username"
+        "SELECT a.id, a.username, a.full_name, COALESCE(p.counter_name, '') AS city
+           FROM admins a LEFT JOIN admin_profiles p ON p.admin_id = a.id
+          WHERE a.role = 'agent' AND a.is_active = 1 ORDER BY a.full_name, a.username"
     );
 } catch (Throwable $e) {}
 $agentList = [];
@@ -97,6 +99,7 @@ foreach ($agentRows as $ar) {
             'name' => (string) ($ar['full_name'] ?: $ar['username']),
             'type' => AgentWallet::agentTypeFor($aid),
             'co'   => AgentWallet::isCompanyCode($aCode),
+            'city' => trim((string) ($ar['city'] ?? '')),
         ];
     }
 }
@@ -476,11 +479,17 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
         <select id="qtAgent" class="qt-in" style="max-width:320px" required>
           <option value="">— एजेन्ट छान्नुहोस् / Select Agent —</option>
           <?php foreach ($agentList as $ag): ?>
-            <option value="<?= Security::e($ag['code']) ?>"<?= $ag['code'] === $staffCode ? ' selected' : '' ?>><?= Security::e(($ag['co'] ? '🏢 ' : '👤 ') . $ag['code'] . ' · ' . $ag['name']) ?></option>
+            <option value="<?= Security::e($ag['code']) ?>" data-name="<?= Security::e($ag['name']) ?>" data-city="<?= Security::e($ag['city']) ?>" data-co="<?= $ag['co'] ? '1' : '0' ?>"<?= $ag['code'] === $staffCode ? ' selected' : '' ?>><?= Security::e(($ag['co'] ? '🏢 ' : '👤 ') . $ag['code'] . ' · ' . $ag['name']) ?></option>
           <?php endforeach; ?>
-          <option value="OTHER">अन्य / Other (Direct Sale — company)</option>
+          <option value="OTHER" data-name="अन्य / Other">अन्य / Other (Direct Sale — company)</option>
         </select>
       </div>
+      <?php /* 5 Oct 2026: search the agent by name / code / city instead of scrolling
+               a long list, and say when the sale began as a WhatsApp message. */ ?>
+      <label class="qt-via-wa"><input type="checkbox" id="qtViaWa"> <span>💬 WhatsApp बाट आएको request · this booking came from a WhatsApp message</span></label>
+      <style>.qt-via-wa{display:flex;align-items:center;gap:10px;min-height:44px;margin:0 0 10px;font-size:13.5px;font-weight:600;cursor:pointer}.qt-via-wa input{width:22px;height:22px;accent-color:#25D366;flex:none}#qtAgent+.shg-ap,.qt-row .shg-ap{max-width:420px}</style>
+      <script src="/assets/js/agent-picker.js?v=20261005p"></script>
+      <script>if (window.shgAgentPicker) { shgAgentPicker(document.getElementById('qtAgent')); }</script>
 
       <!-- Phone summary (2 Oct 2026): on a phone the suggestion card sits
            BELOW this form, so the clerk sees what Confirm will sell right
@@ -941,6 +950,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       action: 'sell', name: name, phone: fullPhone(phone), country: st.cc, gender: st.gender, seats: st.seats, prefer: st.prefer,
       direction: st.direction, date: dateValue(), boarding: st.boarding, pay: st.pay,
       agentCode: ($('#qtAgent') ? $('#qtAgent').value : ''),
+      viaWhatsapp: ($('#qtViaWa') && $('#qtViaWa').checked) ? 1 : 0,
       discountType: dv > 0 ? $('#qtDiscType').value : '', discountValue: dv, note: $('#qtNote').value.trim(),
       // 🤖 what the bot proposed for this sale (null when it proposed nothing) — scores the outcome loop
       bot: botPrefill || undefined,
@@ -957,6 +967,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
       sayTicket(j.data);
       prependRecent(j.data);
       $('#qtLine').value = ''; $('#qtName').value = ''; $('#qtPhone').value = ''; $('#qtDisc').value = ''; $('#qtNote').value = '';
+      if ($('#qtViaWa')) $('#qtViaWa').checked = false;   // the next passenger starts unticked
       st.prefer = []; st.preferPhone = '';
       botReset();
       // The card became a ticket — drop it from the queue and re-read.

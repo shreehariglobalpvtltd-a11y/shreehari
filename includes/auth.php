@@ -24,6 +24,12 @@ final class Auth
      *
      * @var array<string, array<int, string>>
      */
+    /** The only screens a view-only account may open (5 Oct 2026). */
+    public const VIEWER_PAGES = [
+        'index.php', 'analytics.php', 'accounting.php', 'agent-ranking.php', 'feedback.php', 'counters.php',
+        'change-password.php', 'logout.php', 'pending-count.php', 'live-status.php',
+    ];
+
     private const ROLE_PERMISSIONS = [
         'manager' => [
             'dashboard.view', 'bookings.view', 'bookings.edit', 'bookings.cancel',
@@ -62,6 +68,31 @@ final class Auth
             'refunds.view', 'refunds.process',
             'commissions.view', 'commissions.pay',
             'reports.view', 'reports.export',
+        ],
+        // Operations admin (5 Oct 2026, owner's Point 10): runs the day - tickets,
+        // seats, buses, routes, the agent register and customers. Deliberately
+        // NO commissions.pay (cannot settle or pay an agent), NO reports.view
+        // (company money, accounting, payroll), NO refunds.process and NO
+        // settings.manage. Sees an agent's figures (commissions.view) because
+        // the agent register is part of the job; cannot change them.
+        'operations' => [
+            'dashboard.view', 'bookings.view', 'bookings.edit', 'bookings.cancel',
+            'payments.view', 'payments.verify', 'payments.reject',
+            'refunds.view', 'commissions.view',
+            'routes.view', 'routes.edit', 'schedules.view', 'schedules.edit', 'schedules.manage',
+            'buses.view', 'buses.edit', 'drivers.view', 'drivers.edit',
+            'staff.manage', 'customers.view', 'coupons.view',
+            'liveops.view', 'liveops.edit', 'messages.view', 'support.view', 'support.reply',
+            'tickets.scan', 'waitlist.view',
+        ],
+        // Viewer (5 Oct 2026): a partner or investor who may LOOK. The dashboard,
+        // analytics and the money reports - and nothing that names a passenger
+        // (no bookings.view / customers.view). Read-only is enforced, not just
+        // hidden: requireAdmin() refuses every non-GET request from this role
+        // and every page outside VIEWER_PAGES (message log, audit log and the
+        // settings screens gate on dashboard.view too, and those are not for a guest).
+        'viewer' => [
+            'dashboard.view', 'reports.view',
         ],
         'support' => [
             'dashboard.view', 'bookings.view',
@@ -1039,6 +1070,26 @@ final class Auth
                 Response::forbidden('Change your temporary password first. / पहिले अस्थायी पासवर्ड बदल्नुहोस्।');
             }
             Response::redirect('admin/change-password.php');
+        }
+
+        /* 5 Oct 2026: the viewer role is read-only everywhere - pages and APIs.
+           Any request that could change something (POST / PUT / DELETE) stops
+           here, so no page needs its own check and a new page cannot forget. */
+        if (($admin['role'] ?? '') === 'viewer' && !in_array($file, self::VIEWER_PAGES, true)) {
+            if ($wantsJson) {
+                Response::forbidden('This is a view-only account. / यो खाता हेर्न मात्र हो।');
+            }
+            Response::redirect('admin/index.php');
+        }
+        if (($admin['role'] ?? '') === 'viewer'
+            && !in_array(strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')), ['GET', 'HEAD', 'OPTIONS'], true)
+            && !in_array($file, ['logout.php', 'change-password.php'], true)) {
+            Logger::warning('Read-only account tried to change something', ['admin' => $admin['username'] ?? '', 'file' => $file], 'security');
+            if ($wantsJson) {
+                Response::forbidden('This is a view-only account. / यो खाता हेर्न मात्र हो।');
+            }
+            http_response_code(403);
+            exit('This is a view-only account - it cannot change anything. / यो खाता हेर्न मात्र हो। <a href="javascript:history.back()">Back</a>');
         }
 
         if ($permission !== '' && !self::can($permission)) {

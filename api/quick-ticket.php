@@ -326,7 +326,18 @@ try {
             'passengers'    => $in['passengers'] ?? null,
             'agentCode'     => Security::clean($in['agentCode'] ?? '', 20),
         ];
+        /* 5 Oct 2026 (owner): the agent is compulsory on Quick Ticket as well.
+           The page already asks for it, but the server used to fall back to
+           the company code silently when the browser check was skipped. An
+           agent selling for himself is booked on his own code; "Other" still
+           means a direct company sale. */
+        if (trim((string) $input['agentCode']) === '' && !Auth::isCounterAgent()) {
+            Response::invalid(['agentCode' => 'एजेन्ट छान्नुहोस् · Select the agent — required for every desk sale.']);
+        }
         $result = QuickTicket::sell($input, $staff);
+        if (!empty($in['viaWhatsapp'])) {
+            BookingChannel::markWhatsappPnr((string) ($result['pnr'] ?? ''), 'ticked on Quick Ticket');
+        }
 
         /* Outcome loop: what the bot proposed vs what was actually sold.
            Never blocks the sale — a failed write is logged and forgotten. */

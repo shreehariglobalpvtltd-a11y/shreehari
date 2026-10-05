@@ -171,6 +171,19 @@ try {
 
     $booking = BookingService::create($request, $seller);
 
+    // 5 Oct 2026: the desk ticked "WhatsApp request" - this sale began as a
+    // WhatsApp message, so it carries the WHATSAPP channel tag (never fails a sale).
+    if ($seller !== null && !empty($input['viaWhatsapp'])) {
+        BookingChannel::markWhatsapp((int) ($booking['id'] ?? 0), true, 'ticked at the counter');
+    }
+
+    // 5 Oct 2026: a customer who booked by themselves, with no agent code - one
+    // line in the notification centre (Admin -> Notifications; can be switched off).
+    if ($seller === null && trim((string) ($request['referralCode'] ?? '')) === '') {
+        require_once dirname(__DIR__) . '/includes/adminalerts.php';
+        AdminAlerts::onlineBooking($booking);
+    }
+
     // 5 Oct 2026: an online booking remembers the ad / campaign link that brought
     // the visitor (Google Ads, Facebook, ?src=). Counter sales never carry one.
     if ($seller === null && !empty($input['ad'])) {

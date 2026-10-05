@@ -575,6 +575,26 @@ if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['
     }
 }
 
+/* ---- Channel tag (5 Oct 2026) --------------------------------------
+   "This booking began as a WhatsApp request" - ticked at the desk at sale
+   time, corrected here afterwards. Anyone who may edit bookings; audited. */
+if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'channel_wa') {
+    if (!Security::verifyCsrf()) {
+        $flash = ['bad', 'Session expired — please try again.'];
+    } else {
+        try {
+            Auth::requireAdmin('bookings.edit');
+            $on = ($_POST['on'] ?? '') === '1';
+            if (!BookingChannel::markWhatsapp((int) $b['id'], $on, 'set on the booking page by admin #' . (int) $admin['id'])) {
+                throw new RuntimeException('The channel could not be saved.');
+            }
+            $flash = ['ok', $on ? 'Marked as a WhatsApp request.' : 'WhatsApp mark removed.'];
+        } catch (Throwable $e) {
+            $flash = ['bad', $e->getMessage()];
+        }
+    }
+}
+
 /* ---- Reversible payment review (§4) ------------------------------
    An authorised admin can move a booking between confirmed and rejected at
    any time (e.g. undo a mistaken approval). Every transition is audit-logged
@@ -1362,6 +1382,18 @@ $hasUpdated = $updatedAt !== '' && $updatedAt !== $createdAt;
     <div>
       <dt>Booked by</dt>
       <dd><?= Security::e($bookedByLabel) ?></dd>
+    </div>
+    <div>
+      <dt>Channel</dt>
+      <dd><?php $bvChan = BookingChannel::of((int) ($b['id'] ?? 0)); echo BookingChannel::badge($bvChan); ?>
+        <?php if (Auth::can('bookings.edit') && BookingChannel::hasTagColumn()): ?>
+        <form method="post" data-no-guard style="display:inline-block;margin-left:6px">
+          <?= Security::csrfField() ?>
+          <input type="hidden" name="action" value="channel_wa">
+          <input type="hidden" name="on" value="<?= $bvChan === 'WHATSAPP' ? '0' : '1' ?>">
+          <button class="btn ghost sm" type="submit" style="font-size:12px;padding:4px 9px"><?= $bvChan === 'WHATSAPP' ? 'Not a WhatsApp request' : '💬 Came by WhatsApp' ?></button>
+        </form>
+        <?php endif; ?></dd>
     </div>
     <?php
       // 5 Oct 2026: the ad / campaign link that brought this online customer.

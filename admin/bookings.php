@@ -42,7 +42,18 @@ $payMethodFilter = Security::clean($_GET['pay_method'] ?? '', 20);
 // on the booking fall back to the seller's desk today.
 $counterFilter   = mb_strtoupper(Security::clean($_GET['counter'] ?? '', 16));
 $page            = max(1, (int) ($_GET['p'] ?? 1));
-$PER_PAGE        = 50;
+/* 5 Oct 2026: rows per page (25 / 50 / 100) and click-to-sort on a whitelist
+   of columns; newest first stays the default. */
+$PER_PAGE        = (int) ($_GET['pp'] ?? 50);
+if (!in_array($PER_PAGE, [25, 50, 100], true)) {
+    $PER_PAGE = 50;
+}
+$SORTS           = ['new' => 'b.id', 'booked' => 'b.created_at', 'travel' => 'bl.travel_date', 'amount' => 'b.total_amount', 'status' => 'b.status'];
+$sortKey         = (string) ($_GET['sort'] ?? 'new');
+if (!isset($SORTS[$sortKey])) {
+    $sortKey = 'new';
+}
+$sortDir         = strtolower((string) ($_GET['dir'] ?? 'desc')) === 'asc' ? 'ASC' : 'DESC';
 
 // Payment enums match the payments table (schema.sql).
 $validPayStatus = ['pending', 'verified', 'rejected', 'refunded', 'cod_pending'];
@@ -66,14 +77,6 @@ if ($scopeId === null) {
         "SELECT id, full_name, username FROM admins WHERE role = 'agent' AND is_active = 1 ORDER BY full_name"
     );
 }
-
-// Source mapping: "Online" covers web+app
-$sourceMap = [
-    'online'  => ['web', 'app'],
-    'agent'   => ['agent'],
-    'counter' => ['counter'],
-    'admin'   => ['admin'],
-];
 
 // --- Build WHERE clauses ---
 $where  = [];
@@ -142,17 +145,11 @@ if ($isDate($travelTo)) {
     $where[] = 'bl.travel_date <= :travelTo';
     $params['travelTo'] = $travelTo;
 }
-// Source filter
-if ($sourceFilter !== '' && isset($sourceMap[$sourceFilter])) {
-    $srcVals = $sourceMap[$sourceFilter];
-    $srcParts = [];
-    foreach ($srcVals as $si => $sv) {
-        $key = 'src' . $si;
-        $srcParts[] = ':' . $key;
-        $params[$key] = $sv;
-    }
-    $where[] = 'b.source IN (' . implode(',', $srcParts) . ')';
-}
+// Sold-via filter (5 Oct 2026): ONE channel tag per booking - Online / Agent /
+// Counter / Admin / WhatsApp / Google Ads (includes/bookingchannel.php). An
+// agent's sale through the public page with their code now counts as Agent;
+// it used to hide under Online.
+$sourceFilter = BookingChannel::applyFilter($where, $sourceFilter);
 // Agent filter (only for non-agent roles)
 if ($scopeId === null && $agentFilter !== '' && ctype_digit($agentFilter)) {
     $where[] = 'b.sold_by_admin_id = :agentFlt';
@@ -226,7 +223,7 @@ $offset = ($page - 1) * $PER_PAGE;
 // LIMIT/OFFSET are interpolated as ints on purpose: the PDO driver here runs
 // real prepares and would quote a bound LIMIT (same note as activity-log.php).
 $sql = "SELECT b.id, b.pnr, b.status, b.total_amount, b.contact_phone, b.created_at, b.booking_mode,
-               b.source, b.sold_by_admin_id, b.is_cod,
+               b.source, b.sold_by_admin_id, b.is_cod, " . BookingChannel::sqlExpr('b') . " AS channel,
                r.from_city, r.to_city, r.route_code, bl.travel_date, bl.boarding_stop, bl.drop_stop,
                s.id AS schedule_id, COALESCE(s.dep_time_override, r.dep_time) AS dep_time,
                bu.bus_number, bu.bus_name,
@@ -241,7 +238,7 @@ $sql = "SELECT b.id, b.pnr, b.status, b.total_amount, b.contact_phone, b.created
                (SELECT t.is_void FROM tickets t WHERE t.booking_id = b.id LIMIT 1) AS ticket_void,
                (SELECT full_name FROM admins WHERE id = b.sold_by_admin_id) AS seller_name
           " . $fromSql . '
-          ORDER BY b.id DESC LIMIT ' . (int) $PER_PAGE . ' OFFSET ' . (int) $offset;
+          ORDER BY ' . $SORTS[$sortKey] . ' ' . $sortDir . ', b.id DESC LIMIT ' . (int) $PER_PAGE . ' OFFSET ' . (int) $offset;
 
 $rows = Database::fetchAll($sql, $params);
 
@@ -393,7 +390,38 @@ $hasFilters = ($q !== '' || $status !== '' || $isDate($from) || $isDate($to)
     || $busFilter !== '' || in_array($payStatusFilter, $validPayStatus, true)
     || in_array($payMethodFilter, $validPayMethod, true)
     || $counterFilter !== '' || $phoneFilter !== '' || $reachFilter !== '');
-$pageUrl = static fn(int $p): string => $base . '/admin/bookings.php?' . http_build_query($exportBase + ['p' => $p]);
+/* The view's own extras (rows per page, sort) ride on paging and sort links
+   only - an export is the whole filtered list whatever the page shows. */
+$viewBase = $exportBase + array_filter([
+    'pp'   => $PER_PAGE !== 50 ? $PER_PAGE : '',
+    'sort' => $sortKey !== 'new' ? $sortKey : '',
+    'dir'  => ($sortKey !== 'new' || $sortDir !== 'DESC') ? strtolower($sortDir) : '',
+]);
+$pageUrl = static fn(int $p): string => $base . '/admin/bookings.php?' . http_build_query($viewBase + ['p' => $p]);
+/** A sortable column head: first tap = newest/highest first, second tap flips. */
+$sortTh = static function (string $key, string $label) use ($base, $viewBase, $sortKey, $sortDir): string {
+    $on   = $sortKey === $key;
+    $next = ($on && $sortDir === 'DESC') ? 'asc' : 'desc';
+    $url  = $base . '/admin/bookings.php?' . http_build_query(array_diff_key($viewBase, ['sort' => 1, 'dir' => 1, 'p' => 1]) + ['sort' => $key, 'dir' => $next]);
+    return '<th class="th-sort' . ($on ? ' on' : '') . '"' . ($on ? ' aria-sort="' . ($sortDir === 'ASC' ? 'ascending' : 'descending') . '"' : '') . '>'
+         . '<a href="' . Security::e($url) . '" title="Sort by ' . Security::e(strtolower($label)) . '">' . Security::e($label)
+         . '<span aria-hidden="true">' . ($on ? ($sortDir === 'ASC' ? ' ▲' : ' ▼') : ' ↕') . '</span></a></th>';
+};
+/* Quick date chips for the BOOKED date (Today / Yesterday / This week / This
+   month / Last month), keeping every other filter that is on. */
+$__today  = todayISO();
+$__monday = addDaysISO($__today, -((int) date('N', (int) strtotime($__today)) - 1));
+$__m1     = substr($__today, 0, 8) . '01';
+$__lmEnd  = addDaysISO($__m1, -1);
+$datePresets = [
+    'Today'      => [$__today, $__today],
+    'Yesterday'  => [addDaysISO($__today, -1), addDaysISO($__today, -1)],
+    'This week'  => [$__monday, $__today],
+    'This month' => [$__m1, $__today],
+    'Last month' => [substr($__lmEnd, 0, 8) . '01', $__lmEnd],
+];
+$presetUrl = static fn(string $f, string $t): string => $base . '/admin/bookings.php?'
+    . http_build_query(array_diff_key($viewBase, ['from' => 1, 'to' => 1, 'p' => 1]) + ['from' => $f, 'to' => $t]);
 $csrf = Security::e(Security::csrfToken());
 $k    = CSRF_TOKEN_NAME;
 // 4 Sep 2026: bookings.cancel (office — any ticket) OR bookings.cancel_own
@@ -409,6 +437,14 @@ $canEdit   = Auth::can('bookings.edit');
 
 <style>
 .filter-group{display:flex;flex-direction:column;gap:3px}
+.date-chips{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 10px}
+.date-chips .chip{min-height:36px;padding:0 13px;text-decoration:none}
+.date-chips .chip.on{background:var(--blue);color:#fff;border-color:var(--blue)}
+.th-sort a{color:inherit;text-decoration:none;white-space:nowrap;display:inline-flex;align-items:center;gap:2px}
+.th-sort a span{opacity:.45;font-size:10px}.th-sort.on a{color:var(--blue)}.th-sort.on a span{opacity:1}
+.pp-pick{display:inline-flex;gap:4px;align-items:center;font-size:12.5px}
+.pp-pick a{min-width:36px;min-height:32px;display:inline-grid;place-items:center;border-radius:8px;border:1px solid var(--line);text-decoration:none;color:var(--ink-2);font-weight:700}
+.pp-pick a.on{background:var(--blue);color:#fff;border-color:var(--blue)}
 .filter-group .flbl{font-size:11px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.3px}
 .filter-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
 .filter-row + .filter-row{margin-top:8px}
@@ -498,6 +534,8 @@ $canEdit   = Auth::can('bookings.edit');
           <option value="agent" <?= $sourceFilter === 'agent' ? 'selected' : '' ?>>Agent</option>
           <option value="counter" <?= $sourceFilter === 'counter' ? 'selected' : '' ?>>Counter</option>
           <option value="admin" <?= $sourceFilter === 'admin' ? 'selected' : '' ?>>Admin</option>
+          <option value="whatsapp" <?= $sourceFilter === 'whatsapp' ? 'selected' : '' ?>>WhatsApp request</option>
+          <option value="ads" <?= $sourceFilter === 'ads' ? 'selected' : '' ?>>Google Ads</option>
         </select>
       </div>
       <div class="filter-group">
@@ -548,6 +586,11 @@ $canEdit   = Auth::can('bookings.edit');
 
     <details class="advanced-section" id="advFilters" open>
     <summary style="font-size:12px;font-weight:600;color:var(--blue);cursor:pointer;margin:8px 0 4px;list-style:none">📅 Dates &amp; export</summary>
+    <div class="date-chips" role="group" aria-label="Booked date - quick ranges">
+      <?php foreach ($datePresets as $__lbl => [$__f, $__t]): $__on = ($from === $__f && $to === $__t); ?>
+        <a class="chip<?= $__on ? ' on' : '' ?>" href="<?= Security::e($presetUrl($__f, $__t)) ?>"<?= $__on ? ' aria-current="true"' : '' ?>><?= Security::e($__lbl) ?></a>
+      <?php endforeach; ?>
+    </div>
     <div class="filter-row">
       <div class="filter-group">
         <span class="flbl">Booked from</span>
@@ -615,10 +658,11 @@ $canEdit   = Auth::can('bookings.edit');
 </div>
 
 <div class="panel">
-  <h2><?= number_format($totalResults) ?> ticket<?= $totalResults === 1 ? '' : 's' ?><?= $pages > 1 ? ' · page ' . $page . ' of ' . $pages : '' ?></h2>
+  <h2 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span><?= number_format($totalResults) ?> ticket<?= $totalResults === 1 ? '' : 's' ?><?= $pages > 1 ? ' · page ' . $page . ' of ' . $pages : '' ?></span>
+    <span class="pp-pick" style="margin-left:auto" role="group" aria-label="Rows per page"><span class="muted">Rows</span><?php foreach ([25, 50, 100] as $__pp): ?><a class="<?= $PER_PAGE === $__pp ? 'on' : '' ?>" href="<?= Security::e($base . '/admin/bookings.php?' . http_build_query(array_diff_key($viewBase, ['pp' => 1, 'p' => 1]) + ($__pp !== 50 ? ['pp' => $__pp] : []))) ?>"><?= $__pp ?></a><?php endforeach; ?></span></h2>
   <div class="tbl-scroll">
   <table class="card-table">
-    <thead><tr><?php if ($canBulk): ?><th class="bulk-col"><input type="checkbox" id="bulkAll" aria-label="Select every open ticket on this page" title="Select all open tickets on this page"></th><?php endif; ?><th>Ticket</th><th>Booked</th><th>Travel</th><th>Passenger</th><th>Seats</th><th>Sold via</th><th>Payment</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead>
+    <thead><tr><?php if ($canBulk): ?><th class="bulk-col"><input type="checkbox" id="bulkAll" aria-label="Select every open ticket on this page" title="Select all open tickets on this page"></th><?php endif; ?><th>Ticket</th><?= $sortTh('booked', 'Booked') ?><?= $sortTh('travel', 'Travel') ?><th>Passenger</th><th>Seats</th><th>Sold via</th><th>Payment</th><?= $sortTh('amount', 'Amount') ?><?= $sortTh('status', 'Status') ?><th>Actions</th></tr></thead>
     <tbody>
     <?php if ($rows === []): ?>
       <tr><td colspan="<?= $canBulk ? 11 : 10 ?>" class="muted" style="padding:22px;text-align:center">No tickets match.</td></tr>
@@ -632,14 +676,11 @@ $canEdit   = Auth::can('bookings.edit');
         $waPhone       = preg_replace('/\D/', '', (string) ($b['contact_phone'] ?? '')) ?? '';
         if ($waPhone !== '' && strlen($waPhone) === 10) { $waPhone = '91' . $waPhone; }
 
-        // "Sold via" display
-        if (in_array($source, ['agent', 'counter'], true) && $sellerName !== '') {
-            $soldVia = source_badge($source) . '<div style="font-size:11.5px;margin-top:3px">' . Security::e($sellerName)
-                     . ($agentCode !== '' ? ' <span class="muted mono">' . Security::e($agentCode) . '</span>' : '') . '</div>';
-        } elseif ($source === 'admin' && $sellerName !== '') {
-            $soldVia = source_badge($source) . '<div class="muted" style="font-size:11.5px;margin-top:3px">' . Security::e($sellerName) . '</div>';
-        } else {
-            $soldVia = source_badge($source);
+        // "Sold via": the booking's one channel tag, and who is credited with it.
+        $soldVia = BookingChannel::badge((string) ($b['channel'] ?? 'ONLINE'));
+        if ($sellerName !== '') {
+            $soldVia .= '<div style="font-size:11.5px;margin-top:3px">' . Security::e($sellerName)
+                      . ($agentCode !== '' ? ' <span class="muted mono">' . Security::e($agentCode) . '</span>' : '') . '</div>';
         }
     ?>
       <tr data-bid="<?= (int) $b['id'] ?>">
