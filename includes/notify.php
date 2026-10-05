@@ -2293,6 +2293,18 @@ final class Notify
                 '3' => $cFacts['date']  !== '' ? $cFacts['date']  : '-',
                 '4' => inr((float) ($refund['amount'] ?? 0)) . ' (' . (int) ($refund['percent'] ?? 0) . '%)',
             ], (int) ($booking['id'] ?? 0) ?: null, ['template_name' => 'shg_booking_cancelled', 'purpose' => 'booking_cancelled']);
+
+            // 5 Oct 2026: also on AiSensy's approved template while Meta refuses templates.
+            try {
+                if (!class_exists('AiSensyAPI') && is_file(ROOT_PATH . '/whatsapp/aisensy.php')) {
+                    require_once ROOT_PATH . '/whatsapp/aisensy.php';
+                }
+                if (class_exists('AiSensyAPI')) {
+                    AiSensyAPI::cancellationFor($booking, (float) ($refund['amount'] ?? 0));
+                }
+            } catch (Throwable $e) {
+                Logger::warning('AiSensy cancellation notice failed', ['pnr' => $pnr, 'err' => $e->getMessage()]);
+            }
         }
 
         if (Settings::getBool('whatsapp_notify_admin', true) && $adminPhone !== '') {
@@ -2950,6 +2962,26 @@ final class Notify
             }
             // A string return is the click-to-chat fallback (no driver
             // configured) — already logged by whatsapp(); not a delivery.
+
+            /* 5 Oct 2026 — the same update on AiSensy's approved template
+               while aisensy_mode is "always" (Meta refuses templates, so the
+               line above reaches only a passenger who wrote in the last 24 h).
+               Never allowed to break the event. */
+            try {
+                if (!class_exists('AiSensyAPI') && is_file(ROOT_PATH . '/whatsapp/aisensy.php')) {
+                    require_once ROOT_PATH . '/whatsapp/aisensy.php';
+                }
+                if (class_exists('AiSensyAPI')) {
+                    [$aisHead, $aisDetail] = self::tripEventLine($event, $facts);
+                    $ais = AiSensyAPI::tripUpdate($booking, $event, $aisHead, $aisDetail, $body['whatsapp']);
+                    if ($ais['ok']) {
+                        $channels[] = 'ais';
+                        $ok = true;
+                    }
+                }
+            } catch (Throwable $e) {
+                Logger::warning('AiSensy trip update failed', ['pnr' => $pnr, 'event' => $event, 'err' => $e->getMessage()]);
+            }
         }
 
         if (Settings::getBool('sms_notify_customer', true)) {
@@ -2986,6 +3018,43 @@ final class Notify
                 ? 'Sent via ' . implode(' + ', $channels)
                 : 'No channel delivered it — check Settings -> Test WhatsApp / Test SMS.',
         ];
+    }
+
+    /**
+     * One-line form of a bus update for a template variable (no newlines):
+     * [what happened, the trip it is about].
+     *
+     * @param array<string,string> $f
+     * @return array{0: string, 1: string}
+     */
+    private static function tripEventLine(string $event, array $f): array
+    {
+        $head = match ($event) {
+            'reminder_12h' => 'Your bus leaves in about 12 hours. Carry a photo ID for the border',
+            'reminder_2h'  => 'Your bus leaves in about 2 hours. Please reach the boarding point on time',
+            'delayed'      => 'Your bus is delayed' . (!empty($f['delayMinutes']) ? ' by about ' . (int) $f['delayMinutes'] . ' minutes' : '')
+                              . (!empty($f['delayNote']) ? ' (' . mb_substr((string) $f['delayNote'], 0, 80) . ')' : ''),
+            'departed'     => 'Your bus has started its journey',
+            'border'       => 'Your bus has reached the border. Keep your photo ID ready',
+            'arrived'      => 'Your bus has arrived. Thank you for travelling with us',
+            'bus_near'     => 'Your bus is about ' . (string) ($f['etaMin'] ?? '30') . ' minutes from your boarding point. Please be ready',
+            default        => 'Bus update',
+        };
+        $parts = [];
+        if (($f['route'] ?? '') !== '') {
+            $parts[] = str_replace('→', 'to', (string) $f['route']);
+        }
+        $when = trim(($f['date'] ?? '') . (($f['depTime'] ?? '') !== '' ? ' ' . $f['depTime'] : ''));
+        if ($when !== '') {
+            $parts[] = $when;
+        }
+        if (($f['seats'] ?? '') !== '') {
+            $parts[] = 'seat ' . $f['seats'];
+        }
+        if (($f['boarding'] ?? '') !== '') {
+            $parts[] = 'boarding ' . trim(explode('@', (string) $f['boarding'])[0]);
+        }
+        return [$head, mb_substr(implode(', ', $parts), 0, 300)];
     }
 
     /**

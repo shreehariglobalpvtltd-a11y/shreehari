@@ -220,6 +220,9 @@ admin_header('Campaigns', 'campaigns');
     <div class="mk-grid">
       <label>Campaign name<input name="name" maxlength="120" required value="<?= $e($cc['name']) ?>" placeholder="Dashain offer — Nepal customers"></label>
       <label>Offer / booking link (src=cmp<?= (int) $cc['id'] ?: 'N' ?> is added)<input name="link_url" value="<?= $e($cc['link_url']) ?>" placeholder="<?= $e(appUrl('/')) ?>"></label>
+      <?php require_once INCLUDE_PATH . '/waorder.php'; if (WaOrder::orderLink() !== ''): ?>
+      <p class="muted" style="margin:-4px 0 8px;font-size:12px">Book inside WhatsApp (order menu): paste <code><?= $e(WaOrder::orderLink()) ?></code> as the link.</p>
+      <?php endif; ?>
       <label>Automatic speed (messages a minute)<input type="number" name="rate_per_min" min="1" max="60" value="<?= (int) $cc['rate_per_min'] ?>"></label>
     </div>
     <div class="mk-ch">

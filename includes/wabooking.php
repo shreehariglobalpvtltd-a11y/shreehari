@@ -46,7 +46,7 @@ final class WaBooking
      * @return array{text: string, media: ?string}|null null = not a booking
      *         conversation, so the caller keeps its own reply.
      */
-    public static function handle(string $phoneDigits, string $text, string $senderCountry = ''): ?array
+    public static function handle(string $phoneDigits, string $text, string $senderCountry = '', ?array $staff = null): ?array
     {
         $text = trim($text);
         if ($text === '' || $phoneDigits === '') {
@@ -56,10 +56,32 @@ final class WaBooking
             return null;
         }
 
+        /* THE SELLER (5 Oct 2026, owner: "counter, agent, customer — sabai le
+           yei number bata order gare jasto"). $staff is AiTools::whoIs() for a
+           number that is on file as agent / counter / office. Their order is
+           the same conversation with one more question — whose ticket it is —
+           and the sale goes through QuickTicket::sell() under their own
+           account, exactly like the ⚡ Quick Ticket screen. */
+        $seller = (is_array($staff) && (int) ($staff['adminId'] ?? 0) > 0 && is_array($staff['admin'] ?? null))
+            ? $staff['admin'] : null;
+
         $state = self::load($phoneDigits);
         $lang  = TicketBot::detectLang($text);
         if ($state !== null && ($state['lang'] ?? '') !== '') {
             $lang = (string) $state['lang'];          // the language they opened with
+        }
+
+        /* THE ORDER BUTTON (5 Oct 2026). "ticket" / "टिकट बुक" / a tap on the
+           menu is not a sentence to be read — it is somebody asking to be
+           walked through it. Whatever was half-way is dropped and the guided
+           order starts: which way, which day, how many, which pickup, each
+           with tappable answers. A real sentence ("bholi 2 seat nepal") still
+           takes the reading path below, untouched. */
+        $command = self::orderCommand($text);
+        if ($command !== null) {
+            $lang  = $command;
+            $state = ['slots' => ['_guided' => true], 'awaiting' => '', 'options' => [], 'lang' => $lang];
+            $text  = '';
         }
 
         // "cancel" ends it at any point, in any of the four languages.
@@ -77,7 +99,7 @@ final class WaBooking
            answered here instead of falling through to the menu. Only the
            name: a wrong date or pickup moves seats and money, and that
            stays with fix_ticket and the desk. */
-        if ($state === null) {
+        if ($state === null && $seller === null) {
             $justSold = self::recentSale($phoneDigits);
             if ($justSold !== null && self::looksLikeNameFix($text)) {
                 $soldLang = ($justSold['lang'] ?? '') !== '' ? (string) $justSold['lang'] : $lang;
@@ -96,10 +118,12 @@ final class WaBooking
 
         /* Computed BEFORE anything writes the conversation row, because
            greetedAlready() keys on exactly that row: once the state exists
-           we are mid-conversation and the mantra must not repeat. */
-        $opener = self::opener($phoneDigits, $lang);
+           we are mid-conversation and the mantra must not repeat. A tapped
+           order button was greeted a moment ago by the menu itself. */
+        $opener = ($command !== null || $seller !== null) ? '' : self::opener($phoneDigits, $lang);
 
-        $slots = is_array($state['slots'] ?? null) ? $state['slots'] : [];
+        $slots  = is_array($state['slots'] ?? null) ? $state['slots'] : [];
+        $guided = !empty($slots['_guided']);
 
         /* A tapped-looking answer ("2") replies to the question we asked, not
            to the whole message. Options were stored with the question. */
@@ -109,6 +133,22 @@ final class WaBooking
             if ($picked !== null) {
                 $slots[$awaiting] = $picked;
                 $text = '';                          // consumed by the answer
+            } elseif ($awaiting === 'seats' && preg_match('/^\d{1,2}$/', trim(TicketBot::asciiDigits($text))) === 1
+                      && (int) trim(TicketBot::asciiDigits($text)) > 0) {
+                // A party bigger than the list offered: the number itself is the answer.
+                $slots['seats'] = (int) trim(TicketBot::asciiDigits($text));
+                $text = '';
+            } elseif ($awaiting === 'custPhone') {
+                /* The passenger's own number — the ticket goes to THAT WhatsApp.
+                   "0" / "chaina" is a walk-in with no phone: the desk rule allows
+                   it and the seller forwards the picture themselves. */
+                $cust = self::readCustomerPhone($text);
+                if ($cust === null) {
+                    self::save($phoneDigits, $slots, 'custPhone', [], $lang);
+                    return self::out(self::say('askCustPhoneAgain', $lang));
+                }
+                $slots['custPhone'] = $cust;
+                $text = '';
             } elseif ($awaiting === 'name') {
                 /* They answer the name question with "naam Ram", with one
                    name, or — when the party is 3 — with all three at once.
@@ -154,8 +194,12 @@ final class WaBooking
 
         // The summary was on the table: yes sells it, no drops it.
         if ($awaiting === 'confirm') {
-            if (self::isYes($text)) {
-                return self::sell($phoneDigits, $slots, $lang, $senderCountry);
+            /* "pay cash" / "pay upi" (the two payment buttons) is a yes that
+               also says HOW: on the bus, or by UPI now. A plain yes keeps the
+               office default. */
+            $pay = self::payChoice($text);
+            if ($pay !== '' || self::isYes($text)) {
+                return self::sell($phoneDigits, $slots, $lang, $senderCountry, $pay, $seller);
             }
             if (self::isNo($text)) {
                 self::clear($phoneDigits);
@@ -185,16 +229,73 @@ final class WaBooking
 
         /* One call does the reading, the memory, the live plan and the
            "what is still missing" list. */
+        /* What the person has actually SAID or tapped so far — before the
+           engine's own defaults (today, 1 seat, the usual pickup) are folded
+           in below. The guided order asks for whatever is not in here. */
+        $explicit = $slots;
+        /* A seller's memory lookup is the PASSENGER's number once they gave
+           it — never the seller's own, or every ticket would be prefilled
+           with the agent's name and habits. */
+        $custDigits = $seller !== null ? normalisePhone((string) ($slots['custPhone'] ?? '')) : $phoneDigits;
+
         $sug = TicketBot::suggest([
             'text'         => $text,
-            'phone'        => $phoneDigits,
-            'sessionPhone' => $phoneDigits,
+            'phone'        => $custDigits,
+            'sessionPhone' => $seller !== null ? '' : $phoneDigits,
             'name'         => $slots['name']      ?? '',
             'seats'        => $slots['seats']     ?? null,
             'date'         => $slots['date']      ?? '',
             'direction'    => $slots['direction'] ?? '',
             'boarding'     => $slots['boarding']  ?? '',
-        ], null);
+        ], $seller);
+
+        /* suggest() falls back to "any direction" when the one asked for
+           cannot be sold — right for a desk card, wrong for someone who chose
+           Nepal and would be shown a bus to Gujarat. The way they chose stands;
+           the real reason is said instead. */
+        if (is_array($sug['plan'] ?? null) && (string) ($explicit['direction'] ?? '') !== ''
+            && (string) ($sug['plan']['direction'] ?? '') !== (string) $explicit['direction']) {
+            $sug['plan'] = null;
+            try {
+                QuickTicket::plan([
+                    'direction' => (string) $explicit['direction'],
+                    'date'      => (string) ($explicit['date'] ?? ''),
+                    'seats'     => max(1, (int) ($explicit['seats'] ?? 1)),
+                    'customer'  => $seller === null,
+                ]);
+            } catch (RuntimeException $e) {
+                $sug['planError'] = $e->getMessage();
+            }
+        }
+
+        /* THE GUIDED ORDER: one tappable question at a time, in a fixed
+           order, until the trip is settled. Only what was said is kept while
+           asking, so a default never counts as an answer. */
+        if ($guided) {
+            foreach (['direction', 'date', 'seats', 'boarding'] as $field) {
+                $have = $explicit[$field] ?? '';
+                if ($have !== '' && $have !== 0 && $have !== null) {
+                    continue;
+                }
+                $planNow = is_array($sug['plan'] ?? null) ? $sug['plan'] : null;
+                $prefix  = '';
+                if ($planNow === null && in_array($field, ['seats', 'boarding'], true)) {
+                    /* Way and day are chosen and nothing can be sold for them
+                       (no bus, full, cut-off passed): say why and offer the
+                       days again instead of asking how many. */
+                    $prefix = trim((string) ($sug['planError'] ?? '')) !== '' ? trim((string) $sug['planError']) : self::say('noPlan', $lang);
+                    unset($explicit['date']);
+                    $field  = 'date';
+                }
+                $q = self::guidedQuestion($field, $lang, $planNow, $seller !== null);
+                self::save($phoneDigits, $explicit, $field, $q['options'], $lang);
+                return self::out(
+                    ($prefix !== '' ? $prefix . "\n\n" : '') . self::withOptions($q['question'], $q['options'], $lang),
+                    null,
+                    self::choiceUi(($prefix !== '' ? $prefix . "\n\n" : '') . $q['question'], $q['options'], $lang)
+                );
+            }
+        }
 
         foreach (['name', 'seats', 'date', 'direction', 'boarding', 'country'] as $k) {
             $v = $sug['prefill'][$k] ?? '';
@@ -223,7 +324,18 @@ final class WaBooking
                 static fn ($o): bool => is_array($o) && ($o['value'] ?? '') !== '' && ($o['value'] ?? '') !== 'other'
             ));
             self::save($phoneDigits, $slots, (string) $ask['field'], $options, $lang);
-            return self::out($opener . self::withOptions((string) $ask['question'], $options, $lang));
+            return self::out(
+                $opener . self::withOptions((string) $ask['question'], $options, $lang),
+                null,
+                self::choiceUi($opener . (string) $ask['question'], $options, $lang)
+            );
+        }
+
+        /* A seller is asked whose ticket this is BEFORE the name: a number we
+           have met fills the name in from its own last ticket. */
+        if ($seller !== null && !array_key_exists('custPhone', $slots)) {
+            self::save($phoneDigits, $slots, 'custPhone', [], $lang);
+            return self::out(self::say('askCustPhone', $lang));
         }
 
         /* The name is asked LAST, once the trip itself is settled: asked
@@ -281,13 +393,276 @@ final class WaBooking
                 $picture = null;
             }
         }
-        return self::out($opener . self::summary($plan, $slots, $lang), $picture);
+        $summary = self::summary($plan, $slots, $lang, $seller);
+        return self::out(
+            $opener . $summary . "\n" . self::confirmHelp($lang, $seller !== null),
+            $picture,
+            ['kind' => 'buttons', 'body' => $opener . $summary, 'buttons' => self::confirmButtons($lang, $seller !== null)]
+        );
+    }
+
+    /* -----------------------------------------------------------------
+     *  The guided order (5 Oct 2026): commands, questions, tappable answers
+     * --------------------------------------------------------------- */
+
+    /** Is an order conversation open for this number? */
+    public static function isOpen(string $phoneDigits): bool
+    {
+        return $phoneDigits !== '' && self::load($phoneDigits) !== null;
+    }
+
+    /**
+     * "ticket", "टिकट बुक", "order", or the menu button ("ticket book ne"):
+     * the whole message is a request to be walked through a booking.
+     * Returns the language to hold the order in, or null when the message is
+     * anything more than the bare command — a sentence is read, not guided.
+     */
+    public static function orderCommand(string $text): ?string
+    {
+        $t = mb_strtolower(trim((string) preg_replace('/[\s.!🎫]+/u', ' ', $text)));
+        if ($t === '' || mb_strlen($t) > 40) {
+            return null;
+        }
+        // The menu button carries the language the menu was shown in.
+        if (preg_match('/^ticket book (ne|hi|en|gu)$/', $t, $m) === 1) {
+            return $m[1];
+        }
+        $byLang = [
+            'en' => ['book ticket', 'book a ticket', 'new ticket', 'order', 'order ticket', 'book now', 'booking'],
+            'hi' => ['टिकट चाहिए', 'टिकट चाहिये', 'टिकट बुक करो', 'टिकट बुक करना है', 'ticket chahiye', 'ticket book karo', 'ticket book karna hai'],
+            'gu' => ['ટિકિટ', 'ટિકિટ બુક', 'ટિકિટ જોઈએ', 'ticket joie', 'ticket joiye'],
+            'ne' => ['ticket', 'tickets', 'tiket', 'book', 'ticket book', 'ticket chahiyo', 'ticket chaiyo', 'ticket katnu', 'ticket katne',
+                     'ticket kat', 'ticket book garnu', 'ticket book garne', 'टिकट', 'टिकट बुक', 'बुक', 'टिकट चाहियो', 'टिकट काट्ने',
+                     'टिकट काट्नु', 'टिकट बुक गर्ने', 'टिकट बुक गर्नु'],
+        ];
+        foreach ($byLang as $lang => $words) {
+            if (in_array($t, $words, true)) {
+                return $lang;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * One guided question with its answers.
+     *
+     * @return array{question: string, options: list<array{value: string, label: string, desc?: string}>}
+     */
+    private static function guidedQuestion(string $field, string $lang, ?array $plan, bool $forSeller): array
+    {
+        $base     = TicketBot::question($field, $lang, $plan) ?? ['question' => '', 'options' => []];
+        $question = (string) $base['question'];
+        $options  = [];
+
+        if ($field === 'direction') {
+            /* Both ways with today's price, so the fare is on the table
+               before anything is chosen (owner: "Gujarat jane, aune, bhada
+               yeti"). A way with no bus coming simply shows no price. */
+            $names = [
+                'toNepal' => ['en' => 'To Nepal', 'hi' => 'नेपाल जाना', 'ne' => 'नेपाल जाने', 'gu' => 'નેપાળ જવું'],
+                'toIndia' => ['en' => 'To Gujarat', 'hi' => 'गुजरात जाना', 'ne' => 'गुजरात जाने', 'gu' => 'ગુજરાત જવું'],
+            ];
+            $lines = [];
+            foreach ($names as $dir => $label) {
+                $fare = '';
+                try {
+                    $p    = QuickTicket::plan(['direction' => $dir, 'seats' => 1, 'customer' => !$forSeller]);
+                    $one  = (float) ($p['fare']['total'] ?? 0);
+                    $fare = $one > 0 ? inr($one) : '';
+                    if ((string) ($p['direction'] ?? $dir) !== $dir) {
+                        $fare = '';
+                    }
+                } catch (Throwable $e) {
+                    $fare = '';
+                }
+                $flag      = $dir === 'toNepal' ? '🇳🇵 ' : '🇮🇳 ';
+                $options[] = ['value' => $dir, 'label' => $flag . ($label[$lang] ?? $label['en'])];
+                $lines[]   = $flag . ($label[$lang] ?? $label['en']) . ($fare !== '' ? ' — ' . $fare : '');
+            }
+            $question = [
+                'en' => 'Which way are you travelling?',
+                'hi' => 'किस तरफ़ जाना है?',
+                'ne' => 'कता जाने हो?',
+                'gu' => 'કઈ તરફ જવું છે?',
+            ][$lang] . "\n" . implode("\n", $lines);
+        } elseif ($field === 'date') {
+            $today = todayISO();
+            $near  = [
+                0 => ['en' => 'Today', 'hi' => 'आज', 'ne' => 'आज', 'gu' => 'આજે'],
+                1 => ['en' => 'Tomorrow', 'hi' => 'कल', 'ne' => 'भोलि', 'gu' => 'કાલે'],
+            ];
+            for ($i = 0; $i < 7; $i++) {
+                $iso   = addDaysISO($today, $i);
+                $label = formatDate($iso, 'D, j M');
+                $options[] = [
+                    'value' => $iso,
+                    'label' => isset($near[$i]) ? ($near[$i][$lang] ?? $near[$i]['en']) . ' · ' . $label : $label,
+                ];
+            }
+            $question .= "\n" . [
+                'en' => '(another day? just write it: 25 Oct)',
+                'hi' => '(दूसरी तारीख? लिख दीजिए: 25 Oct)',
+                'ne' => '(अर्को मिति? लेख्नुहोस्: 25 Oct)',
+                'gu' => '(બીજી તારીખ? લખો: 25 Oct)',
+            ][$lang];
+        } elseif ($field === 'seats') {
+            $unit = ['en' => ' passenger', 'hi' => ' यात्री', 'ne' => ' जना', 'gu' => ' મુસાફર'][$lang];
+            $max  = min(6, BookingService::maxSeatsFor($forSeller));
+            if ($plan !== null && (int) ($plan['seatsLeft'] ?? 0) > 0) {
+                $max = min($max, (int) $plan['seatsLeft']);
+            }
+            for ($n = 1; $n <= max(1, $max); $n++) {
+                $options[] = ['value' => (string) $n, 'label' => $n . $unit . ($lang === 'en' && $n > 1 ? 's' : '')];
+            }
+        } else {
+            foreach ((array) ($plan['stops'] ?? []) as $s) {
+                if (empty($s['ahead']) || trim((string) ($s['name'] ?? '')) === '') {
+                    continue;
+                }
+                $short = trim((string) ($s['short'] ?? $s['name']));
+                $code  = trim((string) ($s['code'] ?? ''));
+                $time  = trim((string) ($s['time'] ?? ''));
+                $ts    = $time !== '' ? strtotime($time) : false;
+                $options[] = [
+                    'value' => (string) $s['name'],
+                    'label' => $short,
+                    'desc'  => trim(($code !== '' ? $code . ' · ' : '') . ($ts !== false ? date('g:i A', $ts) : $time), ' ·'),
+                ];
+            }
+            if ($options === []) {
+                $options = array_values((array) $base['options']);
+            }
+            $options = array_slice($options, 0, 10);
+        }
+
+        return ['question' => $question, 'options' => $options];
+    }
+
+    /**
+     * The tappable form of a question: up to three answers are buttons,
+     * more is a list. Ids are "shg:<n>" — the same number the plain-text
+     * version asks for — so a tap and a typed "2" are one code path.
+     *
+     * @param list<array<string,mixed>> $options
+     * @return array<string,mixed>|null
+     */
+    private static function choiceUi(string $question, array $options, string $lang): ?array
+    {
+        if ($options === [] || count($options) > 10) {
+            return null;
+        }
+        if (count($options) <= 3) {
+            $buttons = [];
+            foreach ($options as $i => $o) {
+                $buttons[] = ['id' => 'shg:' . ($i + 1), 'title' => mb_substr((string) ($o['label'] ?? $o['value']), 0, 20)];
+            }
+            return ['kind' => 'buttons', 'body' => $question, 'buttons' => $buttons];
+        }
+        $rows = [];
+        foreach ($options as $i => $o) {
+            $rows[] = [
+                'id'    => 'shg:' . ($i + 1),
+                'title' => mb_substr((string) ($o['label'] ?? $o['value']), 0, 24),
+                'desc'  => (string) ($o['desc'] ?? ''),
+            ];
+        }
+        return [
+            'kind'   => 'list',
+            'body'   => $question,
+            'button' => ['en' => 'Choose', 'hi' => 'चुनिए', 'ne' => 'छान्नुहोस्', 'gu' => 'પસંદ કરો'][$lang] ?? 'Choose',
+            'rows'   => $rows,
+        ];
+    }
+
+    /** Can this booking be paid by UPI right now, and may it be paid on the bus? */
+    private static function payWays(): array
+    {
+        return [
+            'cod' => Settings::getBool('allow_cod', true),
+            'upi' => trim(Settings::getString('upi_id', '')) !== '',
+        ];
+    }
+
+    /** The buttons under the summary. */
+    private static function confirmButtons(string $lang, bool $forSeller): array
+    {
+        $t = static fn (array $w): string => $w[$lang] ?? $w['en'];
+        $cancel = ['id' => 'shg:cancel', 'title' => $t(['en' => '❌ Cancel', 'hi' => '❌ रद्द', 'ne' => '❌ रद्द', 'gu' => '❌ રદ'])];
+        if ($forSeller) {
+            return [
+                ['id' => 'shg:ho', 'title' => $t(['en' => '✅ Issue ticket', 'hi' => '✅ टिकट काटो', 'ne' => '✅ टिकट काट्ने', 'gu' => '✅ ટિકિટ કાપો'])],
+                $cancel,
+            ];
+        }
+        $ways = self::payWays();
+        if ($ways['cod'] && $ways['upi']) {
+            return [
+                ['id' => 'shg:pay cash', 'title' => $t(['en' => '💵 Pay on the bus', 'hi' => '💵 बस में भुगतान', 'ne' => '💵 बसमा तिर्ने', 'gu' => '💵 બસમાં ચૂકવો'])],
+                ['id' => 'shg:pay upi', 'title' => $t(['en' => '📲 Pay by UPI now', 'hi' => '📲 अभी UPI से', 'ne' => '📲 अहिले UPI', 'gu' => '📲 હમણાં UPI'])],
+                $cancel,
+            ];
+        }
+        return [
+            ['id' => 'shg:ho', 'title' => $t(['en' => '✅ Confirm', 'hi' => '✅ बुक करो', 'ne' => '✅ बुक गर्ने', 'gu' => '✅ બુક કરો'])],
+            $cancel,
+        ];
+    }
+
+    /** The same choices in words, for a phone that shows no buttons. */
+    private static function confirmHelp(string $lang, bool $forSeller): string
+    {
+        $lines = [self::say($forSeller ? 'confirmSeller' : 'confirmQ', $lang)];
+        $ways  = self::payWays();
+        if (!$forSeller && $ways['cod'] && $ways['upi']) {
+            $lines[] = self::say('payHint', $lang);
+        }
+        return implode("\n", $lines);
+    }
+
+    /** '' | 'cod' | 'upi' — the payment button, or the same thing typed. */
+    private static function payChoice(string $text): string
+    {
+        $t = mb_strtolower(trim((string) preg_replace('/[\s.!]+/u', ' ', $text)));
+        if (in_array($t, ['pay upi', 'upi', 'qr', 'online', 'gpay', 'google pay', 'phonepe', 'phone pe', 'paytm', 'pay now',
+                          'upi now', 'अहिले upi', 'अभी upi', 'यूपीआई', 'युपिआई', 'ऑनलाइन', 'अनलाइन'], true)) {
+            return 'upi';
+        }
+        if (in_array($t, ['pay cash', 'cash', 'cod', 'nagad', 'bus ma', 'busma', 'bus ma tirne', 'counter', 'pay on bus',
+                          'नगद', 'बसमा', 'बसमा तिर्ने', 'बस में', 'કેશ', 'રોકડ'], true)) {
+            return 'cod';
+        }
+        return '';
+    }
+
+    /**
+     * A seller's answer to "whose number?": the digits as typed (so +977
+     * survives), '' for a walk-in with no phone, or null when it is neither.
+     */
+    private static function readCustomerPhone(string $text): ?string
+    {
+        $t = mb_strtolower(trim(TicketBot::asciiDigits($text)));
+        if (in_array($t, ['0', '00', 'no', 'none', 'skip', 'chaina', 'chhaina', 'xaina', 'nahi', 'छैन', 'नहीं', 'ना', 'નથી', '-'], true)) {
+            return '';
+        }
+        $digits = preg_replace('/\D/', '', $t) ?? '';
+        if (str_starts_with($digits, '00')) {
+            $digits = substr($digits, 2);
+        }
+        // Only a message that IS a number: "2 seat" must not be read as a phone.
+        if (preg_match('/^[+\d][\d\s\-]{7,17}$/', $t) !== 1) {
+            return null;
+        }
+        $ten = normalisePhone($digits);
+        if ($ten === '' || !Security::isValidPhone($ten, true)) {
+            return null;
+        }
+        return $digits;
     }
 
     /* ----------------------------------------------------------------- */
 
     /** The sale itself, after an explicit yes. */
-    private static function sell(string $phoneDigits, array $slots, string $lang, string $senderCountry = ''): array
+    private static function sell(string $phoneDigits, array $slots, string $lang, string $senderCountry = '', string $pay = '', ?array $seller = null): array
     {
         /* The name on the ticket must be a person's name (24 Sep 2026): a
            stop, a yes-word or a number that slipped past the slot logic is
@@ -300,10 +675,17 @@ final class WaBooking
             self::save($phoneDigits, $slots, 'name', [], $lang);
             return self::out(self::say('askName', $lang) . ($why !== '' ? ' (' . $why . ')' : ''));
         }
+        if ($seller !== null) {
+            return self::sellAsSeller($phoneDigits, $slots, $lang, $paxName, $seller);
+        }
         try {
             $res = QuickTicket::sellCustomer([
                 'name'      => $paxName,
                 'phone'     => $phoneDigits,
+                /* '' = the office default (pay on the bus when allowed);
+                   'upi' = they chose to pay now, so the booking waits for the
+                   money and the QR goes back instead of the ticket. */
+                'pay'       => $pay,
                 /* The country the SENDER's own number carries (+977 / +91 from
                    the webhook) is the truth about where this ticket goes; a
                    country parsed out of the text only fills in when the
@@ -368,8 +750,64 @@ final class WaBooking
         return self::out(implode("\n", $lines), $media);
     }
 
+    /**
+     * A seller's order, after their yes: QuickTicket::sell() under their own
+     * account - the same sale, ledger and commission as the Quick Ticket
+     * screen. The ticket goes to the passenger's number by itself (the
+     * booking.approved fan-out); the seller gets the picture back here.
+     */
+    private static function sellAsSeller(string $phoneDigits, array $slots, string $lang, string $paxName, array $seller): array
+    {
+        $cust = (string) ($slots['custPhone'] ?? '');
+        try {
+            $res = QuickTicket::sell([
+                'name'       => $paxName,
+                'phone'      => $cust,
+                'country'    => (str_starts_with($cust, '977') && strlen($cust) === 13) ? 'NP' : (string) ($slots['country'] ?? ''),
+                'seats'      => (int) ($slots['seats'] ?? 1),
+                'direction'  => (string) ($slots['direction'] ?? ''),
+                'date'       => (string) ($slots['date'] ?? ''),
+                'boarding'   => (string) ($slots['boarding'] ?? ''),
+                'pay'        => 'cash',
+                'passengers' => self::partyForSale($slots),
+                'note'       => 'WhatsApp order',
+            ], $seller);
+        } catch (Throwable $e) {
+            self::clear($phoneDigits);
+            if (!($e instanceof RuntimeException)) {
+                Logger::exception($e, 'whatsapp');
+            }
+            return self::out($e instanceof RuntimeException && trim($e->getMessage()) !== '' ? $e->getMessage() : self::say('failed', $lang));
+        }
+        self::clear($phoneDigits);
+
+        $pnr = (string) ($res['pnr'] ?? '');
+        if ($pnr !== '') {
+            BookingChannel::markWhatsappPnr($pnr, 'ordered on WhatsApp by ' . trim((string) ($seller['full_name'] ?? 'staff')));
+            Logger::audit('booking.wa_order_seller', 'booking', $pnr, null,
+                ['seller' => (int) ($seller['id'] ?? 0), 'from' => $phoneDigits], 'Ticket ordered on WhatsApp by a seller');
+        }
+        $seats = implode(', ', array_map('strval', (array) ($res['seats'] ?? [])));
+        $lines = [self::say('soldSeller', $lang), ''];
+        $lines[] = self::label('pnr', $lang) . ': ' . $pnr;
+        $lines[] = self::label('name', $lang) . ': ' . $paxName;
+        if ((string) ($res['dateLabel'] ?? '') !== '') { $lines[] = self::label('date', $lang) . ': ' . (string) $res['dateLabel']; }
+        if ($seats !== '')                            { $lines[] = self::label('seat', $lang) . ': ' . $seats; }
+        if ((string) ($res['totalLabel'] ?? '') !== '') { $lines[] = self::label('total', $lang) . ': ' . (string) $res['totalLabel']; }
+        $lines[] = '';
+        $lines[] = $cust !== '' ? sprintf(self::say('sentToCust', $lang), $cust) : self::say('forwardIt', $lang);
+
+        $text = implode("\n", $lines);
+        return self::out($text, ($res['status'] ?? '') === 'confirmed' ? Ticket::imageUrl($pnr) : null, [
+            'kind'    => 'buttons',
+            'body'    => $text,
+            'buttons' => [['id' => 'shg:ticket book ' . $lang,
+                           'title' => ['en' => '🎫 Next ticket', 'hi' => '🎫 अगला टिकट', 'ne' => '🎫 अर्को टिकट', 'gu' => '🎫 બીજી ટિકિટ'][$lang] ?? '🎫 Next ticket']],
+        ]);
+    }
+
     /** What the passenger is about to buy. */
-    private static function summary(array $plan, array $slots, string $lang): string
+    private static function summary(array $plan, array $slots, string $lang, ?array $seller = null): string
     {
         /* plan() hands back clean parts — boardingName without the "@ 23:00"
            and the GPS pair the raw stop label carries. */
@@ -428,8 +866,12 @@ final class WaBooking
         if ($total > 0) {
             $lines[] = self::label('total', $lang) . ': ' . inr($total);
         }
+        if ($seller !== null) {
+            $cust    = (string) ($slots['custPhone'] ?? '');
+            $lines[] = self::label('custPhone', $lang) . ': ' . ($cust !== '' ? $cust : self::say('noPhone', $lang));
+            $lines[] = self::label('seller', $lang) . ': ' . trim((string) ($seller['full_name'] ?? ''));
+        }
         $lines[] = '';
-        $lines[] = self::say('confirmQ', $lang);
         $lines[] = self::say('howToFix', $lang);
 
         return implode("
@@ -463,6 +905,48 @@ Example: Ram Bahadur 35, Sita Gurung 30",
 जस्तै: राम बहादुर ३५, सीता गुरुङ ३०",
                 'gu' => "કૃપા કરીને બધાં %d નામ એક જ સંદેશમાં મોકલો, ઉંમર હોય તો સાથે.
 દા.ત.: રામ બહાદુર 35, સીતા ગુરુંગ 30",
+            ],
+            'askCustPhone' => [
+                'en' => "The passenger's WhatsApp number? The ticket goes there. (No phone: send 0)",
+                'hi' => 'यात्री का WhatsApp नंबर? टिकट वहीं जाएगा। (नंबर नहीं है: 0 भेजें)',
+                'ne' => 'यात्रुको WhatsApp नम्बर? टिकट त्यहीँ जान्छ। (नम्बर छैन भने: 0 पठाउनुहोस्)',
+                'gu' => 'મુસાફરનો WhatsApp નંબર? ટિકિટ ત્યાં જશે. (નંબર નથી: 0 મોકલો)',
+            ],
+            'askCustPhoneAgain' => [
+                'en' => 'That is not a mobile number. Send the 10 digits (Nepal: +977…), or 0 if the passenger has no phone.',
+                'hi' => 'यह मोबाइल नंबर नहीं है। 10 अंक भेजें (नेपाल: +977…), या नंबर न हो तो 0।',
+                'ne' => 'यो मोबाइल नम्बर होइन। १० अंक पठाउनुहोस् (नेपाल: +977…), वा नम्बर छैन भने 0।',
+                'gu' => 'આ મોબાઇલ નંબર નથી. 10 આંકડા મોકલો (નેપાળ: +977…), કે નંબર ન હોય તો 0.',
+            ],
+            'noPhone' => [
+                'en' => 'no phone (walk-in)', 'hi' => 'नंबर नहीं', 'ne' => 'नम्बर छैन', 'gu' => 'નંબર નથી',
+            ],
+            'confirmSeller' => [
+                'en' => 'Issue this ticket? Reply YES, or NO to cancel. Cash is counted in your account.',
+                'hi' => 'यह टिकट काट दूँ? हाँ लिखें, या नहीं। नकद आपके खाते में गिना जाएगा।',
+                'ne' => 'यो टिकट काटौं? हो लेख्नुहोस्, वा होइन। नगद तपाईंको खातामा गनिन्छ।',
+                'gu' => 'આ ટિકિટ કાપું? હા લખો, કે ના. રોકડ તમારા ખાતામાં ગણાશે.',
+            ],
+            'payHint' => [
+                'en' => 'YES = pay on the bus · UPI = pay now and get the QR.',
+                'hi' => 'हाँ = बस में भुगतान · UPI लिखें = अभी भुगतान, QR मिलेगा।',
+                'ne' => 'हो = बसमा चढ्दा तिर्ने · UPI लेख्नुहोस् = अहिले नै तिर्ने, QR आउँछ।',
+                'gu' => 'હા = બસમાં ચૂકવો · UPI લખો = હમણાં ચૂકવો, QR મળશે.',
+            ],
+            'soldSeller' => [
+                'en' => '✅ Ticket issued.', 'hi' => '✅ टिकट कट गया।', 'ne' => '✅ टिकट काटियो।', 'gu' => '✅ ટિકિટ કપાઈ ગઈ.',
+            ],
+            'sentToCust' => [
+                'en' => "The ticket is on its way to the passenger's WhatsApp (%s). The picture is here for you too.",
+                'hi' => 'टिकट यात्री के WhatsApp (%s) पर जा रहा है। तस्वीर आपके लिए यहाँ भी है।',
+                'ne' => 'टिकट यात्रुको WhatsApp (%s) मा जाँदैछ। तस्बिर तपाईंलाई यहाँ पनि छ।',
+                'gu' => 'ટિકિટ મુસાફરના WhatsApp (%s) પર જઈ રહી છે. ફોટો તમારા માટે અહીં પણ છે.',
+            ],
+            'forwardIt' => [
+                'en' => 'No passenger number — please forward this ticket picture to them.',
+                'hi' => 'यात्री का नंबर नहीं है — यह टिकट की तस्वीर उन्हें भेज दीजिए।',
+                'ne' => 'यात्रुको नम्बर छैन — यो टिकटको तस्बिर उहाँलाई पठाइदिनुहोस्।',
+                'gu' => 'મુસાફરનો નંબર નથી — આ ટિકિટનો ફોટો તેમને મોકલી આપો.',
             ],
             'askRightName' => [
                 'en' => 'Sorry about that. Please send the correct name, like: naam Ram Bahadur',
@@ -547,6 +1031,8 @@ Example: Ram Bahadur 35, Sita Gurung 30",
             'total' => ['en' => 'Total',      'hi' => 'कुल',       'ne' => 'जम्मा',    'gu' => 'કુલ'],
             'offer' => ['en' => 'Offer',      'hi' => 'ऑफ़र छूट',   'ne' => 'अफर छुट',  'gu' => 'ઑફર છૂટ'],
             'bus'   => ['en' => 'Bus',        'hi' => 'बस',        'ne' => 'बस',      'gu' => 'બસ'],
+            'custPhone' => ['en' => 'Passenger mobile', 'hi' => 'यात्री मोबाइल', 'ne' => 'यात्रु मोबाइल', 'gu' => 'મુસાફર મોબાઇલ'],
+            'seller'    => ['en' => 'Sold by', 'hi' => 'बेचने वाला', 'ne' => 'बिक्रेता', 'gu' => 'વેચનાર'],
         ];
         return $l[$key][$lang] ?? $l[$key]['en'];
     }
@@ -1206,10 +1692,13 @@ Example: Ram Bahadur 35, Sita Gurung 30",
         }
     }
 
-    /** @return array{text: string, media: ?string} */
-    private static function out(string $text, ?string $media = null): array
+    /**
+     * @param array<string,mixed>|null $ui tappable answers for a transport that can show them
+     * @return array{text: string, media: ?string, ui: ?array}
+     */
+    private static function out(string $text, ?string $media = null, ?array $ui = null): array
     {
-        return ['text' => $text, 'media' => $media];
+        return ['text' => $text, 'media' => $media, 'ui' => $ui];
     }
 
     /* =================================================================

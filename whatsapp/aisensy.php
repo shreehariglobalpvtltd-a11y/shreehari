@@ -438,6 +438,107 @@ final class AiSensyAPI
     }
 
     /* -----------------------------------------------------------------
+     *  Passenger notices that are not the ticket (5 Oct 2026)
+     *
+     *  Bus updates (leaving soon, delayed, started, at the border, arrived)
+     *  and the cancellation notice were sent by the Meta driver only, and
+     *  Meta has refused every template since 131042 (payment method) - so a
+     *  passenger who had not written in the last 24 h heard nothing. While
+     *  aisensy_mode is "always" these go out on AiSensy's approved templates
+     *  as well, exactly like the ticket does. Back on "fallback" (Meta
+     *  billing fixed) they stop, so nobody is told twice.
+     * ----------------------------------------------------------------- */
+
+    public const TPL_TRIP = 'shg_trip_update';   // {{1}} name {{2}} booking no {{3}} update {{4}} trip details
+
+    /** May a non-ticket notice go out on AiSensy right now? */
+    private static function noticesOn(): bool
+    {
+        return self::enabled() && self::mode() === 'always'
+            && (!class_exists('Settings') || Settings::getBool('aisensy_notices_on', true));
+    }
+
+    /**
+     * One bus update for one booking. Never throws.
+     *
+     * @return array{ok: bool, detail: string}
+     */
+    public static function tripUpdate(array $booking, string $event, string $headline, string $details, string $fullText = ''): array
+    {
+        $out = ['ok' => false, 'detail' => ''];
+        try {
+            if (!self::noticesOn()) {
+                $out['detail'] = 'AiSensy notices are off';
+                return $out;
+            }
+            $bid = (int) ($booking['id'] ?? 0);
+            $pnr = (string) ($booking['pnr'] ?? '');
+            $number = class_exists('Notify') ? Notify::whatsappNumberFor($booking) : '';
+            $to = self::normalizePhone($number !== '' ? $number : (string) ($booking['contact_phone'] ?? ''));
+            if ($to === '' || $pnr === '') {
+                $out['detail'] = 'no usable phone';
+                return $out;
+            }
+            $name = $bid > 0 ? self::bookingFacts($bid)['name'] : '';
+            $r = self::sendMessage($to, self::tpl('aisensy_tpl_trip', self::TPL_TRIP),
+                [$name !== '' ? $name : 'Passenger', $pnr, $headline !== '' ? $headline : 'Bus update', $details !== '' ? $details : '-']);
+            $how = 'template';
+            if (!$r['success'] && $fullText !== '') {
+                $r   = self::sendText($to, $fullText);     // reaches only an open 24 h window
+                $how = 'text';
+            }
+            if (class_exists('Notify')) {
+                Notify::logOutbound($to, 'AiSensy bus update ' . $pnr . ' - ' . $event . ' (' . $how . ')', $r['success'] ? 'sent' : 'failed', [
+                    'provider'  => 'aisensy',
+                    'bookingId' => $bid > 0 ? $bid : null,
+                    'sid'       => (string) $r['message_id'],
+                    'purpose'   => 'trip_' . $event,
+                    'error'     => $r['success'] ? null : mb_substr((string) $r['error'], 0, 250),
+                ]);
+            }
+            $out['ok']     = (bool) $r['success'];
+            $out['detail'] = $r['success'] ? $how : (string) $r['error'];
+        } catch (Throwable $e) {
+            $out['detail'] = $e->getMessage();
+        }
+        return $out;
+    }
+
+    /**
+     * The cancellation notice on the approved shg_booking_cancelled template.
+     * Never throws.
+     */
+    public static function cancellationFor(array $booking, float $refundAmount): bool
+    {
+        try {
+            if (!self::noticesOn()) {
+                return false;
+            }
+            $bid = (int) ($booking['id'] ?? 0);
+            $pnr = (string) ($booking['pnr'] ?? '');
+            $number = class_exists('Notify') ? Notify::whatsappNumberFor($booking) : '';
+            $to = self::normalizePhone($number !== '' ? $number : (string) ($booking['contact_phone'] ?? ''));
+            if ($to === '' || $bid <= 0) {
+                return false;
+            }
+            $name = self::bookingFacts($bid)['name'];
+            $r = self::sendCancellationNotice($to, ($name !== '' ? $name : 'Passenger') . ' (' . $pnr . ')', $refundAmount);
+            if (class_exists('Notify')) {
+                Notify::logOutbound($to, 'AiSensy cancellation notice ' . $pnr, $r['success'] ? 'sent' : 'failed', [
+                    'provider'  => 'aisensy',
+                    'bookingId' => $bid,
+                    'sid'       => (string) $r['message_id'],
+                    'purpose'   => 'booking_cancelled',
+                    'error'     => $r['success'] ? null : mb_substr((string) $r['error'], 0, 250),
+                ]);
+            }
+            return (bool) $r['success'];
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /* -----------------------------------------------------------------
      *  Booking hook (includes/events.php, booking.approved)
      * ----------------------------------------------------------------- */
 

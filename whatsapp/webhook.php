@@ -199,6 +199,22 @@ function wh_status(array $st): void
     }
 }
 
+/**
+ * What a tapped button / list row SAYS (5 Oct 2026). Our own choices carry
+ * an id of "shg:<answer>" - the answer the conversation expects ("2", "ho",
+ * "ticket book") - so a tap is read exactly like the same words typed. Any
+ * other id (an old template button) falls back to the visible title.
+ */
+function wh_tapped(array $interactive): string
+{
+    $hit = (array) ($interactive['button_reply'] ?? ($interactive['list_reply'] ?? []));
+    $id  = (string) ($hit['id'] ?? '');
+    if (str_starts_with($id, 'shg:') && trim(substr($id, 4)) !== '') {
+        return trim(substr($id, 4));
+    }
+    return (string) ($hit['title'] ?? '');
+}
+
 /** A customer wrote to us: note the 24 h window and answer with the PNR bot. */
 function wh_inbound(array $msg): void
 {
@@ -217,8 +233,7 @@ function wh_inbound(array $msg): void
     $text = match ($type) {
         'text'        => (string) ($msg['text']['body'] ?? ''),
         'button'      => (string) ($msg['button']['text'] ?? ''),
-        'interactive' => (string) ($msg['interactive']['button_reply']['title']
-                                   ?? ($msg['interactive']['list_reply']['title'] ?? '')),
+        'interactive' => wh_tapped((array) ($msg['interactive'] ?? [])),
         default       => (string) ($msg[$type]['caption'] ?? ''),   // image/document captions
     };
     logWhatsAppEvent('inbound', $from, [], ['status' => strtoupper($type !== '' ? $type : 'unknown'), 'message_id' => $wamid]);
@@ -278,7 +293,30 @@ function wh_inbound(array $msg): void
     }
 
     $media = $reply['media'];
-    if ($media !== null && $media !== '' && mb_strlen($reply['text']) <= 1024) {
+    /* Tappable choices first (5 Oct 2026). $reply['text'] always carries the
+       same question with numbered answers, so when Meta refuses the buttons
+       the plain path below still asks it. */
+    $ui = is_array($reply['ui'] ?? null) ? $reply['ui'] : null;
+    $r  = null;
+    if ($ui !== null && Settings::getBool('wa_buttons_on', true)) {
+        $uiBody = trim((string) ($ui['body'] ?? '')) !== '' ? (string) $ui['body'] : $reply['text'];
+        if ($heard !== '') {
+            $uiBody = $heard . "\n" . $uiBody;
+        }
+        $isList = ($ui['kind'] ?? '') === 'list';
+        if (mb_strlen($uiBody) <= 1024) {
+            if ($isList && $media !== null && $media !== '') {
+                sendWhatsAppImage($from, $media);          // a list cannot carry a picture
+            }
+            $r = sendWhatsAppInteractive($from, $uiBody, $ui, $isList ? null : $media);
+            if (!$r['success'] && !$isList && $media !== null && $media !== '') {
+                $r = sendWhatsAppInteractive($from, $uiBody, $ui);   // the picture was the problem
+            }
+        }
+    }
+    if ($r !== null && $r['success']) {
+        // sent with buttons
+    } elseif ($media !== null && $media !== '' && mb_strlen($reply['text']) <= 1024) {
         $r = sendWhatsAppImage($from, $media, $reply['text']);
         if (!$r['success']) {
             // The image could not go (e.g. URL not reachable by Meta) — the

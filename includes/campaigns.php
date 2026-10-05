@@ -132,6 +132,10 @@ final class Campaigns
         if ($u === '') {
             $u = appUrl('/');
         }
+        // A wa.me link opens the WhatsApp order chat: a tag would end up inside the prefilled message.
+        if (preg_match('~^https://(?:wa\.me|api\.whatsapp\.com)/~i', $u) === 1) {
+            return $u;
+        }
         return $u . (str_contains($u, '?') ? '&' : '?') . 'src=cmp' . (int) $c['id'];
     }
 

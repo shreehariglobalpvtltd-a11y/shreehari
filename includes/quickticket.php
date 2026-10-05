@@ -868,6 +868,14 @@ final class QuickTicket
         $gender = in_array($input['gender'] ?? '', ['Male', 'Female', 'Other'], true) ? (string) $input['gender'] : null;
         $given  = is_array($input['passengers'] ?? null) ? array_values($input['passengers']) : [];
         $cod    = Settings::getBool('allow_cod', true);
+        /* 5 Oct 2026 — the passenger may CHOOSE to pay by UPI now even where
+           pay-at-counter is allowed (the WhatsApp order's payment buttons).
+           Then the booking waits for the money like any UPI booking and the
+           desk confirms it as always. Asking for 'cod' never turns it on
+           where the office has switched it off. */
+        if ((string) ($input['pay'] ?? '') === 'upi' && trim(Settings::getString('upi_id', '')) !== '') {
+            $cod = false;
+        }
 
         $opts = [
             'direction' => (string) ($input['direction'] ?? ''),

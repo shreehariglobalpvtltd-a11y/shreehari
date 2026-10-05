@@ -160,10 +160,28 @@ final class WaFaq
 
         $reply  = implode("\n", $parts);
         $intent = implode('+', $intents);
+
+        /* 5 Oct 2026 — a hello is answered with the ORDER MENU: three buttons
+           (book / my ticket / office; a seller gets the seller's three). The
+           text carries the same menu in words for a phone with no buttons. */
+        $ui = null;
+        if ($intent === 'greeting' && Settings::getBool('wa_order_menu_on', true)) {
+            try {
+                require_once INCLUDE_PATH . '/aitools.php';
+                require_once INCLUDE_PATH . '/waorder.php';
+                $role   = (string) (AiTools::whoIs($fromRaw)['role'] ?? 'customer');
+                $mLang  = $lang === 'en' ? 'ne' : $lang;
+                $ui     = WaOrder::menuUi($role, $mLang, $reply . "\n\n" . WaOrder::menuHead($mLang));
+                $reply .= "\n\n" . WaOrder::menuText($role, $mLang);
+            } catch (Throwable $e) {
+                $ui = null;
+            }
+        }
+
         self::remember($who, $text, $reply);
         self::log($fromRaw, $who, $intent, $t0);
 
-        return ['text' => $reply, 'media' => $media, 'intent' => $intent];
+        return ['text' => $reply, 'media' => $media, 'intent' => $intent, 'ui' => $ui];
     }
 
     /**

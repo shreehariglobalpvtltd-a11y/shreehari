@@ -267,6 +267,80 @@ if (!function_exists('waGraphPost')) {
         return waGraphPost($to, ['type' => 'text', 'text' => ['preview_url' => true, 'body' => $message]], 'text');
     }
 
+    /**
+     * Tappable answers (5 Oct 2026, the WhatsApp order menu): up to three
+     * reply buttons, or a list of up to ten rows. Free inside the 24 h
+     * window like any text. The caller keeps a plain-text version of the
+     * same question and sends that when this is refused, so a phone or a
+     * limit that cannot show buttons still gets the numbered choices.
+     *
+     * @param array{kind: string, buttons?: list<array{id: string, title: string}>,
+     *              rows?: list<array{id: string, title: string, desc?: string}>,
+     *              button?: string, footer?: string} $ui
+     * @param string|null $imageUrl header picture — reply buttons only
+     */
+    function sendWhatsAppInteractive(string $phone, string $body, array $ui, ?string $imageUrl = null, ?string $countryHint = null): array
+    {
+        $to   = waCleanPhone($phone, $countryHint);
+        $body = mb_substr(trim($body), 0, 1024);
+        $fail = static function (string $why) use ($to): array {
+            $r = ['success' => false, 'message_id' => '', 'error' => $why, 'http' => 0, 'code' => 0];
+            logWhatsAppEvent('interactive', $to, [], $r);
+            return $r;
+        };
+        if ($body === '') {
+            return $fail('message is empty');
+        }
+
+        $interactive = ['body' => ['text' => $body]];
+        $footer = trim((string) ($ui['footer'] ?? ''));
+        if ($footer !== '') {
+            $interactive['footer'] = ['text' => mb_substr($footer, 0, 60)];
+        }
+
+        if (($ui['kind'] ?? '') === 'list') {
+            $rows = [];
+            foreach (array_slice((array) ($ui['rows'] ?? []), 0, 10) as $row) {
+                $id    = mb_substr(trim((string) ($row['id'] ?? '')), 0, 200);
+                $title = mb_substr(trim((string) ($row['title'] ?? '')), 0, 24);
+                if ($id === '' || $title === '') {
+                    continue;
+                }
+                $one  = ['id' => $id, 'title' => $title];
+                $desc = mb_substr(trim((string) ($row['desc'] ?? '')), 0, 72);
+                if ($desc !== '') {
+                    $one['description'] = $desc;
+                }
+                $rows[] = $one;
+            }
+            if ($rows === []) {
+                return $fail('list has no rows');
+            }
+            $label = mb_substr(trim((string) ($ui['button'] ?? '')), 0, 20);
+            $interactive['type']   = 'list';
+            $interactive['action'] = ['button' => $label !== '' ? $label : 'Choose', 'sections' => [['rows' => $rows]]];
+        } else {
+            $buttons = [];
+            foreach (array_slice((array) ($ui['buttons'] ?? []), 0, 3) as $b) {
+                $id    = mb_substr(trim((string) ($b['id'] ?? '')), 0, 256);
+                $title = mb_substr(trim((string) ($b['title'] ?? '')), 0, 20);
+                if ($id !== '' && $title !== '') {
+                    $buttons[] = ['type' => 'reply', 'reply' => ['id' => $id, 'title' => $title]];
+                }
+            }
+            if ($buttons === []) {
+                return $fail('no buttons');
+            }
+            $interactive['type']   = 'button';
+            $interactive['action'] = ['buttons' => $buttons];
+            if ($imageUrl !== null && preg_match('~^https://~i', $imageUrl)) {
+                $interactive['header'] = ['type' => 'image', 'image' => ['link' => $imageUrl]];
+            }
+        }
+
+        return waGraphPost($to, ['type' => 'interactive', 'interactive' => $interactive], 'interactive');
+    }
+
     /** Image by public https URL, optional caption (max 1024 chars). */
     function sendWhatsAppImage(string $phone, string $imageUrl, string $caption = '', ?string $countryHint = null): array
     {

@@ -240,7 +240,8 @@ final class WaBot
            the admins table is read once per message, not twice. */
         $who = null;
         if ($senderDigits !== '' && (Settings::getBool('wa_agent_on', false)
-                || Settings::getBool('wa_bulk_on', false) || Settings::getBool('wa_login_on', false))) {
+                || Settings::getBool('wa_bulk_on', false) || Settings::getBool('wa_login_on', false)
+                || Settings::getBool('wa_order_staff_on', true))) {
             /* Only while a switch that cares is on — with everything off this
                number behaves exactly as it did on 19 Sep, at no extra cost. */
             try {
@@ -251,6 +252,33 @@ final class WaBot
             }
         }
         $isStaff = is_array($who) && in_array((string) ($who['role'] ?? ''), ['staff', 'admin'], true);
+
+        /* THE ORDER MENU (5 Oct 2026, owner: "khana order gare jasto ticket
+           order"). "menu" shows the buttons, "mero ticket" lists the sender's
+           own tickets - both answered from the tables, no model. And a
+           SELLER (agent / counter / office number) who taps the order button,
+           or has an order open, is walked through the sale here: the model
+           and the bulk list keep everything else a seller writes. */
+        if ($senderDigits !== '' && !$pnrOnly && Settings::getBool('wa_order_menu_on', true)) {
+            try {
+                require_once INCLUDE_PATH . '/ticketbot.php';
+                require_once INCLUDE_PATH . '/quickticket.php';
+                require_once INCLUDE_PATH . '/wabooking.php';
+                require_once INCLUDE_PATH . '/waorder.php';
+                $menu = WaOrder::handle($senderDigits, $body, $who);
+                if ($menu !== null) {
+                    return self::out($menu['text'], $menu['media'] ?? null, $menu['ui'] ?? null);
+                }
+                if ($isStaff && Settings::getBool('wa_order_staff_on', true)) {
+                    $order = WaOrder::sellerOrder($senderDigits, $body, $senderCountry, $who);
+                    if ($order !== null) {
+                        return self::out($order['text'], $order['media'] ?? null, $order['ui'] ?? null);
+                    }
+                }
+            } catch (Throwable $e) {
+                Logger::exception($e, 'whatsapp');
+            }
+        }
 
         /* BULK TICKETS (24 Sep 2026, wa_bulk_on, staff only). "FORMAT" gives the
            template; a pasted list is quoted; "ho" on an open quote sells every
@@ -270,7 +298,7 @@ final class WaBot
             }
         }
 
-        $tryLocalBooking = function () use ($senderDigits, $senderCountry, $body): ?array {
+        $tryLocalBooking = function () use ($senderDigits, $senderCountry, $body, $who, $isStaff): ?array {
             if ($senderDigits === '') {
                 return null;
             }
@@ -278,7 +306,11 @@ final class WaBot
                 require_once INCLUDE_PATH . '/ticketbot.php';
                 require_once INCLUDE_PATH . '/quickticket.php';
                 require_once INCLUDE_PATH . '/wabooking.php';
-                return WaBooking::handle($senderDigits, $body, $senderCountry);
+                /* A seller's number orders as a SELLER (5 Oct 2026): asked whose
+                   ticket it is, sold under their account. Before this the
+                   engine sold the seller a passenger ticket on their own number. */
+                return WaBooking::handle($senderDigits, $body, $senderCountry,
+                    ($isStaff && Settings::getBool('wa_order_staff_on', true)) ? $who : null);
             } catch (Throwable $e) {
                 Logger::exception($e);      // the model and the old paths still answer
                 return null;
@@ -303,7 +335,7 @@ final class WaBot
         if ($localFirst && !$pnrOnly && !$staffToAssistant) {
             $booking = $tryLocalBooking();
             if ($booking !== null) {
-                return self::out($booking['text'], $booking['media'] ?? null);
+                return self::out($booking['text'], $booking['media'] ?? null, $booking['ui'] ?? null);
             }
         }
 
@@ -318,7 +350,7 @@ final class WaBot
                 require_once INCLUDE_PATH . '/wafaq.php';
                 $faq = WaFaq::answer($from, $body);
                 if ($faq !== null) {
-                    return self::out($faq['text'], $faq['media']);
+                    return self::out($faq['text'], $faq['media'], $faq['ui'] ?? null);
                 }
             } catch (Throwable $e) {
                 Logger::exception($e);          // the assistant still answers
@@ -376,7 +408,7 @@ final class WaBot
             if (!$localFirst && !$staffToAssistant) {
                 $booking = $tryLocalBooking();
                 if ($booking !== null) {
-                    return self::out($booking['text'], $booking['media'] ?? null);
+                    return self::out($booking['text'], $booking['media'] ?? null, $booking['ui'] ?? null);
                 }
             }
 
@@ -694,9 +726,14 @@ final class WaBot
             . "आफ्नो बुकिङ PNR (जस्तै SHG-XXXX-XXXX-XXXX) पठाएर टिकट जाँच्नुहोस्।";
     }
 
-    /** @return array{text: string, media: ?string} */
-    private static function out(string $text, ?string $media = null): array
+    /**
+     * @param array<string,mixed>|null $ui tappable answers (buttons / list); a
+     *        transport that cannot show them sends $text, which always asks
+     *        the same thing with numbered answers
+     * @return array{text: string, media: ?string, ui: ?array}
+     */
+    private static function out(string $text, ?string $media = null, ?array $ui = null): array
     {
-        return ['text' => $text, 'media' => $media];
+        return ['text' => $text, 'media' => $media, 'ui' => $ui];
     }
 }
