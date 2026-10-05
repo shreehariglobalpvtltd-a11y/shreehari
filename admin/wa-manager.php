@@ -243,7 +243,7 @@ $purLabels = [
     'aisensy_ticket' => 'Ticket (AiSensy)', 'ticket' => 'Ticket', 'ticket_resend' => 'Ticket re-sent', 'seller_copy' => 'Seller / counter copy',
     'bot_reply' => 'Bot reply', 'wa_fail_alert' => 'Failure alert to office', 'office_report' => 'Office report',
     'booking_cancelled' => 'Cancellation', 'agent_statement' => 'Agent statement', 'chalan_send' => 'Chalani', 'sms' => 'SMS', 'email' => 'Email',
-    'shg_ticket_image' => 'Ticket PNG (template)', 'shg_ticket_confirmed' => 'Ticket (template)', 'text' => 'Text reply', 'image' => 'Image',
+    'manual_message' => 'Typed by staff', 'shg_ticket_image' => 'Ticket PNG (template)', 'shg_ticket_confirmed' => 'Ticket (template)', 'text' => 'Text reply', 'image' => 'Image',
 ];
 
 admin_header('WhatsApp Manager', 'wa-manager');
@@ -318,6 +318,9 @@ admin_page_head('Every WhatsApp, SMS and email the system sent — who got it, w
     <button class="btn ghost" type="submit" title="Copy new messages, ask AiSensy for delivery, read the wallet"><svg class="a-ic"><use href="#a-refresh"/></svg>Check now</button>
   </form>
   <a class="btn ghost" href="<?= $e($qs(['export' => 'csv'])) ?>"><svg class="a-ic"><use href="#a-download"/></svg>CSV</a>
+  <?php if (Auth::can('customers.view') && is_file(__DIR__ . '/wa-compose.php')): ?>
+    <a class="btn ghost" href="/admin/wa-compose.php"><svg class="a-ic"><use href="#a-send"/></svg>Send a message</a>
+  <?php endif; ?>
   <span class="wm-live" id="wmLive"><i></i>LIVE</span>
 </div>
 
