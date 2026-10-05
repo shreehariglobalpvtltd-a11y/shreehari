@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
-# SHARI NAV data, step 1: tools + OpenStreetMap source data -> one regional extract.
+# SHARI NAV data, step 1: tools + OpenStreetMap source data -> one region file.
 #
-#   nice -n 19 ionice -c3 bash tools/navdata/01-fetch-extract.sh
+#   systemd-run --unit=shg-nav-fetch --collect -p Nice=19 -p IOSchedulingClass=idle \
+#     -p CPUQuota=80% -p MemoryMax=3G bash -c 'bash 01-fetch-extract.sh > /srv/shg-nav/log/01.log 2>&1'
 #
 # Everything lives under /srv/shg-nav (outside the webroot, so a code deploy
 # never touches it). Re-running refreshes the OSM data (Geofabrik updates daily).
 #
-# Region = where our passengers walk/ride to a bus: all of Gujarat (every
-# pickup town + office) and the Nepalgunj / Kohalpur / Rupaidiha border area.
+# Region = all of India + all of Nepal (5 Oct 2026; before that only Gujarat
+# and the Nepalgunj border area). Geofabrik cuts each country along a .poly
+# a little wider than the border; the .poly files are kept next to the data
+# because navcover.py turns them into meta.json's coverage boxes.
 set -euo pipefail
 
 BASE=/srv/shg-nav
-SRC=$BASE/src
+SRC=${SRC:-$BASE/src}
+OUT=${OUT:-$BASE/region.osm.pbf}
 mkdir -p "$SRC" "$BASE/work"
 
 export DEBIAN_FRONTEND=noninteractive
@@ -21,28 +25,16 @@ if ! command -v osmium >/dev/null || ! command -v tilemaker >/dev/null; then
 fi
 
 fetch() { # $1 = geofabrik path without -latest.osm.pbf
-  local out="$SRC/$(basename "$1").osm.pbf"
-  curl -sSfL --retry 3 -o "$out.part" "https://download.geofabrik.de/$1-latest.osm.pbf"
-  mv "$out.part" "$out"
-  echo "fetched $1 ($(du -h "$out" | cut -f1))"
+  local f="$SRC/$(basename "$1")"
+  curl -sSfL --retry 5 --limit-rate 40M -o "$f.osm.pbf.part" "https://download.geofabrik.de/$1-latest.osm.pbf"
+  mv "$f.osm.pbf.part" "$f.osm.pbf"
+  curl -sSfL --retry 3 -o "$f.poly" "https://download.geofabrik.de/$1.poly"
+  echo "$(date +%T) fetched $1 ($(du -h "$f.osm.pbf" | cut -f1))"
 }
-fetch asia/india/western-zone
-fetch asia/india/central-zone
-fetch asia/india/northern-zone
-fetch asia/nepal
+fetch asia/india     # ~1.7 GB
+fetch asia/nepal     # ~0.4 GB
 
-# Gujarat (lon 68.0-74.6, lat 20.0-24.8) and the Nepalgunj border area.
-GUJ=68.0,20.0,74.6,24.8
-NPJ=81.2,27.8,82.1,28.45
-cd "$BASE/work"
-rm -f part-*.osm.pbf
-osmium extract -s smart -b $GUJ "$SRC/western-zone.osm.pbf" -o part-guj-w.osm.pbf --overwrite
-osmium extract -s smart -b $GUJ "$SRC/central-zone.osm.pbf" -o part-guj-c.osm.pbf --overwrite
-osmium extract -s smart -b $GUJ "$SRC/northern-zone.osm.pbf" -o part-guj-n.osm.pbf --overwrite
-osmium extract -s smart -b $NPJ "$SRC/central-zone.osm.pbf" -o part-npj-c.osm.pbf --overwrite
-osmium extract -s smart -b $NPJ "$SRC/northern-zone.osm.pbf" -o part-npj-n.osm.pbf --overwrite
-osmium extract -s smart -b $NPJ "$SRC/nepal.osm.pbf" -o part-npj-np.osm.pbf --overwrite
-osmium merge part-*.osm.pbf -o "$BASE/region.osm.pbf" --overwrite
-rm -f part-*.osm.pbf
-osmium fileinfo -e "$BASE/region.osm.pbf" | grep -E "Number of (nodes|ways)|Bounding" || true
-echo "region ready: $(du -h "$BASE/region.osm.pbf" | cut -f1)"
+osmium merge "$SRC/india.osm.pbf" "$SRC/nepal.osm.pbf" -o "$OUT.part" -f pbf --overwrite
+mv "$OUT.part" "$OUT"
+osmium fileinfo -e "$OUT" | grep -E "Number of (nodes|ways|relations)|Bounding box:" || true
+echo "$(date +%T) region ready: $(du -h "$OUT" | cut -f1)"

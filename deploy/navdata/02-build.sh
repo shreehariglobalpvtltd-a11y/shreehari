@@ -1,29 +1,47 @@
 #!/usr/bin/env bash
 # SHARI NAV data, step 2: build what the navigator serves from OUR server.
 #
-#   nice -n 19 ionice -c3 bash tools/navdata/02-build.sh [tiles|static|places|valhalla|all]
+#   bash deploy/navdata/02-build.sh [tiles|static|cover|places|valhalla|all]
 #
-# Needs step 1 (01-fetch-extract.sh) -> /srv/shg-nav/region.osm.pbf
+# Run it inside the guarded unit (1 CPU, capped RAM, frozen by watchdog.sh
+# whenever the website gets slow), never bare:
+#
+#   systemd-run --unit=shg-nav-build --collect -p CPUQuota=100% -p Nice=19 \
+#     -p IOSchedulingClass=idle -p MemoryHigh=4500M -p MemoryMax=5500M \
+#     -p OOMScoreAdjust=900 bash -c 'bash 02-build.sh tiles > /srv/shg-nav/log/02.log 2>&1'
+#
+# Needs step 1 (01-fetch-extract.sh) -> $PBF + the region's .poly files in $SRC.
+# Region = all of India + Nepal (since 5 Oct 2026; was Gujarat + Nepalgunj).
 #
 # Output (all outside the webroot; nginx serves /navdata/ from $PUB):
 #   $PUB = /srv/shg-nav/www/navdata
 #   $PUB/tiles/{z}/{x}/{y}.pbf   OpenMapTiles-schema vector tiles (z0-14, gzip)
 #   $PUB/fonts/<font>/<range>.pbf, $PUB/sprites/ofm*   glyphs + icons
 #   $PUB/style/day.json, night.json                     map styles (own copies)
-#   $PUB/meta.json                                      coverage + build stamp
-#   $BASE/work/places.tsv                               place index -> MySQL nav_places
-#   docker container shg-valhalla on 127.0.0.1:8002     routing engine
+#   $PUB/meta.json                                      coverage boxes + build stamp
+#   $WORK/places.tsv                                    place index -> MySQL nav_places
+#   docker container $VAL_NAME on 127.0.0.1:$VAL_PORT   routing engine
+#                                                       (setting nav_engine_url points at it)
+# Every value below can be overridden from the environment.
 set -euo pipefail
 
 BASE=/srv/shg-nav
 PUB=$BASE/www/navdata        # nginx: location ^~ /navdata/ { root /srv/shg-nav/www; }
-WORK=$BASE/work
+WORK=${WORK:-$BASE/work}
+SRC=${SRC:-$BASE/src}
 BIN=$(cd "$(dirname "$0")" && pwd)
-PBF=$BASE/region.osm.pbf
-BBOX=68.0,20.0,82.1,28.45
+PBF=${PBF:-$BASE/region.osm.pbf}
+BBOX=${BBOX:-68.0,6.5,97.6,37.1}               # India (with the islands) + Nepal
+THREADS=${THREADS:-1}                          # 2 vCPU box: one is the website's
+KEEP_OLD=${KEEP_OLD:-0}                        # 1 = keep the previous tiles in $WORK/tiles.old
+VAL_NAME=${VAL_NAME:-shg-valhalla-full}
+VAL_DIR=${VAL_DIR:-$BASE/valhalla-full}
+VAL_PORT=${VAL_PORT:-8003}
+VAL_BUILD_MEM=${VAL_BUILD_MEM:-5g}             # only while the graph is built
 STAGE=${1:-all}
 mkdir -p "$PUB" "$WORK"
 [ -s "$PBF" ] || { echo "missing $PBF - run 01-fetch-extract.sh"; exit 1; }
+log() { echo "$(date '+%F %T') $*"; }
 
 tiles() {
   cd "$WORK"
@@ -46,13 +64,34 @@ PY
       -e 's/^additional_languages = { }/additional_languages = { "en", "hi", "ne", "gu" }/' \
       /usr/share/doc/tilemaker/examples/process-openmaptiles.lua > process.lua
   rm -rf tiles.new store && mkdir -p store
-  tilemaker --input "$PBF" --output tiles.new/ --config config.json --process process.lua \
-            --bbox "$BBOX" --store store/ --threads 2
+  log "tilemaker start ($PBF, bbox $BBOX, $THREADS thread(s))"
+  /usr/bin/time -v tilemaker --input "$PBF" --output tiles.new/ --config config.json --process process.lua \
+            --bbox "$BBOX" --store store/ --threads "$THREADS"
   rm -rf store
+  log "tiles built: $(find tiles.new -name '*.pbf' | wc -l) files, $(du -sh tiles.new | cut -f1)"
+  rm -rf "$WORK/tiles.old"
   if [ -d "$PUB/tiles" ]; then mv "$PUB/tiles" "$WORK/tiles.old"; fi
   mv tiles.new "$PUB/tiles"
-  rm -rf "$WORK/tiles.old"
-  echo "tiles: $(find "$PUB/tiles" -name '*.pbf' | wc -l) files, $(du -sh "$PUB/tiles" | cut -f1)"
+  [ "$KEEP_OLD" = 1 ] || rm -rf "$WORK/tiles.old"
+  cover
+  log "tiles live: $(du -sh "$PUB/tiles" | cut -f1)"
+}
+
+cover() {
+  # meta.json coverage = boxes of whole tiles inside the region's .poly files
+  # (navcover.py); 15-nav.js asks our tiles first only inside them.
+  ls "$SRC"/*.poly >/dev/null 2>&1 || { echo "no .poly in $SRC - coverage unchanged"; return 0; }
+  python3 "$BIN/navcover.py" "$SRC"/*.poly > "$WORK/coverage.json"
+  python3 - "$PUB/meta.json" "$WORK/coverage.json" <<'PY'
+import json, os, sys, time
+p = sys.argv[1]
+m = json.load(open(p)) if os.path.exists(p) else {'maxzoom': 14}
+m['coverage'] = json.load(open(sys.argv[2]))
+m['built'] = time.strftime('%Y-%m-%d %H:%M')
+json.dump(m, open(p + '.tmp', 'w'), separators=(',', ':'))
+os.replace(p + '.tmp', p)
+PY
+  log "coverage: $(python3 -c "import json,sys;print(len(json.load(open(sys.argv[1]))['coverage']))" "$PUB/meta.json") boxes"
 }
 
 static() {
@@ -90,49 +129,54 @@ static() {
   python3 "$BIN/navstyle.py" style dark.json "$PUB/style/night.json" $SP
   FALLBACK=$(curl -sSfL https://tiles.openfreemap.org/planet | python3 -c "import json,sys;print(json.load(sys.stdin)['tiles'][0])")
   python3 - "$PUB/meta.json" "$FALLBACK" <<'PY'
-import json, sys, time
-json.dump({
-  'built': time.strftime('%Y-%m-%d %H:%M'),
-  'maxzoom': 14,
-  'coverage': [[68.0, 20.0, 74.6, 24.8], [81.2, 27.8, 82.1, 28.45]],
-  'fallbackTiles': sys.argv[2],
-}, open(sys.argv[1], 'w'))
+import json, os, sys, time
+p = sys.argv[1]
+m = json.load(open(p)) if os.path.exists(p) else {}
+m.update({'built': time.strftime('%Y-%m-%d %H:%M'), 'maxzoom': 14, 'fallbackTiles': sys.argv[2]})
+m.setdefault('coverage', [])
+json.dump(m, open(p, 'w'), separators=(',', ':'))
 PY
   echo "static: fonts $(find "$PUB/fonts" -name '*.pbf' | wc -l), styles ok"
 }
 
 places() {
   cd "$WORK"
+  log "places: filter"
   osmium tags-filter "$PBF" \
     nwr/amenity nwr/shop nwr/tourism nwr/office nwr/healthcare nwr/leisure nwr/historic \
     nwr/place nwr/railway=station,halt nwr/highway=bus_stop nwr/public_transport=station \
     w/highway=primary,secondary,tertiary,residential,unclassified,trunk,living_street \
     -o poi.osm.pbf --overwrite
+  log "places: export"
   osmium export poi.osm.pbf -f geojsonseq -o poi.geojsonseq --overwrite \
     -a type,id --geometry-types=point,linestring,polygon
-  python3 "$BIN/navplaces.py" poi.geojsonseq places.tsv
+  python3 "$BIN/navplaces.py" poi.geojsonseq places.tsv.new
+  mv places.tsv.new places.tsv
   rm -f poi.osm.pbf poi.geojsonseq
-  echo "places: $(wc -l < places.tsv) rows"
+  log "places: $(wc -l < places.tsv) rows -> import with import-places.php"
 }
 
 valhalla() {
-  mkdir -p "$BASE/valhalla"
-  cp -f "$PBF" "$BASE/valhalla/region.osm.pbf"
-  docker rm -f shg-valhalla >/dev/null 2>&1 || true
-  rm -rf "$BASE/valhalla/valhalla_tiles" "$BASE/valhalla/valhalla_tiles.tar" \
-         "$BASE/valhalla/file_hashes.txt" "$BASE/valhalla/duplicateways.txt"
-  docker run -d --name shg-valhalla --restart unless-stopped \
-    -p 127.0.0.1:8002:8002 -v "$BASE/valhalla:/custom_files" \
+  # Builds the graph in its OWN dir + container + port, so the engine in use
+  # keeps answering; switch the setting nav_engine_url once the new one routes.
+  mkdir -p "$VAL_DIR"
+  cp -f "$PBF" "$VAL_DIR/region.osm.pbf"
+  docker rm -f "$VAL_NAME" >/dev/null 2>&1 || true
+  rm -rf "$VAL_DIR/valhalla_tiles" "$VAL_DIR/valhalla_tiles.tar" \
+         "$VAL_DIR/file_hashes.txt" "$VAL_DIR/duplicateways.txt"
+  docker run -d --name "$VAL_NAME" --restart unless-stopped \
+    -p 127.0.0.1:$VAL_PORT:8002 -v "$VAL_DIR:/custom_files" \
     -e serve_tiles=True -e build_tar=True -e build_admins=True -e build_time_zones=True \
     -e build_elevation=False -e use_tiles_ignore_pbf=True -e force_rebuild=False \
-    -e server_threads=2 --memory=3g --cpus=1.5 \
-    ghcr.io/valhalla/valhalla-scripted:latest
-  echo "valhalla container started (first start builds the graph; watch: docker logs -f shg-valhalla)"
+    -e server_threads=1 --memory="$VAL_BUILD_MEM" --memory-swap=12g --cpus=1 --cpu-shares=128 \
+    --oom-score-adj=900 ghcr.io/valhalla/valhalla-scripted:latest
+  log "$VAL_NAME started on 127.0.0.1:$VAL_PORT (first start builds the graph; watch: docker logs -f $VAL_NAME)"
+  log "after it routes: docker update --memory=2g --memory-swap=4g $VAL_NAME"
 }
 
 case "$STAGE" in
-  tiles) tiles ;; static) static ;; places) places ;; valhalla) valhalla ;;
+  tiles) tiles ;; static) static ;; cover) cover ;; places) places ;; valhalla) valhalla ;;
   all) static; places; tiles; valhalla ;;
-  *) echo "usage: $0 [tiles|static|places|valhalla|all]"; exit 2 ;;
+  *) echo "usage: $0 [tiles|static|cover|places|valhalla|all]"; exit 2 ;;
 esac
 chown -R www-data:www-data "$PUB" 2>/dev/null || true
