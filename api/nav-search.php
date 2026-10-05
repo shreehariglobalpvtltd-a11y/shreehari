@@ -6,9 +6,9 @@
  *   ?rev=21.1702,72.8311                     -> the nearest named place / road (≤ 400 m)
  *
  * Our boarding points and offices come first, then nav_places — the named
- * shops, temples, hospitals, stations, bus stops and streets of Gujarat and
- * the Nepalgunj border area, imported from OpenStreetMap by
- * tools/navdata/import-places.php. Result shape = window.mapGeocode()'s.
+ * shops, temples, hospitals, stations, bus stops and streets of all of India
+ * and Nepal, imported from OpenStreetMap by deploy/navdata/import-places.php.
+ * Result shape = window.mapGeocode()'s.
  */
 
 declare(strict_types=1);
@@ -93,24 +93,58 @@ try {
                   'localName' => '', 'lat' => (float) $s['latitude'], 'lng' => (float) $s['longitude'], 'provider' => 'S Hari', 'kind' => 'bus'];
     }
 
-    // 2. the place index — prefix matches first, then contains; nearer first
-    $order = 'starts DESC';
-    $p = ['p1' => $like . '%', 'p2' => $like . '%', 'c1' => '%' . $like . '%', 'c2' => '%' . $like . '%'];
-    if ($lat !== null && $lng !== null && $lat > 5 && $lng > 60) {
-        $order .= ', (POW(lat - :lat, 2) + POW((lng - :lng) * 0.92, 2))';
-        $p['lat'] = $lat;
-        $p['lng'] = $lng;
-    }
+    // 2. the place index (1-2 million rows for all of India + Nepal), indexed
+    //    lookups only — a "contains" scan of the whole table takes seconds:
+    //    a) names that START with the query, anywhere (name prefix indexes)
+    //    b) names that CONTAIN it, within ~30 km of the rider (lat/lng index)
+    //    Order: a town / city of exactly that name, then what is near the
+    //    rider (starts-with first), then the rest (towns first), nearest first.
+    $near = $lat !== null && $lng !== null && $lat > 5 && $lng > 60;
+    $box = 0.3;
+    $d2 = static fn (array $r): float => $near ? (($r['lat'] - $lat) ** 2 + (($r['lng'] - $lng) * 0.92) ** 2) : 0.0;
+    $cols = 'name, name_en, kind, lat + 0 AS lat, lng + 0 AS lng';
     $rows = Database::fetchAll(
-        "SELECT name, name_en, kind, lat, lng, (name LIKE :p1 OR name_en LIKE :p2) AS starts
-           FROM nav_places WHERE name LIKE :c1 OR name_en LIKE :c2
-          ORDER BY $order LIMIT " . ($limit * 2),
-        $p
+        "(SELECT $cols FROM nav_places WHERE name = :e1 LIMIT 40)
+          UNION ALL (SELECT $cols FROM nav_places WHERE name_en = :e2 LIMIT 40)
+          UNION ALL (SELECT $cols FROM nav_places WHERE kind IN ('place:city', 'place:town') AND (name LIKE :t1 OR name_en LIKE :t2) LIMIT 40)
+          UNION ALL (SELECT $cols FROM nav_places WHERE name LIKE :p1 LIMIT 120)
+          UNION ALL (SELECT $cols FROM nav_places WHERE name_en LIKE :p2 LIMIT 120)",
+        ['e1' => $q, 'e2' => $q, 't1' => $like . '%', 't2' => $like . '%', 'p1' => $like . '%', 'p2' => $like . '%']
     );
+    if ($near) {
+        $rows = array_merge($rows, Database::fetchAll(
+            "SELECT $cols FROM nav_places
+              WHERE lat BETWEEN :a1 AND :a2 AND lng BETWEEN :b1 AND :b2 AND (name LIKE :c1 OR name_en LIKE :c2)
+              LIMIT 200",
+            ['a1' => $lat - $box, 'a2' => $lat + $box, 'b1' => $lng - $box, 'b2' => $lng + $box,
+             'c1' => '%' . $like . '%', 'c2' => '%' . $like . '%']
+        ));
+    }
+    $ql = mb_strtolower($q);
+    $tier = static function (array $r) use ($ql, $near, $box, $d2): int {
+        $names = [mb_strtolower((string) $r['name']), mb_strtolower((string) ($r['name_en'] ?? ''))];
+        $exact = in_array($ql, $names, true);
+        $starts = str_starts_with($names[0], $ql) || ($names[1] !== '' && str_starts_with($names[1], $ql));
+        $town = in_array($r['kind'], ['place:city', 'place:town'], true);
+        if ($exact && $town) {
+            return 0;
+        }
+        if ($near && $d2($r) <= $box * $box) {
+            return $starts ? 1 : 2;
+        }
+        return $exact ? 3 : ($town ? 4 : 5);
+    };
+    foreach ($rows as &$r) {
+        $r['_t'] = $tier($r);
+        $r['_d'] = $d2($r);
+    }
+    unset($r);
+    usort($rows, static fn (array $a, array $b): int => [$a['_t'], $a['_d']] <=> [$b['_t'], $b['_d']]);
     $seen = [];
     foreach ($rows as $r) {
         $name = (string) ($r['name_en'] ?: $r['name']);
-        $key  = mb_strtolower($name) . '|' . round((float) $r['lat'], 3) . '|' . round((float) $r['lng'], 3);
+        $grid = str_starts_with((string) $r['kind'], 'road:') ? 1 : 3;       // one long road = one answer
+        $key  = mb_strtolower($name) . '|' . round((float) $r['lat'], $grid) . '|' . round((float) $r['lng'], $grid);
         if (isset($seen[$key])) {
             continue;
         }

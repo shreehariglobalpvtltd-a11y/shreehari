@@ -123,5 +123,24 @@ $ok(!str_contains($js, "fetch('https://valhalla1.openstreetmap.de"), 'navigator 
 $ok(str_contains($js, "addProtocol('shgt'") && str_contains($js, 'snNavCamOn'), 'own tile protocol + driving camera present');
 $ok(is_file(dirname(__DIR__) . '/assets/vendor/maplibre-gl-4.7.1/maplibre-gl.js'), 'map engine served from our server');
 
+// all of India + Nepal: ~1.5 million places — a "%q%" search must stay inside a lat/lng box
+$srch = (string) file_get_contents(dirname(__DIR__) . '/api/nav-search.php');
+preg_match_all('/"[^"]*FROM nav_places[^"]*"/s', $srch, $qs);
+$scan = array_filter($qs[0], static fn ($s) => preg_match('/LIKE :c\d/', $s) === 1 && !str_contains($s, 'lat BETWEEN'));
+$ok($qs[0] !== [] && $scan === [], 'place search: no unbounded contains-scan of nav_places');
+$cover = (string) @file_get_contents(dirname(__DIR__) . '/deploy/navdata/navcover.py');
+$ok(str_contains($cover, 'def inside_tiles') && str_contains($cover, 'strip_rects'), 'coverage boxes come from the region polygons');
+$poly = sys_get_temp_dir() . '/shg-cover-test.poly';
+file_put_contents($poly, "t\n1\n 70 20\n 76 20\n 76 26\n 70 26\nEND\nEND\n");
+$py = trim((string) @shell_exec((PHP_OS_FAMILY === 'Windows' ? 'python' : 'python3') . ' ' . escapeshellarg(dirname(__DIR__) . '/deploy/navdata/navcover.py') . ' ' . escapeshellarg($poly) . ' 2>' . (PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null')));
+$boxes = json_decode($py, true);
+if (is_array($boxes)) {
+    $in = static fn (float $x, float $y): bool => (bool) array_filter($boxes, static fn ($b) => $b[0] <= $x && $x <= $b[2] && $b[1] <= $y && $y <= $b[3]);
+    $ok($boxes !== [] && $in(73.0, 23.0) && !$in(69.5, 23.0) && !$in(73.0, 26.5), 'coverage boxes: inside the polygon only');
+} else {
+    echo "  skip coverage run: no python\n";
+}
+@unlink($poly);
+
 echo "\n$pass passed, $fail failed\n";
 exit($fail === 0 ? 0 : 1);
