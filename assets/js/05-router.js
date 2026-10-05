@@ -1183,7 +1183,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261005c" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261005d" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'
@@ -2840,7 +2840,10 @@ if (store.local && !store.remote) {
   if (req) {
     req.addEventListener('click', function (e) { var b = e.target.closest('[data-wareq]'); if (b) setReqType(b.getAttribute('data-wareq')); });
     document.getElementById('waReqDirection').addEventListener('change', pointLabel);
-    document.getElementById('waBookLink').addEventListener('click', function (e) {
+    /* 5 Oct 2026: the wa.me "Continue in WhatsApp" row is gone (owner: only the
+       API button) — kept guarded in case an old cached page still has it. */
+    var waBookLink = document.getElementById('waBookLink');
+    if (waBookLink) waBookLink.addEventListener('click', function (e) {
       if (!validateRequest()) { e.preventDefault(); return; }
       if (!officeNum()) { e.preventDefault(); say(t('waReqUnavailable'), true); return; }
       this.href = waUrl(officeNum(), composeBooking());
@@ -2856,7 +2859,8 @@ if (store.local && !store.remote) {
       var label = go ? go.textContent : '';
       if (go) { go.disabled = true; go.textContent = t('waReqBusy'); }
       shgApi.post('/wa-request.php', body).then(function (d) {
-        say(d && d.sent ? t('waReqSent') : t('waReqFail'), !(d && d.sent));
+        var ok = !!(d && (d.sent || d.ticket));
+        say(ok ? t('waReqSent') + (d.ticket ? ' · ' + String(d.ticket).replace(/[^A-Z0-9-]/gi, '') : '') : t('waReqFail'), !ok);
       }).catch(function (err) {
         say((err && err.status !== 422 && err.message) || t('waReqNeed'), true);
       }).then(function () { if (go) { go.disabled = false; go.textContent = label; } });

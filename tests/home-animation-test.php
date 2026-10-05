@@ -58,7 +58,7 @@ $dir  = $root . '/assets/img/anim';
 
 $sections = [];
 foreach (['animJourney', 'animRoute', 'animBooking'] as $id) {
-    $sections[$id] = preg_match('~<section class="container shg-animation" id="' . $id . '"(.*?)</section>~s', $tpl, $m) ? $m[1] : '';
+    $sections[$id] = preg_match('~<section class="container shg-animation(?: sa-top)?" id="' . $id . '"(.*?)</section>~s', $tpl, $m) ? $m[1] : '';
 }
 $all = implode("\n", $sections);
 
@@ -72,10 +72,12 @@ foreach ($sections as $id => $html) {
 }
 $posSearch = strpos($tpl, 'id="search-anchor"');
 $posFirst  = strpos($tpl, 'id="animJourney"');
-check('the booking panel still comes before every animation in the page', $posSearch !== false && $posFirst !== false && $posSearch < $posFirst);
+// 5 Oct 2026 (owner): the coach is a compact banner ABOVE the date picker; the route + booking scenes stay below.
+check('the coach banner sits above the booking panel, the other scenes below it', $posSearch !== false && $posFirst !== false && $posFirst < $posSearch
+    && strpos($tpl, 'id="animRoute"') > $posSearch && str_contains($tpl, 'class="container shg-animation sa-top" id="animJourney"'));
 check('the old hidden highway scene and route card are gone', !str_contains($tpl, 'id="routeAnim"') && !str_contains($tpl, 'id="homeRouteMap"'));
-check('the scenes sit after the brand band on every width (order 5–7)',
-    (bool) preg_match('~#view-home > #animJourney \{ order: 5 !important; \}~', $css)
+check('the coach is first (order -3), the other scenes after the brand band (order 6–7)',
+    (bool) preg_match('~#view-home > #animJourney \{ order: -3 !important; \}~', $css)
     && (bool) preg_match('~#view-home > #animRoute \{ order: 6 !important; \}~', $css)
     && (bool) preg_match('~#view-home > #animBooking \{ order: 7 !important; \}~', $css));
 check('no blocking splash: nothing in the scenes delays or hides the booking panel',

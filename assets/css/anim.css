@@ -13,7 +13,7 @@
    ===================================================================== */
 
 /* Home order: after the booking panel, QuickBot and the brand band. */
-#view-home > #animJourney { order: 5 !important; }
+#view-home > #animJourney { order: -3 !important; }  /* 5 Oct 2026: top of the page */
 #view-home > #animRoute { order: 6 !important; }
 #view-home > #animBooking { order: 7 !important; }
 
@@ -218,3 +218,29 @@ html:not([lang="en"]) .shg-animation .sa-map .sa-cty { letter-spacing: 0; }
 @keyframes sa-wheel { to { transform: rotate(360deg); } }
 @keyframes sa-ride { 0%, 100% { transform: translateY(0); } 25%, 75% { transform: translateY(-.6px); } 50% { transform: translateY(.5px); } }
 @keyframes sa-shadow { 50% { opacity: .78; transform: scaleX(.995); } }
+
+/* ================= 5 Oct 2026 · the coach as a compact TOP banner =================
+   Above the date picker on every screen: no heading (the booking card right
+   below says "Gujarat ⇄ Rupaidiha"), 2:1 on a phone / 21:9 on a computer and
+   never wider than 720 px, amenity chips small and laid over the sky, a sky
+   and road painted underneath so nothing flashes dark while the art loads. */
+#view-home > #animJourney.sa-top { margin-top: 12px; margin-bottom: 0; }
+.shg-animation.sa-top .sa-head { display: none; }
+.shg-animation.sa-top .sa-stage { position: relative; max-width: 640px; margin: 0 auto; }
+.shg-animation.sa-top .sa-journey { aspect-ratio: 2 / 1; border-radius: 18px;
+  background: linear-gradient(180deg, #7fb8ec 0%, #cfe5f8 52%, #6f8f5c 60%, #3d454d 69%, #3d454d 100%); }
+.shg-animation.sa-top .sa-stage .sa-amen { position: absolute; top: 8px; left: 8px; z-index: 5; margin: 0; gap: 5px;
+  max-width: calc(100% - 56px); flex-wrap: nowrap; overflow: hidden; }
+.shg-animation.sa-top .sa-amen li { min-height: 26px; padding: 3px 9px 3px 7px; gap: 5px; font-size: 11.5px; white-space: nowrap;
+  background: rgba(7, 23, 47, .82); border-color: #54718c; color: #fff; }
+.shg-animation.sa-top .sa-amen svg { width: 15px; height: 15px; color: #fff; }
+.shg-animation.sa-top .sa-pause { width: 36px; height: 36px; top: 6px; right: 6px; }
+@media (max-width: 759px) {
+  .shg-animation.sa-top .sa-journey .sa-bus { width: 80%; left: 10%; bottom: -1%; }
+  .shg-animation.sa-top .sa-journey .sa-shadow { width: 78%; left: 11%; bottom: 13%; }
+}
+@media (max-width: 380px) { .shg-animation.sa-top .sa-amen li:nth-child(3) { display: none; } }
+@media (min-width: 760px) {
+  .shg-animation.sa-top .sa-journey { aspect-ratio: 21 / 9; }
+  .shg-animation.sa-top .sa-amen li { min-height: 30px; font-size: 12.5px; }
+}

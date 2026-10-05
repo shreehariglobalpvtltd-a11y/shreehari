@@ -4084,3 +4084,6 @@ body.wa-open{overflow:hidden}
 .ai-head .ai-close{flex:0 0 auto;padding:4px;min-width:30px;min-height:32px}
 .ai-head select{flex:0 0 auto;max-width:66px;padding:3px 4px}
 @media (min-width:761px){.ai-panel:not(.max){width:min(400px,calc(100vw - 32px));height:min(560px,72vh)}}
+/* 5 Oct 2026: only the API WhatsApp button is left in the request sheet — make it the green one. */
+.wa-req .wa-req-go,#waReqGo{background:#128C4B;color:#fff;border:0;font-size:15px;min-height:52px;box-shadow:0 6px 18px rgba(18,140,75,.28)}
+#waReqGo:hover{background:#0f7a41}

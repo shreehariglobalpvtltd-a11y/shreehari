@@ -4,6 +4,7 @@ Moved out of `sw.js` on 2 Oct 2026: the history used to live on the `var VERSION
 
 The CURRENT version and its note stay on the `var VERSION` line in `sw.js`; this file holds the ones before it. Newest first. Each line: version — what shipped with it (as written at the time).
 
+- **shg-v181** — 5 Oct 2026 — sound ON by default + desktop sound button, one ticket chime, admin new-booking chime, quieter timers
 - **shg-v180** — 5 Oct 2026 — assistant (SHG Sahayak) header one line on a computer
 - **shg-v179** — 5 Oct 2026 — Help Desk numbers, All Customers + Campaigns, Google Drive backups, SHARI NAV on our own server (tiles, routing, search) + heading-up driving camera
 - **shg-v178** — 4 Oct 2026: notifications panel on the sheet depth

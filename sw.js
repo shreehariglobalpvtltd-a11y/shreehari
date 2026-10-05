@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v181';   // 5 Oct 2026 — sound ON by default + desktop sound button, one ticket chime, admin new-booking chime, quieter timers
+var VERSION = 'shg-v182';   // 5 Oct 2026 — coach banner at the top (compact), request sheet: API WhatsApp only, request = Help Desk ticket
 var SHELL_CACHE = 'shg-shell-' + VERSION;
 /* How long a returning visitor waits for a fresh document before the
    cached app shell opens instead (see the navigate handler). */
@@ -43,7 +43,7 @@ var MAX_TICKETS = 10;
    never go stale: a new build changes the URL and the old cache is dropped
    with the old VERSION. This is what makes a re-open feel instant — the
    ~1 MB of app code is read from disk instead of the network. */
-var ASSET_VER = '20261005c';
+var ASSET_VER = '20261005d';
 var PRECACHE = [
   '/assets/img/logo.png?v=' + ASSET_VER,
   '/assets/css/app.css?v=' + ASSET_VER,
