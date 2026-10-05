@@ -292,7 +292,7 @@ function admin_header(string $title, string $active = ''): void
     // sg- components as the customer app) loads first; the panel's own rules
     // follow, then admin.css restyles the shell on top. The UI uses the
     // device's own font now (no webfont download on a slow counter line).
-    $av = '20261005b';
+    $av = '20261005c';
     echo '<link rel="stylesheet" href="/assets/css/ds.css?v=' . $av . '">';
     echo '<style>' . admin_css() . '</style>';
     echo '<link rel="stylesheet" href="/assets/css/admin.css?v=' . $av . '">';
@@ -926,10 +926,25 @@ function admin_poll_js(): string
 (function () {
   var KEY_LAST = 'shg_admin_last_pending';
 
-  function beep() {
+  /* 5 Oct 2026: ONE audio context, unlocked by the first tap/key on the
+     page (browsers start a timer-created context muted, so the old chime
+     was often silent), and a 🔔 switch in localStorage (shg_admin_sound,
+     on unless switched off). */
+  var actx = null;
+  function soundOn() { try { return localStorage.getItem('shg_admin_sound') !== '0'; } catch (e) { return true; } }
+  function audio() {
     try {
-      var ctx = new (window.AudioContext || window.webkitAudioContext)();
-      [880, 1100].forEach(function (freq, i) {
+      if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state === 'suspended') actx.resume();
+    } catch (e) { actx = null; }
+    return actx;
+  }
+  ['pointerdown', 'keydown'].forEach(function (ev) { document.addEventListener(ev, function () { if (soundOn()) audio(); }, { passive: true, once: true }); });
+  function beep(notes) {
+    if (!soundOn() || document.hidden) return;
+    try {
+      var ctx = audio(); if (!ctx) return;
+      (notes || [880, 1100]).forEach(function (freq, i) {
         setTimeout(function () {
           var o = ctx.createOscillator(), g = ctx.createGain();
           o.type = 'sine'; o.frequency.value = freq;
@@ -1064,7 +1079,10 @@ function admin_poll_js(): string
         var anchor = document.getElementById('liveNewBookings');
         if (anchor && typeof j.maxBooking === 'number') {
           var since = parseInt(anchor.getAttribute('data-since') || '0', 10);
-          if (since > 0 && j.maxBooking > since) { showBookingsPill(j.maxBooking - since); }
+          if (since > 0 && j.maxBooking > since) {
+            if (j.maxBooking > (window.__shgLastBookChime || since)) { window.__shgLastBookChime = j.maxBooking; beep([660, 880, 1320]); }
+            showBookingsPill(j.maxBooking - since);
+          }
         }
         var badge = document.getElementById('navBadgePayments');
         if (badge) {

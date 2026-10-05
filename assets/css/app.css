@@ -1763,3 +1763,8 @@ table.admin .code{font-family:var(--f-code);font-size:12.5px}
 .mybk-card:active{transform:scale(.98)}
 .proof-tab:active{transform:scale(.95)}
 .style-card:active{transform:scale(.98)}
+/* 5 Oct 2026 (smooth): the gold/silver sheen repainted its text through a
+   drop-shadow filter every frame for as long as the page was open. Three
+   passes, then it rests; hovering plays it again. */
+.txt-gold,.txt-silver,.txt-diamond{animation-iteration-count:3}
+.txt-gold:hover,.txt-silver:hover,.txt-diamond:hover{animation-iteration-count:infinite}

@@ -44,10 +44,10 @@
   var LS_HAPTIC = 'shg:haptics';
 
   function read(key) {
-    /* Default OFF (owner brief, 4 Oct 2026: sound and vibration are each
-       the passenger's own choice, off until switched on). A saved '1'
-       keeps working, so anyone who turned them on keeps them. */
-    try { return localStorage.getItem(key) === '1'; } catch (e) { return false; }
+    /* 5 Oct 2026 (owner: "app ekdam smooth, sound sahit"): sound and
+       vibration are ON until the passenger switches them off. A saved '0'
+       is respected for ever, so anyone who turned them off keeps silence. */
+    try { var v = localStorage.getItem(key); return v === null ? true : v === '1'; } catch (e) { return true; }
   }
   function write(key, on) {
     try { localStorage.setItem(key, on ? '1' : '0'); } catch (e) {}
@@ -65,7 +65,7 @@
      gain so the whole app can be ducked or muted in a single place, and a
      tiny lowpass so nothing is ever shrill on a phone speaker.
      ----------------------------------------------------------------- */
-  var ac = null, master = null, lastAt = 0;
+  var ac = null, master = null, lastAt = 0, lastSuccessAt = -1e9;
 
   function ctx() {
     if (ac) {
@@ -170,6 +170,7 @@
       var now = (window.performance && performance.now) ? performance.now() : Date.now();
       if (now - lastAt < 45) return;
       lastAt = now;
+      if (kind === 'success') lastSuccessAt = now;
       try { VOICES[kind](); } catch (e) {}
     },
 
@@ -336,6 +337,25 @@
 
     menu.appendChild(row('🔊 आवाज · Sound', Feel.sound, Feel.setSound));
     menu.appendChild(row('📳 कम्पन · Vibration', Feel.haptics, Feel.setHaptics));
+
+    /* A computer never sees the phone menu: one 🔊/🔇 button in the top bar. */
+    var nav = document.querySelector('.nav-links');
+    if (nav && !nav.querySelector('.feel-nav')) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'nav-bell feel-nav';
+      var paint = function () {
+        var on = read(LS_SOUND);
+        b.textContent = on ? '🔊' : '🔇';
+        b.setAttribute('aria-label', on ? 'Sound on — tap to mute' : 'Sound off — tap to turn on');
+        b.title = on ? 'आवाज खुला · Sound on' : 'आवाज बन्द · Sound off';
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      };
+      b.addEventListener('click', function () { Feel.setSound(!read(LS_SOUND)); paint(); });
+      paint();
+      var sep = nav.querySelector('.nav-sep');
+      nav.insertBefore(b, sep || null);
+    }
   }
 
   /* -------------------------------------------------------------------
@@ -352,7 +372,9 @@
     var lastHash = location.hash || '';
     window.addEventListener('hashchange', function () {
       var h = location.hash || '';
-      if (isTicket(h) && !isTicket(lastHash)) Feel.fire('ticket');
+      /* one chime per booking: checkout already played "success" a moment ago */
+      var t = (window.performance && performance.now) ? performance.now() : Date.now();
+      if (isTicket(h) && !isTicket(lastHash) && t - lastSuccessAt > 4000) Feel.fire('ticket');
       lastHash = h;
     });
   }

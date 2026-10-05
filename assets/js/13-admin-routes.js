@@ -1633,6 +1633,9 @@ function pvUpdateBell() {
 }
 
 function pvPlayBell() {
+  /* 5 Oct 2026: through the one sound switch (19-premium.js) — it used to
+     play at full volume even for a passenger who had turned sound off */
+  if (window.SHGFeel) { try { window.SHGFeel.play('notify'); } catch (e) {} return; }
   try {
     if (!PV.bellAudio) {
       var actx = new (window.AudioContext || window.webkitAudioContext)();
@@ -2068,7 +2071,8 @@ function startNextDeparture() {
     el.textContent = hh + ':' + mm + ':' + ss;
   };
   tick();
-  setInterval(tick, 1000);
+  /* 5 Oct 2026: no work while the tab is hidden or the clock is off screen */
+  setInterval(function () { if (!document.hidden && el.isConnected && el.offsetParent !== null) tick(); }, 1000);
 }
 
 /* ================================================================

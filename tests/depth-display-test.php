@@ -141,7 +141,8 @@ check('forced colours: flat system colours', (bool) preg_match('~@media \(forced
 check('print: flat black on white', (bool) preg_match('~@media print \{.*?--page: #FFFFFF;.*?\* \{ box-shadow: none !important;~s', $css));
 
 echo "\n-- 5. sound and vibration --\n";
-check('SHGFeel: sound and vibration default OFF (only a saved "1" is on)', str_contains($feel, "return localStorage.getItem(key) === '1';") && str_contains($feel, 'catch (e) { return false; }'));
+// 5 Oct 2026: owner asked for the app "with sound" — ON until switched off (a saved '0' wins).
+check('SHGFeel: sound and vibration default ON (only a saved "0" is off)', str_contains($feel, "return v === null ? true : v === '1';"));
 check('SHGFeel stays the one engine (setSound / setHaptics / buzz)', str_contains($feel, 'window.SHGFeel = Feel;') && str_contains($feel, 'setHaptics:'));
 check('contact sheet buzz goes through the haptics switch', !str_contains($pwa, 'navigator.vibrate(') && str_contains($pwa, "window.SHGFeel.buzz('tap')"));
 check('vibration respects reduced motion', str_contains($feel, 'if (reducedMotion()) return;'));
