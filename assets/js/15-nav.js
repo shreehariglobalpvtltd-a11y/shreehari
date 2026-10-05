@@ -301,7 +301,23 @@ function initNavApp(){
     try{ var o=localStorage.getItem('shari:navlite'); if(o==='0') return false; }catch(e){}
     return true;
   }
+  /* 6 Oct 2026 — Fast mode hides EXTRAS only. The driving camera (road
+     ahead points up, tilt, zoom with speed, arrow glides between GPS fixes,
+     like Google / Apple Maps) stays on for every phone that can carry it;
+     only a really weak one (<=2 GB RAM, <=2 cores, data saver, 2G/3G, or
+     "reduce motion" asked by the phone) snaps instead. */
+  function snDetectWeak(){
+    try{
+      var n=navigator, conn=n.connection||n.mozConnection||n.webkitConnection;
+      if(n.deviceMemory!=null&&n.deviceMemory<=2) return true;
+      if(n.hardwareConcurrency!=null&&n.hardwareConcurrency<=2) return true;
+      if(conn&&(conn.saveData||/(^|[^0-9])(2g|3g)$/.test(String(conn.effectiveType||'')))) return true;
+      if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches) return true;
+    }catch(e){}
+    return false;
+  }
   SN.lite=snDetectLite();
+  SN.weak=snDetectWeak();
   var _nv=document.getElementById('view-nav'); if(_nv) _nv.classList.toggle('sn-lite',SN.lite);
   if(SN.lite){ SN.templesOn=false; try{ s('#snTemples').classList.remove('on'); var _lt=s('#snLyTemples'); if(_lt) _lt.checked=false; }catch(e){} }
 
@@ -335,7 +351,7 @@ function initNavApp(){
          lets 3D buildings tilt to a nicer camera. Lite: no cross-fade, flatter
          camera, no antialiasing. */
       dragPan:true, scrollZoom:true, doubleClickZoom:true, touchZoomRotate:true,
-      fadeDuration:SN.lite?0:250, maxPitch:SN.lite?45:70, antialias:!SN.lite,
+      fadeDuration:SN.lite?0:250, maxPitch:SN.lite?60:70, antialias:!SN.lite,
       /* Fast mode: a 3x phone screen draws 2x (less than half the pixels, text
          still sharp), keeps fewer tiles in memory and pre-fetches less. */
       pixelRatio:SN.lite?Math.min(window.devicePixelRatio||1,2):(window.devicePixelRatio||1),
@@ -709,8 +725,8 @@ function initNavApp(){
     if(!SN.compassMode) map.easeTo({bearing:0,pitch:SN.is3D?60:0,duration:500});
     snToast(SN.compassMode?'🧭 Compass mode':'🧭 North-up mode');
   };
-  s('#snZin').onclick=function(){ map.zoomIn({duration:SN.lite?0:380,easing:snEaseOut}); };
-  s('#snZout').onclick=function(){ map.zoomOut({duration:SN.lite?0:380,easing:snEaseOut}); };
+  s('#snZin').onclick=function(){ map.zoomIn({duration:SN.weak?0:380,easing:snEaseOut}); };
+  s('#snZout').onclick=function(){ map.zoomOut({duration:SN.weak?0:380,easing:snEaseOut}); };
   /* A pinch / wheel zoom pauses the follow camera for its duration so the
      motion engine never fights the finger; panning (dragstart) ends follow. */
   map.on('zoomstart',function(e){ if(e&&e.originalEvent) SN.camLock=true; });
@@ -967,7 +983,7 @@ function initNavApp(){
           SN.busDisp={lng:loc.lng,lat:loc.lat}; SN.busTarget={lng:loc.lng,lat:loc.lat,spd:loc.spd||0,head:loc.bearing,ts:Date.now()};
           snBusTrailPush(loc.lng,loc.lat);
           /* first fix: glide to the bus (cinematic), then the motion engine follows it */
-          if(SN.followBus) snEase({center:[loc.lng,loc.lat],zoom:Math.max(map.getZoom(),12.5),duration:SN.lite?0:1400});
+          if(SN.followBus) snEase({center:[loc.lng,loc.lat],zoom:Math.max(map.getZoom(),12.5),duration:SN.weak?0:1400});
           try{ SN.busMarker.getElement().onclick=function(){ SN.followBus=true; snEase({center:[loc.lng,loc.lat],zoom:Math.max(map.getZoom(),13),duration:700}); snToast('🎯 Following the bus'); }; }catch(e){}
         }
         else snAnimateBus(loc.lng,loc.lat,loc.spd,loc.bearing);
@@ -1116,7 +1132,7 @@ function initNavApp(){
     return {lng:t.lng+dLng,lat:t.lat+dLat};
   }
   function snChase(disp,goal,tau,dtMs){ var k=1-Math.exp(-dtMs/tau); return {lng:disp.lng+(goal.lng-disp.lng)*k,lat:disp.lat+(goal.lat-disp.lat)*k}; }
-  function snMotionKick(){ if(SN.motionAnim!=null||SN.lite) return; SN.motionLast=performance.now(); SN.motionAnim=requestAnimationFrame(snMotionStep); }
+  function snMotionKick(){ if(SN.motionAnim!=null||SN.weak) return; SN.motionLast=performance.now(); SN.motionAnim=requestAnimationFrame(snMotionStep); }
   function snMotionStep(now){
     SN.motionAnim=null;
     if(!SN.map) return;
@@ -1135,7 +1151,7 @@ function initNavApp(){
           var tb=snTargetBearing();
           if(tb!=null){ var b0=map.getBearing(), dB=snShortestArcDelta(b0,tb); if(Math.abs(dB)>0.2){ cam.bearing=b0+dB*(1-Math.exp(-dt/SN_TAU_BRG)); mv=true; } }
           var tz=snTargetZoom(), z0=map.getZoom(); if(Math.abs(tz-z0)>0.01){ cam.zoom=z0+(tz-z0)*(1-Math.exp(-dt/SN_TAU_ZM)); mv=true; }
-          var tp=SN.lite?0:52, p0=map.getPitch(); if(Math.abs(tp-p0)>0.3){ cam.pitch=p0+(tp-p0)*(1-Math.exp(-dt/SN_TAU_PITCH)); mv=true; }
+          var tp=SN.weak?0:52, p0=map.getPitch(); if(Math.abs(tp-p0)>0.3){ cam.pitch=p0+(tp-p0)*(1-Math.exp(-dt/SN_TAU_PITCH)); mv=true; }
         }
         if(mv){ map.jumpTo(cam); active=true; }
       } else if(SN._navPad){ snNavPadding(false); }
@@ -1159,7 +1175,7 @@ function initNavApp(){
     SN.prevGps={lng:lng,lat:lat};
     var g=SN.gpsPos||{};
     SN.meTarget={lng:lng,lat:lat,spd:(g.spd!=null&&!isNaN(g.spd))?g.spd:0,head:(g.head!=null&&!isNaN(g.head))?g.head:null,ts:Date.now()};
-    if(big||SN.lite){ SN.meDisp={lng:lng,lat:lat}; SN.meMarker.setLngLat([lng,lat]); return; }
+    if(big||SN.weak){ SN.meDisp={lng:lng,lat:lat}; SN.meMarker.setLngLat([lng,lat]); return; }
     snMotionKick();
   }
   /* Observed speed for ETAs: an EMA of the GPS speed while moving, else the mode constant. */
@@ -1306,7 +1322,7 @@ function initNavApp(){
       /* Centre is driven per-frame by the motion engine (no per-fix ease that
          "chops"); only a real zoom-band change is eased here. Lite keeps the
          old per-fix ease including the centre. */
-      if(SN.lite) easeOpts={center:[dispLng,dispLat],zoom:tz};
+      if(SN.weak) easeOpts={center:[dispLng,dispLat],zoom:tz};
       else if(!snNavCamOn()&&Math.abs(map.getZoom()-tz)>0.6) easeOpts={zoom:tz};
       if(SN.followMe) SN.followMe=false;
       snMotionKick();
@@ -1356,11 +1372,12 @@ function initNavApp(){
     if(!navigator.geolocation){ snToast('GPS not supported'); return; }
     snStartCompass();   /* #34 — must be asked from a user gesture on iOS */
     SN.followMe=true; SN.persistFollow=true; SN.userRotated=false;
+    if(SN._autoBackT){ clearTimeout(SN._autoBackT); SN._autoBackT=null; s('#snLocate').classList.remove('sn-recenter'); }
     s('#snLocate').classList.add('on');
     /* shg-v59 — tap bounce (item #7). Class toggle triggers a CSS keyframe
        so the visual response is instant even while GPS is warming up. */
     var _lb = s('#snLocate'); _lb.classList.remove('sn-bounce'); void _lb.offsetWidth; _lb.classList.add('sn-bounce');
-    if(SN.gpsPos&&SN.routeCoords&&SN.routeCoords.length>1&&!SN.lite){
+    if(SN.gpsPos&&SN.routeCoords&&SN.routeCoords.length>1&&!SN.weak){
       var _tb=snTargetBearing(), _h=map.getContainer().clientHeight||600;
       SN._navPad=true; SN.camLock=true;
       map.flyTo({center:[SN.gpsPos.lng,SN.gpsPos.lat],zoom:snTargetZoom(),pitch:52,bearing:_tb!=null?_tb:map.getBearing(),
@@ -1379,7 +1396,35 @@ function initNavApp(){
       },{enableHighAccuracy:true,maximumAge:0,timeout:15000});
     }
   };
-  map.on('dragstart',function(){ SN.followMe=false; SN.persistFollow=false; SN.followBus=false; s('#snLocate').classList.remove('on'); snNavPadding(false); });
+  map.on('dragstart',function(){
+    var wasFollowing=SN.persistFollow||SN.followMe||!!SN._autoBackT;
+    SN.followMe=false; SN.persistFollow=false; SN.followBus=false; s('#snLocate').classList.remove('on'); snNavPadding(false);
+    if(wasFollowing) snAutoBackArm();
+  });
+  /* 6 Oct 2026 — automatic re-centre, like Google / Apple Maps: moving the
+     map by hand only pauses the follow. 8 s after the last touch the camera
+     returns to your arrow by itself (driving view again when a route is
+     on); 📍 does it at once. Any new touch restarts the 8 s. */
+  var SN_AUTOBACK_MS=8000;
+  function snAutoBackArm(){
+    if(SN._autoBackT) clearTimeout(SN._autoBackT);
+    if(SN.watchId==null||!SN.gpsPos) { SN._autoBackT=null; return; }
+    s('#snLocate').classList.add('sn-recenter');
+    SN._autoBackT=setTimeout(function(){
+      SN._autoBackT=null; s('#snLocate').classList.remove('sn-recenter');
+      if(SN.persistFollow||!SN.gpsPos) return;
+      var nv=document.getElementById('view-nav');
+      if(!nv||!nv.classList.contains('active')||document.hidden) return;
+      SN.followMe=true; SN.persistFollow=true; SN.userRotated=false;
+      s('#snLocate').classList.add('on');
+      if(SN.routeCoords&&SN.routeCoords.length>1) snToast('🧭 Back to driving view');
+      else snEase({center:[SN.gpsPos.lng,SN.gpsPos.lat],zoom:Math.max(map.getZoom(),15),duration:SN.weak?0:700});
+      snMotionKick();
+    },SN_AUTOBACK_MS);
+  }
+  ['zoomstart','rotatestart','pitchstart'].forEach(function(ev){
+    map.on(ev,function(e){ if(e&&e.originalEvent&&SN._autoBackT) snAutoBackArm(); });
+  });
 
   /* search — enhanced: history, category icons, 2-char trigger, multi-language */
   /* [MAP PRO] Navigator search — one reusable Google-Maps-style autocomplete for
@@ -1606,10 +1651,10 @@ function initNavApp(){
            so it doesn't just pop onto the map. Fires once per new route. */
         animateRouteDraw();
         var b=coords.reduce(function(bb,c){return bb.extend(c);},new maplibregl.LngLatBounds(coords[0],coords[0]));
-        map.fitBounds(b,{padding:{top:110,bottom:300,left:60,right:60},duration:SN.lite?0:900, easing: snEaseOut, pitch:0, bearing:0});
+        map.fitBounds(b,{padding:{top:110,bottom:300,left:60,right:60},duration:SN.weak?0:900, easing: snEaseOut, pitch:0, bearing:0});
         /* cinematic settle (5 Sep 2026): once the whole route is in view, tilt the
            camera a little so the road reads in perspective like a real navigator */
-        if(!SN.lite){ map.once('moveend',function(){ try{ if(map.getPitch()<28) snEase({pitch:28,duration:1100}); }catch(e){} }); }
+        if(!SN.weak){ map.once('moveend',function(){ try{ if(map.getPitch()<28) snEase({pitch:28,duration:1100}); }catch(e){} }); }
         snShowSummary(trip.summary,leg.maneuvers);
         /* [AUTO-ROUTE V4] collapse the setup card to a full-screen map and surface ETA on
            the peek bar with a one-tap "start navigation" affordance (2nd tap -> follow). */
@@ -1908,7 +1953,7 @@ function initNavApp(){
     var big=Math.abs(from.lng-lng)>.05||Math.abs(from.lat-lat)>.05;
     SN.busTarget={lng:lng,lat:lat,spd:(spd!=null&&!isNaN(spd))?spd:0,head:(head!=null&&!isNaN(head))?head:null,ts:Date.now()};
     snBusTrailPush(lng,lat);
-    if(big||SN.lite){ SN.busDisp={lng:lng,lat:lat}; SN.busMarker.setLngLat([lng,lat]); return; }
+    if(big||SN.weak){ SN.busDisp={lng:lng,lat:lat}; SN.busMarker.setLngLat([lng,lat]); return; }
     snMotionKick();   /* the motion engine glides it (with dead reckoning) from here */
   }
   /* Glowing fading trail behind the live bus — the last ~40 fixes as a
