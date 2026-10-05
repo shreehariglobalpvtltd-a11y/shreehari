@@ -4072,3 +4072,15 @@ body.wa-open{overflow:hidden}
 }
 /* full-screen chat sits above the staff counter-mode strip (#counterBar, z 1200) */
 .ai-panel.max{z-index:1250}
+/* 5 Oct 2026 - the assistant header squeezed on a COMPUTER too: the panel is
+   345px wide at any screen size, so the phone-only (max-width:420px) fix above
+   never applied on a PC and the title stood in a 31px column (header 210px
+   tall, messages hidden). One-line header at every width, a little wider and
+   taller panel on a computer. */
+.ai-head{gap:6px;padding:10px 12px}
+.ai-head>div{flex:1;min-width:0}
+.ai-head b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (min-width:421px){.ai-head small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+.ai-head .ai-close{flex:0 0 auto;padding:4px;min-width:30px;min-height:32px}
+.ai-head select{flex:0 0 auto;max-width:66px;padding:3px 4px}
+@media (min-width:761px){.ai-panel:not(.max){width:min(400px,calc(100vw - 32px));height:min(560px,72vh)}}
