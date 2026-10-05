@@ -725,7 +725,11 @@ final class MsgLedger
         if ($e === '' || $e === 'failed') {
             return ['?', 'Failed — the provider gave no reason.'];
         }
-        return ['other', mb_strimwidth($error, 0, 120, '…')];
+        if (str_contains($e, 'authentication failed') || str_contains($e, 'not active')) {
+            return ['auth', 'Provider account is switched off / login refused (Twilio account not active).'];
+        }
+        // never show an account id (Twilio "AC…" SID) on the page
+        return ['other', mb_strimwidth(preg_replace('/\bAC[0-9a-f]{32}\b/i', 'AC…', $error) ?? $error, 0, 120, '…')];
     }
 
     /**
