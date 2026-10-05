@@ -320,6 +320,11 @@ final class MkAutopilot
                 continue;
             }
             if ($ago !== null && $ago >= 20 && $ago <= 60) {
+                // Went home with a festival coming: they stay for it and are asked back after it
+                // (festival_back) — "come back to Gujarat" now would be the wrong message.
+                if ($fest['go'] !== null && $l['dir'] === 'toNepal') {
+                    continue;
+                }
                 $out['return'][] = ['dir' => $l['dir'] === 'toNepal' ? 'toIndia' : 'toNepal'] + $row;
                 continue;
             }

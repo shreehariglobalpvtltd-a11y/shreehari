@@ -41,6 +41,7 @@ const P_B = '9876541202';   // came back (toIndia) 100 days before T1
 const P_C = '9876541203';   // asked, never booked
 const P_E = '9876541205';   // has a trip ahead
 const P_F = '9876541206';   // said STOP
+const P_G = '9876541207';   // went home 12 Sep (24 days before Dashain time)
 const T1  = '2026-12-10';   // no festival around
 const T2  = '2026-11-20';   // just after Tihar / Chhath
 
@@ -145,6 +146,7 @@ try {
     $booking(P_B, 7, date('Y-m-d', strtotime(T1 . ' -100 days')));   // toIndia, 100 d before T1
     $booking(P_E, 2, '2027-01-05');                                   // a trip ahead
     $booking(P_F, 7, date('Y-m-d', strtotime(T1 . ' -40 days')));
+    $booking(P_G, 2, '2026-09-12');
     Campaigns::optOut(P_F, 'test', 0);
     $made['enquiries'][] = (int) Database::insert('enquiries', ['name' => 'Lead Test', 'phone' => P_C, 'seats' => 1, 'source' => 'test', 'status' => 'new']);
 
@@ -162,6 +164,8 @@ try {
     check('just after the festival, went home 20 days ago → come back', $where($c2, P_A) === 'festival_back:toIndia', $where($c2, P_A));
     $c3 = MkAutopilot::candidates('2026-10-06');
     check('15 days before Dashain, last trip home was months ago → go home', $where($c3, P_B) === 'festival_go:toNepal', $where($c3, P_B));
+    check('  went home 24 days before Dashain → NOT told to come back yet (asked after the festival)', $where($c3, P_G) === '', $where($c3, P_G));
+    check('  the same person months later with no festival → lapsed', $where($c1, P_G) === 'lapsed', $where($c1, P_G));
 
     echo "\n— a draft run queues campaigns, never sends\n";
     $set('mk_auto_mode', 'draft');
