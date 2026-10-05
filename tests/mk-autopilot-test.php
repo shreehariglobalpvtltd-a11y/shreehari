@@ -160,6 +160,11 @@ try {
     check('asked but never booked → leads', $where($c1, P_C) === 'leads', $where($c1, P_C));
     check('a trip already booked → nobody markets to them', $where($c1, P_E) === '');
     check('said STOP → never', $where($c1, P_F) === '');
+    $tap = (int) Database::insert('mk_campaigns', ['name' => 'one-tap test', 'channel' => 'wa_manual', 'message' => 'x', 'audience' => '', 'status' => 'running']);
+    $made['campaigns'][] = $tap;
+    Database::insert('mk_recipients', ['campaign_id' => $tap, 'phone' => '91' . P_B, 'name' => 'B']);
+    check('a one-tap list waiting for taps does not hide anyone from the automatic run', $where(MkAutopilot::candidates(T1), P_B) === 'lapsed');
+    Database::run('DELETE FROM mk_recipients WHERE campaign_id = :c', ['c' => $tap]);
     $c2 = MkAutopilot::candidates(T2);
     check('just after the festival, went home 20 days ago → come back', $where($c2, P_A) === 'festival_back:toIndia', $where($c2, P_A));
     $c3 = MkAutopilot::candidates('2026-10-06');

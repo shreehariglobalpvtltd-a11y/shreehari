@@ -319,9 +319,11 @@ final class MkAutopilot
         $gap = max(1, Settings::getInt('mk_auto_gap_days', 10));
         try {
             foreach (Database::fetchAll(
-                "SELECT DISTINCT RIGHT(phone, 10) ph FROM mk_recipients
-                  WHERE state IN ('queued','sending')
-                     OR (state IN ('sent','delivered','read') AND sent_at > NOW() - INTERVAL " . $gap . " DAY)"
+                // A one-tap (wa_manual) list waits for a person to tap: it is not a send and
+                // must not hide everyone from the automatic run; its taps count once sent.
+                "SELECT DISTINCT RIGHT(r.phone, 10) ph FROM mk_recipients r JOIN mk_campaigns c ON c.id = r.campaign_id
+                  WHERE (r.state IN ('queued','sending') AND c.channel <> 'wa_manual' AND c.status IN ('draft','scheduled','running','paused'))
+                     OR (r.state IN ('sent','delivered','read') AND r.sent_at > NOW() - INTERVAL " . $gap . " DAY)"
             ) as $r) {
                 $recent['k' . $r['ph']] = true;
             }
