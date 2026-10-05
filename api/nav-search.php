@@ -82,15 +82,26 @@ try {
     }
     $like = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q);
 
-    // 1. our own boarding points (route_stops with a surveyed position)
+    // 1. our own boarding points (route_stops with a surveyed position) come
+    //    first — but when we know where the rider is, a pickup more than
+    //    ~60 km away waits behind the places near them ("bus stand" in
+    //    Nepalgunj must not answer with Ahmedabad's counter)
+    $far = [];
     foreach (Database::fetchAll(
         "SELECT stop_name, MIN(landmark) AS landmark, latitude, longitude FROM route_stops
           WHERE is_active = 1 AND latitude IS NOT NULL AND (stop_name LIKE :q1 OR landmark LIKE :q2)
           GROUP BY stop_name, latitude, longitude LIMIT 5",
         ['q1' => '%' . $like . '%', 'q2' => '%' . $like . '%']
     ) as $s) {
-        $out[] = ['shortName' => (string) $s['stop_name'], 'displayName' => 'S Hari pickup · ' . $s['stop_name'] . ($s['landmark'] ? ' · ' . $s['landmark'] : ''),
-                  'localName' => '', 'lat' => (float) $s['latitude'], 'lng' => (float) $s['longitude'], 'provider' => 'S Hari', 'kind' => 'bus'];
+        $hit = ['shortName' => (string) $s['stop_name'], 'displayName' => 'S Hari pickup · ' . $s['stop_name'] . ($s['landmark'] ? ' · ' . $s['landmark'] : ''),
+                'localName' => '', 'lat' => (float) $s['latitude'], 'lng' => (float) $s['longitude'], 'provider' => 'S Hari', 'kind' => 'bus'];
+        $away = $lat !== null && $lng !== null && $lat > 5 && $lng > 60
+            && (($hit['lat'] - $lat) ** 2 + (($hit['lng'] - $lng) * 0.92) ** 2) > 0.55 ** 2;
+        if ($away) {
+            $far[] = $hit;
+        } else {
+            $out[] = $hit;
+        }
     }
 
     // 2. the place index (1-2 million rows for all of India + Nepal), indexed
@@ -121,18 +132,20 @@ try {
         ));
     }
     $ql = mb_strtolower($q);
-    $tier = static function (array $r) use ($ql, $near, $box, $d2): int {
+    $wordRe = '/(^|[^\p{L}\p{M}\p{N}])' . preg_quote($ql, '/') . '($|[^\p{L}\p{M}\p{N}])/u';
+    $tier = static function (array $r) use ($ql, $wordRe, $near, $box, $d2): int {
         $names = [mb_strtolower((string) $r['name']), mb_strtolower((string) ($r['name_en'] ?? ''))];
         $exact = in_array($ql, $names, true);
         $starts = str_starts_with($names[0], $ql) || ($names[1] !== '' && str_starts_with($names[1], $ql));
+        $word = preg_match($wordRe, $names[0] . ' | ' . $names[1]) === 1;   // "Metro Station", not "Stationery"
         $town = in_array($r['kind'], ['place:city', 'place:town'], true);
         if ($exact && $town) {
             return 0;
         }
         if ($near && $d2($r) <= $box * $box) {
-            return $starts ? 1 : 2;
+            return $word ? ($starts ? 1 : 2) : ($starts ? 3 : 4);
         }
-        return $exact ? 3 : ($town ? 4 : 5);
+        return $exact ? 5 : ($town ? 6 : 7);
     };
     foreach ($rows as &$r) {
         $r['_t'] = $tier($r);
@@ -143,7 +156,7 @@ try {
     $seen = [];
     foreach ($rows as $r) {
         $name = (string) ($r['name_en'] ?: $r['name']);
-        $grid = str_starts_with((string) $r['kind'], 'road:') ? 1 : 3;       // one long road = one answer
+        $grid = str_starts_with((string) $r['kind'], 'road:') ? 1 : 2;       // one long road / one mapped-twice place = one answer
         $key  = mb_strtolower($name) . '|' . round((float) $r['lat'], $grid) . '|' . round((float) $r['lng'], $grid);
         if (isset($seen[$key])) {
             continue;
@@ -164,6 +177,7 @@ try {
             break;
         }
     }
+    $out = array_merge($out, $far);
 } catch (Throwable $e) {
     // nav_places not imported yet: no own results, the page falls back to the public search
 }
