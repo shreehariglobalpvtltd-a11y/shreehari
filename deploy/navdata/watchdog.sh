@@ -4,8 +4,9 @@
 #   systemd-run --unit=shg-nav-watchdog --collect bash /srv/shg-nav/bin/watchdog.sh
 #
 # Every 30 s: time the home page (through nginx on this box) and read
-# MemAvailable. Two bad checks in a row (home > 2 s, not 200, or < 700 MB
-# free RAM) -> FREEZE the build (systemd unit shg-nav-build and the docker
+# MemAvailable + free disk. Two bad checks in a row (home > 2 s, not 200,
+# < 700 MB free RAM, or < 10 GB free disk - a full disk would stop
+# MariaDB) -> FREEZE the build (systemd unit shg-nav-build and the docker
 # container(s) named in $CTRS, i.e. docker pause). Three good checks -> thaw.
 # A frozen build keeps its memory but uses no CPU or disk.
 # Log: /srv/shg-nav/log/watchdog.log (one line per check).
@@ -32,7 +33,8 @@ while :; do
   avail=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)
   swap=$(awk '/SwapTotal/ {t=$2} /SwapFree/ {f=$2} END {print int((t-f)/1024)}' /proc/meminfo)
   load=$(cut -d' ' -f1 /proc/loadavg)
-  if [ "$code" != 200 ] || awk -v t="$t" 'BEGIN{exit !(t > 2.0)}' || [ "$avail" -lt 700 ]; then
+  disk=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
+  if [ "$code" != 200 ] || awk -v t="$t" 'BEGIN{exit !(t > 2.0)}' || [ "$avail" -lt 700 ] || [ "$disk" -lt 10 ]; then
     bad=$((bad + 1)) good=0
   else
     good=$((good + 1)) bad=0
@@ -41,6 +43,6 @@ while :; do
   if [ $paused = 0 ] && [ $bad -ge 2 ]; then freeze; paused=1; state=FROZE
   elif [ $paused = 1 ] && [ $good -ge 3 ]; then thaw; paused=0; state=THAWED
   elif [ $paused = 1 ]; then state=frozen; fi
-  echo "$(date '+%F %T') home=$code ${t}s avail=${avail}MB swap=${swap}MB load=$load $state" >> "$LOG"
+  echo "$(date '+%F %T') home=$code ${t}s avail=${avail}MB swap=${swap}MB disk=${disk}G load=$load $state" >> "$LOG"
   sleep 30
 done
