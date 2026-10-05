@@ -448,6 +448,20 @@ final class Notify
             }
         }
 
+        // 5 Oct 2026: AiSensy is the ticket sender while aisensy_mode = always.
+        if (in_array((string) ($meta['purpose'] ?? ''), ['ticket', 'ticket_update'], true) && $bookingId !== null && $bookingId > 0) {
+            $ais = self::whatsappAiSensyTicket($number, $message, (int) $bookingId, $meta);
+            if ($ais === true) {
+                self::$journal[] = ['to' => $number, 'ok' => true, 'link' => null, 'driver' => 'aisensy', 'reason' => ''];
+                return true;
+            }
+            if ($ais === false) {
+                $link = whatsappLink($number, $message);
+                self::$journal[] = ['to' => $number, 'ok' => false, 'link' => $link, 'driver' => 'aisensy', 'reason' => 'fallback'];
+                return $link;
+            }
+        }
+
         if ($driver === 'twilio') {
             $sid   = Settings::getString('twilio_account_sid', '');
             $token = Settings::getString('twilio_auth_token', '');
@@ -915,6 +929,12 @@ final class Notify
                 if ($ais['ok']) {
                     return ['ok' => true, 'provider' => 'aisensy',
                         'detail' => 'Ticket re-sent to +' . $ais['to'] . ' on WhatsApp (ticket photo, approved template).'];
+                }
+                // AiSensy is the sender (mode always) and it really tried this
+                // number: the Meta path below only adds a second failed row.
+                if ($ais['to'] !== '' && AiSensyAPI::mode() === 'always') {
+                    return ['ok' => false, 'provider' => 'aisensy',
+                        'detail' => 'AiSensy did not accept the ticket for +' . $ais['to'] . ': ' . ($ais['detail'] !== '' ? $ais['detail'] : 'no reason given') . '.'];
                 }
             }
         } catch (Throwable $e) {
@@ -1773,6 +1793,98 @@ final class Notify
     public static function logOutbound(string $to, string $body, string $status, array $meta = []): void
     {
         self::logMessage('whatsapp', $to, $body, $status, $meta);
+    }
+
+    /**
+     * AiSensy as the ticket sender (5 Oct 2026, owner: "AiSensy default
+     * rakhne, tyo matra chalcha"). While aisensy_mode = always the Meta
+     * number is not tried for a ticket at all: it refuses every message
+     * (131042, WABA payment method), and its "failed" row was all the booking
+     * screen showed while AiSensy had in fact sent the ticket. Returns null
+     * when AiSensy cannot take this send (off, mode fallback, a number it
+     * does not dial) so the configured driver carries on exactly as before.
+     * Once Meta billing is fixed, set aisensy_mode back to fallback.
+     */
+    private static function whatsappAiSensyTicket(string $number, string $message, int $bookingId, array $meta): ?bool
+    {
+        try {
+            if (!class_exists('AiSensyAPI') && is_file(ROOT_PATH . '/whatsapp/aisensy.php')) {
+                require_once ROOT_PATH . '/whatsapp/aisensy.php';
+            }
+            if (!class_exists('AiSensyAPI') || !AiSensyAPI::enabled() || AiSensyAPI::mode() !== 'always') {
+                return null;
+            }
+            $to = AiSensyAPI::normalizePhone($number);
+            $b  = $to !== '' ? Database::fetch('SELECT * FROM bookings WHERE id = :b', ['b' => $bookingId]) : null;
+            if ($b === null) {
+                return null;
+            }
+            $purpose = (string) ($meta['purpose'] ?? 'ticket');
+            $pnr     = (string) ($b['pnr'] ?? '');
+
+            // What AiSensy already did for this booking's customer.
+            $done = static function () use ($bookingId): ?array {
+                try {
+                    $q = Database::fetch(
+                        "SELECT status, via, wamid, last_error FROM wa_ticket_queue
+                          WHERE booking_id = :b AND role = 'customer' ORDER BY id DESC LIMIT 1",
+                        ['b' => $bookingId]
+                    );
+                } catch (Throwable $ignored) {
+                    $q = null;   // queue table not there yet
+                }
+                if ($q !== null && in_array((string) $q['status'], ['sent', 'delivered', 'read'], true)) {
+                    return ['ok' => true, 'ref' => (string) ($q['wamid'] ?? ''), 'how' => (string) ($q['via'] ?? ''), 'err' => ''];
+                }
+                $m = Database::fetch(
+                    "SELECT provider_ref FROM message_logs
+                      WHERE booking_id = :b AND channel = 'whatsapp' AND provider = 'aisensy' AND status = 'sent'
+                        AND purpose IN ('ticket', 'aisensy_ticket') ORDER BY id DESC LIMIT 1",
+                    ['b' => $bookingId]
+                );
+                if ($m !== null) {
+                    return ['ok' => true, 'ref' => (string) ($m['provider_ref'] ?? ''), 'how' => '', 'err' => ''];
+                }
+                return $q !== null ? ['ok' => false, 'ref' => '', 'how' => (string) ($q['via'] ?? ''), 'err' => (string) ($q['last_error'] ?? '')] : null;
+            };
+
+            $res = $purpose === 'ticket' ? $done() : null;
+            $ranFlow = false;
+            if ($res === null && $purpose === 'ticket') {
+                // First ticket: the whole AiSensy flow (template, second number,
+                // "hi" queue, seller copy). Once per PNR, so the booking.approved
+                // hook that follows in events.php finds nothing left to do.
+                AiSensyAPI::onBookingConfirmed($b);
+                $ranFlow = true;
+                $res = $done();
+            }
+            if ($res === null || (!$res['ok'] && !$ranFlow)) {
+                // A retry or a change notice: the approved template reaches any number.
+                $r   = AiSensyAPI::ticketTemplate($to, $bookingId, $pnr);
+                $res = ['ok' => (bool) $r['success'], 'ref' => (string) $r['message_id'], 'how' => (string) $r['how'], 'err' => (string) $r['error']];
+                if ($res['ok'] && $purpose === 'ticket' && class_exists('WaQueue') && WaQueue::ready()) {
+                    WaQueue::recordSent($bookingId, $pnr, $to, 'customer', $res['how'], $res['ref']);
+                }
+            }
+
+            // One row the booking screen reads (unless AiSensy already wrote this very message).
+            $logged = $res['ok'] && $res['ref'] !== '' && Database::exists(
+                "SELECT 1 FROM message_logs WHERE provider = 'aisensy' AND provider_ref = :r",
+                ['r' => substr($res['ref'], 0, 64)]
+            );
+            if (!$logged) {
+                self::logMessage('whatsapp', $to, $message, $res['ok'] ? 'sent' : 'failed', [
+                    'provider'  => 'aisensy',
+                    'bookingId' => $bookingId,
+                    'sid'       => $res['ref'],
+                    'error'     => $res['ok'] ? null : 'AiSensy: ' . ($res['err'] !== '' ? mb_substr($res['err'], 0, 230) : 'not accepted'),
+                ] + $meta);
+            }
+            return (bool) $res['ok'];
+        } catch (Throwable $e) {
+            Logger::warning('AiSensy ticket send failed', ['booking' => $bookingId, 'err' => $e->getMessage()], 'whatsapp');
+            return null;
+        }
     }
 
     /** The {{1}}..{{7}} ticket template variables — public for WaTemplates. */
