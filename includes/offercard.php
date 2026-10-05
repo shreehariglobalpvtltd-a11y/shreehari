@@ -102,6 +102,58 @@ final class OfferCard
              . '#Dashain #Tihar #Nepal #Gujarat #BusTicket #SHariGlobal';
     }
 
+    /** Every customer email we hold, once each (booking contact, app sign-in, office record). */
+    public static function customerEmails(): array
+    {
+        $out = [];
+        foreach ([
+            "SELECT DISTINCT LOWER(TRIM(contact_email)) e FROM bookings WHERE contact_email LIKE '%_@_%._%'",
+            "SELECT DISTINCT LOWER(TRIM(email)) e FROM users WHERE email LIKE '%_@_%._%'",
+            "SELECT DISTINCT LOWER(TRIM(email)) e FROM user_profiles WHERE email LIKE '%_@_%._%'",
+        ] as $sql) {
+            try {
+                foreach (Database::fetchAll($sql) as $r) {
+                    $e = Security::email((string) $r['e']);
+                    if ($e !== '') {
+                        $out[$e] = true;
+                    }
+                }
+            } catch (Throwable $e) {
+                // a table without the column simply adds nobody
+            }
+        }
+        $staff = [];
+        try {
+            foreach (Database::fetchAll("SELECT LOWER(email) e FROM admins WHERE email IS NOT NULL AND email <> ''") as $r) {
+                $staff[(string) $r['e']] = true;
+            }
+        } catch (Throwable $e) {
+        }
+        return array_values(array_filter(array_keys($out), static fn (string $e): bool => !isset($staff[$e])));
+    }
+
+    /** The offer email: the caption as HTML + the pamphlet attached. */
+    public static function mail(array $offer, string $to, string $phone, string $site): bool
+    {
+        $cap  = self::caption($offer, $phone, $site);
+        $amt  = self::amount($offer);
+        $subj = '🪔 ' . (self::festive($offer) ? 'दशैं–तिहार अफर' : 'विशेष अफर') . ': ' . $amt . ' छुट — S Hari Global';
+        $html = '<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;border:3px solid #FFD166;border-radius:14px;overflow:hidden">'
+              . '<div style="background:#7a1020;color:#FFD166;padding:18px 20px;font-size:22px;font-weight:bold">🪔 ' . Security::e(self::festive($offer) ? 'दशैं–तिहार अफर' : 'विशेष अफर') . ' — ' . Security::e($amt) . ' छुट</div>'
+              . '<div style="padding:18px 20px;font-size:15px;line-height:1.6;color:#222">' . nl2br(Security::e($cap)) . '</div>'
+              . '<div style="padding:0 20px 20px"><a href="https://' . Security::e($site) . '/?src=offer_mail" style="display:inline-block;background:#ff7a00;color:#fff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:999px">अहिले बुक गर्नुहोस् · Book now</a></div>'
+              . '<div style="padding:10px 20px;background:#fff3d6;font-size:12px;color:#555">S Hari Global Pvt Ltd · ' . Security::e($phone) . ' · यो इमेल नचाहिए reply मा STOP लेख्नुहोस्।</div></div>';
+        if (!class_exists('Ticket')) {
+            require_once __DIR__ . '/ticket.php';
+        }
+        if (!class_exists('Notify')) {
+            require_once __DIR__ . '/notify.php';
+        }
+        $png  = self::png('ne', $offer, $phone, $site, Ticket::logoFile());
+        return Notify::email($to, $subj, $html, $cap . "\n\nTo stop these emails, reply STOP.",
+            [['name' => 'shg-offer-' . strtolower((string) $offer['code']) . '.png', 'mime' => 'image/png', 'data' => $png]]);
+    }
+
     /** @return string PNG bytes */
     public static function png(string $lang, array $o, string $phone, string $site, ?string $logoFile): string
     {

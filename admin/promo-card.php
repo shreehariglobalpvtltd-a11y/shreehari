@@ -55,52 +55,6 @@ if (isset($_GET['img'])) {
     exit;
 }
 
-/** Every customer email we hold, once each (booking contact, app sign-in, office record). */
-function pc_customer_emails(): array
-{
-    $out = [];
-    foreach ([
-        "SELECT DISTINCT LOWER(TRIM(contact_email)) e FROM bookings WHERE contact_email LIKE '%_@_%._%'",
-        "SELECT DISTINCT LOWER(TRIM(email)) e FROM users WHERE email LIKE '%_@_%._%'",
-        "SELECT DISTINCT LOWER(TRIM(email)) e FROM user_profiles WHERE email LIKE '%_@_%._%'",
-    ] as $sql) {
-        try {
-            foreach (Database::fetchAll($sql) as $r) {
-                $e = Security::email((string) $r['e']);
-                if ($e !== '') {
-                    $out[$e] = true;
-                }
-            }
-        } catch (Throwable $e) {
-            // a table without the column simply adds nobody
-        }
-    }
-    $staff = [];
-    try {
-        foreach (Database::fetchAll("SELECT LOWER(email) e FROM admins WHERE email IS NOT NULL AND email <> ''") as $r) {
-            $staff[(string) $r['e']] = true;
-        }
-    } catch (Throwable $e) {
-    }
-    return array_values(array_filter(array_keys($out), static fn (string $e): bool => !isset($staff[$e])));
-}
-
-/** The offer email: the caption as HTML + the pamphlet attached. */
-function pc_offer_mail(array $offer, string $to, string $phone, string $site): bool
-{
-    $cap  = OfferCard::caption($offer, $phone, $site);
-    $amt  = OfferCard::amount($offer);
-    $subj = '🪔 ' . (OfferCard::festive($offer) ? 'दशैं–तिहार अफर' : 'विशेष अफर') . ': ' . $amt . ' छुट — S Hari Global';
-    $html = '<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;border:3px solid #FFD166;border-radius:14px;overflow:hidden">'
-          . '<div style="background:#7a1020;color:#FFD166;padding:18px 20px;font-size:22px;font-weight:bold">🪔 ' . Security::e(OfferCard::festive($offer) ? 'दशैं–तिहार अफर' : 'विशेष अफर') . ' — ' . Security::e($amt) . ' छुट</div>'
-          . '<div style="padding:18px 20px;font-size:15px;line-height:1.6;color:#222">' . nl2br(Security::e($cap)) . '</div>'
-          . '<div style="padding:0 20px 20px"><a href="https://' . Security::e($site) . '/?src=offer_mail" style="display:inline-block;background:#ff7a00;color:#fff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:999px">अहिले बुक गर्नुहोस् · Book now</a></div>'
-          . '<div style="padding:10px 20px;background:#fff3d6;font-size:12px;color:#555">S Hari Global Pvt Ltd · ' . Security::e($phone) . ' · यो इमेल नचाहिए reply मा STOP लेख्नुहोस्।</div></div>';
-    $png  = OfferCard::png('ne', $offer, $phone, $site, Ticket::logoFile());
-    return Notify::email($to, $subj, $html, $cap . "\n\nTo stop these emails, reply STOP.",
-        [['name' => 'shg-offer-' . strtolower((string) $offer['code']) . '.png', 'mime' => 'image/png', 'data' => $png]]);
-}
-
 $flash = null;
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $act = (string) ($_POST['action'] ?? '');
@@ -112,7 +66,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $flash = ['bad', 'No offer is running — create one in Admin → Offers first.'];
     } elseif ($act === 'mail_test') {
         $to = Security::email((string) ($_POST['to'] ?? '')) ?: Security::email(Settings::getString('company_email', ''));
-        $ok = $to !== '' && pc_offer_mail($offer, $to, $phone, $site);
+        $ok = $to !== '' && OfferCard::mail($offer, $to, $phone, $site);
         Logger::audit('offer.mail_test', 'coupon', (string) $offer['code'], null, ['to' => $to, 'ok' => $ok], 'by admin #' . (int) $admin['id']);
         $flash = $ok ? ['ok', 'Test email handed to the mail service for ' . $to . '. Check that inbox.'] : ['bad', 'The test email was NOT sent (check Notify / Brevo settings).'];
     } elseif ($act === 'mail_all') {
@@ -120,12 +74,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $doneKey = 'offer_mail:' . $offer['code'];
         $done = json_decode((string) (Database::scalar('SELECT kvalue FROM kv_store WHERE kscope = :s AND kkey = :k', ['s' => 'offer', 'k' => $doneKey]) ?? ''), true);
         $done = is_array($done) ? $done : [];
-        foreach (pc_customer_emails() as $to) {
+        foreach (OfferCard::customerEmails() as $to) {
             if (isset($done[$to])) {
                 $skip++;
                 continue;
             }
-            if (pc_offer_mail($offer, $to, $phone, $site)) {
+            if (OfferCard::mail($offer, $to, $phone, $site)) {
                 $sent++;
                 $done[$to] = date('c');
             } else {
@@ -142,7 +96,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
 $share   = PromoCard::shareText($single, $double, $phone, $site);
 $caption = $offer !== null ? OfferCard::caption($offer, $phone, $site) : '';
-$emails  = $offer !== null ? pc_customer_emails() : [];
+$emails  = $offer !== null ? OfferCard::customerEmails() : [];
 
 admin_header('Promo card', 'promo-card');
 admin_page_head('Shareable pictures for Facebook, WhatsApp status, groups and email — live offer and prices.', []);
