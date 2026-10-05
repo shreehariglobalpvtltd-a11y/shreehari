@@ -67,9 +67,10 @@ check('counter mode keys the remembered agent on the staff id', has($js, "KEY_AG
 check('QuickBot #qtAgent uses the SAME key, built from the same admin id', has($qt, "var AGENT_KEY = 'shg_ctr_agent_' + STAFF_ID;") && has($qt, 'var STAFF_ID = <?= (int) $staffId ?>;'));
 check('QuickBot reads it on load and writes it on change', has($qt, 'localStorage.getItem(AGENT_KEY)') && has($qt, 'localStorage.setItem(AGENT_KEY, qtAg.value)') && has($qt, 'localStorage.removeItem(AGENT_KEY)'));
 check('counter mode writes the pick on change (blank = forget)', has($js, 'lsSet(KEY_AGENT, sel.value);') && has($js, 'function lsSet(k, v) { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); }'));
-check('remembered pick preselects the dropdown; own code only for an agent selling himself (5 Oct: compulsory)', has($js, "var want = lsGet(KEY_AGENT) || (STAFF.role === 'agent' ? (STAFF.code || '') : '');") && has($js, "var selected = (want && a.code === want) ? ' selected' : '';"));
-check('no "Other" escape at the counter: a remembered OTHER counts as not picked', !has($js, "Other (Direct Sale") && has($js, "if (want === 'OTHER') want = '';"));
+check('remembered pick preselects the dropdown; own code only for an agent selling himself (5 Oct: compulsory)', has($js, "var w = lsGet(KEY_AGENT) || (STAFF.role === 'agent' ? (STAFF.code || '') : '');") && has($js, "var want = agentWant();") && has($js, "var selected = (want && a.code === want) ? ' selected' : '';"));
+check('no "Other" escape at the counter: a remembered OTHER counts as not picked', !has($js, "Other (Direct Sale") && has($js, "return w === 'OTHER' ? '' : w;"));
 check('server refuses a counter sale without an agent', has((string) file_get_contents(dirname(__DIR__) . '/api/book.php'), "required for a counter sale"));
+check('seat map: agent picked beside the passenger name, Confirm goes straight to the ticket', has($js, "id=\"ctrQuickAgent\"") && has($js, "Select the agent first (required)") && has($js, "lsSet(KEY_AGENT, qa.value)"));
 check('agent select stays mandatory (validator untouched): the key never bypasses #cAgentCode', has($js, "agentCode: agSel ? (agSel.value || '').trim() : ''"));
 check('payment chip remembered under QuickBot\'s shg_qt_pay', has($js, "KEY_PAY = 'shg_qt_pay'") && has($js, 'lsSet(KEY_PAY, CTR.pay);') && has($qt, "localStorage.setItem('shg_qt_pay', v)"));
 check('remembered chip is the lit one when the panel is built', has($js, "(CTR.pay === k ? ' on' : '')") && has($js, 'if (PAYS.indexOf(p0) >= 0) CTR.pay = p0;'));

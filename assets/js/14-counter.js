@@ -197,6 +197,7 @@
       + ':root[data-theme="dark"] #ctrQuick{background:#0f2a1c}'
       + '.ctr-q-lbl{font-size:12.5px;font-weight:700;margin-bottom:6px}.ctr-q-lbl small{font-weight:500;color:var(--muted,#6b7688)}'
       + '.ctr-q-row{display:flex;gap:8px;flex-wrap:wrap}'
+      + '#ctrQuickAgent.invalid{border-color:var(--bad,#c00)!important;box-shadow:0 0 0 3px rgba(204,0,0,.15)}'
       + '.ctr-q-row input{flex:1 1 130px;min-width:0;font-size:16px;padding:10px 12px;border:1px solid var(--line,#dde3ee);border-radius:9px;background:var(--card,#fff);color:inherit}'
       + '#ctrSeatConfirm{flex:1 1 100%;min-height:48px}';
     document.head.appendChild(st);
@@ -513,7 +514,9 @@
       var otherBtn = $q('#cAgentOther'); if (otherBtn) otherBtn.style.display = 'none';
       var agents = (STAFF.agents || []);
       if (ac.tagName === 'SELECT') {
-        // already the desk dropdown - keep the desk's choice across re-renders
+        // already the desk dropdown - follow the pick made on the seat map
+        var w0 = agentWant();
+        if (w0 && ac.value !== w0 && [].some.call(ac.options, function (o) { return o.value === w0; })) ac.value = w0;
       } else if (agents.length > 0) {
         /* Picked once, remembered per clerk (1 Oct 2026, owner R3b): the last
            choice lives in localStorage under shg_ctr_agent_<staff id> — the
@@ -526,8 +529,7 @@
            longer filled in silently and the "Other (direct sale)" escape is
            gone (a direct sale = the company code from the list). Only an
            agent selling for himself starts on his own code. */
-        var want = lsGet(KEY_AGENT) || (STAFF.role === 'agent' ? (STAFF.code || '') : '');
-        if (want === 'OTHER') want = '';
+        var want = agentWant();
         var sel = document.createElement('select');
         sel.id = 'cAgentCode';
         sel.style.cssText = 'width:100%;font-size:16px;padding:10px 12px;border:1.5px solid var(--line,#dde3ee);border-radius:12px;background:var(--card,#fff);color:inherit';
@@ -695,6 +697,11 @@
       + '<input id="ctrQuickName" type="text" maxlength="80" placeholder="Name" autocomplete="off" autocapitalize="words">'
       + '<input id="ctrQuickPhone" type="tel" inputmode="numeric" maxlength="15" placeholder="Mobile (optional)" autocomplete="off">'
       + '</div>'
+      /* 5 Oct 2026 (owner): the agent is compulsory at the counter AND the
+         seat map must still go straight to the ticket — so the agent is
+         picked right here (remembered per clerk, the same key the checkout
+         dropdown and QuickBot use) and Confirm never stops on the checkout. */
+      + quickAgentRow()
       /* One tap from the seat map to the ticket (1 Oct 2026, owner R3c). The
          button presses the app's own Continue (Flow.legs, boarding and drop
          are built exactly as a manual tap), waits until renderCheckout has
@@ -713,6 +720,8 @@
       if (pp0 && CTR.pax.phone) pp0.value = CTR.pax.phone;
       CTR.pax = null;
     }
+    var qa = $q('#ctrQuickAgent');
+    if (qa) qa.addEventListener('change', function () { lsSet(KEY_AGENT, qa.value); qa.classList.remove('invalid'); });
     var cont0 = $q('#continueBtn'), scb = $q('#ctrSeatConfirm');
     if (cont0 && scb) {
       var mirror = function () { scb.disabled = cont0.disabled; };   // same readiness as Continue (seats picked, fare good)
@@ -734,6 +743,22 @@
     }
   }
 
+  /* The seat map's agent dropdown (same list and remembered pick as the
+     checkout's); empty when this desk sees no agents. */
+  function agentWant() {
+    var w = lsGet(KEY_AGENT) || (STAFF.role === 'agent' ? (STAFF.code || '') : '');
+    return w === 'OTHER' ? '' : w;
+  }
+  function quickAgentRow() {
+    var agents = STAFF.agents || [];
+    if (!agents.length) return '';
+    var want = agentWant();
+    return '<div class="ctr-q-row" style="margin-top:8px"><select id="ctrQuickAgent" aria-label="Agent (required)" style="flex:1;min-width:0;font-size:15px;padding:9px 10px;border:1.5px solid var(--line,#dde3ee);border-radius:10px;background:var(--card,#fff);color:inherit">'
+      + '<option value="">— एजेन्ट छान्नुहोस् / Select Agent (अनिवार्य) —</option>'
+      + agents.map(function (a) {
+        return '<option value="' + esc(a.code) + '"' + (want && a.code === want ? ' selected' : '') + '>' + (a.co ? '🏢 ' : '👤 ') + esc(a.code) + ' · ' + esc(a.name) + '</option>';
+      }).join('') + '</select></div>';
+  }
   function seatConfirm() {
     var cont = $q('#continueBtn'); if (!cont || cont.disabled) return;
     var nmEl = $q('#ctrQuickName');
@@ -741,6 +766,12 @@
       try { toast('यात्रीको नाम लेख्नुहोस् · Passenger name first'); } catch (e) {}
       nmEl.focus(); return;
     }
+    var qa = $q('#ctrQuickAgent');
+    if (qa && !qa.value) {
+      try { toast('एजेन्ट छान्नुहोस् · Select the agent first (required)'); } catch (e) {}
+      qa.classList.add('invalid'); qa.focus(); return;
+    }
+    if (qa) lsSet(KEY_AGENT, qa.value);
     var round = false; try { round = Flow.tripType === 'round' && Flow.legIndex === 0; } catch (e) {}
     var tick = CTR.rcTick;
     cont.click();            // capture guard → SHG_QUICK; 06-results builds the leg and routes to #/checkout
@@ -794,6 +825,9 @@
         if (v !== '__other__' && (v === want || stopKey(v) === k)) { if (sel.selectedIndex !== i) sel.selectedIndex = i; break; }
       }
     });
+    // the agent picked on the checkout (or in QuickBot) shows on the seat map too
+    var qa = $q('#ctrQuickAgent'), wa = agentWant();
+    if (qa && wa && qa.value !== wa && [].some.call(qa.options, function (o) { return o.value === wa; })) qa.value = wa;
   }
 
   /* ---- 4. Payload + result hooks ---------------------------------- */
