@@ -1,0 +1,52 @@
+# Next session — continue from 5 Oct 2026 (paste this whole file as the first message)
+
+> **Owner (Nepali):** यो prompt नयाँ session मा पेस्ट गर्नुहोस्। पहिले पूरा India + Nepal map (हाम्रै server मा), त्यसपछि बाँकी काम एक-एक गरी, हरेक काम सकेर deploy। पैसा/refund/cancel कहिल्यै automatic होइन।
+
+You are continuing work on **S Hari Global Pvt Ltd** (shreehariglobal.in) — PHP 8.3 (no framework) + vanilla-JS PWA + MariaDB on a Hostinger VPS (93.127.167.249, Ubuntu 24.04, nginx, 8 GB RAM, 2 vCPU, 96 GB disk, no swap). Owner writes Nepali/Hindi mix; reply the same way, technical words in English. Owner wants: fewer questions, safer default, **verify AND deploy in the same pass**, Help Desk / refunds settled by hand (never automate money).
+
+## 0. Before writing a single line (traps that bit every session)
+
+1. **Worktree base:** new worktrees are cut from the stale 86-file `master`. Check `git ls-files | wc -l` (want ~690). Then `GIT_SSH_COMMAND="ssh -i ~/.ssh/shg_vps_ed25519" git fetch origin` and `git reset --hard origin/<newest release-*>` — **live is `release-20261005-h8`** unless `git branch -r --sort=-committerdate` shows a newer one (other sessions deploy in parallel; merge theirs first).
+2. **Deploy only with** `deploy/deploy-prod.sh <live-base> <new-ref> <release-name> [--dry-run]` run on the VPS (extract it with `git --git-dir=/var/repos/shg.git show <ref>:deploy/deploy-prod.sh > /root/deploy-prod.sh`). It md5-checks live == base (drift guard), backs up, lints, writes, curls. Never scp by hand, never the old deploy.sh/GitHub workflow (removed from our repo; GitHub `main` is stale — no push creds on this PC).
+3. Migrations are applied by hand (additive, `ADD COLUMN IF NOT EXISTS`, every column on its own).
+4. Bump the asset stamp on every JS/CSS change: `node deploy/bump-asset-ver.js <old> <new> shg-vNNN "note"` (now **20261005f / shg-v184**). Never `sed -i` on CRLF files; use Python byte-safe edits or the Edit tool.
+5. Local dev: copy `config/config.local.php` + `.claude/php-dev.ini` + `.claude/launch.json` from worktree `advanced-navigation-customer-mgmt-876894` (DB `nav_test` on MariaDB :3307, server 127.0.0.1:8971, superadmin/admin123 locally). The preview pane is hidden → MapLibre object styles never load there; use headless Chrome CDP (`shot.mjs` in that session's scratchpad) for map tests. `php -S` is single-threaded: for map tests copy a small gunzipped tile subset into `./navdata/` (git-excluded) instead of proxying.
+6. Tests: `php -c .claude/php-dev.ini tests/run-all.php` — 11 suites fail on the base tree too (environment); compare base vs new before blaming a change. Key suites: `helpdesk-campaign-nav-test.php` (42), `home-animation-test.php` (51), `home-entry-test.php` (55), `depth-display-test.php` (51), `asset-version-test.php`.
+7. Notes from 5 Oct: `docs/UPGRADE-2026-10-05-helpdesk-customers-gdrive-nav.md`.
+
+## 1. MAIN JOB — full India + Nepal map on our own server (owner: "GPS ले थोरै ठाउँमा काम गर्छ, Nepal-India को पूरै map राख")
+
+**Now:** own vector tiles + Valhalla routing + place search cover only Gujarat (68.0,20.0 → 74.6,24.8) and the Nepalgunj/Kohalpur/Rupaidiha box (81.2,27.8 → 82.1,28.45). Outside that, `assets/js/15-nav.js` (`shgt://` protocol) falls back to OpenFreeMap tiles and `api/nav-route.php` to public Valhalla (header `X-SHG-Nav: public`). Pipeline + docs: `deploy/navdata/` (`01-fetch-extract.sh`, `02-build.sh [tiles|static|places|valhalla]`, `navstyle.py`, `navplaces.py`, `import-places.php`, `nginx-navdata.conf`). Data lives in `/srv/shg-nav` (outside the webroot); nginx `location ^~ /navdata/ { root /srv/shg-nav/www; }` is already on live; Valhalla runs in docker `shg-valhalla` (127.0.0.1:8002, `--memory=3g --cpus=1.5`, restart unless-stopped).
+
+**Goal:** the same, for the whole of India + Nepal (Geofabrik `asia/india` 1.7 GB + `asia/nepal` 0.4 GB, merged with `osmium merge`).
+
+Plan (measure as you go, never starve the live site — nice/ionice, run at night IST, watch `free -m` and `curl` the home page every few minutes):
+1. Add an 8–12 GB swapfile first (`fallocate`, `mkswap`, `swapon`, fstab) — the box has none.
+2. Download + merge into `/srv/shg-nav/region-full.osm.pbf` (keep the current region files until the new build is verified).
+3. **Tiles:** tilemaker 2.4 with `--store` (disk store) for India+Nepal, z0–14, into a NEW dir `www/navdata/tiles-full/`, then swap dirs atomically. Expect hours and ~10 GB / ~2 M files (inodes fine: 12.6 M free). If tilemaker is too slow/hungry, alternative: z0–12 for the whole country + keep z13–14 only for a list of city bboxes (two runs into one dir; low zooms from the country run only). Update `meta.json` coverage to the India+Nepal polygon/bboxes so the client stops falling back inside it.
+4. **Routing:** rebuild Valhalla from the full PBF in a SEPARATE container/dir (`/srv/shg-nav/valhalla-full`, port 8003), with `--memory` raised only during the build (e.g. 6g, swap backing it) and `server_threads=1`; when `curl 127.0.0.1:8003/route` works for Lucknow, Kathmandu, Mumbai, switch the setting `nav_engine_url` to `http://127.0.0.1:8003` (no code change), then stop/remove the old container. If the build cannot fit on this VPS, say so with the numbers and offer: build on a bigger temporary machine and copy `valhalla_tiles.tar` (serving needs little RAM).
+5. **Places:** run `02-build.sh places` on the full PBF (+ import with `import-places.php`, it swaps tables). Check `api/nav-search.php` speed with ~1–2 M rows (add a FULLTEXT index or prefix index if a search takes > 150 ms).
+6. Verify on live with headless Chrome: own tiles + `X-SHG-Nav: own` in Lucknow, Kathmandu, Mumbai, Delhi, Surat, Nepalgunj; the heading-up camera (`snNavCamOn`) still works; then ask the owner to do one real walk with the phone.
+7. Clean up only what YOU created (old region tiles, PBF downloads) after the new build is verified; document in `/root/backups/CLEANUP-LOG.txt` and the docs file.
+
+## 2. AiSensy WhatsApp (checked 5 Oct 11:20 IST with the status API — HTTP 200 is NOT delivery)
+
+- All 6 customer ticket messages AiSensy sent on 4 Oct (10:43–12:27, SHG-2026-00533…00541) **FAILED** (131047 no 24 h window / 131026 undeliverable) — they went out before the templates were approved. The owner's own test messages after approval (4 Oct 21:46) were **READ**. **No confirmed booking has happened since the templates were approved**, so a real customer delivery is not yet proven → check the next real booking's `message_logs` row with `AiSensyAPI::messageStatus()`.
+- `wa_ticket_queue` has 8 customer rows stuck `pending` (+6 seller). Only **SHG-2026-00531 (travel 7 Oct)** and **SHG-2026-00471 (travel 11 Oct)** are still upcoming; the other 6 travelled on 4 Oct. **Ask the owner once** whether to resend those two tickets with the approved `shg_ticket_image` / `shg_ticket_confirmed` template (sending is an outward action — needs his yes), then mark the 6 old rows `expired`.
+- Templates `shg_help_ticket` (UTILITY, help-desk number) and `shg_offer` (MARKETING, campaigns) were submitted 5 Oct 00:03 — status was **PENDING** at 11:20. Check again (`AiSensyAPI::templates()` now pages with `?limit=100`).
+- Still open on the owner's side: AiSensy plan is TRIAL; inbound webhook needs the paid add-on (so "hi" replies and STOP never reach us); Meta number blocked by 131042 (payment method). The website request sheet now creates a Help Desk ticket and alerts the admin through the approved `shg_office_update` template — confirm with one real request (owner's phone) that it arrives.
+
+## 3. Other things left (do one by one, deploy each)
+
+1. **Google Drive backup:** code is live (`admin/backup.php`); it needs the owner's Google Cloud OAuth client (Web app, redirect `https://www.shreehariglobal.in/admin/backup.php?oauth=1`, scope `drive.file`, app published "In production"). Walk him through it, connect, run "Back up now", turn on the nightly copy, verify the file in Drive.
+2. **Nepalgunj office number:** the home banner shows Director Sher Bahadur Bishwokarma +91 97264 01507 until Admin → Company details "Nepal phone" (`nepal_phone`) is filled — ask the owner for the Puspalal Chowk number once.
+3. **Old pre-deploy backups:** `/root/backups` 4.1 GB (113 dirs) + `/root/archive` 785 MB — not deleted (customer data inside; disk 15 % used). Ask the owner how many to keep; never delete without his yes.
+4. **Medium-confidence dead code** (verify again, then remove): `includes/aigovernor.php` (+ its test), `api/quote.php`, `13-admin-routes.js` `renderAdminPayments`/`pv*` admin-queue block + template `#pvrOverlay`, `Splash.runScenes`, `16-lazy.js` `tcListenLive`/`TC_FIREBASE_CONFIG`/`tcFetchWx` (weather shows "Set OWM key"), `10-track.js` `positionTrackMarker`/`rovCoords`/`runGpsDistanceAll`, `03-accounts.js` agent-ledger helpers, `05-router.js` `servedTownKeys`, `11-pdf-ticket.js` `lerpColor`/`_loadDevFont`, helpers `nprLabel`/`generateTripRef`/`slugify`/`requireField`, `views.css` tracker sections 39–40. `fix.html`: ask the owner whether he ever sends that link.
+5. **Admin sound:** chime is on by default (localStorage `shg_admin_sound`); add a small 🔔 on/off button in the admin top bar.
+6. **Daily log ownership:** root crons create `logs/<date>.log` as root:root → www-data cannot log that day. Fix properly (e.g. a root cron at 23:59 that pre-creates tomorrow's log as www-data, or run the PHP crons as www-data).
+7. **Help Desk follow-ups:** once `shg_help_ticket` is approved, verify the customer acknowledgement arrives; make sure support staff log in (auto-assign only picks people seen in 14 days).
+8. **Real-phone checks the owner should do:** GPS navigation walk (#/nav), help.php on a phone, campaign one-tap flow, the Drive prompt.
+
+## 4. Done on 5 Oct (do not redo)
+
+Help Desk HD numbers + automation + `/help.php`; All Customers & Numbers + Campaigns (`marketing.send`); Google Drive backup code + daily prompt; SHARI NAV own tiles/routing/search for Gujarat + Nepalgunj, heading-up camera, self-hosted MapLibre; assistant header fix; developer WhatsApp +91 91048 01507; sound default ON + desktop 🔊; admin new-booking chime; top banner (logo + company + offices incl. Nepalgunj, coach on the right); "टिकट कसरी काट्ने?" guide; request sheet = API WhatsApp only → Help Desk ticket; SOS complaint + contact form → Help Desk; dead code + VPS cleanup (unused llama.cpp `shg-brain` stopped/disabled, files kept; removed live files parked in `/root/backups/removed-from-live-20261005`; AOA PDF moved to `/root/company-docs`).
