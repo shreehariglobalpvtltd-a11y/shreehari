@@ -1421,6 +1421,16 @@ async function submitBooking() {
   releaseMyLocks();
 
   const id = pnr;
+  /* 5 Oct 2026 (owner: "ticket katepachhi Home nathichi next ticket aaos" +
+     "naam dohoryaera lekhnu parchha"): remember this sale's bus for the ticket
+     screen's Next-ticket button, and start the NEXT passenger clean - the seat
+     page's name box was filled once per page life, so every later ticket
+     opened with the previous passenger's name in it. */
+  try {
+    window.SHG_JUST_BOOKED = { pnr: id, at: Date.now(), from: Flow.from || '', to: Flow.to || '',
+      date: (Flow.legs && Flow.legs[0] && Flow.legs[0].date) || Flow.date || '', agent: !!(typeof refCode !== 'undefined' && refCode) };
+    shgNextPassengerReset();
+  } catch (e) {}
   Flow.route = null; Flow.seats = []; Flow.legs = []; Flow.legIndex = 0; Flow.draftId = ''; Flow.fareOverride = 0; Flow.shotThumb = ''; Flow.shotBlob = null;
   Flow.sharingTier = null; Flow.tierManual = false; Flow.patient = false;
   Flow.paxIndividual = false;   // the next party starts under one name again
@@ -2123,10 +2133,10 @@ function renderStatus(id) {
   <div class="status-card tk2${conf ? ' confirm-success' : ''}" id="ticketCard" data-pnr="${esc(b.id)}">
     <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo.png?v=20261005m" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo.png?v=20261005n" alt="" loading="lazy" decoding="async">
         <div><b>${esc(CONFIG.company.name || 'S HARI GLOBAL PRIVATE LIMITED')}</b><small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
       </div>
-      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261005m" width="600" height="312" alt="" decoding="async">
+      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261005n" width="600" height="312" alt="" decoding="async">
     </div>
     <div class="premium-ticket-status">${pill2}${b.ticketNumber ? '<span>' + esc(b.ticketNumber) + '</span>' : ''}${b.agentCode ? '<span style="background:var(--orange-100,#fff2e0);color:var(--orange-800,#7a3d00);padding:2px 10px;border-radius:20px;font-size:12px;font-family:var(--f-code)">🏷️ ' + esc(b.agentCode) + '</span>' : ''}</div>
     ${(typeof routeOverviewSVG === 'function') ? routeOverviewSVG({ from: (isNepalPoint(r.from) ? r.from : (parseBP(b.boarding || '').name || r.from)), to: (isNepalPoint(r.to) ? r.to : (parseBP(b.drop || '').name || r.to)), compact: true }) : ''}
@@ -2274,3 +2284,54 @@ function renderStatus(id) {
     } catch (e) {}
   };
 }
+
+/* ----------------------------------------------------------------
+   NEXT TICKET (5 Oct 2026). After a sale the ticket screen offers the next
+   one at the very top - same route and date, straight back to the bus / seat
+   map - instead of Home -> search again. A staff desk has its own bar
+   (14-counter.js), so this one is for the public flow, where agents sell with
+   their agent code.
+---------------------------------------------------------------- */
+function shgNextPassengerReset() {
+  try { window.SHG_QUICK = null; window._shgQuickApplied = ''; } catch (e) {}
+  try {
+    const box = document.getElementById('seatQuick'); if (box) delete box.dataset.filled;
+    ['sqName', 'sqPhone', 'qtName', 'qtPhone'].forEach(function (i) { const el = document.getElementById(i); if (el) el.value = ''; });
+  } catch (e) {}
+}
+function shgNextTicket() {
+  const j = window.SHG_JUST_BOOKED || {};
+  try { if (typeof releaseMyLocks === 'function') releaseMyLocks(); } catch (e) {}
+  const f = document.getElementById('searchForm'), fs = document.getElementById('fromSel'),
+        ts = document.getElementById('toSel'), di = document.getElementById('dateInput');
+  try {
+    if (fs && j.from && [].some.call(fs.options, function (o) { return o.value === j.from; })) fs.value = j.from;
+    if (ts && j.to && [].some.call(ts.options, function (o) { return o.value === j.to; })) ts.value = j.to;
+    if (di && j.date) di.value = j.date;
+    if (typeof setTripType === 'function') setTripType('one');
+  } catch (e) {}
+  if (f && fs && ts && di && fs.value && ts.value && di.value && fs.value !== ts.value) {
+    try { f.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); return; } catch (e) {}
+  }
+  location.hash = '#/';
+}
+(function () {
+  function mount() {
+    const m = /^#\/ticket\/(.+)$/.exec(location.hash || ''), j = window.SHG_JUST_BOOKED;
+    if (!m || !j || decodeURIComponent(m[1]) !== j.pnr || Date.now() - j.at > 30 * 60000) return;
+    if (typeof isCounterSale === 'function' && isCounterSale()) return;
+    const body = document.getElementById('statusBody');
+    if (!body || document.getElementById('nextTicketBar')) return;
+    const el = document.createElement('div');
+    el.id = 'nextTicketBar';
+    el.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;margin:0 0 14px;position:sticky;top:8px;z-index:6';
+    el.innerHTML = '<button type="button" class="btn btn-orange" id="nextTicketBtn" style="flex:1 1 220px;font-size:16px;padding:14px 16px">🎫 Next ticket · अर्को टिकट</button>'
+      + '<a class="btn btn-blue" href="#/" style="flex:0 0 auto;padding:14px 16px">🏠 Home</a>';
+    body.insertBefore(el, body.firstChild);
+    document.getElementById('nextTicketBtn').addEventListener('click', shgNextTicket);
+  }
+  const rs = window.renderStatus;
+  if (typeof rs === 'function') {
+    window.renderStatus = function () { const r = rs.apply(this, arguments); try { mount(); } catch (e) {} return r; };
+  }
+})();

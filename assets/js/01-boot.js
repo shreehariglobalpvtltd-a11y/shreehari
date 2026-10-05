@@ -166,3 +166,38 @@
     dead = true;
   }
 }());
+
+/* ---------------------------------------------------------------------
+   Formatter cache (5 Oct 2026). `date.toLocaleDateString(locale, opts)` and
+   `number.toLocaleString(locale)` build a brand-new Intl formatter on EVERY
+   call - about 2 ms each. The home page's 30-day date strip made 90 of them
+   (twice): 227 ms on a desktop, about a second of frozen screen on an
+   ordinary phone. One formatter per (locale, options) is kept instead; the
+   printed text is identical. Anything unusual falls through to the browser.
+   --------------------------------------------------------------------- */
+(function () {
+  try {
+    if (typeof Intl === 'undefined' || !Intl.DateTimeFormat || !Intl.NumberFormat) return;
+    var dC = {}, nC = {}, nativeD = Date.prototype.toLocaleDateString, nativeN = Number.prototype.toLocaleString;
+    Date.prototype.toLocaleDateString = function (loc, opts) {
+      if (typeof loc === 'string' && opts && typeof opts === 'object'
+          && (opts.weekday || opts.year || opts.month || opts.day)
+          && !opts.dateStyle && !opts.timeStyle && !opts.hour && !opts.minute && !opts.second) {
+        try {
+          var k = loc + '|' + JSON.stringify(opts);
+          return (dC[k] || (dC[k] = new Intl.DateTimeFormat(loc, opts))).format(this);
+        } catch (e) {}
+      }
+      return nativeD.apply(this, arguments);
+    };
+    Number.prototype.toLocaleString = function (loc, opts) {
+      if (typeof loc === 'string') {
+        try {
+          var k = loc + '|' + (opts ? JSON.stringify(opts) : '');
+          return (nC[k] || (nC[k] = new Intl.NumberFormat(loc, opts))).format(this);
+        } catch (e) {}
+      }
+      return nativeN.apply(this, arguments);
+    };
+  } catch (e) {}
+}());

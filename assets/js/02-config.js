@@ -603,7 +603,7 @@ function loadTermsData(cb) {
   if (window.__shgTermsQueue) { window.__shgTermsQueue.push(cb); return; }
   window.__shgTermsQueue = [cb];
   var el = document.createElement('script');
-  el.src = '/assets/js/terms-data.js?v=20261005m';
+  el.src = '/assets/js/terms-data.js?v=20261005n';
   el.onload = function () {
     TERMS_DATA = window.TERMS_DATA || [];
     window.__shgTermsReady = true;
@@ -1516,7 +1516,15 @@ function loadQRCode() {
 }
 
 function makeQR(text, size) {
-  return loadQRCode().then(function () { return new Promise(resolve => {
+  /* 5 Oct 2026: the encoder is ~185 ms of solid work (three quarters of a
+     second on a slow phone) and it ran in the middle of opening the checkout /
+     ticket. It waits for the browser to be idle now, so the screen appears
+     first; every caller already awaits the promise. */
+  const idle = () => new Promise(r => {
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(() => r(), { timeout: 600 });
+    else setTimeout(r, 60);
+  });
+  return loadQRCode().then(idle).then(function () { return new Promise(resolve => {
     if (typeof QRCode === 'undefined') { resolve(''); return; }
     const holder = document.createElement('div');
     $('#qrwork').appendChild(holder);

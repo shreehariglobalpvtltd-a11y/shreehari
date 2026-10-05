@@ -1482,7 +1482,11 @@ function seatQuickSync() {
   if (box.hidden || box.dataset.filled) return;
   box.dataset.filled = '1';
   const q = window.SHG_QUICK || {};
-  const me = (typeof USER !== 'undefined' && USER) ? USER : null;
+  /* 5 Oct 2026: an agent selling on the public site (agent code on the last
+     ticket) is signed in as the PREVIOUS passenger by the quick sale - never
+     offer that name for the next one. */
+  const selling = !!(window.SHG_JUST_BOOKED && window.SHG_JUST_BOOKED.agent);
+  const me = (!selling && typeof USER !== 'undefined' && USER) ? USER : null;
   const v = (id) => { const e = document.getElementById(id); return e && e.value ? e.value.trim() : ''; };
   $('#sqName').value = q.name || v('qtName') || (me && me.name) || '';
   $('#sqPhone').value = q.phone || v('qtPhone') || (me && me.phone) || '';

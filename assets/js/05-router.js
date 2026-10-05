@@ -1284,7 +1284,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261005m" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261005n" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'
@@ -1435,6 +1435,12 @@ function initQuickTicket() {
           if (d && d.undoMin > 0) sessionStorage.setItem('shg_qt_undo', JSON.stringify({ pnr: d.pnr, until: Date.now() + d.undoMin * 60000 }));
           else sessionStorage.removeItem('shg_qt_undo');
         } catch (e3) {}
+        // Next-ticket button on the ticket screen + a clean next passenger (07-checkout.js)
+        try {
+          var jr = (d.route || '').split(/\s*\u2192\s*/);
+          window.SHG_JUST_BOOKED = { pnr: d.pnr, at: Date.now(), from: jr[0] || '', to: jr[1] || '', date: d.date || '', agent: !!qt.agentCode };
+          if (typeof shgNextPassengerReset === 'function') shgNextPassengerReset();
+        } catch (e5) {}
         toast(tf('qtDone', { s: ((d && d.elapsedMs) ? d.elapsedMs / 1000 : 0).toFixed(1) }));
         // Agent code + WhatsApp outcome, said once each.
         if (d && d.agent) setTimeout(function () { toast(d.agent.applied ? tf('qtAgentOk', { code: d.agent.label }) : t('qtAgentNo')); }, 1800);

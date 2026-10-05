@@ -688,3 +688,20 @@ footer{background:linear-gradient(180deg,var(--brand-navy) 0%,var(--brand-navy-9
 :root[data-theme="dark"] .pay-amt .big,
 :root[data-theme="dark"] .bus-card .depTime-big,
 :root[data-theme="dark"] .rules-summary summary{color:#DCE8FF}
+
+/* =====================================================================
+   SNAPPY SCREENS (5 Oct 2026, owner: "app slow lagchha, 165 Hz jasto")
+   A screen change used to fade and slide for 0.4 s over 18 px - on every
+   tap the app felt a beat behind the finger. Same idea, a third of the
+   time and a shorter travel; opacity + transform only, so it runs on the
+   compositor at the display's own refresh rate (60 / 90 / 120 / 165 Hz).
+   ===================================================================== */
+@keyframes shgSnapIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.view.active { animation-name: shgSnapIn; animation-duration: .16s; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
+/* the seat map and checkout keep their opacity-only fade (app.css: a transform on
+   the chain would unstick their fixed action bar) - only made quicker */
+#view-seats.view.active,
+#view-checkout.view.active { animation-duration: .16s; }
+@media (prefers-reduced-motion: reduce) {
+  .view.active, #view-seats.view.active, #view-checkout.view.active { animation: none; }
+}

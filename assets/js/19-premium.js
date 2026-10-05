@@ -236,7 +236,14 @@
      means the first sound is on time instead of being the one that gets
      swallowed. */
   ['pointerdown', 'keydown', 'touchstart'].forEach(function (ev) {
-    window.addEventListener(ev, function () { ctx(); }, { passive: true, once: false });
+    /* 5 Oct 2026: building the AudioContext took ~60 ms INSIDE the first tap
+       (a quarter of a second on a slow phone) - the tap now returns at once
+       and the engine is built right after it; later taps only resume it. */
+    window.addEventListener(ev, function () {
+      if (ac) { ctx(); return; }
+      if (ctx._soon) return;
+      ctx._soon = setTimeout(function () { ctx._soon = 0; ctx(); }, 0);
+    }, { passive: true, once: false });
   });
 
   /* -------------------------------------------------------------------

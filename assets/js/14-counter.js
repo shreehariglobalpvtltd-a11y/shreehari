@@ -226,7 +226,8 @@
      clerk starts over, so it can never ride into the next ticket. */
   function forgetPassenger() {
     try { window.SHG_QUICK = null; } catch (e) {}
-    ['#ctrQuickName', '#ctrQuickPhone'].forEach(function (id) { var el = $q(id); if (el) el.value = ''; });
+    CTR.typed = null;
+    ['#ctrQuickName', '#ctrQuickPhone', '#qtName', '#qtPhone'].forEach(function (id) { var el = $q(id); if (el) el.value = ''; });
   }
 
   /* A counter tab stays open ALL DAY, so deploys never reached it until a
@@ -740,6 +741,15 @@
       if (pp0 && CTR.pax.phone) pp0.value = CTR.pax.phone;
       CTR.pax = null;
     }
+    /* 5 Oct 2026 (owner: "naam dohoryaera lekhnu parchha"): a name / mobile
+       already typed on the home Quick card is this ticket's passenger - carry
+       it here; and what the clerk types is kept if this box is ever rebuilt. */
+    try {
+      var pn1 = $q('#ctrQuickName'), pp1 = $q('#ctrQuickPhone'), qn1 = $q('#qtName'), qp1 = $q('#qtPhone'), ty = CTR.typed || {};
+      if (pn1 && !pn1.value) pn1.value = ty.name || (qn1 && qn1.value.trim()) || '';
+      if (pp1 && !pp1.value) pp1.value = ty.phone || (qp1 && qp1.value.replace(/[^0-9]/g, '')) || '';
+      [pn1, pp1].forEach(function (el) { if (el) el.addEventListener('input', function () { CTR.typed = { name: pn1.value, phone: pp1.value }; }); });
+    } catch (e) {}
     var qa = $q('#ctrQuickAgent');
     if (qa) qa.addEventListener('change', function () { lsSet(KEY_AGENT, qa.value); qa.classList.remove('invalid'); });
     var cont0 = $q('#continueBtn'), scb = $q('#ctrSeatConfirm');
