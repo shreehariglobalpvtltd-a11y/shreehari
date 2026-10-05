@@ -490,7 +490,10 @@ final class AiSensyAPI
             if (class_exists('Notify')) {
                 Notify::logOutbound($to, 'AiSensy bus update ' . $pnr . ' - ' . $event . ' (' . $how . ')', $r['success'] ? 'sent' : 'failed', [
                     'provider'  => 'aisensy',
-                    'bookingId' => $bid > 0 ? $bid : null,
+                    /* A failed bus update is not a failed TICKET: without the
+                       booking id the office "ticket not delivered" alert
+                       (cron/wa-fail-alert.php) leaves it alone. */
+                    'bookingId' => ($r['success'] && $bid > 0) ? $bid : null,
                     'sid'       => (string) $r['message_id'],
                     'purpose'   => 'trip_' . $event,
                     'error'     => $r['success'] ? null : mb_substr((string) $r['error'], 0, 250),
