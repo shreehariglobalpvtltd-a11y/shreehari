@@ -150,6 +150,8 @@ function admin_nav(): array
         // 5 Oct 2026: every number in one place (date / agent filters, export)
         // and campaigns to a list (WhatsApp template, one-tap, SMS).
         ['href' => 'customer-directory.php', 'icon' => 'users', 'label' => '📇 All Customers & Numbers', 'perm' => $agentView ? '__superadmin_only__' : 'customers.view', 'section' => 'Bookings & tickets'],
+        // 5 Oct 2026: any message to any India / Nepal number, one by one, on AiSensy.
+        ['href' => 'wa-compose.php',   'icon' => 'send',      'label' => '💬 WhatsApp message', 'perm' => $agentView ? '__superadmin_only__' : 'customers.view', 'section' => 'Bookings & tickets'],
         ['href' => 'campaigns.php',    'icon' => 'send',      'label' => '📣 Campaigns',       'perm' => $agentView ? '__superadmin_only__' : 'customers.view', 'section' => 'Bookings & tickets'],
         ['href' => 'customer-duplicates.php', 'icon' => 'users', 'label' => 'Duplicate customers', 'perm' => $agentView ? '__superadmin_only__' : 'customers.view', 'section' => 'Bookings & tickets'],
         ['href' => 'enquiries.php',    'icon' => 'mail',      'label' => 'Enquiries',        'perm' => 'customers.view', 'section' => 'Bookings & tickets'],

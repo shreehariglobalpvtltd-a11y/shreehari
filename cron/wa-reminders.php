@@ -72,7 +72,8 @@ if (!Settings::getBool('wa_admin_tools_enabled', true)) {
 
 $driver = Settings::getString('whatsapp_driver', 'click_to_chat');
 $apiOn  = ($driver === 'twilio' && Settings::getString('twilio_account_sid', '') !== '' && Settings::getString('twilio_whatsapp_from', '') !== '')
-       || ($driver === 'cloud_api' && Settings::getString('whatsapp_api_token', '') !== '');
+       || ($driver === 'cloud_api' && Settings::getString('whatsapp_api_token', '') !== '')
+       || ($driver === 'aisensy' && (static function (): bool { require_once ROOT_PATH . '/whatsapp/aisensy.php'; return AiSensyAPI::enabled(); })());
 if (!$apiOn) {
     wa_rem_stop(['skipped' => 'no WhatsApp API configured (whatsapp_driver = ' . $driver . ') — a cron has no staff phone to hand the message to']);
 }

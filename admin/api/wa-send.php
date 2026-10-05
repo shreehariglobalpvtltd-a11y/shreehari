@@ -123,7 +123,8 @@ if ($scopeId !== null && (string) ($reg['target'] ?? '') === 'booking') {
 
 $driver  = Settings::getString('whatsapp_driver', 'click_to_chat');
 $apiOn   = ($driver === 'twilio' && Settings::getString('twilio_account_sid', '') !== '' && Settings::getString('twilio_whatsapp_from', '') !== '')
-        || ($driver === 'cloud_api' && Settings::getString('whatsapp_api_token', '') !== '');
+        || ($driver === 'cloud_api' && Settings::getString('whatsapp_api_token', '') !== '')
+        || ($driver === 'aisensy' && (static function (): bool { require_once ROOT_PATH . '/whatsapp/aisensy.php'; return AiSensyAPI::enabled(); })());
 $sidKey  = (string) $msg['contentSidKey'];
 $contentSid = $sidKey !== '' ? Settings::getString($sidKey, '') : '';
 // The ticket template carries the ticket vars; any other purpose has no
@@ -132,7 +133,7 @@ $contentSid = $sidKey !== '' ? Settings::getString($sidKey, '') : '';
 $templateConfigured = $contentSid !== '' && $msg['templateVars'] !== [];
 $sessionOpen = WaTemplates::inSessionWindow($msg['intl']);
 $paused      = $driver === 'twilio' ? Notify::twilioPause() : null;
-$canAutoSend = $apiOn && $paused === null && ($templateConfigured || $sessionOpen || $driver === 'cloud_api');
+$canAutoSend = $apiOn && $paused === null && ($templateConfigured || $sessionOpen || $driver === 'cloud_api' || $driver === 'aisensy');
 $reason = !$apiOn ? 'No WhatsApp API is configured — the message opens on your phone instead.'
     : ($paused !== null ? 'Twilio is paused after an account-level refusal until ' . date('H:i', (int) $paused['until']) . ' — use your phone for now.'
     : ($canAutoSend ? ($templateConfigured ? 'Sent through the approved template.' : 'This number wrote to us in the last 24 h, so free text is delivered.')
@@ -206,7 +207,10 @@ if ($templateVars === [] && in_array($audience, ['agent', 'office', 'crew'], tru
     ];
 }
 
-$res = Notify::whatsapp(
+/* 5 Oct 2026: on the AiSensy driver a staff message goes once, on its own
+   approved template (sendStaffMessage below) - not a second time through
+   Notify's generic one. */
+$res = ($driver === 'aisensy' && in_array($audience, ['agent', 'office', 'crew'], true)) ? false : Notify::whatsapp(
     $msg['to'],
     $msg['text'],
     $msg['mediaUrl'],
@@ -226,7 +230,7 @@ try {
     if (in_array($audience, ['agent', 'office', 'crew'], true)) {
         require_once ROOT_PATH . '/whatsapp/aisensy.php';
         $aisMode = AiSensyAPI::mode();
-        if (AiSensyAPI::enabled() && ($aisMode === 'always' || ($aisMode === 'fallback' && $res !== true))) {
+        if (AiSensyAPI::enabled() && ($driver === 'aisensy' || $aisMode === 'always' || ($aisMode === 'fallback' && $res !== true))) {
             $ais = AiSensyAPI::sendStaffMessage($msg, $audience);
             Notify::logOutbound(AiSensyAPI::normalizePhone((string) ($msg['intl'] ?: $msg['to'])), $msg['text'], $ais['success'] ? 'sent' : 'failed', [
                 'provider'       => 'aisensy',

@@ -73,9 +73,11 @@ $waReady  = $waDriver === 'twilio'
     ? (Settings::getString('twilio_account_sid', '') !== ''
         && Settings::getString('twilio_auth_token', '') !== ''
         && Settings::getString('twilio_whatsapp_from', '') !== '')
-    : ($waDriver === 'cloud_api'
+    : ($waDriver === 'aisensy'
+        ? (static function (): bool { require_once ROOT_PATH . '/whatsapp/aisensy.php'; return AiSensyAPI::enabled(); })()
+        : ($waDriver === 'cloud_api'
         && Settings::getString('whatsapp_api_token', '') !== ''
-        && Settings::getString('whatsapp_phone_id', '') !== '');
+        && Settings::getString('whatsapp_phone_id', '') !== ''));
 $who = trim((string) ($admin['full_name'] ?? ($admin['username'] ?? 'staff')));
 
 require_once INCLUDE_PATH . '/agentwallet.php';

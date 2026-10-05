@@ -541,6 +541,28 @@ final class Notify
                 // fall through to the click-to-chat link so the ticket is
                 // never lost silently.
             }
+        } elseif ($driver === 'aisensy') {
+            /* 5 Oct 2026 (owner: "only AiSensy default, tesle nai kam garx"):
+               the AiSensy number is the one WhatsApp sender that delivers -
+               Meta refuses everything (131042), Twilio is dead (63112). Every
+               message goes out as the full text inside a 24 h window, else on
+               an approved template (AiSensyAPI::sendAny). */
+            if (!class_exists('AiSensyAPI') && is_file(ROOT_PATH . '/whatsapp/aisensy.php')) {
+                require_once ROOT_PATH . '/whatsapp/aisensy.php';
+            }
+            if (class_exists('AiSensyAPI') && AiSensyAPI::enabled()) {
+                self::$lastProviderError = '';
+                $label = (string) ($meta['label'] ?? ucfirst(str_replace('_', ' ', (string) ($meta['purpose'] ?? 'message'))));
+                $r = AiSensyAPI::sendAny($number, $message, $mediaUrl, (string) ($meta['name'] ?? ''), $label);
+                if ($r['success']) {
+                    self::$journal[] = ['to' => $number, 'ok' => true, 'link' => null, 'driver' => 'aisensy', 'reason' => ''];
+                    self::logMessage('whatsapp', $number, $message, 'sent', [
+                        'provider' => 'aisensy', 'bookingId' => $bookingId, 'sid' => (string) $r['message_id'],
+                    ] + $meta);
+                    return true;
+                }
+                self::$lastProviderError = 'AiSensy: ' . (string) $r['error'];
+            }
         }
 
         // No driver configured, or the configured driver failed — log a
@@ -761,6 +783,14 @@ final class Notify
                     . $pausedNote];
         }
 
+        if ($driver === 'aisensy') {
+            $ok = self::whatsapp($phone, $msg, null, $countryHint, [], null, ['purpose' => 'test', 'label' => 'WhatsApp test']);
+            $last = self::$journal !== [] ? self::$journal[count(self::$journal) - 1] : [];
+            return $ok === true
+                ? ['ok' => true, 'stage' => 'sent', 'detail' => 'AiSensy accepted it for +' . $number . ' - check WhatsApp on that phone (delivery shows in Admin -> Messages log).']
+                : ['ok' => false, 'stage' => 'api', 'detail' => 'AiSensy did not accept it' . (self::$lastProviderError !== '' ? ': ' . self::$lastProviderError : '') . (($last['reason'] ?? '') === 'number' ? ' (not a usable number)' : '') . '.'];
+        }
+
         if ($driver === 'cloud_api') {
             $ok = self::whatsapp($phone, $msg, null, $countryHint);
             return $ok === true
@@ -784,7 +814,7 @@ final class Notify
         }
 
         return ['ok' => false, 'stage' => 'driver',
-            'detail' => 'WhatsApp driver is "click-to-chat", which does not auto-send. Set whatsapp_driver to "twilio", "cloud_api" or "gupshup" above, Save, then test.'];
+            'detail' => 'WhatsApp driver is "click-to-chat", which does not auto-send. Set whatsapp_driver to "aisensy" (recommended), "twilio", "cloud_api" or "gupshup" above, Save, then test.'];
     }
 
     /** Friendly, actionable advice for the common Twilio WhatsApp error codes. */
@@ -932,7 +962,7 @@ final class Notify
                 }
                 // AiSensy is the sender (mode always) and it really tried this
                 // number: the Meta path below only adds a second failed row.
-                if ($ais['to'] !== '' && AiSensyAPI::mode() === 'always') {
+                if ($ais['to'] !== '' && (AiSensyAPI::mode() === 'always' || Settings::getString('whatsapp_driver', '') === 'aisensy')) {
                     return ['ok' => false, 'provider' => 'aisensy',
                         'detail' => 'AiSensy did not accept the ticket for +' . $ais['to'] . ': ' . ($ais['detail'] !== '' ? $ais['detail'] : 'no reason given') . '.'];
                 }
@@ -1025,7 +1055,8 @@ final class Notify
         }
 
         $driver = Settings::getString('whatsapp_driver', 'click_to_chat');
-        $templateInForce = ($driver === 'twilio' && Settings::getString('twilio_content_sid', '') !== '')
+        $templateInForce = $driver === 'aisensy'
+            || ($driver === 'twilio' && Settings::getString('twilio_content_sid', '') !== '')
             || ($driver === 'cloud_api' && Settings::getString('whatsapp_template_name', '') !== '')
             || ($driver === 'gupshup' && (Settings::getString('whatsapp_template_name_gupshup', '') !== ''
                                            || Settings::getString('whatsapp_template_name', '') !== ''));
@@ -1811,7 +1842,8 @@ final class Notify
             if (!class_exists('AiSensyAPI') && is_file(ROOT_PATH . '/whatsapp/aisensy.php')) {
                 require_once ROOT_PATH . '/whatsapp/aisensy.php';
             }
-            if (!class_exists('AiSensyAPI') || !AiSensyAPI::enabled() || AiSensyAPI::mode() !== 'always') {
+            if (!class_exists('AiSensyAPI') || !AiSensyAPI::enabled() || AiSensyAPI::mode() === 'off'
+                || (AiSensyAPI::mode() !== 'always' && Settings::getString('whatsapp_driver', '') !== 'aisensy')) {
                 return null;
             }
             $to = AiSensyAPI::normalizePhone($number);

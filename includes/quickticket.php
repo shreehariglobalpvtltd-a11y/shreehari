@@ -1260,6 +1260,7 @@ final class QuickTicket
                            && Settings::getString('twilio_whatsapp_from', '') !== '',
             'cloud_api' => Settings::getString('whatsapp_api_token', '') !== ''
                            && Settings::getString('whatsapp_phone_id', '') !== '',
+            'aisensy'   => (static function (): bool { require_once ROOT_PATH . '/whatsapp/aisensy.php'; return AiSensyAPI::enabled(); })(),
             default     => false,
         };
         $to   = Notify::whatsappNumberFor($booking);

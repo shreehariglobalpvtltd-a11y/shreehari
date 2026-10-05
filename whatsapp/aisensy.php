@@ -157,7 +157,7 @@ final class AiSensyAPI
         if (strlen($d) === 12 && str_starts_with($d, '91') && preg_match('/^91[6-9]/', $d)) {
             return $d;
         }
-        if (strlen($d) === 13 && str_starts_with($d, '977') && preg_match('/^9779[78]/', $d)) {
+        if (strlen($d) === 13 && str_starts_with($d, '977') && preg_match('/^9779[678]/', $d)) {
             return $d;
         }
         return '';
@@ -435,6 +435,80 @@ final class AiSensyAPI
         }
         $r = self::sendText($to, $text . ($media !== '' && !str_contains($text, $media) ? "\n" . $media : ''));
         return $r + ['how' => 'text'];
+    }
+
+    /** Any message to anyone (5 Oct 2026): {{1}} name {{2}} the message. Submitted for approval. */
+    public const TPL_MESSAGE = 'shg_message';
+
+    /** Longest message that still fits one template variable (Meta: 1024 for the whole body). */
+    public const MESSAGE_MAX = 850;
+
+    /**
+     * Send ANY message to one number (5 Oct 2026, owner: "jun number ma j msg
+     * ni lekhera 1-1 jana lai pathaun milne"). AiSensy is the only WhatsApp
+     * sender that works, so Notify::whatsapp() hands every non-ticket message
+     * here when whatsapp_driver = aisensy.
+     *
+     *   1. the number wrote to us in the last 24 h  -> the full text / picture (free)
+     *   2. shg_message template (once approved)      -> "Namaste {{1}}, ... {{2}}"
+     *   3. shg_office_update (approved)              -> "Report: {{1}}. Details: {{2}}"
+     *   4. plain text (only lands inside a 24 h window - last resort)
+     *
+     * A template variable cannot hold a newline, so lines are joined with " · ".
+     *
+     * @return array{success: bool, message_id: string, http: int, error: string, response: mixed, how: string}
+     */
+    public static function sendAny(string $phone, string $text, ?string $mediaUrl = null, string $name = '', string $label = ''): array
+    {
+        $text  = trim($text);
+        $media = trim((string) $mediaUrl);
+        $isImg = $media !== '' && preg_match('#\.(png|jpe?g|webp)(\?|$)|[?&]img=1#i', $media) === 1;
+        $to    = self::normalizePhone($phone);
+        if ($to === '' || $text === '') {
+            return ['success' => false, 'message_id' => '', 'http' => 0, 'response' => null, 'how' => '',
+                    'error' => $to === '' ? 'not an India / Nepal mobile number' : 'empty message'];
+        }
+
+        $window = false;
+        try {
+            if (!class_exists('WaQueue') && defined('INCLUDE_PATH') && is_file(INCLUDE_PATH . '/waqueue.php')) {
+                require_once INCLUDE_PATH . '/waqueue.php';
+            }
+            $window = class_exists('WaQueue') && WaQueue::ready() && WaQueue::windowOpen($to);
+        } catch (Throwable $ignored) {
+            $window = false;
+        }
+        if ($window) {
+            $r = ($isImg && mb_strlen($text) <= 1024) ? self::sendImage($to, $media, $text)
+                : self::sendText($to, $text . ($media !== '' && !str_contains($text, $media) ? "\n" . $media : ''));
+            if ($r['success']) {
+                return $r + ['how' => 'free text (24 h window)'];
+            }
+        }
+
+        $flat = trim((string) preg_replace('/\s*\R\s*/u', ' · ', $text));
+        $flat = (string) preg_replace('/[ \t]{4,}/', '   ', $flat);   // Meta: no 4+ spaces in a variable
+        if ($media !== '' && !str_contains($flat, $media)) {
+            $flat .= ' · ' . $media;
+        }
+        $flat = mb_substr($flat, 0, self::MESSAGE_MAX);
+        $name = trim($name) !== '' ? mb_substr(trim($name), 0, 60) : 'Sir / Madam';
+
+        $r = self::sendMessage($to, self::tpl('aisensy_tpl_message', self::TPL_MESSAGE), [$name, $flat]);
+        if ($r['success']) {
+            return $r + ['how' => 'template ' . self::tpl('aisensy_tpl_message', self::TPL_MESSAGE)];
+        }
+        $r = self::sendMessage($to, self::tpl('aisensy_tpl_office', self::TPL_OFFICE), [trim($label) !== '' ? mb_substr(trim($label), 0, 60) : 'Message', $flat]);
+        if ($r['success']) {
+            return $r + ['how' => 'template ' . self::tpl('aisensy_tpl_office', self::TPL_OFFICE)];
+        }
+        if (!$window) {
+            $r2 = self::sendText($to, $text . ($media !== '' && !str_contains($text, $media) ? "\n" . $media : ''));
+            if ($r2['success']) {
+                return $r2 + ['how' => 'free text'];
+            }
+        }
+        return $r + ['how' => 'template'];
     }
 
     /* -----------------------------------------------------------------
