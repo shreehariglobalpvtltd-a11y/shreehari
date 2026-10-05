@@ -546,7 +546,20 @@ final class BookingService
                     $maxPct = max(0.0, Settings::getFloat('counter_max_discount_pct', 15.0));
                     $cap    = round((float) $pricing['base'] * $maxPct / 100, 2);
                     $cd     = min($raw, $cap, (float) $pricing['total']);
-                    if ($cd > 0) {
+                    /* 6 Oct 2026: the clerk's discount and the office's running offer
+                       (Dashain 10%) never stack - the passenger gets the BIGGER one,
+                       as the desk form (counterSale) already did. Stacked, a 15%
+                       desk cap plus a 10% offer let a sale go out at 25% off. A counter
+                       sale carries no typed code (api/book.php), so couponDiscount here
+                       is only the automatic offer. */
+                    $offerCut = (float) ($pricing['couponDiscount'] ?? 0);
+                    if ($cd > 0 && $offerCut > 0) {
+                        if ($cd > $offerCut) {
+                            $pricing['total']          = round((float) $pricing['total'] + $offerCut - $cd, 2);
+                            $pricing['couponDiscount'] = round($cd, 2);
+                            $pricing['couponCode']     = null;      // the offer was not used: not redeemed
+                        }
+                    } elseif ($cd > 0) {
                         $pricing['couponDiscount'] = round((float) $pricing['couponDiscount'] + $cd, 2);
                         $pricing['total']          = round((float) $pricing['total'] - $cd, 2);
                     }
@@ -1003,7 +1016,7 @@ final class BookingService
         $offerCode = null;
         $amountTyped = isset($data['amount']) && (float) $data['amount'] > 0;
         if ($discount <= 0 && !$amountTyped && $base > 0) {
-            $auto = Fare::autoOffer($base, $phone, (int) $route['id']);
+            $auto = Fare::autoOffer($base, $phone, (int) $route['id'], Fare::departTs(['id' => $scheduleId], $route));
             if (!empty($auto['ok'])) {
                 $discount  = min(round((float) $auto['amount'], 2), $base);
                 $offerCode = (string) $auto['code'];
@@ -3094,7 +3107,8 @@ final class BookingService
             $pointsAvailable,
             (string) ($request['couponCode'] ?? ''),
             $phone,
-            (int) $route['id']
+            (int) $route['id'],
+            Fare::departTs($schedule, $route)
         );
 
         return [

@@ -133,6 +133,8 @@ try {
     check('anonymous payment still pending / utr', $pay2 !== null && $pay2['status'] === 'pending' && $pay2['mode'] === 'utr');
 
     echo "-- 3. Counter discount is clamped --\n";
+    // A running office offer (Dashain 10%) would change these sums; parked here, restored at the end.
+    Database::run('UPDATE coupons SET auto_apply = 7 WHERE auto_apply = 1');
     $b3 = BookingService::create($req(['L31', 'L32'], '3'), $seller(['discountType' => 'percent', 'discountValue' => 50, 'paymentMethod' => 'upi']));
     $cap = round((float) $b3['base_total'] * 0.15, 2);
     check('50% asked → capped at 15% of base', abs((float) $b3['coupon_discount'] - $cap) < 0.01, 'discount=' . $b3['coupon_discount'] . ' cap=' . $cap);
@@ -141,6 +143,25 @@ try {
     check('payment method UPI received, amount = discounted total', $pay3 !== null && $pay3['method'] === 'upi' && (float) $pay3['amount'] === (float) $b3['total_amount']);
     $b3b = BookingService::create($req(['L33'], '4'), $seller(['discountType' => 'flat', 'discountValue' => 100]));
     check('flat ₹100 under the cap applies as-is', (float) $b3b['coupon_discount'] === 100.0, 'discount=' . $b3b['coupon_discount']);
+
+    /* 6 Oct 2026: with a running office offer (10% when booked 24 h ahead) the
+       desk discount never stacks on it - the passenger gets the bigger one. */
+    if (Database::fetch("SHOW COLUMNS FROM coupons LIKE 'min_hours_ahead'") !== null) {
+        Database::delete('coupons', 'code = :c', ['c' => 'TESTNOSTACK']);
+        Database::insert('coupons', ['code' => 'TESTNOSTACK', 'title' => 'Test no-stack offer', 'discount_type' => 'percent',
+            'discount_value' => 10, 'max_discount' => 5000, 'min_amount' => 0, 'valid_from' => null, 'valid_until' => null,
+            'is_active' => 1, 'auto_apply' => 1, 'per_user_limit' => 0, 'used_count' => 0, 'min_hours_ahead' => 24]);
+        $b3c = BookingService::create($req(['L26'], '11'), $seller(['discountType' => 'flat', 'discountValue' => 100]));
+        $ten = round((float) $b3c['base_total'] * 0.10);
+        check('offer 10% vs desk ₹100 → the offer only (no stacking)', abs((float) $b3c['coupon_discount'] - $ten) < 0.01 && (string) $b3c['coupon_code'] === 'TESTNOSTACK',
+            'discount=' . $b3c['coupon_discount'] . ' code=' . $b3c['coupon_code']);
+        $b3d = BookingService::create($req(['L27'], '12'), $seller(['discountType' => 'percent', 'discountValue' => 15]));
+        $fif = round((float) $b3d['base_total'] * 0.15, 2);
+        check('offer 10% vs desk 15% → the desk 15% only, offer not redeemed', abs((float) $b3d['coupon_discount'] - $fif) < 0.01 && ($b3d['coupon_code'] ?? '') === '',
+            'discount=' . $b3d['coupon_discount'] . ' code=' . ($b3d['coupon_code'] ?? 'null'));
+        check('  never more than the 15% desk cap in total', (float) $b3d['coupon_discount'] <= round((float) $b3d['base_total'] * 0.15, 2) + 0.01);
+        Database::delete('coupons', 'code = :c', ['c' => 'TESTNOSTACK']);
+    }
 
     echo "-- 4. Split seat caps: customer 6, counter 20 (bulk booking, 5 Sep 2026) --\n";
     $b4 = BookingService::create($req(['L34', 'L35', 'L36', 'U1', 'U2', 'U3', 'U4'], '5'), $seller());
@@ -254,6 +275,8 @@ try {
     check('unexpected exception: ' . $e->getMessage(), false);
 } finally {
     $cleanup();
+    try { Database::delete('coupons', 'code = :c', ['c' => 'TESTNOSTACK']); } catch (Throwable $e) {}
+    try { Database::run('UPDATE coupons SET auto_apply = 1 WHERE auto_apply = 7'); } catch (Throwable $e) {}
     try { Database::delete('agent_ledger', 'agent_admin_id = :a', ['a' => $agentId]); } catch (Throwable $e) {}
     try { Database::delete('admins', 'id = :i', ['i' => $agentId]); } catch (Throwable $e) {}
 }

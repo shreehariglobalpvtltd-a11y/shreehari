@@ -94,7 +94,8 @@ try {
         $avail,
         Security::clean(Response::field('couponCode', ''), 40),
         $phone,
-        $routeId
+        $routeId,
+        isset($qs) && $qs !== null && (int) $qs['route_id'] === $routeId ? Fare::departTs(['id' => $quoteSid], $route) : null
     );
 
     Response::success([

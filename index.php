@@ -92,6 +92,19 @@ $boot = [
                   && (Settings::getString('anthropic_api_key', '') !== '' || Settings::getString('gemini_api_key', '') !== ''
                       || Settings::getString('openai_api_key', '') !== ''),
     'settings' => Settings::publicSettings(),
+    // 6 Oct 2026: the office offers running TODAY (Admin -> Offers, auto-apply) -
+    // the top ribbon shows them and hides itself the day after valid_until.
+    'offers'   => (static function (): array {
+        try {
+            require_once INCLUDE_PATH . '/fare.php';
+            return array_map(static fn (array $o): array => [
+                'code' => $o['code'], 'title' => $o['title'], 'type' => $o['type'], 'value' => $o['value'],
+                'max' => $o['max'], 'min' => $o['min'], 'ahead' => (int) ($o['ahead'] ?? 0), 'until' => $o['until'],
+            ], array_slice(Fare::runningOffers(), 0, 2));
+        } catch (Throwable $e) {
+            return [];
+        }
+    })(),
     // The ONE pickup list (Admin -> Routes, ON stops of active routes, with
     // time + per-pickup fare) — the homepage picker and fare board read it.
     'locations' => Boarding::bootLocations(),

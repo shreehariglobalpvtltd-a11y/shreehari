@@ -62,6 +62,9 @@ $prior  = [];
 foreach ($PINNED as $k) {
     $prior[$k] = Database::fetch('SELECT svalue, stype, sgroup, is_public FROM settings WHERE skey = :k', ['k' => $k]);
 }
+// A running office offer (e.g. the 6 Oct 2026 Dashain 24 h offer) would change every
+// fare below; tests/advance-offer-test.php covers it. Parked here, restored in finally.
+Database::run('UPDATE coupons SET auto_apply = 5 WHERE auto_apply = 1');
 $restoreSettings = static function () use ($PINNED, $prior): void {
     foreach ($PINNED as $k) {
         $row = $prior[$k];
@@ -577,6 +580,7 @@ try {
 } finally {
     $cleanup();
     $restoreSettings();
+    Database::run('UPDATE coupons SET auto_apply = 1 WHERE auto_apply = 5');
     unset($_SESSION[ADMIN_SESSION_KEY]);
 }
 

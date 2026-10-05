@@ -674,7 +674,7 @@ final class QuickTicket
             $perSeat = $override;
         }
         $base  = round($perSeat * $count, 2);
-        $quote = Fare::quote($base, $count, 0, 0, 0, '', $phone, (int) $route['id']);
+        $quote = Fare::quote($base, $count, 0, 0, 0, '', $phone, (int) $route['id'], Fare::departTs($schedule, $route));
 
         // The office offer that applied, by its own title (breakdown label).
         $offerCut   = (float) ($quote['couponDiscount'] ?? 0);

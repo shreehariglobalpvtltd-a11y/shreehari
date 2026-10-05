@@ -486,7 +486,36 @@ final class Fare
      *
      * @return array{ok: bool, amount?: float, code?: string, title?: string}
      */
-    public static function autoOffer(float $subtotal, string $phone, ?int $routeId = null): array
+    /**
+     * When this bus leaves its first stop (unix time): travel_date + the
+     * departure's own time, else the route's. Null when it cannot be told.
+     * Used by "book N hours before departure" offers (6 Oct 2026).
+     *
+     * @param array<string,mixed>|null $schedule schedules row (travel_date, dep_time_override?, route_id)
+     * @param array<string,mixed>|null $route    routes row (dep_time) — read when not given
+     */
+    public static function departTs(?array $schedule, ?array $route = null): ?int
+    {
+        if ($schedule === null || empty($schedule['travel_date'])) {
+            if ($schedule !== null && !empty($schedule['id'])) {
+                $schedule = Database::fetch('SELECT * FROM schedules WHERE id = :id', ['id' => (int) $schedule['id']]);
+            }
+            if ($schedule === null || empty($schedule['travel_date'])) {
+                return null;
+            }
+        }
+        $time = (string) ($schedule['dep_time_override'] ?? '');
+        if ($time === '') {
+            if ($route === null || !array_key_exists('dep_time', $route)) {
+                $route = Database::fetch('SELECT dep_time FROM routes WHERE id = :id', ['id' => (int) ($schedule['route_id'] ?? 0)]);
+            }
+            $time = (string) ($route['dep_time'] ?? '');
+        }
+        $ts = strtotime((string) $schedule['travel_date'] . ' ' . ($time !== '' ? $time : '00:00:00'));
+        return $ts !== false ? $ts : null;
+    }
+
+    public static function autoOffer(float $subtotal, string $phone, ?int $routeId = null, ?int $departTs = null): array
     {
         $today = todayISO();
         $rows  = Database::fetchAll(
@@ -502,7 +531,7 @@ final class Fare
 
         $best = ['ok' => false];
         foreach ($rows as $row) {
-            $try = self::couponDiscount((string) $row['code'], $subtotal, $phone, $routeId);
+            $try = self::couponDiscount((string) $row['code'], $subtotal, $phone, $routeId, $departTs);
             if (!empty($try['ok']) && (float) $try['amount'] > (float) ($best['amount'] ?? 0)) {
                 $best = [
                     'ok'     => true,
@@ -531,8 +560,7 @@ final class Fare
         try {
             $today = todayISO();
             $rows  = Database::fetchAll(
-                "SELECT code, title, discount_type, discount_value, max_discount, min_amount, route_id, valid_until,
-                        usage_limit, used_count
+                "SELECT *
                    FROM coupons
                   WHERE is_active = 1 AND auto_apply = 1
                     AND (valid_from  IS NULL OR valid_from  <= :d1)
@@ -559,6 +587,7 @@ final class Fare
                 'routeId' => $r['route_id'] !== null ? (int) $r['route_id'] : null,
                 'until'   => (string) ($r['valid_until'] ?? ''),
                 'left'    => $r['usage_limit'] !== null ? max(0, (int) $r['usage_limit'] - (int) $r['used_count']) : null,
+                'ahead'   => (int) ($r['min_hours_ahead'] ?? 0),
             ];
         }
         return $out;
@@ -572,10 +601,11 @@ final class Fare
             : inr($o['value']) . ' off';
         return $o['title'] . ' — ' . $amt
             . ($o['min'] > 0 ? ', on bookings of ' . inr($o['min']) . '+' : '')
+            . ((int) ($o['ahead'] ?? 0) > 0 ? ', when booked ' . (int) $o['ahead'] . ' hours or more before departure' : '')
             . ($o['until'] !== '' ? ', until ' . date('j M', (int) strtotime($o['until'])) : '');
     }
 
-    public static function couponDiscount(string $code, float $subtotal, string $phone, ?int $routeId = null): array
+    public static function couponDiscount(string $code, float $subtotal, string $phone, ?int $routeId = null, ?int $departTs = null): array
     {
         $code = strtoupper(Security::clean($code, 40));
 
@@ -605,6 +635,12 @@ final class Fare
         }
         if ($subtotal < (float) $coupon['min_amount']) {
             return ['ok' => false, 'error' => 'This coupon needs a minimum booking of ' . inr((float) $coupon['min_amount']) . '.'];
+        }
+        // 6 Oct 2026 - "book 24 hours before departure" offers (coupons.min_hours_ahead).
+        // No known departure = no discount: the rule is never guessed in the passenger's favour.
+        $ahead = (int) ($coupon['min_hours_ahead'] ?? 0);
+        if ($ahead > 0 && ($departTs === null || $departTs - time() < $ahead * 3600)) {
+            return ['ok' => false, 'error' => 'This offer is for seats booked at least ' . $ahead . ' hours before departure.'];
         }
         if ($coupon['usage_limit'] !== null && (int) $coupon['used_count'] >= (int) $coupon['usage_limit']) {
             return ['ok' => false, 'error' => 'This coupon has been fully redeemed.'];
@@ -764,7 +800,8 @@ final class Fare
         int $pointsAvailable = 0,
         string $couponCode = '',
         string $phone = '',
-        ?int $routeId = null
+        ?int $routeId = null,
+        ?int $departTs = null
     ): array {
         $breakdown = [['label' => 'Base fare', 'amount' => $baseAmount]];
 
@@ -779,14 +816,14 @@ final class Fare
         // 2. Coupon — typed by the passenger, or the running offer
         $couponCut = 0.0;
         if ($couponCode !== '') {
-            $couponResult = self::couponDiscount($couponCode, $running, $phone, $routeId);
+            $couponResult = self::couponDiscount($couponCode, $running, $phone, $routeId, $departTs);
             if ($couponResult['ok']) {
                 $couponCut   = (float) $couponResult['amount'];
                 $running    -= $couponCut;
                 $breakdown[] = ['label' => 'Coupon ' . strtoupper($couponCode), 'amount' => -$couponCut];
             }
         } else {
-            $auto = self::autoOffer($running, $phone, $routeId);
+            $auto = self::autoOffer($running, $phone, $routeId, $departTs);
             if (!empty($auto['ok'])) {
                 $couponCut   = (float) $auto['amount'];
                 $running    -= $couponCut;

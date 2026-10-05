@@ -49,6 +49,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 Logger::audit('offer.delete', 'coupon', (string) ($row['code'] ?? $id), null, null, 'deleted');
                 $flash = ['ok', 'Offer deleted.'];
             } elseif ($act === 'save') {
+                $hasAhead = Database::fetch("SHOW COLUMNS FROM coupons LIKE 'min_hours_ahead'") !== null;
                 $code  = strtoupper(Security::clean($_POST['code'] ?? '', 40));
                 $title = Security::clean($_POST['title'] ?? '', 120);
                 $type  = ($_POST['discount_type'] ?? 'flat') === 'percent' ? 'percent' : 'flat';
@@ -59,6 +60,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $until = trim((string) ($_POST['valid_until'] ?? '')) !== '' ? (string) $_POST['valid_until'] : null;
                 $auto  = !empty($_POST['auto_apply']) ? 1 : 0;
                 $live  = !empty($_POST['is_active']) ? 1 : 0;
+                $ahead = max(0, min(720, (int) ($_POST['min_hours_ahead'] ?? 0)));
 
                 if ($code === '' || !preg_match('/^[A-Z0-9_-]{3,40}$/', $code)) {
                     $flash = ['bad', 'Give the offer a short code — letters, numbers, - or _ (3 to 40).'];
@@ -84,6 +86,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                         'auto_apply'     => $auto,
                         'is_active'      => $live,
                     ];
+                    if ($hasAhead) {
+                        $data['min_hours_ahead'] = $ahead > 0 ? $ahead : null;
+                    }
                     if ($id > 0) {
                         Database::update('coupons', $data, 'id = :i', ['i' => $id]);
                         Logger::audit('offer.update', 'coupon', $code, null, null, (string) json_encode($data));
@@ -276,6 +281,10 @@ $srCut     = Settings::getFloat('sharing_short_run_discount_inr', 200.0);
       <label>Ends</label>
       <input name="valid_until" type="date" value="<?= Security::e((string) ($editing['valid_until'] ?? '')) ?>">
     </div>
+    <div>
+      <label>Only when booked this many hours before departure (0 = any time)</label>
+      <input name="min_hours_ahead" type="number" min="0" max="720" value="<?= (int) ($editing['min_hours_ahead'] ?? 0) ?>" placeholder="24">
+    </div>
   </div>
 
   <div style="margin-top:12px;display:flex;gap:18px;flex-wrap:wrap">
@@ -332,6 +341,9 @@ $srCut     = Settings::getFloat('sharing_short_run_discount_inr', 200.0);
         <?= $isAuto ? '<span class="pill-auto">Automatic</span>' : '<span class="pill-code">Needs code</span>' ?>
         <?php if ((float) $o['min_amount'] > 0): ?>
           <div class="muted" style="font-size:11px">above <?= Security::e(inr((float) $o['min_amount'])) ?></div>
+        <?php endif; ?>
+        <?php if ((int) ($o['min_hours_ahead'] ?? 0) > 0): ?>
+          <div class="muted" style="font-size:11px">booked <?= (int) $o['min_hours_ahead'] ?> h+ before departure</div>
         <?php endif; ?>
       </td>
       <td style="font-size:12px">

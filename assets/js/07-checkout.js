@@ -937,11 +937,39 @@ function renderCheckout() {
     coView.classList.toggle('sharing-mode', !hasPrivateLeg && cabinLegs.some(l => l.bookingType === 'sharing'));
   }
 
+  /* The office's running offer (Admin → Offers, auto-apply; 6 Oct 2026) —
+     the SAME rule Fare::couponDiscount() applies at the sale: percent/flat,
+     the max, the minimum, and "booked N hours before departure" against the
+     first leg's bus time. Without it the UPI amount here was the full fare
+     while the server charged the offer price. */
+  const offerFor = (amount) => {
+    const list = (window.SHG_BOOT && Array.isArray(window.SHG_BOOT.offers)) ? window.SHG_BOOT.offers : [];
+    if (!list.length || !(amount > 0)) return { amt: 0, title: '' };
+    const l0 = legs[0] || {};
+    const r0 = routeById(l0.routeId) || {};
+    const hm = (String(l0.depTime || r0.depTime || '').match(/(\d{1,2}):(\d{2})/) || [null, '00', '00']);
+    const dep = Date.parse(String(l0.date || '') + 'T' + String(hm[1]).padStart(2, '0') + ':' + hm[2] + ':00+05:30');
+    let best = { amt: 0, title: '' };
+    list.forEach((o) => {
+      if (!(Number(o.value) > 0) || amount < Number(o.min || 0)) return;
+      const h = Number(o.ahead) || 0;
+      if (h > 0 && (isNaN(dep) || dep - Date.now() < h * 3600000)) return;
+      let a = o.type === 'percent' ? Math.round(amount * Number(o.value) / 100) : Number(o.value);
+      if (Number(o.max) > 0) a = Math.min(a, Number(o.max));
+      a = Math.min(a, amount);
+      if (a > best.amt) best = { amt: a, title: String(o.title || o.code || '') };
+    });
+    return best;
+  };
+
   const checkoutTotals = () => {
-    const tierDisc = (CONFIG.loyaltyTierDiscountOn && tierInfo && tierInfo.tier.discountPct > 0) ? Math.round(fareBase * tierInfo.tier.discountPct / 100) : 0;
-    const afterTier = fareBase - tierDisc;
+    const offer = offerFor(fareBase);
+    const afterOffer = fareBase - offer.amt;
+    const tierDisc = (CONFIG.loyaltyTierDiscountOn && tierInfo && tierInfo.tier.discountPct > 0) ? Math.round(afterOffer * tierInfo.tier.discountPct / 100) : 0;
+    const afterTier = afterOffer - tierDisc;
     const red = Flow.usePoints ? loyaltyRedemption(me, (me && me.loyaltyPoints) || 0, afterTier) : { points: 0, rupees: 0 };
     return { tierDisc: tierDisc, tierName: tierInfo ? tierInfo.tier.icon + ' ' + tierInfo.tier.name : '',
+             offerDisc: offer.amt, offerTitle: offer.title,
              points: red.points, pointsValue: red.rupees, total: Math.max(1, afterTier - red.rupees),
              fareBad: !fareOk(fareBase) };
   };
@@ -979,6 +1007,7 @@ function renderCheckout() {
   const updatePayment = () => {
     const x = checkoutTotals();
     let rows = useCabin ? cabinRows : fareRowsHTML(f);
+    if (x.offerDisc > 0) rows += '<div class="sum-row disc offer-row"><span>🪔 ' + esc(x.offerTitle) + '</span><b>− ' + inr(x.offerDisc) + '</b></div>';
     if (x.tierDisc > 0) rows += '<div class="sum-row disc"><span>' + tf('loyRowTier', { t: tierInfo.tier.icon + ' ' + tierInfo.tier.name }) + '</span><b>− ' + inr(x.tierDisc) + '</b></div>';
     if (x.pointsValue > 0) rows += '<div class="sum-row disc"><span>' + t('loyRowPoints') + ' (' + x.points + ')</span><b>− ' + inr(x.pointsValue) + '</b></div>';
     /* opt-in points checkbox — only when the user has enough points */
@@ -1361,6 +1390,7 @@ async function submitBooking() {
     farePerSeat: out.fare, baseTotal: f.base, discount: f.discount, fee: f.fee,
     total: apiResult.total,   // server-authoritative amount — may include coupon/tier/points math the client preview approximated
     tierDiscount: x.tierDisc, tierName: x.tierDisc > 0 ? x.tierName : '',
+    offerDiscount: x.offerDisc || 0, offerTitle: x.offerDisc > 0 ? x.offerTitle : '',
     pointsUsed: x.points, pointsValue: x.pointsValue,
     pointsBy: (x.points > 0 && me) ? me.phone : '',
     referralCode: refCode,
@@ -1956,13 +1986,15 @@ function renderStatus(id) {
     fareRows = paxFareRow + '<div class="sum-row"><span>' + esc(b.cabinLabel) + '</span><b>' + inr(b.cabinFare || b.total) + '</b></div>'
       + '<div class="sum-row"><span>Booking</span><b>' + esc(b.bookingType.charAt(0).toUpperCase() + b.bookingType.slice(1)) + '</b></div>'
       + (b.sharingTier ? '<div class="sum-row"><span>Sharing tier · साझा टियर</span><b>' + sharingTierLabel(b.sharingTier) + '</b></div>' : '')
+      + (b.offerDiscount > 0 ? '<div class="sum-row disc"><span>🪔 ' + esc(b.offerTitle || '') + '</span><b>− ' + inr(b.offerDiscount) + '</b></div>' : '')
       + (b.tierDiscount > 0 ? '<div class="sum-row disc"><span>' + tf('loyRowTier', { t: esc(b.tierName || '⭐') }) + '</span><b>− ' + inr(b.tierDiscount) + '</b></div>' : '')
       + (b.pointsValue > 0 ? '<div class="sum-row disc"><span>' + t('loyRowPoints') + ' (' + b.pointsUsed + ')</span><b>− ' + inr(b.pointsValue) + '</b></div>' : '')
       + '<div class="sum-row"><span>' + t('tkFareT') + '</span><b>' + inr(b.total) + '</b></div>';
   } else {
-    fareRows = paxFareRow + ((b.discount > 0 || b.fee > 0 || b.tierDiscount > 0 || b.pointsValue > 0)
+    fareRows = paxFareRow + ((b.discount > 0 || b.fee > 0 || b.tierDiscount > 0 || b.pointsValue > 0 || b.offerDiscount > 0)
       ? '<div class="sum-row"><span>' + t('rowBase') + '</span><b>' + inr(b.baseTotal || b.total) + '</b></div>'
         + (b.discount > 0 ? '<div class="sum-row disc"><span>' + t('rowGroup') + '</span><b>− ' + inr(b.discount) + '</b></div>' : '')
+        + (b.offerDiscount > 0 ? '<div class="sum-row disc"><span>🪔 ' + esc(b.offerTitle || '') + '</span><b>− ' + inr(b.offerDiscount) + '</b></div>' : '')
         + (b.tierDiscount > 0 ? '<div class="sum-row disc"><span>' + tf('loyRowTier', { t: esc(b.tierName || '⭐') }) + '</span><b>− ' + inr(b.tierDiscount) + '</b></div>' : '')
         + (b.pointsValue > 0 ? '<div class="sum-row disc"><span>' + t('loyRowPoints') + ' (' + b.pointsUsed + ')</span><b>− ' + inr(b.pointsValue) + '</b></div>' : '')
         + (b.fee > 0 ? '<div class="sum-row"><span>' + t('rowFee') + '</span><b>' + inr(b.fee) + '</b></div>' : '')
@@ -2133,10 +2165,10 @@ function renderStatus(id) {
   <div class="status-card tk2${conf ? ' confirm-success' : ''}" id="ticketCard" data-pnr="${esc(b.id)}">
     <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo.png?v=20261006b" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo.png?v=20261006c" alt="" loading="lazy" decoding="async">
         <div><b>${esc(CONFIG.company.name || 'S HARI GLOBAL PRIVATE LIMITED')}</b><small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
       </div>
-      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261006b" width="600" height="312" alt="" decoding="async">
+      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261006c" width="600" height="312" alt="" decoding="async">
     </div>
     <div class="premium-ticket-status">${pill2}${b.ticketNumber ? '<span>' + esc(b.ticketNumber) + '</span>' : ''}${b.agentCode ? '<span style="background:var(--orange-100,#fff2e0);color:var(--orange-800,#7a3d00);padding:2px 10px;border-radius:20px;font-size:12px;font-family:var(--f-code)">🏷️ ' + esc(b.agentCode) + '</span>' : ''}</div>
     ${(typeof routeOverviewSVG === 'function') ? routeOverviewSVG({ from: (isNepalPoint(r.from) ? r.from : (parseBP(b.boarding || '').name || r.from)), to: (isNepalPoint(r.to) ? r.to : (parseBP(b.drop || '').name || r.to)), compact: true }) : ''}

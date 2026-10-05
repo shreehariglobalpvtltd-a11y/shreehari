@@ -388,6 +388,43 @@ document.addEventListener('pointerdown', (e) => {
   setTimeout(() => rip.remove(), 650);
 });
 
+/* Running offer ribbon (6 Oct 2026). The offer itself is decided on the
+   server (Fare::quote / couponDiscount) — this only SAYS it, from
+   SHG_BOOT.offers, and disappears when no offer is running. */
+function renderOfferRibbon() {
+  const bar = $('#offerRibbon'); if (!bar) return;
+  const list = (window.SHG_BOOT && Array.isArray(window.SHG_BOOT.offers)) ? window.SHG_BOOT.offers : [];
+  const o = list[0];
+  if (!o || !(Number(o.value) > 0)) { bar.classList.add('hide'); return; }
+  const L = (typeof LANG === 'string' && (LANG === 'ne' || LANG === 'hi')) ? LANG : 'en';
+  const fest = /dashain|tihar|dasain|दशैं|तिहार/i.test(String(o.title || '') + ' ' + String(o.code || ''));
+  const amt = o.type === 'percent' ? (String(+o.value) + '%') : ('₹' + Number(o.value).toLocaleString('en-IN'));
+  const h = Number(o.ahead) || 0;
+  let until = '';
+  if (o.until) {
+    const d = new Date(String(o.until) + 'T00:00:00');
+    if (!isNaN(d)) until = d.getDate() + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
+  }
+  const name = fest ? { ne: 'दशैं–तिहार अफर', hi: 'दशहरा–दिवाली ऑफ़र', en: 'Dashain–Tihar offer' }[L] : String(o.title || '');
+  const how = h > 0
+    ? { ne: 'यात्रा भन्दा ' + h + ' घण्टा अगाडि बुक गर्दा ' + amt + ' छुट',
+        hi: 'यात्रा से ' + h + ' घंटे पहले बुक करें, ' + amt + ' छूट',
+        en: 'book ' + h + '+ hours before departure and save ' + amt }[L]
+    : { ne: amt + ' छुट', hi: amt + ' छूट', en: amt + ' off' }[L];
+  const till = until ? { ne: ' · ' + until + ' सम्म', hi: ' · ' + until + ' तक', en: ' · till ' + until }[L] : '';
+  $('#offerRibbonText').textContent = name + ' — ' + how + till;
+  $('#offerRibbonCta').textContent = { ne: 'अहिले बुक गर्नुहोस् →', hi: 'अभी बुक करें →', en: 'Book now →' }[L];
+  bar.classList.remove('hide');
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#offerRibbon')) return;
+  const card = document.querySelector('#view-home .search-card, #view-home form, #searchForm');
+  if (card && location.hash.replace('#', '').replace(/^\//, '') === 'home') {
+    e.preventDefault();
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+});
+
 /* Seasonal notice banner (text managed from Admin → Settings) */
 function renderNotice() {
   const bar = $('#noticeBar'); if (!bar) return;
@@ -1309,7 +1346,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261006b" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261006c" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'

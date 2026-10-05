@@ -102,6 +102,20 @@ function ai_system_prompt(): string
     if (Settings::getBool('allow_cod', true)) {
         $pay .= ', or cash at the boarding point';
     }
+    // 6 Oct 2026: the office offer running today (Admin -> Offers) - the only discount the assistant may mention.
+    $offerTxt = 'none running today - never promise a discount';
+    try {
+        if (!class_exists('Fare')) {
+            require_once INCLUDE_PATH . '/fare.php';
+        }
+        $running = Fare::runningOffers();
+        if ($running !== []) {
+            $offerTxt = implode(' · ', array_map([Fare::class, 'offerLine'], $running))
+                . '. It is applied automatically at checkout, counter and WhatsApp booking - nothing to type';
+        }
+    } catch (Throwable $e) {
+        // no offer line is better than a wrong one
+    }
     $border = Settings::getString('border_point_name', 'Rupaidiha ⇄ Jamunaha');
     $cutoff = (int) Boarding::cutoffMinutes();
     $now    = date('l j F Y, H:i');
@@ -112,6 +126,7 @@ function ai_system_prompt(): string
         . "Routes and timings:\n" . implode("\n", $routeLines) . "\n"
         . "Fares: sharing sleeper per person = the ₹ amount written after each pickup / drop above; a stop with no amount costs the default ₹{$fareNp} towards Nepal, ₹{$fareIn} towards India; a private cabin from ₹{$priv}. Same price online and at the counter.\n"
         . "Payment: {$pay}. An online ticket is confirmed after the payment is verified, usually within minutes.\n"
+        . "Offer: {$offerTxt}.\n"
         . "Refund by cancellation time: " . implode(' · ', $slabTxt) . ". Money returns to the same account in 5–7 working days.\n"
         . "Boarding: reach the pickup 60 minutes early; booking for a pickup closes {$cutoff} minutes before its time.\n"
         . "Border: {$border}, about 20–40 minutes, the bus waits for everyone. Photo ID is checked: passport or voter ID for Indian citizens, citizenship certificate or passport for Nepali citizens. No visa for either. Indian ₹200 and ₹500 notes are not accepted in Nepal.\n"

@@ -711,3 +711,18 @@ html.shg-from-ad #view-home > #search-anchor { order: -4 !important; margin-top:
   .np-p { flex: 0 0 min(88%, 310px); scroll-snap-align: start; }
   .np-p:only-child { flex-basis: 100%; }
 }
+
+/* ============ Running offer ribbon (6 Oct 2026) — top of every page while an
+   office offer runs (SHG_BOOT.offers, Admin -> Offers). ============ */
+.offer-ribbon{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;
+  padding:9px 16px;text-decoration:none;color:#3b1d00;font-weight:700;font-size:14px;line-height:1.35;text-align:center;
+  background:linear-gradient(90deg,#ffb300,#ff7a00 45%,#ffb300);background-size:200% 100%;
+  animation:orShine 6s linear infinite;box-shadow:0 2px 10px rgba(255,122,0,.35);position:relative;z-index:5}
+.offer-ribbon.hide{display:none}
+.offer-ribbon .or-lamp{font-size:18px}
+.offer-ribbon .or-text{min-width:0;overflow-wrap:anywhere}
+.offer-ribbon .or-cta{background:#3b1d00;color:#ffd166;border-radius:999px;padding:4px 12px;font-size:13px;white-space:nowrap}
+.offer-ribbon:hover .or-cta,.offer-ribbon:focus-visible .or-cta{background:#000}
+@keyframes orShine{0%{background-position:0 0}100%{background-position:200% 0}}
+@media (prefers-reduced-motion:reduce){.offer-ribbon{animation:none}}
+@media (max-width:520px){.offer-ribbon{font-size:13px;padding:8px 12px;gap:6px}.offer-ribbon .or-cta{font-size:12px}}

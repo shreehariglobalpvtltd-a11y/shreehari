@@ -605,7 +605,7 @@ admin_page_head('Who is waiting, what each agent is owed, and every settlement f
      due now <b><?= $e(inr($preview['due'])) ?></b> · ticket cash held <b><?= $e(inr($preview['cashHeld'])) ?></b>. Deductions, bonus and net-off are added on the next screen.</p>
   <?php endif; ?>
 </div>
-<script src="/assets/js/agent-picker.js?v=20261006b"></script>
+<script src="/assets/js/agent-picker.js?v=20261006c"></script>
 <script>
 if (window.shgAgentPicker) { shgAgentPicker(document.getElementById('stNewAgent')); }
 document.getElementById('stNewAgent').addEventListener('change', function () { if (this.value) location.href = <?= json_encode($self . '?new=') ?> + encodeURIComponent(this.value); });

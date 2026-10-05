@@ -277,11 +277,30 @@ final class WaFaq
                 "Today's sales, the report, the passenger list or a ticket — what do you need?",
                 "આજનું વેચાણ, રિપોર્ટ, મુસાફર યાદી કે ટિકિટ — શું જોઈએ?");
         }
+        // 6 Oct 2026: the running office offer, one line, under the hello.
+        $offer = '';
+        try {
+            if (!class_exists('Fare')) {
+                require_once INCLUDE_PATH . '/fare.php';
+            }
+            $o = Fare::runningOffers()[0] ?? null;
+            if ($o !== null && (float) $o['value'] > 0) {
+                $amt = $o['type'] === 'percent' ? rtrim(rtrim(number_format($o['value'], 2), '0'), '.') . '%' : inr($o['value']);
+                $h   = (int) ($o['ahead'] ?? 0);
+                $offer = "\n🪔 " . ($h > 0
+                    ? self::t($lang, 'अफर: यात्रा भन्दा ' . $h . ' घण्टा अगाडि बुक गर्दा ' . $amt . ' छुट', 'ऑफ़र: यात्रा से ' . $h . ' घंटे पहले बुक करें, ' . $amt . ' छूट',
+                                     'Offer: book ' . $h . '+ hours before departure, save ' . $amt, 'ઓફર: મુસાફરીના ' . $h . ' કલાક પહેલાં બુક કરો, ' . $amt . ' છૂટ')
+                    : self::t($lang, 'अफर: ' . $amt . ' छुट', 'ऑफ़र: ' . $amt . ' छूट', 'Offer: ' . $amt . ' off', 'ઓફર: ' . $amt . ' છૂટ'))
+                    . ($o['until'] !== '' ? ' (' . date('j M', (int) strtotime($o['until'])) . self::t($lang, ' सम्म)', ' तक)', ')', ' સુધી)') : '');
+            }
+        } catch (Throwable $e) {
+            $offer = '';
+        }
         return $open . $hi . self::t($lang,
             'म S Hari Global को सहायक हुँ। टिकट, भाडा, बसको समय वा आफ्नो टिकटबारे सोध्नुहोस्।',
             'मैं S Hari Global का सहायक हूँ। टिकट, किराया, बस का समय या अपने टिकट के बारे में पूछिए।',
             "I'm S Hari Global's assistant. Ask me about tickets, fares, bus times or your own ticket.",
-            "હું S Hari Global નો સહાયક છું. ટિકિટ, ભાડું, બસનો સમય કે તમારી ટિકિટ વિશે પૂછો.");
+            "હું S Hari Global નો સહાયક છું. ટિકિટ, ભાડું, બસનો સમય કે તમારી ટિકિટ વિશે પૂછો.") . $offer;
     }
 
     private static function fare(string $text, string $lang, bool $withOffer): string

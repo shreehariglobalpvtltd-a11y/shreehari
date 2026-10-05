@@ -660,8 +660,18 @@
     var dv = parseFloat(($q('#ctrDiscVal') || {}).value) || 0;
     var dt = (($q('#ctrDiscType') || {}).value) || 'flat';
     var maxPct = Number(STAFF.maxDiscountPct || 15);
+    /* 6 Oct 2026: the running office offer is already inside `total`; the desk
+       discount never stacks on it - the server gives the BIGGER one. */
+    var offerDisc = 0;
+    try { offerDisc = (typeof Flow.checkoutTotals === 'function') ? (Number(Flow.checkoutTotals().offerDisc) || 0) : 0; } catch (e) { offerDisc = 0; }
+    var pre = total + offerDisc;
     var off = 0;
-    if (dv > 0 && total > 0) off = dt === 'percent' ? Math.round(total * Math.min(dv, maxPct) / 100) : Math.min(dv, total);
+    if (dv > 0 && pre > 0) {
+      off = dt === 'percent' ? Math.round(pre * Math.min(dv, maxPct) / 100) : Math.min(dv, pre);
+      off = Math.min(off, Math.round(pre * maxPct / 100));
+    }
+    if (off > 0 && off <= offerDisc) { off = 0; }       // the offer is bigger: it stays, the desk discount is not added
+    if (off > 0 && offerDisc > 0) { total = pre; }       // the desk discount replaces the offer
     var payLbl = PAY_LBL[CTR.pay] || CTR.pay;
     var fmt = function (n) { try { return inr(n); } catch (e) { return '₹' + n; } };
     var commLine = '';

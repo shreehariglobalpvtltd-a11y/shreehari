@@ -1294,6 +1294,8 @@ function applyLang() {
   else if (typeof renderFareLive === 'function') renderFareLive();
   /* The assistant's WhatsApp row is built in JS too. */
   if (typeof renderAiWhatsApp === 'function') renderAiWhatsApp();
+  /* And the running-offer ribbon (6 Oct 2026). */
+  if (typeof renderOfferRibbon === 'function') renderOfferRibbon();
 }
 function setLang(l) {
   if (!I18N[l]) l = 'en';

@@ -1464,6 +1464,7 @@ async function init() {
   applyLang();          // translate static text + mark active language
   updateNavUser();      // sign-in chip
   renderNotice();       // seasonal banner (admin-controlled)
+  renderOfferRibbon();  // the running office offer (Admin → Offers), 6 Oct 2026
   activeLocks();        // clear any expired seat holds
   startHoldTicker();
   Splash.tick('Starting timers…');
