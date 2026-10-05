@@ -226,6 +226,11 @@ try {
     check('an unanswered customer question is written down for tonight', $row !== null && $row['status'] === 'new');
     if ($row) { Database::delete('ai_unanswered_questions', 'id = :id', ['id' => (int) $row['id']]); }
 
+    echo "\n— the photo template\n";
+    check('no approved photo template here → the text template, no photo', MkAutopilot::templateAndPhoto() === [MkAutopilot::template(), null]);
+    check('the pamphlet has a public link for the photo header', is_file(dirname(__DIR__) . '/offer-card.php')
+        && str_contains((string) file_get_contents(dirname(__DIR__) . '/includes/mkautopilot.php'), "'header_image'    => \$photo"));
+
     echo "\n— wiring\n";
     $root = dirname(__DIR__);
     check('the minute cron runs the autopilot and the learning', str_contains((string) file_get_contents($root . '/cron/campaigns.php'), 'MkAutopilot::tick()') && str_contains((string) file_get_contents($root . '/cron/campaigns.php'), 'AiLearn::tick()'));

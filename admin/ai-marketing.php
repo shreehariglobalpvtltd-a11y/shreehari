@@ -277,6 +277,7 @@ admin_page_head('The AI picks who to message (festival, return trip, long-gone c
     <h3 style="margin:14px 0 4px;font-size:14px"><?= $e(MkAutopilot::SEGMENTS[$c['segment']]) ?><?= $c['dir'] !== '' ? ' · ' . $e($c['dir'] === 'toNepal' ? 'घर जाने' : 'फर्कने') : '' ?> — <?= (int) $c['people'] ?> people
       <span class="am-by"><?= $e($c['by'] === 'fixed' ? 'fixed line' . ($c['why'] !== '' ? ' — ' . $c['why'] : '') : 'written by ' . $c['by']) ?></span>
       <?php if ($c['id'] > 0): ?> · <a href="/admin/campaigns.php?id=<?= (int) $c['id'] ?>">campaign #<?= (int) $c['id'] ?></a><?php endif; ?></h3>
+    <?php if (!empty($c['photo'])): ?><img src="<?= $e($c['photo']) ?>" alt="Offer photo" style="width:200px;border-radius:10px;display:block;margin:4px 0"><?php else: ?><p class="am-note" style="margin:2px 0">Text template (the photo template is not approved yet, or no offer runs).</p><?php endif; ?>
     <div class="am-line">Namaste <?= $e(explode(' ', (string) ($c['sample'][0]['name'] ?? 'ग्राहक'))[0] ?: 'ग्राहक') ?>,
 <?= $e($c['text']) ?>
 

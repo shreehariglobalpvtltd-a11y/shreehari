@@ -91,6 +91,45 @@ final class MkAutopilot
         return preg_match('/^[a-z0-9_]{1,80}$/', $t) === 1 ? $t : 'shg_offer';
     }
 
+    /**
+     * The template + header photo a campaign goes out on (6 Oct 2026): while an
+     * office offer runs AND the photo template (mk_auto_image_template, default
+     * shg_offer_image: same 3 variables + an IMAGE header) is APPROVED by Meta,
+     * the offer pamphlet travels as the photo (/offer-card.php). Otherwise the
+     * text template. Asked of AiSensy once per run.
+     *
+     * @return array{0:string, 1:?string}
+     */
+    public static function templateAndPhoto(): array
+    {
+        static $memo = null;
+        if ($memo !== null) {
+            return $memo;
+        }
+        $memo = [self::template(), null];
+        $img = Settings::getString('mk_auto_image_template', 'shg_offer_image');
+        if ($img === '' || preg_match('/^[a-z0-9_]{1,80}$/', $img) !== 1) {
+            return $memo;
+        }
+        try {
+            require_once __DIR__ . '/offercard.php';
+            $offer = OfferCard::offer();
+            if ($offer === null) {
+                return $memo;
+            }
+            require_once ROOT_PATH . '/whatsapp/aisensy.php';
+            foreach (AiSensyAPI::templates() as $t) {
+                if ($t['name'] === $img && $t['status'] === 'APPROVED' && !empty($t['image'])) {
+                    $memo = [$img, appUrl('/offer-card.php?lang=' . (Settings::getString('mk_auto_lang', 'ne') === 'hi' ? 'hi' : 'ne') . '&o=' . strtolower((string) $offer['code']))];
+                    break;
+                }
+            }
+        } catch (Throwable $e) {
+            Logger::exception($e, 'marketing');
+        }
+        return $memo;
+    }
+
     /** @return list<array{date:string,name:string}> sorted by date */
     public static function festivals(): array
     {
@@ -705,6 +744,7 @@ final class MkAutopilot
             foreach ($parts as $dir => $list) {
                 $copy = $dry && !Settings::getBool('mk_auto_preview_ai', true) ? ['text' => self::fallback($seg, $facts, (string) $dir), 'by' => 'fixed', 'why' => 'preview'] : self::copy($seg, $facts, (string) $dir);
                 $c = ['segment' => $seg, 'dir' => $dir, 'people' => count($list), 'text' => $copy['text'], 'by' => $copy['by'], 'why' => $copy['why'], 'id' => 0,
+                      'photo' => self::templateAndPhoto()[1],
                       'sample' => array_map(static fn ($p) => ['name' => $p['name'], 'ph' => '•••' . substr($p['ph'], -4)], array_slice($list, 0, 3))];
                 if (!$dry && $mode !== 'off') {
                     $c['id'] = self::queue($seg, (string) $dir, $copy['text'], $list, $mode === 'auto', $by);
@@ -723,11 +763,13 @@ final class MkAutopilot
     {
         $name = '🤖 AI · ' . self::SEGMENTS[$seg] . ($dir !== '' ? ' · ' . ($dir === 'toNepal' ? 'घर जाने' : 'फर्कने') : '') . ' · ' . date('j M');
         $link = trim(Settings::getString('mk_auto_link', ''));
+        [$tpl, $photo] = self::templateAndPhoto();
         $id = (int) Database::insert('mk_campaigns', [
             'name'            => mb_substr($name, 0, 120),
             'channel'         => 'wa_template',
-            'template_name'   => self::template(),
+            'template_name'   => $tpl,
             'template_params' => json_encode(['{first}', $line, '{link}'], JSON_UNESCAPED_UNICODE),
+            'header_image'    => $photo,
             'message'         => $line,
             'link_url'        => preg_match('#^https?://\S+$#i', $link) === 1 ? mb_substr($link, 0, 500) : null,
             'audience'        => self::MARK . $seg,
