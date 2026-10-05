@@ -76,13 +76,26 @@ asks on open (back up or Skip); deploy everything.
   prefix anywhere, contains only within ~30 km of the rider): 20–110 ms on live. New index
   `ix_np_kind_ll` (`database/upgrade-2026-10-05-shari-nav-full.sql`, applied). Whole-word matches
   first, a pickup 60+ km away waits behind local places.
-- Routing: Valhalla graph for India+Nepal in its own container `shg-valhalla-full`
-  (`/srv/shg-nav/valhalla-full`, 127.0.0.1:8003, server_threads 1, 5 G memory while building).
-  Switch = setting `nav_engine_url` → `http://127.0.0.1:8003`, then remove `shg-valhalla`.
-- Tiles: tilemaker 2.4 `--store`, bbox 67.6,5.8,97.5,35.8, 1 thread, into `$WORK/tiles.new`, then
-  swapped into `www/navdata/tiles` (old Gujarat tiles kept in `work-full/tiles.old` until verified).
+- Routing: Valhalla graph for India+Nepal (build 57 min, 1 thread; tar 4.7 GB) in container
+  `shg-valhalla-full` (`/srv/shg-nav/valhalla-full`, 127.0.0.1:8003, serving 2 threads, 2.5 G).
+  Setting `nav_engine_url` = `http://127.0.0.1:8003` (switched 13:03); old `shg-valhalla` removed.
+  Live: Surat→Nepalgunj 1564 km in 0.48 s, Delhi→Kathmandu 1207 km in 0.98 s.
+- Tiles: ONE tilemaker run for the whole region needed ~8.5 GB (thrashed swap: 2 tiles in 4 min)
+  → `02-build.sh chunks`: 29 z6-tile chunks (`navchunks.py`), each cut with osmium (ONE extract
+  per pass — each holds ~3.5 GB of id sets; 10 at once filled all 10 GB of swap), z8–z14 only
+  (the navigator takes z0–7 from the planet), resumable (`chunks/<name>.done`). 1 h 40 min,
+  1,931,162 tiles, 8.5 GB, live 16:59. Units now get `MemorySwapMax=2G`.
   `meta.json` coverage = 660 boxes from `navcover.py` (whole z10 tiles inside the India∪Nepal
   polygons + z12 border strips); a tile across a border comes complete from the planet tiles.
+  Verified live (headless Chrome): Lucknow, Kathmandu, Mumbai, Delhi, Surat, Nepalgunj, Pokhara,
+  Guwahati → own tiles only + `X-SHG-Nav: own`; chunk seam at 73.125°E (Vadodara) continuous.
+- Cleanup (`/root/backups/CLEANUP-LOG.txt`): old Gujarat tiles/graph/extracts removed;
+  `region-full.osm.pbf` → `region.osm.pbf`, `src-full` → `src` (`bin/full.env`).
+  Monthly refresh: `01-fetch-extract.sh`, then `02-build.sh places` (+ import), `chunks`, `valhalla`
+  (into a second container/port, then switch `nav_engine_url`), each inside `shg-nav-build` with
+  `shg-nav-watchdog` running.
+- Counter (n6/n7, 5 Oct): agent compulsory again (no silent own code, no "Other"; book.php refuses),
+  picked on the seat map beside the passenger name so Confirm still goes straight to the ticket.
 - Same day: log files a root cron creates are handed to www-data (`Logger::adopt`), admin top bar
   chime switch 🔔, dead code removal (stamp 20261005g / shg-v185). Kept on purpose:
   `api/quote.php` (real POSTs 26 + 28 Sep), `includes/aigovernor.php` (safety lock, tested by
