@@ -529,12 +529,27 @@ final class MkAutopilot
         return [
             'fare_go'    => (int) $f['toNepal'],
             'fare_back'  => (int) $f['toIndia'],
+            // 6 Oct 2026: what one seat costs after the running office offer (Admin -> Offers).
+            'offer_go'   => self::afterOffer((float) $f['toNepal']),
+            'offer_back' => self::afterOffer((float) $f['toIndia']),
             'deps'       => $deps,
             'daily'      => $daily >= 7,
             'phone'      => Settings::officePhone(),
             'offer'      => trim(Settings::getString('mk_auto_offer', '')),
             'festival'   => $fest,
         ];
+    }
+
+    /** One seat's fare after the running auto-apply offer (the fare itself when none runs). */
+    public static function afterOffer(float $fare): int
+    {
+        try {
+            require_once __DIR__ . '/offercard.php';
+            $o = OfferCard::offer();
+            return $o !== null ? OfferCard::after($o, $fare) : (int) round($fare);
+        } catch (Throwable $e) {
+            return (int) round($fare);
+        }
     }
 
     /** The hand-written line for a group (used when the AI is off or wrote something unsafe). */
@@ -586,7 +601,8 @@ final class MkAutopilot
             }
         }
         // Every number must be a real one: a fare, a festival date, a departure time, the office phone.
-        $ok = [(string) $facts['fare_go'], (string) $facts['fare_back'], date('Y'), (string) ((int) date('Y') + 1)];
+        $ok = [(string) $facts['fare_go'], (string) $facts['fare_back'], date('Y'), (string) ((int) date('Y') + 1),
+               (string) ($facts['offer_go'] ?? ''), (string) ($facts['offer_back'] ?? '')];
         $fd = (string) ($facts['festival']['date'] ?? '');
         if ($fd !== '') {
             $ok[] = (string) (int) substr($fd, 8, 2);
@@ -667,7 +683,10 @@ final class MkAutopilot
              . "FACTS:\n- Fares: going home (Gujarat → Rupaidiha) ₹" . $facts['fare_go'] . ", coming back (Rupaidiha → Gujarat) ₹" . $facts['fare_back'] . "\n"
              . '- Departures: ' . implode('; ', array_merge($facts['deps']['toNepal'], $facts['deps']['toIndia'])) . "\n"
              . ($facts['daily'] ? "- A bus runs every day.\n" : '')
-             . ($facts['offer'] !== '' ? '- The owner\'s current offer (you may use exactly this): ' . $facts['offer'] . "\n" : "- There is NO discount or offer right now.\n")
+             . ($facts['offer'] !== ''
+                 ? '- The owner\'s current offer — the line MUST mention it: ' . $facts['offer']
+                   . (($facts['offer_go'] ?? 0) > 0 && $facts['offer_go'] < $facts['fare_go'] ? ' (after the offer: home ₹' . $facts['offer_go'] . ', back ₹' . $facts['offer_back'] . ')' : '') . "\n"
+                 : "- There is NO discount or offer right now.\n")
              . ($les['good'] !== [] ? "LINES THAT BROUGHT BOOKINGS (learn the style, do not copy):\n- " . implode("\n- ", $les['good']) . "\n" : '')
              . ($les['bad'] !== [] ? "LINES THAT SOLD NOTHING (avoid this style):\n- " . implode("\n- ", $les['bad']) . "\n" : '')
              . 'Reply with the line only.';
@@ -685,6 +704,10 @@ final class MkAutopilot
                 break;
             }
             $line = self::check((string) $r['text'], $facts, $why);
+            if ($line !== '' && $facts['offer'] !== '' && preg_match('/%|छ[ुू]ट(?![\x{093E}-\x{094D}])|\boff\b|offer|अफर|ऑफ़र/iu', $line) !== 1) {
+                $why = 'did not mention the running offer';
+                $line = '';
+            }
             if ($line !== '') {
                 return ['text' => $line, 'by' => (string) $r['provider'], 'why' => ''];
             }
