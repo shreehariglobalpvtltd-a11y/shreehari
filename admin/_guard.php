@@ -308,14 +308,26 @@ function admin_header(string $title, string $active = ''): void
        . 'if(t==="amoled")d.setAttribute("data-display","amoled");else d.removeAttribute("data-display");'
        . 'var m=document.querySelector("meta[name=theme-color]");if(m)m.setAttribute("content",t==="amoled"?"#000000":(t==="dark"?"#0F1A2E":"#0C306C"));'
        . 'var L={light:"Switch to dark mode",dark:"Switch to AMOLED black mode",amoled:"Switch to light mode"}[t]||"";'
-       . 'var b=document.querySelectorAll(".theme-tog");for(var i=0;i<b.length;i++){b[i].setAttribute("aria-label",L);b[i].setAttribute("title",L);}}'
+       . 'var b=document.querySelectorAll(".theme-tog:not(.snd-tog)");for(var i=0;i<b.length;i++){b[i].setAttribute("aria-label",L);b[i].setAttribute("title",L);}}'
        . '(function(){try{var t=localStorage.getItem("shg_admin_theme");'
        . 'if(t!=="dark"&&t!=="light"&&t!=="amoled")t=(window.matchMedia&&matchMedia("(prefers-color-scheme:dark)").matches)?"dark":"light";'
        . 'shgThemeApply(t);document.addEventListener("DOMContentLoaded",function(){shgThemeApply(t);});}catch(e){}})();'
        . 'function shgTheme(){try{var d=document.documentElement,'
        . 'c=d.getAttribute("data-display")==="amoled"?"amoled":(d.getAttribute("data-theme")==="dark"?"dark":"light"),'
        . 'n=c==="light"?"dark":(c==="dark"?"amoled":"light");'
-       . 'shgThemeApply(n);localStorage.setItem("shg_admin_theme",n);}catch(e){}}</script>';
+       . 'shgThemeApply(n);localStorage.setItem("shg_admin_theme",n);}catch(e){}}'
+       // 5 Oct 2026: the new-booking / payment chime has an on/off switch in the
+       // top bar (localStorage shg_admin_sound; on unless switched off). Turning
+       // it on plays one short tone, which also unlocks audio on this page.
+       . 'function shgAdmSoundOn(){try{return localStorage.getItem("shg_admin_sound")!=="0";}catch(e){return true;}}'
+       . 'function shgAdmSoundPaint(){var on=shgAdmSoundOn(),b=document.querySelectorAll(".snd-tog");'
+       . 'for(var i=0;i<b.length;i++){b[i].textContent=on?"🔔":"🔕";b[i].setAttribute("aria-pressed",on?"true":"false");'
+       . 'var L=on?"Chime ON (new booking / payment) - tap to mute":"Chime OFF - tap to turn on";b[i].setAttribute("aria-label",L);b[i].setAttribute("title",L);}}'
+       . 'function shgAdmSound(){var on=!shgAdmSoundOn();try{localStorage.setItem("shg_admin_sound",on?"1":"0");}catch(e){}shgAdmSoundPaint();'
+       . 'if(on){try{var C=window.AudioContext||window.webkitAudioContext,x=new C(),o=x.createOscillator(),g=x.createGain();'
+       . 'o.frequency.value=988;g.gain.setValueAtTime(0.0001,x.currentTime);g.gain.exponentialRampToValueAtTime(0.12,x.currentTime+0.02);'
+       . 'g.gain.exponentialRampToValueAtTime(0.0001,x.currentTime+0.3);o.connect(g);g.connect(x.destination);o.start();o.stop(x.currentTime+0.32);'
+       . 'setTimeout(function(){try{x.close();}catch(e){}},600);}catch(e){}}}</script>';
     echo '</head><body class="shg-adm">';
 
     // One admin-wide SVG icon sprite — sidebar, top-bar and brand row all
@@ -367,6 +379,8 @@ function admin_header(string $title, string $active = ''): void
     echo '<div class="who">'
        . '<span class="tb-av" aria-hidden="true">' . Security::e($initials ?: 'A') . '</span>'
        . '<span class="tb-name">' . $name . '</span> <em>' . $role . '</em>'
+       . '<button type="button" class="theme-tog snd-tog" onclick="shgAdmSound()" aria-pressed="true" aria-label="Chime on / off" title="Chime on / off">&#128276;</button>'
+       . '<script>shgAdmSoundPaint();</script>'
        . '<button type="button" class="theme-tog" onclick="shgTheme()" aria-label="Toggle dark mode" title="Dark / light mode"><svg class="a-ic"><use href="#a-theme"/></svg></button>'
        . $pwLink
        . ' <a href="' . $base . '/admin/logout.php" title="Sign out" aria-label="Sign out"><svg class="a-ic"><use href="#a-logout"/></svg></a></div>';
