@@ -4,6 +4,7 @@ Moved out of `sw.js` on 2 Oct 2026: the history used to live on the `var VERSION
 
 The CURRENT version and its note stay on the `var VERSION` line in `sw.js`; this file holds the ones before it. Newest first. Each line: version — what shipped with it (as written at the time).
 
+- **shg-v186** — ads: Google Ads attribution + conversion tag, booking-first for ad clicks, women-seat-safe auto-pick, seat cap 409
 - **shg-v185** — dead code: GPS distance table, town-key helper, PDF colour/font helpers, dormant Firebase listener; trip weather card hidden without a key
 - **shg-v184** — 5 Oct 2026 — office panel with Nepalgunj, SOS complaint + contact form open Help Desk tickets
 - **shg-v183** — 5 Oct 2026 — top banner: logo, company and offices beside the coach; dead code removed

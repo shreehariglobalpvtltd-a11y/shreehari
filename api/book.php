@@ -138,6 +138,12 @@ try {
     }
     $seller = null;
     if ($counterPay !== null) {
+        /* 5 Oct 2026 (owner): at the counter the agent is COMPULSORY again —
+           the clerk picks one from the list (a company code for a direct
+           sale). An agent selling for himself is booked on his own code. */
+        if (trim((string) $request['referralCode']) === '' && !Auth::isCounterAgent()) {
+            Response::invalid(['agentCode' => 'एजेन्ट छान्नुहोस् · Select the agent — required for a counter sale.']);
+        }
         $seller = [
             'adminId'       => (int) ($staff['id'] ?? 0),
             'source'        => Auth::isCounterAgent() ? 'agent' : 'counter',

@@ -522,7 +522,12 @@
            own SHG code is the fallback; an agent no longer on the list leaves
            the select blank and the validator asks. The server still checks
            the code and falls back to the company code. */
-        var want = lsGet(KEY_AGENT) || STAFF.code || '';
+        /* 5 Oct 2026 (owner): compulsory again — the clerk's own code is no
+           longer filled in silently and the "Other (direct sale)" escape is
+           gone (a direct sale = the company code from the list). Only an
+           agent selling for himself starts on his own code. */
+        var want = lsGet(KEY_AGENT) || (STAFF.role === 'agent' ? (STAFF.code || '') : '');
+        if (want === 'OTHER') want = '';
         var sel = document.createElement('select');
         sel.id = 'cAgentCode';
         sel.style.cssText = 'width:100%;font-size:16px;padding:10px 12px;border:1.5px solid var(--line,#dde3ee);border-radius:12px;background:var(--card,#fff);color:inherit';
@@ -530,8 +535,7 @@
           + agents.map(function (a) {
             var selected = (want && a.code === want) ? ' selected' : '';
             return '<option value="' + esc(a.code) + '"' + selected + '>' + (a.co ? '🏢 ' : '👤 ') + esc(a.code) + ' · ' + esc(a.name) + '</option>';
-          }).join('')
-          + '<option value="OTHER"' + (want === 'OTHER' ? ' selected' : '') + '>अन्य / Other (Direct Sale — company)</option>';
+          }).join('');
         ac.parentNode.replaceChild(sel, ac);
         sel.addEventListener('change', function () {
           lsSet(KEY_AGENT, sel.value);
@@ -549,6 +553,9 @@
         if (hint) hint.textContent = 'काउन्टर / एडमिन बिक्रीमा एजेन्ट चयन अनिवार्य छ। · Agent selection is mandatory for counter/admin sales.';
       } else if (STAFF.code) {
         ac.value = STAFF.code; ac.readOnly = true;
+        var lbl2 = field && field.querySelector('label');
+        if (lbl2) lbl2.innerHTML = 'एजेन्ट कोड · Agent Code <small style="color:var(--bad)">(अनिवार्य / required)</small>';
+        if (field) field.classList.remove('field-optional');
       } else if (field) { field.style.display = 'none'; }
     }
     // Do not pre-fill the passenger phone with the staff member's own customer login.
