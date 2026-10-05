@@ -61,8 +61,36 @@ asks on open (back up or Skip); deploy everything.
 - Refresh the map data monthly: `nice bash 01-fetch-extract.sh && nice bash 02-build.sh tiles`,
   `02-build.sh places` + import, `02-build.sh valhalla` (rebuild ~5 min).
 
+## 5. Later on 5 Oct — SHARI NAV for ALL of India + Nepal (releases n1–n5)
+- Source: Geofabrik `asia/india` (1.7 GB) + `asia/nepal` (0.4 GB) → `osmium merge` →
+  `/srv/shg-nav/region-full.osm.pbf` (2.1 GB, 330 M nodes, 39.4 M ways). `.poly` files kept in
+  `/srv/shg-nav/src-full/` (coverage boxes come from them).
+- Box got a 10 GB `/swapfile` (fstab) + `vm.swappiness=10` (`/etc/sysctl.d/99-shg-swap.conf`).
+- Every build runs in a guarded systemd unit `shg-nav-build` (CPUQuota 100 % = one of two cores,
+  CPUWeight 10, Nice 19, idle IO, MemoryHigh 4.5 G / Max 5.5 G, OOMScoreAdjust 900) and
+  `deploy/navdata/watchdog.sh` (unit `shg-nav-watchdog`, log `/srv/shg-nav/log/watchdog.log`)
+  FREEZES the build (and `docker pause`s shg-valhalla-full) when the home page takes > 2 s, RAM
+  < 700 MB or disk < 10 GB. Env for the full region: `/srv/shg-nav/bin/full.env`.
+- Places: 1,542,954 named places (6 min, 2.2 GB RAM) → `nav_places` (import 1 min 50 s, table
+  swap). `api/nav-search.php` rewritten to indexed lookups only (exact name, town prefix, name
+  prefix anywhere, contains only within ~30 km of the rider): 20–110 ms on live. New index
+  `ix_np_kind_ll` (`database/upgrade-2026-10-05-shari-nav-full.sql`, applied). Whole-word matches
+  first, a pickup 60+ km away waits behind local places.
+- Routing: Valhalla graph for India+Nepal in its own container `shg-valhalla-full`
+  (`/srv/shg-nav/valhalla-full`, 127.0.0.1:8003, server_threads 1, 5 G memory while building).
+  Switch = setting `nav_engine_url` → `http://127.0.0.1:8003`, then remove `shg-valhalla`.
+- Tiles: tilemaker 2.4 `--store`, bbox 67.6,5.8,97.5,35.8, 1 thread, into `$WORK/tiles.new`, then
+  swapped into `www/navdata/tiles` (old Gujarat tiles kept in `work-full/tiles.old` until verified).
+  `meta.json` coverage = 660 boxes from `navcover.py` (whole z10 tiles inside the India∪Nepal
+  polygons + z12 border strips); a tile across a border comes complete from the planet tiles.
+- Same day: log files a root cron creates are handed to www-data (`Logger::adopt`), admin top bar
+  chime switch 🔔, dead code removal (stamp 20261005g / shg-v185). Kept on purpose:
+  `api/quote.php` (real POSTs 26 + 28 Sep), `includes/aigovernor.php` (safety lock, tested by
+  governor-spine-test), 13-admin-routes.js payment-proof flow (07-checkout.js uses it).
+
 ## Tests
-`tests/helpdesk-campaign-nav-test.php` 42/42. `tests/wa-ops-manager-test.php` updated (HD numbers).
+`tests/helpdesk-campaign-nav-test.php` 45/45 (adds: no unbounded contains-scan of nav_places,
+coverage boxes inside the polygon only). `tests/wa-ops-manager-test.php` updated (HD numbers).
 Battery: the 11 other red suites fail identically on the base tree (environment: cron subprocess
 without php.ini, HTTP suites, stale fixtures).
 
