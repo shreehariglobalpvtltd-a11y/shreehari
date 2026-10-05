@@ -148,6 +148,10 @@ $list = $ready ? Database::fetchAll('SELECT c.*, a.full_name AS by_name FROM mk_
 $recips = $c !== null ? Database::fetchAll('SELECT * FROM mk_recipients WHERE campaign_id = :c ORDER BY FIELD(state,\'queued\',\'sending\',\'failed\',\'sent\',\'delivered\',\'read\',\'optout\',\'skipped\'), id LIMIT 300', ['c' => (int) $c['id']]) : [];
 $optouts = $ready ? Database::fetchAll('SELECT * FROM mk_optout ORDER BY created_at DESC LIMIT 100') : [];
 $audLabel = static function (string $qs): string {
+    if (str_starts_with($qs, 'autopilot=')) {
+        require_once INCLUDE_PATH . '/mkautopilot.php';
+        return '🤖 AI autopilot list — ' . (MkAutopilot::SEGMENTS[substr($qs, 10)] ?? substr($qs, 10)) . ' (see 🤖 AI Marketing)';
+    }
     parse_str($qs, $q);
     $bits = [];
     if (!empty($q['from']) || !empty($q['to'])) {

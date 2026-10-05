@@ -235,6 +235,8 @@ function admin_nav(): array
         ['href' => 'payroll.php',      'icon' => 'rupee',       'label' => 'Staff Payroll',    'perm' => 'reports.view',   'section' => 'Expenses & reports'],
         // 5 Oct 2026: every message in one live book - who got what, delivered / read, cost, AiSensy wallet.
         ['href' => 'wa-manager.php',   'icon' => 'whatsapp',  'label' => '📲 WhatsApp Manager', 'perm' => 'reports.view',  'section' => 'Expenses & reports', 'hot' => true],
+        // 6 Oct 2026: the AI that markets on WhatsApp by itself (budget-guarded) + learns from questions.
+        ['href' => 'ai-marketing.php', 'icon' => 'whatsapp',  'label' => '🤖 AI Marketing',   'perm' => 'customers.view', 'section' => 'Expenses & reports', 'hot' => true],
         ['href' => 'messages-log.php', 'icon' => 'msg',       'label' => 'Message Log',      'perm' => 'dashboard.view', 'section' => 'Expenses & reports'],
         ['href' => 'promo-card.php',   'icon' => 'image',     'label' => 'Promo card',       'perm' => 'dashboard.view', 'section' => 'Settings'],
         // 1 Oct 2026: each pickup's fare + ON/OFF + order (the stop editor on Routes).

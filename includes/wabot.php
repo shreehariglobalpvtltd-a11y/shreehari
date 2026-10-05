@@ -253,6 +253,17 @@ final class WaBot
         }
         $isStaff = is_array($who) && in_array((string) ($who['role'] ?? ''), ['staff', 'admin'], true);
 
+        /* 6 Oct 2026 - a customer's question the knowledge base cannot answer
+           yet is written down; tonight the AI drafts the article (AiLearn). */
+        if (!$isStaff && $kind === 'text' && $body !== '') {
+            try {
+                require_once INCLUDE_PATH . '/ailearn.php';
+                AiLearn::observe($body);
+            } catch (Throwable $e) {
+                Logger::exception($e, 'whatsapp');
+            }
+        }
+
         /* THE ORDER MENU (5 Oct 2026, owner: "khana order gare jasto ticket
            order"). "menu" shows the buttons, "mero ticket" lists the sender's
            own tickets - both answered from the tables, no model. And a

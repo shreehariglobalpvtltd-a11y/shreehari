@@ -166,6 +166,7 @@ const CORE_SUITES = [
     'wa-login-test.php'            => 'WhatsApp sign-in: password + code, session, revoke, the door stays shut when off',
     'wa-bulk-test.php'             => 'bulk tickets from one list: every name and number read by code, one ho sells them all',
     'wa-order-test.php'            => 'the WhatsApp order menu: buttons, way/day/seats/pickup, pay on bus or UPI, a seller orders for a passenger',
+    'mk-autopilot-test.php'        => 'AI marketing autopilot: who/how many/what line (checked), wallet guard, learns from bookings; AI learns from questions',
     'wa-manager-tools-test.php'    => 'pinned name + number, the seller\'s own sales and wallet, the office over agents and customers',
     // 22 Sep 2026, registered with the knowledge base it guards.
     'ai-turn-test.php'            => 'the tool loop is bounded: budget, deadline, no repeated write on retry',

@@ -91,6 +91,11 @@ final class Campaigns
         if ($c === null || !in_array((string) $c['status'], ['draft', 'paused', 'scheduled'], true)) {
             return 0;
         }
+        // 6 Oct 2026: the AI autopilot (includes/mkautopilot.php) hand-picks its list — a
+        // rebuild from the directory filter would widen it to every customer.
+        if (str_starts_with((string) $c['audience'], 'autopilot=')) {
+            return (int) $c['total'];
+        }
         parse_str((string) $c['audience'], $q);
         $list = CustomerDirectory::phones(CustomerDirectory::filters($q), true, Settings::getInt('mk_max_recipients', 5000));
         Database::run("DELETE FROM mk_recipients WHERE campaign_id = :c AND state = 'queued'", ['c' => $id]);

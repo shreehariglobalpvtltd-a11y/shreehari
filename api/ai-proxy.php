@@ -88,6 +88,14 @@ try {
     }
     $text = $ans['text'];
 
+    // 6 Oct 2026: an unanswered website question becomes tonight's learning (AiLearn).
+    try {
+        require_once INCLUDE_PATH . '/ailearn.php';
+        AiLearn::observe((string) $messages[count($messages) - 1]['content']);
+    } catch (Throwable $e) {
+        // learning never costs the answer
+    }
+
     Response::success(['text' => $text]);
 } catch (RuntimeException $e) {
     Response::error($e->getMessage(), 400);

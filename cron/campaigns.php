@@ -18,5 +18,23 @@ if (!Campaigns::ready()) {
     cron_done(['skipped' => 'campaign tables not installed']);
     return;
 }
-$r = Campaigns::work();
+/* 6 Oct 2026: the AI autopilot plans + queues the day's marketing once a day
+   (includes/mkautopilot.php), and the assistant drafts articles for the
+   questions customers asked that it could not answer (includes/ailearn.php).
+   Both before the worker, so a campaign queued now starts sending this minute. */
+$auto = [];
+try {
+    require_once INCLUDE_PATH . '/mkautopilot.php';
+    $auto = MkAutopilot::tick();
+} catch (Throwable $e) {
+    Logger::exception($e, 'marketing');
+    $auto = ['autopilot' => 'error'];
+}
+try {
+    require_once INCLUDE_PATH . '/ailearn.php';
+    $auto += AiLearn::tick();
+} catch (Throwable $e) {
+    Logger::exception($e, 'ai');
+}
+$r = Campaigns::work() + $auto;
 cron_done($r, !isset($r['error']));
