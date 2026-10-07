@@ -962,12 +962,22 @@ function renderNepalTeam() {
   const team = (window.SHG_BOOT && Array.isArray(SHG_BOOT.npTeam) ? SHG_BOOT.npTeam : []).filter(p => p && /^\d{10,15}$/.test(String(p.tel || '')));
   if (!team.length) { card.hidden = true; card.innerHTML = ''; return false; }
   const hello = encodeURIComponent('नमस्ते 🙏 S Hari Global');
-  card.innerHTML = '<p class="th-nph">' + NP_FLAG_SVG + '<b>Nepal Office</b><small>Shree Hari Global Pvt Ltd · नेपाल कार्यालय</small></p><ul class="th-npl">'
-    + team.map(p => '<li class="np-p"><a class="np-main" href="tel:+' + esc(p.tel) + '"><span class="np-role">' + esc(p.role) + '</span><b>' + esc(p.name) + '</b>'
+  const row = p => '<li class="np-p"><a class="np-main" href="tel:+' + esc(p.tel) + '"><span class="np-role">' + esc(p.role) + '</span><b>' + esc(p.name) + '</b>'
       + '<span class="np-num">' + esc(p.phone) + '</span></a>'
       + '<a class="np-btn np-call" href="tel:+' + esc(p.tel) + '" aria-label="Call ' + esc(p.name) + '">📞</a>'
-      + '<a class="np-btn np-wa" href="https://wa.me/' + esc(p.tel) + '?text=' + hello + '" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp ' + esc(p.name) + '">' + NP_WA_SVG + '</a></li>').join('')
-    + '</ul>';
+      + '<a class="np-btn np-wa" href="https://wa.me/' + esc(p.tel) + '?text=' + hello + '" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp ' + esc(p.name) + '">' + NP_WA_SVG + '</a></li>';
+  /* 7 Oct 2026 (owner: "CEO lai alag desh sita najodera rakha"): the CEO
+     gets a block of his own; the Nepal office list carries only the office
+     people (Nepalgunj line + the extra Nepal numbers from Admin). */
+  const ceo = team.filter(p => p.key === 'ceo');
+  const office = team.filter(p => p.key !== 'ceo');
+  card.innerHTML = (office.length
+      ? '<p class="th-nph">' + NP_FLAG_SVG + '<b>Nepal Office</b><small>Shree Hari Global Pvt Ltd · नेपाल कार्यालय</small></p><ul class="th-npl">' + office.map(row).join('') + '</ul>'
+      : '')
+    + (ceo.length
+      ? '<div class="np-ceo"><p class="th-nph"><b>👤 CEO</b><small>प्रमुख कार्यकारी · ' + (ceo[0].country === 'NP' ? '🇳🇵 Nepal' : ceo[0].country === 'IN' ? '🇮🇳 India' : '') + '</small></p><ul class="th-npl">'
+        + ceo.map(row).join('') + '</ul></div>'
+      : '');
   card.hidden = false;
   return true;
 }
@@ -1350,7 +1360,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261007lh" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261007lk" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'

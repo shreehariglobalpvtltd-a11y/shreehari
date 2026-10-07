@@ -72,7 +72,14 @@ try {
         CustomerProfile::save(
             $uid,
             Security::clean((string) Response::field('name', ''), 120),
-            Security::clean((string) Response::field('address', ''), 255)
+            Security::clean((string) Response::field('address', ''), 255),
+            [
+                'gender'   => (string) Response::field('gender', ''),
+                'location' => Security::clean((string) Response::field('location', ''), 255),
+                'email'    => (string) Response::field('email', ''),
+                'idType'   => (string) Response::field('idType', ''),
+                'idNumber' => Security::clean((string) Response::field('idNumber', ''), 60),
+            ]
         );
     } elseif ($action === 'photo') {
         CustomerProfile::savePhoto($uid, is_array($_FILES['photo'] ?? null) ? $_FILES['photo'] : []);

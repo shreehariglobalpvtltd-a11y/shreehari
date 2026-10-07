@@ -4156,3 +4156,13 @@ body.wa-open{overflow:hidden}
 .who-chip{cursor:pointer;border:1px solid var(--line);background:var(--card);color:inherit;font:inherit;font-size:12.5px;padding:6px 10px;border-radius:999px;min-height:34px}
 .who-hint{display:block;color:var(--muted);font-size:12px;margin-top:6px;line-height:1.45}
 @media (max-width:420px){.who-btn{flex-direction:column;text-align:center;gap:5px;padding:9px 6px}.who-btn small{white-space:normal}}
+/* 7 Oct 2026: gender / location / ID + email boxes on the sign-in sheet and profile editor */
+.lg-gender{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.lg-g{min-height:44px;border:1.5px solid var(--line);border-radius:12px;background:var(--card);color:inherit;font:inherit;font-weight:700;font-size:13.5px;cursor:pointer;padding:6px}
+.lg-g.on{border-color:var(--orange);box-shadow:0 0 0 3px rgba(240,120,0,.16)}
+.lg-loc{display:flex;gap:8px;align-items:stretch}
+.lg-loc input{flex:1;min-width:0}
+.lg-loc .btn{flex:none;white-space:nowrap}
+.lg-more{margin:0 0 12px}
+.lg-more summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--muted);padding:6px 2px;list-style:none}
+.lg-more[open] summary{margin-bottom:8px}

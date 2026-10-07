@@ -66,6 +66,13 @@ $NPTEAM = [
     'np_ops_phone'     => ['Operations, Nepalgunj — phone', '+977 98… (hidden on the site until filled)', 40, false],
     'np_parking_name'  => ['Parking in-charge, Rupaidiha — name', 'Vishal Bhai', 80, false],
     'np_parking_phone' => ['Parking in-charge, Rupaidiha — phone', '+977 98… / +91 … (hidden until filled)', 40, false],
+    // 7 Oct 2026: the Nepalgunj office line + two more Nepal numbers
+    'np_office_name'   => ['Nepal office, Nepalgunj — name', 'Lok Bahadur Sunar', 80, false],
+    'np_office_phone'  => ['Nepal office, Nepalgunj — phone', '+977 986-6201375 (used until you type one)', 40, false],
+    'np_extra1_name'   => ['Extra Nepal number 1 — name / label', 'Nepal Office', 80, false],
+    'np_extra1_phone'  => ['Extra Nepal number 1 — phone', '+977 98… (hidden until filled)', 40, false],
+    'np_extra2_name'   => ['Extra Nepal number 2 — name / label', 'Nepal Office', 80, false],
+    'np_extra2_phone'  => ['Extra Nepal number 2 — phone', '+977 98… (hidden until filled)', 40, false],
 ];
 $LOGO_REL = 'assets/img/brand-np-logo.png';
 
@@ -214,9 +221,9 @@ admin_header('Company details', 'company');
     </section>
 
     <section class="co-card">
-      <h2>📞 Nepal office contacts <span class="co-state <?= count(Settings::nepalTeam()) >= 3 ? 'on' : 'off' ?>"><?= count(Settings::nepalTeam()) ?> of 3 on the home page</span></h2>
+      <h2>📞 Nepal office contacts <span class="co-state <?= count(Settings::nepalTeam()) >= 2 ? 'on' : 'off' ?>"><?= count(Settings::nepalTeam()) ?> of 6 on the home page</span></h2>
       <p class="sub">The "Nepal Office" card at the top of the website: tap-to-call and WhatsApp for each person.
-        A person appears only after a <b>phone</b> is typed here. A bare 10-digit number is read as a Nepal mobile (+977) — type +91 for an Indian one.</p>
+        The CEO is shown in a block of his own, apart from the Nepal office numbers. A person appears only after a <b>phone</b> is typed here. A bare 10-digit number is read as a Nepal mobile (+977) — type +91 for an Indian one.</p>
       <?php foreach ($NPTEAM as $key => [$label, $hint, $max]): $val = Settings::getString($key, ''); ?>
         <label class="co-f"><?= $e($label) ?>
           <input type="text" name="s[<?= $e($key) ?>]" maxlength="<?= (int) $max ?>" value="<?= $e($val) ?>" placeholder="<?= $e($hint) ?>" <?= $canEdit ? '' : 'readonly' ?><?= str_ends_with($key, '_phone') ? ' inputmode="tel"' : '' ?>>

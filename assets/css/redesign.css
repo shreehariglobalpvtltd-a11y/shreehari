@@ -726,3 +726,9 @@ html.shg-from-ad #view-home > #search-anchor { order: -4 !important; margin-top:
 @keyframes orShine{0%{background-position:0 0}100%{background-position:200% 0}}
 @media (prefers-reduced-motion:reduce){.offer-ribbon{animation:none}}
 @media (max-width:520px){.offer-ribbon{font-size:13px;padding:8px 12px;gap:6px}.offer-ribbon .or-cta{font-size:12px}}
+/* 7 Oct 2026: the CEO in a block of his own under the Nepal office list */
+.np-ceo { margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(255, 255, 255, .28); }
+.th-npcard > .np-ceo:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.np-ceo .th-nph small { color: #cfe0ff; }
+.np-ceo .np-main { background: rgba(45, 123, 224, .22); border-color: rgba(143, 191, 255, .35); }
+.np-ceo .np-main .np-role { color: #cfe0ff; }

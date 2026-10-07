@@ -183,7 +183,13 @@ try {
             /* 7 Oct 2026: the code proved the number, so this session may
                read and change the saved profile (address, photo). */
             require_once INCLUDE_PATH . '/customerprofile.php';
-            CustomerProfile::markVerified((int) $user['id'], Security::clean(Response::field('address', ''), 255));
+            CustomerProfile::markVerified((int) $user['id'], Security::clean(Response::field('address', ''), 255), [
+                'gender'   => (string) Response::field('gender', ''),
+                'location' => Security::clean((string) Response::field('location', ''), 255),
+                'email'    => (string) Response::field('email', ''),
+                'idType'   => (string) Response::field('idType', ''),
+                'idNumber' => Security::clean((string) Response::field('idNumber', ''), 60),
+            ]);
             Response::success([
                 'verified' => true,
                 'user'     => CustomerProfile::forApp((int) $user['id']) + [

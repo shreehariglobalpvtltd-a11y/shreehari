@@ -646,10 +646,17 @@ final class Settings
     public static function nepalTeam(): array
     {
         $g    = static fn(string $k): string => trim(self::getString($k, ''));
+        /* 7 Oct 2026 (owner: "CEO lai alag desh sita najodera rakha, Nepal
+           ko aru number rakhdeu"): the Nepalgunj office line + two more
+           Nepal numbers. The site shows the CEO in a block of his own, not
+           inside the Nepal office list (his default number is Indian). */
         $rows = [
             ['ceo',     'CEO',                           'प्रमुख कार्यकारी',     'Sher Bahadur Bishwokarma', '+91 97264 01507'],
+            ['office',  'Nepal Office · Nepalgunj',      'नेपाल कार्यालय · नेपालगन्ज', 'Lok Bahadur Sunar',  '+977 986-6201375'],
             ['ops',     'Operations · Nepalgunj',        'सञ्चालन · नेपालगन्ज',  'Lokesh Mama',              ''],
             ['parking', 'Parking in-charge · Rupaidiha', 'पार्किङ · रुपैडिहा',   'Vishal Bhai',              ''],
+            ['extra1',  'Nepal Office',                  'नेपाल कार्यालय',        'Nepal Office',             ''],
+            ['extra2',  'Nepal Office',                  'नेपाल कार्यालय',        'Nepal Office',             ''],
         ];
         $out = [];
         foreach ($rows as [$key, $role, $roleNe, $defName, $defPhone]) {
@@ -671,6 +678,7 @@ final class Settings
                 'name'   => $name !== '' ? $name : $defName,
                 'phone'  => $phone,
                 'tel'    => $tel,
+                'country'=> str_starts_with($tel, '977') ? 'NP' : (str_starts_with($tel, '91') ? 'IN' : ''),
             ];
         }
 

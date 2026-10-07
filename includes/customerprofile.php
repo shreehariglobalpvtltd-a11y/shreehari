@@ -44,8 +44,8 @@ final class CustomerProfile
                 $ok = (int) Database::scalar(
                     "SELECT COUNT(*) FROM information_schema.COLUMNS
                       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users'
-                        AND COLUMN_NAME IN ('address', 'photo_path', 'profile_verified_at')", [], 0
-                ) === 3;
+                        AND COLUMN_NAME IN ('address', 'photo_path', 'profile_verified_at', 'gender', 'location')", [], 0
+                ) === 5;
             } catch (Throwable $e) {
                 $ok = false;
             }
@@ -54,7 +54,7 @@ final class CustomerProfile
     }
 
     /** The code was right: remember it for this session and save the address typed with it. */
-    public static function markVerified(int $userId, string $address = ''): void
+    public static function markVerified(int $userId, string $address = '', array $extra = []): void
     {
         $_SESSION[self::SESSION_KEY] = $userId;
         if (!self::ready() || $userId <= 0) {
@@ -65,7 +65,47 @@ final class CustomerProfile
         if (mb_strlen($address) >= 3) {
             $set['address'] = mb_substr($address, 0, 255);
         }
+        // only what was typed: a blank box at sign-in never wipes a saved value
+        try {
+            foreach (self::extras($extra) as $k => $v) {
+                if ($v !== null) {
+                    $set[$k] = $v;
+                }
+            }
+        } catch (RuntimeException $e) {
+            // a mistyped email at sign-in must not cost the sign-in
+        }
         Database::update('users', $set, 'id = :id', ['id' => $userId]);
+    }
+
+    public const ID_TYPES = ['Passport', 'Voter ID', 'Aadhaar Card', 'Nepali Citizenship Card', 'Driving Licence'];
+
+    /**
+     * Gender / current location / ID document / email from a request,
+     * cleaned. null = left blank (or not valid), so the caller decides
+     * whether blank means "keep" (sign-in) or "clear" (profile edit).
+     *
+     * @param array<string, mixed> $in
+     * @return array<string, string|null>
+     */
+    public static function extras(array $in): array
+    {
+        $txt = static fn(string $k, int $max): string => mb_substr(trim(preg_replace('/\s+/u', ' ', (string) ($in[$k] ?? '')) ?? ''), 0, $max);
+        $g   = $txt('gender', 10);
+        $em  = strtolower($txt('email', 191));
+        $it  = $txt('idType', 60);
+        $num = strtoupper(preg_replace('/[^A-Za-z0-9\-\/ ]/', '', $txt('idNumber', 60)) ?? '');
+        $loc = $txt('location', 255);
+        if ($em !== '' && filter_var($em, FILTER_VALIDATE_EMAIL) === false) {
+            throw new RuntimeException('That email does not look right.');
+        }
+        return [
+            'gender'    => in_array($g, ['Male', 'Female', 'Other'], true) ? $g : null,
+            'location'  => mb_strlen($loc) >= 2 ? $loc : null,
+            'email'     => $em !== '' ? $em : null,
+            'id_type'   => $num !== '' && in_array($it, self::ID_TYPES, true) ? $it : null,
+            'id_number' => mb_strlen($num) >= 4 ? $num : null,
+        ];
     }
 
     /** The signed-in customer, only when THIS session proved the number. */
@@ -86,7 +126,7 @@ final class CustomerProfile
      */
     public static function forApp(int $userId): array
     {
-        $out = ['otpVerified' => false, 'address' => '', 'photoUrl' => ''];
+        $out = ['otpVerified' => false, 'address' => '', 'photoUrl' => '', 'gender' => '', 'location' => '', 'email' => '', 'idType' => '', 'idNumber' => ''];
         if ($userId <= 0 || self::verifiedUserId() !== $userId) {
             return $out;
         }
@@ -94,8 +134,13 @@ final class CustomerProfile
         if (!self::ready()) {
             return $out;
         }
-        $row = Database::fetch('SELECT address, photo_path FROM users WHERE id = :id LIMIT 1', ['id' => $userId]);
-        $out['address'] = (string) ($row['address'] ?? '');
+        $row = Database::fetch('SELECT address, photo_path, gender, location, email, id_type, id_number FROM users WHERE id = :id LIMIT 1', ['id' => $userId]);
+        $out['address']  = (string) ($row['address'] ?? '');
+        $out['gender']   = (string) ($row['gender'] ?? '');
+        $out['location'] = (string) ($row['location'] ?? '');
+        $out['email']    = (string) ($row['email'] ?? '');
+        $out['idType']   = (string) ($row['id_type'] ?? '');
+        $out['idNumber'] = (string) ($row['id_number'] ?? '');
         $file = self::photoFile((string) ($row['photo_path'] ?? ''));
         if ($file !== '') {
             $out['photoUrl'] = '/api/profile.php?photo=1&v=' . substr(md5((string) $row['photo_path']), 0, 8);
@@ -104,7 +149,7 @@ final class CustomerProfile
     }
 
     /** Save name / address (verified sessions only). */
-    public static function save(int $userId, string $name, string $address): void
+    public static function save(int $userId, string $name, string $address, array $extra = []): void
     {
         $set  = [];
         $name = trim($name);
@@ -116,6 +161,10 @@ final class CustomerProfile
         }
         if (self::ready()) {
             $set['address'] = trim($address) !== '' ? mb_substr(trim($address), 0, 255) : null;
+            // the edit form shows every box, so a cleared box clears the value
+            foreach (self::extras($extra) as $k => $v) {
+                $set[$k] = $v;
+            }
         }
         if ($set !== []) {
             Database::update('users', $set, 'id = :id', ['id' => $userId]);

@@ -7,9 +7,10 @@
 --  use hune, arko ko lagi ticket katna milne. Return ma pani thau ko naam
 --  rakhdeu, price editable."
 --
---  1. users.address / users.photo_path / users.profile_verified_at
---     (photo files live in storage/profile-photos/, outside the web root
---     and are served only to their owner by api/profile.php).
+--  1. users.address / gender / location / photo_path / profile_verified_at
+--     (email, id_type, id_number already exist on users)
+--     (photo files live in tickets/profiles/, which nginx never serves,
+--     and are handed only to their owner by api/profile.php).
 --  2. Settings: customer OTP on/off, "continue without code" when WhatsApp
 --     could not deliver, and an optional dedicated OTP template name.
 --  3. Return routes (Rupaidiha -> Gujarat, active) get one DROP stop per
@@ -24,7 +25,9 @@
 ALTER TABLE `users`
   ADD COLUMN IF NOT EXISTS `address` VARCHAR(255) NULL DEFAULT NULL AFTER `full_name`,
   ADD COLUMN IF NOT EXISTS `photo_path` VARCHAR(191) NULL DEFAULT NULL AFTER `address`,
-  ADD COLUMN IF NOT EXISTS `profile_verified_at` DATETIME NULL DEFAULT NULL AFTER `photo_path`;
+  ADD COLUMN IF NOT EXISTS `profile_verified_at` DATETIME NULL DEFAULT NULL AFTER `photo_path`,
+  ADD COLUMN IF NOT EXISTS `gender` ENUM('Male','Female','Other') NULL DEFAULT NULL AFTER `full_name`,
+  ADD COLUMN IF NOT EXISTS `location` VARCHAR(255) NULL DEFAULT NULL AFTER `address`;
 
 INSERT IGNORE INTO `settings` (`skey`, `svalue`, `stype`, `sgroup`, `label`, `is_public`) VALUES
  ('customer_otp_on',        '1', 'bool',   'customers', 'Customer login: send a one-time code on WhatsApp', 0),

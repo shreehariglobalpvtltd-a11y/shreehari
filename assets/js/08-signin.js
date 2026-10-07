@@ -77,6 +77,81 @@ document.addEventListener('click', (e) => {
    book either way, but the saved address / photo stay locked until the
    number is proven.
    ------------------------------------------------------------------- */
+/* Gender / current location / ID document / email — the extra profile
+   boxes (owner, 7 Oct 2026: "mahila, afno current location, document
+   number save garna milos, optional email ID"). One block for the sign-in
+   sheet and the profile editor; `px` keeps their ids apart. */
+const LG_ID_TYPES = ['Passport', 'Voter ID', 'Aadhaar Card', 'Nepali Citizenship Card', 'Driving Licence'];
+function lgExtraFieldsHTML(u, px, open) {
+  u = u || {};
+  const g = u.gender || '';
+  const gBtn = (v, label) => '<button type="button" class="lg-g' + (g === v ? ' on' : '') + '" data-g="' + v + '" aria-pressed="' + (g === v) + '">' + label + '</button>';
+  return `
+    <div class="field"><label>${t('lgGender')} <small>(${t('lgOpt')})</small></label>
+      <div class="lg-gender" id="${px}Gender" data-val="${esc(g)}">${gBtn('Male', '👨 ' + t('gM'))}${gBtn('Female', '👩 ' + t('gF'))}${gBtn('Other', t('gO'))}</div></div>
+    <div class="field"><label for="${px}Loc">${t('lgLoc')} <small>(${t('lgOpt')})</small></label>
+      <div class="lg-loc"><input id="${px}Loc" maxlength="255" placeholder="${esc(t('lgLocPh'))}" value="${esc(u.location || '')}">
+        <button type="button" class="btn btn-ghost btn-sm" id="${px}LocBtn">📍 ${t('lgLocBtn')}</button></div></div>
+    <details class="lg-more"${open ? ' open' : ''}>
+      <summary>🪪 ${t('lgMore')}</summary>
+      <div class="form-2col">
+        <div class="field"><label for="${px}IdType">${t('lgIdType')}</label><select id="${px}IdType">${LG_ID_TYPES.map(v => '<option' + (u.idType === v ? ' selected' : '') + '>' + v + '</option>').join('')}</select></div>
+        <div class="field"><label for="${px}IdNum">${t('lgIdNum')}</label><input id="${px}IdNum" maxlength="60" autocapitalize="characters" placeholder="${esc(t('lgIdNumPh'))}" value="${esc(u.idNumber || '')}"></div>
+      </div>
+      <div class="field"><label for="${px}Email">${t('lgEmail')} <small>(${t('lgOpt')})</small></label><input id="${px}Email" type="email" inputmode="email" autocomplete="email" maxlength="191" placeholder="you@example.com" value="${esc(u.email || '')}"><div class="err">${t('lgEmailBad')}</div></div>
+    </details>`;
+}
+function lgBindExtras(px) {
+  const box = $('#' + px + 'Gender');
+  if (box) box.querySelectorAll('[data-g]').forEach(b => b.onclick = () => {
+    const v = box.dataset.val === b.dataset.g ? '' : b.dataset.g;   // tap again = unselect
+    box.dataset.val = v;
+    box.querySelectorAll('[data-g]').forEach(x => { const on = x.dataset.g === v; x.classList.toggle('on', on); x.setAttribute('aria-pressed', String(on)); });
+  });
+  const lb = $('#' + px + 'LocBtn'), li = $('#' + px + 'Loc');
+  if (lb && li) lb.onclick = () => {
+    if (!navigator.geolocation) { toast(t('lgLocFail')); return; }
+    const label = lb.innerHTML; lb.disabled = true; lb.textContent = t('lgLocBusy');
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      const la = pos.coords.latitude.toFixed(5), lo = pos.coords.longitude.toFixed(5);
+      let name = '';
+      try {
+        const r = await fetch('/api/nav-search.php?city=' + la + ',' + lo, { credentials: 'same-origin' });
+        const j = await r.json(); name = (j && j.name) || '';
+      } catch (e) {}
+      li.value = name ? name + ' (' + la + ', ' + lo + ')' : la + ', ' + lo;
+      lb.disabled = false; lb.innerHTML = label;
+    }, () => { lb.disabled = false; lb.innerHTML = label; toast(t('lgLocFail')); }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+  };
+}
+/* Read the block; null when the email is mistyped (the box is marked). */
+function lgReadExtras(px) {
+  const v = id => { const el = $('#' + px + id); return el ? el.value.trim() : ''; };
+  const em = v('Email');
+  const emEl = $('#' + px + 'Email');
+  const emOk = !em || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(em);
+  if (emEl) emEl.closest('.field').classList.toggle('invalid', !emOk);
+  if (!emOk) { const d = emEl.closest('details'); if (d) d.open = true; emEl.focus(); return null; }
+  const num = v('IdNum');
+  return { gender: (($('#' + px + 'Gender') || {}).dataset || {}).val || '', location: v('Loc'),
+           idType: num ? v('IdType') : '', idNumber: num, email: em };
+}
+
+/* The account's own details onto the open checkout — only into empty boxes
+   unless `force` (the "For me" tap). */
+function shgFillMine(force) {
+  if (!USER || (typeof isCounterSale === 'function' && isCounterSale())) return;
+  const set = (el, val, ev) => { if (el && val && (force || !String(el.value || '').trim())) { el.value = val; el.dispatchEvent(new Event(ev || 'input', { bubbles: true })); } };
+  const lead = $('#paxRows .grp-lead') || $('#paxRows .pax-row');
+  if (lead) set($('.pxGender', lead), USER.gender, 'change');
+  set($('#cEmail'), USER.email);
+  if (USER.idNumber) {
+    const it = $('#idType');
+    if (it && (force || !(($('#idNum') || {}).value || '').trim()) && USER.idType) it.value = USER.idType;
+    set($('#idNum'), USER.idNumber);
+  }
+}
+
 let _lgPhoto = null;   // the File picked in step 1, uploaded after the code is right
 
 function lgAvatarHTML(u, size) {
@@ -90,7 +165,7 @@ function lgAvatarHTML(u, size) {
 
 function openLoginModal(opts) {
   opts = opts || {};
-  const savedU = getUser();
+  const savedU = opts.u ? Object.assign({}, getUser() || {}, opts.u) : getUser();
   let savedName = (savedU && savedU.name) || '';
   if (!savedName) { try { savedName = (JSON.parse(localStorage.getItem('shg_cust_contact') || 'null') || {}).name || ''; } catch (e) {} }
   const savedPhone = (savedU && savedU.phone) || '';
@@ -117,8 +192,10 @@ function openLoginModal(opts) {
         <input id="otpPhone" inputmode="numeric" maxlength="10" placeholder="98XXXXXXXX" autocomplete="tel-national" value="${esc(savedPhone)}" style="flex:1;min-width:0">
       </div>
       <div class="err">${t('errPhone')}</div></div>
+    ${lgExtraFieldsHTML(savedU, 'lg', false)}
     <div class="m-actions"><button class="btn btn-orange" type="button" id="otpSendBtn" style="width:100%">🟢 ${t('lgSendOtp')}</button></div>
     <p class="lg-note">🔒 ${t('lgNote')}</p>`);
+  lgBindExtras('lg');
   const savedCC = (savedU && savedU.country) || '';
   if (savedCC === 'NP' || savedCC === 'IN') { const ccEl = $('#otpCC'); if (ccEl) ccEl.value = savedCC === 'NP' ? '977' : '91'; }
   (savedName ? (savedAddr ? $('#otpPhone') : $('#lgAddr')) : $('#qlName')).focus();
@@ -144,6 +221,11 @@ function lgSetUserFrom(su, p, extra) {
     phone: su.phone || p, name: su.name || (extra && extra.name) || keep.name || '', role: su.role || 'customer',
     points: su.points || 0, tier: su.tier || 'Silver', country: su.country || keep.country || '',
     address: su.otpVerified ? (su.address || '') : ((extra && extra.address) || keep.address || ''),
+    gender: su.otpVerified ? (su.gender || '') : ((extra && extra.gender) || keep.gender || ''),
+    location: su.otpVerified ? (su.location || '') : ((extra && extra.location) || keep.location || ''),
+    email: su.otpVerified ? (su.email || '') : ((extra && extra.email) || keep.email || ''),
+    idType: su.otpVerified ? (su.idType || '') : ((extra && extra.idType) || keep.idType || ''),
+    idNumber: su.otpVerified ? (su.idNumber || '') : ((extra && extra.idNumber) || keep.idNumber || ''),
     photoUrl: su.otpVerified ? (su.photoUrl || '') : (keep.otpVerified ? '' : (keep.photoUrl || '')),
     otpVerified: !!su.otpVerified,
     at: Date.now(), srvAt: Date.now()
@@ -156,7 +238,7 @@ function lgAfterSignIn() {
   closeModal();
   toast(t('otpOkT'));
   if (location.hash === '#/my') renderMyBookings();
-  else if (location.hash === '#/checkout') { applyUserToCheckout(); if (typeof shgWhoBar === 'function') shgWhoBar(); }
+  else if (location.hash === '#/checkout') { applyUserToCheckout(); shgFillMine(false); if (typeof shgWhoBar === 'function') shgWhoBar(); }
 }
 
 /* Step 1 → ask the server to send the code on WhatsApp. */
@@ -173,6 +255,8 @@ async function sendOtp() {
   if (addrEl) { const ok = address.length >= 3; addrEl.closest('.field').classList.toggle('invalid', !ok); if (!ok) bad = bad || addrEl; }
   const pOk = /^\d{10}$/.test(p); f.classList.toggle('invalid', !pOk); if (!pOk) bad = bad || $('#otpPhone');
   if (bad) { bad.focus(); return; }
+  const extras = lgReadExtras('lg');
+  if (!extras) return;
 
   const sendBtn = $('#otpSendBtn');
   const label = sendBtn ? sendBtn.innerHTML : '';
@@ -185,7 +269,7 @@ async function sendOtp() {
     toast((e && e.message) || t('errOtpSend'));
     return;
   }
-  lgOtpStep({ p: p, cc: cc, country: country, name: name, address: address }, result || {});
+  lgOtpStep({ p: p, cc: cc, country: country, name: name, address: address, extras: extras }, result || {});
 }
 
 /* Step 2 → the code from WhatsApp. */
@@ -231,7 +315,7 @@ function lgOtpStep(s, result) {
       if (r && r.sent === false) { const sb = $('#lgSkipBox'); if (sb) sb.hidden = false; }
     } catch (e) { rs.disabled = false; toast((e && e.message) || t('errOtpSend')); }
   };
-  $('#lgBack').onclick = () => { clearInterval(tick); openLoginModal(); const n = $('#qlName'), a = $('#lgAddr'), ph = $('#otpPhone'), c = $('#otpCC'); if (n) n.value = s.name; if (a) a.value = s.address; if (ph) ph.value = s.p; if (c) c.value = s.cc; };
+  $('#lgBack').onclick = () => { clearInterval(tick); openLoginModal({ u: Object.assign({ name: s.name, address: s.address, phone: s.p, country: s.country }, s.extras) }); const c = $('#otpCC'); if (c) c.value = s.cc; };
 
   const skip = $('#lgSkip');
   if (skip) skip.onclick = async () => {
@@ -239,7 +323,7 @@ function lgOtpStep(s, result) {
     try {
       const q = await shgApi.post('/otp.php', { action: 'quick', phone: s.p, name: s.name, country: s.country });
       clearInterval(tick);
-      lgSetUserFrom(q && q.user, s.p, { name: s.name, address: s.address });
+      lgSetUserFrom(q && q.user, s.p, Object.assign({ name: s.name, address: s.address }, s.extras));
       if (_lgPhoto) toast(t('lgPhotoLater'));
       lgAfterSignIn();
     } catch (e) { skip.disabled = false; toast((e && e.message) || t('errOtpSend')); }
@@ -251,7 +335,7 @@ function lgOtpStep(s, result) {
     const vbtn = $('#otpVerifyBtn');
     if (vbtn) { vbtn.disabled = true; vbtn.textContent = '…'; }
     try {
-      const v = await shgApi.post('/otp.php', { action: 'verify', phone: s.p, code: c, purpose: 'login', country: s.country, name: s.name, address: s.address });
+      const v = await shgApi.post('/otp.php', Object.assign({ action: 'verify', phone: s.p, code: c, purpose: 'login', country: s.country, name: s.name, address: s.address }, s.extras));
       clearInterval(tick);
       let su = (v && v.user) || { phone: s.p };
       if (_lgPhoto) {
@@ -264,7 +348,7 @@ function lgOtpStep(s, result) {
         } catch (e) { toast((e && e.message) || t('lgPhotoBad')); }
         _lgPhoto = null;
       }
-      lgSetUserFrom(su, s.p, { name: s.name, address: s.address });
+      lgSetUserFrom(su, s.p, Object.assign({ name: s.name, address: s.address }, s.extras));
       lgAfterSignIn();
     } catch (e) {
       if (vbtn) { vbtn.disabled = false; vbtn.textContent = t('otpVerify'); }
@@ -289,7 +373,11 @@ function profileCardHTML() {
       <div class="lg-prof-id">
         <b>${esc(USER.name || t('lgNoName'))}</b>
         <small>📱 +${cc} ${esc(USER.phone)} ${USER.otpVerified ? '<span class="badge ok">✓ ' + t('lgVerified') + '</span>' : ''}</small>
-        ${USER.address ? '<small>📍 ' + esc(USER.address) + '</small>' : ''}
+        ${USER.gender ? '<small>' + (USER.gender === 'Female' ? '👩 ' + t('gF') : USER.gender === 'Male' ? '👨 ' + t('gM') : t('gO')) + '</small>' : ''}
+        ${USER.address ? '<small>🏠 ' + esc(USER.address) + '</small>' : ''}
+        ${USER.location ? '<small>📍 ' + esc(USER.location) + '</small>' : ''}
+        ${USER.idNumber ? '<small>🪪 ' + esc(USER.idType || '') + ' · ' + esc(String(USER.idNumber).replace(/.(?=.{4})/g, '•')) + '</small>' : ''}
+        ${USER.email ? '<small>✉️ ' + esc(USER.email) + '</small>' : ''}
       </div>
     </div>
     <div class="lg-prof-actions">
@@ -315,7 +403,9 @@ function openProfileEdit() {
     </div>
     <div class="field"><label for="peName">${t('lblName')}</label><input id="peName" maxlength="120" autocapitalize="words" value="${esc(USER.name || '')}"><div class="err">${t('errName')}</div></div>
     <div class="field"><label for="peAddr">${t('lgAddr')}</label><input id="peAddr" maxlength="255" placeholder="${esc(t('lgAddrPh'))}" value="${esc(USER.address || '')}"></div>
+    ${lgExtraFieldsHTML(USER, 'pe', true)}
     <div class="m-actions"><button class="btn btn-orange" type="button" id="peSave" style="width:100%">${t('lgSave')}</button></div>`);
+  lgBindExtras('pe');
   $('#lgPhoto').addEventListener('change', function () {
     const f = this.files && this.files[0];
     if (!f) return;
@@ -331,9 +421,11 @@ function openProfileEdit() {
   $('#peSave').onclick = async () => {
     const nm = $('#peName').value.trim();
     if (nm.length < 2) { $('#peName').closest('.field').classList.add('invalid'); return; }
+    const ex = lgReadExtras('pe');
+    if (!ex) return;
     const btn = $('#peSave'); btn.disabled = true; btn.textContent = '…';
     try {
-      let r = await shgApi.post('/profile.php', { action: 'save', name: nm, address: $('#peAddr').value.trim() });
+      let r = await shgApi.post('/profile.php', Object.assign({ action: 'save', name: nm, address: $('#peAddr').value.trim() }, ex));
       if (_lgPhoto) {
         const fd = new FormData(); fd.append('action', 'photo'); fd.append('photo', _lgPhoto);
         r = await shgApi.postForm('/profile.php', fd);
@@ -405,7 +497,13 @@ function shgWhoPick(who) {
     if (ph) ph.value = USER.phone;
     const cc = $('#cCountry'); if (cc && (USER.country === 'NP' || USER.country === 'IN')) { cc.value = USER.country === 'NP' ? '977' : '91'; cc.dataset.trusted = '1'; }
     if (nm) { nm.value = USER.name || ''; nm.dispatchEvent(new Event('input', { bubbles: true })); }
+    shgFillMine(true);
   } else {
+    const lead = $('#paxRows .grp-lead') || $('#paxRows .pax-row');
+    const clr = (el, mine, ev) => { if (el && mine && String(el.value || '').trim() === String(mine)) { el.value = ''; el.dispatchEvent(new Event(ev || 'input', { bubbles: true })); } };
+    if (lead) clr($('.pxGender', lead), USER.gender, 'change');
+    clr($('#cEmail'), USER.email);
+    clr($('#idNum'), USER.idNumber);
     if (ph && digits(ph.value) === USER.phone) ph.value = '';
     if (nm && nm.value.trim() === (USER.name || '').trim()) { nm.value = ''; nm.dispatchEvent(new Event('input', { bubbles: true })); }
     shgWhoBar();
