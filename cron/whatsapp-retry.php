@@ -121,7 +121,9 @@ if ($lastFail !== null) {
     // template not found / not approved / paused, and the free-form-outside-
     // 24 h refusal (1014). Same shape: "(code N)".
     foreach (['63112', '63016', '63007', '20003', '(code 132000)', '(code 132001)', '(code 131031)', '(code 131042)',
-              '(code 1002)', '(code 1004)', '(code 1005)', '(code 1014)', '(code 62)', '(code 66)'] as $senderCode) {
+              '(code 1002)', '(code 1004)', '(code 1005)', '(code 1014)', '(code 62)', '(code 66)',
+              // 7 Oct 2026: AiSensy wallet empty - every passenger fails the same way.
+              'Insufficient WhatsApp Conversation Credits'] as $senderCode) {
         if (str_contains((string) $lastFail['error'], $senderCode)) {
             /* A sender-level failure is a brake, not a permanent tombstone.
                Meta reports these asynchronously. A stable later ticket proves
@@ -198,7 +200,10 @@ $due = Database::fetchAll(
     "SELECT b.id, b.pnr, b.contact_phone,
             (SELECT COUNT(*) FROM message_logs t
               WHERE t.booking_id = b.id AND t.channel = 'whatsapp'
-                AND t.status IN ('sent','failed')" . $purposeT . ") AS tries
+                AND t.status IN ('sent','failed')
+                -- an empty AiSensy wallet is not the passenger's fault: those
+                -- refusals must not use up the tries, or a recharge rescues nobody
+                AND NOT (t.status = 'failed' AND t.error LIKE '%Conversation Credits%')" . $purposeT . ") AS tries
        FROM bookings b
        JOIN message_logs m
          ON m.id = (SELECT m2.id FROM message_logs m2

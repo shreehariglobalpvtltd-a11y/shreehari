@@ -40,8 +40,11 @@ switch ($preset) {
     case 'all':    $from = '1970-01-01'; $to = addDaysISO($today, 1); break;
     case 'custom':
         $from = $isDate($customFrom) ? $customFrom : date('Y-m-01');
-        $to   = $isDate($customTo) ? addDaysISO($customTo, 1) : addDaysISO($today, 1);
+        $to   = $isDate($customTo) ? $customTo : $today;
+        // A backwards range would silently return nothing; swap BEFORE the
+        // end is pushed to the next day, or both end days drop out.
         if ($from > $to) { [$from, $to] = [$to, $from]; }
+        $to = addDaysISO($to, 1);
         break;
     default:       $from = date('Y-m-01'); $to = addDaysISO($today, 1); break;
 }

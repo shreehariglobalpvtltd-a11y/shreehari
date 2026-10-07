@@ -51,6 +51,12 @@ $maxDisc  = Settings::getFloat('counter_max_discount_pct', 15.0);
    conversion aid and is labelled as one: nothing is stored in NPR.
    npr_per_inr lives in Admin → Settings; 0 switches the line off. */
 $nprPeg   = Settings::getFloat('npr_per_inr', NPR_PER_INR);
+/* 7 Oct 2026: an NPR desk may pin its own rate, and the sale + the shift
+   close count the drawer at THAT rate — quote the clerk the same figure. */
+$qtDesk = CounterDesk::forAdmin((int) ($admin['id'] ?? 0));
+if ($nprPeg > 0 && ($qtDesk['code'] ?? '') !== '' && CounterDesk::currency((string) $qtDesk['code']) === 'NPR') {
+    $nprPeg = CounterDesk::rate((string) $qtDesk['code']);
+}
 /* Which desk this clerk is signed in at (24 Sep 2026) — the same label the
    tickets they issue will carry. Read straight off their own profile; a
    staff member with no counter set simply sees no badge. */

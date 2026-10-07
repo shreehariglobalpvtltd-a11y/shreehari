@@ -1018,11 +1018,16 @@ final class BookingService
         // actually collected, and never on top of a clerk's own discount.
         $offerCode = null;
         $amountTyped = isset($data['amount']) && (float) $data['amount'] > 0;
-        if ($discount <= 0 && !$amountTyped && $base > 0) {
+        // 7 Oct 2026: the BIGGER of the two wins (as create() does). Before,
+        // any clerk discount — even ₹50 — silently replaced a 10% offer.
+        if (!$amountTyped && $base > 0) {
             $auto = Fare::autoOffer($base, $phone, (int) $route['id'], Fare::departTs(['id' => $scheduleId], $route));
             if (!empty($auto['ok'])) {
-                $discount  = min(round((float) $auto['amount'], 2), $base);
-                $offerCode = (string) $auto['code'];
+                $offerCut = min(round((float) $auto['amount'], 2), $base);
+                if ($offerCut > $discount) {
+                    $discount  = $offerCut;
+                    $offerCode = (string) $auto['code'];
+                }
             }
         }
 

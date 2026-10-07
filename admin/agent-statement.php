@@ -86,7 +86,7 @@ if (!$isAgent && $agentId > 0) {
             "SELECT created_at, actor_name, actor_role, action, old_value, new_value, detail, reason
                FROM audit_logs
               WHERE (entity_type = 'admin' AND entity_id = :id
-                     AND action IN ('agent.commission_override', 'agent.commission_rate', 'agent.adjustment', 'agent.commission_adjust', 'agent.kind_changed', 'agent.type_changed'))
+                     AND action IN ('agent.commission_override', 'agent.commission_rate', 'agent.rate', 'agent.adjustment', 'agent.commission_adjust', 'agent.kind_changed', 'agent.type_changed'))
                  OR action = 'agent.tier_rates'
               ORDER BY id DESC LIMIT 40",
             ['id' => (string) $agentId]

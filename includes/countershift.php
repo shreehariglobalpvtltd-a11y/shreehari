@@ -344,11 +344,11 @@ final class CounterShift
             . substr((string) $shift['opened_at'], 0, 16) . ' → ' . substr((string) $shift['closed_at'], 11, 5) . "\n"
             . ((string) ($shift['counter_code'] ?? '') !== '' ? 'काउन्टर: ' . $shift['counter_code'] . "\n" : '')
             . "टिकट: " . (int) $shift['tickets'] . ' · सिट: ' . (int) $shift['seats'] . "\n"
-            . "नगद बिक्री: " . inr((float) $shift['cash_sales']) . "\n"
-            . "UPI / बैंक: " . inr((float) $shift['upi_sales']) . "\n"
-            . "सुरुको नगद: " . inr((float) $shift['opening_cash'])
-            . ((float) $shift['cash_paid_out'] > 0 ? "\nनगद दिएको: " . inr((float) $shift['cash_paid_out']) : '') . "\n"
-            . "हुनुपर्ने: " . inr((float) $shift['expected_cash']) . ' · गनेको: ' . inr((float) $shift['counted_cash']) . "\n"
+            . "नगद बिक्री: " . $inr((float) $shift['cash_sales']) . "\n"
+            . "UPI / बैंक: " . $inr((float) $shift['upi_sales']) . "\n"
+            . "सुरुको नगद: " . $inr((float) $shift['opening_cash'])
+            . ((float) $shift['cash_paid_out'] > 0 ? "\nनगद दिएको: " . $inr((float) $shift['cash_paid_out']) : '') . "\n"
+            . "हुनुपर्ने: " . $inr((float) $shift['expected_cash']) . ' · गनेको: ' . $inr((float) $shift['counted_cash']) . "\n"
             . $tag;
     }
 }

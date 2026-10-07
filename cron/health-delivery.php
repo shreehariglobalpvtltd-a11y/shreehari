@@ -80,6 +80,14 @@ foreach ($rows as $r) {
         $code = 'unconfigured';
     } elseif (stripos($err, 'sender paused') !== false) {
         $code = 'paused';
+    } elseif (stripos($err, 'Insufficient WhatsApp Conversation Credits') !== false
+        || stripos($err, '(WCC)') !== false) {
+        /* 7 Oct 2026: the AiSensy wallet ran down to Rs 9.39 on 6 Oct and
+           every ticket since was refused with this sentence — 250+ rows
+           filed under "unrecognised reason" while nobody was told to top up. */
+        $code = 'wallet';
+    } elseif (stripos($err, 'not an India / Nepal mobile') !== false) {
+        $code = 'bad_number';
     } elseif (preg_match('/template name .* does not exist|\b13200[01]\b/i', $err) === 1) {
         /* Meta Cloud API (19 Sep 2026): the setting names a template Meta does
            not have in that language. Every ticket is refused at the door. */
@@ -233,6 +241,24 @@ const FAULTS = [
                     . "   open here — that is the real cause.\n"
                     . "2. Fix that, then the breaker clears by itself and the retry job drains the backlog.\n"
                     . '3. Admin -> Settings -> Notifications has a Resume button if you want it back immediately.',
+    ],
+    'wallet' => [
+        'severity' => Health::CRITICAL,
+        'title'    => 'AiSensy wallet is EMPTY — no WhatsApp ticket is being delivered',
+        'detail'   => 'AiSensy refuses every message with "Insufficient WhatsApp Conversation Credits". '
+                    . 'Passengers are not getting their ticket on WhatsApp. The retry job keeps the backlog and '
+                    . 'sends it by itself once the wallet has money again.',
+        'fix'      => "1. Log in to app.aisensy.com -> Wallet / Billing -> Add credits (keep at least Rs 500).\n"
+                    . "2. Admin -> WhatsApp Manager shows the wallet balance once the next sync runs.\n"
+                    . "3. Until then send the ticket by hand: open the booking -> WhatsApp (click-to-chat) or\n"
+                    . '   download the ticket PNG and send it from the office phone.',
+    ],
+    'bad_number' => [
+        'severity' => Health::INFO,
+        'title'    => 'Some bookings have a mobile number WhatsApp cannot use',
+        'detail'   => 'The number on these bookings is not a valid India (+91) or Nepal (+977) mobile, so no '
+                    . 'ticket could be sent automatically.',
+        'fix'      => 'Open the booking, correct the mobile number, then press Resend.',
     ],
     '21610' => [
         'severity' => Health::INFO,

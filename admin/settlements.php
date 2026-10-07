@@ -468,7 +468,7 @@ if ($row !== null) {
 
       <div class="st-acts">
         <?php if (!$editable): ?><a class="btn ghost" href="<?= $e($self . '?id=' . (int) $row['id'] . '&print=1') ?>" target="_blank" rel="noopener">🖨️ Receipt (print / PDF)</a><?php endif; ?>
-        <?php if (!$agentView): ?><a class="btn ghost" href="/admin/agent-360.php?id=<?= (int) $row['agent_admin_id'] ?>">Agent 360</a>
+        <?php if (!$agentView): ?><a class="btn ghost" href="/admin/agent-360.php?agent=<?= (int) $row['agent_admin_id'] ?>">Agent 360</a>
           <a class="btn ghost" href="/admin/agent-statement.php?agent=<?= (int) $row['agent_admin_id'] ?>&amp;from=<?= $e($row['period_from']) ?>&amp;to=<?= $e($row['period_to']) ?>">Ledger statement</a><?php endif; ?>
         <?php if ($canPay && in_array($st, ['draft', 'approved'], true)): ?>
         <form method="post" data-no-guard style="margin-left:auto" onsubmit="var w=prompt('Why is this settlement cancelled?');if(!w)return false;this.why.value=w;">
@@ -633,7 +633,7 @@ document.getElementById('stNewAgent').addEventListener('change', function () { i
       <?php foreach ($pending as $p): $canDraft = $canPay && $p['open'] === null && $p['commission'] > 0.009; ?>
       <tr>
         <?php if ($canPay): ?><td class="bulk-col" data-label="Select"><?php if ($canDraft): ?><input type="checkbox" class="st-cb" name="agents[]" value="<?= (int) $p['id'] ?>" aria-label="Select <?= $e($p['name']) ?>"><?php endif; ?></td><?php endif; ?>
-        <td data-label="Agent"><?php if ($p['role'] === 'agent'): ?><a href="/admin/agent-360.php?id=<?= (int) $p['id'] ?>"><b><?= $e($p['name']) ?></b></a><?php else: ?><b><?= $e($p['name']) ?></b> <span class="pill st-info" style="font-size:10.5px"><?= $e($p['role']) ?></span><?php endif; ?><?= $p['code'] !== '' ? ' <span class="muted mono">' . $e($p['code']) . '</span>' : '' ?></td>
+        <td data-label="Agent"><?php if ($p['role'] === 'agent'): ?><a href="/admin/agent-360.php?agent=<?= (int) $p['id'] ?>"><b><?= $e($p['name']) ?></b></a><?php else: ?><b><?= $e($p['name']) ?></b> <span class="pill st-info" style="font-size:10.5px"><?= $e($p['role']) ?></span><?php endif; ?><?= $p['code'] !== '' ? ' <span class="muted mono">' . $e($p['code']) . '</span>' : '' ?></td>
         <td data-label="Commission due"><?= $p['role'] === 'agent' ? '<b>' . $e(inr($p['commission'])) . '</b>' : '<span class="muted">—</span>' ?></td>
         <td data-label="Ticket cash held"><?= $p['cash'] > 0.009 ? '<b>' . $e(inr($p['cash'])) . '</b>' . ($p['cashDays'] > 0 ? ' <span class="' . ($p['cashDays'] > $cashDays ? 'st-wait late' : 'muted') . '">· ' . (int) $p['cashDays'] . ' d</span>' : '') : '—' ?></td>
         <td data-label="Net"><?= $p['net'] >= 0 ? '<span style="color:#1FA35B;font-weight:700">we owe ' . $e(inr($p['net'])) . '</span>' : '<span style="color:#DC3B3B;font-weight:700">' . ($p['role'] === 'agent' ? 'agent owes ' : 'to hand over ') . $e(inr(-$p['net'])) . '</span>' ?></td>
@@ -743,7 +743,7 @@ document.getElementById('stNewAgent').addEventListener('change', function () { i
     <thead><tr><th>Agent</th><?php foreach ($grid['months'] as $m): ?><th><?= $e(date('M y', (int) strtotime($m . '-01'))) ?></th><?php endforeach; ?><th>Earned</th><th>Paid</th><th>Due now</th></tr></thead>
     <tbody>
     <?php $tE = 0.0; $tP = 0.0; $tD = 0.0; foreach ($grid['rows'] as $r): $tE += $r['earned']; $tP += $r['paid']; $tD += $r['due']; ?>
-    <tr><td><a href="/admin/agent-360.php?id=<?= (int) $r['id'] ?>"><b><?= $e($r['name']) ?></b></a> <span class="muted mono"><?= $e($r['code']) ?></span></td>
+    <tr><td><a href="/admin/agent-360.php?agent=<?= (int) $r['id'] ?>"><b><?= $e($r['name']) ?></b></a> <span class="muted mono"><?= $e($r['code']) ?></span></td>
       <?php foreach ($grid['months'] as $m): $c = $r['m'][$m] ?? null; ?>
       <td><?= $c !== null ? $e(inr($c['earned'])) . ($c['paid'] > 0 ? '<span class="paid">paid ' . $e(inr($c['paid'])) . '</span>' : '') : '<span class="muted">—</span>' ?></td>
       <?php endforeach; ?>

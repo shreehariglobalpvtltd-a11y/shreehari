@@ -323,7 +323,7 @@ admin_header('Shift & Cash', 'shift');
                 <span class="sh-pill open">open</span>
                 <?php if ($isOffice && (int) $h['admin_id'] !== $me): ?> <a href="<?= $base ?>/admin/shift.php?shift=<?= (int) $h['id'] ?>" style="font-size:12.5px">close for them</a><?php endif; ?>
               <?php else: ?>
-                <span class="sh-pill <?= $ver ?>"><?= $ver === 'ok' ? 'matches' : ($ver === 'short' ? 'short ' . Security::e($mc(abs((float) $h['variance']), $hCur)) : 'over ' . Security::e($mc((float) $h['variance']), $hCur)) ?></span>
+                <span class="sh-pill <?= $ver ?>"><?= $ver === 'ok' ? 'matches' : ($ver === 'short' ? 'short ' . Security::e($mc(abs((float) $h['variance']), $hCur)) : 'over ' . Security::e($mc((float) $h['variance'], $hCur))) ?></span>
               <?php endif; ?>
             </td>
           </tr>

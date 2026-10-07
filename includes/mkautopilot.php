@@ -438,7 +438,10 @@ final class MkAutopilot
         $good = $bad = [];
         try {
             $rows = Database::fetchAll(
-                "SELECT c.template_params, COUNT(*) sent,
+                // MariaDB refuses an ORDER BY expression over aggregate aliases
+                // (error 1247), so the ranking happens on the derived table.
+                "SELECT * FROM (
+                 SELECT c.template_params, COUNT(*) sent,
                         SUM(EXISTS(SELECT 1 FROM bookings b
                                     WHERE RIGHT(REGEXP_REPLACE(b.contact_phone, '[^0-9]', ''), 10) = RIGHT(r.phone, 10)
                                       AND b.created_at BETWEEN r.sent_at AND r.sent_at + INTERVAL 7 DAY
@@ -446,7 +449,8 @@ final class MkAutopilot
                    FROM mk_campaigns c JOIN mk_recipients r ON r.campaign_id = c.id AND r.state IN ('sent','delivered','read')
                   WHERE c.audience LIKE 'autopilot=%' AND c.created_at > NOW() - INTERVAL 120 DAY
                   GROUP BY c.id HAVING sent >= 8
-                  ORDER BY booked / sent DESC, sent DESC"
+                 ) t
+                  ORDER BY t.booked / t.sent DESC, t.sent DESC"
             );
             foreach ($rows as $r) {
                 $line = (string) ((json_decode((string) $r['template_params'], true) ?: [])[1] ?? '');

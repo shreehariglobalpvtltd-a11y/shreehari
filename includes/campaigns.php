@@ -206,7 +206,7 @@ final class Campaigns
 
     public static function sentToday(): int
     {
-        return (int) (Database::fetch("SELECT COUNT(*) n FROM mk_recipients WHERE sent_at >= CURDATE()")['n'] ?? 0);
+        return (int) (Database::fetch("SELECT COUNT(*) n FROM mk_recipients WHERE sent_at >= CURDATE() AND state IN ('sent','delivered','read')")['n'] ?? 0);
     }
 
     /**
@@ -254,6 +254,17 @@ final class Campaigns
                     }
                     Database::update('mk_recipients', ['state' => 'sending'], "id = :id AND state = 'queued'", ['id' => (int) $r['id']]);
                     $x = self::sendOne($c, $r);
+                    /* 7 Oct 2026: an empty AiSensy wallet refuses EVERY number the
+                       same way. Put this person back in the queue, pause the
+                       campaign and stop - instead of marking the whole list
+                       failed in a few minutes with no way back. */
+                    if (!$x['ok'] && stripos((string) $x['error'], 'Conversation Credits') !== false) {
+                        Database::update('mk_recipients', ['state' => 'queued'], 'id = :id', ['id' => (int) $r['id']]);
+                        Database::update('mk_campaigns', ['status' => 'paused'], 'id = :id', ['id' => (int) $c['id']]);
+                        $out['paused'] = 'AiSensy wallet empty - campaign #' . (int) $c['id'] . ' paused';
+                        Logger::warning('Campaign paused: AiSensy wallet empty', ['campaign' => (int) $c['id']], 'marketing');
+                        break;
+                    }
                     Database::update('mk_recipients', [
                         'state' => $x['ok'] ? 'sent' : 'failed', 'provider_ref' => $x['ref'] ?: null,
                         'error' => $x['error'] ?: null, 'sent_at' => date('Y-m-d H:i:s'),

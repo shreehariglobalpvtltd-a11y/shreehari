@@ -381,6 +381,23 @@ final class AgentSettlement
                 ]);
                 $ids[] = $payoutId;
             }
+            /* 7 Oct 2026: a settlement IS the payout an open request asked for.
+               agent.php / agent-360.php close the request when they pay; this
+               path never did, so the agent's next request was refused ("your
+               request is still with the office") after being paid here. */
+            $settled = round($net + $offset, 2);
+            if ($settled > 0.001) {
+                foreach (AgentWallet::openPayoutRequests($agentId) as $oreq) {
+                    if ($settled + 0.009 >= (float) $oreq['amount']) {
+                        try {
+                            AgentWallet::decidePayoutRequest((int) $oreq['id'], 'paid', $by, 'Settled by ' . $no,
+                                $payoutId > 0 ? $payoutId : null);
+                        } catch (Throwable $e) {
+                            Logger::warning('payout request not auto-settled: ' . $e->getMessage(), [], 'agent');
+                        }
+                    }
+                }
+            }
             if ($recv > 0) {
                 $ids[] = AgentWallet::record($agentId, 'cash_handover', $recv, [
                     'ref' => $no, 'note' => 'Cash received with settlement · ' . $label, 'by' => $by,
@@ -589,6 +606,7 @@ final class AgentSettlement
                         COALESCE(SUM(CASE WHEN l.entry_type = 'payout' THEN -l.amount END), 0) AS paid
                    FROM agent_ledger l JOIN admins a ON a.id = l.agent_admin_id
                   WHERE l.account = 'commission' AND l.created_at >= :s
+                    AND a.role = 'agent'   -- staff sellers accrue rows too (commission_agent_only off); they are not owed
                   GROUP BY l.agent_admin_id, a.full_name, a.username, ym",
                 ['s' => $start . ' 00:00:00']
             );

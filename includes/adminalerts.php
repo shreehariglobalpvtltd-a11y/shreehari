@@ -209,7 +209,7 @@ final class AdminAlerts
                     $isAgent = $p['role'] === 'agent';
                     $add('cash_holding', 'cash:' . $p['id'] . ':' . $week, 'Holding ' . inr($p['cash']) . ' ticket cash · ' . $who . ($isAgent ? '' : ' [' . $p['role'] . ']'),
                         'No cash handed over for ' . $p['cashDays'] . ' days. ' . ($isAgent ? 'Collect it or net it off in a settlement.' : 'Record the handover so the books show what is really outstanding.'),
-                        $isAgent ? '/admin/agent-360.php?id=' . $p['id'] : '/admin/settlements.php?tab=pending', '💰');
+                        $isAgent ? '/admin/agent-360.php?agent=' . $p['id'] : '/admin/settlements.php?tab=pending', '💰');
                 }
             }
         }
@@ -227,7 +227,7 @@ final class AdminAlerts
                 ) as $r) {
                     $add('advance_limit', 'adv:' . (int) $r['id'] . ':' . date('Y-m'), 'Advance ' . inr((float) $r['outstanding']) . ' outstanding · ' . ($r['full_name'] ?: $r['username']),
                         'Above the ' . inr((float) $num('advance_limit', 'limit')) . ' limit. Recover it from the next settlement.',
-                        '/admin/agent-360.php?id=' . (int) $r['id'], '🏦');
+                        '/admin/agent-360.php?agent=' . (int) $r['id'], '🏦');
                 }
             } catch (Throwable $e) {
             }
