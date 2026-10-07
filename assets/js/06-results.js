@@ -702,7 +702,8 @@ function pickSeatsSmart(floors, n, patient, gender) {
   const score = (s) => {
     let sc = -s.fi * 40 - s.ri * 1.5;             // preferred floor, then front rows
     const mates = byUnit[unitOf(s)] || [];
-    const freeMates = mates.filter(m => m !== s && isFree(m) && !isChosen(m));
+    // a mate counts only if THIS passenger's party may sit there too
+    const freeMates = mates.filter(m => m !== s && isFree(m) && !isChosen(m) && seatFitsGender(m.btn, g));
     const takenMates = mates.filter(m => m !== s && m.btn.disabled);
     const ownMates = mates.filter(m => m !== s && (isChosen(m) || m.btn.classList.contains('sel')));
     const need = n - chosen.length;
@@ -713,6 +714,8 @@ function pickSeatsSmart(floors, n, patient, gender) {
       else if (!freeMates.length) sc += 2;        // a single berth, nobody to share with
     }
     if (g === 'Female' && (s.btn.classList.contains('fem') || s.btn.classList.contains('u-fem'))) sc += 15;
+    // a man / unknown passenger is kept OUT of a cabin that has a women-preferred berth
+    if (g !== 'Female' && mates.some(m => m !== s && m.btn.classList.contains('fem'))) sc -= 25;
     const seatsInRow = Array.prototype.slice.call(s.row.querySelectorAll('.seat'));
     const aisleEl = s.row.querySelector('.aisle');
     const leftCount = aisleEl ? seatsInRow.filter(x => !!(aisleEl.compareDocumentPosition(x) & Node.DOCUMENT_POSITION_PRECEDING)).length : 0;
@@ -1556,7 +1559,8 @@ function updateSeatSummary() {
     ? Flow.seats.map(s => seatLabel(s, Flow.route && Flow.route.type, Flow.bookingType)).join(', ') + (fareGood ? ' · ' + inr(recapTotal) : '')
     : '';
   const cBtn = $('#continueBtn');
-  cBtn.disabled = !fareGood;
+  // no seat yet → "Auto seat → Continue" stays live while a free berth exists (fare is 0 until then)
+  cBtn.disabled = Flow.seats.length ? !fareGood : !document.querySelector('#seatGrid .seat:not([disabled])');
   cBtn.textContent = Flow.seats.length ? t('btnContinue') : t('btnAutoContinue');
   seatQuickSync();
   updateTierUI();
