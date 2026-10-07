@@ -712,7 +712,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .seat-ai-bar .sab-hint{font-size:12px;color:var(--muted,#5B6B85);text-align:center;line-height:1.4}
 @keyframes sabFlow{to{background-position:300% 0}}
 /* theme sheets paint .btn-blue with !important - the AI button keeps its gradient */
-.seat-ai-bar .seat-auto,.seat-ai-bar .seat-auto:hover{background:linear-gradient(90deg,#7C3AED,#EC4899,#F97316,#7C3AED)!important;background-size:300% 100%!important;border:0!important;color:#fff!important;box-shadow:0 6px 18px rgba(124,58,237,.35)!important}
+#seatAiBar #seatAutoPick,#seatAiBar #seatAutoPick:hover{background:linear-gradient(90deg,#7C3AED,#EC4899,#F97316,#7C3AED)!important;background-size:300% 100%!important;border:0!important;color:#fff!important;box-shadow:0 6px 18px rgba(124,58,237,.35)!important}
 .seat.ai-pick{position:relative}
 .seat.ai-pick.sel{animation:aiPick .7s cubic-bezier(.34,1.56,.64,1)}
 .seat.ai-pick.sel:not(.da)::after{content:'✨';position:absolute;top:-10px;right:-6px;font-size:12px;animation:aiSpark 1.2s ease-out 1 forwards}
