@@ -1494,7 +1494,7 @@ function seatQuickSync() {
   const v = (id) => { const e = document.getElementById(id); return e && e.value ? e.value.trim() : ''; };
   $('#sqName').value = q.name || v('qtName') || (me && me.name) || '';
   $('#sqPhone').value = q.phone || v('qtPhone') || (me && me.phone) || '';
-  seatQuickGender(q.gender || '');
+  seatQuickGender(q.gender || (me && me.gender) || '');
 }
 function seatQuickGender(g) {
   $$('#seatQuick [data-sqg]').forEach(b => b.classList.toggle('on', b.getAttribute('data-sqg') === g));

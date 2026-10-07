@@ -237,6 +237,7 @@ function lgSetUserFrom(su, p, extra) {
 function lgAfterSignIn() {
   closeModal();
   toast(t('otpOkT'));
+  try { if (typeof window.shgQuickMe === 'function') window.shgQuickMe(USER); } catch (e) {}
   if (location.hash === '#/my') renderMyBookings();
   else if (location.hash === '#/checkout') { applyUserToCheckout(); shgFillMine(false); if (typeof shgWhoBar === 'function') shgWhoBar(); }
 }
@@ -897,3 +898,32 @@ document.addEventListener('click', (e) => {
   if (e.target.id === 'shgModal' || e.target.closest('.m-close')) closeModal();
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+
+/* ---------------------------------------------------------------------
+   FIRST OPEN = THE LOGIN SHEET (owner, 7 Oct 2026: "suru mai kholda first
+   time login page open hunu paryo, tei name ra number bata ticket katna
+   prefer garne"). A traveller who is not signed in sees the sign-in sheet
+   as the app opens; once signed in, the saved name + number fill the Quick
+   Ticket card, the seat page and the checkout. It can be closed (the ✕),
+   and then it waits for the next visit — never again in the same tab.
+   Never for staff / the counter desk, and never over a link that opens
+   something specific (a ticket, tracking, payment).
+   ------------------------------------------------------------------- */
+(function shgFirstOpenLogin() {
+  function maybe() {
+    try {
+      if (USER) return;
+      if (window.SHG_BOOT && (window.SHG_BOOT.staff || (window.SHG_BOOT.user && window.SHG_BOOT.user.phone))) return;
+      if (typeof isCounterSale === 'function' && isCounterSale()) return;
+      if (/[?&](counter|pnr|pay|ref|agent)=/i.test(location.search)) return;
+      const h = location.hash || '';
+      if (h && h !== '#' && h !== '#/' && h !== '#/home' && h !== '#/my') return;
+      if (sessionStorage.getItem('shg:lgAsked')) return;
+      sessionStorage.setItem('shg:lgAsked', '1');
+      if (document.getElementById('shgModal') && document.getElementById('shgModal').classList.contains('open')) return;
+      if (typeof openLoginModal === 'function') openLoginModal();
+    } catch (e) {}
+  }
+  const go = () => setTimeout(maybe, 1200);   // after the splash / first paint
+  if (document.readyState === 'complete') go(); else window.addEventListener('load', go, { once: true });
+})();
