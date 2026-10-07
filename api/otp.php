@@ -38,6 +38,7 @@ try {
        phone the next person's ticket was still bound to the previous
        number's session. This ends the server session too. No number needed. */
     if ($action === 'logout') {
+        unset($_SESSION['shg_cust_otp']);   // CustomerProfile's "code proven" mark
         Auth::logoutUser();
         Response::success(['signedOut' => true], 'Signed out.');
     }
@@ -75,10 +76,12 @@ try {
         }
 
         $user = Auth::loginUser($phone, $name, $country);
+        require_once INCLUDE_PATH . '/customerprofile.php';
         Response::success([
             'needsOtp' => false,
             'verified' => true,
-            'user' => [
+            // address / photo only when this session already proved the number
+            'user' => CustomerProfile::forApp((int) $user['id']) + [
                 'phone' => $user['phone'],
                 'name'  => $user['full_name'],
                 'role'  => $user['role'],
@@ -112,19 +115,49 @@ try {
         // and let a configured SMS/WhatsApp provider take over in future.
         Logger::info('OTP issued', ['phone' => maskPhone($phone), 'purpose' => $purpose], 'otp');
 
-        // Deliver the code. SMS first (when the SMS channel is on), then a
-        // WhatsApp attempt (silent no-op if no WhatsApp driver is configured).
+        /* 7 Oct 2026 (owner): the customer login code goes out on WhatsApp
+           through AiSensy - the only WhatsApp sender that works. When it is
+           refused right away (empty wallet, not a WhatsApp number) the app
+           is told, so it can offer "continue without code" instead of a
+           code that is never coming. Other purposes keep the old path. */
+        $sent    = null;
+        $sendErr = '';
         $company = Settings::getString('company_name', APP_NAME);
         $otpText = $company . ' को कोड: ' . $code . ' (' . OTP_EXPIRY_MINUTES . ' मिनेट सम्म मान्य)। यो कोड कसैलाई नबताउनुहोस्।';
-        if (Settings::getBool('sms_send_otp', true)) {
-            Notify::sms($phone, $otpText, $hint);
+        if (in_array($purpose, ['login', 'register', 'verify'], true) && is_file(ROOT_PATH . '/whatsapp/aisensy.php')) {
+            try {
+                if (!class_exists('AiSensyAPI')) {
+                    require_once ROOT_PATH . '/whatsapp/aisensy.php';
+                }
+                if (AiSensyAPI::enabled()) {
+                    $intl    = ($country === 'NP' ? '977' : '91') . $phone;
+                    $r       = AiSensyAPI::sendLoginOtp($intl, $code, Security::clean(Response::field('name', ''), 60));
+                    $sent    = (bool) $r['success'];
+                    $sendErr = $sent ? '' : (string) $r['error'];
+                }
+            } catch (Throwable $e) {
+                $sent    = false;
+                $sendErr = $e->getMessage();
+            }
         }
-        Notify::whatsapp($phone, $otpText, null, $hint);
+        if ($sent === null) {
+            if (Settings::getBool('sms_send_otp', true)) {
+                Notify::sms($phone, $otpText, $hint);
+            }
+            $sent = Notify::whatsapp($phone, $otpText, null, $hint) !== false;
+        }
+        if (!$sent) {
+            Logger::warning('Login code not delivered', ['phone' => maskPhone($phone), 'error' => mb_substr($sendErr, 0, 160)], 'otp');
+        }
 
         $payload = [
-            'sent'    => true,
-            'expires' => $result['expires'],
-            'resendIn'=> OTP_RESEND_SECONDS,
+            'sent'     => $sent,
+            'channel'  => 'whatsapp',
+            'expires'  => $result['expires'],
+            'resendIn' => OTP_RESEND_SECONDS,
+            // "Continue without code" = the plain name + mobile sign-in of
+            // before 7 Oct; offered at once when WhatsApp refused, else after a wait.
+            'canSkip'  => Settings::getBool('customer_otp_skip', true),
         ];
 
         // Never leak the code in production.
@@ -132,7 +165,7 @@ try {
             $payload['debugCode'] = $code;
         }
 
-        Response::success($payload, 'A verification code has been sent.');
+        Response::success($payload, $sent ? 'A verification code has been sent on WhatsApp.' : 'WhatsApp could not deliver the code right now.');
     }
 
     if ($action === 'verify') {
@@ -147,9 +180,13 @@ try {
         // Login purposes sign the customer in.
         if (in_array($purpose, ['login', 'register', 'verify'], true)) {
             $user = Auth::loginUser($phone, $name, $country);
+            /* 7 Oct 2026: the code proved the number, so this session may
+               read and change the saved profile (address, photo). */
+            require_once INCLUDE_PATH . '/customerprofile.php';
+            CustomerProfile::markVerified((int) $user['id'], Security::clean(Response::field('address', ''), 255));
             Response::success([
                 'verified' => true,
-                'user'     => [
+                'user'     => CustomerProfile::forApp((int) $user['id']) + [
                     'phone' => $user['phone'],
                     'name'  => $user['full_name'],
                     'role'  => $user['role'],

@@ -988,7 +988,7 @@ $dirFaresNow  = Fare::dirFares();
         <input type="hidden" name="action" value="save_stop_fares">
         <input type="hidden" name="route_id" value="<?= $rid ?>">
         <input type="hidden" name="stop_type" value="<?= $type ?>">
-        <button class="btn ok" type="submit">💾 Save pickup fares</button>
+        <button class="btn ok" type="submit">💾 Save <?= $type === 'drop' ? 'drop-point' : 'pickup' ?> fares</button>
         <small class="muted">blank = default <?= Security::e(inr($defFare)) ?> · new bookings only — existing tickets keep the price they were sold at</small>
       </form>
       <?php endif; ?>

@@ -42,8 +42,10 @@ function updateNavUser() {
      what "sign in with name + mobile" promises); the masked number is the
      fallback for an account that has no name on file yet. */
   const first = USER && USER.name ? String(USER.name).trim().split(/\s+/)[0] : '';
+  /* 7 Oct 2026: the profile photo (when saved) instead of the 👤. */
+  const ava = USER && USER.photoUrl ? '<img class="nav-ava" src="' + esc(USER.photoUrl) + '" alt="" width="22" height="22"> ' : '👤 ';
   const label = USER
-    ? ('👤 ' + (first ? esc(first.length > 14 ? first.slice(0, 13) + '…' : first) : (USER.phone.slice(0, 2) + '•••' + USER.phone.slice(7))))
+    ? (ava + (first ? esc(first.length > 14 ? first.slice(0, 13) + '…' : first) : (USER.phone.slice(0, 2) + '•••' + USER.phone.slice(7))))
     : '👤 Sign in';
   const b1 = $('#navUserBtn'); if (b1) b1.innerHTML = label;
   const b2 = $('#mmUserBtn'); if (b2) b2.innerHTML = label;
@@ -63,23 +65,49 @@ document.addEventListener('click', (e) => {
    is gone; staff bookmark /admin/. */
 
 /* ---------------------------------------------------------------------
-   SIGN-IN = NAME + MOBILE (owner's rule, 4 Sep 2026). Two boxes, one tap.
-   No OTP, no password: api/otp.php's `quick` action registers a new
-   number on the spot and welcomes a returning one back. The same two
-   details are copied onto every ticket the account books, and one
-   account may hold as many tickets as it likes (see refreshMyBookings).
-   The OTP request/verify path below is kept only as a fallback for an
-   older server that still answers `needsOtp`.
+   CUSTOMER LOGIN = PHOTO + NAME + ADDRESS + MOBILE, code on WhatsApp
+   (owner, 7 Oct 2026: "name, address, number liyera OTP WhatsApp throw
+   AiSensy le gardela. Photo bhaye jhan ramro. Tyo data ticket ma use hune").
+
+   Step 1 collects the details, api/otp.php `request` sends the code through
+   AiSensy, step 2 checks it (`verify` saves the address, then the photo
+   goes to api/profile.php). When WhatsApp refuses at once (empty wallet,
+   not a WhatsApp number) or the code does not come, "continue without
+   code" signs in the old name + mobile way (`quick`) — the traveller can
+   book either way, but the saved address / photo stay locked until the
+   number is proven.
    ------------------------------------------------------------------- */
-function openLoginModal() {
+let _lgPhoto = null;   // the File picked in step 1, uploaded after the code is right
+
+function lgAvatarHTML(u, size) {
+  const px = size || 40;
+  const nm = (u && u.name) ? String(u.name).trim() : '';
+  const ini = nm ? nm.split(/\s+/).slice(0, 2).map(w => w.charAt(0)).join('').toUpperCase() : '👤';
+  return u && u.photoUrl
+    ? '<img class="lg-ava" src="' + esc(u.photoUrl) + '" alt="" width="' + px + '" height="' + px + '" style="width:' + px + 'px;height:' + px + 'px">'
+    : '<span class="lg-ava lg-ava-i" style="width:' + px + 'px;height:' + px + 'px;font-size:' + Math.round(px * 0.38) + 'px">' + esc(ini) + '</span>';
+}
+
+function openLoginModal(opts) {
+  opts = opts || {};
   const savedU = getUser();
   let savedName = (savedU && savedU.name) || '';
   if (!savedName) { try { savedName = (JSON.parse(localStorage.getItem('shg_cust_contact') || 'null') || {}).name || ''; } catch (e) {} }
   const savedPhone = (savedU && savedU.phone) || '';
+  const savedAddr = (savedU && savedU.address) || '';
+  _lgPhoto = null;
   openModal(`
-    <h3 class="m-title">👤 ${t('qlTitle')}</h3>
-    <p class="m-sub">${t('qlP')}</p>
+    <h3 class="m-title">👤 ${t('lgTitle')}</h3>
+    <p class="m-sub">${t('lgP')}</p>
+    <div class="lg-photo-row">
+      <label class="lg-photo" for="lgPhoto" title="${esc(t('lgPhoto'))}">
+        <span id="lgPhotoPrev">${savedU && savedU.photoUrl ? lgAvatarHTML(savedU, 72) : '<span class="lg-photo-plus">📷</span>'}</span>
+        <input id="lgPhoto" type="file" accept="image/jpeg,image/png,image/webp" capture="user" hidden>
+      </label>
+      <div class="lg-photo-txt"><b>${t('lgPhoto')}</b><small>${t('lgPhotoHint')}</small></div>
+    </div>
     <div class="field"><label for="qlName">${t('lblName')}</label><input id="qlName" autocomplete="name" autocapitalize="words" maxlength="120" value="${esc(savedName)}"><div class="err">${t('errName')}</div></div>
+    <div class="field"><label for="lgAddr">${t('lgAddr')}</label><input id="lgAddr" autocomplete="street-address" maxlength="255" placeholder="${esc(t('lgAddrPh'))}" value="${esc(savedAddr)}"><div class="err">${t('lgAddrErr')}</div></div>
     <div class="field"><label for="otpPhone">${t('lblPhone')}</label>
       <div style="display:flex;gap:8px;align-items:stretch">
         <select id="otpCC" aria-label="Country code" style="flex:0 0 116px;padding:0 10px;border:1.5px solid var(--line);border-radius:12px;background:var(--card);color:inherit;font:inherit;font-weight:600">
@@ -89,15 +117,324 @@ function openLoginModal() {
         <input id="otpPhone" inputmode="numeric" maxlength="10" placeholder="98XXXXXXXX" autocomplete="tel-national" value="${esc(savedPhone)}" style="flex:1;min-width:0">
       </div>
       <div class="err">${t('errPhone')}</div></div>
-    <div class="m-actions"><button class="btn btn-orange" type="button" id="otpSendBtn" style="width:100%">${t('qlBtn')}</button></div>`);
-  /* Returning traveller: pre-select the country they signed in with last time
-     so a Nepali number is not shown against +91. */
+    <div class="m-actions"><button class="btn btn-orange" type="button" id="otpSendBtn" style="width:100%">🟢 ${t('lgSendOtp')}</button></div>
+    <p class="lg-note">🔒 ${t('lgNote')}</p>`);
   const savedCC = (savedU && savedU.country) || '';
   if (savedCC === 'NP' || savedCC === 'IN') { const ccEl = $('#otpCC'); if (ccEl) ccEl.value = savedCC === 'NP' ? '977' : '91'; }
-  (savedName ? $('#otpPhone') : $('#qlName')).focus();
+  (savedName ? (savedAddr ? $('#otpPhone') : $('#lgAddr')) : $('#qlName')).focus();
   $('#otpSendBtn').onclick = sendOtp;
-  $('#qlName').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('#otpPhone').focus(); } });
+  $('#lgPhoto').addEventListener('change', function () {
+    const f = this.files && this.files[0];
+    if (!f) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(f.type) || f.size > 6 * 1024 * 1024) { toast(t('lgPhotoBad')); this.value = ''; return; }
+    _lgPhoto = f;
+    const url = URL.createObjectURL(f);
+    $('#lgPhotoPrev').innerHTML = '<img class="lg-ava" src="' + url + '" alt="" style="width:72px;height:72px">';
+  });
+  $('#qlName').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('#lgAddr').focus(); } });
+  $('#lgAddr').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('#otpPhone').focus(); } });
   $('#otpPhone').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendOtp(); });
+}
+
+/* After a sign-in: keep the account object in one shape everywhere. */
+function lgSetUserFrom(su, p, extra) {
+  su = su || {};
+  const keep = (USER && USER.phone === (su.phone || p)) ? USER : {};
+  setUser(Object.assign({}, keep, {
+    phone: su.phone || p, name: su.name || (extra && extra.name) || keep.name || '', role: su.role || 'customer',
+    points: su.points || 0, tier: su.tier || 'Silver', country: su.country || keep.country || '',
+    address: su.otpVerified ? (su.address || '') : ((extra && extra.address) || keep.address || ''),
+    photoUrl: su.otpVerified ? (su.photoUrl || '') : (keep.otpVerified ? '' : (keep.photoUrl || '')),
+    otpVerified: !!su.otpVerified,
+    at: Date.now(), srvAt: Date.now()
+  }));
+  ensureUser(su.phone || p);
+  adoptAccountLang(su);
+}
+
+function lgAfterSignIn() {
+  closeModal();
+  toast(t('otpOkT'));
+  if (location.hash === '#/my') renderMyBookings();
+  else if (location.hash === '#/checkout') { applyUserToCheckout(); if (typeof shgWhoBar === 'function') shgWhoBar(); }
+}
+
+/* Step 1 → ask the server to send the code on WhatsApp. */
+async function sendOtp() {
+  const p = digits($('#otpPhone').value);
+  const cc = ($('#otpCC') && $('#otpCC').value) || '91';
+  const country = cc === '977' ? 'NP' : 'IN';
+  const f = $('#otpPhone').closest('.field');
+  const nameEl = $('#qlName'), addrEl = $('#lgAddr');
+  const name = nameEl ? nameEl.value.trim() : '';
+  const address = addrEl ? addrEl.value.trim() : '';
+  let bad = null;
+  if (nameEl) { const ok = name.length >= 2; nameEl.closest('.field').classList.toggle('invalid', !ok); if (!ok) bad = bad || nameEl; }
+  if (addrEl) { const ok = address.length >= 3; addrEl.closest('.field').classList.toggle('invalid', !ok); if (!ok) bad = bad || addrEl; }
+  const pOk = /^\d{10}$/.test(p); f.classList.toggle('invalid', !pOk); if (!pOk) bad = bad || $('#otpPhone');
+  if (bad) { bad.focus(); return; }
+
+  const sendBtn = $('#otpSendBtn');
+  const label = sendBtn ? sendBtn.innerHTML : '';
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = t('lgSending'); }
+  let result;
+  try {
+    result = await shgApi.post('/otp.php', { action: 'request', phone: p, name: name, purpose: 'login', country: country });
+  } catch (e) {
+    if (sendBtn) { sendBtn.disabled = false; sendBtn.innerHTML = label; }
+    toast((e && e.message) || t('errOtpSend'));
+    return;
+  }
+  lgOtpStep({ p: p, cc: cc, country: country, name: name, address: address }, result || {});
+}
+
+/* Step 2 → the code from WhatsApp. */
+function lgOtpStep(s, result) {
+  const demoNote = result.debugCode ? tf('otpDemo', { c: result.debugCode }) : '';
+  const failed = result.sent === false;
+  openModal(`
+    <h3 class="m-title">🔐 ${t('lgOtpTitle')}</h3>
+    <p class="m-sub">${failed ? t('lgOtpFail') : tf('lgOtpSent', { p: '+' + s.cc + ' ' + s.p })}</p>
+    ${demoNote ? '<div class="verify-note" style="margin-bottom:14px">🧪 <span>' + demoNote + '</span></div>' : ''}
+    <div class="field"><label for="otpCode">${t('lblOtpCode')}</label><input id="otpCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" style="text-align:center;font-family:var(--f-code);font-size:22px;letter-spacing:.3em"><div class="err">${t('otpBad')}</div></div>
+    <div class="m-actions"><button class="btn btn-orange" type="button" id="otpVerifyBtn" style="width:100%">${t('otpVerify')}</button></div>
+    <div class="lg-links">
+      <button type="button" class="lg-link" id="lgResend" disabled>${t('lgResend')}</button>
+      <button type="button" class="lg-link" id="lgBack">✏️ ${t('lgChange')}</button>
+    </div>
+    <div class="lg-skip" id="lgSkipBox" ${failed ? '' : 'hidden'}>
+      <small>${t('lgSkipP')}</small>
+      <button type="button" class="btn btn-ghost btn-sm" id="lgSkip" style="width:100%">${t('lgSkip')}</button>
+    </div>`);
+  const code = $('#otpCode');
+  code.focus();
+  if (!result.canSkip) { const sb = $('#lgSkipBox'); if (sb) sb.remove(); }
+
+  /* Resend countdown, and "continue without code" after 40 s of waiting. */
+  let left = Math.max(30, Number(result.resendIn) || 60);
+  let waited = 0;
+  const rs = $('#lgResend');
+  const tick = setInterval(() => {
+    if (!document.body.contains(rs)) { clearInterval(tick); return; }
+    left--; waited++;
+    if (left > 0) { rs.disabled = true; rs.textContent = tf('lgResendIn', { s: left }); }
+    else { rs.disabled = false; rs.textContent = t('lgResend'); }
+    if (waited === 40) { const sb = $('#lgSkipBox'); if (sb) sb.hidden = false; }
+  }, 1000);
+  rs.textContent = tf('lgResendIn', { s: left });
+  rs.onclick = async () => {
+    rs.disabled = true;
+    try {
+      const r = await shgApi.post('/otp.php', { action: 'request', phone: s.p, name: s.name, purpose: 'login', country: s.country });
+      left = Math.max(30, Number(r && r.resendIn) || 60);
+      toast(r && r.sent === false ? t('lgOtpFail') : t('lgResent'));
+      if (r && r.sent === false) { const sb = $('#lgSkipBox'); if (sb) sb.hidden = false; }
+    } catch (e) { rs.disabled = false; toast((e && e.message) || t('errOtpSend')); }
+  };
+  $('#lgBack').onclick = () => { clearInterval(tick); openLoginModal(); const n = $('#qlName'), a = $('#lgAddr'), ph = $('#otpPhone'), c = $('#otpCC'); if (n) n.value = s.name; if (a) a.value = s.address; if (ph) ph.value = s.p; if (c) c.value = s.cc; };
+
+  const skip = $('#lgSkip');
+  if (skip) skip.onclick = async () => {
+    skip.disabled = true;
+    try {
+      const q = await shgApi.post('/otp.php', { action: 'quick', phone: s.p, name: s.name, country: s.country });
+      clearInterval(tick);
+      lgSetUserFrom(q && q.user, s.p, { name: s.name, address: s.address });
+      if (_lgPhoto) toast(t('lgPhotoLater'));
+      lgAfterSignIn();
+    } catch (e) { skip.disabled = false; toast((e && e.message) || t('errOtpSend')); }
+  };
+
+  const verify = async () => {
+    const c = code.value.trim();
+    if (!/^\d{4,6}$/.test(c)) { code.closest('.field').classList.add('invalid'); return; }
+    const vbtn = $('#otpVerifyBtn');
+    if (vbtn) { vbtn.disabled = true; vbtn.textContent = '…'; }
+    try {
+      const v = await shgApi.post('/otp.php', { action: 'verify', phone: s.p, code: c, purpose: 'login', country: s.country, name: s.name, address: s.address });
+      clearInterval(tick);
+      let su = (v && v.user) || { phone: s.p };
+      if (_lgPhoto) {
+        try {
+          const fd = new FormData();
+          fd.append('action', 'photo');
+          fd.append('photo', _lgPhoto);
+          const pr = await shgApi.postForm('/profile.php', fd);
+          if (pr && pr.profile) su = Object.assign({}, su, pr.profile);
+        } catch (e) { toast((e && e.message) || t('lgPhotoBad')); }
+        _lgPhoto = null;
+      }
+      lgSetUserFrom(su, s.p, { name: s.name, address: s.address });
+      lgAfterSignIn();
+    } catch (e) {
+      if (vbtn) { vbtn.disabled = false; vbtn.textContent = t('otpVerify'); }
+      code.closest('.field').classList.add('invalid');
+      toast((e && e.message) || t('otpBad'));
+    }
+  };
+  $('#otpVerifyBtn').onclick = verify;
+  code.addEventListener('input', () => { code.closest('.field').classList.remove('invalid'); if (/^\d{6}$/.test(code.value.trim())) verify(); });
+  code.addEventListener('keydown', (e) => { if (e.key === 'Enter') verify(); });
+}
+
+/* ---------------------------------------------------------------------
+   MY PROFILE (My Bookings page) — photo, name, address, number; edit.
+   ------------------------------------------------------------------- */
+function profileCardHTML() {
+  if (!USER) return '';
+  const cc = USER.country === 'NP' ? '977' : '91';
+  return `<div class="c-card lg-prof">
+    <div class="lg-prof-top">
+      ${lgAvatarHTML(USER, 64)}
+      <div class="lg-prof-id">
+        <b>${esc(USER.name || t('lgNoName'))}</b>
+        <small>📱 +${cc} ${esc(USER.phone)} ${USER.otpVerified ? '<span class="badge ok">✓ ' + t('lgVerified') + '</span>' : ''}</small>
+        ${USER.address ? '<small>📍 ' + esc(USER.address) + '</small>' : ''}
+      </div>
+    </div>
+    <div class="lg-prof-actions">
+      ${USER.otpVerified
+        ? '<button class="btn btn-ghost btn-sm" type="button" id="lgEditBtn">✏️ ' + t('lgEdit') + '</button>'
+        : '<button class="btn btn-orange btn-sm" type="button" id="lgVerifyBtn">🟢 ' + t('lgVerifyNow') + '</button>'}
+      <button class="btn btn-ghost btn-sm" type="button" id="myLogoutBtn">${t('myLogout')}</button>
+    </div>
+  </div>`;
+}
+
+function openProfileEdit() {
+  if (!USER) return;
+  _lgPhoto = null;
+  openModal(`
+    <h3 class="m-title">✏️ ${t('lgEdit')}</h3>
+    <p class="m-sub">${t('lgEditP')}</p>
+    <div class="lg-photo-row">
+      <label class="lg-photo" for="lgPhoto"><span id="lgPhotoPrev">${USER.photoUrl ? lgAvatarHTML(USER, 72) : '<span class="lg-photo-plus">📷</span>'}</span>
+        <input id="lgPhoto" type="file" accept="image/jpeg,image/png,image/webp" hidden></label>
+      <div class="lg-photo-txt"><b>${t('lgPhoto')}</b><small>${t('lgPhotoHint')}</small>
+        ${USER.photoUrl ? '<button type="button" class="lg-link" id="lgPhotoRm">🗑️ ' + t('lgPhotoRm') + '</button>' : ''}</div>
+    </div>
+    <div class="field"><label for="peName">${t('lblName')}</label><input id="peName" maxlength="120" autocapitalize="words" value="${esc(USER.name || '')}"><div class="err">${t('errName')}</div></div>
+    <div class="field"><label for="peAddr">${t('lgAddr')}</label><input id="peAddr" maxlength="255" placeholder="${esc(t('lgAddrPh'))}" value="${esc(USER.address || '')}"></div>
+    <div class="m-actions"><button class="btn btn-orange" type="button" id="peSave" style="width:100%">${t('lgSave')}</button></div>`);
+  $('#lgPhoto').addEventListener('change', function () {
+    const f = this.files && this.files[0];
+    if (!f) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(f.type) || f.size > 6 * 1024 * 1024) { toast(t('lgPhotoBad')); this.value = ''; return; }
+    _lgPhoto = f;
+    $('#lgPhotoPrev').innerHTML = '<img class="lg-ava" src="' + URL.createObjectURL(f) + '" alt="" style="width:72px;height:72px">';
+  });
+  const rm = $('#lgPhotoRm');
+  if (rm) rm.onclick = async () => {
+    try { const r = await shgApi.post('/profile.php', { action: 'photo_remove' }); lgSetUserFrom(r.profile, USER.phone); openProfileEdit(); }
+    catch (e) { toast((e && e.message) || t('apiErr')); }
+  };
+  $('#peSave').onclick = async () => {
+    const nm = $('#peName').value.trim();
+    if (nm.length < 2) { $('#peName').closest('.field').classList.add('invalid'); return; }
+    const btn = $('#peSave'); btn.disabled = true; btn.textContent = '…';
+    try {
+      let r = await shgApi.post('/profile.php', { action: 'save', name: nm, address: $('#peAddr').value.trim() });
+      if (_lgPhoto) {
+        const fd = new FormData(); fd.append('action', 'photo'); fd.append('photo', _lgPhoto);
+        r = await shgApi.postForm('/profile.php', fd);
+        _lgPhoto = null;
+      }
+      lgSetUserFrom(r.profile, USER.phone);
+      closeModal(); toast(t('lgSaved'));
+      if (location.hash === '#/my') renderMyBookings();
+    } catch (e) {
+      btn.disabled = false; btn.textContent = t('lgSave');
+      if (e && e.status === 403) { setUser(Object.assign({}, USER, { otpVerified: false })); closeModal(); openLoginModal(); }
+      toast((e && e.message) || t('apiErr'));
+    }
+  };
+}
+
+/* ---------------------------------------------------------------------
+   CHECKOUT — "Who is this ticket for?" (owner: "arko ko lagi ticket katna
+   milne"). Me = the saved name / number / country. Someone else = blank
+   boxes (or a person booked for before); the booking stays on this
+   account and the account's number gets a copy of the ticket (api/book.php
+   forOther). Typing a different number flips it to "someone else" by itself.
+   ------------------------------------------------------------------- */
+let _whoOthers = null;
+let _whoMode = '';   // 'other' once the traveller tapped "Someone else" (boxes may still be empty)
+function shgForOther() {
+  if (!USER || (typeof isCounterSale === 'function' && isCounterSale())) return false;
+  const ph = $('#cPhone');
+  const p = ph ? digits(ph.value) : '';
+  return p ? p !== USER.phone : _whoMode === 'other';
+}
+function shgWhoBar() {
+  const old = $('#whoBar');
+  if (!USER || (typeof isCounterSale === 'function' && isCounterSale())) { if (old) old.remove(); return; }
+  const card = $('#coStep1 .co-card');
+  if (!card) return;
+  const bar = old || document.createElement('div');
+  bar.id = 'whoBar';
+  bar.className = 'who-bar';
+  const other = shgForOther();
+  const cc = USER.country === 'NP' ? '977' : '91';
+  bar.innerHTML = `
+    <div class="who-t">🎫 ${t('whoT')}</div>
+    <div class="who-opts" role="radiogroup">
+      <button type="button" class="who-btn${other ? '' : ' on'}" data-who="me" role="radio" aria-checked="${!other}">
+        ${lgAvatarHTML(USER, 34)}<span><b>${t('forMe')}</b><small>${esc((USER.name || '').split(/\s+/)[0] || ('+' + cc + ' ' + USER.phone))}</small></span></button>
+      <button type="button" class="who-btn${other ? ' on' : ''}" data-who="other" role="radio" aria-checked="${other}">
+        <span class="lg-ava lg-ava-i" style="width:34px;height:34px;font-size:16px">👥</span><span><b>${t('forOther')}</b><small>${t('forOtherS')}</small></span></button>
+    </div>
+    <div class="who-more" ${other ? '' : 'hidden'}>
+      <div class="who-chips" id="whoChips"></div>
+      <small class="who-hint">📲 ${tf('forOtherHint', { p: '+' + cc + ' ' + USER.phone })}</small>
+    </div>
+    ${!other && USER.address ? '<small class="who-hint">📍 ' + esc(USER.address) + '</small>' : ''}`;
+  if (!old) { const h = card.querySelector('.hint'); (h || card.firstElementChild).insertAdjacentElement('afterend', bar); }
+  bar.querySelectorAll('[data-who]').forEach(b => b.onclick = () => shgWhoPick(b.getAttribute('data-who')));
+  if (other) shgWhoChips();
+  const ph = $('#cPhone');
+  if (ph && !ph.dataset.whoBound) {
+    ph.dataset.whoBound = '1';
+    ph.addEventListener('input', () => { const want = shgForOther(); const on = bar.querySelector('.who-btn.on'); if (on && (on.getAttribute('data-who') === 'other') !== want) shgWhoBar(); });
+  }
+}
+function shgWhoPick(who) {
+  const ph = $('#cPhone');
+  const nm = $('#paxRows .grp-lead .pxName') || $('#paxRows .pxName');
+  _whoMode = who;
+  if (who === 'me') {
+    if (ph) ph.value = USER.phone;
+    const cc = $('#cCountry'); if (cc && (USER.country === 'NP' || USER.country === 'IN')) { cc.value = USER.country === 'NP' ? '977' : '91'; cc.dataset.trusted = '1'; }
+    if (nm) { nm.value = USER.name || ''; nm.dispatchEvent(new Event('input', { bubbles: true })); }
+  } else {
+    if (ph && digits(ph.value) === USER.phone) ph.value = '';
+    if (nm && nm.value.trim() === (USER.name || '').trim()) { nm.value = ''; nm.dispatchEvent(new Event('input', { bubbles: true })); }
+    shgWhoBar();
+    if (nm) { try { nm.focus({ preventScroll: false }); } catch (e) {} }
+    if (typeof coSyncContinue === 'function') coSyncContinue();
+    return;
+  }
+  if (typeof checkWelcomeBack === 'function') checkWelcomeBack();
+  if (typeof coSyncContinue === 'function') coSyncContinue();
+  shgWhoBar();
+}
+async function shgWhoChips() {
+  const box = $('#whoChips');
+  if (!box) return;
+  if (_whoOthers === null) {
+    _whoOthers = [];
+    try { const d = await shgApi.get('/profile.php'); _whoOthers = (d && d.others) || []; } catch (e) {}
+  }
+  if (!_whoOthers.length) { box.innerHTML = ''; return; }
+  box.innerHTML = '<small>' + t('recentPax') + '</small>' + _whoOthers.map((o, i) =>
+    '<button type="button" class="chip who-chip" data-oi="' + i + '">👤 ' + esc(o.name) + ' · ' + esc(String(o.phone).slice(-4).padStart(6, '•')) + '</button>').join('');
+  box.querySelectorAll('[data-oi]').forEach(b => b.onclick = () => {
+    const o = _whoOthers[+b.getAttribute('data-oi')];
+    const ph = $('#cPhone'), nm = $('#paxRows .grp-lead .pxName') || $('#paxRows .pxName');
+    if (ph) ph.value = o.phone;
+    if (nm) { nm.value = o.name; nm.dispatchEvent(new Event('input', { bubbles: true })); }
+    if (typeof checkWelcomeBack === 'function') checkWelcomeBack();
+    if (typeof coSyncContinue === 'function') coSyncContinue();
+  });
 }
 
 /* Put the signed-in traveller's details onto an open checkout form: phone
@@ -138,16 +475,19 @@ async function ensureCustomerSession(name, phone, country) {
      The booking is still bound to the passenger server-side by phone; the
      desk stays itself. */
   if (window.SHG_BOOT && window.SHG_BOOT.staff && window.SHG_BOOT.staff.canSell) return false;
+  /* 7 Oct 2026: a ticket for SOMEBODY ELSE (their number in the contact
+     box) must not sign this browser in as them - the booking stays on the
+     account and api/book.php (forOther) sends the account a copy. Keep the
+     account's own session fresh instead. */
+  if (USER && USER.phone && USER.phone !== p) {
+    return /^\d{10}$/.test(USER.phone) ? ensureCustomerSession(USER.name || '', USER.phone, USER.country || '') : false;
+  }
   const nm = String(name || '').trim();
   if (USER && USER.phone === p && USER.srvAt && (Date.now() - USER.srvAt) < 5 * 60 * 1000) return true;
   try {
     const q = await shgApi.post('/otp.php', { action: 'quick', phone: p, name: nm.length >= 2 ? nm : ((USER && USER.phone === p && USER.name) || ''), country: country || '' });
     if (q && q.verified) {
-      const su = q.user || {};
-      setUser({ phone: su.phone || p, name: su.name || nm, role: su.role || 'customer',
-                points: su.points || 0, tier: su.tier || 'Silver', country: su.country || '', at: Date.now(), srvAt: Date.now() });
-      ensureUser(p);
-      adoptAccountLang(su);
+      lgSetUserFrom(q.user || {}, p, { name: nm });
       return true;
     }
   } catch (e) { /* guest checkout still works */ }
@@ -232,93 +572,6 @@ async function refreshMyBookingsFromServer(force) {
   } finally {
     _myBkBusy = false;
   }
-}
-
-/* Sign-in click. Validates the two boxes, asks the server for a session,
-   and falls back to the old OTP handshake only if the server asks for it. */
-async function sendOtp() {
-  const p = digits($('#otpPhone').value);
-  const cc = ($('#otpCC') && $('#otpCC').value) || '91';
-  const country = cc === '977' ? 'NP' : 'IN';
-  const f = $('#otpPhone').closest('.field');
-  if (!/^\d{10}$/.test(p)) { f.classList.add('invalid'); $('#otpPhone').focus(); return; }
-  f.classList.remove('invalid');
-  const nameEl = $('#qlName');
-  const knownName = nameEl ? nameEl.value.trim() : ((getUser() || {}).name || '');
-  if (nameEl) {
-    const nf = nameEl.closest('.field');
-    if (knownName.length < 2) { nf.classList.add('invalid'); nameEl.focus(); return; }
-    nf.classList.remove('invalid');
-  }
-
-  const sendBtn = $('#otpSendBtn');
-  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '…'; }
-
-  let q = null;
-  try {
-    q = await shgApi.post('/otp.php', { action: 'quick', phone: p, name: knownName, country: country });
-  } catch (e) {
-    /* A refusal (suspended account, missing name, too many tries, network)
-       is shown as-is — there is no second door to try. */
-    if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = t('qlBtn'); }
-    toast((e && e.message) || t('errOtpSend'));
-    return;
-  }
-  if (q && q.verified) {
-    const su = q.user || { phone: p };
-    setUser({ phone: su.phone || p, name: su.name || knownName, role: su.role || 'customer',
-              points: su.points || 0, tier: su.tier || 'Silver', country: su.country || '', at: Date.now(), srvAt: Date.now() });
-    ensureUser(p);
-    adoptAccountLang(su);
-    closeModal();
-    toast(t('otpOkT'));
-    if (location.hash === '#/my') renderMyBookings();
-    else if (location.hash === '#/checkout') applyUserToCheckout();
-    return;
-  }
-  /* q.needsOtp === true from an older server → the OTP handshake below. */
-
-  let result;
-  try {
-    result = await shgApi.post('/otp.php', { action: 'request', phone: p, purpose: 'login', country: country });
-  } catch (e) {
-    if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = t('otpSend'); }
-    toast(e.message || t('errOtpSend'));
-    return;
-  }
-
-  // debugCode is only ever present when the server runs in development mode.
-  const demoNote = result && result.debugCode ? tf('otpDemo', { c: result.debugCode }) : '';
-  openModal(`
-    <h3 class="m-title">🔐 ${t('otpTitle')}</h3>
-    <p class="m-sub">${tf('otpSentP', { p: '+' + cc + ' ' + p })}</p>
-    ${demoNote ? '<div class="verify-note" style="margin-bottom:14px">🧪 <span>' + demoNote + '</span></div>' : ''}
-    <div class="field"><label>${t('lblOtpCode')}</label><input id="otpCode" inputmode="numeric" maxlength="6" style="text-align:center;font-family:var(--f-code);font-size:22px;letter-spacing:.3em"><div class="err">${t('otpBad')}</div></div>
-    <div class="m-actions"><button class="btn btn-orange" type="button" id="otpVerifyBtn" style="width:100%">${t('otpVerify')}</button></div>`);
-  $('#otpCode').focus();
-  const verify = async () => {
-    const code = $('#otpCode').value.trim();
-    if (!/^\d{4,6}$/.test(code)) { $('#otpCode').closest('.field').classList.add('invalid'); return; }
-    const vbtn = $('#otpVerifyBtn');
-    if (vbtn) { vbtn.disabled = true; vbtn.textContent = '…'; }
-    try {
-      const v = await shgApi.post('/otp.php', { action: 'verify', phone: p, code: code, purpose: 'login', country: country });
-      const su = (v && v.user) || { phone: p };
-      setUser({ phone: su.phone || p, name: su.name || '', role: su.role || 'customer',
-                points: su.points || 0, tier: su.tier || 'Silver', country: su.country || '', at: Date.now() });
-      ensureUser(p);          // keeps the local agent/referral mirror (DB.users) in sync
-      closeModal();
-      toast(t('otpOkT'));
-      if (location.hash === '#/my') renderMyBookings();
-      else if (location.hash === '#/checkout' && !$('#cPhone').value) { $('#cPhone').value = p; checkWelcomeBack(); }
-    } catch (e) {
-      if (vbtn) { vbtn.disabled = false; vbtn.textContent = t('otpVerify'); }
-      $('#otpCode').closest('.field').classList.add('invalid');
-      toast(e.message || t('otpBad'));
-    }
-  };
-  $('#otpVerifyBtn').onclick = verify;
-  $('#otpCode').addEventListener('keydown', (e) => { if (e.key === 'Enter') verify(); });
 }
 
 /* Shared pending/confirmed/cancelled/rejected badge markup (was independently duplicated
@@ -428,12 +681,13 @@ function renderMyBookings() {
         </div>`;
     }
     box.innerHTML = `
+      ${uPhone ? profileCardHTML() : ''}
       <div class="my-hello">
         <div>
           <b>${uPhone ? t('myHello') + ' +' + ((USER && USER.country === 'NP') ? '977' : '91') + ' ' + esc(uPhone) : '🎫 All Bookings'}</b>
           ${trips ? '<small>⭐ ' + tf('myTripsN', { n: trips }) + '</small>' : ''}
         </div>
-        ${uPhone ? '<button class="btn btn-ghost btn-sm" type="button" id="myLogoutBtn">' + t('myLogout') + '</button>' : ''}
+        ${uPhone ? '' : '<button class="btn btn-orange btn-sm" type="button" id="mySignInBtn">👤 ' + t('lgTitle') + '</button>'}
       </div>
       ${loyaltyCard}
       ${mine.length ? myTabBar({
@@ -452,7 +706,10 @@ function renderMyBookings() {
        not keep booking against the previous passenger's number after the
        app has "forgotten" them locally. Same door as the Quick Ticket card's
        "Not you?". */
-    if ($('#myLogoutBtn')) $('#myLogoutBtn').onclick = () => { setUser(null); shgApi.post('/otp.php', { action: 'logout' }).catch(() => {}); renderMyBookings(); };
+    if ($('#myLogoutBtn')) $('#myLogoutBtn').onclick = () => { setUser(null); _whoOthers = null; shgApi.post('/otp.php', { action: 'logout' }).catch(() => {}); renderMyBookings(); };
+    if ($('#lgEditBtn')) $('#lgEditBtn').onclick = openProfileEdit;
+    if ($('#lgVerifyBtn')) $('#lgVerifyBtn').onclick = () => openLoginModal();
+    if ($('#mySignInBtn')) $('#mySignInBtn').onclick = () => openLoginModal();
     box.querySelectorAll('[data-mytab]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         MY_TAB = btn.getAttribute('data-mytab');

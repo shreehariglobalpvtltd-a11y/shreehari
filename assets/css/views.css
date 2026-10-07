@@ -4115,3 +4115,44 @@ body.wa-open{overflow:hidden}
 /* 5 Oct 2026: only the API WhatsApp button is left in the request sheet — make it the green one. */
 .wa-req .wa-req-go,#waReqGo{background:#128C4B;color:#fff;border:0;font-size:15px;min-height:52px;box-shadow:0 6px 18px rgba(18,140,75,.28)}
 #waReqGo:hover{background:#0f7a41}
+/* ================================================================
+   Customer login + profile + "who is this ticket for" (7 Oct 2026)
+   08-signin.js: openLoginModal / lgOtpStep / profileCardHTML / shgWhoBar
+================================================================ */
+.lg-photo-row{display:flex;align-items:center;gap:14px;margin:2px 0 14px}
+.lg-photo{flex:0 0 72px;width:72px;height:72px;border-radius:50%;border:2px dashed var(--line);display:grid;place-items:center;cursor:pointer;overflow:hidden;background:var(--bg);transition:border-color var(--dur-fast) var(--ease-standard)}
+.lg-photo:hover,.lg-photo:focus-within{border-color:var(--orange)}
+.lg-photo-plus{font-size:26px;line-height:1}
+.lg-photo-txt b{display:block;font-size:14px}
+.lg-photo-txt small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px;line-height:1.4}
+.lg-ava{display:inline-block;border-radius:50%;object-fit:cover;vertical-align:middle;flex:0 0 auto}
+.lg-ava-i{display:inline-grid;place-items:center;background:var(--grad-brand);color:#fff;font-weight:800;letter-spacing:.02em}
+.nav-ava{width:22px;height:22px;border-radius:50%;object-fit:cover;vertical-align:-6px;margin-right:2px}
+.lg-note{font-size:12px;color:var(--muted);text-align:center;margin:10px 0 0}
+.lg-links{display:flex;justify-content:space-between;gap:10px;margin-top:12px;flex-wrap:wrap}
+.lg-link{background:none;border:0;padding:6px 2px;font:inherit;font-size:13px;font-weight:700;color:var(--sky);cursor:pointer;min-height:36px}
+.lg-link:disabled{color:var(--muted);cursor:default;font-weight:600}
+.lg-skip{margin-top:12px;padding:12px;border:1px dashed var(--line);border-radius:var(--r-sm);display:grid;gap:8px}
+.lg-skip[hidden],.who-more[hidden]{display:none}
+.lg-skip small{color:var(--muted);font-size:12.5px;line-height:1.45}
+.lg-prof{margin-bottom:12px}
+.lg-prof-top{display:flex;align-items:center;gap:14px}
+.lg-prof-id{min-width:0}
+.lg-prof-id b{display:block;font-size:17px;font-family:var(--f-display)}
+.lg-prof-id small{display:block;color:var(--muted);font-size:13px;margin-top:3px;overflow-wrap:anywhere}
+.lg-prof-id .badge{margin-left:4px;vertical-align:1px}
+.lg-prof-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.who-bar{margin:4px 0 14px;padding:12px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--bg)}
+.who-t{font-weight:800;font-size:14px;margin-bottom:8px}
+.who-opts{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.who-btn{display:flex;align-items:center;gap:9px;text-align:left;padding:10px;border:1.5px solid var(--line);border-radius:12px;background:var(--card);color:inherit;font:inherit;cursor:pointer;min-height:56px;min-width:0;transition:border-color var(--dur-fast) var(--ease-standard),box-shadow var(--dur-fast) var(--ease-standard)}
+.who-btn>span:last-child{min-width:0}
+.who-btn b{display:block;font-size:13.5px}
+.who-btn small{display:block;color:var(--muted);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who-btn.on{border-color:var(--orange);box-shadow:0 0 0 3px rgba(240,120,0,.16)}
+.who-more{margin-top:10px}
+.who-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px}
+.who-chips small{color:var(--muted);font-size:12px;width:100%}
+.who-chip{cursor:pointer;border:1px solid var(--line);background:var(--card);color:inherit;font:inherit;font-size:12.5px;padding:6px 10px;border-radius:999px;min-height:34px}
+.who-hint{display:block;color:var(--muted);font-size:12px;margin-top:6px;line-height:1.45}
+@media (max-width:420px){.who-btn{flex-direction:column;text-align:center;gap:5px;padding:9px 6px}.who-btn small{white-space:normal}}

@@ -457,6 +457,40 @@ final class AiSensyAPI
         return $r + ['how' => 'text'];
     }
 
+    /**
+     * The customer login code (7 Oct 2026, owner: "OTP WhatsApp through
+     * AiSensy"). A dedicated AUTHENTICATION template when the office has
+     * one approved (setting aisensy_tpl_login_otp - Meta's fixed body
+     * "{{1}} is your verification code." plus a copy-code button), else the
+     * approved shg_message template / 24 h free text via sendAny().
+     *
+     * @return array{success: bool, message_id: string, http: int, error: string, response: mixed, how: string}
+     */
+    public static function sendLoginOtp(string $phone, string $code, string $name = ''): array
+    {
+        $to  = self::normalizePhone($phone);
+        $tpl = trim(Settings::getString('aisensy_tpl_login_otp', ''));
+        if ($to !== '' && $tpl !== '' && preg_match('/^[a-z0-9_]{1,512}$/', $tpl) && self::apiKey() !== '') {
+            $out = ['success' => false, 'message_id' => '', 'http' => 0, 'error' => '', 'response' => null];
+            $r = self::post($to, $tpl, self::apiKey(), ['to' => $to, 'type' => 'template', 'template' => [
+                'language'   => ['policy' => 'deterministic', 'code' => self::config('AISENSY_TEMPLATE_LANG', 'aisensy_template_lang', 'en')],
+                'name'       => $tpl,
+                'components' => [
+                    ['type' => 'body', 'parameters' => [['type' => 'text', 'text' => $code]]],
+                    ['type' => 'button', 'sub_type' => 'url', 'index' => '0', 'parameters' => [['type' => 'text', 'text' => $code]]],
+                ],
+            ]], $out);
+            if ($r['success']) {
+                return $r + ['how' => 'template ' . $tpl];
+            }
+        }
+        $company = Settings::getString('company_name', 'S Hari Global');
+        $text = 'Your ' . $company . ' login code is ' . $code . ' — तपाईंको लगइन कोड ' . $code
+              . '. Valid for ' . (defined('OTP_EXPIRY_MINUTES') ? OTP_EXPIRY_MINUTES : 10) . ' minutes. Do not share it with anyone.';
+
+        return self::sendAny($phone, $text, null, $name, 'Login code');
+    }
+
     /** Any message to anyone (5 Oct 2026): {{1}} name {{2}} the message. Submitted for approval. */
     public const TPL_MESSAGE = 'shg_message';
 

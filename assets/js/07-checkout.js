@@ -757,6 +757,8 @@ function renderCheckout() {
     const leadNm = $('#paxRows .grp-lead .pxName') || $('#paxRows .pxName');
     if (leadNm && !leadNm.value.trim()) { leadNm.value = USER.name; leadNm.dispatchEvent(new Event('input', { bubbles: true })); }
   }
+  /* 7 Oct 2026: "Who is this ticket for?" - me / someone else (08-signin.js). */
+  if (typeof shgWhoBar === 'function') setTimeout(function () { try { shgWhoBar(); } catch (e) {} }, 0);
 
   /* Number-country picker. India and Nepal share the 10-digit mobile format,
      so the WhatsApp/SMS ticket cannot be routed by the number alone. Pre-select
@@ -1320,6 +1322,9 @@ async function submitBooking() {
         // 4 Oct 2026: optional second WhatsApp number (the other country) - the ticket goes to both.
         altPhone: (($('#cAltPhone') || {}).value || '').replace(/\D/g, '').slice(-10),
         altCountry: (($('#cAltCountry') || {}).value === '91') ? 'IN' : 'NP' },
+      // 7 Oct 2026: a signed-in customer booking for somebody else - their
+      // number stays the contact and the account gets a copy (api/book.php).
+      forOther: typeof shgForOther === 'function' ? shgForOther() : false,
       bookingMode: out.bookingType || 'sharing',
       cabinType: out.cabinType || null,
       sharingTier: out.sharingTier || null,
@@ -2165,10 +2170,10 @@ function renderStatus(id) {
   <div class="status-card tk2${conf ? ' confirm-success' : ''}" id="ticketCard" data-pnr="${esc(b.id)}">
     <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo.png?v=20261007a" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo.png?v=20261007lh" alt="" loading="lazy" decoding="async">
         <div><b>${esc(CONFIG.company.name || 'S HARI GLOBAL PRIVATE LIMITED')}</b><small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
       </div>
-      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261007a" width="600" height="312" alt="" decoding="async">
+      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261007lh" width="600" height="312" alt="" decoding="async">
     </div>
     <div class="premium-ticket-status">${pill2}${b.ticketNumber ? '<span>' + esc(b.ticketNumber) + '</span>' : ''}${b.agentCode ? '<span style="background:var(--orange-100,#fff2e0);color:var(--orange-800,#7a3d00);padding:2px 10px;border-radius:20px;font-size:12px;font-family:var(--f-code)">🏷️ ' + esc(b.agentCode) + '</span>' : ''}</div>
     ${(typeof routeOverviewSVG === 'function') ? routeOverviewSVG({ from: (isNepalPoint(r.from) ? r.from : (parseBP(b.boarding || '').name || r.from)), to: (isNepalPoint(r.to) ? r.to : (parseBP(b.drop || '').name || r.to)), compact: true }) : ''}

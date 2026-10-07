@@ -132,8 +132,26 @@ try {
        guest with no session keeps the old behaviour. */
     if ($counterPay === null) {
         $me = Auth::user();
-        if ($me !== null && normalisePhone((string) ($me['phone'] ?? '')) !== '') {
-            $request['contact']['phone'] = normalisePhone((string) $me['phone']);
+        $myPhone = $me !== null ? normalisePhone((string) ($me['phone'] ?? '')) : '';
+        /* 7 Oct 2026 (owner: "arko ko lagi ticket katna milne"): a signed-in
+           customer may book for somebody else. The traveller's own number
+           stays the contact (their ticket and bus updates go there), the
+           booking stays on this account (user_id, My Bookings), and the
+           account holder's number becomes the second WhatsApp number so the
+           person who paid gets the ticket too. A guest could always type
+           any number, so this opens nothing a guest could not already do. */
+        $forOther = !empty($input['forOther'])
+            && Security::isValidPhone(normalisePhone((string) $request['contact']['phone']))
+            && normalisePhone((string) $request['contact']['phone']) !== $myPhone;
+        if ($myPhone !== '' && $forOther) {
+            if (trim((string) $request['contact']['altPhone']) === '') {
+                $request['contact']['altPhone']   = $myPhone;
+                $request['contact']['altCountry'] = (string) Database::scalar(
+                    'SELECT country_code FROM users WHERE id = :id', ['id' => (int) $me['id']], '91'
+                ) === '977' ? 'NP' : 'IN';
+            }
+        } elseif ($myPhone !== '') {
+            $request['contact']['phone'] = $myPhone;
         }
     }
     $seller = null;
