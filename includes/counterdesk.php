@@ -400,6 +400,29 @@ final class CounterDesk
     }
 
     /**
+     * May the signed-in staff member open / act on this booking under desk
+     * isolation? (7 Oct 2026.) True whenever isolation is off or the user is
+     * not a counter clerk; otherwise only a booking cut at (or sold by) their
+     * own desk. The list filters alone left the booking page and the payment
+     * buttons open to any PNR typed by hand.
+     */
+    public static function bookingVisible(?int $bookingId = null, ?string $pnr = null): bool
+    {
+        $scope = Auth::deskScopeCode();
+        if ($scope === null || !self::stampColumn()) {
+            return true;
+        }
+        if (($bookingId ?? 0) <= 0 && trim((string) $pnr) === '') {
+            return true;   // nothing named yet
+        }
+        $key = ($bookingId ?? 0) > 0 ? 'b.id = :k' : 'b.pnr = :k';
+        return Database::exists(
+            'SELECT 1 FROM bookings b WHERE ' . $key . ' AND ' . self::scopeClause('b') . ' LIMIT 1',
+            ['k' => ($bookingId ?? 0) > 0 ? $bookingId : (string) $pnr, 'deskScope' => $scope]
+        );
+    }
+
+    /**
      * The desk a staff member is signed in at: ['code'=>..,'name'=>..] with
      * blanks when they have not been given one. Reads admin_profiles, which
      * is where staff.php and agents.php already write it.

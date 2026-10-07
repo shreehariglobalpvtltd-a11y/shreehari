@@ -83,24 +83,6 @@ $extraFilters    = [
     'agent' => $agentFilter, 'bus' => $busFilter, 'pay_status' => $payStatusFilter,
 ];
 
-// A company-wide bookings PDF reuses the same filter set — hand it off to
-// ReportPdf::bookingsReport() and stream the returned file.
-if ($formatParam === 'pdf') {
-    $path = ReportPdf::bookingsReport(Database::pdo(), [
-        'scope'  => $scopeId,
-        'q'      => $q,
-        'status' => $status,
-        'from'   => $from,
-        'to'     => $to,
-    ] + $extraFilters);
-    header('Content-Type: application/pdf');
-    header('Content-Disposition: attachment; filename="SHG-bookings-' . date('Y-m-d') . '.pdf"');
-    header('Content-Length: ' . (string) (filesize($path) ?: 0));
-    header('Cache-Control: no-store');
-    readfile($path);
-    @unlink($path);
-    exit;
-}
 
 $where  = [];
 $params = [];
@@ -114,6 +96,7 @@ if ($q !== '') {
         'b.pnr LIKE %s',
         'b.contact_phone LIKE %s',
         'b.contact_email LIKE %s',
+        'EXISTS (SELECT 1 FROM tickets t2 WHERE t2.booking_id = b.id AND t2.ticket_number LIKE %s)',
         'EXISTS (SELECT 1 FROM booking_passengers bp2
                   WHERE bp2.booking_id = b.id AND bp2.full_name LIKE %s)',
         'EXISTS (SELECT 1 FROM booking_seats bs2
@@ -126,6 +109,13 @@ if ($q !== '') {
                   WHERE a2.id = b.sold_by_admin_id
                     AND CONCAT_WS(\' \', a2.full_name, a2.username) LIKE %s)',
     ], $q, $params);
+    // A typed SHG code ("SHG-027"), exactly as bookings.php resolves it.
+    $qAgentId = $scopeId === null ? AgentWallet::resolveAgentCodeFromString($q) : null;
+    if ($qAgentId !== null) {
+        $lastKey = array_key_last($where);
+        $where[$lastKey] = '(' . $where[$lastKey] . ' OR b.sold_by_admin_id = :qAgentCode)';
+        $params['qAgentCode'] = $qAgentId;
+    }
 }
 if (in_array($status, $valid, true)) {
     $where[]      = 'b.status = :st';
@@ -165,7 +155,8 @@ if ($busFilter !== '') {
     $where[] = 'EXISTS (SELECT 1 FROM booking_legs bl3
                           JOIN schedules s3 ON s3.id = bl3.schedule_id
                           JOIN buses bu3 ON bu3.id = s3.bus_id
-                         WHERE bl3.booking_id = b.id AND bu3.bus_number = :busFlt)';
+                         WHERE bl3.booking_id = b.id AND bl3.leg_type = \'outbound\'
+                           AND bu3.bus_number = :busFlt)';   // outbound bus only, as on screen
     $params['busFlt'] = $busFilter;
 }
 if ($payStatusFilter !== '' && in_array($payStatusFilter, $validPayStatus, true)) {
@@ -195,6 +186,29 @@ if ($counterFilter !== '' && CounterDesk::stampColumn()) {
 }
 require_once __DIR__ . '/_booking_filters.php';
 shg_booking_extra_filters($where, $params, $_GET);
+
+// The bookings PDF (7 Oct 2026) takes this exact WHERE: it used to rebuild
+// its own from a few filters and ignored method, counter, desk scope, phone,
+// reach, ticket-number and agent-code search - so the PDF disagreed with
+// the screen it was printed from.
+if ($formatParam === 'pdf') {
+    $path = ReportPdf::bookingsReport(Database::pdo(), [
+        'scope'   => $scopeId,
+        'q'       => $q,
+        'status'  => $status,
+        'from'    => $from,
+        'to'      => $to,
+        '_where'  => $where,
+        '_params' => $params,
+    ] + $extraFilters);
+    header('Content-Type: application/pdf');
+    header('Content-Disposition: attachment; filename="SHG-bookings-' . date('Y-m-d') . '.pdf"');
+    header('Content-Length: ' . (string) (filesize($path) ?: 0));
+    header('Cache-Control: no-store');
+    readfile($path);
+    @unlink($path);
+    exit;
+}
 
 $sql = "SELECT b.pnr, b.status, b.booking_mode, b.cabin_label,
                r.from_city, r.to_city, bl.travel_date, bl.boarding_stop, bl.drop_stop,

@@ -210,6 +210,21 @@ final class MsgLedger
             $provider = (string) $m['provider'];
             $channel  = (string) $m['channel'];
             $body     = (string) ($m['body'] ?? '');
+            /* 7 Oct 2026: a FAILED AiSensy send has no provider_ref, so it never
+               merges above - yet recordAiSensy() already wrote it the moment
+               AiSensy refused. Copying it again counted every failure twice (or
+               more). Skip it when that live row exists for the same number. */
+            if ($ref === '' && $provider === 'aisensy' && (string) $m['status'] === 'failed') {
+                $num = substr(preg_replace('/\D+/', '', (string) $m['to_number']) ?? '', 0, 40);
+                if ($num !== '' && Database::exists(
+                    "SELECT 1 FROM msg_ledger WHERE provider = 'aisensy' AND log_id IS NULL AND to_number = :n
+                        AND created_at BETWEEN :t - INTERVAL 3 MINUTE AND :t2 + INTERVAL 3 MINUTE LIMIT 1",
+                    ['n' => $num, 't' => (string) $m['created_at'], 't2' => (string) $m['created_at']]
+                )) {
+                    $res['merged']++;
+                    continue;
+                }
+            }
             Database::insertIgnore('msg_ledger', [
                 'log_id'       => (int) $m['id'],
                 'provider'     => mb_substr($provider, 0, 20),

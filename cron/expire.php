@@ -57,6 +57,7 @@ foreach ($stale as $b) {
                 return false;                                // no longer expirable — leave it alone
             }
             Seats::releaseBooking((int) $b['id']);          // free the seats
+            BookingService::releaseCoupon((int) $b['id']);  // an unpaid booking gives its offer use back
             return true;
         });
         if ($didExpire) {

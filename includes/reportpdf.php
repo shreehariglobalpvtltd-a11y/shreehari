@@ -1066,6 +1066,11 @@ final class ReportPdf
                                  WHERE p2.booking_id = b.id AND p2.status = :payStFlt)';
             $params['payStFlt'] = $payStatusFilter;
         }
+        // admin/export.php hands over the register's own WHERE (same aliases).
+        if (isset($filters['_where']) && is_array($filters['_where'])) {
+            $where  = $filters['_where'];
+            $params = (array) ($filters['_params'] ?? []);
+        }
 
         $sql = "SELECT b.pnr, b.status, b.total_amount, b.contact_phone, b.created_at, b.sold_by_admin_id, b.booking_mode,
                        r.from_city, r.to_city, bl.travel_date,

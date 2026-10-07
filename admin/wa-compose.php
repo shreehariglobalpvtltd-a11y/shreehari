@@ -11,7 +11,9 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
-$admin = admin_boot('customers.view');
+// 7 Oct 2026 (owner: "hunx"): free text from the company number is a
+// marketing act - only staff who may send campaigns may use it.
+$admin = admin_boot('marketing.send');
 require_once INCLUDE_PATH . '/notify.php';
 require_once ROOT_PATH . '/whatsapp/aisensy.php';
 

@@ -3286,6 +3286,27 @@ final class BookingService
     }
 
     /**
+     * Give an offer use back when a booking that was never paid expires
+     * (7 Oct 2026, owner: "hunx"). create() redeems the coupon/offer the
+     * moment the PENDING booking is written, so an abandoned UPI checkout used
+     * to eat a "once per customer" offer and a "first N bookings" slot for a
+     * trip that never happened. Idempotent: no redemption row, nothing to undo.
+     * Call inside the same transaction that moves the booking to 'expired'.
+     */
+    public static function releaseCoupon(int $bookingId): void
+    {
+        try {
+            $rows = Database::fetchAll('SELECT id, coupon_id FROM coupon_redemptions WHERE booking_id = :b', ['b' => $bookingId]);
+        } catch (Throwable $e) {
+            return;   // table not migrated: nothing was ever redeemed
+        }
+        foreach ($rows as $r) {
+            Database::run('DELETE FROM coupon_redemptions WHERE id = :id', ['id' => (int) $r['id']]);
+            Database::run('UPDATE coupons SET used_count = GREATEST(used_count - 1, 0) WHERE id = :c', ['c' => (int) $r['coupon_id']]);
+        }
+    }
+
+    /**
      * Reconcile a booking's *redeemed* loyalty points to the state its status
      * implies, so the reversible review flow (§4) can't hand out a points-funded
      * discount for free. Confirmed ⇒ points stay spent (ledger net −points_used);

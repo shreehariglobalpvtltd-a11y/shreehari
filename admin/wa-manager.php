@@ -318,7 +318,7 @@ admin_page_head('Every WhatsApp, SMS and email the system sent — who got it, w
     <button class="btn ghost" type="submit" title="Copy new messages, ask AiSensy for delivery, read the wallet"><svg class="a-ic"><use href="#a-refresh"/></svg>Check now</button>
   </form>
   <a class="btn ghost" href="<?= $e($qs(['export' => 'csv'])) ?>"><svg class="a-ic"><use href="#a-download"/></svg>CSV</a>
-  <?php if (Auth::can('customers.view') && is_file(__DIR__ . '/wa-compose.php')): ?>
+  <?php if (Auth::can('marketing.send') && is_file(__DIR__ . '/wa-compose.php')): ?>
     <a class="btn ghost" href="/admin/wa-compose.php"><svg class="a-ic"><use href="#a-send"/></svg>Send a message</a>
   <?php endif; ?>
   <span class="wm-live" id="wmLive"><i></i>LIVE</span>

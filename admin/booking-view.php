@@ -11,6 +11,13 @@ $admin = admin_boot('bookings.view');
 $base  = '';   // root-relative: the panel must stay on the request host (.in or the .network staff door)
 $pnr   = Security::clean($_GET['pnr'] ?? '', 40);
 $flash = null;
+/* Desk isolation (7 Oct 2026): a clerk sees only their own desk's tickets on
+   this page too, not just in the lists. Emptying the PNR turns every action
+   block below and the detail load into "not found". */
+if ($pnr !== '' && !CounterDesk::bookingVisible(null, $pnr)) {
+    Logger::warning('Counter tried to open a booking of another desk', ['admin' => $admin['username'] ?? '', 'pnr' => $pnr]);
+    $pnr = '';
+}
 $waManualLink = '';   // click-to-chat URL when no WhatsApp API is configured
 
 /**

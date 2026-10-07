@@ -58,6 +58,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $pnr       = '';
 
         try {
+            if (!CounterDesk::bookingVisible($bookingId)) {   // desk isolation (7 Oct 2026)
+                throw new RuntimeException('This booking belongs to another desk.');
+            }
             if ($action === 'approve') {
                 Auth::requireAdmin('payments.verify');
                 $b = BookingService::confirm($bookingId, (int) $admin['id'], $note);
@@ -109,6 +112,10 @@ $fDateTo   = Security::clean($_GET['to'] ?? '', 10);
 $isDate    = static fn (string $d): bool => preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) === 1;
 
 /* ---- Summary cards (efficient separate queries) ----------------- */
+/* 7 Oct 2026 (owner: "hunx"): the company's money for the day is a report.
+   A counter clerk holds payments.view to verify their own customers, not
+   reports.view - they see the counts, never the company-wide rupee totals. */
+$showMoney = Auth::can('reports.view');
 $pendingCount = (int) Database::fetch(
     "SELECT COUNT(*) AS c FROM bookings WHERE status='pending'"
 )['c'];
@@ -334,7 +341,7 @@ tr.row-done td{background:var(--hover)}
     <span class="hicon">✅</span>
     <div class="hk">Approved Today</div>
     <div class="hv" data-stat="approved"><?= $approvedCount ?></div>
-    <div class="hsub"><?= Security::e(inr($approvedTotal)) ?></div>
+    <?php if ($showMoney): ?><div class="hsub"><?= Security::e(inr($approvedTotal)) ?></div><?php endif; ?>
   </div>
   <div class="hcard hc-red">
     <span class="hicon">✕</span>
@@ -345,13 +352,15 @@ tr.row-done td{background:var(--hover)}
     <span class="hicon">💵</span>
     <div class="hk">Cash Due</div>
     <div class="hv" data-stat="cod"><?= $codCount ?></div>
-    <div class="hsub"><?= Security::e(inr($codTotal)) ?></div>
+    <?php if ($showMoney): ?><div class="hsub"><?= Security::e(inr($codTotal)) ?></div><?php endif; ?>
   </div>
+  <?php if ($showMoney): ?>
   <div class="hcard hc-blue">
     <span class="hicon">📈</span>
     <div class="hk">Collection Today</div>
     <div class="hv"><?= Security::e(inr($collectionTotal)) ?></div>
   </div>
+  <?php endif; ?>
 </div>
 
 <!-- Tabs -->
