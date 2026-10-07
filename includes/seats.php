@@ -1057,7 +1057,9 @@ final class Seats
            get the counter party cap, customers the public one; seats already
            held by this token count towards it. */
         $seats   = array_values(array_unique(array_map(static fn($s): string => strtoupper(trim((string) $s)), $seats)));
-        $partyCap = $allowStaffSeats
+        // 7 Oct 2026: a signed-in selling staff member holding seats on the public
+        // seat map (api/lock.php) gets the staff party cap too - it was 6 for all.
+        $partyCap = ($allowStaffSeats || (class_exists('Auth') && Auth::isSellingStaff()))
             ? max(1, Settings::getInt('counter_max_seats_per_booking', 20))
             : max(1, Settings::getInt('max_seats_per_booking', MAX_SEATS_BOOKING));
         $alreadyHeld = array_map('strval', array_column(Database::fetchAll(

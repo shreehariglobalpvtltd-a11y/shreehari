@@ -1139,7 +1139,11 @@ function initQuickTicket() {
   if (pair && pair.parentNode) pair.parentNode.insertBefore(understood, pair.nextSibling);
 
   function err(msg) { var e = $id('qtFormErr'); if (!e) return; e.textContent = msg || ''; e.hidden = !msg; }
-  function maxSeats() { var n = (window.CONFIG && CONFIG.booking && CONFIG.booking.maxSeats) || 6; return Math.max(1, Math.min(6, n)); }
+  function maxSeats() {
+    var n = (window.CONFIG && CONFIG.booking && CONFIG.booking.maxSeats) || 6;
+    var staff = !!(window.SHG_BOOT && window.SHG_BOOT.staff && window.SHG_BOOT.staff.canSell);   // 7 Oct 2026: staff up to their cap (20)
+    return Math.max(1, Math.min(staff ? 20 : 6, n));
+  }
   function codAllowed() {
     var s = window.SHG_BOOT && window.SHG_BOOT.settings;
     if (!s || !('allow_cod' in s)) return true;
@@ -1346,7 +1350,7 @@ function initQuickTicket() {
     var autoTag = function (k) { return (p.ladder === 'highlight' && (qt.missing || []).indexOf(k) >= 0) ? ' <i class="qt-auto">' + esc(t('qtAuto')) + '</i>' : ''; };
     var html = askHtml + sameHtml
       + '<div class="qt-plan-head"><b>' + esc(t('qtPlanT')) + '</b><span>' + esc(p.seatsLeft != null ? tf('qtLeft', { n: p.seatsLeft }) : '') + '</span></div>'
-      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261006c" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
+      + (p.from && p.to ? '<div class="qt-route" aria-hidden="true"><span>' + esc(p.boardingCode || p.from) + '</span><i><b><img src="/assets/img/bus-side.svg?v=20261007a" alt="" width="640" height="200" decoding="async"></b></i><span>' + esc(p.to) + '</span></div>' : '')
       + '<div class="qt-plan-facts">'
       + '<div><small>' + esc(t('qtDateLbl')) + '</small><b>' + esc(when) + autoTag('date') + '</b><em>' + esc(p.dateLabel) + '</em></div>'
       + '<div><small>' + esc(t('qtBoardLbl')) + '</small><b>' + esc(p.boardingCode) + ' · ' + esc(p.boardingName) + autoTag('boarding') + '</b><em>' + esc(p.boardingTime || p.depTime || '') + ' · ' + esc(p.from) + ' → ' + esc(p.to) + '</em></div>'
@@ -2139,7 +2143,7 @@ document.addEventListener('click', (e) => {
 (function initPaxStepper() {
   const out = $('#paxCount'), minus = $('#paxMinus'), plus = $('#paxPlus');
   if (!out || !minus || !plus) return;
-  const cap = () => Math.max(1, Math.min(10, parseInt(CONFIG.booking.maxSeats, 10) || 6));
+  const cap = () => Math.max(1, Math.min((window.SHG_BOOT && window.SHG_BOOT.staff && window.SHG_BOOT.staff.canSell) ? 20 : 10, parseInt(CONFIG.booking.maxSeats, 10) || 6));
   let n = 1;
   try { n = parseInt(sessionStorage.getItem('shg:pax'), 10) || 1; } catch (_) {}
   const paint = () => {

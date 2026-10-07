@@ -869,7 +869,11 @@ function renderSeats(instant) {
      redraw of this same leg (occupancy poll, cabin / tier toggle, language
      switch, back from checkout) rebuilds both selects, so note BEFORE the
      refill whether Other was chosen for this very bus + date. */
-  const legKey = r.id + '|' + ctx.date;
+  /* 7 Oct 2026 (owner): the pickup chosen OUTSIDE (home picker) must arrive
+     inside. The searched from / to are part of the key, so a new search with
+     another pickup (Emli Bhupal, then Vadodara for the next ticket) lands on
+     the new stop; only a redraw of the very same search keeps a hand pick. */
+  const legKey = r.id + '|' + ctx.date + '|' + (ctx.from || '') + '|' + (ctx.to || '');
   const otherWas = {
     b: otherStopChosen($('#boardingSel'), legKey),
     d: otherStopChosen($('#dropSel'), legKey)

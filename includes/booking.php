@@ -204,7 +204,10 @@ final class BookingService
         // mode, seatmap walk-in, agent) may hold up to counter_max_seats_per_
         // booking (default 20) in ONE booking — a party travelling under one
         // name. Anonymous customers keep the public max_seats_per_booking cap.
-        $maxSeats = self::maxSeatsFor($seller !== null);
+        // 7 Oct 2026 (owner): an admin / counter / agent signed in and selling
+        // through the PUBLIC flow (agent code, no counter payment) is staff too -
+        // the 6-seat customer cap was stopping a party of 7-20 at the desk.
+        $maxSeats = self::maxSeatsFor($seller !== null || Auth::isSellingStaff());
         if (count($seats) > $maxSeats) {
             throw new RuntimeException('A single booking may hold at most ' . $maxSeats . ' seats.');
         }

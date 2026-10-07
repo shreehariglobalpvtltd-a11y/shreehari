@@ -169,6 +169,21 @@ try {
     check('7 passengers on the bulk booking', (int) Database::scalar('SELECT COUNT(*) FROM booking_passengers WHERE booking_id = :b', ['b' => (int) $b4['id']], 0) === 7);
     throws('7 seats WITHOUT a seller is still refused (customer cap 6)',
         fn() => BookingService::create($req(['U8', 'U9', 'U10', 'U11', 'U12', 'U13', 'U14'], '9')), 'at most 6');
+    // 7 Oct 2026: a signed-in selling admin booking through the PUBLIC flow (no seller) gets the staff cap.
+    $savedSess = $_SESSION[ADMIN_SESSION_KEY] ?? null;
+    $superId = (int) Database::scalar("SELECT id FROM admins WHERE role = 'superadmin' AND is_active = 1 ORDER BY id LIMIT 1", [], 0);
+    if ($superId > 0) {
+        $_SESSION[ADMIN_SESSION_KEY] = ['id' => $superId, 'username' => 'x', 'role' => 'superadmin', 'permissions' => [], 'last_seen' => time(), 'logged_in_at' => time()];
+        $b4b = null;
+        try { $b4b = BookingService::create($req(['U8', 'U9', 'U10', 'U11', 'U12', 'U13', 'U14'], '13')); } catch (Throwable $e) { $b4b = ['err' => $e->getMessage()]; }
+        check('7 seats by a signed-in admin on the public flow succeed (staff cap 20)', isset($b4b['id']), (string) ($b4b['err'] ?? ''));
+        if (isset($b4b['id'])) {   // free U8-U14 again for the cases below
+            try { Database::delete('agent_ledger', 'booking_id = :b', ['b' => (int) $b4b['id']]); } catch (Throwable $e) {}
+            Database::delete('booking_legs', 'booking_id = :b', ['b' => (int) $b4b['id']]);
+            Database::delete('bookings', 'id = :b', ['b' => (int) $b4b['id']]);
+        }
+        if ($savedSess === null) { unset($_SESSION[ADMIN_SESSION_KEY]); } else { $_SESSION[ADMIN_SESSION_KEY] = $savedSess; }
+    }
     $twentyOne = array_merge(
         array_map(static fn(int $i): string => 'U' . $i, range(15, 34)),   // 20 seats
         ['U35']
