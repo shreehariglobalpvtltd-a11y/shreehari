@@ -642,34 +642,128 @@ function deckHeadHTML(key, label, coach) {
    the door). Everything is still committed through the real seat click, so
    the hold, the pair rule and the summary behave exactly as a finger would.
 ---------------------------------------------------------------- */
-function pickSeatsSmart(floors, n, patient) {
-  const free = (el) => Array.prototype.slice.call(el.querySelectorAll('.seat:not([disabled]):not(.sel)'));
-  const score = (btn) => {
-    const row = btn.closest('.seat-row'); if (!row) return 0;
-    const seatsInRow = Array.prototype.slice.call(row.querySelectorAll('.seat'));
-    const i = seatsInRow.indexOf(btn), last = seatsInRow.length - 1;
-    const aisleEl = row.querySelector('.aisle');
-    const leftCount = aisleEl ? seatsInRow.filter(s => !!(aisleEl.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_PRECEDING)).length : 0;
-    const isAisle = leftCount > 0 && (i === leftCount - 1 || i === leftCount);
-    const isWindow = i === 0 || i === last;
-    /* Women-only seats rank last for an automatic pick (gender is not known
-       yet on this screen); a traveller can still tap one deliberately. */
-    const femPenalty = btn.classList.contains('fem') ? 10 : 0;
-    if (patient) return (isAisle ? 3 : (isWindow ? 0 : 1)) - femPenalty;
-    return (n === 1 ? (isWindow ? 2 : (isAisle ? 1 : 0)) : 0) - femPenalty;
-  };
-  const byScore = (list) => list.slice().sort((a, b) => score(b) - score(a));
+/* ----------------------------------------------------------------
+   SEAT AI (8 Oct 2026) — ONE scoring engine behind every automatic pick:
+   the ⚡ button, the "how many seats?" picker and "Auto seat → Continue".
+   Weighted rules, strongest first:
+     • gender — a woman is never put in a men's cabin, a man never on a
+       women-only / women's-cabin berth; gender unknown → neutral berths only
+       (महिला–पुरुष छुट्टै / महिला-पुरुष अलग).
+     • a woman gets a women-only berth first (safest), then a cabin that
+       already holds a woman, then an empty cabin.
+     • a party stays together — one cabin / one side of a row with room for all.
+     • a solo traveller completes a same-gender half cabin (keeps empty cabins
+       for pairs); with gender unknown they get an empty cabin, never a stranger.
+     • floors arrive in preference order (lower first; a patient always lower),
+       front rows before back, window for one, aisle-side for a patient.
+   Everything is still committed through the real seat click, so the hold,
+   the pair rule and the summary behave exactly as a finger would.
+---------------------------------------------------------------- */
+function seatGenderNow() {
+  const on = $('#seatAiBar [data-sqg].on') || $('#seatQuick [data-sqg].on');
+  if (on) return on.getAttribute('data-sqg') || '';
+  const q = window.SHG_QUICK || {};
+  if (q.gender) return q.gender;
+  return (typeof USER !== 'undefined' && USER && USER.gender) ? USER.gender : '';
+}
+function seatFitsGender(btn, g) {
+  const c = btn.classList;
+  if (g === 'Female') return !c.contains('u-male');
+  if (g === 'Male') return !c.contains('fem') && !c.contains('u-fem');
+  return !c.contains('fem') && !c.contains('u-fem') && !c.contains('u-male');
+}
+function seatFloorsInOrder(grid) {
+  const blocks = $$('.deck-block', grid);
+  const floors = blocks.length ? Array.prototype.slice.call(blocks) : [grid];
+  const pref = deckPrefGet();
+  const patient = !!Flow.patient;
+  const deckOf = (f) => (f.getAttribute ? f.getAttribute('data-deck') : '') || '';
+  const upperFirst = pref === 'U' && !patient;
+  return floors.filter(f => (deckOf(f) === 'U') === upperFirst)
+    .concat(floors.filter(f => (deckOf(f) === 'U') !== upperFirst));
+}
+function pickSeatsSmart(floors, n, patient, gender) {
+  const g = gender === undefined ? seatGenderNow() : (gender || '');
+  const coach = Flow.route ? Flow.route.type : 'sleeper';
+  const all = [];
+  floors.forEach((f, fi) => {
+    const rows = Array.prototype.slice.call(f.querySelectorAll('.seat-row'));
+    (rows.length ? rows : [f]).forEach((row, ri) => {
+      const arr = Array.prototype.slice.call(row.querySelectorAll('.seat'));
+      arr.forEach((btn, i) => all.push({ btn, fi, ri, i, last: arr.length - 1, row, id: btn.getAttribute('data-id') || '' }));
+    });
+  });
+  const unitOf = (s) => unitKeyJS(s.id, coach);
+  const byUnit = {};
+  all.forEach(s => { const u = unitOf(s); (byUnit[u] = byUnit[u] || []).push(s); });
+  const isFree = (s) => !s.btn.disabled && !s.btn.classList.contains('sel');
   const chosen = [];
-  for (let fi = 0; fi < floors.length && chosen.length < n; fi++) {
-    const rows = Array.prototype.slice.call(floors[fi].querySelectorAll('.seat-row'));
+  const isChosen = (s) => chosen.indexOf(s) >= 0;
+  const score = (s) => {
+    let sc = -s.fi * 40 - s.ri * 1.5;             // preferred floor, then front rows
+    const mates = byUnit[unitOf(s)] || [];
+    const freeMates = mates.filter(m => m !== s && isFree(m) && !isChosen(m));
+    const takenMates = mates.filter(m => m !== s && m.btn.disabled);
+    const ownMates = mates.filter(m => m !== s && (isChosen(m) || m.btn.classList.contains('sel')));
     const need = n - chosen.length;
-    const together = rows.find(rw => free(rw).length >= need);
-    if (together) { chosen.push.apply(chosen, byScore(free(together)).slice(0, need)); break; }
-    for (let ri = 0; ri < rows.length && chosen.length < n; ri++) {
-      chosen.push.apply(chosen, byScore(free(rows[ri])).slice(0, n - chosen.length));
+    if (ownMates.length) sc += 30;                // the party shares one cabin
+    else if (need > 1 && freeMates.length >= Math.min(need - 1, Math.max(0, mates.length - 1))) sc += 12;
+    if (need === 1 && !ownMates.length) {
+      if (takenMates.length) sc += g ? 6 : -8;    // same-gender half cabin ✓ · stranger for unknown ✗
+      else if (!freeMates.length) sc += 2;        // a single berth, nobody to share with
     }
+    if (g === 'Female' && (s.btn.classList.contains('fem') || s.btn.classList.contains('u-fem'))) sc += 15;
+    const seatsInRow = Array.prototype.slice.call(s.row.querySelectorAll('.seat'));
+    const aisleEl = s.row.querySelector('.aisle');
+    const leftCount = aisleEl ? seatsInRow.filter(x => !!(aisleEl.compareDocumentPosition(x) & Node.DOCUMENT_POSITION_PRECEDING)).length : 0;
+    const isAisle = leftCount > 0 && (s.i === leftCount - 1 || s.i === leftCount);
+    const isWindow = s.i === 0 || s.i === s.last;
+    if (patient) sc += isAisle ? 5 : (isWindow ? 0 : 1);
+    else if (n === 1) sc += isWindow ? 2 : (isAisle ? 1 : 0);
+    return sc;
+  };
+  for (let k = 0; k < n; k++) {
+    let best = null, bestSc = -Infinity;
+    all.forEach(s => {
+      if (!isFree(s) || isChosen(s) || !seatFitsGender(s.btn, g)) return;
+      const sc = score(s);
+      if (sc > bestSc) { bestSc = sc; best = s; }
+    });
+    if (!best) break;
+    chosen.push(best);
   }
-  return chosen;
+  return chosen.map(s => s.btn);
+}
+/* Click the engine's picks through the real seat path. Returns how many landed. */
+function seatAiCommit(grid, want) {
+  const r = Flow.route; if (!r || !grid) return 0;
+  const need = Math.max(0, want - Flow.seats.length);
+  if (!need) return 0;
+  const picks = pickSeatsSmart(seatFloorsInOrder(grid), need, !!Flow.patient, seatGenderNow());
+  let guard = 0, landed = 0;
+  for (let i = 0; i < picks.length; i++) {
+    if (Flow.seats.length >= want || guard++ > CONFIG.booking.maxSeats * 3) break;
+    const b = picks[i];
+    if (b.disabled || b.classList.contains('sel')) continue;
+    const before = Flow.seats.length;
+    b.classList.add('ai-pick');
+    b.click();
+    if (Flow.seats.length === before) break;      // refused (cap reached) — stop
+    landed += Flow.seats.length - before;
+  }
+  return landed;
+}
+/* The passenger changed Woman ↔ Man after seats were picked: every berth the
+   new rule forbids is released and the engine re-seats the same party. */
+function seatGenderRecheck() {
+  const grid = $('#seatGrid'); if (!grid || !Flow.seats.length) return;
+  const g = seatGenderNow();
+  const bad = Flow.seats.map(id => grid.querySelector('.seat[data-id="' + id + '"]')).filter(b => b && !seatFitsGender(b, g));
+  if (!bad.length) return;
+  const want = Flow.seats.length;
+  bad.forEach(b => b.click());
+  seatAiCommit(grid, want);
+  toast('🔄 ' + t('seatGenderMoved'));
 }
 
 function suggestSeats(n) {
@@ -701,14 +795,9 @@ function suggestSeats(n) {
 
   // Floors in preference order. Seater has a single deck block (or none →
   // the whole grid). A patient always starts on the lower deck.
-  const blocks = $$('.deck-block', grid);
-  const floors = blocks.length ? Array.prototype.slice.call(blocks) : [grid];
   const pref = deckPrefGet();
   const patient = !!Flow.patient;
-  const deckOf = (f) => (f.getAttribute ? f.getAttribute('data-deck') : '') || '';
-  const upperFirst = pref === 'U' && !patient;
-  const order = floors.filter(f => (deckOf(f) === 'U') === upperFirst)
-    .concat(floors.filter(f => (deckOf(f) === 'U') !== upperFirst));
+  const order = seatFloorsInOrder(grid);
 
   const picks = pickSeatsSmart(order, n, patient);
 
@@ -1252,22 +1341,10 @@ function renderSeats(instant) {
          then filled in the whole form was refused at "Confirm" ("Seat A1 is
          reserved for women"). Women-only / women's-cabin berths are picked
          only for a passenger marked Woman; men-only cabins never for her. */
-      const g = ((window.SHG_QUICK || {}).gender || '');
-      const pickFree = () => {
-        const all = Array.prototype.slice.call(grid.querySelectorAll('.seat:not([disabled]):not(.sel)'));
-        const fits = (b) => g === 'Female'
-          ? !b.classList.contains('u-male')
-          : !b.classList.contains('fem') && !b.classList.contains('u-fem');
-        return all.find(fits) || null;
-      };
-      let guard = 0;
-      while (Flow.seats.length < target && guard++ < CONFIG.booking.maxSeats * 3) {
-        const free = pickFree();
-        if (!free) break;
-        const before = Flow.seats.length;
-        free.click();
-        if (Flow.seats.length === before) break;   // refused (max reached) — stop
-      }
+      /* 8 Oct 2026: the Seat AI engine (pickSeatsSmart) scores every free
+         berth — gender rule, party together, lower floor, front row — and the
+         picks are committed through the same click a finger makes. */
+      seatAiCommit(grid, target);
       syncAuto();
       if (Flow.seats.length) toast('✅ ' + tf('seatAutoDone', { s: seatLabelJoin(Flow.seats, r.type, Flow.bookingType) }));
       else toast('👆 Tap a free seat on the map · नक्सामा खाली सिट छान्नुहोस्');
@@ -1276,6 +1353,7 @@ function renderSeats(instant) {
     const prevClick = grid.onclick;
     grid.onclick = (e) => { prevClick(e); syncAuto(); };
     syncAuto();
+    seatQuickGender(seatGenderNow());
   }
 
   /* "How many seats?" group picker — floor-first suggestion (Task 3). Wired
@@ -1342,7 +1420,14 @@ function renderSeats(instant) {
      itself when the view or the tab goes away. */
   SeatPoll.start(r.id, ctx.date);
   $('#continueBtn').onclick = () => {
-    if (!Flow.seats.length) { toast(t('tPickSeat')); return; }
+    if (!Flow.seats.length) {
+      /* 8 Oct 2026 "Auto seat → Continue": nothing tapped → the Seat AI
+         seats the whole party (passenger count from the booking panel). */
+      const want = Math.max(1, Math.min(parseInt(Flow.pax, 10) || 1, CONFIG.booking.maxSeats));
+      seatAiCommit($('#seatGrid'), want);
+      if (!Flow.seats.length) { toast(t('tPickSeat')); return; }
+      toast('⚡ ' + tf('seatAutoDone', { s: seatLabelJoin(Flow.seats, r.type, Flow.bookingType) }));
+    }
     /* Cabin↔seat-count gate: Single Cabin=1, Double Cabin=2 — PRIVATE only.
        Sharing has no gate: हरेक seat अलग-अलग, जति चाहिन्छ त्यति। */
     if (r.type === 'sleeper' && Flow.bookingType === 'private' && Flow.sharingTier && SHARING_TIERS[Flow.sharingTier]) {
@@ -1470,7 +1555,9 @@ function updateSeatSummary() {
   if (recap) recap.textContent = Flow.seats.length
     ? Flow.seats.map(s => seatLabel(s, Flow.route && Flow.route.type, Flow.bookingType)).join(', ') + (fareGood ? ' · ' + inr(recapTotal) : '')
     : '';
-  $('#continueBtn').disabled = !Flow.seats.length || !fareGood;
+  const cBtn = $('#continueBtn');
+  cBtn.disabled = !fareGood;
+  cBtn.textContent = Flow.seats.length ? t('btnContinue') : t('btnAutoContinue');
   seatQuickSync();
   updateTierUI();
 }
@@ -1497,10 +1584,10 @@ function seatQuickSync() {
   seatQuickGender(q.gender || (me && me.gender) || '');
 }
 function seatQuickGender(g) {
-  $$('#seatQuick [data-sqg]').forEach(b => b.classList.toggle('on', b.getAttribute('data-sqg') === g));
+  $$('#seatQuick [data-sqg], #seatAiBar [data-sqg]').forEach(b => b.classList.toggle('on', b.getAttribute('data-sqg') === g));
 }
 function seatQuickSave() {
-  const on = $('#seatQuick [data-sqg].on');
+  const on = $('#seatQuick [data-sqg].on') || $('#seatAiBar [data-sqg].on');
   window.SHG_QUICK = Object.assign({}, window.SHG_QUICK || {}, {
     name: $('#sqName').value.trim(), phone: $('#sqPhone').value.trim(),
     gender: on ? on.getAttribute('data-sqg') : ((window.SHG_QUICK || {}).gender || '')
@@ -1532,8 +1619,8 @@ document.addEventListener('click', (e) => {
   if (box && !box.hidden && ($('#sqName').value.trim() || $('#sqPhone').value.trim())) seatQuickSave();
 }, true);
 document.addEventListener('click', (e) => {
-  const b = e.target && e.target.closest && e.target.closest('#seatQuick [data-sqg]');
-  if (b) { seatQuickGender(b.getAttribute('data-sqg')); seatQuickSave(); }
+  const b = e.target && e.target.closest && e.target.closest('#seatQuick [data-sqg], #seatAiBar [data-sqg]');
+  if (b) { seatQuickGender(b.getAttribute('data-sqg')); seatQuickSave(); seatGenderRecheck(); }
 });
 
 /* ----------------------------------------------------------------

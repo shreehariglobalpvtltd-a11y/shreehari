@@ -535,6 +535,12 @@ final class QuickTicket
         $chosenPref = $prefer !== [] ? array_slice(array_values(array_intersect($prefer, $free)), 0, $count) : [];
         // Preference: lower deck before upper, then the seat number.
         usort($free, static fn(string $a, string $b): int => self::seatRank($a) <=> self::seatRank($b));
+        // 8 Oct 2026: a woman is seated on a women-only berth first (safest),
+        // then the ordinary walk — the same rule the seat page's Seat AI applies.
+        if ($gender === 'Female' && $female !== []) {
+            $femFirst = array_values(array_intersect($free, $female));
+            $free     = array_merge($femFirst, array_values(array_diff($free, $femFirst)));
+        }
 
         // Free seats grouped by cabin, in that same order.
         $byUnit = [];

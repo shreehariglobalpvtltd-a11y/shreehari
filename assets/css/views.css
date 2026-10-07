@@ -700,6 +700,24 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 
 .seat-auto{display:block;margin:0 auto 14px;white-space:nowrap}
 .seat-auto[disabled]{opacity:.5;cursor:not-allowed}
+/* Seat AI bar (8 Oct 2026) — colourful, one glance: who travels → ⚡ */
+.seat-ai-bar{display:grid;gap:8px;justify-items:center;margin:0 auto 14px;padding:12px;border-radius:16px;background:linear-gradient(135deg,rgba(124,58,237,.10),rgba(236,72,153,.10) 50%,rgba(59,130,246,.12));border:1.5px solid rgba(124,58,237,.35)}
+.seat-ai-bar .sab-g{display:flex;gap:8px}
+.seat-ai-bar .sab-g button{min-height:40px;padding:0 14px;border-radius:999px;border:1.5px solid var(--line,#C7D4E8);background:var(--card,#fff);color:var(--fg,#1b2a41);font-weight:800;font-size:13px;cursor:pointer;transition:transform .12s,background .18s,border-color .18s}
+.seat-ai-bar .sab-g button:active{transform:scale(.95)}
+.seat-ai-bar .sab-g button[data-sqg="Female"].on{background:#FCE7F1;border-color:#D81B77;color:#B0165F}
+.seat-ai-bar .sab-g button[data-sqg="Male"].on{background:#E3EDFC;border-color:#1C5BD0;color:#12408C}
+.seat-ai-bar .seat-auto{margin:0;background:linear-gradient(90deg,#7C3AED,#EC4899,#F97316,#7C3AED);background-size:300% 100%;border:0;color:#fff;font-weight:800;box-shadow:0 6px 18px rgba(124,58,237,.35);animation:sabFlow 6s linear infinite}
+.seat-ai-bar .seat-auto[disabled]{animation:none;opacity:.5}
+.seat-ai-bar .sab-hint{font-size:12px;color:var(--muted,#5B6B85);text-align:center;line-height:1.4}
+@keyframes sabFlow{to{background-position:300% 0}}
+.seat.ai-pick{position:relative}
+.seat.ai-pick.sel{animation:aiPick .7s cubic-bezier(.34,1.56,.64,1)}
+.seat.ai-pick.sel:not(.da)::after{content:'✨';position:absolute;top:-10px;right:-6px;font-size:12px;animation:aiSpark 1.2s ease-out 1 forwards}
+@keyframes aiPick{0%{transform:scale(.6) rotate(-8deg);filter:brightness(1.6)}60%{transform:scale(1.15)}100%{transform:scale(1)}}
+@keyframes aiSpark{0%{opacity:0;transform:translateY(6px) scale(.5)}30%{opacity:1;transform:translateY(-2px) scale(1.2)}100%{opacity:0;transform:translateY(-10px) scale(.8)}}
+:root[data-theme="dark"] .seat-ai-bar{background:linear-gradient(135deg,rgba(124,58,237,.22),rgba(236,72,153,.18) 50%,rgba(59,130,246,.22));border-color:rgba(167,139,250,.5)}
+@media (prefers-reduced-motion:reduce){.seat-ai-bar .seat-auto,.seat.ai-pick.sel,.seat.ai-pick.sel::after{animation:none}}
 
 /* ---------- [CSS] 37z. MAIN-POINT FARE BOARD + LIVE FARE ---------- */
 .fare-live{display:none;grid-column:1/-1;margin-top:12px;padding:12px 16px;border-radius:14px;
