@@ -185,11 +185,15 @@ body { color: var(--ink); font-family: var(--font-sans); }
 #view-home.active { display: flex !important; flex-direction: column; }
 #view-home.active > * { width: 100%; min-width: 0; }
 #view-home > * { order: 10 !important; }
-#view-home > .search-wrap { order: 0 !important; }
-#view-home > #nextTripBox { order: 1 !important; }
-#view-home > #entryCards { order: 2 !important; }
-#view-home > #quick-ticket { order: 3 !important; }
-#view-home > #brandBand { order: 4 !important; }
+/* 8 Oct 2026 (owner prompt, D3-09): the premium hero (logo, headline, Book /
+   Track / My Ticket), the booking panel, your next trip, the facilities strip,
+   QuickBot, then the offices card + coach animation. DOM order = this order. */
+#view-home > #homeHero { order: 0 !important; }
+#view-home > .search-wrap { order: 1 !important; }
+#view-home > #nextTripBox { order: 2 !important; }
+#view-home > #homeFeat { order: 3 !important; }
+#view-home > #quick-ticket { order: 4 !important; }
+#view-home > #topHero { order: 5 !important; }
 /* decorative or duplicated blocks */
 #view-home > .hero, #view-home > .wa-ticket-highlight, #view-home > .ra-wrap, #routeAnim, #homeRouteMap,
 #heroLiveTicker, .intl-badge { display: none !important; }
@@ -302,7 +306,7 @@ body { color: var(--ink); font-family: var(--font-sans); }
 #brandBand .bb-feats li::before { content: ""; width: 16px; height: 16px; flex: none; background: var(--success); -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7'/%3E%3C/svg%3E") center / contain no-repeat; }
 
 /* Shortcut cards duplicate the bottom bar on a phone */
-@media (max-width: 899px) { #heroActions { display: none !important; } }
+
 .hero-actions .ha-card { background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--radius-lg) !important; box-shadow: var(--shadow-1) !important; color: var(--ink) !important; }
 .hero-actions .ha-card:hover { border-color: var(--royal) !important; transform: none !important; }
 .hero-actions .ha-ico { background: var(--royal-tint) !important; color: var(--royal) !important; box-shadow: none !important; }
@@ -547,10 +551,10 @@ footer .f-ceo { background: rgba(255, 255, 255, .06) !important; border-color: r
    branch-office numbers on the left, the coach banner (anim.css .sa-top)
    on the right; on a phone a slim brand card above the coach.
    ===================================================================== */
-#view-home > #topHero { order: -3 !important; margin-top: 12px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+#view-home > #topHero { margin-top: 18px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 /* 5 Oct 2026: a visitor who arrived on a Google Ads / Facebook ad click sees
    the booking card first (ShgAds.landing in 05-router.js sets the class). */
-html.shg-from-ad #view-home > #search-anchor { order: -4 !important; margin-top: 12px; }
+html.shg-from-ad #view-home > #search-anchor { order: -1 !important; margin-top: 12px; }
 #topHero > .container { padding: 0; margin: 0; max-width: none; width: auto; }
 #view-home .th-brand { display: block; position: relative; overflow: hidden; border-radius: 18px; padding: 12px 14px; color: #fff;
   background: radial-gradient(120% 140% at 0% 0%, #1e4f9c 0%, #0c2c63 55%, #071a3d 100%);
@@ -605,7 +609,13 @@ html.shg-from-ad #view-home > #search-anchor { order: -4 !important; margin-top:
 .book-help .bh-panel { margin-top: 12px; padding: 18px; border-radius: 18px; background: var(--surface, #fff); border: 1px solid var(--line, #e2e9f4); box-shadow: 0 8px 24px rgba(18, 38, 78, .08); }
 .book-help .bh-panel[hidden] { display: none; }
 .book-help .bh-steps { list-style: none; counter-reset: bh; margin: 0; padding: 0; display: grid; gap: 10px; }
-.book-help .bh-steps li { counter-increment: bh; position: relative; padding: 10px 12px 10px 52px; border-radius: 14px; background: var(--chip, #f2f6fc); border: 1px solid var(--line, #e2e9f4); }
+.book-help .bh-steps li { counter-increment: bh; position: relative; padding: 10px 12px 10px 52px; border-radius: 14px; background: var(--surface-sunken, #f2f6fc); border: 1px solid var(--line, #e2e9f4); }
+/* D1-01 (8 Oct 2026): the guide button and steps follow the theme (the tile
+   used an undefined --chip and fell back to a light tile under light text). */
+:root[data-theme="dark"] .book-help .bh-btn { background: linear-gradient(110deg, var(--warning-soft), var(--orange-soft)) !important; border-color: color-mix(in srgb, var(--warning) 55%, transparent) !important; color: var(--ink) !important; box-shadow: var(--dp-card) !important; }
+:root[data-theme="dark"] .book-help .bh-txt b { color: var(--ink) !important; }
+:root[data-theme="dark"] .book-help .bh-txt small { color: var(--muted) !important; }
+:root[data-theme="dark"] .book-help .bh-ic { background: var(--surface) !important; }
 .book-help .bh-steps li::before { content: counter(bh); position: absolute; left: 12px; top: 10px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 900; color: #fff; background: linear-gradient(135deg, #1e4f9c, #0c2c63); }
 .book-help .bh-steps b { display: block; font-size: 15.5px; color: var(--ink, #16233c); }
 .book-help .bh-steps span { display: block; margin-top: 2px; font-size: 14px; line-height: 1.55; color: var(--muted, #5c6b85); }
@@ -625,7 +635,7 @@ html.shg-from-ad #view-home > #search-anchor { order: -4 !important; margin-top:
    button; Nepalgunj in Nepal crimson. Phones: one swipeable row of all five. */
 .th-oh { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 8px 0 6px; position: relative; z-index: 1; }
 .th-oh span { font: 900 13px/1.2 var(--font-sans, sans-serif); color: #ffd28a; letter-spacing: .02em; }
-.th-oh small { font: 600 10.5px/1.2 var(--font-sans, sans-serif); color: #9fb6d9; }
+.th-oh small { font: 600 12px/1.35 var(--font-sans, sans-serif); color: #c7d6ee; }
 #view-home .th-offices { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 2px 2px 6px; margin: 0 -2px;
   scrollbar-width: none; -webkit-overflow-scrolling: touch; grid-template-columns: none; }
 #view-home .th-offices::-webkit-scrollbar { display: none; }
@@ -668,7 +678,7 @@ html.shg-from-ad #view-home > #search-anchor { order: -4 !important; margin-top:
 }
 
 /* the Nepal row's second line (place · contact person) */
-.th-sub { grid-column: 2; grid-row: 2; font: 600 10px/1.25 var(--font-sans, sans-serif); color: #ffc9d3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.th-sub { grid-column: 2; grid-row: 2; font: 600 12px/1.3 var(--font-sans, sans-serif); color: #ffc9d3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .th-np .th-n { grid-row: 3; }
 .th-np .th-badge, .th-np .th-call { grid-row: 1 / 4; }
 @media (min-width: 1000px) {
@@ -689,16 +699,19 @@ html.shg-from-ad #view-home > #search-anchor { order: -4 !important; margin-top:
 .th-npcard[hidden] { display: none; }
 .th-nph { display: flex; align-items: center; gap: 7px; margin: 0 0 6px; color: #fff; }
 .th-nph b { flex: none; white-space: nowrap; font: 900 13px/1.2 var(--font-sans, sans-serif); letter-spacing: .02em; }
-.th-nph small { font: 600 10.5px/1.2 var(--font-sans, sans-serif); color: #ffc9d3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.th-nph small { font: 600 12px/1.35 var(--font-sans, sans-serif); color: #ffc9d3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .np-flag { flex: none; display: block; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .35)); }
 .th-npl { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
-.np-p { display: grid; grid-template-columns: minmax(0, 1fr) 34px 34px; gap: 6px; align-items: center; }
+.np-p { display: grid; grid-template-columns: minmax(0, 1fr) 44px 44px; gap: 6px; align-items: center; }
 .np-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; align-items: center; min-width: 0; min-height: 44px; padding: 4px 9px;
   border-radius: 11px; text-decoration: none; color: #fff; background: rgba(255, 255, 255, .09); border: 1px solid rgba(255, 255, 255, .16); }
-.np-main .np-role { grid-column: 1; grid-row: 1; font: 700 9.5px/1.2 var(--font-sans, sans-serif); letter-spacing: .06em; text-transform: uppercase; color: #ffc9d3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.np-main b { grid-column: 1 / -1; grid-row: 2; font: 800 12.5px/1.25 var(--font-sans, sans-serif); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.np-main .np-num { grid-column: 2; grid-row: 1; font: 900 12.5px/1.25 var(--font-sans, sans-serif); color: #ffe6b8; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.np-btn { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 15px; text-decoration: none; color: #fff;
+/* D2-09 (8 Oct 2026): role, name and number each get a full row - the role
+   was cut to "N." and the CEO's name to "Bishwokar…" - at a readable size,
+   and the call / WhatsApp keys are 44px. */
+.np-main .np-role { grid-column: 1 / -1; grid-row: 1; font: 700 11.5px/1.3 var(--font-sans, sans-serif); letter-spacing: 0; text-transform: none; color: #ffc9d3; white-space: normal; overflow: visible; }
+.np-main b { grid-column: 1 / -1; grid-row: 3; font: 800 13px/1.3 var(--font-sans, sans-serif); white-space: normal; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.np-main .np-num { grid-column: 1 / -1; grid-row: 2; font: 900 13px/1.3 var(--font-sans, sans-serif); color: #ffe6b8; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.np-btn { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-size: 17px; text-decoration: none; color: #fff;
   box-shadow: 0 3px 0 rgba(0, 0, 0, .28), 0 6px 12px rgba(0, 0, 0, .25); transition: transform .12s, box-shadow .12s; }
 .np-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0, 0, 0, .28), 0 2px 5px rgba(0, 0, 0, .25); }
 .np-call { background: linear-gradient(180deg, #2fbf6c, #1c8f4c); }
@@ -726,6 +739,23 @@ html.shg-from-ad #view-home > #search-anchor { order: -4 !important; margin-top:
 @keyframes orShine{0%{background-position:0 0}100%{background-position:200% 0}}
 @media (prefers-reduced-motion:reduce){.offer-ribbon{animation:none}}
 @media (max-width:520px){.offer-ribbon{font-size:13px;padding:8px 12px;gap:6px}.offer-ribbon .or-cta{font-size:12px}}
+/* 8 Oct 2026: on a phone the ribbon is one compact row (it was 112px at
+   360px and pushed the booking card down): lamp, a two-line text, the CTA. */
+@media (max-width:520px){
+  .offer-ribbon{flex-wrap:nowrap;justify-content:flex-start;text-align:left;padding:7px 12px;font-size:12.5px;line-height:1.35}
+  .offer-ribbon .or-lamp{font-size:16px;flex:none}
+  .offer-ribbon .or-text{flex:1 1 auto;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .offer-ribbon .or-cta{flex:none;padding:6px 10px;min-height:32px;display:inline-flex;align-items:center}
+}
+/* D1-05 (8 Oct 2026): AMOLED keeps --orange (and --gold) on the royal key
+   like light and dark - depth.css re-pointed it to #FF9A3D for the company
+   app, which this customer-only sheet does not load. 0,3,0 beats depth. */
+:root[data-theme][data-display="amoled"] { --orange: var(--royal); }
+/* D3-06 (8 Oct 2026): 761-899px has neither the hamburger nor room for the
+   wordmark - the logo tile alone keeps the bell and Sign in on screen. */
+@media (min-width: 761px) and (max-width: 899px) { .nav .brand-word { display: none !important; } }
+/* D1-09 (8 Oct 2026): the peach trust icons glowed on dark / AMOLED */
+:root[data-theme="dark"] .t-badge .ico.or { background: var(--orange-soft) !important; color: var(--warm-ink) !important; }
 /* 7 Oct 2026: the CEO in a block of his own under the Nepal office list */
 .np-ceo { margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(255, 255, 255, .28); }
 .th-npcard > .np-ceo:first-child { margin-top: 0; padding-top: 0; border-top: 0; }

@@ -9,11 +9,12 @@
  * right under it. This suite now proves that layout, and keeps every
  * safeguard the old one had:
  *
- *   1. the booking panel is the first block of #view-home and carries the
- *      page's one <h1>; #entryCards holds the two other doors, each wired by a
- *      data attribute to an existing handler (initBookMode's [data-bkmode],
- *      the WhatsApp sheet's [data-wa-open]) — no inline handler, no JS of its
- *      own, no phone number in the markup;
+ *   1. (8 Oct 2026, owner prompt Phase 4) the premium hero (#homeHero: logo,
+ *      the page's one <h1>, Book / Track / My Ticket) is the first block and
+ *      the booking panel comes straight after it; the duplicate "Other ways
+ *      to book" cards (#entryCards) are gone - QuickBot keeps its own card
+ *      ([data-bkmode]) and WhatsApp booking its button in the search card,
+ *      with no inline handler and no phone number in that markup;
  *   2. those handlers are still bound exactly once, and the sheet's wa.me link
  *      is still built by officeNum() from the configured booking number;
  *   3. on every width the booking panel leads (redesign.css order), and
@@ -62,49 +63,37 @@ $ds     = (string) file_get_contents($root . '/assets/css/ds.css');
 $router = (string) file_get_contents($root . '/assets/js/05-router.js');
 $i18n   = (string) file_get_contents($root . '/assets/js/04-i18n.js');
 
-/* ---- 1. the booking panel, then the two other doors ------------------ */
+/* ---- 1. the hero, the booking panel, then QuickBot -------------------- */
 $home = preg_match('~<section class="view active" id="view-home"(?: data-first)?>(.*)~s', $tpl, $hm) ? $hm[1] : '';
-$firstBlock = preg_match('~^\s*(?:<!--.*?-->\s*)*<div[^>]*\bid="([a-z-]+)"~s', $home, $fb) ? $fb[1] : '';
-check('the booking panel is the first block of the home view', $firstBlock === 'search-anchor', $firstBlock);
+$firstBlock = preg_match('~^\s*(?:<!--.*?-->\s*)*<(?:div|section)[^>]*\bid="([A-Za-z-]+)"~s', $home, $fb) ? $fb[1] : '';
+check('the premium hero is the first block of the home view', $firstBlock === 'homeHero', $firstBlock);
+$hero = preg_match('~<section[^>]*id="homeHero"[^>]*>(.*?)</section>~s', $tpl, $hh) ? $hh[1] : '';
+check('the hero carries the official logo, the headline and the promise line',
+    str_contains($hero, '/assets/img/logo-nav.png') && str_contains($hero, 'data-i18n="hhTitle"') && str_contains($hero, 'data-i18n="hhTag"'));
+check('the hero has the three keys: Book (scrolls to the panel), Track (openTrackMyBus), My Ticket',
+    (bool) preg_match('~class="hh-act hh-book"[^>]*data-scroll="search-anchor"~', $hero)
+    && (bool) preg_match('~class="hh-act hh-track"[^>]*data-track-bus~', $hero)
+    && (bool) preg_match('~class="hh-act hh-my" href="#/my"~', $hero));
+check('no inline event handler and no phone number in the hero', !preg_match('~\son[a-z]+\s*=~i', $hero) && !preg_match('~\d{8,}~', preg_replace('~<!--.*?-->|\?v=\d+[a-z]*~s', '', $hero) ?? ''));
 check('the panel is the search form with a Find Bus button',
     str_contains($tpl, 'id="searchForm"') && (bool) preg_match('~id="searchBtn"[^>]*>.*?data-i18n="sSearch"~s', $tpl));
-check('the page has exactly one <h1>, and it titles the booking panel',
-    preg_match_all('~<h1[\s>]~i', $tpl) === 1 && str_contains($tpl, '<h1 class="sp-title" id="spTitle"'));
+check('the page has exactly one <h1>, and it is the hero headline',
+    preg_match_all('~<h1[\s>]~i', $tpl) === 1 && str_contains($tpl, '<h1 class="hh-title" id="homeHeadline"'));
+check('the booking panel keeps its own heading (h2)', str_contains($tpl, '<h2 class="sp-title" id="spTitle"'));
 check('passengers default to 1 on the panel', (bool) preg_match('~<output id="paxCount"[^>]*>1</output>~', $tpl));
 
-check('exactly one #entryCards section', substr_count($tpl, 'id="entryCards"') === 1);
-$section = preg_match('~<section[^>]*id="entryCards"[^>]*>(.*?)</section>~s', $tpl, $m) ? $m[1] : '';
-check('the section has a body', $section !== '');
+check('the duplicate "Other ways to book" cards are gone', !str_contains($tpl, 'id="entryCards"') && !str_contains($tpl, 'class="ec-card'));
+check('QuickBot keeps its own switch ([data-bkmode]) and WhatsApp booking its search-card button',
+    str_contains($tpl, 'data-bkmode="regular"') && str_contains($tpl, 'id="waBookBtn"'));
 
-preg_match_all('~<(a|button)\b([^>]*\bclass="[^"]*\bec-card\b[^"]*"[^>]*)>~', $section, $cards);
-check('two other ways to book, no more', count($cards[2]) === 2, count($cards[2]) . ' found');
-
-$want = [
-    'ec-quick'  => 'data-bkmode="quick"',
-    'ec-wa'     => 'data-wa-open="booking"',
-];
-foreach ($want as $cls => $attr) {
-    $hit = '';
-    foreach ($cards[2] as $attrs) {
-        if (preg_match('~\bclass="[^"]*\b' . preg_quote($cls, '~') . '\b~', $attrs)) { $hit = $attrs; }
-    }
-    check("{$cls} card exists", $hit !== '');
-    check("{$cls} opens the existing flow via {$attr}", $hit !== '' && str_contains($hit, $attr));
-}
-$waCard = '';
-foreach ($cards[2] as $attrs) { if (str_contains($attrs, 'ec-wa')) { $waCard = $attrs; } }
-check('the WhatsApp card announces the sheet dialog', str_contains($waCard, 'aria-controls="waSheet"') && str_contains($waCard, 'aria-haspopup="dialog"'));
-
-check('no inline event handler inside the cards', !preg_match('~\son[a-z]+\s*=~i', $section));
-check('no wa.me link written into the cards', stripos($section, 'wa.me') === false);
-check('no phone number written into the cards', !preg_match('~\d{8,}~', preg_replace('~<!--.*?-->~s', '', $section) ?? ''));
-check('the section is labelled by its heading', str_contains($tpl, 'aria-labelledby="entryCardsTitle"') && str_contains($section, 'id="entryCardsTitle"'));
-
+$posHero   = strpos($tpl, 'id="homeHero"');
 $posSearch = strpos($tpl, 'id="search-anchor"');
-$posCards  = strpos($tpl, 'id="entryCards"');
+$posFeat   = strpos($tpl, 'id="homeFeat"');
 $posQuick  = strpos($tpl, 'id="quick-ticket"');
-check('DOM order: booking panel, then the other doors, then QuickBot',
-    $posCards !== false && $posQuick !== false && $posSearch !== false && $posSearch < $posCards && $posCards < $posQuick);
+$posTop    = strpos($tpl, 'id="topHero"');
+check('DOM order: hero, booking panel, facilities, QuickBot, then the offices card',
+    $posHero !== false && $posSearch !== false && $posFeat !== false && $posQuick !== false && $posTop !== false
+    && $posHero < $posSearch && $posSearch < $posFeat && $posFeat < $posQuick && $posQuick < $posTop);
 
 foreach (['search-anchor', 'quick-ticket', 'quickTicket', 'waSheet', 'heroQtCta'] as $id) {
     check("#{$id} still exists", substr_count($tpl, 'id="' . $id . '"') === 1);
@@ -133,10 +122,12 @@ check('the home view is a column only while it is the active view',
     str_contains($css, '#view-home.active { display: flex !important; flex-direction: column; }')
     && !preg_match('~(^|[\s,}])#view-home\s*\{[^}]*display~', $css));
 check('every other block defaults behind the booking flow', str_contains($css, '#view-home > * { order: 10 !important; }'));
-check('the booking panel leads (order 0)', str_contains($css, '#view-home > .search-wrap { order: 0 !important; }'));
-check('the other doors (2) and QuickBot (3) follow it',
-    str_contains($css, '#view-home > #entryCards { order: 2 !important; }') && str_contains($css, '#view-home > #quick-ticket { order: 3 !important; }'));
-check('the cards keep a 44px+ touch target', (bool) preg_match('~\.entry-cards \.ec-grid \.ec-card \{[^}]*min-height: (\d+)px~', $css, $mh) && (int) $mh[1] >= 44);
+check('the hero (0) and the booking panel (1) lead',
+    str_contains($css, '#view-home > #homeHero { order: 0 !important; }') && str_contains($css, '#view-home > .search-wrap { order: 1 !important; }'));
+check('QuickBot (4) and the offices card (5) follow',
+    str_contains($css, '#view-home > #quick-ticket { order: 4 !important; }') && str_contains($css, '#view-home > #topHero { order: 5 !important; }'));
+$depth = (string) file_get_contents($root . '/assets/css/depth.css');
+check('the hero keys keep a 44px+ touch target', (bool) preg_match('~\.home-hero \.hh-act \{[^}]*min-height: (\d+)px~', $depth, $mh) && (int) $mh[1] >= 44);
 
 /* ---- 4. colour + contrast (design-system tokens) ----------------------- */
 function lum(string $hex): float
@@ -150,8 +141,9 @@ $light = preg_match('~:root,:root\[data-theme="light"\]\{([^}]*)\}~', $ds, $lm) 
 $dark  = preg_match('~:root\[data-theme="dark"\]\{([^}]*)\}~', $ds, $dm) ? $dm[1] : '';
 $tok = static fn (string $block, string $name): string => preg_match('~--' . preg_quote($name, '~') . ':(#[0-9A-Fa-f]{6})~', $block, $t) ? $t[1] : '';
 check('ds.css carries both themes', $light !== '' && $dark !== '');
-check('the cards are painted from tokens (surface + ink + royal)',
-    str_contains($css, 'background: var(--surface) !important;') && str_contains($css, '.entry-cards .ec-card b { font: 700 14px/18px var(--font-sans) !important; color: var(--ink) !important; }'));
+check('the hero keys are painted from tokens (depth face + ink + royal)',
+    (bool) preg_match('~\.home-hero \.hh-act \{[^}]*color: var\(--ink\);[^}]*background: var\(--dp-face\)~', $depth)
+    && str_contains($depth, '.home-hero .hh-ic { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--royal-tint); color: var(--royal);'));
 foreach (['light' => $light, 'dark' => $dark] as $theme => $block) {
     $ink = $tok($block, 'ink'); $surface = $tok($block, 'surface'); $muted = $tok($block, 'muted');
     check("{$theme}: card title (ink on surface) >= 4.5:1", $ink !== '' && $surface !== '' && ratio($ink, $surface) >= 4.5, $ink !== '' && $surface !== '' ? sprintf('%.2f:1', ratio($ink, $surface)) : 'token missing');

@@ -44,11 +44,37 @@ function updateBookProgress(name) {
     bar.classList.remove('pulse');
   }
 }
+/* 8 Oct 2026 (D2-M1): the tab title names the step, and a view change moves
+   keyboard / screen-reader focus to the new view's heading instead of
+   dropping it on <body> (the clicked control is now inside a hidden view).
+   The home keeps the page's own SEO title. */
+const SHG_HOME_TITLE = document.title;
+const SHG_VIEW_TITLE = { results: 'ttlResults', seats: 'ttlSeats', checkout: 'ttlCheckout', status: 'ttlStatus', my: 'ttlMy', trip: 'ttlTrip', nav: 'ttlNav', terms: 'ttlTerms' };
+let shgViewName = 'home', shgViewFirst = true;
+function shgViewTitle() {
+  const k = SHG_VIEW_TITLE[shgViewName];
+  try { document.title = k && typeof t === 'function' ? (t(k) + ' | S Hari Global') : SHG_HOME_TITLE; } catch (e) {}
+}
+function shgFocusView(name) {
+  if (shgViewFirst) { shgViewFirst = false; return; }        // the first paint keeps the browser's own focus
+  const view = document.getElementById('view-' + name);
+  if (!view) return;
+  const ae = document.activeElement;
+  if (ae && ae !== document.body && view.contains(ae)) return;   // already inside the new view
+  if (ae && ae !== document.body && !ae.closest('.view')) return; // header / sheet / nav keeps focus
+  const h = view.querySelector('h1, h2, .flow-head h2');
+  if (!h) return;
+  if (!h.hasAttribute('tabindex')) h.setAttribute('tabindex', '-1');
+  try { h.focus({ preventScroll: true }); } catch (e) {}
+}
 function showView(name) {
   if (name !== 'track' && typeof cleanupTracker === 'function') cleanupTracker();
   if (name !== 'nav' && typeof cleanupNav === 'function') cleanupNav();
   if (name !== 'trip' && typeof cleanupTrip === 'function') cleanupTrip();
   $$('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
+  shgViewName = name;
+  shgViewTitle();
+  shgFocusView(name);
   /* JS-set flow marker. The CSS that hides the bottom tab-bar + FABs
      during seat/checkout also has :has() selectors, but :has() needs
      Chrome 105+/Safari 15.4+ — a big slice of budget Androids here run
@@ -82,6 +108,7 @@ function router() {
   const h = location.hash || '#/';
   $('#mobileMenu').classList.remove('open');
   $('#hamburger').classList.remove('open');
+  $('#hamburger').setAttribute('aria-expanded', 'false');   // D2-M1: a followed menu link closes the menu for AT too
   /* The pending-ticket poll (TicketPoll, below) lives only on its own view. */
   if (typeof TicketPoll !== 'undefined' && TicketPoll._id && h.indexOf('#/ticket/') !== 0) TicketPoll.stop();
   /* Both ticket views re-read the database before trusting what this browser
@@ -131,29 +158,107 @@ function router() {
 }
 window.addEventListener('hashchange', router);
 
-/* Smooth-scroll links that point at home-page sections */
-document.addEventListener('click', (e) => {
-  const a = e.target.closest('[data-scroll],[data-scroll-home]');
-  if (!a) return;
-  e.preventDefault();
-  const target = a.getAttribute('data-scroll') || a.getAttribute('data-scroll-home');
+/* Scroll to a home-page section (8 Oct 2026, D3-01): one function for the
+   menu / footer [data-scroll] links, the bottom bar and the offer ribbon.
+   A target inside the collapsed "About" brochure (#homeMore / #homeExtra)
+   opens it first - otherwise the scroll lands on a hidden element and the
+   tap appears to do nothing (the old bottom-bar Help tab). From any other
+   view it goes home first. */
+function scrollHomeTarget(target) {
   const go = () => {
     if (target === 'top') { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     const el = document.getElementById(target);
     if (!el) return;
-    // If the target sits inside the collapsed "More" brochure, open it first
-    // or the scroll lands on a hidden element and appears to do nothing.
     var more = document.getElementById('homeMore');
     var extra = document.getElementById('homeExtra');
-    if (more && more.hidden && (more.contains(el) || (extra && extra.contains(el))) && typeof window.openHomeMore === 'function') {
+    /* The brochure's sections are content-visibility:auto with a 720px
+       placeholder height, so the ones above the target change size as they
+       render and a jump lands short - re-aim until the section's top sits
+       under the header (the scroll is instant there: it is a long way). */
+    var settle = function (n) {
+      setTimeout(function () {
+        var tp = el.getBoundingClientRect().top;
+        if ((tp < 0 || tp > 200) && n < 8) { el.scrollIntoView({ block: 'start' }); settle(n + 1); }
+      }, 300);
+    };
+    if (((more && more.hidden && more.contains(el)) || (extra && extra.hidden && extra.contains(el))) && typeof window.openHomeMore === 'function') {
       window.openHomeMore();
-      setTimeout(function () { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
+      setTimeout(function () { el.scrollIntoView({ block: 'start' }); settle(0); }, 80);
       return;
     }
     el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
   if (!$('#view-home').classList.contains('active')) { location.hash = '#/'; setTimeout(go, 60); }
   else go();
+}
+window.scrollHomeTarget = scrollHomeTarget;
+/* Smooth-scroll links that point at home-page sections */
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('[data-scroll],[data-scroll-home]');
+  if (!a) return;
+  e.preventDefault();
+  scrollHomeTarget(a.getAttribute('data-scroll') || a.getAttribute('data-scroll-home'));
+});
+
+/* TRACK MY BUS (8 Oct 2026, owner prompt): the passenger's OWN bus, never
+   the anonymous map. The nearest today-or-later confirmed booking this
+   device holds that carries its keyed tracker link (trackUrl, k= token)
+   opens that tracker; otherwise My Tickets with the PNR box focused and a
+   one-line hint. The keyed link is the private-access proof (COMMON rule 7). */
+function openTrackMyBus() {
+  const today = (typeof todayISO === 'function') ? todayISO() : new Date().toISOString().slice(0, 10);
+  const list = (typeof DB !== 'undefined' && DB && Array.isArray(DB.bookings)) ? DB.bookings : [];
+  const next = list
+    .filter(b => b && b.status === 'confirmed' && b.trackUrl && /[?&]k=/.test(String(b.trackUrl)) && String(b.date || '') >= today)
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)))[0];
+  if (next) {
+    try { toast(tf('trkOpening', { pnr: next.id })); } catch (e) {}
+    location.href = String(next.trackUrl);
+    return true;
+  }
+  const show = () => {
+    const box = document.getElementById('view-my');
+    const pnr = document.getElementById('trackId');
+    if (!box || !pnr) return false;
+    let hint = document.getElementById('trkHint');
+    if (!hint) {
+      hint = document.createElement('p');
+      hint.id = 'trkHint'; hint.className = 'trk-hint'; hint.setAttribute('role', 'status');
+      const host = pnr.closest('form, .card, .c-card, div') || pnr.parentNode;
+      host.parentNode.insertBefore(hint, host);
+    }
+    hint.textContent = '🛰️ ' + t('trkHint');
+    try { pnr.focus({ preventScroll: true }); pnr.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { try { pnr.focus(); } catch (e2) {} }
+    return true;
+  };
+  if (location.hash !== '#/my') location.hash = '#/my';
+  /* My Bookings is drawn by renderMyBookings() (08-signin.js) - wait for it */
+  let tries = 0;
+  const iv = setInterval(() => { if (show() || ++tries > 20) clearInterval(iv); }, 120);
+  return false;
+}
+window.openTrackMyBus = openTrackMyBus;
+/* D1-13 (8 Oct 2026): while the booking card is on screen the floating
+   WhatsApp / assistant buttons step aside (body.fab-quiet, depth.css) - in
+   the right-hand column they would cover the date strip, the town picker
+   and Search. Leaving home hides the card, which clears the flag. */
+(function fabQuietOverBookingCard() {
+  /* the booking card, and the two office lists full of call / WhatsApp keys */
+  const cards = [document.getElementById('searchForm'), document.querySelector('#topHero .th-brand'), document.getElementById('contact')].filter(Boolean);
+  if (!cards.length || !('IntersectionObserver' in window)) return;
+  const seen = new Set();
+  const io = new IntersectionObserver((es) => {
+    es.forEach(en => { if (en.isIntersecting) seen.add(en.target); else seen.delete(en.target); });
+    const home = document.getElementById('view-home');
+    document.body.classList.toggle('fab-quiet', seen.size > 0 && !!home && home.classList.contains('active'));
+  }, { rootMargin: '0px 0px -96px 0px' });
+  cards.forEach(c => io.observe(c));
+})();
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('[data-track-bus]');
+  if (!a) return;
+  e.preventDefault();
+  openTrackMyBus();
 });
 
 /* Bottom nav (mobile) — active state + actions */
@@ -171,18 +276,23 @@ function updateBottomNav(h) {
   const starts = (p) => h.indexOf(p) === 0;
 
   const map = {
-    home:  is('#/', '', '#'),
+    home:  is('#/', '', '#', '#/home'),
     // The whole booking funnel is "Book".
     book:  is('#/results', '#/seats', '#/checkout'),
-    // A finished ticket, its live trip and the map all belong to My Tickets
-    // (Oct 2026: the bar is Home · Book · My Tickets · Help).
-    trips: is('#/my', '#/nav') || starts('#/ticket/') || starts('#/trip/'),
+    // 8 Oct 2026: the bar is Home · Book · Track · My Tickets · Help. The live
+    // trip and the map are "Track"; a ticket and the list are "My Tickets".
+    track: is('#/nav') || starts('#/trip/'),
+    trips: is('#/my') || starts('#/ticket/'),
     help:  is('#/terms'),
   };
-
+  shgLightTab(Object.keys(map).filter(k => map[k])[0] || '');
+}
+/* One lit tab, announced as the current page (D2-M1). */
+function shgLightTab(key) {
   $$('.bn-item').forEach(b => {
-    const k = b.getAttribute('data-bn');
-    b.classList.toggle('on', !!map[k]);
+    const on = b.getAttribute('data-bn') === key;
+    b.classList.toggle('on', on);
+    if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
 }
 document.addEventListener('click', (e) => {
@@ -191,14 +301,15 @@ document.addEventListener('click', (e) => {
   const k = b.getAttribute('data-bn');
   if (k === 'trips') { location.hash = '#/my'; return; }
   if (k === 'nav') { location.hash = '#/nav'; return; }
-  const target = k === 'book' ? 'search-anchor' : (k === 'help' ? 'contact' : 'top');
-  if (!$('#view-home').classList.contains('active')) {
-    location.hash = '#/';
-    setTimeout(() => { const el = document.getElementById(target); if (target === 'top') window.scrollTo({ top: 0 }); else if (el) el.scrollIntoView({ behavior: 'smooth' }); }, 60);
-  } else {
-    if (target === 'top') window.scrollTo({ top: 0, behavior: 'smooth' });
-    else { const el = document.getElementById(target); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
+  if (k === 'track') {
+    /* the keyed tracker, else My Tickets with the PNR box (lit from the URL) */
+    openTrackMyBus();
+    return;
   }
+  /* Book / Help / Home scroll within home (updateBottomNav only runs on a
+     hash change, so the tapped tab is lit here, D3-01). */
+  scrollHomeTarget(k === 'book' ? 'search-anchor' : (k === 'help' ? 'contact' : 'top'));
+  setTimeout(() => shgLightTab(k), 90);
 });
 
 /* Map controls ⚙️ toggle — collapses the right button stack so the
@@ -416,13 +527,13 @@ function renderOfferRibbon() {
   $('#offerRibbonCta').textContent = { ne: 'अहिले बुक गर्नुहोस् →', hi: 'अभी बुक करें →', en: 'Book now →' }[L];
   bar.classList.remove('hide');
 }
+/* D3-M1 (8 Oct 2026): "Book now" works on the FIRST tap. A fresh visit has
+   the hash '' or '#/', so the old check (hash === 'home') let the link
+   navigate to #/home, which re-showed home and scrolled nowhere. */
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#offerRibbon')) return;
-  const card = document.querySelector('#view-home .search-card, #view-home form, #searchForm');
-  if (card && location.hash.replace('#', '').replace(/^\//, '') === 'home') {
-    e.preventDefault();
-    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
+  e.preventDefault();
+  scrollHomeTarget('search-anchor');
 });
 
 /* Seasonal notice banner (text managed from Admin → Settings) */
@@ -711,8 +822,58 @@ function initSimpleSearch() {
   if (b && !b._wired) { b._wired = true; b.addEventListener('click', () => setSearchDir('back')); }
   if (p && !p._wired) { p._wired = true; p.addEventListener('change', applyDirection); }
   setSearchDir(searchDir);   // first paint: fill towns + sync hidden selects
-  applyCampaignLink();
+  if (!applyCampaignLink()) applyLastSearch();
   try { ShgAds.landing(); } catch (e) {}
+}
+
+/* ================================================================
+   REMEMBERED SEARCH (8 Oct 2026, owner prompt): the last direction, town
+   and (while still ahead) date this device searched, in localStorage
+   'shg:lastSearch'. Pre-filled only when the URL carries no deep link,
+   campaign or ad parameter; never once the visitor touches a control.
+================================================================ */
+const LAST_SEARCH_KEY = 'shg:lastSearch';
+function saveLastSearch() {
+  try {
+    localStorage.setItem(LAST_SEARCH_KEY, JSON.stringify({
+      dir: searchDir === 'back' ? 'back' : 'go',
+      town: String(($('#pointSel') || {}).value || '').slice(0, 80),
+      date: String(($('#dateInput') || {}).value || '').slice(0, 10),
+      at: Date.now()
+    }));
+  } catch (e) {}
+}
+function applyLastSearch() {
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem(LAST_SEARCH_KEY) || 'null'); } catch (e) { s = null; }
+  if (!s || typeof s !== 'object') return false;
+  try {
+    const q = location.search || '';
+    if (/[?&](from|to|dir|town|date|src|gclid|gbraid|wbraid|gad_source|fbclid|utm_source|counter)=/.test(q)) return false;
+  } catch (e) {}
+  if (s.dir === 'back' || s.dir === 'go') setSearchDir(s.dir);
+  const sel = $('#pointSel'), di = $('#dateInput');
+  const today = (typeof todayISO === 'function') ? todayISO() : '';
+  const wantDate = /^\d{4}-\d{2}-\d{2}$/.test(String(s.date || '')) && String(s.date) >= today ? String(s.date) : '';
+  const put = () => {
+    if (s.town && sel && sel.value !== s.town && $$('option', sel).some(o => o.value === s.town)) { sel.value = s.town; applyDirection(); }
+    if (wantDate && di && di.value !== wantDate && (!di.max || wantDate <= di.max)) {
+      di.value = wantDate;
+      try { di.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+    }
+  };
+  /* The town list is refilled when the server's stop list arrives and the
+     boot sets a default date after this runs - re-apply for a few seconds,
+     the same way applyCampaignLink does, until the visitor touches a control. */
+  let touched = false;
+  const mark = (e) => { if (e.isTrusted) touched = true; };
+  if (sel) sel.addEventListener('change', mark);
+  if (di) di.addEventListener('input', mark);
+  ['#dirGo', '#dirBack', '#dateStrip30'].forEach(id => { const el = $(id); if (el) el.addEventListener('click', mark); });
+  put();
+  let tries = 0;
+  const tm = setInterval(() => { if (touched || ++tries > 10) { clearInterval(tm); return; } put(); }, 400);
+  return true;
 }
 
 /* ================================================================
@@ -814,13 +975,13 @@ window.ShgAds = ShgAds;
 ================================================================ */
 function applyCampaignLink() {
   let p;
-  try { p = new URLSearchParams(location.search); } catch (e) { return; }
-  if (p.get('from') || p.get('to')) return;
+  try { p = new URLSearchParams(location.search); } catch (e) { return false; }
+  if (p.get('from') || p.get('to')) return true;   // counter / deep link: 14-counter.js owns it
   const src = (p.get('src') || '').replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 40);
   const dirRaw = (p.get('dir') || '').toLowerCase();
   const town = (p.get('town') || '').trim().toLowerCase();
   const date = p.get('date') || '';
-  if (!src && !dirRaw && !town && !date) return;
+  if (!src && !dirRaw && !town && !date) return false;
 
   const dir = /^(back|return|toindia|nepal|np)$/.test(dirRaw) ? 'back'
             : (/^(go|going|tonepal|india|in)$/.test(dirRaw) ? 'go' : '');
@@ -864,6 +1025,7 @@ function applyCampaignLink() {
       window.shgBeacon('landing', { source: src || 'link', direction: dir || 'auto', from: town ? town.slice(0, 30) : '' });
     }
   } catch (e) {}
+  return true;
 }
 
 /* ================================================================
@@ -900,8 +1062,10 @@ function defaultContactNumbers() {
     { label: 'Surat Office',     num: '+91 73593 01507', wa: false, show: true },
     { label: 'CEO · Director',   num: '+91 97264 01507', wa: true,  show: true },
     { label: '24×7 Support',     num: '+91 91734 01507', wa: true,  show: true },
-    { label: 'Lokesh Sunar',     num: '+91 98662 01375', wa: false, show: true },
-    { label: 'Mahendra Singh',   num: '+91 98481 19600', wa: false, show: true }
+    /* 8 Oct 2026 (D3-16): these two are the Nepalgunj office's NEPAL mobiles
+       (visiting card / contact section); with +91 the pills dialled India. */
+    { label: 'Lok Bahadur Sunar · Nepalgunj', num: '+977 986-6201375', wa: false, show: true },
+    { label: 'Mahendra Singh · Nepalgunj',    num: '+977 984-8119600', wa: false, show: true }
   ];
   while (list.length < NUM_SLOTS) list.push({ label: '', num: '', wa: false, show: false });
   return list;
@@ -1149,6 +1313,20 @@ function initQuickTicket() {
   if (pair && pair.parentNode) pair.parentNode.insertBefore(understood, pair.nextSibling);
 
   function err(msg) { var e = $id('qtFormErr'); if (!e) return; e.textContent = msg || ''; e.hidden = !msg; }
+  /* D4-05 (8 Oct 2026): the number's country is a choice, never a guess.
+     A typed 977 / 91 prefix wins (and moves the picker); otherwise the
+     picker, which starts on the signed-in account's own country. */
+  function qtCountry() {
+    var cc = $id('qtCC'), d = digits(String(($id('qtPhone') || {}).value || ''));
+    if (d.length === 13 && d.indexOf('977') === 0) { if (cc) cc.value = '977'; return 'NP'; }
+    if (d.length === 12 && d.indexOf('91') === 0) { if (cc) cc.value = '91'; return 'IN'; }
+    return cc && cc.value === '977' ? 'NP' : 'IN';
+  }
+  function qtPresetCountry(c) {
+    var cc = $id('qtCC'); if (!cc || !c) return;
+    cc.value = (c === 'NP' || c === '977') ? '977' : '91';
+  }
+  try { qtPresetCountry((window.SHG_BOOT && window.SHG_BOOT.user && window.SHG_BOOT.user.country) || ((typeof USER !== 'undefined' && USER && USER.country) || '')); } catch (e0) {}
   function maxSeats() {
     var n = (window.CONFIG && CONFIG.booking && CONFIG.booking.maxSeats) || 6;
     var staff = !!(window.SHG_BOOT && window.SHG_BOOT.staff && window.SHG_BOOT.staff.canSell);   // 7 Oct 2026: staff up to their cap (20)
@@ -1233,6 +1411,7 @@ function initQuickTicket() {
   window.shgQuickMe = function (u) {
     if (!u || !u.phone) return;
     me = u; showIdentity();
+    if (u.country) qtPresetCountry(u.country);
     qt.prefer = []; qt.sameAsLast = null; qt.ask = null; qt.missing = []; qt.personal = null; qt.plan = null;
     try { plan(); } catch (e) {}
   };
@@ -1301,6 +1480,7 @@ function initQuickTicket() {
         if (qt.parsed) {
           if (qt.parsed.name && (!me || pair && !pair.hidden)) $id('qtName').value = qt.parsed.name;
           if (qt.parsed.phone && !me) $id('qtPhone').value = qt.parsed.phone;
+          if (qt.parsed.country && !me) qtPresetCountry(qt.parsed.country);
           if (qt.parsed.agentCode) qt.agentCode = qt.parsed.agentCode;
         }
         renderUnderstood(qt.parsed);
@@ -1344,7 +1524,7 @@ function initQuickTicket() {
       if (a.direction) bits.push(t('qtUsualDir'));
       why = qt.personal.trips === 1 ? tf('qtUsual1', { what: bits.join(' · ') }) : tf('qtUsual', { n: qt.personal.trips, what: bits.join(' · ') });
     } else {
-      why = t('qtDefaults');
+      why = tf('qtDefaults', { stop: p.boardingName || '' });   // D3-15: the stop this plan really books
     }
 
     /* ONE clarifying question (SHG AI BRAIN Phase 2, 10 Sep 2026): the fact the
@@ -1485,7 +1665,7 @@ function initQuickTicket() {
     var b0 = $id('qtConfirm'); if (b0) { b0.disabled = true; b0.textContent = t('qtIssuing'); }
     var a = (qt.personal && qt.personal.applied) || {};
     var payload = {
-      action: 'customer_sell', name: qt.name, phone: qt.phone, gender: qt.gender, agentCode: qt.agentCode, prefer: qt.prefer,
+      action: 'customer_sell', name: qt.name, phone: qt.phone, country: qtCountry(), gender: qt.gender, agentCode: qt.agentCode, prefer: qt.prefer,
       // pinned to the card: the plan's own day, direction, pickup and party
       seats: p.seatCount, direction: p.direction, boarding: stopValue(p.boarding), date: p.date,
       expect: { date: p.date, direction: p.direction, boardingCode: p.boardingCode, seats: p.seatCount, total: (p.fare || {}).total }
@@ -1833,6 +2013,19 @@ function renderPricingCards() {
     +   '</tbody></table>'
     + '</div>';
 
+  /* D3-03 (8 Oct 2026): the "Choose your travel style" card quotes the real
+     lowest per-pickup sharing fare (SHG_BOOT.locations), never a typed price;
+     no fare known = no price line at all. */
+  try {
+    const L = (window.SHG_BOOT && window.SHG_BOOT.locations) || {};
+    const fares = [].concat(L.go || [], L.back || []).map(s => Number(s && s.fare) || 0).filter(f => f > 0);
+    const sp = $('#styleSharePrice'), sf = $('#styleShareFrom');
+    if (sp && sf) {
+      if (fares.length) { sf.textContent = inr(Math.min.apply(null, fares)); sp.hidden = false; }
+      else sp.hidden = true;
+    }
+  } catch (e) {}
+
   /* The "you save" headline, from the biggest real saving on the page rather
      than a number typed in once and never revisited. */
   const line = $('#pricingSaveLine');
@@ -2084,6 +2277,15 @@ function renderDateChips() {
 
   const selectedIso = di.value;
 
+  /* D8-09 (8 Oct 2026): nothing to redraw when the language, the first day,
+     the route and the sold-out picture are what the strip already shows -
+     just move the highlight. */
+  const sig = [LANG, base, bw.horizonDays || 30, fromV, toV, (typeof SrvCatalog !== 'undefined' && SrvCatalog.snap) ? (function () {
+    try { return Array.from({ length: (bw.horizonDays || 30) }, (_, n) => soldOutIso(addDaysISO(base, n)) ? 1 : 0).join(''); } catch (e) { return ''; }
+  })() : ''].join('|');
+  if (strip.dataset.sig === sig && strip.children.length) { markDateChip(); shgCentreDateChip(strip); return; }
+  strip.dataset.sig = sig;
+
   strip.innerHTML = Array.from({ length: (bw.horizonDays || 30) }, (_, n) => {
     const iso = addDaysISO(base, n);
     const d   = new Date(iso + 'T00:00:00');
@@ -2119,15 +2321,18 @@ function renderDateChips() {
   }).join('');
 
   markDateChip();
-
-  /* Anchor: keep the currently-selected day (or the first day, i.e. today
-     when today >= openFrom) visible. Silent — no smooth scroll — so it
-     never fights a passenger who is already dragging the strip. */
-  const target = strip.querySelector('.d-btn.on') || strip.querySelector('.d-btn');
-  if (target && typeof target.scrollIntoView === 'function') {
-    try { target.scrollIntoView({ inline: 'center', block: 'nearest' }); }
-    catch (e) { try { target.scrollIntoView(); } catch (_) {} }
-  }
+  shgCentreDateChip(strip);
+}
+/* Keep the chosen day in view - after the next paint, by setting the strip's
+   own scrollLeft (D8-09). scrollIntoView() here forced a full-document style
+   + layout in the middle of the boot task and could also scroll the PAGE;
+   today's chip (index 0) needs no scroll at all. */
+function shgCentreDateChip(strip) {
+  const target = strip.querySelector('.d-btn.on');
+  const idx = target ? Array.prototype.indexOf.call(strip.children, target) : 0;
+  if (idx <= 0) return;
+  const run = () => { try { const tr = target.getBoundingClientRect(), sr = strip.getBoundingClientRect(); strip.scrollLeft += (tr.left + tr.width / 2) - (sr.left + sr.width / 2); } catch (e) {} };
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => requestAnimationFrame(run)); else setTimeout(run, 0);
 }
 /* Highlight whichever chip matches the field — including after the
    passenger picks a date from the calendar instead. Works for both the
@@ -2184,6 +2389,7 @@ $('#searchForm').addEventListener('submit', (e) => {
   Flow.retDate = $('#retInput').value;
   if (!Flow.date) { toast(t('tPickDate')); return; }
   if (Flow.from === Flow.to) { toast(t('tSameCity')); return; }
+  saveLastSearch();   // the next visit opens on this run, town and (future) date
   if (Flow.tripType === 'round') {
     if (!Flow.retDate) { toast(t('tPickRetDate')); return; }
     if (Flow.retDate < Flow.date) { Flow.retDate = Flow.date; $('#retInput').value = Flow.date; }

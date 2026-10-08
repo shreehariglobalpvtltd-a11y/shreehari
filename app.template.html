@@ -6,7 +6,7 @@
      the tag is parsed, so the very first frame is brand blue instead of the
      browser's default white. Nothing else can paint that early — the main
      stylesheet is ~111KB and must be fully parsed before it applies. -->
-<html lang="en" style="background:#F4F6FB">
+<html lang="ne" style="background:#F4F6FB">
 <head>
 <meta charset="UTF-8">
 <!-- viewport-fit=cover is load-bearing: without it iOS resolves every
@@ -29,6 +29,13 @@
        data-display="amoled" (assets/css/depth.css). Quotes are stripped:
        an older build stored the value JSON-encoded ('"dark"'). */
     var d = document.documentElement, t = (localStorage.getItem('shg:theme') || '').replace(/"/g, '');
+    /* 8 Oct 2026 (D9-08): a counter sale opened from the office panel
+       (?counter=1) follows the panel's own theme (shg_admin_theme, dark when
+       never set) while no customer theme was ever saved on this device, so
+       the screen no longer flips from a dark panel to a light counter. */
+    if (t !== 'light' && t !== 'dark' && t !== 'amoled' && /[?&]counter=1(?:&|$)/.test(location.search)) {
+      t = (localStorage.getItem('shg_admin_theme') || 'dark').replace(/"/g, '');
+    }
     if (t !== 'light' && t !== 'dark' && t !== 'amoled') t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
     d.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
     if (t === 'amoled') d.setAttribute('data-display', 'amoled');
@@ -90,7 +97,10 @@ html,body{margin:0;background:#F4F6FB}
 :root[data-theme="dark"],:root[data-theme="dark"] body{background:#0B1220}
 :root[data-display="amoled"],:root[data-display="amoled"] body{background:#000}
 </style>
-  <link rel="preload" as="image" href="/assets/img/logo.png?v=20261008g" fetchpriority="high">
+  <!-- 8 Oct 2026 (D8-07 pass 1): the 10 KB nav/hero logo, preloaded at normal
+       priority - it is not the LCP and must not compete with the CSS on 3G.
+       logo.png (440px) stays for the footer, tickets and the PDF. -->
+  <link rel="preload" as="image" href="/assets/img/logo-nav.png?v=20261008g">
   <link rel="stylesheet" href="/assets/css/app.css?v=20261008g">
   <link rel="stylesheet" href="/assets/css/views.css?v=20261008g">
   <!-- The shell pass (24 Sep 2026): header + logo, motion, elevation and
@@ -238,6 +248,7 @@ html,body{margin:0;background:#F4F6FB}
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
     <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 20l1.3-3.9A8 8 0 1 1 8 18.7z"/><path d="M9 10.5h6M9 13.5h4"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></symbol>
     <symbol id="i-scroll" viewBox="0 0 24 24"><path d="M15 3H6a2 2 0 0 0-2 2v3h4"/><path d="M18 3a3 3 0 0 1 3 3v13H8v2a2 2 0 0 1-2 2h11a3 3 0 0 0 3-3V6a3 3 0 0 0-3-3z"/></symbol>
   </defs>
 </svg>
@@ -334,7 +345,7 @@ s.addEventListener('click',function(e){e.preventDefault();
          "S HARI GLOBAL" under the bus, and setting the words twice beside
          each other is the tell of a logo that was bolted on. -->
     <a class="brand" href="#/" data-scroll="top" aria-label="S Hari Global Pvt Ltd — Home">
-      <span class="brand-tile"><img id="logoNav" src="/assets/img/logo.png?v=20261008g" alt="S Hari Global Pvt Ltd Logo" width="440" height="321" decoding="async"></span>
+      <span class="brand-tile"><img id="logoNav" src="/assets/img/logo-nav.png?v=20261008g" alt="S Hari Global Pvt Ltd Logo" width="192" height="140" decoding="async"></span>
       <span class="brand-word" aria-hidden="true"><b>S HARI GLOBAL</b><small>Gujarat ⇄ Rupaidiha</small></span>
     </a>
     <nav class="nav-links" aria-label="Main">
@@ -371,6 +382,7 @@ s.addEventListener('click',function(e){e.preventDefault();
   <a href="#/" data-scroll="search-anchor"><svg class="ic"><use href="#i-ticket"/></svg> Book Tickets</a>
   <a href="#/" data-scroll="quick-ticket" class="mm-hot">🤖 QuickBot Ticket · 10-Second Booking</a>
   <a href="#/" data-scroll="company"><svg class="ic"><use href="#i-building"/></svg> About Us</a>
+  <a href="#/my" data-track-bus><svg class="ic"><use href="#i-radar"/></svg> <span data-i18n="mmTrack">Track my bus</span></a>
   <a href="#/nav"><svg class="ic"><use href="#i-map"/></svg> S Hari Map &amp; Live Bus Tracker</a>
   <a href="#/my"><svg class="ic"><use href="#i-list"/></svg> My Bookings</a>
   <a href="#/" data-scroll="timetable"><svg class="ic"><use href="#i-clock"/></svg> समय तालिका · Timetable</a>
@@ -417,62 +429,45 @@ s.addEventListener('click',function(e){e.preventDefault();
 ================================================================ -->
 <section class="view active" id="view-home" data-first>
 
-  <!-- 5 Oct 2026 (owner): the coach on the highway is the first thing on the
-       home page, ABOVE the date picker, compact (anim.css .sa-top). -->
-  <div class="container top-hero" id="topHero">
-    <aside class="th-brand" aria-label="S Hari Global Pvt Ltd">
-      <div class="th-top">
-        <img class="th-logo" src="/assets/img/logo.png?v=20261008g" alt="S Hari Global Pvt Ltd logo" width="440" height="321" decoding="async">
-        <div class="th-name"><b>S HARI GLOBAL</b><span>PVT. LTD.</span></div>
-      </div>
-      <p class="th-tag">Gujarat ⇄ Rupaidiha<small>AC Sleeper Coach · India ⇄ Nepal · 24×7</small></p>
-      <p class="th-oh"><span>📞 हाम्रा कार्यालय</span><small>Our offices · India ⇄ Nepal</small></p>
-      <ul class="th-offices" id="saOffices">
-      <li class="th-o th-in"><a href="tel:+919104801507"><span class="th-badge">M</span><span class="th-l">Mehsana</span><span class="th-sub">Head office</span><span class="th-n">+91 91048 01507</span><span class="th-call" aria-hidden="true">📞</span></a></li>
-      <li class="th-o th-in"><a href="tel:+919157001507"><span class="th-badge">A</span><span class="th-l">Ahmedabad</span><span class="th-n">+91 91570 01507</span><span class="th-call" aria-hidden="true">📞</span></a></li>
-      <li class="th-o th-in"><a href="tel:+918735881507"><span class="th-badge">B</span><span class="th-l">Baroda</span><span class="th-n">+91 87358 81507</span><span class="th-call" aria-hidden="true">📞</span></a></li>
-      <li class="th-o th-in"><a href="tel:+917359301507"><span class="th-badge">S</span><span class="th-l">Surat</span><span class="th-n">+91 73593 01507</span><span class="th-call" aria-hidden="true">📞</span></a></li>
-      <li class="th-o th-np"><a href="tel:+919726401507"><span class="th-badge">N</span><span class="th-l">Nepalgunj</span><span class="th-sub">Puspalal Chowk · Sher Bahadur Bishwokarma</span><span class="th-n">+91 97264 01507</span><span class="th-call" aria-hidden="true">📞</span></a></li>
-      </ul>
-      <!-- 5 Oct 2026: the Nepal office's people (CEO / Operations / Parking), call +
-           WhatsApp each - filled by renderNepalTeam() from Admin -> Company details. -->
-      <div class="th-npcard" id="npTeam" hidden></div>
-    </aside>
-    <section class="container shg-animation sa-top" id="animJourney" aria-labelledby="animJourneyTitle">
-      <div class="sa-head">
-        <p class="sa-eyebrow" data-i18n="animJEyebrow">The journey</p>
-        <h2 class="sa-title" id="animJourneyTitle" data-i18n="animJTitle">Gujarat ⇄ Rupaidiha</h2>
-        <p class="sa-sub" data-i18n="animJSub">Our AC sleeper coach on the road to the India–Nepal border</p>
-      </div>
-      <div class="sa-stage">
-        <div class="sa-scene sa-journey" data-anim="journey">
-          <div class="sa-art" role="img" aria-labelledby="animJourneyAria">
-            <span class="sa-vh" id="animJourneyAria" data-i18n="animJAria">Animation: the S Hari Global AC sleeper coach driving along a highway</span>
-            <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-highway-bg-mobile.webp?v=20261008g" width="800" height="450"><img class="sa-land" data-src="/assets/img/anim/shg-highway-bg.webp?v=20261008g" width="1600" height="900" alt="" loading="lazy" decoding="async"></picture>
-            <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-distant-scenery-mobile.webp?v=20261008g" width="800" height="267"><img class="sa-scenery" data-src="/assets/img/anim/shg-distant-scenery.webp?v=20261008g" width="1440" height="480" alt="" loading="lazy" decoding="async"></picture>
-            <div class="sa-road"></div>
-            <img class="sa-shadow" src="/assets/img/anim/shg-bus-shadow.svg?v=20261008g" width="960" height="110" alt="" loading="lazy" decoding="async">
-            <div class="sa-bus">
-              <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-bus-main-mobile.webp?v=20261008g" width="800" height="400"><img data-src="/assets/img/anim/shg-bus-main.webp?v=20261008g" width="1440" height="720" alt="" loading="lazy" decoding="async"></picture>
-              <span class="sa-rim sa-rim--a"></span><span class="sa-rim sa-rim--b"></span>
-            </div>
-          </div>
-          <button type="button" class="sa-pause" data-paused="false" data-i18n-title="animPause" title="Pause animation" aria-label="Pause animation"><svg class="sa-i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg><svg class="sa-i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg></button>
+  <!-- ============ PREMIUM HOME HERO (8 Oct 2026, owner prompt Phase 4) ============
+       Booking first: the official logo, the headline, the promise line and the
+       three things almost every visitor came for - BOOK (scrolls to the search
+       card right below), TRACK MY BUS (openTrackMyBus in 05-router.js: the
+       keyed tracker of this device's own next ticket, else My Tickets with the
+       PNR box) and MY TICKET. The offices card, the Nepal team and the coach
+       animation now sit BELOW the search card and QuickBot (D3-09). Colours
+       come from the design-system tokens (ds.css + the last depth.css block). -->
+  <section class="container home-hero" id="homeHero" aria-labelledby="homeHeadline">
+    <div class="hh-card">
+      <div class="hh-brand">
+        <span class="hh-logo-tile"><img class="hh-logo" src="/assets/img/logo-nav.png?v=20261008g" alt="S Hari Global Pvt Ltd" width="192" height="140" decoding="async"></span>
+        <div class="hh-copy">
+          <h1 class="hh-title" id="homeHeadline" data-i18n="hhTitle">INDIA ⇄ NEPAL PREMIUM AC SLEEPER BUS</h1>
+          <p class="hh-tag" data-i18n="hhTag">Safe Journey. Easy Booking. Your Comfort, Our Responsibility.</p>
         </div>
-        <ul class="sa-amen">
-          <li><svg viewBox="0 0 64 64" aria-hidden="true"><use href="#i-ac"/></svg><span data-i18n="animAmAc">AC</span></li>
-          <li><svg viewBox="0 0 64 64" aria-hidden="true"><use href="#i-charge"/></svg><span data-i18n="animAmCharge">Mobile charging</span></li>
-          <li><svg viewBox="0 0 64 64" aria-hidden="true"><use href="#i-aid"/></svg><span data-i18n="animAmAid">First-aid / Medicine</span></li>
-        </ul>
       </div>
-    </section>
-  </div>
+      <div class="hh-actions" role="group" data-i18n-title="hhActLbl" aria-label="Book, track or open your ticket">
+        <a class="hh-act hh-book" href="#/" data-scroll="search-anchor">
+          <span class="hh-ic" aria-hidden="true"><svg class="ic"><use href="#i-ticket"/></svg></span>
+          <span class="hh-txt"><b data-i18n="hhBook">Book Ticket</b><small data-i18n="hhBookSub">Date · seat · pay</small></span>
+        </a>
+        <a class="hh-act hh-track" href="#/my" data-track-bus>
+          <span class="hh-ic" aria-hidden="true"><svg class="ic"><use href="#i-radar"/></svg></span>
+          <span class="hh-txt"><b data-i18n="hhTrack">Track My Bus</b><small data-i18n="hhTrackSub">From your ticket</small></span>
+        </a>
+        <a class="hh-act hh-my" href="#/my">
+          <span class="hh-ic" aria-hidden="true"><svg class="ic"><use href="#i-list"/></svg></span>
+          <span class="hh-txt"><b data-i18n="hhMy">My Ticket</b><small data-i18n="hhMySub">View · download</small></span>
+        </a>
+      </div>
+    </div>
+  </section>
 
   <!-- ============ SEARCH CARD ============ -->
   <div class="container search-wrap" id="search-anchor">
     <form class="search-card simple-search" id="searchForm" autocomplete="off" aria-labelledby="spTitle">
       <div class="sp-head">
-        <h1 class="sp-title" id="spTitle" data-i18n="spTitle">Book your journey</h1>
+        <h2 class="sp-title" id="spTitle" data-i18n="spTitle">Book your journey</h2>
         <p class="sp-sub" data-i18n="spSub">Gujarat ⇄ Rupaidiha · direct AC sleeper coach</p>
       </div>
       <!-- ============================================================
@@ -591,6 +586,25 @@ s.addEventListener('click',function(e){e.preventDefault();
        would drift apart. -->
   <div class="container" id="nextTripBox" hidden></div>
 
+  <!-- ============ ONE FEATURE STRIP (8 Oct 2026) ============
+       Eight facilities, one consistent icon each, one-line captions. It
+       replaces the old brand band (4 chips) and the coach animation's 3
+       amenity chips, which repeated AC and charging. Only claims the site
+       already makes elsewhere (visiting card, facilities list, ticket). -->
+  <section class="container home-feat" id="homeFeat" aria-labelledby="homeFeatTitle">
+    <h2 class="sr-only" id="homeFeatTitle" data-i18n="hfTitle">On every journey</h2>
+    <ul class="hf-list">
+      <li><span class="hf-ic" aria-hidden="true"><svg class="ic"><use href="#i-ac"/></svg></span><span class="hf-tx" data-i18n="hfAc">AC Sleeper</span></li>
+      <li><span class="hf-ic" aria-hidden="true"><svg class="ic"><use href="#i-charge"/></svg></span><span class="hf-tx" data-i18n="hfCharge">Mobile Charging</span></li>
+      <li><span class="hf-ic" aria-hidden="true"><svg class="ic"><use href="#i-aid"/></svg></span><span class="hf-tx" data-i18n="hfAid">First Aid</span></li>
+      <li><span class="hf-ic" aria-hidden="true"><svg class="ic"><use href="#i-pin"/></svg></span><span class="hf-tx" data-i18n="hfGps">GPS Tracking</span></li>
+      <li><span class="hf-ic" aria-hidden="true"><svg class="ic"><use href="#i-chat"/></svg></span><span class="hf-tx" data-i18n="hfWa">WhatsApp Ticket</span></li>
+      <li><span class="hf-ic" aria-hidden="true"><svg class="ic"><use href="#i-headset"/></svg></span><span class="hf-tx" data-i18n="hfHelp">Customer Support</span></li>
+      <li><span class="hf-ic" aria-hidden="true"><svg class="ic"><use href="#i-bed"/></svg></span><span class="hf-tx" data-i18n="hfBerth">Sleeper Berth</span></li>
+      <li><span class="hf-ic" aria-hidden="true"><svg class="ic"><use href="#i-shield"/></svg></span><span class="hf-tx" data-i18n="hfSecure">Secure Booking</span></li>
+    </ul>
+  </section>
+
 
   <!-- ============ HERO ============ -->
   <div class="hero" id="top">
@@ -629,6 +643,11 @@ s.addEventListener('click',function(e){e.preventDefault();
     </div>
   </div>
 
+  <!-- 8 Oct 2026: the brand band and the "Other ways to book" cards were
+       removed - the band repeated the hero and the facilities strip, and the
+       two cards repeated the QuickBot card and the search card's WhatsApp
+       button. The three ways to book stay one each: the search card (seat
+       map), the QuickBot card and the WhatsApp button in the search card. -->
   <!-- ============ THREE BOOKING DOORS (Phase B, 24 Sep 2026) ============
        The owner's three ways to book, side by side, first thing on a phone.
        Each card only OPENS a flow that already exists - no second booking path,
@@ -652,35 +671,6 @@ s.addEventListener('click',function(e){e.preventDefault();
        discount was removed on 26 Aug 2026 (includes/fare.php
        onlineDiscountPct 0). No number, no link, no listener.
        Phone order: premium.css "#view-home > #brandBand". -->
-  <section class="container brand-wrap" id="brandBand" aria-label="S Hari Global Pvt Ltd">
-   <div class="brand-band">
-    <p class="bb-route"><span aria-hidden="true">🇮🇳</span> <span data-i18n="bbRoute">India ⇄ Nepal Travel Service</span> <span aria-hidden="true">🇳🇵</span></p>
-    <p class="bb-name" lang="en">S HARI GLOBAL <small>PVT LTD</small></p>
-    <p class="bb-tag" data-i18n="bbTag">Your trusted travel partner</p>
-    <ul class="bb-feats" aria-label="Coach facilities">
-      <li><span class="bb-ic" aria-hidden="true">❄️</span><span data-i18n="bbF1">AC Sleeper</span></li>
-      <li><span class="bb-ic" aria-hidden="true">📍</span><span data-i18n="bbF2">Live GPS</span></li>
-      <li><span class="bb-ic" aria-hidden="true">⚡</span><span data-i18n="bbF3">USB Charging</span></li>
-      <li><span class="bb-ic" aria-hidden="true">🛡️</span><span data-i18n="bbF4">Safe Travel</span></li>
-    </ul>
-   </div>
-  </section>
-
-  <section class="container entry-cards" id="entryCards" aria-labelledby="entryCardsTitle">
-    <h2 class="ec-head" id="entryCardsTitle" data-i18n="ecTitleAlt">Other ways to book</h2>
-    <div class="ec-grid">
-      <button type="button" class="ec-card ec-quick" data-bkmode="quick">
-        <span class="ec-ico" aria-hidden="true"><svg class="ic"><use href="#i-ticket"/></svg></span>
-        <span class="ec-txt"><b data-i18n="ecQuick">Quick Ticket</b>
-        <small data-i18n="ecQuickSub">Name + mobile → 10 sec</small></span>
-      </button>
-      <button type="button" class="ec-card ec-wa" data-wa-open="booking" aria-haspopup="dialog" aria-controls="waSheet">
-        <span class="ec-ico" aria-hidden="true"><svg class="ic"><use href="#i-chat"/></svg></span>
-        <span class="ec-txt"><b data-i18n="ecWa">WhatsApp Booking</b>
-        <small data-i18n="ecWaSub">Request · office confirms</small></span>
-      </button>
-    </div>
-  </section>
 
   <section class="container wa-ticket-highlight" aria-labelledby="waTicketTitle">
     <div class="wa-ticket-mark" aria-hidden="true">💬</div>
@@ -728,13 +718,26 @@ s.addEventListener('click',function(e){e.preventDefault();
       <form class="qt-form qt-onetap" id="qtForm" autocomplete="off" novalidate>
         <!-- the ONE smart line: name + mobile, or the whole request in words -->
         <div class="qt-line-wrap" id="qtLineWrap">
+          <label class="qt-lbl" for="qtLine" data-i18n="qtLineLbl">Write it in one line</label>
           <input id="qtLine" class="qt-line" maxlength="300" placeholder="Ram 9876543210, 2 seats, Vadodara tomorrow" data-i18n-ph="qtLinePh" autocomplete="off" enterkeyhint="go">
           <!-- shown only when the browser has SpeechRecognition (Chrome Android, iOS 14.5+) -->
           <button type="button" class="qt-mic" id="qtMic" hidden aria-label="Speak your booking" data-i18n-title="qtMicTip">🎤</button>
         </div>
+        <!-- 8 Oct 2026: visible labels (D2-07) and the number's country (D4-05):
+             India and Nepal share 10-digit mobiles, so +91 / +977 is chosen,
+             pre-set from the signed-in account, and sent as `country`. -->
         <div class="qt-pair" id="qtPair">
-          <input id="qtName" maxlength="80" placeholder="तपाईंको नाम" data-i18n-ph="qtNamePh" required autocomplete="name">
-          <input id="qtPhone" type="tel" inputmode="tel" maxlength="16" placeholder="मोबाइल (WhatsApp)" data-i18n-ph="qtPhonePh" required autocomplete="tel">
+          <div class="qt-fld">
+            <label class="qt-lbl" for="qtName" data-i18n="qtNameLbl">Your name</label>
+            <input id="qtName" maxlength="80" placeholder="तपाईंको नाम" data-i18n-ph="qtNamePh" required autocomplete="name">
+          </div>
+          <div class="qt-fld">
+            <label class="qt-lbl" for="qtPhone" data-i18n="qtPhoneLbl">Mobile (WhatsApp)</label>
+            <div class="qt-tel">
+              <select id="qtCC" data-i18n-title="qtCCLbl" aria-label="Number country" autocomplete="tel-country-code"><option value="91">🇮🇳 +91</option><option value="977">🇳🇵 +977</option></select>
+              <input id="qtPhone" type="tel" inputmode="tel" maxlength="16" placeholder="मोबाइल (WhatsApp)" data-i18n-ph="qtPhonePh" required autocomplete="tel-national">
+            </div>
+          </div>
         </div>
         <button class="btn btn-orange" type="submit" id="qtSend" data-i18n="qtCta">⚡ Confirm &amp; Issue Ticket</button>
       </form>
@@ -751,6 +754,52 @@ s.addEventListener('click',function(e){e.preventDefault();
     <!-- Seat-map mode: the card folds into this one strip (tap = back to QuickBot)
          and the regular search card right below becomes the first thing on screen. -->
     <button type="button" class="qt-collapsed" id="qtCollapsed" hidden data-bkmode="quick">⚡ <b data-i18n="bkBackQuick">QuickBot: नाम + मोबाइल → १० सेकेन्डमा टिकट</b><span data-i18n="bkSwitch">बदल्नुहोस् →</span></button>
+  </div>
+
+  <!-- 5 Oct 2026 (owner): the coach on the highway and the offices card.
+       8 Oct 2026: moved below the search card and QuickBot (see #homeHero). -->
+  <div class="container top-hero" id="topHero">
+    <aside class="th-brand" aria-label="S Hari Global Pvt Ltd">
+      <div class="th-top">
+        <img class="th-logo" src="/assets/img/logo-nav.png?v=20261008g" alt="S Hari Global Pvt Ltd logo" width="192" height="140" loading="lazy" decoding="async">
+        <div class="th-name"><b>S HARI GLOBAL</b><span>PVT. LTD.</span></div>
+      </div>
+      <p class="th-tag">Gujarat ⇄ Rupaidiha<small>AC Sleeper Coach · India ⇄ Nepal · 24×7</small></p>
+      <p class="th-oh"><span>📞 हाम्रा कार्यालय</span><small>Our offices · India ⇄ Nepal</small></p>
+      <ul class="th-offices" id="saOffices">
+      <li class="th-o th-in"><a href="tel:+919104801507"><span class="th-badge">M</span><span class="th-l">Mehsana</span><span class="th-sub">Head office</span><span class="th-n">+91 91048 01507</span><span class="th-call" aria-hidden="true">📞</span></a></li>
+      <li class="th-o th-in"><a href="tel:+919157001507"><span class="th-badge">A</span><span class="th-l">Ahmedabad</span><span class="th-n">+91 91570 01507</span><span class="th-call" aria-hidden="true">📞</span></a></li>
+      <li class="th-o th-in"><a href="tel:+918735881507"><span class="th-badge">B</span><span class="th-l">Baroda</span><span class="th-n">+91 87358 81507</span><span class="th-call" aria-hidden="true">📞</span></a></li>
+      <li class="th-o th-in"><a href="tel:+917359301507"><span class="th-badge">S</span><span class="th-l">Surat</span><span class="th-n">+91 73593 01507</span><span class="th-call" aria-hidden="true">📞</span></a></li>
+      <li class="th-o th-np"><a href="tel:+919726401507"><span class="th-badge">N</span><span class="th-l">Nepalgunj</span><span class="th-sub">Puspalal Chowk · Sher Bahadur Bishwokarma</span><span class="th-n">+91 97264 01507</span><span class="th-call" aria-hidden="true">📞</span></a></li>
+      </ul>
+      <!-- 5 Oct 2026: the Nepal office's people (CEO / Operations / Parking), call +
+           WhatsApp each - filled by renderNepalTeam() from Admin -> Company details. -->
+      <div class="th-npcard" id="npTeam" hidden></div>
+    </aside>
+    <section class="container shg-animation sa-top" id="animJourney" aria-labelledby="animJourneyTitle">
+      <div class="sa-head">
+        <p class="sa-eyebrow" data-i18n="animJEyebrow">The journey</p>
+        <h2 class="sa-title" id="animJourneyTitle" data-i18n="animJTitle">Gujarat ⇄ Rupaidiha</h2>
+        <p class="sa-sub" data-i18n="animJSub">Our AC sleeper coach on the road to the India–Nepal border</p>
+      </div>
+      <div class="sa-stage">
+        <div class="sa-scene sa-journey" data-anim="journey">
+          <div class="sa-art" role="img" aria-labelledby="animJourneyAria">
+            <span class="sa-vh" id="animJourneyAria" data-i18n="animJAria">Animation: the S Hari Global AC sleeper coach driving along a highway</span>
+            <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-highway-bg-mobile.webp?v=20261008g" width="800" height="450"><img class="sa-land" data-src="/assets/img/anim/shg-highway-bg.webp?v=20261008g" width="1600" height="900" alt="" loading="lazy" decoding="async"></picture>
+            <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-distant-scenery-mobile.webp?v=20261008g" width="800" height="267"><img class="sa-scenery" data-src="/assets/img/anim/shg-distant-scenery.webp?v=20261008g" width="1440" height="480" alt="" loading="lazy" decoding="async"></picture>
+            <div class="sa-road"></div>
+            <img class="sa-shadow" src="/assets/img/anim/shg-bus-shadow.svg?v=20261008g" width="960" height="110" alt="" loading="lazy" decoding="async">
+            <div class="sa-bus">
+              <picture><source media="(max-width: 759px)" data-srcset="/assets/img/anim/shg-bus-main-mobile.webp?v=20261008g" width="800" height="400"><img data-src="/assets/img/anim/shg-bus-main.webp?v=20261008g" width="1440" height="720" alt="" loading="lazy" decoding="async"></picture>
+              <span class="sa-rim sa-rim--a"></span><span class="sa-rim sa-rim--b"></span>
+            </div>
+          </div>
+          <button type="button" class="sa-pause" data-paused="false" data-i18n-title="animPause" title="Pause animation" aria-label="Pause animation"><svg class="sa-i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg><svg class="sa-i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg></button>
+        </div>
+      </div>
+    </section>
   </div>
 
   <!-- ============ HOMEPAGE ANIMATIONS (4 Oct 2026) ============
@@ -936,35 +985,9 @@ s.addEventListener('click',function(e){e.preventDefault();
        "One Click, Ticket Ready in 10 Seconds" — see the block above the
        route animation.) -->
 
-  <!-- ============ 4 HERO ACTIONS — the only things most passengers need ============
-       Book / My Bookings / Track Bus / Get Help — large, icon-first, one-tap.
-       Everything else (fares, founder, cabins, route map) is tucked into homeExtra,
-       shown when the "More" toggle opens. -->
-  <div class="container" style="margin-top:18px">
-    <div class="hero-actions" id="heroActions">
-      <a class="ha-card ha-book" href="#/" data-scroll="search-anchor">
-        <span class="ha-ico"><svg class="ic ic-xl"><use href="#i-ticket"/></svg></span>
-        <b data-i18n="haBook">Book Ticket</b>
-        <small data-i18n="haBookSub">Search seats &amp; book now</small>
-      </a>
-      <a class="ha-card ha-my" href="#/my">
-        <span class="ha-ico"><svg class="ic ic-xl"><use href="#i-list"/></svg></span>
-        <b data-i18n="haMy">My Bookings</b>
-        <small data-i18n="haMySub">Ticket, status &amp; history</small>
-      </a>
-      <a class="ha-card ha-track" href="#/nav">
-        <em class="ha-flag" aria-hidden="true">⚡ Nav</em>
-        <span class="ha-ico"><svg class="ic ic-xl"><use href="#i-radar"/></svg></span>
-        <b data-i18n="haTrack">Track Bus</b>
-        <small data-i18n="haTrackSub">Live bus location</small>
-      </a>
-      <a class="ha-card ha-help" href="tel:+919104801507" data-wa="https://wa.me/919726401507">
-        <span class="ha-ico"><svg class="ic ic-xl"><use href="#i-headset"/></svg></span>
-        <b data-i18n="haHelp">Get Help</b>
-        <small data-i18n="haHelpSub">📞 Call · 💬 WhatsApp</small>
-      </a>
-    </div>
-  </div>
+  <!-- 8 Oct 2026: the four "hero action" cards (Book / My Bookings / Track /
+       Help) are gone - #homeHero carries Book / Track / My Ticket at the top,
+       and the bottom bar carries all five on phones. -->
 
   <!-- Fare board, founder, style highlight, quick-actions, route map —
        all tucked behind the "More" toggle so the home page leads with
@@ -1055,7 +1078,7 @@ s.addEventListener('click',function(e){e.preventDefault();
           <li>❄️ AC · 🔌 Charging · 💧 Water · 🎵 Entertainment</li>
           <li>🤫 एकअर्काको गोपनीयता र आरामको सम्मान</li>
         </ul>
-        <div class="style-price"><small>Online from</small><b>₹2,090</b><small>per person</small></div>
+        <div class="style-price" id="styleSharePrice" hidden><small>From</small><b id="styleShareFrom"></b><small>per person</small></div>
         <div class="style-ctas">
           <a class="btn btn-ghost btn-sm" href="#/" data-scroll="pricing">See sharing fares</a>
         </div>
@@ -1204,7 +1227,7 @@ s.addEventListener('click',function(e){e.preventDefault();
           <h3>Bus Transport · Gujarat ⇄ Rupaidiha</h3>
           <p>Direct international coach service on the India–Nepal friendship corridor, run and managed by our own team.</p>
           <ul class="svc-list">
-            <li>AC seater &amp; sleeper coaches with charging points</li>
+            <li>AC sleeper coach with charging points</li>
             <li>Fixed Gujarat boarding points — Surat, Kamrej, Ankleshwar, Bharuch, Vadodara, Anand, Nadiad, Emli Bhupal &amp; Ahmedabad (S Hari Parking, Nana Chiloda)</li>
             <li>Assisted border crossing at Rupaidiha ⇄ Jamunaha</li>
             <li>UPI payment with manual verification &amp; Nepali PNG ticket</li>
@@ -1234,9 +1257,9 @@ s.addEventListener('click',function(e){e.preventDefault();
               <div class="u"></div>
             </div>
             <div class="flag-card np reveal d2">
-              <div class="fl">🇳🇵</div>
-              <b>Nepal · Rupaidiha border</b>
-              <span>Drop — the coach's last stop · Nepalgunj office: Pushpalal Chowk<br>Time zone NPT (UTC +5:45)</span>
+              <div class="fl">🇮🇳</div>
+              <b>India · Rupaidiha border (drop)</b>
+              <span>The coach's last stop is Rupaidiha, in India · Time zone IST (UTC +5:30)<br>🇳🇵 Across the border: our Nepalgunj office, Pushpalal Chowk (Nepal time NPT is 15 min ahead)</span>
               <div class="u"></div>
             </div>
           </div>
@@ -1306,7 +1329,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       </div>
       <div class="faq-list" id="faqList">
         <div class="faq-item reveal"><button class="faq-q" type="button">Which documents do I need to travel from India to Nepal by bus?<span class="pm">+</span></button><div class="faq-a"><p>Indian and Nepali citizens do not need a visa for each other's country, but every passenger must carry a valid government photo ID (such as a passport or voter ID). Documents are checked at boarding and may be checked at the Rupaidiha ⇄ Jamunaha border. Requirements can change — please confirm current rules before travelling.</p></div></div>
-        <div class="faq-item reveal"><button class="faq-q" type="button">How long is the Gujarat → Rupaidiha journey?<span class="pm">+</span></button><div class="faq-a"><p>The road distance is roughly 1,300 km and the coach takes about 30 hours including meal halts and the border crossing. Nepal runs on NPT (15 minutes ahead of IST), so arrival times are shown in Nepal time.</p></div></div>
+        <div class="faq-item reveal"><button class="faq-q" type="button">How long is the Gujarat → Rupaidiha journey?<span class="pm">+</span></button><div class="faq-a"><p>The road distance is roughly 1,300 km and the coach takes about 30 hours including meal halts and the border crossing. All times on this site and on your ticket are India time (IST); Nepal (NPT) is 15 minutes ahead.</p></div></div>
         <div class="faq-item reveal"><button class="faq-q" type="button">How does payment work? Is it safe?<span class="pm">+</span></button><div class="faq-a"><p>You pay directly to the company's UPI ID shown at checkout, then submit either a payment screenshot or the UPI transaction (UTR) number. Our team manually verifies every payment; your seat is held meanwhile and your e-ticket is released the moment we confirm it.</p></div></div>
         <div class="faq-item reveal"><button class="faq-q" type="button">When do I receive my ticket?<span class="pm">+</span></button><div class="faq-a"><p>As soon as your payment is verified (usually within 30 minutes during 9 AM – 9 PM IST), your booking status changes to Confirmed and a branded PDF ticket with a boarding QR code becomes available to download.</p></div></div>
         <div class="faq-item reveal"><button class="faq-q" type="button">Can I cancel or reschedule my ticket?<span class="pm">+</span></button><div class="faq-a"><p>Yes — cancellations and one-time rescheduling are allowed as per the timelines in our Ticket Booking Terms (for example, higher refunds the earlier you cancel; no refund for no-shows). See the Terms &amp; Conditions page for the exact policy.</p></div></div>
@@ -1494,8 +1517,8 @@ s.addEventListener('click',function(e){e.preventDefault();
   <div class="section alt" id="testimonials">
     <div class="container">
       <div class="sec-head center reveal">
-        <span class="kicker">Launching 2 September 2026</span>
-        <h2>Be Among Our First Travellers</h2>
+        <span class="kicker">Why travel with us</span>
+        <h2>A registered company behind every ticket</h2>
       </div>
       <div class="testi-grid">
         <div class="testi-card reveal">
@@ -1507,7 +1530,7 @@ s.addEventListener('click',function(e){e.preventDefault();
           <div class="tc-who">Border assistance included</div>
         </div>
         <div class="testi-card reveal d2">
-          <div class="tc-text">Instant e-ticket, pay by UPI, eSewa or cash, and support in Nepali, Hindi &amp; English. Book with confidence from launch day.</div>
+          <div class="tc-text">Your ticket on screen and on WhatsApp, pay by UPI, eSewa or cash where it is offered, and support in Nepali, Hindi &amp; English.</div>
           <div class="tc-who">Simple, transparent booking</div>
         </div>
       </div>
@@ -2733,21 +2756,21 @@ s.addEventListener('click',function(e){e.preventDefault();
   <div class="container">
     <div class="f-grid">
       <div>
-        <img id="logoFoot" data-logo-clone alt="S Hari Global Pvt Ltd Logo" loading="lazy">
+        <img id="logoFoot" src="/assets/img/logo.png?v=20261008g" width="440" height="321" alt="S Hari Global Pvt Ltd Logo" loading="lazy" decoding="async">
         <p><b style="color:#fff">🇮🇳 S Hari Global Pvt Ltd 🇳🇵</b><br>India–Nepal Bus Service. Connecting Gujarat with the Rupaidiha border — partner office at Pushpalal Chowk, Nepalgunj — with safe coaches and easy ticket booking.</p>
       </div>
       <div>
         <h4 data-i18n="fCompany">Company</h4>
         <ul>
-          <li><a href="#/" data-scroll="about" data-i18n="navAbout">About us</a></li>
+          <li><a href="#/" data-scroll="about" data-i18n="fAboutUs">About us</a></li>
           <li><a href="#/" data-scroll="services" data-i18n="navServices">Our services</a></li>
           <li><a href="#/" data-scroll="story" data-i18n="navRoute">India–Nepal route</a></li>
           <li><a href="#/terms" data-i18n="navTerms">Terms &amp; Conditions</a></li>
-          <li><a href="/privacy-policy">Privacy Policy</a></li>
-          <li><a href="/refund-policy">Refund &amp; Cancellation Policy</a></li>
-          <li><a href="/travel-info">Travel Info · India ⇄ Nepal Border</a></li>
-          <li><a href="/terms-of-service">Terms of Service</a></li>
-          <li><a href="/data-deletion">Data Deletion</a></li>
+          <li><a href="/privacy-policy" data-i18n="fPrivacy">Privacy Policy</a></li>
+          <li><a href="/refund-policy" data-i18n="fRefund">Refund &amp; Cancellation Policy</a></li>
+          <li><a href="/travel-info" data-i18n="fTravel">Travel Info · India ⇄ Nepal Border</a></li>
+          <li><a href="/terms-of-service" data-i18n="fTos">Terms of Service</a></li>
+          <li><a href="/data-deletion" data-i18n="fDataDel">Data Deletion</a></li>
         </ul>
       </div>
       <div>
@@ -2755,11 +2778,13 @@ s.addEventListener('click',function(e){e.preventDefault();
         <ul>
           <li><a href="#/" data-scroll="search-anchor" data-i18n="navBook">Search buses</a></li>
           <li><a href="#/my" data-i18n="navMy">My Bookings</a></li>
+          <li><a href="#/my" data-track-bus data-i18n="mmTrack">Track my bus</a></li>
+          <li><a href="/help.php" data-i18n="fHelpDesk">Help Desk</a></li>
           <li><a href="/admin/login.php" rel="nofollow" data-i18n="navStaff">Agent / Staff sign-in</a></li>
-          <li><a href="/agreements/" rel="nofollow">Agent agreements · सम्झौता</a></li>
+          <li><a href="/agreements/" rel="nofollow" data-i18n="fAgreements">Agent agreements</a></li>
           <li><a href="#/" data-scroll="faq" data-i18n="navFaq">FAQ</a></li>
           <li><a href="#/" data-scroll="contact" data-i18n="navContact">Contact &amp; support</a></li>
-          <li><a href="tel:+919104801507">Call +91 91048 01507</a></li>
+          <li><a href="tel:+919104801507"><span data-i18n="fCall">Call</span> +91 91048 01507</a></li>
         </ul>
       </div>
       <div>
@@ -2767,6 +2792,7 @@ s.addEventListener('click',function(e){e.preventDefault();
         <ul class="f-contact">
           <li>📍 Near Shilpa Garage, Silver Complex, Mehsana – 384002, Gujarat, India</li>
           <li>✉️ <a href="mailto:shreehariglobalpvtltd@gmail.com">shreehariglobalpvtltd@gmail.com</a></li>
+          <li>🇳🇵 <span><span data-i18n="fNepalOffice">Nepal office</span>: Pushpalal Chowk, Nepalgunj · <a href="tel:+9779866201375">+977 986-6201375</a></span></li>
           <li>🕉️ ॐ नमो नारायणाय</li>
           <li style="gap:10px;margin-top:6px">
             <a href="https://www.facebook.com/sherbahadur.biswakarma.58" target="_blank" rel="noopener noreferrer" aria-label="Facebook" title="Facebook — Sher Bahadur Bishwokarma">ⓕ</a>
@@ -2787,7 +2813,7 @@ s.addEventListener('click',function(e){e.preventDefault();
         <button id="mantraBtn" type="button" title="Play mantra chant · मन्त्र सुन्नुहोस्" aria-label="Play mantra chant">🔊</button>
       </span>
     </div>
-    <audio id="mantraAudio" src="om-namo-narayanaya.mp3" preload="none"></audio>
+
   </div>
 </footer>
 
@@ -2803,11 +2829,15 @@ s.addEventListener('click',function(e){e.preventDefault();
 </div>
 
 <!-- ============ [HTML] MOBILE: sticky Book Now + bottom nav ============ -->
-<nav class="bottom-nav" aria-label="Mobile navigation">
-  <button type="button" class="bn-item on" data-bn="home"><span class="bi"><svg class="ic ic-lg"><use href="#i-home"/></svg></span><span data-i18n="bnHome">Home</span></button>
-  <button type="button" class="bn-item" data-bn="book"><span class="bi"><svg class="ic ic-lg"><use href="#i-bus"/></svg></span><span data-i18n="bnBook">Book</span></button>
-  <button type="button" class="bn-item" data-bn="trips"><span class="bi"><svg class="ic ic-lg"><use href="#i-ticket"/></svg></span><span data-i18n="bnTickets">My Tickets</span></button>
-  <button type="button" class="bn-item" data-bn="help"><span class="bi"><svg class="ic ic-lg"><use href="#i-headset"/></svg></span><span data-i18n="bnHelp">Help</span></button>
+<!-- 8 Oct 2026: five tabs, the owner's order HOME | BOOK | TRACK | TICKETS | HELP.
+     BOOK is the primary action (a filled key); TRACK runs openTrackMyBus() -
+     never the anonymous map as "my bus"; HELP opens the contact section. -->
+<nav class="bottom-nav bn5" aria-label="Mobile navigation">
+  <button type="button" class="bn-item on" data-bn="home" aria-current="page"><span class="bi"><svg class="ic ic-lg" aria-hidden="true"><use href="#i-home"/></svg></span><span class="bl" data-i18n="bnHome">Home</span></button>
+  <button type="button" class="bn-item bn-primary" data-bn="book"><span class="bi"><svg class="ic ic-lg" aria-hidden="true"><use href="#i-bus"/></svg></span><span class="bl" data-i18n="bnBook">Book</span></button>
+  <button type="button" class="bn-item" data-bn="track"><span class="bi"><svg class="ic ic-lg" aria-hidden="true"><use href="#i-radar"/></svg></span><span class="bl" data-i18n="bnTrack">Track</span></button>
+  <button type="button" class="bn-item" data-bn="trips"><span class="bi"><svg class="ic ic-lg" aria-hidden="true"><use href="#i-ticket"/></svg></span><span class="bl" data-i18n="bnTickets">My Tickets</span></button>
+  <button type="button" class="bn-item" data-bn="help"><span class="bi"><svg class="ic ic-lg" aria-hidden="true"><use href="#i-headset"/></svg></span><span class="bl" data-i18n="bnHelp">Help</span></button>
 </nav>
 
 <!-- ============ [HTML] WHATSAPP QUICK-HELP FAB — floats bottom-right, always
@@ -2930,7 +2960,7 @@ s.addEventListener('click',function(e){e.preventDefault();
   <div class="ai-msgs" id="aiMsgs"></div>
   <div class="ai-chips" id="aiChips"></div>
   <div class="ai-inrow">
-    <input id="aiInput" type="text" placeholder="Ask anything… केही सोध्नुहोस्…" autocomplete="off">
+    <input id="aiInput" type="text" placeholder="Ask anything… केही सोध्नुहोस्…" autocomplete="off" data-i18n-title="aiInputLbl" aria-label="Ask SHG Sahayak">
     <button type="button" class="ai-mic" id="aiMic" aria-label="Voice input" title="बोलेर सोध्नुहोस् · बोलकर पूछें">🎤</button>
     <button type="button" class="ai-send" id="aiSend" aria-label="Send">➤</button>
   </div>
