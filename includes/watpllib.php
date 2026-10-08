@@ -321,6 +321,50 @@ final class WaTplLib
         Logger::audit('wa_template.save', 'wa_template', $key . '/' . $lang, null, null, 'status ' . $metaStatus);
     }
 
+    /**
+     * Read Meta's verdict back from AiSensy (8 Oct 2026): every library row
+     * that names a Meta template gets APPROVED / REJECTED / PENDING from the
+     * project's template list. Returns [checked, changed, approved names].
+     *
+     * @return array{checked:int, changed:int, approved:list<string>, error:string}
+     */
+    public static function syncMetaStatus(): array
+    {
+        $out = ['checked' => 0, 'changed' => 0, 'approved' => [], 'error' => ''];
+        try {
+            if (!class_exists('AiSensyAPI')) {
+                require_once dirname(__DIR__) . '/whatsapp/aisensy.php';
+            }
+            $remote = [];
+            foreach (AiSensyAPI::templates() as $t) {
+                $remote[strtolower($t['name'])] = $t['status'];
+            }
+            if ($remote === []) {
+                $out['error'] = 'AiSensy returned no templates (API key / network).';
+                return $out;
+            }
+            $map = ['APPROVED' => 'approved', 'REJECTED' => 'rejected', 'PENDING' => 'submitted', 'IN_APPEAL' => 'submitted', 'PAUSED' => 'submitted'];
+            foreach (Database::fetchAll("SELECT tkey, lang, meta_name, meta_status FROM wa_tpl_library WHERE meta_name IS NOT NULL AND meta_name <> ''") as $r) {
+                $st = $remote[strtolower((string) $r['meta_name'])] ?? null;
+                if ($st === null) {
+                    continue;
+                }
+                $out['checked']++;
+                $new = $map[$st] ?? (string) $r['meta_status'];
+                if ($new === 'approved') {
+                    $out['approved'][] = (string) $r['meta_name'];
+                }
+                if ($new !== $r['meta_status']) {
+                    Database::run('UPDATE wa_tpl_library SET meta_status = :s WHERE tkey = :k AND lang = :l', ['s' => $new, 'k' => $r['tkey'], 'l' => $r['lang']]);
+                    $out['changed']++;
+                }
+            }
+        } catch (Throwable $e) {
+            $out['error'] = $e->getMessage();
+        }
+        return $out;
+    }
+
     /** Back to the shipped draft. */
     public static function reset(string $key, string $lang): void
     {

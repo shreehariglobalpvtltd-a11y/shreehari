@@ -454,6 +454,38 @@ function admin_header(string $title, string $active = ''): void
            . Security::e($item['label']) . $badge . '</a>';
     };
 
+    /* Office menu by CATEGORY (8 Oct 2026, owner: "admin / agent panel ko har
+       ek option category ma milayera"). WhatsApp pages sat in three sections,
+       customer pages inside Bookings, AI pages in two. Only the heading an
+       item is filed under changes — every link, permission and label stays.
+       A counter agent's flat strip (below) is not affected. */
+    if (!Auth::isCounterAgent()) {
+        $secMap = [
+            'customers.php' => '👥 Customers', 'customer-ledger.php' => '👥 Customers', 'customer-directory.php' => '👥 Customers',
+            'customer-duplicates.php' => '👥 Customers', 'enquiries.php' => '👥 Customers', 'support-inbox.php' => '👥 Customers',
+            'wa-compose.php' => '📲 WhatsApp & marketing', 'campaigns.php' => '📲 WhatsApp & marketing', 'wa-manager.php' => '📲 WhatsApp & marketing',
+            'wa-templates.php' => '📲 WhatsApp & marketing', 'messages-log.php' => '📲 WhatsApp & marketing', 'ai-marketing.php' => '📲 WhatsApp & marketing',
+            'promo-card.php' => '📲 WhatsApp & marketing', 'wa-pending.php' => '📲 WhatsApp & marketing', 'wa-queue.php' => '📲 WhatsApp & marketing',
+            'offers.php' => '💳 Ledger, payments & offers', 'ledger-check.php' => '💳 Ledger, payments & offers', 'payments.php' => '💳 Ledger, payments & offers',
+            'refunds.php' => '💳 Ledger, payments & offers', 'accounting.php' => '💳 Ledger, payments & offers', 'payroll.php' => '💳 Ledger, payments & offers',
+            'ai-copilot.php' => '🤖 AI', 'ai-brain.php' => '🤖 AI', 'ai-knowledge.php' => '🤖 AI', 'ai-activity.php' => '🤖 AI',
+            'analytics.php' => '📊 Reports', 'feedback.php' => '📊 Reports',
+        ];
+        $rename = ['Bookings & tickets' => '🎫 Bookings & tickets', 'Seat management' => '🪑 Seats', 'Trips, buses & chalani' => '🚌 Trips, buses & chalani',
+                   'Agents & counters' => '🤝 Agents & counters', 'Ledger & payments' => '💳 Ledger, payments & offers', 'Expenses & reports' => '📊 Reports', 'Settings' => '⚙️ Settings'];
+        $order = ['', '🎫 Bookings & tickets', '🪑 Seats', '🚌 Trips, buses & chalani', '👥 Customers', '🤝 Agents & counters',
+                  '💳 Ledger, payments & offers', '📲 WhatsApp & marketing', '🤖 AI', '📊 Reports', '⚙️ Settings'];
+        foreach ($items as &$it) {
+            $sec = (string) ($it['section'] ?? '');
+            if (isset($secMap[$it['href']])) { $sec = $secMap[$it['href']]; }
+            elseif (isset($rename[$sec])) { $sec = $rename[$sec]; }
+            $it['section'] = $sec;
+        }
+        unset($it);
+        $rank = array_flip($order);
+        usort($items, static fn(array $a, array $c): int => ($rank[$a['section']] ?? 99) <=> ($rank[$c['section']] ?? 99));   // stable: page order kept inside a section
+    }
+
     // Group items by section, preserving first-seen order.
     $groups = [];
     foreach ($items as $item) {

@@ -205,6 +205,108 @@ $choiceKeys = [
     'seat_ai_default_deck' => ['L' => 'Lower deck first', 'U' => 'Upper deck first'],
 ];
 
+/* ── Settings by CATEGORY (8 Oct 2026, owner: "sabai setting milayera, ticket
+   ko ek thau, agent ko ek thau, API key chuttai, WhatsApp chuttai") ──
+   456 rows had grown into 30 storage groups — API keys sat under AI, notify,
+   marketing and AiSensy; WhatsApp under four groups. The page now files every
+   row under one of these tabs by its meaning. Display only: the stored group
+   (sgroup) and every key are untouched, so nothing in the code moves. */
+$cats = [
+    'company'  => ['🏢', 'Company & offices', 'Legal names, addresses, phone numbers, Nepal office, counters and social links printed on tickets and chalani.'],
+    'booking'  => ['🪑', 'Booking & seats', 'How seats are held and sold: limits, women-only seats, Seat AI, refunds, Quick Ticket, booking window.'],
+    'fares'    => ['💰', 'Fares & offers', 'Private and sharing prices, every pickup\'s fare, discounts, offers, loyalty and referral rewards.'],
+    'tickets'  => ['🎫', 'Tickets', 'What the ticket carries and how it is delivered: PDF / PNG, maps QR, border card, travel checklist.'],
+    'payments' => ['💳', 'Payments', 'UPI, eSewa, pay at counter, payment proof, payment webhook and the NPR rate.'],
+    'agents'   => ['🤝', 'Agents & counter', 'Agent commission, cash limits, settlement, KYC, counter desks, shifts and counter discount / seat caps.'],
+    'whatsapp' => ['📲', 'WhatsApp', 'WhatsApp sending (AiSensy / Meta / Twilio), templates, the WhatsApp bot, staff menu and seat-status messages.'],
+    'notify'   => ['🔔', 'Notifications & reports', 'SMS, e-mail, push, reminders, ETA alerts, office reports and the help desk.'],
+    'marketing'=> ['📣', 'Marketing', 'Campaign limits, consent, AI marketing autopilot, social posting.'],
+    'ai'       => ['🤖', 'AI', 'The AI assistant, provider order and models, AI watch, Passive Brain predictions.'],
+    'keys'     => ['🔑', 'API keys & connections', 'Every API key, token, password and account id in one place. Keys are write-only: the stored value is never shown.'],
+    'website'  => ['🌐', 'Website & app', 'What the public site shows: buttons ON/OFF, near-me pickup, language, notices, maps, sign-in, sounds and motion.'],
+    'security' => ['🔒', 'Security & backup', 'Admin sign-in protection, sessions, PIN lock, backups and data checks.'],
+    'other'    => ['🧩', 'Other', 'Settings not filed anywhere else.'],
+];
+$catOf = static function (string $key, string $group): string {
+    // non-secret ids / hosts that belong with the keys
+    $conn = ['aisensy_project_id', 'whatsapp_phone_id', 'whatsapp_waba_id', 'meta_page_id', 'ig_user_id', 'telegram_channel',
+             'google_client_id', 'twilio_account_sid', 'smtp_host', 'smtp_port', 'smtp_user', 'smtp_secure', 'push_vapid_public',
+             'push_vapid_subject', 'ai_local_url', 'ai_local_endpoint', 'nav_engine_url', 'whatsapp_api_version'];
+    if (Settings::isSecretKey($key) || in_array($key, $conn, true)) { return 'keys'; }
+    $exact = [
+        'tickets'  => ['whatsapp_send_pdf', 'border_card_hours', 'travel_checklist', 'ticket_maps_qr', 'email_attach_pdf', 'email_attach_ics', 'wa_ticket_number', 'border_point_name'],
+        'fares'    => ['group_discount_on', 'group_discount_percent', 'group_discount_min_seats', 'online_discount_pct', 'tax_percent', 'booking_fee',
+                       'sharing_short_run_on', 'loyalty_tier_discount_on', 'loyalty_trips'],
+        'agents'   => ['counter_max_discount_pct', 'counter_max_seats_per_booking', 'agent_daily_summary_enabled', 'agent_notify_enabled', 'offline_queue_on',
+                       'agent_commission_percent', 'agent_target_monthly', 'commission_agent_only'],
+        'company'  => ['women_helpline', 'company_whatsapp'],
+        'security' => ['session_timeout_min', 'automation_log_days', 'data_audit_days_back', 'data_audit_on', 'backup_offsite_email', 'backup_offsite_on'],
+        'website'  => ['default_lang', 'maintenance_mode', 'notice_text', 'contact_dial_on', 'google_ads_conversion', 'google_ads_contact_conversion'],
+        'whatsapp' => ['notify_rate_minutes', 'wam_on', 'twilio_whatsapp_from', 'twilio_status_callback_url', 'twilio_webhook_url', 'admin_whatsapp', 'whatsapp_notify_admin'],
+        'notify'   => ['approval_reminder_minutes', 'low_seat_threshold', 'low_seat_alert_enabled', 'eta_alert_minutes', 'eta_alert_on', 'email_enabled'],
+    ];
+    foreach ($exact as $c => $list) { if (in_array($key, $list, true)) { return $c; } }
+    $prefix = [
+        'ai_bot_' => 'ai', 'brain_' => 'ai', 'mk_' => 'marketing', 'social_' => 'marketing', 'advance_offer_' => 'fares',
+        'wa_' => 'whatsapp', 'whatsapp_' => 'whatsapp', 'twilio_content_sid' => 'whatsapp', 'seat_status_wa_' => 'whatsapp', 'aisensy_' => 'whatsapp',
+        'quick_ticket_' => 'booking', 'counter_' => 'agents', 'agent_' => 'agents', 'nepal_' => 'company', 'company_' => 'company',
+        'sms_' => 'notify', 'smtp_' => 'notify', 'push_' => 'notify', 'reminder_' => 'notify', 'trip_' => 'notify', 'notify_' => 'notify',
+        'helpdesk_' => 'notify', 'office_report_' => 'notify', 'payment_' => 'payments', 'loyalty_' => 'fares', 'referral_' => 'fares',
+        'btn_' => 'website', 'nearme_' => 'website', 'nav_' => 'website', 'app_' => 'website', 'seat_ai_' => 'booking', 'gdrive_' => 'security',
+        'ai_' => 'ai', 'cerebras_' => 'ai', 'grok_' => 'ai', 'gemini_' => 'ai', 'openai_' => 'ai', 'openrouter_' => 'ai', 'telegram_' => 'marketing',
+    ];
+    foreach ($prefix as $px => $c) { if (str_starts_with($key, $px)) { return $c; } }
+    $byGroup = [
+        'company' => 'company', 'trust' => 'company', 'booking' => 'booking', 'general' => 'booking', 'seats' => 'booking', 'seat_ai' => 'booking',
+        'realtime' => 'booking', 'pricing' => 'fares', 'referral' => 'fares', 'loyalty' => 'fares', 'payment' => 'payments',
+        'agent' => 'agents', 'agents' => 'agents', 'whatsapp' => 'whatsapp', 'aisensy' => 'whatsapp', 'notify' => 'notify',
+        'reports' => 'notify', 'automation' => 'notify', 'helpdesk' => 'notify', 'marketing' => 'marketing', 'ai' => 'ai',
+        'site' => 'website', 'app' => 'website', 'buttons' => 'website', 'gps' => 'website', 'maps' => 'website', 'customers' => 'website',
+        'performance' => 'website', 'integrations' => 'keys', 'security' => 'security', 'backup' => 'security',
+    ];
+    return $byGroup[$group] ?? 'other';
+};
+/* Sub-heading inside a category: what that slice means THERE (a WhatsApp
+   key stored under "ai" is a WhatsApp-bot setting, not an AI-assistant one). */
+$subTitle = [
+    'keys'     => ['ai' => 'AI provider keys & models', 'aisensy' => 'AiSensy (WhatsApp) keys', 'whatsapp' => 'Meta WhatsApp Cloud API', 'notify' => 'SMS · e-mail · push · Twilio',
+                   'marketing' => 'Facebook · Instagram · Telegram', 'automation' => 'Off-site backup', 'maps' => 'Maps / navigation server', 'integrations' => 'Google sign-in', 'payment' => 'Payment webhook'],
+    'whatsapp' => ['ai' => 'WhatsApp bot & AI on WhatsApp', 'notify' => 'WhatsApp ticket delivery', 'aisensy' => 'AiSensy sender', 'whatsapp' => 'WhatsApp messaging & staff menu', 'reports' => 'Office WhatsApp alerts'],
+    'fares'    => ['booking' => 'Discounts, tax & booking fee', 'pricing' => 'Offers & fare tables'],
+    'ai'       => ['booking' => 'Bot answers & Passive Brain'],
+    'agents'   => ['booking' => 'Counter caps', 'automation' => 'Agent messages', 'pricing' => 'Commission & targets', 'agent' => 'Agent & counter rules'],
+    'tickets'  => ['notify' => 'Ticket delivery', 'automation' => 'Ticket e-mail', 'whatsapp' => 'Ticket on WhatsApp', 'site' => 'Travel checklist', 'booking' => 'Border card', 'gps' => 'Pickup map on the ticket'],
+    'notify'   => ['automation' => 'Automation & alerts', 'reports' => 'Office reports', 'helpdesk' => 'Help desk'],
+    'company'  => ['site' => 'Company WhatsApp', 'trust' => 'Women helpline'],
+    'security' => ['automation' => 'Data checks & off-site backup', 'booking' => 'Sessions'],
+];
+$byCat = [];
+foreach ($groups as $g => $items) {
+    foreach ($items as $r) {
+        $c = $catOf((string) $r['skey'], (string) $g);
+        $byCat[$c][$g][] = $r;
+    }
+}
+/* The keys the two curated panels (Fares, Agent rules) show instead of the
+   generic table — the same lists as $fpKeys / $arKeys further down. */
+$curatedKeys = ['fare_to_nepal', 'fare_to_india', 'max_seats_per_booking', 'counter_max_seats_per_booking', 'counter_max_discount_pct',
+                'agent_commission_mode', 'agent_flat_direct', 'agent_flat_joint', 'agent_commission_percent',
+                'agent_advance_max', 'agent_advance_recover_pct', 'agent_payout_min', 'agent_settlement_due_days', 'agent_settle_reminder_days',
+                'agent_cash_limit_enforce', 'agent_kyc_required', 'agent_notify_settlement', 'agent_cash_limit_default', 'agent_daily_booking_limit'];
+$catCount = [];
+foreach ($cats as $c => $_) {
+    $n = 0;
+    foreach ($byCat[$c] ?? [] as $its) {
+        foreach ($its as $r) { if (!in_array((string) $r['skey'], $curatedKeys, true)) { $n++; } }
+    }
+    $catCount[$c] = $n;
+}
+// the curated panels: Fares (its fpKeys + the two private-cabin prices) and Agent rules (the rest of fpKeys)
+$fareFp = array_intersect($curatedKeys, ['fare_to_nepal', 'fare_to_india', 'max_seats_per_booking', 'counter_max_seats_per_booking', 'counter_max_discount_pct']);
+$catCount['fares']  += count($fareFp) + 2;
+$catCount['agents'] += count($curatedKeys) - count($fareFp);
+$catCount = array_filter($catCount, static fn(int $n, string $c): bool => $n > 0 || in_array($c, ['fares', 'agents'], true), ARRAY_FILTER_USE_BOTH);
+
 admin_header('Settings', 'settings');
 
 if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::e($flash[1]) . '</div>'; }
@@ -212,20 +314,23 @@ if (!$canEdit) { echo '<div class="flash bad">Your role can view settings but no
 
 $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
 ?>
-<nav class="sg set-jump" aria-label="Settings sections">
-  <p class="set-lede">Each section says what it controls. Changes apply after <b>Save all settings</b>; the page then confirms with “Settings saved.” Pickup points and their fares are on <a href="routes.php#pickups">Routes → Pickup points &amp; fares</a>.</p>
-  <div class="sg-chips">
-    <a class="sg-chip" href="#faresPanel">Fares &amp; booking rules</a>
-    <a class="sg-chip" href="routes.php#pickups">Pickup points &amp; fares</a>
-    <a class="sg-chip" href="#agentRulesPanel">Agent rules</a>
-    <?php foreach (array_keys($groups) as $g): ?><a class="sg-chip" href="#grp-<?= Security::e((string) $g) ?>"><?= Security::e($groupInfo[$g][0] ?? ucfirst((string) $g)) ?></a><?php endforeach; ?>
-    <a class="sg-chip" href="#waTestPanel">Test messages</a>
+<nav class="sg set-jump" aria-label="Settings categories">
+  <p class="set-lede"><b><?= count($rows) ?> settings</b> in <?= count($catCount) ?> categories. Pick a category, or search. Changes apply after <b>Save all settings</b> (one button, saves every category); the page then confirms with “Settings saved.”</p>
+  <input type="search" id="setSearch" class="set-search" placeholder="🔍 Search a setting — e.g. fare, upi, whatsapp, key, women, ticket…" autocomplete="off" aria-label="Search settings">
+  <div class="set-cats" role="tablist">
+    <?php foreach ($catCount as $c => $n): ?>
+      <button type="button" class="set-cat-btn" role="tab" data-cat="<?= Security::e($c) ?>">
+        <span class="sc-ic" aria-hidden="true"><?= $cats[$c][0] ?></span>
+        <span class="sc-t"><?= Security::e($cats[$c][1]) ?> <em><?= (int) $n ?></em></span>
+        <small><?= Security::e($cats[$c][2]) ?></small>
+      </button>
+    <?php endforeach; ?>
   </div>
 </nav>
 
 <!-- ── CEO / Brand Photo Upload ── -->
 <?php if ($canEdit): ?>
-<div class="panel" style="border-left:4px solid #F07C1F">
+<div class="panel set-in" data-cat="company" style="border-left:4px solid #F07C1F">
   <h2>📸 CEO / Brand Photo</h2>
   <p class="muted" style="font-size:13px;margin-bottom:14px">
     This photo appears on the app splash screen and the agent/admin login page.
@@ -293,7 +398,7 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
   }
   $fpMissing = 'disabled title="Run database/upgrade-2026-09-fares.php once to enable this field"';
   ?>
-  <div class="panel" id="faresPanel">
+  <div class="panel set-in" data-cat="fares" id="faresPanel">
     <h2>💰 Fares &amp; booking rules <span class="muted" style="font-weight:400">· भाडा · the numbers that change, in one place</span></h2>
     <div class="fp-grid">
       <label>Default fare Gujarat → Rupaidiha (₹ / person)
@@ -409,7 +514,7 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
   };
   $arMode = (string) Settings::getString('agent_commission_mode', 'flat_per_seat');
   ?>
-  <div class="panel" id="agentRulesPanel">
+  <div class="panel set-in" data-cat="agents" id="agentRulesPanel">
     <h2><svg class="a-ic"><use href="#a-handshake"/></svg> Agent rules <span class="muted" style="font-weight:400">· commission, advances, settlement, KYC — the office decides here</span></h2>
     <div class="fp-grid">
       <label>Commission scheme
@@ -455,10 +560,13 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
       'google_ads_contact_conversion'       => 'Optional second conversion (category "Contact") for a tap on a phone number or WhatsApp button, same AW-…/label format. Leave blank if you only want bookings counted.',
   ];
   ?>
-  <?php foreach ($groups as $group => $items): ?>
-    <div class="panel set-group" id="grp-<?= Security::e((string) $group) ?>">
-      <h2><?= Security::e($groupInfo[$group][0] ?? ucfirst((string) $group)) ?></h2>
-      <p class="muted set-why"><?= Security::e($groupInfo[$group][1] ?? 'Settings stored under "' . $group . '".') ?></p>
+  <?php foreach ($cats as $cat => $catInfo): foreach ($byCat[$cat] ?? [] as $group => $items):
+      $visible = array_values(array_filter($items, static fn($r) => !in_array((string) $r['skey'], $fpKeys, true)));
+      if ($visible === []) { continue; } ?>
+    <div class="panel set-group set-in" data-cat="<?= Security::e($cat) ?>" id="grp-<?= Security::e($cat . '-' . (string) $group) ?>">
+      <?php $subT = $subTitle[$cat][$group] ?? null; ?>
+      <h2><?= $catInfo[0] ?> <?= Security::e($subT ?? ($groupInfo[$group][0] ?? ucfirst(str_replace(['-', '_'], ' ', (string) $group)))) ?> <small class="muted set-cnt"><?= count($visible) ?></small></h2>
+      <?php if ($subT === null): ?><p class="muted set-why"><?= Security::e($groupInfo[$group][1] ?? 'Settings stored under "' . $group . '".') ?></p><?php endif; ?>
       <table class="set-table no-card">
         <?php foreach ($items as $r):
           $key = (string) $r['skey'];
@@ -468,7 +576,7 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
           $isJson = $r['stype'] === 'json';
           $isSecret = Settings::isSecretKey($key);   // one rule, shared with the audit mask
         ?>
-        <tr>
+        <tr class="set-row" data-q="<?= Security::e(mb_strtolower($key . ' ' . $label)) ?>">
           <th style="width:34%"><?= Security::e($label) ?>
             <div class="muted mono" style="font-weight:400;font-size:11px"><?= Security::e($key) ?></div>
           </th>
@@ -501,13 +609,31 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
         <?php endforeach; ?>
       </table>
     </div>
-  <?php endforeach; ?>
+  <?php endforeach; endforeach; ?>
 
   <?php if ($canEdit): ?>
     <div class="toolbar save-sticky"><span class="set-dirty" id="setDirty" hidden>You have unsaved changes</span><button class="btn" type="submit">Save all settings</button></div>
   <?php endif; ?>
 </form>
 <style>
+.set-search { width: 100%; min-height: 46px; padding: 10px 14px; border: 1.5px solid var(--line-control); border-radius: 12px; background: var(--surface); color: var(--ink); font-size: 16px; }
+.set-cats { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.set-cat-btn { display: grid; grid-template-columns: 34px 1fr; gap: 2px 10px; align-items: center; text-align: left; padding: 12px; min-height: 64px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.set-cat-btn .sc-ic { grid-row: 1 / span 2; font-size: 24px; line-height: 1; text-align: center; }
+.set-cat-btn .sc-t { font-weight: 800; font-size: 14.5px; }
+.set-cat-btn .sc-t em { font-style: normal; font-size: 12px; font-weight: 700; padding: 1px 8px; margin-left: 4px; border-radius: 999px; background: var(--surface-sunken); color: var(--muted); }
+.set-cat-btn small { font-size: 12px; line-height: 1.35; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.set-cat-btn.on { border-color: var(--royal); box-shadow: 0 0 0 2px var(--royal) inset; }
+.set-cat-btn.on .sc-t em { background: var(--royal); color: var(--on-royal); }
+.set-cnt { font-size: 12px; font-weight: 700; }
+.set-hide { display: none !important; }
+@media (max-width: 640px) {
+  .set-cats { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .set-cat-btn { grid-template-columns: 26px 1fr; padding: 9px 10px; min-height: 52px; }
+  .set-cat-btn .sc-ic { font-size: 20px; }
+  .set-cat-btn .sc-t { font-size: 13px; }
+  .set-cat-btn small { display: none; }
+}
 .set-jump { margin: -6px 0 14px; display: grid; gap: 8px; }
 .set-lede { margin: 0; color: var(--muted); font-size: 13.5px; }
 .set-jump .sg-chip { text-decoration: none; }
@@ -543,15 +669,58 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
     });
   });
   var form = dirty && dirty.closest('form');
-  if (form) form.addEventListener('input', mark);
+  if (form) form.addEventListener('input', function (e) { if (e.target && e.target.id !== 'setSearch') mark(); });
   function mark() { if (dirty) dirty.hidden = false; }
+
+  /* Categories (8 Oct 2026): one category at a time; the choice is kept in the
+     address (#cat=…) so Save returns to the same tab. Hidden panels still post,
+     so Save all settings saves every category. Search looks across all. */
+  var btns = Array.prototype.slice.call(document.querySelectorAll('.set-cat-btn'));
+  // queried each time: the test panels come AFTER this script in the page
+  var allPanels = function () { return Array.prototype.slice.call(document.querySelectorAll('.set-in')); };
+  var search = document.getElementById('setSearch');
+  function show(cat) {
+    btns.forEach(function (b) { var on = b.getAttribute('data-cat') === cat; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); });
+    allPanels().forEach(function (p) { p.classList.toggle('set-hide', p.getAttribute('data-cat') !== cat); });
+    document.querySelectorAll('.set-row').forEach(function (r) { r.classList.remove('set-hide'); });
+    try { history.replaceState(null, '', '#cat=' + cat); } catch (e) {}
+  }
+  function find(q) {
+    q = q.trim().toLowerCase();
+    if (!q) { var c = (location.hash.match(/cat=([a-z]+)/) || [])[1] || (btns[0] && btns[0].getAttribute('data-cat')); show(c); return; }
+    btns.forEach(function (b) { b.classList.remove('on'); });
+    allPanels().forEach(function (p) {
+      var rows = p.querySelectorAll('.set-row'), any = false;
+      if (rows.length) {
+        rows.forEach(function (r) { var hit = r.getAttribute('data-q').indexOf(q) >= 0; r.classList.toggle('set-hide', !hit); if (hit) any = true; });
+      } else {
+        any = p.textContent.toLowerCase().indexOf(q) >= 0;
+      }
+      p.classList.toggle('set-hide', !any);
+    });
+  }
+  btns.forEach(function (b) { b.addEventListener('click', function () {
+    if (search) search.value = '';
+    show(b.getAttribute('data-cat'));
+    // on a phone the cards fill the screen: jump to the first settings panel of the tab
+    if (window.innerWidth <= 820) {
+      var firstP = allPanels().filter(function (p) { return !p.classList.contains('set-hide'); })[0];
+      if (firstP) firstP.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }); });
+  if (search) search.addEventListener('input', function () { find(search.value); });
+  var start = (location.hash.match(/cat=([a-z]+)/) || [])[1];
+  var legacy = { faresPanel: 'fares', agentRulesPanel: 'agents', waTestPanel: 'whatsapp', 'grp-site': 'website' }[location.hash.replace('#', '')];
+  if (form) form.addEventListener('submit', function () { form.action = location.pathname + location.hash; });   // come back to the same tab after Save
+  var first = function () { show(start || legacy || (btns[0] && btns[0].getAttribute('data-cat'))); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', first); else first();
 })();
 </script>
 
 <?php if ($canEdit):
   $testPhone = Settings::officePhone();
 ?>
-<div class="panel" id="waTestPanel">
+<div class="panel set-in" data-cat="whatsapp" id="waTestPanel">
   <h2>📲 Test WhatsApp ticket delivery</h2>
   <?php
     // Notify is not bootstrap-loaded (events.php pulls it lazily), so this
@@ -616,7 +785,7 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
 })();
 </script>
 
-<div class="panel" id="smsTestPanel">
+<div class="panel set-in" data-cat="notify" id="smsTestPanel">
   <h2>📩 Test SMS ticket delivery</h2>
   <p class="muted" style="margin:-4px 0 14px;max-width:640px">
     Sends a real SMS through Twilio. Tick <span class="mono">sms_enabled</span>, fill the
@@ -666,7 +835,7 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
 })();
 </script>
 
-<div class="panel" id="emailTestPanel">
+<div class="panel set-in" data-cat="notify" id="emailTestPanel">
   <h2>📧 Test email (Gmail SMTP)</h2>
   <p class="muted" style="margin:-4px 0 14px;max-width:640px">
     Sends a real email through your SMTP settings above. For Gmail set

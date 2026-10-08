@@ -75,6 +75,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $k = (string) ($_POST['tkey'] ?? '');
         $l = (string) ($_POST['lang'] ?? 'en');
         try {
+            if (($_POST['action'] ?? '') === 'sync') {
+                $s = WaTplLib::syncMetaStatus();
+                $flash = $s['error'] !== '' ? ['bad', 'Could not read Meta status: ' . $s['error']]
+                    : ['ok', 'Meta status read for ' . $s['checked'] . ' template(s), ' . $s['changed'] . ' changed. Approved: ' . ($s['approved'] ? implode(', ', $s['approved']) : 'none yet') . '.'];
+                header('Location: wa-templates.php?f=' . rawurlencode($flash[0] . '|' . $flash[1]));
+                exit;
+            }
             if (($_POST['action'] ?? '') === 'reset') {
                 WaTplLib::reset($k, $l);
                 $flash = ['ok', 'Back to the built-in draft.'];
@@ -126,6 +133,10 @@ if ($flash !== null) { echo '<div class="flash ' . $e($flash[0]) . '">' . $e($fl
     <span class="wt-kpi ok"><b><?= (int) $counts['approved'] ?></b> approved</span>
     <span class="wt-kpi <?= $aiOn ? 'ok' : '' ?>">AI helper: <b><?= $aiOn ? 'on' : 'no key' ?></b></span>
   </div>
+  <?php if ($mayEdit): ?>
+  <form method="post" style="margin:6px 0 10px"><input type="hidden" name="<?= $e($ck) ?>" value="<?= $csrf ?>"><input type="hidden" name="action" value="sync">
+    <button class="btn ghost" type="submit">🔄 Refresh approval status from Meta (AiSensy)</button></form>
+  <?php endif; ?>
   <p class="muted wt-live">Live facts now: <?php foreach (['fare_to_nepal', 'fare_to_india', 'discount_code', 'offer_until', 'support_phone'] as $lv): ?><span class="wt-chip"><?= $e($lv) ?> = <b><?= $e($live[$lv] ?? '— none') ?></b></span><?php endforeach; ?></p>
   <nav class="sg-chips">
     <a class="sg-chip <?= $cat === '' ? 'on' : '' ?>" href="wa-templates.php">All</a>
