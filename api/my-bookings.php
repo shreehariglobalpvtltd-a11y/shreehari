@@ -9,6 +9,12 @@
  * in exactly the shape /api/track.php uses, so the app's bookingFromServer()
  * adapter reads both the same way. Newest first.
  *
+ * 8 Oct 2026 (owner: name + phone is never proof): the whole list is only
+ * for a session that proved the number with the WhatsApp code
+ * (CustomerProfile::verifiedUserId). A plain name + mobile session sees
+ * just the tickets THIS browser session booked (Auth::ownPnrs) and gets
+ * needsOtp:true, so the app can offer "Verify on WhatsApp to see all".
+ *
  * ?tab=upcoming|completed|cancelled|all  (default all)
  * ?page=N                                (20 per page)
  *
@@ -24,10 +30,13 @@ require_once __DIR__ . '/_init.php';
 try {
     $me = Auth::user();
     if ($me === null) {
-        Response::error('Please sign in with your name and mobile number to see your bookings.', 401);
+        Response::error('Please sign in with the code we send on WhatsApp to see your bookings. / बुकिङ हेर्न WhatsApp मा आएको कोडले साइन इन गर्नुहोस्।', 401);
     }
 
     Security::requireRateLimit('my_bookings', Security::clientIp(), 30, 60);
+
+    require_once INCLUDE_PATH . '/customerprofile.php';
+    $verified = CustomerProfile::verifiedUserId() === (int) ($me['id'] ?? 0);
 
     $phone = normalisePhone((string) ($me['phone'] ?? ''));
 
@@ -42,6 +51,35 @@ try {
 
     $params = ['u' => (int) ($me['id'] ?? 0), 'p' => $phone];
     $filter = '';
+
+    /* Who owns what. Verified: the account's bookings (user_id) and every
+       booking on its number. Not verified: only what this browser session
+       booked — each PNR bound as its own placeholder (never interpolated). */
+    $owner = '(b.user_id = :u OR b.contact_phone = :p)';
+    if (!$verified) {
+        $own = Auth::ownPnrs();
+        if ($own === []) {
+            Response::success([
+                'phone'    => $phone,
+                'name'     => (string) ($me['name'] ?? ''),
+                'tab'      => $tab,
+                'page'     => $page,
+                'perPage'  => $perPage,
+                'total'    => 0,
+                'hasMore'  => false,
+                'bookings' => [],
+                'verified' => false,
+                'needsOtp' => true,
+            ]);
+        }
+        $params = [];
+        $marks  = [];
+        foreach (array_values($own) as $i => $p) {
+            $marks[]         = ':own' . $i;
+            $params['own' . $i] = $p;
+        }
+        $owner = 'b.pnr IN (' . implode(', ', $marks) . ')';
+    }
 
     /* "Upcoming" is about the JOURNEY, not the booking row: a confirmed
        ticket for tomorrow is upcoming, the same ticket next week is
@@ -66,7 +104,7 @@ try {
 
     $total = (int) Database::scalar(
         "SELECT COUNT(*) FROM bookings b
-          WHERE (b.user_id = :u OR b.contact_phone = :p){$filter}",
+          WHERE {$owner}{$filter}",
         $params,
         0
     );
@@ -77,7 +115,7 @@ try {
        rule admin/activity-log.php:99-104 follows. */
     $rows = Database::fetchAll(
         "SELECT b.pnr FROM bookings b
-          WHERE (b.user_id = :u OR b.contact_phone = :p){$filter}
+          WHERE {$owner}{$filter}
           ORDER BY b.created_at DESC
           LIMIT {$perPage} OFFSET {$offset}",
         $params
@@ -86,7 +124,8 @@ try {
     $list = [];
     foreach ($rows as $row) {
         $detail = BookingService::detail((string) $row['pnr']);
-        if ($detail !== null) {
+        // The walk-in placeholder 0000000000 is never anybody's own booking.
+        if ($detail !== null && !isPlaceholderPhone((string) ($detail['contact_phone'] ?? ''))) {
             $list[] = shg_customer_payload($detail);
         }
     }
@@ -100,6 +139,10 @@ try {
         'total'    => $total,
         'hasMore'  => ($offset + count($list)) < $total,
         'bookings' => $list,
+        'verified' => $verified,
+        // true = only this browser's own tickets are listed; the WhatsApp
+        // code unlocks every booking on the number
+        'needsOtp' => !$verified,
     ]);
 } catch (Throwable $e) {
     Response::serverError($e);

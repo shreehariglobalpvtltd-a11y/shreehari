@@ -874,8 +874,18 @@ final class QuickTicket
         if ($phone === '' || !Security::isValidPhone($phone)) {
             throw new RuntimeException('Enter a valid 10-digit mobile number — the ticket goes to that WhatsApp. / सही १० अंकको मोबाइल नम्बर लेख्नुहोस् — टिकट त्यही WhatsApp मा जान्छ।');
         }
-        $country = strtoupper((string) ($input['country'] ?? ''));
-        if ($country !== 'NP' && $country !== 'IN') {
+        /* Where the WhatsApp ticket goes (D4-05, 8 Oct 2026). India and Nepal
+           share 10-digit mobiles, so: the country the passenger picked wins;
+           else a signed-in account's own country (booked against its own
+           number above — a +977 account was being stamped +91 here); else a
+           typed +977 prefix; else India, as before. */
+        $country = strtoupper(trim((string) ($input['country'] ?? '')));
+        $country = in_array($country, ['NP', '977'], true) ? 'NP' : (in_array($country, ['IN', '91'], true) ? 'IN' : '');
+        if ($country === '' && $user !== null && (int) ($user['id'] ?? 0) > 0) {
+            $acc     = (string) Database::scalar('SELECT country_code FROM users WHERE id = :id LIMIT 1', ['id' => (int) $user['id']], '');
+            $country = $acc === '977' ? 'NP' : ($acc === '91' ? 'IN' : '');
+        }
+        if ($country === '') {
             $country = (str_starts_with($digitsAll, '977') && strlen($digitsAll) === 13) ? 'NP' : 'IN';
         }
         $idType = $country === 'NP' ? 'Nepali Citizenship' : '';
@@ -1005,24 +1015,32 @@ final class QuickTicket
      * mistake may cancel their own pay-on-boarding Quick Ticket within
      * quick_ticket_undo_min minutes (default 10) at no charge — nothing has
      * been paid, so nothing is refunded and the seats simply go back. Only
-     * the session that owns the number may do it; a pending or already
-     * paid booking, or one older than the window, goes through the normal
+     * a session that owns the ticket may do it — Auth::customerMayOpen():
+     * the browser that booked it, or an OTP-verified owner (8 Oct 2026:
+     * a typed name + mobile is never proof). A pending or already paid
+     * booking, or one older than the window, goes through the normal
      * cancel flow with its refund slabs.
      *
-     * @param array<string, mixed> $user Auth::user()
+     * @param array<string, mixed>|null $user Auth::user() (null for a guest who booked in this session)
      * @return array<string, mixed>
      * @throws RuntimeException with a passenger-safe message
      */
     public static function customerUndo(string $pnr, ?array $user): array
     {
-        $pnr = strtoupper(trim($pnr));
-        if ($user === null || normalisePhone((string) ($user['phone'] ?? '')) === '') {
-            throw new RuntimeException('Sign in with the mobile number on the ticket to undo it. / टिकटको मोबाइल नम्बरले sign in गर्नुहोस्।');
-        }
+        $pnr     = strtoupper(trim($pnr));
         $booking = BookingService::findByPnr($pnr);
-        if ($booking === null || isPlaceholderPhone((string) ($booking['contact_phone'] ?? ''))
-            || normalisePhone((string) ($booking['contact_phone'] ?? '')) !== normalisePhone((string) $user['phone'])) {
+        if ($booking === null || isPlaceholderPhone((string) ($booking['contact_phone'] ?? ''))) {
             throw new RuntimeException('That ticket is not on this mobile number. / यो टिकट यो नम्बरको होइन।');
+        }
+        if (!Auth::customerMayOpen($booking)) {
+            $mine = $user !== null ? normalisePhone((string) ($user['phone'] ?? '')) : '';
+            if ($mine === '') {
+                throw new RuntimeException('Sign in with the WhatsApp code on the ticket\'s mobile number to undo it, or call the office. / टिकटको मोबाइल नम्बरमा आएको WhatsApp कोडले sign in गर्नुहोस् वा कार्यालयमा फोन गर्नुहोस्।');
+            }
+            if ($mine !== normalisePhone((string) ($booking['contact_phone'] ?? ''))) {
+                throw new RuntimeException('That ticket is not on this mobile number. / यो टिकट यो नम्बरको होइन।');
+            }
+            throw new RuntimeException('Verify your number with the WhatsApp code to undo this ticket, or call the office. / यो टिकट undo गर्न WhatsApp कोडले नम्बर पुष्टि गर्नुहोस् वा कार्यालयमा फोन गर्नुहोस्।');
         }
         if ((string) $booking['status'] !== 'confirmed' || (int) ($booking['is_cod'] ?? 0) !== 1) {
             throw new RuntimeException('Only a pay-on-boarding ticket can be undone here — use Cancel on the ticket instead. / यो टिकट यहाँबाट undo हुँदैन — Cancel प्रयोग गर्नुहोस्।');

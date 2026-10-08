@@ -189,6 +189,13 @@ try {
 
     $booking = BookingService::create($request, $seller);
 
+    /* 8 Oct 2026: the browser that just booked may open THIS ticket (image,
+       verify, My Bookings, undo/cancel) without a code — and nothing else on
+       the number. Counter sales are the desk's, never the passenger's session. */
+    if ($seller === null) {
+        Auth::rememberOwnPnr((string) ($booking['pnr'] ?? ''));
+    }
+
     // 5 Oct 2026: the desk ticked "WhatsApp request" - this sale began as a
     // WhatsApp message, so it carries the WHATSAPP channel tag (never fails a sale).
     if ($seller !== null && !empty($input['viaWhatsapp'])) {
