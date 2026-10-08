@@ -166,8 +166,11 @@ function renderResults(instant) {
          it is one we can stand behind; otherwise name the destination and say
          the time is being confirmed, rather than inventing one. */
       const arrKnown = !!(r.arrTime && String(r.arrTime).trim() && r.duration && String(r.duration).trim());
+      /* Every stop of this service, Rupaidiha included, is in India, so the
+         arrival is India time — the same rule as the server ticket
+         (includes/ticket.php). It used to say NPT, 15 min off (D3-11). */
       const arrLabel = arrKnown
-        ? esc(r.arrTime) + ' <small>NPT</small>' + dayBadge
+        ? esc(r.arrTime) + ' <small>IST</small>' + dayBadge
         : '<span title="Arrival time is being confirmed by the office">' + esc(r.to || 'Rupaidiha') + '</span>';
       const arrDuration = arrKnown ? r.duration : '';
 
@@ -715,8 +718,13 @@ function pickSeatsSmart(floors, n, patient, gender) {
   const isChosen = (s) => chosen.indexOf(s) >= 0;
   const cfg = seatAiCfg();
   const score = (s) => {
-    // preferred floor, then rows rear-to-front (Smart Settings; 'front' = the old front-first walk)
-    let sc = -s.fi * 40 - (cfg.rear ? (s.rn - 1 - s.ri) : s.ri) * 1.5;
+    /* preferred floor, then rows rear-to-front (Smart Settings; 'front' = the
+       old front-first walk). A patient / elderly passenger is always walked
+       FRONT-first, whatever that setting says (8 Oct 2026, D5-07): the door is
+       at the front, and the back row is the longest walk through a moving
+       coach. Only the ORDER changes — seatFitsGender() in the loop below is
+       still the hard filter, so the women-safety rules always win. */
+    let sc = -s.fi * 40 - (patient ? s.ri * 3 : (cfg.rear ? (s.rn - 1 - s.ri) : s.ri) * 1.5);
     const mates = byUnit[unitOf(s)] || [];
     // a mate counts only if THIS passenger's party may sit there too
     const freeMates = mates.filter(m => m !== s && isFree(m) && !isChosen(m) && seatFitsGender(m.btn, g));
@@ -739,6 +747,8 @@ function pickSeatsSmart(floors, n, patient, gender) {
     const isWindow = s.i === 0 || s.i === s.last;
     if (patient) sc += isAisle ? 5 : (isWindow ? 0 : 1);
     else if (n === 1) sc += isWindow ? 2 : (isAisle ? 1 : 0);
+    // the easy-access berth suits a patient best — reachable only when the gender filter allowed it
+    if (patient && s.btn.classList.contains('easy')) sc += 8;
     return sc;
   };
   for (let k = 0; k < n; k++) {
@@ -778,11 +788,47 @@ function seatAiCommit(grid, want) {
    an explicit pick always wins and clears the rings. */
 function seatAiRecommendPaint(grid) {
   grid = grid || $('#seatGrid'); if (!grid) return;
-  $$('.seat.ai-rec', grid).forEach(b => b.classList.remove('ai-rec'));
+  // the spoken label follows the ring (D5-05)
+  $$('.seat.ai-rec', grid).forEach(b => { b.classList.remove('ai-rec'); seatAria(b); });
   if (!seatAiCfg().on || !Flow.route || Flow.seats.length) return;
   if (Flow.route.type === 'sleeper' && Flow.bookingType === 'private') return;
   const want = Math.max(1, Math.min(parseInt(Flow.pax, 10) || 1, CONFIG.booking.maxSeats));
-  pickSeatsSmart(seatFloorsInOrder(grid), want, !!Flow.patient, seatGenderNow()).forEach(b => b.classList.add('ai-rec'));
+  pickSeatsSmart(seatFloorsInOrder(grid), want, !!Flow.patient, seatGenderNow()).forEach(b => { b.classList.add('ai-rec'); seatAria(b); });
+}
+/* Screen-reader label of one berth (8 Oct 2026, D5-05 / D2-03): the label,
+   the floor, the women-only rule, a cabin lock, easy access, then the state —
+   in the passenger's language. Pure (tests lift it): o = { disp, floor
+   'L'|'U'|'', fem, cab 'f'|'m'|'', easy, pvt, rec, state, why }. */
+function seatAriaText(o) {
+  const parts = [tf('ariaSeat', { s: o.disp })];
+  if (o.floor === 'L' || o.floor === 'U') parts.push(t(o.floor === 'U' ? 'deckU' : 'deckL'));
+  if (o.fem) parts.push(t('ariaWomenOnly'));
+  if (o.cab === 'f') parts.push(t('ariaWomenCabin'));
+  else if (o.cab === 'm') parts.push(t('ariaMenCabin'));
+  if (o.easy) parts.push(t('lgAccessible'));
+  if (o.pvt) parts.push(t('lgPrivate'));
+  if (o.rec) parts.push(t('lgRec'));
+  parts.push(t({ emerg: 'ariaEmerg', xmode: 'ariaXmode', off: 'ariaOff', held: 'lgHeld', booked: 'lgBkd', sel: 'lgSel' }[o.state] || 'lgAvail'));
+  if (o.why) parts.push(o.why);
+  return parts.join(', ');
+}
+/* Recompute a berth's label from its classes — after a tap, a ring, a tier
+   change — so it never keeps saying "available" once it is selected. */
+function seatAria(btn) {
+  if (!btn || !btn.classList) return;
+  const c = btn.classList, id = btn.getAttribute('data-id') || '';
+  const state = c.contains('reserved') ? 'emerg' : c.contains('xmode') ? 'xmode' : c.contains('off') ? 'off'
+    : c.contains('hold') ? 'held' : c.contains('bkd') ? 'booked' : c.contains('sel') ? 'sel' : 'avail';
+  const open = state === 'avail' || state === 'sel';
+  const label = seatAriaText({
+    disp: btn.getAttribute('data-disp') || btn.textContent.trim(),
+    floor: c.contains('slpr') ? id.charAt(0) : '',
+    fem: c.contains('fem') && open,
+    cab: c.contains('u-fem') ? 'f' : (c.contains('u-male') ? 'm' : ''),
+    easy: c.contains('easy') && open, pvt: c.contains('pvt') && open, rec: c.contains('ai-rec') && state === 'avail',
+    state: state, why: btn.getAttribute('aria-disabled') === 'true' ? (btn.getAttribute('data-why') || '') : ''
+  });
+  if (btn.getAttribute('aria-label') !== label) btn.setAttribute('aria-label', label);
 }
 /* The passenger changed Woman ↔ Man after seats were picked: every berth the
    new rule forbids is released and the engine re-seats the same party. */
@@ -818,7 +864,7 @@ function suggestSeats(n) {
   const ctxDate = (typeof legCtx === 'function' && legCtx()) ? legCtx().date : Flow.date;
   Flow.seats.slice().forEach(sid => {
     const b = grid.querySelector('.seat[data-id="' + sid + '"]');
-    if (b) { b.classList.remove('sel'); b.setAttribute('aria-pressed', 'false'); }
+    if (b) { b.classList.remove('sel'); b.setAttribute('aria-pressed', 'false'); seatAria(b); }
     unlockSeat(r.id, ctxDate, sid);
   });
   Flow.seats = [];
@@ -937,10 +983,18 @@ function nearMeWire(sel) {
   const s = (window.SHG_BOOT && window.SHG_BOOT.settings) || {};
   const on = !(s.nearme_on === false || s.nearme_on === 0 || s.nearme_on === '0');
   const maxKm = Math.max(1, parseInt(s.nearme_max_km, 10) || 150);
-  const pts = Array.prototype.slice.call(sel.options).map(o => {
-    const p = parseBP(o.value);
-    return (o.value !== BOARD_OTHER && p.lat !== null && p.lng !== null) ? { value: o.value, name: p.name, lat: p.lat, lng: p.lng } : null;
-  }).filter(Boolean);
+  const stops = Array.prototype.slice.call(sel.options)
+    .filter(o => o.value && o.value !== BOARD_OTHER)
+    .map(o => ({ value: o.value, bp: parseBP(o.value) }));
+  const pts = stops.filter(x => x.bp.lat !== null && x.bp.lng !== null)
+    .map(x => ({ value: x.value, name: x.bp.name, lat: x.bp.lat, lng: x.bp.lng }));
+  /* Stops the office has not given a map position yet. They cannot be
+     measured (coordinates are never guessed), so while any exist the nearest
+     MEASURED stop is only suggested — it used to be selected, which changed
+     the pickup time and fare for someone standing at an unmeasured stop
+     (8 Oct 2026, D7-10). With every stop measured it is selected as before. */
+  const unchecked = stops.filter(x => x.bp.lat === null || x.bp.lng === null).map(x => x.bp.name);
+  const uncheckedLine = unchecked.length ? '<small class="bp-unchecked">' + esc(tf('nearMeUnchecked', { list: unchecked.join(', ') })) + '</small>' : '';
   const show = on && !!navigator.geolocation && pts.length > 0;
   btn.classList.toggle('hide', !show);
   if (!show) { note.classList.add('hide'); return; }
@@ -953,15 +1007,32 @@ function nearMeWire(sel) {
       const la = pos.coords.latitude, lo = pos.coords.longitude;
       let best = null;
       pts.forEach(p => { const km = haversineKm(la, lo, p.lat, p.lng); if (!best || km < best.km) best = { p: p, km: km }; });
-      if (!best || best.km > maxKm) { say(esc(tf('nearMeNone', { km: maxKm }))); return; }
-      if (sel.value !== best.p.value) {
-        sel.value = best.p.value;
-        sel.dispatchEvent(new Event('change', { bubbles: true }));
-      }
+      if (!best || best.km > maxKm) { say(esc(tf('nearMeNone', { km: maxKm })) + uncheckedLine); return; }
       const km = best.km < 10 ? best.km.toFixed(1) : String(Math.round(best.km));
-      say(esc(tf('nearMeFound', { s: best.p.name, km: km }))
-        + ' <a href="https://www.google.com/maps/dir/?api=1&destination=' + best.p.lat + ',' + best.p.lng
-        + '" target="_blank" rel="noopener">🗺️ ' + esc(t('nearMeMaps')) + '</a>');
+      const maps = ' <a href="https://www.google.com/maps/dir/?api=1&destination=' + best.p.lat + ',' + best.p.lng
+        + '" target="_blank" rel="noopener">🗺️ ' + esc(t('nearMeMaps')) + '</a>';
+      const choose = () => {
+        if (sel.value !== best.p.value) {
+          sel.value = best.p.value;
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      };
+      if (!unchecked.length) {
+        choose();
+        say(esc(tf('nearMeFound', { s: best.p.name, km: km })) + maps);
+        return;
+      }
+      const already = sel.value === best.p.value;
+      say(esc(tf('nearMeSuggest', { s: best.p.name, km: km })) + maps
+        + (already ? ' <b class="bp-set">' + esc(tf('nearMeSet', { s: best.p.name })) + '</b>'
+                   : ' <button type="button" class="bp-use">📍 ' + esc(t('nearMeUse')) + '</button>')
+        + uncheckedLine);
+      const use = note.querySelector('.bp-use');
+      if (use) use.onclick = () => {
+        choose();
+        const b = document.createElement('b'); b.className = 'bp-set'; b.textContent = tf('nearMeSet', { s: best.p.name });
+        use.replaceWith(b);
+      };
     }, () => { btn.disabled = false; say(esc(t('nearMeDenied'))); },
     { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 });
   };
@@ -1182,19 +1253,27 @@ function renderSeats(instant) {
     const femBooked = femaleBookedSeats(r.id, ctx.date);
     const unitLocks = unitGenderLocksFor(r.id, ctx.date);   // Feature A cabin locks
     const crossSet = ((SeatSrv.snap(r.id, ctx.date, Flow.bookingType) || SeatSrv.snap(r.id, ctx.date) || {}).crossMode) || [];
+    const oosSet = (typeof outOfServiceFor === 'function') ? outOfServiceFor(r.id, ctx.date) : [];
+    const pvtMode = r.type === 'sleeper' && Flow.bookingType === 'private';
     const seatBtn = (id, slpr) => {
       // Staff / emergency reserved berth — never selectable by a customer; the
       // server rejects it too. Takes precedence over every other state so it
       // always reads as reserved. Includes the mode-aware emergency berth
       // (Private Sleeper -> L3) alongside the permanent staff pair (sharing L5/L6).
       const rsv = reservedSet.indexOf(id) >= 0;
-      const bk = booked.indexOf(id) >= 0;
+      /* Out of service (the office's seat block): "not available", never the
+         amber "held by someone else" — nobody is going to release it (D5-M4). */
+      const off = !rsv && oosSet.indexOf(id) >= 0;
+      const bk = booked.indexOf(id) >= 0 || off;
       const hd = !bk && !rsv && held.indexOf(id) >= 0;
       const sl = Flow.seats.indexOf(id) >= 0;
       const fem = !rsv && (femSet.indexOf(id) >= 0 || femBooked[id]);
       // A free bed inherits its cabin's gender lock, so the map shows the
       // rule the server will enforce at checkout. (Part 2 · Feature A)
-      const ul = (!bk && !hd && !rsv) ? (unitLocks[unitKeyJS(id)] || 'none') : 'none';
+      /* A PRIVATE cabin is exempt from that rule on the server
+         (Seats::isSharedBooking), and unitKeyJS() reads a private label as a
+         bed — it painted the lock on the wrong cabin (8 Oct 2026, D5-09). */
+      const ul = (!bk && !hd && !rsv && !pvtMode) ? (unitLocks[unitKeyJS(id)] || 'none') : 'none';
       const uCls = ul === 'female_only' ? ' u-fem' : (ul === 'male_only' ? ' u-male' : '');
       const uTitle = ul === 'female_only' ? ' — 👩 women-only cabin · महिला मात्र' : (ul === 'male_only' ? ' — 👨 men-only cabin · पुरुष मात्र' : '');
       const rTitle = rsv ? ' — 🚨 EMERGENCY · permanently reserved · आपतकालीन सिट (बुक हुँदैन)' : '';
@@ -1206,13 +1285,20 @@ function renderSeats(instant) {
          closes both sharing beds, one sharing bed closes the whole private
          cabin. Painted distinctly so it never reads as a plain sold seat
          (SHG AI BRAIN 1.3 / 1.4, 10 Sep 2026). */
-      const xm = bk && crossSet.indexOf(id) >= 0;
+      const xm = bk && !off && crossSet.indexOf(id) >= 0;
       const xTitle = xm ? (pvt ? ' — ⇄ a bed of this cabin is sold as sharing · साझा सिट बिकेको' : ' — ⇄ sold as a private cabin · निजी केबिन बिकेको') : '';
-      let cls = 'seat' + (slpr ? ' slpr' : '') + (rsv ? ' reserved' : '') + (bk || hd ? ' bkd' : '') + (xm ? ' xmode' : '') + (hd ? ' hold' : '') + (sl ? ' sel' : '') + (fem ? ' fem' : '') + (pvt ? ' pvt' : '') + uCls;
+      const oTitle = off ? ' — ' + t('ariaOff') : '';
+      let cls = 'seat' + (slpr ? ' slpr' : '') + (rsv ? ' reserved' : '') + (bk || hd ? ' bkd' : '') + (off ? ' off' : '') + (xm ? ' xmode' : '') + (hd ? ' hold' : '') + (sl ? ' sel' : '') + (fem ? ' fem' : '') + (pvt ? ' pvt' : '') + uCls;
       /* Visible label is the row-letter grid id (LA1, UB3…); data-id stays the
          canonical L1/U7 the hold + sale + server speak. */
       const disp = seatLabel(id, r.type, Flow.bookingType || 'sharing');
-      return `<button type="button" class="${cls}" data-id="${id}" ${bk || hd || rsv ? 'disabled' : ''} aria-pressed="${sl ? 'true' : 'false'}" title="Seat ${disp}${rTitle}${uTitle}${xTitle}" aria-label="Seat ${disp}${rsv ? ' (emergency seat, cannot be booked)' : xm ? ' (taken in the other seat type)' : hd ? ' (held)' : bk ? ' (booked)' : sl ? ' (selected)' : ' (available)'}${uTitle}">${disp}</button>`;
+      /* Spoken label from parts, in the passenger's language (D5-05): floor,
+         women-only, cabin lock, then the state. seatAria() keeps it current. */
+      const open = !bk && !hd && !rsv;
+      const aria = seatAriaText({ disp: disp, floor: slpr ? id.charAt(0) : '', fem: fem && open,
+        cab: ul === 'female_only' ? 'f' : (ul === 'male_only' ? 'm' : ''), pvt: pvt && open,
+        state: rsv ? 'emerg' : xm ? 'xmode' : off ? 'off' : hd ? 'held' : bk ? 'booked' : sl ? 'sel' : 'avail' });
+      return `<button type="button" class="${cls}" data-id="${id}" data-disp="${esc(disp)}" ${bk || hd || rsv ? 'disabled' : ''} aria-pressed="${sl ? 'true' : 'false'}" title="Seat ${disp}${rTitle}${uTitle}${xTitle}${oTitle}" aria-label="${esc(aria)}">${disp}</button>`;
     };
     const bt = Flow.bookingType || 'sharing';
     /* Real directional per-person fare — what the server will actually
@@ -1223,6 +1309,7 @@ function renderSeats(instant) {
     const PP_OFF  = PP_OWN > 0 ? PP_OWN : sharingBasePP(ctx.to);
     const PP_ON   = PP_OWN > 0 ? PP_OWN : sharingPP(ctx.to, true);
     const PP_SAVE = Math.max(0, PP_OFF - PP_ON);
+    const PP_PCT  = PP_OFF > 0 ? Math.round(PP_SAVE * 100 / PP_OFF) : 0;   // the real saving, not a printed "5%"
 
     /* Physical layout — server-owned since 29 Aug 2026. `layout.decks[i].rows`
        gives {left, aisle, right} for each row, and layout.seatIds is the
@@ -1266,8 +1353,8 @@ function renderSeats(instant) {
             const leftN  = (firstRow.left  || []).length;
             const rightN = (firstRow.right || []).length;
             rowsHtml += bt === 'sharing'
-              ? '<div class="berth-labels berth-labels6"><span class="bl-dbl">🛏️ ' + leftN + ' seats — अलग-अलग (1-1) बुक</span><span class="bl-aisle"></span><span class="bl-sgl">🛏️ ' + rightN + ' seats</span></div>'
-              : '<div class="berth-labels"><span class="bl-dbl">👑 Double Cabin · २ जना (2)</span><span class="bl-aisle"></span><span class="bl-sgl">🛏️ Single Cabin (1)</span></div>';
+              ? '<div class="berth-labels berth-labels6"><span class="bl-dbl">🛏️ ' + esc(tf('berthsN', { n: leftN })) + ' — ' + esc(t('bookEach')) + '</span><span class="bl-aisle"></span><span class="bl-sgl">🛏️ ' + esc(tf('berthsN', { n: rightN })) + '</span></div>'
+              : '<div class="berth-labels"><span class="bl-dbl">👑 ' + esc(t('tqDouble')) + '</span><span class="bl-aisle"></span><span class="bl-sgl">🛏️ ' + esc(t('tqSingle')) + '</span></div>';
           }
           deck.rows.forEach((row, ri) => {
             const left  = row.left  || [];
@@ -1282,14 +1369,17 @@ function renderSeats(instant) {
                 + right.map(id => seatBtn(id, true)).join('')
                 + '</div>';
             } else {
-              /* Sharing row card — per-person rate + live free counter. Row
-                 label comes from the server (row.label = "Row A" .. "Row F"). */
-              const rowLabel = row.label || ('Row ' + rowNo);
+              /* Sharing row card — per-person rate + live free counter. The row
+                 name is built here in the passenger's language from the same
+                 letter the aisle and the berths carry (the server's English
+                 row.label is not printed — D2-M3). No 🚪 on every row: the
+                 door is marked once, at the lower deck's front (D5-07). */
+              const rowLabel = tf('rowLbl', { r: rowNo });
               rowsHtml += '<div class="cabin-card">'
-                + '<div class="cab-head"><span class="cab-no">🚪 ' + esc(rowLabel) + '</span><span class="cab-cap">👥 ' + inThisRow + ' berth' + (inThisRow > 1 ? 's' : '') + ' · अलग-अलग बुक</span><span class="cab-price">'
+                + '<div class="cab-head"><span class="cab-no">' + esc(rowLabel) + '</span><span class="cab-cap">👥 ' + esc(tf('berthsN', { n: inThisRow })) + ' · ' + esc(t('bookEach')) + '</span><span class="cab-price">'
                 + (PP_SAVE > 0 ? '<s class="pp-was">₹' + PP_OFF.toLocaleString('en-IN') + '</s> ' : '')
-                + '₹' + PP_ON.toLocaleString('en-IN') + ' /person'
-                + (PP_SAVE > 0 ? '<b class="pp-off">5% OFF</b>' : '')
+                + '₹' + PP_ON.toLocaleString('en-IN') + ' ' + esc(t('perPerson'))
+                + (PP_SAVE > 0 ? '<b class="pp-off">' + esc(tf('onlineOff', { p: PP_PCT })) + '</b>' : '')
                 + '</span><span class="cab-free"></span></div>'
                 + '<div class="seat-row ' + cls + '">'
                 + left.map(id => seatBtn(id, true)).join('')
@@ -1299,8 +1389,9 @@ function renderSeats(instant) {
             }
           });
           /* Both decks are rendered; applyDeckPref() hides one only when the
-             traveller asked for a single floor. */
-          return '<div class="deck-block" data-deck="' + esc(deck.key) + '">' + deckHeadHTML(deck.key, deck.label, r.type) + rowsHtml + '</div>';
+             traveller asked for a single floor. Each floor is a named group
+             for screen readers (D5-05). */
+          return '<div class="deck-block" data-deck="' + esc(deck.key) + '" role="group" aria-label="' + esc(t(deck.key === 'U' ? 'deckU' : 'deckL')) + '">' + deckHeadHTML(deck.key, deck.label, r.type) + rowsHtml + '</div>';
         }).join('');
       } else {
         /* ⚠️ LEGACY FALLBACK — used only when the server layout is missing
@@ -1335,10 +1426,10 @@ function renderSeats(instant) {
               const left  = ids.slice(0, 4);
               const right = ids.slice(4, 6);
               rows += '<div class="cabin-card">'
-                + '<div class="cab-head"><span class="cab-no">🚪 Row ' + seatRowLetterJS(row - 1) + '</span><span class="cab-cap">👥 ' + inThisRow + ' berth' + (inThisRow > 1 ? 's' : '') + ' · अलग-अलग बुक</span><span class="cab-price">'
+                + '<div class="cab-head"><span class="cab-no">' + esc(tf('rowLbl', { r: seatRowLetterJS(row - 1) })) + '</span><span class="cab-cap">👥 ' + esc(tf('berthsN', { n: inThisRow })) + ' · ' + esc(t('bookEach')) + '</span><span class="cab-price">'
                 + (PP_SAVE > 0 ? '<s class="pp-was">₹' + PP_OFF.toLocaleString('en-IN') + '</s> ' : '')
-                + '₹' + PP_ON.toLocaleString('en-IN') + ' /person'
-                + (PP_SAVE > 0 ? '<b class="pp-off">5% OFF</b>' : '')
+                + '₹' + PP_ON.toLocaleString('en-IN') + ' ' + esc(t('perPerson'))
+                + (PP_SAVE > 0 ? '<b class="pp-off">' + esc(tf('onlineOff', { p: PP_PCT })) + '</b>' : '')
                 + '</span><span class="cab-free"></span></div>'
                 + '<div class="seat-row ' + cls + '">'
                 + left.map(function (id) { return seatBtn(id, true); }).join('')
@@ -1347,22 +1438,31 @@ function renderSeats(instant) {
                 + '</div></div>';
             }
           }
-          return '<div class="deck-block" data-deck="' + d + '">' + deckHeadHTML(d, '', r.type) + rows + '</div>';
+          return '<div class="deck-block" data-deck="' + d + '" role="group" aria-label="' + esc(t(d === 'U' ? 'deckU' : 'deckL')) + '">' + deckHeadHTML(d, '', r.type) + rows + '</div>';
         }).join('');
       }
       applyDeckPref(grid);
       $$('.deck-block', grid).forEach(block => {
         const front = document.createElement('div'); front.className = 'coach-end coach-front';
-        front.innerHTML = '<span>' + esc(t('premiumFront')) + '</span><span aria-hidden="true">◉</span>';
+        const door = block.getAttribute('data-deck') === 'U' ? ''
+          : '<span class="coach-door" title="' + esc(t('lgDoor')) + '" aria-label="' + esc(t('lgDoor')) + '" role="img">🚪</span> ';
+        front.innerHTML = '<span>' + door + esc(t('premiumFront')) + '</span><span aria-hidden="true">◉</span>';
         block.insertBefore(front, block.querySelector('.deck-head').nextSibling);
         const rear = document.createElement('div'); rear.className = 'coach-end coach-rear';
         rear.textContent = t('premiumRear'); block.appendChild(rear);
       });
-      /* ♿ lower-deck door-side berth flagged differently-abled friendly (Module B) */
+      /* ♿ lower-deck door-side berth flagged differently-abled friendly (Module B).
+         Which berth it is stays the owner's call (L3). 8 Oct 2026 (D5-06): the
+         badge is a child element, so the ♀ state icon can no longer hide it,
+         and the title keeps "Seat A3" and says women-only when it is — it used
+         to promise "anyone may book" on a berth the server refuses to men. */
       const daBtn = grid.querySelector('.seat[data-id="L3"]');
       if (daBtn && !daBtn.disabled) {
-        daBtn.classList.add('da');
-        daBtn.title = '♿ Differently-abled friendly berth — lower deck, ढोका नजिक · priority for differently-abled passengers (anyone may book)';
+        daBtn.classList.add('easy');
+        if (!daBtn.querySelector('.da-badge')) daBtn.insertAdjacentHTML('beforeend', '<span class="da-badge" aria-hidden="true">♿</span>');
+        daBtn.title = 'Seat ' + (daBtn.getAttribute('data-disp') || 'A3') + ' — ♿ ' + t('daTitle')
+          + (daBtn.classList.contains('fem') ? ' · ' + t('ariaWomenOnly') : '');
+        seatAria(daBtn);
       }
       /* Live availability per cabin card — booked/held berths reduce the count */
       grid.querySelectorAll('.cabin-card').forEach(cc => {
@@ -1370,7 +1470,7 @@ function renderSeats(instant) {
         const free = total - cc.querySelectorAll('.seat:disabled').length;
         const fe = cc.querySelector('.cab-free');
         if (fe) {
-          fe.textContent = free ? (free + '/' + total + ' खाली · free') : 'FULL';
+          fe.textContent = free ? tf('freeOf', { f: free, n: total }) : t('cabFull');
           fe.classList.toggle('cab-full', !free);
         }
       });
@@ -1415,6 +1515,28 @@ function renderSeats(instant) {
     /* Pair auto-select is a PRIVATE-cabin behaviour only —
        sharing seats are always booked अलग-अलग (1-1) */
     const privateCabin = r.type === 'sleeper' && Flow.bookingType === 'private';
+    const picking = Flow.seats.indexOf(id) < 0;
+    /* A private cabin outside the chosen size (a Double pair while "Single"
+       is chosen, or the other way round) explains itself instead of
+       swallowing the tap — keyboard and screen-reader taps included
+       (8 Oct 2026, D5-10). Taking a seat OFF always works. */
+    if (privateCabin && picking && btn.getAttribute('aria-disabled') === 'true') {
+      toast('ℹ️ ' + (btn.getAttribute('data-why') || t(pair ? 'tierNeedDouble' : 'tierNeedSingle')));
+      shgHaptic('error');
+      return;
+    }
+    /* The passenger already said Woman / Man: a berth the server would refuse
+       them is refused here, with the reason, instead of being held for the
+       whole checkout and failing at "Confirm" (D5-M1). Same rule as Seat AI
+       (seatFitsGender). A desk sale is exempt — staff may override there. */
+    if (picking && !(typeof isCounterSale === 'function' && isCounterSale())) {
+      const g = seatGenderNow();
+      if (g && !seatFitsGender(btn, g)) {
+        toast('🚫 ' + tf(btn.classList.contains('u-male') ? 'tMenOnlySeat' : 'tWomenOnlySeat', { s: btn.getAttribute('data-disp') || seatLabel(id, r.type, Flow.bookingType) }));
+        shgHaptic('error');
+        return;
+      }
+    }
     let pairIds = null;
     if (privateCabin && Flow.sharingTier === 'double' && pair) {
       pairIds = pair.getAttribute('data-pair').split(',');            // Double cabin → both berths together
@@ -1422,11 +1544,11 @@ function renderSeats(instant) {
     const toggleSeat = (sid) => {
       const ix = Flow.seats.indexOf(sid);
       const b = grid.querySelector('.seat[data-id="' + sid + '"]');
-      if (ix >= 0) { Flow.seats.splice(ix, 1); if (b) { b.classList.remove('sel'); b.setAttribute('aria-pressed', 'false'); } unlockSeat(r.id, ctx.date, sid); shgHaptic('tap'); }
+      if (ix >= 0) { Flow.seats.splice(ix, 1); if (b) { b.classList.remove('sel'); b.setAttribute('aria-pressed', 'false'); seatAria(b); } unlockSeat(r.id, ctx.date, sid); shgHaptic('tap'); }
       else {
         // At the cap: say so instead of silently ignoring the tap (3 Sep 2026).
         if (Flow.seats.length >= CONFIG.booking.maxSeats) { try { toast(tf('seatNote', { n: CONFIG.booking.maxSeats })); } catch (e) {} shgHaptic('error'); return; }
-        Flow.seats.push(sid); if (b) { b.classList.add('sel'); b.setAttribute('aria-pressed', 'true'); } lockSeat(r.id, ctx.date, sid); shgHaptic('select');
+        Flow.seats.push(sid); if (b) { b.classList.add('sel'); b.setAttribute('aria-pressed', 'true'); seatAria(b); } lockSeat(r.id, ctx.date, sid); shgHaptic('select');
       }
     };
     const idx = Flow.seats.indexOf(id);
@@ -1457,6 +1579,7 @@ function renderSeats(instant) {
       const full = Flow.seats.length >= (whole || CONFIG.booking.maxSeats);
       autoBtn.textContent = whole ? '⚡ ' + tf('seatAutoCabin', { n: whole }) : '⚡ ' + t('seatAutoOne');
       autoBtn.disabled = full || !grid.querySelector('.seat:not([disabled]):not(.sel)');
+      autoBtn.title = autoBtn.disabled ? t(full ? 'seatAutoFull' : 'seatNoneFree') : '';
       return target;
     };
 
@@ -1546,11 +1669,25 @@ function renderSeats(instant) {
 
   updateSeatSummary();
   startHoldTicker();
+  /* Hold keep-alive on the seat page too (8 Oct 2026, D5-01): a passenger
+     who is still choosing (touched the page in the last 5 minutes, tab in
+     front) has the same holds re-asserted every 8 minutes, exactly like the
+     checkout (07-checkout.js). An idle tab still lapses by design. Armed once
+     — the poll's repaints call renderSeats() far more often than 8 minutes. */
+  if (!window._shgSeatKeep) {
+    window._shgSeatKeep = setInterval(function () {
+      if ((location.hash || '') !== '#/seats') { clearInterval(window._shgSeatKeep); window._shgSeatKeep = null; return; }
+      if (document.hidden) return;
+      if (typeof LAST_ACTIVITY !== 'undefined' && (Date.now() - LAST_ACTIVITY) > 5 * 60000) return;
+      if ((DB.locks || []).some(l => l.sid === SID)) SeatLock.schedule();
+    }, 8 * 60000);
+  }
   /* Keep this map honest while it is open: another customer's booking
      should turn a berth red here without the passenger refreshing. Stops
      itself when the view or the tab goes away. */
   SeatPoll.start(r.id, ctx.date);
   $('#continueBtn').onclick = () => {
+    const hadPick = Flow.seats.length > 0;
     if (!Flow.seats.length && !seatAiCfg().on) { toast(t('tPickSeat')); return; }
     if (!Flow.seats.length) {
       /* 8 Oct 2026 "Auto seat → Continue": nothing tapped → the Seat AI
@@ -1573,6 +1710,19 @@ function renderSeats(instant) {
             : (Flow.seats.length - needPax) + ' extra — हटाउनुहोस् / हटाएँ'));
         return;
       }
+    }
+    /* Searched for N passengers but tapped fewer berths (8 Oct 2026, D5-15):
+       ask once, offer "Auto-pick the rest"; a second Continue goes on with
+       what is picked. Sharing / seater, outbound leg, not at a desk. */
+    const wantPax = Math.min(parseInt(Flow.pax, 10) || 1, CONFIG.booking.maxSeats);
+    const askKey = r.id + '|' + ctx.date + '|' + Flow.seats.join(',');
+    if (hadPick && Flow.legIndex === 0 && wantPax > Flow.seats.length
+        && !(r.type === 'sleeper' && Flow.bookingType === 'private')
+        && !(typeof isCounterSale === 'function' && isCounterSale())
+        && Flow._paxAsked !== askKey) {
+      Flow._paxAsked = askKey;
+      seatPaxAsk(wantPax);
+      return;
     }
     if (Flow.tripType === 'round' && Flow.legIndex === 1 && Flow.legs[0] && Flow.seats.length !== Flow.legs[0].seats.length) {
       toast(tf('tRetCount', { n: Flow.legs[0].seats.length })); return;
@@ -1614,6 +1764,20 @@ function renderSeats(instant) {
   $('#seatBackBtn').onclick = () => { location.hash = '#/results'; };
 }
 
+/* "You searched N passengers but picked M" (D5-15) — shown in the fixed bar
+   above Continue, with one button that lets Seat AI seat the rest. */
+function seatPaxAsk(want) {
+  const box = $('#seatPaxAsk'); if (!box) return;
+  box.innerHTML = '<span>' + esc(tf('paxFewer', { n: want, m: Flow.seats.length })) + '</span> '
+    + '<button type="button" class="btn btn-ghost btn-sm" id="seatPaxAuto">' + esc(t('paxAutoRest')) + '</button>';
+  box.hidden = false;
+  const go = $('#seatPaxAuto');
+  if (go) go.onclick = () => {
+    seatAiCommit($('#seatGrid'), want);
+    box.hidden = true;
+    if (Flow.seats.length) toast('⚡ ' + tf('seatAutoDone', { s: seatLabelJoin(Flow.seats, Flow.route && Flow.route.type, Flow.bookingType) }));
+  };
+}
 /* Legs already finished + the one being picked right now */
 function currentLegs() {
   const legs = Flow.legs.slice(0, Flow.legIndex);
@@ -1652,9 +1816,13 @@ function updateSeatSummary() {
 
   let recapTotal = 0;
   if (isSleeper && Flow.seats.length) {
-    const seatLabels = Flow.seats;
-    const hasDouble = seatLabels.some(s => /^D/i.test(s));
-    const cabinType = hasDouble ? 'double' : 'single';
+    /* Private: the cabin type is the chosen tier — the same source Continue
+       posts as cabinType and the server prices (booking.php). The old /^D/
+       test never matched an L/U id, so a Double cabin read "Single x2"
+       (8 Oct 2026, D5-08). Sharing is per berth. Display only. */
+    const cabinType = Flow.bookingType === 'private'
+      ? ((SHARING_TIERS[Flow.sharingTier === 'triple' ? 'double' : Flow.sharingTier] || {}).cabin || 'single')
+      : 'single';
     const cf = calcCabinFare(cabinType, Flow.bookingType, Flow.seats.length, true, Flow.route && Flow.route.to, Flow.fareOverride, curStopFare());
     recapTotal = cf.total;
     let rows = '<div class="sum-row"><span>' + cf.emoji + ' ' + cf.label + '</span><b>' + inr(cf.total) + '</b></div>';
@@ -1693,6 +1861,11 @@ function updateSeatSummary() {
   const aiOn = seatAiCfg().on;
   if (!aiOn && !Flow.seats.length) cBtn.disabled = true;
   cBtn.textContent = (Flow.seats.length || !aiOn) ? t('btnContinue') : t('btnAutoContinue');
+  // a disabled Continue says why (no fare / no free berth / nothing picked)
+  cBtn.title = !cBtn.disabled ? '' : (Flow.seats.length ? t('fareNA') : (aiOn ? t('seatNoneFree') : t('tPickSeat')));
+  /* The "fewer seats than passengers" prompt goes away once it no longer applies. */
+  const ask = $('#seatPaxAsk');
+  if (ask && !ask.hidden && (!Flow.seats.length || Flow.seats.length >= (parseInt(Flow.pax, 10) || 1))) ask.hidden = true;
   seatAiRecommendPaint();
   seatQuickSync();
   updateTierUI();
@@ -1720,7 +1893,11 @@ function seatQuickSync() {
   seatQuickGender(q.gender || (me && me.gender) || '');
 }
 function seatQuickGender(g) {
-  $$('#seatQuick [data-sqg], #seatAiBar [data-sqg]').forEach(b => b.classList.toggle('on', b.getAttribute('data-sqg') === g));
+  $$('#seatQuick [data-sqg], #seatAiBar [data-sqg]').forEach(b => {
+    const on = b.getAttribute('data-sqg') === g;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
 }
 function seatQuickSave() {
   const on = $('#seatQuick [data-sqg].on') || $('#seatAiBar [data-sqg].on');
@@ -1820,6 +1997,8 @@ function updateTierUI() {
   /* Tier/cabin pills now belong to PRIVATE only (Single Cabin / Double Cabin).
      Sharing = हरेक seat अलग-अलग (1-1) बुक — no zones, no pairing, no gate. */
   const active = r && r.type === 'sleeper' && mode === 'private';
+  const quick = $('#tierQuick');
+  if (quick) quick.classList.toggle('hide', !active);
   if (!active) {
     box.classList.add('hide');
     if (view) view.removeAttribute('data-tier');
@@ -1852,12 +2031,23 @@ function updateTierUI() {
     : '🤝 Sharing tier · साझा टियर छान्नुहोस् · शेयरिंग टियर चुनें';
   box.classList.remove('hide');
   if (view) view.setAttribute('data-tier', effTier);
-  $$('.tier-pill', box).forEach(p => {
+  $$('.tier-pill', box).concat(quick ? $$('.tier-pill', quick) : []).forEach(p => {
     const on = p.getAttribute('data-tier') === effTier;
     p.classList.toggle('on', on);
     p.setAttribute('aria-pressed', on ? 'true' : 'false');
   });
-  box.onclick = (e) => {
+  if (quick) quick.setAttribute('aria-label', t('tqAria'));
+  /* Berths outside the chosen cabin size: faded by CSS, and now also
+     aria-disabled WITH the reason, so a screen reader or a keyboard tap is
+     told why instead of selecting it anyway (D5-10). */
+  $$('#seatGrid .seat-row.slp-pvt .seat').forEach(b => {
+    const inPair = !!b.closest('.berth-pair');
+    const out = !b.disabled && !b.classList.contains('sel') && ((effTier === 'single' && inPair) || (effTier === 'double' && !inPair));
+    if (out) { b.setAttribute('aria-disabled', 'true'); b.setAttribute('data-why', t(inPair ? 'tierNeedDouble' : 'tierNeedSingle')); }
+    else if (b.hasAttribute('aria-disabled')) { b.removeAttribute('aria-disabled'); b.removeAttribute('data-why'); }
+    seatAria(b);
+  });
+  const pickTier = (e) => {
     const pill = e.target.closest('.tier-pill'); if (!pill) return;
     Flow.sharingTier = pill.getAttribute('data-tier');
     Flow.tierManual = true;
@@ -1880,6 +2070,8 @@ function updateTierUI() {
     if (typeof SFX !== 'undefined' && SFX.select) SFX.select();
     updateSeatSummary();
   };
+  box.onclick = pickTier;
+  if (quick) quick.onclick = pickTier;
 
   const ti = SHARING_TIERS[effTier];
   const fp = tierFarePreview(effTier, mode);

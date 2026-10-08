@@ -942,6 +942,153 @@ body:has(#mobileMenu.open) .ct-fab { visibility: hidden !important; }
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
 
+/* =====================================================================
+   PREMIUM SLEEPER SEAT MAP (8 Oct 2026, FA) — every seat state told by more
+   than colour in light, dark and AMOLED; 44px berths on a 390px phone; the
+   hold countdown in the phone's fixed bar. Presentation only: seat ids,
+   holds and the server's seat / gender rules are untouched. Two ids
+   (#view-seats #seatGrid) so these win over views.css / redesign.css and
+   the depth seat block above without touching those files.
+   ===================================================================== */
+
+/* Emergency berths (D5-04 / D2-03): hatched, dashed and 🚨 — never another pink "women" cell */
+#view-seats #seatGrid .seat.reserved {
+  border-style: dashed !important;
+  background-image: repeating-linear-gradient(135deg, transparent 0 5px, rgba(180, 37, 37, .24) 5px 8px) !important;
+}
+:root[data-theme="dark"] #view-seats #seatGrid .seat.reserved {
+  background-image: repeating-linear-gradient(135deg, transparent 0 5px, rgba(255, 138, 138, .28) 5px 8px) !important;
+}
+#view-seats #seatGrid .seat.reserved::after {
+  content: '\1F6A8'; position: absolute; left: auto; right: 3px; top: 2px; bottom: auto; transform: none;
+  font-size: 11px; line-height: 1; letter-spacing: 0; opacity: 1; color: inherit;
+}
+.legend .lg.lg-emerg { border-style: dashed !important; background-image: repeating-linear-gradient(135deg, transparent 0 3px, rgba(180, 37, 37, .32) 3px 5px) !important; }
+:root[data-theme="dark"] .legend .lg.lg-emerg { background-image: repeating-linear-gradient(135deg, transparent 0 3px, rgba(255, 138, 138, .34) 3px 5px) !important; }
+
+/* Held by someone else = ⏳, as the legend says; booked × and held ⏳ readable (D5-11) */
+#view-seats #seatGrid .seat.hold::after { content: '\23F3'; position: absolute; top: 2px; right: 3px; bottom: auto; font-size: 11px; line-height: 1; color: var(--warning); }
+#view-seats #seatGrid .seat.bkd:not(.hold):not(.reserved)::after { font-size: 12px; line-height: 1; color: var(--seat-booked-ink); }
+/* ♀ ♂ 🔒 state icons a size up, so they read at arm's length */
+#view-seats #seatGrid .seat.fem:not(.sel):not(.bkd):not(.reserved)::after,
+#view-seats #seatGrid .seat.u-fem:not(.sel):not(.bkd)::after,
+#view-seats #seatGrid .seat.u-male:not(.sel):not(.bkd)::after,
+#view-seats #seatGrid .seat.pvt:not(.sel):not(.bkd):not(.reserved):not(.u-fem):not(.u-male)::after { font-size: 11px; line-height: 1; }
+
+/* Dark + AMOLED (AMOLED is data-theme="dark" too): ♀ / ♂ were hard-coded light inks (D5-12) */
+:root[data-theme="dark"] #view-seats .seat.u-male:not(.sel):not(.bkd)::after,
+:root[data-theme="dark"] .legend .lg.u-male::after { color: var(--seat-gents-ink) !important; }
+:root[data-theme="dark"] #view-seats .seat.u-fem:not(.sel):not(.bkd)::after,
+:root[data-theme="dark"] #view-seats .seat.fem:not(.sel):not(.bkd):not(.reserved)::after,
+:root[data-theme="dark"] .legend .lg.fem::after,
+:root[data-theme="dark"] .legend .lg.u-fem::after { color: var(--seat-ladies-ink) !important; }
+
+/* Easy-access ♿ badge (D5-06): its own element, bottom-left, so the ♀ / ✓ icon never hides it */
+#view-seats #seatGrid .seat .da-badge {
+  position: absolute; left: -5px; bottom: -6px; z-index: 2;
+  font-size: 11px; line-height: 1; padding: 2px; border-radius: 50%;
+  background: var(--surface, #FFFFFF); border: 1px solid #00897B; color: #00695C;
+  pointer-events: none; text-decoration: none; font-family: inherit;
+}
+:root[data-theme="dark"] #view-seats #seatGrid .seat .da-badge { background: #0F2A28; border-color: #4FC3B5; color: #B2EBE4; }
+
+/* Private cabins are gold-edged (D1-12) — no longer the royal "selected" family */
+#view-seats #seatGrid .seat.pvt:not(.sel):not(.bkd):not(.reserved):not(.u-fem):not(.u-male) {
+  background-color: var(--accent-gold-soft, #FFFBEF) !important;
+  border-color: var(--accent-gold, #C9A227) !important;
+  border-style: solid !important; border-width: 2px !important;
+  color: var(--seat-private-ink, #7A5A00) !important;
+}
+:root[data-theme="dark"] #view-seats #seatGrid .seat.pvt:not(.sel):not(.bkd):not(.reserved):not(.u-fem):not(.u-male) {
+  background-color: var(--accent-gold-soft, #2A2210) !important; border-color: var(--accent-gold, #C9A227) !important; color: var(--seat-private-ink, #F1D27A) !important;
+}
+:root[data-display="amoled"] #view-seats #seatGrid .seat.pvt:not(.sel):not(.bkd):not(.reserved):not(.u-fem):not(.u-male) {
+  background-color: var(--accent-gold-soft, #2B2111) !important; border-color: var(--accent-gold, #FFCF86) !important; color: var(--seat-private-ink, #FFCF86) !important;
+}
+.legend .lg.pvt { background: var(--accent-gold-soft, #FFFBEF) !important; border: 1.5px solid var(--accent-gold, #C9A227) !important; }
+:root[data-theme="dark"] .legend .lg.pvt { background: var(--accent-gold-soft, #2A2210) !important; }
+:root[data-display="amoled"] .legend .lg.pvt { background: var(--accent-gold-soft, #2B2111) !important; border-color: var(--accent-gold, #FFCF86) !important; }
+
+/* Private cabin outside the chosen size: still faded, but a tap now reaches the
+   handler and is told why (D5-10) — pointer-events:none used to swallow it */
+#view-seats[data-tier] .berth-pair .seat, #view-seats[data-tier] .seat-row.slp-pvt > .seat { pointer-events: auto; }
+#view-seats #seatGrid .seat[aria-disabled="true"] { cursor: not-allowed; }
+#view-seats .tier-quick { display: none; }
+@media (max-width: 760px) {
+  #view-seats .tier-quick:not(.hide) { display: block; margin: 0 0 10px; padding: 10px; border-radius: 14px; border: 1.5px solid var(--accent-gold, #C9A227); background: var(--accent-gold-soft, #FFFBEF); }
+  #view-seats .tier-quick .tq-cap { margin: 0 0 8px; font: 600 12.5px/1.4 var(--font-sans, sans-serif); color: var(--ink); }
+  #view-seats .tier-quick .tq-pills { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  #view-seats .tier-quick .tier-pill { min-height: 44px; padding: 6px 8px; font-size: 13px; line-height: 1.25; white-space: normal; }
+  :root[data-theme="dark"] #view-seats .tier-quick:not(.hide) { background: var(--accent-gold-soft, #2A2210); }
+  :root[data-display="amoled"] #view-seats .tier-quick:not(.hide) { background: var(--accent-gold-soft, #2B2111); border-color: var(--accent-gold, #FFCF86); }
+  #view-seats[data-tier] .seat-pick-status:not(.hide) { display: block !important; }
+}
+
+/* Coach front strip readable in dark / AMOLED (D1-02): the light wash made it 1.5:1 */
+:root[data-theme="dark"] #view-seats .coach-front { background: linear-gradient(180deg, rgba(255, 255, 255, .07), transparent) !important; }
+#view-seats .coach-front .coach-door { font-size: 13px; letter-spacing: 0; margin-right: 2px; }
+
+/* Seat AI ⚡ button (D1-03): the brand purple→pink, AA-safe (white ≥6:1 on both
+   stops), and still — the looping gradient ran under the label forever */
+#view-seats #seatAiBar #seatAutoPick, #view-seats #seatAiBar #seatAutoPick:hover {
+  background: linear-gradient(90deg, #6D28D9, #BE185D) !important;
+  background-size: auto !important;
+  color: #FFFFFF !important;
+  border: 1px solid #5B21B6 !important;
+  animation: none !important;
+  box-shadow: 0 2px 0 #4C1D95, 0 4px 0 #3B0F78, 0 10px 16px -6px rgba(91, 33, 182, .55) !important;
+}
+
+/* Seat-count keys inside their card from 320 to 760px (D5-13 / D1-04): the label
+   has its own row; six keys a row from 371px (≥44px each), three a row below */
+@media (max-width: 760px) {
+  #view-seats .seat-count-picker { grid-template-columns: minmax(0, 1fr) !important; }
+  #view-seats .seat-count-picker .scp-btns { grid-template-columns: repeat(6, minmax(0, 1fr)) !important; gap: 6px !important; }
+  #view-seats .seat-count-picker .scp-n { min-width: 0 !important; }
+  #view-seats .seat-count-picker .scp-hint { grid-column: 1 / -1; }
+}
+@media (max-width: 370px) {
+  #view-seats .seat-count-picker .scp-btns { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 8px !important; }
+}
+
+/* Berths ≥44px wide at 390px with 13px labels (D5-14): the frame takes back the
+   panel's side padding; the aisle narrows; columns stay minmax(0,1fr) */
+@media (max-width: 430px) {
+  #view-seats .bus-frame { margin-left: -6px; margin-right: -6px; max-width: calc(100% + 12px); padding-left: 4px; padding-right: 4px; }
+  #view-seats .deck-block { padding-left: 4px; padding-right: 4px; }
+  #view-seats .deck-block .seat-row.slp-shr6 { grid-template-columns: repeat(4, minmax(0, 1fr)) 16px repeat(2, minmax(0, 1fr)); gap: 4px; }
+  #view-seats .deck-block .seat { font-size: 13px; }
+}
+@media (max-width: 340px) {
+  #view-seats .deck-block .seat-row.slp-shr6 { grid-template-columns: repeat(4, minmax(0, 1fr)) 12px repeat(2, minmax(0, 1fr)); gap: 3px; }
+  #view-seats .deck-block .seat { font-size: 12px; }
+}
+
+/* The phone's fixed bar: hold countdown (D5-02) + the "fewer seats" prompt (D5-15) */
+#view-seats .flow-actions { flex-wrap: wrap; }
+#view-seats .fa-hold { display: none; }
+#view-seats .fa-pax-ask:not([hidden]) {
+  display: flex; flex: 1 1 100%; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 10px;
+  padding: 8px 10px; border-radius: 12px; background: var(--warning-soft); color: var(--ink);
+  font: 600 13px/1.4 var(--font-sans, sans-serif); text-align: center;
+}
+#view-seats .fa-pax-ask .btn { min-height: 44px; }
+@media (max-width: 760px) {
+  #view-seats .flow-actions { row-gap: 6px; }
+  #view-seats .flow-actions .fa-hold:not([hidden]) {
+    display: block; flex: 1 1 100%; width: 100%; text-align: center;
+    font: 700 12.5px/1.3 var(--font-sans, sans-serif); color: var(--ink-2); font-variant-numeric: tabular-nums;
+  }
+  #view-seats .flow-actions .fa-hold.warn { color: var(--warning); }
+  #view-seats .flow-actions .fa-hold.crit { color: var(--danger); }
+  #view-seats .flow-body { padding-bottom: 150px; }
+}
+
+/* Near-me: "Use this stop" + the stops that could not be checked (D7-10) */
+#view-seats .bp-nearme-note .bp-use { min-height: 44px; margin: 6px 6px 0 0; padding: 6px 12px; border-radius: 12px; border: 1.5px solid var(--royal, #1F4FD8); background: var(--surface, #fff); color: var(--royal, #1F4FD8); font-weight: 700; font-size: 14px; cursor: pointer; }
+#view-seats .bp-nearme-note .bp-unchecked { display: block; margin-top: 6px; font-size: 12.5px; line-height: 1.4; color: var(--muted); }
+#view-seats .bp-nearme-note .bp-set { color: var(--success); }
+
 /* reduced motion: depth stays, movement goes */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: .01ms !important; }
