@@ -60,6 +60,34 @@ function _dt(doc, hasDev, x, y, nepali, roman, opts) {
     doc.text(roman, x, y, opts);
   }
 }
+/* The payment band of the fallback ticket (8 Oct 2026, D6-02). "confirmed"
+   is not "paid": a cash-on-boarding seat is confirmed with the fare still
+   owed, and the old band printed PAID · CASH on it. Display only — the money
+   is the server's (paidAmount = verified payments). */
+function fbPayBand(b) {
+  var pay = (b && b.payment) || {};
+  var known = typeof b.paidAmount === 'number';
+  var due = known ? Math.max(0, Number(b.total || 0) - b.paidAmount) : null;
+  var isCod = !!(b.codFlag || pay.method === 'cod');
+  if (b.status === 'confirmed' && (due === 0 || (due === null && !isCod))) {
+    var methodTxt = pay.method === 'esewa' ? 'eSewa' : (pay.method === 'cod' ? 'CASH' : 'UPI');
+    return { kind: 'paid', text: 'PAID  ·  ' + inr(b.total) + '  ·  ' + methodTxt };
+  }
+  if (isCod && (b.status === 'pending' || b.status === 'confirmed')) {
+    return { kind: 'cash', text: 'CASH ON BOARDING  ·  Pay ' + inr(due === null ? b.total : due) + ' to the crew' };
+  }
+  if (b.status === 'confirmed' && due > 0) {
+    return { kind: 'due', text: 'CONFIRMED  ·  BALANCE DUE ' + inr(due) };
+  }
+  return { kind: 'pending', text: 'PAYMENT PENDING  ·  Not valid until approved' };
+}
+/* "+977 98…" from the booking's own country; the bare number when unknown
+   (D6-14) — never an assumed +91. */
+function fbContact(b) {
+  if (typeof fmtContact === 'function') return fmtContact(b) || '—';
+  var p = String((b && b.contact && b.contact.phone) || '').replace(/\D/g, '');
+  return p || '—';
+}
 /* ================================================================
    [JS] 11B. TICKET IMAGE — canvas-drawn JPG of the e-ticket (no new
    dependency: hand-rolled canvas + toDataURL). Reused by both
@@ -97,18 +125,10 @@ async function buildTicketCanvas(b) {
   g.fillText('Issued ' + new Date().toLocaleDateString('en-IN'), W - pad, 146);
   g.textAlign = 'left';
 
-  /* Payment band */
-  var isPaid = b.status === 'confirmed';
-  var pay = b.payment || {};
-  var band, bandBg;
-  if (isPaid) {
-    var methodTxt = pay.method === 'esewa' ? 'eSewa' : (pay.method === 'cod' ? 'CASH' : 'UPI');
-    bandBg = '#0E7A42'; band = 'PAID  ·  ' + inr(b.total) + '  ·  ' + methodTxt;
-  } else if (b.status === 'pending' && pay.method === 'cod') {
-    bandBg = '#C46A00'; band = 'CASH ON BOARDING  ·  Pay ' + inr(b.total) + ' to the crew';
-  } else {
-    bandBg = '#B02A2A'; band = 'PAYMENT PENDING  ·  Not valid until approved';
-  }
+  /* Payment band (D6-02: paid only when the money is in, see fbPayBand) */
+  var pb = fbPayBand(b);
+  var band = pb.text;
+  var bandBg = pb.kind === 'paid' ? '#0E7A42' : (pb.kind === 'pending' ? '#B02A2A' : '#C46A00');
   g.fillStyle = bandBg; g.fillRect(0, 206, W, 40);
   g.fillStyle = '#fff'; g.font = 'bold 20px sans-serif'; g.textAlign = 'center';
   g.fillText(band, W / 2, 232); g.textAlign = 'left';
@@ -138,7 +158,8 @@ async function buildTicketCanvas(b) {
   g.fillStyle = MUTE; g.font = '20px sans-serif';
   g.fillText('Dep ' + (depHHMM || '—') + ' IST', pad, y);
   g.textAlign = 'right';
-  if (r.arrTime) g.fillText('Arr ' + r.arrTime + ' NPT' + (r.dayOffset ? ' (+' + r.dayOffset + 'd)' : ''), W - pad, y);
+  /* every stop of this service is in India (Rupaidiha too) — India time (D3-11) */
+  if (r.arrTime) g.fillText('Arr ' + r.arrTime + ' IST' + (r.dayOffset ? ' (+' + r.dayOffset + 'd)' : ''), W - pad, y);
   g.textAlign = 'center'; g.fillStyle = INK;
   g.fillText(fmtDate(b.date) + '  ·  ' + (r.busName || '—') + '  (' + (r.busNo || '') + ')', W / 2, y);
   g.textAlign = 'left';
@@ -227,8 +248,10 @@ async function buildTicketCanvas(b) {
   /* QR + offices */
   y += 40;
   g.strokeStyle = LINE; g.beginPath(); g.moveTo(pad, y - 24); g.lineTo(W - pad, y - 24); g.stroke();
+  /* The keyed verify page when the server sent it (D6-18) — the same QR the
+     server PNG carries — else the website. */
   try {
-    var qrUrl = await makeQR('https://shreehariglobal.in/', 300);
+    var qrUrl = await makeQR(b.verifyUrl || 'https://shreehariglobal.in/', 300);
     if (qrUrl) {
       await new Promise(function (res) {
         var img = new Image();
@@ -238,7 +261,7 @@ async function buildTicketCanvas(b) {
     }
   } catch (e) {}
   g.fillStyle = MUTE; g.font = '16px sans-serif'; g.textAlign = 'center';
-  g.fillText('Scan to visit  ·  shreehariglobal.in', pad + 110, y + 244);
+  g.fillText(b.verifyUrl ? 'Scan to verify this ticket' : 'Scan to visit  ·  shreehariglobal.in', pad + 110, y + 244);
   g.textAlign = 'left';
 
   var infoX = pad + 260;
@@ -255,7 +278,7 @@ async function buildTicketCanvas(b) {
   g.fillStyle = MUTE; g.font = '15px sans-serif';
   g.fillText('Head Office: Near Shilpa Garage, Silver Complex, Mehsana – 384002', infoX, y + 156);
   g.fillStyle = INK; g.font = '16px sans-serif';
-  g.fillText('Your contact: +91 ' + (b.contact.phone || '—'), infoX, y + 188);
+  g.fillText('Your contact: ' + fbContact(b), infoX, y + 188);
   if (b.agentCode) {
     var ag = (DB.agents || []).find(function (a) { return a.code === b.agentCode; });
     g.fillStyle = ORANGE; g.font = 'bold 17px sans-serif';
@@ -296,14 +319,22 @@ window.swMsg = swMsg;
    Only ever called for a CONFIRMED booking: a pending one has no ticket to
    show, and caching it would hand the passenger an image that says
    "pending" at the border long after it was approved. */
+/* 8 Oct 2026 (D6-03): the ticket key (b.dlKey, from the keyed ticketUrl the
+   server sends) rides on every ticket fetch, so the server PNG / PDF and the
+   offline border copy work for a guest, a relative's booking and the next
+   day — not only while a signed-in session lasts. sw.js already accepts k
+   and strips it from the cache key. */
+function dlKeyQs(b) {
+  return (b && b.dlKey) ? '&k=' + encodeURIComponent(b.dlKey) : '';
+}
 function cacheTicketOffline(b) {
   if (!b || !b.id || b.status !== 'confirmed') return;
-  swMsg({ type: 'shg-cache-ticket', pnr: b.id });
+  swMsg({ type: 'shg-cache-ticket', pnr: b.id, k: b.dlKey || '' });
 }
 window.cacheTicketOffline = cacheTicketOffline;
 
 function serverTicketPngBlob(b) {
-  return fetch('/download-ticket.php?pnr=' + encodeURIComponent(b.id) + '&img=1&view=1', {
+  return fetch('/download-ticket.php?pnr=' + encodeURIComponent(b.id) + '&img=1&view=1' + dlKeyQs(b), {
     credentials: 'same-origin', redirect: 'error'
   }).then(function (r) {
     if (!r.ok || (r.headers.get('content-type') || '').indexOf('image/png') !== 0) throw new Error('no png');
@@ -312,7 +343,7 @@ function serverTicketPngBlob(b) {
 }
 /* The server's A4 PDF (download-ticket.php without img), as a Blob. */
 function serverTicketPdfBlob(b) {
-  return fetch('/download-ticket.php?pnr=' + encodeURIComponent(b.id), {
+  return fetch('/download-ticket.php?pnr=' + encodeURIComponent(b.id) + dlKeyQs(b), {
     credentials: 'same-origin', redirect: 'error'
   }).then(function (r) {
     if (!r.ok || (r.headers.get('content-type') || '').indexOf('application/pdf') !== 0) throw new Error('no pdf');
@@ -470,20 +501,11 @@ async function downloadTicketPDF(b) {
   doc.setTextColor(200, 210, 230);
   doc.text('Issued ' + new Date().toLocaleDateString('en-IN'), W - 24, 70, { align: 'right' });
 
-  /* Payment status band (green paid / orange COD / red pending) */
-  var pay = b.payment || {}, isPaid = b.status === 'confirmed';
-  var band, bandBg;
-  if (isPaid) {
-    var methodTxt = pay.method === 'esewa' ? 'eSewa' : (pay.method === 'cod' ? 'CASH' : 'UPI');
-    bandBg = [14, 122, 66];
-    band   = 'PAID  ·  ' + inr(b.total) + '  ·  ' + methodTxt;
-  } else if (b.status === 'pending' && pay.method === 'cod') {
-    bandBg = [196, 106, 0];
-    band   = 'CASH ON BOARDING  ·  Pay ' + inr(b.total) + ' to the crew';
-  } else {
-    bandBg = [176, 42, 42];
-    band   = 'PAYMENT PENDING  ·  Not valid for travel until approved';
-  }
+  /* Payment status band (green paid / orange cash or balance due / red
+     pending) — the same rule as the image (fbPayBand, D6-02). */
+  var pb = fbPayBand(b);
+  var band = pb.kind === 'pending' ? 'PAYMENT PENDING  ·  Not valid for travel until approved' : pb.text;
+  var bandBg = pb.kind === 'paid' ? [14, 122, 66] : (pb.kind === 'pending' ? [176, 42, 42] : [196, 106, 0]);
   doc.setFillColor(bandBg[0], bandBg[1], bandBg[2]);
   doc.rect(0, 99, W, 18, 'F');
   doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
@@ -519,7 +541,7 @@ async function downloadTicketPDF(b) {
   doc.setTextColor(MUTE[0], MUTE[1], MUTE[2]);
   doc.text('Dep ' + (depHHMM || '—') + ' IST', 40, y + 16);
   if (r.arrTime) {
-    doc.text('Arr ' + r.arrTime + ' NPT' + (r.dayOffset ? ' (+' + r.dayOffset + 'd)' : ''), W - 40, y + 16, { align: 'right' });
+    doc.text('Arr ' + r.arrTime + ' IST' + (r.dayOffset ? ' (+' + r.dayOffset + 'd)' : ''), W - 40, y + 16, { align: 'right' });
   }
   doc.setTextColor(INK[0], INK[1], INK[2]);
   doc.text(fmtDate(b.date) + '  ·  ' + (r.busName || '—') + '  (' + (r.busNo || '') + ')', W / 2, y + 16, { align: 'center' });
@@ -636,12 +658,12 @@ async function downloadTicketPDF(b) {
 
   var qrY = y;
   try {
-    var webQr = await makeQR('https://shreehariglobal.in/', 240);
+    var webQr = await makeQR(b.verifyUrl || 'https://shreehariglobal.in/', 240);
     if (webQr) doc.addImage(webQr, 'PNG', 40, qrY, 108, 108);
   } catch (e) {}
   doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
   doc.setTextColor(MUTE[0], MUTE[1], MUTE[2]);
-  doc.text('Scan to visit  ·  shreehariglobal.in', 94, qrY + 118, { align: 'center' });
+  doc.text(b.verifyUrl ? 'Scan to verify this ticket' : 'Scan to visit  ·  shreehariglobal.in', 94, qrY + 118, { align: 'center' });
 
   /* Office contacts, next to the QR — clean 4-line block */
   var infoX = 168;
@@ -671,7 +693,7 @@ async function downloadTicketPDF(b) {
   /* Contact number */
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
   doc.setTextColor(MUTE[0], MUTE[1], MUTE[2]);
-  doc.text('Your contact: +91 ' + (b.contact.phone || '—'), infoX, qrY + (b.agentCode ? 96 : 82));
+  doc.text('Your contact: ' + fbContact(b), infoX, qrY + (b.agentCode ? 96 : 82));
 
   /* Footer — clean, minimal, only essentials */
   var footY = PH - 44;

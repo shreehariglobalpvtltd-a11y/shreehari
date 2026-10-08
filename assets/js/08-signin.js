@@ -87,13 +87,13 @@ function lgExtraFieldsHTML(u, px, open) {
   const g = u.gender || '';
   const gBtn = (v, label) => '<button type="button" class="lg-g' + (g === v ? ' on' : '') + '" data-g="' + v + '" aria-pressed="' + (g === v) + '">' + label + '</button>';
   return `
-    <div class="field"><label>${t('lgGender')} <small>(${t('lgOpt')})</small></label>
-      <div class="lg-gender" id="${px}Gender" data-val="${esc(g)}">${gBtn('Male', '👨 ' + t('gM'))}${gBtn('Female', '👩 ' + t('gF'))}${gBtn('Other', t('gO'))}</div></div>
+    <div class="field"><label id="${px}GenderLbl">${t('lgGender')} <small>(${t('lgOpt')})</small></label>
+      <div class="lg-gender" id="${px}Gender" role="group" aria-labelledby="${px}GenderLbl" data-val="${esc(g)}">${gBtn('Male', '👨 ' + t('gM'))}${gBtn('Female', '👩 ' + t('gF'))}${gBtn('Other', t('gO'))}</div></div>
     <div class="field"><label for="${px}Loc">${t('lgLoc')} <small>(${t('lgOpt')})</small></label>
       <div class="lg-loc"><input id="${px}Loc" maxlength="255" placeholder="${esc(t('lgLocPh'))}" value="${esc(u.location || '')}">
         <button type="button" class="btn btn-ghost btn-sm" id="${px}LocBtn">📍 ${t('lgLocBtn')}</button></div></div>
     <details class="lg-more"${open ? ' open' : ''}>
-      <summary>🪪 ${t('lgMore')}</summary>
+      <summary>🪪 ${t('lgMoreId')}</summary>
       <div class="form-2col">
         <div class="field"><label for="${px}IdType">${t('lgIdType')}</label><select id="${px}IdType">${LG_ID_TYPES.map(v => '<option' + (u.idType === v ? ' selected' : '') + '>' + v + '</option>').join('')}</select></div>
         <div class="field"><label for="${px}IdNum">${t('lgIdNum')}</label><input id="${px}IdNum" maxlength="60" autocapitalize="characters" placeholder="${esc(t('lgIdNumPh'))}" value="${esc(u.idNumber || '')}"></div>
@@ -194,7 +194,10 @@ function openLoginModal(opts) {
       <div class="err">${t('errPhone')}</div></div>
     ${lgExtraFieldsHTML(savedU, 'lg', false)}
     <div class="m-actions"><button class="btn btn-orange" type="button" id="otpSendBtn" style="width:100%">🟢 ${t('lgSendOtp')}</button></div>
+    <div class="lg-links lg-guest-row"><button type="button" class="lg-link" id="lgGuest">${t('lgGuest')}</button></div>
     <p class="lg-note">🔒 ${t('lgNote')}</p>`);
+  /* A visible way on without an account (D4-15): booking never needs one. */
+  const gl = $('#lgGuest'); if (gl) gl.onclick = () => closeModal();
   lgBindExtras('lg');
   const savedCC = (savedU && savedU.country) || '';
   if (savedCC === 'NP' || savedCC === 'IN') { const ccEl = $('#otpCC'); if (ccEl) ccEl.value = savedCC === 'NP' ? '977' : '91'; }
@@ -228,6 +231,10 @@ function lgSetUserFrom(su, p, extra) {
     idNumber: su.otpVerified ? (su.idNumber || '') : ((extra && extra.idNumber) || keep.idNumber || ''),
     photoUrl: su.otpVerified ? (su.photoUrl || '') : (keep.otpVerified ? '' : (keep.photoUrl || '')),
     otpVerified: !!su.otpVerified,
+    /* 8 Oct 2026: the WhatsApp code proved the number (api/otp.php
+       user.verified). Only this opens the full history, keyless tickets and
+       cancel; a name + mobile session is signed in for booking only. */
+    verified: !!(su.verified || su.otpVerified),
     at: Date.now(), srvAt: Date.now()
   }));
   ensureUser(su.phone || p);
@@ -238,8 +245,16 @@ function lgAfterSignIn() {
   closeModal();
   toast(t('otpOkT'));
   try { if (typeof window.shgQuickMe === 'function') window.shgQuickMe(USER); } catch (e) {}
-  if (location.hash === '#/my') renderMyBookings();
-  else if (location.hash === '#/checkout') { applyUserToCheckout(); shgFillMine(false); if (typeof shgWhoBar === 'function') shgWhoBar(); }
+  /* a new session: ask the server again (a verified one may now see more) */
+  _myBkAt = 0; MY_NEEDS_OTP = null;
+  const h = location.hash || '';
+  if (h === '#/my' || h.indexOf('#/my?') === 0) renderMyBookings();
+  else if (h === '#/checkout') { applyUserToCheckout(); shgFillMine(false); if (typeof shgWhoBar === 'function') shgWhoBar(); }
+  else if (h.indexOf('#/ticket/') === 0 && typeof renderStatus === 'function') {
+    const id = decodeURIComponent(h.split('/')[2] || '');
+    renderStatus(id);
+    if (typeof syncBookings === 'function') syncBookings([id]).then(ch => { if (ch && location.hash === h) renderStatus(id); });
+  }
 }
 
 /* Step 1 → ask the server to send the code on WhatsApp. */
@@ -254,7 +269,9 @@ async function sendOtp() {
   let bad = null;
   if (nameEl) { const ok = name.length >= 2; nameEl.closest('.field').classList.toggle('invalid', !ok); if (!ok) bad = bad || nameEl; }
   if (addrEl) { const ok = address.length >= 3; addrEl.closest('.field').classList.toggle('invalid', !ok); if (!ok) bad = bad || addrEl; }
-  const pOk = /^\d{10}$/.test(p); f.classList.toggle('invalid', !pOk); if (!pOk) bad = bad || $('#otpPhone');
+  /* The same mobile shape as the checkout (D4-15): India 6-9…, Nepal 9[6-9]… */
+  const pOk = (typeof phoneShapeOk === 'function') ? phoneShapeOk(p, cc) : /^\d{10}$/.test(p);
+  f.classList.toggle('invalid', !pOk); if (!pOk) bad = bad || $('#otpPhone');
   if (bad) { bad.focus(); return; }
   const extras = lgReadExtras('lg');
   if (!extras) return;
@@ -276,6 +293,10 @@ async function sendOtp() {
 /* Step 2 → the code from WhatsApp. */
 function lgOtpStep(s, result) {
   const demoNote = result.debugCode ? tf('otpDemo', { c: result.debugCode }) : '';
+  /* "Continue without code" only when WhatsApp did NOT take the code (sent:
+     false — refused, or the global send ceiling) AND the office allows it
+     (canSkip). 8 Oct 2026 (D4-M4): no more 40-second timer that offered the
+     skip while a delivered code was on its way. */
   const failed = result.sent === false;
   openModal(`
     <h3 class="m-title">🔐 ${t('lgOtpTitle')}</h3>
@@ -295,16 +316,14 @@ function lgOtpStep(s, result) {
   code.focus();
   if (!result.canSkip) { const sb = $('#lgSkipBox'); if (sb) sb.remove(); }
 
-  /* Resend countdown, and "continue without code" after 40 s of waiting. */
+  /* Resend countdown (the resend button says why it waits: "Resend in 23 s"). */
   let left = Math.max(30, Number(result.resendIn) || 60);
-  let waited = 0;
   const rs = $('#lgResend');
   const tick = setInterval(() => {
     if (!document.body.contains(rs)) { clearInterval(tick); return; }
-    left--; waited++;
+    left--;
     if (left > 0) { rs.disabled = true; rs.textContent = tf('lgResendIn', { s: left }); }
     else { rs.disabled = false; rs.textContent = t('lgResend'); }
-    if (waited === 40) { const sb = $('#lgSkipBox'); if (sb) sb.hidden = false; }
   }, 1000);
   rs.textContent = tf('lgResendIn', { s: left });
   rs.onclick = async () => {
@@ -313,7 +332,7 @@ function lgOtpStep(s, result) {
       const r = await shgApi.post('/otp.php', { action: 'request', phone: s.p, name: s.name, purpose: 'login', country: s.country });
       left = Math.max(30, Number(r && r.resendIn) || 60);
       toast(r && r.sent === false ? t('lgOtpFail') : t('lgResent'));
-      if (r && r.sent === false) { const sb = $('#lgSkipBox'); if (sb) sb.hidden = false; }
+      if (r && r.sent === false && r.canSkip) { const sb = $('#lgSkipBox'); if (sb) sb.hidden = false; }
     } catch (e) { rs.disabled = false; toast((e && e.message) || t('errOtpSend')); }
   };
   $('#lgBack').onclick = () => { clearInterval(tick); openLoginModal({ u: Object.assign({ name: s.name, address: s.address, phone: s.p, country: s.country }, s.extras) }); const c = $('#otpCC'); if (c) c.value = s.cc; };
@@ -323,6 +342,8 @@ function lgOtpStep(s, result) {
     skip.disabled = true;
     try {
       const q = await shgApi.post('/otp.php', { action: 'quick', phone: s.p, name: s.name, country: s.country });
+      /* q.signedIn = may book; q.verified is false here (no code) */
+      if (!q || !q.signedIn) throw new Error(t('errOtpSend'));
       clearInterval(tick);
       lgSetUserFrom(q && q.user, s.p, Object.assign({ name: s.name, address: s.address }, s.extras));
       if (_lgPhoto) toast(t('lgPhotoLater'));
@@ -434,7 +455,7 @@ function openProfileEdit() {
       }
       lgSetUserFrom(r.profile, USER.phone);
       closeModal(); toast(t('lgSaved'));
-      if (location.hash === '#/my') renderMyBookings();
+      if (isMyHash()) renderMyBookings();
     } catch (e) {
       btn.disabled = false; btn.textContent = t('lgSave');
       if (e && e.status === 403) { setUser(Object.assign({}, USER, { otpVerified: false })); closeModal(); openLoginModal(); }
@@ -574,6 +595,13 @@ async function ensureCustomerSession(name, phone, country) {
      The booking is still bound to the passenger server-side by phone; the
      desk stays itself. */
   if (window.SHG_BOOT && window.SHG_BOOT.staff && window.SHG_BOOT.staff.canSell) return false;
+  /* 8 Oct 2026 (D4-03, owner: name + phone is never proof): a GUEST is never
+     signed in by the number typed at checkout — a son booking on his
+     mother's number, or one wrong digit, used to become "signed in" as that
+     person and pull their whole history onto this phone. api/book.php binds
+     the new PNR to this browser session instead. Only an existing sign-in
+     is kept fresh below. */
+  if (!USER) return false;
   /* 7 Oct 2026: a ticket for SOMEBODY ELSE (their number in the contact
      box) must not sign this browser in as them - the booking stays on the
      account and api/book.php (forOther) sends the account a copy. Keep the
@@ -584,8 +612,11 @@ async function ensureCustomerSession(name, phone, country) {
   const nm = String(name || '').trim();
   if (USER && USER.phone === p && USER.srvAt && (Date.now() - USER.srvAt) < 5 * 60 * 1000) return true;
   try {
-    const q = await shgApi.post('/otp.php', { action: 'quick', phone: p, name: nm.length >= 2 ? nm : ((USER && USER.phone === p && USER.name) || ''), country: country || '' });
-    if (q && q.verified) {
+    const q = await shgApi.post('/otp.php', { action: 'quick', phone: p, name: nm.length >= 2 ? nm : ((USER && USER.phone === p && USER.name) || ''), country: country || USER.country || '' });
+    /* q.signedIn = the session may book; q.verified / q.user.verified = the
+       WhatsApp code proved the number (8 Oct 2026 — a quick sign-in is
+       signedIn but never verified). */
+    if (q && q.signedIn) {
       lgSetUserFrom(q.user || {}, p, { name: nm });
       return true;
     }
@@ -597,6 +628,9 @@ async function ensureCustomerSession(name, phone, country) {
    number and merge it into the local list (a phone that booked at the
    counter, on another device, or before a cleared cache sees them all). */
 let _myBkAt = 0, _myBkBusy = false;
+/* The server's answer to "may this session see every ticket on the number?"
+   (api/my-bookings.php needsOtp). null = not asked yet this page. */
+let MY_NEEDS_OTP = null;
 /* Which slice of My Bookings is on screen. The server filters the same
    four ways (api/my-bookings.php?tab=), but the list is also rendered from
    the local cache so the page still works with no network — so the rule
@@ -642,12 +676,24 @@ async function refreshMyBookingsFromServer(force) {
       /* Server session idled out while the browser still remembers the
          traveller — sign in again silently with the same name + number. */
       if (USER) USER.srvAt = 0;
-      const ok = await ensureCustomerSession(USER.name, USER.phone, '');
+      const ok = await ensureCustomerSession(USER.name, USER.phone, USER.country || '');
       if (!ok) throw e;
       d = await shgApi.get(q);
     }
     _myBkAt = Date.now();
     let changed = false;
+    /* 8 Oct 2026: an unverified (name + mobile) session gets ONLY the tickets
+       this browser booked, plus needsOtp — a thinner list than this device
+       may already hold. Merging only ever adds or refreshes, so a fuller
+       local copy is never replaced by the thinner one; the page shows the
+       "verify on WhatsApp" banner instead. */
+    const wasNeed = MY_NEEDS_OTP;
+    MY_NEEDS_OTP = !!d.needsOtp;
+    if (wasNeed !== MY_NEEDS_OTP) changed = true;
+    if (typeof d.verified === 'boolean' && USER && !!USER.verified !== d.verified) {
+      setUser(Object.assign({}, USER, { verified: d.verified, otpVerified: d.verified }));
+      changed = true;
+    }
     (d.bookings || []).forEach(sb => {
       const b = bookingFromServer(sb, d.phone || USER.phone);
       const at = DB.bookings.findIndex(x => x && x.id === b.id);
@@ -661,10 +707,18 @@ async function refreshMyBookingsFromServer(force) {
       const next = Object.assign({}, cur, { status: b.status, total: b.total, codFlag: b.codFlag,
         ticketNumber: b.ticketNumber || cur.ticketNumber || '', payment: pay,
         trackUrl: b.trackUrl || cur.trackUrl || null,
+        paidAmount: b.paidAmount,
+        dlKey: b.dlKey || cur.dlKey || '', verifyUrl: b.verifyUrl || cur.verifyUrl || null,
+        delayMin: b.delayMin, delayNote: b.delayNote, tripStatus: b.tripStatus, arrived: b.arrived,
+        live_status: b.live_status || cur.live_status || null,
+        contact: Object.assign({}, cur.contact || {}, b.contact && b.contact.cc ? { cc: b.contact.cc } : {}),
         createdAt: cur.createdAt || b.createdAt });
-      if (JSON.stringify(next) !== JSON.stringify(cur)) { DB.bookings[at] = next; changed = true; }
+      /* the live pill's minutes tick: compare without it, so it alone never redraws */
+      const cmp = (o) => JSON.stringify(Object.assign({}, o, { live_status: o.live_status ? o.live_status.key : null }));
+      if (cmp(next) !== cmp(cur)) changed = true;
+      DB.bookings[at] = next;
     });
-    if (changed) persist('bookings');
+    if (changed || (d.bookings || []).length) persist('bookings');
     return changed;
   } catch (e) {
     return false;
@@ -696,7 +750,11 @@ function bookingStatusBadge(status, labels) {
     +   'vertical-align:middle;line-height:1.4}'
     + '.live-pill.upcoming{background:var(--blue-50,#e6efff);color:var(--blue-800,#1f4bb8);border:1px solid var(--blue-100,#cddaf5)}'
     + '.live-pill.departing{background:var(--orange-100,#fff2e0);color:var(--orange-600,#a35700);border:1px solid var(--orange-100,#f8dcb0)}'
-    + '.live-pill.departed{background:var(--bg,#f0f0f2);color:var(--muted,#666);border:1px solid var(--line,#dcdce2)}';
+    + '.live-pill.departed{background:var(--bg,#f0f0f2);color:var(--muted,#666);border:1px solid var(--line,#dcdce2)}'
+    /* 8 Oct 2026: the server's own colour wins (Departed is red since the
+       pickup-time fix), and a trip the office cancelled is always red. */
+    + '.live-pill.c-red,.live-pill.trip_cancelled{background:var(--danger-soft,#FBE3E3);color:var(--danger,#B42525);border:1px solid var(--danger,#B42525)}'
+    + '.live-pill.c-orange{background:var(--warning-soft,#FFF4D6);color:var(--warning,#8A5A00);border:1px solid var(--warning,#8A5A00)}';
   (document.head || document.documentElement).appendChild(s);
 })();
 
@@ -712,9 +770,16 @@ function myBookingCard(b) {
      Local-only bookings that never round-tripped through the server simply
      don't have b.live_status — fallback: render nothing. */
   const live = b && b.live_status;
+  const liveCls = live && live.key ? String(live.key).replace(/[^a-z_]/g, '') : '';
+  const liveCol = live && live.color ? String(live.color).replace(/[^a-z]/g, '') : '';
   const livePill = (live && live.key && live.label)
-    ? '<span class="live-pill ' + esc(live.key) + '" title="' + esc(live.description || '') + '">' + esc(live.label) + '</span>'
+    ? '<span class="live-pill ' + liveCls + (liveCol ? ' c-' + liveCol : '') + '" title="' + esc(live.description || '') + '">' + esc(live.label) + '</span>'
     : '';
+  const tripCx = b.tripStatus === 'cancelled' || liveCls === 'trip_cancelled';
+  /* ONE track button (D6-10): this passenger's own keyed tracker (trackUrl,
+     k = track token) — the same door as the bottom bar's TRACK, never the
+     anonymous map. Without a key yet, the Trip Companion. */
+  const trackHref = b.trackUrl ? String(b.trackUrl) : '#/trip/' + b.id;
   return `<div class="mybk-card">
     <div class="mybk-head">
       <b style="font-family:var(--f-code)">${esc(b.id)}</b>
@@ -728,33 +793,57 @@ function myBookingCard(b) {
     <div class="mybk-actions">
       <a class="btn btn-blue btn-sm" href="#/ticket/${esc(b.id)}">🎫 ${t('st5')}</a>
       ${b.status === 'confirmed' ? '<button class="btn btn-ghost btn-sm" type="button" data-mypdf="' + esc(b.id) + '">' + t('btnPdf') + '</button>' : ''}
-      ${b.status === 'confirmed' ? '<a class="btn btn-ghost btn-sm" href="#/trip/' + esc(b.id) + '">🚌 Trip</a>' : ''}
-      ${b.status === 'confirmed' ? '<a class="btn btn-ghost btn-sm" href="#/trip/' + esc(b.id) + '">🛰️ Live</a>' : ''}
+      ${b.status === 'confirmed' && !tripCx ? '<a class="btn btn-ghost btn-sm" href="' + esc(trackHref) + '">' + esc(t('myTrackOne')) + '</a>' : ''}
       ${b.status === 'confirmed' ? '<button class="btn btn-ghost btn-sm" type="button" data-mywa="' + esc(b.id) + '">🟢 WhatsApp</button>' : ''}
       <button class="btn btn-orange btn-sm" type="button" data-myrebook="${esc(b.id)}">${t('btnRebook')}</button>
       ${canCancel(b) ? '<button class="btn btn-danger-ghost btn-sm" type="button" data-mycancel="' + esc(b.id) + '">' + t('btnCancel') + '</button>' : ''}
     </div>
-    ${(b.status === 'pending' || b.status === 'confirmed') && depTimestamp(b) > Date.now() ? distanceWidgetHTML(b) : ''}
+    ${(b.status === 'pending' || b.status === 'confirmed') && depTimestamp(b) > Date.now() && !tripCx ? distanceWidgetHTML(b) : ''}
   </div>`;
 }
 
+/* Sign-out on a shared phone (8 Oct 2026, D4-11): the next person must not
+   find the previous traveller's tickets, saved passengers (with the ID
+   number) or contact pre-filled. Removes every ticket that came from the
+   server or belongs to the signed-out number, the remembered travellers, the
+   saved contact, any half-typed checkout and the local loyalty record. A
+   never-signed-in guest's own tickets on their own phone are untouched. */
+function shgSignOutPurge() {
+  try {
+    const was = USER && USER.phone ? digits(USER.phone) : '';
+    DB.bookings = (DB.bookings || []).filter(b => !(b && (b.fromServer || (was && digits(b.contact && b.contact.phone) === was))));
+    persist('bookings');
+    if (was && Array.isArray(DB.users)) { DB.users = DB.users.filter(u => !(u && digits(u.phone) === was)); persist('users'); }
+  } catch (e) {}
+  try { if (typeof PaxMemory !== 'undefined') PaxMemory.clear(); } catch (e) {}
+  try { localStorage.removeItem('shg_cust_contact'); } catch (e) {}
+  try { if (typeof CheckoutDraft !== 'undefined' && CheckoutDraft.clearAll) CheckoutDraft.clearAll(); } catch (e) {}
+}
+window.shgSignOutPurge = shgSignOutPurge;
+/* '#/my' or '#/my?pnr=…' (an older keyless ticket link, D4-13) */
+function isMyHash(h) { h = h === undefined ? (location.hash || '') : h; return h === '#/my' || h.indexOf('#/my?') === 0; }
+let _myPrefilled = '';
 function renderMyBookings() {
   const box = $('#myBody');
   /* One account, many tickets: ask the server for this number's bookings
      and redraw once if anything new arrived (throttled inside). */
   if (USER && typeof refreshMyBookingsFromServer === 'function') {
-    refreshMyBookingsFromServer().then(ch => { if (ch && location.hash === '#/my') renderMyBookings(); });
+    refreshMyBookingsFromServer().then(ch => { if (ch && isMyHash()) renderMyBookings(); });
   }
+  /* Visible labels above both boxes (D2-07): the placeholder vanishes the
+     moment typing starts, so an elderly passenger forgot what the box was. */
   const trackCard = `
     <div class="c-card" style="margin-top:18px">
       <b style="font-family:var(--f-display);font-size:17px">🔎 ${t('myTrackT')}</b>
       <p style="font-size:13.5px;color:var(--muted);margin:6px 0 14px">${t('myTrackP')}</p>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <input id="trackId" placeholder="SHG-XXXXXX" style="flex:1;min-width:160px;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;background:var(--bg,#FBFCFE);font-family:var(--f-code);text-transform:uppercase">
-        <input id="trackPhone" inputmode="tel" autocomplete="tel" placeholder="${esc(t('trkPhone'))}" value="${esc(USER ? USER.phone : '')}" style="flex:1;min-width:160px;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;background:var(--bg,#FBFCFE)">
+      <div class="trk-fields" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+        <div class="trk-f" style="flex:1;min-width:160px"><label class="trk-lbl" for="trackId">${esc(t('trkPnrLbl'))}</label>
+        <input id="trackId" placeholder="SHG-2026-XXXXX" autocomplete="off" spellcheck="false" style="width:100%;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;background:var(--bg,#FBFCFE);font-family:var(--f-code);text-transform:uppercase"></div>
+        <div class="trk-f" style="flex:1;min-width:160px"><label class="trk-lbl" for="trackPhone">${esc(t('trkPhoneLbl'))}</label>
+        <input id="trackPhone" inputmode="tel" autocomplete="tel" placeholder="${esc(t('trkPhone'))}" value="${esc(USER ? USER.phone : '')}" style="width:100%;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;background:var(--bg,#FBFCFE)"></div>
         <button class="btn btn-blue" type="button" id="trackBtn">${t('myTrackBtn')}</button>
       </div>
-      <div id="trackMsg" style="font-size:12.5px;color:var(--bad);margin-top:8px"></div>
+      <div id="trackMsg" role="status" style="font-size:12.5px;color:var(--bad);margin-top:8px"></div>
     </div>`;
   {
     const uPhone = USER ? USER.phone : '';
@@ -763,9 +852,14 @@ function renderMyBookings() {
       : DB.bookings.slice().sort((a, b2) => b2.createdAt - a.createdAt);
     const shown = mine.filter(function (b) { return myTabMatch(b, MY_TAB); });
     const trips = uPhone ? tripsForPhone(uPhone) : DB.bookings.length;
+    /* A name + mobile session sees only this browser's own tickets from the
+       server: say so, and offer the WhatsApp code that unlocks the rest. */
+    const needOtp = !!(USER && (MY_NEEDS_OTP === true || (MY_NEEDS_OTP === null && !USER.verified)));
     let loyaltyCard = '';
     if (uPhone) {
-      const u = ensureUser(uPhone);
+      /* points = the SERVER balance (USER.points from api/otp.php, 0 until
+         the code proved the number — D4-04); the history list stays local */
+      const u = Object.assign({}, ensureUser(uPhone), { loyaltyPoints: Math.max(0, Math.floor(Number(USER.points) || 0)) });
       const ti = tierFor(u.loyaltyPoints || 0);
       const histRows = (u.loyaltyHistory || []).slice(0, 8).map(h =>
         '<div class="sum-row"><span>' + new Date(h.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) + ' · ' + esc(h.reason) + '</span><b style="color:' + (h.change > 0 ? 'var(--ok)' : 'var(--bad)') + '">' + (h.change > 0 ? '+' : '') + h.change + '</b></div>').join('');
@@ -788,6 +882,8 @@ function renderMyBookings() {
         </div>
         ${uPhone ? '' : '<button class="btn btn-orange btn-sm" type="button" id="mySignInBtn">👤 ' + t('lgTitle') + '</button>'}
       </div>
+      ${needOtp ? '<div class="my-otp-banner" role="status"><div><b>🔐 ' + esc(t('myNeedsOtp')) + '</b><small>' + esc(t('myNeedsOtpP')) + '</small></div>'
+        + '<button class="btn btn-orange btn-sm" type="button" id="myVerifyBtn">' + esc(t('myVerifyBtn')) + '</button></div>' : ''}
       ${loyaltyCard}
       ${mine.length ? myTabBar({
           all:       mine.length,
@@ -805,9 +901,10 @@ function renderMyBookings() {
        not keep booking against the previous passenger's number after the
        app has "forgotten" them locally. Same door as the Quick Ticket card's
        "Not you?". */
-    if ($('#myLogoutBtn')) $('#myLogoutBtn').onclick = () => { setUser(null); _whoOthers = null; shgApi.post('/otp.php', { action: 'logout' }).catch(() => {}); renderMyBookings(); };
+    if ($('#myLogoutBtn')) $('#myLogoutBtn').onclick = () => { shgSignOutPurge(); setUser(null); _whoOthers = null; MY_NEEDS_OTP = null; shgApi.post('/otp.php', { action: 'logout' }).catch(() => {}); renderMyBookings(); };
     if ($('#lgEditBtn')) $('#lgEditBtn').onclick = openProfileEdit;
     if ($('#lgVerifyBtn')) $('#lgVerifyBtn').onclick = () => openLoginModal();
+    if ($('#myVerifyBtn')) $('#myVerifyBtn').onclick = () => openLoginModal();
     if ($('#mySignInBtn')) $('#mySignInBtn').onclick = () => openLoginModal();
     box.querySelectorAll('[data-mytab]').forEach(function (btn) {
       btn.addEventListener('click', function () {
@@ -841,6 +938,20 @@ function renderMyBookings() {
       tb.disabled = false; tb.textContent = label;
     }
   };
+  /* An older keyless ticket link lands on '#/my?pnr=SHG-…' (download-ticket.php,
+     D4-13): put the PNR in the box, say what is needed and focus the phone. */
+  try {
+    const h = location.hash || '';
+    const qs = h.indexOf('#/my?') === 0 ? new URLSearchParams(h.split('?')[1] || '') : null;
+    const pnr = qs ? String(qs.get('pnr') || '').toUpperCase() : '';
+    if (pnr && /^SHG-[A-Z0-9-]{4,30}$/.test(pnr) && _myPrefilled !== pnr) {
+      _myPrefilled = pnr;
+      const ti = $('#trackId'), tp = $('#trackPhone'), tm = $('#trackMsg');
+      if (ti) ti.value = pnr;
+      if (tm) { tm.textContent = t('trkNeedPhone'); tm.style.color = 'var(--ink-2, inherit)'; }
+      if (tp) { try { tp.focus({ preventScroll: true }); tp.scrollIntoView({ block: 'center' }); } catch (e) { try { tp.focus(); } catch (e2) {} } }
+    }
+  } catch (e) {}
   box.onclick = (e) => {
     const pdf = e.target.closest('[data-mypdf]');
     if (pdf) { const b = DB.bookings.find(x => x.id === pdf.getAttribute('data-mypdf')); if (b) downloadTicketPDF(b); return; }

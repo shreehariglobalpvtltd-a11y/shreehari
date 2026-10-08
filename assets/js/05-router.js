@@ -144,9 +144,9 @@ function router() {
   else if (h === '#/results')  { if (!Flow.date)  { location.hash = '#/'; return; } showView('results');  renderResults(); }
   else if (h === '#/seats')    { if (!Flow.route) { location.hash = '#/'; return; } showView('seats');    renderSeats(); }
   else if (h === '#/checkout') { if (!Flow.legs.length) { location.hash = '#/'; return; } showView('checkout'); renderCheckout(); }
-  else if (h === '#/my')       {
+  else if (h === '#/my' || h.indexOf('#/my?') === 0) {   // '#/my?pnr=…' = an older keyless ticket link (D4-13)
     showView('my'); renderMyBookings();
-    syncBookings().then((changed) => { if (changed && location.hash === '#/my') renderMyBookings(); });
+    syncBookings().then((changed) => { if (changed && location.hash === h) renderMyBookings(); });
   }
   else if (h === '#/admin')    { window.open('/admin/', '_blank'); location.hash = '#/'; return; }
   else if (h === '#/nav')    { showView('nav'); renderNav(); }
@@ -3409,6 +3409,18 @@ if (store.local && !store.remote) {
       document.getElementById('waReqName').focus({ preventScroll: true });
     });
   });
+  /* The ticket's "✏️ Request correction" (8 Oct 2026, D6-11): this same sheet
+     on its correction tab with the PNR already filled in. Still only a
+     message to the office — nothing is changed automatically. */
+  window.shgOpenWaReq = function (tp, pnr) {
+    if (!req || !openSheet()) return false;
+    setReqType(tp);
+    var pi = document.getElementById('waReqPnr');
+    if (pi && pnr) pi.value = String(pnr).toUpperCase();
+    var f = document.getElementById(pnr ? 'waReqNote' : 'waReqName');
+    if (f) { try { f.focus({ preventScroll: true }); } catch (e) {} }
+    return true;
+  };
 
   /* Digital visiting card — share the picture. */
   document.addEventListener('click', function (e) {
