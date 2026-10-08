@@ -273,7 +273,7 @@ try {
     $pg1 = req('GET', '/pay-share.php?pnr=' . rawurlencode($pnr) . '&s=1&k=' . $key1, ['jar' => $JAR2]);
     check('share page: a claimed share says who paid', str_contains($pg1['body'], 'Recorded as paid'));
 
-    /* ---- 6. a keyed ticket link may subscribe this phone ------------ */
+    /* ---- 6. a keyed ticket link may subscribe THIS ticket ----------- */
     $sub2 = fakeSub();
     $endpoints[] = $sub2['endpoint'];
     $r = req('POST', '/api/push.php', ['jar' => $JAR2, 'headers' => $H2,
@@ -283,8 +283,10 @@ try {
         'json' => ['action' => 'subscribe', 'subscription' => $sub2, 'pnr' => $pnr, 'k' => Ticket::downloadToken($pnr), 'lang' => 'ne']]);
     check('the keyed ticket link subscribes this phone', ($r['json']['ok'] ?? false) === true, 'HTTP ' . $r['code'] . ' ' . substr($r['body'], 0, 200));
     $ps = Database::fetch('SELECT booking_id, phone, lang FROM push_subscriptions WHERE endpoint_hash = :h', ['h' => sha1($sub2['endpoint'])]) ?? [];
-    check('  ...tied to the booking and its mobile',
-        (int) ($ps['booking_id'] ?? 0) === $bookingId && ($ps['phone'] ?? '') === normalisePhone($phone), json_encode($ps));
+    /* 8 Oct 2026: a key opens one ticket - the phone's other tickets'
+       alerts need the WhatsApp code (name + phone is never proof). */
+    check('  ...tied to the booking only, not to every ticket of the mobile',
+        (int) ($ps['booking_id'] ?? 0) === $bookingId && ($ps['phone'] ?? '') === '', json_encode($ps));
     check('  ...so a delay alert for this ticket reaches it', count(WebPush::forBooking($bookingId)) === 1);
     $st = req('POST', '/api/push.php', ['jar' => $JAR2, 'headers' => $H2, 'json' => ['action' => 'status', 'endpoint' => $sub2['endpoint']]]);
     check('status reports it registered without echoing the full mobile',

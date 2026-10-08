@@ -65,7 +65,7 @@ $doors = [
     'includes/aitools.php'     => 'isPlaceholderPhone((string) ($detail[\'contact_phone\'] ?? \'\'))',
     'includes/quickticket.php' => 'isPlaceholderPhone((string) ($booking[\'contact_phone\'] ?? \'\'))',
     'api/feedback.php'         => 'isPlaceholderPhone((string) ($booking[\'contact_phone\'] ?? \'\'))',
-    'api/push.php'             => 'isPlaceholderPhone($bPhone)',
+    'api/push.php'             => 'Auth::customerMayOpen($booking)',
     'api/split-pay.php'        => 'isPlaceholderPhone((string) ($b[\'contact_phone\'] ?? \'\'))',
     'includes/whereis.php'     => 'isPlaceholderPhone((string) ($booking[\'contact_phone\'] ?? \'\'))',
 ];

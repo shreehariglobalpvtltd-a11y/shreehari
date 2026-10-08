@@ -11,12 +11,12 @@
  *  POST action=test                → { sent }           sends a test push to the caller's own endpoint
  *
  *  WHO MAY SUBSCRIBE
- *  A subscription is tied to a PHONE (the passenger's mobile) so that a
- *  delay on any of that number's tickets reaches this device. The phone
- *  comes from the signed-in customer session (the sale signs the passenger
- *  in), or — for a ticket opened from a keyed WhatsApp link — from the
- *  booking whose download key was presented. Anonymous callers get a 401,
- *  so nobody can attach their phone to somebody else's ticket.
+ *  A subscription tied to a PHONE gets a delay on any of that number's
+ *  tickets, so the phone comes only from a session that passed the
+ *  WhatsApp code (8 Oct 2026: name + phone is never proof). A keyed
+ *  WhatsApp link, or a ticket this browser just bought, subscribes that
+ *  ONE booking (Auth::customerMayOpen). Anonymous callers get a 401,
+ *  so nobody can attach their device to somebody else's tickets.
  *
  *  resubscribe is the one CSRF-free action: it is posted by the service
  *  worker (which has no page token) and only ever succeeds when the OLD
