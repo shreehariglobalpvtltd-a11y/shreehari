@@ -635,12 +635,20 @@ final class QuickTicket
     /** Sort key: L1 … L36, then U1 … U36; seater 1A … 10D; anything else last. */
     private static function seatRank(string $seat): int
     {
+        /* 8 Oct 2026 (master prompt 2.0): Admin -> Settings -> Seat AI. Rows walk
+           rear-to-front by default (the higher berth number is further back),
+           the first deck is seat_ai_default_deck — the same rules as the seat
+           page's pickSeatsSmart. */
+        $rear       = Settings::getString('seat_ai_row_order', 'rear') !== 'front';
+        $upperFirst = Settings::getString('seat_ai_default_deck', 'L') === 'U';
         $seat = strtoupper($seat);
         if (preg_match('/^([LU])(\d+)$/', $seat, $m) === 1) {
-            return ($m[1] === 'L' ? 0 : 1000) + (int) $m[2];
+            $n = (int) $m[2];
+            return (($m[1] === 'U') === $upperFirst ? 0 : 1000) + ($rear ? 500 - $n : $n);
         }
         if (preg_match('/^(\d+)([A-D])$/', $seat, $m) === 1) {
-            return 2000 + (int) $m[1] * 10 + (ord($m[2]) - 64);
+            $row = (int) $m[1];
+            return 2000 + ($rear ? 500 - $row : $row) * 10 + (ord($m[2]) - 64);
         }
 
         return 9000;

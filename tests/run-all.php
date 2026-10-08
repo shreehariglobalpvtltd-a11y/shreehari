@@ -70,6 +70,7 @@ const CORE_SUITES = [
     'asset-version-test.php'       => 'no ?v= stamp has drifted from sw.js',
     'staff-any-date-test.php'      => 'staff may book any date; customers may not',
     'quick-ticket-test.php'        => 'name + mobile → auto bus/seat/fare → confirmed ticket',
+    'smart-v2-test.php'            => 'master prompt 2.0: Seat AI settings, gender at confirm, pickup map, template library, opt-in',
     'counter-desk-memory-test.php' => 'desk remembers agent / payment / boarding once, never the passenger; same bus · same date · sell another',
     'ticket-sync-test.php'         => 'every booking change regenerates the ticket once, after commit; void on cancel; honest change notice',
     'locations-consistency-test.php' => 'one pickup list: Admin ON/OFF + per-pickup fare reach search, pickers, booking, AI; Rajkot back',

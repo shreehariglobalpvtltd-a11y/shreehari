@@ -129,6 +129,9 @@ $k    = CSRF_TOKEN_NAME;
    what it controls. Unknown groups fall back to their stored name. */
 $groupInfo = [
     'booking'    => ['Booking rules', 'Seat holds, limits and the discount switches every sale uses.'],
+    'seat_ai'    => ['🪑 Seat AI', 'Automatic seat recommendation: on/off, rear-to-front or front-first, which deck first, groups kept together. Women-only and cabin gender rules always apply on top and cannot be switched off here.'],
+    'gps'        => ['📍 Near-me pickup & maps', '"Use my location" on the seat page suggests the nearest pickup that has coordinates (Routes → Pickup points). The position is used once in the browser and never stored. The ticket can carry a Google Maps QR of the pickup.'],
+    'marketing'  => ['📣 Marketing campaigns', 'Campaign limits and consent. With "opted in only" ON, campaigns reach only numbers recorded as opted in.'],
     'payment'    => ['Payment', 'How customers pay: UPI, eSewa, payment links and pay at boarding.'],
     'pricing'    => ['Fares (advanced)', 'Cabin prices and fare tables. Everyday fares are in "Fares & booking rules" above.'],
     'whatsapp'   => ['WhatsApp messaging', 'How tickets and notices are sent on WhatsApp (Meta Cloud API / Twilio).'],
@@ -147,6 +150,13 @@ $groupInfo = [
     'realtime'   => ['Live updates', 'How often screens refresh seat and booking changes.'],
     'automation' => ['Automation', 'Background jobs: reminders, expiries, retries.'],
     'general'    => ['General', 'Everything else.'],
+];
+
+/* 8 Oct 2026: settings with a fixed set of answers get a dropdown instead of
+   a free text box (a typo there would silently fall back to the default). */
+$choiceKeys = [
+    'seat_ai_row_order'    => ['rear' => 'Rear first - fill from the back of the bus towards the front', 'front' => 'Front first - front rows before back rows'],
+    'seat_ai_default_deck' => ['L' => 'Lower deck first', 'U' => 'Upper deck first'],
 ];
 
 admin_header('Settings', 'settings');
@@ -368,6 +378,10 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
                 <span class="set-knob" aria-hidden="true"></span>
                 <span class="set-state"><?= $val === '1' ? 'On' : 'Off' ?></span>
               </label>
+            <?php elseif (isset($choiceKeys[$key])): ?>
+              <select name="s[<?= Security::e($key) ?>]" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;min-height:44px" <?= $canEdit ? '' : 'disabled' ?>>
+                <?php foreach ($choiceKeys[$key] as $cv => $cl): ?><option value="<?= Security::e((string) $cv) ?>" <?= $val === (string) $cv ? 'selected' : '' ?>><?= Security::e($cl) ?></option><?php endforeach; ?>
+              </select>
             <?php elseif ($isJson): ?>
               <textarea name="s[<?= Security::e($key) ?>]" rows="2" style="width:100%;font-family:ui-monospace,monospace;font-size:12px;padding:8px;border:1px solid var(--line);border-radius:8px" <?= $canEdit ? '' : 'readonly' ?>><?= Security::e($val) ?></textarea>
             <?php elseif ($isSecret): ?>

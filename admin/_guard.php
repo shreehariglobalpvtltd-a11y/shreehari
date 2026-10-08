@@ -239,6 +239,8 @@ function admin_nav(): array
         ['href' => 'wa-manager.php',   'icon' => 'whatsapp',  'label' => '📲 WhatsApp Manager', 'perm' => 'reports.view',  'section' => 'Expenses & reports', 'hot' => true],
         // 6 Oct 2026: the AI that markets on WhatsApp by itself (budget-guarded) + learns from questions.
         ['href' => 'ai-marketing.php', 'icon' => 'whatsapp',  'label' => '🤖 AI Marketing',   'perm' => 'customers.view', 'section' => 'Expenses & reports', 'hot' => true],
+        // 8 Oct 2026: 32 editable WhatsApp drafts (customer / marketing / agent / staff), filled from records only.
+        ['href' => 'wa-templates.php', 'icon' => 'whatsapp',  'label' => '📝 WhatsApp Templates', 'perm' => $agentView ? '__superadmin_only__' : 'customers.view', 'section' => 'Expenses & reports'],
         ['href' => 'messages-log.php', 'icon' => 'msg',       'label' => 'Message Log',      'perm' => 'dashboard.view', 'section' => 'Expenses & reports'],
         ['href' => 'promo-card.php',   'icon' => 'image',     'label' => '🪔 Offer pamphlet & promo', 'perm' => 'dashboard.view', 'section' => 'Expenses & reports', 'hot' => true],
         // 1 Oct 2026: each pickup's fare + ON/OFF + order (the stop editor on Routes).
@@ -311,7 +313,7 @@ function admin_header(string $title, string $active = ''): void
     // sg- components as the customer app) loads first; the panel's own rules
     // follow, then admin.css restyles the shell on top. The UI uses the
     // device's own font now (no webfont download on a slow counter line).
-    $av = '20261008e';
+    $av = '20261008f';
     /* 5 Oct 2026 (owner, Point 12): Poppins across the panel. display=swap, so a
        slow counter line shows the device font at once and swaps when the file
        lands; Devanagari comes from the same family. The CSP already allows it. */

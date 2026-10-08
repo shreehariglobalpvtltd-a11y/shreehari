@@ -2253,13 +2253,11 @@ final class BookingService
         $legs = Database::fetchAll('SELECT id, schedule_id FROM booking_legs WHERE booking_id = :b', ['b' => $bookingId]);
         foreach ($legs as $leg) {
             $rows  = Database::fetchAll(
-                'SELECT seat_no FROM booking_passengers WHERE booking_id = :b AND leg_id = :l',
+                'SELECT seat_no, gender FROM booking_passengers WHERE booking_id = :b AND leg_id = :l',
                 ['b' => $bookingId, 'l' => (int) $leg['id']]
             );
-            $seats = array_values(array_filter(
-                array_map(static fn($r) => (string) $r['seat_no'], $rows),
-                static fn($s) => $s !== ''
-            ));
+            $rows  = array_values(array_filter($rows, static fn($r) => (string) $r['seat_no'] !== ''));
+            $seats = array_map(static fn($r) => (string) $r['seat_no'], $rows);
             if ($seats !== []) {
                 $sid = (int) $leg['schedule_id'];
 
@@ -2283,15 +2281,24 @@ final class BookingService
                 );
                 Seats::assertAvailable($sid, $seats, 'reclaim-' . $bookingId, false, $mode !== '' ? $mode : 'sharing');
 
-                Seats::claim($sid, $seats, $bookingId, (int) $leg['id']);
-
-                // Restore the shared-cabin gender locks now these passengers
-                // occupy their cabins again (Part 2 · Feature A).
                 $coach = (string) Database::scalar(
                     'SELECT r.coach_type FROM schedules s JOIN routes r ON r.id = s.route_id WHERE s.id = :s',
                     ['s' => $sid],
                     'sleeper'
                 );
+                /* 8 Oct 2026 (master prompt 2.0): gender is validated again at
+                   payment confirmation. While these seats were released another
+                   passenger may have taken the other berth of the cabin; a woman
+                   must not be re-seated next to a man (or the reverse) just
+                   because her payment was approved later. Same rule, same lock
+                   row, as the original sale. */
+                Seats::assertGenderAllowed($sid, $coach, $mode !== '' ? $mode : 'sharing', $seats,
+                    array_map(static fn($r) => $r['gender'] ?? null, $rows));
+
+                Seats::claim($sid, $seats, $bookingId, (int) $leg['id']);
+
+                // Restore the shared-cabin gender locks now these passengers
+                // occupy their cabins again (Part 2 · Feature A).
                 $units = [];
                 foreach ($seats as $seatNo) {
                     // $mode is this booking's own namespace (resolved above).

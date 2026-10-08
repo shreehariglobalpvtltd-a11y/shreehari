@@ -963,6 +963,19 @@ body:has(#mobileMenu.open) .ct-fab { visibility: hidden !important; }
 }
 
 /* print: tickets, receipts, statements and registers stay flat black on white */
+/* Seat AI "Recommended" ring (8 Oct 2026, master prompt 2.0) - the berths the
+   engine would give this party while nothing is picked yet. A mark only. */
+#view-seats #seatGrid .seat.ai-rec:not(.sel):not([disabled]) { border-color: #22C55E !important; border-width: 2px !important; background-image: linear-gradient(180deg, rgba(34,197,94,.30), rgba(34,197,94,.12)) !important; box-shadow: var(--dp-chip), 0 0 0 3px rgba(34,197,94,.45) !important; position: relative; z-index: 1; }
+#view-seats #seatGrid .seat.ai-rec:not(.sel):not([disabled])::before { content: '\2605'; position: absolute; top: -9px; left: -5px; font-size: 11px; color: #16A34A; line-height: 1; }
+.legend .lg.lg-rec { background: var(--surface, #fff) !important; border: 2px solid #16A34A !important; box-shadow: 0 0 0 2px rgba(22,163,74,.25) !important; }
+
+/* Near-me pickup button + note (8 Oct 2026). */
+#view-seats .bp-nearme { margin-top: 8px; min-height: 44px; padding: 8px 14px; border-radius: 12px; border: 1.5px solid var(--royal, #1F4FD8); background: var(--surface, #fff); color: var(--royal, #1F4FD8); font-weight: 700; font-size: 14px; cursor: pointer; }
+#view-seats .bp-nearme[disabled] { opacity: .6; cursor: progress; }
+#view-seats .bp-nearme.hide, #view-seats .bp-nearme-note.hide { display: none !important; }
+#view-seats .bp-nearme-note { margin: 6px 0 0; font-size: 13px; line-height: 1.45; color: var(--muted, #555); }
+#view-seats .bp-nearme-note a { font-weight: 700; white-space: nowrap; }
+
 @media print {
   :root, :root[data-theme], :root[data-display] {
     --page: #FFFFFF; --surface: #FFFFFF; --surface-sunken: #FFFFFF; --ink: #000000; --ink-2: #111111; --muted: #333333;

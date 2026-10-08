@@ -659,6 +659,19 @@ function deckHeadHTML(key, label, coach) {
    Everything is still committed through the real seat click, so the hold,
    the pair rule and the summary behave exactly as a finger would.
 ---------------------------------------------------------------- */
+/* Smart Settings (8 Oct 2026, master prompt 2.0): Admin -> Settings -> Seat AI.
+   Row order defaults to REAR first (back of the bus towards the front); the
+   deck default applies only when the passenger chose no deck themself. */
+function seatAiCfg() {
+  const s = (window.SHG_BOOT && window.SHG_BOOT.settings) || {};
+  const flag = (v, d) => (v === undefined || v === null || v === '') ? d : !(v === false || v === 0 || v === '0');
+  return {
+    on: flag(s.seat_ai_on, true),
+    rear: String(s.seat_ai_row_order || 'rear') !== 'front',
+    deck: String(s.seat_ai_default_deck || 'L') === 'U' ? 'U' : 'L',
+    party: flag(s.seat_ai_party_together, true)
+  };
+}
 function seatGenderNow() {
   const on = $('#seatAiBar [data-sqg].on') || $('#seatQuick [data-sqg].on');
   if (on) return on.getAttribute('data-sqg') || '';
@@ -675,7 +688,8 @@ function seatFitsGender(btn, g) {
 function seatFloorsInOrder(grid) {
   const blocks = $$('.deck-block', grid);
   const floors = blocks.length ? Array.prototype.slice.call(blocks) : [grid];
-  const pref = deckPrefGet();
+  const own = deckPrefGet();
+  const pref = own === 'ANY' ? seatAiCfg().deck : own;
   const patient = !!Flow.patient;
   const deckOf = (f) => (f.getAttribute ? f.getAttribute('data-deck') : '') || '';
   const upperFirst = pref === 'U' && !patient;
@@ -690,7 +704,7 @@ function pickSeatsSmart(floors, n, patient, gender) {
     const rows = Array.prototype.slice.call(f.querySelectorAll('.seat-row'));
     (rows.length ? rows : [f]).forEach((row, ri) => {
       const arr = Array.prototype.slice.call(row.querySelectorAll('.seat'));
-      arr.forEach((btn, i) => all.push({ btn, fi, ri, i, last: arr.length - 1, row, id: btn.getAttribute('data-id') || '' }));
+      arr.forEach((btn, i) => all.push({ btn, fi, ri, rn: rows.length || 1, i, last: arr.length - 1, row, id: btn.getAttribute('data-id') || '' }));
     });
   });
   const unitOf = (s) => unitKeyJS(s.id, coach);
@@ -699,16 +713,18 @@ function pickSeatsSmart(floors, n, patient, gender) {
   const isFree = (s) => !s.btn.disabled && !s.btn.classList.contains('sel');
   const chosen = [];
   const isChosen = (s) => chosen.indexOf(s) >= 0;
+  const cfg = seatAiCfg();
   const score = (s) => {
-    let sc = -s.fi * 40 - s.ri * 1.5;             // preferred floor, then front rows
+    // preferred floor, then rows rear-to-front (Smart Settings; 'front' = the old front-first walk)
+    let sc = -s.fi * 40 - (cfg.rear ? (s.rn - 1 - s.ri) : s.ri) * 1.5;
     const mates = byUnit[unitOf(s)] || [];
     // a mate counts only if THIS passenger's party may sit there too
     const freeMates = mates.filter(m => m !== s && isFree(m) && !isChosen(m) && seatFitsGender(m.btn, g));
     const takenMates = mates.filter(m => m !== s && m.btn.disabled);
     const ownMates = mates.filter(m => m !== s && (isChosen(m) || m.btn.classList.contains('sel')));
     const need = n - chosen.length;
-    if (ownMates.length) sc += 30;                // the party shares one cabin
-    else if (need > 1 && freeMates.length >= Math.min(need - 1, Math.max(0, mates.length - 1))) sc += 12;
+    if (ownMates.length) sc += cfg.party ? 30 : 0; // the party shares one cabin
+    else if (cfg.party && need > 1 && freeMates.length >= Math.min(need - 1, Math.max(0, mates.length - 1))) sc += 12;
     if (need === 1 && !ownMates.length) {
       if (takenMates.length) sc += g ? 6 : -8;    // same-gender half cabin ✓ · stranger for unknown ✗
       else if (!freeMates.length) sc += 2;        // a single berth, nobody to share with
@@ -755,6 +771,18 @@ function seatAiCommit(grid, want) {
     landed += Flow.seats.length - before;
   }
   return landed;
+}
+/* "Recommended" ring (8 Oct 2026, master prompt 2.0): while nothing is picked
+   the berths Seat AI WOULD give this party glow on the map (legend: Recommended).
+   Only a mark - the passenger still taps, or presses the button / Continue;
+   an explicit pick always wins and clears the rings. */
+function seatAiRecommendPaint(grid) {
+  grid = grid || $('#seatGrid'); if (!grid) return;
+  $$('.seat.ai-rec', grid).forEach(b => b.classList.remove('ai-rec'));
+  if (!seatAiCfg().on || !Flow.route || Flow.seats.length) return;
+  if (Flow.route.type === 'sleeper' && Flow.bookingType === 'private') return;
+  const want = Math.max(1, Math.min(parseInt(Flow.pax, 10) || 1, CONFIG.booking.maxSeats));
+  pickSeatsSmart(seatFloorsInOrder(grid), want, !!Flow.patient, seatGenderNow()).forEach(b => b.classList.add('ai-rec'));
 }
 /* The passenger changed Woman ↔ Man after seats were picked: every berth the
    new rule forbids is released and the engine re-seats the same party. */
@@ -896,6 +924,47 @@ function syncOtherStop(sel, inputId, label, legKey, keep, restoreText) {
 function curStopFare() {
   const b = $('#boardingSel'), d = $('#dropSel');
   return stopFareFor(Flow.route, b ? b.value : '', d ? d.value : '');
+}
+
+/* Near-me pickup (8 Oct 2026, master prompt 2.0 · Admin -> Settings -> Near-me
+   pickup). Shown only when the switch is on, the browser has geolocation and
+   at least one pickup of this bus carries coordinates. One getCurrentPosition
+   per tap; the nearest pickup within nearme_max_km is SELECTED (the passenger
+   sees it and can change it) and the position itself goes nowhere. */
+function nearMeWire(sel) {
+  const btn = $('#bpNearMe'), note = $('#bpNearMeNote');
+  if (!btn || !note || !sel) return;
+  const s = (window.SHG_BOOT && window.SHG_BOOT.settings) || {};
+  const on = !(s.nearme_on === false || s.nearme_on === 0 || s.nearme_on === '0');
+  const maxKm = Math.max(1, parseInt(s.nearme_max_km, 10) || 150);
+  const pts = Array.prototype.slice.call(sel.options).map(o => {
+    const p = parseBP(o.value);
+    return (o.value !== BOARD_OTHER && p.lat !== null && p.lng !== null) ? { value: o.value, name: p.name, lat: p.lat, lng: p.lng } : null;
+  }).filter(Boolean);
+  const show = on && !!navigator.geolocation && pts.length > 0;
+  btn.classList.toggle('hide', !show);
+  if (!show) { note.classList.add('hide'); return; }
+  const say = (html) => { note.innerHTML = html; note.classList.remove('hide'); };
+  btn.onclick = () => {
+    btn.disabled = true;
+    say(esc(t('nearMeFinding')));
+    navigator.geolocation.getCurrentPosition((pos) => {
+      btn.disabled = false;
+      const la = pos.coords.latitude, lo = pos.coords.longitude;
+      let best = null;
+      pts.forEach(p => { const km = haversineKm(la, lo, p.lat, p.lng); if (!best || km < best.km) best = { p: p, km: km }; });
+      if (!best || best.km > maxKm) { say(esc(tf('nearMeNone', { km: maxKm }))); return; }
+      if (sel.value !== best.p.value) {
+        sel.value = best.p.value;
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      const km = best.km < 10 ? best.km.toFixed(1) : String(Math.round(best.km));
+      say(esc(tf('nearMeFound', { s: best.p.name, km: km }))
+        + ' <a href="https://www.google.com/maps/dir/?api=1&destination=' + best.p.lat + ',' + best.p.lng
+        + '" target="_blank" rel="noopener">🗺️ ' + esc(t('nearMeMaps')) + '</a>');
+    }, () => { btn.disabled = false; say(esc(t('nearMeDenied'))); },
+    { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 });
+  };
 }
 
 function otherStopText(sel, inputId, errKey) {
@@ -1059,6 +1128,7 @@ function renderSeats(instant) {
   const sameLeg = !!(prevLeg && prevLeg.routeId === r.id && prevLeg.date === ctx.date);
   syncOtherStop(bSel, '#boardingOther', t('boardOther'), legKey, otherWas.b, sameLeg ? (prevLeg.boardingOther || '') : '');
   syncOtherStop(dSel, '#dropOther', t('dropOther'), legKey, otherWas.d, sameLeg ? (prevLeg.dropOther || '') : '');
+  nearMeWire(bSel);
 
   $('#seatMaxNote').textContent = tf('seatNote', { n: CONFIG.booking.maxSeats });
 
@@ -1374,7 +1444,9 @@ function renderSeats(instant) {
      count; sharing and seater are sold seat-by-seat, so it takes the best
      single free seat and can be tapped again for the next passenger. */
   const autoBtn = $('#seatAutoPick');
-  if (autoBtn) {
+  const aiBar = $('#seatAiBar');
+  if (aiBar) aiBar.classList.toggle('hide', !seatAiCfg().on);   // Smart Settings: Seat AI OFF
+  if (autoBtn && seatAiCfg().on) {
     const cabinPax = () => (r.type === 'sleeper' && Flow.bookingType === 'private'
         && Flow.sharingTier && SHARING_TIERS[Flow.sharingTier])
       ? SHARING_TIERS[Flow.sharingTier].pax : 0;
@@ -1479,6 +1551,7 @@ function renderSeats(instant) {
      itself when the view or the tab goes away. */
   SeatPoll.start(r.id, ctx.date);
   $('#continueBtn').onclick = () => {
+    if (!Flow.seats.length && !seatAiCfg().on) { toast(t('tPickSeat')); return; }
     if (!Flow.seats.length) {
       /* 8 Oct 2026 "Auto seat → Continue": nothing tapped → the Seat AI
          seats the whole party (passenger count from the booking panel). */
@@ -1617,7 +1690,10 @@ function updateSeatSummary() {
   const cBtn = $('#continueBtn');
   // no seat yet → "Auto seat → Continue" stays live while a free berth exists (fare is 0 until then)
   cBtn.disabled = Flow.seats.length ? !fareGood : !document.querySelector('#seatGrid .seat:not([disabled])');
-  cBtn.textContent = Flow.seats.length ? t('btnContinue') : t('btnAutoContinue');
+  const aiOn = seatAiCfg().on;
+  if (!aiOn && !Flow.seats.length) cBtn.disabled = true;
+  cBtn.textContent = (Flow.seats.length || !aiOn) ? t('btnContinue') : t('btnAutoContinue');
+  seatAiRecommendPaint();
   seatQuickSync();
   updateTierUI();
 }

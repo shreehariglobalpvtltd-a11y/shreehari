@@ -861,9 +861,23 @@ foreach ($rows as $r) {
                  class="wa-mini" title="WhatsApp">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="#25D366"><path d="M17.47 14.38c-.3-.15-1.76-.87-2.03-.97-.28-.1-.48-.15-.68.15-.2.3-.77.97-.95 1.17-.17.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.48-.89-.79-1.49-1.77-1.66-2.07-.17-.3-.02-.46.13-.61.14-.14.3-.35.45-.53.15-.17.2-.3.3-.5.1-.2.05-.37-.03-.52-.07-.15-.68-1.63-.93-2.23-.24-.58-.49-.5-.68-.51h-.58c-.2 0-.52.07-.8.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.88 1.22 3.08c.15.2 2.1 3.22 5.1 4.51.71.31 1.27.49 1.7.63.72.23 1.37.2 1.88.12.58-.08 1.76-.72 2.01-1.41.25-.7.25-1.29.17-1.41-.07-.13-.28-.2-.58-.35zm-5.44 7.44h-.02a9.87 9.87 0 01-5.03-1.38l-.36-.22-3.74.98 1-3.65-.24-.37a9.86 9.86 0 01-1.51-5.26c0-5.45 4.44-9.89 9.9-9.89 2.65 0 5.14 1.03 7 2.9a9.83 9.83 0 012.9 7c0 5.45-4.44 9.89-9.9 9.89zm8.41-18.3A11.82 11.82 0 0012.04 0C5.46 0 .1 5.35.1 11.93c0 2.1.55 4.16 1.6 5.95L0 24l6.3-1.65a11.9 11.9 0 005.73 1.47h.01c6.58 0 11.94-5.35 11.94-11.93a11.86 11.86 0 00-3.54-8.47z"/></svg>
               </a>
+              <?php /* 8 Oct 2026 (master prompt 2.0): one tap to call from the crew phone. */ ?>
+              <a href="tel:<?= Security::e($waNum) ?>" class="wa-mini mf-call" title="Call passenger" aria-label="Call <?= Security::e((string) $r['full_name']) ?>">📞</a>
             <?php endif; ?>
           </td>
-          <td><?= Security::e($r['boarding_stop'] ? $stopShort((string) $r['boarding_stop']) : '—') ?></td>
+          <td><?= Security::e($r['boarding_stop'] ? $stopShort((string) $r['boarding_stop']) : '—') ?>
+            <?php
+              /* Open the OFFICIAL pickup in Maps (8 Oct 2026): its own coordinates
+                 when the stop carries them, else a place search by its name. */
+              $bpRaw = (string) ($r['boarding_stop'] ?? '');
+              if ($bpRaw !== ''):
+                $bpMap = preg_match('/\[\s*(-?\d+(?:\.\d+)?)\s*[,;]\s*(-?\d+(?:\.\d+)?)\s*\]/', $bpRaw, $gm) === 1
+                  ? 'https://www.google.com/maps/dir/?api=1&destination=' . $gm[1] . ',' . $gm[2]
+                  : 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($stopShort($bpRaw));
+            ?>
+              <a href="<?= Security::e($bpMap) ?>" target="_blank" rel="noopener" class="wa-mini mf-map" title="Open pickup in Maps">🗺️</a>
+            <?php endif; ?>
+          </td>
           <td><?= Security::e($stopShort((string) ($r['drop_stop'] ?: $trip['to_city']))) ?></td>
           <td class="mono"><?= Security::e(inr($farePer($r))) ?></td>
           <td class="mono">

@@ -247,8 +247,10 @@ final class Campaigns
                     continue;
                 }
                 $opt = CustomerDirectory::optedOut();
+                $in  = CustomerDirectory::optedIn();     // null = no opt-in required (Settings -> Marketing)
                 foreach ($batch as $r) {
-                    if (isset($opt[substr((string) $r['phone'], -10)])) {
+                    if (isset($opt[substr((string) $r['phone'], -10)])
+                        || ($in !== null && !isset($in[substr((string) $r['phone'], -10)]))) {
                         Database::update('mk_recipients', ['state' => 'optout'], 'id = :id', ['id' => (int) $r['id']]);
                         continue;
                     }

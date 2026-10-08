@@ -371,6 +371,11 @@ final class CustomerDirectory
         }
         if ($forMarketing) {
             $out = array_values(array_filter($out, static fn ($r) => !self::isPlaceholder($r['ph'])));
+            // 8 Oct 2026: Settings -> Marketing -> "opted in only" keeps the list to consenting numbers.
+            $in = self::optedIn();
+            if ($in !== null) {
+                $out = array_values(array_filter($out, static fn ($r) => isset($in[$r['ph']])));
+            }
         }
         return array_slice($out, 0, $max);
     }
@@ -412,6 +417,47 @@ final class CustomerDirectory
         } catch (Throwable $ignored) {
         }
         return $out;
+    }
+
+    /**
+     * Numbers that opted IN to offers (8 Oct 2026, master prompt 2.0), or
+     * null when the office does not require an opt-in (setting
+     * mk_require_optin OFF — the old rule: everyone who has not said STOP).
+     * Sources: mk_optin (office / web) and the WhatsApp START OFFERS book.
+     *
+     * @return array<string,true>|null 10-digit keys
+     */
+    public static function optedIn(): ?array
+    {
+        if (!Settings::getBool('mk_require_optin', false)) {
+            return null;
+        }
+        $out = [];
+        try {
+            foreach (Database::fetchAll('SELECT phone FROM mk_optin') as $r) {
+                $out[substr(preg_replace('/\D/', '', (string) $r['phone']) ?? '', -10)] = true;
+            }
+        } catch (Throwable $ignored) {
+        }
+        try {
+            foreach (Database::fetchAll("SELECT phone FROM wa_marketing_consents WHERE state = 'opted_in'") as $r) {
+                $out[substr(preg_replace('/\D/', '', (string) $r['phone']) ?? '', -10)] = true;
+            }
+        } catch (Throwable $ignored) {
+        }
+        return $out;
+    }
+
+    /** Record an opt-in (office paste list / web). Returns false for a bad number. A STOP (mk_optout) still wins. */
+    public static function optIn(string $phone, string $source, int $by): bool
+    {
+        $d10 = substr(preg_replace('/\D/', '', $phone) ?? '', -10);
+        if (strlen($d10) !== 10) {
+            return false;
+        }
+        Database::run('INSERT IGNORE INTO mk_optin (phone, source, created_by) VALUES (:p, :s, :b)',
+            ['p' => $d10, 's' => mb_substr($source, 0, 40), 'b' => $by > 0 ? $by : null]);
+        return true;
     }
 
     /** vCard 3.0 file for a phone's contacts app (WhatsApp broadcast lists need saved contacts). */

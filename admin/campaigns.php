@@ -121,6 +121,17 @@ if ($ready && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             } elseif ($act === 'optout_add') {
                 $flash = Campaigns::optOut((string) ($_POST['phone'] ?? ''), mb_substr(trim((string) ($_POST['reason'] ?? 'office')), 0, 120), $me)
                     ? ['ok', 'Number blocked from campaigns.'] : ['bad', 'Enter a 10-digit number.'];
+            } elseif ($act === 'optin_add') {
+                /* 8 Oct 2026: numbers that SAID YES to offers (paper form, call,
+                   WhatsApp reply). One per line or comma separated. A STOP on the
+                   no-offers list below still wins. */
+                $okN = 0; $badN = 0;
+                foreach (preg_split('/[\s,;]+/', (string) ($_POST['phones'] ?? '')) ?: [] as $ph) {
+                    if (trim($ph) === '') { continue; }
+                    CustomerDirectory::optIn($ph, 'office', $me) ? $okN++ : $badN++;
+                }
+                Logger::audit('marketing.optin_add', 'mk_optin', (string) $okN, null, null, 'by admin #' . $me);
+                $flash = ['ok', $okN . ' number(s) recorded as opted in' . ($badN ? ', ' . $badN . ' skipped (not 10 digits)' : '') . '.'];
             } elseif ($act === 'optout_del') {
                 Database::run('DELETE FROM mk_optout WHERE phone = :p', ['p' => substr(preg_replace('/\D/', '', (string) ($_POST['phone'] ?? '')) ?? '', -10)]);
                 $flash = ['ok', 'Number allowed again.'];
@@ -147,6 +158,9 @@ if ($ready && ($c !== null || $isNew) && $mayAct) {
 $list = $ready ? Database::fetchAll('SELECT c.*, a.full_name AS by_name FROM mk_campaigns c LEFT JOIN admins a ON a.id = c.created_by ORDER BY c.id DESC LIMIT 50') : [];
 $recips = $c !== null ? Database::fetchAll('SELECT * FROM mk_recipients WHERE campaign_id = :c ORDER BY FIELD(state,\'queued\',\'sending\',\'failed\',\'sent\',\'delivered\',\'read\',\'optout\',\'skipped\'), id LIMIT 300', ['c' => (int) $c['id']]) : [];
 $optouts = $ready ? Database::fetchAll('SELECT * FROM mk_optout ORDER BY created_at DESC LIMIT 100') : [];
+$optinN = 0;
+try { $optinN = (int) Database::scalar('SELECT COUNT(*) FROM mk_optin', [], 0); } catch (Throwable $ex) { $optinN = 0; }
+$optinReq = Settings::getBool('mk_require_optin', false);
 $audLabel = static function (string $qs): string {
     if (str_starts_with($qs, 'autopilot=')) {
         require_once INCLUDE_PATH . '/mkautopilot.php';
@@ -324,6 +338,18 @@ admin_header('Campaigns', 'campaigns');
     <?php endforeach; ?>
     </tbody>
   </table></div>
+  <?php endif; ?>
+</div>
+
+<div class="panel">
+  <h2>✅ Opted in to offers (<?= (int) $optinN ?>)</h2>
+  <p class="mk-note"><?= $optinReq
+      ? 'Settings → Marketing → “opted in only” is <b>ON</b>: campaigns reach only these numbers.'
+      : 'Settings → Marketing → “opted in only” is OFF: campaigns reach every past customer who has not said STOP. Turn it on to send only to numbers listed here.' ?></p>
+  <?php if ($mayAct): ?>
+  <form method="post" class="mk-one"><?= $csrf ?><input type="hidden" name="action" value="optin_add">
+    <textarea name="phones" rows="2" placeholder="98XXXXXXXX, 91XXXXXXXX … (numbers that said YES to offers)" required style="flex:1;min-width:240px;padding:8px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink)"></textarea>
+    <button class="btn ghost" type="submit">Record opt-in</button></form>
   <?php endif; ?>
 </div>
 

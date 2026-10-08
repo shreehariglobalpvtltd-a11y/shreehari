@@ -164,6 +164,54 @@ final class Ticket
      * machine parts — "Surat · Departure @ 13:00 [21.1702,72.8311]" — and the
      * "[lat,lng]" coordinates were being printed on the ticket verbatim.
      */
+    /**
+     * Where the passenger boards, for a map link (8 Oct 2026, master prompt
+     * 2.0): the [lat,lng] the booking carries, else the coordinates of the
+     * matching official pickup row (Routes -> Pickup points). Null when the
+     * pickup has none - a ticket never prints a guessed position.
+     *
+     * @return array{lat: float, lng: float, landmark: string}|null
+     */
+    public static function pickupGeo(array $booking): ?array
+    {
+        $label = (string) ($booking['boarding_stop'] ?? '');
+        $landmark = '';
+        $lat = null; $lng = null;
+        if (preg_match('/\[\s*(-?\d+(?:\.\d+)?)\s*[,;]\s*(-?\d+(?:\.\d+)?)\s*\]/', $label, $m) === 1) {
+            $lat = (float) $m[1]; $lng = (float) $m[2];
+        }
+        $routeId = (int) ($booking['route_id_for_stop'] ?? 0);
+        $name = trim((string) (preg_replace('/\s*(@\s*[0-2]?\d:\d{2})?\s*(\[[^\]]*\])?\s*$/u', '', $label) ?? $label));
+        $name = trim((string) (explode('·', $name)[0] ?? $name));
+        if ($routeId > 0 && $name !== '') {
+            try {
+                if (!class_exists('Boarding')) { require_once __DIR__ . '/boarding.php'; }
+                $row = Boarding::stopRow($routeId, $name, 'boarding');
+                if ($row !== null) {
+                    $landmark = trim((string) ($row['landmark'] ?? ''));
+                    if ($lat === null) {
+                        $g = Database::fetch('SELECT latitude, longitude FROM route_stops WHERE id = :i', ['i' => (int) $row['id']]);
+                        if ($g !== null && $g['latitude'] !== null && $g['longitude'] !== null) {
+                            $lat = (float) $g['latitude']; $lng = (float) $g['longitude'];
+                        }
+                    }
+                }
+            } catch (Throwable $e) {
+                // no stop row / table: the ticket simply carries no map
+            }
+        }
+        if ($lat === null || $lng === null || ($lat == 0.0 && $lng == 0.0) || abs($lat) > 90 || abs($lng) > 180) {
+            return null;
+        }
+        return ['lat' => $lat, 'lng' => $lng, 'landmark' => $landmark];
+    }
+
+    /** Google Maps directions link to the pickup (works in any maps app that opens https links). */
+    public static function pickupMapsUrl(array $geo): string
+    {
+        return 'https://www.google.com/maps/dir/?api=1&destination=' . round($geo['lat'], 6) . ',' . round($geo['lng'], 6);
+    }
+
     private static function stopForPrint(string $label): string
     {
         $s = preg_replace('/\s*\[[^\]]*\]\s*/u', ' ', $label) ?? $label;   // drop [lat,lng]
@@ -1428,6 +1476,10 @@ final class Ticket
         // `?:` not `??` — an EMPTY string slipped past the null-coalesce and
         // left the tile blank instead of showing the intended dash.
         $board  = self::displayOr(self::stopForPrint((string) ($booking['boarding_stop'] ?? '')));
+        $geo    = self::pickupGeo($booking);
+        if ($geo !== null && $geo['landmark'] !== '' && stripos($board, $geo['landmark']) === false) {
+            $board .= ' · ' . self::display($geo['landmark']);   // landmark the crew meets you at (8 Oct 2026)
+        }
         $drop   = self::displayOr(self::stopForPrint((string) ($booking['drop_stop'] ?? '')));
 
         /* Draws through self::gdText, NOT imagettftext (audit, 11 Sep 2026).
@@ -1582,6 +1634,16 @@ final class Ticket
         try { $drawQr($qrData, 76, 1320 + $grow, 245); }
         catch (Throwable $e) { Logger::error('Ticket verification QR: ' . $e->getMessage()); }
         $infoX = $payUpi !== '' ? 560 : 360;
+        /* Pickup map QR (8 Oct 2026, master prompt 2.0 · Settings -> ticket_maps_qr):
+           scanning opens directions to the OFFICIAL pickup point - never the
+           passenger's own position. Only when the pickup has coordinates and
+           the payment QR is not using the right-hand side. */
+        $mapsQr = $payUpi === '' && $geo !== null && Settings::getBool('ticket_maps_qr', true);
+        if ($mapsQr) {
+            self::gdText($im, 18, 790, 1300 + $grow, $navy, 'PICKUP MAP · नक्सा', true);
+            try { $drawQr(self::pickupMapsUrl($geo), 790, 1320 + $grow, 210); }
+            catch (Throwable $e) { Logger::error('Pickup map QR: ' . $e->getMessage()); $mapsQr = false; }
+        }
         if ($payUpi !== '') {
             self::gdRounded($im, 550, 1270 + $grow, 1010, 1320 + $grow, 12, $orange);
             self::gdText($im, 22, 580, 1305 + $grow, $white, 'SCAN & PAY', true);
@@ -1593,7 +1655,7 @@ final class Ticket
             self::gdText($im, 24, $infoX, 1300 + $grow, $settlement['due'] <= 0 ? $green : $orange,
                 $settlement['due'] <= 0 ? 'PAID' : 'PAYMENT DUE', true);
             $ref = (string) ($booking['payment']['utr_number'] ?? '');
-            self::gdText($im, 17, $infoX, 1420 + $grow, $mut, $clampTo(17, $ref, 640), false);
+            self::gdText($im, 17, $infoX, 1420 + $grow, $mut, $clampTo(17, $ref, $mapsQr ? 400 : 640), false);
             if ($settlement['due'] > 0) {
                 self::gdText($im, 16, $infoX, 1454 + $grow, $mut, 'Contact the office for payment instructions.', false);
             }
@@ -1716,7 +1778,7 @@ final class Ticket
     {
         $booking = Database::fetch(
             'SELECT b.*, l.travel_date, l.boarding_stop, l.drop_stop, l.boarding_time,
-                    r.from_city, r.to_city, r.route_code,
+                    r.from_city, r.to_city, r.route_code, r.id AS route_id_for_stop,
                     COALESCE(s.dep_time_override, r.dep_time) AS dep_time, r.arr_time,
                     r.crew_name, r.crew_phone, r.duration_text,
                     bus.bus_name, bus.bus_number, bus.coach_type,
@@ -1833,7 +1895,7 @@ final class Ticket
      *  tickets drawn at 23:43/23:44 IST with the old seat labels were never
      *  redrawn. tests/chalani-png-test.php and tests/ticket-cache-test.php
      *  assert a past moment. */
-    private const PNG_LAYOUT_CHANGED = '2026-10-04 12:15:00';   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
+    private const PNG_LAYOUT_CHANGED = '2026-10-08 18:00:00';   // IST: pickup landmark + Google Maps QR of the pickup (master prompt 2.0). Was 2026-10-04 12:15:00:   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
