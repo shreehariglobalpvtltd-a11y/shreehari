@@ -41,10 +41,49 @@ try {
 
     // A walk-in's placeholder number (0000000000) proves nothing: it is the
     // same "number" on every walk-in ticket the desk sells.
-    $ownsIt = ($phone !== '' && !isPlaceholderPhone((string) $detail['contact_phone'])
-            && $phone === (string) $detail['contact_phone'])
-        || (Auth::isUser() && (int) (Auth::user()['id'] ?? 0) === (int) ($detail['user_id'] ?? -1))
-        || $staffSees;
+    $phoneMatch = $phone !== '' && !isPlaceholderPhone((string) $detail['contact_phone'])
+            && $phone === (string) $detail['contact_phone'];
+
+    /* The signed-in customer (8 Oct 2026): the one customer rule
+       (Auth::customerMayOpen — OTP-verified session for this number, or a PNR
+       booked in this browser session) when it is there; the old account-id
+       match until it lands. A name+mobile quick sign-in alone is not proof. */
+    $sessionOwner = method_exists('Auth', 'customerMayOpen')
+        ? (bool) Auth::customerMayOpen($detail)
+        : (Auth::isUser() && (int) (Auth::user()['id'] ?? 0) === (int) ($detail['user_id'] ?? -1));
+
+    /* Phone-miss throttle (8 Oct 2026, D8-M2). PNRs are sequential, so a
+       known mobile number could be tried against every PNR to find that
+       traveller's trips. Each WRONG phone counts against that phone (8 an
+       hour) and this IP (30 an hour); once either budget is spent, even the
+       RIGHT phone gets only the partial answer, so the throttle itself never
+       says yes or no. Staff and the signed-in owner are not counted. */
+    $missSpent = static function (string $bucket, string $id, int $max, int $window): bool {
+        try {
+            $r = Database::fetch('SELECT hits, window_start, blocked_until FROM rate_limits WHERE bucket = :b AND identifier = :i LIMIT 1',
+                ['b' => $bucket, 'i' => $id]);
+        } catch (Throwable $e) {
+            return false;
+        }
+        if ($r === null) {
+            return false;
+        }
+        if (!empty($r['blocked_until']) && strtotime((string) $r['blocked_until']) > time()) {
+            return true;
+        }
+        return strtotime((string) $r['window_start']) >= time() - $window && (int) $r['hits'] >= $max;
+    };
+    $ownsIt = $staffSees || $sessionOwner;
+    if (!$ownsIt && $phone !== '') {
+        $spent = $missSpent('track_phone_miss', $phone, 8, 3600)
+              || $missSpent('track_miss_ip', Security::clientIp(), 30, 3600);
+        if ($phoneMatch && !$spent) {
+            $ownsIt = true;
+        } elseif (!$phoneMatch) {
+            Security::rateLimit('track_phone_miss', $phone, 8, 3600);
+            Security::rateLimit('track_miss_ip', Security::clientIp(), 30, 3600);
+        }
+    }
 
     if (!$ownsIt) {
         Response::success([
@@ -61,7 +100,28 @@ try {
     // One shared shape for track.php and my-bookings.php (includes/helpers.php).
     $payload = shg_customer_payload($detail);
     // Ticket page only (17 Sep 2026): did the WhatsApp ticket go? See shg_wa_last().
-    $payload['wa'] = shg_wa_last((int) ($detail['id'] ?? 0));
+    // 8 Oct 2026: only a send to the booking's own number(s) answers — never a seller copy.
+    $payload['wa'] = shg_wa_last((int) ($detail['id'] ?? 0), (string) ($detail['contact_phone'] ?? ''));
+
+    /* Directions to the pickup (8 Oct 2026, D6-11): only from the OFFICIAL
+       coordinates (the label's [lat,lng] or the route's pickup row) — null
+       when the stop has none; a position is never guessed. Single booking
+       only, so the My Bookings list does not pay a query per row. */
+    $payload['pickupMap'] = null;
+    if (($detail['status'] ?? '') === 'confirmed') {
+        try {
+            $leg0 = null;
+            foreach ($detail['legs'] ?? [] as $lg) {
+                if ((string) ($lg['leg_type'] ?? 'outbound') === 'outbound') { $leg0 = $lg; break; }
+            }
+            $leg0 ??= ($detail['legs'][0] ?? []);
+            $rid  = (int) Database::scalar('SELECT route_id FROM schedules WHERE id = :s', ['s' => (int) ($leg0['schedule_id'] ?? 0)], 0);
+            $geo  = Ticket::pickupGeo(['boarding_stop' => (string) ($leg0['boarding_stop'] ?? ''), 'route_id_for_stop' => $rid]);
+            $payload['pickupMap'] = $geo !== null ? Ticket::pickupMapsUrl($geo) : null;
+        } catch (Throwable $e) {
+            $payload['pickupMap'] = null;
+        }
+    }
     Response::success($payload);
 } catch (Throwable $e) {
     Response::serverError($e);
