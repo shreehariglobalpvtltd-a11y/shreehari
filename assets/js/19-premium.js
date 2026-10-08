@@ -256,12 +256,15 @@
      delegated handler and applyLang()'s .on bookkeeping drive them with
      no new language code at all.
      ----------------------------------------------------------------- */
-  var LANG_LABEL = { en: 'EN', hi: 'हिं', ne: 'ने' };
+  var LANG_LABEL = { en: 'EN', hi: 'हिं', ne: 'ने', gu: 'GU' };
   var LANG_NAME = { en: 'English', hi: 'हिन्दी', ne: 'नेपाली' };
 
   function currentLang() {
-    try { return localStorage.getItem('shg:lang') || document.documentElement.lang || 'en'; }
-    catch (e) { return document.documentElement.lang || 'en'; }
+    /* 8 Oct 2026 (D2-06 / D3-20): the language the page IS in (04-i18n.js's
+       LANG) first - a first-time visitor reads Nepali, and the pill said EN. */
+    try { if (typeof LANG === 'string' && LANG) return LANG; } catch (e) {}
+    try { return localStorage.getItem('shg:lang') || document.documentElement.lang || 'ne'; }
+    catch (e) { return document.documentElement.lang || 'ne'; }
   }
 
   function buildLangMini() {
@@ -302,6 +305,10 @@
       btn.textContent = LANG_LABEL[l] || LANG_LABEL.en;
     }
     label();
+    /* applyStaticLang() (04-i18n.js) calls this on every language change,
+       and <html lang> is watched as a second channel. */
+    window.shgLangMiniLabel = label;
+    try { new MutationObserver(label).observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] }); } catch (e) {}
 
     btn.addEventListener('click', function (e) {
       e.stopPropagation();

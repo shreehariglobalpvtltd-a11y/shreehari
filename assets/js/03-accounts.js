@@ -428,6 +428,18 @@ function applyTheme(mode, save) {
 }
 (function initTheme() {
   let mode = readSavedTheme();
+  /* D9-08 (8 Oct 2026): the counter screen (?counter=1) follows the office
+     panel's theme while this device has no customer theme saved - same rule
+     as the pre-paint script in app.template.html. Not saved as a customer
+     choice. */
+  if (!mode) {
+    try {
+      if (/[?&]counter=1(?:&|$)/.test(location.search)) {
+        const at = (localStorage.getItem('shg_admin_theme') || 'dark').replace(/"/g, '');
+        if (SHG_THEMES.indexOf(at) >= 0) { applyTheme(at, false); return; }
+      }
+    } catch (e) {}
+  }
   if (!mode) {
     try { mode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; } catch (e) { mode = 'light'; }
     applyTheme(mode, false);           /* follow the system until the user picks one */

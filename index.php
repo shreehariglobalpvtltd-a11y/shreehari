@@ -44,6 +44,20 @@ if ($legalPath === '/travel-info') {
 }
 /* 24 Sep 2026: server-rendered route pages (/bus, /bus/<slug>, /hi/bus/…,
    /ne/bus/…) and the two dynamic sitemaps — what a search engine reads. */
+/* 8 Oct 2026 (D3-18): the Help Desk page joins the pages sitemap. The list
+   itself is built in includes/routepages.php (RoutePages::sitemapPages, not
+   this file's); until /help.php is added there, the served XML gets the row
+   here - added once, only when it is missing, before </urlset>. */
+if ($legalPath === '/sitemap-pages.xml') {
+    ob_start(static function (string $xml): string {
+        if ($xml === '' || str_contains($xml, '/help.php</loc>') || !str_contains($xml, '</urlset>')) {
+            return $xml;
+        }
+        $row = '  <url><loc>' . htmlspecialchars(rtrim(APP_URL, '/') . '/help.php', ENT_XML1) . '</loc><lastmod>' . date('Y-m-d')
+             . '</lastmod><changefreq>monthly</changefreq><priority>0.5</priority></url>' . "\n";
+        return str_replace('</urlset>', $row . '</urlset>', $xml);
+    });
+}
 if ($legalPath === '/bus' || str_starts_with($legalPath, '/bus/') || str_starts_with($legalPath, '/hi/bus') || str_starts_with($legalPath, '/ne/bus')
     || $legalPath === '/sitemap-routes.xml' || $legalPath === '/sitemap-pages.xml') {
     require_once INCLUDE_PATH . '/routepages.php';
@@ -339,6 +353,8 @@ $inject = <<<HTML
 {$seoHead}
 <script>
 window.SHG_BOOT = {$bootJson};
+/* 8 Oct 2026 (D2-05): <html lang> is the visitor's language from the first frame (saved choice, else a Hindi / Nepali phone, else Nepali) - the same pick 04-i18n.js makes. */
+try { (function () { var l = null; try { l = localStorage.getItem('shg:lang'); } catch (e) {} if (!/^(en|hi|ne|gu)$/.test(l || '')) { l = 'ne'; var n = navigator.languages || [navigator.language || '']; for (var i = 0; i < n.length; i++) { var c = String(n[i] || '').toLowerCase().slice(0, 2); if (c === 'ne' || c === 'hi') { l = c; break; } } } document.documentElement.lang = l; })(); } catch (e) {}
 /* 5 Oct 2026: an ad click (Google Ads / Facebook) sees the booking card first - set before first paint. */
 try { if (/[?&](gclid|gbraid|wbraid|gad_source|gad_campaignid|fbclid)=/.test(location.search)) document.documentElement.classList.add('shg-from-ad'); } catch (e) {}
 /* 8 Oct 2026: Admin -> Settings -> Website buttons. A switched-off button is hidden before first paint (depth.css html[data-off~=...]). */
@@ -521,6 +537,49 @@ if ($firstPaint !== []) {
     if ($p2 !== false) {
         $html = substr($html, 0, $p2 + 4) . $fp . substr($html, $p2 + 4);
     }
+}
+
+/* 8 Oct 2026 (D8-08): the counter desk bundle (14-counter.js, ~70 KB) is a
+   no-op without SHG_BOOT.staff, so a customer page does not download it.
+   sw.js still precaches it for the desk, and a staff page is never the
+   cached anonymous shell (X-SHG-Personal below). */
+if (empty($boot['staff'])) {
+    $html = preg_replace('#<script defer src="/assets/js/14-counter\.js\?v=[^"]*"></script>\s*#', '', $html, 1) ?? $html;
+}
+
+/* 8 Oct 2026 (D8-10): the running-offer ribbon is server-rendered when an
+   offer runs, so it is in the first frame instead of being revealed by late
+   JS (a 0.19 layout shift that pushed the booking card down on slow phones).
+   Same wording as renderOfferRibbon() in 05-router.js, which keeps
+   re-localising it; html[data-off~=ribbon] still hides it before paint. */
+$shgOffer = $boot['offers'][0] ?? null;
+if (is_array($shgOffer) && (float) ($shgOffer['value'] ?? 0) > 0) {
+    $fest = (bool) preg_match('/dashain|tihar|dasain|दशैं|तिहार/iu', (string) ($shgOffer['title'] ?? '') . ' ' . (string) ($shgOffer['code'] ?? ''));
+    $v    = 0 + (float) $shgOffer['value'];
+    $amt  = ($shgOffer['type'] ?? '') === 'percent' ? (rtrim(rtrim(number_format($v, 2, '.', ''), '0'), '.') . '%') : ('₹' . number_format($v));
+    $ahead = (int) ($shgOffer['ahead'] ?? 0);
+    $until = '';
+    if (!empty($shgOffer['until']) && ($ts = strtotime((string) $shgOffer['until'] . ' 00:00:00')) !== false) {
+        $until = date('j', $ts) . ' ' . date('M', $ts);
+    }
+    $title = (string) ($shgOffer['title'] ?? '');
+    $rib = [];
+    foreach (['ne', 'hi', 'en'] as $L) {
+        $name = $fest ? ['ne' => 'दशैं–तिहार अफर', 'hi' => 'दशहरा–दिवाली ऑफ़र', 'en' => 'Dashain–Tihar offer'][$L] : $title;
+        $how  = $ahead > 0
+            ? ['ne' => 'यात्रा भन्दा ' . $ahead . ' घण्टा अगाडि बुक गर्दा ' . $amt . ' छुट', 'hi' => 'यात्रा से ' . $ahead . ' घंटे पहले बुक करें, ' . $amt . ' छूट', 'en' => 'book ' . $ahead . '+ hours before departure and save ' . $amt][$L]
+            : ['ne' => $amt . ' छुट', 'hi' => $amt . ' छूट', 'en' => $amt . ' off'][$L];
+        $till = $until !== '' ? ['ne' => ' · ' . $until . ' सम्म', 'hi' => ' · ' . $until . ' तक', 'en' => ' · till ' . $until][$L] : '';
+        $rib[$L] = ['t' => $name . ' — ' . $how . $till, 'c' => ['ne' => 'अहिले बुक गर्नुहोस् →', 'hi' => 'अभी बुक करें →', 'en' => 'Book now →'][$L]];
+    }
+    $ribHtml = '<a class="offer-ribbon" id="offerRibbon" href="#/home" aria-live="polite">'
+        . "\n" . '  <span class="or-lamp" aria-hidden="true">🪔</span>'
+        . "\n" . '  <span class="or-text" id="offerRibbonText">' . htmlspecialchars($rib['ne']['t'], ENT_QUOTES, 'UTF-8') . '</span>'
+        . "\n" . '  <span class="or-cta" id="offerRibbonCta">' . htmlspecialchars($rib['ne']['c'], ENT_QUOTES, 'UTF-8') . '</span>'
+        . "\n" . '</a><script>(function(){try{var R=' . json_encode($rib, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)
+        . ',l=document.documentElement.lang,d=R[l]||R.en;if(l==="ne"||!d)return;'
+        . 'document.getElementById("offerRibbonText").textContent=d.t;document.getElementById("offerRibbonCta").textContent=d.c;}catch(e){}})();</script>';
+    $html = (string) preg_replace('~<a class="offer-ribbon hide" id="offerRibbon"[^>]*>.*?</a>~s', str_replace(['\\', '$'], ['\\\\', '\\$'], $ribHtml), $html, 1);
 }
 
 header('Content-Type: text/html; charset=UTF-8');

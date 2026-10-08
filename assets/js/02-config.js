@@ -1126,7 +1126,37 @@ function genId(route) {
 }
 const routeById = (id) => DB.routes.find(r => r.id === id);
 let toastTimer;
-function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3200); }
+/* 8 Oct 2026 (D3-07 / D2-12 / D3-M2): the toast never sits on the bottom bar
+   or the fixed seat / checkout action bar - it is lifted above whichever is
+   showing - it lets every tap through (pointer-events:none, app.css), stays
+   up long enough to read (3.2 s, longer for long Nepali lines, 9 s at most)
+   and a tap on it dismisses it early. */
+function toast(msg) {
+  const t = $('#toast'); if (!t) return;
+  t.textContent = msg;
+  let lift = 0;
+  try {
+    const bar = document.querySelector('.view.active .flow-actions');
+    if (bar && getComputedStyle(bar).position === 'fixed' && bar.offsetHeight) lift = Math.max(lift, window.innerHeight - bar.getBoundingClientRect().top);
+    const bn = document.querySelector('.bottom-nav');
+    if (bn && getComputedStyle(bn).display !== 'none' && bn.offsetHeight) lift = Math.max(lift, window.innerHeight - bn.getBoundingClientRect().top);
+  } catch (e) {}
+  t.style.bottom = lift > 0 ? Math.round(lift + 12) + 'px' : '';
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), Math.min(9000, Math.max(3200, String(msg || '').length * 70)));
+}
+/* Tap-to-dismiss without ever eating the tap: the toast itself takes no
+   pointer events, so a tap that lands inside its box closes it and still
+   reaches whatever is underneath. */
+document.addEventListener('pointerdown', (e) => {
+  const t = document.getElementById('toast');
+  if (!t || !t.classList.contains('show')) return;
+  const r = t.getBoundingClientRect();
+  if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
+    clearTimeout(toastTimer); t.classList.remove('show');
+  }
+}, { passive: true, capture: true });
 
 /* Apply Bhagwan image to hero background & ticket watermark via CSS variable. */
 function applyBhagwanImg() {
