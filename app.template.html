@@ -395,10 +395,13 @@ s.addEventListener('click',function(e){e.preventDefault();
   <a href="#/terms"><svg class="ic"><use href="#i-scroll"/></svg> Terms</a>
   <a href="#/my" id="mmUserBtn"><svg class="ic"><use href="#i-users"/></svg> Sign in</a>
   <a href="#/" id="mmNotifBtn"><svg class="ic"><use href="#i-bell"/></svg> Notifications<span class="mm-notif-badge hide" id="mmNotifBadge">0</span></a>
-  <!-- 4 Oct 2026: the display choice on phones (the topbar button is hidden under 761px). -->
+  <!-- 4 Oct 2026: the display choice on phones (the topbar button is hidden under 761px).
+       8 Oct 2026 (Phase 12): "Auto" follows the phone's own light / dark, live;
+       it is the lit choice while nothing is saved (03-accounts.js). -->
   <div class="mm-display" role="radiogroup" aria-label="Display · स्क्रिन">
     <span class="mm-display-lbl">🖥️ स्क्रिन · Display</span>
     <div class="mm-display-opts">
+      <button type="button" role="radio" aria-checked="false" aria-label="Auto · फोन जस्तै" data-theme-set="auto"><b aria-hidden="true">🌗</b><span>Auto</span><small>फोन जस्तै</small></button>
       <button type="button" role="radio" aria-checked="false" aria-label="Light · उज्यालो" data-theme-set="light"><b aria-hidden="true">☀️</b><span>Light</span><small>उज्यालो</small></button>
       <button type="button" role="radio" aria-checked="false" aria-label="Dark · अँध्यारो" data-theme-set="dark"><b aria-hidden="true">🌙</b><span>Dark</span><small>अँध्यारो</small></button>
       <button type="button" role="radio" aria-checked="false" aria-label="AMOLED black · पूरा कालो" data-theme-set="amoled"><b aria-hidden="true">⚫</b><span>AMOLED</span><small>पूरा कालो</small></button>
@@ -2559,61 +2562,64 @@ s.addEventListener('click',function(e){e.preventDefault();
      [HTML] VIEW: NAVIGATOR — fullscreen MapLibre nav app
 ================================================================ -->
 <section class="view" id="view-nav">
-  <div class="sn-load" id="snLoad"><div class="sn-load-map" id="snLoadMap" aria-hidden="true"></div><div class="spin"></div><p>S Hari Map — loading…</p></div>
+  <!-- 8 Oct 2026 (D2-14): every word on this screen is translated (data-i18n /
+       -ph / -title, 04-i18n.js sn* keys; 15-nav.js writes its own lines with
+       snT()). "S Hari Nav" is a name and stays Roman. -->
+  <div class="sn-load" id="snLoad"><div class="sn-load-map" id="snLoadMap" aria-hidden="true"></div><div class="spin"></div><p data-i18n="snLoading">S Hari Map — loading…</p></div>
   <div id="sn-map"></div>
-  <button class="sn-back" id="snBack" title="Back to site">←</button>
+  <button class="sn-back" id="snBack" title="Back to site" data-i18n-title="snBackT">←</button>
   <div class="sn-banner" id="snBanner">
     <span class="sb-ico" id="snBanIcon">⬆️</span>
     <div class="sb-txt"><b id="snBanInstr">—</b><small id="snBanDist">—</small></div>
     <div class="sb-eco"><span class="sb-eta" id="snBanEta">--</span><span class="sb-rem" id="snBanRem">--</span></div>
-    <button class="sb-lang" id="snBanLang" title="Voice language" type="button">EN</button>
-    <button class="sb-mic on" id="snBanMic" title="Toggle voice guidance" type="button">🔊</button>
+    <button class="sb-lang" id="snBanLang" title="Voice language" data-i18n-title="snVoiceLangT" type="button">EN</button>
+    <button class="sb-mic on" id="snBanMic" title="Toggle voice guidance" data-i18n-title="snVoiceT" type="button" aria-pressed="true">🔊</button>
   </div>
   <div class="sn-top">
-    <div class="sn-brand"><span class="om">🕉️</span><div><b>S Hari Nav</b><small>India ⇄ Nepal</small></div><button type="button" class="sn-fast" id="snFastPill" hidden>⚡ Fast</button></div>
+    <div class="sn-brand"><span class="om">🕉️</span><div><b>S Hari Nav</b><small data-i18n="snBrandSub">India ⇄ Nepal</small></div><button type="button" class="sn-fast" id="snFastPill" hidden>⚡ Fast</button></div>
     <div class="sn-search">
-      <div class="sn-sbar"><span>🔍</span>
-        <input id="snQ" type="text" placeholder="Search a city, temple, place…" autocomplete="off">
+      <div class="sn-sbar"><span aria-hidden="true">🔍</span>
+        <input id="snQ" type="text" placeholder="Search a city, temple, place…" data-i18n-ph="snQPh" data-i18n-title="snQPh" aria-label="Search a city, temple, place…" autocomplete="off">
       </div>
       <div class="sn-results" id="snResults"></div>
     </div>
   </div>
   <div class="sn-ss" id="snSS">
-    <button data-snstyle="day" class="on">☀️ Day</button>
-    <button data-snstyle="night">🌙 Night</button>
-    <button data-snstyle="sat">🛰️ Satellite</button>
-    <button data-snstyle="terrain">🏔️ Terrain</button>
+    <button data-snstyle="day" class="on" data-i18n="snStyleDay">☀️ Day</button>
+    <button data-snstyle="night" data-i18n="snStyleNight">🌙 Night</button>
+    <button data-snstyle="sat" data-i18n="snStyleSat">🛰️ Satellite</button>
+    <button data-snstyle="terrain" data-i18n="snStyleTerrain">🏔️ Terrain</button>
   </div>
   <div class="sn-rstack">
-    <button class="sn-cb" id="snLocate" title="My location">📍</button>
-    <button class="sn-cb sn-toggle" id="snMore" title="Map options">⚙️</button>
+    <button class="sn-cb" id="snLocate" title="My location" data-i18n-title="snLocateT">📍</button>
+    <button class="sn-cb sn-toggle" id="snMore" title="Map options" data-i18n-title="snMoreT">⚙️</button>
     <div class="sn-rstack-more" id="snRstackMore" hidden>
-      <button class="sn-cb" id="snCompass" title="Reset north"><span class="sn-needle">🧭</span></button>
+      <button class="sn-cb" id="snCompass" title="Reset north" data-i18n-title="snCompassT"><span class="sn-needle">🧭</span></button>
       <button class="sn-cb" id="sn3D" title="2D / 3D"><small>2D</small>🏙️</button>
-      <button class="sn-cb on" id="snTemples" title="Sanatan Mode">🛕</button>
-      <button class="sn-cb" id="snLayers" title="Layers">🗂️</button>
-      <button class="sn-cb" id="snShare" title="Share location">📤</button>
-      <button class="sn-cb" id="snOffSave" title="Save this map area for offline">⬇️</button>
+      <button class="sn-cb on" id="snTemples" title="Sanatan Mode" data-i18n-title="snTemplesT">🛕</button>
+      <button class="sn-cb" id="snLayers" title="Layers" data-i18n-title="snLayersT">🗂️</button>
+      <button class="sn-cb" id="snShare" title="Share location" data-i18n-title="snShareT">📤</button>
+      <button class="sn-cb" id="snOffSave" title="Save this map area for offline" data-i18n-title="snOffSaveT">⬇️</button>
       <div class="sn-zgrp">
-        <button class="sn-cb" id="snZin" title="Zoom in">+</button>
-        <button class="sn-cb" id="snZout" title="Zoom out">−</button>
+        <button class="sn-cb" id="snZin" title="Zoom in" data-i18n-title="snZinT">+</button>
+        <button class="sn-cb" id="snZout" title="Zoom out" data-i18n-title="snZoutT">−</button>
       </div>
     </div>
   </div>
   <div class="sn-layers" id="snLayersPanel">
-    <div class="sn-ly-hd">Map layers</div>
-    <label class="sn-ly sn-ly-extra"><input type="checkbox" id="snLyTemples" checked><span>🛕</span> Sanatan Mode</label>
-    <label class="sn-ly"><input type="checkbox" id="snLyStops" checked><span>🚏</span> Bus stops</label>
-    <label class="sn-ly sn-ly-extra"><input type="checkbox" id="snLyPoi"><span>📍</span> Nearby POI</label>
-    <label class="sn-ly sn-ly-extra"><input type="checkbox" id="snLy3D"><span>🏙️</span> 3D buildings + terrain</label>
-    <label class="sn-ly"><input type="checkbox" id="snLyLite"><span>⚡</span> Fast mode — only navigation (untick for the full map)</label>
+    <div class="sn-ly-hd" data-i18n="snLayersT">Map layers</div>
+    <label class="sn-ly sn-ly-extra"><input type="checkbox" id="snLyTemples" checked><span>🛕</span> <span class="snl" data-i18n="snTemplesT">Sanatan Mode</span></label>
+    <label class="sn-ly"><input type="checkbox" id="snLyStops" checked><span>🚏</span> <span class="snl" data-i18n="snLyStops">Bus stops</span></label>
+    <label class="sn-ly sn-ly-extra"><input type="checkbox" id="snLyPoi"><span>📍</span> <span class="snl" data-i18n="snLyPoi">Nearby places</span></label>
+    <label class="sn-ly sn-ly-extra"><input type="checkbox" id="snLy3D"><span>🏙️</span> <span class="snl" data-i18n="snLy3D">3D buildings + terrain</span></label>
+    <label class="sn-ly"><input type="checkbox" id="snLyLite"><span>⚡</span> <span class="snl" data-i18n="snLyLite">Fast mode — only navigation (untick for the full map)</span></label>
   </div>
   <div class="sn-hud off" id="snHud">
     <div class="big"><b id="snSpeed">0</b><span>km/h</span></div>
-    <div class="cell"><b id="snHead">—</b><span>Heading</span></div>
-    <div class="cell"><b id="snAcc">—</b><span>Accuracy</span></div>
-    <div class="cell"><b id="snAlt">—</b><span>Altitude</span></div>
-    <div class="cell"><b id="snCoord">—</b><span>Position</span></div>
+    <div class="cell"><b id="snHead">—</b><span data-i18n="snHudHead">Heading</span></div>
+    <div class="cell"><b id="snAcc">—</b><span data-i18n="snHudAcc">Accuracy</span></div>
+    <div class="cell"><b id="snAlt">—</b><span data-i18n="snHudAlt">Altitude</span></div>
+    <div class="cell"><b id="snCoord">—</b><span data-i18n="snHudPos">Position</span></div>
   </div>
   <div class="sn-navcard" id="snNavCard">
     <div class="sn-nc-top"><span class="sn-nc-eta" id="snNcEta">—</span><span class="sn-nc-dist" id="snNcDist">—</span></div>
@@ -2622,95 +2628,97 @@ s.addEventListener('click',function(e){e.preventDefault();
   </div>
   <div class="sn-dock">
     <div class="sn-panel">
-      <button class="sn-grab" id="snGrab" type="button" aria-label="Expand or collapse the panel"></button>
-      <div class="sn-peekbar" id="snPeek" role="button" tabindex="0" aria-label="Toggle journey planner">
-        <span class="pk-ico">🧭</span>
-        <div class="pk-txt"><b id="snPeekTitle">Plan your journey</b><small id="snPeekSub">Search a place, or tap the map</small></div>
-        <span class="pk-caret">▴</span>
+      <button class="sn-grab" id="snGrab" type="button" aria-label="Expand or collapse the panel" data-i18n-title="snGrabA"></button>
+      <div class="sn-peekbar" id="snPeek" role="button" tabindex="0" aria-label="Toggle journey planner" data-i18n-title="snPeekA">
+        <span class="pk-ico" aria-hidden="true">🧭</span>
+        <div class="pk-txt"><b id="snPeekTitle" data-i18n="snPlanT">Plan your journey</b><small id="snPeekSub" data-i18n="snPlanS">Search a place, or tap the map</small></div>
+        <span class="pk-caret" aria-hidden="true">▴</span>
       </div>
       <div class="sn-sheet-scroll" id="snSheetScroll">
       <div class="sn-favs" id="snFavs">
-        <div class="sn-ex-hd">Saved places</div>
+        <div class="sn-ex-hd" data-i18n="snSaved">Saved places</div>
         <div class="sn-fav-chips">
-          <button class="sn-fav-chip" data-fav="home" type="button"><span>🏠</span>Home</button>
-          <button class="sn-fav-chip" data-fav="office" type="button"><span>🏢</span>Office</button>
-          <button class="sn-fav-chip" data-fav="saved" type="button"><span>★</span>Saved</button>
+          <button class="sn-fav-chip" data-fav="home" type="button"><span>🏠</span><span class="snl" data-i18n="snFavHome">Home</span></button>
+          <button class="sn-fav-chip" data-fav="office" type="button"><span>🏢</span><span class="snl" data-i18n="snFavOffice">Office</span></button>
+          <button class="sn-fav-chip" data-fav="saved" type="button"><span>★</span><span class="snl" data-i18n="snFavSaved">Saved</span></button>
         </div>
       </div>
       <div class="sn-explore" id="snExplore">
-        <div class="sn-ex-hd">Explore nearby</div>
+        <div class="sn-ex-hd" data-i18n="snExplore">Explore nearby</div>
         <div class="sn-ex-chips">
-          <button class="sn-chip" data-poi="food"><span>🍽️</span>Food</button>
-          <button class="sn-chip" data-poi="atm"><span>🏦</span>ATM</button>
-          <button class="sn-chip" data-poi="hospital"><span>🏥</span>Hospital</button>
-          <button class="sn-chip" data-poi="bus_stop"><span>🚏</span>Bus Stop</button>
-          <button class="sn-chip" data-poi="parking"><span>🅿️</span>Parking</button>
-          <button class="sn-chip" data-poi="pharmacy"><span>💊</span>Pharmacy</button>
+          <button class="sn-chip" data-poi="food"><span>🍽️</span><span class="snl" data-i18n="snPoiFood">Food</span></button>
+          <button class="sn-chip" data-poi="atm"><span>🏦</span><span class="snl" data-i18n="snPoiAtm">ATM</span></button>
+          <button class="sn-chip" data-poi="hospital"><span>🏥</span><span class="snl" data-i18n="snPoiHospital">Hospital</span></button>
+          <button class="sn-chip" data-poi="bus_stop"><span>🚏</span><span class="snl" data-i18n="snPoiBus">Bus Stop</span></button>
+          <button class="sn-chip" data-poi="parking"><span>🅿️</span><span class="snl" data-i18n="snPoiParking">Parking</span></button>
+          <button class="sn-chip" data-poi="pharmacy"><span>💊</span><span class="snl" data-i18n="snPoiPharmacy">Pharmacy</span></button>
         </div>
       </div>
-      <button id="snPreset" type="button" style="width:100%;background:linear-gradient(135deg,#1E3A5F,#2c5a86);border:none;color:#fff;font-family:inherit;font-weight:700;font-size:13.5px;padding:11px;cursor:pointer;border-bottom:1px solid var(--sl)">🚌 Load S Hari Bus Route · Gujarat ⇄ Rupaidiha</button>
+      <button id="snPreset" type="button" data-i18n="snPreset" style="width:100%;background:linear-gradient(135deg,#1E3A5F,#2c5a86);border:none;color:#fff;font-family:inherit;font-weight:700;font-size:13.5px;padding:11px;cursor:pointer;border-bottom:1px solid var(--sl)">🚌 Load S Hari Bus Route · Gujarat ⇄ Rupaidiha</button>
       <!-- Route guide (13 Sep 2026): every stop, pickup time, distance and the
            border, filled by 17-pwa.js from /api/timetable.php and kept in
            IndexedDB so it opens offline, even when the map cannot. -->
       <div id="snRouteGuide"></div>
       <div class="sn-livebar">
-        <button type="button" class="sn-livebtn" id="snDriverToggle" title="Broadcast your position to waiting passengers">📡 I'm the driver</button>
-        <button type="button" class="sn-livebtn" id="snTrackToggle" title="Watch the bus's live shared position">🚌 Track live bus</button>
+        <button type="button" class="sn-livebtn" id="snDriverToggle" title="Broadcast your position to waiting passengers" data-i18n="snDriver">📡 I'm the driver</button>
+        <button type="button" class="sn-livebtn" id="snTrackToggle" title="Watch the bus's live shared position" data-i18n="snTrackLive">🚌 Track live bus</button>
       </div>
       <div class="sn-modes" id="snModes">
-        <div class="sn-mode on" data-snmode="auto" role="button" tabindex="0"><span class="em">🚗</span>Car</div>
-        <div class="sn-mode" data-snmode="motorcycle" role="button" tabindex="0"><span class="em">🏍️</span>Bike</div>
-        <div class="sn-mode" data-snmode="bus" role="button" tabindex="0"><span class="em">🚌</span>Bus</div>
-        <div class="sn-mode" data-snmode="bicycle" role="button" tabindex="0"><span class="em">🚴</span>Cycle</div>
-        <div class="sn-mode" data-snmode="pedestrian" role="button" tabindex="0"><span class="em">🚶</span>Walk</div>
+        <div class="sn-mode on" data-snmode="auto" role="button" tabindex="0"><span class="em">🚗</span><span class="snl" data-i18n="snModeCar">Car</span></div>
+        <div class="sn-mode" data-snmode="motorcycle" role="button" tabindex="0"><span class="em">🏍️</span><span class="snl" data-i18n="snModeBike">Bike</span></div>
+        <div class="sn-mode" data-snmode="bus" role="button" tabindex="0"><span class="em">🚌</span><span class="snl" data-i18n="snModeBus">Bus</span></div>
+        <div class="sn-mode" data-snmode="bicycle" role="button" tabindex="0"><span class="em">🚴</span><span class="snl" data-i18n="snModeCycle">Cycle</span></div>
+        <div class="sn-mode" data-snmode="pedestrian" role="button" tabindex="0"><span class="em">🚶</span><span class="snl" data-i18n="snModeWalk">Walk</span></div>
       </div>
       <div class="sn-ab">
-        <div class="sn-fld"><span class="pin" style="color:#4285F4">●</span>
-          <input id="snFrom" type="text" placeholder="Start — tap 📍 for my location" readonly>
-          <button class="mini" id="snUseGps">📍 My loc</button>
+        <div class="sn-fld"><span class="pin" style="color:#4285F4" aria-hidden="true">●</span>
+          <input id="snFrom" type="text" placeholder="Start — tap 📍 for my location" data-i18n-ph="snFromPh" data-i18n-title="snFromPh" readonly>
+          <button class="mini" id="snUseGps" type="button" data-i18n="snMyLoc">📍 My location</button>
         </div>
-        <div class="sn-fld"><span class="pin" style="color:var(--sn)">◉</span>
-          <input id="snTo" type="text" placeholder="Destination — search or tap map" readonly>
+        <div class="sn-fld"><span class="pin" style="color:var(--sn)" aria-hidden="true">◉</span>
+          <input id="snTo" type="text" placeholder="Destination — search or tap map" data-i18n-ph="snToPh" data-i18n-title="snToPh" readonly>
         </div>
       </div>
       <div class="sn-rowbtns">
-        <button class="sn-go" id="snGo" disabled>Get directions</button>
-        <button class="sn-ghost" id="snClear">Clear</button>
+        <button class="sn-go" id="snGo" type="button" disabled aria-describedby="snGoWhy" data-i18n="snGo">Get directions</button>
+        <button class="sn-ghost" id="snClear" type="button" data-i18n="snClear">Clear</button>
       </div>
+      <!-- D2-14: a disabled "Get directions" always says why (15-nav.js snRefreshGo) -->
+      <p class="sn-go-why" id="snGoWhy" data-i18n="snGoWhyBoth">Choose a start and a destination first</p>
       <div class="sn-sum" id="snSummary">
         <div class="head"><span class="t" id="snSTime">—</span><span class="d" id="snSDist">—</span><span class="via" id="snSVia"></span></div>
         <div class="sn-steps" id="snSteps"></div>
       </div>
       <div class="sn-altbar" id="snAltBar"></div>
       <div class="sn-trackcard" id="snTrackCard">
-        <div class="ttl">🚌 Live bus position <small id="snTrackUpd">waiting for driver…</small></div>
-        <div class="row"><div class="cell"><b id="snTrackDist">—</b><span>Remaining</span></div>
-          <div class="cell"><b id="snTrackEta">—</b><span>ETA</span></div></div>
-        <div class="row"><div class="cell stop"><b id="snTrackCur">—</b><span>Current stop</span></div>
-          <div class="cell stop"><b id="snTrackNext">—</b><span>Next stop</span></div></div>
+        <div class="ttl"><span data-i18n="snLiveTitle">🚌 Live bus position</span> <small id="snTrackUpd" data-i18n="snWaitDriver">waiting for driver…</small></div>
+        <div class="row"><div class="cell"><b id="snTrackDist">—</b><span data-i18n="snRemaining">Remaining</span></div>
+          <div class="cell"><b id="snTrackEta">—</b><span data-i18n="snEta">ETA</span></div></div>
+        <div class="row"><div class="cell stop"><b id="snTrackCur">—</b><span data-i18n="snCurStop">Current stop</span></div>
+          <div class="cell stop"><b id="snTrackNext">—</b><span data-i18n="snNextStop">Next stop</span></div></div>
       </div>
       </div><!-- /.sn-sheet-scroll -->
     </div>
   </div>
-  <div class="sn-toast" id="snToast"></div>
+  <div class="sn-toast" id="snToast" role="status" aria-live="polite"></div>
   <!-- [OFFLINE] connectivity badge — shown only when the device is offline -->
-  <div class="sn-offline" id="snOffline"><span class="dot"></span>Offline · showing saved map</div>
+  <div class="sn-offline" id="snOffline"><span class="dot"></span><span data-i18n="snOfflineBadge">Offline · showing saved map</span></div>
   <!-- [SECTION 4] Focus-mode compact bottom card (hidden unless #view-nav.sn-focus) -->
   <div class="sn-focuscard" id="snFocusCard">
-    <button class="fc-exit" id="snFocusExit" type="button" aria-label="Exit focus navigation">✕ Exit</button>
-    <div class="fc-city"><span class="fc-cityico">📍</span><b id="snFcCity">Locating…</b></div>
+    <button class="fc-exit" id="snFocusExit" type="button" aria-label="Exit focus navigation" data-i18n-title="snExitA"><span data-i18n="snExit">✕ Exit</span></button>
+    <div class="fc-city"><span class="fc-cityico" aria-hidden="true">📍</span><b id="snFcCity" data-i18n="snLocating">Locating…</b></div>
     <div class="fc-road" id="snFcRoad">—</div>
     <div class="fc-row">
-      <div class="fc-cell"><b id="snFcEta">—</b><span>ETA</span></div>
-      <div class="fc-cell"><b id="snFcDist">—</b><span>Left</span></div>
+      <div class="fc-cell"><b id="snFcEta">—</b><span data-i18n="snEta">ETA</span></div>
+      <div class="fc-cell"><b id="snFcDist">—</b><span data-i18n="snRemaining">Left</span></div>
       <div class="fc-cell"><b id="snFcSpeed">0</b><span>km/h</span></div>
     </div>
   </div>
   <div class="sn-arrival" id="snArrival">
-    <div class="arr-ico">🎉</div>
-    <h2>You've Arrived!</h2>
+    <div class="arr-ico" aria-hidden="true">🎉</div>
+    <h2 data-i18n="snArrived">You've Arrived!</h2>
     <p id="snArrDest">—</p>
-    <button class="arr-btn" id="snArrClose" type="button">Continue exploring</button>
+    <button class="arr-btn" id="snArrClose" type="button" data-i18n="snContinue">Continue exploring</button>
   </div>
 </section>
 
