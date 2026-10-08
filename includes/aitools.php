@@ -222,7 +222,13 @@ final class AiTools
      *   staff session, office role  -> admin  (the whole company)
      *   staff session, counter role -> staff  (their own book only,
      *                                          Auth::bookingScopeAdminId())
-     *   customer session (OTP)      -> customer, scoped to their number
+     *   customer session that proved
+     *   the number with the OTP     -> customer, scoped to their number
+     *                                  (verified = true)
+     *   name + mobile session with
+     *   no code (8 Oct 2026)        -> treated exactly like a guest: no
+     *                                  number, reads no booking, no
+     *                                  cancel / rename / ticket fix
      *   nobody signed in            -> customer with NO number: may ask,
      *                                  may get a quote, can read no booking
      *
@@ -246,6 +252,7 @@ final class AiTools
             'channel'      => 'web',
             'userId'       => 0,
             'stageKey'     => '',
+            'verified'     => false,
         ];
 
         try {
@@ -271,11 +278,24 @@ final class AiTools
 
             $user = Auth::user();
             if (is_array($user) && (int) ($user['id'] ?? 0) > 0) {
-                $out['userId'] = (int) $user['id'];
-                $out['phone']  = normalisePhone((string) ($user['phone'] ?? ''));
-                $out['name']   = (string) ($user['full_name'] ?? ($user['name'] ?? $out['name']));
-                $out['stageKey'] = $out['phone'] !== '' ? 'web-' . $out['phone'] : 'web-user-' . (int) $user['id'];
-                return $out;
+                /* 8 Oct 2026 (D7-02, owner: name + phone is never proof): the
+                   number is this person's only when THIS session proved it with
+                   the WhatsApp code. A plain name + mobile session gets no
+                   phone, so it reads no booking and is offered no cancel /
+                   rename / ticket fix — and its conversation memory is keyed
+                   on the browser session, never on the number it typed. */
+                if (!class_exists('CustomerProfile')) {
+                    require_once INCLUDE_PATH . '/customerprofile.php';
+                }
+                $verified        = CustomerProfile::verifiedUserId() === (int) $user['id'];
+                $out['userId']   = (int) $user['id'];
+                $out['verified'] = $verified;
+                $out['name']     = (string) ($user['full_name'] ?? ($user['name'] ?? $out['name']));
+                if ($verified) {
+                    $out['phone']    = normalisePhone((string) ($user['phone'] ?? ''));
+                    $out['stageKey'] = $out['phone'] !== '' ? 'web-' . $out['phone'] : 'web-user-' . (int) $user['id'];
+                    return $out;
+                }
             }
         } catch (Throwable $e) {
             Logger::exception($e, 'ai');
@@ -339,6 +359,9 @@ final class AiTools
         $role    = (string) ($ctx['role'] ?? 'customer');
         $staff   = $role === 'staff' || $role === 'admin';
         $web     = ((string) ($ctx['channel'] ?? 'whatsapp')) === 'web';
+        // A website customer who has not proved the number with the code
+        // (or a guest) is never handed a tool that changes a ticket.
+        $webUnverified = self::webUnverified($ctx);
         $mayCut  = self::maySell($ctx);
         $mayEdit = Settings::getBool('wa_agent_rewrite', true);
         $mayWrite = Settings::getBool('wa_agent_admin_write', false);
@@ -470,13 +493,15 @@ final class AiTools
             'What a cancellation would refund right now on one booking, by the published slabs. Always call this before cancel_ticket and tell the passenger the amount.',
             ['pnr' => ['string', 'The PNR']], ['pnr']);
 
-        $t[] = self::spec('cancel_ticket',
-            'CANCEL a booking after refund_quote was read out and the passenger confirmed. The seats go back and the refund is registered.',
-            [
-                'pnr'     => ['string', 'The PNR'],
-                'reason'  => ['string', 'Short reason in the passenger\'s own words'],
-                'confirm' => ['boolean', 'Must be true'],
-            ], ['pnr', 'confirm']);
+        if (!$webUnverified) {
+            $t[] = self::spec('cancel_ticket',
+                'CANCEL a booking after refund_quote was read out and the passenger confirmed. The seats go back and the refund is registered.',
+                [
+                    'pnr'     => ['string', 'The PNR'],
+                    'reason'  => ['string', 'Short reason in the passenger\'s own words'],
+                    'confirm' => ['boolean', 'Must be true'],
+                ], ['pnr', 'confirm']);
+        }
 
         $t[] = self::spec('resend_ticket',
             'Send the ticket picture and print link again to the number on the booking. Use when a passenger says they lost it or did not receive it.',
@@ -486,7 +511,7 @@ final class AiTools
             'The payment QR and link for a booking that is not paid yet, plus how much is due.',
             ['pnr' => ['string', 'The PNR']], ['pnr']);
 
-        if ($mayEdit) {
+        if ($mayEdit && !$webUnverified) {
             $t[] = self::spec('rename_passenger',
                 'Fix a WRONG NAME on a ticket (spelling, or the wrong family member) and re-send the corrected ticket. Only before departure, twice per booking. It never changes the date, seat, bus or fare.',
                 [
@@ -496,7 +521,7 @@ final class AiTools
                 ], ['pnr', 'new_name']);
         }
 
-        if ($mayEdit) {
+        if ($mayEdit && !$webUnverified) {
             /* 21 Sep 2026 (owner: "customer 3 ta samma ticket katda bigreo
                bhane natural language ma customer bhaneko sachchyaera tei
                ticket lai system bata naya generate").
@@ -532,8 +557,8 @@ final class AiTools
         }
 
         $t[] = self::spec('bus_eta',
-            'Where the bus is right now and roughly how many minutes to each pickup still ahead of it. Answers "bus kaha pugyo?". Silent when the driver\'s phone is not live.',
-            ['pnr' => ['string', 'Optional PNR, to answer for that passenger\'s own stop']]);
+            'Where THIS passenger\'s bus is and roughly how many minutes to their own pickup — for ONE ticket, by its PNR. Answers "bus kaha pugyo?". Without a PNR it asks for one (it never answers for "a bus"). Honest when the position is not live.',
+            ['pnr' => ['string', 'The PNR (SHG-…) of the ticket to track']]);
 
         /* 24 Sep 2026 (owner: "AI le sabai kura ko answer deos — reputation
            ko pani"). Every role may leave a rating or a complaint; it lands
@@ -1104,47 +1129,69 @@ final class AiTools
         ];
     }
 
+    /**
+     * "Where is my bus?" for ONE ticket (D7-03, 8 Oct 2026). The old tool
+     * read the anonymous coach position and, with no PNR, answered for
+     * "the first active route" — so a passenger could be told another
+     * coach was theirs. Now it is WhereIs::status() for a booking this
+     * sender may read: the same running-trip / on-route checks the track
+     * page uses, and an honest "not live" otherwise. No PNR → ask for it.
+     */
     private static function busEta(array $args, array $ctx): array
     {
-        require_once INCLUDE_PATH . '/etaalerts.php';
-
-        $routeId = 0;
-        $myStop  = '';
-        $pnr     = strtoupper(trim((string) ($args['pnr'] ?? '')));
-        if ($pnr !== '') {
-            $detail = BookingService::detail($pnr);
-            if ($detail !== null && self::mayRead($detail, $ctx)) {
-                $leg     = $detail['legs'][0] ?? [];
-                $myStop  = (string) ($leg['boarding_stop'] ?? '');
-                $routeId = (int) Database::scalar(
-                    'SELECT s.route_id FROM booking_legs l JOIN schedules s ON s.id = l.schedule_id WHERE l.booking_id = :b LIMIT 1',
-                    ['b' => (int) $detail['id']],
-                    0
-                );
-            }
-        }
-        if ($routeId === 0) {
-            $routeId = (int) Database::scalar('SELECT id FROM routes WHERE is_active = 1 ORDER BY sort_order, dep_time LIMIT 1', [], 0);
-        }
-        if ($routeId === 0) {
-            return self::no('No active route to track.');
-        }
-
-        $stops = [];
-        foreach (EtaAlerts::stopEtas($routeId) as $key => $s) {
-            $stops[] = ['stop' => (string) $s['name'], 'minutes' => (int) (ceil(((int) $s['eta']) / 5) * 5), 'km' => $s['km']];
-        }
-        if ($stops === []) {
+        $pnr = strtoupper(trim((string) ($args['pnr'] ?? '')));
+        if ($pnr === '' || !Security::isValidPnr($pnr)) {
             return [
                 'ok'   => true,
-                'say'  => 'The bus position is not live right now (the driver\'s phone is off or the fix is stale). Say that honestly and give the scheduled pickup time instead — never guess a position.',
-                'data' => ['live' => false, 'myStop' => $myStop],
+                'say'  => 'Ask the passenger for the PNR (SHG-…) on their ticket — the bus position is answered for one ticket, never for "a bus". '
+                        . 'Their own ticket also has a "Where is my bus" button (My tickets, #/my).',
+                'data' => ['live' => false, 'needPnr' => true],
+                'media' => null,
+            ];
+        }
+        $booking = BookingService::findByPnr($pnr);
+        if ($booking === null) {
+            return self::no('No booking with that PNR.');
+        }
+        if (!self::mayRead($booking, $ctx)) {
+            return self::no(self::webUnverified($ctx)
+                ? 'Please verify your number with the WhatsApp code first (Sign in → Verify on WhatsApp).'
+                : 'That booking is not on this number.');
+        }
+
+        if (!class_exists('WhereIs')) {
+            require_once INCLUDE_PATH . '/whereis.php';
+        }
+        $st   = WhereIs::status($booking);
+        $data = [
+            'pnr'      => $pnr,
+            'live'     => !empty($st['live']),
+            'state'    => (string) ($st['state'] ?? ''),
+            'label'    => (string) ($st['label'] ?? ''),
+            'myStop'   => (string) ($st['stop'] ?? ''),
+            'stopTime' => (string) ($st['stopTime'] ?? ''),
+            'etaMin'   => $st['etaMin'] ?? null,
+            'km'       => $st['km'] ?? null,
+            'passed'   => !empty($st['passed']),
+            'delayMin' => (int) ($st['delayMin'] ?? 0),
+            'reason'   => (string) ($st['reason'] ?? ''),
+            // the passenger's own keyed tracker (this sender may read the booking)
+            'trackUrl' => Ticket::trackUrl($pnr),
+        ];
+        if (!$data['live']) {
+            return [
+                'ok'   => true,
+                'say'  => 'The position of THIS ticket\'s bus is not live right now'
+                        . ($data['reason'] !== '' ? ' (' . $data['reason'] . ')' : '')
+                        . '. Say that honestly, give the scheduled pickup time (stopTime) and the trip state instead, and offer trackUrl — never guess a position.',
+                'data' => $data,
                 'media' => null,
             ];
         }
 
-        return ['ok' => true, 'say' => 'Live bus position. Minutes are approximate.',
-                'data' => ['live' => true, 'myStop' => $myStop, 'stops' => $stops], 'media' => null];
+        return ['ok' => true,
+                'say' => 'Live position of this ticket\'s own bus. etaMin = approximate minutes to their pickup (passed = the bus is already past it). Offer trackUrl to follow it.',
+                'data' => $data, 'media' => null];
     }
 
     /**
@@ -1393,6 +1440,9 @@ final class AiTools
 
     private static function cancelTicket(array $args, array $ctx): array
     {
+        if (self::webUnverified($ctx)) {
+            return self::no(self::VERIFY_FIRST);
+        }
         if (($args['confirm'] ?? false) !== true) {
             return self::no('Not confirmed by the passenger yet.');
         }
@@ -1439,6 +1489,9 @@ final class AiTools
      */
     private static function renamePassenger(array $args, array $ctx): array
     {
+        if (self::webUnverified($ctx)) {
+            return self::no(self::VERIFY_FIRST);
+        }
         if (!Settings::getBool('wa_agent_rewrite', true)) {
             return self::no('Name correction on WhatsApp is switched off — the desk does it.');
         }
@@ -1556,6 +1609,9 @@ final class AiTools
     /** Preview only: bind the requested values, current booking and exact seats. */
     private static function quoteTicketFix(array $args, array $ctx): array
     {
+        if (self::webUnverified($ctx)) {
+            return self::no(self::VERIFY_FIRST);
+        }
         $detail = self::correctionBooking((string) ($args['pnr'] ?? ''), $ctx);
         $request = self::correctionRequest($args);
         $proposal = self::correctionProposal($detail, $request, $ctx);
@@ -1591,6 +1647,9 @@ final class AiTools
 
     private static function fixTicket(array $args, array $ctx): array
     {
+        if (self::webUnverified($ctx)) {
+            return self::no(self::VERIFY_FIRST);
+        }
         if (($args['confirm'] ?? false) !== true || !self::correctionConfirmed($ctx)) {
             return self::no('Ask the sender to reply yes / ho to the correction preview in a new message. A tool confirmation flag alone is not consent.');
         }
@@ -3166,6 +3225,21 @@ final class AiTools
         return ['ok' => $ok, 'say' => $say, 'data' => $res, 'media' => null];
     }
 
+    /** The refusal a website customer gets before the number is proven. */
+    private const VERIFY_FIRST = 'Please verify your number with the WhatsApp code first (Sign in → Verify on WhatsApp).';
+
+    /**
+     * A WEBSITE customer (or guest) whose session has not proved the number
+     * with the WhatsApp code (8 Oct 2026). WhatsApp senders are proven by the
+     * number they write from, and staff by their password — never this.
+     */
+    private static function webUnverified(array $ctx): bool
+    {
+        return ((string) ($ctx['channel'] ?? 'whatsapp')) === 'web'
+            && ((string) ($ctx['role'] ?? 'customer')) === 'customer'
+            && empty($ctx['verified']);
+    }
+
     /** May this sender READ the full detail of this booking? */
     private static function mayRead(array $detail, array $ctx): bool
     {
@@ -3176,6 +3250,10 @@ final class AiTools
         if ($role === 'staff') {
             $scope = $ctx['scopeAdminId'] ?? null;
             return $scope === null || (int) ($detail['sold_by_admin_id'] ?? 0) === (int) $scope;
+        }
+        // Website customers read only after the WhatsApp code (D7-02).
+        if (self::webUnverified($ctx)) {
+            return false;
         }
 
         // A walk-in's placeholder number is on every walk-in ticket — never proof.
