@@ -2032,7 +2032,7 @@ s.addEventListener('click',function(e){e.preventDefault();
               <input id="cPhone" inputmode="numeric" maxlength="10" placeholder="१० अंकको मोबाइल नम्बर" style="flex:1;min-width:0">
             </div>
             <div class="hint" data-i18n="coCountryHint" style="margin-top:5px">Your WhatsApp ticket is sent to this number — pick the right country. / तपाईंको WhatsApp टिकट यही नम्बरमा जान्छ — सही देश छान्नुहोस्।</div>
-            <div class="err" data-i18n="errPhone">Enter a valid 10-digit mobile number.</div>
+            <div class="err" id="cPhoneErr" data-i18n="errPhone">Enter a valid 10-digit mobile number.</div>
             <!-- 4 Oct 2026: a second WhatsApp (the other country's SIM) - the ticket goes to both. -->
             <details class="co-alt-phone" style="margin-top:8px">
               <summary style="cursor:pointer;font-size:12.5px;font-weight:700;color:var(--muted);padding:4px 2px;list-style:none">📱 <span data-i18n="coAltAdd">Add a second WhatsApp number (India / Nepal)</span></summary>
@@ -2045,7 +2045,7 @@ s.addEventListener('click',function(e){e.preventDefault();
               </div>
               <div class="hint" data-i18n="coAltHint" style="margin-top:5px">Optional. The ticket also goes to this number on WhatsApp.</div>
             </details></div>
-          <div class="field"><label for="cEmail" data-i18n="lblEmail">Email / इमेल <small>(optional)</small></label><input id="cEmail" type="email" placeholder="you@example.com"><div class="err" data-i18n="errEmail">That email doesn't look right.</div></div>
+          <div class="field"><label for="cEmail" data-i18n="lblEmail">Email / इमेल <small>(optional)</small></label><input id="cEmail" type="email" placeholder="you@example.com"><div class="err" id="cEmailErr" data-i18n="errEmail">That email doesn't look right.</div></div>
         </div>
         <!-- Optional travel-document fields collapsed by default (8 Sep 2026):
              both are optional, so they add clutter to the checkout on a phone.
@@ -2055,7 +2055,7 @@ s.addEventListener('click',function(e){e.preventDefault();
           <summary style="cursor:pointer;font-size:12.5px;font-weight:700;color:var(--muted);padding:6px 2px;list-style:none">🪪 <span data-i18n="coAddId">Add ID / travel document (optional)</span></summary>
           <div class="form-2col" style="margin-top:8px">
             <div class="field"><label for="idType" data-i18n="lblIdType">Document Type / कागजात प्रकार <small>(optional)</small></label><select id="idType"><option>Passport</option><option>Voter ID</option><option>Aadhaar Card</option><option>Nepali Citizenship Card</option><option>Driving Licence</option></select></div>
-            <div class="field"><label for="idNum" data-i18n="lblIdNum">Document Number / कागजात नम्बर <small>(Optional / ऐच्छिक)</small></label><input id="idNum" placeholder="As printed on the document (optional)"><div class="err" data-i18n="errId">Enter the ID number (min 4 characters).</div></div>
+            <div class="field"><label for="idNum" data-i18n="lblIdNum">Document Number / कागजात नम्बर <small>(Optional / ऐच्छिक)</small></label><input id="idNum" placeholder="As printed on the document (optional)"><div class="err" id="idNumErr" data-i18n="errId">Enter the ID number (min 4 characters).</div></div>
           </div>
         </details>
         <div class="wb-note hide" id="wbNote">⭐<span><b data-i18n="wbTitle">🙏 Welcome back, valued traveler!</b><br><span id="wbText"></span></span></div>
@@ -2066,7 +2066,7 @@ s.addEventListener('click',function(e){e.preventDefault();
             <span class="chip" style="font-size:11.5px">🚌 60 min अगाडि बोर्डिङमा</span>
             <span class="chip" style="font-size:11.5px">🪪 Photo ID अनिवार्य</span>
             <span class="chip" style="font-size:11.5px">🚫 No alcohol/smoking</span>
-            <span class="chip" style="font-size:11.5px">❌ &lt;24h = no refund</span>
+            <span class="chip" id="coRefundChip" style="font-size:11.5px">↩️ <span data-i18n="payPolicyT">Cancellation &amp; refunds</span></span>
           </div>
         </div>
         <!-- ADVANCED RULES (expandable) -->
@@ -2078,7 +2078,7 @@ s.addEventListener('click',function(e){e.preventDefault();
             <li>🔒 <b>Private Sleeper:</b> पूरा Cabin तपाईंको मात्र — Couple/Family/Friends का लागि · पूर्ण गोपनीयता · Premium सुविधा</li>
             <li>🤝 <b>Sharing Sleeper:</b> Max 4 यात्रु · एकअर्काको सम्मान र गोपनीयता · शान्त वातावरण · किफायती भाडा</li>
             <li>🚫 मदिरा, धुम्रपान, लागुपदार्थ, अशान्ति, फोहोर सख्त निषेध — उल्लंघनमा बिना रिफन्ड ओरालिन सकिन्छ</li>
-            <li>❌ <b>Cancellation:</b> ≥48h → 75% refund · 24–48h → 50% · &lt;24h → no refund · 5–7 working days मा फिर्ता</li>
+            <li>❌ <b>Cancellation:</b> <span data-i18n="payPolicy">≥96 hrs before departure: 90% refund · 48–96 hrs: 75% · 24–48 hrs: 50% · 6–24 hrs: 25% · under 6 hrs: no refund. Refunds reach the same account within 5–7 working days.</span></li>
             <li>💵 <b>COD:</b> बोर्डिङ काउन्टरमा नगद तिर्ने सुविधा उपलब्ध · एकै भाडा (online/offline उही)</li>
             <li>🔗 <b>Link Pay:</b> UPI link अरूलाई पठाएर तिर्ने सुविधा</li>
             <li>💙 दुर्घटना / गम्भीर स्वास्थ्य समस्यामा निःशुल्क / विशेष सहुलियतमा यात्रा</li>
@@ -2121,6 +2121,9 @@ s.addEventListener('click',function(e){e.preventDefault();
         <!-- Sticky recap (17 Sep 2026): route · seats · amount, written by
              07-checkout::updateCoSummary; step 1 otherwise shows no amount. -->
         <div class="fa-recap" id="coRecap" aria-live="polite"></div>
+        <!-- What is still missing before payment (D2-01 / D4-10): written by
+             07-checkout::coSyncContinue; the button never goes silently dead. -->
+        <p class="co-why" id="coWhy" aria-live="polite" hidden></p>
         <button class="btn btn-ghost" type="button" id="checkoutBackBtn" data-i18n="coBackSeats">← Back to seats</button>
         <button class="btn btn-orange" type="button" id="coContinueBtn" data-i18n="coContinue">Continue to Payment →</button>
       </div>

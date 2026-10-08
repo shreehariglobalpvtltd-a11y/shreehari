@@ -65,9 +65,21 @@ function shgVoice(el) {
   };
 }
 
+/* A field's error is HEARD, not only painted red (8 Oct 2026, D2-07): the
+   input says aria-invalid and points at its own .err line, so a screen
+   reader names the problem instead of "edit text". */
+function coAria(inp, ok) {
+  if (!inp || !inp.setAttribute) return;
+  inp.setAttribute('aria-invalid', ok ? 'false' : 'true');
+  const f = inp.closest('.field');
+  const err = f ? f.querySelector('.err') : null;
+  if (err && !err.id && inp.id) err.id = inp.id + 'Err';
+  if (!ok && err && err.id) inp.setAttribute('aria-describedby', err.id);
+  else inp.removeAttribute('aria-describedby');
+}
 function liveField(el, testFn) {
   const f = el.closest('.field');
-  const run = () => f.classList.toggle('invalid', !testFn());
+  const run = () => { const ok = !!testFn(); f.classList.toggle('invalid', !ok); coAria(el, ok); };
   el.addEventListener('input', run);
   el.addEventListener('blur', run);
 }
@@ -80,7 +92,18 @@ function wireLiveValidation() {
     liveField(a, () => { if (a.value.trim() === '') return true; const v = parseInt(a.value, 10); return v >= 1 && v <= 99; });
   });
   const ph = $('#cPhone'), em = $('#cEmail'), idn = $('#idNum');
-  liveField(ph, () => /^\d{10}$/.test(digits(ph.value)));
+  /* The country's own mobile shape (D4-10): a 6xxxxxxxxx with +977 picked
+     used to keep Continue dead while the box showed no red at all. The
+     desk keeps its looser rule (walk-ins, international numbers). */
+  liveField(ph, () => {
+    const v = digits(ph.value);
+    return isCounterSale() ? (v === '' || /^\d{8,15}$/.test(v)) : coPhoneShapeOk(v);
+  });
+  const ccSel = $('#cCountry');
+  if (ccSel && !ccSel._shapeBound) {
+    ccSel._shapeBound = true;
+    ccSel.addEventListener('change', () => { const p = $('#cPhone'); if (p && digits(p.value)) p.dispatchEvent(new Event('blur')); });
+  }
   liveField(em, () => !em.value.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em.value.trim()));
   liveField(idn, () => idn.value.trim() === '' || idn.value.trim().length >= 4);
   ph.addEventListener('input', checkWelcomeBack);
@@ -144,6 +167,13 @@ function autoFillFromPhone() {
    like a real mobile for the country picked - India +91 starts 6-9, Nepal +977
    starts 9 (96/97/98 today) - not merely be ten digits. Staff counters keep
    their looser rule (walk-ins, international numbers). */
+/* One shape rule for every customer phone box (8 Oct 2026, D4-15): the
+   checkout, the sign-in sheet (08-signin.js) and anything else that knows
+   which country was picked ('91' / '977'). */
+function phoneShapeOk(phv, cc) {
+  if (!/^\d{10}$/.test(phv)) return false;
+  return cc === '977' ? /^9[6-9]/.test(phv) : /^[6-9]/.test(phv);
+}
 function coPhoneShapeOk(phv) {
   if (!/^\d{10}$/.test(phv)) return false;
   const cc = ($('#cCountry') && $('#cCountry').value) || '91';
@@ -168,6 +198,7 @@ function validateCheckoutDetails() {
     const aOk = ageRaw === '' || (age >= 1 && age <= 99);
     nameF.closest('.field').classList.toggle('invalid', !nOk);
     ageF.closest('.field').classList.toggle('invalid', !aOk);
+    coAria(nameF, nOk); coAria(ageF, aOk);
     if (!nOk || !aOk) ok = false;
     return { seat: row.getAttribute('data-seat'), name: name || autoPaxName(i), age: ageRaw === '' ? 0 : (age || 0), gender: $('.pxGender', row).value };
   });
@@ -202,6 +233,7 @@ function validateCheckoutDetails() {
   phone.closest('.field').classList.toggle('invalid', !pOk);
   email.closest('.field').classList.toggle('invalid', !eOk);
   idNum.closest('.field').classList.toggle('invalid', !iOk);
+  coAria(phone, pOk); coAria(email, eOk); coAria(idNum, iOk);
   if (!pOk) fails.push('मोबाइल / Mobile');
   if (!eOk) fails.push('इमेल / Email');
   if (!iOk) fails.push('ID');
@@ -220,6 +252,10 @@ function validateCheckoutDetails() {
   const tncEl = $('#agreeTnc');
   const tnc = ctrSell ? true : (tncEl && tncEl.checked);
   const tncErrEl = $('#tncErr'); if (tncErrEl) tncErrEl.style.display = (ctrSell || tnc) ? 'none' : 'block';
+  if (tncEl) {
+    tncEl.setAttribute('aria-invalid', tnc ? 'false' : 'true');
+    if (!tnc && tncErrEl) tncEl.setAttribute('aria-describedby', 'tncErr'); else tncEl.removeAttribute('aria-describedby');
+  }
   if (!tnc) { fails.push('नियम / T&C'); ok = false; }
 
   if (ctrSell) {
@@ -243,40 +279,58 @@ function coFixToast(dv) {
 function coSyncContinue() {
   const btn = $('#coContinueBtn'); if (!btn) return;
   let ready = true;
+  /* What is still missing, in words (8 Oct 2026, D2-01 / D4-10): the button
+     used to go grey and silent. It now stays tappable (the tap names and
+     scrolls to the field — coGoStep(2) → coFixToast) and a live line under it
+     says what is left. */
+  const why = [];
+  const need = (k) => { const s = t(k); if (why.indexOf(s) < 0) why.push(s); };
   const rows = $$('.pax-row');
   if (!rows.length) ready = false;
   rows.forEach((row, i) => {
     const n = $('.pxName', row), a = $('.pxAge', row);
     /* Lead name is required (it signs the traveller in and prints on the
        ticket); the rest may stay blank. One stray character is never fine. */
-    if (n && i === 0 && n.value.trim().length < 2) ready = false;
-    if (n && n.value.trim() !== '' && n.value.trim().length < 2) ready = false;
+    if (n && i === 0 && n.value.trim().length < 2) { ready = false; need('coWhyName'); }
+    if (n && n.value.trim() !== '' && n.value.trim().length < 2) { ready = false; need('coWhyName'); }
     /* age is optional, but a filled-in age must be in range — otherwise the
        button would look clickable and then be refused by the click gate */
     if (a && a.value.trim() !== '') {
       const av = parseInt(a.value, 10);
-      if (!(av >= 1 && av <= 99)) ready = false;
+      if (!(av >= 1 && av <= 99)) { ready = false; need('coWhyAge'); }
     }
   });
   const ph = $('#cPhone');
   const phv = ph ? digits(ph.value) : '';
   // Counter sale: phone optional / international (mirrors validateCheckoutDetails).
   const ctrSell2 = !!(window.SHG_BOOT && window.SHG_BOOT.staff && window.SHG_BOOT.staff.canSell);
-  if (ctrSell2 ? (phv !== '' && !/^\d{8,15}$/.test(phv)) : !coPhoneShapeOk(phv)) ready = false;
+  if (ctrSell2 ? (phv !== '' && !/^\d{8,15}$/.test(phv)) : !coPhoneShapeOk(phv)) { ready = false; need('coWhyPhone'); }
   /* blacklisted numbers are refused on click, so don't offer an enabled button */
-  if (ready && ((DB.settings && DB.settings.blacklist) || []).indexOf(phv) >= 0) ready = false;
+  if (ready && ((DB.settings && DB.settings.blacklist) || []).indexOf(phv) >= 0) { ready = false; need('coWhyPhone'); }
   const em = $('#cEmail');
-  if (em && em.value.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em.value.trim())) ready = false;
+  if (em && em.value.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em.value.trim())) { ready = false; need('coWhyEmail'); }
   const idn = $('#idNum');
-  if (idn && idn.value.trim() !== '' && idn.value.trim().length < 4) ready = false;
+  if (idn && idn.value.trim() !== '' && idn.value.trim().length < 4) { ready = false; need('coWhyId'); }
   // Counter session: T&C is the desk's responsibility, not a gate (mirrors
   // validateCheckoutDetails — the two entry points must never disagree).
-  if (!ctrSell2) { const tnc = $('#agreeTnc'); if (!tnc || !tnc.checked) ready = false; }
+  if (!ctrSell2) { const tnc = $('#agreeTnc'); if (!tnc || !tnc.checked) { ready = false; need('coWhyTnc'); } }
   if (ctrSell2) {
     const acEl = $('#cAgentCode');
     if (acEl && !(acEl.value || '').trim()) ready = false;
   }
-  btn.disabled = !ready;
+  /* Never a silent dead button: aria-disabled + a dimmed look, but the tap
+     still runs coGoStep(2), which names the failures and takes the person
+     to the first one. */
+  btn.disabled = false;
+  btn.setAttribute('aria-disabled', ready ? 'false' : 'true');
+  btn.classList.toggle('is-wait', !ready);
+  const w = $('#coWhy');
+  if (w) {
+    const show = !ready && !ctrSell2 && why.length > 0;
+    w.hidden = !show;
+    w.textContent = show ? t('coWhyLead') + ' ' + why.join(' · ') : '';
+    if (show) btn.setAttribute('aria-describedby', 'coWhy'); else btn.removeAttribute('aria-describedby');
+  }
 }
 /* Switch between step 1 (details) and step 2 (payment). Going forward runs the
    details validator; going back preserves everything — the panels are only
@@ -288,20 +342,60 @@ function coScrollInvalid() {
   var bad = document.querySelector('#view-checkout .field.invalid, #view-checkout .invalid');
   if (!bad) return;
   try { bad.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { bad.scrollIntoView(); }
-  var inp = bad.querySelector('input,select,textarea');
+  var inp = bad.querySelector('[aria-invalid="true"]') || bad.querySelector('input,select,textarea');
   if (inp) { try { inp.focus({ preventScroll: true }); } catch (e) {} }
+}
+/* "Is this a Nepal (+977) number?" (8 Oct 2026, D4-05). India and Nepal
+   share 10-digit mobiles, and an untouched picker reads +91 — so a Nepali
+   passenger's WhatsApp ticket went to a stranger in India. When nobody chose
+   the country, the number fits a Nepal mobile and the trip or the page
+   language points at Nepal, ask once. Either answer marks the picker as
+   chosen (trusted) and carries on to payment. Returns true when it asked. */
+function coAskNepal(p) {
+  if (isCounterSale()) return false;
+  const sel = $('#cCountry');
+  if (!sel || sel.dataset.trusted === '1' || sel.value !== '91') return false;
+  if (!/^9[678]\d{8}$/.test(String(p || ''))) return false;
+  const l0 = (Flow.legs && Flow.legs[0]) || {};
+  const r0 = routeById(l0.routeId) || {};
+  const toNepal = typeof isNepalPoint === 'function' && isNepalPoint(r0.to);
+  const ne = (typeof LANG !== 'undefined' && LANG === 'ne');
+  if (!toNepal && !ne) return false;
+  openModal(`
+    <h3 class="m-title">🇳🇵 ${esc(t('coNpAskT'))}</h3>
+    <p class="m-sub">${esc(tf('coNpAskP', { p: p }))}</p>
+    <div class="m-actions" style="flex-direction:column;gap:10px">
+      <button class="btn btn-orange" type="button" id="coNpYes" style="width:100%">${esc(t('coNpYes'))}</button>
+      <button class="btn btn-ghost" type="button" id="coNpNo" style="width:100%">${esc(t('coNpNo'))}</button>
+    </div>`);
+  const pick = (cc) => {
+    sel.value = cc; sel.dataset.trusted = '1';
+    try { sel.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+    /* closeModal() walks its own history entry (async); step 2 pushes one
+       too — so carry on only once that walk has landed. */
+    let done = false;
+    const go = () => { if (done) return; done = true; window.removeEventListener('popstate', go); setTimeout(() => coGoStep(2), 0); };
+    window.addEventListener('popstate', go);
+    closeModal();
+    setTimeout(go, 600);
+  };
+  const y = $('#coNpYes'), no = $('#coNpNo');
+  if (y) { y.onclick = () => pick('977'); try { y.focus(); } catch (e) {} }
+  if (no) no.onclick = () => pick('91');
+  return true;
 }
 function coGoStep(n) {
   if (n === 2) {
     const dv = validateCheckoutDetails();
     if (dv.blocked) { toast('⛔ This number is blocked from booking — contact office +91 91048 01507'); SFX.error(); return; }
     if (!dv.ok) { coFixToast(dv); return; }
-    /* Name + mobile ARE the sign-in: establish the traveller's session in
-       the background while they look at the payment step, so the booking
-       lands on their account and the ticket carries these same details. */
+    if (coAskNepal(dv.phoneVal)) return;   // its two buttons come back here
+    /* A SIGNED-IN traveller's session is refreshed in the background while
+       they look at the payment step (8 Oct 2026, D4-03: a guest is never
+       signed in by what they type — ensureCustomerSession refuses). */
     if (dv.phoneVal && typeof ensureCustomerSession === 'function') {
       const leadEl = $('#paxRows .pxName');
-      ensureCustomerSession(leadEl ? leadEl.value : '', dv.phoneVal, '');
+      ensureCustomerSession(leadEl ? leadEl.value : '', dv.phoneVal, contactCountry());
     }
     /* Push history entry so Android back-button returns to step 1 */
     if (typeof window._shgCoStepPush === 'function') window._shgCoStepPush();
@@ -411,11 +505,15 @@ const PaxMemory = {
    wins over an old draft via setIfBlank semantics.
 ================================================================ */
 const CheckoutDraft = {
+  /* Keyed by route + date only (8 Oct 2026, D4-12): the seat list used to be
+     part of the key, so "← Back to seats", swap one berth, continue lost every
+     name, age and gender typed for the family. restore() fills by row index;
+     a row the new seat list does not have is simply left blank. */
   keyFor() {
     var out = Flow.legs && Flow.legs[0]; if (!out) return '';
-    var parts = ['shg:codraft', out.routeId || '', out.date || '', (out.seats || []).join('|')];
+    var parts = ['shg:codraft', out.routeId || '', out.date || ''];
     var ret = Flow.legs && Flow.legs[1];
-    if (ret) parts.push(ret.routeId || '', ret.date || '', (ret.seats || []).join('|'));
+    if (ret) parts.push(ret.routeId || '', ret.date || '');
     return parts.join(':');
   },
   read() {
@@ -434,6 +532,12 @@ const CheckoutDraft = {
         idType: ($('#idType') || {}).value || '',
         idNum:  ($('#idNum')  || {}).value || '',
         tnc:    !!(($('#agreeTnc') || {}).checked),
+        /* the number's country (and whether someone chose it), so a +977
+           choice no longer flips back to +91 on restore (D4-12) */
+        cCountry: ($('#cCountry') || {}).value || '',
+        ccTrusted: !!($('#cCountry') && $('#cCountry').dataset.trusted === '1'),
+        cAltPhone: ($('#cAltPhone') || {}).value || '',
+        cAltCountry: ($('#cAltCountry') || {}).value || '',
         at: Date.now()
       };
       /* Only save if anything meaningful was typed — a blank restore is worse
@@ -473,8 +577,29 @@ const CheckoutDraft = {
       if (idT && $$('option', idT).some(function (o) { return o.value === d.idType; })) idT.value = d.idType;
     }
     if (d.tnc) { var tnc = $('#agreeTnc'); if (tnc && !tnc.checked) { tnc.checked = true; tnc.dispatchEvent(new Event('change', { bubbles: true })); } }
+    /* Country picker: only over an untouched (untrusted) picker — a country
+       from the signed-in account or a fresh tap always wins. */
+    var cc = $('#cCountry');
+    if (cc && d.cCountry && cc.dataset.trusted !== '1' && $$('option', cc).some(function (o) { return o.value === d.cCountry; })) {
+      cc.value = d.cCountry;
+      if (d.ccTrusted) cc.dataset.trusted = '1';
+    }
+    setIfBlank('#cAltPhone', d.cAltPhone);
+    if (d.cAltPhone && d.cAltCountry) {
+      var ac = $('#cAltCountry');
+      if (ac && $$('option', ac).some(function (o) { return o.value === d.cAltCountry; })) ac.value = d.cAltCountry;
+      var det = ac && ac.closest('details'); if (det) det.open = true;
+    }
   },
   clear() { try { sessionStorage.removeItem(this.keyFor()); } catch (e) {} },
+  /* Every draft in this tab (sign-out on a shared phone, D4-11). */
+  clearAll() {
+    try {
+      var kill = [];
+      for (var i = 0; i < sessionStorage.length; i++) { var k = sessionStorage.key(i); if (k && k.indexOf('shg:codraft:') === 0) kill.push(k); }
+      kill.forEach(function (k) { try { sessionStorage.removeItem(k); } catch (e) {} });
+    } catch (e) {}
+  },
   /* Kill any draft older than 6h — the tab may have crashed mid-booking
      on a totally different route; leave nothing dangling. */
   prune() {
@@ -620,6 +745,28 @@ function rebookFrom(bookingId, reverse) {
   if (location.hash === '#/results') router();
 }
 
+/* The refund slabs the server uses (SHG_BOOT.settings.refund_slabs, the same
+   rows Fare::refundFor reads), newest-first; the packaged CONFIG list only
+   when the page has no boot data. */
+function coRefundSlabs() {
+  let s = null;
+  try {
+    s = window.SHG_BOOT && window.SHG_BOOT.settings && window.SHG_BOOT.settings.refund_slabs;
+    if (typeof s === 'string') s = JSON.parse(s);
+  } catch (e) { s = null; }
+  if (!Array.isArray(s) || !s.length) s = (CONFIG.booking && CONFIG.booking.refundSlabs) || [];
+  return s.map(x => ({ h: Number(x && x.minHrs), p: Number(x && x.pct) }))
+    .filter(x => isFinite(x.h) && isFinite(x.p) && x.h >= 0)
+    .sort((a, b) => b.h - a.h);
+}
+/* "↩️ Refund: ≥96h 90% · ≥48h 75% · ≥24h 50% · ≥6h 25% · <6h 0%" */
+function coRefundChipText() {
+  const sl = coRefundSlabs();
+  if (!sl.length) return '↩️ ' + t('payPolicyT').replace(/&amp;/g, '&');
+  const pos = sl.filter(x => x.h > 0);
+  const low = pos.length ? pos[pos.length - 1].h : 0;
+  return '↩️ ' + t('coRefundLbl') + ': ' + sl.map(x => (x.h > 0 ? '≥' + x.h + 'h ' : '<' + low + 'h ') + x.p + '%').join(' · ');
+}
 function renderCheckout() {
   const legs = Flow.legs;
   const out = legs[0]; if (!out) { location.hash = '#/'; return; }
@@ -634,6 +781,10 @@ function renderCheckout() {
   let info = (rOut.from || '') + ' → ' + (rOut.to || '') + ' · ' + fmtDate(out.date) + ' · ' + seatLabelJoin(out.seats, rOut.type, out.bookingType);
   if (ret) info += '   |   ↩ ' + (rRet.from || '') + ' → ' + (rRet.to || '') + ' · ' + fmtDate(ret.date) + ' · ' + seatLabelJoin(ret.seats, rRet.type, ret.bookingType);
   $('#coRouteInfo').textContent = info;
+  /* One refund policy on the page (D4-09): the always-visible chip is drawn
+     from the live refund_slabs the server prices cancellations with, not a
+     hard-coded "<24h = no refund". The refund itself stays manual. */
+  const rch = $('#coRefundChip'); if (rch) rch.textContent = coRefundChipText();
 
   /* GROUP BOOKING under ONE name (Task 6). "Hari, 4 passengers" is a single
      name box — not a separate name/ID form per seat. The per-seat rows still
@@ -643,12 +794,18 @@ function renderCheckout() {
      is booked under the one name. Contact fields (phone/email/document) stay
      single-entry exactly as before. */
   const grpN = out.seats.length;
+  /* Labels tied to their boxes and the optional ones SAID in the page's own
+     language (8 Oct 2026, D2-02 / D2-07): the lead name is required — it
+     prints on the ticket — and used to carry a 9px English "· OPTIONAL" from
+     the stylesheet. The words live in their own data-i18n spans so a
+     language switch re-translates them without wiping the marker. */
+  const optMark = ' <small class="opt">(<span data-i18n="lgOpt">' + t('lgOpt') + '</span>)</small>';
   $('#paxRows').innerHTML = out.seats.map((s, i) => `
     <div class="pax-row${i === 0 ? ' grp-lead' : ' grp-extra'}" data-seat="${s}" data-ret-seat="${ret ? esc((ret.seats || [])[i] || '') : ''}">
       <span class="seat-tag">${seatLabel(s, rOut.type, out.bookingType)}${ret ? '<small>↩ ' + esc(seatLabel((ret.seats || [])[i] || '', rRet.type, ret.bookingType)) + '</small>' : ''}</span>
-      <div class="field field-optional grp-fields"><label data-i18n="${i === 0 ? 'lblName' : 'lblName'}">${i === 0 && grpN > 1 ? tf('lblGroupName', { n: grpN }) : t('lblName')}</label><input class="pxName" placeholder="${esc(t('paxAuto'))} ${i + 1}" autocomplete="name" autocapitalize="words"><div class="err" data-i18n="errName">${t('errName')}</div></div>
-      <div class="field field-optional grp-fields"><label data-i18n="lblAge">${t('lblAge')}</label><input class="pxAge" type="number" min="1" max="99" inputmode="numeric" placeholder="—"><div class="err" data-i18n="errAge">${t('errAge')}</div></div>
-      <div class="field field-optional grp-fields"><label data-i18n="lblGender">${t('lblGender')}</label><select class="pxGender"><option value="">—</option><option value="Male">${t('gM')}</option><option value="Female">${t('gF')}</option><option value="Other">${t('gO')}</option></select></div>
+      <div class="field${i === 0 ? '' : ' field-optional'} grp-fields"><label for="px${i}Name"><span data-i18n="lblName">${i === 0 && grpN > 1 ? tf('lblGroupName', { n: grpN }) : t('lblName')}</span>${i === 0 ? '' : optMark}</label><input id="px${i}Name" class="pxName" placeholder="${esc(t('paxAuto'))} ${i + 1}" autocomplete="name" autocapitalize="words"${i === 0 ? ' required aria-required="true"' : ''}><div class="err" id="px${i}NameErr" data-i18n="errName">${t('errName')}</div></div>
+      <div class="field field-optional grp-fields"><label for="px${i}Age"><span data-i18n="lblAge">${t('lblAge')}</span>${optMark}</label><input id="px${i}Age" class="pxAge" type="number" min="1" max="99" inputmode="numeric" placeholder="—"><div class="err" id="px${i}AgeErr" data-i18n="errAge">${t('errAge')}</div></div>
+      <div class="field field-optional grp-fields"><label for="px${i}Gender"><span data-i18n="lblGender">${t('lblGender')}</span>${optMark}</label><select id="px${i}Gender" class="pxGender"><option value="">—</option><option value="Male">${t('gM')}</option><option value="Female">${t('gF')}</option><option value="Other">${t('gO')}</option></select></div>
     </div>`).join('') + (grpN > 1 ? `<p class="pax-group-note" data-i18n="paxGroupNote">${tf('paxGroupNote', { n: grpN })}</p><button type="button" class="btn btn-ghost btn-sm pax-names-toggle" id="paxNamesToggle" aria-pressed="false">${esc(t('paxNamesOn'))}</button>` : '');
 
   /* Mirror the lead passenger onto the hidden extra seats so the whole party
@@ -679,7 +836,7 @@ function renderCheckout() {
       const on = !!Flow.paxIndividual;
       $('#paxRows').classList.toggle('pax-names-on', on);
       if (pnt) { pnt.setAttribute('aria-pressed', on ? 'true' : 'false'); pnt.textContent = t(on ? 'paxNamesOff' : 'paxNamesOn'); }
-      const leadLbl = $('#paxRows .grp-lead .grp-fields label');
+      const leadLbl = $('#paxRows .grp-lead .grp-fields label span') || $('#paxRows .grp-lead .grp-fields label');
       if (leadLbl) leadLbl.textContent = on ? t('lblName') : tf('lblGroupName', { n: grpN });
       if (!on) syncGroup();
     };
@@ -874,7 +1031,10 @@ function renderCheckout() {
       const row = sel.closest('.pax-row'); if (!row) return;
       const g = sel.value;
       const lockFor = function (seat, leg) {
-        if (!seat || !leg) return 'none';
+        /* A private cabin is the party's own — exempt from the shared-cabin
+           gender rule server-side (Seats::isSharedBooking), and the client's
+           unitKeyJS reads a private label as a bed (D5-09). */
+        if (!seat || !leg || leg.bookingType === 'private') return 'none';
         return (unitGenderLocksFor(leg.routeId, leg.date)[unitKeyJS(seat)]) || 'none';
       };
       /* Operator's women-only seats (server list; enforced at sale time since
@@ -910,7 +1070,14 @@ function renderCheckout() {
      point redemption is opt-in (checkbox). Both recompute in one place. */
   const f = calcFare(legs);
   const st = S();
-  const me = (typeof USER !== 'undefined' && USER) ? userByPhone(USER.phone) : null;
+  /* Loyalty preview from the SERVER's points only (8 Oct 2026, D4-04 stopgap):
+     the browser-local tally drifted from users.loyalty_points, so a customer
+     could pay a UPI amount the server never charged. USER.points comes from
+     api/otp.php — 0 unless the WhatsApp code proved the number. A guest (and
+     the desk) sees no points at all. */
+  const me = (!isCounterSale() && typeof USER !== 'undefined' && USER && USER.phone)
+    ? { phone: USER.phone, loyaltyPoints: Math.max(0, Math.floor(Number(USER.points) || 0)) }
+    : null;
   const tierInfo = me ? tierFor(me.loyaltyPoints || 0) : null;
   const redeemCfg = CONFIG.booking.loyaltyRedeem;
   Flow.usePoints = false;
@@ -1158,6 +1325,60 @@ function renderCheckout() {
   coGoStep(1);
 }
 
+/* Send a payment proof to /api/payment.php, retrying a flaky network (8 Oct
+   2026, D4-M1): 3 tries, 1.5 s then 3 s apart. A refusal that a retry cannot
+   change (403 not yours, 404, 413/422 a bad file) stops at once. The
+   booking's own mobile rides along as `phone` — the server accepts it as the
+   owner's proof even when this browser's session has gone. Resolves true /
+   false; never throws. */
+async function coSendProof(p) {
+  const waits = [0, 1500, 3000];
+  for (let i = 0; i < waits.length; i++) {
+    if (waits[i]) await new Promise(res => setTimeout(res, waits[i]));
+    try {
+      const fd = new FormData();
+      fd.append('pnr', p.pnr);
+      fd.append('method', p.method || 'upi');
+      fd.append('payerName', p.payerName || '');
+      if (p.phone) fd.append('phone', String(p.phone));
+      if (p.k) fd.append('k', String(p.k));
+      if (p.utr) fd.append('utr', p.utr);
+      if (p.shot) fd.append('screenshot', p.shot, 'payment.jpg');
+      await shgApi.postForm('/payment.php', fd);
+      return true;
+    } catch (e) {
+      if (e && [400, 403, 404, 413, 422].indexOf(e.status) >= 0) return false;
+    }
+  }
+  return false;
+}
+/* "Resend payment proof" on the ticket's red band: the saved UTR or the
+   saved screenshot again; with neither, the full proof form. */
+async function coResendProof(id) {
+  const b = DB.bookings.find(x => x.id === id); if (!b) return;
+  const pp = b.proofPending || {};
+  const pay = b.payment || {};
+  const utr = pp.utr || pay.utr || '';
+  let shot = null;
+  try { if (!utr && pay.shotThumb) shot = shgApi.dataUrlToBlob(pay.shotThumb); } catch (e) { shot = null; }
+  if (!utr && !shot) { if (typeof pvOpenForm === 'function') pvOpenForm(b.id); return; }
+  const btn = $('#proofResendBtn');
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = t('subBtnBusy'); }
+  const ok = await coSendProof({ pnr: b.id, method: pp.method || pay.method || 'upi', payerName: ((b.passengers || [])[0] || {}).name || '',
+    utr: utr, shot: shot, phone: digits((b.contact && b.contact.phone) || ''), k: b.dlKey || '' });
+  if (ok) {
+    b.proofPending = null;
+    persist('bookings');
+    toast(t('proofResent'));
+    if ((location.hash || '') === '#/ticket/' + b.id) renderStatus(b.id);
+  } else {
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+    toast(t('errProofUpload'));
+  }
+}
+window.coResendProof = coResendProof;
+
 /* Validate everything, save the booking as PENDING, go to status page.
    🔁 PAYMENT UPGRADE PATH: to use Razorpay/PhonePe (or the eSewa API)
    later, collect payment here via their SDK, set payment.status =
@@ -1274,13 +1495,14 @@ async function submitBooking() {
   const submitBtnLabel = submitBtn ? submitBtn.textContent : '';
   if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = t('subBtnBusy'); submitBtn.classList.add('loading'); }
 
-  /* Bind the booking to the traveller's account (name + mobile sign-in)
-     before it is written. Never blocks: a failed sign-in still books as a
-     guest, exactly as before. */
+  /* A signed-in traveller's server session is refreshed before the booking
+     is written, so it lands on their account. A GUEST is never signed in by
+     the number they type (8 Oct 2026, D4-03) — api/book.php binds the new
+     PNR to this browser session instead. Never blocks. */
   if (typeof ensureCustomerSession === 'function') {
     try {
       const leadEl0 = $('#paxRows .pxName');
-      await ensureCustomerSession(leadEl0 ? leadEl0.value : '', phoneVal, '');
+      await ensureCustomerSession(leadEl0 ? leadEl0.value : '', phoneVal, contactCountry());
     } catch (e) {}
   }
 
@@ -1386,18 +1608,23 @@ async function submitBooking() {
      taken before this sale. */
   legs.forEach(l => SeatSrv.invalidate(l.routeId, l.date));
 
+  const ccNow = contactCountry();
   const booking = {
     id: pnr, createdAt: Date.now(), routeId: out.routeId, date: out.date,
     seats: out.seats.slice(),
     passengers: passengers,
-    contact: { phone: phoneVal, email: email.value.trim(), idType: $('#idType').value, idNum: idNum.value.trim() },
+    contact: { phone: phoneVal, email: email.value.trim(), idType: $('#idType').value, idNum: idNum.value.trim(),
+      cc: ccNow === 'NP' ? '977' : (ccNow === 'IN' ? '91' : '') },
+    /* booked in THIS browser (api/book.php remembered the PNR in the session),
+       so the cancel modal may offer the cancel directly (D4-03 / identity rule) */
+    ownBrowser: true,
     boarding: out.boarding, drop: out.drop,
     farePerSeat: out.fare, baseTotal: f.base, discount: f.discount, fee: f.fee,
     total: apiResult.total,   // server-authoritative amount — may include coupon/tier/points math the client preview approximated
     tierDiscount: x.tierDisc, tierName: x.tierDisc > 0 ? x.tierName : '',
     offerDiscount: x.offerDisc || 0, offerTitle: x.offerDisc > 0 ? x.offerTitle : '',
     pointsUsed: x.points, pointsValue: x.pointsValue,
-    pointsBy: (x.points > 0 && me) ? me.phone : '',
+    pointsBy: (x.points > 0 && USER) ? USER.phone : '',
     referralCode: refCode,
     payment: { method: PAY_METHOD, mode: payMode, utr: payUtr, shotThumb: payShot, status: isCod ? 'cod_pending' : 'pending' },
     status: apiResult.status || 'pending',
@@ -1413,36 +1640,37 @@ async function submitBooking() {
   }
   /* Points are deducted the moment they're spent; refunded automatically
      if the booking is later rejected or cancelled. */
-  if (x.points > 0 && me) awardPoints(me, -x.points, 'Redeemed at checkout ' + booking.id, booking.id);
+  if (x.points > 0 && USER && USER.phone) {
+    const local = userByPhone(USER.phone);
+    if (local) awardPoints(local, -x.points, 'Redeemed at checkout ' + booking.id, booking.id);
+    /* the server balance the preview reads (D4-04) */
+    try { if (USER && typeof setUser === 'function') setUser(Object.assign({}, USER, { points: Math.max(0, (Number(USER.points) || 0) - x.points) })); } catch (e) {}
+  }
   if (ret) booking.ret = { routeId: ret.routeId, date: ret.date, seats: ret.seats.slice(), boarding: ret.boarding, drop: ret.drop, farePerSeat: ret.fare };
 
   /* ---- Forward the payment proof already collected above ------------
      Non-COD submission is blocked above unless a UTR or screenshot was
      given, so we always have proof to send the instant the booking
-     exists. This is what makes it show up in Admin → Verify Payments. */
+     exists. This is what makes it show up in Admin → Verify Payments.
+     8 Oct 2026 (D4-M1): the customer has ALREADY PAID at this point, so a
+     failed upload is retried (3 tries, 1.5 s / 3 s apart) and, if it still
+     fails, the booking remembers it (proofPending) — the ticket shows a red
+     "proof NOT received — resend" band that survives a reload, instead of a
+     toast that the next toast overwrote and a fake "waiting for
+     verification" while the booking quietly expired. */
+  let proofOk = true;
   if (!isCod) {
-    try {
-      const fd = new FormData();
-      fd.append('pnr', pnr);
-      fd.append('method', PAY_METHOD);
-      fd.append('payerName', (passengers[0] && passengers[0].name) || '');
-      if (payMode === 'utr') fd.append('utr', payUtr);
-      if (payMode === 'screenshot' && payShot) {
-        /* The uploader already produced this exact jpeg as a Blob. Prefer it:
-           dataUrlToBlob() decodes ~200 KB of base64 back into the same bytes,
-           and it runs here — on the tap that submits the booking — which is
-           the one moment the passenger is watching. Fall back to decoding
-           only for a proof restored from a saved draft, where no live Blob
-           exists. */
-        const shotBlob = (Flow.shotBlob instanceof Blob) ? Flow.shotBlob : shgApi.dataUrlToBlob(payShot);
-        fd.append('screenshot', shotBlob, 'payment.jpg');
-      }
-      await shgApi.postForm('/payment.php', fd);
-    } catch (e) {
-      // The booking itself is already safely created server-side; let the
-      // customer resubmit proof from My Bookings rather than lose the seat.
-      toast(t('errProofUpload'));
-    }
+    /* The uploader already produced this exact jpeg as a Blob. Prefer it:
+       dataUrlToBlob() decodes ~200 KB of base64 back into the same bytes,
+       and it runs here — on the tap that submits the booking — which is
+       the one moment the passenger is watching. Fall back to decoding
+       only for a proof restored from a saved draft, where no live Blob
+       exists. */
+    let shotBlob = null;
+    try { if (payMode === 'screenshot' && payShot) shotBlob = (Flow.shotBlob instanceof Blob) ? Flow.shotBlob : shgApi.dataUrlToBlob(payShot); } catch (e) {}
+    proofOk = await coSendProof({ pnr: pnr, method: PAY_METHOD, payerName: (passengers[0] && passengers[0].name) || '',
+      utr: payMode === 'utr' ? payUtr : '', shot: shotBlob, phone: phoneVal });
+    if (!proofOk) booking.proofPending = { method: PAY_METHOD, mode: payMode, utr: payUtr, at: Date.now() };
   }
 
   DB.bookings.unshift(booking);
@@ -1470,12 +1698,15 @@ async function submitBooking() {
   Flow.sharingTier = null; Flow.tierManual = false; Flow.patient = false;
   Flow.paxIndividual = false;   // the next party starts under one name again
   location.hash = '#/ticket/' + id;
-  toast(t('tSubmitted'));
-  SFX.success(); shgHaptic('success');
+  /* One honest message (D4-06 / D4-M1): cash at the counter for COD, the
+     proof-not-received warning when the upload failed, else "verifying". */
+  if (!isCod && !proofOk) { toast(t('proofFailToast')); SFX.error(); shgHaptic('error'); }
+  else { toast(isCod ? t('tSubmittedCod') : t('tSubmitted')); SFX.success(); shgHaptic('success'); }
   /* Notification centre entry (additive — guarded so booking flow never breaks) */
   try {
     if (typeof pushNotif === 'function') {
       if (isCod) pushNotif('🎫', 'Booking submitted · बुकिंग दर्ज', id + ' — COD: बोर्डिङ काउन्टरमा नगद तिर्नुहोस् · काउंटर पर नकद दें · pay cash at the counter before departure.');
+      else if (!proofOk) pushNotif('⚠️', 'Payment proof not received · भुक्तानी प्रमाण पुगेन', id + ' — ' + t('proofFailT'));
       else pushNotif('🎫', 'Booking submitted · बुकिंग दर्ज', id + ' — payment under verification · भुक्तानी जाँच हुँदैछ · भुगतान सत्यापित हो रहा है.');
     }
   } catch (e) {}
@@ -1502,6 +1733,36 @@ async function submitBooking() {
    booking, which is the verification the no-login flow is built on.
 ================================================================ */
 
+/* The ticket key out of a keyed download link (D6-03): the app used to throw
+   ticketUrl away, so the server PNG / PDF / offline copy only worked while a
+   signed-in session lasted. The key is already in every WhatsApp link the
+   passenger holds, so keeping it on this device adds no new exposure. */
+function dlKeyFrom(u) {
+  try { return u ? (new URL(u, location.origin).searchParams.get('k') || '') : ''; } catch (e) { return ''; }
+}
+/* "+977 98…" / "+91 98…" from the number's own country, never an assumed
+   +91 (D6-14). Unknown country = the bare number. */
+function fmtContact(b) {
+  const p = digits((b && b.contact && b.contact.phone) || '');
+  if (!p) return '';
+  const cc = String((b && b.contact && b.contact.cc) || '').replace(/\D/g, '');
+  return (cc ? '+' + cc + ' ' : '') + p;
+}
+/* The fields the 8 Oct 2026 payload added (helpers.php shg_customer_payload +
+   api/track.php), copied in one place for the adapter and the re-sync. */
+function coServerExtras(d, out) {
+  return {
+    dlKey: dlKeyFrom(d.ticketUrl),
+    verifyUrl: d.verifyUrl || null,
+    pickupMap: (d.pickupMap === undefined) ? undefined : (d.pickupMap || null),
+    delayMin: Math.max(0, Number(d.delayMin) || 0),
+    delayNote: String(d.delayNote || ''),
+    tripStatus: String(d.tripStatus || (out && out.tripStatus) || ''),
+    live_status: (d.live_status && d.live_status.key) ? d.live_status : null,
+    depTime: (out && out.depTime) || '',
+    arrived: !!d.arrived
+  };
+}
 /* Turn a track.php payload into the shape the app renders. Used both to
    refresh a known ticket and to recover one this browser has never seen. */
 function bookingFromServer(d, phone) {
@@ -1520,7 +1781,7 @@ function bookingFromServer(d, phone) {
     date: out.date || '',
     seats: seats,
     passengers: (d.passengers || []).map(p => ({ seat: p.seat, name: p.name, age: p.age, gender: p.gender, special: p.special || null })),
-    contact: { phone: digits(phone || ''), email: '', idType: '', idNum: '' },
+    contact: { phone: digits(phone || ''), email: '', idType: '', idNum: '', cc: String(d.contactCountry || '').replace(/\D/g, '') },
     boarding: out.boarding || '', drop: out.drop || '',
     farePerSeat: seats.length ? Math.round((d.total || 0) / seats.length) : (d.total || 0),
     baseTotal: d.total || 0, discount: 0, fee: 0, total: d.total || 0,
@@ -1535,10 +1796,13 @@ function bookingFromServer(d, phone) {
     ticketNumber: d.ticketNumber || '',
     trackUrl: d.trackUrl || null,
     /* WhatsApp delivery of the ticket (track.php → shg_wa_last, 17 Sep 2026):
-       null = nothing sent yet, {ok,last4,status,code} otherwise. */
+       null = nothing sent yet, {ok,last4,status,code} otherwise. 8 Oct 2026:
+       also {state:'delivered'|'pending'|'failed'} — ok now means delivered. */
     wa: (d.wa === undefined) ? undefined : (d.wa || null),
     fromServer: true
   };
+  Object.assign(b, coServerExtras(d, out));
+  if (b.pickupMap === undefined) delete b.pickupMap;
   if (ret) {
     b.ret = {
       routeId: ret.routeCode || '', date: ret.date || '',
@@ -1583,6 +1847,28 @@ async function syncBooking(b) {
   /* WhatsApp delivery state (17 Sep 2026) — informational, never flips `changed`
      on its own, the ticket page re-renders itself when it asked for it. */
   if (d.wa !== undefined) b.wa = d.wa || null;
+  /* 8 Oct 2026: the ticket key, the keyed verify link, directions, the
+     number's country, the office's delay / trip cancellation and the live
+     pill — each a visible change on the ticket when it moves. */
+  const legs = d.legs || [];
+  const out = legs.find(l => l.type === 'outbound') || legs[0] || {};
+  const ex = coServerExtras(d, out);
+  Object.keys(ex).forEach(k => {
+    if (ex[k] === undefined) return;
+    if (k === 'dlKey' && !ex[k]) return;            // a pending ticket has no key yet; keep any we hold
+    if (k === 'live_status') {                       // "Upcoming in 2h 14m" ticks every minute: redraw only on a new state
+      const was = (b.live_status && b.live_status.key) || '';
+      b.live_status = ex[k];
+      if (was !== ((ex[k] && ex[k].key) || '')) changed = true;
+      return;
+    }
+    if (JSON.stringify(b[k] === undefined ? null : b[k]) !== JSON.stringify(ex[k])) { b[k] = ex[k]; changed = true; }
+  });
+  if (d.contactCountry !== undefined) {
+    const cc = String(d.contactCountry || '').replace(/\D/g, '');
+    b.contact = b.contact || {};
+    if ((b.contact.cc || '') !== cc && cc) { b.contact.cc = cc; changed = true; }
+  }
   return changed;
 }
 
@@ -1693,19 +1979,47 @@ function waShare(id) {
     openText();
   });
 }
+/* The cancel door when this device cannot prove the number (8 Oct 2026,
+   identity rule): the visible reason, the WhatsApp code (the sign-in sheet,
+   pre-filled with the booking's number) and the office's phone. No cancel
+   button that the server would only refuse. */
+function cxNeedOtpHTML(b) {
+  return '<div class="verify-note cx-otp" role="status" style="margin:14px 0">🔐 <span>' + esc(t('cxNeedOtp')) + '</span></div>'
+    + '<div class="m-actions" style="flex-direction:column;gap:10px">'
+    + '<button class="btn btn-orange" type="button" id="mCxCode" style="width:100%">🟢 ' + esc(t('cxSendCode')) + '</button>'
+    + '<a class="btn btn-ghost" style="width:100%" href="tel:' + esc(digits(S().phone)) + '">' + esc(t('cxCall')) + ' · ' + esc(S().phone) + '</a>'
+    + '<button class="btn btn-ghost" type="button" id="mKeep" style="width:100%">' + esc(t('cancelKeep')) + '</button>'
+    + '</div>';
+}
+function wireCxNeedOtp(b) {
+  const k = $('#mKeep'); if (k) k.onclick = closeModal;
+  const c = $('#mCxCode');
+  if (c) c.onclick = () => {
+    const cc = String((b.contact && b.contact.cc) || '');
+    const u = { phone: digits((b.contact && b.contact.phone) || '') };
+    if (cc === '977') u.country = 'NP'; else if (cc === '91') u.country = 'IN';
+    if (typeof openLoginModal === 'function') openLoginModal({ u: u });
+  };
+}
 function openCancelModal(id) {
   const b = DB.bookings.find(x => x.id === id); if (!b || !canCancel(b)) return;
   const r = routeById(b.routeId) || {};
   const ri = refundInfo(b);
   const refundMsg = ri.pct > 0 ? tf('refundLine', { a: inr(ri.amount), p: ri.pct }) : t('noRefund');
+  /* May THIS device cancel? A WhatsApp-code-verified session, or the ticket
+     was booked in this browser (the server remembers it for the session).
+     Otherwise say so up front instead of a button the server refuses. */
+  const verified = typeof USER !== 'undefined' && USER && USER.verified;
+  const mayTry = verified || !!b.ownBrowser || isCounterSale();
   openModal(`
     <h3 class="m-title">${t('cancelAsk')}</h3>
     <p class="m-sub">${esc((parseBP(b.boarding || '').name || r.from || '') + ' → ' + (parseBP(b.drop || '').name || r.to || ''))} · ${fmtDate(b.date)} · ${seatLabelJoin(b.seats, r.type, b.bookingType)} · <b>${inr(b.total)}</b></p>
     <div class="verify-note" style="margin:14px 0">💰 <span>${refundMsg}</span></div>
-    <div class="m-actions">
+    <div id="mCxBody">${mayTry ? `<div class="m-actions">
       <button class="btn btn-ghost" type="button" id="mKeep">${t('cancelKeep')}</button>
       <button class="btn btn-danger" type="button" id="mCancelYes">${t('cancelYes')}</button>
-    </div>`);
+    </div>` : cxNeedOtpHTML(b)}</div>`);
+  if (!mayTry) { wireCxNeedOtp(b); return; }
   $('#mKeep').onclick = closeModal;
   $('#mCancelYes').onclick = async () => {
     const yesBtn = $('#mCancelYes');
@@ -1719,6 +2033,13 @@ function openCancelModal(id) {
         pnr: b.id, phone: (b.contact && b.contact.phone) || '', reason: 'Cancelled by customer'
       });
     } catch (e) {
+      /* 403 needs_otp: this session cannot prove the number — show why and
+         offer the WhatsApp code, never a bare error. */
+      if (e && e.status === 403 && e.fields && e.fields.code === 'needs_otp') {
+        b.ownBrowser = false; persist('bookings');
+        const box = $('#mCxBody'); if (box) { box.innerHTML = cxNeedOtpHTML(b); wireCxNeedOtp(b); }
+        return;
+      }
       if (yesBtn) { yesBtn.disabled = false; yesBtn.textContent = t('cancelYes'); }
       toast(e.message || 'Could not cancel this booking. Please try again or contact support.');
       return;
@@ -1733,7 +2054,7 @@ function openCancelModal(id) {
     closeModal();
     toast(t('cancelDone'));
     if ((location.hash || '').indexOf('#/ticket/') === 0) renderStatus(b.id);
-    else if (location.hash === '#/my') renderMyBookings();
+    else if (typeof isMyHash === 'function' ? isMyHash() : location.hash === '#/my') renderMyBookings();
   };
 }
 
@@ -1882,6 +2203,21 @@ function paymentStepper(b) {
 
   var step4State = conf ? 'done' : 'off';
 
+  /* 8 Oct 2026 (D4-06): a confirmed cash-at-counter seat has NOT been paid
+     or verified — the ticket is ready, the cash is still due. */
+  var dueC = Math.max(0, Number(b.total || 0) - Number(b.paidAmount || 0));
+  var paidOk = (pay === 'verified' || pay === 'settled') || (typeof b.paidAmount === 'number' && Number(b.total || 0) > 0 && dueC <= 0);
+  if (cod && conf && !paidOk) {
+    step2State = 'now'; step2Label = tf('pstCounterDue', { a: inr(dueC) });
+    step3State = 'off'; step3Label = t('pstCheck');
+    step4State = 'done';
+  }
+  /* D4-M1: the proof never reached the office — say so, not "sent". */
+  if (!cod && st === 'pending' && b.proofPending) {
+    step2State = 'bad'; step2Label = t('pstProofMissing');
+    step3State = 'off';
+  }
+
   function li(state, label) {
     var mark = state === 'done' ? '✓' : (state === 'bad' ? '!' : (state === 'now' ? '•' : '–'));
     return '<li class="' + state + '"'
@@ -1907,8 +2243,16 @@ function renderStatus(id) {
       + tf('stNotFoundP', { id: esc(id) }) + '</p><a class="btn btn-blue" href="#/">' + t('btnHome') + '</a></div>';
     return;
   }
+  /* A ticket this browser just sold (the checkout or the Quick Ticket card)
+     is in this session's own-PNR list server-side — remember that here so the
+     cancel modal does not ask for the WhatsApp code first. */
+  try { if (!b.ownBrowser && window.SHG_JUST_BOOKED && window.SHG_JUST_BOOKED.pnr === b.id) { b.ownBrowser = true; persist('bookings'); } } catch (e) {}
   const r = routeById(b.routeId) || {};
   const rr = b.ret ? (routeById(b.ret.routeId) || {}) : null;
+  /* The office cancelled this DEPARTURE (Admin -> Trips, D7-M2). The booking
+     row stays 'confirmed' by design (the owner settles each one by hand), so
+     the ticket says it plainly — no track, no countdown, no refund promise. */
+  const tripCancelled = b.tripStatus === 'cancelled' || !!(b.live_status && b.live_status.key === 'trip_cancelled');
   const paxRows = b.passengers.map((p, i) => '<tr><td>' + esc(seatLabel(p.seat, r.type, b.bookingType)) + (b.ret ? ' <small style="color:var(--muted)">/ ↩ ' + esc(seatLabel((b.ret.seats || [])[i] || '', rr.type, b.ret.bookingType)) + '</small>' : '') + '</td><td>' + esc(p.name) + (p.special ? ' <span class="chip" style="font-size:11px;padding:2px 8px">' + esc(t('patientTag')) + '</span>' : '') + '</td><td>' + esc(p.age) + '</td><td>' + esc(p.gender) + '</td></tr>').join('');
 
   let band = '', extra = '', bpHeader = '';
@@ -1925,7 +2269,9 @@ function renderStatus(id) {
          unclear or the customer wants to re-share via WhatsApp. */
       var pvSub = PV.submissions.find(function(s) { return s.bookingId === b.id && s.status === 'pending'; });
       var verId = pvSub ? esc(pvSub.id) : esc(b.id);
-      extra = '<div class="pp-status show waiting" style="margin-bottom:14px"><div class="pp-st-ico">⏳</div><div class="pp-st-title">Waiting for Verification...</div>'
+      /* No fake "waiting for verification" when the proof never arrived
+         (D4-M1) — the red resend band at the top says what to do instead. */
+      if (!b.proofPending) extra = '<div class="pp-status show waiting" style="margin-bottom:14px"><div class="pp-st-ico">⏳</div><div class="pp-st-title">Waiting for Verification...</div>'
         + '<div class="pp-st-sub">Usually verified <b>' + esc(CONFIG.verifyTimeText || 'within 30 minutes (9 AM–9 PM IST)') + '</b><br>Reference: <b>' + verId + '</b><br>Our team will confirm your ticket shortly.<br>'
         + '<a href="#" onclick="event.preventDefault(); pvOpenForm(\'' + esc(b.id) + '\')" style="font-size:12px;color:var(--muted);text-decoration:underline">Resend payment proof if needed</a></div></div>';
     }
@@ -2008,9 +2354,9 @@ function renderStatus(id) {
   }
   /* Who booked — the sign-in name + mobile, copied onto the ticket. */
   const bookedByName = ((b.passengers || [])[0] || {}).name || '';
-  const bookedByPhone = digits((b.contact && b.contact.phone) || '');
+  const bookedByPhone = fmtContact(b);   // "+977 98…" from the booking's own country (D6-14)
   const bookedByRow = (bookedByName || bookedByPhone)
-    ? '<div class="sum-row"><span>' + t('tkBookedBy') + '</span><b>' + esc(bookedByName) + (bookedByPhone ? (bookedByName ? ' · ' : '') + '+91 ' + esc(bookedByPhone) : '') + '</b></div>'
+    ? '<div class="sum-row"><span>' + t('tkBookedBy') + '</span><b>' + esc(bookedByName) + (bookedByPhone ? (bookedByName ? ' · ' : '') + esc(bookedByPhone) : '') + '</b></div>'
     : '';
 
   const retBlock = b.ret ? `
@@ -2039,19 +2385,36 @@ function renderStatus(id) {
   /* "Where is my bus?" (24 Sep 2026): the keyed public page with the live
      position and minutes to THIS passenger's stop, plus a one-tap share so
      the family at home can watch the same page. Only on a confirmed ticket. */
-  const whereBox = (b.status === 'confirmed' && b.trackUrl)
+  const whereBox = (b.status === 'confirmed' && b.trackUrl && !tripCancelled)
     ? '<div class="crew-box where-box">📍 <div><small>' + t('tkWhereT') + '</small>'
       + '<a class="btn btn-blue btn-sm" href="' + esc(b.trackUrl) + '" target="_blank" rel="noopener" style="margin:6px 8px 0 0">' + t('tkWhereBtn') + '</a>'
       + '<a class="btn btn-ghost btn-sm" href="https://wa.me/?text=' + encodeURIComponent(t('tkWhereShare') + ' ' + b.trackUrl) + '" target="_blank" rel="noopener" style="margin-top:6px">' + t('tkWhereFam') + '</a>'
       + '</div></div>'
     : '';
 
-  /* Delay banner — pull-based: admin publishes {routeId, date, delayMinutes}
-     in Live Ops; any matching confirmed booking shows it here. */
-  const delay = (b.status === 'confirmed') ? (DB.delays || []).find(d => d.routeId === b.routeId && d.date === b.date) : null;
-  const delayBanner = delay
-    ? '<div class="verify-note" style="margin:0 0 14px;background:#FFF3E2;border-color:#F3D9B0">⏰ <span><b>'
+  /* Delay banner (8 Oct 2026, D7-M2): the office's delay from Admin -> Trips
+     (schedules.delay_minutes, shipped on the booking as delayMin / delayNote).
+     Nothing has written the old KV 'shg:delays' list since the S2 purge; it
+     stays only as a fallback for an older cached copy. */
+  let delay = null;
+  if (b.status === 'confirmed' && !tripCancelled) {
+    if (Number(b.delayMin) > 0) delay = { delayMinutes: Number(b.delayMin), note: b.delayNote || '' };
+    else delay = (DB.delays || []).find(d => d.routeId === b.routeId && d.date === b.date) || null;
+  }
+  let delayBanner = delay
+    ? '<div class="verify-note tk-delay" role="status" style="margin:0 0 14px">⏰ <span><b>'
       + tf('delayLine', { m: delay.delayMinutes }) + '</b>' + (delay.note ? ' ' + esc(delay.note) : '') + '</span></div>'
+    : '';
+  if (b.status === 'confirmed' && tripCancelled) {
+    delayBanner = '<div class="tk-trip-cx" role="alert"><b>' + esc(t('tripCxT')) + '</b><span>' + esc(tf('tripCxP', { p: S().phone }))
+      + (b.delayNote ? ' · ' + esc(b.delayNote) : '') + '</span>'
+      + '<a class="btn btn-sm" href="tel:' + esc(digits(S().phone)) + '">📞 ' + esc(S().phone) + '</a></div>';
+  }
+  /* The payment proof never reached the office (D4-M1): a red band with a
+     resend that survives a reload, until the server has it. */
+  const proofBand = (b.status === 'pending' && b.proofPending)
+    ? '<div class="tk-proof-fail" role="alert"><b>⚠️ ' + esc(t('proofFailT')) + '</b><span>' + esc(t('proofFailP')) + '</span>'
+      + '<button class="btn btn-danger" type="button" id="proofResendBtn">' + esc(t('proofResendBtn')) + '</button></div>'
     : '';
 
   /* Bikram Sambat alongside the AD date — see nepaliBS() in 02-config.js.
@@ -2068,7 +2431,7 @@ function renderStatus(id) {
   const fromD2 = stopDisplay(b.boarding || '', r.from), toD2 = stopDisplay(b.drop || '', r.to);
   const isCod2 = !!(b.codFlag || (b.payment && b.payment.method === 'cod'));
   const conf = b.status === 'confirmed';
-  const soon = (b.status === 'pending' || conf) && depTimestamp(b) > Date.now();
+  const soon = (b.status === 'pending' || conf) && depTimestamp(b) > Date.now() && !tripCancelled;
   let pill2;
   if (conf) pill2 = '<span class="tk2-pill ok">' + esc(t('stConfT')) + '</span>';
   else if (b.status === 'pending') pill2 = '<span class="tk2-pill pend">' + (isCod2 ? '💵 ' : '⏳ ') + esc(t('stPendT')) + '</span>';
@@ -2076,7 +2439,8 @@ function renderStatus(id) {
   else if (b.status === 'expired' || b.status === 'completed') pill2 = '<span class="tk2-pill off">⏱ ' + esc(t('stExpT')) + '</span>';
   else pill2 = '<span class="tk2-pill bad">! ' + esc(t('stRejT')) + '</span>';
   let note2 = '';
-  if (b.status === 'pending' && !isCod2) note2 = '<div class="tk2-note wait">⏳ ' + tf('stPendP', { s: seatLabelJoin(b.seats, r.type, b.bookingType) }) + '</div>';
+  if (b.status === 'pending' && !isCod2 && b.proofPending) note2 = '';   // the red resend band above says it
+  else if (b.status === 'pending' && !isCod2) note2 = '<div class="tk2-note wait">⏳ ' + tf('stPendP', { s: seatLabelJoin(b.seats, r.type, b.bookingType) }) + '</div>';
   else if (b.status === 'pending' && isCod2) note2 = '<div class="tk2-note cash">💵 ' + esc(seatLabelJoin(b.seats, r.type, b.bookingType)) + ' · ' + t('codCashNote') + '</div>';
   else if (conf && isCod2) note2 = '<div class="tk2-note cash">' + t('codCashNote') + '</div>';
   else if (b.status === 'cancelled') note2 = '<div class="tk2-note">' + t('stCancP') + (b.refundNote ? ' ' + esc(b.refundNote) : '') + '</div>';
@@ -2085,17 +2449,27 @@ function renderStatus(id) {
   /* Did the office's WhatsApp ticket reach the passenger? (17 Sep 2026.) Known
      once the ticket has been read back from track.php (b.wa defined); a
      confirmed ticket that has never synced asks the server once. */
+  /* 8 Oct 2026 (D6-01): b.wa.state is the REAL delivery state (msg_ledger):
+     ✅ only once WhatsApp says delivered/read; accepted/queued is "sending";
+     failed keeps the warning. An older payload without `state` reads ok as
+     before. */
+  const waState = (b.wa && b.wa.state) ? b.wa.state : (b.wa ? (b.wa.ok ? 'delivered' : 'failed') : (b.wa === null ? 'none' : ''));
+  /* "We are sending your ticket to WhatsApp (…1234)" — only while nothing is
+     known yet or the send is pending; never next to the failed note. */
+  const waDigits = String((b.contact && b.contact.phone) || '').replace(/\D/g, '');
+  const showWaDirect = conf && !!(window.SHG_BOOT && SHG_BOOT.waDirect) && /^[1-9]\d{9,12}$/.test(waDigits)
+    && (b.wa === null || waState === 'pending');
   if (conf) {
     if (b.wa === undefined) {
       if (!b._waSync && typeof syncBooking === 'function') {
         b._waSync = true;
         try { syncBooking(b).then(function () { if (b.wa !== undefined && location.hash === '#/ticket/' + b.id) renderStatus(b.id); }).catch(function () {}); } catch (e) {}
       }
-    } else if (b.wa && b.wa.ok) {
+    } else if (waState === 'delivered') {
       note2 += '<div class="tk2-note wa ok">📲 ' + tf('tkWaSent', { n: esc(b.wa.last4 || '') }) + '</div>';
-    } else if (b.wa && !b.wa.ok) {
+    } else if (waState === 'failed') {
       note2 += '<div class="tk2-note wa warn">⚠️ ' + tf('tkWaFailed', { n: esc(b.wa.last4 || '') }) + '</div>';
-    } else if (digits((b.contact && b.contact.phone) || '')) {
+    } else if (!showWaDirect && (waState === 'pending' || digits((b.contact && b.contact.phone) || ''))) {
       note2 += '<div class="tk2-note wa">📲 ' + t('tkWaPending') + '</div>';
     }
   }
@@ -2111,7 +2485,7 @@ function renderStatus(id) {
      guarded string — a missing 17-pwa.js leaves the ticket exactly as before.
      Declared BEFORE primary2: a pending ticket reads splitBtn there. */
   let borderCard = '', pushCard = '', splitBtn = '';
-  try { if (window.SHGBorder) borderCard = window.SHGBorder.card(b) || ''; } catch (e) {}
+  try { if (window.SHGBorder && !tripCancelled) borderCard = window.SHGBorder.card(b) || ''; } catch (e) {}   // no "departure in 62 h" on a cancelled trip
   try { if (window.SHGPush) pushCard = window.SHGPush.card(b) || ''; } catch (e) {}
   try { if (window.SHGSplit) splitBtn = window.SHGSplit.button(b) || ''; } catch (e) {}
   /* One tap into OUR WhatsApp with the message already written, so the
@@ -2130,26 +2504,48 @@ function renderStatus(id) {
     }
   } catch (e) {}
 
+  /* Track = this passenger's OWN keyed tracker (trackUrl, k = track token),
+     the same door as the bottom bar's TRACK; the Trip Companion stays in
+     "More". Nothing to track on a departure the office cancelled. */
+  const trackBtn2 = tripCancelled ? ''
+    : '<a class="btn btn-blue" href="' + esc(b.trackUrl ? String(b.trackUrl) : '#/trip/' + b.id) + '">' + t('tkTrackBtn') + '</a>';
+  /* 📍 Directions only from the OFFICIAL pickup coordinates (pickupMap is
+     null when the stop has none — never a guessed position, D6-11). */
+  const dirBtn2 = (conf && b.pickupMap && !tripCancelled)
+    ? '<a class="btn btn-ghost" id="tkDirBtn" target="_blank" rel="noopener" href="' + esc(b.pickupMap) + '">' + esc(t('tkDirections')) + '</a>' : '';
+  /* ✏️ Request correction: the WhatsApp request sheet with the PNR filled in
+     — a message to the office, nothing changes by itself. */
+  const fixBtn2 = (conf || b.status === 'pending')
+    ? '<button class="btn btn-ghost" id="tkFixBtn" type="button">' + esc(t('tkFixReq')) + '</button>' : '';
+  /* A guest's ticket can join their account once the WhatsApp code proves
+     the number (D4-03): booking itself never signs anybody in. */
+  const saveAcct2 = ((typeof USER === 'undefined' || !USER) && !isCounterSale() && digits((b.contact && b.contact.phone) || '') && (conf || b.status === 'pending'))
+    ? '<button class="btn btn-ghost tk2-wide" id="tkSaveAcct" type="button">' + esc(t('tkSaveAcct')) + '</button>' : '';
   const primary2 = conf
     ? '<button class="btn btn-orange" id="imgBtn" type="button">' + t('btnImg') + '</button>'
       + '<button class="btn btn-wa" id="waBtn" type="button">🟢 ' + t('btnWa') + '</button>'
-      + '<a class="btn btn-blue" href="#/trip/' + esc(b.id) + '">' + t('tkTrackBtn') + '</a>'
+      + trackBtn2
+      + dirBtn2
       /* Return journey as its own ticket (17 Sep 2026): the engine books one
          leg per ticket (round_trip_on gate), so this starts a fresh search in
          the opposite direction with the same lead passenger — rebookFrom(id, true). */
       + '<button class="btn btn-ghost tk2-wide" id="retBookBtn" type="button">' + t('btnRetBook') + '</button>'
       + waGetBtn
+      + saveAcct2
     : (b.status === 'pending' ? '<button class="btn btn-blue" id="refreshBtn" type="button">' + t('btnRefresh') + '</button>' + splitBtn : '')
       + (canCancel(b) ? '<button class="btn btn-danger-ghost" id="cancelBtn" type="button">' + t('btnCancel') + '</button>' : '')
       + waGetBtn
+      + saveAcct2
       + '<a class="btn btn-orange" href="#/">' + t('tkNewTicket') + '</a>';
   const secondary2 = (conf ? '<button class="btn btn-ghost" id="pdfBtn" type="button">' + t('btnPdf') + '</button>'
       + (soon ? '<button class="btn btn-ghost" type="button" data-ics="' + esc(b.id) + '">' + t('btnCal') + '</button>' : '')
       + '<button class="btn btn-ghost" id="printBtn" type="button">' + t('btnPrint') + '</button>'
       + ((typeof navigator.share === 'function') ? '<button class="btn btn-ghost" id="shareBtn" type="button">' + t('btnShare') + '</button>' : '')
-      + '<a class="btn btn-ghost" href="#/trip/' + esc(b.id) + '">🚌 Trip Companion</a>'
+      + (tripCancelled ? '' : '<a class="btn btn-ghost" href="#/trip/' + esc(b.id) + '">🚌 Trip Companion</a>')
       + (canCancel(b) ? '<button class="btn btn-danger-ghost" id="cancelBtn" type="button">' + t('btnCancel') + '</button>' : '')
       + '<a class="btn btn-ghost" href="#/">' + t('tkNewTicket') + '</a>' : '')
+    + fixBtn2
+    + '<a class="btn btn-ghost" href="#/terms">' + esc(t('tkPolicy')) + '</a>'
     + '<a class="btn btn-ghost" href="#/">' + t('btnHome') + '</a>';
   const pax2 = (lead2.name ? esc(lead2.name) : '—') + (lead2.special ? ' <span class="chip" style="font-size:11px;padding:2px 8px">' + esc(t('patientTag')) + '</span>' : '');
   const phone2 = digits((b.contact && b.contact.phone) || '');
@@ -2161,9 +2557,16 @@ function renderStatus(id) {
   const merchant2 = S();
   const payUrl2 = paymentKnown2 && due2 > 0 && currency2 === 'INR' && merchant2.upiId && (b.status === 'pending' || conf)
     ? 'upi://pay?pa=' + encodeURIComponent(merchant2.upiId) + '&pn=' + encodeURIComponent(merchant2.upiName || '') + '&am=' + due2.toFixed(2) + '&cu=INR&tn=' + encodeURIComponent(b.id) : '';
-  const paymentCard2 = payUrl2 ? '<section class="premium-pay-card"><div><h3>' + esc(t('premiumPay')) + '</h3><b>' + esc(money2(due2)) + '</b><p>' + esc(merchant2.upiName || '') + '<br>' + esc(merchant2.upiId) + '</p><a class="btn btn-orange" href="' + esc(payUrl2) + '">' + esc(t('premiumPay')) + '</a></div><div id="premiumPayQr"><small>' + esc(t('premiumPending')) + '</small></div></section>' : '';
+  /* A confirmed cash-on-boarding seat (D6-13): ONE message — cash due on
+     boarding — instead of "verification pending" + SCAN & PAY + the cash note
+     side by side. Paying now by UPI stays possible, folded away. */
+  const codDue2 = isCod2 && due2 > 0 && (conf || b.status === 'pending');
+  let paymentCard2 = payUrl2 ? '<section class="premium-pay-card"><div><h3>' + esc(t('premiumPay')) + '</h3><b>' + esc(money2(due2)) + '</b><p>' + esc(merchant2.upiName || '') + '<br>' + esc(merchant2.upiId) + '</p><a class="btn btn-orange" href="' + esc(payUrl2) + '">' + esc(t('premiumPay')) + '</a></div><div id="premiumPayQr"><small>' + esc(codDue2 ? t('payScanUpi') : t('premiumPending')) + '</small></div></section>' : '';
+  if (paymentCard2 && codDue2) paymentCard2 = '<details class="premium-pay-opt"><summary>' + esc(t('payNowUpiQ')) + '</summary>' + paymentCard2 + '</details>';
+  const payStateLbl2 = codDue2 ? tf('codDueLbl', { a: money2(due2) }) : t(due2 <= 0 ? 'premiumPaid' : 'premiumPending');
 
   body.innerHTML = `
+  ${proofBand}
   ${delayBanner}
   ${borderCard}
   ${stepper}
@@ -2193,15 +2596,15 @@ function renderStatus(id) {
         <div class="tk2-tile wide"><small>📍 ${esc(t('tkBoard'))}</small><b>${esc(bp2.name || bpShort(b.boarding))}</b>${bp2.time ? '<em><span class="np">' + esc(bpNp2) + '</span> · ' + esc(bp2.time) + ' IST</em>' : ''}</div>
         <div class="tk2-tile"><small>💺 ${esc(t('tkSeats'))}</small><b>${esc(seatLabelJoin(b.seats, r.type, b.bookingType))}</b><em>${paxN2} ${paxN2 > 1 ? 'seats' : 'seat'}${b.bookingType === 'private' ? ' · 🔒 Private' : ''}</em></div>
         <div class="tk2-tile"><small>🏁 ${esc(t('tkDrop'))}</small><b>${esc(parseBP(b.drop || '').name || bpShort(b.drop) || '—')}</b></div>
-        <div class="tk2-tile wide"><small>👤 ${esc(t('tkPaxLbl'))}</small><b>${pax2}</b>${phone2 ? '<em>+91 ' + esc(phone2) + (paxN2 > 1 ? ' · ' + paxN2 + ' ' + esc(t('coPax')) : '') + '</em>' : ''}</div>
+        <div class="tk2-tile wide"><small>👤 ${esc(t('tkPaxLbl'))}</small><b>${pax2}</b>${phone2 ? '<em>' + esc(fmtContact(b)) + (paxN2 > 1 ? ' · ' + paxN2 + ' ' + esc(t('coPax')) : '') + '</em>' : ''}</div>
       </div>
     </div>
     <div class="tk2-fare"><div><span class="lbl">${esc(t('tkFareT'))}</span><div class="amt">${esc(money2(b.total))}</div></div><div class="sub">${fareSub2}</div></div>
     <div class="premium-passengers"><table class="pax-table"><thead><tr><th>${t('tkSeats')}</th><th>${t('coPax')}</th><th>${t('lblAge')}</th><th>${t('lblGender')}</th></tr></thead><tbody>${paxRows}</tbody></table></div>
-    <div class="premium-payment-state ${due2 <= 0 ? 'paid' : ''}"><b>${esc(t(due2 <= 0 ? 'premiumPaid' : 'premiumPending'))}</b><span>${esc(money2(paid2))} · ${esc(t('premiumDue'))}: ${esc(money2(due2))}</span><span>${esc(payRefLabel(b))}</span></div>
+    <div class="premium-payment-state ${due2 <= 0 ? 'paid' : ''}${codDue2 ? ' cod-due' : ''}"><b>${esc(payStateLbl2)}</b><span>${esc(money2(paid2))} · ${esc(t('premiumDue'))}: ${esc(money2(due2))}</span><span>${esc(payRefLabel(b))}</span></div>
     ${paymentCard2}
     <div class="tk2-actions">${primary2}</div>
-    ${conf && window.SHG_BOOT && SHG_BOOT.waDirect && /^[1-9]\d{9,12}$/.test(String((b.contact && b.contact.phone) || '').replace(/\D/g, '')) ? '<div id="tkWaDirect" style="margin:8px 0 0;padding:10px 12px;border-radius:12px;background:#E4F6EC;color:#11703F;font-weight:700;font-size:14px">📲 टिकट WhatsApp मा आफैं आउँछ · your ticket comes to your WhatsApp by itself (…' + esc(String(b.contact.phone).replace(/\D/g, '').slice(-4)) + ') — nothing to type.</div>' : ''}
+    ${showWaDirect ? '<div id="tkWaDirect" role="status">' + esc(tf('tkWaDirect', { n: waDigits.slice(-4) })) + '</div>' : ''}
     ${conf && window.SHG_BOOT && SHG_BOOT.waHi ? '<a class="btn btn-block" id="tkWaHi" style="margin:8px 0 0;background:#11703F;border-color:#11703F;color:#fff" target="_blank" rel="noopener" href="https://wa.me/' + esc(String(SHG_BOOT.waHi).replace(/\D/g, '')) + '?text=' + encodeURIComponent('Hi ' + b.id) + '">💬 ' + esc(t('waHiBtn')) + '</a><p class="hint" style="margin:4px 2px 0;font-size:12px">' + esc(t('waHiNote')) + '</p>' : ''}
     <details class="tk2-more">
       <summary>${esc(t('tkMore'))}</summary>
@@ -2240,7 +2643,10 @@ function renderStatus(id) {
   if (b.status === 'confirmed') { var tc = $('#ticketCard'); if (tc) requestAnimationFrame(function () { tc.classList.add('confirm-anim'); }); }
   if ((b.status === 'pending' || b.status === 'confirmed') && depTimestamp(b) > Date.now()) loadDestinationWeather(b);
   if (b.status === 'confirmed') {
-    makeQR(ticketQrPayload(b, r), 150).then(url => {
+    /* The SAME QR the PNG / PDF carry (D6-18): the keyed verify page, so a
+       phone camera at a checkpoint opens the live status. The old unsigned
+       text payload only when the server has not sent the link yet. */
+    makeQR(b.verifyUrl || ticketQrPayload(b, r), 150).then(url => {
       if (!url) return;
       const box = $('#tkQrBox'); if (!box || box.closest('[data-pnr]').dataset.pnr !== b.id) return;
       const img = new Image(); img.src = url; img.width = 150; img.height = 150; img.alt = 'Ticket QR';
@@ -2269,8 +2675,25 @@ function renderStatus(id) {
     $('#printBtn').onclick = () => window.print();
     const imgBtn = $('#imgBtn'); if (imgBtn) imgBtn.onclick = () => downloadTicketImage(b);
     const shareBtn = $('#shareBtn'); if (shareBtn) shareBtn.onclick = () => shareTicket(b);
-    if (typeof window.wireBoardingReminder === 'function') window.wireBoardingReminder(b);
+    if (typeof window.wireBoardingReminder === 'function' && !tripCancelled) window.wireBoardingReminder(b);
   }
+  /* 8 Oct 2026 ticket actions: resend proof (D4-M1), request a correction
+     (D6-11, the WhatsApp request sheet with this PNR), save to my account
+     (D4-03, the WhatsApp-code sign-in pre-filled with the booking's number). */
+  const prb = $('#proofResendBtn'); if (prb) prb.onclick = () => coResendProof(b.id);
+  const fxb = $('#tkFixBtn');
+  if (fxb) fxb.onclick = () => {
+    if (typeof window.shgOpenWaReq === 'function' && window.shgOpenWaReq('correction', b.id)) return;
+    const biz = String((S().adminWhatsApp) || (CONFIG && CONFIG.adminWhatsApp) || '').replace(/\D/g, '');
+    if (biz) window.open('https://wa.me/' + biz + '?text=' + encodeURIComponent('Correct my ticket. PNR: ' + b.id), '_blank', 'noopener');
+  };
+  const sab = $('#tkSaveAcct');
+  if (sab) sab.onclick = () => {
+    const cc = String((b.contact && b.contact.cc) || '');
+    const u = { phone: digits((b.contact && b.contact.phone) || ''), name: ((b.passengers || [])[0] || {}).name || '' };
+    if (cc === '977') u.country = 'NP'; else if (cc === '91') u.country = 'IN';
+    if (typeof openLoginModal === 'function') openLoginModal({ u: u });
+  };
   if (b.status === 'pending') {
     /* Refresh now ASKS the server (17 Sep 2026) — it used to only redraw the
        local copy — and the same ticket is re-read every 20 s while it stays

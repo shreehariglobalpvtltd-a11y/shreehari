@@ -49,92 +49,144 @@ function renderTrip(pnr) {
   tcInitManualLive();
 }
 
-/* Admin-driven LIVE bus position (cross-device, no GPS/Firebase).
-   Reads the shared `livebus` key an admin wrote from Live Ops -> Set position,
-   and shows a banner "Bus at X · next Y · Zm ago". Polls every 40s while the
-   Trip Companion is open. A stale mark (> 5h) is ignored so yesterday's bus
-   never shows as live. */
-function tcRenderManualLive(lb) {
-  var box = document.getElementById('tcManualLive');
-  if (!box) return;
-  var FRESH = 5 * 3600 * 1000;
-  if (!lb || !lb.stop || !lb.at || (Date.now() - lb.at) > FRESH) { box.hidden = true; TC.liveGps = false; return; }
-  var stopEl = document.getElementById('tlbStop');
-  var nextEl = document.getElementById('tlbNext');
-  var agoEl  = document.getElementById('tlbAgo');
-  /* GPS payload (4 Sep 2026): a signed-in driver's phone writes lat / lng /
-     speed to the same shared key every ~10 s (see onSnPos in the navigator).
-     A fix younger than 3 minutes is LIVE: the banner shows the speed and the
-     🚌 marker on the trip map moves through the lerp the old Firebase path
-     used — nothing new is drawn, it is just fed from the shared store. */
-  var live = !!lb.gps && lb.lat != null && lb.lng != null && (Date.now() - lb.at) < 3 * 60000;
-  if (stopEl) stopEl.textContent = (typeof t === 'function' ? t('tlbAt') : 'Bus is at') + ' ' + lb.stop + (live ? ' 🛰️' : '');
-  if (nextEl) nextEl.textContent = lb.next ? ((typeof t === 'function' ? t('tlbNext') : 'Next') + ': ' + lb.next) : '';
-  if (agoEl) {
-    var mins = Math.max(0, Math.round((Date.now() - lb.at) / 60000));
-    var ago = mins < 1 ? 'just now' : (mins < 60 ? mins + 'm ago' : Math.round(mins / 60) + 'h ago');
-    var kmh = (live && lb.spd != null) ? Math.max(0, Math.round(lb.spd * 3.6)) : null;
-    agoEl.textContent = ago + (kmh != null ? ' · ' + kmh + ' km/h' : '');
-  }
-  box.hidden = false;
-  TC.liveGps = live;
-  if (live) { tcEtaToMyStop(lb, nextEl); } else { TC.etaLine = ''; }
-  if (live && TC.map && typeof tcUpdateBusPosition === 'function') {
-    var key = String(lb.at);
-    if (TC.lastLiveKey !== key) {
-      TC.lastLiveKey = key;
-      try {
-        tcUpdateBusPosition({ lat: lb.lat, lng: lb.lng, bearing: lb.bearing != null ? lb.bearing : null, speed: lb.spd != null ? lb.spd : null });
-      } catch (e) {}
-    }
-  }
+/* ---------------------------------------------------------------------
+   8 Oct 2026 — the Trip Companion counts to THIS passenger's pickup and
+   shows THIS passenger's bus (D6-10, D6-M1, D7-03, D7-04).
+
+   tcPickupTs(b) is the client twin of the server's Boarding::pickupTs():
+   the "@ HH:MM" on the passenger's own stop label, else the leg / route
+   departure, as India time (IST, +05:30) whatever the phone's own zone; a
+   pickup more than an hour EARLIER than the departure is past midnight on
+   the same run (a 13:00 coach reaches a 00:30 pickup the next day). It used
+   to be a hard-coded 08:15 from Surat for everybody. depTimestamp() is left
+   alone: refunds / cancellation are the owner's, by hand.
+   ------------------------------------------------------------------- */
+function tcHm(s) {
+  var m = String(s || '').match(/^\s*([0-2]?\d):([0-5]\d)/);
+  return (m && +m[1] < 24) ? [+m[1], +m[2]] : null;
 }
-/* "About 25 min to your stop" (19 Sep 2026). Asks /api/eta.php — the same
-   EtaAlerts engine that sends the bus-is-near WhatsApp — at most once a minute,
-   and matches the passenger's own pickup by its town (Boarding::townKey on the
-   server, mirrored here). Silent when the server is not sure. */
+function tcPickupTs(b) {
+  if (!b || !/^\d{4}-\d{2}-\d{2}$/.test(String(b.date || ''))) return 0;
+  var rt = (typeof routeById === 'function' && routeById(b.routeId)) || {};
+  var dep = tcHm(b.depTime) || tcHm(rt.depTime);
+  var pick = tcHm(b.boardingTime) || tcHm((typeof parseBP === 'function' ? parseBP(b.boarding || '') : {}).time) || dep;
+  if (!pick) return 0;
+  var p = String(b.date).split('-').map(Number);
+  var ts = Date.UTC(p[0], p[1] - 1, p[2], pick[0], pick[1]) - 330 * 60000;
+  if (dep && (pick[0] * 60 + pick[1]) < (dep[0] * 60 + dep[1]) - 60) ts += 86400000;
+  return ts;
+}
+/* When the coach reaches the end of the line: the route's arrival time plus
+   its day offset (from the route's own departure day). The server's
+   'arrived' flag wins; with no arrival time on the route, 40 h after the
+   departure is the generous fallback (the run takes ~30 h). */
+function tcArriveTs(b) {
+  if (!b || !/^\d{4}-\d{2}-\d{2}$/.test(String(b.date || ''))) return 0;
+  var rt = (typeof routeById === 'function' && routeById(b.routeId)) || {};
+  var p = String(b.date).split('-').map(Number);
+  var dep = tcHm(b.depTime) || tcHm(rt.depTime) || [0, 0];
+  var depTs = Date.UTC(p[0], p[1] - 1, p[2], dep[0], dep[1]) - 330 * 60000;
+  var arr = tcHm(rt.arrTime);
+  if (!arr) return depTs + 40 * 3600000;
+  var ts = Date.UTC(p[0], p[1] - 1, p[2] + (parseInt(rt.dayOffset, 10) || 0), arr[0], arr[1]) - 330 * 60000;
+  return ts > depTs ? ts : depTs + 40 * 3600000;
+}
+/* "21:00 IST" for an epoch, whatever the phone's zone. */
+function tcIst(ts) {
+  var d = new Date(ts + 330 * 60000);
+  var h = d.getUTCHours(), m = d.getUTCMinutes();
+  return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m + ' IST';
+}
+/* The key the tracker accepts: the track token in trackUrl (Ticket::trackToken),
+   else the ticket download key; a signed-in owner needs neither. */
+function tcTrackKey(b) {
+  var k = '';
+  try { if (b && b.trackUrl) k = new URL(String(b.trackUrl), location.origin).searchParams.get('k') || ''; } catch (e) {}
+  return k || (b && b.dlKey) || '';
+}
 function tcTownKey(label) {
   var s = String(label || '').replace(/\[[^\]]*\]/g, ' ').replace(/@.*$/, ' ');
   s = s.split(/[—–\-·|,(]/)[0] || s;
   try { return s.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase(); } catch (e) { return s.replace(/\W+/g, '').toLowerCase(); }
 }
-function tcEtaToMyStop(lb, nextEl) {
-  var b = TC.booking;
-  var show = function () {
-    if (!nextEl) return;
-    var base = lb.next ? ((typeof t === 'function' ? t('tlbNext') : 'Next') + ': ' + lb.next) : '';
-    nextEl.textContent = TC.etaLine ? (base ? base + ' · ' : '') + TC.etaLine : base;
-  };
-  show();
-  if (!b || !b.routeId || !b.boarding || typeof shgApi === 'undefined') return;
-  if (TC.etaAsked && Date.now() - TC.etaAsked < 60000) return;
-  TC.etaAsked = Date.now();
-  var mine = tcTownKey(b.boarding);
-  shgApi.get('/eta.php?route=' + encodeURIComponent(b.routeId)).then(function (d) {
-    var hit = ((d && d.stops) || []).filter(function (s) { return s.key === mine; })[0];
-    TC.etaLine = hit ? (typeof t === 'function' ? t('tlbEta') : 'About {n} min to your stop').replace('{n}', hit.eta) : '';
-    show();
-  }).catch(function () {});
+/* The OFFICIAL coordinates of the passenger's pickup, or null: the
+   [lat,lng] the office set on the stop label, else the route's own pickup
+   row (/api/timetable.php, the same route_stops the server uses). Never the
+   Surat / ROUTE_STOPS fallback — a guessed position is worse than none. */
+function tcPickupGeo(b) {
+  var bp = (typeof parseBP === 'function') ? parseBP((b && b.boarding) || '') : {};
+  if (bp.lat != null && bp.lng != null && isFinite(bp.lat) && isFinite(bp.lng)) return Promise.resolve({ lat: bp.lat, lng: bp.lng });
+  return tcRouteStopsFromDb().then(function (stops) {
+    var mine = tcTownKey(b && b.boarding);
+    var hit = (stops || []).filter(function (s) { return s.kind === 'pickup' && mine && tcTownKey(s.name) === mine; })[0];
+    return hit ? { lat: hit.lat, lng: hit.lng } : null;
+  }).catch(function () { return null; });
+}
+
+/* "Where is my bus?" banner (D7-03): asks /api/whereis.php for THIS ticket
+   (pnr + its track key) — the server answers live only when the coach's fix
+   is fresh, on this route and the only trip of it on the road, and gives an
+   honest "last seen … not live" during a signal gap. The old banner showed
+   the anonymous `livebus` key (any coach, any day) as everybody's bus, and
+   the /api/eta.php guess for "a route". Polled only around travel time. */
+function tcRenderWhere(d) {
+  var box = document.getElementById('tcManualLive');
+  if (!box) return;
+  var stopEl = document.getElementById('tlbStop'), nextEl = document.getElementById('tlbNext'), agoEl = document.getElementById('tlbAgo');
+  box.classList.remove('not-live', 'trip-cx');
+  if (!d || (!d.live && !d.lastKnown)) { box.hidden = true; TC.liveGps = false; return; }
+  if (d.live) {
+    var s = d.stop || '';
+    if (stopEl) stopEl.textContent = d.passed ? tf('tcLivePassed', { s: s }) : (d.etaMin != null && s ? tf('tcLiveAt', { n: d.etaMin, s: s }) : t('tcLiveOn'));
+    if (nextEl) nextEl.textContent = (d.km != null && !d.passed) ? '~' + d.km + ' km' : '';
+    if (agoEl) {
+      var age = (d.fixAge != null) ? Math.round(d.fixAge / 60) : null;
+      agoEl.textContent = (age == null ? '' : (age < 1 ? 'just now' : age + 'm ago')) + (d.kmh != null ? ' · ' + d.kmh + ' km/h' : '');
+    }
+    TC.liveGps = true;
+    if (TC.map && d.lat != null && d.lng != null && typeof tcUpdateBusPosition === 'function') {
+      var key = String(d.lat) + ',' + String(d.lng);
+      if (TC.lastLiveKey !== key) { TC.lastLiveKey = key; try { tcUpdateBusPosition({ lat: d.lat, lng: d.lng, bearing: null, speed: d.kmh != null ? d.kmh / 3.6 : null }); } catch (e) {} }
+    }
+  } else {
+    if (stopEl) stopEl.textContent = tf('tcLastSeen', { s: d.lastStop || '—', m: d.lastAgeMin != null ? d.lastAgeMin : '?' });
+    if (nextEl) nextEl.textContent = '';
+    if (agoEl) agoEl.textContent = '';
+    box.classList.add('not-live');
+    TC.liveGps = false;
+  }
+  box.hidden = false;
 }
 function tcInitManualLive() {
   if (TC.manualT != null) { clearInterval(TC.manualT); TC.manualT = null; }
-  TC.manualMs = 0;
-  /* 40 s while the office only types a stop name; 12 s while a driver's GPS
-     is streaming (the kv_get budget is 240 / min per IP — this uses 5). */
-  var arm = function () {
-    var want = TC.liveGps ? 12000 : 40000;
-    if (TC.manualMs === want && TC.manualT != null) return;
-    if (TC.manualT != null) clearInterval(TC.manualT);
-    TC.manualMs = want;
-    TC.manualT = setInterval(pull, want);
-  };
-  function pull() {
-    try {
-      store.get('shg:livebus', null).then(function (lb) { tcRenderManualLive(lb); arm(); }).catch(function () {});
-    } catch (e) {}
+  var box = document.getElementById('tcManualLive');
+  if (box) { box.hidden = true; box.classList.remove('not-live', 'trip-cx'); }
+  TC.liveGps = false;
+  var b = TC.booking;
+  if (!b || b.status !== 'confirmed') return;
+  /* the office cancelled this departure: say so, nothing to track */
+  if (b.tripStatus === 'cancelled' || (b.live_status && b.live_status.key === 'trip_cancelled')) {
+    var se = document.getElementById('tlbStop'), ne = document.getElementById('tlbNext'), ae = document.getElementById('tlbAgo');
+    if (se) se.textContent = t('tripCxT');
+    if (ne) ne.textContent = tf('tripCxP', { p: (typeof S === 'function' ? S().phone : '') });
+    if (ae) ae.textContent = '';
+    if (box) { box.classList.add('trip-cx'); box.hidden = false; }
+    return;
   }
+  var pick = tcPickupTs(b);
+  var now = Date.now();
+  /* next week's ticket has no bus on the road: no position at all */
+  if (!pick || now < pick - 6 * 3600000 || now > tcArriveTs(b) + 2 * 3600000) return;
+  var k = tcTrackKey(b), pnr = b.id;
+  var pull = function () {
+    if (TC.pnr !== pnr) return;
+    fetch('/api/whereis.php?pnr=' + encodeURIComponent(pnr) + (k ? '&k=' + encodeURIComponent(k) : ''), { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { if (TC.pnr === pnr) tcRenderWhere(j && j.ok ? j.data : null); })
+      .catch(function () {});
+  };
   pull();
-  arm();
+  TC.manualT = setInterval(pull, 45000);   // whereis allows 120 / min per IP
 }
 
 function cleanupTrip() {
@@ -187,7 +239,7 @@ function tcInitLiveTimeline() {
   LT.endKm = ROUTE_STOPS[ROUTE_STOPS.length - 1].km || 1375;
 
   var b = TC.booking;
-  var destName = (b && b.to) || 'Rupaidiha';
+  var destName = tcDestName(b) || 'Rupaidiha';
   var destStop = ROUTE_STOPS.find(function (s) { return s.name === destName; }) || ROUTE_STOPS[ROUTE_STOPS.length - 1];
   LT.destKm = destStop.km || LT.endKm;
 
@@ -321,7 +373,7 @@ function ltOnFix(pos) {
   // otherwise the same ETA string, larger and first.
   setTxt('#ltEtaBig', remain < 1 ? 'Arrived 🎉' : etaStr);
   var lehLbl = $('#ltEtaHeroLbl'); if (lehLbl) lehLbl.textContent = remain < 1 ? 'Your bus has' : 'Arriving in';
-  var lehDest = $('#ltEtaDest'); if (lehDest && TC.booking && TC.booking.to) lehDest.textContent = TC.booking.to;
+  var lehDest = $('#ltEtaDest'); if (lehDest && TC.booking && tcDestName(TC.booking)) lehDest.textContent = tcDestName(TC.booking);
 
   var nextStop = null;
   for (var i = 0; i < ROUTE_STOPS.length; i++) { if (ROUTE_STOPS[i].km > progressKm + 0.5) { nextStop = ROUTE_STOPS[i]; break; } }
@@ -339,16 +391,27 @@ function ltOnFix(pos) {
   ltStatus('🟢 Live · nearest ' + ROUTE_STOPS[proj.nearIdx].name + off, 'on');
 }
 
+/* The passenger's OWN boarding and drop (D6-10): booking objects never had
+   b.from / b.to, so every trip read Surat → Rupaidiha — a return passenger
+   included. stopDisplay() gives the same code + short name as the ticket. */
+function tcOriginD(b) {
+  var rt = (b && typeof routeById === 'function' && routeById(b.routeId)) || {};
+  return (typeof stopDisplay === 'function') ? stopDisplay((b && b.boarding) || '', rt.from || '') : { code: '', name: rt.from || '' };
+}
+function tcDestD(b) {
+  var rt = (b && typeof routeById === 'function' && routeById(b.routeId)) || {};
+  return (typeof stopDisplay === 'function') ? stopDisplay((b && b.drop) || '', rt.to || '') : { code: '', name: rt.to || '' };
+}
+function tcDestName(b) { return b ? (tcDestD(b).name || '') : ''; }
 function tcPopulateHero() {
   var b = TC.booking;
-  var origin = (b && b.from) || ROUTE_STOPS[0].name;
-  var dest = (b && b.to) || ROUTE_STOPS[ROUTE_STOPS.length - 1].name;
-  var code = function(c) { return c.substring(0, 3).toUpperCase(); };
-  $('#tcOriginCity').innerHTML = code(origin) + '<small>' + esc(origin) + '</small>';
-  $('#tcDestCity').innerHTML = code(dest) + '<small>' + esc(dest) + '</small>';
-  $('#tcPnrCode').textContent = TC.pnr ? TC.pnr.substring(0, 10) : '—';
+  var o = b ? tcOriginD(b) : { code: '—', name: '' };
+  var d = b ? tcDestD(b) : { code: '—', name: '' };
+  $('#tcOriginCity').innerHTML = esc(o.code || '—') + '<small>' + esc(o.name || '') + '</small>';
+  $('#tcDestCity').innerHTML = esc(d.code || '—') + '<small>' + esc(d.name || '') + '</small>';
+  $('#tcPnrCode').textContent = TC.pnr || '—';   // the whole PNR, not "SHG-2026-0"
   if (b) {
-    $('#tcTripDate').textContent = b.date || '—';
+    $('#tcTripDate').textContent = b.date ? fmtDate(b.date) : '—';
     $('#tcCabinType').textContent = b.cabinLabel || b.seatLabel || 'AC Sleeper';
   }
 }
@@ -379,15 +442,13 @@ function tcPopulateChecklist() {
 function tcDeterminePhase() {
   var b = TC.booking;
   if (!b || !b.date) { TC.phase = 0; return; }
-  var dep = new Date(b.date);
-  if (isNaN(dep.getTime())) { TC.phase = 0; return; }
-  dep.setHours(8, 15, 0, 0);  // default departure 08:15
+  var pick = tcPickupTs(b);   // THIS passenger's pickup, IST (was a fixed 08:15)
+  if (!pick) { TC.phase = 0; return; }
   var now = Date.now();
-  var tMinus2h = dep.getTime() - 2 * 3600000;
-  if (b.status === 'cancelled') { TC.phase = 0; return; }
-  if (now >= dep.getTime() + 33 * 3600000) { TC.phase = 3; return; }  // ~33h after dep = arrived
-  if (now >= dep.getTime()) { TC.phase = 2; return; }
-  if (now >= tMinus2h) { TC.phase = 1; return; }
+  if (b.status === 'cancelled' || b.tripStatus === 'cancelled') { TC.phase = 0; return; }
+  if (b.arrived === true || now >= tcArriveTs(b)) { TC.phase = 3; return; }
+  if (now >= pick) { TC.phase = 2; return; }
+  if (now >= pick - 2 * 3600000) { TC.phase = 1; return; }
   TC.phase = 0;
 }
 
@@ -418,24 +479,21 @@ function tcPopulateCards() {
   if (b) {
     $('#tcCabinTypeFull').textContent = b.cabinLabel || b.seatLabel || 'Sleeper';
     $('#tcCabinPax').textContent = (b.passengers ? b.passengers.length : b.seats ? b.seats.length : 1) + ' pax';
-    $('#tcCabinFare').textContent = '₹' + (b.totalFare || b.fare || '—');
+    $('#tcCabinFare').textContent = (Number(b.total) > 0) ? inr(b.total) : '—';   // bookings carry `total` (was always "₹—")
     $('#tcCabinStatus').textContent = b.status === 'confirmed' ? 'Confirmed' : (b.status || 'Booked');
     $('#tcCabinStatus').style.color = b.status === 'confirmed' ? 'var(--ok)' : 'var(--warn)';
   }
 
-  // Boarding point
-  var boarding = (b && b.boarding) || (b && b.from) || ROUTE_STOPS[0].name;
-  var bStop = ROUTE_STOPS.find(function(s) { return s.name === boarding; });
-  $('#tcBoardingName').textContent = boarding;
-  if (boarding === 'Mehsana' || boarding === 'Ahmedabad') {
-    $('#tcBoardingAddr').textContent = boarding === 'Mehsana' ? 'Near Shilpa Garage, Silver Complex, Mehsana – 384002' : 'Ahmedabad, Gujarat';
-  } else {
-    $('#tcBoardingAddr').textContent = boarding;
-  }
+  // Boarding point: the passenger's own stop (name · landmark) and pickup
+  // time — never the raw "@ 21:00 [lat,lng]" label, never a guessed address.
+  var bp = (typeof parseBP === 'function') ? parseBP((b && b.boarding) || '') : { name: '' };
+  var pick = b ? tcPickupTs(b) : 0;
+  $('#tcBoardingName').textContent = (bp.name || (b ? tcOriginD(b).name : '') || '—') + (pick ? ' · ' + tcIst(pick) : '');
+  $('#tcBoardingAddr').textContent = bp.landmark || '';
 
   // Arrived
   if (TC.phase === 3) {
-    var dest = (b && b.to) || 'Rupaidiha';
+    var dest = tcDestName(b) || 'Rupaidiha';
     $('#tcArrivedTitle').textContent = 'Arrived at ' + dest;
     $('#tcArrivedTs').textContent = 'Journey completed';
   }
@@ -469,44 +527,66 @@ function tcFetchWx(stop, prefix) {
 }
 
 /* ── LEAVE-BY CALCULATOR ── */
+/* 8 Oct 2026 (D7-04): measured to the passenger's OWN pickup — from its
+   official coordinates only (tcPickupGeo); a stop with none hides the card
+   instead of measuring to Surat — and counted back from their pickup time.
+   GPS is asked for only when the passenger taps "Calculate from my
+   location", never as the page opens. */
 function tcStartLeaveBy() {
   var b = TC.booking;
+  var card = $('#tcLeaveByCard');
+  if (!card) return;
+  var timeEl = $('#tcLeaveByTime'), distEl = $('#tcLeaveByDist');
+  card.classList.remove('urgent');
+  if (timeEl) { timeEl.textContent = '—'; timeEl.style.color = ''; }
+  var oldBtn = document.getElementById('tcLeaveCalc'); if (oldBtn) oldBtn.remove();
   if (!b || !b.date || TC.phase > 1) return;
-  if (!navigator.geolocation) {
-    $('#tcLeaveByDist').textContent = 'GPS not available';
-    return;
-  }
-  navigator.geolocation.getCurrentPosition(function(pos) {
-    var boarding = (b && b.boarding) || (b && b.from) || ROUTE_STOPS[0].name;
-    var bStop = ROUTE_STOPS.find(function(s) { return s.name === boarding; }) || ROUTE_STOPS[0];
-    var dist = haversineKm(pos.coords.latitude, pos.coords.longitude, bStop.lat, bStop.lng);
-    var speedKmh = CONFIG.booking.assumedTravelSpeedKmh || 40;
-    var travelMin = Math.ceil((dist / speedKmh) * 60);
-    var bufferMin = 60;
-    var dep = new Date(b.date);
-    dep.setHours(8, 15, 0, 0);
-    var leaveBy = new Date(dep.getTime() - (travelMin + bufferMin) * 60000);
-    var hh = leaveBy.getHours(), mm = leaveBy.getMinutes();
-    $('#tcLeaveByTime').textContent = (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm;
-    $('#tcLeaveByDist').textContent = 'Distance: ' + dist.toFixed(1) + ' km · Travel ~' + travelMin + ' min';
-    // Urgency
-    if (TC.phase === 1 && Date.now() > leaveBy.getTime()) {
-      $('#tcLeaveByCard').classList.add('urgent');
-      $('#tcLeaveByTime').style.color = 'var(--warn)';
-    }
-  }, function() {
-    $('#tcLeaveByDist').textContent = 'Allow GPS to calculate';
-  }, { enableHighAccuracy: false, timeout: 8000 });
+  var pick = tcPickupTs(b);
+  var pnr = b.id;
+  if (distEl) distEl.textContent = '…';
+  tcPickupGeo(b).then(function (geo) {
+    if (TC.pnr !== pnr) return;
+    if (!geo || !pick) { card.style.display = 'none'; return; }   // never a guessed position
+    if (distEl) distEl.textContent = '';
+    if (!navigator.geolocation) { if (distEl) distEl.textContent = 'GPS not available'; return; }
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.id = 'tcLeaveCalc'; btn.className = 'btn btn-ghost btn-sm';
+    btn.textContent = t('tcLeaveCalc');
+    var host = card.querySelector('.tc-leaveby .details') || card;
+    host.insertBefore(btn, host.firstChild);
+    btn.onclick = function () {
+      btn.disabled = true;
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        btn.disabled = false;
+        if (TC.pnr !== pnr) return;
+        var dist = haversineKm(pos.coords.latitude, pos.coords.longitude, geo.lat, geo.lng);
+        var speedKmh = CONFIG.booking.assumedTravelSpeedKmh || 40;
+        var travelMin = Math.ceil((dist / speedKmh) * 60);
+        var bufferMin = 60;
+        var leaveBy = pick - (travelMin + bufferMin) * 60000;
+        if (timeEl) timeEl.textContent = tcIst(leaveBy);
+        if (distEl) distEl.textContent = tf('tcLeaveDist', { km: dist.toFixed(1), min: travelMin });
+        if (Date.now() > leaveBy) {
+          card.classList.add('urgent');
+          if (timeEl) timeEl.style.color = 'var(--warn)';
+        }
+      }, function () {
+        btn.disabled = false;
+        if (distEl) distEl.textContent = 'Allow GPS to calculate';
+      }, { enableHighAccuracy: false, timeout: 8000 });
+    };
+  });
 }
 
-/* ── COUNTDOWN ── */
+/* ── COUNTDOWN ── (to THIS passenger's pickup, D6-M1) */
 function tcStartCountdown() {
   if (TC.countdownT) clearInterval(TC.countdownT);
   if (TC.phase !== 1) return;
   var b = TC.booking;
   if (!b || !b.date) return;
-  var dep = new Date(b.date);
-  dep.setHours(8, 15, 0, 0);
+  var pickTs = tcPickupTs(b);
+  if (!pickTs) return;
+  var dep = new Date(pickTs);
   function tick() {
     var diff = dep.getTime() - Date.now();
     if (diff <= 0) { $('#tcCountdown').textContent = 'Departing now!'; clearInterval(TC.countdownT); return; }
@@ -526,8 +606,10 @@ function tcInitFirebase() {
      failed downloads for nothing. The passenger side now reads the shared
      `livebus` store (tcInitManualLive) plus the same-browser shim below.
      The dormant Firebase listener was removed on 5 Oct 2026. */
-  if (TC.phase !== 2) return;
-  tcFallbackToLocalTracking();
+  /* 8 Oct 2026 (D7-03): the same-browser `shari:livebus` shim is not this
+     passenger's bus either — the map's 🚌 is fed only by /api/whereis.php
+     (tcRenderWhere), which answers for THIS ticket. */
+  return;
 }
 
 function tcFallbackToLocalTracking() {
@@ -645,6 +727,15 @@ function tcDrawRouteOnMap() {
 
 function tcStartPaxTracking() {
   if (!navigator.geolocation || TC.watchId != null) return;
+  /* Only when the passenger already allowed location — opening the map must
+     never pop a permission prompt by itself (D7-04 / D7-07). The 🛰️ Start
+     live GPS button below asks on a tap. */
+  if (!(navigator.permissions && navigator.permissions.query)) return;
+  navigator.permissions.query({ name: 'geolocation' }).then(function (st) {
+    if (st && st.state === 'granted' && TC.watchId == null && TC.map) tcWatchPax();
+  }).catch(function () {});
+}
+function tcWatchPax() {
   TC.watchId = navigator.geolocation.watchPosition(function(pos) {
     var lat = pos.coords.latitude, lng = pos.coords.longitude;
     if (!TC.paxMarker) {
@@ -705,7 +796,7 @@ function tcInterpolate(from, to, progress) {
 
 function tcUpdateLiveStats(data) {
   var b = TC.booking;
-  var dest = ROUTE_STOPS.find(function(s) { return s.name === ((b && b.to) || 'Rupaidiha'); }) || ROUTE_STOPS[ROUTE_STOPS.length - 1];
+  var dest = ROUTE_STOPS.find(function(s) { return s.name === (tcDestName(b) || 'Rupaidiha'); }) || ROUTE_STOPS[ROUTE_STOPS.length - 1];
   var remaining = haversineKm(data.lat, data.lng, dest.lat, dest.lng);
   $('#tcLiveDist').textContent = remaining > 10 ? Math.round(remaining) + ' km' : remaining.toFixed(1) + ' km';
   var speedKmh = data.speed != null ? Math.round(data.speed * 3.6) : 0;
@@ -846,18 +937,44 @@ document.addEventListener('click', function(e) {
     return dir === 'toIndia' ? 1800 : 2000;
   }
   function shareFrom() { return inr(Math.min(dirFareNum('toNepal'), dirFareNum('toIndia'))); }
+  /* The real per-pickup sharing fares (8 Oct 2026, D7-14): each Gujarat
+     pickup can carry its own fare (Admin -> Routes), shipped on the page boot
+     (SHG_BOOT.locations go / back) and with the searched routes
+     (boardingFares / dropFares — what stopFareFor() reads). A stop without
+     its own fare costs the direction default. The offline answer used to be
+     one flat figure, so a Surat passenger was quoted ₹2,050 and charged
+     ₹2,300 at checkout. */
+  function fareRange(dir) {
+    var base = dirFareNum(dir), vals = [];
+    try {
+      var L = window.SHG_BOOT && window.SHG_BOOT.locations;
+      var list = L ? (dir === 'toIndia' ? L.back : L.go) : null;
+      (list || []).forEach(function (x) { var f = Number(x && x.fare); vals.push(f > 0 ? Math.round(f) : base); });
+    } catch (e) {}
+    if (!vals.length) {
+      var r = (DB.routes || []).find(function (x) { return x && x.active && (dir === 'toIndia' ? isNepalPoint(x.from) : isNepalPoint(x.to)); });
+      var stops = r ? (dir === 'toIndia' ? r.drop : r.boarding) : null;
+      var fares = r ? (dir === 'toIndia' ? r.dropFares : r.boardingFares) : null;
+      (stops || []).forEach(function (s, i) { var f = Number(fares && fares[i]); vals.push(f > 0 ? Math.round(f) : base); });
+    }
+    if (!vals.length) return { min: base, max: base };
+    return { min: Math.min.apply(null, vals), max: Math.max.apply(null, vals) };
+  }
+  function fareTxt(dir) { var r = fareRange(dir); return r.min === r.max ? inr(r.min) : inr(r.min) + '–' + inr(r.max); }
+  function fareVaries() { var a = fareRange('toNepal'), b = fareRange('toIndia'); return a.min !== a.max || b.min !== b.max; }
 
   /* — intents: [keywords], answers per lang — */
   function A(en, hi, ne, gu) { return { en: en, hi: hi, ne: ne, gu: gu }; }
   const INTENTS = [
     { k: ['fare', 'price', 'rate', 'cost', 'kiraya', 'kiraaya', 'bhada', 'bhaada', 'kitne ka', 'kitne rupay', 'kitne rupaye', 'kati parcha', 'kati parchha', 'kati lagcha', 'kati lagchha', 'ticket kitne', 'daam', 'किराया', 'कीमत', 'दाम', 'भाडा', 'कति पर्छ', 'पैसा', 'ભાડું', 'કિંમત', 'કેટલા'],
       a: () => {
-        const go = '<b>' + inr(dirFareNum('toNepal')) + '</b>', back = '<b>' + inr(dirFareNum('toIndia')) + '</b>';
+        const go = '<b>' + fareTxt('toNepal') + '</b>', back = '<b>' + fareTxt('toIndia') + '</b>';
+        const v = fareVaries();
         return A(
-          '🛏️ Sleeper, sharing: Gujarat → Rupaidiha ' + go + '/person · Rupaidiha → Gujarat ' + back + '/person · 🔒 Private cabin from ' + privFrom() + '. Same price online and at the counter. <a href="#/" data-scroll="pricing">Full pricing →</a>',
-          '🛏️ स्लीपर, शेयरिंग: Gujarat → Rupaidiha ' + go + '/व्यक्ति · Rupaidiha → Gujarat ' + back + '/व्यक्ति · 🔒 प्राइवेट केबिन ' + privFrom() + ' से। ऑनलाइन और काउंटर पर एक ही किराया। <a href="#/" data-scroll="pricing">पूरी कीमतें →</a>',
-          '🛏️ स्लिपर, सेयरिङ: Gujarat → Rupaidiha ' + go + '/व्यक्ति · Rupaidiha → Gujarat ' + back + '/व्यक्ति · 🔒 प्राइभेट क्याबिन ' + privFrom() + ' देखि। अनलाइन र काउन्टरमा एउटै भाडा। <a href="#/" data-scroll="pricing">पूरा मूल्य →</a>',
-          '🛏️ સ્લીપર, શેરિંગ: Gujarat → Rupaidiha ' + go + '/વ્યક્તિ · Rupaidiha → Gujarat ' + back + '/વ્યક્તિ · 🔒 પ્રાઇવેટ કેબિન ' + privFrom() + ' થી. ઓનલાઇન અને કાઉન્ટર પર એક જ ભાડું. <a href="#/" data-scroll="pricing">સંપૂર્ણ ભાવ →</a>');
+          '🛏️ Sleeper, sharing: Gujarat → Rupaidiha ' + go + '/person · Rupaidiha → Gujarat ' + back + '/person' + (v ? ' (depends on your pickup)' : '') + ' · 🔒 Private cabin from ' + privFrom() + '. Same price online and at the counter. <a href="#/" data-scroll="pricing">Full pricing →</a>',
+          '🛏️ स्लीपर, शेयरिंग: Gujarat → Rupaidiha ' + go + '/व्यक्ति · Rupaidiha → Gujarat ' + back + '/व्यक्ति' + (v ? ' (आपके पिकअप के हिसाब से)' : '') + ' · 🔒 प्राइवेट केबिन ' + privFrom() + ' से। ऑनलाइन और काउंटर पर एक ही किराया। <a href="#/" data-scroll="pricing">पूरी कीमतें →</a>',
+          '🛏️ स्लिपर, सेयरिङ: Gujarat → Rupaidiha ' + go + '/व्यक्ति · Rupaidiha → Gujarat ' + back + '/व्यक्ति' + (v ? ' (तपाईंको पिकअप अनुसार)' : '') + ' · 🔒 प्राइभेट क्याबिन ' + privFrom() + ' देखि। अनलाइन र काउन्टरमा एउटै भाडा। <a href="#/" data-scroll="pricing">पूरा मूल्य →</a>',
+          '🛏️ સ્લીપર, શેરિંગ: Gujarat → Rupaidiha ' + go + '/વ્યક્તિ · Rupaidiha → Gujarat ' + back + '/વ્યક્તિ' + (v ? ' (તમારા પિકઅપ પ્રમાણે)' : '') + ' · 🔒 પ્રાઇવેટ કેબિન ' + privFrom() + ' થી. ઓનલાઇન અને કાઉન્ટર પર એક જ ભાડું. <a href="#/" data-scroll="pricing">સંપૂર્ણ ભાવ →</a>');
       } },
     { k: ['private', 'sharing', 'cabin', 'प्राइवेट', 'प्राईभेट', 'शेयरिंग', 'सेयरिङ', 'साझा', 'केबिन', 'क्याबिन', 'ખાનગી', 'શેરિંગ', 'કેબિન'],
       a: () => A(
