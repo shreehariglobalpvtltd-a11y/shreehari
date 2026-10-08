@@ -626,10 +626,15 @@ function admin_footer(): void
     echo '<script>' . admin_save_guard_js() . '</script>';
     // 17 Sep 2026: every flash gets a dismiss ×; success flashes fade after 7 s
     // (errors and warnings stay until dismissed — the desk must read them).
+    // 8 Oct 2026 (D9-01): a [hidden] flash is an empty box a page script
+    // fills later (Bus Calendar #calFlash, bulk-cancel #bulkErr). It is left
+    // alone here; a flash with an id is hidden by the x, never removed, and
+    // never auto-faded - removing it made the next calendar flash() throw,
+    // so every later calendar error was silently lost.
     echo '<script>(function(){document.querySelectorAll(".flash").forEach(function(f){'
-       . 'if(f.querySelector(".flash-x"))return;var x=document.createElement("button");x.type="button";x.className="flash-x";x.setAttribute("aria-label","Dismiss");x.textContent="\u00d7";'
-       . 'x.onclick=function(){f.remove()};f.appendChild(x);'
-       . 'if(f.classList.contains("ok")){setTimeout(function(){f.style.transition="opacity .4s";f.style.opacity="0";setTimeout(function(){f.remove()},420)},7000)}'
+       . 'if(f.hidden||f.querySelector(".flash-x"))return;var t=f.textContent.trim();var x=document.createElement("button");x.type="button";x.className="flash-x";x.setAttribute("aria-label","Dismiss");x.textContent="\u00d7";'
+       . 'x.onclick=function(){if(f.id){f.hidden=true}else{f.remove()}};f.appendChild(x);'
+       . 'if(f.classList.contains("ok")&&!f.id&&t){setTimeout(function(){f.style.transition="opacity .4s";f.style.opacity="0";setTimeout(function(){f.remove()},420)},7000)}'
        . '})})();</script>';
     // 5 Sep 2026: Excel-style list tables (Customers / Agents): search,
     // column filters, click-to-sort, sticky header, detail + edit rows.
@@ -671,7 +676,7 @@ function admin_backup_prompt_js(): string
 .bkp{position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:9999;width:min(440px,calc(100% - 24px));background:var(--card,#fff);color:var(--ink,#16233c);border:1px solid var(--line,#e2e9f4);border-radius:18px;box-shadow:0 18px 48px rgba(18,38,78,.28);padding:14px 16px;font-size:14px}
 .bkp b{display:block;font-size:15px;margin-bottom:4px}.bkp p{margin:0 0 10px;color:var(--mut,#5c6b85);font-size:13px}
 .bkp .r{display:flex;gap:8px;flex-wrap:wrap}.bkp button,.bkp a{flex:1 1 auto;min-height:42px;border-radius:12px;border:1px solid var(--line,#e2e9f4);background:var(--card,#fff);color:var(--ink,#16233c);font:inherit;font-weight:700;cursor:pointer;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;padding:0 10px}
-.bkp .go{background:#2E5FA8;border-color:#2E5FA8;color:#fff}.bkp .msg{margin-top:8px;font-weight:600}
+.bkp .go{background:var(--royal,#0054A8);border-color:var(--royal,#0054A8);color:var(--on-royal,#fff)}.bkp .msg{margin-top:8px;font-weight:600}
 </style>
 <script>
 (function(){
@@ -2241,10 +2246,10 @@ details.advanced-section[open]>summary::before{content:'▼ '}
 .floor-L{--fl:#1E5AA8;--fl-bg:#F2F7FF;--fl-line:#C3D8F5}
 .floor-U{--fl:#15803D;--fl-bg:#F1FAF4;--fl-line:#B9E2C7}
 :root[data-theme="dark"] .floor-L{--fl:#2F6FD0;--fl-bg:rgba(47,111,208,.08);--fl-line:#27466F}
-:root[data-theme="dark"] .floor-U{--fl:#1F8F4E;--fl-bg:rgba(31,143,78,.08);--fl-line:#245B3A}
+:root[data-theme="dark"] .floor-U{--fl:#187A43;--fl-bg:rgba(31,143,78,.08);--fl-line:#245B3A}
 .floor-L,.floor-U{background:var(--fl-bg);border:1.5px solid var(--fl-line);border-radius:var(--r);padding:10px}
 .floor-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px;padding:8px 12px;border-radius:10px;background:var(--fl,var(--navy));color:#fff;font-weight:800;font-size:13.5px;letter-spacing:.01em}
-.floor-head .fh-range{margin-left:auto;font-family:var(--f-mono);font-size:12px;background:rgba(255,255,255,.22);padding:2px 9px;border-radius:999px;white-space:nowrap}
+.floor-head .fh-range{margin-left:auto;font-family:var(--f-mono);font-size:12px;background:rgba(0,0,0,.28);padding:2px 9px;border-radius:999px;white-space:nowrap}
 
 /* ── Flash = flowing text (2 Oct 2026) ───────────────────────────────── */
 /* A flex .flash turned every text run and <b> into its own column, so on a

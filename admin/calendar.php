@@ -219,15 +219,30 @@ admin_header('Bus Calendar · ' . date('F Y', strtotime($first)), 'calendar');
 .cal-cell.open{outline:2px solid var(--orange);outline-offset:1px}
 .cal-cell .dn{font-weight:700;font-size:13px;display:flex;justify-content:space-between;align-items:center}
 .cal-cell .dn small{font-weight:600;color:var(--mut);font-size:10.5px}
-.chip{display:flex;align-items:center;gap:4px;font-size:11px;line-height:1.2;padding:3px 6px;border-radius:7px;background:#eef2fa;color:#1c3b72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 8 Oct 2026 (D9-11): one colour pair per kind of departure, used by the
+   chips AND the legend swatches; the dark display maps them onto design
+   tokens (light pastels on a dark ground all looked alike). A coloured left
+   edge tells the kinds apart even where only the count fits (phones). */
+.chip,.cal-legend .lg-out{--c-bg:#eef2fa;--c-fg:#1c3b72}
+.chip.dir2,.cal-legend .lg-ret{--c-bg:#e8f6ee;--c-fg:#0a6b3b}
+.chip.off,.cal-legend .lg-off{--c-bg:#f7dcdc;--c-fg:#8a1f1f}
+.chip.cx,.cal-legend .lg-cx{--c-bg:#ececec;--c-fg:#5f5f5f}
+.chip.extra,.cal-legend .lg-extra{--c-bg:#efeaff;--c-fg:#5a3fb0}
+.chip.full,.cal-legend .lg-full{--c-bg:#fff4d1;--c-fg:#7a4a00}
+:root[data-theme="dark"] .chip,:root[data-theme="dark"] .cal-legend .lg-out{--c-bg:var(--royal-tint);--c-fg:var(--royal-strong)}
+:root[data-theme="dark"] .chip.dir2,:root[data-theme="dark"] .cal-legend .lg-ret{--c-bg:var(--success-soft);--c-fg:var(--success)}
+:root[data-theme="dark"] .chip.off,:root[data-theme="dark"] .cal-legend .lg-off{--c-bg:var(--danger-soft);--c-fg:var(--danger)}
+:root[data-theme="dark"] .chip.cx,:root[data-theme="dark"] .cal-legend .lg-cx{--c-bg:var(--surface-sunken);--c-fg:var(--muted)}
+:root[data-theme="dark"] .chip.extra,:root[data-theme="dark"] .cal-legend .lg-extra{--c-bg:var(--refund-soft);--c-fg:var(--refund)}
+:root[data-theme="dark"] .chip.full,:root[data-theme="dark"] .cal-legend .lg-full{--c-bg:var(--warning-soft);--c-fg:var(--warning)}
+.cal-legend i[class^="lg-"]{background:var(--c-bg);border:2px solid var(--c-fg)}
+.cal-legend i.lg-def{background:transparent;border:1.5px dashed var(--mut)}
+.chip{display:flex;align-items:center;gap:4px;font-size:11px;line-height:1.2;padding:3px 6px;border-radius:7px;background:var(--c-bg);color:var(--c-fg);border-left:3px solid var(--c-fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chip b{font-weight:700}
 .chip .n{margin-left:auto;font-variant-numeric:tabular-nums;color:inherit;opacity:.85}
-.chip.dir2{background:#e8f6ee;color:#0a6b3b}
-.chip.off{background:#f7dcdc;color:#8a1f1f;text-decoration:line-through}
-.chip.cx{background:#ececec;color:#666;text-decoration:line-through}
-.chip.extra{background:#efeaff;color:#5a3fb0}
+.chip.off{text-decoration:line-through}
+.chip.cx{text-decoration:line-through}
 .chip.def{background:transparent;border:1px dashed var(--line);color:var(--mut)}
-.chip.full{background:#fff4d1;color:#7a4a00}
 .cal-cell .dayoff{position:absolute;inset:0;border-radius:12px;background:repeating-linear-gradient(135deg,rgba(176,42,42,.06) 0 6px,transparent 6px 12px);pointer-events:none}
 .cal-wrap{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
 .day-panel{position:sticky;top:70px;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
@@ -246,7 +261,23 @@ admin_header('Bus Calendar · ' . date('F Y', strtotime($first)), 'calendar');
 .dp-note{font-size:12px;color:var(--mut)}
 .cal-msg{margin:0 0 10px}
 @media(max-width:1020px){.cal-wrap{grid-template-columns:1fr}.day-panel{position:fixed;inset:auto 0 0 0;z-index:60;border-radius:16px 16px 0 0;box-shadow:0 -8px 30px rgba(0,0,0,.18);max-height:80vh}.day-panel[hidden]{display:none}}
-@media(max-width:640px){.cal-cell{min-height:74px;padding:5px}.chip{font-size:10px;padding:2px 4px}.cal-legend{font-size:11px}}
+:root[data-theme="dark"] .trip.off{border-color:color-mix(in srgb,var(--danger) 45%,transparent);background:var(--danger-soft)}
+/* 8 Oct 2026 (D9-11): a day cell is ~47px wide on a phone - the day number
+   sits over its "n sold" line, and each departure is a coloured bar with
+   just its seat count (route, time and marks stay in the tooltip and in the
+   day panel one tap away). */
+@media(max-width:640px){
+  .cal-cell{min-height:74px;padding:4px}
+  .cal-cell .dn{flex-direction:column;align-items:flex-start;gap:0;line-height:1.15}
+  .cal-cell .dn small{font-size:9.5px}
+  .chip{font-size:10px;padding:2px 3px;justify-content:center;gap:0}
+  .chip b,.chip .t{display:none}
+  .chip .n{margin-left:0;opacity:1;font-weight:700}
+  .chip.def .n{display:none}
+  .chip.def{min-height:15px}
+  .cal-legend{font-size:11px}
+  .day-panel{padding-bottom:env(safe-area-inset-bottom,0px)}
+}
 @media(pointer:coarse){.trip .acts .btn,.day-body .btn{min-height:40px}}
 </style>
 
@@ -293,12 +324,13 @@ admin_header('Bus Calendar · ' . date('F Y', strtotime($first)), 'calendar');
   <a class="btn ghost" href="<?= $base ?>/admin/buses.php">Bus Fleet</a>
 </div>
 <div class="cal-legend">
-  <span><i style="background:#eef2fa"></i> <?= Security::e($routes[0]['from_city'] ?? 'Out') ?> → <?= Security::e($routes[0]['to_city'] ?? '') ?></span>
-  <span><i style="background:#e8f6ee"></i> return</span>
-  <span><i style="background:#efeaff"></i> extra bus</span>
-  <span><i style="background:#f7dcdc"></i> OFF / blocked</span>
-  <span><i style="background:#ececec"></i> cancelled</span>
-  <span><i style="background:#fff4d1"></i> full</span>
+  <span><i class="lg-out"></i> <?= Security::e($routes[0]['from_city'] ?? 'Out') ?> → <?= Security::e($routes[0]['to_city'] ?? '') ?></span>
+  <span><i class="lg-ret"></i> return</span>
+  <span><i class="lg-extra"></i> extra bus</span>
+  <span><i class="lg-off"></i> OFF / blocked</span>
+  <span><i class="lg-cx"></i> cancelled</span>
+  <span><i class="lg-full"></i> full</span>
+  <span><i class="lg-def"></i> not created yet</span>
   <span>⏰ retimed · 🚌 other vehicle · click a day to manage it</span>
 </div>
 
@@ -323,7 +355,7 @@ admin_header('Bus Calendar · ' . date('F Y', strtotime($first)), 'calendar');
       <div class="dn"><span><?= $dnum ?></span><?php if ($sumSold > 0): ?><small><?= $sumSold ?> sold</small><?php endif; ?></div>
       <?php if ($list === []): ?>
         <?php if (!$isPast): foreach ($routes as $ri => $rt): ?>
-          <div class="chip def" title="Not created yet — the nightly seeder adds it ~30 days ahead; open the day to create it now"><b><?= Security::e($short($rt)) ?></b> <?= $hm((string) $rt['dep_time']) ?><span class="n">default</span></div>
+          <div class="chip def" title="Not created yet — the nightly seeder adds it ~30 days ahead; open the day to create it now"><b><?= Security::e($short($rt)) ?></b> <span class="t"><?= $hm((string) $rt['dep_time']) ?></span><span class="n">default</span></div>
         <?php endforeach; endif; ?>
       <?php else: foreach ($list as $r):
           $dir2 = (isset($routes[0]) && (int) $r['route_id'] !== (int) $routes[0]['id']);
@@ -336,7 +368,7 @@ admin_header('Bus Calendar · ' . date('F Y', strtotime($first)), 'calendar');
                  . (((int) ($r['bus_id'] ?? 0) > 0 && (int) $r['bus_id'] !== (int) ($r['route_bus_id'] ?? 0)) ? '🚌' : '');
       ?>
         <div class="<?= $c ?>" title="<?= Security::e((string) $r['from_city'] . ' → ' . (string) $r['to_city'] . ' · ' . $hm((string) $r['dep_time']) . ' · ' . (string) ($r['bus_number'] ?? 'no bus') . ' · ' . (int) $r['sold'] . '/' . $seatTotal($r)) ?>">
-          <b><?= Security::e($short($r)) ?></b> <?= $hm((string) $r['dep_time']) ?><?= (int) $r['slot'] > 1 ? ' ·B' . (int) $r['slot'] : '' ?> <?= $marks ?><span class="n"><?= (int) $r['sold'] ?>/<?= $seatTotal($r) ?></span>
+          <b><?= Security::e($short($r)) ?></b> <span class="t"><?= $hm((string) $r['dep_time']) ?><?= (int) $r['slot'] > 1 ? ' ·B' . (int) $r['slot'] : '' ?> <?= $marks ?></span><span class="n"><?= (int) $r['sold'] ?>/<?= $seatTotal($r) ?></span>
         </div>
       <?php endforeach; endif; ?>
     </div>
@@ -364,7 +396,28 @@ window.CAL = {
   var C = window.CAL, panel = document.getElementById('dayPanel'), body = document.getElementById('dpBody'), title = document.getElementById('dpTitle');
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function fmtDate(d){ var x = new Date(d + 'T00:00:00'); return x.toLocaleDateString('en-IN', { weekday:'short', day:'numeric', month:'short', year:'numeric' }); }
-  function flash(msg, ok){ var f = document.getElementById('calFlash'); f.className = 'flash ' + (ok ? 'ok' : 'bad') + ' cal-msg'; f.textContent = msg; f.hidden = false; window.scrollTo({top:0, behavior:'smooth'}); }
+  /* 8 Oct 2026 (D9-01): the message box is found - or made again - every
+     time, so a dismissed or missing box can never swallow an error. While
+     the day panel is open the message shows at the top of the panel, next
+     to the button that was tapped (on a phone the panel is a sheet that
+     covers the page, so a message at the page top was never seen). */
+  function flash(msg, ok){
+    var f = document.getElementById('calFlash');
+    if (!f) { f = document.createElement('div'); f.id = 'calFlash'; }
+    var inPanel = panel && !panel.hidden && body;
+    if (inPanel) {
+      if (f.parentNode !== body || body.firstChild !== f) body.insertBefore(f, body.firstChild);
+    } else if (!f.parentNode || f.parentNode === body) {
+      var head = document.querySelector('.cal-head');
+      if (head && head.parentNode) head.parentNode.insertBefore(f, head); else document.querySelector('main').appendChild(f);
+    }
+    f.className = 'flash ' + (ok ? 'ok' : 'bad') + ' cal-msg'; f.setAttribute('role', ok ? 'status' : 'alert');
+    f.textContent = msg;
+    var x = document.createElement('button'); x.type = 'button'; x.className = 'flash-x'; x.setAttribute('aria-label', 'Dismiss'); x.textContent = '×';
+    x.onclick = function(){ f.hidden = true; }; f.appendChild(x);
+    f.hidden = false;
+    if (inPanel) { body.scrollTop = 0; } else { window.scrollTo({top:0, behavior:'smooth'}); }
+  }
   function api(action, data, btn){
     var fd = new FormData(); fd.append(C.csrfName, C.csrf); fd.append('action', action);
     Object.keys(data || {}).forEach(function(k){ if (data[k] !== undefined && data[k] !== null) fd.append(k, data[k]); });

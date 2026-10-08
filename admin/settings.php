@@ -652,6 +652,11 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
   .set-table, .set-table tbody, .set-table tr, .set-table th, .set-table td { display: block; width: 100% !important; }
   .set-table tr { padding: 10px 0; border-bottom: 1px solid var(--line); }
   .set-table th { border: 0 !important; padding: 0 0 6px !important; background: none !important; text-align: left; }
+  /* 8 Oct 2026 (D9-03): the panel-wide th rule (nowrap, 11.5px capitals) cut
+     14 of 40 Company labels off at 390px - on a phone a label wraps and reads
+     as a sentence, with its setting key under it */
+  .set-table th { white-space: normal !important; text-transform: none; letter-spacing: 0; font-size: 13.5px; line-height: 1.35; color: var(--ink); overflow-wrap: anywhere; }
+  .set-table th .mono { overflow-wrap: anywhere; color: var(--muted); }
   .set-table td { border: 0 !important; padding: 0 !important; }
   .set-table input[type=text], .set-table input[type=password], .set-table textarea { max-width: 100% !important; }
   .save-sticky { display: flex; gap: 10px; align-items: center; justify-content: flex-end; }
@@ -763,9 +768,9 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
   if(!btn) return;
   function show(kind,msg){
     out.style.display='block';
-    out.style.background = kind==='ok' ? '#E8F5E9' : '#FFF4E5';
-    out.style.color      = kind==='ok' ? '#1b5e20' : '#8a4b00';
-    out.style.border     = '1px solid ' + (kind==='ok' ? '#a5d6a7' : '#ffcc80');
+    out.style.background = kind==='ok' ? 'var(--success-soft)' : 'var(--warning-soft)';
+    out.style.color      = 'var(--ink)';
+    out.style.border     = '1px solid ' + (kind==='ok' ? 'var(--success)' : 'var(--warning)');
     out.textContent      = (kind==='ok' ? '✅ ' : '⚠️ ') + msg;
   }
   btn.onclick=function(){
@@ -812,9 +817,9 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
   if(!btn) return;
   function show(kind,msg){
     out.style.display='block';
-    out.style.background = kind==='ok' ? '#E8F5E9' : '#FFF4E5';
-    out.style.color      = kind==='ok' ? '#1b5e20' : '#8a4b00';
-    out.style.border     = '1px solid ' + (kind==='ok' ? '#a5d6a7' : '#ffcc80');
+    out.style.background = kind==='ok' ? 'var(--success-soft)' : 'var(--warning-soft)';
+    out.style.color      = 'var(--ink)';
+    out.style.border     = '1px solid ' + (kind==='ok' ? 'var(--success)' : 'var(--warning)');
     out.textContent      = (kind==='ok' ? '✅ ' : '⚠️ ') + msg;
   }
   btn.onclick=function(){
@@ -858,9 +863,9 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
   if(!btn) return;
   function show(kind,msg){
     out.style.display='block';
-    out.style.background = kind==='ok' ? '#E8F5E9' : '#FFF4E5';
-    out.style.color      = kind==='ok' ? '#1b5e20' : '#8a4b00';
-    out.style.border     = '1px solid ' + (kind==='ok' ? '#a5d6a7' : '#ffcc80');
+    out.style.background = kind==='ok' ? 'var(--success-soft)' : 'var(--warning-soft)';
+    out.style.color      = 'var(--ink)';
+    out.style.border     = '1px solid ' + (kind==='ok' ? 'var(--success)' : 'var(--warning)');
     out.textContent      = (kind==='ok' ? '✅ ' : '⚠️ ') + msg;
   }
   btn.onclick=function(){

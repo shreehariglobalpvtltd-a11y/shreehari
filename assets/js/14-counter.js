@@ -158,7 +158,7 @@
       + ' · ' + (CAN ? 'selling as <b>' + esc(WHO) + '</b>' : esc(WHO) + ' · <i>view only — your role cannot sell</i>')
       + ' <span class="cb-dir" title="Default direction for this desk">' + (nep ? '🇳🇵 Nepal → India 🇮🇳' : '🇮🇳 India → Nepal 🇳🇵') + '</span>'
       + (showNpr() && NPR_RATE ? ' <small style="opacity:.8">· ₹1 = NPR ' + esc(String(NPR_RATE)) + '</small>' : '')
-      + (CTR_VER ? ' <small style="opacity:.65">· v' + esc(CTR_VER) + '</small>' : '') + '</span>'
+      + (CTR_VER ? ' <small class="cb-ver" style="opacity:.65">· v' + esc(CTR_VER) + '</small>' : '') + '</span>'
       + '<span class="cb-links">'
       + (CAN ? '<a href="#" id="cbSide" title="Switch this browser to the other side of the border">' + (nep ? '⇄ India side' : '⇄ Nepal side') + '</a>' : '')
       /* ⚡ Quick Ticket (6 Sep 2026): the desk's fast lane — name + mobile
@@ -175,6 +175,16 @@
       + '#counterBar .cb-dir{display:inline-block;margin-left:4px;padding:2px 9px;border-radius:999px;background:rgba(255,255,255,.18);font-weight:800;white-space:nowrap}'
       + '.ctr-npr{display:inline-block;padding:2px 8px;border-radius:8px;background:#1F3A93;color:#fff;font-weight:800}'
       + '#counterBar .cb-links{display:flex;gap:8px;flex-wrap:wrap}'
+      /* 8 Oct 2026 (D9-07): on a phone the bar scrolls away with the page (it
+         was sticky, 167px tall, and hid the app's own menu / language bar),
+         sits tighter, and its four links are one row that swipes sideways.
+         The build stamp is dropped there; desk, seller, direction and the
+         NPR rate stay. The customer .nav is not touched. */
+      + '@media (max-width:600px){#counterBar{position:relative;padding:6px 10px;gap:4px 8px;font-size:12px;line-height:1.35}'
+      + '#counterBar .cb-ver{display:none}'
+      + '#counterBar .cb-links{flex-wrap:nowrap;overflow-x:auto;width:100%;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px}'
+      + '#counterBar .cb-links::-webkit-scrollbar{display:none}'
+      + '#counterBar .cb-links a{white-space:nowrap;flex:0 0 auto}}'
       + '#ctrPanel{border:2px solid #178A50;border-radius:14px;padding:14px;margin:12px 0;background:#f3fbf6}'
       + ':root[data-theme="dark"] #ctrPanel{background:#0f2a1c}'
       + '#ctrPanel h4{margin:0 0 10px;font-size:15px}'
