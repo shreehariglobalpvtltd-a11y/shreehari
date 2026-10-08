@@ -131,6 +131,10 @@ function admin_nav(): array
         ['href' => 'analytics.php',    'icon' => 'chart',  'label' => 'Analytics',        'perm' => 'dashboard.view', 'section' => 'Reports'],
         ['href' => 'feedback.php',     'icon' => 'star',      'label' => 'Ratings',          'perm' => 'dashboard.view', 'section' => 'Reports'],
         ['href' => 'accounting.php',   'icon' => 'banknote',    'label' => 'Accounting',       'perm' => 'payments.view',  'section' => 'Reports'],
+        // 8 Oct 2026: SHG Finance Master — the CEO's single-file finance app
+        // (capital, shares, agents, payroll, bus profit, bank). Books live in
+        // the viewer's browser; this link only serves the file. See finance.php.
+        ['href' => 'finance.php',      'icon' => 'chart-up',    'label' => '💼 Finance Master', 'perm' => 'reports.view',   'section' => 'Reports'],
         ['href' => 'messages-log.php', 'icon' => 'msg',       'label' => 'Message Log',      'perm' => 'dashboard.view', 'section' => 'Reports'],
         ['href' => 'wa-pending.php',   'icon' => 'msg',       'label' => 'Tickets to hand over','perm'=> 'bookings.view',  'section' => 'Payments'],
 

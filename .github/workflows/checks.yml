@@ -48,5 +48,7 @@ jobs:
         run: node tests/offline-ticket-test.js
       - name: Lazy-load recovery
         run: node tests/lazy-retry-test.js
+      - name: Finance Master accounting engine
+        run: node tests/finance-master-test.js
       - name: Translations
         run: node tests/i18n-check.js
