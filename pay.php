@@ -19,6 +19,15 @@
  *  modern Android and iPhone with a UPI app installed handles it),
  *  a minimal fallback page shows the UPI ID, amount and PNR as text
  *  the customer can copy manually.
+ *
+ *  8 Oct 2026 (D4-08 / D8-05): the link stays in WhatsApp chats long
+ *  after it is used, and it opened a full-fare UPI payment for cancelled,
+ *  expired and already-paid bookings. Now it asks only for what is DUE —
+ *  total minus verified payments — and only while the booking can still
+ *  take money: pending / rejected (proof refused, may pay again) or a
+ *  confirmed pay-at-counter ticket not settled yet. Anything else gets the
+ *  card with "nothing to pay" and the office WhatsApp, no amount, no UPI
+ *  redirect, no pay_open event. Rate-limited per IP (PNRs are sequential).
  * =====================================================================
  */
 
@@ -32,8 +41,14 @@ if ($pnr === '' || !preg_match('/^[A-Z0-9-]{6,40}$/', $pnr)) {
     exit('Invalid PNR');
 }
 
+if (!Security::rateLimit('pay_open', Security::clientIp(), 30, 300)) {
+    http_response_code(429);
+    header('Retry-After: 300');
+    exit('Too many requests. Please wait a few minutes and try again.');
+}
+
 $booking = Database::fetch(
-    'SELECT id, pnr, total_amount, status FROM bookings WHERE pnr = :p LIMIT 1',
+    'SELECT id, pnr, total_amount, status, is_cod FROM bookings WHERE pnr = :p LIMIT 1',
     ['p' => $pnr]
 );
 if ($booking === null) {
@@ -41,19 +56,93 @@ if ($booking === null) {
     exit('Booking not found');
 }
 
-$total = (float) ($booking['total_amount'] ?? 0);
-if ($total <= 0) {
-    http_response_code(400);
-    exit('Amount not set');
-}
+/* What is still owed, and may this booking take money now? */
+$total   = (float) ($booking['total_amount'] ?? 0);
+$paid    = (float) Database::scalar(
+    "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE booking_id = :b AND status = 'verified'",
+    ['b' => (int) $booking['id']],
+    0
+);
+$due     = round(max(0, $total - $paid), 2);
+$bStatus = (string) ($booking['status'] ?? '');
+$payable = $due > 0 && (in_array($bStatus, ['pending', 'rejected'], true)
+    || ($bStatus === 'confirmed' && (int) ($booking['is_cod'] ?? 0) === 1));
 
 $upiId   = Settings::getString('upi_id', '');
 $upiName = Settings::getString('upi_name', Settings::getString('company_name', APP_NAME));
-if ($upiId === '') {
+if ($payable && $upiId === '') {
     http_response_code(503);
     exit('UPI not configured');
 }
 
+/* The theme the app saved (D1-10): no white flash after a dark app. */
+$payThemeHead = <<<'HTML'
+<script>
+(function () {
+  try {
+    var d = document.documentElement, t = (localStorage.getItem('shg:theme') || '').replace(/"/g, '');
+    if (t !== 'light' && t !== 'dark' && t !== 'amoled') t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+    d.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
+    if (t === 'amoled') d.setAttribute('data-display', 'amoled');
+  } catch (e) { /* storage blocked: light */ }
+})();
+</script>
+HTML;
+$payThemeCss = ':root[data-theme="dark"] { color-scheme: dark; }'
+    . ' :root[data-theme="dark"] body { background:#0B1220; color:#e8eef8; }'
+    . ' :root[data-theme="dark"] .card { background:#131d30; box-shadow:0 4px 24px rgba(0,0,0,.45); }'
+    . ' :root[data-theme="dark"] .row { color:#c3cfdf; }'
+    . ' :root[data-theme="dark"] .amt { color:#4ade80; }'
+    . ' :root[data-theme="dark"] code { background:#22324a; color:#e8eef8; }'
+    . ' :root[data-theme="dark"][data-display="amoled"] body { background:#000; }'
+    . ' :root[data-theme="dark"][data-display="amoled"] .card { background:#0b0f16; }';
+
+if (!$payable) {
+    /* Nothing to pay: the same card, no amount, no UPI, no redirect and no
+       pay_open event (the desk's intent trail must not show a "tap to pay"
+       on a booking that cannot take money). */
+    header('Cache-Control: no-store');
+    $bizWa = Settings::officeWhatsApp();
+    ?><!doctype html>
+<html lang="ne">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Pay <?= htmlspecialchars($pnr, ENT_QUOTES, 'UTF-8') ?></title>
+<?= $payThemeHead ?>
+<style>
+  :root { color-scheme: light; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Devanagari", sans-serif;
+         background:#f7f8fb; color:#111; margin:0; padding:24px 16px; }
+  .card { max-width: 420px; margin: 32px auto; background:#fff;
+          border-radius:16px; padding:24px; box-shadow:0 4px 24px rgba(0,0,0,.06); }
+  h1 { font-size:20px; margin:0 0 8px; }
+  .row { margin:8px 0; color:#444; font-size:16px; line-height:1.5; }
+  .btn { display:block; text-align:center; background:#0a7c2f; color:#fff;
+         padding:14px 20px; border-radius:12px; text-decoration:none;
+         font-weight:600; margin:16px 0 8px; }
+  code { background:#eef1f5; padding:2px 6px; border-radius:4px; font-size:14px; }
+  <?= $payThemeCss ?>
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>भुक्तानी · Pay</h1>
+    <div class="row">बुकिङ नं.: <code><?= htmlspecialchars($pnr, ENT_QUOTES, 'UTF-8') ?></code></div>
+    <div class="row">यो बुकिङमा भुक्तानी बाँकी छैन (रद्द / म्याद सकिएको / भुक्तानी भइसकेको) — कार्यालयमा सम्पर्क गर्नुहोस्। · No payment is due on this booking.</div>
+<?php if ($bizWa !== ''):
+      $waText = rawurlencode('मेरो बुकिङ ' . $pnr . ' बारे सोध्नु छ।'); ?>
+    <a class="btn" style="background:#128C7E" href="https://wa.me/<?= htmlspecialchars($bizWa, ENT_QUOTES, 'UTF-8') ?>?text=<?= $waText ?>">WhatsApp मा कार्यालयसँग कुरा गर्नुहोस्</a>
+<?php endif; ?>
+  </div>
+</body>
+</html>
+<?php
+    exit;
+}
+
+$total  = $due;   // ask only for what is still owed
 $upiUri = upiLink($upiId, $upiName, $total, $pnr);
 
 /* Intent trail for the desk: this passenger tapped pay. The UPI app itself
@@ -70,11 +159,13 @@ header('Location: ' . $upiUri, true, 302);
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
 <title>Pay <?= htmlspecialchars($pnr, ENT_QUOTES, 'UTF-8') ?></title>
+<?= $payThemeHead ?>
 <style>
   :root { color-scheme: light; }
-  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-         background:#f7f8fb; color:#111; margin:0; padding:24px; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Devanagari", sans-serif;
+         background:#f7f8fb; color:#111; margin:0; padding:24px 16px; }
   .card { max-width: 420px; margin: 32px auto; background:#fff;
           border-radius:16px; padding:24px; box-shadow:0 4px 24px rgba(0,0,0,.06); }
   h1 { font-size:20px; margin:0 0 8px; }
@@ -84,6 +175,7 @@ header('Location: ' . $upiUri, true, 302);
          padding:14px 20px; border-radius:12px; text-decoration:none;
          font-weight:600; margin:16px 0 8px; }
   code { background:#eef1f5; padding:2px 6px; border-radius:4px; font-size:14px; }
+  <?= $payThemeCss ?>
 </style>
 </head>
 <body>

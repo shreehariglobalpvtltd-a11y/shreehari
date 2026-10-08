@@ -4,7 +4,18 @@
  *
  * Accepts multipart/form-data when a screenshot is attached, or JSON for
  * a UTR-only submission.
- * Fields: pnr, utr, payerName, method, screenshot(file, optional)
+ * Fields: pnr, utr, payerName, method, screenshot(file, optional),
+ *         phone (the booking's mobile) and/or k (the ticket key) when the
+ *         proof is sent from another device.
+ *
+ * 8 Oct 2026 (D8-03): proof used to be accepted for ANY PNR from ANY
+ * visitor. Any UTR stops the expiry clock and re-opens a rejected
+ * booking, so a junk UTR against a stranger's sequential PNR parked their
+ * seats. The sender must now show they belong to the booking: the PNR was
+ * booked in this browser session, OR the signed-in account owns it, OR the
+ * keyed link's k, OR the typed mobile equals the booking's (never the
+ * walk-in placeholder). The office still verifies every proof by hand —
+ * nothing here confirms a booking.
  */
 
 declare(strict_types=1);
@@ -24,6 +35,27 @@ try {
 
     if (!Security::isValidPnr($pnr)) {
         Response::invalid(['pnr' => 'A valid booking reference is required.']);
+    }
+
+    /* ---- Does this sender belong to the booking? (before any file is written) ---- */
+    $booking = BookingService::findByPnr($pnr);
+    if ($booking === null) {
+        Response::notFound('No booking found with that reference.');
+    }
+    $contact     = (string) ($booking['contact_phone'] ?? '');
+    $realContact = !isPlaceholderPhone($contact);
+    $me          = Auth::user();
+    $key         = Security::clean($_POST['k'] ?? Response::field('k', ''), 64);
+    $typed       = normalisePhone(Security::clean($_POST['phone'] ?? Response::field('phone', ''), 20));
+    $owns = in_array(strtoupper((string) $booking['pnr']), Auth::ownPnrs(), true)
+        || ($me !== null && (
+            ((int) ($booking['user_id'] ?? 0) > 0 && (int) $booking['user_id'] === (int) ($me['id'] ?? 0))
+            || ($realContact && normalisePhone((string) ($me['phone'] ?? '')) === normalisePhone($contact))
+        ))
+        || ($key !== '' && Ticket::checkDownloadToken((string) $booking['pnr'], $key))
+        || ($realContact && $typed !== '' && $typed === normalisePhone($contact));
+    if (!$owns) {
+        Response::forbidden('Enter the mobile number used for this booking. / बुकिङको मोबाइल नम्बर हाल्नुहोस्।');
     }
 
     $hasScreenshot = isset($_FILES['screenshot']) && ($_FILES['screenshot']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK;

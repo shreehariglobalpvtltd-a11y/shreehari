@@ -246,6 +246,21 @@ $sql = "SELECT b.id, b.pnr, b.status, b.total_amount, b.contact_phone, b.source,
                bu.bus_name,
                (SELECT COUNT(*) FROM booking_seats bs WHERE bs.booking_id = b.id) AS seat_count,
                (SELECT file_path FROM payment_screenshots ps WHERE ps.booking_id = b.id ORDER BY ps.id DESC LIMIT 1) AS shot,
+               /* 8 Oct 2026 (D8-06): the same UTR or the same screenshot
+                  (sha256, stored since day one, never compared) on ANOTHER
+                  booking. Shown as a red pill only — the desk decides; nothing
+                  is blocked or rejected automatically. ix_payments_utr and
+                  ix_shots_hash serve both lookups. */
+               (SELECT GROUP_CONCAT(DISTINCT b2.pnr ORDER BY b2.pnr SEPARATOR ', ')
+                  FROM payments p3 JOIN bookings b2 ON b2.id = p3.booking_id
+                 WHERE TRIM(COALESCE(p.utr_number, '')) <> ''
+                   AND p3.utr_number = p.utr_number
+                   AND p3.booking_id <> b.id) AS utr_also_on,
+               (SELECT GROUP_CONCAT(DISTINCT bx.pnr ORDER BY bx.pnr SEPARATOR ', ')
+                  FROM payment_screenshots s1
+                  JOIN payment_screenshots s2 ON s2.sha256 = s1.sha256 AND s2.booking_id <> s1.booking_id
+                  JOIN bookings bx ON bx.id = s2.booking_id
+                 WHERE s1.booking_id = b.id AND s1.sha256 IS NOT NULL AND s1.sha256 <> '') AS shot_also_on,
                seller.full_name AS seller_name
           FROM bookings b
           JOIN payments p ON p.id = (SELECT MAX(p2.id) FROM payments p2 WHERE p2.booking_id = b.id)
@@ -527,6 +542,9 @@ tr.row-done td{background:var(--hover)}
           <?php if (!empty($q['utr_number'])): ?>
             <div class="mono" style="font-size:11px;margin-top:3px"><?= Security::e($q['utr_number']) ?></div>
           <?php endif; ?>
+          <?php if (!empty($q['utr_also_on'])): ?>
+            <div style="margin-top:4px"><span class="pill" style="color:#8a1f1f;background:#f7dcdc;font-size:10.5px;white-space:normal" title="The same UTR was submitted for another booking — check before verifying">⚠ UTR also on <?= Security::e($q['utr_also_on']) ?></span></div>
+          <?php endif; ?>
           <?php if (!empty($q['payer_name'])): ?>
             <div class="muted" style="font-size:11px"><?= Security::e($q['payer_name']) ?></div>
           <?php endif; ?>
@@ -551,6 +569,9 @@ tr.row-done td{background:var(--hover)}
           <?php if (!empty($q['shot'])): ?>
             <a href="<?= $base ?>/admin/screenshot.php?id=<?= $bId ?>" target="_blank" style="font-size:12px">View</a>
           <?php else: ?><span class="muted" style="font-size:12px">none</span><?php endif; ?>
+          <?php if (!empty($q['shot_also_on'])): ?>
+            <div style="margin-top:4px"><span class="pill" style="color:#8a1f1f;background:#f7dcdc;font-size:10.5px;white-space:normal" title="The very same screenshot file was uploaded for another booking — check before verifying">⚠ Screenshot also on <?= Security::e($q['shot_also_on']) ?></span></div>
+          <?php endif; ?>
         </td>
         <!-- Source -->
         <td><?= source_badge((string) ($q['source'] ?? 'web')) ?></td>
