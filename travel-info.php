@@ -241,7 +241,7 @@ $block = static function (string $l, array $c) use ($e, $fill, $li, $wa, $tel): 
     }
     return '<div class="L" lang="' . $l . '">'
         . '<a href="/" class="back">' . $c['back'] . '</a>'
-        . '<h2>' . $c['h'] . '</h2><p class="subtitle">' . $c['sub'] . '</p>'
+        . '<h1 class="ptitle">' . $c['h'] . '</h1><p class="subtitle">' . $c['sub'] . '</p>'
         . '<div class="cta"><a class="btn hot" href="/">' . $c['book'] . '</a>'
         . '<a class="btn wa" href="' . $wa($c['waText']) . '" target="_blank" rel="noopener">' . $c['wa'] . '</a>'
         . '<a class="btn" href="tel:' . $e($tel) . '">' . $c['call'] . '</a></div>'
@@ -285,6 +285,7 @@ header('Content-Type: text/html; charset=UTF-8');
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title><?= $e($C[$lang]['title']) ?></title>
 <script>(function(){var d=document.documentElement,ok={en:1,hi:1,ne:1},l=null;try{if(ok[new URLSearchParams(location.search).get('lang')])return;var s=localStorage.getItem('shg:lang');if(ok[s])l=s;else{var n=navigator.languages&&navigator.languages.length?navigator.languages:[navigator.language||''];for(var i=0;i<n.length;i++){var c=String(n[i]||'').toLowerCase().slice(0,2);if(c==='hi'||c==='ne'){l=c;break}}}}catch(e){}if(l){d.setAttribute('data-lang',l);d.lang=l}})();</script>
+<script>(function(){try{var d=document.documentElement,t=(localStorage.getItem('shg:theme')||'').replace(/"/g,'');if(t!=='light'&&t!=='dark'&&t!=='amoled')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';d.setAttribute('data-theme',t==='light'?'light':'dark');if(t==='amoled')d.setAttribute('data-display','amoled')}catch(e){}})();</script>
 <meta name="description" content="<?= $e($desc) ?>">
 <meta property="og:title" content="Travel Info — India ⇄ Nepal Border | <?= $e($co['name']) ?>">
 <meta property="og:description" content="<?= $e($desc) ?>">
@@ -303,7 +304,8 @@ header('Content-Type: text/html; charset=UTF-8');
 /* Design system tokens (assets/css/ds.css, 4 Oct 2026): royal is the only action colour, navy bars, red = 3 px accent. */
 :root{--navy:#0C306C;--mid:#0054A8;--royal-strong:#003C90;--tint:#EEF4FC;--on-royal:#fff;--red:#DC143C;--gold:#0054A8;--link:#0054A8;--wa:#11703F;--bg:#F4F6FB;--card:#fff;--text:#16233C;--muted:#5C6B85;--border:#E4E9F1}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0B1220;--card:#111D33;--text:#E8F0FB;--muted:#93A4BE;--border:#22314A;--navy:#0F1A2E;--mid:#5B9BE8;--royal-strong:#8FBFFF;--tint:#152645;--on-royal:#0B1220;--red:#FF5C74;--gold:#5B9BE8;--link:#8FBFFF;--wa:#5FD39A}}
-:root[data-theme="dark"]{--bg:#0B1220;--card:#111D33;--text:#E8F0FB;--muted:#93A4BE;--border:#22314A;--navy:#0F1A2E;--mid:#5B9BE8;--royal-strong:#8FBFFF;--tint:#152645;--on-royal:#0B1220;--red:#FF5C74;--gold:#5B9BE8;--link:#8FBFFF;--wa:#5FD39A}
+:root[data-theme="dark"]{--bg:#0B1220;--card:#111D33;--text:#E8F0FB;--muted:#93A4BE;--border:#22314A;--navy:#0F1A2E;--mid:#5B9BE8;--royal-strong:#8FBFFF;--tint:#152645;--on-royal:#0B1220;--red:#FF5C74;--gold:#5B9BE8;--link:#8FBFFF;--wa:#5FD39A;color-scheme:dark}
+:root[data-display="amoled"]{--bg:#000;--card:#101822;--text:#EEF4FF;--muted:#ACBBD0;--border:#2C3D55;--navy:#050B16;--mid:#9ABFFF;--tint:#0D1A30;--on-royal:#000814;--link:#9ABFFF}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Noto Sans Devanagari','Nirmala UI',sans-serif;font-size:16px;background:var(--bg);color:var(--text);line-height:1.7;-webkit-text-size-adjust:100%}
 a{color:var(--link)}
@@ -311,7 +313,7 @@ a{color:var(--link)}
 a:focus-visible,summary:focus-visible{outline:3px solid var(--mid);outline-offset:2px}
 .header a{color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:10px}
 .header img{height:36px;width:auto}
-.header h1{font-family:'Cinzel',Georgia,serif;font-size:clamp(14px,3vw,18px);font-weight:700}
+.header .bn{font-family:'Cinzel',Georgia,serif;font-size:clamp(14px,3vw,18px);font-weight:700}
 .langbar{position:sticky;top:0;z-index:10;display:flex;justify-content:center;gap:10px;padding:8px 16px;background:var(--card);border-bottom:1px solid var(--border);box-shadow:0 2px 8px rgba(14,30,64,.08)}
 .lb{min-width:64px;min-height:48px;display:inline-flex;align-items:center;justify-content:center;padding:0 16px;border:2px solid var(--border);border-radius:12px;color:var(--text);text-decoration:none;font-weight:800;font-size:17px}
 html[data-lang="en"] .lb[data-l="en"],html[data-lang="hi"] .lb[data-l="hi"],html[data-lang="ne"] .lb[data-l="ne"]{background:var(--mid);border-color:var(--mid);color:var(--on-royal)}
@@ -320,8 +322,8 @@ html[data-lang="en"] .L[lang="en"],html[data-lang="hi"] .L[lang="hi"],html[data-
 html[data-lang="en"] .l[lang="en"],html[data-lang="hi"] .l[lang="hi"],html[data-lang="ne"] .l[lang="ne"]{display:inline}
 .container{max-width:800px;margin:0 auto;padding:20px 16px 56px}
 .back{display:inline-flex;align-items:center;min-height:48px;font-weight:600;text-decoration:none}
-h2{font-family:'Cinzel',Georgia,serif;font-size:clamp(22px,6vw,28px);font-weight:800;line-height:1.3;margin-bottom:6px}
-.L[lang="hi"] h2,.L[lang="ne"] h2{font-family:inherit}
+.ptitle{font-family:'Cinzel',Georgia,serif;font-size:clamp(22px,6vw,28px);font-weight:800;line-height:1.3;margin-bottom:6px}
+.L[lang="hi"] .ptitle,.L[lang="ne"] .ptitle{font-family:inherit}
 .subtitle{color:var(--muted);margin-bottom:18px}
 .cta{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px}
 .btn{flex:1 1 140px;min-height:48px;display:inline-flex;align-items:center;justify-content:center;padding:10px 16px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--text);font-weight:800;text-decoration:none;text-align:center}
@@ -362,7 +364,7 @@ details p{padding-bottom:12px}
 </head>
 <body>
 <div class="header">
-  <a href="/"><img src="/assets/img/logo.png" alt="S Hari Global" width="49" height="36" loading="eager"><h1><?= $e($co['name']) ?></h1></a>
+  <a href="/"><img src="/assets/img/logo.png" alt="S Hari Global" width="49" height="36" loading="eager"><span class="bn"><?= $e($co['name']) ?></span></a>
 </div>
 <nav class="langbar" aria-label="Language / भाषा">
   <a class="lb" href="?lang=en" data-l="en" hreflang="en" lang="en" aria-label="English"<?= $lang === 'en' ? ' aria-current="true"' : '' ?>>EN</a>

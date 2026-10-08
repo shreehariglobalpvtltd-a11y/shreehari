@@ -10,6 +10,11 @@ require_once __DIR__ . '/includes/bootstrap.php';
 $baseUrl = rtrim(APP_URL, '/');
 $e = static fn($s): string => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
 
+/* The policy's real revision date (8 Oct 2026, D3-17). It printed date()
+   — always "today" — so a legal page had no knowable effective date.
+   Change this line, by hand, whenever the wording below changes. */
+if (!defined('POLICY_REVISED')) { define('POLICY_REVISED', '8 October 2026'); }
+
 $slabs = Settings::getArray('refund_slabs', []);
 if (empty($slabs)) {
     $slabs = [
@@ -42,20 +47,25 @@ header('Content-Type: text/html; charset=UTF-8');
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;800&display=swap"></noscript>
+<script>/* The app's saved theme before the first frame (8 Oct 2026): localStorage 'shg:theme' = light | dark | amoled, else the phone's setting. */
+(function(){try{var d=document.documentElement,t=(localStorage.getItem('shg:theme')||'').replace(/"/g,'');if(t!=='light'&&t!=='dark'&&t!=='amoled')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';d.setAttribute('data-theme',t==='light'?'light':'dark');if(t==='amoled')d.setAttribute('data-display','amoled')}catch(e){}})();</script>
 <style>
 :root { --navy: #0E1E40; --mid: #1A3A6A; --gold: #F07C1F; --bg: #F8F9FB; --card: #fff; --text: #1a1a2e; --muted: #5B6B85; --border: #e2e6ee; }
+:root[data-theme="dark"] { color-scheme: dark; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) { --bg: #0B1424; --card: #162338; --text: #E8ECF4; --muted: #8899B0; --border: #253550; --navy: #0B1424; }
 }
 :root[data-theme="dark"] { --bg: #0B1424; --card: #162338; --text: #E8ECF4; --muted: #8899B0; --border: #253550; --navy: #0B1424; }
+/* AMOLED (8 Oct 2026): pure-black ground, after the dark block so it wins. */
+:root[data-display="amoled"] { --bg: #000; --card: #101822; --text: #EEF4FF; --muted: #ACBBD0; --border: #2C3D55; --navy: #050B16; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; }
 .header { background: var(--navy); color: #fff; padding: 20px 0; text-align: center; }
 .header a { color: #fff; text-decoration: none; display: inline-flex; align-items: center; gap: 10px; }
 .header img { height: 36px; }
-.header h1 { font-family: 'Cinzel', Georgia, serif; font-size: clamp(14px, 3vw, 18px); font-weight: 700; }
+.header .brandname { font-family: 'Cinzel', Georgia, serif; font-size: clamp(14px, 3vw, 18px); font-weight: 700; }
 .container { max-width: 800px; margin: 0 auto; padding: 32px 16px 64px; }
-h2 { font-family: 'Cinzel', Georgia, serif; font-size: 28px; font-weight: 800; color: var(--text); margin-bottom: 8px; }
+h1.page-title, h2 { font-family: 'Cinzel', Georgia, serif; font-size: 28px; font-weight: 800; color: var(--text); margin-bottom: 8px; }
 .subtitle { color: var(--muted); font-size: 15px; margin-bottom: 32px; }
 .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 24px; }
 .card h3 { font-size: 18px; font-weight: 700; margin-bottom: 12px; color: var(--text); }
@@ -96,13 +106,13 @@ h2 { font-family: 'Cinzel', Georgia, serif; font-size: 28px; font-weight: 800; c
 <div class="header">
   <a href="/">
     <img src="/assets/img/logo.png" alt="S Hari Global" loading="eager">
-    <h1>S Hari Global Pvt Ltd</h1>
+    <span class="brandname">S Hari Global Pvt Ltd</span>
   </a>
 </div>
 <div class="container">
   <a href="/" class="back">← Back to Home</a>
-  <h2>Refund & Cancellation Policy</h2>
-  <p class="subtitle">Last updated: <?= date('j F Y') ?> · Applies to all Gujarat ⇄ Rupaidiha bus tickets</p>
+  <h1 class="page-title">Refund &amp; Cancellation Policy</h1>
+  <p class="subtitle">Last updated: <?= $e(POLICY_REVISED) ?> · Applies to all Gujarat ⇄ Rupaidiha bus tickets</p>
 
   <div class="card highlight">
     <h3>Refund Slabs</h3>

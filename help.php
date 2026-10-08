@@ -77,16 +77,21 @@ header('X-Robots-Tag: noindex');
 <meta name="csrf" content="<?= $e(Security::csrfToken()) ?>">
 <title><?= $e($T['title']) ?> · <?= $e($company) ?></title>
 <link rel="icon" href="/assets/img/favicon-32.png">
+<script>/* The app's saved theme before the first frame (8 Oct 2026): localStorage 'shg:theme' = light | dark | amoled, else the phone's setting. */
+(function(){try{var d=document.documentElement,t=(localStorage.getItem('shg:theme')||'').replace(/"/g,'');if(t!=='light'&&t!=='dark'&&t!=='amoled')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';d.setAttribute('data-theme',t==='light'?'light':'dark');if(t==='amoled')d.setAttribute('data-display','amoled')}catch(e){}})();</script>
 <style>
 :root{--blue:#2E5FA8;--navy:#12264E;--orange:#F07C1F;--ok:#178A50;--warn:#B7791F;--bad:#C53030;--ink:#16233C;--muted:#5C6B85;--line:#E2E9F4;--bg:#F6F8FC;--card:#fff;--chip:#EEF3FB}
-@media (prefers-color-scheme:dark){:root{--ink:#F1F5FB;--muted:#A9B6CC;--line:#243352;--bg:#0E1626;--card:#16213A;--chip:#1C2A47}}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#F1F5FB;--muted:#A9B6CC;--line:#243352;--bg:#0E1626;--card:#16213A;--chip:#1C2A47}}
+:root[data-theme="dark"]{--ink:#F1F5FB;--muted:#A9B6CC;--line:#243352;--bg:#0E1626;--card:#16213A;--chip:#1C2A47;color-scheme:dark}
+:root[data-display="amoled"]{--ink:#EEF4FF;--muted:#ACBBD0;--line:#2C3D55;--bg:#000;--card:#101822;--chip:#1A2638;--blue:#28579C}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans Devanagari','Noto Sans',sans-serif;background:var(--bg);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased}
 .wrap{max-width:560px;margin:0 auto;padding:16px 16px calc(28px + env(safe-area-inset-bottom))}
 .top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
 .brand{display:flex;align-items:center;gap:10px;font-weight:800;color:var(--navy);text-decoration:none}
 .brand img{width:36px;height:36px;border-radius:9px}
-@media (prefers-color-scheme:dark){.brand{color:#fff}}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .brand{color:#fff}}
+:root[data-theme="dark"] .brand{color:#fff}
 .langs a{font-size:12px;font-weight:700;color:var(--muted);text-decoration:none;padding:4px 8px;border-radius:999px;border:1px solid var(--line);margin-left:4px}
 .langs a.on{background:var(--blue);color:#fff;border-color:var(--blue)}
 h1{font-size:24px;margin:4px 0 2px}
@@ -114,7 +119,8 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--blue)}
 .err{color:var(--bad);font-size:13px;margin-top:6px;min-height:1px}
 .done{text-align:center;padding:22px 16px}
 .done .big{font-size:40px;font-weight:900;letter-spacing:1px;color:var(--navy);margin:6px 0}
-@media (prefers-color-scheme:dark){.done .big{color:#fff}}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .done .big{color:#fff}}
+:root[data-theme="dark"] .done .big{color:#fff}
 .done .tok{display:inline-block;background:var(--orange);color:#fff;font-weight:800;border-radius:999px;padding:4px 14px;font-size:14px}
 .muted{color:var(--muted);font-size:13.5px}
 .st{display:flex;align-items:center;gap:10px;font-weight:800;font-size:17px}
@@ -124,7 +130,8 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--blue)}
 .m{max-width:88%;padding:9px 12px;border-radius:14px;font-size:14px;white-space:pre-wrap;word-break:break-word}
 .m.you{align-self:flex-end;background:var(--chip)}
 .m.staff{align-self:flex-start;background:#E7F6EE;color:#0E3B24}
-@media (prefers-color-scheme:dark){.m.staff{background:#163A28;color:#DDF5E6}}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .m.staff{background:#163A28;color:#DDF5E6}}
+:root[data-theme="dark"] .m.staff{background:#163A28;color:#DDF5E6}
 .m small{display:block;font-size:11px;opacity:.7;margin-top:3px}
 .foot{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
 .foot .btn{margin-top:0;font-size:14px;min-height:46px}
