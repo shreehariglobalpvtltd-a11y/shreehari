@@ -156,23 +156,31 @@ final class TripStatus
      * Static state → colour / label map. Kept next to compute() so a
      * new state means editing one file, not four templates.
      *
+     * 8 Oct 2026 (D9-05): every colour is a solid pill background that
+     * carries WHITE text at >= 4.5:1 (WCAG AA) in light and dark alike -
+     * the panel draws them as solid pills on Trips, the dashboard and the
+     * Schedule Manager. The old oranges read 2.0-2.9:1. Keys and labels are
+     * unchanged (live-status / trips-data JSON keep the same shape). Only
+     * the admin pages use these colours; the customer search API and the
+     * ticket PNG do not.
+     *
      * @return array{state:string,label:string,color:string}
      */
     public static function meta(string $state): array
     {
         static $map = [
-            self::STATE_UPCOMING  => ['label' => 'Upcoming',        'color' => '#6b7688'],
-            self::STATE_DEPARTING => ['label' => 'Departing Soon',  'color' => '#f39c12'],
-            self::STATE_BOARDING  => ['label' => 'Boarding',        'color' => '#e67e22'],
-            self::STATE_DEPARTED  => ['label' => 'Departed',        'color' => '#2E5FA8'],
-            self::STATE_ON_ROUTE  => ['label' => 'On Route',        'color' => '#00897b'],
-            self::STATE_ARRIVED   => ['label' => 'Arrived',         'color' => '#0a8b4b'],
-            self::STATE_COMPLETED => ['label' => 'Completed',       'color' => '#065a30'],
-            self::STATE_DELAYED   => ['label' => 'Delayed',         'color' => '#c0392b'],
-            self::STATE_SOLD_OUT  => ['label' => 'Sold Out',        'color' => '#d68910'],
-            self::STATE_CANCELLED => ['label' => 'Cancelled',       'color' => '#95a5a6'],
+            self::STATE_UPCOMING  => ['label' => 'Upcoming',        'color' => '#475569'],   // 7.6:1
+            self::STATE_DEPARTING => ['label' => 'Departing Soon',  'color' => '#B45309'],   // 5.0:1
+            self::STATE_BOARDING  => ['label' => 'Boarding',        'color' => '#C2410C'],   // 5.2:1
+            self::STATE_DEPARTED  => ['label' => 'Departed',        'color' => '#1D4ED8'],   // 6.7:1
+            self::STATE_ON_ROUTE  => ['label' => 'On Route',        'color' => '#0F766E'],   // 5.5:1
+            self::STATE_ARRIVED   => ['label' => 'Arrived',         'color' => '#15803D'],   // 5.0:1
+            self::STATE_COMPLETED => ['label' => 'Completed',       'color' => '#166534'],   // 7.1:1
+            self::STATE_DELAYED   => ['label' => 'Delayed',         'color' => '#B91C1C'],   // 6.5:1
+            self::STATE_SOLD_OUT  => ['label' => 'Sold Out',        'color' => '#A16207'],   // 4.9:1
+            self::STATE_CANCELLED => ['label' => 'Cancelled',       'color' => '#64748B'],   // 4.8:1
         ];
-        $row = $map[$state] ?? ['label' => ucfirst($state), 'color' => '#6b7688'];
+        $row = $map[$state] ?? ['label' => ucfirst($state), 'color' => '#475569'];
         return ['state' => $state] + $row;
     }
 

@@ -79,7 +79,7 @@ admin_header('AI Sahayak', 'ai-copilot');
   .cp-dl{background:var(--blue-50);border:1px solid var(--blue-100);color:var(--blue-600);padding:4px 10px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer}
   .cp-dl:hover{background:var(--blue-100)}
   .cp-acts{display:flex;flex-wrap:wrap;gap:8px}
-  .cp-act{display:inline-flex;align-items:center;gap:6px;padding:8px 13px;border-radius:10px;background:linear-gradient(135deg,var(--orange),#FFB703);color:#fff!important;font-weight:800;font-size:13px;text-decoration:none;box-shadow:0 4px 12px rgba(240,120,0,.28)}
+  .cp-act{display:inline-flex;align-items:center;gap:6px;padding:8px 13px;border-radius:10px;background:var(--royal);color:var(--on-royal)!important;font-weight:800;font-size:13px;text-decoration:none;box-shadow:var(--sh-1)}
   .cp-media img{max-width:100%;border-radius:10px;border:1px solid var(--line)}
   .cp-typing{align-self:flex-start;display:flex;gap:5px;padding:10px 14px}
   .cp-typing span{width:8px;height:8px;border-radius:50%;background:var(--blue-100);animation:cpB 1.2s infinite}
@@ -88,7 +88,7 @@ admin_header('AI Sahayak', 'ai-copilot');
   .cp-in{display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--line);background:var(--card)}
   .cp-in textarea{flex:1;min-height:44px;max-height:140px;resize:vertical;border:1.5px solid var(--line);border-radius:12px;padding:10px 13px;font:inherit;font-size:14px;background:var(--soft);color:var(--ink)}
   .cp-in textarea:focus{outline:none;border-color:var(--blue)}
-  .cp-send{flex:0 0 auto;padding:0 18px;border-radius:12px;border:0;background:linear-gradient(135deg,var(--orange),#FFB703);color:#fff;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 4px 12px rgba(240,120,0,.3)}
+  .cp-send{flex:0 0 auto;padding:0 18px;border-radius:12px;border:0;background:var(--royal);color:var(--on-royal);font-weight:800;font-size:14px;cursor:pointer;box-shadow:var(--sh-1)}
   .cp-send[disabled]{opacity:.55;cursor:default}
   .cp-lang{border:1px solid var(--line);border-radius:10px;padding:0 8px;background:var(--card);color:var(--ink);font-weight:700;font-size:13px}
   .cp-side .panel{margin-bottom:14px}
@@ -125,7 +125,7 @@ admin_header('AI Sahayak', 'ai-copilot');
         <option value="ne">नेपाली</option><option value="hi">हिंदी</option><option value="en">EN</option>
       </select>
       <textarea id="cpIn" rows="1" placeholder="आजको बिक्री कति? · इस हफ्ते का ग्राफ · how many visitors today?" <?= $agentOn ? '' : 'disabled' ?>></textarea>
-      <button type="button" class="cp-send" id="cpSend" <?= $agentOn ? '' : 'disabled' ?>>Send ➤</button>
+      <button type="button" class="cp-send" id="cpSend" <?= $agentOn ? '' : 'disabled title="AI Sahayak is switched off - see the note above"' ?>>Send ➤</button>
     </div>
   </section>
 

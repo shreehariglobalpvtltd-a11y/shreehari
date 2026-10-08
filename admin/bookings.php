@@ -444,7 +444,7 @@ $canEdit   = Auth::can('bookings.edit');
 .th-sort a span{opacity:.45;font-size:10px}.th-sort.on a{color:var(--blue)}.th-sort.on a span{opacity:1}
 .pp-pick{display:inline-flex;gap:4px;align-items:center;font-size:12.5px}
 .pp-pick a{min-width:36px;min-height:32px;display:inline-grid;place-items:center;border-radius:8px;border:1px solid var(--line);text-decoration:none;color:var(--ink-2);font-weight:700}
-.pp-pick a.on{background:var(--blue);color:#fff;border-color:var(--blue)}
+.pp-pick a.on{background:var(--royal);color:var(--on-royal);border-color:var(--royal)}
 .filter-group .flbl{font-size:11px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.3px}
 .filter-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
 .filter-row + .filter-row{margin-top:8px}
@@ -645,11 +645,11 @@ $canEdit   = Auth::can('bookings.edit');
   </div>
   <div class="card">
     <div class="k">Confirmed</div>
-    <div class="v" style="color:#0a6b3b"><?= number_format($confirmedCount) ?></div>
+    <div class="v" style="color:var(--success)"><?= number_format($confirmedCount) ?></div>
   </div>
   <div class="card">
     <div class="k">Pending</div>
-    <div class="v" style="color:#8a6d00"><?= number_format($pendingCount) ?></div>
+    <div class="v" style="color:var(--warning)"><?= number_format($pendingCount) ?></div>
   </div>
   <div class="card">
     <div class="k">Revenue</div>

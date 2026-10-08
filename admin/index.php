@@ -219,7 +219,9 @@ $dateForm = '<form method="get" class="row" style="gap:8px;margin:0">'
     . (!$isTodayView ? '<a class="btn ghost sm" href="' . $base . '/admin/index.php">Back to today</a>' : '')
     . '</form>';
 $actions = $dateForm
-    . '<a class="btn warn" href="' . $base . '/admin/quick-ticket.php"><svg class="a-ic"><use href="#a-bolt"/></svg>QuickBot Ticket</a>'
+    // 8 Oct 2026 (D9-02): .btn.warn is the amber CAUTION face now; QuickBot is
+    // the main sale, so it keeps the royal action face it has always shown.
+    . '<a class="btn" href="' . $base . '/admin/quick-ticket.php"><svg class="a-ic"><use href="#a-bolt"/></svg>QuickBot Ticket</a>'
     . '<a class="btn" href="/index.php?counter=1#/"><svg class="a-ic"><use href="#a-plus-plain"/></svg>New booking</a>'
     // 17 Sep 2026: today's office summary to the admin WhatsApp number in one
     // click (admin/api/wa-send.php). Renders nothing when wa_admin_tools_enabled

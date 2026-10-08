@@ -103,11 +103,11 @@ function shg_run_bus_on_date(int $busId, int $routeId, string $date, string $dep
 
 /* ── Seat model catalogue ─────────────────────────────────────────── */
 const SEAT_MODELS = [
-    '72-sleeper' => ['label' => '72 Seat – 2 Floor (Standard)', 'seats' => 72, 'floors' => 2, 'coach' => 'sleeper', 'badge' => '#178A50'],
-    '60-sleeper' => ['label' => '60 Seat – 2 Floor',           'seats' => 60, 'floors' => 2, 'coach' => 'sleeper', 'badge' => '#2196F3'],
-    '50-seater'  => ['label' => '50 Seat – Single Floor',       'seats' => 50, 'floors' => 1, 'coach' => 'seater',  'badge' => '#F07C1F'],
+    '72-sleeper' => ['label' => '72 Seat – 2 Floor (Standard)', 'seats' => 72, 'floors' => 2, 'coach' => 'sleeper', 'badge' => '#11703F'],
+    '60-sleeper' => ['label' => '60 Seat – 2 Floor',           'seats' => 60, 'floors' => 2, 'coach' => 'sleeper', 'badge' => '#1565C0'],
+    '50-seater'  => ['label' => '50 Seat – Single Floor',       'seats' => 50, 'floors' => 1, 'coach' => 'seater',  'badge' => '#B45309'],
     '45-seater'  => ['label' => '45 Seat – Single Floor',       'seats' => 45, 'floors' => 1, 'coach' => 'seater',  'badge' => '#9C27B0'],
-    'custom'     => ['label' => 'Custom',                        'seats' => 0,  'floors' => 1, 'coach' => 'seater',  'badge' => '#607D8B'],
+    'custom'     => ['label' => 'Custom',                        'seats' => 0,  'floors' => 1, 'coach' => 'seater',  'badge' => '#546E7A'],
 ];
 
 /* ── POST actions ─────────────────────────────────────────────────── */
@@ -388,7 +388,10 @@ if ($todayBus === null) {
       <input type="hidden" name="action" value="daily_service">
       <input type="hidden" name="on" value="<?= $svcOn ? '0' : '1' ?>">
       <input type="text" name="note" value="<?= Security::e($svcNote) ?>" maxlength="200" placeholder="Message for customers while OFF (optional)" style="min-width:240px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)">
-      <button class="btn" type="submit" style="background:<?= $svcOn ? '#C53030' : '#178A50' ?>;color:#fff;min-height:44px;font-weight:800;border:0"><?= $svcOn ? '⏸ Switch OFF' : '▶ Switch ON' ?></button>
+      <?php /* 8 Oct 2026 (D9-02): red to stop every sale, green to resume. The
+               inline colour lost to the panel's royal button face, so the
+               switch that stops all sales looked like an ordinary Save. */ ?>
+      <button class="btn <?= $svcOn ? 'danger' : 'ok' ?>" type="submit" style="min-height:44px;font-weight:800"><?= $svcOn ? '⏸ Switch OFF' : '▶ Switch ON' ?></button>
     </form>
     <?php endif; ?>
   </div>
@@ -681,7 +684,7 @@ if ($todayBus === null) {
         <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
         <input type="hidden" name="action" value="toggle">
         <input type="hidden" name="bus_id" value="<?= (int)$bus['id'] ?>">
-        <button type="submit" class="btn btn-warn btn-sm"
+        <button type="submit" class="btn <?= $isActive ? 'btn-warn' : 'btn-ok' ?> btn-sm"
                 onclick="return confirm('<?= $isActive ? 'Deactivate' : 'Activate' ?> this bus?')">
           <?= $isActive ? '⏸️ Deactivate' : '▶️ Activate' ?>
         </button>
@@ -705,8 +708,7 @@ if ($todayBus === null) {
         <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
         <input type="hidden" name="action" value="delete">
         <input type="hidden" name="bus_id" value="<?= (int)$bus['id'] ?>">
-        <button type="submit" class="btn btn-warn btn-sm"
-                style="background:#C00;border-color:#C00"
+        <button type="submit" class="btn danger btn-sm"
                 onclick="return confirm('Delete bus &quot;<?= addslashes(Security::e($bus['bus_name'])) ?>&quot;? This cannot be undone.')">
           🗑️ Delete
         </button>

@@ -286,13 +286,13 @@ admin_page_head('Every WhatsApp, SMS and email the system sent — who got it, w
 @keyframes wmNew{0%{background:rgba(37,99,235,.22)}100%{background:transparent}}
 .wm-who b{display:block;font-size:13.5px}.wm-who small{color:var(--mut)}
 .wm-kind{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:999px;background:var(--soft);color:var(--mut);margin-left:4px;text-transform:uppercase;letter-spacing:.03em}
-.wm-cc{display:inline-block;font-size:10.5px;font-weight:800;padding:1px 5px;border-radius:4px;margin-right:4px;color:#fff;background:#f97316}
+.wm-cc{display:inline-block;font-size:10.5px;font-weight:800;padding:1px 5px;border-radius:4px;margin-right:4px;color:#fff;background:#C2410C}
 .wm-cc.NP{background:#dc2626}.wm-cc.OT{background:#64748b}
 .wm-st{display:inline-flex;align-items:center;gap:4px;font-weight:700;font-size:12.5px;white-space:nowrap}
-.wm-st.read{color:#2563eb}.wm-st.delivered{color:#16a34a}.wm-st.failed{color:#dc2626}.wm-st.accepted,.wm-st.sent,.wm-st.queued{color:#b45309}.wm-st.skipped{color:var(--mut)}
+.wm-st.read{color:var(--royal)}.wm-st.delivered{color:var(--success)}.wm-st.failed{color:var(--danger)}.wm-st.accepted,.wm-st.sent,.wm-st.queued{color:var(--warning)}.wm-st.skipped{color:var(--mut)}
 .wm-body{max-width:380px;color:var(--mut);font-size:12.5px;overflow-wrap:anywhere}
 .wm-tag{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:6px;background:var(--soft);margin-bottom:3px}
-.wm-fail{color:#dc2626;font-size:12px;margin-top:3px}
+.wm-fail{color:var(--danger);font-size:12px;margin-top:3px}
 .wm-tpl{display:flex;flex-wrap:wrap;gap:6px}
 .wm-tpl span{font-size:12px;padding:3px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card)}
 .wm-tpl span.ok{border-color:#16a34a}.wm-tpl span.pend{border-color:#f59e0b}.wm-tpl span.bad{border-color:#dc2626}
@@ -400,7 +400,7 @@ admin_page_head('Every WhatsApp, SMS and email the system sent — who got it, w
       <?php foreach ($byPur as $r): ?>
         <tr><td><a href="<?= $e($qs(['q' => (string) $r['k']])) ?>"><?= $e($purLabels[(string) $r['k']] ?? ucfirst(str_replace('_', ' ', (string) $r['k']))) ?></a></td>
           <td class="n"><?= (int) $r['total'] ?></td><td class="n"><?= (int) $r['delivered'] ?></td><td class="n"><?= (int) $r['seen'] ?></td>
-          <td class="n" style="<?= (int) $r['failed'] > 0 ? 'color:#dc2626;font-weight:700' : '' ?>"><?= (int) $r['failed'] ?></td><td class="n"><?= number_format((float) $r['cost'], 2) ?></td></tr>
+          <td class="n" style="<?= (int) $r['failed'] > 0 ? 'color:var(--danger);font-weight:700' : '' ?>"><?= (int) $r['failed'] ?></td><td class="n"><?= number_format((float) $r['cost'], 2) ?></td></tr>
       <?php endforeach; ?>
       </tbody></table></div>
   </div></div>
