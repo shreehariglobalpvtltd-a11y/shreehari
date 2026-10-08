@@ -1135,10 +1135,13 @@ function toast(msg) {
   const t = $('#toast'); if (!t) return;
   t.textContent = msg;
   let lift = 0;
+  /* D2-08: over an open sign-in / OTP / cancel sheet the toast sits at the
+     top, above the sheet (depth.css, body.shg-modal-open) - no lift. */
+  const overSheet = document.body.classList.contains('shg-modal-open');
   try {
-    const bar = document.querySelector('.view.active .flow-actions');
+    const bar = overSheet ? null : document.querySelector('.view.active .flow-actions');
     if (bar && getComputedStyle(bar).position === 'fixed' && bar.offsetHeight) lift = Math.max(lift, window.innerHeight - bar.getBoundingClientRect().top);
-    const bn = document.querySelector('.bottom-nav');
+    const bn = overSheet ? null : document.querySelector('.bottom-nav');
     if (bn && getComputedStyle(bn).display !== 'none' && bn.offsetHeight) lift = Math.max(lift, window.innerHeight - bn.getBoundingClientRect().top);
   } catch (e) {}
   t.style.bottom = lift > 0 ? Math.round(lift + 12) + 'px' : '';
@@ -1618,12 +1621,76 @@ function ticketQrPayload(b, r) {
    popstate handler in 05-router.js reads window._shgModalClosingBack to
    distinguish programmatic close (which walks history itself to consume
    its own entry) from a real user back tap (which the browser has
-   already walked, so history.back must NOT be re-called). */
+   already walked, so history.back must NOT be re-called).
+
+   8 Oct 2026 (D2-08): a real dialog for keyboard, switch and screen-reader
+   users. It is named by its first heading (aria-labelledby), the page
+   behind it is `inert` while it is open (every direct <body> child except
+   the dialog itself and #toast, which must keep announcing OTP and
+   validation messages), Tab / Shift+Tab cycle inside the box (the only
+   guard on WebViews without `inert`, and a belt-and-braces one elsewhere),
+   and closing hands focus back to whatever opened it. While it is open the
+   toast moves to the top of the screen, above the sheet (depth.css), so an
+   OTP error is never hidden under the backdrop or the keyboard. */
+const SHG_MODAL_FOCUSABLE = 'a[href],area[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),summary,[tabindex]:not([tabindex="-1"]),[contenteditable="true"]';
+function shgModalFocusables(m) {
+  const box = m && m.querySelector('.m-box');
+  if (!box) return [];
+  return Array.prototype.filter.call(box.querySelectorAll(SHG_MODAL_FOCUSABLE), (el) => {
+    if (el.closest('[hidden],[inert]')) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 || r.height > 0 || el === document.activeElement;
+  });
+}
+function shgModalName(m) {
+  const box = $('#shgModalBox');
+  if (!m || !box) return;
+  const old = document.getElementById('shgModalTitle');
+  if (old && !box.contains(old)) old.removeAttribute('id');
+  const h = box.querySelector('h1,h2,h3,.m-title') || box.querySelector('b,strong');
+  if (h) {
+    if (!h.id || h.id === 'shgModalTitle') h.id = 'shgModalTitle';
+    m.setAttribute('aria-labelledby', h.id);
+    m.removeAttribute('aria-label');
+  } else {
+    m.removeAttribute('aria-labelledby');
+    m.setAttribute('aria-label', (typeof t === 'function' && t('mDialog') !== 'mDialog') ? t('mDialog') : 'Dialog');
+  }
+}
 function openModal(html) {
   const m = $('#shgModal');
+  const wasOpen = m.classList.contains('open');
+  /* the trigger, remembered once per open (a second openModal swaps the
+     content of a sheet that is already up - the OTP step - and must not
+     overwrite it with a field inside the sheet) */
+  if (!wasOpen || !m._ret) {
+    const ae = document.activeElement;
+    m._ret = (ae && ae !== document.body && !m.contains(ae)) ? ae : null;
+  }
   $('#shgModalBox').innerHTML = html;
+  shgModalName(m);
   m.classList.add('open');
   document.body.style.overflow = 'hidden';
+  document.body.classList.add('shg-modal-open');
+  if (!m._inerted) {
+    m._inerted = [];
+    Array.prototype.forEach.call(document.body.children, (el) => {
+      if (el === m || el.id === 'toast' || /^(SCRIPT|STYLE|LINK|TEMPLATE|NOSCRIPT)$/.test(el.tagName)) return;
+      if (el.hasAttribute('inert')) return;              // someone else's - leave it
+      el.setAttribute('inert', '');
+      m._inerted.push(el);
+    });
+  }
+  /* The caller usually focuses its first field right after this returns; if
+     nothing inside the sheet has focus a moment later, the box takes it (no
+     keyboard pops up, and the next Tab lands on the first control). */
+  setTimeout(() => {
+    if (!m.classList.contains('open') || m.contains(document.activeElement)) return;
+    const box = m.querySelector('.m-box');
+    if (!box) return;
+    if (!box.hasAttribute('tabindex')) box.setAttribute('tabindex', '-1');
+    try { box.focus({ preventScroll: true }); } catch (e) {}
+  }, 60);
   try {
     if (!m.dataset.pushed) {
       history.pushState({ shgModal: 1 }, '', location.href);
@@ -1636,6 +1703,11 @@ function closeModal(fromPopState) {
   if (!m || !m.classList.contains('open')) return;   // idempotent
   m.classList.remove('open');
   document.body.style.overflow = '';
+  document.body.classList.remove('shg-modal-open');
+  (m._inerted || []).forEach((el) => { try { el.removeAttribute('inert'); } catch (e) {} });
+  m._inerted = null;
+  const ret = m._ret;
+  m._ret = null;
   const wasPushed = m.dataset.pushed === '1';
   m.dataset.pushed = '';
   if (wasPushed && !fromPopState) {
@@ -1644,4 +1716,22 @@ function closeModal(fromPopState) {
        so the URL doesn't accumulate one dead back-step per modal open. */
     try { window._shgModalClosingBack = true; history.back(); } catch (e) { window._shgModalClosingBack = false; }
   }
+  /* focus goes back to the control that opened the sheet, if it is still
+     on the page and visible (a sign-in may have re-rendered the view) */
+  try {
+    if (ret && ret.isConnected && ret.getClientRects().length && !ret.closest('[inert]')) ret.focus({ preventScroll: true });
+  } catch (e) {}
 }
+/* The Tab loop: focus can never walk out of an open sheet. */
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Tab' || e.altKey || e.ctrlKey || e.metaKey) return;
+  const m = document.getElementById('shgModal');
+  if (!m || !m.classList.contains('open')) return;
+  const f = shgModalFocusables(m);
+  if (!f.length) { e.preventDefault(); return; }
+  const first = f[0], last = f[f.length - 1], ae = document.activeElement;
+  const inside = m.contains(ae) && ae !== m;
+  const box = m.querySelector('.m-box');
+  if (e.shiftKey && (!inside || ae === first || ae === box)) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && (!inside || ae === last)) { e.preventDefault(); first.focus(); }
+}, true);
