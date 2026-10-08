@@ -70,7 +70,8 @@ final class WhereIs
         $now = $now ?? time();
         $leg = Database::fetch(
             "SELECT bl.schedule_id, bl.travel_date, bl.boarding_stop, bl.drop_stop, bl.boarding_time,
-                    s.route_id, s.status AS trip_status, s.delay_minutes, s.delay_note, s.bus_id,
+                    s.route_id, s.status AS trip_status, s.delay_minutes, s.delay_note, s.bus_id, s.slot,
+                    COALESCE(s.dep_time_override, r.dep_time) AS eff_dep_time,
                     r.from_city, r.to_city, r.dep_time, r.arr_time, r.day_offset, r.route_code,
                     b.bus_number, b.bus_name
                FROM booking_legs bl
@@ -113,6 +114,14 @@ final class WhereIs
         $out['delayMin']  = max(0, (int) ($leg['delay_minutes'] ?? 0));
         $out['delayNote'] = (string) ($leg['delay_note'] ?? '');
         $out['tripStatus'] = (string) ($leg['trip_status'] ?? '');   // schedules.status — 'departed' once the office pressed "Bus started"
+        /* THIS passenger's pickup has come (review, 8 Oct 2026): the trip
+           state is per schedule and timed from the origin, so a 23:00 Mehsana
+           passenger read "The bus has left" from 13:05. Only after their own
+           pickup moment may a page say the bus has gone. */
+        $pickTs = Boarding::pickupTs((string) $leg['travel_date'], (string) ($leg['boarding_stop'] ?? ''),
+            $leg['boarding_time'] !== null ? (string) $leg['boarding_time'] : null, (string) ($leg['eff_dep_time'] ?? $leg['dep_time']),
+            (string) $leg['dep_time'], (int) ($leg['slot'] ?? 1), (int) $leg['route_id']);
+        $out['pickupPassed'] = $pickTs > 0 && $now >= $pickTs;
 
         // Trip state from the same ladder the office board uses.
         $trip = TripStatus::editableFor((int) $leg['schedule_id'], $now);

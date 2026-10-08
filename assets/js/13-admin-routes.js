@@ -2036,6 +2036,11 @@ function shgToastLooksBad(msg) {
 
     var reloading = false;
     var updateTriggered = false;   // true only once WE ask a worker to activate
+    /* sw.js skips waiting on install, so during a deferred update (results /
+       seats / checkout) the new worker takes control by itself; remember
+       that, and the later tap / route change reloads at once (review, 8 Oct
+       2026 - the banner used to sit there forever). */
+    var deferredUpd = false, pendingReload = false;
     var t = (typeof window.t === 'function') ? window.t : function (k) { return null; };
 
     /* Reload is unsafe only where the passenger has un-submitted typed input.
@@ -2082,6 +2087,11 @@ function shgToastLooksBad(msg) {
       // Ask the waiting worker to activate now. controllerchange (below)
       // then does the actual reload once it has taken control.
       updateTriggered = true;
+      if (pendingReload || worker.state === 'activated' || navigator.serviceWorker.controller === worker) {
+        reloading = true;
+        try { location.reload(); } catch (e) {}
+        return;
+      }
       try { worker.postMessage({ type: 'shg-skip-waiting' }); } catch (e) {}
     }
 
@@ -2089,6 +2099,7 @@ function shgToastLooksBad(msg) {
       if (safeToReload()) {
         applyUpdate(worker);
       } else {
+        deferredUpd = true;
         /* Mid-checkout with typed data: never silently yank the page. Offer a
            TAPPABLE banner so a user stuck on a broken checkout always has a
            one-tap escape (5 Sep 2026 — the passive toast let them stay stale
@@ -2098,7 +2109,9 @@ function shgToastLooksBad(msg) {
             var bn = document.createElement('button');
             bn.id = 'shgUpdBanner'; bn.type = 'button';
             bn.textContent = '🆕 New version ready — tap to update';
-            bn.style.cssText = 'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:99999;'
+            // top of the screen: the seat / checkout Continue bar lives at the bottom
+            bn.style.cssText = 'position:fixed;left:50%;top:calc(12px + env(safe-area-inset-top));transform:translateX(-50%);z-index:99999;'
+              + 'white-space:nowrap;max-width:calc(100vw - 32px);overflow:hidden;text-overflow:ellipsis;'
               + 'background:#F07C1F;color:#fff;border:0;border-radius:24px;padding:12px 20px;font-size:15px;'
               + 'font-weight:700;box-shadow:0 6px 20px rgba(0,0,0,.3);cursor:pointer';
             bn.addEventListener('click', function () { bn.textContent = 'Updating…'; applyUpdate(worker); });
@@ -2145,7 +2158,8 @@ function shgToastLooksBad(msg) {
     navigator.serviceWorker.addEventListener('controllerchange', function () {
       // Ignore the initial claim on a first-ever visit; only reload for an
       // update this page actually asked for.
-      if (reloading || !updateTriggered) return;
+      if (reloading) return;
+      if (!updateTriggered) { if (deferredUpd) pendingReload = true; return; }
       reloading = true;
       try { location.reload(); } catch (e) {}
     });

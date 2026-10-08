@@ -54,8 +54,8 @@ try {
 
     /* Phone-miss throttle (8 Oct 2026, D8-M2). PNRs are sequential, so a
        known mobile number could be tried against every PNR to find that
-       traveller's trips. Each WRONG phone counts against that phone (8 an
-       hour) and this IP (30 an hour); once either budget is spent, even the
+       traveller's trips. Each WRONG phone counts against that phone from this
+       IP (8 an hour) and this IP (30 an hour); once either budget is spent, even the
        RIGHT phone gets only the partial answer, so the throttle itself never
        says yes or no. Staff and the signed-in owner are not counted. */
     $missSpent = static function (string $bucket, string $id, int $max, int $window): bool {
@@ -75,12 +75,21 @@ try {
     };
     $ownsIt = $staffSees || $sessionOwner;
     if (!$ownsIt && $phone !== '') {
-        $spent = $missSpent('track_phone_miss', $phone, 8, 3600)
+        /* The phone bucket is keyed on phone + IP (review, 8 Oct 2026): keyed
+           on the phone alone, anyone who knew a customer's mobile could spend
+           its budget from elsewhere and lock the real owner out for an hour.
+           The app's own sync of a "for someone else" ticket (the account's
+           phone is that booking's alt_phone, or the account booked it) is
+           not a miss either - it still gets only the partial answer. */
+        $phoneKey = $phone . '|' . Security::clientIp();
+        $spent = $missSpent('track_phone_miss', $phoneKey, 8, 3600)
               || $missSpent('track_miss_ip', Security::clientIp(), 30, 3600);
+        $ownSide = $phone === normalisePhone((string) ($detail['alt_phone'] ?? ''))
+                || (Auth::isUser() && (int) (Auth::user()['id'] ?? 0) === (int) ($detail['user_id'] ?? -1));
         if ($phoneMatch && !$spent) {
             $ownsIt = true;
-        } elseif (!$phoneMatch) {
-            Security::rateLimit('track_phone_miss', $phone, 8, 3600);
+        } elseif (!$phoneMatch && !$ownSide) {
+            Security::rateLimit('track_phone_miss', $phoneKey, 8, 3600);
             Security::rateLimit('track_miss_ip', Security::clientIp(), 30, 3600);
         }
     }

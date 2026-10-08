@@ -82,7 +82,9 @@ $head = ['icon' => '🚌', 'title' => $T['notLive'], 'sub' => $T['notLiveSub'], 
 $meta = $T['refresh'];
 if ($authed && $status !== null) {
     $st   = (string) $status['state'];
-    $gone = in_array($st, ['departed', 'on_route'], true) || (string) ($status['tripStatus'] ?? '') === 'departed';
+    // "Left" only once THIS passenger's own pickup time has come (review, 8 Oct 2026).
+    $gone = !empty($status['pickupPassed'])
+        && (in_array($st, ['departed', 'on_route'], true) || (string) ($status['tripStatus'] ?? '') === 'departed');
     if (($booking['status'] ?? '') !== 'confirmed') {
         $head = ['icon' => '⏳', 'title' => $T['ticketOnly'], 'sub' => '', 'tone' => 'muted'];
     } elseif ($st === 'cancelled') {
@@ -104,7 +106,7 @@ if ($authed && $status !== null) {
     } elseif (!empty($status['lastKnown'])) {
         // D7-06: a GPS gap mid-journey — where it was last seen, never "not live yet".
         $head = ['icon' => '⏸', 'title' => sprintf($T['lastKnown'], (string) $status['lastAt'], (string) $status['lastStop'], (int) $status['lastAgeMin']),
-                 'sub' => $T['gone'], 'tone' => 'muted'];
+                 'sub' => $gone ? $T['gone'] : '', 'tone' => 'muted'];
     } elseif ((int) ($status['delayMin'] ?? 0) > 0) {
         $head = ['icon' => '⏰', 'title' => sprintf($T['delay'], (int) $status['delayMin']), 'sub' => (string) ($status['delayNote'] ?? ''), 'tone' => 'warn'];
     } elseif ($gone) {
@@ -220,14 +222,14 @@ h1{font-size:22px;margin:4px 0 2px}
   function fill(s, a){ return String(s).replace(/%(\d)\$[ds]/g, function(m, n){ var v = a[+n - 1]; return v === undefined || v === null ? '' : String(v); }); }
   function paint(d){
     var card = $('headCard'), icon = '🚌', title = T.notLive, sub = T.notLiveSub, tone = 'muted', live = !!d.live;
-    var gone = d.state === 'departed' || d.state === 'on_route' || d.tripStatus === 'departed';
+    var gone = !!d.pickupPassed && (d.state === 'departed' || d.state === 'on_route' || d.tripStatus === 'departed');
     if (d.bookingStatus !== 'confirmed') { icon = '⏳'; title = T.ticketOnly; sub = ''; }
     else if (d.state === 'cancelled') { icon = '❌'; title = T.cancelled; sub = ''; tone = 'bad'; }
     else if (d.state === 'arrived' || d.state === 'completed') { icon = '🏁'; title = T.arrived; sub = ''; tone = 'ok'; }
     else if (live && d.passed) { icon = '⚠️'; title = T.passed; sub = ''; tone = 'warn'; }
     else if (live) { icon = '📍'; title = T.live; tone = 'ok';
       sub = d.etaMin !== null ? (fill(T.eta, [d.etaMin, d.stop]) + ' · ' + T.km.replace('%s', d.km)) : ''; }
-    else if (d.lastKnown) { icon = '⏸'; title = fill(T.lastKnown, [d.lastAt, d.lastStop, d.lastAgeMin]); sub = T.gone; }
+    else if (d.lastKnown) { icon = '⏸'; title = fill(T.lastKnown, [d.lastAt, d.lastStop, d.lastAgeMin]); sub = gone ? T.gone : ''; }
     else if (d.delayMin > 0) { icon = '⏰'; title = T.delay.replace('%d', d.delayMin); sub = d.delayNote || ''; tone = 'warn'; }
     else if (gone) { title = T.gone; sub = ''; }
     card.className = 'card head tone-' + tone;

@@ -713,7 +713,9 @@ function pickSeatsSmart(floors, n, patient, gender) {
   const unitOf = (s) => unitKeyJS(s.id, coach);
   const byUnit = {};
   all.forEach(s => { const u = unitOf(s); (byUnit[u] = byUnit[u] || []).push(s); });
-  const isFree = (s) => !s.btn.disabled && !s.btn.classList.contains('sel');
+  // aria-disabled = a private berth outside the chosen Single/Double size (updateTierUI);
+  // the tap guard refuses it, so the engine must never propose it.
+  const isFree = (s) => !s.btn.disabled && !s.btn.classList.contains('sel') && s.btn.getAttribute('aria-disabled') !== 'true';
   const chosen = [];
   const isChosen = (s) => chosen.indexOf(s) >= 0;
   const cfg = seatAiCfg();
