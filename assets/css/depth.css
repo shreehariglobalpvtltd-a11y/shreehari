@@ -1313,3 +1313,52 @@ body:has(#aiPanel.open) #pwaSheet, body:has(#aiPanel.open) #pwaBackdrop { displa
   .home-hero .hh-act, .bottom-nav .bn-item .bi { transition: none !important; }
 }
 @media print { .home-hero, .home-feat { display: none !important; } }
+
+/* =====================================================================
+   FC — 8 Oct 2026: type floor, sign-in sheet, Display "Auto", track screen
+   (D1-08, D2-10, D2-08, D2-14, D7-09, Phase 12). Appended last; the seat
+   view is not touched here (its 13px labels / 44px berths are the seat-map block).
+   ===================================================================== */
+
+/* ---- 1. type floor on customer screens (sizes = ds.css --fs-* tokens) ---- */
+/* the date strip: weekday / month / Bikram Sambat date */
+.search-card .d-btn .d-day, .search-card .d-btn .d-mo, .search-card .d-btn .d-bs { font-size: var(--fs-micro, 12px) !important; }
+/* bottom bar labels ("मेरो टिकट" still fits one line at 360px) */
+.bottom-nav .bn-item, .bottom-nav.bn5 .bn-item .bl { font-size: 12.5px !important; }
+/* form labels: 14px */
+.search-card .s-field label, .search-card .s-lbl, #quick-ticket .qt-lbl,
+#view-checkout .field label, .shg-modal .field label { font-size: var(--fs-label, 14px) !important; }
+#view-checkout .field label small, .shg-modal .field label small { font-size: 12.5px !important; }
+#view-checkout .chip { font-size: 12.5px !important; }   /* some are built with an inline 11px */
+/* fares, dates and seats-left stand out */
+.search-card .fare-live .fl-lbl, .search-card .fare-live .fl-npr { font-size: var(--fs-caption, 13px) !important; }
+.qt-plan-facts small { font-size: 12.5px !important; }
+.qt-plan-facts em, .qt-plan-head span { font-size: var(--fs-caption, 13px) !important; }
+.qt-tnc { font-size: 12.5px !important; }
+.qt-head .qt-badge { font-size: var(--fs-micro, 12px) !important; }
+
+/* ---- 2. the sign-in / OTP / cancel sheet (D2-08) ---- */
+/* the box takes focus when the caller focuses nothing - no ring on a box */
+.shg-modal .m-box:focus { outline: none; }
+/* the toast moves to the top, above the sheet and its backdrop, so an OTP or
+   validation message is never under the scrim or the keyboard */
+body.shg-modal-open #toast { z-index: 130; top: calc(12px + env(safe-area-inset-top, 0px)); bottom: auto !important; transform: translate(-50%, -160%); }
+body.shg-modal-open #toast.show { transform: translate(-50%, 0); }
+
+/* ---- 3. menu: Display has four choices (Auto first), 12px captions ---- */
+.mm-display-opts { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.mm-display-opts button small { font-size: var(--fs-micro, 12px); line-height: 15px; }
+/* Sound / Vibration / Voice guide switches: ON is green in dark too (it was
+   only the knob's side), so the state never rests on position alone */
+:root[data-theme="dark"]:not([data-display="amoled"]) .feel-sw.on { background: #1C6B47; }
+
+/* ---- 4. the track / map screen (D2-14) ---- */
+#view-nav .sn-chip .snl, #view-nav .sn-fav-chip .snl, #view-nav .sn-ly .snl { font-size: inherit; }
+#view-nav .sn-chip, #view-nav .sn-fav-chip { font-size: 13px; }
+#view-nav .sn-ex-hd { font-size: var(--fs-micro, 12px); letter-spacing: .3px; }
+#view-nav .sn-mode, #view-nav .sn-fld .mini, #view-nav .sn-trackcard .ttl small { font-size: var(--fs-micro, 12px); }
+@media (max-width: 640px) { #view-nav .sn-ss button { font-size: var(--fs-micro, 12px); } }
+#view-nav .sn-peekbar .pk-txt small, #view-nav .sn-livebtn { font-size: 12.5px; }
+/* "Get directions" is disabled until a start and a destination exist: say so */
+#view-nav .sn-go-why { margin: 6px 14px 0; font: 600 12.5px/1.45 var(--font-sans); color: var(--sm); }
+#view-nav .sn-go-why[hidden] { display: none; }

@@ -6,6 +6,11 @@
    (D2-07) one visually-hidden utility for labels that must exist for screen
    readers only. */
 .sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+/* 8 Oct 2026 (D1-08 / D2-10): the type scale as tokens, so a floor can be
+   enforced from one place (assets/css/depth.css, "type floor"). Nothing a
+   customer must read goes under --fs-micro; form labels use --fs-label;
+   body copy and inputs --fs-body (16px also stops iOS zooming a field). */
+:root{--fs-micro:12px;--fs-caption:13px;--fs-label:14px;--fs-body:16px;--fs-title-sm:18px;--fs-title-md:20px;--fs-title-lg:24px;--fs-fare:24px}
 :root{--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--space-12:48px;--radius-xs:8px;--radius-sm:10px;--radius-md:14px;--radius-lg:18px;--radius-xl:22px;--radius-pill:999px;--tap-min:48px;--tap-compact:44px;--appbar-h:56px;--bottomnav-h:64px;--sidenav-w:248px;--content-max:1120px;--seat-size:48px;--font-brand:Cinzel, Georgia, serif;--font-sans:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans Devanagari", sans-serif;--font-mono:ui-monospace, "SF Mono", SFMono-Regular, "Roboto Mono", Menlo, Consolas, monospace}
 .sg-t-wordmark{font-family:var(--font-brand);font-size:20px;line-height:24px;font-weight:800;letter-spacing:0.02em}
 .sg-t-title-xl{font-family:var(--font-sans);font-size:28px;line-height:34px;font-weight:800;letter-spacing:-0.01em}
