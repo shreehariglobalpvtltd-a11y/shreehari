@@ -677,7 +677,14 @@ async function refreshMyBookingsFromServer(force) {
          traveller — sign in again silently with the same name + number. */
       if (USER) USER.srvAt = 0;
       const ok = await ensureCustomerSession(USER.name, USER.phone, USER.country || '');
-      if (!ok) throw e;
+      if (!ok) {
+        /* no server session and no way back without the code (the office
+           may have closed the no-code door): say so on the page */
+        const wasNeed = MY_NEEDS_OTP;
+        MY_NEEDS_OTP = true; _myBkAt = Date.now();
+        if (USER && USER.verified) setUser(Object.assign({}, USER, { verified: false, otpVerified: false }));
+        return wasNeed !== true;
+      }
       d = await shgApi.get(q);
     }
     _myBkAt = Date.now();
