@@ -302,7 +302,7 @@ $schedules = TripStatus::annotate($schedules);
  *  coloured the same way everywhere in the admin. */
 function trips_urgency(float $h): array
 {
-    if ($h < 0)  { return ['departed', '#777', '#eee',     'Departed']; }
+    if ($h < 0)  { return ['departed', '#fff', '#475569',  'Departed']; }
     if ($h < 3)  { return ['very',     '#fff', '#b02a2a',  'in ' . number_format($h, 1) . 'h']; }
     if ($h < 24) { return ['urgent',   '#7a5200', '#ffe6b0', 'in ' . number_format($h, 0) . 'h']; }
     return ['ok', '#0a6b3b', '#d7f4e3', 'in ' . number_format($h / 24, 0) . 'd'];
@@ -624,7 +624,7 @@ $kT      = CSRF_TOKEN_NAME;
           bg = t.stateColor; fg = '#fff'; label = t.stateLabel;
         } else {
           var h = t.hours;
-          if (h < 0)       { bg = '#eee';     fg = '#777';    label = 'Departed'; }
+          if (h < 0)       { bg = '#475569';  fg = '#fff';    label = 'Departed'; }
           else if (h < 3)  { bg = '#b02a2a';  fg = '#fff';    label = 'in ' + h.toFixed(1) + 'h'; }
           else if (h < 24) { bg = '#ffe6b0';  fg = '#7a5200'; label = 'in ' + Math.round(h) + 'h'; }
           else             { bg = '#d7f4e3';  fg = '#0a6b3b'; label = 'in ' + Math.round(h / 24) + 'd'; }

@@ -83,8 +83,19 @@ try {
 
     /* ---- identity: who does this device belong to? ------------------- */
     $user  = Auth::user();
-    $phone = $user !== null ? normalisePhone((string) ($user['phone'] ?? '')) : '';
     $userId = $user !== null ? (int) ($user['id'] ?? 0) : 0;
+    /* 8 Oct 2026: alerts go to every booking of the device's phone, so the
+       phone only names this device after the WhatsApp code - a name + mobile
+       sign-in is never proof (owner rule). Unverified: per-ticket only. */
+    $phone = '';
+    if ($user !== null) {
+        if (!class_exists('CustomerProfile')) {
+            require_once __DIR__ . '/../includes/customerprofile.php';
+        }
+        if ($userId > 0 && CustomerProfile::verifiedUserId() === $userId) {
+            $phone = normalisePhone((string) ($user['phone'] ?? ''));
+        }
+    }
 
     $bookingId = null;
     $pnr = strtoupper(Security::clean((string) Response::field('pnr', ''), 40));
@@ -93,13 +104,12 @@ try {
         $booking = BookingService::findByPnr($pnr);
         if ($booking !== null) {
             $bPhone = normalisePhone((string) ($booking['contact_phone'] ?? ''));
-            $owns   = ($phone !== '' && !isPlaceholderPhone($bPhone) && $phone === $bPhone)
+            $owns   = Auth::customerMayOpen($booking)
                    || ($key !== '' && Ticket::checkDownloadToken($pnr, $key));
             if ($owns) {
+                // This ticket only - a keyed link or this browser's own sale
+                // does not hand over the alerts of the phone's other tickets.
                 $bookingId = (int) $booking['id'];
-                if ($phone === '' && $bPhone !== '' && $bPhone !== '0000000000') {
-                    $phone = $bPhone;   // keyed ticket link: the device belongs to that passenger
-                }
             }
         }
     }
