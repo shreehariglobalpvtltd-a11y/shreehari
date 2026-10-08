@@ -68,6 +68,7 @@ const CORE_SUITES = [
     'forced-password-change-test.php' => 'a temporary password cannot be kept',
     'otp-forced-password-test.php' => '...and the OTP door cannot skip that',
     'asset-version-test.php'       => 'no ?v= stamp has drifted from sw.js',
+    'seatmap-premium-test.php'     => 'premium seat map: hold clock in any zone, expiry runs once, women-only refused on tap, patient front rows, private cabins',
     'staff-any-date-test.php'      => 'staff may book any date; customers may not',
     'quick-ticket-test.php'        => 'name + mobile → auto bus/seat/fare → confirmed ticket',
     'smart-v2-test.php'            => 'master prompt 2.0: Seat AI settings, gender at confirm, pickup map, template library, opt-in',
