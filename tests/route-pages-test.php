@@ -52,7 +52,9 @@ if (get('/index.php')['code'] !== 200) {
     check('sharing fare in rupees', str_contains($p['body'], '₹' . number_format($f['sharing'])));
     check('refund ladder rows', substr_count($p['body'], 'before departure') >= 3);
     check('six FAQ entries', substr_count($p['body'], '<details>') === 6);
-    check('book online, WhatsApp and call', str_contains($p['body'], 'href="/#/"') && str_contains($p['body'], 'https://wa.me/') && str_contains($p['body'], 'href="tel:'));
+    // 8 Oct 2026 (D3-18): "Book" keeps the page's direction + Gujarat town
+    // (/?src=route&dir=go|back&town=…#/) instead of a bare /#/.
+    check('book online, WhatsApp and call', str_contains($p['body'], 'href="/?src=route&amp;dir=') && str_contains($p['body'], '#/"') && str_contains($p['body'], 'https://wa.me/') && str_contains($p['body'], 'href="tel:'));
     check('light: no app bundle', !str_contains($p['body'], '05-router.js') && strlen($p['body']) < 40000, strlen($p['body']) . ' bytes');
 
     echo "\n-- B. structured data, hreflang, Devanagari --\n";
