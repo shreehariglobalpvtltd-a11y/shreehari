@@ -11,7 +11,10 @@
  *
  *   1. holding the keyed download token `k` (every link the system
  *      generates carries it — Ticket::downloadUrl());
- *   2. the signed-in customer whose mobile number is on the booking;
+ *   2. the customer who owns it — Auth::customerMayOpen(): this browser
+ *      session booked it, or the session proved the number on the booking
+ *      with the WhatsApp code (8 Oct 2026: a typed name + mobile alone is
+ *      never proof, and the walk-in placeholder never is);
  *   3. a signed-in staff member allowed to see bookings.
  *
  * A link WITHOUT a key is not rejected outright — tickets already sent
@@ -47,17 +50,17 @@ try {
         exit('No booking found with that reference.');
     }
 
+    /* Status before authorisation, on purpose (D6-17): the app still fetches
+       some tickets keylessly, and a 403 / 410 is what makes sw.js drop a
+       saved copy of a ticket that is no longer valid. Once every fetch
+       carries the key (D6-03), authorisation can move above this. */
+    if (in_array((string) $booking['status'], ['cancelled', 'rejected'], true)) {
+        http_response_code(403);
+        exit('This ticket was cancelled and is not valid — यो टिकट रद्द भएको छ');
+    }
     if ($booking['status'] !== 'confirmed') {
         http_response_code(403);
         exit('The ticket becomes available once your payment is verified.');
-    }
-
-    /* A voided ticket (cancelled / rejected / hard-deleted, 1 Oct 2026) is
-       gone for good at this URL: 410, which also tells sw.js to drop the
-       copy it saved for offline use. */
-    if ((int) Database::scalar('SELECT COALESCE(MAX(is_void), 0) FROM tickets WHERE booking_id = :b', ['b' => (int) $booking['id']], 0) === 1) {
-        http_response_code(410);
-        exit('This ticket has been voided and is no longer valid.');
     }
 
     /* A voided ticket (cancelled / rejected / hard-deleted, 1 Oct 2026) is
@@ -73,14 +76,9 @@ try {
     $allowed = Ticket::checkDownloadToken($pnr, $token);
 
     if (!$allowed) {
-        // The customer who owns the booking, identified by the mobile
-        // number on it rather than by knowing the reference.
-        $user = Auth::user();
-        if ($user !== null && normalisePhone((string) ($user['phone'] ?? '')) !== ''
-            && !isPlaceholderPhone((string) ($booking['contact_phone'] ?? ''))
-            && normalisePhone((string) ($user['phone'] ?? '')) === normalisePhone((string) ($booking['contact_phone'] ?? ''))) {
-            $allowed = true;
-        }
+        // The customer who owns the booking: booked in this browser session,
+        // or an OTP-verified owner. A typed / unverified number is not enough.
+        $allowed = Auth::customerMayOpen($booking);
     }
 
     if (!$allowed && Auth::can('bookings.view')) {

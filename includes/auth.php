@@ -1163,6 +1163,14 @@ final class Auth
         if (!Security::rateLimit('otp_hourly_' . $purpose, $identifier, 6, 3600)) {
             return ['ok' => false, 'error' => 'Too many codes requested. Please try again in an hour.'];
         }
+        /* 8 Oct 2026 (D8-M1): the two buckets above count per PURPOSE, so
+           login + register + verify + reset + cancel multiplied the hourly
+           allowance by five for one number. This one counts every code sent
+           to the number whatever it was for. Checked last, so a request the
+           per-purpose limits already refused is not counted here. */
+        if (!Security::rateLimit('otp_send_any', $identifier, 8, 3600)) {
+            return ['ok' => false, 'error' => 'Too many codes requested. Please try again in an hour.'];
+        }
 
         // Invalidate any outstanding codes for this purpose.
         Database::update(
@@ -1246,9 +1254,17 @@ final class Auth
     /**
      * Sign a customer in, creating the account on first use.
      *
+     * $proven (8 Oct 2026, owner: "name + phone is never proof"): true only
+     * when the number was just proven with the WhatsApp code (api/otp.php
+     * verify). The plain name + mobile door ('quick' / "continue without
+     * code") passes false: that session may book, but it never marks the
+     * number verified, never renames or re-countries an EXISTING account and
+     * never learns the name on file — anybody can type somebody else's
+     * mobile. A brand-new account still stores what was typed.
+     *
      * @return array<string, mixed> the user row
      */
-    public static function loginUser(string $phone, string $name = '', string $country = ''): array
+    public static function loginUser(string $phone, string $name = '', string $country = '', bool $proven = true): array
     {
         $phone = normalisePhone($phone);
 
@@ -1260,6 +1276,11 @@ final class Auth
         $countryCode = $cc === 'NP' ? '977' : ($cc === 'IN' ? '91' : '');
 
         $user = Database::fetch('SELECT * FROM users WHERE phone = :p LIMIT 1', ['p' => $phone]);
+        $isNew = $user === null;
+        // The name THIS session may show (api/config.php and the boot data
+        // read it). An unproven door must not turn a mobile number into the
+        // name on file, so it only ever sees what it typed itself.
+        $sessionName = null;
 
         if ($user === null) {
             $userId = Database::insert('users', [
@@ -1267,12 +1288,18 @@ final class Auth
                 'full_name'      => $name !== '' ? Security::clean($name, 120) : null,
                 'role'           => 'customer',
                 'country_code'   => $countryCode !== '' ? $countryCode : '91',
-                'phone_verified' => 1,
+                'phone_verified' => $proven ? 1 : 0,
                 'last_login_at'  => date('Y-m-d H:i:s'),
             ]);
 
             $user = Database::fetch('SELECT * FROM users WHERE id = :id', ['id' => $userId]);
             Logger::info('New customer registered', ['phone' => maskPhone($phone)]);
+        } elseif (!$proven) {
+            // Unproven sign-in to an existing account: only the visit is
+            // recorded. Name, country and the verified flag stay as they are.
+            Database::update('users', ['last_login_at' => date('Y-m-d H:i:s')], 'id = :id', ['id' => $user['id']]);
+            $typed       = $name !== '' ? Security::clean($name, 120) : '';
+            $sessionName = mb_strlen($typed) >= 2 ? $typed : '';
         } else {
             $update = [
                 'phone_verified' => 1,
@@ -1310,8 +1337,10 @@ final class Auth
             require_once __DIR__ . '/gemvault.php';
             GemVault::upsert(
                 (string) $user['phone'],
-                (string) ($user['full_name'] ?? ''),
-                $countryCode,
+                // An unproven door's name and country are claims, not facts:
+                // the vault (one-way enrichment) must not be renamed by them.
+                ($proven || $isNew) ? (string) ($user['full_name'] ?? '') : '',
+                ($proven || $isNew) ? $countryCode : '',
                 'app',
                 (int) $user['id']
             );
@@ -1324,7 +1353,7 @@ final class Auth
         $_SESSION[USER_SESSION_KEY] = [
             'id'        => (int) $user['id'],
             'phone'     => (string) $user['phone'],
-            'name'      => (string) ($user['full_name'] ?? ''),
+            'name'      => $sessionName ?? (string) ($user['full_name'] ?? ''),
             'role'      => (string) $user['role'],
             'ref_code'  => (string) ($user['ref_code'] ?? ''),
             'logged_in' => time(),
@@ -1422,5 +1451,91 @@ final class Auth
         }
 
         return (string) $_SESSION['lock_token'];
+    }
+
+    /* =================================================================
+     *  Customer private access (8 Oct 2026, owner: "name + phone alone is
+     *  never proof"). Booking stays open to anyone; READING or CHANGING a
+     *  booking — full history, the keyless ticket, verify, cancel, undo,
+     *  the AI's private tools, keyless live tracking — needs one of:
+     *    · the keyed link (k)              — checked by each caller
+     *    · this PNR was created in THIS browser session (book / Quick Ticket)
+     *    · an OTP-verified customer session whose account owns the booking
+     *    · authorised staff                — checked by each caller
+     *  The walk-in placeholder 0000000000 is never proof.
+     * ================================================================= */
+
+    /** Session key holding the PNRs this browser session created. */
+    public const OWN_PNRS_KEY = 'shg_own_pnrs';
+
+    /**
+     * The ONE customer rule. Staff and keyed-link rules stay in each caller.
+     *
+     * @param array<string, mixed> $booking a bookings row (pnr, contact_phone, user_id)
+     */
+    public static function customerMayOpen(array $booking): bool
+    {
+        $contact = (string) ($booking['contact_phone'] ?? '');
+        if (isPlaceholderPhone($contact)) {
+            return false;
+        }
+
+        $pnr = strtoupper(trim((string) ($booking['pnr'] ?? '')));
+        if ($pnr !== '' && in_array($pnr, self::ownPnrs(), true)) {
+            return true;
+        }
+
+        $user = self::user();
+        if ($user === null) {
+            return false;
+        }
+        if (!class_exists('CustomerProfile')) {
+            require_once __DIR__ . '/customerprofile.php';
+        }
+        $vid = CustomerProfile::verifiedUserId();
+        if ($vid <= 0 || $vid !== (int) ($user['id'] ?? 0)) {
+            return false;
+        }
+        if ((int) ($booking['user_id'] ?? 0) === $vid) {
+            return true;
+        }
+        $mine = normalisePhone((string) ($user['phone'] ?? ''));
+
+        return $mine !== '' && $mine === normalisePhone($contact);
+    }
+
+    /** Remember a PNR this session just created (book.php / Quick Ticket). Keeps the last 20. */
+    public static function rememberOwnPnr(string $pnr): void
+    {
+        $pnr = strtoupper(trim($pnr));
+        if ($pnr === '') {
+            return;
+        }
+        $list   = array_values(array_filter(self::ownPnrs(), static fn(string $p): bool => $p !== $pnr));
+        $list[] = $pnr;
+        $_SESSION[self::OWN_PNRS_KEY] = array_slice($list, -20);
+    }
+
+    /** @return list<string> the PNRs this browser session created, oldest first */
+    public static function ownPnrs(): array
+    {
+        $raw = $_SESSION[self::OWN_PNRS_KEY] ?? [];
+        if (!is_array($raw)) {
+            return [];
+        }
+        $out = [];
+        foreach ($raw as $p) {
+            if (is_string($p) && $p !== '') {
+                $out[] = strtoupper($p);
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /** Forget the session's own PNRs ("Not you?" / sign out on a shared phone). */
+    public static function forgetOwnPnrs(): void
+    {
+        unset($_SESSION[self::OWN_PNRS_KEY]);
     }
 }

@@ -160,6 +160,9 @@ $asStaff = static function (int $id): array {
 $asCustomer = static function (string $phone, string $name): array {
     unset($_SESSION[ADMIN_SESSION_KEY]);
     $_SESSION[USER_SESSION_KEY] = ['id' => 999999, 'phone' => $phone, 'full_name' => $name, 'role' => 'customer', 'last_seen' => time()];
+    // 8 Oct 2026: an "OTP customer" is one whose session passed api/otp.php
+    // verify — CustomerProfile::markVerified() leaves exactly this mark.
+    $_SESSION['shg_cust_otp'] = 999999;
     return AiTools::whoIsWeb();
 };
 $asGuest = static function (): array {
@@ -195,6 +198,16 @@ try {
     check('  keyed on that number', $cust['stageKey'] === 'web-' . WEB_CUST);
     check('nobody signed in is a guest with no number', $guest['role'] === 'customer' && $guest['phone'] === '' && $guest['adminId'] === 0);
     check('  and still has a stage key (hashed session, never blank)', str_starts_with((string) $guest['stageKey'], 'web-guest-') && strlen((string) $guest['stageKey']) > 12, $guest['stageKey']);
+    /* 8 Oct 2026 (owner: name + phone is never proof): signed in by name +
+       mobile WITHOUT the WhatsApp code = a guest to the assistant. */
+    $_SESSION[USER_SESSION_KEY] = ['id' => 999999, 'phone' => WEB_CUST, 'full_name' => 'Web Test Customer', 'role' => 'customer', 'last_seen' => time()];
+    unset($_SESSION['shg_cust_otp']);
+    $quick = AiTools::whoIsWeb();
+    $qT = $names(AiTools::catalogue($quick));
+    check('a name + mobile session without the code has NO number and is not verified', $quick['phone'] === '' && $quick['verified'] === false && str_starts_with((string) $quick['stageKey'], 'web-guest-'), json_encode(['p' => $quick['phone'], 'k' => $quick['stageKey']]));
+    check('  and is offered no cancel / rename / ticket fix', array_intersect(['cancel_ticket', 'rename_passenger', 'quote_ticket_fix', 'fix_ticket'], $qT) === []);
+    check('the OTP customer is marked verified and keeps those tools', $cust['verified'] === true && in_array('cancel_ticket', $names(AiTools::catalogue($cust)), true));
+    unset($_SESSION[USER_SESSION_KEY]);
 
     $_SESSION[ADMIN_SESSION_KEY] = ['id' => $bossId, 'username' => 'web-boss', 'full_name' => 'Web Test Boss', 'role' => 'support', 'phone' => WEB_BOSS, 'is_active' => 1, 'last_seen' => time()];
     $sup = AiTools::whoIsWeb();

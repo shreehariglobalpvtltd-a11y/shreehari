@@ -305,9 +305,11 @@ check('an agent gets a bot proposal (prefill from the typed line + live plan)',
 $aCust = req('POST', '/api/quick-ticket.php', ['jar' => $agentJar, 'form' => ['action' => 'customer_plan'], 'headers' => ['X-CSRF-Token: ' . $qtCsrf]]);
 check('staff cannot use the customer door (sales must be attributed)', $aCust['code'] === 403, 'HTTP ' . $aCust['code']);
 
-/* A real passenger sale over HTTP: the sale itself signs the passenger in
-   (no second request, no race with the session regeneration), so My
-   Bookings and the keyless ticket image are authorised straight away. */
+/* A real passenger sale over HTTP. Until 8 Oct 2026 the sale signed the
+   browser in as the typed number; now (owner: name + phone is never proof)
+   it signs NOBODY in and binds the PNR to this session instead, so the
+   keyless ticket image and the free undo still work for this ticket — and
+   My Bookings / personalisation need the WhatsApp code. */
 $rgPhone = '9100006001';
 try { pdo()->prepare("DELETE FROM users WHERE phone = ?")->execute([$rgPhone]); } catch (Throwable $e) {}
 /* One click (6 Sep 2026): the sale is PINNED to the card — a card that showed
@@ -330,20 +332,20 @@ $sJson = json_decode($cSell['body'], true);
 $rgPnr = (string) ($sJson['data']['pnr'] ?? '');
 check('a signed-out passenger sells themselves a Quick Ticket', $cSell['code'] === 200 && ($sJson['ok'] ?? false) === true && $rgPnr !== '', 'HTTP ' . $cSell['code'] . ' ' . substr($cSell['body'], 0, 140));
 check('  an unknown agent code never blocks it (direct sale, notice says so)', ($sJson['data']['agent']['applied'] ?? true) === false, json_encode($sJson['data']['agent'] ?? null));
-check('  the response carries the app payload + the signed-in user', !empty($sJson['data']['customer']['pnr']) && ($sJson['data']['user']['phone'] ?? '') === $rgPhone, json_encode($sJson['data']['user'] ?? null));
+check('  the response carries the app payload and signs nobody in (no user)', !empty($sJson['data']['customer']['pnr']) && !array_key_exists('user', (array) ($sJson['data'] ?? [])), json_encode($sJson['data']['user'] ?? null));
 $myB = req('GET', '/api/my-bookings.php?tab=all', ['jar' => $guest]);
-check('  My Bookings works at once on the same session', $myB['code'] === 200 && str_contains($myB['body'], $rgPnr), 'HTTP ' . $myB['code']);
+check('  the browser is not signed in by the sale (My Bookings → 401)', $myB['code'] === 401, 'HTTP ' . $myB['code']);
 $img = req('GET', '/download-ticket.php?pnr=' . rawurlencode($rgPnr) . '&img=1&view=1', ['jar' => $guest]);
 check('  the keyless ticket image is served to its owner (no 302)', $img['code'] === 200 && str_starts_with($img['body'], "\x89PNG"), 'HTTP ' . $img['code'] . ' ' . $img['location']);
 $pdf = req('GET', '/download-ticket.php?pnr=' . rawurlencode($rgPnr), ['jar' => $guest]);
 check('  …and so is the PDF', $pdf['code'] === 200 && str_starts_with($pdf['body'], '%PDF'), 'HTTP ' . $pdf['code']);
-/* One-click defaults: the next plan on the SAME (now signed-in) session is
-   personalised from this number's own verified ticket; a fresh guest sees
-   nothing of it. */
+/* One-click defaults: personalisation (history + NAME) needs a session that
+   proved the number with the WhatsApp code; the sale signs nobody in, so the
+   next plan on this session is a plain one, and a fresh guest sees nothing. */
 $pPlan = req('POST', '/api/quick-ticket.php', ['jar' => $guest, 'form' => ['action' => 'customer_plan', 'seats' => 0], 'headers' => ['X-CSRF-Token: ' . $appCsrf]]);
 $pJson = json_decode($pPlan['body'], true);
-check('  the next customer plan is personalised from the passenger\'s own history',
-    $pPlan['code'] === 200 && (int) ($pJson['data']['personal']['trips'] ?? 0) === 1 && ($pJson['data']['personal']['name'] ?? '') === 'Role Gate Pax',
+check('  the next customer plan is NOT personalised (nobody was signed in)',
+    $pPlan['code'] === 200 && empty($pJson['data']['personal']),
     'HTTP ' . $pPlan['code'] . ' ' . json_encode($pJson['data']['personal'] ?? null));
 $other = sys_get_temp_dir() . '/rg-other.jar'; @unlink($other);
 $oHome = req('GET', '/', ['jar' => $other]);

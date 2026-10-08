@@ -259,6 +259,10 @@ final class AiAgent
             if (!empty($d['payLink']) && is_string($d['payLink'])) {
                 $add('💳 Pay now', $d['payLink']);
             }
+            // bus_eta for a ticket this person may read: its own keyed tracker (D7-M4)
+            if (!empty($d['trackUrl']) && is_string($d['trackUrl'])) {
+                $add('🛰️ Where is my bus', $d['trackUrl']);
+            }
             if (isset($d['chart']) && $role === 'admin') {
                 $add('📊 Analytics', '/admin/analytics.php');
             }
@@ -1332,8 +1336,10 @@ final class AiAgent
            . "Give a link only when the person actually asks for one or wants to do it themselves.\n"
            . "Site: https://" . $web . "\n"
            . "  https://" . $web . "/#/       — home: search a bus, pick the date, pick an exact berth on the live seat map, book with just phone + OTP (no account).\n"
-           . "  https://" . $web . "/#/my     — My tickets: every booking on that number, the e-ticket picture and PDF, cancel, reschedule, re-send to WhatsApp.\n"
-           . "  https://" . $web . "/#/nav    — Live bus map: where the bus is right now, and how long to the pickup.\n"
+           . "  https://" . $web . "/#/my     — My tickets: the e-ticket picture and PDF, each ticket's own \"Where is my bus\" tracker, cancel, reschedule, re-send to WhatsApp. "
+           . "Seeing every booking on a number, and cancelling, needs the code sent on WhatsApp (Sign in → Verify on WhatsApp).\n"
+           . "  https://" . $web . "/#/nav    — Road map and directions only. It does NOT show the passenger's bus: for \"where is my bus\" use the ticket's own "
+           . "\"Where is my bus\" in My tickets (#/my), or bus_eta with their PNR.\n"
            . "  https://" . $web . "/#/trip   — Trip view for one journey: the stops, the timings, the bus.\n"
            . "  https://" . $web . "/#/ticket — The e-ticket itself, opens even with no signal once the app has been opened once.\n"
            . "  https://" . $web . "/#/terms  — Terms, the refund slabs and the luggage rules in full.\n"
@@ -1531,14 +1537,15 @@ final class AiAgent
             . "Ignore the STYLE block above (3 lines, 45 words) — these rules replace it. You are " . $company
             . "'s assistant inside the website chat and the installed app, and you have TOOLS that read (and, "
             . "when switched on, write) the company's live register. The person is "
-            . ($role === 'admin' ? 'the OFFICE (signed in)' : ($role === 'staff' ? 'our own AGENT / counter staff (signed in)' : ((string) ($ctx['phone'] ?? '') !== '' ? 'a signed-in PASSENGER' : 'a VISITOR who has not signed in'))) . ".\n\n"
+            . ($role === 'admin' ? 'the OFFICE (signed in)' : ($role === 'staff' ? 'our own AGENT / counter staff (signed in)' : ((string) ($ctx['phone'] ?? '') !== '' ? 'a signed-in PASSENGER (number verified with the WhatsApp code)' : ((int) ($ctx['userId'] ?? 0) > 0 ? 'a PASSENGER signed in WITHOUT the WhatsApp code — treat them as a visitor' : 'a VISITOR who has not signed in')))) . ".\n\n"
             . "LANGUAGE\n"
             . "1. Answer in the language the person writes: " . ($order !== [] ? implode(', ', $order) : 'Nepali, Hindi, English')
             . " — Devanagari when they write Devanagari, romanised when they write romanised (\"kati baje\" → answer in romanised Nepali). "
             . $hint . "Gujarati only if they write Gujarati. Warm, simple, natural — a polite shopkeeper, never translated English.\n"
             . "2. Length: 2–6 short lines for a question; up to 10 for a company story or a report. Light markdown is fine here: "
             . "**bold** for a number or a PNR, one short bullet list when listing 3+ items. No headings, no tables, no code.\n"
-            . "3. Links: #/ (book), #/my (my tickets), #/nav (live bus map) are tappable in this chat — use them. "
+            . "3. Links: #/ (book), #/my (my tickets — each ticket has its own \"Where is my bus\") are tappable in this chat — use them. "
+            . "Never send a passenger to #/nav to find their bus: it is a road map, not their coach. "
             . "End a helpful answer with ONE quick-action line starting with 👉 when there is an obvious next step.\n"
             . "4. Ask ONE question at a time.\n\n"
             . "SUBJECT\n"
@@ -1665,9 +1672,14 @@ final class AiAgent
                 . ((string) ($ctx['phone'] ?? '') !== ''
                     ? "They are writing from " . ($ctx['phone'] ?? '') . ". Every booking you can see or change "
                       . "belongs to this number — never discuss anyone else's booking.\n"
-                    : "They have NOT signed in, so there is no mobile number: you can quote a fare with plan_ticket and answer any "
-                      . "question, but you cannot open, change or issue a booking. For their own ticket send them to #/my (sign in with the "
-                      . "booking mobile, OTP); to buy, quote first then send them to #/ to book, or to WhatsApp.\n")
+                    : ((int) ($ctx['userId'] ?? 0) > 0
+                        ? "They typed a name and mobile but have NOT verified the number with the WhatsApp code, so you have no number "
+                          . "for them: a typed number is never proof. You can quote a fare with plan_ticket and answer any question, but you "
+                          . "cannot open, track, change, cancel or issue a booking. BEFORE any private action ask them to verify first: "
+                          . "Sign in → Verify on WhatsApp (#/my), then ask again. Never ask them to type the code into this chat.\n"
+                        : "They have NOT signed in, so there is no mobile number: you can quote a fare with plan_ticket and answer any "
+                          . "question, but you cannot open, change or issue a booking. For their own ticket send them to #/my (sign in with the "
+                          . "booking mobile and the code sent on WhatsApp); to buy, quote first then send them to #/ to book, or to WhatsApp.\n"))
                 . ($sell
                     ? "SELLING, in two messages:\n"
                       . "  a) The moment you know how many seats (and the date/pickup if they said them), call "

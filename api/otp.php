@@ -32,6 +32,8 @@ try {
         else                                                        { $country = ''; }
     }
     $hint = $country === 'NP' ? 'NP' : ($country === 'IN' ? 'IN' : null);
+    // The account's stored dialing code as the app's picker value; unknown stays ''.
+    $countryOut = static fn(?string $cc): string => (string) $cc === '977' ? 'NP' : ((string) $cc === '91' ? 'IN' : '');
 
     /* Sign OUT (6 Sep 2026, one-click Quick Ticket "Not you?"): the app
        used to only forget the passenger locally, so on a shared family
@@ -39,6 +41,7 @@ try {
        number's session. This ends the server session too. No number needed. */
     if ($action === 'logout') {
         unset($_SESSION['shg_cust_otp']);   // CustomerProfile's "code proven" mark
+        Auth::forgetOwnPnrs();              // "Not you?" — this browser's own tickets go too (8 Oct 2026)
         Auth::logoutUser();
         Response::success(['signedOut' => true], 'Signed out.');
     }
@@ -48,17 +51,22 @@ try {
     }
 
     // ------------------------------------------------------------------
-    //  Sign-in = NAME + MOBILE, nothing else (owner's rule, 4 Sep 2026).
-    //  The same two details go straight onto the ticket, and one account
-    //  books as many seats / tickets as it likes. A brand-new number is
-    //  registered on the spot; a returning traveller is welcomed back.
-    //  Guardrails: a suspended account is refused; a name is required the
-    //  first time (afterwards the name on file stands in); and the whole
-    //  action is rate-limited per IP so nobody can enumerate numbers.
-    //  The OTP path below still exists for cancellations and as a fallback.
+    //  'quick' = name + mobile WITHOUT the code ("continue without code").
+    //  8 Oct 2026 (owner, overrides the 4 Sep "name + mobile is the sign-in"
+    //  rule): this session may BOOK, but name + phone is never proof, so it
+    //  opens nothing private — no booking history beyond the tickets this
+    //  browser made, no keyless ticket, no cancel, no AI private tools.
+    //  It never marks the number verified, never renames or re-countries an
+    //  existing account and never answers with the name on file (that made
+    //  every mobile number a lookup of its owner's name). The WhatsApp code
+    //  (request + verify below) is what proves the number.
+    //  Admin -> Settings 'customer_otp_skip' OFF closes this door entirely.
     // ------------------------------------------------------------------
     if ($action === 'quick') {
         Security::requireRateLimit('login_quick', Security::clientIp(), 30, 300);
+        if (!Settings::getBool('customer_otp_skip', true)) {
+            Response::error('WhatsApp कोडले प्रमाणित गर्नुहोस् · Please verify with the WhatsApp code.', 403, ['code' => 'needs_otp']);
+        }
         $name = Security::clean(Response::field('name', ''), 120);
         if ($name !== '' && mb_strlen($name) < 2) {
             Response::invalid(['name' => 'Please enter your name.']);
@@ -75,34 +83,77 @@ try {
             Response::invalid(['name' => 'Please enter your name.']);
         }
 
-        $user = Auth::loginUser($phone, $name, $country);
+        $user = Auth::loginUser($phone, $name, $country, false);
         require_once INCLUDE_PATH . '/customerprofile.php';
+        // address / photo / points only when THIS session already proved the number
+        $app    = CustomerProfile::forApp((int) $user['id']);
+        $proven = (bool) $app['otpVerified'];
         Response::success([
-            'needsOtp' => false,
-            'verified' => true,
-            // address / photo only when this session already proved the number
-            'user' => CustomerProfile::forApp((int) $user['id']) + [
+            // signed in for booking; private access still needs the code
+            'signedIn' => true,
+            'verified' => $proven,
+            'needsOtp' => !$proven,
+            'user' => $app + [
                 'phone' => $user['phone'],
-                'name'  => $user['full_name'],
+                // Never the name on file to an unproven session: the typed
+                // name, or '' (the app keeps what the person typed).
+                'name'  => $proven ? (string) ($user['full_name'] ?? '') : (mb_strlen($name) >= 2 ? $name : ''),
                 'role'  => $user['role'],
-                'points'=> (int) $user['loyalty_points'],
-                'tier'  => $user['loyalty_tier'],
-                // The country on file ('NP'/'IN'), so the checkout can pre-select
-                // the number-country picker instead of defaulting to +91.
-                'country'=> ((string) ($user['country_code'] ?? '') === '977' ? 'NP' : 'IN'),
-                /* users.preferred_lang has existed since the first schema
-                   with ZERO code reading or writing it, so the language a
-                   traveller picked never followed them to a second device.
-                   Handed back here and applied on sign-in. */
-                'lang'  => (string) ($user['preferred_lang'] ?? ''),
+                'points'=> $proven ? (int) $user['loyalty_points'] : 0,
+                'tier'  => $proven ? (string) $user['loyalty_tier'] : '',
+                // The country on file ('NP'/'IN', '' when unknown), so the
+                // checkout can pre-select the number-country picker.
+                'country'=> $countryOut((string) ($user['country_code'] ?? '')),
+                /* users.preferred_lang: the language a traveller picked follows
+                   them to a second device — once the number is proven. */
+                'lang'  => $proven ? (string) ($user['preferred_lang'] ?? '') : '',
+                'verified' => $proven,
             ],
-        ], $existing === null ? 'Welcome to S Hari Global.' : 'Welcome back.');
+        ], 'Signed in.');
     }
 
     if ($action === 'request') {
         // Per-IP cap on paid SMS/WhatsApp sends. The per-phone limits inside
         // issueOtp() never stopped one IP rotating through many numbers.
         Security::requireRateLimit('otp_request_ip', Security::clientIp(), 10, 300);
+
+        /* 8 Oct 2026 (D8-M1): a GLOBAL ceiling on paid code sends. Every
+           bucket above is per IP or per number, so many IPs rotating random
+           numbers could drain the AiSensy wallet — and an empty wallet stops
+           every ticket and bus update too. Past the ceiling nothing is sent:
+           the app hears sent:false (its "continue without code" path, when
+           the office allows it), the log says why and the office bell rings
+           once an hour. */
+        $capHour = max(1, Settings::getInt('otp_global_hourly_cap', 150));
+        $capDay  = max(1, Settings::getInt('otp_global_daily_cap', 800));
+        if (!Security::rateLimit('otp_send_global_h', 'global', $capHour, 3600)
+            || !Security::rateLimit('otp_send_global_d', 'global', $capDay, 86400)) {
+            Logger::warning('Login code NOT sent: global OTP ceiling reached', [
+                'phone' => maskPhone($phone), 'hourCap' => $capHour, 'dayCap' => $capDay,
+            ], 'otp');
+            try {
+                require_once INCLUDE_PATH . '/adminalerts.php';
+                AdminAlerts::push(
+                    'otp_cap',
+                    'WhatsApp login codes paused — too many requests',
+                    'More than ' . $capHour . ' codes in an hour (or ' . $capDay . ' in a day) were asked for, so no more are being sent for now. Customers can still book; check for abuse.',
+                    '/admin/notifications.php',
+                    '⚠️',
+                    'otp_cap:' . date('YmdH')
+                );
+            } catch (Throwable $ignored) {
+                // the alert is a courtesy; the refusal above already happened
+            }
+            Response::success([
+                'sent'     => false,
+                'capped'   => true,
+                'channel'  => 'whatsapp',
+                'expires'  => null,
+                'resendIn' => OTP_RESEND_SECONDS,
+                'canSkip'  => Settings::getBool('customer_otp_skip', true),
+            ], 'WhatsApp could not deliver the code right now.');
+        }
+
         $result = Auth::issueOtp($phone, $purpose, 'sms');
 
         if (!$result['ok']) {
@@ -131,7 +182,12 @@ try {
                 }
                 if (AiSensyAPI::enabled()) {
                     $intl    = ($country === 'NP' ? '977' : '91') . $phone;
-                    $r       = AiSensyAPI::sendLoginOtp($intl, $code, Security::clean(Response::field('name', ''), 60));
+                    /* D4-M3: the greeting carries the name ON FILE for this
+                       number (or none) — never text the requester typed, or
+                       anyone could make our verified WhatsApp say anything
+                       to any number. */
+                    $onFile  = (string) Database::scalar('SELECT full_name FROM users WHERE phone = :p LIMIT 1', ['p' => $phone], '');
+                    $r       = AiSensyAPI::sendLoginOtp($intl, $code, mb_substr(trim($onFile), 0, 60));
                     $sent    = (bool) $r['success'];
                     $sendErr = $sent ? '' : (string) $r['error'];
                 }
@@ -191,14 +247,20 @@ try {
                 'idNumber' => Security::clean((string) Response::field('idNumber', ''), 60),
             ]);
             Response::success([
+                'signedIn' => true,
                 'verified' => true,
+                'needsOtp' => false,
                 'user'     => CustomerProfile::forApp((int) $user['id']) + [
                     'phone' => $user['phone'],
                     'name'  => $user['full_name'],
                     'role'  => $user['role'],
                     'points'=> (int) $user['loyalty_points'],
                     'tier'  => $user['loyalty_tier'],
-                    'country'=> ((string) ($user['country_code'] ?? '') === '977' ? 'NP' : 'IN'),
+                    'country'=> $countryOut((string) ($user['country_code'] ?? '')),
+                    'lang'  => (string) ($user['preferred_lang'] ?? ''),
+                    // the code proved the number: this session may open the
+                    // account's bookings, tickets and cancel (Auth::customerMayOpen)
+                    'verified' => true,
                 ],
             ], 'Signed in successfully.');
         }

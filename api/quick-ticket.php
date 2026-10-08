@@ -35,11 +35,16 @@
  *         {date, direction, boardingCode, seats, total} the card showed —
  *         a drifted plan is refused 409 fields{code:'plan_changed', plan}.
  *         `bot` = what the card pre-filled, scored by the outcome loop.
- *         The sale signs the passenger in (response `user`); `customer` =
+ *         `country` = 'IN' | 'NP' (or '91' | '977'): where the WhatsApp
+ *         ticket goes. 8 Oct 2026: the sale NO LONGER signs the passenger
+ *         in (name + phone is never proof) — the PNR is bound to this
+ *         browser session instead (Auth::rememberOwnPnr), so the ticket
+ *         screen, its image and undo work for THIS ticket only. `customer` =
  *         the /api/track.php payload so the app opens its ticket screen;
  *         `undoMin` = the free-undo window.
  *   { action: "customer_undo", pnr }
- *       → the owning session cancels a pay-on-boarding one-click ticket
+ *       → the session that owns the ticket (it booked it here, or an
+ *         OTP-verified owner) cancels a pay-on-boarding one-click ticket
  *         free inside quick_ticket_undo_min (QuickTicket::customerUndo).
  *
  * A staff session asking a customer_* action is refused: a desk sells
@@ -114,6 +119,16 @@ try {
                (S Hari Parking default, cut-off parity, seat cap). `seats` <= 0
                from the app means "not chosen yet". */
             $me = Auth::user();
+            /* 8 Oct 2026: the passenger's history (usual pickup, party, NAME)
+               only for a session that proved its number with the WhatsApp
+               code — a typed name + mobile session would otherwise read a
+               stranger's name and habits straight off the card. */
+            if ($me !== null) {
+                require_once INCLUDE_PATH . '/customerprofile.php';
+                if (CustomerProfile::verifiedUserId() !== (int) ($me['id'] ?? 0)) {
+                    $me = null;
+                }
+            }
             $s  = TicketBot::suggest([
                 'text'         => Security::clean($in['text'] ?? '', 300),
                 'name'         => Security::clean($in['name'] ?? '', 120),
@@ -160,10 +175,14 @@ try {
             $plan['sameAsLast'] = $s['sameAsLast'];
             Response::success($plan);
         }
+        // 'IN' / 'NP' from the card's picker ('91' / '977' accepted too);
+        // anything else is '' and sellCustomer falls back (D4-05).
+        $qtCountry = strtoupper(Security::clean($in['country'] ?? '', 3));
+        $qtCountry = in_array($qtCountry, ['NP', '977'], true) ? 'NP' : (in_array($qtCountry, ['IN', '91'], true) ? 'IN' : '');
         $input = $opts + [
             'name'       => $in['name'] ?? '',
             'phone'      => $in['phone'] ?? '',
-            'country'    => Security::clean($in['country'] ?? '', 2),
+            'country'    => $qtCountry,
             'passengers' => $in['passengers'] ?? null,
             // The facts the card showed — the sale is refused (409 plan_changed) if they drifted.
             'expect'     => is_array($in['expect'] ?? null) ? $in['expect'] : null,
@@ -187,32 +206,16 @@ try {
             }
         }
 
-        /* Sign the passenger in as the number the ticket was sold to — the
-           same name + mobile login api/otp.php 'quick' performs — INSIDE this
-           request, so the ticket screen's image / PDF fetch and My Bookings
-           work the moment the app lands there. Doing it here rather than as
-           a second request from the app also avoids racing the session
-           regeneration a login performs against the app's other calls (the
-           loser of that race ends up in an empty session). A suspended
-           account or any hiccup never fails a sale that is already made. */
-        if (Auth::user() === null && $staff === null) {
-            try {
-                $row = Database::fetch('SELECT is_blocked FROM users WHERE phone = :p LIMIT 1', ['p' => (string) $result['phone']]);
-                if ($row === null || (int) ($row['is_blocked'] ?? 0) === 0) {
-                    $u = Auth::loginUser((string) $result['phone'], (string) $result['name'], Security::clean($in['country'] ?? '', 2));
-                    $result['user'] = [
-                        'phone'  => (string) $u['phone'],
-                        'name'   => (string) ($u['full_name'] ?? ''),
-                        'role'   => (string) $u['role'],
-                        'points' => (int) ($u['loyalty_points'] ?? 0),
-                        'tier'   => (string) ($u['loyalty_tier'] ?? 'Silver'),
-                        'lang'   => (string) ($u['preferred_lang'] ?? ''),
-                    ];
-                }
-            } catch (Throwable $e) {
-                Logger::warning('QuickTicket: sign-in after the sale failed', ['e' => $e->getMessage()]);
-            }
-        }
+        /* 8 Oct 2026 (D4-03): the sale used to sign this browser in as the
+           number typed on the card. A son booking for his mother, or one
+           mistyped digit, then pulled that number's whole booking history
+           into this phone and renamed the account. Now nobody is signed in:
+           the new PNR is bound to THIS session instead, so the ticket
+           screen's image / PDF, its verify page and the free undo work for
+           this ticket and nothing else. "Save to my account" is the WhatsApp
+           code (api/otp.php). No `user` key in the reply. */
+        Auth::rememberOwnPnr((string) ($result['pnr'] ?? ''));
+        unset($result['user']);
         Response::success($result, 'Ticket issued. / टिकट जारी भयो।');
     }
 

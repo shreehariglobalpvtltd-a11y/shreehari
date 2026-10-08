@@ -53,11 +53,15 @@ check('a normal Indian mobile still passes', Security::isValidPhone('9834614102'
 check('a normal Nepali mobile still passes', Security::isValidPhone(normalisePhone('+977 9812345678')));
 
 echo "-- 3. Every customer door guards the placeholder --\n";
+/* 8 Oct 2026: cancel, ticket download and verify no longer match phones
+   themselves — they ask Auth::customerMayOpen(), which refuses the
+   placeholder first (and is pinned below and in identity-gate-test.php). */
 $doors = [
     'api/track.php'            => 'isPlaceholderPhone((string) $detail[\'contact_phone\'])',
-    'api/cancel.php'           => 'isPlaceholderPhone((string) $booking[\'contact_phone\'])',
-    'download-ticket.php'      => 'isPlaceholderPhone((string) ($booking[\'contact_phone\'] ?? \'\'))',
-    'verify-ticket.php'        => 'isPlaceholderPhone((string) ($booking[\'contact_phone\'] ?? \'\'))',
+    'includes/auth.php'        => 'if (isPlaceholderPhone($contact)) {',
+    'api/cancel.php'           => 'Auth::customerMayOpen($booking)',
+    'download-ticket.php'      => 'Auth::customerMayOpen($booking)',
+    'verify-ticket.php'        => 'Auth::customerMayOpen($booking)',
     'includes/aitools.php'     => 'isPlaceholderPhone((string) ($detail[\'contact_phone\'] ?? \'\'))',
     'includes/quickticket.php' => 'isPlaceholderPhone((string) ($booking[\'contact_phone\'] ?? \'\'))',
     'api/feedback.php'         => 'isPlaceholderPhone((string) ($booking[\'contact_phone\'] ?? \'\'))',
@@ -68,6 +72,10 @@ $doors = [
 foreach ($doors as $file => $needle) {
     check("$file refuses the placeholder", str_contains((string) file_get_contents($root . '/' . $file), $needle));
 }
+$_SESSION['shg_own_pnrs'] = ['SHG-2026-00001'];
+check('Auth::customerMayOpen refuses a walk-in booking even when this session made it',
+    Auth::customerMayOpen(['pnr' => 'SHG-2026-00001', 'contact_phone' => '0000000000']) === false);
+unset($_SESSION['shg_own_pnrs']);
 
 echo "-- 4. A real walk-in sale stays private over HTTP --\n";
 $base = rtrim((string) (getenv('SHG_TEST_BASE') ?: ''), '/');

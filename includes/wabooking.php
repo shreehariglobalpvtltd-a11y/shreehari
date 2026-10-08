@@ -740,6 +740,19 @@ final class WaBooking
             $lines[] = '';
             $lines[] = self::say('ticketBelow', $lang);
             $media   = Ticket::imageUrl($pnr);
+            /* D4-06 (8 Oct 2026): a pay-at-counter ticket is CONFIRMED with
+               nothing paid yet. "Safe journey!" alone read as if it were
+               settled — say plainly what is owed and when. */
+            if (!empty($res['isCod']) && (int) ($res['bookingId'] ?? 0) > 0) {
+                $codDue = max(0.0, (float) ($res['total'] ?? 0) - (float) Database::scalar(
+                    "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE booking_id = :b AND status = 'verified'",
+                    ['b' => (int) $res['bookingId']],
+                    0
+                ));
+                if ($codDue > 0) {
+                    $lines[] = sprintf(self::say('codDue', $lang), inr($codDue), inr($codDue));
+                }
+            }
         } else {
             $lines[] = '';
             $lines[] = self::say('payNow', $lang);
@@ -989,6 +1002,14 @@ Example: Ram Bahadur 35, Sita Gurung 30",
                 'hi' => 'आपका ई-टिकट साथ में है। यात्रा शुभ हो!',
                 'ne' => 'तपाईंको ई-टिकट संलग्न छ। शुभ यात्रा!',
                 'gu' => 'તમારી ઈ-ટિકિટ સાથે છે. શુભ યાત્રા!',
+            ],
+            /* Two %s, both the amount: the line is bilingual on purpose so the
+               crew reading it over the passenger's shoulder understands it too. */
+            'codDue' => [
+                'en' => 'Pay %s in cash at the counter or when boarding, before departure. · काउन्टरमा / चढ्दा %s नगद तिर्नुहोस्',
+                'hi' => 'काउंटर पर या बस में चढ़ते समय %s नकद दीजिए, बस छूटने से पहले। · Pay %s in cash before departure',
+                'ne' => 'काउन्टरमा / चढ्दा %s नगद तिर्नुहोस् · Pay %s in cash before departure',
+                'gu' => 'કાઉન્ટર પર કે બસમાં ચઢતી વખતે %s રોકડા ચૂકવો, ઉપડતા પહેલાં. · Pay %s in cash before departure',
             ],
             'payNow' => [
                 'en' => 'Scan the QR above to pay, or tap here. The ticket arrives here as soon as the payment is checked.',
