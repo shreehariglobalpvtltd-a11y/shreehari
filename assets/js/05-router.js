@@ -2282,6 +2282,10 @@ const SeatSrv = {
           booked:  d.booked  || [],
           locked:  d.locked  || [],
           blocked: (d.blocked || []).concat(d.staff || []),
+          /* Out of service (Admin seat block, seat_blocks) — painted "not
+             available", never as "held by someone else" (8 Oct 2026). Still
+             inside `blocked` above, so every count stays as it was. */
+          outOfService: d.blocked || [],
           female:  d.female  || [],
           units:   d.units   || {},
           /* Taken in the OTHER seat type (sharing <-> private) — a subset of
@@ -2465,6 +2469,14 @@ function lockedSeatsFor(routeId, date) {
   // stay selectable.
   return srv.locked.concat(srv.blocked).concat(local);
 }
+/* The office's out-of-service seats in the shown mode (subset of the
+   blocked list above). The map paints them "not available" rather than
+   "held by someone else": nobody is going to release them. */
+function outOfServiceFor(routeId, date) {
+  const mode = (typeof Flow !== 'undefined' && Flow.bookingType) ? Flow.bookingType : undefined;
+  const srv = SeatSrv.snap(routeId, date, mode) || SeatSrv.snap(routeId, date);
+  return (srv && srv.outOfService) || [];
+}
 /* ================================================================
    SERVER-BACKED SEAT HOLDS
 
@@ -2574,7 +2586,7 @@ const SeatLock = {
 
   /* Hold granted — adopt the SERVER's clock, never our own estimate. */
   _accept(d) {
-    const exp = Date.parse(String(d.expiresAt).replace(' ', 'T'));
+    const exp = seatHoldExpiryMs(d);
     if (!isFinite(exp)) return;
     this.serverExpiry = exp;
     (DB.locks || []).forEach(l => { if (l.sid === SID) l.expires = exp; });
@@ -2626,8 +2638,7 @@ const SeatLock = {
     });
     persist('locks');
 
-    toast('⚠️ ' + seatLabelJoin(failed, Flow.route && Flow.route.type, Flow.bookingType) + (failed.length > 1 ? ' were' : ' was')
-        + ' just taken by another customer. Please pick again.');
+    toast('⚠️ ' + tf('tSeatTaken', { s: seatLabelJoin(failed, Flow.route && Flow.route.type, job.mode || Flow.bookingType) }));
 
     SeatSrv.invalidate(job.routeId, job.date);
     SeatSrv.load(job.routeId, job.date, true).then(() => {
@@ -2642,6 +2653,33 @@ const SeatLock = {
   }
 };
 
+/* When does the hold the server just granted end, in THIS phone's clock?
+   (8 Oct 2026) expiresIn (seconds) is relative, so neither the phone's time
+   zone nor a wrong phone clock can shift it. An older server sends only
+   expiresAt — a wall-clock in APP_TIMEZONE (IST, no offset) — which used to
+   be read in the phone's own zone: a Nepal phone lost 15 minutes, a Gulf
+   phone gained 2 hours. Read it as +05:30 unless it carries its own offset.
+   Pure (tests/seatmap-premium-test.php lifts it). */
+function seatHoldExpiryMs(d, now) {
+  now = now || Date.now();
+  const secs = Number(d && d.expiresIn);
+  if (secs > 0) return now + secs * 1000;
+  const s = String((d && d.expiresAt) || '').trim().replace(' ', 'T');
+  if (!s) return NaN;
+  return Date.parse(/(?:[zZ]|[+-]\d\d:?\d\d)$/.test(s) ? s : s + '+05:30');
+}
+/* Which moment the hold countdown runs to (pure). mineExp = expiries of
+   this visitor's still-live mirror rows; serverExp = the server's last grant
+   (0 = none); hasSel = berths are still picked on screen or in a finished
+   leg. Once the server's expiry has passed, activeLocks() has dropped the
+   rows — the old code then returned 0 and the "hold expired" branch never
+   ran (D5-01). With a selection still showing, the PAST server expiry is
+   returned so the pill reaches its expiry branch exactly once. */
+function holdExpiryPick(mineExp, serverExp, hasSel) {
+  if (mineExp && mineExp.length) return serverExp || Math.min.apply(null, mineExp);
+  return (serverExp > 0 && hasSel) ? serverExp : 0;
+}
+
 function lockSeat(routeId, date, seat) {
   const mode = (typeof Flow !== 'undefined' && Flow.bookingType) ? Flow.bookingType : null;
   DB.locks.push({ routeId: routeId, date: date, seat: seat, sid: SID, mode: mode, schId: (typeof Flow !== 'undefined' && Flow.scheduleId) ? (parseInt(Flow.scheduleId, 10) || 0) : 0, expires: Date.now() + CONFIG.booking.seatHoldMinutes * 60000 });
@@ -2654,22 +2692,24 @@ function unlockSeat(routeId, date, seat) {
   const mode = row && row.mode ? row.mode : ((typeof Flow !== 'undefined' && Flow.bookingType) ? Flow.bookingType : null);
   DB.locks = DB.locks.filter(l => !(l.sid === SID && l.routeId === routeId && l.date === date && l.seat === seat));
   persist('locks');
+  /* Nothing of ours is held any more: forget the old server expiry, so the
+     next tap cannot be measured against a hold that has already ended. */
+  if (!DB.locks.some(l => l.sid === SID)) SeatLock.serverExpiry = 0;
   SeatLock._rel.push({ routeId: routeId, date: date, seat: seat, mode: mode, schId: (typeof Flow !== 'undefined' && Flow.scheduleId) ? (parseInt(Flow.scheduleId, 10) || 0) : 0 });
   SeatLock.schedule();
 }
 function releaseMyLocks() {
-  if (!(DB.locks || []).some(l => l.sid === SID)) return;
+  if (!(DB.locks || []).some(l => l.sid === SID)) { SeatLock.serverExpiry = 0; return; }
   DB.locks = DB.locks.filter(l => l.sid !== SID);
   persist('locks');
   SeatLock.releaseAll();
 }
 function myHoldExpiry() {
-  const mine = activeLocks().filter(l => l.sid === SID);
-  if (!mine.length) return 0;
+  const mine = activeLocks().filter(l => l.sid === SID).map(l => l.expires);
   /* The server's clock wins whenever we have one: it is what actually
      governs whether the seat is still ours. */
-  if (SeatLock.serverExpiry) return SeatLock.serverExpiry;
-  return Math.min.apply(null, mine.map(l => l.expires));
+  const hasSel = !!((Flow.seats || []).length || (Flow.legs || []).some(l => l && l.seats && l.seats.length));
+  return holdExpiryPick(mine, SeatLock.serverExpiry, hasSel);
 }
 
 /* ================================================================
@@ -2755,14 +2795,20 @@ const SeatPoll = {
          this visitor had selected, say so rather than silently dropping
          it from their basket. */
       const snap = SeatSrv.snap(c.routeId, c.date, mode) || SeatSrv.snap(c.routeId, c.date);
-      const gone = snap
-        ? (Flow.seats || []).filter(s => snap.booked.indexOf(s) >= 0 || snap.blocked.indexOf(s) >= 0)
-        : [];
+      /* 8 Oct 2026: a berth whose hold lapsed and that ANOTHER visitor now
+         holds (snap.locked never lists this visitor's own holds) left the
+         basket too — it used to stay ticked, disabled and priced (D5-M2).
+         An office out-of-service block gets its own words (D5-M4). */
+      const off = snap ? (snap.outOfService || []) : [];
+      const pick = (s) => snap && (snap.booked.indexOf(s) >= 0 || (snap.locked || []).indexOf(s) >= 0 || snap.blocked.indexOf(s) >= 0);
+      const gone = snap ? (Flow.seats || []).filter(s => pick(s) && off.indexOf(s) < 0) : [];
+      const closed = snap ? (Flow.seats || []).filter(s => off.indexOf(s) >= 0) : [];
+      const coach = Flow.route && Flow.route.type;
 
-      if (gone.length) {
-        gone.forEach(s => { const ix = Flow.seats.indexOf(s); if (ix >= 0) Flow.seats.splice(ix, 1); });
-        toast('⚠️ ' + gone.join(', ') + (gone.length > 1 ? ' were' : ' was')
-            + ' just booked by another customer.');
+      if (gone.length || closed.length) {
+        gone.concat(closed).forEach(s => { const ix = Flow.seats.indexOf(s); if (ix >= 0) Flow.seats.splice(ix, 1); });
+        if (gone.length) toast('⚠️ ' + tf('tSeatGone', { s: seatLabelJoin(gone, coach, mode) }));
+        else toast('⚠️ ' + tf('tSeatOff', { s: seatLabelJoin(closed, coach, mode) }));
       }
       if (typeof renderSeats === 'function') renderSeats(true);
     });
@@ -2859,21 +2905,37 @@ function startHoldTicker() {
 }
 function updateHoldPills() {
   const pills = $$('.hold-pill');
+  const bar = $('#seatHoldBar');
   const exp = myHoldExpiry();
-  if (!exp) { pills.forEach(p => p.classList.add('hide')); return; }
-  const ms = exp - Date.now();
-  if (ms <= 0) {
-    releaseMyLocks();
+  if (!exp) {
     pills.forEach(p => p.classList.add('hide'));
-    toast(t('tHoldExp'));
-    const h = location.hash || '#/';
-    if (h === '#/checkout') { Flow.seats = []; Flow.legs = []; Flow.legIndex = 0; location.hash = '#/'; }
-    else if (h === '#/seats') { Flow.seats = []; renderSeats(true); }
+    if (bar) bar.hidden = true;
+    const cd0 = $('#payCountdown'); if (cd0 && cd0.textContent) cd0.textContent = '';
     return;
   }
+  const ms = exp - Date.now();
+  if (ms <= 0) { seatHoldLapsed(); return; }
   const mm = String(Math.floor(ms / 60000)).padStart(2, '0');
   const ss = String(Math.floor(ms / 1000) % 60).padStart(2, '0');
   pills.forEach(p => { p.classList.remove('hide'); p.innerHTML = '⏳ ' + tf('holdMsg', { t: mm + ':' + ss }); });
+  /* The phone's fixed Continue bar carries the same countdown (D5-02): the
+     pill sits under a 72-berth map there. Outside the aria-live recap, so a
+     screen reader is not read a number every second — it gets one polite
+     toast at 5:00 and at 1:00 instead. Amber under 5 min, red under 1. */
+  if (bar) {
+    bar.hidden = false;
+    bar.textContent = '⏳ ' + tf('holdMsg', { t: mm + ':' + ss });
+    bar.classList.toggle('warn', ms < 5 * 60000);
+    bar.classList.toggle('crit', ms < 60000);
+  }
+  const hv = location.hash || '';
+  if (hv === '#/seats' || hv === '#/checkout') {
+    const mark = (ms < 60000 ? '1|' : ms < 5 * 60000 ? '5|' : '') + exp;
+    if (mark.charAt(1) === '|' && SeatLock._warned !== mark) {
+      SeatLock._warned = mark;
+      toast('⏳ ' + tf('tHoldWarn', { t: mm + ':' + ss }));
+    }
+  }
   const cd = $('#payCountdown');
   /* At a staff counter the sale confirms the moment it is submitted — there
      is no payment to "complete". The same countdown is still the seat hold,
@@ -2881,6 +2943,41 @@ function updateHoldPills() {
   const staffHold = !!(window.SHG_BOOT && window.SHG_BOOT.staff && window.SHG_BOOT.staff.canSell);
   if (cd) cd.textContent = staffHold ? '⏱️ Seat hold ' + mm + ':' + ss + ' · confirm the sale before it lapses'
                                      : '⏱️ Complete payment within ' + mm + ':' + ss;
+}
+/* The hold ran out (8 Oct 2026, D5-01). Runs ONCE per lapse: the server
+   expiry is cleared first, so the next tick reads 0. The release goes out
+   directly — releaseMyLocks() returns early once activeLocks() has dropped
+   the rows, which is exactly when this runs. On the checkout the passenger
+   goes back to the SAME bus's seat map (not the home page), so the trip,
+   the date and the typed details are still there (D4-12 item 4). */
+function seatHoldLapsed() {
+  SeatLock.serverExpiry = 0;
+  SeatLock._warned = '';
+  DB.locks = (DB.locks || []).filter(l => l.sid !== SID);
+  persist('locks');
+  SeatLock.releaseAll();
+  $$('.hold-pill').forEach(p => p.classList.add('hide'));
+  const bar = $('#seatHoldBar'); if (bar) bar.hidden = true;
+  const cd = $('#payCountdown'); if (cd) cd.textContent = '';
+  const h = location.hash || '#/';
+  if (h === '#/checkout') {
+    toast(t('tHoldExp'));
+    const l0 = Flow.legs[0];
+    if (l0) {
+      Flow.route = routeById(l0.routeId) || Flow.route;
+      Flow.scheduleId = l0.sid || 0;
+      Flow.fareOverride = l0.fareOverride || 0;
+      if (l0.bookingType) Flow.bookingType = l0.bookingType;
+    }
+    Flow.seats = []; Flow.legs = []; Flow.legIndex = 0;
+    location.hash = Flow.route ? '#/seats' : '#/';
+  } else if (h === '#/seats') {
+    toast(t('tHoldExp'));
+    Flow.seats = [];
+    if (typeof renderSeats === 'function') renderSeats(true);
+  } else {
+    Flow.seats = [];
+  }
 }
 /* Cross-tab sync: another tab booking / locking seats updates us live. */
 if (store.local && !store.remote) {

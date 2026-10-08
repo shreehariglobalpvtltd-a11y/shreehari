@@ -1163,7 +1163,7 @@ final class Seats
      * failing the whole selection.
      *
      * @param array<int, string> $seats
-     * @return array{ok: bool, locked: array<int, string>, failed: array<int, string>, expiresAt: string}
+     * @return array{ok: bool, locked: array<int, string>, failed: array<int, string>, expiresAt: string, expiresIn: int}
      */
     public static function lock(int $scheduleId, array $seats, ?string $token = null, bool $allowStaffSeats = false, ?string $bookingType = null): array
     {
@@ -1303,6 +1303,11 @@ final class Seats
             'locked'    => $lockedNow,
             'failed'    => $failed,
             'expiresAt' => $expiresAt,
+            // 8 Oct 2026: the hold length in SECONDS. expiresAt is a server
+            // wall-clock (APP_TIMEZONE, IST) with no offset, so a phone on Nepal
+            // or Gulf time read it 15 min / 2 h off. A relative duration is
+            // immune to the phone's zone and to its clock skew. Additive.
+            'expiresIn' => $holdMinutes * 60,
         ];
     }
 
