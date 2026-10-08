@@ -70,8 +70,14 @@ try {
     $key = Ticket::downloadToken($pnr);
     check('the keyed link opens', WhereIs::authorised($row, $key));
     check('a wrong key does not', !WhereIs::authorised($row, 'nope') && !WhereIs::authorised($row, ''));
+    check('the tracker\'s own key opens too (8 Oct 2026)', WhereIs::authorised($row, Ticket::trackToken($pnr)));
+    /* 8 Oct 2026: a phone match alone is no longer proof once
+       Auth::customerMayOpen() exists — the session must be OTP-verified
+       (CustomerProfile marks it under 'shg_cust_otp'), so the test marks it. */
     $_SESSION[USER_SESSION_KEY] = ['id' => 999, 'phone' => PHONE, 'name' => 'Where Is', 'role' => 'customer', 'logged_in' => time(), 'last_seen' => time()];
-    check('the customer whose number is on the ticket opens it without a key', WhereIs::authorised($row, ''));
+    $_SESSION['shg_cust_otp'] = 999;
+    check('the verified customer whose number is on the ticket opens it without a key', WhereIs::authorised($row, ''));
+    unset($_SESSION['shg_cust_otp']);
     $_SESSION[USER_SESSION_KEY] = ['id' => 998, 'phone' => '9100000000', 'name' => 'Stranger', 'role' => 'customer', 'logged_in' => time(), 'last_seen' => time()];
     check('another signed-in customer does not', !WhereIs::authorised($row, ''));
     unset($_SESSION[USER_SESSION_KEY]);

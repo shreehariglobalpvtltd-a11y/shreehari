@@ -2982,6 +2982,8 @@ final class BookingService
                     -- carried so the customer payload can say whether the journey
                     -- actually finished; the join is already here, so it is free.
                     s.status AS schedule_status,
+                    -- the office delay (Admin -> Trips), for the app ticket (8 Oct 2026)
+                    s.delay_minutes, s.delay_note,
                     b.bus_name, b.bus_number
                FROM booking_legs l
                JOIN schedules s ON s.id = l.schedule_id

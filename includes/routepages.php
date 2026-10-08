@@ -268,8 +268,8 @@ final class RoutePages
                 'refundPromise' => 'If the bus is cancelled by us, the full amount is returned.',
                 'amen'    => 'On board', 'book' => 'Book a seat online', 'wa' => 'Book on WhatsApp', 'call' => 'Call the office',
                 'faq'     => 'Questions people ask', 'other' => 'Other routes', 'trust' => 'A registered Indian company · CIN %s · %s',
-                'q1' => 'Which documents do I need at the Rupaidiha (India–Nepal) border?', 'a1' => 'Indian citizens: voter ID, passport or Aadhaar with a photo. Nepali citizens: citizenship card or passport. Children travel with a school ID or birth certificate. Carry the photo ID whose name is on the ticket.',
-                'q2' => 'Where exactly do I board in %s?', 'a2' => 'At the boarding point on your ticket, 20 minutes before the printed time. Every ticket carries a "Where is my bus?" link that shows the coach live and the minutes to your stop.',
+                'q1' => 'Which documents do I need at the Rupaidiha (India–Nepal) border?', 'a1' => 'Indian citizens: a valid Indian passport or Voter ID (EPIC). Aadhaar alone is often not accepted at the border, so do not travel with only Aadhaar. Nepali citizens: citizenship certificate or passport. Children: birth certificate or a school ID with a photo. Carry the photo ID whose name is on the ticket. Details: /travel-info',
+                'q2' => 'Where exactly do I board in %s?', 'a2' => 'At the boarding point on your ticket, 30 minutes before the printed time. Every ticket carries a "Where is my bus?" link that shows the coach live and the minutes to your stop.',
                 'q3' => 'Can I pay from Nepal?', 'a3' => 'Yes — an eSewa QR is on the payment page, or a friend in India can pay by UPI, or pay cash to the crew on boarding. The seat is confirmed once the office sees the payment.',
                 'q4' => 'Is the bus safe for women travelling alone?', 'a4' => 'Sharing cabins are gender-locked: a berth beside a woman is sold only to a woman. Berths reserved for women are marked on the seat map, and the office phone is answered until 11 pm.',
                 'q5' => 'Can I change the name or the date?', 'a5' => 'The name on a ticket can be corrected twice before departure from the app or on WhatsApp. A date change is a reschedule — ask the office; the refund ladder above applies to a cancellation.',
@@ -287,8 +287,8 @@ final class RoutePages
                 'refundPromise' => 'बस हमारी ओर से रद्द हो तो पूरा पैसा वापस।',
                 'amen'    => 'बस में', 'book' => 'ऑनलाइन सीट बुक करें', 'wa' => 'WhatsApp पर बुक करें', 'call' => 'ऑफ़िस को कॉल करें',
                 'faq'     => 'लोग क्या पूछते हैं', 'other' => 'दूसरे रूट', 'trust' => 'रजिस्टर्ड भारतीय कंपनी · CIN %s · %s',
-                'q1' => 'रूपईडीहा (भारत–नेपाल) बॉर्डर पर कौन से कागज़ चाहिए?', 'a1' => 'भारतीय नागरिक: वोटर ID, पासपोर्ट या फोटो वाला आधार। नेपाली नागरिक: नागरिकता या पासपोर्ट। बच्चों के लिए स्कूल ID या जन्म प्रमाण। टिकट वाले नाम की फोटो ID साथ रखें।',
-                'q2' => '%s में ठीक कहाँ चढ़ना है?', 'a2' => 'टिकट पर लिखे बोर्डिंग पॉइंट पर, समय से 20 मिनट पहले। हर टिकट में "मेरी बस कहाँ है?" लिंक होता है जो बस को लाइव और आपके स्टॉप तक के मिनट दिखाता है।',
+                'q1' => 'रूपईडीहा (भारत–नेपाल) बॉर्डर पर कौन से कागज़ चाहिए?', 'a1' => 'भारतीय नागरिक: वैध भारतीय पासपोर्ट या वोटर ID (EPIC)। बॉर्डर पर अकेले आधार को अक्सर नहीं माना जाता, इसलिए सिर्फ़ आधार लेकर यात्रा न करें। नेपाली नागरिक: नागरिकता प्रमाणपत्र या पासपोर्ट। बच्चों के लिए जन्म प्रमाणपत्र या फोटो वाला स्कूल ID। टिकट वाले नाम की फोटो ID साथ रखें। विस्तार: /travel-info',
+                'q2' => '%s में ठीक कहाँ चढ़ना है?', 'a2' => 'टिकट पर लिखे बोर्डिंग पॉइंट पर, समय से 30 मिनट पहले। हर टिकट में "मेरी बस कहाँ है?" लिंक होता है जो बस को लाइव और आपके स्टॉप तक के मिनट दिखाता है।',
                 'q3' => 'क्या नेपाल से पैसे दे सकते हैं?', 'a3' => 'हाँ — पेमेंट पेज पर eSewa QR है, या भारत में कोई मित्र UPI से दे सकता है, या बस में चढ़ते समय नकद। ऑफ़िस को पेमेंट दिखते ही सीट पक्की।',
                 'q4' => 'अकेली महिला के लिए बस सुरक्षित है?', 'a4' => 'शेयरिंग केबिन जेंडर-लॉक हैं: महिला के बगल की बर्थ सिर्फ महिला को बिकती है। महिलाओं के लिए आरक्षित बर्थ सीट मैप पर दिखती हैं, और ऑफ़िस का फ़ोन रात 11 बजे तक उठता है।',
                 'q5' => 'नाम या तारीख बदल सकते हैं?', 'a5' => 'टिकट का नाम रवानगी से पहले दो बार ऐप या WhatsApp से सुधारा जा सकता है। तारीख बदलना रीशेड्यूल है — ऑफ़िस से पूछें; रद्द करने पर ऊपर की रिफंड सीढ़ी लागू।',
@@ -306,8 +306,8 @@ final class RoutePages
                 'refundPromise' => 'बस हाम्रो तर्फबाट रद्द भए पूरै रकम फिर्ता।',
                 'amen'    => 'बसमा', 'book' => 'अनलाइन सिट बुक गर्नुहोस्', 'wa' => 'WhatsApp मा बुक गर्नुहोस्', 'call' => 'कार्यालयलाई फोन',
                 'faq'     => 'मानिसहरूले सोध्ने प्रश्न', 'other' => 'अरू रुट', 'trust' => 'दर्ता भएको भारतीय कम्पनी · CIN %s · %s',
-                'q1' => 'रुपैडिहा (भारत–नेपाल) बोर्डरमा के कागज चाहिन्छ?', 'a1' => 'भारतीय नागरिक: भोटर ID, राहदानी वा फोटो भएको आधार। नेपाली नागरिक: नागरिकता वा राहदानी। बालबालिकाका लागि स्कुल ID वा जन्मदर्ता। टिकटमा भएकै नामको फोटो ID साथमा राख्नुहोस्।',
-                'q2' => '%s मा ठ्याक्कै कहाँ चढ्ने?', 'a2' => 'टिकटमा लेखिएको चढ्ने ठाउँमा, समयभन्दा २० मिनेट अघि। हरेक टिकटमा "मेरो बस कहाँ छ?" लिङ्क हुन्छ जसले बस लाइभ र तपाईंको स्टपसम्मको मिनेट देखाउँछ।',
+                'q1' => 'रुपैडिहा (भारत–नेपाल) बोर्डरमा के कागज चाहिन्छ?', 'a1' => 'भारतीय नागरिक: वैध भारतीय राहदानी (पासपोर्ट) वा मतदाता परिचयपत्र (EPIC)। बोर्डरमा आधार मात्र प्रायः मान्य हुँदैन, त्यसैले आधार मात्र लिएर यात्रा नगर्नुहोस्। नेपाली नागरिक: नागरिकता प्रमाणपत्र वा राहदानी। बालबालिकाका लागि जन्मदर्ता वा फोटो भएको स्कुल ID। टिकटमा भएकै नामको फोटो ID साथमा राख्नुहोस्। विस्तृत: /travel-info',
+                'q2' => '%s मा ठ्याक्कै कहाँ चढ्ने?', 'a2' => 'टिकटमा लेखिएको चढ्ने ठाउँमा, समयभन्दा ३० मिनेट अघि। हरेक टिकटमा "मेरो बस कहाँ छ?" लिङ्क हुन्छ जसले बस लाइभ र तपाईंको स्टपसम्मको मिनेट देखाउँछ।',
                 'q3' => 'नेपालबाट पैसा तिर्न मिल्छ?', 'a3' => 'मिल्छ — भुक्तानी पेजमा eSewa QR छ, वा भारतमा साथीले UPI बाट तिर्न सक्छ, वा बस चढ्दा नगद। कार्यालयले भुक्तानी देखेपछि सिट पक्का।',
                 'q4' => 'एक्लै यात्रा गर्ने महिलाका लागि बस सुरक्षित छ?', 'a4' => 'सेयरिङ केबिन जेन्डर-लक छन्: महिलाको छेउको बर्थ महिलालाई मात्र बेचिन्छ। महिलाका लागि छुट्याइएका बर्थ सिट म्यापमा देखिन्छन्, र कार्यालयको फोन राति ११ बजेसम्म उठ्छ।',
                 'q5' => 'नाम वा मिति बदल्न मिल्छ?', 'a5' => 'टिकटको नाम छुट्नुअघि दुई पटकसम्म एप वा WhatsApp बाट सच्याउन मिल्छ। मिति बदल्नु रिसेड्युल हो — कार्यालयलाई सोध्नुहोस्; रद्द गर्दा माथिको फिर्ता तालिका लागू हुन्छ।',
@@ -380,6 +380,12 @@ final class RoutePages
         $waLink = 'https://wa.me/' . $e($f['wa']) . '?text=' . rawurlencode(($lang === 'ne' ? 'नमस्ते, ' : ($lang === 'hi' ? 'नमस्ते, ' : 'Hello, ')) . $from . ' → ' . $to . ' ticket');
         $telLink = 'tel:' . $e(preg_replace('/[^0-9+]/', '', $f['phone']));
         $trust = sprintf($e($w['trust']), $e($f['cin']), $e($f['address']));
+        /* "Book" opens the app on THIS page's direction and Gujarat town (8 Oct
+           2026, D3-18): /#/ alone always opened on "Going to Nepal", so the
+           Rupaidiha → Surat page sent people to the wrong way round.
+           applyCampaignLink() (05-router.js) reads dir + town. */
+        $guj     = strtolower(trim((string) ($f['toNepal'] ? $r['from_city'] : $r['to_city'])));
+        $bookUrl = '/?src=route&dir=' . ($f['toNepal'] ? 'go' : 'back') . '&town=' . rawurlencode($guj) . '#/';
 
         $ld = [
             '@context' => 'https://schema.org',
@@ -409,7 +415,7 @@ final class RoutePages
 <h1>{$e($h1)}</h1>
 <p class="lead">{$e($lead)}</p>
 <div class="cta">
-  <a class="btn hot" href="/#/">🎫 {$e($w['book'])}</a>
+  <a class="btn hot" href="{$e($bookUrl)}">🎫 {$e($w['book'])}</a>
   <a class="btn wa" href="{$waLink}" target="_blank" rel="noopener">💬 {$e($w['wa'])}</a>
   <a class="btn" href="{$telLink}">📞 {$e($w['call'])} · {$e($f['phone'])}</a>
 </div>
@@ -481,11 +487,14 @@ HTML);
 <meta property="og:title" content="{$e($title)}"><meta property="og:description" content="{$e($desc)}"><meta property="og:url" content="{$e($canon)}"><meta property="og:type" content="website"><meta property="og:image" content="{$e(rtrim(APP_URL, '/'))}/assets/img/og-shg.png">
 <meta name="theme-color" content="#12264E">
 <link rel="icon" href="/assets/img/favicon-32.png">
+<script>(function(){try{var d=document.documentElement,t=(localStorage.getItem('shg:theme')||'').replace(/"/g,'');if(t!=='light'&&t!=='dark'&&t!=='amoled')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';d.setAttribute('data-theme',t==='light'?'light':'dark');if(t==='amoled')d.setAttribute('data-display','amoled')}catch(e){}})();</script>
 {$ld}
 <style>
-/* Design system tokens (assets/css/ds.css, 4 Oct 2026) - copied, not linked, so the page keeps zero blocking requests. */
+/* Design system tokens (assets/css/ds.css, 4 Oct 2026) - copied, not linked, so the page keeps zero blocking requests. The script above stamps the app's saved theme (light / dark / AMOLED) before the first frame (8 Oct 2026). */
 :root{--navy:#0C306C;--on-navy:#FFFFFF;--on-navy-muted:#B9C9E6;--royal:#0054A8;--royal-strong:#003C90;--royal-tint:#EEF4FC;--on-royal:#FFFFFF;--red:#DC143C;--ink:#16233C;--muted:#5C6B85;--line:#E4E9F1;--bg:#F4F6FB;--card:#FFFFFF;--wa:#11703F;--gold:#EFB544;--focus:#0054A8}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--navy:#0F1A2E;--on-navy-muted:#93A4BE;--royal:#5B9BE8;--royal-strong:#8FBFFF;--royal-tint:#152645;--on-royal:#0B1220;--red:#FF5C74;--ink:#E8F0FB;--muted:#93A4BE;--line:#22314A;--bg:#0B1220;--card:#111D33;--wa:#5FD39A;--focus:#8FBFFF}}
+:root[data-theme="dark"]{--navy:#0F1A2E;--on-navy-muted:#93A4BE;--royal:#5B9BE8;--royal-strong:#8FBFFF;--royal-tint:#152645;--on-royal:#0B1220;--red:#FF5C74;--ink:#E8F0FB;--muted:#93A4BE;--line:#22314A;--bg:#0B1220;--card:#111D33;--wa:#5FD39A;--focus:#8FBFFF;color-scheme:dark}
+:root[data-display="amoled"]{--navy:#050B16;--royal:#9ABFFF;--royal-strong:#C2D8FF;--royal-tint:#0D1A30;--on-royal:#000814;--ink:#EEF4FF;--muted:#ACBBD0;--line:#2C3D55;--bg:#000;--card:#101822}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans Devanagari','Noto Sans',sans-serif;background:var(--bg);color:var(--ink);line-height:1.55;-webkit-font-smoothing:antialiased}
 .top{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;background:var(--navy);border-bottom:3px solid var(--red);padding:12px max(16px,calc((100% - 860px)/2 + 16px));margin-bottom:12px}
@@ -539,6 +548,8 @@ details{border-top:1px solid var(--line);padding:10px 0}details:first-of-type{bo
 .btn:active{transform:translateY(3px);box-shadow:inset 0 3px 7px rgba(0,24,70,.3),0 1px 0 #B3C0D6}
 .top{box-shadow:0 3px 0 #8E0F28,0 10px 16px -4px rgba(12,48,108,.4)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .card{border-top-color:#4D6694;box-shadow:inset 0 1px 0 rgba(165,195,245,.2),0 2px 0 #1A2944,0 4px 0 #132037,0 6px 0 #0D172A,0 12px 16px -5px rgba(0,0,0,.75)}:root:not([data-theme="light"]) .btn{box-shadow:inset 0 1px 0 rgba(165,195,245,.2),0 2px 0 #1A2944,0 4px 0 #101B30,0 10px 14px -5px rgba(0,0,0,.75)}:root:not([data-theme="light"]) .btn.hot{box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 2px 0 #3570BA,0 4px 0 #285DA0,0 6px 0 #1C4884,0 14px 20px -5px rgba(0,0,0,.8)}}
+:root[data-theme="dark"] .card{border-top-color:#4D6694;box-shadow:inset 0 1px 0 rgba(165,195,245,.2),0 2px 0 #1A2944,0 4px 0 #132037,0 6px 0 #0D172A,0 12px 16px -5px rgba(0,0,0,.75)}:root[data-theme="dark"] .btn{box-shadow:inset 0 1px 0 rgba(165,195,245,.2),0 2px 0 #1A2944,0 4px 0 #101B30,0 10px 14px -5px rgba(0,0,0,.75)}
+:root[data-display="amoled"] .card{border-top-color:#5B7191;box-shadow:0 2px 0 #24344A,0 8px 12px #000}:root[data-display="amoled"] .btn.hot{color:#000814}
 @media (prefers-reduced-motion:reduce){.btn:active{transform:none}}
 @media print{.card,.btn,.top{box-shadow:none}}
 </style>

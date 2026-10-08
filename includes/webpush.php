@@ -681,13 +681,27 @@ final class WebPush
         [$title, $body] = match ($event) {
             'delayed' => [
                 '⏳ Bus delayed' . ($mins > 0 ? ' ~' . $mins . ' min' : '') . ' · बस ढिलो',
-                ($route !== '' ? $route . "\n" : '') . ($when !== '' ? 'Was: ' . $when . "\n" : '')
+                ($route !== '' ? $route . "\n" : '') . ($when !== '' ? 'Planned pickup: ' . $when . "\n" : '')
                 . ($note !== '' ? $note . "\n" : '') . 'We apologise — the bus leaves at the updated time. Kripaya dhairya rakhnuhos.',
             ],
+            /* 8 Oct 2026 (D7-M1): "tomorrow" only when the pickup is not
+               today (the reminder used to land at 1-3 AM on the travel day
+               saying "tomorrow"); date + time are the passenger's pickup. */
             'reminder_12h' => [
-                '🚌 Yatra bholi · Trip tomorrow — ' . $pnr,
-                ($route !== '' ? $route . "\n" : '') . ($when !== '' ? 'Departure: ' . $when . "\n" : '')
+                match ((string) ($f['pickupToday'] ?? '')) {
+                    '1'     => '🚌 Aaja yatra · Trip today — ',
+                    '0'     => '🚌 Yatra bholi · Trip tomorrow — ',
+                    default => '🚌 Yatra · Trip reminder — ',
+                } . $pnr,
+                ($route !== '' ? $route . "\n" : '') . ($when !== '' ? 'Pickup: ' . $when . "\n" : '')
                 . ($seats !== '' ? 'Seat ' . $seats . "\n" : '') . 'Photo ID sathai lyaunuhos — border ma chahincha.',
+            ],
+            /* A trip the office cancelled (D7-01). Messaging only — no refund
+               is promised; the owner settles every one by hand. */
+            'cancelled' => [
+                '❌ यात्रा रद्द · Trip cancelled — ' . $pnr,
+                ($route !== '' ? $route . "\n" : '') . ((string) ($f['date'] ?? '') !== '' ? (string) $f['date'] . "\n" : '')
+                . 'कार्यालयले टिकटबारे सम्पर्क गर्नेछ · The office will contact you about your ticket.',
             ],
             'reminder_2h' => [
                 '⏰ Bus in ~2 hours · २ घण्टामा बस — ' . $pnr,

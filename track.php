@@ -41,21 +41,24 @@ $T = [
     'en' => ['title' => 'Where is my bus?', 'sub' => 'Live position for your ticket', 'notFound' => 'This link is not valid. Open the page from the message we sent you.',
              'stop' => 'Your boarding stop', 'date' => 'Travel date', 'bus' => 'Bus', 'pnr' => 'Ticket', 'route' => 'Route',
              'notLive' => 'The bus is not live yet', 'notLiveSub' => 'We show the position only when the driver\'s phone is sending it. Check again closer to departure.',
-             'live' => 'The bus is on the road', 'eta' => 'about %d min to %s', 'km' => '%s km away', 'passed' => 'The bus has passed your stop — call the office if you missed it.',
+             'live' => 'The bus is on the road', 'eta' => 'about %1$d min to %2$s', 'km' => '%s km away', 'passed' => 'The bus has passed your stop — call the office if you missed it.',
+             'lastKnown' => 'Last seen near %2$s at %1$s (%3$d min ago) — not live', 'gone' => 'The bus has left. Its position is not being sent right now.', 'mapsLast' => 'Last known place in Google Maps',
              'arrived' => 'The bus has arrived', 'cancelled' => 'This trip is cancelled — the office will contact you.', 'delay' => 'Running %d min late',
              'share' => 'Share with family on WhatsApp', 'shareText' => 'Follow my bus live (S Hari Global):', 'maps' => 'Open in Google Maps', 'call' => 'Call the office',
              'updated' => 'Updated %s ago', 'refresh' => 'Refreshes by itself every 15 s', 'ticketOnly' => 'Ticket not confirmed — the bus cannot be followed yet.'],
     'hi' => ['title' => 'मेरी बस कहाँ है?', 'sub' => 'आपके टिकट की लाइव स्थिति', 'notFound' => 'यह लिंक सही नहीं है। हमारे भेजे संदेश से पेज खोलें।',
              'stop' => 'आपका बोर्डिंग स्टॉप', 'date' => 'यात्रा की तारीख', 'bus' => 'बस', 'pnr' => 'टिकट', 'route' => 'रूट',
              'notLive' => 'बस अभी लाइव नहीं है', 'notLiveSub' => 'ड्राइवर का फ़ोन स्थिति भेजेगा तभी दिखेगी। रवानगी के समय के पास फिर देखें।',
-             'live' => 'बस रास्ते में है', 'eta' => '%s तक लगभग %d मिनट', 'km' => '%s किमी दूर', 'passed' => 'बस आपके स्टॉप से निकल चुकी है — छूट गई हो तो ऑफ़िस को कॉल करें।',
+             'live' => 'बस रास्ते में है', 'eta' => '%2$s तक लगभग %1$d मिनट', 'km' => '%s किमी दूर', 'passed' => 'बस आपके स्टॉप से निकल चुकी है — छूट गई हो तो ऑफ़िस को कॉल करें।',
+             'lastKnown' => 'आखिरी बार %2$s के पास %1$s बजे दिखी (%3$d मिनट पहले) — लाइव नहीं', 'gone' => 'बस निकल चुकी है। अभी उसकी स्थिति नहीं आ रही।', 'mapsLast' => 'आखिरी जगह Google Maps में',
              'arrived' => 'बस पहुँच गई', 'cancelled' => 'यह यात्रा रद्द है — ऑफ़िस आपसे संपर्क करेगा।', 'delay' => '%d मिनट देरी से चल रही है',
              'share' => 'परिवार को WhatsApp पर भेजें', 'shareText' => 'मेरी बस को लाइव देखें (S Hari Global):', 'maps' => 'Google Maps में खोलें', 'call' => 'ऑफ़िस को कॉल करें',
              'updated' => '%s पहले अपडेट', 'refresh' => 'हर 15 सेकंड में खुद रीफ्रेश होता है', 'ticketOnly' => 'टिकट पक्का नहीं है — अभी बस नहीं देखी जा सकती।'],
     'ne' => ['title' => 'मेरो बस कहाँ छ?', 'sub' => 'तपाईंको टिकटको लाइभ स्थिति', 'notFound' => 'यो लिङ्क मिलेन। हामीले पठाएको सन्देशबाट पेज खोल्नुहोस्।',
              'stop' => 'तपाईं चढ्ने ठाउँ', 'date' => 'यात्राको मिति', 'bus' => 'बस', 'pnr' => 'टिकट', 'route' => 'रुट',
              'notLive' => 'बस अहिले लाइभ छैन', 'notLiveSub' => 'ड्राइभरको फोनले स्थिति पठाएपछि मात्र देखिन्छ। छुट्ने समय नजिक फेरि हेर्नुहोस्।',
-             'live' => 'बस बाटोमा छ', 'eta' => '%s सम्म करिब %d मिनेट', 'km' => '%s किमी टाढा', 'passed' => 'बस तपाईंको स्टपबाट अगाडि गइसक्यो — छुटेको भए कार्यालयलाई फोन गर्नुहोस्।',
+             'live' => 'बस बाटोमा छ', 'eta' => '%2$s सम्म करिब %1$d मिनेट', 'km' => '%s किमी टाढा', 'passed' => 'बस तपाईंको स्टपबाट अगाडि गइसक्यो — छुटेको भए कार्यालयलाई फोन गर्नुहोस्।',
+             'lastKnown' => 'अन्तिम पटक %2$s नजिक %1$s बजे देखियो (%3$d मिनेट अघि) — लाइभ होइन', 'gone' => 'बस छुटिसक्यो। अहिले यसको स्थिति आइरहेको छैन।', 'mapsLast' => 'अन्तिम ठाउँ Google Maps मा',
              'arrived' => 'बस पुग्यो', 'cancelled' => 'यो यात्रा रद्द भयो — कार्यालयले सम्पर्क गर्नेछ।', 'delay' => '%d मिनेट ढिलो चलिरहेको छ',
              'share' => 'परिवारलाई WhatsApp मा पठाउनुहोस्', 'shareText' => 'मेरो बस लाइभ हेर्नुहोस् (S Hari Global):', 'maps' => 'Google Maps मा खोल्नुहोस्', 'call' => 'कार्यालयलाई फोन',
              'updated' => '%s अघि अपडेट', 'refresh' => 'हरेक १५ सेकेन्डमा आफैँ रिफ्रेस हुन्छ', 'ticketOnly' => 'टिकट पक्का भएको छैन — अहिले बस हेर्न मिल्दैन।'],
@@ -64,13 +67,22 @@ $T = [
 $e       = static fn(?string $s): string => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
 $company = Settings::getString('company_name', APP_NAME);
 $phone   = Settings::officePhone();
-$self    = appUrl('track.php?pnr=' . urlencode($pnr) . '&k=' . urlencode($token));
+/* The tracker's OWN key (8 Oct 2026, D7-11): the family share link and the
+   language links carry Ticket::trackToken, never the download key — even
+   when this page was opened from an older link that carried it — so a
+   forwarded link can watch the bus and cannot download the ticket. */
+$tok     = $authed ? Ticket::trackToken($pnr) : $token;
+$self    = appUrl('track.php?pnr=' . urlencode($pnr) . '&k=' . urlencode($tok));
 $shareUrl = 'https://wa.me/?text=' . rawurlencode($T['shareText'] . ' ' . $self);
 
-/* One headline per state, decided here so the page and its refresh agree. */
+/* One headline per state, decided here so the page and its refresh agree.
+   The ETA templates are positional (%1$d minutes, %2$s stop): the Hindi and
+   Nepali sentences put the stop first and used to print "25 तक लगभग 0 मिनट". */
 $head = ['icon' => '🚌', 'title' => $T['notLive'], 'sub' => $T['notLiveSub'], 'tone' => 'muted'];
+$meta = $T['refresh'];
 if ($authed && $status !== null) {
-    $st = (string) $status['state'];
+    $st   = (string) $status['state'];
+    $gone = in_array($st, ['departed', 'on_route'], true) || (string) ($status['tripStatus'] ?? '') === 'departed';
     if (($booking['status'] ?? '') !== 'confirmed') {
         $head = ['icon' => '⏳', 'title' => $T['ticketOnly'], 'sub' => '', 'tone' => 'muted'];
     } elseif ($st === 'cancelled') {
@@ -82,11 +94,21 @@ if ($authed && $status !== null) {
             $head = ['icon' => '⚠️', 'title' => $T['passed'], 'sub' => '', 'tone' => 'warn'];
         } else {
             $head = ['icon' => '📍', 'title' => $T['live'],
-                     'sub'  => $status['etaMin'] !== null ? sprintf($T['eta'], $status['etaMin'], $status['stop']) . ' · ' . sprintf($T['km'], (string) $status['km']) : '',
+                     'sub'  => $status['etaMin'] !== null ? sprintf($T['eta'], (int) $status['etaMin'], (string) $status['stop']) . ' · ' . sprintf($T['km'], (string) $status['km']) : '',
                      'tone' => 'ok'];
         }
+        if (($status['fixAge'] ?? null) !== null) {
+            $fa   = (int) $status['fixAge'];
+            $meta = sprintf($T['updated'], $fa < 60 ? $fa . ' s' : (int) round($fa / 60) . ' min');
+        }
+    } elseif (!empty($status['lastKnown'])) {
+        // D7-06: a GPS gap mid-journey — where it was last seen, never "not live yet".
+        $head = ['icon' => '⏸', 'title' => sprintf($T['lastKnown'], (string) $status['lastAt'], (string) $status['lastStop'], (int) $status['lastAgeMin']),
+                 'sub' => $T['gone'], 'tone' => 'muted'];
     } elseif ((int) ($status['delayMin'] ?? 0) > 0) {
         $head = ['icon' => '⏰', 'title' => sprintf($T['delay'], (int) $status['delayMin']), 'sub' => (string) ($status['delayNote'] ?? ''), 'tone' => 'warn'];
+    } elseif ($gone) {
+        $head = ['icon' => '🚌', 'title' => $T['gone'], 'sub' => '', 'tone' => 'muted'];
     }
 }
 
@@ -104,16 +126,22 @@ header('X-Robots-Tag: noindex');
 <meta name="theme-color" content="#12264E">
 <title><?= $e($T['title']) ?> · <?= $e($company) ?></title>
 <link rel="icon" href="/assets/img/favicon-32.png">
+<script>/* The app's saved theme, before the first frame (8 Oct 2026): localStorage 'shg:theme' = light | dark | amoled, else the phone's setting. */
+(function(){try{var d=document.documentElement,t=(localStorage.getItem('shg:theme')||'').replace(/"/g,'');if(t!=='light'&&t!=='dark'&&t!=='amoled')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';d.setAttribute('data-theme',t==='light'?'light':'dark');if(t==='amoled')d.setAttribute('data-display','amoled');if(t!=='light'){var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',t==='amoled'?'#000000':'#0E1626')}}catch(e){}})();</script>
 <style>
 :root{--blue:#2E5FA8;--navy:#12264E;--orange:#F07C1F;--ok:#178A50;--warn:#B7791F;--bad:#C53030;--ink:#16233C;--muted:#5C6B85;--line:#E2E9F4;--bg:#F6F8FC;--card:#fff}
-@media (prefers-color-scheme:dark){:root{--ink:#F1F5FB;--muted:#A9B6CC;--line:#243352;--bg:#0E1626;--card:#16213A}}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#F1F5FB;--muted:#A9B6CC;--line:#243352;--bg:#0E1626;--card:#16213A}}
+:root[data-theme="dark"]{--ink:#F1F5FB;--muted:#A9B6CC;--line:#243352;--bg:#0E1626;--card:#16213A}
+:root[data-display="amoled"]{--ink:#EEF4FF;--muted:#ACBBD0;--line:#2C3D55;--bg:#000;--card:#101822;--blue:#28579C}
+:root[data-theme="dark"]{color-scheme:dark}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans Devanagari','Noto Sans',sans-serif;background:var(--bg);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased}
 .wrap{max-width:520px;margin:0 auto;padding:16px 16px calc(24px + env(safe-area-inset-bottom))}
 .top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
 .brand{display:flex;align-items:center;gap:10px;font-weight:800;color:var(--navy)}
 .brand img{width:36px;height:36px;border-radius:9px}
-@media (prefers-color-scheme:dark){.brand{color:#fff}}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .brand{color:#fff}}
+:root[data-theme="dark"] .brand{color:#fff}
 .langs a{font-size:12px;font-weight:700;color:var(--muted);text-decoration:none;padding:4px 7px;border-radius:999px;border:1px solid var(--line);margin-left:4px}
 .langs a.on{background:var(--blue);color:#fff;border-color:var(--blue)}
 h1{font-size:22px;margin:4px 0 2px}
@@ -124,7 +152,8 @@ h1{font-size:22px;margin:4px 0 2px}
 .head h2{font-size:19px;line-height:1.25}
 .head p{color:var(--muted);font-size:14px;margin-top:4px}
 .tone-ok h2{color:var(--ok)}.tone-warn h2{color:var(--warn)}.tone-bad h2{color:var(--bad)}.tone-muted h2{color:var(--ink)}
-.pulse{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 0 rgba(23,138,80,.5);animation:p 1.6s infinite;margin-right:6px;vertical-align:middle}
+.pulse{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 0 rgba(23,138,80,.5);margin-right:6px;vertical-align:middle}
+@media (prefers-reduced-motion:no-preference){.pulse{animation:p 1.6s infinite}}
 @keyframes p{70%{box-shadow:0 0 0 12px rgba(23,138,80,0)}100%{box-shadow:0 0 0 0 rgba(23,138,80,0)}}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;font-size:14px}
 .grid small{display:block;color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.04em}
@@ -147,7 +176,7 @@ h1{font-size:22px;margin:4px 0 2px}
     <div class="brand"><img src="/assets/img/icon-192.png" alt=""><span><?= $e($company) ?></span></div>
     <div class="langs">
       <?php foreach (['ne' => 'ने', 'hi' => 'हि', 'en' => 'EN'] as $l => $lab): ?>
-        <a class="<?= $l === $lang ? 'on' : '' ?>" href="?pnr=<?= $e(urlencode($pnr)) ?>&amp;k=<?= $e(urlencode($token)) ?>&amp;lang=<?= $l ?>"><?= $lab ?></a>
+        <a class="<?= $l === $lang ? 'on' : '' ?>" href="?pnr=<?= $e(urlencode($pnr)) ?>&amp;k=<?= $e(urlencode($tok)) ?>&amp;lang=<?= $l ?>"><?= $lab ?></a>
       <?php endforeach; ?>
     </div>
   </div>
@@ -176,26 +205,31 @@ h1{font-size:22px;margin:4px 0 2px}
 
   <div class="btns">
     <a class="btn wa" href="<?= $e($shareUrl) ?>" target="_blank" rel="noopener">💬 <?= $e($T['share']) ?></a>
-    <a class="btn blue <?= empty($status['live']) ? 'hidden' : '' ?>" id="mapsBtn" href="<?= !empty($status['live']) ? 'https://maps.google.com/?q=' . $e((string) $status['lat']) . ',' . $e((string) $status['lng']) : '#' ?>" target="_blank" rel="noopener">🗺️ <?= $e($T['maps']) ?></a>
+    <?php $lkMap = empty($status['live']) && !empty($status['lastKnown']); ?>
+    <a class="btn blue <?= empty($status['live']) && !$lkMap ? 'hidden' : '' ?>" id="mapsBtn" href="<?= !empty($status['live']) ? 'https://maps.google.com/?q=' . $e((string) $status['lat']) . ',' . $e((string) $status['lng']) : ($lkMap ? 'https://maps.google.com/?q=' . $e((string) $status['lastLat']) . ',' . $e((string) $status['lastLng']) : '#') ?>" target="_blank" rel="noopener">🗺️ <span id="mapsTxt"><?= $e($lkMap ? $T['mapsLast'] : $T['maps']) ?></span></a>
     <a class="btn" href="tel:<?= $e(preg_replace('/[^0-9+]/', '', $phone)) ?>">📞 <?= $e($T['call']) ?> · <?= $e($phone) ?></a>
   </div>
-  <p class="meta" id="meta"><?= $e($T['refresh']) ?></p>
+  <p class="meta" id="meta"><?= $e($meta) ?></p>
 
 <script>
 (function(){
   var T = <?= json_encode($T, JSON_UNESCAPED_UNICODE) ?>;
-  var url = '/api/whereis.php?pnr=<?= $e(rawurlencode($pnr)) ?>&k=<?= $e(rawurlencode($token)) ?>';
+  var url = '/api/whereis.php?pnr=<?= $e(rawurlencode($pnr)) ?>&k=<?= $e(rawurlencode($tok)) ?>';
   var $ = function(id){ return document.getElementById(id); };
-  function fmt(s, a, b){ return s.replace('%d', a).replace('%s', b); }
+  /* Positional tokens, like the server's sprintf: %1$d / %2$s / %3$d. */
+  function fill(s, a){ return String(s).replace(/%(\d)\$[ds]/g, function(m, n){ var v = a[+n - 1]; return v === undefined || v === null ? '' : String(v); }); }
   function paint(d){
     var card = $('headCard'), icon = '🚌', title = T.notLive, sub = T.notLiveSub, tone = 'muted', live = !!d.live;
+    var gone = d.state === 'departed' || d.state === 'on_route' || d.tripStatus === 'departed';
     if (d.bookingStatus !== 'confirmed') { icon = '⏳'; title = T.ticketOnly; sub = ''; }
     else if (d.state === 'cancelled') { icon = '❌'; title = T.cancelled; sub = ''; tone = 'bad'; }
     else if (d.state === 'arrived' || d.state === 'completed') { icon = '🏁'; title = T.arrived; sub = ''; tone = 'ok'; }
     else if (live && d.passed) { icon = '⚠️'; title = T.passed; sub = ''; tone = 'warn'; }
     else if (live) { icon = '📍'; title = T.live; tone = 'ok';
-      sub = d.etaMin !== null ? (T.eta.replace('%d', d.etaMin).replace('%s', d.stop) + ' · ' + T.km.replace('%s', d.km)) : ''; }
+      sub = d.etaMin !== null ? (fill(T.eta, [d.etaMin, d.stop]) + ' · ' + T.km.replace('%s', d.km)) : ''; }
+    else if (d.lastKnown) { icon = '⏸'; title = fill(T.lastKnown, [d.lastAt, d.lastStop, d.lastAgeMin]); sub = T.gone; }
     else if (d.delayMin > 0) { icon = '⏰'; title = T.delay.replace('%d', d.delayMin); sub = d.delayNote || ''; tone = 'warn'; }
+    else if (gone) { title = T.gone; sub = ''; }
     card.className = 'card head tone-' + tone;
     $('hIcon').textContent = icon;
     $('hTitle').innerHTML = (live ? '<i class="pulse"></i>' : '') + title.replace(/[<>&]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; });
@@ -203,8 +237,10 @@ h1{font-size:22px;margin:4px 0 2px}
     var dot = $('busDot'), maps = $('mapsBtn');
     if (live && d.km !== null) { dot.classList.remove('hidden'); dot.style.left = Math.max(4, Math.min(96, 100 - Math.min(100, d.km / 4))) + '%'; }
     else { dot.classList.add('hidden'); }
-    if (live && d.lat) { maps.classList.remove('hidden'); maps.href = 'https://maps.google.com/?q=' + d.lat + ',' + d.lng; } else { maps.classList.add('hidden'); }
-    $('meta').textContent = live && d.fixAge !== null ? fmt(T.updated, '', d.fixAge < 60 ? d.fixAge + ' s' : Math.round(d.fixAge / 60) + ' min') : T.refresh;
+    if (live && d.lat) { maps.classList.remove('hidden'); maps.href = 'https://maps.google.com/?q=' + d.lat + ',' + d.lng; $('mapsTxt').textContent = T.maps; }
+    else if (!live && d.lastKnown && d.lastLat) { maps.classList.remove('hidden'); maps.href = 'https://maps.google.com/?q=' + d.lastLat + ',' + d.lastLng; $('mapsTxt').textContent = T.mapsLast; }
+    else { maps.classList.add('hidden'); }
+    $('meta').textContent = live && d.fixAge !== null ? T.updated.replace('%s', d.fixAge < 60 ? d.fixAge + ' s' : Math.round(d.fixAge / 60) + ' min') : T.refresh;
   }
   function tick(){
     if (document.hidden) return;

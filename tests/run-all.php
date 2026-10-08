@@ -137,6 +137,7 @@ const CORE_SUITES = [
     'bus-calendar-slot-test.php'   => 'extra buses live in their own slot',
     'export-filters-test.php'      => 'a register exports exactly what it shows',
     'ticket-png-test.php'          => 'the PNG ticket renders and stays fresh',
+    'ticket-premium-test.php'      => 'honest WhatsApp state, pickup-time clock, trip cancel/delay notices, track token, public pages',
     'challan-png-test.php'         => 'the bus challan PNG draws the whole coach and stays fresh',
     'chalani-png-test.php'         => 'the chalani PNG pages + who cut the ticket (agent code)',
     'report-pdf-test.php'          => 'report PDFs render',

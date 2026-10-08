@@ -586,29 +586,90 @@ function sqlSearchClause(array $arms, string $text, array &$params, string $pref
    honest "could not deliver — send it yourself" instead of guessing whether
    the office's message went. Reads the newest whatsapp row Notify wrote to
    message_logs; the number is masked to its last four digits. Never throws:
-   the ticket must render even when the log table is unavailable. */
-function shg_wa_last(int $bookingId): ?array
+   the ticket must render even when the log table is unavailable.
+
+   8 Oct 2026 (D6-01 + D6-M3) — never fake delivery:
+     · the REAL outcome lives in msg_ledger (the AiSensy status poll and the
+       ticket queue write delivered / read / failed there), so it is read
+       first; message_logs is only the fallback;
+     · only the passenger's ticket sends count (purpose ticket /
+       aisensy_ticket / ticket_resend) — a seller's copy logged against the
+       same booking used to answer "sent ✅ ••••<agent's number>" exactly when
+       the passenger's own send had failed;
+     · with $custPhone the recipient must be the booking's contact or alt
+       number (last 10 digits);
+     · 'state' = delivered (delivered/read) | failed (failed/skipped) |
+       pending (accepted/sent/queued — AiSensy "sent" is only the single
+       tick). 'ok' stays for older clients and now means delivered. */
+function shg_wa_last(int $bookingId, string $custPhone = ''): ?array
 {
     if ($bookingId <= 0) {
         return null;
     }
-    try {
-        $row = Database::fetch(
-            "SELECT status, to_number, error, created_at FROM message_logs WHERE booking_id = :b AND channel = 'whatsapp' ORDER BY id DESC LIMIT 1",
-            [':b' => $bookingId]
-        );
-    } catch (Throwable $e) {
+    $last10 = static fn(string $p): string => substr(preg_replace('/\D/', '', $p) ?? '', -10);
+    $want = [];
+    if ($custPhone !== '') {
+        $want[] = $last10($custPhone);
+        try {
+            $alt = (string) Database::scalar('SELECT alt_phone FROM bookings WHERE id = :b', ['b' => $bookingId], '');
+            if ($alt !== '') { $want[] = $last10($alt); }
+        } catch (Throwable $e) {
+            // no alt_phone column on an old schema: the contact number alone
+        }
+        $want = array_values(array_filter(array_unique($want), static fn(string $d): bool => strlen($d) === 10));
+    }
+    $pick = static function (array $rows) use ($want, $last10): ?array {
+        foreach ($rows as $r) {
+            if ($want === [] || in_array($last10((string) ($r['to_number'] ?? '')), $want, true)) {
+                return $r;
+            }
+        }
         return null;
+    };
+    $purposes = "('ticket','aisensy_ticket','ticket_resend')";
+
+    $row = null;
+    try {
+        $row = $pick(Database::fetchAll(
+            "SELECT status, to_number, error, created_at FROM msg_ledger
+              WHERE booking_id = :b AND channel = 'whatsapp' AND COALESCE(purpose, '') IN $purposes
+              ORDER BY id DESC LIMIT 25",
+            ['b' => $bookingId]
+        ));
+    } catch (Throwable $e) {
+        $row = null;   // ledger not migrated on this server
+    }
+    if ($row === null) {
+        try {
+            $row = $pick(Database::fetchAll(
+                "SELECT status, to_number, error, created_at FROM message_logs
+                  WHERE booking_id = :b AND channel = 'whatsapp' AND COALESCE(purpose, '') IN $purposes
+                  ORDER BY id DESC LIMIT 25",
+                ['b' => $bookingId]
+            ));
+        } catch (Throwable $e) {
+            try {   // message_logs without a purpose column: the old read, still recipient-filtered
+                $row = $pick(Database::fetchAll(
+                    "SELECT status, to_number, error, created_at FROM message_logs WHERE booking_id = :b AND channel = 'whatsapp' ORDER BY id DESC LIMIT 25",
+                    ['b' => $bookingId]
+                ));
+            } catch (Throwable $e2) {
+                return null;
+            }
+        }
     }
     if ($row === null) {
         return null;
     }
     $digits = preg_replace('/\D/', '', (string) ($row['to_number'] ?? '')) ?? '';
     $status = strtolower((string) ($row['status'] ?? ''));
+    $state  = in_array($status, ['delivered', 'read'], true) ? 'delivered'
+            : (in_array($status, ['failed', 'skipped'], true) ? 'failed' : 'pending');
     $code   = preg_match('/\(code (\d{4,6})\)/', (string) ($row['error'] ?? ''), $m) ? $m[1] : '';
     return [
         'status' => $status,
-        'ok'     => in_array($status, ['sent', 'delivered', 'read', 'accepted', 'queued'], true),
+        'state'  => $state,
+        'ok'     => $state === 'delivered',
         'last4'  => $digits !== '' ? substr($digits, -4) : '',
         'code'   => $code,
         'at'     => (string) ($row['created_at'] ?? ''),
@@ -645,8 +706,22 @@ function shg_customer_payload(array $detail): array
             'drop'        => $leg['drop_stop'],
             'crewName'    => $leg['crew_name'],
             'crewPhone'   => $leg['crew_phone'],
+            // The office's delay / cancellation (Admin -> Trips), so the app
+            // ticket can say so (8 Oct 2026, D7-M2). Display only.
+            'delayMin'    => max(0, (int) ($leg['delay_minutes'] ?? 0)),
+            'delayNote'   => (string) ($leg['delay_note'] ?? ''),
+            'tripStatus'  => (string) ($leg['schedule_status'] ?? ''),
         ];
     }, $detail['legs'] ?? []);
+
+    /* The first leg = the outbound one (detail() lists a round trip's return
+       leg first); its delay and trip status also ride at the top level. */
+    $firstLeg = null;
+    foreach ($detail['legs'] ?? [] as $lg) {
+        if ((string) ($lg['leg_type'] ?? 'outbound') === 'outbound') { $firstLeg = $lg; break; }
+    }
+    $firstLeg ??= ($detail['legs'][0] ?? []);
+    $isConfirmed = ($detail['status'] ?? '') === 'confirmed';
 
     /* Has the journey actually finished? Drives the "rate your trip" card:
        a rating collected before arrival is not a rating of the journey.
@@ -698,6 +773,20 @@ function shg_customer_payload(array $detail): array
             ? Ticket::trackUrl((string) $detail['pnr'])
             : null,
         'createdAt'   => $createdAt !== false ? $createdAt * 1000 : null,
+        /* 8 Oct 2026 additions — every key above is unchanged. */
+        // The country of the contact number (bookings.contact_country_code,
+        // '91' / '977' / ''), so a Nepal number is not printed as +91 (D6-14).
+        'contactCountry' => (string) ($detail['contact_country_code'] ?? ''),
+        // The keyed verify page, for the on-screen QR (D6-18): the same URL
+        // the PNG and PDF QR carry, so a phone camera opens the live status.
+        'verifyUrl'   => $isConfirmed
+            ? appUrl('verify-ticket.php') . '?pnr=' . urlencode((string) $detail['pnr']) . '&k=' . Ticket::downloadToken((string) $detail['pnr'])
+            : null,
+        // Office delay / trip status of the first leg (D7-M2): display only,
+        // never a booking-status or refund change (the owner settles by hand).
+        'delayMin'    => max(0, (int) ($firstLeg['delay_minutes'] ?? 0)),
+        'delayNote'   => (string) ($firstLeg['delay_note'] ?? ''),
+        'tripStatus'  => (string) ($firstLeg['schedule_status'] ?? ''),
     ];
 }
 

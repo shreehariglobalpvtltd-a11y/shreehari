@@ -2,9 +2,12 @@
 /**
  * api/whereis.php?pnr=…&k=…  — "Where is my bus?" refresh for track.php.
  *
- * The same keyed door as the ticket download. Answers the WhereIs::status()
- * shape: trip state, live position (only when fresh, accurate and on this
- * route), minutes and km to the passenger's own boarding stop. Never a guess.
+ * The same door as track.php (WhereIs::authorised): the tracker's own key
+ * (Ticket::trackToken, 8 Oct 2026), the download key older links carry, the
+ * owning customer or staff. Answers the WhereIs::status() shape: trip state,
+ * live position (only when fresh, accurate and on this route), minutes and km
+ * to the passenger's own boarding stop, or an honest last-known place while
+ * the coach is out of signal. Never a guess.
  */
 
 declare(strict_types=1);

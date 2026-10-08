@@ -494,7 +494,13 @@ admin_header('Help Desk', 'support-inbox');
           <form method="post" class="hd-reply"><?= $csrf ?>
             <input type="hidden" name="action" value="reply"><input type="hidden" name="id" value="<?= $rid ?>">
             <div class="hd-quick" aria-label="Quick replies">
-              <?php foreach ($canned as $c): ?><button type="button" data-body="<?= Security::e($c['b']) ?>"><?= Security::e($c['t']) ?></button><?php endforeach; ?>
+              <?php
+                /* {track} → THIS ticket's keyed tracker (8 Oct 2026, D7-12), or the
+                   My-ticket page when the help-desk ticket carries no PNR. */
+                if (!class_exists('Ticket')) { require_once INCLUDE_PATH . '/ticket.php'; }
+                $trackLink = (string) ($r['pnr'] ?? '') !== '' ? Ticket::trackUrl((string) $r['pnr']) : appUrl('/#/my');
+              ?>
+              <?php foreach ($canned as $c): ?><button type="button" data-body="<?= Security::e(str_replace('{track}', $trackLink, $c['b'])) ?>"><?= Security::e($c['t']) ?></button><?php endforeach; ?>
             </div>
             <textarea name="note" required placeholder="Reply to the customer, or an internal note…"></textarea>
             <div class="hd-opts">
