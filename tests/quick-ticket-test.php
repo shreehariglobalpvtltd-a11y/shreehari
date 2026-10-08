@@ -409,6 +409,12 @@ try {
     $owner = ['id' => 1, 'phone' => QT_PHONE . '013', 'full_name' => 'Quick Pinned', 'role' => 'customer', 'last_seen' => time()];
     throws('undo is refused to a session that is not the ticket\'s number', fn() => QuickTicket::customerUndo($resPin['pnr'], ['id' => 2, 'phone' => QT_PHONE . '099', 'last_seen' => time()]), 'not on this mobile');
     throws('  …and to a guest', fn() => QuickTicket::customerUndo($resPin['pnr'], null), 'Sign in');
+    /* 8 Oct 2026 (owner: name + phone is never proof): being signed in on the
+       ticket's number is no longer enough — the session must have booked the
+       ticket (api/quick-ticket.php remembers it) or proved the number with
+       the WhatsApp code. Before that change the $owner array alone passed. */
+    throws('  …and to a session on the ticket\'s own number that neither booked it nor has the code', fn() => QuickTicket::customerUndo($resPin['pnr'], $owner), 'Verify');
+    Auth::rememberOwnPnr($resPin['pnr']);   // what the customer door does right after the sale
     $jBefore = count(Notify::whatsappJournal());
     $u = QuickTicket::customerUndo($resPin['pnr'], $owner);
     // Snapshot the undo's own messages HERE: the journal is request-scoped and
@@ -421,6 +427,7 @@ try {
     $resOld = QuickTicket::sellCustomer(['name' => 'Quick Pinned', 'phone' => QT_PHONE . '013', 'date' => $DC, 'direction' => 'toNepal'], null);
     check('after an undo the same passenger may book the bus again', $resOld['status'] === 'confirmed');
     Database::update('bookings', ['created_at' => date('Y-m-d H:i:s', time() - 3 * 3600)], 'pnr = :p', ['p' => $resOld['pnr']]);
+    Auth::rememberOwnPnr($resOld['pnr']);
     throws('an old ticket is past the free undo window (use Cancel)', fn() => QuickTicket::customerUndo($resOld['pnr'], $owner), 'window');
 
     /* ---- quiet undo (7 Sep 2026): one short line to the passenger, no ₹0 refund page to the office ---- */
@@ -438,7 +445,9 @@ try {
     $resCash = QuickTicket::sellCustomer(['name' => 'Quick Pinned', 'phone' => QT_PHONE . '013', 'date' => $DC2, 'direction' => 'toNepal'], null);
     Database::update('payments', ['status' => 'verified'], 'booking_id = :b', ['b' => (int) $resCash['bookingId']]);
     $jCashBefore = count(Notify::whatsappJournal());
+    Auth::rememberOwnPnr($resCash['pnr']);
     $uCash = QuickTicket::customerUndo($resCash['pnr'], $owner);
+    Auth::forgetOwnPnrs();
     $jCash = array_slice(Notify::whatsappJournal(), $jCashBefore);
     check('an undo after the counter took the cash refunds real money', (float) $uCash['refundAmount'] > 0, inr((float) $uCash['refundAmount']));
     check('  …so the passenger AND the office get the ordinary cancel copy, not "nothing to pay"',

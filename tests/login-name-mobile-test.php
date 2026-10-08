@@ -4,12 +4,14 @@
  *  login-name-mobile-test.php — 4 Sep 2026: sign-in is NAME + MOBILE.
  *
  *   A. api/otp.php `quick`: a brand-new number + name registers and signs
- *      in at once (no OTP); no name → 422; a returning number with a name
- *      on file signs in without a name; a suspended account → 403; the
- *      typed name replaces a wrong spelling on file.
- *   B. api/my-bookings.php: 401 for a guest; the signed-in number's
- *      bookings (by user_id OR contact_phone) come back newest first in
- *      the track.php shape.
+ *      in at once for BOOKING (no OTP) — but, since 8 Oct 2026, unverified
+ *      (name + phone is never proof); no name → 422; a returning number
+ *      signs in without a name and is never told the name on file; a
+ *      suspended account → 403; a typed name NO LONGER renames the account
+ *      (only the WhatsApp code may — see tests/identity-gate-test.php).
+ *   B. api/my-bookings.php: 401 for a guest; a quick (unverified) session
+ *      sees the bookings THIS browser made, newest first in the track.php
+ *      shape (the full history needs the code — identity-gate-test.php).
  *   C. api/book.php: a signed-in customer's booking is written against the
  *      SESSION phone even when the payload carries another number.
  *   D. api/otp.php `request` is capped per IP (11th call in 5 min → 429)
@@ -95,7 +97,9 @@ check('config.php hands out a csrf token', $csrfA !== '');
 $r = req($jA, 'POST', '/api/otp.php', ['json' => ['action' => 'quick', 'phone' => $P_NEW, 'name' => '', 'country' => 'IN'], 'csrf' => $csrfA]);
 check('new number without a name → 422', $r['code'] === 422, 'HTTP ' . $r['code']);
 $r = req($jA, 'POST', '/api/otp.php', ['json' => ['action' => 'quick', 'phone' => $P_NEW, 'name' => 'Sita Kumari', 'country' => 'NP'], 'csrf' => $csrfA]);
-check('new number + name → signed in, no OTP', $r['code'] === 200 && !empty($r['json']['data']['verified']) && empty($r['json']['data']['needsOtp']), 'HTTP ' . $r['code'] . ' ' . substr($r['body'], 0, 120));
+// 8 Oct 2026: signed in for booking, but NOT verified — the old assertion
+// (verified:true, needsOtp:false) pinned the phone-only sign-in the owner retired.
+check('new number + name → signed in for booking, not verified', $r['code'] === 200 && !empty($r['json']['data']['signedIn']) && ($r['json']['data']['verified'] ?? true) === false && !empty($r['json']['data']['needsOtp']), 'HTTP ' . $r['code'] . ' ' . substr($r['body'], 0, 120));
 check('response carries the name', ($r['json']['data']['user']['name'] ?? '') === 'Sita Kumari');
 $u = Database::fetch('SELECT full_name, country_code, phone_verified FROM users WHERE phone = :p', ['p' => $P_NEW]);
 check('users row created with the name', $u !== null && $u['full_name'] === 'Sita Kumari', json_encode($u));
@@ -105,10 +109,12 @@ check('the session now knows the customer', ($cfg['json']['data']['user']['phone
 
 $jB = jar('b'); $csrfB = csrfFor($jB);
 $r = req($jB, 'POST', '/api/otp.php', ['json' => ['action' => 'quick', 'phone' => $P_OLD, 'name' => '', 'country' => 'IN'], 'csrf' => $csrfB]);
-check('returning number, no name typed → signed in with the name on file', $r['code'] === 200 && ($r['json']['data']['user']['name'] ?? '') === 'Ramesh Thapa', 'HTTP ' . $r['code']);
+// 8 Oct 2026: the name on file is never handed to an unproven session (it
+// made every mobile number a lookup of its owner's name).
+check('returning number, no name typed → signed in, the name on file is NOT echoed', $r['code'] === 200 && ($r['json']['data']['user']['name'] ?? 'x') === '' && !str_contains($r['body'], 'Ramesh'), 'HTTP ' . $r['code']);
 $r = req($jB, 'POST', '/api/otp.php', ['json' => ['action' => 'quick', 'phone' => $P_OLD, 'name' => 'Ramesh Thapa Magar', 'country' => 'IN'], 'csrf' => $csrfB]);
 $u = Database::fetch('SELECT full_name FROM users WHERE phone = :p', ['p' => $P_OLD]);
-check('a corrected name replaces the one on file', ($u['full_name'] ?? '') === 'Ramesh Thapa Magar', (string) ($u['full_name'] ?? ''));
+check('a typed name no longer renames the account (only the WhatsApp code may)', ($u['full_name'] ?? '') === 'Ramesh Thapa', (string) ($u['full_name'] ?? ''));
 
 $jC = jar('c'); $csrfC = csrfFor($jC);
 $r = req($jC, 'POST', '/api/otp.php', ['json' => ['action' => 'quick', 'phone' => $P_BLK, 'name' => 'Blocked Person', 'country' => 'IN'], 'csrf' => $csrfC]);
