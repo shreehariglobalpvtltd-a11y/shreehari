@@ -160,7 +160,7 @@ check('no coordinates → no map (never guessed)', Ticket::pickupGeo(['boarding_
 check('[0,0] is not a place', Ticket::pickupGeo(['boarding_stop' => 'X [0,0]', 'route_id_for_stop' => 0]) === null);
 $tsrc = (string) file_get_contents($root . '/includes/ticket.php');
 check('the PNG draws the PICKUP MAP QR only without the pay QR', str_contains($tsrc, "\$mapsQr = \$payUpi === '' && \$geo !== null && Settings::getBool('ticket_maps_qr', true)"));
-check('issued tickets re-render once (layout stamp moved)', str_contains($tsrc, "PNG_LAYOUT_CHANGED = '2026-10-08 12:00:00'"));
+check('issued tickets re-render once (layout stamp moved)', str_contains($tsrc, "PNG_LAYOUT_CHANGED = '2026-10-08 12:08:30'"));
 
 echo "-- 5. WhatsApp template library --\n";
 $cats = array_count_values(array_column(WaTplLib::BUILTIN, 'cat'));
