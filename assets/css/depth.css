@@ -1136,6 +1136,11 @@ body.fab-quiet .whatsapp-fab, body.fab-quiet .ai-fab, body.fab-quiet .ct-fab { o
 /* the install sheet never covers an open assistant (it waits until it closes) */
 body:has(#aiPanel.open) #pwaSheet, body:has(#aiPanel.open) #pwaBackdrop { display: none !important; }
 
+/* ---- 5b. the contact-numbers strip (wide screens): its row is reserved
+   until renderContactStrip() has decided (html.ns-done), so revealing it no
+   longer pushes the whole page down by 59px a second after first paint. ---- */
+@media (min-width: 761px) { html:not(.ns-done) body:not(.in-flow) #numStrip[hidden] { display: block !important; visibility: hidden; min-height: 59px; } }
+
 /* ---- 6. Track hint on My Tickets (openTrackMyBus) ---- */
 .trk-hint { margin: 0 0 10px; padding: 10px 12px; border-radius: 12px; background: var(--royal-tint); border: 1px solid var(--royal-soft); color: var(--ink); font: 600 14px/1.45 var(--font-sans); }
 

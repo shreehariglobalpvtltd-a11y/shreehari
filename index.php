@@ -524,14 +524,28 @@ if ($revs !== []) {
     $html = str_replace('<section class="section" id="realReviews" hidden></section>', $rv, $html);
 }
 
-$firstPaint = shg_first_paint_strings(['spTitle', 'spSub']);
-if ($firstPaint !== []) {
-    $fp = '<script>(function(){try{var M=' . json_encode($firstPaint, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP)
+/* 8 Oct 2026: the premium hero (#homeHero) now leads the page and its h1 is
+   the LCP - its headline, promise line and three keys get the same
+   first-paint treatment, in a script placed right after the hero. */
+$shgFpScript = static function (array $strings): string {
+    return '<script>(function(){try{var M=' . json_encode($strings, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP)
         . ',l=null;try{l=localStorage.getItem("shg:lang");}catch(e){}'
         . 'if(l==="en"||l==="gu")return;'
         . 'if(!l||!M[l]){l="ne";var n=navigator.languages||[navigator.language||""];for(var i=0;i<n.length;i++){var c=String(n[i]||"").toLowerCase().slice(0,2);if(c==="ne"||c==="hi"){l=c;break;}}}'
         . 'var d=M[l];if(!d)return;'
         . 'for(var k in d){var e=document.querySelector("[data-i18n=\""+k+"\"]");if(e)e.innerHTML=d[k];}}catch(e){}})();</script>';
+};
+$heroPaint = shg_first_paint_strings(['hhTitle', 'hhTag', 'hhBook', 'hhBookSub', 'hhTrack', 'hhTrackSub', 'hhMy', 'hhMySub']);
+if ($heroPaint !== []) {
+    $h1 = strpos($html, 'id="homeHero"');
+    $h2 = $h1 === false ? false : strpos($html, '</section>', $h1);
+    if ($h2 !== false) {
+        $html = substr($html, 0, $h2 + 10) . $shgFpScript($heroPaint) . substr($html, $h2 + 10);
+    }
+}
+$firstPaint = shg_first_paint_strings(['spTitle', 'spSub']);
+if ($firstPaint !== []) {
+    $fp = $shgFpScript($firstPaint);
     $p1 = strpos($html, 'data-i18n="spSub"');
     $p2 = $p1 === false ? false : strpos($html, '</p>', $p1);
     if ($p2 !== false) {

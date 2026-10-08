@@ -1154,6 +1154,9 @@ function renderContactStrip() {
      the checkbox says - otherwise ticking Show on an empty slot publishes a
      dead tel: link. */
   const live = contactNumbers().filter(n => n.show && digits(n.num).length >= 7);
+  /* html.ns-done releases the space depth.css reserves for the strip on
+     wide screens until this has run (8 Oct 2026, CLS). */
+  document.documentElement.classList.add('ns-done');
   if (!live.length) { strip.hidden = true; inner.innerHTML = ''; return; }
 
   /* 5 Oct 2026: the brand panel beside the coach banner lists the branch
