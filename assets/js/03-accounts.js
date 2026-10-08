@@ -419,12 +419,23 @@ function applyTheme(mode, save) {
   /* The topbar button cycles light → dark → AMOLED; it shows the next one. */
   const next = { light: ['🌙', 'Switch to dark mode'], dark: ['⚫', 'Switch to AMOLED black mode'], amoled: ['☀️', 'Switch to light mode'] }[mode];
   $$('.theme-btn').forEach(b => { b.textContent = next[0]; b.setAttribute('aria-label', next[1]); b.setAttribute('title', next[1]); });
+  if (save !== false) { try { localStorage.setItem('shg:theme', mode); } catch (e) {} }
+  /* Phase 12 (8 Oct 2026): the menu's "Auto" radio is the lit one while no
+     choice is saved (the screen follows the phone's own light / dark). */
+  const picked = (save === false && !readSavedTheme()) ? 'auto' : mode;
   $$('[data-theme-set]').forEach(b => {
-    const on = b.getAttribute('data-theme-set') === mode;
+    const on = b.getAttribute('data-theme-set') === picked;
     b.classList.toggle('on', on);
     b.setAttribute('aria-checked', on ? 'true' : 'false');
   });
-  if (save !== false) { try { localStorage.setItem('shg:theme', mode); } catch (e) {} }
+}
+/* Nothing saved: the phone's light / dark, read now. AMOLED is never guessed. */
+function systemTheme() {
+  try { return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; } catch (e) { return 'light'; }
+}
+/* The counter screen (?counter=1) follows the office panel instead (D9-08). */
+function isCounterThemed() {
+  try { return /[?&]counter=1(?:&|$)/.test(location.search); } catch (e) { return false; }
 }
 (function initTheme() {
   let mode = readSavedTheme();
@@ -447,10 +458,32 @@ function applyTheme(mode, save) {
     applyTheme(mode);                  /* also rewrites an old '"dark"' value raw */
   }
 })();
+/* Phase 12 (8 Oct 2026): follow the system theme LIVE. When the phone flips
+   to dark at sunset (or the passenger changes it in Settings) and nothing is
+   saved here, the page follows at once - only attributes on <html> change,
+   so no view re-renders and no half-typed form is lost. A saved choice
+   (Light / Dark / AMOLED) always wins; "Auto" in the menu clears it. */
+(function followSystemTheme() {
+  let mq = null;
+  try { mq = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)'); } catch (e) {}
+  if (!mq) return;
+  const onChange = () => {
+    if (readSavedTheme() || isCounterThemed()) return;
+    applyTheme(systemTheme(), false);
+  };
+  try { mq.addEventListener('change', onChange); }
+  catch (e) { try { mq.addListener(onChange); } catch (e2) {} }   // older Safari / WebViews
+})();
 document.addEventListener('click', (e) => {
   const set = e.target.closest('[data-theme-set]');
   if (set) {
-    applyTheme(set.getAttribute('data-theme-set'));
+    const v = set.getAttribute('data-theme-set');
+    if (v === 'auto') {
+      try { localStorage.removeItem('shg:theme'); } catch (err) {}
+      applyTheme(systemTheme(), false);
+    } else {
+      applyTheme(v);
+    }
     return;
   }
   if (!e.target.closest('.theme-btn')) return;
