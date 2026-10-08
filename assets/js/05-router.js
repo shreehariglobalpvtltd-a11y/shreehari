@@ -860,6 +860,8 @@ function applyLastSearch() {
     if (wantDate && di && di.value !== wantDate && (!di.max || wantDate <= di.max)) {
       di.value = wantDate;
       try { di.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+      const strip = document.getElementById('dateStrip30');
+      if (strip) shgCentreDateChip(strip);
     }
   };
   /* The town list is refilled when the server's stop list arrives and the
