@@ -7,8 +7,9 @@
  *  Five events reach the passenger without anyone in the office pressing
  *  anything twice:
  *
- *      reminder_12h  12 hours before departure   (cron/reminders.php)
- *      reminder_2h    2 hours before departure   (cron/reminders.php)
+ *      reminder_12h  12 hours before the pickup  (cron/reminders.php)
+ *      reminder_2h    2 hours before the pickup  (cron/reminders.php)
+ *                    (the passenger's own pickup time — Boarding::pickupTs)
  *      departed      bus started                 (Admin -> Trips, 1 click)
  *      border        reached the border          (Admin -> Trips, 1 click)
  *      arrived       journey complete            (Admin -> Trips, 1 click)
@@ -75,21 +76,26 @@ final class TripNotify
             return $out;
         }
 
+        if (!class_exists('Boarding')) {
+            require_once __DIR__ . '/boarding.php';
+        }
         $limit = max(1, min(2000, $limit));
-        // dep_time on the reminder row is the effective SCHEDULED departure:
-        // a per-schedule dep_time_override (delay-workflow reschedule) wins
-        // over the route timetable so the 12h/2h band, the printed message
-        // body, and the mins_to_go ordering all follow the new time. This is
-        // separate from schedules.delay_minutes (the DELTA that fires the
-        // "trip.delayed" WhatsApp) — that is not applied here.
+        /* 8 Oct 2026 (D7-M1): the clock is THIS passenger's pickup, not the
+           route's origin. For the 13:00 Surat coach the old SQL window sent
+           the "tomorrow" reminder at 01:00-03:00 on the travel day and told a
+           Mehsana (23:00) passenger "2 hours" at 11:00. Legs from yesterday to
+           tomorrow are read (a pickup can fall after midnight) and the minutes
+           are counted in PHP from Boarding::pickupTs() — the same rule the
+           ticket's live pill uses. dep_time is still the effective SCHEDULED
+           departure (dep_time_override wins); delay_minutes is a separate
+           DELTA and is not applied here. */
         $rows  = Database::fetchAll(
             "SELECT b.id AS booking_id, b.pnr, b.contact_phone, b.contact_email,
                     b.id_type, b.total_amount, b.booking_mode,
                     COALESCE(s.coach_type_override, r.coach_type) AS coach_type,
-                    bl.id AS leg_id, bl.schedule_id, bl.travel_date, bl.boarding_stop,
+                    bl.id AS leg_id, bl.schedule_id, bl.travel_date, bl.boarding_stop, bl.boarding_time,
                     r.from_city, r.to_city,
                     COALESCE(s.dep_time_override, r.dep_time) AS dep_time,
-                    TIMESTAMPDIFF(MINUTE, NOW(), TIMESTAMP(bl.travel_date, COALESCE(s.dep_time_override, r.dep_time))) AS mins_to_go,
                     (SELECT GROUP_CONCAT(bp.seat_no ORDER BY bp.seat_no SEPARATOR ', ')
                        FROM booking_passengers bp
                       WHERE bp.booking_id = b.id AND bp.leg_id = bl.id) AS seats
@@ -98,30 +104,31 @@ final class TripNotify
                JOIN schedules    s  ON s.id  = bl.schedule_id
                JOIN routes       r  ON r.id  = s.route_id
               WHERE b.status = 'confirmed'
-                AND s.status = 'scheduled'
+                AND s.status IN ('scheduled', 'departed')
                 AND b.contact_phone <> ''
-                AND TIMESTAMP(bl.travel_date, COALESCE(s.dep_time_override, r.dep_time)) >  NOW()
-                AND TIMESTAMP(bl.travel_date, COALESCE(s.dep_time_override, r.dep_time)) <= DATE_ADD(NOW(), INTERVAL 12 HOUR)
-              ORDER BY mins_to_go ASC
-              LIMIT " . $limit
+                AND bl.travel_date BETWEEN DATE_SUB(CURDATE(), INTERVAL 1 DAY) AND DATE_ADD(CURDATE(), INTERVAL 1 DAY)"
         );
 
-        $out['scanned'] = count($rows);
-
+        $now = time();
+        $due = [];
         foreach ($rows as $row) {
-            $mins = (int) $row['mins_to_go'];
-            // Pick by band, with a floor under the 12h reminder: a booking made
-            // (or confirmed) 3-10 hours before departure must NOT be told
-            // "your journey is tomorrow" (the reminder_12h body is hardcoded
-            // "भोलि यात्रा" / tomorrow). Only the genuine ~12h-out window gets
-            // it; the 2-10h dead-band waits until it enters the 2h window. The
-            // 15-min cron sweeps every booking through the 600-720 window, so
-            // early bookings still get their 12h reminder on time.
-            if ($mins <= 120) {
-                $event = 'reminder_2h';
-            } elseif ($mins > 600) {
-                $event = 'reminder_12h';
-            } else {
+            $pickTs = Boarding::pickupTs((string) $row['travel_date'], (string) ($row['boarding_stop'] ?? ''),
+                $row['boarding_time'] !== null ? (string) $row['boarding_time'] : null, (string) ($row['dep_time'] ?? ''));
+            if ($pickTs <= $now || $pickTs > $now + 12 * 3600) {
+                continue;
+            }
+            $row['pickup_ts']  = $pickTs;
+            $row['mins_to_go'] = (int) floor(($pickTs - $now) / 60);
+            $due[] = $row;
+        }
+        usort($due, static fn(array $a, array $b): int => $a['mins_to_go'] <=> $b['mins_to_go']);
+        $due = array_slice($due, 0, $limit);
+
+        $out['scanned'] = count($due);
+
+        foreach ($due as $row) {
+            $event = self::reminderEvent((int) $row['mins_to_go']);
+            if ($event === null) {
                 continue;                    // 2-10h band: nothing to send yet
             }
 
@@ -141,6 +148,26 @@ final class TripNotify
         }
 
         return $out;
+    }
+
+
+    /**
+     * Which reminder is due this many minutes before the PICKUP, or null.
+     *
+     * A floor under the 12h reminder: a booking made (or confirmed) 3-10
+     * hours before its pickup is not sent a "your trip is tomorrow / soon"
+     * reminder it would read half a day early; the 2-10h dead band waits for
+     * the 2h window. The 15-min cron sweeps every booking through 600-720.
+     */
+    public static function reminderEvent(int $minsToPickup): ?string
+    {
+        if ($minsToPickup <= 0 || $minsToPickup > 720) {
+            return null;
+        }
+        if ($minsToPickup <= 120) {
+            return 'reminder_2h';
+        }
+        return $minsToPickup > 600 ? 'reminder_12h' : null;
     }
 
 
@@ -430,7 +457,7 @@ final class TripNotify
             "SELECT b.id AS booking_id, b.pnr, b.contact_phone, b.contact_email, b.id_type,
                     b.booking_mode,
                     COALESCE(s.coach_type_override, r.coach_type) AS coach_type,
-                    bl.id AS leg_id, bl.schedule_id, bl.travel_date, bl.boarding_stop,
+                    bl.id AS leg_id, bl.schedule_id, bl.travel_date, bl.boarding_stop, bl.boarding_time,
                     r.from_city, r.to_city,
                     COALESCE(s.dep_time_override, r.dep_time) AS dep_time,
                     (SELECT GROUP_CONCAT(bp.seat_no ORDER BY bp.seat_no SEPARATOR ', ')
@@ -457,12 +484,15 @@ final class TripNotify
      */
     /**
      * Phase 6 — Delay notification. Messages every confirmed passenger
-     * on this schedule that the bus is delayed. Uses the exactly-once
-     * claim as every other event ('delayed' in trip_events).
+     * on this schedule that the bus is delayed.
      *
-     * A second call with a larger delay won't re-send — the claim is
-     * already taken. Clear the delay (set to 0) and re-set it to
-     * re-notify, but in practice the office sets it once.
+     * 8 Oct 2026 (D7-01): claimed through EventBus::claim() with the delay
+     * in the key — 'trip:delayed:<booking>:<schedule>:<minutes>' — not
+     * through trip_events, whose ENUM has no 'delayed' (an invalid ENUM under
+     * INSERT IGNORE became one '' slot per booking, so every later delay, and
+     * any cancellation after it, was silently dropped). A CHANGED delay
+     * (30 → 90) now re-notifies once; the same delay pressed twice still
+     * sends once. No ENUM migration.
      */
     public static function notifyDelay(int $scheduleId, int $minutes, string $note = '', int $adminId = 0): array
     {
@@ -499,23 +529,32 @@ final class TripNotify
         $passengers = self::passengersOn($scheduleId);
         $notified   = 0;
         $failed     = 0;
+        $skipped    = 0;
         foreach ($passengers as $p) {
             // Inject delay context into the delivery row so the
             // template can reference delayMinutes / delayNote.
             $p['delayMinutes'] = $minutes;
             $p['delayNote']    = $note;
             $res = self::deliver($p, 'delayed');
-            if ($res === null) { continue; }  // already sent
+            if ($res === null) { $skipped++; continue; }  // this delay already went to them
             $res['ok'] ? $notified++ : $failed++;
+        }
+
+        if ($passengers === []) {
+            $message = 'No confirmed passengers to notify.';
+        } else {
+            $message = $notified . ' passenger' . ($notified === 1 ? '' : 's') . ' notified of the delay'
+                . ($skipped > 0 ? ', ' . $skipped . ' already had this message' : '')
+                . ($failed  > 0 ? ', ' . $failed . ' could not be delivered — see Message Log' : '')
+                . '.';
         }
 
         return [
             'ok'       => true,
             'notified' => $notified,
             'failed'   => $failed,
-            'message'  => $notified > 0
-                ? "Delay notification sent to {$notified} passenger(s)."
-                : ($failed > 0 ? "Failed to notify {$failed} passenger(s)." : 'No passengers to notify.'),
+            'skipped'  => $skipped,
+            'message'  => $message,
         ];
     }
 
@@ -525,9 +564,12 @@ final class TripNotify
      * has been flipped to status='cancelled' (see the "mark-only"
      * flow — this method does NOT release seats or process refunds).
      *
-     * Exactly-once via the same trip_events ledger every other event
-     * uses (kind='cancelled'). A re-cancel or a manual re-fire will not
-     * spam passengers — the second call's claims all no-op.
+     * Exactly-once via EventBus::claim('trip:cancelled:<booking>:<schedule>')
+     * (8 Oct 2026 — trip_events' ENUM has no 'cancelled', and Notify used to
+     * refuse the event outright, so no passenger was ever told). A re-cancel
+     * or a manual re-fire will not spam passengers — the second call's
+     * claims all no-op. The message promises no refund: the owner settles
+     * refunds by hand.
      *
      * Skips the fan-out entirely when the trip has already departed or
      * arrived: passengers are on the bus, telling them the trip is
@@ -557,7 +599,7 @@ final class TripNotify
 
         // Journal the trip-level event once. EventBus writes are cheap; the
         // per-passenger deliver() calls carry their own idempotency ledger
-        // via trip_events UNIQUE(booking_id, schedule_id, event).
+        // (automation_log dedupe key 'trip:cancelled:<booking>:<schedule>').
         EventBus::emit('trip.cancelled', [
             'schedule_id' => $scheduleId,
             'route'       => $trip['from_city'] . ' → ' . $trip['to_city'],
@@ -599,12 +641,24 @@ final class TripNotify
         $bookingId  = (int) $row['booking_id'];
         $scheduleId = (int) $row['schedule_id'];
 
-        $claim = Database::query(
-            'INSERT IGNORE INTO `trip_events` (`booking_id`, `schedule_id`, `event`) VALUES (:b, :s, :e)',
-            ['b' => $bookingId, 's' => $scheduleId, 'e' => $event]
-        );
-        if ($claim->rowCount() === 0) {
-            return null;                       // someone already has this one
+        /* 'delayed' and 'cancelled' are not in trip_events' ENUM: they claim
+           in automation_log (a VARCHAR dedupe key) instead — see notifyDelay().
+           The five ENUM events keep their trip_events row. */
+        $viaBus = in_array($event, ['delayed', 'cancelled'], true);
+        if ($viaBus) {
+            $key = 'trip:' . $event . ':' . $bookingId . ':' . $scheduleId
+                 . ($event === 'delayed' ? ':' . (int) ($row['delayMinutes'] ?? 0) : '');
+            if (!EventBus::claim($key, 'trip.' . $event . '.notify')) {
+                return null;                   // this exact notice already went (or no ledger: never spam)
+            }
+        } else {
+            $claim = Database::query(
+                'INSERT IGNORE INTO `trip_events` (`booking_id`, `schedule_id`, `event`) VALUES (:b, :s, :e)',
+                ['b' => $bookingId, 's' => $scheduleId, 'e' => $event]
+            );
+            if ($claim->rowCount() === 0) {
+                return null;                   // someone already has this one
+            }
         }
 
         $booking = [
@@ -625,12 +679,26 @@ final class TripNotify
             (string) ($row['booking_mode'] ?? 'sharing') ?: 'sharing'
         );
 
+        /* The passenger's OWN stop and pickup time (8 Oct 2026, D7-M1/M3): the
+           raw label printed "[23.588,72.369]" and "Departure: 1:00 PM" sat
+           beside a 23:00 Mehsana pickup. Now "Mehsana · 23:00" and the
+           pickup date + time, the same moment the reminders count to. */
+        if (!class_exists('Boarding')) { require_once __DIR__ . '/boarding.php'; }
+        $sd     = Boarding::stopDisplay((string) ($row['boarding_stop'] ?? ''));
+        $pickTs = (int) ($row['pickup_ts'] ?? 0) ?: Boarding::pickupTs((string) ($row['travel_date'] ?? ''), (string) ($row['boarding_stop'] ?? ''),
+            ($row['boarding_time'] ?? null) !== null ? (string) $row['boarding_time'] : null, (string) ($row['dep_time'] ?? ''));
+        $boardTxt = trim((string) ($sd['name'] ?? ''));
+        if ($boardTxt !== '' && !empty($sd['time'])) {
+            $boardTxt .= ' · ' . $sd['time'];
+        }
+
         $ctx = [
             'route'        => trim((string) $row['from_city']) . ' → ' . trim((string) $row['to_city']),
-            'date'         => formatDate((string) $row['travel_date']),
-            'depTime'      => formatTime((string) ($row['dep_time'] ?? '')),
+            'date'         => $pickTs > 0 ? formatDate(date('Y-m-d', $pickTs)) : formatDate((string) $row['travel_date']),
+            'depTime'      => $pickTs > 0 ? formatTime(date('H:i:s', $pickTs)) : formatTime((string) ($row['dep_time'] ?? '')),
+            'pickupToday'  => $pickTs > 0 && date('Y-m-d', $pickTs) === date('Y-m-d') ? '1' : '0',
             'seats'        => $ctxSeats,
-            'boarding'     => (string) ($row['boarding_stop'] ?? ''),
+            'boarding'     => $boardTxt,
             'delayMinutes' => (int) ($row['delayMinutes'] ?? 0),
             'delayNote'    => (string) ($row['delayNote'] ?? ''),
             'cancelReason' => (string) ($row['cancelReason'] ?? ''),
@@ -643,12 +711,14 @@ final class TripNotify
             $res = ['ok' => false, 'channels' => '', 'detail' => $e->getMessage()];
         }
 
-        Database::update('trip_events', [
-            'channels' => substr($res['channels'], 0, 40),
-            'ok'       => $res['ok'] ? 1 : 0,
-            'detail'   => mb_substr($res['detail'], 0, 255),
-        ], 'booking_id = :b AND schedule_id = :s AND `event` = :e',
-           ['b' => $bookingId, 's' => $scheduleId, 'e' => $event]);
+        if (!$viaBus) {   // the two automation_log events are logged by Notify itself
+            Database::update('trip_events', [
+                'channels' => substr($res['channels'], 0, 40),
+                'ok'       => $res['ok'] ? 1 : 0,
+                'detail'   => mb_substr($res['detail'], 0, 255),
+            ], 'booking_id = :b AND schedule_id = :s AND `event` = :e',
+               ['b' => $bookingId, 's' => $scheduleId, 'e' => $event]);
+        }
 
         return $res;
     }

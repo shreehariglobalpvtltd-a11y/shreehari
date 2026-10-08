@@ -2918,7 +2918,10 @@ final class Notify
      * ================================================================= */
 
     /** The lifecycle events, in the order a journey goes through them. */
-    public const TRIP_EVENTS = ['reminder_12h', 'reminder_2h', 'delayed', 'departed', 'border', 'arrived', 'bus_near'];
+    // 'cancelled' (8 Oct 2026, D7-01): TripNotify::notifyCancellation() always
+    // sent it, and this list refused it as "Unknown trip event." — so a trip
+    // the office cancelled reached no passenger at all.
+    public const TRIP_EVENTS = ['reminder_12h', 'reminder_2h', 'delayed', 'cancelled', 'departed', 'border', 'arrived', 'bus_near'];
 
     /**
      * Is this lifecycle event switched on? Callers check this BEFORE they
@@ -3075,6 +3078,8 @@ final class Notify
             'reminder_2h'  => 'Your bus leaves in about 2 hours. Please reach the boarding point on time',
             'delayed'      => 'Your bus is delayed' . (!empty($f['delayMinutes']) ? ' by about ' . (int) $f['delayMinutes'] . ' minutes' : '')
                               . (!empty($f['delayNote']) ? ' (' . mb_substr((string) $f['delayNote'], 0, 80) . ')' : ''),
+            'cancelled'    => 'Your trip on this date is cancelled. The office will contact you about your ticket'
+                              . (!empty($f['cancelReason']) ? ' (' . mb_substr((string) $f['cancelReason'], 0, 80) . ')' : ''),
             'departed'     => 'Your bus has started its journey',
             'border'       => 'Your bus has reached the border. Keep your photo ID ready',
             'arrived'      => 'Your bus has arrived. Thank you for travelling with us',
@@ -3120,28 +3125,54 @@ final class Notify
             $destCity = trim((string) (explode('→', $f['route'])[1] ?? ''));
         }
 
+        /* 8 Oct 2026 (D7-M1): date + time are the passenger's own PICKUP (the
+           caller passes them), and the 12-hour reminder says "today" or
+           "tomorrow" from that date — it went out at 1-3 AM on the travel day
+           saying "tomorrow". A caller that does not know says neither. */
+        $dayHead = match ((string) ($f['pickupToday'] ?? '')) {
+            '1'     => 'Aaja yatra / आज यात्रा',
+            '0'     => 'Yatra bholi / भोलि यात्रा',
+            default => 'Yatra reminder / यात्रा सम्झना',
+        };
+
         return match ($event) {
             'reminder_12h' => [
                 'whatsapp' => "🚌 " . $company . "\n"
-                    . "Yatra kal / भोलि यात्रा — booking " . $pnr . "\n"
-                    . $routeLn . ($when !== '' ? "Departure: " . $when . "\n" : '') . $seatLine . $boardLn
+                    . $dayHead . " — booking " . $pnr . "\n"
+                    . $routeLn . ($when !== '' ? "Pickup / चढ्ने समय: " . $when . "\n" : '') . $seatLine . $boardLn
                     . "\n📄 Photo ID sathai lyaunuhos — border ma chahincha.\n"
                     . "Carry a valid photo ID for the border crossing.\n"
                     . ($helpline !== '' ? "Help: " . $helpline : ''),
                 'sms' => $company . ': Trip reminder ' . $pnr . '.'
                     . ($f['route'] !== '' ? ' ' . $f['route'] . '.' : '')
-                    . ($when !== '' ? ' Departs ' . $when . '.' : '')
+                    . ($when !== '' ? ' Pickup ' . $when . '.' : '')
                     . ($f['seats'] !== '' ? ' Seat ' . $f['seats'] . '.' : '')
                     . ' Carry photo ID for the border.',
             ],
+            'cancelled' => [
+                /* Messaging only (D7-01): the booking is not touched here and
+                   NO refund is promised — the owner settles every one by hand. */
+                'whatsapp' => "❌ " . $company . "\n"
+                    . "यात्रा रद्द / Trip cancelled — booking " . $pnr . "\n"
+                    . $routeLn . ($f['date'] !== '' ? "Date: " . $f['date'] . "\n" : '')
+                    . (!empty($f['cancelReason']) ? "Reason: " . mb_substr((string) $f['cancelReason'], 0, 120) . "\n" : '')
+                    . "\nकार्यालयले तपाईंको टिकटबारे सम्पर्क गर्नेछ।\n"
+                    . "The office will contact you about your ticket.\n"
+                    . ($helpline !== '' ? "Help: " . $helpline : ''),
+                'sms' => $company . ': Trip cancelled. ' . $pnr . '.'
+                    . ($f['route'] !== '' ? ' ' . $f['route'] . '.' : '')
+                    . ($f['date'] !== '' ? ' ' . $f['date'] . '.' : '')
+                    . ' The office will contact you about your ticket.'
+                    . ($helpline !== '' ? ' Help: ' . $helpline : ''),
+            ],
             'reminder_2h' => [
                 'whatsapp' => "⏰ " . $company . "\n"
-                    . "2 ghanta ma bus chhutcha / 2 घंटे में बस — booking " . $pnr . "\n"
-                    . $routeLn . ($when !== '' ? "Departure: " . $when . "\n" : '') . $seatLine . $boardLn
+                    . "2 ghanta ma bus aaunchha / 2 घंटे में बस — booking " . $pnr . "\n"
+                    . $routeLn . ($when !== '' ? "Pickup / चढ्ने समय: " . $when . "\n" : '') . $seatLine . $boardLn
                     . "\n🎒 Boarding point ma samayamai pugnuhos.\n"
                     . "Please reach the boarding point on time.\n"
                     . ($helpline !== '' ? "Help: " . $helpline : ''),
-                'sms' => $company . ': Your bus departs in about 2 hours. ' . $pnr . '.'
+                'sms' => $company . ': Your bus reaches your stop in about 2 hours. ' . $pnr . '.'
                     . ($when !== '' ? ' ' . $when . '.' : '')
                     . ($f['seats'] !== '' ? ' Seat ' . $f['seats'] . '.' : '')
                     . ' Please reach the boarding point on time.',
@@ -3149,7 +3180,7 @@ final class Notify
             'delayed' => [
                 'whatsapp' => "⏳ " . $company . "\n"
                     . "Bus dhila bhayo / बस में देरी — " . $pnr . "\n"
-                    . $routeLn . ($when !== '' ? "Original departure: " . $when . "\n" : '')
+                    . $routeLn . ($when !== '' ? "Planned pickup: " . $when . "\n" : '')
                     . (!empty($f['delayMinutes']) ? "Delay: ~" . $f['delayMinutes'] . " min\n" : '')
                     . (!empty($f['delayNote']) ? "Note: " . $f['delayNote'] . "\n" : '')
                     . "\nKripaya dhairya rakhnuhos. Updated time ma bus chhalchha.\n"

@@ -110,15 +110,22 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
                 // Notify passengers about the delay when it's > 0 and the
                 // trip hasn't departed yet.
+                /* 8 Oct 2026 (D7-01): the flash says what really happened to
+                   the passengers — it used to read "Delay set" even when
+                   nobody was messaged. */
+                $res = null;
                 if ($mins > 0) {
                     try {
-                        TripNotify::notifyDelay($sid, $mins, $note, (int) $admin['id']);
+                        $res = TripNotify::notifyDelay($sid, $mins, $note, (int) $admin['id']);
                     } catch (Throwable $e) {
                         // Non-fatal — delay is saved even if WA/SMS fails.
                         Logger::error('trip.set_delay.notify', $e->getMessage());
+                        $res = ['failed' => 1, 'message' => 'Passengers could not be messaged — see the error log.'];
                     }
                 }
-                $flash = ['ok', $mins > 0 ? "Delay set: {$mins} minutes." : 'Delay cleared.'];
+                $flash = $mins > 0
+                    ? [((int) ($res['failed'] ?? 0)) > 0 ? 'bad' : 'ok', "Delay set: {$mins} minutes. " . (string) ($res['message'] ?? '')]
+                    : ['ok', 'Delay cleared.'];
 
             } else {
                 $res   = TripNotify::markTrip((int) ($_POST['schedule_id'] ?? 0), (string) ($_POST['event'] ?? ''), (int) $admin['id']);
