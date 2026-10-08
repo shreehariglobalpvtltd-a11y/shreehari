@@ -713,7 +713,11 @@ final class HelpDesk
         return [
             ['t' => 'We are checking',    'b' => "नमस्ते 🙏 तपाईंको समस्या हामीले हेर्दैछौं। केही बेरमा जवाफ दिन्छौं।\nWe are checking this and will reply shortly."],
             ['t' => 'Ticket re-sent',     'b' => "तपाईंको टिकट फेरि पठाइएको छ। WhatsApp मा 'hi' लेख्नुभयो भने तुरुन्त आउँछ।\nYour ticket has been sent again."],
-            ['t' => 'Bus location',       'b' => "बस बाटोमा छ। लाइभ स्थिति: " . appUrl('/track.php') . "\nThe bus is on the way — live position at the link."],
+            /* {track} (8 Oct 2026, D7-12): the desk page fills in THIS ticket's
+               keyed tracker (Ticket::trackUrl), or the My-ticket page when the
+               help-desk ticket has no PNR — a bare /track.php always read
+               "this link is not valid". */
+            ['t' => 'Bus location',       'b' => "बस बाटोमा छ। लाइभ स्थिति: {track}\nThe bus is on the way — live position at the link."],
             ['t' => 'Refund — owner',     'b' => "रिफन्डको कुरा हाम्रो कार्यालयले हेर्छ, नियम अनुसार फिर्ता हुन्छ। कार्यालयबाट फोन आउनेछ।\nThe office will contact you about the refund."],
             ['t' => 'Call us',            'b' => "कृपया हाम्रो कार्यालयमा फोन गर्नुहोस्: " . Settings::getString('company_phone', '') . "\nPlease call our office."],
             ['t' => 'Solved — thank you', 'b' => "समस्या समाधान भयो 🙏 S Hari Global रोज्नुभएकोमा धन्यवाद।\nResolved — thank you for travelling with us."],

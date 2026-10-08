@@ -30,8 +30,19 @@ try {
         Response::success(['live' => false, 'stops' => []]);
     }
 
+    /* 8 Oct 2026 (D7-03): `livebus` is ONE anonymous position. It answers for
+       this route only when exactly one trip of the route can be on the road
+       right now (EtaAlerts::candidates — departure −30 min … +16 h); with
+       none, or two, it may be another coach (the return run passes the same
+       towns), so the answer is live:false — never someone else's bus. */
+    $now     = time();
+    $running = array_filter(EtaAlerts::candidates($now), static fn(array $c): bool => (int) $c['route_id'] === (int) $route['id']);
+    if (count($running) !== 1) {
+        Response::success(['live' => false, 'stops' => [], 'reason' => count($running) > 1 ? 'two trips on the road' : 'no trip on the road']);
+    }
+
     $stops = [];
-    foreach (EtaAlerts::stopEtas((int) $route['id']) as $key => $s) {
+    foreach (EtaAlerts::stopEtas((int) $route['id'], null, $now) as $key => $s) {
         $stops[] = ['name' => $s['name'], 'key' => $key, 'eta' => (int) (ceil($s['eta'] / 5) * 5), 'km' => $s['km']];
     }
     Response::success(['live' => $stops !== [], 'stops' => $stops]);

@@ -28,17 +28,26 @@ final class WhereIs
 {
     /**
      * Three doors, the same as verify-ticket.php: the keyed link, the
-     * signed-in customer whose number is on the booking, or staff who may
-     * see this booking.
+     * signed-in customer who owns the booking, or staff who may see it.
+     *
+     * 8 Oct 2026: the key may be the tracker's own token (Ticket::trackToken
+     * — what Ticket::trackUrl now carries and the family share link passes
+     * on) or the download key every link sent before today carries. The
+     * customer door is Auth::customerMayOpen() — an OTP-verified session for
+     * this number or a PNR booked in this browser session — once that exists;
+     * until then the old phone match, with the walk-in placeholder refused.
      */
     public static function authorised(array $booking, string $token): bool
     {
         $pnr = (string) ($booking['pnr'] ?? '');
-        if ($token !== '' && Ticket::checkDownloadToken($pnr, $token)) {
+        if ($token !== '' && (Ticket::checkTrackToken($pnr, $token) || Ticket::checkDownloadToken($pnr, $token))) {
             return true;
         }
-        $user = Auth::user();
-        if ($user !== null) {
+        if (method_exists('Auth', 'customerMayOpen')) {
+            if (Auth::customerMayOpen($booking)) {
+                return true;
+            }
+        } elseif (($user = Auth::user()) !== null) {
             $mine = normalisePhone((string) ($user['phone'] ?? ''));
             if ($mine !== '' && !isPlaceholderPhone((string) ($booking['contact_phone'] ?? ''))
                 && $mine === normalisePhone((string) ($booking['contact_phone'] ?? ''))) {
@@ -87,6 +96,7 @@ final class WhereIs
             'lng'        => null,
             'fixAge'     => null,
             'reason'     => '',
+            'lastKnown'  => false,
             'updatedAt'  => date('c', $now),
         ];
         if ($leg === null) {
@@ -102,6 +112,7 @@ final class WhereIs
         $out['bus']       = trim((string) ($leg['bus_number'] ?? ''));
         $out['delayMin']  = max(0, (int) ($leg['delay_minutes'] ?? 0));
         $out['delayNote'] = (string) ($leg['delay_note'] ?? '');
+        $out['tripStatus'] = (string) ($leg['trip_status'] ?? '');   // schedules.status — 'departed' once the office pressed "Bus started"
 
         // Trip state from the same ladder the office board uses.
         $trip = TripStatus::editableFor((int) $leg['schedule_id'], $now);
@@ -113,6 +124,12 @@ final class WhereIs
         [$fix, $why] = EtaAlerts::fix($now);
         if ($fix === null) {
             $out['reason'] = $why;
+            // A GPS gap on a trip that has left: the last place it was seen,
+            // honestly labelled "not live" (8 Oct 2026, D7-06).
+            $lk = self::lastKnown($leg, (string) $out['state'], $now);
+            if ($lk !== null) {
+                $out = array_merge($out, $lk);
+            }
             return $out;
         }
         $running = array_filter(EtaAlerts::candidates($now), static fn(array $c): bool => (int) $c['route_id'] === (int) $leg['route_id']);
@@ -139,5 +156,70 @@ final class WhereIs
             $out['passed'] = true;      // the bus is already past this stop
         }
         return $out;
+    }
+
+    /** A last-known position older than this is not shown at all. */
+    public const LAST_KNOWN_MAX_SEC = 6 * 3600;
+
+    /**
+     * Where the coach was last seen, when the live fix is refused ONLY for
+     * being old (8 Oct 2026, D7-06). A GPS dead zone mid-journey used to read
+     * "not live yet — check closer to departure", as if the bus had not left.
+     *
+     * Passes the SAME gates as a live answer, because `livebus` is one
+     * anonymous key that another coach can write: the trip has left
+     * (departed / on route / overdue), it is the ONLY trip of this route on
+     * the road, and the position lies on this route's line. Never an ETA.
+     *
+     * @param array<string,mixed> $leg  the status() leg row (schedule_id, route_id)
+     * @return array<string,mixed>|null
+     */
+    private static function lastKnown(array $leg, string $state, int $now): ?array
+    {
+        if (!in_array($state, ['departed', 'on_route', 'delayed'], true)) {
+            return null;
+        }
+        $running = array_filter(EtaAlerts::candidates($now), static fn(array $c): bool => (int) $c['route_id'] === (int) $leg['route_id']);
+        if (count($running) !== 1 || (int) reset($running)['id'] !== (int) $leg['schedule_id']) {
+            return null;
+        }
+        $row = Database::fetch("SELECT kvalue, updated_at FROM kv_store WHERE kscope = 'global' AND kkey = 'livebus' LIMIT 1");
+        if ($row === null) {
+            return null;
+        }
+        $at  = (int) strtotime((string) $row['updated_at']);
+        $age = $now - $at;
+        if ($at <= 0 || $age <= EtaAlerts::FIX_MAX_AGE_SEC || $age > self::LAST_KNOWN_MAX_SEC) {
+            return null;   // fresh (refused for another reason — accuracy) or too old to mean anything
+        }
+        $v = json_decode((string) $row['kvalue'], true);
+        if (is_string($v)) { $v = json_decode($v, true); }     // the client store double-encodes
+        if (!is_array($v) || !is_numeric($v['lat'] ?? null) || !is_numeric($v['lng'] ?? null)) {
+            return null;
+        }
+        $lat = (float) $v['lat']; $lng = (float) $v['lng'];
+        $geo = EtaAlerts::routeLine((int) $leg['route_id']);
+        $pos = EtaAlerts::project($geo['line'], $lat, $lng);
+        if ($pos === null || $pos['off'] > EtaAlerts::OFF_ROUTE_KM) {
+            return null;   // not on this route: could be the other coach
+        }
+        $stop = trim((string) ($v['stop'] ?? ''));
+        if ($stop === '') {
+            $best = null;
+            foreach ($geo['line'] as $s) {
+                $d = EtaAlerts::haversineKm($lat, $lng, (float) $s['lat'], (float) $s['lng']);
+                if ($best === null || $d < $best[0]) { $best = [$d, (string) $s['name']]; }
+            }
+            $stop = $best !== null ? $best[1] : '';
+        }
+        return [
+            'lastKnown'  => true,
+            'lastAt'     => date('H:i', $at),
+            'lastAtIso'  => date('c', $at),
+            'lastAgeMin' => (int) round($age / 60),
+            'lastStop'   => $stop !== '' ? (string) Boarding::stopDisplay($stop)['name'] : '',
+            'lastLat'    => round($lat, 5),
+            'lastLng'    => round($lng, 5),
+        ];
     }
 }
