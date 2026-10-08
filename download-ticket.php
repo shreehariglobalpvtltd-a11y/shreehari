@@ -77,6 +77,7 @@ try {
         // number on it rather than by knowing the reference.
         $user = Auth::user();
         if ($user !== null && normalisePhone((string) ($user['phone'] ?? '')) !== ''
+            && !isPlaceholderPhone((string) ($booking['contact_phone'] ?? ''))
             && normalisePhone((string) ($user['phone'] ?? '')) === normalisePhone((string) ($booking['contact_phone'] ?? ''))) {
             $allowed = true;
         }

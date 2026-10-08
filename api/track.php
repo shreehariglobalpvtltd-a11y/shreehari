@@ -39,7 +39,10 @@ try {
     $staffSees = Auth::isAdmin()
         && ($scopeId === null || (int) ($detail['sold_by_admin_id'] ?? 0) === $scopeId);
 
-    $ownsIt = ($phone !== '' && $phone === (string) $detail['contact_phone'])
+    // A walk-in's placeholder number (0000000000) proves nothing: it is the
+    // same "number" on every walk-in ticket the desk sells.
+    $ownsIt = ($phone !== '' && !isPlaceholderPhone((string) $detail['contact_phone'])
+            && $phone === (string) $detail['contact_phone'])
         || (Auth::isUser() && (int) (Auth::user()['id'] ?? 0) === (int) ($detail['user_id'] ?? -1))
         || $staffSees;
 

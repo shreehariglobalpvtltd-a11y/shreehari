@@ -40,7 +40,10 @@ try {
     // permission rather than on merely holding a session.
     $staffMayCancel = Auth::can('bookings.cancel');
 
-    $authorised = ($phone !== '' && $phone === (string) $booking['contact_phone'])
+    // The walk-in placeholder (0000000000) is on every walk-in ticket, so it
+    // can never authorise a cancel.
+    $authorised = ($phone !== '' && !isPlaceholderPhone((string) $booking['contact_phone'])
+            && $phone === (string) $booking['contact_phone'])
         || (Auth::isUser() && (int) (Auth::user()['id'] ?? 0) === (int) ($booking['user_id'] ?? -1))
         || $staffMayCancel;
 

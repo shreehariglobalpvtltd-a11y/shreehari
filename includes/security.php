@@ -233,6 +233,13 @@ final class Security
         if ($staff) {
             return $len >= 8 && $len <= 15;
         }
+        /* A customer's own number is never all one digit. 0000000000 is the
+           desk's walk-in placeholder (see isPlaceholderPhone in helpers.php);
+           letting a customer sign in or book "as" it made every walk-in
+           ticket theirs. */
+        if ($len >= 10 && preg_match('/^(\d)\1+$/', substr($digits, -10)) === 1) {
+            return false;
+        }
         return $len >= 10 && $len <= 13;
     }
 

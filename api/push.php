@@ -93,7 +93,7 @@ try {
         $booking = BookingService::findByPnr($pnr);
         if ($booking !== null) {
             $bPhone = normalisePhone((string) ($booking['contact_phone'] ?? ''));
-            $owns   = ($phone !== '' && $phone === $bPhone)
+            $owns   = ($phone !== '' && !isPlaceholderPhone($bPhone) && $phone === $bPhone)
                    || ($key !== '' && Ticket::checkDownloadToken($pnr, $key));
             if ($owns) {
                 $bookingId = (int) $booking['id'];

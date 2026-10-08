@@ -323,6 +323,23 @@ function normalisePhone(string $raw): string
 }
 
 /**
+ * Is this phone a stand-in rather than a person's number?
+ *
+ * The desk stores 0000000000 for a walk-in who gave no mobile (booking.php),
+ * so one "number" stands for every walk-in sold at the counter. A customer
+ * ownership check that compares phones must never treat that value as proof:
+ * until 8 Oct 2026 "+91 0000000000" (which normalises to the stored value)
+ * opened, downloaded and could cancel every walk-in ticket by PNR. Short
+ * strings and repeated-digit strings (1111111111, 9999999999) are the same
+ * class of non-number — the same test GemVault::isPlaceholder applies.
+ */
+function isPlaceholderPhone(string $raw): bool
+{
+    $p = normalisePhone($raw);
+    return strlen($p) < 10 || preg_match('/^(\d)\1+$/', $p) === 1;
+}
+
+/**
  * Decide the country of a phone number: 'IN', 'NP', or '' when unknown.
  *
  * India and Nepal share the same 10-digit mobile format, so the digits alone

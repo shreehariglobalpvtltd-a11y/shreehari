@@ -3178,7 +3178,9 @@ final class AiTools
             return $scope === null || (int) ($detail['sold_by_admin_id'] ?? 0) === (int) $scope;
         }
 
+        // A walk-in's placeholder number is on every walk-in ticket — never proof.
         return (string) $ctx['phone'] !== ''
+            && !isPlaceholderPhone((string) ($detail['contact_phone'] ?? ''))
             && normalisePhone((string) ($detail['contact_phone'] ?? '')) === (string) $ctx['phone'];
     }
 

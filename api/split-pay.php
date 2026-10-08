@@ -107,10 +107,11 @@ try {
 
     if ($action === 'plan') {
         $user   = Auth::user();
-        $mine   = $user !== null && normalisePhone((string) ($user['phone'] ?? '')) !== ''
+        $realNo = !isPlaceholderPhone((string) ($b['contact_phone'] ?? ''));   // never the walk-in 0000000000
+        $mine   = $realNo && $user !== null && normalisePhone((string) ($user['phone'] ?? '')) !== ''
                && normalisePhone((string) ($user['phone'] ?? '')) === normalisePhone((string) ($b['contact_phone'] ?? ''));
         $given  = normalisePhone(Security::clean((string) Response::field('phone', ''), 20));
-        $byNum  = $given !== '' && $given === normalisePhone((string) ($b['contact_phone'] ?? ''));
+        $byNum  = $realNo && $given !== '' && $given === normalisePhone((string) ($b['contact_phone'] ?? ''));
         if (!$mine && !$byNum && !Auth::can('bookings.view')) {
             Response::error('Only the passenger who booked can split this fare.', 403);
         }

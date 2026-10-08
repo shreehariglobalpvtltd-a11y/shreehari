@@ -40,7 +40,8 @@ final class WhereIs
         $user = Auth::user();
         if ($user !== null) {
             $mine = normalisePhone((string) ($user['phone'] ?? ''));
-            if ($mine !== '' && $mine === normalisePhone((string) ($booking['contact_phone'] ?? ''))) {
+            if ($mine !== '' && !isPlaceholderPhone((string) ($booking['contact_phone'] ?? ''))
+                && $mine === normalisePhone((string) ($booking['contact_phone'] ?? ''))) {
                 return true;
             }
         }

@@ -50,7 +50,8 @@ try {
     $viaOwner  = false;
 
     $sessionUser = $_SESSION[USER_SESSION_KEY] ?? null;
-    if (is_array($sessionUser) && !empty($sessionUser['phone'])) {
+    if (is_array($sessionUser) && !empty($sessionUser['phone'])
+        && !isPlaceholderPhone((string) ($booking['contact_phone'] ?? ''))) {
         $viaOwner = normalisePhone((string) $sessionUser['phone'])
                  === normalisePhone((string) ($booking['contact_phone'] ?? ''));
     }

@@ -1020,7 +1020,8 @@ final class QuickTicket
             throw new RuntimeException('Sign in with the mobile number on the ticket to undo it. / टिकटको मोबाइल नम्बरले sign in गर्नुहोस्।');
         }
         $booking = BookingService::findByPnr($pnr);
-        if ($booking === null || normalisePhone((string) ($booking['contact_phone'] ?? '')) !== normalisePhone((string) $user['phone'])) {
+        if ($booking === null || isPlaceholderPhone((string) ($booking['contact_phone'] ?? ''))
+            || normalisePhone((string) ($booking['contact_phone'] ?? '')) !== normalisePhone((string) $user['phone'])) {
             throw new RuntimeException('That ticket is not on this mobile number. / यो टिकट यो नम्बरको होइन।');
         }
         if ((string) $booking['status'] !== 'confirmed' || (int) ($booking['is_cod'] ?? 0) !== 1) {
