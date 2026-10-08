@@ -81,6 +81,7 @@ const CORE_SUITES = [
     'ticket-bot-test.php'          => 'AI Ticket Bot: learns from verified sales, never lifts a rule',
     'brain-test.php'               => 'Passive Brain: predicts the calls, parks the requests, never sells',
     'notify-country-test.php'      => 'the ticket WhatsApp/SMS reaches the right country (+977 vs +91)',
+    'a11y-voice-test.php'          => 'sign-in sheet keeps focus, voice guide off by default, track screen translated, GPS on tap, live system theme, type floor',
     // back in the battery 1 Oct 2026 (was KNOWN_STALE with a stale expectation)
     'automation-test.php'          => 'EventBus, exactly-once claims, .ics, agent OTP door, alerts + daily-summary crons',
 
