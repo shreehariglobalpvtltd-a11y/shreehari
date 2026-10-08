@@ -53,7 +53,7 @@ en: {
   tPaxFilled: 'Passenger details filled in.',
   tplAsk: "Ask about a darshan halt — message us",
   sNote: 'Direct international coach · Border crossing at Rupaidiha ⇄ Jamunaha · Carry a valid government photo ID.',
-  flPerPerson: 'Per person · online',
+  flPerPerson: 'Per person',
   paxAuto: 'Passenger',
   seatAutoOne: 'Pick the best free seat for me',
   seatAutoCabin: 'Pick my whole cabin ({n} berths)',
@@ -119,7 +119,7 @@ en: {
   qtDone: '🎉 Ticket ready in {s} s — download the PNG or PDF below.',
   qtGoBtn: '⚡ Book now — {amt} · {when} · {stop}', qtToday: 'Today', qtTomorrow: 'Tomorrow', qtOther: '📅 Other date',
   qtUsual: '🤖 From your {n} earlier trips: {what}', qtUsual1: '🤖 From your earlier trip: {what}', qtUsualStop: 'usual pickup {stop}', qtUsualParty: '{n} passengers as usual', qtUsualDir: 'your usual direction',
-  qtDefaults: '🤖 Pre-filled: 1 passenger · S Hari Parking · next bus — change anything with a tap.',
+  qtDefaults: '🤖 Pre-filled: 1 passenger · {stop} · next bus — change anything with a tap.',
   qtModify: '✎ Change date, seats or pickup', qtModifyHide: '▲ Hide options',
   qtFor: 'Ticket for', qtNotYou: 'Not you? Change', qtWhy: 'Why this bus?',
   qtUndoQ: 'Booked by mistake? Undo is free for {m}', qtUndoBtn: '↩ Undo — free', qtUndone: 'Ticket undone — nothing owed.',
@@ -298,6 +298,12 @@ en: {
   wlSeatsN: 'Seats needed', wlJoin: 'Join waitlist',
   wlOk: 'Added to the waitlist — we will contact you if seats free up. 🙏',
   bnHome: 'Home', bnBook: 'Book', bnTrips: 'My Trips', bnTickets: 'My Tickets', bnMaps: 'Maps', bnHelp: 'Help',
+  hhTitle: 'INDIA ⇄ NEPAL PREMIUM AC SLEEPER BUS', hhTag: 'Safe Journey. Easy Booking. Your Comfort, Our Responsibility.', hhActLbl: 'Book, track or open your ticket', hhBook: 'Book Ticket', hhBookSub: 'Date · seat · pay', hhTrack: 'Track My Bus', hhTrackSub: 'From your ticket', hhMy: 'My Ticket', hhMySub: 'View · download',
+  hfTitle: 'On every journey', hfAc: 'AC Sleeper', hfCharge: 'Mobile Charging', hfAid: 'First Aid', hfGps: 'GPS Tracking', hfWa: 'WhatsApp Ticket', hfHelp: 'Customer Support', hfBerth: 'Sleeper Berth', hfSecure: 'Secure Booking',
+  bnTrack: 'Track', mmTrack: 'Track my bus', trkHint: 'Enter your PNR and mobile to track your bus', trkOpening: 'Opening the live tracker of your ticket {pnr}…',
+  qtLineLbl: 'Write it in one line (optional)', qtNameLbl: 'Your name', qtPhoneLbl: 'Mobile (WhatsApp)', qtCCLbl: 'Number country', aiInputLbl: 'Ask SHG Sahayak',
+  fAboutUs: 'About us', fPrivacy: 'Privacy Policy', fRefund: 'Refund & Cancellation Policy', fTravel: 'Travel Info · India ⇄ Nepal Border', fTos: 'Terms of Service', fDataDel: 'Data Deletion', fHelpDesk: 'Help Desk', fAgreements: 'Agent agreements', fCall: 'Call', fNepalOffice: 'Nepal office',
+  ttlResults: 'Buses', ttlSeats: 'Choose your berth', ttlCheckout: 'Details & payment', ttlStatus: 'Your ticket', ttlMy: 'My tickets', ttlTrip: 'Your trip', ttlNav: 'Map & live bus', ttlTerms: 'Terms & Conditions',
   bnNav: "Map",
   fCompany: 'Company', fBooking: 'Booking', fOffice: 'Registered office',
   tPickDate: 'Please pick a journey date.', tPickRetDate: 'Please pick a return date.',
@@ -482,7 +488,7 @@ hi: {
   tPaxFilled: 'यात्री विवरण भर दिया गया।',
   tplAsk: "दर्शन ठहराव के बारे में पूछें — हमें संदेश करें",
   sNote: 'सीधी अंतर्राष्ट्रीय बस · रुपईडीहा ⇄ जमुनाहा बॉर्डर क्रॉसिंग · वैध सरकारी फोटो ID साथ रखें।',
-  flPerPerson: 'प्रति व्यक्ति · ऑनलाइन',
+  flPerPerson: 'प्रति व्यक्ति',
   paxAuto: 'यात्री',
   seatAutoOne: 'मेरे लिए सबसे अच्छी खाली सीट चुनें',
   seatAutoCabin: 'पूरा केबिन चुनें ({n} बर्थ)',
@@ -545,7 +551,7 @@ hi: {
   qtDone: '🎉 टिकट {s} सेकंड में तैयार — नीचे से PNG या PDF download करें।',
   qtGoBtn: '⚡ अभी book करें — {amt} · {when} · {stop}', qtToday: 'आज', qtTomorrow: 'कल', qtOther: '📅 दूसरी तारीख़',
   qtUsual: '🤖 आपके {n} पिछले सफ़र से: {what}', qtUsual1: '🤖 आपके पिछले सफ़र से: {what}', qtUsualStop: 'आपका pickup {stop}', qtUsualParty: 'हमेशा की तरह {n} यात्री', qtUsualDir: 'आपकी सामान्य दिशा',
-  qtDefaults: '🤖 पहले से भरा: 1 यात्री · S Hari Parking · अगली बस — कुछ भी एक टैप में बदलें।',
+  qtDefaults: '🤖 पहले से भरा: 1 यात्री · {stop} · अगली बस — कुछ भी एक टैप में बदलें।',
   qtModify: '✎ तारीख़, सीट या पिकअप बदलें', qtModifyHide: '▲ विकल्प छिपाएँ',
   qtFor: 'टिकट', qtNotYou: 'आप नहीं? बदलें', qtWhy: 'यही बस क्यों?',
   qtUndoQ: 'गलती से book हुआ? {m} तक undo मुफ़्त है', qtUndoBtn: '↩ Undo — मुफ़्त', qtUndone: 'टिकट रद्द — कुछ देना नहीं।',
@@ -720,6 +726,12 @@ hi: {
   wlSeatsN: 'कितनी सीटें चाहिए', wlJoin: 'वेटलिस्ट में जोड़ें',
   wlOk: 'वेटलिस्ट में जोड़ दिया गया — सीट खाली होने पर हम संपर्क करेंगे। 🙏',
   bnHome: 'होम', bnBook: 'बुक', bnTrips: 'मेरी यात्रा', bnTickets: 'मेरे टिकट', bnMaps: 'नक्शा', bnHelp: 'सहायता',
+  hhTitle: 'भारत ⇄ नेपाल प्रीमियम एसी स्लीपर बस', hhTag: 'सुरक्षित यात्रा। आसान बुकिंग। आपका आराम, हमारी ज़िम्मेदारी।', hhActLbl: 'टिकट बुक करें, बस ट्रैक करें या टिकट खोलें', hhBook: 'टिकट बुक करें', hhBookSub: 'तारीख़ · सीट · भुगतान', hhTrack: 'मेरी बस ट्रैक करें', hhTrackSub: 'अपने टिकट से', hhMy: 'मेरा टिकट', hhMySub: 'देखें · डाउनलोड करें',
+  hfTitle: 'हर यात्रा में', hfAc: 'एसी स्लीपर', hfCharge: 'मोबाइल चार्जिंग', hfAid: 'प्राथमिक उपचार', hfGps: 'जीपीएस ट्रैकिंग', hfWa: 'WhatsApp टिकट', hfHelp: 'ग्राहक सहायता', hfBerth: 'स्लीपर बर्थ', hfSecure: 'सुरक्षित बुकिंग',
+  bnTrack: 'ट्रैक', mmTrack: 'मेरी बस ट्रैक करें', trkHint: 'बस ट्रैक करने के लिए PNR और मोबाइल डालें', trkOpening: 'आपके टिकट {pnr} का लाइव ट्रैकर खुल रहा है…',
+  qtLineLbl: 'एक लाइन में लिखें (वैकल्पिक)', qtNameLbl: 'आपका नाम', qtPhoneLbl: 'मोबाइल (WhatsApp)', qtCCLbl: 'नंबर किस देश का है', aiInputLbl: 'SHG सहायक से पूछें',
+  fAboutUs: 'हमारे बारे में', fPrivacy: 'गोपनीयता नीति', fRefund: 'रिफ़ंड और रद्दीकरण नीति', fTravel: 'यात्रा जानकारी · भारत ⇄ नेपाल सीमा', fTos: 'सेवा की शर्तें', fDataDel: 'डेटा हटाना', fHelpDesk: 'सहायता केंद्र', fAgreements: 'एजेंट समझौते', fCall: 'कॉल करें', fNepalOffice: 'नेपाल कार्यालय',
+  ttlResults: 'बसें', ttlSeats: 'अपनी बर्थ चुनें', ttlCheckout: 'विवरण और भुगतान', ttlStatus: 'आपका टिकट', ttlMy: 'मेरे टिकट', ttlTrip: 'आपकी यात्रा', ttlNav: 'नक्शा और लाइव बस', ttlTerms: 'नियम और शर्तें',
   bnNav: "मैप",
   fCompany: 'कंपनी', fBooking: 'बुकिंग', fOffice: 'पंजीकृत कार्यालय',
   tPickDate: 'कृपया यात्रा तिथि चुनें।', tPickRetDate: 'कृपया वापसी तिथि चुनें।',
@@ -903,7 +915,7 @@ ne: {
   tPaxFilled: 'यात्रु विवरण भरियो।',
   tplAsk: "दर्शन विश्रामबारे सोध्नुहोस् — हामीलाई सन्देश गर्नुहोस्",
   sNote: 'सिधा अन्तर्राष्ट्रिय बस · रुपईडिहा ⇄ जमुनाहा सीमा · मान्य सरकारी फोटो परिचयपत्र साथमा राख्नुहोस्।',
-  flPerPerson: 'प्रति व्यक्ति · अनलाइन',
+  flPerPerson: 'प्रति व्यक्ति',
   paxAuto: 'यात्रु',
   seatAutoOne: 'मेरो लागि राम्रो खाली सिट छान्नुहोस्',
   seatAutoCabin: 'पूरा क्याबिन छान्नुहोस् ({n} बर्थ)',
@@ -966,7 +978,7 @@ ne: {
   qtDone: '🎉 टिकट {s} सेकेन्डमा तयार — तल PNG वा PDF download गर्नुहोस्।',
   qtGoBtn: '⚡ अहिले book गर्नुहोस् — {amt} · {when} · {stop}', qtToday: 'आज', qtTomorrow: 'भोलि', qtOther: '📅 अर्को मिति',
   qtUsual: '🤖 तपाईंका {n} अघिल्ला यात्राबाट: {what}', qtUsual1: '🤖 तपाईंको अघिल्लो यात्राबाट: {what}', qtUsualStop: 'तपाईंको pickup {stop}', qtUsualParty: 'सधैँझैँ {n} यात्री', qtUsualDir: 'तपाईंको सामान्य दिशा',
-  qtDefaults: '🤖 पहिल्यै भरिएको: १ यात्री · S Hari Parking · अर्को बस — जे पनि एक ट्यापमा बदल्नुहोस्।',
+  qtDefaults: '🤖 पहिल्यै भरिएको: १ यात्री · {stop} · अर्को बस — जे पनि एक ट्यापमा बदल्नुहोस्।',
   qtModify: '✎ मिति, सिट वा पिकअप बदल्नुहोस्', qtModifyHide: '▲ विकल्प लुकाउनुहोस्',
   qtFor: 'टिकट', qtNotYou: 'तपाईं होइन? बदल्नुहोस्', qtWhy: 'यही बस किन?',
   qtUndoQ: 'गल्तीले book भयो? {m} सम्म undo निःशुल्क', qtUndoBtn: '↩ Undo — निःशुल्क', qtUndone: 'टिकट रद्द — केही तिर्नु पर्दैन।',
@@ -1141,6 +1153,12 @@ ne: {
   wlSeatsN: 'कति सिट चाहिन्छ', wlJoin: 'सूचीमा थप्नुहोस्',
   wlOk: 'प्रतीक्षा सूचीमा थपियो — सिट खाली भएमा हामी सम्पर्क गर्नेछौँ। 🙏',
   bnHome: 'होम', bnBook: 'बुक', bnTrips: 'मेरो यात्रा', bnTickets: 'मेरो टिकट', bnMaps: 'नक्सा', bnHelp: 'सहायता',
+  hhTitle: 'भारत ⇄ नेपाल प्रिमियम एसी स्लीपर बस', hhTag: 'सुरक्षित यात्रा। सजिलो बुकिङ। तपाईंको आराम, हाम्रो जिम्मेवारी।', hhActLbl: 'टिकट बुक, बस ट्र्याक वा टिकट खोल्नुहोस्', hhBook: 'टिकट बुक गर्नुहोस्', hhBookSub: 'मिति · सिट · भुक्तानी', hhTrack: 'मेरो बस ट्र्याक गर्नुहोस्', hhTrackSub: 'आफ्नो टिकटबाट', hhMy: 'मेरो टिकट', hhMySub: 'हेर्नुहोस् · डाउनलोड',
+  hfTitle: 'हरेक यात्रामा', hfAc: 'एसी स्लीपर', hfCharge: 'मोबाइल चार्जिङ', hfAid: 'प्राथमिक उपचार', hfGps: 'जीपीएस ट्र्याकिङ', hfWa: 'WhatsApp टिकट', hfHelp: 'ग्राहक सहायता', hfBerth: 'स्लीपर बर्थ', hfSecure: 'सुरक्षित बुकिङ',
+  bnTrack: 'ट्र्याक', mmTrack: 'मेरो बस ट्र्याक गर्नुहोस्', trkHint: 'PNR र मोबाइल हालेर बस ट्र्याक गर्नुहोस्', trkOpening: 'तपाईंको टिकट {pnr} को लाइभ ट्र्याकर खुल्दैछ…',
+  qtLineLbl: 'एउटै लाइनमा लेख्नुहोस् (ऐच्छिक)', qtNameLbl: 'तपाईंको नाम', qtPhoneLbl: 'मोबाइल (WhatsApp)', qtCCLbl: 'नम्बर कुन देशको हो', aiInputLbl: 'SHG सहायकलाई सोध्नुहोस्',
+  fAboutUs: 'हाम्रो बारेमा', fPrivacy: 'गोपनीयता नीति', fRefund: 'फिर्ता र रद्द नीति', fTravel: 'यात्रा जानकारी · भारत ⇄ नेपाल सीमा', fTos: 'सेवाका सर्तहरू', fDataDel: 'डाटा मेटाउने', fHelpDesk: 'सहायता केन्द्र', fAgreements: 'एजेन्ट सम्झौता', fCall: 'फोन गर्नुहोस्', fNepalOffice: 'नेपाल कार्यालय',
+  ttlResults: 'बसहरू', ttlSeats: 'आफ्नो बर्थ छान्नुहोस्', ttlCheckout: 'विवरण र भुक्तानी', ttlStatus: 'तपाईंको टिकट', ttlMy: 'मेरो टिकट', ttlTrip: 'तपाईंको यात्रा', ttlNav: 'नक्सा र लाइभ बस', ttlTerms: 'नियम र सर्तहरू',
   bnNav: "नक्सा",
   fCompany: 'कम्पनी', fBooking: 'बुकिङ', fOffice: 'दर्ता कार्यालय',
   tPickDate: 'कृपया यात्रा मिति छान्नुहोस्।', tPickRetDate: 'कृपया फर्कने मिति छान्नुहोस्।',
@@ -1300,10 +1318,12 @@ let LANG = (function () {
 I18N.gu = Object.assign({}, I18N.en, {"animBDemoPill":"નમૂનો","animJEyebrow":"સફર","animJTitle":"ગુજરાત ⇄ રૂપૈડીહા","animJSub":"ભારત–નેપાળ સરહદ તરફ અમારી એસી સ્લીપર બસ","animJAria":"એનિમેશન: હાઇવે પર ચાલતી એસ હરિ ગ્લોબલની એસી સ્લીપર બસ","animAmAc":"એસી","animAmCharge":"મોબાઇલ ચાર્જિંગ","animAmAid":"ફર્સ્ટ-એઇડ / દવા","animMEyebrow":"રૂટ","animMTitle":"સરહદ સુધી, ઘરની વધુ નજીક","animMSub":"સુરત, વડોદરા અને અમદાવાદથી રૂપૈડીહા સુધી — નેપાળગંજ માટે ભારત બાજુનું સરહદ સ્ટોપ.","animMChipT":"ભારત ⇄ નેપાળ","animMChipS":"રૂપૈડીહા ભારતમાં, સરહદ પર છે. નેપાળગંજ સામે પાર, નેપાળમાં છે.","animMNote":"આ સાંકેતિક રૂટ છે — રસ્તાનો નકશો, અંતર કે લાઇવ GPS નથી.","animMAria":"સાંકેતિક નકશો: ગુજરાતથી ભારત–નેપાળ સરહદ પરના રૂપૈડીહા સુધીની રૂટ રેખા","animMIndia":"ભારત","animMNepal":"નેપાળ","animMSurat":"સુરત","animMAhd":"અમદાવાદ","animMRup":"રૂપૈડીહા","animBEyebrow":"બુકિંગ","animBTitle":"ચાર પગલાંમાં તમારી ટિકિટ","animBSub":"રૂટ → સ્લીપર બર્થ → વિગતો અને ચુકવણી → ટિકિટ.","animBD1":"દિશા, ચઢવાનું શહેર અને તારીખ પસંદ કરો.","animBD2":"સીટ મેપ પર તમારી સ્લીપર બર્થ પસંદ કરો.","animBD3":"મુસાફરનું નામ અને મોબાઇલ, પછી ચુકવણી.","animBD4":"કન્ફર્મ થતાં જ ટિકિટ દેખાય છે — ચઢતી વખતે બતાવો.","animBDemo":"આ ફક્ત નમૂના એનિમેશન છે — તેનાથી સીટ બુક, ચુકવણી કે મેસેજ થતો નથી.","animBAria":"ફોન પર નમૂના બુકિંગ: રૂટ, સ્લીપર બર્થ, વિગતો, ડેમો ટિકિટ","animBS1":"રૂટ","animBS2":"બર્થ","animBS3":"વિગતો","animBS4":"ટિકિટ","animB1T":"તમારી મુસાફરી બુક કરો","animB1S":"ભારત ⇄ નેપાળ · એસી સ્લીપર","animBFrom":"ક્યાંથી","animBTo":"ક્યાં સુધી","animBDate":"મુસાફરી તારીખ","animBGuj":"ગુજરાત","animBPick":"તારીખ પસંદ કરો","animBFind":"બસ શોધો →","animB1F":"એસી · ચાર્જિંગ · ફર્સ્ટ-એઇડ","animB2T":"તમારી બર્થ પસંદ કરો","animB2S":"સ્લીપર બર્થ · નમૂનો","animB2Deck":"નીચેનો માળ (1F)","animB2Sel":"પસંદ કરેલ: B6 · સ્લીપર","animB2Btn":"આગળ વધો →","animB3T":"મુસાફર વિગતો","animB3S":"નમૂના વિગતો","animB3Name":"મુસાફરનું નામ","animB3NameV":"તમારું નામ","animB3Mob":"મોબાઇલ નંબર","animB3MobV":"તમારો મોબાઇલ નંબર","animB3Pay":"ચુકવણી","animB3Wait":"ચકાસણી બાકી","animB3Ok":"✓ ચકાસાયેલ","animB3Btn":"વિગતો પુષ્ટિ કરો →","animB3F":"ચકાસણી પછી જ ટિકિટ જારી થાય છે","animB4Badge":"ડેમો ટિકિટ","animB4Route":"ગુજરાત → રૂપૈડીહા","animB4Berth":"બર્થ","animB4Coach":"કોચ","animB4CoachV":"એસી સ્લીપર","animB4Ok":"ટિકિટ કન્ફર્મ","animB4F":"ફક્ત ઝલક · કોઈ બુકિંગ બન્યું નથી","animBWaT":"નમૂના WhatsApp સંદેશ","animBWaS":"ટિકિટ સંદેશ આવો દેખાય છે.","animBWaF":"નમૂના ઝલક · મોકલાયો નથી","animPause":"એનિમેશન રોકો","animPlay":"એનિમેશન ચલાવો","bbRoute": "ભારત ⇄ નેપાળ યાત્રા સેવા", "bbTag": "તમારો ભરોસાપાત્ર યાત્રા સાથી", "bbF1": "AC સ્લીપર", "bbF2": "લાઇવ GPS", "bbF3": "USB ચાર્જિંગ", "bbF4": "સુરક્ષિત યાત્રા", "ecTitle": "તમારી ટિકિટ બુક કરો", "ecNormal": "સામાન્ય બુકિંગ", "ecNormalSub": "તારીખ અને સીટ પસંદ કરો", "ecQuick": "ક્વિક ટિકિટ", "ecQuickSub": "નામ + મોબાઇલ → 10 સેકન્ડ", "ecWa": "WhatsApp બુકિંગ", "ecTitleAlt":"બુકિંગની બીજી રીતો","spTitle":"તમારી યાત્રા બુક કરો","spSub":"ગુજરાત ⇄ રૂપૈડીહા · સીધી એસી સ્લીપર બસ","sPax":"મુસાફરો","sSearch":"બસ અને સીટ જુઓ","bnTickets":"મારી ટિકિટ","ecWaSub": "વિનંતી · ઓફિસ પુષ્ટિ કરશે", "premiumFront": "આગળ · મુસાફરીની દિશા", "premiumRear": "પાછળ", "premiumBeyond": "સરહદોની પાર મુસાફરી", "premiumDirector": "અધ્યક્ષ / નિયામક", "premiumPromise": "તમારી મુસાફરી, અમારી જવાબદારી.", "premiumSafe": "સુરક્ષિત મુસાફરી", "premiumEasy": "સરળ બુકિંગ", "premiumLoading": "તમારી મુસાફરી તૈયાર થઈ રહી છે…", "premiumRetry": "જોડાણમાં સમય લાગે છે. ફરી લોડ કરો", "premiumSlow": "જોડાઈ રહ્યું છે. ફરી પ્રયાસ કરો અથવા આગળ વધો.", "premiumTrust": "વિશ્વાસ સાથે મુસાફરી.", "premiumPay": "સ્કેન કરીને ચૂકવો", "premiumPaid": "ચુકવણી ચકાસાયેલ", "premiumPending": "ચુકવણી ચકાસણી બાકી", "premiumVerify": "ટિકિટ ચકાસણી", "premiumDue": "બાકી રકમ"});
 function t(k) { const d = I18N[LANG] || I18N.en; const s = (k in d) ? d[k] : I18N.en[k]; return s == null ? k : s; }
 function tf(k, vars) { let s = t(k); Object.keys(vars || {}).forEach(v => { s = s.split('{' + v + '}').join(vars[v]); }); return s; }
-function applyLang() {
-  /* Redrawn at the END of this function — see the tail call below. Both
-     boards are built from t()/tf(), so a language switch that skipped them
-     left the fares in the previous language while everything else changed. */
+/* 8 Oct 2026 (D2-05): the STATIC half of applyLang() - <html lang>, every
+   [data-i18n] / -ph / -title in the markup and the language buttons. It needs
+   no settings or data, so it also runs once at the very end of this file
+   (deferred script = the DOM is parsed) and a Nepali visitor on a slow link
+   no longer reads an English shell until init() has awaited the store. */
+function applyStaticLang() {
   document.documentElement.lang = LANG;
   /* 24 Sep 2026: t() returns the KEY when nothing is defined for it, so an
      element whose key was never added had its perfectly good English
@@ -1323,6 +1343,14 @@ function applyLang() {
      data-i18n-title was already in the markup but nothing ever read it. */
   $$('[data-i18n-title]').forEach(el => { const s = t(el.getAttribute('data-i18n-title')); el.setAttribute('title', s); el.setAttribute('aria-label', s); });
   $$('.lang-btn').forEach(b => b.classList.toggle('on', b.getAttribute('data-lang') === LANG));
+  /* the phone header's language pill (19-premium.js) follows at once (D2-06) */
+  if (typeof window.shgLangMiniLabel === 'function') { try { window.shgLangMiniLabel(); } catch (e) {} }
+}
+function applyLang() {
+  /* Redrawn at the END of this function — see the tail call below. Both
+     boards are built from t()/tf(), so a language switch that skipped them
+     left the fares in the previous language while everything else changed. */
+  applyStaticLang();
   if (typeof updateNavUser === 'function') updateNavUser();
   /* The quick-date chips are built in JS, so [data-i18n] can't reach them. */
   if (typeof renderDateChips === 'function') renderDateChips();
@@ -1338,6 +1366,8 @@ function applyLang() {
   if (typeof renderAiWhatsApp === 'function') renderAiWhatsApp();
   /* And the running-offer ribbon (6 Oct 2026). */
   if (typeof renderOfferRibbon === 'function') renderOfferRibbon();
+  /* the tab title follows the language too (D2-M1) */
+  if (typeof shgViewTitle === 'function') { try { shgViewTitle(); } catch (e) {} }
 }
 function setLang(l) {
   if (!I18N[l]) l = 'en';
@@ -1360,3 +1390,6 @@ document.addEventListener('click', (e) => {
   const b = e.target.closest('.lang-btn'); if (!b) return;
   setLang(b.getAttribute('data-lang'));
 });
+/* D2-05: the static translation right away - the full applyLang() (fares,
+   date chips, ribbon) still runs from init() once the data is in. */
+try { applyStaticLang(); } catch (e) { /* never block the bundle */ }

@@ -75,6 +75,7 @@ const CORE_SUITES = [
     'placeholder-phone-test.php'   => 'the walk-in 0000000000 is never proof of owning a ticket (track, cancel, download, verify, AI)',
     'identity-gate-test.php'       => 'name + phone is never proof: own-session PNRs / WhatsApp code for history, ticket, cancel, AI, payment proof; pay link asks only what is due',
     'counter-desk-memory-test.php' => 'desk remembers agent / payment / boarding once, never the passenger; same bus · same date · sell another',
+    'home-premium-test.php'       => 'premium home hero + 5-tab bar (Track keyed, Help opens #homeMore), toast never blocks, shell / SW / sitemap / offer ribbon',
     'ticket-sync-test.php'         => 'every booking change regenerates the ticket once, after commit; void on cancel; honest change notice',
     'locations-consistency-test.php' => 'one pickup list: Admin ON/OFF + per-pickup fare reach search, pickers, booking, AI; Rajkot back',
     'ticket-bot-test.php'          => 'AI Ticket Bot: learns from verified sales, never lifts a rule',

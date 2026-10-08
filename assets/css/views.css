@@ -3151,7 +3151,7 @@ body.in-flow .credit-ribbon,body.in-flow #numStrip{display:none}
 .qt-plan-wait,.qt-plan-err{font-weight:700;font-size:14px;padding:6px 2px;line-height:1.45}
 .qt-plan-err{color:#b42318}
 .qt-plan-head{display:flex;justify-content:space-between;gap:10px;align-items:center;font-size:14px;margin-bottom:6px}
-.qt-plan-head span{color:var(--muted);font-size:12.5px;white-space:nowrap}
+.qt-plan-head span{color:var(--success);font-size:12.5px;white-space:nowrap}
 .qt-plan-route{font-size:16px;margin-bottom:8px}
 .qt-plan-route small{color:var(--muted);font-size:12px}
 .qt-plan-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:10px}
@@ -3169,13 +3169,13 @@ body.in-flow .credit-ribbon,body.in-flow #numStrip{display:none}
 .qt-pay{margin:10px 0 8px;padding:9px 12px;border-radius:10px;background:var(--orange-100,#FFF1E6);color:var(--orange-600,#D96A10);font-weight:700;font-size:13px;line-height:1.45}
 .qt-confirm{width:100%;min-height:52px;font-size:16px;font-weight:900}
 .qt-tnc{margin-top:8px;font-size:11.5px;color:var(--muted);text-align:center;line-height:1.5}
-.qt-tnc a{color:var(--muted);text-decoration:underline}
+.qt-tnc a{color:var(--muted);text-decoration:underline;display:inline-block;padding:12px 4px}
 /* Collapsed-by-default plan editors: the card is a one-tap booking, and this
    subtle toggle reveals date / seats / pickup / direction only when wanted. */
 .qt-modify{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:42px;margin:2px 0 6px;border:1.5px dashed var(--line,#d9dee7);border-radius:12px;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:800;cursor:pointer}
 .qt-modify:hover{border-color:var(--orange,#F07C1F);color:var(--orange-600,#D96A10)}
 .qt-editors{margin:2px 0}
-:root[data-theme="dark"] .qt-plan-facts>div{background:rgba(255,255,255,.06)}
+:root[data-theme="dark"] .qt-plan-facts>div{background:rgba(255,255,255,.04)}
 :root[data-theme="dark"] .qt-pay{background:rgba(240,124,31,.18);color:#ffd9a8}
 /* One Click, Ticket Ready in 10 Seconds (6 Sep 2026): the card IS the
    button. The form's own button hides for passengers (the card's big button
@@ -3464,7 +3464,7 @@ body.bk-regular .qt-collapsed{display:flex}
   .qt-ai{margin:7px 0 5px}
   .qt-plan-head b{display:none}
   .qt-plan-head{margin-bottom:2px;justify-content:flex-end}
-  .qt-plan-head span{font-size:12px;font-weight:800;color:#178A50}
+  .qt-plan-head span{font-size:12px;font-weight:800;color:var(--success)}
   .qt-route{margin:0 0 6px}
   .qt-pay{padding:4px 10px;font-size:11.5px;line-height:1.3}
 }

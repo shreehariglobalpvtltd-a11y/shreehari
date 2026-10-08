@@ -1027,6 +1027,12 @@ async function pvSubmit() {
   try {
     var fd = new FormData();
     fd.append('pnr', bookingId);
+    /* D8-03 (8 Oct 2026): the server checks the proof comes from the
+       booking's owner - send the booking's own contact number, else the
+       mobile typed in this form. */
+    var ownB = DB.bookings.find(function (b) { return b && b.id === bookingId; });
+    var ownPh = (ownB && ownB.contact && ownB.contact.phone) || sub.mobile || '';
+    fd.append('phone', String(ownPh).replace(/[^\d+]/g, ''));
     fd.append('utr', sub.utr);
     fd.append('payerName', sub.sender);
     fd.append('method', 'upi');
@@ -1575,12 +1581,22 @@ document.addEventListener('click', function (e) {
   if (seat) SFX.select();
 });
 
-/* Hook into existing functions for contextual sounds */
+/* Hook into existing functions for contextual sounds.
+   8 Oct 2026 (D7-08): an error must never sound like news. A toast that
+   reads as a failure (⚠️ ❌ 🚫 📵, "error", "failed", "could not", "not
+   allowed", सकिएन / नहीं हो सका …) plays the soft "refused" tone; every other
+   toast keeps the owner's info chime. Sound stays ON by default (owner, 5 Oct). */
+function shgToastLooksBad(msg) {
+  var s = String(msg || '');
+  return /^\s*(⚠|❌|🚫|📵|⛔|✖)/.test(s)
+    || /(error|fail|could not|couldn't|cannot|can't|not allowed|denied|invalid|refused|try again|blocked)/i.test(s)
+    || /(सकिएन|सकेन|असफल|गलत|मिलेन|त्रुटि|नहीं हो|विफल|अमान्य)/.test(s);
+}
 (function () {
   var origToast = window.toast;
   if (typeof origToast === 'function') {
     window.toast = function (msg) {
-      SFX.notify();
+      if (shgToastLooksBad(msg)) SFX.error(); else SFX.notify();
       return origToast.apply(this, arguments);
     };
   }
@@ -2027,6 +2043,23 @@ document.addEventListener('click', function (e) {
        exactly what "auto-update" should feel like. */
     function safeToReload() {
       var h = location.hash || '#/';
+      /* 8 Oct 2026 (D8-11): a passenger choosing a bus or berths is never
+         reloaded - the route and picks live in memory only. The update waits
+         (tappable banner) and applies on the next visit to home, a ticket or
+         My Tickets. Selling staff keep the old rule below. */
+      var staffSell = false;
+      try { staffSell = !!(window.SHG_BOOT && window.SHG_BOOT.staff && window.SHG_BOOT.staff.canSell); } catch (e) {}
+      if (!staffSell && (h.indexOf('#/results') === 0 || h.indexOf('#/seats') === 0 || h.indexOf('#/checkout') === 0)) return false;
+      /* ...nor while a sheet or dialog holds something they typed. */
+      try {
+        var sheets = document.querySelectorAll('#shgModal.open, #waSheet:not([hidden]), #ctSheet:not([hidden]), #aiPanel.open');
+        for (var si = 0; si < sheets.length; si++) {
+          var fields = sheets[si].querySelectorAll('input:not([type=hidden]):not([type=checkbox]):not([type=radio]), textarea');
+          for (var fi = 0; fi < fields.length; fi++) { if (String(fields[fi].value || '').trim()) return false; }
+        }
+        var qtl = document.getElementById('qtLine');
+        if (qtl && String(qtl.value || '').trim()) return false;
+      } catch (e) {}
       if (h.indexOf('#/checkout') === 0) {
         /* A COUNTER/STAFF sale is cheap to re-key (walk-in, seconds) and the
            deadlock this caused was severe (5 Sep 2026): a staff member stuck

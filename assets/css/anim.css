@@ -235,6 +235,9 @@ html:not([lang="en"]) .shg-animation .sa-map .sa-cty { letter-spacing: 0; }
   background: rgba(7, 23, 47, .82); border-color: #54718c; color: #fff; }
 .shg-animation.sa-top .sa-amen svg { width: 15px; height: 15px; color: #fff; }
 .shg-animation.sa-top .sa-pause { width: 36px; height: 36px; top: 6px; right: 6px; }
+/* D3-M3 (8 Oct 2026): on small phones the right-hand FAB column passes over
+   the stage's top-right corner - the pause control sits top-left there. */
+@media (max-width: 400px) { .shg-animation.sa-top .sa-pause { left: 6px; right: auto; } }
 @media (max-width: 759px) {
   .shg-animation.sa-top .sa-journey .sa-bus { width: 80%; left: 10%; bottom: -1%; }
   .shg-animation.sa-top .sa-journey .sa-shadow { width: 78%; left: 11%; bottom: 13%; }

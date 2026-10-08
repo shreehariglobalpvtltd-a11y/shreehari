@@ -1140,3 +1140,176 @@ html[data-off~="wabook"] #waBookBtn { display: none !important; }
   .shg-depth-panel, .co-card, .c-card, .sum-card, #ticketCard, .status-card.tk2, .panel, .dash-panel, .sg-card, .card, .kpi,
   .bus-card, .mybk-card, .search-card { background: #FFFFFF !important; background-image: none !important; color: #000000 !important; border-color: #BBBBBB !important; }
 }
+
+/* =====================================================================
+   FB — PREMIUM HOME, NAVIGATION, SHELL (8 Oct 2026, owner prompt Phases
+   2/4/10/12/13). Appended at the END of depth.css on purpose (it must win,
+   and the FA block sits above "reduced motion"). Built only on the existing
+   tokens: ds.css (navy / royal / red, surfaces, ink) and the depth tokens at
+   the top of this file (raised faces, slabs, press). No new primary colour.
+   ===================================================================== */
+
+/* ---- gold accent tokens in AMOLED (D1-12; light + dark live in ds.css) ---- */
+:root[data-display="amoled"] { --accent-gold: #FFCF86; --accent-gold-soft: #2B2111; --seat-private: var(--accent-gold-soft); --seat-private-ink: #FFCF86; }
+
+/* ---- 1. the hero: logo, headline, promise, three raised keys ---- */
+#view-home > .home-hero { margin-top: 12px; }
+.home-hero .hh-card {
+  position: relative; overflow: hidden; color: #FFFFFF;
+  border-radius: var(--radius-xl, 22px); padding: 16px 14px 14px;
+  background: radial-gradient(120% 90% at 100% 0%, rgba(255, 255, 255, .12) 0%, rgba(255, 255, 255, 0) 55%),
+              linear-gradient(150deg, #0C306C 0%, #0A3A85 52%, #0054A8 100%);
+  border: 1px solid #1B4C97; box-shadow: var(--dp-panel);
+}
+.home-hero .hh-card::after { /* the brand's red rule along the foot, like the app bar */
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: #DC143C; opacity: .9;
+}
+:root[data-theme="dark"] .home-hero .hh-card { background: radial-gradient(120% 90% at 100% 0%, rgba(120, 170, 255, .14) 0%, rgba(120, 170, 255, 0) 55%), linear-gradient(150deg, #0F1A2E 0%, #12264A 60%, #173468 100%); border-color: #24375A; }
+:root[data-display="amoled"] .home-hero .hh-card { background: linear-gradient(150deg, #050B16 0%, #0A1A33 100%); border-color: #33465F; border-top-color: #5B7191; }
+.home-hero .hh-brand { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center; }
+.home-hero .hh-logo-tile { display: grid; place-items: center; width: 74px; height: 58px; padding: 4px; border-radius: 14px; background: #FFFFFF;
+  box-shadow: inset 0 1px 0 #FFFFFF, 0 2px 0 #B6C3D8, 0 4px 0 #8FA2C0, 0 10px 14px -6px rgba(0, 0, 0, .45); }
+.home-hero .hh-logo { display: block; width: 100%; height: 100%; object-fit: contain; }
+.home-hero .hh-title { margin: 0; color: #FFFFFF; font: 800 19px/1.25 var(--font-sans); letter-spacing: .01em; text-wrap: balance; }
+.home-hero .hh-title:lang(en) { font-family: var(--font-brand); font-size: 18px; letter-spacing: .03em; }
+.home-hero .hh-tag { margin: 4px 0 0; color: #D5E1F4; font: 600 13px/1.45 var(--font-sans); }
+:root[data-theme="dark"] .home-hero .hh-tag { color: #C9D4E6; }
+.home-hero .hh-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.home-hero .hh-act {
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; min-width: 0; min-height: 96px;
+  padding: 10px 6px 9px; border-radius: 16px; text-align: center; text-decoration: none; color: var(--ink);
+  background: var(--dp-face); border: 1px solid var(--dp-border); box-shadow: var(--dp-card);
+  transition: transform var(--dp-t, 140ms) ease, box-shadow var(--dp-t, 140ms) ease; -webkit-tap-highlight-color: transparent;
+}
+.home-hero .hh-act:hover { filter: brightness(1.03); }
+.home-hero .hh-act:active { transform: translateY(var(--dp-press, 3px)); box-shadow: var(--dp-btn-pressed); }
+.home-hero .hh-ic { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--royal-tint); color: var(--royal); flex: none; }
+.home-hero .hh-ic .ic { width: 22px; height: 22px; }
+.home-hero .hh-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; max-width: 100%; }
+.home-hero .hh-act b { font: 800 13.5px/1.25 var(--font-sans); color: inherit; overflow-wrap: anywhere; }
+.home-hero .hh-act b:lang(en) { text-transform: uppercase; font-size: 12.5px; letter-spacing: .02em; }
+.home-hero .hh-act small { font: 600 12px/1.3 var(--font-sans); color: var(--muted); }
+.home-hero .hh-book { background: var(--dp-act-face); color: var(--dp-act-ink, #FFFFFF); border-color: var(--dp-act-rim, #3D82D6); box-shadow: var(--dp-act); }
+.home-hero .hh-book:active { box-shadow: var(--dp-act-pressed); }
+.home-hero .hh-book .hh-ic { background: rgba(255, 255, 255, .18); color: inherit; }
+.home-hero .hh-book small { color: inherit; opacity: .9; }
+:root[data-display="amoled"] .home-hero .hh-act:not(.hh-book) { background: #101822; border-color: #33465F; border-top-color: #8A9DB9; }
+@media (min-width: 900px) {
+  .home-hero .hh-card { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 22px; align-items: center; padding: 22px 24px 24px; }
+  .home-hero .hh-logo-tile { width: 112px; height: 84px; padding: 6px; border-radius: 18px; }
+  .home-hero .hh-title { font-size: 26px; }
+  .home-hero .hh-title:lang(en) { font-size: 25px; }
+  .home-hero .hh-tag { font-size: 15px; }
+  .home-hero .hh-actions { margin-top: 0; gap: 12px; }
+  .home-hero .hh-act { min-height: 118px; padding: 14px 10px 12px; }
+  .home-hero .hh-ic { width: 46px; height: 46px; }
+  .home-hero .hh-act b { font-size: 15px; }
+  .home-hero .hh-act b:lang(en) { font-size: 14px; }
+}
+@media (max-width: 340px) {
+  .home-hero .hh-card { padding: 14px 10px 12px; }
+  .home-hero .hh-logo-tile { width: 60px; height: 48px; }
+  .home-hero .hh-title { font-size: 17px; }
+  .home-hero .hh-act { padding: 9px 4px 8px; }
+  .home-hero .hh-act b { font-size: 12.5px; }
+}
+
+/* ---- 2. one facilities strip (8 icons, one-line captions) ---- */
+#view-home > .home-feat { margin-top: 16px; }
+.home-feat .hf-list { list-style: none; margin: 0; padding: 12px 8px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 6px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg, 18px); box-shadow: var(--dp-card); }
+.home-feat .hf-list li { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; text-align: center; }
+.home-feat .hf-ic { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; background: var(--royal-tint); color: var(--royal);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6), 0 2px 0 var(--royal-soft); }
+.home-feat .hf-ic .ic { width: 22px; height: 22px; }
+.home-feat .hf-tx { font: 700 12px/1.3 var(--font-sans); color: var(--ink-2); overflow-wrap: anywhere; }
+:root[data-display="amoled"] .home-feat .hf-list { background: #101822; border-color: #33465F; }
+:root[data-theme="dark"] .home-feat .hf-ic { box-shadow: inset 0 1px 0 rgba(165, 195, 245, .18), 0 2px 0 #0A1323; }
+@media (min-width: 760px) { .home-feat .hf-list { grid-template-columns: repeat(8, minmax(0, 1fr)); padding: 16px 12px; } .home-feat .hf-tx { font-size: 13px; } }
+
+/* ---- 3. QuickBot: visible labels + the number's country (D2-07, D4-05) ---- */
+#quick-ticket .qt-lbl { display: block; margin: 0 0 4px; font: 700 13px/1.4 var(--font-sans); color: var(--ink-2); }
+#quick-ticket .qt-fld { display: grid; min-width: 0; }
+#quick-ticket .qt-tel { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px; min-width: 0; }
+#quick-ticket #qtCC { min-height: 46px; min-width: 0; padding: 0 6px; border-radius: 12px; border: 1.5px solid var(--line-control); background: var(--surface); color: var(--ink); font: 700 15px/1 var(--font-sans); }
+#quick-ticket .qt-line-wrap .qt-mic { top: auto; bottom: 6px; margin-top: 0; }
+#quick-ticket .qt-pair[hidden] { display: none !important; }
+
+/* ---- 4. bottom bar: five tabs, BOOK is the primary key (D3-08, D1-11) ---- */
+.bottom-nav.bn5 .bn-item { min-width: 0; padding: 6px 2px !important; gap: 3px; }
+.bottom-nav.bn5 .bn-item .bl { display: block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: 700 11.5px/1.35 var(--font-sans); }
+.bottom-nav.bn5 .bn-item .bi { width: 50px; height: 30px; }
+/* the lit tab: a soft royal pill on a shallow slab that no longer runs into the label */
+.bottom-nav .bn-item.on .bi { background: var(--royal-soft) !important; color: var(--royal) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 2px 0 color-mix(in srgb, var(--royal) 45%, transparent) !important;
+  transform: translateY(-1px) !important; margin-bottom: 3px; }
+.bottom-nav .bn-item.on .bi .ic, .bottom-nav .bn-item.on .bi svg { color: var(--royal) !important; }
+/* BOOK: the filled royal key, raised a little above the bar */
+.bottom-nav .bn-item.bn-primary { color: var(--royal) !important; }
+.bottom-nav .bn-item.bn-primary .bi { background: var(--dp-act-face) !important; color: var(--dp-act-ink, #FFFFFF) !important; border-radius: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .38), 0 2px 0 #003C90, 0 4px 0 #002B6A, 0 9px 12px -5px rgba(0, 52, 130, .55) !important;
+  transform: translateY(-5px) !important; margin-bottom: -2px; }
+.bottom-nav .bn-item.bn-primary .bi .ic, .bottom-nav .bn-item.bn-primary .bi svg { color: var(--dp-act-ink, #FFFFFF) !important; }
+.bottom-nav .bn-item.bn-primary.on .bi { outline: 2px solid var(--royal); outline-offset: 2px; }
+.bottom-nav .bn-item.bn-primary:active .bi { transform: translateY(-2px) !important; box-shadow: var(--dp-act-pressed) !important; }
+:root[data-theme="dark"] .bottom-nav .bn-item.bn-primary .bi { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), 0 2px 0 #24375A, 0 4px 0 #15233D, 0 9px 12px -5px rgba(0, 0, 0, .7) !important; }
+
+/* ---- 5. one FAB column on the right, above the bar (D1-13, D3-M3) ---- */
+.ai-fab, .whatsapp-fab, .ct-fab, .sos-fab { left: auto !important; right: 16px !important; }
+.whatsapp-fab, .ct-fab, .sos-fab { bottom: calc(24px + env(safe-area-inset-bottom, 0px)) !important; }
+.ai-fab { bottom: calc(84px + env(safe-area-inset-bottom, 0px)) !important; }
+body:has(#sosFab.show) .whatsapp-fab, body:has(#sosFab.show) .ct-fab { bottom: calc(84px + env(safe-area-inset-bottom, 0px)) !important; }
+body:has(#sosFab.show) .ai-fab { bottom: calc(144px + env(safe-area-inset-bottom, 0px)) !important; }
+@media (max-width: 760px) {
+  .whatsapp-fab, .ct-fab, .sos-fab { bottom: calc(92px + env(safe-area-inset-bottom, 0px)) !important; }
+  .ai-fab { bottom: calc(150px + env(safe-area-inset-bottom, 0px)) !important; }
+  body:has(#sosFab.show) .whatsapp-fab, body:has(#sosFab.show) .ct-fab { bottom: calc(150px + env(safe-area-inset-bottom, 0px)) !important; }
+  body:has(#sosFab.show) .ai-fab { bottom: calc(208px + env(safe-area-inset-bottom, 0px)) !important; }
+  .ai-fab, .whatsapp-fab, .ct-fab { width: 48px !important; height: 48px !important; }
+}
+/* the floating buttons step aside while a sheet, the sign-in dialog or a panel is open */
+body.wa-open .whatsapp-fab, body.wa-open .ai-fab, body.wa-open .ct-fab, body.wa-open .sos-fab,
+body:has(#shgModal.open) .whatsapp-fab, body:has(#shgModal.open) .ai-fab, body:has(#shgModal.open) .ct-fab, body:has(#shgModal.open) .sos-fab,
+body:has(#ctSheet:not([hidden])) .whatsapp-fab, body:has(#ctSheet:not([hidden])) .ai-fab,
+body:has(#aiPanel.open) .whatsapp-fab, body:has(#aiPanel.open) .ct-fab, body:has(#aiPanel.open) .sos-fab,
+body:has(#pwaSheet) .whatsapp-fab, body:has(#pwaSheet) .ai-fab, body:has(#pwaSheet) .ct-fab {
+  visibility: hidden !important; pointer-events: none !important;
+}
+/* ...and while the booking card is on screen (body.fab-quiet, 05-router.js):
+   the column would sit on the date strip, the town picker and Search. The
+   card carries its own WhatsApp button and the bar carries Help. */
+body.fab-quiet .whatsapp-fab, body.fab-quiet .ai-fab, body.fab-quiet .ct-fab { opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; }
+.whatsapp-fab, .ai-fab, .ct-fab { transition: opacity .2s ease, visibility .2s ease, transform .2s ease !important; }
+/* the install sheet never covers an open assistant (it waits until it closes) */
+body:has(#aiPanel.open) #pwaSheet, body:has(#aiPanel.open) #pwaBackdrop { display: none !important; }
+
+/* ---- 5b. the contact-numbers strip (wide screens): its row is reserved
+   until renderContactStrip() has decided (html.ns-done), so revealing it no
+   longer pushes the whole page down by 59px a second after first paint. ---- */
+@media (min-width: 761px) { html:not(.ns-done) body:not(.in-flow) #numStrip[hidden] { display: block !important; visibility: hidden; min-height: 59px; } }
+
+/* ---- 6. Track hint on My Tickets (openTrackMyBus) ---- */
+.trk-hint { margin: 0 0 10px; padding: 10px 12px; border-radius: 12px; background: var(--royal-tint); border: 1px solid var(--royal-soft); color: var(--ink); font: 600 14px/1.45 var(--font-sans); }
+
+/* ---- 7. Devanagari line-height + keyboard focus (D2-16, D2-17) ---- */
+.search-card .d-btn .d-day:lang(ne), .search-card .d-btn .d-day:lang(hi), .search-card .d-btn .d-mo:lang(ne), .search-card .d-btn .d-mo:lang(hi),
+.search-card .d-btn .d-bs:lang(ne), .search-card .d-btn .d-bs:lang(hi), .bottom-nav .bn-item:lang(ne), .bottom-nav .bn-item:lang(hi),
+.bottom-nav .bn-item .bl:lang(ne), .bottom-nav .bn-item .bl:lang(hi), .th-oh small:lang(ne), .th-oh small:lang(hi),
+.th-nph small:lang(ne), .th-nph small:lang(hi), .hh-act b:lang(ne), .hh-act b:lang(hi),
+.hh-act small:lang(ne), .hh-act small:lang(hi), .hh-tag:lang(ne), .hh-tag:lang(hi),
+.hf-tx:lang(ne), .hf-tx:lang(hi), .qt-lbl:lang(ne), .qt-lbl:lang(hi) { line-height: 1.45 !important; }
+.home-hero .hh-title:lang(ne), .home-hero .hh-title:lang(hi) { line-height: 1.35; }
+.search-card .dir-pill.on:focus-visible, .booking-type-toggle .bt-pill.on:focus-visible,
+.sg-seg__item[aria-selected="true"]:focus-visible, .sg-seg__item[aria-pressed="true"]:focus-visible {
+  outline: 3px solid var(--focus) !important; outline-offset: 2px !important;
+}
+.home-hero .hh-act:focus-visible { outline: 3px solid #FFD54F !important; outline-offset: 3px !important; }
+
+/* ---- 8. leftovers (D1-09 nav chips, D2-11 checkout second-number row) ---- */
+#view-nav .sn-mode.on, #view-nav .sn-chip.on, #view-nav .sn-cb.on, #view-nav .sn-altbtn.on { background: linear-gradient(135deg, #C2410C, #9A3412) !important; border-color: #9A3412 !important; color: #FFFFFF !important; }
+.co-alt-phone > summary { min-height: 44px; display: flex; align-items: center; }
+
+@media (prefers-reduced-motion: reduce) {
+  .home-hero .hh-act, .bottom-nav .bn-item .bi { transition: none !important; }
+}
+@media print { .home-hero, .home-feat { display: none !important; } }

@@ -46,6 +46,8 @@ var MAX_TICKETS = 10;
 var ASSET_VER = '20261008g';
 var PRECACHE = [
   '/assets/img/logo.png?v=' + ASSET_VER,
+  /* 8 Oct 2026: the 10 KB nav / home-hero logo (logo.png stays for the footer + PDF) */
+  '/assets/img/logo-nav.png?v=' + ASSET_VER,
   '/assets/css/app.css?v=' + ASSET_VER,
   '/assets/css/views.css?v=' + ASSET_VER,
   '/assets/css/premium.css?v=' + ASSET_VER,
@@ -177,6 +179,13 @@ function netError() {
   try { if (typeof Response.error === 'function') return Response.error(); } catch (e) {}
   return new Response('', { status: 504, statusText: 'offline' });
 }
+/* 8 Oct 2026 (D3-19): when CacheStorage itself is broken (a corrupted cache
+   backend throws on caches.open / match), every cache-first branch below
+   falls back to the plain network instead of rejecting respondWith - the
+   page loads styled, just without the offline copy. */
+async function plainNetwork(req) {
+  try { return await fetch(req); } catch (e) { return netError(); }
+}
 
 self.addEventListener('fetch', function (event) {
   var req = event.request;
@@ -205,11 +214,14 @@ self.addEventListener('fetch', function (event) {
      slower than TICKET_WAIT_MS (the border with no data still works). */
   if (url.origin === self.location.origin && isTicketImage(url)) {
     event.respondWith((async function () {
-      var cache = await caches.open(TICKET_CACHE);
+      var cache;
+      try { cache = await caches.open(TICKET_CACHE); } catch (e) {
+        try { return await fetch(req); } catch (e2) { return new Response('', { status: 504, statusText: 'offline' }); }
+      }
       var key   = ticketKey(url);
       var net   = fetch(req).then(async function (res) {
         if (res && res.ok && (res.headers.get('content-type') || '').indexOf('image/') === 0) {
-          await cache.put(key, res.clone());
+          try { await cache.put(key, res.clone()); } catch (e) {}
           await trimCache(TICKET_CACHE, MAX_TICKETS);
         } else if (res && (res.status === 403 || res.status === 410)) {
           /* 1 Oct 2026: the server says this ticket is not (or no longer)
@@ -219,7 +231,8 @@ self.addEventListener('fetch', function (event) {
         }
         return res;
       });
-      var hit = await cache.match(key);
+      var hit = null;
+      try { hit = await cache.match(key); } catch (e) { hit = null; }
       if (!hit) {
         try { return await net; }
         catch (e) { return new Response('', { status: 504, statusText: 'offline' }); }
@@ -251,8 +264,8 @@ self.addEventListener('fetch', function (event) {
   // URL changes on every build, so a cached copy is never the wrong build.
   if (url.origin === self.location.origin && url.pathname.indexOf('/assets/') === 0) {
     event.respondWith((async function () {
-      var cache = await caches.open(ASSET_CACHE);
-      var hit = await cache.match(req);
+      var cache, hit;
+      try { cache = await caches.open(ASSET_CACHE); hit = await cache.match(req); } catch (e) { return plainNetwork(req); }
       if (hit) return hit;
       try {
         var res = await fetch(req);
@@ -272,8 +285,8 @@ self.addEventListener('fetch', function (event) {
   if (url.origin === self.location.origin && url.pathname.indexOf('/navdata/') === 0) {
     var navStatic = /^\/navdata\/(tiles|fonts|sprites)\//.test(url.pathname);
     event.respondWith((async function () {
-      var cache = await caches.open(TILE_CACHE);
-      var hit = await cache.match(req);
+      var cache, hit;
+      try { cache = await caches.open(TILE_CACHE); hit = await cache.match(req); } catch (e) { return plainNetwork(req); }
       if (hit && navStatic) return hit;
       try {
         var res = await fetch(req);
@@ -292,8 +305,8 @@ self.addEventListener('fetch', function (event) {
   // Static map assets (cross-origin) → cache-first, capped.
   if (TILE_HOSTS.indexOf(url.hostname) !== -1) {
     event.respondWith((async function () {
-      var cache = await caches.open(TILE_CACHE);
-      var hit = await cache.match(req);
+      var cache, hit;
+      try { cache = await caches.open(TILE_CACHE); hit = await cache.match(req); } catch (e) { return plainNetwork(req); }
       if (hit) return hit;
       try {
         var res = await fetch(req);
@@ -378,8 +391,10 @@ self.addEventListener('fetch', function (event) {
         if (winner && winner.status >= 500) return shell;
         return winner;
       } catch (e) {
-        var shell2 = cache ? await cache.match('/') : null;
-        return shell2 || (cache ? await cache.match(req) : null) || (isShell ? await offlinePage() : null) || netError();
+        try {
+          var shell2 = cache ? await cache.match('/') : null;
+          return shell2 || (cache ? await cache.match(req) : null) || (isShell ? await offlinePage() : null) || netError();
+        } catch (e3) { return netError(); }
       }
     })());
     return;

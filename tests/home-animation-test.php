@@ -72,9 +72,12 @@ foreach ($sections as $id => $html) {
 }
 $posSearch = strpos($tpl, 'id="search-anchor"');
 $posFirst  = strpos($tpl, 'id="animJourney"');
-// 5 Oct 2026 (owner): the coach is a compact banner ABOVE the date picker; the route + booking scenes stay below.
-check('the coach banner sits above the booking panel, the other scenes below it', $posSearch !== false && $posFirst !== false && $posFirst < $posSearch
-    && strpos($tpl, 'id="animRoute"') > $posSearch && str_contains($tpl, 'class="container shg-animation sa-top" id="animJourney"'));
+// 8 Oct 2026 (owner prompt Phase 4, D3-09): booking first - the coach banner (with the offices card) now
+// sits BELOW the booking panel and QuickBot; the route + booking scenes stay below it.
+$posQuickA = strpos($tpl, 'id="quick-ticket"');
+check('the coach banner sits below the booking panel and QuickBot, the other scenes below it', $posSearch !== false && $posFirst !== false && $posQuickA !== false
+    && $posSearch < $posQuickA && $posQuickA < $posFirst
+    && strpos($tpl, 'id="animRoute"') > $posFirst && str_contains($tpl, 'class="container shg-animation sa-top" id="animJourney"'));
 check('the old hidden highway scene and route card are gone', !str_contains($tpl, 'id="routeAnim"') && !str_contains($tpl, 'id="homeRouteMap"'));
 check('the coach is first (order -3), the other scenes after the brand band (order 6–7)',
     (bool) preg_match('~#view-home > #animJourney \{ order: -3 !important; \}~', $css)
@@ -130,8 +133,12 @@ check('no GIF, video or third-party animation library', !preg_match('~\.gif|<vid
 check('the coach is never mirrored (no negative scale / 180° flip)', !preg_match('~scaleX\(\s*-|scale\(\s*-|rotateY\(\s*180~', $css . $js));
 check('left and right coaches are separate renders swapped by name',
     is_file($dir . '/shg-bus-left.webp') && is_file($dir . '/shg-bus-main.webp') && str_contains($js, "replace(/shg-bus-main/g, 'shg-bus-left')"));
+// 8 Oct 2026: the banner's three amenity chips moved into the one facilities strip (#homeFeat, 8 items)
+// - AC, mobile charging and first aid are still there, nothing invented on the banner itself.
 preg_match_all('~data-i18n="(animAm[A-Za-z]+)"~', $sections['animJourney'], $am);
-check('the amenities are exactly AC, mobile charging and first-aid / medicine', $am[1] === ['animAmAc', 'animAmCharge', 'animAmAid'], implode(', ', $am[1]));
+$featHtml = preg_match('~<section[^>]*id="homeFeat"[^>]*>(.*?)</section>~s', $tpl, $fh) ? $fh[1] : '';
+check('no amenity claims on the banner; AC, mobile charging and first aid live in the facilities strip',
+    $am[1] === [] && str_contains($featHtml, 'data-i18n="hfAc"') && str_contains($featHtml, 'data-i18n="hfCharge"') && str_contains($featHtml, 'data-i18n="hfAid"'), implode(', ', $am[1]));
 check('no extra amenity claims (toilet, Wi-Fi, meals, fares, seats left)', !preg_match('~toilet|wi-?fi|meal|dining|₹|seats? left~i', $all));
 check('the map says it is an illustrative corridor, not a road map or GPS',
     str_contains($sections['animRoute'], 'data-i18n="animMNote"') && (bool) preg_match("~animMNote: \"Illustrative corridor — not a road map, distance or live GPS position\.\"~", $i18n));
