@@ -282,7 +282,7 @@ function updateBottomNav(h) {
     // 8 Oct 2026: the bar is Home · Book · Track · My Tickets · Help. The live
     // trip and the map are "Track"; a ticket and the list are "My Tickets".
     track: is('#/nav') || starts('#/trip/'),
-    trips: is('#/my') || starts('#/ticket/'),
+    trips: is('#/my') || starts('#/my?') || starts('#/ticket/'),
     help:  is('#/terms'),
   };
   shgLightTab(Object.keys(map).filter(k => map[k])[0] || '');
@@ -1683,6 +1683,7 @@ function initQuickTicket() {
       .then(function (d) {
         var b = d && d.customer ? bookingFromServer(d.customer, qt.phone) : null;
         if (b) {
+          b.ownBrowser = true;   // api/quick-ticket.php remembered this PNR for this browser's session
           var at = -1;
           for (var i = 0; i < DB.bookings.length; i++) { if (DB.bookings[i] && DB.bookings[i].id === b.id) { at = i; break; } }
           if (at >= 0) DB.bookings[at] = Object.assign({}, DB.bookings[at], b); else DB.bookings.unshift(b);

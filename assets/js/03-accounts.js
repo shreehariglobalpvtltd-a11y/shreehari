@@ -55,7 +55,13 @@ function captureReferralFromURL() {
   const m = (location.hash + location.search).match(/[?&]ref=([A-Za-z0-9]+)/);
   if (!m) return;
   try { localStorage.setItem('shg:pendingRef', m[1].toUpperCase()); } catch (e) {}
-  if (location.hash.indexOf('?') >= 0) location.hash = location.hash.split('?')[0];
+  // Drop only ref= from the hash query: #/my?pnr=... must survive a ?ref= link (8 Oct 2026).
+  if (location.hash.indexOf('?') >= 0) {
+    const parts = location.hash.split('?');
+    const rest = parts.slice(1).join('?').split('&').filter(function (kv) { return kv && kv.indexOf('ref=') !== 0; });
+    const next = parts[0] + (rest.length ? '?' + rest.join('&') : '');
+    if (next !== location.hash) location.hash = next;
+  }
 }
 function pendingRefCode() {
   try { return (localStorage.getItem('shg:pendingRef') || '').toUpperCase(); } catch (e) { return ''; }
