@@ -141,6 +141,7 @@ const CORE_SUITES = [
     'export-filters-test.php'      => 'a register exports exactly what it shows',
     'ticket-png-test.php'          => 'the PNG ticket renders and stays fresh',
     'ticket-premium-test.php'      => 'honest WhatsApp state, pickup-time clock, trip cancel/delay notices, track token, public pages',
+    'pickup-retime-test.php'       => 'a retimed or extra bus moves every pickup by the same delta; reminders never chase a departed bus',
     'challan-png-test.php'         => 'the bus challan PNG draws the whole coach and stays fresh',
     'chalani-png-test.php'         => 'the chalani PNG pages + who cut the ticket (agent code)',
     'report-pdf-test.php'          => 'report PDFs render',

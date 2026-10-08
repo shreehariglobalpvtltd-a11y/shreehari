@@ -96,6 +96,7 @@ final class TripNotify
                     bl.id AS leg_id, bl.schedule_id, bl.travel_date, bl.boarding_stop, bl.boarding_time,
                     r.from_city, r.to_city,
                     COALESCE(s.dep_time_override, r.dep_time) AS dep_time,
+                    r.dep_time AS route_dep_time, s.slot, s.route_id, s.status AS schedule_status,
                     (SELECT GROUP_CONCAT(bp.seat_no ORDER BY bp.seat_no SEPARATOR ', ')
                        FROM booking_passengers bp
                       WHERE bp.booking_id = b.id AND bp.leg_id = bl.id) AS seats
@@ -113,8 +114,15 @@ final class TripNotify
         $due = [];
         foreach ($rows as $row) {
             $pickTs = Boarding::pickupTs((string) $row['travel_date'], (string) ($row['boarding_stop'] ?? ''),
-                $row['boarding_time'] !== null ? (string) $row['boarding_time'] : null, (string) ($row['dep_time'] ?? ''));
+                $row['boarding_time'] !== null ? (string) $row['boarding_time'] : null, (string) ($row['dep_time'] ?? ''),
+                (string) ($row['route_dep_time'] ?? ''), (int) ($row['slot'] ?? 1), (int) ($row['route_id'] ?? 0));
             if ($pickTs <= $now || $pickTs > $now + 12 * 3600) {
+                continue;
+            }
+            // Safety net: a departed bus never gets a "reach your stop"
+            // reminder for a pickup a day after its own departure.
+            $depTs = strtotime((string) $row['travel_date'] . ' ' . (string) ($row['dep_time'] ?? ''));
+            if (($row['schedule_status'] ?? '') === 'departed' && $depTs !== false && $pickTs > $depTs + 20 * 3600) {
                 continue;
             }
             $row['pickup_ts']  = $pickTs;
@@ -460,6 +468,7 @@ final class TripNotify
                     bl.id AS leg_id, bl.schedule_id, bl.travel_date, bl.boarding_stop, bl.boarding_time,
                     r.from_city, r.to_city,
                     COALESCE(s.dep_time_override, r.dep_time) AS dep_time,
+                    r.dep_time AS route_dep_time, s.slot, s.route_id, s.status AS schedule_status,
                     (SELECT GROUP_CONCAT(bp.seat_no ORDER BY bp.seat_no SEPARATOR ', ')
                        FROM booking_passengers bp
                       WHERE bp.booking_id = b.id AND bp.leg_id = bl.id) AS seats
@@ -686,7 +695,8 @@ final class TripNotify
         if (!class_exists('Boarding')) { require_once __DIR__ . '/boarding.php'; }
         $sd     = Boarding::stopDisplay((string) ($row['boarding_stop'] ?? ''));
         $pickTs = (int) ($row['pickup_ts'] ?? 0) ?: Boarding::pickupTs((string) ($row['travel_date'] ?? ''), (string) ($row['boarding_stop'] ?? ''),
-            ($row['boarding_time'] ?? null) !== null ? (string) $row['boarding_time'] : null, (string) ($row['dep_time'] ?? ''));
+            ($row['boarding_time'] ?? null) !== null ? (string) $row['boarding_time'] : null, (string) ($row['dep_time'] ?? ''),
+            (string) ($row['route_dep_time'] ?? ''), (int) ($row['slot'] ?? 1), (int) ($row['route_id'] ?? 0));
         $boardTxt = trim((string) ($sd['name'] ?? ''));
         if ($boardTxt !== '' && !empty($sd['time'])) {
             $boardTxt .= ' · ' . $sd['time'];

@@ -253,7 +253,7 @@ $sql = "SELECT b.id, b.pnr, b.status, b.total_amount, b.contact_phone, b.source,
                   ix_shots_hash serve both lookups. */
                (SELECT GROUP_CONCAT(DISTINCT b2.pnr ORDER BY b2.pnr SEPARATOR ', ')
                   FROM payments p3 JOIN bookings b2 ON b2.id = p3.booking_id
-                 WHERE TRIM(COALESCE(p.utr_number, '')) <> ''
+                 WHERE p.utr_number REGEXP '[A-Za-z0-9]{6,}'   -- 'na' / 'cash' / '0' are not UTRs (same rule as booking-view)
                    AND p3.utr_number = p.utr_number
                    AND p3.booking_id <> b.id) AS utr_also_on,
                (SELECT GROUP_CONCAT(DISTINCT bx.pnr ORDER BY bx.pnr SEPARATOR ', ')
@@ -543,7 +543,7 @@ tr.row-done td{background:var(--hover)}
             <div class="mono" style="font-size:11px;margin-top:3px"><?= Security::e($q['utr_number']) ?></div>
           <?php endif; ?>
           <?php if (!empty($q['utr_also_on'])): ?>
-            <div style="margin-top:4px"><span class="pill" style="color:#8a1f1f;background:#f7dcdc;font-size:10.5px;white-space:normal" title="The same UTR was submitted for another booking — check before verifying">⚠ UTR also on <?= Security::e($q['utr_also_on']) ?></span></div>
+            <div style="margin-top:4px"><span class="pill" style="color:#8a1f1f;background:#f7dcdc;font-size:10.5px;white-space:normal" title="The same UTR was submitted for another booking — check before verifying">⚠ UTR also on <?php $uo = array_values(array_filter(array_map('trim', explode(',', (string) $q['utr_also_on'])))); echo Security::e(implode(', ', array_slice($uo, 0, 4)) . (count($uo) > 4 ? ' +' . (count($uo) - 4) . ' more' : '')); ?></span></div>
           <?php endif; ?>
           <?php if (!empty($q['payer_name'])): ?>
             <div class="muted" style="font-size:11px"><?= Security::e($q['payer_name']) ?></div>

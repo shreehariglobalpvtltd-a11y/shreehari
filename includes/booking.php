@@ -2978,7 +2978,7 @@ final class BookingService
             'SELECT l.*, r.from_city, r.to_city, r.route_code,
                     COALESCE(s.dep_time_override, r.dep_time) AS dep_time, r.dep_time AS route_dep_time,
                     r.arr_time, r.duration_text, r.crew_name, r.crew_phone,
-                    s.slot AS schedule_slot,
+                    s.slot AS schedule_slot, s.route_id AS schedule_route_id,
                     -- carried so the customer payload can say whether the journey
                     -- actually finished; the join is already here, so it is free.
                     s.status AS schedule_status,

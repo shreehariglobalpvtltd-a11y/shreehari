@@ -896,7 +896,8 @@ final class Ticket
         if (!class_exists('Boarding')) {
             require_once __DIR__ . '/boarding.php';
         }
-        $depTs = Boarding::pickupTs($travelDate, $pick('boarding_stop'), $pick('boarding_time') ?: null, $depTime);
+        $depTs = Boarding::pickupTs($travelDate, $pick('boarding_stop'), $pick('boarding_time') ?: null, $depTime,
+            $pick('route_dep_time'), (int) ($pick('schedule_slot') ?: 1), (int) ($pick('schedule_route_id') ?: 0));
         if ($depTs <= 0) {
             return null;
         }
@@ -2500,8 +2501,11 @@ final class Ticket
         $live = self::liveStatus($booking);
         if ($live !== null) {
             if (!class_exists('Boarding')) { require_once __DIR__ . '/boarding.php'; }
+            $lg0    = is_array($booking['legs'][0] ?? null) ? $booking['legs'][0] : [];
             $pickTs = Boarding::pickupTs((string) ($booking['travel_date'] ?? ''), (string) ($booking['boarding_stop'] ?? ''),
-                ($booking['boarding_time'] ?? null) !== null ? (string) $booking['boarding_time'] : null, (string) ($booking['dep_time'] ?? ''));
+                ($booking['boarding_time'] ?? null) !== null ? (string) $booking['boarding_time'] : null, (string) ($booking['dep_time'] ?? ''),
+                (string) ($booking['route_dep_time'] ?? ($lg0['route_dep_time'] ?? '')), (int) ($booking['schedule_slot'] ?? ($lg0['schedule_slot'] ?? 1)),
+                (int) ($booking['schedule_route_id'] ?? ($lg0['schedule_route_id'] ?? 0)));
             if ($live['key'] === 'trip_cancelled') {
                 $pillBg = self::liveStatusRgb('red');
                 $pillTx = 'TRIP CANCELLED - OFFICE WILL CONTACT YOU';

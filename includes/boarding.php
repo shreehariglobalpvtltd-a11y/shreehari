@@ -269,9 +269,21 @@ final class Boarding
      * past midnight — the next calendar day (r6 leaves Mehsana 21:00 and
      * reaches Vadodara 00:00).
      *
+     * A RETIMED trip (8 Oct 2026, review): the office's "Edit dep time" moves
+     * the daily bus (dep_time_override) but the sold labels keep the
+     * timetable's "@ 13:00", and Quick Ticket labels an extra bus with the
+     * timetable time too. The label's clock is then read against the clock
+     * it was written for ($routeDep, the route timetable) and the stop's
+     * offset is laid onto the effective departure — 13:00 → 15:00 moves the
+     * Surat pickup to 15:00 the same day, never to 13:00 the next day.
+     * Extra buses sold through search carry labels already shifted to their
+     * own departure (api/search.php), so for slot > 1 the timetable is used
+     * only when the label still shows the stop's timetable time.
+     *
      * @return int unix time, or 0 when the date or every time is unusable
      */
-    public static function pickupTs(string $travelDate, string $boardingStop, ?string $boardingTime, string $depTime): int
+    public static function pickupTs(string $travelDate, string $boardingStop, ?string $boardingTime, string $depTime,
+                                     ?string $routeDep = null, int $slot = 1, int $routeId = 0): int
     {
         $travelDate = trim($travelDate);
         if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $travelDate) !== 1) {
@@ -282,10 +294,12 @@ final class Boarding
             return preg_match('/^([0-2]?\d):([0-5]\d)/', $t, $m) === 1 && (int) $m[1] < 24
                 ? str_pad($m[1], 2, '0', STR_PAD_LEFT) . ':' . $m[2] : '';
         };
-        $dep  = $hhmm($depTime);
-        $pick = $hhmm($boardingTime);
+        $dep       = $hhmm($depTime);
+        $pick      = $hhmm($boardingTime);
+        $fromLabel = false;
         if ($pick === '') {
-            $pick = $hhmm((string) (self::stopDisplay($boardingStop)['time'] ?? ''));
+            $pick      = $hhmm((string) (self::stopDisplay($boardingStop)['time'] ?? ''));
+            $fromLabel = $pick !== '';
         }
         if ($pick === '') {
             $pick = $dep;
@@ -293,17 +307,40 @@ final class Boarding
         if ($pick === '') {
             return 0;
         }
-        $ts = strtotime($travelDate . ' ' . $pick);
+        if ($dep === '') {
+            $ts = strtotime($travelDate . ' ' . $pick);
+            return $ts === false ? 0 : (int) $ts;
+        }
+
+        // The clock the label was written against (see the docblock).
+        $base = $dep;
+        $tt   = $hhmm($routeDep);
+        if ($fromLabel && $tt !== '' && $tt !== $dep) {
+            if ($slot <= 1) {
+                $base = $tt;
+            } elseif ($routeId > 0) {
+                try {
+                    if ($hhmm(self::timeForStop($routeId, $boardingStop)) === $pick) {
+                        $base = $tt;
+                    }
+                } catch (Throwable $e) {
+                    // no stop table: keep the effective departure
+                }
+            }
+        }
+
+        // The stop's offset from departure: -60 min .. +23 h (a pickup more
+        // than an hour "before" departure is past midnight on the same run).
+        $toMin = static fn(string $t): int => (int) substr($t, 0, 2) * 60 + (int) substr($t, 3, 2);
+        $off   = (($toMin($pick) - $toMin($base)) % 1440 + 1440) % 1440;
+        if ($off > 1380) {
+            $off -= 1440;
+        }
+        $ts = strtotime($travelDate . ' ' . $dep);
         if ($ts === false) {
             return 0;
         }
-        if ($dep !== '') {
-            $toMin = static fn(string $t): int => (int) substr($t, 0, 2) * 60 + (int) substr($t, 3, 2);
-            if ($toMin($pick) < $toMin($dep) - 60) {
-                $ts = (int) strtotime('+1 day', $ts);   // past midnight on the same run
-            }
-        }
-        return (int) $ts;
+        return (int) $ts + $off * 60;
     }
 
     /** "Mehsana — Silver Complex" → "Mehsana"; "S Hari Parking, Nana Chiloda" → "Nana Chiloda". */
