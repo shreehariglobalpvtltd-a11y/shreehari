@@ -35,6 +35,7 @@
    Also here, because they are the same "how the shell feels" pass:
      • the compact language pill for the phone header (premium.css §2)
      • the Sound / Vibration switches, rendered into the mobile menu
+     • the spoken Voice guide (8 Oct 2026) - its own switch, OFF by default
    ===================================================================== */
 
 (function () {
@@ -185,6 +186,130 @@
   };
 
   window.SHGFeel = Feel;
+
+  /* -------------------------------------------------------------------
+     VOICE GUIDE  (8 Oct 2026, D7-09 / Phase 8)
+     -----------------------------------------------------------------
+     For passengers who do not read easily: one short spoken line per
+     booking step, in the app's language (ne / hi / en). OFF by default and
+     separate from Sound - nothing speaks until the passenger turns on the
+     menu's "🗣️ बोलेर बताउने · Voice guide" row, and that row only exists
+     when the phone has speech (speechSynthesis).
+       • The words are fixed t('vg_*') strings that repeat what the screen
+         already says, so voice is never the only channel - and it never
+         speaks a name, a phone number or a PNR (nothing is filled in).
+       • Voice by language: en-IN / hi-IN / ne-NP, then any voice of that
+         language; Nepali falls back to a Hindi (Devanagari) voice; with no
+         match the browser's default reads it with the language tag set.
+       • Rate 0.95. Stopped on every route change and when the tab is hidden.
+       • A ticket that is not confirmed is never called "ready".
+     ----------------------------------------------------------------- */
+  var LS_VOICE = 'shg:voice';
+  var VOICE_OK = (function () {
+    try { return !!window.speechSynthesis && typeof window.SpeechSynthesisUtterance === 'function'; } catch (e) { return false; }
+  })();
+  var VG_TAG = { en: 'en-IN', hi: 'hi-IN', ne: 'ne-NP' };
+  var vgVoices = [], vgSpeaking = false, vgLastSig = null, vgT = 0;
+
+  function readVoice() {
+    try { return localStorage.getItem(LS_VOICE) === '1'; } catch (e) { return false; }   /* default OFF */
+  }
+  function vgLang() { var l = currentLang(); return VG_TAG[l] ? l : 'en'; }
+  function vgVoiceList() {
+    try { var v = window.speechSynthesis.getVoices() || []; if (v.length) vgVoices = v; } catch (e) {}
+    return vgVoices;
+  }
+  if (VOICE_OK) {
+    try { window.speechSynthesis.addEventListener('voiceschanged', vgVoiceList); } catch (e) {}
+  }
+  function vgPick(lang) {
+    var vs = vgVoiceList(), want = (VG_TAG[lang] || 'en-IN').toLowerCase(), pre = want.split('-')[0];
+    function find(test) {
+      for (var i = 0; i < vs.length; i++) { var l = String(vs[i].lang || '').replace('_', '-').toLowerCase(); if (test(l)) return vs[i]; }
+      return null;
+    }
+    return find(function (l) { return l === want; })
+      || find(function (l) { return l.split('-')[0] === pre; })
+      || (lang === 'ne' ? (find(function (l) { return l === 'hi-in'; }) || find(function (l) { return l.split('-')[0] === 'hi'; })) : null);
+  }
+  function vgCancel() {
+    if (!VOICE_OK || !vgSpeaking) return;           /* never cuts the navigator's own turn-by-turn voice */
+    vgSpeaking = false;
+    try { window.speechSynthesis.cancel(); } catch (e) {}
+  }
+  /* Feel.say('home') speaks t('vg_home'). Returns true when it spoke. */
+  Feel.say = function (key) {
+    if (!VOICE_OK || !readVoice() || document.hidden) return false;
+    var vgKey = 'vg_' + key;                        /* vg_home, vg_seats ... (04-i18n.js) */
+    var txt = (typeof t === 'function') ? t(vgKey) : '';
+    if (!txt || txt === vgKey) return false;
+    var lang = vgLang();
+    try {
+      window.speechSynthesis.cancel();
+      var u = new SpeechSynthesisUtterance(txt);
+      u.lang = VG_TAG[lang];
+      u.rate = 0.95;
+      var v = vgPick(lang);
+      if (v) { try { u.voice = v; u.lang = v.lang || u.lang; } catch (e) {} }
+      u.onend = u.onerror = function () { vgSpeaking = false; };
+      vgSpeaking = true;
+      window.speechSynthesis.speak(u);
+      return true;
+    } catch (e) { vgSpeaking = false; return false; }
+  };
+  Object.defineProperty(Feel, 'voice', { get: readVoice, enumerable: true });
+  Feel.setVoice = function (on) {
+    try { localStorage.setItem(LS_VOICE, on ? '1' : '0'); } catch (e) {}
+    if (!on) { vgCancel(); return; }
+    /* the switch tap is a user gesture, so the first line can play now */
+    vgLastSig = vgSig();
+    if (!Feel.say(vgKeyForView() || 'on')) Feel.say('on');
+  };
+
+  /* Which line belongs to the screen that is showing. Read from the view the
+     router actually painted (a #/results without a search lands on home). */
+  function vgKeyForView() {
+    var v = document.querySelector('.view.active');
+    if (!v) return null;
+    switch (v.id) {
+      case 'view-home': return 'home';
+      case 'view-results': return 'results';
+      case 'view-seats': return 'seats';
+      case 'view-checkout': return 'checkout';
+      case 'view-status': {
+        var pnr = ((location.hash || '').split('/')[2] || '').split('?')[0], b = null;
+        try { b = (typeof DB === 'object' && DB && DB.bookings || []).find(function (x) { return x.id === pnr; }); } catch (e) {}
+        if (!b) return null;                        /* unknown: say nothing rather than guess */
+        if (b.status === 'confirmed') return 'ticket';
+        return b.status === 'pending' ? 'ticketWait' : null;   /* cancelled / expired / completed: silence */
+      }
+    }
+    return null;
+  }
+  function vgSig() {
+    var v = document.querySelector('.view.active');
+    var id = v ? v.id : '';
+    return id + (id === 'view-status' ? '|' + location.hash : '');
+  }
+  function watchVoiceGuide() {
+    if (!VOICE_OK) return;
+    window.addEventListener('hashchange', function () {
+      vgCancel();
+      clearTimeout(vgT);
+      /* after the router (and any redirect it makes) has painted the view */
+      vgT = setTimeout(function () {
+        var sig = vgSig();
+        if (sig === vgLastSig) return;              /* same screen: once per route */
+        vgLastSig = sig;
+        var k = vgKeyForView();
+        if (k) Feel.say(k);
+      }, 450);
+    });
+    document.addEventListener('visibilitychange', function () { if (document.hidden) vgCancel(); });
+    window.addEventListener('pagehide', vgCancel);
+    /* the first screen is the one already showing - no speech without a tap */
+    setTimeout(function () { if (vgLastSig === null) vgLastSig = vgSig(); }, 1200);
+  }
 
   /* -------------------------------------------------------------------
      TAKE OVER THE EXISTING CALL SITES
@@ -344,18 +469,20 @@
     var menu = document.getElementById('mobileMenu');
     if (!menu || menu.querySelector('.feel-row')) return;
 
-    function row(labelText, isOn, onToggle) {
+    function row(labelText, isOn, onToggle, name) {
       var r = document.createElement('div');
       r.className = 'feel-row';
+      if (name) r.setAttribute('data-feel', name);
       var l = document.createElement('span');
       l.className = 'feel-lbl';
       l.textContent = labelText;
+      if (name) l.id = 'feelLbl-' + name;
       var sw = document.createElement('button');
       sw.type = 'button';
       sw.className = 'feel-sw' + (isOn ? ' on' : '');
       sw.setAttribute('role', 'switch');
       sw.setAttribute('aria-checked', isOn ? 'true' : 'false');
-      sw.setAttribute('aria-label', labelText);
+      if (name) sw.setAttribute('aria-labelledby', l.id); else sw.setAttribute('aria-label', labelText);
       sw.addEventListener('click', function (e) {
         e.stopPropagation();                      /* the menu closes on any other tap */
         var on = !sw.classList.contains('on');
@@ -368,8 +495,11 @@
       return r;
     }
 
-    menu.appendChild(row('🔊 आवाज · Sound', Feel.sound, Feel.setSound));
-    menu.appendChild(row('📳 कम्पन · Vibration', Feel.haptics, Feel.setHaptics));
+    menu.appendChild(row('🔊 आवाज · Sound', Feel.sound, Feel.setSound, 'sound'));
+    menu.appendChild(row('📳 कम्पन · Vibration', Feel.haptics, Feel.setHaptics, 'haptics'));
+    /* D7-09: the spoken step guide - its own switch, OFF until turned on,
+       and absent on a phone that cannot speak. */
+    if (VOICE_OK) menu.appendChild(row('🗣️ बोलेर बताउने · Voice guide', readVoice(), Feel.setVoice, 'voice'));
 
     /* A computer never sees the phone menu: one 🔊/🔇 button in the top bar. */
     var nav = document.querySelector('.nav-links');
@@ -416,6 +546,7 @@
     try { if (window.matchMedia && window.matchMedia('(max-width:760px)').matches) buildLangMini(); } catch (e) {}
     try { buildFeelSwitches(); } catch (e) {}
     try { watchTicket(); } catch (e) {}
+    try { watchVoiceGuide(); } catch (e) {}
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

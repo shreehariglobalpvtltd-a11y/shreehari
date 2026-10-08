@@ -34,6 +34,29 @@ var SN = { map:null, ready:false, loading:false, watchId:null, meMarker:null, me
   lite:false, terrainOn:false, motionAnim:null, motionLast:0, meTarget:null, meDisp:null,
   busTarget:null, busDisp:null, busTrail:[], followBus:true, camLock:false, trackPollT:null, lastKvAt:0, avgSpdKmh:0 };
 
+/* 8 Oct 2026 (D2-14): every word the navigator shows comes from 04-i18n.js
+   (t / tf are global - this bundle is lazy-loaded long after them), so the
+   tracking screen reads Nepali / Hindi / English with the rest of the app.
+   Place names, road names and Valhalla's own street instructions stay as
+   they come. */
+function snT(k, vars){
+  try{ if(typeof tf==='function') return vars ? tf(k, vars) : t(k); }catch(e){}
+  return k;
+}
+/* D7-09: the turn-by-turn voice speaks the app's language until the
+   traveller picks another on the EN / हि / ने chip; that pick and the 🔊
+   switch are remembered on this phone. Voice stays ON by default inside the
+   navigator (the traveller opened turn-by-turn on purpose). */
+var SN_VLANG_KEY='shg:navVoiceLang', SN_VON_KEY='shg:navVoice';
+function snVoicePrefs(){
+  var l=null, on=null;
+  try{ l=localStorage.getItem(SN_VLANG_KEY); on=localStorage.getItem(SN_VON_KEY); }catch(e){}
+  if(l!=='en'&&l!=='hi'&&l!=='ne') l=(typeof LANG==='string'&&/^(en|hi|ne)$/.test(LANG))?LANG:'en';
+  SN.voiceLang=l;
+  SN.voiceOn=on!=='0';
+}
+snVoicePrefs();
+
 var SN_TEMPLES=[
   {n:'Somnath',lat:20.888,lng:70.4013,deity:'Shiva / शिव',wiki:'Somnath temple',hi:'प्रथम ज्योतिर्लिंग — समुद्र तट पर शिव मंदिर, कई बार नष्ट और पुनर्निर्मित।',special:'First of the 12 Jyotirlingas — a coastal Shiva shrine destroyed and rebuilt many times across a thousand years.'},
   {n:'Dwarkadhish',lat:22.2376,lng:68.9685,deity:'Krishna / कृष्ण',wiki:'Dwarkadhish Temple',hi:'चार धाम में से एक, श्री कृष्ण की प्राचीन नगरी; पाँच मंज़िला शिखर पर दिन में पाँच बार ध्वज बदलता है।',special:'One of the Char Dham, marking the ancient kingdom of Krishna.'},
@@ -74,7 +97,7 @@ var SN_TEMPLES=[
 function ensureMapLibre(cb){
   loadMapLibre()
     .then(function(){ SN.loading=false; cb(); })
-    .catch(function(){ SN.loading=false; toast('Failed to load map engine'); });
+    .catch(function(){ SN.loading=false; toast(snT('snMapFail')); });
 }
 
 /* ================================================================
@@ -179,6 +202,9 @@ function renderNav(){
   var loader=$('#snLoad');
   if(loader) loader.style.display='flex';
   if(typeof snLoadMapInit==='function') snLoadMapInit();
+  /* the router calls this again after a language switch: voice + JS-set text follow */
+  snVoicePrefs();
+  if(typeof SN.relabel==='function'){ try{ SN.relabel(); }catch(e){} }
   if(SN.ready && SN.map){
     if(loader) loader.style.display='none';
     // [MAP PRO] Bug 3 — resize AFTER the view is laid out & painted (double rAF),
@@ -329,9 +355,9 @@ function initNavApp(){
     if(box){
       var svg=''; try{ if(typeof routeOverviewSVG==='function') svg=routeOverviewSVG({from:'Surat',to:'Rupaidiha'}); }catch(e){}
       box.classList.add('sn-map-ready');
-      box.innerHTML='<div class="sn-nomap">'+(svg||'')+'<div class="sn-nomap-txt"><b>Map view is not available on this device</b>'
-        +'<p>This phone / browser cannot draw the live map (no WebGL). The route overview is shown instead; bus timings and booking work as usual.</p>'
-        +'<button type="button" class="sn-nomap-btn" onclick="location.hash=\'#/\'">Back to home</button></div></div>';
+      box.innerHTML='<div class="sn-nomap">'+(svg||'')+'<div class="sn-nomap-txt"><b>'+snEsc(snT('snNoMapT'))+'</b>'
+        +'<p>'+snEsc(snT('snNoMapP'))+'</p>'
+        +'<button type="button" class="sn-nomap-btn" onclick="location.hash=\'#/\'">'+snEsc(snT('snHomeBtn'))+'</button></div></div>';
     }
     try{ var bk=$('#snBack'); if(bk) bk.onclick=function(){ location.hash='#/'; }; }catch(e){}
     if(_nv) _nv.classList.add('sn-nomap-on');
@@ -366,7 +392,7 @@ function initNavApp(){
   map.addControl(new maplibregl.ScaleControl({maxWidth:96,unit:'metric'}),'bottom-left');
   SN.map=map;
   /* A GL context can also die AFTER construction (tab discarded, driver reset). */
-  try{ map.on('error',function(e){ var m=e&&e.error&&e.error.message||''; if(/webgl|context/i.test(m)&&!SN._glLost){ SN._glLost=true; snToast('Map engine lost — reload the page'); } }); }catch(e){}
+  try{ map.on('error',function(e){ var m=e&&e.error&&e.error.message||''; if(/webgl|context/i.test(m)&&!SN._glLost){ SN._glLost=true; snToast(snT('snGlLost')); } }); }catch(e){}
 
   function firstVS(){ var ss=map.getStyle().sources||{}; for(var id in ss){ if(ss[id].type==='vector') return id; } return null; }
   function circPoly(lng,lat,r,pts){
@@ -478,6 +504,8 @@ function initNavApp(){
       var vs=window.speechSynthesis.getVoices()||[], pre=(lang||'').split('-')[0].toLowerCase();
       for(var i=0;i<vs.length;i++){ if((vs[i].lang||'')===lang) return vs[i]; }
       for(var j=0;j<vs.length;j++){ if((vs[j].lang||'').toLowerCase().indexOf(pre)===0) return vs[j]; }
+      /* few phones ship a Nepali voice: a Hindi one reads Devanagari well */
+      if(pre==='ne'){ for(var k=0;k<vs.length;k++){ if((vs[k].lang||'').toLowerCase().indexOf('hi')===0) return vs[k]; } }
     }catch(e){}
     return null;
   }
@@ -511,8 +539,13 @@ function initNavApp(){
     roundabout:{hi:'गोल चक्कर में प्रवेश करें', ne:'गोलचक्करमा प्रवेश गर्नुहोस्'},
     merge:     {hi:'मुख्य मार्ग में मिलें',      ne:'मुख्य मार्गमा मिसिनुहोस्'},
     ferry:     {hi:'नौका लें',                  ne:'फेरी लिनुहोस्'},
-    arrive:    {hi:'आप पहुँच गए हैं',           ne:'तपाईं गन्तव्यमा आइपुग्नुभयो'}
+    arrive:    {hi:'आप पहुँच गए हैं',           ne:'तपाईं गन्तव्यमा आइपुग्नुभयो', en:'You have arrived at your destination'}
   };
+  /* one SN_PHRASE row in the voice language (D7-09: the arrival line was English-only) */
+  function snPhrase(key){
+    var row=SN_PHRASE[key]||{}, lg=SN.voiceLang||'en';
+    return row[lg]||row.en||'';
+  }
   /* Valhalla instructions arrive in English; for hi/ne swap in a localized template by coarse direction */
   function snSpeakManeuver(instr,type){
     var lg=SN.voiceLang||'en';
@@ -536,12 +569,12 @@ function initNavApp(){
     var remainKm=upcoming?Math.max(0,show._distKm-distAlongKm):Math.max(0,SN.routeTotalKm-distAlongKm);
     var v=snSpeedKmh();
     s('#snBanIcon').textContent=snManIcon(show.type);
-    s('#snBanInstr').textContent=show.instruction||(upcoming?'Continue':'You have arrived');
+    s('#snBanInstr').textContent=show.instruction||snT(upcoming?'snBanCont':'snBanArr');
     s('#snBanDist').textContent=(remainKm<1?Math.round(remainKm*1000)+' m':remainKm.toFixed(1)+' km')
       +(upcoming?' · '+snFmtTime(remainKm/v*3600):'');
     var totalRemainKm=Math.max(0,SN.routeTotalKm-distAlongKm), remainSec=totalRemainKm/snSpeedKmh()*3600;
     var _arr=new Date(Date.now()+remainSec*1000), _h=_arr.getHours(), _ap=_h<12?'AM':'PM', _h12=_h%12||12, _mm=_arr.getMinutes();
-    s('#snBanRem').textContent=snFmtTime(remainSec)+' left';
+    s('#snBanRem').textContent=snT('snLeftFmt',{t:snFmtTime(remainSec)});
     s('#snBanEta').textContent=_h12+':'+(_mm<10?'0'+_mm:_mm)+' '+_ap;
     s('#snBanner').classList.add('show');
     if(show.instruction&&show.instruction!==SN.lastSpokenInstr){ speak(snSpeakManeuver(show.instruction,show.type)); SN.lastSpokenInstr=show.instruction; }
@@ -576,7 +609,7 @@ function initNavApp(){
     for(var j=0;j<mv.length;j++){if(mv[j]._distKm>distAlongKm){nextIdx=j;break;}}
     if(nextIdx>=0){
       s('#snNcIco').textContent=snManIcon(mv[nextIdx].type);
-      s('#snNcTxt').textContent=mv[nextIdx].instruction||'Continue';
+      s('#snNcTxt').textContent=mv[nextIdx].instruction||snT('snBanCont');
       var nd=Math.max(0,mv[nextIdx]._distKm-distAlongKm);
       s('#snNcDist2').textContent=nd<1?Math.round(nd*1000)+' m':nd.toFixed(1)+' km';
     }
@@ -642,9 +675,9 @@ function initNavApp(){
       }
       map.setTerrain({source:'sn-dem',exaggeration:1.35});
       if(typeof map.setSky==='function'){ try{ map.setSky({'sky-color':'#8fc4ff','horizon-color':'#f7e2c6','fog-color':'#e9e3d8','sky-horizon-blend':0.6,'horizon-fog-blend':0.8,'fog-ground-blend':0.6}); }catch(e){} }
-      if(!SN.terrainOn) snToast('🏔️ 3D terrain on');
+      if(!SN.terrainOn) snToast(snT('sn3DOn'));
       SN.terrainOn=true;
-    }catch(e){ SN.terrainOn=false; snToast('3D terrain is not available on this device'); }
+    }catch(e){ SN.terrainOn=false; snToast(snT('sn3DNa')); }
   }
 
   function applyOL(){
@@ -723,7 +756,7 @@ function initNavApp(){
     SN.compassMode=!SN.compassMode; SN.userRotated=false;
     s('#snCompass').classList.toggle('on',SN.compassMode);
     if(!SN.compassMode) map.easeTo({bearing:0,pitch:SN.is3D?60:0,duration:500});
-    snToast(SN.compassMode?'🧭 Compass mode':'🧭 North-up mode');
+    snToast(snT(SN.compassMode?'snCompassOn':'snNorthUp'));
   };
   s('#snZin').onclick=function(){ map.zoomIn({duration:SN.weak?0:380,easing:snEaseOut}); };
   s('#snZout').onclick=function(){ map.zoomOut({duration:SN.weak?0:380,easing:snEaseOut}); };
@@ -740,7 +773,7 @@ function initNavApp(){
   (function(){
     var btn=s('#snLayers'), panel=s('#snLayersPanel');
     if(btn&&panel){
-      btn.setAttribute('aria-label','Map layers');
+      btn.setAttribute('aria-label',snT('snLayersT'));
       btn.onclick=function(e){ e.stopPropagation(); var on=panel.classList.toggle('show'); btn.classList.toggle('on',on); };
       document.addEventListener('click',function(e){
         if(panel.classList.contains('show') && !e.target.closest('#snLayersPanel') && !e.target.closest('#snLayers')){
@@ -752,19 +785,22 @@ function initNavApp(){
     var d3=s('#snLy3D'); if(d3) d3.onchange=function(){ s('#sn3D').click(); d3.checked=!!SN.is3D; };
     var lt=s('#snLyLite'); if(lt){ lt.checked=!!SN.lite; lt.onchange=function(){
       try{ localStorage.setItem('shari:navlite', lt.checked?'1':'0'); }catch(e){}
-      snToast(lt.checked?'⚡ Fast mode — reloading map…':'✨ Full map with extras — reloading…');
+      snToast(snT(lt.checked?'snFastOn':'snFullOn'));
       setTimeout(function(){ location.reload(); },700);
     }; }
     var fp=s('#snFastPill'); if(fp){ fp.hidden=false; fp.classList.toggle('off',!SN.lite);
-      fp.textContent=SN.lite?'⚡ Fast':'✨ Full';
-      fp.title=SN.lite?'Fast mode: only what you need to navigate. Tap for the full map.':'Full map with extras. Tap for Fast mode.';
+      SN.paintFast=function(){
+        fp.textContent=snT(SN.lite?'snFastPill':'snFullPill');
+        fp.title=snT(SN.lite?'snFastPillT':'snFullPillT');
+      };
+      SN.paintFast();
       fp.onclick=function(){ if(lt){ lt.checked=!SN.lite; lt.onchange(); } };
     }
-    var stp=s('#snLyStops'); if(stp) stp.onchange=function(){ SN.presetMarkers.forEach(function(m){ var el=m.getElement(); if(el) el.style.display=stp.checked?'':'none'; }); snToast(stp.checked?'🚏 Bus stops shown':'Bus stops hidden'); };
+    var stp=s('#snLyStops'); if(stp) stp.onchange=function(){ SN.presetMarkers.forEach(function(m){ var el=m.getElement(); if(el) el.style.display=stp.checked?'':'none'; }); snToast(snT(stp.checked?'snStopsOn':'snStopsOff')); };
     var poi=s('#snLyPoi'); if(poi) poi.onchange=function(){
-      if(!SN.poiMarkers||!SN.poiMarkers.length){ snToast('📍 Tap a category below (Food, ATM, Hospital…) to drop nearby places'); poi.checked=false; return; }
+      if(!SN.poiMarkers||!SN.poiMarkers.length){ snToast(snT('snPoiHint')); poi.checked=false; return; }
       SN.poiMarkers.forEach(function(m){ var el=m.getElement(); if(el) el.style.display=poi.checked?'':'none'; });
-      snToast(poi.checked?'📍 Nearby places shown':'📍 Nearby places hidden');
+      snToast(snT(poi.checked?'snPoiOn':'snPoiOff'));
     };
   })();
 
@@ -776,16 +812,16 @@ function initNavApp(){
       var center=map.getCenter(), z=Math.round(map.getZoom());
       var label='S Hari Nav';
       var text='';
-      if(SN.dest) { label=SN.dest.label||'Destination'; text='📍 '+label+'\n'; }
-      else if(SN.gpsPos) { label='My location'; text='📍 My location\n'; }
+      if(SN.dest) { label=SN.dest.label||snT('snDestination'); text='📍 '+label+'\n'; }
+      else if(SN.gpsPos) { label=snT('snMyLocation'); text='📍 '+label+'\n'; }
       var url='https://www.google.com/maps/@'+center.lat.toFixed(5)+','+center.lng.toFixed(5)+','+z+'z';
       if(SN.dest) url='https://www.google.com/maps/search/?api=1&query='+SN.dest.lat.toFixed(5)+','+SN.dest.lng.toFixed(5);
       text+=url;
       if(navigator.share){
         navigator.share({title:label,text:text}).catch(function(){});
       } else {
-        navigator.clipboard.writeText(text).then(function(){ snToast('📋 Location copied'); })
-          .catch(function(){ snToast('Could not share'); });
+        navigator.clipboard.writeText(text).then(function(){ snToast(snT('snCopied')); })
+          .catch(function(){ snToast(snT('snShareFail')); });
       }
     };
   })();
@@ -796,14 +832,16 @@ function initNavApp(){
   (function(){
     var POI_MAP={
       fuel:{q:'amenity=fuel',icon:'⛽',cat:'Fuel Station'},
-      food:{q:'amenity~"restaurant|fast_food|cafe"',icon:'🍽️',cat:'Restaurant / Cafe'},
+      food:{q:'amenity~"restaurant|fast_food|cafe"',icon:'🍽️',cat:'Restaurant / Cafe',ck:'snPoiFood'},
       hotel:{q:'tourism~"hotel|guest_house|hostel"',icon:'🏨',cat:'Hotel / Lodge'},
-      atm:{q:'amenity~"atm|bank"',icon:'🏦',cat:'ATM / Bank'},
-      hospital:{q:'amenity~"hospital|clinic|doctors"',icon:'🏥',cat:'Hospital / Clinic'},
-      bus_stop:{q:'highway=bus_stop',icon:'🚏',cat:'Bus Stop'},
-      parking:{q:'amenity=parking',icon:'🅿️',cat:'Parking'},
-      pharmacy:{q:'amenity=pharmacy',icon:'💊',cat:'Pharmacy'}
+      atm:{q:'amenity~"atm|bank"',icon:'🏦',cat:'ATM / Bank',ck:'snPoiAtm'},
+      hospital:{q:'amenity~"hospital|clinic|doctors"',icon:'🏥',cat:'Hospital / Clinic',ck:'snPoiHospital'},
+      bus_stop:{q:'highway=bus_stop',icon:'🚏',cat:'Bus Stop',ck:'snPoiBus'},
+      parking:{q:'amenity=parking',icon:'🅿️',cat:'Parking',ck:'snPoiParking'},
+      pharmacy:{q:'amenity=pharmacy',icon:'💊',cat:'Pharmacy',ck:'snPoiPharmacy'}
     };
+    /* the category in the app's language - the same words as the chips (D2-14) */
+    function catName(def){ return def.ck ? snT(def.ck) : def.cat; }
     function clearPoi(){
       SN.poiMarkers.forEach(function(m){m.remove();});
       SN.poiMarkers=[];
@@ -825,22 +863,22 @@ function initNavApp(){
       fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:'data='+encodeURIComponent(query)})
         .then(function(r){return r.json();})
         .then(function(j){
-          if(!j.elements||!j.elements.length){ snToast('No '+def.cat+' found within 5 km'); return; }
-          snToast(j.elements.length+' '+def.cat+' found nearby');
+          if(!j.elements||!j.elements.length){ snToast(snT('snPoiNone',{c:catName(def)})); return; }
+          snToast(snT('snPoiFound',{n:j.elements.length,c:catName(def)}));
           j.elements.forEach(function(el){
             var lat=el.lat||(el.center&&el.center.lat);
             var lng=el.lon||(el.center&&el.center.lon);
             if(!lat||!lng) return;
-            var name=(el.tags&&el.tags.name)||def.cat;
+            var name=(el.tags&&el.tags.name)||catName(def);
             var addr=(el.tags&&(el.tags['addr:street']||el.tags['addr:full']||''))||'';
             var markerEl=document.createElement('div');
             markerEl.className='sn-poi-m';
             markerEl.textContent=def.icon;
             var popup=new maplibregl.Popup({offset:14,maxWidth:'220px'}).setHTML(
-              '<div class="sn-poi-card"><span class="sn-pc-cat">'+def.icon+' '+snEsc(def.cat)+'</span>'
+              '<div class="sn-poi-card"><span class="sn-pc-cat">'+def.icon+' '+snEsc(catName(def))+'</span>'
               +'<h4>'+snEsc(name)+'</h4>'
               +(addr?'<p>'+snEsc(addr)+'</p>':'')
-              +'<button class="sn-pc-nav" onclick="snPoiNav('+lng+','+lat+',\''+snEsc(name).replace(/'/g,"\\'")+'\')">🧭 Navigate here</button></div>'
+              +'<button class="sn-pc-nav" onclick="snPoiNav('+lng+','+lat+',\''+snEsc(name).replace(/'/g,"\\'")+'\')">'+snEsc(snT('snNavHere'))+'</button></div>'
             );
             var m=new maplibregl.Marker({element:markerEl}).setLngLat([lng,lat]).setPopup(popup).addTo(map);
             SN.poiMarkers.push(m);
@@ -850,7 +888,7 @@ function initNavApp(){
           map.fitBounds(b,{padding:80,maxZoom:15,duration:800});
           var _ply=s('#snLyPoi'); if(_ply) _ply.checked=true;  /* reflect dropped POIs in the Layers toggle */
         })
-        .catch(function(){ snToast('⚠️ Could not fetch nearby places — try again'); })
+        .catch(function(){ snToast(snT('snPoiErr')); })
         .finally(function(){ if(chip) chip.classList.remove('loading'); });
     }
     document.querySelectorAll('#view-nav .sn-chip[data-poi]').forEach(function(chip){
@@ -863,7 +901,7 @@ function initNavApp(){
         fetchPoi(key);
       };
     });
-    window.snPoiNav=function(lng,lat,name){ snSetDest(lng,lat,name); snToast('🧭 Routing to '+name); };
+    window.snPoiNav=function(lng,lat,name){ snSetDest(lng,lat,name); snToast(snT('snRoutingTo',{p:name})); };
   })();
 
   /* ====== FAVORITES: Saved Places (Home / Office / ★ Saved) ====== */
@@ -881,35 +919,36 @@ function initNavApp(){
       var fav=snFavGet()[slot];
       if(fav&&fav.lat!=null&&fav.lng!=null){
         snSetDest(fav.lng,fav.lat,fav.label||label);
-        snToast('🧭 Routing to '+(fav.label||label));
+        snToast(snT('snRoutingTo',{p:fav.label||label}));
         if(typeof snRoute==='function') snRoute();   /* auto-route — snRoute self-guards on origin+dest */
       } else {
-        snToast('Set a destination, then long-press '+label+' to save it here');
+        snToast(snT('snFavEmpty',{s:label}));
       }
     }
     /* long-press -> pin the current destination into this favorite slot */
     function snFavSaveSlot(slot,label){
-      if(!SN.dest){ snToast('Set a destination first, then long-press '+label); return; }
+      if(!SN.dest){ snToast(snT('snFavNeedDest',{s:label})); return; }
       var f=snFavGet();
       f[slot]={lng:SN.dest.lng,lat:SN.dest.lat,label:SN.dest.label||label};
-      snFavSet(f); snToast('✅ '+label+' saved');
+      snFavSet(f); snToast(snT('snFavSlotSaved',{s:label}));
     }
     /* ★ tap -> append the current destination to the saved-stops list */
     function snFavSaveStop(){
-      if(!SN.dest){ snToast('Set a destination first to save it'); return; }
+      if(!SN.dest){ snToast(snT('snFavNeedDest2')); return; }
       var f=snFavGet();
-      f.saved.push({lng:SN.dest.lng,lat:SN.dest.lat,label:SN.dest.label||'Saved stop'});
-      snFavSet(f); snToast('⭐ Saved');
+      f.saved.push({lng:SN.dest.lng,lat:SN.dest.lat,label:SN.dest.label||snT('snSavedStop')});
+      snFavSet(f); snToast(snT('snSavedT'));
     }
-    /* Home / Office: 600ms long-press vs tap split via pointer events */
-    [['home','Home'],['office','Office']].forEach(function(pair){
+    /* Home / Office: 600ms long-press vs tap split via pointer events
+       (the chip's label is read in the app's language at the moment of use) */
+    [['home','snFavHome'],['office','snFavOffice']].forEach(function(pair){
       var chip=s('.sn-fav-chip[data-fav="'+pair[0]+'"]'); if(!chip) return;
       var timer=null, longpressed=false;
       chip.addEventListener('pointerdown',function(){ longpressed=false;
-        timer=setTimeout(function(){ longpressed=true; snFavSaveSlot(pair[0],pair[1]); },600); });
+        timer=setTimeout(function(){ longpressed=true; snFavSaveSlot(pair[0],snT(pair[1])); },600); });
       chip.addEventListener('pointerup',function(){
         if(timer){ clearTimeout(timer); timer=null; }
-        if(!longpressed) snFavGo(pair[0],pair[1]); });
+        if(!longpressed) snFavGo(pair[0],snT(pair[1])); });
       var cancel=function(){ if(timer){ clearTimeout(timer); timer=null; } };
       chip.addEventListener('pointercancel',cancel);
       chip.addEventListener('pointerleave',cancel);
@@ -924,25 +963,37 @@ function initNavApp(){
 
   /* voice guidance toggle — speaks the upcoming turn via the browser's own
      free, built-in speechSynthesis (no API/key), matching the reference banner's mic icon */
+  /* D7-09: the 🔊 state is painted from the remembered choice and saved on every tap */
+  function snPaintMic(){
+    var mic=s('#snBanMic'); if(!mic) return;
+    mic.classList.toggle('on',SN.voiceOn); mic.classList.toggle('off',!SN.voiceOn);
+    mic.textContent=SN.voiceOn?'🔊':'🔇';
+    mic.setAttribute('aria-pressed',SN.voiceOn?'true':'false');
+  }
+  snPaintMic();
   s('#snBanMic').onclick=function(){
-    SN.voiceOn=!SN.voiceOn; s('#snBanMic').classList.toggle('on',SN.voiceOn); s('#snBanMic').classList.toggle('off',!SN.voiceOn);
+    SN.voiceOn=!SN.voiceOn; snPaintMic();
+    try{ localStorage.setItem(SN_VON_KEY,SN.voiceOn?'1':'0'); }catch(e){}
     if(!SN.voiceOn&&window.speechSynthesis) try{window.speechSynthesis.cancel();}catch(e){}
-    snToast(SN.voiceOn?'🔊 Voice guidance on':'🔇 Voice guidance off');
+    snToast(snT(SN.voiceOn?'snVoiceOn':'snVoiceOff'));
   };
 
-  /* tri-lingual voice language chip — cycles EN → हि → ने, updates SN.voiceLang */
+  /* tri-lingual voice language chip — cycles EN → हि → ने, updates SN.voiceLang.
+     It starts on the app's language and a pick is remembered (D7-09). */
   (function(){
     var order=['en','hi','ne'], label={en:'EN',hi:'हि',ne:'ने'},
         name={en:'English',hi:'हिन्दी',ne:'नेपाली'}, chip=s('#snBanLang');
     if(!chip) return;
-    function paint(){ chip.textContent=label[SN.voiceLang]||'EN'; }
+    function paint(){ chip.textContent=label[SN.voiceLang]||'EN'; chip.setAttribute('lang',SN.voiceLang==='en'?'en':SN.voiceLang); }
+    SN.paintVoiceLang=paint;
     paint();
     chip.onclick=function(){
       var idx=order.indexOf(SN.voiceLang); if(idx<0) idx=0;
       SN.voiceLang=order[(idx+1)%order.length]; paint();
+      try{ localStorage.setItem(SN_VLANG_KEY,SN.voiceLang); }catch(e){}
       SN.lastSpokenInstr=null;
       try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
-      snToast('🗣️ Voice: '+name[SN.voiceLang]);
+      snToast(snT('snVoiceIs',{l:name[SN.voiceLang]}));
     };
   })();
 
@@ -959,14 +1010,14 @@ function initNavApp(){
          fix to the shared store every 10 s (see onSnPos); anyone else only
          shares with other tabs of the same browser, as before. */
       var staffOk=!!(window.SHG_BOOT&&window.SHG_BOOT.staff);
-      snToast(staffOk?'📡 Sharing the bus position with every passenger — allow GPS access':'📡 Sharing on this phone only. Sign in as staff at shreehariglobal.network to broadcast to passengers.');
+      snToast(snT(staffOk?'snBcStaff':'snBcLocal'));
       if(SN.watchId==null) s('#snLocate').click();
-    } else snToast('📡 Broadcast stopped');
+    } else snToast(snT('snBcStop'));
   };
   function snTrackTick(){
-    if(!SN.trackLastTs){ s('#snTrackUpd').textContent='waiting for driver…'; return; }
+    if(!SN.trackLastTs){ s('#snTrackUpd').textContent=snT('snWaitDriver'); return; }
     var secs=Math.round((Date.now()-SN.trackLastTs)/1000);
-    s('#snTrackUpd').textContent=secs<5?'just now':(secs<60?secs+'s ago':Math.round(secs/60)+'m ago');
+    s('#snTrackUpd').textContent=secs<5?snT('snJustNow'):(secs<60?snT('snSecAgo',{n:secs}):snT('snMinAgo',{n:Math.round(secs/60)}));
   }
   s('#snTrackToggle').onclick=function(){
     SN.trackingMode=!SN.trackingMode;
@@ -984,7 +1035,7 @@ function initNavApp(){
           snBusTrailPush(loc.lng,loc.lat);
           /* first fix: glide to the bus (cinematic), then the motion engine follows it */
           if(SN.followBus) snEase({center:[loc.lng,loc.lat],zoom:Math.max(map.getZoom(),12.5),duration:SN.weak?0:1400});
-          try{ SN.busMarker.getElement().onclick=function(){ SN.followBus=true; snEase({center:[loc.lng,loc.lat],zoom:Math.max(map.getZoom(),13),duration:700}); snToast('🎯 Following the bus'); }; }catch(e){}
+          try{ SN.busMarker.getElement().onclick=function(){ SN.followBus=true; snEase({center:[loc.lng,loc.lat],zoom:Math.max(map.getZoom(),13),duration:700}); snToast(snT('snFollowBus')); }; }catch(e){}
         }
         else snAnimateBus(loc.lng,loc.lat,loc.spd,loc.bearing);
         /* shg-v59 — shortest-arc smooth rotation for the shared-live-bus marker too
@@ -1039,7 +1090,7 @@ function initNavApp(){
       SN.trackPollT=setInterval(pollBus,12000); pollBus();
       if(SN.trackTickT) clearInterval(SN.trackTickT);
       SN.trackTickT=setInterval(snTrackTick,5000);
-      snToast('🚌 Watching for the live bus position…');
+      snToast(snT('snWatching'));
     } else {
       if(SN.trackUnsub){ SN.trackUnsub(); SN.trackUnsub=null; }
       if(SN.trackPollT){ clearInterval(SN.trackPollT); SN.trackPollT=null; }
@@ -1309,7 +1360,7 @@ function initNavApp(){
         if(!SN.offRouteSince) SN.offRouteSince=Date.now();
         else if(Date.now()-SN.offRouteSince>6000&&!SN.rerouteT){
           SN.rerouteT=setTimeout(function(){ SN.rerouteT=null; },15000);
-          snToast('↻ Off route — recalculating…'); snSetOrigin(SN.gpsPos.lng,SN.gpsPos.lat,'My location'); snRoute();
+          snToast(snT('snOffRoute')); snSetOrigin(SN.gpsPos.lng,SN.gpsPos.lat,snT('snMyLocation')); snRoute();
         }
       } else SN.offRouteSince=0;
     }
@@ -1340,9 +1391,9 @@ function initNavApp(){
       var arrDist=haversineKm(SN.gpsPos.lat,SN.gpsPos.lng,SN.dest.lat,SN.dest.lng);
       if(arrDist<0.05){
         SN.arrived=true;
-        var ae=s('#snArrival'); if(ae){s('#snArrDest').textContent=SN.dest.label||'Destination';ae.classList.add('show');}
-        speak('You have arrived at your destination');
-        snToast('🎉 Arrived!');
+        var ae=s('#snArrival'); if(ae){s('#snArrDest').textContent=SN.dest.label||snT('snDestination');ae.classList.add('show');}
+        speak(snPhrase('arrive'));             /* D7-09: in the voice language, not English only */
+        snToast(snT('snArrivedT'));
       }
     }
 
@@ -1366,10 +1417,10 @@ function initNavApp(){
     s('#snAlt').textContent=c.altitude!=null?Math.round(c.altitude)+' m':'—';
     s('#snCoord').textContent=c.latitude.toFixed(4)+', '+c.longitude.toFixed(4);
     snFocusCardSync(false);   /* [SECTION 4] keep Focus card live (speed + throttled CURRENT CITY) */
-    if(!SN.origin) snSetOrigin(SN.gpsPos.lng,SN.gpsPos.lat,'My location');
+    if(!SN.origin) snSetOrigin(SN.gpsPos.lng,SN.gpsPos.lat,snT('snMyLocation'));
   }
   s('#snLocate').onclick=function(){
-    if(!navigator.geolocation){ snToast('GPS not supported'); return; }
+    if(!navigator.geolocation){ snToast(snT('snNoGps')); return; }
     snStartCompass();   /* #34 — must be asked from a user gesture on iOS */
     SN.followMe=true; SN.persistFollow=true; SN.userRotated=false;
     if(SN._autoBackT){ clearTimeout(SN._autoBackT); SN._autoBackT=null; s('#snLocate').classList.remove('sn-recenter'); }
@@ -1388,11 +1439,11 @@ function initNavApp(){
       /* shg-v59 — persistent pulsing "locating" state on the button (item #5) instead
          of only a transient toast; cleared automatically on the first successful fix. */
       _lb.classList.add('locating');
-      snToast('📍 Locating…');
+      snToast('📍 '+snT('snLocating'));
       var _clearLocating = function(){ _lb.classList.remove('locating'); };
       navigator.geolocation.getCurrentPosition(function(pos){ _clearLocating(); onSnPos(pos); },function(){ _clearLocating(); },{enableHighAccuracy:false,maximumAge:60000,timeout:8000});
       SN.watchId=navigator.geolocation.watchPosition(function(pos){ _clearLocating(); onSnPos(pos); },function(){
-        _clearLocating(); s('#snLocate').classList.remove('on'); snToast('📍 Location blocked — allow GPS');
+        _clearLocating(); s('#snLocate').classList.remove('on'); snToast(snT('snBlocked'));
       },{enableHighAccuracy:true,maximumAge:0,timeout:15000});
     }
   };
@@ -1417,7 +1468,7 @@ function initNavApp(){
       if(!nv||!nv.classList.contains('active')||document.hidden) return;
       SN.followMe=true; SN.persistFollow=true; SN.userRotated=false;
       s('#snLocate').classList.add('on');
-      if(SN.routeCoords&&SN.routeCoords.length>1) snToast('🧭 Back to driving view');
+      if(SN.routeCoords&&SN.routeCoords.length>1) snToast(snT('snBackDrive'));
       else snEase({center:[SN.gpsPos.lng,SN.gpsPos.lat],zoom:Math.max(map.getZoom(),15),duration:SN.weak?0:700});
       snMotionKick();
     },SN_AUTOBACK_MS);
@@ -1567,24 +1618,47 @@ function initNavApp(){
   var SN_OFFROUTE_KM={auto:0.06,motorcycle:0.05,bus:0.08,bicycle:0.03,pedestrian:0.02};
   function snUpdateQuickDist(){ /* straight-line quick-distance readout removed — no-op kept so callers stay wired */ }
   function snRefreshGo(){
-    s('#snGo').disabled=!(SN.origin&&SN.dest); snUpdateQuickDist();
+    var go=s('#snGo');
+    go.disabled=!(SN.origin&&SN.dest); snUpdateQuickDist();
+    /* D2-14: a disabled "Get directions" says why, in one line right under it */
+    var why=s('#snGoWhy');
+    if(why){
+      var wk=(SN.origin&&SN.dest)?'':(!SN.origin&&!SN.dest?'snGoWhyBoth':(!SN.dest?'snGoWhyDest':'snGoWhyStart'));
+      why.textContent=wk?snT(wk):''; why.hidden=!wk;
+      if(wk) go.setAttribute('aria-describedby','snGoWhy'); else go.removeAttribute('aria-describedby');
+    }
     /* [MAP PRO] keep the collapsed peek bar informative so the map stays full-screen */
     if(typeof snPeekSet==='function'){
       if(SN.origin&&SN.dest){
         /* [V4] no manual straight-line distance — the real road route auto-calculates.
            Once a route is drawn, leave snRoute's ETA / "Tap to start navigation" text intact. */
         if(!(SN.routeCoords&&SN.routeCoords.length))
-          snPeekSet('🧭 Calculating best route…',(SN.origin.label||'Start')+' → '+(SN.dest.label||'Destination'));
-      } else if(SN.dest){ snPeekSet(SN.dest.label||'Destination set','Set a start, or tap 📍 My location'); }
-      else if(SN.origin){ snPeekSet('Start: '+(SN.origin.label||'set'),'Search or tap your destination'); }
-      else { snPeekSet('Plan your journey','Search a place, or tap the map'); }
+          snPeekSet(snT('snCalc'),(SN.origin.label||snT('snStart'))+' → '+(SN.dest.label||snT('snDestination')));
+      } else if(SN.dest){ snPeekSet(SN.dest.label||snT('snDestSet'),snT('snSetStart')); }
+      else if(SN.origin){ snPeekSet(snT('snStartIs',{p:SN.origin.label||''}),snT('snSearchDest')); }
+      else { snPeekSet(snT('snPlanT'),snT('snPlanS')); }
     }
   }
+  /* After a language switch (renderNav -> SN.relabel): every line this file
+     wrote itself is written again in the new language; [data-i18n] markup is
+     already done by applyStaticLang(). Nothing is re-routed or reset. */
+  SN.relabel=function(){
+    try{ snPaintMic(); }catch(e){}
+    if(typeof SN.paintVoiceLang==='function') SN.paintVoiceLang();
+    if(typeof SN.paintFast==='function') SN.paintFast();
+    var ly=s('#snLayers'); if(ly) ly.setAttribute('aria-label',snT('snLayersT'));
+    var dt=s('#snDriverToggle'); if(dt) dt.title=snT('snDriverT');
+    var tt=s('#snTrackToggle'); if(tt) tt.title=snT('snTrackT');
+    snRefreshGo();
+    if(SN.routeCoords&&SN.routeCoords.length&&SN.lastTripSum) snPeekSet(snTripLine(SN.lastTripSum),snT('snTapStart'));
+    if(s('#snSummary')&&s('#snSummary').classList.contains('show')) s('#snSVia').textContent=snT('snVia',{m:snModeName()});
+    if(SN.trackingMode) snTrackTick();
+  };
   s('#snUseGps').onclick=function(){ s('#snLocate').click(); };
   map.on('click',function(e){
     var ll=e.lngLat;
-    if(!SN.origin){ snSetOrigin(ll.lng,ll.lat,'Dropped start'); snToast('Start set — tap destination'); }
-    else snSetDest(ll.lng,ll.lat,'Dropped pin');
+    if(!SN.origin){ snSetOrigin(ll.lng,ll.lat,snT('snDropStart')); snToast(snT('snStartSet')); }
+    else snSetDest(ll.lng,ll.lat,snT('snDropPin'));
   });
 
   /* mode chips */
@@ -1606,7 +1680,7 @@ function initNavApp(){
   s('#snClear').onclick=function(){
     SN.origin=SN.dest=SN.routeGeo=SN.routeCoords=SN.routeManeuvers=SN.routeCumKm=null;
     SN.routeTotalKm=0; SN.routeProgKm=0; SN.offRouteSince=0; SN.lastSpokenInstr=null;
-    SN.arrived=false; SN.altRoutes=null;
+    SN.arrived=false; SN.altRoutes=null; SN.lastTripSum=null;
     [SN.originMarker,SN.destMarker].forEach(function(m){if(m)m.remove();}); SN.originMarker=SN.destMarker=null;
     ['sn-rline','sn-rglow','sn-rdone','sn-alt0','sn-alt1'].forEach(function(l){if(map.getLayer(l))map.removeLayer(l);});
     ['sn-route-ahead','sn-route-done','sn-alt-0','sn-alt-1'].forEach(function(src){if(map.getSource(src))map.removeSource(src);});
@@ -1630,7 +1704,7 @@ function initNavApp(){
   function snRoute(){
     if(!(SN.origin&&SN.dest)) return;
     if(typeof snTrailClear==='function') snTrailClear();   /* [MAP PRO] real directions replace the signature trail */
-    s('#snGo').textContent='Routing…'; s('#snGo').disabled=true;
+    s('#snGo').textContent=snT('snRouting'); s('#snGo').disabled=true;
     var body={locations:[{lat:SN.origin.lat,lon:SN.origin.lng},{lat:SN.dest.lat,lon:SN.dest.lng}],
       costing:SN.mode,directions_options:{units:'kilometers'}};
     var _co=snCostingOpts(); if(_co) body.costing_options=_co;
@@ -1659,17 +1733,24 @@ function initNavApp(){
         /* [AUTO-ROUTE V4] collapse the setup card to a full-screen map and surface ETA on
            the peek bar with a one-tap "start navigation" affordance (2nd tap -> follow). */
         if(typeof snSheet==='function') snSheet('peek');
-        if(typeof snPeekSet==='function') snPeekSet('🚌 '+snFmtTime(trip.summary.time)+' · '+trip.summary.length.toFixed(trip.summary.length<10?1:0)+' km','Tap to start navigation');
+        SN.lastTripSum=trip.summary;
+        if(typeof snPeekSet==='function') snPeekSet(snTripLine(trip.summary),snT('snTapStart'));
         if(typeof snFocus==='function') snFocus(true);   /* [SECTION 4] auto-enter clean Focus navigation */
         if(typeof snSaveLastRoute==='function') snSaveLastRoute();   /* [OFFLINE] persist route for offline reopen */
         SN.arrived=false;
         snFetchAlts();
       })
-      .catch(function(){snToast('No route found — try another mode');})
-      .finally(function(){s('#snGo').textContent='Get directions';snRefreshGo();});
+      .catch(function(){snToast(snT('snNoRoute'));})
+      .finally(function(){s('#snGo').textContent=snT('snGo');snRefreshGo();});
   }
 
   function snFmtTime(sec){var m=Math.round(sec/60);if(m<60)return m+' min';return Math.floor(m/60)+'h '+(m%60)+'m';}
+  /* "🚌 2h 10m · 84 km" on the peek bar once a route is drawn */
+  function snTripLine(sum){ return '🚌 '+snFmtTime(sum.time)+' · '+sum.length.toFixed(sum.length<10?1:0)+' km'; }
+  /* the travel mode in the app's language - the same words as the mode chips */
+  function snModeName(){
+    return snT({auto:'snModeCar',motorcycle:'snModeBike',bus:'snModeBus',bicycle:'snModeCycle',pedestrian:'snModeWalk'}[SN.mode]||'snModeCar');
+  }
   function snManIcon(type){
     var m={1:'🚩',2:'🚩',3:'🚩',4:'🏁',5:'🏁',6:'🏁',7:'⬆️',8:'⬆️',17:'⬆️',22:'⬆️',
       9:'↗️',18:'↗️',20:'↗️',23:'↗️',10:'➡️',11:'➡️',16:'↖️',19:'↖️',21:'↖️',24:'↖️',
@@ -1679,8 +1760,7 @@ function initNavApp(){
   function snShowSummary(sum,maneuvers){
     s('#snSTime').textContent=snFmtTime(sum.time);
     s('#snSDist').textContent=sum.length.toFixed(sum.length<10?1:0)+' km';
-    var modeName={auto:'car',motorcycle:'motorcycle',bus:'bus',bicycle:'bicycle',pedestrian:'walking'}[SN.mode];
-    s('#snSVia').textContent='by '+modeName;
+    s('#snSVia').textContent=snT('snVia',{m:snModeName()});
     s('#snSteps').innerHTML=maneuvers.map(function(m){
       var d=m.length>=1?m.length.toFixed(1)+' km':Math.round(m.length*1000)+' m';
       return '<div class="sn-step"><span class="man">'+snManIcon(m.type)+'</span><div class="txt">'+
@@ -1712,8 +1792,8 @@ function initNavApp(){
           }
         });
         var bar=s('#snAltBar');if(!bar)return;
-        bar.innerHTML='<button class="sn-altbtn on" data-snalt="-1"><b>Main</b>'+snFmtTime(j.trip.summary.time)+'</button>'
-          +SN.altRoutes.map(function(a,i){return'<button class="sn-altbtn" data-snalt="'+i+'"><b>Alt '+(i+1)+'</b>'+snFmtTime(a.summary.time)+' · '+a.summary.length.toFixed(1)+' km</button>';}).join('');
+        bar.innerHTML='<button class="sn-altbtn on" data-snalt="-1"><b>'+snEsc(snT('snMain'))+'</b>'+snFmtTime(j.trip.summary.time)+'</button>'
+          +SN.altRoutes.map(function(a,i){return'<button class="sn-altbtn" data-snalt="'+i+'"><b>'+snEsc(snT('snAlt',{n:i+1}))+'</b>'+snFmtTime(a.summary.time)+' · '+a.summary.length.toFixed(1)+' km</button>';}).join('');
         bar.classList.add('show');
         bar.querySelectorAll('.sn-altbtn').forEach(function(btn){
           btn.onclick=function(){
@@ -1802,8 +1882,8 @@ function initNavApp(){
       var el=document.createElement('div');
       el.style.cssText='width:13px;height:13px;border-radius:50%;background:#FFD700;border:2px solid #7B2FBE;box-shadow:0 1px 5px rgba(0,0,0,.5);cursor:pointer';
       var kmA=haversineKm(A.lat,A.lng,st.lat,st.lng);
-      var side=st.lng>=SN_BORDER_LNG?'🇳🇵 Nepal':'🇮🇳 India';
-      var html='<b>'+(st.f?st.f+' ':'')+snEsc(st.n)+'</b><br><small>'+side+' · ~'+Math.round(kmA)+' km from Ahmedabad</small>';
+      var side=snT(st.lng>=SN_BORDER_LNG?'snNepal':'snIndia');
+      var html='<b>'+(st.f?st.f+' ':'')+snEsc(st.n)+'</b><br><small>'+snEsc(side)+' · '+snEsc(snT('snKmFromAhd',{km:Math.round(kmA)}))+'</small>';
       var m=new maplibregl.Marker({element:el}).setLngLat([st.lng,st.lat])
         .setPopup(new maplibregl.Popup({offset:14,closeButton:false,maxWidth:'220px'}).setHTML(html)).addTo(map);
       /* 13 Sep 2026: a tapped stop also opens the route guide on that stop
@@ -1814,9 +1894,9 @@ function initNavApp(){
     snShariTrail();
     document.querySelectorAll('#view-nav [data-snmode]').forEach(function(x){ x.classList.toggle('on', x.getAttribute('data-snmode')==='bus'); });
     SN.mode='bus'; snUpdateMeMode(); snUpdateQuickDist();
-    if(typeof snPeekSet==='function') snPeekSet('🚌 S Hari Route · Surat ⇄ Rupaidiha','Tap a stop · or Get directions for turn-by-turn');
+    if(typeof snPeekSet==='function') snPeekSet(snT('snPresetPeek'),snT('snPresetSub'));
     if(typeof snSheet==='function') snSheet('half');
-    snToast('🚌 S Hari route loaded · 🇮🇳 India → 🇳🇵 Nepal');
+    snToast(snT('snPresetLoaded'));
   };
 
   /* temples with Hindi details */
@@ -1862,11 +1942,11 @@ function initNavApp(){
   }
   updTempleScale(); map.on('zoom',updTempleScale);
   window.snTempleNav=function(i){ var t=SN_TEMPLES[i]; snSetDest(t.lng,t.lat,t.n);
-    document.querySelector('#view-nav [data-snmode="auto"]').click(); snToast('🧭 Routing to '+t.n); };
+    document.querySelector('#view-nav [data-snmode="auto"]').click(); snToast(snT('snRoutingTo',{p:t.n})); };
   s('#snTemples').onclick=function(){
     SN.templesOn=!SN.templesOn;
     SN.templeMarkers.forEach(function(m){ SN.templesOn?m.addTo(map):m.remove(); });
-    s('#snTemples').classList.toggle('on',SN.templesOn); try{ if(map.getLayer('sn-pilgrimline')) map.setLayoutProperty('sn-pilgrimline','visibility',SN.templesOn?'visible':'none'); }catch(e){} snToast(SN.templesOn?'🛕 Sanatan Mode on':'Sanatan Mode off');
+    s('#snTemples').classList.toggle('on',SN.templesOn); try{ if(map.getLayer('sn-pilgrimline')) map.setLayoutProperty('sn-pilgrimline','visibility',SN.templesOn?'visible':'none'); }catch(e){} snToast(snT(SN.templesOn?'snSanatanOn':'snSanatanOff'));
   };
 
   /* home marker */
@@ -1887,13 +1967,17 @@ function initNavApp(){
     oel.innerHTML='<div class="sn-office-ring"></div><div class="sn-office-pin">🚌</div><div class="sn-office-lbl">S Hari Global · Mehsana</div>';
     var telDigits=String(OFF.tel).replace(/[^\d+]/g,'');
     var gmaps='https://www.google.com/maps/dir/?api=1&destination='+OFF.lat+','+OFF.lng;
-    var html='<div class="sn-office-pop"><div class="op-hd"><span class="op-logo">🚌</span><div><b>'+snEsc(OFF.name)+'</b><small>Head office · Mehsana, Gujarat</small></div></div>'
+    /* built when it opens, so it reads in the language the app is in then */
+    function officeHtml(){
+      return '<div class="sn-office-pop"><div class="op-hd"><span class="op-logo">🚌</span><div><b>'+snEsc(OFF.name)+'</b><small>'+snEsc(snT('snHeadOffice'))+'</small></div></div>'
       +'<div class="op-addr">📍 '+snEsc(OFF.addr)+'</div>'
-      +'<div class="op-acts"><a class="op-btn" href="tel:'+snEsc(telDigits)+'">📞 Call</a>'
+      +'<div class="op-acts"><a class="op-btn" href="tel:'+snEsc(telDigits)+'">'+snEsc(snT('snCall'))+'</a>'
       +'<a class="op-btn" href="https://wa.me/'+snEsc(OFF.wa)+'" target="_blank" rel="noopener">💬 WhatsApp</a>'
-      +'<button type="button" class="op-btn op-dir" onclick="window.snOfficeNav&&window.snOfficeNav()">🧭 Directions</button>'
+      +'<button type="button" class="op-btn op-dir" onclick="window.snOfficeNav&&window.snOfficeNav()">'+snEsc(snT('snDirections'))+'</button>'
       +'<a class="op-btn" href="'+gmaps+'" target="_blank" rel="noopener">🗺️ Google Maps</a></div></div>';
-    var pop=new maplibregl.Popup({offset:[0,-38],closeButton:true,maxWidth:'290px',className:'sn-office-popup'}).setHTML(html);
+    }
+    var pop=new maplibregl.Popup({offset:[0,-38],closeButton:true,maxWidth:'290px',className:'sn-office-popup'}).setHTML(officeHtml());
+    pop.on('open',function(){ try{ pop.setHTML(officeHtml()); }catch(e){} });
     new maplibregl.Marker({element:oel,anchor:'bottom'}).setLngLat([OFF.lng,OFF.lat]).setPopup(pop).addTo(map);
     /* 20 Sep 2026 — a 📍 tapped anywhere else in the app (the office list in
        the WhatsApp sheet, the address row on the contact card) lands here.
@@ -1904,7 +1988,7 @@ function initNavApp(){
     window.snGoToPlace=function(lat,lng,label){
       if(!SN.map){ window.SHG_NAVTO={lat:lat,lng:lng,label:label}; return; }
       snSetDest(lng,lat,label||OFF.name);
-      if(SN.gpsPos&&!SN.origin) snSetOrigin(SN.gpsPos.lng,SN.gpsPos.lat,'My location');
+      if(SN.gpsPos&&!SN.origin) snSetOrigin(SN.gpsPos.lng,SN.gpsPos.lat,snT('snMyLocation'));
       /* offset upward: the half sheet owns the lower half of the screen, and
          centring on the pin would park it behind that sheet. */
       snEase({center:[lng,lat],zoom:16,duration:900,offset:[0,-Math.round(innerHeight*0.16)]});
@@ -1919,9 +2003,9 @@ function initNavApp(){
     window.snOfficeNav=function(){
       try{ pop.remove(); }catch(e){}
       snSetDest(OFF.lng,OFF.lat,OFF.name+' (Mehsana office)');
-      if(SN.gpsPos&&!SN.origin) snSetOrigin(SN.gpsPos.lng,SN.gpsPos.lat,'My location');
+      if(SN.gpsPos&&!SN.origin) snSetOrigin(SN.gpsPos.lng,SN.gpsPos.lat,snT('snMyLocation'));
       if(SN.origin) snRoute();
-      else { snToast('📍 Tap the location button first, then Directions'); snEase({center:[OFF.lng,OFF.lat],zoom:14,duration:900}); }
+      else { snToast(snT('snTapLocFirst')); snEase({center:[OFF.lng,OFF.lat],zoom:14,duration:900}); }
       if(typeof snSheet==='function') snSheet('half');
     };
   })();
@@ -1934,14 +2018,15 @@ function initNavApp(){
       s('#snHud').classList.remove('off'); s('#snCoord').textContent=c.lat.toFixed(4)+', '+c.lng.toFixed(4);
     }
   }catch(e){}
-  /* auto-request GPS as soon as the nav view opens (unless the user has
-     explicitly denied it before) so "my location" is ready to measure
-     distance from the instant a place is picked — no extra tap needed */
-  if(navigator.permissions&&navigator.permissions.query){
-    navigator.permissions.query({name:'geolocation'}).then(function(p){if(p.state!=='denied')s('#snLocate').click();})
-      .catch(function(){ if(navigator.geolocation) s('#snLocate').click(); });
-  }else if(navigator.geolocation){
-    s('#snLocate').click();
+  /* D7-07 (8 Oct 2026): GPS starts by itself ONLY when this phone has already
+     allowed the site's location ('granted'). Anyone else is never shown a
+     system prompt just for opening the map: the toast on map load (below)
+     says "tap 📍" and why, and the prompt comes from that tap. Unknown
+     permission state (no Permissions API) counts as not granted. */
+  if(navigator.geolocation&&navigator.permissions&&navigator.permissions.query){
+    navigator.permissions.query({name:'geolocation'}).then(function(p){
+      if(p&&p.state==='granted'&&SN.watchId==null){ SN.gpsAuto=true; s('#snLocate').click(); }
+    }).catch(function(){});
   }
 
   /* smooth bus marker interpolation — shg-v59: ease-out (was ease-in-out) so the
@@ -1996,8 +2081,8 @@ function initNavApp(){
     var nvEl=document.getElementById('view-nav');
     function setOnline(){ if(nvEl) nvEl.classList.toggle('is-offline', !navigator.onLine); }
     setOnline();
-    window.addEventListener('online', function(){ setOnline(); snToast('🌐 Back online'); });
-    window.addEventListener('offline', function(){ setOnline(); snToast('⚡ Offline — saved map & GPS still work'); });
+    window.addEventListener('online', function(){ setOnline(); snToast(snT('snOnline')); });
+    window.addEventListener('offline', function(){ setOnline(); snToast(snT('snOfflineT')); });
 
     /* resolve the active style's vector tile URL template (inline tiles or a TileJSON url) */
     async function snTileTemplate(){
@@ -2038,20 +2123,20 @@ function initNavApp(){
     }
     var saveBtn=s('#snOffSave');
     if(saveBtn) saveBtn.onclick=async function(){
-      if(!('serviceWorker' in navigator)||!navigator.serviceWorker.controller){ snToast('⚡ Offline saving works once the app is live (https)'); return; }
+      if(!('serviceWorker' in navigator)||!navigator.serviceWorker.controller){ snToast(snT('snSaveNeedsLive')); return; }
       var tmpl=await snTileTemplate();
-      if(!tmpl){ snToast('Map not ready — pan once, then try Save again'); return; }
+      if(!tmpl){ snToast(snT('snSaveNotReady')); return; }
       var bb=bboxForSave();
       var zmin=5, zmax=bb.route?11:Math.min(13,Math.round(map.getZoom())+1), cap=700;
       var urls=buildTileUrls(tmpl,bb,zmin,zmax,cap);
-      if(!urls.length){ snToast('Nothing to save here'); return; }
+      if(!urls.length){ snToast(snT('snSaveNothing')); return; }
       saveBtn.classList.add('saving');
-      snToast('⬇️ Saving '+urls.length+(bb.route?' route':' area')+' map tiles for offline…');
+      snToast(snT('snSaving',{n:urls.length}));
       navigator.serviceWorker.controller.postMessage({type:'shg-prefetch',urls:urls});
     };
     if(navigator.serviceWorker) navigator.serviceWorker.addEventListener('message',function(ev){
       var d=ev.data||{};
-      if(d.type==='shg-prefetch-done'){ if(saveBtn) saveBtn.classList.remove('saving'); snToast('✅ Saved '+d.count+' tiles — this area now works offline'); }
+      if(d.type==='shg-prefetch-done'){ if(saveBtn) saveBtn.classList.remove('saving'); snToast(snT('snSavedTiles',{n:d.count})); }
     });
 
     /* last-route persistence — save the geometry Valhalla already returned so a planned
@@ -2083,12 +2168,13 @@ function initNavApp(){
     };
     /* opened offline → silently bring back the last planned route so the trip is still usable */
     if(!navigator.onLine){
-      setTimeout(function(){ if(window.snRestoreLastRoute&&snRestoreLastRoute()) snToast('⚡ Offline — your last saved route is restored'); },800);
+      setTimeout(function(){ if(window.snRestoreLastRoute&&snRestoreLastRoute()) snToast(snT('snRestored')); },800);
     }
   })();
 
   map.on('load',function(){
-    snToast('🕉️ S Hari Nav ready · 📍 for live location'); map.resize();
+    /* D7-07: with GPS not yet on, the first line says how to start it and why */
+    snToast(snT(SN.watchId!=null?'snReady':'snLocHint')); map.resize();
     /* shg-v59 — fade the map canvas in from opacity:0 (item #5). Guarded so a
        re-load (theme swap) only fades in the first time. */
     if(!SN.mapReady){ SN.mapReady=true; var mn=document.getElementById('sn-map'); if(mn) mn.classList.add('sn-map-ready'); }
