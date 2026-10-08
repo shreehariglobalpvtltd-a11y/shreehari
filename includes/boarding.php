@@ -255,6 +255,57 @@ final class Boarding
         return ['code' => strtoupper(substr($letters !== '' ? $letters : 'SHG', 0, 3)), 'name' => $town, 'time' => $time];
     }
 
+    /**
+     * WHEN this passenger is picked up, as a unix time (8 Oct 2026) — the one
+     * server-side answer for the trip reminders, the ticket's live pill and
+     * anything else that counts down to "your bus".
+     *
+     * The route's departure (Surat 13:00) is not the passenger's: a Mehsana
+     * traveller on the same coach is picked up at 23:00, ten hours later, and
+     * was being told "your bus leaves in 2 hours" at eleven in the morning and
+     * "Departed" at five past one. The time is, in order: the leg's own
+     * boarding_time, the "@ HH:MM" the stop label carries, the route's
+     * departure. A pickup earlier than the departure by more than an hour is
+     * past midnight — the next calendar day (r6 leaves Mehsana 21:00 and
+     * reaches Vadodara 00:00).
+     *
+     * @return int unix time, or 0 when the date or every time is unusable
+     */
+    public static function pickupTs(string $travelDate, string $boardingStop, ?string $boardingTime, string $depTime): int
+    {
+        $travelDate = trim($travelDate);
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $travelDate) !== 1) {
+            return 0;
+        }
+        $hhmm = static function (?string $t): string {
+            $t = trim((string) $t);
+            return preg_match('/^([0-2]?\d):([0-5]\d)/', $t, $m) === 1 && (int) $m[1] < 24
+                ? str_pad($m[1], 2, '0', STR_PAD_LEFT) . ':' . $m[2] : '';
+        };
+        $dep  = $hhmm($depTime);
+        $pick = $hhmm($boardingTime);
+        if ($pick === '') {
+            $pick = $hhmm((string) (self::stopDisplay($boardingStop)['time'] ?? ''));
+        }
+        if ($pick === '') {
+            $pick = $dep;
+        }
+        if ($pick === '') {
+            return 0;
+        }
+        $ts = strtotime($travelDate . ' ' . $pick);
+        if ($ts === false) {
+            return 0;
+        }
+        if ($dep !== '') {
+            $toMin = static fn(string $t): int => (int) substr($t, 0, 2) * 60 + (int) substr($t, 3, 2);
+            if ($toMin($pick) < $toMin($dep) - 60) {
+                $ts = (int) strtotime('+1 day', $ts);   // past midnight on the same run
+            }
+        }
+        return (int) $ts;
+    }
+
     /** "Mehsana — Silver Complex" → "Mehsana"; "S Hari Parking, Nana Chiloda" → "Nana Chiloda". */
     private static function stopTown(string $lead): string
     {

@@ -50,7 +50,12 @@ final class Ticket
             $booking['travel_date'] ?? ($booking['date'] ?? ''),
             implode('+', $seats),
             ($booking['from_city'] ?? '') . '->' . ($booking['to_city'] ?? ''),
-            $booking['contact_phone'] ?? '',
+            /* Field 5 was the passenger's mobile (8 Oct 2026): any camera
+               app read it off a printed or forwarded PDF. The POSITION stays
+               (verifyQrPayload() signs whatever core was issued, so every old
+               v1/v2 ticket with the number in it still verifies); new issues
+               and reissues simply leave it blank. */
+            '',
             // ---- v2 ----
             (string) ($booking['ticket_number'] ?? ''),
             (string) count($seats),
@@ -212,11 +217,54 @@ final class Ticket
         return 'https://www.google.com/maps/dir/?api=1&destination=' . round($geo['lat'], 6) . ',' . round($geo['lng'], 6);
     }
 
-    private static function stopForPrint(string $label): string
+    /* 8 Oct 2026: also drops the trailing machine "@ HH:MM" (the stored form
+       is "Name · Landmark @ 21:00 [lat,lng]") — the pickup time already has
+       its own place on every ticket, and the PNG tile printed a dangling "@".
+       Public so the verify page can print the same clean label. */
+    public static function stopForPrint(string $label): string
     {
         $s = preg_replace('/\s*\[[^\]]*\]\s*/u', ' ', $label) ?? $label;   // drop [lat,lng]
+        $s = preg_replace('/\s*@\s*[0-2]?\d:\d{2}\s*$/u', '', trim($s)) ?? $s;   // drop "@ 21:00"
         $s = preg_replace('/\s{2,}/u', ' ', $s) ?? $s;
         return trim($s, " \t·");
+    }
+
+    /**
+     * Which floor a berth is on, from its CANONICAL id (8 Oct 2026): L… is
+     * the lower deck (1F), U… the upper (2F). The printed grid label (A3, C8)
+     * does not say it, and an elderly passenger needs to know before the
+     * door whether to climb. '' for anything else (a seater seat, '').
+     */
+    public static function floorCode(string $seat): string
+    {
+        if (preg_match('/^([LU])\d+$/i', trim($seat), $m) !== 1) {
+            return '';
+        }
+        return strtoupper($m[1]) === 'U' ? '2F' : '1F';
+    }
+
+    /** "A3 · A4 (1F)" when every seat shares a floor, else "A3 1F · C8 2F" — Latin, for the Helvetica PDF. */
+    private static function seatLabelListFloor(array $seats, array $booking): string
+    {
+        $labels = []; $floors = [];
+        foreach ($seats as $s) {
+            $lbl = self::seatLabel((string) $s, $booking);
+            if ($lbl === '') { continue; }
+            $labels[] = $lbl;
+            $floors[] = self::floorCode((string) $s);
+        }
+        if ($labels === []) {
+            return '';
+        }
+        $uniq = array_values(array_unique($floors));
+        if (count($uniq) === 1) {
+            return implode(' · ', $labels) . ($uniq[0] !== '' ? ' (' . $uniq[0] . ')' : '');
+        }
+        $out = [];
+        foreach ($labels as $i => $lbl) {
+            $out[] = trim($lbl . ' ' . $floors[$i]);
+        }
+        return implode(' · ', $out);
     }
 
     private static function latinUpper(string $text): string
@@ -554,12 +602,31 @@ final class Ticket
     /**
      * Keyed link to the public "Where is my bus?" page (24 Sep 2026): live
      * position, minutes to the passenger's own stop, and a share button so
-     * the family at home can watch too. Same key as the ticket download, so
-     * every place that already links a ticket can link this.
+     * the family at home can watch too.
+     *
+     * 8 Oct 2026 (D7-11): its OWN key now. This link is made to be forwarded
+     * to a family or village WhatsApp group, and the download key it used to
+     * carry also opened the full ticket (names + mobile) and bound push to the
+     * passenger's number. The track token opens only track.php and
+     * api/whereis.php; download-ticket, push and feedback keep accepting the
+     * download key alone. Links already sent with the download key still open
+     * the tracker (WhereIs::authorised accepts both).
      */
     public static function trackUrl(string $pnr): string
     {
-        return appUrl('track.php?pnr=' . urlencode($pnr) . '&k=' . self::downloadToken($pnr));
+        return appUrl('track.php?pnr=' . urlencode($pnr) . '&k=' . self::trackToken($pnr));
+    }
+
+    /** Per-PNR key that opens the live tracker and nothing else (truncated HMAC — 20 hex chars). */
+    public static function trackToken(string $pnr): string
+    {
+        return substr(Security::sign('ticket-track|' . strtoupper(trim($pnr))), 0, 20);
+    }
+
+    /** Constant-time check of a supplied track key. */
+    public static function checkTrackToken(string $pnr, string $token): bool
+    {
+        return $token !== '' && hash_equals(self::trackToken($pnr), $token);
     }
 
     /**
@@ -781,40 +848,66 @@ final class Ticket
      * @param array<string, mixed> $booking
      * @return array{key:string,label:string,color:string,description:string}|null
      * ================================================================= */
-    public static function liveStatus(array $booking): ?array
+    public static function liveStatus(array $booking, ?int $now = null): ?array
     {
         $status = strtolower((string) ($booking['status'] ?? ''));
         if (in_array($status, ['cancelled', 'rejected'], true)) {
             return null;
         }
 
-        // Prefer top-level fields (loadBooking join); fall back to legs[0]
-        // (BookingService::detail packs departure per leg for round trips).
-        $depTime    = trim((string) ($booking['dep_time'] ?? ''));
+        // Prefer top-level fields (loadBooking join); fall back to the
+        // outbound leg (BookingService::detail packs departure per leg, and
+        // orders a round trip's return leg first).
+        $leg = null;
+        foreach (($booking['legs'] ?? []) as $lg) {
+            if (is_array($lg) && (string) ($lg['leg_type'] ?? 'outbound') === 'outbound') { $leg = $lg; break; }
+        }
+        if ($leg === null && is_array($booking['legs'][0] ?? null)) {
+            $leg = $booking['legs'][0];
+        }
+        $pick = static function (string $k) use ($booking, $leg): string {
+            $v = trim((string) ($booking[$k] ?? ''));
+            return $v !== '' ? $v : trim((string) ($leg[$k] ?? ''));
+        };
+        $depTime    = $pick('dep_time');
         $travelDate = trim((string) ($booking['travel_date'] ?? ($booking['date'] ?? '')));
-        if ($depTime === '' || $travelDate === '') {
-            $leg = $booking['legs'][0] ?? null;
-            if (is_array($leg)) {
-                if ($depTime === '')    { $depTime    = trim((string) ($leg['dep_time'] ?? '')); }
-                if ($travelDate === '') { $travelDate = trim((string) ($leg['travel_date'] ?? '')); }
-            }
+        if ($travelDate === '') {
+            $travelDate = trim((string) ($leg['travel_date'] ?? ''));
+        }
+
+        /* A trip the office cancelled (schedules.status, mark-only — the
+           booking stays confirmed until the owner settles it by hand) must
+           never read "Upcoming in 5h" (D7-M2). No refund wording here. */
+        if ($pick('schedule_status') === 'cancelled') {
+            return [
+                'key'         => 'trip_cancelled',
+                'label'       => 'Trip cancelled · यात्रा रद्द',
+                'color'       => 'red',
+                'description' => 'The office will contact you about this ticket.',
+            ];
         }
         if ($depTime === '' || $travelDate === '') {
             return null;
         }
 
-        $depTs = strtotime($travelDate . ' ' . substr($depTime, 0, 5));
-        if ($depTs === false) {
+        /* THIS passenger's pickup, not the route's origin (8 Oct 2026, D6-M2):
+           a Mehsana 23:00 traveller on the 13:00 Surat coach read "Departed"
+           from 13:05. Boarding::pickupTs() is the one rule the reminders use. */
+        if (!class_exists('Boarding')) {
+            require_once __DIR__ . '/boarding.php';
+        }
+        $depTs = Boarding::pickupTs($travelDate, $pick('boarding_stop'), $pick('boarding_time') ?: null, $depTime);
+        if ($depTs <= 0) {
             return null;
         }
 
-        $now  = time();
-        $diff = $depTs - $now; // seconds until departure; negative = gone
+        $now  = $now ?? time();
+        $diff = $depTs - $now; // seconds until the pickup; negative = gone
 
         if ($diff <= -5 * 60) {
             return [
                 'key'         => 'departed',
-                'label'       => 'Departed · Timoff',
+                'label'       => 'Departed · छुटिसक्यो',
                 'color'       => 'red',
                 'description' => 'This bus has already left.',
             ];
@@ -823,7 +916,7 @@ final class Ticket
         if ($diff <= 30 * 60) {
             return [
                 'key'         => 'departing',
-                'label'       => 'Departing now',
+                'label'       => 'Departing now · छुट्दैछ',
                 'color'       => 'orange',
                 'description' => 'Reach the boarding point immediately.',
             ];
@@ -1457,8 +1550,10 @@ final class Ticket
         $depTxt = $dep !== '' ? self::zonedTime($dep, $co) : '';
         $strip = strtoupper($dt) . '  ·  DEP ' . ($depTxt !== '' ? $depTxt : formatTime($booking['dep_time'] ?? null))
                . ($bus !== '' ? '  ·  BUS ' . $bus : '');
-        $stripSz = 22;
-        foreach ([22, 20, 18, 16] as $try) { $stripSz = $try; if (self::gdWidth($try, $strip) <= $W - 150) { break; } }
+        /* 8 Oct 2026: starts larger (26px) — date and pickup time are what a
+           passenger looks for first; it still steps down to fit the card. */
+        $stripSz = 26;
+        foreach ([26, 24, 22, 20, 18, 16] as $try) { $stripSz = $try; if (self::gdWidth($try, $strip) <= $W - 150) { break; } }
         self::gdText($im, $stripSz, (int) (($W - self::gdWidth($stripSz, $strip)) / 2), 690, $ink, $strip, true);
 
         /* Perforation */
@@ -1507,9 +1602,13 @@ final class Ticket
                    the label. Only the second line may end in an ellipsis. */
                 $words = preg_split('/\s+/u', $v) ?: [$v];
                 $l1 = ''; $l2 = '';
+                /* Once a word spills, EVERY later word follows it (8 Oct
+                   2026): a shorter later word used to hop back onto line 1
+                   and the place read out of order. */
+                $spilled = false;
                 foreach ($words as $wd) {
                     $try = $l1 === '' ? $wd : $l1 . ' ' . $wd;
-                    if ($fw(18, $try) <= $w - 44) { $l1 = $try; } else { $l2 = trim($l2 . ' ' . $wd); }
+                    if (!$spilled && $fw(18, $try) <= $w - 44) { $l1 = $try; } else { $spilled = true; $l2 = trim($l2 . ' ' . $wd); }
                 }
                 if ($l1 === '') { $l1 = $words[0]; $l2 = trim(implode(' ', array_slice($words, 1))); }
                 while ($l2 !== '' && $fw(18, $l2) > $w - 44) { $l2 = mb_substr($l2, 0, mb_strlen($l2) - 4) . '…'; }
@@ -1521,7 +1620,9 @@ final class Ticket
         };
         $roundedFn = [self::class, 'gdRounded'];
         $widthFn   = [self::class, 'gdWidth'];
-        $colW = ($W - 72 - 24) / 2;
+        // 60..528 and 552..1020: flush with the passenger panel below, inside
+        // the card (was ($W - 72 - 24) / 2 — the right tiles ran 24px past it).
+        $colW = ($W - 120 - 24) / 2;
         $tileRow($im, 60, 764, (int) $colW, 'यात्रु  ·  PASSENGER', $paxTxt, $mut, $ink, $tile, $roundedFn, $widthFn);
         $tileRow($im, 60 + (int) $colW + 24, 764, (int) $colW, 'मोबाइल  ·  MOBILE', $phone !== '' ? $phone : '-', $mut, $ink, $tile, $roundedFn, $widthFn);
         $tileRow($im, 60, 892, (int) $colW, 'चढ्ने ठाउँ  ·  BOARDING POINT', $board, $mut, $ink, $tile, $roundedFn, $widthFn);
@@ -1546,7 +1647,15 @@ final class Ticket
         $ly = $panelY + 60;
         for ($i = 0; $i < $listN; $i++) {
             $nm = self::displayOr((string) ($paxes[$i]['full_name'] ?? ''));
-            $sn = self::display(self::seatLabel((string) ($paxes[$i]['seat_no'] ?? ($seats[$i] ?? '')), $booking));
+            $canon = (string) ($paxes[$i]['seat_no'] ?? ($seats[$i] ?? ''));
+            $sn = self::display(self::seatLabel($canon, $booking));
+            /* The floor, from the canonical L/U id (8 Oct 2026): "C8 · माथि 2F"
+               says climb to the upper deck; "A3 · तल 1F" the lower. Nepali
+               word, Roman code — the house ticket rule. */
+            $fl = self::floorCode($canon);
+            if ($sn !== '' && $fl !== '') {
+                $sn .= ' · ' . ($fl === '2F' ? 'माथि 2F' : 'तल 1F');
+            }
             $chipW2 = $sn !== '' ? self::gdWidth(21, $sn) + 34 : 0;
             if ($sn !== '') {
                 self::gdRounded($im, $W - 82 - $chipW2, $ly + 2, $W - 82, $ly + 40, 12, $orange);
@@ -1633,7 +1742,8 @@ final class Ticket
         self::gdText($im, 20, 76, 1300 + $grow, $navy, 'TICKET VERIFICATION', true);
         try { $drawQr($qrData, 76, 1320 + $grow, 245); }
         catch (Throwable $e) { Logger::error('Ticket verification QR: ' . $e->getMessage()); }
-        $infoX = $payUpi !== '' ? 560 : 360;
+        // 380, not 360 (8 Oct 2026): "PAID" ran straight on from "TICKET VERIFICATION".
+        $infoX = $payUpi !== '' ? 560 : 380;
         /* Pickup map QR (8 Oct 2026, master prompt 2.0 · Settings -> ticket_maps_qr):
            scanning opens directions to the OFFICIAL pickup point - never the
            passenger's own position. Only when the pickup has coordinates and
@@ -1643,6 +1753,17 @@ final class Ticket
             self::gdText($im, 18, 790, 1300 + $grow, $navy, 'PICKUP MAP · नक्सा', true);
             try { $drawQr(self::pickupMapsUrl($geo), 790, 1320 + $grow, 210); }
             catch (Throwable $e) { Logger::error('Pickup map QR: ' . $e->getMessage()); $mapsQr = false; }
+        }
+        /* With the pay QR on the right, the map QR used to be dropped — on
+           every cash-on-boarding ticket, the passengers who still have to find
+           the bus (8 Oct 2026, D6-12). It now sits BESIDE the verification QR
+           (x 340..530, the pay card starts at 550) with its caption under it;
+           the verification QR keeps x 76..321, so the two never touch. */
+        if ($payUpi !== '' && $geo !== null && Settings::getBool('ticket_maps_qr', true)) {
+            try {
+                $drawQr(self::pickupMapsUrl($geo), 340, 1330 + $grow, 190);
+                self::gdText($im, 16, 340, 1545 + $grow, $navy, 'PICKUP MAP · नक्सा', true);
+            } catch (Throwable $e) { Logger::error('Pickup map QR: ' . $e->getMessage()); }
         }
         if ($payUpi !== '') {
             self::gdRounded($im, 550, 1270 + $grow, 1010, 1320 + $grow, 12, $orange);
@@ -1974,7 +2095,8 @@ final class Ticket
             'यात्रु' => 'YATRI', 'चढ्ने ठाउँ' => 'CHADNE THAU', 'गन्तव्य' => 'GANTABYA',
             'यात्रा मिति' => 'MITI', 'सिट नं.' => 'SEAT', 'सिट' => 'SEAT',
             'बस' => 'BUS', 'रिपोर्टिङ' => 'REPORTING', 'सम्पर्क' => 'SAMPARK',
-            'यात्रुको विवरण' => 'YATRIHARU', 'ओर्लिने ठाउँ' => 'ORLINE THAU',
+            'यात्रुको विवरण' => 'YATRIHARU', 'ओर्लिने ठाउँ' => 'ORLINE THAU', 'झर्ने ठाउँ' => 'JHARNE THAU',
+            'नाम' => 'NAAM', 'उमेर' => 'UMER', 'लिङ्ग' => 'LINGA', 'सिट ·' => 'SEAT ·',
             'महत्त्वपूर्ण:' => 'Important:', 'बोर्डिङ पास' => 'BOARDING PASS',
             'बोर्डिङमा स्क्यान गर्नुहोस्' => 'Scan at boarding', 'वेबसाइट' => 'Website',
             'जम्मा रकम' => 'TOTAL PAID', 'बाँकी रकम' => 'TOTAL DUE',
@@ -2019,7 +2141,10 @@ final class Ticket
         $paxCount = count($booking['passengers']);
         // Row-letter grid ids for the printed ticket (A1 · A2 …); the QR
         // payload built elsewhere keeps the canonical L1/L2 for the scanner.
-        $seatList = self::seatLabelList($seats, $booking, ' · ');
+        // 8 Oct 2026: with the floor (1F lower / 2F upper) — Latin, Helvetica.
+        $floorSeats = $seats !== [] ? $seats
+            : array_values(array_filter(array_map(static fn($p) => (string) ($p['seat_no'] ?? ''), $booking['passengers'] ?? []), 'strlen'));
+        $seatList = self::seatLabelListFloor($floorSeats, $booking);
 
         $boardStopRaw   = trim((string) ($booking['boarding_stop'] ?? ''));
         $dropStopRaw    = trim((string) ($booking['drop_stop'] ?? ''));
@@ -2092,15 +2217,20 @@ final class Ticket
            PAYMENT BAND — bilingual (keeps the existing logic)
            ============================================================== */
         $pay  = $booking['payment'] ?? null;
-        $paid = self::paymentSummary($booking)['due'] <= 0;
-        $due  = inr((float) $booking['total_amount']);
+        $sumP = self::paymentSummary($booking);
+        $paid = $sumP['due'] <= 0;
+        /* Helvetica has no ₹, so the rupee helper printed a bare "6,210" — which reads as
+           NPR on a cross-border ticket (8 Oct 2026, D6-15). Spelled out now,
+           and the cash band asks for what is actually DUE, not the total. */
+        $money = static fn(float $a): string => 'INR ' . indianNumber($a);
+        $due  = $money((float) $booking['total_amount']);
         if ($paid) {
             $method = strtoupper((string) ($pay['method'] ?? ''));
             $bandBg = [14, 122, 66];
             $band   = 'PAID  ·  ' . $due . ($method !== '' ? '  ·  ' . ($method === 'COD' ? 'CASH' : $method) : '');
         } elseif ((int) $booking['is_cod'] === 1) {
             $bandBg = [196, 106, 0];
-            $band   = 'CASH ON BOARDING  ·  PAY ' . $due . ' TO THE CREW';
+            $band   = 'CASH ON BOARDING  ·  PAY ' . $money((float) $sumP['due']) . ' TO THE CREW';
         } else {
             $bandBg = [176, 42, 42];
             $band   = 'PAYMENT PENDING  ·  NOT VALID UNTIL APPROVED';
@@ -2209,10 +2339,24 @@ final class Ticket
         // SEAT — prominent orange box
         $pdf->roundedRect($seatBoxX, $infoY - 8, $seatBoxW, 54, 8, self::ORANGE, true);
         self::devCenter($pdf, $seatBoxX, $seatBoxX + $seatBoxW, $infoY - 1, $paxCount > 1 ? 'सिट' : 'सिट नं.', 7.5, $F7, [255, 255, 255]);
-        $seatText = $seatList !== '' ? $seatList : '—';
+        /* The berths on one line, the floor on a second small line (8 Oct
+           2026): "A3 · A4 · B9" over "1F · 1F · 2F", or "LOWER 1F" when every
+           berth shares a floor — the box is 84pt wide and cannot take both. */
+        $boxLabels = self::seatLabelList($floorSeats, $booking, ' · ');
+        $seatText = $boxLabels !== '' ? $boxLabels : '—';
         $seatSize = 18.0;
         while ($seatSize > 8 && $pdf->textWidth($seatText, $seatSize, 'F2') > $seatBoxW - 10) { $seatSize -= 0.5; }
-        $pdf->textCenter($seatBoxX, $seatBoxX + $seatBoxW, $infoY + 16, $seatText, $seatSize, 'F2', [255, 255, 255]);
+        $pdf->textCenter($seatBoxX, $seatBoxX + $seatBoxW, $infoY + 14, $seatText, $seatSize, 'F2', [255, 255, 255]);
+        $boxFloors = array_map([self::class, 'floorCode'], $floorSeats);
+        $uniqFl    = array_values(array_unique(array_filter($boxFloors, 'strlen')));
+        if ($uniqFl !== []) {
+            $flText = count($uniqFl) === 1 && count(array_filter($boxFloors, 'strlen')) === count($boxFloors)
+                ? ($uniqFl[0] === '2F' ? 'UPPER 2F' : 'LOWER 1F')
+                : implode(' · ', array_map(static fn(string $f): string => $f !== '' ? $f : '-', $boxFloors));
+            $flSize = 8.0;
+            while ($flSize > 5 && $pdf->textWidth($flText, $flSize, 'F2') > $seatBoxW - 8) { $flSize -= 0.5; }
+            $pdf->textCenter($seatBoxX, $seatBoxX + $seatBoxW, $infoY + 34, $flText, $flSize, 'F2', [255, 255, 255]);
+        }
 
         /* ---- Stub: QR for boarding scan ---- */
         $sx = $tear + 16;
@@ -2239,10 +2383,27 @@ final class Ticket
         $tableY += 18;
 
         $pdf->rect(40, $tableY, $W - 80, 22, self::BROWN, true);
-        $pdf->text(52, $tableY + 6, 'Name', 9, 'F2', [255, 255, 255]);
-        $pdf->text(300, $tableY + 6, 'Age', 9, 'F2', [255, 255, 255]);
-        $pdf->text(360, $tableY + 6, 'Gender', 9, 'F2', [255, 255, 255]);
-        $pdf->textRight($W - 52, $tableY + 6, 'Seat', 9, 'F2', [255, 255, 255]);
+        /* Bilingual headers (8 Oct 2026, D6-15): Nepali label in the
+           Devanagari face, then the Latin word — the same "नाम · Name" the
+           PNG prints. A missing CID face degrades to the Latin word alone. */
+        $white = [255, 255, 255];
+        $devW  = static function (string $s) use ($pdf, $F7): float {
+            try { return $pdf->hasCIDFont($F7) ? (float) $pdf->textWidthCID($s, 8, $F7) : 0.0; } catch (\Throwable $e) { return 0.0; }
+        };
+        foreach ([[52, 'नाम', 'Name'], [300, 'उमेर', 'Age'], [360, 'लिङ्ग', 'Gender']] as [$hx, $hDev, $hLat]) {
+            $dw = $devW($hDev);
+            if ($dw > 0) {
+                self::devText($pdf, $hx, $tableY + 5, $hDev, 8, $F7, $white);
+                $pdf->text($hx + $dw + 3, $tableY + 6, '·  ' . $hLat, 9, 'F2', $white);
+            } else {
+                $pdf->text($hx, $tableY + 6, $hLat, 9, 'F2', $white);
+            }
+        }
+        $pdf->textRight($W - 52, $tableY + 6, 'Seat', 9, 'F2', $white);
+        $sdw = $devW('सिट ·');
+        if ($sdw > 0) {
+            self::devText($pdf, $W - 52 - $pdf->textWidth('Seat', 9, 'F2') - 4 - $sdw, $tableY + 5, 'सिट ·', 8, $F7, $white);
+        }
         $tableY += 22;
 
         // Group booking (Task 6): when every passenger shares ONE name, print a
@@ -2277,8 +2438,8 @@ final class Ticket
                 }
                 self::devOrLatin($pdf, 52, $tableY + 5, (string) $pax['full_name'], 10, $F7, 'F1', self::INK);
                 $pdf->text(300, $tableY + 5, $pax['age'] !== null ? (string) $pax['age'] : '-', 10, 'F1', self::INK);
-                $pdf->text(360, $tableY + 5, self::latin((string) ($pax['gender'] ?? '-')), 10, 'F1', self::INK);
-                $pdf->textRight($W - 52, $tableY + 5, self::seatLabel((string) $pax['seat_no'], $booking), 10, 'F2', self::BROWN);
+                $pdf->text(360, $tableY + 5, self::latin(ucfirst(strtolower((string) ($pax['gender'] ?? '-')))), 10, 'F1', self::INK);
+                $pdf->textRight($W - 52, $tableY + 5, trim(self::seatLabel((string) $pax['seat_no'], $booking) . ' ' . self::floorCode((string) $pax['seat_no'])), 10, 'F2', self::BROWN);
                 $tableY += 20;
             }
             $rest = array_slice($paxAll, count($shown));
@@ -2302,36 +2463,54 @@ final class Ticket
         // parenthetical after the English label; strip that here since this
         // slot uses Helvetica (Latin-1). The Nepali heading above it —
         // "चढ्ने ठाउँ" — already communicates the label in Nepali via F7.
-        $boardLabel = self::latin(self::stopForPrint((string) ($booking['boarding_stop'] ?? '-')));
+        $boardLabel = self::latin(str_replace('·', '-', self::stopForPrint((string) ($booking['boarding_stop'] ?? '-'))));
         $pdf->textBlock(40, $boardY + 14, 290, $boardLabel !== '' ? $boardLabel : '-', 10, 'F1', self::INK);
 
-        self::devText($pdf, 40, $boardY + 42, 'ओर्लिने ठाउँ', 8, $F7, self::MUTE);
-        $pdf->text(40 + 72, $boardY + 44, '·  DROP POINT', 7, 'F1', self::MUTE);
-        $dropLabel = self::latin(self::stopForPrint((string) ($booking['drop_stop'] ?? '-')));
+        // झर्ने, as on the PNG (8 Oct 2026) — one word for one booking's two documents.
+        self::devText($pdf, 40, $boardY + 42, 'झर्ने ठाउँ', 8, $F7, self::MUTE);
+        $pdf->text(40 + 62, $boardY + 44, '·  DROP POINT', 7, 'F1', self::MUTE);
+        $dropLabel = self::latin(str_replace('·', '-', self::stopForPrint((string) ($booking['drop_stop'] ?? '-'))));
         $pdf->textBlock(40, $boardY + 56, 290, $dropLabel !== '' ? $dropLabel : '-', 10, 'F1', self::INK);
 
         // Fare box
         $pdf->roundedRect($W - 220, $boardY, 180, 70, 8, self::BROWN, true);
         self::devText($pdf, $W - 205, $boardY + 10, $paid ? 'जम्मा रकम' : 'बाँकी रकम', 9, $F7, self::GOLD);
-        $pdf->text($W - 205, $boardY + 28, inr((float) $booking['total_amount']), 22, 'F2', [255, 255, 255]);
+        $fareTx = $money((float) $booking['total_amount']);
+        $fareSz = 22.0;
+        while ($fareSz > 12 && $pdf->textWidth($fareTx, $fareSz, 'F2') > 165) { $fareSz -= 1; }
+        $pdf->text($W - 205, $boardY + 28, $fareTx, $fareSz, 'F2', [255, 255, 255]);
         // Base → Discount breakdown (Task 9) when a counter discount was applied.
         if ((float) ($booking['coupon_discount'] ?? 0) > 0) {
-            $pdf->text($W - 205, $boardY + 42, 'Base ' . inr((float) $booking['base_total']) . '  -  Disc ' . inr((float) $booking['coupon_discount']), 8, 'F1', [220, 210, 195]);
+            $pdf->text($W - 205, $boardY + 42, 'Base ' . $money((float) $booking['base_total']) . '  -  Disc ' . $money((float) $booking['coupon_discount']), 8, 'F1', [220, 210, 195]);
         }
         // Fare by passenger count (4 Sep 2026): "3 x Rs 2,000" for a party,
         // so the family sees how the total was built; a solo ticket keeps
         // the seat count.
         $fps = (float) ($booking['fare_per_seat'] ?? 0);
         $paxLine = (count($seats) > 1 && $fps > 0)
-            ? count($seats) . ' x ' . self::latin(inr($fps)) . ' · ' . self::latinUpper((string) $booking['status'])
+            ? count($seats) . ' x ' . $money($fps) . ' · ' . self::latinUpper((string) $booking['status'])
             : count($seats) . ' seat(s) · ' . self::latinUpper((string) $booking['status']);
         $pdf->text($W - 205, $boardY + 56, $paxLine, 8, 'F1', [200, 190, 170]);
 
-        /* Live-status pill */
+        /* Departure pill — STATIC (8 Oct 2026, D6-M2). The PDF is cached until
+           the layout stamp moves, so a relative "UPCOMING IN 11D 23H" froze
+           and kept being served wrong from the next hour on. It now states
+           the passenger's own pickup moment, which never goes stale; a trip
+           the office cancelled says so. Latin only (Helvetica). */
         $live = self::liveStatus($booking);
         if ($live !== null) {
-            $pillBg = self::liveStatusRgb((string) $live['color']);
-            $pillTx = self::latinUpper((string) $live['label']);
+            if (!class_exists('Boarding')) { require_once __DIR__ . '/boarding.php'; }
+            $pickTs = Boarding::pickupTs((string) ($booking['travel_date'] ?? ''), (string) ($booking['boarding_stop'] ?? ''),
+                ($booking['boarding_time'] ?? null) !== null ? (string) $booking['boarding_time'] : null, (string) ($booking['dep_time'] ?? ''));
+            if ($live['key'] === 'trip_cancelled') {
+                $pillBg = self::liveStatusRgb('red');
+                $pillTx = 'TRIP CANCELLED - OFFICE WILL CONTACT YOU';
+            } else {
+                $pillBg = self::liveStatusRgb('blue');
+                $pillTx = $pickTs > 0
+                    ? 'DEPARTS ' . strtoupper(date('D j M', $pickTs)) . ' · ' . self::latin(self::zonedTime(date('H:i', $pickTs), $coId))
+                    : 'DEPARTURE AS PRINTED ABOVE';
+            }
             $pillH  = 12.0;
             /* 66, not 72 (10 Sep 2026): the pill's bottom edge landed
                exactly on the top of the ISSUED BY label below it, so the
