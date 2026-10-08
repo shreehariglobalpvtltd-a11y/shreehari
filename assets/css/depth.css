@@ -1089,6 +1089,60 @@ body:has(#mobileMenu.open) .ct-fab { visibility: hidden !important; }
 #view-seats .bp-nearme-note .bp-unchecked { display: block; margin-top: 6px; font-size: 12.5px; line-height: 1.4; color: var(--muted); }
 #view-seats .bp-nearme-note .bp-set { color: var(--success); }
 
+/* =====================================================================
+   FD — checkout, sign-in, My bookings, ticket, Trip Companion (8 Oct 2026,
+   wave 2). Existing tokens only (ds.css danger / warning / success, ink,
+   muted, surface); light, dark and AMOLED follow the tokens.
+   ===================================================================== */
+/* Continue never goes silently dead (D2-01 / D4-10): dimmed + a reason line */
+#coContinueBtn[aria-disabled="true"], #coContinueBtn.is-wait { opacity: .55 !important; pointer-events: auto !important; }
+.co-nav-row { flex-wrap: wrap; }
+.co-nav-row .co-why[hidden] { display: none !important; }
+.co-nav-row .co-why { flex: 1 1 100%; order: -1; margin: 0; font: 700 14px/1.4 var(--font-sans, sans-serif); color: var(--danger); text-align: left; }
+@media (max-width: 760px) {
+  #view-checkout .flow-actions .co-why { order: 98; text-align: center; }
+}
+/* the lead name is required: no stylesheet "· OPTIONAL"; optional boxes say so in the page language (D2-02) */
+.pax-row .field-optional > label::after { content: none !important; }
+.pax-row label small.opt, .pax-row label .opt { font-size: 12.5px; font-weight: 600; color: var(--muted); text-transform: none; letter-spacing: 0; }
+/* the refund chip may run long (five slabs) — it wraps, never overflows */
+#coRefundChip { white-space: normal; max-width: 100%; line-height: 1.35; }
+
+/* Ticket: proof not received (D4-M1) / trip cancelled (D7-M2) — red, sticky in the flow */
+.tk-proof-fail, .tk-trip-cx {
+  display: grid; gap: 6px; margin: 0 0 14px; padding: 14px 16px; border-radius: 14px;
+  background: var(--danger-soft); border: 2px solid var(--danger); color: var(--ink);
+  font: 500 14.5px/1.45 var(--font-sans, sans-serif);
+}
+.tk-proof-fail b, .tk-trip-cx b { color: var(--danger); font-size: 16px; font-weight: 800; }
+.tk-proof-fail .btn { justify-self: start; min-height: 44px; }
+.tk-trip-cx .btn { justify-self: start; min-height: 44px; background: var(--surface); color: var(--danger); border: 1.5px solid var(--danger); }
+.verify-note.tk-delay { background: var(--warning-soft) !important; border-color: var(--warning) !important; color: var(--ink); }
+#tkWaDirect { margin: 8px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--success-soft); color: var(--success); font-weight: 700; font-size: 14px; line-height: 1.4; }
+.premium-payment-state.cod-due b { color: var(--warning); }
+details.premium-pay-opt { margin: 10px 0 0; }
+details.premium-pay-opt > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; padding: 6px 2px; font-weight: 700; font-size: 14px; color: var(--royal, #0054A8); }
+.verify-note.cx-otp { background: var(--warning-soft) !important; border-color: var(--warning) !important; color: var(--ink); }
+
+/* My bookings: the "verify on WhatsApp" banner and labelled track boxes (D2-07) */
+.my-otp-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 16px; padding: 12px 14px; border-radius: 14px; background: var(--warning-soft); border: 1.5px solid var(--warning); color: var(--ink); }
+.my-otp-banner > div { flex: 1 1 220px; min-width: 0; display: grid; gap: 3px; }
+.my-otp-banner b { font-size: 15px; line-height: 1.35; }
+.my-otp-banner small { font-size: 13px; color: var(--ink-2); line-height: 1.4; }
+.my-otp-banner .btn { min-height: 44px; }
+.trk-lbl { display: block; margin: 0 0 4px; font: 700 13px/1.3 var(--font-sans, sans-serif); color: var(--ink-2); }
+.trk-fields > .trk-hint { flex: 1 1 100%; }
+.trk-fields #trackBtn { min-height: 46px; }
+/* sign-in sheet: the guest way on, centred under the send button (D4-15) */
+.lg-links.lg-guest-row { justify-content: center; margin-top: 8px; }
+
+/* Trip Companion: not-live / cancelled states of the where-is-my-bus banner (D7-03) */
+.tc-livebus.not-live { opacity: .85; }
+.tc-livebus.not-live .tlb-ic, .tc-livebus.trip-cx .tlb-ic { animation: none !important; }
+.tc-livebus.trip-cx { background: var(--danger-soft) !important; border: 2px solid var(--danger) !important; color: var(--ink) !important; }
+.tc-livebus.trip-cx b { color: var(--danger) !important; }
+#tcLeaveCalc { display: inline-flex; min-height: 44px; margin: 0 0 6px; }
+
 /* reduced motion: depth stays, movement goes */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: .01ms !important; }

@@ -342,7 +342,7 @@ function coScrollInvalid() {
   var bad = document.querySelector('#view-checkout .field.invalid, #view-checkout .invalid');
   if (!bad) return;
   try { bad.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { bad.scrollIntoView(); }
-  var inp = bad.querySelector('input,select,textarea');
+  var inp = bad.querySelector('[aria-invalid="true"]') || bad.querySelector('input,select,textarea');
   if (inp) { try { inp.focus({ preventScroll: true }); } catch (e) {} }
 }
 /* "Is this a Nepal (+977) number?" (8 Oct 2026, D4-05). India and Nepal
@@ -2485,7 +2485,7 @@ function renderStatus(id) {
      guarded string — a missing 17-pwa.js leaves the ticket exactly as before.
      Declared BEFORE primary2: a pending ticket reads splitBtn there. */
   let borderCard = '', pushCard = '', splitBtn = '';
-  try { if (window.SHGBorder) borderCard = window.SHGBorder.card(b) || ''; } catch (e) {}
+  try { if (window.SHGBorder && !tripCancelled) borderCard = window.SHGBorder.card(b) || ''; } catch (e) {}   // no "departure in 62 h" on a cancelled trip
   try { if (window.SHGPush) pushCard = window.SHGPush.card(b) || ''; } catch (e) {}
   try { if (window.SHGSplit) splitBtn = window.SHGSplit.button(b) || ''; } catch (e) {}
   /* One tap into OUR WhatsApp with the message already written, so the

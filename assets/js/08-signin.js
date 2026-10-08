@@ -944,12 +944,16 @@ function renderMyBookings() {
     const h = location.hash || '';
     const qs = h.indexOf('#/my?') === 0 ? new URLSearchParams(h.split('?')[1] || '') : null;
     const pnr = qs ? String(qs.get('pnr') || '').toUpperCase() : '';
-    if (pnr && /^SHG-[A-Z0-9-]{4,30}$/.test(pnr) && _myPrefilled !== pnr) {
-      _myPrefilled = pnr;
+    if (pnr && /^SHG-[A-Z0-9-]{4,30}$/.test(pnr)) {
+      /* the box is redrawn by every refresh: refill it each time, but take
+         the focus only once per link */
       const ti = $('#trackId'), tp = $('#trackPhone'), tm = $('#trackMsg');
-      if (ti) ti.value = pnr;
-      if (tm) { tm.textContent = t('trkNeedPhone'); tm.style.color = 'var(--ink-2, inherit)'; }
-      if (tp) { try { tp.focus({ preventScroll: true }); tp.scrollIntoView({ block: 'center' }); } catch (e) { try { tp.focus(); } catch (e2) {} } }
+      if (ti && !ti.value) ti.value = pnr;
+      if (tm && !tm.textContent) { tm.textContent = t('trkNeedPhone'); tm.style.color = 'var(--ink-2, inherit)'; }
+      if (_myPrefilled !== pnr) {
+        _myPrefilled = pnr;
+        if (tp) { try { tp.focus({ preventScroll: true }); tp.scrollIntoView({ block: 'center' }); } catch (e) { try { tp.focus(); } catch (e2) {} } }
+      }
     }
   } catch (e) {}
   box.onclick = (e) => {

@@ -72,6 +72,7 @@ const CORE_SUITES = [
     'staff-any-date-test.php'      => 'staff may book any date; customers may not',
     'quick-ticket-test.php'        => 'name + mobile → auto bus/seat/fare → confirmed ticket',
     'smart-v2-test.php'            => 'master prompt 2.0: Seat AI settings, gender at confirm, pickup map, template library, opt-in',
+    'checkout-ticket-premium-test.php' => 'checkout / sign-in / ticket / Trip Companion tell the truth: own pickup time = server, keyed ticket, cash due, needs-OTP doors',
     'placeholder-phone-test.php'   => 'the walk-in 0000000000 is never proof of owning a ticket (track, cancel, download, verify, AI)',
     'identity-gate-test.php'       => 'name + phone is never proof: own-session PNRs / WhatsApp code for history, ticket, cancel, AI, payment proof; pay link asks only what is due',
     'counter-desk-memory-test.php' => 'desk remembers agent / payment / boarding once, never the passenger; same bus · same date · sell another',
