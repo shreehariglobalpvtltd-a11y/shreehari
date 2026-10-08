@@ -12,11 +12,11 @@
 -- =====================================================================
 
 INSERT IGNORE INTO settings (skey,svalue,stype,sgroup,label,is_public) VALUES
- ('grok_api_key','','text','ai','Grok (xAI) API key — from console.x.ai',0),
- ('openrouter_api_key','','text','ai','OpenRouter API key — from openrouter.ai/keys',0),
- ('cerebras_api_key','','text','ai','Cerebras API key — from cloud.cerebras.ai',0),
- ('ai_model_ladder','auto','text','ai','AI provider order: auto (recommended) or comma list e.g. cerebras,grok,gemini,openrouter,anthropic',0),
- ('grok_model','','text','ai','Grok model pin (blank = grok-3-mini-fast)',0),
- ('openrouter_model','','text','ai','OpenRouter model pin (blank = meta-llama/llama-4-scout)',0),
- ('cerebras_model','','text','ai','Cerebras model pin (blank = llama-4-scout-17b-16e-instruct)',0),
+ ('grok_api_key','','string','ai','Grok (xAI) API key — from console.x.ai',0),
+ ('openrouter_api_key','','string','ai','OpenRouter API key — from openrouter.ai/keys',0),
+ ('cerebras_api_key','','string','ai','Cerebras API key — from cloud.cerebras.ai',0),
+ ('ai_model_ladder','auto','string','ai','AI provider order: auto (recommended) or comma list e.g. cerebras,grok,gemini,openrouter,anthropic',0),
+ ('grok_model','','string','ai','Grok model pin (blank = grok-3-mini-fast)',0),
+ ('openrouter_model','','string','ai','OpenRouter model pin (blank = meta-llama/llama-4-scout)',0),
+ ('cerebras_model','','string','ai','Cerebras model pin (blank = llama-4-scout-17b-16e-instruct)',0),
  ('ai_timeout_message','1','bool','ai','Send a fallback message when all AI providers fail (instead of silence)',0);

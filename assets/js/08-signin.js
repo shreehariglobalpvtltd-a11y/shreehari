@@ -913,6 +913,8 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal
   function maybe() {
     try {
       if (USER) return;
+      const sw = (window.SHG_BOOT && window.SHG_BOOT.settings) || {};
+      if (sw.btn_login_popup_on === false || sw.btn_login_popup_on === 0 || sw.btn_login_popup_on === '0') return;   // Settings -> Website buttons
       if (window.SHG_BOOT && (window.SHG_BOOT.staff || (window.SHG_BOOT.user && window.SHG_BOOT.user.phone))) return;
       if (typeof isCounterSale === 'function' && isCounterSale()) return;
       if (/[?&](counter|pnr|pay|ref|agent)=/i.test(location.search)) return;

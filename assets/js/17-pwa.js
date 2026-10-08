@@ -53,6 +53,10 @@
 
     function quiet() {
       if (isStandalone()) return true;
+      try {   // Settings -> Website buttons: the automatic pop-up is off (the menu's Install still works)
+        var sw = (window.SHG_BOOT && window.SHG_BOOT.settings) || {};
+        if (sw.btn_install_popup_on === false || sw.btn_install_popup_on === 0 || sw.btn_install_popup_on === '0') return true;
+      } catch (e) {}
       var at = +(lsGet(DKEY) || 0);
       return at && (Date.now() - at) < 30 * 86400000;
     }
@@ -76,7 +80,7 @@
       beacon('install_prompt', { source: deferred ? 'android' : 'ios' });
     }
     function head() {
-      return '<div class="pwa-head"><img src="/assets/img/icon-192.png?v=20261008f" alt="" width="52" height="52">'
+      return '<div class="pwa-head"><img src="/assets/img/icon-192.png?v=20261008g" alt="" width="52" height="52">'
         + '<div><b>' + E(T('pwaInstallT')) + '</b><small>' + E(T('pwaInstallP')) + '</small></div></div>';
     }
     function showAndroid() {

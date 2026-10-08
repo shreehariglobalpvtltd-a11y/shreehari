@@ -49,7 +49,7 @@ final class Settings
             foreach ($rows as $row) {
                 self::$cache[(string) $row['skey']] = [
                     'value'  => $row['svalue'] !== null ? (string) $row['svalue'] : null,
-                    'type'   => (string) $row['stype'],
+                    'type'   => self::safeType((string) $row['stype']),
                     'public' => (bool) $row['is_public'],
                 ];
             }
@@ -145,8 +145,33 @@ final class Settings
     /**
      * Write a setting. Creates the row if it does not exist yet.
      */
+    /**
+     * The settings.stype ENUM is string|int|float|bool|json. A migration that
+     * seeded 'text' (multi-provider, counter-locations) left rows whose stype
+     * MariaDB stored as '' — and writing that '' back under strict mode threw
+     * "Data truncated for column 'stype'", which rolled back the WHOLE
+     * Settings form: no fare, private cabin price or switch could be saved
+     * (8 Oct 2026, five failed saves in the live log). Anything unknown is
+     * now written as 'string'.
+     */
+    public static function safeType(string $type): string
+    {
+        $type = strtolower(trim($type));
+        if (in_array($type, ['string', 'int', 'float', 'bool', 'json'], true)) {
+            return $type;
+        }
+        return match ($type) {
+            'integer', 'number' => 'int',
+            'decimal', 'double' => 'float',
+            'boolean'           => 'bool',
+            'array', 'object'   => 'json',
+            default             => 'string',
+        };
+    }
+
     public static function set(string $key, mixed $value, string $type = 'string', string $group = 'general', bool $isPublic = false): void
     {
+        $type = self::safeType($type);
         if ($type === 'json' && is_string($value)) {
             // 4 Sep 2026: the admin form posts a JSON *string* for stype=json
             // rows. json_encode()-ing that string wrapped it in quotes and

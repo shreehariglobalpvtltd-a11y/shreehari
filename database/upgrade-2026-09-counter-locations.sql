@@ -65,6 +65,6 @@ PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 INSERT IGNORE INTO settings (skey,svalue,stype,sgroup,label,is_public) VALUES
  ('counter_locations',
   'MSA|Mehsana — Head Office\nAMD|Ahmedabad — Paldi\nBRD|Baroda\nSRT|Surat\nGDH|Godhra\nHMT|Himatnagar\nRPD|Rupaidiha — India/Nepal Border\nNPJ|Nepalgunj — Bus Park\nNPJD|Nepalgunj — Dhamboji Chowk\nKHL|Kohalpur Chowk',
-  'text','company',
+  'string','company',
   'Counter locations — one per line as CODE|Name (e.g. NPJ|Nepalgunj — Bus Park). Offered when a counter or agent is given a location, and printed on their tickets.',
   0);

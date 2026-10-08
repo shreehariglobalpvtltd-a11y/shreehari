@@ -341,6 +341,8 @@ $inject = <<<HTML
 window.SHG_BOOT = {$bootJson};
 /* 5 Oct 2026: an ad click (Google Ads / Facebook) sees the booking card first - set before first paint. */
 try { if (/[?&](gclid|gbraid|wbraid|gad_source|gad_campaignid|fbclid)=/.test(location.search)) document.documentElement.classList.add('shg-from-ad'); } catch (e) {}
+/* 8 Oct 2026: Admin -> Settings -> Website buttons. A switched-off button is hidden before first paint (depth.css html[data-off~=...]). */
+try { (function (s) { var off = [], m = { btn_wa_fab_on: 'wafab', btn_ai_fab_on: 'aifab', btn_sos_on: 'sos', btn_offer_ribbon_on: 'ribbon', btn_wa_book_on: 'wabook' }; for (var k in m) { if (s[k] === false || s[k] === 0 || s[k] === '0') off.push(m[k]); } if (off.length) document.documentElement.setAttribute('data-off', off.join(' ')); })((window.SHG_BOOT && window.SHG_BOOT.settings) || {}); } catch (e) {}
 (function () {
   var BOOT = window.SHG_BOOT || {};
   var API  = (BOOT.apiBase || '/api');

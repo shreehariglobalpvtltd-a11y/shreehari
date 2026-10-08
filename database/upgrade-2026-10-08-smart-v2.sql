@@ -48,3 +48,20 @@ CREATE TABLE IF NOT EXISTS `mk_optin` (
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`phone`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Settings rows seeded with stype 'text' were stored as '' (not in the ENUM);
+-- writing them back failed the whole Admin -> Settings save. Repair them.
+UPDATE `settings` SET `stype` = 'string' WHERE `stype` NOT IN ('string','int','float','bool','json');
+
+-- Website buttons (8 Oct 2026, owner: "chahine button haru controllable banaunu
+-- paryo"): one ON/OFF per customer-site button / pop-up. Public, so the page
+-- hides a switched-off button before first paint (index.php head script ->
+-- html[data-off]). All ship ON = the site exactly as it is today.
+INSERT IGNORE INTO `settings` (`skey`, `svalue`, `stype`, `sgroup`, `label`, `is_public`) VALUES
+ ('btn_wa_fab_on',         '1', 'bool', 'buttons', 'WhatsApp floating button (green, bottom right)', 1),
+ ('btn_ai_fab_on',         '1', 'bool', 'buttons', 'AI Sahayak robot button (bottom left)', 1),
+ ('btn_sos_on',            '1', 'bool', 'buttons', 'SOS emergency button on the ticket and live-track screens', 1),
+ ('btn_offer_ribbon_on',   '1', 'bool', 'buttons', 'Offer ribbon at the top of the home page (shows only while an offer runs)', 1),
+ ('btn_wa_book_on',        '1', 'bool', 'buttons', '"Book on WhatsApp" button under the search card', 1),
+ ('btn_login_popup_on',    '1', 'bool', 'buttons', 'Sign-in pop-up on a visitor''s first open', 1),
+ ('btn_install_popup_on',  '1', 'bool', 'buttons', '"Install the app" pop-up (Android / iPhone)', 1);

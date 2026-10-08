@@ -266,6 +266,38 @@ check('manifest: call + open pickup in Maps', str_contains((string) file_get_con
 check('sidebar lists WhatsApp Templates', str_contains((string) file_get_contents($root . '/admin/_guard.php'), "'wa-templates.php'"));
 check('run-all lists this suite', str_contains((string) file_get_contents(__DIR__ . '/run-all.php'), 'smart-v2-test.php'));
 
+
+echo "-- 8. Settings save never dies on one bad row --\n";
+check("safeType: 'text' and '' are written as string", Settings::safeType('text') === 'string' && Settings::safeType('') === 'string');
+check('safeType keeps the five real types', Settings::safeType('int') === 'int' && Settings::safeType('bool') === 'bool' && Settings::safeType('json') === 'json' && Settings::safeType('float') === 'float' && Settings::safeType('string') === 'string');
+try {
+    Settings::set('sv_test_text_type', 'x', 'text', 'general', false);
+    check("set() with type 'text' succeeds under strict mode", (string) Database::scalar("SELECT stype FROM settings WHERE skey = 'sv_test_text_type'", [], '') === 'string');
+} catch (Throwable $e) {
+    check("set() with type 'text' succeeds under strict mode", false, $e->getMessage());
+} finally {
+    Database::run("DELETE FROM settings WHERE skey = 'sv_test_text_type'");
+    Settings::flush();
+}
+check('no settings row is left with an empty type', (int) Database::scalar("SELECT COUNT(*) FROM settings WHERE stype NOT IN ('string','int','float','bool','json')", [], 1) === 0);
+$sp = (string) file_get_contents($root . '/admin/settings.php');
+check('a database refusal is a message, not a 500', str_contains($sp, "Logger::error('Settings save failed: '"));
+check('private prices saved even when cabin_pricing has no private block', str_contains($sp, "if (!isset(\$cp['private']) || !is_array(\$cp['private'])) {"));
+check('sharing fare per pickup is editable on the Fares panel', str_contains($sp, 'name="pf[<?= (int) $st[\'id\'] ?>]"') && str_contains($sp, "\$pfPosted = is_array(\$_POST['pf'] ?? null)"));
+check('quick ±₹ buttons for a whole list', str_contains($sp, 'data-pf-bump'));
+check('the two seed files no longer plant stype text', !str_contains((string) file_get_contents($root . '/database/upgrade-2026-09-multi-provider.sql'), "'text'"));
+
+echo "-- 9. Website buttons --\n";
+foreach (['btn_wa_fab_on', 'btn_ai_fab_on', 'btn_sos_on', 'btn_offer_ribbon_on', 'btn_wa_book_on', 'btn_login_popup_on', 'btn_install_popup_on'] as $k) {
+    $r = Database::fetch('SELECT sgroup, is_public, stype FROM settings WHERE skey = :k', ['k' => $k]);
+    check("switch $k (public bool, group buttons)", $r !== null && $r['sgroup'] === 'buttons' && (int) $r['is_public'] === 1 && $r['stype'] === 'bool');
+}
+$ix = (string) file_get_contents($root . '/index.php');
+$dc = (string) file_get_contents($root . '/assets/css/depth.css');
+check('head script marks switched-off buttons before first paint', str_contains($ix, "document.documentElement.setAttribute('data-off'"));
+check('CSS hides each switched-off button', str_contains($dc, 'html[data-off~="wafab"] #waFab') && str_contains($dc, 'html[data-off~="aifab"] #aiFab') && str_contains($dc, 'html[data-off~="ribbon"] #offerRibbon'));
+check('login pop-up obeys its switch', str_contains((string) file_get_contents($root . '/assets/js/08-signin.js'), 'btn_login_popup_on'));
+check('install pop-up obeys its switch', str_contains((string) file_get_contents($root . '/assets/js/17-pwa.js'), 'btn_install_popup_on'));
 echo "\n----------------------------------------\n";
 echo "$PASS passed, $FAIL failed\n";
 exit($FAIL > 0 ? 1 : 0);

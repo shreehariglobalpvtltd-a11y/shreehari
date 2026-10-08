@@ -976,6 +976,13 @@ body:has(#mobileMenu.open) .ct-fab { visibility: hidden !important; }
 #view-seats .bp-nearme-note { margin: 6px 0 0; font-size: 13px; line-height: 1.45; color: var(--muted, #555); }
 #view-seats .bp-nearme-note a { font-weight: 700; white-space: nowrap; }
 
+/* Website buttons switched off in Admin -> Settings (8 Oct 2026). */
+html[data-off~="wafab"] #waFab, html[data-off~="wafab"] #waSheet,
+html[data-off~="aifab"] #aiFab,
+html[data-off~="sos"] #sosFab,
+html[data-off~="ribbon"] #offerRibbon,
+html[data-off~="wabook"] #waBookBtn { display: none !important; }
+
 @media print {
   :root, :root[data-theme], :root[data-display] {
     --page: #FFFFFF; --surface: #FFFFFF; --surface-sunken: #FFFFFF; --ink: #000000; --ink-2: #111111; --muted: #333333;
