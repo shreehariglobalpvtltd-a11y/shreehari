@@ -148,7 +148,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
 .qt-hero::before{content:"";position:absolute;right:-70px;bottom:-90px;width:260px;height:260px;border-radius:50%;background:radial-gradient(circle,rgba(240,124,31,.55),transparent 65%);pointer-events:none}
 .qt-hero h2{margin:8px 0 4px;font-size:22px;line-height:1.2;font-weight:900}
 .qt-hero p{margin:0;font-size:13px;opacity:.9;max-width:620px;line-height:1.45}
-.qt-badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;background:var(--orange);color:#fff;padding:5px 10px;border-radius:999px;box-shadow:0 4px 14px rgba(240,124,31,.45);animation:qtPulse 2.4s ease-in-out infinite}
+.qt-badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;background:var(--orange);color:var(--on-royal);padding:5px 10px;border-radius:999px;box-shadow:0 4px 14px rgba(240,124,31,.45);animation:qtPulse 2.4s ease-in-out infinite}
 @keyframes qtPulse{0%,100%{box-shadow:0 4px 14px rgba(240,124,31,.45)}50%{box-shadow:0 4px 22px rgba(240,124,31,.9)}}
 /* The desk badge sits beside the QuickBot pill — quieter than it (this is
    context, not the headline) but bright enough to catch a clerk who signed
@@ -156,9 +156,9 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
 .qt-desk{display:inline-flex;align-items:center;gap:5px;margin-left:8px;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);color:#fff;padding:5px 10px;border-radius:999px}
 .qt-stepper{display:flex;gap:8px;flex-wrap:wrap;list-style:none;margin:12px 0 0;padding:0}
 .qt-stepper li{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);opacity:.75;transition:all .25s}
-.qt-stepper li b{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:rgba(255,255,255,.25);font-size:11px}
-.qt-stepper li.on{opacity:1;background:var(--orange);border-color:var(--orange)}
-.qt-stepper li.done{opacity:1;background:#178A50;border-color:#178A50}
+.qt-stepper li b{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:transparent;box-shadow:inset 0 0 0 1.5px currentColor;font-size:11px}
+.qt-stepper li.on{opacity:1;background:var(--orange);border-color:var(--orange);color:var(--on-royal)}
+.qt-stepper li.done{opacity:1;background:#11703F;border-color:#11703F;color:#fff}
 .qt-voice{position:relative;z-index:1;align-self:flex-start;min-height:44px;padding:0 14px;border-radius:999px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.12);color:#fff;font:700 13px/1 inherit;cursor:pointer}
 .qt-voice.on{background:#1FA35A;border-color:#1FA35A}
 .qt-clock{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:110px;height:110px;border-radius:50%;background:rgba(255,255,255,.12);border:3px solid rgba(255,255,255,.35);font-variant-numeric:tabular-nums}
@@ -211,7 +211,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
 /* The NPR conversion aid for a Nepal desk (24 Sep 2026). Deliberately
    smaller and quieter than the rupee figure beside it: the fare IS the
    rupee amount — this is what to say out loud while taking Nepali cash. */
-.qt-npr{display:block;font-size:12.5px;font-weight:700;color:#0863b8;margin-top:1px;letter-spacing:.01em}
+.qt-npr{display:block;font-size:12.5px;font-weight:700;color:var(--royal-strong);margin-top:1px;letter-spacing:.01em}
 .qt-alt{margin-top:12px;padding:10px 12px;border-radius:12px;border:1px dashed var(--line);font-size:12.5px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .qt-alt button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:5px 10px;font-weight:700;cursor:pointer;font-size:12px}
 .qt-noplan{padding:14px;border-radius:12px;background:#fff3e0;color:#8a4a00;font-weight:700;font-size:13px;line-height:1.45}
@@ -235,7 +235,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
 .qt-wa .btn{background:#25D366;color:#fff;border-color:#25D366}
 .qt-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .qt-actions .btn{flex:1 1 140px;text-align:center}
-.qt-next{background:var(--orange)!important;color:#fff!important;border-color:var(--orange)!important}
+.qt-next{background:var(--orange)!important;color:var(--on-royal)!important;border-color:var(--orange)!important}
 .qt-recent{width:100%;border-collapse:collapse;font-size:13px}
 .qt-recent th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);padding:8px 8px;border-bottom:1px solid var(--line)}
 .qt-recent td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:top}

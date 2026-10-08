@@ -129,6 +129,7 @@ const CORE_SUITES = [
     'agent-login-bulk-cancel-test.php' => 'agent sign-in + bulk cancel',
     'public-agent-code-resolver-test.php' => 'a customer-typed SHG-### resolves safely',
     'admin-security-test.php'      => 'the admin door refuses what it should',
+    'admin-consistency-test.php'   => 'panel looks + reads the same on every page (D9)',
     'admin-2fa-test.php'           => 'opt-in admin 2FA',
     'login-name-mobile-test.php'   => 'sign in by name + mobile',
     'settings-json-test.php'       => 'stype=json rows survive a save uneaten',

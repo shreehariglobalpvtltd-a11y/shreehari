@@ -262,12 +262,10 @@ echo LiveSync::anchor('all', 'pill');
 .td-card.gray{border-left-color:#888}
 .td-card.orange{border-left-color:#F07C1F}
 .td-card.money{border-left-color:#0a6b3b}
-.td-card .v.green{color:#0a6b3b}.td-card .v.blue{color:#2E5FA8}.td-card .v.amber{color:#c99200}
-.td-card .v.gray{color:#888}.td-card .v.orange{color:#F07C1F}
-:root[data-theme="dark"] .td-card .v.green{color:#4ade80}
-:root[data-theme="dark"] .td-card .v.blue{color:#93b5f5}
-:root[data-theme="dark"] .td-card .v.amber{color:#fcd34d}
-:root[data-theme="dark"] .td-card .v.orange{color:#fb923c}
+.td-card .v.green{color:var(--success)}.td-card .v.blue{color:var(--royal)}.td-card .v.amber{color:var(--warning)}
+.td-card .v.gray{color:var(--muted)}.td-card .v.orange{color:var(--warm-ink)}
+/* 8 Oct 2026 (D9-12): KPI figures in design tokens - AA on the card in light,
+   dark and AMOLED alike (the amber / orange figures read 2.8:1 in light) */
 
 /* ---- Mini seat grid ---- */
 /* Decks stack top→bottom so lower/upper stay visually separated at a glance,
@@ -426,7 +424,7 @@ if ($allDaySchedules !== []) {
       $uFree    = max(0, $spf - $uBkd);
       $lPct     = $spf > 0 ? min(100, round($lBkd*100/$spf)) : 0;
       $uPct     = $spf > 0 ? min(100, round($uBkd*100/$spf)) : 0;
-      $occColor = $totBkd >= $total ? '#e74c3c' : ($totBkd >= $total*0.7 ? '#F07C1F' : '#22c55e');
+      $occColor = $totBkd >= $total ? 'var(--danger)' : ($totBkd >= $total*0.7 ? 'var(--warning)' : 'var(--success)');   // text: tokens, AA in every theme
     ?>
     <tr>
       <td>

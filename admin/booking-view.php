@@ -958,6 +958,54 @@ if (Auth::can('payments.view')) {
     } catch (Throwable $e) { $hasProof = false; }
 }
 
+/* ---- Same UTR / same screenshot on another booking (8 Oct 2026, D8-06) ----
+   One real UPI transfer could be typed or uploaded against several bookings
+   and a busy desk verifying by eye approved each one. Display only: a red
+   pill under the UTR / proof naming the other PNR(s). It never blocks,
+   rejects or decides anything - the desk looks and decides. Same audience
+   as the proof link (payments.view). A UTR shorter than 6 letters/digits
+   ("cash", "0") is not compared. Uses ix_payments_utr / ix_shots_hash. */
+$utrAlsoOn  = [];
+$shotAlsoOn = [];
+if (Auth::can('payments.view') && !empty($b['id'])) {
+    $utrHere = trim((string) ($pay['utr_number'] ?? ''));
+    if ($utrHere !== '' && preg_match('/[A-Za-z0-9]{6,}/', $utrHere)) {
+        try {
+            $utrList = (string) Database::scalar(
+                "SELECT GROUP_CONCAT(DISTINCT b2.pnr ORDER BY b2.id SEPARATOR ',')
+                   FROM payments p2 JOIN bookings b2 ON b2.id = p2.booking_id
+                  WHERE p2.utr_number = :u AND p2.booking_id <> :b",
+                ['u' => $utrHere, 'b' => (int) $b['id']], ''
+            );
+            $utrAlsoOn = array_values(array_filter(explode(',', $utrList)));
+        } catch (Throwable $e) { $utrAlsoOn = []; }
+    }
+    if ($hasProof) {
+        try {
+            $shotList = (string) Database::scalar(
+                "SELECT GROUP_CONCAT(DISTINCT bx.pnr ORDER BY bx.id SEPARATOR ',')
+                   FROM payment_screenshots s1
+                   JOIN payment_screenshots s2 ON s2.sha256 = s1.sha256 AND s2.booking_id <> s1.booking_id
+                   JOIN bookings bx ON bx.id = s2.booking_id
+                  WHERE s1.booking_id = :b AND s1.sha256 IS NOT NULL AND s1.sha256 <> ''",
+                ['b' => (int) $b['id']], ''
+            );
+            $shotAlsoOn = array_values(array_filter(explode(',', $shotList)));
+        } catch (Throwable $e) { $shotAlsoOn = []; }
+    }
+}
+/** A red "also on" pill: up to 4 PNR links, then "+N more". */
+$alsoOnPill = static function (string $what, array $pnrs) use ($base): string {
+    if ($pnrs === []) { return ''; }
+    $links = [];
+    foreach (array_slice($pnrs, 0, 4) as $p) {
+        $links[] = '<a href="' . $base . '/admin/booking-view.php?pnr=' . rawurlencode($p) . '" style="color:inherit;text-decoration:underline">' . Security::e($p) . '</a>';
+    }
+    $more = count($pnrs) > 4 ? ' +' . (count($pnrs) - 4) . ' more' : '';
+    return '<div class="also-on" style="margin-top:6px;font-family:var(--f-ui)"><span class="pill nodot st-bad" role="note" style="display:inline-block;white-space:normal;line-height:1.45;padding:4px 10px">&#9888; '
+         . Security::e($what) . ' also on ' . implode(', ', $links) . $more . '</span></div>';
+};
+
 /* ---- Passenger photos / ID documents (17 Sep 2026) ----------------
    One grouped read for the whole page; [] until the migration has run or
    while the office switch is off. */
@@ -1018,7 +1066,7 @@ if (Notify::usablePhone($b['contact_phone'] ?? '') !== '') {
 .audit-actor{font-weight:700;font-size:13px;margin-top:2px}
 .audit-action{display:inline-block;font-size:12px;padding:2px 8px;border-radius:4px;background:var(--line);margin-top:4px}
 .audit-detail{font-size:13px;margin-top:4px;color:var(--mut)}
-.board-yes{color:#0a6b3b;font-weight:600}
+.board-yes{color:var(--success);font-weight:600}
 .board-no{color:var(--mut)}
 
 /* WhatsApp delivery pill next to the Resend button — status at a glance
@@ -1059,7 +1107,7 @@ if (Notify::usablePhone($b['contact_phone'] ?? '') !== '') {
 .power-panel details{margin-top:10px}
 .power-panel summary{font-size:13px;font-weight:700;cursor:pointer;color:#8a1f1f;padding:6px 0}
 .power-panel .sub-form{margin-top:10px;display:grid;gap:8px}
-.power-panel label{font-size:12px;font-weight:700;color:#555;margin-bottom:2px}
+.power-panel label{font-size:12px;font-weight:700;color:var(--muted);margin-bottom:2px}
 .power-panel input,.power-panel textarea{width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:7px;font-size:14px}
 .danger-zone{border:1.5px dashed #C00;border-radius:10px;padding:12px 14px;margin-top:10px}
 .danger-zone p{font-size:12px;color:#8a1f1f;margin:0 0 8px}
@@ -1231,7 +1279,7 @@ if (Notify::usablePhone($b['contact_phone'] ?? '') !== '') {
           <?php endforeach; ?>
         </select>
       </div>
-      <p style="font-size:12px;color:#8a6d00;margin:2px 0 6px">The old seller&#39;s commission is reversed and the new seller&#39;s is posted from the ledger — the change is audit-logged.</p>
+      <p style="font-size:12px;color:var(--warning);margin:2px 0 6px">The old seller&#39;s commission is reversed and the new seller&#39;s is posted from the ledger — the change is audit-logged.</p>
       <button type="submit" class="btn btn-ok btn-sm" style="width:auto">🧑‍💼 Reassign seller</button>
     </form>
   </details>
@@ -1248,7 +1296,8 @@ if (Notify::usablePhone($b['contact_phone'] ?? '') !== '') {
           <label>Type the PNR to confirm: <b><?= Security::e($pnr) ?></b></label>
           <input type="text" name="confirm_delete" placeholder="<?= Security::e($pnr) ?>" required autocomplete="off" maxlength="40">
         </div>
-        <button type="submit" class="btn btn-warn btn-sm" style="width:auto;background:#C00;border-color:#C00"
+        <?php /* 8 Oct 2026 (D9-02): the red danger face (the inline #C00 lost to the royal button face) */ ?>
+        <button type="submit" class="btn danger btn-sm" style="width:auto"
                 onclick="return confirm('PERMANENTLY DELETE <?= Security::e($pnr) ?>? This cannot be undone.')">
           💀 Delete Forever
         </button>
@@ -1302,9 +1351,9 @@ if (Notify::usablePhone($b['contact_phone'] ?? '') !== '') {
       <?php if ((float) ($b['tax_amount'] ?? 0) > 0): ?><tr><th>Tax</th><td><?= Security::e(inr((float) $b['tax_amount'])) ?></td></tr><?php endif; ?>
       <tr><th>Total</th><td><strong style="font-size:17px"><?= Security::e(inr((float) $b['total_amount'])) ?></strong></td></tr>
       <tr><th>Method</th><td><?= Security::e(strtoupper((string) ($pay['method'] ?? '—'))) ?> · <?= admin_pill((string) ($pay['status'] ?? 'pending')) ?></td></tr>
-      <tr><th>UTR / Ref</th><td class="mono"><?= Security::e($pay['utr_number'] ?? '—') ?></td></tr>
+      <tr><th>UTR / Ref</th><td class="mono"><?= Security::e($pay['utr_number'] ?? '—') ?><?= $alsoOnPill('UTR', $utrAlsoOn) ?></td></tr>
       <?php if ($hasProof): ?>
-      <tr><th>Payment proof</th><td><a class="btn ghost" style="font-size:12px;padding:5px 12px" href="/admin/screenshot.php?id=<?= (int) ($b['id'] ?? 0) ?>" target="_blank" rel="noopener">🖼️ View proof</a></td></tr>
+      <tr><th>Payment proof</th><td><a class="btn ghost" style="font-size:12px;padding:5px 12px" href="/admin/screenshot.php?id=<?= (int) ($b['id'] ?? 0) ?>" target="_blank" rel="noopener">🖼️ View proof</a><?= $alsoOnPill('Screenshot', $shotAlsoOn) ?></td></tr>
       <?php endif; ?>
       <?php
         /* QR / pay-link trail. A UPI QR is paid inside the passenger's bank

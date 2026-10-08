@@ -324,7 +324,7 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
   <div class="card"><div class="k">Pending approval</div><div class="v"><?= $pending ?></div></div>
   <div class="card"><div class="k">Commission due</div><div class="v">₹<?= number_format($dueSum) ?></div></div>
   <div class="card"><div class="k">KYC verified</div><div class="v"><?= $kycVerified ?><small> / <?= count($rows) ?></small></div><div class="muted" style="font-size:12px"><?= $kycWaiting > 0 ? $kycWaiting . ' waiting for review' : 'none waiting' ?></div></div>
-  <?php if ($overdueN > 0): ?><div class="card"><div class="k">Settlement overdue</div><div class="v" style="color:#b02a2a"><?= $overdueN ?></div><div class="muted" style="font-size:12px">holding cash past the due days</div></div><?php endif; ?>
+  <?php if ($overdueN > 0): ?><div class="card"><div class="k">Settlement overdue</div><div class="v" style="color:var(--danger)"><?= $overdueN ?></div><div class="muted" style="font-size:12px">holding cash past the due days</div></div><?php endif; ?>
 </div>
 
 <div class="dt-bar" id="agCtl">
@@ -368,7 +368,7 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
 .ag-t td{vertical-align:middle;padding:8px 10px}
 .ag-t td.ag-who{white-space:normal;min-width:200px;max-width:280px}
 .ag-who .ag-code{display:inline-flex;align-items:center;gap:4px;font:800 11.5px/1 ui-monospace,Consolas,monospace;padding:4px 8px;border-radius:999px;color:#fff;vertical-align:middle}
-.ag-code.co{background:#7c3aed}.ag-code.in{background:#ea580c}.ag-code.none{background:var(--line);color:var(--mut)}
+.ag-code.co{background:#7c3aed}.ag-code.in{background:#C2410C}.ag-code.none{background:var(--soft);color:var(--mut);box-shadow:inset 0 0 0 1px var(--line)}
 .ag-who .ag-kind{font-size:11px;font-weight:700;color:var(--mut);margin-left:6px;vertical-align:middle}
 .ag-who .ag-nm{display:block;font-weight:700;margin-top:3px;color:inherit;text-decoration:none;line-height:1.25}
 .ag-who .ag-nm:hover{text-decoration:underline}
@@ -390,7 +390,7 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
 .ag-menu a:hover,.ag-menu button:hover{background:var(--hover)}
 .ag-menu form{margin:0}
 .ag-menu hr{border:0;border-top:1px solid var(--line);margin:4px 2px}
-.ag-menu .danger{color:#b02a2a}.ag-menu .ok{color:#0a6b3b}
+.ag-menu .danger{color:var(--danger)}.ag-menu .ok{color:var(--success)}
 @media (pointer:coarse){.ag-acts .btn,.ag-more>summary{min-height:44px}.ag-menu a,.ag-menu button{min-height:44px}}
 </style>
 <div class="dt-wrap">
@@ -429,7 +429,7 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
         <?php if ($r['net'] > 0.009): ?><b style="color:#b06a00">₹<?= number_format($r['net']) ?> agent owes</b>
         <?php elseif ($r['net'] < -0.009): ?><b style="color:#2E5FA8">₹<?= number_format(abs($r['net'])) ?> company owes</b>
         <?php else: ?><b class="muted" style="font-weight:600">settled</b><?php endif; ?>
-        <small>due ₹<?= number_format($r['comm_due']) ?> · cash ₹<?= number_format($r['cash_bal']) ?><?= (int) $r['overdue'] > 0 ? ' · <b style="display:inline;color:#b02a2a">overdue ' . (int) $r['overdue'] . 'd</b>' : '' ?></small>
+        <small>due ₹<?= number_format($r['comm_due']) ?> · cash ₹<?= number_format($r['cash_bal']) ?><?= (int) $r['overdue'] > 0 ? ' · <b style="display:inline;color:var(--danger)">overdue ' . (int) $r['overdue'] . 'd</b>' : '' ?></small>
       </td>
       <td class="num ag-2l" data-sort="<?= (float) $r['salary'] ?>"><b><?= $r['salary'] > 0 ? '₹' . number_format($r['salary']) : '<span class="muted" style="font-weight:500">—</span>' ?></b><small>adv. <?= $r['advance'] > 0 ? '<b style="display:inline;color:#b45309">₹' . number_format($r['advance']) . '</b>' : '₹0' ?></small></td>
       <td class="ag-papers" data-sort="<?= $e($r['kyc']) ?>"><div>
@@ -467,7 +467,7 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
       <div class="dt-grid">
         <div class="kv"><label>Serial · type · code</label><b><?= $r['serial'] === null ? 'not assigned' : '#' . (int) $r['serial'] ?> · <?= $e(AgentWallet::kindLabel($r['kind'])) ?> · <?= $e($r['code'] ?: '—') ?></b></div>
         <div class="kv"><label>Name · login username</label><b><?= $e($r['full_name']) ?> <span class="muted mono">· <?= $e($r['username']) ?></span></b></div>
-        <div class="kv"><label>Sign-in email</label><b><?= $r['email'] ? $e($r['email']) : '<span style="color:#b02a2a">not set — they cannot sign in yet</span>' ?></b></div>
+        <div class="kv"><label>Sign-in email</label><b><?= $r['email'] ? $e($r['email']) : '<span style="color:var(--danger)">not set — they cannot sign in yet</span>' ?></b></div>
         <?php if ($isOrg): ?><div class="kv"><label>Contact person</label><b><?= $e($r['contact_person'] ?: '—') ?></b></div><?php endif; ?>
         <div class="kv"><label>Mobile · WhatsApp · email</label><b><?= $e($r['phone']) ?> · <?= $e($r['wa'] ?: '—') ?><br><?= $e($r['email'] ?: '—') ?></b></div>
         <div class="kv"><label>City / counter · address</label><b><?= $e($r['counter_name'] ?: '—') ?><br><?= $e($r['address'] ?: '—') ?></b></div>

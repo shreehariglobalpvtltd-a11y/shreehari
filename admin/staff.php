@@ -460,7 +460,7 @@ $pending = Database::fetchAll(
 );
 if (count($pending) > 0): ?>
 <div class="panel" style="border-left:4px solid #F07C1F">
-  <h2 style="color:#B85A00">⏳ Pending Agent Applications (<?= count($pending) ?>)</h2>
+  <h2 style="color:var(--warning)">⏳ Pending Agent Applications (<?= count($pending) ?>)</h2>
   <p style="color:#6b7688;font-size:13px;margin:0 0 14px">
     These agents applied via the public signup form. Approve to activate their account and send them their SHG code, or reject to delete the application.
   </p>
@@ -489,7 +489,7 @@ if (count($pending) > 0): ?>
           <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
           <input type="hidden" name="action" value="reject_agent">
           <input type="hidden" name="id" value="<?= (int) $pa['id'] ?>">
-          <button type="submit" class="btn btn-warn btn-sm"
+          <button type="submit" class="btn danger btn-sm"
                   onclick="return confirm('Reject and delete this application from <?= Security::e(addslashes($pa['full_name'])) ?>?')">
             ❌ Reject
           </button>

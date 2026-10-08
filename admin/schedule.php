@@ -115,8 +115,11 @@ function shg_state_pill(array $status, bool $blocked): string
 {
     $state = (string) ($status['state'] ?? 'upcoming');
     $label = (string) ($status['label'] ?? ucfirst($state));
-    $color = (string) ($status['color'] ?? '#6b7688');
-    return '<span class="pill state-pill" style="background:' . $color . '1a;color:' . $color . ';border:1px solid ' . $color . '55">'
+    $color = Security::e((string) ($status['color'] ?? '#475569'));
+    // 8 Oct 2026 (D9-05): the same solid pill as Trips and the dashboard -
+    // white on the TripStatus colour (every one >= 4.5:1, both themes). The
+    // 10 % tint with coloured text read 2.0-2.9:1.
+    return '<span class="pill state-pill" style="background:' . $color . ';color:#fff;border:1px solid ' . $color . '">'
          . Security::e($label) . '</span>';
 }
 
