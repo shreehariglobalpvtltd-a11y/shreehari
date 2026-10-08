@@ -175,7 +175,7 @@ final class ChallanPng
         }
         $seenBooking = [];
         $totals = ['beds' => count($allBeds), 'booked' => 0, 'held' => 0, 'blocked' => 0, 'staff' => 0,
-                   'sharing' => 0, 'private' => 0, 'passengers' => 0, 'revenue' => 0.0, 'pending' => 0.0];
+                   'sharing' => 0, 'private' => 0, 'extra' => 0, 'passengers' => 0, 'revenue' => 0.0, 'pending' => 0.0];
         foreach ($sales as $sale) {
             $physical = Seats::physicalSeats($sale['seat'], $sale['mode'], $coach);
             foreach ($physical as $bed) {
@@ -187,7 +187,9 @@ final class ChallanPng
                 $beds[$bed]['cabin']  = $sale['mode'] === 'private' ? $sale['seat'] : null;
                 $totals['booked']++;
             }
-            if ($sale['mode'] === 'private') {
+            if (Seats::isExtraSeat((string) $sale['seat'])) {
+                $totals['extra']++;            // balcony / front cabin (8 Oct 2026)
+            } elseif ($sale['mode'] === 'private') {
                 $totals['private']++;
             } else {
                 $totals['sharing']++;
@@ -458,7 +460,7 @@ final class ChallanPng
             ['OUT OF SERVICE', (string) ($tot['blocked'] + $tot['staff'])],
             ['SHARING', (string) $tot['sharing'] . ' berth' . ($tot['sharing'] === 1 ? '' : 's')],
             ['PRIVATE', (string) $tot['private'] . ' cabin' . ($tot['private'] === 1 ? '' : 's')],
-            ['PASSENGERS', (string) $tot['passengers']],
+            ['PASSENGERS', (string) $tot['passengers'] . (($tot['extra'] ?? 0) > 0 ? ' (+' . (int) $tot['extra'] . ' EXTRA)' : '')],
             ['REVENUE (PAID)', self::rupees($tot['revenue'])],
             ['PENDING', self::rupees($tot['pending'])],
         ];

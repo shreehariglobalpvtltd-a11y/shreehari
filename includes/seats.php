@@ -298,6 +298,109 @@ final class Seats
         return array_values(array_map('strval', $forCoach));
     }
 
+    /* =====================================================================
+     *  EXTRA SEATS  (owner ask, 8 Oct 2026)
+     *
+     *  Passengers also ride outside the berths — on the balcony, in the
+     *  driver's front cabin, on a fold-out — and that money was never on
+     *  the books. Every departure now carries EX1..EXn (default 20, Admin
+     *  -> Extra seats) that ONLY a signed-in selling staff member (counter,
+     *  agent, admin) can sell. A customer never sees or holds one.
+     *
+     *  An extra seat is a normal sale in every other way: one booking_seats
+     *  row, a passenger, a ticket, a payment, agent commission, the ledger.
+     *  It is its own physical position (identity in every booking mode), has
+     *  no cabin and therefore no gender lock, and is NOT counted against the
+     *  coach's berths — the bus is "full" when its berths are, not earlier.
+     *  Sharing / seater only: a private cabin is sold whole.
+     * ===================================================================== */
+
+    /** EX1..EX99 — the extra-seat id namespace (never collides with L/U/1A). */
+    public static function isExtraSeat(string $seat): bool
+    {
+        return preg_match('/^EX([1-9]\d?)$/', strtoupper(trim($seat))) === 1;
+    }
+
+    /** How many extra seats every bus carries (Admin -> Extra seats; 0 = off). */
+    public static function extraSeatCount(): int
+    {
+        return max(0, min(40, Settings::getInt('extra_seats_per_bus', 20)));
+    }
+
+    /** @return array<int, string> EX1..EXn */
+    public static function extraSeatIds(): array
+    {
+        $out = [];
+        for ($i = 1, $n = self::extraSeatCount(); $i <= $n; $i++) {
+            $out[] = 'EX' . $i;
+        }
+        return $out;
+    }
+
+    /** Does this request come from staff who may sell extra seats? Session-decided, never payload. */
+    public static function staffMaySellExtra(): bool
+    {
+        return class_exists('Auth') && Auth::admin() !== null
+            && (Auth::isSellingStaff() || Auth::isSuperadmin());
+    }
+
+    /**
+     * Refuse extra seats the caller may not take: not staff, private mode,
+     * or a number beyond this bus's extra-seat count.
+     *
+     * @param array<int, string> $seats only the EX ids of a request
+     */
+    public static function assertExtraAllowed(array $seats, ?string $bookingType): void
+    {
+        if ($seats === []) {
+            return;
+        }
+        if (!self::staffMaySellExtra()) {
+            throw new RuntimeException('Extra seats are sold only at the counter / by an agent. / एक्स्ट्रा सिट काउन्टर वा एजेन्टबाट मात्र बुक हुन्छ।');
+        }
+        if ($bookingType === 'private') {
+            throw new RuntimeException('Extra seats cannot be part of a private cabin booking. / प्राइभेट केबिनमा एक्स्ट्रा सिट मिल्दैन।');
+        }
+        $valid = array_flip(self::extraSeatIds());
+        foreach ($seats as $s) {
+            if (!isset($valid[strtoupper((string) $s)])) {
+                throw new RuntimeException('Extra seat ' . $s . ' does not exist on this bus (max ' . count($valid) . '). / यो एक्स्ट्रा सिट छैन।');
+            }
+        }
+    }
+
+    /**
+     * Extra seats sold per schedule.
+     *
+     * @param  array<int, int> $scheduleIds
+     * @return array<int, int> schedule id => extra seats occupied
+     */
+    public static function extraOccupiedFor(array $scheduleIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $scheduleIds))));
+        if ($ids === []) {
+            return [];
+        }
+        $ph = [];
+        $pa = [];
+        foreach ($ids as $i => $id) {
+            $ph[]         = ':s' . $i;
+            $pa['s' . $i] = $id;
+        }
+        $rows = Database::fetchAll(
+            "SELECT schedule_id, COUNT(*) AS n FROM booking_seats
+              WHERE schedule_id IN (" . implode(',', $ph) . ")
+                AND released_at IS NULL AND seat_no LIKE 'EX%'
+              GROUP BY schedule_id",
+            $pa
+        );
+        $out = array_fill_keys($ids, 0);
+        foreach ($rows as $r) {
+            $out[(int) $r['schedule_id']] = (int) $r['n'];
+        }
+        return $out;
+    }
+
     /**
      * Every seat id that physically exists on the coach running a schedule.
      *
@@ -966,6 +1069,25 @@ final class Seats
         // exactly like an out-of-service block, so a customer can neither see
         // them free nor select them. A super-admin sells them from the admin
         // seat map, which reads adminSeatMap() rather than this method.
+        // Extra seats (8 Oct 2026) are split out of the berth lists, so every
+        // berth count ("x seats left", FULL) stays a count of berths. Their own
+        // block is filled only for selling staff — a customer never sees one.
+        $isEx      = static fn($s): bool => self::isExtraSeat((string) $s);
+        $exBooked  = array_values(array_filter($booked, $isEx));
+        $exLocked  = array_values(array_filter($locked, $isEx));
+        $booked    = array_values(array_filter($booked, static fn($s): bool => !self::isExtraSeat((string) $s)));
+        $locked    = array_values(array_filter($locked, static fn($s): bool => !self::isExtraSeat((string) $s)));
+        $extra     = null;
+        if ($bookingType !== 'private' && self::extraSeatCount() > 0 && self::staffMaySellExtra()) {
+            $exAll = self::extraSeatIds();
+            $extra = [
+                'all'       => $exAll,
+                'booked'    => array_values(array_intersect($exAll, $exBooked)),
+                'locked'    => array_values(array_intersect($exAll, $exLocked)),
+                'available' => array_values(array_diff($exAll, $exBooked, $exLocked, $blocked)),
+            ];
+        }
+
         $unavailable = array_unique(array_merge($booked, $locked, $blocked, $staff, $emergency));
         $available   = array_values(array_diff($all, $unavailable));
 
@@ -990,6 +1112,8 @@ final class Seats
             // hard-coding row/col counts locally, so a bus with a different
             // layout only has to change layoutFor() to reach every screen.
             'layout'         => self::layoutFor($coachType, $bookingType),
+            // null for customers / private mode; staff get EX1..EXn status.
+            'extra'          => $extra,
         ];
     }
 
@@ -1098,6 +1222,14 @@ final class Seats
         $coach    = self::coachForSchedule($scheduleId);
         $labelsOk = array_flip(self::seatIds($coach, $mode));
         $exists   = array_flip(self::seatIdsForSchedule($scheduleId));
+        // Extra seats (8 Oct 2026): only selling staff, never in private mode.
+        // A customer's EX1 simply fails like any seat the bus does not have.
+        if ($mode !== 'private' && ($allowStaffSeats || self::staffMaySellExtra())) {
+            foreach (self::extraSeatIds() as $ex) {
+                $labelsOk[$ex] = true;
+                $exists[$ex]   = true;
+            }
+        }
 
         foreach ($seats as $seat) {
             $seat = strtoupper(Security::clean($seat, 10));
@@ -1285,9 +1417,14 @@ final class Seats
         // MODE (a private L19 is not a cabin this bus has) and again for every
         // physical bed the label expands to. ($coach was resolved above, where
         // the request's labels are first expanded into beds.)
+        // Extra seats (8 Oct 2026) are judged by their own rule — staff only,
+        // sharing / seater only, within this bus's count — and then exist
+        // like any berth for the occupancy checks below (identity namespace).
+        $extraReq = array_values(array_filter($seats, static fn($s): bool => self::isExtraSeat((string) $s)));
+        self::assertExtraAllowed($extraReq, $mode);
         $unknown = array_values(array_unique(array_merge(
-            array_diff($seats, self::seatIds($coach, $mode)),
-            self::physicalSetToMode(array_diff($reqPhysical, self::seatIdsForSchedule($scheduleId)), $mode, $coach)
+            array_diff($seats, self::seatIds($coach, $mode), $extraReq),
+            self::physicalSetToMode(array_diff($reqPhysical, self::seatIdsForSchedule($scheduleId), $extraReq), $mode, $coach)
         )));
         if ($unknown !== []) {
             throw new RuntimeException(
@@ -1393,7 +1530,7 @@ final class Seats
             'UPDATE schedules
                 SET seats_booked = (
                     SELECT COUNT(*) FROM booking_seats
-                     WHERE schedule_id = :s1 AND released_at IS NULL
+                     WHERE schedule_id = :s1 AND released_at IS NULL AND seat_no NOT LIKE \'EX%\'
                 )
               WHERE id = :s2',
             ['s1' => $scheduleId, 's2' => $scheduleId]
@@ -1425,7 +1562,7 @@ final class Seats
                 'UPDATE schedules
                     SET seats_booked = (
                         SELECT COUNT(*) FROM booking_seats
-                         WHERE schedule_id = :s1 AND released_at IS NULL
+                         WHERE schedule_id = :s1 AND released_at IS NULL AND seat_no NOT LIKE \'EX%\'
                     )
                   WHERE id = :s2',
                 ['s1' => $scheduleId, 's2' => $scheduleId]
@@ -1467,7 +1604,7 @@ final class Seats
                 'UPDATE schedules
                     SET seats_booked = (
                         SELECT COUNT(*) FROM booking_seats
-                         WHERE schedule_id = :s1 AND released_at IS NULL
+                         WHERE schedule_id = :s1 AND released_at IS NULL AND seat_no NOT LIKE \'EX%\'
                     )
                   WHERE id = :s2',
                 ['s1' => $scheduleId, 's2' => $scheduleId]
@@ -1636,7 +1773,8 @@ final class Seats
         $incoming = [];
         foreach (array_values($seats) as $i => $seat) {
             $seat = strtoupper((string) $seat);
-            if ($seat === '') {
+            // An extra seat (balcony / front cabin) shares no cabin: no lock.
+            if ($seat === '' || self::isExtraSeat($seat)) {
                 continue;
             }
             $incoming[self::unitKey($seat)][$seat] = self::normaliseGender($genders[$i] ?? null);
@@ -2152,6 +2290,11 @@ final class Seats
         $beds = [];
         foreach ($rows as $r) {
             $sid = (int) $r['schedule_id'];
+            // Extra seats ride on top of the berths: never part of the fill,
+            // so a bus never reads FULL while berths are still free.
+            if (self::isExtraSeat((string) $r['seat_no'])) {
+                continue;
+            }
             foreach (self::physicalSeats(
                 (string) $r['seat_no'],
                 (string) ($r['booking_mode'] ?? 'sharing'),
@@ -2505,7 +2648,7 @@ final class Seats
             'UPDATE schedules
                 SET seats_booked = (
                     SELECT COUNT(*) FROM booking_seats
-                     WHERE schedule_id = :s1 AND released_at IS NULL
+                     WHERE schedule_id = :s1 AND released_at IS NULL AND seat_no NOT LIKE \'EX%\'
                 )
               WHERE id = :s2',
             ['s1' => $scheduleId, 's2' => $scheduleId]
@@ -2671,6 +2814,9 @@ final class Seats
     {
         if (preg_match('/^([LU])(\d+)$/i', $seatNo, $match) === 1) {
             return self::floorName(strtoupper($match[1])) . ' · ' . self::displayLabel(strtoupper($seatNo));
+        }
+        if (self::isExtraSeat($seatNo)) {
+            return 'Extra seat · ' . strtoupper(trim($seatNo));
         }
 
         return 'Seat ' . self::displayLabel(strtoupper($seatNo));

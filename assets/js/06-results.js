@@ -910,6 +910,61 @@ function otherStopText(sel, inputId, errKey) {
   return false;
 }
 
+/* ----------------------------------------------------------------
+   EXTRA SEATS (owner ask, 8 Oct 2026) — passengers on the balcony / in
+   the front cabin were travelling off the books. A signed-in counter /
+   agent now sells them as EX1..EX20: same fare, own ticket, same ledger.
+   The server sends `extra` ONLY to selling staff (api/seats.php), so a
+   customer's map never shows this strip. It lives outside #seatGrid on
+   purpose: Seat AI, the cabin counters and the floor filter never see it.
+---------------------------------------------------------------- */
+function isExtraSeatJS(id) { return /^EX[1-9]\d?$/.test(String(id || '').toUpperCase()); }
+function renderExtraSeats(r, ctx) {
+  const box = $('#seatExtra'); if (!box) return;
+  const snap = SeatSrv.snap(r.id, ctx.date, Flow.bookingType) || SeatSrv.snap(r.id, ctx.date) || {};
+  const ex = snap.extra;
+  const staff = !!(window.SHG_BOOT && window.SHG_BOOT.staff && window.SHG_BOOT.staff.canSell);
+  if (!staff || !ex || !Array.isArray(ex.all) || !ex.all.length || Flow.bookingType === 'private') {
+    box.classList.add('hide'); box.innerHTML = ''; box.onclick = null;
+    return;
+  }
+  const booked = ex.booked || [], held = ex.locked || [];
+  /* An extra seat this desk had picked was sold / held elsewhere meanwhile. */
+  const lost = Flow.seats.filter(s => isExtraSeatJS(s) && (booked.indexOf(s) >= 0 || held.indexOf(s) >= 0));
+  if (lost.length) {
+    Flow.seats = Flow.seats.filter(s => lost.indexOf(s) < 0);
+    toast(tf('tSeatGone', { s: lost.join(', ') }));
+  }
+  let free = 0;
+  const btns = ex.all.map(id => {
+    const bk = booked.indexOf(id) >= 0, hd = !bk && held.indexOf(id) >= 0, sl = Flow.seats.indexOf(id) >= 0;
+    if (!bk && !hd) free++;
+    const cls = 'seat sx-seat' + (bk || hd ? ' bkd' : '') + (hd ? ' hold' : '') + (sl ? ' sel' : '');
+    return '<button type="button" class="' + cls + '" data-id="' + id + '"' + (bk || hd ? ' disabled' : '')
+      + ' aria-pressed="' + (sl ? 'true' : 'false') + '" title="Extra seat ' + id + (bk ? ' (booked)' : hd ? ' (held)' : '') + '">' + id + '</button>';
+  }).join('');
+  box.innerHTML = '<div class="sx-head"><b>➕ Extra seats · एक्स्ट्रा सिट</b>'
+    + '<span class="sx-free' + (free ? '' : ' cab-full') + '">' + (free ? free + '/' + ex.all.length + ' खाली · free' : 'FULL') + '</span></div>'
+    + '<small class="sx-hint">Balcony · front cabin · अगाडि केबिन / बालकोनी — counter &amp; agent only. Same fare, own ticket, counted in accounts.</small>'
+    + '<div class="sx-grid">' + btns + '</div>';
+  box.classList.remove('hide');
+  box.onclick = (e) => {
+    const btn = e.target.closest('.sx-seat'); if (!btn || btn.disabled) return;
+    const id = btn.getAttribute('data-id');
+    const ix = Flow.seats.indexOf(id);
+    if (ix >= 0) {
+      Flow.seats.splice(ix, 1); btn.classList.remove('sel'); btn.setAttribute('aria-pressed', 'false');
+      unlockSeat(r.id, ctx.date, id); shgHaptic('tap');
+    } else {
+      if (Flow.seats.length >= CONFIG.booking.maxSeats) { try { toast(tf('seatNote', { n: CONFIG.booking.maxSeats })); } catch (er) {} shgHaptic('error'); return; }
+      Flow.seats.push(id); btn.classList.add('sel'); btn.setAttribute('aria-pressed', 'true');
+      lockSeat(r.id, ctx.date, id); shgHaptic('select');
+    }
+    updateHoldPills();
+    updateSeatSummary();
+  };
+}
+
 function renderSeats(instant) {
   const r = Flow.route; if (!r) return;
   const ctx = legCtx();
@@ -1275,6 +1330,7 @@ function renderSeats(instant) {
         grid.innerHTML = rows;
       }
     }
+    renderExtraSeats(r, ctx);
     updateSeatSummary();
   };
 

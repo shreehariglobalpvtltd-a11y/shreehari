@@ -161,6 +161,8 @@ function admin_nav(): array
         ['href' => 'wa-pending.php',   'icon' => 'msg',       'label' => 'Tickets to hand over','perm'=> 'bookings.view',  'section' => 'Bookings & tickets'],
         ['href' => 'seatmap.php',      'icon' => 'seat',      'label' => 'Seat Map',         'perm' => 'schedules.view', 'section' => 'Seat management'],
         ['href' => 'manifest.php',     'icon' => 'clipboard', 'label' => 'Passenger Manifest', 'perm' => 'bookings.view', 'section' => 'Seat management'],
+        // 8 Oct 2026: balcony / front-cabin passengers EX1..EX20 — sold, counted, settled.
+        ['href' => 'extra-seats.php',  'icon' => 'seat',      'label' => '➕ Extra seats',     'perm' => 'bookings.view', 'section' => 'Seat management'],
         // 17 Sep 2026: every departure document on one hub (PDF / PNG / WhatsApp).
         ['href' => 'chalan.php',       'icon' => 'doc',       'label' => 'Bus Chalan',         'perm' => 'bookings.view', 'section' => 'Trips, buses & chalani'],
 
@@ -309,7 +311,7 @@ function admin_header(string $title, string $active = ''): void
     // sg- components as the customer app) loads first; the panel's own rules
     // follow, then admin.css restyles the shell on top. The UI uses the
     // device's own font now (no webfont download on a slow counter line).
-    $av = '20261008d';
+    $av = '20261008e';
     /* 5 Oct 2026 (owner, Point 12): Poppins across the panel. display=swap, so a
        slow counter line shows the device font at once and swaps when the file
        lands; Devanagari comes from the same family. The CSP already allows it. */

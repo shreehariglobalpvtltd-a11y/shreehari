@@ -4186,3 +4186,12 @@ body.wa-open{overflow:hidden}
 .lg-more{margin:0 0 12px}
 .lg-more summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--muted);padding:6px 2px;list-style:none}
 .lg-more[open] summary{margin-bottom:8px}
+/* Extra seats EX1..EX20 (8 Oct 2026): counter / agent strip under the seat map */
+.seat-extra{margin:16px auto 0;padding:12px;border-radius:16px;border:1.5px dashed rgba(234,88,12,.55);background:rgba(251,146,60,.08);max-width:560px}
+.seat-extra.hide{display:none}
+.seat-extra .sx-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px}
+.seat-extra .sx-free{font-size:12px;font-weight:800;color:#047857}
+.seat-extra .sx-free.cab-full{color:#b91c1c}
+.seat-extra .sx-hint{display:block;margin:4px 0 10px;color:var(--muted,#64748b);font-size:12px;line-height:1.4}
+.seat-extra .sx-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.seat-extra .sx-seat{min-width:0;min-height:44px;font-size:13px}

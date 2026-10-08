@@ -247,6 +247,10 @@ $coach       = $route ? (string) $route['coach_type'] : 'sleeper';
 $scheduleId  = 0;
 $map         = [];
 $tripBookings = [];
+$extraIds    = [];
+$extraRows   = [];
+$extraOpen   = [];
+$extraMine   = static fn(array $xr): bool => false;
 $dayBuses    = [];
 $dayBusFill  = [];
 if ($route !== null) {
@@ -254,6 +258,33 @@ if ($route !== null) {
     $scheduleId = (int) $schedule['id'];
     $coach      = Seats::effectiveCoach($schedule, $route);   // this departure's own coach
     $map        = Seats::adminSeatMap($scheduleId, $coach);
+
+    /* Extra seats EX1..EXn (8 Oct 2026): balcony / front-cabin passengers.
+       Not berths, so adminSeatMap() does not draw them — listed here with
+       the same privacy split (an agent sees only their own passengers). */
+    $extraIds  = Seats::extraSeatIds();
+    $extraRows = [];
+    if ($extraIds !== []) {
+        foreach (Database::fetchAll(
+            "SELECT bs.seat_no, b.pnr, b.total_amount, b.fare_per_seat, b.sold_by_admin_id, b.source, b.status,
+                    bp.full_name, bp.gender,
+                    (SELECT COUNT(*) FROM booking_seats x WHERE x.booking_id = b.id AND x.released_at IS NULL) AS seats_in_booking
+               FROM booking_seats bs
+               JOIN bookings b ON b.id = bs.booking_id
+               LEFT JOIN booking_passengers bp ON bp.booking_id = bs.booking_id AND bp.seat_no = bs.seat_no
+              WHERE bs.schedule_id = :s AND bs.released_at IS NULL AND bs.seat_no LIKE 'EX%'",
+            ['s' => $scheduleId]
+        ) as $xr) {
+            $extraRows[strtoupper((string) $xr['seat_no'])] = $xr;
+        }
+    }
+    $extraHeld = array_map('strtoupper', array_map('strval', array_column(Database::fetchAll(
+        "SELECT seat_no FROM seat_locks WHERE schedule_id = :s AND seat_no LIKE 'EX%' AND expires_at > NOW()",
+        ['s' => $scheduleId]
+    ), 'seat_no')));
+    $extraOpen = array_values(array_filter($extraIds, static fn(string $x): bool => !isset($extraRows[$x]) && !in_array($x, $extraHeld, true)));
+    $extraScope = Auth::bookingScopeAdminId();
+    $extraMine  = static fn(array $xr): bool => $extraScope === null || (int) ($xr['sold_by_admin_id'] ?? 0) === $extraScope;
 
     /* Every bus on this route + date (2 Oct 2026). On 1 Oct the office ran
        the daily bus AND an extra one; this page only ever drew the daily bus
@@ -1001,6 +1032,9 @@ if ($legendStops !== []): ?>
       <select name="seat" id="counterSeatSel" required>
         <option value="">Choose an open seat…</option>
         <?php foreach ($openSeats as $s): ?><option value="<?= Security::e($s) ?>"><?= Security::e(Seats::displayLabel((string) $s, $coach, 'sharing')) ?></option><?php endforeach; ?>
+        <?php if ($extraOpen !== []): ?><optgroup label="➕ Extra seats (balcony / front cabin)">
+          <?php foreach ($extraOpen as $s): ?><option value="<?= Security::e($s) ?>"><?= Security::e($s) ?> · extra</option><?php endforeach; ?>
+        </optgroup><?php endif; ?>
       </select>
       <input type="text" name="pax_name" placeholder="Passenger name" maxlength="120" required>
       <div style="display:flex;gap:8px">
@@ -1036,16 +1070,45 @@ if ($legendStops !== []): ?>
       <select name="seat" required>
         <option value="">From booked seat…</option>
         <?php foreach ($bookedSeats as $s): ?><option value="<?= Security::e($s) ?>"><?= Security::e(Seats::displayLabel((string) $s, $coach, 'sharing')) ?><?= !empty($map[$s]['passenger']) ? ' · ' . Security::e((string) $map[$s]['passenger']) : '' ?></option><?php endforeach; ?>
+        <?php foreach ($extraRows as $s => $xr): if (!$extraMine($xr)) { continue; } ?><option value="<?= Security::e($s) ?>"><?= Security::e($s) ?> · extra · <?= Security::e((string) ($xr['full_name'] ?? '')) ?></option><?php endforeach; ?>
       </select>
       <select name="to_seat" required>
         <option value="">To open seat…</option>
         <?php foreach ($openSeats as $s): ?><option value="<?= Security::e($s) ?>"><?= Security::e(Seats::displayLabel((string) $s, $coach, 'sharing')) ?></option><?php endforeach; ?>
+        <?php if ($extraOpen !== []): ?><optgroup label="➕ Extra seats">
+          <?php foreach ($extraOpen as $s): ?><option value="<?= Security::e($s) ?>"><?= Security::e($s) ?> · extra</option><?php endforeach; ?>
+        </optgroup><?php endif; ?>
       </select>
       <button class="btn" type="submit" name="action" value="transfer" onclick="return confirm('Move this passenger to the new seat?')">Transfer seat</button>
       <span class="muted" style="font-size:12px">Same-trip reseat — no duplicate booking; the shared-cabin gender rule still applies.</span>
     </form>
 
   </div>
+</div>
+<?php endif; ?>
+
+<?php if ($extraIds !== []): ?>
+<div class="panel">
+  <h2>➕ Extra seats · <?= count($extraRows) ?>/<?= count($extraIds) ?> sold
+    <span class="muted" style="font-size:12px;font-weight:400">balcony · front cabin · अगाडि केबिन / बालकोनी — not counted in the berth fill</span></h2>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">
+    <?php foreach ($extraIds as $x):
+        $xr = $extraRows[$x] ?? null;
+        $held = $xr === null && in_array($x, $extraHeld ?? [], true); ?>
+      <div style="border:1px solid var(--line,#d6deea);border-radius:10px;padding:8px;font-size:12.5px;<?= $xr !== null ? 'background:rgba(220,38,38,.07)' : ($held ? 'background:rgba(234,179,8,.10)' : 'background:rgba(16,185,129,.07)') ?>">
+        <b><?= Security::e($x) ?></b>
+        <?php if ($xr === null): ?>
+          · <?= $held ? 'held' : 'free' ?>
+        <?php elseif ($extraMine($xr)): ?>
+          · <?= Security::e((string) ($xr['full_name'] ?? '')) ?><br>
+          <a href="/admin/booking-view.php?pnr=<?= urlencode((string) $xr['pnr']) ?>"><?= Security::e((string) $xr['pnr']) ?></a> · <?= Security::e(inr(round((float) ($xr['total_amount'] ?? 0) / max(1, (int) ($xr['seats_in_booking'] ?? 1)), 2))) ?>
+        <?php else: ?>
+          · booked
+        <?php endif; ?>
+      </div>
+    <?php endforeach; ?>
+  </div>
+  <p class="muted" style="font-size:12px;margin:8px 0 0">Sell from <b>Counter booking</b> above (choose an EX seat) or in the app's counter mode. Move a passenger to a real berth with <b>Transfer</b> when one frees up. Report: <a href="/admin/extra-seats.php">Extra seats register →</a></p>
 </div>
 <?php endif; ?>
 

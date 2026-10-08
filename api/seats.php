@@ -84,6 +84,9 @@ try {
         // 29 Aug 2026, layout-unification round 1).
         'layout'         => $availability['layout'],
         'holdMinutes'    => Settings::getInt('seat_hold_minutes', SEAT_HOLD_MINUTES),
+        // Extra seats EX1..EXn (8 Oct 2026): null unless a selling staff
+        // member is signed in (counter / agent / admin), sharing or seater.
+        'extra'          => $availability['extra'] ?? null,
     ]);
 } catch (Throwable $e) {
     Response::serverError($e);
