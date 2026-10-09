@@ -58,7 +58,8 @@ check('settlement WhatsApp honours agent_notify_settlement', str_contains($a360,
 check('statement uses opening / running / closing from AgentWallet::statement', str_contains($a360, 'AgentWallet::statement(') && str_contains($a360, 'AgentWallet::openingBalance('));
 check('12-month commission bars come from commissionByMonth', str_contains($a360, 'AgentWallet::commissionByMonth('));
 check('net position comes from netPosition()', str_contains($a360, 'AgentWallet::netPosition('));
-check('every tab section is present (Report + 8)', substr_count($a360, 'class="a360-tab" data-tab="') === 9);
+// 9 Oct 2026: + the Office chat "Messages" tab (rendered only for the office when the chat tables exist).
+check('every tab section is present (Report + 8 + Messages)', substr_count($a360, 'class="a360-tab" data-tab="') === 10 && str_contains($a360, 'data-tab="messages"'));
 check('output is escaped (Security::e used throughout)', substr_count($a360, 'Security::e(') >= 5 && substr_count($a360, '$e(') >= 40);
 check('face photo is served from /uploads/agents/ only', str_contains($a360, "str_starts_with((string) \$profile['photo_path'], 'agents/')"));
 

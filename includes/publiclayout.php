@@ -103,7 +103,7 @@ final class PublicLayout
         return $co;
     }
 
-    /** tel: href from any written number ("+91 91048 …" → "tel:+9191048…"). */
+    /** tel: href from any written number (spaces and dashes dropped, a leading + kept or added). */
     public static function telHref(string $phone): string
     {
         $d = preg_replace('/[^0-9+]/', '', $phone) ?? '';
@@ -134,15 +134,26 @@ final class PublicLayout
      *  local copy of assets/img/flag-in.svg / flag-np.svg (explicit fills,
      *  so they render the same in light, dark and AMOLED).
      * ---------------------------------------------------------------- */
-    public static function flag(string $cc, int $h = 16): string
+    /** The visitor's language — set by the page builders so flag labels read in it. */
+    public static string $lang = 'en';
+
+    /** Brand's sprite flags are available (includes/brand.php, 9 Oct 2026). */
+    private static function brandFlags(): bool
     {
-        $cc = strtoupper($cc) === 'NP' ? 'NP' : 'IN';
         if (!class_exists('Brand', false) && is_file(INCLUDE_PATH . '/brand.php')) {
             require_once INCLUDE_PATH . '/brand.php';
         }
-        if (class_exists('Brand', false) && method_exists('Brand', 'flagSvg')) {
+        return class_exists('Brand', false) && method_exists('Brand', 'flagUse') && method_exists('Brand', 'flagSprite');
+    }
+
+    public static function flag(string $cc, int $h = 16): string
+    {
+        $cc = strtoupper($cc) === 'NP' ? 'NP' : 'IN';
+        if (self::brandFlags()) {
             try {
-                $svg = (string) Brand::flagSvg($cc, $h);
+                // Drawn from the page sprite (page() prints Brand::flagSprite() once):
+                // a few dozen bytes a flag instead of ~1 KB — /explore prints 60+.
+                $svg = (string) Brand::flagUse($cc, $h, self::$lang);
                 if ($svg !== '') {
                     return $svg;
                 }
@@ -373,9 +384,13 @@ final class PublicLayout
         $robots = !empty($opts['noindex']) ? '<meta name="robots" content="noindex">' : '';
 
         $langNav = '';
+        $short = ['ne' => 'ने', 'hi' => 'हि', 'en' => 'EN'];
         foreach (self::LANG_NAMES as $l => $lab) {
-            $langNav .= '<a href="' . $e(self::url($path, $l)) . '" hreflang="' . $l . '" lang="' . $l . '"' . ($l === $lang ? ' aria-current="true"' : '') . '>' . $lab . '</a>';
+            // Full name from 480 px up, a two-letter pill on a phone (the header stays one row).
+            $langNav .= '<a href="' . $e(self::url($path, $l)) . '" hreflang="' . $l . '" lang="' . $l . '" title="' . $lab . '"' . ($l === $lang ? ' aria-current="true"' : '') . '>'
+                . '<span class="lf">' . $lab . '</span><span class="ls" aria-hidden="true">' . $short[$l] . '</span></a>';
         }
+        $sprite = self::brandFlags() ? Brand::flagSprite() : '';
         $tabs = '';
         foreach (['india-nepal' => ['🤝', 'indiaNepal'], 'offices' => ['🏢', 'offices'], 'explore' => ['🏔️', 'explore'], 'tours' => ['🧳', 'tours']] as $k => [$ic, $wk]) {
             $tabs .= '<a href="' . $e(self::url('/' . $k, $lang)) . '"' . ($k === $active ? ' aria-current="page"' : '') . '><span aria-hidden="true">' . $ic . '</span>' . $e($w[$wk]) . '</a>';
@@ -423,7 +438,7 @@ final class PublicLayout
 <style>{$css}</style>
 </head>
 <body>
-<a class="skip" href="#main">{$e($w['skip'])}</a>
+{$sprite}<a class="skip" href="#main">{$e($w['skip'])}</a>
 <header class="appbar">
   <div class="bar">
     <a class="brand" href="/">{$logo}<span class="bn">{$e($co['name'])}</span></a>
@@ -565,8 +580,13 @@ html.rv-on .rv.in{opacity:1;transform:none}
 .foot-off a{font-weight:700;text-decoration:none;white-space:nowrap}
 .foot-links a{display:inline-flex;min-height:32px;align-items:center;color:var(--md-on-surface);text-decoration:none}
 .legal{font-size:12.5px;color:var(--md-on-surface-variant)}.legal a{color:inherit}
+main [id]{scroll-margin-top:124px}
+.langs .ls{display:none}
+.foot-links{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px}.foot-links li{margin:2px 0}
 @media (min-width:720px){.hero{padding:40px 36px 30px}.bn{font-size:17px}}
-@media (max-width:420px){.bn{font-size:13.5px}.langs a{padding:0 9px}.bar .flags{display:none}}
+@media (max-width:479px){.bar{flex-wrap:nowrap;gap:8px;padding:6px 12px 6px 14px}.brand{gap:8px}.brand .logo{height:34px}.bn{font-size:13px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .langs .lf{display:none}.langs .ls{display:inline}.langs a{min-width:38px;min-height:40px;padding:0 6px;justify-content:center}.bar .flags{display:none}.tabs{padding:0 12px 8px}}
+@media (max-width:369px){.brand .logo{height:28px}.bn{font-size:12px}.tools{gap:4px}}
 @media print{.appbar,.tabs,.foot,.btns,.themebtn{display:none}.card,.hero{box-shadow:none}html.rv-on .rv{opacity:1;transform:none}}
 CSS;
     }

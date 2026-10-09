@@ -959,6 +959,22 @@ final class Ticket
         }
         imagefilledrectangle($im, $x1, $y1 + 12, $x1 + 6, $y2 - 12, $gold);
         $h = $y2 - $y1;
+        if ($h < 76) {
+            /* Compact tile (the pay-QR layout has ~60px): the label stacked on
+               the left, the code beside it at full height — stacked above each
+               other they touched. */
+            self::gdText($im, 14, $x1 + 22, $y1 + (int) round($h * 0.44), $mut, 'सुरक्षा कोड', true);
+            self::gdText($im, 12, $x1 + 22, $y1 + (int) round($h * 0.44) + 21, $mut, 'SECURITY CODE', false);
+            $sz = 29;
+            $cx = $x1 + 22 + max(self::gdWidth(14, 'सुरक्षा कोड'), self::gdWidth(12, 'SECURITY CODE')) + 26;
+            $base = $y1 + intdiv($h, 2) + 14;
+            foreach (str_split(self::securityCodeGrouped($code)) as $ch) {
+                if ($ch === ' ') { $cx += (int) round($sz * 0.55); continue; }
+                self::gdText($im, $sz, $cx, $base, $navy, $ch, true);
+                $cx += self::gdWidth($sz, $ch) + (int) round($sz * 0.22);
+            }
+            return;
+        }
         $lab = 'सुरक्षा कोड  ·  SECURITY CODE';
         $labSz = $h >= 76 ? 14 : 13;
         self::gdText($im, $labSz, $x1 + 22, $y1 + ($h >= 76 ? 26 : 22), $mut, $lab, false);
@@ -1315,8 +1331,12 @@ final class Ticket
      *  a PDF viewer, and is exactly what a future WhatsApp Business API
      *  sender will attach — that sender only needs pngPath($bookingId).
      *  The PDF stays for printing (admin/office) and as the bilingual
-     *  legal document; GD cannot shape Devanagari (no OpenType shaping),
-     *  so per the house ticket rules the image is Roman-script.
+     *  legal document. Nepali labels are shaped by HarfBuzz (DevShape,
+     *  24 Sep 2026) through gdText()/gdWidth(); proper nouns and codes stay
+     *  Roman (house ticket rules). Since 9 Oct 2026 the image also carries
+     *  the transparent emblem, both flags, a diagonal anti-fake microtext,
+     *  the SECURITY CODE beside the verify QR and the heritage band
+     *  (Sagarmatha · Lumbini) appended under the footer.
      * ================================================================= */
 
     /** Generate (and cache) the PNG ticket. Same contract as pdfPath(). */
@@ -2241,13 +2261,13 @@ final class Ticket
      *  tickets drawn at 23:43/23:44 IST with the old seat labels were never
      *  redrawn. tests/chalani-png-test.php and tests/ticket-cache-test.php
      *  assert a past moment. */
-    private const PNG_LAYOUT_CHANGED = '2026-10-08 23:42:00';   // IST: premium upgrade (pr1) - pickup-time clock, floor on the seat chip, map QR beside the verify QR, no phone in the QR, 'Departed' label. Was 2026-10-08 12:08:30:   // IST: pickup landmark + Google Maps QR of the pickup (master prompt 2.0). Was 2026-10-04 12:15:00:   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
+    private const PNG_LAYOUT_CHANGED = '2026-10-09 19:13:00';   // IST: showcase upgrade - emblem without the white chip, India + Nepal flags, heritage band (Sagarmatha · Lumbini) appended under the footer, SECURITY CODE beside the verify QR, diagonal anti-fake microtext, Nepali header labels. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - pickup-time clock, floor on the seat chip, map QR beside the verify QR, no phone in the QR, 'Departed' label. Was 2026-10-08 12:08:30:   // IST: pickup landmark + Google Maps QR of the pickup (master prompt 2.0). Was 2026-10-04 12:15:00:   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
      *  seat box + stub pick up the current seat labels without a manual purge
      *  (23 Sep 2026: the two-floor grid A1-F6 / A7-F12). */
-    private const PDF_LAYOUT_CHANGED = '2026-10-08 23:42:00';   // IST: premium upgrade (pr1) - INR amounts, LOWER 1F / UPPER 2F seat box, bilingual headers, fixed DEPARTS label. Was 2026-10-04 12:15:00:   // IST: per-company letterhead, help numbers from the desk table (no hard-coded offices), INVOICE vs TAX INVOICE. Was 2026-09-24 10:30:00:   // IST: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
+    private const PDF_LAYOUT_CHANGED = '2026-10-09 19:13:00';   // IST: showcase upgrade - emblem aspect-correct without the white rect, flags, heritage card in the footer, SECURITY CODE on the stub, fare box no longer overlaps the Base / Disc line. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - INR amounts, LOWER 1F / UPPER 2F seat box, bilingual headers, fixed DEPARTS label. Was 2026-10-04 12:15:00:   // IST: per-company letterhead, help numbers from the desk table (no hard-coded offices), INVOICE vs TAX INVOICE. Was 2026-09-24 10:30:00:   // IST: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
 
     /**
      * How many passengers the ticket names one by one before it stops and

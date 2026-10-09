@@ -400,6 +400,7 @@ function coGoStep(n) {
     /* Push history entry so Android back-button returns to step 1 */
     if (typeof window._shgCoStepPush === 'function') window._shgCoStepPush();
   }
+  if (n === 2) { try { coEnsureAmountField(); } catch (e) {} }
   const s1 = $('#coStep1'), pc = $('#payCard'), ind = $('#co2Step');
   if (s1) s1.classList.toggle('hide', n !== 1);
   if (pc) pc.classList.toggle('hide', n !== 2);
@@ -1343,6 +1344,7 @@ async function coSendProof(p) {
       if (p.phone) fd.append('phone', String(p.phone));
       if (p.k) fd.append('k', String(p.k));
       if (p.utr) fd.append('utr', p.utr);
+      if (p.amount) fd.append('amount', String(p.amount));   // optional "Amount paid" (9 Oct 2026) - advisory, a person verifies
       if (p.shot) fd.append('screenshot', p.shot, 'payment.jpg');
       await shgApi.postForm('/payment.php', fd);
       return true;
@@ -1351,6 +1353,40 @@ async function coSendProof(p) {
     }
   }
   return false;
+}
+/* Optional "Amount paid" on the proof step (9 Oct 2026, anti-fake). The
+   passenger types what their payment app shows; the office queue compares it
+   with the fare (PaymentRisk AMOUNT_MISMATCH). Never required, never decides
+   anything by itself - a person still verifies every payment. Injected here
+   (not in the template) so the field travels with the code that sends it. */
+const CO_AMT_TXT = {
+  ne: { l: 'तिरेको रकम (₹) — ऐच्छिक', h: 'भुक्तानी एपमा देखिएको रकम लेख्नुहोस्। यसले जाँच छिटो हुन्छ।', p: 'जस्तै 2200' },
+  en: { l: 'Amount paid (₹) — optional', h: 'Type the amount your payment app shows. It helps us verify faster.', p: 'e.g. 2200' },
+  hi: { l: 'भुगतान राशि (₹) — वैकल्पिक', h: 'पेमेंट ऐप में दिखी राशि लिखें। इससे जाँच जल्दी होगी।', p: 'जैसे 2200' }
+};
+function coEnsureAmountField() {
+  const sec = document.getElementById('proofSection');
+  if (!sec) return;
+  const tx = CO_AMT_TXT[(typeof LANG !== 'undefined' && CO_AMT_TXT[LANG]) ? LANG : 'ne'];
+  let wrap = document.getElementById('paidAmtField');
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.className = 'field';
+    wrap.id = 'paidAmtField';
+    wrap.style.margin = '10px 0 0';
+    wrap.innerHTML = '<label for="paidAmtInput"></label><input id="paidAmtInput" inputmode="decimal" autocomplete="off" maxlength="9"><small class="hint" style="display:block;margin-top:4px;font-size:12px;color:var(--muted)"></small>';
+    const anchor = sec.querySelector('.verify-note');
+    if (anchor) sec.insertBefore(wrap, anchor); else sec.appendChild(wrap);
+    wrap.querySelector('input').addEventListener('input', function () { this.value = this.value.replace(/[^\d.]/g, '').slice(0, 9); });
+  }
+  wrap.querySelector('label').textContent = tx.l;
+  wrap.querySelector('input').placeholder = tx.p;
+  wrap.querySelector('small').textContent = tx.h;
+}
+function coClaimedAmount() {
+  const el = document.getElementById('paidAmtInput');
+  const v = el ? parseFloat(String(el.value || '').replace(/[^\d.]/g, '')) : NaN;
+  return (isFinite(v) && v > 0 && v < 1000000) ? String(Math.round(v * 100) / 100) : '';
 }
 /* "Resend payment proof" on the ticket's red band: the saved UTR or the
    saved screenshot again; with neither, the full proof form. */
@@ -1669,7 +1705,7 @@ async function submitBooking() {
     let shotBlob = null;
     try { if (payMode === 'screenshot' && payShot) shotBlob = (Flow.shotBlob instanceof Blob) ? Flow.shotBlob : shgApi.dataUrlToBlob(payShot); } catch (e) {}
     proofOk = await coSendProof({ pnr: pnr, method: PAY_METHOD, payerName: (passengers[0] && passengers[0].name) || '',
-      utr: payMode === 'utr' ? payUtr : '', shot: shotBlob, phone: phoneVal });
+      utr: payMode === 'utr' ? payUtr : '', shot: shotBlob, phone: phoneVal, amount: coClaimedAmount() });
     if (!proofOk) booking.proofPending = { method: PAY_METHOD, mode: payMode, utr: payUtr, at: Date.now() };
   }
 
@@ -2234,9 +2270,178 @@ function paymentStepper(b) {
     + '</ol>';
 }
 
+/* ---- Live security band on the on-screen ticket (9 Oct 2026) ----------
+   Owner: "ticket fake badi hun layo". A moving holographic band with the
+   S HARI emblem, the India + Nepal flags, a ticking clock and a 4-digit code
+   that changes every 30 s (api/ticket-live.php, HMAC of PNR + time window).
+   A screenshot or an edited picture freezes the shimmer, the seconds and the
+   code; the gate scanner (admin/scan.php) shows what a live screen must read.
+   Offline it says so ("OFFLINE — scan the QR") and NEVER shows a cached code.
+   Reduced motion: the band is static, the clock still ticks (information,
+   not decoration). CSS is injected once as <style id="shg-secure-css">. */
+const TK_SEC_TXT = {
+  ne: { live: 'लाइभ', time: 'लाइभ समय', code: 'लाइभ कोड', sec: 'सुरक्षा कोड', check: 'जाँच हुँदै…', off: 'अफलाइन — QR स्क्यान गर्नुहोस्', deny: 'लाइभ कोड बुक गर्ने फोनमा देखिन्छ — QR स्क्यान गर्नुहोस्', bad: 'यो टिकट मान्य छैन — कार्यालयमा सम्पर्क गर्नुहोस्', hint: 'स्क्रिनसट होइन — कोड हरेक ३० सेकेन्डमा फेरिन्छ', aria: 'टिकटको लाइभ सुरक्षा पट्टी' },
+  en: { live: 'LIVE', time: 'Live time', code: 'Live code', sec: 'Security code', check: 'Checking…', off: 'OFFLINE — scan the QR', deny: 'The live code shows on the booking phone — scan the QR', bad: 'This ticket is NOT valid — contact the office', hint: 'Not a screenshot — the code changes every 30 s', aria: 'Live ticket security band' },
+  hi: { live: 'लाइव', time: 'लाइव समय', code: 'लाइव कोड', sec: 'सुरक्षा कोड', check: 'जाँच हो रही है…', off: 'ऑफलाइन — QR स्कैन करें', deny: 'लाइव कोड बुकिंग वाले फोन पर दिखता है — QR स्कैन करें', bad: 'यह टिकट मान्य नहीं है — कार्यालय से संपर्क करें', hint: 'स्क्रीनशॉट नहीं — कोड हर 30 सेकंड बदलता है', aria: 'टिकट की लाइव सुरक्षा पट्टी' }
+};
+function tkSecTxt() { return TK_SEC_TXT[(typeof LANG !== 'undefined' && TK_SEC_TXT[LANG]) ? LANG : 'ne']; }
+function tkSecCss() {
+  if (document.getElementById('shg-secure-css')) return;
+  const st = document.createElement('style');
+  st.id = 'shg-secure-css';
+  st.textContent = [
+    '.shg-sec{position:relative;overflow:hidden;isolation:isolate;margin:12px 0 4px;border-radius:18px;padding:11px 14px 9px;color:#fff;',
+    'background:radial-gradient(120% 140% at 0% 0%,#1E4FA8 0%,rgba(30,79,168,0) 55%),linear-gradient(135deg,#0A1B45 0%,#123275 52%,#0A1B45 100%);',
+    'border:1px solid rgba(255,255,255,.22);box-shadow:0 10px 26px -12px rgba(8,22,60,.7),inset 0 1px 0 rgba(255,255,255,.25)}',
+    '.shg-sec::before{content:"";position:absolute;inset:0;z-index:-1;opacity:.18;background:repeating-radial-gradient(circle at 85% 120%,transparent 0 6px,rgba(255,255,255,.9) 6px 7px),repeating-linear-gradient(120deg,transparent 0 9px,rgba(255,255,255,.35) 9px 10px)}',
+    '.shg-sec-holo{position:absolute;inset:-60%;z-index:-1;pointer-events:none;background:conic-gradient(from 0deg,rgba(255,64,160,.55),rgba(255,206,64,.5),rgba(64,255,190,.5),rgba(64,170,255,.55),rgba(176,96,255,.5),rgba(255,64,160,.55));filter:blur(22px) saturate(1.25);mix-blend-mode:screen;opacity:.42;animation:shgSecSpin 10s linear infinite}',
+    '.shg-sec::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.34) 47%,rgba(255,255,255,0) 58%);transform:translateX(-120%);animation:shgSecSheen 3.6s ease-in-out infinite}',
+    '@keyframes shgSecSpin{to{transform:rotate(360deg)}}@keyframes shgSecSheen{0%,35%{transform:translateX(-120%)}75%,100%{transform:translateX(120%)}}',
+    '@keyframes shgSecMicro{to{transform:translateX(-50%)}}@keyframes shgSecDot{50%{opacity:.25}}',
+    '.shg-sec-row{display:flex;align-items:center;gap:10px}',
+    '.shg-sec-mark{display:inline-flex;align-items:center;gap:7px;font:800 12px/1 var(--f-ui,system-ui);letter-spacing:.14em;text-shadow:0 1px 2px rgba(0,0,0,.4)}',
+    '.shg-sec-mark img{height:22px;width:auto;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))}',
+    '.shg-sec-flags{display:inline-flex;gap:5px;align-items:center}.shg-sec-flags img,.shg-sec-flags svg{height:15px;width:auto;border-radius:2px;box-shadow:0 0 0 1px rgba(255,255,255,.5)}',
+    '.shg-sec-live{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font:800 11px/1 var(--f-ui,system-ui);letter-spacing:.12em;background:rgba(17,160,90,.9);padding:5px 9px;border-radius:999px;box-shadow:0 0 0 1px rgba(255,255,255,.35)}',
+    '.shg-sec-live i{width:7px;height:7px;border-radius:50%;background:#fff;animation:shgSecDot 1s steps(2,start) infinite}',
+    '.shg-sec-main{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:9px 0 6px}',
+    '.shg-sec-main small{display:block;font:700 10.5px/1.2 var(--f-ui,system-ui);letter-spacing:.06em;text-transform:uppercase;opacity:.82;margin-bottom:3px}',
+    '.shg-sec-clock b{display:block;font:800 26px/1 var(--f-code,ui-monospace,monospace);letter-spacing:.04em;font-variant-numeric:tabular-nums;text-shadow:0 2px 8px rgba(0,0,0,.35)}',
+    '.shg-sec-clock em{display:block;font:600 11.5px/1.3 var(--f-ui,system-ui);font-style:normal;opacity:.85;margin-top:3px}',
+    '.shg-sec-code{display:flex;align-items:center;gap:9px;text-align:right}',
+    '.shg-sec-code b{display:block;font:900 30px/1 var(--f-code,ui-monospace,monospace);letter-spacing:.2em;margin-right:-.2em;font-variant-numeric:tabular-nums;color:#FFE27A;text-shadow:0 0 14px rgba(255,214,90,.55),0 2px 4px rgba(0,0,0,.4)}',
+    '.shg-sec-ring{width:34px;height:34px;flex:0 0 auto;transform:rotate(-90deg)}.shg-sec-ring circle{fill:none;stroke-width:4}.shg-sec-ring .bg{stroke:rgba(255,255,255,.22)}.shg-sec-ring .fg{stroke:#FFE27A;stroke-linecap:round;transition:stroke-dashoffset .9s linear}',
+    '.shg-sec-msg{font:700 12.5px/1.35 var(--f-ui,system-ui);margin:2px 0 4px}',
+    '.shg-sec-foot{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;justify-content:space-between;font:600 11px/1.35 var(--f-ui,system-ui);opacity:.92}',
+    '.shg-sec-foot b{font:800 13px/1 var(--f-code,ui-monospace,monospace);letter-spacing:.14em;background:rgba(255,255,255,.14);padding:3px 7px;border-radius:6px}',
+    '.shg-sec-micro{overflow:hidden;white-space:nowrap;font:700 7.5px/1.4 var(--f-code,ui-monospace,monospace);letter-spacing:.14em;opacity:.5;margin-top:6px}',
+    '.shg-sec-micro span{display:inline-block;animation:shgSecMicro 22s linear infinite}',
+    '.shg-sec.off{background:linear-gradient(135deg,#3A414E 0%,#262B34 100%)}.shg-sec.off .shg-sec-holo,.shg-sec.off::after{display:none}.shg-sec.off .shg-sec-live{background:rgba(120,128,140,.95)}.shg-sec.off .shg-sec-live i{animation:none}',
+    '.shg-sec.bad{background:linear-gradient(135deg,#8A1325 0%,#4E0A15 100%)}.shg-sec.bad .shg-sec-holo,.shg-sec.bad::after{display:none}.shg-sec.bad .shg-sec-live{background:#B42525}',
+    '.shg-sec.off .shg-sec-code,.shg-sec.bad .shg-sec-code{display:none}',
+    '@media (max-width:359px){.shg-sec-clock b{font-size:22px}.shg-sec-code b{font-size:25px}}',
+    '@media (prefers-reduced-motion:reduce){.shg-sec-holo,.shg-sec::after,.shg-sec-micro span,.shg-sec-live i{animation:none}.shg-sec::after{display:none}}',
+    'html[data-motion="reduced"] .shg-sec-holo,html[data-motion="reduced"] .shg-sec-micro span,html[data-motion="reduced"] .shg-sec-live i{animation:none}html[data-motion="reduced"] .shg-sec::after{display:none}',
+    '@media print{.shg-sec-holo,.shg-sec::after{display:none}}'
+  ].join('');
+  document.head.appendChild(st);
+}
+function tkSecFlag(cc) {
+  try { if (typeof window.shgFlag === 'function') { const s = window.shgFlag(cc, 15); if (s) return s; } } catch (e) {}
+  return '<img src="/assets/img/flag-' + (cc === 'IN' ? 'in' : 'np') + '.svg" alt="' + (cc === 'IN' ? 'India' : 'Nepal') + '" width="' + (cc === 'IN' ? 23 : 12) + '" height="15">';
+}
+function tkSecureBandHTML(b) {
+  const x = tkSecTxt();
+  const micro = ('S HARI GLOBAL · GENUINE E-TICKET · ' + b.id + ' · शुभ यात्रा · ').repeat(6);
+  return '<section class="shg-sec" id="tkSecure" data-pnr="' + esc(b.id) + '" role="group" aria-label="' + esc(x.aria) + '">'
+    + '<div class="shg-sec-holo" aria-hidden="true"></div>'
+    + '<div class="shg-sec-row"><span class="shg-sec-mark"><img src="/assets/img/logo-mark-96h.webp" alt="" width="42" height="22" decoding="async">S HARI</span>'
+    + '<span class="shg-sec-flags">' + tkSecFlag('IN') + tkSecFlag('NP') + '</span>'
+    + '<span class="shg-sec-live"><i aria-hidden="true"></i><span id="tkSecLive">' + esc(x.live) + '</span></span></div>'
+    + '<div class="shg-sec-main"><div class="shg-sec-clock"><small>' + esc(x.time) + ' · IST</small><b id="tkSecClock" aria-live="off">--:--:--</b><em id="tkSecDate"></em></div>'
+    + '<div class="shg-sec-code"><div><small>' + esc(x.code) + '</small><b id="tkSecCode" aria-live="polite">····</b></div>'
+    + '<svg class="shg-sec-ring" viewBox="0 0 36 36" aria-hidden="true"><circle class="bg" cx="18" cy="18" r="15"/><circle class="fg" id="tkSecRing" cx="18" cy="18" r="15" stroke-dasharray="94.25" stroke-dashoffset="0"/></svg></div></div>'
+    + '<div class="shg-sec-msg" id="tkSecMsg" role="status">' + esc(x.check) + '</div>'
+    + '<div class="shg-sec-foot"><span id="tkSecSecWrap" hidden>' + esc(x.sec) + ' <b id="tkSecSec"></b></span><span>' + esc(x.hint) + '</span></div>'
+    + '<div class="shg-sec-micro" aria-hidden="true"><span>' + esc(micro + micro) + '</span></div>'
+    + '</section>';
+}
+/* One live band at a time: start() replaces whatever ran before; every tick
+   checks the band is still on screen for the same PNR, else it stops. */
+const TkLive = (function () {
+  let pnr = '', key = '', offset = 0, expiresAt = 0, fetchT = 0, tickT = 0, state = 'check', busy = false;
+  function el(id) { return document.getElementById(id); }
+  function alive() { const s = el('tkSecure'); return !!s && s.getAttribute('data-pnr') === pnr; }
+  function fmtClock(ms) {
+    try { return new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date(ms)); }
+    catch (e) { const d = new Date(ms); return [d.getHours(), d.getMinutes(), d.getSeconds()].map(n => String(n).padStart(2, '0')).join(':'); }
+  }
+  function fmtDate(ms) {
+    try { return new Intl.DateTimeFormat(({ en: 'en-IN', hi: 'hi-IN' })[(typeof LANG !== 'undefined') ? LANG : ''] || 'ne-NP', { timeZone: 'Asia/Kolkata', weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(ms)); }
+    catch (e) { return new Date(ms).toDateString(); }
+  }
+  function setState(s, msg) {
+    state = s;
+    const band = el('tkSecure'); if (!band) return;
+    band.classList.toggle('off', s === 'off' || s === 'deny');
+    band.classList.toggle('bad', s === 'bad');
+    const x = tkSecTxt();
+    const live = el('tkSecLive'); if (live) live.textContent = s === 'live' ? x.live : (s === 'bad' ? '⛔' : (s === 'check' ? '…' : 'OFF'));
+    const m = el('tkSecMsg'); if (m) { m.textContent = msg || ''; m.hidden = !msg; }
+    if (s !== 'live') { const c = el('tkSecCode'); if (c) c.textContent = '····'; expiresAt = 0; }
+  }
+  function tick() {
+    clearTimeout(tickT);
+    if (!alive()) { stop(); return; }
+    const now = Date.now() + offset;
+    const c = el('tkSecClock'); if (c) c.textContent = fmtClock(now);
+    const d = el('tkSecDate'); if (d && !d._set) { d.textContent = fmtDate(now); d._set = 1; }
+    if (state === 'live') {
+      const left = Math.max(0, expiresAt - Date.now());
+      const ring = el('tkSecRing'); if (ring) ring.setAttribute('stroke-dashoffset', String(94.25 * (1 - left / 30000)));
+      /* past its window and no fresh code: never keep showing the old one */
+      if (left <= 0 && Date.now() - expiresAt > 2500) setState('off', tkSecTxt().off);
+    }
+    tickT = setTimeout(tick, 1000 - ((Date.now() + offset) % 1000) + 15);
+  }
+  function schedule(ms) { clearTimeout(fetchT); fetchT = setTimeout(load, Math.max(400, ms)); }
+  function load() {
+    clearTimeout(fetchT);
+    if (!alive()) { stop(); return; }
+    if (document.visibilityState === 'hidden' || busy) return;
+    if (navigator.onLine === false) { setState('off', tkSecTxt().off); return; }
+    busy = true;
+    const url = '/api/ticket-live.php?pnr=' + encodeURIComponent(pnr) + (key ? '&k=' + encodeURIComponent(key) : '');
+    const ctl = (typeof AbortController === 'function') ? new AbortController() : null;
+    const to = setTimeout(function () { try { ctl && ctl.abort(); } catch (e) {} }, 8000);
+    fetch(url, { credentials: 'same-origin', cache: 'no-store', signal: ctl ? ctl.signal : undefined })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { s: r.status, j: j }; }); })
+      .then(function (res) {
+        busy = false; clearTimeout(to);
+        if (!alive()) return;
+        const x = tkSecTxt();
+        if (res.s === 403 || res.s === 401) { setState('deny', x.deny); return; }   // no key / not this phone: no code, never a fake one
+        const d = (res.j && res.j.data) || null;
+        if (!d) { setState('off', x.off); schedule(15000); return; }
+        if (d.serverMs) offset = Number(d.serverMs) - Date.now();
+        if (d.status !== 'confirmed') { setState('bad', x.bad); return; }
+        if (!d.live || !d.code) { setState('deny', x.deny); return; }
+        const sw = el('tkSecSecWrap'), sc = el('tkSecSec');
+        if (d.securityCode && sw && sc) { sc.textContent = String(d.securityCode).replace(/^(.{3})(.{3})$/, '$1 $2'); sw.hidden = false; }
+        const code = el('tkSecCode'); if (code) code.textContent = String(d.code);
+        expiresAt = Date.now() + (Number(d.validFor) || 30) * 1000;
+        setState('live', '');
+        schedule((Number(d.validFor) || 30) * 1000 + 350);
+        tick();
+      })
+      .catch(function () { busy = false; clearTimeout(to); if (alive()) { setState('off', tkSecTxt().off); schedule(15000); } });
+  }
+  function onVis() { if (document.visibilityState === 'visible' && pnr) load(); }
+  function onOnline() { if (pnr) load(); }
+  function onOffline() { if (pnr && alive()) setState('off', tkSecTxt().off); }
+  function stop() {
+    clearTimeout(fetchT); clearTimeout(tickT); pnr = ''; key = ''; expiresAt = 0;
+    document.removeEventListener('visibilitychange', onVis);
+    window.removeEventListener('online', onOnline);
+    window.removeEventListener('offline', onOffline);
+  }
+  function start(b) {
+    stop();
+    if (!b || !b.id || !document.getElementById('tkSecure')) return;
+    pnr = b.id; key = b.dlKey || ''; offset = 0; state = 'check'; busy = false;
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    tick(); load();
+  }
+  return { start: start, stop: stop };
+})();
+window.TkLive = TkLive;
+
 function renderStatus(id) {
   const b = DB.bookings.find(x => x.id === id);
   const body = $('#statusBody');
+  try { TkLive.stop(); } catch (e) {}
   if (!b) {
     if (typeof TicketPoll !== 'undefined') TicketPoll.stop();
     body.innerHTML = '<div class="empty-state"><div class="big">🔍</div><h3>' + t('stNotFoundT') + '</h3><p>'
@@ -2564,6 +2769,10 @@ function renderStatus(id) {
   let paymentCard2 = payUrl2 ? '<section class="premium-pay-card"><div><h3>' + esc(t('premiumPay')) + '</h3><b>' + esc(money2(due2)) + '</b><p>' + esc(merchant2.upiName || '') + '<br>' + esc(merchant2.upiId) + '</p><a class="btn btn-orange" href="' + esc(payUrl2) + '">' + esc(t('premiumPay')) + '</a></div><div id="premiumPayQr"><small>' + esc(codDue2 ? t('payScanUpi') : t('premiumPending')) + '</small></div></section>' : '';
   if (paymentCard2 && codDue2) paymentCard2 = '<details class="premium-pay-opt"><summary>' + esc(t('payNowUpiQ')) + '</summary>' + paymentCard2 + '</details>';
   const payStateLbl2 = codDue2 ? tf('codDueLbl', { a: money2(due2) }) : t(due2 <= 0 ? 'premiumPaid' : 'premiumPending');
+  /* Live security band (9 Oct 2026) - confirmed tickets only, never on a
+     departure the office cancelled. */
+  let secBand = '';
+  try { if (conf && !tripCancelled) { tkSecCss(); secBand = tkSecureBandHTML(b); } } catch (e) { secBand = ''; }
 
   body.innerHTML = `
   ${proofBand}
@@ -2579,6 +2788,7 @@ function renderStatus(id) {
       <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261008p" width="600" height="312" alt="" decoding="async">
     </div>
     <div class="premium-ticket-status">${pill2}${b.ticketNumber ? '<span>' + esc(b.ticketNumber) + '</span>' : ''}${b.agentCode ? '<span style="background:var(--orange-100,#fff2e0);color:var(--orange-800,#7a3d00);padding:2px 10px;border-radius:20px;font-size:12px;font-family:var(--f-code)">🏷️ ' + esc(b.agentCode) + '</span>' : ''}</div>
+    ${secBand}
     ${(typeof routeOverviewSVG === 'function') ? routeOverviewSVG({ from: (isNepalPoint(r.from) ? r.from : (parseBP(b.boarding || '').name || r.from)), to: (isNepalPoint(r.to) ? r.to : (parseBP(b.drop || '').name || r.to)), compact: true }) : ''}
     <div class="tk2-hero">
       <div class="tk2-pnr"><span>${esc(b.id)}</span><small>${esc(r.busName || '')}${r.busNo ? ' · ' + esc(r.busNo) : ''}</small></div>
@@ -2641,6 +2851,7 @@ function renderStatus(id) {
     box.prepend(img);
   });
   if (b.status === 'confirmed') { var tc = $('#ticketCard'); if (tc) requestAnimationFrame(function () { tc.classList.add('confirm-anim'); }); }
+  if (secBand) { try { TkLive.start(b); } catch (e) {} }
   if ((b.status === 'pending' || b.status === 'confirmed') && depTimestamp(b) > Date.now()) loadDestinationWeather(b);
   if (b.status === 'confirmed') {
     /* The SAME QR the PNG / PDF carry (D6-18): the keyed verify page, so a

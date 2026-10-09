@@ -81,7 +81,7 @@ final class WaTplLib
         'fare_to_nepal'     => ['live', 'Default fare Gujarat → Nepal border (a stop with no fare of its own)'],
         'fare_to_india'     => ['live', 'Default fare Nepal border → Gujarat (a drop with no fare of its own)'],
         // 9 Oct 2026 (site facts): fares are set per pickup / drop - these quote the real board
-        'fare_range_to_nepal' => ['live', 'Fare range Gujarat → Nepal border over every pickup (₹2,000–₹2,200)'],
+        'fare_range_to_nepal' => ['live', 'Fare range Gujarat → Nepal border over every pickup (lowest–highest)'],
         'fare_range_to_india' => ['live', 'Fare range Nepal border → Gujarat over every drop'],
         'fare_from_nepal'   => ['live', 'Lowest fare Gujarat → Nepal border (any pickup)'],
         'fare_from_india'   => ['live', 'Lowest fare Nepal border → Gujarat (any drop)'],

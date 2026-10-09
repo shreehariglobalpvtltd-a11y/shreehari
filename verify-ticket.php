@@ -30,6 +30,9 @@ define('SHG_APP', true);
 require_once __DIR__ . '/includes/bootstrap.php';
 require_once INCLUDE_PATH . '/ticket.php';
 require_once INCLUDE_PATH . '/booking.php';
+if (is_file(INCLUDE_PATH . '/brand.php')) {
+    require_once INCLUDE_PATH . '/brand.php';   // Brand::flagSvg() — SVG flags (9 Oct 2026)
+}
 
 /* An HTML 429 (9 Oct 2026): requireRateLimit() answers in JSON, which a
    phone camera opening this page showed as raw text. */
@@ -234,7 +237,10 @@ if ($forged && !$authed) {
         if (!class_exists('AdminAlerts') && is_file(INCLUDE_PATH . '/adminalerts.php')) {
             require_once INCLUDE_PATH . '/adminalerts.php';
         }
-        if (class_exists('AdminAlerts')) {
+        /* The office is alerted only for a PNR that really exists (a made-up
+           PNR is still audited): random PNRs cannot flood the bell. The page
+           itself reads the same either way, so nothing is revealed. */
+        if (class_exists('AdminAlerts') && $booking !== null) {
             AdminAlerts::push('fake_verify', '⛔ Fake / altered ticket checked · ' . $fp,
                 'Someone opened the verify page with a key or QR signature that does not match' . ($forgedPnr !== '' ? ' PNR ' . $forgedPnr : '') . '. Check who is holding this ticket.',
                 $forgedPnr !== '' ? '/admin/booking-view.php?pnr=' . rawurlencode($forgedPnr) : '/admin/bookings.php',
@@ -409,6 +415,8 @@ $company = (string) $issuer['name'];
   .stamp b { color: var(--text); font-weight: 600; }
   .genuine { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 13px; font-weight: 600;
     color: var(--ok-text); background: var(--ok-bg); border-radius: 999px; padding: 5px 12px; }
+  /* on the forged-ticket page the domain line is a warning, never a green tick */
+  .genuine.warn { color: var(--due-text); background: var(--due-bg); }
   .report { margin-top: 16px; background: var(--card); border-radius: 18px; padding: 4px 16px; box-shadow: 0 2px 12px var(--shadow); }
   .report summary { cursor: pointer; list-style: none; padding: 14px 0; font-weight: 700; color: var(--bad-text);
     display: flex; align-items: center; gap: 8px; min-height: 44px; }
@@ -479,7 +487,7 @@ $company = (string) $issuer['name'];
       </div>
     <?php endif; ?>
     <div class="stamp">Checked at · जाँच गरिएको समय: <b><?= htmlspecialchars($checkedAt, ENT_QUOTES, 'UTF-8') ?></b></div>
-    <div class="genuine">✓ Genuine only on <?= htmlspecialchars($genuineHost, ENT_QUOTES, 'UTF-8') ?> · यही साइटमा मात्र सक्कली</div>
+    <div class="genuine<?= $state === 'forged' ? ' warn' : '' ?>"><?= $state === 'forged' ? '⚠' : '✓' ?> Genuine only on <?= htmlspecialchars($genuineHost, ENT_QUOTES, 'UTF-8') ?> · यही साइटमा मात्र सक्कली</div>
   </div>
 
   <?php if ($authed && $booking !== null): ?>

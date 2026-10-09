@@ -17,6 +17,7 @@
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 admin_boot('payments.view');
+require_once INCLUDE_PATH . '/paymentrisk.php';
 
 $bookingId = (int) ($_GET['id'] ?? 0);
 $shotId    = (int) ($_GET['sid'] ?? 0);
@@ -56,7 +57,8 @@ $mime = (string) ($shot['mime_type'] ?: 'application/octet-stream');
 if ($thumbW > 0 && str_starts_with($mime, 'image/') && function_exists('imagecreatefromstring')) {
     $thumbW = max(120, min(480, $thumbW));
     $info = @getimagesize($path);
-    if ($info !== false && $info[0] > 0 && $info[0] * $info[1] <= 40000000) {
+    // same pixel cap as the upload fingerprint: a bigger photo would exhaust memory (fatal) - it gets the full file instead
+    if ($info !== false && $info[0] > 0 && $info[0] * $info[1] <= PaymentRisk::MAX_HASH_PIXELS) {
         $raw = @file_get_contents($path);
         $src = $raw !== false ? @imagecreatefromstring($raw) : false;
         if ($src !== false) {

@@ -33,7 +33,11 @@ BACKUP_DIR="${BACKUP_DIR:-/root/backups/nginx}"
 CHECK_URL="${CHECK_URL:-https://www.shreehariglobal.in/}"
 # Ask THIS server's nginx, not whatever the public DNS points at.
 CHECK_RESOLVE="${CHECK_RESOLVE-www.shreehariglobal.in:443:127.0.0.1}"
-MARKER='SHG deny rules 2026-09-30'
+# 9 Oct 2026: the block gained the Office chat attachments rule
+# (/uploads/staff-msg/), so it carries a new marker. A block written by an
+# earlier run (old marker, 4 rules) is removed exactly as before and replaced.
+MARKER_OLD='SHG deny rules 2026-09-30'
+MARKER='SHG deny rules 2026-10-09'
 
 # A SERVER-LEVEL `root <site>;` line: the innermost open block is `server`.
 # A root inside a location (e.g. `location = /sw.js { root ...; }`) must not
@@ -80,12 +84,13 @@ fi
 rules="$(mktemp)"
 cat > "$rules" <<'RULES'
 
-    # SHG deny rules 2026-09-30: dated .bak copies (index.php.bak.20260828-...),
-    # editor copies, the deploy/ folder and shell/conf files were served as text.
+    # SHG deny rules 2026-10-09: dated .bak copies, editor copies, deploy/, shell/conf
+    # files were served as text; Office chat attachments stream only via PHP.
     location ~* \.(bak|old|orig|save|swp)([.~_-][^/]*)?$ { deny all; return 404; }
     location ~ ~$                                         { deny all; return 404; }
     location ~ ^/deploy/                                  { deny all; return 404; }
     location ~* \.(sh|bash|conf)$                         { deny all; return 404; }
+    location ^~ /uploads/staff-msg/                       { deny all; return 404; }
 RULES
 
 stamp="$(date +%Y%m%d-%H%M%S)"
@@ -104,13 +109,16 @@ restore_all() {
 for file in "${files[@]}"; do
     new="$(mktemp)"
     # 1) drop any block an earlier run inserted (blank line + marker comment
-    #    + 1 more comment line + 4 location lines);
+    #    + 1 more comment line + 4 location lines for the 2026-09-30 block,
+    #    5 location lines for the 2026-10-09 block);
     # 2) insert one fresh block after EVERY server-level `root <site>;`, so the
     #    rules sit ahead of every regex location in each server block
-    #    (nginx uses the first regex match).
-    awk -v m="$MARKER" '
+    #    (nginx uses the first regex match; the ^~ /uploads/staff-msg/ prefix
+    #    is longer than any /uploads/ prefix block, so it wins there too).
+    awk -v m="$MARKER_OLD" -v m2="$MARKER" '
         skip > 0 { skip--; next }
         /^[[:space:]]*$/ { if (held) print hl; hl = $0; held = 1; next }
+        index($0, m2) { held = 0; skip = 6; next }
         index($0, m) { held = 0; skip = 5; next }
         { if (held) { print hl; held = 0 } print }
         END { if (held) print hl }

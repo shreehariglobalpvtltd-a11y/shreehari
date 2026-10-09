@@ -90,8 +90,15 @@ $pubId = Database::insert('tour_packages', [
     'slug' => 'zz-cp-pub', 'status' => 'published', 'country' => 'Nepal', 'title_en' => 'ZZ CP Lumbini Trip', 'title_ne' => 'ZZ CP लुम्बिनी यात्रा',
     'summary_en' => 'ZZ CP summary.', 'days' => 4, 'nights' => 3, 'highlights_en' => json_encode(['ZZ CP one', 'ZZ CP two']),
     'itinerary_json' => json_encode([['day' => 1, 'en' => 'ZZ CP day one', 'ne' => 'ZZ CP दिन एक']], JSON_UNESCAPED_UNICODE), 'coach_leg' => 'both',
+    'route_en' => 'Nepalgunj → ZZ CP Lumbini → Nepalgunj',
 ]);
 Database::insert('tour_packages', ['slug' => 'zz-cp-draft', 'status' => 'draft', 'country' => 'India', 'title_en' => 'ZZ CP Draft Trip', 'days' => 2, 'nights' => 1]);
+Database::insert('tour_packages', ['slug' => 'zz-cp-guj', 'status' => 'published', 'country' => 'India', 'title_en' => 'ZZ CP Gujarat Trail', 'days' => 3, 'nights' => 2,
+    'route_en' => 'Vadodara → ZZ CP Fort → Mehsana', 'coach_leg' => 'none']);
+Database::insert('travel_places', [
+    'slug' => 'zz-cp-near', 'country' => 'NP', 'region' => 'Banke', 'category' => 'pilgrimage', 'name_en' => 'ZZ CP Near Temple', 'blurb_en' => 'ZZ CP near.',
+    'lat' => 28.0617, 'lng' => 81.6239, 'near_stop' => 'Nepalgunj', 'is_featured' => 0, 'is_active' => 1,
+]);
 Database::insert('travel_places', [
     'slug' => 'zz-cp-place', 'country' => 'NP', 'region' => 'ZZ', 'category' => 'pilgrimage', 'name_en' => 'ZZ CP Place', 'name_ne' => 'ZZ CP ठाउँ',
     'blurb_en' => 'ZZ CP blurb.', 'unesco' => 1, 'lat' => 27.4833, 'lng' => 83.2767, 'near_stop' => 'Nepalgunj', 'km_hint' => 300, 'is_featured' => 1, 'is_active' => 1,
@@ -159,6 +166,23 @@ try {
         $tp = req('GET', '/tours/zz-cp-pub')['body'];
         check('tour: price on request, coach-leg note, itinerary, enquiry form + honeypot', str_contains($tp, 'Price on request') && str_contains($tp, 'Rupaidiha border')
             && str_contains($tp, 'ZZ CP day one') && str_contains($tp, 'id="trvForm"') && str_contains($tp, 'name="website"') && str_contains($tp, '/api/tour-enquiry.php'));
+        check('tour: "your journey" = our bus out + the route + our bus home', str_contains($tp, 'class="journey"') && substr_count($tp, 'class="j-bus"') === 2 && str_contains($tp, 'ZZ CP Lumbini'));
+        $tg = req('GET', '/tours/zz-cp-guj')['body'];
+        check('tour without our bus: partner-only note, no bus step, no "Rupaidiha border" promise', str_contains($tg, 'our bus is not part of it') && !str_contains($tg, 'class="j-bus"')
+            && !str_contains($tg, 'Our bus runs up to the Rupaidiha border'));
+        $nb = strpos($ex, 'id="near-border"');
+        $np = strpos($ex, 'id="nepal"');
+        $pn = strpos($ex, 'id="place-zz-cp-near"');
+        $pf = strpos($ex, 'id="place-zz-cp-place"');
+        check('explore: a place by the crossing sits under "Near the border", a far one under Nepal', $nb !== false && $pn !== false && $np !== false && $nb < $pn && $pn < $np && $pf > $np);
+        $offPage = $off;
+        $withMapData = count(array_filter(PublicLayout::offices(), static fn(array $o): bool => $o['status'] === 'open' && ($o['address'] !== '' || $o['mapUrl'] !== '')));
+        check('offices: a Map button only where the office has an address or map link', substr_count($offPage, '📍 ' . 'Map</a>') === $withMapData, $withMapData . ' with data');
+        check('india-nepal: rules open one by one (accordion), sources listed once each', str_contains($inp, 'class="acc"') || !str_contains($inp, 'class="accs"'));
+        if (preg_match('#<section class="sec" id="sources">(.*?)</section>#s', $inp, $sm2) === 1) {
+            preg_match_all('/href="([^"]+)"/', $sm2[1], $hrefs);
+            check('india-nepal: the sources list has no duplicates', count($hrefs[1]) === count(array_unique($hrefs[1])), count($hrefs[1]) . ' sources');
+        }
         check('tours list shows the published package, not the draft', str_contains(req('GET', '/tours')['body'], 'ZZ CP Lumbini Trip') && !str_contains(req('GET', '/tours')['body'], 'ZZ CP Draft Trip'));
 
         echo "\n-- B. 404s and drafts --\n";
@@ -259,7 +283,8 @@ try {
     echo "\n-- F. sources --\n";
     $root = dirname(__DIR__);
     foreach (['includes/publiclayout.php', 'includes/contentpages.php', 'includes/content/indianepal.php', 'api/explore.php', 'api/tour-enquiry.php', 'admin/tours.php', 'admin/places.php', 'tools/content-seed.php'] as $f) {
-        $src = (string) file_get_contents($root . '/' . $f);
+        // Source links (article ids like …-120012100729) are not phone numbers: drop URLs first.
+        $src = (string) preg_replace('#https?://[^\s\'"<>]+#', '', (string) file_get_contents($root . '/' . $f));
         check("$f: no typed phone number", !preg_match('/\d{5}\s?\d{5}|wa\.me\/\d|\+(91|977)[\s-]?\d{3}/', $src));
     }
     $idx = (string) file_get_contents($root . '/index.php');
@@ -282,14 +307,16 @@ try {
     // tools/content-seed.php: twice with the same file = no change the second time.
     $tmp = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'shg_cp_seed_' . getmypid() . '.json';
     file_put_contents($tmp, json_encode([
+        'timeline' => ['key_numbers' => [['en' => '1,751 km of open border (ZZ)', 'ne' => 'खुला सीमा: १,७५१ किमी'], ['en' => 'Guarded by the Sashastra Seema Bal (SSB)', 'ne' => 'SSB'], ['en' => 'no figure here', 'ne' => '']]],
         'nepal' => ['places' => [['name' => 'ZZ CP Seed Lake', 'slug' => 'zz-cp-seed-lake', 'name_ne' => 'ZZ CP ताल', 'type' => 'Lake', 'blurb_en' => 'x', 'blurb_ne' => 'y', 'unesco' => false, 'lat' => 28.2, 'lon' => 83.9, 'from_nepalgunj_hint' => '≈ 400 km', 'sources' => []]]],
-        'india' => ['places' => [], 'packages' => [['code' => 'zz-cp-seed-pkg', 'title_en' => 'ZZ CP Seed Pkg', 'title_ne' => 'ZZ CP प्याकेज', 'days' => 3, 'nights' => 2, 'route_en' => 'A → B', 'route_ne' => 'क → ख', 'highlights_en' => ['a'], 'highlights_ne' => ['क'], 'best_for_en' => 'all', 'best_for_ne' => 'सबै', 'country' => 'India']]],
+        'india' => ['places' => [], 'packages' => [['code' => 'ZZ1', 'slug' => 'zz-cp-seed-pkg', 'title_en' => 'ZZ CP Seed Pkg', 'title_ne' => 'ZZ CP प्याकेज', 'days' => 3, 'nights' => 2, 'route_en' => 'A → B', 'route_ne' => 'क → ख', 'highlights_en' => ['a'], 'highlights_ne' => ['क'], 'best_for_en' => 'all', 'best_for_ne' => 'सबै', 'country' => 'India']]],
     ], JSON_UNESCAPED_UNICODE));
     $php = escapeshellarg(PHP_BINARY) . (php_ini_loaded_file() ? ' -c ' . escapeshellarg((string) php_ini_loaded_file()) : '');
     $run = static fn(): string => (string) shell_exec('cd ' . escapeshellarg($root) . ' && ' . $php . ' tools/content-seed.php ' . escapeshellarg($tmp) . ' --no-php 2>&1');
     $o1 = $run();
     $o2 = $run();
     @unlink($tmp);
+    check('content-seed: key numbers lifted from the sentences (2 of 3 have a figure)', str_contains($o1, '2 key numbers'), trim(strtok($o1, "\n")));
     check('content-seed: first run adds 1 place + 1 package', str_contains($o1, 'places: {"new":1') && str_contains($o1, 'packages: {"new":1'), trim(str_replace("\n", ' | ', $o1)));
     check('content-seed: second run changes nothing (idempotent)', str_contains($o2, '"same":1') && str_contains($o2, 'places: {"new":0,"updated":0') && str_contains($o2, 'packages: {"new":0,"updated":0'));
     $sp = Database::fetch("SELECT * FROM tour_packages WHERE slug = 'zz-cp-seed-pkg'");

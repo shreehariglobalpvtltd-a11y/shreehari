@@ -43,6 +43,8 @@ if (Auth::isCounterAgent()) {
 }
 
 $canManage = Auth::isSuperadmin() || Auth::can('staff.manage');
+// 9 Oct 2026: Office chat link per agent (office side; hidden without the chat tables).
+$agChat = class_exists('StaffMsg') && StaffMsg::canUse() && StaffMsg::isOffice();
 $selfId    = (int) ($admin['id'] ?? 0);
 $flash     = null;
 
@@ -439,6 +441,7 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
       </td>
       <td><span class="ag-acts">
         <button type="button" class="btn ghost" data-dt-toggle="<?= $rid ?>v" title="Everything about this agent">👁 View</button>
+        <?php if ($agChat): ?><a class="btn ghost" href="staff-chat.php?agent=<?= (int) $r['id'] ?>" title="Office chat with this agent" aria-label="Message <?= $e($r['full_name'] ?: $r['username']) ?>"><svg class="a-ic"><use href="#a-msg"/></svg> Message</a><?php endif; ?>
         <details class="ag-more">
           <summary class="btn ghost" title="More actions" aria-label="More actions for <?= $e($r['full_name'] ?: $r['username']) ?>">⋯</summary>
           <div class="ag-menu" role="menu">

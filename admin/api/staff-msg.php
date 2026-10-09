@@ -151,6 +151,11 @@ if (!Security::rateLimit('staff_msg', 'admin:' . $me, 40, 60)) {
 
 $in     = Response::input();
 $action = (string) ($in['action'] ?? '');
+// A file larger than post_max_size arrives as an EMPTY POST: say so instead of "Unknown action".
+if ($action === '' && $_POST === [] && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0
+    && str_contains(strtolower((string) ($_SERVER['CONTENT_TYPE'] ?? '')), 'multipart/form-data')) {
+    smErr('That file is too large to send. / फाइल धेरै ठूलो भयो।', 413);
+}
 $uuid   = isset($in['client_uuid']) ? Security::clean((string) $in['client_uuid'], 36) : null;
 $urgent = !empty($in['urgent']) && (string) $in['urgent'] !== '0';
 

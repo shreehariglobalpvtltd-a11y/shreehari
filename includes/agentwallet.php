@@ -2773,6 +2773,18 @@ final class AgentWallet
             ['amount' => $amount, 'due' => $due, 'note' => $note, 'request_id' => $id],
             'Agent requested a commission payout');
 
+        // 9 Oct 2026 (Office chat): a payout conversation the office can answer
+        // in ("paid today", "send your UPI"). Best-effort — never fails the
+        // request; a no-op without the chat tables. Pays nothing by itself.
+        if ($id > 0) {
+            try {
+                require_once __DIR__ . '/staffmsg.php';
+                StaffMsg::payoutRequested($id, $adminId, $amount, $note);
+            } catch (Throwable $e) {
+                Logger::warning('payout chat hook failed: ' . $e->getMessage(), [], 'agent');
+            }
+        }
+
         return $id;
     }
 

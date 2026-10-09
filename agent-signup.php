@@ -258,8 +258,11 @@ textarea{min-height:70px;resize:vertical;font-size:14px}
 
   <div class="benefits">
     <h2>🚌 Agent Benefits — एजेंट बेनिफिट्स</h2>
-    <div class="ben"><span class="ben-ico">💰</span><span><b>₹200 commission</b> per passenger (direct bookings)</span></div>
-    <div class="ben"><span class="ben-ico">🏆</span><span><b>₹400</b> for team/org bookings</span></div>
+    <?php /* 9 Oct 2026: the commission the ledger actually accrues (Settings agent_flat_direct / agent_flat_joint), not a typed number. */
+      $comDirect = (int) round(Settings::getFloat('agent_flat_direct', 200.0));
+      $comJoint  = (int) round(Settings::getFloat('agent_flat_joint', 400.0)); ?>
+    <div class="ben"><span class="ben-ico">💰</span><span><b>₹<?= number_format($comDirect) ?> commission</b> per passenger (direct bookings)</span></div>
+    <div class="ben"><span class="ben-ico">🏆</span><span><b>₹<?= number_format($comJoint) ?></b> for team/org bookings</span></div>
     <div class="ben"><span class="ben-ico">📊</span><span>Your own sales dashboard + collection view</span></div>
     <div class="ben"><span class="ben-ico">🎟️</span><span>Print tickets under your name (SHG-XXX)</span></div>
     <div class="ben"><span class="ben-ico">💸</span><span>Withdraw earnings anytime from Agent Portal</span></div>

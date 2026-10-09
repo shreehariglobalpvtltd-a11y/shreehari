@@ -342,8 +342,9 @@ $e = static fn($s): string => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8')
    the fare range follow an Admin edit on the next load. */
 try {
     $F = SiteFacts::all();
-} catch (Throwable $e) {
+} catch (Throwable $shgErr) {   // never $e: that name is the escaper above
     $F = null;
+    Logger::error('SiteFacts head failed: ' . $shgErr->getMessage());
 }
 $shgCo   = Settings::company();
 $shgAddr = (string) ($F['head']['address'] ?? $shgCo['address']);
@@ -571,9 +572,9 @@ if ($html === false) {
    anywhere in the markup. Contract: includes/sitefacts.php tokens(). */
 try {
     $html = SiteFacts::apply($html);
-} catch (Throwable $e) {
+} catch (Throwable $shgErr) {
     $html = (string) (preg_replace('/\{\{f:[A-Za-z0-9_.:\-]{1,80}\}\}/', '', $html) ?? $html);
-    Logger::error('SiteFacts token pass failed: ' . $e->getMessage());
+    Logger::error('SiteFacts token pass failed: ' . $shgErr->getMessage());
 }
 
 /* The share / search descriptions from the same facts (9 Oct 2026): the

@@ -713,10 +713,12 @@
         Feel.play(open ? 'sheetOpen' : 'sheetClose');
       }).observe(menu, { attributes: true, attributeFilter: ['class'] });
     }
+    /* only a real tab CHANGE plays the droplet: the capture phase sees the
+       tab before the router marks it .on (tapping the current tab is silent) */
     document.addEventListener('click', function (e) {
       var b = e.target && e.target.closest ? e.target.closest('.bottom-nav .bn-item') : null;
-      if (b) Feel.play('nav');
-    });
+      if (b && !b.classList.contains('on')) Feel.play('nav');
+    }, true);
   }
 
   function boot() {

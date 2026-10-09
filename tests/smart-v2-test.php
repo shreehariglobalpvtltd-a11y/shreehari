@@ -160,7 +160,11 @@ check('no coordinates → no map (never guessed)', Ticket::pickupGeo(['boarding_
 check('[0,0] is not a place', Ticket::pickupGeo(['boarding_stop' => 'X [0,0]', 'route_id_for_stop' => 0]) === null);
 $tsrc = (string) file_get_contents($root . '/includes/ticket.php');
 check('the PNG draws the PICKUP MAP QR only without the pay QR', str_contains($tsrc, "\$mapsQr = \$payUpi === '' && \$geo !== null && Settings::getBool('ticket_maps_qr', true)"));
-check('issued tickets re-render once (layout stamp moved)', str_contains($tsrc, "PNG_LAYOUT_CHANGED = '2026-10-08 12:08:30'"));
+/* 9 Oct 2026: the stamp keeps moving forward with every layout change (pr1
+   23:42, the heritage/security art after it) — pin "at or after the map-QR
+   change", not one exact moment, so a later bump does not read as a regression. */
+$pngStampSrc = preg_match("/PNG_LAYOUT_CHANGED = '([0-9: -]{19})'/", $tsrc, $pm) === 1 ? $pm[1] : '';
+check('issued tickets re-render once (layout stamp moved)', $pngStampSrc !== '' && strcmp($pngStampSrc, '2026-10-08 12:08:30') >= 0, $pngStampSrc);
 
 echo "-- 5. WhatsApp template library --\n";
 $cats = array_count_values(array_column(WaTplLib::BUILTIN, 'cat'));

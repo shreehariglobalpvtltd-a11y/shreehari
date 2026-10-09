@@ -598,7 +598,10 @@ final class WebPush
                 $res['error'] = 'no curl';
                 return $res;
             }
-            $payload += ['icon' => '/assets/img/icon-192.png', 'badge' => '/assets/img/icon-192.png', 'ts' => time()];
+            // 9 Oct 2026 (BRAND): the emblem-only icon (transparent, no baked name);
+            // the status-bar badge is a monochrome transparent silhouette (Android
+            // masks the badge to its alpha, so an opaque icon showed a white square).
+            $payload += ['icon' => '/assets/img/icon-192.png', 'badge' => '/assets/img/badge-96.png', 'ts' => time()];
             $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             if ($json === false) {
                 $res['error'] = 'payload not encodable';

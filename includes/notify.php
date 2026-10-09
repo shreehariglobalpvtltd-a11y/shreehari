@@ -2557,6 +2557,26 @@ final class Notify
               . ($kind !== '' ? "प्रमाण: " . $kind . "\n" : '')
               . "जाँच्नुहोस्: " . $reviewUrl;
 
+        /* 9 Oct 2026 (anti-fake): a HIGH payment-risk score is said in the
+           office message and rings the panel bell. Advisory only - nothing is
+           rejected or held; a person opens the queue and decides. Never fails
+           the alert itself. */
+        try {
+            require_once __DIR__ . '/paymentrisk.php';
+            $risk = $bid > 0 ? PaymentRisk::score($bid) : null;
+            if ($risk !== null && ($risk['level'] ?? '') === 'high') {
+                $codes = implode(', ', array_slice(array_filter(explode(',', (string) $risk['codes'])), 0, 5));
+                $text .= "\n⚠️ HIGH RISK: " . $codes . ' (' . (int) $risk['score'] . ')';
+                if (Settings::getBool('fraud_alert_high_risk', true)) {
+                    require_once __DIR__ . '/adminalerts.php';
+                    AdminAlerts::push('pay_risk', '⚠️ High-risk payment ' . $pnr, PaymentRisk::codesHuman($risk, 4),
+                        '/admin/booking-view.php?pnr=' . rawurlencode($pnr), '⚠️', 'payrisk:' . $bid);
+                }
+            }
+        } catch (Throwable $e) {
+            // the score is a hint on the alert, never a reason to drop it
+        }
+
         if (Settings::getBool('whatsapp_notify_admin', true) && $adminPhone !== '') {
             self::whatsapp($adminPhone, $text);
         }

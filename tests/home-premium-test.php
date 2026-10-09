@@ -137,7 +137,9 @@ check('the counter screen follows the panel theme when no customer theme is save
 
 echo "-- 5. Contacts + QuickBot country --\n";
 $dcn = fnBody($router, 'defaultContactNumbers');
-check('Nepal team defaults dial +977', str_contains($dcn, "'+977 986-6201375'") && str_contains($dcn, "'+977 984-8119600'") && !str_contains($dcn, '+91 98662') && !str_contains($dcn, '+91 98481'));
+/* 9 Oct 2026 (site facts): the defaults now come from window.FACTS + SHG_BOOT.npTeam
+   (Admin -> Company details); only the offline fallback keeps one typed Nepal line. */
+check('Nepal team defaults dial +977', str_contains($dcn, "'+977 986-6201375'") && str_contains($dcn, 'SHG_BOOT.npTeam') && !str_contains($dcn, '+91 98662') && !str_contains($dcn, '+91 98481'));
 check('QuickBot has a +91 / +977 picker with a visible label', (bool) preg_match('~<select id="qtCC"[^>]*>\s*<option value="91">[^<]*\+91</option><option value="977">[^<]*\+977</option>~', $tpl) && str_contains($tpl, '<label class="qt-lbl" for="qtPhone"'));
 check('name and one-line inputs have visible labels (D2-07)', str_contains($tpl, '<label class="qt-lbl" for="qtName"') && str_contains($tpl, '<label class="qt-lbl" for="qtLine"'));
 check('the sale payload carries country', str_contains($router, "action: 'customer_sell', name: qt.name, phone: qt.phone, country: qtCountry(),"));

@@ -44,7 +44,11 @@ header('Content-Type: text/html; charset=utf-8');
   .wrap{max-width:1180px;margin:0 auto;padding:18px 16px 64px}
   header.top{background:var(--navy);color:#fff;border-radius:14px;padding:16px 20px;
              display:flex;gap:16px;align-items:center;flex-wrap:wrap}
-  header.top img{height:52px;width:auto;background:#fff;border-radius:8px;padding:4px}
+  /* 9 Oct 2026: the transparent emblem alone (no white tile), a soft shadow
+     so the navy globe still reads on the navy bar; SVG flags, not emoji. */
+  header.top img{height:52px;width:auto;max-width:120px;object-fit:contain;filter:drop-shadow(0 0 6px rgba(190,214,255,.55))}
+  header.top .flags{display:inline-flex;gap:6px;align-items:center}
+  header.top .flags svg{display:block;border-radius:2px}
   header.top h1{margin:0;font-size:20px;letter-spacing:.3px}
   header.top .sub{color:#c7d6f0;font-size:13px;margin-top:2px}
   header.top .spacer{flex:1 1 auto}
@@ -83,6 +87,7 @@ header('Content-Type: text/html; charset=utf-8');
       </div>
     </div>
     <span class="spacer"></span>
+    <?php if (isset($flagSvg) && is_callable($flagSvg)): ?><span class="flags" aria-label="India · Nepal"><?= $flagSvg('IN', 18) ?><?= $flagSvg('NP', 20) ?></span><?php endif; ?>
     <span class="no"><?= $e($chalaniNo) ?></span>
   </header>
 

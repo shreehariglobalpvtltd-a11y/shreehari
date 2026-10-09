@@ -24,6 +24,7 @@ require_once INCLUDE_PATH . '/qr.php';
 require_once INCLUDE_PATH . '/fare.php';
 require_once INCLUDE_PATH . '/seats.php';
 require_once INCLUDE_PATH . '/booking.php';
+require_once INCLUDE_PATH . '/brand.php';   // emblem (no baked name, no white tile) + SVG flags — 9 Oct 2026
 
 Security::requireRateLimit('pay_share', Security::clientIp(), 60, 60);
 
@@ -73,14 +74,19 @@ $color    = $state === 'open' ? '#F07C1F' : ($state === 'claimed' || $state === 
 <meta name="theme-color" content="#1A3A6A">
 <meta name="robots" content="noindex, nofollow">
 <title>Pay your share · <?= $e($company) ?></title>
+<?= Brand::iconLinks() ?>
 <style>
   *{box-sizing:border-box}
   html,body{margin:0;padding:0;background:#f5f6fa;color:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans Devanagari',sans-serif;-webkit-font-smoothing:antialiased}
   body{min-height:100vh;min-height:100dvh;padding:env(safe-area-inset-top,0) 16px env(safe-area-inset-bottom,24px)}
   .wrap{max-width:480px;margin:0 auto;padding:24px 0}
   .hdr{display:flex;align-items:center;gap:12px;margin-bottom:16px}
-  .hdr img{width:40px;height:40px;border-radius:8px}
+  /* 9 Oct 2026 (BRAND): the emblem only, aspect-correct (it was squashed into 40x40), no tile */
+  .hdr img{height:40px;width:auto;max-width:84px;object-fit:contain;flex:none;background:none;filter:drop-shadow(0 2px 4px rgba(15,23,42,.18))}
+  .hdr>div{min-width:0}
   .hdr b{font-size:15px;letter-spacing:.02em}.hdr small{display:block;color:#64748b;font-size:12px}
+  .hdr .flg-pair{margin-left:auto;flex:none}
+  @media (max-width:350px){.hdr .flg-pair{display:none!important}}
   .card{background:#fff;border-radius:18px;padding:24px 20px;text-align:center;box-shadow:0 4px 24px rgba(15,23,42,.08);border-top:6px solid <?= $color ?>}
   .amt{font-size:40px;font-weight:800;color:#1A3A6A;letter-spacing:-.02em;margin:4px 0}
   .sub{color:#475569;font-size:14px;line-height:1.5;margin:0 auto;max-width:380px}
@@ -106,8 +112,9 @@ $color    = $state === 'open' ? '#F07C1F' : ($state === 'claimed' || $state === 
 <body>
 <div class="wrap">
   <div class="hdr">
-    <img src="/assets/img/logo.png?v=20261008p" alt="" onerror="this.style.display='none'">
+    <img src="<?= $e(Brand::markUrl(40)) ?>" alt="" width="77" height="40" onerror="this.style.display='none'">
     <div><b><?= $e($company) ?></b><small>Split-pay · भाडा बाँडेर तिर्नुहोस् · किराया बाँटकर भरें</small></div>
+    <?= Brand::flagPair(14) ?>
   </div>
 
 <?php if ($state === 'invalid'): ?>

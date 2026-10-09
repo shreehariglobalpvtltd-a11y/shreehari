@@ -98,7 +98,7 @@
 .sc-btn .ic { width: 20px; height: 20px; flex: none; }
 .sc-btn:hover { filter: brightness(1.05); }
 .sc-btn:active { transform: translateY(2px) scale(.985); }
-.sc-btn-royal { background: linear-gradient(180deg, color-mix(in srgb, var(--royal) 78%, #FFFFFF) 0%, var(--royal) 52%, var(--royal-strong, #003D80) 100%);
+.sc-btn-royal { color: var(--on-royal, #FFFFFF); background: linear-gradient(180deg, color-mix(in srgb, var(--royal) 78%, #FFFFFF) 0%, var(--royal) 52%, var(--royal-strong, #003D80) 100%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 3px 0 color-mix(in srgb, var(--royal-strong, #003D80) 75%, #000000), 0 10px 18px -10px color-mix(in srgb, var(--royal) 80%, transparent); }
 .sc-btn-gold { color: #3A1C00; background: linear-gradient(180deg, #FFD978 0%, #F7AE33 55%, #EC8B12 100%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .65), 0 3px 0 #B5650A, 0 10px 18px -10px rgba(236, 139, 18, .8); }
@@ -275,7 +275,7 @@ html.sc-io #homeFeat.sc-stagger:not(.sc-in) .sc-perks > li { opacity: 0; transfo
    ===================================================================== */
 #view-home > #demoHead { margin-top: 28px; }
 #demoHead .sc-demo-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-#demoHead .sc-demo-acts .sc-btn { flex: 1 1 160px; }
+#demoHead .sc-demo-acts .sc-btn { flex: 1 1 220px; }
 #view-home > #animBooking { margin-top: 12px; }
 
 /* =====================================================================
@@ -309,13 +309,20 @@ html.sc-io #homeFeat.sc-stagger:not(.sc-in) .sc-perks > li { opacity: 0; transfo
 #view-home #topHero .th-o .th-l { grid-column: 2; grid-row: 1; padding-right: 26px; font: 800 13px/1.3 var(--font-sans); color: #FFFFFF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #view-home #topHero .th-o .th-sub { grid-column: 2; grid-row: 2; font: 600 12px/1.3 var(--font-sans); color: #B9CBE6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #view-home #topHero .th-o .th-n { grid-column: 1 / -1; grid-row: 3; margin-top: 3px; font: 900 13.5px/1.25 var(--font-sans); color: #FFE6B8; white-space: nowrap; font-variant-numeric: tabular-nums; }
-#view-home #topHero .th-o .th-call { position: absolute; top: 8px; right: 8px; grid-column: auto; grid-row: auto; width: 26px; height: 26px; font-size: 12px; }
+#view-home #topHero .th-o .th-call { position: absolute; top: 8px; right: 8px; grid-column: auto; grid-row: auto; width: 26px; height: 26px; font-size: 12px;
+  background: #FFFFFF; box-shadow: 0 0 0 2px #22B463, 0 3px 8px -3px rgba(0, 0, 0, .5); }   /* the red 📞 emoji reads on white, not on green */
 #view-home #topHero .th-head a { border-color: rgba(255, 210, 138, .65); background: linear-gradient(150deg, rgba(255, 196, 92, .26), rgba(255, 255, 255, .05)); }
 #view-home #topHero .th-np a, #view-home #topHero .th-np .th-a { border-color: rgba(220, 20, 60, .55); background: linear-gradient(150deg, rgba(220, 20, 60, .30), rgba(255, 255, 255, .05)); }
 #view-home #topHero .th-np .th-badge { background: #FFFFFF; }
 #view-home #topHero .th-more a { border-style: dashed; border-color: rgba(255, 255, 255, .35); background: rgba(255, 255, 255, .04); }
 #view-home #topHero .th-more .th-badge { color: #FFFFFF; background: linear-gradient(135deg, #22B463, #0C7139); }
 #view-home #topHero .th-more .th-call { background: rgba(255, 255, 255, .14); box-shadow: none; }
+#view-home #topHero .th-o .th-sub { padding-right: 24px; }
+/* the Nepal office people: a plain stacked list (no half-cut swipe row); the
+   CEO's own row is left out here - the CEO card (#homeCeo) sits right below */
+#view-home #topHero .th-npl { display: grid; gap: 6px; overflow: visible; scroll-snap-type: none; }
+#view-home #topHero .th-npl > li { min-width: 0; width: auto; flex: none; }
+#view-home #topHero .np-ceo { display: none; }
 #topHero .sc-th-foot { position: relative; z-index: 1; display: flex; justify-content: flex-end; margin-top: 10px; }
 #topHero .sc-th-all { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none;
   font: 800 13px/1.2 var(--font-sans); color: #10264D; background: linear-gradient(180deg, #FFE1A6, #F5B942); box-shadow: 0 3px 0 #B5770A, 0 8px 14px -8px rgba(0, 0, 0, .5); }
@@ -334,7 +341,10 @@ html.sc-io #homeFeat.sc-stagger:not(.sc-in) .sc-perks > li { opacity: 0; transfo
 .sc-ceo-band i { position: absolute; left: -10%; right: -10%; height: 12px; opacity: .9; }
 .sc-ceo-band .sc-band-in { top: 30px; transform: rotate(-7deg); background: linear-gradient(180deg, var(--sc-in-saffron) 0 33%, #FFFFFF 33% 66%, var(--sc-in-green) 66% 100%); }
 .sc-ceo-band .sc-band-np { top: 50px; transform: rotate(5deg); background: linear-gradient(180deg, var(--sc-crimson) 0 70%, var(--sc-np-blue) 70% 100%); }
-.sc-ceo-top { position: relative; z-index: 1; display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 14px; align-items: end; margin-top: -48px; }
+/* the photo rises into the band; the name column starts below it, so a long
+   name never lands dark-on-navy */
+.sc-ceo-top { position: relative; z-index: 1; display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 14px; align-items: start; margin-top: -48px; }
+.sc-ceo-id { padding-top: 58px; }
 /* the photo in a slowly turning ring of both flags' colours */
 .sc-ceo-photo { position: relative; overflow: hidden; isolation: isolate; width: 112px; height: 140px; padding: 4px; border-radius: 24px; background: #FFFFFF;
   box-shadow: 0 12px 24px -12px rgba(12, 48, 108, .6); }
@@ -343,7 +353,7 @@ html.sc-io #homeFeat.sc-stagger:not(.sc-in) .sc-perks > li { opacity: 0; transfo
 #homeCeo.sc-live .sc-ceo-photo::before { animation: scSpin 10s linear infinite; }
 .sc-ceo-photo img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 10%; border-radius: 20px; background: #FFFFFF; }
 .sc-ceo-id { min-width: 0; padding-bottom: 2px; }
-.sc-ceo-name { margin: 8px 0 0; font: 800 21px/1.18 var(--font-brand, var(--font-sans)); letter-spacing: .01em; color: var(--sc-ink); overflow-wrap: anywhere; }
+.sc-ceo-name { margin: 8px 0 0; font: 800 19px/1.2 var(--font-brand, var(--font-sans)); letter-spacing: .01em; color: var(--sc-ink); overflow-wrap: break-word; }
 .sc-ceo-ne { margin: 2px 0 0; font: 800 15.5px/1.35 var(--font-sans); color: var(--royal); }
 .sc-ceo-ne:empty { display: none; }
 .sc-ceo-role { margin: 3px 0 0; font: 700 12.5px/1.45 var(--font-sans); color: var(--sc-muted); }
@@ -448,7 +458,7 @@ html.sc-io #homeCeo .sc-ceo.sc-reveal:not(.sc-in) .sc-ceo-photo { opacity: 0; tr
 #bookHelp .bh-actions > a:hover, #bookHelp .bh-actions > button:hover { filter: brightness(1.06); }
 #bookHelp .bh-actions > a:active, #bookHelp .bh-actions > button:active { transform: translateY(3px); }
 #bookHelp .bh-actions .ic { width: 19px; height: 19px; flex: none; }
-#bookHelp .bh-actions .bh-cta { grid-column: 1 / -1; min-height: 56px; font-size: 16px; border-radius: 999px;
+#bookHelp .bh-actions .bh-cta { color: var(--on-royal, #FFFFFF); grid-column: 1 / -1; min-height: 56px; font-size: 16px; border-radius: 999px;
   background: linear-gradient(180deg, color-mix(in srgb, var(--royal) 75%, #FFFFFF) 0%, var(--royal) 50%, var(--royal-strong, #003D80) 100%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 4px 0 color-mix(in srgb, var(--royal-strong, #003D80) 70%, #000000), 0 14px 22px -12px color-mix(in srgb, var(--royal) 85%, transparent); }
 #bookHelp.sc-live .bh-cta .bh-arr { animation: scNudge 1.8s ease-in-out infinite; }
@@ -517,6 +527,20 @@ footer .f-grid picture { display: block; }
   #view-home #topHero .th-o .th-n { font-size: 12.5px; }
 }
 
+/* below the fold: skip layout + paint until the visitor gets near. The size
+   hints are the measured heights (390 px phone / desktop), and `auto` keeps the
+   real height once a block has been drawn, so nothing jumps while scrolling. */
+@supports (content-visibility: auto) {
+  #view-home > #animRoute { content-visibility: auto; contain-intrinsic-size: auto 414px; }
+  #view-home > #trust { content-visibility: auto; contain-intrinsic-size: auto 556px; }
+  body > footer, footer#siteFooter { content-visibility: auto; contain-intrinsic-size: auto 1810px; }
+  @media (min-width: 900px) {
+    #view-home > #animRoute { contain-intrinsic-size: auto 340px; }
+    #view-home > #trust { contain-intrinsic-size: auto 210px; }
+    body > footer, footer#siteFooter { contain-intrinsic-size: auto 660px; }
+  }
+}
+
 /* =====================================================================
    13. KEYFRAMES — transform / opacity only
    ===================================================================== */
@@ -572,4 +596,7 @@ html[data-motion="reduced"].sc-io #homeCeo .sc-ceo.sc-reveal:not(.sc-in) .sc-ceo
 }
 @media print {
   #demoHead, #animBooking, #homeCeo .sc-ceo-acts, #bookHelp, .sc-hh-sheen { display: none !important; }
+  /* a printout never waits for the scroll observer */
+  html.sc-io .sc-reveal:not(.sc-in), html.sc-io #homeFeat.sc-stagger:not(.sc-in) .sc-perks > li,
+  html.sc-io #homeCeo .sc-ceo.sc-reveal:not(.sc-in) .sc-ceo-photo { opacity: 1 !important; transform: none !important; }
 }

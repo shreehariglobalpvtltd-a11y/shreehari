@@ -52,6 +52,7 @@ $T = [
              'approxNote' => '≈ approximate: the crew picks the exact dhaba / hotel and traffic changes the times.', 'ttNote' => 'No live GPS right now — the times and the bar follow the timetable, not the bus’s real position.',
              'border' => 'India–Nepal border', 'across' => 'Nepalgunj is across the border, in Nepal', 'arrive' => 'Arrival time being confirmed',
              'leftSub' => 'The coach has started its run, but its live position is not being sent right now. The times below follow the timetable.',
+             'ttTitle' => 'As per timetable the bus is on its way — not live on GPS right now',
              'hk' => ['breakfast' => 'Breakfast', 'lunch' => 'Lunch', 'dinner' => 'Dinner', 'meal' => 'Meal', 'tea' => 'Tea break', 'fuel' => 'Fuel', 'rest' => 'Rest', 'border' => 'Border']],
     'hi' => ['title' => 'मेरी बस कहाँ है?', 'sub' => 'आपके टिकट की लाइव स्थिति', 'notFound' => 'यह लिंक सही नहीं है। हमारे भेजे संदेश से पेज खोलें।',
              'stop' => 'आपका बोर्डिंग स्टॉप', 'date' => 'यात्रा की तारीख', 'bus' => 'बस', 'pnr' => 'टिकट', 'route' => 'रूट',
@@ -67,6 +68,7 @@ $T = [
              'approxNote' => '≈ अनुमानित: ढाबा / होटल चालक दल चुनता है, ट्रैफ़िक से समय बदल सकता है।', 'ttNote' => 'अभी लाइव GPS नहीं — समय और पट्टी समय-सारणी के अनुसार हैं, बस की असली जगह नहीं।',
              'border' => 'भारत–नेपाल सीमा', 'across' => 'सीमा पार Nepalgunj, नेपाल में', 'arrive' => 'पहुँचने का समय पक्का हो रहा है',
              'leftSub' => 'बस अपनी यात्रा पर निकल चुकी है, पर अभी उसकी लाइव जगह नहीं आ रही। नीचे के समय समय-सारणी के अनुसार हैं।',
+             'ttTitle' => 'समय-सारणी के अनुसार बस रास्ते में है — अभी लाइव नहीं',
              'hk' => ['breakfast' => 'नाश्ता', 'lunch' => 'दोपहर का खाना', 'dinner' => 'रात का खाना', 'meal' => 'खाना', 'tea' => 'चाय ब्रेक', 'fuel' => 'ईंधन', 'rest' => 'आराम', 'border' => 'सीमा']],
     'ne' => ['title' => 'मेरो बस कहाँ छ?', 'sub' => 'तपाईंको टिकटको लाइभ स्थिति', 'notFound' => 'यो लिङ्क मिलेन। हामीले पठाएको सन्देशबाट पेज खोल्नुहोस्।',
              'stop' => 'तपाईं चढ्ने ठाउँ', 'date' => 'यात्राको मिति', 'bus' => 'बस', 'pnr' => 'टिकट', 'route' => 'रुट',
@@ -82,6 +84,7 @@ $T = [
              'approxNote' => '≈ अनुमानित: ढाबा / होटल चालक दलले छान्छ, ट्राफिकले समय फरक पर्न सक्छ।', 'ttNote' => 'अहिले लाइभ GPS छैन — समय र पट्टी समय तालिका अनुसार हुन्, बसको वास्तविक स्थिति होइन।',
              'border' => 'भारत–नेपाल सीमा', 'across' => 'सीमापारि Nepalgunj, नेपालमा', 'arrive' => 'पुग्ने समय पक्का हुँदैछ',
              'leftSub' => 'बस यात्रामा निस्किसकेको छ, तर अहिले यसको लाइभ स्थिति आइरहेको छैन। तलका समय समय तालिका अनुसार हुन्।',
+             'ttTitle' => 'समय तालिका अनुसार बस बाटोमा छ — अहिले लाइभ छैन',
              'hk' => ['breakfast' => 'नास्ता', 'lunch' => 'दिउँसोको खाना', 'dinner' => 'बेलुकाको खाना', 'meal' => 'खाना', 'tea' => 'चिया ब्रेक', 'fuel' => 'इन्धन', 'rest' => 'आराम', 'border' => 'सीमा']],
 ][$lang];
 
@@ -134,7 +137,8 @@ if ($authed && $status !== null) {
         $head = ['icon' => '🚌', 'title' => $T['gone'], 'sub' => '', 'tone' => 'muted'];
     } elseif (($status['runningSinceMin'] ?? null) !== null && $st !== 'cancelled') {
         // 9 Oct 2026: the run has started (passenger's own pickup still ahead) - not "check closer to departure".
-        $head['sub'] = $T['leftSub'];
+        $head['title'] = $T['ttTitle'];
+        $head['sub']   = $T['leftSub'];
     }
 }
 
@@ -268,7 +272,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple
     else if (d.lastKnown) { icon = '⏸'; title = fill(T.lastKnown, [d.lastAt, d.lastStop, d.lastAgeMin]); sub = gone ? T.gone : ''; }
     else if (d.delayMin > 0) { icon = '⏰'; title = T.delay.replace('%d', d.delayMin); sub = d.delayNote || ''; tone = 'warn'; }
     else if (gone) { title = T.gone; sub = ''; }
-    else if (d.runningSinceMin != null && d.state !== 'cancelled') { sub = T.leftSub; }
+    else if (d.runningSinceMin != null && d.state !== 'cancelled') { title = T.ttTitle; sub = T.leftSub; }
     card.className = 'card hero tone-' + tone;
     $('hIcon').textContent = icon;
     $('hTitle').innerHTML = (live ? '<i class="pulse"></i>' : '') + title.replace(/[<>&]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; });

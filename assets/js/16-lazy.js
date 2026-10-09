@@ -210,7 +210,9 @@ function cleanupTrip() {
    offline. Kept fully independent of the MapLibre live section
    (tcLiveSection) so it can never break it. Cleared by cleanupTrip().
 ================================================================ */
-var LT = { watchId: null, built: false, lastFix: null, spd: [], destKm: 1375, endKm: 1375 };
+/* destKm / endKm: Surat -> Rupaidiha road km (measured 9 Oct 2026); the rail
+   rebuilds from the API values once shgSyncRouteStops() (10-track.js) lands. */
+var LT = { watchId: null, built: false, lastFix: null, spd: [], destKm: 1688, endKm: 1688, synced: false };
 
 function ltAmenStr(s) {
   if (!s || !s.amen) return '';
@@ -235,8 +237,15 @@ function ltStatus(msg, cls) {
 /* Build the all-stops rail once and wire the Start/Pause buttons. */
 function tcInitLiveTimeline() {
   var rail = $('#ltRail'); if (!rail) return;
+  /* 9 Oct 2026: km + halts from /api/timetable.php (10-track.js keeps the
+     arrays in step); the hard-coded corridor is only the offline copy. Rebuild
+     once when the API answer lands, unless the passenger already pressed Start. */
+  if (!LT.synced && typeof shgSyncRouteStops === 'function') {
+    LT.synced = true;
+    shgSyncRouteStops().then(function (ok) { if (ok && !LT.watchId && $('#ltRail')) tcInitLiveTimeline(); });
+  }
   var cnt = $('#ltCount'); if (cnt) cnt.textContent = ROUTE_STOPS.length;
-  LT.endKm = ROUTE_STOPS[ROUTE_STOPS.length - 1].km || 1375;
+  LT.endKm = ROUTE_STOPS[ROUTE_STOPS.length - 1].km || 1688;
 
   var b = TC.booking;
   var destName = tcDestName(b) || 'Rupaidiha';
@@ -244,7 +253,18 @@ function tcInitLiveTimeline() {
   LT.destKm = destStop.km || LT.endKm;
 
   var html = '<div class="lt-fill" id="ltFill"></div><div class="lt-bus" id="ltBus" style="display:none">🚌</div>';
+  /* Halts (≈ approximate) sit between the stops by road km; they carry no
+     data-i, so the progress painter below only ever counts real stops. */
+  var halts = (typeof ROUTE_HALTS !== 'undefined' ? ROUTE_HALTS : []).filter(function (h) { return h.km != null; });
+  var hIcon = { breakfast: '🍳', lunch: '🍛', dinner: '🍽️', meal: '🍽️', tea: '☕', fuel: '⛽', rest: '🛏️', border: '🛂' };
+  var hi = 0;
   ROUTE_STOPS.forEach(function (s, i) {
+    while (hi < halts.length && halts[hi].km < s.km) {
+      var h = halts[hi++];
+      html += '<div class="lt-stop lt-halt" style="opacity:.86"><div class="lt-marker"><span class="lt-dot" style="width:9px;height:9px;left:9px;top:6px;border-color:var(--orange)"></span></div>'
+        + '<div class="lt-info"><div class="lt-name" style="font-weight:600">' + (hIcon[h.kind] || '•') + ' ' + esc(h.name)
+        + ' <span class="lt-km">' + Math.round(h.km) + ' km' + (h.time ? ' · ' + (h.approx ? '≈' : '') + esc(h.time) : '') + (h.haltMin ? ' · ' + h.haltMin + ' min' : '') + '</span></div></div></div>';
+    }
     var amen = ltAmenStr(s);
     html += '<div class="lt-stop" data-i="' + i + '">'
       + '<div class="lt-marker"><span class="lt-dot"></span></div>'
@@ -279,7 +299,7 @@ function ltMarkProgress(progressKm, segIdx, t, moving) {
   var rail = $('#ltRail'); if (!rail) return;
   var last = ROUTE_STOPS.length - 1;
   if (segIdx < 0) segIdx = 0; if (segIdx > last) segIdx = last;
-  $$('.lt-stop', rail).forEach(function (r) {
+  $$('.lt-stop[data-i]', rail).forEach(function (r) {
     var i = +r.getAttribute('data-i');
     r.classList.remove('done', 'here', 'next');
     if (ROUTE_STOPS[i].km <= progressKm + 0.5) r.classList.add('done');
@@ -1907,9 +1927,45 @@ document.addEventListener('click', function(e) {
         + '</span></li>';
     };
 
+    /* 9 Oct 2026: the run in travel order from r.line — pickups with their
+       road km, the usual halts (≈, with how long the bus stands) and the
+       border — plus one facts line (km · stops · halts · ≈ journey time).
+       The old two lists stay as the fallback for an older API answer. */
+    const HK = { breakfast: ['🍳', 'नास्ता · breakfast'], lunch: ['🍛', 'खाना · lunch'], dinner: ['🍽️', 'बेलुकीको खाना · dinner'], meal: ['🍽️', 'खाना · meal'],
+                 tea: ['☕', 'चिया · tea'], fuel: ['⛽', 'इन्धन · fuel'], rest: ['🛏️', 'विश्राम · rest'], border: ['🛂', 'सीमा · border'] };
+    const kmT = (v) => Math.round(+v).toLocaleString('en-IN') + ' km';
+    const lineRow = (it) => {
+      if (it.kind === 'halt') {
+        const k = HK[it.halt] || HK.rest;
+        return '<li class="tt-stop tt-halt" style="opacity:.92">'
+          + '<span class="tt-time">' + (it.time ? (it.approx ? '≈' : '') + esc2(it.time) + (it.dayPlus > 0 ? '<sup>+' + (it.dayPlus | 0) + '</sup>' : '') : '—') + '</span>'
+          + '<span class="tt-name">' + k[0] + ' ' + esc2(it.name) + ' <span class="tt-tag">' + esc2(k[1]) + (it.haltMin ? ' · ' + (it.haltMin | 0) + ' min' : '') + '</span>'
+          + (it.km != null ? ' <span class="tt-tag">' + kmT(it.km) + '</span>' : '') + '</span></li>';
+      }
+      const gone = it.role === 'board' && it.open === false;
+      return '<li class="tt-stop' + (gone ? ' tt-gone' : '') + '">'
+        + '<span class="tt-time">' + esc2(it.time || '—') + '</span>'
+        + '<span class="tt-name">' + esc2(it.name) + (it.border ? ' 🇮🇳 <span class="tt-tag">🛂 भारत–नेपाल सीमा · border</span>' : '')
+        + (it.km != null ? ' <span class="tt-tag">' + kmT(it.km) + '</span>' : '')
+        + (gone ? ' <span class="tt-gone-tag">बस गइसक्यो · already departed</span>' : '')
+        + '</span></li>';
+    };
+    const facts = (r) => {
+      const bits = [];
+      if (r.distanceKm) bits.push('≈ ' + kmT(r.distanceKm));
+      if (r.stopCount != null) bits.push(r.stopCount + ' स्टप · stops');
+      if (r.haltCount) bits.push(r.haltCount + ' बिसौनी · halts');
+      if (r.durationMin > 0) { const h = Math.round(r.durationMin / 30) / 2; bits.push('≈ ' + Math.floor(h) + (h % 1 ? '½' : '') + ' घण्टा · h'); }
+      const spans = (r.spans || []).slice(1).map(sp => esc2(sp.from) + ' → ' + esc2(sp.to) + ' ≈ ' + kmT(sp.km)).join(' · ');
+      return bits.length ? '<div class="tt-sub" style="text-transform:none">📏 ' + esc2(bits.join(' · ')) + (spans ? '<br>' + spans : '') + '</div>' : '';
+    };
+
     const card = (r) => {
-      const board = (r.boarding || []).map(s => stopRow(s, true)).join('');
-      const drop  = (r.drop || []).map(s => stopRow(s, false)).join('');
+      const useLine = Array.isArray(r.line) && r.line.length;
+      const board = useLine ? r.line.map(lineRow).join('') : (r.boarding || []).map(s => stopRow(s, true)).join('');
+      const drop  = useLine ? '' : (r.drop || []).map(s => stopRow(s, false)).join('');
+      const halfNote = useLine && r.line.some(it => it.kind === 'halt' && it.approx)
+        ? '<p class="muted" style="font-size:12px;margin:6px 0 0">≈ अनुमानित — खाना/चियाको ठाउँ चालक दलले छान्छ · approximate, the crew picks the exact dhaba. समय तालिका अनुसार · as per timetable.</p>' : '';
       return '<div class="tt-card' + (r.sellable ? '' : ' tt-done') + '">'
         + '<div class="tt-head">'
         +   '<b>' + esc2(r.from) + ' → ' + esc2(r.to) + '</b>'
@@ -1918,8 +1974,10 @@ document.addEventListener('click', function(e) {
               ? '<span class="tt-live">आज बुक हुन्छ · booking open</span>'
               : '<span class="tt-off">आजको बस गइसक्यो · today’s bus has gone</span>')
         + '</div>'
-        + (board ? '<div class="tt-sub">बोर्डिङ · Pickup points</div><ul class="tt-list">' + board + '</ul>' : '')
+        + facts(r)
+        + (board ? '<div class="tt-sub">' + (useLine ? 'पूरा यात्रा · The whole run' : 'बोर्डिङ · Pickup points') + '</div><ul class="tt-list">' + board + '</ul>' : '')
         + (drop  ? '<div class="tt-sub">ओर्लने · Drop points</div><ul class="tt-list">' + drop + '</ul>' : '')
+        + halfNote
         + '</div>';
     };
 

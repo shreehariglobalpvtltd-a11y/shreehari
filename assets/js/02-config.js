@@ -572,6 +572,7 @@ function factVars() {
     privDouble: factMoney(fact('fares.private.double', priv.double_2pax ? priv.double_2pax.offline : 0)),
     agentDirect: factMoney(fact('agent.direct', 0)), agentJoint: factMoney(fact('agent.joint', 0)),
     company: String(fact('brand.name', CONFIG.company.name)), ceo: String(fact('ceo.name', CONFIG.company.ceo)),
+    cin: String(fact('brand.cin', CONFIG.company.cin)),
     headPhone: String(fact('head.phone', CONFIG.phone))
   };
 }
@@ -603,7 +604,7 @@ function hydrateFacts(root) {
       var h = el.innerHTML;
       if (h.indexOf('{') < 0) return;
       V = V || factVars();
-      var n = h.replace(/\{(npr|goMin|goMax|goRange|backMin|backMax|backRange|privSingle|privDouble|agentDirect|agentJoint|company|ceo|headPhone)\}/g, function (m, k) {
+      var n = h.replace(/\{(npr|goMin|goMax|goRange|backMin|backMax|backRange|privSingle|privDouble|agentDirect|agentJoint|company|ceo|cin|headPhone)\}/g, function (m, k) {
         return String(V[k]).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
       });
       if (n !== h) el.innerHTML = n;

@@ -143,8 +143,8 @@ echo ContentPages::adminCss();
 <?php else: ?>
 
 <p class="muted" style="margin:0 0 14px;font-size:13.5px">
-  Places on <a href="/explore" target="_blank" rel="noopener">/explore</a> (also /hi/explore, /ne/explore). A place within ~150 km of Nepalgunj / Rupaidiha
-  (the “Near stop”) is listed under <b>Near the border</b>. ⭐ Featured = “Our picks” and the home page.
+  Places on <a href="/explore" target="_blank" rel="noopener">/explore</a> (also /hi/explore, /ne/explore). A place whose map point (lat / lng) is within ~120 km
+  of the Rupaidiha ⇄ Nepalgunj crossing is listed under <b>Near the border</b> (no map point: a border “Near stop” with ≤ 150 km). ⭐ Featured = “Our picks” and the home page.
   <?php if (!$canEdit): ?><br><b>View only</b> — saving needs the Settings permission.<?php endif; ?>
 </p>
 

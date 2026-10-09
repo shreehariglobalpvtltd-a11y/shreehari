@@ -71,6 +71,7 @@ final class DocArt
     {
         self::$rootOverride = $dir;
         self::$gd = [];
+        self::$ratio = [];
     }
 
     /**
@@ -297,10 +298,32 @@ final class DocArt
         }
     }
 
+    /** @var array<string, float> w/h of the flag files actually shipped */
+    private static array $ratio = [];
+
+    /** w / h of a flag: the shipped PNG's own shape when readable, else the drawn default. */
+    private static function ratio(string $cc): float
+    {
+        $cc = strtoupper($cc) === 'NP' ? 'NP' : 'IN';
+        if (!isset(self::$ratio[$cc])) {
+            $r = $cc === 'NP' ? self::RATIO_NP : self::RATIO_IN;
+            try {
+                $f = self::flagFile($cc);
+                $info = $f !== null ? @getimagesize($f) : false;
+                if ($info !== false && $info[0] > 0 && $info[1] > 0) {
+                    $r = $info[0] / $info[1];
+                }
+            } catch (\Throwable $e) {
+            }
+            self::$ratio[$cc] = $r;
+        }
+        return self::$ratio[$cc];
+    }
+
     /** Width a flag of height $h takes. */
     public static function flagWidth(string $cc, int $h): int
     {
-        return strtoupper($cc) === 'NP' ? (int) round($h * self::RATIO_NP) : (int) round($h * self::RATIO_IN);
+        return (int) round($h * self::ratio($cc));
     }
 
     /**
@@ -746,7 +769,7 @@ final class DocArt
             $cx = $x;
             $any = false;
             foreach ($order as $i => $cc) {
-                $w = $h * ($cc === 'NP' ? self::RATIO_NP : self::RATIO_IN);
+                $w = $h * self::ratio($cc);
                 $f = self::flagFile($cc);
                 if ($f !== null) {
                     $small = self::derivative($f, (int) ceil($w * 4), (int) ceil($h * 4), 'contain') ?? $f;
@@ -778,7 +801,7 @@ final class DocArt
     /** Width pdfFlags() takes at height $h. */
     public static function pdfFlagsWidth(float $h, float $gap = 4.0): float
     {
-        return $h * self::RATIO_IN + $gap + $h * self::RATIO_NP;
+        return $h * self::ratio('IN') + $gap + $h * self::ratio('NP');
     }
 
     /**

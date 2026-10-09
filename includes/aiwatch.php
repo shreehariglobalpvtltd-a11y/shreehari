@@ -106,12 +106,43 @@ final class AiWatch
             return [];
         }
         $mins = self::minutesSince((string) ($r['oldest'] ?? ''));
-        return [self::item(
+        $out = [self::item(
             'pay', $mins >= 15 ? 'high' : 'warn', '💳',
             $n . ' payment' . self::s($n) . ' waiting to be verified',
             'Oldest ' . self::ago($mins) . '. The passenger has no confirmed ticket until someone checks the UTR / screenshot.',
             '/admin/payments.php', 'Verify now'
         )];
+
+        /* 9 Oct 2026 (anti-fake): HIGH-risk proofs among them (duplicate UTR,
+           re-used screenshot, amount short ...). Advisory - the queue shows
+           why; nothing is rejected or held by this card. */
+        try {
+            require_once __DIR__ . '/paymentrisk.php';
+            $ids = array_map('intval', array_column(Database::fetchAll(
+                "SELECT DISTINCT b.id FROM bookings b JOIN payments p ON p.booking_id = b.id
+                  WHERE b.status = 'pending' AND p.status = 'pending'
+                  ORDER BY b.id DESC LIMIT 150"
+            ), 'id'));
+            $high = [];
+            foreach (PaymentRisk::scoreMany($ids) as $rk) {
+                if (($rk['level'] ?? '') === 'high' && !empty($rk['hasProof'])) {
+                    $high[] = (string) $rk['pnr'];
+                }
+            }
+            if ($high !== []) {
+                $h = count($high);
+                $out[] = self::item(
+                    'payrisk', 'high', '⚠️',
+                    $h . ' high-risk payment' . self::s($h) . ' waiting',
+                    'Same UTR / screenshot on another booking, amount short or similar — ' . implode(', ', array_slice($high, 0, 3))
+                        . ($h > 3 ? ' +' . ($h - 3) : '') . '. Check the bank statement before approving.',
+                    '/admin/payments.php?tab=pending&sub=proof', 'Review'
+                );
+            }
+        } catch (Throwable $e) {
+            // the risk card is a nicety; the count above still shows
+        }
+        return $out;
     }
 
     /**

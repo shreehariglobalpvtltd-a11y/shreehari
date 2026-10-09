@@ -37,10 +37,10 @@
       "purpose": "maskable"
     },
     {
-      "src": "/icon-shg.svg",
-      "type": "image/svg+xml",
-      "sizes": "any",
-      "purpose": "any"
+      "src": "/assets/img/badge-96.png?v=20261008p",
+      "type": "image/png",
+      "sizes": "96x96",
+      "purpose": "monochrome"
     }
   ],
   "shortcuts": [

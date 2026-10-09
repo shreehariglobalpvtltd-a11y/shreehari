@@ -481,7 +481,7 @@ final class AgentStatementPng
 
         /* ---------- footer ---------- */
         imageline($im, $M, $H - 76, $W - $M, $H - 76, $lineS);
-        self::t($im, 13, $M, $H - 62, $muted, self::fit(13, 'From the S Hari Global agent ledger. Generated ' . date('j M Y, g:i A', (int) strtotime($d['generated'])) . '  ·  ' . $co['legal'], $W - 2 * $M - 160), false);
+        self::t($im, 13, $M, $H - 62, $muted, self::fit(13, 'From the agent ledger. Generated ' . date('j M Y, g:i A', (int) strtotime($d['generated'])) . '  ·  ' . $co['legal'], $W - 2 * $M - 160), false);
         self::tR($im, 13, $W - $M, $H - 62, $muted, 'Page ' . $page . ' / ' . $pages, true);
         self::t($im, 12, $M, $H - 36, $muted, self::fit(12, 'Questions about an entry: call the office ' . $co['phone'] . '. Amounts in Indian rupees.', $W - 2 * $M), false);
 

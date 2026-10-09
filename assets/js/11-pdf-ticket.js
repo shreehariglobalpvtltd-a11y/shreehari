@@ -148,9 +148,11 @@ async function buildTicketCanvas(b) {
   var mk = await _markImg();
   if (mk) {
     var mh = 110, mw = Math.round(mh * (mk.naturalWidth / (mk.naturalHeight || 1)));
-    var glow = g.createRadialGradient(pad + mw / 2, 100, 10, pad + mw / 2, 100, mw * 0.62);
+    var gR = mw * 0.62, gCx = pad + mw / 2;
+    var glow = g.createRadialGradient(gCx, 100, 10, gCx, 100, gR);
     glow.addColorStop(0, 'rgba(190,214,255,0.45)'); glow.addColorStop(1, 'rgba(190,214,255,0)');
-    g.fillStyle = glow; g.fillRect(pad - 20, 20, mw + 40, 160);
+    /* the fill covers the whole gradient circle (clipped to the band), so no box edge shows */
+    g.fillStyle = glow; g.fillRect(gCx - gR, 0, gR * 2, 200);
     try { g.drawImage(mk, pad, 100 - mh / 2, mw, mh); tx = pad + mw + 26; } catch (e) {}
   }
   g.fillStyle = '#FFD268'; g.font = 'bold 40px sans-serif';

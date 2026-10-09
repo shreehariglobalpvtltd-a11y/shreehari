@@ -92,7 +92,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans D
 .brand{display:flex;align-items:center;gap:10px;font-weight:800;color:var(--navy);text-decoration:none}
 .brand img{height:34px;width:auto;max-width:70px;object-fit:contain;flex:none;filter:drop-shadow(0 2px 4px rgba(18,38,78,.22))}
 .brand .flg-pair{gap:3px}
-@media (max-width:380px){.brand .flg-pair{display:none!important}}
+@media (max-width:430px){.brand .flg-pair{display:none!important}.brand img{height:30px;max-width:60px}}
+.brand{min-width:0}.langs{flex:none;white-space:nowrap}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .brand{color:#fff}}
 :root[data-theme="dark"] .brand{color:#fff}
 .langs a{font-size:12px;font-weight:700;color:var(--muted);text-decoration:none;padding:4px 8px;border-radius:999px;border:1px solid var(--line);margin-left:4px}

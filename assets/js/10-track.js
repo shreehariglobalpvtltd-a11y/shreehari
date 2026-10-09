@@ -17,17 +17,77 @@ function durationMinutes(r) {
 const ROUTE_STOPS = [
   { name: 'Surat',        flag: '🇮🇳', x: 24,  y: 296, km: 0,    m: 0,    lat: 21.1700, lng: 72.8310, amen: {} },
   /* town-level coordinates (ETA estimates only, never directions); m = the owner's 19 Sep 2026 timetable */
-  { name: 'Kamrej',       flag: '',     x: 39,  y: 287, km: 20,   m: 30,   lat: 21.2710, lng: 72.9580, amen: {} },
-  { name: 'Ankleshwar',   flag: '',     x: 53,  y: 278, km: 60,   m: 120,  lat: 21.6260, lng: 73.0150, amen: {} },
-  { name: 'Bharuch',      flag: '',     x: 68,  y: 269, km: 75,   m: 180,  lat: 21.7050, lng: 72.9960, amen: {} },
-  { name: 'Vadodara',     flag: '',     x: 82,  y: 259, km: 150,  m: 240,  lat: 22.3070, lng: 73.1810, amen: {} },
-  { name: 'Anand',        flag: '',     x: 97,  y: 250, km: 190,  m: 330,  lat: 22.5650, lng: 72.9290, amen: {} },
-  { name: 'Nadiad',       flag: '',     x: 111, y: 241, km: 210,  m: 420,  lat: 22.6920, lng: 72.8630, amen: {} },
+  /* km = road km measured on our Valhalla engine (bus costing, 9 Oct 2026) —
+     the OFFLINE copy only: shgSyncRouteStops() below refreshes km / m from
+     /api/timetable.php (route_stops.km_from_origin, Admin -> Routes). */
+  { name: 'Kamrej',       flag: '',     x: 39,  y: 287, km: 27,   m: 30,   lat: 21.2710, lng: 72.9580, amen: {} },
+  { name: 'Ankleshwar',   flag: '',     x: 53,  y: 278, km: 70,   m: 120,  lat: 21.6260, lng: 73.0150, amen: {} },
+  { name: 'Bharuch',      flag: '',     x: 68,  y: 269, km: 85,   m: 180,  lat: 21.7050, lng: 72.9960, amen: {} },
+  { name: 'Vadodara',     flag: '',     x: 82,  y: 259, km: 173,  m: 240,  lat: 22.3070, lng: 73.1810, amen: {} },
+  { name: 'Anand',        flag: '',     x: 97,  y: 250, km: 219,  m: 330,  lat: 22.5650, lng: 72.9290, amen: {} },
+  { name: 'Nadiad',       flag: '',     x: 111, y: 241, km: 241,  m: 420,  lat: 22.6920, lng: 72.8630, amen: {} },
   /* 'Emli Bhupal' (21:00, Taj Hotel) has no coordinates yet — deliberately
      skipped here; add it once real lat/lng are known. */
-  { name: 'S Hari Parking, Nana Chiloda', flag: '', x: 126, y: 232, km: 260, m: 600, lat: 23.1710, lng: 72.6230, amen: {} },
-  { name: 'Rupaidiha',    flag: '🛃',   x: 440, y: 78,  km: 1600, m: 1200, lat: 28.0600, lng: 81.6170, amen: { border: true, police: true, wash: true } }
+  { name: 'S Hari Parking, Nana Chiloda', flag: '', x: 126, y: 232, km: 316, m: 600, lat: 23.1710, lng: 72.6230, amen: {} },
+  { name: 'Rupaidiha',    flag: '🛃',   x: 440, y: 78,  km: 1688, m: 2139, lat: 28.0600, lng: 81.6170, amen: { border: true, police: true, wash: true } }
 ];
+/* En-route halts (tea / breakfast / lunch / dinner …) of the outbound run,
+   filled from /api/timetable.php by shgSyncRouteStops(); [] until then.
+   Each: {name, kind, km, m, haltMin, approx}. Approximate by default. */
+const ROUTE_HALTS = [];
+/* One key per town whatever its label: "Barauda" / "Vadodara" / "Baroda",
+   "S Hari Parking, Nana Chiloda (Amd)" / "Hari Pvt. Ltd. Parking - Nana Chiloda". */
+function routeStopKey(n) {
+  n = String(n || '').toLowerCase();
+  if (/vadodara|baroda|barauda/.test(n)) return 'brc';
+  if (/chiloda|hari.*parking|ahmedabad/.test(n)) return 'amd';
+  if (/emli|limbli|bhupal/.test(n)) return 'emli';
+  return n.replace(/\(.*?\)/g, '').replace(/[^a-z]/g, '').slice(0, 10);
+}
+/* 9 Oct 2026: the hard-coded corridor above becomes the offline fallback.
+   Reads the outbound route's journey line from /api/timetable.php and
+   updates ROUTE_STOPS in place (km, m — the SVG x/y stay) plus ROUTE_HALTS,
+   so the Trip Companion timeline, the route overview card and the LT rail
+   use the same km the office measured. A stop the API has no km for keeps
+   its offline value; nothing is added or removed (shapes stay stable). */
+function shgSyncRouteStops() {
+  if (shgSyncRouteStops._p) return shgSyncRouteStops._p;
+  const get = (typeof shgTimetableGet === 'function') ? shgTimetableGet('')
+    : fetch('/api/timetable.php', { credentials: 'same-origin' }).then(r => r.json());
+  const hm = s => { const m = /^(\d{1,2}):(\d{2})/.exec(String(s || '')); return m ? (+m[1]) * 60 + (+m[2]) : null; };
+  shgSyncRouteStops._p = Promise.resolve(get).then(function (j) {
+    const d = (j && j.routes) ? j : (j && j.data) || {};
+    const nep = n => /rupaidiha|nepalgunj/i.test(String(n || ''));
+    const r = (d.routes || []).filter(x => nep(x.to) && !nep(x.from)).sort((a, b) => (b.sellable ? 1 : 0) - (a.sellable ? 1 : 0))[0];
+    if (!r || !Array.isArray(r.line) || !r.line.length) return false;
+    const dep = hm(r.depTime);
+    const offOf = it => {
+      const t = hm(it.time);
+      return t !== null && dep !== null ? (it.dayPlus > 0 ? it.dayPlus * 1440 : 0) + t - dep : null;
+    };
+    const byKey = {};
+    r.line.forEach(function (it) { if (it.kind === 'stop' && !byKey[routeStopKey(it.name)]) byKey[routeStopKey(it.name)] = it; });
+    ROUTE_STOPS.forEach(function (s, i) {
+      const it = byKey[routeStopKey(s.name)];
+      if (!it) return;
+      if (it.km != null && isFinite(+it.km)) s.km = +it.km;
+      const off = offOf(it);
+      if (off !== null && off >= 0) s.m = off;
+      else if (i === ROUTE_STOPS.length - 1 && r.durationMin > 0) s.m = +r.durationMin;
+    });
+    ROUTE_HALTS.length = 0;
+    r.line.forEach(function (it) {
+      if (it.kind !== 'halt') return;
+      ROUTE_HALTS.push({ name: it.name, kind: it.halt || 'rest', km: it.km != null ? +it.km : null, m: offOf(it),
+                         time: it.time || '', dayPlus: it.dayPlus || 0, haltMin: it.haltMin || 0, approx: it.approx !== false });
+    });
+    try { document.dispatchEvent(new CustomEvent('shg:routestops')); } catch (e) { /* old browser */ }
+    return true;
+  }).catch(function () { shgSyncRouteStops._p = null; return false; });
+  return shgSyncRouteStops._p;
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { shgSyncRouteStops(); }, { once: true });
+else shgSyncRouteStops();
 function trackMapSVG(pct, reverse) {
   const p = Math.max(0, Math.min(100, pct == null ? 0 : pct));
   const stops = ROUTE_STOPS;
@@ -66,7 +126,7 @@ function trackMapSVG(pct, reverse) {
     <path id="trkRoutePath" d="${pathD}" fill="none" stroke="url(#trkGrad)" stroke-width="3" stroke-dasharray="8 6" stroke-linecap="round"/>
     ${dotsSVG}
     <rect x="160" y="282" width="220" height="22" rx="11" fill="var(--card)" stroke="var(--line)" stroke-width="1"/>
-    <text x="270" y="297" text-anchor="middle" fill="var(--ink)" font-size="10" font-weight="600">🚌 Total: ≈ 1,600 km · ~30 hrs · ${stops.length} stops</text>
+    <text x="270" y="297" text-anchor="middle" fill="var(--ink)" font-size="10" font-weight="600">🚌 Total: ≈ ${Math.round(stops[stops.length - 1].km).toLocaleString('en-IN')} km · ~${Math.round(stops[stops.length - 1].m / 60)} hrs · ${stops.length} stops</text>
     <g id="trkBusMarker" data-pct="${p}" data-rev="${reverse ? 1 : 0}">
       <circle r="14" fill="var(--card)" stroke="var(--orange)" stroke-width="2.5"/>
       <text y="5" text-anchor="middle" font-size="14">🚌</text>
@@ -127,6 +187,15 @@ function rovStopList(back) {
     return { town: left[0].trim(), mark: (left[1] || '').trim(), time: (at[1] || '').trim(),
              lat: geo ? +geo[1] : null, lng: geo ? +geo[2] : null };
   }).filter(x => x.town && !nep(x.town));
+}
+/* 9 Oct 2026: a drawn India flag (22x15) for the overview card. Rupaidiha is
+   in INDIA — the card used to print "NP" beside it; flag emoji render as
+   letters on Windows, so the flag is SVG. */
+function rovFlagIN(x, y) {
+  return '<g class="rov-flagi" transform="translate(' + x + ',' + y + ')" aria-hidden="true"><rect width="24" height="16" fill="#fff"/>'
+    + '<rect width="24" height="5.33" fill="#FF9933"/><rect y="10.67" width="24" height="5.33" fill="#138808"/>'
+    + '<circle cx="12" cy="8" r="2.2" fill="none" stroke="#000080" stroke-width=".8"/><circle cx="12" cy="8" r=".6" fill="#000080"/>'
+    + '<rect width="24" height="16" fill="none" stroke="rgba(255,255,255,.7)" stroke-width="1"/></g>';
 }
 /* A pin only where the town's coordinates are known (CITY_COORDS) — never a guess. */
 function rovPin(name) {
@@ -191,9 +260,9 @@ function routeOverviewSVG(opts) {
     ${via}${dots}
     <g class="rov-end rov-from" transform="translate(${T[0]},${T[1]})"><circle r="16" class="rov-pulse"/><circle r="8" fill="#F07800" stroke="#fff" stroke-width="3"/></g>
     <g class="rov-end rov-to" transform="translate(${R[0]},${R[1]})"><circle r="16" class="rov-pulse rov-pulse-b"/><circle r="8" fill="#5FA8E8" stroke="#fff" stroke-width="3"/></g>
-    <text x="${T[0] - 16}" y="${T[1] + 6}" text-anchor="end" class="rov-city rov-from-lbl"><tspan class="rov-flag">IN</tspan> ${esc(townLbl)}</text>
+    ${rovFlagIN(T[0] - 40, T[1] - 7)}<text x="${T[0] - 46}" y="${T[1] + 6}" text-anchor="end" class="rov-city rov-from-lbl">${esc(townLbl)}</text>
     <text x="${T[0] - 16}" y="${T[1] + 26}" text-anchor="end" class="rov-sub rov-from-lbl">GUJARAT · IST</text>
-    <text x="${R[0] + 16}" y="${R[1] + 30}" class="rov-city rov-to-lbl"><tspan class="rov-flag">NP</tspan> Rupaidiha</text>
+    ${rovFlagIN(R[0] + 16, R[1] + 17)}<text x="${R[0] + 44}" y="${R[1] + 30}" class="rov-city rov-to-lbl">Rupaidiha</text>
     <text x="${R[0] + 16}" y="${R[1] + 50}" class="rov-sub rov-to-lbl">INDIA–NEPAL BORDER</text>
     <g class="rov-pill" transform="translate(560,332)"><rect x="-128" y="-22" width="256" height="36" rx="18"/><text y="3" text-anchor="middle" class="rov-dist">≈ ${km.toLocaleString('en-IN')} km · ~${hrs} h</text></g>
     <g class="rov-bus" filter="url(#${uid}s)"><image href="/assets/img/bus-side.svg" x="-27" y="-17" width="54" height="17"/>

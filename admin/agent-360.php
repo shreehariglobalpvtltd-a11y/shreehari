@@ -56,6 +56,12 @@ $tabs = [
     'profile'     => 'Profile & KYC',
     'activity'    => 'Activity',
 ];
+// 9 Oct 2026: Office chat with this agent (the office side only; hidden when
+// the chat tables are not installed).
+$a360Chat = class_exists('StaffMsg') && StaffMsg::canUse() && StaffMsg::isOffice();
+if ($a360Chat) {
+    $tabs = array_slice($tabs, 0, 2, true) + ['messages' => '💬 Messages · सन्देश'] + array_slice($tabs, 2, null, true);
+}
 
 $agentId = (int) ($_GET['agent'] ?? 0);
 if ($agentId <= 0 && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
@@ -100,7 +106,13 @@ function a360_go(int $agentId, string $tab): never
  */
 function a360_wa_digits(array $agent, array $profile): string
 {
-    $raw = (string) (($profile['whatsapp'] ?? '') ?: (($agent['phone'] ?? '') ?: ($profile['display_phone'] ?? '')));
+    // 9 Oct 2026: one implementation for the panel (Office chat call buttons
+    // use the same digits) — StaffMsg::waDigitsFrom is this logic plus the
+    // profile's dialling code as a last hint.
+    if (class_exists('StaffMsg')) {
+        return StaffMsg::waDigitsFrom($agent, $profile);
+    }
+    $raw =(string) (($profile['whatsapp'] ?? '') ?: (($agent['phone'] ?? '') ?: ($profile['display_phone'] ?? '')));
     $d   = preg_replace('/\D/', '', $raw) ?? '';
     if ($d === '') {
         return '';
@@ -876,6 +888,13 @@ details.a360-rows>summary{cursor:pointer;font-size:12.5px;color:var(--blue);font
         <div class="a360-acts no-print">
           <?php if ($waDigits !== ''): ?>
             <a class="btn wa sm" href="https://wa.me/<?= $e($waDigits) ?>" target="_blank" rel="noopener"><svg class="a-ic"><use href="#a-whatsapp"/></svg> WhatsApp</a>
+          <?php endif; ?>
+          <?php $a360Tel = $a360Chat ? StaffMsg::telDigits($agentId) : preg_replace('/\D/', '', $waDigits); ?>
+          <?php if ($a360Tel !== ''): ?>
+            <a class="btn ghost sm" href="tel:+<?= $e($a360Tel) ?>"><svg class="a-ic"><use href="#a-phone"/></svg> Call</a>
+          <?php endif; ?>
+          <?php if ($a360Chat): ?>
+            <a class="btn sm" href="<?= $base ?>/admin/staff-chat.php?agent=<?= $agentId ?>"><svg class="a-ic"><use href="#a-msg"/></svg> Message</a>
           <?php endif; ?>
           <a class="btn ghost sm" href="<?= $base ?>/admin/agent.php?agent=<?= $agentId ?>"><svg class="a-ic"><use href="#a-wallet"/></svg> Open agent panel</a>
           <a class="btn ghost sm" href="<?= $base ?>/admin/agent-sales.php?agent=<?= $agentId ?>"><svg class="a-ic"><use href="#a-chart-up"/></svg> Sales</a>
@@ -1959,6 +1978,57 @@ $imgData = [
 </section>
 
 <!-- ============ ACTIVITY ============ -->
+<?php if ($a360Chat):
+    /* 9 Oct 2026 — Office chat with this agent: their latest conversations
+       (general, tickets, settlements, payouts) with unread counts. Opening one
+       goes to admin/staff-chat.php; nothing here changes a booking. */
+    $a360Threads = [];
+    try { $a360Threads = StaffMsg::recentForAgent($agentId, 10); } catch (Throwable $e) { $a360Threads = []; }
+    $a360Pres = StaffMsg::presenceOf($agentId);
+?>
+<section class="a360-tab" data-tab="messages"<?= $tab === 'messages' ? '' : ' hidden' ?>>
+  <div class="panel">
+    <h2 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><svg class="a-ic"><use href="#a-msg"/></svg> Messages <span class="muted" style="font-weight:500">· सन्देश — office chat with <?= $e($name) ?></span>
+      <span class="a360-pres<?= $a360Pres['online'] ? ' on' : '' ?>"><?= $a360Pres['online'] ? 'online now' : ($a360Pres['at'] > 0 ? 'last seen ' . $e(timeAgo(date('Y-m-d H:i:s', $a360Pres['at']))) : 'not online yet') ?></span>
+      <a class="btn sm" style="margin-left:auto" href="<?= $base ?>/admin/staff-chat.php?agent=<?= $agentId ?>"><svg class="a-ic"><use href="#a-msg"/></svg> Open chat</a>
+    </h2>
+    <div class="panel-body">
+      <?php if ($a360Threads === []): ?>
+        <?= admin_empty('No messages yet', 'Write to this agent about a ticket, a settlement or a payout — they read it in their panel (and on their phone if they turned alerts on).', '💬') ?>
+      <?php else: ?>
+        <div class="a360-thr">
+          <?php foreach ($a360Threads as $th):
+            $ic = ['general' => '💬', 'booking' => '🎫', 'settlement' => '🧾', 'payout' => '🏦', 'verify' => '🛡️'][$th['kind']] ?? '💬'; ?>
+            <a href="<?= $base ?>/admin/staff-chat.php?t=<?= (int) $th['id'] ?>" class="<?= $th['unread'] > 0 ? 'un' : '' ?>">
+              <span class="ic" aria-hidden="true"><?= $ic ?></span>
+              <span class="m"><b><?= $e($th['kind'] === 'general' ? 'Office chat' : ($th['pnr'] !== '' ? $th['pnr'] : $th['subject'])) ?></b>
+                <?php if ($th['priority'] === 'urgent' && $th['status'] === 'open'): ?><span class="pill st-bad nodot">urgent</span><?php endif; ?>
+                <?php if ($th['status'] === 'closed'): ?><span class="pill st-muted nodot">closed</span><?php endif; ?>
+                <small><?= $e($th['lastSide'] === 'office' ? 'You: ' : '') ?><?= $e($th['lastPreview']) ?></small></span>
+              <span class="r"><?= $th['lastAt'] > 0 ? $e(date('j M, H:i', $th['lastAt'])) : '' ?><?php if ($th['unread'] > 0): ?><i><?= (int) $th['unread'] ?></i><?php endif; ?></span>
+            </a>
+          <?php endforeach; ?>
+        </div>
+      <?php endif; ?>
+    </div>
+  </div>
+  <style>
+  .a360-pres{font-size:12px;font-weight:700;color:var(--muted);display:inline-flex;align-items:center;gap:5px}
+  .a360-pres::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor;opacity:.6}
+  .a360-pres.on{color:var(--success,#15803d)}.a360-pres.on::before{opacity:1}
+  .a360-thr{display:grid;gap:8px}
+  .a360-thr a{display:flex;gap:12px;align-items:center;padding:10px 14px;min-height:56px;border:1px solid var(--line);border-radius:14px;color:var(--ink);text-decoration:none;background:var(--surface)}
+  .a360-thr a:hover{border-color:var(--royal)}
+  .a360-thr a.un{border-color:var(--royal);background:var(--royal-tint,var(--soft))}
+  .a360-thr .ic{font-size:22px;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--surface-sunken,var(--soft));flex:0 0 auto}
+  .a360-thr .m{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center}
+  .a360-thr .m small{flex-basis:100%;color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .a360-thr .r{font-size:11.5px;color:var(--muted);display:grid;justify-items:end;gap:4px;white-space:nowrap}
+  .a360-thr .r i{font-style:normal;min-width:22px;height:22px;padding:0 7px;border-radius:999px;background:var(--royal);color:var(--on-royal,#fff);font-weight:800;display:grid;place-items:center}
+  </style>
+</section>
+<?php endif; ?>
+
 <section class="a360-tab" data-tab="activity"<?= $tab === 'activity' ? '' : ' hidden' ?>>
   <div class="panel">
     <h2><svg class="a-ic"><use href="#a-history"/></svg> Activity <span class="muted" style="font-weight:500">· last 30 audit rows for this agent</span>

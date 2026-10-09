@@ -67,6 +67,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             }
             if ($act === 'agent_dispute') {
                 AgentSettlement::agentRespond($id, $selfId, false, (string) ($_POST['note'] ?? ''));
+                // 9 Oct 2026 (Office chat): the dispute note also lands in this
+                // settlement's conversation (urgent line + office bell), so the
+                // office answers in writing. Best-effort; never blocks the dispute.
+                if (class_exists('StaffMsg')) {
+                    StaffMsg::settlementDisputed($id, $selfId, Security::clean((string) ($_POST['note'] ?? ''), 1000));
+                }
                 Response::redirect('admin/settlements.php?id=' . $id . '&ok=disputed');
             }
             throw new RuntimeException('That action is for the office.');
@@ -240,14 +246,14 @@ if ($row !== null && isset($_GET['print'])) {
     $no   = AgentSettlement::number($row);
     $ded  = AgentSettlement::deductionsOf($row);
     $code = AgentWallet::agentCodeLabel((int) $row['agent_admin_id']);
-    $logo = is_file(ROOT_PATH . '/assets/img/logo.png') ? '/assets/img/logo.png' : '';
+    $logo = Brand::markUrl(120);   // 9 Oct 2026 (BRAND): the emblem only — no baked name, no white tile
     $line = static fn(string $k, float $v, bool $strong = false): string => '<tr' . ($strong ? ' class="t"' : '') . '><td>' . Security::e($k) . '</td><td>' . Security::e(($v < 0 ? '− ' : '') . inr(abs($v))) . '</td></tr>';
     header('Content-Type: text/html; charset=utf-8');
     echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
        . '<title>Settlement ' . $e($no) . '</title><style>'
        . '*{box-sizing:border-box}body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Devanagari",sans-serif;margin:0;background:#eef1f6;color:#16233c}'
        . '.sheet{max-width:720px;margin:18px auto;background:#fff;border-radius:14px;padding:26px 28px;box-shadow:0 10px 30px rgba(16,38,77,.14)}'
-       . '.top{display:flex;gap:14px;align-items:center;border-bottom:3px solid #0C306C;padding-bottom:14px}.top img{width:74px;height:auto}'
+       . '.top{display:flex;gap:14px;align-items:center;border-bottom:3px solid #0C306C;padding-bottom:14px}.top img{height:56px;width:auto;max-width:116px;object-fit:contain;flex:none}.top>div{flex:1;min-width:0}.top .flg-pair{flex:none;align-self:flex-start}'
        . '.top h1{margin:0;font-size:20px}.top p{margin:2px 0 0;font-size:12.5px;color:#55627a}'
        . '.ttl{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin:16px 0 10px;flex-wrap:wrap}.ttl h2{margin:0;font-size:18px;letter-spacing:.04em;text-transform:uppercase}'
        . '.ttl b{font:700 15px ui-monospace,Consolas,monospace}.meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 18px;font-size:13.5px;margin-bottom:14px}'
@@ -260,8 +266,8 @@ if ($row !== null && isset($_GET['print'])) {
        . '@media print{body{background:#fff}.bar{display:none}.sheet{box-shadow:none;margin:0;max-width:none;border-radius:0}}'
        . '</style></head><body>'
        . '<div class="bar"><button onclick="window.print()">🖨️ Print / Save PDF</button><a href="' . $e($self . '?id=' . (int) $row['id']) . '">← Back</a></div>'
-       . '<div class="sheet"><div class="top">' . ($logo !== '' ? '<img src="' . $e($logo) . '" alt="">' : '')
-       . '<div><h1>' . $e($co['legal'] ?? $co['name']) . '</h1><p>' . $e($co['address'] ?? '') . '</p><p>' . $e($co['phone'] ?? '') . (!empty($co['cin']) ? ' · CIN ' . $e($co['cin']) : '') . '</p></div></div>'
+       . '<div class="sheet"><div class="top">' . ($logo !== '' ? '<img src="' . $e($logo) . '" alt="" width="108" height="56">' : '')
+       . '<div><h1>' . $e($co['legal'] ?? $co['name']) . '</h1><p>' . $e($co['address'] ?? '') . '</p><p>' . $e($co['phone'] ?? '') . (!empty($co['cin']) ? ' · CIN ' . $e($co['cin']) : '') . '</p></div>' . Brand::flagPair(16) . '</div>'
        . '<div class="ttl"><h2>Agent settlement' . (in_array($row['status'], ['paid', 'confirmed', 'disputed'], true) ? ' receipt' : ' — ' . $e(strtoupper((string) $row['status']))) . '</h2><b>' . $e($no) . '</b></div>'
        . '<div class="meta"><div><span>Agent</span><br><b>' . $e($row['full_name'] ?: $row['username']) . '</b>' . ($code !== '' ? ' · ' . $e($code) : '') . '</div>'
        . '<div><span>Period</span><br><b>' . $e(formatDate((string) $row['period_from'])) . ' – ' . $e(formatDate((string) $row['period_to'])) . '</b></div>'

@@ -93,6 +93,9 @@ admin_header($office ? 'Agent chat' : 'Office chat', 'staff-chat');
 .sc-new:hover{color:var(--on-royal,#fff);filter:brightness(1.08)}
 .sc-search{display:flex;align-items:center;gap:8px;background:var(--surface-sunken,var(--soft));border-radius:14px;padding:0 12px;min-height:44px}
 .sc-search input{flex:1;min-width:0;border:0;background:transparent;color:var(--ink);font:inherit;font-size:15px;outline:none;padding:10px 0}
+/* the pill is the field: beat depth.css's inset well (an id outranks its long :not() chain) */
+#scApp .sc-search input{background:transparent!important;border-color:transparent!important;box-shadow:none!important;min-height:44px}
+#scApp .sc-search:focus-within{box-shadow:0 0 0 2px var(--royal)}
 .sc-filters{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 -2px;padding:0 2px}
 .sc-filters::-webkit-scrollbar{display:none}
 .sc-chip{flex:0 0 auto;min-height:36px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;font-size:13px;font-weight:700;cursor:pointer}
@@ -144,6 +147,8 @@ admin_header($office ? 'Agent chat' : 'Office chat', 'staff-chat');
 .sc-acts .tel{color:var(--royal)}
 .sc-pnr{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:800;padding:3px 10px;border-radius:999px;background:var(--royal-tint,var(--soft));color:var(--royal-strong,var(--royal));text-decoration:none;font-family:var(--font-mono,monospace);white-space:nowrap}
 .sc-pnr:hover{filter:brightness(.97)}
+/* every [hidden] in the chat really hides (.sc-push / .sc-row / .sc-pnr / buttons set their own display) */
+#scApp [hidden],#scDlg [hidden]{display:none!important}
 .sc-menu{position:absolute;right:12px;top:62px;z-index:5;background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-3,0 12px 32px rgba(0,0,0,.18));padding:6px;min-width:220px;display:grid}
 .sc-menu[hidden]{display:none}
 .sc-menu button{min-height:44px;border:0;background:transparent;color:var(--ink);font:inherit;font-weight:600;text-align:left;padding:0 12px;border-radius:10px;cursor:pointer}
@@ -573,7 +578,7 @@ html[data-motion="reduced"] .sc-b,html[data-motion="reduced"] .sc-conv{animation
 
   function paintHeader() {
     var m = S.meta; if (!m) return;
-    var title = B.office ? m.agent.name : (m.kind === 'general' ? t('titleField') : m.title);
+    var title = B.office ? m.agent.name : (m.kind === 'general' ? t('titleField') : ((m.kind === 'booking' || m.kind === 'verify') && m.pnr ? m.pnr : m.title));
     $('scTitle').textContent = title;
     var av = $('scAv'); av.className = 'sc-av k-' + m.kind; av.textContent = B.office ? initials(m.agent.name) : kindIcon(m.kind);
     var p = m.presence || {}, pres = $('scPres');
@@ -636,7 +641,7 @@ html[data-motion="reduced"] .sc-b,html[data-motion="reduced"] .sc-conv{animation
     }
     var sameRun = prev && prev.side === m.side && prev.kind !== 'announce' && prev.side !== 'system' && dayKey(prev.ts) === dayKey(m.ts) && (prev.who === m.who) && (m.ts - prev.ts < 600);
     if (!sameRun) {
-      if (!m.mine) h += '<div class="sc-who">' + esc(B.office ? (m.who || t('agent')) : (t('office') + (m.who ? ' · ' + m.who.split(' ')[0] : ''))) + '</div>';
+      if (!m.mine) h += '<div class="sc-who">' + esc(B.office ? (m.who || t('agent')) : (t('office') + (m.who ? ' · ' + m.who : ''))) + '</div>';
       else if (!m.self && m.who) h += '<div class="sc-who r">' + esc(m.who) + '</div>';
     }
     var cls = 'sc-b ' + (m.mine ? 'me' : 'them') + (m.urgent ? ' urgent' : '') + (m.pending ? ' pending' : '') + (m.failed ? ' failed' : '');
@@ -670,7 +675,12 @@ html[data-motion="reduced"] .sc-b,html[data-motion="reduced"] .sc-conv{animation
     for (var i = 0; i < S.msgs.length; i++) h += msgHtml(S.msgs[i], S.msgs[i - 1]);
     box.innerHTML = h;
     var e2 = $('scEarlier'); if (e2) e2.onclick = loadEarlier;
-    if (toBottom || atBottom) box.scrollTop = box.scrollHeight;
+    var stick = toBottom || atBottom;
+    if (stick) box.scrollTop = box.scrollHeight;
+    /* photos arrive after the text: keep the newest line in view while they grow the list */
+    if (stick) box.querySelectorAll('img.ph').forEach(function (im) {
+      if (!im.complete) im.addEventListener('load', function () { if (box.scrollHeight - box.scrollTop - box.clientHeight < im.clientHeight + 160) box.scrollTop = box.scrollHeight; }, { once: true });
+    });
   }
   function loadEarlier() {
     var box = $('scMsgs'), h0 = box.scrollHeight;
@@ -984,7 +994,13 @@ html[data-motion="reduced"] .sc-b,html[data-motion="reduced"] .sc-conv{animation
     var box = $('scPush');
     if (!pushSupported()) { box.hidden = true; return; }
     var dismissed = false; try { dismissed = (localStorage.getItem('shg_staff_push_later') || 0) > Date.now(); } catch (e) {}
-    if (Notification.permission === 'granted') { box.hidden = true; pushSync(false).catch(function () {}); return; }
+    if (Notification.permission === 'granted') {
+      box.hidden = true;
+      /* re-bind this handset to whoever is signed in — once per tab session (shared counter phones) */
+      var synced = false; try { synced = sessionStorage.getItem('shg_staff_push_sync') === String(B.me); } catch (e) {}
+      if (!synced) pushSync(false).then(function (ok) { if (ok) { try { sessionStorage.setItem('shg_staff_push_sync', String(B.me)); } catch (e) {} } }).catch(function () {});
+      return;
+    }
     if (Notification.permission === 'denied') { box.hidden = dismissed; $('scPushSub').textContent = t('pushBlocked'); $('scPushOn').hidden = true; return; }
     box.hidden = dismissed;
   }

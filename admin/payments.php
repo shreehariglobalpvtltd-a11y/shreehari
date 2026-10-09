@@ -581,7 +581,7 @@ tr.row-done td{background:var(--hover)}
 .pq-shot em{position:absolute;left:4px;bottom:4px;font:800 10px/1 var(--f-ui);font-style:normal;background:rgba(0,0,0,.6);color:#fff;border-radius:5px;padding:2px 5px}
 .pq-noshot{font-size:12px;color:var(--mut);padding:10px 0 0}
 .pq-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:8px;margin-top:12px}
-.pq-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:48px;padding:10px 12px;border-radius:14px;border:1px solid transparent;font:800 15px/1.1 var(--f-ui);color:#fff;cursor:pointer;text-decoration:none;touch-action:manipulation;transition:transform .12s ease-out,filter .12s,box-shadow .12s}
+.pq-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap;min-height:48px;padding:10px 12px;border-radius:14px;border:1px solid transparent;font:800 15px/1.1 var(--f-ui);color:#fff;cursor:pointer;text-decoration:none;touch-action:manipulation;transition:transform .12s ease-out,filter .12s,box-shadow .12s}
 .pq-btn:active{transform:translateY(3px)}
 .pq-btn:focus-visible{outline:3px solid var(--royal);outline-offset:2px}
 .pq-btn.ok{background:linear-gradient(180deg,#1C8A55 0%,#11703F 100%);border-color:#3FA874;box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 2px 0 #0B5530,0 4px 0 #084526,0 8px 14px -5px rgba(6,55,30,.5)}
@@ -605,9 +605,9 @@ tr.row-done td{background:var(--hover)}
 .pq-bulk span{flex:1;font-weight:700;font-size:13.5px;color:var(--ink)}
 
 /* bottom sheet */
-.pq-back{position:fixed;inset:0;z-index:60;background:var(--scrim)}
+.pq-back{position:fixed;inset:0;z-index:10000;background:var(--scrim)}
 .pq-back[hidden],.pq-sheet[hidden],.pq-lb[hidden],.pq-sheet [hidden]{display:none !important}
-.pq-sheet{position:fixed;z-index:61;left:0;right:0;bottom:0;max-height:92vh;overflow:auto;margin:0 auto;max-width:640px;background:var(--card);color:var(--ink);border-radius:24px 24px 0 0;box-shadow:var(--dp-sheet,var(--sh-3));padding:8px 16px calc(16px + env(safe-area-inset-bottom));animation:pqUp .22s cubic-bezier(.2,.8,.2,1)}
+.pq-sheet{position:fixed;z-index:10001;left:0;right:0;bottom:0;max-height:92vh;overflow:auto;margin:0 auto;max-width:640px;background:var(--card);color:var(--ink);border-radius:24px 24px 0 0;box-shadow:var(--dp-sheet,var(--sh-3));padding:8px 16px calc(16px + env(safe-area-inset-bottom));animation:pqUp .22s cubic-bezier(.2,.8,.2,1)}
 @keyframes pqUp{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
 .pq-grab{width:44px;height:5px;border-radius:3px;background:var(--line-strong);margin:4px auto 10px}
 .pq-sh-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -641,7 +641,7 @@ tr.row-done td{background:var(--hover)}
 .pq-bulk-list li.bad{color:var(--danger)}
 
 /* lightbox */
-.pq-lb{position:fixed;inset:0;z-index:70;background:rgba(5,10,20,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px}
+.pq-lb{position:fixed;inset:0;z-index:10010;background:rgba(5,10,20,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px}
 .pq-lb img{max-width:100%;max-height:calc(100vh - 120px);object-fit:contain;border-radius:8px;background:#fff}
 .pq-lb-bar{display:flex;gap:10px;align-items:center;margin-top:10px;color:#fff;font-size:13px;flex-wrap:wrap;justify-content:center}
 .pq-lb-bar a{color:#fff;text-decoration:underline}
@@ -653,13 +653,23 @@ tr.row-done td{background:var(--hover)}
   .pay-tabs .tab-count{font-size:15px}
   .pay-filter{flex-direction:column}
   .pay-filter label,.pay-filter input,.pay-filter select{width:100%}
-  .pq-main{grid-template-columns:minmax(0,1fr)}
+  .pq-main{gap:4px 14px}
+  .pq-amt b{font-size:22px}
   .pq-sub{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;margin-right:-16px;padding-right:16px}
   .pq-sub a{flex:0 0 auto;font-size:13px;padding:8px 13px}
   .pq-actions{grid-template-columns:repeat(3,minmax(0,1fr))}
   .pq-actions .ghost{grid-column:1/-1;min-height:44px}
   .pq-btn kbd,.pq-sum .pq-keys{display:none}
+  /* phone: the queue is the job - the day's numbers shrink to one swipeable strip */
+  .dash-hero.pq-compact{display:flex;overflow-x:auto;gap:8px;margin-bottom:12px;padding-bottom:4px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .dash-hero.pq-compact::-webkit-scrollbar{display:none}
+  .dash-hero.pq-compact .hcard{flex:0 0 auto;min-width:112px;padding:10px 12px !important;border-radius:14px}
+  .dash-hero.pq-compact .hicon{display:none !important}
+  .dash-hero.pq-compact .hk{font-size:10px;letter-spacing:.06em;margin:0}
+  .dash-hero.pq-compact .hv{font-size:22px;line-height:1.15;margin:2px 0 0}
+  .dash-hero.pq-compact .hsub{font-size:11px;margin:0}
 }
+@media(max-width:359px){.pq-main{grid-template-columns:minmax(0,1fr)}}
 @media (prefers-reduced-motion: reduce){.pq-sheet{animation:none}.pq-card,.pq-btn{transition:none}}
 html[data-motion="reduced"] .pq-sheet{animation:none}
 html[data-motion="reduced"] .pq-card,html[data-motion="reduced"] .pq-btn{transition:none}
@@ -671,7 +681,7 @@ html[data-motion="reduced"] .pq-card,html[data-motion="reduced"] .pq-btn{transit
      .sum-card/.sc-* language — and it is the screen staff look at most, so
      the odd one out was the most-seen one. data-stat hooks are unchanged:
      the AJAX approve/reject flow updates these counters in place. */ ?>
-<div class="dash-hero" id="summaryCards">
+<div class="dash-hero<?= $isQueue ? ' pq-compact' : '' ?>" id="summaryCards">
   <div class="hcard hc-orange">
     <span class="hicon">⏳</span>
     <div class="hk">Pending Payments</div>
@@ -871,7 +881,6 @@ html[data-motion="reduced"] .pq-card,html[data-motion="reduced"] .pq-btn{transit
       <?php if (!empty($rk['bankSigned'])): ?><span class="pq-badge bank">🏦 Bank-verified (ICICI)</span><?php endif; ?>
       <?php if ($first !== null): ?><span class="pq-badge two">👥 1st approval: <?= Security::e((string) (($first['full_name'] ?? '') ?: ($first['username'] ?? ''))) ?></span><?php endif; ?>
       <?php if (isset($lastHolds[$bId])): ?><span class="pq-badge held">⏸ Asked for clearer proof <?= Security::e(timeAgo($lastHolds[$bId])) ?></span><?php endif; ?>
-      <?= source_badge((string) ($q['source'] ?? 'web')) ?>
     </div>
     <div class="pq-main">
       <div class="pq-amt">
@@ -879,7 +888,7 @@ html[data-motion="reduced"] .pq-card,html[data-motion="reduced"] .pq-btn{transit
         <small><?= (int) $q['seat_count'] ?> seat<?= (int) $q['seat_count'] === 1 ? '' : 's' ?> · <?= Security::e(ucfirst((string) ($q['booking_mode'] ?: 'seat'))) ?><?= (int) $q['is_cod'] === 1 ? ' · COD' : '' ?></small>
       </div>
       <div class="pq-pay">
-        <?= method_badge((string) ($q['method'] ?? '')) ?>
+        <?= method_badge((string) ($q['method'] ?? '')) ?> <?= source_badge((string) ($q['source'] ?? 'web')) ?>
         <?php if (!empty($q['payer_name'])): ?><span class="muted" style="font-size:12px"> · <?= Security::e((string) $q['payer_name']) ?></span><?php endif; ?>
         <?php if ($soldBy > 0 && ($sCode !== '' || !empty($q['seller_name']))): ?><span class="agent-tag"> · <strong><?= Security::e($sCode) ?></strong> <?= Security::e((string) ($q['seller_name'] ?? '')) ?></span><?php endif; ?>
         <?php if (!empty($q['utr_number'])): ?>
@@ -1260,7 +1269,7 @@ html[data-motion="reduced"] .pq-card,html[data-motion="reduced"] .pq-btn{transit
     return d.reasons.map(function (r) {
       var w = +r.weight, cls = w < 0 ? 'w-neg' : (w < 20 ? 'w-mid' : '');
       return '<li class="' + cls + '"><span class="w">' + (w > 0 ? '+' + w : w) + '</span><span>' + esc(r.label) + ' · <span lang="ne">' + esc(r.labelNe) + '</span>'
-        + (r.detail ? '<small>' + esc(r.detail) + '</small>' : '') + '</span></li>';
+        + ((r.detail || (r.pnrs && r.pnrs.length)) ? '<small>' + esc(r.detail) + (r.pnrs && r.pnrs.length ? ' <b style="font-family:var(--f-mono)">' + r.pnrs.slice(0, 4).map(esc).join(', ') + '</b>' : '') + '</small>' : '') + '</span></li>';
     }).join('');
   }
   function setMode(m) {
@@ -1319,7 +1328,7 @@ html[data-motion="reduced"] .pq-card,html[data-motion="reduced"] .pq-btn{transit
     back.hidden = false; sheet.hidden = false;
     document.body.style.overflow = 'hidden';
     setTimeout(function () {
-      var first = m === 'approve' ? amount : (m === 'reject' ? sheet.querySelector('.pq-chip input') : note);
+      var first = m === 'approve' ? amount : (m === 'reject' ? (sheet.querySelector('.pq-chip.on input') || sheet.querySelector('.pq-chip input')) : note);
       try { first.focus({ preventScroll: true }); } catch (e) {}
     }, 30);
   }

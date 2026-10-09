@@ -123,6 +123,9 @@ final class PaymentRisk
         'other'             => ['Other',               'We could not verify this payment.', 'यो भुक्तानी प्रमाणित गर्न सकिएन।'],
     ];
 
+    /** Largest image (pixels) GD may decode for a fingerprint / thumbnail - see fingerprint(). */
+    public const MAX_HASH_PIXELS = 16000000;
+
     /** Roles that may give the SECOND approval of a two-person check. */
     public const SECOND_ROLES = ['superadmin', 'manager', 'accountant'];
 
@@ -512,14 +515,14 @@ final class PaymentRisk
                     $o = $utrOthers[$utrU];
                     unset($o[$bid]);
                     if ($o !== []) {
-                        $add('DUP_UTR', 'UTR ' . $utr . ' also on ' . implode(', ', array_slice(array_values($o), 0, 4)), array_values($o));
+                        $add('DUP_UTR', 'UTR ' . $utr . ' is also on', array_values($o));
                     }
                 }
                 if (!empty($shotOthers[$bid])) {
-                    $add('DUP_SHOT', 'Same file as ' . implode(', ', array_slice(array_unique($shotOthers[$bid]), 0, 4)), $shotOthers[$bid]);
+                    $add('DUP_SHOT', 'The same image file is also on', $shotOthers[$bid]);
                 }
                 if (!empty($nearOthers[$bid])) {
-                    $add('NEAR_SHOT', 'Looks like ' . implode(', ', array_slice(array_unique($nearOthers[$bid]), 0, 4)), $nearOthers[$bid]);
+                    $add('NEAR_SHOT', 'Looks like the proof on', $nearOthers[$bid]);
                 }
                 if (isset($edited[$bid])) {
                     $add('EDITED_SHOT', 'File names: ' . $edited[$bid]);
@@ -1052,7 +1055,11 @@ final class PaymentRisk
                 return $out;
             }
             $size = @getimagesize($absPath);
-            if ($size === false || $size[0] < 8 || $size[1] < 8 || $size[0] * $size[1] > 40000000) {
+            /* GD holds ~4-5 bytes a pixel: a 40 MP camera photo would need
+               ~200 MB and "memory exhausted" is a fatal error try/catch cannot
+               stop - it would fail the upload itself. Phone screenshots are
+               2-4 MP; anything over 16 MP (~80 MB) simply gets no hash. */
+            if ($size === false || $size[0] < 8 || $size[1] < 8 || $size[0] * $size[1] > self::MAX_HASH_PIXELS) {
                 return $out;
             }
             $raw = @file_get_contents($absPath);

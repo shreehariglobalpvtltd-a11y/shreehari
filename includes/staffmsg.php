@@ -1513,7 +1513,7 @@ final class StaffMsg
             return '<div class="smsg-card" style="margin:0 0 18px"><div class="smsg-card-in">'
                 . '<span class="smsg-ic">💬' . ($unread > 0 ? '<i>' . ($unread > 99 ? '99+' : $unread) . '</i>' : '') . '</span>'
                 . '<div style="flex:1;min-width:200px"><b>Office chat · अफिस च्याट</b> '
-                . '<span class="smsg-dot' . ($off['online'] ? ' on' : '') . '">' . ($off['online'] ? 'office online · अफिस अनलाइन' : 'office offline — they answer when back') . '</span>'
+                . '<span class="smsg-dot' . ($off['online'] ? ' on' : '') . '">' . ($off['online'] ? 'office online · अफिस अनलाइन' : 'office offline · अफिस अफलाइन — they answer when back') . '</span>'
                 . '<div class="muted" style="font-size:12.5px;margin-top:2px">' . ($last !== '' ? $e(mb_substr($last, 0, 90)) : 'Ask about any ticket — seat, name, payment, pickup. सिट, नाम, भुक्तानी, चढ्ने ठाउँ — यहीँ सोध्नुहोस्।') . '</div></div>'
                 . '<a class="btn" style="min-height:44px" href="/admin/staff-chat.php?t=' . (int) $t['id'] . '">' . ($unread > 0 ? '💬 Open · ' . $unread . ' new' : '💬 Open chat') . '</a>'
                 . $btns

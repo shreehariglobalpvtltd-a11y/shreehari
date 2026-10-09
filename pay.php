@@ -97,6 +97,20 @@ $payThemeCss = ':root[data-theme="dark"] { color-scheme: dark; }'
     . ' :root[data-theme="dark"][data-display="amoled"] body { background:#000; }'
     . ' :root[data-theme="dark"][data-display="amoled"] .card { background:#0b0f16; }';
 
+/* 9 Oct 2026 (BRAND): who is asking for the money — the emblem (no baked
+   name, no white tile), the live company name and the India / Nepal flags,
+   so a passenger opening this from WhatsApp sees it is really S Hari Global. */
+require_once INCLUDE_PATH . '/brand.php';
+$payCompany   = Settings::getString('company_name', APP_NAME);
+$payThemeHead .= Brand::iconLinks();
+$payBrand     = '<div class="pb"><img src="' . htmlspecialchars(Brand::markUrl(36), ENT_QUOTES, 'UTF-8') . '" alt="" width="69" height="36">'
+    . '<b>' . htmlspecialchars($payCompany, ENT_QUOTES, 'UTF-8') . '</b>' . Brand::flagPair(13) . '</div>';
+$payThemeCss .= ' .pb { display:flex; align-items:center; gap:10px; margin:0 0 14px; padding-bottom:12px; border-bottom:1px solid rgba(127,140,160,.22); }'
+    . ' .pb img { height:36px; width:auto; max-width:76px; object-fit:contain; flex:none; filter:drop-shadow(0 2px 4px rgba(15,23,42,.2)); }'
+    . ' .pb b { font-size:14.5px; min-width:0; }'
+    . ' .pb .flg-pair { margin-left:auto; flex:none; }'
+    . ' :root[data-theme="dark"] .pb img { filter:drop-shadow(0 0 10px rgba(120,170,255,.25)) drop-shadow(0 2px 4px rgba(0,0,0,.5)); }';
+
 if (!$payable) {
     /* Nothing to pay: the same card, no amount, no UPI, no redirect and no
        pay_open event (the desk's intent trail must not show a "tap to pay"
@@ -128,6 +142,7 @@ if (!$payable) {
 </head>
 <body>
   <div class="card">
+    <?= $payBrand ?>
     <h1>भुक्तानी · Pay</h1>
     <div class="row">बुकिङ नं.: <code><?= htmlspecialchars($pnr, ENT_QUOTES, 'UTF-8') ?></code></div>
     <div class="row">यो बुकिङमा भुक्तानी बाँकी छैन (रद्द / म्याद सकिएको / भुक्तानी भइसकेको) — कार्यालयमा सम्पर्क गर्नुहोस्। · No payment is due on this booking.</div>
@@ -180,6 +195,7 @@ header('Location: ' . $upiUri, true, 302);
 </head>
 <body>
   <div class="card">
+    <?= $payBrand ?>
     <h1>भुक्तानी · Pay</h1>
     <div class="row">बुकिङ नं.: <code><?= htmlspecialchars($pnr, ENT_QUOTES, 'UTF-8') ?></code></div>
     <div class="amt">₹<?= number_format($total, 2) ?></div>

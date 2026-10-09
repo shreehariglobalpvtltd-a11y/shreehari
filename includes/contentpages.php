@@ -60,6 +60,7 @@ final class ContentPages
             return false;
         }
         $lang = ($m[1] ?? '') !== '' ? $m[1] : 'en';
+        PublicLayout::$lang = $lang;
         $page = $m[2];
         $slug = $m[3] ?? '';
         if ($slug !== '' && $page !== 'tours') {
@@ -145,19 +146,42 @@ final class ContentPages
     public static function normCategory(string $c): string
     {
         $c = strtolower(trim($c));
-        return match (true) {
-            $c === '' => 'heritage',
-            isset(self::CATS[$c]) => $c,
-            (bool) preg_match('/pilgrim|relig|temple|shrine|monaster|spiritual|mandir|buddh/', $c) => 'pilgrimage',
-            (bool) preg_match('/wild|national park|safari|jungle|reserve/', $c) => 'wildlife',
-            (bool) preg_match('/lake|river|tal\b/', $c) => 'lake',
-            (bool) preg_match('/hill|view ?point/', $c) => 'hill',
-            (bool) preg_match('/trek|adventure|mountain|himal|raft|paragl/', $c) => 'adventure',
-            (bool) preg_match('/city|town|urban|market/', $c) => 'city',
-            (bool) preg_match('/nature|park|garden|waterfall|valley|scenic/', $c) => 'nature',
-            (bool) preg_match('/herit|histor|fort|palace|culture|museum|monument|unesco|ancient/', $c) => 'heritage',
-            default => substr((string) preg_replace('/[^a-z]+/', '-', $c), 0, 20),
-        };
+        if ($c === '') {
+            return 'heritage';
+        }
+        if (isset(self::CATS[$c])) {
+            return $c;
+        }
+        // "Temple / protected monument" is a temple: the first part decides, the whole string is the fallback.
+        foreach (array_unique([trim(explode('/', $c)[0]), $c]) as $s) {
+            $hit = match (true) {
+                (bool) preg_match('/pilgrim|relig|temple|shrine|monaster|spiritual|mandir|buddh|holy|jyotirling|dham|peeth|peetha/', $s) => 'pilgrimage',
+                (bool) preg_match('/wild|national park|safari|jungle|tiger|reserve|sanctuary/', $s) => 'wildlife',
+                (bool) preg_match('/lake|river|tal\b/', $s) => 'lake',
+                (bool) preg_match('/hill|view ?point/', $s) => 'hill',
+                (bool) preg_match('/trek|adventure|mountain|himal|raft|paragl/', $s) => 'adventure',
+                (bool) preg_match('/herit|histor|fort|palace|culture|museum|monument|unesco|ancient|archaeolog|stepwell|durbar/', $s) => 'heritage',
+                (bool) preg_match('/city|town|urban|market/', $s) => 'city',
+                (bool) preg_match('/nature|park|garden|waterfall|valley|scenic|desert|salt|beach/', $s) => 'nature',
+                default => '',
+            };
+            if ($hit !== '') {
+                return $hit;
+            }
+        }
+        return substr((string) preg_replace('/[^a-z]+/', '-', $c), 0, 20);
+    }
+
+    /** Straight-line km from the Rupaidiha ⇄ Nepalgunj crossing — only to group "near the border", never shown as road km. */
+    public static function borderKm(?float $lat, ?float $lng): ?float
+    {
+        if ($lat === null || $lng === null) {
+            return null;
+        }
+        [$bLat, $bLng] = [28.03, 81.61];
+        $r = M_PI / 180;
+        $a = sin(($lat - $bLat) * $r / 2) ** 2 + cos($bLat * $r) * cos($lat * $r) * sin(($lng - $bLng) * $r / 2) ** 2;
+        return 6371 * 2 * asin(min(1.0, sqrt($a)));
     }
 
     /** @return list<string> */
@@ -225,13 +249,22 @@ final class ContentPages
         return ['places' => $places, 'packages' => $packages];
     }
 
+    /** An English year label for a Nepali/Hindi page: "Ancient" and "BCE" in words; digits stay as written. */
+    private static function yearLocal(string $year, string $lang): string
+    {
+        if ($lang === 'en' || $year === '') {
+            return $year;
+        }
+        return strtr($year, ['Ancient' => 'प्राचीन काल', 'BCE' => 'ईसापूर्व', 'CE' => 'ईस्वी']);
+    }
+
     /** @return list<array{year:string,title:string,titleNe:string,titleHi:string,icon:string}> */
     public static function timeline(int $limit = 6): array
     {
         $out = [];
         foreach (self::indiaNepalData()['events'] as $ev) {
             $out[] = [
-                'year' => (string) ($ev['year'] ?? ''), 'yearNe' => (string) ($ev['year_ne'] ?? ($ev['year'] ?? '')),
+                'year' => (string) ($ev['year'] ?? ''), 'yearNe' => (string) (($ev['year_ne'] ?? '') !== '' ? $ev['year_ne'] : self::yearLocal((string) ($ev['year'] ?? ''), 'ne')),
                 'title' => (string) ($ev['title_en'] ?? ''), 'titleNe' => (string) ($ev['title_ne'] ?? ''),
                 'titleHi' => (string) ($ev['title_hi'] ?? ''), 'icon' => (string) ($ev['icon'] ?? ''),
             ];
@@ -346,7 +379,7 @@ final class ContentPages
                 'offLead' => 'Visit, call or WhatsApp us. Every number here is the office’s own, kept up to date by our team.',
                 'offDesc' => 'S Hari Global offices: %s. Call, WhatsApp or visit — head office in %s.',
                 'head' => 'Head office', 'branch' => 'Branch office', 'partner' => 'Partner office', 'borderOff' => 'Nepal office',
-                'call' => 'Call', 'wa' => 'WhatsApp', 'map' => 'Map', 'hours' => 'Hours', 'soonOpen' => 'Opening soon', 'soonNum' => 'Number coming soon',
+                'call' => 'Call', 'wa' => 'WhatsApp', 'map' => 'Map', 'hours' => 'Hours', 'soonOpen' => 'Opening soon', 'soonNum' => 'Number coming soon', 'offSvc' => 'Tickets · enquiries · help',
                 'inIndia' => '%d in India', 'inNepal' => '%d in Nepal',
                 'expH' => 'We are expanding', 'expP' => 'Want a %s counter in your town? Become a partner or an agent — the network is growing.',
                 'expPartner' => 'Partner agreement', 'expAgent' => 'Become an agent', 'noOffices' => 'Office details are being updated — please call the head office.',
@@ -369,6 +402,10 @@ final class ContentPages
                 'fMonth' => 'Travel month', 'fDate' => 'or exact date', 'fFrom' => 'Travelling from (city)', 'fMsg' => 'Message (optional)',
                 'fSend' => 'Send enquiry', 'fSending' => 'Sending…', 'fNote' => 'We call you back with a quote. Nothing is booked or charged until you agree.',
                 'fErr' => 'Could not send. Please try again, or call / WhatsApp us.', 'fNoJs' => 'Turn on JavaScript to send this form — or call / WhatsApp us.',
+                'nearStop' => 'Closest point on our bus network: %s', 'journey' => 'Your journey', 'jBus' => 'S Hari Global AC sleeper bus',
+                'jBusP' => 'From your pickup in Gujarat to the Rupaidiha border', 'jTour' => 'Tour starts — run by our partner', 'jHome' => 'Back home on our bus',
+                'jHomeP' => 'Rupaidiha border → your stop in Gujarat', 'partnerOnly' => 'This tour is run by our travel partner — our bus is not part of it.',
+                'partnerOnlyS' => 'Tour starts — run by our partner',
                 'draft' => 'Preview — this package is not published.', 'nf' => 'Page not found', 'nfP' => 'That page does not exist (or is not published yet).',
             ],
             'hi' => [
@@ -386,7 +423,7 @@ final class ContentPages
                 'offLead' => 'मिलने आएँ, कॉल करें या WhatsApp करें। यहाँ हर नंबर कार्यालय का अपना है, हमारी टीम इसे अपडेट रखती है।',
                 'offDesc' => 'S Hari Global के कार्यालय: %s। कॉल, WhatsApp या मिलने आएँ — मुख्य कार्यालय %s में।',
                 'head' => 'मुख्य कार्यालय', 'branch' => 'शाखा कार्यालय', 'partner' => 'पार्टनर कार्यालय', 'borderOff' => 'नेपाल कार्यालय',
-                'call' => 'कॉल', 'wa' => 'WhatsApp', 'map' => 'नक्शा', 'hours' => 'समय', 'soonOpen' => 'जल्द खुलेगा', 'soonNum' => 'नंबर जल्द',
+                'call' => 'कॉल', 'wa' => 'WhatsApp', 'map' => 'नक्शा', 'hours' => 'समय', 'soonOpen' => 'जल्द खुलेगा', 'soonNum' => 'नंबर जल्द', 'offSvc' => 'टिकट · पूछताछ · सहायता',
                 'inIndia' => 'भारत में %d', 'inNepal' => 'नेपाल में %d',
                 'expH' => 'हम बढ़ रहे हैं', 'expP' => 'अपने शहर में %s काउंटर चाहिए? पार्टनर या एजेंट बनें — नेटवर्क बढ़ रहा है।',
                 'expPartner' => 'पार्टनर एग्रीमेंट', 'expAgent' => 'एजेंट बनें', 'noOffices' => 'कार्यालय की जानकारी अपडेट हो रही है — कृपया मुख्य कार्यालय को कॉल करें।',
@@ -409,6 +446,10 @@ final class ContentPages
                 'fMonth' => 'यात्रा का महीना', 'fDate' => 'या सही तारीख', 'fFrom' => 'किस शहर से', 'fMsg' => 'संदेश (वैकल्पिक)',
                 'fSend' => 'पूछताछ भेजें', 'fSending' => 'भेज रहे हैं…', 'fNote' => 'हम कोटेशन के साथ कॉल करेंगे। आपकी सहमति के बिना कुछ बुक या चार्ज नहीं होगा।',
                 'fErr' => 'भेजा नहीं जा सका। फिर कोशिश करें, या कॉल / WhatsApp करें।', 'fNoJs' => 'फ़ॉर्म भेजने के लिए JavaScript चालू करें — या कॉल / WhatsApp करें।',
+                'nearStop' => 'हमारे बस नेटवर्क का सबसे नज़दीकी पॉइंट: %s', 'journey' => 'आपकी यात्रा', 'jBus' => 'S Hari Global AC स्लीपर बस',
+                'jBusP' => 'गुजरात में आपके पिकअप से रुपईडीहा बॉर्डर तक', 'jTour' => 'टूर शुरू — हमारे पार्टनर द्वारा', 'jHome' => 'हमारी बस से घर वापसी',
+                'jHomeP' => 'रुपईडीहा बॉर्डर → गुजरात में आपका स्टॉप', 'partnerOnly' => 'यह टूर हमारे ट्रैवल पार्टनर चलाते हैं — इसमें हमारी बस शामिल नहीं है।',
+                'partnerOnlyS' => 'टूर शुरू — हमारे पार्टनर द्वारा',
                 'draft' => 'प्रीव्यू — यह पैकेज प्रकाशित नहीं है।', 'nf' => 'पेज नहीं मिला', 'nfP' => 'यह पेज मौजूद नहीं है (या अभी प्रकाशित नहीं हुआ)।',
             ],
             'ne' => [
@@ -426,7 +467,7 @@ final class ContentPages
                 'offLead' => 'भेट्न आउनुहोस्, फोन वा WhatsApp गर्नुहोस्। यहाँका हरेक नम्बर कार्यालयकै हुन्, हाम्रो टोलीले अद्यावधिक राख्छ।',
                 'offDesc' => 'S Hari Global का कार्यालय: %s। फोन, WhatsApp वा भेट्न आउनुहोस् — प्रधान कार्यालय %s मा।',
                 'head' => 'प्रधान कार्यालय', 'branch' => 'शाखा कार्यालय', 'partner' => 'साझेदार कार्यालय', 'borderOff' => 'नेपाल कार्यालय',
-                'call' => 'फोन', 'wa' => 'WhatsApp', 'map' => 'नक्सा', 'hours' => 'समय', 'soonOpen' => 'छिट्टै खुल्दैछ', 'soonNum' => 'नम्बर छिट्टै',
+                'call' => 'फोन', 'wa' => 'WhatsApp', 'map' => 'नक्सा', 'hours' => 'समय', 'soonOpen' => 'छिट्टै खुल्दैछ', 'soonNum' => 'नम्बर छिट्टै', 'offSvc' => 'टिकट · सोधपुछ · सहायता',
                 'inIndia' => 'भारतमा %d', 'inNepal' => 'नेपालमा %d',
                 'expH' => 'नयाँ कार्यालय छिट्टै', 'expP' => 'तपाईंको सहरमा %s काउन्टर चाहनुहुन्छ? साझेदार वा एजेन्ट बन्नुहोस् — सञ्जाल बढ्दैछ।',
                 'expPartner' => 'साझेदार सम्झौता', 'expAgent' => 'एजेन्ट बन्नुहोस्', 'noOffices' => 'कार्यालय विवरण अद्यावधिक हुँदैछ — कृपया प्रधान कार्यालयमा फोन गर्नुहोस्।',
@@ -449,6 +490,10 @@ final class ContentPages
                 'fMonth' => 'यात्रा महिना', 'fDate' => 'वा ठ्याक्कै मिति', 'fFrom' => 'कुन सहरबाट', 'fMsg' => 'सन्देश (ऐच्छिक)',
                 'fSend' => 'सोधपुछ पठाउनुहोस्', 'fSending' => 'पठाउँदै…', 'fNote' => 'हामी कोटेसनसहित फोन गर्छौं। तपाईंको सहमतिबिना केही बुक वा शुल्क लाग्दैन।',
                 'fErr' => 'पठाउन सकिएन। फेरि प्रयास गर्नुहोस्, वा फोन / WhatsApp गर्नुहोस्।', 'fNoJs' => 'फारम पठाउन JavaScript खोल्नुहोस् — वा फोन / WhatsApp गर्नुहोस्।',
+                'nearStop' => 'हाम्रो बस सञ्जालको नजिकको बिन्दु: %s', 'journey' => 'तपाईंको यात्रा', 'jBus' => 'S Hari Global AC स्लिपर बस',
+                'jBusP' => 'गुजरातको तपाईंको पिकअपदेखि रुपैडिहा बोर्डरसम्म', 'jTour' => 'टुर सुरु — साझेदारमार्फत', 'jHome' => 'हाम्रो बसमा घर फर्किनुहोस्',
+                'jHomeP' => 'रुपैडिहा बोर्डर → गुजरातको तपाईंको स्टप', 'partnerOnly' => 'यो टुर हाम्रो ट्राभल साझेदारले चलाउँछ — यसमा हाम्रो बस पर्दैन।',
+                'partnerOnlyS' => 'टुर सुरु — साझेदारमार्फत',
                 'draft' => 'पूर्वावलोकन — यो प्याकेज प्रकाशित छैन।', 'nf' => 'पृष्ठ भेटिएन', 'nfP' => 'यो पृष्ठ छैन (वा अझै प्रकाशित भएको छैन)।',
             ],
         ];
@@ -483,6 +528,17 @@ final class ContentPages
     private static function e(?string $s): string
     {
         return PublicLayout::e($s);
+    }
+
+    /** At most $max characters, cut at a word, with an ellipsis. */
+    private static function clip(string $s, int $max): string
+    {
+        if (mb_strlen($s) <= $max) {
+            return $s;
+        }
+        $cut = mb_substr($s, 0, $max);
+        $sp = mb_strrpos($cut, ' ');
+        return rtrim($sp !== false && $sp > $max * 0.6 ? mb_substr($cut, 0, $sp) : $cut, " ,;:.") . '…';
     }
 
     private static function ld(array $graph): string
@@ -547,10 +603,16 @@ final class ContentPages
         self::send(PublicLayout::page($lang, $w['nf'] . ' | ' . PublicLayout::company()['name'], $w['nfP'], PublicLayout::url('/tours', $lang), '', '', $body, ['noindex' => true, 'path' => '/tours']), 404, false);
     }
 
-    private static function sourcesHtml(array $sources): string
+    private static function sourcesHtml(array $sources, bool $full = false): string
     {
         $li = '';
+        $seen = [];
         foreach ($sources as $s) {
+            $key = is_array($s) ? strtolower(rtrim(trim((string) ($s['url'] ?? '')) ?: trim((string) ($s['label'] ?? '')), '/')) : '';
+            if ($key === '' || isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
             if (!is_array($s)) {
                 continue;
             }
@@ -563,6 +625,11 @@ final class ContentPages
                 continue;
             }
             $label = $label !== '' ? $label : (string) parse_url($url, PHP_URL_HOST);
+            if ($full && $url !== '') {
+                // The full list names the page, not just the site ("kathmandupost.com/…/vivaha-panchami…").
+                $short = (string) preg_replace('#^https?://(www\.)?#i', '', rtrim($url, '/'));
+                $label = mb_strlen($short) > 78 ? mb_substr($short, 0, 76) . '…' : $short;
+            }
             $li .= '<li>' . ($url !== '' ? '<a href="' . self::e($url) . '" rel="noopener nofollow" target="_blank">' . self::e($label) . '</a>' : self::e($label)) . '</li>';
         }
         return $li;
@@ -604,7 +671,8 @@ final class ContentPages
             if (trim((string) ($k['value'] ?? '')) === '' || $label === '') {
                 continue;
             }
-            $nums .= '<div class="stat rv"><b>' . $e((string) $k['value']) . '</b><span>' . $e($label) . '</span></div>';
+            $val = $lang === 'ne' && trim((string) ($k['value_ne'] ?? '')) !== '' && trim((string) ($k['label_ne'] ?? '')) !== '' ? (string) $k['value_ne'] : (string) $k['value'];
+            $nums .= '<div class="stat rv' . (mb_strlen($val) > 12 ? ' stat-w' : (mb_strlen($val) > 7 ? ' stat-m' : '')) . '"><b>' . $e($val) . '</b><span>' . $e($label) . '</span></div>';
             $allSources = array_merge($allSources, (array) ($k['sources'] ?? []));
         }
 
@@ -616,6 +684,9 @@ final class ContentPages
             }
             $body = PublicLayout::pick(['en' => $ev['body_en'] ?? '', 'hi' => $ev['body_hi'] ?? '', 'ne' => $ev['body_ne'] ?? ''], $lang);
             $year = PublicLayout::pick(['en' => $ev['year'] ?? '', 'hi' => $ev['year_hi'] ?? '', 'ne' => $ev['year_ne'] ?? ''], $lang);
+            if ($lang !== 'en' && trim((string) ($ev['year_' . $lang] ?? '')) === '') {
+                $year = self::yearLocal($year, $lang);
+            }
             $src = self::sourcesHtml((array) ($ev['sources'] ?? []));
             $allSources = array_merge($allSources, (array) ($ev['sources'] ?? []));
             $tl .= '<li class="tl-i rv"><span class="tl-dot" aria-hidden="true">' . $e((string) ($ev['icon'] ?? '•') ?: '•') . '</span><article class="tl-card">'
@@ -642,17 +713,42 @@ final class ContentPages
             }
             return $li;
         };
+        // Long, sourced rules: one tap-to-open row each — the first sentence is the row, the rest opens.
+        $accordion = static function (array $items) use ($lang, $e, &$allSources): string {
+            $out = '';
+            foreach ($items as $it) {
+                $t = PublicLayout::pick($it, $lang);
+                if ($t === '') {
+                    continue;
+                }
+                $allSources = array_merge($allSources, (array) ($it['sources'] ?? []));
+                $head = $t;
+                $rest = '';
+                if (preg_match('/^(.{12,260}?[.!?।])\s+(.+)$/us', $t, $m) === 1) {
+                    [$head, $rest] = [$m[1], $m[2]];
+                }
+                $who = $lang === 'en' && is_array($it['who'] ?? null) ? trim((string) ($it['who']['en'] ?? '')) : '';
+                $src = self::sourcesHtml((array) ($it['sources'] ?? []));
+                $out .= '<details class="acc"><summary>' . ($who !== '' ? '<small class="acc-who">' . $e($who) . '</small>' : '') . '<span>' . $e($head) . '</span></summary>'
+                    . '<div class="acc-b">' . ($rest !== '' ? '<p>' . $e($rest) . '</p>' : '') . ($src !== '' ? '<ul class="tl-src">' . $src . '</ul>' : '') . '</div></details>';
+            }
+            return $out;
+        };
         $b = $d['border'];
         $summary = PublicLayout::pick($b['summary'], $lang);
-        $rules = $itemList($b['rules']);
+        $allSources = array_merge($allSources, (array) ($b['summary']['sources'] ?? []));
+        $rules = $accordion($b['rules']);
         $crossing = $itemList($b['crossing']);
         $tips = $itemList($b['tips']);
         $borderInner = '';
         if ($summary !== '') {
             $borderInner .= '<p class="lead">' . $e($summary) . '</p>';
         }
+        if ($rules !== '') {
+            $borderInner .= '<h3 class="acc-h"><span aria-hidden="true">📜</span> ' . $e($w['rules']) . '</h3><div class="accs">' . $rules . '</div>';
+        }
         $cols = '';
-        foreach ([['rules', '📜', $rules], ['crossing', '🛂', $crossing], ['tips', '💡', $tips]] as [$k, $ic, $li]) {
+        foreach ([['crossing', '🛂', $crossing], ['tips', '💡', $tips]] as [$k, $ic, $li]) {
             if ($li !== '') {
                 $cols .= '<div class="bcol"><h3><span aria-hidden="true">' . $ic . '</span> ' . $e($w[$k]) . '</h3><ul class="ticks">' . $li . '</ul></div>';
             }
@@ -665,7 +761,7 @@ final class ContentPages
         }
 
         $reviewed = $d['reviewed'] !== '' ? sprintf($w['reviewed'], self::niceDate($d['reviewed'], $lang)) : '';
-        $srcHtml = self::sourcesHtml(array_merge($allSources, $d['sources']));
+        $srcHtml = self::sourcesHtml(array_merge($allSources, $d['sources']), true);
         $flagIn = PublicLayout::flag('IN', 22);
         $flagNp = PublicLayout::flag('NP', 26);
         $pw = PublicLayout::words($lang);
@@ -690,7 +786,8 @@ final class ContentPages
             . '<section class="sec band rv"><h2>🚌 ' . $e($w['ctaH']) . '</h2><p>' . $e($w['ctaP']) . '</p><div class="btns"><a class="btn fill" href="/#/">🎫 ' . $e($pw['book']) . '</a>'
             . '<a class="btn out" href="' . $e(PublicLayout::url('/offices', $lang)) . '">🏢 ' . $e($pw['offices']) . '</a><a class="btn out" href="' . $e(PublicLayout::url('/explore', $lang)) . '">🏔️ ' . $e($pw['explore']) . '</a></div></section>'
             . '<p class="disclaimer sec"><span aria-hidden="true">ℹ️</span><span>' . ($reviewed !== '' ? '<b>' . $e($reviewed) . '.</b> ' : '') . $e($w['disclaimer']) . '</span></p>'
-            . ($srcHtml !== '' ? '<section class="sec"><h2 class="h-sm">' . $e($w['sources']) . '</h2><ol class="sources">' . $srcHtml . '</ol></section>' : '');
+            . ($srcHtml !== '' ? '<section class="sec" id="sources"><details class="acc src-all"><summary><span>📚 ' . $e($w['sources']) . ' · ' . substr_count($srcHtml, '<li>') . '</span></summary>'
+                . '<div class="acc-b"><ol class="sources">' . $srcHtml . '</ol></div></details></section>' : '');
 
         $crumbs = self::crumbs($lang, $w['inH1'], '/india-nepal');
         $ld = self::ld([
@@ -716,6 +813,11 @@ final class ContentPages
         $co = PublicLayout::company();
         $canon = PublicLayout::url('/offices', $lang);
         $list = PublicLayout::offices();
+        // Head office, then our office across the border, then the branches in the order given.
+        $rank = static fn(array $o): int => $o['kind'] === 'head' ? 0 : ($o['country'] === 'NP' ? 1 : 2);
+        $pos = array_flip(array_keys($list));
+        uksort($list, static fn($a, $b): int => [$rank($list[$a]), $pos[$a]] <=> [$rank($list[$b]), $pos[$b]]);
+        $list = array_values($list);
         $open = array_values(array_filter($list, static fn(array $o): bool => $o['status'] === 'open'));
         $soon = array_values(array_filter($list, static fn(array $o): bool => $o['status'] === 'coming_soon'));
         $names = array_map(static fn(array $o): string => PublicLayout::officeName($o, $lang), $open);
@@ -742,8 +844,9 @@ final class ContentPages
                 default => $w['branch'],
             };
             $addr = $lang !== 'en' && ($o['addressNe'] ?? '') !== '' ? $o['addressNe'] : $o['address'];
+            // A map link only from the office's own data: its saved map link, else its written address.
             $map = $o['mapUrl'] !== '' && preg_match('#^https://#i', $o['mapUrl']) === 1 ? $o['mapUrl']
-                : 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode(trim(($o['address'] !== '' ? $o['address'] . ', ' : '') . $o['city'] . ', ' . ($o['country'] === 'NP' ? 'Nepal' : 'India')));
+                : ($o['address'] !== '' ? 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode(trim($o['address'] . (stripos($o['address'], $o['city']) === false ? ', ' . $o['city'] : '') . ', ' . ($o['country'] === 'NP' ? 'Nepal' : 'India'))) : '');
             $btns = '';
             if ($o['phone'] !== '' && $o['tel'] !== '') {
                 $btns .= '<a class="btn fill sm" href="' . $e($o['tel']) . '">📞 ' . $e($w['call']) . ' <span class="num">' . $e($o['phone']) . '</span></a>';
@@ -751,12 +854,15 @@ final class ContentPages
             if ($o['wa'] !== '') {
                 $btns .= '<a class="btn wa sm" href="https://wa.me/' . $e($o['wa']) . '" target="_blank" rel="noopener">💬 ' . $e($w['wa']) . '</a>';
             }
-            $btns .= '<a class="btn out sm" href="' . $e($map) . '" target="_blank" rel="noopener">📍 ' . $e($w['map']) . '</a>';
-            $cards .= '<article class="card off rv' . ($o['kind'] === 'head' ? ' head' : '') . '" id="office-' . $e(strtolower($o['code'] !== '' ? $o['code'] : preg_replace('/\W+/', '-', $o['city']))) . '">'
+            if ($map !== '') {
+                $btns .= '<a class="btn out sm" href="' . $e($map) . '" target="_blank" rel="noopener">📍 ' . $e($w['map']) . '</a>';
+            }
+            $cards .= '<article class="card off rv' . ($o['kind'] === 'head' ? ' head' : ($o['country'] === 'NP' ? ' np' : '')) . '" id="office-' . $e(strtolower($o['code'] !== '' ? $o['code'] : preg_replace('/\W+/', '-', $o['city']))) . '">'
                 . '<div class="off-top">' . PublicLayout::flag($o['country'], 24) . '<span class="badge">' . $e($kindLabel) . '</span>' . ($o['code'] !== '' ? '<span class="code">' . $e($o['code']) . '</span>' : '') . '</div>'
                 . '<h2 class="off-name">' . $e($nm) . '</h2>'
                 . ($addr !== '' ? '<p class="off-addr">📍 ' . $e($addr) . '</p>' : '')
                 . ($o['hours'] !== '' ? '<p class="off-addr">🕘 ' . $e($w['hours']) . ': ' . $e($o['hours']) . '</p>' : '')
+                . ($addr === '' && $o['hours'] === '' ? '<p class="off-addr">🎫 ' . $e($w['offSvc']) . '</p>' : '')
                 . ($o['phone'] === '' ? '<p class="off-addr mut">☎️ ' . $e($w['soonNum']) . '</p>' : '')
                 . '<div class="btns">' . $btns . '</div></article>';
             $ldOffices[] = array_filter([
@@ -783,7 +889,8 @@ final class ContentPages
             . ($nNp > 0 ? '<span class="flagchip">' . PublicLayout::flag('NP', 22) . ' ' . $e(sprintf($w['inNepal'], $nNp)) . '</span>' : '')
             . '<span class="flagchip">🚀 ' . $e($w['expH']) . '</span></div></section>'
             . '<section class="sec"><div class="grid offices">' . $cards . '</div></section>'
-            . '<section class="sec band rv" id="expanding"><span class="band-ic" aria-hidden="true">🚀</span><h2>' . $e($w['expH']) . ($lang !== 'ne' ? ' · नयाँ कार्यालय छिट्टै' : '') . '</h2>'
+            . '<section class="sec band rv" id="expanding"><span class="band-ic" aria-hidden="true">🚀</span><h2>' . $e($w['expH']) . '</h2>'
+            . ($lang !== 'ne' ? '<p class="band-ne" lang="ne">' . PublicLayout::flag('NP', 16) . ' नयाँ कार्यालय छिट्टै</p>' : '')
             . '<p>' . $e(sprintf($w['expP'], $co['name'])) . '</p>' . ($soonChips !== '' ? '<div class="chips" style="margin-top:10px">' . $soonChips . '</div>' : '')
             . '<div class="btns"><a class="btn fill" href="/agreements/">🤝 ' . $e($w['expPartner']) . '</a><a class="btn out" href="/agent-signup.php">🧑‍💼 ' . $e($w['expAgent']) . '</a></div></section>'
             . '<section class="sec"><div class="btns"><a class="btn tonal" href="/#/">🎫 ' . $e($pw['book']) . '</a><a class="btn tonal" href="' . $e(PublicLayout::url('/india-nepal', $lang)) . '">🤝 ' . $e($pw['indiaNepal']) . '</a></div></section>';
@@ -812,8 +919,15 @@ final class ContentPages
         $cat = isset($present[$catIn]) ? $catIn : '';
         $places = $cat === '' ? $all : array_values(array_filter($all, static fn(array $p): bool => $p['category'] === $cat));
 
-        $isBorder = static fn(array $p): bool => preg_match(self::BORDER_STOPS, (string) ($p['near_stop'] ?? '')) === 1
-            && ($p['km_hint'] === null || (int) $p['km_hint'] <= 150);
+        // "Near the border": within ~120 km (straight line) of the Rupaidiha ⇄ Nepalgunj
+        // crossing when the place has coordinates, else a border-side stop with a short km hint.
+        $isBorder = static function (array $p): bool {
+            $crow = self::borderKm($p['lat'] !== null ? (float) $p['lat'] : null, $p['lng'] !== null ? (float) $p['lng'] : null);
+            if ($crow !== null) {
+                return $crow <= 120;
+            }
+            return preg_match(self::BORDER_STOPS, (string) ($p['near_stop'] ?? '')) === 1 && $p['km_hint'] !== null && (int) $p['km_hint'] <= 150;
+        };
         $groups = ['border' => [], 'NP' => [], 'IN' => []];
         foreach ($places as $p) {
             if ($isBorder($p)) {
@@ -852,7 +966,7 @@ final class ContentPages
             foreach ($rows as $p) {
                 $cards .= self::placeCard($p, $lang, $w);
             }
-            return '<section class="sec" id="' . $e($key) . '"><div class="sec-h"><h2>' . $flag . ' ' . $e($h) . '</h2><span class="chip">' . count($rows) . '</span></div><div class="grid places">' . $cards . '</div></section>';
+            return '<section class="sec" id="' . $e($key) . '"><h2 class="sec-t"><span class="sec-f">' . $flag . '</span><span>' . $e($h) . ' <span class="cnt">' . count($rows) . '</span></span></h2><div class="grid places">' . $cards . '</div></section>';
         };
         $content = $section('near-border', $w['nearBorder'], PublicLayout::flag('NP', 20) . PublicLayout::flag('IN', 16), $groups['border'])
             . $section('nepal', $w['nepal'], PublicLayout::flag('NP', 22), $groups['NP'])
@@ -879,7 +993,7 @@ final class ContentPages
         $items = [];
         foreach ($all as $i => $p) {
             $items[] = ['@type' => 'ListItem', 'position' => $i + 1, 'item' => array_filter([
-                '@type' => 'TouristDestination', 'name' => self::nameOf($p, 'name', $lang), 'description' => self::textOf($p, 'blurb', $lang) ?: null,
+                '@type' => 'TouristDestination', 'name' => self::nameOf($p, 'name', $lang), 'description' => self::clip(self::textOf($p, 'blurb', $lang), 200) ?: null,
                 'url' => $canon . '#place-' . $p['slug'], 'image' => self::imgUrl((string) ($p['image'] ?? '')) !== '' ? PublicLayout::base() . self::imgUrl((string) $p['image']) : null,
                 'geo' => $p['lat'] !== null && $p['lng'] !== null ? ['@type' => 'GeoCoordinates', 'latitude' => (float) $p['lat'], 'longitude' => (float) $p['lng']] : null,
                 'address' => ['@type' => 'PostalAddress', 'addressCountry' => (string) $p['country'], 'addressRegion' => (string) ($p['region'] ?? '')],
@@ -904,23 +1018,30 @@ final class ContentPages
             ? sprintf($w['kmFrom'], (int) $p['km_hint'], (string) $p['near_stop']) : '';
         $map = $p['lat'] !== null && $p['lng'] !== null
             ? 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode(sprintf('%.6f,%.6f', (float) $p['lat'], (float) $p['lng'])) : '';
+        // No photo yet: a short tonal band with the category drawn big (not an empty 16:9 box).
         $art = $img !== ''
             ? '<img src="' . $e($img) . '" alt="' . $e($name) . '" loading="lazy" decoding="async" width="640" height="360">'
             : '<span class="ph-emo" aria-hidden="true">' . (self::CATS[$cat] ?? '📍') . '</span>';
+        $reachText = $reach !== '' ? $reach
+            : (trim((string) ($p['near_stop'] ?? '')) !== '' && $km === '' ? sprintf($w['nearStop'], (string) $p['near_stop']) : '');
         $facts = '';
         if ($season !== '') {
-            $facts .= '<dt>🗓️ ' . $e($w['bestSeason']) . '</dt><dd>' . $e($season) . '</dd>';
+            $facts .= '<p class="pf"><span class="pf-k">🗓️ ' . $e($w['bestSeason']) . '</span>' . $e($season) . '</p>';
         }
-        if ($reach !== '') {
-            $facts .= '<dt>🚌 ' . $e($w['reach']) . '</dt><dd>' . $e($reach) . '</dd>';
+        if ($reachText !== '') {
+            $facts .= mb_strlen($reachText) > 90
+                ? '<details class="pf pf-d"><summary><span class="pf-k">🚌 ' . $e($w['reach']) . '</span></summary>' . $e($reachText) . '</details>'
+                : '<p class="pf"><span class="pf-k">🚌 ' . $e($w['reach']) . '</span>' . $e($reachText) . '</p>';
         }
+        $region = trim((string) ($p['region'] ?? ''));
         return '<article class="card place rv" id="place-' . $e((string) $p['slug']) . '">'
-            . '<div class="ph ph-' . $e($cat) . '">' . $art . '<span class="ph-flag">' . PublicLayout::flag((string) $p['country'], 16) . '</span>'
-            . ((int) $p['unesco'] === 1 ? '<span class="ph-unesco">🏛️ ' . $e($w['unesco']) . '</span>' : '') . '</div>'
-            . '<div class="pb"><div class="chips"><span class="chip on">' . (self::CATS[$cat] ?? '📍') . ' ' . $e(self::catLabel($cat, $lang)) . '</span>'
-            . (trim((string) ($p['region'] ?? '')) !== '' ? '<span class="chip">' . $e((string) $p['region']) . '</span>' : '') . '</div>'
-            . '<h3>' . $e($name) . '</h3>' . ($blurb !== '' ? '<p>' . $e($blurb) . '</p>' : '')
-            . ($facts !== '' ? '<dl class="facts">' . $facts . '</dl>' : '')
+            . '<div class="ph ph-' . $e($cat) . ($img === '' ? ' ph-band' : '') . '">' . $art . '<span class="ph-flag">' . PublicLayout::flag((string) $p['country'], 16) . '</span>'
+            . ((int) $p['unesco'] === 1 ? '<span class="ph-unesco">🏛️ ' . $e($w['unesco']) . '</span>' : '')
+            . '<span class="ph-cat">' . $e(self::catLabel($cat, $lang)) . '</span></div>'
+            . '<div class="pb">'
+            . '<h3>' . $e($name) . '</h3>' . ($region !== '' ? '<p class="region">📍 ' . $e($region) . '</p>' : '')
+            . ($blurb !== '' ? '<p>' . $e($blurb) . '</p>' : '')
+            . ($facts !== '' ? '<div class="facts">' . $facts . '</div>' : '')
             . ($km !== '' || $map !== '' ? '<p class="km">' . ($km !== '' ? '📏 ' . $e($km) : '') . ($map !== '' ? ' <a href="' . $e($map) . '" target="_blank" rel="noopener">🗺️ ' . $e($w['onMap']) . '</a>' : '') . '</p>' : '')
             . (trim((string) ($p['image_credit'] ?? '')) !== '' && $img !== '' ? '<p class="credit">' . $e(sprintf($w['photo'], (string) $p['image_credit'])) . '</p>' : '')
             . '</div></article>';
@@ -943,6 +1064,21 @@ final class ContentPages
         return (int) $k['nights'] > 0 ? sprintf($w['daysNights'], (int) $k['days'], (int) $k['nights']) : sprintf($w['days'], (int) $k['days']);
     }
 
+    /** A picture word for a package without a photo, from its own title. */
+    private static function pkgIcon(array $k): string
+    {
+        $t = strtolower((string) $k['title_en'] . ' ' . (string) ($k['route_en'] ?? ''));
+        return match (true) {
+            (bool) preg_match('/safari|jungle|national park|wildlife/', $t) => '🐘',
+            (bool) preg_match('/everest|mountain flight|himal/', $t) => '🏔️',
+            (bool) preg_match('/buddh|lumbini.*kushinagar|sarnath/', $t) => '☸️',
+            (bool) preg_match('/ram|janaki|darshan|yatra|temple|pashupati|muktinath|somnath|dwarka/', $t) => '🛕',
+            (bool) preg_match('/heritage|trail|fort|palace/', $t) => '🏛️',
+            (bool) preg_match('/lake|pokhara/', $t) => '🛶',
+            default => '🗺️',
+        };
+    }
+
     private static function packageCard(array $k, string $lang, array $w): string
     {
         $e = Closure::fromCallable([self::class, 'e']);
@@ -950,14 +1086,16 @@ final class ContentPages
         $title = self::nameOf($k, 'title', $lang);
         $hl = self::jsonList($lang === 'ne' ? ($k['highlights_ne'] ?: $k['highlights_en']) : $k['highlights_en']);
         $chips = '';
-        foreach (array_slice($hl, 0, 3) as $h) {
+        foreach (array_slice($hl, 0, 2) as $h) {
             $chips .= '<li>' . $e($h) . '</li>';
         }
         $route = $lang === 'en' ? (string) ($k['route_en'] ?? '') : ((string) ($k['route_ne'] ?? '') ?: (string) ($k['route_en'] ?? ''));
         $url = PublicLayout::url('/tours/' . $k['slug'], $lang);
         $flag = match ((string) $k['country']) { 'India' => PublicLayout::flag('IN', 14), 'Both' => PublicLayout::flag('NP', 16) . PublicLayout::flag('IN', 14), default => PublicLayout::flag('NP', 16) };
-        return '<article class="card pkg rv"><a class="ph ph-tour" href="' . $e($url) . '" tabindex="-1" aria-hidden="true">'
-            . ($img !== '' ? '<img src="' . $e($img) . '" alt="" loading="lazy" decoding="async" width="640" height="360">' : '<span class="ph-emo">🧳</span>')
+        $dw = self::words($lang);
+        return '<article class="card pkg rv"><a class="ph ph-tour' . ($img === '' ? ' ph-band' : '') . '" href="' . $e($url) . '" tabindex="-1" aria-hidden="true">'
+            . ($img !== '' ? '<img src="' . $e($img) . '" alt="" loading="lazy" decoding="async" width="640" height="360">'
+                : '<span class="ph-days"><b>' . (int) $k['days'] . '</b><small>' . $e(trim(str_replace('%d', '', $dw['days']))) . '</small></span><span class="ph-emo">' . self::pkgIcon($k) . '</span>')
             . '<span class="ph-flag">' . $flag . '</span></a>'
             . '<div class="pb"><div class="chips"><span class="chip on">🗓️ ' . $e(self::durLine($k, $w)) . '</span><span class="chip">' . $e($w['country'][(string) $k['country']] ?? (string) $k['country']) . '</span></div>'
             . '<h3><a href="' . $e($url) . '">' . $e($title) . '</a></h3>'
@@ -1012,6 +1150,35 @@ final class ContentPages
             'offers' => $k['price_from'] !== null && (float) $k['price_from'] > 0
                 ? ['@type' => 'Offer', 'price' => (string) (int) $k['price_from'], 'priceCurrency' => 'INR', 'url' => $url] : null,
         ], static fn($v): bool => $v !== null);
+    }
+
+    /**
+     * "Your journey" — our bus leg(s) and the package route as one stepper.
+     * Built only from the package's own route line and coach_leg: our bus
+     * Gujarat → Rupaidiha, then the partner's stops, then our bus home.
+     */
+    private static function journeyHtml(array $k, string $lang, array $w): string
+    {
+        $e = Closure::fromCallable([self::class, 'e']);
+        $route = $lang === 'en' ? (string) ($k['route_en'] ?? '') : ((string) ($k['route_ne'] ?? '') ?: (string) ($k['route_en'] ?? ''));
+        $stops = array_values(array_filter(array_map('trim', preg_split('/\s*(?:→|->|⇒)\s*/u', $route) ?: []), static fn(string $s): bool => $s !== ''));
+        if (count($stops) < 2) {
+            return '';
+        }
+        $leg = (string) ($k['coach_leg'] ?? 'both');
+        $li = '';
+        if ($leg === 'both' || $leg === 'toNepal') {
+            $li .= '<li class="j-bus"><span class="j-dot" aria-hidden="true">🚌</span><div><b>' . $e($w['jBus']) . '</b><small>' . $e($w['jBusP']) . '</small></div></li>';
+        }
+        $n = count($stops);
+        foreach ($stops as $i => $s) {
+            $li .= '<li class="j-stop' . ($i === 0 || $i === $n - 1 ? ' j-end' : '') . '"><span class="j-dot" aria-hidden="true">' . ($i + 1) . '</span><div><b>' . $e($s) . '</b>'
+                . ($i === 0 ? '<small>' . $e($leg === 'none' ? $w['partnerOnlyS'] : $w['jTour']) . '</small>' : '') . '</div></li>';
+        }
+        if ($leg === 'both' || $leg === 'toIndia') {
+            $li .= '<li class="j-bus"><span class="j-dot" aria-hidden="true">🚌</span><div><b>' . $e($w['jHome']) . '</b><small>' . $e($w['jHomeP']) . '</small></div></li>';
+        }
+        return '<section class="sec card rv"><h2>🛣️ ' . $e($w['journey']) . '</h2><ol class="journey">' . $li . '</ol></section>';
     }
 
     /** @return list<array{day:int,text:string}> */
@@ -1088,8 +1255,9 @@ final class ContentPages
             . ($img !== '' ? '<img class="hero-art" src="' . $e($img) . '" alt="' . $e($title) . '" width="1080" height="600" style="aspect-ratio:16/9">' : '')
             . '<p class="price big-price">' . $e(self::priceLine($k, $w)) . '</p>'
             . '<div class="btns"><a class="btn fill" href="#enquire">✍️ ' . $e($w['apply']) . '</a><a class="btn wa" href="' . $e($waLink) . '" target="_blank" rel="noopener">💬 ' . $e($w['waAsk']) . '</a></div></section>'
-            . ($k['coach_leg'] !== 'none' ? '<p class="coach sec"><span aria-hidden="true">🚌</span><span>' . $e($w['coach']) . '</span></p>' : '')
-            . ($route !== '' ? '<section class="sec card rv"><h2>🛣️ ' . $e($w['route']) . '</h2><p class="lead">' . $e($route) . '</p></section>' : '')
+            . '<p class="coach sec"><span aria-hidden="true">' . ($k['coach_leg'] !== 'none' ? '🚌' : '🤝') . '</span><span>' . $e($k['coach_leg'] !== 'none' ? $w['coach'] : $w['partnerOnly']) . '</span></p>'
+            . (($jr = self::journeyHtml($k, $lang, $w)) !== '' ? $jr
+                : ($route !== '' ? '<section class="sec card rv"><h2>🛣️ ' . $e($w['route']) . '</h2><p class="lead">' . $e($route) . '</p></section>' : ''))
             . ($hlHtml !== '' ? '<section class="sec card rv"><h2>✨ ' . $e($w['highlights']) . '</h2><ul class="ticks">' . $hlHtml . '</ul></section>' : '')
             . ($days !== '' ? '<section class="sec"><h2>🗺️ ' . $e($w['itinerary']) . '</h2><ol class="tl">' . $days . '</ol></section>' : '')
             . self::enquiryForm($k, $lang, $w, $w['apply'])
@@ -1163,11 +1331,35 @@ html.rv-on .tl-i .tl-dot{transform:scale(.3);transition:transform .5s cubic-bezi
 .tl-card{background:var(--md-sc-low);border-radius:24px;padding:16px 18px;box-shadow:var(--shadow)}
 .tl-card p{margin:4px 0 0;color:var(--md-on-surface-variant)}
 .tl-year{display:inline-block;font-weight:900;font-size:13px;letter-spacing:.05em;padding:3px 11px;border-radius:999px;background:var(--md-tertiary-container);color:var(--md-on-tertiary-container);margin-bottom:8px}
-.tl-src{list-style:none;margin-top:8px;font-size:12px}.tl-src a{color:var(--md-on-surface-variant)}
+.tl-src{list-style:none;margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;font-size:11.5px}
+.tl-src li{display:inline-flex}.tl-src a{display:inline-flex;align-items:center;min-height:28px;padding:0 10px;border-radius:999px;background:var(--md-sc-high);color:var(--md-on-surface-variant);text-decoration:none;font-weight:600}
+.tl-src a::before{content:"↗";margin-right:4px;opacity:.7}.tl-src a:hover{background:var(--md-secondary-container);color:var(--md-on-secondary-container)}
 .soon{display:inline-flex;gap:8px;padding:10px 14px;border-radius:16px;background:var(--md-sc)}
 .bcols{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));margin-top:12px}
 .bcol{background:var(--md-sc-lowest);border-radius:20px;padding:14px 16px}
 .ticks{list-style:none;padding:0;margin:6px 0 0}.ticks li{position:relative;padding:4px 0 4px 26px;font-size:15px}.ticks li::before{content:"✓";position:absolute;left:2px;top:4px;width:18px;height:18px;border-radius:50%;background:var(--ok-container);color:var(--ok);font-size:11px;font-weight:900;display:grid;place-items:center}
+.acc-h{margin:18px 0 8px}
+.accs{display:grid;gap:8px}
+.acc{background:var(--md-sc-lowest);border-radius:18px;border:1px solid var(--md-outline-variant);overflow:hidden}
+.acc summary{list-style:none;cursor:pointer;display:flex;flex-direction:column;gap:2px;padding:13px 46px 13px 16px;position:relative;min-height:48px;font-weight:700;font-size:15px;line-height:1.45}
+.acc summary::-webkit-details-marker{display:none}
+.acc summary::after{content:"";position:absolute;right:18px;top:20px;width:9px;height:9px;border-right:2.5px solid var(--md-on-surface-variant);border-bottom:2.5px solid var(--md-on-surface-variant);transform:rotate(45deg);transition:transform .25s var(--ease)}
+.acc[open] summary::after{transform:rotate(225deg);top:24px}
+.acc[open]{border-color:var(--md-primary);box-shadow:var(--shadow)}
+.acc-who{font-size:11.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--md-primary)}
+.acc-b{padding:0 16px 14px;color:var(--md-on-surface-variant);font-size:14.5px}
+.src-all summary{font-size:16px}
+.sources{columns:1}
+@media (min-width:720px){.sources{columns:2;column-gap:28px}.sources li{break-inside:avoid}}
+.stat-w b{font-size:21px;line-height:1.25}.stat-m b{font-size:25px;white-space:nowrap}
+.journey{list-style:none;position:relative;margin:10px 0 0;padding:0}
+.journey::before{content:"";position:absolute;left:19px;top:22px;bottom:22px;width:3px;border-radius:3px;background:repeating-linear-gradient(var(--md-outline-variant) 0 6px,transparent 6px 11px)}
+.journey li{position:relative;display:flex;gap:14px;align-items:flex-start;padding:7px 0}
+.j-dot{position:relative;z-index:1;flex:none;width:41px;height:41px;border-radius:50%;display:grid;place-items:center;font-weight:900;font-size:15px;background:var(--md-sc-high);color:var(--md-on-surface);box-shadow:0 0 0 4px var(--md-sc-low)}
+.journey b{display:block;font-size:15.5px;line-height:1.35;padding-top:9px}.journey small{display:block;font-size:13px;color:var(--md-on-surface-variant)}
+.j-bus .j-dot{background:var(--md-primary);color:var(--md-on-primary);font-size:19px}
+.j-bus b{color:var(--md-primary)}
+.j-end .j-dot{background:var(--md-tertiary-container);color:var(--md-on-tertiary-container)}
 .carry{display:flex;gap:16px;align-items:flex-start;background:linear-gradient(135deg,var(--md-sc-low),var(--md-secondary-container))}
 .carry-ic{font-size:40px;line-height:1;flex:none}
 .band-ic{position:absolute;right:16px;top:12px;font-size:44px;opacity:.25}
@@ -1182,6 +1374,9 @@ html.rv-on .tl-i .tl-dot{transform:scale(.3);transition:transform .5s cubic-bezi
 .off .num{font-weight:700;opacity:.9}
 .off.head{background:linear-gradient(140deg,var(--md-primary-container),var(--md-sc-low) 70%);border:2px solid var(--md-primary)}
 .off.head .badge{background:var(--md-primary);color:var(--md-on-primary)}
+.off.np{background:linear-gradient(140deg,color-mix(in srgb,var(--red) 13%,var(--md-sc-low)),var(--md-sc-low) 65%);border:2px solid color-mix(in srgb,var(--red) 55%,transparent)}
+.off.np .badge{background:var(--red);color:#fff}
+.band-ne{display:inline-flex;align-items:center;gap:8px;margin:-4px 0 4px;padding:5px 12px;border-radius:999px;background:rgba(255,255,255,.14);font-weight:800;color:#fff !important}
 @media (min-width:720px){.off.head{grid-column:span 2}}
 /* explore */
 .picks{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 10px;scroll-snap-type:x mandatory;scrollbar-width:thin}
@@ -1201,7 +1396,26 @@ html.rv-on .tl-i .tl-dot{transform:scale(.3);transition:transform .5s cubic-bezi
 .pb{padding:14px 16px 16px;display:flex;flex-direction:column;gap:8px;flex:1}
 .pb p{font-size:14.5px;color:var(--md-on-surface-variant)}
 .pb h3 a{color:inherit;text-decoration:none}
-.facts{display:grid;gap:2px 0;font-size:13.5px}.facts dt{font-weight:800;color:var(--md-on-surface);margin-top:4px}.facts dd{color:var(--md-on-surface-variant)}
+.sec-t{display:flex;align-items:flex-start;gap:10px;scroll-margin-top:120px}.sec-f{display:inline-flex;gap:3px;padding-top:6px;flex:none}
+.cnt{display:inline-grid;place-items:center;min-width:28px;height:24px;padding:0 8px;border-radius:999px;background:var(--md-secondary-container);color:var(--md-on-secondary-container);font-size:13px;vertical-align:4px}
+.ph-band{aspect-ratio:auto;height:118px;place-items:center end;padding:0 22px}
+.ph-band::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 18% 120%,rgba(255,255,255,.45) 0 30%,transparent 31%),radial-gradient(circle at 70% -30%,rgba(255,255,255,.28) 0 34%,transparent 35%);pointer-events:none}
+.ph-band .ph-emo{font-size:62px;position:relative;transform:rotate(-6deg)}
+html:not([data-motion="reduced"]) .place:hover .ph-band .ph-emo{transform:rotate(0) scale(1.08);transition:transform .4s cubic-bezier(.34,1.56,.64,1)}
+.ph-tour.ph-band{height:132px;place-items:center end}.ph-tour.ph-band::before{opacity:.3}
+.ph-days{position:absolute;left:16px;bottom:14px;display:flex;align-items:baseline;gap:6px;color:#fff}
+.ph-days b{font-size:46px;line-height:1;font-weight:900;letter-spacing:-.03em;text-shadow:0 2px 10px rgba(0,0,0,.25)}.ph-days small{font-size:14px;font-weight:800;opacity:.9}
+.ph-tour.ph-band .ph-emo{font-size:58px}
+.ph-cat{position:absolute;left:12px;bottom:10px;font-size:12px;font-weight:900;letter-spacing:.05em;text-transform:uppercase;color:rgba(20,20,30,.72)}
+.ph-unesco{bottom:auto !important;top:10px}
+.region{font-size:13px !important;font-weight:600;margin-top:-4px}
+.facts{display:grid;gap:8px;margin-top:2px}
+.pf{font-size:13.5px !important;background:var(--md-sc-lowest);border-radius:14px;padding:9px 12px;color:var(--md-on-surface-variant)}
+.pf-k{display:block;font-weight:800;font-size:12.5px;color:var(--md-on-surface);margin-bottom:2px}
+.pf-d summary{list-style:none;cursor:pointer;position:relative;padding-right:24px;min-height:24px}.pf-d summary::-webkit-details-marker{display:none}
+.pf-d summary::after{content:"";position:absolute;right:4px;top:5px;width:7px;height:7px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);transition:transform .2s}
+.pf-d[open] summary::after{transform:rotate(225deg);top:9px}
+.pf-d summary .pf-k{margin:0}
 .km{font-size:13px;font-weight:700;color:var(--md-on-surface-variant)}.km a{margin-left:6px}
 .credit{font-size:11px !important;opacity:.75}
 /* tours */

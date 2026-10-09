@@ -133,7 +133,13 @@ function cs_item(mixed $it): ?array
     if (!cs_has($t)) {
         return null;
     }
-    return ['en' => $t['en'], 'ne' => $t['ne'], 'hi' => $t['hi'], 'sources' => cs_sources(is_array($it) ? ($it['sources'] ?? []) : [])];
+    $out = ['en' => $t['en'], 'ne' => $t['ne'], 'hi' => $t['hi'], 'sources' => cs_sources(is_array($it) ? ($it['sources'] ?? []) : [])];
+    // "who" (border rules: "Indian citizens (adults)") becomes the item's heading.
+    $who = is_array($it) ? cs_tri($it, 'who') : ['en' => '', 'ne' => '', 'hi' => ''];
+    if (cs_has($who)) {
+        $out['who'] = $who;
+    }
+    return $out;
 }
 
 function cs_slug(string $s): string
@@ -163,6 +169,58 @@ function cs_icon(string $text): string
 function cs_num(mixed $v): ?float
 {
     return is_numeric($v) ? (float) $v : null;
+}
+
+/** Western digits and units → Devanagari ("1,751 km" → "१,७५१ किमी"). */
+function cs_deva(string $s): string
+{
+    return strtr($s, ['0' => '०', '1' => '१', '2' => '२', '3' => '३', '4' => '४', '5' => '५', '6' => '६', '7' => '७', '8' => '८', '9' => '९',
+        ' km' => ' किमी', 'km' => 'किमी', ' lakh' => ' लाख', ' crore' => ' करोड']);
+}
+
+/**
+ * A key number written as one sentence → [value, value_ne, label].
+ *   "1,751 km of open border …"        → "1,751 km"  + "Open border …"
+ *   "More than 1.22 lakh pensioners …" → "1.22 lakh+" + "Pensioners …"
+ *   "… Sashastra Seema Bal (SSB) …"    → "SSB"       + the sentence
+ *   "No passport or visa needed: …"    → the words before the colon + the rest
+ * Only words already in the sentence are used. Nothing found → value ''.
+ *
+ * @param array{en:string,ne:string,hi:string} $label
+ * @return array{0:string,1:string,2:array{en:string,ne:string,hi:string}}
+ */
+function cs_split_number(array $label): array
+{
+    $en = $label['en'];
+    if (preg_match('/^(More than|Over|About|Around|Nearly)?\s*(\d[\d,.]*)(\s*(?:km|lakh|crore|%))?\s+(.+)$/iu', $en, $m) === 1) {
+        $num = $m[2] . (trim($m[3] ?? '') !== '' ? ' ' . trim($m[3]) : '');
+        $pre = strtolower(trim($m[1]));
+        $approx = in_array($pre, ['about', 'around', 'nearly'], true) ? '≈ ' : '';
+        $plus = in_array($pre, ['more than', 'over'], true) ? '+' : '';
+        $rest = (string) preg_replace('/^of\s+/i', '', trim($m[4]));
+        $label['en'] = ucfirst($rest);
+        return [$approx . $num . $plus, $approx . cs_deva($num) . $plus, $label];
+    }
+    if (preg_match('/\(([A-Z]{2,6})\)/', $en, $m) === 1) {
+        return [$m[1], $m[1], $label];
+    }
+    $cut = static function (string $s): array {
+        $p = mb_strpos($s, ':');
+        if ($p === false || $p > 40 || preg_match('/\d/', mb_substr($s, 0, $p)) === 1) {
+            return ['', $s];
+        }
+        return [trim(mb_substr($s, 0, $p)), trim(mb_substr($s, $p + 1))];
+    };
+    [$vEn, $restEn] = $cut($en);
+    if ($vEn !== '') {
+        [$vNe, $restNe] = $cut($label['ne']);
+        $label['en'] = ucfirst($restEn);
+        if ($vNe !== '') {
+            $label['ne'] = $restNe;
+        }
+        return [$vEn, $vNe, $label];
+    }
+    return ['', '', $label];
 }
 
 /* ---------------- 1. indianepal.php ---------------- */
@@ -225,10 +283,20 @@ foreach ((array) ($tl['key_numbers'] ?? []) as $k) {
         $label = cs_tri($k);
     }
     $value = trim((string) ($k['value'] ?? $k['number'] ?? ''));
+    $valueNe = trim((string) ($k['value_ne'] ?? ''));
+    if ($value === '' && cs_has($label)) {
+        // The research writes each number as one sentence ("1,751 km of open
+        // border …") — lift the figure out of the sentence itself, never invent one.
+        [$value, $valueNe, $label] = cs_split_number($label);
+    }
     if ($value === '' || !cs_has($label)) {
         continue;
     }
-    $nums[] = ['value' => $value, 'label_en' => $label['en'], 'label_ne' => $label['ne'], 'label_hi' => $label['hi'], 'sources' => cs_sources($k['sources'] ?? [])];
+    $row = ['value' => $value, 'label_en' => $label['en'], 'label_ne' => $label['ne'], 'label_hi' => $label['hi'], 'sources' => cs_sources($k['sources'] ?? [])];
+    if ($valueNe !== '') {
+        $row['value_ne'] = $valueNe;
+    }
+    $nums[] = $row;
 }
 $list = static fn(mixed $a): array => array_values(array_filter(array_map('cs_item', is_array($a) ? $a : []), static fn($x): bool => $x !== null));
 $summary = cs_item($bd['summary'] ?? '') ?? ['en' => '', 'ne' => '', 'hi' => '', 'sources' => []];
@@ -257,7 +325,16 @@ $path = INCLUDE_PATH . '/content/indianepal.php';
 $same = false;
 if (is_file($path)) {
     try {
-        $same = (include $path) === $story;   // idempotent: an unchanged story is not rewritten
+        $curStory = include $path;
+        if (!isset($j['reviewed']) && is_array($curStory) && isset($curStory['reviewed'])) {
+            $story['reviewed'] = (string) $curStory['reviewed'];   // no new review date in the file: keep the old one…
+            $same = $curStory === $story;
+            if (!$same) {
+                $story['reviewed'] = date('Y-m-d');                  // …unless the content itself changed
+            }
+        } else {
+            $same = $curStory === $story;   // idempotent: an unchanged story is not rewritten
+        }
     } catch (Throwable $ex) {
         $same = false;
     }
@@ -311,8 +388,11 @@ foreach (['NP' => $j['nepal']['places'] ?? [], 'IN' => $j['india']['places'] ?? 
             }
             $vt = cs_tri($v);
             if ($stop === null) {
-                // near_route_stop: the stop's name (or "Ayodhya (≈130 km from Lucknow)")
-                $near = mb_substr(trim((string) preg_replace('/\s*\(.*$/u', '', $vt['en'])), 0, 80);
+                // near_route_stop: the stop's name (or "Ayodhya (≈130 km from Lucknow)"); "none" = off our route
+                $nm = mb_substr(trim((string) preg_replace('/\s*\(.*$/u', '', $vt['en'])), 0, 80);
+                if ($nm !== '' && !in_array(strtolower($nm), ['none', 'n/a', '-', 'no'], true)) {
+                    $near = $nm;
+                }
                 if (preg_match('/(\d[\d,]*)\s*km/i', $vt['en'], $m) === 1) {
                     $km = (int) str_replace(',', '', $m[1]);
                 }
@@ -321,7 +401,10 @@ foreach (['NP' => $j['nepal']['places'] ?? [], 'IN' => $j['india']['places'] ?? 
                 }
             } else {
                 $near = $near ?? $stop;
-                if ($km === null && preg_match('/(\d[\d,]*)\s*km/i', $vt['en'], $m) === 1) {
+                // Only a distance the hint itself measures FROM that stop ("about 90 km … from
+                // Nepalgunj", "≈ 400 km") — "32 km to Nagarkot" after a flight is not one.
+                if ($km === null && (preg_match('/(\d[\d,]*)\s*km\b[^.]*\bfrom ' . preg_quote($stop, '/') . '\b/i', $vt['en'], $m) === 1
+                        || preg_match('/^\W*(?:about|around|approx\.?|≈)?\s*(\d[\d,]*)\s*km\W*$/iu', $vt['en'], $m) === 1)) {
                     $km = (int) str_replace(',', '', $m[1]);
                 }
                 if (!cs_has($reach)) {
@@ -333,7 +416,7 @@ foreach (['NP' => $j['nepal']['places'] ?? [], 'IN' => $j['india']['places'] ?? 
             $km = (int) $p['km_hint'];
         }
         $row = [
-            'slug' => $slug, 'country' => $country, 'region' => mb_substr(trim((string) ($p['region'] ?? '')), 0, 80) ?: null,
+            'slug' => $slug, 'country' => $country, 'region' => mb_substr(trim((string) ($p['region'] ?? $p['state'] ?? '')), 0, 80) ?: null,
             'category' => ContentPages::normCategory((string) ($p['type'] ?? $p['category'] ?? '')),
             'name_en' => mb_substr($nameEn, 0, 120), 'name_ne' => trim((string) ($p['name_ne'] ?? '')) ?: null, 'name_hi' => trim((string) ($p['name_hi'] ?? '')) ?: null,
             'blurb_en' => $blurb['en'] ?: null, 'blurb_ne' => $blurb['ne'] ?: null, 'blurb_hi' => $blurb['hi'] ?: null,
@@ -345,7 +428,8 @@ foreach (['NP' => $j['nepal']['places'] ?? [], 'IN' => $j['india']['places'] ?? 
         ];
         $cur = Database::fetch('SELECT * FROM travel_places WHERE slug = :s', ['s' => $slug]);
         if ($cur === null) {
-            $row['is_featured'] = !empty($p['featured']) || !empty($p['unesco']) ? 1 : 0;
+            // Featured on first load: UNESCO sites and the places right at our Nepalgunj border (the office may change it).
+            $row['is_featured'] = !empty($p['featured']) || !empty($p['unesco']) || preg_match('/\b(banke|bardiya)\b/i', (string) $row['region']) === 1 ? 1 : 0;
             $row['is_active'] = 1;
             if (!$dry) {
                 Database::insert('travel_places', $row);
@@ -387,7 +471,8 @@ foreach ($pkgs as $k) {
         continue;
     }
     $sort += 10;
-    $slug = cs_slug((string) ($k['slug'] ?? $k['code'] ?? $title['en']));
+    // A readable web address from the title (/tours/lumbini-pokhara-kathmandu-circuit), not the short code.
+    $slug = cs_slug((string) ($k['slug'] ?? $title['en']));
     $c = strtolower((string) ($k['country'] ?? ''));
     $country = str_contains($c, 'both') || (str_contains($c, 'nepal') && str_contains($c, 'india')) ? 'Both' : (str_contains($c, 'india') || $c === 'in' ? 'India' : 'Nepal');
     $summary = cs_tri($k, 'summary');
@@ -407,7 +492,12 @@ foreach ($pkgs as $k) {
             $itin[] = ['day' => (int) (is_array($d) ? ($d['day'] ?? $i + 1) : $i + 1), 'en' => $t['en'], 'ne' => $t['ne'], 'hi' => $t['hi']];
         }
     }
-    $leg = in_array($k['coach_leg'] ?? '', ['toNepal', 'toIndia', 'both', 'none'], true) ? (string) $k['coach_leg'] : 'both';
+    // Our bus runs Gujarat ⇄ Rupaidiha. A tour that starts at the border
+    // (Nepalgunj / Rupaidiha) uses it both ways; a tour that never touches the
+    // border (e.g. a Gujarat-only trail) does not use it at all.
+    $leg = in_array($k['coach_leg'] ?? '', ['toNepal', 'toIndia', 'both', 'none'], true)
+        ? (string) $k['coach_leg']
+        : (preg_match('/nepalgunj|rupaidiha|nepal/i', $route['en'] . ' ' . (string) ($k['country'] ?? '')) === 1 ? 'both' : 'none');
     $row = [
         'slug' => $slug, 'country' => $country,
         'title_en' => mb_substr($title['en'], 0, 160), 'title_ne' => mb_substr($title['ne'], 0, 200) ?: null, 'title_hi' => mb_substr($title['hi'], 0, 200) ?: null,

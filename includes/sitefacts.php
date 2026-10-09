@@ -329,6 +329,8 @@ final class SiteFacts
      */
     public static function officeListHtml(): string
     {
+        /* Word for word the Nepali set of 05-router.js OFFICE_WORDS, so the
+           live render after boot swaps nothing on a Nepali screen. */
         $esc  = static fn($v): string => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
         $rows = '';
         foreach (self::all()['offices'] as $o) {
@@ -336,22 +338,26 @@ final class SiteFacts
             $head = $o['kind'] === 'head';
             $soon = $o['status'] !== 'open';
             $name = $o['nameNe'] !== '' ? $o['nameNe'] : $o['name'];
-            $sub  = $head ? 'प्रधान कार्यालय · Head office'
-                  : ($soon ? 'छिट्टै खुल्दै · Opening soon'
-                  : ($np ? 'नेपाल कार्यालय · ' . $o['address'] : 'शाखा कार्यालय · Branch'));
+            $place = trim(explode(',', (string) $o['address'])[0]);
+            $sub  = $soon ? 'छिट्टै खुल्दै'
+                  : ($head ? 'प्रधान कार्यालय'
+                  : ($o['kind'] === 'partner' || $np ? 'नेपाल कार्यालय' . ($place !== '' ? ' · ' . $place : '')
+                  : ($o['kind'] === 'border' ? 'सीमा कार्यालय' : 'शाखा कार्यालय')));
             $cls  = 'th-o ' . ($np ? 'th-np' : 'th-in') . ($head ? ' th-head' : '') . ($soon ? ' th-soon' : '');
             $badge = $np ? '<span class="flg" data-flag="NP"></span>' : $esc(mb_strtoupper(mb_substr($o['name'], 0, 1)));
             $inner = '<span class="th-badge">' . $badge . '</span>'
-                   . '<span class="th-l">' . $esc($name) . ($head ? ' <b class="th-tagk">HEAD</b>' : '') . '</span>'
-                   . '<span class="th-sub">' . $esc($sub) . '</span>'
+                   . '<span class="th-l">' . $esc($name) . '</span>'
+                   . '<span class="th-sub">' . ($head ? '<b class="th-tagk">HEAD</b>' : '') . $esc($sub) . '</span>'
                    . ($o['phone'] !== '' ? '<span class="th-n">' . $esc($o['phone']) . '</span><span class="th-call" aria-hidden="true">📞</span>' : '');
             $rows .= '<li class="' . $cls . '" data-office="' . $esc($o['code']) . '">'
-                   . ($o['tel'] !== '' ? '<a href="tel:+' . $esc($o['tel']) . '">' . $inner . '</a>' : '<span class="th-a">' . $inner . '</span>')
+                   . ($o['tel'] !== ''
+                        ? '<a href="tel:+' . $esc($o['tel']) . '" aria-label="' . $esc('फोन गर्नुहोस् ' . $name . ' ' . $o['phone']) . '">' . $inner . '</a>'
+                        : '<span class="th-a">' . $inner . '</span>')
                    . '</li>';
         }
         if (self::all()['expanding']) {
-            $rows .= '<li class="th-o th-more"><a href="/offices"><span class="th-badge">+</span>'
-                   . '<span class="th-l">नयाँ कार्यालय छिट्टै</span><span class="th-sub">Network expanding</span>'
+            $rows .= '<li class="th-o th-more"><a href="/ne/offices"><span class="th-badge">+</span>'
+                   . '<span class="th-l">नयाँ कार्यालय छिट्टै</span><span class="th-sub">नेटवर्क विस्तार हुँदैछ · Network expanding</span>'
                    . '<span class="th-call" aria-hidden="true">→</span></a></li>';
         }
         return $rows;

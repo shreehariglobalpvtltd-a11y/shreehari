@@ -72,8 +72,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
             Database::transaction(static function () use ($OUT, $RET, $stops): void {
                 Database::query('UPDATE routes SET is_active = 0 WHERE id NOT IN (:a, :b)', ['a' => $OUT, 'b' => $RET]);
                 Database::query('UPDATE routes SET is_active = 1 WHERE id IN (:c, :d)',     ['c' => $OUT, 'd' => $RET]);
-                Database::query("UPDATE routes SET from_city='Surat', to_city='Rupaidiha', dep_time='13:00:00', duration_text='' WHERE id=:i", ['i' => $OUT]);
-                Database::query("UPDATE routes SET from_city='Rupaidiha', to_city='Surat', dep_time='18:00:00', duration_text='' WHERE id=:i", ['i' => $RET]);
+                /* 9 Oct 2026: duration_text is no longer blanked here. It is the
+                   office's "show the arrival to customers" switch (Route facts
+                   below); this button used to wipe a confirmed arrival on every press. */
+                Database::query("UPDATE routes SET from_city='Surat', to_city='Rupaidiha', dep_time='13:00:00' WHERE id=:i", ['i' => $OUT]);
+                Database::query("UPDATE routes SET from_city='Rupaidiha', to_city='Surat', dep_time='18:00:00' WHERE id=:i", ['i' => $RET]);
 
                 /* 1 Oct 2026: stops are SEEDED here only when a route has none of
                    that type. This button used to DELETE every pickup and
@@ -238,6 +241,186 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
 }
 
 /* ---------------------------------------------------------------------
+ *  Route facts (9 Oct 2026, owner ask #11): distance, arrival clock, the
+ *  arrival day and the "show arrival to customers" text. duration_text
+ *  is what search / the timetable gate the arrival on — blank keeps the
+ *  arrival hidden everywhere a customer looks. CSRF, routes.edit, audited.
+ * ------------------------------------------------------------------- */
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'update_route_facts') {
+    if (!Security::verifyCsrf()) {
+        $flash = ['bad', 'Session expired - please try again.'];
+    } else {
+        try {
+            Auth::requireAdmin('routes.edit');
+            $rid = (int) ($_POST['route_id'] ?? 0);
+            $row = Database::fetch('SELECT id, route_code, from_city, to_city, dep_time, arr_time, day_offset, duration_text, distance_km FROM routes WHERE id = :i', ['i' => $rid]);
+            if ($row === null) { throw new RuntimeException('That route no longer exists.'); }
+            $km = trim((string) ($_POST['distance_km'] ?? ''));
+            if ($km !== '' && (!ctype_digit($km) || (int) $km < 1 || (int) $km > 9999)) {
+                throw new RuntimeException('Enter the distance as whole km between 1 and 9999, or leave it blank.');
+            }
+            $arr = trim((string) ($_POST['arr_time'] ?? ''));
+            if ($arr !== '' && preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $arr) !== 1) {
+                throw new RuntimeException('Enter the arrival time as HH:MM.');
+            }
+            if (strlen($arr) === 5) { $arr .= ':00'; }
+            $day = (int) ($_POST['day_offset'] ?? 0);
+            if ($day < 0 || $day > 3) { throw new RuntimeException('Arrival day must be the same day, +1, +2 or +3.'); }
+            $show = !empty($_POST['show_arrival']);
+            $dur  = trim(Security::clean((string) ($_POST['duration_text'] ?? ''), 40));
+            $mins = $arr !== '' ? Boarding::durationMin((string) $row['dep_time'], $arr, $day) : null;
+            if ($show) {
+                if ($arr === '') { throw new RuntimeException('Enter the arrival time before showing it to customers.'); }
+                if ($mins === null) { throw new RuntimeException('Departure ' . substr((string) $row['dep_time'], 0, 5) . ' to arrival ' . substr($arr, 0, 5) . ' (+' . $day . ' day) is not a plausible journey - check the arrival day.'); }
+                if ($dur === '') { $dur = intdiv($mins, 60) . 'h' . ($mins % 60 ? ' ' . sprintf('%02d', $mins % 60) . 'm' : ''); }
+            } else {
+                $dur = '';   // hidden: the customer screens show no arrival clock
+            }
+            $before = ['distance_km' => $row['distance_km'] !== null ? (int) $row['distance_km'] : null,
+                       'arr_time' => (string) ($row['arr_time'] ?? ''), 'day_offset' => (int) $row['day_offset'],
+                       'duration_text' => (string) ($row['duration_text'] ?? '')];
+            $after  = ['distance_km' => $km !== '' ? (int) $km : null,
+                       'arr_time' => $arr !== '' ? $arr : (string) ($row['arr_time'] ?? ''), 'day_offset' => $day,
+                       'duration_text' => $dur];
+            if ($before == $after) {
+                $flash = ['ok', $row['route_code'] . ' route facts unchanged.'];
+            } else {
+                $set = $after;
+                if ($arr === '') { unset($set['arr_time']); }   // arr_time is NOT NULL on older schemas - keep the stored clock
+                Database::update('routes', $set, 'id = :i', ['i' => $rid]);
+                Boarding::flush();
+                Logger::audit('route.facts_updated', 'routes', (string) $rid, $before, $after,
+                    $row['route_code'] . ' ' . $row['from_city'] . ' -> ' . $row['to_city'] . ' route facts');
+                $flash = ['ok', $row['route_code'] . ' route facts saved' . ($dur !== '' ? ' - arrival ' . substr($after['arr_time'], 0, 5) . ($day > 0 ? ' (+' . $day . ' day)' : '') . ' is now shown to customers.' : ' - the arrival stays hidden from customers.')];
+            }
+        } catch (Throwable $e) {
+            $flash = ['bad', $e->getMessage()];
+        }
+    }
+}
+
+/* ---------------------------------------------------------------------
+ *  En-route halts (9 Oct 2026, owner ask #11): tea / breakfast / lunch /
+ *  dinner / fuel / rest / border stops that are not pickups. Their own
+ *  table (route_halts) so search, the cut-off and the seat map never see
+ *  them. Times are stored as minutes after departure (a retimed bus moves
+ *  its halts) from the clock + journey day the office types. Never
+ *  deleted: OFF hides one. CSRF, routes.edit, audited, Boarding::flush().
+ * ------------------------------------------------------------------- */
+$haltIn = static function (array $p, string $depTime): array {
+    $name = trim(Security::clean((string) ($p['name'] ?? ''), 120));
+    if ($name === '') { throw new RuntimeException('Enter the halt place (a corridor town, e.g. Kota).'); }
+    $kind = (string) ($p['kind'] ?? 'rest');
+    if (!in_array($kind, Boarding::HALT_KINDS, true)) { throw new RuntimeException('Pick what kind of halt this is.'); }
+    $clock = trim((string) ($p['clock_time'] ?? ''));
+    $day   = max(0, min(3, (int) ($p['day'] ?? 0)));
+    $off   = null;
+    if ($clock !== '') {
+        if (preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $clock) !== 1) { throw new RuntimeException('Enter the halt time as HH:MM.'); }
+        $off = Boarding::haltOffset($clock, $day, $depTime);
+        if ($off === null) { throw new RuntimeException('That halt time is before the departure (' . substr($depTime, 0, 5) . ') - pick the right journey day.'); }
+        $clock = substr($clock, 0, 5) . ':00';
+    }
+    $hm = (int) ($p['halt_min'] ?? 15);
+    if ($hm < 0 || $hm > 600) { throw new RuntimeException('Halt length must be 0 to 600 minutes.'); }
+    $km = trim((string) ($p['km'] ?? ''));
+    if ($km !== '' && (!is_numeric($km) || (float) $km < 0 || (float) $km > 9999)) { throw new RuntimeException('Enter the km from the route start (0 to 9999), or leave it blank.'); }
+    return [
+        'name' => $name, 'kind' => $kind, 'clock_time' => $clock !== '' ? $clock : null, 'offset_min' => $off,
+        'halt_min' => $hm, 'km_from_origin' => $km !== '' ? round((float) $km, 1) : null,
+        'landmark' => ($l = trim(Security::clean((string) ($p['landmark'] ?? ''), 191))) !== '' ? $l : null,
+        'note' => ($n = trim(Security::clean((string) ($p['note'] ?? ''), 255))) !== '' ? $n : null,
+        'is_approx' => !empty($p['is_approx']) ? 1 : 0,
+    ];
+};
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && in_array($_POST['action'] ?? '', ['add_halt', 'edit_halt', 'toggle_halt'], true)) {
+    if (!Security::verifyCsrf()) {
+        $flash = ['bad', 'Session expired - please try again.'];
+    } else {
+        try {
+            Auth::requireAdmin('routes.edit');
+            if (!Boarding::hasRouteDetails()) {
+                throw new RuntimeException('Run database/upgrade-2026-10-09-route-details.sql first - the halts table does not exist yet.');
+            }
+            $act = (string) $_POST['action'];
+            if ($act === 'add_halt') {
+                $rid   = (int) ($_POST['route_id'] ?? 0);
+                $route = Database::fetch('SELECT id, route_code, dep_time FROM routes WHERE id = :r', ['r' => $rid]);
+                if ($route === null) { throw new RuntimeException('Route not found.'); }
+                $row = $haltIn($_POST, (string) $route['dep_time']);
+                $row['route_id']   = $rid;
+                $row['sort_order'] = (int) Database::scalar('SELECT COALESCE(MAX(sort_order), 0) + 1 FROM route_halts WHERE route_id = :r', ['r' => $rid], 1);
+                $row['is_active']  = 1;
+                Database::insert('route_halts', $row);
+                Logger::audit('route_halt.add', 'routes', (string) $rid, null, $row, 'Added ' . $row['kind'] . ' halt: ' . $row['name']);
+                $flash = ['ok', 'Added halt: ' . $row['name'] . '.'];
+            } else {
+                $hid = (int) ($_POST['halt_id'] ?? 0);
+                $old = Database::fetch('SELECT h.*, r.dep_time FROM route_halts h JOIN routes r ON r.id = h.route_id WHERE h.id = :h', ['h' => $hid]);
+                if ($old === null) { throw new RuntimeException('Halt not found.'); }
+                $keep = array_intersect_key($old, array_flip(['name', 'kind', 'clock_time', 'offset_min', 'halt_min', 'km_from_origin', 'landmark', 'note', 'is_approx', 'is_active']));
+                if ($act === 'toggle_halt') {
+                    $set = ['is_active' => (int) $old['is_active'] === 1 ? 0 : 1];
+                    $msg = ($set['is_active'] === 1 ? 'ON: ' : 'OFF: ') . $old['name'] . ($set['is_active'] === 1 ? ' is shown again.' : ' is hidden from customers.');
+                } else {
+                    $set = $haltIn($_POST, (string) $old['dep_time']);
+                    $msg = 'Halt updated: ' . $set['name'] . '.';
+                }
+                Database::update('route_halts', $set, 'id = :h', ['h' => $hid]);
+                Logger::audit('route_halt.' . ($act === 'toggle_halt' ? 'toggle' : 'edit'), 'routes', (string) $old['route_id'],
+                    array_intersect_key($keep, $set), $set, ($act === 'toggle_halt' ? 'Toggled' : 'Edited') . ' halt: ' . $old['name']);
+                $flash = ['ok', $msg];
+            }
+            Boarding::flush();
+        } catch (Throwable $e) {
+            $flash = ['bad', $e->getMessage()];
+        }
+    }
+}
+
+/* ---------------------------------------------------------------------
+ *  "Measure road km" (9 Oct 2026): asks OUR routing engine (Settings
+ *  nav_engine_url, Valhalla, bus costing, <= 5 locations per call) for the
+ *  road km of every stop that has a map pin and stores km_from_origin.
+ *  On press only - never on a page view. Stops without coordinates are
+ *  skipped and named; their typed km is left alone.
+ * ------------------------------------------------------------------- */
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'measure_km') {
+    if (!Security::verifyCsrf()) {
+        $flash = ['bad', 'Session expired - please try again.'];
+    } else {
+        try {
+            Auth::requireAdmin('routes.edit');
+            if (!Boarding::hasRouteDetails()) {
+                throw new RuntimeException('Run database/upgrade-2026-10-09-route-details.sql first - the km column does not exist yet.');
+            }
+            $rid = (int) ($_POST['route_id'] ?? 0);
+            @set_time_limit(90);
+            $m = Boarding::measureRoadKm($rid);
+            if (!$m['ok']) { throw new RuntimeException($m['error']); }
+            $before = [];
+            foreach (Database::fetchAll('SELECT id, stop_name, km_from_origin FROM route_stops WHERE route_id = :r', ['r' => $rid]) as $s) {
+                if (isset($m['rows'][(int) $s['id']])) {
+                    $before[(string) $s['stop_name']] = $s['km_from_origin'] !== null ? (float) $s['km_from_origin'] : null;
+                }
+            }
+            Database::transaction(static function () use ($m, $rid): void {
+                foreach ($m['rows'] as $sid => $km) {
+                    Database::update('route_stops', ['km_from_origin' => $km], 'id = :id AND route_id = :r', ['id' => (int) $sid, 'r' => $rid]);
+                }
+            });
+            Boarding::flush();
+            Logger::audit('route_stop.km_measured', 'routes', (string) $rid, $before, $m['names'],
+                'Road km measured on the route engine (' . $m['calls'] . ' call' . ($m['calls'] === 1 ? '' : 's') . ', total ' . $m['totalKm'] . ' km)');
+            $flash = ['ok', 'Measured ' . count($m['names']) . ' stop' . (count($m['names']) === 1 ? '' : 's') . ' on the road engine: ' . number_format((float) $m['totalKm'], 0) . ' km end to end.'
+                . ($m['skipped'] !== [] ? ' Skipped (no map position - add latitude/longitude, or type the km): ' . implode(', ', array_unique($m['skipped'])) . '.' : '')];
+        } catch (Throwable $e) {
+            $flash = ['bad', $e->getMessage()];
+        }
+    }
+}
+
+/* ---------------------------------------------------------------------
  *  Add a route (3 Sep 2026). Created SWITCHED OFF so nothing sells until
  *  the office adds its stops below and presses Activate; "Refill schedule
  *  rows" then seeds the 30-day window for it.
@@ -340,6 +523,17 @@ $stopCoordIn = static function (mixed $v, float $limit, string $what): ?float {
         throw new RuntimeException('Enter a valid ' . $what . ' (decimal degrees), or leave it blank.');
     }
     return round((float) $v, 7);
+};
+/* Road km from the route's first stop (9 Oct 2026). Blank = not measured. */
+$stopKmIn = static function (mixed $v): ?float {
+    $v = trim((string) $v);
+    if ($v === '') {
+        return null;
+    }
+    if (!is_numeric($v) || (float) $v < 0 || (float) $v > 9999) {
+        throw new RuntimeException('Enter the road km from the route start (0 to 9999), or leave it blank.');
+    }
+    return round((float) $v, 1);
 };
 
 /* ── Pickup fares: one Save for a whole list (1 Oct 2026, owner ask) ──
@@ -488,6 +682,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
                 $row['fare']      = $fareVal;
                 $row['is_active'] = 1;
             }
+            if (Boarding::hasRouteDetails()) {
+                $row['km_from_origin'] = $stopKmIn($_POST['km'] ?? '');
+            }
             Database::insert('route_stops', $row);
             Boarding::flush();
 
@@ -540,15 +737,21 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
             if (array_key_exists('fare', $_POST) && Boarding::hasStopControls()) {
                 $set['fare'] = $stopFareIn($_POST['fare']);
             }
+            // Road km (9 Oct 2026) — only when the form carries the field.
+            if (array_key_exists('km', $_POST) && Boarding::hasRouteDetails()) {
+                $set['km_from_origin'] = $stopKmIn($_POST['km']);
+            }
             Database::update('route_stops', $set, 'id = :id', ['id' => $stopId]);
             Boarding::flush();
 
             Logger::audit('route_stop.edit', 'routes', (string) ($old['route_id'] ?? 0),
                 ['stop' => $old['stop_name'], 'landmark' => $old['landmark'], 'time' => $old['stop_time'],
-                 'lat' => $old['latitude'], 'lng' => $old['longitude'], 'fare' => $old['fare'] ?? null],
+                 'lat' => $old['latitude'], 'lng' => $old['longitude'], 'fare' => $old['fare'] ?? null,
+                 'km' => $old['km_from_origin'] ?? null],
                 ['stop' => $name, 'landmark' => $set['landmark'], 'time' => $timeVal,
                  'lat' => $set['latitude'] ?? $old['latitude'], 'lng' => $set['longitude'] ?? $old['longitude'],
-                 'fare' => array_key_exists('fare', $set) ? $set['fare'] : ($old['fare'] ?? null)],
+                 'fare' => array_key_exists('fare', $set) ? $set['fare'] : ($old['fare'] ?? null),
+                 'km' => array_key_exists('km_from_origin', $set) ? $set['km_from_origin'] : ($old['km_from_origin'] ?? null)],
                 'Edited stop: ' . $old['stop_name'] . ' → ' . $name);
             $flash = ['ok', 'Stop updated: ' . $name . '.'];
         } catch (Throwable $e) {
@@ -869,7 +1072,35 @@ foreach ($routes as $rr) { if ((int) $rr['is_active'] === 1) { $activeCount++; }
 <?php
 $stopControls = Boarding::hasStopControls();
 $dirFaresNow  = Fare::dirFares();
+// Route facts + halts (9 Oct 2026): km per stop, en-route halts, measured on press.
+$hasDetails   = Boarding::hasRouteDetails();
+$haltsAll     = $hasDetails ? Boarding::haltsForRoutes(array_map(static fn(array $r): int => (int) $r['id'], $routes), false) : [];
+$navEngine    = Settings::getString('nav_engine_url', 'http://127.0.0.1:8002');
+$haltKindLab  = ['breakfast' => '🍳 Breakfast', 'lunch' => '🍛 Lunch', 'dinner' => '🍽️ Dinner', 'meal' => '🍽️ Meal', 'tea' => '☕ Tea / toilet', 'fuel' => '⛽ Fuel', 'rest' => '🛏️ Rest', 'border' => '🛂 Border'];
 ?>
+<style>
+.rf-box{margin:0 18px 18px;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--hover)}
+.rf-box h3{font-size:14px;margin:0 0 8px}
+.rf-sum{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.rf-sum span{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;background:var(--card);border:1px solid var(--line)}
+.rf-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;align-items:end}
+.rf-form label{display:flex;flex-direction:column;gap:3px;font-size:11px;font-weight:700;color:var(--mut)}
+.rf-form label.chk{flex-direction:row;align-items:center;gap:6px;font-size:12px;color:var(--ink)}
+.rf-form input,.rf-form select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:16px;background:var(--card);color:var(--ink);min-width:0;width:100%}
+.rf-form label.chk input{width:auto}
+.rf-form .btn{min-height:44px}
+.halt-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 0;border-top:1px dashed var(--line);font-size:13px}
+.halt-row:first-of-type{border-top:0}
+.halt-row.off{opacity:.5}
+.halt-row b{min-width:120px}
+.halt-row .muted{font-size:12px}
+.halt-row .stop-controls{margin-left:auto}
+.halt-edit{display:none;margin:4px 0 10px}
+.halt-edit.open{display:grid}
+.km-badge{background:#e8f0ff;color:#1F4FA3}
+:root[data-theme="dark"] .km-badge{background:#1b2a47;color:#9cc0ff}
+@media(pointer:coarse){.halt-row .btn{min-height:44px;padding:6px 12px}}
+</style>
 <div class="panel" id="pickups">
   <h2>📍 Pickup points &amp; fares <span class="muted" style="font-weight:400">· चढ्ने ठाउँ र भाडा</span></h2>
   <div class="pickup-intro muted">
@@ -892,6 +1123,112 @@ $dirFaresNow  = Fare::dirFares();
 ?>
 <div class="panel stop-editor" id="stops-<?= $rid ?>">
   <h2><?= Security::e($r['route_code'] . ' · ' . $r['from_city'] . ' → ' . $r['to_city']) ?> — Stops<?= (int) $r['is_active'] === 1 ? '' : ' <span class="muted" style="font-weight:400">(route OFF)</span>' ?></h2>
+  <?php
+    /* Route facts (9 Oct 2026): what the website prints — km, stops,
+       halts, journey time — computed from the same journey line the home
+       route rail and the live tracker draw. */
+    $rHalts = $haltsAll[$rid] ?? [];
+    $rLine  = Boarding::journeyLine(Boarding::lineStops($rid), array_values(array_filter($rHalts, static fn(array $h): bool => $h['active'])), (string) $r['dep_time']);
+    $rSum   = Boarding::journeySummary($rLine, $r);
+    $rDur   = Boarding::durationMin((string) $r['dep_time'], (string) ($r['arr_time'] ?? ''), (int) ($r['day_offset'] ?? 0));
+    $rShown = trim((string) ($r['duration_text'] ?? '')) !== '';
+  ?>
+  <div class="rf-box" id="facts-<?= $rid ?>">
+    <h3>📏 Route facts <span class="muted" style="font-weight:400">· दूरी, स्टप, विश्राम</span></h3>
+    <div class="rf-sum">
+      <?php foreach ($rSum['spans'] as $sp): ?><span><?= Security::e($sp['from'] . ' → ' . $sp['to']) ?> ≈ <?= Security::e(number_format((int) $sp['km'])) ?> km</span><?php endforeach; ?>
+      <?php if ($rSum['spans'] === []): ?><span><?= $rSum['distanceKm'] !== null ? '≈ ' . Security::e(number_format((int) $rSum['distanceKm'])) . ' km (route setting)' : 'km not measured yet' ?></span><?php endif; ?>
+      <span><?= (int) $rSum['stopCount'] ?> stops · <?= (int) $rSum['haltCount'] ?> halts</span>
+      <span><?= $rDur !== null ? '≈ ' . intdiv($rDur, 60) . 'h ' . sprintf('%02d', $rDur % 60) . 'm on the timetable' : 'journey time not set' ?></span>
+      <span><?= $rShown ? '✅ arrival shown to customers' : '🙈 arrival hidden from customers' ?></span>
+    </div>
+    <?php if ($canEdit): ?>
+    <form method="post" class="rf-form">
+      <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= $csrf_val ?>">
+      <input type="hidden" name="action" value="update_route_facts">
+      <input type="hidden" name="route_id" value="<?= $rid ?>">
+      <label>Distance km (route setting) <input type="number" name="distance_km" min="1" max="9999" step="1" value="<?= $r['distance_km'] !== null ? (int) $r['distance_km'] : '' ?>" placeholder="e.g. 1375"></label>
+      <label>Arrives (HH:MM) <input type="time" name="arr_time" value="<?= Security::e(substr((string) ($r['arr_time'] ?? ''), 0, 5)) ?>"></label>
+      <label>Arrival day <select name="day_offset"><?php foreach ([0 => 'Same day', 1 => 'Next day (+1)', 2 => '+2 days', 3 => '+3 days'] as $dv => $dl): ?><option value="<?= $dv ?>" <?= (int) ($r['day_offset'] ?? 0) === $dv ? 'selected' : '' ?>><?= $dl ?></option><?php endforeach; ?></select></label>
+      <label>Journey text <input type="text" name="duration_text" maxlength="40" value="<?= Security::e((string) ($r['duration_text'] ?? '')) ?>" placeholder="auto, e.g. 35h 39m"></label>
+      <label class="chk"><input type="checkbox" name="show_arrival" value="1" <?= $rShown ? 'checked' : '' ?>> Show arrival to customers</label>
+      <button class="btn ok" type="submit">💾 Save route facts</button>
+    </form>
+    <p class="muted" style="font-size:12px;margin:8px 0 0">The website shows km from the stop list below (Surat → Rupaidiha and Ahmedabad → Rupaidiha). The "Distance km" setting is only a fallback and is what the SEO route pages print. Unticked = no arrival clock on search, timetable or tracker (journey time shows as "≈").</p>
+    <?php if ($hasDetails): ?>
+    <form method="post" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center" onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Measuring…'">
+      <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= $csrf_val ?>">
+      <input type="hidden" name="action" value="measure_km">
+      <input type="hidden" name="route_id" value="<?= $rid ?>">
+      <button class="btn" type="submit" style="min-height:44px">📏 Measure road km</button>
+      <small class="muted">Asks our route engine (<?= Security::e($navEngine) ?>, bus) for every stop with a map position and saves the km. Stops without latitude/longitude are skipped and listed.</small>
+    </form>
+    <?php endif; ?>
+    <?php endif; ?>
+  </div>
+
+  <?php if ($hasDetails): ?>
+  <div class="rf-box" id="halts-<?= $rid ?>">
+    <h3>🍽️ Halts on the way <span class="muted" style="font-weight:400">· खाना / चिया / विश्राम (<?= count($rHalts) ?>)</span></h3>
+    <p class="muted" style="font-size:12px;margin:0 0 6px">Tea, breakfast, lunch, dinner and fuel halts shown to customers on the home route line and the live tracker. "≈ approximate" = typical plan; the crew picks the exact dhaba. Times follow the departure: a retimed bus moves its halts.</p>
+    <?php if ($rHalts === []): ?><p class="muted" style="font-size:13px">No halts yet.</p><?php endif; ?>
+    <?php foreach ($rHalts as $h):
+      $hDay   = $h['offsetMin'] !== null ? intdiv(Boarding::hmToMin((string) $r['dep_time']) + $h['offsetMin'], 1440) : 0;
+      $hClock = $h['offsetMin'] !== null ? Boarding::minToHm((int) Boarding::hmToMin((string) $r['dep_time']) + $h['offsetMin']) : (string) ($h['clock'] ?? '');
+    ?>
+    <div class="halt-row<?= $h['active'] ? '' : ' off' ?>">
+      <span class="stop-time" style="font-family:ui-monospace,Menlo,Consolas,monospace"><?= $h['approx'] ? '≈' : '' ?><?= Security::e($hClock !== '' ? $hClock : '—') ?><?= $hDay > 0 ? '<sup>+' . $hDay . '</sup>' : '' ?></span>
+      <b><?= Security::e($h['name']) ?></b>
+      <span><?= Security::e($haltKindLab[$h['kind']] ?? $h['kind']) ?> · <?= (int) $h['haltMin'] ?> min<?= $h['km'] !== null ? ' · ' . Security::e(number_format((float) $h['km'], 0)) . ' km' : '' ?></span>
+      <?php if ($h['note'] !== ''): ?><span class="muted"><?= Security::e($h['note']) ?></span><?php endif; ?>
+      <?php if (!$h['active']): ?><span class="off-badge" style="font-size:10px;padding:2px 6px;border-radius:4px">OFF</span><?php endif; ?>
+      <?php if ($canEdit): ?>
+      <div class="stop-controls">
+        <form method="post"><input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= $csrf_val ?>"><input type="hidden" name="action" value="toggle_halt"><input type="hidden" name="halt_id" value="<?= (int) $h['id'] ?>"><button class="btn stop-onoff <?= $h['active'] ? 'on' : 'offb' ?>" type="submit"><?= $h['active'] ? 'ON' : 'OFF' ?></button></form>
+        <button class="btn" type="button" title="Edit halt" onclick="toggleHaltEdit(<?= (int) $h['id'] ?>)">✎</button>
+      </div>
+      <?php endif; ?>
+    </div>
+    <?php if ($canEdit): ?>
+    <form method="post" class="rf-form halt-edit" id="halt-edit-<?= (int) $h['id'] ?>">
+      <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= $csrf_val ?>">
+      <input type="hidden" name="action" value="edit_halt">
+      <input type="hidden" name="halt_id" value="<?= (int) $h['id'] ?>">
+      <label>Place <input type="text" name="name" required maxlength="120" value="<?= Security::e($h['name']) ?>"></label>
+      <label>Kind <select name="kind"><?php foreach ($haltKindLab as $kv => $kl): ?><option value="<?= $kv ?>" <?= $h['kind'] === $kv ? 'selected' : '' ?>><?= Security::e($kl) ?></option><?php endforeach; ?></select></label>
+      <label>Time <input type="time" name="clock_time" value="<?= Security::e($hClock) ?>"></label>
+      <label>Journey day <select name="day"><?php foreach ([0 => 'Departure day', 1 => 'Day 2 (+1)', 2 => 'Day 3 (+2)', 3 => 'Day 4 (+3)'] as $dv => $dl): ?><option value="<?= $dv ?>" <?= $hDay === $dv ? 'selected' : '' ?>><?= $dl ?></option><?php endforeach; ?></select></label>
+      <label>Stands (min) <input type="number" name="halt_min" min="0" max="600" step="5" value="<?= (int) $h['haltMin'] ?>"></label>
+      <label>Km from start <input type="number" name="km" min="0" max="9999" step="0.1" value="<?= $h['km'] !== null ? Security::e((string) $h['km']) : '' ?>"></label>
+      <label>Landmark <input type="text" name="landmark" maxlength="191" value="<?= Security::e($h['landmark']) ?>"></label>
+      <label>Note <input type="text" name="note" maxlength="255" value="<?= Security::e($h['note']) ?>"></label>
+      <label class="chk"><input type="checkbox" name="is_approx" value="1" <?= $h['approx'] ? 'checked' : '' ?>> ≈ approximate</label>
+      <button class="btn ok" type="submit">Save halt</button>
+    </form>
+    <?php endif; ?>
+    <?php endforeach; ?>
+    <?php if ($canEdit): ?>
+    <details style="margin-top:8px">
+      <summary style="font-size:13px;font-weight:700;cursor:pointer;color:var(--blue);padding:6px 0">+ Add a halt</summary>
+      <form method="post" class="rf-form">
+        <input type="hidden" name="<?= CSRF_TOKEN_NAME ?>" value="<?= $csrf_val ?>">
+        <input type="hidden" name="action" value="add_halt">
+        <input type="hidden" name="route_id" value="<?= $rid ?>">
+        <label>Place <input type="text" name="name" required maxlength="120" placeholder="e.g. Kota"></label>
+        <label>Kind <select name="kind"><?php foreach ($haltKindLab as $kv => $kl): ?><option value="<?= $kv ?>"><?= Security::e($kl) ?></option><?php endforeach; ?></select></label>
+        <label>Time <input type="time" name="clock_time"></label>
+        <label>Journey day <select name="day"><option value="0">Departure day</option><option value="1" selected>Day 2 (+1)</option><option value="2">Day 3 (+2)</option><option value="3">Day 4 (+3)</option></select></label>
+        <label>Stands (min) <input type="number" name="halt_min" min="0" max="600" step="5" value="15"></label>
+        <label>Km from start <input type="number" name="km" min="0" max="9999" step="0.1" placeholder="optional"></label>
+        <label>Landmark <input type="text" name="landmark" maxlength="191" placeholder="optional"></label>
+        <label>Note <input type="text" name="note" maxlength="255" placeholder="optional"></label>
+        <label class="chk"><input type="checkbox" name="is_approx" value="1" checked> ≈ approximate</label>
+        <button class="btn ok" type="submit">Add halt</button>
+      </form>
+    </details>
+    <?php endif; ?>
+  </div>
+  <?php endif; ?>
 
   <?php foreach (['boarding' => $boarding, 'drop' => $drops] as $type => $stops):
     $priced   = $stopControls && $type === $pricedType;
@@ -927,6 +1264,7 @@ $dirFaresNow  = Fare::dirFares();
             <span class="stop-landmark"><?= Security::e((string) $st['landmark']) ?></span>
           <?php endif; ?>
           <span class="stop-badges">
+            <?php if ($hasDetails): ?><span class="km-badge" title="Road km from the route start"><?= ($st['km_from_origin'] ?? null) !== null ? Security::e(number_format((float) $st['km_from_origin'], 0)) . ' km' : 'km —' ?></span><?php endif; ?>
             <?php if ((int) ($st['is_border'] ?? 0) === 1): ?><span class="border-badge">Border</span><?php endif; ?>
             <?php if ((int) ($st['is_meal_halt'] ?? 0) === 1): ?><span class="meal-badge">Meal</span><?php endif; ?>
             <?php if (!$stOn): ?><span class="off-badge">OFF</span><?php endif; ?>
@@ -967,6 +1305,9 @@ $dirFaresNow  = Fare::dirFares();
           <div><label>Time (HH:MM)</label><input type="time" name="stop_time" value="<?= $st['stop_time'] !== null ? Security::e(substr((string) $st['stop_time'], 0, 5)) : '' ?>"></div>
           <div><label>Latitude</label><input type="number" name="latitude" step="0.0000001" min="-90" max="90" value="<?= $st['latitude'] !== null ? Security::e((string) (float) $st['latitude']) : '' ?>" placeholder="22.3039"></div>
           <div><label>Longitude</label><input type="number" name="longitude" step="0.0000001" min="-180" max="180" value="<?= $st['longitude'] !== null ? Security::e((string) (float) $st['longitude']) : '' ?>" placeholder="70.8022"></div>
+          <?php if ($hasDetails): ?>
+          <div><label>Road km from route start</label><input type="number" name="km" step="0.1" min="0" max="9999" inputmode="decimal" value="<?= ($st['km_from_origin'] ?? null) !== null ? Security::e((string) (float) $st['km_from_origin']) : '' ?>" placeholder="not measured"></div>
+          <?php endif; ?>
           <div>
             <label>Flags</label>
             <div class="chk-row">
@@ -1010,6 +1351,9 @@ $dirFaresNow  = Fare::dirFares();
         <?php endif; ?>
         <div><label>Latitude</label><input type="number" name="latitude" step="0.0000001" min="-90" max="90" placeholder="optional"></div>
         <div><label>Longitude</label><input type="number" name="longitude" step="0.0000001" min="-180" max="180" placeholder="optional"></div>
+        <?php if ($hasDetails): ?>
+        <div><label>Road km from route start</label><input type="number" name="km" step="0.1" min="0" max="9999" inputmode="decimal" placeholder="optional"></div>
+        <?php endif; ?>
         <div>
           <label>&nbsp;</label>
           <div class="chk-row">
@@ -1029,6 +1373,10 @@ $dirFaresNow  = Fare::dirFares();
 function toggleStopEdit(id){
   var f = document.getElementById('stop-edit-' + id);
   if (f) { f.classList.toggle('open'); if (f.classList.contains('open')) { var i = f.querySelector('input[name="stop_name"]'); if (i) i.focus(); } }
+}
+function toggleHaltEdit(id){
+  var f = document.getElementById('halt-edit-' + id);
+  if (f) { f.classList.toggle('open'); if (f.classList.contains('open')) { var i = f.querySelector('input[name="name"]'); if (i) i.focus(); } }
 }
 </script>
 <?php

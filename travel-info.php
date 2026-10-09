@@ -14,6 +14,7 @@
 declare(strict_types=1);
 if (!defined('SHG_APP')) { define('SHG_APP', true); }
 require_once __DIR__ . '/includes/bootstrap.php';
+require_once INCLUDE_PATH . '/brand.php';   // emblem + icons + flags (9 Oct 2026)
 
 $baseUrl = rtrim(APP_URL, '/');
 $e = static fn($s): string => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
@@ -293,8 +294,7 @@ header('Content-Type: text/html; charset=UTF-8');
 <meta property="og:url" content="<?= $e($baseUrl) ?>/travel-info">
 <meta property="og:image" content="<?= $e($baseUrl) ?>/assets/img/og-shg.png">
 <link rel="canonical" href="<?= $e($baseUrl) ?>/travel-info">
-<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon-32.png">
-<link rel="icon" type="image/svg+xml" href="/icon-shg.svg">
+<?= Brand::iconLinks() ?>
 <meta name="theme-color" content="#0E1E40">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -312,7 +312,8 @@ a{color:var(--link)}
 .header{background:var(--navy);color:#fff;padding:16px;text-align:center;border-bottom:3px solid var(--red)}
 a:focus-visible,summary:focus-visible{outline:3px solid var(--mid);outline-offset:2px}
 .header a{color:#fff;text-decoration:none;display:inline-flex;align-items:center;gap:10px}
-.header img{height:36px;width:auto}
+.header img{height:36px;width:auto;object-fit:contain;filter:drop-shadow(0 2px 5px rgba(0,0,0,.45))}
+.header .fl{height:16px;width:auto;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.4))}.header .fl+.fl{height:20px;margin-left:-4px}
 .header .bn{font-family:'Cinzel',Georgia,serif;font-size:clamp(14px,3vw,18px);font-weight:700}
 .langbar{position:sticky;top:0;z-index:10;display:flex;justify-content:center;gap:10px;padding:8px 16px;background:var(--card);border-bottom:1px solid var(--border);box-shadow:0 2px 8px rgba(14,30,64,.08)}
 .lb{min-width:64px;min-height:48px;display:inline-flex;align-items:center;justify-content:center;padding:0 16px;border:2px solid var(--border);border-radius:12px;color:var(--text);text-decoration:none;font-weight:800;font-size:17px}
@@ -364,7 +365,7 @@ details p{padding-bottom:12px}
 </head>
 <body>
 <div class="header">
-  <a href="/"><img src="/assets/img/logo.png" alt="S Hari Global" width="49" height="36" loading="eager"><span class="bn"><?= $e($co['name']) ?></span></a>
+  <a href="/"><img src="<?= $e(Brand::markUrl(36)) ?>" alt="S Hari Global" width="69" height="36" loading="eager"><span class="bn"><?= $e($co['name']) ?></span><img class="fl" src="/assets/img/flag-in.svg" alt="" width="24" height="16"><img class="fl" src="/assets/img/flag-np.svg" alt="" width="16" height="20"></a>
 </div>
 <nav class="langbar" aria-label="Language / भाषा">
   <a class="lb" href="?lang=en" data-l="en" hreflang="en" lang="en" aria-label="English"<?= $lang === 'en' ? ' aria-current="true"' : '' ?>>EN</a>

@@ -594,6 +594,7 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
   .stops { font-size:9.6px; color:#3B4A66; margin:0 0 5px; line-height:1.4; }
   .stops b { color:#12264E; }
   .band { display:flex; justify-content:space-between; font-size:10.5px; color:#12264E; font-weight:600; margin:4px 0 5px; }
+  .band .flg { vertical-align:-2px; margin:0 2px; border-radius:1px; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
 
   table.ps { width:100%; border-collapse:collapse; table-layout:fixed; }
   table.ps th, table.ps td { border:1px solid #16233C; padding:2px 5px; font-size:10.5px; height:19px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }

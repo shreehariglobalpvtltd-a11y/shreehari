@@ -47,6 +47,14 @@ function cleanup(int $aId, int $bId): void {
             Database::delete('bookings', 'id = :i', ['i' => (int) $bid]);
         }
         Database::delete('agent_ledger', 'agent_admin_id = :a', ['a' => $id]);
+        // 9 Oct 2026: Office chat rows (messages cascade with their thread).
+        try {
+            Database::delete('staff_threads', 'agent_admin_id = :a', ['a' => $id]);
+            Database::delete('staff_thread_reads', 'admin_id = :a', ['a' => $id]);
+            Database::delete('staff_presence', 'admin_id = :a', ['a' => $id]);
+        } catch (Throwable $e) {
+            // chat tables not installed on this database
+        }
         Database::delete('admin_profiles', 'admin_id = :a', ['a' => $id]);
         Database::delete('admins', 'id = :a', ['a' => $id]);
     }
@@ -246,6 +254,36 @@ try {
     $asAdmin(1, 'superadmin', 'superadmin');
     check('an unscoped role is not blocked by the ownership rule',
         !str_contains($transferError(1, $seatB), 'only move a passenger from a booking you sold'));
+
+    // ---- Office chat (9 Oct 2026) must not become the way round the scope ---
+    // admin/api/staff-msg.php answers any agent with bookings.view; a ticket
+    // conversation names the PNR and carries the office's reply. Agent B must
+    // neither open a thread on agent A's sale (404, same words as an unknown
+    // PNR) nor read agent A's existing thread. tests/staff-msg-test.php has the
+    // full suite (desk isolation, uploads, the HTTP API).
+    require_once INCLUDE_PATH . '/staffmsg.php';
+    if (StaffMsg::available(true)) {
+        StaffMsg::$pushEnabled = false;
+        $asAdmin($aId, 'agent', A_USER);
+        $chatA = StaffMsg::threadFor('booking', ['pnr' => 'SHG-ISOTEST-AAA']);
+        StaffMsg::post((int) $chatA['id'], 'isolation test line', 'staff', $aId);
+        check('chat: agent A opens a conversation on their own sale', (int) $chatA['agent_admin_id'] === $aId);
+
+        $asAdmin($bId, 'agent', B_USER);
+        $errFor = static function (string $pnr): string {
+            try { StaffMsg::threadFor('booking', ['pnr' => $pnr]); return ''; } catch (Throwable $e) { return $e->getCode() . ':' . $e->getMessage(); }
+        };
+        check('chat: agent B cannot open a conversation on agent A\'s PNR', str_starts_with($errFor('SHG-ISOTEST-AAA'), '404:'));
+        check('chat: ...and the refusal reads like an unknown PNR', $errFor('SHG-ISOTEST-AAA') === $errFor('SHG-ISOTEST-NOPE'));
+        check('chat: agent B cannot read agent A\'s thread', StaffMsg::mayOpen((array) StaffMsg::threadById((int) $chatA['id'])) === false);
+        check('chat: agent A\'s thread is not in agent B\'s inbox', !in_array((int) $chatA['id'], array_column(StaffMsg::inbox(['filter' => 'all']), 'id'), true));
+        check('chat: agent B has nothing unread from it', StaffMsg::unreadFor() === 0);
+
+        $asAdmin(1, 'superadmin', 'superadmin');
+        check('chat: the office sees agent A\'s thread', StaffMsg::mayOpen((array) StaffMsg::threadById((int) $chatA['id'])) === true);
+    } else {
+        echo "  SKIP  Office chat checks (upgrade-2026-10-09-staff-chat.sql not applied)\n";
+    }
 
     // ---- Multi-column search binds one placeholder per arm ---------------
     // Prepares are not emulated, so a reused :q is a 500, not a slow query.

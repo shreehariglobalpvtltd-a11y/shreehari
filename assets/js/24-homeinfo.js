@@ -76,6 +76,12 @@
     } catch (e) { /* bad URL */ }
     return fb;
   }
+  /* an API link to a CONTENT page follows the visitor's language: /explore#x → /ne/explore#x */
+  function localize(u) {
+    var l = lang();
+    if (l !== 'ne' && l !== 'hi') return u;
+    return /^\/(?:explore|tours|india-nepal|offices)(?=[\/?#]|$)/.test(u) ? '/' + l + u : u;
+  }
   function flagImg(cc, ht, cls) {
     var np = cc === 'NP';
     var w = np ? Math.round(ht * 66 / 86) : Math.round(ht * 1.5);
@@ -335,8 +341,8 @@
     }).join('');
     if (out) { ol.innerHTML = out; ol.setAttribute('data-live', '1'); }
   }
-  var ART = { pilgrimage: 'heritage', heritage: 'heritage', nature: 'nature', adventure: 'nature', wildlife: 'wild', city: 'city' };
-  var CAT = { pilgrimage: 'hxCatPilgrimage', heritage: 'hxCatHeritage', nature: 'hxCatNature', adventure: 'hxCatAdventure', wildlife: 'hxCatWildlife', city: 'hxCatCity' };
+  var ART = { pilgrimage: 'heritage', heritage: 'heritage', nature: 'nature', adventure: 'nature', lake: 'nature', hill: 'nature', wildlife: 'wild', city: 'city' };
+  var CAT = { pilgrimage: 'hxCatPilgrimage', heritage: 'hxCatHeritage', nature: 'hxCatNature', adventure: 'hxCatAdventure', wildlife: 'hxCatWildlife', city: 'hxCatCity', lake: 'hxCatLake', hill: 'hxCatHill' };
   function renderFeatured() {
     var f = STATE.feat;
     if (!f) return;
@@ -348,8 +354,12 @@
         var cc = String(p.country || '').toUpperCase();
         cc = cc === 'IN' || cc === 'NP' ? cc : '';
         var blurb = pick(p, 'blurb');
-        return '<li class="hx-rv" style="--i:' + i + '"><a class="hx-card" href="' + h(safeUrl(p.url, hrefFor('/explore'))) + '">'
-          + '<span class="hx-card-art hx-art-' + (ART[cat] || 'nature') + '">'
+        /* an uploaded photo (same-origin /uploads/… only) replaces the illustration */
+        var img = safeUrl(p.image, '');
+        img = /^\/[A-Za-z0-9_.\/-]+\.(?:webp|jpe?g|png)$/i.test(img) ? img : '';
+        return '<li class="hx-rv" style="--i:' + i + '"><a class="hx-card" href="' + h(localize(safeUrl(p.url, '/explore'))) + '">'
+          + '<span class="hx-card-art hx-art-' + (ART[cat] || 'nature') + (img ? ' hx-art-photo' : '') + '"'
+          + (img ? ' style="background-image:url(' + h(img) + ')"' : '') + '>'
           + (cc ? flagImg(cc, cc === 'NP' ? 22 : 18, 'hx-card-flag' + (cc === 'IN' ? ' hx-card-flag-in' : '')) : '')
           + (CAT[cat] ? '<span class="hx-card-cat">' + h(tx(CAT[cat])) + '</span>' : '')
           + '</span><span class="hx-card-tx"><b>' + h(pick(p, 'name')) + '</b>' + (blurb ? '<small>' + h(blurb) + '</small>' : '') + '</span></a></li>';
@@ -361,7 +371,7 @@
       pbox.innerHTML = '<h3 class="hx-h3">' + h(tx('hxHubTours')) + '</h3>' + pk.map(function (p, i) {
         var d = Math.round(+p.days) || 0, n = Math.round(+p.nights);
         var dur = d > 0 ? (p.nights != null && n >= 0 ? txf('hxPkgDays', { d: d, n: n }) : txf('hxPkgDaysOnly', { d: d })) : '';
-        return '<a class="hx-pkg hx-rv" style="--i:' + i + '" href="' + h(safeUrl(p.url, hrefFor('/tours'))) + '">'
+        return '<a class="hx-pkg hx-rv" style="--i:' + i + '" href="' + h(localize(safeUrl(p.url, '/tours'))) + '">'
           + '<span class="hx-pkg-d">' + (dur ? h(dur) : IC.bag) + '</span>'
           + '<b>' + h(pick(p, 'title')) + '</b><span class="hx-pkg-go">' + h(tx('hxPkgCta')) + ' →</span></a>';
       }).join('');
@@ -488,7 +498,8 @@
     try { watchRoute(); } catch (e) { /* ignore */ }
     watchLang();
     wireFeel();
-    var later = function () { setTimeout(routeFallback, 9000); };
+    /* no route component at all → the plain list soon; a component that is just slow → wait longer */
+    var later = function () { setTimeout(routeFallback, window.shgRouteLine ? 9000 : 1500); };
     if (D.readyState === 'complete') later(); else window.addEventListener('load', later, { once: true });
   }
 

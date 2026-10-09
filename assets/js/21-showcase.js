@@ -165,9 +165,10 @@
     if (L === 'hi' && (o.nameHi || o.nameNe)) return o.nameHi || o.nameNe;
     return o.name || o.city || '';
   }
-  function npFlag() {
-    try { if (typeof window.shgFlag === 'function') return window.shgFlag('NP', 20, { label: false }); } catch (e) {}
-    return '<span class="flg" data-flag="NP"></span>';
+  function npFlag(cc) {
+    cc = cc === 'IN' ? 'IN' : 'NP';
+    try { if (typeof window.shgFlag === 'function') return window.shgFlag(cc, 20, { label: false }); } catch (e) {}
+    return '<span class="flg" data-flag="' + cc + '"></span>';
   }
   function contactRow(icon, label, phone, tel, wa) {
     var tl = digits(tel), wd = digits(wa);
@@ -179,7 +180,8 @@
   function waRow(icon, label, phone, wa, place) {
     var wd = digits(wa);
     if (wd.length < 10) return '';
-    var hello = encodeURIComponent((wd.indexOf('977') === 0 ? 'नमस्ते 🙏 ' : 'Namaste 🙏 ') + 'S Hari Global' + (place ? ' ' + place : ''));
+    var F = window.FACTS || {}, brand = (F.brand && (F.brand.short || F.brand.name)) || 'S Hari Global';
+    var hello = encodeURIComponent((wd.indexOf('977') === 0 ? 'नमस्ते 🙏 ' : 'Namaste 🙏 ') + brand + (place ? ' ' + place : ''));
     return '<a class="wa-row" href="https://wa.me/' + esc(wd) + '?text=' + hello + '" target="_blank" rel="noopener"><span>' + icon + '</span>'
       + '<div><b>' + esc(label) + '</b><small>' + esc(phone || ('+' + wd)) + '</small></div></a>';
   }
@@ -223,7 +225,7 @@
         .map(function (o) { return waRow('🏢', officeName(o), o.phone, o.wa || o.tel, o.name); }).join('');
       var ppl = nepalPeople();
       if (ppl.length) {
-        html += ppl.map(function (p) { return waRow(npFlag(), p.name + (p.role ? ' · ' + p.role : ''), p.phone, p.tel, 'Nepalgunj'); }).join('');
+        html += ppl.map(function (p) { return waRow(npFlag(p.country), p.name + (p.role ? ' · ' + p.role : ''), p.phone, p.tel, 'Nepalgunj'); }).join('');
       } else if (F && F.nepal && F.nepal.tel) {
         html += waRow(npFlag(), w.nepal, F.nepal.phone, F.nepal.tel, 'Nepalgunj');
       }
@@ -242,6 +244,20 @@
     ['homeHero', 'homeFeat', 'quick-ticket', 'homeCeo', 'bookHelp'].forEach(function (id) { live(d.getElementById(id)); });
     d.querySelectorAll('#homeHero .hh-act').forEach(tilt);
     try { renderLists(); } catch (e) { /* the lists are extras - never break the page */ }
+    /* the flag placeholders in the hero / CEO card / offices card / footer:
+       23-flags.js fills them on its own boot, but make sure the home's are
+       drawn before the first paint the visitor looks at */
+    try {
+      if (window.shgFlag && typeof window.shgFlag.scan === 'function') {
+        ['view-home', 'siteFooter'].forEach(function (id) { var el = d.getElementById(id); if (el) window.shgFlag.scan(el); });
+        var ft = d.querySelector('footer'); if (ft) window.shgFlag.scan(ft);
+      }
+    } catch (e) {}
+    /* the CEO card's mantra follows the company setting (Admin) */
+    try {
+      var mt = d.querySelector('#homeCeo .sc-ceo-mantra'), mv = (typeof CONFIG !== 'undefined' && CONFIG.company && CONFIG.company.mantra) || '';
+      if (mt && mv) mt.textContent = '🕉️ ' + mv + ' · शुभ यात्रा';
+    } catch (e) {}
     /* the language changes <html lang>: redraw the lists in the new words */
     try {
       new MutationObserver(function () { try { renderLists(); } catch (e) {} })

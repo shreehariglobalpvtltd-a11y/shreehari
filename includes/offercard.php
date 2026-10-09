@@ -104,7 +104,8 @@ final class OfferCard
            stops. The after-offer figure is the same stop's price after the offer. */
         $go   = self::fareFrom('go');
         $back = self::fareFrom('back');
-        $note = ' (सबैभन्दा कम भाडा · pickup अनुसार फरक)';
+        $noteGo   = ' देखि (चढ्ने ठाउँ अनुसार फरक)';     // "from" - pickups differ
+        $noteBack = ' देखि (ओर्लने ठाउँ अनुसार फरक)';    // "from" - drops differ
         $amt = self::amount($o);
         $h = (int) ($o['ahead'] ?? 0);
         $till = $o['until'] !== '' ? date('j M', (int) strtotime($o['until'])) : '';
@@ -112,8 +113,8 @@ final class OfferCard
         $brand = (string) (Settings::company()['name'] ?? '');
         return '🪔 ' . ($fest ? 'दशैं–तिहार अफर' : 'विशेष अफर') . ' — ' . $amt . ' छुट!' . "\n"
              . ($h > 0 ? 'यात्रा भन्दा ' . $h . ' घण्टा अगाडि बुक गर्नुहोस्, भाडामा ' . $amt . ' छुट पाउनुहोस्।' : 'भाडामा ' . $amt . ' छुट।') . "\n"
-             . '🚌 घर जाने Gujarat → Rupaidiha: ₹' . number_format($go['min']) . ' → ₹' . number_format(self::after($o, $go['min'])) . ($go['varies'] ? $note : '') . "\n"
-             . '🚌 फर्कने Rupaidiha → Gujarat: ₹' . number_format($back['min']) . ' → ₹' . number_format(self::after($o, $back['min'])) . ($back['varies'] ? $note : '') . "\n"
+             . '🚌 घर जाने Gujarat → Rupaidiha: ₹' . number_format($go['min']) . ' → ₹' . number_format(self::after($o, $go['min'])) . ($go['varies'] ? $noteGo : '') . "\n"
+             . '🚌 फर्कने Rupaidiha → Gujarat: ₹' . number_format($back['min']) . ' → ₹' . number_format(self::after($o, $back['min'])) . ($back['varies'] ? $noteBack : '') . "\n"
              . ($till !== '' ? '⏳ ' . $till . ' सम्म मात्र · ' : '') . 'छुट आफैं लाग्छ, कोड चाहिँदैन।' . "\n\n"
              . ($fest ? 'Dashain–Tihar offer' : 'Special offer') . ': ' . $amt . ' off when you book ' . ($h > 0 ? $h . '+ hours before departure' : 'now')
              . ($till !== '' ? ' (till ' . $till . ')' : '') . '. Fares from ₹' . number_format($go['min']) . ' (Gujarat → Rupaidiha) and ₹' . number_format($back['min']) . " (Rupaidiha → Gujarat).\n"

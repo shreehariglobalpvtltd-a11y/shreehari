@@ -50,6 +50,8 @@ final class HelpDesk
         'luggage'      => ['Luggage',               'सामान',                'high'],
         'staff'        => ['Staff behaviour',       'स्टाफको व्यवहार',        'high'],
         'safety'       => ['Safety / emergency',    'सुरक्षा / आपतकाल',      'urgent'],
+        // 9 Oct 2026 (anti-fake): "Report a fake ticket" - verify page, api/report-fake.php
+        'fake_ticket'  => ['Fake / suspicious ticket', 'नक्कली टिकट शंका',    'urgent'],
         'callback'     => ['Call me back',          'मलाई फोन गर्नुहोस्',      'normal'],
         'other'        => ['Other',                 'अन्य',                 'normal'],
     ];
@@ -135,7 +137,8 @@ final class HelpDesk
     {
         $t = mb_strtolower($text);
         $rules = [
-            'safety'   => '/accident|emergency|police|harass|unsafe|danger|fight|drunk|दुर्घटना|आपतकाल|प्रहरी|पुलिस|खतरा|झगडा/u',
+            'fake_ticket' => '/fake ticket|forged|duplicate ticket|nakli|naqli|नक्कली|नकली|जाली/u',
+            'safety'   =>'/accident|emergency|police|harass|unsafe|danger|fight|drunk|दुर्घटना|आपतकाल|प्रहरी|पुलिस|खतरा|झगडा/u',
             'refund'   => '/refund|cancel|money back|paisa wapas|paisa firta|रिफन्ड|रद्द|फिर्ता|वापस/u',
             'payment'  => '/payment|paid|upi|esewa|khalti|gpay|phonepe|deducted|transaction|bhuktani|भुक्तानी|पैसा कट|पैसा/u',
             'bus_late' => '/late|delay|not come|not came|missed|bus kaha|bus kahan|where is the bus|dhilo|ढिलो|बस कहाँ|बस कहां|छुट/u',

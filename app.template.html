@@ -1787,7 +1787,7 @@ s.addEventListener('click',function(e){e.preventDefault();
             <tr><td style="padding:5px 0;color:var(--muted)">Registration</td><td style="padding:5px 0 5px 12px" id="lhNpReg">Companies Act 2063 · Office of the Company Registrar, Kathmandu · Articles certified 2083-05-29 BS</td></tr>
             <tr><td style="padding:5px 0;color:var(--muted)">Border</td><td style="padding:5px 0 5px 12px">Rupaidiha (IN) / Jamunaha (NP)</td></tr>
             <tr><td style="padding:5px 0;color:var(--muted)">Service</td><td style="padding:5px 0 5px 12px">Cross-border ticketing & operations</td></tr>
-            <tr><td style="padding:5px 0;color:var(--muted)">Phone</td><td style="padding:5px 0 5px 12px"><a href="/offices" data-fact-tel="nepal.phone" style="color:var(--orange);font-weight:600"><span data-fact="nepal.phone">Nepalgunj office</span></a></td></tr>
+            <tr><td style="padding:5px 0;color:var(--muted)">Phone</td><td style="padding:5px 0 5px 12px"><a href="tel:+{{f:nepal.tel}}" data-fact-tel="nepal.tel" style="color:var(--orange);font-weight:600"><span data-fact="nepal.phone">{{f:nepal.phone}}</span></a></td></tr>
           </table>
         </div>
       </div>
@@ -2372,7 +2372,7 @@ s.addEventListener('click',function(e){e.preventDefault();
           <div class="upi-id"><span id="esewaIdText">—</span><button type="button" id="copyEsewaBtn" data-i18n="payCopy">COPY</button></div>
         </div>
         <div class="esewa-bank-note">🏦 <span>यही QR बाट <b>Bank Transfer</b> पनि हुन्छ · इसी QR से बैंक ट्रांसफर भी · Bank transfer also works with this QR.</span></div>
-        <div class="verify-note" style="margin-bottom:14px">💱<span data-i18n="nprNote">🇳🇵 Paying from Nepal? The NPR amount uses the fixed ₹1 = NPR 1.60 peg — eSewa deducts in NPR.</span></div>
+        <div class="verify-note" style="margin-bottom:14px">💱<span data-i18n="nprNote">🇳🇵 Paying from Nepal? The NPR amount uses the fixed ₹1 = NPR {npr} rate — eSewa deducts in NPR.</span></div>
       </div>
       <!-- LINK PAY PANEL -->
       <div id="linkPayPanel" class="hide">
@@ -3024,7 +3024,7 @@ s.addEventListener('click',function(e){e.preventDefault();
         <ul class="f-contact">
           <li>📍 <span data-fact="head.address">{{f:head.address}}</span></li>
           <li>✉️ <a href="mailto:{{f:brand.email}}">{{f:brand.email}}</a></li>
-          <li><span class="flg" data-flag="NP" role="img" aria-label="Nepal"></span> <span><span data-i18n="fNepalOffice">Nepal office</span>: Pushpalal Chowk, Nepalgunj · <a href="/offices" data-fact-tel="nepal.phone"><span data-fact="nepal.phone">📞</span></a></span></li>
+          <li><span class="flg" data-flag="NP" role="img" aria-label="Nepal"></span> <span><span data-i18n="fNepalOffice">Nepal office</span>: Pushpalal Chowk, Nepalgunj · <a href="tel:+{{f:nepal.tel}}" data-fact-tel="nepal.tel"><span data-fact="nepal.phone">{{f:nepal.phone}}</span></a></span></li>
           <li>🕉️ ॐ नमो नारायणाय</li>
           <li style="gap:10px;margin-top:6px">
             <a href="https://www.facebook.com/sherbahadur.biswakarma.58" target="_blank" rel="noopener noreferrer" aria-label="Facebook" title="Facebook — {{f:ceo.name}}">ⓕ</a>
@@ -3078,7 +3078,7 @@ s.addEventListener('click',function(e){e.preventDefault();
      controls it from Admin -> Settings alongside the AI panel's WA row. The
      hardcoded fallback here is the 24x7 support number so the button still
      works if JS is disabled or the settings call fails. ============ -->
-<a href="https://wa.me/{{f:head.wa}}?text=Namaste%20%F0%9F%99%8F%20S%20Hari%20Global%20%E2%80%94%20I%20need%20help%20with%20bus%20booking"
+<a href="https://wa.me/{{f:support.tel}}?text=Namaste%20%F0%9F%99%8F%20S%20Hari%20Global%20%E2%80%94%20I%20need%20help%20with%20bus%20booking"
    class="whatsapp-fab" id="waFab" target="_blank" rel="noopener noreferrer"
    aria-label="Chat on WhatsApp · WhatsApp पर बात करें · WhatsApp मा कुरा गर्नुहोस्">
   <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -3135,8 +3135,8 @@ s.addEventListener('click',function(e){e.preventDefault();
          office and the Nepal office people are added by 21-showcase.js from the
          same facts (Admin -> Counter desks / Company details) - no typed numbers. -->
     <div class="wa-grid">
-      <a class="wa-row" href="https://wa.me/{{f:ceo.wa}}?text=Namaste%20%F0%9F%99%8F%20S%20Hari%20Global" data-fact-wa="ceo.wa" target="_blank" rel="noopener"><span>👑</span><div><b data-fact="ceo.name">{{f:ceo.name}}</b><small data-i18n="waDirector">Director · 24/7</small></div></a>
-      <div class="wa-row-wrap"><a class="wa-row" href="https://wa.me/{{f:head.wa}}?text=Namaste%20%F0%9F%99%8F%20S%20Hari%20Global%20Mehsana" data-fact-wa="head.wa" target="_blank" rel="noopener"><span>🏢</span><div><b>Mehsana Head Office</b><small data-fact="head.phone">{{f:head.phone}}</small></div></a><button type="button" class="wa-pin" data-navto="23.6008959,72.3807235" data-navto-label="S Hari Global · Mehsana Head Office" aria-label="Show on the map" title="Show on the map" data-i18n-title="waPin">📍</button></div>
+      <a class="wa-row" href="https://wa.me/{{f:ceo.wa}}?text=Namaste%20%F0%9F%99%8F%20S%20Hari%20Global" target="_blank" rel="noopener"><span>👑</span><div><b data-fact="ceo.name">{{f:ceo.name}}</b><small data-i18n="waDirector">Director · 24/7</small></div></a>
+      <div class="wa-row-wrap"><a class="wa-row" href="https://wa.me/{{f:head.wa}}?text=Namaste%20%F0%9F%99%8F%20S%20Hari%20Global%20Mehsana" target="_blank" rel="noopener"><span>🏢</span><div><b>Mehsana Head Office</b><small data-fact="head.phone">{{f:head.phone}}</small></div></a><button type="button" class="wa-pin" data-navto="23.6008959,72.3807235" data-navto-label="S Hari Global · Mehsana Head Office" aria-label="Show on the map" title="Show on the map" data-i18n-title="waPin">📍</button></div>
       <div class="sc-wa-more" data-sc-list="wa"></div>
     </div>
     <p class="wa-sheet-foot" data-i18n="waSheetFoot">Your ticket is sent to your WhatsApp automatically the moment it is confirmed ✅</p>

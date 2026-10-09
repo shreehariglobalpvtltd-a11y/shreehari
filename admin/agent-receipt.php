@@ -82,17 +82,11 @@ $voucher = $ref !== '' ? $ref : '#' . (int) $row['id'];
 $code    = AgentWallet::agentCodeLabel($agentId);
 $co      = Settings::company();
 
-/* Logo: the admin-set company_logo path wins, then the site logo (same order
-   as ReportPdf). Only a file that exists is referenced, so a stale setting
-   never prints a broken image. */
-$logo = '';
-foreach ([Settings::getString('company_logo', ''), 'assets/img/logo.png'] as $cand) {
-    $cand = ltrim(trim((string) $cand), '/');
-    if ($cand !== '' && !str_contains($cand, '..') && is_file(ROOT_PATH . '/' . $cand)) {
-        $logo = '/' . $cand;
-        break;
-    }
-}
+/* Logo (9 Oct 2026, BRAND): the emblem only — no baked company name, no white
+   tile; the name is the live text beside it. Brand::markUrl() takes the
+   admin-set company_logo_mark first, then assets/img/logo-mark.png, and
+   only ever references a file that exists. */
+$logo = Brand::markUrl(120);   // the full-size emblem: this sheet is printed
 
 /** Indian-style amount in words: "One lakh twenty-three thousand rupees only". */
 function receipt_words(float $amount): string
@@ -148,7 +142,7 @@ $back = $own && !Auth::can('commissions.view') ? '/admin/agent.php' : '/admin/ag
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title><?= $e($title) ?> · <?= $e($voucher) ?> · <?= $e($co['name']) ?></title>
-<link rel="icon" type="image/png" href="/assets/img/favicon-32.png">
+<?= Brand::iconLinks() ?>
 <style>
   :root{--ink:#14213d;--mut:#6b7688;--line:#d9dee8;--navy:#12264E;--blue:#2E5FA8;--soft:#f5f7fb}
   *{box-sizing:border-box}
@@ -158,7 +152,8 @@ $back = $own && !Auth::can('commissions.view') ? '/admin/agent.php' : '/admin/ag
   .btn.primary{background:var(--navy);color:#fff;border-color:var(--navy)}
   .sheet{background:#fff;max-width:720px;margin:0 auto 30px;padding:32px 36px;border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 28px rgba(18,38,78,.08)}
   .head{display:flex;gap:18px;align-items:center;border-bottom:2px solid var(--navy);padding-bottom:16px;margin-bottom:18px}
-  .head img{width:64px;height:64px;object-fit:contain}
+  .head img{height:60px;width:auto;max-width:124px;object-fit:contain;flex:none;background:none}
+  .head .flg-pair{flex:none;align-self:flex-start}
   .head .co{flex:1;min-width:0}
   .head .co b{display:block;font-size:20px;letter-spacing:-.01em;color:var(--navy)}
   .head .co small{display:block;color:var(--mut);font-size:12px;line-height:1.45}
@@ -186,12 +181,13 @@ $back = $own && !Auth::can('commissions.view') ? '/admin/agent.php' : '/admin/ag
 </div>
 <div class="sheet">
   <div class="head">
-    <?php if ($logo !== ''): ?><img src="<?= $e($logo) ?>" alt=""><?php endif; ?>
+    <?php if ($logo !== ''): ?><img src="<?= $e($logo) ?>" alt="" width="115" height="60"><?php endif; ?>
     <div class="co">
       <b><?= $e($co['legal'] ?: $co['name']) ?></b>
       <small><?= $e($co['address']) ?></small>
       <small><?= $e($co['phone']) ?><?= $co['email'] !== '' ? ' · ' . $e($co['email']) : '' ?><?= $co['web'] !== '' ? ' · ' . $e($co['web']) : '' ?><?= $co['cin'] !== '' ? ' · CIN ' . $e($co['cin']) : '' ?></small>
     </div>
+    <?= Brand::flagPair(16) ?>
   </div>
 
   <div class="ttl">

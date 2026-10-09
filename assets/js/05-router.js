@@ -1074,7 +1074,8 @@ function defaultContactNumbers() {
     });
   } else {
     /* No boot facts (offline first paint): the numbers the company line and
-       the Nepal office record carry — never the old website-only spellings. */
+       the Nepal office record carry — never the old website-only spellings.
+       (Pinned by tests/home-premium-test.php; counted in the site-facts ratchet.) */
     list.push(
       { label: 'Mehsana Office',   num: '+91 91048 01507', wa: false, show: true },
       { label: 'Ahmedabad Office', num: '+91 91570 01507', wa: false, show: true },
@@ -1177,9 +1178,10 @@ function renderNepalTeam() {
    already on the page stays. Styled by the home stylesheets; the few new
    pieces get a token-only fallback style here. */
 const OFFICE_WORDS = {
-  ne: { tag: 'प्रधान', head: 'प्रधान कार्यालय', branch: 'शाखा कार्यालय', partner: 'नेपाल कार्यालय', border: 'सीमा कार्यालय', soon: 'छिट्टै खुल्दै', more: 'नयाँ कार्यालय छिट्टै', moreSub: 'नेटवर्क विस्तार हुँदैछ · Network expanding', call: 'फोन गर्नुहोस्' },
-  hi: { tag: 'मुख्य', head: 'मुख्य कार्यालय', branch: 'शाखा कार्यालय', partner: 'नेपाल कार्यालय', border: 'सीमा कार्यालय', soon: 'जल्द खुल रहा है', more: 'नेटवर्क बढ़ रहा है', moreSub: 'नए ऑफ़िस जल्द · नयाँ कार्यालय छिट्टै', call: 'कॉल करें' },
-  en: { tag: 'HEAD', head: 'Head office', branch: 'Branch office', partner: 'Nepal office', border: 'Border office', soon: 'Opening soon', more: 'Network expanding', moreSub: 'नयाँ कार्यालय छिट्टै · new offices soon', call: 'Call' }
+  /* tag: the owner's "Mehsana (HEAD)" badge - a Roman code in every language, like the server's first paint */
+  ne: { tag: 'HEAD', head: 'प्रधान कार्यालय', branch: 'शाखा कार्यालय', partner: 'नेपाल कार्यालय', border: 'सीमा कार्यालय', soon: 'छिट्टै खुल्दै', more: 'नयाँ कार्यालय छिट्टै', moreSub: 'नेटवर्क विस्तार हुँदैछ · Network expanding', call: 'फोन गर्नुहोस्' },
+  hi: { tag: 'HEAD', head: 'मुख्यालय', branch: 'शाखा कार्यालय', partner: 'नेपाल कार्यालय', border: 'सीमा कार्यालय', soon: 'जल्द खुल रहा है', more: 'नेटवर्क बढ़ रहा है', moreSub: 'नए ऑफ़िस जल्द · नयाँ कार्यालय छिट्टै', call: 'कॉल करें' },
+  en: { tag: 'HEAD', head: 'Office', branch: 'Branch office', partner: 'Nepal office', border: 'Border office', soon: 'Opening soon', more: 'Network expanding', moreSub: 'नयाँ कार्यालय छिट्टै · new offices soon', call: 'Call' }
 };
 function officeFlag(cc) {
   try { if (typeof window.shgFlag === 'function') { const s = window.shgFlag(cc, 16); if (s) return s; } } catch (e) {}
@@ -1194,11 +1196,16 @@ function renderOffices() {
   if (!document.getElementById('shg-offices-css')) {
     const st = document.createElement('style');
     st.id = 'shg-offices-css';
-    st.textContent = '#saOffices .th-tagk{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;font-size:10.5px;font-weight:800;letter-spacing:.04em;vertical-align:middle;background:var(--royal,#0054A8);color:var(--on-royal,#fff)}'
+    /* the HEAD chip sits on the (always navy) brand panel: gold on deep ink reads in every theme */
+    st.textContent = '#saOffices .th-tagk{display:inline-block;margin-right:5px;padding:0 6px;border-radius:999px;font-size:9.5px;line-height:15px;font-weight:900;letter-spacing:.06em;vertical-align:1px;background:var(--gold-lite,#f6d67c);color:var(--gold-deep,#6e4f12)}'
       + '#saOffices .th-badge svg{display:block;width:16px;height:auto;margin:auto}'
       + '#saOffices .th-a{display:flex;align-items:center;gap:inherit;width:100%}'
       + '#saOffices .th-soon{opacity:.8}'
-      + '#saOffices .th-more a{border-style:dashed}';
+      + '#saOffices .th-more{grid-column:1/-1}'
+      + '#saOffices .th-more a{border-style:dashed;min-height:60px}'
+      /* the sub-line ("शाखा कार्यालय", "HEAD प्रधान कार्यालय", "नेपाल कार्यालय · Puspalal Chowk") wraps
+         to two lines instead of ending in "…" on a 360-420px phone (the right padding keeps it clear of the call dot) */
+      + '#view-home #topHero #saOffices .th-o .th-sub{white-space:normal;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3}';
     document.head.appendChild(st);
   }
   const nameOf = o => (L === 'ne' && o.nameNe) ? o.nameNe : (L === 'hi' && (o.nameHi || o.nameNe)) ? (o.nameHi || o.nameNe) : (o.name || o.city || '');
@@ -1216,8 +1223,8 @@ function renderOffices() {
     const np = o.country === 'NP', head = o.kind === 'head', soon = o.status !== 'open';
     const badge = np ? (officeFlag('NP') || 'N') : esc(String(o.name || o.city || '?').charAt(0).toUpperCase());
     const inner = '<span class="th-badge">' + badge + '</span>'
-      + '<span class="th-l">' + esc(nameOf(o)) + (head ? ' <b class="th-tagk">' + esc(W.tag) + '</b>' : '') + '</span>'
-      + '<span class="th-sub">' + esc(subOf(o)) + '</span>'
+      + '<span class="th-l">' + esc(nameOf(o)) + '</span>'
+      + '<span class="th-sub">' + (head ? '<b class="th-tagk">' + esc(W.tag) + '</b>' : '') + esc(subOf(o)) + '</span>'
       + (o.phone ? '<span class="th-n">' + esc(o.phone) + '</span><span class="th-call" aria-hidden="true">📞</span>' : '');
     const tel = String(o.tel || '').replace(/\D/g, '');
     return '<li class="th-o ' + (np ? 'th-np' : 'th-in') + (head ? ' th-head' : '') + (soon ? ' th-soon' : '') + '" data-office="' + esc(o.code || '') + '">'
@@ -2189,7 +2196,9 @@ function renderFareBoard() {
       + '<span class="n">' + nprEst(now) + ' · ' + t('fbPerPerson') + '</span></span></div>'
       + rows.map((r, i) => '<button type="button" class="fb-row" data-fb-from="' + esc(r.from) + '" data-fb-to="' + esc(r.to) + '">'
           + '<span class="c">' + esc(r.label) + '</span>'
-          + '<span class="k">' + inr(prices[i]) + ' · ' + nprEst(prices[i]) + '</span></button>').join('')
+          /* price over its NPR estimate (two tidy lines on a phone instead of a mid-number wrap) */
+          + '<span class="k" style="text-align:right;white-space:nowrap">' + inr(prices[i])
+          + '<small style="display:block;font-weight:600;opacity:.75;font-size:.86em">' + nprEst(prices[i]) + '</small></span></button>').join('')
       + '</div>';
   };
   const goRows = servedPoints(gujaratTownsFor('go')).map(p => ({ from: p, to: hub, town: p, label: pointWithTime(p) + ' → ' + hub }));

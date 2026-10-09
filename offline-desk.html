@@ -36,6 +36,10 @@
   .seg{display:flex;gap:8px;flex-wrap:wrap}
   .seg button{flex:1 1 0;min-width:52px;min-height:50px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);font-size:16px;font-weight:700}
   .seg button.on{background:var(--navy);border-color:var(--navy);color:#fff}
+  .flg{display:inline-block;vertical-align:-.18em;flex:none;filter:drop-shadow(0 .5px .8px rgba(0,0,0,.35))}
+  .seg button .flg{margin-right:4px}
+  .hflags{display:inline-flex;align-items:center;gap:4px;font-size:12px;opacity:.95}
+  @media (max-width:360px){.hflags{display:none}}
   .go{width:100%;min-height:56px;border:0;border-radius:14px;background:var(--org);color:#fff;font-size:18px;font-weight:800;margin-top:14px}
   .go.blue{background:var(--navy)} .go:disabled{opacity:.5}
   .note{font-size:13.5px;color:var(--mut);margin:6px 0 0}
@@ -56,8 +60,11 @@
 </style>
 </head>
 <body>
+<!-- 9 Oct 2026 (BRAND): drawn India / Nepal flags (no emoji - Windows desks print 🇮🇳🇳🇵 as "IN"/"NP"). Self-contained like the rest of this page. -->
+<svg xmlns="http://www.w3.org/2000/svg" id="shg-flag-sprite" width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false"><defs><symbol id="flag-in" viewBox="0 0 30 20"><path fill="#FF9933" stroke="none" d="M.8 0H29.2A.8.8 0 0 1 30 .8V6.667H0V.8A.8.8 0 0 1 .8 0Z"/><path fill="#FFFFFF" stroke="none" d="M0 6.667H30V13.333H0Z"/><path fill="#138808" stroke="none" d="M0 13.333H30V19.2A.8.8 0 0 1 29.2 20H.8A.8.8 0 0 1 0 19.2Z"/><g fill="none" stroke="#000080"><circle cx="15" cy="10" r="2.9" stroke-width=".42"/><path stroke-width=".2" d="M17.9 10L12.1 10M17.801 10.751L12.199 9.249M17.511 11.45L12.489 8.55M17.051 12.051L12.949 7.949M16.45 12.511L13.55 7.489M15.751 12.801L14.249 7.199M15 12.9L15 7.1M14.249 12.801L15.751 7.199M13.55 12.511L16.45 7.489M12.949 12.051L17.051 7.949M12.489 11.45L17.511 8.55M12.199 10.751L17.801 9.249"/></g><circle cx="15" cy="10" r=".55" fill="#000080" stroke="none"/></symbol><symbol id="flag-np" viewBox="-2.582 -4.664 71.571 87.246"><path fill="#003893" stroke="none" d="M-2.582 -4.664 L68.989 40.156 L23.808 40.156 L66.234 82.582 L-2.582 82.582Z"/><path fill="#DC143C" stroke="none" d="M0 0L60 37.574L17.574 37.574L60 80L0 80Z"/><g fill="#fff" stroke="none"><path d="M3.05 23.483A11.95 11.95 0 0 0 26.95 23.483A12.84 12.84 0 0 1 3.05 23.483Z"/><circle cx="15" cy="29.045" r="5.561"/><path d="M20.561 29.045L22.575 27.538L20.138 26.916ZM20.138 26.916L21.422 24.754L18.932 25.112ZM18.932 25.112L19.291 22.623L17.128 23.907ZM17.128 23.907L16.507 21.47L15 23.483ZM15 23.483L13.493 21.47L12.872 23.907ZM12.872 23.907L10.709 22.623L11.068 25.112ZM11.068 25.112L8.578 24.754L9.862 26.916ZM9.862 26.916L7.425 27.538L9.439 29.045Z"/><circle cx="15" cy="58.787" r="8.143"/><path d="M17.108 50.921L15 45.947L12.892 50.921L8.58 47.667L9.242 53.029L3.88 52.367L7.134 56.679L2.16 58.787L7.134 60.894L3.88 65.207L9.242 64.545L8.58 69.907L12.892 66.653L15 71.627L17.108 66.653L21.42 69.907L20.758 64.545L26.12 65.207L22.866 60.894L27.84 58.787L22.866 56.679L26.12 52.367L20.758 53.029L21.42 47.667Z"/></g></symbol></defs></svg>
 <header>
   <h1>🧾 Offline Desk · अफलाइन डेस्क</h1>
+  <span class="hflags" aria-hidden="true"><svg class="flg flg-in" viewBox="0 0 30 20" width="24" height="16" aria-hidden="true" focusable="false" style="vertical-align:middle"><use href="#flag-in"/></svg><span>⇄</span><svg class="flg flg-np" viewBox="0 0 71.571 87.246" width="15.59" height="19" aria-hidden="true" focusable="false" style="vertical-align:middle"><use href="#flag-np"/></svg></span>
   <span class="chip" id="who">…</span>
   <span class="chip" id="net">…</span>
 </header>
@@ -85,10 +92,10 @@
       <input id="name" required minlength="2" maxlength="120" enterkeyhint="next">
       <div class="row">
         <div><label for="phone">Mobile · मोबाइल</label><input id="phone" inputmode="tel" maxlength="15" enterkeyhint="next"></div>
-        <div><label>Country · देश</label><div class="seg" data-k="country"><button type="button" data-v="IN" class="on">🇮🇳 +91</button><button type="button" data-v="NP">🇳🇵 +977</button></div></div>
+        <div><label>Country · देश</label><div class="seg" data-k="country"><button type="button" data-v="IN" class="on" aria-label="India +91"><svg class="flg flg-in" viewBox="0 0 30 20" width="22.5" height="15" aria-hidden="true" focusable="false" style="vertical-align:middle"><use href="#flag-in"/></svg> +91</button><button type="button" data-v="NP" aria-label="Nepal +977"><svg class="flg flg-np" viewBox="0 0 71.571 87.246" width="14.77" height="18" aria-hidden="true" focusable="false" style="vertical-align:middle"><use href="#flag-np"/></svg> +977</button></div></div>
       </div>
       <label>Direction · कता जाने</label>
-      <div class="seg" data-k="direction"><button type="button" data-v="toNepal" class="on">→ Nepal · नेपाल</button><button type="button" data-v="toIndia">→ India · भारत</button></div>
+      <div class="seg" data-k="direction"><button type="button" data-v="toNepal" class="on"><svg class="flg flg-np" viewBox="0 0 71.571 87.246" width="15" height="18" aria-hidden="true"><use href="#flag-np"/></svg> → Nepal · नेपाल</button><button type="button" data-v="toIndia"><svg class="flg flg-in" viewBox="0 0 30 20" width="22" height="15" aria-hidden="true"><use href="#flag-in"/></svg> → India · भारत</button></div>
       <div class="row">
         <div><label for="date">Travel date · यात्रा मिति</label><input id="date" type="date" required></div>
         <div><label for="boarding">Pickup · चढ्ने ठाउँ</label><input id="boarding" list="stops" maxlength="120" placeholder="Surat / Vadodara / Nana Chiloda…"><datalist id="stops"></datalist></div>

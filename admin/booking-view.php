@@ -650,7 +650,7 @@ if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['
             } elseif ($decision === 'hold') {
                 Auth::requireAdmin('payments.verify');
                 $h = PaymentRisk::hold((int) $b['id'], ['id' => (int) $admin['id'], 'role' => (string) ($admin['role'] ?? '')], $note, 'booking');
-                $flash = ['ok', $h['sent'] ? 'Asked the customer on WhatsApp for a clearer proof. The booking stays pending.' : 'Hold recorded. WhatsApp did not go out by itself — use the link in the risk panel to send it.'];
+                $flash = ['ok', $h['sent'] ? 'Asked the customer on WhatsApp for a clearer proof. The booking stays pending.' : 'Hold recorded. WhatsApp did not go out by itself — tap the WhatsApp button above to send it.'];
                 $waManualLink = $h['sent'] ? '' : (string) $h['link'];
             } else {
                 $flash = ['bad', 'Unknown decision.'];
@@ -1871,7 +1871,8 @@ $ticket = $b['ticket'] ?? null;
 <?php if ($bvRisk !== null && ($bvRisk['level'] !== 'skip' || $bvReviews !== [])): ?>
 <style>
 .rv-lv-high{--rv:var(--danger);--rv-bg:var(--danger-soft)}.rv-lv-medium{--rv:var(--warning);--rv-bg:var(--warning-soft)}.rv-lv-low{--rv:var(--success);--rv-bg:var(--success-soft)}.rv-lv-skip{--rv:var(--muted);--rv-bg:var(--surface-sunken)}
-.rv-panel{border-left:6px solid var(--rv)}
+.rv-panel{box-shadow:inset 6px 0 0 var(--rv),var(--shadow-1) !important}
+.rv-body{padding:4px 16px 14px 20px}
 .rv-chip{display:inline-flex;align-items:baseline;gap:6px;font-weight:800;font-size:13px;padding:5px 12px;border-radius:999px;color:var(--rv);background:var(--rv-bg)}
 .rv-list{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
 .rv-list li{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.4}
@@ -1887,6 +1888,7 @@ $ticket = $b['ticket'] ?? null;
 </style>
 <div class="panel rv-panel rv-lv-<?= Security::e($bvLvl) ?>" id="riskPanel">
   <h2>🛡️ Risk &amp; review history · जोखिम</h2>
+  <div class="rv-body">
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
     <span class="rv-chip"><?= Security::e(['high' => 'HIGH RISK', 'medium' => 'MEDIUM RISK', 'low' => 'LOW RISK', 'skip' => 'NOT SCORED'][$bvLvl] ?? strtoupper($bvLvl)) ?> <small><?= (int) $bvRisk['score'] ?></small></span>
     <?php if (!empty($bvRisk['bankSigned'])): ?><span class="rv-chip rv-lv-low">🏦 Bank-verified (ICICI)</span><?php endif; ?>
@@ -1922,6 +1924,7 @@ $ticket = $b['ticket'] ?? null;
       <?php endforeach; ?>
     </ul>
   <?php endif; ?>
+  </div>
 </div>
 <?php endif; ?>
 

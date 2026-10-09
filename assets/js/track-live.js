@@ -79,7 +79,14 @@
     $('tDe').textContent = done ? '' : (de ? (de.source === 'gps' ? T.gps : T.tt) : T.arrive);
 
     var h = '', ns = 0, nh = 0;
-    tl.forEach(function (r) { if (r.kind === 'halt' || r.halt) nh++; else ns++; h += row(r); });
+    tl.forEach(function (r) {
+      if (r.kind === 'halt' || r.halt) nh++; else ns++;
+      /* a pickup with neither a time nor a km (an office pickup off the main
+         line) has no honest place in the sequence — counted, not drawn,
+         unless it is this passenger's own stop */
+      if (!(r.kind === 'halt' || r.halt) && !r.time && r.km == null && !r.mine && !r.border) return;
+      h += row(r);
+    });
     $('rail').innerHTML = h;
     $('jrCnt').textContent = fill(T.places, [ns, nh]) + (tot ? ' · ' + kmf(tot) + ' km' : '');
     $('jr').classList.toggle('hidden', !tl.length);
@@ -93,7 +100,11 @@
     var on = d.bookingStatus === 'confirmed' && ['cancelled', 'arrived', 'completed'].indexOf(d.state) < 0;
     var dl = (d.delayMin || 0) * 60000, pk = d.pickupTs ? d.pickupTs * 1000 + dl : 0;
     var run = d.runningSinceMin != null && d.depTs ? (now - d.depTs * 1000 - dl) / 60000 : null;
-    if (on && pk > now) {
+    if (on && d.live && d.etaMin != null && !d.pickupPassed) {
+      /* live GPS: the headline ETA, never the timetable clock beside it */
+      L = T.pickIn; V = '~' + dur(d.etaMin);
+      X = T.gps + (run != null && run >= 0 ? ' · ' + fill(T.running, [dur(run)]) : '');
+    } else if (on && pk > now) {
       var x = Math.floor((pk - now) / 1000), dd = Math.floor(x / 86400);
       L = T.pickIn;
       V = (dd ? fill(T.dd, [dd]) + ' ' : '') + p2(Math.floor(x % 86400 / 3600)) + ':' + p2(Math.floor(x % 3600 / 60)) + ':' + p2(x % 60);
