@@ -309,14 +309,19 @@ final class WaQueue
      * number, plus any PNR they typed that belongs to them. Returns how many
      * tickets went out.
      */
-    public static function onInbound(string $phone, string $text): int
+    public static function onInbound(string $phone, string $text, string $sender = 'aisensy'): int
     {
         if (!self::ready() || $phone === '') {
             return 0;
         }
         $sent = 0;
         try {
-            self::touchWindow($phone, $text);
+            /* 9 Oct 2026: a "hi" to the META number opens a window THERE
+               (recorded by whatsapp/webhook.php in kv wa_inbound, read by
+               WaRoute); wa_windows stays the AiSensy number's own record. */
+            if ($sender !== 'meta') {
+                self::touchWindow($phone, $text);
+            }
 
             // A PNR they typed, when this number is on that booking (or sold it).
             if (preg_match_all('/SHG-?\s?(\d{4})-?\s?(\d{3,6})/i', $text, $m, PREG_SET_ORDER)) {
@@ -531,9 +536,22 @@ final class WaQueue
            setting wa_seller_template_on = 0. */
         $r = ['success' => false, 'message_id' => '', 'error' => ''];
         $via = '';
-        if ($role === 'seller' && Settings::getBool('wa_seller_template_on', true)) {
+        /* 9 Oct 2026 (includes/waroute.php): the Meta number first, free, when
+           this number wrote to it in the last 24 h — the PNG with the facts
+           as its caption. WaRoute logs that row itself. */
+        try {
+            require_once INCLUDE_PATH . '/waroute.php';
+            $free = WaRoute::freeFirst((string) $q['phone'], $caption, $img, $role === 'seller' ? 'seller_copy' : 'ticket', ['bookingId' => (int) $b['id']]);
+            if ($free !== null && $free['success']) {
+                $r   = $free;
+                $via = 'meta free';
+            }
+        } catch (Throwable $e) {
+            Logger::warning('wa queue meta-first failed: ' . $e->getMessage(), ['row' => (int) $q['id']]);
+        }
+        if (!$r['success'] && $role === 'seller' && Settings::getBool('wa_seller_template_on', true)) {
             $r = AiSensyAPI::ticketTemplate((string) $q['phone'], (int) $b['id'], $pnr,
-                ($f['name'] !== '' ? $f['name'] : 'Passenger') . ' (agent copy - please forward)');
+                ($f['name'] !== '' ? $f['name'] : 'Passenger') . ' (agent copy - please forward)', false);
             $via = $r['how'];
         }
         if (!$r['success']) {
@@ -550,7 +568,7 @@ final class WaQueue
             ['s' => $r['success'] ? 'sent' : 'failed', 'v' => $via, 'w' => $r['message_id'] !== '' ? $r['message_id'] : null,
              'e' => $r['success'] ? null : mb_substr((string) $r['error'], 0, 250), 'ok' => $r['success'] ? 1 : 0, 'i' => (int) $q['id']]
         );
-        if (class_exists('Notify')) {
+        if (class_exists('Notify') && $via !== 'meta free') {
             Notify::logOutbound((string) $q['phone'], 'AiSensy ticket ' . $pnr . ' (' . $role . ', ' . $via . ')', $r['success'] ? 'sent' : 'failed', [
                 'provider'  => 'aisensy',
                 'bookingId' => (int) $b['id'],
@@ -560,5 +578,57 @@ final class WaQueue
             ]);
         }
         return (bool) $r['success'];
+    }
+
+    /**
+     * The Meta number ACCEPTED a ticket and failed it later (whatsapp/
+     * webhook.php, 9 Oct 2026): the window had closed after all, or the
+     * number is unreachable there. The approved AiSensy template reaches a
+     * cold number, so it goes out now — once per failure, never looping
+     * back to Meta. Returns true when the template was accepted.
+     */
+    public static function onMetaFailed(string $wamid, int $code): bool
+    {
+        if (!self::ready() || $wamid === '') {
+            return false;
+        }
+        try {
+            $q = Database::fetch("SELECT * FROM wa_ticket_queue WHERE wamid = :w AND status = 'sent' ORDER BY id DESC LIMIT 1", ['w' => $wamid]);
+            if ($q === null || !str_starts_with((string) ($q['via'] ?? ''), 'meta')) {
+                return false;
+            }
+            $b = Database::fetch('SELECT * FROM bookings WHERE id = :b', ['b' => (int) $q['booking_id']]);
+            if ($b === null || !in_array((string) $b['status'], ['confirmed', 'completed'], true)) {
+                Database::run("UPDATE wa_ticket_queue SET status = 'expired', last_error = 'booking not confirmed' WHERE id = :i", ['i' => (int) $q['id']]);
+                return false;
+            }
+            if (!class_exists('AiSensyAPI') && is_file(ROOT_PATH . '/whatsapp/aisensy.php')) {
+                require_once ROOT_PATH . '/whatsapp/aisensy.php';
+            }
+            $f    = AiSensyAPI::facts((int) $b['id']);
+            $role = (string) $q['role'];
+            $r    = AiSensyAPI::ticketTemplate((string) $q['phone'], (int) $b['id'], (string) $b['pnr'],
+                $role === 'seller' ? ($f['name'] !== '' ? $f['name'] : 'Passenger') . ' (agent copy - please forward)' : '', false);
+            Database::run(
+                "UPDATE wa_ticket_queue SET status = :s, via = :v, wamid = :w, attempts = attempts + 1,
+                        last_error = :e, sent_at = IF(:ok = 1, NOW(), sent_at), checked_at = NULL WHERE id = :i",
+                ['s' => $r['success'] ? 'sent' : 'failed', 'v' => mb_substr('ais after ' . $code, 0, 20),   // via is VARCHAR(20)
+                 'w' => $r['message_id'] !== '' ? $r['message_id'] : null,
+                 'e' => $r['success'] ? null : mb_substr((string) $r['error'], 0, 250), 'ok' => $r['success'] ? 1 : 0, 'i' => (int) $q['id']]
+            );
+            if (class_exists('Notify')) {
+                Notify::logOutbound((string) $q['phone'], 'AiSensy ticket ' . (string) $b['pnr'] . ' (' . $role . ', after Meta ' . $code . ')', $r['success'] ? 'sent' : 'failed', [
+                    'provider'  => 'aisensy',
+                    'bookingId' => (int) $b['id'],
+                    'sid'       => $r['message_id'],
+                    'purpose'   => $role === 'seller' ? 'seller_copy' : 'aisensy_ticket',
+                    'error'     => $r['success'] ? null : mb_substr((string) $r['error'], 0, 250),
+                ]);
+            }
+            return (bool) $r['success'];
+        } catch (Throwable $e) {
+            Logger::warning('wa queue meta-failed recovery failed', ['e' => $e->getMessage(), 'wamid' => $wamid]);
+            return false;
+        }
     }
 }

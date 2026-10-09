@@ -22,6 +22,7 @@
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 require_once INCLUDE_PATH . '/msgledger.php';
+require_once INCLUDE_PATH . '/waroute.php';
 require_once ROOT_PATH . '/whatsapp/aisensy.php';
 
 $admin   = admin_boot('reports.view');
@@ -358,6 +359,26 @@ admin_page_head('Every WhatsApp, SMS and email the system sent — who got it, w
     <div class="big"><?= (int) ($meta['n'] ?? 0) ?> <small class="muted" style="font-size:12px;font-weight:600">tries in 24 h</small></div>
     <dl><dt>Failed</dt><dd><?= (int) ($meta['bad'] ?? 0) ?></dd><dt>Last</dt><dd><?= $e(substr((string) ($meta['last_at'] ?? '—'), 0, 16)) ?></dd></dl>
     <?php $te = $topErr('cloud_api'); if ($te !== ''): ?><p>Main reason: <?= $e($te) ?></p><?php endif; ?>
+  </div>
+  <?php
+    /* 9 Oct 2026: which sender carries what (includes/waroute.php). */
+    $rt = WaRoute::stats();
+    $rtTone = !$rt['metaReady'] ? 'warn' : ($rt['policy'] === WaRoute::AISENSY_ONLY ? 'warn' : 'good');
+    $rtPolicy = ['meta_first' => 'Meta first (free), AiSensy only when needed', 'aisensy_only' => 'AiSensy only', 'meta_only' => 'Meta only'][$rt['policy']] ?? $rt['policy'];
+  ?>
+  <div class="wm-card <?= $rtTone ?>">
+    <h4><svg class="a-ic"><use href="#a-send"/></svg>Routing — who sends what</h4>
+    <div class="big"><?= (int) $rt['freeToday'] ?> <small class="muted" style="font-size:12px;font-weight:600">free on Meta today</small></div>
+    <dl>
+      <dt>Policy</dt><dd><?= $e($rtPolicy) ?></dd>
+      <dt>Meta number</dt><dd><?= $rt['metaReady'] ? 'connected' : 'not configured' ?> · <?= (int) $rt['windows'] ?> open window<?= (int) $rt['windows'] === 1 ? '' : 's' ?></dd>
+      <dt>Last inbound</dt><dd><?= $e($rt['lastInbound'] !== '' ? $rt['lastInbound'] : '—') ?></dd>
+      <dt>7 days</dt><dd><?= (int) $rt['free7'] ?> free on Meta · <?= (int) $rt['ais7'] ?> AiSensy templates</dd>
+      <dt>Saved (est.)</dt><dd><?= $money($rt['savedToday']) ?> today · <?= $money($rt['saved7']) ?> in 7 days</dd>
+      <dt>Meta templates</dt><dd><?= WaRoute::metaTemplatesOn() ? 'ON (Meta first)' : 'off — AiSensy carries templates' ?></dd>
+      <dt>AiSensy guard</dt><dd><?= WaRoute::utilityOnly() ? 'utility templates only' : 'any template' ?></dd>
+    </dl>
+    <p class="text-xs">A customer who wrote to the Meta number in the last 24 h is answered there for free (tickets, OTP, bus updates, staff notes). Everyone else gets the AiSensy utility template. Change under <a href="/admin/settings.php#cat=whatsapp">Settings → WhatsApp</a> (wa_policy, wa_meta_templates_on, aisensy_utility_only).</p>
   </div>
   <?php
     $smsH = null;

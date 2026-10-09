@@ -448,6 +448,38 @@ final class Notify
             }
         }
 
+        /* 9 Oct 2026 (owner: "sabai kaam jaha badi jaso Meta ko direct free
+           API use garos") — includes/waroute.php. The Meta number answers for
+           free inside this number's 24 h window (our own webhook record), and
+           carries templates while wa_meta_templates_on. Only when neither
+           applies does the paid AiSensy template below go out. Never allowed
+           to break a send: any exception falls through to the old ladder. */
+        try {
+            require_once __DIR__ . '/waroute.php';
+            $purpose = (string) ($meta['purpose'] ?? 'message');
+            $free = WaRoute::freeFirst($number, $message, $mediaUrl, $purpose,
+                ['bookingId' => $bookingId] + array_intersect_key($meta, ['admin_id' => 1, 'agent_admin_id' => 1]));
+            if ($free !== null && $free['success']) {
+                self::$journal[] = ['to' => $number, 'ok' => true, 'link' => null, 'driver' => 'cloud_api', 'reason' => 'meta_free', 'ref' => $free['message_id']];
+                self::metaTicketRecorded($bookingId, $purpose, $number, 'meta free', (string) $free['message_id']);
+                return true;
+            }
+            if (WaRoute::metaTemplatesOn() && $templateVars !== [] && in_array($purpose, ['ticket', 'ticket_update', 'ticket_resend'], true)) {
+                $hdr = (string) ($templateVars['7'] ?? ($mediaUrl ?? ''));
+                $bv  = $templateVars;
+                unset($bv['7']);
+                $mt = WaRoute::metaTemplate($number, Settings::getString('whatsapp_template_name', ''), Settings::getString('whatsapp_template_lang', 'en'),
+                    $bv, $hdr !== '' ? $hdr : null, $purpose, ['bookingId' => $bookingId]);
+                if ($mt !== null) {
+                    self::$journal[] = ['to' => $number, 'ok' => true, 'link' => null, 'driver' => 'cloud_api', 'reason' => 'meta_template', 'ref' => $mt['message_id']];
+                    self::metaTicketRecorded($bookingId, $purpose, $number, 'meta template', (string) $mt['message_id']);
+                    return true;
+                }
+            }
+        } catch (Throwable $e) {
+            Logger::warning('WaRoute meta-first failed: ' . $e->getMessage(), ['to' => $number], 'whatsapp');
+        }
+
         // 5 Oct 2026: AiSensy is the ticket sender while aisensy_mode = always.
         if (in_array((string) ($meta['purpose'] ?? ''), ['ticket', 'ticket_update'], true) && $bookingId !== null && $bookingId > 0) {
             $ais = self::whatsappAiSensyTicket($number, $message, (int) $bookingId, $meta);
@@ -1899,9 +1931,9 @@ final class Notify
                 }
             }
 
-            // One row the booking screen reads (unless AiSensy already wrote this very message).
+            // One row the booking screen reads (unless AiSensy / the Meta route already wrote this very message).
             $logged = $res['ok'] && $res['ref'] !== '' && Database::exists(
-                "SELECT 1 FROM message_logs WHERE provider = 'aisensy' AND provider_ref = :r",
+                "SELECT 1 FROM message_logs WHERE provider_ref = :r",
                 ['r' => substr($res['ref'], 0, 64)]
             );
             if (!$logged) {
@@ -1923,6 +1955,31 @@ final class Notify
     public static function ticketVars(array $booking): array
     {
         return self::ticketTemplateVars($booking);
+    }
+
+    /**
+     * A ticket the Meta route delivered (9 Oct 2026): the "hi" queue learns
+     * the customer has it, so no template follows and the seller copy only
+     * goes when it really failed. Best effort, never throws.
+     */
+    private static function metaTicketRecorded(?int $bookingId, string $purpose, string $number, string $via, string $wamid): void
+    {
+        if ($bookingId === null || $bookingId <= 0 || !in_array($purpose, ['ticket', 'ticket_resend', 'ticket_update'], true)) {
+            return;
+        }
+        try {
+            if (!class_exists('WaQueue') && is_file(__DIR__ . '/waqueue.php')) {
+                require_once __DIR__ . '/waqueue.php';
+            }
+            if (!class_exists('WaQueue') || !WaQueue::ready()) {
+                return;
+            }
+            $pnr = (string) Database::scalar('SELECT pnr FROM bookings WHERE id = :b', ['b' => $bookingId], '');
+            if ($pnr !== '') {
+                WaQueue::recordSent($bookingId, $pnr, $number, 'customer', $via, $wamid);
+            }
+        } catch (Throwable $ignored) {
+        }
     }
 
     /** 'NP' / 'IN' / null for a booking's contact number — public for WaTemplates. */

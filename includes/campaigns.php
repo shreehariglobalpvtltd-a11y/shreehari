@@ -182,7 +182,8 @@ final class Campaigns
                     return ['ok' => false, 'ref' => '', 'error' => 'AiSensy or template not set'];
                 }
                 $params = array_map(static fn ($p) => self::render((string) $p, $c, $r), json_decode((string) $c['template_params'], true) ?: []);
-                $x = AiSensyAPI::sendMessage($phone, (string) $c['template_name'], $params, $c['header_image'] ?: null);
+                // A campaign is the owner's own decision to pay for a MARKETING template (9 Oct 2026).
+                $x = AiSensyAPI::sendMessage($phone, (string) $c['template_name'], $params, $c['header_image'] ?: null, true);
                 return ['ok' => !empty($x['success']), 'ref' => (string) ($x['message_id'] ?? ''), 'error' => mb_substr((string) ($x['error'] ?? ''), 0, 250)];
             }
             if ($c['channel'] === 'sms') {

@@ -309,6 +309,28 @@ final class WaBot
             }
         }
 
+        /* THE LOCAL BRAIN (9 Oct 2026, owner: "website ko har ek detail —
+           time table, bus live ma kaha, seat kati baki, driver, ticket — Nepali
+           ma, VPS ma, free"). Bus position and ETA, seats left, the whole
+           timetable, bus & crew, the ticket picture again, how to pay, the
+           refund rule, the Nepal office, and the office's own summaries are
+           read from the live tables in milliseconds — includes/walocal.php.
+           It sits BEFORE the sale engine because "khali seat bholi nepal" is
+           a question, not an order; it steps aside the moment a sale
+           conversation is open, and it answers only what it recognises —
+           everything else goes on exactly as before. Switch: wa_local_brain_on. */
+        if (!$pnrOnly && $senderDigits !== '') {
+            try {
+                require_once INCLUDE_PATH . '/walocal.php';
+                $local = WaLocal::answer($from, $body, $who);
+                if ($local !== null) {
+                    return self::out($local['text'], $local['media'] ?? null, $local['ui'] ?? null);
+                }
+            } catch (Throwable $e) {
+                Logger::exception($e, 'whatsapp');   // the sale engine, the everyday answers and the assistant still run
+            }
+        }
+
         $tryLocalBooking = function () use ($senderDigits, $senderCountry, $body, $who, $isStaff): ?array {
             if ($senderDigits === '') {
                 return null;

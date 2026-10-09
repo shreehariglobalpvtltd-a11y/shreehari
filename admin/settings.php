@@ -212,6 +212,11 @@ $choiceKeys = [
                                'terracotta' => 'Bhaktapur Brick', 'peacock' => 'Peacock'],
     'app_ui_style'         => ['pixel' => 'Pixel - rounded, soft, Android Pixel style', 'classic' => 'Classic 3D - raised buttons and cards'],
     'app_sound_pack'       => ['pixel' => 'Pixel - new soft chimes and clicks', 'classic' => 'Classic - the original tones'],
+    // 9 Oct 2026: WhatsApp routing (includes/waroute.php) and the staff reply language (includes/walocal.php).
+    'wa_policy'            => ['meta_first' => 'Meta first - free replies on the Meta number inside the 24 h window, AiSensy utility template only when needed',
+                               'aisensy_only' => 'AiSensy only - everything on AiSensy (as before 9 Oct 2026)',
+                               'meta_only' => 'Meta only - never AiSensy (when the Meta number can send templates)'],
+    'wa_staff_lang'        => ['ne' => 'Nepali', 'hi' => 'Hindi', 'en' => 'English', 'auto' => 'Follow the message'],
 ];
 
 /* ── Settings by CATEGORY (8 Oct 2026, owner: "sabai setting milayera, ticket

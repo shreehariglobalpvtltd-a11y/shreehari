@@ -196,6 +196,16 @@ function wh_status(array $st): void
         Logger::warning('WhatsApp delivery FAILED (Meta, async)', [
             'wamid' => $wamid, 'booking' => $row['booking_id'], 'code' => $code,
         ], 'whatsapp');
+        /* 9 Oct 2026: a ticket the Meta route sent free (window we believed
+           open) did not arrive — the AiSensy template takes over at once. */
+        try {
+            require_once INCLUDE_PATH . '/waqueue.php';
+            if (WaQueue::ready()) {
+                WaQueue::onMetaFailed($wamid, $code);
+            }
+        } catch (Throwable $e) {
+            Logger::exception($e, 'whatsapp');
+        }
     }
 }
 
@@ -250,6 +260,24 @@ function wh_inbound(array $msg): void
     }
     if (!Settings::getBool('whatsapp_bot_enabled', true)) {
         return;
+    }
+
+    /* 9 Oct 2026 - the "hi" ticket on THIS number (includes/waqueue.php):
+       this person just wrote to the Meta number, so its free 24 h window is
+       open here. Every ticket waiting for them goes out now, free, as the
+       PNG (WaRoute). A short "hi" / PNR that got its tickets needs no bot
+       menu on top - the ticket was the answer. */
+    try {
+        require_once INCLUDE_PATH . '/waqueue.php';
+        if (WaQueue::ready()) {
+            $gotTickets = WaQueue::onInbound($from, $text, 'meta');
+            $plainText  = trim(preg_replace('/SHG-?\s?\d{4}-?\s?\d{3,6}/i', '', $text) ?? '');
+            if ($gotTickets > 0 && mb_strlen($plainText) <= 25) {
+                return;
+            }
+        }
+    } catch (Throwable $e) {
+        Logger::exception($e, 'whatsapp');
     }
 
     /* A voice note becomes the words that were spoken (23 Sep 2026, owner:
