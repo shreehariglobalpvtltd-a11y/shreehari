@@ -66,6 +66,20 @@ final class WaBot
             }
         }
 
+        /* 9 Oct 2026 — "ho" / "hoina" to a daily-job offer, "habit band",
+           "mero habit" (includes/wahabit.php). Null for everything else. */
+        if ($senderDigits !== '' && $body !== '') {
+            try {
+                require_once INCLUDE_PATH . '/wahabit.php';
+                $habit = WaHabit::handle($from, $body);
+                if ($habit !== null) {
+                    return self::out($habit['text'], $habit['media'] ?? null, $habit['ui'] ?? null);
+                }
+            } catch (Throwable $e) {
+                Logger::exception($e, 'whatsapp');
+            }
+        }
+
         /* 5 Oct 2026 — a plain STOP / UNSUBSCRIBE / बन्द also takes the number
            off every Campaigns list (mk_optout), whether or not the older
            WhatsApp marketing engine below is switched on. Recorded quietly;
@@ -255,7 +269,9 @@ final class WaBot
 
         /* 6 Oct 2026 - a customer's question the knowledge base cannot answer
            yet is written down; tonight the AI drafts the article (AiLearn). */
-        if (!$isStaff && $kind === 'text' && $body !== '') {
+        /* 9 Oct 2026: staff questions are observed too ("repeated kaam le
+           sikos") - the knowledge base learns what the office keeps asking. */
+        if ($kind === 'text' && $body !== '') {
             try {
                 require_once INCLUDE_PATH . '/ailearn.php';
                 AiLearn::observe($body);

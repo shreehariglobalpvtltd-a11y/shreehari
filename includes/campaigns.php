@@ -181,6 +181,9 @@ final class Campaigns
                 if (!AiSensyAPI::enabled() || (string) $c['template_name'] === '') {
                     return ['ok' => false, 'ref' => '', 'error' => 'AiSensy or template not set'];
                 }
+                if (AiSensyAPI::ticketOnly()) {
+                    return ['ok' => false, 'ref' => '', 'error' => 'AiSensy is ticket-only (Settings -> WhatsApp -> aisensy_scope = all to run template campaigns)'];
+                }
                 $params = array_map(static fn ($p) => self::render((string) $p, $c, $r), json_decode((string) $c['template_params'], true) ?: []);
                 // A campaign is the owner's own decision to pay for a MARKETING template (9 Oct 2026).
                 $x = AiSensyAPI::sendMessage($phone, (string) $c['template_name'], $params, $c['header_image'] ?: null, true);

@@ -217,6 +217,8 @@ $choiceKeys = [
                                'aisensy_only' => 'AiSensy only - everything on AiSensy (as before 9 Oct 2026)',
                                'meta_only' => 'Meta only - never AiSensy (when the Meta number can send templates)'],
     'wa_staff_lang'        => ['ne' => 'Nepali', 'hi' => 'Hindi', 'en' => 'English', 'auto' => 'Follow the message'],
+    'aisensy_scope'        => ['ticket_only' => 'Ticket only - AiSensy pays for a customer\'s ticket to a cold number, nothing else (saves the wallet)',
+                               'all' => 'Everything - OTP, bus updates, staff notes, compose and campaigns may use AiSensy too'],
 ];
 
 /* ── Settings by CATEGORY (8 Oct 2026, owner: "sabai setting milayera, ticket

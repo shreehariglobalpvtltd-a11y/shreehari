@@ -187,6 +187,24 @@ try {
     $x = AiSensyAPI::sendAny(RT_B, 'hello', null, 'Shyam', 'Update');
     check('sendAny: closed window -> AiSensy (refused here: bogus key), Meta untouched', !$x['success'] && $calls === [], json_encode($x));
 
+    echo "\n— aisensy_scope = ticket_only (owner: AiSensy pays for the ticket to a new customer, nothing else)\n";
+    check('default scope is ticket-only', AiSensyAPI::ticketOnly());
+    $calls = [];
+    $x = AiSensyAPI::sendAny(RT_B, 'hello', null, 'Shyam', 'Update');
+    check('a compose message to a cold number: no template spent, no network', !$x['success'] && str_contains($x['error'], 'ticket-only') && $calls === [], json_encode($x));
+    $x = AiSensyAPI::sendLoginOtp(RT_B, '111222', '');
+    check('an OTP to a cold number: no template spent', !$x['success'] && str_contains($x['error'], 'ticket-only'), json_encode($x));
+    $x = AiSensyAPI::sendMessage(RT_B, 'shg_trip_update', ['Ram', 'SHG-2026-00001', 'Delay', '-']);
+    check('a bus update template: refused', !$x['success'] && str_contains($x['error'], 'ticket-only'), json_encode($x));
+    $x = AiSensyAPI::asTicket(static fn(): array => AiSensyAPI::sendMessage(RT_B, 'shg_ticket_image', ['Ram', 'Surat', 'Rupaidiha', '2026-10-10', 'L1', 'SHG-2026-00001'], 'https://www.shreehariglobal.in/x.png'));
+    check('the ticket template inside the ticket context goes out to AiSensy (refused here: bogus key / no network)', !str_contains((string) $x['error'], 'ticket-only'), json_encode($x));
+    $x = AiSensyAPI::ticketTemplate(RT_B, 1, 'SHG-2026-00001', 'Ram (agent copy)', false);
+    check('a seller copy never spends a template', !$x['success'] && str_contains($x['error'], 'ticket-only'), json_encode($x));
+    Settings::set('aisensy_scope', 'all', 'string', 'whatsapp', false); Settings::flush();
+    $x = AiSensyAPI::sendMessage(RT_B, 'shg_trip_update', ['Ram', 'SHG-2026-00001', 'Delay', '-']);
+    check('scope all: the bus update template is attempted', !str_contains((string) $x['error'], 'ticket-only'), json_encode($x));
+    Database::delete('settings', "skey = 'aisensy_scope'", []); Settings::flush();
+
     echo "\n— Notify::whatsapp() and the ticket\n";
     check('a confirmed booking exists to work with', $bid > 0, 'none in the test DB');
     if ($bid > 0) {
@@ -233,6 +251,15 @@ try {
         check('inbound on Meta with the window open: the ticket goes free as the PNG', $sent === 1 && count($calls) === 1 && $calls[0]['image'] !== null
             && $q !== null && $q['status'] === 'sent' && $q['via'] === 'meta free', json_encode($q));
         check('… the AiSensy window table is NOT written for a Meta inbound', !Database::exists('SELECT 1 FROM wa_windows WHERE phone = :p', ['p' => '91' . RT_C]));
+        // A seller's waiting copies never dump on a Meta inbound (owner: "passenger list magda sara ticket aayo").
+        $sid1 = WaQueue::enqueue($bid, $pnr, '91' . RT_A, 'seller');
+        $calls = [];
+        $sentS = WaQueue::onInbound('91' . RT_A, 'yatri list', 'meta');
+        check('a seller writing a question on Meta gets NO ticket copies', $sentS === 0 && $calls === []
+            && Database::scalar('SELECT status FROM wa_ticket_queue WHERE id = :i', ['i' => $sid1], '') === 'pending', "sent=$sentS");
+        $sentS = WaQueue::onInbound('91' . RT_A, 'copy ' . $pnr, 'meta');
+        check('… but the PNR they typed goes', $sentS === 1 && count($calls) === 1, "sent=$sentS");
+        Database::run('DELETE FROM wa_ticket_queue WHERE id = :i', ['i' => $sid1]);
         $row = Database::fetch("SELECT * FROM message_logs WHERE provider_ref = :r", ['r' => (string) $q['wamid']]);
         check('… one message_logs row, cloud_api, purpose ticket', $row !== null && $row['provider'] === 'cloud_api' && ($row['purpose'] ?? '') === 'ticket'
             && (int) Database::scalar("SELECT COUNT(*) FROM message_logs WHERE provider_ref = :r", ['r' => (string) $q['wamid']], 0) === 1, json_encode($row));
