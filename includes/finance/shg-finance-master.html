@@ -2102,6 +2102,7 @@ details.acc>.acc-b{padding:0 16px 16px}
 
   root.SHGF = E;
 })(typeof window !== 'undefined' ? window : globalThis);
+
 </script>
 <script id="shg-data">
 /* =====================================================================
@@ -2291,6 +2292,13 @@ details.acc>.acc-b{padding:0 16px 16px}
   var S = { meta: {}, book: null, user: null, entity: 'IN', range: null, route: '', q: {}, ui: {}, pin: '', pinUser: null, last: Date.now() };
   var V = {}, ACT = {}, FORM = {}, LIVE = {};
   window.SHGUI = { S: S, V: V, ACT: ACT, FORM: FORM, LIVE: LIVE };
+  /* MODULE API — feature modules (src/mod-*.js) plug in without touching this file:
+       SHGUI.addNav({ r, i, t, s?, p, b?, after? })   add a menu item (after = route to follow)
+       SHGUI.V[route] = fn                            register the screen
+       SHGUI.journalExtras.push(fn(j) -> html)       extra buttons/blocks in the journal modal
+       SHGUI.dashExtras.push(fn() -> html)            extra cards at the end of the dashboard */
+  window.SHGUI.journalExtras = [];
+  window.SHGUI.dashExtras = [];
 
   /* ---------------- tiny helpers ---------------- */
   function $(s, r) { return (r || document).querySelector(s); }
@@ -2552,6 +2560,12 @@ details.acc>.acc-b{padding:0 16px 16px}
     { r: 'me', i: '👤', t: 'मेरो हिसाब', s: 'मेरो हिसाब', p: ['view.own.agent', 'view.own.investor', 'view.own.employee'] },
     { r: 'settings', i: '⚙️', t: 'सेटिङ तथा सुरक्षा', p: '' }
   ];
+  window.SHGUI.NAV = NAV;
+  window.SHGUI.addNav = function (item) {
+    var at = item.after ? NAV.findIndex(function (n) { return n.r === item.after; }) : -1;
+    if (NAV.some(function (n) { return n.r === item.r; })) return;
+    if (at >= 0) NAV.splice(at + 1, 0, item); else NAV.splice(NAV.length - 1, 0, item);
+  };
   function navItem(r) { return NAV.filter(function (n) { return n.r === r; })[0]; }
   function allowed(r) { var n = navItem(r); if (r === 'setup') return can('*') || lvl() >= 3; return !n || canAny(n.p); }
   function homeRoute() { return NAV.filter(function (n) { return canAny(n.p); })[0].r; }
@@ -2862,6 +2876,7 @@ details.acc>.acc-b{padding:0 16px 16px}
       '<div class="card"><div class="card-h"><h2>✅ स्वीकृति पर्खिरहेका</h2><a class="btn sm ghost" href="#/approvals">सबै</a></div>' +
       (pend.length ? '<div class="list">' + pend.slice(0, 5).map(function (p) { return '<div><div class="li-t"><b>' + esc(p.label) + '</b><small>' + esc(p.createdBy) + ' · ' + esc(LEVEL_NE[p.level]) + '</small></div><b class="amt">' + Mt(p.amount) + '</b></div>'; }).join('') + '</div>' : empty('🙂', 'कुनै बाँकी छैन।')) +
       '<div class="card-h" style="margin-top:14px"><h2>🗓️ आगामी ७ दिन</h2></div>' + (due.rows.length ? '<div class="list">' + due.rows.map(function (d) { return '<div><div class="li-t"><b>' + esc(d.what) + '</b><small>' + esc(d.date) + '</small></div><b class="amt">' + Mt(d.amount) + '</b></div>'; }).join('') + '</div>' : empty('📭', 'कुनै तोकिएको भुक्तानी छैन।')) + '</div></div>';
+    html += window.SHGUI.dashExtras.map(function (fn) { try { return fn() || ''; } catch (e) { return ''; } }).join('');
     html += '<div class="card"><div class="card-h"><h2>🧾 हालका कारोबार</h2><a class="btn sm ghost" href="#/reports?r=daybook">दैनिक किताब</a></div>' + journalList(b.journals.filter(function (j) { return j.entity === en; }).slice(-12).reverse()) + '</div>';
     return html;
   };
@@ -2896,6 +2911,7 @@ details.acc>.acc-b{padding:0 16px 16px}
       }), ['जम्मा', '', M(E.journalTotal(j)), M(E.sum(j.lines, function (l) { return l.cr; }))]) +
       '<div class="note" style="margin-top:10px">' + x.lines.concat(x.summary).map(esc).join('<br>') + '</div>' +
       (j.attach && lsGet('shgfm.att.' + b.mode + '.' + j.id) ? '<img src="' + lsGet('shgfm.att.' + b.mode + '.' + j.id) + '" alt="रसीद" style="margin-top:10px;border-radius:12px;max-height:320px">' : '') +
+      window.SHGUI.journalExtras.map(function (fn) { try { return fn(j) || ''; } catch (e) { return ''; } }).join('') +
       '<div class="row end" style="margin-top:12px">' + (canRev ? '<button class="btn bad sm" data-act="reverse" data-id="' + j.id + '">↩️ उल्टाउनुहोस् (Reverse)</button>' : '') + '<button class="btn ghost sm" data-act="close">बन्द</button></div>', { wide: true });
   };
   ACT.reverse = function (el) {
@@ -4237,8 +4253,10 @@ details.acc>.acc-b{padding:0 16px 16px}
   /* keyboard: Enter on a focusable KPI card behaves like a click */
   document.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target && e.target.matches && e.target.matches('[data-act][tabindex]')) { e.preventDefault(); e.target.click(); } });
 
-  U.boot();
 })();
+
+/* Boot last — after every module has registered its screens. */
+window.SHGUI.boot();
 </script>
 </body>
 </html>
