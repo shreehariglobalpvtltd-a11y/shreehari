@@ -242,7 +242,9 @@ try {
     check('family COD ticket renders 1080 wide', $im !== false && imagesx($im) === 1080, $im ? imagesx($im) . 'x' . imagesy($im) : 'no image');
     if ($im !== false) {
         $rgb = static function ($im, int $x, int $y): array { $c = imagecolorat($im, $x, $y); return [($c >> 16) & 255, ($c >> 8) & 255, $c & 255]; };
-        $isTile = static fn(array $c): bool => $c === [246, 248, 252];
+        /* Tile face colour: [246,248,252] until the GOLD template (9 Oct
+           2026) made the tiles warm white on the ivory card (Ticket::PNG_TILE). */
+        $isTile = static fn(array $c): bool => $c === [255, 253, 246];
         check('right-hand tiles end inside the card (x=1030 is not tile colour)', !$isTile($rgb($im, 1030, 800)) && !$isTile($rgb($im, 1030, 950)) && $isTile($rgb($im, 1010, 800)),
             json_encode([$rgb($im, 1030, 800), $rgb($im, 1010, 800)]));
         $grow = max(0, (60 + 3 * 44 + 16) - 108);

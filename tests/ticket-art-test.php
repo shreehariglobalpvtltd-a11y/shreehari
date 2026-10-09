@@ -242,8 +242,9 @@ foreach (['PNG_LAYOUT_CHANGED', 'PDF_LAYOUT_CHANGED'] as $k) {
     check($k . ' moved for this layout (at/after 9 Oct 2026)', strcmp($s, '2026-10-09 00:00:00') >= 0, $s);
 }
 check('chalani PNG stays exactly 2000x1414', ChalaniPng::WIDTH === 2000 && ChalaniPng::HEIGHT === 1414);
-check('ChalaniPng::LAYOUT_VERSION bumped to 9', ChalaniPng::LAYOUT_VERSION === 9);
-check('ChallanPng::LAYOUT_VERSION bumped to 7 (width unchanged)', ChallanPng::LAYOUT_VERSION === 7 && ChallanPng::WIDTH === 1600);
+// 9 Oct 2026 (gold documents): chalani 10, challan 8.
+check('ChalaniPng::LAYOUT_VERSION bumped to 10', ChalaniPng::LAYOUT_VERSION === 10);
+check('ChallanPng::LAYOUT_VERSION bumped to 8 (width unchanged)', ChallanPng::LAYOUT_VERSION === 8 && ChallanPng::WIDTH === 1600);
 check("AgentStatementPng::LAYOUT is 'stmt-v4'", AgentStatementPng::LAYOUT === 'stmt-v4');
 
 /* ------------------------------------------------------------------ */
@@ -267,8 +268,10 @@ check('verify: security code, Checked at, genuine-domain line, flags', str_conta
 check('verify: Report this ticket → api/report-fake.php with a fresh CSRF token', str_contains($v, 'Report this ticket · नक्कली टिकट रिपोर्ट') && str_contains($v, "/api/report-fake.php") && str_contains($v, "/api/csrf.php"));
 check('verify: pinned strings kept', str_contains($v, 'Auth::customerMayOpen($booking)') && str_contains($v, "['ticket']['is_void']") && str_contains($v, 'Boarding::stopDisplay'));
 check('verify: emblem not stretched (no 40x40 box)', !str_contains($v, '.hdr img { width: 40px; height: 40px;') && str_contains($v, 'logo-mark'));
+// The gold chalani draws its seal through GoldSheet (includes/goldsheet.php), which calls DocArt::mark.
 foreach (['includes/chalanipng.php', 'includes/agentstatement.php'] as $f) {
-    check("$f: emblem via DocArt, no white chip", str_contains($src($f), 'DocArt::mark(') && !preg_match('/(roundRect|box)\(\$im, \$M - \d+, 34,[^;]*\$white/', $src($f)));
+    $body = $src($f) . ($f === 'includes/chalanipng.php' && str_contains($src($f), 'GoldSheet::') ? $src('includes/goldsheet.php') : '');
+    check("$f: emblem via DocArt, no white chip", str_contains($body, 'DocArt::mark(') && !preg_match('/(roundRect|box)\(\$im, \$M - \d+, 34,[^;]*\$white/', $src($f)));
 }
 check('agentstatement/reportpdf: no hard-coded company name as the header', !str_contains($src('includes/agentstatement.php'), "self::t(\$im, 26, \$tx, 34, \$white, 'S HARI GLOBAL PVT LTD', true)")
     && !str_contains($src('includes/reportpdf.php'), "\$pdf->text(\$tx, 10, 'S HARI GLOBAL PVT. LTD.', 16"));

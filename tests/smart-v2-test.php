@@ -159,7 +159,8 @@ check('maps link is a directions link to the pickup', $g !== null && Ticket::pic
 check('no coordinates → no map (never guessed)', Ticket::pickupGeo(['boarding_stop' => 'Nowhere Town @ 10:00', 'route_id_for_stop' => 0]) === null);
 check('[0,0] is not a place', Ticket::pickupGeo(['boarding_stop' => 'X [0,0]', 'route_id_for_stop' => 0]) === null);
 $tsrc = (string) file_get_contents($root . '/includes/ticket.php');
-check('the PNG draws the PICKUP MAP QR only without the pay QR', str_contains($tsrc, "\$mapsQr = \$payUpi === '' && \$geo !== null && Settings::getBool('ticket_maps_qr', true)"));
+// 9 Oct 2026 (gold ticket): the pay QR is mandatory, so the map QR now sits beside it in a row of three.
+check('the PNG draws the PICKUP MAP QR beside the mandatory pay QR', str_contains($tsrc, "\$mapsQr = \$geo !== null && Settings::getBool('ticket_maps_qr', true)"));
 /* 9 Oct 2026: the stamp keeps moving forward with every layout change (pr1
    23:42, the heritage/security art after it) — pin "at or after the map-QR
    change", not one exact moment, so a later bump does not read as a regression. */

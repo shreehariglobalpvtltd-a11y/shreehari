@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v209';   // 9 Oct 2026: showcase upgrade - emblem-only logo, Pixel themes + sounds, single-source facts, route km/halts + live time, ticket heritage art + security code, fake-proof risk queue, office chat, India-Nepal + Explore + Tours
+var VERSION = 'shg-v210';   // 9 Oct 2026: gold documents - gold ticket (screen, PNG, PDF), gold chalani/challan, mantra + blessing lines, payment QR on every ticket and chalani
 var SHELL_CACHE = 'shg-shell-' + VERSION;
 /* How long a returning visitor waits for a fresh document before the
    cached app shell opens instead (see the navigate handler). */
@@ -43,7 +43,7 @@ var MAX_TICKETS = 10;
    never go stale: a new build changes the URL and the old cache is dropped
    with the old VERSION. This is what makes a re-open feel instant — the
    ~1 MB of app code is read from disk instead of the network. */
-var ASSET_VER = '20261009s';
+var ASSET_VER = '20261009g';
 var PRECACHE = [
   '/assets/img/logo.png?v=' + ASSET_VER,
   /* 8 Oct 2026: the 10 KB nav / home-hero logo (logo.png stays for the footer + PDF) */
