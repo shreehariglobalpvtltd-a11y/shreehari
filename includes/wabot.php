@@ -255,7 +255,9 @@ final class WaBot
 
         /* 6 Oct 2026 - a customer's question the knowledge base cannot answer
            yet is written down; tonight the AI drafts the article (AiLearn). */
-        if (!$isStaff && $kind === 'text' && $body !== '') {
+        /* 9 Oct 2026: staff questions are observed too ("repeated kaam le
+           sikos") - the knowledge base learns what the office keeps asking. */
+        if ($kind === 'text' && $body !== '') {
             try {
                 require_once INCLUDE_PATH . '/ailearn.php';
                 AiLearn::observe($body);

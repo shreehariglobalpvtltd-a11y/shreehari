@@ -267,9 +267,47 @@ final class AiSensyAPI
         return self::post($to, 'image', $key, ['to' => $to, 'type' => 'image', 'recipient_type' => 'individual', 'image' => $image], $out);
     }
 
+    /* -----------------------------------------------------------------
+     *  Scope (9 Oct 2026, owner: "AiSensy only for the ticket to a new
+     *  customer - paisa save garnu paryo"). aisensy_scope:
+     *    ticket_only (default)  the wallet pays for a customer's ticket
+     *                           (the PNG / text template to the customer's
+     *                           own number or second number) and nothing
+     *                           else: no OTP, bus update, staff note,
+     *                           compose, seller copy or campaign. Those
+     *                           go free on the Meta number inside a window,
+     *                           or wait for the person's "hi".
+     *    all                    every send as before.
+     * ----------------------------------------------------------------- */
+
+    private static bool $ticketCtx = false;
+
+    public static function ticketOnly(): bool
+    {
+        return strtolower(trim(self::config('AISENSY_SCOPE', 'aisensy_scope', 'ticket_only'))) !== 'all';
+    }
+
+    /** Run $fn with AiSensy allowed as the TICKET sender (the one paid purpose). */
+    public static function asTicket(callable $fn): mixed
+    {
+        $prev = self::$ticketCtx;
+        self::$ticketCtx = true;
+        try {
+            return $fn();
+        } finally {
+            self::$ticketCtx = $prev;
+        }
+    }
+
     /** POST one message; retries once on a network failure or AiSensy 5xx (a 4xx is final). */
     private static function post(string $to, string $label, string $key, array $body, array $out): array
     {
+        // Only a TEMPLATE costs money; free-form text / pictures land only inside a window and are free.
+        if (($body['type'] ?? '') === 'template' && self::ticketOnly() && !self::$ticketCtx) {
+            $out['error'] = 'AiSensy is ticket-only (aisensy_scope) - template ' . $label . ' not sent';
+            self::log('SKIP', $to, $label, $out);
+            return $out;
+        }
         $url = self::API_BASE . self::projectId() . '/messages';
         for ($attempt = 1; $attempt <= 2; $attempt++) {
             $r = self::request('POST', $url, $key, $body);
@@ -839,14 +877,16 @@ final class AiSensyAPI
                 . 'Seat: ' . ($f['seats'] ?: '-') . "\n"
                 . 'Ticket ID: ' . $pnr . "\n"
                 . 'Help: +919157001507';
-            if (!$r['success'] && $link !== '') {
-                $r = self::sendImage($number, $link, $caption);
-                $how = 'image';
-            }
-            if (!$r['success']) {
-                $r = self::sendText($number, $caption . ($link !== '' ? "\nTicket: " . $link : ''));
-                $how = 'text';
-            }
+            self::asTicket(static function () use (&$r, &$how, $number, $link, $caption): void {
+                if (!$r['success'] && $link !== '') {
+                    $r = self::sendImage($number, $link, $caption);
+                    $how = 'image';
+                }
+                if (!$r['success']) {
+                    $r = self::sendText($number, $caption . ($link !== '' ? "\nTicket: " . $link : ''));
+                    $how = 'text';
+                }
+            });
 
             if (class_exists('Notify')) {
                 Notify::logOutbound(self::normalizePhone($number), 'AiSensy ticket ' . $pnr . ' (' . $how . ')', $r['success'] ? 'sent' : 'failed', [
@@ -969,13 +1009,23 @@ final class AiSensyAPI
             } catch (Throwable $ignored) {
             }
         }
-        if ($link !== '') {
-            $r = self::sendMessage($to, self::tpl('aisensy_tpl_ticket_image', self::TPL_TICKET_IMAGE), $vars, $link);
-            $how = 'image template';
-        }
-        if (!$r['success']) {
-            $r = self::sendTicketConfirmation($to, ...$vars);
-            $how = 'template';
+        /* The paid part. A customer's own ticket ($nameAs = '') is the one
+           purpose the wallet pays for under aisensy_scope = ticket_only; a
+           seller copy ($nameAs set) waits for the clerk's "hi" on Meta. */
+        $send = static function () use (&$r, &$how, $to, $link, $vars): void {
+            if ($link !== '') {
+                $r = self::sendMessage($to, self::tpl('aisensy_tpl_ticket_image', self::TPL_TICKET_IMAGE), $vars, $link);
+                $how = 'image template';
+            }
+            if (!$r['success']) {
+                $r = self::sendTicketConfirmation($to, ...$vars);
+                $how = 'template';
+            }
+        };
+        if ($nameAs === '') {
+            self::asTicket($send);
+        } else {
+            $send();
         }
         return ['success' => (bool) $r['success'], 'message_id' => (string) $r['message_id'], 'error' => (string) $r['error'], 'how' => $how];
     }

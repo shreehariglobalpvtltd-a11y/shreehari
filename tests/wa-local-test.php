@@ -220,13 +220,37 @@ try {
     $r = $ask(WL_BOSS, 'pending');
     check('office "pending": payments waiting', $r !== null && $r['intent'] === 'pending' && str_contains($txt($r), '⏳') && str_contains($txt($r), 'admin/payments.php'), $txt($r));
     $r = $ask(WL_BOSS, 'yatri list');
-    check('office passenger list for today', $r !== null && $r['intent'] === 'passengers' && str_contains($txt($r), '👥') && str_contains($txt($r), 'manifest.php'), $txt($r));
+    check('office passenger list for today: counts + the chalani PICTURE, not every ticket', $r !== null && $r['intent'] === 'passengers' && str_contains($txt($r), '👥')
+        && str_contains((string) ($r['media'] ?? ''), 'download-chalan.php') && str_contains((string) $r['media'], 'doc=chalani'), json_encode($r, JSON_UNESCAPED_UNICODE));
     if ($bid > 0 && $sid > 0) {
         $name = (string) Database::scalar('SELECT full_name FROM booking_passengers WHERE booking_id = :b ORDER BY id LIMIT 1', ['b' => $bid], '');
-        check('… names today\'s passenger', $name !== '' && str_contains($txt($r), $name), $name . ' / ' . $txt($r));
+        check('… the office text carries counts, no names (the chalani has them)', $name === '' || !str_contains($txt($r), $name), $name . ' / ' . $txt($r));
         $r = $ask(WL_AGENT, 'yatri list');
-        check('an agent sees only their own passengers (none here)', $r !== null && ($name === '' || !str_contains($txt($r), $name)), $txt($r));
+        check('an agent sees only their own passengers in words (none here), no chalani', $r !== null && ($name === '' || !str_contains($txt($r), $name)) && ($r['media'] ?? null) === null, $txt($r));
     }
+    echo "\n— company, places, agents\n";
+    $r = $ask(WL_GUEST, 'ceo ko naam k ho');
+    check('CEO + company card', $r !== null && $r['intent'] === 'company_info' && str_contains($txt($r), 'CEO') && str_contains($txt($r), 'google.com/maps'), $txt($r));
+    $r = $ask(WL_GUEST, 'office ko google map link pathau');
+    check('office / counters / pickups with map links', $r !== null && $r['intent'] === 'office_map' && substr_count($txt($r), 'google.com/maps') >= 2, $txt($r));
+    $r = $ask(WL_GUEST, 'bus kaha pugyo location');
+    check('"bus … location" is still the bus, not the office', $r !== null && $r['intent'] === 'bus_live', json_encode($r, JSON_UNESCAPED_UNICODE));
+    $codesKeep = Database::exists("SELECT 1 FROM settings WHERE skey = 'agent_codes'") ? Settings::getString('agent_codes', '') : null;
+    Settings::set('agent_codes', json_encode([(string) $agentId => 777]), 'json', 'agent', false); Settings::flush();
+    $r = $ask(WL_GUEST, 'SHG-0777 kasko code ho');
+    check('an agent code names the agent with number (customer)', $r !== null && $r['intent'] === 'agent_info' && str_contains($txt($r), 'Local Agent') && str_contains($txt($r), WL_AGENT), $txt($r));
+    $r = $ask(WL_GUEST, 'SHG-0999');
+    check('an unassigned code is said so', $r !== null && str_contains($txt($r), 'SHG-0999'), $txt($r));
+    $r = $ask(WL_BOSS, 'agent list');
+    check('the office gets every agent with code + number', $r !== null && $r['intent'] === 'agent_info' && str_contains($txt($r), 'SHG-0777') && str_contains($txt($r), 'agents.php'), $txt($r));
+    $r = $ask(WL_BOSS, 'agent local ko number');
+    check('an agent by name (staff)', $r !== null && str_contains($txt($r), 'Local Agent') && str_contains($txt($r), WL_AGENT), $txt($r));
+    $r = $ask(WL_GUEST, 'agent list');
+    check('a customer gets the public directory, never the office roster', $r !== null && !str_contains($txt($r), WL_AGENT), $txt($r));
+    $r = $ask(WL_GUEST, 'agent le galat ticket kateko paisa firta');
+    check('a complaint about an agent is not an agent lookup', $r === null, json_encode($r, JSON_UNESCAPED_UNICODE));
+    if ($codesKeep === null) { Database::delete('settings', "skey = 'agent_codes'", []); } else { Settings::set('agent_codes', $codesKeep, 'json', 'agent', false); }
+    Settings::flush();
     $r = $ask(WL_AGENT, 'hisab');
     check('agent "hisab": their own day, link to the desk', $r !== null && $r['intent'] === 'summary' && str_contains($txt($r), 'Local Agent') && str_contains($txt($r), 'my-desk.php'), $txt($r));
     $r = $ask(WL_GUEST, 'pending');

@@ -376,7 +376,7 @@ admin_page_head('Every WhatsApp, SMS and email the system sent — who got it, w
       <dt>7 days</dt><dd><?= (int) $rt['free7'] ?> free on Meta · <?= (int) $rt['ais7'] ?> AiSensy templates</dd>
       <dt>Saved (est.)</dt><dd><?= $money($rt['savedToday']) ?> today · <?= $money($rt['saved7']) ?> in 7 days</dd>
       <dt>Meta templates</dt><dd><?= WaRoute::metaTemplatesOn() ? 'ON (Meta first)' : 'off — AiSensy carries templates' ?></dd>
-      <dt>AiSensy guard</dt><dd><?= WaRoute::utilityOnly() ? 'utility templates only' : 'any template' ?></dd>
+      <dt>AiSensy pays for</dt><dd><?= AiSensyAPI::ticketOnly() ? 'the customer\'s ticket only (cold number)' : 'everything' ?> · <?= WaRoute::utilityOnly() ? 'utility templates only' : 'any template' ?></dd>
     </dl>
     <p class="text-xs">A customer who wrote to the Meta number in the last 24 h is answered there for free (tickets, OTP, bus updates, staff notes). Everyone else gets the AiSensy utility template. Change under <a href="/admin/settings.php#cat=whatsapp">Settings → WhatsApp</a> (wa_policy, wa_meta_templates_on, aisensy_utility_only).</p>
   </div>

@@ -332,18 +332,35 @@ final class WaQueue
                         continue;
                     }
                     $role = self::roleOf($b, $phone);
+                    $id   = 0;
                     if ($role !== '') {
                         $id = self::enqueue((int) $b['id'], (string) $b['pnr'], $phone, $role);
                         Database::run("UPDATE wa_ticket_queue SET status = 'pending' WHERE id = :i AND status IN ('sent','delivered','read','failed','expired')", ['i' => $id]);
+                    } else {
+                        // Not on the booking by the tables, but a copy is waiting for this very number (a clerk's).
+                        $id = (int) Database::scalar(
+                            "SELECT id FROM wa_ticket_queue WHERE phone = :p AND pnr = :n AND status IN ('pending','failed') ORDER BY id DESC LIMIT 1",
+                            ['p' => $phone, 'n' => (string) $b['pnr']], 0);
+                    }
+                    // A PNR asked for by name goes now, whoever they are on it (the Meta rule below sends only customer rows).
+                    if ($sender === 'meta' && $id > 0 && self::tryNow($id, true)) {
+                        $sent++;
                     }
                 }
             }
 
+            /* 9 Oct 2026 (owner: "passenger list magda sara ticket pathaidiyo -
+               sensible hos"): on the META number an inbound is usually a
+               question, not a request for tickets. So only the CUSTOMER's own
+               waiting tickets go (newest 3) - a seller copy goes only when the
+               seller typed that PNR (handled above). The AiSensy number keeps
+               its old "hi = everything waiting" rule. */
+            $meta = $sender === 'meta';
             $rows = Database::fetchAll(
                 "SELECT id FROM wa_ticket_queue
-                  WHERE phone = :p AND status IN ('pending','failed')
+                  WHERE phone = :p AND status IN ('pending','failed')" . ($meta ? " AND role IN ('customer','alt')" : '') . "
                     AND created_at >= NOW() - INTERVAL " . self::KEEP_DAYS . " DAY
-                  ORDER BY id DESC LIMIT 10",
+                  ORDER BY id DESC LIMIT " . ($meta ? 3 : 10),
                 ['p' => $phone]
             );
             foreach ($rows as $r) {
@@ -455,6 +472,11 @@ final class WaQueue
                   ORDER BY sent_at ASC LIMIT " . max(1, $limit)
             );
             foreach ($rows as $q) {
+                // A Meta send reports its status through whatsapp/webhook.php, not AiSensy.
+                if (str_starts_with((string) ($q['via'] ?? ''), 'meta')) {
+                    Database::run('UPDATE wa_ticket_queue SET checked_at = NOW() WHERE id = :i', ['i' => (int) $q['id']]);
+                    continue;
+                }
                 $st = AiSensyAPI::messageStatus((string) $q['wamid'], (string) $q['phone']);
                 $out['checked']++;
                 $s = strtoupper((string) ($st['status'] ?? ''));
@@ -549,17 +571,25 @@ final class WaQueue
         } catch (Throwable $e) {
             Logger::warning('wa queue meta-first failed: ' . $e->getMessage(), ['row' => (int) $q['id']]);
         }
+        /* aisensy_scope = ticket_only: a seller copy never spends a template
+           (AiSensyAPI::post refuses it); the free-form picture below still
+           lands inside the clerk's window. */
         if (!$r['success'] && $role === 'seller' && Settings::getBool('wa_seller_template_on', true)) {
             $r = AiSensyAPI::ticketTemplate((string) $q['phone'], (int) $b['id'], $pnr,
                 ($f['name'] !== '' ? $f['name'] : 'Passenger') . ' (agent copy - please forward)', false);
             $via = $r['how'];
         }
+        $isCustomer = in_array($role, ['customer', 'alt'], true);
         if (!$r['success']) {
-            $r = AiSensyAPI::sendImage((string) $q['phone'], $img, $caption);
+            $r = $isCustomer
+                ? AiSensyAPI::asTicket(static fn(): array => AiSensyAPI::sendImage((string) $q['phone'], $img, $caption))
+                : AiSensyAPI::sendImage((string) $q['phone'], $img, $caption);
             $via = 'image';
         }
         if (!$r['success']) {
-            $r = AiSensyAPI::sendText((string) $q['phone'], $caption . "\nटिकट / Ticket: " . $img);
+            $r = $isCustomer
+                ? AiSensyAPI::asTicket(static fn(): array => AiSensyAPI::sendText((string) $q['phone'], $caption . "\nटिकट / Ticket: " . $img))
+                : AiSensyAPI::sendText((string) $q['phone'], $caption . "\nटिकट / Ticket: " . $img);
             $via = 'text';
         }
         Database::run(

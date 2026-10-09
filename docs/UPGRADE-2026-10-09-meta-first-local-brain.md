@@ -102,6 +102,25 @@ Every intent per role, scoping (passenger sees own trip only, agent own passenge
 withheld when the switch is off), what is NOT claimed (greeting, fare, PNR, complaint, booking, cancel
 request, small talk), logging, web, switch.
 
+## 3b. release-20261009-wa2 (same evening, owner's two follow-ups)
+- **AiSensy = the customer's ticket only** (`aisensy_scope = ticket_only`, default): `AiSensyAPI::post()` refuses every
+  TEMPLATE outside `AiSensyAPI::asTicket()` (the customer / second-number ticket ladder). OTP, bus updates, staff
+  notes, compose, seller copies and campaigns never spend the wallet — they go free on Meta inside a window, as
+  free-form text inside an AiSensy window, or wait for the person's "hi". Live check 9 Oct: Meta had
+  re-classified `shg_message` and `shg_office_update` as MARKETING — exactly the templates `sendAny` spent on.
+  `aisensy_scope = all` restores the old behaviour (also needed to run template campaigns).
+- **"passenger list" sent every ticket** — the owner's number is the seller on 24 waiting seller copies and the
+  new Meta inbound flush dumped them. Now a Meta inbound flushes only the CUSTOMER's own waiting tickets
+  (newest 3); a seller copy goes only when the seller types that PNR. The AiSensy number keeps its old rule.
+- **Passenger list = the chalani picture**: the office gets one count line per bus and the keyed chalani PNG
+  (`download-chalan.php?doc=chalani`), not names in words; an agent still gets their own names.
+- **Company / people / places** (WaLocal): `company_info` (CEO name + number, legal name, head office + Google
+  Maps link, phone/email/web, CIN, counters, socials, Nepal team), `office_map` (head office, every counter and
+  every pickup with coordinates as Maps links), `agent_info` (an agent code SHG-0027 → name / code / number /
+  counter; the office gets the whole roster or an agent by name; a customer the public directory).
+- Staff questions are observed by AiLearn too (nightly KB drafts for what the office keeps asking).
+- Tests: wa-route 56, wa-local 59.
+
 ## 4. Verified
 - Local battery (aiwa_test): wa-route 47, wa-local 50, wa-faq 26, wa-order 47, wa-hi-queue 29,
   wa-local-booking 74, ticket-bot 86, whatsapp-retry-policy 12, wa-manager 40, bot-ladder 37, wa-login 72,

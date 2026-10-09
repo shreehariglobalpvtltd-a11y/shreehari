@@ -105,6 +105,17 @@ final class WaLocal
     private const PENDING = ['pending', 'baki payment', 'payment baki', 'bhuktani baki', 'verify garna', 'verify baki', 'verify', 'unpaid', 'paid chaina',
         'पेन्डिङ', 'पेंडिंग', 'बाँकी', 'बाकी', 'भुक्तानी बाँकी'];
 
+    private const COMPANY = ['ceo', 'c e o', 'malik', 'maalik', 'owner', 'company ko naam', 'company name', 'company ka naam', 'company details',
+        'company detail', 'company info', 'company ko', 'registration', 'cin', 'gst', 'gstin', 'email', 'e mail', 'legal name', 'kasko company',
+        'kasle chalaucha', 'kaun chalata', 'ceo ko', 'owner ko', 'सिइओ', 'सीईओ', 'मालिक', 'कम्पनी', 'इमेल', 'ईमेल', 'मालिक को', 'સીઈઓ', 'માલિક', 'કંપની'];
+
+    private const OFFICE_MAP = ['map', 'maps', 'google map', 'gmap', 'location link', 'maps link', 'naksha', 'nakshya', 'नक्सा', 'नक्शा',
+        'office kaha', 'office kata', 'office kahan', 'office location', 'office ko location', 'counter kaha', 'counter kahan', 'counter kata',
+        'counter location', 'parking kaha', 'parking location', 'parking kata', 'head office', 'address', 'thegana', 'ठेगाना', 'पता',
+        'कार्यालय कहाँ', 'अफिस कहाँ', 'ऑफिस कहाँ', 'ऑफिस कहां', 'काउन्टर कहाँ', 'direction', 'kasari pugne', 'kaise pahunche', 'કેવી રીતે પહોંચ', 'સરનામું', 'ઓફિસ ક્યાં'];
+
+    private const AGENT = ['agent', 'ejent', 'agents', 'एजेन्ट', 'एजेंट', 'एजेन्टहरू', 'एजेन्ट को', 'एजेंट का', 'એજન્ટ', 'dalal', 'counter wala', 'counter walo', 'agent code'];
+
     /** A message that ASKS to cancel / change is for a person, never a policy line. */
     private const IMPERATIVE = ['garideu', 'garidinu', 'garidinus', 'gardeu', 'gardinus', 'kar do', 'kardo', 'kar dijiye', 'kijiye', 'karna hai', 'garnu cha',
         'garnu xa', 'garnu paryo', 'chahanchu', 'chahanchhu', 'chahta', 'chahti', 'please cancel', 'cancel my', 'mero cancel', 'गरिदेउ', 'गरिदिनु', 'गर्देउ',
@@ -129,8 +140,8 @@ final class WaLocal
         if ($digits === '') {
             return null;
         }
-        // A PNR in the message is the PNR reply's (or the assistant's) business.
-        if (preg_match('/shg[-\s]?\d{4}/iu', $text) === 1) {
+        // A PNR (SHG-2026-00123) in the message is the PNR reply's (or the assistant's) business; an agent code (SHG-0027) is ours.
+        if (preg_match('/shg[-\s]?\d{4}[-\s]?\d{3,}/iu', $text) === 1) {
             return null;
         }
         try {
@@ -163,6 +174,9 @@ final class WaLocal
             $r = match ($intent) {
                 'help'          => self::help($role, $lang),
                 'timetable'     => self::timetable($lang),
+                'company_info'  => self::companyInfo($lang),
+                'office_map'    => self::officeMap($lang),
+                'agent_info'    => self::agentInfo($who, $lang, $text),
                 'seats_left'    => self::seatsLeft($text, $lang, $isStaff),
                 'bus_live'      => self::busLive($fromRaw, $who, $lang),
                 'bus_crew'      => self::busCrew($fromRaw, $who, $lang, $text),
@@ -198,7 +212,7 @@ final class WaLocal
     public static function answerWeb(array $ctx, string $text, string $lang = ''): ?array
     {
         $text = trim($text);
-        if ($text === '' || mb_strlen($text) > 400 || !self::enabled() || preg_match('/shg[-\s]?\d{4}/iu', $text) === 1) {
+        if ($text === '' || mb_strlen($text) > 400 || !self::enabled() || preg_match('/shg[-\s]?\d{4}[-\s]?\d{3,}/iu', $text) === 1) {
             return null;
         }
         $role    = (string) ($ctx['role'] ?? 'customer');
@@ -218,6 +232,9 @@ final class WaLocal
             $r = match ($intent) {
                 'help'         => self::help($role, $lang),
                 'timetable'    => self::timetable($lang),
+                'company_info' => self::companyInfo($lang),
+                'office_map'   => self::officeMap($lang),
+                'agent_info'   => self::agentInfo($who, $lang, $text),
                 'seats_left'   => self::seatsLeft($text, $lang, $isStaff),
                 'bus_live'     => self::busLive($from, $who, $lang),
                 'bus_crew'     => self::busCrew($from, $who, $lang, $text),
@@ -259,6 +276,24 @@ final class WaLocal
         if (self::has($t, self::TIMETABLE)) {
             return 'timetable';
         }
+        /* The company, the people and the places (9 Oct 2026, owner: "CEO ko
+           naam, agent ko naam / code / number, office ko address, Google map
+           link - sabai share garna sakos"). An agent code (SHG-0027) names
+           an agent; "office kaha / map" is a place question, never the bus. */
+        $complaint = preg_match('/galat|galti|problem|samasya|cancel|refund|firta|paisa|payment|गलत|समस्या|रद्द|पैसा/u', $t) === 1;
+        if (preg_match('/(?<![a-z\d])shg\s?-?\s?0*\d{1,4}(?![\d-])/u', $t) === 1 && !$complaint) {
+            return 'agent_info';
+        }
+        if (self::has($t, self::AGENT) && !$complaint && (mb_strlen($bare) <= 60
+                || preg_match('/code|number|list|kun|ko ho|kasko|naam|name|कुन|कसको|नाम|नम्बर|नंबर|सूची|लिस्ट/u', $t) === 1)) {
+            return 'agent_info';
+        }
+        if (self::has($t, self::OFFICE_MAP) && preg_match('/bus kaha|bus kata|bus kahan|gadi kaha|gadi kata|बस कहाँ|बस कहां|गाडी कहाँ/u', $t) !== 1) {
+            return 'office_map';
+        }
+        if (self::has($t, self::COMPANY)) {
+            return 'company_info';
+        }
         if (self::hasWord($t, self::TICKET_PNG) && !$booking && !$request) {
             return 'my_ticket_png';
         }
@@ -274,8 +309,9 @@ final class WaLocal
         if (self::has($t, self::NEPAL_OFFICE)) {
             return 'nepal_office';
         }
-        if (self::has($t, self::REFUND) && !self::has($t, self::IMPERATIVE)) {
-            return 'refund_rule';
+        if (self::has($t, self::REFUND) && !self::has($t, self::IMPERATIVE)
+            && preg_match('/galat|galti|problem|samasya|wrong|mistake|गलत|गल्ती|समस्या/u', $t) !== 1) {
+            return 'refund_rule';          // a complaint about money is for a person
         }
         if (self::has($t, self::PAY) && !$booking) {
             return 'pay_how';
@@ -351,6 +387,195 @@ final class WaLocal
         }
         $lines[] = self::t($lang, 'कुनै पनि कुरा आफ्नै शब्दमा लेख्नुहोस् — म बुझ्छु।', 'कुछ भी अपने शब्दों में लिखिए — मैं समझ लेता हूँ।', 'Or just ask in your own words.');
         return ['text' => implode("\n", $lines), 'media' => null, 'ui' => null];
+    }
+
+    /** The company and its CEO: names, numbers, registration, head office with a map link. */
+    private static function companyInfo(string $lang): array
+    {
+        $c   = Settings::company();
+        $ceo = null;
+        foreach (Settings::nepalTeam() as $row) {
+            if ((string) $row['key'] === 'ceo') {
+                $ceo = $row;
+                break;
+            }
+        }
+        $ceoName  = trim((string) ($ceo['name'] ?? $c['operator']));
+        $ceoPhone = trim((string) ($ceo['phone'] ?? ''));
+        $ceoWa    = trim(Settings::getString('ceo_whatsapp', ''));
+        $lines = ['🏢 ' . $c['name'] . ' · ' . $c['legal'] . ($lang === 'ne' ? ' (' . $c['legalNe'] . ')' : '')];
+        $tag = trim(Settings::getString('company_tagline', ''));
+        if ($tag !== '') {
+            $lines[] = $tag;
+        }
+        $lines[] = '👤 ' . self::t($lang, 'CEO / सञ्चालक: ', 'CEO / संचालक: ', 'CEO / operator: ') . $ceoName
+                 . ($ceoPhone !== '' ? ' · ' . $ceoPhone : '') . ($ceoWa !== '' && $ceoWa !== $ceoPhone ? ' · WhatsApp ' . $ceoWa : '');
+        $lines[] = '📍 ' . self::t($lang, 'प्रधान कार्यालय: ', 'मुख्य कार्यालय: ', 'Head office: ') . ($lang === 'ne' ? $c['addressNe'] : $c['address']);
+        $lines[] = '🗺 ' . self::mapsSearch($c['address']);
+        $lines[] = '📞 ' . self::t($lang, 'अफिस: ', 'ऑफिस: ', 'Office: ') . $c['phone'] . ' · ✉️ ' . $c['email'] . ' · 🌐 https://' . $c['web'];
+        if ($c['cin'] !== '') {
+            $lines[] = 'CIN: ' . $c['cin'] . (trim(Settings::getString('company_gstin', '')) !== '' ? ' · GSTIN: ' . trim(Settings::getString('company_gstin', '')) : '');
+        }
+        $lines[] = self::t($lang, 'काउन्टर: ', 'काउंटर: ', 'Counters: ') . $c['counters'];
+        $social = [];
+        foreach (['company_facebook' => 'Facebook', 'company_instagram' => 'Instagram', 'company_youtube' => 'YouTube', 'company_tiktok' => 'TikTok', 'ceo_facebook' => 'CEO Facebook'] as $k => $label) {
+            $v = trim(Settings::getString($k, ''));
+            if ($v !== '') {
+                $social[] = $label . ': ' . $v;
+            }
+        }
+        if ($social !== []) {
+            $lines[] = implode(' · ', $social);
+        }
+        $np = array_values(array_filter(Settings::nepalTeam(), static fn(array $r): bool => (string) $r['key'] !== 'ceo'));
+        if ($np !== []) {
+            $lines[] = '🇳🇵 ' . implode(' · ', array_map(static fn(array $r): string => ($lang === 'ne' ? (string) $r['roleNe'] : (string) $r['role']) . ' ' . (string) $r['name'] . ' ' . (string) $r['phone'], array_slice($np, 0, 3)));
+        }
+        return ['text' => implode("\n", $lines), 'media' => null, 'ui' => null];
+    }
+
+    /** Where we are: head office, counters and every pickup with a Google Maps link. */
+    private static function officeMap(string $lang): array
+    {
+        $c = Settings::company();
+        $lines = ['📍 ' . self::t($lang, 'प्रधान कार्यालय', 'मुख्य कार्यालय', 'Head office') . ': ' . ($lang === 'ne' ? $c['addressNe'] : $c['address'])];
+        $lines[] = '🗺 ' . self::mapsSearch($c['address']) . ' · 📞 ' . $c['phone'];
+        // Counters (Settings counter_locations: CODE|Town — note, one per line).
+        $counters = [];
+        foreach (preg_split('/\r\n|\r|\n|\\\\n/', Settings::getString('counter_locations', '')) ?: [] as $line) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+            $parts = array_map('trim', explode('|', $line, 2));
+            $town  = $parts[1] ?? $parts[0];
+            if ($town !== '') {
+                $counters[] = $town;
+            }
+        }
+        if ($counters !== []) {
+            $lines[] = '';
+            $lines[] = self::t($lang, '🏪 काउन्टर:', '🏪 काउंटर:', '🏪 Counters:');
+            foreach ($counters as $town) {
+                $lines[] = '• ' . $town . ' · ' . self::mapsSearch($c['name'] . ' ' . preg_replace('/\s+[—-].*$/u', '', $town));
+            }
+            $lines[] = self::t($lang, 'नम्बर: ', 'नंबर: ', 'Numbers: ') . $c['counters'];
+        }
+        // Pickups with coordinates: a directions link each (same as the ticket's map QR).
+        $seen = [];
+        $pick = [];
+        foreach (Database::fetchAll(
+            "SELECT s.stop_name, s.landmark, s.stop_time, s.latitude, s.longitude FROM route_stops s JOIN routes r ON r.id = s.route_id
+              WHERE r.is_active = 1 AND s.stop_type = 'boarding' AND s.is_active = 1 AND s.latitude IS NOT NULL AND s.longitude IS NOT NULL
+              ORDER BY r.sort_order, s.sort_order, s.id") as $s) {
+            $k = Boarding::townKey((string) $s['stop_name']);
+            if ($k === '' || isset($seen[$k]) || (float) $s['latitude'] == 0.0) {
+                continue;
+            }
+            $seen[$k] = true;
+            $pick[] = '• ' . self::short((string) $s['stop_name']) . ((string) ($s['landmark'] ?? '') !== '' ? ' (' . $s['landmark'] . ')' : '')
+                    . ((string) ($s['stop_time'] ?? '') !== '' ? ' ' . self::clock((string) $s['stop_time']) : '')
+                    . ' · https://www.google.com/maps/dir/?api=1&destination=' . round((float) $s['latitude'], 6) . ',' . round((float) $s['longitude'], 6);
+        }
+        if ($pick !== []) {
+            $lines[] = '';
+            $lines[] = self::t($lang, '🚏 बस चढ्ने ठाउँ (नक्सा):', '🚏 बस चढ़ने की जगह (नक्शा):', '🚏 Pickup points (map):');
+            $lines = array_merge($lines, array_slice($pick, 0, 12));
+        }
+        $np = Settings::nepalTeam();
+        if ($np !== []) {
+            $lines[] = '';
+            $lines[] = '🇳🇵 ' . self::t($lang, 'नेपाल / रुपैडिहा: ', 'नेपाल / रुपैडिहा: ', 'Nepal / Rupaidiha: ')
+                     . implode(' · ', array_map(static fn(array $r): string => (string) $r['name'] . ' ' . (string) $r['phone'], array_slice($np, 0, 3)));
+        }
+        return ['text' => implode("\n", $lines), 'media' => null, 'ui' => null];
+    }
+
+    /**
+     * Agents: a code (SHG-0027) or a name names one agent — name, code,
+     * number, counter / town (owner: "agent ko naam, code, number share
+     * garna sakos"); "agent list" gives the office every active agent and
+     * a customer the public directory.
+     */
+    private static function agentInfo(array $who, string $lang, string $text): array
+    {
+        require_once INCLUDE_PATH . '/agentwallet.php';
+        $role    = (string) ($who['role'] ?? 'customer');
+        $isStaff = in_array($role, ['staff', 'admin'], true);
+        $office  = Settings::officePhone();
+        $t       = mb_strtolower($text);
+
+        $one = static function (array $a, bool $withPhone) use ($lang): string {
+            $code = AgentWallet::agentCodeLabel((int) $a['id']);
+            $area = trim((string) ($a['counter_name'] ?? ''));
+            $addr = trim((string) ($a['address'] ?? ''));
+            $ph   = trim((string) ($a['phone'] ?: ($a['display_phone'] ?? '')));
+            return '👤 ' . trim((string) $a['full_name']) . ($code !== '' ? ' · ' . $code : '')
+                 . ($withPhone && $ph !== '' ? ' · ' . $ph : '')
+                 . ($area !== '' ? ' · ' . $area : '') . ($addr !== '' && $withPhone ? "\n   " . $addr : '')
+                 . ((string) ($a['role'] ?? '') === 'counter' ? self::t($lang, ' (काउन्टर)', ' (काउंटर)', ' (counter)') : '');
+        };
+        $sql = "SELECT a.id, a.full_name, a.phone, a.role, p.display_phone, p.counter_name, p.address, p.public_listing, p.public_phone
+                  FROM admins a LEFT JOIN admin_profiles p ON p.admin_id = a.id
+                 WHERE a.role IN ('agent', 'counter') AND a.is_active = 1";
+
+        // A code in the message.
+        if (preg_match('/(?<![a-z\d])shg\s?-?\s?0*(\d{1,4})(?![\d-])/u', $t, $m) === 1) {
+            $adminId = AgentWallet::adminForAgentCode((int) $m[1]);
+            $a = $adminId !== null ? Database::fetch($sql . ' AND a.id = :i', ['i' => $adminId]) : null;
+            $label = 'SHG-' . str_pad($m[1], 4, '0', STR_PAD_LEFT);
+            if ($a === null) {
+                return ['text' => self::t($lang, $label . ' — यो code कुनै सक्रिय एजेन्टको छैन। अफिस: ' . $office,
+                    $label . ' — यह code किसी सक्रिय एजेंट का नहीं है। ऑफिस: ' . $office, $label . ' — no active agent holds this code. Office: ' . $office), 'media' => null, 'ui' => null];
+            }
+            return ['text' => $one($a, true) . "\n" . self::t($lang, 'टिकट बुक गर्दा यो code लेख्नुहोस् — एजेन्टको कमिसन मिल्छ।',
+                'टिकट बुक करते समय यह code लिखें — एजेंट को कमीशन मिलता है।', 'Give this code when you book — the agent is credited.'), 'media' => null, 'ui' => null];
+        }
+
+        // A name in the message (staff only: "agent dalbir ko number").
+        if ($isStaff) {
+            $words = array_values(array_filter(preg_split('/[^\p{L}]+/u', $t) ?: [], static fn(string $w): bool => mb_strlen($w) >= 3
+                && !in_array($w, ['agent', 'agents', 'code', 'number', 'list', 'naam', 'name', 'kun', 'kasko', 'the', 'phone', 'sabai', 'sab', 'all', 'dekhau', 'pathau'], true)));
+            foreach ($words as $w) {
+                $hits = Database::fetchAll($sql . ' AND (LOWER(a.full_name) LIKE :w OR LOWER(a.username) LIKE :w2 OR LOWER(p.counter_name) LIKE :w3) ORDER BY a.id LIMIT 5',
+                    ['w' => '%' . $w . '%', 'w2' => '%' . $w . '%', 'w3' => '%' . $w . '%']);
+                if ($hits !== []) {
+                    return ['text' => implode("\n", array_map(static fn(array $a): string => $one($a, true), $hits)), 'media' => null, 'ui' => null];
+                }
+            }
+            // The whole list for the office; an agent sees their own card + the office numbers.
+            if ($role === 'admin') {
+                $rows = Database::fetchAll($sql . ' ORDER BY a.full_name LIMIT 40');
+                $lines = ['👥 ' . self::t($lang, 'एजेन्ट / काउन्टर (' . count($rows) . ')', 'एजेंट / काउंटर (' . count($rows) . ')', 'Agents / counters (' . count($rows) . ')')];
+                foreach ($rows as $a) {
+                    $lines[] = $one($a, true);
+                }
+                $lines[] = appUrl('admin/agents.php');
+                return ['text' => implode("\n", $lines), 'media' => null, 'ui' => null];
+            }
+            $me = (int) ($who['adminId'] ?? 0) > 0 ? Database::fetch($sql . ' AND a.id = :i', ['i' => (int) $who['adminId']]) : null;
+            return ['text' => ($me !== null ? $one($me, true) . "\n" : '') . self::t($lang, 'अफिस: ', 'ऑफिस: ', 'Office: ') . $office, 'media' => null, 'ui' => null];
+        }
+
+        // A customer: the public directory (agents who opted in), else how to reach one.
+        require_once INCLUDE_PATH . '/agentapplications.php';
+        $dir = AgentApplications::directory();
+        $lines = [self::t($lang, '🤝 हाम्रा एजेन्ट / साझेदार:', '🤝 हमारे एजेंट / पार्टनर:', '🤝 Our agents / partners:')];
+        foreach (array_slice($dir, 0, 12) as $d) {
+            $lines[] = '• ' . (string) $d['name'] . ((string) $d['area'] !== '' ? ' · ' . $d['area'] : '') . ' · ' . (string) $d['phone'] . (!empty($d['verified']) ? ' ✅' : '');
+        }
+        if (count($lines) === 1) {
+            $lines[] = self::t($lang, 'एजेन्टको code (SHG-0027 जस्तो) पठाउनुहोस्, म उसको नाम र नम्बर दिन्छु।', 'एजेंट का code (जैसे SHG-0027) भेजिए, मैं नाम और नंबर दूँगा।', 'Send an agent code (like SHG-0027) and I will give the name and number.');
+        }
+        $lines[] = self::t($lang, 'एजेन्ट बन्न: https://' . Settings::getString('company_web', 'shreehariglobal.in') . '/agent-signup.php · अफिस: ' . $office,
+            'एजेंट बनने के लिए: https://' . Settings::getString('company_web', 'shreehariglobal.in') . '/agent-signup.php · ऑफिस: ' . $office,
+            'Become an agent: https://' . Settings::getString('company_web', 'shreehariglobal.in') . '/agent-signup.php · Office: ' . $office);
+        return ['text' => implode("\n", $lines), 'media' => null, 'ui' => null];
+    }
+
+    private static function mapsSearch(string $query): string
+    {
+        return 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode(trim(preg_replace('/\s+/u', ' ', $query) ?? $query));
     }
 
     /** Every pickup of every active bus with its time, and the arrival next day. */
@@ -854,14 +1079,20 @@ final class WaLocal
                 return $r !== null && QuickTicket::directionOf($r) === $dir;
             }));
         }
+        /* Owner 9 Oct 2026: "passenger list magda sara ticket hoina - chalani
+           pathaos". The office gets the bus chalani PICTURE (the same keyed
+           link WaTemplates' chalani message uses) with one count line per
+           bus; an agent (own book only) gets their own names in words. */
         $lines = ['👥 ' . self::t($lang, 'यात्रु ' . formatDate($date, 'D, j M'), 'यात्री ' . formatDate($date, 'D, j M'), 'Passengers ' . formatDate($date, 'D, j M'))];
+        $media = null;
         $shown = 0;
-        $limit = 30;
         foreach ($scheds as $s) {
-            $args = ['s' => (int) $s['id']];
+            $sid  = (int) $s['id'];
+            $args = ['s' => $sid];
             $sql  = "SELECT b.pnr, b.contact_phone, bl.boarding_stop,
                             GROUP_CONCAT(bp.full_name ORDER BY bp.id SEPARATOR ', ') names,
-                            GROUP_CONCAT(bp.seat_no ORDER BY bp.seat_no SEPARATOR ', ') seats
+                            GROUP_CONCAT(bp.seat_no ORDER BY bp.seat_no SEPARATOR ', ') seats,
+                            COUNT(bp.id) pax
                        FROM booking_legs bl JOIN bookings b ON b.id = bl.booking_id
                        JOIN booking_passengers bp ON bp.booking_id = b.id AND bp.leg_id = bl.id
                       WHERE bl.schedule_id = :s AND b.status IN ('confirmed','completed')";
@@ -871,11 +1102,27 @@ final class WaLocal
             }
             $sql .= ' GROUP BY b.id, b.pnr, b.contact_phone, bl.boarding_stop ORDER BY bl.boarding_time, b.id';
             $rows = Database::fetchAll($sql, $args);
-            $lines[] = '';
-            $lines[] = '🚌 ' . trim((string) $s['from_city']) . ' → ' . trim((string) $s['to_city']) . ' ' . self::clock((string) $s['dep_time']) . ' — ' . count($rows)
-                     . self::t($lang, ' बुकिङ', ' बुकिंग', ' bookings');
+            $pax  = array_sum(array_map(static fn(array $r): int => (int) $r['pax'], $rows));
+            $lines[] = '🚌 ' . trim((string) $s['from_city']) . ' → ' . trim((string) $s['to_city']) . ' ' . self::clock((string) $s['dep_time']) . ': '
+                     . self::t($lang, $pax . ' यात्रु · ' . count($rows) . ' बुकिङ', $pax . ' यात्री · ' . count($rows) . ' बुकिंग', $pax . ' passengers · ' . count($rows) . ' bookings');
+            if ($scope === null) {
+                // The office: the chalani picture of the first bus asked for, keyed links for the rest.
+                $exp = time() + 2 * 86400;
+                $url = appUrl('download-chalan.php?' . http_build_query([
+                    'sid' => $sid, 'doc' => 'chalani', 'page' => 1, 'exp' => $exp,
+                    'k' => substr(Security::sign('chalan-dl|' . $sid . '|chalani|1|' . $exp), 0, 20),
+                ]));
+                if ($media === null && $pax > 0) {
+                    $media = $url;
+                    $lines[] = '   ' . self::t($lang, '📄 चलानी माथि (फोटो)', '📄 चलानी ऊपर (फोटो)', '📄 chalani above (picture)');
+                } else {
+                    $lines[] = '   📄 ' . $url;
+                }
+                continue;
+            }
             foreach ($rows as $r) {
-                if ($shown >= $limit) {
+                if ($shown >= 30) {
+                    $lines[] = self::t($lang, '… बाँकी manifest मा', '… बाकी manifest में', '… more in the manifest');
                     break;
                 }
                 $shown++;
@@ -884,15 +1131,12 @@ final class WaLocal
                          . ((string) $r['contact_phone'] !== '' && !isPlaceholderPhone((string) $r['contact_phone']) ? ' · ' . (string) $r['contact_phone'] : '')
                          . ' · ' . substr((string) $r['pnr'], -5);
             }
-            if ($shown >= $limit && count($rows) > 0) {
-                $lines[] = self::t($lang, '… बाँकी manifest मा', '… बाकी manifest में', '… more in the manifest');
-            }
         }
         if ($scheds === []) {
             $lines[] = self::t($lang, 'यो मितिको बस छैन।', 'इस तारीख की बस नहीं।', 'No bus on that date.');
         }
-        $lines[] = '📄 ' . appUrl('admin/manifest.php?date=' . $date);
-        return ['text' => implode("\n", $lines), 'media' => null, 'ui' => null];
+        $lines[] = '🔗 ' . appUrl('admin/manifest.php?date=' . $date);
+        return ['text' => implode("\n", $lines), 'media' => $media, 'ui' => null];
     }
 
     /** Office: payments waiting to be verified. */
