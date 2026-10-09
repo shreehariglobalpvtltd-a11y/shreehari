@@ -600,3 +600,271 @@ html[data-motion="reduced"].sc-io #homeCeo .sc-ceo.sc-reveal:not(.sc-in) .sc-ceo
   html.sc-io .sc-reveal:not(.sc-in), html.sc-io #homeFeat.sc-stagger:not(.sc-in) .sc-perks > li,
   html.sc-io #homeCeo .sc-ceo.sc-reveal:not(.sc-in) .sc-ceo-photo { opacity: 1 !important; transform: none !important; }
 }
+
+/* =====================================================================
+   16. GOLD TICKET 9 Oct 2026 — the on-screen ticket (#ticketCard.tk2-gold,
+   07-checkout.js renderStatus). Owner: modern, golden, the logo on a seal,
+   mantra on top, "शुभ यात्रा" near the bottom, a payment QR always beside
+   the verify QR. The ticket keeps its own ivory + gold identity in light,
+   dark, AMOLED and every palette: the design tokens are re-set on the card
+   itself, so every token-driven rule inside it (redesign.css, depth.css
+   dark rules) paints on ivory. Only its outer glow follows the theme.
+   Palette: NAVY #0E1E3F, ROYAL #1B3A7A, MAROON #7A1E2C, GOLD_DEEP #8A6A1F,
+   GOLD #C9A227, GOLD_LIGHT #F3DE8A, CREAM #FFF8E7, INK #1A1A2E.
+   Selectors start "html #ticketCard.tk2-gold" so they outrank the older
+   class-only !important ticket rules in depth.css (which loads after this).
+   ===================================================================== */
+#statusBody { --tkg-hole: var(--page, #F4F6FB); }
+html #ticketCard.tk2-gold {
+  --tkg-foil: linear-gradient(135deg, #8A6A1F 0%, #F3DE8A 28%, #C9A227 52%, #F3DE8A 76%, #8A6A1F 100%);
+  --ink: #1A1A2E; --ink-2: #2E2A3A; --muted: #6B5E45; --page: #FFF8E7; --card: #FFFDF7;
+  --surface: #FFFDF7; --surface-sunken: #FBF4E2; --surface-hover: #F7EDD2;
+  --line: #E9DDB6; --line-strong: #DCCB94; --line-control: #9C8A5A;
+  --navy: #0E1E3F; --on-navy: #FFFFFF; --royal: #1B3A7A; --royal-strong: #0E1E3F; --royal-soft: #DDE4F3; --royal-tint: #F3F5FA; --on-royal: #FFFFFF;
+  --success: #11703F; --success-soft: #E4F6EC; --warning: #8A5A00; --warning-soft: #FFF4D6; --danger: #B42525; --danger-soft: #FBE3E3; --focus: #1B3A7A;
+  --dp-face: none; --dp-border: rgba(201, 162, 39, .6); --dp-rim-top: rgba(201, 162, 39, .6); --dp-rim-left: rgba(201, 162, 39, .6);
+  --dp-btn-face: linear-gradient(180deg, #FFFFFF 0%, #FBF3DE 100%); --dp-btn-border: #D9C489;
+  --dp-btn: inset 0 1px 0 #FFFFFF, 0 2px 0 #E2D2A0, 0 4px 0 #CDB676, 0 9px 12px -5px rgba(138, 106, 31, .35);
+  --dp-field-bg: #FFFBF0; --dp-field: inset 0 2px 5px rgba(138, 106, 31, .14), 0 1px 0 #FFFFFF;
+  --dp-act-face: linear-gradient(180deg, #2C5199 0%, #1B3A7A 58%, #15326C 100%); --dp-act-ink: #FFFFFF; --dp-act-rim: #3F66B0;
+  --dp-act: inset 0 1px 0 rgba(255, 255, 255, .35), inset 0 -2px 0 rgba(0, 0, 0, .2), 0 2px 0 #0E1E3F, 0 4px 0 #0B1834, 0 6px 0 #08122A, 0 13px 18px -5px rgba(14, 30, 63, .55);
+  --dp-act-pressed: inset 0 1px 0 rgba(255, 255, 255, .22), inset 0 3px 7px rgba(0, 0, 0, .35), 0 1px 0 #0E1E3F, 0 3px 0 #08122A, 0 5px 8px -3px rgba(14, 30, 63, .45);
+  color-scheme: light;
+  position: relative;
+  color: #1A1A2E !important;
+  border: 1.5px solid transparent !important;
+  border-radius: 20px !important;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Cg fill='none' stroke='%23B8921E' stroke-opacity='.2'%3E%3Ccircle cx='100' cy='100' r='97'/%3E%3Ccircle cx='100' cy='100' r='91' stroke-dasharray='2 3'/%3E%3Ccircle cx='100' cy='100' r='64'/%3E%3Ccircle cx='100' cy='100' r='34'/%3E%3Ccircle cx='100' cy='100' r='12'/%3E%3Cg id='p'%3E%3Cellipse cx='100' cy='44' rx='11' ry='27'/%3E%3Cellipse cx='100' cy='17' rx='5' ry='11'/%3E%3Cellipse cx='100' cy='77' rx='5' ry='12'/%3E%3C/g%3E%3Cuse href='%23p' transform='rotate(30 100 100)'/%3E%3Cuse href='%23p' transform='rotate(60 100 100)'/%3E%3Cuse href='%23p' transform='rotate(90 100 100)'/%3E%3Cuse href='%23p' transform='rotate(120 100 100)'/%3E%3Cuse href='%23p' transform='rotate(150 100 100)'/%3E%3Cuse href='%23p' transform='rotate(180 100 100)'/%3E%3Cuse href='%23p' transform='rotate(210 100 100)'/%3E%3Cuse href='%23p' transform='rotate(240 100 100)'/%3E%3Cuse href='%23p' transform='rotate(270 100 100)'/%3E%3Cuse href='%23p' transform='rotate(300 100 100)'/%3E%3Cuse href='%23p' transform='rotate(330 100 100)'/%3E%3C/g%3E%3C/svg%3E") center 640px / 360px 360px no-repeat padding-box,
+    repeating-radial-gradient(circle at 50% 115%, rgba(201, 162, 39, .07) 0 1px, transparent 1px 8px) padding-box,
+    repeating-linear-gradient(45deg, rgba(138, 106, 31, .03) 0 1px, transparent 1px 10px) padding-box,
+    linear-gradient(180deg, #FFFDF7 0%, #FFF8E7 55%, #FDF1D6 100%) padding-box,
+    var(--tkg-foil) border-box !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, .9) inset,
+    0 2px 4px rgba(14, 30, 63, .08), 0 10px 22px -8px rgba(14, 30, 63, .22),
+    0 32px 60px -24px rgba(122, 30, 44, .32) !important;
+}
+/* four gold corner flourishes, over everything, never in the way of a tap */
+html #ticketCard.tk2-gold::before {
+  content: ""; position: absolute; inset: 5px; z-index: 5; pointer-events: none;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%23D9B64A' stroke-linecap='round'%3E%3Cpath d='M3 61V14Q3 3 14 3H61' stroke-width='2.4'/%3E%3Cpath d='M9 46V18Q9 9 18 9H46' stroke-width='1'/%3E%3Cpath d='M15 30Q15 15 30 15' stroke-width='1.2'/%3E%3C/g%3E%3Ccircle cx='15' cy='15' r='3.2' fill='%23F3DE8A' stroke='%238A6A1F'/%3E%3C/svg%3E") left top / 40px 40px no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cg transform='translate(64 0) scale(-1 1)'%3E%3Cg fill='none' stroke='%23D9B64A' stroke-linecap='round'%3E%3Cpath d='M3 61V14Q3 3 14 3H61' stroke-width='2.4'/%3E%3Cpath d='M9 46V18Q9 9 18 9H46' stroke-width='1'/%3E%3Cpath d='M15 30Q15 15 30 15' stroke-width='1.2'/%3E%3C/g%3E%3Ccircle cx='15' cy='15' r='3.2' fill='%23F3DE8A' stroke='%238A6A1F'/%3E%3C/g%3E%3C/svg%3E") right top / 40px 40px no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cg transform='translate(0 64) scale(1 -1)'%3E%3Cg fill='none' stroke='%23D9B64A' stroke-linecap='round'%3E%3Cpath d='M3 61V14Q3 3 14 3H61' stroke-width='2.4'/%3E%3Cpath d='M9 46V18Q9 9 18 9H46' stroke-width='1'/%3E%3Cpath d='M15 30Q15 15 30 15' stroke-width='1.2'/%3E%3C/g%3E%3Ccircle cx='15' cy='15' r='3.2' fill='%23F3DE8A' stroke='%238A6A1F'/%3E%3C/g%3E%3C/svg%3E") left bottom / 40px 40px no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cg transform='translate(64 64) scale(-1 -1)'%3E%3Cg fill='none' stroke='%23D9B64A' stroke-linecap='round'%3E%3Cpath d='M3 61V14Q3 3 14 3H61' stroke-width='2.4'/%3E%3Cpath d='M9 46V18Q9 9 18 9H46' stroke-width='1'/%3E%3Cpath d='M15 30Q15 15 30 15' stroke-width='1.2'/%3E%3C/g%3E%3Ccircle cx='15' cy='15' r='3.2' fill='%23F3DE8A' stroke='%238A6A1F'/%3E%3C/g%3E%3C/svg%3E") right bottom / 40px 40px no-repeat;
+}
+
+/* ---- mantra strip (top) ---- */
+html #ticketCard.tk2-gold .tkg-mantra {
+  margin: 0; padding: 8px 46px 7px; text-align: center;
+  font: 700 13px/1.5 var(--font-sans); letter-spacing: .02em; color: #F3DE8A;
+  background: linear-gradient(90deg, #4E111B 0%, #7A1E2C 22%, #8E2635 50%, #7A1E2C 78%, #4E111B 100%);
+  border-bottom: 1px solid #C9A227; text-shadow: 0 1px 0 rgba(0, 0, 0, .45);
+  overflow-wrap: anywhere;
+}
+html #ticketCard.tk2-gold .tkg-mantra span { color: #C9A227; font-size: 11px; }
+
+/* ---- header: navy -> royal, gold-foil double rule, the emblem on a seal ---- */
+html #ticketCard.tk2-gold .tk2-head {
+  background:
+    radial-gradient(110% 140% at 0% 0%, rgba(243, 222, 138, .20) 0%, rgba(243, 222, 138, 0) 55%),
+    linear-gradient(118deg, #0E1E3F 0%, #13295A 46%, #1B3A7A 100%) !important;
+  border-bottom: 0 !important;
+  box-shadow: inset 0 -2px 0 #C9A227, inset 0 -4px 0 #0E1E3F, inset 0 -5px 0 #F3DE8A, inset 0 -7px 0 #8A6A1F !important;
+  padding-bottom: 12px !important; overflow: hidden;
+}
+html #ticketCard.tk2-gold .tk2-head .tk2-brand > img {
+  width: 104px !important; height: 66px !important; flex: none; box-sizing: border-box;
+  padding: 7px 12px !important; object-fit: contain; border-radius: 999px !important;
+  background: radial-gradient(circle at 35% 28%, #FFFFFF 0%, #FFF8E7 40%, #F6E7B0 78%, #E9CF77 100%) !important;
+  box-shadow:
+    0 0 0 2px #C9A227, 0 0 0 4px #0E1E3F, 0 0 0 5.5px #F3DE8A, 0 0 0 6.5px #8A6A1F,
+    0 8px 16px rgba(0, 0, 0, .5),
+    inset 0 2px 3px rgba(255, 255, 255, .95), inset 0 -4px 7px rgba(138, 106, 31, .45) !important;
+  filter: none !important;
+}
+html #ticketCard.tk2-gold .tk2-head .tk2-brand b {
+  background: linear-gradient(180deg, #FFF6CF 0%, #F3DE8A 38%, #C9A227 72%, #E8CB6A 100%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  color: #F3DE8A !important; letter-spacing: .02em; filter: drop-shadow(0 1px 0 rgba(0, 0, 0, .55));
+}
+html #ticketCard.tk2-gold .tk2-head .tk2-brand small { color: #E9DFC2 !important; }
+html #ticketCard.tk2-gold .tk2-head .tk2-brand em { color: #F3DE8A !important; }
+html #ticketCard.tk2-gold .premium-ticket-bus { opacity: .92; }
+/* one slow gold sheen across the header (stills for reduced motion, below) */
+html #ticketCard.tk2-gold .tk2-head::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 34%; pointer-events: none;
+  background: linear-gradient(100deg, rgba(255, 240, 190, 0) 0%, rgba(255, 240, 190, .20) 50%, rgba(255, 240, 190, 0) 100%);
+  transform: translateX(-110%); animation: tkgSheen 7s ease-in-out 1.2s infinite;
+}
+@keyframes tkgSheen { 0% { transform: translateX(-110%); } 55%, 100% { transform: translateX(330%); } }
+
+/* ---- status row, route map, hero ---- */
+html #ticketCard.tk2-gold .premium-ticket-status {
+  background: linear-gradient(180deg, rgba(243, 222, 138, .30) 0%, rgba(255, 248, 231, 0) 100%) !important;
+  border-bottom: 1px solid rgba(201, 162, 39, .45); color: #1A1A2E !important;
+}
+html #ticketCard.tk2-gold .premium-ticket-status > span:not(.tk2-pill) { color: #8A6A1F; font-family: var(--font-mono); font-weight: 700; }
+html #ticketCard.tk2-gold .rov-3d, html #ticketCard.tk2-gold .rov-svg { box-shadow: 0 0 0 1px rgba(201, 162, 39, .7), 0 0 0 4px rgba(255, 248, 231, .9), 0 0 0 5px rgba(138, 106, 31, .45), 0 10px 20px -10px rgba(14, 30, 63, .45); }
+html #ticketCard.tk2-gold .tk2-hero { background: transparent !important; color: #1A1A2E !important; }
+html #ticketCard.tk2-gold .tk2-pnr { color: #0E1E3F !important; }
+html #ticketCard.tk2-gold .tk2-pnr > span { font-family: var(--font-mono); background: linear-gradient(transparent 62%, rgba(243, 222, 138, .7) 62%); padding: 0 2px; }
+html #ticketCard.tk2-gold .tk2-pnr small, html #ticketCard.tk2-gold .tk2-city span, html #ticketCard.tk2-gold .tk2-city small { color: #5B4E33 !important; }
+html #ticketCard.tk2-gold .tk2-route {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .85) 0%, rgba(255, 248, 231, .85) 100%) !important;
+  border: 1px solid rgba(201, 162, 39, .6) !important;
+  box-shadow: inset 0 1px 0 #FFFFFF, 0 1px 0 rgba(138, 106, 31, .18), 0 12px 22px -14px rgba(122, 30, 44, .45) !important;
+}
+html #ticketCard.tk2-gold .tk2-city b { color: #0E1E3F !important; }
+html #ticketCard.tk2-gold .tk2-arrow { color: #7A1E2C !important; }
+html #ticketCard.tk2-gold .tk2-arrow i { border-color: #C9A227 !important; }
+html #ticketCard.tk2-gold .tk2-date { color: #1A1A2E !important; }
+
+/* ---- the four essentials (full width: the QRs moved to the stub) ---- */
+html #ticketCard.tk2-gold .tk2-ess { display: block !important; padding: 14px 16px 4px !important; }
+html #ticketCard.tk2-gold .tk2-ess > .tk2-tiles { width: 100%; background: transparent !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; }
+html #ticketCard.tk2-gold .tk2-tile {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .88) 0%, rgba(255, 250, 236, .88) 100%) !important;
+  border: 1px solid rgba(201, 162, 39, .5) !important;
+  box-shadow: inset 0 1px 0 #FFFFFF, 0 1px 2px rgba(14, 30, 63, .06), 0 8px 16px -10px rgba(138, 106, 31, .45) !important;
+}
+html #ticketCard.tk2-gold .tk2-tile small { color: #7A1E2C !important; font-weight: 700; letter-spacing: .02em; }
+html #ticketCard.tk2-gold .tk2-tile b { color: #0E1E3F !important; }
+html #ticketCard.tk2-gold .tk2-tile em { color: #6B5E45 !important; }
+
+/* ---- fare: navy plaque in a gold frame, the amount in gold foil ---- */
+html #ticketCard.tk2-gold .tk2-fare {
+  background:
+    radial-gradient(120% 160% at 100% 0%, rgba(243, 222, 138, .22) 0%, rgba(243, 222, 138, 0) 50%),
+    linear-gradient(120deg, #0E1E3F 0%, #1B3A7A 100%) !important;
+  border: 1px solid #C9A227 !important;
+  box-shadow: inset 0 0 0 3px #0E1E3F, inset 0 0 0 4px rgba(243, 222, 138, .65), 0 14px 26px -12px rgba(14, 30, 63, .65) !important;
+}
+html #ticketCard.tk2-gold .tk2-fare .amt {
+  background: linear-gradient(180deg, #FFF6CF 0%, #F3DE8A 40%, #C9A227 80%); -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: #F3DE8A !important; filter: drop-shadow(0 2px 0 rgba(0, 0, 0, .45));
+}
+html #ticketCard.tk2-gold .tk2-fare .lbl, html #ticketCard.tk2-gold .tk2-fare .sub { color: #E9DFC2 !important; }
+
+/* ---- passengers + payment state: gold hairlines ---- */
+html #ticketCard.tk2-gold .pax-table th { background: rgba(243, 222, 138, .38) !important; color: #7A1E2C !important; }
+html #ticketCard.tk2-gold .pax-table td { border-color: rgba(201, 162, 39, .35) !important; color: #1A1A2E; }
+html #ticketCard.tk2-gold .pax-table td:first-child { color: #1B3A7A !important; font-weight: 700; }
+html #ticketCard.tk2-gold .premium-payment-state {
+  background: rgba(255, 255, 255, .75) !important; color: #1A1A2E !important;
+  border: 1px solid rgba(201, 162, 39, .55) !important; border-left: 4px solid #C9A227 !important;
+}
+html #ticketCard.tk2-gold .premium-payment-state.paid { border-left-color: #11703F !important; }
+html #ticketCard.tk2-gold .premium-payment-state.paid b { color: #11703F !important; }
+
+/* ---- perforated tear line + the QR stub (verify + pay, side by side) ---- */
+html #ticketCard.tk2-gold .tkg-perf {
+  position: relative; height: 28px; margin: 16px 0 2px;
+  background: linear-gradient(90deg, rgba(138, 106, 31, .6) 50%, rgba(138, 106, 31, 0) 50%) center / 12px 1.5px repeat-x;
+}
+html #ticketCard.tk2-gold .tkg-perf::before, html #ticketCard.tk2-gold .tkg-perf::after {
+  content: ""; position: absolute; top: 50%; width: 28px; height: 28px; margin-top: -14px; border-radius: 50%;
+  background: var(--tkg-hole, #F4F6FB);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, .28), inset 0 0 0 1.5px rgba(201, 162, 39, .75);
+}
+html #ticketCard.tk2-gold .tkg-perf::before { left: -15px; }
+html #ticketCard.tk2-gold .tkg-perf::after { right: -15px; }
+html #ticketCard.tk2-gold .tkg-stub { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 8px 16px 18px; }
+html #ticketCard.tk2-gold .tkg-stub.solo { grid-template-columns: minmax(0, 230px); justify-content: center; }
+html #ticketCard.tk2-gold .tkg-qr {
+  position: relative; margin: 0; min-width: 0; display: flex; flex-direction: column; align-items: center; text-align: center;
+  padding: 14px 10px 12px; border-radius: 16px;
+  background: linear-gradient(180deg, #FFFFFF 0%, #FFF8E7 100%) padding-box, var(--tkg-foil) border-box;
+  border: 1.5px solid transparent;
+  box-shadow: inset 0 1px 0 #FFFFFF, 0 2px 0 rgba(138, 106, 31, .18), 0 14px 24px -14px rgba(14, 30, 63, .5);
+}
+html #ticketCard.tk2-gold .tkg-qr-frame {
+  display: flex; align-items: center; justify-content: center; position: relative;
+  width: 100% !important; max-width: 150px; aspect-ratio: 1 / 1; margin: 2px auto 12px; padding: 8px !important;
+  box-sizing: border-box; background: #FFFFFF !important; border: 0 !important; border-radius: 10px !important;
+  box-shadow: 0 0 0 1.5px #C9A227, 0 0 0 4px #FFF8E7, 0 0 0 5px rgba(138, 106, 31, .55), 0 6px 12px -6px rgba(14, 30, 63, .4) !important;
+  text-decoration: none; -webkit-tap-highlight-color: transparent;
+}
+html #ticketCard.tk2-gold .tkg-qr-frame img { width: 100% !important; height: auto !important; display: block; border-radius: 4px; }
+html #ticketCard.tk2-gold .tkg-qr-ph { font: 800 22px/1 var(--font-mono); color: rgba(138, 106, 31, .35); letter-spacing: .1em; }
+html #ticketCard.tk2-gold .tkg-qr figcaption { display: grid; gap: 3px; min-width: 0; }
+html #ticketCard.tk2-gold .tkg-qr figcaption b { font: 800 13.5px/1.3 var(--font-sans); color: #0E1E3F; overflow-wrap: anywhere; }
+html #ticketCard.tk2-gold .tkg-qr figcaption small { display: block; font: 600 12px/1.35 var(--font-sans); color: #6B5E45; overflow-wrap: anywhere; }
+html #ticketCard.tk2-gold .tkg-qr-pay.is-due figcaption b { color: #7A1E2C; }
+html #ticketCard.tk2-gold .tkg-qr-pay.is-office figcaption b { color: #11703F; }
+html #ticketCard.tk2-gold .tkg-paid {
+  position: absolute; top: -11px; right: -6px; z-index: 2; padding: 5px 11px; border-radius: 999px;
+  font: 800 12px/1.2 var(--font-sans); letter-spacing: .03em; color: #0E1E3F; white-space: nowrap;
+  background: linear-gradient(135deg, #B8921E 0%, #F3DE8A 45%, #C9A227 100%);
+  box-shadow: 0 0 0 1.5px #FFF8E7, 0 0 0 2.5px #8A6A1F, 0 6px 12px -2px rgba(138, 106, 31, .55);
+  transform: rotate(7deg);
+}
+/* the pay card keeps its button + amount; its QR is the stub's now */
+html #ticketCard.tk2-gold #premiumPayQr { display: none !important; }
+html #ticketCard.tk2-gold .premium-pay-card { background: rgba(255, 255, 255, .8) !important; border: 1px solid rgba(201, 162, 39, .55) !important; border-top: 4px solid #7A1E2C !important; color: #1A1A2E !important; }
+
+/* ---- footer: barcode, blessing, support band ---- */
+html #ticketCard.tk2-gold .tk2-foot { background: transparent !important; border-top: 1px solid rgba(201, 162, 39, .45); }
+html #ticketCard.tk2-gold .tk2-thanks { color: #7A1E2C !important; font-weight: 700; }
+html #ticketCard.tk2-gold .tkg-bless {
+  display: flex; align-items: center; justify-content: center; gap: 10px; padding: 8px 16px 16px;
+  font: 800 15px/1.45 var(--font-sans); color: #7A1E2C; text-align: center;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .8);
+}
+html #ticketCard.tk2-gold .tkg-bless span { min-width: 0; overflow-wrap: anywhere; }
+html #ticketCard.tk2-gold .tkg-bless i {
+  flex: 1 1 0; max-width: 64px; min-width: 18px; height: 8px;
+  background: radial-gradient(circle, #C9A227 0 2.6px, rgba(201, 162, 39, 0) 3px) right center / 8px 8px no-repeat,
+              linear-gradient(90deg, rgba(201, 162, 39, 0), #C9A227) left center / calc(100% - 10px) 1.5px no-repeat;
+}
+html #ticketCard.tk2-gold .tkg-bless i:last-child { transform: scaleX(-1); }
+html #ticketCard.tk2-gold .premium-ticket-support {
+  background: linear-gradient(118deg, #0E1E3F 0%, #1B3A7A 100%) !important; color: #E9DFC2 !important;
+  border-top: 2px solid #C9A227; box-shadow: inset 0 1px 0 #F3DE8A; padding-bottom: 20px !important;
+}
+html #ticketCard.tk2-gold .premium-ticket-support b { color: #F3DE8A !important; }
+html #ticketCard.tk2-gold .premium-ticket-support a { color: #FFFFFF !important; }
+html #ticketCard.tk2-gold .tk2-more summary { color: #1B3A7A !important; }
+
+/* ---- dark + AMOLED: the ticket stays ivory; only its edge glows ---- */
+html[data-theme="dark"] #ticketCard.tk2-gold {
+  box-shadow: 0 0 0 1px rgba(243, 222, 138, .28), 0 0 34px -6px rgba(201, 162, 39, .40), 0 26px 50px -14px rgba(0, 0, 0, .85) !important;
+}
+html[data-display="amoled"] #ticketCard.tk2-gold {
+  box-shadow: 0 0 0 1px rgba(243, 222, 138, .40), 0 0 42px -4px rgba(201, 162, 39, .50), 0 26px 50px -14px rgba(0, 0, 0, 1) !important;
+}
+
+/* ---- phones 360-420 ---- */
+@media (max-width: 600px) {
+  html #ticketCard.tk2-gold .tk2-head .tk2-brand > img { width: 78px !important; height: 50px !important; padding: 5px 8px !important; }
+  html #ticketCard.tk2-gold .tk2-head { gap: 8px !important; }
+  html #ticketCard.tk2-gold .premium-ticket-bus { width: 92px !important; }
+  html #ticketCard.tk2-gold .tk2-head .tk2-brand b { font-size: 14px !important; line-height: 1.3 !important; }
+  html #ticketCard.tk2-gold .tkg-mantra { font-size: 12.5px; padding: 8px 40px 7px; }
+  html #ticketCard.tk2-gold .tkg-stub { gap: 10px; padding: 8px 12px 16px; }
+  html #ticketCard.tk2-gold .tkg-qr { padding: 12px 8px 10px; }
+  html #ticketCard.tk2-gold .tkg-qr-frame { max-width: 132px; padding: 6px !important; }
+  html #ticketCard.tk2-gold .tkg-bless { font-size: 14px; gap: 8px; }
+  html #ticketCard.tk2-gold::before { background-size: 32px 32px, 32px 32px, 32px 32px, 32px 32px; }
+}
+@media (min-width: 900px) {
+  html #ticketCard.tk2-gold .tkg-qr-frame { max-width: 170px; }
+}
+
+/* ---- motion / forced colours / print ---- */
+@media (prefers-reduced-motion: reduce) {
+  html #ticketCard.tk2-gold .tk2-head::after { animation: none !important; opacity: 0; }
+}
+html[data-motion="reduced"] #ticketCard.tk2-gold .tk2-head::after { animation: none !important; opacity: 0; }
+@media (forced-colors: active) {
+  html #ticketCard.tk2-gold::before, html #ticketCard.tk2-gold .tk2-head::after { display: none; }
+  html #ticketCard.tk2-gold .tkg-qr { border: 1px solid CanvasText; }
+}
+@media print {
+  html #ticketCard.tk2-gold { background: #FFFFFF !important; border: 1.5px solid #C9A227 !important; }
+  html #ticketCard.tk2-gold .tk2-head::after, html #ticketCard.tk2-gold .tkg-perf::before, html #ticketCard.tk2-gold .tkg-perf::after { display: none !important; }
+  html #ticketCard.tk2-gold .tkg-mantra, html #ticketCard.tk2-gold .tk2-head, html #ticketCard.tk2-gold .tk2-fare,
+  html #ticketCard.tk2-gold .premium-ticket-support, html #ticketCard.tk2-gold .tkg-paid { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  html #ticketCard.tk2-gold .tkg-stub { break-inside: avoid; }
+}

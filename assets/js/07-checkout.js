@@ -2438,6 +2438,67 @@ const TkLive = (function () {
 })();
 window.TkLive = TkLive;
 
+/* ---- GOLD TICKET (9 Oct 2026, owner) ------------------------------------
+   Every ticket carries a PAYMENT QR beside the verify QR, a mantra line on
+   top and a blessing near the bottom. One rule, shared with the client PDF
+   (11-pdf-ticket.js), so the screen and the paper never disagree:
+     • money still owed (INR, UPI set up)  -> UPI link WITH the amount
+     • nothing owed / no amount to collect -> the company UPI, no amount
+       (+ a gold "PAID" badge once the ticket really is paid)
+     • no UPI configured, or a non-INR balance -> the office WhatsApp
+       ("Pay via office"); a phone call when there is no WhatsApp either.
+   Display only: the money is the server's (paidAmount = verified payments),
+   read the same way as fbPayBand() - confirmed + unknown + not cash = paid. */
+function tkGoldPay(b) {
+  const st = (typeof S === 'function') ? S() : {};
+  const enc = encodeURIComponent;
+  const cur = (b && b.currency) || 'INR';
+  const known = typeof b.paidAmount === 'number';
+  const isCod = !!(b.codFlag || (b.payment && b.payment.method === 'cod'));
+  const total = Math.max(0, Number(b.total || 0));
+  const open = b.status === 'confirmed' || b.status === 'pending';
+  let due = known ? Math.max(0, total - Math.max(0, Number(b.paidAmount || 0)))
+    : ((b.status === 'confirmed' && !isCod) ? 0 : total);
+  if (!open) due = 0;                         // cancelled / expired / rejected: nothing to collect here
+  const paid = due <= 0 && (b.status === 'confirmed' || b.status === 'completed' || (b.status === 'expired' && known && total > 0 && Number(b.paidAmount) >= total));
+  const upi = String(st.upiId || '').trim();
+  const name = String(st.upiName || '');
+  const biz = String(st.adminWhatsApp || (typeof CONFIG !== 'undefined' && CONFIG.adminWhatsApp) || '').replace(/\D/g, '');
+  if (due > 0 && upi && cur === 'INR') {
+    return { kind: 'due', due: due, paid: false, upi: upi, name: name,
+      url: 'upi://pay?pa=' + enc(upi) + '&pn=' + enc(name) + '&am=' + due.toFixed(2) + '&cu=INR&tn=' + enc(b.id) };
+  }
+  if (due <= 0 && upi) {
+    return { kind: 'upi', due: 0, paid: paid, upi: upi, name: name,
+      url: 'upi://pay?pa=' + enc(upi) + '&pn=' + enc(name) + '&cu=INR' };
+  }
+  const tel = String(st.phone || '').replace(/[^\d+]/g, '');
+  return { kind: 'office', due: due, paid: paid, upi: '', name: name,
+    url: biz ? 'https://wa.me/' + biz + '?text=' + enc('Payment for booking ' + b.id + (due > 0 ? ' - ' + cur + ' ' + due : ''))
+      : (tel ? 'tel:' + tel : 'https://' + location.host + '/#/ticket/' + enc(b.id)) };
+}
+/* The mantra line: the office's own wording when the server ever sends one
+   (doc_mantra_line), else the i18n default (same Devanagari in every language). */
+function tkMantraLine() {
+  try { if (typeof fact === 'function') { const f = fact('doc.mantra_line', '') || fact('doc_mantra_line', ''); if (f) return String(f); } } catch (e) {}
+  try {
+    const s = (window.SHG_BOOT && SHG_BOOT.settings && SHG_BOOT.settings.doc_mantra_line) || (DB.settings && DB.settings.doc_mantra_line);
+    if (s) return String(s);
+  } catch (e) {}
+  return t('tkMantra');
+}
+/* The pay half of the gold QR stub (the verify half is #tkQrBox). */
+function tkGoldPayFigure(b, gp, money) {
+  const cap = gp.kind === 'due' ? tf('tkgPayDue', { a: money(gp.due) })
+    : (gp.kind === 'office' ? t('tkgPayOffice') : t('tkgPayUpi'));
+  const sub = gp.kind === 'office' ? (gp.due > 0 ? money(gp.due) : '') : gp.upi;
+  return '<figure class="tkg-qr tkg-qr-pay is-' + gp.kind + (gp.paid ? ' is-paid' : '') + '">'
+    + '<a class="tkg-qr-frame" id="tkPayQrBox" href="' + esc(gp.url) + '"' + (gp.kind === 'office' ? ' target="_blank" rel="noopener"' : '')
+    + ' aria-label="' + esc(cap) + '"><span class="tkg-qr-ph" aria-hidden="true">QR</span></a>'
+    + (gp.paid ? '<span class="tkg-paid">' + esc(t('tkgPaid')) + '</span>' : '')
+    + '<figcaption><b>' + esc(cap) + '</b>' + (sub ? '<small>' + esc(sub).replace('@', '@<wbr>') + '</small>' : '') + '</figcaption></figure>';
+}
+
 function renderStatus(id) {
   const b = DB.bookings.find(x => x.id === id);
   const body = $('#statusBody');
@@ -2773,13 +2834,22 @@ function renderStatus(id) {
      departure the office cancelled. */
   let secBand = '';
   try { if (conf && !tripCancelled) { tkSecCss(); secBand = tkSecureBandHTML(b); } } catch (e) { secBand = ''; }
+  /* Gold ticket (9 Oct 2026): the payment QR is on EVERY ticket, beside the
+     verify QR (confirmed only) - see tkGoldPay() for the rule. */
+  const gp2 = tkGoldPay(b);
+  const qrStub2 = '<div class="tkg-perf" aria-hidden="true"></div>'
+    + '<div class="tkg-stub' + (conf ? '' : ' solo') + '">'
+    + (conf ? '<figure class="tkg-qr tkg-qr-verify"><div class="tk2-qr tkg-qr-frame" id="tkQrBox"></div><figcaption><b>' + esc(t('tkgVerify')) + '</b><small>' + t('tkQrNote') + '</small></figcaption></figure>' : '')
+    + tkGoldPayFigure(b, gp2, money2)
+    + '</div>';
 
   body.innerHTML = `
   ${proofBand}
   ${delayBanner}
   ${borderCard}
   ${stepper}
-  <div class="status-card tk2${conf ? ' confirm-success' : ''}" id="ticketCard" data-pnr="${esc(b.id)}">
+  <div class="status-card tk2 tk2-gold${conf ? ' confirm-success' : ''}" id="ticketCard" data-pnr="${esc(b.id)}">
+    <div class="tkg-mantra" lang="sa"><span aria-hidden="true">❖</span> ${esc(tkMantraLine())} <span aria-hidden="true">❖</span></div>
     <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
         <img src="/assets/img/logo-mark-96h.png?v=20261009s" width="185" height="96" alt="" loading="lazy" decoding="async">
@@ -2801,7 +2871,6 @@ function renderStatus(id) {
     </div>
     ${note2}
     <div class="tk2-ess">
-      ${conf ? '<div class="tk2-qr" id="tkQrBox"><small>' + t('tkQrNote') + '</small></div>' : '<div class="tk2-qr" style="visibility:hidden"></div>'}
       <div class="tk2-tiles">
         <div class="tk2-tile wide"><small>📍 ${esc(t('tkBoard'))}</small><b>${esc(bp2.name || bpShort(b.boarding))}</b>${bp2.time ? '<em><span class="np">' + esc(bpNp2) + '</span> · ' + esc(bp2.time) + ' IST</em>' : ''}</div>
         <div class="tk2-tile"><small>💺 ${esc(t('tkSeats'))}</small><b>${esc(seatLabelJoin(b.seats, r.type, b.bookingType))}</b><em>${paxN2} ${paxN2 > 1 ? 'seats' : 'seat'}${b.bookingType === 'private' ? ' · 🔒 Private' : ''}</em></div>
@@ -2812,6 +2881,7 @@ function renderStatus(id) {
     <div class="tk2-fare"><div><span class="lbl">${esc(t('tkFareT'))}</span><div class="amt">${esc(money2(b.total))}</div></div><div class="sub">${fareSub2}</div></div>
     <div class="premium-passengers"><table class="pax-table"><thead><tr><th>${t('tkSeats')}</th><th>${t('coPax')}</th><th>${t('lblAge')}</th><th>${t('lblGender')}</th></tr></thead><tbody>${paxRows}</tbody></table></div>
     <div class="premium-payment-state ${due2 <= 0 ? 'paid' : ''}${codDue2 ? ' cod-due' : ''}"><b>${esc(payStateLbl2)}</b><span>${esc(money2(paid2))} · ${esc(t('premiumDue'))}: ${esc(money2(due2))}</span><span>${esc(payRefLabel(b))}</span></div>
+    ${qrStub2}
     ${paymentCard2}
     <div class="tk2-actions">${primary2}</div>
     ${showWaDirect ? '<div id="tkWaDirect" role="status">' + esc(tf('tkWaDirect', { n: waDigits.slice(-4) })) + '</div>' : ''}
@@ -2838,17 +2908,21 @@ function renderStatus(id) {
       <div class="tk2-company"><b>🇮🇳 S HARI GLOBAL PVT LTD 🇳🇵</b> · ${esc(CONFIG.company.mantra)}<br>CIN: ${esc(CONFIG.company.cin)}${CONFIG.company.gstin ? ' · GSTIN: ' + esc(CONFIG.company.gstin) : ''} · CEO: ${esc(CONFIG.company.ceo || '')}<br>☎ ${t('supportLbl')}: <a href="tel:${esc(digits(S().phone))}">${esc(S().phone)}</a> · <a href="mailto:${esc(S().email)}">${esc(S().email)}</a></div>
     </details>
     ${conf ? '<div class="tk2-foot"><div class="bp-barcode">' + barcodeSVG(b.id) + '<span class="bp-bc-id">' + esc(b.id) + '</span></div><div class="tk2-thanks">' + t('tkThanks') + '</div></div>' : ''}
+    <div class="tkg-bless" lang="ne"><i aria-hidden="true"></i><span>${esc(t('tkBless'))}</span><i aria-hidden="true"></i></div>
     <div class="premium-ticket-support"><b>${esc(t('premiumTrust'))}</b><a href="tel:${esc(digits(S().phone))}">${esc(S().phone)}</a><span>${esc(location.host)}</span></div>
     ${extra}
   </div>
   ${pushCard}
   ${rateBox}`;
 
-  if (payUrl2) makeQR(payUrl2, 240).then(url => {
-    const box = $('#premiumPayQr');
+  /* The pay QR lives in the gold stub now (tkGoldPay - the same UPI link
+     with the amount when money is owed), so the pay card keeps its button
+     and amount but no second copy of the same QR. */
+  makeQR(gp2.url, 240).then(url => {
+    const box = $('#tkPayQrBox');
     if (!box || box.closest('[data-pnr]').dataset.pnr !== b.id || !url) return;
-    const img = new Image(); img.src = url; img.width = 240; img.height = 240; img.alt = t('premiumPay');
-    box.prepend(img);
+    const img = new Image(); img.src = url; img.width = 240; img.height = 240; img.alt = gp2.kind === 'office' ? t('tkgPayOffice') : t('premiumPay');
+    box.textContent = ''; box.appendChild(img);
   });
   if (b.status === 'confirmed') { var tc = $('#ticketCard'); if (tc) requestAnimationFrame(function () { tc.classList.add('confirm-anim'); }); }
   if (secBand) { try { TkLive.start(b); } catch (e) {} }

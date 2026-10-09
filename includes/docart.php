@@ -824,4 +824,426 @@ final class DocArt
             return false;
         }
     }
+
+    /* ================================================================
+     *  GOLD (9 Oct 2026, owner: "ticket ma golden colour, logo, extra
+     *  high quality depth ... Canva template jasto · bhagwan ko mantra ·
+     *  shubh yatra"). One palette and one set of ornaments the ticket and
+     *  the chalani share, so the two documents read as one family.
+     *
+     *  Gold foil = a vertical GOLD_DEEP -> GOLD_LIGHT -> GOLD gradient.
+     *  Every helper is fail-safe like the rest of this class.
+     * ================================================================ */
+
+    public const NAVY       = [14, 30, 63];      // #0E1E3F brand
+    public const ROYAL      = [27, 58, 122];     // #1B3A7A
+    public const MAROON     = [122, 30, 44];     // #7A1E2C
+    public const GOLD_DEEP  = [138, 106, 31];    // #8A6A1F
+    public const GOLD       = [201, 162, 39];    // #C9A227
+    public const GOLD_LIGHT = [243, 222, 138];   // #F3DE8A
+    public const CREAM      = [255, 248, 231];   // #FFF8E7 paper
+    public const INK        = [26, 26, 46];      // #1A1A2E
+
+    public const MANTRA_DEFAULT   = 'ॐ श्री गणेशाय नमः · ॐ नमो नारायणाय · जय श्री राम · जय अम्बे';
+    public const BLESSING_DEFAULT = 'शुभ यात्रा · सुरक्षित यात्रा · सुखद यात्रा';
+
+    /** The mantra line at the very top of a ticket / chalani ('' = hidden). Setting doc_mantra_line. */
+    public static function mantraLine(): string
+    {
+        return self::settingLine('doc_mantra_line', self::MANTRA_DEFAULT);
+    }
+
+    /** The blessing line near the footer ('' = hidden). Setting doc_blessing_line. */
+    public static function blessingLine(): string
+    {
+        return self::settingLine('doc_blessing_line', self::BLESSING_DEFAULT);
+    }
+
+    private static function settingLine(string $key, string $default): string
+    {
+        try {
+            if (!class_exists('Settings')) {
+                return $default;
+            }
+            // A missing row gives the default; a row the office emptied hides the line.
+            return trim(Settings::getString($key, $default));
+        } catch (\Throwable $e) {
+            return $default;
+        }
+    }
+
+    /** Colour on a canvas; $alpha 0 (opaque) .. 127 (clear). */
+    public static function col(\GdImage $im, array $rgb, int $alpha = 0): int
+    {
+        return $alpha > 0
+            ? (int) imagecolorallocatealpha($im, (int) $rgb[0], (int) $rgb[1], (int) $rgb[2], max(0, min(127, $alpha)))
+            : (int) imagecolorallocate($im, (int) $rgb[0], (int) $rgb[1], (int) $rgb[2]);
+    }
+
+    /** a..b at t (0..1). */
+    public static function mix(array $a, array $b, float $t): array
+    {
+        $t = max(0.0, min(1.0, $t));
+        return [
+            (int) round($a[0] + ($b[0] - $a[0]) * $t),
+            (int) round($a[1] + ($b[1] - $a[1]) * $t),
+            (int) round($a[2] + ($b[2] - $a[2]) * $t),
+        ];
+    }
+
+    /** The foil colour at t (0 = top edge, 1 = bottom edge). */
+    public static function foilAt(float $t): array
+    {
+        return $t < 0.45
+            ? self::mix(self::GOLD_DEEP, self::GOLD_LIGHT, $t / 0.45)
+            : self::mix(self::GOLD_LIGHT, self::GOLD, ($t - 0.45) / 0.55);
+    }
+
+    /** A gold-foil filled rectangle (vertical gradient). */
+    public static function goldFoil(\GdImage $im, int $x1, int $y1, int $x2, int $y2): void
+    {
+        try {
+            $h = max(1, $y2 - $y1);
+            for ($y = $y1; $y <= $y2; $y++) {
+                imageline($im, $x1, $y, $x2, $y, self::col($im, self::foilAt(($y - $y1) / $h)));
+            }
+        } catch (\Throwable $e) {
+        }
+    }
+
+    /** Vertical gradient a -> b in a box with rounded corners (radius $r, corners painted off). */
+    public static function gradBox(\GdImage $im, int $x1, int $y1, int $x2, int $y2, int $r, array $a, array $b): void
+    {
+        try {
+            $h = max(1, $y2 - $y1);
+            for ($y = $y1; $y <= $y2; $y++) {
+                $dy = min($y - $y1, $y2 - $y);
+                $in = $dy >= $r ? 0 : (int) round($r - sqrt(max(0, $r * $r - ($r - $dy) * ($r - $dy))));
+                imageline($im, $x1 + $in, $y, $x2 - $in, $y, self::col($im, self::mix($a, $b, ($y - $y1) / $h)));
+            }
+        } catch (\Throwable $e) {
+        }
+    }
+
+    /** Filled rounded rectangle (any colour index, alpha allowed). */
+    public static function roundRect(\GdImage $im, int $x1, int $y1, int $x2, int $y2, int $r, int $col): void
+    {
+        $r = max(0, min($r, intdiv($x2 - $x1, 2), intdiv($y2 - $y1, 2)));
+        if ($r === 0) {
+            imagefilledrectangle($im, $x1, $y1, $x2, $y2, $col);
+            return;
+        }
+        // Non-overlapping pieces, so an alpha colour does not double up.
+        imagefilledrectangle($im, $x1 + $r, $y1, $x2 - $r, $y2, $col);
+        imagefilledrectangle($im, $x1, $y1 + $r, $x1 + $r - 1, $y2 - $r, $col);
+        imagefilledrectangle($im, $x2 - $r + 1, $y1 + $r, $x2, $y2 - $r, $col);
+        imagefilledarc($im, $x1 + $r, $y1 + $r, $r * 2, $r * 2, 180, 270, $col, IMG_ARC_PIE);
+        imagefilledarc($im, $x2 - $r, $y1 + $r, $r * 2, $r * 2, 270, 360, $col, IMG_ARC_PIE);
+        imagefilledarc($im, $x1 + $r, $y2 - $r, $r * 2, $r * 2, 90, 180, $col, IMG_ARC_PIE);
+        imagefilledarc($im, $x2 - $r, $y2 - $r, $r * 2, $r * 2, 0, 90, $col, IMG_ARC_PIE);
+    }
+
+    /** Rounded-rectangle outline, $t px thick, inside the box. */
+    public static function roundOutline(\GdImage $im, int $x1, int $y1, int $x2, int $y2, int $r, int $col, int $t = 1): void
+    {
+        for ($i = 0; $i < max(1, $t); $i++) {
+            $a = $x1 + $i; $b = $y1 + $i; $c = $x2 - $i; $d = $y2 - $i; $rr = max(1, $r - $i);
+            imageline($im, $a + $rr, $b, $c - $rr, $b, $col);
+            imageline($im, $a + $rr, $d, $c - $rr, $d, $col);
+            imageline($im, $a, $b + $rr, $a, $d - $rr, $col);
+            imageline($im, $c, $b + $rr, $c, $d - $rr, $col);
+            imagearc($im, $a + $rr, $b + $rr, $rr * 2, $rr * 2, 180, 270, $col);
+            imagearc($im, $c - $rr, $b + $rr, $rr * 2, $rr * 2, 270, 360, $col);
+            imagearc($im, $a + $rr, $d - $rr, $rr * 2, $rr * 2, 90, 180, $col);
+            imagearc($im, $c - $rr, $d - $rr, $rr * 2, $rr * 2, 0, 90, $col);
+        }
+    }
+
+    /**
+     * A real soft shadow under a rounded card: stacked alpha layers, offset
+     * down a little, so the card lifts off the paper. Baked into opaque
+     * pixels (the canvas is opaque), so it survives WhatsApp's JPEG pass.
+     */
+    public static function softShadow(\GdImage $im, int $x1, int $y1, int $x2, int $y2, int $r, int $spread = 12, int $dy = 6, array $rgb = [60, 40, 10], int $strength = 10): void
+    {
+        try {
+            imagealphablending($im, true);
+            // $strength = the opacity (percent) right under the card; each
+            // stacked layer adds an equal share, so the edge fades out softly.
+            $spread = max(1, $spread);
+            $p = max(0.01, min(0.6, $strength / 100));
+            $o = 1 - pow(1 - $p, 1 / $spread);
+            $alpha = max(96, min(126, (int) round(127 * (1 - $o))));
+            $c = self::col($im, $rgb, $alpha);
+            for ($i = $spread; $i >= 1; $i--) {
+                self::roundRect($im, $x1 - $i + 2, $y1 - $i + $dy, $x2 + $i - 2, $y2 + $i + $dy, $r + $i, $c);
+            }
+        } catch (\Throwable $e) {
+        }
+    }
+
+    /** A horizontal gold-foil rule $t px tall with a 1px light hairline under it. */
+    public static function goldRule(\GdImage $im, int $x1, int $x2, int $y, int $t = 4): void
+    {
+        self::goldFoil($im, $x1, $y, $x2, $y + $t - 1);
+        try {
+            imageline($im, $x1, $y + $t + 2, $x2, $y + $t + 2, self::col($im, self::GOLD, 40));
+        } catch (\Throwable $e) {
+        }
+    }
+
+    /**
+     * Gold-foil DOUBLE rule around a box (outer foil band $t px, a thin gold
+     * hairline $gap px inside it) with corner ornaments.
+     */
+    public static function goldFrame(\GdImage $im, int $x1, int $y1, int $x2, int $y2, int $t = 4, int $gap = 6, int $orn = 16): void
+    {
+        try {
+            self::goldFoil($im, $x1, $y1, $x2, $y1 + $t - 1);
+            self::goldFoil($im, $x1, $y2 - $t + 1, $x2, $y2);
+            // vertical bands: the foil runs top-to-bottom across the whole height
+            $h = max(1, $y2 - $y1);
+            for ($y = $y1; $y <= $y2; $y++) {
+                $c = self::col($im, self::foilAt(0.25 + 0.5 * (($y - $y1) / $h)));
+                imageline($im, $x1, $y, $x1 + $t - 1, $y, $c);
+                imageline($im, $x2 - $t + 1, $y, $x2, $y, $c);
+            }
+            $hl = self::col($im, self::GOLD);
+            $i = $t + $gap;
+            imagerectangle($im, $x1 + $i, $y1 + $i, $x2 - $i, $y2 - $i, $hl);
+            if ($orn > 0) {
+                self::corners($im, $x1 + $i, $y1 + $i, $x2 - $i, $y2 - $i, $orn);
+            }
+        } catch (\Throwable $e) {
+        }
+    }
+
+    /** Corner ornaments: a foil diamond on each corner with two short arms and a dot. */
+    public static function corners(\GdImage $im, int $x1, int $y1, int $x2, int $y2, int $s = 16): void
+    {
+        try {
+            $deep  = self::col($im, self::GOLD_DEEP);
+            $light = self::col($im, self::GOLD_LIGHT);
+            $gold  = self::col($im, self::GOLD);
+            foreach ([[$x1, $y1, 1, 1], [$x2, $y1, -1, 1], [$x1, $y2, 1, -1], [$x2, $y2, -1, -1]] as [$cx, $cy, $sx, $sy]) {
+                $d = (int) round($s * 0.42);
+                imagefilledpolygon($im, [$cx, $cy - $d, $cx + $d, $cy, $cx, $cy + $d, $cx - $d, $cy], $deep);
+                $e = max(2, $d - 3);
+                imagefilledpolygon($im, [$cx, $cy - $e, $cx + $e, $cy, $cx, $cy + $e, $cx - $e, $cy], $gold);
+                imagefilledpolygon($im, [$cx, $cy - $e, $cx + $e, $cy, $cx, $cy], $light);
+                // two arms along the frame, ending in a dot
+                imagefilledrectangle($im, min($cx + $sx * $d, $cx + $sx * ($d + $s)), $cy - 1, max($cx + $sx * $d, $cx + $sx * ($d + $s)), $cy + 1, $gold);
+                imagefilledrectangle($im, $cx - 1, min($cy + $sy * $d, $cy + $sy * ($d + $s)), $cx + 1, max($cy + $sy * $d, $cy + $sy * ($d + $s)), $gold);
+                imagefilledellipse($im, $cx + $sx * ($d + $s + 4), $cy, 6, 6, $gold);
+                imagefilledellipse($im, $cx, $cy + $sy * ($d + $s + 4), 6, 6, $gold);
+            }
+        } catch (\Throwable $e) {
+        }
+    }
+
+    /**
+     * A mandala rosette as a faint watermark: concentric rings, a ring of
+     * overlapping circles (the lotus), petal dots. $alpha 0..127.
+     */
+    public static function mandala(\GdImage $im, int $cx, int $cy, int $r, array $rgb = self::GOLD, int $alpha = 100): void
+    {
+        try {
+            imagealphablending($im, true);
+            $c = self::col($im, $rgb, $alpha);
+            imagesetthickness($im, 2);
+            foreach ([1.0, 0.94, 0.62, 0.30, 0.12] as $k) {
+                imageellipse($im, $cx, $cy, (int) (2 * $r * $k), (int) (2 * $r * $k), $c);
+            }
+            imagesetthickness($im, 1);
+            // lotus: 16 circles through the centre ring
+            $n = 16; $rr = (int) round($r * 0.31);
+            for ($i = 0; $i < $n; $i++) {
+                $a = 2 * M_PI * $i / $n;
+                imageellipse($im, (int) round($cx + cos($a) * $rr), (int) round($cy + sin($a) * $rr), 2 * $rr, 2 * $rr, $c);
+            }
+            // outer petals between 0.62 and 0.94
+            $n2 = 24;
+            for ($i = 0; $i < $n2; $i++) {
+                $a  = 2 * M_PI * ($i + 0.5) / $n2;
+                $pr = (int) round($r * 0.17);
+                imagearc($im, (int) round($cx + cos($a) * $r * 0.78), (int) round($cy + sin($a) * $r * 0.78), 2 * $pr, 2 * $pr, 0, 360, $c);
+                imagefilledellipse($im, (int) round($cx + cos($a) * $r * 0.97), (int) round($cy + sin($a) * $r * 0.97), 7, 7, $c);
+            }
+        } catch (\Throwable $e) {
+        } finally {
+            @imagesetthickness($im, 1);
+        }
+    }
+
+    /** Guilloche waves across a box (security-print texture). */
+    public static function guilloche(\GdImage $im, int $x1, int $y1, int $x2, int $y2, array $rgb = self::GOLD, int $alpha = 100, int $lines = 6): void
+    {
+        try {
+            imagealphablending($im, true);
+            $c = self::col($im, $rgb, $alpha);
+            $mid = ($y1 + $y2) / 2; $amp = ($y2 - $y1) / 2 - 2;
+            for ($k = 0; $k < $lines; $k++) {
+                $py = null; $ph = $k * M_PI / $lines;
+                for ($x = $x1; $x <= $x2; $x += 3) {
+                    $y = (int) round($mid + sin(($x - $x1) / 38 + $ph) * $amp * (0.55 + 0.45 * sin(($x - $x1) / 140 + $k)));
+                    if ($py !== null) {
+                        imageline($im, $x - 3, $py, $x, $y, $c);
+                    }
+                    $py = $y;
+                }
+            }
+        } catch (\Throwable $e) {
+        }
+    }
+
+    /**
+     * An embossed gold seal (an ellipse) centred on cx/cy: a soft shadow, a
+     * dark rim, a foil ring with a light upper-left bevel, a beaded edge and a
+     * cream face. Returns the face box the emblem should sit in.
+     *
+     * @return array{x:int,y:int,w:int,h:int}
+     */
+    public static function seal(\GdImage $im, int $cx, int $cy, int $rx, int $ry, array $face = self::CREAM): array
+    {
+        try {
+            imagealphablending($im, true);
+            for ($i = 8; $i >= 1; $i--) {
+                imagefilledellipse($im, $cx + 2, $cy + 5, 2 * $rx + 2 * $i, 2 * $ry + 2 * $i, self::col($im, [0, 0, 0], 122));
+            }
+            imagefilledellipse($im, $cx, $cy, 2 * $rx, 2 * $ry, self::col($im, self::GOLD_DEEP));
+            // the foil ring: concentric ellipses shading from light (outer) to deep (inner)
+            $ring = max(6, (int) round($ry * 0.16));
+            for ($i = 2; $i <= $ring; $i++) {
+                $t = ($i - 2) / max(1, $ring - 2);
+                imagefilledellipse($im, $cx, $cy, 2 * ($rx - $i), 2 * ($ry - $i), self::col($im, self::foilAt(0.3 + 0.6 * $t)));
+            }
+            // bevel: a light crescent upper-left, a deep one lower-right
+            imagesetthickness($im, 2);
+            imagearc($im, $cx, $cy, 2 * $rx - 4, 2 * $ry - 4, 160, 290, self::col($im, [255, 246, 200], 30));
+            imagearc($im, $cx, $cy, 2 * $rx - 4, 2 * $ry - 4, 340, 110, self::col($im, [90, 64, 10], 40));
+            imagesetthickness($im, 1);
+            // beads round the ring
+            $n = 36;
+            for ($k = 0; $k < $n; $k++) {
+                $a = 2 * M_PI * $k / $n;
+                imagefilledellipse($im, (int) round($cx + cos($a) * ($rx - $ring / 2 - 1)), (int) round($cy + sin($a) * ($ry - $ring / 2 - 1)), 4, 4, self::col($im, self::GOLD_LIGHT));
+            }
+            $fx = $rx - $ring - 2; $fy = $ry - $ring - 2;
+            imagefilledellipse($im, $cx, $cy, 2 * $fx, 2 * $fy, self::col($im, self::GOLD_DEEP));
+            imagefilledellipse($im, $cx, $cy, 2 * $fx - 4, 2 * $fy - 4, self::col($im, $face));
+            // a soft inner shade at the top of the face = pressed-in look
+            imagearc($im, $cx, $cy, 2 * $fx - 6, 2 * $fy - 6, 190, 350, self::col($im, [150, 120, 50], 90));
+            $w = (int) round($fx * 1.78); $h = (int) round($fy * 1.40);
+            return ['x' => $cx - intdiv($w, 2), 'y' => $cy - intdiv($h, 2), 'w' => $w, 'h' => $h];
+        } catch (\Throwable $e) {
+            return ['x' => $cx - $rx, 'y' => $cy - $ry, 'w' => 2 * $rx, 'h' => 2 * $ry];
+        } finally {
+            @imagesetthickness($im, 1);
+        }
+    }
+
+    /** A perforated tear line: gold dashes with half-moon notches in the page colour at both ends. */
+    public static function tearLine(\GdImage $im, int $x1, int $x2, int $y, array $page, int $notch = 18): void
+    {
+        try {
+            $dash = self::col($im, self::GOLD);
+            for ($x = $x1 + $notch + 14; $x < $x2 - $notch - 14; $x += 22) {
+                imagefilledellipse($im, $x, $y, 7, 7, $dash);
+            }
+            $pc = self::col($im, $page);
+            imagefilledellipse($im, $x1, $y, 2 * $notch, 2 * $notch, $pc);
+            imagefilledellipse($im, $x2, $y, 2 * $notch, 2 * $notch, $pc);
+            imagearc($im, $x1, $y, 2 * $notch, 2 * $notch, 270, 90, self::col($im, self::GOLD));
+            imagearc($im, $x2, $y, 2 * $notch, 2 * $notch, 90, 270, self::col($im, self::GOLD));
+        } catch (\Throwable $e) {
+        }
+    }
+
+    /* ---- PDF -------------------------------------------------------- */
+
+    /** Vertical gradient a -> b on a PDF page, painted as thin strips. */
+    public static function pdfGradient(Pdf $pdf, float $x, float $y, float $w, float $h, array $a, array $b, int $steps = 24): void
+    {
+        try {
+            $steps = max(2, $steps);
+            $sh = $h / $steps;
+            for ($i = 0; $i < $steps; $i++) {
+                $pdf->rect($x, $y + $i * $sh, $w, $sh + 0.3, self::mix($a, $b, $i / ($steps - 1)), true);
+            }
+        } catch (\Throwable $e) {
+        }
+    }
+
+    /** A gold-foil bar on a PDF page. */
+    public static function pdfFoil(Pdf $pdf, float $x, float $y, float $w, float $h, int $steps = 8): void
+    {
+        try {
+            $steps = max(2, $steps);
+            $sh = $h / $steps;
+            for ($i = 0; $i < $steps; $i++) {
+                $pdf->rect($x, $y + $i * $sh, $w, $sh + 0.15, self::foilAt($i / ($steps - 1)), true);
+            }
+        } catch (\Throwable $e) {
+        }
+    }
+
+    /** A foil rule plus a hairline under it. */
+    public static function pdfGoldRule(Pdf $pdf, float $x1, float $x2, float $y, float $t = 2.4): void
+    {
+        self::pdfFoil($pdf, $x1, $y, $x2 - $x1, $t, 4);
+        try {
+            $pdf->line($x1, $y + $t + 1.4, $x2, $y + $t + 1.4, self::GOLD, 0.4);
+        } catch (\Throwable $e) {
+        }
+    }
+
+    /** Corner ornaments on a PDF page (diamond + arms). */
+    public static function pdfCorners(Pdf $pdf, float $x, float $y, float $w, float $h, float $s = 9.0): void
+    {
+        try {
+            foreach ([[$x, $y, 1, 1], [$x + $w, $y, -1, 1], [$x, $y + $h, 1, -1], [$x + $w, $y + $h, -1, -1]] as [$cx, $cy, $sx, $sy]) {
+                $d = $s * 0.38;
+                // a diamond = a small square stroked with a thick line at 45 degrees
+                $pdf->line($cx - $d, $cy, $cx, $cy - $d, self::GOLD_DEEP, 1.6);
+                $pdf->line($cx, $cy - $d, $cx + $d, $cy, self::GOLD_DEEP, 1.6);
+                $pdf->line($cx + $d, $cy, $cx, $cy + $d, self::GOLD_DEEP, 1.6);
+                $pdf->line($cx, $cy + $d, $cx - $d, $cy, self::GOLD_DEEP, 1.6);
+                $pdf->rect($cx - $d * 0.45, $cy - $d * 0.45, $d * 0.9, $d * 0.9, self::GOLD_LIGHT, true);
+                $pdf->line($cx + $sx * $d, $cy, $cx + $sx * ($d + $s), $cy, self::GOLD, 0.9);
+                $pdf->line($cx, $cy + $sy * $d, $cx, $cy + $sy * ($d + $s), self::GOLD, 0.9);
+            }
+        } catch (\Throwable $e) {
+        }
+    }
+
+    /** A circle outline on a PDF page (a rounded square with r = d/2). */
+    public static function pdfCircle(Pdf $pdf, float $cx, float $cy, float $r, array $rgb, float $lw = 0.5, bool $fill = false): void
+    {
+        try {
+            $pdf->setLineWidth($lw);
+            $pdf->roundedRect($cx - $r, $cy - $r, 2 * $r, 2 * $r, $r, $rgb, $fill);
+        } catch (\Throwable $e) {
+        }
+    }
+
+    /** A faint mandala rosette on a PDF page (pass a very light colour). */
+    public static function pdfMandala(Pdf $pdf, float $cx, float $cy, float $r, array $rgb): void
+    {
+        try {
+            foreach ([1.0, 0.94, 0.62, 0.30, 0.12] as $k) {
+                self::pdfCircle($pdf, $cx, $cy, $r * $k, $rgb, 0.8);
+            }
+            $rr = $r * 0.31;
+            for ($i = 0; $i < 16; $i++) {
+                $a = 2 * M_PI * $i / 16;
+                self::pdfCircle($pdf, $cx + cos($a) * $rr, $cy + sin($a) * $rr, $rr, $rgb, 0.5);
+            }
+            for ($i = 0; $i < 24; $i++) {
+                $a = 2 * M_PI * ($i + 0.5) / 24;
+                self::pdfCircle($pdf, $cx + cos($a) * $r * 0.78, $cy + sin($a) * $r * 0.78, $r * 0.17, $rgb, 0.5);
+                self::pdfCircle($pdf, $cx + cos($a) * $r * 0.97, $cy + sin($a) * $r * 0.97, 1.4, $rgb, 0.5, true);
+            }
+        } catch (\Throwable $e) {
+        }
+    }
 }

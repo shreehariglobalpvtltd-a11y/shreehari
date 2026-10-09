@@ -44,6 +44,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/docart.php';   // emblem, flags, heritage strip (9 Oct 2026)
+require_once __DIR__ . '/goldsheet.php'; // the GOLD template + payment QR (9 Oct 2026)
 
 final class ChallanPng
 {
@@ -51,10 +52,12 @@ final class ChallanPng
     public const WIDTH = 1600;
 
     /** Bump whenever the drawing changes so every cached challan re-renders once. */
-    public const LAYOUT_VERSION = 7;   // 7 = emblem on a glow (no full logo), India + Nepal flags, heritage strip under the footer (9 Oct 2026)   // 6 = two-floor grid A1-F6 / A7-F12, floor bars blue (1F) / green (2F)   // 5 = berths print the LA1/UA1 row-letter grid id
+    public const LAYOUT_VERSION = 8;   // 8 = GOLD template: mantra strip, gold seal + foil bars, cream mandala paper, mandatory payment QR card + blessing (9 Oct 2026)   // 7 = emblem on a glow (no full logo), India + Nepal flags, heritage strip under the footer (9 Oct 2026)   // 6 = two-floor grid A1-F6 / A7-F12, floor bars blue (1F) / green (2F)   // 5 = berths print the LA1/UA1 row-letter grid id
 
     private const MARGIN = 56;
     private const ART_H  = 190;    // heritage strip under the footer: 170 art + 20 margin
+    private const HEAD_H = 196;    // mantra strip 30 + header band + gold-foil double rule
+    private const PAY_H  = 250;    // the payment-QR card (QR <= 200 px) + its margins
     private const CELL_H = 118;
     private const ROW_GAP = 10;
     private const AISLE_W = 36;
@@ -341,11 +344,11 @@ final class ChallanPng
         $deckBlockH = static function (array $deck): int {
             return 52 + count($deck['rows']) * (self::CELL_H + self::ROW_GAP) + 16;
         };
-        $H = 150 + 58 + 46;                       // header + meta + legend
+        $H = self::HEAD_H + 58 + 46;              // mantra + header + meta + legend
         foreach ($layout['decks'] as $deck) {
             $H += $deckBlockH($deck) + 18;
         }
-        $H += 128 + 76;                           // totals + two-line footer
+        $H += 128 + self::PAY_H + 76 + 30;        // totals + payment QR card + two-line footer + foot band
         $artOn = DocArt::heritageOn();
         if ($artOn) {
             $H += self::ART_H;                    // heritage strip under the footer (9 Oct 2026)
@@ -355,45 +358,59 @@ final class ChallanPng
         imagealphablending($im, true);
         imageantialias($im, true);
         $c = static fn(string $hex): int => imagecolorallocate($im, (int) hexdec(substr($hex, 1, 2)), (int) hexdec(substr($hex, 3, 2)), (int) hexdec(substr($hex, 5, 2)));
-        $white = $c('#FFFFFF'); $ink = $c('#15233B'); $muted = $c('#5B6B85'); $line = $c('#C9D3E2');
-        $navy = $c('#0B2A5B'); $navy2 = $c('#12407F'); $orange = $c('#F07C1F');
-        $stroke = ['open' => $c('#B8C4D6'), 'booked' => $c('#2E8B57'), 'private' => $c('#C9A227'), 'held' => $c('#E0A800'),
+        /* The GOLD template (9 Oct 2026) — the palette the ticket shares. */
+        $white = $c('#FFFFFF'); $ink = $c('#1A1A2E'); $muted = $c('#5F5747'); $line = $c('#DCC27C');
+        $navy = $c('#0E1E3F'); $maroon = $c('#7A1E2C');
+        $goldD = $c('#8A6A1F'); $gold = $c('#C9A227'); $goldL = $c('#F3DE8A'); $cream = $c('#FFF8E7');
+        $pale = $c('#EFE3BF'); $dim = $c('#C9D2E6');
+        $stroke = ['open' => $c('#CDB77A'), 'booked' => $c('#2E8B57'), 'private' => $c('#B8901C'), 'held' => $c('#E0A800'),
                    'blocked' => $c('#8A94A6'), 'staff' => $c('#2E5FA8'), 'pending' => $c('#D9822B')];
-        $fill = ['open' => $white, 'booked' => $c('#DFF5E4'), 'private' => $c('#FFF1C2'), 'held' => $c('#FFF6D6'),
+        $fill = ['open' => $c('#FFFDF7'), 'booked' => $c('#DFF5E4'), 'private' => $c('#FFF1C2'), 'held' => $c('#FFF6D6'),
                  'blocked' => $c('#E4E7EC'), 'staff' => $c('#DDEBFF'), 'pending' => $c('#FFE9D6')];
         $pink = $c('#E91E63');
-        imagefilledrectangle($im, 0, 0, $W, $H, $white);
+        imagefilledrectangle($im, 0, 0, $W, $H, $cream);
+        GoldSheet::watermark($im, (int) ($W / 2), (int) ($H * 0.42), 560, 114);
+
+        /* ---- mantra strip ---- */
+        imagefilledrectangle($im, 0, 0, $W, 30, $c('#09162F'));
+        imageline($im, 0, 30, $W, 30, $goldD);
+        $mantra = GoldSheet::mantra();
+        if ($mantra !== '') {
+            $mw = self::width(14, $mantra);
+            self::text($im, 14, (int) (($W - $mw) / 2), 5, $goldL, $mantra, true);
+            GoldSheet::flourish($im, (int) (($W - $mw) / 2) - 110, 16, 150);
+            GoldSheet::flourish($im, (int) (($W + $mw) / 2) + 110, 16, 150);
+        }
 
         /* ---- header band ---- */
-        imagefilledrectangle($im, 0, 0, $W, 150, $navy);
-        imagefilledrectangle($im, 0, 150, $W, 156, $orange);
-        /* The emblem alone on a soft glow (9 Oct 2026) — the old full logo sat
-           on the navy with its navy name text all but invisible. */
-        $x = $M;
-        $mk = DocArt::mark($im, $M - 4, 22, 196, 110, true);
-        if ($mk !== null) {
-            $x = $mk['x'] + $mk['w'] + 24;
-        }
+        $hb = self::HEAD_H - 9;                    // the foil rule's top
+        GoldSheet::headerGradient($im, 0, 31, $W, $hb);
+        GoldSheet::foilRule($im, 0, $W, $hb, GoldSheet::NAVY);
+        /* The emblem on an embossed gold seal (9 Oct 2026). */
+        GoldSheet::seal($im, $M + 64, 31 + intdiv($hb - 31, 2), 128);
+        $x = $M + 128 + 24;
         $company = self::roman(Settings::getString('company_name', APP_NAME)) ?: 'S Hari Global Pvt Ltd';
-        self::text($im, 34, $x, 34, $white, $company, true);
-        DocArt::flagPair($im, $x + self::width(34, $company) + 22, 40, 28, 8, (string) ($sched['from_city'] ?? '') === 'Rupaidiha' ? 'NP' : 'IN');
-        self::text($im, 19, $x, 82, $c('#C7D6F0'), 'BUS CHALLAN  ·  Seat-wise passenger sheet  ·  ' . (string) ($sched['travel_date'] ?? ''));
-        self::text($im, 15, $x, 112, $c('#9FB4D8'), 'Challan no. ' . self::challanNo($sched) . '   ·   SHG AI BRAIN');
+        self::text($im, 32, $x + 2, 54, $c('#050B1A'), $company, true);
+        self::text($im, 32, $x, 52, $goldL, $company, true);
+        DocArt::flagPair($im, $x + self::width(32, $company) + 22, 60, 26, 8, (string) ($sched['from_city'] ?? '') === 'Rupaidiha' ? 'NP' : 'IN');
+        self::text($im, 18, $x, 100, $pale, 'BUS CHALLAN  ·  Seat-wise passenger sheet  ·  ' . (string) ($sched['travel_date'] ?? ''));
+        self::text($im, 15, $x, 130, $dim, 'Challan no. ' . self::challanNo($sched) . '   ·   SHG AI BRAIN');
         $busNo = self::roman((string) ($sched['bus_number'] ?? '')) ?: self::busLabel($sched);
-        $bw = self::width(40, $busNo);
-        self::text($im, 40, $W - $M - $bw, 30, $white, $busNo, true);
+        $bw = self::width(38, $busNo);
+        self::text($im, 38, $W - $M - $bw, 48, $c('#FFFFFF'), $busNo, true);
         $busName = self::roman((string) ($sched['bus_name'] ?? ''));
         if ($busName !== '') {
             $nw = self::width(18, $busName);
-            self::text($im, 18, $W - $M - $nw, 84, $c('#C7D6F0'), $busName);
+            self::text($im, 18, $W - $M - $nw, 102, $goldL, $busName);
         }
         $coachTxt = strtoupper($data['coach']) . ' · ' . $tot['beds'] . ' berths';
         $cw = self::width(15, $coachTxt);
-        self::text($im, 15, $W - $M - $cw, 112, $c('#9FB4D8'), $coachTxt);
+        self::text($im, 15, $W - $M - $cw, 130, $dim, $coachTxt);
 
         /* ---- meta strip ---- */
-        $y = 156;
-        imagefilledrectangle($im, 0, $y, $W, $y + 58, $c('#F3F6FB'));
+        $y = self::HEAD_H;
+        imagefilledrectangle($im, 0, $y, $W, $y + 58, $c('#FBF0D3'));
+        imageline($im, 0, $y + 58, $W, $y + 58, $line);
         $route = self::roman((string) $sched['from_city']) . ' -> ' . self::roman((string) $sched['to_city']) . ' (' . strtoupper((string) $sched['route_code']) . ')';
         $dep   = (string) ($sched['dep_time'] ?? '');
         $depTs = $dep !== '' ? strtotime((string) $sched['travel_date'] . ' ' . $dep) : false;
@@ -406,7 +423,7 @@ final class ChallanPng
         if ((string) ($sched['status'] ?? '') === 'cancelled') {
             $meta .= '    ** TRIP CANCELLED **';
         }
-        self::text($im, 18, $M, $y + 16, $ink, self::fit(18, $meta, $W - 2 * $M), true);
+        self::text($im, 18, $M, $y + 16, $navy, self::fit(18, $meta, $W - 2 * $M), true);
         $y += 58;
 
         /* ---- legend ---- */
@@ -423,7 +440,7 @@ final class ChallanPng
         $y += 46;
 
         /* ---- decks — Lower Floor (1F) A1-F6 blue, Upper Floor (2F) A7-F12 green ---- */
-        $floorCol = ['L' => [$c('#1E5AA8'), $c('#EEF4FD')], 'U' => [$c('#15803D'), $c('#EDF8F1')]];
+        $floorCol = ['L' => [[30, 90, 168], [14, 30, 63], [240, 244, 251]], 'U' => [[21, 128, 61], [12, 70, 40], [238, 247, 240]]];
         foreach ($layout['decks'] as $deck) {
             $key = (string) ($deck['key'] ?? 'L');
             $ids = [];
@@ -431,14 +448,18 @@ final class ChallanPng
             $firstLbl = isset($ids[0]) ? Seats::displayLabel((string) $ids[0], $data['coach'], 'sharing') : '';
             $lastLbl  = isset($ids[count($ids) - 1]) ? Seats::displayLabel((string) $ids[count($ids) - 1], $data['coach'], 'sharing') : '';
             $title = (isset($floorCol[$key]) ? strtoupper(Seats::floorName($key)) : strtoupper((string) ($deck['label'] ?? 'DECK'))) . '   (' . $firstLbl . ' - ' . $lastLbl . ')';
-            [$head, $tint] = $floorCol[$key] ?? [$navy2, $c('#F3F6FB')];
-            self::roundRect($im, $M, $y, $W - $M, $y + 52 + count($deck['rows']) * (self::CELL_H + self::ROW_GAP) + 4, 14, $tint, null);
-            self::roundRect($im, $M, $y, $W - $M, $y + 40, 10, $head, null);
-            self::text($im, 19, $M + 16, $y + 8, $white, $title, true);
+            [$top, $bot, $tint] = $floorCol[$key] ?? [GoldSheet::ROYAL, GoldSheet::NAVY, [243, 246, 251]];
+            $deckBot = $y + 52 + count($deck['rows']) * (self::CELL_H + self::ROW_GAP) + 4;
+            GoldSheet::card($im, $M, $y, $W - $M, $deckBot, 14, $tint, GoldSheet::GOLD, 8);
+            // floor bar: its own gradient, a gold-foil underline
+            GoldSheet::roundFill($im, $M + 2, $y + 2, $W - $M - 2, $y + 40, 12, GoldSheet::col($im, $top));
+            GoldSheet::gradientV($im, $M + 14, $y + 2, $W - $M - 14, $y + 36, $top, $bot);
+            GoldSheet::foil($im, $M + 2, $y + 37, $W - $M - 2, $y + 40);
+            self::text($im, 19, $M + 18, $y + 7, $c('#FFFFFF'), $title, true);
             $deckSold = 0;
             foreach ($ids as $s) { if (($beds[$s]['status'] ?? '') === 'booked') { $deckSold++; } }
             $dr = $deckSold . ' / ' . count($ids) . ' sold';
-            self::text($im, 16, $W - $M - 16 - self::width(16, $dr), $y + 10, $c('#C7D6F0'), $dr);
+            self::text($im, 16, $W - $M - 18 - self::width(16, $dr), $y + 9, $goldL, $dr, true);
             $y += 52;
 
             foreach ($deck['rows'] as $row) {
@@ -446,7 +467,7 @@ final class ChallanPng
                 self::drawBlock($im, $row['left'], $beds, $data['unitLocks'], $data['coach'], $cx, $y, $cellW, $fill, $stroke, $ink, $muted, $line, $pink);
                 $cx += count($row['left']) * ($cellW + self::CELL_GAP) - self::CELL_GAP;
                 /* aisle */
-                imagesetstyle($im, [$line, $line, $line, IMG_COLOR_TRANSPARENT, IMG_COLOR_TRANSPARENT]);
+                imagesetstyle($im, [$goldD, $goldD, $goldD, IMG_COLOR_TRANSPARENT, IMG_COLOR_TRANSPARENT]);
                 imageline($im, $cx + (int) (self::AISLE_W / 2), $y, $cx + (int) (self::AISLE_W / 2), $y + self::CELL_H, IMG_COLOR_STYLED);
                 $cx += self::AISLE_W;
                 self::drawBlock($im, $row['right'], $beds, $data['unitLocks'], $data['coach'], $cx, $y, $cellW, $fill, $stroke, $ink, $muted, $line, $pink);
@@ -456,50 +477,103 @@ final class ChallanPng
         }
 
         /* ---- totals ---- */
-        self::roundRect($im, $M, $y, $W - $M, $y + 118, 14, $c('#F3F6FB'), $line);
+        GoldSheet::card($im, $M, $y, $W - $M, $y + 118, 14, [255, 253, 246]);
+        imagefilledrectangle($im, $M + 2, $y + 14, $M + 6, $y + 104, $gold);
         $boxes = [
             ['SOLD', (string) $tot['booked'] . ' / ' . $tot['beds']],
             ['EMPTY', (string) $tot['empty']],
             ['HELD', (string) $tot['held']],
             ['OUT OF SERVICE', (string) ($tot['blocked'] + $tot['staff'])],
-            ['SHARING', (string) $tot['sharing'] . ' berth' . ($tot['sharing'] === 1 ? '' : 's')],
-            ['PRIVATE', (string) $tot['private'] . ' cabin' . ($tot['private'] === 1 ? '' : 's')],
+            ['SHARING BERTHS', (string) $tot['sharing']],
+            ['PRIVATE CABINS', (string) $tot['private']],
             ['PASSENGERS', (string) $tot['passengers'] . (($tot['extra'] ?? 0) > 0 ? ' (+' . (int) $tot['extra'] . ' EXTRA)' : '')],
             ['REVENUE (PAID)', self::rupees($tot['revenue'])],
             ['PENDING', self::rupees($tot['pending'])],
         ];
         /* Money boxes get more room than count boxes so their labels never collide. */
-        $weights = [1, 1, 1, 1.15, 1.1, 1.1, 1.05, 1.5, 1.3];
+        $weights = [1.05, 0.85, 0.8, 1.15, 1.15, 1.15, 1.1, 1.5, 1.35];
         $unit = ($W - 2 * $M - 44) / array_sum($weights);
-        $bx = $M + 22;
+        $bx = $M + 24;
         foreach ($boxes as $i => [$lbl, $val]) {
             $bw = (int) ($unit * ($weights[$i] ?? 1));
-            self::text($im, 12, $bx, $y + 22, $muted, self::fit(12, $lbl, $bw - 10), true);
-            self::text($im, $i >= 7 ? 22 : 28, $bx, $y + 48, $i === 8 && $tot['pending'] > 0 ? $stroke['pending'] : $ink, self::fit($i >= 7 ? 22 : 28, $val, $bw - 12), true);
+            self::text($im, 12, $bx, $y + 22, $goldD, self::fit(12, $lbl, $bw - 10), true);
+            self::text($im, $i >= 7 ? 22 : 28, $bx, $y + 48, $i === 8 && $tot['pending'] > 0 ? $maroon : $navy, self::fit($i >= 7 ? 22 : 28, $val, $bw - 12), true);
+            if ($i > 0) { imageline($im, $bx - 10, $y + 22, $bx - 10, $y + 96, $line); }
             $bx += $bw;
         }
         $y += 128;
 
+        /* ---- payment QR card (MANDATORY, 9 Oct 2026) + the blessing ---- */
+        $pay  = GoldSheet::payment(self::challanNo($sched));
+        $side = GoldSheet::qrSide($pay['payload'], 200);
+        $py1  = $y + 6;
+        $py2  = $y + self::PAY_H - 14;
+        GoldSheet::card($im, $M, $py1, $W - $M, $py2, 16, [255, 253, 246]);
+        $qx = $M + 24;
+        $qy = $py1 + intdiv($py2 - $py1 - $side, 2);
+        GoldSheet::foilRound($im, $qx - 6, $qy - 6, $qx + $side + 5, $qy + $side + 5, 8);
+        imagefilledrectangle($im, $qx - 1, $qy - 1, $qx + $side, $qy + $side, $white);
+        GoldSheet::qr($im, $pay['payload'], $qx, $qy, 200);
+        $tx  = $qx + $side + 30;
+        $tcw = 430;
+        self::text($im, 22, $tx, $py1 + 22, $maroon, self::fit(22, $pay['title'], $tcw), true);
+        GoldSheet::flourish($im, $tx + 90, $py1 + 66, 160);
+        self::text($im, 13, $tx, $py1 + 80, $goldD, $pay['kind'] === 'upi' ? 'UPI ID' : 'OFFICE', true);
+        $l1p = $pay['kind'] === 'upi' ? (string) preg_replace('/^UPI:\s*/', '', $pay['line1']) : $pay['line1'];
+        self::text($im, 20, $tx, $py1 + 100, $ink, self::fit(20, self::roman($l1p), $tcw), true);
+        self::text($im, 15, $tx, $py1 + 132, $muted, self::fit(15, self::roman($pay['line2']), $tcw));
+        self::text($im, 13, $tx, $py1 + 162, $goldD, 'REF  ' . self::challanNo($sched), true);
+        self::text($im, 13, $tx, $py1 + 186, $muted, $pay['kind'] === 'upi' ? 'Scan with any UPI app' : 'Scan to reach the office');
+        /* Right of the card: the blessing, large. */
+        $rx1 = $tx + $tcw + 20;
+        $rx2 = $W - $M - 24;
+        imageline($im, $rx1 - 10, $py1 + 24, $rx1 - 10, $py2 - 24, $line);
+        $bless = GoldSheet::blessing();
+        if ($bless !== '') {
+            $parts = array_map('trim', explode('·', $bless));
+            $big   = $parts[0] !== '' ? $parts[0] : $bless;
+            $bs    = self::width(40, $big) <= $rx2 - $rx1 ? 40 : 30;
+            self::text($im, $bs, (int) (($rx1 + $rx2 - self::width($bs, $big)) / 2) + 2, $py1 + 44, $c('#E9D9A6'), $big, true);
+            self::text($im, $bs, (int) (($rx1 + $rx2 - self::width($bs, $big)) / 2), $py1 + 42, $maroon, $big, true);
+            GoldSheet::flourish($im, (int) (($rx1 + $rx2) / 2), $py1 + 124, min(300, $rx2 - $rx1 - 40));
+            $restTxt = count($parts) > 1 ? implode('  ·  ', array_slice($parts, 1)) : '';
+            if ($restTxt !== '') {
+                $rs = self::fit(17, $restTxt, $rx2 - $rx1);
+                self::text($im, 17, (int) (($rx1 + $rx2 - self::width(17, $rs)) / 2), $py1 + 140, $goldD, $rs, true);
+            }
+        }
+        $y += self::PAY_H;
+
         /* ---- footer ---- */
-        imageline($im, $M, $y + 6, $W - $M, $y + 6, $line);
+        GoldSheet::foilRule($im, $M, $W - $M, $y + 2, GoldSheet::CREAM);
         $foot = 'Generated by SHG AI Brain | ShreeHariGlobal.in   ·   ' . date('D, j M Y g:i A') . '   ·   ' . self::challanNo($sched);
-        self::text($im, 14, $M, $y + 16, $muted, $foot);
+        self::text($im, 14, $M, $y + 18, $muted, $foot);
         $tag = 'Every berth drawn from the live booking register - the same inventory the seat map sells from.';
-        self::text($im, 12, $M, $y + 40, $c('#8A94A6'), $tag);
+        self::text($im, 12, $M, $y + 42, $c('#8A7F66'), $tag);
 
         /* Heritage strip — Sagarmatha, prayer flags, Gautam Buddha, the stupa
            — with both flags and a Nepali caption (9 Oct 2026). */
         if ($artOn) {
             $sy = $y + 76;
             $sb = $sy + self::ART_H - 20;
-            // the art at its own shape on the right, the caption + flags on the left
             $aw = min($W - 2 * $M - 420, (int) round(($sb - $sy) * 4.0));
-            DocArt::band($im, $W - $M - $aw, $sy, $W - $M, $sb, 14, [255, 255, 255], 0.5, 0.75);
+            GoldSheet::shadow($im, $W - $M - $aw, $sy, $W - $M, $sb, 14, 6, 4);
+            GoldSheet::roundFill($im, $W - $M - $aw - 3, $sy - 3, $W - $M + 3, $sb + 3, 16, GoldSheet::col($im, GoldSheet::GOLD));
+            DocArt::band($im, $W - $M - $aw, $sy, $W - $M, $sb, 14, [201, 162, 39], 0.5, 0.75);
             DocArt::flagPair($im, $M, $sy + 18, 34, 10, 'IN');
             self::text($im, 18, $M, $sy + 66, $navy, 'सगरमाथा · Sagarmatha', true);
             self::text($im, 16, $M, $sy + 96, $ink, 'लुम्बिनी — गौतम बुद्धको जन्मस्थल · Lumbini');
-            self::text($im, 14, $M, $sy + 126, $muted, 'भारत–नेपाल मैत्री यात्रा  ·  India – Nepal, one journey');
+            self::text($im, 14, $M, $sy + 126, $goldD, 'भारत–नेपाल मैत्री यात्रा  ·  India – Nepal, one journey');
+            $y += self::ART_H;
         }
+
+        /* ---- navy foot band + gold corners ---- */
+        $fb = $H - 30;
+        GoldSheet::gradientV($im, 0, $fb, $W, $H, GoldSheet::ROYAL, GoldSheet::NAVY);
+        imageline($im, 0, $fb, $W, $fb, $gold);
+        $ft = $company . '  ·  ' . self::challanNo($sched) . '  ·  ShreeHariGlobal.in';
+        self::text($im, 12, (int) (($W - self::width(12, $ft)) / 2), $fb + 7, $goldL, $ft, true);
+        GoldSheet::corners($im, 10, 10, $W - 11, $H - 11, 50);
 
         /* ---- write atomically ---- */
         $tmp = $path . '.tmp';
@@ -557,6 +631,7 @@ final class ChallanPng
         if ($status === 'booked') {
             $kind = $info['cabin'] !== null ? 'private' : ($sale !== null && !in_array($sale['status'], ['confirmed', 'completed'], true) ? 'pending' : 'booked');
         }
+        GoldSheet::shadow($im, $x, $y, $x + $w, $y + $h, 10, 3, 2);   // lifts the berth off the paper
         self::roundRect($im, $x, $y, $x + $w, $y + $h, 10, $fill[$kind] ?? $fill['open'], $stroke[$kind] ?? $stroke['open']);
 
         /* women-only cabin: a pink top bar */
@@ -610,14 +685,15 @@ final class ChallanPng
         }
         self::text($im, 16, $x + 12, $y + 40, $ink, self::fit(16, $nameLine, $w - 24), true);
         $phone = self::roman($sale['phone']);
-        self::text($im, 14, $x + 12, $y + 64, $ink, $phone !== '' ? $phone : '-');
+        // y+68, not +64: a Devanagari conjunct's descender (्र, ृ) touched the number
+        self::text($im, 14, $x + 12, $y + 68, $ink, $phone !== '' ? $phone : '-');
         $b = Boarding::stopDisplay($sale['board']);
         $d = Boarding::stopDisplay($sale['drop']);
         $trip = ($b['code'] !== '' ? $b['code'] : '?') . ' -> ' . ($d['code'] !== '' ? $d['code'] : '?');
         $pnr  = self::roman($sale['pnr']);
         $pw   = self::width(11, $pnr);
-        self::text($im, 12, $x + 12, $y + 87, $muted, self::fit(12, $trip, $w - 24 - $pw - 8));
-        self::text($im, 11, $x + $w - 12 - $pw, $y + 88, $muted, $pnr);
+        self::text($im, 12, $x + 12, $y + 91, $muted, self::fit(12, $trip, $w - 24 - $pw - 8));
+        self::text($im, 11, $x + $w - 12 - $pw, $y + 92, $muted, $pnr);
     }
 
     /* ------------------------------------------------------------------ */

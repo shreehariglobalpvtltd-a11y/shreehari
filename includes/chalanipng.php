@@ -39,6 +39,7 @@ if (!defined('SHG_APP')) {
 }
 
 require_once INCLUDE_PATH . '/ticket.php';      // Ticket::logoFile(), Ticket::roman()
+require_once INCLUDE_PATH . '/goldsheet.php';   // the GOLD template + payment QR (9 Oct 2026)
 
 final class ChalaniPng
 {
@@ -47,12 +48,12 @@ final class ChalaniPng
     public const HEIGHT = 1414;
 
     /** Bump whenever the drawing changes, so every cached page re-renders once. */
-    public const LAYOUT_VERSION = 9;   // 9 = emblem without the white chip, India + Nepal flags, heritage art in the band (9 Oct 2026)   // 8 = seat column prints the two-floor grid A1-F6 / A7-F12 (23 Sep 2026)   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
+    public const LAYOUT_VERSION = 10;  // 10 = GOLD template: mantra strip, gold seal + foil, cream mandala paper, payment QR on every page, blessing band (9 Oct 2026)   // 9 = emblem without the white chip, India + Nepal flags, heritage art in the band (9 Oct 2026)   // 8 = seat column prints the two-floor grid A1-F6 / A7-F12 (23 Sep 2026)   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
 
     private const M         = 48;     // page margin
     private const ROW_H     = 42;
-    private const HEAD_H    = 44;
-    private const TABLE_Y   = 412;    // first table head baseline-top
+    private const HEAD_H    = 42;
+    private const TABLE_Y   = 430;    // first table head top (under the payment-QR card, 9 Oct 2026)
     /* The last page rules itself to ROWS_LAST whatever the data does, so a
        light bus still hands over a full ruled sheet — the minimum only has
        to stop a one-passenger trip becoming a second, blank page. (The A4
@@ -343,82 +344,116 @@ final class ChalaniPng
             (int) hexdec(substr($hex, 3, 2)),
             (int) hexdec(substr($hex, 5, 2))
         );
-        $white = $c('#FFFFFF'); $ink = $c('#15233B'); $muted = $c('#5B6B85'); $line = $c('#C9D3E2');
-        $navy  = $c('#0B2A5B'); $navy2 = $c('#12407F'); $orange = $c('#F07C1F'); $gold = $c('#E8C15A');
-        $soft  = $c('#F3F6FB'); $stripe = $c('#FAFBFE'); $red = $c('#8A1111'); $green = $c('#178A50');
-        $pale  = $c('#C7D6F0'); $dim = $c('#9FB4D8');
+        /* The GOLD template (9 Oct 2026) — the palette the ticket shares. */
+        $white  = $c('#FFFFFF'); $ink   = $c('#1A1A2E'); $muted = $c('#5F5747'); $hair = $c('#DCC27C');
+        $navy   = $c('#0E1E3F'); $royal = $c('#1B3A7A'); $maroon = $c('#7A1E2C');
+        $goldD  = $c('#8A6A1F'); $gold  = $c('#C9A227'); $goldL = $c('#F3DE8A'); $cream = $c('#FFF8E7');
+        $green  = $c('#157A47'); $pale  = $c('#EFE3BF'); $dim   = $c('#C9D2E6'); $sub = $c('#F7EBC2');
 
-        imagefilledrectangle($im, 0, 0, $W, $H, $white);
+        imagefilledrectangle($im, 0, 0, $W, $H, $cream);
+        /* Faint mandala behind the table — baked into the paper. */
+        GoldSheet::watermark($im, (int) ($W / 2), 880, 430, 112);
 
         $co        = Settings::company();
         $roman     = static fn(string $s): string => self::ro($s);
         $pages     = count($chunks);
         $chalaniNo = self::chalaniNo($trip, $date);
 
-        /* ================= header band ================= */
-        imagefilledrectangle($im, 0, 0, $W, 196, $navy);
-        /* Sagarmatha, the prayer flags, Gautam Buddha and the stupa as a faint
-           wash behind the right half of the band (9 Oct 2026) — under the
-           title and the three fields, so it fits however long the address is. */
-        if (DocArt::heritageOn()) {
-            DocArt::bandWash($im, 1040, 0, $W, 196, 26, 0.5, 0.7);
+        /* ================= mantra strip ================= */
+        imagefilledrectangle($im, 0, 0, $W, 30, $c('#09162F'));
+        imageline($im, 0, 30, $W, 30, $goldD);
+        $mantra = GoldSheet::mantra();
+        if ($mantra !== '') {
+            $mw = self::w(14, $mantra);
+            self::t($im, 14, (int) (($W - $mw) / 2), 5, $goldL, $mantra, true);
+            GoldSheet::flourish($im, (int) (($W - $mw) / 2) - 150, 16, 220);
+            GoldSheet::flourish($im, (int) (($W + $mw) / 2) + 150, 16, 220);
         }
-        imagefilledrectangle($im, 0, 196, $W, 204, $orange);
 
-        /* The emblem alone (9 Oct 2026): no white chip and no baked name —
-           the legal name is the live line beside it — on a soft glow so the
-           navy globe reads on the navy band. */
-        $tx = $M;
-        $mk = DocArt::mark($im, $M - 4, 30, 236, 136, true);
-        if ($mk !== null) {
-            $tx = $mk['x'] + $mk['w'] + 30;
+        /* ================= header band ================= */
+        GoldSheet::headerGradient($im, 0, 31, $W, 196);
+        /* Sagarmatha, the prayer flags, Gautam Buddha and the stupa as a faint
+           wash behind the right half of the band (9 Oct 2026). */
+        if (DocArt::heritageOn()) {
+            DocArt::bandWash($im, 1040, 31, $W, 196, 20, 0.5, 0.7);
         }
+        GoldSheet::foilRule($im, 0, $W, 196, GoldSheet::NAVY);
+
+        /* The emblem on an embossed gold seal. */
+        GoldSheet::seal($im, $M + 73, 113, 146);
+        $tx = $M + 146 + 30;
         $l1 = $roman($co['legal'] !== '' ? $co['legal'] : $co['name']);
         $l2 = $roman($co['address']);
         $l3 = $roman('Phone ' . $co['phone'] . '   |   Operator ' . $co['operator'] . '   |   ' . $co['email']);
         $l4 = $roman('CIN ' . $co['cin'] . '   |   ' . $co['web']);
-        self::t($im, 38, $tx, 26, $white, $l1, true);
-        self::t($im, 16, $tx, 80, $pale, $l2, false);
-        self::t($im, 16, $tx, 108, $pale, $l3, false);
-        self::t($im, 16, $tx, 136, $dim, $l4, false);
+        self::t($im, 36, $tx + 2, 42, $c('#050B1A'), $l1, true);      // engraved shadow
+        self::t($im, 36, $tx, 40, $goldL, $l1, true);
+        self::t($im, 16, $tx, 96, $pale, $l2, false);
+        self::t($im, 16, $tx, 122, $pale, $l3, false);
+        self::t($im, 15, $tx, 148, $dim, $l4, false);
 
         /* Right: what this document IS, then the three fields the office
            fills in by hand on the paper form — printed here already. */
         $rx = $W - $M;
-        self::tR($im, 32, $rx, 26, $white, 'BUS CHALANI', true);
-        /* Both flags before the title, and the heritage art (Sagarmatha,
-           prayer flags, Gautam Buddha, the stupa) in the free middle of the
-           band when there is room for it (9 Oct 2026). */
+        self::tR($im, 32, $rx, 36, $white, 'BUS CHALANI', true);
         $flH = 30;
-        DocArt::flagPair($im, $rx - self::w(32, 'BUS CHALANI') - 22 - DocArt::flagPairWidth($flH, 8), 32, $flH, 8, 'IN');
-        $artL = $tx + max(self::w(38, $l1), self::w(16, $l2), self::w(16, $l3), self::w(16, $l4)) + 40;
+        DocArt::flagPair($im, $rx - self::w(32, 'BUS CHALANI') - 22 - DocArt::flagPairWidth($flH, 8), 44, $flH, 8, 'IN');
+        $artL = $tx + max(self::w(36, $l1), self::w(16, $l2), self::w(16, $l3), self::w(15, $l4)) + 40;
         $artR = $rx - 300 - 140;
         if (DocArt::heritageOn() && $artR - $artL >= 330) {
-            // a short letterhead leaves room for the art itself, Buddha to stupa
-            $aw = min(460, $artR - $artL);
+            $aw  = min(460, $artR - $artL);
             $ax1 = $artR - $aw;
-            DocArt::band($im, $ax1, 28, $artR, 146, 14, [11, 42, 91], 0.5, 0.8);
-            self::tC($im, 13, $ax1, $artR, 154, $pale, 'सगरमाथा · Sagarmatha  ·  लुम्बिनी · Lumbini', false);
+            DocArt::band($im, $ax1, 40, $artR, 150, 14, [14, 30, 63], 0.5, 0.8);
+            self::tC($im, 13, $ax1, $artR, 158, $goldL, 'सगरमाथा · Sagarmatha  ·  लुम्बिनी · Lumbini', false);
         }
         $coach = strtoupper($roman(trim((string) ($trip['coach_type'] ?? ''))));
-        self::tR($im, 16, $rx, 68, $pale,
+        self::tR($im, 15, $rx, 80, $goldL,
             'PASSENGER SHEET' . ($coach !== '' ? '  ·  ' . $coach . ' COACH' : ''), false);
 
-        $ky = 100;
+        $ky = 106;
         foreach ([
             ['CHALANI NO.', $chalaniNo],
             ['DATE',        strtoupper(formatDate($date, 'D, j M Y'))],
             ['BUS NO.',     strtoupper(trim((string) ($trip['bus_number'] ?? '')) ?: '-')],
         ] as [$k, $v]) {
-            self::tR($im, 15, $rx - 300, $ky + 4, $dim, $k, false);
-            imageline($im, $rx - 292, $ky + 28, $rx, $ky + 28, $navy2);
+            self::tR($im, 14, $rx - 300, $ky + 5, $dim, $k, false);
+            imageline($im, $rx - 292, $ky + 28, $rx, $ky + 28, $goldD);
             self::t($im, 19, $rx - 288, $ky, $white, $roman($v), true);
-            $ky += 32;
+            $ky += 30;
         }
 
+        /* ================= payment QR (EVERY page) ================= */
+        /* Owner, 9 Oct 2026: the chalani always carries a payment QR. The
+           company UPI with this chalani as the note; else the office. */
+        $pay  = GoldSheet::payment($chalaniNo);
+        $side = GoldSheet::qrSide($pay['payload'], 200);
+        $pw   = 540;
+        $px1  = $W - $M - $pw;
+        $py1  = 212;
+        $py2  = 420;
+        GoldSheet::card($im, $px1, $py1, $W - $M, $py2, 14, [255, 253, 246]);
+        $qx = $W - $M - 14 - $side;
+        $qy = $py1 + intdiv($py2 - $py1 - $side, 2);
+        GoldSheet::foilRound($im, $qx - 5, $qy - 5, $qx + $side + 4, $qy + $side + 4, 6);
+        imagefilledrectangle($im, $qx - 1, $qy - 1, $qx + $side, $qy + $side, $white);
+        GoldSheet::qr($im, $pay['payload'], $qx, $qy, 200);
+        $tcx = $px1 + 20;
+        $tcw = $qx - 18 - $tcx;
+        self::t($im, 18, $tcx, $py1 + 14, $maroon, self::fit(18, $pay['title'], $tcw), true);
+        GoldSheet::flourish($im, $tcx + 70, $py1 + 52, 120);
+        self::t($im, 12, $tcx, $py1 + 64, $goldD, $pay['kind'] === 'upi' ? 'UPI ID' : 'OFFICE', true);
+        $l1p = $pay['kind'] === 'upi' ? (string) preg_replace('/^UPI:\s*/', '', $pay['line1']) : $pay['line1'];
+        self::t($im, 16, $tcx, $py1 + 82, $ink, self::fit(16, $roman($l1p), $tcw), true);
+        self::t($im, 13, $tcx, $py1 + 110, $muted, self::fit(13, $roman($pay['line2']), $tcw), false);
+        self::t($im, 12, $tcx, $py1 + 138, $goldD, 'REF', true);
+        self::t($im, 15, $tcx, $py1 + 155, $navy, self::fit(15, $chalaniNo, $tcw), true);
+        self::t($im, 12, $tcx, $py1 + 182, $muted,
+            self::fit(12, $pay['kind'] === 'upi' ? 'Scan with any UPI app' : 'Scan to reach the office', $tcw), false);
+
         /* ================= trip strip ================= */
-        $y = 224;
-        $boxW = (int) (($inner - 3 * 12) / 4);
+        $y = 212;
+        $stripW = $px1 - 16 - $M;
+        $boxW = (int) (($stripW - 3 * 12) / 4);
         $driver = trim($roman((string) ($trip['driver_name'] ?? ''))
             . (trim((string) ($trip['driver_phone'] ?? '')) !== '' ? '  ·  ' . $roman((string) $trip['driver_phone']) : ''));
         $depTs = ($trip['dep_time'] ?? '') !== '' ? strtotime($date . ' ' . substr((string) $trip['dep_time'], 0, 8)) : false;
@@ -429,34 +464,31 @@ final class ChalaniPng
             ['DRIVER / CONDUCTOR',   $driver !== '' ? $driver : '-'],
         ] as $i => [$k, $v]) {
             $bx = $M + $i * ($boxW + 12);
-            self::roundRect($im, $bx, $y, $bx + $boxW, $y + 82, 8, $soft, $line);
-            self::t($im, 14, $bx + 16, $y + 12, $muted, $k, false);
-            self::t($im, 24, $bx + 16, $y + 40, $ink, self::fit(24, $v, $boxW - 32), true);
+            GoldSheet::card($im, $bx, $y, $bx + $boxW, $y + 84, 10, [255, 253, 246], GoldSheet::GOLD, 6);
+            imagefilledrectangle($im, $bx + 2, $y + 12, $bx + 5, $y + 72, $gold);   // gold tab
+            self::t($im, 13, $bx + 18, $y + 12, $goldD, $k, true);
+            $vs = self::w(24, $v) <= $boxW - 34 ? 24 : 20;
+            self::t($im, $vs, $bx + 18, $y + ($vs === 24 ? 38 : 42), $navy, self::fit($vs, $v, $boxW - 34), true);
         }
-        $y += 94;
+        $y += 96;
 
-        /* Boarding points, in travel order. The PDF's own line carries the
-           times in Devanagari digits, which romanise away and leave "(:)"
-           behind — so the caller hands us a Roman-digit twin and we only
-           fall back to scrubbing the empty brackets out of the other one. */
+        /* Boarding points, in travel order (Roman-digit twin of the PDF line). */
         $stopsLine = $roman((string) ($fmt['stopsLineRoman'] ?? $fmt['stopsLine'] ?? ''));
         $stopsLine = trim((string) preg_replace('/\(\s*:?\s*\)/', '', $stopsLine));
         if ($stopsLine !== '') {
-            self::t($im, 15, $M, $y, $muted, self::fit(15, 'Boarding points: ' . $stopsLine, $inner), false);
+            self::t($im, 15, $M, $y, $muted, self::fit(15, 'Boarding points: ' . $stopsLine, $stripW), false);
         }
-        $y += 26;
+        $y += 28;
 
         self::t($im, 20, $M, $y, $navy, strtoupper(
             $roman((string) ($trip['from_city'] ?? 'Gujarat')) . ' - '
             . $roman((string) ($trip['to_city'] ?? 'Rupaidiha')) . '  ·  PASSENGER RECORD'
         ), true);
-        self::tR($im, 16, $W - $M, $y + 3, $muted, 'PAGE ' . $page . ' OF ' . $pages, true);
+        self::tR($im, 16, $px1 - 16, $y + 3, $maroon, 'PAGE ' . $page . ' OF ' . $pages, true);
+        GoldSheet::flourish($im, $M + (int) ($stripW / 2), $y + 52, $stripW - 40);
 
         /* ================= table ================= */
         [$startIdx, $rowCount] = $chunks[$page - 1];
-        /* The last page rules its full height whatever the data does, so the
-           summary boxes sit under a complete table instead of floating in a
-           half-empty sheet — and the crew get spare lines for the pen. */
         $drawRows = $page === $pages ? max($rowCount, self::ROWS_LAST) : $rowCount;
 
         $heads = ['#', 'SEAT', 'PASSENGER NAME', 'MOBILE', 'BOARDING', 'DROP',
@@ -468,14 +500,16 @@ final class ChalaniPng
         $x     = $M;
         foreach ($cw as $i => $wd) { $cx[$i] = $x; $x += $wd; }
 
-        $ty = self::TABLE_Y;
-        imagefilledrectangle($im, $M, $ty, $W - $M, $ty + self::HEAD_H, $navy2);
+        $ty  = self::TABLE_Y;
+        $tbT = $ty;
+        /* Gold-foil head row, navy letters. */
+        GoldSheet::foil($im, $M, $ty, $W - $M, $ty + self::HEAD_H);
         foreach ($heads as $i => $h) {
-            $hy = $ty + 12;
-            if ($align[$i] === 'c')     { self::tC($im, 16, $cx[$i], $cx[$i] + $cw[$i], $hy, $white, $h, true); }
-            elseif ($align[$i] === 'r') { self::tR($im, 16, $cx[$i] + $cw[$i] - 10, $hy, $white, $h, true); }
-            else                        { self::t($im, 16, $cx[$i] + 10, $hy, $white, $h, true); }
-            if ($i > 0) { imageline($im, $cx[$i], $ty, $cx[$i], $ty + self::HEAD_H, $navy); }
+            $hy = $ty + 11;
+            if ($align[$i] === 'c')     { self::tC($im, 16, $cx[$i], $cx[$i] + $cw[$i], $hy, $navy, $h, true); }
+            elseif ($align[$i] === 'r') { self::tR($im, 16, $cx[$i] + $cw[$i] - 10, $hy, $navy, $h, true); }
+            else                        { self::t($im, 16, $cx[$i] + 10, $hy, $navy, $h, true); }
+            if ($i > 0) { imageline($im, $cx[$i], $ty + 6, $cx[$i], $ty + self::HEAD_H - 6, $goldD); }
         }
         $ty += self::HEAD_H;
 
@@ -485,20 +519,22 @@ final class ChalaniPng
         $bookedBy = $fmt['bookedBy'];
 
         $pTicket = 0.0; $pCash = 0.0; $pOnline = 0.0; $pPax = 0;
+        $zebraA = GoldSheet::col($im, [255, 255, 255], 72);
+        $zebraB = GoldSheet::col($im, [244, 228, 184], 68);
 
         for ($n = 0; $n < $drawRows; $n++) {
             $idx = $startIdx + $n;
             $r   = $rows[$idx] ?? null;
             $ry  = $ty + $n * self::ROW_H;
 
-            imagefilledrectangle($im, $M, $ry, $W - $M, $ry + self::ROW_H, $n % 2 === 0 ? $white : $stripe);
-            imageline($im, $M, $ry + self::ROW_H, $W - $M, $ry + self::ROW_H, $line);
+            imagefilledrectangle($im, $M, $ry, $W - $M, $ry + self::ROW_H - 1, $n % 2 === 0 ? $zebraA : $zebraB);
+            imageline($im, $M, $ry + self::ROW_H, $W - $M, $ry + self::ROW_H, $hair);
             foreach ($cw as $i => $wd) {
-                if ($i > 0) { imageline($im, $cx[$i], $ry, $cx[$i], $ry + self::ROW_H, $line); }
+                if ($i > 0) { imageline($im, $cx[$i], $ry, $cx[$i], $ry + self::ROW_H, $hair); }
             }
 
             $vy = $ry + 10;
-            self::tC($im, 15, $cx[0], $cx[0] + $cw[0], $vy + 2, $muted, (string) ($idx + 1), false);
+            self::tC($im, 15, $cx[0], $cx[0] + $cw[0], $vy + 2, $goldD, (string) ($idx + 1), true);
             if ($r === null) {
                 continue;              // a clean ruled blank, for the pen
             }
@@ -507,22 +543,17 @@ final class ChalaniPng
             $pTicket += $m['ticket']; $pCash += $m['cash']; $pOnline += $m['online'];
             $late = (bool) $isLate($r);
 
-            self::tC($im, 19, $cx[1], $cx[1] + $cw[1], $vy, $ink, Seats::displayLabel((string) $r['seat_no'], (string) ($trip['coach_type'] ?? 'sleeper'), (string) ($r['booking_mode'] ?? 'sharing')), true);
+            self::tC($im, 19, $cx[1], $cx[1] + $cw[1], $vy, $navy, Seats::displayLabel((string) $r['seat_no'], (string) ($trip['coach_type'] ?? 'sleeper'), (string) ($r['booking_mode'] ?? 'sharing')), true);
 
-            /* Name — with the ticket number under it. A Devanagari name
-               romanises to nothing, so the ticket number takes the line
-               instead of leaving the row anonymous. */
+            /* Name and ticket number share ONE line (a Devanagari name is
+               taller and its descenders ran through a stacked number). */
             $name = Ticket::display((string) ($r['full_name'] ?? ''));
             $tkt  = $roman((string) (($r['ticket_number'] ?? '') ?: ($r['pnr'] ?? '')));
             if ($name === '') { $name = $tkt !== '' ? $tkt : '(name not in Latin or Devanagari)'; }
-            /* Name and ticket number share ONE line. They used to be stacked,
-               which was fine for Latin and collided the moment a Devanagari
-               name arrived — those glyphs are taller at the same point size
-               and their descenders ran through the number underneath. */
             $tktW = $tkt !== '' ? self::w(11, $tkt) + 14 : 0;
             self::t($im, 18, $cx[2] + 10, $vy + 1, $ink, self::fit(18, $name, $cw[2] - 20 - $tktW), false);
             if ($tkt !== '') {
-                self::tR($im, 11, $cx[2] + $cw[2] - 8, $vy + 9, $late ? $red : $muted, $tkt, false);
+                self::tR($im, 11, $cx[2] + $cw[2] - 8, $vy + 9, $late ? $maroon : $muted, $tkt, false);
             }
 
             $ph = (string) ($r['contact_phone'] ?? '');
@@ -538,29 +569,25 @@ final class ChalaniPng
             if ($m['cash']   > 0) { self::tR($im, 18, $cx[7] + $cw[7] - 10, $vy + 2, $ink,   number_format($m['cash']),   false); }
             if ($m['online'] > 0) { self::tR($im, 18, $cx[8] + $cw[8] - 10, $vy + 2, $green, number_format($m['online']), false); }
             if ($m['cash'] <= 0 && $m['online'] <= 0) {
-                /* Nothing in either money column means the crew still has to
-                   collect. Written ACROSS both so it can never be misread as
-                   an amount received online. */
-                self::tC($im, 15, $cx[7], $cx[8] + $cw[8], $vy + 3, $orange, 'TO COLLECT', true);
+                /* Nothing in either money column = the crew still collects.
+                   Written ACROSS both so it never reads as an amount. */
+                self::tC($im, 15, $cx[7], $cx[8] + $cw[8], $vy + 3, $maroon, 'TO COLLECT', true);
             }
 
-            /* WHO CUT THE TICKET — the owner's whole point (10 Sep 2026).
-               A numbered agent gets an orange code chip so an agent row is
-               findable at arm's length; office / online rows stay plain so
-               the chips mean something. */
+            /* WHO CUT THE TICKET (10 Sep 2026). A numbered agent gets a
+               maroon code chip with a gold edge; office / online rows stay
+               plain so the chips mean something. */
             $code  = strtoupper($roman((string) $bookedBy($r)));
             $who   = $roman((string) (($r['agent_name'] ?? '') ?: ($r['agent_user'] ?? '')));
-            /* A 42px row holds two lines only if they are placed for it: the
-               code sits high when a name follows, and centres when it is the
-               whole cell. Drawn low, the name lost its bottom half to the
-               next row's rule. */
-            $codeY = $who !== '' ? $ry + 4 : $ry + 11;
+            $codeY = $who !== '' ? $ry + 3 : $ry + 11;
             if (str_starts_with($code, 'SHG-')) {
-                $chW = self::w(15, $code) + 22;
-                self::roundRect($im, $cx[9] + 10, $codeY - 3, $cx[9] + 10 + $chW, $codeY + 22, 9, $orange, null);
-                self::t($im, 15, $cx[9] + 21, $codeY + 2, $white, $code, true);
+                /* a 21px chip, so the seller name under it keeps its own line */
+                $chW = self::w(14, $code) + 20;
+                self::roundRect($im, $cx[9] + 9, $codeY - 2, $cx[9] + 11 + $chW, $codeY + 20, 9, $gold, null);
+                self::roundRect($im, $cx[9] + 10, $codeY - 1, $cx[9] + 10 + $chW, $codeY + 19, 8, $maroon, null);
+                self::t($im, 14, $cx[9] + 20, $codeY + 1, $white, $code, true);
             } else {
-                self::t($im, 15, $cx[9] + 10, $codeY + 1, $muted, self::fit(15, $code, $cw[9] - 20), true);
+                self::t($im, 15, $cx[9] + 10, $codeY + 1, $royal, self::fit(15, $code, $cw[9] - 20), true);
             }
             if ($who !== '') {
                 self::t($im, 12, $cx[9] + 10, $ry + 25, $muted, self::fit(12, $who, $cw[9] - 20), false);
@@ -570,27 +597,32 @@ final class ChalaniPng
             if ($rem === '' && !empty($r['boarded_at']))     { $rem = 'Boarded'; }
             if ($rem === '' && !empty($r['special_need']))   { $rem = $roman((string) $r['special_need']); }
             if ($rem === '' && (string) ($r['booking_status'] ?? '') === 'pending') { $rem = 'Booking pending'; }
-            self::t($im, 15, $cx[10] + 10, $vy + 3, $late ? $red : $muted, self::fit(15, $rem, $cw[10] - 20), false);
+            self::t($im, 15, $cx[10] + 10, $vy + 3, $late ? $maroon : $muted, self::fit(15, $rem, $cw[10] - 20), false);
         }
 
         /* Page subtotal — a crew counting cash counts THIS sheet, not the trip. */
         $sy = $ty + $drawRows * self::ROW_H;
-        imagefilledrectangle($im, $M, $sy, $W - $M, $sy + self::ROW_H, $soft);
-        imagerectangle($im, $M, $sy, $W - $M, $sy + self::ROW_H, $line);
+        imagefilledrectangle($im, $M, $sy, $W - $M, $sy + self::ROW_H, $sub);
+        imageline($im, $M, $sy, $W - $M, $sy, $gold);
         self::t($im, 17, $cx[2] + 10, $sy + 11, $navy,
             'PAGE ' . $page . ' SUBTOTAL  ·  ' . $pPax . ' passenger' . ($pPax === 1 ? '' : 's'), true);
         self::tR($im, 18, $cx[6] + $cw[6] - 10, $sy + 11, $navy, number_format($pTicket), true);
         self::tR($im, 18, $cx[7] + $cw[7] - 10, $sy + 11, $navy, number_format($pCash),   true);
         self::tR($im, 18, $cx[8] + $cw[8] - 10, $sy + 11, $navy, number_format($pOnline), true);
         $sy += self::ROW_H;
+        /* Gold frame round the whole table, with a soft lower-right shade. */
+        imageline($im, $M + 3, $sy + 1, $W - $M + 1, $sy + 1, GoldSheet::col($im, GoldSheet::NAVY, 96));
+        imageline($im, $W - $M + 1, $tbT + 3, $W - $M + 1, $sy + 1, GoldSheet::col($im, GoldSheet::NAVY, 96));
+        imagerectangle($im, $M, $tbT, $W - $M, $sy, $gold);
 
         /* ================= summary + signatures (last page) ================= */
         if ($page === $pages) {
             $by = self::FOOT_Y - 8 - self::BOXES_H;      // anchored to the sheet, not to the table
             $halfW = (int) (($inner - 16) / 2);
 
-            self::roundRect($im, $M, $by, $M + $halfW, $by + self::BOXES_H, 10, $white, $navy);
-            self::t($im, 18, $M + 18, $by + 12, $navy, 'PAYMENT SUMMARY  ·  WHOLE BUS', true);
+            GoldSheet::card($im, $M, $by, $M + $halfW, $by + self::BOXES_H, 12, [255, 253, 246]);
+            GoldSheet::foilRound($im, $M + 2, $by + 2, $M + $halfW - 2, $by + 38, 10);
+            self::t($im, 17, $M + 18, $by + 9, $navy, 'PAYMENT SUMMARY  ·  WHOLE BUS', true);
             $sum = [
                 ['Total passengers',        number_format((float) ($totals['passengers'] ?? 0))],
                 ['Total ticket value',      'Rs ' . number_format((float) ($totals['ticket'] ?? 0))],
@@ -599,41 +631,58 @@ final class ChalaniPng
                 ['Discount / concession',   'Rs ' . number_format((float) ($totals['discount'] ?? 0))],
                 ['NET COLLECTION',          'Rs ' . number_format((float) ($totals['net'] ?? 0))],
             ];
-            $ly = $by + 44;
+            $ly = $by + 46;
             foreach ($sum as $i => [$lab, $val]) {
                 $last = $i === count($sum) - 1;
-                self::t($im, $last ? 18 : 16, $M + 22, $ly, $last ? $navy : $muted, $lab, $last);
-                imageline($im, $M + $halfW - 260, $ly + 22, $M + $halfW - 22, $ly + 22, $line);
-                self::tR($im, $last ? 19 : 17, $M + $halfW - 24, $ly - 1, $last ? $navy : $ink, $val, true);
+                self::t($im, $last ? 18 : 15, $M + 22, $ly, $last ? $maroon : $muted, $lab, $last);
+                imageline($im, $M + $halfW - 260, $ly + 21, $M + $halfW - 22, $ly + 21, $hair);
+                self::tR($im, $last ? 19 : 16, $M + $halfW - 24, $ly - 1, $last ? $maroon : $ink, $val, true);
                 $ly += 25;
             }
 
             $ax = $M + $halfW + 16;
-            self::roundRect($im, $ax, $by, $W - $M, $by + self::BOXES_H, 10, $white, $navy);
-            self::t($im, 18, $ax + 18, $by + 12, $navy, 'AUTHORISATION  ·  SIGNATURES', true);
+            GoldSheet::card($im, $ax, $by, $W - $M, $by + self::BOXES_H, 12, [255, 253, 246]);
+            GoldSheet::foilRound($im, $ax + 2, $by + 2, $W - $M - 2, $by + 38, 10);
+            self::t($im, 17, $ax + 18, $by + 9, $navy, 'AUTHORISATION  ·  SIGNATURES', true);
             $sw = (int) (($halfW - 60) / 2);
             foreach (['Conductor', 'Driver', 'Agent / Office', 'Verified by (Manager)'] as $i => $lab) {
                 $col = $i % 2; $row = intdiv($i, 2);
                 $sx  = $ax + 20 + $col * ($sw + 20);
-                $ly2 = $by + 100 + $row * 62;
-                imageline($im, $sx, $ly2, $sx + $sw, $ly2, $line);
-                self::tC($im, 15, $sx, $sx + $sw, $ly2 + 8, $muted, $lab, false);
+                $ly2 = $by + 104 + $row * 60;
+                imageline($im, $sx, $ly2, $sx + $sw, $ly2, $goldD);
+                self::tC($im, 15, $sx, $sx + $sw, $ly2 + 7, $muted, $lab, false);
             }
         }
 
         /* ================= footer ================= */
         $fy = self::FOOT_Y;
-        imageline($im, $M, $fy, $W - $M, $fy, $navy);
-        self::t($im, 15, $M, $fy + 12, $muted, $roman('Booking counters: ' . $co['counters']), false);
-        self::tR($im, 17, $W - $M, $fy + 10, $navy, 'PAGE ' . $page . ' OF ' . $pages, true);
-        self::t($im, 13, $M, $fy + 40, $muted, $roman(
+        GoldSheet::foilRule($im, $M, $W - $M, $fy, GoldSheet::CREAM);
+        $pg = 'PAGE ' . $page . ' OF ' . $pages;
+        self::tR($im, 17, $W - $M, $fy + 13, $navy, $pg, true);
+        self::t($im, 14, $M, $fy + 15, $muted,
+            self::fit(14, $roman('Booking counters: ' . $co['counters']), $inner - self::w(17, $pg) - 30), false);
+        self::t($im, 12, $M, $fy + 36, $muted, self::fit(12, $roman(
             'Official travel document of ' . $co['legal'] . '. Keep for company records. Valid with authorised signature / stamp. '
             . 'Route: ' . ($trip['from_city'] ?? '') . ' - ' . ($trip['to_city'] ?? '') . ' (India-Nepal). CIN ' . $co['cin']
-        ), false);
-        self::t($im, 13, $M, $fy + 62, $dim,
-            'English crew copy for the border desk, names as typed - the signed Nepali chalani is the PDF.'
-            . '   ·   Generated ' . date('D, j M Y g:i A') . '   ·   ' . $chalaniNo . '   ·   ' . $roman($co['web']),
-            false);
+        ), $inner), false);
+
+        /* Navy blessing band at the foot of the sheet. */
+        $bb = $fy + 56;
+        GoldSheet::gradientV($im, 0, $bb, $W, $H, GoldSheet::ROYAL, GoldSheet::NAVY);
+        imageline($im, 0, $bb, $W, $bb, $gold);
+        $bless = GoldSheet::blessing();
+        $bw    = $bless !== '' ? self::w(16, $bless) : 0;
+        if ($bless !== '') {
+            self::t($im, 16, (int) (($W - $bw) / 2), $bb + 5, $goldL, $bless, true);
+        }
+        $leftW  = (int) (($W - $bw) / 2) - $M - 30;
+        self::t($im, 11, $M + 40, $bb + 11, $dim, self::fit(11,
+            'Generated ' . date('D, j M Y g:i A') . '  ·  ' . $chalaniNo, $leftW - 40), false);
+        self::tR($im, 11, $W - $M - 40, $bb + 11, $dim, self::fit(11,
+            'Crew copy, names as typed - signed Nepali chalani = PDF  ·  ' . $roman($co['web']), $leftW - 40), false);
+
+        /* Gold corner ornaments over everything. */
+        GoldSheet::corners($im, 10, 10, $W - 11, $H - 11, 54);
 
         /* ================= write atomically ================= */
         $tmp = $path . '.tmp';
