@@ -1,0 +1,4 @@
+/* themes.css — 9 Oct 2026: Material-You / Pixel colour palettes (html[data-palette]),
+   Pixel surface style (html[data-ui="pixel"]) and spring motion tokens.
+   Loads after anim.css and BEFORE showcase.css + depth.css (depth.css stays LAST).
+   Owner of this file: THEME work package. Tokens only where possible. */

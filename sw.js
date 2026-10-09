@@ -55,9 +55,14 @@ var PRECACHE = [
   '/assets/css/redesign.css?v=' + ASSET_VER,
   /* 4 Oct 2026: homepage animation scenes (artwork itself is not precached) */
   '/assets/css/anim.css?v=' + ASSET_VER,
+  '/assets/css/themes.css?v=' + ASSET_VER,
+  '/assets/css/showcase.css?v=' + ASSET_VER,
   /* 4 Oct 2026: pop-out depth + the AMOLED display (loads last, both apps) */
   '/assets/css/depth.css?v=' + ASSET_VER,
   '/assets/js/20-anim.js?v=' + ASSET_VER,
+  '/assets/js/21-showcase.js?v=' + ASSET_VER,
+  '/assets/js/22-routeline.js?v=' + ASSET_VER,
+  '/assets/js/23-flags.js?v=' + ASSET_VER,
   '/assets/js/19-premium.js?v=' + ASSET_VER,
   '/assets/js/01-boot.js?v=' + ASSET_VER,
   '/assets/js/02-config.js?v=' + ASSET_VER,
