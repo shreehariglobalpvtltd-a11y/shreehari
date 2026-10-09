@@ -90,6 +90,9 @@ final class Boarding
     /** @var bool|null do route_stops.fare / is_active exist yet? */
     private static ?bool $hasControls = null;
 
+    /** @var bool|null do route_stops.km_from_origin + route_halts exist yet? (9 Oct 2026) */
+    private static ?bool $hasDetails = null;
+
     /**
      * Forget the per-request caches. Admin edits call this so the page that
      * saved a change renders the new state; tests call it between steps.
@@ -99,6 +102,7 @@ final class Boarding
         self::$stopCache = [];
         self::$locCache  = null;
         self::$hasControls = null;
+        self::$hasDetails  = null;
     }
 
     /**
@@ -761,5 +765,616 @@ final class Boarding
     {
         return self::routeSellable($routeId, $travelDate)
             || self::agentGraceOpen($routeId, $travelDate, $hours);
+    }
+
+    /* =================================================================
+     *  ROUTE FACTS (9 Oct 2026, owner ask #11/#12) — road km per stop,
+     *  en-route halts, and the ONE ordered "journey line" every screen
+     *  draws: the home route rail (22-routeline.js via api/timetable.php),
+     *  the live tracker (WhereIs::status -> track.php) and Admin -> Routes.
+     *  Guarded: before database/upgrade-2026-10-09-route-details.sql runs,
+     *  every helper answers "no km, no halts" instead of failing.
+     * ================================================================= */
+
+    /** The kinds route_halts.kind accepts (keep in step with the ENUM). */
+    public const HALT_KINDS = ['meal', 'breakfast', 'lunch', 'dinner', 'tea', 'fuel', 'rest', 'border'];
+
+    /** True once route_stops.km_from_origin and the route_halts table exist. */
+    public static function hasRouteDetails(): bool
+    {
+        if (self::$hasDetails === null) {
+            try {
+                $col = (int) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'route_stops' AND COLUMN_NAME = 'km_from_origin'",
+                    [], 0
+                );
+                $tbl = (int) Database::scalar(
+                    "SELECT COUNT(*) FROM information_schema.TABLES
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'route_halts'",
+                    [], 0
+                );
+                self::$hasDetails = $col === 1 && $tbl === 1;
+            } catch (Throwable $e) {
+                self::$hasDetails = false;
+            }
+        }
+
+        return self::$hasDetails;
+    }
+
+    /** SQL select-list fragment for the stop km that works before the migration too. */
+    public static function kmSql(string $alias = ''): string
+    {
+        return self::hasRouteDetails()
+            ? ($alias !== '' ? $alias . '.' : '') . 'km_from_origin AS km_from_origin'
+            : 'NULL AS km_from_origin';
+    }
+
+    /** "HH:MM[:SS]" -> minutes after midnight, or null. */
+    public static function hmToMin(?string $t): ?int
+    {
+        if ($t === null || preg_match('/^\s*([0-2]?\d):([0-5]\d)/', $t, $m) !== 1 || (int) $m[1] > 23) {
+            return null;
+        }
+
+        return (int) $m[1] * 60 + (int) $m[2];
+    }
+
+    /** Minutes after midnight -> "HH:MM" (wraps past midnight). */
+    public static function minToHm(int $min): string
+    {
+        $min = (($min % 1440) + 1440) % 1440;
+
+        return sprintf('%02d:%02d', intdiv($min, 60), $min % 60);
+    }
+
+    /**
+     * A halt's offset from the departure, from the clock the office types
+     * and the journey day it falls on (0 = departure day, 1 = next day ...).
+     * Null when that moment would sit before the departure.
+     */
+    public static function haltOffset(string $clock, int $day, string $depTime): ?int
+    {
+        $c = self::hmToMin($clock);
+        $d = self::hmToMin($depTime);
+        if ($c === null || $d === null) {
+            return null;
+        }
+        $off = max(0, min(3, $day)) * 1440 + $c - $d;
+
+        return $off >= 0 ? $off : null;
+    }
+
+    /**
+     * Journey minutes from the timetable: departure -> arrival plus
+     * day_offset calendar days. Null when the arrival is missing or the
+     * result is outside one hour .. four days.
+     */
+    public static function durationMin(?string $depTime, ?string $arrTime, int $dayOffset): ?int
+    {
+        $d = self::hmToMin($depTime);
+        $a = self::hmToMin($arrTime);
+        if ($d === null || $a === null || $dayOffset < 0) {
+            return null;
+        }
+        $min = $dayOffset * 1440 + $a - $d;
+
+        return $min >= 60 && $min <= 4 * 1440 ? $min : null;
+    }
+
+    /**
+     * Halts of many routes in one query, grouped by route id, in the office's
+     * order. Empty before the migration (never throws).
+     *
+     * @param int[] $routeIds
+     * @return array<int, list<array<string, mixed>>>
+     */
+    public static function haltsForRoutes(array $routeIds, bool $activeOnly = true): array
+    {
+        $routeIds = array_values(array_unique(array_filter(array_map('intval', $routeIds), static fn(int $i): bool => $i > 0)));
+        if ($routeIds === [] || !self::hasRouteDetails()) {
+            return [];
+        }
+        $ph = [];
+        $pp = [];
+        foreach ($routeIds as $i => $id) {
+            $ph[]          = ':h' . $i;
+            $pp['h' . $i] = $id;
+        }
+        try {
+            $rows = Database::fetchAll(
+                'SELECT id, route_id, sort_order, name, kind, clock_time, offset_min, halt_min, km_from_origin,
+                        landmark, note, is_approx, is_active
+                   FROM route_halts
+                  WHERE route_id IN (' . implode(',', $ph) . ')' . ($activeOnly ? ' AND is_active = 1' : '') . '
+                  ORDER BY route_id, sort_order, id',
+                $pp
+            );
+        } catch (Throwable $e) {
+            return [];
+        }
+        $out = [];
+        foreach ($rows as $r) {
+            $out[(int) $r['route_id']][] = self::haltRow($r);
+        }
+
+        return $out;
+    }
+
+    /** @return list<array<string, mixed>> */
+    public static function haltsFor(int $routeId, bool $activeOnly = true): array
+    {
+        return self::haltsForRoutes([$routeId], $activeOnly)[$routeId] ?? [];
+    }
+
+    /** One route_halts row in the shape journeyLine() reads. */
+    private static function haltRow(array $r): array
+    {
+        return [
+            'id'        => (int) $r['id'],
+            'routeId'   => (int) $r['route_id'],
+            'sort'      => (int) $r['sort_order'],
+            'name'      => (string) $r['name'],
+            'kind'      => in_array((string) $r['kind'], self::HALT_KINDS, true) ? (string) $r['kind'] : 'rest',
+            'clock'     => $r['clock_time'] !== null ? substr((string) $r['clock_time'], 0, 5) : null,
+            'offsetMin' => $r['offset_min'] !== null ? (int) $r['offset_min'] : null,
+            'haltMin'   => max(0, (int) $r['halt_min']),
+            'km'        => $r['km_from_origin'] !== null ? round((float) $r['km_from_origin'], 1) : null,
+            'landmark'  => (string) ($r['landmark'] ?? ''),
+            'note'      => (string) ($r['note'] ?? ''),
+            'approx'    => (int) $r['is_approx'] === 1,
+            'active'    => (int) $r['is_active'] === 1,
+        ];
+    }
+
+    /**
+     * Every stop row of a route in the shape journeyLine() reads, in the
+     * office's order (boarding, then drops). ON stops only by default.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function lineStops(int $routeId, bool $activeOnly = true): array
+    {
+        $rows = Database::fetchAll(
+            'SELECT id, stop_type, stop_name, landmark, stop_time, latitude, longitude, is_border, ' . self::kmSql() . '
+               FROM route_stops
+              WHERE route_id = :r' . ($activeOnly ? self::activeSql() : '') . "
+              ORDER BY FIELD(stop_type, 'boarding', 'drop'), sort_order, id",
+            ['r' => $routeId]
+        );
+        $out = [];
+        foreach ($rows as $r) {
+            $out[] = [
+                'id'       => (int) $r['id'],
+                'type'     => (string) $r['stop_type'] === 'drop' ? 'drop' : 'boarding',
+                'name'     => (string) $r['stop_name'],
+                'landmark' => (string) ($r['landmark'] ?? ''),
+                'time'     => $r['stop_time'] !== null ? (string) $r['stop_time'] : null,
+                'km'       => $r['km_from_origin'] !== null ? (float) $r['km_from_origin'] : null,
+                'isBorder' => (int) $r['is_border'] === 1,
+                'lat'      => $r['latitude'] !== null && (float) $r['latitude'] !== 0.0 ? (float) $r['latitude'] : null,
+                'lng'      => $r['longitude'] !== null && (float) $r['longitude'] !== 0.0 ? (float) $r['longitude'] : null,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * THE ordered run of one route: its stops and its halts merged into
+     * travel order, each with the timetable clock, the journey day and the
+     * road km from the origin.
+     *
+     * Order: road km where known; an entry without km takes its place from
+     * its time (interpolated on the entries that carry both), else sits next
+     * to its neighbour in the office's own list. Times are offsets from the
+     * departure (a pickup more than an hour "before" departure is past
+     * midnight, as in pickupTs()), so a 00:30 stop never sorts first. Two
+     * rows of one town (an old and a new label) collapse into one entry that
+     * keeps every row id.
+     *
+     * @param list<array<string, mixed>> $stops  lineStops() shape, office order
+     * @param list<array<string, mixed>> $halts  haltRow() shape
+     * @return list<array<string, mixed>>
+     */
+    public static function journeyLine(array $stops, array $halts, string $depTime): array
+    {
+        $dep   = self::hmToMin($depTime);
+        $items = [];
+        $board = [];
+        $drop  = [];
+        foreach ($stops as $s) {
+            if ((string) ($s['type'] ?? 'boarding') === 'drop') {
+                $drop[] = $s;
+            } else {
+                $board[] = $s;
+            }
+        }
+        $num = static fn(mixed $v): ?float => $v !== null && is_numeric($v) ? (float) $v : null;
+
+        $maxStopOff = null;
+        foreach ([['boarding', $board], ['drop', $drop]] as [$type, $list]) {
+            foreach ($list as $s) {
+                $t   = self::hmToMin(isset($s['time']) ? (string) $s['time'] : null);
+                $off = null;
+                if ($t !== null && $dep !== null) {
+                    $off = (($t - $dep) % 1440 + 1440) % 1440;
+                    if ($type === 'boarding') {
+                        if ($off > 1380) {
+                            $off -= 1440;
+                        }
+                    } else {
+                        // a drop comes after the pickups: 00:39 on a 13:00 coach is a later day
+                        while ($maxStopOff !== null && $off < $maxStopOff && $off < 3 * 1440) {
+                            $off += 1440;
+                        }
+                    }
+                    $maxStopOff = $maxStopOff === null ? $off : max($maxStopOff, $off);
+                }
+                $disp    = self::stopDisplay((string) $s['name']);
+                $km      = $num($s['km'] ?? null);
+                $items[] = [
+                    'kind' => 'stop', 'type' => $type, 'role' => $type === 'drop' ? 'drop' : 'board',
+                    'name' => (string) $disp['name'], 'label' => (string) $s['name'], 'code' => (string) $disp['code'],
+                    'landmark' => trim((string) ($s['landmark'] ?? '')),
+                    'clock' => $t !== null ? self::minToHm($t) : '', 'off' => $off,
+                    'km' => $km !== null ? round($km, 1) : null, 'border' => !empty($s['isBorder']),
+                    'halt' => '', 'haltMin' => null, 'approx' => false, 'note' => '',
+                    'lat' => $num($s['lat'] ?? null), 'lng' => $num($s['lng'] ?? null),
+                    'open' => array_key_exists('open', $s) && $s['open'] !== null ? (bool) $s['open'] : null,
+                    'ids' => isset($s['id']) ? [(int) $s['id']] : [],
+                ];
+            }
+        }
+        foreach ($halts as $h) {
+            $off = isset($h['offsetMin']) && $h['offsetMin'] !== null ? (int) $h['offsetMin'] : null;
+            if ($off === null && !empty($h['clock']) && $dep !== null) {
+                $c   = self::hmToMin((string) $h['clock']);
+                $off = $c !== null ? (($c - $dep) % 1440 + 1440) % 1440 : null;
+            }
+            $km      = $num($h['km'] ?? null);
+            $kind    = in_array((string) ($h['kind'] ?? ''), self::HALT_KINDS, true) ? (string) $h['kind'] : 'rest';
+            $items[] = [
+                'kind' => 'halt', 'type' => 'halt', 'role' => 'halt',
+                'name' => (string) ($h['name'] ?? ''), 'label' => (string) ($h['name'] ?? ''), 'code' => '',
+                'landmark' => trim((string) ($h['landmark'] ?? '')),
+                'clock' => $off !== null && $dep !== null ? self::minToHm($dep + $off) : (string) ($h['clock'] ?? ''),
+                'off' => $off, 'km' => $km !== null ? round($km, 1) : null, 'border' => $kind === 'border',
+                'halt' => $kind, 'haltMin' => (int) ($h['haltMin'] ?? 0), 'approx' => !empty($h['approx']),
+                'note' => (string) ($h['note'] ?? ''), 'lat' => null, 'lng' => null, 'open' => null,
+                'ids' => isset($h['id']) ? [(int) $h['id']] : [],
+            ];
+        }
+        if ($items === []) {
+            return [];
+        }
+
+        // Sort keys: road km (time-interpolated when missing), else minutes.
+        $useKm   = count(array_filter($items, static fn(array $i): bool => $i['km'] !== null)) >= 2;
+        $anchors = [];
+        if ($useKm) {
+            foreach ($items as $i) {
+                if ($i['km'] !== null && $i['off'] !== null) {
+                    $anchors[] = [(float) $i['off'], (float) $i['km']];
+                }
+            }
+            usort($anchors, static fn(array $a, array $b): int => $a[0] <=> $b[0]);
+        }
+        $interp = static function (float $off) use ($anchors): ?float {
+            $n = count($anchors);
+            if ($n < 2) {
+                return null;
+            }
+            for ($k = 0; $k < $n - 1; $k++) {
+                if ($off <= $anchors[$k + 1][0] || $k === $n - 2) {
+                    [$o1, $k1] = $anchors[$k];
+                    [$o2, $k2] = $anchors[$k + 1];
+                    $span = $o2 - $o1;
+
+                    return $span > 0 ? max(0.0, $k1 + ($off - $o1) * ($k2 - $k1) / $span) : $k1;
+                }
+            }
+
+            return null;
+        };
+        foreach ($items as $n => $it) {
+            $key = null;
+            if ($useKm) {
+                $key = $it['km'] ?? ($it['off'] !== null ? $interp((float) $it['off']) : null);
+            } elseif ($it['off'] !== null) {
+                $key = (float) $it['off'];
+            }
+            $items[$n]['key'] = $key;
+        }
+        // A stop with no key sits beside its neighbour in the office's list.
+        foreach (['boarding', 'drop'] as $type) {
+            $idx = array_keys(array_filter($items, static fn(array $i): bool => $i['type'] === $type));
+            $cnt = count($idx);
+            foreach ($idx as $p => $n) {
+                if ($items[$n]['key'] !== null) {
+                    continue;
+                }
+                $k = null;
+                for ($q = $p - 1; $q >= 0 && $k === null; $q--) {
+                    if ($items[$idx[$q]]['key'] !== null) {
+                        $k = $items[$idx[$q]]['key'] + 0.001 * ($p - $q);
+                    }
+                }
+                for ($q = $p + 1; $q < $cnt && $k === null; $q++) {
+                    if ($items[$idx[$q]]['key'] !== null) {
+                        $k = $items[$idx[$q]]['key'] - 0.001 * ($q - $p);
+                    }
+                }
+                $items[$n]['key'] = $k ?? ($type === 'boarding' ? -1.0 + 0.001 * $p : 1.0e7 + $p);
+            }
+        }
+        $stopKeys = [];
+        foreach ($items as $it) {
+            if ($it['kind'] === 'stop') {
+                $stopKeys[] = (float) $it['key'];
+            }
+        }
+        $lastKey = $stopKeys !== [] ? max($stopKeys) : 0.0;
+        foreach ($items as $n => $it) {
+            if ($it['kind'] === 'halt' && $it['key'] === null) {
+                $items[$n]['key'] = $lastKey - 0.0005;      // unknown place: just before the end
+            }
+        }
+        $rank  = ['boarding' => 0, 'halt' => 1, 'drop' => 2];
+        $order = array_keys($items);
+        usort($order, static fn(int $a, int $b): int =>
+            [(float) $items[$a]['key'], $rank[$items[$a]['type']], $a] <=> [(float) $items[$b]['key'], $rank[$items[$b]['type']], $b]);
+
+        // One entry per town and list (old + new labels of one place): the
+        // ticket code when the town is a known one (Barauda / Vadodara = BRC),
+        // else the display name.
+        $known = array_flip(array_map(static fn(array $c): string => $c[0], self::STOP_CODES));
+        $out   = [];
+        $seen  = [];
+        foreach ($order as $n) {
+            $it = $items[$n];
+            if ($it['kind'] === 'stop') {
+                $dk = $it['type'] . '|' . (isset($known[$it['code']]) ? $it['code'] : mb_strtolower($it['name']));
+                if (isset($seen[$dk])) {
+                    $j = $seen[$dk];
+                    foreach (['km', 'off', 'lat', 'lng'] as $f) {
+                        if ($out[$j][$f] === null && $it[$f] !== null) {
+                            $out[$j][$f] = $it[$f];
+                        }
+                    }
+                    foreach (['clock', 'landmark'] as $f) {
+                        if ($out[$j][$f] === '' && $it[$f] !== '') {
+                            $out[$j][$f] = $it[$f];
+                        }
+                    }
+                    $out[$j]['border'] = $out[$j]['border'] || $it['border'];
+                    if ($it['open'] === true) {
+                        $out[$j]['open'] = true;
+                    }
+                    $out[$j]['ids'] = array_merge($out[$j]['ids'], $it['ids']);
+                    continue;
+                }
+                $seen[$dk] = count($out);
+            }
+            $out[] = $it;
+        }
+
+        $line = [];
+        foreach ($out as $it) {
+            $abs    = $dep !== null && $it['off'] !== null ? $dep + (int) $it['off'] : null;
+            $line[] = [
+                'kind'     => $it['kind'],
+                'role'     => $it['role'],
+                'name'     => $it['name'],
+                'label'    => $it['label'],
+                'code'     => $it['code'],
+                'landmark' => $it['landmark'],
+                'time'     => $it['clock'],
+                'dayPlus'  => $abs !== null ? (int) floor($abs / 1440) : null,
+                'offMin'   => $it['off'],
+                'km'       => $it['km'],
+                'border'   => $it['border'],
+                'halt'     => $it['halt'],
+                'haltMin'  => $it['haltMin'],
+                'approx'   => $it['approx'],
+                'note'     => $it['note'],
+                'lat'      => $it['lat'],
+                'lng'      => $it['lng'],
+                'open'     => $it['open'],
+                'ids'      => $it['ids'],
+            ];
+        }
+
+        return $line;
+    }
+
+    /**
+     * Totals for a journeyLine(): the road distance (the furthest stop's km,
+     * else routes.distance_km), stop and halt counts, the spans the website
+     * prints ("Surat -> Rupaidiha ~ 1,688 km", "Ahmedabad -> Rupaidiha ~
+     * 1,372 km") and the journey minutes from the timetable.
+     *
+     * The journey time is read from dep_time -> arr_time + day_offset and is
+     * dropped when it is implausible for the distance (a stale clock from an
+     * old onward leg). 'durationConfirmed' is true only when the office has
+     * set duration_text (Admin -> Routes "show arrival"): until then a screen
+     * may say "approx. N hours" but must not print an arrival clock.
+     *
+     * @param list<array<string, mixed>> $line
+     * @param array<string, mixed>       $route  dep_time (timetable), arr_time, day_offset, duration_text, distance_km
+     * @return array<string, mixed>
+     */
+    public static function journeySummary(array $line, array $route): array
+    {
+        $stops = array_values(array_filter($line, static fn(array $i): bool => $i['kind'] === 'stop'));
+        $first = null;
+        $last  = null;
+        foreach ($stops as $s) {
+            if ($s['km'] === null) {
+                continue;
+            }
+            if ($first === null || $s['km'] < $first['km']) {
+                $first = $s;
+            }
+            if ($last === null || $s['km'] > $last['km']) {
+                $last = $s;
+            }
+        }
+        $routeKm  = (int) ($route['distance_km'] ?? 0);
+        $fromStop = $first !== null && $last !== null && $last['km'] > $first['km'];
+        $distance = $fromStop ? (int) round($last['km'] - $first['km']) : ($routeKm > 0 ? $routeKm : null);
+
+        $spans = [];
+        if ($fromStop) {
+            $spans[] = ['from' => $first['name'], 'to' => $last['name'], 'km' => (int) round($last['km'] - $first['km'])];
+            foreach ($stops as $s) {
+                if ($s['code'] === 'AMD' && $s['km'] !== null && $s['km'] > $first['km'] && $s['km'] < $last['km']) {
+                    $spans[] = self::isNepalTown((string) $last['label']) || self::isNepalTown((string) $last['name'])
+                        ? ['from' => 'Ahmedabad', 'to' => $last['name'], 'km' => (int) round($last['km'] - $s['km'])]
+                        : ['from' => $first['name'], 'to' => 'Ahmedabad', 'km' => (int) round($s['km'] - $first['km'])];
+                    break;
+                }
+            }
+        }
+
+        $dur = self::durationMin((string) ($route['dep_time'] ?? ''), (string) ($route['arr_time'] ?? ''), (int) ($route['day_offset'] ?? 0));
+        if ($dur !== null && $distance !== null) {
+            $kmh = $distance / ($dur / 60);
+            if ($kmh < 20 || $kmh > 80) {
+                $dur = null;
+            }
+        }
+        $board = count(array_filter($stops, static fn(array $s): bool => $s['role'] === 'board'));
+
+        return [
+            'distanceKm'        => $distance,
+            'distanceSource'    => $fromStop ? 'stops' : ($distance !== null ? 'route' : null),
+            'stopCount'         => count($stops),
+            'boardCount'        => $board,
+            'dropCount'         => count($stops) - $board,
+            'haltCount'         => count($line) - count($stops),
+            'spans'             => $spans,
+            'durationMin'       => $dur,
+            'durationConfirmed' => $dur !== null && trim((string) ($route['duration_text'] ?? '')) !== '',
+        ];
+    }
+
+    /**
+     * Road km from the origin for every stop of a route that has a map pin,
+     * measured on OUR routing engine (Settings nav_engine_url - Valhalla, bus
+     * costing, at most 5 locations per call; consecutive calls share their
+     * boundary stop). Computes only - Admin -> Routes stores the answer, on
+     * press. A stop without coordinates is skipped and reported, never
+     * guessed; the first stop must have a pin (every km counts from it).
+     *
+     * @param callable|null $engine  fn(list<array{lat:float,lon:float}>): ?list<float> (leg km) - test seam
+     * @return array{ok: bool, error: string, rows: array<int, float>, names: array<string, float>, skipped: list<string>, totalKm: ?float, calls: int}
+     */
+    public static function measureRoadKm(int $routeId, ?callable $engine = null): array
+    {
+        $res   = ['ok' => false, 'error' => '', 'rows' => [], 'names' => [], 'skipped' => [], 'totalKm' => null, 'calls' => 0];
+        $route = Database::fetch('SELECT id, dep_time FROM routes WHERE id = :r', ['r' => $routeId]);
+        if ($route === null) {
+            $res['error'] = 'Route not found.';
+            return $res;
+        }
+        $line = array_values(array_filter(
+            self::journeyLine(self::lineStops($routeId), [], (string) $route['dep_time']),
+            static fn(array $i): bool => $i['kind'] === 'stop'
+        ));
+        if (count($line) < 2) {
+            $res['error'] = 'This route needs at least two stops to measure.';
+            return $res;
+        }
+        if ($line[0]['lat'] === null || $line[0]['lng'] === null) {
+            $res['error'] = 'The first stop (' . $line[0]['name'] . ') has no map position - add its latitude/longitude first: every km is counted from it.';
+            return $res;
+        }
+        $pts = [];   // [lat, lng, [line indexes]] with consecutive duplicates folded
+        foreach ($line as $n => $it) {
+            if ($it['lat'] === null || $it['lng'] === null) {
+                $res['skipped'][] = $it['name'];
+                continue;
+            }
+            $lp = count($pts) - 1;
+            if ($lp >= 0 && abs($pts[$lp][0] - $it['lat']) < 0.00001 && abs($pts[$lp][1] - $it['lng']) < 0.00001) {
+                $pts[$lp][2][] = $n;
+                continue;
+            }
+            $pts[] = [(float) $it['lat'], (float) $it['lng'], [$n]];
+        }
+        if (count($pts) < 2) {
+            $res['error'] = 'Only one stop of this route has a map position - add coordinates to at least one more stop.';
+            return $res;
+        }
+        $engine ??= self::valhallaLegEngine();
+        $cum = [0.0];
+        $i   = 0;
+        $np  = count($pts);
+        while ($i < $np - 1) {
+            $chunk = array_slice($pts, $i, 5);
+            $locs  = array_map(static fn(array $p): array => ['lat' => round($p[0], 6), 'lon' => round($p[1], 6)], $chunk);
+            $legs  = null;
+            try {
+                $legs = $engine($locs);
+            } catch (Throwable $e) {
+                $legs = null;
+            }
+            $res['calls']++;
+            if (!is_array($legs) || count($legs) !== count($locs) - 1) {
+                $a = $line[$chunk[0][2][0]]['name'];
+                $b = $line[$chunk[count($chunk) - 1][2][0]]['name'];
+                $res['error'] = 'The route engine did not answer for ' . $a . ' -> ' . $b . ' (Settings: nav_engine_url). Nothing was changed.';
+                return $res;
+            }
+            foreach (array_values($legs) as $j => $km) {
+                $cum[$i + $j + 1] = $cum[$i + $j] + max(0.0, (float) $km);
+            }
+            $i += count($locs) - 1;
+        }
+        foreach ($pts as $p => $pt) {
+            $km = round($cum[$p], 1);
+            foreach ($pt[2] as $n) {
+                foreach ($line[$n]['ids'] as $id) {
+                    $res['rows'][(int) $id] = $km;
+                }
+                $res['names'][$line[$n]['name']] = $km;
+            }
+        }
+        $res['totalKm'] = round((float) end($cum), 1);
+        $res['ok']      = true;
+
+        return $res;
+    }
+
+    /** The default engine for measureRoadKm(): our own Valhalla, bus costing, leg lengths only. */
+    private static function valhallaLegEngine(): callable
+    {
+        $base = rtrim(Settings::getString('nav_engine_url', 'http://127.0.0.1:8002'), '/');
+
+        return static function (array $locs) use ($base): ?array {
+            if (!function_exists('curl_init') || preg_match('#^https?://#', $base) !== 1) {
+                return null;
+            }
+            $body = ['locations' => $locs, 'costing' => 'bus', 'directions_type' => 'none',
+                     'directions_options' => ['units' => 'kilometers']];
+            $ch = curl_init($base . '/route?json=' . rawurlencode((string) json_encode($body)));
+            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30, CURLOPT_CONNECTTIMEOUT => 3,
+                CURLOPT_HTTPHEADER => ['Accept: application/json'], CURLOPT_USERAGENT => 'SHG-route-km/1.0']);
+            $raw  = curl_exec($ch);
+            $http = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+            curl_close($ch);
+            if ($http !== 200 || !is_string($raw)) {
+                return null;
+            }
+            $j    = json_decode($raw, true);
+            $legs = is_array($j) ? ($j['trip']['legs'] ?? null) : null;
+            if (!is_array($legs)) {
+                return null;
+            }
+
+            return array_map(static fn(mixed $l): float => is_array($l) ? (float) ($l['summary']['length'] ?? 0) : 0.0, $legs);
+        };
     }
 }

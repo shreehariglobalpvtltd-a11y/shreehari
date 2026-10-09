@@ -31,6 +31,8 @@ require_once INCLUDE_PATH . '/tripnotify.php';
 require_once INCLUDE_PATH . '/agentwallet.php';
 require_once INCLUDE_PATH . '/reportpdf.php';
 require_once INCLUDE_PATH . '/livesync.php';
+require_once INCLUDE_PATH . '/brand.php';      // emblem + SVG India / Nepal flags (9 Oct 2026)
+require_once INCLUDE_PATH . '/staffmsg.php';   // Office chat: admin <-> agent / counter (9 Oct 2026)
 
 /**
  * Require a signed-in admin (optionally with a permission) and return them.
@@ -135,6 +137,12 @@ function admin_nav(): array
         // bus, pickup, seat and fare → confirmed sale → PNG ticket → WhatsApp.
         // Flagged `hot` so every desk finds it at a glance (see $renderLink).
         ['href' => 'quick-ticket.php', 'icon' => 'ticket-alt', 'label' => '🤖 QuickBot Ticket', 'perm' => 'bookings.view', 'section' => 'Bookings & tickets', 'hot' => true],
+        // 9 Oct 2026: Office chat - the office and every agent / counter talk about
+        // a ticket inside the panel (photos, voice notes, call buttons, push).
+        // Near the top so an agent's flat strip shows it early; the office files
+        // it under Agents & counters ($secMap). Hidden when the chat tables are
+        // not installed or the role is neither office nor field.
+        ['href' => 'staff-chat.php',   'icon' => 'msg',       'label' => StaffMsg::isField() ? '💬 Office chat' : '💬 Agent chat', 'perm' => 'bookings.view', 'section' => 'Agents & counters', 'hot' => true],
         ['href' => 'offline-requests.php', 'icon' => 'notepad', 'label' => 'Offline Desk',     'perm' => 'bookings.view', 'section' => 'Bookings & tickets'],
         ['href' => 'passengers.php',   'icon' => 'id-card',   'label' => 'Passengers',         'perm' => 'bookings.view', 'section' => 'Bookings & tickets'],
         ['href' => 'scan.php',         'icon' => 'scan',    'label' => 'Scan Ticket',      'perm' => 'tickets.scan',   'section' => 'Bookings & tickets'],
@@ -262,11 +270,20 @@ function admin_nav(): array
         ['href' => 'ai-activity.php',  'icon' => 'msg',       'label' => 'AI Activity',      'perm' => 'dashboard.view', 'section' => 'Settings'],
         // 24 Sep 2026: the approved documents vault the assistant may quote and send.
         ['href' => 'company-docs.php', 'icon' => 'doc',       'label' => 'Company Documents','perm' => 'dashboard.view', 'section' => 'Settings'],
+        // 9 Oct 2026: the public travel pages' content (/tours, /explore) - view with dashboard.view, save needs settings.manage.
+        ['href' => 'tours.php',        'icon' => 'globe',     'label' => '🧳 Tour packages',  'perm' => $agentView ? '__superadmin_only__' : 'dashboard.view', 'section' => '🌐 Website content · वेबसाइट सामग्री'],
+        ['href' => 'places.php',       'icon' => 'map-pin',   'label' => '🏔️ Places to visit', 'perm' => $agentView ? '__superadmin_only__' : 'dashboard.view', 'section' => '🌐 Website content · वेबसाइट सामग्री'],
     ];
 
     /* 5 Oct 2026: a view-only account's menu is exactly the screens it may open. */
     if ((Auth::admin()['role'] ?? '') === 'viewer') {
         $all = array_filter($all, static fn(array $i): bool => in_array($i['href'], Auth::VIEWER_PAGES, true));
+    }
+    /* 9 Oct 2026: Office chat only where it works - tables installed, switch
+       on, and the person is office or field (a super-admin passes every perm,
+       so this is a filter, not a perm string). */
+    if (!StaffMsg::canUse()) {
+        $all = array_filter($all, static fn(array $i): bool => $i['href'] !== 'staff-chat.php');
     }
     return array_values(array_filter($all, static fn(array $i): bool => $i['perm'] === '' || Auth::can($i['perm'])));
 }
@@ -301,8 +318,8 @@ function admin_header(string $title, string $active = ''): void
     echo '<!doctype html><html lang="en"><head><meta charset="utf-8">';
     echo '<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">';
     echo '<title>' . Security::e($title) . ' · ' . Security::e($company) . ' Admin</title>';
-    echo '<link rel="icon" type="image/png" href="/assets/img/favicon-32.png">';
-    echo '<link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png">';
+    // 9 Oct 2026 (BRAND): the emblem-only icons (no baked name, no white tile), mtime-stamped.
+    echo Brand::iconLinks();
     // Design system v2 (17 Sep 2026): Inter for the UI (CSP already allows
     // fonts.googleapis.com / fonts.gstatic.com), swap so text never blocks;
     // the system stack in --f-ui covers offline desks and Devanagari.
@@ -324,6 +341,9 @@ function admin_header(string $title, string $active = ''): void
     echo '<link rel="stylesheet" href="/assets/css/admin.css?v=' . $av . '">';
     // 4 Oct 2026: pop-out depth (every theme) + the AMOLED display. Loads last.
     echo '<link rel="stylesheet" href="/assets/css/depth.css?v=' . $av . '">';
+    // 9 Oct 2026 (BRAND): drawn India / Nepal flags — 🇮🇳 / 🇳🇵 in panel text
+    // become SVG (Windows desks print them as "IN" / "NP"); <option>s untouched.
+    echo '<script defer src="/assets/js/23-flags.js?v=' . $av . '"></script>';
     // Apply saved/system theme before <body> paints (no flash), + the toggle.
     // 4 Oct 2026: three displays, light -> dark -> AMOLED (pure black). AMOLED
     // is data-theme="dark" + data-display="amoled", so every dark rule and the
@@ -362,12 +382,16 @@ function admin_header(string $title, string $active = ''): void
     // draw from this. Kept here so every admin page inherits it without
     // shipping a separate stylesheet or an extra HTTP request.
     echo admin_sprite();
+    // 9 Oct 2026 (BRAND): <symbol id="flag-in"> / <symbol id="flag-np"> for Brand::flagUse().
+    echo Brand::flagSprite();
 
     // Top bar
     echo '<header class="tb">';
     echo '<button class="menu" onclick="document.body.classList.toggle(\'nav-open\')" aria-label="Menu">☰</button>';
+    // 9 Oct 2026 (owner): the emblem only — no baked name, no white tile. The
+    // company name stays live text beside it (Settings company_name).
     echo '<a class="brand" href="' . $base . '/admin/index.php">'
-       . '<img class="brand-logo" src="/assets/img/logo.png" alt="" width="26" height="26"> '
+       . '<img class="brand-logo" src="' . Security::e(Brand::markUrl(34)) . '" alt="" width="65" height="34"> '
        . Security::e($company) . ' <span>Admin</span></a>';
 
     // Phase 3 — Global search. Sits between the brand and the "who" strip
@@ -406,6 +430,16 @@ function admin_header(string $title, string $active = ''): void
     }
     /* 5 Oct 2026: the bell is the notification centre now (unread count from
        the notifications table); the chime switch beside it shows a speaker. */
+    /* 9 Oct 2026: Office chat in the top bar - the bell-equivalent agents and
+       counters never had (the bell needs dashboard.view). Same look as the bell;
+       the 15 s poll (admin_poll_js) keeps the count live. */
+    $chatOn     = ($admin['role'] ?? '') !== 'viewer' && StaffMsg::canUse();
+    $chatUnread = $chatOn ? StaffMsg::unreadFor() : 0;
+    $chatIcon   = $chatOn
+        ? '<a class="tb-bell tb-chat' . ($chatUnread > 0 ? ' has' : '') . '" id="tbChat" href="' . $base . '/admin/staff-chat.php" title="' . (StaffMsg::isField() ? 'Office chat' : 'Agent chat') . '" aria-label="'
+          . (StaffMsg::isField() ? 'Office chat' : 'Agent chat') . ($chatUnread > 0 ? ' - ' . $chatUnread . ' unread' : '') . '"><svg class="a-ic"><use href="#a-msg"/></svg>'
+          . '<span class="tb-bell-n" id="tbChatN"' . ($chatUnread > 0 ? '' : ' hidden') . '>' . ($chatUnread > 99 ? '99+' : $chatUnread) . '</span></a>'
+        : '';
     $bell = '';
     if (Auth::can('dashboard.view') && ($admin['role'] ?? '') !== 'viewer') {
         require_once INCLUDE_PATH . '/adminalerts.php';
@@ -417,6 +451,7 @@ function admin_header(string $title, string $active = ''): void
     echo '<div class="who">'
        . '<span class="tb-av" aria-hidden="true">' . Security::e($initials ?: 'A') . '</span>'
        . '<span class="tb-name">' . $name . '</span> <em>' . $role . '</em>'
+       . $chatIcon
        . $bell
        . '<button type="button" class="theme-tog snd-tog" onclick="shgAdmSound()" aria-pressed="true" aria-label="Chime on / off" title="Chime on / off">&#128266;</button>'
        . '<script>shgAdmSoundPaint();</script>'
@@ -435,7 +470,7 @@ function admin_header(string $title, string $active = ''): void
     // Render one link row. Kept as a closure so the flat (counter-agent) and
     // grouped (office) branches emit identical markup — same href, icon, label
     // and the payments badge span (#navBadgePayments) that the live poll needs.
-    $renderLink = static function (array $item) use ($active, $base): void {
+    $renderLink = static function (array $item) use ($active, $base, $chatUnread): void {
         $cls = [];
         if (admin_nav_is_active($item['href'], $active)) {
             $cls[] = 'on';
@@ -446,7 +481,9 @@ function admin_header(string $title, string $active = ''): void
         $on    = $cls !== [] ? ' class="' . implode(' ', $cls) . '"' : '';
         $badge = $item['href'] === 'payments.php'
             ? '<span class="navbadge" id="navBadgePayments" style="display:none"></span>'
-            : '';
+            : ($item['href'] === 'staff-chat.php'
+                ? '<span class="navbadge" id="navBadgeChat"' . ($chatUnread > 0 ? '' : ' style="display:none"') . '>' . ($chatUnread > 0 ? (int) $chatUnread : '') . '</span>'
+                : '');
         // A root-relative href (counter mode) is used as-is; everything else lives in /admin/.
         $url = str_starts_with($item['href'], '/') ? $base . $item['href'] : $base . '/admin/' . $item['href'];
         echo '<a' . $on . ' href="' . $url . '">'
@@ -470,6 +507,7 @@ function admin_header(string $title, string $active = ''): void
             'refunds.php' => '💳 Ledger, payments & offers', 'accounting.php' => '💳 Ledger, payments & offers', 'payroll.php' => '💳 Ledger, payments & offers',
             'ai-copilot.php' => '🤖 AI', 'ai-brain.php' => '🤖 AI', 'ai-knowledge.php' => '🤖 AI', 'ai-activity.php' => '🤖 AI',
             'analytics.php' => '📊 Reports', 'feedback.php' => '📊 Reports',
+            'staff-chat.php' => '🤝 Agents & counters',
         ];
         $rename = ['Bookings & tickets' => '🎫 Bookings & tickets', 'Seat management' => '🪑 Seats', 'Trips, buses & chalani' => '🚌 Trips, buses & chalani',
                    'Agents & counters' => '🤝 Agents & counters', 'Ledger & payments' => '💳 Ledger, payments & offers', 'Expenses & reports' => '📊 Reports', 'Settings' => '⚙️ Settings'];
@@ -610,6 +648,11 @@ function admin_footer(): void
         echo '<script>' . admin_search_js() . '</script>';
         // 17 Sep 2026: one-click WhatsApp sheet (admin_wa_button / admin/api/wa-send.php).
         echo '<script>' . admin_wa_js() . '</script>';
+    }
+    // 9 Oct 2026: Office chat - a push tap opens the conversation on any admin
+    // page, and signing out stops this handset's chat pushes (shared phones).
+    if ((Auth::admin()['role'] ?? '') !== 'viewer' && StaffMsg::canUse()) {
+        echo '<script>' . admin_chat_js() . '</script>';
     }
 
     // 3 Sep 2026: phone-friendly tables everywhere. On a narrow screen every
@@ -1252,8 +1295,53 @@ function admin_poll_js(): string
         var last = parseInt(sessionStorage.getItem(KEY_LAST) || '-1', 10);
         if (last >= 0 && j.pending > last) { beep(); showBanner(j.pending - last); }
         sessionStorage.setItem(KEY_LAST, String(j.pending));
+        if (j.chat && typeof j.chat.unread === 'number') chatPaint(j.chat);
       })
       .catch(function () {});
+  }
+
+  /* 9 Oct 2026 — Office chat on the same poll: the sidebar badge, the top-bar
+     count, a distinct two-note chime and a "New message" pill with Open when
+     a newer incoming message id shows up (sessionStorage, so one message
+     chimes once across pages). The chat page itself listens to the
+     shg-chat-poll event and skips the pill for the thread already open. */
+  var KEY_CHAT = 'shg_chat_last';
+  function chatPaint(c) {
+    var n = c.unread || 0, txt = n > 99 ? '99+' : String(n);
+    var nb = document.getElementById('navBadgeChat');
+    if (nb) {
+      nb.textContent = n > 0 ? txt : ''; nb.style.display = n > 0 ? 'inline-block' : 'none';
+      var g = n > 0 && nb.closest && nb.closest('.side-group'); if (g) g.classList.add('open');
+    }
+    var tb = document.getElementById('tbChat'), tn = document.getElementById('tbChatN');
+    if (tn) { tn.textContent = txt; tn.hidden = n <= 0; }
+    if (tb) { tb.classList.toggle('has', n > 0); tb.setAttribute('aria-label', (tb.getAttribute('title') || 'Chat') + (n > 0 ? ' - ' + n + ' unread' : '')); }
+    try { document.dispatchEvent(new CustomEvent('shg-chat-poll', { detail: c })); } catch (e) {}
+    var seen = -1; try { seen = parseInt(sessionStorage.getItem(KEY_CHAT) || '-1', 10); } catch (e) {}
+    var lastId = c.last || 0;
+    if (seen >= 0 && lastId > seen && n > 0 && window.__shgChatOpen !== c.t) {
+      beep([784, 1175]);
+      chatToast(c.t);
+    }
+    try { sessionStorage.setItem(KEY_CHAT, String(Math.max(seen, lastId))); } catch (e) {}
+  }
+  function chatToast(t) {
+    var el = document.getElementById('chatToast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'chatToast';
+      el.className = 'live-toast chat';
+      el.setAttribute('role', 'status');
+      el.innerHTML = '<span>💬 New message · नयाँ सन्देश</span><button type="button">Open</button>';
+      document.body.appendChild(el);
+      var st = document.createElement('style');
+      st.textContent = '.live-toast.chat{top:66px;background:var(--success,#15803d)}.live-toast.chat button{background:#fff;color:var(--success,#15803d)}'
+        + '@media(max-width:640px){.live-toast.chat{left:12px;right:12px;max-width:none;top:auto;bottom:calc(84px + env(safe-area-inset-bottom,0px))}}';
+      document.head.appendChild(st);
+    }
+    el.querySelector('button').onclick = function () { location.href = '/admin/staff-chat.php' + (t ? '?t=' + t : ''); };
+    el.style.display = 'flex';
+    clearTimeout(el.__h); el.__h = setTimeout(function () { el.style.display = 'none'; }, 12000);
   }
   poll();
   // 15s — "within seconds" per the ask, still gentle on the single VPS (two
@@ -1262,6 +1350,51 @@ function admin_poll_js(): string
   // into view (the phone was in a pocket while the office changed things).
   setInterval(function () { if (!document.hidden) poll(); }, syncEl ? 10000 : 15000);
   if (syncEl) document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
+})();
+JS;
+}
+
+/**
+ * Office chat glue for every admin page (9 Oct 2026).
+ *
+ *  · sw.js posts {type:'shg-open', url} to an open window when a push is
+ *    tapped; admin pages had no listener, so the tap only focused the tab.
+ *    Same-origin /admin/ URLs only.
+ *  · Sign-out on a handset that took chat pushes: unbind this endpoint from
+ *    the person first (admin/api/push.php), so a shared counter phone stops
+ *    showing the previous clerk's messages. Never blocks the sign-out for
+ *    more than ~1.2 s.
+ */
+function admin_chat_js(): string
+{
+    return <<<'JS'
+(function () {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', function (e) {
+      var d = (e && e.data) || {};
+      if (d.type !== 'shg-open' || typeof d.url !== 'string') return;
+      try { var u = new URL(d.url, location.href); if (u.origin === location.origin && u.pathname.indexOf('/admin/') === 0) location.href = u.href; } catch (err) {}
+    });
+  }
+  var pushOn = false; try { pushOn = localStorage.getItem('shg_staff_push') === '1'; } catch (e) {}
+  if (!pushOn || !('serviceWorker' in navigator)) return;
+  document.addEventListener('click', function (e) {
+    var a = e.target && e.target.closest && e.target.closest('a[href$="/admin/logout.php"], a[href="logout.php"]');
+    if (!a || a.__shgUnbound) return;
+    e.preventDefault(); a.__shgUnbound = true;
+    var go = function () { location.href = a.href; };
+    var timer = setTimeout(go, 1200);
+    var csrf = (document.querySelector('meta[name="csrf"]') || {}).content || '';
+    navigator.serviceWorker.getRegistration('/').then(function (r) { return r && r.pushManager ? r.pushManager.getSubscription() : null; })
+      .then(function (s) {
+        if (!s) return null;
+        return fetch('/admin/api/push.php', { method: 'POST', credentials: 'same-origin', keepalive: true,
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-Token': csrf },
+          body: JSON.stringify({ action: 'unsubscribe', endpoint: s.endpoint }) });
+      })
+      .catch(function () {})
+      .then(function () { clearTimeout(timer); go(); });
+  }, true);
 })();
 JS;
 }
@@ -1813,7 +1946,7 @@ a:hover{color:var(--blue-600)}
 .tb{position:sticky;top:0;z-index:30;height:var(--tb-h);display:flex;align-items:center;gap:12px;padding:0 16px;
     background:linear-gradient(90deg,var(--navy) 0%,var(--navy-700) 62%,var(--blue) 100%);color:#fff;box-shadow:0 2px 12px rgba(10,22,50,.28);border-bottom:3px solid var(--orange)}
 .tb .brand{display:inline-flex;align-items:center;gap:9px;color:#fff;font-weight:800;font-size:15.5px;letter-spacing:-.01em;white-space:nowrap}
-.tb .brand-logo{width:30px;height:30px;object-fit:contain;background:#fff;border-radius:9px;padding:3px;box-shadow:0 1px 3px rgba(0,0,0,.25);flex:0 0 auto}
+.tb .brand-logo{height:34px;width:auto;max-width:72px;object-fit:contain;background:none;border-radius:0;padding:0;box-shadow:none;filter:drop-shadow(0 2px 4px rgba(0,0,0,.35));flex:0 0 auto}
 .tb .brand span{color:#FFC08A;font-weight:600;font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin-left:2px}
 .tb .who{margin-left:auto;font-size:13px;color:#CDD6E6;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
 .tb .who em{font-style:normal;color:#FFC08A;font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em}

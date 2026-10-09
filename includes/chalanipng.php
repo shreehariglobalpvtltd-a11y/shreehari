@@ -47,7 +47,7 @@ final class ChalaniPng
     public const HEIGHT = 1414;
 
     /** Bump whenever the drawing changes, so every cached page re-renders once. */
-    public const LAYOUT_VERSION = 8;   // 8 = seat column prints the two-floor grid A1-F6 / A7-F12 (23 Sep 2026)   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
+    public const LAYOUT_VERSION = 9;   // 9 = emblem without the white chip, India + Nepal flags, heritage art in the band (9 Oct 2026)   // 8 = seat column prints the two-floor grid A1-F6 / A7-F12 (23 Sep 2026)   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
 
     private const M         = 48;     // page margin
     private const ROW_H     = 42;
@@ -357,32 +357,49 @@ final class ChalaniPng
 
         /* ================= header band ================= */
         imagefilledrectangle($im, 0, 0, $W, 196, $navy);
+        /* Sagarmatha, the prayer flags, Gautam Buddha and the stupa as a faint
+           wash behind the right half of the band (9 Oct 2026) — under the
+           title and the three fields, so it fits however long the address is. */
+        if (DocArt::heritageOn()) {
+            DocArt::bandWash($im, 1040, 0, $W, 196, 26, 0.5, 0.7);
+        }
         imagefilledrectangle($im, 0, 196, $W, 204, $orange);
 
+        /* The emblem alone (9 Oct 2026): no white chip and no baked name —
+           the legal name is the live line beside it — on a soft glow so the
+           navy globe reads on the navy band. */
         $tx = $M;
-        $logo = Ticket::logoFile();
-        if ($logo !== null) {
-            $li = @imagecreatefromstring((string) file_get_contents($logo));
-            if ($li !== false) {
-                if (!imageistruecolor($li)) { imagepalettetotruecolor($li); }
-                $lh = 104;
-                $lw = (int) round(imagesx($li) * $lh / max(1, imagesy($li)));
-                self::roundRect($im, $M - 6, 34, $M + $lw + 6, 34 + $lh + 12, 10, $white, null);
-                imagecopyresampled($im, $li, $M, 40, 0, 0, $lw, $lh, imagesx($li), imagesy($li));
-                imagedestroy($li);
-                $tx = $M + $lw + 30;
-            }
+        $mk = DocArt::mark($im, $M - 4, 30, 236, 136, true);
+        if ($mk !== null) {
+            $tx = $mk['x'] + $mk['w'] + 30;
         }
-        self::t($im, 38, $tx, 26, $white, $roman($co['legal'] !== '' ? $co['legal'] : $co['name']), true);
-        self::t($im, 16, $tx, 80, $pale, $roman($co['address']), false);
-        self::t($im, 16, $tx, 108, $pale,
-            $roman('Phone ' . $co['phone'] . '   |   Operator ' . $co['operator'] . '   |   ' . $co['email']), false);
-        self::t($im, 16, $tx, 136, $dim, $roman('CIN ' . $co['cin'] . '   |   ' . $co['web']), false);
+        $l1 = $roman($co['legal'] !== '' ? $co['legal'] : $co['name']);
+        $l2 = $roman($co['address']);
+        $l3 = $roman('Phone ' . $co['phone'] . '   |   Operator ' . $co['operator'] . '   |   ' . $co['email']);
+        $l4 = $roman('CIN ' . $co['cin'] . '   |   ' . $co['web']);
+        self::t($im, 38, $tx, 26, $white, $l1, true);
+        self::t($im, 16, $tx, 80, $pale, $l2, false);
+        self::t($im, 16, $tx, 108, $pale, $l3, false);
+        self::t($im, 16, $tx, 136, $dim, $l4, false);
 
         /* Right: what this document IS, then the three fields the office
            fills in by hand on the paper form — printed here already. */
         $rx = $W - $M;
         self::tR($im, 32, $rx, 26, $white, 'BUS CHALANI', true);
+        /* Both flags before the title, and the heritage art (Sagarmatha,
+           prayer flags, Gautam Buddha, the stupa) in the free middle of the
+           band when there is room for it (9 Oct 2026). */
+        $flH = 30;
+        DocArt::flagPair($im, $rx - self::w(32, 'BUS CHALANI') - 22 - DocArt::flagPairWidth($flH, 8), 32, $flH, 8, 'IN');
+        $artL = $tx + max(self::w(38, $l1), self::w(16, $l2), self::w(16, $l3), self::w(16, $l4)) + 40;
+        $artR = $rx - 300 - 140;
+        if (DocArt::heritageOn() && $artR - $artL >= 330) {
+            // a short letterhead leaves room for the art itself, Buddha to stupa
+            $aw = min(460, $artR - $artL);
+            $ax1 = $artR - $aw;
+            DocArt::band($im, $ax1, 28, $artR, 146, 14, [11, 42, 91], 0.5, 0.8);
+            self::tC($im, 13, $ax1, $artR, 154, $pale, 'सगरमाथा · Sagarmatha  ·  लुम्बिनी · Lumbini', false);
+        }
         $coach = strtoupper($roman(trim((string) ($trip['coach_type'] ?? ''))));
         self::tR($im, 16, $rx, 68, $pale,
             'PASSENGER SHEET' . ($coach !== '' ? '  ·  ' . $coach . ' COACH' : ''), false);

@@ -646,7 +646,7 @@ footer{background:linear-gradient(180deg,var(--blue-deep) 0%,#080E1C 100%);color
 .f-flagline i:nth-child(1){flex:1;background:linear-gradient(90deg,var(--saffron) 0 33%,#F2F5FA 33% 66%,var(--igreen) 66% 100%)}
 .f-flagline i:nth-child(2){flex:.55;background:linear-gradient(90deg,var(--ncrimson) 0 55%,var(--nblue) 55% 100%)}
 .f-grid{display:grid;grid-template-columns:1.3fr 1fr 1fr 1.2fr;gap:34px;padding:56px 0 40px}
-.f-grid img{height:76px;width:auto;margin-bottom:14px;background:rgba(255,255,255,.9);padding:8px;border-radius:14px}
+.f-grid img{height:76px;width:auto;margin-bottom:14px;background:none;padding:0;border-radius:0;filter:drop-shadow(0 0 1px rgba(255,255,255,.75)) drop-shadow(0 4px 10px rgba(0,0,0,.4))}
 .f-grid p{font-size:13.5px;line-height:1.7}
 .f-grid h4{color:#fff;font-family:var(--f-display);font-size:15px;letter-spacing:.04em;margin-bottom:16px}
 .f-grid ul{list-style:none}

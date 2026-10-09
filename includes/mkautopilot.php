@@ -512,7 +512,11 @@ final class MkAutopilot
     public static function facts(array $fest = []): array
     {
         require_once __DIR__ . '/fare.php';
-        $f = Fare::dirFares();
+        /* 9 Oct 2026 (site facts): the fares a line may quote are the fare
+           board's - the LOWEST pickup / drop fare ("from ₹X") and the highest -
+           not the direction default most pickups no longer pay. */
+        $board = Fare::board();
+        $f = ['toNepal' => (float) $board['range']['go']['min'], 'toIndia' => (float) $board['range']['back']['min']];
         $deps = ['toNepal' => [], 'toIndia' => []];
         try {
             foreach (Database::fetchAll('SELECT from_city, to_city, dep_time FROM routes WHERE is_active = 1 ORDER BY sort_order, id') as $r) {
@@ -533,6 +537,8 @@ final class MkAutopilot
         return [
             'fare_go'    => (int) $f['toNepal'],
             'fare_back'  => (int) $f['toIndia'],
+            'fare_go_max'   => (int) $board['range']['go']['max'],
+            'fare_back_max' => (int) $board['range']['back']['max'],
             // 6 Oct 2026: what one seat costs after the running office offer (Admin -> Offers).
             'offer_go'   => self::afterOffer((float) $f['toNepal']),
             'offer_back' => self::afterOffer((float) $f['toIndia']),
@@ -559,8 +565,9 @@ final class MkAutopilot
     /** The hand-written line for a group (used when the AI is off or wrote something unsafe). */
     public static function fallback(string $seg, array $facts, string $dir = ''): string
     {
-        $go = number_format($facts['fare_go']);
-        $back = number_format($facts['fare_back']);
+        /* "₹2,000 देखि" (from) when other pickups / drops pay more (site facts, 9 Oct 2026) */
+        $go = number_format($facts['fare_go']) . ((int) ($facts['fare_go_max'] ?? 0) > (int) $facts['fare_go'] ? ' देखि' : '');
+        $back = number_format($facts['fare_back']) . ((int) ($facts['fare_back_max'] ?? 0) > (int) $facts['fare_back'] ? ' देखि' : '');
         $fn = (string) ($facts['festival']['name'] ?? '');
         $offer = $facts['offer'] !== '' ? ' ' . $facts['offer'] : '';
         return match ($seg) {
@@ -606,7 +613,8 @@ final class MkAutopilot
         }
         // Every number must be a real one: a fare, a festival date, a departure time, the office phone.
         $ok = [(string) $facts['fare_go'], (string) $facts['fare_back'], date('Y'), (string) ((int) date('Y') + 1),
-               (string) ($facts['offer_go'] ?? ''), (string) ($facts['offer_back'] ?? '')];
+               (string) ($facts['offer_go'] ?? ''), (string) ($facts['offer_back'] ?? ''),
+               (string) ($facts['fare_go_max'] ?? ''), (string) ($facts['fare_back_max'] ?? '')];
         $fd = (string) ($facts['festival']['date'] ?? '');
         if ($fd !== '') {
             $ok[] = (string) (int) substr($fd, 8, 2);
@@ -684,7 +692,10 @@ final class MkAutopilot
              . "- 90 to 220 characters. ONE line: no line breaks, no links, no markdown, no greeting (the template already says Namaste and the name).\n"
              . "- Use ONLY these facts. Never invent a discount, free item, percentage, guarantee, seat count, date or time.\n"
              . "- Every number you write must be one of the facts below.\n"
-             . "FACTS:\n- Fares: going home (Gujarat → Rupaidiha) ₹" . $facts['fare_go'] . ", coming back (Rupaidiha → Gujarat) ₹" . $facts['fare_back'] . "\n"
+             . "FACTS:\n- Fares (each pickup / drop has its own fare - say \"from\" when quoting the lowest): going home (Gujarat → Rupaidiha) from ₹" . $facts['fare_go']
+                 . ((int) ($facts['fare_go_max'] ?? 0) > (int) $facts['fare_go'] ? ' up to ₹' . (int) $facts['fare_go_max'] : '')
+                 . ", coming back (Rupaidiha → Gujarat) from ₹" . $facts['fare_back']
+                 . ((int) ($facts['fare_back_max'] ?? 0) > (int) $facts['fare_back'] ? ' up to ₹' . (int) $facts['fare_back_max'] : '') . "\n"
              . '- Departures: ' . implode('; ', array_merge($facts['deps']['toNepal'], $facts['deps']['toIndia'])) . "\n"
              . ($facts['daily'] ? "- A bus runs every day.\n" : '')
              . ($facts['offer'] !== ''

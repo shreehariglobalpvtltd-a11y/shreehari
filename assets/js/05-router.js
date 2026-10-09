@@ -1052,23 +1052,40 @@ const NUM_SLOTS = 8;
    site that has never opened Settings looks exactly as it did. Slots 3-8
    start empty and hidden, ready for the owner to fill in. */
 function defaultContactNumbers() {
-  /* The eight booking lines from the owner's official poster (Canva template,
-     Aug 2026): four branch-office numbers, the CEO/head-office WhatsApp, 24x7
-     support, and two counter agents. The operator can re-label, hide or
-     replace any of them in Admin -> Settings; this is only the default a
-     fresh site shows. */
-  const list = [
-    { label: 'Mehsana Office',   num: '+91 91048 01507', wa: false, show: true },
-    { label: 'Ahmedabad Office', num: '+91 91570 01507', wa: false, show: true },
-    { label: 'Baroda Office',    num: '+91 87358 81507', wa: false, show: true },
-    { label: 'Surat Office',     num: '+91 73593 01507', wa: false, show: true },
-    { label: 'CEO · Director',   num: '+91 97264 01507', wa: true,  show: true },
-    { label: '24×7 Support',     num: '+91 91734 01507', wa: true,  show: true },
-    /* 8 Oct 2026 (D3-16): these two are the Nepalgunj office's NEPAL mobiles
-       (visiting card / contact section); with +91 the pills dialled India. */
-    { label: 'Lok Bahadur Sunar · Nepalgunj', num: '+977 986-6201375', wa: false, show: true },
-    { label: 'Mahendra Singh · Nepalgunj',    num: '+977 984-8119600', wa: false, show: true }
-  ];
+  /* 9 Oct 2026 (site facts): the default strip is built from the SAME facts
+     the tickets print — every listed office with its number (desk phone,
+     else the company line), the CEO, the 24x7 helpline and the Nepal
+     office people from Admin -> Company details. The operator can still
+     re-label, hide or replace any line in Admin -> Settings (that saved list
+     wins); this is only what a site that never saved one shows. */
+  const list = [];
+  const F = window.FACTS;
+  if (F && Array.isArray(F.offices)) {
+    F.offices.forEach(o => {
+      if (o && o.status === 'open' && o.phone) list.push({ label: (o.name || o.city || '') + ' Office', num: o.phone, wa: false, show: true });
+    });
+    if (F.ceo && F.ceo.phone) list.push({ label: 'CEO · Director', num: F.ceo.phone, wa: true, show: true });
+    if (F.support && F.support.phone) list.push({ label: '24×7 Support', num: F.support.phone, wa: true, show: true });
+    const seen = list.map(n => digits(n.num));
+    ((window.SHG_BOOT && SHG_BOOT.npTeam) || []).forEach(p => {
+      if (!p || p.key === 'ceo' || !p.phone || seen.indexOf(digits(p.phone)) >= 0) return;
+      seen.push(digits(p.phone));
+      list.push({ label: (p.name || p.role || '') + (p.country === 'NP' ? ' · Nepal' : ''), num: p.phone, wa: false, show: true });
+    });
+  } else {
+    /* No boot facts (offline first paint): the numbers the company line and
+       the Nepal office record carry — never the old website-only spellings. */
+    list.push(
+      { label: 'Mehsana Office',   num: '+91 91048 01507', wa: false, show: true },
+      { label: 'Ahmedabad Office', num: '+91 91570 01507', wa: false, show: true },
+      { label: 'Surat Office',     num: '+91 73059 01507', wa: false, show: true },
+      { label: 'Rajkot Office',    num: '+91 94268 27507', wa: false, show: true },
+      { label: 'CEO · Director',   num: '+91 97264 01507', wa: true,  show: true },
+      { label: '24×7 Support',     num: '+91 91734 01507', wa: true,  show: true },
+      { label: 'Lok Bahadur Sunar · Nepalgunj', num: '+977 986-6201375', wa: false, show: true }
+    );
+  }
+  while (list.length > NUM_SLOTS) list.pop();
   while (list.length < NUM_SLOTS) list.push({ label: '', num: '', wa: false, show: false });
   return list;
 }
@@ -1137,8 +1154,10 @@ function renderNepalTeam() {
      people (Nepalgunj line + the extra Nepal numbers from Admin). */
   const ceo = team.filter(p => p.key === 'ceo');
   const office = team.filter(p => p.key !== 'ceo');
+  /* the Nepal partner company's own name once Admin has it (site facts), else just the office */
+  const npCo = String((typeof fact === 'function' && fact('nepal.company', '')) || '');
   card.innerHTML = (office.length
-      ? '<p class="th-nph">' + NP_FLAG_SVG + '<b>Nepal Office</b><small>Shree Hari Global Pvt Ltd · नेपाल कार्यालय</small></p><ul class="th-npl">' + office.map(row).join('') + '</ul>'
+      ? '<p class="th-nph">' + NP_FLAG_SVG + '<b>Nepal Office</b><small>' + (npCo ? esc(npCo) + ' · ' : '') + 'नेपाल कार्यालय</small></p><ul class="th-npl">' + office.map(row).join('') + '</ul>'
       : '')
     + (ceo.length
       ? '<div class="np-ceo"><p class="th-nph"><b>👤 CEO</b><small>प्रमुख कार्यकारी · ' + (ceo[0].country === 'NP' ? '🇳🇵 Nepal' : ceo[0].country === 'IN' ? '🇮🇳 India' : '') + '</small></p><ul class="th-npl">'
@@ -1148,8 +1167,81 @@ function renderNepalTeam() {
   return true;
 }
 
+/* 9 Oct 2026 (owner: "office haru kaha kaha xa sabai lai listed banau —
+   Mehsana head, NPJ, Rajkot, AMD, Surat … expand hudai xa vandinu paryo"):
+   the brand panel lists EVERY office the office ticked "show on website"
+   (Admin -> Counters & collection), head office first, from the site facts
+   (CounterDesk::publicOffices) - the same numbers the tickets print - plus a
+   "network expanding" chip to /offices. Same markup as the server's first
+   paint (SiteFacts::officeListHtml); no facts (offline shell) = the markup
+   already on the page stays. Styled by the home stylesheets; the few new
+   pieces get a token-only fallback style here. */
+const OFFICE_WORDS = {
+  ne: { tag: 'प्रधान', head: 'प्रधान कार्यालय', branch: 'शाखा कार्यालय', partner: 'नेपाल कार्यालय', border: 'सीमा कार्यालय', soon: 'छिट्टै खुल्दै', more: 'नयाँ कार्यालय छिट्टै', moreSub: 'नेटवर्क विस्तार हुँदैछ · Network expanding', call: 'फोन गर्नुहोस्' },
+  hi: { tag: 'मुख्य', head: 'मुख्य कार्यालय', branch: 'शाखा कार्यालय', partner: 'नेपाल कार्यालय', border: 'सीमा कार्यालय', soon: 'जल्द खुल रहा है', more: 'नेटवर्क बढ़ रहा है', moreSub: 'नए ऑफ़िस जल्द · नयाँ कार्यालय छिट्टै', call: 'कॉल करें' },
+  en: { tag: 'HEAD', head: 'Head office', branch: 'Branch office', partner: 'Nepal office', border: 'Border office', soon: 'Opening soon', more: 'Network expanding', moreSub: 'नयाँ कार्यालय छिट्टै · new offices soon', call: 'Call' }
+};
+function officeFlag(cc) {
+  try { if (typeof window.shgFlag === 'function') { const s = window.shgFlag(cc, 16); if (s) return s; } } catch (e) {}
+  return cc === 'NP' ? NP_FLAG_SVG : '';
+}
+function renderOffices() {
+  const sbo = document.getElementById('saOffices');
+  const F = window.FACTS;
+  if (!sbo || !F || !Array.isArray(F.offices) || !F.offices.length) return false;
+  const L = (typeof LANG !== 'undefined' && OFFICE_WORDS[LANG]) ? LANG : 'en';
+  const W = OFFICE_WORDS[L];
+  if (!document.getElementById('shg-offices-css')) {
+    const st = document.createElement('style');
+    st.id = 'shg-offices-css';
+    st.textContent = '#saOffices .th-tagk{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;font-size:10.5px;font-weight:800;letter-spacing:.04em;vertical-align:middle;background:var(--royal,#0054A8);color:var(--on-royal,#fff)}'
+      + '#saOffices .th-badge svg{display:block;width:16px;height:auto;margin:auto}'
+      + '#saOffices .th-a{display:flex;align-items:center;gap:inherit;width:100%}'
+      + '#saOffices .th-soon{opacity:.8}'
+      + '#saOffices .th-more a{border-style:dashed}';
+    document.head.appendChild(st);
+  }
+  const nameOf = o => (L === 'ne' && o.nameNe) ? o.nameNe : (L === 'hi' && (o.nameHi || o.nameNe)) ? (o.nameHi || o.nameNe) : (o.name || o.city || '');
+  const subOf = o => {
+    if (o.status !== 'open') return W.soon;
+    if (o.kind === 'head') return W.head;
+    if (o.kind === 'partner' || o.country === 'NP') {
+      const place = String(o.address || '').split(',')[0].trim();
+      return W.partner + (place ? ' · ' + place : '');
+    }
+    return o.kind === 'border' ? W.border : W.branch;
+  };
+  const rows = F.offices.map(o => {
+    if (!o) return '';
+    const np = o.country === 'NP', head = o.kind === 'head', soon = o.status !== 'open';
+    const badge = np ? (officeFlag('NP') || 'N') : esc(String(o.name || o.city || '?').charAt(0).toUpperCase());
+    const inner = '<span class="th-badge">' + badge + '</span>'
+      + '<span class="th-l">' + esc(nameOf(o)) + (head ? ' <b class="th-tagk">' + esc(W.tag) + '</b>' : '') + '</span>'
+      + '<span class="th-sub">' + esc(subOf(o)) + '</span>'
+      + (o.phone ? '<span class="th-n">' + esc(o.phone) + '</span><span class="th-call" aria-hidden="true">📞</span>' : '');
+    const tel = String(o.tel || '').replace(/\D/g, '');
+    return '<li class="th-o ' + (np ? 'th-np' : 'th-in') + (head ? ' th-head' : '') + (soon ? ' th-soon' : '') + '" data-office="' + esc(o.code || '') + '">'
+      + (tel ? '<a href="tel:+' + esc(tel) + '" aria-label="' + esc(W.call + ' ' + nameOf(o) + ' ' + (o.phone || '')) + '">' + inner + '</a>' : '<span class="th-a">' + inner + '</span>')
+      + '</li>';
+  }).join('');
+  const more = F.expanding
+    ? '<li class="th-o th-more"><a href="' + (L === 'en' ? '/offices' : '/' + L + '/offices') + '"><span class="th-badge">+</span>'
+      + '<span class="th-l">' + esc(W.more) + '</span><span class="th-sub">' + esc(W.moreSub) + '</span>'
+      + '<span class="th-call" aria-hidden="true">→</span></a></li>'
+    : '';
+  sbo.innerHTML = rows + more;
+  if (!sbo._feel) {
+    sbo._feel = true;
+    sbo.addEventListener('click', e => {
+      if (e.target.closest('a') && window.SHGFeel && typeof window.SHGFeel.play === 'function') { try { window.SHGFeel.play('tap'); } catch (er) {} }
+    });
+  }
+  return true;
+}
+
 function renderContactStrip() {
-  const npCard = renderNepalTeam();
+  renderNepalTeam();
+  renderOffices();
   const strip = $('#numStrip'), inner = $('#numInner');
   if (!strip || !inner) return;
   /* A number with no digits cannot be dialled, so it stays hidden whatever
@@ -1160,33 +1252,6 @@ function renderContactStrip() {
      wide screens until this has run (8 Oct 2026, CLS). */
   document.documentElement.classList.add('ns-done');
   if (!live.length) { strip.hidden = true; inner.innerHTML = ''; return; }
-
-  /* 5 Oct 2026: the brand panel beside the coach banner lists the branch
-     offices from the same numbers (first four phone lines, not WhatsApp). */
-  const sbo = document.getElementById('saOffices');
-  if (sbo) {
-    /* The branch offices (first four phone lines of the strip) + the Nepalgunj
-       office: Admin -> Company details "Nepal phone" when set, else the
-       Director's 24/7 line under his name (owner, 5 Oct 2026). */
-    const row = (cls, label, sub, num) => {
-      const d = digits(num);
-      const city = String(label || '').replace(/\s*office$/i, '').trim();
-      return '<li class="th-o ' + cls + '"><a href="tel:+' + esc(d.length === 10 ? '91' + d : d) + '"><span class="th-badge">'
-        + esc((city || '?').charAt(0).toUpperCase()) + '</span><span class="th-l">' + esc(city) + '</span>'
-        + (sub ? '<span class="th-sub">' + esc(sub) + '</span>' : '') + '<span class="th-n">' + esc(num) + '</span>'
-        + '<span class="th-call" aria-hidden="true">📞</span></a></li>';
-    };
-    const offs = live.filter(n => !n.wa).slice(0, 4);
-    const np = (window.SHG_BOOT && SHG_BOOT.npOffice) || {};
-    const npNum = np.phone || '+91 97264 01507';
-    const npSub = (np.place || 'Puspalal Chowk') + (np.phone ? '' : ' · Sher Bahadur Bishwokarma');
-    if (offs.length) {
-      /* With the Nepal card showing, the Nepalgunj line stays only when the
-         office has its own number - else it would repeat the CEO's line. */
-      sbo.innerHTML = offs.map((n, i) => row('th-in', n.label || '', i === 0 && /mehsana/i.test(n.label || '') ? 'Head office' : '', n.num)).join('')
-        + (npCard && !np.phone ? '' : row('th-np', 'Nepalgunj', npSub, npNum));
-    }
-  }
   inner.innerHTML = live.map(n => {
     const d = digits(n.num);
     const href = n.wa ? 'https://wa.me/' + esc(d) : 'tel:+' + esc(d);
@@ -1920,7 +1985,8 @@ function quickTicketNumber() {
   } catch (e) {}
   var help = document.querySelector('.ha-help[data-wa]');
   var m = help && String(help.getAttribute('data-wa') || '').match(/wa\.me\/(\d+)/);
-  return m ? m[1] : '919104801507';
+  /* last resort: the head office WhatsApp from the site facts (Admin -> Company details) */
+  return m ? m[1] : String(fact('head.wa', digits(CONFIG.phone))).replace(/\D/g, '');
 }
 
 function onlinePct() {
@@ -1988,11 +2054,17 @@ function renderPricingCards() {
   const pct  = onlinePct();
   const d    = sharingDir();
   const priv = (CONFIG.cabinPricing && CONFIG.cabinPricing.private) || {};
+  /* 9 Oct 2026 (site facts): each direction quotes the RANGE its pickups /
+     drops really pay (fareRangeJS = the server's fare board), not the one
+     direction default - most pickups pay more than the default, the old
+     card under-quoted them. */
+  const goR = fareRangeJS('go'), backR = fareRangeJS('back');
+  const rangeTxt = (r, f) => r.min === r.max ? inr(f(r.min)) : inr(f(r.min)) + '–' + inr(f(r.max));
 
-  const shareRow = (label, base) =>
-    '<tr><td>' + esc(label) + '</td><td>' + inr(base) + '</td>'
-    + '<td class="online-col">' + inr(onlinePP(base)) + '</td>'
-    + '<td>' + nprEst(onlinePP(base)) + '</td></tr>';
+  const shareRow = (label, r) =>
+    '<tr><td>' + esc(label) + '</td><td>' + rangeTxt(r, x => x) + '</td>'
+    + '<td class="online-col">' + rangeTxt(r, onlinePP) + '</td>'
+    + '<td>' + nprEst(onlinePP(r.min)) + (r.max > r.min ? '+' : '') + '</td></tr>';
 
   const privRow = (p, note) => p ? '<tr><td>' + esc(p.label) + '</td><td>' + p.capacity + '</td>'
     + '<td>' + inr(p.offline) + '</td><td class="online-col">' + inr(p.online) + '</td>'
@@ -2004,10 +2076,10 @@ function renderPricingCards() {
     +     '<div><h3>' + t('pcShareT') + '</h3><small>' + t('pcShareS') + '</small></div></div>'
     +   '<table><thead><tr><th>' + t('pcDir') + '</th><th>' + t('pcCounter') + '</th>'
     +     '<th>' + tf('pcOnline', { pct: pct }) + '</th><th>NPR</th></tr></thead><tbody>'
-    +     shareRow(t('fbGoing'),  d.toNepal)
-    +     shareRow(t('fbComing'), d.toIndia)
+    +     shareRow(t('fbGoing'),  goR)
+    +     shareRow(t('fbComing'), backR)
     +   '</tbody></table>'
-    +   '<p style="font-size:12px;color:var(--muted);margin:10px 2px 0">' + t('pcShareNote') + '</p>'
+    +   '<p style="font-size:12px;color:var(--muted);margin:10px 2px 0">' + esc(tf('pcShareNote', factVars())) + '</p>'
     + '</div>'
     + '<div class="pricing-card private reveal d1">'
     +   '<div class="pc-head"><span class="pc-ico">🔒</span>'
@@ -2020,14 +2092,14 @@ function renderPricingCards() {
     + '</div>';
 
   /* D3-03 (8 Oct 2026): the "Choose your travel style" card quotes the real
-     lowest per-pickup sharing fare (SHG_BOOT.locations), never a typed price;
-     no fare known = no price line at all. */
+     lowest per-pickup sharing fare, never a typed price; no fare known = no
+     price line at all. 9 Oct 2026: from the fare board (fareRangeJS), which
+     also counts the rows that pay the direction default. */
   try {
-    const L = (window.SHG_BOOT && window.SHG_BOOT.locations) || {};
-    const fares = [].concat(L.go || [], L.back || []).map(s => Number(s && s.fare) || 0).filter(f => f > 0);
+    const low = Math.min(goR.min || 0, backR.min || 0) || Math.max(goR.min || 0, backR.min || 0);
     const sp = $('#styleSharePrice'), sf = $('#styleShareFrom');
     if (sp && sf) {
-      if (fares.length) { sf.textContent = inr(Math.min.apply(null, fares)); sp.hidden = false; }
+      if (low > 0) { sf.textContent = inr(low); sp.hidden = false; }
       else sp.hidden = true;
     }
   } catch (e) {}
@@ -2098,14 +2170,16 @@ function renderFareBoard() {
     return tm ? p + ' · ' + fmt12h(tm) : p;
   };
 
-  /* One direction card: the headline per-person price, then every main
-     point on the far side listed against it — now with departure time. */
-  /* priceOf (1 Oct 2026): a per-row price — each Gujarat pickup may carry
-     its own fare from Admin -> Routes; the headline then reads "from" the
-     cheapest row. Without it every row shows the direction fare as before. */
-  const card = (cls, flagFrom, flagTo, title, points, toward, base, priceOf) => {
-    const rowPrice = (p) => { const f = priceOf ? priceOf(p) : 0; return f > 0 ? f : onlinePP(base); };
-    const prices = points.map(rowPrice);
+  /* One direction card: the headline per-person price, then one row per
+     Gujarat stop with ITS price. priceOf (1 Oct 2026): each pickup / drop may
+     carry its own fare from Admin -> Routes; the headline then reads "from"
+     the cheapest row. 9 Oct 2026: rows are {from, to, label, town} so the
+     RETURN card lists every Gujarat drop with its own fare (it used to show
+     one "Rupaidiha → Surat" row at the flat return default, while the
+     checkout charged per drop). */
+  const card = (cls, flagFrom, flagTo, title, rows, base, priceOf) => {
+    const rowPrice = (r) => { const f = priceOf ? priceOf(r.town) : 0; return f > 0 ? f : onlinePP(base); };
+    const prices = rows.map(rowPrice);
     const now = prices.length ? Math.min.apply(null, prices) : onlinePP(base);
     const varies = prices.some(v => v !== now);
     return '<div class="fb-dir ' + cls + '">'
@@ -2113,22 +2187,23 @@ function renderFareBoard() {
       + '<span class="fb-price"><span class="p">' + (varies ? '<small>' + esc(t('fbFrom')) + '</small> ' : '') + inr(now) + '</span>'
       + (!varies && base > now ? '<span class="w">' + inr(base) + '</span>' : '')
       + '<span class="n">' + nprEst(now) + ' · ' + t('fbPerPerson') + '</span></span></div>'
-      + points.map((p, i) => '<button type="button" class="fb-row" data-fb-from="' + esc(p) + '" data-fb-to="' + esc(toward) + '">'
-          + '<span class="c">' + esc(pointWithTime(p)) + ' → ' + esc(toward) + '</span>'
+      + rows.map((r, i) => '<button type="button" class="fb-row" data-fb-from="' + esc(r.from) + '" data-fb-to="' + esc(r.to) + '">'
+          + '<span class="c">' + esc(r.label) + '</span>'
           + '<span class="k">' + inr(prices[i]) + ' · ' + nprEst(prices[i]) + '</span></button>').join('')
       + '</div>';
   };
+  const goRows = servedPoints(gujaratTownsFor('go')).map(p => ({ from: p, to: hub, town: p, label: pointWithTime(p) + ' → ' + hub }));
+  /* Return: Rupaidiha → every Gujarat drop (no times: drop times are not
+     published, and the pickup lookup would print the OUTBOUND time). */
+  const backRows = servedPoints(gujaratTownsFor('back')).map(p => ({ from: hub, to: p, town: p, label: hub + ' → ' + p }));
 
   box.innerHTML =
       '<div class="fb-head"><h3>💰 ' + t('fbTitle') + '</h3><small>' + t('fbSub') + '</small>'
     + (pct > 0 ? '<span class="fb-off">' + tf('offPill', { pct: pct }) + '</span>' : '') + '</div>'
-    + '<p class="fb-sub">' + tf('fbLead', { pct: pct }) + '</p>'
+    + '<p class="fb-sub">' + esc(tf('fbLead', Object.assign({ pct: pct }, factVars()))) + '</p>'
     + '<div class="fb-dirs">'
-    + card('go',   '🇮🇳', '🇳🇵', t('fbGoing'),  servedPoints(gujaratTownsFor('go')), hub,         d.toNepal, p => locationFare(p, 'go'))
-    /* Return card points AT a single Gujarat hub: the FIRST canonical main
-       point (Surat), which is also the return route's real endpoint. */
-    + card('back', '🇳🇵', '🇮🇳', t('fbComing'), servedPoints(mp.nepal),
-           (gujaratTownsFor('back')[0] || (mp.india || [])[0] || ''), d.toIndia)
+    + card('go',   '🇮🇳', '🇳🇵', t('fbGoing'),  goRows,   d.toNepal, p => locationFare(p, 'go'))
+    + card('back', '🇳🇵', '🇮🇳', t('fbComing'), backRows, d.toIndia, p => locationFare(p, 'back'))
     + '</div>'
     + '<div class="fb-foot"><span class="fb-chip">🤝 ' + t('fbSharing') + '</span>'
     + '<span>' + t('fbNote') + '</span></div>';
@@ -3429,10 +3504,20 @@ if (store.local && !store.remote) {
     var lang = b.getAttribute('data-vc-share') === 'ne' ? 'ne' : 'en';
     var file = '/assets/img/card-' + lang + '.jpg';
     var url = location.origin + file;
-    var text = '🚌 S Hari Global Pvt Ltd — India ⇄ Nepal bus\n'
-      + '📞 Mehsana +91 91048 01507 · Ahmedabad +91 91570 01507 · Surat +91 73593 01507\n'
-      + '🇳🇵 Nepal: +977 986-6201375 · +977 984-8889950 · +977 984-8119600\n'
-      + '🌐 https://shreehariglobal.in\n' + url;
+    /* 9 Oct 2026: the card's text from the site facts - every listed office
+       and the Nepal office people, the numbers Admin holds (never a typed copy). */
+    var F = window.FACTS || {};
+    var offs = (F.offices || []).filter(function (o) { return o && o.phone && o.status === 'open'; });
+    var inOffs = offs.filter(function (o) { return o.country !== 'NP'; }).map(function (o) { return o.name + ' ' + o.phone; });
+    var npNums = offs.filter(function (o) { return o.country === 'NP'; }).map(function (o) { return o.phone; });
+    ((window.SHG_BOOT && window.SHG_BOOT.npTeam) || []).forEach(function (p) {
+      if (p && p.key !== 'ceo' && p.country === 'NP' && p.phone && npNums.indexOf(p.phone) < 0) npNums.push(p.phone);
+    });
+    var site = String(fact('brand.web', '') || location.host).replace(/^https?:\/\//, '');
+    var text = '🚌 ' + String(fact('brand.name', CONFIG.company.name)) + ' — India ⇄ Nepal bus\n'
+      + (inOffs.length ? '📞 ' + inOffs.join(' · ') + '\n' : '📞 ' + CONFIG.phone + '\n')
+      + (npNums.length ? '🇳🇵 Nepal: ' + npNums.join(' · ') + '\n' : '')
+      + '🌐 https://' + site + '\n' + url;
     var fallback = function () { window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank', 'noopener'); };
     if (navigator.share && navigator.canShare) {
       fetch(file).then(function (r) { return r.blob(); }).then(function (blob) {

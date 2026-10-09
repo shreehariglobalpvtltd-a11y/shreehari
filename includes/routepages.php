@@ -89,17 +89,24 @@ final class RoutePages
         $drop = array_values(array_filter($stops, static fn(array $s): bool => $s['stop_type'] === 'drop'));
 
         $toNepal = in_array(strtolower(trim((string) $r['to_city'])), self::NEPAL_SIDE, true);
-        $dir     = Fare::dirFares();
-        $sharing = (float) ($toNepal ? $dir['toNepal'] : $dir['toIndia']);
-        // The route's own origin / destination pickup fare (Admin -> Routes,
-        // 1 Oct 2026) when the office set one — what that passenger pays.
-        $own = Fare::stopFare($rid, (string) $r['from_city'], (string) $r['to_city']);
-        if ($own !== null) {
-            $sharing = $own;
+        /* 9 Oct 2026 (site facts): the sharing fare is THIS route's range on the
+           fare board - every pickup (going) or drop (coming back) priced by the
+           call the checkout bills with - so the page, its JSON-LD offer and
+           the app quote the same "from" figure. */
+        $board = Fare::board();
+        $dir   = $board['defaults'];
+        $rows  = array_values(array_filter($board[$toNepal ? 'go' : 'back'], static fn(array $x): bool => (int) $x['routeId'] === $rid));
+        $fares = array_map(static fn(array $x): float => (float) $x['fare'], $rows);
+        if ($fares === []) {
+            // no listed stop: the route's own origin / destination fare, else the direction default
+            $own     = Fare::stopFare($rid, (string) $r['from_city'], (string) $r['to_city']);
+            $fares[] = $own ?? (float) ($toNepal ? $dir['toNepal'] : $dir['toIndia']);
         }
-        $cp      = Settings::getArray('cabin_pricing', []);
-        $single  = (float) ($cp['private']['single_1pax']['online'] ?? $cp['private']['single_1pax']['offline'] ?? 0);
-        $double  = (float) ($cp['private']['double_2pax']['online'] ?? $cp['private']['double_2pax']['offline'] ?? 0);
+        $sharing    = (float) min($fares);
+        $sharingMax = (float) max($fares);
+        $single  = (float) $board['private']['single'];
+        $double  = (float) $board['private']['double'];
+        $co      = Settings::company();
         $slabs   = Settings::getArray('refund_slabs', [['minHrs' => 96, 'pct' => 90], ['minHrs' => 48, 'pct' => 75], ['minHrs' => 24, 'pct' => 50], ['minHrs' => 6, 'pct' => 25], ['minHrs' => 0, 'pct' => 0]]);
         usort($slabs, static fn(array $a, array $b): int => (int) $b['minHrs'] <=> (int) $a['minHrs']);
         $amen = json_decode((string) ($r['amenities'] ?? '[]'), true);
@@ -114,15 +121,17 @@ final class RoutePages
             'dayOffset' => (int) ($r['day_offset'] ?? 0),
             'km'        => (int) ($r['distance_km'] ?? 0),
             'sharing'   => $sharing,
+            'sharingMax'=> $sharingMax,
+            'offerCount'=> max(1, count($rows)),
             'single'    => $single,
             'double'    => $double,
             'slabs'     => $slabs,
             'amenities' => is_array($amen) ? array_map('strval', $amen) : [],
-            'phone'     => Settings::officePhone(),
-            'wa'        => Settings::officeWhatsApp(),
-            'company'   => Settings::getString('company_name', APP_NAME),
-            'address'   => Settings::getString('company_address', ''),
-            'cin'       => Settings::getString('company_cin', ''),
+            'phone'     => $co['phone'],
+            'wa'        => $co['whatsapp'],
+            'company'   => $co['name'],
+            'address'   => $co['address'],
+            'cin'       => $co['cin'],
         ];
     }
 
@@ -264,6 +273,7 @@ final class RoutePages
                 'boarding' => 'Boarding points', 'drop' => 'Drop points', 'time' => 'Time', 'stop' => 'Stop',
                 'fare'    => 'Fare', 'sharing' => 'Sharing sleeper, per person', 'single' => 'Private single cabin', 'double' => 'Private double cabin (2 people)',
                 'fareNote' => 'Same fare online and at the counter. Pay by UPI, eSewa QR, or cash on the bus.',
+                'byPickup' => 'by pickup point', 'byDrop' => 'by drop point',
                 'refund'  => 'Cancellation & refund', 'refundRow' => 'Cancel %d h or more before departure → %d%% back', 'refundLast' => 'Less than %d h before departure → no refund',
                 'refundPromise' => 'If the bus is cancelled by us, the full amount is returned.',
                 'amen'    => 'On board', 'book' => 'Book a seat online', 'wa' => 'Book on WhatsApp', 'call' => 'Call the office',
@@ -283,6 +293,7 @@ final class RoutePages
                 'boarding' => 'बोर्डिंग पॉइंट', 'drop' => 'उतरने की जगह', 'time' => 'समय', 'stop' => 'स्टॉप',
                 'fare'    => 'किराया', 'sharing' => 'शेयरिंग स्लीपर, प्रति व्यक्ति', 'single' => 'प्राइवेट सिंगल केबिन', 'double' => 'प्राइवेट डबल केबिन (2 लोग)',
                 'fareNote' => 'ऑनलाइन और काउंटर पर एक ही किराया। UPI, eSewa QR या बस में नकद।',
+                'byPickup' => 'बोर्डिंग पॉइंट के अनुसार', 'byDrop' => 'उतरने की जगह के अनुसार',
                 'refund'  => 'रद्द करना और रिफंड', 'refundRow' => 'रवानगी से %d घंटे या पहले रद्द → %d%% वापस', 'refundLast' => 'रवानगी से %d घंटे से कम → रिफंड नहीं',
                 'refundPromise' => 'बस हमारी ओर से रद्द हो तो पूरा पैसा वापस।',
                 'amen'    => 'बस में', 'book' => 'ऑनलाइन सीट बुक करें', 'wa' => 'WhatsApp पर बुक करें', 'call' => 'ऑफ़िस को कॉल करें',
@@ -302,6 +313,7 @@ final class RoutePages
                 'boarding' => 'चढ्ने ठाउँ', 'drop' => 'ओर्लने ठाउँ', 'time' => 'समय', 'stop' => 'स्टप',
                 'fare'    => 'भाडा', 'sharing' => 'सेयरिङ स्लिपर, प्रति व्यक्ति', 'single' => 'प्राइभेट सिंगल केबिन', 'double' => 'प्राइभेट डबल केबिन (२ जना)',
                 'fareNote' => 'अनलाइन र काउन्टरमा एउटै भाडा। UPI, eSewa QR वा बसमै नगद।',
+                'byPickup' => 'चढ्ने ठाउँ अनुसार', 'byDrop' => 'ओर्लने ठाउँ अनुसार',
                 'refund'  => 'रद्द र फिर्ता', 'refundRow' => 'छुट्नु %d घण्टा वा अघि रद्द → %d%% फिर्ता', 'refundLast' => 'छुट्नु %d घण्टाभन्दा कम → फिर्ता हुँदैन',
                 'refundPromise' => 'बस हाम्रो तर्फबाट रद्द भए पूरै रकम फिर्ता।',
                 'amen'    => 'बसमा', 'book' => 'अनलाइन सिट बुक गर्नुहोस्', 'wa' => 'WhatsApp मा बुक गर्नुहोस्', 'call' => 'कार्यालयलाई फोन',
@@ -394,7 +406,11 @@ final class RoutePages
                 ['@type' => 'Trip', 'name' => $h1, 'description' => $lead, 'url' => $canon, 'inLanguage' => $lang, 'provider' => ['@id' => rtrim(APP_URL, '/') . '/#org'],
                  'departureTime' => $f['dep'], 'arrivalTime' => $f['arr'],
                  'itinerary' => array_map(static fn(array $s): array => ['@type' => 'Place', 'name' => (string) $s['stop_name']], array_merge($f['boarding'], $f['drop'])),
-                 'offers' => ['@type' => 'Offer', 'price' => (string) (int) $f['sharing'], 'priceCurrency' => 'INR', 'availability' => 'https://schema.org/InStock', 'url' => rtrim(APP_URL, '/') . '/']],
+                 // 9 Oct 2026: the per-stop range from the fare board (low = what the cheapest stop pays)
+                 'offers' => $f['sharingMax'] > $f['sharing']
+                     ? ['@type' => 'AggregateOffer', 'lowPrice' => (string) (int) $f['sharing'], 'highPrice' => (string) (int) $f['sharingMax'],
+                        'offerCount' => (string) (int) $f['offerCount'], 'priceCurrency' => 'INR', 'availability' => 'https://schema.org/InStock', 'url' => rtrim(APP_URL, '/') . '/']
+                     : ['@type' => 'Offer', 'price' => (string) (int) $f['sharing'], 'priceCurrency' => 'INR', 'availability' => 'https://schema.org/InStock', 'url' => rtrim(APP_URL, '/') . '/']],
                 ['@type' => 'FAQPage', 'mainEntity' => $faqLd],
                 ['@type' => 'BreadcrumbList', 'itemListElement' => [
                     ['@type' => 'ListItem', 'position' => 1, 'name' => $f['company'], 'item' => rtrim(APP_URL, '/') . '/'],
@@ -405,12 +421,17 @@ final class RoutePages
         ];
         $ldJson = json_encode($ld, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP);
         $corridor = self::corridor((string) $r['from_city'], (string) $r['to_city'], $lang);
+        /* "₹2,000–₹2,200 · by pickup point" when the stops differ (9 Oct 2026) */
+        $shareTxt = '₹' . number_format($f['sharing'])
+            . ($f['sharingMax'] > $f['sharing'] ? '–₹' . number_format($f['sharingMax']) : '');
+        $shareBy  = $f['sharingMax'] > $f['sharing'] ? ' <small>' . $e($f['toNepal'] ? $w['byPickup'] : $w['byDrop']) . '</small>' : '';
+        $brandImg = self::brandImg();
 
         http_response_code(200);
         header('Content-Type: text/html; charset=utf-8');
         header('Cache-Control: public, max-age=3600');
         echo self::layout($lang, $title, $desc, $canon, $alts, $ldJson, <<<HTML
-<header class="top"><a class="brand" href="/"><img src="/assets/img/icon-192.png" alt="">{$e($f['company'])}</a><nav class="langs">{$langNav}</nav></header>
+<header class="top"><a class="brand" href="/">{$brandImg}{$e($f['company'])}</a><nav class="langs">{$langNav}</nav></header>
 <main>
 <h1>{$e($h1)}</h1>
 <p class="lead">{$e($lead)}</p>
@@ -428,7 +449,7 @@ final class RoutePages
     <div class="chips">{$amen}</div>
   </div>
   <div class="card"><h2>{$e($w['fare'])}</h2>
-    <dl><dt>{$e($w['sharing'])}</dt><dd><b>₹{$e(number_format($f['sharing']))}</b></dd>
+    <dl><dt>{$e($w['sharing'])}</dt><dd><b>{$e($shareTxt)}</b>{$shareBy}</dd>
         <dt>{$e($w['single'])}</dt><dd><b>₹{$e(number_format($f['single']))}</b></dd>
         <dt>{$e($w['double'])}</dt><dd><b>₹{$e(number_format($f['double']))}</b></dd></dl>
     <p class="note">{$e($w['fareNote'])}</p>
@@ -455,7 +476,7 @@ HTML);
         $list = '';
         foreach (self::routes() as $slug => $r) {
             $f = self::facts($r);
-            $list .= '<a class="card link" href="' . $e(self::url($slug, $lang)) . '"><b>' . $e(sprintf($w['h1'], self::town((string) $r['from_city'], $lang), self::town((string) $r['to_city'], $lang))) . '</b><span>' . $e($w['dep']) . ' ' . $e($f['dep']) . ' · ₹' . $e(number_format($f['sharing'])) . '</span></a>';
+            $list .= '<a class="card link" href="' . $e(self::url($slug, $lang)) . '"><b>' . $e(sprintf($w['h1'], self::town((string) $r['from_city'], $lang), self::town((string) $r['to_city'], $lang))) . '</b><span>' . $e($w['dep']) . ' ' . $e($f['dep']) . ' · ₹' . $e(number_format($f['sharing'])) . ($f['sharingMax'] > $f['sharing'] ? '–₹' . $e(number_format($f['sharingMax'])) : '') . '</span></a>';
         }
         $canon = rtrim(APP_URL, '/') . ($lang === 'en' ? '/bus' : '/' . $lang . '/bus');
         $alts = '';
@@ -466,8 +487,22 @@ HTML);
         header('Content-Type: text/html; charset=utf-8');
         header('Cache-Control: public, max-age=3600');
         $title = ($lang === 'ne' ? 'सबै बस रुट' : ($lang === 'hi' ? 'सभी बस रूट' : 'All bus routes')) . ' | ' . $company;
-        echo self::layout($lang, $title, $title, $canon, $alts, '', '<header class="top"><a class="brand" href="/"><img src="/assets/img/icon-192.png" alt="">' . $e($company) . '</a></header><main><h1>' . $e($title) . '</h1><div class="list">' . $list . '</div></main>');
+        echo self::layout($lang, $title, $title, $canon, $alts, '', '<header class="top"><a class="brand" href="/">' . self::brandImg() . $e($company) . '</a></header><main><h1>' . $e($title) . '</h1><div class="list">' . $list . '</div></main>');
         exit;
+    }
+
+    /**
+     * The brand emblem for the page header (9 Oct 2026, owner: "logo haru ma
+     * name ni join xa, background hataidinu - only logo"): the transparent
+     * emblem-only artwork (assets/img/logo-mark*), no white tile; the company
+     * name stays live text beside it.
+     */
+    private static function brandImg(): string
+    {
+        $root = dirname(__DIR__);
+        $src  = is_file($root . '/assets/img/logo-mark-96h.png') ? '/assets/img/logo-mark-96h.png' : '/assets/img/logo-mark.png';
+        $webp = is_file($root . '/assets/img/logo-mark-96h.webp') ? '<source srcset="/assets/img/logo-mark-96h.webp" type="image/webp">' : '';
+        return '<picture class="brand-mark">' . $webp . '<img src="' . $src . '" alt="" width="65" height="34" decoding="async"></picture>';
     }
 
     private static function layout(string $lang, string $title, string $desc, string $canon, string $alts, string $ldJson, string $body): string
@@ -498,7 +533,7 @@ HTML);
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans Devanagari','Noto Sans',sans-serif;background:var(--bg);color:var(--ink);line-height:1.55;-webkit-font-smoothing:antialiased}
 .top{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;background:var(--navy);border-bottom:3px solid var(--red);padding:12px max(16px,calc((100% - 860px)/2 + 16px));margin-bottom:12px}
-.brand{display:flex;align-items:center;gap:10px;font-weight:800;color:var(--on-navy);text-decoration:none}.brand img{width:34px;height:34px;border-radius:9px;background:#fff}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;color:var(--on-navy);text-decoration:none}.brand-mark{display:block;line-height:0}.brand img{display:block;height:34px;width:auto;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
 .langs{display:flex;gap:4px}
 .langs a{display:inline-flex;align-items:center;min-height:36px;font-size:13px;font-weight:700;color:var(--on-navy);text-decoration:none;padding:4px 11px;border-radius:999px;border:1px solid rgba(255,255,255,.35)}
 .langs a[aria-current]{background:var(--royal);color:var(--on-royal);border-color:var(--royal)}

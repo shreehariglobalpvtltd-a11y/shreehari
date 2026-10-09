@@ -45,7 +45,8 @@ $valid  = ['new', 'contacted', 'converted', 'closed'];
 /* Which desk the lead came from. 'agent_apply' is someone asking to become a
    counter agent — the office phones them and creates the account by hand. */
 $source   = Security::clean($_GET['source'] ?? '', 20);
-$sources  = ['quick_booking' => 'Booking enquiry', 'agent_apply' => 'Agent application', 'complaint' => 'Complaint'];
+$sources  = ['quick_booking' => 'Booking enquiry', 'agent_apply' => 'Agent application', 'complaint' => 'Complaint',
+             'callback' => 'Call-me-back', 'tour' => 'Tour enquiry'];
 
 /* Date window. The office wanted to narrow the inbox to a day, a few days or a
    month without typing dates. 0 = no limit. */
@@ -81,6 +82,20 @@ $sql = 'SELECT * FROM enquiries'
      . ($where !== [] ? ' WHERE ' . implode(' AND ', $where) : '')
      . ' ORDER BY id DESC LIMIT 300';
 $rows = Database::fetchAll($sql, $params);
+
+/* 9 Oct 2026: tour enquiries (api/tour-enquiry.php) carry a package, a
+   TRV ref and the traveller count — the package titles in one query. */
+$pkgTitles = [];
+$pkgIds = array_values(array_unique(array_filter(array_map(static fn(array $r): int => (int) ($r['package_id'] ?? 0), $rows))));
+if ($pkgIds !== []) {
+    try {
+        foreach (Database::fetchAll('SELECT id, slug, title_en FROM tour_packages WHERE id IN (' . implode(',', $pkgIds) . ')') as $p) {
+            $pkgTitles[(int) $p['id']] = $p;
+        }
+    } catch (Throwable $e) {
+        $pkgTitles = [];
+    }
+}
 
 $counts = Database::fetchAll('SELECT status, COUNT(*) AS n FROM enquiries GROUP BY status');
 $byStatus = [];
@@ -163,6 +178,9 @@ admin_header('Enquiries', 'enquiries');
       <tr>
         <td>
           <b><?= Security::e($r['name']) ?></b>
+          <?php if (($r['source'] ?? '') !== '' && isset($sources[$r['source']]) && $r['source'] !== 'quick_booking'): ?>
+            <div><span class="pill" style="color:#5b2a86;background:#efe3fb"><?= Security::e($sources[$r['source']]) ?></span><?php if (!empty($r['ref'])): ?> <span class="mono" style="font-size:12px"><?= Security::e($r['ref']) ?></span><?php endif; ?></div>
+          <?php endif; ?>
           <?php if ($meta): ?><div class="muted" style="font-size:12px"><?= Security::e(implode(' · ', $meta)) ?></div><?php endif; ?>
         </td>
         <td class="mono">
@@ -171,9 +189,22 @@ admin_header('Enquiries', 'enquiries');
         </td>
         <td>
           <?= $r['travel_date'] ? Security::e(formatDate($r['travel_date'])) : '<span class="muted">—</span>' ?>
+          <?php if (($r['source'] ?? '') === 'tour' && isset($r['pax_adults'])): ?>
+            <div class="muted" style="font-size:12px"><?= (int) $r['pax_adults'] ?> adult<?= (int) $r['pax_adults'] === 1 ? '' : 's' ?><?= (int) ($r['pax_children'] ?? 0) > 0 ? ' + ' . (int) $r['pax_children'] . ' child' : '' ?><?= !empty($r['from_city']) ? ' · from ' . Security::e($r['from_city']) : '' ?></div>
+          <?php else: ?>
           <div class="muted" style="font-size:12px"><?= (int) $r['seats'] ?> seat<?= (int) $r['seats'] === 1 ? '' : 's' ?></div>
+          <?php endif; ?>
         </td>
-        <td style="max-width:220px"><?= $r['note'] ? Security::e($r['note']) : '<span class="muted">—</span>' ?></td>
+        <td style="max-width:260px">
+          <?php $pk = $pkgTitles[(int) ($r['package_id'] ?? 0)] ?? null; if ($pk !== null): ?>
+            <div><a href="/tours/<?= Security::e($pk['slug']) ?>" target="_blank" rel="noopener">🧳 <?= Security::e($pk['title_en']) ?></a></div>
+          <?php endif; ?>
+          <?php if (!empty($r['details'])): ?>
+            <details><summary style="cursor:pointer"><?= $r['note'] ? Security::e($r['note']) : 'Details' ?></summary><div style="white-space:pre-wrap;font-size:12.5px;margin-top:4px"><?= Security::e($r['details']) ?></div></details>
+          <?php else: ?>
+            <?= $r['note'] ? Security::e($r['note']) : '<span class="muted">—</span>' ?>
+          <?php endif; ?>
+        </td>
         <td><?= $pill((string) $r['status']) ?></td>
         <td class="muted"><?= Security::e(timeAgo((string) $r['created_at'])) ?></td>
         <td>

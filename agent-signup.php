@@ -14,6 +14,7 @@ declare(strict_types=1);
 define('SHG_APP', true);
 require_once __DIR__ . '/includes/bootstrap.php';
 require_once INCLUDE_PATH . '/agentwallet.php';   // AgentWallet::normaliseKind / cleanPhone / kindLabel
+require_once INCLUDE_PATH . '/brand.php';         // emblem (no baked name, no white tile) + SVG flags — 9 Oct 2026
 
 $flash   = null;
 $success = false;
@@ -147,7 +148,7 @@ $company = Settings::getString('company_name', APP_NAME);
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Become an Agent · <?= Security::e($company) ?></title>
 <meta name="robots" content="noindex,nofollow">
-<link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon-32.png?v=20260827b">
+<?= Brand::iconLinks() ?>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;800&display=swap">
 <style>
@@ -158,7 +159,8 @@ body{min-height:100vh;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans
 
 /* ── Header ── */
 .brand{text-align:center;margin-bottom:28px}
-.brand img.logo{width:64px;height:64px;object-fit:contain;filter:drop-shadow(0 8px 20px rgba(0,0,0,.4));margin-bottom:10px}
+.brand img.logo{height:68px;width:auto;max-width:160px;object-fit:contain;background:none;filter:drop-shadow(0 8px 18px rgba(0,0,0,.42));margin-bottom:10px}
+.brand .flg-pair{margin-right:6px}
 .brand img.ceo{width:76px;height:76px;border-radius:50%;object-fit:cover;object-position:center top;border:3px solid #F07C1F;box-shadow:0 6px 20px rgba(0,0,0,.35);margin-bottom:8px}
 .brand h1{font-family:'Cinzel',Georgia,serif;font-size:20px;color:#FFF;font-weight:800;letter-spacing:.03em;line-height:1.2}
 .brand p{color:rgba(255,255,255,.75);font-size:13px;margin-top:4px}
@@ -215,16 +217,16 @@ textarea{min-height:70px;resize:vertical;font-size:14px}
 .divider::before,.divider::after{content:'';flex:1;height:1px;background:#e4e9f0}
 
 /* Responsive */
-@media(max-width:400px){.card{padding:24px 18px}.brand img.logo{width:54px;height:54px}}
+@media(max-width:400px){.card{padding:24px 18px}.brand img.logo{height:58px;width:auto}}
 </style>
 </head>
 <body>
 
 <div class="brand">
-  <div><img src="/assets/img/logo.png" class="logo" alt="<?= Security::e($company) ?>" width="64" height="64"></div>
+  <div><img src="<?= Security::e(Brand::markUrl(68)) ?>" class="logo" alt="<?= Security::e($company) ?>" width="131" height="68"></div>
   <div><img src="/assets/img/ceo.jpg" class="ceo" alt="CEO" onerror="this.style.display='none'"></div>
   <h1><?= Security::e($company) ?></h1>
-  <p>Agent Registration · एजेंट रजिस्ट्रेशन</p>
+  <p><?= Brand::flagPair(14) ?>Agent Registration · एजेंट रजिस्ट्रेशन</p>
 </div>
 
 <div class="card">

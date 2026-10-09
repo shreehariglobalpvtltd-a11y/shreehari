@@ -2268,7 +2268,18 @@ final class AiTools
         }
 
         $note = Security::clean((string) ($args['note'] ?? 'Confirmed on WhatsApp'), 200);
-        BookingService::confirm((int) $detail['id'], (int) ($ctx['adminId'] ?? 0), $note);
+        /* 9 Oct 2026 (anti-fake): the same approval gate as Admin -> Payments.
+           From WhatsApp only a LOW-risk payment may be confirmed - a medium or
+           high one needs the bank-statement tick / written reason that only
+           the panel can take, so the assistant says where to go instead. */
+        require_once __DIR__ . '/paymentrisk.php';
+        $waAdminId = (int) ($ctx['adminId'] ?? 0);
+        $waRole    = $waAdminId > 0 ? (string) Database::scalar('SELECT role FROM admins WHERE id = :i', ['i' => $waAdminId], '') : '';
+        try {
+            BookingService::approveReviewed((int) $detail['id'], ['id' => $waAdminId, 'role' => $waRole], ['note' => $note, 'via' => 'whatsapp']);
+        } catch (PaymentRiskGate $g) {
+            return self::no($g->getMessage());
+        }
 
         return [
             'ok'   => true,
@@ -2914,7 +2925,8 @@ final class AiTools
         if ($staged === null || ($staged['action'] ?? '') !== 'reject' || ($staged['pnr'] ?? '') !== $pnr) {
             return self::no('Preview this exact PNR first (office_reject without confirm) and get a ho in the next message.');
         }
-        BookingService::reject((int) $detail['id'], (int) ($ctx['adminId'] ?? 0), (string) ($staged['reason'] ?? $reason));
+        // rejectReviewed = reject() + the risk snapshot kept (9 Oct 2026); a person said ho
+        BookingService::rejectReviewed((int) $detail['id'], (int) ($ctx['adminId'] ?? 0), (string) ($staged['reason'] ?? $reason), ['via' => 'whatsapp']);
 
         return [
             'ok'   => true,

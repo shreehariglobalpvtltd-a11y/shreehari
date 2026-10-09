@@ -49,6 +49,34 @@
     }
   } catch (e) { /* storage blocked — light theme, exactly as before */ }
 })();
+/* ---- 9 Oct 2026: colour palette, UI style and motion (assets/css/themes.css) ----
+   A saved choice is stamped here, before paint; with nothing saved, index.php
+   applies the owner's defaults right after. shg:palette is WHITELISTED: an old
+   day-palette value ('0'-'6', 'brand', 'logo', 'auto') is ignored, and 'shg'
+   means the S Hari brand look chosen on purpose (no attribute). Each palette
+   carries its status-bar colours [light, dark] and its dark page colour, kept
+   equal to SHG_PALETTES in 03-accounts.js by tests/theme-palette-test.php. */
+(function () {
+  try {
+    var d = document.documentElement;
+    var P = { himalaya: ['#003175', '#141a32', '#12131b'], laligurans: ['#6c0b17', '#311210', '#1c100f'], saffron: ['#542a00', '#2c1700', '#1b1109'],
+      tulsi: ['#003e09', '#0d2008', '#0e150c'], phewa: ['#003b41', '#001f23', '#051617'], lotus: ['#6a0342', '#301120', '#1b1015'],
+      lavender: ['#3f266b', '#20172f', '#16121a'], marigold: ['#433200', '#241a00', '#181307'], monsoon: ['#173946', '#141d21', '#08151a'],
+      everest: ['#003953', '#001e2f', '#0b141b'], terracotta: ['#651a00', '#301406', '#1c110c'], peacock: ['#003c33', '#00201b', '#061613'] };
+    window.SHG_PAL_TC = P;
+    var g = function (k) { try { return (localStorage.getItem(k) || '').replace(/"/g, ''); } catch (e) { return ''; } };
+    var p = g('shg:palette'), u = g('shg:ui'), mo = g('shg:motion');
+    if (p !== 'shg' && Object.prototype.hasOwnProperty.call(P, p)) {
+      d.setAttribute('data-palette', p);
+      var dk = d.getAttribute('data-theme') === 'dark', am = d.getAttribute('data-display') === 'amoled';
+      var m = document.querySelector('meta[name="theme-color"]');
+      if (m && !am) m.setAttribute('content', P[p][dk ? 1 : 0]);
+      if (dk && !am) d.style.background = P[p][2];
+    }
+    if (u === 'pixel' || u === 'classic') d.setAttribute('data-ui', u);
+    if (mo === 'reduced') d.setAttribute('data-motion', 'reduced');
+  } catch (e) { /* storage blocked - the brand look, exactly as before */ }
+})();
 </script>
 <script>
 /* ---- STUCK-CLIENT RESCUE (runs before anything else) -----------------
@@ -152,12 +180,12 @@ html,body{margin:0;background:#F4F6FB}
 <script defer src="/assets/js/23-flags.js?v=20261008p"></script>
 <script defer src="/assets/js/24-homeinfo.js?v=20261008p"></script>
 <meta property="og:title" content="Surat to Nepal Bus (Rupaidiha / Nepalgunj) — AC Sleeper | S Hari Global">
-<meta property="og:description" content="Direct AC Sleeper coach from Gujarat (India) to the Rupaidiha (India–Nepal) border. Boarding at Surat, Kamrej, Ankleshwar, Bharuch, Vadodara, Anand, Nadiad, Emli Bhupal & Ahmedabad (S Hari Parking, Nana Chiloda). Book online at one fixed fare price. Private & sharing cabins.">
+<meta property="og:description" content="Direct AC Sleeper coach from Gujarat (India) to the Rupaidiha (India–Nepal) border. Boarding at Surat, Kamrej, Ankleshwar, Bharuch, Vadodara, Anand, Nadiad, Emli Bhupal, Rajkot &amp; Ahmedabad (S Hari Parking, Nana Chiloda). Book online, on WhatsApp or by phone. Private &amp; sharing cabins.">
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="S Hari Global Pvt Ltd">
+<meta property="og:site_name" content="{{f:brand.name}}">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="S Hari Global Pvt Ltd — Gujarat ⇄ Rupaidiha Bus">
-<meta name="twitter:description" content="Direct AC Sleeper coach from Gujarat (India) to the Rupaidiha (India–Nepal) border. Boarding at Surat, Kamrej, Ankleshwar, Bharuch, Vadodara, Anand, Nadiad, Emli Bhupal & Ahmedabad (S Hari Parking, Nana Chiloda). Book online at one fixed fare price. Private & sharing cabins.">
+<meta name="twitter:title" content="{{f:brand.name}} — Gujarat ⇄ Rupaidiha Bus">
+<meta name="twitter:description" content="Direct AC Sleeper coach from Gujarat (India) to the Rupaidiha (India–Nepal) border. Boarding at Surat, Kamrej, Ankleshwar, Bharuch, Vadodara, Anand, Nadiad, Emli Bhupal, Rajkot &amp; Ahmedabad (S Hari Parking, Nana Chiloda). Book online, on WhatsApp or by phone. Private &amp; sharing cabins.">
 <!-- canonical, og:url/og:image, twitter:url/image and JSON-LD are injected per-environment by index.php (built from APP_URL) so the URL is always correct. -->
 
 <!-- V7 — fonts load without blocking the first render. `display=swap` means
@@ -183,7 +211,7 @@ html,body{margin:0;background:#F4F6FB}
      Cinzel is SIL OFL 1.1, which allows hosting it ourselves. -->
 <link rel="preload" as="font" type="font/woff2" href="/assets/fonts/cinzel-latin.woff2?v=20261008p" crossorigin>
 <style>@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20261008p) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20261008p) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin-ext.woff2?v=20261008p) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Cinzel';font-style:normal;font-weight:800;font-display:swap;src:url(/assets/fonts/cinzel-latin.woff2?v=20261008p) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}</style>
-<title>Surat to Nepal Bus (Rupaidiha / Nepalgunj) — AC Sleeper daily | S Hari Global Pvt Ltd</title>
+<title>Surat to Nepal Bus (Rupaidiha / Nepalgunj) — AC Sleeper daily | {{f:brand.name}}</title>
 <meta name="description" content="सूरत से नेपाल बस · सुरत देखि नेपाल बस — daily AC sleeper from Surat, Kamrej, Ankleshwar, Bharuch, Vadodara, Anand, Nadiad & Ahmedabad to the Rupaidiha (Nepalgunj) border. Book online, on WhatsApp or by phone. Registered Indian company, Mehsana.">
 <!-- Real brand favicon, not the emoji placeholder. PNG first for the tab
      strip, the SVG kept as the scalable fallback. -->
@@ -259,6 +287,13 @@ html,body{margin:0;background:#F4F6FB}
     <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 20l1.3-3.9A8 8 0 1 1 8 18.7z"/><path d="M9 10.5h6M9 13.5h4"/></symbol>
     <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></symbol>
     <symbol id="i-scroll" viewBox="0 0 24 24"><path d="M15 3H6a2 2 0 0 0-2 2v3h4"/><path d="M18 3a3 3 0 0 1 3 3v13H8v2a2 2 0 0 1-2 2h11a3 3 0 0 0 3-3V6a3 3 0 0 0-3-3z"/></symbol>
+    <!-- 9 Oct 2026 (home showcase): a ticket with a tick, a bolt, WhatsApp, play, arrow, sparkle -->
+    <symbol id="i-tkt2" viewBox="0 0 24 24"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/><path d="m8.5 12 2.2 2.2L15.5 9.5"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></symbol>
+    <symbol id="i-wa" viewBox="0 0 24 24"><path d="M12 2.8a9.2 9.2 0 0 0-7.9 13.9L3 21l4.4-1.1A9.2 9.2 0 1 0 12 2.8z"/><path d="M9 8.2c.3 2.6 2.2 5.2 5.6 6.4l1.3-1.3-1.9-1-1 .7c-1-.5-1.9-1.4-2.4-2.4l.7-1-1-1.9z"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m10 8.5 5.5 3.5-5.5 3.5z"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/></symbol>
   </defs>
 </svg>
 
@@ -305,8 +340,8 @@ s.addEventListener('click',function(e){e.preventDefault();
       </span>
       <button type="button" class="theme-btn" aria-label="Switch to dark mode">🌙</button>
       <span class="palette-wrap"><button type="button" class="palette-btn" aria-label="Choose colour theme" aria-haspopup="true" aria-expanded="false">🎨</button><div class="palette-pop" id="palettePop" role="menu" aria-label="Colour themes"></div></span>
-      <a href="tel:+919104801507">📞 +91 91048 01507</a>
-      <a href="mailto:shreehariglobalpvtltd@gmail.com">✉️ shreehariglobalpvtltd@gmail.com</a>
+      <a href="tel:+{{f:head.tel}}" data-fact-tel="head.tel">📞 <span data-fact="head.phone">{{f:head.phone}}</span></a>
+      <a href="mailto:{{f:brand.email}}">✉️ {{f:brand.email}}</a>
     </div>
   </div>
 </div>
@@ -318,16 +353,16 @@ s.addEventListener('click',function(e){e.preventDefault();
          WhatsApp line printed on the ticket, so a passenger who needs the
          company can reach it from the very first strip on the page instead
          of scrolling to the footer. -->
-    <a class="credit-seg credit-lead" href="https://wa.me/919726401507" target="_blank" rel="noopener noreferrer">
+    <a class="credit-seg credit-lead" href="https://wa.me/{{f:ceo.wa}}" data-fact-wa="ceo.wa" target="_blank" rel="noopener noreferrer">
       <span class="credit-ic">👑</span>
-      <span class="credit-txt"><b class="txt-gold">Sher Bahadur Bishwokarma</b><small>CEO &amp; Director</small></span>
-      <span class="credit-num">💬 +91 97264 01507</span>
+      <span class="credit-txt"><b class="txt-gold" data-fact="ceo.name">{{f:ceo.name}}</b><small>CEO &amp; Director</small></span>
+      <span class="credit-num">💬 <span data-fact="ceo.phone">{{f:ceo.phone}}</span></span>
     </a>
     <span class="credit-div" aria-hidden="true">◆</span>
-    <a class="credit-seg" href="tel:+919104801507">
+    <a class="credit-seg" href="tel:+{{f:head.tel}}" data-fact-tel="head.tel">
       <span class="credit-ic">🏢</span>
-      <span class="credit-txt"><b class="txt-silver">Office · Booking</b><small>S Hari Global Pvt Ltd</small></span>
-      <span class="credit-num alt">📞 +91 91048 01507</span>
+      <span class="credit-txt"><b class="txt-silver">Office · Booking</b><small data-fact="brand.name">{{f:brand.name}}</small></span>
+      <span class="credit-num alt">📞 <span data-fact="head.phone">{{f:head.phone}}</span></span>
     </a>
   </div>
 </div>
@@ -353,9 +388,12 @@ s.addEventListener('click',function(e){e.preventDefault();
          both back on. No separate wordmark: logo.png already carries
          "S HARI GLOBAL" under the bus, and setting the words twice beside
          each other is the tell of a logo that was bolted on. -->
-    <a class="brand" href="#/" data-scroll="top" aria-label="S Hari Global Pvt Ltd — Home">
-      <span class="brand-tile"><img id="logoNav" src="/assets/img/logo-nav.png?v=20261008p" alt="S Hari Global Pvt Ltd Logo" width="192" height="140" decoding="async"></span>
-      <span class="brand-word" aria-hidden="true"><b>S HARI GLOBAL</b><small>Gujarat ⇄ Rupaidiha</small></span>
+    <!-- 9 Oct 2026 (owner: "logo only, no white background"): logo-nav.png is
+         now the transparent emblem with no baked name; the company name is live
+         text from the facts (brand.short), so a rename in Admin flows here too. -->
+    <a class="brand" href="#/" data-scroll="top" aria-label="{{f:brand.name}} — Home">
+      <span class="brand-tile"><img id="logoNav" src="/assets/img/logo-nav.png?v=20261008p" alt="{{f:brand.name}}" width="240" height="125" decoding="async"></span>
+      <span class="brand-word" aria-hidden="true"><b data-fact="brand.short">S Hari Global</b><small>Gujarat ⇄ Rupaidiha</small></span>
     </a>
     <nav class="nav-links" aria-label="Main">
       <a class="nav-link" href="#/" data-scroll="top"><svg class="ic"><use href="#i-home"/></svg> Home</a>
@@ -449,11 +487,18 @@ s.addEventListener('click',function(e){e.preventDefault();
        PNR box) and MY TICKET. The offices card, the Nepal team and the coach
        animation now sit BELOW the search card and QuickBot (D3-09). Colours
        come from the design-system tokens (ds.css + the last depth.css block). -->
+  <!-- 9 Oct 2026 (owner): emblem only on a soft glow (no white tile), the live
+       company name between the India and Nepal flags, and TRACK / MY TICKET as
+       their own raised colour keys (showcase.css; the pointer tilt and the
+       press ripple are 21-showcase.js). No nested <section> in here: the tests
+       and index.php's first-paint splice read up to the first </section>. -->
   <section class="container home-hero" id="homeHero" aria-labelledby="homeHeadline">
     <div class="hh-card">
+      <span class="sc-hh-sheen" aria-hidden="true"></span>
       <div class="hh-brand">
-        <span class="hh-logo-tile"><img class="hh-logo" src="/assets/img/logo-nav.png?v=20261008p" alt="S Hari Global Pvt Ltd" width="192" height="140" decoding="async"></span>
+        <span class="hh-logo-tile"><img class="hh-logo" src="/assets/img/logo-nav.png?v=20261008p" alt="{{f:brand.name}}" width="240" height="125" decoding="async"></span>
         <div class="hh-copy">
+          <p class="sc-hh-eyebrow"><span class="flg" data-flag="IN" role="img" aria-label="India"></span><b data-fact="brand.name">{{f:brand.name}}</b><span class="flg" data-flag="NP" role="img" aria-label="Nepal"></span></p>
           <h1 class="hh-title" id="homeHeadline" data-i18n="hhTitle">INDIA ⇄ NEPAL PREMIUM AC SLEEPER BUS</h1>
           <p class="hh-tag" data-i18n="hhTag">Safe Journey. Easy Booking. Your Comfort, Our Responsibility.</p>
         </div>
@@ -464,11 +509,11 @@ s.addEventListener('click',function(e){e.preventDefault();
           <span class="hh-txt"><b data-i18n="hhBook">Book Ticket</b><small data-i18n="hhBookSub">Date · seat · pay</small></span>
         </a>
         <a class="hh-act hh-track" href="#/my" data-track-bus>
-          <span class="hh-ic" aria-hidden="true"><svg class="ic"><use href="#i-radar"/></svg></span>
+          <span class="hh-ic" aria-hidden="true"><i class="sc-ping"></i><i class="sc-ping sc-ping2"></i><svg class="ic"><use href="#i-radar"/></svg></span>
           <span class="hh-txt"><b data-i18n="hhTrack">Track My Bus</b><small data-i18n="hhTrackSub">From your ticket</small></span>
         </a>
         <a class="hh-act hh-my" href="#/my">
-          <span class="hh-ic" aria-hidden="true"><svg class="ic"><use href="#i-list"/></svg></span>
+          <span class="hh-ic" aria-hidden="true"><svg class="ic"><use href="#i-tkt2"/></svg></span>
           <span class="hh-txt"><b data-i18n="hhMy">My Ticket</b><small data-i18n="hhMySub">View · download</small></span>
         </a>
       </div>
@@ -603,17 +648,27 @@ s.addEventListener('click',function(e){e.preventDefault();
        replaces the old brand band (4 chips) and the coach animation's 3
        amenity chips, which repeated AC and charging. Only claims the site
        already makes elsewhere (visiting card, facilities list, ticket). -->
+  <!-- 9 Oct 2026 (owner: "AC, sleeper, quick booking, bus tracking ... animated,
+       marketing style"): the same eight-item strip, now eight living cards -
+       each icon has its own small motion (showcase.css .sc-pk-*, transform /
+       opacity only, paused off screen and for reduced motion) and the four that
+       lead somewhere are real links/buttons (QuickBot, seat map, my bus tracker,
+       WhatsApp, help). Claims are only what the site already promises: no
+       Wi-Fi, CCTV, meals or snacks here. -->
   <section class="container home-feat" id="homeFeat" aria-labelledby="homeFeatTitle">
-    <h2 class="sr-only" id="homeFeatTitle" data-i18n="hfTitle">On every journey</h2>
-    <ul class="hf-list">
-      <li><span class="hf-ic" aria-hidden="true"><svg class="ic"><use href="#i-ac"/></svg></span><span class="hf-tx" data-i18n="hfAc">AC Sleeper</span></li>
-      <li><span class="hf-ic" aria-hidden="true"><svg class="ic"><use href="#i-charge"/></svg></span><span class="hf-tx" data-i18n="hfCharge">Mobile Charging</span></li>
-      <li><span class="hf-ic" aria-hidden="true"><svg class="ic"><use href="#i-aid"/></svg></span><span class="hf-tx" data-i18n="hfAid">First Aid</span></li>
-      <li><span class="hf-ic" aria-hidden="true"><svg class="ic"><use href="#i-pin"/></svg></span><span class="hf-tx" data-i18n="hfGps">GPS Tracking</span></li>
-      <li><span class="hf-ic" aria-hidden="true"><svg class="ic"><use href="#i-chat"/></svg></span><span class="hf-tx" data-i18n="hfWa">WhatsApp Ticket</span></li>
-      <li><span class="hf-ic" aria-hidden="true"><svg class="ic"><use href="#i-headset"/></svg></span><span class="hf-tx" data-i18n="hfHelp">Customer Support</span></li>
-      <li><span class="hf-ic" aria-hidden="true"><svg class="ic"><use href="#i-bed"/></svg></span><span class="hf-tx" data-i18n="hfBerth">Sleeper Berth</span></li>
-      <li><span class="hf-ic" aria-hidden="true"><svg class="ic"><use href="#i-shield"/></svg></span><span class="hf-tx" data-i18n="hfSecure">Secure Booking</span></li>
+    <div class="sc-head">
+      <p class="sc-eyebrow"><svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg> <span data-i18n="pkEyebrow">Why travel with us</span></p>
+      <h2 class="sc-h2" id="homeFeatTitle" data-i18n="pkTitle">Comfort and trust on every journey</h2>
+    </div>
+    <ul class="hf-list sc-perks">
+      <li><div class="sc-perk sc-pk-ac"><span class="hf-ic" aria-hidden="true"><svg class="ic"><use href="#i-ac"/></svg></span><span class="sc-pk-tx"><span class="hf-tx" data-i18n="hfAc">AC Sleeper</span><small data-i18n="pkAcSub">Cool, quiet night ride</small></span></div></li>
+      <li><a class="sc-perk sc-pk-berth sc-go" href="#/" data-scroll="search-anchor"><span class="hf-ic" aria-hidden="true"><svg class="ic"><use href="#i-bed"/></svg></span><span class="sc-pk-tx"><span class="hf-tx" data-i18n="hfBerth">Sleeper Berth</span><small data-i18n="pkBerthSub">Sleeper berths · private cabins</small></span><span class="sc-pk-go" aria-hidden="true"><svg class="ic"><use href="#i-arrow"/></svg></span></a></li>
+      <li><a class="sc-perk sc-pk-quick sc-go" href="#/" data-scroll="quick-ticket"><span class="hf-ic" aria-hidden="true"><svg class="ic"><use href="#i-bolt"/></svg></span><span class="sc-pk-tx"><span class="hf-tx" data-i18n="hfQuick">QuickBot Booking</span><small data-i18n="pkQuickSub">Name + mobile → ticket in about 10 seconds</small></span><span class="sc-pk-go" aria-hidden="true"><svg class="ic"><use href="#i-arrow"/></svg></span></a></li>
+      <li><a class="sc-perk sc-pk-gps sc-go" href="#/my" data-track-bus><span class="hf-ic" aria-hidden="true"><i class="sc-ping"></i><svg class="ic"><use href="#i-pin"/></svg></span><span class="sc-pk-tx"><span class="hf-tx" data-i18n="hfTrack">Live Bus Tracking</span><small data-i18n="pkTrackSub">From your ticket · share with family</small></span><span class="sc-pk-go" aria-hidden="true"><svg class="ic"><use href="#i-arrow"/></svg></span></a></li>
+      <li><div class="sc-perk sc-pk-charge"><span class="hf-ic" aria-hidden="true"><svg class="ic"><use href="#i-charge"/></svg></span><span class="sc-pk-tx"><span class="hf-tx" data-i18n="hfCharge">Mobile Charging</span><small data-i18n="pkChargeSub">USB / Type-C charging</small></span></div></li>
+      <li><button type="button" class="sc-perk sc-pk-wa sc-go" data-wa-open="booking" aria-haspopup="dialog" aria-controls="waSheet"><span class="hf-ic" aria-hidden="true"><svg class="ic"><use href="#i-wa"/></svg></span><span class="sc-pk-tx"><span class="hf-tx" data-i18n="hfWa">WhatsApp Ticket</span><small data-i18n="pkWaSub">Ticket PNG + PDF on WhatsApp</small></span><span class="sc-pk-go" aria-hidden="true"><svg class="ic"><use href="#i-arrow"/></svg></span></button></li>
+      <li><div class="sc-perk sc-pk-aid"><span class="hf-ic" aria-hidden="true"><svg class="ic"><use href="#i-aid"/></svg></span><span class="sc-pk-tx"><span class="hf-tx" data-i18n="hfAid">First Aid</span><small data-i18n="pkAidSub">First-aid kit on board</small></span></div></li>
+      <li><a class="sc-perk sc-pk-help sc-go" href="#/" data-scroll="contact"><span class="hf-ic" aria-hidden="true"><svg class="ic"><use href="#i-headset"/></svg></span><span class="sc-pk-tx"><span class="hf-tx" data-i18n="hf247">24×7 Support</span><small data-i18n="pkHelpSub">Nepali · Hindi · English</small></span><span class="sc-pk-go" aria-hidden="true"><svg class="ic"><use href="#i-arrow"/></svg></span></a></li>
     </ul>
   </section>
 
@@ -757,10 +812,12 @@ s.addEventListener('click',function(e){e.preventDefault();
       <!-- the live plan + in-place editors + the ONE button — filled by initQuickTicket() -->
       <div class="qt-plan" id="qtPlanCard" hidden aria-live="polite"></div>
       <button type="button" class="qt-alt" data-bkmode="regular"><span data-i18n="qtAlt">आफ्नो सिट आफैँ छान्न चाहनुहुन्छ? सिट-म्याप booking खोल्नुहोस्</span> →</button>
-      <div class="qt-steps" id="qtSteps">
-        <span>1️⃣ <b data-i18n="qtS1">नाम + मोबाइल</b></span>
-        <span>2️⃣ <b data-i18n="qtS2">Auto: बस · सिट · भाडा</b></span>
-        <span>3️⃣ <b data-i18n="qtS3">टिकट PNG + PDF तुरुन्तै</b></span>
+      <!-- 9 Oct 2026: QuickBot's 1-2-3 is shown again, as an animated strip
+           (showcase.css .sc-qs; each step lights in turn, still for reduced motion). -->
+      <div class="qt-steps sc-qsteps" id="qtSteps">
+        <span class="sc-qs"><i aria-hidden="true">1</i><b data-i18n="qtS1">नाम + मोबाइल</b></span>
+        <span class="sc-qs"><i aria-hidden="true">2</i><b data-i18n="qtS2">Auto: बस · सिट · भाडा</b></span>
+        <span class="sc-qs"><i aria-hidden="true">3</i><b data-i18n="qtS3">टिकट PNG + PDF तुरुन्तै</b></span>
       </div>
     </section>
     <!-- Seat-map mode: the card folds into this one strip (tap = back to QuickBot)
@@ -768,23 +825,115 @@ s.addEventListener('click',function(e){e.preventDefault();
     <button type="button" class="qt-collapsed" id="qtCollapsed" hidden data-bkmode="quick">⚡ <b data-i18n="bkBackQuick">QuickBot: नाम + मोबाइल → १० सेकेन्डमा टिकट</b><span data-i18n="bkSwitch">बदल्नुहोस् →</span></button>
   </div>
 
+  <!-- ============ THE BOOKING DEMO, VISIBLE AGAIN (9 Oct 2026, owner) ============
+       "The quick-booking demo used to be on home and is gone": the four-step
+       sample animation (#animBooking) is back on the page itself - it had been
+       folded inside the collapsed guide since 5 Oct. A label and the "try it"
+       keys sit OUTSIDE the scene (a scene carries no link or form). -->
+  <div class="container sc-demo-head" id="demoHead">
+    <p class="sc-eyebrow"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg> <span data-i18n="dmEyebrow">How booking works — demo</span></p>
+    <h2 class="sc-h2" data-i18n="dmTitle">Watch it, then do it yourself</h2>
+    <p class="sc-sub" data-i18n="dmSub">Four steps, a few minutes — or just your name and mobile in QuickBot.</p>
+    <div class="sc-demo-acts">
+      <a class="sc-btn sc-btn-gold" href="#/" data-scroll="quick-ticket"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg><span data-i18n="dmTry">Try it now · QuickBot</span></a>
+      <a class="sc-btn sc-btn-royal" href="#/" data-scroll="search-anchor"><svg class="ic" aria-hidden="true"><use href="#i-bed"/></svg><span data-i18n="dmSeat">Pick a seat &amp; book</span></a>
+    </div>
+  </div>
+  <section class="container shg-animation" id="animBooking" aria-labelledby="animBookingTitle">
+    <div class="sa-grid sa-grid--book">
+      <div class="sa-head">
+        <p class="sa-eyebrow" data-i18n="animBEyebrow">Booking</p>
+        <h2 class="sa-title" id="animBookingTitle" data-i18n="animBTitle">Your ticket in four steps</h2>
+        <p class="sa-sub" data-i18n="animBSub">Route → sleeper berth → details and payment → ticket.</p>
+        <ol class="sa-steplist">
+          <li><i class="sa-on" aria-hidden="true"></i><span class="sa-n">1</span><span><b data-i18n="animBS1">Route</b><small data-i18n="animBD1">Choose direction, boarding town and date.</small></span></li>
+          <li><i class="sa-on" aria-hidden="true"></i><span class="sa-n">2</span><span><b data-i18n="animBS2">Berth</b><small data-i18n="animBD2">Pick a sleeper berth on the seat map.</small></span></li>
+          <li><i class="sa-on" aria-hidden="true"></i><span class="sa-n">3</span><span><b data-i18n="animBS3">Details</b><small data-i18n="animBD3">Passenger name and mobile, then payment.</small></span></li>
+          <li><i class="sa-on" aria-hidden="true"></i><span class="sa-n">4</span><span><b data-i18n="animBS4">Ticket</b><small data-i18n="animBD4">Your ticket appears once confirmed — show it when boarding.</small></span></li>
+        </ol>
+        <p class="sa-note" data-i18n="animBDemo">Sample animation only — it does not book a seat, take a payment or send a message.</p>
+      </div>
+      <div class="sa-scene sa-book" data-anim="booking">
+        <span class="sa-demo-pill" data-i18n="animBDemoPill">Sample</span>
+        <div class="sa-art" role="img" aria-labelledby="animBookAria">
+          <span class="sa-vh" id="animBookAria" data-i18n="animBAria">Sample booking animation on a phone: route, sleeper berth, details, demo ticket</span>
+          <div class="sa-phone" aria-hidden="true">
+            <div class="sa-screen">
+              <div class="sa-ui sa-ui--route">
+                <div class="sa-ui-top"><div class="sa-brand"><img class="sa-logo" src="/assets/img/logo-mark-96h.webp?v=20261008p" width="185" height="96" alt="" loading="lazy" decoding="async"><span lang="en"><b>S HARI GLOBAL</b><small>PRIVATE LIMITED</small></span></div><p class="sa-ui-title" data-i18n="animB1T">Book your journey</p></div>
+                <div class="sa-ui-body">
+                  <p class="sa-ui-sub" data-i18n="animB1S">India ⇄ Nepal · AC Sleeper</p>
+                  <span class="sa-f-l" data-i18n="animBFrom">From</span><div class="sa-f" data-i18n="animBGuj">Gujarat</div>
+                  <span class="sa-f-l" data-i18n="animBTo">To</span><div class="sa-f" data-i18n="animMRup">Rupaidiha</div>
+                  <span class="sa-f-l" data-i18n="animBDate">Travel date</span><div class="sa-f sa-f--muted" data-i18n="animBPick">Select date</div>
+                  <div class="sa-btn" data-i18n="animBFind">Find bus →</div>
+                  <p class="sa-ui-foot" data-i18n="animB1F">AC · Charging · First-aid</p>
+                </div>
+              </div>
+              <div class="sa-ui sa-ui--berth">
+                <div class="sa-ui-top"><div class="sa-brand"><img class="sa-logo" src="/assets/img/logo-mark-96h.webp?v=20261008p" width="185" height="96" alt="" loading="lazy" decoding="async"><span lang="en"><b>S HARI GLOBAL</b><small>PRIVATE LIMITED</small></span></div><p class="sa-ui-title" data-i18n="animB2T">Choose your berth</p></div>
+                <div class="sa-ui-body">
+                  <p class="sa-ui-sub" data-i18n="animB2S">Sleeper berths · sample</p>
+                  <p class="sa-deck" data-i18n="animB2Deck">Lower Floor (1F)</p>
+                  <div class="sa-berths"><div class="sa-berth"><span>B3</span></div><div class="sa-berth"><span>B4</span></div><div class="sa-berth"><span>B5</span></div><div class="sa-berth"><i class="sa-pick" aria-hidden="true"></i><span>B6</span></div><div class="sa-berth"><span>C1</span></div><div class="sa-berth"><span>C2</span></div><div class="sa-berth"><span>C3</span></div><div class="sa-berth"><span>C4</span></div></div>
+                  <p class="sa-sel" data-i18n="animB2Sel">Selected: B6 · Sleeper</p>
+                  <div class="sa-btn" data-i18n="animB2Btn">Continue →</div>
+                </div>
+              </div>
+              <div class="sa-ui sa-ui--details">
+                <div class="sa-ui-top"><div class="sa-brand"><img class="sa-logo" src="/assets/img/logo-mark-96h.webp?v=20261008p" width="185" height="96" alt="" loading="lazy" decoding="async"><span lang="en"><b>S HARI GLOBAL</b><small>PRIVATE LIMITED</small></span></div><p class="sa-ui-title" data-i18n="animB3T">Passenger details</p></div>
+                <div class="sa-ui-body">
+                  <p class="sa-ui-sub" data-i18n="animB3S">Sample details</p>
+                  <span class="sa-f-l" data-i18n="animB3Name">Passenger name</span><div class="sa-f sa-f--muted" data-i18n="animB3NameV">Your name</div>
+                  <span class="sa-f-l" data-i18n="animB3Mob">Mobile number</span><div class="sa-f sa-f--muted" data-i18n="animB3MobV">Your mobile number</div>
+                  <span class="sa-f-l" data-i18n="animB3Pay">Payment</span><div class="sa-f sa-pay"><span class="sa-pay-wait" data-i18n="animB3Wait">Awaiting verification</span><span class="sa-pay-ok" data-i18n="animB3Ok">✓ Verified</span></div>
+                  <div class="sa-btn" data-i18n="animB3Btn">Confirm details →</div>
+                  <p class="sa-ui-foot" data-i18n="animB3F">Ticket is issued after verification</p>
+                </div>
+              </div>
+              <div class="sa-ui sa-ui--ticket">
+                <div class="sa-ticket">
+                  <div class="sa-brand"><img class="sa-logo" src="/assets/img/logo-mark-96h.webp?v=20261008p" width="185" height="96" alt="" loading="lazy" decoding="async"><span lang="en"><b>S HARI GLOBAL</b><small>PRIVATE LIMITED</small></span></div>
+                  <span class="sa-badge" data-i18n="animB4Badge">Demo ticket</span>
+                  <p class="sa-tk-route" data-i18n="animB4Route">Gujarat → Rupaidiha</p>
+                  <div class="sa-tk-row"><div><small data-i18n="animB4Berth">Berth</small><b>B6</b></div><div><small data-i18n="animB4Coach">Coach</small><b data-i18n="animB4CoachV">AC Sleeper</b></div></div>
+                  <div class="sa-tk-ok"><svg viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="26" fill="#12834e"/><path d="m14 26 9 9 16-19" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg><b data-i18n="animB4Ok">Ticket confirmed</b><small data-i18n="animB4F">Preview only · no booking created</small></div>
+                </div>
+              </div>
+            </div>
+            <img class="sa-frame" src="/assets/img/anim/shg-phone-frame.svg?v=20261008p" width="420" height="820" alt="" loading="lazy" decoding="async">
+            <div class="sa-wa"><div class="sa-wa-in"><span class="sa-wa-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="sa-wa-txt"><b data-i18n="animBWaT">Sample WhatsApp message</b><span data-i18n="animBWaS">This is how a ticket message looks.</span><small data-i18n="animBWaF">Sample preview · not sent</small></span></div></div>
+          </div>
+        </div>
+        <ol class="sa-steps">
+          <li data-step="1"><i class="sa-on" aria-hidden="true"></i><span>1 · <span data-i18n="animBS1">Route</span></span></li>
+          <li data-step="2"><i class="sa-on" aria-hidden="true"></i><span>2 · <span data-i18n="animBS2">Berth</span></span></li>
+          <li data-step="3"><i class="sa-on" aria-hidden="true"></i><span>3 · <span data-i18n="animBS3">Details</span></span></li>
+          <li data-step="4"><i class="sa-on" aria-hidden="true"></i><span>4 · <span data-i18n="animBS4">Ticket</span></span></li>
+        </ol>
+        <button type="button" class="sa-pause" data-paused="false" data-i18n-title="animPause" title="Pause animation" aria-label="Pause animation"><svg class="sa-i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg><svg class="sa-i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg></button>
+      </div>
+    </div>
+  </section>
+
   <!-- 5 Oct 2026 (owner): the coach on the highway and the offices card.
-       8 Oct 2026: moved below the search card and QuickBot (see #homeHero). -->
+       8 Oct 2026: moved below the search card and QuickBot (see #homeHero).
+       9 Oct 2026: the emblem without a tile, the live company name, and the
+       owner's office list - Mehsana (head), Nepalgunj, Rajkot, Ahmedabad,
+       Surat - plus "network expanding". renderContactStrip() (05-router.js)
+       rewrites #saOffices from the facts at boot; this is only first paint. -->
   <div class="container top-hero" id="topHero">
-    <aside class="th-brand" aria-label="S Hari Global Pvt Ltd">
+    <aside class="th-brand" aria-label="{{f:brand.name}}">
       <div class="th-top">
-        <img class="th-logo" src="/assets/img/logo-nav.png?v=20261008p" alt="S Hari Global Pvt Ltd logo" width="192" height="140" loading="lazy" decoding="async">
-        <div class="th-name"><b>S HARI GLOBAL</b><span>PVT. LTD.</span></div>
+        <picture><source type="image/webp" srcset="/assets/img/logo-mark-96h.webp?v=20261008p"><img class="th-logo" src="/assets/img/logo-mark-96h.png?v=20261008p" alt="" width="185" height="96" loading="lazy" decoding="async"></picture>
+        <div class="th-name"><b data-fact="brand.name">{{f:brand.name}}</b><span class="sc-th-flags"><span class="flg" data-flag="IN" role="img" aria-label="India"></span> India ⇄ Nepal <span class="flg" data-flag="NP" role="img" aria-label="Nepal"></span></span></div>
       </div>
       <p class="th-tag">Gujarat ⇄ Rupaidiha<small>AC Sleeper Coach · India ⇄ Nepal · 24×7</small></p>
-      <p class="th-oh"><span>📞 हाम्रा कार्यालय</span><small>Our offices · India ⇄ Nepal</small></p>
-      <ul class="th-offices" id="saOffices">
-      <li class="th-o th-in"><a href="tel:+919104801507"><span class="th-badge">M</span><span class="th-l">Mehsana</span><span class="th-sub">Head office</span><span class="th-n">+91 91048 01507</span><span class="th-call" aria-hidden="true">📞</span></a></li>
-      <li class="th-o th-in"><a href="tel:+919157001507"><span class="th-badge">A</span><span class="th-l">Ahmedabad</span><span class="th-n">+91 91570 01507</span><span class="th-call" aria-hidden="true">📞</span></a></li>
-      <li class="th-o th-in"><a href="tel:+918735881507"><span class="th-badge">B</span><span class="th-l">Baroda</span><span class="th-n">+91 87358 81507</span><span class="th-call" aria-hidden="true">📞</span></a></li>
-      <li class="th-o th-in"><a href="tel:+917359301507"><span class="th-badge">S</span><span class="th-l">Surat</span><span class="th-n">+91 73593 01507</span><span class="th-call" aria-hidden="true">📞</span></a></li>
-      <li class="th-o th-np"><a href="tel:+919726401507"><span class="th-badge">N</span><span class="th-l">Nepalgunj</span><span class="th-sub">Puspalal Chowk · Sher Bahadur Bishwokarma</span><span class="th-n">+91 97264 01507</span><span class="th-call" aria-hidden="true">📞</span></a></li>
-      </ul>
+      <p class="th-oh"><span data-i18n="offTitle">Our offices</span><small data-i18n="offSub">India ⇄ Nepal · tap to call</small></p>
+      <ul class="th-offices" id="saOffices">{{f:html:offices}}</ul>
+      <div class="sc-th-foot">
+        <a class="sc-th-all" href="/offices"><span data-i18n="offAll">All offices &amp; map</span> <svg class="ic" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+      </div>
       <!-- 5 Oct 2026: the Nepal office's people (CEO / Operations / Parking), call +
            WhatsApp each - filled by renderNepalTeam() from Admin -> Company details. -->
       <div class="th-npcard" id="npTeam" hidden></div>
@@ -813,6 +962,139 @@ s.addEventListener('click',function(e){e.preventDefault();
       </div>
     </section>
   </div>
+  <!-- HOMEINFO:START -->
+  <!-- 9 Oct 2026 (HOMEINFO work package): four information sections. Display order is
+       set in homeinfo.css (#homeFares 6, #homeRoute 9, #homeIndiaNepal 11, #homeExplore 12),
+       behaviour in 24-homeinfo.js, copy in the hx* keys of 04-i18n.js. No price, phone or
+       person's name is typed here: every rupee comes from SHG_BOOT (FACTS.fares, else the
+       locations list + sharingDir), the same numbers the server charges. -->
+  <section class="container hx hx-fares" id="homeFares" aria-labelledby="hxFaresTitle">
+    <div class="hx-shell">
+      <div class="hx-head">
+        <p class="hx-eyebrow hx-live"><span class="hx-dot" aria-hidden="true"></span><span data-i18n="hxFaresEyebrow">Live · from the booking system</span></p>
+        <h2 class="hx-title" id="hxFaresTitle" data-i18n="hxFaresTitle">आजको भाडा · Today’s fares</h2>
+        <p class="hx-sub" data-i18n="hxFaresSub">Per person · sharing sleeper berth · tap a town to book it</p>
+      </div>
+      <div class="hx-fares-body" id="hxFaresBody">
+        <div class="hx-skel hx-skel-dir" aria-hidden="true"></div>
+        <div class="hx-skel hx-skel-dir" aria-hidden="true"></div>
+      </div>
+      <p class="hx-note"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg><span data-i18n="hxFaresNote">The amount on the booking screen is final. Prices here update by themselves when the office changes them.</span></p>
+    </div>
+  </section>
+
+  <section class="container hx hx-route home-route" id="homeRoute" aria-labelledby="hxRouteTitle">
+    <div class="hx-shell">
+      <div class="hx-head">
+        <p class="hx-eyebrow"><svg class="ic" aria-hidden="true"><use href="#i-map"/></svg><span>Gujarat ⇄ Rupaidiha</span></p>
+        <h2 class="hx-title" id="hxRouteTitle" data-i18n="hxRouteTitle">रुट, दूरी र बिसौनी · Route, distance &amp; halts</h2>
+        <p class="hx-sub" data-i18n="hxRouteSub">Pickups, kilometres and the usual meal halts</p>
+      </div>
+      <div class="hx-routeline" data-routeline="home">
+        <div class="hx-route-skel" data-hx-skel aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><b></b></div>
+      </div>
+      <div class="hx-actions">
+        <a class="hx-btn hx-btn-filled" href="#/my" data-track-bus><svg class="ic" aria-hidden="true"><use href="#i-radar"/></svg><span data-i18n="hxTrack">Track my bus</span></a>
+      </div>
+    </div>
+  </section>
+
+  <section class="container hx hx-in" id="homeIndiaNepal" aria-labelledby="hxInTitle">
+    <div class="hx-shell hx-shell-flush">
+      <div class="hx-band">
+        <picture>
+          <source type="image/webp" srcset="/assets/img/nepal-band-540.webp?v=20261008p 540w, /assets/img/nepal-band.webp?v=20261008p 1080w" sizes="(max-width: 760px) 100vw, 1080px">
+          <img class="hx-band-img" id="hxBandImg" src="/assets/img/nepal-band.png?v=20261008p" width="1080" height="300" loading="lazy" decoding="async" alt="Nepal heritage: Sagarmatha (Mount Everest), prayer flags, Gautam Buddha and a stupa">
+        </picture>
+        <div class="hx-flags" aria-hidden="true"><img class="hx-flag" src="/assets/img/flag-in.svg?v=20261008p" width="33" height="22" alt=""><span class="hx-flags-x">⇄</span><img class="hx-flag hx-flag-np" src="/assets/img/flag-np.svg?v=20261008p" width="20" height="26" alt=""></div>
+      </div>
+      <div class="hx-pad">
+        <div class="hx-head">
+          <p class="hx-eyebrow" data-i18n="hxInEyebrow">भारत ⇄ नेपाल · India ⇄ Nepal</p>
+          <h2 class="hx-title" id="hxInTitle" data-i18n="hxInTitle">Neighbours with an open border</h2>
+          <p class="hx-sub" data-i18n="hxInSub">Our coach runs to Rupaidiha on the India side. Jamunaha is across the line, with Nepalgunj just beyond.</p>
+        </div>
+        <ol class="hx-tl" id="hxTimeline">
+          <li class="hx-tl-i"><span class="hx-tl-y">1950</span><span class="hx-tl-t" data-i18n="hxTl1950">भारत–नेपाल शान्ति तथा मैत्री सन्धि (खुला सिमाना) · India–Nepal Treaty of Peace and Friendship</span></li>
+          <li class="hx-tl-i"><span class="hx-tl-y" data-i18n="hxTlOpenY">Open border · खुला सिमाना</span><span class="hx-tl-t" data-i18n="hxTlOpen">Indian and Nepali citizens cross without a visa. Carry a valid photo ID.</span></li>
+        </ol>
+        <p class="hx-fine" data-i18n="hxTlNote">A short summary. Check the current rules before you travel.</p>
+        <div class="hx-actions">
+          <a class="hx-btn hx-btn-filled" href="/india-nepal" data-hx-href="/india-nepal"><svg class="ic" aria-hidden="true"><use href="#i-scroll"/></svg><span data-i18n="hxInStory">पूरा कथा · Full story</span></a>
+          <a class="hx-btn hx-btn-tonal" href="/travel-info" data-hx-href="/travel-info"><svg class="ic" aria-hidden="true"><use href="#i-doc"/></svg><span data-i18n="hxInDocs">सिमाना कागजात · Border documents</span></a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="container hx hx-explore" id="homeExplore" aria-labelledby="hxExTitle">
+    <div class="hx-shell">
+      <div class="hx-head">
+        <p class="hx-eyebrow" data-i18n="hxExEyebrow">S Hari Global ecosystem</p>
+        <h2 class="hx-title" id="hxExTitle" data-i18n="hxExTitle">One app for the whole journey</h2>
+        <p class="hx-sub" data-i18n="hxExSub">Bus tickets, fast booking, bus tracking, tours and places to visit · India ⇄ Nepal</p>
+      </div>
+      <ul class="hx-hub">
+        <li><a class="hx-tile hx-c1" href="#/" data-scroll="search-anchor"><span class="hx-tile-ic" aria-hidden="true"><svg class="ic"><use href="#i-ticket"/></svg></span><span class="hx-tile-tx"><b data-i18n="hxHubBus">Bus ticket</b><small data-i18n="hxHubBusSub">Pick date &amp; berth</small></span></a></li>
+        <li><a class="hx-tile hx-c2" href="#/" data-scroll="quick-ticket"><span class="hx-tile-ic" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></span><span class="hx-tile-tx"><b data-i18n="hxHubQuick">QuickBot ticket</b><small data-i18n="hxHubQuickSub">Name + mobile → ticket</small></span></a></li>
+        <li><a class="hx-tile hx-c3" href="#/my" data-track-bus><span class="hx-tile-ic" aria-hidden="true"><svg class="ic"><use href="#i-radar"/></svg></span><span class="hx-tile-tx"><b data-i18n="hxHubTrack">Track bus</b><small data-i18n="hxHubTrackSub">From your ticket</small></span></a></li>
+        <li><a class="hx-tile hx-c4" href="/tours" data-hx-href="/tours"><span class="hx-tile-ic" aria-hidden="true"><svg class="ic"><use href="#i-luggage"/></svg></span><span class="hx-tile-tx"><b data-i18n="hxHubTours">Tour packages</b><small data-i18n="hxHubToursSub">Enquire &amp; plan</small></span></a></li>
+        <li><a class="hx-tile hx-c5" href="/explore" data-hx-href="/explore"><span class="hx-tile-ic" aria-hidden="true"><svg class="ic"><use href="#i-compass"/></svg></span><span class="hx-tile-tx"><b data-i18n="hxHubGuide">Travel guide · घुम्ने ठाउँ</b><small data-i18n="hxHubGuideSub">Places to visit</small></span></a></li>
+        <li><a class="hx-tile hx-c6" href="/agreements/"><span class="hx-tile-ic" aria-hidden="true"><svg class="ic"><use href="#i-users"/></svg></span><span class="hx-tile-tx"><b data-i18n="hxHubAgent">Agent / partner</b><small data-i18n="hxHubAgentSub">Sell tickets with us</small></span></a></li>
+      </ul>
+      <div class="hx-sec-head">
+        <h3 class="hx-h3" data-i18n="hxPlacesTitle">Places worth the trip</h3>
+        <a class="hx-link" href="/explore" data-hx-href="/explore"><span data-i18n="hxSeeAll">See all</span><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      </div>
+      <ul class="hx-cards" id="hxPlaces">
+        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-heritage"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261008p" width="17" height="22" alt="" aria-hidden="true"><span class="hx-card-cat" data-i18n="hxCatPilgrimage">Pilgrimage</span></span><span class="hx-card-tx"><b>Lumbini</b><small data-i18n="hxPlLumbini">Birthplace of Gautam Buddha · UNESCO World Heritage Site</small></span></a></li>
+        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-nature"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261008p" width="17" height="22" alt="" aria-hidden="true"><span class="hx-card-cat" data-i18n="hxCatNature">Nature</span></span><span class="hx-card-tx"><b>Pokhara</b><small data-i18n="hxPlPokhara">Lakes and Annapurna mountain views</small></span></a></li>
+        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-wild"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261008p" width="17" height="22" alt="" aria-hidden="true"><span class="hx-card-cat" data-i18n="hxCatWildlife">Wildlife</span></span><span class="hx-card-tx"><b>Bardiya National Park</b><small data-i18n="hxPlBardiya">Wildlife and jungle, near Nepalgunj</small></span></a></li>
+      </ul>
+      <div class="hx-pkgs" id="hxPkgs" hidden></div>
+      <div class="hx-tours">
+        <a class="hx-btn hx-btn-filled" href="/tours" data-hx-href="/tours"><svg class="ic" aria-hidden="true"><use href="#i-luggage"/></svg><span data-i18n="hxToursCta">Explore tour packages</span></a>
+        <p class="hx-fine" data-i18n="hxPkgNote">Tours inside Nepal are arranged with local partners; our coach takes you as far as Rupaidiha.</p>
+      </div>
+    </div>
+  </section>
+  <!-- HOMEINFO:END -->
+
+  <!-- ============ CEO INTRODUCTION (9 Oct 2026, owner: "introduce the CEO attractively") ============
+       The founder's own card: photo (ceo-sm.webp, precached), the name and the
+       Nepali name from the facts (company_ceo / company_operator_ne - one CEO
+       source for the whole site), a short welcome in en / hi / ne, both flags
+       and his call / WhatsApp line (ceo.tel / ceo.wa). No claim here that the
+       office cannot show on paper. Display order: showcase.css (#homeCeo 8). -->
+  <section class="container home-ceo" id="homeCeo" aria-labelledby="homeCeoName">
+    <div class="sc-ceo sc-reveal">
+      <div class="sc-ceo-band" aria-hidden="true"><i class="sc-band-in"></i><i class="sc-band-np"></i></div>
+      <div class="sc-ceo-top">
+        <div class="sc-ceo-photo"><img src="/assets/img/ceo-sm.webp?v=20261008p" width="480" height="667" alt="{{f:ceo.name}}" loading="lazy" decoding="async"></div>
+        <div class="sc-ceo-id">
+          <p class="sc-eyebrow"><svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg> <span data-i18n="ceoEyebrow">Meet our founder</span></p>
+          <h2 class="sc-ceo-name" id="homeCeoName" data-fact="ceo.name">{{f:ceo.name}}</h2>
+          <p class="sc-ceo-ne" lang="ne" data-fact="ceo.nameNe">{{f:ceo.nameNe}}</p>
+          <p class="sc-ceo-role" data-i18n="ceoRole">Founder &amp; CEO · संस्थापक तथा प्रमुख कार्यकारी</p>
+          <p class="sc-ceo-flags"><span class="flg" data-flag="IN" role="img" aria-label="India"></span><span class="sc-ceo-x" aria-hidden="true">⇄</span><span class="flg" data-flag="NP" role="img" aria-label="Nepal"></span></p>
+        </div>
+      </div>
+      <blockquote class="sc-ceo-msg">
+        <p><b data-i18n="ceoHello">Namaste 🙏</b> <span data-i18n="ceoMsg">For many families the road between Gujarat and Nepal is the road home. We started S Hari Global so that this journey is safe, honest and easy — a registered company, clear fares, and a team that answers in Nepali, Hindi or English. Travel with us like family.</span></p>
+        <p class="sc-ceo-sign">— <span data-fact="ceo.name">{{f:ceo.name}}</span></p>
+      </blockquote>
+      <ul class="sc-ceo-chips">
+        <li><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg><span data-i18n="ceoC1">Registered company</span></li>
+        <li><svg class="ic" aria-hidden="true"><use href="#i-ticket"/></svg><span data-i18n="ceoC2">Clear, live fares</span></li>
+        <li><svg class="ic" aria-hidden="true"><use href="#i-chat"/></svg><span data-i18n="ceoC3">Nepali · Hindi · English</span></li>
+      </ul>
+      <p class="sc-ceo-mantra" lang="ne">🕉️ ॐ नमो नारायणाय · शुभ यात्रा</p>
+      <div class="sc-ceo-acts">
+        <a class="sc-btn sc-btn-royal" href="tel:+{{f:ceo.tel}}" data-fact-tel="ceo.tel"><svg class="ic" aria-hidden="true"><use href="#i-phone"/></svg><span data-i18n="ceoCall">Call</span></a>
+        <a class="sc-btn sc-btn-wa" href="https://wa.me/{{f:ceo.wa}}" data-fact-wa="ceo.wa" target="_blank" rel="noopener noreferrer"><svg class="ic" aria-hidden="true"><use href="#i-wa"/></svg><span>WhatsApp</span></a>
+      </div>
+    </div>
+  </section>
 
   <!-- ============ HOMEPAGE ANIMATIONS (4 Oct 2026) ============
        Three scenes from the owner's premium animation pack replace the old
@@ -858,110 +1140,41 @@ s.addEventListener('click',function(e){e.preventDefault();
     </div>
   </section>
 
-  <!-- 5 Oct 2026 (owner): the four-step booking animation now lives behind one
-       highlighted Help button, with a plain Nepali guide to booking on THIS site. -->
+  <!-- 5 Oct 2026 (owner): a plain guide to booking on THIS site behind one
+       highlighted Help button.
+       9 Oct 2026 (owner: "its buttons look plain white - make them colourful,
+       real buttons"): one gradient key opens it; seven numbered colour steps
+       on a rail, three tinted tips and five colour buttons. All copy is in
+       04-i18n.js (bh* keys, en / hi / ne). The sample booking animation is
+       back on the page itself (#animBooking above) - "Watch the demo" goes there. -->
   <section class="container book-help" id="bookHelp" aria-labelledby="bookHelpTitle">
     <button type="button" class="bh-btn" id="bookHelpBtn" aria-expanded="false" aria-controls="bookHelpPanel">
-      <span class="bh-ic" aria-hidden="true">🎫</span>
-      <span class="bh-txt"><b id="bookHelpTitle">टिकट कसरी काट्ने? — सजिलो गाइड</b><small>मोबाइलबाटै केही मिनेटमा आफ्नो टिकट आफैं काट्नुहोस् · यहाँ थिच्नुहोस्</small></span>
-      <span class="bh-go" aria-hidden="true">＋</span>
+      <span class="bh-ic" aria-hidden="true"><svg class="ic"><use href="#i-ticket"/></svg></span>
+      <span class="bh-txt"><b id="bookHelpTitle" data-i18n="bhTitle">टिकट कसरी काट्ने? — सजिलो गाइड</b><small data-i18n="bhSub">मोबाइलबाटै केही मिनेटमा आफ्नो टिकट आफैं काट्नुहोस् · यहाँ थिच्नुहोस्</small></span>
+      <span class="bh-go" aria-hidden="true"><svg class="ic"><use href="#i-plus"/></svg></span>
     </button>
     <div class="bh-panel" id="bookHelpPanel" hidden>
       <ol class="bh-steps">
-        <li><b>दिशा छान्नुहोस्</b><span>माथिको बुकिङ बाकसमा <em>“नेपाल जाने”</em> (गुजरात → रुपैडिहा) वा <em>“गुजरात फर्कने”</em> (रुपैडिहा → गुजरात) थिच्नुहोस्।</span></li>
-        <li><b>यात्राको मिति</b><span>मिति पट्टीमा आफ्नो दिन थिच्नुहोस्। धेरै पछिको मिति चाहिए “यात्रा मिति” बाकसको क्यालेन्डर प्रयोग गर्नुहोस्।</span></li>
-        <li><b>चढ्ने / ओर्लने ठाउँ</b><span>आफूलाई नजिक पर्ने सहर र समय छान्नुहोस् — जस्तै Surat, Vadodara, Ahmedabad (Chiloda)। यात्री संख्या मिलाउनुहोस्।</span></li>
-        <li><b>बस र सिट हेर्नुहोस्</b><span>बटन थिचेपछि बस र खाली बर्थ देखिन्छ। सिट नक्सामा खाली बर्थमा थिच्नुहोस् — जति यात्री, त्यति बर्थ।</span></li>
-        <li><b>यात्रीको विवरण</b><span>हरेक यात्रीको नाम र एउटा मोबाइल नम्बर लेख्नुहोस्। <strong>WhatsApp चल्ने नम्बर</strong> दिनुहोस् — टिकट त्यहीँ आउँछ।</span></li>
-        <li><b>भुक्तानी</b><span>स्क्रिनमा देखिएको तरिका छान्नुहोस् — UPI / eSewa बाट तिर्नुहोस् वा सुविधा भएमा बस चढ्दा नगद। तिरेको स्क्रिनसट माग्यो भने अपलोड गर्नुहोस्।</span></li>
-        <li><b>टिकट पाउनुहोस्</b><span>टिकट पक्का भएपछि स्क्रिनमा र WhatsApp मा आउँछ। <strong>“मेरो टिकट”</strong> मा जहिले पनि फेरि हेर्न र डाउनलोड गर्न सकिन्छ। बस चढ्दा टिकट (PNR) देखाउनुहोस्।</span></li>
+        <li><b data-i18n="bhS1T">दिशा छान्नुहोस्</b><span data-i18n="bhS1D">माथिको बुकिङ बाकसमा <em>“नेपाल जाने”</em> (गुजरात → रुपैडिहा) वा <em>“गुजरात फर्कने”</em> (रुपैडिहा → गुजरात) थिच्नुहोस्।</span></li>
+        <li><b data-i18n="bhS2T">यात्राको मिति</b><span data-i18n="bhS2D">मिति पट्टीमा आफ्नो दिन थिच्नुहोस्। धेरै पछिको मिति चाहिए “यात्रा मिति” बाकसको क्यालेन्डर प्रयोग गर्नुहोस्।</span></li>
+        <li><b data-i18n="bhS3T">चढ्ने / ओर्लने ठाउँ</b><span data-i18n="bhS3D">आफूलाई नजिक पर्ने सहर र समय छान्नुहोस् — जस्तै Surat, Vadodara, Ahmedabad (Chiloda)। यात्री संख्या मिलाउनुहोस्।</span></li>
+        <li><b data-i18n="bhS4T">बस र सिट हेर्नुहोस्</b><span data-i18n="bhS4D">बटन थिचेपछि बस र खाली बर्थ देखिन्छ। सिट नक्सामा खाली बर्थमा थिच्नुहोस् — जति यात्री, त्यति बर्थ।</span></li>
+        <li><b data-i18n="bhS5T">यात्रीको विवरण</b><span data-i18n="bhS5D">हरेक यात्रीको नाम र एउटा मोबाइल नम्बर लेख्नुहोस्। <strong>WhatsApp चल्ने नम्बर</strong> दिनुहोस् — टिकट त्यहीँ आउँछ।</span></li>
+        <li><b data-i18n="bhS6T">भुक्तानी</b><span data-i18n="bhS6D">स्क्रिनमा देखिएको तरिका छान्नुहोस् — UPI / eSewa बाट तिर्नुहोस् वा सुविधा भएमा बस चढ्दा नगद। तिरेको स्क्रिनसट माग्यो भने अपलोड गर्नुहोस्।</span></li>
+        <li><b data-i18n="bhS7T">टिकट पाउनुहोस्</b><span data-i18n="bhS7D">टिकट पक्का भएपछि स्क्रिनमा र WhatsApp मा आउँछ। <strong>“मेरो टिकट”</strong> मा जहिले पनि फेरि हेर्न र डाउनलोड गर्न सकिन्छ। बस चढ्दा टिकट (PNR) देखाउनुहोस्।</span></li>
       </ol>
       <div class="bh-tips">
-        <p>⚡ <b>हतार छ?</b> “QuickBot Ticket” मा नाम र मोबाइल मात्र दिनुहोस् — कार्यालयले बस, सिट र भाडा मिलाएर टिकट WhatsApp मा पठाउँछ।</p>
-        <p>🛟 <b>गाह्रो भयो?</b> सहायता केन्द्रमा समस्या लेख्नुहोस् — तुरुन्तै नम्बर (HD-…) पाउनुहुन्छ, वा कार्यालयमा फोन गर्नुहोस्।</p>
-        <p>✅ टिकट काट्न खाता (login) चाहिँदैन। नाम वा मिति गलत भए PNR सहित कार्यालयमा सम्पर्क गर्नुहोस्।</p>
+        <p class="bh-tip bh-tip-quick"><span class="bh-tip-ic" aria-hidden="true"><svg class="ic"><use href="#i-bolt"/></svg></span><span data-i18n="bhTip1"><b>हतार छ?</b> “QuickBot” मा नाम र मोबाइल मात्र दिनुहोस् — बस, सिट र भाडा आफैँ भरिन्छ; एक ट्यापमा टिकट।</span></p>
+        <p class="bh-tip bh-tip-help"><span class="bh-tip-ic" aria-hidden="true"><svg class="ic"><use href="#i-headset"/></svg></span><span data-i18n="bhTip2"><b>गाह्रो भयो?</b> सहायता केन्द्रमा समस्या लेख्नुहोस् — तुरुन्तै नम्बर (HD-…) पाउनुहुन्छ, वा कार्यालयमा फोन गर्नुहोस्।</span></p>
+        <p class="bh-tip bh-tip-ok"><span class="bh-tip-ic" aria-hidden="true"><svg class="ic"><use href="#i-shield"/></svg></span><span data-i18n="bhTip3"><b>गल्ती भयो?</b> नाम वा मिति गलत भए PNR सहित कार्यालयमा सम्पर्क गर्नुहोस्।</span></p>
       </div>
       <div class="bh-actions">
-        <a class="bh-cta" href="#/" data-scroll="search-anchor">🎫 अहिले टिकट काट्नुहोस् →</a>
-        <a class="bh-help" href="/help.php">🛟 सहायता केन्द्र</a>
+        <a class="bh-cta" href="#/" data-scroll="search-anchor"><svg class="ic" aria-hidden="true"><use href="#i-ticket"/></svg><span data-i18n="bhCta">अहिले टिकट काट्नुहोस्</span><svg class="ic bh-arr" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+        <button type="button" class="bh-wa" data-wa-open="booking" aria-haspopup="dialog" aria-controls="waSheet"><svg class="ic" aria-hidden="true"><use href="#i-wa"/></svg><span data-i18n="bhWa">WhatsApp मा बुक</span></button>
+        <a class="bh-quick" href="#/" data-scroll="quick-ticket"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg><span data-i18n="bhQuick">QuickBot · १० सेकेन्ड</span></a>
+        <a class="bh-help" href="/help.php"><svg class="ic" aria-hidden="true"><use href="#i-headset"/></svg><span data-i18n="bhHelp">सहायता केन्द्र</span></a>
+        <a class="bh-demo" href="#/" data-scroll="demoHead"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg><span data-i18n="bhDemo">डेमो हेर्नुहोस्</span></a>
       </div>
-      <p class="bh-demo-lbl">तल हेर्नुहोस् — बुकिङ कसरी हुन्छ (नमुना एनिमेसन):</p>
-      <section class="container shg-animation" id="animBooking" aria-labelledby="animBookingTitle">
-    <div class="sa-grid sa-grid--book">
-      <div class="sa-head">
-        <p class="sa-eyebrow" data-i18n="animBEyebrow">Booking</p>
-        <h2 class="sa-title" id="animBookingTitle" data-i18n="animBTitle">Your ticket in four steps</h2>
-        <p class="sa-sub" data-i18n="animBSub">Route → sleeper berth → details and payment → ticket.</p>
-        <ol class="sa-steplist">
-          <li><i class="sa-on" aria-hidden="true"></i><span class="sa-n">1</span><span><b data-i18n="animBS1">Route</b><small data-i18n="animBD1">Choose direction, boarding town and date.</small></span></li>
-          <li><i class="sa-on" aria-hidden="true"></i><span class="sa-n">2</span><span><b data-i18n="animBS2">Berth</b><small data-i18n="animBD2">Pick a sleeper berth on the seat map.</small></span></li>
-          <li><i class="sa-on" aria-hidden="true"></i><span class="sa-n">3</span><span><b data-i18n="animBS3">Details</b><small data-i18n="animBD3">Passenger name and mobile, then payment.</small></span></li>
-          <li><i class="sa-on" aria-hidden="true"></i><span class="sa-n">4</span><span><b data-i18n="animBS4">Ticket</b><small data-i18n="animBD4">Your ticket appears once confirmed — show it when boarding.</small></span></li>
-        </ol>
-        <p class="sa-note" data-i18n="animBDemo">Sample animation only — it does not book a seat, take a payment or send a message.</p>
-      </div>
-      <div class="sa-scene sa-book" data-anim="booking">
-        <span class="sa-demo-pill" data-i18n="animBDemoPill">Sample</span>
-        <div class="sa-art" role="img" aria-labelledby="animBookAria">
-          <span class="sa-vh" id="animBookAria" data-i18n="animBAria">Sample booking animation on a phone: route, sleeper berth, details, demo ticket</span>
-          <div class="sa-phone" aria-hidden="true">
-            <div class="sa-screen">
-              <div class="sa-ui sa-ui--route">
-                <div class="sa-ui-top"><div class="sa-brand"><img class="sa-logo" src="/assets/img/logo.png?v=20261008p" width="440" height="321" alt="" loading="lazy" decoding="async"><span lang="en"><b>S HARI GLOBAL</b><small>PRIVATE LIMITED</small></span></div><p class="sa-ui-title" data-i18n="animB1T">Book your journey</p></div>
-                <div class="sa-ui-body">
-                  <p class="sa-ui-sub" data-i18n="animB1S">India ⇄ Nepal · AC Sleeper</p>
-                  <span class="sa-f-l" data-i18n="animBFrom">From</span><div class="sa-f" data-i18n="animBGuj">Gujarat</div>
-                  <span class="sa-f-l" data-i18n="animBTo">To</span><div class="sa-f" data-i18n="animMRup">Rupaidiha</div>
-                  <span class="sa-f-l" data-i18n="animBDate">Travel date</span><div class="sa-f sa-f--muted" data-i18n="animBPick">Select date</div>
-                  <div class="sa-btn" data-i18n="animBFind">Find bus →</div>
-                  <p class="sa-ui-foot" data-i18n="animB1F">AC · Charging · First-aid</p>
-                </div>
-              </div>
-              <div class="sa-ui sa-ui--berth">
-                <div class="sa-ui-top"><div class="sa-brand"><img class="sa-logo" src="/assets/img/logo.png?v=20261008p" width="440" height="321" alt="" loading="lazy" decoding="async"><span lang="en"><b>S HARI GLOBAL</b><small>PRIVATE LIMITED</small></span></div><p class="sa-ui-title" data-i18n="animB2T">Choose your berth</p></div>
-                <div class="sa-ui-body">
-                  <p class="sa-ui-sub" data-i18n="animB2S">Sleeper berths · sample</p>
-                  <p class="sa-deck" data-i18n="animB2Deck">Lower Floor (1F)</p>
-                  <div class="sa-berths"><div class="sa-berth"><span>B3</span></div><div class="sa-berth"><span>B4</span></div><div class="sa-berth"><span>B5</span></div><div class="sa-berth"><i class="sa-pick" aria-hidden="true"></i><span>B6</span></div><div class="sa-berth"><span>C1</span></div><div class="sa-berth"><span>C2</span></div><div class="sa-berth"><span>C3</span></div><div class="sa-berth"><span>C4</span></div></div>
-                  <p class="sa-sel" data-i18n="animB2Sel">Selected: B6 · Sleeper</p>
-                  <div class="sa-btn" data-i18n="animB2Btn">Continue →</div>
-                </div>
-              </div>
-              <div class="sa-ui sa-ui--details">
-                <div class="sa-ui-top"><div class="sa-brand"><img class="sa-logo" src="/assets/img/logo.png?v=20261008p" width="440" height="321" alt="" loading="lazy" decoding="async"><span lang="en"><b>S HARI GLOBAL</b><small>PRIVATE LIMITED</small></span></div><p class="sa-ui-title" data-i18n="animB3T">Passenger details</p></div>
-                <div class="sa-ui-body">
-                  <p class="sa-ui-sub" data-i18n="animB3S">Sample details</p>
-                  <span class="sa-f-l" data-i18n="animB3Name">Passenger name</span><div class="sa-f sa-f--muted" data-i18n="animB3NameV">Your name</div>
-                  <span class="sa-f-l" data-i18n="animB3Mob">Mobile number</span><div class="sa-f sa-f--muted" data-i18n="animB3MobV">Your mobile number</div>
-                  <span class="sa-f-l" data-i18n="animB3Pay">Payment</span><div class="sa-f sa-pay"><span class="sa-pay-wait" data-i18n="animB3Wait">Awaiting verification</span><span class="sa-pay-ok" data-i18n="animB3Ok">✓ Verified</span></div>
-                  <div class="sa-btn" data-i18n="animB3Btn">Confirm details →</div>
-                  <p class="sa-ui-foot" data-i18n="animB3F">Ticket is issued after verification</p>
-                </div>
-              </div>
-              <div class="sa-ui sa-ui--ticket">
-                <div class="sa-ticket">
-                  <div class="sa-brand"><img class="sa-logo" src="/assets/img/logo.png?v=20261008p" width="440" height="321" alt="" loading="lazy" decoding="async"><span lang="en"><b>S HARI GLOBAL</b><small>PRIVATE LIMITED</small></span></div>
-                  <span class="sa-badge" data-i18n="animB4Badge">Demo ticket</span>
-                  <p class="sa-tk-route" data-i18n="animB4Route">Gujarat → Rupaidiha</p>
-                  <div class="sa-tk-row"><div><small data-i18n="animB4Berth">Berth</small><b>B6</b></div><div><small data-i18n="animB4Coach">Coach</small><b data-i18n="animB4CoachV">AC Sleeper</b></div></div>
-                  <div class="sa-tk-ok"><svg viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="26" fill="#12834e"/><path d="m14 26 9 9 16-19" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg><b data-i18n="animB4Ok">Ticket confirmed</b><small data-i18n="animB4F">Preview only · no booking created</small></div>
-                </div>
-              </div>
-            </div>
-            <img class="sa-frame" src="/assets/img/anim/shg-phone-frame.svg?v=20261008p" width="420" height="820" alt="" loading="lazy" decoding="async">
-            <div class="sa-wa"><div class="sa-wa-in"><span class="sa-wa-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="sa-wa-txt"><b data-i18n="animBWaT">Sample WhatsApp message</b><span data-i18n="animBWaS">This is how a ticket message looks.</span><small data-i18n="animBWaF">Sample preview · not sent</small></span></div></div>
-          </div>
-        </div>
-        <ol class="sa-steps">
-          <li data-step="1"><i class="sa-on" aria-hidden="true"></i><span>1 · <span data-i18n="animBS1">Route</span></span></li>
-          <li data-step="2"><i class="sa-on" aria-hidden="true"></i><span>2 · <span data-i18n="animBS2">Berth</span></span></li>
-          <li data-step="3"><i class="sa-on" aria-hidden="true"></i><span>3 · <span data-i18n="animBS3">Details</span></span></li>
-          <li data-step="4"><i class="sa-on" aria-hidden="true"></i><span>4 · <span data-i18n="animBS4">Ticket</span></span></li>
-        </ol>
-        <button type="button" class="sa-pause" data-paused="false" data-i18n-title="animPause" title="Pause animation" aria-label="Pause animation"><svg class="sa-i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg><svg class="sa-i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg></button>
-      </div>
-    </div>
-  </section>
     </div>
   </section>
   <script>
@@ -973,7 +1186,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       var open = p.hidden; set(open);
       if (open) { try { b.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {} }
     });
-    p.addEventListener('click', function (e) { if (e.target.closest('.bh-cta')) set(false); });
+    p.addEventListener('click', function (e) { if (e.target.closest('.bh-cta, .bh-quick, .bh-demo')) set(false); });
   })();
   </script>
 
@@ -1016,33 +1229,9 @@ s.addEventListener('click',function(e){e.preventDefault();
     <div class="fareboard reveal" id="fareBoard"></div>
   </div>
 
-  <!-- ============ FOUNDER / LEADERSHIP ============ -->
-  <div class="container" style="margin-top:26px">
-    <div class="founder-card founder-highlight reveal">
-      <div class="founder-avatar-wrap">
-        <img id="ceoHeroImg" src="/assets/img/ceo.jpg?v=20261008p" alt="Sher Bahadur Bishwokarma — CEO &amp; Director" loading="lazy" decoding="async" style="width:100%;height:100%;border-radius:50%;object-fit:cover;padding:0" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-        <span class="founder-initials" style="display:none">SB</span>
-        <button type="button" id="ceoPhotoBtn" title="CEO photo यहाँबाट upload गर्नुहोस् — gallery बाट छान्ने बित्तिकै save हुन्छ" style="position:absolute;bottom:-2px;right:-2px;width:30px;height:30px;border-radius:50%;border:2px solid var(--card);background:var(--orange);color:#fff;font-size:14px;cursor:pointer;line-height:1;padding:0">📷</button>
-        <input type="file" id="ceoPhotoFile" accept="image/*" style="display:none">
-      </div>
-      <div class="founder-body">
-        <span class="founder-badge">Founder &amp; CEO</span>
-        <h2 style="font-family:var(--f-display);margin:4px 0 2px;font-size:24px">Sher Bahadur Bishwokarma</h2>
-        <p class="founder-role">🇳🇵 CEO &amp; Director, S Hari Global Pvt Ltd</p>
-        <p class="founder-bio">Connecting India and Nepal by road — a trusted, registered company linking Gujarat with the Rupaidiha border, with a partner office in Nepalgunj.</p>
-        <div class="founder-links">
-          <a class="founder-link" href="https://www.facebook.com/sherbahadur.biswakarma.58" target="_blank" rel="noopener noreferrer">📘 Facebook</a>
-          <a class="founder-link" href="https://wa.me/919726401507" target="_blank" rel="noopener noreferrer">💬 WhatsApp</a>
-          <a class="founder-link" href="tel:+919726401507">📞 +91 97264 01507</a>
-          <a class="founder-link" href="tel:+919104801507">🏢 Company</a>
-          <a class="founder-link" href="mailto:shreehariglobalpvtltd@gmail.com">✉️ Email</a>
-        </div>
-      </div>
-    </div>
-
-    <!-- [MAP PRO / declutter] Decorative floating-emoji layer removed for a cleaner,
-         flight-booking-style landing focused on ticketing. -->
-  </div>
+  <!-- 9 Oct 2026: the founder card that lived here (hidden until "About" opened,
+       with the CEO's name and numbers typed in) is replaced by the visible CEO
+       introduction #homeCeo, which reads the same facts as the tickets. -->
 
   <!-- ============ PRIVATE vs SHARING — TOP HIGHLIGHT (USP) ============ -->
   <div class="container" id="styleHighlight" style="margin-top:26px">
@@ -1069,7 +1258,7 @@ s.addEventListener('click',function(e){e.preventDefault();
           <li>🪟 Privacy Curtain · 💡 Reading Light · 🌙 Night Lamp</li>
           <li>🧑‍✈️ Priority Boarding · ⭐ VIP Support · 🎁 Gifts</li>
         </ul>
-        <div class="style-price"><small>From</small><b>₹3,800</b><small>single cabin</small></div>
+        <div class="style-price"><small>From</small><b data-fact-money="fares.private.single">{{f:fares.private.single}}</b><small>single cabin</small></div>
         <div class="style-ctas">
           <a class="btn btn-ghost btn-sm" href="#/" data-scroll="pricing">See private fares</a>
         </div>
@@ -1177,7 +1366,7 @@ s.addEventListener('click',function(e){e.preventDefault();
     <div class="trust-grid">
       <div class="t-badge reveal">
         <span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
-        <div><b>Registered Company</b><span>Private Limited · Ministry of Corporate Affairs, Govt. of India</span><span class="code">CIN U52291GJ2026PTC174029</span></div>
+        <div><b>Registered Company</b><span>Private Limited · Ministry of Corporate Affairs, Govt. of India</span><span class="code">CIN {{f:brand.cin}}</span></div>
       </div>
       <div class="t-badge reveal d1">
         <span class="ico or"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>
@@ -1185,7 +1374,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       </div>
       <div class="t-badge reveal d2">
         <span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg></span>
-        <div><b>Mehsana Based</b><span>Head office: Near Shilpa Garage, Silver Complex, Mehsana – 384002, Gujarat.</span></div>
+        <div><b>Mehsana Based</b><span>Head office: {{f:head.address}}</span></div>
       </div>
       <div class="t-badge reveal d3">
         <span class="ico or"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M6 17v-5a4 4 0 0 1 4-4h4a4 4 0 0 0 4-4"/></svg></span>
@@ -1200,7 +1389,7 @@ s.addEventListener('click',function(e){e.preventDefault();
        home above the "About" toggle, in that toggle's card look (.home-more-btn)
        so it adds no CSS. Opens /agreements/: the Agent and the Partner (Pvt Ltd)
        agreement in Nepali / Hindi / English / Gujarati - read, fill, send. -->
-  <div class="container home-more-bar">
+  <div class="container home-more-bar" id="agrBar">
     <a class="home-more-btn" id="agrApplyCta" href="/agreements/" style="text-decoration:none">
       <span class="hm-ic" aria-hidden="true">🤝</span>
       <span class="hm-tx"><b>एजेन्ट वा साझेदार बन्नुहोस् — आवेदन दिनुहोस्</b><small>Agent / Partner agreement · सम्झौता पढ्नुहोस्, फाराम भर्नुहोस् र पठाउनुहोस्।</small></span>
@@ -1217,7 +1406,7 @@ s.addEventListener('click',function(e){e.preventDefault();
        #homeMore is auto-opened when a menu/footer link points inside it
        (see the data-scroll handler in 05-router.js). -->
   <section class="section" id="realReviews" hidden></section>
-  <div class="container home-more-bar">
+  <div class="container home-more-bar" id="homeMoreBar">
     <button type="button" id="homeMoreToggle" class="home-more-btn" aria-expanded="false" aria-controls="homeMore">
       <span class="hm-ic">ℹ️</span>
       <span class="hm-tx"><b data-i18n="homeMoreTitle">About S Hari Global &amp; the route</b><small data-i18n="homeMoreSub">Company, facilities, reviews, full fares, offices</small></span>
@@ -1288,7 +1477,7 @@ s.addEventListener('click',function(e){e.preventDefault();
             <b style="font-family:var(--f-code);font-size:13px;white-space:nowrap">RUPAIDIHA</b>
           </div>
           <div class="fact wide reveal d3" style="font-size:13.5px;color:var(--muted)">
-            💱&nbsp; The Nepalese Rupee is pegged to the Indian Rupee at a fixed <b style="color:var(--ink)">₹1 = NPR 1.60</b> — fares shown in ₹ with an NPR estimate.
+            💱&nbsp; The Nepalese Rupee is pegged to the Indian Rupee at a fixed <b style="color:var(--ink)">₹1 = NPR <span data-fact="npr">{{f:npr}}</span></b> — fares shown in ₹ with an NPR estimate.
           </div>
         </div>
       </div>
@@ -1312,13 +1501,13 @@ s.addEventListener('click',function(e){e.preventDefault();
         </div>
         <div class="reg-card reveal d1">
           <h3>Official registration record</h3>
-          <div class="reg-row"><span>Company name</span><b>S Hari Global Pvt Ltd</b></div>
-          <div class="reg-row"><span>CIN</span><b class="code">U52291GJ2026PTC174029</b></div>
+          <div class="reg-row"><span>Company name</span><b>{{f:brand.name}}</b></div>
+          <div class="reg-row"><span>CIN</span><b class="code">{{f:brand.cin}}</b></div>
           <div class="reg-row"><span>Type</span><b>Private Limited Company</b></div>
           <div class="reg-row"><span>Incorporated</span><b>2026 · Gujarat, India</b></div>
           <div class="reg-row"><span>Registrar</span><b>Ministry of Corporate Affairs</b></div>
           <div class="reg-row"><span>NIC 52291 activity</span><b>Travel Agents &amp; Tour Operators</b></div>
-          <div class="reg-row"><span>Registered office</span><b>Near Shilpa Garage, Silver Complex, Mehsana – 384002, Gujarat</b></div>
+          <div class="reg-row"><span>Registered office</span><b>{{f:head.address}}</b></div>
           <h3 style="margin-top:22px">🇳🇵 Nepal entity</h3>
           <div class="reg-row"><span>Company name</span><b>श्री हरी ग्लोबल प्रा. लि. · Shree Hari Global Pvt. Ltd.</b></div>
           <div class="reg-row"><span>Law</span><b>Companies Act, 2063 (Nepal)</b></div>
@@ -1534,7 +1723,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       </div>
       <div class="testi-grid">
         <div class="testi-card reveal">
-          <div class="tc-text">A registered company standing behind every ticket — S Hari Global Pvt Ltd, incorporated in Gujarat, India (CIN U52291GJ2026PTC174029).</div>
+          <div class="tc-text">A registered company standing behind every ticket — {{f:brand.name}}, incorporated in Gujarat, India (CIN {{f:brand.cin}}).</div>
           <div class="tc-who">Registered &amp; accountable</div>
         </div>
         <div class="testi-card reveal d1">
@@ -1576,17 +1765,17 @@ s.addEventListener('click',function(e){e.preventDefault();
     <div class="container">
       <div class="sec-head center reveal">
         <span class="kicker">About Us · हाम्रो बारेमा</span>
-        <h2>S Hari Global Pvt Ltd</h2>
+        <h2>{{f:brand.name}}</h2>
         <p>Trusted India-Nepal cross-border sleeper bus service since Day One</p>
       </div>
       <div style="display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));margin-bottom:20px">
         <div class="c-card reveal" style="padding:22px">
           <h4 style="font-family:var(--f-display);font-size:15px;margin:0 0 12px">🇮🇳 India Operations</h4>
           <table style="width:100%;font-size:13.5px;border-collapse:collapse">
-            <tr><td style="padding:5px 0;color:var(--muted);white-space:nowrap">Company</td><td style="padding:5px 0 5px 12px;font-weight:600">S Hari Global Pvt Ltd</td></tr>
+            <tr><td style="padding:5px 0;color:var(--muted);white-space:nowrap">Company</td><td style="padding:5px 0 5px 12px;font-weight:600">{{f:brand.name}}</td></tr>
             <tr><td style="padding:5px 0;color:var(--muted)">Head Office</td><td style="padding:5px 0 5px 12px">Mehsana, Gujarat</td></tr>
-            <tr><td style="padding:5px 0;color:var(--muted)">Registration</td><td style="padding:5px 0 5px 12px" id="lhInReg">CIN <span style="font-family:var(--f-code)">U52291GJ2026PTC174029</span> · Ministry of Corporate Affairs</td></tr>
-            <tr><td style="padding:5px 0;color:var(--muted)">Phone</td><td style="padding:5px 0 5px 12px"><a href="tel:+919104801507" style="color:var(--orange);font-weight:600">+91 91048 01507</a></td></tr>
+            <tr><td style="padding:5px 0;color:var(--muted)">Registration</td><td style="padding:5px 0 5px 12px" id="lhInReg">CIN <span style="font-family:var(--f-code)">{{f:brand.cin}}</span> · Ministry of Corporate Affairs</td></tr>
+            <tr><td style="padding:5px 0;color:var(--muted)">Phone</td><td style="padding:5px 0 5px 12px"><a href="tel:+{{f:head.tel}}" data-fact-tel="head.tel" style="color:var(--orange);font-weight:600"><span data-fact="head.phone">{{f:head.phone}}</span></a></td></tr>
             <tr><td style="padding:5px 0;color:var(--muted)">Service</td><td style="padding:5px 0 5px 12px">Sleeper Bus — Private & Sharing Cabins</td></tr>
           </table>
         </div>
@@ -1598,7 +1787,7 @@ s.addEventListener('click',function(e){e.preventDefault();
             <tr><td style="padding:5px 0;color:var(--muted)">Registration</td><td style="padding:5px 0 5px 12px" id="lhNpReg">Companies Act 2063 · Office of the Company Registrar, Kathmandu · Articles certified 2083-05-29 BS</td></tr>
             <tr><td style="padding:5px 0;color:var(--muted)">Border</td><td style="padding:5px 0 5px 12px">Rupaidiha (IN) / Jamunaha (NP)</td></tr>
             <tr><td style="padding:5px 0;color:var(--muted)">Service</td><td style="padding:5px 0 5px 12px">Cross-border ticketing & operations</td></tr>
-            <tr><td style="padding:5px 0;color:var(--muted)">Phone</td><td style="padding:5px 0 5px 12px"><a href="tel:+9779866201375" style="color:var(--orange);font-weight:600">+977 986-6201375</a> · <a href="tel:+9779848889950" style="color:var(--orange);font-weight:600">+977 984-8889950</a></td></tr>
+            <tr><td style="padding:5px 0;color:var(--muted)">Phone</td><td style="padding:5px 0 5px 12px"><a href="/offices" data-fact-tel="nepal.phone" style="color:var(--orange);font-weight:600"><span data-fact="nepal.phone">Nepalgunj office</span></a></td></tr>
           </table>
         </div>
       </div>
@@ -1658,8 +1847,8 @@ s.addEventListener('click',function(e){e.preventDefault();
         <span class="kicker">Work with us</span>
         <h2 class="h2">🤝 Become an S Hari Global Agent</h2>
         <p style="color:var(--muted);max-width:640px;margin:8px auto 0">
-          टिकट बेचेर कमाउनुहोस् — हरेक यात्रुमा ₹200 कमिसन। एक मिनेटमा दर्ता गर्नुहोस्।<br>
-          Sell tickets and earn ₹200 commission per passenger. Register in one minute.
+          टिकट बेचेर कमाउनुहोस् — हरेक यात्रुमा {{f:agent.direct}} कमिसन। एक मिनेटमा दर्ता गर्नुहोस्।<br>
+          Sell tickets and earn {{f:agent.direct}} commission per passenger. Register in one minute.
         </p>
       </div>
 
@@ -1669,7 +1858,7 @@ s.addEventListener('click',function(e){e.preventDefault();
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px;text-align:left">
             <div style="background:var(--bg);border-radius:10px;padding:12px 14px">
               <div style="font-size:22px;margin-bottom:4px">💰</div>
-              <div style="font-size:13px;font-weight:700;color:var(--fg)">₹200 / passenger</div>
+              <div style="font-size:13px;font-weight:700;color:var(--fg)">{{f:agent.direct}} / passenger</div>
               <div style="font-size:12px;color:var(--muted)">Direct booking commission</div>
             </div>
             <div style="background:var(--bg);border-radius:10px;padding:12px 14px">
@@ -1713,11 +1902,11 @@ s.addEventListener('click',function(e){e.preventDefault();
             <span style="font-size:28px">🇮🇳</span>
             <div><b style="font-family:var(--f-display);font-size:16px">Mehsana Head Office</b><br><span style="font-size:12px;color:var(--muted)">Registered & Boarding Point</span></div>
           </div>
-          <div class="c-row"><button type="button" class="ico ico-pin" data-navto="23.6008959,72.3807235" data-navto-label="S Hari Global · Mehsana Head Office" aria-label="Show on the map" title="Show on the map" data-i18n-title="waPin">📍</button><div><b>Address</b><span>Near Shilpa Garage, Silver Complex,<br>Mehsana – 384002, Gujarat, India</span></div></div>
-          <div class="c-row"><span class="ico">📞</span><div><b>Phone / WhatsApp</b><a href="tel:+919104801507">+91 91048 01507</a> <a class="wa-chip" href="https://wa.me/919104801507" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
-          <div class="c-row"><span class="ico">👑</span><div><b>Director · Sher Bahadur Bishwokarma (24/7)</b><a href="tel:+919726401507">+91 97264 01507</a> <a class="wa-chip" href="https://wa.me/919726401507" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
-          <div class="c-row"><span class="ico">✉️</span><div><b>Email</b><a href="mailto:shreehariglobalpvtltd@gmail.com">shreehariglobalpvtltd@gmail.com</a></div></div>
-          <div class="c-row"><span class="ico">🏛️</span><div><b>CIN</b><span style="font-family:var(--f-code)">U52291GJ2026PTC174029</span></div></div>
+          <div class="c-row"><button type="button" class="ico ico-pin" data-navto="23.6008959,72.3807235" data-navto-label="S Hari Global · Mehsana Head Office" aria-label="Show on the map" title="Show on the map" data-i18n-title="waPin">📍</button><div><b>Address</b><span data-fact="head.address">{{f:head.address}}</span></div></div>
+          <div class="c-row"><span class="ico">📞</span><div><b>Phone / WhatsApp</b><a href="tel:+{{f:head.tel}}" data-fact-tel="head.tel"><span data-fact="head.phone">{{f:head.phone}}</span></a> <a class="wa-chip" href="https://wa.me/{{f:head.wa}}" data-fact-wa="head.wa" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
+          <div class="c-row"><span class="ico">👑</span><div><b>Director · <span data-fact="ceo.name">{{f:ceo.name}}</span> (24/7)</b><a href="tel:+{{f:ceo.tel}}" data-fact-tel="ceo.tel"><span data-fact="ceo.phone">{{f:ceo.phone}}</span></a> <a class="wa-chip" href="https://wa.me/{{f:ceo.wa}}" data-fact-wa="ceo.wa" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
+          <div class="c-row"><span class="ico">✉️</span><div><b>Email</b><a href="mailto:{{f:brand.email}}">{{f:brand.email}}</a></div></div>
+          <div class="c-row"><span class="ico">🏛️</span><div><b>CIN</b><span style="font-family:var(--f-code)">{{f:brand.cin}}</span></div></div>
           <div class="c-row"><span class="ico">⏰</span><div><b>Office Hours</b><span>Mon–Sat: 9:00 AM – 8:00 PM IST</span></div></div>
           <a class="map-cta" href="https://www.google.com/maps/search/?api=1&query=23.6008959%2C72.3807235" target="_blank" rel="noopener">
             <span class="pinbig">🗺️</span>
@@ -1732,10 +1921,9 @@ s.addEventListener('click',function(e){e.preventDefault();
             <div><b style="font-family:var(--f-display);font-size:16px">Nepalgunj Branch Office</b><br><span style="font-size:12px;color:var(--muted)">Partner office · Pushpalal Chowk</span></div>
           </div>
           <div class="c-row"><span class="ico">📍</span><div><b>ठेगाना / Address</b><span>Shree Hari Global Pvt. Ltd. · Pushpalal Chowk, Nepalgunj Sub-Metropolitan City,<br>Ward No. 2, Banke District, Lumbini Province, Nepal</span></div></div>
-          <!-- Nepal team + numbers exactly as printed on the Nepali visiting card (17 Sep 2026). -->
-          <div class="c-row"><span class="ico">📞</span><div><b>लोक बहादुर सुनार · Lok Bahadur Sunar</b><a href="tel:+9779866201375">+977 986-6201375</a> <a class="wa-chip" href="https://wa.me/9779866201375" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
-          <div class="c-row"><span class="ico">📞</span><div><b>बल बहादुर बि.क. · Bal Bahadur B.K.</b><a href="tel:+9779848889950">+977 984-8889950</a> <a class="wa-chip" href="https://wa.me/9779848889950" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
-          <div class="c-row"><span class="ico">📞</span><div><b>महेन्द्र सिंह · Mahendra Singh</b><a href="tel:+9779848119600">+977 984-8119600</a> <a class="wa-chip" href="https://wa.me/9779848119600" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
+          <!-- 9 Oct 2026: the Nepal office people come from Admin -> Company details
+               (SHG_BOOT.npTeam / the facts), drawn by 21-showcase.js - no typed numbers. -->
+          <div class="sc-np-team" data-sc-list="nepal"></div>
           <div class="c-row"><span class="ico">🏷️</span><div><b>Services</b><span>टिकट बुकिङ · Boarding सहयोग · सामान सहयोग · सीमा नाका सहायता</span></div></div>
           <div class="c-row"><span class="ico">⏰</span><div><b>Office Hours</b><span>Daily: 8:00 AM – 7:00 PM NPT</span></div></div>
           <div class="c-row"><span class="ico">🌐</span><div><b>भाषा / Languages</b><span>नेपाली · हिन्दी · English</span></div></div>
@@ -1752,11 +1940,9 @@ s.addEventListener('click',function(e){e.preventDefault();
             <span style="font-size:28px">🎫</span>
             <div><b style="font-family:var(--f-display);font-size:16px">Gujarat Booking Counters</b><br><span style="font-size:12px;color:var(--muted)">Call to book · कल गरेर बुक गर्नुहोस्</span></div>
           </div>
-          <div class="c-row"><span class="ico">📞</span><div><b>Mehsana</b><a href="tel:+919104801507">+91 91048 01507</a> <a class="wa-chip" href="https://wa.me/919104801507" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
-          <div class="c-row"><span class="ico">📞</span><div><b>Ahmedabad</b><a href="tel:+919157001507">+91 91570 01507</a> <a class="wa-chip" href="https://wa.me/919157001507" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
-          <div class="c-row"><span class="ico">📞</span><div><b>Baroda (Vadodara)</b><a href="tel:+918735881507">+91 87358 81507</a> <a class="wa-chip" href="https://wa.me/918735881507" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
-          <div class="c-row"><span class="ico">📞</span><div><b>Surat</b><a href="tel:+917359301507">+91 73593 01507</a> <a class="wa-chip" href="https://wa.me/917359301507" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
-          <div class="c-row"><span class="ico">💬</span><div><b>24×7 Support / WhatsApp</b><a href="https://wa.me/919173401507" target="_blank" rel="noopener">+91 91734 01507</a></div></div>
+          <!-- 9 Oct 2026: every India office line + the 24x7 WhatsApp from the facts
+               (counter_locations / Admin), drawn by 21-showcase.js. -->
+          <div class="sc-off-list" data-sc-list="offices"></div>
         </div>
       </div>
 
@@ -2271,8 +2457,8 @@ s.addEventListener('click',function(e){e.preventDefault();
       <div class="co-operator" id="coOperator">
         <img data-logo-clone class="co-op-logo" alt="S Hari Global" loading="lazy">
         <div class="co-op-txt">
-          <b>S Hari Global Pvt Ltd</b>
-          <small>CEO Sher Bahadur Bishwokarma · <a href="tel:+919104801507">📞 +91 91048 01507</a></small>
+          <b>{{f:brand.name}}</b>
+          <small>CEO <span data-fact="ceo.name">{{f:ceo.name}}</span> · <a href="tel:+{{f:head.tel}}" data-fact-tel="head.tel">📞 <span data-fact="head.phone">{{f:head.phone}}</span></a></small>
         </div>
         <span class="co-op-verified">✓ Official</span>
       </div>
@@ -2502,7 +2688,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <div class="tc-boarding" id="tcBoardingCard">
         <div>
           <div class="bp-name" id="tcBoardingName">Surat</div>
-          <div class="bp-addr" id="tcBoardingAddr">Near Shilpa Garage, Silver Complex</div>
+          <div class="bp-addr" id="tcBoardingAddr">{{f:head.address}}</div>
           <span class="bp-badge">S Hari Global Boarding Counter</span>
         </div>
       </div>
@@ -2554,7 +2740,7 @@ s.addEventListener('click',function(e){e.preventDefault();
           <div class="ts" id="tcArrivedTs">—</div>
           <div class="actions">
             <a href="#/my" class="btn btn-blue">📋 My Bookings</a>
-            <a href="tel:+919104801507" class="btn btn-ghost">📞 Contact Support</a>
+            <a href="tel:+{{f:head.tel}}" data-fact-tel="head.tel" class="btn btn-ghost">📞 Contact Support</a>
           </div>
         </div>
       </div>
@@ -2740,7 +2926,7 @@ s.addEventListener('click',function(e){e.preventDefault();
 <section class="view" id="view-terms">
   <div class="flow-head"><div class="container">
     <h2>Terms &amp; Conditions</h2>
-    <p class="sub">S Hari Global Pvt Ltd · CIN U52291GJ2026PTC174029 · Last updated July 2026</p>
+    <p class="sub">{{f:brand.name}} · CIN {{f:brand.cin}} · Last updated July 2026</p>
   </div></div>
   <div class="flow-body"><div class="container">
     <!-- QUICK-VIEW SUMMARY -->
@@ -2793,8 +2979,17 @@ s.addEventListener('click',function(e){e.preventDefault();
   <div class="container">
     <div class="f-grid">
       <div>
-        <img id="logoFoot" src="/assets/img/logo.png?v=20261008p" width="440" height="321" alt="S Hari Global Pvt Ltd Logo" loading="lazy" decoding="async">
-        <p><b style="color:#fff">🇮🇳 S Hari Global Pvt Ltd 🇳🇵</b><br>India–Nepal Bus Service. Connecting Gujarat with the Rupaidiha border — partner office at Pushpalal Chowk, Nepalgunj — with safe coaches and easy ticket booking.</p>
+        <!-- 9 Oct 2026: the emblem only (no white plate, no baked name), the live
+             company name between the two flags, and the new public pages. -->
+        <picture><source type="image/webp" srcset="/assets/img/logo-mark.webp?v=20261008p"><img id="logoFoot" src="/assets/img/logo-mark.png?v=20261008p" width="439" height="228" alt="" loading="lazy" decoding="async"></picture>
+        <p class="sc-f-name"><span class="flg" data-flag="IN" role="img" aria-label="India"></span><b style="color:#fff" data-fact="brand.name">{{f:brand.name}}</b><span class="flg" data-flag="NP" role="img" aria-label="Nepal"></span></p>
+        <p data-i18n="fTagline">India–Nepal bus service. Connecting Gujarat with the Rupaidiha border — partner office at Pushpalal Chowk, Nepalgunj — with safe coaches and easy ticket booking.</p>
+        <nav class="sc-f-explore" aria-label="Explore">
+          <a href="/offices"><svg class="ic" aria-hidden="true"><use href="#i-building"/></svg><span data-i18n="fOffices">Our offices</span></a>
+          <a href="/india-nepal"><svg class="ic" aria-hidden="true"><use href="#i-compass"/></svg><span data-i18n="fIndiaNepal">India–Nepal friendship</span></a>
+          <a href="/explore"><svg class="ic" aria-hidden="true"><use href="#i-map"/></svg><span data-i18n="fPlaces">Places to visit</span></a>
+          <a href="/tours"><svg class="ic" aria-hidden="true"><use href="#i-luggage"/></svg><span data-i18n="fTours">Tour packages</span></a>
+        </nav>
       </div>
       <div>
         <h4 data-i18n="fCompany">Company</h4>
@@ -2821,31 +3016,31 @@ s.addEventListener('click',function(e){e.preventDefault();
           <li><a href="/agreements/" rel="nofollow" data-i18n="fAgreements">Agent agreements</a></li>
           <li><a href="#/" data-scroll="faq" data-i18n="navFaq">FAQ</a></li>
           <li><a href="#/" data-scroll="contact" data-i18n="navContact">Contact &amp; support</a></li>
-          <li><a href="tel:+919104801507"><span data-i18n="fCall">Call</span> +91 91048 01507</a></li>
+          <li><a href="tel:+{{f:head.tel}}" data-fact-tel="head.tel"><span data-i18n="fCall">Call</span> <span data-fact="head.phone">{{f:head.phone}}</span></a></li>
         </ul>
       </div>
       <div>
         <h4 data-i18n="fOffice">Registered office</h4>
         <ul class="f-contact">
-          <li>📍 Near Shilpa Garage, Silver Complex, Mehsana – 384002, Gujarat, India</li>
-          <li>✉️ <a href="mailto:shreehariglobalpvtltd@gmail.com">shreehariglobalpvtltd@gmail.com</a></li>
-          <li>🇳🇵 <span><span data-i18n="fNepalOffice">Nepal office</span>: Pushpalal Chowk, Nepalgunj · <a href="tel:+9779866201375">+977 986-6201375</a></span></li>
+          <li>📍 <span data-fact="head.address">{{f:head.address}}</span></li>
+          <li>✉️ <a href="mailto:{{f:brand.email}}">{{f:brand.email}}</a></li>
+          <li><span class="flg" data-flag="NP" role="img" aria-label="Nepal"></span> <span><span data-i18n="fNepalOffice">Nepal office</span>: Pushpalal Chowk, Nepalgunj · <a href="/offices" data-fact-tel="nepal.phone"><span data-fact="nepal.phone">📞</span></a></span></li>
           <li>🕉️ ॐ नमो नारायणाय</li>
           <li style="gap:10px;margin-top:6px">
-            <a href="https://www.facebook.com/sherbahadur.biswakarma.58" target="_blank" rel="noopener noreferrer" aria-label="Facebook" title="Facebook — Sher Bahadur Bishwokarma">ⓕ</a>
-            <a href="https://wa.me/919726401507" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp" title="WhatsApp — Director +91 97264 01507">✆</a>
-            <a href="https://wa.me/919104801507" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp office" title="WhatsApp — Mehsana office +91 91048 01507">💬</a>
+            <a href="https://www.facebook.com/sherbahadur.biswakarma.58" target="_blank" rel="noopener noreferrer" aria-label="Facebook" title="Facebook — {{f:ceo.name}}">ⓕ</a>
+            <a href="https://wa.me/{{f:ceo.wa}}" data-fact-wa="ceo.wa" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp" title="WhatsApp — Director {{f:ceo.phone}}">✆</a>
+            <a href="https://wa.me/{{f:head.wa}}" data-fact-wa="head.wa" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp office" title="WhatsApp — Mehsana office {{f:head.phone}}">💬</a>
           </li>
         </ul>
       </div>
     </div>
     <div class="f-bottom">
-      <span>© <span id="year">2026</span> S Hari Global Pvt Ltd · All rights reserved.</span>
-      <span class="code" id="cinTap">CIN: U52291GJ2026PTC174029<span id="fGstin"></span> · Incorporated in Gujarat, India</span>
+      <span>© <span id="year">2026</span> {{f:brand.name}} · All rights reserved.</span>
+      <span class="code" id="cinTap">CIN: {{f:brand.cin}}<span id="fGstin"></span> · Incorporated in Gujarat, India</span>
     </div>
-    <div class="f-dev">Developed by <strong>Dileep Sunar</strong> · <a href="https://wa.me/919104801507" target="_blank" rel="noopener noreferrer">💬 WhatsApp +91 91048 01507</a> · <a href="https://www.facebook.com/dileep.soonaar/" target="_blank" rel="noopener noreferrer">Facebook</a></div>
+    <div class="f-dev">Developed by <strong>Dileep Sunar</strong> · <a href="https://wa.me/{{f:head.wa}}" data-fact-wa="head.wa" target="_blank" rel="noopener noreferrer">💬 WhatsApp <span data-fact="head.phone">{{f:head.phone}}</span></a> · <a href="https://www.facebook.com/dileep.soonaar/" target="_blank" rel="noopener noreferrer">Facebook</a></div>
     <div class="f-ceo reveal">
-      <img id="ceoPhoto" src="/assets/img/ceo.jpg?v=20261008p" alt="Sher Bahadur Bishwokarma — Founder &amp; CEO" loading="lazy" decoding="async" onerror="this.style.display='none'">
+      <img id="ceoPhoto" src="/assets/img/ceo-sm.webp?v=20261008p" alt="{{f:ceo.name}} — Founder &amp; CEO" loading="lazy" decoding="async" onerror="this.style.display='none'">
       <span>🕉️ <span id="ceoMantra"></span> — <strong id="ceoName"></strong>, Founder &amp; CEO
         <button id="mantraBtn" type="button" title="Play mantra chant · मन्त्र सुन्नुहोस्" aria-label="Play mantra chant">🔊</button>
       </span>
@@ -2883,7 +3078,7 @@ s.addEventListener('click',function(e){e.preventDefault();
      controls it from Admin -> Settings alongside the AI panel's WA row. The
      hardcoded fallback here is the 24x7 support number so the button still
      works if JS is disabled or the settings call fails. ============ -->
-<a href="https://wa.me/919173401507?text=Namaste%20%F0%9F%99%8F%20S%20Hari%20Global%20%E2%80%94%20I%20need%20help%20with%20bus%20booking"
+<a href="https://wa.me/{{f:head.wa}}?text=Namaste%20%F0%9F%99%8F%20S%20Hari%20Global%20%E2%80%94%20I%20need%20help%20with%20bus%20booking"
    class="whatsapp-fab" id="waFab" target="_blank" rel="noopener noreferrer"
    aria-label="Chat on WhatsApp · WhatsApp पर बात करें · WhatsApp मा कुरा गर्नुहोस्">
   <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -2936,15 +3131,13 @@ s.addEventListener('click',function(e){e.preventDefault();
       <div class="wa-req-msg" id="waReqMsg" role="status" aria-live="polite" hidden></div>
       <p class="wa-req-hint" data-i18n="waReqPrivacy">Your details are shared with S Hari Global only when you send. A request does not confirm a seat or change a ticket.</p>
     </form>
+    <!-- 9 Oct 2026: the director and the head office from the facts; every other
+         office and the Nepal office people are added by 21-showcase.js from the
+         same facts (Admin -> Counter desks / Company details) - no typed numbers. -->
     <div class="wa-grid">
-      <a class="wa-row" href="https://wa.me/919726401507?text=Namaste%20%F0%9F%99%8F%20S%20Hari%20Global" target="_blank" rel="noopener"><span>👑</span><div><b>Sher Bahadur Bishwokarma</b><small data-i18n="waDirector">Director · 24/7</small></div></a>
-      <div class="wa-row-wrap"><a class="wa-row" href="https://wa.me/919104801507?text=Namaste%20%F0%9F%99%8F%20S%20Hari%20Global%20Mehsana" target="_blank" rel="noopener"><span>🏢</span><div><b>Mehsana Head Office</b><small>+91 91048 01507</small></div></a><button type="button" class="wa-pin" data-navto="23.6008959,72.3807235" data-navto-label="S Hari Global · Mehsana Head Office" aria-label="Show on the map" title="Show on the map" data-i18n-title="waPin">📍</button></div>
-      <a class="wa-row" href="https://wa.me/919157001507?text=Namaste%20%F0%9F%99%8F%20S%20Hari%20Global%20Ahmedabad" target="_blank" rel="noopener"><span>🏢</span><div><b>Ahmedabad</b><small>+91 91570 01507</small></div></a>
-      <a class="wa-row" href="https://wa.me/917359301507?text=Namaste%20%F0%9F%99%8F%20S%20Hari%20Global%20Surat" target="_blank" rel="noopener"><span>🏢</span><div><b>Surat</b><small>+91 73593 01507</small></div></a>
-      <a class="wa-row" href="https://wa.me/918735881507?text=Namaste%20%F0%9F%99%8F%20S%20Hari%20Global%20Baroda" target="_blank" rel="noopener"><span>🏢</span><div><b>Baroda (Vadodara)</b><small>+91 87358 81507</small></div></a>
-      <a class="wa-row" href="https://wa.me/9779866201375?text=%E0%A4%A8%E0%A4%AE%E0%A4%B8%E0%A5%8D%E0%A4%A4%E0%A5%87%20%F0%9F%99%8F%20S%20Hari%20Global%20Nepalgunj" target="_blank" rel="noopener"><span><svg class="np-flag" viewBox="0 0 26 32" width="18" height="22" aria-hidden="true" focusable="false"><path d="M2 2 23 15H9.6L23 30H2Z" fill="#DC143C" stroke="#003893" stroke-width="2.4" stroke-linejoin="round"/><circle cx="8" cy="12.4" r="2.2" fill="#fff"/><circle cx="8.3" cy="23.4" r="2.7" fill="#fff"/></svg></span><div><b data-i18n="waOfficeNepal">Nepal Office · Nepalgunj</b><small>Lok Bahadur Sunar · +977 986-6201375</small></div></a>
-      <a class="wa-row" href="https://wa.me/9779848889950?text=%E0%A4%A8%E0%A4%AE%E0%A4%B8%E0%A5%8D%E0%A4%A4%E0%A5%87%20%F0%9F%99%8F%20S%20Hari%20Global%20Nepalgunj" target="_blank" rel="noopener"><span><svg class="np-flag" viewBox="0 0 26 32" width="18" height="22" aria-hidden="true" focusable="false"><path d="M2 2 23 15H9.6L23 30H2Z" fill="#DC143C" stroke="#003893" stroke-width="2.4" stroke-linejoin="round"/><circle cx="8" cy="12.4" r="2.2" fill="#fff"/><circle cx="8.3" cy="23.4" r="2.7" fill="#fff"/></svg></span><div><b>Bal Bahadur B.K.</b><small>+977 984-8889950</small></div></a>
-      <a class="wa-row" href="https://wa.me/9779848119600?text=%E0%A4%A8%E0%A4%AE%E0%A4%B8%E0%A5%8D%E0%A4%A4%E0%A5%87%20%F0%9F%99%8F%20S%20Hari%20Global%20Nepalgunj" target="_blank" rel="noopener"><span><svg class="np-flag" viewBox="0 0 26 32" width="18" height="22" aria-hidden="true" focusable="false"><path d="M2 2 23 15H9.6L23 30H2Z" fill="#DC143C" stroke="#003893" stroke-width="2.4" stroke-linejoin="round"/><circle cx="8" cy="12.4" r="2.2" fill="#fff"/><circle cx="8.3" cy="23.4" r="2.7" fill="#fff"/></svg></span><div><b>Mahendra Singh</b><small>+977 984-8119600</small></div></a>
+      <a class="wa-row" href="https://wa.me/{{f:ceo.wa}}?text=Namaste%20%F0%9F%99%8F%20S%20Hari%20Global" data-fact-wa="ceo.wa" target="_blank" rel="noopener"><span>👑</span><div><b data-fact="ceo.name">{{f:ceo.name}}</b><small data-i18n="waDirector">Director · 24/7</small></div></a>
+      <div class="wa-row-wrap"><a class="wa-row" href="https://wa.me/{{f:head.wa}}?text=Namaste%20%F0%9F%99%8F%20S%20Hari%20Global%20Mehsana" data-fact-wa="head.wa" target="_blank" rel="noopener"><span>🏢</span><div><b>Mehsana Head Office</b><small data-fact="head.phone">{{f:head.phone}}</small></div></a><button type="button" class="wa-pin" data-navto="23.6008959,72.3807235" data-navto-label="S Hari Global · Mehsana Head Office" aria-label="Show on the map" title="Show on the map" data-i18n-title="waPin">📍</button></div>
+      <div class="sc-wa-more" data-sc-list="wa"></div>
     </div>
     <p class="wa-sheet-foot" data-i18n="waSheetFoot">Your ticket is sent to your WhatsApp automatically the moment it is confirmed ✅</p>
   </div>

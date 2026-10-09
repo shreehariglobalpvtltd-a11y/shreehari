@@ -169,19 +169,38 @@ final class ChalaniPdf
 
         /* ---- page chrome --------------------------------------------- */
         $page = 0;
-        $header = static function () use ($pdf, $W, $M, $txt, $txtR, $neDate, $neTime, $coachNe, $date, $chalaniNo, $trip, $cin, $co, &$page): float {
+        $header = static function () use ($pdf, $W, $M, $txt, $txtR, $txtC, $width, $neDate, $neTime, $coachNe, $date, $chalaniNo, $trip, $cin, $co, &$page): float {
             $page++;
             $y = $M + 2;
-            $logo = Ticket::logoFile();
+            /* The emblem alone, aspect-correct (it was squashed into 44x44),
+               no tile — the Nepali legal name is the line beside it (9 Oct 2026). */
             $lx = $M;
-            if ($logo !== null) { $pdf->image($logo, $M, $y - 2, 44, 44); $lx = $M + 52; }
-            $txt($lx, $y + 12, $co['legalNe'], 14.5, true, self::NAVY);
-            $txt($lx, $y + 23.5, $co['addressNe'], 7.4, false, self::MUTE);
-            $txt($lx, $y + 32.5, 'फोन : ' . $co['phone'] . '  |  सञ्चालक : ' . $co['operatorNe'] . '  |  इमेल : ' . $co['email'], 7.4, false, self::MUTE);
-            $txt($lx, $y + 41.5, 'CIN : ' . $cin . '  |  वेब : ' . $co['web'], 7.4, false, self::MUTE);
+            $mk = DocArt::pdfMark($pdf, $M - 2, $y - 4, 86, 48);
+            if ($mk !== null) { $lx = $mk['x'] + $mk['w'] + 8; }
+            $hl = [
+                [$co['legalNe'], 14.5],
+                [$co['addressNe'], 7.4],
+                ['फोन : ' . $co['phone'] . '  |  सञ्चालक : ' . $co['operatorNe'] . '  |  इमेल : ' . $co['email'], 7.4],
+                ['CIN : ' . $cin . '  |  वेब : ' . $co['web'], 7.4],
+            ];
+            $txt($lx, $y + 12, $hl[0][0], 14.5, true, self::NAVY);
+            $txt($lx, $y + 23.5, $hl[1][0], 7.4, false, self::MUTE);
+            $txt($lx, $y + 32.5, $hl[2][0], 7.4, false, self::MUTE);
+            $txt($lx, $y + 41.5, $hl[3][0], 7.4, false, self::MUTE);
 
             $rx = $W - $M;
-            $txtR($rx, $y + 12, 'बस चलानी · यात्रु विवरण', 13, true, self::NAVY);
+            $title = 'बस चलानी · यात्रु विवरण';
+            $txtR($rx, $y + 12, $title, 13, true, self::NAVY);
+            // both flags before the title, and the heritage art in the free middle of the letterhead
+            DocArt::pdfFlags($pdf, $rx - $width($title, 13) - 8 - DocArt::pdfFlagsWidth(12, 3), $y + 1, 12, 3, 'IN', true);
+            $artL = $lx + max(array_map(static fn(array $l): float => $width((string) $l[0], (float) $l[1]), $hl)) + 16;
+            $artR = $rx - 270;
+            if (DocArt::heritageOn() && $artR - $artL >= 90) {
+                $aw = min(170.0, $artR - $artL);
+                if (DocArt::pdfBand($pdf, $artR - $aw, $y - 4, $aw, 40, 0.5, 0.8)) {
+                    $txtC($artR - $aw, $artR, $y + 44, 'सगरमाथा · लुम्बिनी', 6.4, false, self::MUTE);
+                }
+            }
             $txtR($rx, $y + 22, 'गुजरात ⇄ रुपैडिहा · ' . $coachNe((string) ($trip['coach_type'] ?? '')), 7.6, false, self::MUTE);
             // three underlined fields, right-aligned as the reference
             $kv = [['चलानी नं. :', $chalaniNo], ['मिति :', $neDate($date)], ['बस नं. :', (string) ($trip['bus_number'] ?? '')]];
@@ -200,7 +219,7 @@ final class ChalaniPdf
             $fy = $H - $M - 14;
             $pdf->line($M, $fy - 4, $W - $M, $fy - 4, self::NAVY, 1.0);
             $txt($M, $fy + 4, 'बुकिङ काउन्टर : ' . $co['counters'] . '  ·  २४×७ सहायता / WhatsApp : +' . $co['whatsapp'], 6.9, false, self::MUTE);
-            $txt($M, $fy + 12, 'यो एस हरि ग्लोबल प्राइभेट लिमिटेडको आधिकारिक यात्रा कागजात हो। कम्पनी अभिलेखका लागि राख्नुहोस्। अधिकृत सही / छापसँग मात्र मान्य। रुट : गुजरात ⇄ रुपैडिहा (भारत–नेपाल)। CIN ' . $cin, 6.4, false, self::MUTE);
+            $txt($M, $fy + 12, 'यो ' . ($co['legalNe'] !== '' ? $co['legalNe'] : 'एस हरि ग्लोबल प्राइभेट लिमिटेड') . 'को आधिकारिक यात्रा कागजात हो। कम्पनी अभिलेखका लागि राख्नुहोस्। अधिकृत सही / छापसँग मात्र मान्य। रुट : गुजरात ⇄ रुपैडिहा (भारत–नेपाल)। CIN ' . $cin, 6.4, false, self::MUTE);
             $txtR($W - $M, $fy + 12, $co['web'] . '  ·  पृष्ठ ' . $page, 6.6, false, self::MUTE);
         };
         $tableHead = static function (float $y) use ($pdf, $M, $inner, $cx, $cw, $heads, $align, $headH, $txt, $txtR, $txtC): float {

@@ -459,8 +459,8 @@ admin_header('Accounting', 'accounting');
   <table>
     <thead><tr><th>Company</th><th class="num">Tickets</th><th class="num">Collected</th><th class="num">Still to collect</th><th class="num">Refunds paid</th><th class="num">Agent commission</th><th class="num">NPR in drawers</th></tr></thead>
     <tbody>
-    <?php foreach (['IN' => '🇮🇳 India company', 'NP' => '🇳🇵 Nepal company'] as $ck => $cl): $c = $byCo[$ck]; ?>
-      <tr><td><b><?= Security::e($cl) ?></b></td>
+    <?php foreach (['IN' => 'India company', 'NP' => 'Nepal company'] as $ck => $cl): $c = $byCo[$ck]; ?>
+      <tr><td><b><?= Brand::flagUse($ck, $ck === 'NP' ? 17 : 14, 'en', true) ?> <?= Security::e($cl) ?></b></td>
         <td class="num"><?= (int) $c['tickets'] ?></td>
         <td class="num"><?= Security::e(inr($c['collected'])) ?></td>
         <td class="num"><?= Security::e(inr($c['cod'])) ?></td>

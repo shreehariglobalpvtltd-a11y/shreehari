@@ -439,6 +439,11 @@ final class WebPush
         if ($phone !== '') { $data['phone'] = $phone; }
         if (!empty($ctx['user_id'])) { $data['user_id'] = (int) $ctx['user_id']; }
         if (!empty($ctx['booking_id'])) { $data['booking_id'] = (int) $ctx['booking_id']; }
+        /* 9 Oct 2026 (office chat): a staff phone. Written only when given, so
+           a customer re-subscribing on the same handset never blanks it; the
+           one endpoint row simply re-binds when another clerk signs in on a
+           shared counter phone (admin/api/push.php). */
+        if (!empty($ctx['admin_id'])) { $data['admin_id'] = (int) $ctx['admin_id']; }
 
         if ($row !== null) {
             Database::update('push_subscriptions', $data, 'id = :i', ['i' => (int) $row['id']]);
@@ -473,6 +478,8 @@ final class WebPush
             'booking_id' => $old['booking_id'] !== null ? (int) $old['booking_id'] : null,
             'lang'       => (string) $old['lang'],
             'ua'         => (string) $old['ua'],
+            // a staff phone keeps getting office-chat pushes after the rotation
+            'admin_id'   => isset($old['admin_id']) && $old['admin_id'] !== null ? (int) $old['admin_id'] : null,
         ]);
         if ($id !== (int) $old['id']) {
             Database::update('push_subscriptions', ['is_active' => 0], 'id = :i', ['i' => (int) $old['id']]);
@@ -510,6 +517,61 @@ final class WebPush
             'SELECT * FROM push_subscriptions WHERE is_active = 1 AND phone = :p ORDER BY id DESC LIMIT 10',
             ['p' => $phone]
         );
+    }
+
+    /**
+     * A staff member's phones (office chat, 9 Oct 2026). Empty on a database
+     * without push_subscriptions.admin_id (upgrade-2026-10-09-staff-chat.sql).
+     */
+    public static function forAdmin(int $adminId): array
+    {
+        if ($adminId <= 0) {
+            return [];
+        }
+        try {
+            return Database::fetchAll(
+                'SELECT * FROM push_subscriptions WHERE is_active = 1 AND admin_id = :a ORDER BY id DESC LIMIT 10',
+                ['a' => $adminId]
+            );
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Stop pushing a staff member's chat to this handset (sign-out on a shared
+     * counter phone). The customer side of the row (phone / booking) is kept.
+     */
+    public static function unbindAdmin(string $endpoint, int $adminId): bool
+    {
+        try {
+            return Database::update('push_subscriptions', ['admin_id' => null],
+                'endpoint_hash = :h AND admin_id = :a', ['h' => sha1(trim($endpoint)), 'a' => $adminId]) > 0;
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /** @return array{sent:int, failed:int, skipped:int} */
+    public static function sendToAdmin(int $adminId, array $payload, string $event = ''): array
+    {
+        $out = ['sent' => 0, 'failed' => 0, 'skipped' => 0];
+        try {
+            if (!self::enabled()) {
+                $out['skipped']++;
+                return $out;
+            }
+            $subs = self::forAdmin($adminId);
+        } catch (Throwable $e) {
+            $out['skipped']++;
+            return $out;
+        }
+        $payload['event'] = $event;
+        foreach ($subs as $sub) {
+            $r = self::send($sub, $payload);
+            $r['ok'] ? $out['sent']++ : $out['failed']++;
+        }
+        return $out;
     }
 
     /* =================================================================

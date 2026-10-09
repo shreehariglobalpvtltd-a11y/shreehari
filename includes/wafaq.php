@@ -308,25 +308,28 @@ final class WaFaq
         $p     = TicketBot::parse($text);
         $seats = max(1, (int) ($p['seats'] ?? 0));
         $dir   = (string) ($p['direction'] ?? '');
-        $toNp  = Settings::getInt('fare_to_nepal', 2000);
-        $toIn  = Settings::getInt('fare_to_india', 1800);
-        $priv  = (int) (Settings::getArray('cabin_pricing', [])['private']['single_1pax']['online'] ?? 3800);
+        /* 9 Oct 2026 (site facts): every number below is a row of Fare::board()
+           - the price the checkout charges for that pickup / drop - instead of
+           getInt('fare_to_*') (which skipped main_fares) and one flat return
+           line (the return run is priced per DROP). */
+        if (!class_exists('Fare')) {
+            require_once __DIR__ . '/fare.php';
+        }
+        $board = Fare::board();
+        $priv  = (int) round((float) $board['private']['single']);
         $per   = self::t($lang, '/जना', '/व्यक्ति', '/person');
+        $want  = self::origin(' ' . self::norm($text) . ' ');
+        if ($want === '') {
+            $want = mb_strtolower(trim((string) ($dir === 'toIndia' ? ($p['drop'] ?? $p['boarding'] ?? '') : ($p['boarding'] ?? ''))));
+        }
+        $short = static fn(array $s): string => (string) (Boarding::stopDisplay((string) $s['name'])['name'] ?: $s['name']);
 
-        $lines = [];
-        if ($dir !== 'toIndia') {
-            /* Per-pickup fares (owner ask, 1 Oct 2026): each Gujarat pickup
-               carries its own price in Admin -> Routes (Emli/Bhupal + Ahmedabad
-               2000, the rest 2200). A named pickup gets its own number; else
-               the price groups, cheapest first, each with its pickups. */
-            $go   = (array) (Boarding::bootLocations()['go'] ?? []);
-            $want = self::origin(' ' . self::norm($text) . ' ');
-            if ($want === '') {
-                $want = mb_strtolower(trim((string) ($p['boarding'] ?? '')));
-            }
+        /* One direction: a named stop gets its own number; else the price
+           groups, cheapest first, each with its stops. */
+        $side = static function (array $rows, float $default, string $label) use ($want, $short, $seats, $per, $lang): array {
             $pick = null;
             if ($want !== '') {
-                foreach ($go as $s) {
+                foreach ($rows as $s) {
                     $name = mb_strtolower((string) $s['name']);
                     if (str_contains($name, $want) || str_contains($want, Boarding::townKey((string) $s['name']))) {
                         $pick = $s;
@@ -334,30 +337,34 @@ final class WaFaq
                     }
                 }
             }
-            $fareOf = static fn(array $s): int => (int) round((float) (($s['fare'] ?? null) ?: $toNp));
-            $short  = static fn(array $s): string => (string) (Boarding::stopDisplay((string) $s['name'])['name'] ?: $s['name']);
             $groups = [];
-            if ($pick !== null) {
-                $groups[$fareOf($pick)] = [$short($pick)];
-            } else {
-                foreach ($go as $s) {
-                    $groups[$fareOf($s)][] = $short($s);
+            foreach ($pick !== null ? [$pick] : $rows as $s) {
+                $nm = $short($s);
+                $amt = (int) round((float) $s['fare']);
+                if (!in_array($nm, $groups[$amt] ?? [], true)) {
+                    $groups[$amt][] = $nm;
                 }
-                ksort($groups);
             }
+            ksort($groups);
             if ($groups === []) {
-                $groups[$toNp] = [];
+                $groups[(int) round($default)] = [];
             }
             $multi = count($groups) > 1;
+            $out = [];
             foreach ($groups as $amt => $names) {
-                $lines[] = 'Gujarat → Nepal (Rupaidiha): ' . inr($amt) . $per
-                         . ($seats > 1 ? ' · ' . $seats . self::t($lang, ' जनाको ', ' लोगों का ', ' people: ') . inr($amt * $seats) : '')
-                         . (($multi || $pick !== null) && $names !== [] ? ' — ' . implode(', ', $names) : '');
+                $out[] = $label . ': ' . inr($amt) . $per
+                       . ($seats > 1 ? ' · ' . $seats . self::t($lang, ' जनाको ', ' लोगों का ', ' people: ') . inr($amt * $seats) : '')
+                       . (($multi || $pick !== null) && $names !== [] ? ' — ' . implode(', ', $names) : '');
             }
+            return $out;
+        };
+
+        $lines = [];
+        if ($dir !== 'toIndia') {
+            $lines = array_merge($lines, $side($board['go'], (float) $board['defaults']['toNepal'], 'Gujarat → Nepal (Rupaidiha)'));
         }
         if ($dir !== 'toNepal') {
-            $lines[] = 'Nepal → Gujarat: ' . inr($toIn) . $per
-                     . ($seats > 1 ? ' · ' . $seats . self::t($lang, ' जनाको ', ' लोगों का ', ' people: ') . inr($toIn * $seats) : '');
+            $lines = array_merge($lines, $side($board['back'], (float) $board['defaults']['toIndia'], 'Nepal (Rupaidiha) → Gujarat'));
         }
         $lines[] = self::t($lang, 'Private cabin ', 'Private cabin ', 'Private cabin from ') . inr($priv)
                  . self::t($lang, ' देखि। Online र counter मा भाडा उस्तै।', ' से। Online और counter पर किराया एक समान।', '. Same fare online and at the counter.');

@@ -63,6 +63,13 @@ if ($legalPath === '/bus' || str_starts_with($legalPath, '/bus/') || str_starts_
     require_once INCLUDE_PATH . '/routepages.php';
     RoutePages::dispatch($legalPath);
 }
+/* 9 Oct 2026: the brand / travel pages (/india-nepal, /offices, /explore,
+   /tours, /tours/<slug>, each also under /hi/ and /ne/) and their sitemap -
+   includes/contentpages.php. Served before Auth::user(); no app bundle. */
+if (preg_match('#^/(?:(?:hi|ne)/)?(?:india-nepal|offices|explore|tours)(?:/|$)#', $legalPath) === 1 || $legalPath === '/sitemap-content.xml') {
+    require_once INCLUDE_PATH . '/contentpages.php';
+    ContentPages::dispatch($legalPath);
+}
 
 $user = Auth::user();
 
@@ -160,9 +167,38 @@ $boot['waDirect'] = !$shgHiLive;
 $boot['npr'] = Settings::getFloat('npr_per_inr', defined('NPR_PER_INR') ? (float) NPR_PER_INR : 1.6);   // the one NPR rate the app estimates with
 // 5 Oct 2026: the Nepalgunj office line on the home banner (Company details -> Nepal phone).
 $boot['npOffice'] = [
-    'place' => trim((string) preg_replace('/,?\s*Nepalgunj$/i', '', Settings::getString('nepal_office', 'Puspalal Chowk'))) ?: 'Puspalal Chowk',
+    'place' => trim((string) preg_replace('/,?\s*Nepalgunj$/i', '', Settings::nepalOfficePlace())) ?: Settings::nepalOfficePlace(),
     'phone' => trim(Settings::getString('nepal_phone', '')),
 ];
+/* 9 Oct 2026 - SITE FACTS: the one facts object (company, CEO, offices,
+   phones, the fare board) every surface of the page reads - window.FACTS in
+   02-config.js. Built from the same helpers the tickets and the checkout use
+   (includes/sitefacts.php), so an Admin edit reaches the whole site on the
+   next load. A failure ships no facts and the app keeps its packaged
+   fallbacks - never a broken page. */
+require_once INCLUDE_PATH . '/sitefacts.php';
+try {
+    $boot['facts'] = SiteFacts::boot();
+    /* The pickup list's per-stop fare (SHG_BOOT.locations, read by the fare
+       strip, the picker and checkout) is re-stamped from the board, which
+       prices each row with the route that sells it: Boarding::locations()
+       lists a return route's own to_city first with no fare, which hid that
+       drop's own price (e.g. Surat) behind the flat return default. */
+    $shgOwn = [];
+    foreach (['go', 'back'] as $shgSide) {
+        foreach ($boot['facts']['fares'][$shgSide] ?? [] as $shgRow) {
+            $shgOwn[$shgSide][(string) $shgRow['name']] = !empty($shgRow['own']) ? (float) $shgRow['fare'] : null;
+        }
+        foreach ($boot['locations'][$shgSide] ?? [] as $shgI => $shgLoc) {
+            $shgName = (string) ($shgLoc['name'] ?? '');
+            if (array_key_exists($shgName, $shgOwn[$shgSide] ?? [])) {
+                $boot['locations'][$shgSide][$shgI]['fare'] = $shgOwn[$shgSide][$shgName];
+            }
+        }
+    }
+} catch (Throwable $e) {
+    Logger::error('SiteFacts boot failed: ' . $e->getMessage());
+}
 // 5 Oct 2026: the Nepal office's people (CEO / Operations / Parking) for the home card.
 try {
     $boot['npTeam'] = Settings::nepalTeam();
@@ -301,35 +337,90 @@ $baseUrl = rtrim(APP_URL, '/');
 $ogImage = $baseUrl . '/assets/img/og-shg.png';   // 1200x630 share card (20 Sep 2026); icon-shg.svg never existed
 $e = static fn($s): string => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
 
+/* 9 Oct 2026: every business fact below comes from SiteFacts (Admin ->
+   Company details / Counters / Fares) - the name, phone, address, offices and
+   the fare range follow an Admin edit on the next load. */
+try {
+    $F = SiteFacts::all();
+} catch (Throwable $e) {
+    $F = null;
+}
+$shgCo   = Settings::company();
+$shgAddr = (string) ($F['head']['address'] ?? $shgCo['address']);
+$shgPin  = preg_match('/\b(\d{6})\b/', $shgAddr, $shgM) === 1 ? $shgM[1] : '';
+$shgCity = (string) ($F['head']['city'] ?? '');
+$shgStreet = trim((string) preg_split('/,\s*' . preg_quote($shgCity !== '' ? $shgCity : '~~', '/') . '\b/u', $shgAddr)[0], " ,");
+$shgTel  = static fn(string $digits): string => $digits !== '' ? '+' . $digits : '';
+$shgOrg  = [
+    '@type'     => 'Organization',
+    '@id'       => $baseUrl . '/#org',
+    'name'      => (string) ($F['brand']['name'] ?? $shgCo['name']),
+    'legalName' => (string) ($F['brand']['legal'] ?? $shgCo['legal']),
+    'url'       => $baseUrl . '/',
+    'logo'      => $baseUrl . '/assets/img/logo-mark.png',
+    'email'     => (string) ($F['brand']['email'] ?? $shgCo['email']),
+    'telephone' => $shgTel((string) ($F['head']['tel'] ?? Settings::officeWhatsApp())),
+    'address'   => array_filter([
+        '@type'           => 'PostalAddress',
+        'streetAddress'   => $shgStreet !== '' ? $shgStreet : $shgAddr,
+        'addressLocality' => $shgCity,
+        'postalCode'      => $shgPin,
+        'addressRegion'   => stripos($shgAddr, 'Gujarat') !== false ? 'Gujarat' : '',
+        'addressCountry'  => 'IN',
+    ], static fn($v): bool => $v !== ''),
+];
+if (!empty($F['brand']['cin'])) {
+    $shgOrg['identifier'] = ['@type' => 'PropertyValue', 'propertyID' => 'CIN', 'value' => (string) $F['brand']['cin']];
+}
+if (!empty($F['ceo']['name'])) {
+    $shgOrg['founder'] = ['@type' => 'Person', 'name' => (string) $F['ceo']['name'], 'jobTitle' => (string) ($F['ceo']['title'] ?? '')];
+}
+$shgDepts = [];
+foreach ((array) ($F['offices'] ?? []) as $shgO) {
+    if (($shgO['kind'] ?? '') === 'head' || ($shgO['status'] ?? '') !== 'open') {
+        continue;
+    }
+    $shgDepts[] = array_filter([
+        '@type'     => 'Organization',
+        'name'      => (string) ($F['brand']['short'] ?? '') . ' — ' . (string) $shgO['city'] . ' office',
+        'telephone' => $shgTel((string) ($shgO['tel'] ?? '')),
+        'address'   => ['@type' => 'PostalAddress', 'addressLocality' => (string) $shgO['city'], 'addressCountry' => (string) $shgO['country']],
+    ], static fn($v): bool => $v !== '');
+}
+if ($shgDepts !== []) {
+    $shgOrg['department'] = $shgDepts;
+}
 $ld = [
     '@context' => 'https://schema.org',
     '@graph'   => [
-        [
-            '@type'     => 'Organization',
-            '@id'       => $baseUrl . '/#org',
-            'name'      => 'S Hari Global Pvt Ltd',
-            'url'       => $baseUrl . '/',
-            'logo'      => $baseUrl . '/assets/img/logo.png',
-            'email'     => 'shreehariglobalpvtltd@gmail.com',
-            'telephone' => '+919104801507',
-            'address'   => [
-                '@type'           => 'PostalAddress',
-                'streetAddress'   => 'Near Shilpa Garage, Silver Complex',
-                'addressLocality' => 'Mehsana',
-                'postalCode'      => '384002',
-                'addressRegion'   => 'Gujarat',
-                'addressCountry'  => 'IN',
-            ],
-        ],
+        $shgOrg,
         [
             '@type'      => 'BusOrCoach',
-            'name'       => 'S Hari Global — Gujarat ⇄ Rupaidiha (India–Nepal) Bus',
-            'provider'   => ['@type' => 'Organization', '@id' => $baseUrl . '/#org', 'name' => 'S Hari Global Pvt Ltd'],
+            'name'       => (string) ($F['brand']['short'] ?? $shgCo['name']) . ' — Gujarat ⇄ Rupaidiha (India–Nepal) Bus',
+            'provider'   => ['@type' => 'Organization', '@id' => $baseUrl . '/#org', 'name' => (string) ($F['brand']['name'] ?? $shgCo['name'])],
             'areaServed' => ['India', 'Nepal'],
-            'telephone'  => '+919104801507',
+            'telephone'  => $shgOrg['telephone'],
         ],
     ],
 ];
+/* The sharing-berth price range, from the board the checkout bills with. */
+if ($F !== null) {
+    $shgLo = min((float) $F['fares']['range']['go']['min'], (float) $F['fares']['range']['back']['min']);
+    $shgHi = max((float) $F['fares']['range']['go']['max'], (float) $F['fares']['range']['back']['max']);
+    $ld['@graph'][] = [
+        '@type'    => 'BusTrip',
+        'name'     => 'Gujarat ⇄ Rupaidiha (India–Nepal border) — AC sleeper',
+        'provider' => ['@id' => $baseUrl . '/#org'],
+        'offers'   => [
+            '@type'         => 'AggregateOffer',
+            'priceCurrency' => 'INR',
+            'lowPrice'      => (string) (int) round($shgLo),
+            'highPrice'     => (string) (int) round($shgHi),
+            'offerCount'    => (string) (count($F['fares']['go']) + count($F['fares']['back'])),
+            'url'           => $baseUrl . '/',
+        ],
+    ];
+}
 $ldJson = json_encode(
     $ld,
     JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
@@ -359,6 +450,8 @@ try { (function () { var l = null; try { l = localStorage.getItem('shg:lang'); }
 try { if (/[?&](gclid|gbraid|wbraid|gad_source|gad_campaignid|fbclid)=/.test(location.search)) document.documentElement.classList.add('shg-from-ad'); } catch (e) {}
 /* 8 Oct 2026: Admin -> Settings -> Website buttons. A switched-off button is hidden before first paint (depth.css html[data-off~=...]). */
 try { (function (s) { var off = [], m = { btn_wa_fab_on: 'wafab', btn_ai_fab_on: 'aifab', btn_sos_on: 'sos', btn_offer_ribbon_on: 'ribbon', btn_wa_book_on: 'wabook' }; for (var k in m) { if (s[k] === false || s[k] === 0 || s[k] === '0') off.push(m[k]); } if (off.length) document.documentElement.setAttribute('data-off', off.join(' ')); })((window.SHG_BOOT && window.SHG_BOOT.settings) || {}); } catch (e) {}
+/* 9 Oct 2026 (THEME): Admin -> Settings -> Website & app owner defaults for the colour palette (app_theme_palette, '' = S Hari brand), UI style (app_ui_style, pixel | classic) and motion (app_motion_on) - stamped before first paint, ONLY where this device saved nothing (the template's pre-paint script already stamped a saved choice; window.SHG_PAL_TC is its palette whitelist). */
+try { (function (s, d) { var P = window.SHG_PAL_TC || {}, has = function (k) { return Object.prototype.hasOwnProperty.call(P, k); }, g = function (k) { try { return (localStorage.getItem(k) || '').replace(/"/g, ''); } catch (e) { return ''; } }; var p = g('shg:palette'), u = g('shg:ui'), mo = g('shg:motion'), op = String(s.app_theme_palette || ''); if (p !== 'shg' && !has(p) && has(op)) { d.setAttribute('data-palette', op); var dk = d.getAttribute('data-theme') === 'dark', am = d.getAttribute('data-display') === 'amoled', m = document.querySelector('meta[name="theme-color"]'); if (m && !am) m.setAttribute('content', P[op][dk ? 1 : 0]); if (dk && !am) d.style.background = P[op][2]; } if (u !== 'pixel' && u !== 'classic') d.setAttribute('data-ui', String(s.app_ui_style || 'pixel') === 'classic' ? 'classic' : 'pixel'); if (mo !== 'full' && mo !== 'reduced' && (s.app_motion_on === false || s.app_motion_on === 0 || s.app_motion_on === '0')) d.setAttribute('data-motion', 'reduced'); })((window.SHG_BOOT && window.SHG_BOOT.settings) || {}, document.documentElement); } catch (e) {}
 (function () {
   var BOOT = window.SHG_BOOT || {};
   var API  = (BOOT.apiBase || '/api');
@@ -469,6 +562,50 @@ $html = @file_get_contents($templatePath);
 if ($html === false) {
     http_response_code(500);
     exit('Application template is missing.');
+}
+
+/* 9 Oct 2026 - SITE FACTS token pass: {{f:brand.name}}, {{f:head.phone}},
+   {{f:fares.go.min}} … in the template become the live values (HTML-escaped,
+   money as "₹2,200"); an unknown token renders empty, never literally. Runs
+   BEFORE the comment strip and every string splice below, so a token may sit
+   anywhere in the markup. Contract: includes/sitefacts.php tokens(). */
+try {
+    $html = SiteFacts::apply($html);
+} catch (Throwable $e) {
+    $html = (string) (preg_replace('/\{\{f:[A-Za-z0-9_.:\-]{1,80}\}\}/', '', $html) ?? $html);
+    Logger::error('SiteFacts token pass failed: ' . $e->getMessage());
+}
+
+/* The share / search descriptions from the same facts (9 Oct 2026): the
+   pickups the bus really serves and the fare FROM the board - the old copy
+   claimed "one fixed fare price" while pickups paid different fares, and
+   listed the pickups by hand. The <title> stays the template's. */
+if ($F !== null) {
+    $shgTowns = [];
+    foreach ((array) $F['fares']['go'] as $shgRow) {
+        $shgT = (string) (Boarding::stopDisplay((string) $shgRow['name'])['name'] ?? '');
+        if ($shgT !== '' && !in_array($shgT, $shgTowns, true)) {
+            $shgTowns[] = $shgT;
+        }
+    }
+    $shgList = $shgTowns !== [] ? implode(', ', array_slice($shgTowns, 0, 10)) : 'Gujarat';
+    $shgFrom = SiteFacts::money((float) $F['fares']['range']['go']['min']);   // the copy describes Gujarat -> Rupaidiha
+    $shgPriv = (float) $F['fares']['private']['single'] > 0 ? ' · private cabins from ' . SiteFacts::money((float) $F['fares']['private']['single']) : '';
+    $shgShare = 'Direct AC sleeper coach from Gujarat (India) to the Rupaidiha (India–Nepal) border. Boarding at ' . $shgList
+              . '. Sharing berth from ' . $shgFrom . ' per person' . $shgPriv . '. Book online, on WhatsApp or by phone.';
+    $shgDesc  = 'सूरत से नेपाल बस · सुरत देखि नेपाल बस — daily AC sleeper from ' . $shgList . ' to the Rupaidiha (Nepalgunj) border, from '
+              . $shgFrom . '. Book online, on WhatsApp or by phone. Registered Indian company, ' . ($shgCity !== '' ? $shgCity : 'Gujarat') . '.';
+    $shgMeta = static function (string $doc, string $attr, string $key, string $content): string {
+        return (string) (preg_replace_callback(
+            '~<meta\s+' . $attr . '="' . preg_quote($key, '~') . '"\s+content="[^"]*"\s*/?>~u',
+            static fn(): string => '<meta ' . $attr . '="' . $key . '" content="' . htmlspecialchars($content, ENT_QUOTES, 'UTF-8') . '">',
+            $doc,
+            1
+        ) ?? $doc);
+    };
+    $html = $shgMeta($html, 'property', 'og:description', $shgShare);
+    $html = $shgMeta($html, 'name', 'twitter:description', $shgShare);
+    $html = $shgMeta($html, 'name', 'description', $shgDesc);
 }
 
 /* Perf pass (11 Sep 2026): the template carries ~27 KB of HTML comments -

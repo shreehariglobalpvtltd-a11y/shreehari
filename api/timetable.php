@@ -32,8 +32,8 @@ try {
        api/search.php hides them from search results. */
     $routes = Database::fetchAll(
         'SELECT r.id, r.route_code, r.from_city, r.to_city,
-                COALESCE(s.dep_time_override, r.dep_time) AS dep_time,
-                r.arr_time, r.duration_text, r.day_offset, r.coach_type, r.base_fare
+                COALESCE(s.dep_time_override, r.dep_time) AS dep_time, r.dep_time AS route_dep,
+                r.arr_time, r.duration_text, r.day_offset, r.coach_type, r.base_fare, r.distance_km
            FROM routes r
            LEFT JOIN schedules s ON s.route_id = r.id AND s.travel_date = :d AND s.slot = 1
           WHERE r.is_active = 1
@@ -51,8 +51,8 @@ try {
         $ph = []; $pp = [];
         foreach ($routes as $i => $r) { $ph[] = ':r' . $i; $pp['r' . $i] = (int) $r['id']; }
         foreach (Database::fetchAll(
-            'SELECT route_id, stop_type, stop_name, landmark, stop_time, is_border, is_meal_halt, latitude, longitude, '
-              . (Boarding::hasStopControls() ? 'fare' : 'NULL AS fare') . '
+            'SELECT id, route_id, stop_type, stop_name, landmark, stop_time, is_border, is_meal_halt, latitude, longitude, '
+              . (Boarding::hasStopControls() ? 'fare' : 'NULL AS fare') . ', ' . Boarding::kmSql() . '
                FROM route_stops
               WHERE route_id IN (' . implode(',', $ph) . ')' . Boarding::activeSql() . '
               ORDER BY route_id, stop_type, sort_order, id',
@@ -62,6 +62,10 @@ try {
         }
     }
 
+    /* En-route halts (9 Oct 2026): one query for every route, [] before the
+       route-details migration. */
+    $haltsByRoute = Boarding::haltsForRoutes(array_map(static fn(array $r): int => (int) $r['id'], $routes));
+
     foreach ($routes as $route) {
         $routeId = (int) $route['id'];
 
@@ -69,6 +73,7 @@ try {
 
         $board = [];
         $drop  = [];
+        $lineIn = [];   // the same rows, for Boarding::journeyLine()
 
         foreach ($stops as $s) {
             $row = [
@@ -85,6 +90,9 @@ try {
                 // The pickup's own per-seat sharing fare set in Admin -> Routes
                 // (1 Oct 2026); null = the direction default.
                 'fare'     => $s['fare'] !== null && (float) $s['fare'] > 0 ? (float) $s['fare'] : null,
+                // Road km from the route's origin (9 Oct 2026, Admin -> Routes
+                // or "Measure road km"); null = not measured, never guessed.
+                'km'       => $s['km_from_origin'] !== null ? round((float) $s['km_from_origin'], 1) : null,
             ];
 
             if ($s['stop_type'] === 'boarding') {
@@ -95,7 +103,65 @@ try {
             } else {
                 $drop[] = $row;
             }
+            $lineIn[] = [
+                'id' => (int) $s['id'], 'type' => $s['stop_type'] === 'boarding' ? 'boarding' : 'drop',
+                'name' => (string) $s['stop_name'], 'landmark' => $row['landmark'], 'time' => $s['stop_time'],
+                'km' => $row['km'], 'isBorder' => $row['isBorder'], 'lat' => $row['lat'], 'lng' => $row['lng'],
+                'open' => $row['open'] ?? null,
+            ];
         }
+
+        /* The run in travel order — pickups, halts, border — with km and
+           times (9 Oct 2026): what the home route rail and the timetable
+           box draw. Stop times are the timetable clock (routes.dep_time),
+           halts are offsets from it. */
+        $halts   = $haltsByRoute[$routeId] ?? [];
+        $line    = Boarding::journeyLine($lineIn, $halts, (string) $route['route_dep']);
+        $summary = Boarding::journeySummary($line, ['dep_time' => $route['route_dep']] + $route);
+        $confirmed = (bool) $summary['durationConfirmed'];
+        $lastStop  = null;
+        foreach ($line as $li => $it) {
+            if ($it['kind'] === 'stop') { $lastStop = $li; }
+        }
+        // The arrival clock only once the office has confirmed it (duration_text set).
+        if ($confirmed && $lastStop !== null && $line[$lastStop]['role'] === 'drop' && $line[$lastStop]['time'] === '') {
+            $line[$lastStop]['time']    = substr((string) $route['arr_time'], 0, 5);
+            $line[$lastStop]['dayPlus'] = (int) $route['day_offset'];
+            $line[$lastStop]['offMin']  = $summary['durationMin'];
+        }
+        $lineOut = array_map(static fn(array $it): array => [
+            'kind'     => $it['kind'],
+            'role'     => $it['role'],
+            'name'     => $it['name'],
+            'code'     => $it['code'],
+            'landmark' => $it['landmark'],
+            'time'     => $it['time'],
+            'dayPlus'  => $it['dayPlus'],
+            'km'       => $it['km'],
+            'border'   => $it['border'],
+            'halt'     => $it['halt'],
+            'haltMin'  => $it['haltMin'],
+            'approx'   => $it['approx'],
+            'note'     => $it['note'],
+            'open'     => $it['open'],
+        ], $line);
+        $haltsOut = [];
+        foreach ($line as $it) {
+            if ($it['kind'] !== 'halt') { continue; }
+            $haltsOut[] = [
+                'name'     => $it['name'],
+                'kind'     => $it['halt'],
+                'time'     => $it['time'],
+                'timeText' => $it['time'],
+                'dayPlus'  => $it['dayPlus'],
+                'haltMin'  => $it['haltMin'],
+                'km'       => $it['km'],
+                'approx'   => $it['approx'],
+                'landmark' => $it['landmark'],
+                'note'     => $it['note'],
+            ];
+        }
+        $dm = $summary['durationMin'];
 
         $out[] = [
             'routeId'   => $routeId,
@@ -113,6 +179,22 @@ try {
             'sellable'  => Boarding::routeSellable($routeId, $date),
             'boarding'  => $board,
             'drop'      => $drop,
+            /* Route facts (9 Oct 2026) — additive; every key above is unchanged.
+               distanceKm: road km of the furthest stop, else routes.distance_km.
+               durationMin is the timetable's dep -> arr + day_offset, dropped
+               when implausible for the distance; durationApprox stays true
+               until the office confirms the arrival (duration_text), and the
+               arrival CLOCK (arrTime) stays hidden until then. */
+            'distanceKm'     => $summary['distanceKm'],
+            'distanceSource' => $summary['distanceSource'],
+            'spans'          => $summary['spans'],
+            'stopCount'      => $summary['stopCount'],
+            'haltCount'      => $summary['haltCount'],
+            'durationMin'    => $dm,
+            'durationText'   => $dm !== null ? intdiv($dm, 60) . 'h' . ($dm % 60 > 0 ? ' ' . sprintf('%02d', $dm % 60) . 'm' : '') : '',
+            'durationApprox' => !$confirmed,
+            'halts'          => $haltsOut,
+            'line'           => $lineOut,
         ];
     }
 

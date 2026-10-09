@@ -212,7 +212,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 
       .co-operator{display:flex;align-items:center;gap:11px;margin-top:14px;padding:11px 13px;
         background:var(--blue-50);border:1px solid var(--blue-100);border-radius:14px}
-      .co-op-logo{width:38px;height:38px;border-radius:9px;object-fit:contain;background:#fff;flex:none}
+      .co-op-logo{width:46px;height:38px;border-radius:0;object-fit:contain;background:none;flex:none}
       .co-op-txt{flex:1;min-width:0}
       .co-op-txt b{display:block;font-size:13.5px;font-family:var(--f-display);color:var(--ink)}
       .co-op-txt small{display:block;font-size:11.5px;color:var(--muted);margin-top:2px}
@@ -2763,7 +2763,7 @@ body.in-flow .credit-ribbon,body.in-flow #numStrip{display:none}
 .status-card.tk2{max-width:640px;border-radius:22px;box-shadow:var(--shadow-md);background:var(--card,#fff);border:1px solid var(--line)}
 .tk2-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px 12px;border-bottom:1px solid var(--line)}
 .tk2-brand{display:flex;align-items:center;gap:10px;min-width:0}
-.tk2-brand img{width:34px;height:34px;border-radius:9px;object-fit:contain;background:var(--blue-50);padding:3px;flex:0 0 auto}
+.tk2-brand img{width:44px;height:34px;border-radius:0;object-fit:contain;background:none;padding:0;flex:0 0 auto}
 .tk2-brand b{display:block;font-family:var(--f-display);font-size:14px;letter-spacing:.02em;color:var(--ink);line-height:1.15}
 .tk2-brand small{display:block;font-size:11px;color:var(--muted);letter-spacing:.04em;margin-top:2px}
 .tk2-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;font-size:12.5px;font-weight:800;letter-spacing:.02em;white-space:nowrap;flex:0 0 auto}
@@ -3232,7 +3232,7 @@ body.in-flow .credit-ribbon,body.in-flow #numStrip{display:none}
 @media (max-width:560px){
   .qt-banner{padding:16px 14px 12px}
   .qt-banner h3{font-size:16.5px;margin:8px 0 8px}
-  .qt-banner p,.qt-steps{display:none}
+  .qt-banner p{display:none}
   .qt-plan{padding:12px 12px 10px}
   .qt-plan-facts{grid-template-columns:repeat(2,minmax(0,1fr))}
   .qt-plan-row>span{flex:0 0 100%;margin-bottom:-2px}
@@ -3953,7 +3953,7 @@ body.wa-open{overflow:hidden}
 :root{--premium-navy:#102A56;--premium-blue:#0863B8;--premium-orange:#FF7A16;--premium-green:#087D54}
 .premium-ticket-head{background:linear-gradient(115deg,#102A56,#0863B8);color:#fff;min-height:126px;position:relative;overflow:hidden;gap:18px}
 .premium-ticket-head .tk2-brand{flex:1;min-width:0;align-items:center}
-.premium-ticket-head .tk2-brand img{width:76px;height:64px;object-fit:contain;background:white;padding:6px;border-radius:12px}
+.premium-ticket-head .tk2-brand img{width:88px;height:56px;object-fit:contain;background:none;padding:0;border-radius:0;filter:drop-shadow(0 0 1px rgba(255,255,255,.8)) drop-shadow(0 3px 8px rgba(0,0,0,.35))}
 .premium-ticket-head .tk2-brand b{color:white;font-size:17px;line-height:1.5}
 .premium-ticket-head .tk2-brand small{color:#e0efff;line-height:1.6}
 .premium-ticket-head em{display:block;font-style:normal;color:#ffd8b8;font-size:12px;margin-top:5px}

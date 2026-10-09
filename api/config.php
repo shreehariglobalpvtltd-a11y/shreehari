@@ -18,6 +18,14 @@ try {
     $public['appUrl']    = APP_URL;
     // The pickup list with per-pickup fares (Boarding::locations, 1 Oct 2026).
     $public['locations'] = Boarding::bootLocations();
+    // 9 Oct 2026: the site facts (company, CEO, offices, fare board) - the same
+    // object the page boot carries as SHG_BOOT.facts (includes/sitefacts.php).
+    try {
+        require_once INCLUDE_PATH . '/sitefacts.php';
+        $public['facts'] = SiteFacts::boot();
+    } catch (Throwable $e) {
+        $public['facts'] = null;
+    }
 
     // Signed-in identity, if any.
     $user = Auth::user();

@@ -330,6 +330,35 @@ final class EventBus
             Notify::codSettled($booking);
         });
 
+        /* ---------------- Office chat system lines (9 Oct 2026) ----------------
+           When a ticket that already has an office <-> agent conversation is
+           confirmed, rejected, cancelled or its cash collected, one grey line
+           lands in that conversation, so both sides read the outcome where
+           they asked. StaffMsg::system() never CREATES a thread, never pushes,
+           and is a no-op on a database without the chat tables. The line
+           states what happened - it decides nothing (refunds stay manual). */
+        $chatLine = static function (array $d, string $text): void {
+            $bid = (int) (($d['booking'] ?? [])['id'] ?? 0);
+            if ($bid <= 0) {
+                return;
+            }
+            require_once __DIR__ . '/staffmsg.php';
+            StaffMsg::system($bid, $text);
+        };
+        self::on('booking.approved', static function (array $d) use ($chatLine): void {
+            $chatLine($d, '✅ Payment verified — ticket confirmed · टिकट पक्का भयो');
+        });
+        self::on('booking.rejected', static function (array $d) use ($chatLine): void {
+            $why = trim((string) ($d['reason'] ?? ''));
+            $chatLine($d, '⛔ Payment not accepted by the office · भुक्तानी स्वीकार भएन' . ($why !== '' ? ' — ' . mb_substr($why, 0, 160) : ''));
+        });
+        self::on('booking.cancelled', static function (array $d) use ($chatLine): void {
+            $chatLine($d, '❌ Ticket cancelled · टिकट रद्द — any refund is settled by the office by hand');
+        });
+        self::on('booking.cod_settled', static function (array $d) use ($chatLine): void {
+            $chatLine($d, '💵 Cash collected (COD settled) · नगद बुझियो');
+        });
+
         // booking.boarded / booking.expired / trip.* are journalled by
         // emit() itself; no outbound messages beyond what TripNotify
         // already sends per passenger.

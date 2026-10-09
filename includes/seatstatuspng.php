@@ -40,7 +40,7 @@ final class SeatStatusPng
     private const CELL_GAP = 10;
     private const AISLE_W = 46;
     private const ROW_GAP = 12;
-    private const VERSION = 1;
+    private const VERSION = 2;   // 2 = emblem on a glow + India / Nepal flags (9 Oct 2026)
 
     public static function enabled(): bool
     {
@@ -211,19 +211,16 @@ final class SeatStatusPng
         /* header */
         imagefilledrectangle($im, 0, 0, $W, 170, $navy);
         imagefilledrectangle($im, 0, 170, $W, 176, $orange);
+        /* The emblem alone on a soft glow + both flags (9 Oct 2026). */
         $x = $M;
-        $logo = Ticket::logoFile();
-        if ($logo !== null) {
-            $li = @(str_ends_with(strtolower($logo), '.png') ? imagecreatefrompng($logo) : imagecreatefromjpeg($logo));
-            if ($li !== false) {
-                $lh = 92; $lw = (int) round(imagesx($li) * $lh / max(1, imagesy($li)));
-                imagecopyresampled($im, $li, $x, 30, 0, 0, $lw, $lh, imagesx($li), imagesy($li));
-                imagedestroy($li);
-                $x += $lw + 24;
-            }
+        $mk = DocArt::mark($im, $M - 4, 26, 190, 110, true);
+        if ($mk !== null) {
+            $x = $mk['x'] + $mk['w'] + 22;
         }
+        $flagsW = DocArt::flagPairWidth(26, 6);
+        DocArt::flagPair($im, $W - $M - $flagsW, 38, 26, 6, (string) ($sched['from_city'] ?? '') === 'Rupaidiha' ? 'NP' : 'IN');
         $company = ChallanPng::roman(Settings::getString('company_name', APP_NAME)) ?: 'S Hari Global Pvt Ltd';
-        self::text($im, 26, $x, 36, $white, self::fit(26, $company, $W - $x - $M), true);
+        self::text($im, 26, $x, 36, $white, self::fit(26, $company, $W - $x - $M - $flagsW - 16), true);
         self::text($im, 16, $x, 78, $c('#C7D6F0'), 'LIVE SEAT STATUS  ·  ' . date('d M Y, H:i'));
         $busName = trim((string) ($sched['bus_name'] ?? ''));
         $plate   = trim((string) ($sched['bus_number'] ?? ''));

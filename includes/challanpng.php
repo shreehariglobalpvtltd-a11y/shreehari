@@ -43,15 +43,18 @@
  */
 declare(strict_types=1);
 
+require_once __DIR__ . '/docart.php';   // emblem, flags, heritage strip (9 Oct 2026)
+
 final class ChallanPng
 {
     /** Print-quality width (the prompt asks for >= 1200 px). */
     public const WIDTH = 1600;
 
     /** Bump whenever the drawing changes so every cached challan re-renders once. */
-    public const LAYOUT_VERSION = 6;   // 6 = two-floor grid A1-F6 / A7-F12, floor bars blue (1F) / green (2F)   // 5 = berths print the LA1/UA1 row-letter grid id
+    public const LAYOUT_VERSION = 7;   // 7 = emblem on a glow (no full logo), India + Nepal flags, heritage strip under the footer (9 Oct 2026)   // 6 = two-floor grid A1-F6 / A7-F12, floor bars blue (1F) / green (2F)   // 5 = berths print the LA1/UA1 row-letter grid id
 
     private const MARGIN = 56;
+    private const ART_H  = 190;    // heritage strip under the footer: 170 art + 20 margin
     private const CELL_H = 118;
     private const ROW_GAP = 10;
     private const AISLE_W = 36;
@@ -343,6 +346,10 @@ final class ChallanPng
             $H += $deckBlockH($deck) + 18;
         }
         $H += 128 + 76;                           // totals + two-line footer
+        $artOn = DocArt::heritageOn();
+        if ($artOn) {
+            $H += self::ART_H;                    // heritage strip under the footer (9 Oct 2026)
+        }
 
         $im = imagecreatetruecolor($W, $H);
         imagealphablending($im, true);
@@ -360,19 +367,16 @@ final class ChallanPng
         /* ---- header band ---- */
         imagefilledrectangle($im, 0, 0, $W, 150, $navy);
         imagefilledrectangle($im, 0, 150, $W, 156, $orange);
+        /* The emblem alone on a soft glow (9 Oct 2026) — the old full logo sat
+           on the navy with its navy name text all but invisible. */
         $x = $M;
-        $logo = Ticket::logoFile();
-        if ($logo !== null) {
-            $li = @(str_ends_with(strtolower($logo), '.png') ? imagecreatefrompng($logo) : imagecreatefromjpeg($logo));
-            if ($li !== false) {
-                $lh = 84; $lw = (int) round(imagesx($li) * $lh / max(1, imagesy($li)));
-                imagecopyresampled($im, $li, $x, 33, 0, 0, $lw, $lh, imagesx($li), imagesy($li));
-                imagedestroy($li);
-                $x += $lw + 22;
-            }
+        $mk = DocArt::mark($im, $M - 4, 22, 196, 110, true);
+        if ($mk !== null) {
+            $x = $mk['x'] + $mk['w'] + 24;
         }
         $company = self::roman(Settings::getString('company_name', APP_NAME)) ?: 'S Hari Global Pvt Ltd';
         self::text($im, 34, $x, 34, $white, $company, true);
+        DocArt::flagPair($im, $x + self::width(34, $company) + 22, 40, 28, 8, (string) ($sched['from_city'] ?? '') === 'Rupaidiha' ? 'NP' : 'IN');
         self::text($im, 19, $x, 82, $c('#C7D6F0'), 'BUS CHALLAN  ·  Seat-wise passenger sheet  ·  ' . (string) ($sched['travel_date'] ?? ''));
         self::text($im, 15, $x, 112, $c('#9FB4D8'), 'Challan no. ' . self::challanNo($sched) . '   ·   SHG AI BRAIN');
         $busNo = self::roman((string) ($sched['bus_number'] ?? '')) ?: self::busLabel($sched);
@@ -482,6 +486,20 @@ final class ChallanPng
         self::text($im, 14, $M, $y + 16, $muted, $foot);
         $tag = 'Every berth drawn from the live booking register - the same inventory the seat map sells from.';
         self::text($im, 12, $M, $y + 40, $c('#8A94A6'), $tag);
+
+        /* Heritage strip — Sagarmatha, prayer flags, Gautam Buddha, the stupa
+           — with both flags and a Nepali caption (9 Oct 2026). */
+        if ($artOn) {
+            $sy = $y + 76;
+            $sb = $sy + self::ART_H - 20;
+            // the art at its own shape on the right, the caption + flags on the left
+            $aw = min($W - 2 * $M - 420, (int) round(($sb - $sy) * 4.0));
+            DocArt::band($im, $W - $M - $aw, $sy, $W - $M, $sb, 14, [255, 255, 255], 0.5, 0.75);
+            DocArt::flagPair($im, $M, $sy + 18, 34, 10, 'IN');
+            self::text($im, 18, $M, $sy + 66, $navy, 'सगरमाथा · Sagarmatha', true);
+            self::text($im, 16, $M, $sy + 96, $ink, 'लुम्बिनी — गौतम बुद्धको जन्मस्थल · Lumbini');
+            self::text($im, 14, $M, $sy + 126, $muted, 'भारत–नेपाल मैत्री यात्रा  ·  India – Nepal, one journey');
+        }
 
         /* ---- write atomically ---- */
         $tmp = $path . '.tmp';

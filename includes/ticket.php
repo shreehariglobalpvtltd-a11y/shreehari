@@ -17,6 +17,8 @@ if (!defined('SHG_APP')) {
     exit('Forbidden');
 }
 
+require_once __DIR__ . '/docart.php';   // emblem, flags, heritage band (9 Oct 2026)
+
 final class Ticket
 {
     private const NAVY   = [16, 42, 86];
@@ -630,6 +632,49 @@ final class Ticket
     }
 
     /**
+     * The 6-character SECURITY CODE printed beside the verify QR, on the PDF
+     * stub and in big letters on verify-ticket.php (9 Oct 2026, owner: "ticket
+     * fake badi hun layo, yeslai manage garnu"). The crew compares the paper
+     * (or the screenshot) with the live page: an edited picture keeps an old
+     * code, a made-up ticket has no matching one.
+     *
+     * Keyed (HMAC with APP_KEY over 'ticket-sec|PNR|qr_hash'), so it cannot be
+     * computed from what is printed; tied to qr_hash, so every reissue (a new
+     * date, seat or bus) mints a new code and a superseded copy reads as a
+     * mismatch. 30 bits in a 32-letter alphabet with no 0/O or 1/I, so it can
+     * be read out over the phone without a "zero or oh?".
+     */
+    public static function securityCode(string $pnr, string $qrHash): string
+    {
+        $alpha = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        $hex   = substr(Security::sign('ticket-sec|' . strtoupper(trim($pnr)) . '|' . trim($qrHash)), 0, 8);
+        $n     = (int) hexdec($hex);                // 32 bits
+        $out   = '';
+        for ($i = 0; $i < 6; $i++) {
+            $out .= $alpha[$n & 31];
+            $n >>= 5;
+        }
+        return $out;
+    }
+
+    /** securityCode() for a booking id, from its ticket row ('' when there is no ticket yet). */
+    public static function securityCodeFor(int $bookingId): string
+    {
+        try {
+            $row = Database::fetch('SELECT b.pnr, t.qr_hash FROM tickets t JOIN bookings b ON b.id = t.booking_id WHERE t.booking_id = :b ORDER BY t.id DESC LIMIT 1', ['b' => $bookingId]);
+        } catch (Throwable $e) {
+            $row = null;
+        }
+        return $row === null ? '' : self::securityCode((string) $row['pnr'], (string) ($row['qr_hash'] ?? ''));
+    }
+
+    /** Pretty form for print: "AB3 K7Q". */
+    public static function securityCodeGrouped(string $code): string
+    {
+        return strlen($code) === 6 ? substr($code, 0, 3) . ' ' . substr($code, 3) : $code;
+    }
+
+    /**
      * Who cut this ticket — ONE answer for every surface that prints it
      * (PNG, PDF, chalani, register), so the ticket a passenger holds and the
      * sheet the office keeps can never disagree about whose sale it was.
@@ -821,6 +866,147 @@ final class Ticket
         }
 
         return null;
+    }
+
+    /**
+     * A company's OWN uploaded logo (the Nepal company's nepal_logo), passed
+     * to DocArt::markFile() as the preferred mark — '' for the India company,
+     * whose documents now carry the transparent emblem (9 Oct 2026) rather
+     * than the full logo with the name baked into it.
+     */
+    private static function ownLogo(array $co): string
+    {
+        $own = trim((string) ($co['logo'] ?? ''));
+        return ($own !== '' && $own !== Settings::getString('company_logo', '')) ? $own : '';
+    }
+
+    /**
+     * Which flag leads on this ticket: the side the bus leaves from
+     * ('IN' for Gujarat → Rupaidiha, 'NP' for the return run).
+     */
+    private static function flagFirst(array $booking): string
+    {
+        if (!class_exists('Boarding')) {
+            require_once __DIR__ . '/boarding.php';
+        }
+        return Boarding::routeDirection(['from_city' => (string) ($booking['from_city'] ?? ''), 'to_city' => (string) ($booking['to_city'] ?? '')]) === 'toIndia' ? 'NP' : 'IN';
+    }
+
+    /**
+     * Diagonal microtext across the ticket body (9 Oct 2026, anti-fake):
+     * "PNR · NAME · TKT-…" repeated at a slant in faint navy, drawn BEFORE
+     * the tiles and QR codes so those paint over it — the QR quiet zones stay
+     * clean and every value stays readable, while a pasted-in name or PNR
+     * visibly breaks the pattern. Latin only (imagettftext at an angle; the
+     * shaped Devanagari path cannot rotate). Faint, but dark enough to come
+     * through WhatsApp's JPEG pass as a texture.
+     */
+    private static function gdWatermark($im, int $x1, int $y1, int $x2, int $y2, string $text): void
+    {
+        try {
+            $text = trim($text);
+            if ($text === '' || !function_exists('imagesetclip')) {
+                return;
+            }
+            $col   = imagecolorallocatealpha($im, 18, 38, 78, 119);
+            $font  = self::pngFont();
+            $angle = 22;
+            $unit  = $text . '     ·     ';
+            $box   = imagettfbbox(15, 0, $font, $unit);
+            $uw    = $box === false ? 400 : max(120, (int) abs($box[2] - $box[0]));
+            $line  = str_repeat($unit, (int) ceil(2600 / $uw) + 1);
+            $rise  = (int) ceil(($x2 - $x1 + 200) * tan(deg2rad($angle)));
+            imagesetclip($im, $x1, $y1, $x2, $y2);
+            imagealphablending($im, true);
+            $row = 0;
+            for ($y = $y1 + 30; $y <= $y2 + $rise; $y += 74) {
+                $shift = ($row++ % 2) * (int) round($uw / 2);
+                imagettftext($im, 15, $angle, $x1 - 120 - $shift, $y, $col, $font, $line);
+            }
+        } catch (Throwable $e) {
+        } finally {
+            if (function_exists('imagesetclip')) {
+                @imagesetclip($im, 0, 0, imagesx($im) - 1, imagesy($im) - 1);
+            }
+        }
+    }
+
+    /**
+     * The SECURITY CODE tile next to the verify QR: Nepali label, Roman code,
+     * a gold edge and guilloche-style hairlines behind the letters.
+     */
+    private static function gdSecurityTile($im, int $x1, int $y1, int $x2, int $y2, string $code): void
+    {
+        if ($code === '') {
+            return;
+        }
+        $navy  = imagecolorallocate($im, 18, 38, 78);
+        $gold  = imagecolorallocate($im, 214, 168, 52);
+        $mut   = imagecolorallocate($im, 84, 96, 118);
+        $bg    = imagecolorallocate($im, 252, 247, 232);
+        $wave  = imagecolorallocate($im, 238, 226, 194);
+        self::gdRounded($im, $x1, $y1, $x2, $y2, 14, $bg);
+        // guilloche: three sine hairlines across the tile — hard to retouch, cheap to draw
+        for ($k = 0; $k < 3; $k++) {
+            $py = null;
+            for ($x = $x1 + 16; $x <= $x2 - 16; $x += 3) {
+                $y = (int) round(($y1 + $y2) / 2 + 6 + $k * 7 + sin(($x - $x1) / (17 + 5 * $k)) * (9 - $k * 2));
+                if ($py !== null) {
+                    imageline($im, $x - 3, $py, $x, $y, $wave);
+                }
+                $py = $y;
+            }
+        }
+        imagefilledrectangle($im, $x1, $y1 + 12, $x1 + 6, $y2 - 12, $gold);
+        $h = $y2 - $y1;
+        $lab = 'सुरक्षा कोड  ·  SECURITY CODE';
+        $labSz = $h >= 76 ? 14 : 13;
+        self::gdText($im, $labSz, $x1 + 22, $y1 + ($h >= 76 ? 26 : 22), $mut, $lab, false);
+        $sz = $h >= 76 ? 32 : 27;
+        $cx = $x1 + 22;
+        $base = $y2 - ($h >= 76 ? 14 : 11);
+        foreach (str_split(self::securityCodeGrouped($code)) as $ch) {
+            if ($ch === ' ') { $cx += (int) round($sz * 0.55); continue; }
+            self::gdText($im, $sz, $cx, $base, $navy, $ch, true);
+            $cx += self::gdWidth($sz, $ch) + (int) round($sz * 0.22);
+        }
+    }
+
+    /**
+     * The heritage band at the foot of the PNG ticket (9 Oct 2026, owner:
+     * "ticket dekhi chalani ma ni Nepali chiz haru: Sagarmatha ko photo,
+     * Gautam Buddha, Nepal flag"): the art (Sagarmatha, prayer flags, the
+     * seated Buddha, a stupa with Buddha eyes) over a navy caption strip —
+     * Nepali words, Roman proper nouns — and both flags. Appended BELOW
+     * everything else by growing the canvas, so no tile, QR or line above it
+     * moves. Returns nothing; never throws.
+     */
+    private static function gdHeritage($im, int $W, int $y0, string $first, array $cream): void
+    {
+        try {
+            $x1 = 36; $x2 = $W - 36;
+            $artB = $y0 + self::PNG_ART_IMG_H;
+            DocArt::band($im, $x1, $y0, $x2, $artB, 0, null, 0.5, 0.85);
+            // caption strip
+            $capB = $artB + 74;
+            self::gdRoundedGrad($im, $x1, $artB, $x2, $capB, 0, [14, 32, 68], [30, 58, 108]);
+            imagefilledrectangle($im, $x1, $artB, $x2, $artB + 3, imagecolorallocate($im, 232, 193, 90));
+            DocArt::roundCorners($im, $x1, $y0, $x2, $capB, 24, imagecolorallocate($im, $cream[0], $cream[1], $cream[2]));
+            $flagsW = DocArt::flagPairWidth(38, 10);
+            DocArt::flagPair($im, $x2 - 28 - $flagsW, $artB + 20, 38, 10, $first);
+            $maxW = $x2 - 28 - $flagsW - 24 - ($x1 + 28);
+            $l1 = 'सगरमाथा · Sagarmatha   ·   लुम्बिनी — गौतम बुद्धको जन्मस्थल · Lumbini';
+            $sz = 20;
+            foreach ([20, 18, 17, 16] as $try) { $sz = $try; if (self::gdWidth($try, $l1) <= $maxW) { break; } }
+            if (self::gdWidth($sz, $l1) > $maxW) {
+                $l1 = 'सगरमाथा · Sagarmatha   ·   लुम्बिनी · Lumbini';
+            }
+            self::gdText($im, $sz, $x1 + 28, $artB + 36, imagecolorallocate($im, 232, 193, 90), $l1, true);
+            $l2 = 'भारत–नेपाल मैत्री यात्रा  ·  India – Nepal, one journey';
+            self::gdText($im, 15, $x1 + 28, $artB + 62, imagecolorallocate($im, 190, 204, 228), $l2, false);
+        } catch (Throwable $e) {
+            Logger::error('Ticket heritage band: ' . $e->getMessage());
+        }
     }
 
     /* =================================================================
@@ -1328,6 +1514,14 @@ final class Ticket
         $qrExt = $payUpi !== '' ? 350 : 270;
 
         $W = 1080; $H = 1648 + $grow + $qrExt;   // +28 (4 Oct 2026): the address line under the company name in the footer
+        /* The heritage band (9 Oct 2026) is APPENDED under the footer: the
+           canvas grows by PNG_ART_H and nothing above moves, so every tile,
+           QR box and line keeps the coordinates the tests probe. */
+        $artY = $H;
+        $artOn = DocArt::heritageOn();
+        if ($artOn) {
+            $H += self::PNG_ART_H;
+        }
         $im = imagecreatetruecolor($W, $H);
 
         $navy   = imagecolorallocate($im, 18, 38, 78);
@@ -1361,16 +1555,19 @@ final class Ticket
         $co     = self::companyOf($booking);   // the ISSUING company - India or Nepal (4 Oct 2026)
         $chipX1 = $W - 60 - 268;
 
-        $logo = self::logoFile((string) $co['logo']);
+        /* A quiet Himalayan ridge along the foot of the band (9 Oct 2026) —
+           a shade lighter than the gradient, drawn before the emblem, the
+           text and the chips so all of them sit on top of it. */
+        DocArt::peaks($im, 36, 150, $W - 36, 250, [38, 66, 116], [46, 78, 132], [70, 100, 152]);
+
+        /* The EMBLEM alone (9 Oct 2026, owner: "logo haru ma name ni join xa,
+           background hataidinu, only logo matra rakhdeu"): no white chip, no
+           baked name — the company name is the live text beside it. Aspect
+           kept (the mark is ~1.93:1) on a soft glow baked into the band, so
+           the navy globe still reads on navy. A company's own uploaded logo
+           (the Nepal company's) still wins. */
         $bx = 60;
-        if ($logo !== null) {
-            self::gdRounded($im, 60, 66, 220, 224, 16, $white);
-            $lg = @imagecreatefromstring((string) file_get_contents($logo));
-            if ($lg !== false) {
-                if (!imageistruecolor($lg)) { imagepalettetotruecolor($lg); }
-                imagecopyresampled($im, $lg, 72, 84, 0, 0, 136, 100, imagesx($lg), imagesy($lg));
-                imagedestroy($lg);
-            }
+        if (DocArt::mark($im, 50, 68, 182, 152, true, self::ownLogo($co)) !== null) {
             $bx = 248;
         }
         $clampTo = static function (float $size, string $text, int $maxW): string {
@@ -1399,8 +1596,12 @@ final class Ticket
         }
         $toIndia  = Boarding::routeDirection(['from_city' => (string) ($booking['from_city'] ?? ''), 'to_city' => (string) ($booking['to_city'] ?? '')]) === 'toIndia';
         $corridor = $toIndia ? 'Nepal -> India  ·  Rupaidiha -> Gujarat' : 'India -> Nepal  ·  Gujarat -> Rupaidiha';
-        self::gdText($im, 19, $bx, 162, $gold,
-            $clampTo(19, $toIndia ? 'E-TICKET  ·  NEPAL -> INDIA' : 'E-TICKET  ·  INDIA -> NEPAL', $chipX1 - 24 - $bx), false);
+        /* Label in Nepali, the countries Roman (house ticket rule), then the
+           two flags — the side the bus leaves from first (9 Oct 2026). */
+        $flagsW = DocArt::flagPairWidth(22, 8);
+        $eLine  = $clampTo(19, $toIndia ? 'ई-टिकट  ·  NEPAL -> INDIA' : 'ई-टिकट  ·  INDIA -> NEPAL', $chipX1 - 24 - $bx - $flagsW - 18);
+        self::gdText($im, 19, $bx, 162, $gold, $eLine, false);
+        DocArt::flagPair($im, $bx + self::gdWidth(19, $eLine) + 18, 143, 22, 8, $toIndia ? 'NP' : 'IN');
         /* The desk this ticket was cut at, directly under the company name.
            A Nepalgunj walk-in should be able to see which window sold it
            without reading the small print. No desk (an online sale, or a
@@ -1508,9 +1709,15 @@ final class Ticket
         self::gdRounded($im, 36, 262, $W - 36, 1544 + $grow + $qrExt, 24, $white);
         imagefilledrectangle($im, 36, 262, $W - 36, 300, $white);        // square the join
 
-        /* PNR hero */
+        /* Anti-fake microtext across the card body (9 Oct 2026) — before
+           anything else lands on the card, so tiles and QRs paint over it. */
         $pnr = (string) $booking['pnr'];
-        self::gdText($im, 18, (int) (($W - self::gdWidth(18, 'TICKET / PNR')) / 2), 340, $mut, 'TICKET / PNR', false);
+        $wmName = strtoupper((string) (preg_split('/\s+/', self::latin((string) ($paxes[0]['full_name'] ?? ''))) ?: [''])[0]);
+        self::gdWatermark($im, 40, 268, $W - 40, 1540 + $grow + $qrExt,
+            implode('  ·  ', array_filter([$pnr, $wmName, (string) ($ticket['ticket_number'] ?? ''), self::latinUpper((string) $co['name'])], static fn(string $s): bool => $s !== '')));
+
+        /* PNR hero */
+        self::gdText($im, 18, (int) (($W - self::gdWidth(18, 'टिकट / PNR')) / 2), 340, $mut, 'टिकट / PNR', false);
         $pnrW = self::gdWidth(44, $pnr) + 8;
         self::gdText($im, 44, (int) (($W - $pnrW) / 2), 408, $navy, $pnr, true);
         imagefilledrectangle($im, (int) (($W - 160) / 2), 428, (int) (($W + 160) / 2), 434, $orange);
@@ -1740,9 +1947,20 @@ final class Ticket
                 imagedestroy($qr);
             } finally { @unlink($tmp); }
         };
-        self::gdText($im, 20, 76, 1300 + $grow, $navy, 'TICKET VERIFICATION', true);
+        self::gdText($im, 20, 76, 1300 + $grow, $navy, 'टिकट जाँच  ·  VERIFY', true);
         try { $drawQr($qrData, 76, 1320 + $grow, 245); }
         catch (Throwable $e) { Logger::error('Ticket verification QR: ' . $e->getMessage()); }
+        /* SECURITY CODE (9 Oct 2026, anti-fake) — keyed to this revision of
+           the ticket; verify-ticket.php shows the same letters. Beside the QR
+           in the info column, or under the two QRs when the pay card takes
+           the right half. */
+        $secCode = self::securityCode($pnr, (string) ($ticket['qr_hash'] ?? ''));
+        if ($payUpi !== '') {
+            self::gdSecurityTile($im, 60, 1566 + $grow, 540, 1628 + $grow, $secCode);
+        } else {
+            $secR = ($payUpi === '' && $geo !== null && Settings::getBool('ticket_maps_qr', true)) ? 768 : 1000;
+            self::gdSecurityTile($im, 380, 1470 + $grow, min($secR, 380 + 400), 1550 + $grow, $secCode);
+        }
         // 380, not 360 (8 Oct 2026): "PAID" ran straight on from "TICKET VERIFICATION".
         $infoX = $payUpi !== '' ? 560 : 380;
         /* Pickup map QR (8 Oct 2026, master prompt 2.0 · Settings -> ticket_maps_qr):
@@ -1840,6 +2058,12 @@ final class Ticket
         if ($n3 !== '') {
             $n3 = $clampTo(14, $n3, $W - 140);
             self::gdText($im, 14, (int) (($W - self::gdWidth(14, $n3)) / 2), 1632 + $grow + $qrExt, $mut, $n3, false);
+        }
+
+        /* Heritage band — Sagarmatha, prayer flags, Gautam Buddha, the stupa,
+           both flags — in the strip the canvas grew by (9 Oct 2026). */
+        if ($artOn) {
+            self::gdHeritage($im, $W, $artY + 6, $toIndia ? 'NP' : 'IN', [240, 247, 255]);
         }
 
         /* CORRECTED / DUPLICATE band in the 36px margin above the header. */
@@ -2032,6 +2256,10 @@ final class Ticket
      */
     private const PNG_MAX_PAX_ROWS = 12;
 
+    /** Heritage band under the PNG footer: 6 gap + art + 74 caption + 28 margin. */
+    private const PNG_ART_IMG_H = 228;
+    private const PNG_ART_H     = 6 + self::PNG_ART_IMG_H + 74 + 28;
+
     /* Warm brown palette — premium boarding pass look. */
     private const BROWN  = [16, 42, 86];
     private const CREAM  = [240, 247, 255];
@@ -2179,13 +2407,17 @@ final class Ticket
         // Company logo on a white chip (5 Sep 2026) — the brand mark the
         // owner asked for. Text shifts right only when the logo is there,
         // so a missing file degrades to the old text-only band.
+        /* 9 Oct 2026: the transparent EMBLEM, aspect-correct (the old box
+           assumed a 440x321 logo and stretched anything else), no white rect,
+           on a baked soft glow so the navy globe reads on the navy band. The
+           company name stays live text beside it. */
         $textX = 40;
-        $logo  = self::logoFile((string) $coId['logo']);
-        if ($logo !== null) {
-            $pdf->rect(36, 14, 84, 66, [255, 255, 255], true);
-            $pdf->image($logo, 41, 20, 74, 54);   // 440x321 source — keep the aspect
-            $textX = 134;
+        $mk = DocArt::pdfMark($pdf, 32, 18, 96, 60, self::ownLogo($coId), 'left', true);
+        if ($mk !== null) {
+            $textX = (int) ceil($mk['x'] + $mk['w'] + 14);
         }
+        // both flags, top right of the band — the side the bus leaves from first
+        DocArt::pdfFlags($pdf, $W - 40 - DocArt::pdfFlagsWidth(14, 4), 16, 14, 4, self::flagFirst($booking));
         /* The name stops short of the title block at W-220 (4 Oct 2026): a
            longer company name - the Nepal company's - ran under it. Helvetica
            Bold capitals average ~0.68 em, so the size steps down to fit. */
@@ -2374,6 +2606,13 @@ final class Ticket
         $pdf->textCenter($sx, $sx + $sw, $stubY + 16, $fromCode . ' > ' . $toCode . '  ·  ' . formatDate($booking['travel_date'], 'j M'), 8, 'F1', self::INK);
         $pdf->textCenter($sx, $sx + $sw, $stubY + 30, ($paxCount > 1 ? 'Seats ' : 'Seat ') . ($seatList !== '' ? $seatList : '—'), 8, 'F2', self::INK);
         self::devCenter($pdf, $sx, $sx + $sw, $stubY + 46, 'बोर्डिङमा स्क्यान गर्नुहोस्', 6.5, $F7, self::MUTE);
+        /* SECURITY CODE on the stub (9 Oct 2026, anti-fake) — the same letters
+           the PNG prints and verify-ticket.php shows for this revision. */
+        $secCode = self::securityCode((string) $booking['pnr'], (string) ($ticket['qr_hash'] ?? ''));
+        $pdf->roundedRect($sx + 4, $stubY + 58, $sw - 8, 40, 5, [252, 247, 232], true);
+        $pdf->rect($sx + 4, $stubY + 62, 2.5, 32, [214, 168, 52], true);
+        self::devCenter($pdf, $sx, $sx + $sw, $stubY + 62, 'सुरक्षा कोड · SECURITY CODE', 6, $F7, self::MUTE);
+        $pdf->textCenter($sx, $sx + $sw, $stubY + 74, implode(' ', str_split(self::securityCodeGrouped($secCode))), 13, 'F2', self::BROWN);
 
         /* ==============================================================
            PASSENGER TABLE
@@ -2477,12 +2716,14 @@ final class Ticket
         $pdf->roundedRect($W - 220, $boardY, 180, 70, 8, self::BROWN, true);
         self::devText($pdf, $W - 205, $boardY + 10, $paid ? 'जम्मा रकम' : 'बाँकी रकम', 9, $F7, self::GOLD);
         $fareTx = $money((float) $booking['total_amount']);
-        $fareSz = 22.0;
+        /* 20pt from +23 (9 Oct 2026): at 22pt from +28 the amount ran down
+           into the Base / Disc line under it on every discounted ticket. */
+        $fareSz = 20.0;
         while ($fareSz > 12 && $pdf->textWidth($fareTx, $fareSz, 'F2') > 165) { $fareSz -= 1; }
-        $pdf->text($W - 205, $boardY + 28, $fareTx, $fareSz, 'F2', [255, 255, 255]);
+        $pdf->text($W - 205, $boardY + 23, $fareTx, $fareSz, 'F2', [255, 255, 255]);
         // Base → Discount breakdown (Task 9) when a counter discount was applied.
         if ((float) ($booking['coupon_discount'] ?? 0) > 0) {
-            $pdf->text($W - 205, $boardY + 42, 'Base ' . $money((float) $booking['base_total']) . '  -  Disc ' . $money((float) $booking['coupon_discount']), 8, 'F1', [220, 210, 195]);
+            $pdf->text($W - 205, $boardY + 45, 'Base ' . $money((float) $booking['base_total']) . '  -  Disc ' . $money((float) $booking['coupon_discount']), 7.5, 'F1', [220, 210, 195]);
         }
         // Fare by passenger count (4 Sep 2026): "3 x Rs 2,000" for a party,
         // so the family sees how the total was built; a solo ticket keeps
@@ -2491,7 +2732,7 @@ final class Ticket
         $paxLine = (count($seats) > 1 && $fps > 0)
             ? count($seats) . ' x ' . $money($fps) . ' · ' . self::latinUpper((string) $booking['status'])
             : count($seats) . ' seat(s) · ' . self::latinUpper((string) $booking['status']);
-        $pdf->text($W - 205, $boardY + 56, $paxLine, 8, 'F1', [200, 190, 170]);
+        $pdf->text($W - 205, $boardY + 56, $paxLine, 7.5, 'F1', [200, 190, 170]);
 
         /* Departure pill — STATIC (8 Oct 2026, D6-M2). The PDF is cached until
            the layout stamp moves, so a relative "UPCOMING IN 11D 23H" froze
@@ -2643,6 +2884,19 @@ final class Ticket
         // office numbers were removed here: both already print above.
         $pdf->text($noteX, $footY + 74, 'Help: ' . self::latin((string) (($coId['desk']['phone'] ?? '') !== '' ? $coId['desk']['phone'] : $coId['phone'])) . '  ·  ' . self::latin((string) $coId['web']), 7.5, 'F1', self::MUTE);
 
+        /* Heritage card (9 Oct 2026, owner: Sagarmatha, Gautam Buddha, the
+           Nepal flag on the ticket) — the free right half of the footer, so it
+           fits on every ticket whatever the passenger count above. */
+        if (DocArt::heritageOn()) {
+            $hw = 200.0; $hx = $W - 40 - $hw; $hy = $footY + 8;
+            if (DocArt::pdfBand($pdf, $hx, $hy, $hw, 56, 0.5, 0.8)) {
+                $pdf->rect($hx, $hy, $hw, 56, self::LINE, false);
+                DocArt::pdfFlags($pdf, $hx + $hw - 4 - DocArt::pdfFlagsWidth(11, 3), $hy + 4, 11, 3, self::flagFirst($booking));
+                self::devCenter($pdf, $hx, $hx + $hw, $hy + 60, 'सगरमाथा · Sagarmatha  ·  लुम्बिनी · Lumbini', 7, $F7, self::BROWN);
+                self::devCenter($pdf, $hx, $hx + $hw, $hy + 70, 'गौतम बुद्धको जन्मस्थल  ·  भारत–नेपाल मैत्री यात्रा', 6.3, $F7, self::MUTE);
+            }
+        }
+
         // Thank you footer
         self::devCenter($pdf, 40, $W - 40, $pdf->height() - 18, 'धन्यवाद · शुभ यात्रा · Thank you · ' . $company, 9, $F7, self::ORANGE);
 
@@ -2662,13 +2916,13 @@ final class Ticket
 
         $pdf->rect(0, 0, $W, 70, self::NAVY, true);
         $invTextX = 40;
-        $invLogo  = self::logoFile((string) $coId['logo']);
-        if ($invLogo !== null) {
-            $pdf->rect(36, 10, 70, 50, [255, 255, 255], true);
-            $pdf->image($invLogo, 40, 14, 62, 45);   // 440x321 source — keep the aspect
-            $invTextX = 118;
+        // 9 Oct 2026: the emblem, aspect-correct, no white rect (see renderTicketPdf).
+        $invMk = DocArt::pdfMark($pdf, 34, 10, 90, 50, self::ownLogo($coId), 'left', true);
+        if ($invMk !== null) {
+            $invTextX = (int) ceil($invMk['x'] + $invMk['w'] + 12);
         }
         $pdf->text($invTextX, 20, strtoupper($company), 16, 'F2', [255, 255, 255]);
+        DocArt::pdfFlags($pdf, $invTextX, 44, 11, 3, self::flagFirst($booking));
         // "TAX INVOICE" is a claim: only a company with a GSTIN on file may make it.
         $pdf->textRight($W - 40, 22, $gstin !== '' ? 'TAX INVOICE' : 'INVOICE', 16, 'F2', self::GOLD);
 

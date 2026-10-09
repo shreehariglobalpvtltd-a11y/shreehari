@@ -335,6 +335,12 @@ function createLocationSearchInput(inputEl, options){
 }
 /* === /MAP PRO UPGRADE (geocoder + search component) === */
 
+/* FACTS-FALLBACK:START (9 Oct 2026) — the ONLY packaged copy of the company's
+   identity in the client. The live values ride the page boot (SHG_BOOT.facts,
+   built by includes/sitefacts.php from Admin) and overwrite these right after
+   CONFIG below; these literals are what an offline / boot-less page shows.
+   tests/site-facts-test.php ratchets every other literal phone / price / name
+   out of the bundle — add new ones HERE or, better, read fact(). */
 const CONFIG = {
   company: {
     name: 'S Hari Global Pvt Ltd',
@@ -368,6 +374,7 @@ const CONFIG = {
   email: 'shreehariglobalpvtltd@gmail.com',
   adminWhatsApp: '918735881507',
   adminEmail: 'booking@shariglobal.com',
+  /* FACTS-FALLBACK:END */
   verifyTimeText: 'within 30 minutes (9 AM–9 PM IST)',   // same promise as the FAQ and the pay screen (Oct 2026)
   allowScreenshotUpload: true,
   maxUploadSizeMB: 10,
@@ -484,6 +491,126 @@ const CONFIG = {
     }
   }
 };
+
+/* ================================================================
+   SITE FACTS (9 Oct 2026, owner: "price haru name haru update hun sath
+   update hune system").
+   window.FACTS = SHG_BOOT.facts — the company, CEO, offices, phones and the
+   FARE BOARD (every row priced by the same call the checkout bills with),
+   built per request by includes/sitefacts.php. Admin changes a fare, a phone
+   or a name and the whole page follows on its next load.
+     fact('ceo.name', dflt)      read one fact (dotted path)
+     hydrateFacts(root)          fill [data-fact] text, [data-fact-tel] tel:,
+                                 [data-fact-wa] wa.me, [data-fact-money] ₹ —
+                                 runs on boot and after every applyLang()
+     fareRangeJS('go'|'back')    {min,max} — THE client fare range helper
+     fareRangeText(dir)          "₹2,000–₹2,200"
+     factVars()                  {npr, goMin, …} for tf() strings
+   Never put a data-fact inside a [data-i18n] element: i18n rewrites it.
+================================================================ */
+var FACTS = (window.SHG_BOOT && window.SHG_BOOT.facts && typeof window.SHG_BOOT.facts === 'object') ? window.SHG_BOOT.facts : null;
+window.FACTS = FACTS;
+function fact(path, dflt) {
+  var cur = window.FACTS;
+  var parts = String(path || '').split('.');
+  for (var i = 0; i < parts.length; i++) {
+    if (cur == null || typeof cur !== 'object' || !(parts[i] in cur)) return dflt;
+    cur = cur[parts[i]];
+  }
+  return (cur === undefined || cur === null || cur === '') ? dflt : cur;
+}
+/* "₹2,200" — own copy: inr() is declared further down this file. */
+function factMoney(n) { var v = Math.round(Number(n) || 0); return '₹' + v.toLocaleString('en-IN'); }
+/* The live identity replaces the packaged fallback block above, so every
+   CONFIG.company / CONFIG.phone reader (tickets, splash, map marker, AI
+   panel, WhatsApp buttons) shows what Admin says. */
+(function adoptFacts() {
+  if (!FACTS) return;
+  try {
+    var c = CONFIG.company;
+    c.name    = fact('brand.name', c.name);
+    c.tagline = fact('brand.tagline', c.tagline);
+    c.address = fact('head.address', c.address);
+    c.cin     = fact('brand.cin', c.cin);
+    c.gstin   = fact('brand.gstin', c.gstin);
+    c.ceo     = fact('ceo.name', c.ceo);
+    CONFIG.phone = fact('head.phone', CONFIG.phone);
+    CONFIG.email = fact('brand.email', CONFIG.email);
+    CONFIG.adminWhatsApp = String(fact('support.whatsapp', CONFIG.adminWhatsApp)).replace(/\D/g, '') || CONFIG.adminWhatsApp;
+    var n = Number(fact('npr', 0));
+    if (n > 0) CONFIG.nprPerInr = n;
+  } catch (e) { /* keep the fallback block */ }
+})();
+/* {min,max} per-person sharing fare for a direction ('go'/'toNepal' or
+   'back'/'toIndia'): the server board when shipped, else the boot pickup
+   list (null fare = the direction default), else the direction default. */
+function fareRangeJS(dir) {
+  var side = (dir === 'back' || dir === 'toIndia') ? 'back' : 'go';
+  var r = fact('fares.range.' + side, null);
+  if (r && Number(r.min) > 0) return { min: Math.round(Number(r.min)), max: Math.round(Number(r.max) || Number(r.min)) };
+  var d = (typeof sharingDir === 'function') ? sharingDir() : { toNepal: 0, toIndia: 0 };
+  var def = side === 'back' ? Number(d.toIndia) || 0 : Number(d.toNepal) || 0;
+  var list = [];
+  try { list = ((window.SHG_BOOT && window.SHG_BOOT.locations) || {})[side] || []; } catch (e) { list = []; }
+  var fares = list.map(function (s) { var f = Number(s && s.fare); return f > 0 ? Math.round(f) : def; }).filter(function (f) { return f > 0; });
+  if (!fares.length) return { min: def, max: def };
+  return { min: Math.min.apply(null, fares), max: Math.max.apply(null, fares) };
+}
+function fareRangeText(dir) {
+  var r = fareRangeJS(dir);
+  return r.min === r.max ? factMoney(r.min) : factMoney(r.min) + '–' + factMoney(r.max);
+}
+/* The values i18n strings may carry as {placeholders} (tf(key, factVars())). */
+function factVars() {
+  var go = fareRangeJS('go'), back = fareRangeJS('back');
+  var priv = (CONFIG.cabinPricing && CONFIG.cabinPricing.private) || {};
+  return {
+    npr: Number(fact('npr', CONFIG.nprPerInr) || 0).toFixed(2),
+    goMin: factMoney(go.min), goMax: factMoney(go.max), goRange: fareRangeText('go'),
+    backMin: factMoney(back.min), backMax: factMoney(back.max), backRange: fareRangeText('back'),
+    privSingle: factMoney(fact('fares.private.single', priv.single_1pax ? priv.single_1pax.offline : 0)),
+    privDouble: factMoney(fact('fares.private.double', priv.double_2pax ? priv.double_2pax.offline : 0)),
+    agentDirect: factMoney(fact('agent.direct', 0)), agentJoint: factMoney(fact('agent.joint', 0)),
+    company: String(fact('brand.name', CONFIG.company.name)), ceo: String(fact('ceo.name', CONFIG.company.ceo)),
+    headPhone: String(fact('head.phone', CONFIG.phone))
+  };
+}
+function hydrateFacts(root) {
+  var r = root || document;
+  if (!r || typeof r.querySelectorAll !== 'function') return;
+  var digitsOf = function (v) { return String(v == null ? '' : v).replace(/\D/g, ''); };
+  try {
+    r.querySelectorAll('[data-fact]').forEach(function (el) {
+      var v = fact(el.getAttribute('data-fact'), null);
+      if (v !== null && typeof v !== 'object') el.textContent = String(v);
+    });
+    r.querySelectorAll('[data-fact-money]').forEach(function (el) {
+      var v = Number(fact(el.getAttribute('data-fact-money'), 0));
+      if (v > 0) el.textContent = factMoney(v);
+    });
+    r.querySelectorAll('[data-fact-tel]').forEach(function (el) {
+      var d = digitsOf(fact(el.getAttribute('data-fact-tel'), ''));
+      if (d.length >= 10) el.setAttribute('href', 'tel:+' + d);
+    });
+    r.querySelectorAll('[data-fact-wa]').forEach(function (el) {
+      var d = digitsOf(fact(el.getAttribute('data-fact-wa'), ''));
+      if (d.length >= 10) el.setAttribute('href', 'https://wa.me/' + d);
+    });
+    /* i18n strings that carry a fact as {placeholder} (nprNote …): fill the
+       known names only, after applyStaticLang() wrote them. */
+    var V = null;
+    r.querySelectorAll('[data-i18n]').forEach(function (el) {
+      var h = el.innerHTML;
+      if (h.indexOf('{') < 0) return;
+      V = V || factVars();
+      var n = h.replace(/\{(npr|goMin|goMax|goRange|backMin|backMax|backRange|privSingle|privDouble|agentDirect|agentJoint|company|ceo|headPhone)\}/g, function (m, k) {
+        return String(V[k]).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
+      });
+      if (n !== h) el.innerHTML = n;
+    });
+  } catch (e) { /* hydration is cosmetic — never break the page */ }
+}
+try { hydrateFacts(); } catch (e) {}
 
 /* ---- The prices above are a FALLBACK, not the truth --------------------
    Everything in CONFIG.cabinPricing is also a row in the server's settings
@@ -1397,6 +1524,12 @@ function sharingDir() {
      staying on the packaged pair while the server charges the new one. */
   const st = (window.SHG_BOOT && window.SHG_BOOT.settings) || {};
   const live = (k, d) => { const v = Math.round(Number(st[k])); return v > 0 ? v : d; };
+  /* 9 Oct 2026: the site facts carry Fare::dirFares() itself (main_fares >
+     fare_to_* > code), so the page's default is the server's to the rupee. */
+  const fd = (typeof fact === 'function') ? fact('fares.defaults', null) : null;
+  if (fd && Number(fd.toNepal) > 0 && Number(fd.toIndia) > 0) {
+    return { toNepal: Math.round(Number(fd.toNepal)), toIndia: Math.round(Number(fd.toIndia)) };
+  }
   return {
     toNepal: live('fare_to_nepal', Math.max(0, Math.round(Number(base.toNepal) || 2000))),
     toIndia: live('fare_to_india', Math.max(0, Math.round(Number(base.toIndia) || 1800)))

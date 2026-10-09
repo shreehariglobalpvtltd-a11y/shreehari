@@ -91,7 +91,7 @@ admin_header('My desk', 'my-desk');
   </div>
 <?php else: ?>
   <div class="md-card">
-    <h2 style="margin:0 0 6px;font-size:18px"><?= CounterDesk::flag((string) $desk['country']) ?> <?= $e($desk['name']) ?> <span class="muted" style="font-size:13px">(<?= $e($desk['code']) ?>)</span></h2>
+    <h2 style="margin:0 0 6px;font-size:18px"><?= Brand::flagFor((string) $desk['country'], 18, true) ?> <?= $e($desk['name']) ?> <span class="muted" style="font-size:13px">(<?= $e($desk['code']) ?>)</span></h2>
     <div class="md-facts">
       <span><?= $desk['currency'] === 'NPR' ? 'रू NPR' : '₹ INR' ?></span>
       <span><?= $desk['entity'] === 'NP' ? 'Nepal company' : 'India company' ?></span>

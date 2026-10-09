@@ -66,7 +66,7 @@ en: {
   pcDir: 'Direction',
   pcCounter: 'Counter',
   pcOnline: 'Online',
-  pcShareNote: 'Flat per-person fare between the Gujarat main points and the Nepal side — the same price whichever sleeper you are allotted.',
+  pcShareNote: 'Each pickup has its own per-person fare — Gujarat → Rupaidiha {goRange}, Rupaidiha → Gujarat {backRange} — the same whichever sleeper you are allotted.',
   pcPrivT: 'Private Booking',
   pcPrivS: 'The whole cabin reserved for you — couples, family, privacy',
   pcCabin: 'Cabin Type',
@@ -187,7 +187,7 @@ en: {
   tlbNext: 'Next',
   fbTitle: 'Main-point fares',
   fbSub: 'Sharing sleeper · per person',
-  fbLead: 'One flat per-person fare between our Gujarat main points and the Nepal side — the same price online and at the counter.',
+  fbLead: 'Every Gujarat pickup has its own per-person fare: {goRange} going to Rupaidiha, {backRange} coming back — the same price online and at the counter.',
   fbGoing: 'Going — India to Nepal',
   fbComing: 'Coming — Nepal to India',
   fbPerPerson: 'per person',
@@ -282,7 +282,7 @@ en: {
   paySubmit: 'Confirm your seat →',
   payPolicyT: 'Cancellation &amp; refunds',
   payPolicy: '≥96 hrs before departure: 90% refund · 48–96 hrs: 75% · 24–48 hrs: 50% · 6–24 hrs: 25% · under 6 hrs: no refund. Refunds reach the same account within 5–7 working days.',
-  nprNote: '🇳🇵 Paying from Nepal? The NPR amount uses the fixed ₹1 = NPR 1.60 peg — eSewa deducts in NPR.',
+  nprNote: '🇳🇵 Paying from Nepal? The NPR amount uses the fixed ₹1 = NPR {npr} rate — eSewa deducts in NPR.',
   tShotNeed: 'Please attach your payment screenshot (or switch to the reference tab).',
   /* Payment progress strip on the ticket screen (4 steps). */
   pstBooked: 'Booked', pstSent: 'Payment sent', pstCounter: 'Pay at counter',
@@ -356,6 +356,22 @@ en: {
   bnHome: 'Home', bnBook: 'Book', bnTrips: 'My Trips', bnTickets: 'My Tickets', bnMaps: 'Maps', bnHelp: 'Help',
   hhTitle: 'INDIA ⇄ NEPAL PREMIUM AC SLEEPER BUS', hhTag: 'Safe Journey. Easy Booking. Your Comfort, Our Responsibility.', hhActLbl: 'Book, track or open your ticket', hhBook: 'Book Ticket', hhBookSub: 'Date · seat · pay', hhTrack: 'Track My Bus', hhTrackSub: 'From your ticket', hhMy: 'My Ticket', hhMySub: 'View · download',
   hfTitle: 'On every journey', hfAc: 'AC Sleeper', hfCharge: 'Mobile Charging', hfAid: 'First Aid', hfGps: 'GPS Tracking', hfWa: 'WhatsApp Ticket', hfHelp: 'Customer Support', hfBerth: 'Sleeper Berth', hfSecure: 'Secure Booking',
+  /* 9 Oct 2026 home showcase (HOME): living amenity cards, the demo label, offices card, CEO card, the guide, footer */
+  pkEyebrow: 'Why travel with us', pkTitle: 'Comfort and trust on every journey', pkAcSub: 'Cool, quiet night ride', pkBerthSub: 'Sleeper berths · private cabins', hfQuick: 'QuickBot Booking', pkQuickSub: 'Name + mobile → ticket in about 10 seconds', hfTrack: 'Live Bus Tracking', pkTrackSub: 'From your ticket · share with family', pkChargeSub: 'USB / Type-C charging', pkWaSub: 'Ticket PNG + PDF on WhatsApp', pkAidSub: 'First-aid kit on board', hf247: '24×7 Support', pkHelpSub: 'Nepali · Hindi · English',
+  dmEyebrow: 'How booking works — demo', dmTitle: 'Watch it, then do it yourself', dmSub: 'Four steps, a few minutes — or just your name and mobile in QuickBot.', dmTry: 'Try it now · QuickBot', dmSeat: 'Pick a seat &amp; book',
+  offTitle: 'Our offices', offSub: 'India ⇄ Nepal · tap to call', offAll: 'All offices &amp; map',
+  ceoEyebrow: 'Meet our founder', ceoRole: 'Founder &amp; CEO · संस्थापक तथा प्रमुख कार्यकारी', ceoHello: 'Namaste 🙏', ceoMsg: 'For many families the road between Gujarat and Nepal is the road home. We started S Hari Global so that this journey is safe, honest and easy — a registered company, clear fares, and a team that answers in Nepali, Hindi or English. Travel with us like family.', ceoC1: 'Registered company', ceoC2: 'Clear, live fares', ceoC3: 'Nepali · Hindi · English', ceoCall: 'Call',
+  bhTitle: 'How to book a ticket — easy guide', bhSub: 'Book your own ticket from your phone in a few minutes · tap here',
+  bhS1T: 'Choose your direction', bhS1D: 'In the booking box above, tap <em>“Going to Nepal”</em> (Gujarat → Rupaidiha) or <em>“Returning to Gujarat”</em> (Rupaidiha → Gujarat).',
+  bhS2T: 'Travel date', bhS2D: 'Tap your day on the date strip. For a later date, use the calendar in the “Journey date” box.',
+  bhS3T: 'Boarding / drop point', bhS3D: 'Pick the town and time nearest to you — e.g. Surat, Vadodara, Ahmedabad (Chiloda). Set the number of passengers.',
+  bhS4T: 'See buses &amp; seats', bhS4D: 'Press the button to see the buses and the free berths. Tap a free berth on the seat map — one berth per passenger.',
+  bhS5T: 'Passenger details', bhS5D: 'Write each passenger’s name and one mobile number. Give a <strong>WhatsApp number</strong> — your ticket arrives there.',
+  bhS6T: 'Payment', bhS6D: 'Choose a way shown on screen — pay by UPI / eSewa, or cash when boarding where it is offered. Upload the payment screenshot if asked.',
+  bhS7T: 'Get your ticket', bhS7D: 'Once confirmed, the ticket appears on screen and on WhatsApp. Open it again any time in <strong>“My Ticket”</strong> to view or download. Show the ticket (PNR) when boarding.',
+  bhTip1: '<b>In a hurry?</b> Give only your name and mobile in “QuickBot” — bus, seat and fare are filled in for you; one tap for the ticket.', bhTip2: '<b>Stuck?</b> Write your problem at the Help Desk — you get a number (HD-…) at once — or call the office.', bhTip3: '<b>A mistake?</b> If a name or date is wrong, contact the office with your PNR.',
+  bhCta: 'Book a ticket now', bhWa: 'Book on WhatsApp', bhQuick: 'QuickBot · 10 seconds', bhHelp: 'Help Desk', bhDemo: 'Watch the demo',
+  fTagline: 'India–Nepal bus service. Connecting Gujarat with the Rupaidiha border — partner office at Pushpalal Chowk, Nepalgunj — with safe coaches and easy ticket booking.', fOffices: 'Our offices', fIndiaNepal: 'India–Nepal friendship', fPlaces: 'Places to visit', fTours: 'Tour packages',
   bnTrack: 'Track', mmTrack: 'Track my bus', trkHint: 'Enter your PNR and mobile to track your bus', trkOpening: 'Opening the live tracker of your ticket {pnr}…',
   qtLineLbl: 'Write it in one line (optional)', qtNameLbl: 'Your name', qtPhoneLbl: 'Mobile (WhatsApp)', qtCCLbl: 'Number country', aiInputLbl: 'Ask SHG Sahayak',
   fAboutUs: 'About us', fPrivacy: 'Privacy Policy', fRefund: 'Refund & Cancellation Policy', fTravel: 'Travel Info · India ⇄ Nepal Border', fTos: 'Terms of Service', fDataDel: 'Data Deletion', fHelpDesk: 'Help Desk', fAgreements: 'Agent agreements', fCall: 'Call', fNepalOffice: 'Nepal office',
@@ -517,7 +533,31 @@ en: {
   rgT: 'Route guide — every stop', rgP: 'Pickup times, distances and the border. Saved for offline use.', rgGo: 'Gujarat → Rupaidiha', rgBack: 'Rupaidiha → Gujarat',
   rgPickup: 'Pickup', rgDrop: 'Drop', rgBorder: 'India–Nepal border', rgVia: 'On the way', rgKm: '≈ {km} km from {from}', rgTbc: 'Arrival time is confirmed by the office',
   rgOffline: 'Offline copy', rgTotal: '{from} → {to} ≈ {km} km by road', rgBorderInfo: 'Rupaidiha (India) ⇄ Jamunaha (Nepal): photo ID check, about 20–40 minutes. The bus waits for everyone.',
-  rgMap: 'Show on map', rgNone: 'The route guide is not available right now.', payApps: 'Or tap your UPI app:'
+  rgMap: 'Show on map', rgNone: 'The route guide is not available right now.', payApps: 'Or tap your UPI app:',
+  /* HOMEINFO hx* (9 Oct 2026): home information sections - live fares, route shell, India-Nepal, explore/ecosystem (24-homeinfo.js) */
+  hxFaresEyebrow: 'Live · from the booking system', hxFaresTitle: 'Today’s fares', hxFaresSub: 'Per person · sharing sleeper berth · tap a town to book it',
+  hxGo: 'Going to Nepal', hxBack: 'Coming back to Gujarat', hxPerPerson: 'per person',
+  hxShowPickups: 'See all {n} pickups & times', hxShowDrops: 'See all {n} drop points', hxHideList: 'Hide the list',
+  hxBookFrom: 'Book from {town} · {fare}', hxBookTo: 'Book to {town} · {fare}',
+  hxPrivTitle: 'Private sleeper cabin', hxPrivSub: 'The whole cabin is yours, no sharing', hxPrivSingle: 'Single · 1 person', hxPrivDouble: 'Double · 2 people',
+  hxNprNote: 'NPR is an estimate at ₹1 = NPR {npr}',
+  hxFaresNote: 'The amount on the booking screen is final; a running offer, if any, is applied there. Prices here update by themselves when the office changes them.',
+  hxFaresNone: 'Fares are being updated. Choose your town in the booking card to see today’s price.',
+  hxRouteTitle: 'Route, distance & halts', hxRouteSub: 'Pickups, kilometres and the usual meal halts', hxTrack: 'Track my bus', hxRouteFb: 'Rupaidiha · India–Nepal border',
+  hxInEyebrow: 'India ⇄ Nepal', hxInTitle: 'Neighbours with an open border',
+  hxInSub: 'Our coach runs to Rupaidiha on the India side. Jamunaha is across the line, with Nepalgunj just beyond.',
+  hxTl1950: 'India–Nepal Treaty of Peace and Friendship (open border)', hxTlOpenY: 'Open border', hxTlOpen: 'Indian and Nepali citizens cross without a visa. Carry a valid photo ID.',
+  hxTlNote: 'A short summary. Check the current rules before you travel.', hxInStory: 'Full story', hxInDocs: 'Border documents',
+  hxBandAlt: 'Nepal heritage: Sagarmatha (Mount Everest), prayer flags, Gautam Buddha and a stupa',
+  hxExEyebrow: 'The S Hari Global ecosystem', hxExTitle: 'One app for the whole journey', hxExSub: 'Bus tickets, fast booking, bus tracking, tours and places to visit · India ⇄ Nepal',
+  hxHubBus: 'Bus ticket', hxHubBusSub: 'Pick date & berth', hxHubQuick: 'QuickBot ticket', hxHubQuickSub: 'Name + mobile → ticket',
+  hxHubTrack: 'Track bus', hxHubTrackSub: 'From your ticket', hxHubTours: 'Tour packages', hxHubToursSub: 'Enquire & plan',
+  hxHubGuide: 'Travel guide', hxHubGuideSub: 'Places to visit', hxHubAgent: 'Agent / partner', hxHubAgentSub: 'Sell tickets with us',
+  hxPlacesTitle: 'Places worth the trip', hxSeeAll: 'See all',
+  hxPlLumbini: 'Birthplace of Gautam Buddha · UNESCO World Heritage Site', hxPlPokhara: 'Lakes and Annapurna mountain views', hxPlBardiya: 'Wildlife and jungle, near Nepalgunj',
+  hxCatPilgrimage: 'Pilgrimage', hxCatNature: 'Nature', hxCatHeritage: 'Heritage', hxCatWildlife: 'Wildlife', hxCatCity: 'City', hxCatAdventure: 'Adventure',
+  hxToursCta: 'Explore tour packages', hxPkgNote: 'Tours inside Nepal are arranged with local partners; our coach takes you as far as Rupaidiha.',
+  hxPkgDays: '{d} days · {n} nights', hxPkgDaysOnly: '{d} days', hxPkgCta: 'Enquire', hxNP: 'Nepal', hxIN: 'India',
 },
 hi: {
   premiumFront: "आगे · यात्रा की दिशा", premiumRear: "पीछे", premiumBeyond: "सरहदों के पार सफ़र", premiumDirector: "अध्यक्ष / निदेशक", premiumPromise: "आपकी यात्रा, हमारी ज़िम्मेदारी।", premiumSafe: "सुरक्षित यात्रा", premiumEasy: "आसान बुकिंग", premiumLoading: "आपकी यात्रा तैयार हो रही है…", premiumRetry: "कनेक्शन में समय लग रहा है। पुनः लोड करें", premiumSlow: "कनेक्ट हो रहा है। पुनः प्रयास करें या आगे बढ़ें।", premiumTrust: "भरोसे के साथ यात्रा।", premiumPay: "स्कैन करके भुगतान करें", premiumPaid: "भुगतान सत्यापित", premiumPending: "भुगतान सत्यापन लंबित", premiumVerify: "टिकट सत्यापन", premiumDue: "बकाया राशि",
@@ -579,7 +619,7 @@ hi: {
   pcDir: 'दिशा',
   pcCounter: 'काउंटर',
   pcOnline: 'ऑनलाइन',
-  pcShareNote: 'गुजरात मुख्य पॉइंटों और नेपाल के बीच एक ही प्रति-व्यक्ति किराया — कोई भी स्लीपर मिले, दाम वही।',
+  pcShareNote: 'हर पिकअप का अपना प्रति-व्यक्ति किराया — गुजरात → रुपईडीहा {goRange}, रुपईडीहा → गुजरात {backRange} — कोई भी स्लीपर मिले, दाम वही।',
   pcPrivT: 'प्राइवेट बुकिंग',
   pcPrivS: 'पूरा केबिन आपका — कपल, परिवार, निजता',
   pcCabin: 'केबिन प्रकार',
@@ -697,7 +737,7 @@ hi: {
   tlbNext: 'अगला',
   fbTitle: 'मुख्य पॉइंट का किराया',
   fbSub: 'शेयरिंग स्लीपर · प्रति व्यक्ति',
-  fbLead: 'हमारे गुजरात मुख्य पॉइंटों और नेपाल के बीच एक ही प्रति-व्यक्ति किराया — ऑनलाइन और काउंटर पर एक समान।',
+  fbLead: 'गुजरात के हर पिकअप का अपना प्रति-व्यक्ति किराया: रुपईडीहा जाने का {goRange}, वापसी का {backRange} — ऑनलाइन और काउंटर पर एक समान।',
   fbGoing: 'जाते समय — भारत से नेपाल',
   fbComing: 'आते समय — नेपाल से भारत',
   fbPerPerson: 'प्रति व्यक्ति',
@@ -792,7 +832,7 @@ hi: {
   paySubmit: 'अपनी सीट पक्की करें →',
   payPolicyT: 'रद्दीकरण व रिफंड',
   payPolicy: 'प्रस्थान से ≥96 घंटे पहले: 90% रिफंड · 48–96 घंटे: 75% · 24–48 घंटे: 50% · 6–24 घंटे: 25% · 6 घंटे से कम: कोई रिफंड नहीं। रिफंड 5–7 कार्यदिवसों में उसी खाते में पहुंचता है।',
-  nprNote: '🇳🇵 नेपाल से भुगतान कर रहे हैं? NPR राशि ₹1 = NPR 1.60 की स्थिर दर से अनुमानित है — eSewa NPR में काटता है।',
+  nprNote: '🇳🇵 नेपाल से भुगतान कर रहे हैं? NPR राशि ₹1 = NPR {npr} की स्थिर दर से अनुमानित है — eSewa NPR में काटता है।',
   tShotNeed: 'कृपया भुगतान का स्क्रीनशॉट जोड़ें (या संदर्भ टैब चुनें)।',
   pstBooked: 'बुक हुआ', pstSent: 'भुगतान भेजा', pstCounter: 'काउंटर पर भुगतान',
   pstCheck: 'जाँच जारी', pstVerified: 'सत्यापित', pstTicket: 'टिकट तैयार',
@@ -1022,7 +1062,31 @@ hi: {
   rgT: 'रूट गाइड — हर स्टॉप', rgP: 'बोर्डिंग समय, दूरी और बॉर्डर। ऑफलाइन के लिए सेव।', rgGo: 'गुजरात → रुपईडीहा', rgBack: 'रुपईडीहा → गुजरात',
   rgPickup: 'बोर्डिंग', rgDrop: 'उतरना', rgBorder: 'भारत–नेपाल बॉर्डर', rgVia: 'रास्ते में', rgKm: '{from} से ≈ {km} किमी', rgTbc: 'पहुँचने का समय ऑफिस बताएगा',
   rgOffline: 'ऑफलाइन कॉपी', rgTotal: '{from} → {to} सड़क से ≈ {km} किमी', rgBorderInfo: 'रुपईडीहा (भारत) ⇄ जमुनाहा (नेपाल): फोटो ID जाँच, लगभग 20–40 मिनट। बस सबका इंतज़ार करती है।',
-  rgMap: 'मैप पर देखें', rgNone: 'रूट गाइड अभी उपलब्ध नहीं है।', payApps: 'या अपना UPI ऐप दबाएँ:'
+  rgMap: 'मैप पर देखें', rgNone: 'रूट गाइड अभी उपलब्ध नहीं है।', payApps: 'या अपना UPI ऐप दबाएँ:',
+  /* HOMEINFO hx* (9 Oct 2026) */
+  hxFaresEyebrow: 'लाइव · बुकिंग सिस्टम से', hxFaresTitle: 'आज का किराया', hxFaresSub: 'प्रति व्यक्ति · शेयरिंग स्लीपर बर्थ · शहर दबाकर सीधे बुक करें',
+  hxGo: 'नेपाल जाना', hxBack: 'गुजरात वापसी', hxPerPerson: 'प्रति व्यक्ति',
+  hxShowPickups: 'सभी {n} पिकअप और समय देखें', hxShowDrops: 'सभी {n} ड्रॉप पॉइंट देखें', hxHideList: 'सूची छिपाएँ',
+  hxBookFrom: '{town} से बुक करें · {fare}', hxBookTo: '{town} तक बुक करें · {fare}',
+  hxPrivTitle: 'प्राइवेट स्लीपर केबिन', hxPrivSub: 'पूरा केबिन आपका, किसी से शेयर नहीं', hxPrivSingle: 'सिंगल · 1 व्यक्ति', hxPrivDouble: 'डबल · 2 व्यक्ति',
+  hxNprNote: 'NPR अनुमानित है · ₹1 = NPR {npr}',
+  hxFaresNote: 'बुकिंग स्क्रीन पर दिखने वाली राशि ही अंतिम है; कोई ऑफ़र चल रहा हो तो वहीं घटता है। ऑफिस किराया बदलते ही यहाँ अपने आप अपडेट होता है।',
+  hxFaresNone: 'किराया अपडेट हो रहा है। आज का किराया देखने के लिए बुकिंग कार्ड में अपना शहर चुनें।',
+  hxRouteTitle: 'रूट, दूरी और ठहराव', hxRouteSub: 'पिकअप, किलोमीटर और खाने के ठहराव', hxTrack: 'मेरी बस ट्रैक करें', hxRouteFb: 'Rupaidiha · भारत–नेपाल सीमा',
+  hxInEyebrow: 'भारत ⇄ नेपाल', hxInTitle: 'खुली सीमा वाले अच्छे पड़ोसी',
+  hxInSub: 'हमारी बस भारत की ओर Rupaidiha तक चलती है। सीमा पार Jamunaha है, और पास ही Nepalgunj।',
+  hxTl1950: 'भारत–नेपाल शांति एवं मैत्री संधि (खुली सीमा)', hxTlOpenY: 'खुली सीमा', hxTlOpen: 'भारतीय और नेपाली नागरिक बिना वीज़ा आते-जाते हैं। वैध फोटो पहचान पत्र साथ रखें।',
+  hxTlNote: 'संक्षिप्त सारांश। यात्रा से पहले मौजूदा नियम देखें।', hxInStory: 'पूरी कहानी', hxInDocs: 'सीमा दस्तावेज़',
+  hxBandAlt: 'नेपाल की धरोहर: सगरमाथा (माउंट एवरेस्ट), प्रार्थना झंडे, गौतम बुद्ध और स्तूप',
+  hxExEyebrow: 'S Hari Global इकोसिस्टम', hxExTitle: 'पूरी यात्रा के लिए एक ही ऐप', hxExSub: 'बस टिकट, फटाफट बुकिंग, बस ट्रैकिंग, टूर पैकेज और घूमने की जगहें · भारत ⇄ नेपाल',
+  hxHubBus: 'बस टिकट', hxHubBusSub: 'तारीख और बर्थ चुनें', hxHubQuick: 'QuickBot फटाफट टिकट', hxHubQuickSub: 'नाम + मोबाइल → टिकट',
+  hxHubTrack: 'बस ट्रैक', hxHubTrackSub: 'अपने टिकट से', hxHubTours: 'टूर पैकेज', hxHubToursSub: 'पूछताछ और योजना',
+  hxHubGuide: 'घूमने की जगहें', hxHubGuideSub: 'नेपाल और भारत के स्थल', hxHubAgent: 'एजेंट / पार्टनर', hxHubAgentSub: 'हमारे साथ टिकट बेचें',
+  hxPlacesTitle: 'घूमने लायक जगहें', hxSeeAll: 'सभी देखें',
+  hxPlLumbini: 'गौतम बुद्ध की जन्मस्थली · UNESCO विश्व धरोहर', hxPlPokhara: 'झीलें और अन्नपूर्णा पर्वत के नज़ारे', hxPlBardiya: 'वन्यजीव और जंगल, Nepalgunj के पास',
+  hxCatPilgrimage: 'तीर्थ', hxCatNature: 'प्रकृति', hxCatHeritage: 'धरोहर', hxCatWildlife: 'वन्यजीव', hxCatCity: 'शहर', hxCatAdventure: 'रोमांच',
+  hxToursCta: 'टूर पैकेज देखें', hxPkgNote: 'नेपाल के अंदर की यात्रा स्थानीय पार्टनर के साथ होती है; हमारी बस Rupaidiha तक जाती है।',
+  hxPkgDays: '{d} दिन · {n} रात', hxPkgDaysOnly: '{d} दिन', hxPkgCta: 'पूछताछ', hxNP: 'नेपाल', hxIN: 'भारत',
 },
 ne: {
   premiumFront: "अगाडि · यात्राको दिशा", premiumRear: "पछाडि", premiumBeyond: "सीमापारको यात्रा", premiumDirector: "अध्यक्ष / निर्देशक", premiumPromise: "तपाईंको यात्रा, हाम्रो जिम्मेवारी।", premiumSafe: "सुरक्षित यात्रा", premiumEasy: "सजिलो बुकिङ", premiumLoading: "तपाईंको यात्रा तयार हुँदैछ…", premiumRetry: "जडानमा समय लाग्यो। फेरि लोड गर्नुहोस्", premiumSlow: "जडान हुँदैछ। फेरि प्रयास गर्नुहोस् वा अगाडि बढ्नुहोस्।", premiumTrust: "विश्वासका साथ यात्रा।", premiumPay: "स्क्यान गरेर तिर्नुहोस्", premiumPaid: "भुक्तानी प्रमाणित", premiumPending: "भुक्तानी प्रमाणीकरण बाँकी", premiumVerify: "टिकट प्रमाणीकरण", premiumDue: "बाँकी रकम",
@@ -1084,7 +1148,7 @@ ne: {
   pcDir: 'दिशा',
   pcCounter: 'काउन्टर',
   pcOnline: 'अनलाइन',
-  pcShareNote: 'गुजरातका मुख्य पोइन्ट र नेपालबीच एउटै प्रति-व्यक्ति भाडा — जुनसुकै स्लिपर परे पनि सोही मूल्य।',
+  pcShareNote: 'हरेक पिकअपको आफ्नै प्रति-व्यक्ति भाडा — गुजरात → रुपैडिहा {goRange}, रुपैडिहा → गुजरात {backRange} — जुनसुकै स्लिपर परे पनि सोही मूल्य।',
   pcPrivT: 'प्राइभेट बुकिङ',
   pcPrivS: 'पूरा क्याबिन तपाईको — जोडी, परिवार, गोप्यता',
   pcCabin: 'क्याबिन प्रकार',
@@ -1202,7 +1266,7 @@ ne: {
   tlbNext: 'अर्को',
   fbTitle: 'मुख्य पोइन्टको भाडा',
   fbSub: 'सेयरिङ स्लिपर · प्रति व्यक्ति',
-  fbLead: 'गुजरातका मुख्य पोइन्ट र नेपालबीच एउटै प्रति-व्यक्ति भाडा — अनलाइन र काउन्टर उही मूल्य।',
+  fbLead: 'गुजरातको हरेक पिकअपको आफ्नै प्रति-व्यक्ति भाडा: रुपैडिहा जाँदा {goRange}, फर्कँदा {backRange} — अनलाइन र काउन्टर उही मूल्य।',
   fbGoing: 'जाँदा — भारतबाट नेपाल',
   fbComing: 'आउँदा — नेपालबाट भारत',
   fbPerPerson: 'प्रति व्यक्ति',
@@ -1297,7 +1361,7 @@ ne: {
   paySubmit: 'आफ्नो सिट पक्का गर्नुहोस् →',
   payPolicyT: 'रद्द र फिर्ता',
   payPolicy: 'प्रस्थानभन्दा ≥९६ घण्टा अघि: ९०% फिर्ता · ४८–९६ घण्टा: ७५% · २४–४८ घण्टा: ५०% · ६–२४ घण्टा: २५% · ६ घण्टाभन्दा कम: फिर्ता छैन। फिर्ता ५–७ कार्य दिनभित्र उही खातामा आउँछ।',
-  nprNote: '🇳🇵 नेपालबाट भुक्तानी गर्दै? NPR रकम ₹1 = NPR 1.60 को स्थिर दरमा अनुमानित हो — eSewa ले NPR मा काट्छ।',
+  nprNote: '🇳🇵 नेपालबाट भुक्तानी गर्दै? NPR रकम ₹1 = NPR {npr} को स्थिर दरमा अनुमानित हो — eSewa ले NPR मा काट्छ।',
   tShotNeed: 'कृपया भुक्तानी स्क्रिनसट जोड्नुहोस् (वा सन्दर्भ ट्याब छान्नुहोस्)।',
   pstBooked: 'बुक भयो', pstSent: 'भुक्तानी पठाइयो', pstCounter: 'काउन्टरमा तिर्ने',
   pstCheck: 'जाँच हुँदैछ', pstVerified: 'प्रमाणित', pstTicket: 'टिकट तयार',
@@ -1527,7 +1591,31 @@ ne: {
   rgT: 'रुट गाइड — हरेक स्टप', rgP: 'बोर्डिङ समय, दूरी र बोर्डर। अफलाइनका लागि सुरक्षित।', rgGo: 'गुजरात → रुपईडिहा', rgBack: 'रुपईडिहा → गुजरात',
   rgPickup: 'बोर्डिङ', rgDrop: 'ओर्लने', rgBorder: 'भारत–नेपाल बोर्डर', rgVia: 'बाटोमा', rgKm: '{from} बाट ≈ {km} किमी', rgTbc: 'पुग्ने समय कार्यालयले पुष्टि गर्छ',
   rgOffline: 'अफलाइन प्रति', rgTotal: '{from} → {to} सडकबाट ≈ {km} किमी', rgBorderInfo: 'रुपईडिहा (भारत) ⇄ जमुनाहा (नेपाल): फोटो ID जाँच, लगभग २०–४० मिनेट। बस सबैलाई पर्खन्छ।',
-  rgMap: 'नक्सामा हेर्नुहोस्', rgNone: 'रुट गाइड अहिले उपलब्ध छैन।', payApps: 'वा आफ्नो UPI एप थिच्नुहोस्:'
+  rgMap: 'नक्सामा हेर्नुहोस्', rgNone: 'रुट गाइड अहिले उपलब्ध छैन।', payApps: 'वा आफ्नो UPI एप थिच्नुहोस्:',
+  /* HOMEINFO hx* (9 Oct 2026) */
+  hxFaresEyebrow: 'लाइभ · बुकिङ प्रणालीबाट', hxFaresTitle: 'आजको भाडा', hxFaresSub: 'प्रति व्यक्ति · सेयरिङ स्लिपर बर्थ · सहर थिचेर सिधै बुक गर्नुहोस्',
+  hxGo: 'नेपाल जाने', hxBack: 'गुजरात फर्कने', hxPerPerson: 'प्रति व्यक्ति',
+  hxShowPickups: 'सबै {n} पिकअप र समय हेर्नुहोस्', hxShowDrops: 'सबै {n} ओर्लने ठाउँ हेर्नुहोस्', hxHideList: 'सूची लुकाउनुहोस्',
+  hxBookFrom: '{town} बाट बुक गर्नुहोस् · {fare}', hxBookTo: '{town} सम्म बुक गर्नुहोस् · {fare}',
+  hxPrivTitle: 'प्राइभेट स्लिपर केबिन', hxPrivSub: 'पूरै केबिन तपाईंको, अरूसँग सेयर गर्नु पर्दैन', hxPrivSingle: 'सिंगल · १ जना', hxPrivDouble: 'डबल · २ जना',
+  hxNprNote: 'NPR अनुमानित हो · ₹1 = NPR {npr}',
+  hxFaresNote: 'बुक गर्दा देखिने रकम नै अन्तिम हो; कुनै अफर चलिरहेको भए त्यहीँ घटाइन्छ। अफिसले भाडा बदल्नेबित्तिकै यहाँ आफैं अपडेट हुन्छ।',
+  hxFaresNone: 'भाडा अपडेट हुँदैछ। आजको भाडा हेर्न बुकिङ कार्डमा आफ्नो सहर छान्नुहोस्।',
+  hxRouteTitle: 'रुट, दूरी र बिसौनी', hxRouteSub: 'पिकअप, किलोमिटर र खाना खाने बिसौनी', hxTrack: 'मेरो बस ट्र्याक गर्नुहोस्', hxRouteFb: 'Rupaidiha · भारत–नेपाल सिमाना',
+  hxInEyebrow: 'भारत ⇄ नेपाल', hxInTitle: 'खुला सिमानाका असल छिमेकी',
+  hxInSub: 'हाम्रो बस भारततर्फको Rupaidiha सम्म चल्छ। सिमानापारि Jamunaha, अनि नजिकै Nepalgunj।',
+  hxTl1950: 'भारत–नेपाल शान्ति तथा मैत्री सन्धि (खुला सिमाना)', hxTlOpenY: 'खुला सिमाना', hxTlOpen: 'भारतीय र नेपाली नागरिक भिसाबिना आवतजावत गर्छन्। मान्य फोटो परिचयपत्र साथमा राख्नुहोस्।',
+  hxTlNote: 'छोटो सारांश मात्र। यात्राअघि ताजा नियम हेर्नुहोस्।', hxInStory: 'पूरा कथा', hxInDocs: 'सिमाना कागजात',
+  hxBandAlt: 'नेपालको सम्पदा: सगरमाथा, लुङदार, गौतम बुद्ध र स्तूप',
+  hxExEyebrow: 'S Hari Global इकोसिस्टम', hxExTitle: 'पूरै यात्राका लागि एउटै एप', hxExSub: 'बस टिकट, छिटो बुकिङ, बस ट्र्याकिङ, टुर प्याकेज र घुम्ने ठाउँ · भारत ⇄ नेपाल',
+  hxHubBus: 'बस टिकट', hxHubBusSub: 'मिति र बर्थ छान्नुहोस्', hxHubQuick: 'QuickBot छिटो टिकट', hxHubQuickSub: 'नाम + मोबाइल → टिकट',
+  hxHubTrack: 'बस ट्र्याक', hxHubTrackSub: 'आफ्नो टिकटबाट', hxHubTours: 'टुर प्याकेज', hxHubToursSub: 'सोधपुछ र योजना',
+  hxHubGuide: 'घुम्ने ठाउँ', hxHubGuideSub: 'नेपाल र भारतका गन्तव्य', hxHubAgent: 'एजेन्ट / पार्टनर', hxHubAgentSub: 'हामीसँग टिकट बेच्नुहोस्',
+  hxPlacesTitle: 'घुम्नैपर्ने ठाउँ', hxSeeAll: 'सबै हेर्नुहोस्',
+  hxPlLumbini: 'गौतम बुद्धको जन्मस्थल · UNESCO विश्व सम्पदा', hxPlPokhara: 'ताल र अन्नपूर्ण हिमालको मनमोहक दृश्य', hxPlBardiya: 'वन्यजन्तु र जङ्गल, Nepalgunj नजिकै',
+  hxCatPilgrimage: 'तीर्थ', hxCatNature: 'प्रकृति', hxCatHeritage: 'सम्पदा', hxCatWildlife: 'वन्यजन्तु', hxCatCity: 'सहर', hxCatAdventure: 'साहसिक',
+  hxToursCta: 'टुर प्याकेज हेर्नुहोस्', hxPkgNote: 'नेपालभित्रको भ्रमण स्थानीय साझेदारसँग मिलेर गरिन्छ; हाम्रो बस Rupaidiha सम्म जान्छ।',
+  hxPkgDays: '{d} दिन · {n} रात', hxPkgDaysOnly: '{d} दिन', hxPkgCta: 'सोधपुछ', hxNP: 'नेपाल', hxIN: 'भारत',
 }
 };
 
@@ -1579,6 +1667,8 @@ function applyStaticLang() {
   $$('.lang-btn').forEach(b => b.classList.toggle('on', b.getAttribute('data-lang') === LANG));
   /* the phone header's language pill (19-premium.js) follows at once (D2-06) */
   if (typeof window.shgLangMiniLabel === 'function') { try { window.shgLangMiniLabel(); } catch (e) {} }
+  /* site facts (9 Oct 2026, 02-config.js): refill [data-fact*] and {npr}-style placeholders */
+  if (typeof hydrateFacts === 'function') { try { hydrateFacts(); } catch (e) {} }
 }
 function applyLang() {
   /* Redrawn at the END of this function — see the tail call below. Both
@@ -1602,6 +1692,9 @@ function applyLang() {
   if (typeof renderOfferRibbon === 'function') renderOfferRibbon();
   /* the tab title follows the language too (D2-M1) */
   if (typeof shgViewTitle === 'function') { try { shgViewTitle(); } catch (e) {} }
+  /* site facts (9 Oct 2026): the office list re-localises, then every [data-fact*] is refilled */
+  if (typeof renderOffices === 'function') { try { renderOffices(); } catch (e) {} }
+  if (typeof hydrateFacts === 'function') { try { hydrateFacts(); } catch (e) {} }
 }
 function setLang(l) {
   if (!I18N[l]) l = 'en';

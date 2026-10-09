@@ -21,6 +21,8 @@ if (!defined('SHG_APP')) {
     exit('Forbidden');
 }
 
+require_once __DIR__ . '/docart.php';   // emblem + flags for the banner (no ticket.php dependency)
+
 final class ReportPdf
 {
     /* Brand colours — same palette the ticket uses. */
@@ -93,16 +95,29 @@ final class ReportPdf
 
         // Company logo on a white chip (5 Sep 2026) — one draw here brands
         // all five report generators. Text shifts right only when present.
-        $tx   = $m;
-        $logo = self::logoFile();
-        if ($logo !== null) {
-            $pdf->rect($m - 4, 6, 58, 42, self::WHITE);
-            $pdf->image($logo, $m - 1, 9, 52, 38);   // 440x321 source
+        /* 9 Oct 2026: the transparent emblem, aspect-correct, no white rect
+           (the old box assumed a 440x321 logo); the company name from
+           Settings (it was typed in here); both flags after it. */
+        $tx = $m;
+        $mk = class_exists('DocArt') ? DocArt::pdfMark($pdf, $m - 4, 5, 78, 42, '', 'left', true) : null;
+        if ($mk !== null) {
+            $tx = $mk['x'] + $mk['w'] + 10;
+        } elseif (($logo = self::logoFile()) !== null) {
+            $pdf->image($logo, $m - 1, 9, 52, 38);
             $tx = $m + 64;
         }
 
         // Company name
-        $pdf->text($tx, 10, 'S HARI GLOBAL PVT. LTD.', 16, 'F2', self::WHITE);
+        $coName = 'S HARI GLOBAL PVT. LTD.';
+        try {
+            $co = Settings::company();
+            $n  = trim((string) preg_replace('/[^\x20-\x7E]/', '', (string) ($co['name'] ?? '')));
+            if ($n !== '') { $coName = strtoupper($n); }
+        } catch (\Throwable $e) {}
+        $pdf->text($tx, 10, $coName, 16, 'F2', self::WHITE);
+        if (class_exists('DocArt')) {
+            DocArt::pdfFlags($pdf, $tx + $pdf->textWidth($coName, 16, 'F2') + 10, 11, 12, 3, 'IN');
+        }
         $pdf->text($tx, 30, 'Gujarat - Rupaidiha - Nepalgunj | International Bus Transport', 8, 'F1', [180, 200, 230]);
 
         // Report title (right side)
@@ -159,7 +174,9 @@ final class ReportPdf
         $y   = self::PAGE_H - 24;
 
         $pdf->line($m, $y, $w - $m, $y, self::LINE, 0.3);
-        $pdf->text($m, $y + 4, 'Generated ' . date('d M Y, H:i') . ' IST | shreehariglobal.in', 7, 'F3', self::MUTE);
+        $web = 'shreehariglobal.in';
+        try { $wb = trim((string) preg_replace('/[^\x20-\x7E]/', '', (string) (Settings::company()['web'] ?? ''))); if ($wb !== '') { $web = $wb; } } catch (\Throwable $e) {}
+        $pdf->text($m, $y + 4, 'Generated ' . date('d M Y, H:i') . ' IST | ' . $web, 7, 'F3', self::MUTE);
         $pdf->textRight($w - $m, $y + 4, 'Page ' . $this->pageNum, 7, 'F1', self::MUTE);
     }
 

@@ -66,15 +66,26 @@ final class PromoCard
             imageline($im, 0, $y, $W, $y, imagecolorallocate($im, (int) (12 + 6 * $t), (int) (48 - 20 * $t), (int) (108 - 60 * $t)));
         }
         $gold = $c('#F2C14E'); $white = $c('#FFFFFF'); $orange = $c('#F07C1F'); $pale = $c('#C7D6F0'); $navy = $c('#0C306C');
-        $y = 70;
-        if ($logoFile !== null && is_file($logoFile)) {
-            $li = @(str_ends_with(strtolower($logoFile), '.png') ? imagecreatefrompng($logoFile) : imagecreatefromjpeg($logoFile));
-            if ($li !== false) {
-                $lh = 150; $lw = (int) round(imagesx($li) * $lh / max(1, imagesy($li)));
-                imagecopyresampled($im, $li, (int) (($W - $lw) / 2), $y, 0, 0, $lw, $lh, imagesx($li), imagesy($li));
-                imagedestroy($li);
+        /* The emblem (no baked name, no tile) and the company NAME as a live
+           line under it, with both flags (9 Oct 2026). The caller's full logo
+           is only the fallback when the emblem file is missing. */
+        if (!class_exists('DocArt')) {
+            require_once __DIR__ . '/docart.php';
+        }
+        if ($logoFile !== null) {
+            if (DocArt::markFile() !== null) {
+                DocArt::mark($im, (int) (($W - 300) / 2), 46, 300, 140, true, '', 'center');
+            } elseif (is_file($logoFile)) {
+                DocArt::placeImage($im, $logoFile, (int) (($W - 300) / 2), 46, 300, 140, 'center');
             }
         }
+        $coName = 'S Hari Global Pvt Ltd';
+        try { $n = trim((string) (Settings::company()['name'] ?? '')); if ($n !== '') { $coName = $n; } } catch (Throwable $e) {}
+        $flW = DocArt::flagPairWidth(26, 8);
+        $nmW = $wd(30, $coName);
+        $nx  = (int) (($W - $nmW - 18 - $flW) / 2);
+        $txt($im, 30, $nx, 238, $white, $coName, true);
+        DocArt::flagPair($im, $nx + $nmW + 18, 214, 26, 8, 'IN');
         /* gold badge with a drawn crown (the font has no emoji) */
         $y = 300;
         $badge = 'PRIVATE  ·  COMFORT';

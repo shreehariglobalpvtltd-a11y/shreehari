@@ -18,11 +18,15 @@ declare(strict_types=1);
 require __DIR__ . '/_guard.php';
 $admin = admin_boot('dashboard.view');
 
-$pricing = Fare::pricing();
-$single  = (int) ($pricing['private']['single_1pax']['offline'] ?? 3800);
-$double  = (int) ($pricing['private']['double_2pax']['offline'] ?? 7600);
-$phone   = Settings::getString('company_phone', '+91 91048 01507');
-$site    = preg_replace('#^https?://#', '', rtrim(APP_URL, '/')) ?: 'shreehariglobal.in';
+/* 9 Oct 2026 (site facts): the cabin prices and the office number come from
+   the fare board / Company details - what the checkout charges and the
+   ticket prints - never a typed fallback. */
+require_once INCLUDE_PATH . '/sitefacts.php';
+$facts   = SiteFacts::all();
+$single  = (int) round((float) $facts['fares']['private']['single']);
+$double  = (int) round((float) $facts['fares']['private']['double']);
+$phone   = (string) $facts['head']['phone'];
+$site    = preg_replace('#^https?://#', '', rtrim(APP_URL, '/')) ?: (string) $facts['brand']['web'];
 $site    = preg_replace('#^www\.#', '', $site) ?: $site;
 $lang    = ($_GET['lang'] ?? 'en') === 'ne' ? 'ne' : (($_GET['lang'] ?? '') === 'hi' ? 'hi' : 'en');
 

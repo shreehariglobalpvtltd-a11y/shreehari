@@ -1742,13 +1742,27 @@ final class BookingService
         $payerName  = Security::clean($data['payerName'] ?? '', 120);
         $method     = self::normaliseMethod($data['method'] ?? $payment['method']);
 
-        Database::update('payments', [
+        $payUpd = [
             'utr_number' => $utr !== '' ? $utr : $payment['utr_number'],
             'payer_name' => $payerName !== '' ? $payerName : $payment['payer_name'],
             'method'     => $method,
             'mode'       => !empty($data['hasScreenshot']) ? 'both' : 'utr',
             'status'     => 'pending',
-        ], 'id = :id', ['id' => $payment['id']]);
+        ];
+        /* 9 Oct 2026: the amount the customer says they paid (optional field
+           on the proof form) - the risk score compares it with the fare. Only
+           a plausible positive number is kept; nothing is decided on it. */
+        $claimed = $data['claimedAmount'] ?? null;
+        if ($claimed !== null && $claimed !== '' && is_numeric($claimed) && (float) $claimed > 0 && (float) $claimed < 10000000) {
+            try {
+                require_once __DIR__ . '/paymentrisk.php';
+                if (PaymentRisk::hasCol('payments', 'claimed_amount')) {
+                    $payUpd['claimed_amount'] = round((float) $claimed, 2);
+                }
+            } catch (Throwable $e) {
+            }
+        }
+        Database::update('payments', $payUpd, 'id = :id', ['id' => $payment['id']]);
 
         /* The customer has paid and told us so -- from here the booking waits
            on the admin, not on them, so it must stop auto-expiring. Read the
@@ -1817,7 +1831,12 @@ final class BookingService
             throw new RuntimeException('Could not save the uploaded file.');
         }
 
-        Database::insert('payment_screenshots', [
+        /* 9 Oct 2026 (anti-fake): a 64-bit look-alike hash and the photo
+           editor named inside the file (Photoshop, PicsArt ...), for the
+           payment risk score. Best effort - fingerprint() never throws and
+           the columns are written only once the migration has added them, so
+           an upload can never fail because of this. */
+        $shotRow = [
             'payment_id'    => $payment['id'],
             'booking_id'    => $booking['id'],
             'file_path'     => $relative,
@@ -1826,7 +1845,20 @@ final class BookingService
             'file_size'     => (int) $check['size'],
             'sha256'        => hash_file('sha256', $absolute) ?: null,
             'uploaded_ip'   => Security::clientIp(),
-        ]);
+        ];
+        try {
+            require_once __DIR__ . '/paymentrisk.php';
+            $fp = PaymentRisk::fingerprint($absolute, (string) $check['mime']);
+            if ($fp['phash'] !== null && PaymentRisk::hasCol('payment_screenshots', 'phash')) {
+                $shotRow['phash'] = $fp['phash'];
+            }
+            if ($fp['editTool'] !== null && PaymentRisk::hasCol('payment_screenshots', 'edit_tool')) {
+                $shotRow['edit_tool'] = $fp['editTool'];
+            }
+        } catch (Throwable $e) {
+            // the proof matters more than its fingerprint
+        }
+        Database::insert('payment_screenshots', $shotRow);
 
         Database::update('payments', ['mode' => 'both'], 'id = :id', ['id' => $payment['id']]);
 
@@ -1898,6 +1930,78 @@ final class BookingService
             'SELECT 1 FROM payment_screenshots WHERE booking_id = :b LIMIT 1',
             ['b' => $bookingId]
         );
+    }
+
+    /**
+     * THE approval door for a payment proof (9 Oct 2026, anti-fake).
+     *
+     * Every place a person approves a payment - the verify queue (one row or
+     * bulk), the booking page and the WhatsApp office assistant - comes here,
+     * so the risk gate cannot be side-stepped by using another screen.
+     * PaymentRisk::assertApprovable() decides what the reviewer still has to
+     * do (tick the bank-statement box, write a reason, or wait for a second
+     * person); only then does confirm() run. The risk the reviewer saw is
+     * stored with the decision (payment_reviews + audit 'payment.review').
+     *
+     * Never rejects, cancels or refunds anything (owner rule): a refused gate
+     * throws PaymentRiskGate and the booking stays exactly as it was.
+     *
+     * @param array<string,mixed> $admin {id, role}
+     * @param array<string,mixed> $opts  note, reasonCode, bankChecked, amountSeen, via (queue|booking|bulk|whatsapp)
+     * @return array{state:string, booking:array<string,mixed>, risk:array<string,mixed>, first:?array<string,mixed>}
+     *         state = 'confirmed' | 'awaiting_second' (first of two approvals recorded, nothing else changed)
+     */
+    public static function approveReviewed(int $bookingId, array $admin, array $opts = []): array
+    {
+        require_once __DIR__ . '/paymentrisk.php';
+        $gate = PaymentRisk::assertApprovable($bookingId, $admin, $opts);
+        $note = Security::clean((string) ($opts['note'] ?? ''), 255);
+
+        if ($gate['step'] === 'approve1') {
+            PaymentRisk::recordReview($bookingId, 'approve1', $gate['risk'], $admin, $opts);
+            self::notifyAdmin('👥', 'Second approval needed · ' . ($gate['risk']['pnr'] ?? ''),
+                'HIGH-risk payment: first approval given. A super-admin, manager or accountant must approve it within 24 h.', $bookingId);
+            return [
+                'state'   => 'awaiting_second',
+                'booking' => Database::fetch('SELECT * FROM bookings WHERE id = :id', ['id' => $bookingId]) ?? [],
+                'risk'    => $gate['risk'],
+                'first'   => null,
+            ];
+        }
+
+        $confirmNote = $note;
+        if ($gate['first'] !== null) {
+            $who = (string) (($gate['first']['full_name'] ?? '') ?: ($gate['first']['username'] ?? ('#' . $gate['first']['admin_id'])));
+            $confirmNote = mb_substr('2nd approval (1st: ' . $who . ')' . ($note !== '' ? ' · ' . $note : ''), 0, 255);
+        }
+        $booking = self::confirm($bookingId, (int) ($admin['id'] ?? 0), $confirmNote);
+        PaymentRisk::recordReview($bookingId, 'approve', $gate['risk'], $admin, $opts);
+
+        return ['state' => 'confirmed', 'booking' => $booking, 'risk' => $gate['risk'], 'first' => $gate['first']];
+    }
+
+    /**
+     * reject() with the risk snapshot kept (9 Oct 2026). Same arguments and
+     * return as reject(); a person always presses this - nothing calls it
+     * on its own. $opts: reasonCode, note, via.
+     *
+     * @param array<string,mixed> $opts
+     * @return array<string,mixed>
+     */
+    public static function rejectReviewed(int $bookingId, int $adminId, string $reason, array $opts = []): array
+    {
+        require_once __DIR__ . '/paymentrisk.php';
+        $risk = null;
+        try {
+            $risk = PaymentRisk::score($bookingId);
+        } catch (Throwable $e) {
+            $risk = null;
+        }
+        $booking = self::reject($bookingId, $adminId, $reason);
+        $role = (string) Database::scalar('SELECT role FROM admins WHERE id = :i', ['i' => $adminId], '');
+        PaymentRisk::recordReview($bookingId, 'reject', $risk ?? ['score' => 0, 'level' => 'low', 'codes' => '', 'pnr' => (string) ($booking['pnr'] ?? '')],
+            ['id' => $adminId, 'role' => $role], ['note' => $opts['note'] ?? $reason, 'reasonCode' => $opts['reasonCode'] ?? '', 'via' => $opts['via'] ?? 'queue']);
+        return $booking;
     }
 
     /**

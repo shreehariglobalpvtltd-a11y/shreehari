@@ -93,6 +93,40 @@ function fbContact(b) {
    dependency: hand-rolled canvas + toDataURL). Reused by both
    the direct download button and the Web Share button below.
 ================================================================ */
+/* Brand facts for the client-drawn fallback tickets (9 Oct 2026): the live
+   company name / head-office address (FACTS → SHG_BOOT → CONFIG), never a
+   typed literal, and the emblem + flag images (the emblem carries no name
+   any more, so the name is always drawn as text beside it). */
+function _coName() {
+  try { if (typeof fact === 'function') { var n = fact('brand.name', ''); if (n) return String(n); } } catch (e) {}
+  try { var s = window.SHG_BOOT && SHG_BOOT.settings && SHG_BOOT.settings.company_name; if (s) return String(s); } catch (e) {}
+  return (window.CONFIG && CONFIG.company && CONFIG.company.name) || 'S Hari Global Pvt Ltd';
+}
+function _coAddr() {
+  try { if (typeof fact === 'function') { var a = fact('head.address', ''); if (a) return String(a); } } catch (e) {}
+  return (window.CONFIG && CONFIG.company && CONFIG.company.address) || '';
+}
+function _imgLoad(src) {
+  return new Promise(function (res) {
+    try {
+      var i = new Image();
+      i.onload = function () { res(i.naturalWidth ? i : null); };
+      i.onerror = function () { res(null); };
+      i.src = src;
+    } catch (e) { res(null); }
+  });
+}
+/* The transparent emblem: the nav's own <img> when it has decoded (#logoNav
+   is the emblem since 9 Oct 2026), else the file itself. */
+async function _markImg() {
+  var el = document.getElementById('logoNav');
+  if (el && el.complete && el.naturalWidth > 0) return el;
+  return _imgLoad('/assets/img/logo-mark-96h.png');
+}
+function _flagImgs() {
+  return Promise.all([_imgLoad('/assets/img/flag-in.png'), _imgLoad('/assets/img/flag-np.png')]);
+}
+
 async function buildTicketCanvas(b) {
   /* Minimal airline-style JPG ticket — same layout as the PDF, so a
      WhatsApp share, a printed A4 and a phone-download all read the same.
@@ -109,18 +143,39 @@ async function buildTicketCanvas(b) {
   /* Header */
   g.fillStyle = NAVY; g.fillRect(0, 0, W, 200);
   g.fillStyle = ORANGE; g.fillRect(0, 200, W, 6);
+  /* Emblem on a soft glow, no white chip; the name stays live text (9 Oct 2026). */
+  var tx = pad;
+  var mk = await _markImg();
+  if (mk) {
+    var mh = 110, mw = Math.round(mh * (mk.naturalWidth / (mk.naturalHeight || 1)));
+    var glow = g.createRadialGradient(pad + mw / 2, 100, 10, pad + mw / 2, 100, mw * 0.62);
+    glow.addColorStop(0, 'rgba(190,214,255,0.45)'); glow.addColorStop(1, 'rgba(190,214,255,0)');
+    g.fillStyle = glow; g.fillRect(pad - 20, 20, mw + 40, 160);
+    try { g.drawImage(mk, pad, 100 - mh / 2, mw, mh); tx = pad + mw + 26; } catch (e) {}
+  }
   g.fillStyle = '#FFD268'; g.font = 'bold 40px sans-serif';
-  g.fillText('S HARI GLOBAL PVT LTD', pad, 76);
+  g.fillText(_coName().toUpperCase(), tx, 76);
   g.fillStyle = '#C8D2E6'; g.font = '20px sans-serif';
-  g.fillText('भारत–नेपाल बस सेवा  ·  India–Nepal Bus Service', pad, 110);
+  g.fillText('भारत–नेपाल बस सेवा  ·  India–Nepal Bus Service', tx, 110);
   if (CONFIG.company.cin) {
     g.font = '16px sans-serif';
-    g.fillText('CIN: ' + CONFIG.company.cin, pad, 138);
+    g.fillText('CIN: ' + CONFIG.company.cin, tx, 138);
   }
   g.fillStyle = '#FFD268'; g.font = 'bold 22px sans-serif'; g.textAlign = 'right';
   g.fillText('यात्रा टिकट · BOARDING PASS', W - pad, 66);
   g.fillStyle = '#fff'; g.font = 'bold 38px monospace';
   g.fillText(String(b.id), W - pad, 116);
+  /* both flags beside the PNR — the side the bus leaves from first */
+  var fl = await _flagImgs();
+  var toIndia = /rupaidiha|nepal/i.test(String(r.from || ''));
+  var fOrder = toIndia ? [fl[1], fl[0]] : [fl[0], fl[1]];
+  var fx = W - pad - g.measureText(String(b.id)).width - 18;
+  for (var fi = fOrder.length - 1; fi >= 0; fi--) {
+    var fimg = fOrder[fi]; if (!fimg) continue;
+    var fh = 30, fw = Math.round(fh * fimg.naturalWidth / (fimg.naturalHeight || 1));
+    fx -= fw; try { g.drawImage(fimg, fx, 116 - 28, fw, fh); } catch (e) {}
+    fx -= 8;
+  }
   g.fillStyle = '#C8D2E6'; g.font = '17px sans-serif';
   g.fillText('Issued ' + new Date().toLocaleDateString('en-IN'), W - pad, 146);
   g.textAlign = 'left';
@@ -276,7 +331,7 @@ async function buildTicketCanvas(b) {
     g.font = '18px sans-serif';      g.fillText(o[1], ox + 130, oy);
   });
   g.fillStyle = MUTE; g.font = '15px sans-serif';
-  g.fillText('Head Office: Near Shilpa Garage, Silver Complex, Mehsana – 384002', infoX, y + 156);
+  if (_coAddr()) g.fillText('Head Office: ' + _coAddr(), infoX, y + 156);
   g.fillStyle = INK; g.font = '16px sans-serif';
   g.fillText('Your contact: ' + fbContact(b), infoX, y + 188);
   if (b.agentCode) {
@@ -292,7 +347,7 @@ async function buildTicketCanvas(b) {
   g.fillText('कृपया बोर्डिङ समयभन्दा ३० मिनेट अगाडि पुग्नुहोस्  ·  Reach the boarding point 30 min early.', W / 2, y + 4);
   g.fillText('भारत–नेपाल सीमामा मान्य सरकारी फोटो ID राख्नुहोस्  ·  Carry a valid photo ID at the border.', W / 2, y + 26);
   g.fillStyle = NAVY; g.font = 'bold 18px sans-serif';
-  g.fillText('धन्यवाद  ·  Thank you for travelling with S Hari Global', W / 2, y + 62);
+  g.fillText('धन्यवाद  ·  Thank you for travelling with ' + _coName(), W / 2, y + 62);
   g.textAlign = 'left';
 
   return cv;
@@ -472,22 +527,22 @@ async function downloadTicketPDF(b) {
   doc.setFillColor(ORANGE[0], ORANGE[1], ORANGE[2]);
   doc.rect(0, 96, W, 3, 'F');
 
-  /* Logo chip left */
+  /* The emblem alone, its own aspect, no white chip (9 Oct 2026) — #logoNav
+     is the transparent emblem now; the name is the live text beside it. */
+  var hx = 24;
   if (logoOk) {
-    doc.setFillColor(255, 255, 255);
-    doc.roundedRect(24, 20, 68, 56, 6, 6, 'F');
-    const lw = 54, lh = lw / logoAsp;
-    try { doc.addImage(logo, 'PNG', 24 + (68 - lw) / 2, 20 + (56 - lh) / 2, lw, lh); } catch (e) {}
+    const lh = 46, lw = Math.min(96, lh * logoAsp), lh2 = lw / logoAsp;
+    try { doc.addImage(logo, 'PNG', 24, 48 - lh2 / 2, lw, lh2); hx = 24 + lw + 12; } catch (e) {}
   }
 
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold'); doc.setFontSize(17);
-  doc.text('S HARI GLOBAL PVT LTD', 104, 40);
+  doc.text(pdfSafe(_coName()).toUpperCase(), hx, 40);
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
   doc.setTextColor(200, 210, 230);
-  _dt(doc, hasDev, 104, 55, 'भारत–नेपाल बस सेवा  ·  India–Nepal Bus Service', 'Bharat-Nepal Bus Sewa  ·  India-Nepal Bus Service');
+  _dt(doc, hasDev, hx, 55, 'भारत–नेपाल बस सेवा  ·  India–Nepal Bus Service', 'Bharat-Nepal Bus Sewa  ·  India-Nepal Bus Service');
   if (CONFIG.company && CONFIG.company.cin) {
-    doc.text('CIN: ' + CONFIG.company.cin, 104, 68);
+    doc.text('CIN: ' + CONFIG.company.cin, hx, 68);
   }
 
   /* PNR block on the right, airline-style */
@@ -497,6 +552,18 @@ async function downloadTicketPDF(b) {
   doc.setFont('courier', 'bold'); doc.setFontSize(16);
   doc.setTextColor(255, 255, 255);
   doc.text(String(b.id || ''), W - 24, 54, { align: 'right' });
+  /* both flags beside the PNR (9 Oct 2026) — the side the bus leaves from first */
+  try {
+    var pdfFl = await _flagImgs();
+    var pToIndia = /rupaidiha|nepal/i.test(String(r.from || ''));
+    var pOrder = pToIndia ? [pdfFl[1], pdfFl[0]] : [pdfFl[0], pdfFl[1]];
+    var pfx = W - 24 - doc.getTextWidth(String(b.id || '')) - 8;
+    for (var pi = pOrder.length - 1; pi >= 0; pi--) {
+      var pim = pOrder[pi]; if (!pim) continue;
+      var pfh = 12, pfw = pfh * pim.naturalWidth / (pim.naturalHeight || 1);
+      pfx -= pfw; doc.addImage(pim, 'PNG', pfx, 43, pfw, pfh); pfx -= 4;
+    }
+  } catch (e) {}
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
   doc.setTextColor(200, 210, 230);
   doc.text('Issued ' + new Date().toLocaleDateString('en-IN'), W - 24, 70, { align: 'right' });
@@ -680,7 +747,7 @@ async function downloadTicketPDF(b) {
     doc.setFont('helvetica', 'normal'); doc.text(o[1], ox + 52, oy);
   });
   doc.setFontSize(7.5); doc.setTextColor(MUTE[0], MUTE[1], MUTE[2]);
-  doc.text('Head Office: Near Shilpa Garage, Silver Complex, Mehsana – 384002, Gujarat', infoX, qrY + 66);
+  if (_coAddr()) doc.text('Head Office: ' + _coAddr(), infoX, qrY + 66);
 
   /* Agent — one clean line if applicable */
   if (b.agentCode) {
@@ -712,8 +779,8 @@ async function downloadTicketPDF(b) {
   doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
   doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
   _dt(doc, hasDev, W / 2, footY + 28,
-    'धन्यवाद  ·  Thank you for travelling with S Hari Global',
-    'Dhanyabad  ·  Thank you for travelling with S Hari Global',
+    'धन्यवाद  ·  Thank you for travelling with ' + _coName(),
+    'Dhanyabad  ·  Thank you for travelling with ' + _coName(),
     { align: 'center' });
 
   doc.save('SHG-Ticket-' + b.id + '.pdf');

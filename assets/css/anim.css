@@ -141,7 +141,7 @@ html:not([lang="en"]) .shg-animation .sa-map .sa-cty { letter-spacing: 0; }
 .shg-animation .sa-ui--ticket { z-index: 4; display: flex; align-items: center; justify-content: center; background: #edf2f8; }
 .shg-animation .sa-ui-top { height: calc(var(--u) * 146); background: #081a36; color: #fff; padding: calc(var(--u) * 35) calc(var(--u) * 18) 0; }
 .shg-animation .sa-brand { display: flex; align-items: center; gap: calc(var(--u) * 10); }
-.shg-animation .sa-logo { flex: none; width: calc(var(--u) * 64); height: calc(var(--u) * 48); border-radius: calc(var(--u) * 8); background: #fff; object-fit: contain; padding: calc(var(--u) * 3); }
+.shg-animation .sa-logo { flex: none; width: calc(var(--u) * 64); height: calc(var(--u) * 48); border-radius: 0; background: transparent; object-fit: contain; padding: 0; }
 .shg-animation .sa-brand b { display: block; font-size: calc(var(--u) * 18); line-height: 1.1; letter-spacing: .01em; }
 .shg-animation .sa-brand small { display: block; font-size: calc(var(--u) * 10); color: #c1cfdf; letter-spacing: .06em; margin-top: calc(var(--u) * 3); }
 .shg-animation .sa-ui-title { margin: calc(var(--u) * 14) 0 0; font-size: calc(var(--u) * 23); line-height: 1.15; font-weight: 700; color: #fff; }

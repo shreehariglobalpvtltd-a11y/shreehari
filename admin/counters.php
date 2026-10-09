@@ -62,7 +62,22 @@ if ($canEdit && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $action = (string) ($_POST['action'] ?? '');
             if ($action === 'save') {
                 $before = CounterDesk::get((string) ($_POST['code'] ?? ''));
-                $code = CounterDesk::save([
+                /* 9 Oct 2026 (site facts): the website-only office facts, sent only
+                   when the form carried its "On the website" block - none of them
+                   prints on a ticket, so they never re-render issued tickets. */
+                $site = isset($_POST['site_block']) ? [
+                    'show_public'    => isset($_POST['show_public']) ? 1 : 0,
+                    'office_kind'    => $_POST['office_kind'] ?? '',
+                    'public_status'  => $_POST['public_status'] ?? 'open',
+                    'name_ne'        => $_POST['name_ne'] ?? '',
+                    'name_hi'        => $_POST['name_hi'] ?? '',
+                    'address_ne'     => $_POST['address_ne'] ?? '',
+                    'lat'            => $_POST['lat'] ?? '',
+                    'lng'            => $_POST['lng'] ?? '',
+                    'whatsapp'       => $_POST['whatsapp'] ?? '',
+                    'contact_person' => $_POST['contact_person'] ?? '',
+                ] : [];
+                $code = CounterDesk::save($site + [
                     'entity'     => $_POST['entity'] ?? '',
                     'lang'       => $_POST['lang'] ?? '',
                     'map_url'    => $_POST['map_url'] ?? '',
@@ -405,6 +420,42 @@ $e = static fn($v): string => Security::e((string) $v);
     <div class="row">
       <label>Note <input type="text" name="note" maxlength="255" value="<?= $e($editing['note'] ?? '') ?>"></label>
     </div>
+    <?php if (CounterDesk::hasColumn('counter_locations', 'show_public')): ?>
+    <!-- 9 Oct 2026 (site facts): the public office list on the website -->
+    <input type="hidden" name="site_block" value="1">
+    <h3 style="margin:16px 0 8px">🌐 On the website — office list · वेबसाइटको कार्यालय सूची</h3>
+    <div class="row">
+      <label class="chk"><input type="checkbox" name="show_public" value="1" <?= (int) ($editing['show_public'] ?? 0) === 1 ? 'checked' : '' ?>> Show this office on the website</label>
+      <label>Kind
+        <select name="office_kind">
+          <?php foreach (['' => 'Auto (India branch / Nepal partner)', 'head' => '🏛️ Head office', 'branch' => 'Branch office', 'partner' => 'Partner office (Nepal)', 'border' => 'Border point'] as $kv => $kl): ?>
+            <option value="<?= $e($kv) ?>" <?= ($editing['office_kind'] ?? '') === $kv ? 'selected' : '' ?>><?= $e($kl) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+      <label>Status
+        <select name="public_status">
+          <option value="open" <?= ($editing['public_status'] ?? 'open') !== 'coming_soon' ? 'selected' : '' ?>>Open</option>
+          <option value="coming_soon" <?= ($editing['public_status'] ?? '') === 'coming_soon' ? 'selected' : '' ?>>Coming soon (no phone shown)</option>
+        </select>
+      </label>
+      <label>Town in Nepali <input type="text" name="name_ne" maxlength="120" placeholder="नेपालगञ्ज" value="<?= $e($editing['name_ne'] ?? '') ?>"></label>
+      <label>Town in Hindi <input type="text" name="name_hi" maxlength="120" placeholder="नेपालगंज" value="<?= $e($editing['name_hi'] ?? '') ?>"></label>
+    </div>
+    <div class="row">
+      <label>Address in Nepali <input type="text" name="address_ne" maxlength="255" value="<?= $e($editing['address_ne'] ?? '') ?>"></label>
+      <label>WhatsApp (if the office has one) <input type="text" name="whatsapp" maxlength="40" inputmode="tel" value="<?= $e($editing['whatsapp'] ?? '') ?>"></label>
+      <label>Contact person <input type="text" name="contact_person" maxlength="80" value="<?= $e($editing['contact_person'] ?? '') ?>"></label>
+      <label>Map pin — latitude <input type="text" name="lat" maxlength="20" inputmode="decimal" placeholder="23.6008959" value="<?= $e($editing['lat'] ?? '') ?>"></label>
+      <label>Map pin — longitude <input type="text" name="lng" maxlength="20" inputmode="decimal" placeholder="72.3807235" value="<?= $e($editing['lng'] ?? '') ?>"></label>
+    </div>
+    <p class="ctr-note" style="margin:0 0 10px">
+      The home page, the search-engine card and the offices page list every desk ticked here, head office first.
+      Its <b>phone</b> is the Phone box above; left blank, the town's number from Company details
+      (company counters line) is used, so the website and the printed ticket always agree. These website boxes
+      never change an issued ticket.
+    </p>
+    <?php endif; ?>
     <div style="display:flex;gap:8px;justify-content:flex-end">
       <?php if ($editing): ?><a class="btn ghost" href="<?= $base ?>/admin/counters.php">Cancel</a><?php endif; ?>
       <button class="btn ok" type="submit"><?= $editing ? '💾 Save desk' : '➕ Add desk' ?></button>
@@ -470,10 +521,11 @@ $e = static fn($v): string => Security::e((string) $v);
     ?>
       <tr<?= $d !== null && (int) $d['is_active'] === 0 ? ' style="opacity:.6"' : '' ?>>
         <td>
-          <span class="flagpill"><?= $code === '' ? '🌐' : CounterDesk::flag($code) ?>
+          <span class="flagpill"><?= $code === '' ? '🌐' : Brand::flagFor($code, 15, true) ?>
             <?= $e($code === '' ? 'Online / no desk' : ($d['name'] ?? $code)) ?></span>
           <?php if ($code !== ''): ?><div class="ctr-note"><?= $e($code) ?><?php
             if ($d !== null && (int) $d['is_active'] === 0) { echo ' · closed'; }
+            if ($d !== null && (int) ($d['show_public'] ?? 0) === 1) { echo ' · 🌐 on the website' . (($d['office_kind'] ?? '') === 'head' ? ' (head office)' : ''); }
             if ($s['tickets'] > 0 && $s['stamped'] < $s['tickets']) {
                 echo ' · ' . (int) ($s['tickets'] - $s['stamped']) . ' from profile';
             }
@@ -486,7 +538,7 @@ $e = static fn($v): string => Security::e((string) $v);
               <?php $onlyM = CounterDesk::allowedMethods($code);
                     if ($onlyM !== null): ?><div class="ctr-note">💵 <?= $e(implode(' / ', $onlyM)) ?> only</div><?php endif; ?>
               <?php $dirC = CounterDesk::direction($code);
-                    if ($dirC !== ''): ?><div class="ctr-note"><?= $dirC === 'toIndia' ? '🇳🇵→🇮🇳 return run' : '🇮🇳→🇳🇵 going run' ?><?php
+                    if ($dirC !== ''): ?><div class="ctr-note"><?= $dirC === 'toIndia' ? Brand::flagUse('NP', 14, 'en', true) . '→' . Brand::flagUse('IN', 11, 'en', true) . ' return run' : Brand::flagUse('IN', 11, 'en', true) . '→' . Brand::flagUse('NP', 14, 'en', true) . ' going run' ?><?php
                       $fromC = CounterDesk::defaultFrom($code);
                       if ($fromC !== '') { echo ' · boards ' . $e($fromC); }
                     ?></div><?php endif; ?>
@@ -546,7 +598,7 @@ $e = static fn($v): string => Security::e((string) $v);
     <?php foreach (['IN' => 'India company', 'NP' => 'Nepal company'] as $ek => $el):
         $idn = Settings::companyFor(null, $ek); ?>
       <tr>
-        <td><span class="flagpill"><?= CounterDesk::flag($ek) ?> <?= $e($el) ?></span>
+        <td><span class="flagpill"><?= Brand::flagFor($ek, 15, true) ?> <?= $e($el) ?></span>
           <div class="ctr-note"><?= $idn['entity'] === $ek ? $e($idn['name']) : 'name not set yet — Settings → company → Nepal entity name' ?></div></td>
         <td><?= (int) $byEntity[$ek]['tickets'] ?></td>
         <td><?= $e(inr($byEntity[$ek]['inr'])) ?></td>

@@ -12,7 +12,7 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
-admin_boot('bookings.view');
+$pcAdmin = admin_boot('bookings.view');
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -39,6 +39,21 @@ $sync = LiveSync::scopeFor((string) ($_GET['sync'] ?? ''));
 if ($sync !== '') {
     $out['sync'] = $sync;
     $out['ver']  = LiveSync::version($sync);
+}
+
+// 9 Oct 2026 — Office chat rides on this same 15 s poll (no second timer):
+// unread conversations, the newest incoming message id (a rise = chime +
+// toast) and "online now" (staff_presence, written at most once a minute).
+// Added keys only — pending / maxBooking / sync / ver above are pinned by
+// tests/live-sync-test.php and tests/e2e-booking-test.php.
+try {
+    require_once INCLUDE_PATH . '/staffmsg.php';
+    if (StaffMsg::canUse()) {
+        StaffMsg::touchPresence((int) ($pcAdmin['id'] ?? 0));
+        $out['chat'] = StaffMsg::pollInfo();
+    }
+} catch (Throwable $e) {
+    // the chat must never break the payments badge
 }
 
 echo json_encode($out);

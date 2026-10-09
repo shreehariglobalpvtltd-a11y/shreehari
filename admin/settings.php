@@ -203,6 +203,15 @@ $groupInfo = [
 $choiceKeys = [
     'seat_ai_row_order'    => ['rear' => 'Rear first - fill from the back of the bus towards the front', 'front' => 'Front first - front rows before back rows'],
     'seat_ai_default_deck' => ['L' => 'Lower deck first', 'U' => 'Upper deck first'],
+    /* 9 Oct 2026 (Pixel / Material You themes): the owner's defaults for a
+       visitor who has not picked anything in the website's Appearance sheet.
+       The ids must match assets/css/themes.css (tests/theme-palette-test.php). */
+    'app_theme_palette'    => ['' => 'S Hari brand colours (navy, royal blue, red)', 'himalaya' => 'Himalaya Blue', 'laligurans' => 'Laligurans Red',
+                               'saffron' => 'Saffron', 'tulsi' => 'Tulsi Green', 'phewa' => 'Phewa Teal', 'lotus' => 'Lotus Pink',
+                               'lavender' => 'Lavender Dusk', 'marigold' => 'Marigold', 'monsoon' => 'Monsoon Slate', 'everest' => 'Everest Sky',
+                               'terracotta' => 'Bhaktapur Brick', 'peacock' => 'Peacock'],
+    'app_ui_style'         => ['pixel' => 'Pixel - rounded, soft, Android Pixel style', 'classic' => 'Classic 3D - raised buttons and cards'],
+    'app_sound_pack'       => ['pixel' => 'Pixel - new soft chimes and clicks', 'classic' => 'Classic - the original tones'],
 ];
 
 /* ── Settings by CATEGORY (8 Oct 2026, owner: "sabai setting milayera, ticket
@@ -558,6 +567,11 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
       // 5 Oct 2026: Google Ads conversion tracking (index.php boot + ShgAds in 05-router.js).
       'google_ads_conversion'               => 'Google Ads → Goals → Conversions → New → Website → "Purchase" → "Use Google tag" → copy the send_to value, e.g. AW-123456789/AbCdEfGhIjk. When set, every online booking is reported to Google Ads (value in ₹), so the campaign learns which clicks buy tickets. Blank = Google\'s tag is not loaded at all.',
       'google_ads_contact_conversion'       => 'Optional second conversion (category "Contact") for a tap on a phone number or WhatsApp button, same AW-…/label format. Leave blank if you only want bookings counted.',
+      // 9 Oct 2026: Pixel / Material You themes (assets/css/themes.css, the "🎨 रूप · Appearance" sheet).
+      'app_theme_palette'                   => 'The colour theme a visitor sees until they choose their own (phone menu → 🎨 रूप · Appearance). Every theme works in light, dark and AMOLED, and never changes what a seat, fare or status colour means. A visitor\'s own choice always wins.',
+      'app_ui_style'                        => 'Pixel = rounded cards, pill buttons, soft shadows and spring motion (Android Pixel / Material You). Classic 3D = the raised, deep buttons and cards. Visitors can switch in the Appearance sheet.',
+      'app_sound_pack'                      => 'The sound style for taps, seats, switches and the ticket chime. All sounds are generated in the phone (no download) and follow the phone\'s silent mode. Visitors can turn sound off or switch the style.',
+      'app_motion_on'                       => 'On = smooth, springy movement. Off = a calm screen for every visitor who has not chosen otherwise (phones set to "reduce motion" are always calm).',
   ];
   ?>
   <?php foreach ($cats as $cat => $catInfo): foreach ($byCat[$cat] ?? [] as $group => $items):

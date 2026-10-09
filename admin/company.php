@@ -74,6 +74,18 @@ $NPTEAM = [
     'np_extra2_name'   => ['Extra Nepal number 2 — name / label', 'Nepal Office', 80, false],
     'np_extra2_phone'  => ['Extra Nepal number 2 — phone', '+977 98… (hidden until filled)', 40, false],
 ];
+/* 9 Oct 2026 (site facts): what the WEBSITE says - one row each, read by
+   includes/sitefacts.php for the home page, the SEO card, the WhatsApp
+   answers and every page that names the CEO or a phone. A blank box keeps the
+   built-in value. Office phones: a desk's own phone on Counters & collection,
+   else the town's number in the "office numbers" line below. */
+$WEB = [
+    'company_ceo'      => ['CEO — name on the website', 'Sher Bahadur Bishwokarma', 80, false],
+    'company_ceo_ne'   => ['CEO — name in Nepali', 'शेर बहादुर विश्वकर्मा', 120, false],
+    'company_tagline'  => ['Tagline', 'India to Nepal Bus Transport | International Import & Export', 160, false],
+    'support_phone'    => ['24×7 helpline (call + WhatsApp)', '+91 91734 01507 (used until you type one)', 40, false],
+    'company_counters' => ['Office numbers line — "Town +91 … · Town +91 …" (printed on tickets; the website uses it when a desk has no phone)', 'Mehsana +91 … · Ahmedabad +91 … · Surat +91 … · Rajkot +91 …', 400, true],
+];
 $LOGO_REL = 'assets/img/brand-np-logo.png';
 
 if ($canEdit && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
@@ -120,7 +132,7 @@ if ($canEdit && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $flash = ['ok', 'Nepal logo saved. New and re-opened Nepal tickets carry it.'];
             } else {
                 $old = []; $new = [];
-                foreach ([$INDIA, $NEPAL, $NPTEAM] as $set) {
+                foreach ([$INDIA, $NEPAL, $NPTEAM, $WEB] as $set) {
                     foreach ($set as $key => [$label, , $max, $multi]) {
                         if (!array_key_exists($key, $_POST['s'] ?? [])) {
                             continue;
@@ -190,7 +202,7 @@ admin_header('Company details', 'company');
   <input type="hidden" name="action" value="save">
   <div class="co-grid">
     <section class="co-card">
-      <h2>🇮🇳 India company</h2>
+      <h2><?= Brand::flagUse('IN', 18, 'en', true) ?> India company</h2>
       <p class="sub">S Hari Global Pvt Ltd, Mehsana — every Gujarat desk, Rupaidiha and every online sale. A blank box keeps the built-in value.</p>
       <?php foreach ($INDIA as $key => [$label, $hint, $max, $multi]): $val = Settings::getString($key, ''); ?>
         <label class="co-f"><?= $e($label) ?>
@@ -204,7 +216,7 @@ admin_header('Company details', 'company');
     </section>
 
     <section class="co-card">
-      <h2>🇳🇵 Nepal company
+      <h2><?= Brand::flagUse('NP', 22, 'en', true) ?> Nepal company
         <span class="co-state <?= $npName !== '' ? 'on' : 'off' ?>"><?= $npName !== '' ? 'Nepal tickets use it' : 'Not filled — Nepal tickets use India' ?></span></h2>
       <p class="sub">Nepalgunj, Dhamboji and Kohalpur desks. Until the <b>Company name</b> is filled, their tickets keep the India letterhead.
         Logo blank = India logo · eSewa / bank blank = India account.</p>
@@ -227,6 +239,22 @@ admin_header('Company details', 'company');
       <?php foreach ($NPTEAM as $key => [$label, $hint, $max]): $val = Settings::getString($key, ''); ?>
         <label class="co-f"><?= $e($label) ?>
           <input type="text" name="s[<?= $e($key) ?>]" maxlength="<?= (int) $max ?>" value="<?= $e($val) ?>" placeholder="<?= $e($hint) ?>" <?= $canEdit ? '' : 'readonly' ?><?= str_ends_with($key, '_phone') ? ' inputmode="tel"' : '' ?>>
+        </label>
+      <?php endforeach; ?>
+    </section>
+
+    <section class="co-card">
+      <h2>🌐 Website facts · वेबसाइटमा देखिने</h2>
+      <p class="sub">One place for what the whole website says — the home page, the CEO card, the search-engine card, WhatsApp answers.
+        Change it here and every page shows it on its next open. Fares come from Settings → Fares (per pickup); offices from
+        <a href="/admin/counters.php">Counters &amp; collection</a> (tick “Show this office on the website”).</p>
+      <?php foreach ($WEB as $key => [$label, $hint, $max, $multi]): $val = Settings::getString($key, ''); ?>
+        <label class="co-f"><?= $e($label) ?>
+          <?php if ($multi): ?>
+            <textarea name="s[<?= $e($key) ?>]" maxlength="<?= (int) $max ?>" placeholder="<?= $e($hint) ?>" <?= $canEdit ? '' : 'readonly' ?>><?= $e($val) ?></textarea>
+          <?php else: ?>
+            <input type="text" name="s[<?= $e($key) ?>]" maxlength="<?= (int) $max ?>" value="<?= $e($val) ?>" placeholder="<?= $e($hint) ?>" <?= $canEdit ? '' : 'readonly' ?><?= str_ends_with($key, '_phone') ? ' inputmode="tel"' : '' ?>>
+          <?php endif; ?>
         </label>
       <?php endforeach; ?>
     </section>

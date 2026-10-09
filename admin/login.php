@@ -15,6 +15,7 @@ declare(strict_types=1);
 
 define('SHG_APP', true);
 require_once dirname(__DIR__) . '/includes/bootstrap.php';
+require_once INCLUDE_PATH . '/brand.php';   // the emblem (no baked name, no white tile) — 9 Oct 2026
 
 $base = rtrim(APP_URL, '/');
 
@@ -190,6 +191,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 }
 
 $company = Settings::getString('company_name', APP_NAME);
+/* 9 Oct 2026 (site facts): the CEO line and the help number are Admin's
+   (Company details), not typed into this page. */
+$ceoName   = trim(Settings::getString('company_ceo', '')) !== '' ? trim(Settings::getString('company_ceo', '')) : (string) Settings::company()['operator'];
+$helpPhone = Settings::officePhone();
+$helpTel   = CounterDesk::dialDigits($helpPhone, 'IN') ?: Settings::officeWhatsApp();
 $csrf    = Security::e(Security::csrfToken());
 $csrfKey = CSRF_TOKEN_NAME;
 $heading = $skin['title'] !== '' ? $skin['title'] : Security::e($company);
@@ -198,6 +204,7 @@ $heading = $skin['title'] !== '' ? $skin['title'] : Security::e($company);
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= $skin['title'] !== '' ? Security::e($skin['title']) : 'Sign in' ?> · <?= Security::e($company) ?></title>
 <meta name="robots" content="noindex,nofollow">
+<?= Brand::iconLinks() ?>
 <style>
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;
@@ -207,7 +214,7 @@ body{margin:0;min-height:100vh;min-height:100dvh;display:flex;align-items:center
 .box{background:#fff;width:100%;max-width:380px;padding:34px 30px;border-radius:18px;
      box-shadow:0 24px 60px rgba(0,0,0,.35)}
 .logo{text-align:center;line-height:1;margin-bottom:4px}
-.logo img{width:72px;height:72px;object-fit:contain;filter:drop-shadow(0 6px 16px rgba(18,38,78,.28))}
+.logo img{height:68px;width:auto;max-width:160px;object-fit:contain;background:none;filter:drop-shadow(0 6px 14px rgba(18,38,78,.26))}
 h1{font-size:19px;text-align:center;margin:10px 0 2px;color:<?= $skin['sky'] ?>}
 .sub{text-align:center;color:#6b7688;font-size:13px;margin-bottom:22px}
 .who{text-align:center;font-size:12px;color:#8a94a6;margin-bottom:18px}
@@ -276,8 +283,9 @@ button:not(.alt):active{transform:translateY(3px);box-shadow:inset 0 3px 7px rgb
 :root[data-theme="dark"] button.alt,:root[data-theme="dark"] .foot a{color:#9ABFFF}
 :root[data-theme="dark"] .err{background:#30161B;color:#FFADB9}
 :root[data-theme="dark"] .ok{background:#0F271B;color:#8CE4B8}
-/* the logo artwork has navy lettering: on a dark card it sits on its white tile, as in the app bar */
-:root[data-theme="dark"] .logo img{background:#fff;border-radius:16px;padding:6px;box-shadow:0 2px 0 #8FA0BE,0 6px 10px -3px #000;filter:none}
+/* 9 Oct 2026: the emblem has no lettering and no tile any more - on a dark card it
+   sits straight on the card with a soft blue glow, exactly like the app bar */
+:root[data-theme="dark"] .logo img{background:none;border-radius:0;padding:0;box-shadow:none;filter:drop-shadow(0 0 16px rgba(120,170,255,.30)) drop-shadow(0 6px 10px rgba(0,0,0,.55))}
 @media (prefers-reduced-motion:reduce){button:not(.alt):active,.ch:active{transform:none}}
 @media print{.box{box-shadow:none}}
 @media (prefers-reduced-motion:reduce){*{transition:none !important}}
@@ -286,12 +294,12 @@ button:not(.alt):active{transform:translateY(3px);box-shadow:inset 0 3px 7px rgb
 </head>
 <body>
 <form class="box" method="post" autocomplete="off">
-  <div class="logo"><img src="/assets/img/logo.png" alt="<?= Security::e($company) ?>" width="72" height="72"></div>
+  <div class="logo"><img src="<?= Security::e(Brand::markUrl(68)) ?>" alt="<?= Security::e($company) ?>" width="131" height="68"></div>
   <h1><?= $heading ?></h1>
   <div class="sub"><?= $skin['sub'] ?></div>
   <div class="ceo-strip">
     <img src="/assets/img/ceo.jpg" alt="CEO" onerror="this.style.display='none'">
-    <div><b>Sher Bahadur Bishwokarma</b><span>👑 Founder &amp; CEO · Director</span></div>
+    <div><b><?= Security::e($ceoName) ?></b><span>👑 Founder &amp; CEO · Director</span></div>
   </div>
   <?php if ($portal !== ''): ?>
     <div class="who"><?= Security::e($company) ?> · staff sign-in</div>
@@ -383,7 +391,7 @@ button:not(.alt):active{transform:translateY(3px);box-shadow:inset 0 3px 7px rgb
     <?php endif; ?>
   </div>
   <div class="foot" style="justify-content:center;margin-top:10px;font-size:13px">
-    <span>Help / locked out? &nbsp;<b>📞 <a href="tel:+919104801507" style="white-space:nowrap">+91 91048 01507</a></b> — Mehsana Office</span>
+    <span>Help / locked out? &nbsp;<b>📞 <a href="tel:+<?= Security::e(preg_replace('/\D/', '', $helpTel) ?? '') ?>" style="white-space:nowrap"><?= Security::e($helpPhone) ?></a></b> — Head Office</span>
   </div>
 </form>
 </body></html>

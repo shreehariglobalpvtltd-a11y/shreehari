@@ -83,22 +83,41 @@ final class OfferCard
         return $all[in_array($lang, self::LANGS, true) ? $lang : 'ne'];
     }
 
+    /**
+     * The lowest per-seat fare of a direction on the fare board ('go' |
+     * 'back') and whether other stops pay more — what a caption may quote
+     * as "from ₹X" (9 Oct 2026, site facts: fares are per pickup / drop).
+     *
+     * @return array{min: float, varies: bool}
+     */
+    public static function fareFrom(string $side): array
+    {
+        $r = Fare::board()['range'][$side === 'back' ? 'back' : 'go'];
+        return ['min' => (float) $r['min'], 'varies' => (float) $r['max'] > (float) $r['min']];
+    }
+
     /** The caption for Facebook / WhatsApp / email (plain text, all three languages). */
     public static function caption(array $o, string $phone, string $site): string
     {
-        $f = Fare::dirFares();
+        /* 9 Oct 2026: "from ₹min" over the fare board - every pickup / drop has
+           its own fare, so the old single direction default under-quoted most
+           stops. The after-offer figure is the same stop's price after the offer. */
+        $go   = self::fareFrom('go');
+        $back = self::fareFrom('back');
+        $note = ' (सबैभन्दा कम भाडा · pickup अनुसार फरक)';
         $amt = self::amount($o);
         $h = (int) ($o['ahead'] ?? 0);
         $till = $o['until'] !== '' ? date('j M', (int) strtotime($o['until'])) : '';
         $fest = self::festive($o);
+        $brand = (string) (Settings::company()['name'] ?? '');
         return '🪔 ' . ($fest ? 'दशैं–तिहार अफर' : 'विशेष अफर') . ' — ' . $amt . ' छुट!' . "\n"
              . ($h > 0 ? 'यात्रा भन्दा ' . $h . ' घण्टा अगाडि बुक गर्नुहोस्, भाडामा ' . $amt . ' छुट पाउनुहोस्।' : 'भाडामा ' . $amt . ' छुट।') . "\n"
-             . '🚌 घर जाने Gujarat → Rupaidiha: ₹' . number_format($f['toNepal']) . ' → ₹' . number_format(self::after($o, $f['toNepal'])) . "\n"
-             . '🚌 फर्कने Rupaidiha → Gujarat: ₹' . number_format($f['toIndia']) . ' → ₹' . number_format(self::after($o, $f['toIndia'])) . "\n"
+             . '🚌 घर जाने Gujarat → Rupaidiha: ₹' . number_format($go['min']) . ' → ₹' . number_format(self::after($o, $go['min'])) . ($go['varies'] ? $note : '') . "\n"
+             . '🚌 फर्कने Rupaidiha → Gujarat: ₹' . number_format($back['min']) . ' → ₹' . number_format(self::after($o, $back['min'])) . ($back['varies'] ? $note : '') . "\n"
              . ($till !== '' ? '⏳ ' . $till . ' सम्म मात्र · ' : '') . 'छुट आफैं लाग्छ, कोड चाहिँदैन।' . "\n\n"
              . ($fest ? 'Dashain–Tihar offer' : 'Special offer') . ': ' . $amt . ' off when you book ' . ($h > 0 ? $h . '+ hours before departure' : 'now')
-             . ($till !== '' ? ' (till ' . $till . ')' : '') . ".\n"
-             . '📞 ' . $phone . '  ·  🌐 https://' . $site . "\n"
+             . ($till !== '' ? ' (till ' . $till . ')' : '') . '. Fares from ₹' . number_format($go['min']) . ' (Gujarat → Rupaidiha) and ₹' . number_format($back['min']) . " (Rupaidiha → Gujarat).\n"
+             . '📞 ' . $phone . '  ·  🌐 https://' . $site . ($brand !== '' ? '  ·  ' . $brand : '') . "\n"
              . '#Dashain #Tihar #Nepal #Gujarat #BusTicket #SHariGlobal';
     }
 
@@ -137,12 +156,13 @@ final class OfferCard
     {
         $cap  = self::caption($offer, $phone, $site);
         $amt  = self::amount($offer);
-        $subj = '🪔 ' . (self::festive($offer) ? 'दशैं–तिहार अफर' : 'विशेष अफर') . ': ' . $amt . ' छुट — S Hari Global';
+        $co   = Settings::company();
+        $subj = '🪔 ' . (self::festive($offer) ? 'दशैं–तिहार अफर' : 'विशेष अफर') . ': ' . $amt . ' छुट — ' . (string) $co['name'];
         $html = '<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;border:3px solid #FFD166;border-radius:14px;overflow:hidden">'
               . '<div style="background:#7a1020;color:#FFD166;padding:18px 20px;font-size:22px;font-weight:bold">🪔 ' . Security::e(self::festive($offer) ? 'दशैं–तिहार अफर' : 'विशेष अफर') . ' — ' . Security::e($amt) . ' छुट</div>'
               . '<div style="padding:18px 20px;font-size:15px;line-height:1.6;color:#222">' . nl2br(Security::e($cap)) . '</div>'
               . '<div style="padding:0 20px 20px"><a href="https://' . Security::e($site) . '/?src=offer_mail" style="display:inline-block;background:#ff7a00;color:#fff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:999px">अहिले बुक गर्नुहोस् · Book now</a></div>'
-              . '<div style="padding:10px 20px;background:#fff3d6;font-size:12px;color:#555">S Hari Global Pvt Ltd · ' . Security::e($phone) . ' · यो इमेल नचाहिए reply मा STOP लेख्नुहोस्।</div></div>';
+              . '<div style="padding:10px 20px;background:#fff3d6;font-size:12px;color:#555">' . Security::e((string) $co['name']) . ' · ' . Security::e($phone) . ' · यो इमेल नचाहिए reply मा STOP लेख्नुहोस्।</div></div>';
         if (!class_exists('Ticket')) {
             require_once __DIR__ . '/ticket.php';
         }
@@ -224,15 +244,29 @@ final class OfferCard
             $diya($dx, 130);
         }
 
-        // Logo in the middle of the lamps.
-        if ($logoFile !== null && is_file($logoFile)) {
-            $li = @(str_ends_with(strtolower($logoFile), '.png') ? imagecreatefrompng($logoFile) : imagecreatefromjpeg($logoFile));
-            if ($li !== false) {
-                $lh = 120; $lw = (int) round(imagesx($li) * $lh / max(1, imagesy($li)));
-                imagecopyresampled($im, $li, (int) (($W - $lw) / 2), 60, 0, 0, $lw, $lh, imagesx($li), imagesy($li));
-                imagedestroy($li);
+        /* The emblem in the middle of the lamps, then the company NAME as a
+           live line under it (9 Oct 2026): the logo no longer carries the
+           name baked in, so the card would otherwise be anonymous. The
+           caller's full logo is only the fallback when the emblem file is
+           missing; a caller passing null still gets the name line. */
+        if (!class_exists('DocArt')) {
+            require_once __DIR__ . '/docart.php';
+        }
+        if ($logoFile !== null) {
+            $mark = DocArt::markFile();
+            if ($mark !== null) {
+                DocArt::mark($im, (int) (($W - 230) / 2), 46, 230, 108, true, '', 'center');
+            } elseif (is_file($logoFile)) {
+                DocArt::placeImage($im, $logoFile, (int) (($W - 230) / 2), 46, 230, 108, 'center');
             }
         }
+        $coName = 'S Hari Global Pvt Ltd';
+        try { $n = trim((string) (Settings::company()['name'] ?? '')); if ($n !== '') { $coName = $n; } } catch (Throwable $e) {}
+        $nmW = $wd(26, $coName);
+        $flW = DocArt::flagPairWidth(22, 7);
+        $nx  = (int) (($W - $nmW - 16 - $flW) / 2);
+        $txt($im, 26, $nx, 200, $gold, $coName, true);
+        DocArt::flagPair($im, $nx + $nmW + 16, 180, 22, 7, 'IN');
 
         // Kicker ribbon.
         $y = 240;

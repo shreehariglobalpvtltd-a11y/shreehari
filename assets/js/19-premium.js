@@ -54,6 +54,8 @@
     try { localStorage.setItem(key, on ? '1' : '0'); } catch (e) {}
   }
   function reducedMotion() {
+    /* 9 Oct 2026: the Appearance sheet's "Motion: reduced" counts too */
+    if (document.documentElement.getAttribute('data-motion') === 'reduced') return true;
     try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
     catch (e) { return false; }
   }
@@ -138,8 +140,134 @@
     ticket: function () {
       VOICES.success();
       voice(1046.5, 0.30, 0.42, 0.030, 'triangle');
-    }
+    },
+    /* 9 Oct 2026: the names the Pixel pack added, in this pack's own voice */
+    toggleOn: function () { voice(659.25, 0, 0.05, 0.04, 'sine'); voice(987.77, 0.04, 0.06, 0.03, 'sine'); },
+    toggleOff: function () { voice(987.77, 0, 0.05, 0.035, 'sine'); voice(659.25, 0.04, 0.06, 0.028, 'sine'); },
+    nav: function () { voice(1046.5, 0, 0.03, 0.022, 'sine'); },
+    sheetOpen: function () { voice(523.25, 0, 0.06, 0.025, 'sine'); voice(783.99, 0.035, 0.08, 0.02, 'sine'); },
+    sheetClose: function () { voice(783.99, 0, 0.06, 0.022, 'sine'); voice(523.25, 0.035, 0.08, 0.018, 'sine'); }
   };
+
+  /* -------------------------------------------------------------------
+     THE PIXEL PACK  (9 Oct 2026, owner: "sound haru pani Android Pixel
+     jasto"). Still 0 bytes of audio: every sound is synthesised here.
+     Three extra building blocks on top of voice():
+       tone()  - a voice with a pitch glide (the "droplet" / tick shape)
+       bar()   - a marimba-like bar: fundamental + the bar's inharmonic
+                 2.76x / 5.4x partials, which die away first
+       bell()  - a softer, longer bell into a tiny generated room
+                 (a ConvolverNode on 0.45 s of decaying noise, mixed low)
+       hiss()  - band-passed noise: a 10 ms tick, or a swept "whoosh"
+     Everything ends in the same master gain + lowpass, the same 45 ms
+     limiter and the same hidden-tab guard as the classic pack.
+     ----------------------------------------------------------------- */
+  var noiseBuf = null, roomIn = null;
+  function noiseBuffer(c) {
+    if (noiseBuf) return noiseBuf;
+    var len = Math.floor(c.sampleRate), b = c.createBuffer(1, len, c.sampleRate), ch = b.getChannelData(0);
+    for (var i = 0; i < len; i++) ch[i] = Math.random() * 2 - 1;
+    return (noiseBuf = b);
+  }
+  function room(c) {
+    if (roomIn) return roomIn;
+    try {
+      var len = Math.floor(c.sampleRate * 0.45), ir = c.createBuffer(2, len, c.sampleRate);
+      for (var k = 0; k < 2; k++) {
+        var data = ir.getChannelData(k);
+        for (var i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2);
+      }
+      var conv = c.createConvolver(), wet = c.createGain();
+      conv.buffer = ir;
+      wet.gain.value = 0.22;
+      roomIn = c.createGain();
+      roomIn.connect(conv); conv.connect(wet); wet.connect(master);
+    } catch (e) { roomIn = null; }
+    return roomIn;
+  }
+  function tone(f0, f1, at, dur, vol, type, wet) {
+    var c = ctx();
+    if (!c || !master) return;
+    try {
+      var t0 = c.currentTime + at, o = c.createOscillator(), g = c.createGain();
+      o.type = type || 'sine';
+      o.frequency.setValueAtTime(f0, t0);
+      if (f1 && f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t0 + dur * 0.6);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(Math.max(vol, 0.0002), t0 + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g); g.connect(master);
+      if (wet) { var r = room(c); if (r) g.connect(r); }
+      o.start(t0);
+      o.stop(t0 + dur + 0.03);
+    } catch (e) {}
+  }
+  function bar(f, at, dur, vol, wet) {
+    tone(f, 0, at, dur, vol, 'sine', wet);
+    tone(f * 2.76, 0, at, dur * 0.35, vol * 0.28, 'sine', wet);
+    tone(f * 5.4, 0, at, dur * 0.18, vol * 0.1, 'sine', wet);
+  }
+  function bell(f, at, dur, vol) {
+    tone(f, 0, at, dur, vol, 'sine', true);
+    tone(f * 2, 0, at, dur * 0.6, vol * 0.32, 'sine', true);
+    tone(f * 2.76, 0, at, dur * 0.4, vol * 0.14, 'sine', true);
+    tone(f * 4.07, 0, at, dur * 0.25, vol * 0.06, 'sine', true);
+  }
+  function hiss(at, dur, vol, fA, fB, q) {
+    var c = ctx();
+    if (!c || !master) return;
+    try {
+      var t0 = c.currentTime + at, src = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+      src.buffer = noiseBuffer(c);
+      f.type = 'bandpass';
+      f.Q.value = q || 1;
+      f.frequency.setValueAtTime(fA, t0);
+      if (fB && fB !== fA) f.frequency.exponentialRampToValueAtTime(fB, t0 + dur);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(Math.max(vol, 0.0002), t0 + Math.min(0.04, dur * 0.4));
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      src.connect(f); f.connect(g); g.connect(master);
+      src.start(t0, Math.random() * 0.5);
+      src.stop(t0 + dur + 0.03);
+    } catch (e) {}
+  }
+  var PIXEL = {
+    /* a glass tick: a fast downward glide plus 10 ms of filtered air */
+    tap: function () { tone(1700, 1150, 0, 0.032, 0.022, 'sine'); hiss(0, 0.012, 0.010, 3400, 0, 2.5); },
+    /* marimba, two bars up / down */
+    select: function () { bar(783.99, 0, 0.22, 0.05); bar(1174.66, 0.05, 0.26, 0.036); },
+    deselect: function () { bar(1046.5, 0, 0.18, 0.036); bar(698.46, 0.045, 0.22, 0.032); },
+    /* switches: two short blips, rising for ON, falling for OFF */
+    toggleOn: function () { tone(880, 0, 0, 0.06, 0.04, 'sine'); tone(1318.51, 0, 0.055, 0.09, 0.04, 'sine'); },
+    toggleOff: function () { tone(1318.51, 0, 0, 0.06, 0.032, 'sine'); tone(880, 0, 0.055, 0.09, 0.032, 'sine'); },
+    /* changing tab: a water droplet */
+    nav: function () { tone(900, 1380, 0, 0.07, 0.034, 'sine'); tone(2760, 0, 0.012, 0.03, 0.006, 'sine'); },
+    /* a sheet slides up / down: a soft filtered whoosh */
+    sheetOpen: function () { hiss(0, 0.17, 0.05, 380, 2600, 0.9); tone(330, 520, 0.02, 0.14, 0.008, 'sine'); },
+    sheetClose: function () { hiss(0, 0.15, 0.042, 2400, 420, 0.9); },
+    /* something to read: two bells */
+    notify: function () { bell(783.99, 0, 0.55, 0.04); bell(1174.66, 0.09, 0.7, 0.03); },
+    /* refused: a soft low "bonk", never an alarm */
+    error: function () { tone(330, 262, 0, 0.14, 0.05, 'triangle'); tone(220, 0, 0.11, 0.22, 0.042, 'triangle'); },
+    /* booked: a bell arpeggio in the little room */
+    success: function () { bell(1046.5, 0, 0.6, 0.042); bell(1318.51, 0.07, 0.6, 0.038); bell(1567.98, 0.14, 0.9, 0.04); },
+    /* the ticket exists: success and one high bell above it */
+    ticket: function () { PIXEL.success(); bell(2093, 0.27, 1.0, 0.022); }
+  };
+  var PACKS = { pixel: PIXEL, classic: VOICES };
+  var LS_PACK = 'shg:soundpack';
+  /* the passenger's pick, else the owner's default (Admin -> Settings ->
+     app_sound_pack), else Pixel - whitelisted, so a junk value is ignored */
+  function readPack() {
+    var v = '';
+    try { v = localStorage.getItem(LS_PACK) || ''; } catch (e) {}
+    if (Object.prototype.hasOwnProperty.call(PACKS, v)) return v;
+    try {
+      var o = window.SHG_BOOT && window.SHG_BOOT.settings && window.SHG_BOOT.settings.app_sound_pack;
+      if (o && Object.prototype.hasOwnProperty.call(PACKS, o)) return o;
+    } catch (e) {}
+    return 'pixel';
+  }
 
   /* Vibration patterns. Android Chrome only — iOS Safari has no vibrate
      API at all, and calling it there is a silent no-op, not an error. */
@@ -150,13 +278,26 @@
     notify: [8, 30, 8],
     error: [26, 40, 26],
     success: [10, 34, 16],
-    ticket: [12, 28, 12, 28, 26]
+    ticket: [12, 28, 12, 28, 26],
+    toggleOn: 10,
+    toggleOff: 8,
+    nav: 8,
+    sheetOpen: 6,
+    sheetClose: 6
   };
 
   var Feel = {
     get sound() { return read(LS_SOUND); },
     get haptics() { return read(LS_HAPTIC); },
-    setSound: function (on) { write(LS_SOUND, on); if (on) Feel.play('tap'); },
+    /* 9 Oct 2026: which sound pack plays ('pixel' | 'classic') */
+    get pack() { return readPack(); },
+    packs: ['pixel', 'classic'],
+    setPack: function (p) {
+      if (!Object.prototype.hasOwnProperty.call(PACKS, p)) return;
+      try { localStorage.setItem(LS_PACK, p); } catch (e) {}
+      Feel.fire('select');                          /* a sample of the pack just chosen */
+    },
+    setSound: function (on) { write(LS_SOUND, on); if (on) Feel.play('toggleOn'); },
     setHaptics: function (on) { write(LS_HAPTIC, on); if (on) Feel.buzz('select'); },
 
     /* One entry point for both channels, so a call site never has to ask
@@ -164,7 +305,8 @@
     fire: function (kind) { Feel.play(kind); Feel.buzz(kind); },
 
     play: function (kind) {
-      if (!VOICES[kind] || !read(LS_SOUND)) return;
+      var V = PACKS[readPack()] || VOICES;
+      if (!V[kind] || !read(LS_SOUND)) return;
       if (document.hidden) return;                  /* never from a background tab */
       /* Rate limit. Two sounds inside 45ms are one mis-tap, not two
          events, and stacking them is what makes UI audio sound broken. */
@@ -172,7 +314,7 @@
       if (now - lastAt < 45) return;
       lastAt = now;
       if (kind === 'success') lastSuccessAt = now;
-      try { VOICES[kind](); } catch (e) {}
+      try { V[kind](); } catch (e) {}
     },
 
     buzz: function (kind) {
@@ -321,10 +463,21 @@
      through. `shgHaptic` is a top-level function DECLARATION, which does
      become a window property, so that one is replaced on window.
      ----------------------------------------------------------------- */
+  /* 9 Oct 2026: a control that plays its own sound carries data-sfx="own";
+     the generic .btn -> SFX.click tap (13-admin-routes.js) then stays quiet,
+     so the 45 ms limiter never drops the sound that was meant. A capture
+     listener notes the tap before that bubbling delegation runs. */
+  var ownSfxAt = -1e9;
+  var nowMs = function () { return (window.performance && performance.now) ? performance.now() : Date.now(); };
+  document.addEventListener('click', function (e) {
+    var t = e.target && e.target.closest ? e.target.closest('[data-sfx="own"]') : null;
+    if (t) ownSfxAt = nowMs();
+  }, true);
   try {
     if (typeof SFX === 'object' && SFX) {
-      SFX.click = function () { Feel.play('tap'); };
+      SFX.click = function () { if (nowMs() - ownSfxAt < 80) return; Feel.play('tap'); };
       SFX.select = function () { Feel.play('select'); };
+      SFX.deselect = function () { Feel.play('deselect'); };
       SFX.success = function () { Feel.play('success'); };
       SFX.error = function () { Feel.play('error'); };
       SFX.notify = function () { Feel.play('notify'); };
@@ -489,6 +642,8 @@
         sw.classList.toggle('on', on);
         sw.setAttribute('aria-checked', on ? 'true' : 'false');
         onToggle(on);
+        /* 9 Oct 2026: a switch answers with its own blip (Sound plays it itself) */
+        if (name !== 'sound') Feel.play(on ? 'toggleOn' : 'toggleOff');
       });
       r.appendChild(l);
       r.appendChild(sw);
@@ -542,11 +697,34 @@
     });
   }
 
+  /* -------------------------------------------------------------------
+     SHELL SOUNDS  (9 Oct 2026) - the phone menu sliding open / shut and a
+     bottom-bar tab change. Observed, not wired into 05-router.js: the menu
+     is opened and closed in several places, and its class is the truth.
+     ----------------------------------------------------------------- */
+  function watchShell() {
+    var menu = document.getElementById('mobileMenu');
+    if (menu && window.MutationObserver) {
+      var was = menu.classList.contains('open');
+      new MutationObserver(function () {
+        var open = menu.classList.contains('open');
+        if (open === was) return;
+        was = open;
+        Feel.play(open ? 'sheetOpen' : 'sheetClose');
+      }).observe(menu, { attributes: true, attributeFilter: ['class'] });
+    }
+    document.addEventListener('click', function (e) {
+      var b = e.target && e.target.closest ? e.target.closest('.bottom-nav .bn-item') : null;
+      if (b) Feel.play('nav');
+    });
+  }
+
   function boot() {
     try { if (window.matchMedia && window.matchMedia('(max-width:760px)').matches) buildLangMini(); } catch (e) {}
     try { buildFeelSwitches(); } catch (e) {}
     try { watchTicket(); } catch (e) {}
     try { watchVoiceGuide(); } catch (e) {}
+    try { watchShell(); } catch (e) {}
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

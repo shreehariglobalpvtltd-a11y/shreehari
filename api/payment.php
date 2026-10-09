@@ -5,6 +5,7 @@
  * Accepts multipart/form-data when a screenshot is attached, or JSON for
  * a UTR-only submission.
  * Fields: pnr, utr, payerName, method, screenshot(file, optional),
+ *         amount (optional, what the customer says they paid - 9 Oct 2026),
  *         phone (the booking's mobile) and/or k (the ticket key) when the
  *         proof is sent from another device.
  *
@@ -72,11 +73,18 @@ try {
         $uploadInfo = BookingService::attachScreenshot($pnr, $_FILES['screenshot']);
     }
 
+    /* 9 Oct 2026: optional "Amount paid" from the proof form. Advisory only -
+       the payment risk score compares it with the fare; a person decides. */
+    $amountRaw = (string) ($_POST['amount'] ?? Response::field('amount', ''));
+    $amountRaw = str_replace([',', '₹', ' ', 'Rs', 'rs', 'INR'], '', trim($amountRaw));
+    $claimed   = (is_numeric($amountRaw) && (float) $amountRaw > 0 && (float) $amountRaw < 1000000) ? round((float) $amountRaw, 2) : null;
+
     $payment = BookingService::submitPaymentProof($pnr, [
         'utr'           => $utr,
         'payerName'     => $payerName,
         'method'        => $method,
         'hasScreenshot' => $hasScreenshot,
+        'claimedAmount' => $claimed,
     ]);
 
     Response::success([

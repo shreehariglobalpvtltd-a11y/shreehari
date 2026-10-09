@@ -400,6 +400,46 @@ function describeWhereAmI(onUpdate) {
    The value is written raw: it used to go through store.set as well, which
    JSON-encoded it ('"dark"'), so the pre-paint check missed it and a saved
    dark theme came back light on the next visit. */
+/* 9 Oct 2026 (Pixel / Material You): the colour palettes of assets/css/themes.css.
+   html[data-palette="<id>"] re-points the design tokens; no attribute = the S Hari
+   brand look. Per palette: tri-tone swatch [top, bottom-left, bottom-right], status
+   bar [light, dark], dark page colour, then the name in ne / en / hi. Generated with
+   themes.css - tests/theme-palette-test.php keeps this list, the CSS and the
+   pre-paint whitelist in app.template.html identical. Declared here, above
+   initTheme(), because applyTheme() reads it on the very first call. */
+const SHG_PALETTES = [
+  ['himalaya',   ['#3567d3', '#bbc3ff', '#dd8eb3'], ['#003175', '#141a32'], '#12131b', 'हिमालय नीलो', 'Himalaya Blue', 'हिमालय नीला'],
+  ['laligurans', ['#d32137', '#ffb3ad', '#87b177'], ['#6c0b17', '#311210'], '#1c100f', 'लालीगुराँस', 'Laligurans Red', 'बुरांश लाल'],
+  ['saffron',    ['#a95700', '#fcb886', '#7eb378'], ['#542a00', '#2c1700'], '#1b1109', 'केसरी', 'Saffron', 'केसरिया'],
+  ['tulsi',      ['#2f7c31', '#a1d39b', '#d6986a'], ['#003e09', '#0d2008'], '#0e150c', 'तुलसी हरियो', 'Tulsi Green', 'तुलसी हरा'],
+  ['phewa',      ['#007983', '#6ed6e2', '#80a8df'], ['#003b41', '#001f23'], '#051617', 'फेवा ताल', 'Phewa Teal', 'फेवा झील'],
+  ['lotus',      ['#c92283', '#ffafd3', '#cd9d60'], ['#6a0342', '#301120'], '#1b1015', 'कमल गुलाबी', 'Lotus Pink', 'कमल गुलाबी'],
+  ['lavender',   ['#7f57c2', '#d6bbfa', '#e58c9e'], ['#3f266b', '#20172f'], '#16121a', 'साँझ बैजनी', 'Lavender Dusk', 'सांझ बैंगनी'],
+  ['marigold',   ['#886900', '#e4c27c', '#f38781'], ['#433200', '#241a00'], '#181307', 'सयपत्री', 'Marigold', 'गेंदा'],
+  ['monsoon',    ['#517280', '#96cee8', '#6bb2ac'], ['#173946', '#141d21'], '#08151a', 'मनसुन', 'Monsoon Slate', 'मानसून'],
+  ['everest',    ['#0074a5', '#8ecdfd', '#bc99cf'], ['#003953', '#001e2f'], '#0b141b', 'सगरमाथा आकाश', 'Everest Sky', 'एवरेस्ट आसमान'],
+  ['terracotta', ['#b64c29', '#ffb59b', '#44b4ca'], ['#651a00', '#301406'], '#1c110c', 'भक्तपुर इँटा', 'Bhaktapur Brick', 'भक्तपुर ईंट'],
+  ['peacock',    ['#007b6a', '#7fd6c3', '#8ea3eb'], ['#003c33', '#00201b'], '#061613', 'मयूर', 'Peacock', 'मोर']
+];
+const SHG_PAL_IDS = SHG_PALETTES.map(p => p[0]);
+function shgPalRow(id) { for (let i = 0; i < SHG_PALETTES.length; i++) { if (SHG_PALETTES[i][0] === id) return SHG_PALETTES[i]; } return null; }
+/* The phone's status bar and the overscroll colour follow the theme AND the palette. */
+function shgPaintChrome(mode) {
+  const d = document.documentElement;
+  const dark = mode !== 'light';
+  const pal = shgPalRow(d.getAttribute('data-palette'));
+  d.style.background = mode === 'amoled' ? '#000' : (dark ? (pal ? pal[3] : '#0B1220') : '');
+  const tc = document.querySelector('meta[name="theme-color"]');
+  if (tc) tc.setAttribute('content', mode === 'amoled' ? '#000000' : (pal ? pal[2][dark ? 1 : 0] : (dark ? '#0F1A2E' : '#0C306C')));
+}
+/* One answer for "should this move?" - the in-app Motion switch (html[data-motion])
+   or the phone's own reduce-motion setting. JS motion (WAAPI / rAF) asks this. */
+window.shgReducedMotion = function () {
+  if (document.documentElement.getAttribute('data-motion') === 'reduced') return true;
+  try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
+};
+function shgFeelFire(kind) { try { if (window.SHGFeel) window.SHGFeel.fire(kind); } catch (e) {} }
+
 const SHG_THEMES = ['light', 'dark', 'amoled'];
 function readSavedTheme() {
   try {
@@ -418,10 +458,8 @@ function applyTheme(mode, save) {
   const dark = mode !== 'light';
   d.setAttribute('data-theme', dark ? 'dark' : 'light');
   if (mode === 'amoled') d.setAttribute('data-display', 'amoled'); else d.removeAttribute('data-display');
-  /* The phone's status bar / address bar follows the page. */
-  d.style.background = mode === 'amoled' ? '#000' : (dark ? '#0B1220' : '');
-  const tc = document.querySelector('meta[name="theme-color"]');
-  if (tc) tc.setAttribute('content', mode === 'amoled' ? '#000000' : (dark ? '#0F1A2E' : '#0C306C'));
+  /* The phone's status bar / address bar follows the page (and the palette, 9 Oct 2026). */
+  shgPaintChrome(mode);
   /* The topbar button cycles light → dark → AMOLED; it shows the next one. */
   const next = { light: ['🌙', 'Switch to dark mode'], dark: ['⚫', 'Switch to AMOLED black mode'], amoled: ['☀️', 'Switch to light mode'] }[mode];
   $$('.theme-btn').forEach(b => { b.textContent = next[0]; b.setAttribute('aria-label', next[1]); b.setAttribute('title', next[1]); });
@@ -490,57 +528,373 @@ document.addEventListener('click', (e) => {
     } else {
       applyTheme(v);
     }
+    shgFeelFire('select');
     return;
   }
   if (!e.target.closest('.theme-btn')) return;
   const cur = currentTheme();
   applyTheme(cur === 'light' ? 'dark' : (cur === 'dark' ? 'amoled' : 'light'));
+  shgFeelFire('select');
 });
 
-/* Palette picker (Part 8): the 7 tuned day-palettes (data-day 0–6) become a
-   manual theme chooser; "Auto" restores the deity day-of-week rotation. It
-   only touches data-day, so it's orthogonal to the light/dark toggle and each
-   palette works in both. Accents (--blue/--orange) survive dark mode because
-   the dark block overrides surfaces only. */
+/* ================================================================
+   [JS] 4g-2. APPEARANCE - colour palette, UI style, motion, sound
+   (9 Oct 2026, owner: "dherai colour theme option, UI Android Google
+   Pixel jasto, smooth colour, sound haru pani testai").
+   The retired day-palette picker (data-day, Oct redesign) is gone; this
+   replaces it with one bottom sheet, "🎨 रूप · Appearance", opened from a
+   row in the phone menu and from the topbar's 🎨 button on a computer:
+     Display  Auto / Light / Dark / AMOLED  (the same [data-theme-set]
+              buttons the menu already has - applyTheme() above drives both)
+     Colour   S Hari (default) + 12 Material You palettes [data-palette-set]
+     Style    Pixel (rounded, tonal) / Classic 3D (today's raised depth)
+     Motion   Full / Reduced (html[data-motion="reduced"])
+     Sound    on/off, style (Pixel / Classic), vibration - via window.SHGFeel
+   Saved per device: shg:palette ('shg' = the brand look chosen on purpose;
+   an old '0'-'6' / 'brand' / 'logo' / 'auto' value counts as nothing saved),
+   shg:ui, shg:motion, shg:soundpack. Nothing saved = the owner's defaults
+   from Admin -> Settings (app_theme_palette, app_ui_style, app_motion_on,
+   app_sound_pack), stamped before paint by index.php; the template's
+   pre-paint script stamps a saved choice even earlier.
+   Accessible: a modal dialog with focus trap, Esc and the Android back key;
+   every group is a radiogroup with arrow keys; 44px+ targets; every change
+   is announced by a sound / buzz through SHGFeel (respecting its switches).
+================================================================ */
 (function () {
-  var pop = document.getElementById('palettePop');
-  if (!pop) return;
-  /* 'brand' (13 Sep 2026): the saffron #FF6B00 + navy #0A0A1A palette from the
-     master prompt's brand system, tokens in views.css section 27. */
-  /* 'logo' (20 Sep 2026, owner: "logo sita match garne brand color, orange fika"):
-     the colours measured from assets/img/logo.png - navy #0C306C, royal #0054A8,
-     the arrow's orange - and the default for everyone. "Auto · by day" is now an
-     explicit choice (saved as 'auto'); an unset palette means the logo colours. */
-  var PAL = [['logo', 'S Hari', '#0C306C', '#F07800'], ['brand', 'Saffron', '#0A0A1A', '#FF6B00'], ['0', 'Royal', '#2E5FA8', '#F07C1F'], ['1', 'Ocean', '#1B6B93', '#E8672C'],
-    ['2', 'Amethyst', '#5B4FA8', '#D4830F'], ['3', 'Emerald', '#2A7E6F', '#E05A3A'],
-    ['4', 'Orchid', '#7B4B9E', '#CF7A21'], ['5', 'Azure', '#2868A8', '#D4561E'],
-    ['6', 'Bronze', '#8B5A3C', '#C47A22']];
-  function saved() { try { return localStorage.getItem('shg:palette'); } catch (e) { return null; } }
-  function mark(v) {
-    var sel = (v === null || v === '') ? 'logo' : v;
-    pop.querySelectorAll('.pal-sw').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-pal') === sel); });
+  const d = document.documentElement;
+  const lsGet = (k) => { try { return (localStorage.getItem(k) || '').replace(/"/g, ''); } catch (e) { return ''; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+  const owner = (k, dflt) => {
+    try { const s = window.SHG_BOOT && window.SHG_BOOT.settings; return (s && s[k] != null && s[k] !== '') ? s[k] : dflt; } catch (e) { return dflt; }
+  };
+  const lang = () => {
+    try { if (typeof LANG === 'string' && /^(ne|en|hi)$/.test(LANG)) return LANG; } catch (e) {}
+    const l = (d.getAttribute('lang') || '').slice(0, 2);
+    return /^(ne|en|hi)$/.test(l) ? l : 'ne';
+  };
+  const T = {
+    title: ['रूप', 'Appearance', 'रूप'],
+    sub: ['रङ, शैली, चाल र आवाज', 'Colour, style, motion and sound', 'रंग, शैली, गति और आवाज़'],
+    menu: ['रूप · Appearance', 'Appearance · रूप', 'रूप · Appearance'],
+    menuSub: ['रङ, Pixel शैली, आवाज', 'Colours, Pixel style, sounds', 'रंग, Pixel शैली, आवाज़'],
+    display: ['स्क्रिन', 'Display', 'स्क्रीन'],
+    auto: ['Auto', 'Auto', 'Auto'], autoS: ['फोन जस्तै', 'Like phone', 'फ़ोन जैसा'],
+    light: ['उज्यालो', 'Light', 'लाइट'], lightS: ['दिउँसो', 'Day', 'दिन'],
+    dark: ['अँध्यारो', 'Dark', 'डार्क'], darkS: ['राति', 'Night', 'रात'],
+    amoled: ['AMOLED', 'AMOLED', 'AMOLED'], amoledS: ['पूरा कालो', 'Pure black', 'पूरा काला'],
+    colour: ['रङ', 'Colour', 'रंग'],
+    colourNote: ['रङले सिट, भाडा वा टिकटको अर्थ बदल्दैन - हरियो सधैं ठीक, रातो सधैं सावधान।', 'Colours never change what a seat, fare or status means - green is always OK, red is always careful.', 'रंग से सीट, किराया या स्टेटस का मतलब नहीं बदलता - हरा हमेशा ठीक, लाल हमेशा सावधान।'],
+    brand: ['S Hari (मूल)', 'S Hari (default)', 'S Hari (मूल)'],
+    brandS: ['लोगोकै नेभी, निलो र रातो', 'The logo\'s navy, royal blue and red', 'लोगो वाला नेवी, नीला और लाल'],
+    style: ['शैली', 'Style', 'शैली'],
+    pixel: ['Pixel', 'Pixel', 'Pixel'], pixelS: ['गोलो र नरम', 'Round & soft', 'गोल और नरम'],
+    classic: ['क्लासिक 3D', 'Classic 3D', 'क्लासिक 3D'], classicS: ['उठेको गहिराइ', 'Raised depth', 'उभरी गहराई'],
+    motion: ['चाल (एनिमेसन)', 'Motion', 'गति (एनिमेशन)'],
+    full: ['पूरा', 'Full', 'पूरी'], fullS: ['स्प्रिङ जस्तो', 'Springy', 'स्प्रिंग जैसी'],
+    reduced: ['कम', 'Reduced', 'कम'], reducedS: ['शान्त स्क्रिन', 'Calm screen', 'शांत स्क्रीन'],
+    sound: ['आवाज र कम्पन', 'Sound & vibration', 'आवाज़ और कंपन'],
+    soundOn: ['आवाज', 'Sound', 'आवाज़'], soundOnS: ['ट्याप, सिट र टिकटमा', 'Taps, seats and tickets', 'टैप, सीट और टिकट पर'],
+    pack: ['आवाजको शैली', 'Sound style', 'आवाज़ की शैली'],
+    packPixel: ['Pixel', 'Pixel', 'Pixel'], packPixelS: ['नयाँ, नरम घण्टी', 'New, soft chimes', 'नई, नरम घंटी'],
+    packClassic: ['क्लासिक', 'Classic', 'क्लासिक'], packClassicS: ['पहिलेको आवाज', 'The original', 'पहले वाली'],
+    vib: ['कम्पन', 'Vibration', 'कंपन'], vibS: ['छुँदा हल्का कम्पन', 'A light buzz on touch', 'छूने पर हल्का कंपन'],
+    done: ['ठीक छ', 'Done', 'ठीक है'],
+    close: ['बन्द गर्नुहोस्', 'Close', 'बंद करें']
+  };
+  const L = { ne: 0, en: 1, hi: 2 };
+  const tx = (k) => (T[k] || [k])[L[lang()]] || T[k][1];
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  /* ---- apply + save ---- */
+  function savedPalette() { const v = lsGet('shg:palette'); return (v === 'shg' || SHG_PAL_IDS.indexOf(v) >= 0) ? v : ''; }
+  function applyPalette(id, save) {
+    const ok = SHG_PAL_IDS.indexOf(id) >= 0;
+    if (ok) d.setAttribute('data-palette', id); else d.removeAttribute('data-palette');
+    if (save !== false) lsSet('shg:palette', ok ? id : 'shg');
+    shgPaintChrome(currentTheme());
   }
-  function setPalette(v) {
-    try { if (v === 'logo') localStorage.removeItem('shg:palette'); else localStorage.setItem('shg:palette', v); } catch (e) {}
-    document.documentElement.setAttribute('data-day', v === 'auto' ? String(new Date().getDay()) : v);
-    mark(v === 'logo' ? null : v);
+  function applyUi(v, save) {
+    v = v === 'classic' ? 'classic' : 'pixel';
+    d.setAttribute('data-ui', v);
+    if (save !== false) lsSet('shg:ui', v);
   }
-  pop.innerHTML = PAL.map(function (p) {
-    return '<button type="button" class="pal-sw" role="menuitemradio" data-pal="' + p[0] + '" title="' + p[1] + '">'
-      + '<span class="pal-dot" style="background:linear-gradient(135deg,' + p[2] + ' 58%,' + p[3] + ' 58%)"></span>' + p[1] + '</button>';
-  }).join('') + '<button type="button" class="pal-sw pal-auto" role="menuitemradio" data-pal="auto">🔄 Auto · by day</button>';
-  mark(saved());
-  pop.addEventListener('click', function (e) {
-    var b = e.target.closest('.pal-sw'); if (!b) return;
-    setPalette(b.getAttribute('data-pal'));
-    pop.classList.remove('open');
-    var pb = document.querySelector('.palette-btn'); if (pb) pb.setAttribute('aria-expanded', 'false');
+  function applyMotion(v, save) {
+    if (v === 'reduced') d.setAttribute('data-motion', 'reduced'); else d.removeAttribute('data-motion');
+    if (save !== false) lsSet('shg:motion', v === 'reduced' ? 'reduced' : 'full');
+  }
+  window.shgAppearance = { applyPalette, applyUi, applyMotion, open: (o) => open(o) };
+
+  /* Boot: index.php already stamped the owner's defaults where nothing is saved;
+     this repeats that rule for a page served without the inject (idempotent). */
+  (function boot() {
+    try {
+      const sp = savedPalette();
+      if (sp === 'shg') d.removeAttribute('data-palette');
+      else if (sp) d.setAttribute('data-palette', sp);
+      else if (!d.hasAttribute('data-palette')) { const op = String(owner('app_theme_palette', '')); if (SHG_PAL_IDS.indexOf(op) >= 0) d.setAttribute('data-palette', op); }
+      const su = lsGet('shg:ui');
+      if (su === 'pixel' || su === 'classic') d.setAttribute('data-ui', su);
+      else if (!d.hasAttribute('data-ui')) d.setAttribute('data-ui', String(owner('app_ui_style', 'pixel')) === 'classic' ? 'classic' : 'pixel');
+      const sm = lsGet('shg:motion');
+      if (sm === 'reduced') d.setAttribute('data-motion', 'reduced');
+      else if (sm === 'full') d.removeAttribute('data-motion');
+      else { const om = owner('app_motion_on', true); if (om === false || om === 0 || om === '0') d.setAttribute('data-motion', 'reduced'); }
+      shgPaintChrome(currentTheme());
+    } catch (e) {}
+  })();
+
+  /* ---- the sheet ---- */
+  let sheet = null, scrim = null, opener = null, isOpen = false, pushed = false, closingBack = false, inerted = [];
+
+  function swatchBg(sw) { return 'conic-gradient(from 270deg, ' + sw[0] + ' 0deg 180deg, ' + sw[2] + ' 180deg 270deg, ' + sw[1] + ' 270deg 360deg)'; }
+  function opt(attrs, icon, label, small, checked) {
+    return '<button type="button" class="ap-opt" role="radio" aria-checked="' + (checked ? 'true' : 'false') + '" ' + attrs + '>'
+      + (icon ? '<b aria-hidden="true">' + icon + '</b>' : '') + '<span>' + esc(label) + '</span>' + (small ? '<small>' + esc(small) + '</small>' : '') + '</button>';
+  }
+  function toggle(name, on, label, small) {
+    return '<div class="ap-row"><span class="ap-lbl" id="apLbl-' + name + '">' + esc(label) + (small ? '<small>' + esc(small) + '</small>' : '') + '</span>'
+      + '<button type="button" class="ap-sw-toggle" role="switch" data-ap-toggle="' + name + '" aria-checked="' + (on ? 'true' : 'false') + '" aria-labelledby="apLbl-' + name + '"></button></div>';
+  }
+  function render() {
+    const theme = readSavedTheme() || 'auto';
+    const pal = d.getAttribute('data-palette') || '';
+    const ui = d.getAttribute('data-ui') === 'classic' ? 'classic' : 'pixel';
+    const mo = d.getAttribute('data-motion') === 'reduced' ? 'reduced' : 'full';
+    const F = window.SHGFeel;
+    const li = L[lang()];
+    let h = '<span class="ap-handle" aria-hidden="true"></span>'
+      + '<div class="ap-head"><h2 id="apTitle">🎨 ' + esc(tx('title')) + '<small>' + esc(tx('sub')) + '</small></h2>'
+      + '<button type="button" class="ap-x" data-ap-close aria-label="' + esc(tx('close')) + '">✕</button></div>';
+    h += '<section class="ap-sec"><h3 id="apDispH">🖥️ ' + esc(tx('display')) + '</h3><div class="ap-seg" style="--n:4" role="radiogroup" aria-labelledby="apDispH">'
+      + opt('data-theme-set="auto"', '🌗', tx('auto'), tx('autoS'), theme === 'auto')
+      + opt('data-theme-set="light"', '☀️', tx('light'), tx('lightS'), theme === 'light')
+      + opt('data-theme-set="dark"', '🌙', tx('dark'), tx('darkS'), theme === 'dark')
+      + opt('data-theme-set="amoled"', '⚫', tx('amoled'), tx('amoledS'), theme === 'amoled')
+      + '</div></section>';
+    h += '<section class="ap-sec"><h3 id="apColH">🎨 ' + esc(tx('colour')) + '<span>' + (SHG_PALETTES.length + 1) + '</span></h3><div class="ap-sw-grid" role="radiogroup" aria-labelledby="apColH">';
+    const sw = (id, colours, name, sub) => '<button type="button" class="ap-sw' + (sub ? ' ap-sw-brand' : '') + '" role="radio" data-palette-set="' + id + '" aria-checked="' + ((id === 'shg' ? !pal : pal === id) ? 'true' : 'false') + '" aria-label="' + esc(name) + '">'
+      + '<span class="ap-dot" data-sw="' + colours.join(',') + '" aria-hidden="true"></span><span class="ap-nm">' + esc(name) + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span></button>';
+    h += sw('shg', ['#0054A8', '#0C306C', '#DC143C'], tx('brand'), tx('brandS'));
+    SHG_PALETTES.forEach((p) => { h += sw(p[0], p[1], p[4 + li]); });
+    h += '</div><p class="ap-note">' + esc(tx('colourNote')) + '</p></section>';
+    h += '<section class="ap-sec"><h3 id="apStyH">✨ ' + esc(tx('style')) + '</h3><div class="ap-seg" role="radiogroup" aria-labelledby="apStyH">'
+      + opt('data-ap-ui="pixel"', '<span class="ap-prev px"><i></i><i></i></span>', tx('pixel'), tx('pixelS'), ui === 'pixel')
+      + opt('data-ap-ui="classic"', '<span class="ap-prev cl"><i></i><i></i></span>', tx('classic'), tx('classicS'), ui === 'classic')
+      + '</div></section>';
+    h += '<section class="ap-sec"><h3 id="apMoH">🌊 ' + esc(tx('motion')) + '</h3><div class="ap-seg" role="radiogroup" aria-labelledby="apMoH">'
+      + opt('data-ap-motion="full"', '〰️', tx('full'), tx('fullS'), mo === 'full')
+      + opt('data-ap-motion="reduced"', '➖', tx('reduced'), tx('reducedS'), mo === 'reduced')
+      + '</div></section>';
+    if (F) {
+      const pack = F.pack === 'classic' ? 'classic' : 'pixel';
+      h += '<section class="ap-sec"><h3>🔊 ' + esc(tx('sound')) + '</h3>'
+        + toggle('sound', !!F.sound, tx('soundOn'), tx('soundOnS'))
+        + '<div class="ap-seg" role="radiogroup" aria-label="' + esc(tx('pack')) + '">'
+        + opt('data-ap-pack="pixel"', '🎐', tx('packPixel'), tx('packPixelS'), pack === 'pixel')
+        + opt('data-ap-pack="classic"', '🔔', tx('packClassic'), tx('packClassicS'), pack === 'classic')
+        + '</div>'
+        + toggle('haptics', !!F.haptics, tx('vib'), tx('vibS'))
+        + '</section>';
+    }
+    h += '<button type="button" class="ap-done" data-ap-close>' + esc(tx('done')) + '</button>';
+    sheet.innerHTML = h;
+    sheet.querySelectorAll('.ap-dot[data-sw]').forEach((el) => { el.style.background = swatchBg(el.getAttribute('data-sw').split(',')); });
+    rove();
+  }
+  /* one tab stop per radiogroup: the checked radio (or the first) */
+  function rove() {
+    sheet.querySelectorAll('[role="radiogroup"]').forEach((g) => {
+      const rs = Array.prototype.slice.call(g.querySelectorAll('[role="radio"]'));
+      const on = rs.find((r) => r.getAttribute('aria-checked') === 'true') || rs[0];
+      rs.forEach((r) => r.setAttribute('tabindex', r === on ? '0' : '-1'));
+    });
+  }
+  function mark(sel, test) {
+    sheet.querySelectorAll(sel).forEach((b) => b.setAttribute('aria-checked', test(b) ? 'true' : 'false'));
+    rove();
+  }
+  function focusables() {
+    return Array.prototype.slice.call(sheet.querySelectorAll('button:not([disabled]):not([tabindex="-1"]), [href], [tabindex="0"]'))
+      .filter((el) => el.offsetParent !== null || el === document.activeElement);
+  }
+  function build() {
+    scrim = document.createElement('div');
+    scrim.className = 'shg-ap-scrim';
+    scrim.setAttribute('aria-hidden', 'true');
+    sheet = document.createElement('div');
+    sheet.className = 'shg-ap';
+    sheet.id = 'shgAppearance';
+    sheet.setAttribute('role', 'dialog');
+    sheet.setAttribute('aria-modal', 'true');
+    sheet.setAttribute('aria-labelledby', 'apTitle');
+    sheet.tabIndex = -1;
+    scrim.hidden = sheet.hidden = true;
+    document.body.appendChild(scrim);
+    document.body.appendChild(sheet);
+    scrim.addEventListener('click', () => close());
+    sheet.addEventListener('click', onClick);
+    sheet.addEventListener('keydown', onKey);
+  }
+  function onClick(e) {
+    const t = e.target;
+    if (t.closest('[data-ap-close]')) { close(); return; }
+    const p = t.closest('[data-palette-set]');
+    if (p) {
+      applyPalette(p.getAttribute('data-palette-set'));
+      mark('[data-palette-set]', (b) => b === p);
+      paintMenuRow();
+      shgFeelFire('select');
+      return;
+    }
+    if (t.closest('[data-theme-set]')) { setTimeout(rove, 0); return; }   /* the document handler above applies it */
+    const u = t.closest('[data-ap-ui]');
+    if (u) { applyUi(u.getAttribute('data-ap-ui')); mark('[data-ap-ui]', (b) => b === u); shgFeelFire('select'); return; }
+    const m = t.closest('[data-ap-motion]');
+    if (m) { applyMotion(m.getAttribute('data-ap-motion')); mark('[data-ap-motion]', (b) => b === m); shgFeelFire('select'); return; }
+    const k = t.closest('[data-ap-pack]');
+    if (k && window.SHGFeel) { window.SHGFeel.setPack(k.getAttribute('data-ap-pack')); mark('[data-ap-pack]', (b) => b === k); return; }
+    const s = t.closest('[data-ap-toggle]');
+    if (s && window.SHGFeel) {
+      const on = s.getAttribute('aria-checked') !== 'true';
+      s.setAttribute('aria-checked', on ? 'true' : 'false');
+      const name = s.getAttribute('data-ap-toggle');
+      if (name === 'sound') window.SHGFeel.setSound(on);
+      else { window.SHGFeel.setHaptics(on); window.SHGFeel.play(on ? 'toggleOn' : 'toggleOff'); }
+      /* keep the phone menu's own switch (19-premium.js) in step */
+      const ms = document.querySelector('.feel-row[data-feel="' + name + '"] .feel-sw');
+      if (ms) { ms.classList.toggle('on', on); ms.setAttribute('aria-checked', on ? 'true' : 'false'); }
+      return;
+    }
+  }
+  function onKey(e) {
+    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    if (e.key === 'Tab') {
+      const f = focusables();
+      if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && (document.activeElement === first || document.activeElement === sheet)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      return;
+    }
+    const r = e.target.closest && e.target.closest('[role="radio"]');
+    if (!r) return;
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+    if (!step && e.key !== 'Home' && e.key !== 'End') return;
+    const g = r.closest('[role="radiogroup"]');
+    const rs = Array.prototype.slice.call(g.querySelectorAll('[role="radio"]'));
+    let i = rs.indexOf(r);
+    i = e.key === 'Home' ? 0 : e.key === 'End' ? rs.length - 1 : (i + step + rs.length) % rs.length;
+    e.preventDefault();
+    rs[i].focus();
+    rs[i].click();
+  }
+  function setInert(on) {
+    if (on) {
+      inerted = [];
+      Array.prototype.forEach.call(document.body.children, (el) => {
+        if (el === sheet || el === scrim || el.id === 'toast' || /^(SCRIPT|STYLE|LINK)$/.test(el.tagName) || el.hasAttribute('inert')) return;
+        el.setAttribute('inert', ''); inerted.push(el);
+      });
+    } else {
+      inerted.forEach((el) => el.removeAttribute('inert'));
+      inerted = [];
+    }
+  }
+  function open(o) {
+    if (!sheet) build();
+    if (isOpen) return;
+    opener = (o && o.nodeType === 1) ? o : document.activeElement;
+    /* coming from the phone menu: fold it away first */
+    const mm = document.getElementById('mobileMenu');
+    if (mm && mm.classList.contains('open')) {
+      mm.classList.remove('open');
+      const hb = document.getElementById('hamburger');
+      if (hb) { hb.classList.remove('open'); hb.setAttribute('aria-expanded', 'false'); }
+      if (opener && mm.contains(opener)) opener = hb;
+    }
+    render();
+    isOpen = true;
+    scrim.hidden = sheet.hidden = false;
+    sheet.classList.remove('closing');
+    document.body.classList.add('shg-ap-open');
+    setInert(true);
+    void sheet.offsetWidth;                                   /* start the spring from off-screen */
+    scrim.classList.add('open');
+    sheet.classList.add('open');
+    try { history.pushState({ shgAppear: 1 }, '', location.href); pushed = true; } catch (e) { pushed = false; }
+    const first = sheet.querySelector('[role="radio"][aria-checked="true"]') || sheet.querySelector('.ap-x');
+    setTimeout(() => { try { (first || sheet).focus({ preventScroll: true }); } catch (e) {} }, 30);
+    if (window.SHGFeel) { try { window.SHGFeel.play('sheetOpen'); } catch (e) {} }
+  }
+  function close(fromBack) {
+    if (!isOpen) return;
+    isOpen = false;
+    sheet.classList.add('closing');
+    sheet.classList.remove('open');
+    scrim.classList.remove('open');
+    setInert(false);
+    document.body.classList.remove('shg-ap-open');
+    const done = () => { if (!isOpen) { sheet.hidden = scrim.hidden = true; } };
+    setTimeout(done, window.shgReducedMotion() ? 0 : 320);
+    if (pushed && !fromBack) {
+      pushed = false; closingBack = true;
+      window._shgModalClosingBack = true;                     /* 05-router.js: not a real back */
+      try { history.back(); } catch (e) { closingBack = false; window._shgModalClosingBack = false; }
+    }
+    pushed = false;
+    if (window.SHGFeel) { try { window.SHGFeel.play('sheetClose'); } catch (e) {} }
+    const ret = opener; opener = null;
+    if (ret && document.contains(ret) && ret.offsetParent !== null) { try { ret.focus({ preventScroll: true }); } catch (e) {} }
+  }
+  /* Android back / browser back closes the sheet instead of leaving the page.
+     Registered at load, before 05-router.js's own popstate handler. */
+  window.addEventListener('popstate', () => {
+    if (closingBack) { closingBack = false; return; }
+    if (isOpen) { window._shgModalClosingBack = true; pushed = false; close(true); }
   });
-  document.addEventListener('click', function (e) {
-    var pb = e.target.closest('.palette-btn');
-    if (pb) { var open = pop.classList.toggle('open'); pb.setAttribute('aria-expanded', open ? 'true' : 'false'); return; }
-    if (!e.target.closest('.palette-pop')) pop.classList.remove('open');
+
+  /* ---- entry points ---- */
+  function paintMenuRow() {
+    const row = document.querySelector('#mobileMenu .mm-appear');
+    if (!row) return;
+    const p = shgPalRow(d.getAttribute('data-palette'));
+    const c = p ? p[1] : ['#0054A8', '#0C306C', '#DC143C'];
+    row.querySelectorAll('.mm-ap-dots i').forEach((el, i) => { el.style.background = c[i]; });
+  }
+  function buildEntry() {
+    const menu = document.getElementById('mobileMenu');
+    if (menu && !menu.querySelector('.mm-appear')) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'mm-appear';
+      b.setAttribute('aria-haspopup', 'dialog');
+      b.innerHTML = '<span class="mm-ap-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="mm-ap-txt"><span class="mm-ap-t"></span><small class="mm-ap-s"></small></span><span class="mm-ap-go" aria-hidden="true">›</span>';
+      const anchor = menu.querySelector('.mm-display');
+      menu.insertBefore(b, anchor || null);
+      b.addEventListener('click', (e) => { e.stopPropagation(); open(b); });
+      relabel();
+      paintMenuRow();
+    }
+    document.querySelectorAll('.palette-btn').forEach((pb) => {
+      pb.setAttribute('aria-haspopup', 'dialog');
+      pb.removeAttribute('aria-expanded');
+      pb.setAttribute('aria-label', 'Appearance · रूप');
+      pb.title = 'Appearance · रूप';
+    });
+  }
+  function relabel() {
+    const b = document.querySelector('#mobileMenu .mm-appear');
+    if (!b) return;
+    b.querySelector('.mm-ap-t').textContent = '🎨 ' + tx('menu');
+    b.querySelector('.mm-ap-s').textContent = tx('menuSub');
+  }
+  document.addEventListener('click', (e) => {
+    const pb = e.target.closest && e.target.closest('.palette-btn');
+    if (pb) { e.preventDefault(); open(pb); }
   });
+  /* language switches re-label the menu row (the sheet re-renders on every open) */
+  try { new MutationObserver(relabel).observe(d, { attributes: true, attributeFilter: ['lang'] }); } catch (e) {}
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', buildEntry); else buildEntry();
 })();
 
 /* ================================================================

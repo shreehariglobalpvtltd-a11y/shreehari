@@ -25,6 +25,10 @@ declare(strict_types=1);
  * A row is Dr (debit to the agent) when it makes the agent owe more, Cr when
  * it makes the company owe more.
  */
+if (defined('SHG_APP')) {
+    require_once __DIR__ . '/ticket.php';   // Ticket::roman(); loads DocArt (emblem + flags, 9 Oct 2026)
+}
+
 final class AgentStatement
 {
     /** Kinds, in the order the summary lists them. [label EN, label NE] */
@@ -150,7 +154,7 @@ final class AgentStatement
         ];
         $co = Settings::company();
         $out['fingerprint'] = md5(json_encode([$out['agent'], $from, $to, $out['opening'], $out['closing'], $rows,
-            $rate['label'] ?? '', $co['legal'] ?? '', $co['cin'] ?? '', $co['phone'] ?? '', $co['web'] ?? '', AgentStatementPng::LAYOUT]));
+            $rate['label'] ?? '', $co['legal'] ?? '', $co['name'] ?? '', $co['cin'] ?? '', $co['phone'] ?? '', $co['web'] ?? '', AgentStatementPng::LAYOUT]));
         return $out;
     }
 
@@ -205,7 +209,7 @@ final class AgentStatement
  */
 final class AgentStatementPng
 {
-    public const LAYOUT = 'stmt-v3';
+    public const LAYOUT = 'stmt-v4';   // v4 = emblem without the white box, live company name, India + Nepal flags (9 Oct 2026)
     public const W = 1080;
     public const H = 1720;
     private const M = 48;
@@ -373,21 +377,17 @@ final class AgentStatementPng
         /* ---------- header band ---------- */
         imagefilledrectangle($im, 0, 0, $W, 190, $navy);
         imagefilledrectangle($im, 0, 190, $W, 196, $red);
+        /* The emblem alone on a soft glow (9 Oct 2026), the live company name
+           beside it (it was typed in here), and both flags top right. */
         $tx = $M;
-        $logo = Ticket::logoFile();
-        if ($logo !== null) {
-            $li = @imagecreatefromstring((string) file_get_contents($logo));
-            if ($li !== false) {
-                if (!imageistruecolor($li)) { imagepalettetotruecolor($li); }
-                $lh = 96;
-                $lw = (int) round(imagesx($li) * $lh / max(1, imagesy($li)));
-                self::box($im, $M - 8, 34, $M + $lw + 8, 34 + $lh + 16, 12, $white);
-                imagecopyresampled($im, $li, $M, 42, 0, 0, $lw, $lh, imagesx($li), imagesy($li));
-                imagedestroy($li);
-                $tx = $M + $lw + 32;
-            }
+        $mk = DocArt::mark($im, $M - 6, 30, 210, 120, true);
+        if ($mk !== null) {
+            $tx = $mk['x'] + $mk['w'] + 26;
         }
-        self::t($im, 26, $tx, 34, $white, 'S HARI GLOBAL PVT LTD', true);
+        $flagsW = DocArt::flagPairWidth(28, 8);
+        DocArt::flagPair($im, $W - $M - $flagsW, 36, 28, 8, 'IN');
+        $coName = Ticket::roman((string) (($co['legal'] ?? '') !== '' ? $co['legal'] : ($co['name'] ?? '')));
+        self::t($im, 26, $tx, 34, $white, self::fit(26, strtoupper($coName !== '' ? $coName : 'S Hari Global Pvt Ltd'), $W - $tx - $M - $flagsW - 16), true);
         self::t($im, 19, $tx, 80, $pale, 'AGENT STATEMENT', true);
         self::t($im, 19, $tx + self::w(19, 'AGENT STATEMENT') + 16, 80, $pale, 'एजेन्ट हिसाब विवरण', false);
         self::t($im, 14, $tx, 124, $pale, self::fit(14, 'CIN ' . $co['cin'] . '  ·  ' . $co['phone'] . '  ·  ' . $co['web'], $W - $tx - $M), false);

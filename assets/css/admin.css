@@ -14,7 +14,14 @@
 /* ---------- 1. Shell ---------- */
 .tb { background: var(--navy) !important; background-image: none !important; box-shadow: none !important; border-bottom: 3px solid var(--red) !important; color: var(--on-navy); }
 .tb .brand { color: var(--on-navy) !important; gap: 10px !important; }
-.tb .brand-logo { width: 40px !important; height: 34px !important; background: #FFFFFF !important; border-radius: var(--radius-xs) !important; padding: 2px 3px !important; box-shadow: none !important; }
+/* 9 Oct 2026 (owner): the emblem alone — no baked name, no white tile. The
+   transparent mark sits straight on the navy bar with a soft shadow; the
+   higher-specificity line also beats depth.css's 3D tile edge (loads last). */
+.tb .brand-logo { width: auto !important; height: 34px !important; max-width: 72px !important; object-fit: contain; background: none !important; border-radius: 0 !important; padding: 0 !important; box-shadow: none !important; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .38)); }
+.shg-adm .tb .brand .brand-logo { box-shadow: none !important; background: none !important; }
+/* drawn India / Nepal flags (Brand::flagSvg / flagUse, assets/js/23-flags.js) */
+.shg-adm .flg { filter: drop-shadow(0 .5px .7px rgba(0, 0, 0, .32)); }
+.shg-adm .flagpill .flg, .shg-adm .ch-badge .flg { vertical-align: middle; }
 .tb .brand span { color: var(--on-navy-muted) !important; letter-spacing: .06em !important; }
 .tb .who { color: var(--on-navy-muted) !important; }
 .tb .who em { color: var(--on-navy-muted) !important; background: rgba(255, 255, 255, .1); border-radius: 6px; padding: 1px 6px; font-family: var(--font-mono) !important; font-size: 11px !important; }

@@ -71,7 +71,9 @@ try {
     $sourceIn = (string) Response::field('source', 'quick_booking');
     // 'callback' (24 Sep 2026): the contact button on every screen — "call me
     // back". Lands in the same Enquiries inbox; the office phones them.
-    $source   = in_array($sourceIn, ['quick_booking', 'complaint', 'agent_apply', 'callback'], true)
+    // 'tour' (9 Oct 2026): a tour-package lead. The full form (package, pax,
+    // ref TRV-…, budgets) is api/tour-enquiry.php; this only accepts the tag.
+    $source   = in_array($sourceIn, ['quick_booking', 'complaint', 'agent_apply', 'callback', 'tour'], true)
         ? $sourceIn
         : 'quick_booking';
 
@@ -124,6 +126,7 @@ try {
     $message = match ($source) {
         'callback'    => 'Got it — the office will call you back on this number. कार्यालयबाट यही नम्बरमा फोन आउनेछ। / ऑफ़िस इसी नंबर पर कॉल करेगा।',
         'agent_apply' => 'Application received — our office will call you on this number. आवेदन प्राप्त भयो — कार्यालयबाट फोन आउनेछ।',
+        'tour'        => 'Tour enquiry received — our office will call you with a quote. टुर सोधपुछ प्राप्त भयो — कार्यालयबाट फोन आउनेछ।',
         'complaint'   => 'Complaint filed — our team will get back to you.',
         default       => 'Details saved — let’s pick your seat.',
     };

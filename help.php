@@ -17,6 +17,7 @@ declare(strict_types=1);
 define('SHG_APP', true);
 require_once __DIR__ . '/includes/bootstrap.php';
 require_once INCLUDE_PATH . '/helpdesk.php';
+require_once INCLUDE_PATH . '/brand.php';   // emblem (no baked name, no white tile) + SVG flags — 9 Oct 2026
 
 Security::requireRateLimit('help_page', Security::clientIp(), 60, 60);
 
@@ -76,7 +77,7 @@ header('X-Robots-Tag: noindex');
 <meta name="theme-color" content="#12264E">
 <meta name="csrf" content="<?= $e(Security::csrfToken()) ?>">
 <title><?= $e($T['title']) ?> · <?= $e($company) ?></title>
-<link rel="icon" href="/assets/img/favicon-32.png">
+<?= Brand::iconLinks() ?>
 <script>/* The app's saved theme before the first frame (8 Oct 2026): localStorage 'shg:theme' = light | dark | amoled, else the phone's setting. */
 (function(){try{var d=document.documentElement,t=(localStorage.getItem('shg:theme')||'').replace(/"/g,'');if(t!=='light'&&t!=='dark'&&t!=='amoled')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';d.setAttribute('data-theme',t==='light'?'light':'dark');if(t==='amoled')d.setAttribute('data-display','amoled')}catch(e){}})();</script>
 <style>
@@ -89,7 +90,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans D
 .wrap{max-width:560px;margin:0 auto;padding:16px 16px calc(28px + env(safe-area-inset-bottom))}
 .top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
 .brand{display:flex;align-items:center;gap:10px;font-weight:800;color:var(--navy);text-decoration:none}
-.brand img{width:36px;height:36px;border-radius:9px}
+.brand img{height:34px;width:auto;max-width:70px;object-fit:contain;flex:none;filter:drop-shadow(0 2px 4px rgba(18,38,78,.22))}
+.brand .flg-pair{gap:3px}
+@media (max-width:380px){.brand .flg-pair{display:none!important}}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .brand{color:#fff}}
 :root[data-theme="dark"] .brand{color:#fff}
 .langs a{font-size:12px;font-weight:700;color:var(--muted);text-decoration:none;padding:4px 8px;border-radius:999px;border:1px solid var(--line);margin-left:4px}
@@ -142,7 +145,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--blue)}
 <body>
 <div class="wrap">
   <div class="top">
-    <a class="brand" href="/"><img src="/assets/img/icon-192.png" alt=""><span><?= $e($company) ?></span></a>
+    <a class="brand" href="/"><img src="<?= $e(Brand::markUrl(34)) ?>" alt="" width="65" height="34"><span><?= $e($company) ?></span><?= Brand::flagPair(12) ?></a>
     <div class="langs">
       <?php foreach (['ne' => 'ने', 'hi' => 'हि', 'en' => 'EN'] as $l => $lab): ?>
         <a class="<?= $l === $lang ? 'on' : '' ?>" href="?lang=<?= $l ?><?= $ref !== '' ? '&amp;ref=' . $e(urlencode($ref)) : '' ?>"><?= $lab ?></a>

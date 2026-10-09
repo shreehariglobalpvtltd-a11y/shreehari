@@ -78,8 +78,14 @@ final class WaTplLib
         'company_name'      => ['live', 'Company name'],
         'support_phone'     => ['live', 'Office support number'],
         'website'           => ['live', 'Website'],
-        'fare_to_nepal'     => ['live', 'Current fare Gujarat → Nepal border'],
-        'fare_to_india'     => ['live', 'Current fare Nepal border → Gujarat'],
+        'fare_to_nepal'     => ['live', 'Default fare Gujarat → Nepal border (a stop with no fare of its own)'],
+        'fare_to_india'     => ['live', 'Default fare Nepal border → Gujarat (a drop with no fare of its own)'],
+        // 9 Oct 2026 (site facts): fares are set per pickup / drop - these quote the real board
+        'fare_range_to_nepal' => ['live', 'Fare range Gujarat → Nepal border over every pickup (₹2,000–₹2,200)'],
+        'fare_range_to_india' => ['live', 'Fare range Nepal border → Gujarat over every drop'],
+        'fare_from_nepal'   => ['live', 'Lowest fare Gujarat → Nepal border (any pickup)'],
+        'fare_from_india'   => ['live', 'Lowest fare Nepal border → Gujarat (any drop)'],
+        'private_cabin_fare'=> ['live', 'Private single cabin fare'],
         'discount_code'     => ['live', 'Code of the running offer (Offers & Discounts)'],
         'offer_text'        => ['live', 'The running offer in one line'],
         'offer_until'       => ['live', 'Last day of the running offer'],
@@ -152,13 +158,13 @@ final class WaTplLib
             'ne' => "{{customer_name}}, हामीसँग पहिले यात्रा गर्नुभएकोमा धन्यवाद 🙏 {{offer_text}} अर्को सिट बुक गर्नुहोस्: {{website}}",
             'hi' => "{{customer_name}}, पहले हमारे साथ यात्रा करने के लिए धन्यवाद 🙏 {{offer_text}} अगली सीट बुक करें: {{website}}"],
         'advance_booking' => ['cat' => 'marketing', 'title' => 'Advance booking discount', 'meta' => 'MARKETING',
-            'en' => "📅 Book early, pay less: {{offer_text}} Valid till {{offer_until}}. Fare Gujarat → Nepal {{fare_to_nepal}}. {{website}}",
-            'ne' => "📅 चाँडो बुक, कम तिर्नुहोस्: {{offer_text}} {{offer_until}} सम्म। भाडा गुजरात → नेपाल {{fare_to_nepal}}। {{website}}",
-            'hi' => "📅 जल्दी बुक, कम भुगतान: {{offer_text}} {{offer_until}} तक। किराया गुजरात → नेपाल {{fare_to_nepal}}। {{website}}"],
+            'en' => "📅 Book early, pay less: {{offer_text}} Valid till {{offer_until}}. Fare Gujarat → Nepal {{fare_range_to_nepal}}. {{website}}",
+            'ne' => "📅 चाँडो बुक, कम तिर्नुहोस्: {{offer_text}} {{offer_until}} सम्म। भाडा गुजरात → नेपाल {{fare_range_to_nepal}}। {{website}}",
+            'hi' => "📅 जल्दी बुक, कम भुगतान: {{offer_text}} {{offer_until}} तक। किराया गुजरात → नेपाल {{fare_range_to_nepal}}। {{website}}"],
         'group_booking' => ['cat' => 'marketing', 'title' => 'Group booking offer', 'meta' => 'MARKETING',
-            'en' => "👨‍👩‍👧‍👦 Travelling as a family or group? Seats are kept together in one cabin. Fare {{fare_to_nepal}} per seat. Call {{support_phone}} or book {{website}}",
-            'ne' => "👨‍👩‍👧‍👦 परिवार वा समूहमा यात्रा? सबै सिट एउटै केबिनमा सँगै। प्रति सिट {{fare_to_nepal}}। फोन {{support_phone}} वा बुक {{website}}",
-            'hi' => "👨‍👩‍👧‍👦 परिवार या ग्रुप में यात्रा? सभी सीटें एक केबिन में साथ। प्रति सीट {{fare_to_nepal}}। फोन {{support_phone}} या बुक {{website}}"],
+            'en' => "👨‍👩‍👧‍👦 Travelling as a family or group? Seats are kept together in one cabin. Fare from {{fare_from_nepal}} per seat. Call {{support_phone}} or book {{website}}",
+            'ne' => "👨‍👩‍👧‍👦 परिवार वा समूहमा यात्रा? सबै सिट एउटै केबिनमा सँगै। प्रति सिट {{fare_from_nepal}} देखि। फोन {{support_phone}} वा बुक {{website}}",
+            'hi' => "👨‍👩‍👧‍👦 परिवार या ग्रुप में यात्रा? सभी सीटें एक केबिन में साथ। प्रति सीट {{fare_from_nepal}} से। फोन {{support_phone}} या बुक {{website}}"],
         'dashain_special' => ['cat' => 'marketing', 'title' => 'Dashain special', 'meta' => 'MARKETING',
             'en' => "🪔 Going home for Dashain? {{offer_text}} Book your sleeper seat now: {{website}}",
             'ne' => "🪔 दशैंमा घर जाँदै हुनुहुन्छ? {{offer_text}} अहिले नै स्लिपर सिट बुक गर्नुहोस्: {{website}}",
@@ -176,9 +182,9 @@ final class WaTplLib
             'ne' => "⏳ {{offer_until}} सम्म मात्र: {{offer_text}} कोड {{discount_code}}। {{website}}",
             'hi' => "⏳ सिर्फ़ {{offer_until}} तक: {{offer_text}} कोड {{discount_code}}। {{website}}"],
         'route_availability' => ['cat' => 'marketing', 'title' => 'Route availability update', 'meta' => 'MARKETING',
-            'en' => "🚌 Daily sleeper bus Gujarat ⇄ Rupaidiha (Nepal border). Fare {{fare_to_nepal}} going, {{fare_to_india}} return. Book: {{website}}",
-            'ne' => "🚌 दैनिक स्लिपर बस गुजरात ⇄ रुपैडिहा (नेपाल बोर्डर)। भाडा जाँदा {{fare_to_nepal}}, फर्कंदा {{fare_to_india}}। बुक: {{website}}",
-            'hi' => "🚌 रोज़ाना स्लीपर बस गुजरात ⇄ रुपईडीहा (नेपाल बॉर्डर)। किराया जाते {{fare_to_nepal}}, लौटते {{fare_to_india}}। बुक: {{website}}"],
+            'en' => "🚌 Daily sleeper bus Gujarat ⇄ Rupaidiha (Nepal border). Fare {{fare_range_to_nepal}} going, {{fare_range_to_india}} return. Book: {{website}}",
+            'ne' => "🚌 दैनिक स्लिपर बस गुजरात ⇄ रुपैडिहा (नेपाल बोर्डर)। भाडा जाँदा {{fare_range_to_nepal}}, फर्कंदा {{fare_range_to_india}}। बुक: {{website}}",
+            'hi' => "🚌 रोज़ाना स्लीपर बस गुजरात ⇄ रुपईडीहा (नेपाल बॉर्डर)। किराया जाते {{fare_range_to_nepal}}, लौटते {{fare_range_to_india}}। बुक: {{website}}"],
         // ---------------- Agent ----------------
         'agent_daily_summary' => ['cat' => 'agent', 'title' => 'Daily agent sales summary', 'meta' => 'UTILITY',
             'en' => "📊 {{agent_name}} ({{agent_code}}): this month {{sales_count}} tickets, {{sales_amount}}. Commission due to you {{commission_amount}}.",
@@ -201,18 +207,18 @@ final class WaTplLib
             'ne' => "📢 {{company_name}} बाट एजेन्ट सूचना: {{notice_text}}",
             'hi' => "📢 {{company_name}} की एजेंट सूचना: {{notice_text}}"],
         'agent_new_route' => ['cat' => 'agent', 'title' => 'New route notice', 'meta' => 'UTILITY',
-            'en' => "🆕 Route notice for agents: {{notice_text}} Current fares: {{fare_to_nepal}} / {{fare_to_india}}.",
-            'ne' => "🆕 एजेन्टका लागि रुट सूचना: {{notice_text}} हालको भाडा: {{fare_to_nepal}} / {{fare_to_india}}।",
-            'hi' => "🆕 एजेंटों के लिए रूट सूचना: {{notice_text}} वर्तमान किराया: {{fare_to_nepal}} / {{fare_to_india}}।"],
+            'en' => "🆕 Route notice for agents: {{notice_text}} Current fares: {{fare_range_to_nepal}} / {{fare_range_to_india}}.",
+            'ne' => "🆕 एजेन्टका लागि रुट सूचना: {{notice_text}} हालको भाडा: {{fare_range_to_nepal}} / {{fare_range_to_india}}।",
+            'hi' => "🆕 एजेंटों के लिए रूट सूचना: {{notice_text}} वर्तमान किराया: {{fare_range_to_nepal}} / {{fare_range_to_india}}।"],
         // ---------------- Staff & counter ----------------
         'staff_duty' => ['cat' => 'staff', 'title' => 'Staff duty notice', 'meta' => 'UTILITY',
             'en' => "👷 Duty notice: {{notice_text}}",
             'ne' => "👷 ड्युटी सूचना: {{notice_text}}",
             'hi' => "👷 ड्यूटी सूचना: {{notice_text}}"],
         'counter_update' => ['cat' => 'staff', 'title' => 'Counter operation update', 'meta' => 'UTILITY',
-            'en' => "🏢 Counter update: {{notice_text}} Fares today: {{fare_to_nepal}} / {{fare_to_india}}.",
-            'ne' => "🏢 काउन्टर सूचना: {{notice_text}} आजको भाडा: {{fare_to_nepal}} / {{fare_to_india}}।",
-            'hi' => "🏢 काउंटर सूचना: {{notice_text}} आज का किराया: {{fare_to_nepal}} / {{fare_to_india}}।"],
+            'en' => "🏢 Counter update: {{notice_text}} Fares today: {{fare_range_to_nepal}} / {{fare_range_to_india}}.",
+            'ne' => "🏢 काउन्टर सूचना: {{notice_text}} आजको भाडा: {{fare_range_to_nepal}} / {{fare_range_to_india}}।",
+            'hi' => "🏢 काउंटर सूचना: {{notice_text}} आज का किराया: {{fare_range_to_nepal}} / {{fare_range_to_india}}।"],
         'emergency_notice' => ['cat' => 'staff', 'title' => 'Emergency notice', 'meta' => 'UTILITY',
             'en' => "🚨 URGENT from {{company_name}}: {{notice_text}} Call {{support_phone}}.",
             'ne' => "🚨 {{company_name}} बाट जरुरी: {{notice_text}} फोन {{support_phone}}।",
@@ -388,8 +394,21 @@ final class WaTplLib
         try {
             require_once __DIR__ . '/fare.php';
             $f = Fare::dirFares();
+            // the direction defaults (kept: older templates carry these names)
             $out['fare_to_nepal'] = inr((float) $f['toNepal']);
             $out['fare_to_india'] = inr((float) $f['toIndia']);
+            /* 9 Oct 2026 (site facts): what the board really charges - every
+               pickup / drop priced by Fare::board(), the checkout's own numbers. */
+            $b   = Fare::board();
+            $rng = static fn(array $r): string => (float) $r['min'] === (float) $r['max']
+                ? inr((float) $r['min']) : inr((float) $r['min']) . '–' . inr((float) $r['max']);
+            $out['fare_range_to_nepal'] = $rng($b['range']['go']);
+            $out['fare_range_to_india'] = $rng($b['range']['back']);
+            $out['fare_from_nepal']     = inr((float) $b['range']['go']['min']);
+            $out['fare_from_india']     = inr((float) $b['range']['back']['min']);
+            if ((float) $b['private']['single'] > 0) {
+                $out['private_cabin_fare'] = inr((float) $b['private']['single']);
+            }
             $o = Fare::runningOffers()[0] ?? null;
             if ($o !== null && (float) $o['value'] > 0) {
                 $out['discount_code'] = (string) $o['code'];

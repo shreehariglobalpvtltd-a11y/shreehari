@@ -15,6 +15,16 @@ $e = static fn($s): string => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8')
    Change this line, by hand, whenever the wording below changes. */
 if (!defined('POLICY_REVISED')) { define('POLICY_REVISED', '8 October 2026'); }
 
+/* 9 Oct 2026 (site facts): the company name, phones, email and CIN come from
+   Admin (includes/sitefacts.php), the same values the tickets print - no
+   typed copy on a legal page to drift. */
+require_once INCLUDE_PATH . '/sitefacts.php';
+$F       = SiteFacts::all();
+$coName  = (string) $F['brand']['name'];
+$coShort = (string) $F['brand']['short'];
+$telHead = (string) $F['head']['tel'];
+$telHelp = (string) $F['support']['tel'];
+
 $slabs = Settings::getArray('refund_slabs', []);
 if (empty($slabs)) {
     $slabs = [
@@ -33,9 +43,9 @@ header('Content-Type: text/html; charset=UTF-8');
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Refund & Cancellation Policy — S Hari Global Pvt Ltd</title>
-<meta name="description" content="Refund and cancellation policy for S Hari Global bus tickets. Cancel 96+ hours before departure for 90% refund. Full details on rescheduling, no-show rules, and operator-initiated cancellations.">
-<meta property="og:title" content="Refund & Cancellation Policy — S Hari Global">
+<title>Refund &amp; Cancellation Policy — <?= $e($coName) ?></title>
+<meta name="description" content="Refund and cancellation policy for <?= $e($coShort) ?> bus tickets. Cancel 96+ hours before departure for 90% refund. Full details on rescheduling, no-show rules, and operator-initiated cancellations.">
+<meta property="og:title" content="Refund &amp; Cancellation Policy — <?= $e($coShort) ?>">
 <meta property="og:description" content="Bus ticket cancellation policy: 96h+ = 90% refund, 48-96h = 75%, 24-48h = 50%, 6-24h = 25%. Refunds in 7-21 working days.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="<?= $e($baseUrl) ?>/refund-policy">
@@ -62,7 +72,8 @@ header('Content-Type: text/html; charset=UTF-8');
 body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; }
 .header { background: var(--navy); color: #fff; padding: 20px 0; text-align: center; }
 .header a { color: #fff; text-decoration: none; display: inline-flex; align-items: center; gap: 10px; }
-.header img { height: 36px; }
+.header img { display: block; height: 40px; width: auto; filter: drop-shadow(0 1px 2px rgba(0,0,0,.35)); }   /* the transparent emblem - no white tile (9 Oct 2026) */
+.header picture { display: block; line-height: 0; }
 .header .brandname { font-family: 'Cinzel', Georgia, serif; font-size: clamp(14px, 3vw, 18px); font-weight: 700; }
 .container { max-width: 800px; margin: 0 auto; padding: 32px 16px 64px; }
 h1.page-title, h2 { font-family: 'Cinzel', Georgia, serif; font-size: 28px; font-weight: 800; color: var(--text); margin-bottom: 8px; }
@@ -90,8 +101,8 @@ h1.page-title, h2 { font-family: 'Cinzel', Georgia, serif; font-size: 28px; font
   "@context": "https://schema.org",
   "@type": "WebPage",
   "name": "Refund & Cancellation Policy",
-  "description": "Refund and cancellation policy for S Hari Global bus tickets between Gujarat and Rupaidiha (India-Nepal).",
-  "publisher": { "@type": "Organization", "name": "S Hari Global Pvt Ltd" },
+  "description": <?= json_encode('Refund and cancellation policy for ' . $coShort . ' bus tickets between Gujarat and Rupaidiha (India-Nepal).', JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
+  "publisher": { "@type": "Organization", "name": <?= json_encode($coName, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?> },
   "breadcrumb": {
     "@type": "BreadcrumbList",
     "itemListElement": [
@@ -105,8 +116,8 @@ h1.page-title, h2 { font-family: 'Cinzel', Georgia, serif; font-size: 28px; font
 <body>
 <div class="header">
   <a href="/">
-    <img src="/assets/img/logo.png" alt="S Hari Global" loading="eager">
-    <span class="brandname">S Hari Global Pvt Ltd</span>
+    <picture><source srcset="/assets/img/logo-mark-96h.webp" type="image/webp"><img src="/assets/img/logo-mark-96h.png" alt="" width="77" height="40" loading="eager"></picture>
+    <span class="brandname"><?= $e($coName) ?></span>
   </a>
 </div>
 <div class="container">
@@ -147,8 +158,8 @@ foreach ($slabs as $s) {
     <h3>How to Cancel</h3>
     <ul>
       <li><b>Online:</b> Go to <a href="/#/my" style="color:var(--gold)">My Bookings</a>, find your ticket, and tap "Cancel".</li>
-      <li><b>WhatsApp:</b> Send your PNR (SHG-XXXX) to <a href="https://wa.me/919173401507" style="color:var(--gold)">+91 91734 01507</a>.</li>
-      <li><b>Phone:</b> Call <a href="tel:+919104801507" style="color:var(--gold)">+91 91048 01507</a> (Mon–Sat, 9 AM–8 PM IST).</li>
+      <li><b>WhatsApp:</b> Send your PNR (SHG-XXXX) to <a href="https://wa.me/<?= $e($telHelp) ?>" style="color:var(--gold)"><?= $e($F['support']['phone']) ?></a>.</li>
+      <li><b>Phone:</b> Call <a href="tel:+<?= $e($telHead) ?>" style="color:var(--gold)"><?= $e($F['head']['phone']) ?></a> (Mon–Sat, 9 AM–8 PM IST).</li>
     </ul>
   </div>
 
@@ -175,7 +186,7 @@ foreach ($slabs as $s) {
   <div class="card">
     <h3>Operator-Initiated Cancellation</h3>
     <ul>
-      <li>If S Hari Global cancels a service (mechanical, weather, force majeure), you receive a <b>100% refund</b> or a free seat on the next available bus.</li>
+      <li>If <?= $e($coShort) ?> cancels a service (mechanical, weather, force majeure), you receive a <b>100% refund</b> or a free seat on the next available bus.</li>
       <li>We are not liable for delays caused by border/immigration, road blocks, or natural events.</li>
     </ul>
   </div>
@@ -188,15 +199,15 @@ foreach ($slabs as $s) {
   <div class="card">
     <h3>Contact for Refund Queries</h3>
     <ul>
-      <li>Email: <a href="mailto:shreehariglobalpvtltd@gmail.com" style="color:var(--gold)">shreehariglobalpvtltd@gmail.com</a></li>
-      <li>WhatsApp: <a href="https://wa.me/919173401507" style="color:var(--gold)">+91 91734 01507</a> (24×7)</li>
-      <li>Phone: <a href="tel:+919104801507" style="color:var(--gold)">+91 91048 01507</a></li>
+      <li>Email: <a href="mailto:<?= $e($F['brand']['email']) ?>" style="color:var(--gold)"><?= $e($F['brand']['email']) ?></a></li>
+      <li>WhatsApp: <a href="https://wa.me/<?= $e($telHelp) ?>" style="color:var(--gold)"><?= $e($F['support']['phone']) ?></a> (24×7)</li>
+      <li>Phone: <a href="tel:+<?= $e($telHead) ?>" style="color:var(--gold)"><?= $e($F['head']['phone']) ?></a></li>
     </ul>
     <p class="note">For complete terms including luggage, conduct, and border rules, see our <a href="/#/terms" style="color:var(--gold)">Terms & Conditions</a>.</p>
   </div>
 </div>
 <div class="footer">
-  © <?= date('Y') ?> S Hari Global Pvt Ltd · CIN: U52291GJ2026PTC174029 ·
+  © <?= date('Y') ?> <?= $e($coName) ?><?= $F['brand']['cin'] !== '' ? ' · CIN: ' . $e($F['brand']['cin']) : '' ?> ·
   <a href="/refund-policy">Refund Policy</a> ·
   <a href="/#/terms">Terms</a> ·
   <a href="/">Home</a>

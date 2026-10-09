@@ -55,13 +55,32 @@ final class CounterDesk
     /** The ways a counter can take money, as includes/booking.php names them. */
     public const METHODS = ['cash', 'upi', 'esewa', 'bank'];
 
+    /**
+     * The WEBSITE-only desk facts (9 Oct 2026, database/upgrade-2026-10-09-
+     * site-facts.sql): whether the office is listed on the site, what kind it
+     * is, its status and its names in Nepali / Hindi. None of them prints on a
+     * ticket, so changing only these never re-renders issued tickets.
+     */
+    public const PUBLIC_FIELDS = ['show_public', 'office_kind', 'public_status', 'name_ne', 'name_hi',
+                                  'address_ne', 'lat', 'lng', 'whatsapp', 'contact_person'];
+
+    /** What a listed office is: head office, branch, partner (Nepal) or border point. */
+    public const OFFICE_KINDS = ['head', 'branch', 'partner', 'border'];
+
+    /** The owner's office list (9 Oct 2026) - used only until the migration adds show_public. */
+    private const DEFAULT_PUBLIC = ['MSA' => 'head', 'AMD' => 'branch', 'SRT' => 'branch', 'RJT' => 'branch', 'NPJ' => 'partner'];
+
     /** @var array<string,array<string,mixed>>|null code => desk */
     private static ?array $cache = null;
+
+    /** @var list<array<string,mixed>>|null publicOffices(), per request */
+    private static ?array $publicCache = null;
 
     /** Drop the in-memory list — used after a write and by long cron scripts. */
     public static function flush(): void
     {
         self::$cache = null;
+        self::$publicCache = null;
     }
 
     /**
@@ -519,6 +538,28 @@ final class CounterDesk
             throw new RuntimeException('Counter desks need database/upgrade-2026-10-04-counter-desks.sql applied first.');
         }
 
+        /* The website-only facts (9 Oct 2026). Written only when the caller
+           sent the key AND the column exists - a caller that never heard of
+           them (My desk, an old form) must not unlist an office by omission. */
+        $pub = [
+            'show_public'    => static fn($v): int => empty($v) ? 0 : 1,
+            'office_kind'    => static fn($v): ?string => in_array((string) $v, self::OFFICE_KINDS, true) ? (string) $v : null,
+            'public_status'  => static fn($v): string => (string) $v === 'coming_soon' ? 'coming_soon' : 'open',
+            'name_ne'        => static fn($v): ?string => trim(Security::clean((string) $v, 120)) ?: null,
+            'name_hi'        => static fn($v): ?string => trim(Security::clean((string) $v, 120)) ?: null,
+            'address_ne'     => static fn($v): ?string => trim(Security::clean((string) $v, 255)) ?: null,
+            'lat'            => static fn($v): ?float => self::cleanCoord($v, 90.0),
+            'lng'            => static fn($v): ?float => self::cleanCoord($v, 180.0),
+            'whatsapp'       => static fn($v): ?string => trim(Security::clean((string) $v, 40)) ?: null,
+            'contact_person' => static fn($v): ?string => trim(Security::clean((string) $v, 80)) ?: null,
+        ];
+        foreach ($pub as $col => $clean) {
+            if (array_key_exists($col, $in) && self::hasColumn('counter_locations', $col)) {
+                $row[$col] = $clean($in[$col]);
+            }
+        }
+
+        $before = self::get($code);
         $exists = Database::fetch('SELECT id FROM counter_locations WHERE code = :c LIMIT 1', ['c' => $code]);
         if ($exists === null) {
             Database::insert('counter_locations', $row);
@@ -537,9 +578,237 @@ final class CounterDesk
 
         self::flush();
         self::syncSettingsMirror();
-        Settings::touchTicketIdentity();   // the desk's phone / address print on its tickets
+        /* The desk's phone / address print on its tickets, so a change there
+           re-renders them. A change to the website-only facts alone (listed,
+           kind, Nepali name, map pin …) does not touch any ticket. */
+        if (self::identityChanged($before, self::get($code))) {
+            Settings::touchTicketIdentity();
+        }
 
         return $code;
+    }
+
+    /**
+     * Did anything that prints on a ticket change between two desk rows?
+     * A new desk (no "before") always counts.
+     *
+     * @param array<string,mixed>|null $before
+     * @param array<string,mixed>|null $after
+     */
+    public static function identityChanged(?array $before, ?array $after): bool
+    {
+        if ($before === null || $after === null) {
+            return true;
+        }
+        foreach ($after as $k => $v) {
+            if (in_array($k, self::PUBLIC_FIELDS, true)) {
+                continue;
+            }
+            if ((string) ($before[$k] ?? '') !== (string) ($v ?? '')) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * THE PUBLIC OFFICE LIST (9 Oct 2026, owner: "office haru kaha kaha xa
+     * sabai lai listed banau — Mehsana head, NPJ, Rajkot, AMD, Surat … expand
+     * hudai xa"). The desks the office ticked "show on website", head office
+     * first, then by the desk order. One list for the home page, the facts
+     * object, JSON-LD and the /offices page.
+     *
+     * The phone is the desk's own; else the town's number from the company
+     * line (company_counters, the line the documents already print); a Nepal
+     * partner office falls back to the Nepal office line (Company details).
+     * NOTHING IS INVENTED: an office with no known number has phone ''.
+     * Never carries money facts (rate, methods, currency) or notes.
+     *
+     * @return list<array{code:string,name:string,nameNe:string,nameHi:string,label:string,city:string,
+     *                    kind:string,status:string,country:string,phone:string,tel:string,wa:string,
+     *                    address:string,addressNe:string,hours:string,mapUrl:string,lat:?float,lng:?float,contact:string}>
+     */
+    public static function publicOffices(): array
+    {
+        if (self::$publicCache !== null) {
+            return self::$publicCache;
+        }
+        $hasFlag = self::hasTable() && self::hasColumn('counter_locations', 'show_public');
+        $co      = Settings::company();
+        $byTown  = self::countersByTown((string) ($co['counters'] ?? ''));
+
+        $out = [];
+        foreach (self::all(true) as $code => $d) {
+            $listed = $hasFlag && ($d['show_public'] ?? null) !== null
+                ? (int) $d['show_public'] === 1
+                : isset(self::DEFAULT_PUBLIC[$code]);
+            if (!$listed) {
+                continue;
+            }
+            $kind = (string) ($d['office_kind'] ?? '');
+            if (!in_array($kind, self::OFFICE_KINDS, true)) {
+                $kind = self::DEFAULT_PUBLIC[$code] ?? ((string) $d['country'] === 'NP' ? 'partner' : 'branch');
+            }
+            $country = (string) $d['country'] === 'NP' ? 'NP' : 'IN';
+            $city    = self::townOf((string) $d['name']);
+
+            $phone   = trim((string) ($d['phone'] ?? ''));
+            $contact = trim((string) ($d['contact_person'] ?? ''));
+            if ($phone === '') {
+                $phone = $byTown[self::townKey($city)] ?? '';
+            }
+            if ($phone === '' && $kind === 'head') {
+                $phone = (string) $co['phone'];
+            }
+            if ($phone === '' && $country === 'NP') {
+                [$phone, $who] = self::nepalOfficeLine();
+                if ($contact === '') {
+                    $contact = $who;
+                }
+            }
+
+            $tel = self::dialDigits($phone, $country);
+            $wa  = self::dialDigits(trim((string) ($d['whatsapp'] ?? '')), $country);
+            if ($wa === '' && $kind === 'head') {
+                $wa = (string) $co['whatsapp'];
+            }
+
+            $address   = trim((string) ($d['address'] ?? ''));
+            $addressNe = trim((string) ($d['address_ne'] ?? ''));
+            if ($kind === 'head') {
+                $address   = $address !== '' ? $address : (string) $co['address'];
+                $addressNe = $addressNe !== '' ? $addressNe : (string) $co['addressNe'];
+            } elseif ($country === 'NP' && $address === '') {
+                $address = Settings::nepalOfficePlace();
+            }
+            $lat = isset($d['lat']) && $d['lat'] !== null && $d['lat'] !== '' ? (float) $d['lat'] : null;
+            $lng = isset($d['lng']) && $d['lng'] !== null && $d['lng'] !== '' ? (float) $d['lng'] : null;
+            $map = trim((string) ($d['map_url'] ?? ''));
+            if ($map === '') {
+                $map = $lat !== null && $lng !== null
+                    ? 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode(sprintf('%.6f,%.6f', $lat, $lng))
+                    : 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode(trim($city . ' ' . ($address !== '' ? $address : '')) . ' ' . ($country === 'NP' ? 'Nepal' : 'India'));
+            }
+            $status = (string) ($d['public_status'] ?? '') === 'coming_soon' ? 'coming_soon' : 'open';
+
+            $out[] = [
+                'code'      => $code,
+                'name'      => $city,
+                'nameNe'    => trim((string) ($d['name_ne'] ?? '')),
+                'nameHi'    => trim((string) ($d['name_hi'] ?? '')),
+                'label'     => (string) $d['name'],
+                'city'      => $city,
+                'kind'      => $kind,
+                'status'    => $status,
+                'country'   => $country,
+                'phone'     => $status === 'open' ? $phone : '',
+                'tel'       => $status === 'open' ? $tel : '',
+                'wa'        => $status === 'open' ? $wa : '',
+                'address'   => $address,
+                'addressNe' => $addressNe,
+                'hours'     => trim((string) ($d['hours'] ?? '')),
+                'mapUrl'    => $map,
+                'lat'       => $lat,
+                'lng'       => $lng,
+                'contact'   => $contact,
+                'sort'      => (int) $d['sort_order'],
+            ];
+        }
+        usort($out, static fn(array $a, array $b): int =>
+            [$a['kind'] === 'head' ? 0 : 1, $a['status'] === 'open' ? 0 : 1, $a['sort'], $a['code']]
+            <=> [$b['kind'] === 'head' ? 0 : 1, $b['status'] === 'open' ? 0 : 1, $b['sort'], $b['code']]);
+        foreach ($out as &$o) {
+            unset($o['sort']);
+        }
+        unset($o);
+
+        return self::$publicCache = $out;
+    }
+
+    /** "Mehsana — Head Office" / "Rajkot - Office +91 …" / "S Hari Parking, Nana Chiloda" → the town. */
+    public static function townOf(string $name): string
+    {
+        $t = trim((string) ((preg_split('/\s+[\x{2014}\x{2013}-]\s+/u', trim($name), 2) ?: [$name])[0]));
+        if (str_contains($t, ',')) {
+            $parts = array_values(array_filter(array_map('trim', explode(',', $t)), 'strlen'));
+            $t     = $parts !== [] ? (string) end($parts) : $t;
+        }
+        $t = trim((string) preg_replace('/\s*\+?\d[\d\s-]{6,}$/', '', $t));   // a number typed into the name
+        return $t !== '' ? $t : trim($name);
+    }
+
+    /** Lower-case letters only: "Baroda" / "BARODA " → "baroda". */
+    private static function townKey(string $town): string
+    {
+        return (string) preg_replace('/[^a-z]/', '', strtolower($town));
+    }
+
+    /**
+     * The company line "Mehsana +91 91048 01507 · Ahmedabad +91 …" as
+     * townKey => phone (the same parse Settings::helpContacts() makes).
+     *
+     * @return array<string,string>
+     */
+    private static function countersByTown(string $line): array
+    {
+        $out = [];
+        foreach (preg_split('/\s*[\x{00B7}|;\n]\s*/u', $line) ?: [] as $part) {
+            if (preg_match('/^(.*?)\s*(\+?\d[\d \-]{7,})$/u', trim($part), $m) === 1) {
+                $k = self::townKey(self::townOf($m[1]));
+                if ($k !== '' && !isset($out[$k])) {
+                    $out[$k] = trim($m[2]);
+                }
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * The Nepal office's line when the NPJ desk has no phone of its own:
+     * the number typed for the Nepalgunj office on Company details, else the
+     * Nepal company phone, else the Nepal team's published office line.
+     *
+     * @return array{0:string,1:string} [phone, contact person]
+     */
+    private static function nepalOfficeLine(): array
+    {
+        $typed = trim(Settings::getString('np_office_phone', ''));
+        if ($typed !== '') {
+            return [$typed, trim(Settings::getString('np_office_name', ''))];
+        }
+        $np = trim(Settings::getString('nepal_phone', ''));
+        if ($np !== '') {
+            return [$np, ''];
+        }
+        foreach (Settings::nepalTeam() as $p) {
+            if (($p['key'] ?? '') === 'office') {
+                return [(string) $p['phone'], (string) $p['name']];
+            }
+        }
+        return ['', ''];
+    }
+
+    /** A number as tel: / wa.me want it — country code, digits only — or ''. */
+    public static function dialDigits(string $phone, string $country = 'IN'): string
+    {
+        $d = preg_replace('/\D/', '', $phone) ?? '';
+        if (str_starts_with($d, '00')) {
+            $d = substr($d, 2);
+        }
+        if (strlen($d) === 10) {
+            $d = ($country === 'NP' ? '977' : '91') . $d;
+        }
+        return preg_match('/^[1-9]\d{9,14}$/', $d) === 1 ? $d : '';
+    }
+
+    /** A latitude / longitude within ±$max, or null. */
+    private static function cleanCoord(mixed $v, float $max): ?float
+    {
+        if ($v === null || trim((string) $v) === '' || !is_numeric(trim((string) $v))) {
+            return null;
+        }
+        $f = (float) trim((string) $v);
+        return abs($f) <= $max && $f !== 0.0 ? round($f, 7) : null;
     }
 
     /**
@@ -650,6 +919,17 @@ final class CounterDesk
                 'lang'       => (string) ($r['lang'] ?? ''),
                 'map_url'    => (string) ($r['map_url'] ?? ''),
                 'hours'      => (string) ($r['hours'] ?? ''),
+                // website-only facts (9 Oct 2026); show_public null = column not there yet
+                'show_public'    => array_key_exists('show_public', $r) ? (int) $r['show_public'] : null,
+                'office_kind'    => (string) ($r['office_kind'] ?? ''),
+                'public_status'  => (string) ($r['public_status'] ?? ''),
+                'name_ne'        => (string) ($r['name_ne'] ?? ''),
+                'name_hi'        => (string) ($r['name_hi'] ?? ''),
+                'address_ne'     => (string) ($r['address_ne'] ?? ''),
+                'lat'            => isset($r['lat']) && $r['lat'] !== null ? (float) $r['lat'] : null,
+                'lng'            => isset($r['lng']) && $r['lng'] !== null ? (float) $r['lng'] : null,
+                'whatsapp'       => (string) ($r['whatsapp'] ?? ''),
+                'contact_person' => (string) ($r['contact_person'] ?? ''),
             ];
         }
 
@@ -691,6 +971,16 @@ final class CounterDesk
                 'lang'       => '',
                 'map_url'    => '',
                 'hours'      => '',
+                'show_public'    => null,
+                'office_kind'    => '',
+                'public_status'  => '',
+                'name_ne'        => '',
+                'name_hi'        => '',
+                'address_ne'     => '',
+                'lat'            => null,
+                'lng'            => null,
+                'whatsapp'       => '',
+                'contact_person' => '',
             ];
         }
 

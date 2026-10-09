@@ -150,8 +150,12 @@ try {
     check('ticket footer QR opens verify-ticket.php with the keyed token',
         str_contains($src('includes/ticket.php'), "appUrl('verify-ticket.php')"));
 
-    check('login page shows the Mehsana office number',
-        str_contains($src('admin/login.php'), '+91 91048 01507'));
+    /* 9 Oct 2026 (site facts): the number is Admin's office phone, read by
+       the page (Settings::officePhone()), no longer a literal in the file. */
+    check('login page shows the office number from Company details',
+        str_contains($src('admin/login.php'), '$helpPhone = Settings::officePhone()')
+        && str_contains($src('admin/login.php'), 'Security::e($helpPhone)')
+        && Settings::officePhone() !== '');
 } finally {
     unset($_SESSION[ADMIN_SESSION_KEY]);
     Database::run("DELETE FROM admins WHERE username = 'counter-test-tmp'");

@@ -52,6 +52,17 @@ function bv_may_cancel(string $pnr): bool
    owner asked us to remove. Nothing here can fail the edit itself. */
 function bv_sync_ticket(int $bookingId, string $pnr, string $kind, array $ctx = [], ?bool $notify = null, string $reason = ''): string
 {
+    /* 9 Oct 2026 (Office chat): an edit to a ticket that has an office <-> agent
+       conversation leaves one grey line there ("Ticket updated by … — seat"),
+       so the seller sees the change where they asked for it. Never creates a
+       conversation; never blocks the edit. */
+    try {
+        $who = (string) ((Auth::admin()['full_name'] ?? '') ?: (Auth::admin()['username'] ?? 'staff'));
+        $what = ['passenger' => 'passenger name', 'contact' => 'contact', 'payment' => 'payment', 'seat' => 'seat', 'reschedule' => 'date'][$kind] ?? $kind;
+        StaffMsg::system($bookingId, '✏️ Ticket updated by ' . $who . ' — ' . $what . ' · टिकट अपडेट भयो');
+    } catch (Throwable $e) {
+        // the chat line is a courtesy
+    }
     try {
         $opts = ['reason' => $reason];
         if ($notify !== null) {
@@ -614,15 +625,33 @@ if ($b !== null && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['
         $decision = (string) ($_POST['decision'] ?? '');
         $note     = Security::clean($_POST['note'] ?? '', 255);
         try {
+            /* 9 Oct 2026 (anti-fake): the same approval gate as the verify
+               queue - BookingService::approveReviewed() / PaymentRisk. Medium
+               risk needs the bank-statement tick, high risk a written reason
+               (and a second person when pay_two_step_on). Never auto-rejects. */
+            require_once INCLUDE_PATH . '/paymentrisk.php';
             if ($decision === 'approve') {
                 Auth::requireAdmin('payments.verify');
-                $r = BookingService::confirm((int) $b['id'], (int) $admin['id'], $note);
-                $flash = ['ok', 'Payment approved — ticket issued for ' . ($r['pnr'] ?? $pnr) . '.'];
+                $res = BookingService::approveReviewed((int) $b['id'], ['id' => (int) $admin['id'], 'role' => (string) ($admin['role'] ?? '')], [
+                    'note' => $note, 'bankChecked' => !empty($_POST['bank_checked']),
+                    'amountSeen' => $_POST['amount_seen'] ?? null, 'via' => 'booking',
+                ]);
+                $flash = $res['state'] === 'awaiting_second'
+                    ? ['ok', 'First approval recorded — a super-admin, manager or accountant (not you) must give the second approval within 24 h.']
+                    : ['ok', 'Payment approved — ticket issued for ' . ($res['booking']['pnr'] ?? $pnr) . '.'];
             } elseif ($decision === 'reject') {
                 Auth::requireAdmin('payments.reject');
-                if ($note === '') { $note = 'Payment could not be verified.'; }
-                $r = BookingService::reject((int) $b['id'], (int) $admin['id'], $note);
+                $rcode = Security::clean($_POST['reason_code'] ?? '', 40);
+                $reasonText = isset(PaymentRisk::REASONS[$rcode]) && !($rcode === 'other' && $note === '')
+                    ? PaymentRisk::customerText($rcode, $note)
+                    : ($note !== '' ? $note : 'Payment could not be verified.');
+                $r = BookingService::rejectReviewed((int) $b['id'], (int) $admin['id'], $reasonText, ['reasonCode' => $rcode, 'note' => $note, 'via' => 'booking']);
                 $flash = ['ok', 'Booking ' . ($r['pnr'] ?? $pnr) . ' marked rejected — seats released.'];
+            } elseif ($decision === 'hold') {
+                Auth::requireAdmin('payments.verify');
+                $h = PaymentRisk::hold((int) $b['id'], ['id' => (int) $admin['id'], 'role' => (string) ($admin['role'] ?? '')], $note, 'booking');
+                $flash = ['ok', $h['sent'] ? 'Asked the customer on WhatsApp for a clearer proof. The booking stays pending.' : 'Hold recorded. WhatsApp did not go out by itself — use the link in the risk panel to send it.'];
+                $waManualLink = $h['sent'] ? '' : (string) $h['link'];
             } else {
                 $flash = ['bad', 'Unknown decision.'];
             }
@@ -1312,6 +1341,12 @@ if (Notify::usablePhone($b['contact_phone'] ?? '') !== '') {
   &nbsp;·&nbsp; <?= admin_pill((string) $b['status']) ?>
 </p>
 
+<?php /* 9 Oct 2026 — Office chat about THIS ticket: the agent asks the office,
+         the office messages the seller; the last lines show here. Scoped by
+         StaffMsg (an agent sees only their own thread on their own sale). A
+         request is a conversation - nothing here cancels or refunds. */ ?>
+<?= StaffMsg::bookingPanel($b) ?>
+
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start">
   <div class="panel">
     <h2>Journey</h2>
@@ -1817,6 +1852,79 @@ $ticket = $b['ticket'] ?? null;
 </div>
 <?php endif; ?>
 
+<?php /* ---- FRAUD: Risk & review history (9 Oct 2026) -------------------
+     The payment risk score (PaymentRisk) with its reasons in words and the
+     other PNRs it points at, plus every review decision kept with what the
+     reviewer saw (payment_reviews). Advisory: nothing here rejects or
+     cancels; the approve form below asks for the checks the level needs. */
+  $bvRisk = null; $bvReviews = []; $bvFirst = null;
+  if (Auth::can('payments.view') && !empty($b['id'])) {
+      try {
+          require_once INCLUDE_PATH . '/paymentrisk.php';
+          $bvRisk    = PaymentRisk::score((int) $b['id']);
+          $bvReviews = PaymentRisk::reviewsFor((int) $b['id'], 20);
+          $bvFirst   = PaymentRisk::openFirstApproval((int) $b['id']);
+      } catch (Throwable $e) { $bvRisk = null; }
+  }
+  $bvLvl = (string) ($bvRisk['level'] ?? 'low');
+?>
+<?php if ($bvRisk !== null && ($bvRisk['level'] !== 'skip' || $bvReviews !== [])): ?>
+<style>
+.rv-lv-high{--rv:var(--danger);--rv-bg:var(--danger-soft)}.rv-lv-medium{--rv:var(--warning);--rv-bg:var(--warning-soft)}.rv-lv-low{--rv:var(--success);--rv-bg:var(--success-soft)}.rv-lv-skip{--rv:var(--muted);--rv-bg:var(--surface-sunken)}
+.rv-panel{border-left:6px solid var(--rv)}
+.rv-chip{display:inline-flex;align-items:baseline;gap:6px;font-weight:800;font-size:13px;padding:5px 12px;border-radius:999px;color:var(--rv);background:var(--rv-bg)}
+.rv-list{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.rv-list li{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.4}
+.rv-list .w{flex:0 0 auto;min-width:38px;text-align:center;font:800 11px/1.6 var(--f-mono);border-radius:6px;padding:0 5px;color:var(--danger);background:var(--danger-soft)}
+.rv-list .w.neg{color:var(--success);background:var(--success-soft)}
+.rv-list small{display:block;color:var(--muted);font-size:12px}
+.rv-tl{list-style:none;margin:14px 0 0;padding:0 0 0 14px;border-left:2px solid var(--line-strong)}
+.rv-tl li{position:relative;margin:0 0 10px;font-size:12.5px;line-height:1.45}
+.rv-tl li::before{content:'';position:absolute;left:-20px;top:4px;width:10px;height:10px;border-radius:50%;background:var(--royal);box-shadow:0 0 0 3px var(--surface)}
+.rv-tl li.st-reject::before{background:var(--danger)}.rv-tl li.st-hold::before{background:var(--warning)}.rv-tl li.st-approve::before{background:var(--success)}
+.rv-tl b{font-size:13px}
+.rv-two{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--royal-tint);font-size:13px}
+</style>
+<div class="panel rv-panel rv-lv-<?= Security::e($bvLvl) ?>" id="riskPanel">
+  <h2>🛡️ Risk &amp; review history · जोखिम</h2>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <span class="rv-chip"><?= Security::e(['high' => 'HIGH RISK', 'medium' => 'MEDIUM RISK', 'low' => 'LOW RISK', 'skip' => 'NOT SCORED'][$bvLvl] ?? strtoupper($bvLvl)) ?> <small><?= (int) $bvRisk['score'] ?></small></span>
+    <?php if (!empty($bvRisk['bankSigned'])): ?><span class="rv-chip rv-lv-low">🏦 Bank-verified (ICICI)</span><?php endif; ?>
+    <span class="muted" style="font-size:12.5px">
+      <?php if ($bvLvl === 'skip'): ?><?= $bvRisk['skip'] === 'cod' ? 'Cash on delivery — collected at boarding.' : 'Seller sale — the money was taken at the desk.' ?>
+      <?php elseif ($bvLvl === 'high'): ?>Approve only after the bank statement check and a written reason<?= PaymentRisk::twoStepOn() ? ', plus a second person' : '' ?>.
+      <?php elseif ($bvLvl === 'medium'): ?>Approve only after ticking the bank-statement check.
+      <?php else: ?>No strong warning signs — still check the amount.<?php endif; ?>
+    </span>
+  </div>
+  <?php if ($bvRisk['reasons'] !== []): ?>
+    <ul class="rv-list">
+      <?php foreach ($bvRisk['reasons'] as $rs): $w = (int) $rs['weight']; ?>
+        <li><span class="w<?= $w < 0 ? ' neg' : '' ?>"><?= $w > 0 ? '+' . $w : $w ?></span><span><?= Security::e((string) $rs['label']) ?> · <span lang="ne"><?= Security::e((string) $rs['labelNe']) ?></span>
+          <small><?= Security::e((string) $rs['detail']) ?><?php foreach ((array) $rs['pnrs'] as $op): ?> <a class="mono" href="<?= $base ?>/admin/booking-view.php?pnr=<?= rawurlencode((string) $op) ?>"><?= Security::e((string) $op) ?></a><?php endforeach; ?></small></span></li>
+      <?php endforeach; ?>
+    </ul>
+  <?php endif; ?>
+  <?php if ($bvFirst !== null): ?>
+    <div class="rv-two">👥 <b>First approval</b> by <?= Security::e((string) (($bvFirst['full_name'] ?? '') ?: ($bvFirst['username'] ?? ''))) ?> · <?= Security::e(timeAgo((string) $bvFirst['created_at'])) ?>.
+      A super-admin, manager or accountant who is not them gives the second approval below (within 24 h).</div>
+  <?php endif; ?>
+  <?php if ($bvReviews !== []): ?>
+    <ul class="rv-tl" aria-label="Review history">
+      <?php foreach ($bvReviews as $rv): $st = (string) $rv['step']; ?>
+        <li class="st-<?= Security::e($st === 'approve1' ? 'approve' : $st) ?>">
+          <b><?= Security::e(['approve1' => '👥 1st approval', 'approve' => '✓ Approved', 'reject' => '✕ Rejected', 'hold' => '⏸ Asked for clearer proof', 'escalate' => '⚑ Escalated'][$st] ?? $st) ?></b>
+          · <?= Security::e((string) (($rv['full_name'] ?? '') ?: ($rv['username'] ?? 'system'))) ?><?= !empty($rv['admin_role']) ? ' (' . Security::e((string) $rv['admin_role']) . ')' : '' ?>
+          · <span class="muted"><?= Security::e(formatDate((string) $rv['created_at'], 'j M, g:i A')) ?> · via <?= Security::e((string) ($rv['via'] ?? '')) ?></span><br>
+          <span class="muted">Risk then: <?= Security::e(strtoupper((string) $rv['risk_level'])) ?> <?= (int) $rv['risk_score'] ?><?= !empty($rv['risk_codes']) ? ' · ' . Security::e((string) $rv['risk_codes']) : '' ?><?= (int) $rv['bank_checked'] === 1 ? ' · bank statement checked' : '' ?><?= $rv['amount_seen'] !== null ? ' · saw ' . Security::e(inr((float) $rv['amount_seen'])) : '' ?><?= !empty($rv['reason_code']) ? ' · reason ' . Security::e((string) $rv['reason_code']) : '' ?></span>
+          <?php if (!empty($rv['note'])): ?><br>“<?= Security::e((string) $rv['note']) ?>”<?php endif; ?>
+        </li>
+      <?php endforeach; ?>
+    </ul>
+  <?php endif; ?>
+</div>
+<?php endif; ?>
+
 <?php if ((Auth::can('payments.verify') || Auth::can('payments.reject')) && in_array($b['status'], ['pending', 'confirmed', 'rejected'], true)): ?>
 <div class="panel">
   <h2>Payment review</h2>
@@ -1846,20 +1954,35 @@ $ticket = $b['ticket'] ?? null;
   <?php endif; ?>
   <div class="row-actions" style="gap:10px;flex-wrap:wrap;align-items:center">
     <?php if (Auth::can('payments.verify') && in_array($b['status'], ['pending', 'rejected'], true)): ?>
-      <form method="post" style="display:flex;gap:8px;align-items:center"
+      <?php $bvNeedTick = in_array($bvLvl, ['medium', 'high'], true); $bvNeedNote = $bvLvl === 'high'; ?>
+      <form method="post" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"
             onsubmit="return confirm('Approve this payment and issue the ticket? Any released seats will be re-claimed.')">
         <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
         <input type="hidden" name="decision" value="approve">
-        <input type="text" name="note" placeholder="Note (optional)" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
-        <button class="btn ok" type="submit" name="action" value="review">✓ Approve payment</button>
+        <input type="text" name="amount_seen" inputmode="decimal" placeholder="Amount seen ₹ (optional)" style="width:170px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
+        <input type="text" name="note" <?= $bvNeedNote ? 'required minlength="4"' : '' ?> placeholder="<?= $bvNeedNote ? 'Why approve? (required — HIGH risk)' : 'Note (optional)' ?>" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;min-width:200px">
+        <label style="display:inline-flex;gap:6px;align-items:center;font-size:12.5px;font-weight:700;min-height:40px"><input type="checkbox" name="bank_checked" value="1" <?= $bvNeedTick ? 'required' : '' ?> style="width:20px;height:20px"> I checked the bank statement<?= $bvNeedTick ? ' (required)' : '' ?></label>
+        <button class="btn ok" type="submit" name="action" value="review"><?= $bvFirst !== null ? '✓ Give 2nd approval' : '✓ Approve payment' ?></button>
       </form>
+      <?php if ($b['status'] === 'pending'): ?>
+      <form method="post" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
+        <input type="hidden" name="decision" value="hold">
+        <input type="text" name="note" placeholder="Add a line to the message (optional)" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
+        <button class="btn warn" type="submit" name="action" value="review" title="WhatsApp the customer for a clearer proof — nothing else changes">⏸ Hold — ask for clearer proof</button>
+      </form>
+      <?php endif; ?>
     <?php endif; ?>
     <?php if (Auth::can('payments.reject') && in_array($b['status'], ['pending', 'confirmed'], true)): ?>
-      <form method="post" style="display:flex;gap:8px;align-items:center"
+      <form method="post" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"
             onsubmit="return confirm('Reject this payment and release its seats? The customer is notified and their ticket re-locks.')">
         <input type="hidden" name="<?= $k ?>" value="<?= $csrf ?>">
         <input type="hidden" name="decision" value="reject">
-        <input type="text" name="note" placeholder="Reason (shown to customer)" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
+        <select name="reason_code" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
+          <option value="">Reason…</option>
+          <?php foreach ((class_exists('PaymentRisk') ? PaymentRisk::REASONS : []) as $rcK => $rcV): ?><option value="<?= Security::e($rcK) ?>"><?= Security::e($rcV[0]) ?></option><?php endforeach; ?>
+        </select>
+        <input type="text" name="note" placeholder="Extra note (shown to customer)" style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px">
         <button class="btn bad" type="submit" name="action" value="review">✕ Reject payment</button>
       </form>
     <?php endif; ?>

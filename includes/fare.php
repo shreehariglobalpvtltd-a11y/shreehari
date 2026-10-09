@@ -210,6 +210,109 @@ final class Fare
     }
 
     /**
+     * THE FARE BOARD (9 Oct 2026, owner: "fare pani naya update gareko xa …
+     * price haru name haru update hun sath update hune system").
+     *
+     * Every price the public is SHOWN — home fare board, pricing cards, SEO
+     * pages, WhatsApp answers, AI prompt, offer captions, marketing lines —
+     * reads this one list, and every row is priced by the very call the
+     * checkout bills with (stopFare() on the route that serves the stop, else
+     * the direction default — i.e. perSeatFor()). A row therefore can never
+     * quote a number the server would not charge for that pickup / drop.
+     *
+     *   go    Gujarat pickups of the Gujarat -> Nepal run (Boarding::locations()
+     *         order, ON stops of active routes), each {name, time, fare, own, routeId}
+     *   back  Gujarat drops of the return run — priced PER DROP (the old
+     *         surfaces all quoted the flat return default here)
+     *   range {go:{min,max}, back:{min,max}} over those rows (defaults when empty)
+     *   defaults  dirFares()        private  {single, double} cabin prices
+     *   nepal the Nepal-side point names (Rupaidiha)
+     *
+     * Not cached here: callers memoise per request (SiteFacts::all()). A
+     * per-departure schedules.fare_override is a one-bus price and is never
+     * part of the board.
+     *
+     * @return array{go: list<array{name:string,time:?string,fare:float,own:bool,routeId:int}>,
+     *               back: list<array{name:string,time:?string,fare:float,own:bool,routeId:int}>,
+     *               range: array{go: array{min:float,max:float}, back: array{min:float,max:float}},
+     *               defaults: array{toNepal: float, toIndia: float},
+     *               private: array{single: float, double: float}, nepal: list<string>}
+     */
+    public static function board(): array
+    {
+        $dir = self::dirFares();
+        $loc = Boarding::bootLocations();     // never throws; empty lists on a DB hiccup
+        try {
+            $routes = Database::fetchAll('SELECT id, from_city, to_city FROM routes WHERE is_active = 1 ORDER BY sort_order, id');
+        } catch (Throwable $e) {
+            $routes = [];
+        }
+        $byDir = ['toNepal' => [], 'toIndia' => []];
+        foreach ($routes as $r) {
+            $byDir[self::routeDir($r)][] = $r;
+        }
+
+        $rows = static function (string $side) use ($loc, $byDir, $dir): array {
+            $routeDir = $side === 'go' ? 'toNepal' : 'toIndia';
+            $type     = $side === 'go' ? 'boarding' : 'drop';
+            $out      = [];
+            foreach ((array) ($loc[$side] ?? []) as $entry) {
+                $name = trim((string) ($entry['name'] ?? ''));
+                if ($name === '') {
+                    continue;
+                }
+                /* The route a passenger at this stop would actually be sold:
+                   the first active route of the direction that has the stop
+                   (or ends at that town), the same row create() prices. */
+                $route = null;
+                foreach ($byDir[$routeDir] as $r) {
+                    $end = (string) ($side === 'go' ? $r['from_city'] : $r['to_city']);
+                    if (Boarding::stopRow((int) $r['id'], $name, $type) !== null
+                        || Boarding::townKey($end) === Boarding::townKey($name)) {
+                        $route = $r;
+                        break;
+                    }
+                }
+                $route ??= $byDir[$routeDir][0] ?? null;
+                $own = null;
+                if ($route !== null) {
+                    $own = $side === 'go'
+                        ? self::stopFare((int) $route['id'], $name, null)
+                        : self::stopFare((int) $route['id'], null, $name);
+                }
+                $out[] = [
+                    'name'    => $name,
+                    'time'    => isset($entry['time']) && $entry['time'] !== null ? (string) $entry['time'] : null,
+                    'fare'    => (float) round($own ?? (float) $dir[$routeDir], 2),
+                    'own'     => $own !== null,
+                    'routeId' => (int) ($route['id'] ?? 0),
+                ];
+            }
+            return $out;
+        };
+        $go   = $rows('go');
+        $back = $rows('back');
+
+        $range = static function (array $list, float $fallback): array {
+            $f = array_map(static fn(array $r): float => (float) $r['fare'], $list);
+            return $f === [] ? ['min' => $fallback, 'max' => $fallback] : ['min' => (float) min($f), 'max' => (float) max($f)];
+        };
+        $priv = self::pricing()['private'] ?? [];
+
+        return [
+            'go'       => $go,
+            'back'     => $back,
+            'range'    => ['go' => $range($go, (float) $dir['toNepal']), 'back' => $range($back, (float) $dir['toIndia'])],
+            'defaults' => ['toNepal' => (float) $dir['toNepal'], 'toIndia' => (float) $dir['toIndia']],
+            'private'  => [
+                'single' => (float) ($priv['single_1pax']['offline'] ?? 0),
+                'double' => (float) ($priv['double_2pax']['offline'] ?? 0),
+            ],
+            'nepal'    => array_values(array_map('strval', (array) ($loc['nepal'] ?? []))),
+        ];
+    }
+
+    /**
      * Cabin fare — the direct port of calcCabinFare().
      *
      * @param string $cabinType   'single' | 'double'

@@ -91,9 +91,12 @@ try {
     check('the pamphlet picks the running offer', $o !== null && $o['code'] === AV_CODE);
     $png = $o !== null ? OfferCard::png('ne', $o, '+91 91570 01507', 'shreehariglobal.in', null) : '';
     check('  and draws a 1080×1350 PNG', str_starts_with($png, "\x89PNG") && ($sz = @getimagesizefromstring($png)) && $sz[0] === 1080 && $sz[1] === 1350);
-    $f = Fare::dirFares();
+    /* 9 Oct 2026 (site facts): the caption quotes the fare board's lowest
+       pickup fare ("from"), not the direction default - pickups are priced
+       one by one (Fare::board()). */
+    $f = OfferCard::fareFrom('go');
     $cap = $o !== null ? OfferCard::caption($o, '+91 91570 01507', 'shreehariglobal.in') : '';
-    check('  its caption shows the real fares after 10%', str_contains($cap, '₹' . number_format($f['toNepal']) . ' → ₹' . number_format($f['toNepal'] * 0.9)), $cap);
+    check('  its caption shows the real fares after 10%', str_contains($cap, '₹' . number_format($f['min']) . ' → ₹' . number_format(round($f['min'] * 0.9))), $cap);
     $root = dirname(__DIR__);
     check('the site boot carries the offers (top ribbon)', str_contains((string) file_get_contents($root . '/index.php'), "'offers'   =>"));
     check('  the ribbon is in the page and rendered', str_contains((string) file_get_contents($root . '/app.template.html'), 'id="offerRibbon"')

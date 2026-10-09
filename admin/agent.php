@@ -963,6 +963,9 @@ if ($isOwn) {
     require_once INCLUDE_PATH . '/aiwatch.php';
     echo AiWatch::render(AiWatch::forSeller($selfId), '🤖 AI Watch — your desk');
 }
+// 9 Oct 2026: Office chat — the agent's line to the office (unread, call /
+// WhatsApp office, open chat); a supervisor gets "Message this agent".
+echo StaffMsg::agentCard($viewId, $isOwn);
 ?>
 <?php if ($isSupervisor && $agentList !== []): ?>
 <form method="get" class="toolbar">

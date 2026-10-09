@@ -213,7 +213,7 @@ admin_page_head(
 
 <div class="panel">
   <h2><svg class="a-ic"><use href="#a-layers"/></svg> 2 · This departure
-    <span class="ch-badge <?= $var['toNepal'] ? 'np' : 'in' ?>" style="margin-left:auto"><?= $var['toNepal'] ? '🇳🇵' : '🇮🇳' ?> <?= Security::e($var['direction']) ?></span>
+    <span class="ch-badge <?= $var['toNepal'] ? 'np' : 'in' ?>" style="margin-left:auto"><?= $var['toNepal'] ? Brand::flagUse('NP', 16, 'en', true) : Brand::flagUse('IN', 13, 'en', true) ?> <?= Security::e($var['direction']) ?></span>
   </h2>
   <div class="panel-body">
     <dl class="ch-var">

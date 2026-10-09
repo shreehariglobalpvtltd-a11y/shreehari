@@ -335,8 +335,12 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
     // Company logo — embedded as a data URI so it survives the print dialog
     // (an external <img src> is frequently dropped when a browser prints to
     // PDF). An admin-set company_logo path wins; otherwise the site logo.
+    /* 9 Oct 2026: the transparent EMBLEM first (no baked name, no white tile —
+       the company name is printed beside it); the old full logo only when the
+       emblem file is missing. The 96px-tall copy keeps the data URI small. */
     $logoData = '';
-    foreach ([Settings::getString('company_logo', ''), 'assets/img/logo.png'] as $cand) {
+    foreach ([Settings::getString('company_logo_mark', ''), 'assets/img/logo-mark-96h.png', 'assets/img/logo-mark.png',
+              Settings::getString('company_logo', ''), 'assets/img/logo.png'] as $cand) {
         if ($cand === '' || preg_match('#^https?://#i', $cand) === 1) { continue; }
         $lp = dirname(__DIR__) . '/' . ltrim($cand, '/');
         if (is_file($lp) && filesize($lp) > 0 && filesize($lp) < 600 * 1024) {
@@ -349,6 +353,19 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
     }
 
     $e = static fn($v) => Security::e((string) $v);
+
+    /* Inline SVG flags for the print band (9 Oct 2026) — the 🇮🇳 / 🇳🇵 emoji
+       printed as the letters "IN" / "NP" on Windows. Explicit fills, so they
+       print in colour and need no stylesheet. */
+    $flagSvg = static function (string $cc, int $h = 14): string {
+        if (class_exists('Brand') && method_exists('Brand', 'flagSvg')) {
+            try { $s = (string) Brand::flagSvg($cc, $h); if ($s !== '') { return $s; } } catch (Throwable $ex) {}
+        }
+        if ($cc === 'IN') {
+            return '<svg class="flg" width="' . (int) round($h * 1.5) . '" height="' . $h . '" viewBox="0 0 30 20" aria-label="India"><rect width="30" height="20" fill="#fff"/><rect width="30" height="6.67" fill="#FF9933"/><rect y="13.33" width="30" height="6.67" fill="#138808"/><circle cx="15" cy="10" r="2.6" fill="none" stroke="#000080" stroke-width=".7"/><circle cx="15" cy="10" r=".6" fill="#000080"/></svg>';
+        }
+        return '<svg class="flg" width="' . (int) round($h * 0.78) . '" height="' . $h . '" viewBox="0 0 26 32" aria-label="Nepal"><path d="M2 2 23 15H9.6L23 30H2Z" fill="#DC143C" stroke="#003893" stroke-width="2.2"/><circle cx="8" cy="11" r="2.4" fill="#fff"/><circle cx="8" cy="23" r="3" fill="#fff"/></svg>';
+    };
 
     /* =================================================================
        Passenger sheet layout (owner's reference design, 6 Sep 2026):
@@ -637,7 +654,7 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
 <p class="stops"><b>चढ्ने ठाउँहरू :</b> <?= $e($stopsLine) ?> &nbsp;·&nbsp; <b>सीमा :</b> रुपैडिहा · जमुनाहा &nbsp;·&nbsp; <b>अगाडि :</b> नेपालगंज, बाँके</p>
 <?php endif; ?>
 
-<div class="band"><span>🇮🇳 गुजरात ⇄ रुपैडिहा 🇳🇵 · यात्रु यात्रा अभिलेख</span><span>सिट · नाम · भुक्तानी विवरण</span></div>
+<div class="band"><span><?= $flagSvg('IN') ?> गुजरात ⇄ रुपैडिहा <?= $flagSvg('NP', 15) ?> · यात्रु यात्रा अभिलेख</span><span>सिट · नाम · भुक्तानी विवरण</span></div>
 
 <table class="ps">
   <colgroup>

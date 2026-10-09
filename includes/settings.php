@@ -675,8 +675,12 @@ final class Settings
            ko aru number rakhdeu"): the Nepalgunj office line + two more
            Nepal numbers. The site shows the CEO in a block of his own, not
            inside the Nepal office list (his default number is Indian). */
+        /* 9 Oct 2026 (site facts): the CEO's default NAME is company_ceo - the
+           one CEO row the whole website reads (SiteFacts) - so the home card,
+           the CEO block and the facts can never spell him two ways. */
+        $ceoName = trim(self::getString('company_ceo', ''));
         $rows = [
-            ['ceo',     'CEO',                           'प्रमुख कार्यकारी',     'Sher Bahadur Bishwokarma', '+91 97264 01507'],
+            ['ceo',     'CEO',                           'प्रमुख कार्यकारी',     $ceoName !== '' ? $ceoName : 'Sher Bahadur Bishwokarma', '+91 97264 01507'],
             ['office',  'Nepal Office · Nepalgunj',      'नेपाल कार्यालय · नेपालगन्ज', 'Lok Bahadur Sunar',  '+977 986-6201375'],
             ['ops',     'Operations · Nepalgunj',        'सञ्चालन · नेपालगन्ज',  'Lokesh Mama',              ''],
             ['parking', 'Parking in-charge · Rupaidiha', 'पार्किङ · रुपैडिहा',   'Vishal Bhai',              ''],
@@ -708,6 +712,18 @@ final class Settings
         }
 
         return $out;
+    }
+
+    /**
+     * Where the Nepal office is, as people write it (9 Oct 2026): Company
+     * details -> "Office address (English)" (nepal_office), else the address
+     * the site has always published. One definition for the home banner,
+     * the office list and the facts object.
+     */
+    public static function nepalOfficePlace(): string
+    {
+        $v = trim(self::getString('nepal_office', ''));
+        return $v !== '' ? $v : 'Puspalal Chowk, Nepalgunj';
     }
 
     /**

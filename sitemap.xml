@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- A sitemap index (24 Sep 2026): the static pages and the route pages
      (generated from the live routes table in three languages) live in two
-     child sitemaps served by index.php. -->
+     child sitemaps served by index.php. 9 Oct 2026: a third, the content
+     pages (/india-nepal, /offices, /explore, /tours…, includes/contentpages.php). -->
 <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <sitemap><loc>https://www.shreehariglobal.in/sitemap-pages.xml</loc></sitemap>
   <sitemap><loc>https://www.shreehariglobal.in/sitemap-routes.xml</loc></sitemap>
+  <sitemap><loc>https://www.shreehariglobal.in/sitemap-content.xml</loc></sitemap>
 </sitemapindex>

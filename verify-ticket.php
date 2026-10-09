@@ -31,10 +31,37 @@ require_once __DIR__ . '/includes/bootstrap.php';
 require_once INCLUDE_PATH . '/ticket.php';
 require_once INCLUDE_PATH . '/booking.php';
 
-Security::requireRateLimit('ticket_verify', Security::clientIp(), 60, 60);
+/* An HTML 429 (9 Oct 2026): requireRateLimit() answers in JSON, which a
+   phone camera opening this page showed as raw text. */
+if (!Security::rateLimit('ticket_verify', Security::clientIp(), 60, 60)) {
+    http_response_code(429);
+    header('Content-Type: text/html; charset=utf-8');
+    header('Retry-After: 60');
+    header('Cache-Control: no-store');
+    echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+       . '<meta name="robots" content="noindex"><title>Please wait · कृपया पर्खनुहोस्</title>'
+       . '<style>body{margin:0;font-family:-apple-system,Segoe UI,Roboto,"Noto Sans Devanagari",sans-serif;background:#f5f6fa;color:#0f172a;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:16px}'
+       . '.c{max-width:420px;background:#fff;border-radius:18px;padding:28px 22px;text-align:center;box-shadow:0 4px 24px rgba(15,23,42,.08);border-top:6px solid #f59e0b}'
+       . 'h1{font-size:20px;margin:6px 0}p{color:#475569;line-height:1.5}@media (prefers-color-scheme:dark){body{background:#0B1220;color:#e8eef8}.c{background:#131d30}p{color:#c3cfdf}}</style></head>'
+       . '<body><div class="c"><h1>Too many checks · धेरै पटक जाँच भयो</h1><p>Please wait a minute and scan again.<br>कृपया एक मिनेट पर्खेर फेरि स्क्यान गर्नुहोस्।</p></div></body></html>';
+    exit;
+}
 
 $pnr   = Security::clean($_GET['pnr'] ?? '', 40);
 $token = Security::clean($_GET['k']   ?? '', 64);
+
+/* NOT GENUINE (9 Oct 2026, owner: "ticket fake badi hun layo"). A link that
+   CARRIES a key which does not match, or a scanned pipe payload whose
+   signature is wrong, is a forged or altered ticket. Both are decided from
+   the key / signature alone — no database lookup — so the answer reveals
+   nothing about whether the PNR exists. A link with NO key (typed by hand,
+   an old bookmark) is not called fake: it gets the neutral "unavailable". */
+$forged    = false;
+$forgedPnr = '';
+if ($pnr !== '' && $token !== '' && Security::isValidPnr($pnr) && !Ticket::checkDownloadToken($pnr, $token)) {
+    $forged    = true;
+    $forgedPnr = strtoupper($pnr);
+}
 
 /* Camera-scan path: the passenger opened the QR-encoded pipe payload
    directly. verifyQrPayload() only returns a PNR when the signature
@@ -46,6 +73,13 @@ if ($pnr === '' && isset($_GET['p'])) {
     if ($decoded !== null) {
         $pnr   = $decoded;
         $token = Ticket::downloadToken($pnr);   // the QR signature is proof-of-genuine already
+    } elseif (str_starts_with($payload, 'SHG-TICKET|')) {
+        // our ticket format with a broken signature: altered or forged
+        $forged = true;
+        $pp     = explode('|', $payload);
+        $forgedPnr = (isset($pp[1]) && Security::isValidPnr((string) $pp[1])) ? strtoupper((string) $pp[1]) : '';
+        $pnr = $forgedPnr;
+        $token = '';
     }
 }
 
@@ -183,6 +217,54 @@ if ($authed && $booking !== null) {
     }
 }
 
+/* A forged key or signature, for anyone the page could not otherwise
+   recognise (the owner in their own browser and staff still see the real
+   ticket). Logged and raised to the office once per PNR per hour. */
+if ($forged && !$authed) {
+    $state = 'forged';
+    $title = 'NOT GENUINE — नक्कली हुन सक्छ';
+    $sub   = 'This link or QR was not issued by us, or it has been altered. Do not accept it for travel. · यो टिकट हामीले जारी गरेको होइन वा परिवर्तन गरिएको छ — यात्राका लागि स्वीकार नगर्नुहोस्।';
+    $color = '#b91c1c';
+    $icon  = '⛔';
+    try {
+        $fp = $forgedPnr !== '' ? $forgedPnr : 'unknown';
+        Logger::audit('ticket.verify_forged', 'booking', $fp, null,
+            ['ip' => Security::clientIp(), 'via' => isset($_GET['p']) ? 'qr_payload' : 'key', 'ua' => substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 120)],
+            'verify page: forged or altered ticket key / signature');
+        if (!class_exists('AdminAlerts') && is_file(INCLUDE_PATH . '/adminalerts.php')) {
+            require_once INCLUDE_PATH . '/adminalerts.php';
+        }
+        if (class_exists('AdminAlerts')) {
+            AdminAlerts::push('fake_verify', '⛔ Fake / altered ticket checked · ' . $fp,
+                'Someone opened the verify page with a key or QR signature that does not match' . ($forgedPnr !== '' ? ' PNR ' . $forgedPnr : '') . '. Check who is holding this ticket.',
+                $forgedPnr !== '' ? '/admin/booking-view.php?pnr=' . rawurlencode($forgedPnr) : '/admin/bookings.php',
+                '⛔', 'verifyforged:' . $fp . ':' . date('YmdH'));
+        }
+    } catch (Throwable $e) {
+        // logging must never break the page
+    }
+}
+
+/* A trip the office cancelled overrides the green headline (the booking
+   stays confirmed until the owner settles it by hand — no refund wording). */
+$liveEarly = ($authed && $booking !== null && $state === 'valid') ? Ticket::liveStatus($booking) : null;
+if ($liveEarly !== null && ($liveEarly['key'] ?? '') === 'trip_cancelled') {
+    $state = 'trip_cancelled';
+    $title = 'Trip cancelled — यात्रा रद्द';
+    $sub   = 'This bus does not run. The office will contact you about this ticket. · कार्यालयले तपाईंलाई सम्पर्क गर्नेछ।';
+    $color = '#dc2626';
+    $icon  = '🚫';
+}
+
+/* Security code (9 Oct 2026): the same six letters the PNG / PDF print
+   beside the QR for THIS revision — shown only to someone entitled to the
+   ticket, so a stranger cannot read a code off the page to fake one. */
+$secCode = '';
+if ($authed && $booking !== null && in_array($state, ['valid', 'used', 'trip_cancelled', 'expired', 'pending'], true)) {
+    $secCode = Ticket::securityCodeFor((int) ($booking['id'] ?? 0));
+}
+$checkedAt = date('j M Y, g:i:s A') . ' IST';
+
 /* Anonymise the passenger name for the public panel — first name +
    first letter of the last name is enough for a person to recognise
    their own ticket without leaking to a bystander who scanned it. */
@@ -224,7 +306,27 @@ if ($authed && $booking !== null) {
 /* Live status (Departed / Departing / Upcoming) as a secondary pill —
    safe to show publicly, same info the passenger already has on their
    own My Bookings screen. */
-$live = ($authed && $booking !== null && $state !== 'expired') ? Ticket::liveStatus($booking) : null;
+$live = ($authed && $booking !== null && !in_array($state, ['expired', 'trip_cancelled'], true)) ? Ticket::liveStatus($booking) : null;
+
+/* The domain this page lives on, for "genuine only on …" — the company's
+   own web setting, never the request Host (a lookalike site would print
+   its own name). */
+$genuineHost = '';
+try { $genuineHost = strtolower(trim((string) (Settings::company()['web'] ?? ''))); } catch (Throwable $e) {}
+$genuineHost = preg_replace('#^https?://(www\.)?|/.*$#i', '', $genuineHost) ?: 'shreehariglobal.in';
+
+/* Inline SVG flags (explicit fills — no emoji, which Windows prints as "IN"/"NP"). */
+$flagSvg = static function (string $cc, int $h = 18): string {
+    if (class_exists('Brand') && method_exists('Brand', 'flagSvg')) {
+        try { $s = (string) Brand::flagSvg($cc, $h); if ($s !== '') { return $s; } } catch (Throwable $e) {}
+    }
+    if ($cc === 'IN') {
+        $w = (int) round($h * 1.5);
+        return '<svg class="flg" width="' . $w . '" height="' . $h . '" viewBox="0 0 30 20" role="img" aria-label="India"><rect width="30" height="20" fill="#fff"/><rect width="30" height="6.67" fill="#FF9933"/><rect y="13.33" width="30" height="6.67" fill="#138808"/><circle cx="15" cy="10" r="2.6" fill="none" stroke="#000080" stroke-width=".7"/><circle cx="15" cy="10" r=".6" fill="#000080"/><rect width="30" height="20" fill="none" stroke="rgba(0,0,0,.18)" stroke-width=".5"/></svg>';
+    }
+    $w = (int) round($h * 0.78);
+    return '<svg class="flg" width="' . $w . '" height="' . $h . '" viewBox="0 0 26 32" role="img" aria-label="Nepal"><path d="M2 2 23 15H9.6L23 30H2Z" fill="#DC143C" stroke="#003893" stroke-width="2.2" stroke-linejoin="miter"/><circle cx="8" cy="11" r="2.4" fill="#fff"/><circle cx="8" cy="23" r="3" fill="#fff"/></svg>';
+};
 
 /* Never let a browser or an intermediate proxy cache a verification
    page — the answer changes the moment the crew scans the ticket. */
@@ -268,7 +370,11 @@ $company = (string) $issuer['name'];
 <style>
   :root { --bg: #f5f6fa; --card: #fff; --text: #0f172a; --sub: #475569; --key: #64748b; --line: #eef2f7;
     --foot: #4b5b70; --link: #1A3A6A; --cta: #1A3A6A; --cta-alt-line: #C9D6EA; --shadow: rgba(15, 23, 42, 0.08);
-    --due-bg: #fff4e0; --due-text: #8a4600; --due-line: #f2b04c; color-scheme: light; }
+    --due-bg: #fff4e0; --due-text: #8a4600; --due-line: #f2b04c; color-scheme: light;
+    --sec-a: #fcf7e8; --sec-b: #f8efd6; --sec-line: #e3c77c; --ok-text: #11703f; --ok-bg: #e4f6ec;
+    --bad-text: #b42525; --bad-btn: #b91c1c; }
+  :root[data-theme="dark"] { --sec-a: #2a2410; --sec-b: #241f0d; --sec-line: #7a6326; --ok-text: #8ee0b0; --ok-bg: #0f3322;
+    --bad-text: #ff9b9b; --bad-btn: #c0262d; }
   :root[data-theme="dark"] { --bg: #0B1220; --card: #131d30; --text: #e8eef8; --sub: #c3cfdf; --key: #a3b3c9; --line: #22324a;
     --foot: #a9b8cc; --link: #9cc2ff; --cta: #2b5aa8; --cta-alt-line: #3b5b8c; --shadow: rgba(0, 0, 0, 0.45);
     --due-bg: #3a2806; --due-text: #ffd48a; --due-line: #9a6a1c; color-scheme: dark; }
@@ -280,9 +386,43 @@ $company = (string) $issuer['name'];
   body { min-height: 100vh; min-height: 100dvh; padding: env(safe-area-inset-top, 0) 16px env(safe-area-inset-bottom, 24px); }
   .wrap { max-width: 480px; margin: 0 auto; padding: 24px 0; }
   .hdr { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-  .hdr img { width: 40px; height: 40px; border-radius: 8px; }
+  /* the emblem alone, its own aspect (it was squashed into a 40x40 box) */
+  .hdr img { height: 44px; width: auto; max-width: 96px; object-fit: contain; flex: 0 0 auto;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.18)); }
+  .hdr .hdr-t { flex: 1 1 auto; min-width: 0; }
   .hdr b { font-size: 15px; letter-spacing: 0.02em; }
   .hdr small { display: block; color: var(--key); font-size: 13px; }
+  .hdr .flags { display: flex; gap: 6px; align-items: center; flex: 0 0 auto; }
+  .flg { display: inline-block; vertical-align: middle; border-radius: 2px; }
+  .sec { margin: 18px auto 0; max-width: 300px; border-radius: 14px; padding: 12px 14px 10px;
+    background: repeating-linear-gradient(115deg, var(--sec-a) 0 10px, var(--sec-b) 10px 20px);
+    border: 1.5px solid var(--sec-line); position: relative; overflow: hidden; }
+  .sec .k { font-size: 12.5px; color: var(--key); letter-spacing: 0.04em; }
+  .sec .code { font: 700 34px/1.15 'SF Mono', Consolas, 'Roboto Mono', monospace; letter-spacing: 0.18em; color: var(--text); margin-top: 2px; }
+  .sec .hint { font-size: 12.5px; color: var(--sub); margin-top: 2px; }
+  .sec::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.45) 45%, transparent 60%);
+    transform: translateX(-100%); animation: secShine 3.6s ease-in-out infinite; }
+  @keyframes secShine { 0%, 40% { transform: translateX(-100%); } 80%, 100% { transform: translateX(100%); } }
+  @media (prefers-reduced-motion: reduce) { .sec::after { animation: none; display: none; } }
+  .stamp { margin-top: 14px; font-size: 13px; color: var(--sub); }
+  .stamp b { color: var(--text); font-weight: 600; }
+  .genuine { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 13px; font-weight: 600;
+    color: var(--ok-text); background: var(--ok-bg); border-radius: 999px; padding: 5px 12px; }
+  .report { margin-top: 16px; background: var(--card); border-radius: 18px; padding: 4px 16px; box-shadow: 0 2px 12px var(--shadow); }
+  .report summary { cursor: pointer; list-style: none; padding: 14px 0; font-weight: 700; color: var(--bad-text);
+    display: flex; align-items: center; gap: 8px; min-height: 44px; }
+  .report summary::-webkit-details-marker { display: none; }
+  .report form { padding: 0 0 16px; display: grid; gap: 10px; }
+  .report label { font-size: 13px; color: var(--key); display: grid; gap: 4px; }
+  .report input, .report textarea { font: inherit; font-size: 16px; padding: 11px 12px; border-radius: 10px;
+    border: 1.5px solid var(--line); background: var(--bg); color: var(--text); width: 100%; }
+  .report textarea { min-height: 84px; resize: vertical; }
+  .report button { font: inherit; font-weight: 700; font-size: 16px; min-height: 48px; border: 0; border-radius: 12px;
+    background: var(--bad-btn); color: #fff; cursor: pointer; }
+  .report button[disabled] { opacity: 0.6; }
+  .report .msg { font-size: 14px; line-height: 1.5; }
+  .report .msg.ok { color: var(--ok-text); } .report .msg.bad { color: var(--bad-text); }
   .card { background: var(--card); border-radius: 18px; padding: 28px 20px; text-align: center;
     box-shadow: 0 4px 24px var(--shadow); border-top: 6px solid <?= $color ?>; }
   .icon { font-size: 56px; line-height: 1; margin-bottom: 6px; }
@@ -314,11 +454,12 @@ $company = (string) $issuer['name'];
 <body>
 <div class="wrap">
   <div class="hdr">
-    <img src="/assets/img/logo.png?v=20260829e" alt="" onerror="this.style.display='none'">
-    <div>
+    <img src="/assets/img/logo-mark-96h.png?v=20261009t" alt="" width="85" height="44" onerror="this.style.display='none'">
+    <div class="hdr-t">
       <b><?= htmlspecialchars($company, ENT_QUOTES, 'UTF-8') ?></b>
       <small>Ticket verification · टिकट प्रमाणीकरण</small>
     </div>
+    <span class="flags"><?= $flagSvg('IN', 18) ?><?= $flagSvg('NP', 20) ?></span>
   </div>
 
   <div class="card">
@@ -330,6 +471,15 @@ $company = (string) $issuer['name'];
         <?= htmlspecialchars($live['label'], ENT_QUOTES, 'UTF-8') ?>
       </span>
     <?php endif; ?>
+    <?php if ($secCode !== ''): ?>
+      <div class="sec" aria-label="Security code">
+        <div class="k">सुरक्षा कोड · SECURITY CODE</div>
+        <div class="code"><?= htmlspecialchars(Ticket::securityCodeGrouped($secCode), ENT_QUOTES, 'UTF-8') ?></div>
+        <div class="hint">Must match the code printed on the ticket · टिकटमा छापिएको कोडसँग मिल्नुपर्छ</div>
+      </div>
+    <?php endif; ?>
+    <div class="stamp">Checked at · जाँच गरिएको समय: <b><?= htmlspecialchars($checkedAt, ENT_QUOTES, 'UTF-8') ?></b></div>
+    <div class="genuine">✓ Genuine only on <?= htmlspecialchars($genuineHost, ENT_QUOTES, 'UTF-8') ?> · यही साइटमा मात्र सक्कली</div>
   </div>
 
   <?php if ($authed && $booking !== null): ?>
@@ -352,12 +502,76 @@ $company = (string) $issuer['name'];
          with the PDF one tap away for anyone who needs to print. */ ?>
     <a class="cta" href="<?= htmlspecialchars(Ticket::imageUrl($pnr), ENT_QUOTES, 'UTF-8') ?>">Download ticket</a>
     <a class="cta cta-alt" href="<?= htmlspecialchars(Ticket::downloadUrl($pnr), ENT_QUOTES, 'UTF-8') ?>">PDF for printing</a>
-  <?php elseif (!$authed): ?>
+  <?php elseif (!$authed && $state !== 'forged'): ?>
     <a class="cta" href="/#/my">Open My Bookings</a>
   <?php endif; ?>
 
+  <?php $vPh = (string) $issuer['phone']; $vTel = (string) preg_replace('/[^0-9+]/', '', $vPh); ?>
+  <?php /* Report this ticket (9 Oct 2026) — in EVERY state, a stranger included:
+       the person holding a doubtful ticket is exactly who should be able to
+       tell the office. Posts to api/report-fake.php with the session's CSRF
+       token (fetched fresh from api/csrf.php); the PNR field carries only
+       what the caller already had in the link. */ ?>
+  <details class="report"<?= $state === 'forged' ? ' open' : '' ?>>
+    <summary>⚑ Report this ticket · नक्कली टिकट रिपोर्ट</summary>
+    <form id="rfForm" novalidate>
+      <label>PNR
+        <input name="pnr" id="rfPnr" maxlength="40" autocomplete="off" value="<?= htmlspecialchars($state === 'forged' ? $forgedPnr : ($authed ? $pnr : (Security::isValidPnr($pnr) ? strtoupper($pnr) : '')), ENT_QUOTES, 'UTF-8') ?>">
+      </label>
+      <label>Your mobile · तपाईंको मोबाइल
+        <input name="phone" id="rfPhone" type="tel" inputmode="tel" maxlength="16" autocomplete="tel" required>
+      </label>
+      <label>What looks wrong? · के शंका लाग्यो?
+        <textarea name="message" id="rfMsg" maxlength="600" placeholder="e.g. the seller asked for cash, the code does not match · जस्तै: कोड मिलेन"></textarea>
+      </label>
+      <button type="submit" id="rfBtn">Send to the office · कार्यालयमा पठाउनुहोस्</button>
+      <div class="msg" id="rfOut" role="status" aria-live="polite"></div>
+    </form>
+  </details>
+  <script>
+  (function () {
+    var f = document.getElementById('rfForm'); if (!f) return;
+    var out = document.getElementById('rfOut'), btn = document.getElementById('rfBtn');
+    var tel = <?= json_encode($vTel) ?>, telTxt = <?= json_encode($vPh) ?>;
+    function say(ok, html) { out.className = 'msg ' + (ok ? 'ok' : 'bad'); out.innerHTML = html; }
+    function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+    var fallback = function () {
+      return 'Could not send right now · अहिले पठाउन सकिएन. ' + (tel ? 'Please call <a href="tel:' + esc(tel) + '">' + esc(telTxt) + '</a>.' : '');
+    };
+    f.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var phone = (document.getElementById('rfPhone').value || '').replace(/[^\d+]/g, '');
+      if (phone.replace(/\D/g, '').length < 8) { say(false, 'Please enter your mobile number · मोबाइल नम्बर लेख्नुहोस्'); return; }
+      btn.disabled = true;
+      fetch('/api/csrf.php', { credentials: 'same-origin', cache: 'no-store' })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          var tok = (j && (j.data && j.data.csrf || j.csrf)) || '';
+          var fd = new FormData();
+          fd.append('pnr', (document.getElementById('rfPnr').value || '').trim().toUpperCase());
+          fd.append('phone', phone);
+          fd.append('message', document.getElementById('rfMsg').value || '');
+          fd.append('source', 'verify_page');
+          fd.append('shg_csrf', tok);
+          return fetch('/api/report-fake.php', { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'X-CSRF-Token': tok } });
+        })
+        .then(function (r) { return r.json().catch(function () { return { ok: false }; }); })
+        .then(function (j) {
+          if (j && j.ok) {
+            var ref = (j.data && j.data.ref) || j.ref || '';
+            say(true, 'Thank you — the office has your report' + (ref ? ' (ref <b>' + esc(ref) + '</b>)' : '') + '. धन्यवाद, कार्यालयले हेर्नेछ।');
+            f.querySelectorAll('input,textarea,button').forEach(function (el) { el.disabled = true; });
+          } else {
+            say(false, (j && j.error ? esc(j.error) + '<br>' : '') + fallback());
+            btn.disabled = false;
+          }
+        })
+        .catch(function () { say(false, fallback()); btn.disabled = false; });
+    });
+  })();
+  </script>
+
   <div class="foot">
-    <?php $vPh = (string) $issuer['phone']; $vTel = (string) preg_replace('/[^0-9+]/', '', $vPh); ?>
     Suspect fraud? Contact the office: <a href="tel:<?= htmlspecialchars($vTel, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($vPh, ENT_QUOTES, 'UTF-8') ?></a><br>
     <?= date('Y') ?> <?= htmlspecialchars($company, ENT_QUOTES, 'UTF-8') ?>
   </div>

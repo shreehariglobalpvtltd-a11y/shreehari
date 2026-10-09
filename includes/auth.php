@@ -61,6 +61,10 @@ final class Auth
             // 5 Oct 2026: launch customer campaigns (admin/campaigns.php).
             'marketing.send',
             'tickets.scan', 'waitlist.view',
+            // 9 Oct 2026: the office side of Office chat (admin/staff-chat.php) -
+            // answers every agent / counter thread. Field roles (agent, counter)
+            // use bookings.view and only ever see their own threads.
+            'staffmsg.office',
         ],
         'accountant' => [
             'dashboard.view', 'bookings.view',
@@ -68,6 +72,8 @@ final class Auth
             'refunds.view', 'refunds.process',
             'commissions.view', 'commissions.pay',
             'reports.view', 'reports.export',
+            // settlement / payout threads land with accounts (9 Oct 2026)
+            'staffmsg.office',
         ],
         // Operations admin (5 Oct 2026, owner's Point 10): runs the day - tickets,
         // seats, buses, routes, the agent register and customers. Deliberately
@@ -84,6 +90,7 @@ final class Auth
             'staff.manage', 'customers.view', 'coupons.view',
             'liveops.view', 'liveops.edit', 'messages.view', 'support.view', 'support.reply',
             'tickets.scan', 'waitlist.view',
+            'staffmsg.office',   // Office chat, office side (9 Oct 2026)
         ],
         // Viewer (5 Oct 2026): a partner or investor who may LOOK. The dashboard,
         // analytics and the money reports - and nothing that names a passenger
@@ -102,6 +109,7 @@ final class Auth
             'customers.view', 'messages.view',
             'support.view', 'support.reply',
             'waitlist.view', 'tickets.scan',
+            'staffmsg.office',   // Office chat, office side (9 Oct 2026)
         ],
         'scanner' => [
             'tickets.scan',

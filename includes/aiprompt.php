@@ -73,10 +73,19 @@ function ai_system_prompt(): string
         $routeLines[] = '- The route list could not be read right now. Do not name pickups or times; give the office number ' . $phone . '.';
     }
 
-    $fareNp = Settings::getInt('fare_to_nepal', 2000);
-    $fareIn = Settings::getInt('fare_to_india', 1800);
-    $cabin  = Settings::getArray('cabin_pricing', []);
-    $priv   = (int) ($cabin['private']['single_1pax']['online'] ?? 3800);
+    /* 9 Oct 2026 (site facts): the defaults, ranges and cabin prices are the
+       fare board's - Fare::dirFares() (main_fares > fare_to_*) and the cabin
+       list the checkout bills from - never a typed fallback. */
+    if (!class_exists('Fare')) {
+        require_once INCLUDE_PATH . '/fare.php';
+    }
+    $board  = Fare::board();
+    $fareNp = (int) round((float) $board['defaults']['toNepal']);
+    $fareIn = (int) round((float) $board['defaults']['toIndia']);
+    $priv   = (int) round((float) $board['private']['single']);
+    $privD  = (int) round((float) $board['private']['double']);
+    $rng    = static fn(array $r): string => (int) $r['min'] === (int) $r['max']
+        ? '₹' . (int) $r['min'] : '₹' . (int) $r['min'] . '–₹' . (int) $r['max'];
 
     $slabs = array_values(array_filter(Settings::getArray('refund_slabs', []), 'is_array'));
     usort($slabs, static fn(array $a, array $b): int => ((int) ($b['minHrs'] ?? 0)) <=> ((int) ($a['minHrs'] ?? 0)));
@@ -124,7 +133,7 @@ function ai_system_prompt(): string
         . "ANSWER ONLY about this bus service: booking, seats and cabins, fares, timings and pickups, the border crossing, luggage, payments, cancellations and refunds, tracking, offices. For anything else say politely, in the user's language, that you only help with the bus service, and give the office number.\n\n"
         . "FACTS (the only facts you may state; never invent a time, price or rule that is not here):\n"
         . "Routes and timings:\n" . implode("\n", $routeLines) . "\n"
-        . "Fares: sharing sleeper per person = the ₹ amount written after each pickup / drop above; a stop with no amount costs the default ₹{$fareNp} towards Nepal, ₹{$fareIn} towards India; a private cabin from ₹{$priv}. Same price online and at the counter.\n"
+        . "Fares: sharing sleeper per person = the ₹ amount written after each pickup / drop above; a stop with no amount costs the default ₹{$fareNp} towards Nepal, ₹{$fareIn} towards India (so Gujarat → Rupaidiha costs " . $rng($board['range']['go']) . ", Rupaidiha → Gujarat " . $rng($board['range']['back']) . " depending on the stop); a private single cabin ₹{$priv}, a private double cabin (2 people) ₹{$privD}. Same price online and at the counter.\n"
         . "Payment: {$pay}. An online ticket is confirmed after the payment is verified, usually within minutes.\n"
         . "Offer: {$offerTxt}.\n"
         . "Refund by cancellation time: " . implode(' · ', $slabTxt) . ". Money returns to the same account in 5–7 working days.\n"
