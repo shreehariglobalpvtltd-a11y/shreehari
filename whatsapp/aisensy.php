@@ -172,7 +172,7 @@ final class AiSensyAPI
      *
      * @param list<string|int|float> $params body variables {{1}}..{{n}} in order
      */
-    public static function sendMessage(string $phone, string $templateName, array $params = [], ?string $headerImage = null): array
+    public static function sendMessage(string $phone, string $templateName, array $params = [], ?string $headerImage = null, bool $allowMarketing = false): array
     {
         $out = ['success' => false, 'message_id' => '', 'http' => 0, 'error' => '', 'response' => null];
 
@@ -190,6 +190,16 @@ final class AiSensyAPI
         }
         if (!preg_match('/^[a-z0-9_]{1,512}$/', $templateName)) {
             $out['error'] = 'invalid template name';
+            self::log('SKIP', $to, $templateName, $out);
+            return $out;
+        }
+        /* 9 Oct 2026 (owner: "AiSensy ma sasto utility template matra"): a
+           MARKETING template costs ~6x a utility one, so the wallet pays for
+           it only when Campaigns asks on purpose; and never while the policy
+           is meta_only. includes/waroute.php. */
+        $why = self::routeRefusal($templateName, $allowMarketing);
+        if ($why !== '') {
+            $out['error'] = $why;
             self::log('SKIP', $to, $templateName, $out);
             return $out;
         }
@@ -437,6 +447,12 @@ final class AiSensyAPI
         $flat  = mb_substr($flat !== '' ? $flat : '-', 0, 700);
         $link  = $media !== '' ? $media : '-';
 
+        // 9 Oct 2026: free on the Meta number when this person wrote to it in the last 24 h.
+        $free = self::metaFree($to, $text, $media !== '' ? $media : null, 'staff_' . $audience, ['name' => $name]);
+        if ($free !== null) {
+            return $free;
+        }
+
         $r = match ($audience) {
             'agent'  => self::sendMessage($to, self::tpl('aisensy_tpl_agent', self::TPL_AGENT), [$name !== '' ? $name : 'Agent', $label, $flat, $link]),
             'crew'   => self::sendMessage($to, self::tpl('aisensy_tpl_chalan', self::TPL_CHALAN), [$label, $flat, $link]),
@@ -470,6 +486,17 @@ final class AiSensyAPI
     {
         $to  = self::normalizePhone($phone);
         $tpl = trim(Settings::getString('aisensy_tpl_login_otp', ''));
+        $company = Settings::getString('company_name', 'S Hari Global');
+        $text = 'Your ' . $company . ' login code is ' . $code . ' — तपाईंको लगइन कोड ' . $code
+              . '. Valid for ' . (defined('OTP_EXPIRY_MINUTES') ? OTP_EXPIRY_MINUTES : 10) . ' minutes. Do not share it with anyone.';
+
+        // 9 Oct 2026: the code goes free on the Meta number when their 24 h window is open there.
+        if ($to !== '') {
+            $free = self::metaFree($to, $text, null, 'otp', ['name' => $name]);
+            if ($free !== null) {
+                return $free;
+            }
+        }
         if ($to !== '' && $tpl !== '' && preg_match('/^[a-z0-9_]{1,512}$/', $tpl) && self::apiKey() !== '') {
             $out = ['success' => false, 'message_id' => '', 'http' => 0, 'error' => '', 'response' => null];
             $r = self::post($to, $tpl, self::apiKey(), ['to' => $to, 'type' => 'template', 'template' => [
@@ -484,10 +511,6 @@ final class AiSensyAPI
                 return $r + ['how' => 'template ' . $tpl];
             }
         }
-        $company = Settings::getString('company_name', 'S Hari Global');
-        $text = 'Your ' . $company . ' login code is ' . $code . ' — तपाईंको लगइन कोड ' . $code
-              . '. Valid for ' . (defined('OTP_EXPIRY_MINUTES') ? OTP_EXPIRY_MINUTES : 10) . ' minutes. Do not share it with anyone.';
-
         return self::sendAny($phone, $text, null, $name, 'Login code');
     }
 
@@ -521,6 +544,13 @@ final class AiSensyAPI
         if ($to === '' || $text === '') {
             return ['success' => false, 'message_id' => '', 'http' => 0, 'response' => null, 'how' => '',
                     'error' => $to === '' ? 'not an India / Nepal mobile number' : 'empty message'];
+        }
+
+        /* 9 Oct 2026 (owner: "Meta ko free API"): the Meta number first, free,
+           when this person wrote to it in the last 24 h. includes/waroute.php. */
+        $free = self::metaFree($to, $text, $media !== '' ? $media : null, 'message', ['name' => $name, 'label' => $label]);
+        if ($free !== null) {
+            return $free;
         }
 
         $window = false;
@@ -608,6 +638,13 @@ final class AiSensyAPI
                 return $out;
             }
             $name = $bid > 0 ? self::bookingFacts($bid)['name'] : '';
+            // 9 Oct 2026: free on the Meta number inside the passenger's 24 h window there.
+            $free = self::metaFree($to, $fullText !== '' ? $fullText : trim($headline . "\n" . $details), null, 'trip_' . $event, ['bookingId' => $bid]);
+            if ($free !== null) {
+                $out['ok']     = true;
+                $out['detail'] = $free['how'];
+                return $out;
+            }
             $r = self::sendMessage($to, self::tpl('aisensy_tpl_trip', self::TPL_TRIP),
                 [$name !== '' ? $name : 'Passenger', $pnr, $headline !== '' ? $headline : 'Bus update', $details !== '' ? $details : '-']);
             $how = 'template';
@@ -653,6 +690,15 @@ final class AiSensyAPI
                 return false;
             }
             $name = self::bookingFacts($bid)['name'];
+            // 9 Oct 2026: free on the Meta number inside the passenger's 24 h window there.
+            $co   = class_exists('Settings') ? Settings::getString('company_name', 'S Hari Global') : 'S Hari Global';
+            $free = self::metaFree($to,
+                '❌ ' . $co . "\n" . 'नमस्ते ' . ($name !== '' ? $name : '') . ', तपाईंको बुकिङ ' . $pnr . ' रद्द भयो। फिर्ता रकम: ' . inr($refundAmount) . "\n"
+                . 'Your booking ' . $pnr . ' is cancelled. Refund: ' . inr($refundAmount) . "\n" . 'सहयोग / Help: ' . Settings::officePhone(),
+                null, 'booking_cancelled', ['bookingId' => $bid]);
+            if ($free !== null) {
+                return true;
+            }
             $r = self::sendCancellationNotice($to, ($name !== '' ? $name : 'Passenger') . ' (' . $pnr . ')', $refundAmount);
             if (class_exists('Notify')) {
                 Notify::logOutbound($to, 'AiSensy cancellation notice ' . $pnr, $r['success'] ? 'sent' : 'failed', [
@@ -725,6 +771,19 @@ final class AiSensyAPI
                     if (self::mode() === 'fallback' || (string) ($j['reason'] ?? '') === 'idempotent') {
                         return;
                     }
+                    /* 9 Oct 2026: the Meta number delivered the ticket free
+                       (includes/waroute.php) — record it and queue only the
+                       second number / seller copy; no template on top. */
+                    if (in_array((string) ($j['reason'] ?? ''), ['meta_free', 'meta_template'], true)) {
+                        if (!class_exists('WaQueue') && defined('INCLUDE_PATH') && is_file(INCLUDE_PATH . '/waqueue.php')) {
+                            require_once INCLUDE_PATH . '/waqueue.php';
+                        }
+                        if (class_exists('WaQueue') && WaQueue::ready() && Security::rateLimit('ais_ticket', $pnr, 1, 2592000)) {
+                            $full = Database::fetch('SELECT * FROM bookings WHERE id = :b', ['b' => $bid]) ?? $booking;
+                            WaQueue::onConfirmed($full, self::normalizePhone($number), (string) ($j['reason'] === 'meta_free' ? 'meta free' : 'meta template'), (string) ($j['ref'] ?? ''));
+                        }
+                        return;
+                    }
                 }
             }
 
@@ -752,16 +811,11 @@ final class AiSensyAPI
                  3. the PNG itself with the facts as caption  } WhatsApp delivers
                  4. plain text + link                         } these only inside
                                                                 the 24 h window */
-            $r = ['success' => false];
-            $how = '';
-            if ($link !== '') {
-                $r = self::sendMessage($number, self::tpl('aisensy_tpl_ticket_image', self::TPL_TICKET_IMAGE), $vars, $link);
-                $how = 'image template';
-            }
-            if (!$r['success']) {
-                $r = self::sendTicketConfirmation($number, ...$vars);
-                $how = 'template';
-            }
+            /* 9 Oct 2026: ticketTemplate() is the one ladder — the Meta number
+               free (open window) → a Meta template (wa_meta_templates_on) →
+               the AiSensy image template → the AiSensy text template. */
+            $r   = self::ticketTemplate($number, $bid, $pnr);
+            $how = (string) $r['how'];
             /* 4 Oct 2026 (owner: "ek choti hi lekhne bas, 24 free msg"): when no
                template went through, the ticket goes free through the "hi"
                queue - now if that number's 24 h window is open, else the moment
@@ -838,7 +892,8 @@ final class AiSensyAPI
             $out['to'] = $to;
             $r   = self::ticketTemplate($to, $bid, $pnr);
             $how = $r['how'];
-            if (class_exists('Notify')) {
+            // A Meta send is already in message_logs (WaRoute writes its own row).
+            if (class_exists('Notify') && !str_starts_with($how, 'meta')) {
                 Notify::logOutbound($to, 'AiSensy ticket resend ' . $pnr . ' (' . $how . ')', $r['success'] ? 'sent' : 'failed', [
                     'provider'  => 'aisensy',
                     'bookingId' => $bid,
@@ -863,7 +918,7 @@ final class AiSensyAPI
      *
      * @return array{success: bool, message_id: string, error: string, how: string}
      */
-    public static function ticketTemplate(string $to, int $bid, string $pnr, string $nameAs = ''): array
+    public static function ticketTemplate(string $to, int $bid, string $pnr, string $nameAs = '', bool $metaFirst = true): array
     {
         $f = self::bookingFacts($bid);
         $name = $nameAs !== '' ? $nameAs : ($f['name'] !== '' ? $f['name'] : 'Passenger');
@@ -879,6 +934,41 @@ final class AiSensyAPI
         }
         $r = ['success' => false, 'message_id' => '', 'error' => ''];
         $how = '';
+        /* 9 Oct 2026 (includes/waroute.php): the Meta number first — the PNG
+           with the facts as caption, free, when this number's window is open
+           there; then a Meta template while wa_meta_templates_on. $metaFirst
+           = false is the webhook's recovery after a Meta send failed async. */
+        if ($metaFirst) {
+            $caption = '✅ ' . Settings::companyFor()['name'] . " — तपाईंको टिकट · Your ticket\n"
+                . 'नमस्ते ' . $name . "\n"
+                . 'PNR: ' . $pnr . "\n"
+                . ($f['from'] !== '' ? $f['from'] . ' → ' . $f['to'] . "\n" : '')
+                . ($f['date'] !== '' ? 'मिति / Date: ' . $f['date'] . "\n" : '')
+                . ($f['seats'] !== '' ? 'सिट / Seat: ' . $f['seats'] . "\n" : '')
+                . ($link !== '' ? 'टिकट / Ticket: ' . $link . "\n" : '')
+                . 'सहयोग / Help: ' . Settings::officePhone();
+            $free = self::metaFree($to, $caption, $link !== '' ? $link : null, 'ticket', ['bookingId' => $bid]);
+            if ($free !== null) {
+                return ['success' => true, 'message_id' => (string) $free['message_id'], 'error' => '', 'how' => (string) $free['how']];
+            }
+            try {
+                require_once INCLUDE_PATH . '/waroute.php';
+                if (WaRoute::metaTemplatesOn() && class_exists('Notify')) {
+                    $b = Database::fetch('SELECT * FROM bookings WHERE id = :b', ['b' => $bid]);
+                    if ($b !== null) {
+                        $tv  = Notify::ticketVars($b);
+                        $hdr = (string) ($tv['7'] ?? $link);
+                        unset($tv['7']);
+                        $mt = WaRoute::metaTemplate($to, Settings::getString('whatsapp_template_name', ''), Settings::getString('whatsapp_template_lang', 'en'),
+                            $tv, $hdr !== '' ? $hdr : null, 'ticket', ['bookingId' => $bid]);
+                        if ($mt !== null) {
+                            return ['success' => true, 'message_id' => (string) $mt['message_id'], 'error' => '', 'how' => (string) $mt['how']];
+                        }
+                    }
+                }
+            } catch (Throwable $ignored) {
+            }
+        }
         if ($link !== '') {
             $r = self::sendMessage($to, self::tpl('aisensy_tpl_ticket_image', self::TPL_TICKET_IMAGE), $vars, $link);
             $how = 'image template';
@@ -894,6 +984,48 @@ final class AiSensyAPI
     public static function facts(int $bid): array
     {
         return self::bookingFacts($bid);
+    }
+
+    /* -----------------------------------------------------------------
+     *  Meta first (9 Oct 2026, includes/waroute.php)
+     * ----------------------------------------------------------------- */
+
+    /**
+     * The Meta number, free, when this number wrote to it in the last 24 h
+     * (our own record). Null = not attempted / refused: carry on with the
+     * paid template. Never throws. Result carries the sendMessage() shape.
+     *
+     * @return array{success: bool, message_id: string, http: int, error: string, response: mixed, how: string}|null
+     */
+    private static function metaFree(string $to, string $text, ?string $media, string $purpose, array $meta = []): ?array
+    {
+        try {
+            if (!defined('INCLUDE_PATH') || !is_file(INCLUDE_PATH . '/waroute.php')) {
+                return null;
+            }
+            require_once INCLUDE_PATH . '/waroute.php';
+            $r = WaRoute::freeFirst($to, $text, $media, $purpose, $meta);
+            if ($r === null || !$r['success']) {
+                return null;
+            }
+            return ['success' => true, 'message_id' => (string) $r['message_id'], 'http' => 200, 'error' => '', 'response' => null, 'how' => (string) $r['how']];
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
+    /** '' when this template may be sent, else why not (policy / marketing guard). */
+    private static function routeRefusal(string $templateName, bool $allowMarketing): string
+    {
+        try {
+            if (!defined('INCLUDE_PATH') || !is_file(INCLUDE_PATH . '/waroute.php')) {
+                return '';
+            }
+            require_once INCLUDE_PATH . '/waroute.php';
+            return WaRoute::aisensyRefusal($templateName, $allowMarketing);
+        } catch (Throwable $e) {
+            return '';
+        }
     }
 
     /**

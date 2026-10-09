@@ -42,6 +42,33 @@ try {
     Security::requireRateLimit('ai_chat_web', Security::clientIp(), 30, 300);
     Security::requireRateLimit('ai_chat_web_day', Security::clientIp(), 600, 86400);
 
+    /* 9 Oct 2026 - the local brain first (includes/walocal.php): timetable,
+       seats left, bus position, bus & crew, how to pay, refund rule, Nepal
+       office, and the office's own summaries - read from the tables, no AI
+       key needed. Only what it recognises; the assistant takes the rest. */
+    $localMsg = trim((string) Response::field('message', ''));
+    if ($localMsg !== '' && !(bool) Response::field('reset', false)) {
+        try {
+            require_once INCLUDE_PATH . '/walocal.php';
+            $ctxL  = AiTools::whoIsWeb();
+            $langL = (string) Response::field('lang', '');
+            $loc   = WaLocal::answerWeb($ctxL, mb_substr($localMsg, 0, 1500), in_array($langL, ['ne', 'hi', 'en', 'gu'], true) ? $langL : '');
+            if ($loc !== null) {
+                Response::success([
+                    'text'    => $loc['text'],
+                    'media'   => $loc['media'],
+                    'charts'  => [],
+                    'actions' => [],
+                    'role'    => $ctxL['role'],
+                    'name'    => (string) ($ctxL['name'] ?? ''),
+                    'local'   => $loc['intent'],
+                ]);
+            }
+        } catch (Throwable $e) {
+            Logger::exception($e, 'ai');
+        }
+    }
+
     if (!AiAgent::webEnabled()) {
         // Not configured or switched off — the widget keeps its rule engine
         // (and, when only the plain relay is wanted, api/ai-proxy.php).

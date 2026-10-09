@@ -184,6 +184,8 @@ const CORE_SUITES = [
     'ai-kb-test.php'              => 'the knowledge base: audience scope, the ai_kb_on switch, an honest redacted miss',
     // 23 Sep 2026, registered with the on-VPS everyday answers it guards.
     'wa-faq-test.php'             => 'everyday WhatsApp answers from the live tables, no AI: personal left to the assistant',
+    'wa-route-test.php'           => 'Meta-first routing: free inside the Meta window, AiSensy utility template otherwise, marketing guard, queue recovery',
+    'wa-local-test.php'           => 'the local brain: bus live, seats left, timetable, bus & crew, ticket again, pay, refund rule, staff summaries - no AI',
     'seatmap-test.php'            => 'the customer seat picture: signed link, status only (never names), same count as the challan',
     'report-chart-test.php'       => 'the office report chart: figures = the register, signed link, office numbers only',
     'wa-voice-test.php'           => 'voice notes: the Gemini request, the cleaned transcript, the typed-message path',
