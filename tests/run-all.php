@@ -186,6 +186,7 @@ const CORE_SUITES = [
     'wa-faq-test.php'             => 'everyday WhatsApp answers from the live tables, no AI: personal left to the assistant',
     'wa-route-test.php'           => 'Meta-first routing: free inside the Meta window, AiSensy utility template otherwise, marketing guard, queue recovery',
     'wa-local-test.php'           => 'the local brain: bus live, seats left, timetable, bus & crew, ticket again, pay, refund rule, staff summaries - no AI',
+    'wa-habit-test.php'           => 'the bot learns repeated work: same question 3 days -> offer -> daily free send, habit band',
     'seatmap-test.php'            => 'the customer seat picture: signed link, status only (never names), same count as the challan',
     'report-chart-test.php'       => 'the office report chart: figures = the register, signed link, office numbers only',
     'wa-voice-test.php'           => 'voice notes: the Gemini request, the cleaned transcript, the typed-message path',

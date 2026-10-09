@@ -143,3 +143,6 @@ request, small talk), logging, web, switch.
 ## Rollback
 `/root/backups/pre-deploy-release-20261009-wa1-<ts>/ROLLBACK.txt`, or Settings → WhatsApp →
 `wa_policy` = `aisensy_only` and `wa_local_brain_on` = OFF (no redeploy needed).
+
+## 3c. release-20261009-wa3 — the bot learns repeated work (WaHabit)
+`includes/wahabit.php`, table `wa_habits`, cron `cron/wa-habits.php` (*/15, root crontab). The same local question at the same hour on 3 days -> the answer carries "भोलिदेखि आफैं पठाइदिऊँ? ho / hoina" (buttons). "ho" = daily at that hour, FREE only (Meta window open; closed = skipped, never paid). "mero habit" lists, "habit band" stops. Switch `wa_habits_on`. Test tests/wa-habit-test.php (16).

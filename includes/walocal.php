@@ -198,7 +198,20 @@ final class WaLocal
         }
         self::remember($digits, $text, (string) $r['text']);
         self::log($digits, $intent, $role, $t0);
-        return ['text' => (string) $r['text'], 'media' => $r['media'] ?? null, 'ui' => $r['ui'] ?? null, 'intent' => $intent];
+        $out = ['text' => (string) $r['text'], 'media' => $r['media'] ?? null, 'ui' => $r['ui'] ?? null, 'intent' => $intent];
+        // 9 Oct 2026: the same question at the same hour on 3 days -> offer to send it daily (includes/wahabit.php).
+        try {
+            require_once INCLUDE_PATH . '/wahabit.php';
+            $offer = WaHabit::note((string) ($who['intl'] ?? ''), $role, $intent, $text, $lang);
+            if ($offer !== null) {
+                $out['text'] .= $offer['line'];
+                if ($out['ui'] === null) {
+                    $out['ui'] = $offer['ui'] + ['body' => $out['text']];
+                }
+            }
+        } catch (Throwable $e) {
+        }
+        return $out;
     }
 
     /**
