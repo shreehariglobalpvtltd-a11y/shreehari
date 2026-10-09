@@ -202,6 +202,12 @@ admin_header('Accounting', 'accounting');
     <a href="?from=<?= date('Y-m-d', strtotime('-29 days')) ?>&to=<?= todayISO() ?>">Last 30 days</a>
   </div>
   <button class="btn ghost" type="button" onclick="window.print()">🖨️ Print</button>
+  <?php /* 9 Oct 2026: the same window in the Finance Master app's website
+           reconciliation (this day-book vs the app's books). Office finance roles
+           only — this page is also open to the counter and office staff. */ ?>
+  <?php if (Auth::can('reports.view') && !Auth::isCounterAgent()): ?>
+    <a class="btn ghost" href="<?= Security::e('/admin/finance.php?go=website&tab=recon&from=' . rawurlencode($from) . '&to=' . rawurlencode($to)) ?>" title="Finance Master: reconcile this period">💼 Finance Master — reconcile</a>
+  <?php endif; ?>
 </form>
 
 <p class="muted" style="margin-top:-6px">Day-book for <strong><?= Security::e($rangeLabel) ?></strong> · money shown in ₹ (NPR converted @ 1:<?= NPR_PER_INR ?>).</p>
