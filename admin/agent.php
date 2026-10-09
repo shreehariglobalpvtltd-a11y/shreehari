@@ -726,9 +726,15 @@ admin_page_head(
         ? 'Your wallet, sales and profile — commission is read from the ledger the moment a sale is confirmed, never recomputed.'
         : 'Supervisor view of this agent\'s wallet, sales and profile.',
     $isOwn ? [] : ['Agents' => $base . '/admin/agents.php', (string) ($viewing['full_name'] ?: $viewing['username']) => ''],
-    $canSee360
+    ($canSee360
         ? '<a class="btn navy" href="' . $base . '/admin/agent-360.php?agent=' . $viewId . '"><svg class="a-ic"><use href="#a-users"/></svg> Full 360 view</a>'
-        : ''
+        : '')
+    // 9 Oct 2026: this agent's account in the Finance Master app (statement
+    // with letterhead, running balance, amount in words). Never on an agent's
+    // own panel, and only for office finance roles.
+    . (!$isOwn && Auth::can('reports.view') && !Auth::isCounterAgent()
+        ? '<a class="btn ghost" href="' . Security::e('/admin/finance.php?go=statements&type=agent&seller=' . $viewId) . '" title="Finance Master: this agent\'s statement">💼 Finance statement</a>'
+        : '')
 );
 
 if ($flash !== null) {

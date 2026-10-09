@@ -44,6 +44,9 @@ if (Auth::isCounterAgent()) {
 
 $canManage = Auth::isSuperadmin() || Auth::can('staff.manage');
 $selfId    = (int) ($admin['id'] ?? 0);
+// 9 Oct 2026: per-row "Finance statement" into the Finance Master app — office
+// finance roles only (reports.view; this register is also open to roles without it).
+$canFinance = Auth::can('reports.view') && !Auth::isCounterAgent();
 $flash     = null;
 
 /* ---------- actions ---------- */
@@ -385,6 +388,7 @@ if ($flash !== null) { echo '<div class="flash ' . $flash[0] . '">' . Security::
         <button type="button" class="btn ghost" data-dt-toggle="<?= $rid ?>v">👁 View</button>
         <?php if ($canManage): ?><button type="button" class="btn ghost" data-dt-toggle="<?= $rid ?>e">✏️ Edit</button><?php endif; ?>
         <a class="btn ghost" href="agent-360.php?agent=<?= (int) $r['id'] ?>" title="Agent 360: wallet, statement, settlements, loans, deposits, KYC">💼 Wallet</a>
+        <?php if ($canFinance): ?><a class="btn ghost" href="<?= $e('/admin/finance.php?go=statements&type=agent&seller=' . (int) $r['id']) ?>" title="Finance Master: this agent's statement">💼 Finance statement</a><?php endif; ?>
         <a class="btn ghost" href="agent-sales.php?agent=<?= (int) $r['id'] ?>">📊 Sales</a>
         <a class="btn ghost" href="agent.php?agent=<?= (int) $r['id'] ?>#tierRatesForm" title="Commission tier, override and rates">💰 Commission</a>
         <?php if ($canManage): ?><a class="btn ghost" href="agent.php?agent=<?= (int) $r['id'] ?>#loginCredentials" title="View or reset their email, username and password">🔑 Login</a><?php endif; ?>

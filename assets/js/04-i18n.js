@@ -7,6 +7,20 @@
 ================================================================ */
 const I18N = {
 en: {
+  /* WhatsApp ticket desk (24 Sep 2026): the markup carried these eleven
+     keys and no language defined them, so applyLang() replaced good English
+     with the key name on the live home page. */
+  waTicketTitle: 'Ticket with WhatsApp',
+  waTicketIntro: 'Send your name, mobile and journey details. Continue booking in WhatsApp, request a ticket correction, or ask the office for help.',
+  waTicketStart: '🎫 Ticket with WhatsApp →',
+  waReqChat: 'Continue in WhatsApp →',
+  waReqChatSub: 'Review the message, then tap Send in WhatsApp',
+  waReqCountry: 'Country code',
+  waReqDirection: 'Direction',
+  waReqFix: '✏️ Correct my ticket',
+  waReqPhoneHint: 'Use the number you will send from on WhatsApp. For someone else\u2019s ticket, ask the office.',
+  waReqPnr: 'Booking number (PNR)',
+  waReqPrivacy: 'Your details are shared with S Hari Global only when you send. A request does not confirm a seat or change a ticket.',
   navHome: 'Home', navBook: 'Book Tickets', navServices: 'Services', navRoute: 'India–Nepal',
   navAbout: 'About', navFaq: 'FAQ', navContact: 'Contact', navMy: 'My Bookings', navStaff: 'Agent / Staff sign-in', agentLateSummary: 'Agent? Enter your code to book a departed bus (24h)',
   navTerms: 'Terms &amp; Conditions', navBookNow: 'Book Now', navSignIn: 'Sign in',
@@ -391,6 +405,17 @@ en: {
   rgMap: 'Show on map', rgNone: 'The route guide is not available right now.', payApps: 'Or tap your UPI app:'
 },
 hi: {
+  waTicketTitle: 'WhatsApp से टिकट',
+  waTicketIntro: 'अपना नाम, मोबाइल और यात्रा की जानकारी भेजें। WhatsApp पर बुकिंग जारी रखें, टिकट में सुधार माँगें, या ऑफिस से मदद लें।',
+  waTicketStart: '🎫 WhatsApp से टिकट →',
+  waReqChat: 'WhatsApp में जारी रखें →',
+  waReqChatSub: 'संदेश देख लें, फिर WhatsApp में Send दबाएँ',
+  waReqCountry: 'देश कोड',
+  waReqDirection: 'दिशा',
+  waReqFix: '✏️ मेरा टिकट सुधारें',
+  waReqPhoneHint: 'वही नंबर दें जिससे आप WhatsApp पर भेजेंगे। किसी और के टिकट के लिए ऑफिस से बात करें।',
+  waReqPnr: 'बुकिंग नंबर (PNR)',
+  waReqPrivacy: 'आपकी जानकारी भेजने पर ही S Hari Global को मिलती है। अनुरोध से सीट पक्की नहीं होती और टिकट नहीं बदलता।',
   navHome: 'होम', navBook: 'टिकट बुक करें', navServices: 'सेवाएं', navRoute: 'भारत–नेपाल',
   navAbout: 'कंपनी', navFaq: 'सवाल-जवाब', navContact: 'संपर्क', navMy: 'मेरी बुकिंग', navStaff: 'एजेंट / स्टाफ लॉगिन', agentLateSummary: 'एजेंट हैं? छूटी बस बुक करने के लिए कोड डालें (24 घंटे)',
   navTerms: 'नियम व शर्तें', navBookNow: 'अभी बुक करें', navSignIn: 'लॉगिन',
@@ -770,6 +795,17 @@ hi: {
   rgMap: 'मैप पर देखें', rgNone: 'रूट गाइड अभी उपलब्ध नहीं है।', payApps: 'या अपना UPI ऐप दबाएँ:'
 },
 ne: {
+  waTicketTitle: 'WhatsApp बाट टिकट',
+  waTicketIntro: 'आफ्नो नाम, मोबाइल र यात्राको विवरण पठाउनुहोस्। WhatsApp मै booking अगाडि बढाउनुहोस्, टिकट सच्याउन अनुरोध गर्नुहोस्, वा अफिससँग सहयोग माग्नुहोस्।',
+  waTicketStart: '🎫 WhatsApp बाट टिकट →',
+  waReqChat: 'WhatsApp मा अगाडि बढ्नुहोस् →',
+  waReqChatSub: 'सन्देश हेर्नुहोस्, अनि WhatsApp मा Send थिच्नुहोस्',
+  waReqCountry: 'देश कोड',
+  waReqDirection: 'दिशा',
+  waReqFix: '✏️ मेरो टिकट सच्याउनुहोस्',
+  waReqPhoneHint: 'WhatsApp बाट जुन नम्बरबाट पठाउनुहुन्छ त्यही दिनुहोस्। अरूको टिकटको लागि अफिसमा सम्पर्क गर्नुहोस्।',
+  waReqPnr: 'बुकिङ नम्बर (PNR)',
+  waReqPrivacy: 'तपाईंको विवरण पठाएपछि मात्र S Hari Global सँग जान्छ। अनुरोधले सिट पक्का गर्दैन र टिकट बदल्दैन।',
   navHome: 'होम', navBook: 'टिकट बुक गर्नुहोस्', navServices: 'सेवाहरू', navRoute: 'भारत–नेपाल',
   navAbout: 'कम्पनी', navFaq: 'प्रश्नोत्तर', navContact: 'सम्पर्क', navMy: 'मेरो बुकिङ', navStaff: 'एजेन्ट / स्टाफ लगइन', agentLateSummary: 'एजेन्ट हो? छुटेको बस बुक गर्न कोड राख्नुहोस् (२४ घण्टा)',
   navTerms: 'नियम तथा सर्तहरू', navBookNow: 'बुक गर्नुहोस्', navSignIn: 'लगइन',
