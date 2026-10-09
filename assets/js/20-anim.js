@@ -19,7 +19,7 @@
   if (!scenes.length) return;
 
   var mq = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
-  var reduced = function () { return !!(mq && mq.matches); };
+  var reduced = function () { return window.shgReducedMotion ? !!window.shgReducedMotion() : !!(mq && mq.matches); };
   var canAnimate = typeof Element.prototype.animate === 'function';
   var tr = function (key, fallback) {
     try { if (typeof t === 'function') { var s = t(key); if (s && s !== key) return s; } } catch (e) { /* i18n not ready */ }

@@ -2062,14 +2062,16 @@ function updateTierUI() {
       return true;   // triple: whole row is valid
     };
     const ctxDate = (typeof legCtx === 'function' && legCtx()) ? legCtx().date : Flow.date;
+    let dropped = 0;
     Flow.seats.slice().forEach(sid => {
       if (zoneOk(sid)) return;
+      dropped++;
       const ix = Flow.seats.indexOf(sid); if (ix >= 0) Flow.seats.splice(ix, 1);
       const b = document.querySelector('#view-seats .seat[data-id="' + sid + '"]');
       if (b) { b.classList.remove('sel'); b.setAttribute('aria-pressed', 'false'); }
       if (Flow.route) unlockSeat(Flow.route.id, ctxDate, sid);
     });
-    if (typeof SFX !== 'undefined' && SFX.select) SFX.select();
+    if (typeof SFX !== 'undefined') { const s = (dropped && SFX.deselect) || SFX.select; if (s) s(); }
     updateSeatSummary();
   };
   box.onclick = pickTier;

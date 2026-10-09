@@ -260,7 +260,8 @@ $catOf = static function (string $key, string $group): string {
         'wa_' => 'whatsapp', 'whatsapp_' => 'whatsapp', 'twilio_content_sid' => 'whatsapp', 'seat_status_wa_' => 'whatsapp', 'aisensy_' => 'whatsapp',
         'quick_ticket_' => 'booking', 'counter_' => 'agents', 'agent_' => 'agents', 'nepal_' => 'company', 'company_' => 'company',
         'sms_' => 'notify', 'smtp_' => 'notify', 'push_' => 'notify', 'reminder_' => 'notify', 'trip_' => 'notify', 'notify_' => 'notify',
-        'helpdesk_' => 'notify', 'office_report_' => 'notify', 'payment_' => 'payments', 'loyalty_' => 'fares', 'referral_' => 'fares',
+        'helpdesk_' => 'notify', 'office_report_' => 'notify', 'payment_' => 'payments',
+        'risk_' => 'payments', 'fraud_' => 'payments', 'pay_two_step_on' => 'payments', 'ticket_live_code_on' => 'payments', 'staffmsg_' => 'agents', 'loyalty_' => 'fares', 'referral_' => 'fares',
         'btn_' => 'website', 'nearme_' => 'website', 'nav_' => 'website', 'app_' => 'website', 'seat_ai_' => 'booking', 'gdrive_' => 'security',
         'ai_' => 'ai', 'cerebras_' => 'ai', 'grok_' => 'ai', 'gemini_' => 'ai', 'openai_' => 'ai', 'openrouter_' => 'ai', 'telegram_' => 'marketing',
     ];

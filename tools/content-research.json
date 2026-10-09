@@ -1,0 +1,1750 @@
+{
+ "timeline": {
+  "intro": {
+   "en": "India and Nepal are tied together by an open border, shared faith and family links. Gautam Buddha was born in Lumbini, and the story of Sita and Ram joins Janakpur with Ayodhya. Here are the main milestones of this friendship, in brief.",
+   "ne": "भारत र नेपाल खुला सीमा, साझा आस्था र पारिवारिक नाताले जोडिएका छन्। गौतम बुद्ध लुम्बिनीमा जन्मिनुभयो, र सीता–रामको कथाले जनकपुर र अयोध्यालाई जोड्छ। यो मित्रताका मुख्य कोसेढुङ्गा तल छोटकरीमा दिइएका छन्।",
+   "sources": [
+    "https://www.indembkathmandu.gov.in/about-india-nepal-relations",
+    "https://whc.unesco.org/en/list/666/",
+    "https://thehimalayantimes.com/nepal/preparations-vivah-panchami-full-swing/"
+   ],
+   "confidence": "high"
+  },
+  "events": [
+   {
+    "year": "Ancient",
+    "title_en": "Janakpur and Ayodhya: the Sita–Ram bond",
+    "title_ne": "जनकपुर र अयोध्या: सीता–रामको नाता",
+    "body_en": "Janakpur, the city of King Janak, is revered as the place where Sita grew up and married Lord Ram of Ayodhya. Every year the Vivah Panchami festival celebrates the wedding, and pilgrims from Ayodhya and other parts of India come for it as the groom's wedding party.",
+    "body_ne": "राजा जनकको नगरी जनकपुरलाई सीता हुर्किएको र अयोध्याका भगवान रामसँग उनको विवाह भएको पवित्र स्थल मानिन्छ। हरेक वर्ष विवाह पञ्चमीमा यो विवाहोत्सव मनाइन्छ, र अयोध्यासहित भारतका विभिन्न ठाउँबाट तीर्थयात्री जन्ती बनेर यसमा सहभागी हुन आउँछन्।",
+    "icon": "🛕",
+    "sources": [
+     "https://thehimalayantimes.com/nepal/preparations-vivah-panchami-full-swing/",
+     "https://kathmandupost.com/art-culture/2019/11/23/vivaha-panchami-when-a-city-turns-into-a-stage",
+     "https://nepaltraveller.com/sidetrack/vivah-panchami-celebrating-a-divine-union"
+    ],
+    "confidence": "high"
+   },
+   {
+    "year": "249 BCE",
+    "title_en": "Ashoka's pillar at Lumbini",
+    "title_ne": "लुम्बिनीको अशोक स्तम्भ",
+    "body_en": "Emperor Ashoka came to Lumbini and put up a stone pillar there in 249 BCE. Its inscription records that the Buddha was born at this spot, and UNESCO added Lumbini to its World Heritage List in 1997.",
+    "body_ne": "सम्राट अशोक लुम्बिनी आएर ई.पू. २४९ मा त्यहाँ ढुङ्गाको स्तम्भ खडा गरे। त्यसमा कुँदिएको अभिलेखले बुद्ध यही ठाउँमा जन्मिएको उल्लेख गर्छ, र युनेस्कोले सन् १९९७ मा लुम्बिनीलाई विश्व सम्पदा सूचीमा समावेश गर्‍यो।",
+    "icon": "☸️",
+    "sources": [
+     "https://whc.unesco.org/en/list/666/",
+     "https://whc.unesco.org/document/153988",
+     "https://www.britannica.com/place/Lumbini"
+    ],
+    "confidence": "high"
+   },
+   {
+    "year": "1815",
+    "title_en": "Origins of the Gorkha regiments",
+    "title_ne": "गोर्खा पल्टनको सुरुवात",
+    "body_en": "On 24 April 1815 the Nasiri Battalion was raised at Subathu, in today's Himachal Pradesh, from soldiers of Gorkha commander Amar Singh Thapa's army. The Indian Army's 1st Gorkha Rifles traces its history to this battalion.",
+    "body_ne": "२४ अप्रिल १८१५ मा हालको हिमाचल प्रदेशको सुबाथुमा गोर्खाली सेनापति अमरसिंह थापाको सेनाका सिपाहीहरूलाई समेटेर 'नसिरी बटालियन' गठन गरियो। भारतीय सेनाको १ गोर्खा राइफल्सले आफ्नो इतिहास यही बटालियनबाट सुरु भएको मान्छ।",
+    "icon": "🎖️",
+    "sources": [
+     "https://en.wikipedia.org/wiki/1st_Gorkha_Rifles_(The_Malaun_Regiment)",
+     "https://www.thenewsminute.com/news/iconic-gorkha-rifles-set-complete-200-years-service-29566",
+     "https://salute.co.in/1-gr-the-first-among-equals/"
+    ],
+    "confidence": "high"
+   },
+   {
+    "year": "1815–1816",
+    "title_en": "Treaty of Sugauli",
+    "title_ne": "सुगौली सन्धि",
+    "body_en": "Drawn up at Sugauli (Bihar) in December 1815 and ratified on 4 March 1816, this treaty ended the Anglo-Nepal War of 1814–16. Much of today's India–Nepal boundary traces back to it.",
+    "body_ne": "डिसेम्बर १८१५ मा सुगौली (बिहार) मा तयार भएको यो सन्धि ४ मार्च १८१६ मा अनुमोदन भयो, र यसले सन् १८१४–१६ को एङ्ग्लो–नेपाल युद्ध अन्त्य गर्‍यो। आजको नेपाल–भारत सीमाको धेरैजसो भाग यसै सन्धिमा आधारित छ।",
+    "icon": "📜",
+    "sources": [
+     "https://britannica.com/print/article/1574299",
+     "https://thegurkhamuseum.co.uk/blog/treaty-of-sugauli/",
+     "https://manage.thediplomat.com/2020/07/how-nepal-got-its-borders"
+    ],
+    "confidence": "high"
+   },
+   {
+    "year": "1947",
+    "title_en": "Tripartite Gorkha Agreement",
+    "title_ne": "त्रिपक्षीय गोर्खा सम्झौता",
+    "body_en": "On 9 November 1947 Nepal, India and the United Kingdom signed an agreement on the service of Gorkha soldiers. According to the Embassy of India, more than 1.22 lakh Indian Army pensioners live in Nepal today.",
+    "body_ne": "९ नोभेम्बर १९४७ मा नेपाल, भारत र बेलायतबीच गोर्खा सैनिकको सेवासम्बन्धी त्रिपक्षीय सम्झौता भयो। भारतीय दूतावासका अनुसार आज नेपालमा भारतीय सेनाका १ लाख २२ हजारभन्दा बढी पेन्सनभोगी बस्छन्।",
+    "icon": "🤝",
+    "sources": [
+     "https://indembkathmandu.gov.in/about-defence"
+    ],
+    "confidence": "high"
+   },
+   {
+    "year": "1950",
+    "title_en": "Treaty of Peace and Friendship",
+    "title_ne": "शान्ति तथा मैत्री सन्धि",
+    "body_en": "Signed in Kathmandu on 31 July 1950. Articles 6 and 7 give each country's citizens national treatment in economic development and the same privileges in residence, property, trade and movement. This is the basis of the open border, which Indian and Nepali citizens cross without a passport or visa.",
+    "body_ne": "३१ जुलाई १९५० मा काठमाडौंमा हस्ताक्षर भएको सन्धि। यसका धारा ६ र ७ ले दुवै देशका नागरिकलाई आर्थिक विकासमा राष्ट्रिय व्यवहार तथा बसोबास, सम्पत्ति, व्यापार र आवतजावतमा समान सुविधा दिन्छन्। खुला सीमाको आधार यही हो, जहाँ भारतीय र नेपाली नागरिक राहदानी वा भिसाविना आवतजावत गर्छन्।",
+    "icon": "🕊️",
+    "sources": [
+     "https://en.wikipedia.org/wiki/Indo-Nepal_Treaty_of_Peace_and_Friendship",
+     "https://www.cia.gov/readingroom/document/cia-rdp81-01036r000100140065-5",
+     "https://www.ecoi.net/en/file/local/2004817/141598.pdf",
+     "https://cag.gov.in/uploads/download_audit_report/2021/Chapter%201-0624d5a6b04a7d8.59939988.pdf"
+    ],
+    "confidence": "high"
+   },
+   {
+    "year": "1951",
+    "title_en": "Democracy comes to Nepal",
+    "title_ne": "नेपालमा प्रजातन्त्रको उदय",
+    "body_en": "After an agreement was reached in New Delhi, King Tribhuvan returned to Nepal on 15 February 1951 and proclaimed democracy on 18 February 1951. Nepal marks this every year as Democracy Day.",
+    "body_ne": "नयाँ दिल्लीमा भएको सम्झौतापछि राजा त्रिभुवन १५ फेब्रुअरी १९५१ मा स्वदेश फर्किए र १८ फेब्रुअरी १९५१ मा प्रजातन्त्रको घोषणा गरे। नेपालले हरेक वर्ष यो दिनलाई प्रजातन्त्र दिवसका रूपमा मनाउँछ।",
+    "icon": "🗳️",
+    "sources": [
+     "https://english.onlinekhabar.com/facts-about-nepal-democracy-day-1951.html"
+    ],
+    "confidence": "high"
+   },
+   {
+    "year": "1996",
+    "title_en": "Mahakali Treaty",
+    "title_ne": "महाकाली सन्धि",
+    "body_en": "Signed in New Delhi on 12 February 1996, this treaty covers the integrated development of the Mahakali river, including the Sarada and Tanakpur barrages and the Pancheshwar project.",
+    "body_ne": "१२ फेब्रुअरी १९९६ मा नयाँ दिल्लीमा हस्ताक्षर भएको यो सन्धि महाकाली नदीको एकीकृत विकाससँग सम्बन्धित छ, जसमा शारदा र टनकपुर ब्यारेज तथा पञ्चेश्वर परियोजना पर्छन्।",
+    "icon": "🌊",
+    "sources": [
+     "https://lpr.adb.org/sites/default/files/resource/1609/mahakali-treaty-1996.pdf",
+     "https://en.wikipedia.org/wiki/Mahakali_Treaty",
+     "https://aquapedia.waterdiplomacy.org/wiki/index.php/Treaty_between_His_Majesty%27s_government_of_Nepal_and_the_government_of_India_concerning_the_integrated_development_of_the_Mahakali_River_including_Sarada_Barrage,_Tanakpur_Barrage,_and_Pancheshwar_Project"
+    ],
+    "confidence": "high"
+   },
+   {
+    "year": "1999–2009",
+    "title_en": "Trade and transit treaties",
+    "title_ne": "वाणिज्य तथा पारवहन सन्धि",
+    "body_en": "A revised Treaty of Transit took effect in January 1999, and a revised Treaty of Trade was signed in 2009. The trade treaty gives Nepali-made goods duty-free entry to the Indian market, except for a short list of items. Both treaties are extended automatically for seven years at a time.",
+    "body_ne": "परिमार्जित पारवहन सन्धि जनवरी १९९९ देखि लागू भयो, र परिमार्जित वाणिज्य सन्धिमा सन् २००९ मा हस्ताक्षर भयो। वाणिज्य सन्धिअनुसार केही थोरै वस्तुबाहेक नेपालमा बनेका सामानले भारतीय बजारमा भन्सारमुक्त प्रवेश पाउँछन्। दुवै सन्धि एक पटकमा सात वर्षका लागि आफैं नवीकरण हुन्छन्।",
+    "icon": "🚚",
+    "sources": [
+     "https://tadb.unescap.org/IND/bilat_IND_NPL_1999_eng.pdf",
+     "https://in.nepalembassy.gov.np/content/15/trade-and-commerce-between-nepal-and-india/",
+     "https://tepc.gov.np/pages/treaty-of-trade-india",
+     "https://kathmandupost.com/money/2023/12/07/nepal-loses-on-auto-renewal-of-trade-treaty-with-india"
+    ],
+    "confidence": "high"
+   },
+   {
+    "year": "2014",
+    "title_en": "PM visit and Kathmandu–Delhi bus",
+    "title_ne": "प्रधानमन्त्रीको भ्रमण र काठमाडौं–दिल्ली बस",
+    "body_en": "In August 2014 Narendra Modi made the first bilateral visit to Nepal by an Indian Prime Minister in 17 years and addressed Nepal's Constituent Assembly. On 25 November 2014 he and Prime Minister Sushil Koirala flagged off the Kathmandu–Delhi 'Pashupatinath Express' bus in Kathmandu.",
+    "body_ne": "अगस्ट २०१४ मा नरेन्द्र मोदीको नेपाल भ्रमण १७ वर्षयताकै कुनै भारतीय प्रधानमन्त्रीको पहिलो द्विपक्षीय भ्रमण थियो, र उनले नेपालको संविधानसभालाई सम्बोधन गरे। २५ नोभेम्बर २०१४ मा उनी र प्रधानमन्त्री सुशील कोइरालाले काठमाडौंबाट काठमाडौं–दिल्ली 'पशुपतिनाथ एक्सप्रेस' बस सेवा सुरु गरे।",
+    "icon": "🚌",
+    "sources": [
+     "https://www.thenewsminute.com/news/modi-be-first-indian-pm-visit-nepal-17-years-25402",
+     "https://idsa.in/speeches/prime-minister-shri-narendra-modis-address-to-constituent-assembly-of-nepal-august-3-2014",
+     "https://www.narendramodi.in/outcomes-during-the-visit-of-prime-minister-to-nepal-november-25-27-2014/",
+     "https://en.wikipedia.org/wiki/Delhi%E2%80%93Kathmandu_Bus"
+    ],
+    "confidence": "high"
+   },
+   {
+    "year": "2015",
+    "title_en": "Earthquake relief: Operation Maitri",
+    "title_ne": "भूकम्प उद्धार: अपरेसन मैत्री",
+    "body_en": "After the earthquake of 25 April 2015, India launched Operation Maitri. Indian Air Force planes carrying rescue teams and doctors landed in Kathmandu the same evening. India later committed USD 1 billion for reconstruction.",
+    "body_ne": "२५ अप्रिल २०१५ को भूकम्पपछि भारतले 'अपरेसन मैत्री' सुरु गर्‍यो। उद्धार टोली र चिकित्सक बोकेका भारतीय वायुसेनाका विमान सोही दिन बेलुकै काठमाडौं आइपुगे। पछि भारतले पुनर्निर्माणका लागि १ अर्ब अमेरिकी डलर दिने प्रतिबद्धता गर्‍यो।",
+    "icon": "🚁",
+    "sources": [
+     "https://thenational-the-national-prod.cdn.arcpublishing.com/world/india-launches-massive-nepal-relief-operation-1.642227",
+     "https://idsa.in/publisher/comments/indias-humanitarian-assistance-and-disaster-relief-effort-in-nepal",
+     "https://www.indembkathmandu.gov.in/about-india-nepal-relations",
+     "https://en.wikipedia.org/wiki/Operation_Maitri"
+    ],
+    "confidence": "high"
+   },
+   {
+    "year": "2018",
+    "title_en": "First Integrated Check Post: Raxaul–Birgunj",
+    "title_ne": "पहिलो एकीकृत जाँच चौकी: रक्सौल–वीरगञ्ज",
+    "body_en": "On 7 April 2018 the two Prime Ministers jointly opened the Integrated Check Post (ICP) at Birgunj, built with Indian assistance opposite Raxaul. Raxaul–Birgunj is counted as the first ICP on the India–Nepal border.",
+    "body_ne": "७ अप्रिल २०१८ मा दुवै प्रधानमन्त्रीले रक्सौलसामुन्ने भारतको सहयोगमा बनेको वीरगञ्ज एकीकृत जाँच चौकी (ICP) संयुक्त रूपमा उद्घाटन गरे। रक्सौल–वीरगञ्जलाई नेपाल–भारत सीमाको पहिलो ICP मानिन्छ।",
+    "icon": "🛃",
+    "sources": [
+     "https://mofa.gov.np/content/1075/joint-statement-during-the-state-visit-of/",
+     "https://myrepublica.nagariknetwork.com/news/pm-oli-modi-jointly-inaugurates-birgunj-icp-and-petroleum-pipeline",
+     "https://en.wikipedia.org/wiki/ICP_Birgunj_Customs_Office",
+     "https://www.theweek.in/news/india/2020/01/21/modi-oli-jointly-inaugurate-check-post-at-jogban-biratnagar.html"
+    ],
+    "confidence": "high"
+   },
+   {
+    "year": "2018",
+    "title_en": "Janakpur–Ayodhya bus",
+    "title_ne": "जनकपुर–अयोध्या बस",
+    "body_en": "On 11 May 2018 the two Prime Ministers flagged off a direct bus from Janakpur to Ayodhya, launched to link the cities of Sita and Ram as part of the Ramayana Circuit.",
+    "body_ne": "११ मे २०१८ मा दुवै प्रधानमन्त्रीले रामायण सर्किटअन्तर्गत सीता र रामका नगरीलाई जोड्ने उद्देश्यले जनकपुरदेखि अयोध्यासम्म सिधा बस सेवा सुरु गरे।",
+    "icon": "🛣️",
+    "sources": [
+     "https://www.wionews.com/south-asia/modi-nepal-pm-oli-flag-off-janakpur-ayodhya-bus-service-136052",
+     "https://www.outlookindia.com/national/pm-modi-to-embark-on-2-day-nepal-visit-today-will-flag-off-bus-from-janakpuri-to-news-311857",
+     "https://english.onlinekhabar.com/janakpur-ayodhya-bus-service-comes-into-operation.html"
+    ],
+    "confidence": "high"
+   },
+   {
+    "year": "2019",
+    "title_en": "South Asia's first cross-border oil pipeline",
+    "title_ne": "दक्षिण एसियाकै पहिलो सीमापार पेट्रोलियम पाइपलाइन",
+    "body_en": "The Motihari–Amlekhgunj pipeline, about 69 km long, was jointly inaugurated by the two Prime Ministers on 10 September 2019. It carries fuel from Bihar to Nepal and cuts the cost of moving it by tanker trucks.",
+    "body_ne": "करिब ६९ किमी लामो मोतिहारी–अमलेखगञ्ज पाइपलाइन १० सेप्टेम्बर २०१९ मा दुवै प्रधानमन्त्रीले संयुक्त रूपमा उद्घाटन गरे। यसले बिहारबाट नेपालसम्म इन्धन पुर्‍याउँछ, जसले ट्यांकरबाट ढुवानी गर्दा लाग्ने खर्च घटाएको छ।",
+    "icon": "⛽",
+    "sources": [
+     "https://thewire.in/south-asia/india-and-nepal-inaugurate-cross-border-oil-pipeline",
+     "https://thehimalayantimes.com/nepal/pm-oli-modi-inaugurate-motihari-amlekhgunj-oil-pipeline",
+     "https://www.sharesansar.com/newsdetail/motihari-amlekhgunj-petroleum-pipeline-inaugurated-by-pm-of-nepal-and-india-estimated-inflow-of-4000-kiloliters-per-day-estimated"
+    ],
+    "confidence": "high"
+   },
+   {
+    "year": "2020",
+    "title_en": "Jogbani–Biratnagar Integrated Check Post",
+    "title_ne": "जोगबनी–विराटनगर एकीकृत जाँच चौकी",
+    "body_en": "On 21 January 2020 the two Prime Ministers jointly opened the border's second Integrated Check Post, at Jogbani–Biratnagar, by video link.",
+    "body_ne": "२१ जनवरी २०२० मा दुवै प्रधानमन्त्रीले भिडियो लिङ्कमार्फत जोगबनी–विराटनगरमा सीमाको दोस्रो एकीकृत जाँच चौकी संयुक्त रूपमा उद्घाटन गरे।",
+    "icon": "🏢",
+    "sources": [
+     "https://www.theweek.in/news/india/2020/01/21/modi-oli-jointly-inaugurate-check-post-at-jogban-biratnagar.html",
+     "https://www.business-standard.com/article/pti-stories/modi-oli-jointly-inaugurate-integrated-check-post-through-video-conferencing-120012100729_1.html"
+    ],
+    "confidence": "high"
+   },
+   {
+    "year": "2022",
+    "title_en": "Jaynagar–Kurtha passenger train",
+    "title_ne": "जयनगर–कुर्था यात्रु रेल",
+    "body_en": "On 2 April 2022 the passenger train between Jaynagar (Bihar) and Kurtha (near Janakpur) was flagged off. The line is about 35 km long and is the first broad-gauge passenger rail link between India and Nepal.",
+    "body_ne": "२ अप्रिल २०२२ मा जयनगर (बिहार) र कुर्था (जनकपुर नजिक) बीच यात्रु रेल सेवा सुरु भयो। करिब ३५ किमी लामो यो रेलमार्ग भारत र नेपालबीचको पहिलो ब्रोडगेज यात्रु रेलमार्ग हो।",
+    "icon": "🚆",
+    "sources": [
+     "https://www.railwaygazette.com/passenger/india-nepal-broad-gauge-passenger-train-service-launched/61314.article",
+     "https://deccanherald.com/india/first-broad-gauge-passenger-railway-link-between-india-and-nepal-thrown-open-1097142.html",
+     "https://thehimalayantimes.com/nepal/pm-deuba-modi-flag-off-rail-service"
+    ],
+    "confidence": "high"
+   },
+   {
+    "year": "2022",
+    "title_en": "Buddhist heritage centre in Lumbini",
+    "title_ne": "लुम्बिनीमा बौद्ध सम्पदा केन्द्र",
+    "body_en": "On Buddha Purnima, 16 May 2022, the two Prime Ministers laid the foundation stone of the India International Centre for Buddhist Culture and Heritage in the Lumbini Monastic Zone.",
+    "body_ne": "बुद्ध पूर्णिमाका दिन, १६ मे २०२२ मा दुवै प्रधानमन्त्रीले लुम्बिनी मठ क्षेत्रमा 'इन्डिया इन्टरनेसनल सेन्टर फर बुद्धिस्ट कल्चर एन्ड हेरिटेज' (बौद्ध संस्कृति तथा सम्पदा केन्द्र) को शिलान्यास गरे।",
+    "icon": "🪷",
+    "sources": [
+     "https://www.businesstoday.in/latest/story/pm-modi-lays-foundation-stone-of-buddhist-centre-in-nepals-lumbini-333718-2022-05-16",
+     "https://eastmojo.com/neighbourhood-watch/nepal/2022/05/16/pm-modi-lays-foundation-stone-for-buddhist-culture-in-nepals-lumbini/",
+     "https://thehimalayantimes.com/nepal/indian-pm-modi-deuba-hold-bilateral-meeting"
+    ],
+    "confidence": "high"
+   },
+   {
+    "year": "2023",
+    "title_en": "Nepalgunj–Rupaidiha Integrated Check Post",
+    "title_ne": "नेपालगञ्ज–रुपैडिहा एकीकृत जाँच चौकी",
+    "body_en": "On 1 June 2023 the two Prime Ministers remotely inaugurated the Integrated Check Posts at Rupaidiha (India) and Nepalgunj (Nepal), built with Indian assistance. The Nepalgunj ICP began formal operation on 6 May 2024.",
+    "body_ne": "१ जुन २०२३ मा दुवै प्रधानमन्त्रीले भारतको सहयोगमा बनेका रुपैडिहा (भारत) र नेपालगञ्ज (नेपाल) का एकीकृत जाँच चौकी टाढैबाट उद्घाटन गरे। नेपालगञ्ज ICP ले ६ मे २०२४ देखि औपचारिक सञ्चालन सुरु गर्‍यो।",
+    "icon": "🛂",
+    "sources": [
+     "https://thehimalayantimes.com/business/operation-of-integrated-check-post-facilitates-trade-minister-bhandari",
+     "https://osnepal.com/424457",
+     "https://www.deccanherald.com/international/world-news-politics/meeting-narendra-modi-the-most-significant-aspect-of-india-trip-nepal-pm-prachanda-1224597"
+    ],
+    "confidence": "high"
+   },
+   {
+    "year": "2024",
+    "title_en": "Long-term power trade agreement",
+    "title_ne": "दीर्घकालीन विद्युत् व्यापार सम्झौता",
+    "body_en": "Signed in Kathmandu on 4 January 2024, following an understanding reached during the Nepali Prime Minister's India visit in mid-2023, the agreement aims for Nepal to export 10,000 MW of electricity to India within ten years.",
+    "body_ne": "सन् २०२३ को मध्यमा नेपाली प्रधानमन्त्रीको भारत भ्रमणका क्रममा भएको सहमतिपछि ४ जनवरी २०२४ मा काठमाडौंमा हस्ताक्षर भएको यो सम्झौताले दस वर्षभित्र नेपालबाट भारततर्फ १०,००० मेगावाट बिजुली निर्यात गर्ने लक्ष्य राखेको छ।",
+    "icon": "⚡",
+    "sources": [
+     "https://thehimalayantimes.com/business/nepal-india-sign-long-term-agreement-on-electricity-export"
+    ],
+    "confidence": "high"
+   },
+   {
+    "year": "2026",
+    "title_en": "UPI–NPI instant money transfers",
+    "title_ne": "UPI–NPI बाट तुरुन्तै पैसा पठाउने सुविधा",
+    "body_en": "In June 2026 India's UPI and Nepal's NPI were linked for real-time person-to-person transfers. Through select banks, money can be sent to Nepal using the receiver's mobile number or payment address, and from Nepal to India using a UPI ID.",
+    "body_ne": "जुन २०२६ मा भारतको UPI र नेपालको NPI व्यक्तिबाट व्यक्तिमा तुरुन्तै रकम पठाउन जोडिए। छनोट गरिएका बैंकमार्फत प्रापकको मोबाइल नम्बर वा भुक्तानी ठेगाना प्रयोग गरेर नेपालमा, र UPI ID प्रयोग गरेर नेपालबाट भारतमा पैसा पठाउन सकिन्छ।",
+    "icon": "📱",
+    "sources": [
+     "https://nchl.com.np/npci-international-and-nepal-clearing-house-launch-real-time-cross-border-remittance-link-between-india-and-nepal/",
+     "https://www.indembkathmandu.gov.in/about-india-nepal-relations"
+    ],
+    "confidence": "high"
+   }
+  ],
+  "key_numbers": [
+   {
+    "en": "1,751 km of open border between India and Nepal (India's Ministry of Home Affairs)",
+    "ne": "भारत–नेपाल खुला सीमा: १,७५१ किमी (भारतीय गृह मन्त्रालयअनुसार)",
+    "sources": [
+     "https://eparlib.nic.in/bitstream/123456789/728247/1/6079.pdf",
+     "https://cag.gov.in/uploads/download_audit_report/2021/Chapter%201-0624d5a6b04a7d8.59939988.pdf"
+    ],
+    "confidence": "high"
+   },
+   {
+    "en": "5 Indian states on the border: Uttarakhand, Uttar Pradesh, Bihar, West Bengal and Sikkim",
+    "ne": "सीमा जोडिएका भारतका ५ राज्य: उत्तराखण्ड, उत्तर प्रदेश, बिहार, पश्चिम बंगाल र सिक्किम",
+    "sources": [
+     "https://eparlib.nic.in/bitstream/123456789/728247/1/6079.pdf",
+     "https://cag.gov.in/uploads/download_audit_report/2021/Chapter%201-0624d5a6b04a7d8.59939988.pdf"
+    ],
+    "confidence": "high"
+   },
+   {
+    "en": "India's side is guarded by the Sashastra Seema Bal (SSB), declared the border guarding force for the Nepal border in June 2001",
+    "ne": "भारततर्फ सशस्त्र सीमा बल (SSB) ले सीमा सुरक्षा गर्छ, जसलाई जुन २००१ मा नेपाल सीमाको सुरक्षा बल घोषणा गरिएको हो",
+    "sources": [
+     "https://www.recruitment.ssb.gov.in/AboutUsUrl",
+     "https://en.wikipedia.org/wiki/Sashastra_Seema_Bal"
+    ],
+    "confidence": "high"
+   },
+   {
+    "en": "Nepal's side is guarded by the Armed Police Force (APF), set up in 2001 with border security as one of its main duties",
+    "ne": "नेपालतर्फ सशस्त्र प्रहरी बल (APF) ले सीमा सुरक्षा गर्छ; सन् २००१ मा स्थापना भएको यस बलको मुख्य जिम्मेवारीमध्ये सीमा सुरक्षा पनि एक हो",
+    "sources": [
+     "https://thehimalayantimes.com/opinion/border-security-challenges-complicated-and-menacing",
+     "https://en.wikipedia.org/wiki/Armed_Police_Force"
+    ],
+    "confidence": "high"
+   },
+   {
+    "en": "No passport or visa needed: Indian and Nepali citizens can cross the land border freely under the 1950 Treaty",
+    "ne": "राहदानी वा भिसा चाहिँदैन: १९५० को सन्धिअनुसार भारतीय र नेपाली नागरिक स्थल सीमा खुला रूपमा पार गर्न सक्छन्",
+    "sources": [
+     "https://cag.gov.in/uploads/download_audit_report/2021/Chapter%201-0624d5a6b04a7d8.59939988.pdf",
+     "https://eparlib.nic.in/bitstream/123456789/728247/1/6079.pdf"
+    ],
+    "confidence": "high"
+   },
+   {
+    "en": "3 Integrated Check Posts in operation: Birgunj, Biratnagar and Nepalgunj (Bhairahawa and Dodhara Chandani are nearing completion)",
+    "ne": "सञ्चालनमा रहेका ३ एकीकृत जाँच चौकी: वीरगञ्ज, विराटनगर र नेपालगञ्ज (भैरहवा र दोधारा चाँदनी निर्माण सम्पन्न हुने क्रममा)",
+    "sources": [
+     "https://www.indembkathmandu.gov.in/about-india-nepal-relations"
+    ],
+    "confidence": "high"
+   },
+   {
+    "en": "2 cross-border railway lines in operation: Jaynagar–Bijalpura and Jogbani–Nepal Customs Yard",
+    "ne": "सञ्चालनमा रहेका २ सीमापार रेलमार्ग: जयनगर–बिजलपुरा र जोगबनी–नेपाल भन्सार यार्ड",
+    "sources": [
+     "https://www.indembkathmandu.gov.in/about-india-nepal-relations"
+    ],
+    "confidence": "high"
+   },
+   {
+    "en": "More than 1.22 lakh Indian Army pensioners live in Nepal (Embassy of India)",
+    "ne": "नेपालमा बस्ने भारतीय सेनाका पेन्सनभोगी: १ लाख २२ हजारभन्दा बढी (भारतीय दूतावासअनुसार)",
+    "sources": [
+     "https://indembkathmandu.gov.in/about-defence"
+    ],
+    "confidence": "high"
+   },
+   {
+    "en": "About 1,500 Government of India scholarships go to Nepali nationals every year",
+    "ne": "भारत सरकारबाट नेपाली नागरिकलाई हरेक वर्ष करिब १,५०० छात्रवृत्ति",
+    "sources": [
+     "https://www.indembkathmandu.gov.in/about-india-nepal-relations"
+    ],
+    "confidence": "high"
+   }
+  ]
+ },
+ "border": {
+  "summary": {
+   "en": "India and Nepal share an open border, and citizens of the two countries do not need a visa to visit each other. The India–Nepal Treaty of Peace and Friendship, signed in Kathmandu on 31 July 1950, gives each country's nationals the same privileges on a reciprocal basis in matters such as residence, property, trade and movement. An open border still needs documents. Indian citizens should carry a valid Indian passport or the original voter ID card issued by the Election Commission of India. Nepali citizens should carry a passport or citizenship certificate. Citizens of other countries need visas and must cross at an official immigration point. Rupaidiha (India) and Jamunaha/Nepalgunj (Nepal) are both official immigration points. These rules change often, so check before you travel.",
+   "ne": "भारत र नेपालबीच खुला सिमाना छ, र दुवै देशका नागरिकलाई एकअर्काको देश जान भिसा चाहिँदैन। ३१ जुलाई १९५० मा काठमाडौँमा हस्ताक्षर भएको भारत–नेपाल शान्ति तथा मैत्री सन्धिले बसोबास, सम्पत्ति, व्यापार र आवतजावतजस्ता विषयमा दुवै देशका नागरिकलाई पारस्परिक आधारमा उस्तै सुविधा दिन्छ। तर खुला सिमानामा पनि कागजात चाहिन्छ। भारतीय नागरिकले वैध भारतीय राहदानी वा भारतको निर्वाचन आयोगले जारी गरेको सक्कल मतदाता परिचयपत्र बोक्नुपर्छ। नेपाली नागरिकले राहदानी वा नागरिकता प्रमाणपत्र बोक्नुपर्छ। अन्य देशका नागरिकलाई भिसा चाहिन्छ र उनीहरू आधिकारिक अध्यागमन नाकाबाटै आवतजावत गर्नुपर्छ। रुपैडिहा (भारत) र जमुनाहा/नेपालगन्ज (नेपाल) दुवै आधिकारिक अध्यागमन नाका हुन्। नियम बेलाबेला बदलिन्छन्, त्यसैले यात्राअघि जाँच गर्नुहोस्।",
+   "sources": [
+    "https://en.wikipedia.org/wiki/Indo-Nepal_Treaty_of_Peace_and_Friendship",
+    "https://indembkathmandu.gov.in/consular-services-2",
+    "https://www.etvbharat.com/en/international/nepal-says-no-new-restrictions-for-indians-refutes-reports-about-time-limit-restrictions-or-visa-enn26051407085",
+    "https://www.newsonair.gov.in/nepal-bhutan-citizens-can-enter-india-without-passport-or-visa",
+    "https://www.khaleejtimes.com/world/asia/nepal-seeks-india-approval-national-identity-card-cross-border-travel",
+    "https://xn--i1b5bzbybhfo5c8b4bxh.xn--11b7cb3a6a.xn--h2brj9c/sites/default/files/2026-01/List_of_ICPs_%28Immigration_Checkpost%29_20012026.pdf",
+    "https://ekantipur.com/lumbini-pradesh/2026/01/31/en/jamuna-border-crossing-opens-to-third-country-nationals-after-6-years-57-15.html"
+   ],
+   "confidence": "high"
+  },
+  "rules": [
+   {
+    "who": "Indian citizens (adults)",
+    "en": "Indian citizens do not need a visa to enter Nepal, but they must carry proof of Indian citizenship. The Embassy of India in Kathmandu says Indian citizens travelling between India and Nepal must carry a valid Indian passport or an identity card issued by the Election Commission of India (voter ID). For air travel, the voter ID must be the original physical card with a photograph. A downloaded or online-printed copy is not accepted. Nepal's Embassy in New Delhi has also said Indians can travel with a passport or voter ID and need no visa.",
+    "ne": "नेपाल प्रवेश गर्न भारतीय नागरिकलाई भिसा चाहिँदैन, तर भारतीय नागरिकताको प्रमाण बोक्नैपर्छ। काठमाडौँस्थित भारतीय राजदूतावासका अनुसार भारत र नेपालबीच यात्रा गर्ने भारतीय नागरिकले वैध भारतीय राहदानी वा भारतको निर्वाचन आयोगले जारी गरेको परिचयपत्र (मतदाता परिचयपत्र) बोक्नुपर्छ। हवाई यात्रामा फोटोसहितको सक्कल मतदाता परिचयपत्र नै चाहिन्छ। डाउनलोड गरेको वा अनलाइनबाट प्रिन्ट गरेको प्रति मान्य हुँदैन। नयाँ दिल्लीस्थित नेपाली राजदूतावासले पनि भारतीयले राहदानी वा मतदाता परिचयपत्रका आधारमा भिसाबिना यात्रा गर्न सक्ने बताएको छ।",
+    "sources": [
+     "https://indembkathmandu.gov.in/consular-services-2",
+     "https://www.indembkathmandu.gov.in/valid-travel-documents",
+     "https://www.etvbharat.com/en/international/nepal-says-no-new-restrictions-for-indians-refutes-reports-about-time-limit-restrictions-or-visa-enn26051407085"
+    ],
+    "confidence": "high"
+   },
+   {
+    "who": "Indian citizens (Aadhaar, PAN and other cards)",
+    "en": "The Embassy of India in Kathmandu says Aadhaar and PAN cards are NOT valid for travel between India and Nepal. For air travel, the Embassy also says a driving licence and Embassy registration are not accepted. Do not travel with Aadhaar as your only ID.",
+    "ne": "काठमाडौँस्थित भारतीय राजदूतावासका अनुसार आधार कार्ड र प्यान (PAN) कार्ड भारत–नेपाल यात्राका लागि मान्य छैनन्। हवाई यात्रामा ड्राइभिङ लाइसेन्स र दूतावासको दर्ता पनि मान्य नहुने दूतावासले जनाएको छ। आधार कार्ड मात्र लिएर यात्रा नगर्नुहोस्।",
+    "sources": [
+     "https://indembkathmandu.gov.in/consular-services-2",
+     "https://www.indembkathmandu.gov.in/valid-travel-documents"
+    ],
+    "confidence": "high"
+   },
+   {
+    "who": "Indian citizens (Aadhaar checks at border crossings)",
+    "en": "In July 2026 (first week of Saun 2083), Nepali and Indian security officials, including SSB officers from Bahraich, met in Gulariya, Bardiya. Gangs have been making fake Aadhaar cards, so they agreed that an Aadhaar card alone will no longer be treated as enough ID at the border. If an Aadhaar card looks suspicious, officials may also check ration cards, bank documents or other identity papers.",
+    "ne": "जुलाई २०२६ (साउन २०८३ को पहिलो हप्ता) मा बर्दियाको गुलरियामा नेपाल र भारतका सुरक्षा अधिकारीको बैठक भयो, जसमा बहराइचका SSB अधिकारी पनि थिए। नक्कली आधार कार्ड बनाउने गिरोह सक्रिय भएकाले सीमामा आधार कार्डलाई मात्र पर्याप्त परिचयपत्र नमान्ने सहमति भयो। आधार कार्ड शंकास्पद लागेमा अधिकारीले राशन कार्ड, बैंकसम्बन्धी कागजात वा अन्य परिचय कागजात पनि जाँच्न सक्छन्।",
+    "sources": [
+     "https://ekantipur.com/lumbini-pradesh/2026/08/05/en/ration-card-or-banking-document-now-required-when-crossing-the-border-52-14.html"
+    ],
+    "confidence": "medium"
+   },
+   {
+    "who": "Children and senior citizens (Indian)",
+    "en": "These special cases come from older Home Ministry rules reported in January 2019. The Embassy's current advisory does not repeat them. Under those rules, Indians under 15 or over 65 could travel without a passport or voter ID if they carried another photo ID showing age and identity, and the Home Ministry allowed Aadhaar for these two age groups only. Teenagers aged 15 to 18 could travel between India and Nepal with an identity certificate from their school principal in a prescribed form. The Embassy now says Aadhaar is not valid, so the safest choice is a passport (children can get one too) or, for anyone 18 or older, the original voter ID.",
+    "ne": "यी विशेष अवस्था जनवरी २०१९ मा सार्वजनिक भारतीय गृह मन्त्रालयका पुराना नियमबाट आएका हुन्। दूतावासको हालको सूचनामा यी उल्लेख छैनन्। ती नियमअनुसार १५ वर्षमुनि वा ६५ वर्षमाथिका भारतीयले उमेर र पहिचान खुल्ने अर्को फोटो परिचयपत्र बोकेमा राहदानी वा मतदाता परिचयपत्रबिना यात्रा गर्न सक्थे, र गृह मन्त्रालयले यी दुई उमेर समूहलाई मात्र आधार कार्ड प्रयोग गर्न दिएको थियो। १५ देखि १८ वर्षका किशोरकिशोरी विद्यालयका प्रधानाध्यापकले तोकिएको ढाँचामा दिएको परिचय प्रमाणपत्रका आधारमा भारत–नेपाल यात्रा गर्न सक्थे। दूतावासले अहिले आधार मान्य नभएको भनेकाले सबैभन्दा सुरक्षित उपाय राहदानी (बालबालिकाको पनि बन्छ) वा १८ वर्ष पुगेकाका लागि सक्कल मतदाता परिचयपत्र हो।",
+    "sources": [
+     "https://www.businesstoday.in/amp/latest/story/home-ministry-tweaks-travel-norms-indians-over-65-under-15-can-use-aadhaar-to-visit-nepal-bhutan-165900-2019-01-21",
+     "https://m.tribuneindia.com/article/over-65-under-15-use-aadhaar-to-visit-nepal/716772",
+     "https://indembkathmandu.gov.in/consular-services-2"
+    ],
+    "confidence": "medium"
+   },
+   {
+    "who": "Families travelling together (Indian)",
+    "en": "Under the same 2019 rules, when family members (such as husband, wife, minor children and parents) travel together, only one adult needs a passport or voter ID. The others must carry photo ID and proof of the family relationship, such as a ration card, CGHS card, driving licence or school/college ID. These are older rules, so each person should carry their own valid ID if possible.",
+    "ne": "सोही २०१९ को नियमअनुसार परिवारका सदस्य (जस्तै श्रीमान्, श्रीमती, नाबालक छोराछोरी र आमाबुबा) सँगै यात्रा गर्दा एक जना वयस्कसँग मात्र राहदानी वा मतदाता परिचयपत्र भए पुग्थ्यो। अरू सदस्यसँग फोटोसहितको परिचयपत्र र पारिवारिक नाताको प्रमाण हुनुपर्थ्यो, जस्तै राशन कार्ड, CGHS कार्ड, ड्राइभिङ लाइसेन्स वा विद्यालय/कलेजको परिचयपत्र। यी पुराना नियम भएकाले सम्भव भए हरेक सदस्यले आफ्नै वैध परिचयपत्र बोक्नुहोस्।",
+    "sources": [
+     "https://www.businesstoday.in/amp/latest/story/home-ministry-tweaks-travel-norms-indians-over-65-under-15-can-use-aadhaar-to-visit-nepal-bhutan-165900-2019-01-21"
+    ],
+    "confidence": "medium"
+   },
+   {
+    "who": "Indian citizens without valid documents in Nepal (air travel)",
+    "en": "If an Indian citizen in Nepal has no valid travel document for flying back to India, the Embassy of India in Kathmandu can issue an Emergency Travel ID for a single journey from Nepal to India. You need two passport-size photos, proof of Indian nationality and a copy of your flight ticket. Check the current fee with the Embassy. The Embassy cannot help with travel from India to Nepal.",
+    "ne": "नेपालमा रहेका भारतीय नागरिकसँग हवाई मार्गबाट भारत फर्कन वैध यात्रा कागजात छैन भने काठमाडौँस्थित भारतीय राजदूतावासले नेपालबाट भारतसम्म एक पटकको यात्राका लागि 'इमर्जेन्सी ट्राभल आईडी' जारी गर्न सक्छ। यसका लागि राहदानी साइजका दुई फोटो, भारतीय नागरिकताको प्रमाण र हवाई टिकटको प्रतिलिपि चाहिन्छ। हालको शुल्क दूतावासमै सोध्नुहोस्। भारतबाट नेपाल आउने यात्रामा दूतावासले सहयोग गर्न सक्दैन।",
+    "sources": [
+     "https://www.indembkathmandu.gov.in/emergency-travel-id",
+     "https://indembkathmandu.gov.in/consular-services-2"
+    ],
+    "confidence": "high"
+   },
+   {
+    "who": "Nepali citizens entering India",
+    "en": "India's Immigration and Foreigners (Exemption) Order, 2025 came into force on 1 September 2025. Under it, Nepali citizens do not need a passport or visa to enter India from Nepal. The exemption does not apply if they enter India from China, Macau, Hong Kong or Pakistan.",
+    "ne": "भारतको अध्यागमन तथा विदेशी (छुट) आदेश, २०२५ (Immigration and Foreigners (Exemption) Order, 2025) १ सेप्टेम्बर २०२५ देखि लागू भयो। यसअनुसार नेपाली नागरिकलाई नेपालबाट भारत प्रवेश गर्न राहदानी वा भिसा चाहिँदैन। चीन, मकाउ, हङकङ वा पाकिस्तानबाट भारत प्रवेश गरेमा यो छुट लागू हुँदैन।",
+    "sources": [
+     "https://www.newsonair.gov.in/nepal-bhutan-citizens-can-enter-india-without-passport-or-visa",
+     "https://www.uniindia.com/news/india/govt-issues-new-entry-exemption-rules-for-citizens-of-neighboring-countries-effective-sept-1/3564826.html",
+     "https://www.iasgyan.in/daily-current-affairs/immigration-and-foreigners-exemption-order-2025-explained"
+    ],
+    "confidence": "high"
+   },
+   {
+    "who": "Nepali citizens (ID to carry)",
+    "en": "Nepali travellers should still carry ID. For travel to India, especially by air, a valid passport or the original citizenship certificate is required. Nepal has asked India to also accept its new National Identity (NID) card for cross-border travel. As of late July 2026, India had not yet given a formal reply, so do not rely on the NID card alone.",
+    "ne": "नेपाली यात्रुले परिचयपत्र भने बोक्नैपर्छ। भारत यात्रामा, विशेषगरी हवाई यात्रामा, वैध राहदानी वा सक्कल नागरिकता प्रमाणपत्र चाहिन्छ। नेपालले सीमापार यात्राका लागि नयाँ राष्ट्रिय परिचयपत्र (NID) पनि मान्यता दिन भारतलाई अनुरोध गरेको छ। जुलाई २०२६ को अन्त्यसम्म भारतले औपचारिक जवाफ दिएको थिएन, त्यसैले राष्ट्रिय परिचयपत्रमा मात्र भर नपर्नुहोस्।",
+    "sources": [
+     "https://www.khaleejtimes.com/world/asia/nepal-seeks-india-approval-national-identity-card-cross-border-travel"
+    ],
+    "confidence": "medium"
+   },
+   {
+    "who": "All travellers at Nepal's southern crossings",
+    "en": "A Nepal Home Ministry circular, reported in May 2025, requires travellers at Nepal's southern (India-facing) border crossings to show an identity card. Officials record where each traveller is coming from, where they are going and why. Expect ID checks on both sides of the border.",
+    "ne": "मे २०२५ मा सार्वजनिक नेपालको गृह मन्त्रालयको परिपत्रअनुसार दक्षिणी (भारततर्फका) नाकाबाट आवतजावत गर्ने यात्रुले परिचयपत्र देखाउनुपर्छ। नाकामा यात्रु कहाँबाट आएको, कहाँ जाँदै छ र किन भन्ने अभिलेख राखिन्छ। सीमाको दुवैतर्फ परिचयपत्र जाँच हुन सक्छ।",
+    "sources": [
+     "https://ekantipur.com/news/2025/05/09/identity-card-mandatory-in-nepal-india-border-collection-of-records-at-the-border-47-27.html"
+    ],
+    "confidence": "medium"
+   },
+   {
+    "who": "Other nationals (third-country) entering Nepal",
+    "en": "Foreign nationals other than Indian citizens need a Nepal visa. A tourist visa on arrival is available at Nepal's designated immigration entry points, including Jamunaha (Nepalgunj). Fees listed by Nepal's embassies are US$30 for 15 days, US$50 for 30 days and US$125 for 90 days. Children under 10 pay no visa fee (some embassy pages exclude US citizens). SAARC citizens (except Afghanistan) get up to 30 days free on their first visit in a visa year. Some nationalities cannot get a visa on arrival, so check with a Nepali embassy first.",
+    "ne": "भारतीय नागरिकबाहेक अन्य विदेशीलाई नेपाल भिसा चाहिन्छ। जमुनाहा (नेपालगन्ज) लगायत नेपालका तोकिएका अध्यागमन प्रवेश नाकामा आगमनमै पर्यटक भिसा (अन-अराइभल) पाइन्छ। नेपाली दूतावासहरूले देखाएको शुल्क १५ दिनको US$३०, ३० दिनको US$५० र ९० दिनको US$१२५ हो। १० वर्षमुनिका बालबालिकाले भिसा शुल्क तिर्नुपर्दैन (केही दूतावासका पृष्ठमा अमेरिकी नागरिकलाई यो छुट छैन)। सार्क मुलुकका नागरिक (अफगानिस्तानबाहेक) लाई भिसा वर्षको पहिलो भ्रमणमा ३० दिनसम्म निःशुल्क हुन्छ। केही देशका नागरिकले आगमन भिसा पाउँदैनन्, त्यसैले पहिले नेपाली दूतावासमा बुझ्नुहोस्।",
+    "sources": [
+     "https://ca.nepalembassy.gov.np/pages/visa-4/",
+     "https://ru.nepalembassy.gov.np/pages/visa-2/",
+     "https://au.nepalembassy.gov.np/pages/visa/",
+     "https://bh.nepalembassy.gov.np/pages/visha-1"
+    ],
+    "confidence": "medium"
+   },
+   {
+    "who": "Other nationals (third-country) entering India",
+    "en": "Foreign nationals other than Nepali and Bhutanese citizens need valid travel documents, including an Indian visa, and must enter India through an authorised Immigration Check Post. The open-border facility does not apply to them. Entering without valid documents is a criminal offence. In April 2026, a court in Bahraich sentenced two foreign nationals, caught by the SSB at the Rupaidiha check post without a visa or passport, to six months in jail and a fine of ₹50,000 each.",
+    "ne": "नेपाली र भुटानी नागरिकबाहेक अन्य विदेशीलाई भारत प्रवेश गर्न भारतीय भिसासहित वैध यात्रा कागजात चाहिन्छ, र अधिकृत अध्यागमन जाँच चौकीबाटै प्रवेश गर्नुपर्छ। खुला सिमानाको सुविधा उनीहरूलाई लागू हुँदैन। वैध कागजातबिना प्रवेश गर्नु फौजदारी अपराध हो। अप्रिल २०२६ मा बहराइचको अदालतले रुपैडिहा जाँच चौकीमा भिसा र राहदानीबिना SSB ले पक्राउ गरेका दुई विदेशी नागरिकलाई जनही छ महिना कैद र भा.रु. ५०,००० जरिवाना सुनायो।",
+    "sources": [
+     "https://xn--i1b5bzbybhfo5c8b4bxh.xn--11b7cb3a6a.xn--h2brj9c/sites/default/files/2026-01/List_of_ICPs_%28Immigration_Checkpost%29_20012026.pdf",
+     "https://www.etvbharat.com/en/state/two-foreign-nationals-jailed-for-illegal-entry-at-indo-nepal-border-in-uttar-pradesh-enn26040801766",
+     "https://www.uniindia.com/news/india/govt-issues-new-entry-exemption-rules-for-citizens-of-neighboring-countries-effective-sept-1/3564826.html"
+    ],
+    "confidence": "high"
+   },
+   {
+    "who": "Currency (Indian rupee notes)",
+    "en": "Indian notes of ₹100 and below can be carried between India and Nepal with no amount limit set by the RBI. Higher notes are allowed only up to a total of ₹25,000 per person (RBI notification of 28 November 2025). In Nepal, only ₹200 and ₹500 notes issued on or after 9 November 2016 (new series) are accepted, within that ₹25,000 limit (Nepal Rastra Bank notice reissued in July 2026). Old ₹500 and ₹1,000 notes from before that date are still not allowed. The RBI permission does not cover citizens of Pakistan and Bangladesh.",
+    "ne": "रु. १०० र सोभन्दा साना भारतीय नोट भारत–नेपालबीच लैजान/ल्याउन भारतीय रिजर्भ बैंकले रकमको सीमा तोकेको छैन। त्योभन्दा ठूला नोट भने प्रतिव्यक्ति जम्मा भा.रु. २५,००० सम्म मात्र लैजान पाइन्छ (रिजर्भ बैंकको २८ नोभेम्बर २०२५ को सूचना)। नेपालमा ९ नोभेम्बर २०१६ वा त्यसपछि जारी भएका रु. २०० र रु. ५०० का नयाँ नोट मात्र त्यही रु. २५,००० को सीमाभित्र मान्य छन् (नेपाल राष्ट्र बैंकले जुलाई २०२६ मा पुनः जारी गरेको सूचना)। त्यसअघिका पुराना रु. ५०० र रु. १,००० का नोट अझै मान्य छैनन्। पाकिस्तान र बंगलादेशका नागरिकलाई रिजर्भ बैंकको यो सुविधा लागू हुँदैन।",
+    "sources": [
+     "https://www.rbi.org.in/Scripts/NotificationUser.aspx?Id=13216",
+     "https://www.dtnext.in/news/business/nepal-eases-post-demonetisation-curbs-on-indian-currency-allows-rs-200-rs-500-notes",
+     "https://www.sharesansar.com/newsdetail/nrb-reissues-guidelines-on-bringing-foreign-currency-cash-into-and-out-of-nepal-2026-07-24"
+    ],
+    "confidence": "high"
+   },
+   {
+    "who": "Currency (exchange, Nepali rupees, declaration)",
+    "en": "In Nepal, banks, money changers, hotels, airlines and other institutions authorised to exchange foreign currency can exchange up to ₹25,000 per person (Nepal Rastra Bank, July 2026). Under the RBI rule, anyone may take Nepali rupee notes into or out of India with no limit. Nepali citizens may not carry Indian rupees to, or bring them from, any country other than India. Cash above US$5,000 (or the equivalent) brought into Nepal must be declared at customs.",
+    "ne": "नेपालमा बैंक, मनी एक्सचेन्जर, होटल, एयरलाइन्स र विदेशी मुद्रा सटही गर्न अनुमति पाएका अन्य संस्थाले प्रतिव्यक्ति भा.रु. २५,००० सम्म सटही गर्न सक्छन् (नेपाल राष्ट्र बैंक, जुलाई २०२६)। रिजर्भ बैंकको नियमअनुसार नेपाली रुपैयाँका नोट भारत लैजान वा भारतबाट ल्याउन कुनै सीमा छैन। नेपाली नागरिकले भारतबाहेक अरू देशमा भारतीय रुपैयाँ लैजान वा त्यहाँबाट ल्याउन पाउँदैनन्। नेपाल भित्र्याउँदा US$५,००० (वा बराबर) भन्दा बढी नगद भए भन्सारमा घोषणा गर्नुपर्छ।",
+    "sources": [
+     "https://ekantipur.com/business/2026/07/23/en/bankmoney-changer-facility-to-exchange-up-to-inr-25000-per-person-58-54.html",
+     "https://www.rbi.org.in/Scripts/NotificationUser.aspx?Id=13216",
+     "https://www.sharesansar.com/newsdetail/nrb-reissues-guidelines-on-bringing-foreign-currency-cash-into-and-out-of-nepal-2026-07-24"
+    ],
+    "confidence": "medium"
+   },
+   {
+    "who": "Vehicles (Indian-registered, bhansar pass)",
+    "en": "Indian-registered vehicles need a Nepal Customs (bhansar) pass. For a same-day trip to the nearest Nepali town or market, register at the Nepali border check post and take a Day Pass/Challan without paying customs duty, then return to India the same day. To go further or stay overnight, take a pass for the exact number of days. The charge is NPR 100–500 per day, depending on the vehicle type. An Indian vehicle may stay in Nepal for a total of 30 days in a calendar year. Keep the pass with you at all times and hand it back to Nepal Customs when you leave. A vehicle without a valid pass can be seized.",
+    "ne": "भारतमा दर्ता भएका सवारीलाई नेपाल भन्सारको पास चाहिन्छ। नजिकैको नेपाली सहर वा बजारसम्म एकै दिनको भ्रमणका लागि नेपाली सीमा चौकीमा दर्ता गरी भन्सार महसुल नतिरी 'डे पास/चलान' लिनुपर्छ र सोही दिन भारत फर्किनुपर्छ। त्योभन्दा पर जान वा रात बस्न जति दिन बस्ने हो त्यति दिनकै पास लिनुपर्छ। सवारीको प्रकारअनुसार दैनिक ने.रु. १००–५०० शुल्क लाग्छ। भारतीय सवारी एक पात्रो वर्षमा जम्मा ३० दिन मात्र नेपालमा बस्न पाउँछ। पास सधैँ साथमा राख्नुहोस् र फर्कंदा नेपाल भन्सारमा बुझाउनुहोस्। वैध पास नभएको सवारी जफत हुन सक्छ।",
+    "sources": [
+     "https://www.indembkathmandu.gov.in/entry-of-indian-registered-vehicles-in-nepal",
+     "https://kathmandupost.com/money/2026/10/05/nepal-india-move-to-digitise-cross-border-vehicle-permits"
+    ],
+    "confidence": "high"
+   },
+   {
+    "who": "Vehicles (online permit)",
+    "en": "Since May 2026, Nepal's Department of Customs has let foreign vehicles entering by land apply and pay online: choose 'TIV' under 'Our Services' on the Department's website. A QR code with your details is issued after you submit the form. Separately, India and Nepal agreed in August 2026 to digitise cross-border vehicle permits, but as of October 2026 that joint system was not yet in place.",
+    "ne": "मे २०२६ देखि नेपालको भन्सार विभागले स्थलमार्गबाट आउने विदेशी सवारीलाई अनलाइन आवेदन दिन र शुल्क तिर्न दिएको छ: विभागको वेबसाइटमा 'Our Services' अन्तर्गत 'TIV' छान्नुहोस्। फारम बुझाएपछि तपाईंको विवरणसहितको QR कोड पाइन्छ। यसबाहेक, भारत र नेपालले अगस्ट २०२६ मा सीमापार सवारी अनुमतिपत्र डिजिटल बनाउने सहमति गरेका छन्, तर अक्टोबर २०२६ सम्म त्यो संयुक्त प्रणाली लागू भइसकेको थिएन।",
+    "sources": [
+     "https://www.sharesansar.com/newsdetail/nepal-launches-online-permit-system-for-foreign-vehicles-entering-via-land-routes-2026-05-06",
+     "https://kathmandupost.com/money/2026/10/05/nepal-india-move-to-digitise-cross-border-vehicle-permits"
+    ],
+    "confidence": "medium"
+   }
+  ],
+  "rupaidiha_nepalgunj": [
+   {
+    "en": "Rupaidiha is a small town in Bahraich district, Uttar Pradesh, on the India–Nepal border. It sits opposite Nepalgunj in Banke district, Nepal. The crossing point and immigration office on the Nepal side are at Jamunaha.",
+    "ne": "रुपैडिहा भारतको उत्तर प्रदेशको बहराइच जिल्लामा पर्ने भारत–नेपाल सीमाको सानो सहर हो। यो नेपालको बाँके जिल्लाको नेपालगन्जको सामुन्ने छ। नेपालतर्फको नाका र अध्यागमन कार्यालय जमुनाहामा छ।",
+    "sources": [
+     "https://en.wikipedia.org/wiki/Rupaidiha",
+     "https://ekantipur.com/lumbini-pradesh/2026/01/31/en/jamuna-border-crossing-opens-to-third-country-nationals-after-6-years-57-15.html"
+    ],
+    "confidence": "high"
+   },
+   {
+    "en": "Nepalgunj city is about 5 km north of the border crossing.",
+    "ne": "नेपालगन्ज सहर सीमा नाकाबाट करिब ५ किलोमिटर उत्तरमा छ।",
+    "sources": [
+     "https://dlca.logcluster.org/node/5180"
+    ],
+    "confidence": "medium"
+   },
+   {
+    "en": "Rupaidiha is an authorised land Immigration Check Post on the India–Nepal border, run by India's Bureau of Immigration. The Bureau's list as of 30 December 2025 shows it as one of only two land ports in India where e-Visa holders can enter; the other is Raxaul.",
+    "ne": "रुपैडिहा भारत–नेपाल सीमामा रहेको अधिकृत स्थल अध्यागमन जाँच चौकी हो, जसलाई भारतको अध्यागमन ब्युरो (Bureau of Immigration) ले सञ्चालन गर्छ। ३० डिसेम्बर २०२५ सम्मको ब्युरोको सूचीअनुसार ई-भिसा भएका विदेशी प्रवेश गर्न पाउने भारतका दुई स्थल नाकामध्ये रुपैडिहा एक हो; अर्को रक्सौल हो।",
+    "sources": [
+     "https://xn--i1b5bzbybhfo5c8b4bxh.xn--11b7cb3a6a.xn--h2brj9c/sites/default/files/2026-01/List_of_ICPs_%28Immigration_Checkpost%29_20012026.pdf"
+    ],
+    "confidence": "high"
+   },
+   {
+    "en": "On the Nepal side, Jamunaha (Nepalgunj) is one of Nepal's immigration entry points. After about six years, the Jamunaha immigration office fully resumed arrival and departure services for foreign nationals in late January 2026. Third-country travellers can now cross here in both directions.",
+    "ne": "नेपालतर्फ जमुनाहा (नेपालगन्ज) नेपालका अध्यागमन प्रवेश नाकामध्ये एक हो। करिब छ वर्षपछि जनवरी २०२६ को अन्त्यतिर जमुनाहा अध्यागमन कार्यालयले विदेशी नागरिकका लागि आगमन र प्रस्थान सेवा पूर्ण रूपमा फेरि सुरु गर्‍यो। अब तेस्रो देशका यात्रु यहाँबाट दुवैतर्फ आवतजावत गर्न सक्छन्।",
+    "sources": [
+     "https://ekantipur.com/lumbini-pradesh/2026/01/31/en/jamuna-border-crossing-opens-to-third-country-nationals-after-6-years-57-15.html",
+     "https://diplomatnepal.com/news/jamunaha-border-reopens-for-third-country-tourists-after-six-years/"
+    ],
+    "confidence": "high"
+   },
+   {
+    "en": "The Rupaidiha land port (about 115 acres) is Uttar Pradesh's first land port. The Prime Ministers of India and Nepal inaugurated it and its mirror Integrated Check Post (ICP) at Nepalgunj on 1 June 2023. The Nepalgunj ICP was built with Indian grant assistance and handed over to Nepal in April 2024. It is managed by Nepal's Intermodal Transport Development Board and has customs offices, quarantine, warehouses and bank counters, and handles cargo vehicle checks.",
+    "ne": "रुपैडिहा स्थल बन्दरगाह (करिब ११५ एकड) उत्तर प्रदेशको पहिलो स्थल बन्दरगाह हो। भारत र नेपालका प्रधानमन्त्रीले यसको र नेपालगन्जको जोडी एकीकृत जाँच चौकी (ICP) को १ जुन २०२३ मा उद्घाटन गरेका थिए। नेपालगन्ज ICP भारतको अनुदान सहयोगमा बनेको हो र अप्रिल २०२४ मा नेपाललाई हस्तान्तरण गरिएको थियो। यसको व्यवस्थापन नेपाल इन्टरमोडल यातायात विकास समितिले गर्छ। यसमा भन्सार कार्यालय, क्वारेन्टाइन, गोदाम र बैंक काउन्टर छन्, र यहाँ मालवाहक सवारीको जाँच हुन्छ।",
+    "sources": [
+     "https://www.tribuneindia.com/news/nation/pm-modi-nepalese-counterpart-prachanda-to-inaugurate-ups-first-land-port-513258",
+     "https://www.indembkathmandu.gov.in/media-detail/43",
+     "https://myrepublica.nagariknetwork.com/news/nepalgunj-icp-handed-over-to-nepal-to-come-into-operation-from-may-8"
+    ],
+    "confidence": "medium"
+   },
+   {
+    "en": "On the Indian side, the border is guarded by the Sashastra Seema Bal (SSB), which checks people entering at Rupaidiha.",
+    "ne": "भारततर्फ सशस्त्र सीमा बल (SSB) ले सीमाको सुरक्षा गर्छ र रुपैडिहाबाट प्रवेश गर्नेहरूको जाँच गर्छ।",
+    "sources": [
+     "https://www.etvbharat.com/en/state/two-foreign-nationals-jailed-for-illegal-entry-at-indo-nepal-border-in-uttar-pradesh-enn26040801766"
+    ],
+    "confidence": "medium"
+   },
+   {
+    "en": "The crossing can be fully closed for security reasons, such as elections. Before Nepal's general election on 5 March 2026, the District Administration Office in Banke closed all of Banke's border crossings with India for 72 hours. Jamunaha has also been closed during state assembly elections in Uttar Pradesh.",
+    "ne": "निर्वाचनजस्ता सुरक्षा कारणले नाका पूर्ण रूपमा बन्द हुन सक्छ। नेपालको ५ मार्च २०२६ (फागुन २१, २०८२) को आम निर्वाचनअघि जिल्ला प्रशासन कार्यालय बाँकेले भारतसँग जोडिएका बाँकेका सबै नाका ७२ घण्टा बन्द गरेको थियो। उत्तर प्रदेशको विधानसभा निर्वाचनका बेला पनि जमुनाहा नाका बन्द भएको छ।",
+    "sources": [
+     "https://english.ratopati.com/story/50541/house-of-representatives-election-all-border-crossings-in-banke-to-be-closed-for-72-hours",
+     "https://en.wikipedia.org/wiki/2026_Nepalese_general_election",
+     "https://myrepublica.nagariknetwork.com/news/jamunaha-border-point-to-remain-closed-for-60-hrs"
+    ],
+    "confidence": "high"
+   },
+   {
+    "en": "In October 2026, the District Administration Office in Banke set up a passenger help desk at Jamunaha, staffed by Nepal Police and Traffic Police, to protect people returning from India for Dashain and Tihar from robbery and fraud. Similar desks were to run at the Nepalgunj and Kohalpur bus parks.",
+    "ne": "अक्टोबर २०२६ मा दसैँ–तिहारका लागि भारतबाट फर्कने यात्रुलाई लुटपाट र ठगीबाट जोगाउन जिल्ला प्रशासन कार्यालय बाँकेले जमुनाहामा नेपाल प्रहरी र ट्राफिक प्रहरी खटाएर यात्रु सहायता कक्ष (हेल्प डेस्क) राख्यो। नेपालगन्ज र कोहलपुरका बसपार्कमा पनि यस्तै सहायता कक्ष सञ्चालन गर्ने भनिएको छ।",
+    "sources": [
+     "https://english.onlinekhabar.com/?p=594515"
+    ],
+    "confidence": "high"
+   }
+  ],
+  "tips": [
+   {
+    "en": "Carry your original ID plus a couple of photocopies. Indians should carry a passport or original voter ID; Nepalis should carry a passport or citizenship certificate. Aadhaar alone is not enough.",
+    "ne": "सक्कल परिचयपत्र र त्यसका केही फोटोकपी साथमा राख्नुहोस्। भारतीयले राहदानी वा सक्कल मतदाता परिचयपत्र बोक्नुहोस्; नेपालीले राहदानी वा नागरिकता प्रमाणपत्र बोक्नुहोस्। आधार कार्ड मात्र पर्याप्त हुँदैन।",
+    "sources": [
+     "https://indembkathmandu.gov.in/consular-services-2",
+     "https://www.khaleejtimes.com/world/asia/nepal-seeks-india-approval-national-identity-card-cross-border-travel",
+     "https://ekantipur.com/lumbini-pradesh/2026/08/05/en/ration-card-or-banking-document-now-required-when-crossing-the-border-52-14.html"
+    ],
+    "confidence": "high"
+   },
+   {
+    "en": "Travelling with children or elderly parents? If possible, carry a passport for each person. If not, bring a photo ID for every family member plus proof of the relationship, such as a ration card or school ID. These family rules date from 2019, so a passport is the safest choice.",
+    "ne": "बालबालिका वा वृद्ध आमाबुबासँग यात्रा गर्दै हुनुहुन्छ? सम्भव भए हरेकको राहदानी बोक्नुहोस्। नभए परिवारका हरेक सदस्यको फोटो परिचयपत्र र नाताको प्रमाण, जस्तै राशन कार्ड वा विद्यालयको परिचयपत्र, साथमा राख्नुहोस्। परिवारसम्बन्धी यी नियम २०१९ का हुन्, त्यसैले राहदानी नै सबैभन्दा सुरक्षित उपाय हो।",
+    "sources": [
+     "https://www.businesstoday.in/amp/latest/story/home-ministry-tweaks-travel-norms-indians-over-65-under-15-can-use-aadhaar-to-visit-nepal-bhutan-165900-2019-01-21",
+     "https://indembkathmandu.gov.in/consular-services-2"
+    ],
+    "confidence": "medium"
+   },
+   {
+    "en": "Keep your bus ticket (PDF or image) on your phone, plus a printout. Border officials record where travellers are coming from and going to, and the ticket answers that quickly.",
+    "ne": "बस टिकट (PDF वा फोटो) फोनमा र एउटा प्रिन्ट गरेर साथमा राख्नुहोस्। नाकामा यात्रु कहाँबाट आएको र कहाँ जाँदै छ भन्ने अभिलेख राखिन्छ, र टिकटले यसको छिटो जवाफ दिन्छ।",
+    "sources": [
+     "https://ekantipur.com/news/2025/05/09/identity-card-mandatory-in-nepal-india-border-collection-of-records-at-the-border-47-27.html"
+    ],
+    "confidence": "medium"
+   },
+   {
+    "en": "Carry small notes in both INR and NPR. Indian notes of ₹100 and below are easiest. Bring ₹200/₹500 notes only from the new series and keep the total under ₹25,000 per person. Never carry old ₹500 or ₹1,000 notes. Exchange money only at banks or authorised money changers.",
+    "ne": "भारतीय र नेपाली दुवै रुपैयाँका साना नोट साथमा राख्नुहोस्। रु. १०० र सोभन्दा साना भारतीय नोट सबैभन्दा सजिला हुन्छन्। रु. २००/५०० का नयाँ नोट मात्र ल्याउनुहोस् र प्रतिव्यक्ति जम्मा रु. २५,००० भन्दा कम राख्नुहोस्। पुराना रु. ५०० वा रु. १,००० का नोट कहिल्यै नबोक्नुहोस्। पैसा बैंक वा अनुमतिप्राप्त मनी एक्सचेन्जरमा मात्र सटही गर्नुहोस्।",
+    "sources": [
+     "https://www.rbi.org.in/Scripts/NotificationUser.aspx?Id=13216",
+     "https://www.dtnext.in/news/business/nepal-eases-post-demonetisation-curbs-on-indian-currency-allows-rs-200-rs-500-notes",
+     "https://ekantipur.com/business/2026/07/23/en/bankmoney-changer-facility-to-exchange-up-to-inr-25000-per-person-58-54.html"
+    ],
+    "confidence": "high"
+   },
+   {
+    "en": "Before you travel, check the news for border closures. Banke's crossings were fully closed for 72 hours before Nepal's March 2026 election.",
+    "ne": "यात्रा गर्नुअघि नाका बन्दको समाचार हेर्नुहोस्। नेपालको मार्च २०२६ को निर्वाचनअघि बाँकेका नाका ७२ घण्टा पूर्ण रूपमा बन्द भएका थिए।",
+    "sources": [
+     "https://english.ratopati.com/story/50541/house-of-representatives-election-all-border-crossings-in-banke-to-be-closed-for-72-hours"
+    ],
+    "confidence": "high"
+   },
+   {
+    "en": "Foreign (non-Indian, non-Nepali) passengers: get your Indian visa before travelling (e-Visa holders can enter at Rupaidiha). Get your Nepal visa and entry stamp at the Jamunaha immigration office. Never cross without the proper stamps; illegal entry can mean jail.",
+    "ne": "विदेशी (भारतीय र नेपालीबाहेक) यात्रु: यात्राअघि नै भारतीय भिसा लिनुहोस् (ई-भिसा भएकाले रुपैडिहाबाट प्रवेश गर्न सक्छन्)। नेपाल भिसा र प्रवेश छाप जमुनाहा अध्यागमन कार्यालयमा लिनुहोस्। आवश्यक छापबिना कहिल्यै सीमा पार नगर्नुहोस्; अवैध प्रवेशमा जेल पनि हुन सक्छ।",
+    "sources": [
+     "https://xn--i1b5bzbybhfo5c8b4bxh.xn--11b7cb3a6a.xn--h2brj9c/sites/default/files/2026-01/List_of_ICPs_%28Immigration_Checkpost%29_20012026.pdf",
+     "https://ekantipur.com/lumbini-pradesh/2026/01/31/en/jamuna-border-crossing-opens-to-third-country-nationals-after-6-years-57-15.html",
+     "https://www.etvbharat.com/en/state/two-foreign-nationals-jailed-for-illegal-entry-at-indo-nepal-border-in-uttar-pradesh-enn26040801766"
+    ],
+    "confidence": "high"
+   },
+   {
+    "en": "In the festival rush, watch your bags and cash and stay alert for fraud. If you need help, go to the official passenger help desk at Jamunaha or at the Nepalgunj and Kohalpur bus parks.",
+    "ne": "चाडपर्वको भीडमा झोला र नगदमा ध्यान दिनुहोस् र ठगीबाट सतर्क रहनुहोस्। सहयोग चाहिए जमुनाहा वा नेपालगन्ज र कोहलपुर बसपार्कको आधिकारिक यात्रु सहायता कक्षमा जानुहोस्।",
+    "sources": [
+     "https://english.onlinekhabar.com/?p=594515"
+    ],
+    "confidence": "high"
+   },
+   {
+    "en": "Driving your own Indian vehicle into Nepal? Get the bhansar (customs) pass at the border or online, keep it with you, and remember the limit of 30 days in Nepal per calendar year.",
+    "ne": "आफ्नै भारतीय सवारी लिएर नेपाल जाँदै हुनुहुन्छ? सीमामा वा अनलाइन भन्सार पास लिनुहोस्, साथमा राख्नुहोस्, र एक पात्रो वर्षमा नेपालमा बस्न पाउने सीमा ३० दिन हो भन्ने नबिर्सनुहोस्।",
+    "sources": [
+     "https://www.indembkathmandu.gov.in/entry-of-indian-registered-vehicles-in-nepal",
+     "https://kathmandupost.com/money/2026/10/05/nepal-india-move-to-digitise-cross-border-vehicle-permits",
+     "https://www.sharesansar.com/newsdetail/nepal-launches-online-permit-system-for-foreign-vehicles-entering-via-land-routes-2026-05-06"
+    ],
+    "confidence": "high"
+   }
+  ]
+ },
+ "nepal": {
+  "places": [
+   {
+    "name": "Bageshwori Temple, Nepalgunj",
+    "name_ne": "बागेश्वरी मन्दिर, नेपालगन्ज",
+    "region": "Banke, Lumbini Province",
+    "type": "pilgrimage",
+    "blurb_en": "Old Shakti Peeth in the centre of Nepalgunj, dedicated to Goddess Bageshwori, a form of Durga. Devotees believe Sati's tongue fell here, and the temple sits beside a sacred pond.",
+    "blurb_ne": "नेपालगन्जको बीचमा रहेको पुरानो शक्तिपीठ, दुर्गाको रूप देवी बागेश्वरीलाई समर्पित। सतीदेवीको जिब्रो यहीँ खसेको जनविश्वास छ, र मन्दिर पवित्र पोखरीको किनारमा छ।",
+    "best_season_en": "Open all year. Biggest crowds come at Dashain (Navaratri), and also at Shivaratri and Teej.",
+    "best_season_ne": "वर्षभरि खुला। दशैँ (नवरात्र) मा सबैभन्दा धेरै भीड हुन्छ, शिवरात्रि र तीजमा पनि।",
+    "unesco": false,
+    "lat": 28.0617,
+    "lon": 81.6239,
+    "from_nepalgunj_hint": "In Nepalgunj city centre, a short local ride from the bus park or the Rupaidiha border side.",
+    "sources": [
+     "https://en.wikipedia.org/wiki/Bageshwori_Temple",
+     "https://english.onlinekhabar.com/shakti-peeths-dashain-navaratri-nepal.html",
+     "https://nepaltraveller.com/sidetrack/friday-facts-the-bageshwori-temple"
+    ]
+   },
+   {
+    "name": "Bardiya National Park",
+    "name_ne": "बर्दिया राष्ट्रिय निकुञ्ज",
+    "region": "Bardiya, Lumbini Province",
+    "type": "wildlife",
+    "blurb_en": "The largest and least disturbed national park in Nepal's Terai. Known for Bengal tiger sightings, one-horned rhinos and wild elephants, with Tharu homestays at the park's edge.",
+    "blurb_ne": "नेपालको तराईकै सबैभन्दा ठूलो र कम खलबलिएको राष्ट्रिय निकुञ्ज। पाटे बाघ, एकसिङ्गे गैँडा र जङ्गली हात्ती हेर्न प्रसिद्ध छ, र छेउमै थारू होमस्टे छन्।",
+    "best_season_en": "Mid-February to mid-June, the best time for tiger sightings.",
+    "best_season_ne": "फेब्रुअरीको मध्यदेखि जुनको मध्यसम्म, बाघ देख्ने सबैभन्दा राम्रो समय।",
+    "unesco": false,
+    "lat": 28.3833,
+    "lon": 81.5,
+    "from_nepalgunj_hint": "By road: go from Nepalgunj to Kohalpur, then west on the Mahendra (East-West) Highway. Thakurdwara, the park headquarters, is about 90 km (around 2 hours) from Nepalgunj by car, jeep or bus.",
+    "sources": [
+     "https://film.gov.np/destination/24",
+     "https://en.wikipedia.org/wiki/Bardiya_National_Park",
+     "https://en.wikipedia.org/wiki/Mahendra_Highway",
+     "https://en.wikipedia.org/wiki/Nepalgunj"
+    ]
+   },
+   {
+    "name": "Shuklaphanta National Park",
+    "name_ne": "शुक्लाफाँटा राष्ट्रिय निकुञ्ज",
+    "region": "Kanchanpur (near Bhimdatta/Mahendranagar), Sudurpashchim Province",
+    "type": "wildlife",
+    "blurb_en": "Far-western grassland park with the world's largest known population of barasingha (swamp deer). It also has tigers, wild elephants, rhinos and sarus cranes.",
+    "blurb_ne": "सुदूरपश्चिमको घाँसे मैदान भएको निकुञ्ज, जहाँ विश्वकै सबैभन्दा ठूलो ज्ञात बाह्रसिङ्गा (स्वाम्प डियर) समूह छ। यहाँ बाघ, जङ्गली हात्ती, गैँडा र सारस पनि पाइन्छन्।",
+    "best_season_en": "October to March. April to June is hot (up to about 42°C) and July to September is monsoon.",
+    "best_season_ne": "अक्टोबरदेखि मार्चसम्म। अप्रिल–जुन धेरै गर्मी हुन्छ (करिब ४२° से. सम्म) र जुलाई–सेप्टेम्बर मनसुन हो।",
+    "unesco": false,
+    "lat": 28.8403,
+    "lon": 80.2289,
+    "from_nepalgunj_hint": "By road: go from Nepalgunj to Kohalpur, then west on the Mahendra (East-West) Highway through Attariya to Bhimdatta (Mahendranagar), the park's nearest city.",
+    "sources": [
+     "https://en.wikipedia.org/wiki/Shuklaphanta_National_Park",
+     "https://ntb.gov.np/en/national-parks-of-nepal",
+     "https://en.wikipedia.org/wiki/Mahendra_Highway"
+    ]
+   },
+   {
+    "name": "Rara Lake (Rara National Park)",
+    "name_ne": "रारा ताल (रारा राष्ट्रिय निकुञ्ज)",
+    "region": "Mugu, Karnali Province",
+    "type": "lake",
+    "blurb_en": "Nepal's biggest lake, about 10.8 sq km at around 2,990 m. This deep blue alpine lake is the heart of Rara National Park and a Ramsar-listed wetland.",
+    "blurb_ne": "नेपालकै सबैभन्दा ठूलो ताल, करिब १०.८ वर्ग कि.मि. र लगभग २,९९० मिटर उचाइमा। यो गहिरो नीलो हिमाली ताल रारा राष्ट्रिय निकुञ्जको मुटु हो र रामसार सूचीमा परेको सिमसार क्षेत्र हो।",
+    "best_season_en": "February to April, and October to November. In winter the lake can partly freeze and it is hard to reach.",
+    "best_season_ne": "फेब्रुअरी–अप्रिल र अक्टोबर–नोभेम्बर। जाडोमा ताल आंशिक रूपमा जम्न सक्छ र पुग्न गाह्रो हुन्छ।",
+    "unesco": false,
+    "lat": 29.5292,
+    "lon": 82.0931,
+    "from_nepalgunj_hint": "By air: direct flights from Nepalgunj to Talcha (Rara) Airport in Mugu take about 35 minutes. Summit Air and Nepal Airlines fly it, and flights often stop for bad weather. From there it is about a 2-hour walk to the lake. Another way is to fly Nepalgunj to Jumla and trek 2 to 3 days.",
+    "sources": [
+     "https://ntb.gov.np/rara-national-park",
+     "https://ntb.gov.np/rara",
+     "https://thehimalayantimes.com/business/flight-disruptions-at-rara-airport-for-three-consecutive-days",
+     "https://www.b360nepal.com/detail/26542/nepal-airlines-resumes-flights-to-rara-airport-after-four-month-hiatus",
+     "https://en.wikipedia.org/wiki/Rara_Lake",
+     "https://en.wikipedia.org/wiki/Nepalgunj_Airport"
+    ]
+   },
+   {
+    "name": "Lumbini",
+    "name_ne": "लुम्बिनी",
+    "region": "Rupandehi, Lumbini Province",
+    "type": "pilgrimage",
+    "blurb_en": "Birthplace of Siddhartha Gautama, the Buddha. See the Maya Devi Temple, the Ashoka Pillar and the monastic zone. A UNESCO World Heritage Site since 1997.",
+    "blurb_ne": "सिद्धार्थ गौतम बुद्धको जन्मस्थल। यहाँ मायादेवी मन्दिर, अशोक स्तम्भ र गुम्बा क्षेत्र हेर्न सकिन्छ। सन् १९९७ देखि युनेस्को विश्व सम्पदा सूचीमा छ।",
+    "best_season_en": "October to March, when it is cooler. Terai summers often go above 40°C.",
+    "best_season_ne": "अक्टोबरदेखि मार्चसम्म, जब मौसम चिसो हुन्छ। तराईमा गर्मीमा तापक्रम प्रायः ४०° से. नाघ्छ।",
+    "unesco": true,
+    "lat": 27.4696,
+    "lon": 83.2759,
+    "from_nepalgunj_hint": "By road: go from Nepalgunj to Kohalpur, then east on the Mahendra (East-West) Highway to Butwal. From Butwal go south to Bhairahawa (Siddharthanagar), and from there it is about 22 km to Lumbini by bus or taxi.",
+    "sources": [
+     "https://ntb.gov.np/lumbini--rupandehi",
+     "https://en.wikipedia.org/wiki/List_of_World_Heritage_Sites_in_Nepal",
+     "https://en.unesco.org/silkroad/silk-road-themes/world-heritage-sites/lumbini-birthplace-lord-buddha",
+     "https://en.wikipedia.org/wiki/Mahendra_Highway",
+     "https://en.wikipedia.org/wiki/Siddhartha_Highway",
+     "https://ntb.gov.np/plan-your-trip/about-nepal/climate"
+    ]
+   },
+   {
+    "name": "Tansen (Palpa)",
+    "name_ne": "तानसेन (पाल्पा)",
+    "region": "Palpa, Lumbini Province",
+    "type": "heritage",
+    "blurb_en": "Old hill town with cobbled lanes and Newari houses. Enjoy the views from Shreenagar hill and visit Rani Mahal, a palace on the Kali Gandaki river.",
+    "blurb_ne": "ढुङ्गा छापिएका गल्ली र पुराना नेवारी घर भएको पहाडी सहर। श्रीनगर डाँडाबाट दृश्य हेर्नुहोस् र कालीगण्डकी किनारको रानीमहल घुम्नुहोस्।",
+    "best_season_en": "October to November for the clearest mountain views. Spring (March to May) is also pleasant.",
+    "best_season_ne": "हिमाल सबैभन्दा सफा देखिन अक्टोबर–नोभेम्बर। वसन्त (मार्च–मे) पनि रमाइलो हुन्छ।",
+    "unesco": false,
+    "lat": 27.8667,
+    "lon": 83.55,
+    "from_nepalgunj_hint": "By road: go from Nepalgunj to Kohalpur, then east on the Mahendra (East-West) Highway to Butwal. From Butwal go north on the Siddhartha Highway to Tansen.",
+    "sources": [
+     "https://ntb.gov.np/tansen--palpa",
+     "https://en.wikipedia.org/wiki/Tansen,_Nepal",
+     "https://en.wikipedia.org/wiki/Siddhartha_Highway",
+     "https://ntb.gov.np/plan-your-trip/about-nepal/climate"
+    ]
+   },
+   {
+    "name": "Pokhara (Phewa Lake)",
+    "name_ne": "पोखरा (फेवा ताल)",
+    "region": "Kaski, Gandaki Province",
+    "type": "lake",
+    "blurb_en": "Lakeside city where Machhapuchhre (Fishtail) is reflected in Phewa Lake. Take a boat to the Tal Barahi island temple, watch sunrise from Sarangkot and hike to the World Peace Pagoda.",
+    "blurb_ne": "फेवा तालमा माछापुच्छ्रे हिमालको छाया देखिने तालको सहर। डुङ्गामा ताल बाराही टापु मन्दिर जानुहोस्, सराङकोटबाट सूर्योदय हेर्नुहोस् र विश्व शान्ति स्तूपसम्म पैदल जानुहोस्।",
+    "best_season_en": "September to November is the best season, and from October the Annapurna range is usually clear. Spring (March to May) is also good.",
+    "best_season_ne": "सबैभन्दा राम्रो समय सेप्टेम्बर–नोभेम्बर हो, अक्टोबरदेखि अन्नपूर्ण हिमशृङ्खला प्रायः सफा देखिन्छ। वसन्त (मार्च–मे) पनि राम्रो हुन्छ।",
+    "unesco": false,
+    "lat": 28.2083,
+    "lon": 83.9889,
+    "from_nepalgunj_hint": "By air: Buddha Air flies direct from Nepalgunj to Pokhara (about 30 minutes). In August 2026 it announced flights three days a week (Sunday, Wednesday, Friday) from 16 September 2026, so check before booking. By road: go from Kohalpur on the Mahendra Highway to Butwal, then take the Siddhartha Highway through Tansen to Pokhara.",
+    "sources": [
+     "https://english.onlinekhabar.com/nepalgunj-pokhara-flights-to-resume-from-sept-16.html",
+     "https://en.wikipedia.org/wiki/Nepalgunj_Airport",
+     "https://ntb.gov.np/pokhara",
+     "https://ntb.gov.np/en/the-beauty-of-pokhara-in-autumn",
+     "https://en.wikipedia.org/wiki/Pokhara",
+     "https://en.wikipedia.org/wiki/Siddhartha_Highway"
+    ]
+   },
+   {
+    "name": "Annapurna Region (Annapurna Conservation Area)",
+    "name_ne": "अन्नपूर्ण क्षेत्र (अन्नपूर्ण संरक्षण क्षेत्र)",
+    "region": "Kaski, Myagdi, Mustang, Manang, Lamjung - Gandaki Province",
+    "type": "trek",
+    "blurb_en": "Nepal's most famous trekking country, with the Annapurna Circuit and Annapurna Sanctuary trails, rhododendron forests, Tilicho Lake and Manang. It is also home to the snow leopard.",
+    "blurb_ne": "नेपालको सबैभन्दा चर्चित पदयात्रा क्षेत्र, जहाँ अन्नपूर्ण सर्किट र अन्नपूर्ण सेन्चुरी (आधार शिविर) मार्ग, लालीगुराँसका वन, तिलिचो ताल र मनाङ छन्। यो हिउँचितुवाको बासस्थान पनि हो।",
+    "best_season_en": "March to May, and September to November.",
+    "best_season_ne": "मार्च–मे र सेप्टेम्बर–नोभेम्बर।",
+    "unesco": false,
+    "lat": 28.78,
+    "lon": 83.97,
+    "from_nepalgunj_hint": "First reach Pokhara, the main gateway for the treks. Buddha Air flies there from Nepalgunj on scheduled days, or you can go by road through Butwal and the Siddhartha Highway.",
+    "sources": [
+     "https://ntb.gov.np/en/annapurna-conservation-area",
+     "https://en.wikipedia.org/wiki/Annapurna_Conservation_Area",
+     "https://english.onlinekhabar.com/nepalgunj-pokhara-flights-to-resume-from-sept-16.html"
+    ]
+   },
+   {
+    "name": "Muktinath",
+    "name_ne": "मुक्तिनाथ",
+    "region": "Mustang, Gandaki Province",
+    "type": "pilgrimage",
+    "blurb_en": "A temple sacred to both Hindus (Lord Vishnu) and Buddhists (Avalokiteshwar), at about 3,800 m. Pilgrims bathe under 108 water spouts and see the ever-burning flame at Jwala Mai.",
+    "blurb_ne": "करिब ३,८०० मिटरमा रहेको, हिन्दू (भगवान् विष्णु) र बौद्ध (अवलोकितेश्वर) दुवैका लागि पवित्र मन्दिर। तीर्थयात्रीहरू १०८ धारामा स्नान गर्छन् र ज्वालामाईको अखण्ड ज्योति दर्शन गर्छन्।",
+    "best_season_en": "March to May, and September to November.",
+    "best_season_ne": "मार्च–मे र सेप्टेम्बर–नोभेम्बर।",
+    "unesco": false,
+    "lat": 28.8171,
+    "lon": 83.8717,
+    "from_nepalgunj_hint": "Go through Pokhara, which you can reach from Nepalgunj by Buddha Air on scheduled days or by road. From Pokhara, fly to Jomsom and walk about 5 hours, or take a bus via Beni and Jomsom on the newer road to Muktinath.",
+    "sources": [
+     "https://ntb.gov.np/muktinath--mustang",
+     "https://en.wikipedia.org/wiki/Muktinath",
+     "https://ntb.gov.np/en/annapurna-conservation-area"
+    ]
+   },
+   {
+    "name": "Bandipur",
+    "name_ne": "बन्दीपुर",
+    "region": "Tanahun, Gandaki Province",
+    "type": "heritage",
+    "blurb_en": "Well-kept Newar hilltop town, nicknamed the 'Queen of the hills'. Thani Mai temple gives a 360-degree view including the Annapurna range, and nearby Siddha Gufa is Nepal's largest cave.",
+    "blurb_ne": "पुरानो रूप जोगाइराखेको नेवार पहाडी बजार, जसलाई 'पहाडकी रानी' भनिन्छ। थानीमाई मन्दिरबाट अन्नपूर्णसहितको ३६० डिग्री दृश्य देखिन्छ, र नजिकैको सिद्धगुफा नेपालकै सबैभन्दा ठूलो गुफा हो।",
+    "best_season_en": "October to November for the clearest mountain views. Spring (March to May) is also pleasant.",
+    "best_season_ne": "हिमाल सफा देखिन अक्टोबर–नोभेम्बर। वसन्त (मार्च–मे) पनि रमाइलो हुन्छ।",
+    "unesco": false,
+    "lat": 27.9333,
+    "lon": 84.4167,
+    "from_nepalgunj_hint": "Fly from Nepalgunj to Pokhara (Buddha Air, scheduled days). From Pokhara it is about 76 km, around 2 hours 10 minutes by bus.",
+    "sources": [
+     "https://ntb.gov.np/bandipur",
+     "https://en.wikipedia.org/wiki/Bandipur",
+     "https://ntb.gov.np/plan-your-trip/about-nepal/climate"
+    ]
+   },
+   {
+    "name": "Gorkha Durbar",
+    "name_ne": "गोरखा दरबार",
+    "region": "Gorkha, Gandaki Province",
+    "type": "heritage",
+    "blurb_en": "Hilltop Gorkha Durbar, a 16th-century palace where the Shah dynasty began. It is the birthplace of King Prithvi Narayan Shah, who unified Nepal, and Manakamana temple is in the same district.",
+    "blurb_ne": "१६औँ शताब्दीको डाँडामाथिको गोरखा दरबार, जहाँबाट शाह वंश सुरु भएको थियो। यो नेपाल एकीकरण गर्ने राजा पृथ्वीनारायण शाहको जन्मस्थल हो, र मनकामना मन्दिर पनि यही जिल्लामा छ।",
+    "best_season_en": "October to November for clear Himalayan views. Spring is March to May.",
+    "best_season_ne": "हिमाल सफा देखिन अक्टोबर–नोभेम्बर। वसन्त मार्च–मे हो।",
+    "unesco": false,
+    "lat": 28,
+    "lon": 84.6333,
+    "from_nepalgunj_hint": "Fly from Nepalgunj to Kathmandu (about 1 hour). Then take a bus to Gorkha, about 4 hours, direct or via Kurintar.",
+    "sources": [
+     "https://ntb.gov.np/gorkha",
+     "https://en.wikipedia.org/wiki/Gorkha_Durbar",
+     "https://en.wikipedia.org/wiki/Gorkha_Municipality",
+     "https://ntb.gov.np/rara-national-park"
+    ]
+   },
+   {
+    "name": "Chitwan National Park",
+    "name_ne": "चितवन राष्ट्रिय निकुञ्ज",
+    "region": "Chitwan (Inner Terai), Bagmati Province",
+    "type": "wildlife",
+    "blurb_en": "Nepal's first national park (1973) and a UNESCO site since 1984. See one-horned rhinos, Bengal tigers and gharial crocodiles on jungle safaris, and Tharu culture around Sauraha.",
+    "blurb_ne": "नेपालको पहिलो राष्ट्रिय निकुञ्ज (१९७३), सन् १९८४ देखि युनेस्को विश्व सम्पदा। जङ्गल सफारीमा एकसिङ्गे गैँडा, पाटे बाघ र घडियाल गोही हेर्नुहोस्, र सौराहा वरपर थारू संस्कृति।",
+    "best_season_en": "October to March (pleasant, around 25°C). April to June is very hot and July to September is rainy.",
+    "best_season_ne": "अक्टोबरदेखि मार्चसम्म (सहज मौसम, करिब २५° से.)। अप्रिल–जुन निकै गर्मी र जुलाई–सेप्टेम्बर वर्षा हुन्छ।",
+    "unesco": true,
+    "lat": 27.5,
+    "lon": 84.3333,
+    "from_nepalgunj_hint": "By road: go from Nepalgunj to Kohalpur, then east on the Mahendra (East-West) Highway to Narayanghat/Bharatpur. The park headquarters at Kasara is 21 km from Bharatpur, and Sauraha is the main tourist base.",
+    "sources": [
+     "https://en.wikipedia.org/wiki/Chitwan_National_Park",
+     "https://dnpwc.gov.np/en/conservation-area-detail/78",
+     "https://ntb.gov.np/chitwan",
+     "https://ntb.gov.np/en/national-parks-of-nepal",
+     "https://www.responsibletravel.com/holidays/chitwan/travel-guide/best-time-to-go",
+     "https://en.wikipedia.org/wiki/Mahendra_Highway"
+    ]
+   },
+   {
+    "name": "Janakpur (Janaki Mandir)",
+    "name_ne": "जनकपुर (जानकी मन्दिर)",
+    "region": "Dhanusha, Madhesh Province",
+    "type": "pilgrimage",
+    "blurb_en": "Birthplace of Sita (Janaki). The grand Janaki Mandir is Nepal's largest temple, with 3 storeys and 60 rooms. See also the Vivah Mandap where Ram and Sita are said to have married, and Mithila art.",
+    "blurb_ne": "सीता (जानकी) को जन्मभूमि। भव्य जानकी मन्दिर तीनतले र ६० कोठा भएको नेपालकै सबैभन्दा ठूलो मन्दिर हो। राम–सीताको विवाह भएको मानिने विवाह मण्डप र मिथिला कला पनि हेर्नुहोस्।",
+    "best_season_en": "October to March, because summers are very hot. The Vivah Panchami festival comes in Mangsir (around November to December).",
+    "best_season_ne": "अक्टोबरदेखि मार्चसम्म, किनकि गर्मी धेरै हुन्छ। विवाह पञ्चमी पर्व मंसिर (नोभेम्बर–डिसेम्बरतिर) मा पर्छ।",
+    "unesco": false,
+    "lat": 26.7306,
+    "lon": 85.9256,
+    "from_nepalgunj_hint": "By road: go from Nepalgunj to Kohalpur, then east on the Mahendra (East-West) Highway to Dhalkebar. Janakpur is about 25 km south of Dhalkebar.",
+    "sources": [
+     "https://ntb.gov.np/janaki-mandir--janakpur--dhanusha",
+     "https://ntb.gov.np/janakpur",
+     "https://en.wikipedia.org/wiki/Janaki_Mandir",
+     "https://en.wikipedia.org/wiki/Mahendra_Highway"
+    ]
+   },
+   {
+    "name": "Kathmandu Durbar Square (Hanuman Dhoka)",
+    "name_ne": "काठमाडौँ दरबार क्षेत्र (हनुमानढोका)",
+    "region": "Kathmandu, Bagmati Province",
+    "type": "heritage",
+    "blurb_en": "The old royal palace square of Kathmandu, with Hanuman Dhoka palace, the tall Taleju temple and Kumari Ghar, home of the Living Goddess Kumari.",
+    "blurb_ne": "पुरानो काठमाडौँको राजदरबार क्षेत्र, जहाँ हनुमानढोका दरबार, अग्लो तलेजु मन्दिर र जीवित देवी कुमारी बस्ने कुमारी घर छन्।",
+    "best_season_en": "October to November (clearest skies) and spring (March to May). The Taleju temple opens to the public on only one day a year, during Dashain.",
+    "best_season_ne": "अक्टोबर–नोभेम्बर (सबैभन्दा सफा आकाश) र वसन्त (मार्च–मे)। तलेजु मन्दिर वर्षमा एक दिन मात्र, दशैँमा, आम दर्शनार्थीका लागि खुल्छ।",
+    "unesco": true,
+    "lat": 27.7042,
+    "lon": 85.3065,
+    "from_nepalgunj_hint": "By air: regular flights from Nepalgunj to Kathmandu take about 1 hour (Buddha Air, Shree Airlines and others).",
+    "sources": [
+     "https://ntb.gov.np/kathmandu-durbar-square",
+     "https://ntb.gov.np/en/unesco-world-heritage-sites",
+     "https://en.wikipedia.org/wiki/Kathmandu_Durbar_Square",
+     "https://en.wikipedia.org/wiki/Nepalgunj_Airport",
+     "https://ntb.gov.np/rara-national-park"
+    ]
+   },
+   {
+    "name": "Pashupatinath Temple",
+    "name_ne": "पशुपतिनाथ मन्दिर",
+    "region": "Kathmandu, Bagmati Province",
+    "type": "pilgrimage",
+    "blurb_en": "Nepal's most revered Hindu temple, where Lord Shiva is worshipped as Pashupati, on the holy Bagmati river. Known for the evening Bagmati Aarati and huge Maha Shivaratri crowds.",
+    "blurb_ne": "पवित्र बागमती किनारमा रहेको नेपालकै सबैभन्दा पूज्य हिन्दू मन्दिर, जहाँ भगवान् शिवलाई पशुपतिको रूपमा पुजिन्छ। साँझको बागमती आरती र महाशिवरात्रिको ठूलो भीडका लागि प्रसिद्ध।",
+    "best_season_en": "Open all year. Maha Shivaratri (February or March) brings the biggest crowds of pilgrims from Nepal and India.",
+    "best_season_ne": "वर्षभरि खुला। महाशिवरात्रि (फेब्रुअरी वा मार्च) मा नेपाल र भारतबाट सबैभन्दा धेरै तीर्थयात्री आउँछन्।",
+    "unesco": true,
+    "lat": 27.7097,
+    "lon": 85.3486,
+    "from_nepalgunj_hint": "By air: regular flights from Nepalgunj to Kathmandu take about 1 hour. The temple is in eastern Kathmandu, near the airport.",
+    "sources": [
+     "https://ntb.gov.np/pashupatinath",
+     "https://ntb.gov.np/en/unesco-world-heritage-sites",
+     "https://en.wikipedia.org/wiki/Pashupatinath_Temple",
+     "https://en.wikipedia.org/wiki/Nepalgunj_Airport"
+    ]
+   },
+   {
+    "name": "Boudhanath Stupa",
+    "name_ne": "बौद्धनाथ स्तूप",
+    "region": "Kathmandu, Bagmati Province",
+    "type": "pilgrimage",
+    "blurb_en": "Nepal's largest stupa and a centre of Tibetan Buddhism. The Buddha's eyes are painted on all four sides, under a 13-level spire.",
+    "blurb_ne": "नेपालकै सबैभन्दा ठूलो स्तूप र तिब्बती बौद्ध धर्मको केन्द्र। चारै दिशामा बुद्धका आँखा कोरिएका छन्, माथि १३ तहको गजुर छ।",
+    "best_season_en": "Open all year. Lhosar (Tibetan New Year) and Buddha Jayanti are the most festive times.",
+    "best_season_ne": "वर्षभरि खुला। ल्होसार (तिब्बती नयाँ वर्ष) र बुद्ध जयन्ती सबैभन्दा रमाइलो समय हुन्।",
+    "unesco": true,
+    "lat": 27.7214,
+    "lon": 85.3619,
+    "from_nepalgunj_hint": "By air: regular flights from Nepalgunj to Kathmandu take about 1 hour. The stupa is about 6 to 8 km east of central Kathmandu.",
+    "sources": [
+     "https://ntb.gov.np/boudha",
+     "https://ntb.gov.np/en/unesco-world-heritage-sites",
+     "https://en.wikipedia.org/wiki/Boudhanath",
+     "https://en.wikipedia.org/wiki/Nepalgunj_Airport"
+    ]
+   },
+   {
+    "name": "Swayambhunath Stupa",
+    "name_ne": "स्वयम्भूनाथ स्तूप",
+    "region": "Kathmandu, Bagmati Province",
+    "type": "pilgrimage",
+    "blurb_en": "Hilltop stupa about 3 km west of Kathmandu, described as the oldest of its kind in Nepal. Visitors call it the 'Monkey Temple', and a long stairway climbs up to it.",
+    "blurb_ne": "काठमाडौँबाट करिब ३ कि.मि. पश्चिमको डाँडामा रहेको स्तूप, जसलाई नेपालकै सबैभन्दा पुरानो मानिन्छ। पर्यटकहरू यसलाई 'मंकी टेम्पल' (बाँदर मन्दिर) भन्छन्, र लामो सिँढी चढेर पुगिन्छ।",
+    "best_season_en": "Open all year. Valley views are clearest from October to November.",
+    "best_season_ne": "वर्षभरि खुला। उपत्यकाको दृश्य अक्टोबर–नोभेम्बरमा सबैभन्दा सफा देखिन्छ।",
+    "unesco": true,
+    "lat": 27.715,
+    "lon": 85.29,
+    "from_nepalgunj_hint": "By air: regular flights from Nepalgunj to Kathmandu take about 1 hour. The stupa is about 3 km west of the city.",
+    "sources": [
+     "https://ntb.gov.np/swayambhunath",
+     "https://ntb.gov.np/en/unesco-world-heritage-sites",
+     "https://en.wikipedia.org/wiki/Swayambhunath",
+     "https://ntb.gov.np/plan-your-trip/about-nepal/climate"
+    ]
+   },
+   {
+    "name": "Bhaktapur Durbar Square",
+    "name_ne": "भक्तपुर दरबार क्षेत्र",
+    "region": "Bhaktapur, Bagmati Province",
+    "type": "heritage",
+    "blurb_en": "Medieval Newar city about 12 km east of Kathmandu. See the 15th-century Palace of 55 Windows, the Golden Gate in repoussé metalwork and the five-storey Nyatapola temple.",
+    "blurb_ne": "काठमाडौँबाट करिब १२ कि.मि. पूर्वको मध्यकालीन नेवार सहर। १५औँ शताब्दीको पचपन्न झ्याले दरबार, धातुकलाको सुनढोका र पाँचतले न्यातपोल मन्दिर हेर्नुहोस्।",
+    "best_season_en": "October to November, and March to May.",
+    "best_season_ne": "अक्टोबर–नोभेम्बर र मार्च–मे।",
+    "unesco": true,
+    "lat": 27.672,
+    "lon": 85.4281,
+    "from_nepalgunj_hint": "Fly from Nepalgunj to Kathmandu (about 1 hour). Bhaktapur is about 12 km further east on the Arniko Highway.",
+    "sources": [
+     "https://ntb.gov.np/bhaktapur",
+     "https://ntb.gov.np/en/unesco-world-heritage-sites",
+     "https://en.wikipedia.org/wiki/Bhaktapur_Durbar_Square",
+     "https://ntb.gov.np/plan-your-trip/about-nepal/climate"
+    ]
+   },
+   {
+    "name": "Nagarkot",
+    "name_ne": "नगरकोट",
+    "region": "Bhaktapur, Bagmati Province",
+    "type": "nature",
+    "blurb_en": "Hill station on the Kathmandu Valley rim at about 2,175 m, 32 km from Kathmandu. Famous for Himalayan sunrise and sunset views, and Everest can be seen on clear days. UNESCO-listed Changu Narayan temple is a short hike away.",
+    "blurb_ne": "काठमाडौँ उपत्यकाको डिलमा करिब २,१७५ मिटर उचाइमा रहेको पहाडी पर्यटकीय स्थल, काठमाडौँबाट ३२ कि.मि.। हिमालमाथिको सूर्योदय र सूर्यास्तका लागि प्रसिद्ध, र आकाश सफा भएका दिन सगरमाथा देखिन्छ। युनेस्को सूचीमा परेको चाँगुनारायण मन्दिर छोटो पैदल दूरीमा छ।",
+    "best_season_en": "October to November for the clearest skies. Spring (March to May) is also good.",
+    "best_season_ne": "आकाश सबैभन्दा सफा हुने अक्टोबर–नोभेम्बर। वसन्त (मार्च–मे) पनि राम्रो हुन्छ।",
+    "unesco": false,
+    "lat": 27.7236,
+    "lon": 85.5247,
+    "from_nepalgunj_hint": "Fly from Nepalgunj to Kathmandu (about 1 hour), then drive about 32 km to Nagarkot.",
+    "sources": [
+     "https://ntb.gov.np/nagarkot-sunrise-and-sunset",
+     "https://en.wikipedia.org/wiki/Nagarkot",
+     "https://ntb.gov.np/plan-your-trip/about-nepal/climate"
+    ]
+   },
+   {
+    "name": "Sagarmatha (Everest) National Park",
+    "name_ne": "सगरमाथा राष्ट्रिय निकुञ्ज (एभरेस्ट क्षेत्र)",
+    "region": "Solukhumbu, Koshi Province",
+    "type": "trek",
+    "blurb_en": "Home of Mount Everest (Sagarmatha), the world's highest peak. Walk through Sherpa villages such as Namche Bazaar, visit monasteries and trek to Everest Base Camp. A UNESCO World Heritage Site since 1979.",
+    "blurb_ne": "विश्वकै सर्वोच्च शिखर सगरमाथाको घर। नाम्चे बजारजस्ता शेर्पा गाउँ हुँदै, गुम्बा घुम्दै सगरमाथा आधार शिविरसम्म पदयात्रा गर्नुहोस्। सन् १९७९ देखि युनेस्को विश्व सम्पदा सूचीमा।",
+    "best_season_en": "October to November, and March to May. December to February is snowy, and June to September is rainy.",
+    "best_season_ne": "अक्टोबर–नोभेम्बर र मार्च–मे। डिसेम्बर–फेब्रुअरी हिउँ पर्छ, र जुन–सेप्टेम्बर वर्षा हुन्छ।",
+    "unesco": true,
+    "lat": 27.9333,
+    "lon": 86.7333,
+    "from_nepalgunj_hint": "Fly from Nepalgunj to Kathmandu, then fly Kathmandu to Lukla (about 30 minutes) and trek. Another way is a bus from Kathmandu to Jiri, then trek.",
+    "sources": [
+     "https://ntb.gov.np/en/sagarmatha-national-park",
+     "https://en.wikipedia.org/wiki/Sagarmatha_National_Park",
+     "https://en.wikipedia.org/wiki/List_of_World_Heritage_Sites_in_Nepal",
+     "https://en.wikipedia.org/wiki/Nepalgunj_Airport"
+    ]
+   }
+  ]
+ },
+ "india": {
+  "places": [
+   {
+    "name": "Statue of Unity",
+    "name_ne": "स्ट्याचु अफ युनिटी (एकता प्रतिमा)",
+    "state": "Gujarat",
+    "type": "Monument",
+    "blurb_en": "At 182 m, the world's tallest statue. It honours Sardar Vallabhbhai Patel, India's first Deputy Prime Minister. The statue stands on Sadhu Bet island in the Narmada river at Kevadia (Ekta Nagar), facing the Sardar Sarovar Dam, and a viewing gallery at 153 m gives wide views of the valley. It was inaugurated on 31 October 2018. Open 8 am to 6 pm and closed every Monday for maintenance.",
+    "blurb_ne": "१८२ मिटर अग्लो, विश्वकै सबैभन्दा अग्लो प्रतिमा। यो भारतका पहिलो उपप्रधानमन्त्री सरदार वल्लभभाई पटेलको सम्मानमा बनेको हो। केवडिया (एकता नगर) मा नर्मदा नदीको साधु बेट टापुमा सरदार सरोवर बाँधतर्फ फर्केर उभिएको छ, र १५३ मिटर उचाइको भ्यूइङ ग्यालरीबाट उपत्यकाको फराकिलो दृश्य देखिन्छ। ३१ अक्टोबर २०१८ मा उद्घाटन भएको हो। बिहान ८ देखि बेलुका ६ बजेसम्म खुला रहन्छ, मर्मतका लागि हरेक सोमबार बन्द हुन्छ।",
+    "best_season_en": "October to March (cooler months). Avoid Mondays, when it is closed.",
+    "best_season_ne": "अक्टोबरदेखि मार्च (चिसो, सुहाउँदो मौसम)। सोमबार बन्द हुने भएकाले त्यो दिन नजानुहोस्।",
+    "unesco": false,
+    "lat": 21.838,
+    "lon": 73.7191,
+    "near_route_stop": "Vadodara",
+    "sources": [
+     "https://narmada.nic.in/tourist-place/statue-of-unity-kevadia/",
+     "https://www.incredibleindia.gov.in/en/gujarat/vadodara/statue-of-unity",
+     "https://www.drishtiias.com/daily-updates/daily-news-analysis/statue-of-unity/print_manually",
+     "https://ffo.gov.in/locations/locationInformation/186",
+     "https://en.wikipedia.org/wiki/Statue_of_Unity"
+    ]
+   },
+   {
+    "name": "Ahmedabad Old City & Sabarmati Ashram",
+    "name_ne": "अहमदाबाद पुरानो सहर र साबरमती आश्रम",
+    "state": "Gujarat",
+    "type": "Heritage city / Gandhi heritage",
+    "blurb_en": "Ahmad Shah I founded the walled city of Ahmedabad in 1411. In July 2017 it became India's first city on the UNESCO World Heritage List, known for its pols (gated lanes), wooden havelis and monuments of many faiths. Sabarmati Ashram, on the riverfront, was Mahatma Gandhi's home from 1917 to 1930, and the Dandi Salt March set out from here on 12 March 1930. You can visit Gandhi's cottage, Hriday Kunj, and a museum about his life. The UNESCO listing covers the old walled city only, not the ashram.",
+    "blurb_ne": "अहमद शाह प्रथमले सन् १४११ मा अहमदाबादको पर्खालभित्रको सहर बसालेका थिए। जुलाई २०१७ मा यो युनेस्को विश्व सम्पदा सूचीमा पर्ने भारतको पहिलो सहर बन्यो। 'पोल' भनिने गेटसहितका गल्ली, काठका हवेली र विभिन्न धर्मका स्मारक यसका पहिचान हुन्। नदी किनारको साबरमती आश्रम सन् १९१७ देखि १९३० सम्म महात्मा गान्धीको घर थियो, र १२ मार्च १९३० मा दाण्डी नुन यात्रा यहीँबाट हिँडेको थियो। गान्धीको कुटी 'हृदय कुञ्ज' र उनको जीवनबारे संग्रहालय हेर्न सकिन्छ। युनेस्को सूचीमा पुरानो पर्खालभित्रको सहर मात्र परेको हो, आश्रम होइन।",
+    "best_season_en": "October to March",
+    "best_season_ne": "अक्टोबरदेखि मार्च",
+    "unesco": true,
+    "lat": 23.06,
+    "lon": 72.5808,
+    "near_route_stop": "Ahmedabad",
+    "sources": [
+     "https://en.wikipedia.org/wiki/Historic_City_of_Ahmadabad",
+     "https://www.worldheritagesite.org/list/id/1551",
+     "https://www.britannica.com/place/Sabarmati-ashram",
+     "https://english.udayavani.com/article/mahatma-gandhis-sabarmati-ashram-celebrates-100-years-today/217064",
+     "https://www.britannica.com/event/Salt-March"
+    ]
+   },
+   {
+    "name": "Rani ki Vav (Queen's Stepwell), Patan",
+    "name_ne": "रानी की वाव (रानीको सिँढीदार इनार), पाटन",
+    "state": "Gujarat",
+    "type": "Stepwell / UNESCO monument",
+    "blurb_en": "An 11th-century stepwell on the banks of the Saraswati river in Patan. It was built as a memorial, and its building is credited to Queen Udayamati, wife of the Chaulukya king Bhima I. It is designed as an upside-down temple with seven levels of steps and more than 500 main sculptures. It was added to the UNESCO World Heritage List in 2014 and is about an hour by bus from Mehsana.",
+    "blurb_ne": "पाटनमा सरस्वती नदीको किनारमा रहेको ११औँ शताब्दीको वाव (सिँढीदार इनार)। यो स्मृतिका रूपमा बनाइएको हो, र यसको निर्माणको श्रेय चौलुक्य राजा भीम प्रथमकी रानी उदयमतीलाई दिइन्छ। यसको बनोट उल्टो मन्दिरजस्तो छ, जसमा सात तहका सिँढी र ५०० भन्दा बढी मुख्य मूर्ति छन्। सन् २०१४ मा युनेस्को विश्व सम्पदा सूचीमा परेको यो ठाउँ मेहसानाबाट बसमा करिब एक घण्टाको दूरीमा छ।",
+    "best_season_en": "October to March. Early morning or late afternoon light shows the carvings best.",
+    "best_season_ne": "अक्टोबरदेखि मार्च। बिहान सबेरै वा अपराह्नको उज्यालोमा मूर्तिकला सबैभन्दा राम्ररी देखिन्छ।",
+    "unesco": true,
+    "lat": 23.8589,
+    "lon": 72.1017,
+    "near_route_stop": "Mehsana",
+    "sources": [
+     "https://en.wikipedia.org/wiki/Rani_ki_Vav",
+     "https://whc.unesco.org/en/decisions/6111",
+     "https://gujarattourism.com/north-zone/patan/rani-ki-vav.html",
+     "https://www.incredibleindia.gov.in/en/gujarat/patan/rani-ki-vav"
+    ]
+   },
+   {
+    "name": "Modhera Sun Temple",
+    "name_ne": "मोढेरा सूर्य मन्दिर",
+    "state": "Gujarat",
+    "type": "Temple / protected monument",
+    "blurb_en": "A sun temple built in 1026–27 CE, in the reign of the Chaulukya king Bhima I, on the bank of the Pushpavati river about 25 km from Mehsana. It is known for the Suryakund stepped tank, the carved 52-pillar assembly hall, and a sanctum built so the rising sun lights it around the equinox. It is a protected monument of national importance. It is on UNESCO's Tentative List but has not been inscribed. The Modhera Dance Festival (Uttarardh Mahotsav) is held here every January.",
+    "blurb_ne": "चौलुक्य राजा भीम प्रथमको शासनकाल (सन् १०२६–२७) मा, मेहसानाबाट करिब २५ किलोमिटर टाढा पुष्पावती नदीको किनारमा बनेको सूर्य मन्दिर। सूर्यकुण्ड पोखरी, ५२ खम्बे कुँदिएको सभामण्डप, र विषुवका बेला उदाउँदो घामको किरण गर्भगृहमा पर्ने बनोट यसका विशेषता हुन्। यो राष्ट्रिय महत्त्वको संरक्षित स्मारक हो। युनेस्कोको सम्भावित (टेन्टेटिभ) सूचीमा छ, तर विश्व सम्पदा सूचीमा परिसकेको छैन। हरेक जनवरीमा यहाँ मोढेरा नृत्य महोत्सव (उत्तरार्ध महोत्सव) हुन्छ।",
+    "best_season_en": "October to March. Visit in January for the dance festival, or around the March and September equinoxes for the sunrise effect.",
+    "best_season_ne": "अक्टोबरदेखि मार्च। नृत्य महोत्सवका लागि जनवरीमा, र उदाउँदो घामको दृश्यका लागि मार्च वा सेप्टेम्बरको विषुवतिर जानुहोस्।",
+    "unesco": false,
+    "lat": 23.5838,
+    "lon": 72.1327,
+    "near_route_stop": "Mehsana",
+    "sources": [
+     "https://gujarattourism.com/north-zone/mehsana/sun-temple-modhera.html",
+     "https://en.wikipedia.org/wiki/Sun_Temple,_Modhera",
+     "https://whc.unesco.org/en/tentativelists/6627/",
+     "https://www.incredibleindia.gov.in/en/festivals-and-events/gujarat/uttarardh-mahotsav",
+     "https://gujarattourism.com/fair-and-festival/modhera-dance-festival.html"
+    ]
+   },
+   {
+    "name": "Champaner-Pavagadh Archaeological Park",
+    "name_ne": "चम्पानेर–पावागढ पुरातात्त्विक पार्क",
+    "state": "Gujarat",
+    "type": "UNESCO archaeological park / pilgrimage",
+    "blurb_en": "A UNESCO World Heritage Site since 2004 in Panchmahal district, about 45 km by road from Vadodara. The park holds the remains of a historic Gujarat Sultanate capital, including the Jami Masjid. On top of Pavagadh hill is the Kalika Mata temple, one of the Shakti Peethas, which you reach by ropeway and a short climb on foot.",
+    "blurb_ne": "वडोदराबाट सडकमार्ग करिब ४५ किलोमिटर टाढा पञ्चमहाल जिल्लामा रहेको, सन् २००४ देखिको युनेस्को विश्व सम्पदा। यहाँ गुजरात सल्तनतको ऐतिहासिक राजधानीका अवशेष छन्, जसमा जामी मस्जिद पनि पर्छ। पावागढ डाँडाको टुप्पोमा शक्तिपीठ कालिका माता मन्दिर छ, जहाँ रोपवे चढेर र केही उकालो हिँडेर पुगिन्छ।",
+    "best_season_en": "October to March",
+    "best_season_ne": "अक्टोबरदेखि मार्च",
+    "unesco": true,
+    "lat": 22.483,
+    "lon": 73.533,
+    "near_route_stop": "Vadodara",
+    "sources": [
+     "https://en.wikipedia.org/wiki/Champaner-Pavagadh_Archaeological_Park",
+     "https://whc.unesco.org/en/decisions/109",
+     "https://www.worldheritagesite.org/list/id/1101",
+     "https://gtbooking.gujarattourism.com/central-zone/panchmahal/pavagadh-hill---kalika-mata-temple.html",
+     "https://en.wikipedia.org/wiki/Pavagadh_ropeway"
+    ]
+   },
+   {
+    "name": "Somnath Temple",
+    "name_ne": "सोमनाथ मन्दिर",
+    "state": "Gujarat",
+    "type": "Temple (Jyotirlinga)",
+    "blurb_en": "Somnath stands on the Arabian Sea coast at Prabhas Patan (Veraval, Gir Somnath district) and is revered as the first of Lord Shiva's twelve Jyotirlingas. The temple has been rebuilt many times. The present temple was completed in May 1951 in the Maru-Gurjara style, and an evening light-and-sound show tells its history. Nearby are Triveni Sangam ghat and Somnath beach.",
+    "blurb_ne": "अरब सागरको किनार प्रभास पाटन (वेरावल, गिर सोमनाथ जिल्ला) मा रहेको सोमनाथलाई भगवान शिवका बाह्र ज्योतिर्लिङ्गमध्ये पहिलो मानिन्छ। यो मन्दिर इतिहासमा धेरै पटक पुनर्निर्माण भएको छ। हालको मन्दिर मे १९५१ मा मारु-गुर्जर शैलीमा पूरा भएको हो, र बेलुकाको लाइट एन्ड साउन्ड शोले यसको इतिहास सुनाउँछ। नजिकै त्रिवेणी संगम घाट र सोमनाथ समुद्री तट छन्।",
+    "best_season_en": "September to March",
+    "best_season_ne": "सेप्टेम्बरदेखि मार्च",
+    "unesco": false,
+    "lat": 20.888,
+    "lon": 70.4014,
+    "near_route_stop": "Rajkot",
+    "sources": [
+     "https://en.wikipedia.com/wiki/Somanath",
+     "https://www.shankariasparliament.com/current-affairs/somnath-temple",
+     "https://www.holidify.com/places/somnath/"
+    ]
+   },
+   {
+    "name": "Dwarkadhish Temple, Dwarka",
+    "name_ne": "द्वारकाधीश मन्दिर, द्वारका",
+    "state": "Gujarat",
+    "type": "Temple (Char Dham)",
+    "blurb_en": "The Dwarkadhish temple, dedicated to Lord Krishna, stands where the Gomti river meets the Arabian Sea in Devbhoomi Dwarka district. Dwarka is one of the four Char Dham pilgrimage sites, along with Badrinath, Puri and Rameswaram. Janmashtami is the biggest festival of the year here.",
+    "blurb_ne": "भगवान कृष्णलाई समर्पित द्वारकाधीश मन्दिर देवभूमि द्वारका जिल्लामा गोमती नदी अरब सागरमा मिसिने ठाउँमा छ। बद्रीनाथ, पुरी र रामेश्वरमसँगै द्वारका चार धाममध्ये एक हो। यहाँ वर्षको सबैभन्दा ठूलो पर्व जन्माष्टमी हो।",
+    "best_season_en": "November to February, or during Janmashtami",
+    "best_season_ne": "नोभेम्बरदेखि फेब्रुअरी, वा जन्माष्टमीका बेला",
+    "unesco": false,
+    "lat": 22.2379,
+    "lon": 68.9676,
+    "near_route_stop": "Rajkot",
+    "sources": [
+     "https://gujarattourism.com/saurashtra/devbhoomi-dwarka/dwarkadhish-temple.html",
+     "https://en.wikipedia.org/wiki/Dwarkadhish_Temple"
+    ]
+   },
+   {
+    "name": "Gir National Park (Sasan Gir)",
+    "name_ne": "गिर राष्ट्रिय निकुञ्ज (सासन गिर)",
+    "state": "Gujarat",
+    "type": "National park / wildlife",
+    "blurb_en": "Gir is the last refuge of the wild Asiatic lion. Gujarat's 2025 lion census counted 891 lions across the region, 384 of them inside Gir National Park and Sanctuary. You need a safari permit, booked in advance on the official site (girlion.gujarat.gov.in). The park closes every year from 16 June to 15 October.",
+    "blurb_ne": "गिर जंगली एसियाली सिंहको अन्तिम आश्रयस्थल हो। सन् २०२५ को गुजरात सिंह गणनाले क्षेत्रभरि ८९१ सिंह गनेको थियो, जसमध्ये ३८४ गिर राष्ट्रिय निकुञ्ज तथा अभयारण्यभित्र छन्। सफारीका लागि अनुमति चाहिन्छ, जुन आधिकारिक साइट (girlion.gujarat.gov.in) बाट अग्रिम बुक गर्नुपर्छ। निकुञ्ज हरेक वर्ष १६ जुनदेखि १५ अक्टोबरसम्म बन्द रहन्छ।",
+    "best_season_en": "November to March is best. The park is open from 16 October to 15 June.",
+    "best_season_ne": "नोभेम्बरदेखि मार्च उत्तम समय हो। निकुञ्ज १६ अक्टोबरदेखि १५ जुनसम्म खुला रहन्छ।",
+    "unesco": false,
+    "lat": 21.1356,
+    "lon": 70.7967,
+    "near_route_stop": "Rajkot",
+    "sources": [
+     "https://gujarattourism.com/saurashtra/gir-somnath/gir-national-park.html",
+     "https://en.wikipedia.org/wiki/Gir_National_Park",
+     "https://www.tribuneindia.com/news/india/lion-population-in-gujarat-goes-up-from-674-to-891-in-5-years",
+     "https://www.downtoearth.org.in/amp/story/wildlife-biodiversity/asiatic-lion-population-in-gujarat-rises-from-674-to-891-in-5-years-spreading-beyond-traditional-habitats",
+     "https://deshgujarat.com/2018/11/16/more-than-75000-tourists-visited-tourist-zone-of-gir-sanctuary-and-devaliya-safari-in-13-days/"
+    ]
+   },
+   {
+    "name": "White Rann of Kutch (Dhordo)",
+    "name_ne": "कच्छको सेतो रण (धोरडो)",
+    "state": "Gujarat",
+    "type": "Salt desert / festival",
+    "blurb_en": "The Great Rann of Kutch is a huge seasonal salt marsh. It floods in the monsoon, then dries into a bright white salt desert in winter. Dhordo village, about 86 km from Bhuj, hosts the Rann Utsav tent city every winter, and full-moon nights on the white salt are the main attraction. UNWTO named Dhordo a Best Tourism Village in 2023. You need a separate entry permit to visit the White Rann.",
+    "blurb_ne": "कच्छको ठूलो रण एउटा विशाल मौसमी नुनिलो सिमसार हो। वर्षामा पानीले डुब्छ, अनि जाडोमा सुकेर चम्किलो सेतो नुनको मरुभूमि बन्छ। भुजबाट करिब ८६ किलोमिटर टाढाको धोरडो गाउँमा हरेक जाडो 'रण उत्सव' टेन्ट सिटी लाग्छ, र सेतो नुनमाथिको पूर्णिमाको रात यहाँको मुख्य आकर्षण हो। UNWTO ले सन् २०२३ मा धोरडोलाई 'बेस्ट टुरिजम भिलेज' घोषणा गरेको थियो। सेतो रण घुम्न छुट्टै प्रवेश अनुमति चाहिन्छ।",
+    "best_season_en": "November to February, during the Rann Utsav season. Check the official festival dates before you go.",
+    "best_season_ne": "नोभेम्बरदेखि फेब्रुअरी, रण उत्सवको मौसम। जानुअघि महोत्सवका आधिकारिक मिति हेर्नुहोस्।",
+    "unesco": false,
+    "lat": 23.7585,
+    "lon": 69.5106,
+    "near_route_stop": "Rajkot",
+    "sources": [
+     "https://gujarattourism.com/fair-and-festival/rann-utsav.html",
+     "https://www.earthobservatory.nasa.gov/images/3856/seasonal-flooding-in-the-rann-of-kutch",
+     "https://en.wikipedia.org/wiki/Dhordo",
+     "https://www.theweek.in/news/biz-tech/2023/10/20/unwto-recognises-gujarats-dhordo-as-best-tourism-village.amp.html",
+     "https://www.outlooktraveller.com/responsible-tourism/rann-utsav-2026-27-everything-you-need-to-know-before-visiting-kutch",
+     "https://nominatim.openstreetmap.org/search?q=Dhordo,+Kutch,+Gujarat&format=json"
+    ]
+   },
+   {
+    "name": "Saputara",
+    "name_ne": "सापुतारा",
+    "state": "Gujarat",
+    "type": "Hill station",
+    "blurb_en": "Gujarat's only hill station, on a plateau of the Sahyadri range in Dang district, at about 900 m. Enjoy boating on Saputara Lake and the walk to Sunset Point. Gira Falls and Vansda National Park are nearby. Gujarat Tourism holds the Saputara Monsoon Festival every July and August. Saputara is about 164 km by road from Surat.",
+    "blurb_ne": "डाङ जिल्लामा सह्याद्रि पर्वतमालाको पठारमा, करिब ९०० मिटर उचाइमा रहेको गुजरातको एकमात्र हिल स्टेसन। सापुतारा तालमा डुङ्गा सयर र सनसेट पोइन्टसम्मको पैदल यात्राको आनन्द लिन सकिन्छ। गिरा झरना र वाँसदा राष्ट्रिय निकुञ्ज नजिकै छन्। गुजरात पर्यटनले हरेक जुलाई–अगस्टमा सापुतारा मनसुन महोत्सव आयोजना गर्छ। सापुतारा सुरतबाट सडकमार्ग करिब १६४ किलोमिटर टाढा छ।",
+    "best_season_en": "July to September for monsoon greenery and the festival. October to February for cool weather.",
+    "best_season_ne": "हरियाली र मनसुन महोत्सवका लागि जुलाईदेखि सेप्टेम्बर। चिसो मौसमका लागि अक्टोबरदेखि फेब्रुअरी।",
+    "unesco": false,
+    "lat": 20.5797,
+    "lon": 73.7467,
+    "near_route_stop": "Surat",
+    "sources": [
+     "https://gtbooking.gujarattourism.com/south-zone/dang/saputara.html",
+     "https://gujarattourism.com/south-zone/dang/saputara-lake.html",
+     "https://en.wikipedia.org/wiki/Saputara",
+     "https://www.incredibleindia.gov.in/en/festivals-and-events/gujarat/Saputara-Monsoon-Festival",
+     "https://www.outlookindia.com/traveller/ot-getaway-guides/saputara-gujarats-lone-hill-station/"
+    ]
+   },
+   {
+    "name": "Ambaji Temple",
+    "name_ne": "अम्बाजी मन्दिर",
+    "state": "Gujarat",
+    "type": "Temple (Shakti Peetha)",
+    "blurb_en": "One of the 51 Shakti Peethas, in Danta taluka of Banaskantha district in north Gujarat. The temple has no idol. Instead, devotees worship the sacred Viso Yantra with their eyes closed. Nearby Gabbar hill is considered the goddess's original home. The three-day Bhadarvi Poonam fair (August–September) draws lakhs of pilgrims, many of whom walk there.",
+    "blurb_ne": "उत्तर गुजरातको बनासकाँठा जिल्ला, दाँता तालुकामा रहेको ५१ शक्तिपीठमध्ये एक। यस मन्दिरमा मूर्ति छैन। बरु भक्तहरू आँखा बन्द गरेर पवित्र 'विसो यन्त्र' को पूजा गर्छन्। नजिकैको गब्बर डाँडालाई देवीको मूल थलो मानिन्छ। तीन दिने भाद्र पूर्णिमा मेला (अगस्ट–सेप्टेम्बर) मा लाखौँ तीर्थयात्री आउँछन्, जसमध्ये धेरै पैदल हिँडेर पुग्छन्।",
+    "best_season_en": "Visited all year round. Biggest crowds come during the Bhadarvi Poonam fair (August–September).",
+    "best_season_ne": "वर्षभरि दर्शन गर्न सकिन्छ। सबैभन्दा बढी भीड भाद्र पूर्णिमा मेला (अगस्ट–सेप्टेम्बर) मा हुन्छ।",
+    "unesco": false,
+    "lat": 24.33,
+    "lon": 72.85,
+    "near_route_stop": "Mehsana",
+    "sources": [
+     "https://gujarattourism.com/north-zone/banaskantha/ambaji-temple.html",
+     "https://www.gujarattourism.com/fair-and-festival/ambaji-bhadarvi-poonam-fair.html",
+     "https://en.wikipedia.org/wiki/Ambaji",
+     "https://deshgujarat.com/2026/09/19/ambaji-bhadarvi-poonam-mela-2026-rest-shelters-free-food-38-parking-areas-arranged-for-devotees/"
+    ]
+   },
+   {
+    "name": "Ayodhya Ram Mandir",
+    "name_ne": "अयोध्या राम मन्दिर",
+    "state": "Uttar Pradesh",
+    "type": "Temple / pilgrimage",
+    "blurb_en": "The Shri Ram Janmabhoomi temple in Ayodhya, revered as the birthplace of Lord Ram. The consecration (pran pratishtha) took place on 22 January 2024, and public darshan began the next day. In the Ramayana tradition, Ayodhya is linked with Janakpur in Nepal, Goddess Sita's home. Darshan timings have changed several times, so confirm them with the temple trust (srjbtkshetra.org) before you travel.",
+    "blurb_ne": "अयोध्यामा रहेको श्रीराम जन्मभूमि मन्दिर, जसलाई भगवान रामको जन्मस्थल मानिन्छ। २२ जनवरी २०२४ मा प्राण प्रतिष्ठा भयो, र भोलिपल्टदेखि आम दर्शन सुरु भयो। रामायण परम्परामा अयोध्यालाई सीता माताको घर नेपालको जनकपुरसँग जोडिन्छ। दर्शनको समय धेरै पटक फेरिएकाले यात्राअघि मन्दिर ट्रस्ट (srjbtkshetra.org) बाट पक्का गर्नुहोस्।",
+    "best_season_en": "October to March (cooler weather)",
+    "best_season_ne": "अक्टोबरदेखि मार्च (चिसो मौसम)",
+    "unesco": false,
+    "lat": 26.7956,
+    "lon": 82.1943,
+    "near_route_stop": "Rupaidiha",
+    "sources": [
+     "https://en.wikipedia.org/wiki/Ram_Mandir",
+     "https://www.businesstoday.in/amp/india/story/ayodhya-ram-mandir-details-of-ram-lallas-darshan-aarti-timings-and-more-412185-2024-01-07",
+     "https://thefederal.com/whats-brewing/ayodhya-ram-mandir-darshan-timing-advanced-by-an-hour-to-6-am-170689",
+     "https://morungexpress.com/modi-oli-launch-janakpur-ayodhya-bus-link"
+    ]
+   },
+   {
+    "name": "Varanasi (Kashi)",
+    "name_ne": "वाराणसी (काशी)",
+    "state": "Uttar Pradesh",
+    "type": "Holy city",
+    "blurb_en": "One of India's holiest cities, on the banks of the Ganga. The Kashi Vishwanath temple houses one of Shiva's twelve Jyotirlingas, and the present temple was rebuilt by Ahilyabai Holkar in 1780. Every evening there is a Ganga Aarti at Dashashwamedh Ghat, best watched from a boat. Sarnath is about 10 km away.",
+    "blurb_ne": "गङ्गा किनारमा रहेको भारतको सबैभन्दा पवित्र सहरमध्ये एक। काशी विश्वनाथ मन्दिरमा शिवका बाह्र ज्योतिर्लिङ्गमध्ये एक छ, र हालको मन्दिर सन् १७८० मा अहिल्याबाई होल्करले पुनर्निर्माण गराएकी हुन्। हरेक साँझ दशाश्वमेध घाटमा गङ्गा आरती हुन्छ, जुन डुङ्गाबाट हेर्दा सबैभन्दा राम्रो देखिन्छ। सारनाथ करिब १० किलोमिटर टाढा छ।",
+    "best_season_en": "October to March. Avoid the April–June heat.",
+    "best_season_ne": "अक्टोबरदेखि मार्च। अप्रिलदेखि जुनको गर्मीमा नजानु राम्रो।",
+    "unesco": false,
+    "lat": 25.3108,
+    "lon": 83.0106,
+    "near_route_stop": "none",
+    "sources": [
+     "https://www.skyscanner.co.in/destinations/advice/places-to-visit-in-varanasi",
+     "https://indiasomeday.com/en/best-time-to-visit-varanasi/",
+     "https://thehosteller.com/blogs/ultimate-travel-guide-to-Varanasi",
+     "https://en.wikipedia.org/wiki/Kashi_Vishwanath_Temple"
+    ]
+   },
+   {
+    "name": "Sarnath",
+    "name_ne": "सारनाथ",
+    "state": "Uttar Pradesh",
+    "type": "Buddhist site / UNESCO",
+    "blurb_en": "The ancient Deer Park near Varanasi, where the Buddha gave his first sermon after enlightenment. You can see the Dhamek Stupa, the remains of the Dharmarajika Stupa, the Mulagandhakuti Vihara and the Ashokan pillar. The Sarnath Museum holds the Lion Capital, which became India's national emblem in 1950. Sarnath was added to the UNESCO World Heritage List in July 2026, at the Committee's 48th session.",
+    "blurb_ne": "वाराणसी नजिकको प्राचीन मृगदाव, जहाँ बुद्धत्व प्राप्तिपछि भगवान बुद्धले पहिलो उपदेश दिनुभएको थियो। यहाँ धमेख स्तूप, धर्मराजिका स्तूपका अवशेष, मूलगन्धकुटी विहार र अशोक स्तम्भ हेर्न सकिन्छ। सारनाथ संग्रहालयमा सिंह शीर्ष (लायन क्यापिटल) राखिएको छ, जुन सन् १९५० मा भारतको राष्ट्रिय चिह्न बन्यो। सारनाथ जुलाई २०२६ मा विश्व सम्पदा समितिको ४८औँ सत्रमा युनेस्को विश्व सम्पदा सूचीमा परेको हो।",
+    "best_season_en": "October to March",
+    "best_season_ne": "अक्टोबरदेखि मार्च",
+    "unesco": true,
+    "lat": 25.3808,
+    "lon": 83.0245,
+    "near_route_stop": "none",
+    "sources": [
+     "https://www.drishtiias.com/daily-updates/daily-news-analysis/sarnaths-path-to-the-world-heritage-list/print_manually",
+     "https://www.freepressjournal.in/lifestyle/unesco-adds-ancient-buddhist-site-of-sarnath-to-world-heritage-list-know-about-this-significant-place",
+     "https://c4scourses.in/national-affairs/sarnath-inscribed-on-the-unesco-world-heritage-list/",
+     "https://www.pilgrimaps.com/the-turning-of-the-wheel-sarnath-and-the-buddhas-first-sermon/",
+     "https://livehistoryindia.com/story/monuments/sarnath"
+    ]
+   },
+   {
+    "name": "Kushinagar",
+    "name_ne": "कुशीनगर",
+    "state": "Uttar Pradesh",
+    "type": "Buddhist site",
+    "blurb_en": "The place of the Buddha's Mahaparinirvana, and one of the four holy places he named for pilgrimage. The Mahaparinirvana Temple holds a reclining Buddha statue about 1,500 years old, and the Muktabandhan Stupa marks the cremation site. Kushinagar is on the India–Nepal Buddhist Circuit with Lumbini, Sarnath and Shravasti.",
+    "blurb_ne": "भगवान बुद्धको महापरिनिर्वाण भएको ठाउँ, र उहाँले तीर्थका लागि भन्नुभएका चार पवित्र स्थलमध्ये एक। महापरिनिर्वाण मन्दिरमा करिब १,५०० वर्ष पुरानो लेटेको बुद्धमूर्ति छ, र मुक्तबन्धन स्तूपले दाहसंस्कार स्थल चिनाउँछ। कुशीनगर लुम्बिनी, सारनाथ र श्रावस्तीसँगै भारत–नेपाल बौद्ध सर्किटमा पर्छ।",
+    "best_season_en": "October to March",
+    "best_season_ne": "अक्टोबरदेखि मार्च",
+    "unesco": false,
+    "lat": 26.741,
+    "lon": 83.888,
+    "near_route_stop": "none",
+    "sources": [
+     "https://www.outlookindia.com/traveller/ot-getaway-guides/kushinagar-shadow-buddha/",
+     "https://tricycle.org/?p=23108",
+     "https://www.nextias.com/ca/current-affairs/21-10-2021/buddhist-pilgrimage-circuit",
+     "https://en.wikipedia.org/wiki/Kushinagar"
+    ]
+   },
+   {
+    "name": "Lucknow",
+    "name_ne": "लखनऊ",
+    "state": "Uttar Pradesh",
+    "type": "Heritage city",
+    "blurb_en": "The capital of Uttar Pradesh, popularly called the City of Nawabs. Nawab Asaf-ud-Daula built the Bara Imambara between 1780 and 1784. It has a huge hall with no pillars, and above it is the Bhool Bhulaiya maze, where a guide is recommended. The Rumi Darwaza gateway stands next to it. UP Tourism runs heritage walks through the old Chowk area.",
+    "blurb_ne": "उत्तर प्रदेशको राजधानी, जसलाई 'नवाबहरूको सहर' भनिन्छ। नवाब आसफ-उद-दौलाले सन् १७८० देखि १७८४ बीच बडा इमामबाडा बनाएका थिए। यसमा खम्बाबिनाको विशाल हल छ, र माथि 'भूलभुलैया' छ, जहाँ गाइड लिएर जानु राम्रो हुन्छ। यसको छेउमै रुमी दरवाजा उभिएको छ। उत्तर प्रदेश पर्यटनले पुरानो चौक क्षेत्रमा हेरिटेज वाक सञ्चालन गर्छ।",
+    "best_season_en": "October to February",
+    "best_season_ne": "अक्टोबरदेखि फेब्रुअरी",
+    "unesco": false,
+    "lat": 26.8692,
+    "lon": 80.9128,
+    "near_route_stop": "Rupaidiha",
+    "sources": [
+     "https://en.wikipedia.org/wiki/Bara_Imambara",
+     "https://livehistoryindia.com/story/places/bara-imambara-symbol-of-a-nawab-s-generosity",
+     "https://www.incredibleindia.gov.in/en/uttar-pradesh/lucknow/rumi-darwaza",
+     "https://dsmru.up.nic.in/Main/User/Abtlko.aspx"
+    ]
+   },
+   {
+    "name": "Taj Mahal, Agra",
+    "name_ne": "ताजमहल, आग्रा",
+    "state": "Uttar Pradesh",
+    "type": "Monument / UNESCO",
+    "blurb_en": "The white-marble mausoleum built by Mughal emperor Shah Jahan for Mumtaz Mahal. It has been a UNESCO World Heritage Site since 1983, and the nearby Agra Fort was listed in the same year. The Taj Mahal opens 30 minutes before sunrise and closes 30 minutes before sunset. It is closed to general visitors on Fridays.",
+    "blurb_ne": "मुगल सम्राट शाहजहाँले मुमताज महलका लागि बनाएको सेतो संगमरमरको मकबरा। यो सन् १९८३ देखि युनेस्को विश्व सम्पदा हो, र नजिकैको आग्रा किल्ला पनि सोही वर्ष सूचीमा परेको थियो। ताजमहल सूर्योदयभन्दा ३० मिनेट अघि खुल्छ र सूर्यास्तभन्दा ३० मिनेट अघि बन्द हुन्छ। आम दर्शकका लागि शुक्रबार बन्द रहन्छ।",
+    "best_season_en": "October to March. It is closed on Fridays.",
+    "best_season_ne": "अक्टोबरदेखि मार्च। शुक्रबार बन्द हुन्छ।",
+    "unesco": true,
+    "lat": 27.175,
+    "lon": 78.0419,
+    "near_route_stop": "none",
+    "sources": [
+     "https://tajmahal.gov.in/uneso-world-heritage-site.aspx",
+     "https://tajmahal.gov.in/visiting-hours.aspx",
+     "https://en.wikipedia.org/wiki/Taj_Mahal"
+    ]
+   },
+   {
+    "name": "Shravasti",
+    "name_ne": "श्रावस्ती",
+    "state": "Uttar Pradesh",
+    "type": "Buddhist site",
+    "blurb_en": "Ancient Savatthi. Buddhist tradition says the Buddha spent about 25 rainy-season retreats here, many of them at the Jetavana monastery, which the merchant Anathapindika gave to him. You can see the ruins of Jetavana, stupas and temples at Saheth-Maheth, and monasteries built by Thai, Tibetan and Korean communities. Shravasti is roughly 40 km from Bahraich.",
+    "blurb_ne": "प्राचीन सावत्थी। बौद्ध परम्पराअनुसार भगवान बुद्धले यहाँ करिब २५ वटा वर्षावास बिताउनुभएको थियो, जसमध्ये धेरै व्यापारी अनाथपिण्डिकले दान गरेको जेतवन विहारमा। यहाँ जेतवनका भग्नावशेष, सहेत–महेतका स्तूप र मन्दिर, र थाई, तिब्बती तथा कोरियाली समुदायले बनाएका विहार हेर्न सकिन्छ। श्रावस्ती बहराइचबाट करिब ४० किलोमिटर टाढा छ।",
+    "best_season_en": "October to March",
+    "best_season_ne": "अक्टोबरदेखि मार्च",
+    "unesco": false,
+    "lat": 27.5171,
+    "lon": 82.0506,
+    "near_route_stop": "Rupaidiha",
+    "sources": [
+     "https://asiexbrpatna.bih.nic.in/saravasti.htm",
+     "https://nri.up.gov.in/en/article/shravasti",
+     "https://en.wikipedia.org/wiki/Shravasti",
+     "https://www.newworldencyclopedia.org/entry/Sravasti"
+    ]
+   },
+   {
+    "name": "Dudhwa National Park",
+    "name_ne": "दुधवा राष्ट्रिय निकुञ्ज",
+    "state": "Uttar Pradesh",
+    "type": "National park / tiger reserve",
+    "blurb_en": "A Terai park of forest and grassland in Lakhimpur Kheri district, on the Nepal border. Together with Kishanpur and Katarniaghat it makes up the Dudhwa Tiger Reserve. It is home to tigers, Indian rhinos brought back in 1984–85, and large herds of swamp deer (barasingha). Book safaris and stays through UP Ecotourism, as overnight rooms are limited.",
+    "blurb_ne": "नेपाल सिमानामा, लखीमपुर खीरी जिल्लामा रहेको जंगल र घाँसे मैदानको तराई निकुञ्ज। किशनपुर र कतर्नियाघाटसँग मिलेर यसले दुधवा बाघ आरक्ष बनाउँछ। यहाँ बाघ, सन् १९८४–८५ मा फेरि ल्याइएका एकसिङ्गे गैँडा, र बाह्रसिङ्गाका ठूला बथान पाइन्छन्। बास गर्ने कोठा सीमित भएकाले सफारी र बासको बुकिङ UP इकोटुरिज्मबाट गर्नुहोस्।",
+    "best_season_en": "Open from 15 November to 15 June. It is closed during the monsoon.",
+    "best_season_ne": "१५ नोभेम्बरदेखि १५ जुनसम्म खुला रहन्छ। मनसुनमा बन्द हुन्छ।",
+    "unesco": false,
+    "lat": 28.5083,
+    "lon": 80.68,
+    "near_route_stop": "Rupaidiha",
+    "sources": [
+     "https://en.wikipedia.org/wiki/Dudhwa_National_Park",
+     "https://www.theweek.in/wire-updates/national/2025/06/16/des3-up-dudhwa-park-closure.html",
+     "https://www.sakshipost.com/news/dudhwa-tiger-reserve-reopens-season-reduced-tariff-247423",
+     "https://kheri.nic.in/tourism/"
+    ]
+   },
+   {
+    "name": "Katarniaghat Wildlife Sanctuary",
+    "name_ne": "कतर्नियाघाट वन्यजन्तु अभयारण्य",
+    "state": "Uttar Pradesh",
+    "type": "Wildlife sanctuary",
+    "blurb_en": "A Terai sanctuary in Bahraich district, right on the Nepal border. It was set up in 1975 and is part of the Dudhwa Tiger Reserve. On boat rides along the Girwa river, a branch of the Karnali, you may see gharials, mugger crocodiles and Gangetic dolphins. Jungle safaris run in registered gypsies, and a guide is compulsory. A wildlife corridor links the sanctuary with Nepal's Bardiya National Park.",
+    "blurb_ne": "नेपाल सिमानामै, बहराइच जिल्लामा रहेको तराईको अभयारण्य। यो सन् १९७५ मा स्थापना भएको हो र दुधवा बाघ आरक्षको हिस्सा हो। कर्णालीकै एक शाखा गिरवा नदीमा डुङ्गा सयर गर्दा घडियाल, मगर गोही र गङ्गा डल्फिन देख्न सकिन्छ। जंगल सफारी दर्ता भएका जिप्सीमा हुन्छ, र गाइड अनिवार्य छ। एउटा वन्यजन्तु करिडोरले यस अभयारण्यलाई नेपालको बर्दिया राष्ट्रिय निकुञ्जसँग जोड्छ।",
+    "best_season_en": "November to March. It is closed in the monsoon, from mid-June.",
+    "best_season_ne": "नोभेम्बरदेखि मार्च। मनसुनमा, जुनको मध्यदेखि बन्द हुन्छ।",
+    "unesco": false,
+    "lat": 28.31,
+    "lon": 81.12,
+    "near_route_stop": "Rupaidiha",
+    "sources": [
+     "https://en.wikipedia.org/wiki/Katarniaghat_Wildlife_Sanctuary",
+     "https://upecoboard.up.gov.in/en/article/explore-katarniyaghat",
+     "https://upecotourism.in/Katarniaghat.aspx",
+     "https://www.drishtiias.com/state-pcs-current-affairs/katarniaghat-wildlife-sanctuary/print_manually",
+     "https://www.freepressjournal.in/uttar-pradesh/uttar-pradesh-yogi-govts-eco-tourism-initiatives-gain-momentum-katarniaghat-generates-over-24-million-in-revenue"
+    ]
+   }
+  ],
+  "packages": [
+   {
+    "code": "LPK7",
+    "title_en": "Lumbini–Pokhara–Kathmandu Circuit",
+    "title_ne": "लुम्बिनी–पोखरा–काठमाडौँ सर्किट",
+    "days": 7,
+    "nights": 6,
+    "route_en": "Nepalgunj → Lumbini → Pokhara → Kathmandu → Nepalgunj (flight or road)",
+    "route_ne": "नेपालगन्ज → लुम्बिनी → पोखरा → काठमाडौँ → नेपालगन्ज (हवाई वा सडक)",
+    "highlights_en": [
+     "Lumbini: Maya Devi Temple and the Ashoka Pillar at the Buddha's birthplace, a UNESCO World Heritage Site",
+     "Pokhara: boat ride on Phewa Lake to the Tal Barahi temple, and sunrise over the Annapurna range from Sarangkot",
+     "Kathmandu: Pashupatinath, Boudhanath and Swayambhu, all monument zones of the UNESCO-listed Kathmandu Valley",
+     "Return on the roughly 50-minute Kathmandu–Nepalgunj flight, or by road"
+    ],
+    "highlights_ne": [
+     "लुम्बिनी: बुद्ध जन्मस्थलको मायादेवी मन्दिर र अशोक स्तम्भ, युनेस्को विश्व सम्पदा",
+     "पोखरा: फेवा तालमा डुङ्गा चढेर ताल बाराही मन्दिर, र सराङकोटबाट अन्नपूर्ण हिमशृङ्खलामाथिको सूर्योदय",
+     "काठमाडौँ: पशुपतिनाथ, बौद्धनाथ र स्वयम्भू, सबै युनेस्को सूचीकृत काठमाडौँ उपत्यकाका स्मारक क्षेत्र",
+     "फर्कंदा करिब ५० मिनेटको काठमाडौँ–नेपालगन्ज उडान, वा सडकमार्ग"
+    ],
+    "best_for_en": "Families and first-time visitors who want Nepal's highlights in one week",
+    "best_for_ne": "एकै हप्तामा नेपालका मुख्य ठाउँ घुम्न चाहने परिवार र पहिलो पटक घुम्न जानेहरू",
+    "country": "Nepal"
+   },
+   {
+    "code": "PSH3",
+    "title_en": "Pashupatinath Darshan",
+    "title_ne": "पशुपतिनाथ दर्शन",
+    "days": 3,
+    "nights": 2,
+    "route_en": "Nepalgunj → Kathmandu (flight) → Pashupatinath, Boudhanath, Swayambhu → Nepalgunj",
+    "route_ne": "नेपालगन्ज → काठमाडौँ (उडान) → पशुपतिनाथ, बौद्धनाथ, स्वयम्भू → नेपालगन्ज",
+    "highlights_en": [
+     "Darshan at Pashupatinath, on the banks of the Bagmati river",
+     "Boudhanath, the largest stupa in Nepal, and Swayambhu, the oldest Buddhist monument in the Valley",
+     "Optional visit to Patan or Bhaktapur Durbar Square, also part of the UNESCO-listed Kathmandu Valley",
+     "Biggest crowds come around Maha Shivaratri (February–March), so book early"
+    ],
+    "highlights_ne": [
+     "बागमती किनारमा रहेको पशुपतिनाथको दर्शन",
+     "नेपालकै सबैभन्दा ठूलो स्तूप बौद्धनाथ, र उपत्यकाको सबैभन्दा पुरानो बौद्ध स्मारक स्वयम्भू",
+     "इच्छा भए पाटन वा भक्तपुर दरबार क्षेत्र, जुन युनेस्को सूचीकृत काठमाडौँ उपत्यकाकै हिस्सा हुन्",
+     "महाशिवरात्रि (फेब्रुअरी–मार्च) तिर सबैभन्दा बढी भीड हुन्छ, त्यसैले चाँडै बुक गर्नुहोस्"
+    ],
+    "best_for_en": "Devotees, elderly parents and anyone short on time",
+    "best_for_ne": "भक्तजन, वृद्ध आमाबुबा र छोटो समय भएकाहरू",
+    "country": "Nepal"
+   },
+   {
+    "code": "MKT6",
+    "title_en": "Muktinath Yatra",
+    "title_ne": "मुक्तिनाथ यात्रा",
+    "days": 6,
+    "nights": 5,
+    "route_en": "Nepalgunj → Pokhara → Jomsom (flight) → Muktinath (jeep) → Jomsom → Pokhara → Nepalgunj",
+    "route_ne": "नेपालगन्ज → पोखरा → जोमसोम (उडान) → मुक्तिनाथ (जिप) → जोमसोम → पोखरा → नेपालगन्ज",
+    "highlights_en": [
+     "Muktinath (about 3,700 m), sacred to Hindus as Mukti Kshetra and to Buddhists as Chumig Gyatsa",
+     "Holy bath under the 108 water spouts (Mukti Dhara) and darshan of the ever-burning Jwala Mai flame",
+     "Short scenic mountain flight from Pokhara to Jomsom, with a night in Jomsom (about 2,700 m) to get used to the altitude",
+     "Mountain flights depend on the weather, so the plan includes a spare day"
+    ],
+    "highlights_ne": [
+     "करिब ३,७०० मिटर उचाइको मुक्तिनाथ, हिन्दूका लागि मुक्ति क्षेत्र र बौद्धका लागि छुमिग ग्यात्सा",
+     "१०८ धारा (मुक्ति धारा) मा पवित्र स्नान र सधैँ बलिरहने ज्वालामाईको दर्शन",
+     "पोखराबाट जोमसोमसम्म छोटो, मनमोहक हिमाली उडान, र उचाइमा बानी पार्न जोमसोम (करिब २,७०० मिटर) मा एक रात बास",
+     "हिमाली उडान मौसममा भर पर्ने भएकाले योजनामा एक दिन थप राखिएको छ"
+    ],
+    "best_for_en": "Pilgrims who are fit for high altitude",
+    "best_for_ne": "उच्च हिमाली उचाइ सहन सक्ने तीर्थयात्री",
+    "country": "Nepal"
+   },
+   {
+    "code": "RJC6",
+    "title_en": "Ram–Janaki Circuit (Ayodhya–Janakpur)",
+    "title_ne": "राम–जानकी सर्किट (अयोध्या–जनकपुर)",
+    "days": 6,
+    "nights": 5,
+    "route_en": "Rupaidiha → Ayodhya → Janakpur → Nepalgunj/Rupaidiha",
+    "route_ne": "रुपैडिहा → अयोध्या → जनकपुर → नेपालगन्ज/रुपैडिहा",
+    "highlights_en": [
+     "Ayodhya: darshan at the Shri Ram Janmabhoomi temple, consecrated on 22 January 2024",
+     "Janakpur: Janaki Mandir, the white-marble temple of Goddess Sita, and the Vivah Mandap",
+     "Dhanushadham pilgrimage site, about 15 km from Janakpur",
+     "Best timed for Vivah Panchami (November–December), when Janakpur re-enacts the Ram–Sita wedding"
+    ],
+    "highlights_ne": [
+     "अयोध्या: २२ जनवरी २०२४ मा प्राण प्रतिष्ठा भएको श्रीराम जन्मभूमि मन्दिरको दर्शन",
+     "जनकपुर: सीता माताको सेतो संगमरमरको जानकी मन्दिर र विवाह मण्डप",
+     "जनकपुरबाट करिब १५ किलोमिटर टाढाको धनुषाधाम तीर्थस्थल",
+     "विवाह पञ्चमी (नोभेम्बर–डिसेम्बर) मा जानु उत्तम, जतिबेला जनकपुरमा राम–सीता विवाहको झाँकी प्रस्तुत गरिन्छ"
+    ],
+    "best_for_en": "Devotees of Ram and Sita, and families",
+    "best_for_ne": "राम–सीताका भक्तजन र परिवार",
+    "country": "Both"
+   },
+   {
+    "code": "BUD7",
+    "title_en": "Buddhist Circuit (Lumbini–Kushinagar–Sarnath–Shravasti)",
+    "title_ne": "बौद्ध सर्किट (लुम्बिनी–कुशीनगर–सारनाथ–श्रावस्ती)",
+    "days": 7,
+    "nights": 6,
+    "route_en": "Rupaidiha → Shravasti → Lumbini → Kushinagar → Sarnath/Varanasi → Rupaidiha",
+    "route_ne": "रुपैडिहा → श्रावस्ती → लुम्बिनी → कुशीनगर → सारनाथ/वाराणसी → रुपैडिहा",
+    "highlights_en": [
+     "Four key places in the Buddha's life: his birth (Lumbini), first sermon (Sarnath), Mahaparinirvana (Kushinagar) and many rainy-season retreats (Shravasti)",
+     "Two UNESCO World Heritage Sites: Lumbini, and Sarnath (added in 2026)",
+     "Evening Ganga Aarti at Dashashwamedh Ghat in Varanasi",
+     "The route crosses the India–Nepal border twice, so carry valid photo ID"
+    ],
+    "highlights_ne": [
+     "बुद्धको जीवनका चार मुख्य ठाउँ: जन्म (लुम्बिनी), पहिलो उपदेश (सारनाथ), महापरिनिर्वाण (कुशीनगर) र धेरै वर्षावास (श्रावस्ती)",
+     "दुई युनेस्को विश्व सम्पदा: लुम्बिनी, र सारनाथ (सन् २०२६ मा सूचीमा परेको)",
+     "वाराणसीको दशाश्वमेध घाटमा साँझको गङ्गा आरती",
+     "यात्रामा भारत–नेपाल सीमा दुई पटक पार गरिन्छ, त्यसैले मान्य फोटो परिचयपत्र साथमा राख्नुहोस्"
+    ],
+    "best_for_en": "Buddhist pilgrims and history lovers",
+    "best_for_ne": "बौद्ध तीर्थयात्री र इतिहास मन पराउनेहरू",
+    "country": "Both"
+   },
+   {
+    "code": "BRD3",
+    "title_en": "Bardiya Jungle Safari from Nepalgunj",
+    "title_ne": "नेपालगन्जबाट बर्दिया जंगल सफारी",
+    "days": 3,
+    "nights": 2,
+    "route_en": "Nepalgunj → Thakurdwara (Bardiya National Park) → Nepalgunj",
+    "route_ne": "नेपालगन्ज → ठाकुरद्वारा (बर्दिया राष्ट्रिय निकुञ्ज) → नेपालगन्ज",
+    "highlights_en": [
+     "Bardiya, the largest and least disturbed national park in Nepal's Terai (968 sq km)",
+     "Jeep and walking safaris in tiger, one-horned rhino and wild elephant country",
+     "Karnali river, home to Gangetic dolphins and gharials",
+     "A short road trip from Nepalgunj, easy to add straight after the bus journey"
+    ],
+    "highlights_ne": [
+     "नेपालको तराईकै सबैभन्दा ठूलो र कम बिथोलिएको राष्ट्रिय निकुञ्ज बर्दिया (९६८ वर्ग किलोमिटर)",
+     "बाघ, एकसिङ्गे गैँडा र जंगली हात्ती पाइने क्षेत्रमा जिप र पैदल सफारी",
+     "गङ्गा डल्फिन र घडियाल पाइने कर्णाली नदी",
+     "नेपालगन्जबाट छोटो सडक यात्रा, बस यात्रापछि सिधै जोड्न सजिलो"
+    ],
+    "best_for_en": "Nature lovers and families wanting a short break right after the bus trip",
+    "best_for_ne": "बस यात्रापछि तुरुन्तै छोटो घुमफिर चाहने प्रकृतिप्रेमी र परिवार",
+    "country": "Nepal"
+   },
+   {
+    "code": "CTW4",
+    "title_en": "Chitwan Jungle Safari",
+    "title_ne": "चितवन जंगल सफारी",
+    "days": 4,
+    "nights": 3,
+    "route_en": "Nepalgunj → Sauraha (Chitwan National Park) → Nepalgunj or onward to Kathmandu",
+    "route_ne": "नेपालगन्ज → सौराहा (चितवन राष्ट्रिय निकुञ्ज) → नेपालगन्ज वा काठमाडौँतर्फ",
+    "highlights_en": [
+     "Chitwan National Park, a UNESCO World Heritage Site since 1984",
+     "Jeep safari to look for one-horned rhinos in the home of the Bengal tiger",
+     "Canoe ride on the Rapti river to spot crocodiles, gharials and birds",
+     "Tharu cultural dance evening and the gharial breeding centre"
+    ],
+    "highlights_ne": [
+     "सन् १९८४ देखि युनेस्को विश्व सम्पदा रहेको चितवन राष्ट्रिय निकुञ्ज",
+     "बङ्गाल टाइगरको बासस्थानमा एकसिङ्गे गैँडा खोज्न जिप सफारी",
+     "गोही, घडियाल र चराचुरुङ्गी हेर्न राप्ती नदीमा क्यानो सयर",
+     "थारू सांस्कृतिक नाचको साँझ र घडियाल प्रजनन केन्द्र"
+    ],
+    "best_for_en": "Families and wildlife photographers",
+    "best_for_ne": "परिवार र वन्यजन्तु फोटोग्राफर",
+    "country": "Nepal"
+   },
+   {
+    "code": "GUJ4",
+    "title_en": "Gujarat Heritage Trail",
+    "title_ne": "गुजरात सम्पदा यात्रा",
+    "days": 4,
+    "nights": 3,
+    "route_en": "Vadodara → Statue of Unity (Ekta Nagar) → Champaner-Pavagadh → Ahmedabad → Modhera → Rani ki Vav (Patan) → Mehsana",
+    "route_ne": "वडोदरा → स्ट्याचु अफ युनिटी (एकता नगर) → चम्पानेर–पावागढ → अहमदाबाद → मोढेरा → रानी की वाव (पाटन) → मेहसाना",
+    "highlights_en": [
+     "Statue of Unity, the world's tallest statue at 182 m (closed on Mondays)",
+     "Champaner-Pavagadh UNESCO park, and the ropeway up to the Kalika Mata temple",
+     "Ahmedabad's UNESCO-listed walled city and Sabarmati Ashram",
+     "Modhera Sun Temple and the Rani ki Vav stepwell (UNESCO)"
+    ],
+    "highlights_ne": [
+     "१८२ मिटर अग्लो, विश्वकै सबैभन्दा अग्लो प्रतिमा स्ट्याचु अफ युनिटी (सोमबार बन्द)",
+     "युनेस्को सूचीकृत चम्पानेर–पावागढ पार्क, र रोपवे चढेर कालिका माता मन्दिर",
+     "युनेस्को सूचीकृत अहमदाबादको पुरानो पर्खाले सहर र साबरमती आश्रम",
+     "मोढेरा सूर्य मन्दिर र रानी की वाव (युनेस्को)"
+    ],
+    "best_for_en": "Passengers living in Gujarat and families on a long weekend, plus history and photography lovers",
+    "best_for_ne": "गुजरातमा बस्ने यात्रु र लामो सप्ताहान्त मनाउने परिवार, साथै इतिहास र फोटोग्राफी मन पराउनेहरू",
+    "country": "India"
+   },
+   {
+    "code": "SDD4",
+    "title_en": "Somnath–Dwarka Darshan",
+    "title_ne": "सोमनाथ–द्वारका दर्शन",
+    "days": 4,
+    "nights": 3,
+    "route_en": "Rajkot → Dwarka → Somnath → Sasan Gir (in season) → Rajkot",
+    "route_ne": "राजकोट → द्वारका → सोमनाथ → सासन गिर (मौसम अनुसार) → राजकोट",
+    "highlights_en": [
+     "Dwarkadhish temple, one of the four Char Dham sites",
+     "Somnath, the first of the twelve Jyotirlingas, with its evening light-and-sound show",
+     "Optional Gir lion safari (park open 16 October–15 June; book the permit in advance)",
+     "Triveni Sangam ghat and Somnath beach"
+    ],
+    "highlights_ne": [
+     "चार धाममध्ये एक द्वारकाधीश मन्दिर",
+     "बाह्र ज्योतिर्लिङ्गमध्ये पहिलो सोमनाथ, र बेलुकाको लाइट एन्ड साउन्ड शो",
+     "इच्छा भए गिर सिंह सफारी (निकुञ्ज १६ अक्टोबर–१५ जुन खुला, अनुमति अग्रिम बुक गर्नुपर्छ)",
+     "त्रिवेणी संगम घाट र सोमनाथ समुद्री तट"
+    ],
+    "best_for_en": "Pilgrims and families who want to combine faith with wildlife",
+    "best_for_ne": "आस्था र वन्यजन्तु दुवैको आनन्द लिन चाहने तीर्थयात्री र परिवार",
+    "country": "India"
+   },
+   {
+    "code": "EVR3",
+    "title_en": "Everest View Flight + Kathmandu",
+    "title_ne": "सगरमाथा दृश्य उडान + काठमाडौँ",
+    "days": 3,
+    "nights": 2,
+    "route_en": "Nepalgunj → Kathmandu (flight) → Everest mountain flight → Kathmandu sightseeing → Nepalgunj",
+    "route_ne": "नेपालगन्ज → काठमाडौँ (उडान) → सगरमाथा हिमाली उडान → काठमाडौँ भ्रमण → नेपालगन्ज",
+    "highlights_en": [
+     "Early-morning mountain flight from Kathmandu, about 1 hour, along the Himalaya to Everest (Sagarmatha)",
+     "Sagarmatha National Park, a UNESCO World Heritage Site since 1979",
+     "Kathmandu Valley sightseeing: Pashupatinath, Boudhanath and Swayambhu",
+     "Views depend on the weather, so keep a spare morning"
+    ],
+    "highlights_ne": [
+     "काठमाडौँबाट बिहान सबेरै करिब १ घण्टाको हिमाली उडान, हिमशृङ्खला हुँदै सगरमाथासम्म",
+     "सन् १९७९ देखि युनेस्को विश्व सम्पदा रहेको सगरमाथा राष्ट्रिय निकुञ्ज",
+     "काठमाडौँ उपत्यका भ्रमण: पशुपतिनाथ, बौद्धनाथ र स्वयम्भू",
+     "हिमालको दृश्य मौसममा भर पर्ने भएकाले एक बिहान थप राख्नुहोस्"
+    ],
+    "best_for_en": "Anyone who wants to see Everest without trekking, including older travellers and families",
+    "best_for_ne": "पदयात्रा नगरी सगरमाथा हेर्न चाहने सबै, वृद्ध यात्री र परिवारसमेत",
+    "country": "Nepal"
+   }
+  ]
+ }
+}

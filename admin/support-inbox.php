@@ -39,7 +39,16 @@ if ($migrated && isset($_GET['evidence'])) {
     }
     require_once INCLUDE_PATH . '/wamedia.php';
     try {
-        $bytes = WaMedia::openStash((string) $t['evidence_path']);
+        $ev = ltrim(str_replace('\\', '/', (string) $t['evidence_path']), '/');
+        if (preg_match('#^fraud/\d{4}/\d{2}/[A-Za-z0-9_.-]+$#', $ev) === 1 && strpos($ev, '..') === false) {
+            // 9 Oct 2026: photo sent with a fake-ticket report (api/report-fake.php), stored plain
+            if (!is_file(UPLOAD_PATH . '/' . $ev)) {
+                throw new RuntimeException('Evidence file missing.');
+            }
+            $bytes = (string) file_get_contents(UPLOAD_PATH . '/' . $ev);
+        } else {
+            $bytes = WaMedia::openStash((string) $t['evidence_path']);
+        }
     } catch (Throwable $e) {
         http_response_code(404);
         exit('The file is no longer available.');

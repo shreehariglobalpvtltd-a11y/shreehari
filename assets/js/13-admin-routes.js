@@ -1573,12 +1573,18 @@ const SFX = (function () {
   };
 })();
 
-/* Wire sounds to key user actions */
+/* Wire sounds to key user actions. The capture listener reads the seat's state
+   before the seat handler toggles it, so a deselect plays the deselect sound. */
+var _shgSeatWasSel = false;
+document.addEventListener('click', function (e) {
+  var s = e.target.closest && e.target.closest('.seat');
+  _shgSeatWasSel = !!(s && s.classList.contains('sel'));
+}, true);
 document.addEventListener('click', function (e) {
   var btn = e.target.closest('.btn');
   if (btn) SFX.click();
   var seat = e.target.closest('.seat:not(.taken):not(.locked):not(.blocked)');
-  if (seat) SFX.select();
+  if (seat) (_shgSeatWasSel && SFX.deselect ? SFX.deselect : SFX.select)();
 });
 
 /* Hook into existing functions for contextual sounds.

@@ -118,6 +118,13 @@ try {
         Response::error('Could not send the report right now. Please call the office. / अहिले पठाउन सकिएन, कार्यालयमा फोन गर्नुहोस्।', 503);
     }
     $ref = (string) ($res['ref'] ?? '');
+    // Attach the photo to the inbox ticket so the desk can open it (support-inbox ?evidence=).
+    if ($photoRel !== '' && (int) ($res['id'] ?? 0) > 0 && empty($res['duplicate'])) {
+        try {
+            Database::run("UPDATE support_tickets SET evidence_path = :p WHERE id = :id AND (evidence_path IS NULL OR evidence_path = '')",
+                ['p' => $photoRel, 'id' => (int) $res['id']]);
+        } catch (Throwable $e) { /* column missing on an old schema: the path is still in the message */ }
+    }
 
     if (empty($res['duplicate'])) {
         // the bell: open the booking when the reference is a real one, else the inbox

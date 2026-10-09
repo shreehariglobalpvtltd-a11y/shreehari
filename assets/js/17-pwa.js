@@ -80,7 +80,7 @@
       beacon('install_prompt', { source: deferred ? 'android' : 'ios' });
     }
     function head() {
-      return '<div class="pwa-head"><img src="/assets/img/icon-192.png?v=20261008p" alt="" width="52" height="52">'
+      return '<div class="pwa-head"><img src="/assets/img/icon-192.png?v=20261009s" alt="" width="52" height="52">'
         + '<div><b>' + E(T('pwaInstallT')) + '</b><small>' + E(T('pwaInstallP')) + '</small></div></div>';
     }
     function showAndroid() {
@@ -325,7 +325,7 @@
         + '<div class="bc-body">'
         + '<section><h4>📄 ' + E(T('bcDocsT')) + '</h4><ul class="bc-list"><li>🇮🇳 ' + E(T('bcDocIn')) + '</li><li>🇳🇵 ' + E(T('bcDocNp')) + '</li><li>👶 ' + E(T('bcDocKid')) + '</li><li>✅ ' + E(T('bcNoVisa')) + '</li></ul></section>'
         + '<section><h4>🧳 ' + E(T('bcChkT')) + '</h4><ul class="bc-check" id="bcCheck">' + this.checklist(b) + '</ul></section>'
-        + '<section><h4>💱 ' + E(T('bcMoneyT')) + '</h4><div class="bc-fx" id="bcFx"><b>' + E(T('bcPeg').replace('1.60', Number(peg).toFixed(2))) + '</b><small id="bcFxLive">' + E(T('bcFxChecking')) + '</small></div><p class="bc-warn">⚠️ ' + E(T('bcNotes')) + '</p></section>'
+        + '<section><h4>💱 ' + E(T('bcMoneyT')) + '</h4><div class="bc-fx" id="bcFx"><b>' + E(T('bcPeg').replace('{npr}', Number(peg).toFixed(2)).replace('1.60', Number(peg).toFixed(2))) + '</b><small id="bcFxLive">' + E(T('bcFxChecking')) + '</small></div><p class="bc-warn">⚠️ ' + E(T('bcNotes')) + '</p></section>'
         + '<section><h4>🛃 ' + E(T('bcCustomsT')) + '</h4><ul class="bc-list"><li>' + E(T('bcCustoms1')) + '</li><li>' + E(T('bcCustoms2')) + '</li></ul></section>'
         + '<section><h4>🚌 ' + E(T('bcCrossT')) + '</h4><ul class="bc-list"><li>' + E(T('bcCross1')) + '</li><li>' + E(T('bcCross2')) + '</li></ul></section>'
         + '<section><h4>🆘 ' + E(T('bcSosT')) + '</h4><p>' + E(T('bcSos')) + ' · <a href="tel:' + E((typeof digits === 'function') ? digits(office) : office) + '">' + E(office) + '</a></p></section>'

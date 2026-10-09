@@ -91,6 +91,7 @@ cat > "$rules" <<'RULES'
     location ~ ^/deploy/                                  { deny all; return 404; }
     location ~* \.(sh|bash|conf)$                         { deny all; return 404; }
     location ^~ /uploads/staff-msg/                       { deny all; return 404; }
+    location ^~ /uploads/fraud/                           { deny all; return 404; }
 RULES
 
 stamp="$(date +%Y%m%d-%H%M%S)"

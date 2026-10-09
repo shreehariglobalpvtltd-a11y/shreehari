@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v208';   // 8 Oct 2026: premium upgrade - booking-first home, 5-tab bar, premium seat map, honest checkout/ticket, a11y + voice guide   // 8 Oct 2026: Settings save fixed, sharing fare per pickup, website button switches   // 8 Oct 2026: Smart v2 - Seat AI rear-first + Recommended ring, near-me pickup   // 8 Oct 2026: Extra seats EX1..EX20 (counter / agent strip)   // 8 Oct 2026: Seat AI (gender-aware auto seat, Auto seat → Continue)   // 7 Oct 2026: login sheet on first open; saved name/number/gender fill Quick Ticket + seat page
+var VERSION = 'shg-v209';   // 9 Oct 2026: showcase upgrade - emblem-only logo, Pixel themes + sounds, single-source facts, route km/halts + live time, ticket heritage art + security code, fake-proof risk queue, office chat, India-Nepal + Explore + Tours
 var SHELL_CACHE = 'shg-shell-' + VERSION;
 /* How long a returning visitor waits for a fresh document before the
    cached app shell opens instead (see the navigate handler). */
@@ -43,11 +43,14 @@ var MAX_TICKETS = 10;
    never go stale: a new build changes the URL and the old cache is dropped
    with the old VERSION. This is what makes a re-open feel instant — the
    ~1 MB of app code is read from disk instead of the network. */
-var ASSET_VER = '20261008p';
+var ASSET_VER = '20261009s';
 var PRECACHE = [
   '/assets/img/logo.png?v=' + ASSET_VER,
   /* 8 Oct 2026: the 10 KB nav / home-hero logo (logo.png stays for the footer + PDF) */
   '/assets/img/logo-nav.png?v=' + ASSET_VER,
+  /* 9 Oct 2026: emblem-only mark (tickets, footer) + the small push badge */
+  '/assets/img/logo-mark-96h.png?v=' + ASSET_VER,
+  '/assets/img/badge-96.png?v=' + ASSET_VER,
   '/assets/css/app.css?v=' + ASSET_VER,
   '/assets/css/views.css?v=' + ASSET_VER,
   '/assets/css/premium.css?v=' + ASSET_VER,
@@ -503,7 +506,7 @@ self.addEventListener('push', function (event) {
   var opts = {
     body: data.body || '',
     icon: data.icon || '/assets/img/icon-192.png',
-    badge: data.badge || '/assets/img/icon-192.png',
+    badge: data.badge || '/assets/img/badge-96.png',
     tag: data.tag || 'shg',
     renotify: !!data.tag,
     lang: data.lang || 'ne',

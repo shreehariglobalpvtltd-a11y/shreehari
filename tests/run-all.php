@@ -192,7 +192,7 @@ const CORE_SUITES = [
     // 4 Oct 2026, registered with the three homepage animation scenes it guards.
     'home-animation-test.php'     => 'the homepage scenes: lazy WebP/SVG only, never mirrored, honest labels, transform/opacity, pause, 4 languages',
     // 4 Oct 2026, registered with the pop-out depth layer + AMOLED display it guards.
-    'depth-display-test.php'      => 'depth.css loads last in both apps; light/dark/AMOLED stored raw; AMOLED pairs >= 4.5:1; reduced motion keeps depth; sound/vibration default off',
+    'depth-display-test.php'      => 'depth.css loads last in both apps; light/dark/AMOLED stored raw; AMOLED pairs >= 4.5:1; reduced motion keeps depth; sound/vibration default on',
     // 24 Sep 2026, registered with the pdfPath() fix it guards.
     'ticket-cache-test.php'       => 'a ticket PNG/PDF older than its layout stamp is redrawn once, and only once',
     // 24 Sep 2026, registered with the removal of the downloadable admin source backups.
@@ -226,6 +226,17 @@ const CORE_SUITES = [
     'agreement-pdf-test.php'      => 'Hindi agreement PDF: validation, shaped Devanagari, two pages (needs HarfBuzz, as devshape)',
     // 27 Sep 2026 office report, restored 2 Oct 2026.
     'office-report-test.php'      => 'the office WhatsApp report: slots, grace, once per slot, numbers, Nepali text',
+    // 9 Oct 2026 showcase upgrade, registered with the packages they guard.
+    'site-facts-test.php'         => 'one source for prices + names: SiteFacts boot/tokens, Fare::board = perSeatFor, office list, literal ratchet',
+    'theme-palette-test.php'      => '12 palettes x light/dark/AMOLED, pre-paint whitelist, Pixel/Classic UI + sound packs, Appearance sheet',
+    'showcase-test.php'           => 'home showcase: emblem-only logo, 3D widgets, colourful help buttons, CEO card, amenities, quick-booking demo',
+    'homeinfo-test.php'           => 'home info: fares board, route strip, India-Nepal timeline, places worth the trip, localized links',
+    'route-details-test.php'      => 'route km per stop, halts, stop count, timetable API, live running time on track',
+    'ticket-art-test.php'         => 'emblem/flags/heritage art + security code + verify NOT GENUINE',
+    'brand-flags-test.php'        => 'emblem without baked name or white box, India + Nepal flags on every document, icons',
+    'payment-risk-test.php'       => 'fake-proof scoring, screenshot fingerprint, two-step approval, report-fake, gate live code',
+    'staff-msg-test.php'          => 'admin <-> agent chat: scope, CSRF, files behind PHP, push, unread counts',
+    'content-pages-test.php'      => '/india-nepal, /offices, /explore, /tours pages, enquiry form, sitemap',
 ];
 
 /**
