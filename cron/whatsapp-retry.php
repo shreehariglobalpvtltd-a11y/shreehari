@@ -34,8 +34,9 @@ require_once INCLUDE_PATH . '/pdf.php';
 require_once INCLUDE_PATH . '/ticket.php';
 require_once INCLUDE_PATH . '/notify.php';
 
-const MAX_TRIES  = 6;    // total WhatsApp attempts per booking before giving up
-const BATCH_SIZE = 25;   // bookings per run
+// Saver mode: one original send + at most one verified transient retry.
+const MAX_TRIES  = 2;
+const BATCH_SIZE = 5;
 
 /**
  * Report and STOP. cron_done() only prints — it returns, so using it alone as
@@ -49,6 +50,35 @@ function retry_stop(array $result): never
     cron_done($result);
     exit;
 }
+
+/*
+ * WHATSAPP SMART SAVER (10 Oct 2026)
+ * The legacy job swept historical failures into as many as six attempts.
+ * The operator must explicitly opt IN; deployment alone never sends the backlog.
+ */
+if (!Settings::getBool('wa_auto_retry_enabled', false)) {
+    retry_stop(['skipped' => 'smart saver: automatic retries disabled (default)']);
+}
+$cutover = trim(Settings::getString('wa_auto_retry_cutover_at', ''));
+$cutoverDate = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $cutover);
+if ($cutoverDate === false
+    || $cutoverDate->format('Y-m-d H:i:s') !== $cutover
+    || $cutoverDate->getTimestamp() > time()) {
+    retry_stop(['skipped' => 'smart saver: a valid past/present wa_auto_retry_cutover_at is required']);
+}
+
+// Prevent duplicate sends if the URL and CLI cron overlap.
+$retryLock = (int) Database::scalar("SELECT GET_LOCK('shg_wa_retry_saver', 0)", [], 0);
+if ($retryLock !== 1) {
+    retry_stop(['skipped' => 'smart saver: another retry worker holds the lock']);
+}
+register_shutdown_function(static function (): void {
+    try {
+        Database::scalar("SELECT RELEASE_LOCK('shg_wa_retry_saver')", [], 0);
+    } catch (Throwable $ignored) {
+        // Connection close also releases MySQL advisory locks.
+    }
+});
 
 // A paused sender means Twilio is refusing the whole ACCOUNT. Retrying now
 // would spend the per-booking cap on a sender we already know is down.
@@ -184,12 +214,22 @@ $due = Database::fetchAll(
       WHERE b.status = 'confirmed'
         AND m.status = 'failed'
         AND NOT " . UNREACHABLE_SQL . "
+        -- Old bookings NEVER re-enter this automatic job.
+        AND b.created_at >= :cutover
+        AND m.created_at >= :cutover2
+        AND m.created_at >= NOW() - INTERVAL 60 MINUTE
+        -- Wait for delayed provider callbacks before retrying.
+        AND m.created_at <= NOW() - INTERVAL 10 MINUTE
+        -- Allow only explicit, known transient provider rejection codes.
+        AND (m.error LIKE '%(code 130429)%'
+             OR m.error LIKE '%(code 131016)%'
+             OR m.error LIKE '%(code 20429)%')
         AND EXISTS (SELECT 1 FROM booking_legs bl
                      WHERE bl.booking_id = b.id AND bl.travel_date >= CURDATE())
       HAVING tries < :max
       ORDER BY b.id DESC
       LIMIT " . BATCH_SIZE,
-    ['max' => MAX_TRIES]
+    ['max' => MAX_TRIES, 'cutover' => $cutover, 'cutover2' => $cutover]
 );
 
 // Upcoming passengers whose number WhatsApp itself rejects — call them.
