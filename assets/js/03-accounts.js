@@ -406,8 +406,15 @@ function describeWhereAmI(onUpdate) {
    bar [light, dark], dark page colour, then the name in ne / en / hi. Generated with
    themes.css - tests/theme-palette-test.php keeps this list, the CSS and the
    pre-paint whitelist in app.template.html identical. Declared here, above
-   initTheme(), because applyTheme() reads it on the very first call. */
+   initTheme(), because applyTheme() reads it on the very first call.
+   10 Oct 2026 (owner: "default colour professional, white-blue, golden-orange
+   like the logo"): the first three rows are the BRAND LOOKS - hand-tuned in
+   themes.css to the HD visual guide, shown first in the sheet under their own
+   label (SHG_BRAND_LOOK_IDS); professional is the owner default. */
 const SHG_PALETTES = [
+  ['professional', ['#154faa', '#b8d5ff', '#d59a37'], ['#0f2f66', '#10203a'], '#0a1018', 'प्रोफेसनल (मूल)', 'Professional (default)', 'प्रोफ़ेशनल (मूल)'],
+  ['whiteblue',  ['#0054a8', '#ffffff', '#8fbfff'], ['#0c306c', '#0f1f3d'], '#0b1220', 'सेतो-निलो', 'White & Blue', 'सफ़ेद-नीला'],
+  ['goldenorange', ['#b4530a', '#ffb26e', '#e2a528'], ['#3a1f05', '#241608'], '#15100b', 'सुनौलो-सुन्तला', 'Golden & Orange', 'सुनहरा-नारंगी'],
   ['himalaya',   ['#3567d3', '#bbc3ff', '#dd8eb3'], ['#003175', '#141a32'], '#12131b', 'हिमालय नीलो', 'Himalaya Blue', 'हिमालय नीला'],
   ['laligurans', ['#d32137', '#ffb3ad', '#87b177'], ['#6c0b17', '#311210'], '#1c100f', 'लालीगुराँस', 'Laligurans Red', 'बुरांश लाल'],
   ['saffron',    ['#a95700', '#fcb886', '#7eb378'], ['#542a00', '#2c1700'], '#1b1109', 'केसरी', 'Saffron', 'केसरिया'],
@@ -422,6 +429,9 @@ const SHG_PALETTES = [
   ['peacock',    ['#007b6a', '#7fd6c3', '#8ea3eb'], ['#003c33', '#00201b'], '#061613', 'मयूर', 'Peacock', 'मोर']
 ];
 const SHG_PAL_IDS = SHG_PALETTES.map(p => p[0]);
+/* 10 Oct 2026: the three brand looks lead the colour grid under their own label;
+   every other row is a Material You palette. */
+const SHG_BRAND_LOOK_IDS = ['professional', 'whiteblue', 'goldenorange'];
 function shgPalRow(id) { for (let i = 0; i < SHG_PALETTES.length; i++) { if (SHG_PALETTES[i][0] === id) return SHG_PALETTES[i]; } return null; }
 /* The phone's status bar and the overscroll colour follow the theme AND the palette. */
 function shgPaintChrome(mode) {
@@ -546,7 +556,9 @@ document.addEventListener('click', (e) => {
    row in the phone menu and from the topbar's 🎨 button on a computer:
      Display  Auto / Light / Dark / AMOLED  (the same [data-theme-set]
               buttons the menu already has - applyTheme() above drives both)
-     Colour   S Hari (default) + 12 Material You palettes [data-palette-set]
+     Colour   S Hari (default) + 3 brand looks (10 Oct 2026: professional,
+              white & blue, golden & orange) + 12 Material You palettes
+              [data-palette-set]
      Style    Pixel (rounded, tonal) / Classic 3D (today's raised depth)
      Motion   Full / Reduced (html[data-motion="reduced"])
      Sound    on/off, style (Pixel / Classic), vibration - via window.SHGFeel
@@ -586,6 +598,9 @@ document.addEventListener('click', (e) => {
     colourNote: ['रङले सिट, भाडा वा टिकटको अर्थ बदल्दैन - हरियो सधैं ठीक, रातो सधैं सावधान।', 'Colours never change what a seat, fare or status means - green is always OK, red is always careful.', 'रंग से सीट, किराया या स्टेटस का मतलब नहीं बदलता - हरा हमेशा ठीक, लाल हमेशा सावधान।'],
     brand: ['S Hari (मूल)', 'S Hari (default)', 'S Hari (मूल)'],
     brandS: ['लोगोकै नेभी, निलो र रातो', 'The logo\'s navy, royal blue and red', 'लोगो वाला नेवी, नीला और लाल'],
+    /* 10 Oct 2026: the two group labels inside the colour grid */
+    brandLooks: ['ब्रान्ड रूप · Brand looks', 'Brand looks · ब्रान्ड रूप', 'ब्रांड रूप · Brand looks'],
+    moreColours: ['थप रङहरू · Material You', 'More colours · Material You', 'और रंग · Material You'],
     style: ['शैली', 'Style', 'शैली'],
     pixel: ['Pixel', 'Pixel', 'Pixel'], pixelS: ['गोलो र नरम', 'Round & soft', 'गोल और नरम'],
     classic: ['क्लासिक 3D', 'Classic 3D', 'क्लासिक 3D'], classicS: ['उठेको गहिराइ', 'Raised depth', 'उभरी गहराई'],
@@ -675,7 +690,14 @@ document.addEventListener('click', (e) => {
     const sw = (id, colours, name, sub) => '<button type="button" class="ap-sw' + (sub ? ' ap-sw-brand' : '') + '" role="radio" data-palette-set="' + id + '" aria-checked="' + ((id === 'shg' ? !pal : pal === id) ? 'true' : 'false') + '" aria-label="' + esc(name) + '">'
       + '<span class="ap-dot" data-sw="' + colours.join(',') + '" aria-hidden="true"></span><span class="ap-nm">' + esc(name) + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span></button>';
     h += sw('shg', ['#0054A8', '#0C306C', '#DC143C'], tx('brand'), tx('brandS'));
-    SHG_PALETTES.forEach((p) => { h += sw(p[0], p[1], p[4 + li]); });
+    /* 10 Oct 2026: the brand looks first under their own label, then the
+       Material You palettes. The labels are plain text inside the radiogroup:
+       rove() / the arrow keys only ever look at [role="radio"]. */
+    const grp = (k) => '<span class="ap-grp" aria-hidden="true">' + esc(tx(k)) + '</span>';
+    h += grp('brandLooks');
+    SHG_PALETTES.forEach((p) => { if (SHG_BRAND_LOOK_IDS.indexOf(p[0]) >= 0) h += sw(p[0], p[1], p[4 + li]); });
+    h += grp('moreColours');
+    SHG_PALETTES.forEach((p) => { if (SHG_BRAND_LOOK_IDS.indexOf(p[0]) < 0) h += sw(p[0], p[1], p[4 + li]); });
     h += '</div><p class="ap-note">' + esc(tx('colourNote')) + '</p></section>';
     h += '<section class="ap-sec"><h3 id="apStyH">✨ ' + esc(tx('style')) + '</h3><div class="ap-seg" role="radiogroup" aria-labelledby="apStyH">'
       + opt('data-ap-ui="pixel"', '<span class="ap-prev px"><i></i><i></i></span>', tx('pixel'), tx('pixelS'), ui === 'pixel')

@@ -224,7 +224,12 @@ $admIds = $aIds[1] ?? [];
 
 /* ---------- 3. readability ---------- */
 echo "\n-- 3. readability: every palette x light / dark / AMOLED >= 4.5:1 --\n";
-check('12 palettes in themes.css', count($cssIds) === 12, implode(' ', $cssIds));
+/* 10 Oct 2026: 12 Material You palettes + the 3 hand-tuned brand looks
+   (professional = owner default, whiteblue, goldenorange) = 15 */
+check('15 palettes in themes.css', count($cssIds) === 15, implode(' ', $cssIds));
+foreach (['professional', 'whiteblue', 'goldenorange'] as $bl) {
+    check("brand look '{$bl}' is a palette", in_array($bl, $cssIds, true));
+}
 $sheets = [css_blocks($ds), css_blocks($redes), css_blocks($themes), css_blocks($depth)];
 $pairs = [
     ['--md-on-primary', '--md-primary', 'on-primary/primary'],
@@ -310,6 +315,13 @@ foreach (['app_theme_palette' => "''", 'app_ui_style' => "'pixel'", 'app_sound_p
 }
 check('SQL: explicit is_public UPDATE for the four keys', (bool) preg_match("~UPDATE `settings` SET `is_public` = 1\\s+WHERE `skey` IN \\('app_theme_palette', 'app_ui_style', 'app_sound_pack', 'app_motion_on'\\)~", $sql));
 check('SQL: INSERT IGNORE (idempotent, keeps an owner value)', stripos($sql, 'INSERT IGNORE INTO `settings`') !== false);
+/* 10 Oct 2026: professional becomes the owner default, only where the row is
+   still blank (an owner who picked something keeps it); the 9 Oct file is untouched */
+$sql2F = $root . '/database/upgrade-2026-10-10-themes.sql';
+$sql2 = is_file($sql2F) ? (string) file_get_contents($sql2F) : '';
+check('SQL (10 Oct): professional default where app_theme_palette is still blank', (bool) preg_match("~UPDATE `settings` SET `svalue` = 'professional'\\s+WHERE `skey` = 'app_theme_palette' AND `svalue` = ''~", $sql2));
+check('SQL (10 Oct): keeps the row public', (bool) preg_match("~UPDATE `settings` SET `is_public` = 1\\s+WHERE `skey` = 'app_theme_palette'~", $sql2));
+check('SQL (9 Oct) still inserts the blank default (the 10 Oct file only updates)', (bool) preg_match("~\\('app_theme_palette',\\s*'',\\s*'string',\\s*'app'~", $sql));
 check('Admin -> Settings: dropdowns for style + sound pack', strpos($adm, "'app_ui_style'         => ['pixel'") !== false && strpos($adm, "'app_sound_pack'       => ['pixel'") !== false);
 check('Admin -> Settings: help text for all four', substr_count($adm, "'app_theme_palette'") >= 2 && strpos($adm, "'app_motion_on'                       =>") !== false);
 check('index.php: owner default applied only where nothing is saved', strpos($index, 'window.SHG_PAL_TC') !== false && strpos($index, "if (u !== 'pixel' && u !== 'classic')") !== false && strpos($index, "if (mo !== 'full' && mo !== 'reduced'") !== false);
@@ -340,7 +352,11 @@ check('sheet: focus trap, Esc and the back key', strpos($acc, "e.key === 'Tab'")
 check('sheet: colour swatches use data-palette-set (data-theme-set stays light/dark/amoled/auto)', strpos($acc, 'data-palette-set="') !== false);
 preg_match_all('~data-theme-set="([a-z]+)"~', $acc . $tpl, $dts);
 check('no new data-theme-set value', array_diff(array_unique($dts[1]), ['auto', 'light', 'dark', 'amoled']) === [], implode(' ', array_unique($dts[1])));
-check('sheet: S Hari (default) + every palette, named in ne / en / hi', strpos($acc, "brand: ['S Hari (मूल)', 'S Hari (default)'") !== false && count($am) === 12);
+check('sheet: S Hari (default) + every palette, named in ne / en / hi', strpos($acc, "brand: ['S Hari (मूल)', 'S Hari (default)'") !== false && count($am) === 15);
+/* 10 Oct 2026: the three brand looks lead the colour grid under their own label */
+check('sheet: brand looks listed first in SHG_PALETTES', array_slice($jsIds, 0, 3) === ['professional', 'whiteblue', 'goldenorange'], implode(' ', array_slice($jsIds, 0, 3)));
+check('sheet: SHG_BRAND_LOOK_IDS + the two group labels (plain text, not radios)', strpos($acc, "const SHG_BRAND_LOOK_IDS = ['professional', 'whiteblue', 'goldenorange'];") !== false && strpos($acc, "brandLooks: ['ब्रान्ड रूप · Brand looks', 'Brand looks · ब्रान्ड रूप'") !== false && strpos($acc, '<span class="ap-grp" aria-hidden="true">') !== false && strpos($themes, '.shg-ap .ap-grp {') !== false);
+check('sheet: professional named "(default)" in ne / en / hi', strpos($acc, "'प्रोफेसनल (मूल)', 'Professional (default)', 'प्रोफ़ेशनल (मूल)'") !== false);
 check('entry points: phone-menu row + topbar 🎨 button', strpos($acc, "b.className = 'mm-appear'") !== false && strpos($acc, "closest('.palette-btn')") !== false && strpos($themes, 'html .topbar .palette-wrap { display: inline-flex !important; }') !== false);
 check('style / motion / pack / sound / vibration controls', strpos($acc, 'data-ap-ui="pixel"') !== false && strpos($acc, 'data-ap-motion="reduced"') !== false && strpos($acc, 'data-ap-pack="pixel"') !== false && strpos($acc, "toggle('sound'") !== false && strpos($acc, "toggle('haptics'") !== false);
 check('saves shg:palette / shg:ui / shg:motion', strpos($acc, "lsSet('shg:palette'") !== false && strpos($acc, "lsSet('shg:ui'") !== false && strpos($acc, "lsSet('shg:motion'") !== false);

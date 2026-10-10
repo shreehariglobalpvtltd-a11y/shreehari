@@ -55,11 +55,14 @@
    day-palette value ('0'-'6', 'brand', 'logo', 'auto') is ignored, and 'shg'
    means the S Hari brand look chosen on purpose (no attribute). Each palette
    carries its status-bar colours [light, dark] and its dark page colour, kept
-   equal to SHG_PALETTES in 03-accounts.js by tests/theme-palette-test.php. */
+   equal to SHG_PALETTES in 03-accounts.js by tests/theme-palette-test.php.
+   10 Oct 2026: professional / whiteblue / goldenorange are the three brand
+   looks (professional = the owner default, applied by index.php right after). */
 (function () {
   try {
     var d = document.documentElement;
-    var P = { himalaya: ['#003175', '#141a32', '#12131b'], laligurans: ['#6c0b17', '#311210', '#1c100f'], saffron: ['#542a00', '#2c1700', '#1b1109'],
+    var P = { professional: ['#0f2f66', '#10203a', '#0a1018'], whiteblue: ['#0c306c', '#0f1f3d', '#0b1220'], goldenorange: ['#3a1f05', '#241608', '#15100b'],
+      himalaya: ['#003175', '#141a32', '#12131b'], laligurans: ['#6c0b17', '#311210', '#1c100f'], saffron: ['#542a00', '#2c1700', '#1b1109'],
       tulsi: ['#003e09', '#0d2008', '#0e150c'], phewa: ['#003b41', '#001f23', '#051617'], lotus: ['#6a0342', '#301120', '#1b1015'],
       lavender: ['#3f266b', '#20172f', '#16121a'], marigold: ['#433200', '#241a00', '#181307'], monsoon: ['#173946', '#141d21', '#08151a'],
       everest: ['#003953', '#001e2f', '#0b141b'], terracotta: ['#651a00', '#301406', '#1c110c'], peacock: ['#003c33', '#00201b', '#061613'] };
