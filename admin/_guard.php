@@ -192,6 +192,10 @@ function admin_nav(): array
         ['href' => 'counters.php',     'icon' => 'map-pin',    'label' => 'Counters & collection', 'perm' => 'reports.view', 'section' => 'Agents & counters'],
         // 4 Oct 2026: WhatsApp tickets by "hi" - waiting / sent / delivered per number.
         ['href' => 'wa-queue.php',     'icon' => 'msg',        'label' => 'WhatsApp tickets',  'perm' => 'bookings.view', 'section' => 'Agents & counters'],
+        // 10 Oct 2026: which agent delivers which ticket (free WhatsApp routing) + ticket changes by code.
+        ['href' => 'wa-routing.php',   'icon' => 'msg',        'label' => '🧑‍💼 WhatsApp routing', 'perm' => 'bookings.view', 'section' => 'Agents & counters'],
+        // 10 Oct 2026: customers by who is looking - CEO all, staff own routes, agent own sales.
+        ['href' => 'customer-lists.php', 'icon' => 'users',    'label' => '👥 Customer lists',  'perm' => 'bookings.view', 'section' => 'Bookings & tickets'],
         // 4 Oct 2026: a counter keeps its own desk's phone / hours / address / map.
         ['href' => 'my-desk.php',      'icon' => 'map-pin',    'label' => 'My desk',          'perm' => 'bookings.view', 'section' => 'Agents & counters'],
 
@@ -503,6 +507,7 @@ function admin_header(string $title, string $active = ''): void
             'wa-compose.php' => '📲 WhatsApp & marketing', 'campaigns.php' => '📲 WhatsApp & marketing', 'wa-manager.php' => '📲 WhatsApp & marketing',
             'wa-templates.php' => '📲 WhatsApp & marketing', 'messages-log.php' => '📲 WhatsApp & marketing', 'ai-marketing.php' => '📲 WhatsApp & marketing',
             'promo-card.php' => '📲 WhatsApp & marketing', 'wa-pending.php' => '📲 WhatsApp & marketing', 'wa-queue.php' => '📲 WhatsApp & marketing',
+            'wa-routing.php' => '📲 WhatsApp & marketing', 'customer-lists.php' => '👥 Customers',
             'offers.php' => '💳 Ledger, payments & offers', 'ledger-check.php' => '💳 Ledger, payments & offers', 'payments.php' => '💳 Ledger, payments & offers',
             'refunds.php' => '💳 Ledger, payments & offers', 'accounting.php' => '💳 Ledger, payments & offers', 'payroll.php' => '💳 Ledger, payments & offers',
             'ai-copilot.php' => '🤖 AI', 'ai-brain.php' => '🤖 AI', 'ai-knowledge.php' => '🤖 AI', 'ai-activity.php' => '🤖 AI',

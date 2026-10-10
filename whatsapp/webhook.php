@@ -144,6 +144,24 @@ function wh_status(array $st): void
         }
     }
 
+    /* 10 Oct 2026 — a ticket the "hi" queue sent on this number is marked
+       delivered / read here (the queue's own cron only asks AiSensy), so the
+       agent routing (includes/waagentroute.php) knows the passenger has it. */
+    if ($state === 'delivered' || $state === 'read') {
+        try {
+            require_once INCLUDE_PATH . '/waqueue.php';
+            if (WaQueue::ready()) {
+                Database::run(
+                    "UPDATE wa_ticket_queue SET status = :s, checked_at = NOW()
+                      WHERE wamid = :w AND status IN ('sent'" . ($state === 'read' ? ",'delivered'" : '') . ")",
+                    ['s' => $state, 'w' => $wamid]
+                );
+            }
+        } catch (Throwable $e) {
+            Logger::exception($e, 'whatsapp');
+        }
+    }
+
     // Same mapping as api/twilio-status.php: only terminal states rewrite a row.
     $final = match ($state) {
         'delivered', 'read' => 'sent',

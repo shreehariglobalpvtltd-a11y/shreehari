@@ -462,6 +462,15 @@ final class Notify
             if ($free !== null && $free['success']) {
                 self::$journal[] = ['to' => $number, 'ok' => true, 'link' => null, 'driver' => 'cloud_api', 'reason' => 'meta_free', 'ref' => $free['message_id']];
                 self::metaTicketRecorded($bookingId, $purpose, $number, 'meta free', (string) $free['message_id']);
+                // 10 Oct 2026: the change buttons follow a free ticket (includes/waedit.php).
+                if ($bookingId !== null && $bookingId > 0 && in_array($purpose, ['ticket', 'ticket_resend', 'ticket_update'], true)) {
+                    try {
+                        require_once __DIR__ . '/waedit.php';
+                        WaEdit::afterTicket((int) $bookingId, $number);
+                    } catch (Throwable $e) {
+                        Logger::warning('ticket buttons hook failed: ' . $e->getMessage(), [], 'whatsapp');
+                    }
+                }
                 return true;
             }
             if (WaRoute::metaTemplatesOn() && $templateVars !== [] && in_array($purpose, ['ticket', 'ticket_update', 'ticket_resend'], true)) {

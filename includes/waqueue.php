@@ -66,9 +66,20 @@ final class WaQueue
         return self::$ready && Settings::getBool('wa_hi_queue_on', true);
     }
 
-    /** The AiSensy number customers send "hi" to, as digits (919157001507). */
+    /** The number customers send "hi" to, as digits. */
     public static function hiNumber(): string
     {
+        /* 10 Oct 2026: the META number (+91 87358 81507) by default. Its
+           webhook is live and its free 24 h window carries the ticket PNG
+           (whatsapp/webhook.php → onInbound(…, 'meta')); the AiSensy number
+           never had an inbound webhook, so a "hi" sent there reached nobody.
+           wa_hi_meta = 0 (or wa_policy aisensy_only) goes back to AiSensy. */
+        if (Settings::getBool('wa_hi_meta', true) && strtolower(Settings::getString('wa_policy', 'meta_first')) !== 'aisensy_only') {
+            $m = preg_replace('/\D+/', '', Settings::getString('meta_wa_number', '918735881507')) ?? '';
+            if ($m !== '') {
+                return $m;
+            }
+        }
         $d = preg_replace('/\D+/', '', Settings::getString('aisensy_wa_number', '919157001507')) ?? '';
         return $d !== '' ? $d : '919157001507';
     }
@@ -598,6 +609,16 @@ final class WaQueue
             ['s' => $r['success'] ? 'sent' : 'failed', 'v' => $via, 'w' => $r['message_id'] !== '' ? $r['message_id'] : null,
              'e' => $r['success'] ? null : mb_substr((string) $r['error'], 0, 250), 'ok' => $r['success'] ? 1 : 0, 'i' => (int) $q['id']]
         );
+        /* 10 Oct 2026: a free ticket in the passenger's open window is followed
+           by the change buttons (name / date / agent / cancel, includes/waedit.php). */
+        if ($r['success'] && $via === 'meta free' && $isCustomer) {
+            try {
+                require_once INCLUDE_PATH . '/waedit.php';
+                WaEdit::afterTicket((int) $b['id'], (string) $q['phone']);
+            } catch (Throwable $e) {
+                Logger::warning('ticket buttons hook failed: ' . $e->getMessage(), ['pnr' => $pnr]);
+            }
+        }
         if (class_exists('Notify') && $via !== 'meta free') {
             Notify::logOutbound((string) $q['phone'], 'AiSensy ticket ' . $pnr . ' (' . $role . ', ' . $via . ')', $r['success'] ? 'sent' : 'failed', [
                 'provider'  => 'aisensy',

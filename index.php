@@ -162,7 +162,20 @@ if (!$shgHiLive) {
         $shgHiLive = false;   // table not there: no "hi" flow at all
     }
 }
-$boot['waHi'] = $shgHiLive ? (preg_replace('/\D+/', '', Settings::getString('aisensy_wa_number', '919157001507')) ?: '919157001507') : '';
+/* 10 Oct 2026: "hi" now goes to the META number (+91 87358 81507), whose
+   webhook is live and whose free 24 h window carries the ticket PNG at once
+   (includes/waqueue.php hiNumber()). The paid template may not arrive (AiSensy
+   wallet / Meta billing), "hi" always does - so the button is always shown.
+   wa_hi_meta = 0 restores the old AiSensy-number behaviour. */
+$shgHiMeta = Settings::getBool('wa_hi_meta', true) && strtolower(Settings::getString('wa_policy', 'meta_first')) !== 'aisensy_only';
+if ($shgHiMeta) {
+    $shgHiLive = true;
+}
+$boot['waHi'] = $shgHiLive
+    ? ($shgHiMeta
+        ? (preg_replace('/\D+/', '', Settings::getString('meta_wa_number', '918735881507')) ?: '918735881507')
+        : (preg_replace('/\D+/', '', Settings::getString('aisensy_wa_number', '919157001507')) ?: '919157001507'))
+    : '';
 $boot['waDirect'] = !$shgHiLive;
 $boot['npr'] = Settings::getFloat('npr_per_inr', defined('NPR_PER_INR') ? (float) NPR_PER_INR : 1.6);   // the one NPR rate the app estimates with
 // 5 Oct 2026: the Nepalgunj office line on the home banner (Company details -> Nepal phone).

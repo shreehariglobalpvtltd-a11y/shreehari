@@ -187,6 +187,8 @@ const CORE_SUITES = [
     'wa-route-test.php'           => 'Meta-first routing: free inside the Meta window, AiSensy utility template otherwise, marketing guard, queue recovery',
     'wa-local-test.php'           => 'the local brain: bus live, seats left, timetable, bus & crew, ticket again, pay, refund rule, staff summaries - no AI',
     'wa-habit-test.php'           => 'the bot learns repeated work: same question 3 days -> offer -> daily free send, habit band',
+    // 10 Oct 2026, registered with the agent routing + ticket changes by code it guards.
+    'wa-agent-routing-test.php'   => 'every ticket reaches its passenger: watch -> route agent (free) -> timeout -> next -> admin; short link; name/date/agent/cancel behind a code; owner teaches the bot',
     'seatmap-test.php'            => 'the customer seat picture: signed link, status only (never names), same count as the challan',
     'report-chart-test.php'       => 'the office report chart: figures = the register, signed link, office numbers only',
     'wa-voice-test.php'           => 'voice notes: the Gemini request, the cleaned transcript, the typed-message path',

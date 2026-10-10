@@ -66,6 +66,41 @@ final class WaBot
             }
         }
 
+        /* 10 Oct 2026 — before the daily-job "ho" below, so an agent's ✅ on a
+           ticket hand-over and a passenger's 6-digit code are never read as
+           something else:
+             - an agent answering a ticket hand-over, or saying available /
+               busy / offline (includes/waagentroute.php);
+             - the office teaching the bot: sikau / prashna / jawaf
+               (includes/wateach.php);
+             - a ticket change behind a 6-digit code: the buttons after a
+               ticket, or "naam badal / miti badal / agent change / cancel"
+               typed or spoken (includes/waedit.php).
+           Each returns null for anything it does not own. */
+        if ($senderDigits !== '' && $body !== '') {
+            $early = null;
+            try {
+                require_once INCLUDE_PATH . '/waagentroute.php';
+                $early = WaAgentRoute::handle($from, $body);
+                if ($early === null) {
+                    require_once INCLUDE_PATH . '/aitools.php';
+                    $whoEarly = AiTools::whoIs($from);
+                    require_once INCLUDE_PATH . '/wateach.php';
+                    $early = WaTeach::handle($from, $body, $whoEarly);
+                    if ($early === null) {
+                        require_once INCLUDE_PATH . '/waedit.php';
+                        $early = WaEdit::handle($from, $body, $whoEarly);
+                    }
+                }
+            } catch (Throwable $e) {
+                Logger::exception($e, 'whatsapp');
+                $early = null;
+            }
+            if ($early !== null) {
+                return self::out((string) $early['text'], $early['media'] ?? null, $early['ui'] ?? null);
+            }
+        }
+
         /* 9 Oct 2026 — "ho" / "hoina" to a daily-job offer, "habit band",
            "mero habit" (includes/wahabit.php). Null for everything else. */
         if ($senderDigits !== '' && $body !== '') {

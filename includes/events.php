@@ -277,6 +277,14 @@ final class EventBus
             } catch (Throwable $e) {
                 Logger::warning('AiSensy hook failed', ['err' => $e->getMessage()], 'whatsapp');
             }
+            // 10 Oct 2026: watch that the passenger really gets it; if not, the
+            // route agent hands it over (includes/waagentroute.php, free only).
+            try {
+                require_once __DIR__ . '/waagentroute.php';
+                WaAgentRoute::onConfirmed($booking);
+            } catch (Throwable $e) {
+                Logger::warning('agent route watch failed', ['err' => $e->getMessage()], 'whatsapp');
+            }
             // 4 Oct 2026: ticket copy by email to the agent / counter who sold it.
             try {
                 require_once __DIR__ . '/sellermail.php';

@@ -218,7 +218,9 @@ try {
         $j  = Notify::whatsappJournal();
         $last = $j !== [] ? $j[count($j) - 1] : [];
         check('ticket to an open window: true, journal driver cloud_api / meta_free', $ok === true && ($last['driver'] ?? '') === 'cloud_api' && ($last['reason'] ?? '') === 'meta_free', json_encode($last));
-        check('… one Meta send, with the PNG', count($calls) === 1 && $calls[0]['image'] !== null, json_encode($calls));
+        // 10 Oct 2026: the free ticket is followed by the change-buttons message (includes/waedit.php) - still one PNG.
+        check('… one Meta send with the PNG (+ the free change-buttons message)', count(array_filter($calls, static fn($c) => $c['image'] !== null)) === 1 && $calls[0]['image'] !== null
+            && count(array_filter($calls, static fn($c) => $c['image'] === null && !str_contains((string) $c['text'], 'मिलाउनु'))) === 0, json_encode($calls));
         $q = Database::fetch("SELECT * FROM wa_ticket_queue WHERE booking_id = :b AND phone = :p ORDER BY id DESC LIMIT 1", ['b' => $bid, 'p' => '91' . RT_C]);
         check('… the hi-queue knows the customer has it (meta free)', $q !== null && $q['status'] === 'sent' && str_starts_with((string) $q['via'], 'meta'), json_encode($q));
         $calls = [];

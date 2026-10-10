@@ -121,7 +121,7 @@ admin_header('WhatsApp tickets', 'wa-queue');
   <b>The ticket goes by itself.</b> The moment a ticket is sold it is sent to the customer's WhatsApp on our approved ticket message (the ticket picture) from <b>+<?= $e($hiNo) ?></b> — the customer types nothing.
   If the customer has no number, or the number is not on WhatsApp, the copy goes to the counter / agent who sold it.<br>
   टिकट काटिनासाथ यात्रुको WhatsApp मा आफैं जान्छ — यात्रुले केही लेख्नु पर्दैन। नम्बर नभए वा WhatsApp नभए टिकट काट्ने काउन्टर / एजेन्टलाई जान्छ।<br>
-  <small class="muted">"hi" is only a spare road: it works after the AiSensy inbound webhook (paid add-on) is switched on. Rows marked "Waiting" below are tickets from before the approved message existed.</small>
+  <small class="muted">10 Oct 2026: when the paid ticket message cannot go (wallet / billing), the ticket waits here. The moment the passenger sends "hi" to <b>+<?= $e($hiNo) ?></b> (the button on the ticket screen and the counter QR do that) it goes out free, at once. Tickets nobody received go to the route agent — see WhatsApp routing.</small>
 </div>
 
 <?php if ($isSuper): ?>

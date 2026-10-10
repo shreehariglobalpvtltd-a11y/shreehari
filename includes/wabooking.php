@@ -411,6 +411,12 @@ final class WaBooking
         return $phoneDigits !== '' && self::load($phoneDigits) !== null;
     }
 
+    /** 10 Oct 2026: a ticket sold on this number minutes ago — its own name fix (below) answers first. */
+    public static function justSold(string $phoneDigits): bool
+    {
+        return $phoneDigits !== '' && self::recentSale($phoneDigits) !== null;
+    }
+
     /**
      * "ticket", "टिकट बुक", "order", or the menu button ("ticket book ne"):
      * the whole message is a request to be walked through a booking.
