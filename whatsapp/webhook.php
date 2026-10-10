@@ -174,6 +174,49 @@ function wh_status(array $st): void
         ['id' => (int) $row['id']]
     );
 
+    /*
+     * Keep positive Meta delivery evidence separately from message_logs:
+     * the legacy 'sent' status means provider-accepted, not delivered.
+     * The migration may not yet be installed, so fail open for webhook
+     * processing without interfering with existing customer chat replies.
+     */
+    try {
+        $eventAt = !empty($st['timestamp']) && ctype_digit((string) $st['timestamp'])
+            ? date('Y-m-d H:i:s', (int) $st['timestamp'])
+            : date('Y-m-d H:i:s');
+        $receiptState = in_array($state, ['sent', 'delivered', 'read', 'failed'], true) ? $state : 'accepted';
+        Database::run(
+            "INSERT INTO wa_delivery_receipts
+             (provider_ref,message_log_id,booking_id,provider,delivery_state,sent_at,delivered_at,read_at,failed_at,last_event_at)
+             VALUES (:ref,:msg,:booking,'cloud_api',:state,:sent,:delivered,:read,:failed,:event)
+             ON DUPLICATE KEY UPDATE
+                delivery_state = CASE
+                    WHEN delivery_state = 'read' THEN 'read'
+                    WHEN VALUES(delivery_state) = 'read' THEN 'read'
+                    WHEN delivery_state = 'delivered' AND VALUES(delivery_state) IN ('sent','accepted') THEN 'delivered'
+                    WHEN delivery_state = 'delivered' AND VALUES(delivery_state) = 'failed' THEN 'delivered'
+                    ELSE VALUES(delivery_state) END,
+                sent_at = COALESCE(sent_at, VALUES(sent_at)),
+                delivered_at = COALESCE(delivered_at, VALUES(delivered_at)),
+                read_at = COALESCE(read_at, VALUES(read_at)),
+                failed_at = COALESCE(failed_at, VALUES(failed_at)),
+                last_event_at = GREATEST(last_event_at, VALUES(last_event_at))",
+            [
+                'ref' => $wamid,
+                'msg' => (int) $row['id'],
+                'booking' => $row['booking_id'] !== null ? (int) $row['booking_id'] : null,
+                'state' => $receiptState,
+                'sent' => $state === 'sent' ? $eventAt : null,
+                'delivered' => $state === 'delivered' ? $eventAt : null,
+                'read' => $state === 'read' ? $eventAt : null,
+                'failed' => $state === 'failed' ? $eventAt : null,
+                'event' => $eventAt,
+            ]
+        );
+    } catch (Throwable $e) {
+        Logger::warning('Meta delivery receipt could not be recorded', ['error' => $e->getMessage()], 'whatsapp');
+    }
+
     /* A free message inside an open 24 h service window can be delivered even
        while WABA billing is broken. Only Meta's explicit billable=true status
        proves that error 131042 is actually cleared. The retry cron uses this
