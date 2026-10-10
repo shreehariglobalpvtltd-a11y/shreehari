@@ -76,6 +76,7 @@ final class WaDelivery
         if ($receipt === 'read') { return 'READ'; }
         if ($receipt === 'delivered') { return 'DELIVERED'; }
         if ($receipt === 'failed' || ($log['status'] ?? '') === 'failed') { return 'FAILED'; }
+        if (($log['provider'] ?? '') === 'manual' && ($log['status'] ?? '') === 'skipped') { return 'MANUAL (UNVERIFIED)'; }
         if (($log['status'] ?? '') === 'skipped') { return 'SKIPPED'; }
         if (($log['status'] ?? '') === 'queued') { return 'QUEUED'; }
         if (($log['status'] ?? '') === 'sent') { return 'ACCEPTED (UNVERIFIED)'; }
@@ -95,7 +96,7 @@ final class WaDelivery
 
     public static function forwardLink(array $row, string $rawPhone, string $country): string
     {
-        if (($row['booking_status'] ?? '') !== 'confirmed') { return ''; }
+        if (($row['booking_status'] ?? ($row['status'] ?? '')) !== 'confirmed') { return ''; }
         $pnr = trim((string) ($row['pnr'] ?? ''));
         $phone = self::mobile($rawPhone, $country);
         if ($pnr === '' || $phone === '') { return ''; }
@@ -121,6 +122,7 @@ final class WaDelivery
             'FAILED' => 'WA Failed',
             'ACCEPTED (UNVERIFIED)' => 'WA Accepted?',
             'SKIPPED' => 'WA Skipped',
+            'MANUAL (UNVERIFIED)' => 'Manual ?',
             default => 'WA Unverified',
         };
         return $when . ' | ' . $s;
