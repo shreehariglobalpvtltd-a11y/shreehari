@@ -217,7 +217,8 @@ final class ChalaniPdf
         // Coach type for the seat-label grid (LA1/UA1). booking_mode rides on
         // each row ($r); coach is per-trip, so capture it into the row closure.
         $seatCoach = (string) ($trip['coach_type'] ?? 'sleeper');
-        $ruleRow = static function (float $y, ?array $r, int $n) use ($pdf, $M, $inner, $cx, $cw, $rowH, $txt, $txtR, $txtC, $fit, $neDigits, $money, $stopShort, $isLate, $bookedBy, $soldByNe, $seatCoach): void {
+        $deliveryBrief = $fmt['deliveryBrief'] ?? static fn(array $r): string => '';
+        $ruleRow = static function (float $y, ?array $r, int $n) use ($pdf, $M, $inner, $cx, $cw, $rowH, $txt, $txtR, $txtC, $fit, $neDigits, $money, $stopShort, $isLate, $bookedBy, $soldByNe, $seatCoach, $deliveryBrief): void {
             foreach ($cw as $i => $w) { $pdf->rect($cx[$i], $y, $w, $rowH, self::LINE, false); }
             $ty = $y + 9.4;
             $txtC($cx[0], $cx[0] + $cw[0], $ty, $neDigits((string) $n), 6.8, false, self::MUTE);
@@ -235,7 +236,10 @@ final class ChalaniPdf
             $txtR($cx[6] + $cw[6] - 3, $ty, number_format($m['ticket']), 7.6, false, self::INK);
             if ($m['cash']   > 0) { $txtR($cx[7] + $cw[7] - 3, $ty, number_format($m['cash']),   7.6, false, self::INK); }
             if ($m['online'] > 0) { $txtR($cx[8] + $cw[8] - 3, $ty, number_format($m['online']), 7.6, false, self::INK); }
-            $txt($cx[10] + 3, $ty, $fit($soldByNe($bookedBy($r)) . ($isLate($r) ? ' · बस चलेपछि' : ''), 6.8, $cw[10] - 6), 6.8, false, $isLate($r) ? self::RED : self::MUTE);
+            // The agent/code remains on line 1. Line 2 is booking timestamp
+            // plus actual Meta delivery proof, never inferred from "sent".
+            $txt($cx[10] + 3, $ty - 2.9, $fit($soldByNe($bookedBy($r)) . ($isLate($r) ? ' · बस चलेपछि' : ''), 6.0, $cw[10] - 6), 6.0, false, $isLate($r) ? self::RED : self::MUTE);
+            $txt($cx[10] + 3, $ty + 3.2, $fit((string) $deliveryBrief($r), 6.0, $cw[10] - 6), 6.0, false, self::INK);
         };
 
         /* ==============================================================

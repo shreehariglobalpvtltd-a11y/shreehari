@@ -47,7 +47,7 @@ final class ChalaniPng
     public const HEIGHT = 1414;
 
     /** Bump whenever the drawing changes, so every cached page re-renders once. */
-    public const LAYOUT_VERSION = 8;   // 8 = seat column prints the two-floor grid A1-F6 / A7-F12 (23 Sep 2026)   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
+    public const LAYOUT_VERSION = 9;   // 8 = seat column prints the two-floor grid A1-F6 / A7-F12 (23 Sep 2026)   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
 
     private const M         = 48;     // page margin
     private const ROW_H     = 42;
@@ -164,6 +164,8 @@ final class ChalaniPng
                 // drawn on the page, and previously unhashed:
                 $r['agent_role'] ?? '', $r['agent_name'] ?? '', $r['agent_user'] ?? '',
                 $r['boarded_at'] ?? '', $r['special_need'] ?? '', $r['booking_status'] ?? '',
+                $r['wa_provider'] ?? '', $r['wa_delivery_status'] ?? '',
+                $r['wa_delivered_at'] ?? '', $r['wa_read_at'] ?? '',
             ], $rows),
             'seller' => $seller,
             'stops'  => (string) ($fmt['stopsLineRoman'] ?? $fmt['stopsLine'] ?? ''),
@@ -466,6 +468,7 @@ final class ChalaniPng
         $stopShrt = $fmt['stopShort'];
         $isLate   = $fmt['isLate'];
         $bookedBy = $fmt['bookedBy'];
+        $deliveryBrief = $fmt['deliveryBrief'] ?? static fn(array $r): string => '';
 
         $pTicket = 0.0; $pCash = 0.0; $pOnline = 0.0; $pPax = 0;
 
@@ -553,7 +556,14 @@ final class ChalaniPng
             if ($rem === '' && !empty($r['boarded_at']))     { $rem = 'Boarded'; }
             if ($rem === '' && !empty($r['special_need']))   { $rem = $roman((string) $r['special_need']); }
             if ($rem === '' && (string) ($r['booking_status'] ?? '') === 'pending') { $rem = 'Booking pending'; }
-            self::t($im, 15, $cx[10] + 10, $vy + 3, $late ? $red : $muted, self::fit(15, $rem, $cw[10] - 20), false);
+            // Every row: booking time and verified-vs-unverified WhatsApp result.
+            // Two lines share the existing remarks cell; neither proves
+            // manual click-to-chat delivery (that path has no receipt).
+            $proof = (string) $deliveryBrief($r);
+            self::t($im, 12, $cx[10] + 9, $ry + 4, $ink, self::fit(12, $proof, $cw[10] - 16), true);
+            if ($rem !== '') {
+                self::t($im, 12, $cx[10] + 9, $ry + 23, $late ? $red : $muted, self::fit(12, $rem, $cw[10] - 16), false);
+            }
         }
 
         /* Page subtotal — a crew counting cash counts THIS sheet, not the trip. */
