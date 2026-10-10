@@ -611,7 +611,6 @@ button,.btn,a.btn,.nav-link,.bn-item,.seat,.num-pill,.lang-btn,
 :root[data-theme="dark"] .hero{background:
   radial-gradient(900px 420px at 85% -10%,rgba(240,120,0,.16),transparent 60%),
   linear-gradient(165deg,#000 0%,var(--brand-navy-950) 45%,#0A2150 100%)}
-.hero .orb.o2{background:var(--brand-royal)}
 .hero .eyebrow{color:var(--brand-gold)}
 .hero-sub{color:#DCE8F7}
 .hero .grad{background-image:linear-gradient(100deg,var(--brand-amber) 0%,var(--brand-gold) 25%,var(--brand-cream) 50%,var(--brand-gold) 75%,var(--brand-amber) 100%)}

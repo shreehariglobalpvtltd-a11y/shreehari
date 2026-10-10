@@ -561,6 +561,14 @@ en: {
   hxCatPilgrimage: 'Pilgrimage', hxCatNature: 'Nature', hxCatHeritage: 'Heritage', hxCatWildlife: 'Wildlife', hxCatCity: 'City', hxCatAdventure: 'Adventure', hxCatLake: 'Lakes', hxCatHill: 'Hills',
   hxToursCta: 'Explore tour packages', hxPkgNote: 'Tours inside Nepal are arranged with local partners; our coach takes you as far as Rupaidiha.',
   hxPkgDays: '{d} days · {n} nights', hxPkgDaysOnly: '{d} days', hxPkgCta: 'Enquire', hxNP: 'Nepal', hxIN: 'India',
+  /* 10 Oct 2026 (HD visual pack): the live-tracking section (#homeLive), the honest
+     illustration tags and the hero departure countdown label. (No apostrophe in
+     these comments: tests/i18n-check.js reads a quote as the start of a string.) */
+  hxLiveEyebrow: 'Live bus tracking', hxLiveTitle: 'Where is my bus?', hxLiveSub: 'Follow the coach from your own ticket and share the page with family at home.',
+  hxLiveNow: 'GPS tracking from your ticket', hxLiveNowSub: 'Live today whenever the driver’s phone is sharing its position; otherwise the timetable is shown, never a guessed dot.',
+  hxLiveSoon: 'Fleet GPS unit + CCTV live view', hxLiveSoonSub: 'A fixed GPS unit on every coach and a live camera view for passengers’ families — being set up.',
+  hxLiveSoonBadge: 'Coming soon · छिट्टै', hxIllus: 'Illustration',
+  hdNextDep: 'Next departure in', hdConcept: 'Interior concept — design sample',
 },
 hi: {
   premiumFront: "आगे · यात्रा की दिशा", premiumRear: "पीछे", premiumBeyond: "सरहदों के पार सफ़र", premiumDirector: "अध्यक्ष / निदेशक", premiumPromise: "आपकी यात्रा, हमारी ज़िम्मेदारी।", premiumSafe: "सुरक्षित यात्रा", premiumEasy: "आसान बुकिंग", premiumLoading: "आपकी यात्रा तैयार हो रही है…", premiumRetry: "कनेक्शन में समय लग रहा है। पुनः लोड करें", premiumSlow: "कनेक्ट हो रहा है। पुनः प्रयास करें या आगे बढ़ें।", premiumTrust: "भरोसे के साथ यात्रा।", premiumPay: "स्कैन करके भुगतान करें", premiumPaid: "भुगतान सत्यापित", premiumPending: "भुगतान सत्यापन लंबित", premiumVerify: "टिकट सत्यापन", premiumDue: "बकाया राशि",
@@ -1108,6 +1116,12 @@ hi: {
   hxCatPilgrimage: 'तीर्थ', hxCatNature: 'प्रकृति', hxCatHeritage: 'धरोहर', hxCatWildlife: 'वन्यजीव', hxCatCity: 'शहर', hxCatAdventure: 'रोमांच', hxCatLake: 'झील', hxCatHill: 'पहाड़',
   hxToursCta: 'टूर पैकेज देखें', hxPkgNote: 'नेपाल के अंदर की यात्रा स्थानीय पार्टनर के साथ होती है; हमारी बस Rupaidiha तक जाती है।',
   hxPkgDays: '{d} दिन · {n} रात', hxPkgDaysOnly: '{d} दिन', hxPkgCta: 'पूछताछ', hxNP: 'नेपाल', hxIN: 'भारत',
+  /* 10 Oct 2026 (HD visual pack): live-tracking section, illustration tags, countdown label. */
+  hxLiveEyebrow: 'लाइव बस ट्रैकिंग', hxLiveTitle: 'मेरी बस कहाँ है?', hxLiveSub: 'अपने टिकट से बस को फ़ॉलो करें और घर के परिवार के साथ पेज शेयर करें।',
+  hxLiveNow: 'आपके टिकट से GPS ट्रैकिंग', hxLiveNowSub: 'जब ड्राइवर का फ़ोन अपनी लोकेशन शेयर कर रहा हो तब लाइव; नहीं तो समय-सारणी दिखती है, कभी अनुमानित बिंदु नहीं।',
+  hxLiveSoon: 'फ़्लीट GPS यूनिट + CCTV लाइव व्यू', hxLiveSoonSub: 'हर कोच में लगा GPS यूनिट और यात्रियों के परिवार के लिए लाइव कैमरा व्यू — तैयारी चल रही है।',
+  hxLiveSoonBadge: 'जल्द आ रहा है · छिट्टै', hxIllus: 'चित्रण',
+  hdNextDep: 'अगली रवानगी में', hdConcept: 'इंटीरियर कॉन्सेप्ट — डिज़ाइन नमूना',
 },
 ne: {
   premiumFront: "अगाडि · यात्राको दिशा", premiumRear: "पछाडि", premiumBeyond: "सीमापारको यात्रा", premiumDirector: "अध्यक्ष / निर्देशक", premiumPromise: "तपाईंको यात्रा, हाम्रो जिम्मेवारी।", premiumSafe: "सुरक्षित यात्रा", premiumEasy: "सजिलो बुकिङ", premiumLoading: "तपाईंको यात्रा तयार हुँदैछ…", premiumRetry: "जडानमा समय लाग्यो। फेरि लोड गर्नुहोस्", premiumSlow: "जडान हुँदैछ। फेरि प्रयास गर्नुहोस् वा अगाडि बढ्नुहोस्।", premiumTrust: "विश्वासका साथ यात्रा।", premiumPay: "स्क्यान गरेर तिर्नुहोस्", premiumPaid: "भुक्तानी प्रमाणित", premiumPending: "भुक्तानी प्रमाणीकरण बाँकी", premiumVerify: "टिकट प्रमाणीकरण", premiumDue: "बाँकी रकम",
@@ -1655,6 +1669,12 @@ ne: {
   hxCatPilgrimage: 'तीर्थ', hxCatNature: 'प्रकृति', hxCatHeritage: 'सम्पदा', hxCatWildlife: 'वन्यजन्तु', hxCatCity: 'सहर', hxCatAdventure: 'साहसिक', hxCatLake: 'ताल', hxCatHill: 'पहाड',
   hxToursCta: 'टुर प्याकेज हेर्नुहोस्', hxPkgNote: 'नेपालभित्रको भ्रमण स्थानीय साझेदारसँग मिलेर गरिन्छ; हाम्रो बस Rupaidiha सम्म जान्छ।',
   hxPkgDays: '{d} दिन · {n} रात', hxPkgDaysOnly: '{d} दिन', hxPkgCta: 'सोधपुछ', hxNP: 'नेपाल', hxIN: 'भारत',
+  /* 10 Oct 2026 (HD visual pack): live-tracking section, illustration tags, countdown label. */
+  hxLiveEyebrow: 'लाइभ बस ट्र्याकिङ', hxLiveTitle: 'मेरो बस कहाँ छ?', hxLiveSub: 'आफ्नै टिकटबाट बस हेर्नुहोस् र घरका परिवारसँग पेज सेयर गर्नुहोस्।',
+  hxLiveNow: 'तपाईंको टिकटबाट GPS ट्र्याकिङ', hxLiveNowSub: 'चालकको फोनले आफ्नो स्थान सेयर गरिरहेको बेला लाइभ; नत्र समय-तालिका देखिन्छ, अनुमानित बिन्दु कहिल्यै होइन।',
+  hxLiveSoon: 'फ्लिट GPS युनिट + CCTV लाइभ भ्यू', hxLiveSoonSub: 'हरेक कोचमा जडित GPS युनिट र यात्रुका परिवारका लागि लाइभ क्यामेरा भ्यू — तयारी हुँदैछ।',
+  hxLiveSoonBadge: 'छिट्टै आउँदैछ', hxIllus: 'चित्रण',
+  hdNextDep: 'अर्को प्रस्थान', hdConcept: 'भित्री डिजाइन नमूना — वास्तविक फोटो होइन',
 }
 };
 

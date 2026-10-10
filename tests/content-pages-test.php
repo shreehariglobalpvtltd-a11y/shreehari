@@ -157,7 +157,8 @@ try {
         $ne = req('GET', '/ne/offices')['body'];
         check('offices (ne): नयाँ कार्यालय छिट्टै once', substr_count($ne, 'नयाँ कार्यालय छिट्टै') >= 1);
         $inp = req('GET', '/india-nepal')['body'];
-        check('india-nepal: heritage band art, timeline, disclaimer, /travel-info link', str_contains($inp, 'nepal-band') && str_contains($inp, 'class="tl"')
+        // 10 Oct 2026 (HD pack): the band is the 2:1 nepal-heritage montage now, with the Buddha portrait beside the timeline.
+        check('india-nepal: heritage band art, timeline, disclaimer, /travel-info link', str_contains($inp, 'nepal-heritage') && str_contains($inp, 'class="tl"') && str_contains($inp, 'gautam-buddha')
             && str_contains($inp, 'official government sources') && str_contains($inp, 'href="/travel-info"'));
         check('india-nepal: reviewed date printed', (bool) preg_match('/Last reviewed: \d{1,2} \w+ \d{4}/', $inp));
         $ex = req('GET', '/explore')['body'];

@@ -388,7 +388,9 @@ final class ContentPages
                 'exDesc' => 'Famous places to visit in Nepal and India near our bus route: pilgrimages, nature, wildlife and heritage, with the best season and how to reach.',
                 'nepal' => 'Nepal', 'india' => 'India', 'nearBorder' => 'Near the border (Nepalgunj / Rupaidiha)', 'all' => 'All', 'picks' => 'Our picks',
                 'bestSeason' => 'Best season', 'reach' => 'How to reach', 'unesco' => 'UNESCO World Heritage', 'kmFrom' => '≈ %1$d km from %2$s',
-                'onMap' => 'Open in Maps', 'photo' => 'Photo: %s', 'soonPlaces' => 'Our travel guide is being prepared — coming soon.',
+                'onMap' => 'Open in Maps', 'photo' => 'Image: %s', 'soonPlaces' => 'Our travel guide is being prepared — coming soon.',
+                // 10 Oct 2026 (HD pack): honest captions - every artwork is an illustration or render, never a photo.
+                'illus' => 'Illustration', 'render' => 'Promotional render — an illustration, not a photo of the fleet', 'buddhaAlt' => 'Illustration of Gautam Buddha',
                 'noMatch' => 'No places in this category yet.', 'seeTours' => 'See tour packages',
                 'tTitle' => 'Tour packages — Nepal & India', 'tH1' => 'Tour packages', 'tKick' => 'Bus + tours',
                 'tLead' => 'Our bus to the border, trusted partners beyond it. Tell us your dates — we send a quote. No payment online.',
@@ -432,7 +434,7 @@ final class ContentPages
                 'exDesc' => 'हमारे बस रूट के पास नेपाल और भारत की मशहूर जगहें: तीर्थ, प्रकृति, वन्यजीव और विरासत — सबसे अच्छा मौसम और पहुँचने का तरीका।',
                 'nepal' => 'नेपाल', 'india' => 'भारत', 'nearBorder' => 'सीमा के पास (नेपालगंज / रुपईडीहा)', 'all' => 'सभी', 'picks' => 'हमारी पसंद',
                 'bestSeason' => 'सबसे अच्छा मौसम', 'reach' => 'कैसे पहुँचें', 'unesco' => 'यूनेस्को विश्व धरोहर', 'kmFrom' => '%2$s से ≈ %1$d किमी',
-                'onMap' => 'नक्शे में खोलें', 'photo' => 'फोटो: %s', 'soonPlaces' => 'हमारी यात्रा गाइड तैयार हो रही है — जल्द आ रही है।',
+                'onMap' => 'नक्शे में खोलें', 'photo' => 'चित्र: %s', 'illus' => 'चित्रण', 'render' => 'प्रचार चित्रण — बस की असली फोटो नहीं', 'buddhaAlt' => 'गौतम बुद्ध का चित्रण', 'soonPlaces' => 'हमारी यात्रा गाइड तैयार हो रही है — जल्द आ रही है।',
                 'noMatch' => 'इस श्रेणी में अभी कोई जगह नहीं।', 'seeTours' => 'टूर पैकेज देखें',
                 'tTitle' => 'टूर पैकेज — नेपाल और भारत', 'tH1' => 'टूर पैकेज', 'tKick' => 'बस + टूर',
                 'tLead' => 'बॉर्डर तक हमारी बस, आगे भरोसेमंद पार्टनर। अपनी तारीख बताइए — हम कोटेशन भेजेंगे। ऑनलाइन कोई भुगतान नहीं।',
@@ -476,7 +478,7 @@ final class ContentPages
                 'exDesc' => 'हाम्रो बस रुट नजिक नेपाल र भारतका प्रसिद्ध ठाउँ: तीर्थ, प्रकृति, वन्यजन्तु र सम्पदा — उत्तम मौसम र पुग्ने तरिका।',
                 'nepal' => 'नेपाल', 'india' => 'भारत', 'nearBorder' => 'सिमाना नजिक (नेपालगञ्ज / रुपैडिहा)', 'all' => 'सबै', 'picks' => 'हाम्रो सिफारिस',
                 'bestSeason' => 'उत्तम मौसम', 'reach' => 'कसरी पुग्ने', 'unesco' => 'युनेस्को विश्व सम्पदा', 'kmFrom' => '%2$s बाट ≈ %1$d किमी',
-                'onMap' => 'नक्सामा खोल्नुहोस्', 'photo' => 'फोटो: %s', 'soonPlaces' => 'हाम्रो यात्रा गाइड तयार हुँदैछ — छिट्टै आउँदैछ।',
+                'onMap' => 'नक्सामा खोल्नुहोस्', 'photo' => 'चित्र: %s', 'illus' => 'चित्रण', 'render' => 'प्रचार चित्रण — बसको वास्तविक फोटो होइन', 'buddhaAlt' => 'गौतम बुद्धको चित्रण', 'soonPlaces' => 'हाम्रो यात्रा गाइड तयार हुँदैछ — छिट्टै आउँदैछ।',
                 'noMatch' => 'यो वर्गमा अहिले कुनै ठाउँ छैन।', 'seeTours' => 'टुर प्याकेज हेर्नुहोस्',
                 'tTitle' => 'टुर प्याकेज — नेपाल र भारत', 'tH1' => 'टुर प्याकेजहरू', 'tKick' => 'बस + टुर',
                 'tLead' => 'सिमानासम्म हाम्रो बस, त्यसपछि भरपर्दा साझेदार। आफ्नो मिति भन्नुहोस् — हामी कोटेसन पठाउँछौं। अनलाइन भुक्तानी छैन।',
@@ -774,12 +776,18 @@ final class ContentPages
             . '<h1>' . $e($w['inH1']) . '</h1>'
             . ($intro !== '' ? '<p class="lead">' . $e($intro) . '</p>' : '')
             . '<div class="hero-flags"><span class="flagchip float">' . $flagIn . ' ' . $e($w['india'] ?? 'India') . '</span><span class="flagchip float">' . $flagNp . ' ' . $e($w['nepal'] ?? 'Nepal') . '</span></div>'
-            . '<picture><source type="image/webp" srcset="/assets/img/nepal-band-540.webp 540w, /assets/img/nepal-band.webp 1080w" sizes="(max-width: 640px) 100vw, 1000px">'
-            . '<img class="hero-art" src="/assets/img/nepal-band.png" width="1080" height="300" alt="' . $e($bandAlt) . '" fetchpriority="high"></picture>'
+            // 10 Oct 2026 (HD pack): the heritage montage (Buddha, Himalaya, stupa) at its own 2:1
+            // shape so no edge figure is cropped - the old nepal-band files stay for the documents.
+            // The one hero image is the only eager one on the page (no fetchpriority).
+            . '<picture><source type="image/webp" srcset="/assets/img/hd/nepal-heritage-m.webp?v=20261009g 800w, /assets/img/hd/nepal-heritage.webp?v=20261009g 1600w" sizes="(max-width: 640px) 100vw, 1000px">'
+            . '<img class="hero-art art-2x1" src="/assets/img/hd/nepal-heritage-m.webp?v=20261009g" width="1600" height="800" alt="' . $e($bandAlt) . '" decoding="async"></picture>'
             . '<div class="btns"><a class="btn fill" href="#timeline">🕰️ ' . $e($w['timeline']) . '</a><a class="btn tonal" href="/travel-info">🛂 ' . $e($w['carry']) . '</a></div>'
             . '</section>'
             . ($nums !== '' ? '<section class="sec"><h2>' . $e($w['keyNums']) . '</h2><div class="stats">' . $nums . '</div></section>' : '')
-            . '<section class="sec" id="timeline"><h2>🕰️ ' . $e($w['timeline']) . '</h2>' . $tlHtml . '</section>'
+            // The Buddha portrait (alpha, 2:3) sits beside the timeline from 720px, under it on a
+            // phone - contained, never cropped, capped at 340px tall, captioned as an illustration.
+            . '<section class="sec" id="timeline"><h2>🕰️ ' . $e($w['timeline']) . '</h2><div class="tl-wrap">' . $tlHtml
+            . '<figure class="buddha"><img src="/assets/img/hd/gautam-buddha-m.webp?v=20261009g" width="800" height="1200" alt="' . $e($w['buddhaAlt']) . '" loading="lazy" decoding="async"><figcaption>' . $e($w['illus']) . '</figcaption></figure></div></section>'
             . '<section class="sec card rv" id="open-border"><h2>🤝 ' . $e($w['border']) . '</h2>' . $borderInner . '</section>'
             . '<section class="sec card carry rv" id="carry"><div class="carry-ic" aria-hidden="true">🎒</div><div><h2>' . $e($w['carry']) . '</h2><p>' . $e($w['carryP']) . '</p>'
             . '<div class="btns"><a class="btn fill" href="/travel-info">🛂 ' . $e($w['carryBtn']) . '</a></div></div></section>'
@@ -793,7 +801,7 @@ final class ContentPages
         $ld = self::ld([
             self::orgNode(),
             array_filter(['@type' => 'Article', '@id' => $canon . '#article', 'headline' => $w['inTitle'], 'description' => $w['inDesc'], 'inLanguage' => $lang,
-                'url' => $canon, 'mainEntityOfPage' => $canon, 'image' => PublicLayout::base() . '/assets/img/nepal-band.png',
+                'url' => $canon, 'mainEntityOfPage' => $canon, 'image' => PublicLayout::base() . '/assets/img/hd/nepal-heritage.webp',
                 'dateModified' => $d['reviewed'] !== '' ? $d['reviewed'] : null, 'author' => ['@id' => PublicLayout::base() . '/#org'], 'publisher' => ['@id' => PublicLayout::base() . '/#org'],
                 'about' => [['@type' => 'Country', 'name' => 'India'], ['@type' => 'Country', 'name' => 'Nepal']]], static fn($v): bool => $v !== null),
             self::crumbsLd($crumbs),
@@ -887,7 +895,12 @@ final class ContentPages
             . '<h1>' . $e($w['offH1']) . '</h1><p class="lead">' . $e($w['offLead']) . '</p>'
             . '<div class="hero-flags"><span class="flagchip">' . PublicLayout::flag('IN', 20) . ' ' . $e(sprintf($w['inIndia'], $nIn)) . '</span>'
             . ($nNp > 0 ? '<span class="flagchip">' . PublicLayout::flag('NP', 22) . ' ' . $e(sprintf($w['inNepal'], $nNp)) . '</span>' : '')
-            . '<span class="flagchip">🚀 ' . $e($w['expH']) . '</span></div></section>'
+            . '<span class="flagchip">🚀 ' . $e($w['expH']) . '</span></div>'
+            // 10 Oct 2026 (HD pack): the coach render (bus-hero, 16:9) - its ONE place on the site,
+            // captioned as a promotional render so nobody takes it for a photo of the fleet.
+            . '<picture><source type="image/webp" srcset="/assets/img/hd/bus-hero-m.webp?v=20261009g 800w, /assets/img/hd/bus-hero.webp?v=20261009g 1600w" sizes="(max-width: 640px) 100vw, 1000px">'
+            . '<img class="hero-art art-16x9" src="/assets/img/hd/bus-hero-m.webp?v=20261009g" width="1600" height="900" alt="' . $e($w['render']) . '" loading="lazy" decoding="async"></picture>'
+            . '<p class="hero-cap">' . $e($w['render']) . '</p></section>'
             . '<section class="sec"><div class="grid offices">' . $cards . '</div></section>'
             . '<section class="sec band rv" id="expanding"><span class="band-ic" aria-hidden="true">🚀</span><h2>' . $e($w['expH']) . '</h2>'
             . ($lang !== 'ne' ? '<p class="band-ne" lang="ne">' . PublicLayout::flag('NP', 16) . ' नयाँ कार्यालय छिट्टै</p>' : '')
@@ -983,8 +996,9 @@ final class ContentPages
             . '<span class="kick">🧭 ' . $e($w['exKick']) . '</span><h1>' . $e($w['exH1']) . '</h1><p class="lead">' . $e($w['exLead']) . '</p>'
             . '<div class="hero-flags"><a class="flagchip" href="#nepal">' . PublicLayout::flag('NP', 22) . ' ' . $e($w['nepal']) . '</a><a class="flagchip" href="#india">' . PublicLayout::flag('IN', 18) . ' ' . $e($w['india']) . '</a>'
             . '<a class="flagchip" href="#near-border">🛂 ' . $e($w['nearBorder']) . '</a></div>'
-            . '<picture><source type="image/webp" srcset="/assets/img/nepal-band-540.webp 540w, /assets/img/nepal-band.webp 1080w" sizes="(max-width: 640px) 100vw, 1000px">'
-            . '<img class="hero-art" src="/assets/img/nepal-band.png" width="1080" height="300" alt="" fetchpriority="high"></picture></section>'
+            // 10 Oct 2026 (HD pack): the same 2:1 heritage montage as /india-nepal, decorative here.
+            . '<picture><source type="image/webp" srcset="/assets/img/hd/nepal-heritage-m.webp?v=20261009g 800w, /assets/img/hd/nepal-heritage.webp?v=20261009g 1600w" sizes="(max-width: 640px) 100vw, 1000px">'
+            . '<img class="hero-art art-2x1" src="/assets/img/hd/nepal-heritage-m.webp?v=20261009g" width="1600" height="800" alt="" decoding="async"></picture></section>'
             . ($picks !== '' ? '<section class="sec"><h2>⭐ ' . $e($w['picks']) . '</h2><div class="picks">' . $picks . '</div></section>' : '')
             . '<div id="places">' . $filters . '</div>' . $content
             . '<section class="sec band rv"><h2>🧳 ' . $e($w['tH1']) . '</h2><p>' . $e($w['tLead']) . '</p><div class="btns"><a class="btn fill" href="' . $e(PublicLayout::url('/tours', $lang)) . '">' . $e($w['seeTours']) . '</a>'
@@ -1253,6 +1267,8 @@ final class ContentPages
             . '<div class="chips">' . $meta . '</div>'
             . ($summary !== '' ? '<p class="lead" style="margin-top:12px">' . $e($summary) . '</p>' : '')
             . ($img !== '' ? '<img class="hero-art" src="' . $e($img) . '" alt="' . $e($title) . '" width="1080" height="600" style="aspect-ratio:16/9">' : '')
+            // 10 Oct 2026 (HD pack): the credit line under the picture ("Image: Illustration ...").
+            . ($img !== '' && trim((string) ($k['image_credit'] ?? '')) !== '' ? '<p class="credit hero-cap">' . $e(sprintf($w['photo'], (string) $k['image_credit'])) . '</p>' : '')
             . '<p class="price big-price">' . $e(self::priceLine($k, $w)) . '</p>'
             . '<div class="btns"><a class="btn fill" href="#enquire">✍️ ' . $e($w['apply']) . '</a><a class="btn wa" href="' . $e($waLink) . '" target="_blank" rel="noopener">💬 ' . $e($w['waAsk']) . '</a></div></section>'
             . '<p class="coach sec"><span aria-hidden="true">' . ($k['coach_leg'] !== 'none' ? '🚌' : '🤝') . '</span><span>' . $e($k['coach_leg'] !== 'none' ? $w['coach'] : $w['partnerOnly']) . '</span></p>'
@@ -1323,6 +1339,15 @@ JS;
     {
         return <<<'CSS'
 .h-sm{font-size:16px}
+/* 10 Oct 2026 (HD pack): the hero artwork at its own shape (the shell's .hero-art is 1080/300 cover),
+   a caption line, and the Buddha portrait beside the timeline (contained, never cropped). */
+.hero-art.art-2x1{aspect-ratio:2/1}.hero-art.art-16x9{aspect-ratio:16/9}
+.hero-cap{font-size:12px;opacity:.8;margin:6px 0 0}
+.tl-wrap{display:grid;gap:18px;align-items:start}
+.buddha{margin:0;text-align:center}
+.buddha img{display:inline-block;width:auto;max-width:min(240px,70%);height:auto;max-height:340px;object-fit:contain;filter:drop-shadow(0 10px 16px rgba(0,0,0,.22))}
+.buddha figcaption{font-size:12px;color:var(--md-on-surface-variant);margin-top:4px}
+@media (min-width:720px){.tl-wrap{grid-template-columns:minmax(0,1fr) 240px}.buddha{position:sticky;top:96px}}
 .tl{list-style:none;position:relative;margin:6px 0 0;padding:0 0 0 40px}
 .tl::before{content:"";position:absolute;left:17px;top:8px;bottom:8px;width:4px;border-radius:4px;background:linear-gradient(var(--md-primary),var(--md-tertiary),var(--red));transform-origin:top}
 .tl-i{position:relative;margin:0 0 16px}

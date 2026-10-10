@@ -3251,7 +3251,6 @@ body.in-flow .credit-ribbon,body.in-flow #numStrip{display:none}
    NOT in this list. Desktop is untouched.
 ================================================================ */
 @media (max-width:760px), (prefers-reduced-motion:reduce){
-  .hero-fx,.hero .orb,.hero-wm{display:none!important}
   .btn-orange::after,.hd-shine::before,.credit-div,.hero .grad,
   .txt-gold,.txt-silver,.txt-diamond,.txt-diamond::after,
   .founder-card::before,.founder-avatar-wrap,.f-ceo img,.chakra,

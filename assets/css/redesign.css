@@ -95,8 +95,8 @@ body { color: var(--ink); font-family: var(--font-sans); }
    the mic "listening" state, and live-location pulses on the tracking map,
    because each of those tells the user something is happening now. */
 .txt-gold, .txt-silver, .txt-diamond, .txt-diamond::after, .hd-shine::before,
-.credit-div, .lh-route .lh-pin, .btn-orange::after, .hero-wm, .hero .grad,
-.hero-fx, .hero-fx *, .flag-card .fl, .flag-bus-bridge .bus-run,
+.credit-div, .lh-route .lh-pin, .btn-orange::after, .hero .grad,
+.flag-card .fl, .flag-bus-bridge .bus-run,
 .status-band.pending .big-ico, .trk-hl-mini .pulse-ring,
 .ra3-far i, .ra3-near i, .ra3-bus, .ra3-body img,
 .shg-live i, .shg-rail::after, .shg-stop i, .shg-bus, .shg-bus-i,
@@ -107,7 +107,7 @@ body { color: var(--ink); font-family: var(--font-sans); }
 .founder-card::before, .f-ceo img, .intro-flag, .intro-icon-big, .flag-big, .chakra, .flag-bus,
 .tc-hero.shimmer, .tc-card.urgent, .lt-eta-hero .leh-ic, .tc-livebus .tlb-ic,
 .rov-3d, .rov-line, .hero-qt-cta, .qt-route b, .paystep li.now i,
-.jy-far, .jy-near, .stagger-item, .reveal, .orb {
+.jy-far, .jy-near, .stagger-item, .reveal {
   animation: none !important;
 }
 .txt-gold, .txt-silver, .txt-diamond {
@@ -116,7 +116,7 @@ body { color: var(--ink); font-family: var(--font-sans); }
 .reveal, .stagger-item { opacity: 1 !important; transform: none !important; }
 .glow-orange, .glow-blue { filter: none !important; }
 /* decorative layers: hidden outright */
-.hero-fx, .orb, .hero-wm, .bhagwan-hero-bg, .float-hero-wrap, .intro-scenes, .shg-aura,
+.bhagwan-hero-bg, .float-hero-wrap, .intro-scenes, .shg-aura,
 .splash-map, .premium-fleet, .credit-div { display: none !important; }
 /* buttons and surfaces lose their gradients and glows */
 .btn-orange, .btn-blue, .btn-primary, .nav-cta, .btn-search, .qt-banner .btn-orange, .ai-send {
@@ -196,8 +196,10 @@ body { color: var(--ink); font-family: var(--font-sans); }
 #view-home > #homeFeat { order: 3 !important; }
 #view-home > #quick-ticket { order: 4 !important; }
 #view-home > #topHero { order: 5 !important; }
-/* decorative or duplicated blocks */
-#view-home > .hero, #view-home > .wa-ticket-highlight, #view-home > .ra-wrap, #routeAnim, #homeRouteMap,
+/* decorative or duplicated blocks
+   10 Oct 2026 (HD pack): #view-home > .hero is no longer in this list - the old
+   particle hero became the calm coach card (hd.css .hero-hd, order 5 in showcase.css). */
+#view-home > .wa-ticket-highlight, #view-home > .ra-wrap, #routeAnim, #homeRouteMap,
 #heroLiveTicker, .intl-badge { display: none !important; }
 /* unverifiable claims and hard-coded prices stay out until the office confirms them */
 #styleHighlight, #whyUs, #facilities, #testimonials { display: none !important; }

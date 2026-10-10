@@ -117,7 +117,8 @@ if ($home !== '') {
 foreach (['homeHero', 'homeFeat', 'quick-ticket', 'demoHead', 'animBooking', 'topHero', 'homeCeo', 'animRoute', 'bookHelp', 'trust', 'agrBar', 'realReviews', 'homeMoreBar', 'homeExtra', 'homeMore'] as $id) {
     sc_check("#{$id} is a direct child of #view-home", in_array($id, $kids, true));
 }
-foreach (['homeFares', 'homeRoute', 'homeIndiaNepal', 'homeExplore'] as $id) {
+/* 10 Oct 2026 (HD pack): #homeLive (live bus tracking) joined the HOMEINFO block; #top is the coach hero. */
+foreach (['homeFares', 'homeRoute', 'homeLive', 'homeIndiaNepal', 'homeExplore', 'top'] as $id) {
     if (str_contains($body, 'id="' . $id . '"')) {
         sc_check("HOMEINFO #{$id} is a direct child of #view-home", in_array($id, $kids, true));
     }
@@ -190,7 +191,8 @@ sc_check('every id in the body is unique', $dupes === [], implode(',', array_sli
 
 /* ---------------------------------------------------------------------- */
 echo "-- 2. Display order --\n";
-$map = ['demoHead' => 5, 'animBooking' => 5, 'topHero' => 7, 'homeCeo' => 8, 'animRoute' => 13, 'bookHelp' => 14,
+/* 10 Oct 2026 (HD pack): #top (the coach hero, order 5 by DOM before the demo) and #homeLive (10). */
+$map = ['top' => 5, 'demoHead' => 5, 'animBooking' => 5, 'topHero' => 7, 'homeCeo' => 8, 'homeLive' => 10, 'animRoute' => 13, 'bookHelp' => 14,
         'trust' => 30, 'agrBar' => 31, 'realReviews' => 32, 'homeMoreBar' => 33, 'homeExtra' => 34, 'homeMore' => 35];
 foreach ($map as $id => $n) {
     sc_check("showcase.css: #{$id} order {$n}", (bool) preg_match('/#view-home > #' . preg_quote($id, '/') . '\b[^{]*\{ order: ' . $n . ' !important; \}/', $css)

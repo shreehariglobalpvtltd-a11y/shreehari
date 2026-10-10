@@ -61,6 +61,8 @@ var PRECACHE = [
   '/assets/css/themes.css?v=' + ASSET_VER,
   '/assets/css/showcase.css?v=' + ASSET_VER,
   '/assets/css/homeinfo.css?v=' + ASSET_VER,
+  /* 10 Oct 2026: the HD visual pack styles (the artwork itself is NOT precached) */
+  '/assets/css/hd.css?v=' + ASSET_VER,
   /* 4 Oct 2026: pop-out depth + the AMOLED display (loads last, both apps) */
   '/assets/css/depth.css?v=' + ASSET_VER,
   '/assets/js/20-anim.js?v=' + ASSET_VER,

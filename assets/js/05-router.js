@@ -400,7 +400,9 @@ const cio = new IntersectionObserver((es) => {
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 if (!reduceMotion) {
   const hero = $('.hero');
-  if (hero) {
+  /* 10 Oct 2026 (HD pack): the blurred orbs that carried data-parallax are gone from
+     the hero, so the frame loop only starts when something is left to move. */
+  if (hero && hero.querySelector('[data-parallax]')) {
     const parallaxEls = $$('[data-parallax]', hero).map(el => {
       // The JS loop now owns the motion, so drop the CSS transition that would
       // otherwise fight it and add ~0.6s of lag on every frame.
