@@ -21,7 +21,8 @@
  */
 declare(strict_types=1);
 require __DIR__ . '/_guard.php';
-require_once INCLUDE_PATH . '/tripstatus.php';   // TripStatus (5 Sep 2026: explicit, not via another include)
+require_once INCLUDE_PATH . '/tripstatus.php';
+require_once INCLUDE_PATH . '/wadelivery.php';   // TripStatus (5 Sep 2026: explicit, not via another include)
 $admin = admin_boot('bookings.view');
 $base  = '';   // root-relative: the panel must stay on the request host (.in or the .network staff door)
 
@@ -112,7 +113,7 @@ if ($trip !== null) {
         "SELECT bp.seat_no, bp.full_name, bp.age, bp.gender, bp.boarded_at,
                 bp.id_type, bp.id_number, bp.special_need,
                 b.booking_mode,
-                b.id AS booking_id, b.pnr, b.contact_phone, b.status AS booking_status,
+                b.id AS booking_id, b.pnr, b.contact_phone, b.contact_country_code, b.status AS booking_status,
                 b.source, b.is_cod, b.total_amount, b.base_total, b.sold_by_admin_id, b.created_at,
                 bl.boarding_stop, bl.drop_stop,
                 p.status AS pay_status, p.method AS pay_method,
@@ -129,6 +130,7 @@ if ($trip !== null) {
           ORDER BY LENGTH(bp.seat_no), bp.seat_no",
         $params
     );
+    $rows = WaDelivery::decorate($rows);
 }
 
 /* Per-person fare divisor. total_amount is stored ONCE per booking and
@@ -260,7 +262,7 @@ if ($format === 'csv') {
     csv_put($out, ['Passengers', (string) count($rows)]);
     csv_put($out, []);
     csv_put($out, ['Seat', 'Passenger', 'Age', 'Gender', 'Phone', 'Boarding point',
-                   'Destination', 'Fare', 'Booking ID', 'Payment', 'Source', 'Agent', 'Ticket', 'Booked']);
+                   'Destination', 'Fare', 'Booking ID', 'Payment', 'Source', 'Agent', 'Ticket', 'Booked', 'WA Provider', 'WA Status', 'WA Delivered At']);
 
     foreach ($rows as $r) {
         csv_put($out, [
@@ -269,6 +271,8 @@ if ($format === 'csv') {
             $stopShort((string) $r['boarding_stop']), $stopShort((string) $r['drop_stop']), $farePer($r), $r['pnr'],
             $payLabel($r), $sourceLabel($r), $agentLabel($r), $ticketLabel($r),
             $bookedTime($r) . ($isLate($r) ? ' (after departure)' : ''),
+            $r['wa_provider'] ?? '', $r['wa_delivery_status'] ?? 'UNKNOWN',
+            $r['wa_delivered_at'] ?? '',
         ]);
     }
     fclose($out);
@@ -441,7 +445,7 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
        and the PNG pages both read THIS array, so a fare can never print one
        way on paper and another in the picture. */
     $chalaniFmt = ['money' => $money, 'stopShort' => $stopShort, 'isLate' => $isLate,
-                   'bookedBy' => $bookedByShort, 'stopsLine' => $stopsLine,
+                   'bookedBy' => $bookedByShort, 'deliveryBrief' => static fn(array $r): string => WaDelivery::brief($r), 'stopsLine' => $stopsLine,
                    'stopsLineRoman' => $stopsLineRoman];
 
     /* Where the three chalani surfaces live. Defined HERE, before any of
@@ -663,7 +667,7 @@ if ($format === 'chalani' || $format === 'chalanipdf' || $format === 'chalanipng
       <td class="r"><?= ($m && $m['cash'] > 0) ? $e(number_format($m['cash'])) : '' ?></td>
       <td class="r"><?= ($m && $m['online'] > 0) ? $e(number_format($m['online'])) : '' ?></td>
       <td class="c"></td>
-      <td><?= $r ? $e($bookedByShort($r) === 'ONLINE' ? 'अनलाइन' : ($bookedByShort($r) === 'OFFICE' ? 'कार्यालय' : ($bookedByShort($r) === 'COUNTER' ? 'काउन्टर' : $bookedByShort($r)))) : '' ?></td>
+      <td><?= $r ? $e($bookedByShort($r) === 'ONLINE' ? 'अनलाइन' : ($bookedByShort($r) === 'OFFICE' ? 'कार्यालय' : ($bookedByShort($r) === 'COUNTER' ? 'काउन्टर' : $bookedByShort($r)))) : '' ?><?php if ($r): ?><small style="display:block;font-size:8px"><?= $e(WaDelivery::brief($r)) ?></small><?php endif; ?></td>
     </tr>
   <?php endfor; ?>
   </tbody>
@@ -871,6 +875,22 @@ foreach ($rows as $r) {
             <?php /* 17 Sep 2026: the ticket to this passenger on WhatsApp (previewed, logged) —
                      only a confirmed booking has a ticket the composer will send. */ ?>
             <?php if ((string) ($r['pnr'] ?? '') !== '' && (string) ($r['booking_status'] ?? '') === 'confirmed'): ?><?= admin_wa_button('booking_ticket', ['pnr' => (string) $r['pnr']], '💬', ['class' => 'btn ghost sm', 'title' => 'Send the ticket to this passenger on WhatsApp — opens a preview first']) ?><?php endif; ?>
+            <br><small class="muted"><?= Security::e((string) ($r['wa_provider'] ?: 'No provider')) ?> · <?= Security::e((string) ($r['wa_delivery_status'] ?? 'NOT SENT / NO LOG')) ?></small>
+            <?php if (!empty($r['wa_delivered_at'])): ?><br><small class="muted">Delivered: <?= Security::e((string) $r['wa_delivered_at']) ?></small><?php endif; ?>
+            <?php if (!empty($r['created_at'])): ?><br><small class="muted">Booked: <?= Security::e((string) $r['created_at']) ?></small><?php endif; ?>
+            <?php $pLink = WaDelivery::forwardLink($r, (string) ($r['contact_phone'] ?? ''), (string) ($r['contact_country_code'] ?? '')); ?>
+            <?php if ($pLink !== ''): ?><br><a class="btn ghost sm" href="<?= Security::e($pLink) ?>" target="_blank" rel="noopener" title="Opens WhatsApp with a prefilled PNG ticket link. You must press Send.">📲 Manual forward to passenger (no API)</a><?php endif; ?>
+            <?php
+              $agentLink = '';
+              if (($r['agent_role'] ?? '') === 'agent' && (int) ($r['sold_by_admin_id'] ?? 0) > 0) {
+                  try {
+                      require_once INCLUDE_PATH . '/watemplates.php';
+                      $recipient = WaTemplates::agentRecipient((int) $r['sold_by_admin_id']);
+                      $agentLink = WaDelivery::forwardLink($r, (string) $recipient['raw'], (string) $recipient['country']);
+                  } catch (Throwable $ignored) { $agentLink = ''; }
+              }
+            ?>
+            <?php if ($agentLink !== ''): ?><br><a class="btn ghost sm" href="<?= Security::e($agentLink) ?>" target="_blank" rel="noopener" title="Prefilled ticket link for the registered agent. No paid API call.">👤 Agent ticket link (no API)</a><?php endif; ?>
           </td>
           <td><span class="mf-tag <?= $paid ? 'mf-paid' : 'mf-unpaid' ?>"><?= Security::e($payLabel($r)) ?></span></td>
           <td><?= Security::e($sourceLabel($r)) ?>
