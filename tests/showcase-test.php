@@ -117,7 +117,8 @@ if ($home !== '') {
 foreach (['homeHero', 'homeFeat', 'quick-ticket', 'demoHead', 'animBooking', 'topHero', 'homeCeo', 'animRoute', 'bookHelp', 'trust', 'agrBar', 'realReviews', 'homeMoreBar', 'homeExtra', 'homeMore'] as $id) {
     sc_check("#{$id} is a direct child of #view-home", in_array($id, $kids, true));
 }
-foreach (['homeFares', 'homeRoute', 'homeIndiaNepal', 'homeExplore'] as $id) {
+/* 10 Oct 2026 (BIZ): #homeBiz, the business tiles, sits right after #homeExplore. */
+foreach (['homeFares', 'homeRoute', 'homeIndiaNepal', 'homeExplore', 'homeBiz'] as $id) {
     if (str_contains($body, 'id="' . $id . '"')) {
         sc_check("HOMEINFO #{$id} is a direct child of #view-home", in_array($id, $kids, true));
     }
@@ -190,8 +191,8 @@ sc_check('every id in the body is unique', $dupes === [], implode(',', array_sli
 
 /* ---------------------------------------------------------------------- */
 echo "-- 2. Display order --\n";
-$map = ['demoHead' => 5, 'animBooking' => 5, 'topHero' => 7, 'homeCeo' => 8, 'animRoute' => 13, 'bookHelp' => 14,
-        'trust' => 30, 'agrBar' => 31, 'realReviews' => 32, 'homeMoreBar' => 33, 'homeExtra' => 34, 'homeMore' => 35];
+$map = ['demoHead' => 5, 'animBooking' => 5, 'topHero' => 7, 'homeCeo' => 8, 'homeBiz' => 12, 'animRoute' => 13, 'bookHelp' => 14,
+        'trust' => 30, 'agrBar' => 31, 'realReviews' => 32, 'homeMoreBar' => 33, 'homeExtra' => 34, 'homeMore' => 35];   // homeBiz 12 (BIZ, 10 Oct 2026) ties with #homeExplore: DOM order
 foreach ($map as $id => $n) {
     sc_check("showcase.css: #{$id} order {$n}", (bool) preg_match('/#view-home > #' . preg_quote($id, '/') . '\b[^{]*\{ order: ' . $n . ' !important; \}/', $css)
         || (bool) preg_match('/#view-home > #' . preg_quote($id, '/') . ',\s*#view-home > #\w+ \{ order: ' . $n . ' !important; \}/', $css));
@@ -335,8 +336,9 @@ if (is_array($tokMap)) {
     sc_check('…and none of them renders empty on this database', $empty === [], implode(',', $empty));
 }
 sc_check('WhatsApp rows that carry a greeting keep their ?text (no data-fact-wa rewrite)', !preg_match('/wa\.me\/[^"]*\?text=[^"]*"[^>]*data-fact-wa=/', $body));
-sc_check('footer: flags + live name + four new pages', str_contains($footer, 'data-flag="IN"') && str_contains($footer, 'data-fact="brand.name"')
-    && str_contains($footer, 'href="/offices"') && str_contains($footer, 'href="/india-nepal"') && str_contains($footer, 'href="/explore"') && str_contains($footer, 'href="/tours"'));
+sc_check('footer: flags + live name + four new pages + /business (BIZ, 10 Oct 2026)', str_contains($footer, 'data-flag="IN"') && str_contains($footer, 'data-fact="brand.name"')
+    && str_contains($footer, 'href="/offices"') && str_contains($footer, 'href="/india-nepal"') && str_contains($footer, 'href="/explore"') && str_contains($footer, 'href="/tours"')
+    && str_contains($footer, 'href="/business"') && str_contains($footer, 'data-i18n="fBusiness"'));
 
 /* ---------------------------------------------------------------------- */
 echo "-- 6. Motion + smoothness --\n";

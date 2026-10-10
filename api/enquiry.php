@@ -14,6 +14,10 @@
  * Module 1.2/4): the chatbot files the category, reference id and PNR in
  * `note`, and the complaint lands in the same admin Enquiries inbox staff
  * already watch — one queue, not a second disconnected system.
+ *
+ * source 'business' (10 Oct 2026): { name, phone, service, note?, lang?,
+ * website: "" } from the /business "notify me" forms — honeypot `website`,
+ * `note` stored as "Service: <key> · <note>", answer in `lang`.
  */
 
 declare(strict_types=1);
@@ -73,9 +77,34 @@ try {
     // back". Lands in the same Enquiries inbox; the office phones them.
     // 'tour' (9 Oct 2026): a tour-package lead. The full form (package, pax,
     // ref TRV-…, budgets) is api/tour-enquiry.php; this only accepts the tag.
-    $source   = in_array($sourceIn, ['quick_booking', 'complaint', 'agent_apply', 'callback', 'tour'], true)
+    // 'business' (10 Oct 2026, BIZ): "notify me" on a coming-soon line of
+    // /business (import-export, truck & bulk, packaging, shop-to-Nepal). The
+    // service key is kept in `note` as "Service: <key>" so the inbox and the
+    // CSV show which line the person wants; the office calls them the day it
+    // opens. Nothing is accepted, booked or charged.
+    $source   = in_array($sourceIn, ['quick_booking', 'complaint', 'agent_apply', 'callback', 'tour', 'business'], true)
         ? $sourceIn
         : 'quick_booking';
+
+    $lang = (string) Response::field('lang', 'en');
+    $lang = in_array($lang, ['en', 'hi', 'ne'], true) ? $lang : 'en';
+    $bizMessage = match ($lang) {
+        'hi' => 'धन्यवाद! आपकी रुचि दर्ज हो गई — सेवा खुलते ही ऑफ़िस आपको कॉल करेगा। कुछ बुक या चार्ज नहीं हुआ।',
+        'ne' => 'धन्यवाद! तपाईंको रुचि दर्ता भयो — सेवा खुल्नेबित्तिकै कार्यालयले फोन गर्नेछ। केही बुक वा शुल्क लागेको छैन।',
+        default => 'Thank you! Your interest is noted — our office will call you the day this service opens. Nothing is booked or charged.',
+    };
+    if ($source === 'business') {
+        // Honeypot (the hidden "website" box, as on the tour form): a bot gets
+        // the same answer shape and nothing is stored.
+        $hp = Response::field('website', '');
+        if (is_string($hp) ? trim($hp) !== '' : !empty($hp)) {
+            Logger::info('Business interest: honeypot filled', ['ip' => Security::clientIp()]);
+            Response::success(['id' => 0, 'travelDate' => null, 'seats' => 1, 'ticket' => null], $bizMessage);
+        }
+        $svcIn = Security::clean((string) Response::field('service', ''), 30);
+        $svc   = in_array($svcIn, ['import_export', 'truck_bulk', 'packaging', 'shop_to_nepal'], true) ? $svcIn : 'general';
+        $note  = mb_substr('Service: ' . $svc . ($note !== null ? ' · ' . $note : ''), 0, 255);
+    }
 
     $id = Database::insert('enquiries', [
         'name'        => $name,
@@ -127,6 +156,7 @@ try {
         'callback'    => 'Got it — the office will call you back on this number. कार्यालयबाट यही नम्बरमा फोन आउनेछ। / ऑफ़िस इसी नंबर पर कॉल करेगा।',
         'agent_apply' => 'Application received — our office will call you on this number. आवेदन प्राप्त भयो — कार्यालयबाट फोन आउनेछ।',
         'tour'        => 'Tour enquiry received — our office will call you with a quote. टुर सोधपुछ प्राप्त भयो — कार्यालयबाट फोन आउनेछ।',
+        'business'    => $bizMessage,
         'complaint'   => 'Complaint filed — our team will get back to you.',
         default       => 'Details saved — let’s pick your seat.',
     };

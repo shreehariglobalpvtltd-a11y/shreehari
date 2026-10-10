@@ -366,6 +366,30 @@
 .hx .hx-pkg-go { font-size: 13px; font-weight: 800; color: var(--hx-p); white-space: nowrap; }
 .hx .hx-tours { display: grid; justify-items: start; gap: 8px; margin-top: 16px; }
 
+/* ---- 8b. #homeBiz — the business portfolio tiles (10 Oct 2026, BIZ) ----
+   Six .hx-tile cards with a status badge. Live tiles keep the tonal colours
+   above; a coming-soon tile is a quiet surface with a dashed edge so no one
+   mistakes it for a service that runs today. Order 12 lives in showcase.css. */
+.hx-biz .hx-hub { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.hx-biz .hx-tile { padding-bottom: 46px; }
+.hx .hx-tile.hx-soon { --t-bg: var(--hx-surface-2); --t-s: var(--hx-on-2); border: 1.5px dashed var(--hx-line); box-shadow: none; }
+.hx .hx-tile.hx-soon .hx-tile-ic { background: var(--hx-surface-3); color: var(--hx-on-2); box-shadow: none; }
+.hx .hx-tile.hx-soon .hx-tile-tx b { color: var(--hx-on-2); }
+.hx .hx-badge {
+  position: absolute; left: 14px; bottom: 12px; display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; line-height: 1.3;
+}
+.hx .hx-badge-live { background: var(--success-soft); color: var(--success); }
+.hx .hx-badge-live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.hx .hx-badge-soon { background: var(--hx-surface-3); color: var(--hx-on-2); }
+.hx .hx-badge-soon::before { content: "\23F3"; font-size: 11px; line-height: 1; }
+/* the audience chip on a featured package (api/explore.php audience) */
+.hx .hx-pkg-aud { padding: 4px 9px; border-radius: 999px; background: var(--hx-tc); color: var(--hx-on-tc); font-size: 11.5px; font-weight: 800; line-height: 1.3; white-space: nowrap; }
+.hx .hx-pkg-tx { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.hx .hx-pkg-tx b { flex: 1 1 100%; }
+@media (min-width: 760px) { .hx-biz .hx-hub { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1040px) { .hx-biz .hx-hub { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+
 /* ---- 9. springy reveal (armed by 24-homeinfo.js only when motion is allowed) ---- */
 .hx.hx-armed .hx-rv { transform: translate3d(0, 24px, 0) scale(.96); transition: transform .85s var(--hx-spring); transition-delay: calc(var(--i, 0) * 70ms); }
 .hx.hx-armed.hx-on .hx-rv { transform: none; }

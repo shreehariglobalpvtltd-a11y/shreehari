@@ -5,7 +5,8 @@
  *
  *   ?what=featured[&lang=en|hi|ne]
  *       {ok, data:{places:[{slug,name,nameNe,nameHi,country,category,blurb,blurbNe,unesco,featured,image,url}],
- *                  packages:[{slug,title,titleNe,titleHi,days,nights,country,priceFrom,image,url}]}}
+ *                  packages:[{slug,title,titleNe,titleHi,days,nights,country,priceFrom,image,url,audience}]}}
+ *       audience (10 Oct 2026, BIZ): 'solo' | 'couple' | 'family' | 'group' | 'pilgrim' | '' (no chip)
  *   ?what=timeline[&limit=6]
  *       {ok, data:{events:[{year,yearNe,title,titleNe,titleHi,icon}], reviewed}}
  *

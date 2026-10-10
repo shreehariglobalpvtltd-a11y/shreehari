@@ -340,17 +340,17 @@ final class PublicLayout
                      'explore' => 'Places to visit', 'tours' => 'Tours', 'travel' => 'Border travel info', 'site' => 'Site sections', 'lang' => 'Language',
                      'theme' => 'Change theme', 'privacy' => 'Privacy', 'terms' => 'Terms', 'refund' => 'Refund policy', 'allRoutes' => 'All bus routes',
                      'ourOffices' => 'Our offices', 'head' => 'Head office', 'soonNum' => 'Number coming soon', 'tag' => 'AC sleeper bus · Gujarat ⇄ India–Nepal border',
-                     'company' => 'Company', 'help' => 'Help desk'],
+                     'company' => 'Company', 'help' => 'Help desk', 'business' => 'Business services'],
             'hi' => ['skip' => 'सामग्री पर जाएँ', 'book' => 'सीट बुक करें', 'home' => 'होम', 'indiaNepal' => 'भारत–नेपाल', 'offices' => 'कार्यालय',
                      'explore' => 'घूमने की जगहें', 'tours' => 'टूर', 'travel' => 'बॉर्डर यात्रा जानकारी', 'site' => 'साइट के हिस्से', 'lang' => 'भाषा',
                      'theme' => 'थीम बदलें', 'privacy' => 'गोपनीयता', 'terms' => 'शर्तें', 'refund' => 'रिफंड नीति', 'allRoutes' => 'सभी बस रूट',
                      'ourOffices' => 'हमारे कार्यालय', 'head' => 'मुख्य कार्यालय', 'soonNum' => 'नंबर जल्द', 'tag' => 'AC स्लीपर बस · गुजरात ⇄ भारत–नेपाल सीमा',
-                     'company' => 'कंपनी', 'help' => 'हेल्प डेस्क'],
+                     'company' => 'कंपनी', 'help' => 'हेल्प डेस्क', 'business' => 'व्यापार सेवाएँ'],
             'ne' => ['skip' => 'सामग्रीमा जानुहोस्', 'book' => 'सिट बुक गर्नुहोस्', 'home' => 'गृहपृष्ठ', 'indiaNepal' => 'भारत–नेपाल', 'offices' => 'कार्यालय',
                      'explore' => 'घुम्ने ठाउँ', 'tours' => 'टुर', 'travel' => 'बोर्डर यात्रा जानकारी', 'site' => 'साइटका भाग', 'lang' => 'भाषा',
                      'theme' => 'थिम बदल्नुहोस्', 'privacy' => 'गोपनीयता', 'terms' => 'सर्तहरू', 'refund' => 'फिर्ता नीति', 'allRoutes' => 'सबै बस रुट',
                      'ourOffices' => 'हाम्रा कार्यालय', 'head' => 'प्रधान कार्यालय', 'soonNum' => 'नम्बर छिट्टै', 'tag' => 'AC स्लिपर बस · गुजरात ⇄ भारत–नेपाल सिमाना',
-                     'company' => 'कम्पनी', 'help' => 'सहायता डेस्क'],
+                     'company' => 'कम्पनी', 'help' => 'सहायता डेस्क', 'business' => 'व्यापार सेवा'],
         ];
         return $w[$lang] ?? $w['en'];
     }
@@ -361,7 +361,7 @@ final class PublicLayout
      *  $opts:
      *    path      the language-neutral path ('/offices') — drives the
      *              language switch (defaults to the canonical's path)
-     *    active    'india-nepal' | 'offices' | 'explore' | 'tours'
+     *    active    'india-nepal' | 'offices' | 'explore' | 'tours' | 'business'
      *    crumbs    [[name, absolute url], …] — rendered as a trail (the
      *              JSON-LD BreadcrumbList is the caller's)
      *    noindex   true for pages that must stay out of search
@@ -392,7 +392,8 @@ final class PublicLayout
         }
         $sprite = self::brandFlags() ? Brand::flagSprite() : '';
         $tabs = '';
-        foreach (['india-nepal' => ['🤝', 'indiaNepal'], 'offices' => ['🏢', 'offices'], 'explore' => ['🏔️', 'explore'], 'tours' => ['🧳', 'tours']] as $k => [$ic, $wk]) {
+        // 10 Oct 2026 (BIZ): the business portfolio tab (/business) joins the row.
+        foreach (['india-nepal' => ['🤝', 'indiaNepal'], 'offices' => ['🏢', 'offices'], 'explore' => ['🏔️', 'explore'], 'tours' => ['🧳', 'tours'], 'business' => ['💼', 'business']] as $k => [$ic, $wk]) {
             $tabs .= '<a href="' . $e(self::url('/' . $k, $lang)) . '"' . ($k === $active ? ' aria-current="page"' : '') . '><span aria-hidden="true">' . $ic . '</span>' . $e($w[$wk]) . '</a>';
         }
         $tabs .= '<a href="/travel-info"><span aria-hidden="true">🛂</span>' . $e($w['travel']) . '</a>';
@@ -465,6 +466,7 @@ final class PublicLayout
         <li><a href="{$e(self::url('/offices', $lang))}">{$e($w['offices'])}</a></li>
         <li><a href="{$e(self::url('/explore', $lang))}">{$e($w['explore'])}</a></li>
         <li><a href="{$e(self::url('/tours', $lang))}">{$e($w['tours'])}</a></li>
+        <li><a href="{$e(self::url('/business', $lang))}">{$e($w['business'])}</a></li>
         <li><a href="/travel-info">{$e($w['travel'])}</a></li>
         <li><a href="{$e($lang === 'en' ? '/bus' : '/' . $lang . '/bus')}">{$e($w['allRoutes'])}</a></li>
         <li><a href="/help.php">{$e($w['help'])}</a></li>

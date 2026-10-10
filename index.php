@@ -65,8 +65,9 @@ if ($legalPath === '/bus' || str_starts_with($legalPath, '/bus/') || str_starts_
 }
 /* 9 Oct 2026: the brand / travel pages (/india-nepal, /offices, /explore,
    /tours, /tours/<slug>, each also under /hi/ and /ne/) and their sitemap -
-   includes/contentpages.php. Served before Auth::user(); no app bundle. */
-if (preg_match('#^/(?:(?:hi|ne)/)?(?:india-nepal|offices|explore|tours)(?:/|$)#', $legalPath) === 1 || $legalPath === '/sitemap-content.xml') {
+   includes/contentpages.php. Served before Auth::user(); no app bundle.
+   10 Oct 2026 (BIZ): /business, the business portfolio, joins them. */
+if (preg_match('#^/(?:(?:hi|ne)/)?(?:india-nepal|offices|explore|tours|business)(?:/|$)#', $legalPath) === 1 || $legalPath === '/sitemap-content.xml') {
     require_once INCLUDE_PATH . '/contentpages.php';
     ContentPages::dispatch($legalPath);
 }

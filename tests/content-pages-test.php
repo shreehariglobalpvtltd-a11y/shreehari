@@ -14,6 +14,12 @@
  *      never a draft; sitemap.xml names it
  *   F. sources: no typed phone numbers, admin pages gated, enquiry
  *      whitelist + inbox labels, tools/content-seed.php idempotent
+ *   G. /business (10 Oct 2026, BIZ): the six section ids, two LIVE + four
+ *      COMING SOON badges, a "notify me" form per coming-soon line, no date
+ *      or price, JSON-LD ItemList of 6 Services (PreOrder only on the four),
+ *      the tour mini cards with their audience chip; api/enquiry.php source
+ *      'business': honeypot stores nothing, a real one stores "Service: <key>",
+ *      no token = 419; the audience chip on /tours and the featured payload [HTTP]
  *
  *      SHG_TEST_BASE=http://localhost:8991 php -c .claude/php-dev.ini tests/content-pages-test.php
  *
@@ -80,8 +86,10 @@ if (!$tablesOk) {
 $cleanup = static function (): void {
     Database::query("DELETE FROM tour_packages WHERE slug LIKE 'zz-cp-%'");
     Database::query("DELETE FROM travel_places WHERE slug LIKE 'zz-cp-%'");
-    Database::query("DELETE FROM enquiries WHERE source = 'tour' AND name LIKE 'ZZ CP %'");
+    Database::query("DELETE FROM enquiries WHERE source IN ('tour', 'business') AND name LIKE 'ZZ CP %'");
     Database::query("DELETE FROM rate_limits WHERE bucket LIKE 'trv\\_%'");
+    // G (BIZ): the business "notify me" POSTs share the enquiry_create IP bucket (20 / 5 min) — free it for the next run.
+    Database::query("DELETE FROM rate_limits WHERE bucket = 'enquiry_create' AND identifier IN ('127.0.0.1', '::1')");
 };
 $cleanup();
 Database::query("INSERT INTO rate_limits (bucket, identifier, hits, window_start, blocked_until) VALUES ('trv_note', 'global', 99, NOW(), NULL)");
@@ -115,6 +123,7 @@ try {
             '/explore'         => ['ItemList', 'BreadcrumbList'],
             '/tours'           => ['ItemList', 'BreadcrumbList'],
             '/tours/zz-cp-pub' => ['TouristTrip', 'BreadcrumbList'],
+            '/business'        => ['WebPage', 'ItemList', 'BreadcrumbList', 'Organization'],   // 10 Oct 2026 (BIZ)
         ];
         foreach ($expect as $path => $types) {
             foreach (['en', 'hi', 'ne'] as $lang) {
@@ -184,6 +193,79 @@ try {
             check('india-nepal: the sources list has no duplicates', count($hrefs[1]) === count(array_unique($hrefs[1])), count($hrefs[1]) . ' sources');
         }
         check('tours list shows the published package, not the draft', str_contains(req('GET', '/tours')['body'], 'ZZ CP Lumbini Trip') && !str_contains(req('GET', '/tours')['body'], 'ZZ CP Draft Trip'));
+
+        /* 10 Oct 2026 (BIZ): /business — the business portfolio. Status badges only (never a date, never a
+           price), one "notify me" form per coming-soon line, the four demo packages with their audience chip. */
+        echo "\n-- G. /business (BIZ) --\n";
+        $bz = req('GET', '/business')['body'];
+        $secIds = ['bus', 'tours', 'import-export', 'truck-bulk', 'packaging', 'shop-to-nepal'];
+        $idsOk = true;
+        $last = -1;
+        foreach ($secIds as $sid) {
+            $at = strpos($bz, 'id="' . $sid . '"');
+            $idsOk = $idsOk && $at !== false && $at > $last && substr_count($bz, 'id="' . $sid . '"') === 1;
+            $last = $at === false ? $last : $at;
+        }
+        check('business: the six section ids, once each, in page order', $idsOk);
+        check('business: the nav tab is current, /business in the shell site list', (bool) preg_match('~href="[^"]*/business"[^>]*aria-current="page"~', $bz));
+        preg_match('~<section class="sec" id="services">(.*?)</section>~s', $bz, $svm);
+        $svc = $svm[1] ?? '';
+        check('business: two LIVE cards + four COMING SOON cards', substr_count($svc, 'class="card biz live') === 2 && substr_count($svc, 'class="card biz soon') === 4
+            && substr_count($svc, 'class="badge st-live"') === 2 && substr_count($svc, 'class="badge st-soon"') === 4);
+        check('business: a "notify me" form per coming-soon line — source business, service key, honeypot, lang', substr_count($svc, 'class="bizForm"') === 4
+            && substr_count($svc, 'name="source" value="business"') === 4 && substr_count($svc, 'name="website"') === 4 && substr_count($svc, 'name="lang" value="en"') === 4
+            && str_contains($svc, 'name="service" value="import_export"') && str_contains($svc, 'name="service" value="truck_bulk"')
+            && str_contains($svc, 'name="service" value="packaging"') && str_contains($svc, 'name="service" value="shop_to_nepal"') && str_contains($bz, '/api/enquiry.php'));
+        check('business: no date and no price anywhere on the cards', !preg_match('~\b20[2-9]\d\b|₹|Rs\.?\s?\d|NPR\s?\d~u', strip_tags($svc)));
+        check('business: every coming-soon card says in words that nothing is accepted yet', substr_count($svc, 'accepted yet') >= 2
+            && str_contains($svc, 'No booking is taken yet') && str_contains($svc, 'do not send any parcel'));
+        $demo = ContentPages::demoPackages();
+        $withAud = $demo !== [] && ContentPages::audienceKey($demo[0]) !== '';
+        $nMini = substr_count($svc, 'class="biz-mini"') === 1 ? substr_count((string) (preg_match('~<ul class="biz-mini">(.*?)</ul>~s', $svc, $mm) ? $mm[1] : ''), '<li>') : 0;
+        check('business: 1–4 tour mini cards, each with its audience chip once the migration has run', $nMini >= 1 && $nMini <= 4
+            && (!$withAud || substr_count((string) ($mm[1] ?? ''), 'class="chip aud aud-') === $nMini), $nMini . ' cards' . ($withAud ? '' : ' (no audience set yet)'));
+        preg_match('#<script type="application/ld\+json">(.*?)</script>#s', $bz, $lm);
+        $bld = json_decode($lm[1] ?? '', true);
+        $lists = array_values(array_filter($bld['@graph'] ?? [], static fn(array $n): bool => ($n['@type'] ?? '') === 'ItemList'));
+        $els = $lists[0]['itemListElement'] ?? [];
+        $pre = count(array_filter($els, static fn(array $it): bool => ($it['item']['offers']['availability'] ?? '') === 'https://schema.org/PreOrder'));
+        $offers = count(array_filter($els, static fn(array $it): bool => isset($it['item']['offers'])));
+        $provOk = $els !== [] && !array_filter($els, static fn(array $it): bool => ($it['item']['@type'] ?? '') !== 'Service' || !str_ends_with((string) ($it['item']['provider']['@id'] ?? ''), '/#org'));
+        check('business JSON-LD: ItemList of 6 Services, provider #org, PreOrder on exactly the four coming-soon ones, none on the live two',
+            count($els) === 6 && (int) ($lists[0]['numberOfItems'] ?? 0) === 6 && $provOk && $pre === 4 && $offers === 4, count($els) . ' items, ' . $pre . ' PreOrder');
+        $bzHi = req('GET', '/hi/business')['body'];
+        $bzNe = req('GET', '/ne/business')['body'];
+        check('business (hi / ne): forms post lang hi / ne, Nepali "notify me" wording present', substr_count($bzHi, 'name="lang" value="hi"') === 4 && substr_count($bzNe, 'name="lang" value="ne"') === 4
+            && str_contains($bzNe, 'मलाई खबर गर्नुहोस्') && str_contains($bzHi, 'मुझे बताएँ'));
+        if ($withAud) {
+            $tl = req('GET', '/tours')['body'];
+            check('tours list + package page carry the audience chip', substr_count($tl, 'class="chip aud aud-') >= 1
+                && str_contains(req('GET', '/tours/' . $demo[0]['slug'])['body'], 'class="chip aud aud-' . ContentPages::audienceKey($demo[0]) . '"'));
+        }
+        $fe = req('GET', '/api/explore.php?what=featured&lang=en')['json']['data']['packages'] ?? [];
+        check('featured payload: every package carries an audience key (may be empty)', $fe !== [] && !array_filter($fe, static fn(array $p): bool => !array_key_exists('audience', $p)));
+
+        echo "\n-- G2. api/enquiry.php source business --\n";
+        $jar2 = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'shg_cp_biz_' . getmypid() . '.cookies';
+        @unlink($jar2);
+        $tok2 = (string) (req('GET', '/api/tour-enquiry.php', $jar2)['json']['csrf'] ?? '');
+        $h2 = ['X-CSRF-Token: ' . $tok2];
+        $bizGood = ['source' => 'business', 'service' => 'shop_to_nepal', 'name' => 'ZZ CP Biz', 'phone' => '98' . '0000' . '4481', 'lang' => 'ne', 'note' => 'ZZ CP two parcels a month', 'website' => ''];
+        check('business notify: POST without a token is 419', req('POST', '/api/enquiry.php', $jar2, $bizGood)['code'] === 419);
+        $b0 = (int) Database::scalar("SELECT COUNT(*) FROM enquiries WHERE source = 'business' AND name LIKE 'ZZ CP %'", [], 0);
+        $bh = req('POST', '/api/enquiry.php', $jar2, ['website' => 'http://spam.example', 'name' => 'ZZ CP Bot'] + $bizGood, $h2);
+        $b1 = (int) Database::scalar("SELECT COUNT(*) FROM enquiries WHERE source = 'business' AND name LIKE 'ZZ CP %'", [], 0);
+        check('business notify: honeypot filled = same ok answer in the page language, nothing stored', $bh['code'] === 200 && ($bh['json']['ok'] ?? false) === true
+            && str_contains((string) ($bh['json']['message'] ?? ''), 'धन्यवाद') && $b1 === $b0);
+        $bo = req('POST', '/api/enquiry.php', $jar2, $bizGood, $h2);
+        $brow = Database::fetch("SELECT * FROM enquiries WHERE source = 'business' AND name = 'ZZ CP Biz' ORDER BY id DESC LIMIT 1");
+        check('business notify: stored as source business, note "Service: shop_to_nepal · …", status new, Nepali answer', ($bo['json']['ok'] ?? false) === true && $brow !== null
+            && str_starts_with((string) $brow['note'], 'Service: shop_to_nepal · ZZ CP two') && $brow['status'] === 'new' && str_contains((string) ($bo['json']['message'] ?? ''), 'धन्यवाद'));
+        $bu = req('POST', '/api/enquiry.php', $jar2, ['service' => 'evil', 'name' => 'ZZ CP Gen', 'lang' => 'xx', 'phone' => '98' . '0000' . '4482'] + $bizGood, $h2);
+        check('business notify: unknown service key → "Service: general", unknown lang → English answer', ($bu['json']['ok'] ?? false) === true
+            && (string) Database::scalar("SELECT note FROM enquiries WHERE source = 'business' AND name = 'ZZ CP Gen'", [], '') === 'Service: general · ZZ CP two parcels a month'
+            && str_starts_with((string) ($bu['json']['message'] ?? ''), 'Thank you'));
+        @unlink($jar2);
 
         echo "\n-- B. 404s and drafts --\n";
         check('unknown tour slug is 404', req('GET', '/tours/zz-cp-nowhere')['code'] === 404);
@@ -270,7 +352,7 @@ try {
     $paths = ContentPages::sitemapPaths();
     check('sitemap-content.xml is valid XML, 3 × pages urls', $xml !== false && count($xml->url) === 3 * count($paths), $xml !== false ? count($xml->url) . ' urls for ' . count($paths) . ' pages' : 'invalid');
     $all = true;
-    foreach (['/india-nepal', '/offices', '/explore', '/tours', '/tours/zz-cp-pub'] as $p) {
+    foreach (['/india-nepal', '/offices', '/explore', '/tours', '/tours/zz-cp-pub', '/business'] as $p) {   // /business: BIZ, 10 Oct 2026
         foreach (['en', 'hi', 'ne'] as $l) {
             $all = $all && str_contains($xmlBody, '<loc>' . htmlspecialchars(PublicLayout::url($p, $l), ENT_XML1) . '</loc>');
         }
@@ -299,9 +381,18 @@ try {
     }
     check('admin nav lists Tours + Places under Website content', (bool) preg_match("/'tours\.php'.*Website content/", (string) file_get_contents($root . '/admin/_guard.php'))
         && (bool) preg_match("/'places\.php'.*Website content/", (string) file_get_contents($root . '/admin/_guard.php')));
-    check("api/enquiry.php whitelist has 'tour'", (bool) preg_match("/'callback', 'tour'\]/", (string) file_get_contents($root . '/api/enquiry.php')));
+    // 10 Oct 2026 (BIZ): 'business' joins the whitelist — the pin moved from "'tour']" to "'tour', 'business']".
+    check("api/enquiry.php whitelist has 'tour' + 'business'", (bool) preg_match("/'callback', 'tour', 'business'\]/", (string) file_get_contents($root . '/api/enquiry.php')));
     $enq = (string) file_get_contents($root . '/admin/enquiries.php');
-    check("admin/enquiries.php labels 'tour' and 'callback'", str_contains($enq, "'tour' => 'Tour enquiry'") && str_contains($enq, "'callback' => "));
+    check("admin/enquiries.php labels 'tour', 'callback' and 'business'", str_contains($enq, "'tour' => 'Tour enquiry'") && str_contains($enq, "'callback' => ") && str_contains($enq, "'business' => 'Business interest'"));
+    $atp = (string) file_get_contents($root . '/admin/tours.php');
+    check('admin/tours.php: audience <select> from ContentPages::AUDIENCES, tracked for audit, guarded by the column check', str_contains($atp, '<select name="audience"') && str_contains($atp, 'ContentPages::AUDIENCES')
+        && str_contains($atp, "'audience', 'image'") && str_contains($atp, "COLUMN_NAME = 'audience'"));
+    check('index.php + publiclayout.php + contentpages.php route /business in the three languages', str_contains($idx, 'explore|tours|business)(?:/|$)')
+        && str_contains((string) file_get_contents($root . '/includes/publiclayout.php'), "'business' => ['💼', 'business']") && in_array('business', ContentPages::PAGES, true) && in_array('/business', ContentPages::sitemapPaths(), true));
+    $tplSrc = (string) file_get_contents($root . '/app.template.html');
+    check('app.template.html: cargo FAQ (translated) + mobile-menu and footer links to /business', str_contains($tplSrc, 'data-i18n="faqCargoQ"') && str_contains($tplSrc, 'data-i18n="faqCargoA"')
+        && str_contains($tplSrc, 'data-i18n="mmBusiness"') && str_contains($tplSrc, 'data-i18n="fBusiness"') && !str_contains($tplSrc, 'use our import–export service instead'));
     check('tour enquiry never touches payments or bookings', !preg_match('/BookingService|Booking::|payments|confirm/i', (string) preg_replace('#/\*.*?\*/#s', '', (string) file_get_contents($root . '/api/tour-enquiry.php'))));
 
     // tools/content-seed.php: twice with the same file = no change the second time.

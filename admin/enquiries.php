@@ -43,10 +43,12 @@ $status = Security::clean($_GET['status'] ?? '', 20);
 $valid  = ['new', 'contacted', 'converted', 'closed'];
 
 /* Which desk the lead came from. 'agent_apply' is someone asking to become a
-   counter agent — the office phones them and creates the account by hand. */
+   counter agent — the office phones them and creates the account by hand.
+   'business' (10 Oct 2026): "notify me" on a coming-soon line of /business;
+   the note says which service ("Service: shop_to_nepal · …"). */
 $source   = Security::clean($_GET['source'] ?? '', 20);
 $sources  = ['quick_booking' => 'Booking enquiry', 'agent_apply' => 'Agent application', 'complaint' => 'Complaint',
-             'callback' => 'Call-me-back', 'tour' => 'Tour enquiry'];
+             'callback' => 'Call-me-back', 'tour' => 'Tour enquiry', 'business' => 'Business interest'];
 
 /* Date window. The office wanted to narrow the inbox to a day, a few days or a
    month without typing dates. 0 = no limit. */

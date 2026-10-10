@@ -76,11 +76,12 @@
     } catch (e) { /* bad URL */ }
     return fb;
   }
-  /* an API link to a CONTENT page follows the visitor's language: /explore#x → /ne/explore#x */
+  /* an API link to a CONTENT page follows the visitor's language: /explore#x → /ne/explore#x
+     (10 Oct 2026, BIZ: /business too) */
   function localize(u) {
     var l = lang();
     if (l !== 'ne' && l !== 'hi') return u;
-    return /^\/(?:explore|tours|india-nepal|offices)(?=[\/?#]|$)/.test(u) ? '/' + l + u : u;
+    return /^\/(?:explore|tours|india-nepal|offices|business)(?=[\/?#]|$)/.test(u) ? '/' + l + u : u;
   }
   function flagImg(cc, ht, cls) {
     var np = cc === 'NP';
@@ -343,6 +344,7 @@
   }
   var ART = { pilgrimage: 'heritage', heritage: 'heritage', nature: 'nature', adventure: 'nature', lake: 'nature', hill: 'nature', wildlife: 'wild', city: 'city' };
   var CAT = { pilgrimage: 'hxCatPilgrimage', heritage: 'hxCatHeritage', nature: 'hxCatNature', adventure: 'hxCatAdventure', wildlife: 'hxCatWildlife', city: 'hxCatCity', lake: 'hxCatLake', hill: 'hxCatHill' };
+  var AUD = { solo: 'hxAudSolo', couple: 'hxAudCouple', family: 'hxAudFamily', group: 'hxAudGroup', pilgrim: 'hxAudPilgrim' };
   function renderFeatured() {
     var f = STATE.feat;
     if (!f) return;
@@ -371,9 +373,12 @@
       pbox.innerHTML = '<h3 class="hx-h3">' + h(tx('hxHubTours')) + '</h3>' + pk.map(function (p, i) {
         var d = Math.round(+p.days) || 0, n = Math.round(+p.nights);
         var dur = d > 0 ? (p.nights != null && n >= 0 ? txf('hxPkgDays', { d: d, n: n }) : txf('hxPkgDaysOnly', { d: d })) : '';
+        /* 10 Oct 2026 (BIZ): the audience chip (solo / couple / family / group / pilgrim) when the package has one */
+        var aud = AUD[String(p.audience || '').toLowerCase()] || '';
         return '<a class="hx-pkg hx-rv" style="--i:' + i + '" href="' + h(localize(safeUrl(p.url, '/tours'))) + '">'
           + '<span class="hx-pkg-d">' + (dur ? h(dur) : IC.bag) + '</span>'
-          + '<b>' + h(pick(p, 'title')) + '</b><span class="hx-pkg-go">' + h(tx('hxPkgCta')) + ' →</span></a>';
+          + '<span class="hx-pkg-tx"><b>' + h(pick(p, 'title')) + '</b>' + (aud ? '<span class="hx-pkg-aud">' + h(tx(aud)) + '</span>' : '') + '</span>'
+          + '<span class="hx-pkg-go">' + h(tx('hxPkgCta')) + ' →</span></a>';
       }).join('');
       pbox.hidden = false;
     }
