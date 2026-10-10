@@ -582,15 +582,20 @@ html:root[data-motion="reduced"] { scroll-behavior: auto !important; }
 :root[data-palette][data-theme] .legend .lg.sel { box-shadow: var(--dp-chip-on) !important; }
 :root[data-palette][data-theme] .ai-msg.user { box-shadow: var(--dp-card) !important; }
 /* 10 Oct 2026 (brand looks): on AMOLED a few depth.css rules paint the strips
-   around the home page - footer, flow head, phone menu, five-tab bar, the
-   hero's keys, the language pop - in the BRAND's blue-black as literals
-   (#050B16 / #101822 / #33465F). Under a palette they take the palette's own
-   navy / surface / line, so goldenorange stays warm and professional stays
-   mist-blue on a black screen. The light + dark strips already read the
-   tokens (redesign.css: .nav / .flow-head / footer = --navy, .topbar /
-   .divine-bar / .bottom-nav = --surface*, --line) and need nothing here.
-   0,4,0 (0,3,1 for footer): beats depth.css's 0,3,0 / 0,2,1 + !important.
-   The footer's red top rule (brand red) is not touched. */
+   around the home page - the top app bar, footer, flow head, phone menu,
+   five-tab bar, the hero's keys, the language pop - in the BRAND's blue-black
+   as literals (#050B16 / #101822 / #33465F). Under a palette they take the
+   palette's own navy / surface / line, so goldenorange stays warm and
+   professional stays mist-blue on a black screen. The light + dark strips
+   already read the tokens (redesign.css: .nav / .flow-head / footer = --navy,
+   .topbar / .divine-bar / .bottom-nav = --surface*, --line) and need nothing
+   here. 0,4,0 (0,3,1 for footer): beats depth.css's 0,3,0 / 0,2,1 + !important
+   whatever the load order. The footer's red top rule and the .nav's red
+   bottom rule (brand red) are not touched. The animated scenes (.sa-scene)
+   and the AI chat head keep their own night-sky / blue colours: they are the
+   same in light and dark under every palette, so they are not strips.
+   (Review fix, 10 Oct: .nav / .nav.scrolled were missing from this list.) */
+:root[data-palette][data-display="amoled"] .nav, :root[data-palette][data-display="amoled"] .nav.scrolled,
 :root[data-palette][data-display="amoled"] footer,
 :root[data-palette][data-display="amoled"] .flow-head { background: var(--navy) !important; }
 :root[data-palette][data-display="amoled"] .mobile-menu { background: var(--navy) !important; border-color: var(--line-strong) !important; }
@@ -708,13 +713,15 @@ html .topbar .palette-wrap { display: inline-flex !important; }
 .shg-ap .ap-sw.ap-sw-brand .ap-nm small { font: 600 12px/16px var(--font-sans); color: var(--md-on-surface-variant); }
 .shg-ap .ap-sw.ap-sw-brand[aria-checked="true"] { border-color: var(--md-primary); background: var(--md-primary-container); color: var(--md-on-primary-container); }
 .shg-ap .ap-sw.ap-sw-brand[aria-checked="true"] .ap-nm small { color: inherit; opacity: .85; }
-/* 10 Oct 2026: the two group labels in the colour grid ("Brand looks" above the
-   three hand-tuned looks, "More colours" above the Material You palettes).
-   Plain text spanning the row; not a radio, so arrow keys skip it. */
+/* 10 Oct 2026: the two group labels in the colour section ("Brand looks" above
+   S Hari + the three hand-tuned looks, "More colours" above the Material You
+   palettes). Each label names its own radiogroup (aria-labelledby), so a
+   screen reader hears the grouping too; it sits between the two grids. */
 .shg-ap .ap-grp {
-  grid-column: 1 / -1; margin: 6px 2px -2px; font: 800 12px/16px var(--font-sans); letter-spacing: .04em;
+  display: block; margin: 10px 2px 4px; font: 800 12px/16px var(--font-sans); letter-spacing: .04em;
   color: var(--md-on-surface-variant);
 }
+.shg-ap h3 + .ap-grp { margin-top: 2px; }
 /* style previews: a tiny Pixel card next to a tiny 3D card */
 .shg-ap .ap-prev { display: block; width: 72px; height: 34px; margin: 2px auto 4px; position: relative; }
 .shg-ap .ap-prev i { position: absolute; display: block; }

@@ -13,15 +13,28 @@
 -- app.template.html; the owner default is applied by index.php only where
 -- nothing is saved).
 --
--- Idempotent: the row itself is inserted by upgrade-2026-10-09-themes.sql
--- (INSERT IGNORE, blank = S Hari brand colours). This UPDATE only moves a
--- row that is STILL blank, so an owner who already picked a theme in
--- Admin -> Settings keeps it, and re-running the file changes nothing.
--- The second UPDATE keeps the row public (index.php reads it before paint).
+-- DEPLOY ORDER (docs/UPGRADE-2026-10-10-themes.md): run this file only AFTER
+-- the build that carries the three palettes is live WITH its asset stamp
+-- bump. A phone that still holds the older themes.css would not know
+-- 'professional'; index.php's stale-stylesheet guard then falls back to the
+-- brand look, so nothing breaks - but the owner would see the old colours
+-- until the phone picks up the new stamp.
+--
+-- Self-sufficient and idempotent (review fix): the row is normally inserted
+-- blank by upgrade-2026-10-09-themes.sql; on a database where that file was
+-- never applied this INSERT creates it (same columns as the 9 Oct file), and
+-- where it exists the ON DUPLICATE KEY branch only moves a value that is
+-- STILL blank - an owner who already picked a theme in Admin -> Settings
+-- keeps it, and re-running the file changes nothing. is_public stays 1
+-- (index.php reads the row before paint).
 -- =====================================================================
 
-UPDATE `settings` SET `svalue` = 'professional'
- WHERE `skey` = 'app_theme_palette' AND `svalue` = '';
+INSERT INTO `settings` (`skey`, `svalue`, `stype`, `sgroup`, `label`, `is_public`) VALUES
+ ('app_theme_palette', 'professional', 'string', 'app', 'Default colour theme for visitors (blank = S Hari brand colours)', 1)
+ON DUPLICATE KEY UPDATE
+ `svalue` = IF(`svalue` = '', 'professional', `svalue`),
+ `is_public` = 1;
 
-UPDATE `settings` SET `is_public` = 1
- WHERE `skey` = 'app_theme_palette';
+-- Verify (expected: one row, svalue = professional unless the owner chose
+-- another theme, is_public = 1):
+--   SELECT `skey`, `svalue`, `is_public` FROM `settings` WHERE `skey` = 'app_theme_palette';

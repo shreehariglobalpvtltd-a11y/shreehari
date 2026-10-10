@@ -319,8 +319,11 @@ check('SQL: INSERT IGNORE (idempotent, keeps an owner value)', stripos($sql, 'IN
    still blank (an owner who picked something keeps it); the 9 Oct file is untouched */
 $sql2F = $root . '/database/upgrade-2026-10-10-themes.sql';
 $sql2 = is_file($sql2F) ? (string) file_get_contents($sql2F) : '';
-check('SQL (10 Oct): professional default where app_theme_palette is still blank', (bool) preg_match("~UPDATE `settings` SET `svalue` = 'professional'\\s+WHERE `skey` = 'app_theme_palette' AND `svalue` = ''~", $sql2));
-check('SQL (10 Oct): keeps the row public', (bool) preg_match("~UPDATE `settings` SET `is_public` = 1\\s+WHERE `skey` = 'app_theme_palette'~", $sql2));
+/* review fix: self-sufficient - the INSERT creates the row where the 9 Oct file was never
+   applied (same column list), ON DUPLICATE KEY only moves a value that is still blank */
+check('SQL (10 Oct): INSERT with the 9 Oct column list, professional', (bool) preg_match("~INSERT INTO `settings` \\(`skey`, `svalue`, `stype`, `sgroup`, `label`, `is_public`\\) VALUES\\s+\\('app_theme_palette', 'professional', 'string', 'app', '[^']+', 1\\)~", $sql2));
+check('SQL (10 Oct): ON DUPLICATE KEY moves only a still-blank value, keeps the row public', (bool) preg_match("~ON DUPLICATE KEY UPDATE\\s+`svalue` = IF\\(`svalue` = '', 'professional', `svalue`\\),\\s+`is_public` = 1;~", $sql2));
+check('SQL (10 Oct): deploy order + verify SELECT documented in the file', stripos($sql2, 'DEPLOY ORDER') !== false && strpos($sql2, "SELECT `skey`, `svalue`, `is_public` FROM `settings` WHERE `skey` = 'app_theme_palette'") !== false);
 check('SQL (9 Oct) still inserts the blank default (the 10 Oct file only updates)', (bool) preg_match("~\\('app_theme_palette',\\s*'',\\s*'string',\\s*'app'~", $sql));
 check('Admin -> Settings: dropdowns for style + sound pack', strpos($adm, "'app_ui_style'         => ['pixel'") !== false && strpos($adm, "'app_sound_pack'       => ['pixel'") !== false);
 check('Admin -> Settings: help text for all four', substr_count($adm, "'app_theme_palette'") >= 2 && strpos($adm, "'app_motion_on'                       =>") !== false);
@@ -352,11 +355,20 @@ check('sheet: focus trap, Esc and the back key', strpos($acc, "e.key === 'Tab'")
 check('sheet: colour swatches use data-palette-set (data-theme-set stays light/dark/amoled/auto)', strpos($acc, 'data-palette-set="') !== false);
 preg_match_all('~data-theme-set="([a-z]+)"~', $acc . $tpl, $dts);
 check('no new data-theme-set value', array_diff(array_unique($dts[1]), ['auto', 'light', 'dark', 'amoled']) === [], implode(' ', array_unique($dts[1])));
-check('sheet: S Hari (default) + every palette, named in ne / en / hi', strpos($acc, "brand: ['S Hari (मूल)', 'S Hari (default)'") !== false && count($am) === 15);
+/* 10 Oct 2026 (review fix): only ONE swatch may say "(default)" - professional.
+   The logo's own colours are named "S Hari (brand)". */
+check('sheet: S Hari (brand) + every palette, named in ne / en / hi', strpos($acc, "brand: ['S Hari (ब्रान्ड)', 'S Hari (brand)', 'S Hari (ब्रांड)']") !== false && count($am) === 15);
+check('sheet: no second "(default)" / "(मूल)" label', strpos($acc, "'S Hari (मूल)'") === false && strpos($acc, "'S Hari (default)'") === false);
 /* 10 Oct 2026: the three brand looks lead the colour grid under their own label */
 check('sheet: brand looks listed first in SHG_PALETTES', array_slice($jsIds, 0, 3) === ['professional', 'whiteblue', 'goldenorange'], implode(' ', array_slice($jsIds, 0, 3)));
-check('sheet: SHG_BRAND_LOOK_IDS + the two group labels (plain text, not radios)', strpos($acc, "const SHG_BRAND_LOOK_IDS = ['professional', 'whiteblue', 'goldenorange'];") !== false && strpos($acc, "brandLooks: ['ब्रान्ड रूप · Brand looks', 'Brand looks · ब्रान्ड रूप'") !== false && strpos($acc, '<span class="ap-grp" aria-hidden="true">') !== false && strpos($themes, '.shg-ap .ap-grp {') !== false);
+/* review fix: the two labels each name their own radiogroup (aria-labelledby), not aria-hidden text */
+check('sheet: SHG_BRAND_LOOK_IDS + two labelled radiogroups (Brand looks / More colours)', strpos($acc, "const SHG_BRAND_LOOK_IDS = ['professional', 'whiteblue', 'goldenorange'];") !== false && strpos($acc, "brandLooks: ['ब्रान्ड रूप · Brand looks', 'Brand looks · ब्रान्ड रूप'") !== false && strpos($acc, '<p class="ap-grp" id="\' + id + \'">') !== false && strpos($acc, 'role="radiogroup" aria-labelledby="apColH \' + id + \'">') !== false && strpos($acc, "grp('brandLooks', 'apGrpBrand')") !== false && strpos($acc, "grp('moreColours', 'apGrpMore')") !== false && strpos($acc, 'aria-hidden="true">\' + esc(tx(k))') === false && strpos($themes, '.shg-ap .ap-grp {') !== false);
 check('sheet: professional named "(default)" in ne / en / hi', strpos($acc, "'प्रोफेसनल (मूल)', 'Professional (default)', 'प्रोफ़ेशनल (मूल)'") !== false);
+check('sheet: whiteblue swatch has no pure-white wedge (invisible on the light card)', strpos($acc, "['whiteblue',  ['#0054a8', '#d9e7fa', '#8fbfff']") !== false);
+/* review fix: the top app bar is an AMOLED strip too (depth.css paints it #050B16 !important) */
+check('themes.css: .nav / .nav.scrolled take the palette navy on AMOLED', (bool) preg_match('~:root\[data-palette\]\[data-display="amoled"\] \.nav, :root\[data-palette\]\[data-display="amoled"\] \.nav\.scrolled,\s*:root\[data-palette\]\[data-display="amoled"\] footer,\s*:root\[data-palette\]\[data-display="amoled"\] \.flow-head \{ background: var\(--navy\) !important; \}~', $themes));
+/* review fix: a stale cached themes.css must never leave the page without its primary colour */
+check('index.php: stale-stylesheet guard drops an unknown data-palette after the CSS loads', strpos($index, "getComputedStyle(d).getPropertyValue('--md-primary').trim()") !== false && strpos($index, "d.removeAttribute('data-palette')") !== false && strpos($index, 'stale-stylesheet guard') !== false);
 check('entry points: phone-menu row + topbar 🎨 button', strpos($acc, "b.className = 'mm-appear'") !== false && strpos($acc, "closest('.palette-btn')") !== false && strpos($themes, 'html .topbar .palette-wrap { display: inline-flex !important; }') !== false);
 check('style / motion / pack / sound / vibration controls', strpos($acc, 'data-ap-ui="pixel"') !== false && strpos($acc, 'data-ap-motion="reduced"') !== false && strpos($acc, 'data-ap-pack="pixel"') !== false && strpos($acc, "toggle('sound'") !== false && strpos($acc, "toggle('haptics'") !== false);
 check('saves shg:palette / shg:ui / shg:motion', strpos($acc, "lsSet('shg:palette'") !== false && strpos($acc, "lsSet('shg:ui'") !== false && strpos($acc, "lsSet('shg:motion'") !== false);
