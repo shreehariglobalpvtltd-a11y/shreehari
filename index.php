@@ -162,7 +162,7 @@ if (!$shgHiLive) {
         $shgHiLive = false;   // table not there: no "hi" flow at all
     }
 }
-/* 10 Oct 2026: "hi" now goes to the META number (+91 87358 81507), whose
+/* 10 Oct 2026: "hi" now goes to the META number (SiteFacts::chatDigits), whose
    webhook is live and whose free 24 h window carries the ticket PNG at once
    (includes/waqueue.php hiNumber()). The paid template may not arrive (AiSensy
    wallet / Meta billing), "hi" always does - so the button is always shown.
@@ -173,7 +173,7 @@ if ($shgHiMeta) {
 }
 $boot['waHi'] = $shgHiLive
     ? ($shgHiMeta
-        ? (preg_replace('/\D+/', '', Settings::getString('meta_wa_number', '918735881507')) ?: '918735881507')
+        ? (static function (): string { require_once INCLUDE_PATH . '/sitefacts.php'; return SiteFacts::chatDigits(); })()
         : (preg_replace('/\D+/', '', Settings::getString('aisensy_wa_number', '919157001507')) ?: '919157001507'))
     : '';
 $boot['waDirect'] = !$shgHiLive;

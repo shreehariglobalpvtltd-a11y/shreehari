@@ -69,16 +69,14 @@ final class WaQueue
     /** The number customers send "hi" to, as digits. */
     public static function hiNumber(): string
     {
-        /* 10 Oct 2026: the META number (+91 87358 81507) by default. Its
+        /* 10 Oct 2026: the META number (SiteFacts::chatDigits) by default. Its
            webhook is live and its free 24 h window carries the ticket PNG
            (whatsapp/webhook.php → onInbound(…, 'meta')); the AiSensy number
            never had an inbound webhook, so a "hi" sent there reached nobody.
            wa_hi_meta = 0 (or wa_policy aisensy_only) goes back to AiSensy. */
         if (Settings::getBool('wa_hi_meta', true) && strtolower(Settings::getString('wa_policy', 'meta_first')) !== 'aisensy_only') {
-            $m = preg_replace('/\D+/', '', Settings::getString('meta_wa_number', '918735881507')) ?? '';
-            if ($m !== '') {
-                return $m;
-            }
+            require_once INCLUDE_PATH . '/sitefacts.php';
+            return SiteFacts::chatDigits();
         }
         $d = preg_replace('/\D+/', '', Settings::getString('aisensy_wa_number', '919157001507')) ?? '';
         return $d !== '' ? $d : '919157001507';

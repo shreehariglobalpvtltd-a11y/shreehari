@@ -16,7 +16,7 @@
  *          (agent_route_permissions), then agents who sell on that route;
  *        - only `available` agents (busy / offline are skipped);
  *        - FREE only: the agent's Meta 24 h window must be open (they wrote
- *          to +91 87358 81507 in the last 24 h). Closed window → a web push
+ *          to the Meta number in the last 24 h). Closed window → a web push
  *          nudge if the agent has one, else the next agent.
  *      The offer carries the ticket picture, the short link
  *      (includes/ticketlink.php) and a wa.me link that opens a chat with the
@@ -49,11 +49,13 @@ final class WaAgentRoute
     /** Tests: fn(int $adminId, array $payload): int (pushes sent) */
     public static ?Closure $pusher = null;
 
-    private const YES  = ['ok', 'okay', 'ho', 'हो', 'done', 'sent', 'pathaye', 'pathaen', 'pathayen', 'pathaeko', 'pathaiyo', 'bhejdiya', 'bhej diya', 'bheja', 'haan', 'han', 'yes', 'thik', 'thik cha', '✅', '👍', 'पठाएँ', 'पठाएं', 'पठाइयो', 'भेज दिया'];
-    private const NO   = ['busy', 'vyast', 'byast', 'व्यस्त', 'no', 'hoina', 'हैन', 'होइन', 'nahi', 'नहीं', 'pachi', 'पछि', 'later', 'sakdina', 'sakdina hai', 'cannot', "can't"];
-    private const AVAIL   = ['available', 'online', 'on duty', 'ready', 'duty on', 'kaam suru', 'ma tayar', 'म तयार', 'तयार', 'उपलब्ध', 'upalabdha', 'free chu', 'free xu', 'free hu'];
-    private const BUSYCMD = ['busy', 'vyast', 'byast', 'व्यस्त', 'busy chu', 'busy xu', 'busy hu'];
-    private const OFFLINE = ['offline', 'off duty', 'duty off', 'chutti', 'chhutti', 'छुट्टी', 'बिदा', 'bida', 'kaam banda', 'band', 'off'];
+    /** Typed answers to a hand-over — only together with the ticket's PNR. */
+    private const YES  = ['ok', 'okay', 'ho', 'हो', 'done', 'sent', 'pathaye', 'pathaen', 'pathayen', 'pathaeko', 'pathaiyo', 'bhejdiya', 'bheja', 'haan', 'yes', '✅', '👍', 'पठाएँ', 'पठाएं', 'पठाइयो'];
+    private const NO   = ['busy', 'vyast', 'byast', 'व्यस्त', 'no', 'hoina', 'होइन', 'nahi', 'नहीं', 'later', 'sakdina'];
+    /** Presence — the WHOLE message must be one of these. */
+    private const AVAIL   = ['available', 'online', 'on duty', 'duty on', 'उपलब्ध', 'available chu', 'available xu', 'available hu'];
+    private const BUSYCMD = ['busy', 'busy chu', 'busy xu', 'busy hu', 'व्यस्त', 'vyast chu'];
+    private const OFFLINE = ['offline', 'off duty', 'duty off', 'chutti', 'chhutti', 'छुट्टी', 'offline chu'];
 
     private static ?bool $ready = null;
     /** @var array<string,array<string,mixed>>|null intl => agent row (per request) */
@@ -167,15 +169,25 @@ final class WaAgentRoute
                 }
             }
             foreach (['whatsapp', 'display_phone', 'phone'] as $col) {
-                $n = self::intl((string) ($r[$col] ?? ''), $hint);
-                if ($n !== '') {
-                    if (!isset($out[$n])) {   // a number two accounts share belongs to neither
-                        $out[$n] = ['id' => (int) $r['id'], 'name' => trim((string) ($r['full_name'] ?: $r['username'])), 'role' => (string) $r['role'], 'intl' => $n];
-                    } else {
-                        $out[$n]['shared'] = true;
-                    }
-                    break;
+                $raw = (string) ($r[$col] ?? '');
+                $n = self::intl($raw, $hint);
+                if ($n === '') {
+                    continue;
                 }
+                /* India and Nepal share 10-digit mobiles. With no country on
+                   the profile the agent is known under BOTH; a send only ever
+                   goes where Meta saw that exact number write to us (open
+                   window), so a guess never reaches a stranger. */
+                $d = ltrim(preg_replace('/\D+/', '', $raw) ?? '', '0');
+                $keys = ($hint === '' && strlen($d) === 10) ? ['91' . $d, '977' . $d] : [$n];
+                foreach ($keys as $k) {
+                    if (!isset($out[$k])) {   // a number two accounts share belongs to neither
+                        $out[$k] = ['id' => (int) $r['id'], 'name' => trim((string) ($r['full_name'] ?: $r['username'])), 'role' => (string) $r['role'], 'intl' => $k];
+                    } elseif ($out[$k]['id'] !== (int) $r['id']) {
+                        $out[$k]['shared'] = true;
+                    }
+                }
+                break;
             }
         }
         foreach ($out as $k => $a) {
@@ -196,12 +208,17 @@ final class WaAgentRoute
     /** @return array{id:int,name:string,role:string,intl:string}|null */
     public static function agentById(int $id): ?array
     {
+        $first = null;
         foreach (self::agents() as $a) {
-            if ($a['id'] === $id) {
-                return $a;
+            if ($a['id'] !== $id) {
+                continue;
             }
+            if (self::windowOpen($a['intl'])) {
+                return $a;              // the number Meta has actually seen write to us
+            }
+            $first ??= $a;
         }
-        return null;
+        return $first;
     }
 
     /** available | busy | offline — busy lapses by itself at busy_until. */
@@ -286,7 +303,7 @@ final class WaAgentRoute
     {
         $byId = [];
         foreach (self::agents() as $a) {
-            $byId[$a['id']] = $a;
+            $byId[$a['id']] = true;
         }
         if ($byId === []) {
             return [];
@@ -296,7 +313,7 @@ final class WaAgentRoute
         if ($sold > 0) {
             $ids[] = $sold;
         }
-        $routeId = self::routeIdOf((int) ($b['id'] ?? 0));
+        $routeId = self::isDesk($b) ? 0 : self::routeIdOf((int) ($b['id'] ?? 0));   // a desk sale: only its own seller
         if ($routeId > 0) {
             try {
                 foreach (Database::fetchAll('SELECT admin_id FROM agent_route_permissions WHERE route_id = :r ORDER BY admin_id', ['r' => $routeId]) as $r) {
@@ -331,7 +348,10 @@ final class WaAgentRoute
             if (!$includeBusy && $st !== 'available') {
                 continue;
             }
-            $out[] = $byId[$id];
+            $a = self::agentById($id);
+            if ($a !== null) {
+                $out[] = $a;
+            }
         }
         return $out;
     }
@@ -394,8 +414,12 @@ final class WaAgentRoute
         try {
             $bid = (int) ($b['id'] ?? 0);
             // The event may carry the row as it was before the confirmation: read it fresh.
-            $b = $bid > 0 ? (Database::fetch('SELECT id, pnr, status FROM bookings WHERE id = :b', ['b' => $bid]) ?? []) : [];
+            $b = $bid > 0 ? (Database::fetch('SELECT * FROM bookings WHERE id = :b', ['b' => $bid]) ?? []) : [];
             if ($b === [] || !in_array((string) $b['status'], ['confirmed', 'completed'], true)) {
+                return;
+            }
+            // A walk-in with no (or a placeholder) number: the seller's copy already went (WaQueue::sellerNow).
+            if (self::customerIntl($b) === '') {
                 return;
             }
             if (Database::exists('SELECT 1 FROM delivery_log WHERE booking_id = :b', ['b' => $bid])) {
@@ -424,6 +448,12 @@ final class WaAgentRoute
                 "UPDATE wa_agent_presence SET availability_status = 'available', busy_until = NULL
                   WHERE availability_status = 'busy' AND busy_until IS NOT NULL AND busy_until <= NOW()"
             );
+            try {
+                require_once INCLUDE_PATH . '/waedit.php';
+                $out['buttons'] = WaEdit::flushDeferred();
+            } catch (Throwable $e) {
+                Logger::warning('deferred ticket buttons failed: ' . $e->getMessage(), [], 'whatsapp');
+            }
             $rows = Database::fetchAll(
                 "SELECT * FROM delivery_log WHERE closed = 0 AND deadline_at IS NOT NULL AND deadline_at <= NOW()
                   ORDER BY deadline_at ASC LIMIT " . max(1, $limit)
@@ -469,7 +499,7 @@ final class WaAgentRoute
         if ((string) $row['status'] === 'offered') {
             // No answer in time: busy for a while, next agent.
             self::close($id, 'no answer in ' . self::minutes('wa_route_timeout_min', 5, 1, 60) . ' min', 'timeout');
-            if ((int) ($row['agent_id'] ?? 0) > 0) {
+            if ((int) ($row['agent_id'] ?? 0) > 0 && !self::isDesk($b)) {   // a desk clerk is busy selling, not absent
                 self::setStatus((int) $row['agent_id'], 'busy', self::minutes('wa_route_busy_min', 60, 5, 1440));
             }
             if ($got === true) {
@@ -582,6 +612,10 @@ final class WaAgentRoute
                 $custOk ? 'ticket link sent to the passenger (free window)' : 'passenger window closed - ticket waits for their "hi"', null, true);
         } else {
             self::log($bid, $pnr, null, 'customer', 'customer_direct', 'no usable passenger number on the booking', null, true);
+        }
+
+        if (self::isDesk($b)) {
+            return;   // a desk sale: the passenger was handed the ticket - no office alarm for it
         }
 
         // 2. The admin number: free text in its window, else the panel bell (+ push).
@@ -698,30 +732,57 @@ final class WaAgentRoute
             };
         }
 
+        /* A TYPED answer must name the ticket ("ok SHG-2026-00584", "busy
+           SHG-…", "ticket SHG-…" from the push link): a bare "ok" / "ho" /
+           "no" belongs to whatever else the agent is doing on this number —
+           confirming a sale, a daily-job offer — and is never taken here. */
+        $pnr = self::pnrIn($body);
+        if ($pnr !== '') {
+            $offer = self::openOfferFor($agent['id'], $pnr);
+            if ($offer !== null) {
+                if (self::hasToken($t, self::YES)) {
+                    return self::accept($offer, $agent);
+                }
+                if (self::hasToken($t, self::NO)) {
+                    return self::decline($offer, $agent);
+                }
+                $b = Database::fetch('SELECT * FROM bookings WHERE id = :b', ['b' => (int) $offer['booking_id']]);
+                if ($b !== null) {
+                    if ((string) $offer['channel'] === 'push') {
+                        Database::run("UPDATE delivery_log SET channel = 'wa_free', deadline_at = NOW() + INTERVAL " . self::minutes('wa_route_timeout_min', 5, 1, 60) . " MINUTE,
+                                       detail = 'agent opened WhatsApp after the push' WHERE id = :i", ['i' => (int) $offer['id']]);
+                    }
+                    return self::offerReply($agent, $b, (int) $offer['id']);
+                }
+            }
+        }
+
+        /* A push offer, and the agent has just written something else: their
+           window is open now, so the hand-over goes as its OWN free message
+           and their words carry on to the rest of the bot. */
         $offer = self::openOffer($agent['id']);
-        // A push-offer agent just opened their window: hand them the ticket now.
         if ($offer !== null && (string) $offer['channel'] === 'push') {
             $b = Database::fetch('SELECT * FROM bookings WHERE id = :b', ['b' => (int) $offer['booking_id']]);
             if ($b !== null) {
-                Database::run("UPDATE delivery_log SET channel = 'wa_free', deadline_at = NOW() + INTERVAL :m MINUTE, detail = 'agent opened WhatsApp after the push' WHERE id = :i",
-                    ['m' => self::minutes('wa_route_timeout_min', 5, 1, 60), 'i' => (int) $offer['id']]);
-                return self::offerReply($agent, $b, (int) $offer['id']);
+                Database::run("UPDATE delivery_log SET channel = 'wa_free', deadline_at = NOW() + INTERVAL " . self::minutes('wa_route_timeout_min', 5, 1, 60) . " MINUTE,
+                               detail = 'agent opened WhatsApp after the push' WHERE id = :i", ['i' => (int) $offer['id']]);
+                self::sendOffer($agent, $b, (int) $offer['id']);
             }
         }
-        if ($offer !== null && self::isWord($t, self::YES)) {
-            return self::accept($offer, $agent);
-        }
-        if ($offer !== null && self::isWord($t, self::NO)) {
-            return self::decline($offer, $agent);
-        }
-        if (self::isWord($t, self::AVAIL)) {
-            return self::presence($agent, 'available');
-        }
-        if (self::isWord($t, self::BUSYCMD)) {
-            return self::presence($agent, 'busy');
-        }
-        if (self::isWord($t, self::OFFLINE)) {
-            return self::presence($agent, 'offline');
+
+        // Presence words — whole message only, and never inside an open sale conversation.
+        $presence = self::isWord($t, self::AVAIL) ? 'available' : (self::isWord($t, self::BUSYCMD) ? 'busy' : (self::isWord($t, self::OFFLINE) ? 'offline' : ''));
+        if ($presence !== '') {
+            try {
+                require_once INCLUDE_PATH . '/ticketbot.php';
+                require_once INCLUDE_PATH . '/quickticket.php';
+                require_once INCLUDE_PATH . '/wabooking.php';
+                if (WaBooking::isOpen(normalisePhone($fromRaw))) {
+                    return null;
+                }
+            } catch (Throwable $ignored) {
+            }
+            return self::presence($agent, $presence);
         }
         if (in_array($t, ['mero status', 'my status', 'routing', 'mero kaam', 'my offers'], true)) {
             return self::myStatus($agent);
@@ -741,6 +802,34 @@ final class WaAgentRoute
         } catch (Throwable $e) {
             return null;
         }
+    }
+
+    /** The open offer for this agent on this PNR. */
+    private static function openOfferFor(int $agentId, string $pnr): ?array
+    {
+        try {
+            return Database::fetch(
+                "SELECT * FROM delivery_log WHERE agent_id = :a AND pnr = :p AND status = 'offered' AND closed = 0 ORDER BY id DESC LIMIT 1",
+                ['a' => $agentId, 'p' => $pnr]
+            );
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
+    private static function pnrIn(string $text): string
+    {
+        if (preg_match('/SHG-?\s?(\d{4})-?\s?(\d{3,6})/i', $text, $m) === 1) {
+            return 'SHG-' . $m[1] . '-' . str_pad($m[2], 5, '0', STR_PAD_LEFT);
+        }
+        return '';
+    }
+
+    /** One of these words appears as a whole word. */
+    private static function hasToken(string $t, array $words): bool
+    {
+        $tokens = preg_split('/[^\p{L}\p{M}\p{N}✅👍]+/u', $t, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        return array_intersect($tokens, $words) !== [];
     }
 
     private static function accept(array $offer, array $agent): array
@@ -1034,7 +1123,7 @@ final class WaAgentRoute
                 ? "1️⃣ यात्रुलाई पठाउन यो थिच्नुहोस् (सन्देश तयार छ):\n" . $f['passengerWa'] . "\n"
                 : "1️⃣ यात्रुको WhatsApp नम्बर छैन — फोन गरेर यो लिंक दिनुहोस्:\n")
             . ($link !== '' ? 'टिकट लिंक: ' . $link . "\n" : '')
-            . "2️⃣ पठाएपछि ✅ थिच्नुहोस्। " . $mins . " मिनेटमा जवाफ नआए अर्को एजेन्टलाई जान्छ।";
+            . "2️⃣ पठाएपछि ✅ थिच्नुहोस् (वा \"ok " . (string) $b['pnr'] . "\" लेख्नुहोस्)। " . $mins . " मिनेटमा जवाफ नआए अर्को एजेन्टलाई जान्छ।";
         $ui = ['kind' => 'buttons', 'buttons' => [
             ['id' => 'shg:rt ok ' . $offerId, 'title' => '✅ पठाएँ · Done'],
             ['id' => 'shg:rt busy ' . $offerId, 'title' => '⏳ व्यस्त · Busy'],
@@ -1104,8 +1193,17 @@ final class WaAgentRoute
         }
     }
 
+    /** Sold at a desk (counter mode): the passenger was there, ticket in hand. */
+    public static function isDesk(array $b): bool
+    {
+        return (string) ($b['source'] ?? '') === 'counter';
+    }
+
     public static function customerIntl(array $b): string
     {
+        if (function_exists('isPlaceholderPhone') && isPlaceholderPhone((string) ($b['contact_phone'] ?? ''))) {
+            return '';
+        }
         try {
             if (class_exists('Notify')) {
                 $n = Notify::whatsappNumberFor($b);
@@ -1125,7 +1223,8 @@ final class WaAgentRoute
     /** Web push to one agent (free). Returns how many devices got it. */
     private static function push(int $adminId, ?array $b, string $body = ''): int
     {
-        $meta = preg_replace('/\D+/', '', Settings::getString('meta_wa_number', '918735881507')) ?: '918735881507';
+        require_once INCLUDE_PATH . '/sitefacts.php';
+        $meta = SiteFacts::chatDigits();
         $payload = [
             'title' => $b !== null ? '🎫 Ticket for you · ' . (string) $b['pnr'] : '🌅 S Hari Global',
             'body'  => $body !== '' ? $body : 'Tap to open WhatsApp — the passenger ticket is waiting for you.',

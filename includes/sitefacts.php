@@ -52,6 +52,13 @@ const SITE_SUPPORT_CHAT_DIGITS = '918735881507';
 
 final class SiteFacts
 {
+    /** The WhatsApp number customers chat with (the Meta number, `wa_order_number`), as digits. */
+    public static function chatDigits(): string
+    {
+        $d = preg_replace('/\D/', '', Settings::getString('wa_order_number', SITE_SUPPORT_CHAT_DIGITS)) ?? '';
+        return $d !== '' ? $d : SITE_SUPPORT_CHAT_DIGITS;
+    }
+
     /** @var array<string,mixed>|null */
     private static ?array $memo = null;
 

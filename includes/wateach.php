@@ -19,7 +19,7 @@
  *   bot help                          every WhatsApp command for the office
  *
  * Only the office: a superadmin / manager number (AiTools::whoIs role admin)
- * or the admin / company WhatsApp numbers in Settings. Null for everyone
+ * or the admin WhatsApp number (wa_admin_number, else admin_whatsapp). Null for everyone
  * else, so a customer typing "sikau" just gets the normal bot.
  */
 
@@ -56,13 +56,12 @@ final class WaTeach
         if ($me === '') {
             return false;
         }
-        foreach (['wa_admin_number', 'admin_whatsapp', 'company_whatsapp'] as $k) {
-            $n = normalisePhone(Settings::getString($k, ''));
-            if ($n !== '' && $n === $me) {
-                return true;
-            }
-        }
-        return false;
+        /* The admin number only (wa_admin_number, else admin_whatsapp) - not the
+           desk handset (company_whatsapp): whatever is taught here reaches
+           every customer at once. */
+        $admin = trim(Settings::getString('wa_admin_number', '')) !== '' ? Settings::getString('wa_admin_number', '') : Settings::getString('admin_whatsapp', '');
+        $n = normalisePhone($admin);
+        return $n !== '' && $n === $me;
     }
 
     /** @return array{text:string, media?:?string, ui?:?array}|null */

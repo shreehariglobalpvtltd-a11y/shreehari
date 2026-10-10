@@ -70,7 +70,8 @@ if ($ready) {
     }
 }
 $adminNo = WaAgentRoute::adminNumber();
-$metaNo  = preg_replace('/\D+/', '', Settings::getString('meta_wa_number', '918735881507')) ?: '918735881507';
+require_once INCLUDE_PATH . '/sitefacts.php';
+$metaNo  = SiteFacts::chatDigits();
 
 admin_header('WhatsApp routing', 'wa-routing');
 ?>

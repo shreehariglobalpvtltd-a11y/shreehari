@@ -36,7 +36,8 @@ $b       = (!$limited && $code !== '') ? TicketLink::resolve($code) : null;
 
 $company = Settings::getString('company_name', APP_NAME);
 $office  = Settings::officePhone();
-$metaNo  = preg_replace('/\D+/', '', Settings::getString('meta_wa_number', '918735881507')) ?: '918735881507';
+require_once INCLUDE_PATH . '/sitefacts.php';
+$metaNo  = SiteFacts::chatDigits();
 
 $facts = null;
 if ($b !== null) {
@@ -60,21 +61,19 @@ if ($b !== null) {
     };
     $time = substr((string) (($leg['boarding_time'] ?? '') !== '' ? $leg['boarding_time'] : ($leg['dep_time'] ?? '')), 0, 5);
 
-    /* The agent looking after this ticket (agent routing), if one accepted it. */
+    /* The agent looking after this ticket (agent routing), if one accepted it -
+       on the number Meta has seen them write from (India / Nepal share
+       10-digit mobiles, so the country is never guessed here). */
     $agent = null;
+    $agentWa = '';
     try {
-        $agent = Database::fetch(
-            "SELECT a.full_name, a.phone FROM delivery_log d JOIN admins a ON a.id = d.agent_id
-              WHERE d.booking_id = :b AND d.status = 'accepted' ORDER BY d.id DESC LIMIT 1",
-            ['b' => $bid]
-        );
+        require_once INCLUDE_PATH . '/waagentroute.php';
+        $agent = WaAgentRoute::acceptedAgent($bid);
+        if ($agent !== null && WaAgentRoute::windowOpen($agent['intl'])) {
+            $agentWa = $agent['intl'];
+        }
     } catch (Throwable $ignored) {
         $agent = null;
-    }
-    $agentWa = '';
-    if ($agent !== null) {
-        $d = preg_replace('/\D+/', '', (string) $agent['phone']) ?? '';
-        $agentWa = strlen($d) === 10 ? '91' . $d : $d;
     }
 
     $facts = [
@@ -90,7 +89,7 @@ if ($b !== null) {
         'img'      => in_array((string) $b['status'], ['confirmed', 'completed'], true) ? Ticket::imageUrl($pnr) : '',
         'pdf'      => in_array((string) $b['status'], ['confirmed', 'completed'], true) ? Ticket::downloadUrl($pnr) : '',
         'hi'       => 'https://wa.me/' . $metaNo . '?text=' . rawurlencode('Hi ' . $pnr),
-        'agent'    => $agent !== null ? (string) $agent['full_name'] : '',
+        'agent'    => $agent !== null ? (string) $agent['name'] : '',
         'agentWa'  => $agentWa !== '' ? 'https://wa.me/' . $agentWa . '?text=' . rawurlencode('Namaste, ticket ' . $pnr) : '',
     ];
 }

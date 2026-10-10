@@ -48,7 +48,18 @@ customer's own ticket — everything else free**.
 4. Nobody → `exhausted`, passenger sent the link directly (free if their window is open, else it
    waits for their "hi"), admin told (free WhatsApp in its window, else admin bell + push).
 
-Agents write `available` / `busy` / `offline` / `mero status` to the Meta number.
+Agents write `available` / `busy` / `offline` / `mero status` to the Meta number. A typed answer
+to a hand-over must name the ticket (`ok SHG-…`, `busy SHG-…`) or use the buttons — a bare "ok" /
+"ho" belongs to whatever else the agent is doing (a sale, a daily-job offer).
+
+Walk-ins with no / a placeholder number are not watched (the seller copy already went). A desk sale
+(`source = counter`) asks only its own seller, never marks the clerk busy and never alarms the admin.
+The "hi" / chat number is `SiteFacts::chatDigits()` (`wa_order_number`) — one source, no new literal.
+
+Review (independent agent, 10 Oct) fixes applied before going live: typed answers need the PNR,
+whole-word intents (no "edit" inside "credited"), staff / office keep their tools for words,
+placeholder numbers never edit, only the admin number teaches, cron GET_LOCK, India/Nepal numbers
+only where Meta saw them write, change buttons on the booking path deferred to the cron.
 
 ## Ticket changes (customer, on WhatsApp)
 

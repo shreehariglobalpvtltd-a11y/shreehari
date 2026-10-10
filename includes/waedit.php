@@ -37,13 +37,19 @@ final class WaEdit
     private const TTL = 900;          // a half-finished edit is forgotten after 15 min
     private const OTP_MIN = 10;
 
-    private const CHANGE = ['badal', 'badla', 'badlu', 'badli', 'sachya', 'sachhya', 'sachchya', 'milau', 'milaau', 'galat', 'change', 'correct', 'edit', 'thik gar', 'theek kar', 'बदल', 'सच्या', 'सच्च्या', 'मिलाउ', 'गलत', 'ठीक', 'चेन्ज', 'चेंज'];
-    private const NAME   = ['naam', 'nam ', 'name', 'नाम'];
-    private const DATE   = ['miti', 'date', 'din ', 'tarikh', 'tareekh', 'मिति', 'तारीख', 'तारिख', 'दिन'];
-    private const CANCEL = ['cancel', 'radd', 'cancle', 'cansel', 'रद्द', 'क्यान्सल', 'कैंसल', 'कैन्सल'];
-    private const AGENT  = ['agent', 'ejent', 'एजेन्ट', 'एजेंट'];
-    private const OTHER  = ['arko', 'aru', 'dusra', 'dusre', 'naya', 'other', 'another', 'अर्को', 'अरू', 'दूसरा', 'नयाँ'];
-    private const CONFIRM = ['confirm', 'pakka', 'पक्का', 'कन्फर्म', 'conform'];
+    /* Words are matched as WHOLE words (a token) or as the START of a word
+       (a stem: "badal" → badalnu / badlinu) — never inside another word, so
+       "credited" is not "edit" and "update" is not "date". */
+    private const CHANGE_STEM  = ['badal', 'badla', 'badl', 'sachya', 'sachhya', 'sachchya', 'milau', 'milaa', 'galat', 'change', 'correct', 'बदल', 'सच्या', 'सच्च्या', 'मिलाउ', 'गलत', 'चेन्ज', 'चेंज'];
+    private const CHANGE_WORD  = ['edit'];
+    private const NAME_WORD    = ['naam', 'nam', 'name', 'नाम'];
+    private const DATE_STEM    = ['miti', 'tarikh', 'tareekh', 'मिति', 'तारीख', 'तारिख'];
+    private const DATE_WORD    = ['date', 'din', 'दिन'];
+    private const CANCEL_STEM  = ['cancel', 'cancle', 'cansel', 'radd', 'रद्द', 'क्यान्सल', 'कैंसल', 'कैन्सल'];
+    private const AGENT_STEM   = ['agent', 'ejent', 'एजेन्ट', 'एजेंट'];
+    private const OTHER_WORD   = ['arko', 'aru', 'dusra', 'dusre', 'naya', 'other', 'another', 'अर्को', 'अरू', 'दूसरा', 'नयाँ'];
+    private const CONFIRM_STEM = ['confirm', 'conform', 'pakka', 'पक्का', 'कन्फर्म'];
+    private const ASK_WORD     = ['garnu', 'gardinus', 'gardinu', 'garidinu', 'garidinus', 'karna', 'kardo', 'karde', 'karo', 'garau', 'garna', 'chahiyo', 'chaiyo', 'chahincha', 'please', 'गर्नु', 'गरिदिनु', 'गरिदिनुस्', 'करना', 'चाहियो'];
 
     private function __construct() {}
 
@@ -60,8 +66,12 @@ final class WaEdit
      *  The buttons after a ticket
      * ----------------------------------------------------------------- */
 
-    /** A free ticket just reached $phone: offer the change buttons (once an hour per ticket). */
-    public static function afterTicket(int $bookingId, string $phone): void
+    /**
+     * A free ticket just reached $phone: offer the change buttons (once an
+     * hour per ticket). $defer = only note it; cron/wa-agent-route.php sends
+     * it within a minute, so a booking request never waits on Meta.
+     */
+    public static function afterTicket(int $bookingId, string $phone, bool $defer = false): void
     {
         try {
             if (!self::ready() || !Settings::getBool('wa_ticket_buttons_on', true)) {
@@ -69,6 +79,16 @@ final class WaEdit
             }
             require_once INCLUDE_PATH . '/waagentroute.php';
             $intl = WaAgentRoute::intl($phone);
+            if ($defer) {
+                if ($intl !== '' && $bookingId > 0) {
+                    Database::run(
+                        "INSERT INTO kv_store (kscope, kkey, kvalue, updated_by) VALUES ('wa_tkbtn_due', :k, :v, 'waedit')
+                         ON DUPLICATE KEY UPDATE kvalue = :v2",
+                        ['k' => $bookingId . ':' . $intl, 'v' => (string) time(), 'v2' => (string) time()]
+                    );
+                }
+                return;
+            }
             $pnr  = (string) Database::scalar("SELECT pnr FROM bookings WHERE id = :b AND status IN ('confirmed','completed')", ['b' => $bookingId], '');
             if ($intl === '' || $pnr === '' || !Security::rateLimit('wa_tkbtn', $bookingId . ':' . $intl, 1, 3600)) {
                 return;
@@ -77,6 +97,24 @@ final class WaEdit
         } catch (Throwable $e) {
             Logger::warning('ticket buttons failed: ' . $e->getMessage(), ['booking' => $bookingId], 'whatsapp');
         }
+    }
+
+    /** Cron: send the change buttons noted by afterTicket(…, true). Returns how many were handled. */
+    public static function flushDeferred(int $limit = 20): int
+    {
+        if (!self::ready()) {
+            return 0;
+        }
+        $n = 0;
+        foreach (Database::fetchAll("SELECT kkey, kvalue FROM kv_store WHERE kscope = 'wa_tkbtn_due' ORDER BY id ASC LIMIT " . max(1, $limit)) as $r) {
+            Database::run("DELETE FROM kv_store WHERE kscope = 'wa_tkbtn_due' AND kkey = :k", ['k' => (string) $r['kkey']]);
+            [$bid, $intl] = array_pad(explode(':', (string) $r['kkey'], 2), 2, '');
+            if ((int) $r['kvalue'] >= time() - 1800 && (int) $bid > 0 && $intl !== '') {
+                self::afterTicket((int) $bid, $intl);
+                $n++;
+            }
+        }
+        return $n;
     }
 
     private static function menuUi(string $pnr): array
@@ -132,6 +170,19 @@ final class WaEdit
         if ($intent === '') {
             return null;
         }
+        /* Staff and the office keep their own tools for these words (office
+           confirm / cancel through the assistant): the word path is the
+           passenger's. Buttons above still work for anyone on the booking. */
+        if ($who === null) {
+            try {
+                require_once INCLUDE_PATH . '/aitools.php';
+                $who = AiTools::whoIs($fromRaw);
+            } catch (Throwable $ignored) {
+            }
+        }
+        if (is_array($who) && in_array((string) ($who['role'] ?? ''), ['staff', 'admin'], true)) {
+            return null;
+        }
         /* An order still open, or a ticket sold on this number minutes ago:
            the booking conversation answers its own corrections first
            (WaBooking fixes a just-cut name at once, inside that chat). */
@@ -155,6 +206,10 @@ final class WaEdit
         if ($intent === 'confirm') {
             return self::showTicket($pnr, $fromRaw, $who);
         }
+        $b = Database::fetch('SELECT * FROM bookings WHERE pnr = :p LIMIT 1', ['p' => $pnr]);
+        if ($b === null || !self::mayEdit($b, $fromRaw, $who)) {
+            return null;          // words about a ticket that is not theirs: the rest of the bot answers
+        }
         return self::start($fromRaw, $intl, $intent, $pnr, $who);
     }
 
@@ -164,30 +219,33 @@ final class WaEdit
         if (mb_strlen($t) > 90) {
             return '';
         }
+        $tk = self::tokens($t);
+        $change = self::stem($tk, self::CHANGE_STEM) || self::word($tk, self::CHANGE_WORD);
+        $cancel = self::stem($tk, self::CANCEL_STEM);
         // "ticket confirm bhayo?" is a question by nature — and exactly this one.
-        if (self::has($t, self::CONFIRM) && (self::has($t, ['ticket', 'टिकट', 'bhayo', 'bhaye', 'hua', 'cha', 'xa', 'हो', 'भयो']) || self::pnrIn($raw) !== '')
-            && !self::has($t, self::CANCEL) && !self::has($t, self::CHANGE)) {
+        if (self::stem($tk, self::CONFIRM_STEM) && !$cancel && !$change
+            && (self::word($tk, ['ticket', 'टिकट', 'bhayo', 'bhaye', 'hua', 'cha', 'xa', 'हो', 'भयो']) || self::pnrIn($raw) !== '')) {
             return 'confirm';
         }
         // A question about the rule ("cancel garda kati paisa katcha?") is not an order.
+        $asks = self::word($tk, self::ASK_WORD) || str_contains($t, 'kar do');
         try {
             require_once INCLUDE_PATH . '/ailearn.php';
-            if (AiLearn::isQuestion($raw) && !self::has($t, ['garnu cha', 'garnu chha', 'gardinus', 'gardinu', 'garidinu', 'karna hai', 'kar do', 'kardo', 'karde', 'chahiyo', 'chaiyo', 'chahincha'])) {
+            if (AiLearn::isQuestion($raw) && !$asks) {
                 return '';
             }
         } catch (Throwable $ignored) {
         }
-        $change = self::has($t, self::CHANGE);
-        if (self::has($t, self::AGENT) && ($change || self::has($t, self::OTHER))) {
+        if (self::stem($tk, self::AGENT_STEM) && ($change || self::word($tk, self::OTHER_WORD))) {
             return 'agent';
         }
-        if (self::has(' ' . $t . ' ', self::NAME) && $change) {
+        if (self::word($tk, self::NAME_WORD) && $change) {
             return 'name';
         }
-        if (self::has(' ' . $t . ' ', self::DATE) && $change) {
+        if ((self::stem($tk, self::DATE_STEM) || self::word($tk, self::DATE_WORD)) && $change) {
             return 'date';
         }
-        if (self::has($t, self::CANCEL) && (self::has($t, ['ticket', 'टिकट', 'garnu', 'gardinus', 'gardinu', 'karna', 'kar do', 'karo', 'garau', 'garna', 'chahiyo', 'chaiyo', 'please', 'गर्नु', 'गरिदिनु', 'करना', 'कर दो']) || self::pnrIn($raw) !== '')) {
+        if ($cancel && ($asks || self::word($tk, ['ticket', 'टिकट']) || self::pnrIn($raw) !== '')) {
             return 'cancel';
         }
         return '';
@@ -257,6 +315,9 @@ final class WaEdit
             case 'name_pick':
                 $n = (int) self::digits($t);
                 $pax = (array) ($st['pax'] ?? []);
+                if (self::digits($t) === '' || mb_strlen($t) > 4) {
+                    return null;    // not a pick: the bot answers, the change stays open
+                }
                 if ($n < 1 || $n > count($pax)) {
                     return self::say('१ देखि ' . count($pax) . ' सम्मको नम्बर लेख्नुहोस्। (रोक्न: stop)');
                 }
@@ -267,8 +328,11 @@ final class WaEdit
 
             case 'name_new':
                 $new = trim(preg_replace('/\s+/u', ' ', $body) ?? '');
-                if (mb_strlen($new) < 2 || mb_strlen($new) > 80 || preg_match('/\d|shg-/iu', $new) === 1) {
-                    return self::say('यो नाम जस्तो लागेन — अक्षरमा पूरा नाम लेख्नुहोस्। (रोक्न: stop)');
+                // A name is letters only; "ok", "ho", a question or a sentence is the person talking about something else.
+                if (preg_match('/^[\p{L}\p{M} .\'-]{2,80}$/u', $new) !== 1 || str_contains($new, '?')
+                    || self::word(self::tokens($t), ['ok', 'okay', 'ho', 'hoina', 'yes', 'no', 'hi', 'hello', 'namaste', 'thanks', 'thank', 'dhanyabad', 'dhanyavad', 'ticket', 'seat', 'bus', 'kaha', 'kati', 'kab', 'kahile'])
+                    || count(self::tokens($t)) > 5) {
+                    return null;    // not a name: the bot answers, the change stays open
                 }
                 $st['new']  = $new;
                 $st['step'] = 'otp';
@@ -278,6 +342,9 @@ final class WaEdit
             case 'date_new':
                 $date = self::parseDate($body);
                 if ($date === '') {
+                    if (preg_match('/\d|bholi|parsi|bhol|kal|tomorrow|भोलि|पर्सि|कल/iu', $body) !== 1) {
+                        return null;    // not a date at all: the bot answers, the change stays open
+                    }
                     return self::say('मिति बुझिएन — जस्तै 15 Oct वा 2026-10-15 लेख्नुहोस्। (रोक्न: stop)');
                 }
                 $turn = (int) (microtime(true) * 10) % 1000000000;
@@ -293,7 +360,14 @@ final class WaEdit
                 $st['turn'] = $turn;
                 $st['step'] = 'otp';
                 self::save($intl, $st);
-                return self::askOtp($intl, $bid, "📅 " . (string) ($q['say'] ?? ($st['old'] . ' → ' . $date)));
+                $d = (array) ($q['data'] ?? []);
+                $seats = implode(', ', array_map(static fn($x): string => is_scalar($x) ? (string) $x : '', (array) ($d['seats'] ?? [])));
+                $pickup = trim((string) preg_replace('/\s*\[[-\d.,\s]+\]\s*$/', '', (string) ($d['pickup'] ?? '')));
+                return self::askOtp($intl, $bid, "📅 मिति बदल्ने · New date\n"
+                    . formatDate($st['old'], 'D, j M Y') . ' → ' . formatDate((string) ($d['date'] ?? $date), 'D, j M Y') . "\n"
+                    . ($seats !== '' ? 'सिट / Seat: ' . $seats . "\n" : '')
+                    . ($pickup !== '' ? 'चढ्ने / Boarding: ' . $pickup . "\n" : '')
+                    . (isset($d['total']) ? 'भाडा / Fare: ' . inr((float) $d['total']) . ' (उही · unchanged)' : ''));
 
             case 'confirm':
                 if (in_array($t, ['ho', 'हो', 'yes', 'haan', 'han', 'ok', 'confirm', 'thik cha', 'हुन्छ', 'huncha'], true)) {
@@ -348,7 +422,7 @@ final class WaEdit
                     self::ctx($fromRaw, $who, (int) ($st['turn'] ?? 0) + 1, 'ho'));
                 self::audit($b, 'travel_date', (string) ($st['old'] ?? ''), (string) $st['new'], $fromRaw, $otp, !empty($r['ok']) ? 'done' : 'refused', (string) ($r['say'] ?? ''));
                 return !empty($r['ok'])
-                    ? ['text' => "✅ मिति बदलियो: " . $st['new'] . "\n" . (string) ($r['say'] ?? ''), 'media' => $r['media'] ?? null, 'ui' => null]
+                    ? ['text' => "✅ मिति बदलियो · Date changed: " . formatDate((string) $st['new'], 'D, j M Y') . "\nनयाँ टिकट यहीँ छ। · Your new ticket is attached.", 'media' => $r['media'] ?? null, 'ui' => null]
                     : self::say('❌ ' . (string) ($r['say'] ?? 'मिलेन।') . "\nकार्यालय: " . Settings::officePhone());
 
             case 'agent':
@@ -492,7 +566,9 @@ final class WaEdit
     private static function mayEdit(array $b, string $fromRaw, ?array $who): bool
     {
         $me = normalisePhone($fromRaw);
-        if ($me !== '' && ($me === normalisePhone((string) ($b['contact_phone'] ?? '')) || $me === normalisePhone((string) ($b['alt_phone'] ?? '')))) {
+        $contact = (string) ($b['contact_phone'] ?? '');
+        // The same rule as AiTools: the contact number only, and never a walk-in placeholder (9999999999 …).
+        if ($me !== '' && !isPlaceholderPhone($contact) && $me === normalisePhone($contact)) {
             return true;
         }
         if (is_array($who)) {
@@ -557,16 +633,16 @@ final class WaEdit
     private static function latestPnr(string $fromRaw): string
     {
         $me = normalisePhone($fromRaw);
-        if ($me === '') {
+        if ($me === '' || isPlaceholderPhone($me)) {
             return '';
         }
         try {
             return (string) Database::scalar(
                 "SELECT b.pnr FROM bookings b JOIN booking_legs bl ON bl.booking_id = b.id AND bl.leg_type = 'outbound'
-                  WHERE (b.contact_phone = :p OR b.alt_phone = :p2) AND b.status IN ('confirmed','pending')
+                  WHERE b.contact_phone = :p AND b.status IN ('confirmed','pending')
                     AND bl.travel_date >= CURDATE()
                   ORDER BY bl.travel_date ASC, b.id DESC LIMIT 1",
-                ['p' => $me, 'p2' => $me], ''
+                ['p' => $me], ''
             );
         } catch (Throwable $e) {
             return '';
@@ -664,11 +740,26 @@ final class WaEdit
         return trim(preg_replace('/\s+/u', ' ', $t) ?? $t);
     }
 
-    private static function has(string $t, array $words): bool
+    /** @return list<string> the words of a normalised message */
+    private static function tokens(string $t): array
     {
-        foreach ($words as $w) {
-            if ($w !== '' && mb_strpos($t, $w) !== false) {
-                return true;
+        return preg_split('/[^\p{L}\p{M}\p{N}]+/u', $t, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    }
+
+    /** One of these is a whole word of the message. */
+    private static function word(array $tokens, array $words): bool
+    {
+        return array_intersect($tokens, $words) !== [];
+    }
+
+    /** A word of the message STARTS with one of these stems. */
+    private static function stem(array $tokens, array $stems): bool
+    {
+        foreach ($tokens as $tok) {
+            foreach ($stems as $st) {
+                if ($st !== '' && str_starts_with($tok, $st)) {
+                    return true;
+                }
             }
         }
         return false;

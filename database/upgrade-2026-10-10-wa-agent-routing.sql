@@ -85,7 +85,6 @@ INSERT IGNORE INTO `settings` (`skey`, `svalue`, `stype`, `sgroup`, `label`, `is
  ('wa_route_max_agents',  '4',  'int',    'whatsapp', 'Agent routing - agents tried per ticket before the admin is told', 0),
  ('wa_admin_number',      '',   'string', 'whatsapp', 'Agent routing - admin WhatsApp when no agent answers (empty = admin_whatsapp)', 0),
  ('wa_hi_meta',           '1',  'bool',   'whatsapp', 'Customers send hi to the Meta number (webhook live) instead of the AiSensy number', 0),
- ('meta_wa_number',       '918735881507', 'string', 'whatsapp', 'The Meta Cloud API WhatsApp number as digits', 0),
  ('wa_ticket_buttons_on', '1',  'bool',   'whatsapp', 'Edit name / date / agent / cancel buttons after a free WhatsApp ticket', 0),
  ('wa_edit_otp_on',       '1',  'bool',   'whatsapp', 'Ticket edits on WhatsApp need a 6 digit code first', 0),
  ('ticket_link_days',     '30', 'int',    'whatsapp', 'Short ticket link (/ticket/view.php) lifetime in days after travel', 0),

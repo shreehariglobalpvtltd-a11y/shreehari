@@ -466,7 +466,7 @@ final class Notify
                 if ($bookingId !== null && $bookingId > 0 && in_array($purpose, ['ticket', 'ticket_resend', 'ticket_update'], true)) {
                     try {
                         require_once __DIR__ . '/waedit.php';
-                        WaEdit::afterTicket((int) $bookingId, $number);
+                        WaEdit::afterTicket((int) $bookingId, $number, true);   // sent by the routing cron within a minute
                     } catch (Throwable $e) {
                         Logger::warning('ticket buttons hook failed: ' . $e->getMessage(), [], 'whatsapp');
                     }

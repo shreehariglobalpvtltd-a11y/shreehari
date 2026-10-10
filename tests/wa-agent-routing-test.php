@@ -20,6 +20,7 @@ require_once INCLUDE_PATH . '/waagentroute.php';
 require_once INCLUDE_PATH . '/waedit.php';
 require_once INCLUDE_PATH . '/wateach.php';
 require_once INCLUDE_PATH . '/ticketlink.php';
+require_once INCLUDE_PATH . '/sitefacts.php';
 if (stripos((string) DB_NAME, 'test') === false) { exit("Refusing: DB_NAME must be a test database.\n"); }
 
 $PASS = 0; $FAIL = 0;
@@ -30,12 +31,12 @@ function check(string $l, bool $ok, string $extra = ''): void {
 }
 
 const AG_A = '9400031001'; const AG_B = '9400031002'; const AG_C = '9400031003';
-const CUST = '9400031010'; const CUST2 = '9400031011'; const BOSS = '9400031099';
-const PNRS = ['SHG-2099-90001', 'SHG-2099-90002', 'SHG-2099-90003', 'SHG-2099-90004'];
+const CUST = '9400031010'; const CUST2 = '9400031011'; const BOSS = '9400031099'; const DESK = '9400031098';
+const PNRS = ['SHG-2099-90001', 'SHG-2099-90002', 'SHG-2099-90003', 'SHG-2099-90004', 'SHG-2099-90005', 'SHG-2099-90006'];
 
 $keepKeys = ['wa_route_on' => '1', 'wa_route_grace_min' => '3', 'wa_route_timeout_min' => '5', 'wa_route_busy_min' => '60', 'wa_route_max_agents' => '4',
-    'wa_admin_number' => '91' . BOSS, 'wa_buttons_on' => '1', 'wa_ticket_buttons_on' => '1', 'wa_edit_otp_on' => '1', 'wa_teach_on' => '1', 'ai_kb_on' => '1',
-    'wa_policy' => 'meta_first', 'wa_agent_rewrite' => '1', 'wa_login_on' => '0', 'wa_agent_on' => '0', 'wa_hi_meta' => '1', 'meta_wa_number' => '918735881507',
+    'wa_admin_number' => '91' . BOSS, 'company_whatsapp' => '91' . DESK, 'wa_buttons_on' => '1', 'wa_ticket_buttons_on' => '1', 'wa_edit_otp_on' => '1', 'wa_teach_on' => '1', 'ai_kb_on' => '1',
+    'wa_policy' => 'meta_first', 'wa_agent_rewrite' => '1', 'wa_login_on' => '0', 'wa_agent_on' => '0', 'wa_hi_meta' => '1',
     'wa_local_brain_on' => '1', 'wa_habits_on' => '0', 'wa_good_morning_on' => '1', 'wa_good_morning_tpl_on' => '0', 'wa_route_admin_tpl_on' => '0',
     'wa_meta_templates_on' => '0', 'wa_bulk_on' => '0', 'wa_order_menu_on' => '1', 'whatsapp_bot_enabled' => '1', 'ai_learn_on' => '1'];
 $keep = [];
@@ -127,11 +128,11 @@ $src = Database::fetch("SELECT b.* FROM bookings b JOIN booking_legs bl ON bl.bo
     JOIN schedules s ON s.id = bl.schedule_id WHERE b.status = 'confirmed' AND s.route_id = 2 ORDER BY b.id DESC LIMIT 1");
 $travel = date('Y-m-d', time() + 2 * 86400);
 $sched = (int) Database::scalar('SELECT id FROM schedules WHERE route_id = 2 AND travel_date = :d LIMIT 1', ['d' => $travel], 0);
-$mkBooking = static function (string $pnr, string $phone, int $soldBy) use ($src, $travel, $sched): int {
+$mkBooking = static function (string $pnr, string $phone, int $soldBy, string $source = 'web') use ($src, $travel, $sched): int {
     $row = $src;
     unset($row['id']);
     $row['pnr'] = $pnr; $row['contact_phone'] = $phone; $row['contact_country_code'] = 'IN'; $row['alt_phone'] = null;
-    $row['sold_by_admin_id'] = $soldBy; $row['status'] = 'confirmed'; $row['created_at'] = date('Y-m-d H:i:s'); $row['confirmed_at'] = date('Y-m-d H:i:s');
+    $row['sold_by_admin_id'] = $soldBy; $row['status'] = 'confirmed'; $row['source'] = $source; $row['created_at'] = date('Y-m-d H:i:s'); $row['confirmed_at'] = date('Y-m-d H:i:s');
     $bid = (int) Database::insert('bookings', $row);
     foreach (Database::fetchAll("SELECT * FROM booking_legs WHERE booking_id = :b", ['b' => (int) $src['id']]) as $leg) {
         $oldLeg = (int) $leg['id'];
@@ -154,9 +155,9 @@ try {
     check('routing tables + switch ready', WaAgentRoute::ready() && WaAgentRoute::on() && WaEdit::ready() && TicketLink::ready());
 
     /* ---------- the "hi" number ---------- */
-    check('"hi" goes to the Meta number (webhook live)', WaQueue::hiNumber() === '918735881507', WaQueue::hiNumber());
+    check('"hi" goes to the Meta number (webhook live)', WaQueue::hiNumber() === SiteFacts::chatDigits(), WaQueue::hiNumber());
     Settings::set('wa_hi_meta', '0', 'string', 'whatsapp', false); Settings::flush();
-    check('wa_hi_meta = 0 → back to the AiSensy number', WaQueue::hiNumber() !== '918735881507', WaQueue::hiNumber());
+    check('wa_hi_meta = 0 → back to the AiSensy number', WaQueue::hiNumber() !== SiteFacts::chatDigits(), WaQueue::hiNumber());
     Settings::set('wa_hi_meta', '1', 'string', 'whatsapp', false); Settings::flush();
 
     $b1 = $mkBooking(PNRS[0], CUST, $A);
@@ -185,7 +186,7 @@ try {
     };
     $page = $runPage($code2);
     check('ticket/view.php shows the PNR, the hi button to the Meta number, first name only', str_contains($page, PNRS[0])
-        && str_contains($page, 'wa.me/918735881507?text=Hi%20' . PNRS[0]) && str_contains($page, 'Ram B.') && !str_contains($page, CUST), mb_substr(strip_tags($page), 0, 300));
+        && str_contains($page, 'wa.me/' . SiteFacts::chatDigits() . '?text=Hi%20' . PNRS[0]) && str_contains($page, 'Ram B.') && !str_contains($page, CUST), mb_substr(strip_tags($page), 0, 300));
     $page2 = $runPage('ZZZZZZZZZZ');
     check('unknown code → neutral page, no PNR', str_contains($page2, 'Link not available') && !str_contains($page2, 'SHG-2099'), mb_substr(strip_tags($page2), 0, 200));
 
@@ -241,9 +242,12 @@ try {
     check('agent A is now busy', WaAgentRoute::status($A) === 'busy');
     $o2 = Database::fetch("SELECT * FROM delivery_log WHERE booking_id = :b AND status = 'offered' ORDER BY id DESC LIMIT 1", ['b' => $b2]);
     check('→ the next agent on the route (B, assigned) is asked', $o2 !== null && (int) $o2['agent_id'] === $B, json_encode($o2));
+    $r = $ask(AG_B, 'ho');
+    check('a bare "ho" from B (maybe confirming a sale) is NOT taken as the hand-over answer',
+        (Database::fetch('SELECT status FROM delivery_log WHERE id = :i', ['i' => (int) $o2['id']])['status'] ?? '') === 'offered', $r['text']);
     $sent = [];
-    $r = $ask(AG_B, 'busy');
-    check('B says "busy" → declined, B busy', (Database::fetch('SELECT status FROM delivery_log WHERE id = :i', ['i' => (int) $o2['id']])['status'] ?? '') === 'declined'
+    $r = $ask(AG_B, 'busy ' . PNRS[1]);
+    check('B says "busy <PNR>" → declined, B busy', (Database::fetch('SELECT status FROM delivery_log WHERE id = :i', ['i' => (int) $o2['id']])['status'] ?? '') === 'declined'
         && WaAgentRoute::status($B) === 'busy', $r['text']);
     $ex = Database::fetchAll("SELECT status, channel, detail FROM delivery_log WHERE booking_id = :b AND status IN ('exhausted','customer_direct','admin_notified')", ['b' => $b2]);
     check('nobody left → exhausted + passenger direct + admin told (one each)', count($ex) === 3, json_encode($ex, JSON_UNESCAPED_UNICODE));
@@ -271,11 +275,16 @@ try {
     WaAgentRoute::offerNext(Database::fetch('SELECT * FROM bookings WHERE id = :b', ['b' => $b3]));
     $po = Database::fetch("SELECT * FROM delivery_log WHERE booking_id = :b AND status = 'offered'", ['b' => $b3]);
     check('closed window + web push → offered by push, link opens WhatsApp to the Meta number', ($po['channel'] ?? '') === 'push'
-        && str_contains((string) ($pushes[0]['payload']['url'] ?? ''), 'wa.me/918735881507'), json_encode($pushes));
+        && str_contains((string) ($pushes[0]['payload']['url'] ?? ''), 'wa.me/' . SiteFacts::chatDigits()), json_encode($pushes));
     $window(AG_C);
     $sent = [];
     $r = $ask(AG_C, 'hi');
-    check('C opens WhatsApp → the hand-over packet arrives at once', str_contains($r['text'], PNRS[2]) && str_contains($r['text'], 'wa.me/91' . CUST), $r['text']);
+    $pk = $to(AG_C);
+    check('C opens WhatsApp ("hi") → the hand-over packet goes as its own message', $pk !== [] && str_contains($pk[0]['text'], PNRS[2]) && str_contains($pk[0]['text'], 'wa.me/91' . CUST),
+        json_encode($pk, JSON_UNESCAPED_UNICODE));
+    check('… and C\'s own "hi" is still answered by the bot (not swallowed)', !str_contains($r['text'], 'wa.me/91' . CUST), $r['text']);
+    $r = $ask(AG_C, 'ok ' . PNRS[2]);
+    check('"ok <PNR>" typed → accepted', (Database::fetch("SELECT status FROM delivery_log WHERE booking_id = :b AND agent_id = :a ORDER BY id DESC LIMIT 1", ['b' => $b3, 'a' => $C])['status'] ?? '') === 'accepted', $r['text']);
     WaAgentRoute::$pusher = static function (int $adminId, array $payload) use (&$pushes): int { $pushes[] = ['admin' => $adminId, 'payload' => $payload]; return 0; };
 
     /* presence words */
@@ -289,6 +298,24 @@ try {
     $r = $ask(CUST, 'available');
     check('a customer writing "available" is not an agent command', WaAgentRoute::status($A) === 'available' && !str_contains($r['text'], 'available हुनुभयो'));
 
+    /* ---------- walk-ins and desk sales ---------- */
+    $bw = $mkBooking(PNRS[4], '9999999999', $A, 'counter');
+    WaAgentRoute::onConfirmed(['id' => $bw]);
+    check('walk-in with a placeholder number → not watched (the seller copy already went)', !Database::exists('SELECT 1 FROM delivery_log WHERE booking_id = :b', ['b' => $bw]));
+    WaAgentRoute::setStatus($A, 'available'); WaAgentRoute::setStatus($B, 'available');
+    $bd = $mkBooking(PNRS[5], CUST2, $A, 'counter');
+    WaAgentRoute::onConfirmed(['id' => $bd]);
+    Database::run('UPDATE delivery_log SET deadline_at = NOW() - INTERVAL 1 MINUTE WHERE booking_id = :b', ['b' => $bd]);
+    WaAgentRoute::tick();
+    $do = Database::fetch("SELECT * FROM delivery_log WHERE booking_id = :b AND status = 'offered'", ['b' => $bd]);
+    check('desk sale → only its own seller is asked', $do !== null && (int) $do['agent_id'] === $A, json_encode($do));
+    Database::run('UPDATE delivery_log SET deadline_at = NOW() - INTERVAL 1 MINUTE WHERE id = :i', ['i' => (int) $do['id']]);
+    $sent = [];
+    WaAgentRoute::tick();
+    check('desk seller who does not answer is NOT marked busy', WaAgentRoute::status($A) === 'available');
+    check('desk sale: no other agent, no admin alarm', !Database::exists("SELECT 1 FROM delivery_log WHERE booking_id = :b AND (agent_id = :bb OR status = 'admin_notified')", ['b' => $bd, 'bb' => $B])
+        && $to(BOSS) === [], json_encode(Database::fetchAll('SELECT status, agent_id FROM delivery_log WHERE booking_id = :b', ['b' => $bd])));
+
     /* ---------- ticket changes behind a code ---------- */
     $sent = [];
     WaEdit::afterTicket($b1, '+91' . CUST);
@@ -298,9 +325,18 @@ try {
     $sent = [];
     WaEdit::afterTicket($b1, '+91' . CUST);
     check('buttons once an hour per ticket', $to(CUST) === []);
+    Database::run("DELETE FROM rate_limits WHERE identifier LIKE :i", ['i' => '%' . CUST . '%']);
+    $sent = [];
+    WaEdit::afterTicket($b1, '+91' . CUST, true);
+    check('deferred (booking request path): nothing sent now', $to(CUST) === []);
+    WaEdit::flushDeferred();
+    check('… the routing cron sends it', ($dm = $to(CUST)) !== [] && ($dm[0]['ui']['buttons'][0]['id'] ?? '') === 'shg:ed name ' . PNRS[0]);
 
     $r = $ask(CUST, 'ed name ' . PNRS[0]);
     check('✏️ Name → asks the new name (shows the old one)', str_contains($r['text'], 'Ram war-test Bahadur'), $r['text']);
+    $r = $ask(CUST, 'ok');
+    check('"ok" while a new name is awaited is NOT taken as the name', !str_contains($r['text'], '६ अंक')
+        && (string) Database::scalar('SELECT full_name FROM booking_passengers WHERE booking_id = :b LIMIT 1', ['b' => $b1], '') === 'Ram war-test Bahadur', $r['text']);
     $sent = [];
     $r = $ask(CUST, 'Sita war-test Sharma');
     $otpMsg = $to(CUST);
@@ -358,6 +394,11 @@ try {
     check('intent: a refund QUESTION is not a cancel', WaEdit::intentOf('cancel garda kati paisa katcha?', 'cancel garda kati paisa katcha?') === '');
     check('intent: "ticket confirm bhayo?" → confirm', WaEdit::intentOf('ticket confirm bhayo', 'ticket confirm bhayo?') === 'confirm');
     check('intent: small talk → nothing', WaEdit::intentOf('namaste', 'namaste') === '' && WaEdit::intentOf('bholi 2 seat chahiyo', 'bholi 2 seat chahiyo') === '');
+    check('intent: "payment credited, please update" → nothing (no edit / date inside words)', WaEdit::intentOf('payment credited, please update', 'payment credited, please update') === '');
+    check('intent: "agent se baat karunga" → nothing', WaEdit::intentOf('agent se baat karunga', 'agent se baat karunga') === '');
+    check('intent: "नाम ठीक है" (the name is fine) → nothing', WaEdit::intentOf('नाम ठीक है', 'नाम ठीक है') === '');
+    require_once INCLUDE_PATH . '/aitools.php';
+    check('staff words ("<PNR> ko naam galat cha" from an agent) stay with the staff tools', WaEdit::handle('+91' . AG_A, PNRS[0] . ' ko naam galat cha', AiTools::whoIs('+91' . AG_A)) === null);
     $r = $ask(CUST, 'mero naam galat cha');
     check('typed/spoken "naam galat cha" opens the name change on their next live ticket', str_contains($r['text'], 'अहिलेको नाम') && str_contains($r['text'], 'war-test'), $r['text']);
     $r = $ask(CUST, 'stop');
@@ -379,6 +420,8 @@ try {
     check('jawaf N: → answered + linked to the new article', (string) Database::scalar('SELECT status FROM ai_unanswered_questions WHERE id = :i', ['i' => $qid], '') === 'answered', $r['text']);
     $r = $ask(CUST, 'sikau: war-test x = y');
     check('a customer cannot teach', !str_contains($r['text'], 'सिकें') && !Database::exists("SELECT 1 FROM ai_kb_articles WHERE canonical_title = 'war-test x'"), $r['text']);
+    $r = $ask(DESK, 'sikau: war-test desk q = desk a');
+    check('the desk handset (company_whatsapp) cannot teach', !Database::exists("SELECT 1 FROM ai_kb_articles WHERE canonical_title LIKE 'war-test desk%'"), $r['text']);
     $r = $ask(BOSS, 'bot help');
     check('bot help lists the commands', str_contains($r['text'], 'sikau') && str_contains($r['text'], 'available'), $r['text']);
 

@@ -250,7 +250,9 @@ try {
         $calls = [];
         $sent = WaQueue::onInbound('91' . RT_C, 'hi', 'meta');
         $q = Database::fetch('SELECT * FROM wa_ticket_queue WHERE id = :i', ['i' => $qid]);
-        check('inbound on Meta with the window open: the ticket goes free as the PNG', $sent === 1 && count($calls) === 1 && $calls[0]['image'] !== null
+        // 10 Oct 2026: + the free change-buttons message after it (includes/waedit.php) - still one PNG.
+        check('inbound on Meta with the window open: the ticket goes free as the PNG', $sent === 1 && count(array_filter($calls, static fn($c) => $c['image'] !== null)) === 1 && $calls[0]['image'] !== null
+            && count(array_filter($calls, static fn($c) => $c['image'] === null && !str_contains((string) $c['text'], 'मिलाउनु'))) === 0
             && $q !== null && $q['status'] === 'sent' && $q['via'] === 'meta free', json_encode($q));
         check('… the AiSensy window table is NOT written for a Meta inbound', !Database::exists('SELECT 1 FROM wa_windows WHERE phone = :p', ['p' => '91' . RT_C]));
         // A seller's waiting copies never dump on a Meta inbound (owner: "passenger list magda sara ticket aayo").
