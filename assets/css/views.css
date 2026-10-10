@@ -2940,6 +2940,96 @@ body.in-flow .credit-ribbon,body.in-flow #numStrip{display:none}
 #view-nav .sn-fast[hidden]{display:none}
 /* 6 Oct 2026 - 📍 glows while the map waits to re-centre by itself (8 s after a drag) */
 #view-nav #snLocate.sn-recenter{box-shadow:0 0 0 3px rgba(66,133,244,.55),0 4px 14px rgba(0,0,0,.25)}
+/* ====== 10 Oct 2026 (navpro) - S Hari Nav pro (26-navpro.js) ======
+   Cockpit overlay (vehicle silhouette + instruments in the lower quarter,
+   never catches a touch), the flight card, the honest live-status rows,
+   the "This device" row, the GPS cell and the TV / big-screen tier.
+   Colours: the scoped nav palette (--sk/--sm/--sl/--sx/--sg/--sn) and the
+   mode colour the bundle sets as --ck. Motion: transform only, off under
+   prefers-reduced-motion and html[data-motion="reduced"], paused in a
+   hidden tab (.sn-ck-paused). ====== */
+#view-nav .sn-cockpit{position:absolute;left:0;right:0;bottom:0;height:26%;min-height:150px;z-index:14;pointer-events:none;display:none;overflow:hidden;--ck:#4285F4}
+#view-nav .sn-cockpit.sn-ck-on{display:block}
+#view-nav .sn-cockpit .sn-ck-tint{position:absolute;inset:0;background:linear-gradient(180deg,rgba(10,22,40,0) 0%,rgba(10,22,40,.38) 45%,rgba(10,22,40,.78) 100%)}
+#view-nav .sn-cockpit .sn-ck-vehicle{position:absolute;left:-5%;right:-5%;bottom:0;height:100%;perspective:900px}
+#view-nav .sn-cockpit .sn-ck-art{width:100%;height:100%;display:block;transform:rotateX(16deg);transform-origin:50% 100%;filter:drop-shadow(0 -2px 12px rgba(0,0,0,.45))}
+#view-nav .sn-cockpit .ckf{fill:rgba(10,22,40,.8);stroke:none}
+#view-nav .sn-cockpit .ck{fill:none;stroke:var(--ck);stroke-width:3;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+#view-nav .sn-cockpit .ck2{fill:none;stroke:rgba(234,241,251,.5);stroke-width:2;stroke-linecap:round;vector-effect:non-scaling-stroke}
+#view-nav .sn-cockpit .ckg{fill:rgba(234,241,251,.22);stroke:var(--ck);stroke-width:1.5;vector-effect:non-scaling-stroke}
+#view-nav .sn-cockpit .ckm{fill:rgba(12,22,40,.9);stroke:var(--ck);stroke-width:2;vector-effect:non-scaling-stroke}
+/* instruments sit on the TOP edge of the dashboard, clear of the focus card / sheet below */
+#view-nav .sn-cockpit .sn-ck-gauge{position:absolute;left:14px;top:6px;display:flex;align-items:baseline;gap:6px;color:var(--sk);text-shadow:0 2px 6px rgba(0,0,0,.6)}
+#view-nav .sn-cockpit .sn-ck-gauge b{font-size:36px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;color:var(--ck)}
+#view-nav .sn-cockpit .sn-ck-gauge span{font-size:12px;color:var(--sm)}
+#view-nav .sn-cockpit .sn-ck-head{position:absolute;right:14px;top:10px;font-size:15px;font-weight:700;color:var(--sk);font-variant-numeric:tabular-nums;text-shadow:0 2px 6px rgba(0,0,0,.6)}
+#view-nav .sn-cockpit .sn-ck-turn{position:absolute;left:50%;top:2px;transform:translateX(-50%);display:none;flex-direction:column;align-items:center;gap:1px;color:var(--sk)}
+#view-nav .sn-cockpit .sn-ck-turn.show{display:flex}
+#view-nav .sn-cockpit .sn-ck-turn svg{width:44px;height:44px;fill:var(--ck);filter:drop-shadow(0 2px 6px rgba(0,0,0,.55))}
+#view-nav .sn-cockpit .sn-ck-turn svg path{transform-origin:50% 50%;transition:transform .35s ease}
+#view-nav .sn-cockpit .sn-ck-turn em{font-style:normal;font-size:32px;line-height:44px}
+#view-nav .sn-cockpit .sn-ck-turn em[hidden]{display:none}
+#view-nav .sn-cockpit .sn-ck-turn small{font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;text-shadow:0 1px 4px rgba(0,0,0,.6)}
+/* a gentle road sway while moving - transform only; still when asked to be */
+@keyframes snCkSway{0%,100%{transform:rotateX(16deg) translateY(0)}50%{transform:rotateX(16deg) translateY(2px)}}
+#view-nav .sn-cockpit.sn-ck-moving .sn-ck-art{animation:snCkSway 3.2s ease-in-out infinite}
+#view-nav .sn-cockpit.sn-ck-paused .sn-ck-art{animation-play-state:paused}
+@media (prefers-reduced-motion:reduce){#view-nav .sn-cockpit .sn-ck-art{animation:none}#view-nav .sn-cockpit .sn-ck-turn svg path{transition:none}}
+html[data-motion="reduced"] #view-nav .sn-cockpit .sn-ck-art{animation:none}
+html[data-motion="reduced"] #view-nav .sn-cockpit .sn-ck-turn svg path{transition:none}
+#view-nav.sn-lite .sn-cockpit{display:none!important}
+/* the HUD climbs above the dashboard while the cockpit is on (planner view) */
+#view-nav.sn-cockpit-on .sn-hud{bottom:calc(26% + 10px)}
+#view-nav .sn-hud #snGps.stale{color:var(--sn)}
+/* flight card (no road route: straight line, an estimate, booking coming soon) */
+#view-nav .sn-flight{display:none;margin:10px 12px 0;padding:11px 13px;border-radius:12px;background:rgba(30,111,217,.12);border:1px solid var(--royal,#1E6FD9)}
+#view-nav .sn-flight.show{display:block}
+#view-nav .sn-flight .ft-t{font-size:13px;font-weight:700;color:var(--sk)}
+#view-nav .sn-flight .ft-d{font-size:15px;font-weight:800;color:var(--sk);margin-top:4px;font-variant-numeric:tabular-nums;line-height:1.4}
+#view-nav .sn-flight .ft-n{font-size:11.5px;color:var(--sm);margin-top:4px;line-height:1.45}
+#view-nav .sn-flight .ft-soon{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--sk)}
+/* "Coming soon" badge - small gold accent, uppercase, never a live claim */
+#view-nav .sn-soon{font-style:normal;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;border-radius:999px;
+  background:rgba(245,200,105,.16);color:var(--sg);border:1px solid rgba(245,200,105,.4);white-space:nowrap}
+/* Layers: sub-headings, status rows (not clickable), the device row */
+#view-nav .sn-ly-sub{font-size:10px;color:var(--sm);text-transform:uppercase;letter-spacing:.6px;font-weight:600;margin:10px 0 2px}
+#view-nav .sn-ly.sn-ly-st{cursor:default;align-items:flex-start}
+#view-nav .sn-ly.sn-ly-st .snl{display:flex;flex-direction:column;gap:3px;font-size:12.5px;line-height:1.35;min-width:0}
+#view-nav .sn-ly.sn-ly-st .snl span{font-size:inherit}
+#view-nav .sn-ly.sn-ly-st .snl small{font-size:11px;color:var(--sm)}
+#view-nav .sn-ly.sn-ly-st [data-st="live"],#view-nav .sn-tc-st [data-st="live"]{color:#22b06a}
+#view-nav .sn-ly.sn-ly-st [data-st="wait"],#view-nav .sn-tc-st [data-st="wait"]{color:var(--sm)}
+#view-nav .sn-layers{max-width:min(320px,calc(100vw - 28px))}
+/* track card: what is live, what is coming */
+#view-nav .sn-tc-status{margin-top:9px;padding-top:8px;border-top:1px solid var(--sl);display:flex;flex-direction:column;gap:6px}
+#view-nav .sn-tc-st{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--sm);flex-wrap:wrap;line-height:1.35}
+#view-nav .sn-tc-st b{font-weight:700;font-size:11.5px;margin-left:auto}
+#view-nav .sn-tc-st .sn-soon{margin-left:auto}
+/* TV / big screen (html.shg-tv or >= 1800 px): 1.5x controls, 20 px type,
+   48 px+ targets everywhere, a strong focus ring for a remote / keyboard */
+#view-nav.sn-tv .sn-cb{width:66px;height:66px;font-size:27px;border-radius:18px}
+#view-nav.sn-tv .sn-cb small{font-size:11px;bottom:6px}
+#view-nav.sn-tv .sn-back{width:60px;height:60px;font-size:26px}
+#view-nav.sn-tv .sn-rstack{gap:12px}
+#view-nav.sn-tv .sn-sbar input,#view-nav.sn-tv .sn-results .row,#view-nav.sn-tv .sn-ly,#view-nav.sn-tv .sn-ss button,
+#view-nav.sn-tv .sn-peekbar .pk-txt b,#view-nav.sn-tv .sn-trackcard .ttl,#view-nav.sn-tv .sn-flight .ft-d,#view-nav.sn-tv .sn-tc-st{font-size:20px}
+#view-nav.sn-tv .sn-mode{font-size:15px;min-width:84px;padding:12px 16px}
+#view-nav.sn-tv .sn-mode .em{font-size:28px}
+#view-nav.sn-tv .sn-go,#view-nav.sn-tv .sn-livebtn,#view-nav.sn-tv .sn-altbtn{min-height:56px;font-size:19px}
+#view-nav.sn-tv .sn-banner .sb-txt b{font-size:22px}
+#view-nav.sn-tv .sn-banner .sb-ico{font-size:38px}
+#view-nav.sn-tv .sn-hud .big b{font-size:40px}
+#view-nav.sn-tv .sn-hud .cell b{font-size:20px}
+#view-nav.sn-tv .sn-hud .cell span,#view-nav.sn-tv .sn-trackcard .cell span{font-size:12px}
+#view-nav.sn-tv .sn-trackcard .cell b{font-size:26px}
+#view-nav.sn-tv .sn-cockpit .sn-ck-gauge b{font-size:54px}
+#view-nav.sn-tv .sn-cockpit .sn-ck-head{font-size:22px}
+#view-nav.sn-tv .sn-cockpit .sn-ck-turn svg{width:64px;height:64px}
+#view-nav.sn-tv .sn-cockpit .sn-ck-turn small{font-size:18px}
+#view-nav.sn-tv .sn-layers{max-width:420px;padding:14px 18px}
+#view-nav.sn-tv .sn-ly input[type=checkbox]{width:24px;height:24px}
+#view-nav.sn-tv .sn-panel{max-width:760px}
+#view-nav.sn-tv :focus-visible{outline:4px solid var(--sg);outline-offset:3px;box-shadow:0 0 0 7px rgba(10,22,40,.9)}
 .ha-card{position:relative}
 .ha-card .ha-flag{position:absolute;top:8px;right:8px;font-style:normal;font-size:10.5px;font-weight:800;letter-spacing:.03em;
   padding:3px 8px;border-radius:999px;background:#fff;color:#B84D00;box-shadow:0 2px 6px rgba(0,0,0,.18);pointer-events:none}

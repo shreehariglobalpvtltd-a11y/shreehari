@@ -86,6 +86,9 @@ var PRECACHE = [
   /* 5 Sep 2026: the navigator is loaded on demand (#/nav) but pre-cached
      here so the offline navigator still opens with no network. */
   '/assets/js/15-nav.js?v=' + ASSET_VER,
+  /* 10 Oct 2026: S Hari Nav pro (cockpit view, flight, device tier, TV +
+     keyboard) - chained right after 15-nav.js by snNavLoad(). */
+  '/assets/js/26-navpro.js?v=' + ASSET_VER,
   /* 11 Sep 2026: trip companion + assistant + maps chunk, loaded on idle. */
   '/assets/js/16-lazy.js?v=' + ASSET_VER,
   /* 13 Sep 2026: PWA layer (install sheet, push, border card, split-pay,
