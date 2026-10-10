@@ -72,6 +72,9 @@ final class WaDelivery
     public static function status(?array $log): string
     {
         if ($log === null) { return 'NOT SENT / NO LOG'; }
+        // Legacy staff handovers were logged as 'sent' without provider proof.
+        // They must never be presented as WhatsApp-delivered receipts.
+        if (($log['provider'] ?? '') === 'manual') { return 'MANUAL (UNVERIFIED)'; }
         $receipt = strtolower((string) ($log['delivery_state'] ?? ''));
         if ($receipt === 'read') { return 'READ'; }
         if ($receipt === 'delivered') { return 'DELIVERED'; }
