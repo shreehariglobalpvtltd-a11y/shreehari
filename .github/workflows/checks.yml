@@ -50,5 +50,7 @@ jobs:
         run: node tests/lazy-retry-test.js
       - name: Finance Master accounting engine
         run: node tests/finance-master-test.js
+      - name: Finance Master website import
+        run: node tests/finance-web-test.js
       - name: Translations
         run: node tests/i18n-check.js
