@@ -25,3 +25,6 @@ node_modules/
 # Runtime scratch — generated PDFs and working files, never tracked
 tmp/
 output/
+
+# Finance Master server vault (encrypted book copies) — runtime data, never tracked
+backup/finance/

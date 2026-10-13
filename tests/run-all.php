@@ -150,6 +150,12 @@ const CORE_SUITES = [
     // 22 Sep 2026, registered with the knowledge base it guards.
     'ai-turn-test.php'            => 'the tool loop is bounded: budget, deadline, no repeated write on retry',
     'ai-kb-test.php'              => 'the knowledge base: audience scope, the ai_kb_on switch, an honest redacted miss',
+    // Oct 2026, registered with the Finance Master website feed it guards.
+    // DB-only; its HTTP section runs only when a dev server answers on :8891.
+    'finance-feed-test.php'       => 'the finance feed: money states, keyset paging, no PII, reports.view only',
+    // Encrypted server copies of the Finance Master book, finance.php meta/CSP, deep-link gates.
+    // DB-only; its HTTP section starts its own php -S on :8892 and SKIPs when the port is busy.
+    'finance-vault-test.php'      => 'the finance vault: ciphertext only, sha256, prune, CSRF, superadmin/finance.vault only',
 ];
 
 /**

@@ -675,6 +675,10 @@ admin_page_head(
     ['Agents' => $base . '/admin/agents.php', $name => ''],
     '<a class="btn ghost" href="' . $base . '/admin/agent.php?agent=' . $agentId . '"><svg class="a-ic"><use href="#a-wallet"/></svg> Open agent panel</a>'
     . '<a class="btn ghost" href="' . $base . '/admin/agents.php"><svg class="a-ic"><use href="#a-arrow-left"/></svg> Register</a>'
+    // 9 Oct 2026: the same agent's account in the Finance Master app — office finance roles only.
+    . (Auth::can('reports.view') && !Auth::isCounterAgent()
+        ? '<a class="btn ghost" href="' . $e('/admin/finance.php?go=statements&type=agent&seller=' . $agentId) . '" title="Finance Master: this agent\'s statement">💼 Finance statement</a>'
+        : '')
     . ($waHead !== '' ? '<span class="chips" style="gap:6px">' . $waHead . '</span>' : '')
 );
 

@@ -1827,6 +1827,13 @@ $ticket = $b['ticket'] ?? null;
     <a class="btn ghost" href="<?= $base ?>/admin/refunds.php?pnr=<?= urlencode($pnr) ?>">💸 Refund desk</a>
   <?php endif; ?>
 
+  <?php /* 9 Oct 2026: every journal the Finance Master app posted for this PNR
+           (sale, refund, commission, cash) on one timeline. Office finance roles
+           only — this page is also open to agents, the counter and support. */ ?>
+  <?php if (Auth::can('reports.view') && !Auth::isCounterAgent()): ?>
+    <a class="btn ghost" href="<?= Security::e('/admin/finance.php?go=trace&q=' . rawurlencode((string) ($b['pnr'] ?? $pnr))) ?>" title="Finance Master: trace this booking's money">🔎 Finance trace</a>
+  <?php endif; ?>
+
   <?php /* Every traveller booked from this number, across PNRs (17 Sep 2026). */ ?>
   <?php if (Notify::usablePhone($b['contact_phone'] ?? '') !== ''): ?>
     <a class="btn ghost" href="<?= $base ?>/admin/passengers.php?phone=<?= urlencode((string) $b['contact_phone']) ?>">🧍 Passengers on this number</a>
