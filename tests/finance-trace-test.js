@@ -188,7 +188,7 @@ t('timeline: web booking confirmed → refund pending → processed → hard del
   ok(hrefs.some(h => /^\/admin\/refunds\.php\?tab=(pending|processed)&pnr=SHG-2026-00009$/.test(h)));
   ok(hrefs.includes('/admin/agent.php?agent=11'));
   ok(hrefs.includes('/admin/agent-receipt.php?id=501'));
-  ok(hrefs.includes('/admin/manifest.php?sid=196'));
+  ok(hrefs.includes('/admin/manifest.php?date=2026-10-12&sid=196'), 'manifest needs the travel date of the schedule');
   ok(hrefs.every(h => h.indexOf('/admin/') === 0), 'root-relative admin links only');
   ok(tl.integrity.ok && tl.integrity.all && tl.integrity.seq === bkJ[0].seq && tl.integrity.h === bkJ[0].h, 'integrity of a clean book');
   // net money path of the whole booking story is zero for revenue (all undone) — accounts with zero net are dropped

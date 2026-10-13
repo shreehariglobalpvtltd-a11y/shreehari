@@ -244,7 +244,7 @@ t('tamper detection: editing a journal behind an issued statement → changed', 
   j.lines.forEach((l) => { if (l.dr) l.dr += 100; if (l.cr) l.cr += 100; });   // edit in place (no re-hash)
   E.invalidate(b);
   const v = S.verify(b, e.code);
-  eq(v.status, 'changed'); ok(!v.ok); ok(v.now.code !== e.code);
+  eq(v.status, 'changed'); ok(!v.ok); ok(v.tampered.length >= 1 && v.tampered[0] === j.no, 'names the edited journal ' + JSON.stringify(v.tampered));
   ok(!E.verifyChain(b).ok, 'the hash chain also sees the edit');
 });
 t('a new posting inside the period changes the statement (not the issued code)', () => {

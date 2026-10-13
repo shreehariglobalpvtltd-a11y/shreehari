@@ -52,5 +52,9 @@ jobs:
         run: node tests/finance-master-test.js
       - name: Finance Master website import
         run: node tests/finance-web-test.js
+      - name: Finance Master transaction trace
+        run: node tests/finance-trace-test.js
+      - name: Finance Master statements
+        run: node tests/finance-statements-test.js
       - name: Translations
         run: node tests/i18n-check.js
