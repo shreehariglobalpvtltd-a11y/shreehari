@@ -7137,16 +7137,32 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
     closeModal(); var m = el.getAttribute('data-m'); if (m !== 'demo' && m !== 'real') return;
     return switchTo(m);
   };
-  /* Flush the current book, then open the other one (read from IndexedDB). */
-  function switchTo(m) {
+  /* Flush the current book, then open the other one (read from IndexedDB).
+     When the flush fails (disk full, stale tab with unsaved changes…) the open book is kept in
+     memory and the user is asked: take a backup, or explicitly discard (discard=true). → Promise<boolean> */
+  function switchTo(m, discard) {
     var old = B() && B().mode;
-    return saveNow().then(function () {
+    return saveNow().then(function (ok) { return ok; }, function () { return false; }).then(function (ok) {
+      if (!ok && !discard && B() && (ST.dirty || ST.timer || ST.fail)) { askDiscard(m); return false; }
       if (old && old !== m) delete ST.books[old];      // re-read from disk when switching back
+      if (!ok && discard && old) { delete ST.books[old]; clearTimeout(ST.timer); ST.timer = null; if (ST.fail) { ST.fail = ''; } }
       ST.stale = false; ST.dirty = false; banner();
       S.meta.mode = m; saveMeta(); S.user = null; S.book = null;
-      return ensureBook(m);
-    }).then(function () { openBook(); render(); }, function (e) { toast('किताब खुल्न सकेन: ' + (e && e.message), 'bad'); });
+      return ensureBook(m).then(function () { openBook(); render(); return true; });
+    }).then(null, function (e) { toast('किताब खुल्न सकेन: ' + (e && e.message), 'bad'); return false; });
   }
+  function askDiscard(m) {
+    var why = blocked() || 'सेभ हुन सकेन।';
+    banner(); toast('मोड बदलिएन — ' + why, 'bad');
+    modal('⛔ सेभ नभएको परिवर्तन छ', '<div class="callout bad"><i>⛔</i><div><b>यो किताबका केही परिवर्तन अझै सेभ भएका छैनन्।</b><br>' + esc(why) + '<br>अहिले ' + (m === 'demo' ? 'डेमो' : 'वास्तविक') + ' मोडमा गए ती परिवर्तन सधैँका लागि हराउँछन्। पहिले ब्याकअप डाउनलोड गर्नुहोस्।</div></div>' +
+      '<div class="row end" style="margin-top:12px;flex-wrap:wrap"><button class="btn ghost" data-act="close">रद्द — यहीँ बस्नुहोस्</button><button class="btn ok" data-act="switchBackup">💾 ब्याकअप डाउनलोड</button>' +
+      '<button class="btn bad" data-act="switchDiscard" data-m="' + esc(m) + '">परिवर्तन फ्याँकेर ' + (m === 'demo' ? 'डेमो' : 'वास्तविक') + ' मा जानुहोस्</button></div>');
+  }
+  ACT.switchBackup = function () { closeModal(); if (FORM.backup) FORM.backup(null, {}); else location.hash = '#/settings?s=backup'; };
+  ACT.switchDiscard = function (el) {
+    var m = el.getAttribute('data-m'); if (m !== 'demo' && m !== 'real') return;
+    closeModal(); return switchTo(m, true);
+  };
   window.SHGUI.switchTo = switchTo;
   ACT.close = function () { closeModal(); };
   ACT.confirmYes = function () { var f = S.ui.confirmYes, r = $('#cf-reason'); var reason = r ? r.value.trim() : ''; closeModal(); if (f) f(reason); };
@@ -7240,6 +7256,7 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
   }
   ACT.pickMode = function (el) {
     var m = el.getAttribute('data-m'); if (m !== 'demo' && m !== 'real') return;
+    if (B()) return switchTo(m);                       // a book is open → same unsaved-changes guard as switchMode
     S.meta.mode = m; saveMeta();
     return ensureBook(m).then(function () { openBook(); render(); }, function (e) { toast('किताब खुल्न सकेन: ' + (e && e.message), 'bad'); });
   };
@@ -9549,15 +9566,16 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
     }).join('') + (s.byAcc.length > 1 ? s.byAcc.map(function (b) { return '<div><span>' + esc(b.code + ' ' + b.name) + '</span><b>' + bal(b.closing, cur) + '</b></div>'; }).join('') : '') + '</div>' : '';
     var sign = '<div class="stmt-sign"><div>' + esc(user.name || '') + '<small>तयार गर्ने (Prepared by)</small></div><div>&nbsp;<small>जाँच गर्ने (Checked by)</small></div><div>&nbsp;<small>स्वीकृत गर्ने (Approved by)</small></div><div class="stmt-seal">कम्पनीको<br>छाप (Seal)</div></div>';
     var note = '<div class="stmt-note"><p style="margin:0 0 4px">प्रमाणीकरण कोड (Verification code): <span class="stmt-verify stm-code">' + esc(ST.fmtCode(s.code)) + '</span>' +
-      (issued ? '' : ' <span class="stm-draft-note">· मस्यौदा — प्रिन्ट/सेयर गर्दा दर्ता हुन्छ</span>') + '</p>' +
+      (issued ? '' : ' <span class="stm-draft-note">· मस्यौदा — ' + (issueBlocked() ? 'दर्ता भएको छैन, यो कोड मान्य छैन' : 'प्रिन्ट/सेयर गर्दा दर्ता हुन्छ') + '</span>') + '</p>' +
       '<p style="margin:0">यो विवरण कम्प्युटरबाट तयार गरिएको हो (computer generated statement)। कोड SHG Finance → विवरण → "कोड जाँच" मा राखेर यसको सत्यता जाँच्न सकिन्छ। ' +
       'यसमा ' + esc(String(s.rows.length)) + ' जर्नलको सिल (hash) समावेश छ — कुनै अंक पछि बदलिए कोड मिल्दैन।' + (B().mode === 'demo' ? ' <b style="color:#8A5800">डेमो — काल्पनिक अंक</b>' : '') + '</p></div>';
     var foot = '<div class="stmt-foot"><span>' + esc(L.web || 'shreehariglobal.in') + ' · SHG Finance Master</span><span>' + esc(h.ts(new Date().toISOString())) + (user.name ? ' · ' + esc(user.name) : '') + '</span><span class="stm-pages">' + esc(s.no) + '</span></div>';
     return '<article class="stmt" id="stmtSheet"' + (issued ? '' : ' data-draft="1"') + ' aria-label="' + esc(t.ne + ' विवरण ' + s.party.label) + '">' + head + meta + party + sum + table + words + facts + sign + note + foot + '</article>';
   }
   function actionsHTML(s) {
+    var why = s.issued ? '' : issueBlocked();
     return '<div class="card stm-noprint"><div class="card-h"><h2>' + esc(s.party.label) + '</h2>' + (s.issued ? '<span class="badge ok">✓ दर्ता भएको · ' + esc(s.no) + '</span>' : '<span class="badge warn">मस्यौदा</span>') + '</div>' +
-      '<p class="small muted" style="margin:0">' + esc(s.period.label) + ' · ' + esc(String(s.rows.length)) + ' कारोबार · अन्तिम मौज्दात <b>' + bal(s.closing, s.currency) + '</b></p>' +
+      (why ? '<div class="callout bad" role="alert" style="margin-bottom:8px"><i>⛔</i><div><b>यो विवरण अहिले दर्ता / प्रिन्ट / सेयर गर्न मिल्दैन।</b><br>' + esc(why) + '<br><small>दर्ता नभएको (मस्यौदा) विवरणको कोड पछि "कोड जाँच" मा भेटिँदैन — सेभ ठीक भएपछि मात्र जारी गर्नुहोस्।</small></div></div>' : '') + '<p class="small muted" style="margin:0">' + esc(s.period.label) + ' · ' + esc(String(s.rows.length)) + ' कारोबार · अन्तिम मौज्दात <b>' + bal(s.closing, s.currency) + '</b></p>' +
       '<div class="stm-acts"><button class="btn sm" data-act="stmtPrint">🖨️ प्रिन्ट / PDF</button><button class="btn sm ghost" data-act="stmtPng">🖼️ PNG</button>' +
       '<button class="btn sm ghost" data-act="stmtCsv">📄 CSV</button><button class="btn sm ghost" data-act="stmtXlsx">📊 Excel</button><button class="btn sm ghost" data-act="stmtWa">💬 WhatsApp</button>' +
       (s.issued ? '' : '<button class="btn sm soft" data-act="stmtIssue">✅ दर्ता गर्नुहोस्</button>') + '</div></div>';
@@ -9613,16 +9631,35 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
   };
 
   /* ---------------- actions ---------------- */
+  /** Why issuing is refused right now ('' = ok): a stale tab or a failing save would hand out a
+      code that never reaches the register, so later "कोड जाँच" would call a genuine statement fake. */
+  function issueBlocked() { return U.store && U.store.blocked ? U.store.blocked() : ''; }
+  /** Register the statement and wait until it is on disk. → Promise<s>; rejects (and rolls the
+      register entry back, sheet stays a draft) when the store is blocked or the save fails. */
   function issue(s) {
-    if (s.issued) return s;
-    var e = ST.register(B(), s, S.user);
-    if (e) U.save();
-    return s;
+    if (s.issued) return Promise.resolve(s);
+    var why = issueBlocked();
+    if (why) return Promise.reject(new Error('विवरण दर्ता गरिएन — ' + why));
+    var b = B(), had = Array.isArray(b.statements) ? b.statements.length : 0, aud = Array.isArray(b.audit) ? b.audit.length : 0;
+    var no0 = s.no, code0 = s.code;
+    var e = ST.register(b, s, S.user);
+    if (!e) return Promise.reject(new Error('विवरण दर्ता हुन सकेन।'));
+    if (b.statements.length === had) return Promise.resolve(s);        // identical statement was already registered
+    U.save();
+    return U.saveNow().then(function (ok) { return ok; }, function () { return false; }).then(function (ok) {
+      if (ok) return s;
+      // not on disk → undo the in-memory registration so nothing claims it was issued
+      var i = b.statements.indexOf(e); if (i >= 0) b.statements.splice(i, 1);
+      if (Array.isArray(b.audit) && b.audit.length === aud + 1 && b.audit[aud].a === 'statement.issue') b.audit.pop();
+      s.issued = null; s.no = no0; s.code = code0;
+      throw new Error('विवरण दर्ता गरिएन — सेभ हुन सकेन। ' + (issueBlocked() || 'फेरि प्रयास गर्नुहोस्।'));
+    });
   }
   function withStmt(fn) {
     var s = current();
     if (!s) return U.ui.toast('पहिले विवरण छान्नुहोस्।', 'warn');
-    try { fn(s); } catch (err) { U.ui.toast('त्रुटि: ' + err.message, 'bad'); if (window.console) console.error(err); }
+    var fail = function (err) { U.render(); U.ui.toast(err && err.message ? err.message : 'त्रुटि', 'bad'); if (window.console) console.error(err); };
+    try { return Promise.resolve(fn(s)).catch(fail); } catch (err) { fail(err); }
   }
   function waitReady() {
     var waits = h.$$('#stmtSheet img').map(function (im) { return im.decode ? im.decode().catch(function () { }) : null; });
@@ -9630,28 +9667,33 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
     var all = Promise.all(waits);
     return new Promise(function (resolve) { var t = setTimeout(resolve, 2500); all.then(function () { clearTimeout(t); resolve(); }, function () { clearTimeout(t); resolve(); }); });
   }
-  U.ACT.stmtIssue = function () { withStmt(function (s) { issue(s); U.render(); U.ui.toast('विवरण दर्ता भयो · ' + s.no, 'ok'); }); };
+  // every print / export / share first registers the statement and waits for the save (only then "issued")
+  U.ACT.stmtIssue = function () { return withStmt(function (s) { return issue(s).then(function () { U.render(); U.ui.toast('विवरण दर्ता भयो · ' + s.no, 'ok'); }); }); };
   U.ACT.stmtPrint = function () {
-    withStmt(function (s) {
-      var was = !!s.issued; issue(s); if (!was) U.render();
-      var pr = document.getElementById('print'); if (pr) pr.innerHTML = '';
-      var old = document.title; document.title = s.no + ' — ' + s.party.label;
-      waitReady().then(function () { try { window.print(); } catch (e) { } document.title = old; });
+    return withStmt(function (s) {
+      return issue(s).then(function () {
+        U.render();
+        var pr = document.getElementById('print'); if (pr) pr.innerHTML = '';
+        var old = document.title; document.title = s.no + ' — ' + s.party.label;
+        return waitReady().then(function () { try { window.print(); } catch (e) { } document.title = old; });
+      });
     });
   };
   U.ACT.stmtPng = function () {
-    withStmt(function (s) {
-      issue(s); U.render();
-      var c = s.currency, f = function (p) { return h.Mt(Math.abs(p), c) + (p ? ' ' + drcr(p) : ''); };
-      var rows = [['पक्ष', s.party.label.slice(0, 34)], ['अवधि', (s.period.allTime ? 'सुरुदेखि' : s.period.from) + ' → ' + s.period.to], ['सुरुको मौज्दात', f(s.opening)],
-        ['डेबिट जम्मा', h.Mt(s.totals.dr, c)], ['क्रेडिट जम्मा', h.Mt(s.totals.cr, c)], ['अन्तिम मौज्दात', f(s.closing)], ['कारोबार', String(s.rows.length)], ['जाँच कोड', ST.fmtCode(s.code)]];
-      if (s.closing) rows.splice(6, 0, ['', (s.closing > 0 ? s.nature.dr : s.nature.cr).slice(0, 40)]);
-      return U.io.pngCard((ST.TYPE[s.type].ne + ' विवरण · ' + s.no), rows, s.no, fileBase(s) + '.png');
+    return withStmt(function (s) {
+      return issue(s).then(function () {
+        U.render();
+        var c = s.currency, f = function (p) { return h.Mt(Math.abs(p), c) + (p ? ' ' + drcr(p) : ''); };
+        var rows = [['पक्ष', s.party.label.slice(0, 34)], ['अवधि', (s.period.allTime ? 'सुरुदेखि' : s.period.from) + ' → ' + s.period.to], ['सुरुको मौज्दात', f(s.opening)],
+          ['डेबिट जम्मा', h.Mt(s.totals.dr, c)], ['क्रेडिट जम्मा', h.Mt(s.totals.cr, c)], ['अन्तिम मौज्दात', f(s.closing)], ['कारोबार', String(s.rows.length)], ['जाँच कोड', ST.fmtCode(s.code)]];
+        if (s.closing) rows.splice(6, 0, ['', (s.closing > 0 ? s.nature.dr : s.nature.cr).slice(0, 40)]);
+        return U.io.pngCard((ST.TYPE[s.type].ne + ' विवरण · ' + s.no), rows, s.no, fileBase(s) + '.png');
+      });
     });
   };
-  U.ACT.stmtCsv = function () { withStmt(function (s) { issue(s); U.io.download(fileBase(s) + '.csv', E.csv(ST.csvRows(s)), 'text/csv;charset=utf-8'); U.render(); }); };
-  U.ACT.stmtXlsx = function () { withStmt(function (s) { issue(s); U.io.download(fileBase(s) + '.xlsx', E.xlsx(ST.csvRows(s), 'Statement'), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); U.render(); }); };
-  U.ACT.stmtWa = function () { withStmt(function (s) { issue(s); U.render(); U.io.whatsapp(ST.text(s, lh().name), s.party.phone || ''); }); };
+  U.ACT.stmtCsv = function () { return withStmt(function (s) { return issue(s).then(function () { U.io.download(fileBase(s) + '.csv', E.csv(ST.csvRows(s)), 'text/csv;charset=utf-8'); U.render(); }); }); };
+  U.ACT.stmtXlsx = function () { return withStmt(function (s) { return issue(s).then(function () { U.io.download(fileBase(s) + '.xlsx', E.xlsx(ST.csvRows(s), 'Statement'), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); U.render(); }); }); };
+  U.ACT.stmtWa = function () { return withStmt(function (s) { return issue(s).then(function () { U.render(); U.io.whatsapp(ST.text(s, lh().name), s.party.phone || ''); }); }); };
 
   /* ---------------- hooks into other screens ---------------- */
   // journal modal: statements of the parties / PNR on this journal
