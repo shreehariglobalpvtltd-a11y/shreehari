@@ -629,6 +629,112 @@ t('every web journal is safe for E.unsafeId (ids, parties, trips)', () => {
   }
 });
 
+/* ---------- review fixes: cash custody, cutover re-approval, stale feeds ---------- */
+const cashRow = (id, bid, sid, amt, o) => lg(id, Object.assign({ sellerId: sid, account: 'cash', entryType: 'cash_due', kind: 'cash_due', amount: amt || '1500.00',
+  bookingId: bid, pnr: 'SHG-2026-' + String(bid).padStart(5, '0'), ref: 'SHG-2026-' + String(bid).padStart(5, '0') }, o || {}));
+const handover = (id, sid, amt) => lg(id, { sellerId: sid, account: 'cash', entryType: 'cash_handover', kind: 'cash_handover', amount: amt, createdAt: '2026-10-04 06:00:00' });
+const AG2 = AGENTS.concat([agentRow(13, { code: 'SHG-0013', name: 'Other Agent' })]);
+
+t('cash custody: reassign / detach keeps 1210 with whoever took the cash (website cash_due row), handover nets to 0', () => {
+  const st = book();
+  const b = bk(60, { paymentMethod: 'cash', sellerId: 11 });
+  const com = lg(601, { bookingId: 60, pnr: b.pnr, ref: b.pnr }), cd = cashRow(602, 60, 11);
+  sync(st, feed({ agents: AG2, bookings: [b], ledger: [com, cd] }));
+  eq(bal(st, '1210', { party: 'wa_11' }), L(1500));
+  // website reassign: sold_by → 13, commission row re-owned, cash row stays with 11
+  const b2 = bk(60, { paymentMethod: 'cash', sellerId: 13, wm: '2026-10-03 04:30:00' });
+  const r = sync(st, feed({ agents: AG2, bookings: [b2], ledger: [Object.assign({}, com, { sellerId: 13 }), cd] }));
+  ok(r.res.ok, r.res.errors.join(' '));
+  eq(bal(st, '1210', { party: 'wa_11' }), L(1500), 'collector still holds the cash');
+  eq(bal(st, '1210', { party: 'wa_13' }), 0, 'new seller never took cash');
+  eq(bal(st, '2020', { party: 'wa_13' }), L(200), 'commission moved');
+  sync(st, feed({ agents: AG2, bookings: [b2], ledger: [Object.assign({}, com, { sellerId: 13 }), cd, handover(603, 11, '-1500.00')] }));
+  eq(bal(st, '1210', { party: 'wa_11' }), 0, 'handover clears the collector'); eq(bal(st, '1210', { party: 'wa_13' }), 0);
+  // detach to office (sellerId null): the cash stays with the agent, not the office till
+  const st2 = book();
+  sync(st2, feed({ bookings: [b], ledger: [cd] }));
+  sync(st2, feed({ bookings: [bk(60, { paymentMethod: 'cash', sellerId: null, wm: '2026-10-03 04:30:00' })], ledger: [cd] }));
+  eq(bal(st2, '1210', { party: 'wa_11' }), L(1500)); eq(bal(st2, '1030'), 0);
+  // a later file without the ledger keeps the remembered collector
+  const p = W.plan(st2, feed({ bookings: [bk(60, { paymentMethod: 'cash', sellerId: null, wm: '2026-10-04 04:30:00' })] }), { today: TODAY });
+  eq(p.items.length, 0, 'no ledger in the feed → custody unchanged');
+});
+
+t('reject of a verified cash sale: revenue reversed, cash stays on the agent (2995 to review); re-approve restores; handover → 0', () => {
+  const st = book();
+  const b = bk(61, { paymentMethod: 'cash', sellerId: 11 }), cd = cashRow(611, 61, 11);
+  sync(st, feed({ bookings: [b], ledger: [cd] }));
+  const rej = Object.assign({}, b, { status: 'rejected', paymentStatus: 'rejected', moneyState: 'rejected', wm: '2026-10-02 04:30:00' });
+  const r = sync(st, feed({ bookings: [rej], ledger: [cd] }));
+  ok(r.res.ok);
+  eq(bal(st, '4010'), 0, 'revenue reversed');
+  eq(bal(st, '1210', { party: 'wa_11' }), L(1500), 'website cash_due still 1500');
+  eq(bal(st, '2995', { party: 'wa_11' }), L(1500), 'parked for review (liability)');
+  ok(webJ(st, 'booking', 61).pop().memo.indexOf('नगद एजेन्टसँगै') > 0, 'memo says the cash is still with the agent');
+  sync(st, feed({ bookings: [Object.assign({}, b, { wm: '2026-10-03 04:30:00', confirmedAt: '2026-10-03 10:00:00' })], ledger: [cd] }));
+  eq(bal(st, '4010'), L(1500)); eq(bal(st, '2995'), 0); eq(bal(st, '1210', { party: 'wa_11' }), L(1500));
+  sync(st, feed({ bookings: [Object.assign({}, rej, { wm: '2026-10-05 04:30:00' })], ledger: [cd, handover(612, 11, '-1500.00')] }));
+  eq(bal(st, '1210', { party: 'wa_11' }), 0, 'never negative after the handover');
+});
+
+t('manual cash_due (no booking, no paper ticket) and a voided paper ticket: cash stays on 1210 vs 2995', () => {
+  const st = book();
+  const man = lg(621, { account: 'cash', entryType: 'cash_due', kind: 'paper_ticket_cash', amount: '800.00', ref: 'Fuel cash' });
+  const pcd = lg(622, { account: 'cash', entryType: 'cash_due', kind: 'paper_ticket_cash', amount: '900.00', ref: 'P-90' });
+  const pt = { paperId: 9, sellerId: 11, paperTicketNo: 'P-90', bookingId: null, pnr: null, shape: 'register_only', routeCode: 'r5', travelDate: '2026-10-05',
+    pax: 1, amount: '900.00', commission: '0.00', paymentMode: 'cash', status: 'recorded', createdAt: '2026-10-02 06:00:00' };
+  sync(st, feed({ ledger: [man, pcd], paper: [pt] }));
+  eq(bal(st, '1210', { party: 'wa_11' }), L(1700), 'website cash 800 + 900');
+  eq(bal(st, '2995', { party: 'wa_11' }), L(800)); eq(bal(st, '4010'), L(900));
+  sync(st, feed({ ledger: [man, pcd, handover(623, 11, '-1700.00')], paper: [Object.assign({}, pt, { status: 'void' })] }));
+  eq(bal(st, '1210', { party: 'wa_11' }), 0, 'website: both handed over');
+  eq(bal(st, '4010'), 0, 'void ticket: no sale'); eq(bal(st, '2995', { party: 'wa_11' }), L(1700));
+  eq(W.plan(st, feed({ ledger: [man, pcd, handover(623, 11, '-1700.00')] }), { today: TODAY }).items.length, 0, 'no paper list → left as posted');
+});
+
+t('pre-cutover cash sale rejected and re-approved after cutover stays in the opening (never counted twice)', () => {
+  const pre = bk(62, { paymentMethod: 'cash', sellerId: 11, confirmedAt: '2026-03-30 10:00:00', verifiedAt: '2026-03-30 10:00:00', wm: '2026-03-30 04:30:00' });
+  const again = Object.assign({}, pre, { confirmedAt: '2026-05-02 10:00:00', verifiedAt: '2026-05-02 10:00:00', wm: '2026-05-02 04:30:00' });
+  const cd = cashRow(631, 62, 11, '1500.00', { createdAt: '2026-03-30 04:30:00' });
+  const st = book();
+  sync(st, feed({ bookings: [pre], ledger: [cd] }));
+  eq(bal(st, '1210', { party: 'wa_11' }), L(1500));
+  const r = sync(st, feed({ bookings: [again], ledger: [cd] }));
+  eq(bal(st, '1210', { party: 'wa_11' }), L(1500), 'site still 1500'); eq(bal(st, '4010'), 0, 'revenue is in the opening equity');
+  eq(r.plan.summary.bookings.skipped, 1);
+  // registry alone (no ledger in the feed) also keeps it pre-cutover
+  eq(W.plan(st, feed({ bookings: [Object.assign({}, again, { wm: '2026-05-03 04:30:00' })] }), { today: TODAY }).summary.bookings.skipped, 1);
+  // first ever sync after the re-approval: the ledger row's date is the evidence
+  const st2 = book();
+  sync(st2, feed({ bookings: [again], ledger: [cd] }));
+  eq(bal(st2, '1210', { party: 'wa_11' }), L(1500)); eq(bal(st2, '4010'), 0);
+});
+
+t('an older feed snapshot is refused: newer refunds / payouts / ledger rows are never reversed; lastMeta kept', () => {
+  const st = book();
+  const M = (g) => Object.assign({}, META, { generatedAt: g });
+  const done = bk(63, { status: 'cancelled', refundAmount: '1500.00', refundStatus: 'processed', cancelledAt: '2026-10-05 10:00:00',
+    refundApprovedAt: '2026-10-05 05:00:00', wm: '2026-10-05 05:00:00' });
+  const L2 = [lg(641), lg(642, { entryType: 'payout', kind: 'payout', amount: '-200.00', createdAt: '2026-10-06 06:00:00' })];
+  sync(st, feed({ meta: M('2026-10-08 09:00:00'), bookings: [done], bookingIds: [[63, 'x']], ledger: L2, paper: [], deposits: [] }));
+  const snap = () => ['4010', '4015', '1110', '2020'].map(a => bal(st, a)).join();
+  const before = snap(), n = st.journals.length;
+  const old = feed({ meta: M('2026-10-03 09:00:00'), bookings: [bk(63)], bookingIds: [[63, 'x']], ledger: L2.slice(0, 1), paper: [], deposits: [] });
+  const plan = W.plan(st, old, { today: TODAY });
+  ok(plan.stale, 'plan marked stale'); eq(plan.items.length, 0, 'nothing to post');
+  ok(plan.warnings.some(w => w.indexOf('पुरानो') >= 0), 'clear warning');
+  const res = W.apply(st, plan, CEO);
+  ok(!res.ok && res.errors.length, 'apply refuses');
+  eq(snap(), before); eq(st.journals.length, n); eq(st.web.lastMeta.generatedAt, '2026-10-08 09:00:00', 'lastMeta not rolled back');
+  // a newer feed still works
+  ok(sync(st, feed({ meta: M('2026-10-09 09:00:00'), bookings: [], bookingIds: [[63, 'x']], ledger: L2, paper: [], deposits: [] })).res.ok);
+  // an undated file: no deletion detection; an older booking copy than the one imported is skipped
+  const p2 = W.plan(st, feed({ meta: null, bookings: [bk(63)], bookingIds: [], ledger: [], paper: [], deposits: [] }), { today: TODAY });
+  eq(p2.items.length, 0, 'undated + older copy → nothing reversed');
+  ok(p2.warnings.some(w => w.indexOf('generatedAt') >= 0));
+  eq(p2.summary.bookings.skipped, 1);
+});
+
 /* ---------- the real feed sample (FEED part, shg_test, no PII) ---------- */
 const SAMPLE = process.argv[3] || process.env.SHG_FEED_SAMPLE ||
   '/tmp/claude-0/-home-user-shreehari/ed00eaf7-1512-590f-9788-dda89ca81664/scratchpad/work-feed/feed-sample.json';

@@ -1515,20 +1515,45 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
     else lv = E.requiredLevel(st, 'out', E.journalTotal(j), false);
     return Math.max(2, lv);
   };
-  function reverseBlockers(st, j) {
+  /* Submitted pending items (other than exceptPid) whose hook is `name` with args.id === id. */
+  function pendingHook(st, name, id, exceptPid) {
+    return (st.pending || []).filter(function (p) { return p.status === 'submitted' && p.id !== exceptPid && p.hook && p.hook.name === name && p.hook.args && p.hook.args.id === id; });
+  }
+  /* Net (dr − cr) of the lines on `acc` (and sub, when given) in submitted pending journals of an entity, except exceptPid. */
+  function pendingNet(st, entity, acc, sub, exceptPid) {
+    var n = 0;
+    (st.pending || []).forEach(function (p) {
+      if (p.status !== 'submitted' || p.id === exceptPid || !p.journal || p.journal.entity !== entity) return;
+      p.journal.lines.forEach(function (l) { if (l.acc === acc && (sub == null || l.sub === sub)) n += (l.dr || 0) - (l.cr || 0); });
+    });
+    return n;
+  }
+  /* exceptPid: the pending request being approved (it does not block itself). */
+  function reverseBlockers(st, j, exceptPid) {
     if (!j) return ['जर्नल भेटिएन।'];
     if (j.reversedBy) return ['यो जर्नल पहिले नै उल्टाइसकिएको छ।'];
     if (j.reversalOf) return ['उल्टाउने जर्नललाई फेरि उल्टाउन मिल्दैन — नयाँ सही इन्ट्री गर्नुहोस्।'];
-    if ((st.pending || []).some(function (p) { return p.status === 'submitted' && p.hook && p.hook.name === 'reversal' && p.hook.args && p.hook.args.id === j.id; }))
+    if (pendingHook(st, 'reversal', j.id, exceptPid).length)
       return ['यो जर्नल उल्टाउने अनुरोध पहिले नै स्वीकृतिको पर्खाइमा छ।'];
     var src = j.source || {};
     if (src.type === 'agentSale') {
       var s = E.find(st.agentSales, src.id);
       if (s && (s.cancels || []).some(function (c) { return !c.reversed && c.journalId; })) return ['यो बिक्रीको रद्द इन्ट्री पहिले उल्टाउनुहोस्, त्यसपछि बिक्री उल्टाउनुहोस्।'];
+      if (s && pendingHook(st, 'agentCancel', s.id, exceptPid).length) return ['यो बिक्रीको रद्द अनुरोध स्वीकृतिको पर्खाइमा छ — पहिले त्यो अस्वीकृत गर्नुहोस्।'];
     }
     if (src.type === 'payroll') {
       var run = E.find(st.payrollRuns, src.id), pj = run && run.paidJournalId ? E.journal(st, run.paidJournalId) : null;
       if (pj && !pj.reversedBy) return ['यो महिनाको तलब भुक्तानी (' + pj.no + ') पहिले उल्टाउनुहोस्।'];
+      if (run && pendingHook(st, 'payrollPaid', run.id, exceptPid).length) return ['यो महिनाको तलब भुक्तानी स्वीकृतिको पर्खाइमा छ — पहिले त्यो अस्वीकृत गर्नुहोस्।'];
+    }
+    if (src.type === 'agentCancel') {
+      // the refund this cancel left in 2040 must still be unpaid (and not waiting to be paid)
+      var owed = 0;
+      j.lines.forEach(function (l) { if (l.acc === '2040' && l.sub === src.id) owed += (l.cr || 0) - (l.dr || 0); });
+      if (owed > 0) {
+        if (pendingNet(st, j.entity, '2040', src.id, exceptPid) > 0) return ['यो रद्दको फिर्ता भुक्तानी स्वीकृतिको पर्खाइमा छ — पहिले त्यो अस्वीकृत गर्नुहोस्।'];
+        if (E.balance(st, j.entity, '2040', { sub: src.id }) < owed) return ['यो रद्दको यात्रु फिर्ता भुक्तानी भइसकेको छ — पहिले फिर्ता भुक्तानी उल्टाउनुहोस्।'];
+      }
     }
     return [];
   }
@@ -1883,6 +1908,12 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
     if (!E.can(user.role, 'approve')) return { ok: false, errors: ['तपाईंलाई स्वीकृत गर्ने अधिकार छैन।'] };
     if (E.levelOf(user.role) < p.level) return { ok: false, errors: ['यो रकमका लागि माथिल्लो तहको स्वीकृति चाहिन्छ।'] };
     if (st.settings.approval.segregation && p.createdById === user.id) return { ok: false, errors: ['आफैँले बनाएको भुक्तानी आफैँले स्वीकृत गर्न मिल्दैन (maker–checker)।'] };
+    // business rules may have changed since the request was made (bug: stale queued payments/reversals)
+    var hk = p.hook && HOOKS[p.hook.name];
+    if (hk && typeof hk.canPost === 'function') {
+      var pe = hk.canPost(st, p.hook.args || {}, p.journal, p) || [];
+      if (pe.length) return { ok: false, errors: pe };
+    }
     var j = clone(p.journal); j.approvedBy = user.name;
     var r = E.postJournal(st, j, user);
     if (!r.ok) return r;
@@ -1909,6 +1940,7 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
     var o = E.journal(st, args.id);
     if (o && !o.reversedBy) finishReversal(st, o, j, user, args.reason || '');
   };
+  HOOKS.reversal.canPost = function (st, args, j, p) { return reverseBlockers(st, E.journal(st, args.id), p && p.id); };
 
   /** Possible duplicates for a new entry (same UTR, or same amount+date+account+category). */
   E.findDuplicates = function (st, d) {
@@ -2119,6 +2151,7 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
     opt = opt || {};
     var s = E.find(st.agentSales, saleId);
     if (!s || s.status !== 'active') return { ok: false, errors: ['सक्रिय बिक्री भेटिएन।'] };
+    if (s.journalId && pendingHook(st, 'reversal', s.journalId).length) return { ok: false, errors: ['यो बिक्री उल्टाउने अनुरोध स्वीकृतिको पर्खाइमा छ — पहिले त्यो निर्णय गर्नुहोस्।'] };
     var rem = E.saleRemaining(st, s);
     if (rem.amount <= 0) return { ok: false, errors: ['यो बिक्रीको बाँकी सबै रकम रद्द भइसकेको (वा स्वीकृतिको पर्खाइमा) छ।'] };
     var amount = opt.amount == null || opt.amount === '' ? rem.amount : +opt.amount;
@@ -2137,11 +2170,16 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
       com = Math.max(0, Math.min(com, rem.commission));
     }
     var mode = s.collectedBy === 'agent' ? 'agent' : (opt.refund === 'paid' || opt.refund === 'agent' ? opt.refund : 'payable');
+    var level = 1, refundAcc = opt.refundAccount || s.account;
+    if (mode === 'paid' && refundAmt > 0) {   // cash leaves now: same approval level as any other payment, from a cash/bank account only
+      if (!E.cashAccounts(st, s.entity, { clearing: true }).some(function (a) { return a.code === refundAcc; })) return { ok: false, errors: ['फिर्ता तिर्ने नगद/बैंक खाता छान्नुहोस्।'] };
+      level = E.requiredLevel(st, 'out', refundAmt, false);
+    }
     var lines = [];
     if (refundAmt > 0) {
       lines.push({ acc: '4015', dr: refundAmt, cr: 0, trip: s.tripId || undefined });
       if (mode === 'agent') lines.push({ acc: '1210', party: s.agentId, dr: 0, cr: refundAmt });
-      else if (mode === 'paid') lines.push({ acc: opt.refundAccount || s.account, dr: 0, cr: refundAmt });
+      else if (mode === 'paid') lines.push({ acc: refundAcc, dr: 0, cr: refundAmt });
       else lines.push({ acc: '2040', party: opt.party || s.id, sub: s.id, dr: 0, cr: refundAmt });
     }
     if (com > 0) {
@@ -2159,7 +2197,7 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
     }
     var memo = ag.code + ' बिक्री ' + (full && !(s.cancelled && s.cancelled.amount) ? 'रद्द' : 'आंशिक रद्द') + (s.pnr ? ' (' + s.pnr + ')' : '') + (fee ? ', शुल्क ' + fmt(fee) : '') + (com ? ' + कमिसन फिर्ता' : '') + (opt.reason ? ' — ' + opt.reason : '');
     var r = E.commit(st, user, { entity: s.entity, date: opt.date || E.today(), memo: memo, ref: s.pnr || '',
-      cat: 'agent_cancel', source: { type: 'agentCancel', id: s.id, n: n }, idem: 'cancel:' + s.id + ':' + n, lines: lines }, { level: 1, label: memo, hook: { name: 'agentCancel', args: args } });
+      cat: 'agent_cancel', source: { type: 'agentCancel', id: s.id, n: n }, idem: 'cancel:' + s.id + ':' + n, lines: lines }, { level: level, label: memo, hook: { name: 'agentCancel', args: args } });
     r.sale = s;
     return r;
   };
@@ -2184,6 +2222,10 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
     s.partial = s.cancelled.amount > 0 && s.cancelled.amount < s.amount;
     if (s.status === 'active' && s.cancelled.amount >= s.amount) s.status = 'cancelled';
   };
+  HOOKS.agentCancel.canPost = function (st, args) {
+    var s = E.find(st.agentSales, args.id);
+    return s && s.status === 'active' ? [] : ['यो बिक्री अब सक्रिय छैन (उल्टाइएको वा रद्द भइसकेको) — रद्द अनुरोध अस्वीकृत गर्नुहोस्।'];
+  };
   /** Pay out a refund that a company-collected cancellation left in 2040 (refund payable). */
   E.payRefund = function (st, saleId, account, date, user, amount) {
     var s = E.find(st.agentSales, saleId);
@@ -2191,11 +2233,23 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
     var party = null;
     E.lines(st, { entity: s.entity, acc: '2040', sub: s.id }).forEach(function (x) { if (!party && x.l.party) party = x.l.party; });
     if (!party) return { ok: false, errors: ['यो बिक्रीको फिर्ता तिर्न बाँकी रकम छैन।'] };
-    var open = E.balance(st, s.entity, '2040', { party: party, sub: s.id, to: date });
+    var open = refundOpen(st, s, date);
     var amt = amount == null ? open : amount;
-    if (!(amt > 0) || amt > open) return { ok: false, errors: ['फिर्ता तिर्न बाँकी ' + fmt(open) + ' मात्र छ।'] };
+    if (!(amt > 0) || amt > open) return { ok: false, errors: ['फिर्ता तिर्न बाँकी ' + fmt(Math.max(0, open)) + ' मात्र छ (स्वीकृतिको पर्खाइमा रहेको भुक्तानी घटाएर)।'] };
     return E.commit(st, user, { entity: s.entity, date: date, memo: 'यात्रु फिर्ता भुक्तानी' + (s.pnr ? ' (' + s.pnr + ')' : ''), ref: s.pnr || '', cat: 'refund_pay',
-      lines: [{ acc: '2040', party: party, sub: s.id, dr: amt, cr: 0 }, { acc: account, dr: 0, cr: amt }] }, { level: E.requiredLevel(st, 'out', amt, false) });
+      lines: [{ acc: '2040', party: party, sub: s.id, dr: amt, cr: 0 }, { acc: account, dr: 0, cr: amt }] }, { level: E.requiredLevel(st, 'out', amt, false), hook: { name: 'refundPay', args: { id: s.id } } });
+  };
+  /* Refund still owed on a sale: open 2040 minus payments already waiting for approval (postedOnly: ignore the queue). */
+  function refundOpen(st, s, date, postedOnly) {
+    return E.balance(st, s.entity, '2040', { sub: s.id, to: date || undefined }) - (postedOnly ? 0 : pendingNet(st, s.entity, '2040', s.id));
+  }
+  HOOKS.refundPay = function () {};
+  /* At approval only what is already posted counts: the first of two queued payments goes through, the second is refused. */
+  HOOKS.refundPay.canPost = function (st, args, j) {
+    var s = E.find(st.agentSales, args.id); if (!s) return ['बिक्री भेटिएन।'];
+    var amt = 0; j.lines.forEach(function (l) { if (l.acc === '2040' && l.sub === s.id) amt += (l.dr || 0) - (l.cr || 0); });
+    var open = refundOpen(st, s, null, true);
+    return amt > open ? ['फिर्ता तिर्न बाँकी ' + fmt(Math.max(0, open)) + ' मात्र छ — यो अनुरोध अस्वीकृत गर्नुहोस्।'] : [];
   };
 
   /** Net settlement: agent keeps the commission out of the cash they hold. */
@@ -2563,10 +2617,21 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
   /** Book interest that has built up but is not yet in the P&L: Dr 7110, Cr 2070. */
   E.accrueInterest = function (st, loanId, asOf, user) {
     var loan = E.find(st.loans, loanId); if (!loan) return { ok: false, errors: ['ऋण भेटिएन।'] };
-    var i = E.loanInterest(st, loan, asOf);
-    if (!(i.toExpense > 0)) return { ok: false, errors: ['लेख्न बाँकी ब्याज छैन।'] };
+    var due = interestToBook(st, loan, asOf);
+    if (!(due > 0)) return { ok: false, errors: ['लेख्न बाँकी ब्याज छैन (स्वीकृतिको पर्खाइमा रहेको ब्याज घटाएर)।'] };
     return E.commit(st, user, { entity: loan.entity, date: asOf, memo: 'ब्याज खर्च लेखियो (accrual): ' + E.partyName(st, loan.lenderId), cat: 'interest_accrual',
-      lines: [{ acc: '7110', party: loan.lenderId, sub: loan.id, dr: i.toExpense, cr: 0 }, { acc: '2070', party: loan.lenderId, sub: loan.id, dr: 0, cr: i.toExpense }] }, { level: 2 });
+      lines: [{ acc: '7110', party: loan.lenderId, sub: loan.id, dr: due, cr: 0 }, { acc: '2070', party: loan.lenderId, sub: loan.id, dr: 0, cr: due }] }, { level: 2, hook: { name: 'interestAccrual', args: { id: loan.id } } });
+  };
+  /* Interest not yet expensed, after accruals already waiting for approval (postedOnly: ignore the queue). */
+  function interestToBook(st, loan, asOf, postedOnly) {
+    return E.loanInterest(st, loan, asOf).toExpense - (postedOnly ? 0 : pendingNet(st, loan.entity, '7110', loan.id));
+  }
+  HOOKS.interestAccrual = function () {};
+  HOOKS.interestAccrual.canPost = function (st, args, j) {
+    var loan = E.find(st.loans, args.id); if (!loan) return ['ऋण भेटिएन।'];
+    var amt = 0; j.lines.forEach(function (l) { if (l.acc === '7110' && l.sub === loan.id) amt += (l.dr || 0) - (l.cr || 0); });
+    var due = interestToBook(st, loan, j.date, true);
+    return amt > due ? ['यो मितिसम्मको ब्याज पहिले नै लेखिसकिएको छ (बाँकी ' + fmt(Math.max(0, due)) + ') — यो अनुरोध अस्वीकृत गर्नुहोस्।'] : [];
   };
   E.emi = function (P, annualRate, months) {
     if (!(months > 0)) return 0;
@@ -2708,8 +2773,23 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
   };
   HOOKS.payrollPaid = function (st, args, j, what) {
     var r = E.find(st.payrollRuns, args.id); if (!r) return;
-    if (what === 'posted') { r.status = 'paid'; r.paidJournalId = j.id; }
-    else if (what === 'reversed' && r.status === 'paid' && (!j || r.paidJournalId === j.id)) { r.status = 'posted'; r.paidJournalId = ''; }
+    if (what === 'posted') { if (r.status !== 'reversed') r.status = 'paid'; r.paidJournalId = j.id; }
+    else if (what === 'reversed' && (r.status === 'paid' || r.status === 'reversed') && (!j || r.paidJournalId === j.id)) {
+      var accr = r.journalId ? E.journal(st, r.journalId) : null;
+      r.status = accr && accr.reversedBy ? 'reversed' : 'posted'; r.paidJournalId = '';
+    }
+  };
+  HOOKS.payrollPaid.canPost = function (st, args, j) {
+    var r = E.find(st.payrollRuns, args.id); if (!r) return ['तलब भेटिएन।'];
+    var accr = r.journalId ? E.journal(st, r.journalId) : null;
+    if (r.status !== 'posted' || !accr || accr.reversedBy) return ['यो महिनाको तलब इन्ट्री उल्टाइएको वा भुक्तानी भइसकेको छ — यो भुक्तानी अस्वीकृत गर्नुहोस्।'];
+    var bad = [];
+    j.lines.forEach(function (l) {
+      if (l.acc !== '2030' || !l.party || !(l.dr > 0)) return;
+      var open = E.balance(st, r.entity, '2030', { party: l.party });
+      if (l.dr > open) bad.push(E.partyName(st, l.party) + ': तिर्न बाँकी ' + fmt(Math.max(0, open)) + ' मात्र छ।');
+    });
+    return bad;
   };
 
   /** Advance settlement: bills submitted (expense) + unused cash returned. */
@@ -5225,6 +5305,19 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
     var warned = {};
     function warn(t) { if (!warned[t]) { warned[t] = 1; plan.warnings.push(t); } }
 
+    /* STALENESS: a feed older than the last one imported (an old JSON file, a cached snapshot)
+       must never undo what a newer sync already posted. Older → the whole plan is refused.
+       Age unknown (no generatedAt) after a dated sync → nothing is treated as deleted. */
+    var feedGen = meta ? str(meta.generatedAt).trim() : '', lastGen = str(lastMeta.generatedAt).trim();
+    plan.stale = !!(feedGen && lastGen && feedGen < lastGen);
+    var ageUnknown = !feedGen && !!lastGen;
+    var mayDelete = !plan.stale && !ageUnknown;
+    if (plan.stale) {
+      plan.warnings.push('यो फिड (' + feedGen + ') पछिल्लो आयात (' + lastGen + ') भन्दा पुरानो हो — आयात गरिँदैन, नत्र पछिका इन्ट्री उल्टिन्छन्। ताजा फिड तान्नुहोस्।');
+      return plan;
+    }
+    if (ageUnknown) warn('फिडमा मिति (generatedAt) छैन — पुरानो हो कि नयाँ थाहा भएन, त्यसैले कुनै पनि मेटिएको प्रविष्टि उल्टाइएन।');
+
     var ents = Object.keys(idx.entities);
     if (ents.length && (ents.length > 1 || ents[0] !== entity))
       warn('वेबसाइटका पुराना इन्ट्री अर्को कम्पनी (' + ents.join(', ') + ') मा छन् तर सेटिङमा ' + entity + ' छ — कम्पनी सेटिङ नबदल्नुहोस्।');
@@ -5406,11 +5499,44 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
       var e = idx.by['booking:' + bid];
       return e && e.src ? num(e.src.scheduleId) : null;
     }
+    /* What the full agent ledger says about each booking (only when it was fetched):
+       cashDue[bid] = the 'cash_due' row — WHO physically holds the booking's cash. The
+         website never moves a cash row (reassign/detach/reject leave it with whoever took
+         the money), so the 1210 party follows this row, not the booking's current seller.
+       lgPre[bid]  = some ledger row of the booking was written before the cutover: the sale
+         was first confirmed before it (confirm() resets confirmed_at on a re-approval, the
+         ledger rows keep their original created_at), so it stays a pre-cutover booking. */
+    var cashDue = {}, lgPre = {};
+    (fLedger || []).forEach(function (r) {
+      var bid = num(r.bookingId);
+      if (bid === null || r.bookingMissing) return;
+      var c = istDate(r.createdAt, true, off);
+      if (c && c < set.cutover) lgPre[bid] = true;
+      if (lc(r.account) === 'cash' && lc(r.entryType) === 'cash_due' && num(r.sellerId) !== null) {
+        var lid = num(r.ledgerId) || 0, o = cashDue[bid];
+        if (!o || lid > o.lid) cashDue[bid] = { lid: lid, sid: num(r.sellerId), x: money(r.amount) };
+      }
+    });
+    function postedHas(bid) { var e = idx.by['booking:' + bid]; return !!(e && digest(e.agg)); }
+    /** a booking first confirmed before the cutover (its revenue/cash live in the opening) */
+    function preCutover(bid, b) {
+      if (b && b.confirmedAt && istDate(b.confirmedAt, false, off) < set.cutover) return true;
+      if (lgPre[bid]) return true;
+      var r = regBk[bid];
+      return !!(r && r.skipped && (!r.cut || r.cut === set.cutover));
+    }
     function bookingSkipped(bid) {
       if (bid === null) return false;
-      var b = bookRow[bid];
-      if (b) return !!b.confirmedAt && istDate(b.confirmedAt, false, off) < set.cutover;
-      return !!(regBk[bid] && regBk[bid].skipped);
+      return preCutover(bid, bookRow[bid]) && !postedHas(bid);
+    }
+    /** website seller id that holds a booking's cash: its cash_due row, else what the registry
+        remembered from one, else the booking's seller. {sid, x (cash_due paise) | null} */
+    function cashHolder(bid, b) {
+      var c = cashDue[bid];
+      if (c) return { sid: c.sid, x: c.x, row: true };
+      var r = regBk[bid];
+      if (!fLedger && r && r.ch != null) return { sid: num(r.ch), x: num(r.cx) || 0, row: true };
+      return { sid: num(b.sellerId), x: null, row: false };
     }
 
     /* ---------- app-PNR conflicts ---------- */
@@ -5498,12 +5624,23 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
         pm: lc(b.paymentMethod), ra: str(b.refundAmount), rs: lc(b.refundStatus), rd: str(b.refundApprovedAt), ca: str(b.confirmedAt),
         xa: str(b.cancelledAt), va: str(b.verifiedAt), se: num(b.sellerId), sc: num(b.scheduleId), ms: lc(b.moneyState), u: str(b.utr) });
     }
-    function bookingTarget(b, w) {
+    function bookingTarget(b, w, holder) {
       var t = T(), status = lc(b.status), ps = lc(b.paymentStatus), ms = lc(b.moneyState), bad = [];
       var info = { kind: 'none', method: lc(b.paymentMethod) || 'unknown', processed: false };
       var recognised = (status === 'confirmed' || status === 'completed' || status === 'cancelled') && !!b.confirmedAt &&
         (ps === 'verified' || (ms === 'cod_due' && status !== 'cancelled'));
-      if (!recognised) return { t: t, info: info };
+      if (!recognised) {
+        // reject / expire never touch the website cash row: the agent still owes that cash
+        var hAg = holder && holder.row && holder.x > 0 && set.methodAccounts[info.method] === '@seller' ? agentFor(holder.sid) : null;
+        if (hAg) {
+          var dH = istDate(b.wm, true, off) || today;
+          add(t, '1210', hAg, '', holder.x, dH);
+          add(t, '2995', hAg, '', -holder.x, dH);
+          w.push('बुकिङ ' + (STATUS_NE[status] || status) + ' तर वेबसाइट अनुसार नगद अझै एजेन्टसँग छ — जाँच बाँकी (2995) मा राखियो।');
+          info.kind = 'cash_held';
+        }
+        return { t: t, info: info };
+      }
       var npr = lc(b.currency) === 'npr';
       var conv = function (p) { return npr ? Math.round(p / peg) : p; };
       var pay = money(b.paymentAmount, bad), tot = money(b.totalAmount, bad);
@@ -5515,8 +5652,11 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
       if (ps === 'verified') {
         var method = info.method, spec = set.methodAccounts[method];
         if (!spec) { spec = set.methodAccounts.upi; w.push('भुक्तानी विधि "' + method + '" चिनिएन — ' + spec + ' मा राखियो।'); }
-        var ra = recvAcc(spec, b.sellerId);
-        if (spec === '@seller' && num(b.sellerId) !== null && ra.acc !== '1210') w.push('विक्रेता #' + b.sellerId + ' एजेन्ट होइन — नगद ' + ra.acc + ' मा राखियो।');
+        var hSid = spec === '@seller' && holder ? holder.sid : num(b.sellerId);
+        var ra = recvAcc(spec, hSid);
+        if (spec === '@seller' && hSid !== null && ra.acc !== '1210') w.push('विक्रेता #' + hSid + ' एजेन्ट होइन — नगद ' + ra.acc + ' मा राखियो।');
+        if (spec === '@seller' && holder && holder.row && hSid !== num(b.sellerId))
+          w.push('नगद विक्रेता #' + hSid + ' सँग छ (वेबसाइट नगद लेजर) — बुकिङको हालको विक्रेता ' + (num(b.sellerId) === null ? 'अफिस' : '#' + b.sellerId) + '।');
         add(t, ra.acc, ra.party, '', gross, maxd(dConf, istDate(b.verifiedAt, false, off)));
         add(t, '4010', '', trip, -gross, dConf);
         info.kind = 'collected';
@@ -5549,6 +5689,7 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
         if (has('4010', 'cr')) parts.push(info.kind === 'cod_due' ? 'बिक्री (COD — उठाउन बाँकी)' : 'बिक्री (' + (METHOD_NE[info.method] || info.method) + ')');
         else if (has('4010', 'dr')) parts.push('बिक्री रकम घट्यो');
         if (has('1220', 'cr') && info.kind === 'collected') parts.push('COD नगद उठ्यो');
+        if (info.kind === 'cash_held' && has('2995', 'cr')) parts.push('नगद एजेन्टसँगै — जाँच बाँकी');
         if (has('4015', 'dr')) parts.push('रद्द/रिफन्ड');
         else if (has('4015', 'cr')) parts.push('रिफन्ड घट्यो/रद्द भयो');
         if (info.processed && lines.some(function (l) { return l.acc === '2040' && l.dr > 0; })) parts.push('रिफन्ड भुक्तानी');
@@ -5565,13 +5706,21 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
       var e = idx.by['booking:' + bid], posted = e ? e.agg : null, has = !!(e && digest(posted));
       var regVal = { pnr: pnr, hash: hash, wm: wm, sid: num(b.scheduleId) };
       var dConf = b.confirmedAt ? istDate(b.confirmedAt, false, off) : '';
-      if (dConf && dConf < set.cutover) {
+      var rPrev = regBk[bid];
+      if (rPrev && rPrev.wm && wm && wm < rPrev.wm) {      // an older copy than the one already imported: never step back
         plan.summary.bookings.skipped++;
-        if (has) warn(pnr + ': कटओभर (' + set.cutover + ') अघिको बुकिङ पहिले नै आयात भएको छ — परिवर्तन गरिएन।');
-        if (!has) regVal.skipped = true;      // an already-imported booking keeps carrying its own cash
-        plan.reg.bk[bid] = regVal;
+        warn(pnr + ': फिडको बुकिङ पुरानो छ (' + wm + ' < ' + rPrev.wm + ') — पहिले आयात भएको नयाँ अवस्था राखियो।');
         return;
       }
+      if (preCutover(bid, b)) {
+        plan.summary.bookings.skipped++;
+        if (has) warn(pnr + ': कटओभर (' + set.cutover + ') अघिको बुकिङ पहिले नै आयात भएको छ — परिवर्तन गरिएन।');
+        if (!has) { regVal.skipped = true; regVal.cut = set.cutover; }      // an already-imported booking keeps carrying its own cash
+        if (!rPrev || rPrev.hash !== hash || rPrev.wm !== wm || rPrev.sid !== regVal.sid || !!rPrev.skipped !== !!regVal.skipped || rPrev.cut !== regVal.cut) plan.reg.bk[bid] = regVal;
+        return;
+      }
+      var holder = cashHolder(bid, b);
+      if (holder.row) { regVal.ch = holder.sid; regVal.cx = holder.x; }
       var sales = appPnr[pnr.toUpperCase()];
       if (sales && has) warn(pnr + ': एपमा पनि यही PNR को एजेन्ट बिक्री छ — दोहोरो आम्दानी हुन सक्छ, जाँच्नुहोस्।');
       if (sales && !has) {
@@ -5582,12 +5731,12 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
         warn('टकराव: ' + pnr + ' एपमा एजेन्ट बिक्रीको रूपमा पहिले नै छ (' + names + ') — वेबसाइट बुकिङ आयात गरिएन।');
         return;
       }
-      var tg = bookingTarget(b, w);
+      var tg = bookingTarget(b, w, holder);
       var wmD = istDate(b.wm, true, off) || today;
       var d = delta(tg.t, posted, wmD);
       if (!d.lines.length) {
         plan.summary.bookings.unchanged++;
-        if (!regBk[bid] || regBk[bid].hash !== hash || regBk[bid].sid !== regVal.sid || regBk[bid].wm !== wm) plan.reg.bk[bid] = regVal;
+        if (!rPrev || rPrev.hash !== hash || rPrev.sid !== regVal.sid || rPrev.wm !== wm || rPrev.ch !== regVal.ch || rPrev.cx !== regVal.cx) plan.reg.bk[bid] = regVal;
         return;
       }
       var status = lc(b.status), cleared = !digest(tg.t.agg) && has ? (status || 'cancelled') : '';
@@ -5606,7 +5755,7 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
     if (maxWm) plan.sync.bookings = { since: maxWm, afterId: maxWmId };
 
     /* hard-deleted bookings: known (registry or posted) but missing from the full id list */
-    if (fIds) {
+    if (fIds && mayDelete) {
       var alive = {};
       fIds.forEach(function (r) { var id = num(Array.isArray(r) ? r[0] : r && r.bookingId); if (id !== null) alive[id] = 1; });
       var cand = {};
@@ -5663,7 +5812,14 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
           }
           // otherwise the booking import already put this cash on 1210
         } else if (kind === 'paper_ticket_cash') {
-          // the paper-ticket import posts the sale itself
+          // a live register-only cash paper ticket: the paper-ticket import posts the sale (and this cash) itself.
+          // Anything else (a manual cash debit, a voided ticket) still sits with the agent on the website.
+          if (!paperCash) return { t: t, label: label, keep: true };      // paper list not fetched: leave as posted
+          if (!paperCash[num(r.sellerId) + '|' + str(r.ref).trim().toUpperCase()]) {
+            add(t, '1210', ag, '', x, date); add(t, '2995', ag, '', -x, date);
+            w.push('पेपर टिकट बिक्री नभएको (हातैले/रद्द) नगद — एजेन्टसँग नगद बाँकी, जाँच बाँकी (2995) मा राखियो।');
+            label = 'नगद (हातैले / जाँच बाँकी)';
+          }
         } else if (kind === 'cash_handover') {
           add(t, set.handoverAccount, '', '', -x, date); add(t, '1210', ag, '', x, date);
         } else {
@@ -5690,6 +5846,14 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
       add(t, '2020', ag, '', -x, date);
       return { t: t, label: label };
     }
+    var paperCash = null;      // 'sellerId|PAPERNO' of live register-only cash paper tickets (only when the paper list came)
+    if (fPaper) {
+      paperCash = {};
+      fPaper.forEach(function (r) {
+        if (str(r.shape) === 'register_only' && lc(r.status) !== 'void' && lc(r.paymentMode) === 'cash' && money(r.amount))
+          paperCash[num(r.sellerId) + '|' + str(r.paperTicketNo).trim().toUpperCase()] = 1;
+      });
+    }
     if (fLedger) {
       plan.sync.ledgerFull = true;
       var seenLg = {};
@@ -5715,7 +5879,7 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
           return;
         }
         var tg = ledgerTarget(r, ag, w);
-        var d = delta(tg.t, posted, created || today);
+        var d = tg.keep ? { lines: [] } : delta(tg.t, posted, created || today);
         if (!d.lines.length) {
           plan.summary.ledger.unchanged++;
           if (regLg[lid] !== hash) plan.reg.lg[lid] = hash;
@@ -5735,7 +5899,7 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
       var candL = {};
       Object.keys(regLg).forEach(function (k) { candL[k] = 1; });
       Object.keys(idx.by).forEach(function (k) { if (k.indexOf('ledger:') === 0) candL[k.slice(7)] = 1; });
-      Object.keys(candL).map(Number).sort(function (a, b) { return a - b; }).forEach(function (lid) {
+      if (mayDelete) Object.keys(candL).map(Number).sort(function (a, b) { return a - b; }).forEach(function (lid) {
         if (isNaN(lid) || seenLg[lid]) return;
         var e = idx.by['ledger:' + lid], posted = e ? e.agg : null;
         if (!digest(posted)) { if (hasOwn(regLg, lid)) plan.regDel.lg.push(lid); return; }
@@ -5834,6 +5998,7 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
 
     function deletedSimple(kind, short, regMap, seen, ne) {
       var cand = {}, pre = kind + ':';
+      if (!mayDelete) return;
       Object.keys(regMap).forEach(function (k) { cand[k] = 1; });
       Object.keys(idx.by).forEach(function (k) { if (k.indexOf(pre) === 0) cand[k.slice(pre.length)] = 1; });
       Object.keys(cand).map(Number).sort(function (a, b) { return a - b; }).forEach(function (id) {
@@ -5886,8 +6051,8 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
           source: { sys: 'web', kind: 'opening', sellerId: sid, part: part, cutover: set.cutover, hash: hash } });
       });
     }
-    openingFor('ledger', !!fLedger);
-    openingFor('deposits', !!fDeps);
+    openingFor('ledger', !!fLedger && mayDelete);      // a missing pre-cutover row lowers the opening = a deletion
+    openingFor('deposits', !!fDeps && mayDelete);
 
     return plan;
   };
@@ -5900,6 +6065,11 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
     if (!user || !E.can(user.role, 'post')) { res.errors.push('तपाईंको भूमिकाले वेबसाइट आयात गर्न मिल्दैन (post अनुमति चाहिन्छ)।'); return res; }
     if (!plan || !Array.isArray(plan.items)) { res.errors.push('आयात योजना भेटिएन — पहिले सिंक गर्नुहोस्।'); return res; }
     var w = W.ensure(st), cr = plan.create || {}, i;
+    var pGen = plan.meta ? str(plan.meta.generatedAt).trim() : '', lGen = w.lastMeta ? str(w.lastMeta.generatedAt).trim() : '';
+    if (plan.stale || (pGen && lGen && pGen < lGen)) {
+      res.errors.push('यो फिड (' + (pGen || '?') + ') पछिल्लो आयात (' + lGen + ') भन्दा पुरानो हो — आयात रोकियो। ताजा फिड तानेर फेरि सिंक गर्नुहोस्।');
+      return res;
+    }
     var put = function (list, o) { if (o && o.id && !E.find(list, o.id)) list.push(E.clone(o)); };
     st.people = st.people || []; st.vehicles = st.vehicles || []; st.trips = st.trips || []; st.agents = st.agents || [];
     (cr.people || []).forEach(function (o) { put(st.people, o); });
@@ -5964,7 +6134,7 @@ body>.banner{margin:0;border-radius:0;border-width:0 0 1px}
     }
     if (plan.sync && plan.sync.ledgerFull && !failedKinds.ledger && !failedKinds.opening) w.sync.ledgerFullAt = now;
     w.sync.lastRunAt = now;
-    if (plan.meta) w.lastMeta = E.clone(plan.meta);
+    if (plan.meta && (pGen || !lGen)) w.lastMeta = E.clone(plan.meta);      // never replace a dated meta with an older/undated one
     var s = plan.summary || {};
     var run = { at: now, by: user.name, counts: { items: plan.items.length, posted: res.posted, duplicates: res.duplicates, queued: res.queued,
       errors: res.errors.length, masters: made, bookings: s.bookings || null, ledger: s.ledger || null, paper: s.paper || null, deposits: s.deposits || null },

@@ -1236,5 +1236,118 @@ t('E.find keeps an id map for big arrays that stays right when they change', () 
   eq(E.find(arr, 'nope'), null); eq(E.find(null, 'x'), null);
 });
 
+/* ---- engine-money regressions (queued approvals re-check their business preconditions) ---- */
+function fundBook() {
+  const st = book();
+  E.postJournal(st, { entity: 'IN', date: '2026-09-01', memo: 'fund', lines: [{ acc: '1110', dr: L(10000000), cr: 0 }, { acc: '4090', dr: 0, cr: L(10000000) }] }, CEO);
+  return st;
+}
+function hidePending(p, fn) { p.status = 'hold'; try { return fn(); } finally { p.status = 'submitted'; } }
+function companySale(st, amt) {
+  const ag = E.addAgent(st, { name: 'A' + Math.random() }, CEO).agent;
+  const r = E.recordAgentSale(st, { agentId: ag.id, pax: 2, amount: amt, date: '2026-10-01', entity: 'IN', collectedBy: 'company', account: '1110' }, CEO);
+  ok(r.ok, 'sale posted'); return r;
+}
+
+t('money: queued salary payment cannot be paid after its accrual is reversed', () => {
+  const st = fundBook();
+  E.addEmployee(st, { name: 'Ram', base: L(30000), from: '2026-01-01' }, CEO);
+  const r = E.postPayroll(st, 'IN', '2026-09', E.payrollDraft(st, 'IN', '2026-09'), CEO); ok(r.ok);
+  const cash0 = E.balance(st, 'IN', '1110', { to: TODAY });
+  const pay = E.payPayroll(st, r.run.id, '1110', TODAY, ACC); ok(pay.queued, 'payment queued');
+  const rv = E.reverseJournal(st, r.journal.id, { reason: 'x' }, CEO);
+  ok(!rv.ok, 'accrual reversal refused while a payment waits for approval');
+  ok(!E.requestReversal(st, r.journal.id, {}, FIN).ok, 'reversal request refused too');
+  // even if the accrual got reversed by some other route, approval re-checks the run
+  ok(hidePending(pay.pending, () => E.reverseJournal(st, r.journal.id, { reason: 'x' }, CEO).ok));
+  eq(r.run.status, 'reversed');
+  const ap = E.approve(st, pay.pending.id, CEO);
+  ok(!ap.ok, 'approval refused'); eq(r.run.status, 'reversed', 'status kept');
+  eq(E.balance(st, 'IN', '1110', { to: TODAY }), cash0, 'no cash left');
+  eq(E.balance(st, 'IN', '2030', { to: TODAY }), 0);
+  E.reject(st, pay.pending.id, CEO, 'x');
+  ok(E.postPayroll(st, 'IN', '2026-09', E.payrollDraft(st, 'IN', '2026-09'), CEO).ok, 'month can be posted again');
+  // hook: a 'posted' payment never overwrites 'reversed'; reversing it restores 'reversed'
+  const run = { id: 'prx', status: 'reversed', journalId: r.journal.id, paidJournalId: '' }; st.payrollRuns.push(run);
+  E.HOOKS.payrollPaid(st, { id: 'prx' }, { id: 'jp' }, 'posted');
+  eq(run.status, 'reversed'); eq(run.paidJournalId, 'jp');
+  E.HOOKS.payrollPaid(st, { id: 'prx' }, { id: 'jp' }, 'reversed');
+  eq(run.status, 'reversed'); eq(run.paidJournalId, '');
+  // a queued accrual reversal cannot be approved after the month was paid
+  const st2 = fundBook(); E.addEmployee(st2, { name: 'Sita', base: L(30000), from: '2026-01-01' }, CEO);
+  const r2 = E.postPayroll(st2, 'IN', '2026-09', E.payrollDraft(st2, 'IN', '2026-09'), CEO);
+  const rq = E.requestReversal(st2, r2.journal.id, {}, FIN); ok(rq.queued);
+  ok(!E.payPayroll(st2, r2.run.id, '1110', TODAY, CEO).ok, 'nothing to pay while the accrual reversal waits');
+  ok(hidePending(rq.pending, () => E.payPayroll(st2, r2.run.id, '1110', TODAY, CEO).ok));
+  ok(!E.approve(st2, rq.pending.id, CEO).ok, 'reversal approval refused after payment');
+  eq(E.balance(st2, 'IN', '2030', { to: TODAY }), 0); eq(r2.run.status, 'paid');
+  balanced(st, 'IN', TODAY); balanced(st2, 'IN', TODAY);
+});
+
+t('money: queued sale reversal cannot be approved after a partial cancel', () => {
+  const st = fundBook(); const s = companySale(st, L(10000));
+  const rq = E.requestReversal(st, s.journal.id, { reason: 'x' }, ACC); ok(rq.queued);
+  const c = E.cancelAgentSale(st, s.sale.id, { amount: L(5000), refund: 'payable', date: TODAY }, ACC);
+  ok(!c.ok, 'cancel refused while a reversal of the sale waits');
+  ok(hidePending(rq.pending, () => E.cancelAgentSale(st, s.sale.id, { amount: L(5000), refund: 'payable', date: TODAY }, ACC).ok));
+  const ap = E.approve(st, rq.pending.id, CEO);
+  ok(!ap.ok, 'approval refused: the cancel must be reversed first');
+  eq(s.sale.status, 'active'); eq(E.balance(st, 'IN', '4015', { to: TODAY }), -L(5000), 'one live cancel');
+  eq(E.balance(st, 'IN', '4010', { to: TODAY }), L(10000));
+  balanced(st, 'IN', TODAY);
+});
+
+t('money: duplicate queued refund payments / interest accruals are refused', () => {
+  const st = fundBook(); const s = companySale(st, L(10000));
+  ok(E.cancelAgentSale(st, s.sale.id, { refund: 'payable', date: TODAY }, CEO).ok);
+  const p1 = E.payRefund(st, s.sale.id, '1110', TODAY, ACC); ok(p1.queued);
+  ok(!E.payRefund(st, s.sale.id, '1110', TODAY, ACC).ok, 'second request refused (already waiting)');
+  const p2 = hidePending(p1.pending, () => E.payRefund(st, s.sale.id, '1110', TODAY, ACC)); ok(p2.queued);
+  ok(E.approve(st, p1.pending.id, FIN).ok);
+  ok(!E.approve(st, p2.pending.id, FIN).ok, 'second approval refused');
+  eq(E.balance(st, 'IN', '2040', { to: TODAY }), 0, 'refund paid once');
+  // interest
+  const D = E.addPerson(st, { name: 'D', kind: 'director_lender' }, CEO);
+  const ln = E.addLoan(st, { lenderId: D.id, type: 'director', principal: L(100000), rate: 12, method: 'simple', start: '2026-07-15', receiveNow: true, account: '1110', docRef: 'x' }, CEO);
+  const due = E.loanInterest(st, ln.loan, TODAY).toExpense; ok(due > 0);
+  const a1 = E.accrueInterest(st, ln.loan.id, TODAY, ACC); ok(a1.queued);
+  ok(!E.accrueInterest(st, ln.loan.id, TODAY, ACC).ok, 'second accrual refused');
+  const a2 = hidePending(a1.pending, () => E.accrueInterest(st, ln.loan.id, TODAY, ACC)); ok(a2.queued);
+  ok(E.approve(st, a1.pending.id, FIN).ok);
+  ok(!E.approve(st, a2.pending.id, FIN).ok, 'second accrual approval refused');
+  eq(E.balance(st, 'IN', '7110', { to: TODAY }), due, 'interest booked once');
+  balanced(st, 'IN', TODAY);
+});
+
+t('money: a cash refund on cancel needs the out-payment approval level and a cash account', () => {
+  const st = fundBook(); const s = companySale(st, L(9000000));
+  const cash0 = E.balance(st, 'IN', '1110', { to: TODAY });
+  const c = E.cancelAgentSale(st, s.sale.id, { refund: 'paid', refundAccount: '1110', date: TODAY }, ACC);
+  ok(c.ok && c.queued, 'big cash refund queued'); eq(c.pending.level, 3);
+  eq(E.balance(st, 'IN', '1110', { to: TODAY }), cash0, 'no cash left yet');
+  ok(E.approve(st, c.pending.id, CEO).ok); eq(s.sale.status, 'cancelled');
+  const s2 = companySale(st, L(100));
+  ok(!E.cancelAgentSale(st, s2.sale.id, { refund: 'paid', refundAccount: '4090', date: TODAY }, ACC).ok, 'non-cash account refused');
+  const c2 = E.cancelAgentSale(st, s2.sale.id, { refund: 'paid', refundAccount: '1110', date: TODAY }, ACC);
+  ok(c2.ok && !c2.queued, 'small cash refund still posts at once');
+  balanced(st, 'IN', TODAY);
+});
+
+t('money: a cancel whose refund was paid (or is waiting) cannot be reversed', () => {
+  const st = fundBook(); const s = companySale(st, L(10000));
+  const c = E.cancelAgentSale(st, s.sale.id, { refund: 'payable', date: TODAY }, CEO); ok(c.ok);
+  const q = E.payRefund(st, s.sale.id, '1110', TODAY, ACC); ok(q.queued);
+  ok(!E.reverseJournal(st, c.journal.id, {}, CEO).ok, 'blocked while a refund waits');
+  E.reject(st, q.pending.id, CEO, 'x');
+  const pr = E.payRefund(st, s.sale.id, '1110', TODAY, CEO); ok(pr.ok && !pr.queued);
+  const rv = E.reverseJournal(st, c.journal.id, {}, CEO);
+  ok(!rv.ok, 'blocked after the refund was paid');
+  eq(E.balance(st, 'IN', '2040', { to: TODAY }), 0); eq(s.sale.status, 'cancelled');
+  ok(E.reverseJournal(st, pr.journal.id, {}, CEO).ok, 'refund payment reversed first');
+  ok(E.reverseJournal(st, c.journal.id, {}, CEO).ok, 'then the cancel');
+  eq(E.balance(st, 'IN', '2040', { to: TODAY }), 0); eq(s.sale.status, 'active');
+  balanced(st, 'IN', TODAY);
+});
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
