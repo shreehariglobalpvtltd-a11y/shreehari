@@ -238,7 +238,8 @@ const CORE_SUITES = [
     'theme-palette-test.php'      => '12 palettes x light/dark/AMOLED, pre-paint whitelist, Pixel/Classic UI + sound packs, Appearance sheet',
     'showcase-test.php'           => 'home showcase: emblem-only logo, 3D widgets, colourful help buttons, CEO card, amenities, quick-booking demo',
     // 15 Oct 2026 SmartBook v5 phase 2.
-    'smartbook-facts-test.php'    => 'D8 one refund policy (48h 75 / 24-48h 50 / <24h 0, 5-7 days), D9 1,375 km, D10 Rajkot: calculator, facts, ratchet, wiring',
+    'smartbook-engine-test.php'   => 'SmartBook engine: AutoBerth H1-H5 scenarios < 50 ms, manual check, Default Rules, quote = priceFor, idempotent Cash/Online book, 20 parallel holds = 1 win',
+    'smartbook-facts-test.php'    =>'D8 one refund policy (48h 75 / 24-48h 50 / <24h 0, 5-7 days), D9 1,375 km, D10 Rajkot: calculator, facts, ratchet, wiring',
     'homeinfo-test.php'           => 'home info: fares board, route strip, India-Nepal timeline, places worth the trip, localized links',
     'route-details-test.php'      => 'route km per stop, halts, stop count, timetable API, live running time on track',
     'ticket-art-test.php'         => 'emblem/flags/heritage art + security code + verify NOT GENUINE',

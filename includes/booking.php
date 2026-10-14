@@ -3174,6 +3174,22 @@ final class BookingService
      * @param array<string, mixed> $request
      * @return array<string, mixed>
      */
+    /**
+     * SmartBook v5 (15 Oct 2026): the ONE fare function, public. The card,
+     * QuickBot, Sahayak, agent and counter quote with exactly the pricing
+     * create() charges with, so a shown total can never differ from the
+     * ticket. The client never sends a price.
+     *
+     * @param array<string, mixed> $route    routes row
+     * @param array<string, mixed> $schedule schedules row
+     * @param array<int, string>   $seats    labels in the booking mode
+     * @return array<string, mixed> priceBooking()'s answer
+     */
+    public static function priceFor(array $route, array $schedule, array $seats, ?string $bookingMode, string $cabinType, string $boarding, string $phone, string $drop = ''): array
+    {
+        return self::priceBooking($route, $seats, $bookingMode, ['cabinType' => $cabinType], $phone, $schedule, $boarding, $drop !== '' ? $drop : null);
+    }
+
     private static function priceBooking(array $route, array $seats, ?string $bookingMode, array $request, string $phone, ?array $schedule = null, ?string $boardingStop = null, ?string $dropStop = null): array
     {
         $seatCount = count($seats);
