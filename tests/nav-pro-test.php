@@ -141,24 +141,38 @@ $used = array_values(array_unique($used));
 $gaps = [];
 foreach ($used as $k) { $mi = $missingIn($k); if ($mi !== []) { $gaps[] = $k . ' (' . implode(',', $mi) . ')'; } }
 check('every nav markup + pro bundle key exists in all three languages', $gaps === [], $gaps === [] ? count($used) . ' keys' : implode('; ', $gaps));
-foreach (['snCockpitT', 'snLyCockpit', 'snModeFlight', 'snFlightNote', 'snFlightSoon', 'snDeviceRow', 'snHudGps', 'snGpsFix',
-          'snLiveDriverRow', 'snLiveFleetRow', 'snComingSoon', 'snKeysHint', 'snSaveQuota', 'snSaveNoRoom'] as $k) {
+foreach (['snCockpitT', 'snLyCockpit', 'snModeFlight', 'snFlightNote', 'snDeviceRow', 'snHudGps', 'snGpsFix', 'snGpsAcc',
+          'snLiveDriverRow', 'snLiveFleetRow', 'snComingSoon', 'snKeysHint', 'snSaveQuota', 'snSaveNoRoom',
+          'snCockpitNoDev', 'snLiteLocked', 'snLiveLocal'] as $k) {
     check("key $k present in en / hi / ne", $missingIn($k) === []);
 }
-foreach (['snCockpitT', 'snModeFlight', 'snFlightSoon', 'snDeviceRow', 'snComingSoon'] as $k) {
+foreach (['snCockpitT', 'snModeFlight', 'snDeviceRow', 'snComingSoon', 'snLiteLocked'] as $k) {
     check("$k is used by the markup", in_array($k, $used, true));
 }
-check('"S Hari Global" stays Roman in the flight-soon line (hi + ne)', str_contains($lang['hi'], "snFlightSoon: 'S Hari Global") && str_contains($lang['ne'], "snFlightSoon: 'S Hari Global"));
 check('the mode name map in 15-nav.js knows flight', str_contains(fnBody($nav, 'snModeName'), "flight:'snModeFlight'"));
 
 echo "\n-- 4. honesty: no new facts, no fake live feed --\n";
 check('26-navpro.js has no phone number literal', !preg_match('/\+91|\+977|\b\d{10}\b|\b9\d{4}\s?\d{5}\b/', $pro));
 check('26-navpro.js has no price literal', !preg_match('/₹|\bRs\.?\s?\d|\bINR\b|\bNPR\b/u', $pro));
 check('26-navpro.js has no e-mail / address literal', !preg_match('/@[a-z0-9-]+\.[a-z]{2,}|Mehsana|Shilpa Garage/i', $pro));
-check('fleet GPS unit + CCTV row carries the Coming-soon badge (track card AND layers)', substr_count($navTpl, 'data-i18n="snLiveFleetRow"') === 2 && substr_count($navTpl, 'class="sn-soon" data-i18n="snComingSoon"') >= 3);
+check('fleet GPS unit + CCTV row carries the Coming-soon badge (track card AND layers)', substr_count($navTpl, 'data-i18n="snLiveFleetRow"') === 2 && substr_count($navTpl, 'class="sn-soon" data-i18n="snComingSoon"') === 2);   /* review fix 10 Oct: the flight card's badge went (no booking promise) */
 check('the live-bus row reflects the real feed only (driver / kv timestamps)', str_contains(fnBody($pro, 'snProLiveStatus'), 'SN.trackLastTs') && str_contains(fnBody($pro, 'snProLiveStatus'), 'SN.driverBroadcast') && str_contains(fnBody($pro, 'snProLiveStatus'), "snT('snLiveWait')"));
 check('no fabricated position or video anywhere in the pro bundle', !preg_match('/<video|\.mp4|\bhls\b|fakeFix|demoFix|Math\.random\(\)\s*\*\s*\d+\s*[,+]\s*\d/i', $pro));
-check('flight card says estimate + coming soon', str_contains($lang['en'], 'estimate') && str_contains($navTpl, 'id="snFlightCard"') && (bool) preg_match('/id="snFlightCard".{0,600}snComingSoon/s', $navTpl));
+/* review fix 10 Oct: the owner has not decided on a flight product - no booking promise anywhere */
+$fcS = strpos($navTpl, 'id="snFlightCard"'); $fcE = $fcS !== false ? strpos($navTpl, 'id="snTrackCard"', $fcS) : false;
+$flightCard = ($fcS !== false && $fcE !== false) ? substr($navTpl, $fcS, $fcE - $fcS) : '';
+check('flight card says estimate and makes NO booking promise', str_contains($lang['en'], 'estimate') && $flightCard !== '' && str_contains($flightCard, 'snFlightNote') && !str_contains($flightCard, 'snComingSoon') && !str_contains($navTpl, 'snFlightSoon') && !str_contains($i18n, 'snFlightSoon'));
+check('no "booking" wording in the flight lines (en / hi / ne)', (function () use ($lang): bool {
+    foreach ($lang as $blk) {
+        if (preg_match("/snFlight\\w*: '[^']*(booking|बुकिंग|बुकिङ)/u", $blk)) { return false; }
+    }
+    return true;
+})());
+/* review fix 10 Oct: "this phone is sharing" only when it is true for other phones */
+$self = fnBody($pro, 'snProSelfLive');
+check('snLiveSelf needs staff + a running GPS watch + a server-accepted publish < 30 s old', str_contains($self, 'SN.driverBroadcast') && str_contains($self, 'snProIsStaff()') && str_contains($self, 'SN.watchId!=null') && str_contains($self, '(Date.now()-SN.kvPushOkAt)<30000'));
+check('a non-staff broadcast reads "this browser only", never live', str_contains(fnBody($pro, 'snProLiveStatus'), "if(SN.driverBroadcast&&!snProIsStaff()){ txt=snT('snLiveLocal'); st='wait'; }") && !preg_match("/SN\\.driverBroadcast\\)\\{\\s*txt=snT\\('snLiveSelf'\\)/", $pro));
+check('15-nav.js stamps SN.kvPushOkAt only when the server accepted the publish', str_contains($nav, ".then(function(){ SN.kvPushOkAt=Date.now(); }).catch(function(){});"));
 
 echo "\n-- 5. flight mode never calls the routing engine --\n";
 $route = fnBody($nav, 'snRoute');
@@ -199,6 +213,15 @@ $mo = fnBody($pro, 'snProMapOpts');
 check('snProMapOpts() sets maxTileCacheSize, pixelRatio cap, antialias, fadeDuration', str_contains($mo, 'o.maxTileCacheSize=') && str_contains($mo, "t==='low'?1.5:") && str_contains($mo, 'o.antialias=') && str_contains($mo, 'o.fadeDuration='));
 check('15-nav.js builds the map from snProMapOpts(mapOpts)', str_contains($nav, 'mapOpts=snProMapOpts(mapOpts)||mapOpts;') && str_contains($nav, 'map=new maplibregl.Map(mapOpts);'));
 check('a low tier forces Fast mode', str_contains($nav, 'snProForceLite()) SN.lite=true;') && str_contains($pro, "function snProForceLite(){ return snDeviceProfile().tier==='low'; }"));
+/* review fix 10 Oct: on a basic device nothing offers a choice that cannot work */
+$ll = fnBody($pro, 'snProLockLow');
+check('low tier: the Fast-mode switch is ticked + disabled and its note shown', str_contains($ll, 'if(!snProForceLite()) return;') && str_contains($ll, 'lt.checked=true; lt.disabled=true;') && str_contains($ll, 'note.hidden=false') && str_contains($navTpl, 'id="snLyLiteNote" data-i18n="snLiteLocked" hidden'));
+check('low tier: the ⚡ pill and the switch only say why (no reload loop)', str_contains($ll, "fp.onclick=function(){ snProToast('snLiteLocked'); }") && str_contains($ll, "lt.onchange=function(){ lt.checked=true; snProToast('snLiteLocked'); }") && !str_contains($ll, 'location.reload'));
+check('low tier: the cockpit button and switch are hidden', str_contains($ll, "b.style.display='none'") && str_contains($ll, "cl.style.display='none'"));
+check('snProInit() runs the low-tier lock', str_contains(fnBody($pro, 'snProInit'), 'snProLockLow();'));
+check('the cockpit toast says "untick Fast mode" only where that can work', str_contains(fnBody($pro, 'snProSetCockpit'), "(SN.weak||snDeviceProfile().tier==='low')?'snCockpitNoDev':'snCockpitLite'"));
+check('the device row: memory "8+" at the browser cap, storage called site data, "device" not "phone"', str_contains(fnBody($pro, 'snProDeviceRow'), "p.mem>=8?'8+'") && str_contains($lang['en'], "snDeviceRowFmt: '{c} cores · {m} GB RAM · {t} · {mb} MB site data on this device'") && !preg_match("/snDeviceRowFmt: '[^']*phone/", $lang['en']));
+check('MapLibre keyboard handler off - snProKey is the one key driver', str_contains($mo, 'o.keyboard=false;'));
 $sp = fnBody($pro, 'snProSavePlan');
 check('offline save capped at 25 % of the free quota, MB said first', str_contains($sp, 'st.free/1048576*0.25') && str_contains($sp, "snT('snSaveQuota'") && str_contains($sp, "snProToast('snSaveNoRoom')"));
 check('#snOffSave asks snProSavePlan() before posting to the worker', (bool) preg_match('/snProSavePlan\(urls\).{0,400}postMessage\(\{type:\'shg-prefetch\'/s', $nav));
@@ -209,6 +232,10 @@ echo "\n-- 8. low-latency GPS --\n";
 check('watchPosition: enableHighAccuracy true, maximumAge 0', (bool) preg_match('/watchPosition\(.*?\{enableHighAccuracy:true,maximumAge:0,timeout:\d+\}\)/s', $nav));
 check('HUD has the GPS fix cell', str_contains($navTpl, 'id="snGps"') && str_contains($navTpl, 'data-i18n="snHudGps"'));
 check('cadence + accuracy written on every fix ("GPS 1.0 s · ±8 m")', str_contains(fnBody($pro, 'snProGpsCell'), "snT('snGpsFix',{ s:(gap/1000).toFixed(1)") && str_contains($lang['en'], "snGpsFix: 'GPS {s} s · ±{m} m'"));
+/* review fix 10 Oct: only a measured cadence is ever shown */
+check('no cadence before two real fixes (accuracy only), never the 1000 ms default', str_contains(fnBody($pro, 'snProGpsCell'), "gap>0?snT('snGpsFix'") && str_contains(fnBody($pro, 'snProGpsCell'), "snT('snGpsAcc',{ m:m })") && !str_contains((string) preg_replace('~/\*.*?\*/~s', '', fnBody($pro, 'snProGpsCell')), 'gpsIntervalMs'));
+check('gaps under 200 ms are ignored, a pause over a minute resets', str_contains(fnBody($pro, 'snProOnFix'), 'if(gap>60000) SNP.fixGapMs=0; else if(gap>=200) SNP.fixGapMs=gap;'));
+check('snProCleanup() resets the fix clock (no "GPS 300 s" after a visit away)', str_contains(fnBody($pro, 'snProCleanup'), 'SNP.lastFixAt=0; SNP.fixGapMs=0;'));
 check('onSnPos() calls snProOnFix and snProFuseHeading', str_contains($nav, 'snProOnFix(c, hdg)') && str_contains($nav, 'hdg=snProFuseHeading(c, gpsHdg, hdg)'));
 $fh = fnBody($pro, 'snProFuseHeading');
 check('below 2 m/s the compass (low-passed) or the held heading is used', str_contains($fh, 'if(spd<2){') && str_contains($fh, 'SNP.compassLP') && str_contains($fh, 'SNP.heldHdg'));
@@ -221,7 +248,13 @@ check('#snCockpitLayer is aria-hidden and pointer-events:none', str_contains($na
 check('per-mode presets: car 62/17, bike 66/17.5, bus 55/16, cycle 45/18, walk 45/18, flight 30/9', str_contains($pro, 'auto:       { pitch:62, zoom:17,') && str_contains($pro, 'motorcycle: { pitch:66, zoom:17.5,') && str_contains($pro, 'bus:        { pitch:55, zoom:16,') && str_contains($pro, 'bicycle:    { pitch:45, zoom:18,') && str_contains($pro, 'pedestrian: { pitch:45, zoom:18,') && str_contains($pro, 'flight:     { pitch:30, zoom:9,'));
 check('the motion loop reads snProCamTarget() with the existing time constants', str_contains($nav, 'snProCamTarget():null;') && str_contains($nav, 'SN_TAU_ZM') && str_contains($nav, 'SN_TAU_PITCH') && str_contains($nav, 'pc?pc.zoom:snTargetZoom()') && str_contains($nav, 'pc?pc.pitch:52'));
 check('snProCamTarget() is pure arithmetic (no DOM read per frame)', !preg_match('/getElementById|querySelector|snProEl\(/', fnBody($pro, 'snProCamTarget')));
-check('the bus preset looks further ahead (SN.proLook)', str_contains($nav, 'SN.proLook||(walk?0.025:0.07)') && str_contains($pro, 'bus:        { pitch:55, zoom:16,   look:0.12 }'));
+check('the bus preset looks further ahead, read live for the current mode (snProLook)', str_contains($nav, "var look=(typeof snProLook==='function')?snProLook():null;") && str_contains($nav, 'look||(walk?0.025:0.07)') && str_contains($pro, 'bus:        { pitch:55, zoom:16,   look:0.12 }') && !str_contains($pro, 'SN.proLook') && !str_contains($nav, 'SN.proLook'));
+check('snProLook() is pure arithmetic over SN.mode', str_contains(fnBody($pro, 'snProLook'), '(SNP_CAM[SN.mode]||SNP_CAM.auto).look') && !preg_match('/getElementById|querySelector|snProEl\(/', fnBody($pro, 'snProLook')));
+/* review fix 10 Oct: phone HUD, Layers height, attribution, flight gauges */
+check('the cockpit moves the HUD on wide screens only (phone HUD keeps top:132px)', str_contains($css, '@media(min-width:641px){#view-nav.sn-cockpit-on .sn-hud{bottom:calc(26% + 10px)}}') && !preg_match('/^#view-nav\.sn-cockpit-on \.sn-hud\{bottom/m', $css));
+check('Layers scrolls inside the viewport', (bool) preg_match('/#view-nav \.sn-layers\{max-width:min\(320px,calc\(100vw - 28px\)\);\s*\/\*[^*]*\*\/\s*max-height:calc\(100vh - 96px\);max-height:calc\(100dvh - 96px\);overflow-y:auto;overscroll-behavior:contain\}/', $css));
+check('attribution + scale stay above the cockpit band', str_contains($css, '#view-nav.sn-cockpit-on .maplibregl-ctrl-bottom-left,#view-nav.sn-cockpit-on .maplibregl-ctrl-bottom-right{z-index:15}'));
+check('the flight cockpit shows no speed / heading gauges', str_contains($css, '#view-nav .sn-cockpit[data-ck="flight"] .sn-ck-gauge,#view-nav .sn-cockpit[data-ck="flight"] .sn-ck-head{display:none}'));
 check('silhouettes for car / motorcycle / bus / bicycle / pedestrian / flight', (function () use ($pro): bool {
     $b = fnBody($pro, 'snProCockpitSvg');
     foreach (['motorcycle', 'bus', 'bicycle', 'pedestrian', 'flight'] as $m) { if (!str_contains($b, "mode==='$m'")) { return false; } }
@@ -235,13 +268,15 @@ check('cockpit hidden while the tab is hidden (visibilitychange -> sync)', str_c
 check('cockpit shows only while the camera is inside the vehicle (navCamOn or flight)', str_contains(fnBody($pro, 'snProCockpitSync'), 'SN.navCamOn()') && str_contains(fnBody($pro, 'snProCockpitSync'), "SNP.flightOn&&SN.mode==='flight'"));
 
 echo "\n-- 10. TV + keyboard --\n";
-check('html.shg-tv or >= 1800 px gives #view-nav the sn-tv class', str_contains(fnBody($pro, 'snProTvCheck'), "classList.contains('shg-tv')") && str_contains(fnBody($pro, 'snProTvCheck'), '(min-width:1800px)') && str_contains(fnBody($pro, 'snProTvCheck'), "'sn-tv'"));
+check('html.shg-tv or a big no-hover / no-pointer screen gives #view-nav the sn-tv class', str_contains(fnBody($pro, 'snProTvCheck'), "classList.contains('shg-tv')") && str_contains(fnBody($pro, 'snProTvCheck'), 'matchMedia(SNP_TV_MQ)') && str_contains(fnBody($pro, 'snProTvCheck'), "'sn-tv'"));
+check('a 1920 px mouse desktop is NOT a TV (width alone never triggers it)', str_contains($pro, "var SNP_TV_MQ = '(min-width:1800px) and (hover:none), (min-width:1200px) and (any-pointer:none)';") && !str_contains($pro, "matchMedia('(min-width:1800px)')"));
 check('sn-tv: 1.5x controls, 20 px type, strong focus ring', str_contains($css, '#view-nav.sn-tv .sn-cb{width:66px;height:66px') && (bool) preg_match('/#view-nav\.sn-tv [^{]*\{font-size:20px\}/', $css) && str_contains($css, '#view-nav.sn-tv :focus-visible{outline:4px solid var(--sg)'));
 $key = fnBody($pro, 'snProKey');
 foreach ([["'ArrowUp'", 'pan'], ["'+'", 'zoomIn'], ["'-'", 'zoomOut'], ["'r'", 'bearing'], ["'l'", 'bearing'], ["'3'", "click('sn3D')"], ["'c'", 'snProSetCockpit'], ["'Enter'", "click('snGo')"], ["'Escape'", "click('snBack')"]] as [$k, $act]) {
     check("key $k -> $act", str_contains($key, 'case ' . $k) && str_contains($key, $act));
 }
 check('keys only while #view-nav is active and no input is focused', str_contains($key, "nv.classList.contains('active')") && str_contains($key, '/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)'));
+check('a key another handler already used is left alone (defaultPrevented)', str_contains($key, 'e.defaultPrevented'));
 check('Enter = Get directions only when both fields are set', str_contains($key, 'if(SN.origin&&SN.dest&&'));
 check('Esc = exit focus mode / back', str_contains($key, "click('snFocusExit')") && str_contains($key, "click('snBack')"));
 

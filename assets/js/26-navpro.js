@@ -22,26 +22,34 @@
  *      DOM) and a CSS-3D overlay (#snCockpitLayer, pointer-events:none)
  *      with the vehicle silhouette, speed, heading and the next turn.
  *   2. Flight mode - a great-circle arc (64 points), straight-line
- *      distance, a cruise-time ESTIMATE, and "flight booking - coming
- *      soon". The routing engine is never asked; SN.routeGeo stays null so
- *      turn-by-turn never starts.
+ *      distance and a cruise-time ESTIMATE. No booking promise (the owner
+ *      has not decided on a flight product). The routing engine is never
+ *      asked; SN.routeGeo stays null so turn-by-turn never starts.
  *   3. Device-tiered engine - snDeviceProfile() (cores, memory, network,
  *      WebGL renderer, window.SHG_TIER, storage estimate) -> low / mid /
  *      high, applied to the MapLibre options (snProMapOpts), to the
  *      quota-aware offline save (snProSavePlan: never more than 25 % of the
  *      free quota, the MB said before anything downloads) and shown as the
- *      "This device" row in Layers. A low tier forces Fast mode, as today.
- *   4. Low-latency GPS - the fix cadence and age in the HUD ("GPS 1.0 s ·
- *      ±8 m"), compass fusion below 2 m/s so the arrow holds its heading at
- *      a standstill (snProFuseHeading); every sensor listener is removed in
+ *      "This device" row in Layers. A low tier forces Fast mode: the switch
+ *      is greyed with a "basic device" note and the cockpit is hidden, so
+ *      nothing offers a choice that cannot work (snProLockLow).
+ *   4. Low-latency GPS - the MEASURED fix cadence and age in the HUD
+ *      ("GPS 1.0 s · ±8 m"; accuracy only until a real gap exists),
+ *      compass fusion below 2 m/s so the arrow holds its heading at a
+ *      standstill (snProFuseHeading); every sensor listener is removed in
  *      cleanupNav (SN.stopCompass + snProCleanup).
- *   5. TV / big screen + keyboard - html.shg-tv or >= 1800 px wide gives
- *      #view-nav the sn-tv class (bigger controls, 20 px type, strong focus
- *      ring); arrows pan, + / - zoom, R / L rotate, 3 = 3D, C = cockpit,
- *      Enter = Get directions, Esc = exit focus / back. Only while #view-nav
- *      is active and no input has focus; removed in cleanupNav.
+ *   5. TV / big screen + keyboard - html.shg-tv, or >= 1800 px wide with no
+ *      hover / no pointer (a TV, not a mouse desktop), gives #view-nav the
+ *      sn-tv class (bigger controls, 20 px type, strong focus ring); arrows
+ *      pan, + / - zoom, R / L rotate, 3 = 3D, C = cockpit, Enter = Get
+ *      directions, Esc = exit focus / back. Only while #view-nav is active
+ *      and no input has focus; removed in cleanupNav. MapLibre's own
+ *      keyboard handler is switched off (snProMapOpts) so one key never
+ *      drives two animations.
  *   6. Honest live status - two rows in the track card and in Layers:
- *      "Live bus (driver's phone sharing)" reflects the real kv feed;
+ *      "Live bus (driver's phone sharing)" reflects the real kv feed, and
+ *      "this phone is sharing" only after the server ACCEPTED a publish
+ *      from a signed-in staff phone in the last 30 s;
  *      "Fleet GPS unit + CCTV live view" carries a Coming-soon badge. No
  *      fake position, no fake video.
  *
@@ -90,6 +98,8 @@ var SNP_CLR = { auto:'#4285F4', motorcycle:'#7B2FBE', bus:'#178A50', bicycle:'#F
 var SNP_FLIGHT_KMH = 750;        /* typical airliner cruise - an estimate, labelled so */
 var SNP_TILE_KB = 45;            /* a typical vector tile, used only for the MB estimate */
 var SNP_COCKPIT_KEY = 'shg:navCockpit';
+/* a big screen driven by a remote, not a mouse (see snProTvCheck) */
+var SNP_TV_MQ = '(min-width:1800px) and (hover:none), (min-width:1200px) and (any-pointer:none)';
 /* Valhalla maneuver type -> arrow rotation on the cockpit (degrees, clockwise). */
 var SNP_TURN_ROT = { 7:0, 8:0, 17:0, 22:0, 9:45, 18:45, 20:45, 23:45, 10:90, 11:90, 16:-45, 19:-45, 21:-45, 24:-45, 14:-90, 15:-90, 12:180, 13:180 };
 
@@ -166,16 +176,25 @@ function snProMapOpts(o){
      (snProForceLite), and Fast mode never builds them (15-nav.js). */
   o.maxPitch=t==='low'?60:70;
   if(t==='low') o.prefetchZoomDelta=1;
+  /* review fix (10 Oct): snProKey is the ONE keyboard driver. With MapLibre's
+     own handler on too, a focused canvas ran two easeTo animations per arrow /
+     +/- press. R / L cover rotation. If this bundle fails to load, this line
+     never runs and MapLibre keeps its keyboard as before. */
+  o.keyboard=false;
   SN.proTier=t;
   return o;
 }
-/* "This device" row in Layers: cores · GB · tier · MB saved on this phone. */
+/* "This device" row in Layers: cores · GB RAM · tier · MB of site data.
+   navigator.deviceMemory is rounded down and capped at 8, so 8 reads "8+";
+   storage.estimate().usage is the WHOLE site's data (app shell, saved
+   tickets, map pieces), so it is labelled "site data", never "saved maps". */
 function snProDeviceRow(){
   var el=snProEl('snDeviceV'); if(!el) return;
   var p=snDeviceProfile();
   var paint=function(st){
     var tk={low:'snTierLow',mid:'snTierMid',high:'snTierHigh'}[p.tier]||'snTierMid';
-    el.textContent=snT('snDeviceRowFmt',{ c:p.cores||'?', m:p.mem||'?', t:snT(tk), mb:(st&&st.usage!=null)?Math.round(st.usage/1048576):'?' });
+    var mem=p.mem>=8?'8+':(p.mem||'?');
+    el.textContent=snT('snDeviceRowFmt',{ c:p.cores||'?', m:mem, t:snT(tk), mb:(st&&st.usage!=null)?Math.round(st.usage/1048576):'?' });
   };
   paint(SNP.storage);
   snProStorage().then(paint);
@@ -281,14 +300,21 @@ function snProCockpitPaint(){
   var on=snProCockpitWanted();
   var b=snProEl('snCockpit'); if(b){ b.classList.toggle('on',on&&SNP.armed); b.setAttribute('aria-pressed',on?'true':'false'); }
   var c=snProEl('snLyCockpit'); if(c) c.checked=on;
-  SN.proLook=SNP.armed?(SNP_CAM[SN.mode]||SNP_CAM.auto).look:null;
   snProCockpitSync();
 }
+/* Read by snTargetBearing (15-nav.js) every frame: how far ahead (km) the
+   road bearing is taken for the CURRENT mode while the cockpit is armed.
+   Live, not cached - the S Hari preset and a restored route change SN.mode
+   without a chip click (review fix, 10 Oct). Pure arithmetic. */
+function snProLook(){ return SNP.armed?(SNP_CAM[SN.mode]||SNP_CAM.auto).look:null; }
 function snProSetCockpit(on, save){
   SNP.cockpitPref=on?'1':'0';
   if(save){ try{ localStorage.setItem(SNP_COCKPIT_KEY,SNP.cockpitPref); }catch(e){} }
   snProCockpitPaint();
-  if(on&&!SNP.armed) snProToast('snCockpitLite');
+  /* the toast names a fix only when one exists: unticking Fast mode helps on a
+     mid / fast device; a basic / weak one (data saver, reduce motion, low RAM)
+     cannot carry the cockpit at all, so it is told so plainly */
+  if(on&&!SNP.armed) snProToast((SN.weak||snDeviceProfile().tier==='low')?'snCockpitNoDev':'snCockpitLite');
   else snProToast(on?'snCockpitOn':'snCockpitOff');
   if(typeof SN.kick==='function') SN.kick();     /* the camera settles into the new preset */
 }
@@ -328,16 +354,20 @@ function snProTurnPaint(){
 ================================================================ */
 function snProGpsCell(acc){
   var el=snProEl('snGps'); if(!el) return;
-  /* the measured gap first: SN.gpsIntervalMs keeps its 1000 ms default (and
-     only learns gaps under 5 s), so on its own it could claim a cadence the
-     phone never delivered */
-  var gap=SNP.fixGapMs||SN.gpsIntervalMs||0;
-  el.textContent=snT('snGpsFix',{ s:(gap/1000).toFixed(1), m:(acc!=null&&!isNaN(acc))?Math.round(acc):'?' });
+  /* only a MEASURED gap between two real fixes is shown as the cadence -
+     never SN.gpsIntervalMs (a 1000 ms default) - so the first fix reads
+     accuracy only ("GPS ±20 m") and nothing claims a cadence the phone did
+     not deliver (review fix, 10 Oct) */
+  var m=(acc!=null&&!isNaN(acc))?Math.round(acc):'?', gap=SNP.fixGapMs;
+  el.textContent=gap>0?snT('snGpsFix',{ s:(gap/1000).toFixed(1), m:m }):snT('snGpsAcc',{ m:m });
   el.classList.remove('stale');
   SNP.lastAcc=acc;
 }
 /* Every 2 s while GPS runs: a fix older than 4 s is said so (orange). */
 function snProGpsAge(){
+  /* while this phone broadcasts, its own status row follows the server's
+     answers (a publish lands ~10 s apart, accepted or not) */
+  if(SN.driverBroadcast) snProLiveStatus(false);
   if(!SNP.lastFixAt||SN.watchId==null) return;
   var age=Math.round((Date.now()-SNP.lastFixAt)/1000);
   if(age<4) return;
@@ -346,12 +376,16 @@ function snProGpsAge(){
 }
 /* Called from onSnPos after the HUD is written (c = position.coords). */
 function snProOnFix(c, hdg){
-  var now=Date.now();
-  if(SNP.lastFixAt) SNP.fixGapMs=now-SNP.lastFixAt;
+  var now=Date.now(), gap=SNP.lastFixAt?now-SNP.lastFixAt:0;
+  /* the one-shot getCurrentPosition fix and the first watchPosition fix land
+     a few ms apart: a gap under 200 ms is not a cadence, so it is not kept
+     (a gap over a minute is a pause, not a cadence: back to accuracy only) */
+  if(gap>60000) SNP.fixGapMs=0; else if(gap>=200) SNP.fixGapMs=gap;
   SNP.lastFixAt=now;
   snProGpsCell(c.accuracy);
   snProCockpitSync();
   if(!SNP.shown) return;
+  if(SNP.builtMode!==(SN.mode||'auto')) snProCockpitBuild();   /* the preset / a restored route changed the mode */
   var spd=c.speed!=null&&!isNaN(c.speed)?Math.max(0,Math.round(c.speed*3.6)):0;
   var head=(hdg!=null&&!isNaN(hdg))?Math.round(hdg)+'° '+snProCardinal(hdg):'—';
   var g=spd+'|'+head;
@@ -461,13 +495,24 @@ function snProFlightClear(){
 /* ================================================================
    6. HONEST LIVE STATUS + the fleet-GPS entry point
 ================================================================ */
+function snProIsStaff(){ return !!(window.SHG_BOOT&&window.SHG_BOOT.staff); }
+/* "This phone is sharing" is said only when it is TRUE for other phones: the
+   driver toggle is on, on a signed-in staff phone (only staff publish to the
+   shared livebus key - anyone else shares with this browser only), the GPS
+   watch is running, and the server accepted a publish in the last 30 s
+   (SN.kvPushOkAt, set by onSnPos in 15-nav.js). A blocked location or a
+   phone still waiting for its first fix stays "not live" (review fix, 10 Oct). */
+function snProSelfLive(){
+  return !!SN.driverBroadcast&&snProIsStaff()&&SN.watchId!=null&&!!SN.kvPushOkAt&&(Date.now()-SN.kvPushOkAt)<30000;
+}
 function snProLiveStatus(peekKv){
   var at=Math.max(SN.trackLastTs||0, SNP.kvAt||0), age=at?Date.now()-at:Infinity, txt, st;
   if(age<180000){
     var secs=Math.round(age/1000);
     var when=secs<5?snT('snJustNow'):(secs<60?snT('snSecAgo',{n:secs}):snT('snMinAgo',{n:Math.round(secs/60)}));
     txt=snT('snLiveOn',{t:when}); st='live';
-  } else if(SN.driverBroadcast){ txt=snT('snLiveSelf'); st='live'; }
+  } else if(snProSelfLive()){ txt=snT('snLiveSelf'); st='live'; }
+  else if(SN.driverBroadcast&&!snProIsStaff()){ txt=snT('snLiveLocal'); st='wait'; }
   else { txt=snT('snLiveWait'); st='wait'; }
   ['snStDriverV','snTcDriverV'].forEach(function(id){ var el=snProEl(id); if(el){ el.textContent=txt; el.setAttribute('data-st',st); } });
   /* opening Layers outside tracking mode: one read of the shared key, so the
@@ -501,12 +546,17 @@ function snProBusFix(fix){
 function snProTvCheck(){
   var nv=snProEl('view-nav'); if(!nv) return;
   var tv=false;
-  try{ tv=document.documentElement.classList.contains('shg-tv')||(window.matchMedia&&window.matchMedia('(min-width:1800px)').matches); }catch(e){}
+  /* width alone is not a TV: a maximised browser on a Full-HD office monitor
+     is 1920 px too. A TV browser has no hover (remote / D-pad) or no pointer
+     at all; a mouse desktop keeps the normal layout (review fix, 10 Oct). */
+  try{ tv=document.documentElement.classList.contains('shg-tv')||(window.matchMedia&&window.matchMedia(SNP_TV_MQ).matches); }catch(e){}
   nv.classList.toggle('sn-tv',!!tv);
   if(tv&&!SNP.tvHint&&nv.classList.contains('active')){ SNP.tvHint=true; snProToast('snKeysHint'); }
 }
 function snProKey(e){
-  var m=SN.map; if(!m||!e||e.altKey||e.ctrlKey||e.metaKey) return;
+  /* a key another handler already used is left alone (MapLibre's own keyboard
+     handler is off - snProMapOpts - so this is the one map driver) */
+  var m=SN.map; if(!m||!e||e.defaultPrevented||e.altKey||e.ctrlKey||e.metaKey) return;
   var nv=snProEl('view-nav'); if(!nv||!nv.classList.contains('active')) return;
   var ae=document.activeElement;
   if(ae&&(/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)||ae.isContentEditable)) return;
@@ -564,6 +614,9 @@ function snProCleanup(){
   if(SNP.visFn){ document.removeEventListener('visibilitychange',SNP.visFn); SNP.visFn=null; }
   if(SNP.resizeFn){ window.removeEventListener('resize',SNP.resizeFn); SNP.resizeFn=null; }
   if(SNP.ageT!=null){ clearInterval(SNP.ageT); SNP.ageT=null; }
+  /* the GPS watch stops with the view: the next visit measures afresh, so the
+     first fix after coming back never shows the minutes spent away */
+  SNP.lastFixAt=0; SNP.fixGapMs=0; SNP.lastAcc=null;
   snProCockpitShow(false);
   SNP.attached=false;
 }
@@ -574,6 +627,24 @@ function snProRelabel(){
   if(SNP.flightOn) snProFlightText();
   if(SNP.lastAcc!=null) snProGpsCell(SNP.lastAcc);
 }
+/* A basic (low-tier) device is always on Fast mode (snProForceLite), so the
+   "Fast mode" switch and the ⚡ pill must not offer the full map: before this,
+   unticking it said "Full map on", reloaded, and came back in Fast mode every
+   time. The switch is greyed with a "basic device" note, the pill only says
+   why, and the cockpit button / switch are hidden there (review fix, 10 Oct). */
+function snProLockLow(){
+  if(!snProForceLite()) return;
+  var lt=snProEl('snLyLite');
+  if(lt){
+    lt.checked=true; lt.disabled=true;
+    lt.onchange=function(){ lt.checked=true; snProToast('snLiteLocked'); };
+    var lab=lt.closest?lt.closest('label'):null; if(lab) lab.classList.add('sn-ly-locked');
+  }
+  var note=snProEl('snLyLiteNote'); if(note) note.hidden=false;
+  var fp=snProEl('snFastPill'); if(fp) fp.onclick=function(){ snProToast('snLiteLocked'); };
+  var b=snProEl('snCockpit'); if(b){ b.style.display='none'; b.setAttribute('aria-hidden','true'); }
+  var c=snProEl('snLyCockpit'), cl=c&&c.closest?c.closest('label'):null; if(cl) cl.style.display='none';
+}
 function snProInit(){
   try{ SNP.cockpitPref=localStorage.getItem(SNP_COCKPIT_KEY); }catch(e){}
   if(SNP.cockpitPref!=='1'&&SNP.cockpitPref!=='0') SNP.cockpitPref=null;
@@ -583,11 +654,13 @@ function snProInit(){
   document.querySelectorAll('#view-nav [data-snmode]').forEach(function(ch){ ch.addEventListener('click',snProModeChanged); });
   var ly=snProEl('snLayers'); if(ly) ly.addEventListener('click',function(){ snProDeviceRow(); snProLiveStatus(true); });
   var tt=snProEl('snTrackToggle'); if(tt) tt.addEventListener('click',function(){ setTimeout(function(){ snProLiveStatus(false); },0); });
+  var dt=snProEl('snDriverToggle'); if(dt) dt.addEventListener('click',function(){ setTimeout(function(){ snProLiveStatus(false); },0); });
   /* the map object outlives the view (SN.map is kept across #/nav visits), so this is bound once */
   if(SN.map&&!SNP.dragFn){ SNP.dragFn=function(){ snProCockpitSync(); }; SN.map.on('dragstart',SNP.dragFn); }
   window.SHG_NAV=window.SHG_NAV||{};
   window.SHG_NAV.onBusFix=snProBusFix;
   window.SHG_NAV.profile=snDeviceProfile;
+  snProLockLow();
   snProDeviceRow();
   snProAttach();
 }

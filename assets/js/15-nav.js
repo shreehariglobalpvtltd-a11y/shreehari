@@ -1178,8 +1178,11 @@ function initNavApp(){
   function snTargetBearing(){
     var walk=SN.mode==='pedestrian'||SN.mode==='bicycle';
     if(SN.routeCoords&&SN.routeCumKm){
-      /* 10 Oct 2026 (navpro): the cockpit preset reads further ahead for a bus */
-      var at=SN.routeProgKm||0, a=snPointAtKm(at), b=snPointAtKm(at+(SN.proLook||(walk?0.025:0.07)));
+      /* 10 Oct 2026 (navpro): the cockpit preset reads further ahead for a bus -
+         read live for the CURRENT mode (the S Hari preset / a restored route set
+         SN.mode without a chip click) */
+      var look=(typeof snProLook==='function')?snProLook():null;
+      var at=SN.routeProgKm||0, a=snPointAtKm(at), b=snPointAtKm(at+(look||(walk?0.025:0.07)));
       if(a&&b&&(a[0]!==b[0]||a[1]!==b[1])) return snBearing(a,b);
     }
     var g=SN.gpsPos||{};
@@ -1343,7 +1346,9 @@ function initNavApp(){
         spd:c.speed!=null?Math.round(c.speed*100)/100:null,
         acc:c.accuracy!=null?Math.round(c.accuracy):null,
         stop:nearName,next:'',at:Date.now(),by:(window.SHG_BOOT.staff.name||'driver')};
-      shgApi.post('/kv.php',{action:'set',key:'livebus',value:JSON.stringify(lbPayload)}).catch(function(){});
+      /* 10 Oct 2026 (navpro): the time of the last publish the server ACCEPTED -
+         the honest status row says "this phone is sharing" only from this */
+      shgApi.post('/kv.php',{action:'set',key:'livebus',value:JSON.stringify(lbPayload)}).then(function(){ SN.kvPushOkAt=Date.now(); }).catch(function(){});
     }
 
     /* A3 — road snapping: while a route is active, show the dot on the road

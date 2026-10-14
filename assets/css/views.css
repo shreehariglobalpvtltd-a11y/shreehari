@@ -2978,16 +2978,22 @@ body.in-flow .credit-ribbon,body.in-flow #numStrip{display:none}
 html[data-motion="reduced"] #view-nav .sn-cockpit .sn-ck-art{animation:none}
 html[data-motion="reduced"] #view-nav .sn-cockpit .sn-ck-turn svg path{transition:none}
 #view-nav.sn-lite .sn-cockpit{display:none!important}
-/* the HUD climbs above the dashboard while the cockpit is on (planner view) */
-#view-nav.sn-cockpit-on .sn-hud{bottom:calc(26% + 10px)}
+/* the HUD climbs above the dashboard while the cockpit is on - wide screens
+   only: on a phone the HUD sits at top:132px (the 640 px rule), and a bottom
+   on top of that top stretched it into a tall dark panel (review fix, 10 Oct) */
+@media(min-width:641px){#view-nav.sn-cockpit-on .sn-hud{bottom:calc(26% + 10px)}}
 #view-nav .sn-hud #snGps.stale{color:var(--sn)}
-/* flight card (no road route: straight line, an estimate, booking coming soon) */
+/* the map's attribution + scale stay readable above the cockpit band (z 14):
+   #sn-map makes no stacking context once faded in, so z 15 lifts them */
+#view-nav.sn-cockpit-on .maplibregl-ctrl-bottom-left,#view-nav.sn-cockpit-on .maplibregl-ctrl-bottom-right{z-index:15}
+/* flight is a planner view (no GPS follow): no speed / heading gauges on it */
+#view-nav .sn-cockpit[data-ck="flight"] .sn-ck-gauge,#view-nav .sn-cockpit[data-ck="flight"] .sn-ck-head{display:none}
+/* flight card (no road route: a straight line and an estimate - no booking promise) */
 #view-nav .sn-flight{display:none;margin:10px 12px 0;padding:11px 13px;border-radius:12px;background:rgba(30,111,217,.12);border:1px solid var(--royal,#1E6FD9)}
 #view-nav .sn-flight.show{display:block}
 #view-nav .sn-flight .ft-t{font-size:13px;font-weight:700;color:var(--sk)}
 #view-nav .sn-flight .ft-d{font-size:15px;font-weight:800;color:var(--sk);margin-top:4px;font-variant-numeric:tabular-nums;line-height:1.4}
 #view-nav .sn-flight .ft-n{font-size:11.5px;color:var(--sm);margin-top:4px;line-height:1.45}
-#view-nav .sn-flight .ft-soon{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--sk)}
 /* "Coming soon" badge - small gold accent, uppercase, never a live claim */
 #view-nav .sn-soon{font-style:normal;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;border-radius:999px;
   background:rgba(245,200,105,.16);color:var(--sg);border:1px solid rgba(245,200,105,.4);white-space:nowrap}
@@ -2999,13 +3005,21 @@ html[data-motion="reduced"] #view-nav .sn-cockpit .sn-ck-turn svg path{transitio
 #view-nav .sn-ly.sn-ly-st .snl small{font-size:11px;color:var(--sm)}
 #view-nav .sn-ly.sn-ly-st [data-st="live"],#view-nav .sn-tc-st [data-st="live"]{color:#22b06a}
 #view-nav .sn-ly.sn-ly-st [data-st="wait"],#view-nav .sn-tc-st [data-st="wait"]{color:var(--sm)}
-#view-nav .sn-layers{max-width:min(320px,calc(100vw - 28px))}
+#view-nav .sn-layers{max-width:min(320px,calc(100vw - 28px));
+  /* six more rows: on a short / landscape phone the panel scrolls instead of running off-screen */
+  max-height:calc(100vh - 96px);max-height:calc(100dvh - 96px);overflow-y:auto;overscroll-behavior:contain}
+/* a basic device: Fast mode is locked on - the switch is greyed and says why */
+#view-nav .sn-ly-note{font-size:11px;color:var(--sm);margin:-3px 0 4px 25px;line-height:1.4}
+#view-nav .sn-ly-note[hidden]{display:none}
+#view-nav .sn-ly.sn-ly-locked{cursor:default;opacity:.7}
+#view-nav .sn-ly.sn-ly-locked input[type=checkbox]{cursor:not-allowed}
 /* track card: what is live, what is coming */
 #view-nav .sn-tc-status{margin-top:9px;padding-top:8px;border-top:1px solid var(--sl);display:flex;flex-direction:column;gap:6px}
 #view-nav .sn-tc-st{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--sm);flex-wrap:wrap;line-height:1.35}
 #view-nav .sn-tc-st b{font-weight:700;font-size:11.5px;margin-left:auto}
 #view-nav .sn-tc-st .sn-soon{margin-left:auto}
-/* TV / big screen (html.shg-tv or >= 1800 px): 1.5x controls, 20 px type,
+/* TV / big screen (html.shg-tv, or >= 1800 px with no hover / no pointer -
+   a mouse desktop keeps the normal layout): 1.5x controls, 20 px type,
    48 px+ targets everywhere, a strong focus ring for a remote / keyboard */
 #view-nav.sn-tv .sn-cb{width:66px;height:66px;font-size:27px;border-radius:18px}
 #view-nav.sn-tv .sn-cb small{font-size:11px;bottom:6px}

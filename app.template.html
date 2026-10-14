@@ -2815,7 +2815,9 @@ s.addEventListener('click',function(e){e.preventDefault();
     <label class="sn-ly sn-ly-extra"><input type="checkbox" id="snLyPoi"><span>📍</span> <span class="snl" data-i18n="snLyPoi">Nearby places</span></label>
     <label class="sn-ly sn-ly-extra"><input type="checkbox" id="snLy3D"><span>🏙️</span> <span class="snl" data-i18n="snLy3D">3D buildings + terrain</span></label>
     <label class="sn-ly"><input type="checkbox" id="snLyLite"><span>⚡</span> <span class="snl" data-i18n="snLyLite">Fast mode — only navigation (untick for the full map)</span></label>
-    <!-- 10 Oct 2026 (navpro): cockpit switch, honest live-feed rows, this device -->
+    <!-- 10 Oct 2026 (navpro): cockpit switch, honest live-feed rows, this device.
+         snLyLiteNote shows only on a basic device, where Fast mode is locked on. -->
+    <div class="sn-ly-note" id="snLyLiteNote" data-i18n="snLiteLocked" hidden>Basic device: Fast mode only</div>
     <label class="sn-ly sn-ly-extra"><input type="checkbox" id="snLyCockpit"><span>🚘</span> <span class="snl" data-i18n="snLyCockpit">Cockpit view — camera inside the vehicle</span></label>
     <div class="sn-ly-sub" data-i18n="snLiveHd">Live feeds</div>
     <div class="sn-ly sn-ly-st"><span>📡</span> <span class="snl"><span data-i18n="snLiveDriverRow">Live bus — driver's phone sharing</span><small id="snStDriverV" data-st="wait">—</small></span></div>
@@ -2902,12 +2904,12 @@ s.addEventListener('click',function(e){e.preventDefault();
       </div>
       <div class="sn-altbar" id="snAltBar"></div>
       <!-- 10 Oct 2026 (navpro): flight mode has no road route - a straight-line
-           arc, an estimate, and an honest "booking coming soon" -->
+           arc and an estimate. No booking promise: the owner has not decided
+           on a flight product (review fix, 10 Oct). -->
       <div class="sn-flight" id="snFlightCard">
         <div class="ft-t" data-i18n="snFlightCardT">✈️ Flight view</div>
         <div class="ft-d" id="snFlightDist">—</div>
         <div class="ft-n" data-i18n="snFlightNote">Straight line (as the crow flies), not a road route. Cruise time is an estimate only.</div>
-        <div class="ft-soon"><em class="sn-soon" data-i18n="snComingSoon">Coming soon</em><span data-i18n="snFlightSoon">Flight booking on S Hari Global</span></div>
       </div>
       <div class="sn-trackcard" id="snTrackCard">
         <div class="ttl"><span data-i18n="snLiveTitle">🚌 Live bus position</span> <small id="snTrackUpd" data-i18n="snWaitDriver">waiting for driver…</small></div>
