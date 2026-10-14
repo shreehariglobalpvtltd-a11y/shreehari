@@ -569,6 +569,17 @@ en: {
   hxLiveSoon: 'Fleet GPS unit + CCTV live view', hxLiveSoonSub: 'A fixed GPS unit on every coach and a live camera view for passengers’ families — being set up.',
   hxLiveSoonBadge: 'Coming soon · छिट्टै', hxIllus: 'Illustration',
   hdNextDep: 'Next departure in',
+  /* BIZ (10 Oct 2026): #homeBiz business tiles + the audience chip on featured packages. Badges only - never a date or a price. */
+  hxBizEyebrow: 'beyond the bus', hxBizTitle: 'More than a bus company',
+  hxBizSub: 'Bus tickets and tours today; import-export, truck & bulk, packaging and shop-to-Nepal delivery coming soon — register interest and we call you the day it opens.',
+  hxBizLive: 'Live', hxBizSoon: 'Coming soon', hxBizAll: 'All business services',
+  hxBizBus: 'Bus tickets', hxBizBusSub: 'Gujarat ⇄ Nepal border', hxBizTours: 'Tour packages', hxBizToursSub: 'Solo · family · group · pilgrimage',
+  hxBizImpEx: 'Import-Export', hxBizImpExSub: 'India ⇄ Nepal, documents & customs', hxBizTruck: 'Truck & bulk', hxBizTruckSub: 'Full truck · part load · bulk orders',
+  hxBizPack: 'Packaging & courier', hxBizPackSub: 'International parcels', hxBizShop: 'Shop-to-Nepal', hxBizShopSub: 'Indian online orders, delivered legally',
+  hxAudSolo: 'Solo', hxAudCouple: 'Couple', hxAudFamily: 'Family', hxAudGroup: 'Group', hxAudPilgrim: 'Pilgrimage',
+  /* BIZ: footer / menu link + the cargo FAQ */
+  fBusiness: 'Business services', mmBusiness: 'Business services · व्यापार सेवा',
+  faqCargoQ: 'Do you do cargo or parcels to Nepal?', faqCargoA: 'Not yet — import-export, truck booking, packaging and shop-to-Nepal delivery are coming soon. The bus carries personal luggage only.', faqCargoLink: 'Register interest on the Business services page',
 },
 hi: {
   premiumFront: "आगे · यात्रा की दिशा", premiumRear: "पीछे", premiumBeyond: "सरहदों के पार सफ़र", premiumDirector: "अध्यक्ष / निदेशक", premiumPromise: "आपकी यात्रा, हमारी ज़िम्मेदारी।", premiumSafe: "सुरक्षित यात्रा", premiumEasy: "आसान बुकिंग", premiumLoading: "आपकी यात्रा तैयार हो रही है…", premiumRetry: "कनेक्शन में समय लग रहा है। पुनः लोड करें", premiumSlow: "कनेक्ट हो रहा है। पुनः प्रयास करें या आगे बढ़ें।", premiumTrust: "भरोसे के साथ यात्रा।", premiumPay: "स्कैन करके भुगतान करें", premiumPaid: "भुगतान सत्यापित", premiumPending: "भुगतान सत्यापन लंबित", premiumVerify: "टिकट सत्यापन", premiumDue: "बकाया राशि",
@@ -1122,6 +1133,15 @@ hi: {
   hxLiveSoon: 'फ़्लीट GPS यूनिट + CCTV लाइव व्यू', hxLiveSoonSub: 'हर कोच में लगा GPS यूनिट और यात्रियों के परिवार के लिए लाइव कैमरा व्यू — तैयारी चल रही है।',
   hxLiveSoonBadge: 'जल्द आ रहा है · छिट्टै', hxIllus: 'चित्रण',
   hdNextDep: 'अगली रवानगी में बाकी समय',
+  hxBizEyebrow: 'बस से आगे', hxBizTitle: 'सिर्फ़ बस कंपनी नहीं',
+  hxBizSub: 'आज बस टिकट और टूर; इम्पोर्ट-एक्सपोर्ट, ट्रक और बल्क, पैकेजिंग और शॉप-टू-नेपाल डिलीवरी जल्द — रुचि दर्ज करें, खुलते ही हम कॉल करेंगे।',
+  hxBizLive: 'चालू', hxBizSoon: 'जल्द', hxBizAll: 'सभी व्यापार सेवाएँ',
+  hxBizBus: 'बस टिकट', hxBizBusSub: 'गुजरात ⇄ नेपाल बॉर्डर', hxBizTours: 'टूर पैकेज', hxBizToursSub: 'अकेले · परिवार · ग्रुप · तीर्थ',
+  hxBizImpEx: 'इम्पोर्ट-एक्सपोर्ट', hxBizImpExSub: 'भारत ⇄ नेपाल, कागज़ात और कस्टम', hxBizTruck: 'ट्रक और बल्क', hxBizTruckSub: 'फुल ट्रक · पार्ट लोड · बल्क ऑर्डर',
+  hxBizPack: 'पैकेजिंग और कूरियर', hxBizPackSub: 'अंतरराष्ट्रीय पार्सल', hxBizShop: 'शॉप-टू-नेपाल', hxBizShopSub: 'भारतीय ऑनलाइन ऑर्डर, कानूनी डिलीवरी',
+  hxAudSolo: 'अकेले', hxAudCouple: 'कपल', hxAudFamily: 'परिवार', hxAudGroup: 'ग्रुप', hxAudPilgrim: 'तीर्थ',
+  fBusiness: 'व्यापार सेवाएँ', mmBusiness: 'व्यापार सेवाएँ · Business services',
+  faqCargoQ: 'क्या आप नेपाल के लिए कार्गो या पार्सल भेजते हैं?', faqCargoA: 'अभी नहीं — इम्पोर्ट-एक्सपोर्ट, ट्रक बुकिंग, पैकेजिंग और शॉप-टू-नेपाल डिलीवरी जल्द आ रही है। बस में सिर्फ़ निजी सामान जाता है।', faqCargoLink: 'व्यापार सेवाएँ पेज पर रुचि दर्ज करें',
 },
 ne: {
   premiumFront: "अगाडि · यात्राको दिशा", premiumRear: "पछाडि", premiumBeyond: "सीमापारको यात्रा", premiumDirector: "अध्यक्ष / निर्देशक", premiumPromise: "तपाईंको यात्रा, हाम्रो जिम्मेवारी।", premiumSafe: "सुरक्षित यात्रा", premiumEasy: "सजिलो बुकिङ", premiumLoading: "तपाईंको यात्रा तयार हुँदैछ…", premiumRetry: "जडानमा समय लाग्यो। फेरि लोड गर्नुहोस्", premiumSlow: "जडान हुँदैछ। फेरि प्रयास गर्नुहोस् वा अगाडि बढ्नुहोस्।", premiumTrust: "विश्वासका साथ यात्रा।", premiumPay: "स्क्यान गरेर तिर्नुहोस्", premiumPaid: "भुक्तानी प्रमाणित", premiumPending: "भुक्तानी प्रमाणीकरण बाँकी", premiumVerify: "टिकट प्रमाणीकरण", premiumDue: "बाँकी रकम",
@@ -1675,6 +1695,15 @@ ne: {
   hxLiveSoon: 'फ्लिट GPS युनिट + CCTV लाइभ भ्यू', hxLiveSoonSub: 'हरेक कोचमा जडित GPS युनिट र यात्रुका परिवारका लागि लाइभ क्यामेरा भ्यू — तयारी हुँदैछ।',
   hxLiveSoonBadge: 'छिट्टै आउँदैछ', hxIllus: 'चित्रण',
   hdNextDep: 'अर्को प्रस्थानसम्म बाँकी',
+  hxBizEyebrow: 'बसभन्दा पर', hxBizTitle: 'बस कम्पनी मात्र होइन',
+  hxBizSub: 'आज बस टिकट र टुर; आयात-निर्यात, ट्रक र बल्क, प्याकेजिङ र सप-टु-नेपाल डेलिभरी छिट्टै — रुचि दर्ता गर्नुहोस्, खुल्नेबित्तिकै हामी फोन गर्छौं।',
+  hxBizLive: 'चालु', hxBizSoon: 'छिट्टै', hxBizAll: 'सबै व्यापार सेवा',
+  hxBizBus: 'बस टिकट', hxBizBusSub: 'गुजरात ⇄ नेपाल सिमाना', hxBizTours: 'टुर प्याकेज', hxBizToursSub: 'एक्लै · परिवार · समूह · तीर्थ',
+  hxBizImpEx: 'आयात-निर्यात', hxBizImpExSub: 'भारत ⇄ नेपाल, कागजात र भन्सार', hxBizTruck: 'ट्रक र बल्क', hxBizTruckSub: 'फुल ट्रक · पार्ट लोड · बल्क अर्डर',
+  hxBizPack: 'प्याकेजिङ र कुरियर', hxBizPackSub: 'अन्तर्राष्ट्रिय पार्सल', hxBizShop: 'सप-टु-नेपाल', hxBizShopSub: 'भारतीय अनलाइन अर्डर, कानुनी डेलिभरी',
+  hxAudSolo: 'एक्लै', hxAudCouple: 'जोडी', hxAudFamily: 'परिवार', hxAudGroup: 'समूह', hxAudPilgrim: 'तीर्थ',
+  fBusiness: 'व्यापार सेवा', mmBusiness: 'व्यापार सेवा · Business services',
+  faqCargoQ: 'के तपाईं नेपालका लागि कार्गो वा पार्सल पठाउनुहुन्छ?', faqCargoA: 'अहिले होइन — आयात-निर्यात, ट्रक बुकिङ, प्याकेजिङ र सप-टु-नेपाल डेलिभरी छिट्टै आउँदैछ। बसमा निजी सामान मात्र जान्छ।', faqCargoLink: 'व्यापार सेवा पृष्ठमा रुचि दर्ता गर्नुहोस्',
 }
 };
 

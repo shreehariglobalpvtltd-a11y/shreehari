@@ -459,6 +459,7 @@ s.addEventListener('click',function(e){e.preventDefault();
   <a href="#/nav"><svg class="ic"><use href="#i-map"/></svg> S Hari Map &amp; Live Bus Tracker</a>
   <a href="#/my"><svg class="ic"><use href="#i-list"/></svg> My Bookings</a>
   <a href="#/" data-scroll="timetable"><svg class="ic"><use href="#i-clock"/></svg> समय तालिका · Timetable</a>
+  <a href="/business"><svg class="ic"><use href="#i-building"/></svg> <span data-i18n="mmBusiness">Business services · व्यापार सेवा</span></a>
   <a href="/agent-signup.php"><svg class="ic"><use href="#i-users"/></svg> एजेन्ट बन्नुहोस् · Become an Agent</a>
   <a href="/agreements/"><svg class="ic"><use href="#i-doc"/></svg> एजेन्ट / साझेदार सम्झौता · Agent agreements</a>
   <a href="/admin/login.php" rel="nofollow"><svg class="ic"><use href="#i-lock"/></svg> एजेन्ट / स्टाफ लगइन · Agent / Staff sign-in</a>
@@ -1145,6 +1146,32 @@ s.addEventListener('click',function(e){e.preventDefault();
       </div>
     </div>
   </section>
+
+  <!-- 10 Oct 2026 (BIZ work package): the business portfolio beyond the bus. Six tiles,
+       each linking to its card on /business: bus and tours LIVE, import-export, truck &
+       bulk, packaging and shop-to-Nepal COMING SOON (the badge is translated; the page
+       says in words that nothing is accepted yet). Order 12 in showcase.css ties with
+       #homeExplore, so the DOM order keeps it right after. The brand name is a fact. -->
+  <section class="container hx hx-biz" id="homeBiz" aria-labelledby="hxBizTitle">
+    <div class="hx-shell">
+      <div class="hx-head">
+        <p class="hx-eyebrow"><svg class="ic" aria-hidden="true"><use href="#i-building"/></svg><span data-fact="brand.short">{{f:brand.short}}</span> · <span data-i18n="hxBizEyebrow">beyond the bus</span></p>
+        <h2 class="hx-title" id="hxBizTitle" data-i18n="hxBizTitle">More than a bus company</h2>
+        <p class="hx-sub" data-i18n="hxBizSub">Bus tickets and tours today; import-export, truck &amp; bulk, packaging and shop-to-Nepal delivery coming soon — register interest and we call you the day it opens.</p>
+      </div>
+      <ul class="hx-hub hx-biz-grid">
+        <li><a class="hx-tile hx-c1" href="/business#bus" data-hx-href="/business#bus"><span class="hx-tile-ic" aria-hidden="true"><svg class="ic"><use href="#i-bus"/></svg></span><span class="hx-tile-tx"><b data-i18n="hxBizBus">Bus tickets</b><small data-i18n="hxBizBusSub">Gujarat ⇄ Nepal border</small></span><span class="hx-badge hx-badge-live" data-i18n="hxBizLive">Live</span></a></li>
+        <li><a class="hx-tile hx-c3" href="/business#tours" data-hx-href="/business#tours"><span class="hx-tile-ic" aria-hidden="true"><svg class="ic"><use href="#i-luggage"/></svg></span><span class="hx-tile-tx"><b data-i18n="hxBizTours">Tour packages</b><small data-i18n="hxBizToursSub">Solo · family · group · pilgrimage</small></span><span class="hx-badge hx-badge-live" data-i18n="hxBizLive">Live</span></a></li>
+        <li><a class="hx-tile hx-soon" href="/business#import-export" data-hx-href="/business#import-export"><span class="hx-tile-ic" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg></span><span class="hx-tile-tx"><b data-i18n="hxBizImpEx">Import-Export</b><small data-i18n="hxBizImpExSub">India ⇄ Nepal, documents &amp; customs</small></span><span class="hx-badge hx-badge-soon" data-i18n="hxBizSoon">Coming soon</span></a></li>
+        <li><a class="hx-tile hx-soon" href="/business#truck-bulk" data-hx-href="/business#truck-bulk"><span class="hx-tile-ic" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7zM6 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM17 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z"/></svg></span><span class="hx-tile-tx"><b data-i18n="hxBizTruck">Truck &amp; bulk</b><small data-i18n="hxBizTruckSub">Full truck · part load · bulk orders</small></span><span class="hx-badge hx-badge-soon" data-i18n="hxBizSoon">Coming soon</span></a></li>
+        <li><a class="hx-tile hx-soon" href="/business#packaging" data-hx-href="/business#packaging"><span class="hx-tile-ic" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3 3 7.5v9L12 21l9-4.5v-9zM3 7.5l9 4.5 9-4.5M12 12v9"/></svg></span><span class="hx-tile-tx"><b data-i18n="hxBizPack">Packaging &amp; courier</b><small data-i18n="hxBizPackSub">International parcels</small></span><span class="hx-badge hx-badge-soon" data-i18n="hxBizSoon">Coming soon</span></a></li>
+        <li><a class="hx-tile hx-soon" href="/business#shop-to-nepal" data-hx-href="/business#shop-to-nepal"><span class="hx-tile-ic" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24"><path d="M3 4h2l2.4 11h11.2L21 7H6M9 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM17 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/></svg></span><span class="hx-tile-tx"><b data-i18n="hxBizShop">Shop-to-Nepal</b><small data-i18n="hxBizShopSub">Indian online orders, delivered legally</small></span><span class="hx-badge hx-badge-soon" data-i18n="hxBizSoon">Coming soon</span></a></li>
+      </ul>
+      <div class="hx-actions">
+        <a class="hx-btn hx-btn-tonal" href="/business" data-hx-href="/business"><svg class="ic" aria-hidden="true"><use href="#i-building"/></svg><span data-i18n="hxBizAll">All business services</span></a>
+      </div>
+    </div>
+  </section>
   <!-- HOMEINFO:END -->
 
   <!-- ============ CEO INTRODUCTION (9 Oct 2026, owner: "introduce the CEO attractively") ============
@@ -1624,7 +1651,9 @@ s.addEventListener('click',function(e){e.preventDefault();
         <div class="faq-item reveal"><button class="faq-q" type="button">How does payment work? Is it safe?<span class="pm">+</span></button><div class="faq-a"><p>You pay directly to the company's UPI ID shown at checkout, then submit either a payment screenshot or the UPI transaction (UTR) number. Our team manually verifies every payment; your seat is held meanwhile and your e-ticket is released the moment we confirm it.</p></div></div>
         <div class="faq-item reveal"><button class="faq-q" type="button">When do I receive my ticket?<span class="pm">+</span></button><div class="faq-a"><p>As soon as your payment is verified (usually within 30 minutes during 9 AM – 9 PM IST), your booking status changes to Confirmed and a branded PDF ticket with a boarding QR code becomes available to download.</p></div></div>
         <div class="faq-item reveal"><button class="faq-q" type="button">Can I cancel or reschedule my ticket?<span class="pm">+</span></button><div class="faq-a"><p>Yes — cancellations and one-time rescheduling are allowed as per the timelines in our Ticket Booking Terms (for example, higher refunds the earlier you cancel; no refund for no-shows). See the Terms &amp; Conditions page for the exact policy.</p></div></div>
-        <div class="faq-item reveal"><button class="faq-q" type="button">How much luggage can I carry across the border?<span class="pm">+</span></button><div class="faq-a"><p>Each passenger may carry personal luggage. All luggage must comply with Indian and Nepali customs rules — prohibited or commercial goods cannot be carried as personal baggage. For commercial cargo, use our import–export service instead.</p></div></div>
+        <div class="faq-item reveal"><button class="faq-q" type="button">How much luggage can I carry across the border?<span class="pm">+</span></button><div class="faq-a"><p>Each passenger may carry personal luggage. All luggage must comply with Indian and Nepali customs rules — prohibited or commercial goods cannot be carried as personal baggage. Commercial cargo is not carried on the bus; our cargo and import–export services are coming soon (see Business services).</p></div></div>
+        <!-- 10 Oct 2026 (BIZ): the cargo question, translated (the older items above are English-only markup). Honest: nothing is accepted yet. -->
+        <div class="faq-item reveal"><button class="faq-q" type="button"><span data-i18n="faqCargoQ">Do you do cargo or parcels to Nepal?</span><span class="pm">+</span></button><div class="faq-a"><p><span data-i18n="faqCargoA">Not yet — import-export, truck booking, packaging and shop-to-Nepal delivery are coming soon. The bus carries personal luggage only.</span> <a href="/business" data-i18n="faqCargoLink">Register interest on the Business services page</a></p></div></div>
       </div>
     </div>
   </div>
@@ -3079,6 +3108,7 @@ s.addEventListener('click',function(e){e.preventDefault();
           <a href="/india-nepal"><svg class="ic" aria-hidden="true"><use href="#i-compass"/></svg><span data-i18n="fIndiaNepal">India–Nepal friendship</span></a>
           <a href="/explore"><svg class="ic" aria-hidden="true"><use href="#i-map"/></svg><span data-i18n="fPlaces">Places to visit</span></a>
           <a href="/tours"><svg class="ic" aria-hidden="true"><use href="#i-luggage"/></svg><span data-i18n="fTours">Tour packages</span></a>
+          <a href="/business"><svg class="ic" aria-hidden="true"><use href="#i-building"/></svg><span data-i18n="fBusiness">Business services</span></a>
         </nav>
       </div>
       <div>

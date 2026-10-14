@@ -10,6 +10,11 @@
  *      /explore              places to visit — Nepal, India, near the border
  *      /tours                tour packages (partner-operated beyond Rupaidiha)
  *      /tours/<slug>         one package + its "Apply / Enquire" form
+ *      /business             the business portfolio (10 Oct 2026): bus and
+ *                            tours LIVE, import-export / truck & bulk /
+ *                            packaging / shop-to-Nepal COMING SOON with a
+ *                            "notify me" form each (api/enquiry.php, source
+ *                            'business')
  *      /hi/…  /ne/…          the same pages in Hindi and Nepali
  *      /sitemap-content.xml  every page above with hreflang alternates
  *
@@ -36,7 +41,35 @@ require_once INCLUDE_PATH . '/publiclayout.php';
 
 final class ContentPages
 {
-    public const PAGES = ['india-nepal', 'offices', 'explore', 'tours'];
+    public const PAGES = ['india-nepal', 'offices', 'explore', 'tours', 'business'];
+
+    /**
+     * 10 Oct 2026 (BIZ): who a tour package suits - the chip on the tours
+     * list, the package page, the home featured cards and /business.
+     * key => [icon, en, hi, ne]. tour_packages.audience holds the key.
+     */
+    public const AUDIENCES = [
+        'solo'    => ['🧍', 'Solo', 'अकेले', 'एक्लै'],
+        'couple'  => ['💑', 'Couple', 'कपल', 'जोडी'],
+        'family'  => ['👨‍👩‍👧', 'Family', 'परिवार', 'परिवार'],
+        'group'   => ['👥', 'Group', 'ग्रुप', 'समूह'],
+        'pilgrim' => ['🛕', 'Pilgrimage', 'तीर्थ', 'तीर्थ'],
+    ];
+
+    /**
+     * 10 Oct 2026 (BIZ): the six business lines of /business, in page order.
+     * key => [section id, icon, live?, "notify me" service key]. The words
+     * live in words() under bz<Key>H / P1 / P2. Nothing here is a date or a
+     * price: a coming-soon line only ever says "coming soon".
+     */
+    public const BIZ = [
+        'bus'      => ['bus',           '🚌', true,  ''],
+        'tours'    => ['tours',         '🧳', true,  ''],
+        'iex'      => ['import-export', '🌐', false, 'import_export'],
+        'truck'    => ['truck-bulk',    '🚚', false, 'truck_bulk'],
+        'pack'     => ['packaging',     '📦', false, 'packaging'],
+        'shop'     => ['shop-to-nepal', '🛒', false, 'shop_to_nepal'],
+    ];
 
     /** category => icon. Anything else is shown as written. */
     public const CATS = [
@@ -56,7 +89,7 @@ final class ContentPages
         if ($path === '/sitemap-content.xml') {
             self::sitemap();
         }
-        if (preg_match('#^/(?:(hi|ne)/)?(india-nepal|offices|explore|tours)(?:/([^/]+))?$#', $path, $m) !== 1) {
+        if (preg_match('#^/(?:(hi|ne)/)?(india-nepal|offices|explore|tours|business)(?:/([^/]+))?$#', $path, $m) !== 1) {
             return false;
         }
         $lang = ($m[1] ?? '') !== '' ? $m[1] : 'en';
@@ -70,6 +103,7 @@ final class ContentPages
             'india-nepal' => self::indiaNepal($lang),
             'offices'     => self::offices($lang),
             'explore'     => self::explore($lang),
+            'business'    => self::business($lang),
             default       => $slug === '' ? self::tours($lang) : self::tour($slug, $lang),
         };
         return true;
@@ -248,6 +282,7 @@ final class ContentPages
                 'image' => self::imgUrl((string) ($k['image'] ?? '')),
                 'imageIllus' => self::isIllustration((string) ($k['image'] ?? ''), (string) ($k['image_credit'] ?? '')),
                 'url' => PublicLayout::path('/tours/' . $k['slug'], $lang),
+                'audience' => self::audienceKey($k),   // 10 Oct 2026 (BIZ): '' when the package has no chip
             ];
         }
         return ['places' => $places, 'packages' => $packages];
@@ -428,6 +463,26 @@ final class ContentPages
                 'jHomeP' => 'Rupaidiha border → your stop in Gujarat', 'partnerOnly' => 'This tour is run by our travel partner — our bus is not part of it.',
                 'partnerOnlyS' => 'Tour starts — run by our partner',
                 'draft' => 'Preview — this package is not published.', 'nf' => 'Page not found', 'nfP' => 'That page does not exist (or is not published yet).',
+                // /business (10 Oct 2026, BIZ). %s = the brand's short name. Nothing here is a date or a price.
+                // The title travels alone (search results, link previews), so a line that is not live says so in it.
+                'bzTitle' => '%s - business services | Bus tickets · Tours · Import-Export & cargo (coming soon)', 'bzH1' => 'Business services', 'bzKick' => '%s · beyond the bus',
+                'bzLead' => 'One company, several doors between Gujarat and Nepal. Bus tickets are live today, tour packages run on enquiry, and cargo, truck booking, packaging and shop-to-Nepal delivery are being prepared — register your interest and we call you the day each one opens.',
+                'bzDesc' => '%s business services: AC sleeper bus tickets (live), Nepal and India tour packages (on enquiry), and coming soon — import-export India ⇄ Nepal, truck and bulk reservation, international packaging and courier, online shopping delivered to Nepal.',
+                'bzLive' => 'LIVE', 'bzSoon' => 'COMING SOON', 'bzLiveHint' => 'Working today', 'bzSoonHint' => 'Planned — nothing is accepted yet', 'bzLegend' => 'Status',
+                'bzServices' => 'Our services', 'bzListName' => 'Business services of %s', 'bzOffices' => '%1$d offices in India · %2$d in Nepal',
+                'bzBusH' => 'Bus tickets', 'bzBusT1' => 'Pick your berth online, pay by UPI, ticket on WhatsApp', 'bzBusT2' => 'Track your bus from your ticket',
+                'bzToursH' => 'Tour packages', 'bzToursP' => 'Nepal and India trips planned with our partners — solo, couple, family, group or pilgrimage. Tell us your dates, we send a quote. No online payment.',
+                'bzToursB' => 'All packages', 'bzToursAsk' => 'Plan my trip', 'bzDemo' => 'Popular trips',
+                'bzIexH' => 'Import-Export India ⇄ Nepal', 'bzIexP1' => 'Documentation support for small and medium traders: invoice and packing list, LC and bank paperwork guidance, and customs clearance through the Rupaidiha–Jamunaha land port.',
+                'bzIexP2' => 'Being set up with licensed customs partners. No shipment is accepted yet — register your interest and we call you when it opens.',
+                'bzTruckH' => 'Truck & bulk reservation', 'bzTruckP1' => 'Full-truck or part-load from Gujarat to the Nepal border, and consolidation of bulk orders from several suppliers into one shipment.', 'bzTruckP2' => 'Planned. No booking is taken yet.',
+                'bzPackH' => 'International packaging & courier', 'bzPackP1' => 'Export-grade packing, labelling and courier hand-off for parcels and samples going abroad.', 'bzPackP2' => 'Planned. Nothing is accepted yet.',
+                'bzShopH' => 'Online shopping delivered to Nepal', 'bzShopP1' => 'Order on Indian online stores to our Gujarat receiving address; we receive, check and pack your parcel, pay the GST and customs duty legally, and deliver it in Nepal.',
+                'bzShopP2' => 'This is planned, not running: please do not send any parcel to us yet. Register your interest and we tell you the day it opens.',
+                'bzNotify' => 'Notify me', 'bzNotifyAlt' => ['ne', 'मलाई खबर गर्नुहोस्'], 'bzService' => 'Service',
+                'bzSoonLd' => 'Coming soon — not yet available.', 'bzNote' => 'What do you need? (optional)', 'bzRegister' => 'Register interest',
+                'bzRegNote' => 'We call you back only when the service opens. Nothing is booked or charged.',
+                'bzHonestH' => 'Plain words', 'bzHonestP' => 'Everything on this page is either live or clearly marked coming soon. We never take money for a service that has not opened.',
             ],
             'hi' => [
                 'inTitle' => 'भारत–नेपाल: मित्रता, खुली सीमा और हमारा रूट', 'inH1' => 'भारत ⇄ नेपाल', 'inKick' => 'पड़ोसी · मित्र · एक खुली सीमा',
@@ -472,6 +527,24 @@ final class ContentPages
                 'jHomeP' => 'रुपईडीहा बॉर्डर → गुजरात में आपका स्टॉप', 'partnerOnly' => 'यह टूर हमारे ट्रैवल पार्टनर चलाते हैं — इसमें हमारी बस शामिल नहीं है।',
                 'partnerOnlyS' => 'टूर शुरू — हमारे पार्टनर द्वारा',
                 'draft' => 'प्रीव्यू — यह पैकेज प्रकाशित नहीं है।', 'nf' => 'पेज नहीं मिला', 'nfP' => 'यह पेज मौजूद नहीं है (या अभी प्रकाशित नहीं हुआ)।',
+                'bzTitle' => '%s - व्यापार सेवाएँ | बस टिकट · टूर · इम्पोर्ट-एक्सपोर्ट और कार्गो (जल्द)', 'bzH1' => 'व्यापार सेवाएँ', 'bzKick' => '%s · बस से आगे',
+                'bzLead' => 'एक कंपनी, गुजरात और नेपाल के बीच कई दरवाज़े। बस टिकट आज चालू हैं, टूर पैकेज पूछताछ पर चलते हैं, और कार्गो, ट्रक बुकिंग, पैकेजिंग और शॉप-टू-नेपाल डिलीवरी तैयार हो रही है — रुचि दर्ज करें, हर सेवा खुलते ही हम कॉल करेंगे।',
+                'bzDesc' => '%s की व्यापार सेवाएँ: AC स्लीपर बस टिकट (चालू), नेपाल और भारत के टूर पैकेज (पूछताछ पर), और जल्द — भारत ⇄ नेपाल इम्पोर्ट-एक्सपोर्ट, ट्रक और बल्क रिज़र्वेशन, अंतरराष्ट्रीय पैकेजिंग और कूरियर, ऑनलाइन शॉपिंग नेपाल तक डिलीवरी।',
+                'bzLive' => 'चालू', 'bzSoon' => 'जल्द आ रहा है', 'bzLiveHint' => 'आज काम कर रही है', 'bzSoonHint' => 'योजना में — अभी कुछ स्वीकार नहीं किया जाता', 'bzLegend' => 'स्थिति',
+                'bzServices' => 'हमारी सेवाएँ', 'bzListName' => '%s की व्यापार सेवाएँ', 'bzOffices' => 'भारत में %1$d कार्यालय · नेपाल में %2$d',
+                'bzBusH' => 'बस टिकट', 'bzBusT1' => 'ऑनलाइन बर्थ चुनें, UPI से भुगतान, टिकट WhatsApp पर', 'bzBusT2' => 'अपने टिकट से बस ट्रैक करें',
+                'bzToursH' => 'टूर पैकेज', 'bzToursP' => 'हमारे पार्टनर के साथ नेपाल और भारत की यात्राएँ — अकेले, कपल, परिवार, ग्रुप या तीर्थ। तारीख बताइए, हम कोटेशन भेजेंगे। ऑनलाइन भुगतान नहीं।',
+                'bzToursB' => 'सभी पैकेज', 'bzToursAsk' => 'मेरी यात्रा प्लान करें', 'bzDemo' => 'लोकप्रिय यात्राएँ',
+                'bzIexH' => 'इम्पोर्ट-एक्सपोर्ट भारत ⇄ नेपाल', 'bzIexP1' => 'छोटे और मध्यम व्यापारियों के लिए दस्तावेज़ सहायता: इनवॉइस और पैकिंग लिस्ट, LC और बैंक कागज़ात में मार्गदर्शन, और रुपईडीहा–जमुनाहा लैंड पोर्ट से कस्टम क्लियरेंस।',
+                'bzIexP2' => 'लाइसेंस प्राप्त कस्टम पार्टनर के साथ तैयार हो रहा है। अभी कोई शिपमेंट स्वीकार नहीं — रुचि दर्ज करें, खुलते ही कॉल करेंगे।',
+                'bzTruckH' => 'ट्रक और बल्क रिज़र्वेशन', 'bzTruckP1' => 'गुजरात से नेपाल बॉर्डर तक फुल-ट्रक या पार्ट-लोड, और कई सप्लायर के बल्क ऑर्डर को एक शिपमेंट में जोड़ना।', 'bzTruckP2' => 'योजना में। अभी कोई बुकिंग नहीं ली जाती।',
+                'bzPackH' => 'अंतरराष्ट्रीय पैकेजिंग और कूरियर', 'bzPackP1' => 'विदेश जाने वाले पार्सल और सैंपल के लिए एक्सपोर्ट-ग्रेड पैकिंग, लेबलिंग और कूरियर हैंड-ऑफ़।', 'bzPackP2' => 'योजना में। अभी कुछ स्वीकार नहीं किया जाता।',
+                'bzShopH' => 'ऑनलाइन शॉपिंग, नेपाल तक डिलीवरी', 'bzShopP1' => 'भारतीय ऑनलाइन स्टोर से हमारे गुजरात रिसीविंग पते पर ऑर्डर करें; हम पार्सल रिसीव, जाँच और पैक करते हैं, GST और कस्टम ड्यूटी कानूनी रूप से चुकाते हैं, और नेपाल में डिलीवर करते हैं।',
+                'bzShopP2' => 'यह योजना में है, अभी चालू नहीं: कृपया अभी हमें कोई पार्सल न भेजें। रुचि दर्ज करें, खुलने के दिन हम बताएँगे।',
+                'bzNotify' => 'मुझे बताएँ', 'bzNotifyAlt' => ['en', 'Notify me'], 'bzService' => 'सेवा',
+                'bzSoonLd' => 'जल्द आ रहा है — अभी उपलब्ध नहीं।', 'bzNote' => 'आपको क्या चाहिए? (वैकल्पिक)', 'bzRegister' => 'रुचि दर्ज करें',
+                'bzRegNote' => 'सेवा खुलने पर ही हम कॉल करेंगे। कुछ बुक या चार्ज नहीं होता।',
+                'bzHonestH' => 'साफ़ बात', 'bzHonestP' => 'इस पेज पर हर सेवा या तो चालू है या साफ़ “जल्द आ रहा है” लिखी है। जो सेवा खुली नहीं, उसके लिए हम कभी पैसा नहीं लेते।',
             ],
             'ne' => [
                 'inTitle' => 'भारत–नेपाल: मित्रता, खुला सिमाना र हाम्रो रुट', 'inH1' => 'भारत ⇄ नेपाल', 'inKick' => 'छिमेकी · मित्र · एउटै खुला सिमाना',
@@ -516,6 +589,24 @@ final class ContentPages
                 'jHomeP' => 'रुपैडिहा बोर्डर → गुजरातको तपाईंको स्टप', 'partnerOnly' => 'यो टुर हाम्रो ट्राभल साझेदारले चलाउँछ — यसमा हाम्रो बस पर्दैन।',
                 'partnerOnlyS' => 'टुर सुरु — साझेदारमार्फत',
                 'draft' => 'पूर्वावलोकन — यो प्याकेज प्रकाशित छैन।', 'nf' => 'पृष्ठ भेटिएन', 'nfP' => 'यो पृष्ठ छैन (वा अझै प्रकाशित भएको छैन)।',
+                'bzTitle' => '%s - व्यापार सेवाहरू | बस टिकट · टुर · आयात-निर्यात र कार्गो (छिट्टै)', 'bzH1' => 'व्यापार सेवाहरू', 'bzKick' => '%s · बसभन्दा पर',
+                'bzLead' => 'एउटै कम्पनी, गुजरात र नेपालबीच धेरै ढोका। बस टिकट आज चालु छ, टुर प्याकेज सोधपुछमा चल्छ, र कार्गो, ट्रक बुकिङ, प्याकेजिङ र सप-टु-नेपाल डेलिभरी तयार हुँदैछ — रुचि दर्ता गर्नुहोस्, हरेक सेवा खुल्नेबित्तिकै हामी फोन गर्छौं।',
+                'bzDesc' => '%s का व्यापार सेवा: AC स्लिपर बस टिकट (चालु), नेपाल र भारतका टुर प्याकेज (सोधपुछमा), र छिट्टै — भारत ⇄ नेपाल आयात-निर्यात, ट्रक र बल्क रिजर्भेसन, अन्तर्राष्ट्रिय प्याकेजिङ र कुरियर, अनलाइन सपिङ नेपालसम्म डेलिभरी।',
+                'bzLive' => 'चालु', 'bzSoon' => 'छिट्टै आउँदैछ', 'bzLiveHint' => 'आज चलिरहेको', 'bzSoonHint' => 'योजनामा — अहिले केही लिइँदैन', 'bzLegend' => 'स्थिति',
+                'bzServices' => 'हाम्रा सेवाहरू', 'bzListName' => '%s का व्यापार सेवाहरू', 'bzOffices' => 'भारतमा %1$d कार्यालय · नेपालमा %2$d',
+                'bzBusH' => 'बस टिकट', 'bzBusT1' => 'अनलाइन बर्थ छान्नुहोस्, UPI बाट तिर्नुहोस्, टिकट WhatsApp मा', 'bzBusT2' => 'आफ्नो टिकटबाट बस ट्र्याक गर्नुहोस्',
+                'bzToursH' => 'टुर प्याकेज', 'bzToursP' => 'साझेदारसँग मिलेर नेपाल र भारतका यात्रा — एक्लै, जोडी, परिवार, समूह वा तीर्थ। मिति भन्नुहोस्, हामी कोटेसन पठाउँछौं। अनलाइन भुक्तानी छैन।',
+                'bzToursB' => 'सबै प्याकेज', 'bzToursAsk' => 'मेरो यात्रा योजना', 'bzDemo' => 'लोकप्रिय यात्रा',
+                'bzIexH' => 'आयात-निर्यात भारत ⇄ नेपाल', 'bzIexP1' => 'साना र मझौला व्यापारीका लागि कागजात सहयोग: इन्भ्वाइस र प्याकिङ लिस्ट, LC र बैंक कागजातमा मार्गदर्शन, र रुपैडिहा–जमुनाहा नाकाबाट भन्सार क्लियरेन्स।',
+                'bzIexP2' => 'इजाजतप्राप्त भन्सार साझेदारसँग तयार हुँदैछ। अहिले कुनै ढुवानी लिइँदैन — रुचि दर्ता गर्नुहोस्, खुल्नेबित्तिकै फोन गर्छौं।',
+                'bzTruckH' => 'ट्रक र बल्क रिजर्भेसन', 'bzTruckP1' => 'गुजरातदेखि नेपाल सिमानासम्म फुल-ट्रक वा पार्ट-लोड, र धेरै सप्लायरका बल्क अर्डर एउटै ढुवानीमा जोड्ने सेवा।', 'bzTruckP2' => 'योजनामा। अहिले बुकिङ लिइँदैन।',
+                'bzPackH' => 'अन्तर्राष्ट्रिय प्याकेजिङ र कुरियर', 'bzPackP1' => 'विदेश जाने पार्सल र नमुनाका लागि निर्यात-स्तरको प्याकिङ, लेबलिङ र कुरियर हस्तान्तरण।', 'bzPackP2' => 'योजनामा। अहिले केही लिइँदैन।',
+                'bzShopH' => 'अनलाइन सपिङ, नेपालसम्म डेलिभरी', 'bzShopP1' => 'भारतीय अनलाइन स्टोरबाट हाम्रो गुजरातको रिसिभिङ ठेगानामा अर्डर गर्नुहोस्; हामी पार्सल लिन्छौं, जाँच्छौं र प्याक गर्छौं, GST र भन्सार शुल्क कानुनी रूपमा तिर्छौं, अनि नेपालमा डेलिभर गर्छौं।',
+                'bzShopP2' => 'यो योजनामा छ, अहिले चालु छैन: कृपया अहिले हामीलाई कुनै पार्सल नपठाउनुहोस्। रुचि दर्ता गर्नुहोस्, खुल्ने दिन हामी भन्छौं।',
+                'bzNotify' => 'मलाई खबर गर्नुहोस्', 'bzNotifyAlt' => ['en', 'Notify me'], 'bzService' => 'सेवा',
+                'bzSoonLd' => 'छिट्टै आउँदैछ — अहिले उपलब्ध छैन।', 'bzNote' => 'तपाईंलाई के चाहिन्छ? (ऐच्छिक)', 'bzRegister' => 'रुचि दर्ता गर्नुहोस्',
+                'bzRegNote' => 'सेवा खुलेपछि मात्र हामी फोन गर्छौं। केही बुक वा शुल्क लाग्दैन।',
+                'bzHonestH' => 'खुला कुरा', 'bzHonestP' => 'यस पृष्ठको हरेक सेवा या त चालु छ, या स्पष्ट “छिट्टै आउँदैछ” लेखिएको छ। नखुलेको सेवाका लागि हामी कहिल्यै पैसा लिँदैनौं।',
             ],
         ];
         return $w[$lang] ?? $w['en'];
@@ -540,6 +631,56 @@ final class ContentPages
     {
         $l = self::catLabels()[$cat] ?? null;
         return $l !== null ? $l[$lang] : ucfirst(str_replace('-', ' ', $cat));
+    }
+
+    /* ----------------------------------------------------------------
+     *  Audience chip (10 Oct 2026, BIZ). The column may not exist yet
+     *  (the code can ship before database/upgrade-2026-10-10-biz.sql):
+     *  an unknown or missing value is simply no chip.
+     * ---------------------------------------------------------------- */
+
+    /** 'solo' | 'couple' | 'family' | 'group' | 'pilgrim' | '' */
+    public static function audienceKey(array $row): string
+    {
+        $a = strtolower(trim((string) ($row['audience'] ?? '')));
+        return isset(self::AUDIENCES[$a]) ? $a : '';
+    }
+
+    /** "Solo · एक्लै" on the English page, the one word in Hindi / Nepali. '' when no chip. */
+    public static function audienceLabel(string $key, string $lang): string
+    {
+        $a = self::AUDIENCES[$key] ?? null;
+        if ($a === null) {
+            return '';
+        }
+        return match ($lang) {
+            'hi' => $a[2],
+            'ne' => $a[3],
+            default => $a[1] . ' · ' . $a[3],
+        };
+    }
+
+    /** The chip markup (icon + label), or '' for a package without an audience. */
+    private static function audienceChip(array $row, string $lang): string
+    {
+        $key = self::audienceKey($row);
+        if ($key === '') {
+            return '';
+        }
+        return '<span class="chip aud aud-' . self::e($key) . '"><span aria-hidden="true">' . self::AUDIENCES[$key][0] . '</span> ' . self::e(self::audienceLabel($key, $lang)) . '</span>';
+    }
+
+    /**
+     * The demo set for /business: the packages with an audience, featured
+     * first, at most four. With no audience set anywhere (migration not run
+     * yet, or the office cleared them) the first published packages stand in.
+     * @return list<array<string,mixed>>
+     */
+    public static function demoPackages(int $max = 4): array
+    {
+        $all = self::packages();
+        $with = array_values(array_filter($all, static fn(array $k): bool => self::audienceKey($k) !== ''));
+        return array_slice($with !== [] ? $with : $all, 0, $max);
     }
 
     /* ----------------------------------------------------------------
@@ -1140,7 +1281,7 @@ final class ContentPages
                 : '<span class="ph-days"><b>' . (int) $k['days'] . '</b><small>' . $e(trim(str_replace('%d', '', $dw['days']))) . '</small></span><span class="ph-emo">' . self::pkgIcon($k) . '</span>')
             . '<span class="ph-flag">' . $flag . '</span>'
             . ($tag !== '' ? '<span class="ph-ill">' . $e($tag) . '</span>' : '') . '</a>'
-            . '<div class="pb"><div class="chips"><span class="chip on">🗓️ ' . $e(self::durLine($k, $w)) . '</span><span class="chip">' . $e($w['country'][(string) $k['country']] ?? (string) $k['country']) . '</span></div>'
+            . '<div class="pb"><div class="chips"><span class="chip on">🗓️ ' . $e(self::durLine($k, $w)) . '</span><span class="chip">' . $e($w['country'][(string) $k['country']] ?? (string) $k['country']) . '</span>' . self::audienceChip($k, $lang) . '</div>'
             . '<h3><a href="' . $e($url) . '">' . $e($title) . '</a></h3>'
             . ($route !== '' ? '<p class="route">🛣️ ' . $e($route) . '</p>' : '')
             . ($chips !== '' ? '<ul class="ticks">' . $chips . '</ul>' : '')
@@ -1287,6 +1428,7 @@ final class ContentPages
             }
         }
         $meta = '<span class="chip on">🗓️ ' . $e(self::durLine($k, $w)) . '</span><span class="chip">' . $e($w['country'][(string) $k['country']] ?? (string) $k['country']) . '</span>'
+            . self::audienceChip($k, $lang)
             . ((int) ($k['min_pax'] ?? 0) > 0 ? '<span class="chip">👥 ' . $e(sprintf($w['minPax'], (int) $k['min_pax'])) . '</span>' : '')
             . (trim((string) ($k['partner_name'] ?? '')) !== '' ? '<span class="chip">🤝 ' . $e(sprintf($w['partnerBy'], (string) $k['partner_name'])) . '</span>' : '');
 
@@ -1314,6 +1456,157 @@ final class ContentPages
             ['active' => 'tours', 'path' => $path, 'crumbs' => $crumbs, 'css' => self::css(), 'noindex' => $preview]), 200, !$preview);
     }
 
+    /* ================================================================
+     *  /business (10 Oct 2026, BIZ — owner: "the app is a business
+     *  portfolio with the bus tickets: import-export, truck reservation,
+     *  bulk orders, international packaging, Amazon / Flipkart style
+     *  orders received here and sent to Nepal the legal way with GST paid
+     *  — all coming soon; tour packages solo / group introduced").
+     *
+     *  Six cards, each with a status badge: bus and tours LIVE, the other
+     *  four COMING SOON with a "notify me" form that lands in the admin
+     *  Enquiries inbox (api/enquiry.php, source 'business'). Nothing on the
+     *  page is a date or a price, and a coming-soon card says in words that
+     *  nothing is accepted yet. The company name and office counts come from
+     *  Settings / PublicLayout::offices(), never typed here.
+     * ================================================================ */
+
+    /** "S Hari Global" from "S Hari Global Pvt Ltd" — the brand's short name (same rule as SiteFacts). */
+    private static function brandShort(): string
+    {
+        $name = PublicLayout::company()['name'];
+        $short = trim((string) preg_replace('/\s+(Pvt\.?\s*Ltd\.?|Private\s+Limited|Ltd\.?)$/i', '', $name));
+        return $short !== '' ? $short : $name;
+    }
+
+    public static function business(string $lang): never
+    {
+        $w = self::words($lang);
+        $pw = PublicLayout::words($lang);
+        $e = Closure::fromCallable([self::class, 'e']);
+        $co = PublicLayout::company();
+        $short = self::brandShort();
+        $canon = PublicLayout::url('/business', $lang);
+        $title = sprintf($w['bzTitle'], $short);
+        $desc = sprintf($w['bzDesc'], $short);
+        $open = array_values(array_filter(PublicLayout::offices(), static fn(array $o): bool => $o['status'] === 'open'));
+        $nIn = count(array_filter($open, static fn(array $o): bool => $o['country'] === 'IN'));
+        $nNp = count($open) - $nIn;
+        $badge = static fn(bool $live): string => $live
+            ? '<span class="badge st-live" title="' . $e($w['bzLiveHint']) . '"><span class="dot" aria-hidden="true"></span>' . $e($w['bzLive']) . '</span>'
+            : '<span class="badge st-soon" title="' . $e($w['bzSoonHint']) . '"><span aria-hidden="true">⏳</span> ' . $e($w['bzSoon']) . '</span>';
+        $top = static fn(string $key): string => '<div class="biz-top"><span class="biz-ic" aria-hidden="true">' . self::BIZ[$key][1] . '</span>' . $badge(self::BIZ[$key][2]) . '</div>';
+
+        /* Bus — the facts the shell already states (route tag, office counts). */
+        $cards = '<article class="card biz live rv" id="' . self::BIZ['bus'][0] . '">' . $top('bus')
+            . '<h2>' . $e($w['bzBusH']) . '</h2>'
+            . '<p class="biz-fact">' . PublicLayout::flag('IN', 14) . ' ⇄ ' . PublicLayout::flag('NP', 16) . ' ' . $e($pw['tag']) . '</p>'
+            . ($open !== [] ? '<p class="biz-fact mut">🏢 ' . $e(sprintf($w['bzOffices'], $nIn, $nNp)) . '</p>' : '')
+            . '<ul class="ticks"><li>' . $e($w['bzBusT1']) . '</li><li>' . $e($w['bzBusT2']) . '</li></ul>'
+            . '<div class="btns"><a class="btn fill" href="/#/">🎫 ' . $e($pw['book']) . '</a><a class="btn out" href="' . $e(PublicLayout::url('/offices', $lang)) . '">🏢 ' . $e($pw['offices']) . '</a></div></article>';
+
+        /* Tours — the four demo packages as mini cards with their audience chip. */
+        $mini = '';
+        foreach (self::demoPackages() as $k) {
+            $url = PublicLayout::url('/tours/' . $k['slug'], $lang);
+            $mini .= '<li><a href="' . $e($url) . '"><span class="bm-d" aria-hidden="true">' . (int) $k['days'] . '<small>' . $e(trim(str_replace('%d', '', $w['days']))) . '</small></span>'
+                . '<span class="bm-t"><b>' . $e(self::nameOf($k, 'title', $lang)) . '</b><small>' . $e(self::durLine($k, $w)) . ' · ' . $e($w['country'][(string) $k['country']] ?? (string) $k['country']) . '</small>'
+                . self::audienceChip($k, $lang) . '</span></a></li>';
+        }
+        $cards .= '<article class="card biz live rv" id="' . self::BIZ['tours'][0] . '">' . $top('tours')
+            . '<h2>' . $e($w['bzToursH']) . '</h2><p>' . $e($w['bzToursP']) . '</p>'
+            . ($mini !== '' ? '<h3 class="h-sm">' . $e($w['bzDemo']) . '</h3><ul class="biz-mini">' . $mini . '</ul>' : '<p class="note">' . $e($w['soonTours']) . '</p>')
+            . '<div class="btns"><a class="btn fill" href="' . $e(PublicLayout::url('/tours', $lang)) . '">🧳 ' . $e($w['bzToursB']) . '</a>'
+            . '<a class="btn tonal" href="' . $e(PublicLayout::url('/tours', $lang)) . '#enquire">✍️ ' . $e($w['bzToursAsk']) . '</a></div></article>';
+
+        /* Coming soon — two honest lines and a "notify me" form each. The summary carries the
+           label in the other language too, marked with its own lang so a screen reader switches voice. */
+        [$altLang, $altText] = $w['bzNotifyAlt'];
+        $notify = $e($w['bzNotify']) . ' · <span lang="' . $e($altLang) . '">' . $e($altText) . '</span>';
+        foreach (['iex', 'truck', 'pack', 'shop'] as $key) {
+            [$id, , , $svc] = self::BIZ[$key];
+            $wk = ucfirst($key);
+            $cards .= '<article class="card biz soon rv" id="' . $e($id) . '">' . $top($key)
+                . '<h2>' . $e($w['bz' . $wk . 'H']) . '</h2><p>' . $e($w['bz' . $wk . 'P1']) . '</p>'
+                . '<p class="note soon-note">⏳ ' . $e($w['bz' . $wk . 'P2']) . '</p>'
+                . '<details class="acc biz-notify"><summary><span>🔔 ' . $notify . '</span></summary><div class="acc-b">'
+                . self::bizForm($svc, $w['bz' . $wk . 'H'], $lang, $w)
+                . '<p class="note">' . $e($w['bzRegNote']) . '</p></div></details></article>';
+        }
+
+        $body = '<section class="hero biz-hero"><span class="blob b1"></span><span class="blob b2"></span>'
+            . '<span class="kick">💼 ' . $e(sprintf($w['bzKick'], $short)) . '</span><h1>' . $e($w['bzH1']) . '</h1><p class="lead">' . $e($w['bzLead']) . '</p>'
+            . '<div class="hero-flags" role="group" aria-label="' . $e($w['bzLegend']) . '"><span class="flagchip">' . $badge(true) . ' ' . $e($w['bzLiveHint']) . '</span><span class="flagchip">' . $badge(false) . ' ' . $e($w['bzSoonHint']) . '</span></div>'
+            . '<div class="btns"><a class="btn fill" href="/#/">🎫 ' . $e($pw['book']) . '</a><a class="btn tonal" href="#' . self::BIZ['tours'][0] . '">🧳 ' . $e($w['bzToursH']) . '</a>'
+            . '<a class="btn out" href="#' . self::BIZ['iex'][0] . '">🔔 ' . $e($w['bzRegister']) . '</a></div></section>'
+            . '<section class="sec" id="services"><h2 class="sec-t"><span>' . $e($w['bzServices']) . '</span></h2><div class="grid biz-grid">' . $cards . '</div>'
+            . '<noscript><p class="note">' . $e($w['fNoJs']) . '</p></noscript></section>'
+            . '<section class="sec card carry rv" id="honest"><div class="carry-ic" aria-hidden="true">🤝</div><div><h2>' . $e($w['bzHonestH']) . '</h2><p>' . $e($w['bzHonestP']) . '</p></div></section>'
+            . '<section class="sec band rv"><h2>🚌 ' . $e($w['ctaH']) . '</h2><p>' . $e($w['ctaP']) . '</p><div class="btns"><a class="btn fill" href="/#/">🎫 ' . $e($pw['book']) . '</a>'
+            . '<a class="btn out" href="' . $e(PublicLayout::url('/tours', $lang)) . '">🧳 ' . $e($pw['tours']) . '</a><a class="btn out" href="' . $e(PublicLayout::url('/offices', $lang)) . '">🏢 ' . $e($pw['offices']) . '</a></div></section>'
+            . '<script>' . self::bizFormJs() . '</script>';
+
+        /* JSON-LD: the page, the six services as an ItemList, the trail. 10 Oct 2026 (review): a
+           coming-soon service carries NO offers node — schema.org PreOrder means "can be ordered now",
+           which the page denies — and its description opens with "Coming soon — not yet available." */
+        $org = PublicLayout::base() . '/#org';
+        $items = [];
+        $pos = 0;
+        foreach (self::BIZ as $key => [$id, , $live, $svc]) {
+            $wk = ucfirst($key);
+            $about = $w[$key === 'bus' ? 'bzBusT1' : ($key === 'tours' ? 'bzToursP' : 'bz' . $wk . 'P1')];
+            $items[] = ['@type' => 'ListItem', 'position' => ++$pos, 'item' => [
+                '@type' => 'Service', 'name' => $w['bz' . $wk . 'H'], 'url' => $canon . '#' . $id, 'inLanguage' => $lang,
+                'description' => $live ? $about : $w['bzSoonLd'] . ' ' . $about,
+                'provider' => ['@id' => $org], 'areaServed' => ['India', 'Nepal'],
+            ]];
+        }
+        $crumbs = self::crumbs($lang, $w['bzH1'], '/business');
+        $ld = self::ld([
+            self::orgNode(),
+            ['@type' => 'WebPage', '@id' => $canon . '#webpage', 'url' => $canon, 'name' => $title, 'description' => $desc, 'inLanguage' => $lang, 'about' => ['@id' => $org], 'publisher' => ['@id' => $org]],
+            ['@type' => 'ItemList', 'name' => sprintf($w['bzListName'], $short), 'url' => $canon, 'numberOfItems' => count($items), 'itemListElement' => $items],
+            self::crumbsLd($crumbs),
+        ]);
+        self::send(PublicLayout::page($lang, $title, $desc, $canon, PublicLayout::alts('/business'), $ld, $body,
+            ['active' => 'business', 'path' => '/business', 'crumbs' => $crumbs, 'css' => self::css()]));
+    }
+
+    /** One "notify me" form (name, mobile, note; the service is a hidden field). No token inside — fetched with a GET like the tour form.
+     *  The phone pattern escapes ( ) because browsers compile pattern="" with the regex v flag, where a bare ( in a class is invalid. */
+    private static function bizForm(string $service, string $serviceName, string $lang, array $w): string
+    {
+        $e = Closure::fromCallable([self::class, 'e']);
+        return '<form class="bizForm" data-sending="' . $e($w['fSending']) . '" data-err="' . $e($w['fErr']) . '" autocomplete="on">'
+            . '<input type="hidden" name="source" value="business"><input type="hidden" name="service" value="' . $e($service) . '"><input type="hidden" name="lang" value="' . $e($lang) . '">'
+            . '<div class="hp" aria-hidden="true"><label>Website <input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>'
+            . '<div class="fgrid">'
+            . '<label class="fld"><span>' . $e($w['fName']) . ' *</span><input name="name" required minlength="2" maxlength="120" autocomplete="name"></label>'
+            . '<label class="fld"><span>' . $e($w['fPhone']) . ' *</span><input name="phone" type="tel" required inputmode="tel" autocomplete="tel" maxlength="20" pattern="[0-9 +\(\)\-]{10,20}"></label>'
+            . '<p class="fld full biz-svc"><span>' . $e($w['bzService']) . '</span><b>' . $e($serviceName) . '</b></p>'
+            . '<label class="fld full"><span>' . $e($w['bzNote']) . '</span><textarea name="note" rows="2" maxlength="200"></textarea></label>'
+            . '</div><div class="btns"><button class="btn fill" type="submit">📨 ' . $e($w['bzRegister']) . '</button></div>'
+            . '<p class="f-out" role="status" aria-live="polite"></p></form>';
+    }
+
+    /** All the notify-me forms on the page share one token and one sender (api/enquiry.php, JSON + X-CSRF-Token). */
+    private static function bizFormJs(): string
+    {
+        return <<<'JS'
+(function(){var fs=document.querySelectorAll('form.bizForm');if(!fs.length)return;var tok=null;
+function token(force){if(tok&&!force)return Promise.resolve(tok);return fetch('/api/tour-enquiry.php',{credentials:'same-origin',headers:{'Accept':'application/json'}}).then(function(r){return r.json()}).then(function(j){tok=j.csrf||null;return tok})}
+function send(d,retry){return token(retry).then(function(t){return fetch('/api/enquiry.php',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','Accept':'application/json','X-CSRF-Token':t||''},body:JSON.stringify(d)})}).then(function(r){return r.json().catch(function(){return{}}).then(function(j){if(r.status===419&&!retry)return send(d,true);return{s:r.status,j:j}})})}
+Array.prototype.forEach.call(fs,function(f){var out=f.querySelector('.f-out'),btn=f.querySelector('button[type=submit]'),label=btn.innerHTML;
+f.addEventListener('focusin',function(){token().catch(function(){})},{once:true});
+f.addEventListener('submit',function(ev){ev.preventDefault();if(f.reportValidity&&!f.reportValidity())return;var d={};new FormData(f).forEach(function(v,k){d[k]=v});
+Array.prototype.forEach.call(f.querySelectorAll('[aria-invalid]'),function(el){el.removeAttribute('aria-invalid')});
+btn.disabled=true;btn.textContent=f.dataset.sending;out.className='f-out';out.textContent='';
+send(d,false).then(function(x){var j=x.j||{};if(j.ok){out.className='f-out ok';out.textContent=j.message||'';f.querySelectorAll('input:not([type=hidden]),textarea').forEach(function(el){el.value=''});}
+else{out.className='f-out bad';out.textContent=j.error||f.dataset.err;var fl=j.fields||{};Object.keys(fl).forEach(function(k){var el=f.querySelector('[name="'+k+'"]');if(el){el.setAttribute('aria-invalid','true');}});var first=f.querySelector('[aria-invalid]');if(first)first.focus();}})
+.catch(function(){out.className='f-out bad';out.textContent=f.dataset.err}).then(function(){btn.disabled=false;btn.innerHTML=label})});});})();
+JS;
+    }
+
     /** The "Apply / Enquire" form. No token inside — it is fetched with a GET when the form is first touched. */
     private static function enquiryForm(?array $k, string $lang, array $w, string $heading): string
     {
@@ -1330,7 +1623,7 @@ final class ContentPages
             . '<div class="hp" aria-hidden="true"><label>Website <input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>'
             . '<div class="fgrid">'
             . '<label class="fld"><span>' . $e($w['fName']) . ' *</span><input name="name" required minlength="2" maxlength="120" autocomplete="name"></label>'
-            . '<label class="fld"><span>' . $e($w['fPhone']) . ' *</span><input name="phone" type="tel" required inputmode="tel" autocomplete="tel" maxlength="20" pattern="[0-9 +()\-]{10,20}"></label>'
+            . '<label class="fld"><span>' . $e($w['fPhone']) . ' *</span><input name="phone" type="tel" required inputmode="tel" autocomplete="tel" maxlength="20" pattern="[0-9 +\(\)\-]{10,20}"></label>'
             . '<label class="fld"><span>' . $e($w['fAdults']) . '</span><input name="adults" type="number" min="1" max="40" value="2" inputmode="numeric"></label>'
             . '<label class="fld"><span>' . $e($w['fKids']) . '</span><input name="children" type="number" min="0" max="20" value="0" inputmode="numeric"></label>'
             . '<label class="fld"><span>' . $e($w['fMonth']) . '</span><input name="month" type="month" min="' . $min . '"></label>'
@@ -1492,6 +1785,41 @@ p.coach{background:var(--md-sc)}
 .f-out{margin-top:12px;font-weight:700;min-height:1px}.f-out.ok{padding:12px 14px;border-radius:16px;background:var(--ok-container);color:var(--ok)}.f-out.bad{padding:12px 14px;border-radius:16px;background:#FFDAD6;color:#93000A}
 .btn[disabled]{opacity:.65;cursor:progress}
 @media (max-width:380px){.fgrid{grid-template-columns:1fr}}
+/* audience chip (10 Oct 2026, BIZ) — tonal, never a brand colour typed here */
+.chip.aud{background:var(--md-tertiary-container);color:var(--md-on-tertiary-container)}
+/* /business (10 Oct 2026, BIZ) */
+.biz-grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:16px}
+.biz{display:flex;flex-direction:column;gap:8px;position:relative;overflow:hidden}
+.biz h2{font-size:21px;margin:2px 0 0}
+.biz p{font-size:14.5px;color:var(--md-on-surface-variant)}
+.biz .biz-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.biz .biz-ic{display:grid;place-items:center;width:52px;height:52px;border-radius:18px;font-size:28px;background:var(--md-sc-lowest);box-shadow:var(--shadow)}
+.biz.live{border:1.5px solid color-mix(in srgb,var(--ok) 45%,transparent)}
+.biz.soon{background:var(--md-sc)}
+.biz.soon .biz-ic{filter:grayscale(.35)}
+.badge.st-live{display:inline-flex;align-items:center;gap:6px;background:var(--ok-container);color:var(--ok);letter-spacing:.05em}
+.badge.st-live .dot{width:8px;height:8px;border-radius:50%;background:currentColor}
+.badge.st-soon{display:inline-flex;align-items:center;gap:4px;background:var(--md-tertiary-container);color:var(--md-on-tertiary-container);letter-spacing:.05em}
+.biz-fact{font-weight:700;color:var(--md-on-surface) !important;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.biz-fact.mut{font-weight:600;color:var(--md-on-surface-variant) !important}
+.biz .btns{margin-top:auto;padding-top:8px}
+.biz .soon-note{display:flex;gap:8px;padding:10px 14px;border-radius:16px;background:var(--md-sc-lowest);color:var(--md-on-surface);font-weight:600;margin-top:0}
+.biz-mini{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.biz-mini a{display:flex;gap:10px;align-items:center;min-height:56px;padding:8px 12px 8px 8px;border-radius:16px;background:var(--md-sc-lowest);color:var(--md-on-surface);text-decoration:none;box-shadow:var(--shadow)}
+.biz-mini a:hover{background:var(--md-secondary-container)}
+.biz-mini .bm-d{flex:none;display:grid;place-items:center;width:44px;height:44px;border-radius:14px;background:var(--md-primary-container);color:var(--md-on-primary-container);font-weight:900;font-size:17px;line-height:1}
+.biz-mini .bm-d small{font-size:9.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+.biz-mini .bm-t{min-width:0;display:flex;flex-direction:column;gap:3px}.biz-mini .bm-t b{font-size:14.5px;line-height:1.3}.biz-mini .bm-t small{font-size:12.5px;color:var(--md-on-surface-variant)}
+.biz-mini .chip.aud{align-self:flex-start;font-size:11.5px;padding:3px 9px}
+.biz-notify{margin-top:4px;background:var(--md-sc-lowest)}
+.biz-notify summary{font-size:15px}
+.biz-notify .acc-b{padding-top:4px}
+.biz-notify .fgrid{gap:10px}
+.biz-svc{margin:0;gap:2px}.biz-svc b{font-size:14.5px;color:var(--md-on-surface);font-weight:800}
+.biz-hero .hero-flags .flagchip{gap:6px;font-size:13px}
+.biz-hero .badge{font-size:11px}
+html.rv-on .biz-grid .rv:nth-child(2){transition-delay:.08s}html.rv-on .biz-grid .rv:nth-child(3){transition-delay:.16s}
+@media (min-width:720px){.biz.live{grid-column:span 1}}
 CSS;
     }
 
@@ -1501,7 +1829,7 @@ CSS;
     /** @return list<string> language-neutral paths of every content page */
     public static function sitemapPaths(): array
     {
-        $paths = ['/india-nepal', '/offices', '/explore', '/tours'];
+        $paths = ['/india-nepal', '/offices', '/explore', '/tours', '/business'];
         foreach (self::packages() as $k) {
             $paths[] = '/tours/' . $k['slug'];
         }

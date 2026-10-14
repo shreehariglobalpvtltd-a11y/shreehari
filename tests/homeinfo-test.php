@@ -98,9 +98,8 @@ hx_check('#topHero found and its closing tag located', $thClose !== false);
 $between = ($thClose !== false && $start !== false) ? substr($tpl, (int) $thClose, $start - (int) $thClose) : 'x';
 hx_check('the block starts directly after #topHero closes', trim($between) === '', $thClose !== false ? 'gap: ' . strlen(trim($between)) . ' chars' : '');
 
-/* 10 Oct 2026 (HD pack): a fifth section, #homeLive (live bus tracking), sits between the route and
-   the India–Nepal band inside the block. */
-$ids = ['homeFares', 'homeRoute', 'homeLive', 'homeIndiaNepal', 'homeExplore'];
+/* 10 Oct 2026: #homeLive (HD pack, live bus tracking) after the route; #homeBiz (BIZ, business tiles) closes the block. */
+$ids = ['homeFares', 'homeRoute', 'homeLive', 'homeIndiaNepal', 'homeExplore', 'homeBiz'];
 foreach ($ids as $id) {
     hx_check("#{$id} is a <section> in the block and unique in the template",
         (bool) preg_match('~<section\b[^>]*\bid="' . $id . '"~', $block) && substr_count($tpl, 'id="' . $id . '"') === 1);
@@ -112,11 +111,22 @@ foreach (array_unique($bi[1]) as $id) {
     if (substr_count($tpl, 'id="' . $id . '"') !== 1) { $dupes[] = $id; }
 }
 hx_check('every id in the block is unique in the template', $dupes === [] && count($bi[1]) === count(array_unique($bi[1])), $dupes === [] ? count($bi[1]) . ' ids' : implode(', ', $dupes));
-hx_check('section order in the source: fares, route, live, India–Nepal, explore',
+hx_check('section order in the source: fares, route, live, India–Nepal, explore, business',
     strpos($block, 'id="homeFares"') < strpos($block, 'id="homeRoute"')
     && strpos($block, 'id="homeRoute"') < strpos($block, 'id="homeLive"')
     && strpos($block, 'id="homeLive"') < strpos($block, 'id="homeIndiaNepal"')
-    && strpos($block, 'id="homeIndiaNepal"') < strpos($block, 'id="homeExplore"'));
+    && strpos($block, 'id="homeIndiaNepal"') < strpos($block, 'id="homeExplore"')
+    && strpos($block, 'id="homeExplore"') < strpos($block, 'id="homeBiz"'));
+/* BIZ (10 Oct 2026): six tiles to /business#<section>, two LIVE + four COMING SOON badges, translated; the brand name is a fact. */
+$biz = preg_match('~<section\b[^>]*\bid="homeBiz".*?</section>~s', $block, $bm) ? $bm[0] : '';
+preg_match_all('~href="/business#([a-z-]+)" data-hx-href="/business#\1"~', $biz, $bt);
+hx_check('#homeBiz: six tiles link to /business#<section> (localised by data-hx-href)', $bt[1] === ['bus', 'tours', 'import-export', 'truck-bulk', 'packaging', 'shop-to-nepal'], implode(',', $bt[1]));
+hx_check('#homeBiz: two LIVE badges, four COMING SOON badges, both translated',
+    substr_count($biz, 'class="hx-badge hx-badge-live" data-i18n="hxBizLive"') === 2 && substr_count($biz, 'class="hx-badge hx-badge-soon" data-i18n="hxBizSoon"') === 4);
+hx_check('#homeBiz: the brand name comes from the facts, the eyebrow is translated', str_contains($biz, 'data-fact="brand.short">{{f:brand.short}}</span>') && str_contains($biz, 'data-i18n="hxBizEyebrow"'));
+hx_check('#homeBiz: no date and no price promised', !preg_match('~\b20[2-9]\d\b|₹|Rs\.?\s?\d~u', (string) preg_replace('~<!--.*?-->~s', '', $biz)));
+hx_check('showcase.css orders #homeBiz at 12 (ties with #homeExplore, DOM order)', str_contains((string) @file_get_contents($root . '/assets/css/showcase.css'), '#view-home > #homeBiz { order: 12 !important; }'));
+hx_check('24-homeinfo.js localises /business links and renders the audience chip', str_contains($js, '|business)(?=') && str_contains($js, "hxAudSolo") && str_contains($js, 'hx-pkg-aud'));
 hx_check('#homeRoute carries the ROUTE mount [data-routeline="home"] once', substr_count($block, 'data-routeline="home"') === 1 && substr_count($tpl, 'data-routeline="home"') === 1);
 hx_check('#homeRoute keeps the contract classes "container home-route"', (bool) preg_match('~<section class="[^"]*\bcontainer\b[^"]*\bhome-route\b[^"]*" id="homeRoute"~', $block));
 hx_check('route mount has a skeleton so nothing jumps', str_contains($block, 'data-hx-skel') && str_contains($css, '.hx-route-skel') && str_contains($css, 'min-height: 160px'));

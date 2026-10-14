@@ -37,7 +37,18 @@ $linesJson = static function (string $raw): ?string {
 };
 
 $TRACK = ['slug', 'status', 'country', 'title_en', 'title_hi', 'title_ne', 'summary_en', 'summary_hi', 'summary_ne', 'route_en', 'route_ne', 'days', 'nights',
-          'highlights_en', 'highlights_ne', 'itinerary_json', 'price_from', 'price_basis', 'coach_leg', 'partner_name', 'min_pax', 'image', 'image_credit', 'is_featured', 'sort_order'];
+          'highlights_en', 'highlights_ne', 'itinerary_json', 'price_from', 'price_basis', 'coach_leg', 'partner_name', 'min_pax', 'audience', 'image', 'image_credit', 'is_featured', 'sort_order'];
+
+/* 10 Oct 2026 (BIZ): the audience chip (solo / couple / family / group /
+   pilgrim). The column arrives with database/upgrade-2026-10-10-biz.sql; until
+   it has run the box is shown read-only and never written, so a save on an
+   older database cannot fail. */
+$hasAudience = false;
+try {
+    $hasAudience = $tableOk && (int) Database::scalar("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tour_packages' AND COLUMN_NAME = 'audience'", [], 0) === 1;
+} catch (Throwable $ex) {
+    $hasAudience = false;
+}
 
 if ($tableOk && $canEdit && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     if (!Security::verifyCsrf()) {
@@ -108,6 +119,9 @@ if ($tableOk && $canEdit && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     'image_credit' => $s('image_credit', 190) ?: null,
                     'is_featured' => !empty($_POST['is_featured']) ? 1 : 0, 'sort_order' => (int) ($_POST['sort_order'] ?? 0),
                 ];
+                if ($hasAudience) {
+                    $row['audience'] = isset(ContentPages::AUDIENCES[(string) ($_POST['audience'] ?? '')]) ? (string) $_POST['audience'] : null;
+                }
                 if (isset($_FILES['image']) && ($_FILES['image']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
                     $row['image'] = ContentPages::saveUpload($_FILES['image'], 'tours', $slug);
                 }
@@ -208,6 +222,10 @@ echo ContentPages::adminCss();
         <label class="ct-f">Order<input type="number" name="sort_order" value="<?= (int) ($cur['sort_order'] ?? 0) ?>"<?= $ro ?>></label>
         <label class="ct-f ct-check"><input type="checkbox" name="is_featured" value="1"<?= !empty($cur['is_featured']) ? ' checked' : '' ?><?= $canEdit ? '' : ' disabled' ?>> ⭐ Featured on home</label>
       </div>
+      <label class="ct-f">Audience <small>the chip on the website: who the trip suits<?= $hasAudience ? '' : ' — run database/upgrade-2026-10-10-biz.sql first' ?></small><select name="audience"<?= $canEdit && $hasAudience ? '' : ' disabled' ?>>
+        <option value="">— no chip —</option>
+        <?php foreach (ContentPages::AUDIENCES as $ak => $al): ?><option value="<?= $e($ak) ?>"<?= (string) ($cur['audience'] ?? '') === $ak ? ' selected' : '' ?>><?= $e($al[0] . ' ' . $al[1] . ' · ' . $al[3]) ?></option><?php endforeach; ?>
+      </select></label>
     </section>
     <section class="ct-card">
       <h3>Price &amp; bus</h3>
@@ -276,6 +294,7 @@ echo ContentPages::adminCss();
         <div class="ct-meta">
           <span class="pill st-<?= $e($p['status']) ?>"><?= $e(ucfirst((string) $p['status'])) ?></span>
           <span><?= (int) $p['days'] ?>d/<?= (int) $p['nights'] ?>n · <?= $e($p['country']) ?></span>
+          <?php $ak = ContentPages::audienceKey($p); if ($ak !== ''): ?><span class="pill st-on"><?= $e(ContentPages::AUDIENCES[$ak][0] . ' ' . ContentPages::AUDIENCES[$ak][1]) ?></span><?php endif; ?>
           <span><?= $p['price_from'] !== null ? '₹' . number_format((float) $p['price_from']) : 'Price on request' ?></span>
           <span><?= (int) $p['leads'] ?> enquir<?= (int) $p['leads'] === 1 ? 'y' : 'ies' ?></span>
         </div>
