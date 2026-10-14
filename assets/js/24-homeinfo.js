@@ -21,7 +21,7 @@
 (function () {
   'use strict';
   var D = document, ROOT = D.documentElement;
-  var ASSET = '?v=20261009g';
+  var ASSET = '?v=20261014v';
   var STATE = { open: { go: false, back: false }, tl: null, feat: null, tlTried: false, featTried: false, io: null };
 
   /* ---------------------------------------------------------------- helpers */

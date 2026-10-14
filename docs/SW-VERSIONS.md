@@ -4,6 +4,7 @@ Moved out of `sw.js` on 2 Oct 2026: the history used to live on the `var VERSION
 
 The CURRENT version and its note stay on the `var VERSION` line in `sw.js`; this file holds the ones before it. Newest first. Each line: version — what shipped with it (as written at the time).
 
+- **shg-v210** — 9 Oct 2026: gold documents - gold ticket (screen, PNG, PDF), gold chalani/challan, mantra + blessing lines, payment QR on every ticket and chalani
 - **shg-v209** — 9 Oct 2026: showcase upgrade - emblem-only logo, Pixel themes + sounds, single-source facts, route km/halts + live time, ticket heritage art + security code, fake-proof risk queue, office chat, India-Nepal + Explore + Tours
 - **shg-v208** — 8 Oct 2026: premium upgrade - booking-first home, 5-tab bar, premium seat map, honest checkout/ticket, a11y + voice guide   // 8 Oct 2026: Settings save fixed, sharing fare per pickup, website button switches   // 8 Oct 2026: Smart v2 - Seat AI rear-first + Recommended ring, near-me pickup   // 8 Oct 2026: Extra seats EX1..EX20 (counter / agent strip)   // 8 Oct 2026: Seat AI (gender-aware auto seat, Auto seat → Continue)   // 7 Oct 2026: login sheet on first open; saved name/number/gender fill Quick Ticket + seat page
 - **shg-v199** — 7 Oct 2026: customer login with WhatsApp OTP + profile photo/address + book for someone else
