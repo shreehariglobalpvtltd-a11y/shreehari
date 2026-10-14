@@ -603,7 +603,9 @@ function snProAttach(){
     snProCockpitSync();
   };
   document.addEventListener('visibilitychange',SNP.visFn);
-  SNP.resizeFn=snProTvCheck; window.addEventListener('resize',SNP.resizeFn,{passive:true});
+  /* one TV / large-screen check per frame however fast the resize events come (perf-hints rule) */
+  SNP.resizeFn=function(){ if(SNP.rzRaf) return; SNP.rzRaf=requestAnimationFrame(function(){ SNP.rzRaf=0; snProTvCheck(); }); };
+  window.addEventListener('resize',SNP.resizeFn,{passive:true});
   SNP.ageT=setInterval(snProGpsAge,2000);
   snProTvCheck();
   snProCockpitPaint();
@@ -613,6 +615,7 @@ function snProCleanup(){
   if(SNP.keyFn){ document.removeEventListener('keydown',SNP.keyFn); SNP.keyFn=null; }
   if(SNP.visFn){ document.removeEventListener('visibilitychange',SNP.visFn); SNP.visFn=null; }
   if(SNP.resizeFn){ window.removeEventListener('resize',SNP.resizeFn); SNP.resizeFn=null; }
+  if(SNP.rzRaf){ cancelAnimationFrame(SNP.rzRaf); SNP.rzRaf=0; }
   if(SNP.ageT!=null){ clearInterval(SNP.ageT); SNP.ageT=null; }
   /* the GPS watch stops with the view: the next visit measures afresh, so the
      first fix after coming back never shows the minutes spent away */

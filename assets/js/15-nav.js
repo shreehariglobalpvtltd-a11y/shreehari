@@ -1657,13 +1657,21 @@ function initNavApp(){
      rider as genuinely off the suggested path — tighter for walking, looser for a bus */
   var SN_OFFROUTE_KM={auto:0.06,motorcycle:0.05,bus:0.08,bicycle:0.03,pedestrian:0.02};
   function snUpdateQuickDist(){ /* straight-line quick-distance readout removed — no-op kept so callers stay wired */ }
+  /* 14 Oct 2026 (owner: "bato dekhaunuhos click garda route draw hudaina"): a place
+     TYPED in From / To but never picked from the list left SN.origin / SN.dest empty,
+     so the button stayed disabled. A field whose text differs from the picked place
+     now counts as "to be looked up": Get directions resolves it first (snResolveTyped). */
+  function snTypedIn(sel,pt){ var el=s(sel), v=el?String(el.value||'').trim():''; return v.length>=2&&!(pt&&pt.label===v)?v:''; }
+  function snHasStart(){ return !!(snTypedIn('#snFrom',SN.origin)||SN.origin); }
+  function snHasDest(){ return !!(snTypedIn('#snTo',SN.dest)||SN.dest); }
   function snRefreshGo(){
     var go=s('#snGo');
-    go.disabled=!(SN.origin&&SN.dest); snUpdateQuickDist();
+    var hs=snHasStart(), hd=snHasDest();
+    go.disabled=!(hs&&hd); snUpdateQuickDist();
     /* D2-14: a disabled "Get directions" says why, in one line right under it */
     var why=s('#snGoWhy');
     if(why){
-      var wk=(SN.origin&&SN.dest)?'':(!SN.origin&&!SN.dest?'snGoWhyBoth':(!SN.dest?'snGoWhyDest':'snGoWhyStart'));
+      var wk=(hs&&hd)?'':(!hs&&!hd?'snGoWhyBoth':(!hd?'snGoWhyDest':'snGoWhyStart'));
       why.textContent=wk?snT(wk):''; why.hidden=!wk;
       if(wk) go.setAttribute('aria-describedby','snGoWhy'); else go.removeAttribute('aria-describedby');
     }
@@ -1717,7 +1725,37 @@ function initNavApp(){
   /* routing */
   /* shg-v59 — tap bounce (item #7). Wraps snRoute so the button flashes the
      scale keyframe even while Valhalla is still round-tripping. */
-  s('#snGo').onclick=function(){ var g=s('#snGo'); g.classList.remove('sn-bounce'); void g.offsetWidth; g.classList.add('sn-bounce'); snRoute(); };
+  /* 14 Oct 2026: first place for a typed-but-not-picked field = the first answer of
+     our own place index (the same list the dropdown shows), then the normal route. */
+  function snResolveOne(sel,pt,setFn){
+    var q=snTypedIn(sel,pt); if(!q) return Promise.resolve(true);
+    return fetch('/api/nav-search.php?q='+encodeURIComponent(q)+'&limit=1',{credentials:'same-origin'})
+      .then(function(r){ return r.ok?r.json():null; })
+      .then(function(j){ var r=j&&j.results&&j.results[0];
+        if(!r||!isFinite(r.lat)||!isFinite(r.lng)) return false;
+        setFn(+r.lng,+r.lat,r.displayName||r.shortName||q); return true; })
+      .catch(function(){ return false; });
+  }
+  function snResolveTyped(){
+    var g=s('#snGo');
+    if(!snTypedIn('#snFrom',SN.origin)&&!snTypedIn('#snTo',SN.dest)) return Promise.resolve(true);
+    g.textContent=snT('snRouting'); g.disabled=true;
+    if(SN._autoRouteT){ clearTimeout(SN._autoRouteT); SN._autoRouteT=null; }
+    var keepDest=SN.dest;
+    return snResolveOne('#snFrom',SN.origin,snSetOrigin).then(function(okA){
+      /* snSetOrigin never routes; snSetDest auto-routes once both ends are set */
+      if(SN._autoRouteT&&keepDest===SN.dest){ clearTimeout(SN._autoRouteT); SN._autoRouteT=null; }
+      return snResolveOne('#snTo',SN.dest,snSetDest).then(function(okB){
+        if(SN._autoRouteT){ clearTimeout(SN._autoRouteT); SN._autoRouteT=null; }
+        g.textContent=snT('snGo'); snRefreshGo();
+        if(!(okA&&okB)) snToast(snT('snNoRoute'));
+        return okA&&okB&&!!(SN.origin&&SN.dest);
+      });
+    });
+  }
+  ['#snFrom','#snTo'].forEach(function(sel){ var el=s(sel); if(el) el.addEventListener('input',snRefreshGo); });
+  s('#snGo').onclick=function(){ var g=s('#snGo'); g.classList.remove('sn-bounce'); void g.offsetWidth; g.classList.add('sn-bounce');
+    snResolveTyped().then(function(ok){ if(ok) snRoute(); }); };
   s('#snClear').onclick=function(){
     SN.origin=SN.dest=SN.routeGeo=SN.routeCoords=SN.routeManeuvers=SN.routeCumKm=null;
     SN.routeTotalKm=0; SN.routeProgKm=0; SN.offRouteSince=0; SN.lastSpokenInstr=null;
@@ -1785,6 +1823,7 @@ function initNavApp(){
         if(typeof snSaveLastRoute==='function') snSaveLastRoute();   /* [OFFLINE] persist route for offline reopen */
         SN.arrived=false;
         snFetchAlts();
+        snRoutePreview();   /* 14 Oct 2026: the chosen vehicle drives the drawn route */
       })
       .catch(function(){snToast(snT('snNoRoute'));})
       .finally(function(){s('#snGo').textContent=snT('snGo');snRefreshGo();});
@@ -1871,6 +1910,47 @@ function initNavApp(){
     if(SN.presetBusMarker){ SN.presetBusMarker.remove(); SN.presetBusMarker=null; }
     ['shg-trail-flow','shg-trail-np-l','shg-trail-in-l'].forEach(function(l){ if(map.getLayer(l)) map.removeLayer(l); });
     ['shg-trail-flow-src','shg-trail-np','shg-trail-in'].forEach(function(n){ if(map.getSource(n)) map.removeSource(n); });
+  }
+  /* 14 Oct 2026 (owner: "route draw bhayepachi selected vehicle route mathi smooth
+     animate hunuparchha, bus = 60 km/h"): a PREVIEW of the drawn road route - the
+     chosen vehicle glides along SN.routeCoords in one rAF loop, at the mode's road
+     speed (bus 60, car 80, bike 55, cycle 15, walk 5 km/h) time-lapsed so a bus run
+     of any length plays in 12-45 s (other modes in proportion, max 90 s), looping.
+     It reuses the preset-bus marker slot, so snTrailClear / Clear / cleanupNav stop
+     it; it stops by itself once real follow-navigation starts (the GPS arrow takes
+     over) and draws nothing per frame in a hidden tab. Reduced motion = the vehicle
+     waits at the start. It is a preview, never a position: the live-bus card is
+     untouched. */
+  var SN_PREV_KMH={bus:60,auto:80,motorcycle:55,bicycle:15,pedestrian:5};
+  var SN_PREV_ICO={bus:'🚌',auto:'🚗',motorcycle:'🏍️',bicycle:'🚲',pedestrian:'🚶'};
+  function snRoutePreview(){
+    if(SN.presetBusAnim!=null){ cancelAnimationFrame(SN.presetBusAnim); SN.presetBusAnim=null; }
+    if(SN.presetBusMarker){ SN.presetBusMarker.remove(); SN.presetBusMarker=null; }
+    var pts=SN.routeCoords, cum=SN.routeCumKm, total=SN.routeTotalKm;
+    if(!pts||pts.length<2||!cum||!(total>0)) return;
+    var el=document.createElement('div'); el.className='sn-bus-m sn-prev-m'; el.textContent=SN_PREV_ICO[SN.mode]||'🚌';
+    el.setAttribute('aria-hidden','true');
+    SN.presetBusMarker=new maplibregl.Marker({element:el}).setLngLat(pts[0]).addTo(map);
+    var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if(reduce||document.documentElement.getAttribute('data-motion')==='reduced') return;
+    var kmh=SN_PREV_KMH[SN.mode]||60;
+    var busMs=Math.max(12000,Math.min(45000,total*30));            /* the bus run, time-lapsed */
+    var dur=Math.max(8000,Math.min(90000,busMs*60/kmh));
+    var t0=0, seg=1, lastD=0;
+    function at(d){                                               /* the point at d km along the road */
+      if(d<lastD) seg=1; lastD=d;
+      while(seg<pts.length-1&&cum[seg]<d) seg++;                 /* forward walk: O(1) per frame */
+      var a=pts[seg-1], b=pts[seg], span=Math.max(1e-6,cum[seg]-cum[seg-1]), f=Math.min(1,Math.max(0,(d-cum[seg-1])/span));
+      return {p:[a[0]+(b[0]-a[0])*f, a[1]+(b[1]-a[1])*f]};   /* an emoji is never rotated (upside-down bus) */
+    }
+    (function drive(ts){
+      if(!SN.presetBusMarker) { SN.presetBusAnim=null; return; }
+      if(SN.followMe&&SN.gpsPos){ SN.presetBusMarker.remove(); SN.presetBusMarker=null; SN.presetBusAnim=null; return; }
+      if(!t0) t0=ts;
+      var k=((ts-t0)%dur)/dur, q=at(k*total);
+      SN.presetBusMarker.setLngLat(q.p);
+      SN.presetBusAnim=requestAnimationFrame(drive);
+    })(performance.now());
   }
   function snShariTrail(){
     snTrailClear();

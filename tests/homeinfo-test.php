@@ -104,7 +104,7 @@ foreach ($ids as $id) {
     hx_check("#{$id} is a <section> in the block and unique in the template",
         (bool) preg_match('~<section\b[^>]*\bid="' . $id . '"~', $block) && substr_count($tpl, 'id="' . $id . '"') === 1);
 }
-hx_check('exactly five <section> tags in the block (no nested sections)', substr_count($block, '<section') === 5 && substr_count($block, '</section>') === 5);
+hx_check('exactly six <section> tags in the block (no nested sections)', substr_count($block, '<section') === 6 && substr_count($block, '</section>') === 6);   // 10 Oct 2026: + #homeLive (HD) + #homeBiz (BIZ)
 preg_match_all('~\bid="([^"]+)"~', $block, $bi);
 $dupes = [];
 foreach (array_unique($bi[1]) as $id) {

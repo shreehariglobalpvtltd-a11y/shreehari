@@ -225,8 +225,20 @@ function createLocationSearchInput(inputEl, options){
        be ~100 px wide and the list was unreadable. Kept inside the screen. */
     var w = Math.max(r.width, Math.min(window.innerWidth - 16, 300));
     var left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
-    dd.style.left = left + 'px'; dd.style.top = (r.bottom + 6) + 'px'; dd.style.width = w + 'px';
-    dd.style.maxHeight = Math.max(150, Math.min(360, window.innerHeight - r.bottom - 16)) + 'px';
+    /* 14 Oct 2026 (owner: "bato dekhaunuhos click garda route aaudaina"): the map's
+       From / To fields sit low in the bottom sheet, so with the phone keyboard open
+       the list opened UNDER the keyboard and no place could be picked - no start,
+       no destination, no route. Measure against the VISIBLE viewport and open
+       above the field when there is more room there. */
+    var vv = window.visualViewport, vTop = vv ? vv.offsetTop : 0, vBot = vv ? vv.offsetTop + vv.height : window.innerHeight;
+    var below = vBot - r.bottom - 16, above = r.top - vTop - 16;
+    dd.style.left = left + 'px'; dd.style.width = w + 'px';
+    if (below < 180 && above > below) {
+      var hA = Math.max(120, Math.min(360, above));
+      dd.style.top = Math.max(vTop + 8, r.top - 6 - hA) + 'px'; dd.style.maxHeight = hA + 'px';
+    } else {
+      dd.style.top = (r.bottom + 6) + 'px'; dd.style.maxHeight = Math.max(120, Math.min(360, below)) + 'px';
+    }
   }
   /* shg-v59 — show/hide toggles a class so CSS can fade+slide the dropdown in
      (item #3). We flip display first (so measurement/layout is correct), pin the
@@ -335,6 +347,8 @@ function createLocationSearchInput(inputEl, options){
   };
   window.addEventListener('resize', placeSoon);
   window.addEventListener('scroll', placeSoon, { capture: true, passive: true });
+  /* 14 Oct 2026: the phone keyboard opening / closing resizes only the visual viewport */
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', placeSoon, { passive: true });
 
   var api = { input:inputEl,
     setValue:function(txt){ inputEl.value = txt||''; hide(); },
