@@ -604,8 +604,7 @@ function snProAttach(){
   };
   document.addEventListener('visibilitychange',SNP.visFn);
   /* one TV / large-screen check per frame however fast the resize events come (perf-hints rule) */
-  SNP.resizeFn=function(){ if(SNP.rzRaf) return; SNP.rzRaf=requestAnimationFrame(function(){ SNP.rzRaf=0; snProTvCheck(); }); };
-  window.addEventListener('resize',SNP.resizeFn,{passive:true});
+  window.addEventListener('resize',SNP.resizeFn=function(){ if(SNP.rzRaf) return; SNP.rzRaf=requestAnimationFrame(function(){ SNP.rzRaf=0; snProTvCheck(); }); },{passive:true});
   SNP.ageT=setInterval(snProGpsAge,2000);
   snProTvCheck();
   snProCockpitPaint();

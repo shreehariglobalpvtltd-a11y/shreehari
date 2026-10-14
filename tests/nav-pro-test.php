@@ -197,9 +197,10 @@ check('snProCleanup() clears the GPS-age timer and hides the cockpit', str_conta
 $sc = assignBody($nav, 'SN.stopCompass');
 check('SN.stopCompass() removes both deviceorientation listeners', str_contains($sc, "removeEventListener('deviceorientationabsolute', snOnOrient, true)") && str_contains($sc, "removeEventListener('deviceorientation', snOnOrient, true)"));
 $att = fnBody($pro, 'snProAttach');
-check('snProAttach() adds exactly what cleanup removes (keydown, visibilitychange, resize, timer)', str_contains($att, "addEventListener('keydown',SNP.keyFn)") && str_contains($att, "addEventListener('visibilitychange',SNP.visFn)") && str_contains($att, "addEventListener('resize',SNP.resizeFn,{passive:true})") && str_contains($att, 'SNP.ageT=setInterval'));
+check('snProAttach() adds exactly what cleanup removes (keydown, visibilitychange, resize, timer)', str_contains($att, "addEventListener('keydown',SNP.keyFn)") && str_contains($att, "addEventListener('visibilitychange',SNP.visFn)") && str_contains($att, "addEventListener('resize',SNP.resizeFn=function(){") && str_contains($att, "snProTvCheck(); }); },{passive:true});") && str_contains($att, 'SNP.ageT=setInterval'));
 check('the compass permission is asked only from a tap (📍 / 🧭), never on load', str_contains($nav, "s('#snCompass').onclick=function(){\r\n    snStartCompass();") && str_contains($nav, "s('#snLocate').onclick=function(){\r\n    if(!navigator.geolocation){ snToast(snT('snNoGps')); return; }\r\n    snStartCompass();") && substr_count($nav, 'snStartCompass();') === 2);
-check('the pro bundle adds no rAF loop of its own (reuses SN.motionAnim)', !str_contains($pro, 'requestAnimationFrame'));
+/* 14 Oct 2026: the one rAF allowed is the one-shot resize throttle perf-hints-test demands - not a loop */
+check('the pro bundle adds no rAF loop of its own (reuses SN.motionAnim)', substr_count($pro, 'requestAnimationFrame') === 1 && str_contains($pro, 'SNP.rzRaf=requestAnimationFrame(function(){ SNP.rzRaf=0; snProTvCheck(); });'));
 
 echo "\n-- 7. device tier, map options, offline quota --\n";
 $dp = fnBody($pro, 'snDeviceProfile');
