@@ -15,6 +15,7 @@
 
 declare(strict_types=1);
 require_once __DIR__ . '/_init.php';
+require_once INCLUDE_PATH . '/sitefacts.php';
 
 try {
     $date = Security::clean($_GET['date'] ?? '', 10);
@@ -186,6 +187,10 @@ try {
                until the office confirms the arrival (duration_text), and the
                arrival CLOCK (arrTime) stays hidden until then. */
             'distanceKm'     => $summary['distanceKm'],
+            /* D9 (15 Oct 2026): the distance the page PRINTS is the one
+               corridor figure; distanceKm stays the measured scale the rail
+               positions its ticks on. */
+            'displayKm'      => SiteFacts::routeKm(),
             'distanceSource' => $summary['distanceSource'],
             'spans'          => $summary['spans'],
             'stopCount'      => $summary['stopCount'],

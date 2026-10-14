@@ -207,7 +207,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple
       <?php endforeach; ?>
     </div>
   </div>
-  <div class="h-row"><h1><?= $e($T['title']) ?></h1><span class="h-art" aria-hidden="true"><img src="/assets/img/hd/track-journey-s.webp?v=20261014v" width="128" height="128" alt="" loading="lazy" decoding="async"></span></div>
+  <div class="h-row"><h1><?= $e($T['title']) ?></h1><span class="h-art" aria-hidden="true"><img src="/assets/img/hd/track-journey-s.webp?v=20261015a" width="128" height="128" alt="" loading="lazy" decoding="async"></span></div>
   <p class="sub"><?= $e($T['sub']) ?></p>
 
 <?php if (!$authed): ?>
@@ -240,7 +240,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple
   </section>
 
   <section class="card<?= $stopCnt + $haltCnt === 0 ? ' hidden' : '' ?>" id="jr">
-    <h3><?= $e($T['journey']) ?> <span id="jrCnt"><?= $e(sprintf($T['places'], $stopCnt, $haltCnt)) ?><?= !empty($status['totalKm']) ? ' · ' . number_format((int) $status['totalKm']) . ' km' : '' ?></span></h3>
+    <h3><?= $e($T['journey']) ?> <span id="jrCnt"><?= $e(sprintf($T['places'], $stopCnt, $haltCnt)) ?><?= !empty($status['displayKm']) ? ' · ' . number_format((int) $status['displayKm']) . ' km' : '' ?></span></h3>
     <ol class="rail" id="rail"></ol>
     <?php if ($haltCnt > 0): ?><p class="note"><?= $e($T['approxNote']) ?></p><?php endif; ?>
     <p class="note"><svg class="fl"><use href="#fIN"/></svg> Rupaidiha — <?= $e($T['border']) ?> · <svg class="fl np"><use href="#fNP"/></svg> <?= $e($T['across']) ?></p>

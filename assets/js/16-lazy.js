@@ -265,13 +265,13 @@ function tcInitLiveTimeline() {
       var h = halts[hi++];
       html += '<div class="lt-stop lt-halt" style="opacity:.86"><div class="lt-marker"><span class="lt-dot" style="width:9px;height:9px;left:9px;top:6px;border-color:var(--orange)"></span></div>'
         + '<div class="lt-info"><div class="lt-name" style="font-weight:600">' + (hIcon[h.kind] || '•') + ' ' + esc(h.name)
-        + ' <span class="lt-km">' + Math.round(h.km) + ' km' + (h.time ? ' · ' + (h.approx ? '≈' : '') + esc(h.time) : '') + (h.haltMin ? ' · ' + h.haltMin + ' min' : '') + '</span></div></div></div>';
+        + ' <span class="lt-km">' + [h.time ? (h.approx ? '≈' : '') + esc(h.time) : '', h.haltMin ? h.haltMin + ' min' : ''].filter(Boolean).join(' · ') + '</span></div></div></div>';
     }
     var amen = ltAmenStr(s);
     html += '<div class="lt-stop" data-i="' + i + '">'
       + '<div class="lt-marker"><span class="lt-dot"></span></div>'
       + '<div class="lt-info"><div class="lt-name">' + (s.flag ? s.flag + ' ' : '') + esc(s.name)
-      + ' <span class="lt-km">' + s.km + ' km</span></div>'
+      + '</div>'
       + (amen ? '<div class="lt-amen">' + amen + '</div>' : '')
       + '</div></div>';
   });
@@ -1008,10 +1008,10 @@ document.addEventListener('click', function(e) {
         '🔒 <b>પ્રાઇવેટ</b> = આખી કેબિન ફક્ત તમારી (કપલ/પરિવાર, સંપૂર્ણ પ્રાઇવસી, VIP) — ' + privFrom() + ' થી. 🤝 <b>શેરિંગ</b> = બર્થ પ્રમાણે, સૌથી સસ્તું — ' + shareFrom() + '/વ્યક્તિ.') },
     { k: ['cancel', 'refund', 'रद्द', 'रिफंड', 'रिफण्ड', 'फिर्ता', 'कैंसिल', 'क्यान्सिल', 'રદ', 'રિફંડ'],
       a: () => A(
-        'Cancellation: ≥96h before departure → 90% refund · 48–96h → 75% · 24–48h → 50% · 6–24h → 25% · under 6h → no refund. Refund reaches the same account in 5–7 working days. <a href="#/terms">Full T&amp;C →</a>',
-        'रद्दीकरण: प्रस्थान से ≥96 घंटे पहले → 90% रिफंड · 48–96 घंटे → 75% · 24–48 घंटे → 50% · 6–24 घंटे → 25% · 6 घंटे से कम → कोई रिफंड नहीं। रिफंड 5–7 कार्यदिवस में। <a href="#/terms">पूरे नियम →</a>',
-        'रद्द: प्रस्थान भन्दा ≥96 घण्टा अगाडि → 90% फिर्ता · 48–96 घण्टा → 75% · 24–48 घण्टा → 50% · 6–24 घण्टा → 25% · 6 घण्टाभित्र → फिर्ता हुँदैन। रकम 5–7 कार्य दिनमा। <a href="#/terms">पूरा नियम →</a>',
-        'કેન્સલેશન: ≥96 કલાક પહેલાં → 90% રિફંડ · 48–96 કલાક → 75% · 24–48 કલાક → 50% · 6–24 કલાક → 25% · 6 કલાકથી ઓછું → રિફંડ નહીં. રિફંડ 5–7 કાર્યદિવસમાં. <a href="#/terms">સંપૂર્ણ નિયમો →</a>') },
+        '❌ ' + factPolicyIn('en') + ' <a href="#/terms">Full T&amp;C →</a>',
+        '❌ ' + factPolicyIn('hi') + ' <a href="#/terms">पूरी शर्तें →</a>',
+        '❌ ' + factPolicyIn('ne') + ' <a href="#/terms">पूरा सर्त →</a>',
+        '❌ ' + factPolicyIn('gu') + ' <a href="#/terms">સંપૂર્ણ શરતો →</a>') },
     { k: ['luggage', 'baggage', 'bag', 'सामान', 'झोला', 'लगेज', 'સામાન', 'બેગ'],
       a: () => A('1 suitcase (20 kg) + 1 cabin bag per passenger travels FREE. Excess baggage is charged. Valuables are your responsibility.',
         'प्रति यात्री 1 सूटकेस (20 किलो) + 1 केबिन बैग मुफ़्त। अतिरिक्त सामान पर शुल्क। कीमती सामान आपकी ज़िम्मेदारी।',
@@ -1944,24 +1944,22 @@ document.addEventListener('click', function(e) {
         return '<li class="tt-stop tt-halt" style="opacity:.92">'
           + '<span class="tt-time">' + (it.time ? (it.approx ? '≈' : '') + esc2(it.time) + (it.dayPlus > 0 ? '<sup>+' + (it.dayPlus | 0) + '</sup>' : '') : '—') + '</span>'
           + '<span class="tt-name">' + k[0] + ' ' + esc2(it.name) + ' <span class="tt-tag">' + esc2(k[1]) + (it.haltMin ? ' · ' + (it.haltMin | 0) + ' min' : '') + '</span>'
-          + (it.km != null ? ' <span class="tt-tag">' + kmT(it.km) + '</span>' : '') + '</span></li>';
+          + '</span></li>';
       }
       const gone = it.role === 'board' && it.open === false;
       return '<li class="tt-stop' + (gone ? ' tt-gone' : '') + '">'
         + '<span class="tt-time">' + esc2(it.time || '—') + '</span>'
         + '<span class="tt-name">' + esc2(it.name) + (it.border ? ' 🇮🇳 <span class="tt-tag">🛂 भारत–नेपाल सीमा · border</span>' : '')
-        + (it.km != null ? ' <span class="tt-tag">' + kmT(it.km) + '</span>' : '')
         + (gone ? ' <span class="tt-gone-tag">बस गइसक्यो · already departed</span>' : '')
         + '</span></li>';
     };
     const facts = (r) => {
       const bits = [];
-      if (r.distanceKm) bits.push('≈ ' + kmT(r.distanceKm));
+      bits.push('≈ ' + kmT(+r.displayKm || factRouteKm()));   // D9: one corridor distance
       if (r.stopCount != null) bits.push(r.stopCount + ' स्टप · stops');
       if (r.haltCount) bits.push(r.haltCount + ' बिसौनी · halts');
       if (r.durationMin > 0) { const h = Math.round(r.durationMin / 30) / 2; bits.push('≈ ' + Math.floor(h) + (h % 1 ? '½' : '') + ' घण्टा · h'); }
-      const spans = (r.spans || []).slice(1).map(sp => esc2(sp.from) + ' → ' + esc2(sp.to) + ' ≈ ' + kmT(sp.km)).join(' · ');
-      return bits.length ? '<div class="tt-sub" style="text-transform:none">📏 ' + esc2(bits.join(' · ')) + (spans ? '<br>' + spans : '') + '</div>' : '';
+      return bits.length ? '<div class="tt-sub" style="text-transform:none">📏 ' + esc2(bits.join(' · ')) + '</div>' : '';
     };
 
     const card = (r) => {
@@ -2132,7 +2130,7 @@ document.addEventListener('click', function(e) {
       return false;
     },
     timeline(cat) {
-      if (cat === 'refund') return L('Refunds resolve in 3–5 working days.', 'रिफंड 3–5 कार्यदिवस में।', 'फिर्ता ३–५ कार्यदिनमा।', 'રિફંડ 3–5 દિવસમાં.');
+      if (cat === 'refund') return L('Refunds resolve in ' + factDaysIn('en') + ' working days.', 'रिफंड ' + factDaysIn('hi') + ' कार्यदिवस में।', 'फिर्ता ' + factDaysIn('ne') + ' कार्यदिनमा।', 'રિફંડ ' + factDaysIn('gu') + ' દિવસમાં.');
       if (cat === 'staff')  return L('Senior staff will review within 24 hours.', 'सीनियर स्टाफ 24 घंटे में देखेंगे।', 'सिनियर स्टाफले २४ घण्टामा हेर्नेछन्।', '24 કલાકમાં રિવ્યૂ.');
       return L('You will hear back within 24–48 hours.', '24–48 घंटे में जवाब मिलेगा।', '२४–४८ घण्टामा जवाफ पाउनुहुनेछ।', '24–48 કલાકમાં જવાબ.');
     },

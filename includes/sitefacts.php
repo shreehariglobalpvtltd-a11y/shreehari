@@ -63,6 +63,16 @@ final class SiteFacts
         return $d !== '' ? $d : SITE_SUPPORT_CHAT_DIGITS;
     }
 
+    /** D9: the Gujarat ⇄ Rupaidiha distance the site states (setting `route_distance_km`). */
+    public const ROUTE_KM_DEFAULT = 1375;
+
+    /** 1375 — the one corridor distance every page, ticket and bot prints. */
+    public static function routeKm(): int
+    {
+        $km = (int) round(Settings::getFloat('route_distance_km', (float) self::ROUTE_KM_DEFAULT));
+        return $km > 0 ? $km : self::ROUTE_KM_DEFAULT;
+    }
+
     /** @var array<string,mixed>|null */
     private static ?array $memo = null;
 
@@ -234,6 +244,24 @@ final class SiteFacts
             'agent'     => [
                 'direct' => (float) Settings::getFloat('agent_flat_direct', 200.0),
                 'joint'  => (float) Settings::getFloat('agent_flat_joint', 400.0),
+            ],
+            /* D8 + D9 (15 Oct 2026, SmartBook v5): the one cancellation policy
+               and the one corridor distance. Every page, the ticket, the bot
+               and the AI print these - never a typed copy. */
+            'policy'    => [
+                'slabs' => Fare::refundSlabs(),
+                'days'  => Fare::refundDays(),
+                'line'  => [
+                    'en' => Fare::refundPolicyLine('en'),
+                    'hi' => Fare::refundPolicyLine('hi'),
+                    'ne' => Fare::refundPolicyLine('ne'),
+                    'gu' => Fare::refundPolicyLine('gu'),
+                ],
+            ],
+            'route'     => [
+                'km'     => self::routeKm(),
+                'kmText' => number_format(self::routeKm()),
+                'hours'  => 30,
             ],
         ];
         $facts = ['v' => substr(md5((string) json_encode($facts)), 0, 10)] + $facts;

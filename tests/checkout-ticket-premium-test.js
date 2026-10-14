@@ -79,6 +79,9 @@ const HELPERS = [
   "const esc = (s) => String(s == null ? '' : s).replace(/[&<>\"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));",
   liftVar(SRC.cfg, 'STOP_CODES'),
   lift(SRC.cfg, 'parseBP'), lift(SRC.cfg, 'stopTown'), lift(SRC.cfg, 'stopDisplay'),
+  /* 15 Oct 2026 (D8): the refund chip reads the one policy source */
+  "window.FACTS = (typeof SHG_BOOT !== 'undefined' && SHG_BOOT && SHG_BOOT.facts) || null;",
+  lift(SRC.cfg, 'fact'), lift(SRC.cfg, 'liveRefundSlabs'),
 ].join('\n');
 
 const ROUTES = {
@@ -179,7 +182,12 @@ check('a Nepal number prints +977, an unknown one bare (D6-14)',
 check('one phone shape: +91 starts 6-9, +977 starts 96-99',
   co.phoneShapeOk('9812345678', '977') && co.phoneShapeOk('6012345678', '91') && !co.phoneShapeOk('6012345678', '977') && !co.phoneShapeOk('5012345678', '91'));
 const chip = co.coRefundChipText();
-check('the refund chip is the live refund_slabs, all five tiers (D4-09)', chip.indexOf('≥96h 90%') >= 0 && chip.indexOf('≥6h 25%') >= 0 && chip.indexOf('<6h 0%') >= 0, chip);
+check('the refund chip is the live refund_slabs row when no facts are booted (D4-09)', chip.indexOf('≥96h 90%') >= 0 && chip.indexOf('≥6h 25%') >= 0 && chip.indexOf('<6h 0%') >= 0, chip);
+/* D8 (15 Oct 2026): SHG_BOOT.facts.policy.slabs (Fare::refundSlabs) wins over the raw row */
+const coD8 = sandbox({ boot: { facts: { policy: { slabs: [{ minHrs: 48, pct: 75 }, { minHrs: 24, pct: 50 }, { minHrs: 0, pct: 0 }] } },
+  settings: { refund_slabs: [{ minHrs: 96, pct: 90 }, { minHrs: 0, pct: 0 }] } } }, ['coRefundSlabs', 'coRefundChipText'], SRC.co);
+const chipD8 = coD8.coRefundChipText();
+check('D8: the chip prints the one policy from facts — 48h 75% · 24h 50% · <24h 0%', chipD8 === '↩️ T:coRefundLbl: ≥48h 75% · ≥24h 50% · <24h 0%', chipD8);
 const stCod = co.paymentStepper({ status: 'confirmed', codFlag: true, payment: { status: 'cod_pending', method: 'cod' }, total: 2070, paidAmount: 0 });
 check('confirmed COD: step 2 is "Pay ₹2,070 at counter" (now), never "Verified" (D4-06)',
   /<li class="now"[^>]*><i>•<\/i><b>T:pstCounterDue\{&quot;a&quot;:&quot;₹2,070&quot;\}/.test(stCod) && stCod.indexOf('T:pstVerified') < 0, stCod.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '));

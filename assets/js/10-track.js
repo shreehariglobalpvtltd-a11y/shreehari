@@ -108,12 +108,6 @@ function trackMapSVG(pct, reverse) {
     const fw = isEnd ? '700' : '600';
     dotsSVG += '<text x="' + lx + '" y="' + ly + '" text-anchor="' + anchor + '" fill="var(--ink)" font-size="' + fs + '" font-weight="' + fw + '" class="trk-stop-label" data-stop="' + esc(s.name) + '" style="cursor:pointer">'
       + (isLunch ? '🍽️ ' : '') + (s.flag ? s.flag + ' ' : '') + s.name + '</text>';
-    if (i > 0) {
-      const prev = stops[i - 1];
-      const mx = (prev.x + s.x) / 2, my = (prev.y + s.y) / 2 - 5;
-      const segKm = s.km - prev.km;
-      dotsSVG += '<text x="' + mx + '" y="' + my + '" text-anchor="middle" fill="var(--muted)" font-size="7.5" opacity=".7">' + segKm + ' km</text>';
-    }
   });
   return `<svg viewBox="0 0 540 310" role="img" aria-label="Route progress map" class="trk-map" style="max-width:100%;height:auto">
     <defs><linearGradient id="trkGrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="var(--orange)"/><stop offset="100%" stop-color="#5FA8E8"/></linearGradient></defs>
@@ -126,7 +120,7 @@ function trackMapSVG(pct, reverse) {
     <path id="trkRoutePath" d="${pathD}" fill="none" stroke="url(#trkGrad)" stroke-width="3" stroke-dasharray="8 6" stroke-linecap="round"/>
     ${dotsSVG}
     <rect x="160" y="282" width="220" height="22" rx="11" fill="var(--card)" stroke="var(--line)" stroke-width="1"/>
-    <text x="270" y="297" text-anchor="middle" fill="var(--ink)" font-size="10" font-weight="600">🚌 Total: ≈ ${Math.round(stops[stops.length - 1].km).toLocaleString('en-IN')} km · ~${Math.round(stops[stops.length - 1].m / 60)} hrs · ${stops.length} stops</text>
+    <text x="270" y="297" text-anchor="middle" fill="var(--ink)" font-size="10" font-weight="600">🚌 Total: ≈ ${factRouteKm().toLocaleString('en-IN')} km · ~${Math.round(stops[stops.length - 1].m / 60)} hrs · ${stops.length} stops</text>
     <g id="trkBusMarker" data-pct="${p}" data-rev="${reverse ? 1 : 0}">
       <circle r="14" fill="var(--card)" stroke="var(--orange)" stroke-width="2.5"/>
       <text y="5" text-anchor="middle" font-size="14">🚌</text>
@@ -213,7 +207,7 @@ function routeOverviewSVG(opts) {
   const town = back ? toName : fromName;
   const T = rovPin(town) || rovProject(21.17, 72.831), R = rovProject(28.06, 81.617);
   const ka = rovStopKm(fromName), kb = rovStopKm(toName);
-  const km = (ka && kb) ? Math.abs(kb.km - ka.km) : 1600, hrs = (ka && kb) ? Math.round(Math.abs(kb.m - ka.m) / 60) : 20;
+  const km = factRouteKm(), hrs = (ka && kb) ? Math.round(Math.abs(kb.m - ka.m) / 60) : 20;
   const uid = 'rov' + Math.floor(Math.random() * 1e6);
   const list = rovStopList(back);
   const dots = list.map(s => (s.lat != null ? rovProject(s.lat, s.lng) : rovPin(s.town))).filter(Boolean)

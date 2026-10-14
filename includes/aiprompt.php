@@ -87,8 +87,10 @@ function ai_system_prompt(): string
     $rng    = static fn(array $r): string => (int) $r['min'] === (int) $r['max']
         ? '₹' . (int) $r['min'] : '₹' . (int) $r['min'] . '–₹' . (int) $r['max'];
 
-    $slabs = array_values(array_filter(Settings::getArray('refund_slabs', []), 'is_array'));
-    usort($slabs, static fn(array $a, array $b): int => ((int) ($b['minHrs'] ?? 0)) <=> ((int) ($a['minHrs'] ?? 0)));
+    if (!class_exists('Fare')) {
+        require_once INCLUDE_PATH . '/fare.php';
+    }
+    $slabs = Fare::refundSlabs();   // D8: the one policy, highest threshold first
     $slabTxt = [];
     $prev = null;
     foreach ($slabs as $sl) {
@@ -102,9 +104,6 @@ function ai_system_prompt(): string
             $slabTxt[] = 'under ' . $prev . 'h: ' . ($pct > 0 ? $pct . '%' : 'no refund');
         }
         $prev = $min;
-    }
-    if ($slabTxt === []) {
-        $slabTxt[] = '96h or more: 90% · 48–96h: 75% · 24–48h: 50% · 6–24h: 25% · under 6h: no refund';
     }
 
     $pay = 'UPI, eSewa, a payment link (send it to family)';
@@ -136,7 +135,7 @@ function ai_system_prompt(): string
         . "Fares: sharing sleeper per person = the ₹ amount written after each pickup / drop above; a stop with no amount costs the default ₹{$fareNp} towards Nepal, ₹{$fareIn} towards India (so Gujarat → Rupaidiha costs " . $rng($board['range']['go']) . ", Rupaidiha → Gujarat " . $rng($board['range']['back']) . " depending on the stop); a private single cabin ₹{$priv}, a private double cabin (2 people) ₹{$privD}. Same price online and at the counter.\n"
         . "Payment: {$pay}. An online ticket is confirmed after the payment is verified, usually within minutes.\n"
         . "Offer: {$offerTxt}.\n"
-        . "Refund by cancellation time: " . implode(' · ', $slabTxt) . ". Money returns to the same account in 5–7 working days.\n"
+        . "Refund by cancellation time: " . implode(' · ', $slabTxt) . ". Money returns to the same account in " . Fare::refundDays() . " working days.\n"
         . "Boarding: reach the pickup 60 minutes early; booking for a pickup closes {$cutoff} minutes before its time.\n"
         . "Border: {$border}, about 20–40 minutes, the bus waits for everyone. Photo ID is checked: passport or voter ID for Indian citizens, citizenship certificate or passport for Nepali citizens. No visa for either. Indian ₹200 and ₹500 notes are not accepted in Nepal.\n"
         . "Luggage: 1 suitcase (20 kg) + 1 cabin bag per passenger free; extra is charged.\n"

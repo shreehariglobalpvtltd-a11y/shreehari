@@ -67,7 +67,15 @@ final class LegalPages
             'wa'      => $e($wa),
             'waShow'  => $e('+' . substr($wa, 0, strlen($wa) - 10) . ' ' . substr($wa, -10, 5) . ' ' . substr($wa, -5)),
             'site'    => 'https://www.shreehariglobal.in',
+            'refundDays' => $e(self::refundDays()),
         ];
+    }
+
+    /** D8: "5–7" working days, from the same source as the refund engine. */
+    private static function refundDays(): string
+    {
+        require_once INCLUDE_PATH . '/fare.php';
+        return Fare::refundDays();
     }
 
     /* ----------------------------------------------------------------- */
@@ -170,12 +178,8 @@ HTML;
      */
     private static function refundSlabs(): string
     {
-        $slabs = json_decode(Settings::getString('refund_slabs', ''), true);
-        if (!is_array($slabs) || $slabs === []) {
-            $slabs = [['minHrs' => 96, 'pct' => 90], ['minHrs' => 48, 'pct' => 75], ['minHrs' => 24, 'pct' => 50],
-                      ['minHrs' => 6, 'pct' => 25], ['minHrs' => 0, 'pct' => 0]];
-        }
-        usort($slabs, static fn ($x, $y) => (int) ($y['minHrs'] ?? 0) <=> (int) ($x['minHrs'] ?? 0));
+        require_once INCLUDE_PATH . '/fare.php';
+        $slabs = Fare::refundSlabs();   // D8: the one policy, highest threshold first
         $out = '';
         $upper = null;
         foreach ($slabs as $s) {
@@ -215,7 +219,7 @@ confirmed ticket keeps its fare.</li>
 <h2>3. Cancellation and refund</h2>
 <p>Cancellation before departure is refunded on this scale:</p>
 {$slabs}
-<p>Refunds go back to the same account within 5–7 working days after approval. If we cancel a trip, you get a full
+<p>Refunds go back to the same account within {$c['refundDays']} working days after approval. If we cancel a trip, you get a full
 refund or a free change of date.</p>
 
 <h2>4. Travel rules</h2>

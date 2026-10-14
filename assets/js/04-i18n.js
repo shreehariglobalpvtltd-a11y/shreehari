@@ -297,7 +297,7 @@ en: {
   payVerify: '<b>Manual verification:</b> your seats are held and the ticket is released once our team confirms this payment — usually within 30 minutes (9 AM–9 PM IST).',
   paySubmit: 'Confirm your seat →',
   payPolicyT: 'Cancellation &amp; refunds',
-  payPolicy: '≥96 hrs before departure: 90% refund · 48–96 hrs: 75% · 24–48 hrs: 50% · 6–24 hrs: 25% · under 6 hrs: no refund. Refunds reach the same account within 5–7 working days.',
+  payPolicy: '{policy}',
   nprNote: '🇳🇵 Paying from Nepal? The NPR amount uses the fixed ₹1 = NPR {npr} rate — eSewa deducts in NPR.',
   tShotNeed: 'Please attach your payment screenshot (or switch to the reference tab).',
   /* Payment progress strip on the ticket screen (4 steps). */
@@ -323,7 +323,7 @@ en: {
   stRejT: 'Payment Rejected', stCancT: 'Booking Cancelled',
   stExpT: 'Booking Expired', stExpP: 'This booking was not paid in time, so the seats were released and may now be sold to someone else. Please make a new booking.', stExpBtn: '🔍 Search again →',
   stCancP: 'This booking was cancelled and the seats have been released.',
-  refundLine: 'Refund of {a} ({p}%) will reach the same account within 5–7 working days.',
+  refundLine: 'Refund of {a} ({p}%) will reach the same account within {refundDays} working days.',
   noRefund: 'As per policy, no refund applies this close to departure.',
   tkId: 'Booking ID', tkDate: 'Journey date · यात्रा मिति', tkCoach: 'Coach · बस', tkSeats: 'Seats · सिटहरू',
   tkBoard: 'चढ्ने ठाउँ · Pickup', tkDrop: 'गन्तव्य · Destination', tkFareT: 'भाडा · Fare', tkPayRef: 'Payment ref · भुक्तानी',
@@ -885,7 +885,7 @@ hi: {
   payVerify: '<b>मैनुअल सत्यापन:</b> आपकी सीटें होल्ड पर हैं — हमारी टीम भुगतान की पुष्टि करते ही टिकट जारी हो जाता है (आमतौर पर 30 मिनट में, सुबह 9 – रात 9 IST)।',
   paySubmit: 'अपनी सीट पक्की करें →',
   payPolicyT: 'रद्दीकरण व रिफंड',
-  payPolicy: 'प्रस्थान से ≥96 घंटे पहले: 90% रिफंड · 48–96 घंटे: 75% · 24–48 घंटे: 50% · 6–24 घंटे: 25% · 6 घंटे से कम: कोई रिफंड नहीं। रिफंड 5–7 कार्यदिवसों में उसी खाते में पहुंचता है।',
+  payPolicy: '{policy}',
   nprNote: '🇳🇵 नेपाल से भुगतान कर रहे हैं? NPR राशि ₹1 = NPR {npr} की स्थिर दर से अनुमानित है — eSewa NPR में काटता है।',
   tShotNeed: 'कृपया भुगतान का स्क्रीनशॉट जोड़ें (या संदर्भ टैब चुनें)।',
   pstBooked: 'बुक हुआ', pstSent: 'भुगतान भेजा', pstCounter: 'काउंटर पर भुगतान',
@@ -907,7 +907,7 @@ hi: {
   stRejT: 'भुगतान अस्वीकृत', stCancT: 'बुकिंग रद्द',
   stExpT: 'बुकिंग समाप्त', stExpP: 'इस बुकिंग का भुगतान समय पर नहीं हुआ, इसलिए सीटें छोड़ दी गईं और किसी और को बिक सकती हैं। कृपया नई बुकिंग करें।', stExpBtn: '🔍 फिर से खोजें →',
   stCancP: 'यह बुकिंग रद्द कर दी गई है और सीटें छोड़ दी गई हैं।',
-  refundLine: '{a} ({p}%) का रिफंड 5–7 कार्यदिवसों में उसी खाते में पहुंच जाएगा।',
+  refundLine: '{a} ({p}%) का रिफंड {refundDays} कार्यदिवसों में उसी खाते में पहुंच जाएगा।',
   noRefund: 'नियमानुसार, प्रस्थान के इतने करीब कोई रिफंड लागू नहीं होता।',
   tkId: 'बुकिंग ID', tkDate: 'यात्रा तिथि', tkCoach: 'बस', tkSeats: 'सीटें',
   tkBoard: 'चढ़ने का स्थान', tkDrop: 'गंतव्य', tkFareT: 'कुल किराया', tkPayRef: 'भुगतान संदर्भ',
@@ -1463,7 +1463,7 @@ ne: {
   payVerify: '<b>म्यानुअल प्रमाणिकरण:</b> तपाईंका सिट होल्डमा छन् — हाम्रो टोलीले भुक्तानी पुष्टि गरेपछि टिकट जारी हुन्छ (सामान्यतया ३० मिनेटभित्र, बिहान ९ – राति ९ IST)।',
   paySubmit: 'आफ्नो सिट पक्का गर्नुहोस् →',
   payPolicyT: 'रद्द र फिर्ता',
-  payPolicy: 'प्रस्थानभन्दा ≥९६ घण्टा अघि: ९०% फिर्ता · ४८–९६ घण्टा: ७५% · २४–४८ घण्टा: ५०% · ६–२४ घण्टा: २५% · ६ घण्टाभन्दा कम: फिर्ता छैन। फिर्ता ५–७ कार्य दिनभित्र उही खातामा आउँछ।',
+  payPolicy: '{policy}',
   nprNote: '🇳🇵 नेपालबाट भुक्तानी गर्दै? NPR रकम ₹1 = NPR {npr} को स्थिर दरमा अनुमानित हो — eSewa ले NPR मा काट्छ।',
   tShotNeed: 'कृपया भुक्तानी स्क्रिनसट जोड्नुहोस् (वा सन्दर्भ ट्याब छान्नुहोस्)।',
   pstBooked: 'बुक भयो', pstSent: 'भुक्तानी पठाइयो', pstCounter: 'काउन्टरमा तिर्ने',
@@ -1485,7 +1485,7 @@ ne: {
   stRejT: 'भुक्तानी अस्वीकृत', stCancT: 'बुकिङ रद्द',
   stExpT: 'बुकिङ म्याद सकियो', stExpP: 'यो बुकिङको भुक्तानी समयमै भएन, त्यसैले सिटहरू छोडिए र अरूलाई बिक्री भएका हुन सक्छन्। कृपया नयाँ बुकिङ गर्नुहोस्।', stExpBtn: '🔍 फेरि खोज्नुहोस् →',
   stCancP: 'यो बुकिङ रद्द गरियो र सिटहरू खाली गरिए।',
-  refundLine: '{a} ({p}%) फिर्ता ५–७ कार्य दिनभित्र उही खातामा आउनेछ।',
+  refundLine: '{a} ({p}%) फिर्ता {refundDays} कार्य दिनभित्र उही खातामा आउनेछ।',
   noRefund: 'नियमअनुसार, प्रस्थानको यति नजिक फिर्ता लागू हुँदैन।',
   tkId: 'बुकिङ ID', tkDate: 'यात्रा मिति', tkCoach: 'बस', tkSeats: 'सिटहरू',
   tkBoard: 'चढ्ने ठाउँ', tkDrop: 'गन्तव्य', tkFareT: 'कुल भाडा', tkPayRef: 'भुक्तानी सन्दर्भ',
@@ -1775,7 +1775,7 @@ let LANG = (function () {
 })();
 I18N.gu = Object.assign({}, I18N.en, {"animBDemoPill":"નમૂનો","animJEyebrow":"સફર","animJTitle":"ગુજરાત ⇄ રૂપૈડીહા","animJSub":"ભારત–નેપાળ સરહદ તરફ અમારી એસી સ્લીપર બસ","animJAria":"એનિમેશન: હાઇવે પર ચાલતી એસ હરિ ગ્લોબલની એસી સ્લીપર બસ","animAmAc":"એસી","animAmCharge":"મોબાઇલ ચાર્જિંગ","animAmAid":"ફર્સ્ટ-એઇડ / દવા","animMEyebrow":"રૂટ","animMTitle":"સરહદ સુધી, ઘરની વધુ નજીક","animMSub":"સુરત, વડોદરા અને અમદાવાદથી રૂપૈડીહા સુધી — નેપાળગંજ માટે ભારત બાજુનું સરહદ સ્ટોપ.","animMChipT":"ભારત ⇄ નેપાળ","animMChipS":"રૂપૈડીહા ભારતમાં, સરહદ પર છે. નેપાળગંજ સામે પાર, નેપાળમાં છે.","animMNote":"આ સાંકેતિક રૂટ છે — રસ્તાનો નકશો, અંતર કે લાઇવ GPS નથી.","animMAria":"સાંકેતિક નકશો: ગુજરાતથી ભારત–નેપાળ સરહદ પરના રૂપૈડીહા સુધીની રૂટ રેખા","animMIndia":"ભારત","animMNepal":"નેપાળ","animMSurat":"સુરત","animMAhd":"અમદાવાદ","animMRup":"રૂપૈડીહા","animBEyebrow":"બુકિંગ","animBTitle":"ચાર પગલાંમાં તમારી ટિકિટ","animBSub":"રૂટ → સ્લીપર બર્થ → વિગતો અને ચુકવણી → ટિકિટ.","animBD1":"દિશા, ચઢવાનું શહેર અને તારીખ પસંદ કરો.","animBD2":"સીટ મેપ પર તમારી સ્લીપર બર્થ પસંદ કરો.","animBD3":"મુસાફરનું નામ અને મોબાઇલ, પછી ચુકવણી.","animBD4":"કન્ફર્મ થતાં જ ટિકિટ દેખાય છે — ચઢતી વખતે બતાવો.","animBDemo":"આ ફક્ત નમૂના એનિમેશન છે — તેનાથી સીટ બુક, ચુકવણી કે મેસેજ થતો નથી.","animBAria":"ફોન પર નમૂના બુકિંગ: રૂટ, સ્લીપર બર્થ, વિગતો, ડેમો ટિકિટ","animBS1":"રૂટ","animBS2":"બર્થ","animBS3":"વિગતો","animBS4":"ટિકિટ","animB1T":"તમારી મુસાફરી બુક કરો","animB1S":"ભારત ⇄ નેપાળ · એસી સ્લીપર","animBFrom":"ક્યાંથી","animBTo":"ક્યાં સુધી","animBDate":"મુસાફરી તારીખ","animBGuj":"ગુજરાત","animBPick":"તારીખ પસંદ કરો","animBFind":"બસ શોધો →","animB1F":"એસી · ચાર્જિંગ · ફર્સ્ટ-એઇડ","animB2T":"તમારી બર્થ પસંદ કરો","animB2S":"સ્લીપર બર્થ · નમૂનો","animB2Deck":"નીચેનો માળ (1F)","animB2Sel":"પસંદ કરેલ: B6 · સ્લીપર","animB2Btn":"આગળ વધો →","animB3T":"મુસાફર વિગતો","animB3S":"નમૂના વિગતો","animB3Name":"મુસાફરનું નામ","animB3NameV":"તમારું નામ","animB3Mob":"મોબાઇલ નંબર","animB3MobV":"તમારો મોબાઇલ નંબર","animB3Pay":"ચુકવણી","animB3Wait":"ચકાસણી બાકી","animB3Ok":"✓ ચકાસાયેલ","animB3Btn":"વિગતો પુષ્ટિ કરો →","animB3F":"ચકાસણી પછી જ ટિકિટ જારી થાય છે","animB4Badge":"ડેમો ટિકિટ","animB4Route":"ગુજરાત → રૂપૈડીહા","animB4Berth":"બર્થ","animB4Coach":"કોચ","animB4CoachV":"એસી સ્લીપર","animB4Ok":"ટિકિટ કન્ફર્મ","animB4F":"ફક્ત ઝલક · કોઈ બુકિંગ બન્યું નથી","animBWaT":"નમૂના WhatsApp સંદેશ","animBWaS":"ટિકિટ સંદેશ આવો દેખાય છે.","animBWaF":"નમૂના ઝલક · મોકલાયો નથી","animPause":"એનિમેશન રોકો","animPlay":"એનિમેશન ચલાવો","bbRoute": "ભારત ⇄ નેપાળ યાત્રા સેવા", "bbTag": "તમારો ભરોસાપાત્ર યાત્રા સાથી", "bbF1": "AC સ્લીપર", "bbF2": "લાઇવ GPS", "bbF3": "USB ચાર્જિંગ", "bbF4": "સુરક્ષિત યાત્રા", "ecTitle": "તમારી ટિકિટ બુક કરો", "ecNormal": "સામાન્ય બુકિંગ", "ecNormalSub": "તારીખ અને સીટ પસંદ કરો", "ecQuick": "ક્વિક ટિકિટ", "ecQuickSub": "નામ + મોબાઇલ → 10 સેકન્ડ", "ecWa": "WhatsApp બુકિંગ", "ecTitleAlt":"બુકિંગની બીજી રીતો","spTitle":"તમારી યાત્રા બુક કરો","spSub":"ગુજરાત ⇄ રૂપૈડીહા · સીધી એસી સ્લીપર બસ","sPax":"મુસાફરો","sSearch":"બસ અને સીટ જુઓ","bnTickets":"મારી ટિકિટ","ecWaSub": "વિનંતી · ઓફિસ પુષ્ટિ કરશે", "premiumFront": "આગળ · મુસાફરીની દિશા", "premiumRear": "પાછળ", "premiumBeyond": "સરહદોની પાર મુસાફરી", "premiumDirector": "અધ્યક્ષ / નિયામક", "premiumPromise": "તમારી મુસાફરી, અમારી જવાબદારી.", "premiumSafe": "સુરક્ષિત મુસાફરી", "premiumEasy": "સરળ બુકિંગ", "premiumLoading": "તમારી મુસાફરી તૈયાર થઈ રહી છે…", "premiumRetry": "જોડાણમાં સમય લાગે છે. ફરી લોડ કરો", "premiumSlow": "જોડાઈ રહ્યું છે. ફરી પ્રયાસ કરો અથવા આગળ વધો.", "premiumTrust": "વિશ્વાસ સાથે મુસાફરી.", "premiumPay": "સ્કેન કરીને ચૂકવો", "premiumPaid": "ચુકવણી ચકાસાયેલ", "premiumPending": "ચુકવણી ચકાસણી બાકી", "premiumVerify": "ટિકિટ ચકાસણી", "premiumDue": "બાકી રકમ"});
 function t(k) { const d = I18N[LANG] || I18N.en; const s = (k in d) ? d[k] : I18N.en[k]; return s == null ? k : s; }
-function tf(k, vars) { let s = t(k); Object.keys(vars || {}).forEach(v => { s = s.split('{' + v + '}').join(vars[v]); }); return s; }
+function tf(k, vars) { let s = t(k); Object.keys(vars || {}).forEach(v => { s = s.split('{' + v + '}').join(vars[v]); }); return typeof fillFactVars === 'function' ? fillFactVars(s) : s; }
 /* 8 Oct 2026 (D2-05): the STATIC half of applyLang() - <html lang>, every
    [data-i18n] / -ph / -title in the markup and the language buttons. It needs
    no settings or data, so it also runs once at the very end of this file

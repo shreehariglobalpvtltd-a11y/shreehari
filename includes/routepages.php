@@ -27,6 +27,7 @@ if (!defined('SHG_APP')) {
 }
 
 require_once INCLUDE_PATH . '/fare.php';
+require_once INCLUDE_PATH . '/sitefacts.php';
 
 final class RoutePages
 {
@@ -107,8 +108,7 @@ final class RoutePages
         $single  = (float) $board['private']['single'];
         $double  = (float) $board['private']['double'];
         $co      = Settings::company();
-        $slabs   = Settings::getArray('refund_slabs', [['minHrs' => 96, 'pct' => 90], ['minHrs' => 48, 'pct' => 75], ['minHrs' => 24, 'pct' => 50], ['minHrs' => 6, 'pct' => 25], ['minHrs' => 0, 'pct' => 0]]);
-        usort($slabs, static fn(array $a, array $b): int => (int) $b['minHrs'] <=> (int) $a['minHrs']);
+        $slabs   = Fare::refundSlabs();   // D8: the one policy, highest threshold first
         $amen = json_decode((string) ($r['amenities'] ?? '[]'), true);
 
         return [
@@ -119,7 +119,7 @@ final class RoutePages
             'dep'       => substr((string) $r['dep_time'], 0, 5),
             'arr'       => substr((string) ($r['arr_time'] ?? ''), 0, 5),
             'dayOffset' => (int) ($r['day_offset'] ?? 0),
-            'km'        => (int) ($r['distance_km'] ?? 0),
+            'km'        => SiteFacts::routeKm(),   // D9: one corridor distance everywhere
             'sharing'   => $sharing,
             'sharingMax'=> $sharingMax,
             'offerCount'=> max(1, count($rows)),
@@ -246,7 +246,7 @@ final class RoutePages
 
         return '<section class="card corridor" data-corr><h2>' . $e($m['t']) . '</h2>'
             . '<div class="corr-art"><svg viewBox="36 145 590 315" role="img" aria-label="' . $e($m['aria']) . '">'
-            . '<image data-href="/assets/img/anim/shg-map-bg.svg?v=20261014v" x="0" y="0" width="960" height="720"/>'
+            . '<image data-href="/assets/img/anim/shg-map-bg.svg?v=20261015a" x="0" y="0" width="960" height="720"/>'
             . '<path class="c-glow" d="' . $path . '"/><path class="c-track" d="' . $path . '"/>'
             . '<g aria-hidden="true">' . $dots . $pulse . $stops
             . '<text class="c-cty" x="340" y="445">' . $e($m['in']) . '</text><text class="c-cty" x="495" y="176">' . $e($m['np']) . '</text>'

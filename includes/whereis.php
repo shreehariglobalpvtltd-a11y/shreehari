@@ -23,6 +23,7 @@ if (!defined('SHG_APP')) {
 require_once INCLUDE_PATH . '/etaalerts.php';
 require_once INCLUDE_PATH . '/tripstatus.php';
 require_once INCLUDE_PATH . '/boarding.php';
+require_once INCLUDE_PATH . '/sitefacts.php';
 
 final class WhereIs
 {
@@ -394,6 +395,9 @@ final class WhereIs
         return [
             'timeline'        => $tl,
             'totalKm'         => $total !== null ? (int) round($total) : null,
+            /* D9 (15 Oct 2026): the distance a screen PRINTS - totalKm stays
+               the measured scale progress.pct is computed on. */
+            'displayKm'       => SiteFacts::routeKm(),
             'spans'           => $sum['spans'],
             'progress'        => [
                 'km'     => $done ? ($total !== null ? (int) round($total) : null) : ($posKm !== null ? (int) round($posKm) : null),

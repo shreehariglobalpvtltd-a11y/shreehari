@@ -959,10 +959,7 @@ final class WaLocal
     private static function refundRule(string $fromRaw, string $lang): array
     {
         require_once INCLUDE_PATH . '/fare.php';
-        $slabs = Settings::getArray('refund_slabs', [
-            ['minHrs' => 96, 'pct' => 90], ['minHrs' => 48, 'pct' => 75], ['minHrs' => 24, 'pct' => 50], ['minHrs' => 6, 'pct' => 25], ['minHrs' => 0, 'pct' => 0],
-        ]);
-        usort($slabs, static fn(array $a, array $b): int => (int) $b['minHrs'] <=> (int) $a['minHrs']);
+        $slabs = Fare::refundSlabs();   // D8: the one policy, highest threshold first
         $lines = [self::t($lang, '↩️ रद्द गर्दा फिर्ता (छुट्ने समय भन्दा अगाडि):', '↩️ रद्द करने पर वापसी (रवानगी से पहले):', '↩️ Refund on cancellation (before departure):')];
         $prevHrs = null;
         foreach ($slabs as $s) {

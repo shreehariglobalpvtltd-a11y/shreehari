@@ -172,7 +172,7 @@
     if (offline) {
       var f = FALLBACK[dir];
       return {
-        offline: true, from: f.from, to: f.to, depTime: f.depTime, distanceKm: f.distanceKm, spans: f.spans,
+        offline: true, from: f.from, to: f.to, depTime: f.depTime, distanceKm: f.distanceKm, displayKm: factKm(), spans: [],
         durationMin: null, halts: 5, stops: f.line.filter(function (x) { return x[0] === 'stop'; }).length,
         line: f.line.map(function (x) {
           return x[0] === 'halt'
@@ -189,7 +189,7 @@
     }
     return {
       offline: false, from: route.from, to: route.to, depTime: route.depTime, distanceKm: route.distanceKm,
-      spans: route.spans || [], durationMin: route.durationMin, durationApprox: route.durationApprox !== false,
+      displayKm: +route.displayKm || factKm(), spans: [], durationMin: route.durationMin, durationApprox: route.durationApprox !== false,
       arrTime: route.arrTime || '', sellable: !!route.sellable,
       stops: route.stopCount != null ? route.stopCount : line.filter(function (x) { return x.kind === 'stop'; }).length,
       halts: route.haltCount != null ? route.haltCount : line.filter(function (x) { return x.kind === 'halt'; }).length,
@@ -313,6 +313,9 @@
     if (last && last !== first) lab += '<span class="rl-lab" style="right:-6px">' + esc(short(last.name)) + '</span>';
     return '<div class="rl-strip" aria-hidden="true"><span class="rl-track"></span>' + h + lab + '</div>';
   }
+  /* D9 (15 Oct 2026): the corridor distance the page prints - SHG_BOOT.facts.route.km.
+     Per-stop km stays internal (it only places the ticks on the strip). */
+  function factKm() { var f = window.FACTS || (window.SHG_BOOT && window.SHG_BOOT.facts); return (f && f.route && +f.route.km) || 1375; }
   function short(n) { return String(n || '').replace(/\s*\(.*?\)\s*/g, '').replace(/^S Hari Parking,?\s*/i, ''); }
 
   function rowHtml(x, m, i, n, s) {
@@ -324,13 +327,13 @@
       var kind = (s.hk || {})[x.halt] || '';
       body = '<span class="rl-hc"><i aria-hidden="true">' + (HALT_ICON[x.halt] || '•') + '</i><span class="rl-hct"><b>' + esc(kind) + '</b> · ' + esc(fill(s.near, [x.name]))
         + '<span class="rl-hcm">' + (x.haltMin ? '<em>⏱ ' + esc(fill(s.haltFor, [x.haltMin])) + '</em>' : '')
-        + (x.km != null ? '<em>' + kmf(x.km) + ' ' + esc(s.km) + '</em>' : '') + '</span></span></span>';
+        + '</span></span></span>';
     } else {
       var tag = '';
       if (i === 0) tag = '<span class="rl-tag">' + esc(s.start) + '</span>';
       else if (i === n - 1) tag = '<span class="rl-tag">' + esc(s.end) + '</span>';
       body = '<span class="rl-nm">' + esc(short(x.name)) + (x.border ? flag('IN') : '')
-        + (x.km != null ? '<span class="rl-kmc">' + kmf(x.km) + ' ' + esc(s.km) + '</span>' : '') + tag + '</span>'
+        + tag + '</span>'
         + (x.border ? '<span class="rl-sub">' + esc(s.border) + '</span>' : (x.landmark && x.landmark.length < 60 && short(x.name).toLowerCase().indexOf(String(x.landmark).toLowerCase()) < 0 ? '<span class="rl-sub">' + esc(x.landmark) + '</span>' : ''));
     }
     return '<li class="' + cls + '"><time class="' + (x.time ? '' : 'rl-dim') + '">' + time + '</time><span class="rl-dot" aria-hidden="true"></span><div class="rl-body">' + body + '</div></li>';
@@ -452,7 +455,7 @@
     var anyApprox = m.line.some(function (x) { return x.kind === 'halt' && x.approx; });
     var across = hasBorder ? '<p class="rl-across"><span>' + flag('IN') + '<span>Rupaidiha · ' + esc(s.border) + '</span></span><span>' + flag('NP') + '<span>' + esc(s.across) + '</span></span></p>' : '';
     var left = '<div class="rl-stats">'
-      + '<div class="rl-stat rl-acc"><b>' + (m.distanceKm ? s.approx + ' ' + kmf(m.distanceKm) : '—') + '</b><small>' + esc(s.km) + '</small></div>'
+      + '<div class="rl-stat rl-acc"><b>' + (m.displayKm ? s.approx + ' ' + kmf(m.displayKm) : '—') + '</b><small>' + esc(s.km) + '</small></div>'
       + '<div class="rl-stat"><b>' + (m.stops | 0) + ' · ' + (m.halts | 0) + '</b><small>' + esc(s.stops) + ' · ' + esc(s.halts) + '</small></div>'
       + '<div class="rl-stat"><b>' + esc(dur || '—') + '</b><small>' + (dur ? esc(s.hoursLong) + ' · ' : '') + esc(s.journey) + '</small></div></div>'
       + (spans ? '<div class="rl-spans">' + spans + '</div>' : '')

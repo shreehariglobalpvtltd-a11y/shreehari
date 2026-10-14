@@ -87,7 +87,7 @@ final class Fare
             }
         }
         if ($india === []) {
-            $india = ['Surat', 'Kamrej', 'Ankleshwar', 'Bharuch', 'Vadodara', 'Anand', 'Nadiad', 'Emli Bhupal', 'S Hari Parking, Nana Chiloda'];
+            $india = ['Surat', 'Kamrej', 'Ankleshwar', 'Bharuch', 'Vadodara', 'Anand', 'Nadiad', 'Emli Bhupal', 'Rajkot', 'S Hari Parking, Nana Chiloda'];
         }
 
         return ['india' => $india, 'nepal' => self::nepalPoints()];
@@ -775,6 +775,96 @@ final class Fare
     }
 
     /**
+     * D8 (15 Oct 2026, owner's SmartBook v5): the ONE cancellation policy —
+     * ≥48 h 75 %, 24–48 h 50 %, under 24 h nothing, money back in 5–7
+     * working days. The 96 h / 90 % and 6 h / 25 % tiers are gone everywhere.
+     * The `refund_slabs` row stays the editable source; this is only the
+     * value used while that row is missing or unreadable.
+     */
+    public const REFUND_SLABS_DEFAULT = [
+        ['minHrs' => 48, 'pct' => 75],
+        ['minHrs' => 24, 'pct' => 50],
+        ['minHrs' => 0,  'pct' => 0],
+    ];
+    public const REFUND_DAYS_DEFAULT = '5–7';
+
+    /**
+     * The live slabs, cleaned and sorted highest threshold first (so the most
+     * generous matching slab wins). Every page, the bot, the AI prompt and the
+     * calculator below read this — never their own copy.
+     *
+     * @return list<array{minHrs: float, pct: float}>
+     */
+    public static function refundSlabs(): array
+    {
+        $out = [];
+        foreach (Settings::getArray('refund_slabs', self::REFUND_SLABS_DEFAULT) as $s) {
+            if (is_array($s) && isset($s['minHrs'], $s['pct']) && is_numeric($s['minHrs']) && is_numeric($s['pct'])) {
+                $out[] = ['minHrs' => (float) $s['minHrs'], 'pct' => max(0.0, min(100.0, (float) $s['pct']))];
+            }
+        }
+        if ($out === []) {
+            foreach (self::REFUND_SLABS_DEFAULT as $s) {
+                $out[] = ['minHrs' => (float) $s['minHrs'], 'pct' => (float) $s['pct']];
+            }
+        }
+        usort($out, static fn(array $a, array $b): int => $b['minHrs'] <=> $a['minHrs']);
+        return $out;
+    }
+
+    /** "5–7" — working days for a refund to reach the customer (setting `refund_days`). */
+    public static function refundDays(): string
+    {
+        $d = trim(Settings::getString('refund_days', self::REFUND_DAYS_DEFAULT));
+        return $d !== '' ? str_replace('-', '–', $d) : self::REFUND_DAYS_DEFAULT;
+    }
+
+    /**
+     * The policy as one sentence, built from refundSlabs() + refundDays(), in
+     * en | hi | ne | gu. This is the text the home page, checkout, terms,
+     * ticket, FAQ, WhatsApp bot and AI all print.
+     */
+    public static function refundPolicyLine(string $lang = 'en'): string
+    {
+        $lang  = in_array($lang, ['en', 'hi', 'ne', 'gu'], true) ? $lang : 'en';
+        $num   = static function (float $n) use ($lang): string {
+            $s = rtrim(rtrim(number_format($n, 1, '.', ''), '0'), '.');
+            return $lang === 'ne' ? strtr($s, ['0' => '०', '1' => '१', '2' => '२', '3' => '३', '4' => '४', '5' => '५', '6' => '६', '7' => '७', '8' => '८', '9' => '९']) : $s;
+        };
+        $L = [
+            'en' => ['first' => '≥%h hrs before departure: %p%% refund', 'band' => '%a–%b hrs: %p%%', 'under' => 'under %b hrs: %p%%', 'none' => 'under %b hrs: no refund', 'only' => '%p%% refund', 'days' => 'Refunds reach the same account within %d working days.'],
+            'hi' => ['first' => 'प्रस्थान से ≥%h घंटे पहले: %p%% रिफंड', 'band' => '%a–%b घंटे: %p%%', 'under' => '%b घंटे से कम: %p%%', 'none' => '%b घंटे से कम: कोई रिफंड नहीं', 'only' => '%p%% रिफंड', 'days' => 'रिफंड %d कार्यदिवसों में उसी खाते में पहुंचता है।'],
+            'ne' => ['first' => 'प्रस्थानभन्दा ≥%h घण्टा अघि: %p%% फिर्ता', 'band' => '%a–%b घण्टा: %p%%', 'under' => '%b घण्टाभन्दा कम: %p%%', 'none' => '%b घण्टाभन्दा कम: फिर्ता छैन', 'only' => '%p%% फिर्ता', 'days' => 'फिर्ता %d कार्य दिनभित्र उही खातामा आउँछ।'],
+            'gu' => ['first' => 'પ્રસ્થાનના ≥%h કલાક પહેલાં: %p%% રિફંડ', 'band' => '%a–%b કલાક: %p%%', 'under' => '%b કલાકથી ઓછા: %p%%', 'none' => '%b કલાકથી ઓછા: રિફંડ નહીં', 'only' => '%p%% રિફંડ', 'days' => 'રિફંડ %d કામકાજના દિવસમાં એ જ ખાતામાં જમા થાય છે.'],
+        ][$lang];
+        $fill = static fn(string $tpl, array $v): string => strtr($tpl, $v + ['%%' => '%']);
+
+        $slabs = self::refundSlabs();
+        $parts = [];
+        $prev  = null;
+        foreach ($slabs as $i => $s) {
+            $p = $num($s['pct']);
+            if ($i === 0) {
+                $parts[] = $s['minHrs'] > 0
+                    ? $fill($L['first'], ['%h' => $num($s['minHrs']), '%p' => $p])
+                    : $fill($L['only'], ['%p' => $p]);
+            } elseif ($s['minHrs'] <= 0) {
+                $parts[] = $s['pct'] > 0
+                    ? $fill($L['under'], ['%b' => $num((float) $prev), '%p' => $p])
+                    : $fill($L['none'], ['%b' => $num((float) $prev)]);
+            } else {
+                $parts[] = $fill($L['band'], ['%a' => $num($s['minHrs']), '%b' => $num((float) $prev), '%p' => $p]);
+            }
+            $prev = $s['minHrs'];
+        }
+        $days = self::refundDays();
+        if ($lang === 'ne') {
+            $days = strtr($days, ['0' => '०', '1' => '१', '2' => '२', '3' => '३', '4' => '४', '5' => '५', '6' => '६', '7' => '७', '8' => '८', '9' => '९']);
+        }
+        return implode(' · ', $parts) . (in_array($lang, ['hi', 'ne'], true) ? '। ' : '. ') . strtr($L['days'], ['%d' => $days]);
+    }
+
+    /**
      * Refund due on cancellation, using the published slabs.
      *
      * @return array{amount: float, percent: float, hoursLeft: float, reason: string}
@@ -782,20 +872,7 @@ final class Fare
     public static function refundFor(float $amountPaid, string $travelDate, string $departureTime = '00:00:00'): array
     {
         $hoursLeft = hoursUntil($travelDate, $departureTime);
-
-        // 5 Sep 2026: matched to the published Terms (section C) — the T&C
-        // page has promised five tiers since launch, but the enforced slabs
-        // still had the older three. Terms are the contract; code follows.
-        $slabs = Settings::getArray('refund_slabs', [
-            ['minHrs' => 96, 'pct' => 90],
-            ['minHrs' => 48, 'pct' => 75],
-            ['minHrs' => 24, 'pct' => 50],
-            ['minHrs' => 6,  'pct' => 25],
-            ['minHrs' => 0,  'pct' => 0],
-        ]);
-
-        // Highest threshold first so the most generous matching slab wins.
-        usort($slabs, static fn(array $a, array $b): int => (int) $b['minHrs'] <=> (int) $a['minHrs']);
+        $slabs     = self::refundSlabs();
 
         $percent = 0.0;
         $reason  = 'Cancelled after the free-cancellation window.';

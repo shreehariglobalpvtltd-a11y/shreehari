@@ -318,7 +318,7 @@ sc_check('no element carries both data-i18n and data-fact', !preg_match('/<[^>]*
 preg_match_all('/\{\{f:([a-z.:]+)\}\}/i', $body, $tok);
 $known = ['brand.name', 'brand.legal', 'brand.cin', 'brand.email', 'brand.short', 'ceo.name', 'ceo.nameNe', 'ceo.phone', 'ceo.tel', 'ceo.wa',
           'head.phone', 'head.tel', 'head.wa', 'head.address', 'npr', 'fares.go.min', 'fares.go.max', 'fares.back.min', 'fares.back.max',
-          'fares.private.single', 'fares.private.double', 'agent.direct', 'html:offices',
+          'fares.private.single', 'fares.private.double', 'agent.direct', 'html:offices', 'policy.line.en', 'route.kmText',
           'nepal.phone', 'nepal.tel', 'support.tel',
           // 10 Oct 2026 (trust): the domain mailbox / Gmail, the channel icons + their sprite symbols, the Director's profile
           'brand.contactEmail', 'html:emails', 'html:social', 'html:socialSymbols', 'html:ceoSocial'];

@@ -25,16 +25,10 @@ $coShort = (string) $F['brand']['short'];
 $telHead = (string) $F['head']['tel'];
 $telHelp = (string) $F['support']['tel'];
 
-$slabs = Settings::getArray('refund_slabs', []);
-if (empty($slabs)) {
-    $slabs = [
-        ['minHrs' => 96,  'pct' => 90],
-        ['minHrs' => 48,  'pct' => 75],
-        ['minHrs' => 24,  'pct' => 50],
-        ['minHrs' => 6,   'pct' => 25],
-        ['minHrs' => 0,   'pct' => 0],
-    ];
-}
+// D8 (15 Oct 2026): the one policy - Fare::refundSlabs() is what cancellations are priced with.
+$slabs      = Fare::refundSlabs();
+$policyLine = Fare::refundPolicyLine('en');
+$refundDays = Fare::refundDays();
 
 header('Content-Type: text/html; charset=UTF-8');
 ?>
@@ -44,9 +38,9 @@ header('Content-Type: text/html; charset=UTF-8');
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Refund &amp; Cancellation Policy — <?= $e($coName) ?></title>
-<meta name="description" content="Refund and cancellation policy for <?= $e($coShort) ?> bus tickets. Cancel 96+ hours before departure for 90% refund. Full details on rescheduling, no-show rules, and operator-initiated cancellations.">
+<meta name="description" content="Refund and cancellation policy for <?= $e($coShort) ?> bus tickets. <?= $e($policyLine) ?> Full details on rescheduling, no-show rules, and operator-initiated cancellations.">
 <meta property="og:title" content="Refund &amp; Cancellation Policy — <?= $e($coShort) ?>">
-<meta property="og:description" content="Bus ticket cancellation policy: 96h+ = 90% refund, 48-96h = 75%, 24-48h = 50%, 6-24h = 25%. Refunds in 7-21 working days.">
+<meta property="og:description" content="Bus ticket cancellation policy: <?= $e($policyLine) ?>">
 <meta property="og:type" content="website">
 <meta property="og:url" content="<?= $e($baseUrl) ?>/refund-policy">
 <meta property="og:image" content="<?= $e($baseUrl) ?>/assets/img/og-share.png">
@@ -167,8 +161,7 @@ foreach ($slabs as $s) {
     <h3>Refund Processing</h3>
     <ul>
       <li>Refunds are sent to the <b>same account/method</b> used for payment.</li>
-      <li>INR payments: refund within <b>7–10 working days</b>.</li>
-      <li>NPR / eSewa payments: refund within <b>14–21 working days</b>.</li>
+      <li>INR and NPR / eSewa payments: refund within <b><?= $e($refundDays) ?> working days</b>.</li>
       <li>Cash payments: refund at the booking counter or via bank transfer.</li>
     </ul>
   </div>

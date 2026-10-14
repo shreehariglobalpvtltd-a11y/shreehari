@@ -80,7 +80,7 @@
       beacon('install_prompt', { source: deferred ? 'android' : 'ios' });
     }
     function head() {
-      return '<div class="pwa-head"><img src="/assets/img/icon-192.png?v=20261014v" alt="" width="52" height="52">'
+      return '<div class="pwa-head"><img src="/assets/img/icon-192.png?v=20261015a" alt="" width="52" height="52">'
         + '<div><b>' + E(T('pwaInstallT')) + '</b><small>' + E(T('pwaInstallP')) + '</small></div></div>';
     }
     function showAndroid() {
@@ -641,7 +641,6 @@
         else if (s.kind === 'drop') sub.push('🟢 ' + T('rgDrop'));
         else if (s.kind === 'border') sub.push('🛂 ' + T('rgBorder') + (s.time ? ' · ' + s.time : ''));
         else sub.push(T('rgVia'));
-        if (s.km != null && s.from) sub.push(TF('rgKm', { km: km(s.km), from: s.from }));
         if (s.lm && s.kind !== 'via' && s.lm !== 'Departure') sub.push(s.lm);
         var go = (s.lat != null && s.lng != null)
           ? '<button type="button" class="rg-go" data-i="' + i + '" aria-label="' + E(T('rgMap') + ': ' + s.name) + '">📍</button>' : '';
@@ -656,7 +655,7 @@
         + (runs[0] ? '<button type="button" class="rg-tab' + (this.dir === 0 ? ' on' : '') + '" data-dir="0" role="tab" aria-selected="' + (this.dir === 0) + '">' + E(T('rgGo')) + '</button>' : '')
         + (runs[1] ? '<button type="button" class="rg-tab' + (this.dir === 1 ? ' on' : '') + '" data-dir="1" role="tab" aria-selected="' + (this.dir === 1) + '">' + E(T('rgBack')) + '</button>' : '')
         + '</div>'
-        + (this.total ? '<div class="rg-meta">' + E(TF('rgTotal', { from: this.total.from, to: this.total.to, km: km(this.total.km) })) + '</div>' : '')
+        + (this.total ? '<div class="rg-meta">' + E(TF('rgTotal', { from: this.total.from, to: this.total.to, km: km(typeof factRouteKm === 'function' ? factRouteKm() : this.total.km) })) + '</div>' : '')
         + '<ol class="rg-list">' + rows + '</ol>'
         + (arr ? '<div class="rg-meta">' + E(arr) + '</div>' : '')
         + '<div class="rg-note">🛂 ' + E(T('rgBorderInfo')) + '</div></details>';
@@ -684,7 +683,7 @@
         var pt = q('#snPeekTitle'), ps = q('#snPeekSub');
         if (pt) pt.textContent = '📍 ' + s.name;
         if (ps) ps.textContent = (s.kind === 'pickup' && s.time) ? T('rgPickup') + ' · ' + s.time
-          : ((s.km != null && s.from) ? TF('rgKm', { km: Math.round(s.km).toLocaleString('en-IN'), from: s.from }) : '');
+          : '';   // D9: no per-stop km totals on screen
       } catch (e) {}
     },
     focus: function (name) {

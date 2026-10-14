@@ -411,11 +411,9 @@ const CONFIG = {
     groupDiscount: { on: false, minSeats: 5, percent: 5 },  // OFF until Admin → Offers & Discounts switches it on (server-fed below)
     bookingFee: 0,                // per-booking fee in ₹ (0 shows as "Free")
     loyaltyTrips: 3,              // confirmed trips after which "welcome back" shows
-    refundSlabs: [                // must match the Terms & Conditions page
-      { minHrs: 96, pct: 90 },
+    refundSlabs: [                // OFFLINE fallback only — the live rows come from SHG_BOOT.facts.policy.slabs (D8, 15 Oct 2026)
       { minHrs: 48, pct: 75 },
       { minHrs: 24, pct: 50 },
-      { minHrs: 6,  pct: 25 },
       { minHrs: 0,  pct: 0 }
     ],
     loyaltyPointsPer100: 1,       // loyalty: points earned per ₹100 of confirmed fare
@@ -485,7 +483,7 @@ const CONFIG = {
        boarding dropdown, ticket, PDF, admin, agent) reads from here or from
        the boarding arrays in seedRoutes() below. Change names HERE, they
        propagate everywhere. */
-    india: ['Surat', 'Kamrej', 'Ankleshwar', 'Bharuch', 'Vadodara', 'Anand', 'Nadiad', 'Emli Bhupal', 'S Hari Parking, Nana Chiloda'],
+    india: ['Surat', 'Kamrej', 'Ankleshwar', 'Bharuch', 'Vadodara', 'Anand', 'Nadiad', 'Emli Bhupal', 'Rajkot', 'S Hari Parking, Nana Chiloda'],
     /* Rupaidiha is the ONLY Nepal-side point the company may sell today: the service is licensed to the India-side border and no further. Nepalgunj, Kohalpur and Lumbini Pradesh are a FUTURE extension — listing them here put them on the public fare board and in the search boxes as if they were bookable. Add them back the day the permit exists. */
     nepal: ['Rupaidiha']
   },
@@ -599,8 +597,48 @@ function factVars() {
     agentDirect: factMoney(fact('agent.direct', 0)), agentJoint: factMoney(fact('agent.joint', 0)),
     company: String(fact('brand.name', CONFIG.company.name)), ceo: String(fact('ceo.name', CONFIG.company.ceo)),
     cin: String(fact('brand.cin', CONFIG.company.cin)),
-    headPhone: String(fact('head.phone', CONFIG.phone))
+    headPhone: String(fact('head.phone', CONFIG.phone)),
+    /* D8 + D9 (15 Oct 2026): the one policy sentence (server-built per
+       language from refund_slabs) and the one corridor distance. */
+    policy: factPolicyLine(),
+    refundDays: factRefundDays(),
+    km: String(fact('route.kmText', '1,375'))
   };
+}
+function factLang() { return (typeof LANG === 'string' && LANG) ? LANG : 'en'; }
+/* D9: the one corridor distance (1375) - per-stop km from the timetable only
+   places markers / measures live GPS progress, it is never printed as a total. */
+function factRouteKm() { return Number(fact('route.km', 1375)) || 1375; }
+/* The policy sentence / refund days in one language (en | hi | ne | gu). */
+function factPolicyIn(l) { return String(fact('policy.line.' + l, fact('policy.line.en', refundPolicyFallback()))); }
+function factDaysIn(l) {
+  var d = String(fact('policy.days', '5–7'));
+  return l === 'ne' ? d.replace(/[0-9]/g, function (c) { return '०१२३४५६७८९'.charAt(+c); }) : d;
+}
+function factPolicyLine() { return factPolicyIn(factLang()); }
+function factRefundDays() { return factDaysIn(factLang()); }
+/* Offline / no-boot fallback, built from CONFIG.booking.refundSlabs. */
+function refundPolicyFallback() {
+  var s = ((CONFIG.booking && CONFIG.booking.refundSlabs) || []).slice().sort(function (a, b) { return b.minHrs - a.minHrs; });
+  var out = [], prev = null;
+  s.forEach(function (x, i) {
+    if (i === 0) out.push('≥' + x.minHrs + ' hrs before departure: ' + x.pct + '% refund');
+    else if (x.minHrs <= 0) out.push(x.pct > 0 ? 'under ' + prev + ' hrs: ' + x.pct + '%' : 'under ' + prev + ' hrs: no refund');
+    else out.push(x.minHrs + '–' + prev + ' hrs: ' + x.pct + '%');
+    prev = x.minHrs;
+  });
+  return out.join(' · ') + '. Refunds reach the same account within 5–7 working days.';
+}
+/* Fill {policy} / {km} / {npr} … in a translated string (HTML-escaped values).
+   hydrateFacts() runs it over [data-i18n] markup; tf() runs it on JS-built text. */
+var FACT_VAR_RE = /\{(npr|goMin|goMax|goRange|backMin|backMax|backRange|privSingle|privDouble|agentDirect|agentJoint|company|ceo|cin|headPhone|policy|refundDays|km)\}/g;
+function fillFactVars(h) {
+  if (typeof h !== 'string' || h.indexOf('{') < 0) return h;
+  var V = null;
+  return h.replace(FACT_VAR_RE, function (m, k) {
+    V = V || factVars();
+    return String(V[k]).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
+  });
 }
 function hydrateFacts(root) {
   var r = root || document;
@@ -631,14 +669,10 @@ function hydrateFacts(root) {
     });
     /* i18n strings that carry a fact as {placeholder} (nprNote …): fill the
        known names only, after applyStaticLang() wrote them. */
-    var V = null;
     r.querySelectorAll('[data-i18n]').forEach(function (el) {
       var h = el.innerHTML;
       if (h.indexOf('{') < 0) return;
-      V = V || factVars();
-      var n = h.replace(/\{(npr|goMin|goMax|goRange|backMin|backMax|backRange|privSingle|privDouble|agentDirect|agentJoint|company|ceo|cin|headPhone)\}/g, function (m, k) {
-        return String(V[k]).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
-      });
+      var n = fillFactVars(h);
       if (n !== h) el.innerHTML = n;
     });
   } catch (e) { /* hydration is cosmetic — never break the page */ }
@@ -763,7 +797,7 @@ function loadTermsData(cb) {
   if (window.__shgTermsQueue) { window.__shgTermsQueue.push(cb); return; }
   window.__shgTermsQueue = [cb];
   var el = document.createElement('script');
-  el.src = '/assets/js/terms-data.js?v=20261014v';
+  el.src = '/assets/js/terms-data.js?v=20261015a';
   el.onload = function () {
     TERMS_DATA = window.TERMS_DATA || [];
     window.__shgTermsReady = true;
@@ -1199,6 +1233,7 @@ function seedRoutes() {
         'Anand · Pipal Chautra @ 18:30',
         'Nadiad · Nadiad Bridge – under bridge @ 20:00',
         'Emli Bhupal · Taj Hotel @ 21:00',
+        'Rajkot · Rajkot office pickup',
         'S Hari Parking, Nana Chiloda (Amd) @ 23:00 [23.171,72.623]'
       ],
       drop: ['Rupaidiha · India-Nepal border checkpoint [28.060,81.617]'],
@@ -1222,7 +1257,8 @@ function seedRoutes() {
         'Bharuch · Somnath Mahadev Mandir',
         'Ankleshwar · Ada Bridge',
         'Kamrej · Shiv Shakti Hotel [21.2729662,72.9555969]',
-        'Surat · Bus stand / designated point [21.170,72.831]'
+        'Surat · Bus stand / designated point [21.170,72.831]',
+        'Rajkot · Rajkot office pickup'
       ],
       amenities: ['AC Sleeper', 'Blanket', 'Charging Point', 'Water Bottle'],
       crewName: '', crewPhone: '',
@@ -1515,9 +1551,25 @@ function depTimestamp(b) {
   const p = (b.date || todayISO()).split('-').map(Number);
   return new Date(p[0], p[1] - 1, p[2], t[0] || 0, t[1] || 0).getTime();
 }
+/* D8 (15 Oct 2026): the slabs the server refunds by — SHG_BOOT.facts.policy
+   (Fare::refundSlabs), else the public refund_slabs row, else the offline
+   CONFIG copy. Highest threshold first. */
+function liveRefundSlabs() {
+  let s = fact('policy.slabs', null);
+  try {
+    if (!Array.isArray(s) || !s.length) {
+      s = window.SHG_BOOT && window.SHG_BOOT.settings && window.SHG_BOOT.settings.refund_slabs;
+      if (typeof s === 'string') s = JSON.parse(s);
+    }
+  } catch (e) { s = null; }
+  if (!Array.isArray(s) || !s.length) s = (CONFIG.booking && CONFIG.booking.refundSlabs) || [];
+  return s.map(x => ({ minHrs: Number(x && x.minHrs), pct: Number(x && x.pct) }))
+    .filter(x => isFinite(x.minHrs) && isFinite(x.pct) && x.minHrs >= 0)
+    .sort((a, b) => b.minHrs - a.minHrs);
+}
 function refundInfo(b) {
   const hrs = (depTimestamp(b) - Date.now()) / 3600000;
-  const slab = CONFIG.booking.refundSlabs.find(s => hrs >= s.minHrs) || { pct: 0 };
+  const slab = liveRefundSlabs().find(s => hrs >= s.minHrs) || { pct: 0 };
   return { hrs: hrs, pct: slab.pct, amount: Math.round((b.total || 0) * slab.pct / 100) };
 }
 

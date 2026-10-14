@@ -750,17 +750,9 @@ function rebookFrom(bookingId, reverse) {
    rows Fare::refundFor reads), newest-first; the packaged CONFIG list only
    when the page has no boot data. */
 function coRefundSlabs() {
-  let s = null;
-  try {
-    s = window.SHG_BOOT && window.SHG_BOOT.settings && window.SHG_BOOT.settings.refund_slabs;
-    if (typeof s === 'string') s = JSON.parse(s);
-  } catch (e) { s = null; }
-  if (!Array.isArray(s) || !s.length) s = (CONFIG.booking && CONFIG.booking.refundSlabs) || [];
-  return s.map(x => ({ h: Number(x && x.minHrs), p: Number(x && x.pct) }))
-    .filter(x => isFinite(x.h) && isFinite(x.p) && x.h >= 0)
-    .sort((a, b) => b.h - a.h);
+  return liveRefundSlabs().map(x => ({ h: x.minHrs, p: x.pct }));
 }
-/* "↩️ Refund: ≥96h 90% · ≥48h 75% · ≥24h 50% · ≥6h 25% · <6h 0%" */
+/* "↩️ Refund: ≥48h 75% · ≥24h 50% · <24h 0%" */
 function coRefundChipText() {
   const sl = coRefundSlabs();
   if (!sl.length) return '↩️ ' + t('payPolicyT').replace(/&amp;/g, '&');
@@ -2852,10 +2844,10 @@ function renderStatus(id) {
     <div class="tkg-mantra" lang="sa"><span aria-hidden="true">❖</span> ${esc(tkMantraLine())} <span aria-hidden="true">❖</span></div>
     <div class="tk2-head premium-ticket-head">
       <div class="tk2-brand">
-        <img src="/assets/img/logo-mark-96h.png?v=20261014v" width="185" height="96" alt="" loading="lazy" decoding="async">
+        <img src="/assets/img/logo-mark-96h.png?v=20261015a" width="185" height="96" alt="" loading="lazy" decoding="async">
         <div><b>${esc(CONFIG.company.name || 'S HARI GLOBAL PRIVATE LIMITED')}</b><small>${esc(t('tkEticket'))} · ${esc(t('tkServiceLine'))}</small><em>${esc(t('premiumTrust'))}</em></div>
       </div>
-      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261014v" width="600" height="312" alt="" decoding="async">
+      <img class="premium-ticket-bus" src="/assets/img/bus-shg-sm.webp?v=20261015a" width="600" height="312" alt="" decoding="async">
     </div>
     <div class="premium-ticket-status">${pill2}${b.ticketNumber ? '<span>' + esc(b.ticketNumber) + '</span>' : ''}${b.agentCode ? '<span style="background:var(--orange-100,#fff2e0);color:var(--orange-800,#7a3d00);padding:2px 10px;border-radius:20px;font-size:12px;font-family:var(--f-code)">🏷️ ' + esc(b.agentCode) + '</span>' : ''}</div>
     ${secBand}

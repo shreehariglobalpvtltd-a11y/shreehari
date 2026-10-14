@@ -37,7 +37,6 @@
       ? (HI[r.halt] || '•') + ' ' + esc((T.hk || {})[r.halt] || '') + ' · ' + esc(fill(T.near, [r.name]))
       : esc(r.name) + (r.border ? FL : '');
     var m = [];
-    if (r.km != null) m.push(kmf(r.km) + ' km');
     if (isHalt && r.haltMin) m.push(fill(T.mins, [r.haltMin]));
     if (r.eta != null) m.push('~' + dur(r.eta) + ' · GPS');
     if (r.border) m.push(T.border);
@@ -56,13 +55,16 @@
     if (live && d.kmh != null) c += '<span class="chip">' + (d.kmh | 0) + ' km/h</span>';
     $('chips').innerHTML = c;
 
-    var tot = d.totalKm, bar = $('bar'), dot = $('busDot'), on = src === 'gps' || src === 'timetable' || src === 'done';
+    /* D9 (15 Oct 2026): print the one corridor distance (displayKm); the
+       measured totalKm only drives pct, and "X of N km" is pct of displayKm. */
+    var tot = d.displayKm || d.totalKm, bar = $('bar'), dot = $('busDot'), on = src === 'gps' || src === 'timetable' || src === 'done';
     var pct = on && pr.pct != null ? Math.max(0, Math.min(100, pr.pct)) : 0;
+    var shownKm = on && pr.pct != null && tot ? Math.round(tot * pct / 100) : null;
     bar.className = 'bar' + (src === 'timetable' ? ' tt' : '');
     $('fill').style.width = pct + '%';
     dot.classList.toggle('hidden', !on || pr.pct == null);
     dot.style.left = pct + '%';
-    $('pKm').innerHTML = tot ? '<b>' + esc(on && pr.km != null ? fill(T.kmOf, [kmf(pr.km), kmf(tot)]) : kmf(tot) + ' km') + '</b>' : '';
+    $('pKm').innerHTML = tot ? '<b>' + esc(shownKm != null ? fill(T.kmOf, [kmf(shownKm), kmf(tot)]) : kmf(tot) + ' km') + '</b>' : '';
     $('pTag').textContent = src === 'gps' ? T.gps : (src === 'timetable' ? T.tt : '');
     $('ttNote').classList.toggle('hidden', src !== 'timetable');
 

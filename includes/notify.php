@@ -3340,6 +3340,8 @@ final class Notify
         $company = (string) Settings::companyFor((string) ($booking['counter_code'] ?? ''), (string) ($booking['entity'] ?? ''))['name'];   // the company that issued THIS ticket (4 Oct 2026)
         $pnr     = (string) ($booking['pnr'] ?? '');
         $money   = inr($amount);
+        require_once INCLUDE_PATH . '/fare.php';
+        $days    = Fare::refundDays();   // D8: one source for "5–7 working days"
 
         if (!empty($booking['contact_email'])) {
             self::email(
@@ -3351,7 +3353,7 @@ final class Notify
                     . '<p>Your refund for booking <strong>' . e($pnr) . '</strong> has been approved.</p>'
                     . '<p>Amount: <strong>' . e($money) . '</strong></p>'
                     . ($ref !== '' ? '<p>Reference: <strong>' . e($ref) . '</strong></p>' : '')
-                    . '<p>It normally reaches your account within 5–7 working days, depending on your bank.</p>'
+                    . '<p>It normally reaches your account within ' . e($days) . ' working days, depending on your bank.</p>'
                     . '<p>' . e($company) . '</p>'
                 )
             );
@@ -3365,14 +3367,14 @@ final class Notify
               . "Refund approved / रिफंड स्वीकृत — " . $pnr . "\n"
               . "Amount: " . $money . "\n"
               . ($ref !== '' ? "Reference: " . $ref . "\n" : '')
-              . "\n5–7 working days bhitra tapaiko account ma pugcha.\n"
-              . "It should reach your account within 5–7 working days.";
+              . "\n" . $days . " working days bhitra tapaiko account ma pugcha.\n"
+              . "It should reach your account within " . $days . " working days.";
 
         self::whatsapp((string) $booking['contact_phone'], $text, null, self::countryHint($booking));
         self::sms(
             (string) $booking['contact_phone'],
             $company . ': Refund of ' . $money . ' approved for ' . $pnr
-                . ($ref !== '' ? ' (ref ' . $ref . ')' : '') . '. Allow 5-7 working days.',
+                . ($ref !== '' ? ' (ref ' . $ref . ')' : '') . '. Allow ' . $days . ' working days.',
             self::countryHint($booking),
             (int) ($booking['id'] ?? 0) ?: null
         );
