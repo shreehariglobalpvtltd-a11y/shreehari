@@ -433,6 +433,23 @@ const SHG_PAL_IDS = SHG_PALETTES.map(p => p[0]);
    every other row is a Material You palette. */
 const SHG_BRAND_LOOK_IDS = ['professional', 'whiteblue', 'goldenorange'];
 function shgPalRow(id) { for (let i = 0; i < SHG_PALETTES.length; i++) { if (SHG_PALETTES[i][0] === id) return SHG_PALETTES[i]; } return null; }
+/* 10 Oct 2026 (review fix, stale-stylesheet guard - the JS twin of the one in
+   index.php): this file can reach a phone from a newer build than its cached
+   themes.css (the SW or HTTP cache keeps one file and drops the other). A
+   palette that stylesheet does not know leaves --royal and --md-primary
+   pointing at each other, both invalid, and every button and link loses its
+   colour. A palette the CSS knows always resolves --md-primary, so one
+   computed read tells; unknown -> drop the attribute, the S Hari brand look
+   paints. Called by boot() and applyPalette() right after they set
+   data-palette. Safe at boot: this deferred script runs only after the
+   stylesheets above it have loaded. Returns false when it dropped one. */
+function shgPalGuard() {
+  const d = document.documentElement;
+  if (!d.hasAttribute('data-palette') || !window.getComputedStyle) return true;
+  try { if (getComputedStyle(d).getPropertyValue('--md-primary').trim()) return true; } catch (e) { return true; }
+  d.removeAttribute('data-palette');
+  return false;
+}
 /* The phone's status bar and the overscroll colour follow the theme AND the palette. */
 function shgPaintChrome(mode) {
   const d = document.documentElement;
@@ -628,6 +645,7 @@ document.addEventListener('click', (e) => {
     const ok = SHG_PAL_IDS.indexOf(id) >= 0;
     if (ok) d.setAttribute('data-palette', id); else d.removeAttribute('data-palette');
     if (save !== false) lsSet('shg:palette', ok ? id : 'shg');
+    shgPalGuard();   /* 10 Oct 2026: a stale cached themes.css -> brand look, never colourless */
     shgPaintChrome(currentTheme());
   }
   function applyUi(v, save) {
@@ -649,6 +667,7 @@ document.addEventListener('click', (e) => {
       if (sp === 'shg') d.removeAttribute('data-palette');
       else if (sp) d.setAttribute('data-palette', sp);
       else if (!d.hasAttribute('data-palette')) { const op = String(owner('app_theme_palette', '')); if (SHG_PAL_IDS.indexOf(op) >= 0) d.setAttribute('data-palette', op); }
+      shgPalGuard();   /* 10 Oct 2026 (review fix): never undo index.php's stale-stylesheet guard */
       const su = lsGet('shg:ui');
       if (su === 'pixel' || su === 'classic') d.setAttribute('data-ui', su);
       else if (!d.hasAttribute('data-ui')) d.setAttribute('data-ui', String(owner('app_ui_style', 'pixel')) === 'classic' ? 'classic' : 'pixel');
@@ -688,16 +707,17 @@ document.addEventListener('click', (e) => {
       + opt('data-theme-set="dark"', '🌙', tx('dark'), tx('darkS'), theme === 'dark')
       + opt('data-theme-set="amoled"', '⚫', tx('amoled'), tx('amoledS'), theme === 'amoled')
       + '</div></section>';
-    h += '<section class="ap-sec"><h3 id="apColH">🎨 ' + esc(tx('colour')) + '<span>' + (SHG_PALETTES.length + 1) + '</span></h3>';
+    h += '<section class="ap-sec"><h3 id="apColH">🎨 ' + esc(tx('colour')) + '<span aria-hidden="true">' + (SHG_PALETTES.length + 1) + '</span></h3>';
     const sw = (id, colours, name, sub) => '<button type="button" class="ap-sw' + (sub ? ' ap-sw-brand' : '') + '" role="radio" data-palette-set="' + id + '" aria-checked="' + ((id === 'shg' ? !pal : pal === id) ? 'true' : 'false') + '" aria-label="' + esc(name) + '">'
       + '<span class="ap-dot" data-sw="' + colours.join(',') + '" aria-hidden="true"></span><span class="ap-nm">' + esc(name) + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span></button>';
     /* 10 Oct 2026 (review fix): TWO radiogroups, each named by its own label
-       (aria-labelledby = the section heading + the label), so a screen reader
-       hears the grouping a sighted visitor sees: "Brand looks" = S Hari (brand)
+       alone (aria-labelledby = the label <p>, which holds only the label text;
+       the heading's palette count is aria-hidden), so a screen reader hears
+       the grouping a sighted visitor sees: "Brand looks" = S Hari (brand)
        + the three hand-tuned looks, "More colours" = the Material You
        palettes. rove() gives each group one tab stop and the arrow keys stay
        inside a group; mark('[data-palette-set]') clears across both. */
-    const grp = (k, id) => '<p class="ap-grp" id="' + id + '">' + esc(tx(k)) + '</p><div class="ap-sw-grid" role="radiogroup" aria-labelledby="apColH ' + id + '">';
+    const grp = (k, id) => '<p class="ap-grp" id="' + id + '">' + esc(tx(k)) + '</p><div class="ap-sw-grid" role="radiogroup" aria-labelledby="' + id + '">';
     h += grp('brandLooks', 'apGrpBrand');
     h += sw('shg', ['#0054A8', '#0C306C', '#DC143C'], tx('brand'), tx('brandS'));
     SHG_PALETTES.forEach((p) => { if (SHG_BRAND_LOOK_IDS.indexOf(p[0]) >= 0) h += sw(p[0], p[1], p[4 + li]); });

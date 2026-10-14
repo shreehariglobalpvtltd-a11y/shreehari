@@ -241,11 +241,15 @@ $pairs = [
     ['--on-navy', '--navy', 'on-navy/navy (hero)'],
     ['--md-on-surface', '--md-surface', 'md on-surface/surface'],
     ['--md-on-primary-container', '--md-primary-container', 'md on-primary-container/container'],
+    /* 10 Oct 2026 (review fix): --md-tertiary is TEXT too - 22-routeline.js
+       colours the 9px "+1 day" mark with it (--rl-ter) */
+    ['--md-tertiary', '--md-surface', 'tertiary/surface (route "+1 day" text)'],
 ];
 $hex = static fn(?string $v): bool => $v !== null && (bool) preg_match('~^#([0-9a-f]{3}|[0-9a-f]{6})$~i', $v);
 $worst = [99.0, ''];
 $bad = [];
 $checked = 0;
+$heroBad = []; $heroN = 0; $heroWorst = [99.0, ''];
 foreach ($cssIds as $pid) {
     foreach (['light', 'dark', 'amoled'] as $mode) {
         $attrs = ['data-palette' => $pid, 'data-theme' => $mode === 'light' ? 'light' : 'dark', 'data-ui' => 'pixel'];
@@ -259,6 +263,22 @@ foreach ($cssIds as $pid) {
             if ($r < $worst[0]) $worst = [$r, "{$pid}/{$mode} {$lab}"];
             if ($r < 4.5) $bad[] = sprintf('%s/%s %s %s on %s = %.2f', $pid, $mode, $lab, $a, $b, $r);
         }
+        /* 10 Oct 2026 (review fix): the hero title (--on-navy) and the 13px tag
+           (.hh-tag = --on-navy-muted) sit on --shg-hero-bg, a gradient - check
+           both against EVERY solid colour stop, not just --navy (the start) */
+        $hb = (string) ($t['--shg-hero-bg'] ?? '');
+        preg_match_all('~(#[0-9a-f]{6}|#[0-9a-f]{3})\s+\d+%~i', $hb, $hs);
+        if ($hs[1] === []) { $heroBad[] = "{$pid}/{$mode}: no solid stops in --shg-hero-bg"; }
+        foreach ($hs[1] as $stop) {
+            foreach (['--on-navy' => 'title', '--on-navy-muted' => 'tag'] as $tok => $what) {
+                $fgc = $t[$tok] ?? null;
+                if (!$hex($fgc)) { $heroBad[] = "{$pid}/{$mode} hero {$what}: unresolved {$tok}"; continue; }
+                $r = contrast($fgc, $stop);
+                $heroN++;
+                if ($r < $heroWorst[0]) $heroWorst = [$r, "{$pid}/{$mode} {$what} {$fgc} on {$stop}"];
+                if ($r < 4.5) $heroBad[] = sprintf('%s/%s hero %s %s on stop %s = %.2f', $pid, $mode, $what, $fgc, $stop, $r);
+            }
+        }
         if ($mode === 'amoled') {
             $pg = $t['--page'] ?? '';
             if (strtolower((string) $pg) !== '#000000' && strtolower((string) $pg) !== '#000') $bad[] = "{$pid}/amoled page is {$pg}, not black";
@@ -268,6 +288,7 @@ foreach ($cssIds as $pid) {
     }
 }
 check("every pair resolves and is >= 4.5:1 ({$checked} pairs)", $bad === [], $bad === [] ? sprintf('worst %.2f (%s)', $worst[0], $worst[1]) : implode(' | ', array_slice($bad, 0, 6)));
+check("hero title + tag >= 4.5:1 on every --shg-hero-bg stop ({$heroN} pairs)", $heroBad === [] && $heroN > 0, $heroBad === [] ? sprintf('worst %.2f (%s)', $heroWorst[0], $heroWorst[1]) : implode(' | ', array_slice($heroBad, 0, 6)));
 /* the brand look (no data-palette) is untouched: royal is still the ds royal */
 $brand = resolve_tokens($sheets, ['data-theme' => 'light', 'data-ui' => 'pixel']);
 check('no data-palette = today\'s brand royal (#0054A8)', strtolower((string) ($brand['--royal'] ?? '')) === '#0054a8', (string) ($brand['--royal'] ?? '?'));
@@ -322,7 +343,8 @@ $sql2 = is_file($sql2F) ? (string) file_get_contents($sql2F) : '';
 /* review fix: self-sufficient - the INSERT creates the row where the 9 Oct file was never
    applied (same column list), ON DUPLICATE KEY only moves a value that is still blank */
 check('SQL (10 Oct): INSERT with the 9 Oct column list, professional', (bool) preg_match("~INSERT INTO `settings` \\(`skey`, `svalue`, `stype`, `sgroup`, `label`, `is_public`\\) VALUES\\s+\\('app_theme_palette', 'professional', 'string', 'app', '[^']+', 1\\)~", $sql2));
-check('SQL (10 Oct): ON DUPLICATE KEY moves only a still-blank value, keeps the row public', (bool) preg_match("~ON DUPLICATE KEY UPDATE\\s+`svalue` = IF\\(`svalue` = '', 'professional', `svalue`\\),\\s+`is_public` = 1;~", $sql2));
+/* review fix 2: svalue is a nullable longtext - a NULL row must move too (COALESCE) */
+check('SQL (10 Oct): ON DUPLICATE KEY moves only a still-blank / NULL value, keeps the row public', (bool) preg_match("~ON DUPLICATE KEY UPDATE\\s+`svalue` = IF\\(COALESCE\\(`svalue`, ''\\) = '', 'professional', `svalue`\\),\\s+`is_public` = 1;~", $sql2));
 check('SQL (10 Oct): deploy order + verify SELECT documented in the file', stripos($sql2, 'DEPLOY ORDER') !== false && strpos($sql2, "SELECT `skey`, `svalue`, `is_public` FROM `settings` WHERE `skey` = 'app_theme_palette'") !== false);
 check('SQL (9 Oct) still inserts the blank default (the 10 Oct file only updates)', (bool) preg_match("~\\('app_theme_palette',\\s*'',\\s*'string',\\s*'app'~", $sql));
 check('Admin -> Settings: dropdowns for style + sound pack', strpos($adm, "'app_ui_style'         => ['pixel'") !== false && strpos($adm, "'app_sound_pack'       => ['pixel'") !== false);
@@ -361,14 +383,30 @@ check('sheet: S Hari (brand) + every palette, named in ne / en / hi', strpos($ac
 check('sheet: no second "(default)" / "(मूल)" label', strpos($acc, "'S Hari (मूल)'") === false && strpos($acc, "'S Hari (default)'") === false);
 /* 10 Oct 2026: the three brand looks lead the colour grid under their own label */
 check('sheet: brand looks listed first in SHG_PALETTES', array_slice($jsIds, 0, 3) === ['professional', 'whiteblue', 'goldenorange'], implode(' ', array_slice($jsIds, 0, 3)));
-/* review fix: the two labels each name their own radiogroup (aria-labelledby), not aria-hidden text */
-check('sheet: SHG_BRAND_LOOK_IDS + two labelled radiogroups (Brand looks / More colours)', strpos($acc, "const SHG_BRAND_LOOK_IDS = ['professional', 'whiteblue', 'goldenorange'];") !== false && strpos($acc, "brandLooks: ['ब्रान्ड रूप · Brand looks', 'Brand looks · ब्रान्ड रूप'") !== false && strpos($acc, '<p class="ap-grp" id="\' + id + \'">') !== false && strpos($acc, 'role="radiogroup" aria-labelledby="apColH \' + id + \'">') !== false && strpos($acc, "grp('brandLooks', 'apGrpBrand')") !== false && strpos($acc, "grp('moreColours', 'apGrpMore')") !== false && strpos($acc, 'aria-hidden="true">\' + esc(tx(k))') === false && strpos($themes, '.shg-ap .ap-grp {') !== false);
+/* review fix: the two labels each name their own radiogroup (aria-labelledby), not aria-hidden text;
+   review fix 2: the group is named by its label ALONE and the heading's count is aria-hidden
+   (a screen reader heard "Colour 16 Brand looks") */
+check('sheet: colour heading count is aria-hidden', strpos($acc, '<h3 id="apColH">🎨 \' + esc(tx(\'colour\')) + \'<span aria-hidden="true">\'') !== false);
+check('sheet: SHG_BRAND_LOOK_IDS + two labelled radiogroups (Brand looks / More colours)', strpos($acc, "const SHG_BRAND_LOOK_IDS = ['professional', 'whiteblue', 'goldenorange'];") !== false && strpos($acc, "brandLooks: ['ब्रान्ड रूप · Brand looks', 'Brand looks · ब्रान्ड रूप'") !== false && strpos($acc, '<p class="ap-grp" id="\' + id + \'">') !== false && strpos($acc, 'role="radiogroup" aria-labelledby="\' + id + \'">') !== false && strpos($acc, 'aria-labelledby="apColH \' + id') === false && strpos($acc, "grp('brandLooks', 'apGrpBrand')") !== false && strpos($acc, "grp('moreColours', 'apGrpMore')") !== false && strpos($acc, 'aria-hidden="true">\' + esc(tx(k))') === false && strpos($themes, '.shg-ap .ap-grp {') !== false);
 check('sheet: professional named "(default)" in ne / en / hi', strpos($acc, "'प्रोफेसनल (मूल)', 'Professional (default)', 'प्रोफ़ेशनल (मूल)'") !== false);
 check('sheet: whiteblue swatch has no pure-white wedge (invisible on the light card)', strpos($acc, "['whiteblue',  ['#0054a8', '#d9e7fa', '#8fbfff']") !== false);
 /* review fix: the top app bar is an AMOLED strip too (depth.css paints it #050B16 !important) */
 check('themes.css: .nav / .nav.scrolled take the palette navy on AMOLED', (bool) preg_match('~:root\[data-palette\]\[data-display="amoled"\] \.nav, :root\[data-palette\]\[data-display="amoled"\] \.nav\.scrolled,\s*:root\[data-palette\]\[data-display="amoled"\] footer,\s*:root\[data-palette\]\[data-display="amoled"\] \.flow-head \{ background: var\(--navy\) !important; \}~', $themes));
 /* review fix: a stale cached themes.css must never leave the page without its primary colour */
 check('index.php: stale-stylesheet guard drops an unknown data-palette after the CSS loads', strpos($index, "getComputedStyle(d).getPropertyValue('--md-primary').trim()") !== false && strpos($index, "d.removeAttribute('data-palette')") !== false && strpos($index, 'stale-stylesheet guard') !== false);
+/* review fix 2: 03-accounts.js boot() used to put the attribute straight back - the same
+   computed check now runs in JS after EVERY place that sets data-palette */
+preg_match('~function shgPalGuard\(\) \{(.*?)\n\}~s', $acc, $pg);
+check('03-accounts.js: shgPalGuard() reads the computed --md-primary and drops an unknown palette', isset($pg[1]) && strpos($pg[1], "getComputedStyle(d).getPropertyValue('--md-primary').trim()") !== false && strpos($pg[1], "d.removeAttribute('data-palette')") !== false);
+preg_match('~\(function boot\(\) \{(.*?)\}\)\(\);~s', $acc, $bt);
+$btBody = $bt[1] ?? '';
+check('03-accounts.js: boot() runs shgPalGuard() after setting data-palette, before painting the chrome', ($gp = strpos($btBody, 'shgPalGuard();')) !== false && $gp > strrpos(substr($btBody, 0, $gp), "setAttribute('data-palette'") && $gp < strpos($btBody, 'shgPaintChrome('));
+preg_match('~function applyPalette\(id, save\) \{(.*?)\n  \}~s', $acc, $apf);
+$apBody = $apf[1] ?? '';
+check('03-accounts.js: applyPalette() runs shgPalGuard() before painting the chrome', ($gq = strpos($apBody, 'shgPalGuard();')) !== false && $gq > strpos($apBody, "setAttribute('data-palette'") && $gq < strpos($apBody, 'shgPaintChrome('));
+check('03-accounts.js: every data-palette setter is followed by the guard (3 setters, 2 guard calls)', substr_count($acc, "setAttribute('data-palette'") === 3 && substr_count($acc, 'shgPalGuard();') === 2);
+/* review fix 2: the home facilities list is an AMOLED panel too (depth.css #101822 / #33465F) */
+check('themes.css: .home-feat .hf-list takes the palette surface + line on AMOLED', strpos($themes, ':root[data-palette][data-display="amoled"] .home-feat .hf-list { background: var(--surface) !important; border-color: var(--line-strong) !important; }') !== false);
 check('entry points: phone-menu row + topbar 🎨 button', strpos($acc, "b.className = 'mm-appear'") !== false && strpos($acc, "closest('.palette-btn')") !== false && strpos($themes, 'html .topbar .palette-wrap { display: inline-flex !important; }') !== false);
 check('style / motion / pack / sound / vibration controls', strpos($acc, 'data-ap-ui="pixel"') !== false && strpos($acc, 'data-ap-motion="reduced"') !== false && strpos($acc, 'data-ap-pack="pixel"') !== false && strpos($acc, "toggle('sound'") !== false && strpos($acc, "toggle('haptics'") !== false);
 check('saves shg:palette / shg:ui / shg:motion', strpos($acc, "lsSet('shg:palette'") !== false && strpos($acc, "lsSet('shg:ui'") !== false && strpos($acc, "lsSet('shg:motion'") !== false);

@@ -24,7 +24,7 @@
 -- blank by upgrade-2026-10-09-themes.sql; on a database where that file was
 -- never applied this INSERT creates it (same columns as the 9 Oct file), and
 -- where it exists the ON DUPLICATE KEY branch only moves a value that is
--- STILL blank - an owner who already picked a theme in Admin -> Settings
+-- STILL blank or NULL (svalue is a nullable longtext; COALESCE, review fix) - an owner who already picked a theme in Admin -> Settings
 -- keeps it, and re-running the file changes nothing. is_public stays 1
 -- (index.php reads the row before paint).
 -- =====================================================================
@@ -32,7 +32,7 @@
 INSERT INTO `settings` (`skey`, `svalue`, `stype`, `sgroup`, `label`, `is_public`) VALUES
  ('app_theme_palette', 'professional', 'string', 'app', 'Default colour theme for visitors (blank = S Hari brand colours)', 1)
 ON DUPLICATE KEY UPDATE
- `svalue` = IF(`svalue` = '', 'professional', `svalue`),
+ `svalue` = IF(COALESCE(`svalue`, '') = '', 'professional', `svalue`),
  `is_public` = 1;
 
 -- Verify (expected: one row, svalue = professional unless the owner chose
