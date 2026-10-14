@@ -713,11 +713,25 @@ final class ContentPages
     {
         $co = PublicLayout::company();
         $b = PublicLayout::base();
-        return array_filter([
+        /* 10 Oct 2026 (trust): the same card index.php prints - the domain
+           mailbox once typed (brand.contactEmail), the CIN as an identifier
+           and sameAs = the channels pasted in Admin -> Settings -> Company.
+           A blank setting adds nothing, so no dead profile link ever ships. */
+        $f = PublicLayout::facts();
+        $node = array_filter([
             '@type' => 'Organization', '@id' => $b . '/#org', 'name' => $co['name'], 'legalName' => $co['legal'],
-            'url' => $b . '/', 'logo' => $b . '/assets/img/logo-mark.png', 'email' => $co['email'], 'telephone' => $co['phone'],
+            'url' => $b . '/', 'logo' => $b . '/assets/img/logo-mark.png',
+            'email' => (string) ($f['brand']['contactEmail'] ?? $co['email']), 'telephone' => $co['phone'],
             'areaServed' => ['India', 'Nepal'],
         ], static fn($v): bool => $v !== '' && $v !== null);
+        if (trim((string) ($co['cin'] ?? '')) !== '') {
+            $node['identifier'] = ['@type' => 'PropertyValue', 'propertyID' => 'CIN', 'value' => (string) $co['cin']];
+        }
+        $same = array_values(array_filter(array_map('strval', (array) ($f['brand']['social'] ?? [])), 'strlen'));
+        if ($same !== []) {
+            $node['sameAs'] = $same;
+        }
+        return $node;
     }
 
     /** @param list<array{0:string,1:string}> $items [[name, url], …] */

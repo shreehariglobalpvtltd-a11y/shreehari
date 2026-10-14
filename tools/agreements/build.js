@@ -207,7 +207,8 @@ console.log('structure: 2 types x ' + LANGS.length + ' languages, ' + T.en.org.s
   const out = [];
   const walk = (v, where) => {
     if (typeof v === 'string') {
-      const s = v.replace(/\[\[[^\]]*\]\]/g, 'X');
+      // 10 Oct 2026 (trust): a {{f:key|text}} fact reads as its printed text
+      const s = v.replace(/\{\{f:[a-zA-Z0-9_.]{1,40}\|([^{}|]{0,300})\}\}/g, '$1').replace(/\[\[[^\]]*\]\]/g, 'X');
       /* two spaces before a tick box or between "____" blanks are deliberate */
       if (/\S {2,}\S/.test(s.replace(/ {2,}(?=X)/g, ' ').replace(/(_) {2,}/g, '$1 '))) out.push(where + ': double space');
       if (/ [,.;:।?!)]/.test(s)) out.push(where + ': space before punctuation');
@@ -237,8 +238,31 @@ const lab = (s) => /\*\s*$/.test(String(s || '')) ? `${esc(plain(s))}<b class="r
 const ui = (lg, k) => (T[lg].ui && T[lg].ui[k]) || FB[lg][k] || FB.en[k] || '';
 const needList = (lg, ty) => ((T[lg].need || {})[ty] || []).filter(Boolean);
 
+/* 10 Oct 2026 (trust, owner: "agreement ko data live hunu paryo"): a company
+   fact printed on the page carries its SiteFacts key, so the page follows
+   Admin -> Company details without a rebuild:
+     {{f:brand.cin|U52291GJ2026PTC174029}} in content.js  → <span data-fact="brand.cin">U52291GJ2026PTC174029</span>
+     fact('head.phone', CO.phone) in a template literal → the same span
+   The printed text stays in the HTML (the page reads right without JS and
+   is what AgreementText parses); assets/js/agreement-live.js refreshes the
+   spans from /api/agreement-points.php "facts". Applied AFTER esc(), so
+   both the key and the text are already safe. Keys: brand.legal, brand.cin,
+   brand.web, head.address, head.addressNe, head.phone (AgreementText::FACT_KEYS).
+   The Hindi / Gujarati pages keep their own-script office line as built:
+   there is no Hindi or Gujarati address setting, and a Roman address would
+   replace the reader's language.
+   14 Oct 2026 (review): on hi / gu the LETTERHEAD office line is plain built
+   text too. Only following Settings in the letterhead would let one signed
+   agreement name two different registered offices (letterhead = Settings,
+   party block = built Hindi / Gujarati text). Both stay the built address
+   until a Hindi / Gujarati address setting exists.
+   The pages load agreement-live.js?v=20261010t: bump that stamp whenever
+   agreement-live.js changes, or returning visitors keep the cached copy. */
+const facts = (h) => String(h).replace(/\{\{f:([a-zA-Z0-9_.]{1,40})\|([^{}|]{0,300})\}\}/g, (m, k, t) => `<span data-fact="${k}">${t}</span>`);
+const fact = (key, text) => `<span data-fact="${esc(key)}">${esc(text)}</span>`;
+
 function inline(text) {
-  const html = esc(text).replace(/\[\[([^\]]+)\]\]/g, (m, body) => {
+  const html = facts(esc(text)).replace(/\[\[([^\]]+)\]\]/g, (m, body) => {
     const p = body.split('|');
     if (p[0].startsWith('r:')) {
       const [, group, value] = p[0].split(':');
@@ -587,7 +611,7 @@ ${clauses(sec, n)}</section>
   <div class="parties">
     <div class="pb has-seal">
       <div class="pb-h">${esc(f.fp)}</div>
-      <div class="pb-s">${esc(f.forCo)}</div>
+      <div class="pb-s">${facts(esc(f.forCo))}</div>
       ${sl(f.sign, '', 'sig')}
       <div class="seal"><span>${esc(f.seal)}</span></div>
       <div class="pb-row">${sl(f.name, mirror('co_sig'))}${sl(f.designation, mirror('co_desig'))}</div>
@@ -930,9 +954,9 @@ html.bw .bar{background:#fff;color:#000;border:.3mm solid #000}
     <img class="lh-logo" src="${LOGO}" alt="S Hari Global">
     <div class="lh-id">
       <div class="lh-nm">S HARI GLOBAL<span>PVT. LTD.</span></div>
-      <div class="lh-ad">${esc(coOffice)}</div>
+      <div class="lh-ad">${lg === 'en' || lg === 'ne' ? fact('head.address', coOffice) : esc(coOffice)}</div>
     </div>
-    <div class="lh-meta"><div><b>CIN</b> ${esc(CO.cin)}</div><div><b>PAN</b> ${esc(CO.pan)}</div><div>${esc(CO.web)}</div><div>${esc(CO.phone)}</div></div>
+    <div class="lh-meta"><div><b>CIN</b> ${fact('brand.cin', CO.cin)}</div><div><b>PAN</b> ${esc(CO.pan)}</div><div>${fact('brand.web', CO.web)}</div><div>${fact('head.phone', CO.phone)}</div></div>
   </header>
   <div class="lh-rule"></div>
   <div class="title"><h1>${esc(D.title)}</h1><p>${esc(D.sub)}</p></div>
@@ -952,12 +976,12 @@ ${needBlock}
   ${subHead(f.a2)}
   <div class="co">
     <dl class="kv">
-      <div class="w"><dt>${esc(f.coName)}</dt><dd>${esc(CO.name)}</dd></div>
-      <div><dt>${esc(f.cin)}</dt><dd>${esc(CO.cin)}</dd></div>
+      <div class="w"><dt>${esc(f.coName)}</dt><dd>${fact('brand.legal', CO.name)}</dd></div>
+      <div><dt>${esc(f.cin)}</dt><dd>${fact('brand.cin', CO.cin)}</dd></div>
       <div><dt>${esc(f.pan)}</dt><dd>${esc(CO.pan)}</dd></div>
-      <div class="w"><dt>${esc(f.office)}</dt><dd>${esc(L.co.office)}</dd></div>
-      <div><dt>${esc(f.web)}</dt><dd>${esc(CO.web)}</dd></div>
-      <div><dt>${esc(f.phone)}</dt><dd>${esc(CO.phone)}</dd></div>
+      <div class="w"><dt>${esc(f.office)}</dt><dd>${lg === 'en' ? fact('head.address', L.co.office) : lg === 'ne' ? fact('head.addressNe', L.co.office) : esc(L.co.office)}</dd></div>
+      <div><dt>${esc(f.web)}</dt><dd>${fact('brand.web', CO.web)}</dd></div>
+      <div><dt>${esc(f.phone)}</dt><dd>${fact('head.phone', CO.phone)}</dd></div>
     </dl>
     <div class="grid">
       ${fld(lg, 'coGst', 'co_gst', { p: 6, s: 6, ac: 'off' })}
@@ -999,12 +1023,12 @@ ${party}
   <p class="agree">${esc(L.ui.agreeLine)}</p>
 ${sections}
 </form>
-<p class="foot-scr no-print"><a href="index.html">${esc(ui(lg, 'all'))}</a> · S HARI GLOBAL PRIVATE LIMITED · CIN ${esc(CO.cin)} · ${esc(CO.web)} · ${esc(CO.phone)}</p>
+<p class="foot-scr no-print"><a href="index.html">${esc(ui(lg, 'all'))}</a> · ${fact('brand.legal', CO.name)} · CIN ${fact('brand.cin', CO.cin)} · ${fact('brand.web', CO.web)} · ${fact('head.phone', CO.phone)}</p>
 <div class="toast no-print" id="toast" role="status" aria-live="polite"></div>
 <script>
 (${agreementPage.toString()})(${js(cfg)});
 </script>
-<script src="/assets/js/agreement-live.js?v=20261002" defer></script>
+<script src="/assets/js/agreement-live.js?v=20261010t" defer></script>
 </body>
 </html>
 `;

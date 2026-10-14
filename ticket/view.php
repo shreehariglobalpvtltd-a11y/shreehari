@@ -94,6 +94,28 @@ if ($b !== null) {
     ];
 }
 
+/* 10 Oct 2026 (trust, owner: "government-grade documentation, ticket dekhi
+   sabai kura"): the statutory lines under the ticket - the ISSUING company's
+   legal name, CIN / PAN, GSTIN once the office has one, its office address
+   (Ticket::companyOf, the letterhead the PNG prints) - and, for a real
+   ticket, the IST issue time (+ NPT on a Nepal ticket), "computer-generated",
+   the keyed verify link and the refund rules (Ticket::statutoryParts). Every
+   value is a Settings row; a blank one prints nothing. */
+$issuerCo = $b !== null ? Ticket::companyOf($b) : Settings::companyFor();
+$coLine   = implode(' · ', array_filter([
+    trim((string) ($issuerCo['legal'] ?? '')) !== '' ? (string) $issuerCo['legal'] : (string) ($issuerCo['name'] ?? ''),
+    trim((string) ($issuerCo['regNo'] ?? '')) !== '' ? trim((string) ($issuerCo['regLabel'] ?? '') . ' ' . (string) $issuerCo['regNo']) : '',
+    trim((string) ($issuerCo['gstin'] ?? '')) !== '' ? 'GSTIN ' . trim((string) $issuerCo['gstin']) : '',
+], 'strlen'));
+$coAddr   = trim((string) ($issuerCo['address'] ?? ''));
+$statIssued = '';
+$verifyUrl  = '';
+if ($facts !== null) {
+    $tkRow      = Database::fetch('SELECT issued_at FROM tickets WHERE booking_id = :b', ['b' => (int) $b['id']]);
+    $statIssued = $tkRow !== null ? Ticket::statutoryParts($b, $tkRow, $issuerCo)[0] : '';
+    $verifyUrl  = appUrl('verify-ticket.php') . '?pnr=' . urlencode($facts['pnr']) . '&k=' . Ticket::downloadToken($facts['pnr']);
+}
+
 $officeWa = '';
 $od = preg_replace('/\D+/', '', Settings::officeWhatsApp()) ?? '';
 if ($od !== '') {
@@ -176,7 +198,12 @@ h1{font-size:19px;margin:4px 0 6px}
     <?php if ($office !== ''): ?><a class="btn" href="tel:<?= $e(preg_replace('/[^\d+]/', '', $office)) ?>">📞 <?= $e($office) ?></a><?php endif; ?>
   </div>
   <p class="hint" style="text-align:center">Carry a photo ID · reach the boarding point 30 minutes early.<br>फोटो परिचयपत्र लिनुहोस् · ३० मिनेट अगाडि पुग्नुहोस्।</p>
+  <?php /* 14 Oct 2026 (review): English · Nepali like every other line on this page */ ?>
+  <?php if ($statIssued !== ''): ?><p class="hint" style="text-align:center"><?= $e($statIssued) ?><br>कम्प्युटरबाट बनेको ई-टिकट, हस्ताक्षर चाहिँदैन।</p><?php endif; ?>
+  <p class="hint" style="text-align:center"><a href="<?= $e($verifyUrl) ?>" rel="noopener">Check this ticket is genuine · टिकट जाँच</a> · <a href="/refund-policy">Refund &amp; cancellation rules · फिर्ता नियम</a></p>
 <?php endif; ?>
+  <?php /* 10 Oct 2026 (trust): who issued this document - legal name, CIN / PAN, GSTIN when set, office */ ?>
+  <?php if ($coLine !== ''): ?><p class="hint" style="text-align:center;margin-top:14px"><?= $e($coLine) ?><?= $coAddr !== '' ? '<br>' . $e($coAddr) : '' ?></p><?php endif; ?>
 </div>
 </body>
 </html>

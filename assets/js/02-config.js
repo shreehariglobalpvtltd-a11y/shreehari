@@ -511,8 +511,9 @@ const CONFIG = {
    or a name and the whole page follows on its next load.
      fact('ceo.name', dflt)      read one fact (dotted path)
      hydrateFacts(root)          fill [data-fact] text, [data-fact-tel] tel:,
-                                 [data-fact-wa] wa.me, [data-fact-money] ₹ —
-                                 runs on boot and after every applyLang()
+                                 [data-fact-wa] wa.me, [data-fact-mail] mailto:,
+                                 [data-fact-money] ₹ — runs on boot and after
+                                 every applyLang()
      fareRangeJS('go'|'back')    {min,max} — THE client fare range helper
      fareRangeText(dir)          "₹2,000–₹2,200"
      factVars()                  {npr, goMin, …} for tf() strings
@@ -545,7 +546,8 @@ function factMoney(n) { var v = Math.round(Number(n) || 0); return '₹' + v.toL
     c.gstin   = fact('brand.gstin', c.gstin);
     c.ceo     = fact('ceo.name', c.ceo);
     CONFIG.phone = fact('head.phone', CONFIG.phone);
-    CONFIG.email = fact('brand.email', CONFIG.email);
+    // 10 Oct 2026 (trust): the domain mailbox once the office types one (company_email_alt), else the Gmail
+    CONFIG.email = fact('brand.contactEmail', fact('brand.email', CONFIG.email));
     CONFIG.adminWhatsApp = String(fact('support.whatsapp', CONFIG.adminWhatsApp)).replace(/\D/g, '') || CONFIG.adminWhatsApp;
     var n = Number(fact('npr', 0));
     if (n > 0) CONFIG.nprPerInr = n;
@@ -606,6 +608,12 @@ function hydrateFacts(root) {
     r.querySelectorAll('[data-fact-wa]').forEach(function (el) {
       var d = digitsOf(fact(el.getAttribute('data-fact-wa'), ''));
       if (d.length >= 10) el.setAttribute('href', 'https://wa.me/' + d);
+    });
+    /* 10 Oct 2026 (trust): [data-fact-mail="brand.contactEmail"] - the mailto:
+       href follows the domain mailbox / Gmail the same way a tel: follows a phone. */
+    r.querySelectorAll('[data-fact-mail]').forEach(function (el) {
+      var m = String(fact(el.getAttribute('data-fact-mail'), '') || '').trim();
+      if (m.indexOf('@') > 0 && m.indexOf(' ') < 0) el.setAttribute('href', 'mailto:' + m);
     });
     /* i18n strings that carry a fact as {placeholder} (nprNote …): fill the
        known names only, after applyStaticLang() wrote them. */

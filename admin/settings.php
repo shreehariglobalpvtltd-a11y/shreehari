@@ -585,7 +585,21 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
       'app_ui_style'                        => 'Pixel = rounded cards, pill buttons, soft shadows and spring motion (Android Pixel / Material You). Classic 3D = the raised, deep buttons and cards. Visitors can switch in the Appearance sheet.',
       'app_sound_pack'                      => 'The sound style for taps, seats, switches and the ticket chime. All sounds are generated in the phone (no download) and follow the phone\'s silent mode. Visitors can turn sound off or switch the style.',
       'app_motion_on'                       => 'On = smooth, springy movement. Off = a calm screen for every visitor who has not chosen otherwise (phones set to "reduce motion" are always calm).',
+      /* 10 Oct 2026 (trust): the company's channels and its domain mailbox (includes/sitefacts.php brand.social / brand.email2).
+         Shown on the home page footer, the content pages and in the search-engine card only once a valid value is typed. */
+      'company_email_alt'                   => 'The official mailbox on your own domain, e.g. info@shreehariglobal.in. Once filled it replaces the Gmail in the top bar, is shown beside the Gmail in the footer and the contact section, and goes first in the search-engine card. Blank = the Gmail only.',
+      'company_youtube'                     => 'Paste the channel URL from the browser (https:// is added if you leave it out; a bare @handle is not enough). Empty = the YouTube icon is not shown anywhere.',
+      'company_facebook'                    => 'Paste the full page URL (https://www.facebook.com/…). Empty = the Facebook icon is not shown anywhere.',
+      'company_instagram'                   => 'Paste the full profile URL (https://www.instagram.com/…). Empty = not shown.',
+      'company_tiktok'                      => 'Paste the full profile URL (https://www.tiktok.com/@…). Empty = not shown.',
+      'ceo_facebook'                        => 'The Director\'s own Facebook profile URL - the home-page footer links it beside the company channels. Empty = not shown.',
   ];
+  /* 14 Oct 2026 (review): the same checks the website applies (SiteFacts), so a
+     value it would silently drop gets a warning under its box. */
+  require_once INCLUDE_PATH . '/sitefacts.php';
+  $trustUrl = static fn(string $v): string => SiteFacts::httpsUrlOrEmpty($v);
+  $trustCheck = ['company_email_alt' => static fn(string $v): string => SiteFacts::emailOrEmpty($v)]
+      + array_fill_keys(['company_youtube', 'company_facebook', 'company_instagram', 'company_tiktok', 'ceo_facebook'], $trustUrl);
   ?>
   <?php foreach ($cats as $cat => $catInfo): foreach ($byCat[$cat] ?? [] as $group => $items):
       $visible = array_values(array_filter($items, static fn($r) => !in_array((string) $r['skey'], $fpKeys, true)));
@@ -631,6 +645,9 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
               <input type="text" name="s[<?= Security::e($key) ?>]" value="<?= Security::e($val) ?>" style="width:100%;max-width:420px;padding:9px 11px;border:1px solid var(--line);border-radius:8px" <?= $canEdit ? '' : 'readonly' ?>>
             <?php endif; ?>
             <?php if (isset($waHelp[$key])): ?><small class="muted" style="display:block;margin-top:6px;max-width:560px;line-height:1.45"><?= Security::e($waHelp[$key]) ?></small><?php endif; ?>
+            <?php /* 14 Oct 2026 (review): a saved channel link or mailbox the site cannot use is
+                     said out loud here - the website, footers and search card leave it out. */
+              if (isset($trustCheck[$key]) && trim($val) !== '' && ($trustCheck[$key])($val) === ''): ?><small role="alert" style="display:block;margin-top:4px;max-width:560px;line-height:1.45;font-weight:700;color:var(--danger)">⚠ This value is not a usable <?= $key === 'company_email_alt' ? 'email address' : 'web link' ?>, so the website does not show it. Fix it and save again.</small><?php endif; ?>
           </td>
         </tr>
         <?php endforeach; ?>

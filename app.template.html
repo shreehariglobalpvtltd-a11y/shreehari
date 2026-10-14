@@ -320,6 +320,8 @@ html,body{margin:0;background:#F4F6FB}
     <symbol id="s-shield" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M24 5l16 6v12c0 10-16 20-16 20S8 33 8 23V11z"/><path d="M16 24l6 6 11-13"/></g></symbol>
     <symbol id="s-sleeper" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 38V17M40 38V25H8M8 33h32M14 25v-8h8v8M22 20h13a5 5 0 0 1 5 5"/><path d="M25 8h10l-10 8h10"/></g></symbol>
     <symbol id="s-support" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 25v-4a16 16 0 0 1 32 0v12a7 7 0 0 1-7 7h-5"/><rect x="6" y="22" width="7" height="12" rx="3"/><rect x="35" y="22" width="7" height="12" rx="3"/><rect x="21" y="37" width="8" height="6" rx="3"/></g></symbol>
+    <!-- 10 Oct 2026 (trust): i-youtube / i-facebook / i-instagram / i-tiktok, drawn by SiteFacts::socialSymbols() in the same line style -->
+    {{f:html:socialSymbols}}
   </defs>
 </svg>
 
@@ -367,7 +369,8 @@ s.addEventListener('click',function(e){e.preventDefault();
       <button type="button" class="theme-btn" aria-label="Switch to dark mode">🌙</button>
       <span class="palette-wrap"><button type="button" class="palette-btn" aria-label="Choose colour theme" aria-haspopup="true" aria-expanded="false">🎨</button><div class="palette-pop" id="palettePop" role="menu" aria-label="Colour themes"></div></span>
       <a href="tel:+{{f:head.tel}}" data-fact-tel="head.tel">📞 <span data-fact="head.phone">{{f:head.phone}}</span></a>
-      <a href="mailto:{{f:brand.email}}">✉️ {{f:brand.email}}</a>
+      <!-- 10 Oct 2026 (trust): the domain mailbox (Admin -> Settings -> company_email_alt) once typed, else the Gmail; hydrateFacts() refreshes both -->
+      <a href="mailto:{{f:brand.contactEmail}}" data-fact-mail="brand.contactEmail">✉️ <span data-fact="brand.contactEmail">{{f:brand.contactEmail}}</span></a>
     </div>
   </div>
 </div>
@@ -2024,7 +2027,8 @@ s.addEventListener('click',function(e){e.preventDefault();
           <div class="c-row"><button type="button" class="ico ico-pin" data-navto="23.6008959,72.3807235" data-navto-label="S Hari Global · Mehsana Head Office" aria-label="Show on the map" title="Show on the map" data-i18n-title="waPin">📍</button><div><b>Address</b><span data-fact="head.address">{{f:head.address}}</span></div></div>
           <div class="c-row"><span class="ico">📞</span><div><b>Phone / WhatsApp</b><a href="tel:+{{f:head.tel}}" data-fact-tel="head.tel"><span data-fact="head.phone">{{f:head.phone}}</span></a> <a class="wa-chip" href="https://wa.me/{{f:head.wa}}" data-fact-wa="head.wa" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
           <div class="c-row"><span class="ico">👑</span><div><b>Director · <span data-fact="ceo.name">{{f:ceo.name}}</span> (24/7)</b><a href="tel:+{{f:ceo.tel}}" data-fact-tel="ceo.tel"><span data-fact="ceo.phone">{{f:ceo.phone}}</span></a> <a class="wa-chip" href="https://wa.me/{{f:ceo.wa}}" data-fact-wa="ceo.wa" target="_blank" rel="noopener">💬 WhatsApp</a></div></div>
-          <div class="c-row"><span class="ico">✉️</span><div><b>Email</b><a href="mailto:{{f:brand.email}}">{{f:brand.email}}</a></div></div>
+          <!-- 10 Oct 2026 (trust): both mailboxes - the domain address first once typed, then the Gmail (SiteFacts::emailsHtml) -->
+          <div class="c-row"><span class="ico">✉️</span><div><b>Email</b><span>{{f:html:emails}}</span></div></div>
           <div class="c-row"><span class="ico">🏛️</span><div><b>CIN</b><span style="font-family:var(--f-code)">{{f:brand.cin}}</span></div></div>
           <div class="c-row"><span class="ico">⏰</span><div><b>Office Hours</b><span>Mon–Sat: 9:00 AM – 8:00 PM IST</span></div></div>
           <a class="map-cta" href="https://www.google.com/maps/search/?api=1&query=23.6008959%2C72.3807235" target="_blank" rel="noopener">
@@ -3143,13 +3147,17 @@ s.addEventListener('click',function(e){e.preventDefault();
         <h4 data-i18n="fOffice">Registered office</h4>
         <ul class="f-contact">
           <li>📍 <span data-fact="head.address">{{f:head.address}}</span></li>
-          <li>✉️ <a href="mailto:{{f:brand.email}}">{{f:brand.email}}</a></li>
+          <!-- 10 Oct 2026 (trust): the domain mailbox first once typed, then the Gmail (SiteFacts::emailsHtml) -->
+          <li>✉️ <span>{{f:html:emails}}</span></li>
           <li><span class="flg" data-flag="NP" role="img" aria-label="Nepal"></span> <span><span data-i18n="fNepalOffice">Nepal office</span>: Pushpalal Chowk, Nepalgunj · <a href="tel:+{{f:nepal.tel}}" data-fact-tel="nepal.tel"><span data-fact="nepal.phone">{{f:nepal.phone}}</span></a></span></li>
           <li>🕉️ ॐ नमो नारायणाय</li>
-          <li style="gap:10px;margin-top:6px">
-            <a href="https://www.facebook.com/sherbahadur.biswakarma.58" target="_blank" rel="noopener noreferrer" aria-label="Facebook" title="Facebook — {{f:ceo.name}}">ⓕ</a>
-            <a href="https://wa.me/{{f:ceo.wa}}" data-fact-wa="ceo.wa" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp" title="WhatsApp — Director {{f:ceo.phone}}">✆</a>
-            <a href="https://wa.me/{{f:head.wa}}" data-fact-wa="head.wa" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp office" title="WhatsApp — Mehsana office {{f:head.phone}}">💬</a>
+          <!-- 10 Oct 2026 (trust): the company channels (YouTube / Facebook / Instagram / TikTok) and the
+               Director's own profile come from Admin -> Settings -> Company; a blank setting draws no icon.
+               The two WhatsApp links are the same numbers printed on the ticket. -->
+          <li class="f-soc" style="gap:4px;margin-top:6px;flex-wrap:wrap;align-items:center">
+            {{f:html:social}}{{f:html:ceoSocial}}
+            <a class="soc" href="https://wa.me/{{f:ceo.wa}}" data-fact-wa="ceo.wa" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp" title="WhatsApp — Director {{f:ceo.phone}}">✆</a>
+            <a class="soc" href="https://wa.me/{{f:head.wa}}" data-fact-wa="head.wa" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp office" title="WhatsApp — Mehsana office {{f:head.phone}}">💬</a>
           </li>
         </ul>
       </div>

@@ -175,6 +175,47 @@ final class AgreementText
         return $m[1];
     }
 
+    /* ----------------------------------------------------------------
+     *  Live company facts on the pages (10 Oct 2026, trust)
+     * ---------------------------------------------------------------- */
+
+    /**
+     * The SiteFacts keys the eight pages carry as <span data-fact="…">
+     * (tools/agreements/build.js): the legal name, CIN, website, the
+     * registered office (Roman + Nepali) and the office phone - nothing a
+     * visitor cannot already read on the home page, no other number. The
+     * API hands them to assets/js/agreement-live.js, which refreshes the
+     * printed fallback text so the agreement never lags Admin -> Company
+     * details. plain() strips the spans, so the office's point editor sees
+     * exactly the words as before.
+     */
+    public const FACT_KEYS = ['brand.legal', 'brand.cin', 'brand.web', 'head.address', 'head.addressNe', 'head.phone'];
+
+    /** key => text for exactly FACT_KEYS; a blank fact is left out. @return array<string,string> */
+    public static function facts(): array
+    {
+        if (!class_exists('SiteFacts', false)) {
+            require_once __DIR__ . '/sitefacts.php';
+        }
+        $all = SiteFacts::all();
+        $out = [];
+        foreach (self::FACT_KEYS as $key) {
+            $node = $all;
+            foreach (explode('.', $key) as $part) {
+                $node = is_array($node) && array_key_exists($part, $node) ? $node[$part] : null;
+            }
+            $text = is_scalar($node) ? trim((string) $node) : '';
+            if ($key === 'head.addressNe') {
+                // the setting may open with its own "प्रधान कार्यालय :" label; the page already labels the cell
+                $text = trim((string) preg_replace('/^\s*प्रधान\s+कार्यालय\s*[:：]\s*/u', '', $text));
+            }
+            if ($text !== '') {
+                $out[$key] = $text;
+            }
+        }
+        return $out;
+    }
+
     /* ---------------------------------------------------------------- */
 
     /** Is the agreement_points table there? (The migration may not have run.) */

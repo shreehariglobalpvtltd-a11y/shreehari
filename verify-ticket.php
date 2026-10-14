@@ -581,6 +581,22 @@ $company = (string) $issuer['name'];
 
   <div class="foot">
     Suspect fraud? Contact the office: <a href="tel:<?= htmlspecialchars($vTel, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($vPh, ENT_QUOTES, 'UTF-8') ?></a><br>
+    <?php
+    /* 10 Oct 2026 (trust): the statutory lines of the issuing company - its
+       legal name, CIN / PAN, the GSTIN once the office has one, the registered
+       office - and that this check is computer-generated, with the refund
+       rules a tap away. Every value is a Settings row (Settings::companyFor);
+       a blank one prints nothing. */
+    $vLegal = trim((string) ($issuer['legal'] ?? '')) !== '' ? (string) $issuer['legal'] : $company;
+    $vReg   = trim((string) ($issuer['regNo'] ?? '')) !== '' ? trim((string) ($issuer['regLabel'] ?? '') . ' ' . (string) $issuer['regNo']) : '';
+    $vGst   = trim((string) ($issuer['gstin'] ?? ''));
+    $vAddr  = trim((string) ($issuer['address'] ?? ''));
+    ?>
+    <?= htmlspecialchars(implode(' · ', array_filter([$vLegal, $vReg, $vGst !== '' ? 'GSTIN ' . $vGst : ''], 'strlen')), ENT_QUOTES, 'UTF-8') ?><br>
+    <?php if ($vAddr !== ''): ?><?= htmlspecialchars($vAddr, ENT_QUOTES, 'UTF-8') ?><br><?php endif; ?>
+    <?php /* 14 Oct 2026 (review): bilingual, as the rest of this page */ ?>
+    Computer-generated verification page · कम्प्युटरबाट बनेको प्रमाणीकरण पृष्ठ<br>
+    <a href="/refund-policy">Refund &amp; cancellation rules · फिर्ता र रद्दका नियम</a><br>
     <?= date('Y') ?> <?= htmlspecialchars($company, ENT_QUOTES, 'UTF-8') ?>
   </div>
 </div>

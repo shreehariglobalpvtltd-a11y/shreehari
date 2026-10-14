@@ -242,9 +242,10 @@ foreach (['PNG_LAYOUT_CHANGED', 'PDF_LAYOUT_CHANGED'] as $k) {
     check($k . ' moved for this layout (at/after 9 Oct 2026)', strcmp($s, '2026-10-09 00:00:00') >= 0, $s);
 }
 check('chalani PNG stays exactly 2000x1414', ChalaniPng::WIDTH === 2000 && ChalaniPng::HEIGHT === 1414);
-// 9 Oct 2026 (gold documents): chalani 10, challan 8.
-check('ChalaniPng::LAYOUT_VERSION bumped to 10', ChalaniPng::LAYOUT_VERSION === 10);
-check('ChallanPng::LAYOUT_VERSION bumped to 8 (width unchanged)', ChallanPng::LAYOUT_VERSION === 8 && ChallanPng::WIDTH === 1600);
+// 9 Oct 2026 (gold documents): chalani 10, challan 8. 10 Oct 2026 (trust): 11 / 9 - the statutory
+// lines (computer-generated, IST stamp, GSTIN when set, CIN in the challan foot band) redraw every cached page once.
+check('ChalaniPng::LAYOUT_VERSION bumped to 11', ChalaniPng::LAYOUT_VERSION === 11);
+check('ChallanPng::LAYOUT_VERSION bumped to 9 (width unchanged)', ChallanPng::LAYOUT_VERSION === 9 && ChallanPng::WIDTH === 1600);
 check("AgentStatementPng::LAYOUT is 'stmt-v4'", AgentStatementPng::LAYOUT === 'stmt-v4');
 
 /* ------------------------------------------------------------------ */
