@@ -132,6 +132,9 @@ function admin_nav(): array
         // recognised (see assets/js/14-counter.js). Root-relative so it stays
         // on the host the staff signed in on (.in or the .network door).
         // new-booking.php now redirects there (?legacy=1 keeps the old form).
+        // 15 Oct 2026 (SmartBook v5): the one-screen booking card in the staff's own mode (agent / counter / admin).
+        ['href' => 'smartbook.php',    'icon' => 'ticket',     'label' => '⚡ SmartBook',       'perm' => 'bookings.view', 'section' => 'Bookings & tickets', 'hot' => true],
+        ['href' => 'smart-rules.php',  'icon' => 'cog',        'label' => 'SmartBook rules',   'perm' => 'dashboard.view', 'section' => 'Settings'],
         ['href' => '/index.php?counter=1#/', 'icon' => 'plus', 'label' => '+ New Booking', 'perm' => 'bookings.view', 'section' => 'Bookings & tickets'],
         // 6 Sep 2026: ⚡ Quick Ticket — name + mobile → the server picks the
         // bus, pickup, seat and fare → confirmed sale → PNG ticket → WhatsApp.

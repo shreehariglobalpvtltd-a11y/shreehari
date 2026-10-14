@@ -260,7 +260,11 @@ final class BookingService
         $soldByAdminId     = $referralCodeClean !== ''
             ? AgentWallet::resolveAgentCodeFromString($referralCodeClean)
             : null;
+        // SmartBook v5 D1 (15 Oct 2026): a code typed or carried by a CUSTOMER
+        // still credits the agent, but only a signed-in selling-staff session
+        // may book a bus that has already left (agent mode on the .network door).
         $agentOverride = $soldByAdminId !== null
+            && Auth::isSellingStaff()
             && Boarding::agentGraceOpen($routeId, $travelDate, self::LATE_BOOK_HOURS);
 
         /* ---- Counter mode (3 Sep 2026) --------------------------------

@@ -73,6 +73,12 @@
       floor1: 'तल्लो तला (1F)', floor2: 'माथिल्लो तला (2F)', perCabin: 'क्याबिन', cabins: 'क्याबिन'
     }
   };
+  /* Staff faces (admin/smartbook.php on the .network door) set window.SB_STAFF =
+     {mode: 'agent' | 'counter' | 'admin', …}; the customer site never does, and
+     the server ignores an asked mode a session may not use (SmartBook::sessionMode). */
+  var STAFF = (window.SB_STAFF && typeof window.SB_STAFF === 'object') ? window.SB_STAFF : null;
+  var MODE = STAFF ? String(STAFF.mode || 'admin') : 'customer';
+  function api(body) { if (STAFF) body.mode = MODE; return shgApi.post('/smartbook.php', body); }
   function lang() { var l = (typeof LANG === 'string' && LANG) ? LANG : 'en'; return W[l] ? l : 'en'; }
   function tr(k, v) {
     var s = (W[lang()] && W[lang()][k]) || W.en[k] || k;
@@ -108,6 +114,10 @@
     root.querySelectorAll('[data-sbi-ph]').forEach(function (el) { el.setAttribute('placeholder', tr(el.getAttribute('data-sbi-ph'))); });
     root.querySelectorAll('[data-sbi-title]').forEach(function (el) { var s = tr(el.getAttribute('data-sbi-title')); el.title = s; el.setAttribute('aria-label', s); });
     try { if (typeof factPolicyLine === 'function') $('sbPolicy').textContent = ' · ' + factPolicyLine(); } catch (e) {}
+    if (STAFF) {   // at a desk Cash is money taken now; an agent's Online is the customer's QR
+      root.querySelector('#sbCash small').textContent = MODE === 'agent' ? 'agent collects' : 'received now';
+      root.querySelector('#sbOnline small').textContent = MODE === 'agent' ? 'customer pays QR' : 'UPI · eSewa seen';
+    }
     $('sbPointL').textContent = tr(pointType() === 'drop' ? 'drop' : 'board');
     renderDates(); renderPax(); renderQuote();
   }
@@ -118,7 +128,7 @@
     root.hidden = false;
     retargetBookLinks();
     var saved = store.get();
-    shgApi.post('/smartbook.php', { action: 'boot', phone: saved.phone || '', direction: saved.dir || '' })
+    api({ action: 'boot', phone: saved.phone || '', direction: saved.dir || '' })
       .then(function (d) {
         S.dirs = d.directions || [];
         S.points = d.points || {};
@@ -195,7 +205,7 @@
     });
     h += '<button type="button" class="sb-chip sb-chip-cal" data-date="cal" aria-label="' + esc(tr('pickDate')) + '">📅</button>';
     box.innerHTML = h;
-    if (S.q && S.q.window) { $('sbDateIn').min = S.q.window.from; $('sbDateIn').max = S.q.window.to; }
+    if (S.q && S.q.window && !STAFF) { $('sbDateIn').min = S.q.window.from; $('sbDateIn').max = S.q.window.to; }
   }
 
   function bandLabel(b) { return tr(b === 'child' ? 'child' : (b === 'senior' ? 'senior' : (b === 'patient' ? 'patient' : 'adult'))); }
@@ -216,6 +226,7 @@
   function digits(s) { return String(s || '').replace(/\D/g, ''); }
   function phoneErr() {
     var d = digits(S.phone);
+    if (!d && (MODE === 'counter' || MODE === 'admin')) return '';
     if (S.cc === 'NP') { if (d.length === 13 && d.indexOf('977') === 0) d = d.slice(3); return /^9[678]\d{8}$/.test(d) ? '' : tr('needPhoneNp'); }
     if (d.length === 12 && d.indexOf('91') === 0) d = d.slice(2);
     if (d.length === 11 && d.charAt(0) === '0') d = d.slice(1);
@@ -262,7 +273,7 @@
     var my = ++qSeq;
     $('sbSeatLine').innerHTML = '<span class="sb-skel sb-skel-w"></span>';
     syncButtons();
-    shgApi.post('/smartbook.php', quoteBody())
+    api(quoteBody())
       .then(function (q) {
         if (my !== qSeq) return;
         var flash = S.q && q.seats && S.q.seats && q.seats.join() !== S.q.seats.join();
@@ -397,7 +408,13 @@
   $('sbBot').addEventListener('submit', function (e) {
     e.preventDefault();
     var text = $('sbBotIn').value.trim(); if (!text) return;
-    shgApi.post('/smartbook.php', { action: 'parse', text: text }).then(function (f) {
+    fillFromText(text);
+  });
+  /* One reader for the QuickBot line AND Sahayak's "Card ma herau" (§10): the
+     server reads the text (TicketBot::parse), the card shows the result, and
+     only the passenger's Cash / Online tap books. */
+  function fillFromText(text) {
+    return api({ action: 'parse', text: text }).then(function (f) {
       if (f.direction && f.direction !== S.dir) { S.dir = f.direction; S.point = firstPoint(S.dir); }
       if (f.point) S.point = f.point;
       if (f.date) S.date = f.date;
@@ -412,7 +429,21 @@
       if (missing.indexOf('phone') >= 0) { $('sbPhone').focus(); } else if (missing.indexOf('name') >= 0) { $('sbName').focus(); }
       showErrs(false);
     }).catch(function (er) { say(er.message); });
-  });
+  }
+  /* Sahayak (16-lazy.js) and old "Book" links: the card is the booking now. */
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest('[data-sb-fill]');
+    if (a) {
+      e.preventDefault();
+      var tx = a.getAttribute('data-sb-fill') || '';
+      try { var cb = document.querySelector('.ai-close, #aiClose, [data-ai-close]'); if (cb) cb.click(); } catch (x) {}
+      if (location.hash && location.hash !== '#/' && location.hash.indexOf('#/?') !== 0) location.hash = '#/';
+      setTimeout(function () { root.scrollIntoView({ behavior: 'smooth', block: 'start' }); if (tx) fillFromText(tx); }, 120);
+      return;
+    }
+    var s = e.target.closest('[data-scroll="search-anchor"]');
+    if (s && document.documentElement.classList.contains('sb-on')) s.setAttribute('data-scroll', 'smartBook');
+  }, true);
 
   /* ---------------------------------------------------- choose seats */
   var pick = [];
@@ -420,7 +451,7 @@
     if (!S.q || !S.q.scheduleId) return;
     var need = S.type === 'private' ? (S.cabin === 'double' ? Math.ceil(S.pax.length / 2) : S.pax.length) : S.pax.length;
     pick = (S.manual.length ? S.manual : (S.q.seats || [])).slice(0, need);
-    shgApi.post('/smartbook.php', { action: 'seats', scheduleId: S.q.scheduleId, type: S.type }).then(function (m) {
+    api({ action: 'seats', scheduleId: S.q.scheduleId, type: S.type }).then(function (m) {
       var sh = $('sbSheet'); sh.hidden = false; document.body.classList.add('shg-modal-open');
       drawMap(m, need);
       $('sbSheetOk').onclick = function () {
@@ -480,14 +511,21 @@
     var lbl = btn.querySelector('span'); var old = lbl.textContent; lbl.textContent = tr('booking');
     var body = quoteBody();
     body.action = 'book'; body.pay = pay; body.idem = S.idem; body.name = S.name.trim(); body.phone = digits(S.phone); body.country = S.cc;
-    body.seats = S.q.auto ? [] : S.q.seats; body.prefer = S.q.seats;
+    body.seats = S.q.seats; body.autoPicked = !!S.q.auto;   // the shown berths are the berths sold (re-checked on the server)
     body.expect = { total: S.q.price ? S.q.price.total : null, date: S.q.date };
     store.set();
-    shgApi.post('/smartbook.php', body).then(function (r) {
+    api(body).then(function (r) {
       S.busy = false; btn.classList.remove('sb-busy'); lbl.textContent = old;
       adopt(r);
       S.idem = null;
-      if (r.status === 'confirmed') { showTicket(r, true); }
+      if (STAFF && r.commission) say('💰 Commission ' + money(r.commission));
+      if (r.status === 'confirmed') {
+        showTicket(r, !STAFF);
+        if (STAFF && (printNext || MODE === 'counter' && staffPrint())) window.open('/admin/ticket-80mm.php?pnr=' + encodeURIComponent(r.pnr), '_blank', 'noopener,width=420,height=700');
+        printNext = false;
+        if (STAFF && typeof window.SB_AFTER === 'function') { try { window.SB_AFTER(r); } catch (x) {} }
+      }
+      else if (r.payPage && STAFF) { showPayLink(r); }
       else if (r.payPage) { say(tr('heldQr')); setTimeout(function () { location.href = r.payPage; }, 400); }
     }).catch(function (er) {
       S.busy = false; btn.classList.remove('sb-busy'); lbl.textContent = old;
@@ -495,6 +533,50 @@
       else say(er && er.message ? er.message : 'Error');
       syncButtons();
     });
+  }
+  var printNext = false;
+  function staffPrint() { try { return localStorage.getItem('sb:print80') !== '0'; } catch (e) { return true; } }
+  /* Agent + Online: the customer pays by QR on their own phone - the agent sends the link. */
+  function showPayLink(r) {
+    var url = location.origin + r.payPage;
+    var text = 'S Hari Global — pay ' + (r.totalLabel || '') + ' for ' + r.pnr + ' (berths held ' + (r.expiresAt || '') + '): ' + url;
+    var html = '<div class="sb-tk"><div class="sb-tk-h"><span class="sb-tk-ok" aria-hidden="true" style="background:var(--sb-gold)">⏳</span><div><b>' + esc(r.pnr) + '</b><small>' + esc(r.totalLabel || '') + '</small></div>'
+      + '<button type="button" class="sb-x" data-tk="close" aria-label="Close" style="margin-left:auto">✕</button></div>'
+      + '<div class="sb-tk-row">Send the payment link to the customer. The ticket is issued when the payment is verified.</div>'
+      + '<div class="sb-tk-acts"><a class="sb-main-act" target="_blank" rel="noopener" href="https://wa.me/' + (r.phone ? (S.cc === 'NP' ? '977' : '91') + digits(r.phone) : '') + '?text=' + encodeURIComponent(text) + '">WhatsApp link</a>'
+      + '<button type="button" data-copylink="' + esc(url) + '">Copy link</button><a href="' + esc(r.payPage) + '" target="_blank" rel="noopener">Open QR</a></div></div>';
+    lastTicket = null;
+    if (wide()) { var tk = $('sbTicket'); tk.innerHTML = html; tk.hidden = false; }
+    else { $('sbModalIn').innerHTML = html; $('sbModal').hidden = false; }
+  }
+  root.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-copylink]'); if (!b) return;
+    try { navigator.clipboard.writeText(b.getAttribute('data-copylink')).then(function () { say('Link copied'); }); } catch (x) {}
+  });
+  /* Counter keyboard: Ctrl+Enter = auto-berth + Cash + print · Enter in the name / passengers = one more passenger. */
+  if (STAFF) {
+    root.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); printNext = true; book('cash'); return; }
+      if (e.key === 'Enter' && (e.target.id === 'sbName' || e.target.closest('#sbPax'))) {
+        e.preventDefault();
+        if (S.pax.length < S.maxPax) { S.pax.push({ gender: S.pax.length ? S.pax[S.pax.length - 1].gender : '', band: 'adult' }); S.manual = []; renderPax(); changed(); }
+        var last = $('sbPax').querySelector('.sb-p:last-child .sb-g'); if (last) last.focus();
+      }
+    });
+  }
+  /* A regular customer from the staff list: their number + their own history (staff may read it). */
+  function loadCustomer(phone, name) {
+    S.phone = String(phone || ''); S.name = String(name || S.name || '');
+    api({ action: 'boot', phone: digits(S.phone), direction: '' }).then(function (d) {
+      var df = d.defaults || {};
+      S.why = df.why || {};
+      if (df.direction) S.dir = df.direction;
+      if (df.point) S.point = df.point;
+      if (df.name && !name) S.name = df.name;
+      if (df.pax && df.pax.length) S.pax = df.pax.map(function (p) { return { gender: p.gender || '', band: p.band || 'adult' }; });
+      S.manual = []; S.seatMode = 'auto'; S.date = '';
+      fill(); applyWords(); store.set(); requote(0);
+    }).catch(function (er) { say(er.message); });
   }
   function adopt(r) {
     try {
@@ -535,7 +617,7 @@
     var html = ticketHtml(r);
     if (wide()) { var tk = $('sbTicket'); tk.innerHTML = html; tk.hidden = false; tk.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
     else { $('sbModalIn').innerHTML = html; $('sbModal').hidden = false; document.body.classList.add('shg-modal-open'); }
-    try { if (location.hash.indexOf('#/?ticket=') !== 0) history.replaceState(null, '', '#/?ticket=' + encodeURIComponent(r.pnr)); } catch (e) {}
+    try { if (!STAFF && location.hash.indexOf('#/?ticket=') !== 0) history.replaceState(null, '', '#/?ticket=' + encodeURIComponent(r.pnr)); } catch (e) {}
     if (fresh && r.ticket && r.ticket.pdf) {
       // the PDF downloads by itself (§7); the buttons stay for PNG / share / print
       setTimeout(function () { var a = document.createElement('a'); a.href = r.ticket.pdf; a.download = ''; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove(); }, 600);
@@ -595,7 +677,7 @@
   }
   function homeFlag() {
     var home = document.getElementById('view-home');
-    document.documentElement.classList.toggle('sb-home', !!(home && home.classList.contains('active')));
+    document.documentElement.classList.toggle('sb-home', !home || home.classList.contains('active'));
   }
   window.addEventListener('hashchange', function () { setTimeout(function () { homeFlag(); ticketFromHash(); }, 0); });
   // While the card is on screen the floating WhatsApp / Sahayak buttons step aside (phone).
@@ -605,7 +687,7 @@
     }, { threshold: 0.25 }).observe($('sbCard'));
   }
   new MutationObserver(function () { applyWords(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] });
-  window.SmartBook = { quote: function () { return S.q; }, state: S, requote: requote };
+  window.SmartBook = { quote: function () { return S.q; }, state: S, requote: requote, loadCustomer: loadCustomer, fillText: fillFromText, mode: MODE };
 
   boot();
   homeFlag();

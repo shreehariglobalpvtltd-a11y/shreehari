@@ -46,7 +46,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $done = 0;
             foreach (array_slice($ids, 0, 50) as $bid) {
                 $row = Database::fetch('SELECT id, sold_by_admin_id, counter_code FROM bookings WHERE id = :b AND is_cod = 1', ['b' => $bid]);
-                if ($row === null || ($scopeDesk !== null && (string) $row['counter_code'] !== $scopeDesk)) {
+                if ($row === null || ($scopeDesk !== null && $row['counter_code'] !== null && (string) $row['counter_code'] !== $scopeDesk)) {
                     continue;
                 }
                 BookingService::settleCod($bid, $me, $note !== '' ? $note : 'Cash book: collected');
@@ -69,8 +69,14 @@ $q      = Security::clean((string) ($_GET['q'] ?? ''), 40);
 $where  = ['b.is_cod = 1', 'l.travel_date BETWEEN :f AND :t'];
 $params = ['f' => $from, 't' => $to];
 if ($scopeBy !== null) { $where[] = 'b.sold_by_admin_id = :me'; $params['me'] = $scopeBy; }
-if ($scopeDesk !== null) { $where[] = 'b.counter_code = :desk'; $params['desk'] = $scopeDesk; }
-if ($q !== '') { $where[] = '(b.pnr LIKE :q OR b.contact_phone LIKE :q2)'; $params['q'] = '%' . $q . '%'; $params['q2'] = '%' . preg_replace('/\D/', '', $q) . '%'; }
+// A desk-isolated counter sees its own desk AND the website's Cash tickets (no desk) - it collects those at boarding.
+if ($scopeDesk !== null) { $where[] = '(b.counter_code = :desk OR b.counter_code IS NULL)'; $params['desk'] = $scopeDesk; }
+if ($q !== '') {
+    $qd = (string) preg_replace('/\D/', '', $q);
+    if ($qd !== '') { $where[] = '(b.pnr LIKE :q OR b.contact_phone LIKE :q2)'; $params['q2'] = '%' . $qd . '%'; }
+    else { $where[] = 'b.pnr LIKE :q'; }
+    $params['q'] = '%' . $q . '%';
+}
 
 $rows = Database::fetchAll(
     "SELECT b.id, b.pnr, b.status, b.total_amount, b.contact_phone, b.counter_code, b.source, b.created_at, b.sold_by_admin_id,
@@ -131,9 +137,11 @@ if (($_GET['export'] ?? '') === 'csv') {
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF");
     fputcsv($out, ['PNR', 'Travel date', 'Boarding', 'Lead passenger', 'Passengers', 'Mobile', 'Amount INR', 'State', 'Collected by', 'Collected at', 'Desk', 'Seller', 'Booked at']);
+    // A cell a spreadsheet would run as a formula (=, +, -, @) is written as text.
+    $cell = static fn($v): string => preg_match('/^[=+\-@\t\r]/', (string) $v) === 1 ? "'" . $v : (string) $v;
     foreach ($shown as $r) {
-        fputcsv($out, [$r['pnr'], $r['travel_date'], Boarding::stopDisplay((string) $r['boarding_stop'])['name'] ?? '', $r['lead_name'], $r['pax'],
-            $r['contact_phone'], $r['total_amount'], $kind($r), $r['collector'] ?: $r['collector_user'], $r['verified_at'], $r['counter_code'], $r['seller'], $r['created_at']]);
+        fputcsv($out, array_map($cell, [$r['pnr'], $r['travel_date'], Boarding::stopDisplay((string) $r['boarding_stop'])['name'] ?? '', $r['lead_name'], $r['pax'],
+            $r['contact_phone'], $r['total_amount'], $kind($r), $r['collector'] ?: $r['collector_user'], $r['verified_at'], $r['counter_code'], $r['seller'], $r['created_at']]));
     }
     fclose($out);
     exit;

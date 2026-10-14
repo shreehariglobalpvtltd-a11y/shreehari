@@ -115,6 +115,13 @@ check('a cabin held for women never takes a man', $r['ok'] && $r['seats'] === ['
 $noPair = coach([], ['L-10' => 'male_only', 'L-11' => 'female_only'], ['L20', 'L22']);
 $r = AutoBerth::pick($noPair, [$P('Female'), $P('Male', 'child')], $o);
 check('child with no adult cabin / bed beside → refused (H4)', !$r['ok'] || hardOk($noPair, [$P('Female'), $P('Male', 'child')], $r['seats']) === '', implode(',', $r['seats']));
+// Review 15 Oct: more children than adults - every child beside an ADULT, never alone.
+$kids = [$P('Male'), $P('Male', 'child'), $P('Female', 'child')];
+$r = AutoBerth::pick(coach(), $kids, $o);
+check('1 adult + 2 children → each child beside the adult (H4)', $r['ok'] && hardOk(coach(), $kids, $r['seats']) === '', implode(',', $r['seats']));
+$kids2 = [$P('Female', 'child'), $P('Male', 'child')];
+$r = AutoBerth::pick(coach(), $kids2, $o);
+check('children with no adult at all → no berth', !$r['ok']);
 $big = [];
 for ($i = 0; $i < 20; $i++) { $big[] = $P($i % 3 === 0 ? 'Female' : 'Male', $i % 7 === 0 ? 'child' : 'adult'); }
 $r = AutoBerth::pick(coach(), $big, $o);
@@ -207,6 +214,18 @@ try {
     check('same idem key → the SAME booking (double tap safe)', $b2['pnr'] === $b1['pnr'] && !empty($b2['replayed']));
     $cnt = (int) Database::scalar("SELECT COUNT(*) FROM bookings WHERE contact_phone = '9000000002' AND status IN ('pending','confirmed')");
     check('exactly one booking exists', $cnt === 1, (string) $cnt);
+    // The first answer was lost after the sale (PHP died): the key still holds the booking.
+    Database::run("UPDATE smartbook_requests SET state = 'working', response = NULL WHERE idem_key = :k", ['k' => $key]);
+    $b3 = SmartBook::book($in, 'cash', 'customer', null, $key);
+    check('a lost answer is replayed from the booking, never a second sale', $b3['pnr'] === $b1['pnr'] && !empty($b3['replayed']));
+    $cnt = (int) Database::scalar("SELECT COUNT(*) FROM bookings WHERE contact_phone = '9000000002' AND status IN ('pending','confirmed')");
+    check('still exactly one booking', $cnt === 1, (string) $cnt);
+    // The berths the card showed were taken meanwhile → the fresh quote goes back (409), nothing is sold.
+    $err = '';
+    try {
+        SmartBook::book(['seats' => $b1['seats'], 'autoPicked' => true, 'phone' => '9000000004'] + $in, 'cash', 'customer', null, 'test' . bin2hex(random_bytes(10)));
+    } catch (SmartBookChanged $e) { $err = !empty($e->quote['ok']) ? 'fresh' : 'changed'; }
+    check('shown berths taken meanwhile → SmartBookChanged with a fresh auto quote', $err === 'fresh', $err);
     $pay = Database::fetch('SELECT method, status FROM payments WHERE booking_id = :b', ['b' => $b1['bookingId']]);
     check('payment row = cod / cod_pending (the cash ledger reads this)', ($pay['method'] ?? '') === 'cod' && ($pay['status'] ?? '') === 'cod_pending');
     $o1 = SmartBook::book($in + ['phone2' => 1], 'online', 'customer', null, 'test' . bin2hex(random_bytes(10)));

@@ -28,7 +28,8 @@ try {
     // how far back an agent can actually reach.
     require_once INCLUDE_PATH . '/agentwallet.php';
     $agentCodeRaw = strtoupper(Security::clean((string) (Response::field('agentCode', '') ?: Response::field('referralCode', '')), 20));
-    $agentMode    = ($agentCodeRaw !== '' && AgentWallet::resolveAgentCodeFromString($agentCodeRaw) !== null)
+    // SmartBook v5 D1: a typed code alone no longer opens departed buses to a customer session.
+    $agentMode    = ($agentCodeRaw !== '' && Auth::isSellingStaff() && AgentWallet::resolveAgentCodeFromString($agentCodeRaw) !== null)
         // Counter mode (3 Sep 2026): signed-in staff who may sell see the same
         // departed-within-24h buses the agent panel does, without typing a code.
         || (Auth::admin() !== null && (Auth::can('bookings.edit') || Auth::can('schedules.edit') || Auth::isSuperadmin()));

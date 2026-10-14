@@ -489,6 +489,7 @@ final class SmartBook
         $reasons = [];
         $auto    = $req['seats'] === [];
         $err     = '';
+        $override = null;
         if ($mode2 === 'private') {
             $av     = Seats::availabilityForSchedule((int) $schedule['id'], 'private');
             $cabins = $req['cabin'] === 'double' ? (int) ceil($n / 2) : $n;
@@ -526,6 +527,15 @@ final class SmartBook
                 }
             } else {
                 $err = AutoBerth::checkManual($av, $req['seats'], $req['pax'], $coach);
+                /* §11: only an ADMIN may override a soft-placed hard rule (women-only,
+                   child beside an adult), and only with a written reason (audit-logged
+                   at the sale). A taken berth or a gender-held cabin is still refused
+                   by the sale itself (Seats::assertAvailable / assertGenderAllowed). */
+                $why = Security::clean((string) ($in['overrideReason'] ?? ''), 200);
+                if ($err !== '' && $mode === 'admin' && mb_strlen($why) >= 5 && !str_contains($err, 'not free')) {
+                    $override = ['rule' => $err, 'reason' => $why];
+                    $err      = '';
+                }
                 $seats = $err === '' ? $req['seats'] : [];
                 foreach ($seats as $s) {
                     $reasons[] = ['en' => 'You chose this berth', 'hi' => 'आपकी चुनी बर्थ', 'ne' => 'तपाईंले छानेको बर्थ'];
@@ -584,6 +594,7 @@ final class SmartBook
                 'label'    => (string) ($price['cabinLabel'] ?? ''),
                 'npr'      => $npr,
             ] : null,
+            'override'     => $override,
             'suggest'      => null,
             'alternatives' => [],
             'ms'           => 0,
@@ -696,35 +707,100 @@ final class SmartBook
             'ip_address' => Security::clientIp(),
         ]);
         if (!$claimed) {
-            $row = Database::fetch('SELECT state, response FROM smartbook_requests WHERE idem_key = :k LIMIT 1', ['k' => $idemKey]);
-            if ($row !== null && $row['state'] === 'done' && $row['response'] !== null) {
-                $prev = json_decode((string) $row['response'], true);
-                if (is_array($prev)) {
-                    $prev['replayed'] = true;
-                    return $prev;
+            $row = Database::fetch('SELECT state, booking_id, response, updated_at FROM smartbook_requests WHERE idem_key = :k LIMIT 1', ['k' => $idemKey]);
+            if ($row === null) {
+                throw new RuntimeException('Please tap again. / फेरि ट्याप गर्नुहोस्।');
+            }
+            // A booking already exists for this key - whatever happened after it, answer with it.
+            if ((int) ($row['booking_id'] ?? 0) > 0) {
+                $prev = $row['state'] === 'done' && $row['response'] !== null ? json_decode((string) $row['response'], true) : null;
+                $out  = is_array($prev) ? $prev : self::replay((int) $row['booking_id'], $pay);
+                $out['replayed'] = true;
+                return $out;
+            }
+            if ($row['state'] === 'working') {
+                // A request that died (fatal / timeout) before creating anything may be taken over after 2 minutes.
+                $took = Database::run(
+                    "UPDATE smartbook_requests SET state = 'working', updated_at = NOW()
+                      WHERE idem_key = :k AND state = 'working' AND booking_id IS NULL AND updated_at < NOW() - INTERVAL 2 MINUTE",
+                    ['k' => $idemKey]
+                );
+                if ($took < 1) {
+                    throw new RuntimeException('Your booking is being made — please wait a moment. / बुकिङ हुँदैछ — एकछिन पर्खनुहोस्।');
+                }
+            } else {
+                // 'failed' with no booking: exactly one retry may claim it.
+                $took = Database::run(
+                    "UPDATE smartbook_requests SET state = 'working', updated_at = NOW() WHERE idem_key = :k AND state = 'failed' AND booking_id IS NULL",
+                    ['k' => $idemKey]
+                );
+                if ($took < 1) {
+                    throw new RuntimeException('Your booking is being made — please wait a moment. / बुकिङ हुँदैछ — एकछिन पर्खनुहोस्।');
                 }
             }
-            if ($row !== null && $row['state'] === 'working') {
-                throw new RuntimeException('Your booking is being made — please wait a moment. / बुकिङ हुँदैछ — एकछिन पर्खनुहोस्।');
-            }
-            Database::run("UPDATE smartbook_requests SET state = 'working' WHERE idem_key = :k", ['k' => $idemKey]);
         }
 
         try {
-            $out = self::bookNow($in, $pay, $mode, $seller);
-            Database::run(
-                "UPDATE smartbook_requests SET state = 'done', booking_id = :b, pnr = :p, response = :r WHERE idem_key = :k",
-                ['b' => (int) $out['bookingId'], 'p' => (string) $out['pnr'], 'r' => json_encode($out, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'k' => $idemKey]
-            );
-            return $out;
+            $out = self::bookNow($in, $pay, $mode, $seller, $idemKey);
         } catch (Throwable $e) {
-            Database::run("UPDATE smartbook_requests SET state = 'failed' WHERE idem_key = :k", ['k' => $idemKey]);
+            // Only a request that created NOTHING is marked failed (bookNow stamps booking_id the moment create() commits).
+            Database::run("UPDATE smartbook_requests SET state = 'failed' WHERE idem_key = :k AND booking_id IS NULL", ['k' => $idemKey]);
+            $bid = (int) Database::scalar('SELECT booking_id FROM smartbook_requests WHERE idem_key = :k', ['k' => $idemKey], 0);
+            if ($bid > 0) {
+                // The sale is made; only the answer failed. Answer from the booking.
+                $out = self::replay($bid, $pay);
+                Database::run("UPDATE smartbook_requests SET state = 'done' WHERE idem_key = :k", ['k' => $idemKey]);
+                return $out;
+            }
             throw $e;
         }
+        $json = json_encode($out, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR);
+        Database::run(
+            "UPDATE smartbook_requests SET state = 'done', booking_id = :b, pnr = :p, response = :r WHERE idem_key = :k",
+            ['b' => (int) $out['bookingId'], 'p' => (string) $out['pnr'], 'r' => $json === false ? null : $json, 'k' => $idemKey]
+        );
+        return $out;
+    }
+
+    /**
+     * The answer for a booking that already exists (a replayed key, or a sale
+     * whose first answer was lost) - built from the database, never a new sale.
+     *
+     * @return array<string, mixed>
+     */
+    private static function replay(int $bookingId, string $pay): array
+    {
+        $b = Database::fetch('SELECT * FROM bookings WHERE id = :id', ['id' => $bookingId]);
+        if ($b === null) {
+            throw new RuntimeException('Booking not found.');
+        }
+        $leg = Database::fetch(
+            "SELECT l.travel_date, l.boarding_stop, l.boarding_time, r.from_city, r.to_city, s.id AS sid
+               FROM booking_legs l JOIN schedules s ON s.id = l.schedule_id JOIN routes r ON r.id = s.route_id
+              WHERE l.booking_id = :b ORDER BY l.id LIMIT 1",
+            ['b' => $bookingId]
+        ) ?? [];
+        $seats = array_map('strval', pluck(Database::fetchAll('SELECT seat_no FROM booking_seats WHERE booking_id = :b ORDER BY id', ['b' => $bookingId]), 'seat_no'));
+        $coach = isset($leg['sid']) ? Seats::coachForSchedule((int) $leg['sid']) : 'sleeper';
+        $mode  = (string) ($b['booking_mode'] ?? 'sharing') === 'private' ? 'private' : 'sharing';
+        $time  = isset($leg['boarding_time']) && $leg['boarding_time'] ? substr((string) $leg['boarding_time'], 0, 5) : '';
+        $q = [
+            'seats'        => $seats,
+            'seatLabels'   => array_map(static fn(string $s): string => Seats::displayLabel($s, $coach, $mode), $seats),
+            'date'         => (string) ($leg['travel_date'] ?? ''),
+            'dateLabel'    => isset($leg['travel_date']) ? formatDate((string) $leg['travel_date']) : '',
+            'boarding'     => (string) ($leg['boarding_stop'] ?? ''),
+            'boardingTime' => $time,
+            'reportTime'   => self::reportTime($time),
+            'from'         => (string) ($leg['from_city'] ?? ''),
+            'to'           => (string) ($leg['to_city'] ?? ''),
+        ];
+        $name = (string) Database::scalar('SELECT full_name FROM booking_passengers WHERE booking_id = :b ORDER BY is_primary DESC, id LIMIT 1', ['b' => $bookingId], '');
+        return self::result($b, $q, $name, (string) $b['contact_phone'], $pay, microtime(true));
     }
 
     /** @return array<string, mixed> */
-    private static function bookNow(array $in, string $pay, string $mode, ?array $seller): array
+    private static function bookNow(array $in, string $pay, string $mode, ?array $seller, string $idemKey = ''): array
     {
         $t0   = microtime(true);
         $req  = self::normalise($in, $mode);
@@ -733,7 +809,9 @@ final class SmartBook
             throw new RuntimeException('Enter the lead passenger\'s name. / मुख्य यात्रुको नाम लेख्नुहोस्।');
         }
         $phone = $req['phone'];
-        if ($phone === '' || !Security::isValidPhone($phone, $mode !== 'customer')) {
+        // A counter / admin may record a walk-in with no mobile (create() stores the placeholder).
+        $walkIn = $phone === '' && in_array($mode, ['counter', 'admin'], true) && $seller !== null;
+        if (!$walkIn && ($phone === '' || !Security::isValidPhone($phone, $mode !== 'customer'))) {
             throw new RuntimeException('Enter a valid mobile number — the ticket goes to its WhatsApp. / सही मोबाइल नम्बर लेख्नुहोस्।');
         }
         if ($mode === 'customer') {
@@ -746,7 +824,15 @@ final class SmartBook
         $country = strtoupper((string) ($in['country'] ?? ''));
         $country = in_array($country, ['NP', '977'], true) ? 'NP' : 'IN';
 
+        /* The berths the card SHOWED are the berths sold: an auto pick comes back
+           as `seats` + autoPicked and is re-checked like a hand pick. If one was
+           taken meanwhile, the fresh auto quote goes back to the card (409) and
+           the passenger taps again - the sale never silently moves them. */
         $q = self::quote($in, $mode);
+        if (!$q['ok'] && !empty($in['autoPicked']) && !empty($in['seats'])) {
+            $fresh = self::quote(['seats' => []] + $in, $mode);
+            throw new SmartBookChanged('Those berths were just taken — here are the next best. Please tap again. / ती बर्थ भर्खरै बिक्यो — अर्को राम्रो बर्थ देखाइयो, फेरि थिच्नुहोस्।', $fresh);
+        }
         if (!$q['ok']) {
             throw new SmartBookChanged($q['error'] !== '' ? $q['error'] : 'Please check the booking again. / फेरि जाँच गर्नुहोस्।', $q);
         }
@@ -814,8 +900,15 @@ final class SmartBook
             throw new RuntimeException('The ticket could not be made — please try again. / टिकट बन्न सकेन, फेरि प्रयास गर्नुहोस्।');
         }
         $pnr = (string) $booking['pnr'];
-        if ($mode === 'customer') {
-            Auth::rememberOwnPnr($pnr);
+        if ($idemKey !== '') {
+            // Stamp the key with the sale at once: nothing after this line may ever book again for it.
+            Database::run('UPDATE smartbook_requests SET booking_id = :b, pnr = :p WHERE idem_key = :k',
+                ['b' => (int) $booking['id'], 'p' => $pnr, 'k' => $idemKey]);
+        }
+        // The browser that made the booking may open its ticket / QR page (an agent's too).
+        Auth::rememberOwnPnr($pnr);
+        if (!empty($q['override'])) {
+            Logger::audit('smartbook.override', 'booking', $pnr, null, $q['override'], 'hard-rule override by admin #' . (int) (Auth::admin()['id'] ?? 0));
         }
         // Online: the berths are held for the QR payment window, then released by cron/expire.php.
         if (($booking['status'] ?? '') === 'pending') {
@@ -839,8 +932,9 @@ final class SmartBook
         }
         $have = (int) Database::scalar(
             "SELECT COUNT(*) FROM bookings b
-               JOIN booking_seats bs ON bs.booking_id = b.id AND bs.released_at IS NULL
-              WHERE b.contact_phone = :p AND bs.schedule_id = :s AND b.is_cod = 1 AND b.status = 'confirmed'
+               JOIN booking_passengers bp ON bp.booking_id = b.id
+               JOIN booking_legs l ON l.booking_id = b.id AND l.leg_type = 'outbound'
+              WHERE b.contact_phone = :p AND l.schedule_id = :s AND b.is_cod = 1 AND b.status = 'confirmed'
                 AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.booking_id = b.id AND p.status = 'verified')",
             ['p' => $phone, 's' => $scheduleId]
         );
@@ -900,7 +994,7 @@ final class SmartBook
                 'print' => Ticket::downloadUrl($pnr) . '&print=1',
                 'home'  => '/#/?ticket=' . rawurlencode($pnr),
             ] : null,
-            'payPage'     => !$confirmed ? '/smartpay.php?pnr=' . rawurlencode($pnr) : null,
+            'payPage'     => !$confirmed ? '/smartpay.php?pnr=' . rawurlencode($pnr) . '&k=' . rawurlencode(Ticket::downloadToken($pnr)) : null,
             'expiresAt'   => !$confirmed ? (string) ($booking['expires_at'] ?? '') : null,
             'customer'    => $detail !== null ? shg_customer_payload($detail) : null,
             'elapsedMs'   => (int) round((microtime(true) - $t0) * 1000),

@@ -636,6 +636,14 @@ if ($F !== null) {
     $html = $shgMeta($html, 'name', 'description', $shgDesc);
 }
 
+/* SmartBook v5 D1 / D13 (15 Oct 2026): agent-only markup (the "Agent? Enter
+   code" box, the checkout's Agent Code field) is wrapped in <!--staff--> …
+   <!--/staff--> and sent ONLY to a signed-in selling-staff session (counter
+   mode needs the field); a customer's page carries no code entry at all. */
+if (empty($boot['staff'])) {
+    $html = (string) (preg_replace('~<!--staff-->.*?<!--/staff-->~s', '', $html) ?? $html);
+}
+
 /* Perf pass (11 Sep 2026): the template carries ~27 KB of HTML comments -
    15% of the document, the engineering notes that explain each block. They
    are for the people editing the file, not the phone downloading it on

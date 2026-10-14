@@ -1670,8 +1670,8 @@ function initQuickTicket() {
       + '<button type="button" data-v="" class="' + (!qt.gender ? 'on' : '') + '">' + esc(t('qtGAny')) + '</button>'
       + '<button type="button" data-v="Female" class="' + (qt.gender === 'Female' ? 'on' : '') + '">' + esc(t('qtGF')) + '</button>'
       + '<button type="button" data-v="Male" class="' + (qt.gender === 'Male' ? 'on' : '') + '">' + esc(t('qtGM')) + '</button></div></div>'
-      // Optional agent code — never required; an unknown code is a direct sale.
-      + '<div class="qt-agent"><label for="qtAgentIn">' + esc(t('qtAgentLbl')) + '</label><input id="qtAgentIn" maxlength="10" placeholder="' + esc(t('qtAgentPh')) + '" value="' + esc(qt.agentCode) + '" autocomplete="off"></div>';
+      // Optional agent code — staff sessions only (SmartBook v5 D13: no code entry on the customer site).
+      + ((window.SHG_BOOT && window.SHG_BOOT.staff) ? '<div class="qt-agent"><label for="qtAgentIn">' + esc(t('qtAgentLbl')) + '</label><input id="qtAgentIn" maxlength="10" placeholder="' + esc(t('qtAgentPh')) + '" value="' + esc(qt.agentCode) + '" autocomplete="off"></div>' : '');
 
     var edOpen = !!qt.showEditors;
     /* 11 Sep 2026 perf pass: the ONE button that sells the ticket now comes

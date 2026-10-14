@@ -78,10 +78,11 @@ if ($booking === null || !$owns) {
     $exp  = strtotime((string) ($booking['expires_at'] ?? ''));
     $left = $exp !== false ? max(0, $exp - time()) : 0;
     $proof = SmartPay::hasProof((int) $booking['id']);
+    // While the booking is still pending the proof form stays open, even after
+    // the hold's clock ran out (cron/expire.php has the last word, and a
+    // passenger who paid at minute 14 must still be able to send the UTR).
     if ($state === 'pay' && $proof) {
         $state = 'verifying';
-    } elseif ($state === 'pay' && $exp !== false && $left <= 0 && $st === 'pending') {
-        $state = 'over';
     }
     foreach (PaymentAdapters::all() as $a) {
         $methods[] = ['key' => $a->key(), 'label' => $a->label(), 'data' => $a->start($booking, $due)];
@@ -152,8 +153,10 @@ a{color:var(--primary)}
     <?php if ($leg !== null): ?>
       <div class="note" style="margin-top:6px"><?= $e($leg['from_city'] . ' → ' . $leg['to_city']) ?> · <?= $e(formatDate((string) $leg['travel_date'])) ?> · <?= $e((string) Boarding::stopDisplay((string) $leg['boarding_stop'])['name']) ?><?= $leg['boarding_time'] ? ' ' . $e(substr((string) $leg['boarding_time'], 0, 5)) : '' ?></div>
     <?php endif; ?>
-    <?php if ($state === 'pay'): ?>
+    <?php if ($state === 'pay' && $left > 0): ?>
       <div class="timer" id="timer" data-left="<?= (int) $left ?>"><span data-t="held">Berths held for</span><span id="clock">--:--</span></div>
+    <?php elseif ($state === 'pay'): ?>
+      <div class="timer"><span data-t="late">Hold time is over — if you already paid, send the UTR now.</span></div>
     <?php endif; ?>
     <div class="steps" aria-hidden="true"><i class="on"></i><i class="<?= $state !== 'pay' ? 'on' : '' ?>"></i><i></i></div>
   </div>
@@ -231,19 +234,19 @@ a{color:var(--primary)}
 <script>
 (function () {
   var W = {
-    en: {}, // the markup is English
+    en: { late: 'Hold time is over — if you already paid, send the UTR now.' }, // the rest of the English is the markup
     hi: { who: 'यह पेज बुकिंग करने वाले फ़ोन से खोलें, या मोबाइल से My Bookings में देखें।', myB: 'My Bookings', pay: 'भुगतान राशि', held: 'बर्थ रखी गई है', card: 'कार्ड / बैंक',
       scan: 'GPay / PhonePe / Paytm / BHIM से स्कैन करें — राशि और PNR भरे हुए हैं।', payee: 'प्राप्तकर्ता', copyUpi: 'UPI ID कॉपी करें', openUpi: 'UPI ऐप खोलें',
       amtNpr: 'राशि (NPR)', esewaNote: 'eSewa ऐप से यह राशि भेजें, remarks में PNR लिखें।', copyEsewa: 'eSewa ID कॉपी करें', gwNote: 'बैंक पेज के बाद आप यहीं लौटेंगे। टिकट ऑफिस पक्का करता है।',
       paid: 'भुगतान किया? बताइए', utr: 'UTR / ट्रांज़ैक्शन नंबर', shot: 'या स्क्रीनशॉट', send: 'जाँच के लिए भेजें', verifying: 'भुगतान की जाँच हो रही है',
       verifyNote: 'ऑफिस जाँचता है, आमतौर पर', leave: 'आप यह पेज छोड़ सकते हैं — टिकट WhatsApp और My Bookings में आएगा।', rejected: 'भुगतान सत्यापित नहीं हुआ। कृपया ऑफिस को फ़ोन करें।',
-      over: 'समय खत्म — बर्थ फिर बिक्री में। आपकी जानकारी बुकिंग कार्ड में है।', again: 'फिर बुक करें', help: 'मदद', home: 'होम', copied: 'कॉपी हुआ', need: 'UTR लिखें या स्क्रीनशॉट जोड़ें' },
+      over: 'समय खत्म — बर्थ फिर बिक्री में। आपकी जानकारी बुकिंग कार्ड में है।', late: 'होल्ड का समय खत्म — भुगतान कर दिया हो तो अभी UTR भेजें।', again: 'फिर बुक करें', help: 'मदद', home: 'होम', copied: 'कॉपी हुआ', need: 'UTR लिखें या स्क्रीनशॉट जोड़ें' },
     ne: { who: 'यो पेज बुकिङ गरेको फोनबाट खोल्नुहोस्, वा मोबाइलले My Bookings मा हेर्नुहोस्।', myB: 'My Bookings', pay: 'तिर्नुपर्ने रकम', held: 'बर्थ राखिएको छ', card: 'कार्ड / बैंक',
       scan: 'GPay / PhonePe / Paytm / BHIM ले स्क्यान गर्नुहोस् — रकम र PNR भरिएको छ।', payee: 'पाउने', copyUpi: 'UPI ID कपी', openUpi: 'UPI एप खोल्नुहोस्',
       amtNpr: 'रकम (NPR)', esewaNote: 'eSewa एपबाट यो रकम पठाउनुहोस्, remarks मा PNR लेख्नुहोस्।', copyEsewa: 'eSewa ID कपी', gwNote: 'बैंक पेजपछि यहीँ फर्किनुहुन्छ। टिकट अफिसले पक्का गर्छ।',
       paid: 'तिर्नुभयो? भन्नुहोस्', utr: 'UTR / कारोबार नम्बर', shot: 'वा स्क्रिनसट', send: 'जाँचका लागि पठाउनुहोस्', verifying: 'भुक्तानी जाँच हुँदैछ',
       verifyNote: 'अफिसले जाँच्छ, प्रायः', leave: 'यो पेज छोड्न सक्नुहुन्छ — टिकट WhatsApp र My Bookings मा आउँछ।', rejected: 'भुक्तानी पुष्टि भएन। कृपया अफिसमा फोन गर्नुहोस्।',
-      over: 'समय सकियो — बर्थ फेरि बिक्रीमा। तपाईंको विवरण बुकिङ कार्डमा छ।', again: 'फेरि बुक गर्नुहोस्', help: 'सहयोग', home: 'होम', copied: 'कपी भयो', need: 'UTR लेख्नुहोस् वा स्क्रिनसट थप्नुहोस्' }
+      over: 'समय सकियो — बर्थ फेरि बिक्रीमा। तपाईंको विवरण बुकिङ कार्डमा छ।', late: 'होल्ड समय सकियो — तिरिसक्नुभएको भए अहिले UTR पठाउनुहोस्।', again: 'फेरि बुक गर्नुहोस्', help: 'सहयोग', home: 'होम', copied: 'कपी भयो', need: 'UTR लेख्नुहोस् वा स्क्रिनसट थप्नुहोस्' }
   };
   var EN = {}; document.querySelectorAll('[data-t]').forEach(function (el) { EN[el.getAttribute('data-t')] = el.textContent; });
   var lang = 'ne'; try { lang = localStorage.getItem('shg:lang') || 'ne'; } catch (e) {}
@@ -277,7 +280,7 @@ a{color:var(--primary)}
     var tick = function () {
       var s = Math.max(0, Math.round((end - Date.now()) / 1000));
       document.getElementById('clock').textContent = Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
-      if (s <= 0) { location.reload(); return; }
+      if (s <= 0) { timer.innerHTML = '<span>' + tr('late') + '</span>'; return; }
       setTimeout(tick, 1000);
     };
     tick();
@@ -301,7 +304,7 @@ a{color:var(--primary)}
     var poll = function () {
       fetch('/api/smartbook.php', { method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': <?= json_encode($csrf) ?> },
-        body: JSON.stringify({ action: 'status', pnr: <?= json_encode($pnr) ?> }) })
+        body: JSON.stringify({ action: 'status', pnr: <?= json_encode($pnr) ?>, k: <?= json_encode($key) ?> }) })
         .then(function (r) { return r.json(); })
         .then(function (j) {
           var s = j && j.ok && j.data ? j.data.status : '';

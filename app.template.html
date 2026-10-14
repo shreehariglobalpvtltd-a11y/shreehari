@@ -734,7 +734,7 @@ s.addEventListener('click',function(e){e.preventDefault();
            departure. Optional — ordinary customers leave it blank and nothing
            changes. Persisted so the agent enters it once. The departed-bus
            booking is always re-checked server-side against a valid code. -->
-      <details class="s-field s-agent-latebook" style="margin-top:-2px">
+<!--staff-->      <details class="s-field s-agent-latebook" style="margin-top:-2px">
         <summary style="font-size:12.5px;color:var(--mut,#6b7688);cursor:pointer;list-style:none">
           🎟️ <span data-i18n="agentLateSummary">एजेन्ट हो? छुटेको बस बुक गर्न कोड राख्नुहोस् · Agent? Enter code to book a departed bus</span>
         </summary>
@@ -742,7 +742,7 @@ s.addEventListener('click',function(e){e.preventDefault();
           <input id="sAgentCode" maxlength="20" autocomplete="off" inputmode="text"
                  placeholder="SHG-027" style="text-transform:uppercase">
         </div>
-      </details>
+      </details><!--/staff-->
 
       <!-- DIRECTION — the only two journeys this coach makes -->
       <div class="dir-toggle" role="group" aria-label="Direction · दिशा">
@@ -2543,7 +2543,7 @@ s.addEventListener('click',function(e){e.preventDefault();
            attributes the booking to that counter agent server-side; an
            invalid code never blocks the checkout — the customer just sees
            a small note and the booking completes as a direct sale. -->
-      <div class="co-card">
+      <!--staff--><div class="co-card">
         <!-- 1 Oct 2026 (owner): a DIRECT customer never needs an agent code.
              The field is optional for customers; 14-counter.js turns it into
              a mandatory agent SELECT for staff sessions only. -->
@@ -2559,7 +2559,7 @@ s.addEventListener('click',function(e){e.preventDefault();
           <button type="button" id="cAgentOther" class="btn btn-ghost btn-sm" style="margin-top:6px;font-size:13px" hidden>✕ कोड हटाउनुहोस् / Clear code</button>
           <div id="cAgentCodeMsg" style="font-size:12px;margin-top:6px" hidden></div>
         </div>
-      </div>
+      </div><!--/staff-->
       <div class="co-nav-row flow-actions">
         <!-- Sticky recap (17 Sep 2026): route · seats · amount, written by
              07-checkout::updateCoSummary; step 1 otherwise shows no amount. -->

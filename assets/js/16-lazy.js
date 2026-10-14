@@ -1425,6 +1425,17 @@ document.addEventListener('click', function(e) {
        Gujarati "કેટલા" (how many) cannot land on the fare answer. */
     if (has(q, TIME_WORDS)) return { a: timeAnswer(q), matched: true };
 
+    /* SmartBook v5 (15 Oct 2026, §10): a line that reads like a booking ("Ram
+       98xxxxxxxx, 2 seats, Vadodara bholi") is handed to the ONE engine - the
+       home card is filled on the server's reading and the passenger books
+       there with Cash / Online. Sahayak itself never books or prices. */
+    if (window.SmartBook && typeof window.SmartBook.fillText === 'function'
+        && (/(?:^|\D)[6-9]\d{9}(?!\d)|(?:^|\D)9[678]\d{8}(?!\d)/.test(text.replace(/[\s-]/g, ' ')) || (has(q, ['book', 'seat', 'ticket', 'बुक', 'सिट', 'सीट', 'टिकट', 'बुकिङ']) && /\d/.test(text)))) {
+      var safe = String(text).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
+      var cardMsg = { en: 'I can fill the booking card for you — check it and tap Cash or Online.', hi: 'मैं बुकिंग कार्ड भर देता हूँ — जाँचकर Cash या Online दबाएँ।',
+        ne: 'म बुकिङ कार्ड भरिदिन्छु — हेरेर Cash वा Online थिच्नुहोस्।', gu: 'હું બુકિંગ કાર્ડ ભરી દઉં — તપાસીને Cash અથવા Online દબાવો.' };
+      return { a: (cardMsg[lang()] || cardMsg.en) + ' <button type="button" class="btn btn-sm" data-sb-fill="' + safe + '">📝 Card ma herau</button>', matched: true };
+    }
     for (let i = 0; i < INTENTS.length; i++) {
       if (INTENTS[i].k.some(kw => q.indexOf(kw.toLowerCase()) >= 0)) return { a: INTENTS[i].a()[lang()], matched: true };
     }

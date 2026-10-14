@@ -183,6 +183,7 @@ final class AutoBerth
         $ctx = [
             'units' => $units, 'women' => $women, 'w' => $w, 'pref' => $pref, 'prefer' => $prefer,
             'rear' => $rear, 'rows' => $rows, 'solo' => count($party) === 1, 'coach' => $coach,
+            'bandOf' => array_column($party, 'b', 'i'),
         ];
 
         $best  = null;
@@ -195,6 +196,8 @@ final class AutoBerth
                beside its adult (H4 "adjacent"). Fills a near-full coach where
                no whole cabin is left for a pair. */
             $singles = array_map(static fn(array $p): array => [$p], $party);
+            // adults first, so every child has its adult placed before it
+            usort($singles, static fn(array $a, array $b): int => [($a[0]['b'] === 'child' ? 1 : 0), $a[0]['i']] <=> [($b[0]['b'] === 'child' ? 1 : 0), $b[0]['i']]);
             $ctx['adjacentChild'] = true;
             self::search($singles, 0, $state, $ctx, $best, $nodes);
         }
@@ -209,6 +212,10 @@ final class AutoBerth
             $seat      = $best['assign'][$p['i']]['seat'];
             $seats[]   = $seat;
             $reasons[] = self::reasonText($best['assign'][$p['i']]['why']);
+        }
+        // Belt and braces: the answer must pass the very check a hand pick gets.
+        if (self::checkManual($av, $seats, $pax, $coach) !== '') {
+            return $fail('the picked berths failed the hard-rule check');
         }
 
         return ['ok' => true, 'seats' => $seats, 'reasons' => $reasons, 'score' => (int) $best['score'],
@@ -432,121 +439,123 @@ final class AutoBerth
                     continue;
                 }
             }
-            /* H2: women-only beds to women — assign beds, women on women-only beds first */
-            $assignBeds = self::assignBeds($chunk, $freeBeds, $ctx['women']);
-            if ($assignBeds === null) {
-                continue;
-            }
+            /* H2: women-only beds to women. Every way of seating the chunk in this
+               cabin is a candidate (a lone child must take the bed next to its
+               adult, so which bed it gets matters). */
+            foreach (self::bedOptions($chunk, $freeBeds, $ctx['women']) as $assignBeds) {
 
-            /* H4 (second pass): a single child must sit beside an adult already placed */
-            if (!empty($ctx['adjacentChild']) && $size === 1 && $chunk[0]['b'] === 'child') {
-                $seat = $assignBeds[$chunk[0]['i']];
-                $near = false;
-                foreach ($state['assign'] as $idx => $a) {
-                    if (self::beside($seat, $a['seat'], $ctx['coach'])) {
-                        $near = true;
-                        break;
-                    }
-                }
-                if (!$near) {
-                    continue;
-                }
-            }
-
-            /* soft score */
-            $score  = 0;
-            $assign = [];
-            foreach ($chunk as $p) {
-                $seat = $assignBeds[$p['i']];
-                $pos  = self::pos($seat);
-                $why  = [];
-                $s    = 0;
-                // S5 is the specific rule for a solo man, so the general S4 does not pull him down.
-                $soloMan = $p['g'] === 'Male' && $size === 1 && $p['b'] === 'adult';
-                if ($pos['deck'] === 'L' && !$soloMan) {
-                    $s += $w['lowerFirst'];
-                    $why[] = 'lower';
-                }
-                if ($ctx['pref'] === 'lower' && $pos['deck'] === 'L') {
-                    $s += 30;
-                } elseif ($ctx['pref'] === 'upper' && $pos['deck'] === 'U') {
-                    $s += 30 + $w['lowerFirst'];
-                    $why[] = 'upperPref';
-                }
-                if (in_array($p['b'], ['senior', 'patient', 'child'], true)) {
-                    if ($pos['deck'] === 'L') {
-                        $s += $w['careLower'];
-                        $why[] = 'care_' . $p['b'];
-                        if ($pos['row'] <= 2) {
-                            $s += intdiv($w['careLower'], 2);
-                            $why[] = 'easy';
+                /* H4: a child placed on its own (more children than adults, or the
+                   second pass) must sit right beside an ADULT of the party already
+                   placed - another child does not count. */
+                if ($size === 1 && $chunk[0]['b'] === 'child') {
+                    $seat = $assignBeds[$chunk[0]['i']];
+                    $near = false;
+                    foreach ($state['assign'] as $idx => $a) {
+                        if (($ctx['bandOf'][$idx] ?? 'adult') !== 'child' && self::beside($seat, $a['seat'], $ctx['coach'])) {
+                            $near = true;
+                            break;
                         }
-                    } else {
-                        $s -= $w['careLower'];
+                    }
+                    if (!$near) {
+                        continue;
                     }
                 }
-                if ($p['g'] === 'Female' && ($ctx['solo'] || $size === 1)) {
-                    if (isset($ctx['women'][$seat])) {
-                        $s += $w['femaleNearFemale'];
-                        $why[] = 'womenOnly';
-                    } elseif ($lock === 'female_only') {
-                        $s += $w['femaleNearFemale'];
-                        $why[] = 'nearWoman';
+
+                /* soft score */
+                $score  = 0;
+                $assign = [];
+                foreach ($chunk as $p) {
+                    $seat = $assignBeds[$p['i']];
+                    $pos  = self::pos($seat);
+                    $why  = [];
+                    $s    = 0;
+                    // S5 is the specific rule for a solo man, so the general S4 does not pull him down.
+                    $soloMan = $p['g'] === 'Male' && $size === 1 && $p['b'] === 'adult';
+                    if ($pos['deck'] === 'L' && !$soloMan) {
+                        $s += $w['lowerFirst'];
+                        $why[] = 'lower';
                     }
-                }
-                if ($soloMan) {
-                    if ($pos['deck'] === 'U') {
-                        $s += $w['maleUpper'];
-                        $why[] = 'maleUpper';
+                    if ($ctx['pref'] === 'lower' && $pos['deck'] === 'L') {
+                        $s += 30;
+                    } elseif ($ctx['pref'] === 'upper' && $pos['deck'] === 'U') {
+                        $s += 30 + $w['lowerFirst'];
+                        $why[] = 'upperPref';
                     }
-                    if ($u['women']) {
-                        $s -= $w['maleUpper'];
+                    if (in_array($p['b'], ['senior', 'patient', 'child'], true)) {
+                        if ($pos['deck'] === 'L') {
+                            $s += $w['careLower'];
+                            $why[] = 'care_' . $p['b'];
+                            if ($pos['row'] <= 2) {
+                                $s += intdiv($w['careLower'], 2);
+                                $why[] = 'easy';
+                            }
+                        } else {
+                            $s -= $w['careLower'];
+                        }
                     }
-                }
-                if (isset($ctx['prefer'][$seat])) {
-                    $s += 25;
-                    $why[] = 'sameAsLast';
-                }
-                $rowScore = $ctx['rear'] ? $pos['row'] : ($ctx['rows'] + 1 - $pos['row']);
-                $s += $w['rowBalance'] * $rowScore;
-                $score += $s;
-                $assign[$p['i']] = ['seat' => $seat, 'why' => $why];
-            }
-            // S1: the party together — same cabin, else the same / next row of the same deck.
-            if ($size > 1) {
-                $score += $w['together'];
-                foreach ($assign as &$a) {
-                    $a['why'][] = 'sameCabin';
-                }
-                unset($a);
-            }
-            if ($state['placed'] !== []) {
-                $near = 0;
-                foreach ($state['placed'] as $pk) {
-                    $pu = $ctx['units'][$pk];
-                    if ($pu['deck'] === $u['deck']) {
-                        $d = abs($pu['row'] - $u['row']);
-                        $near = max($near, $d === 0 ? 2 : ($d === 1 ? 1 : 0));
+                    if ($p['g'] === 'Female' && ($ctx['solo'] || $size === 1)) {
+                        if (isset($ctx['women'][$seat])) {
+                            $s += $w['femaleNearFemale'];
+                            $why[] = 'womenOnly';
+                        } elseif ($lock === 'female_only') {
+                            $s += $w['femaleNearFemale'];
+                            $why[] = 'nearWoman';
+                        }
                     }
+                    if ($soloMan) {
+                        if ($pos['deck'] === 'U') {
+                            $s += $w['maleUpper'];
+                            $why[] = 'maleUpper';
+                        }
+                        if ($u['women']) {
+                            $s -= $w['maleUpper'];
+                        }
+                    }
+                    if (isset($ctx['prefer'][$seat])) {
+                        $s += 25;
+                        $why[] = 'sameAsLast';
+                    }
+                    $rowScore = $ctx['rear'] ? $pos['row'] : ($ctx['rows'] + 1 - $pos['row']);
+                    $s += $w['rowBalance'] * $rowScore;
+                    $score += $s;
+                    $assign[$p['i']] = ['seat' => $seat, 'why' => $why];
                 }
-                if ($near > 0) {
-                    $score += intdiv($w['together'] * $near, 2);
+                // S1: the party together — same cabin, else the same / next row of the same deck.
+                if ($size > 1) {
+                    $score += $w['together'];
                     foreach ($assign as &$a) {
-                        $a['why'][] = 'nearGroup';
+                        $a['why'][] = 'sameCabin';
                     }
                     unset($a);
                 }
-            }
-            // A single completes a cabin someone of the same gender already uses (keeps whole cabins for pairs).
-            if ($size === 1 && $occupied > 0 && $lock !== 'none') {
-                $score += 10;
-            }
+                if ($state['placed'] !== []) {
+                    $near = 0;
+                    foreach ($state['placed'] as $pk) {
+                        $pu = $ctx['units'][$pk];
+                        if ($pu['deck'] === $u['deck']) {
+                            $d = abs($pu['row'] - $u['row']);
+                            $near = max($near, $d === 0 ? 2 : ($d === 1 ? 1 : 0));
+                        }
+                    }
+                    if ($near > 0) {
+                        $score += intdiv($w['together'] * $near, 2);
+                        foreach ($assign as &$a) {
+                            $a['why'][] = 'nearGroup';
+                        }
+                        unset($a);
+                    }
+                }
+                // A single completes a cabin someone of the same gender already uses (keeps whole cabins for pairs).
+                if ($size === 1 && $occupied > 0 && $lock !== 'none') {
+                    $score += 10;
+                }
 
-            $after = $lock;
-            if ($lock === 'none') {
-                $after = count($genders) > 1 ? 'mixed_allowed' : ($genders === ['Female'] ? 'female_only' : ($genders === ['Male'] ? 'male_only' : 'none'));
+                $after = $lock;
+                if ($lock === 'none') {
+                    $after = count($genders) > 1 ? 'mixed_allowed' : ($genders === ['Female'] ? 'female_only' : ($genders === ['Male'] ? 'male_only' : 'none'));
+                }
+                $out[] = ['unit' => $u['key'], 'score' => $score, 'lockAfter' => $after, 'assign' => $assign];
             }
-            $out[] = ['unit' => $u['key'], 'score' => $score, 'lockAfter' => $after, 'assign' => $assign];
         }
         usort($out, static function (array $a, array $b): int {
             if ($a['score'] !== $b['score']) {
@@ -554,6 +563,41 @@ final class AutoBerth
             }
             return strnatcmp($a['unit'], $b['unit']);
         });
+        return $out;
+    }
+
+    /**
+     * Every valid way to seat a chunk on a cabin's free beds: a single may take
+     * any free bed it is allowed on; a pair gets the women-first seating and,
+     * when allowed, the swapped one. A man is never put on a women-only bed.
+     *
+     * @return list<array<int, string>>
+     */
+    private static function bedOptions(array $chunk, array $freeBeds, array $women): array
+    {
+        $ok = static fn(array $p, string $bed): bool => !isset($women[$bed]) || $p['g'] === 'Female';
+        if (count($chunk) === 1) {
+            $p   = $chunk[0];
+            $out = [];
+            foreach ($freeBeds as $b) {
+                if ($ok($p, $b)) {
+                    $out[] = [$p['i'] => $b];
+                }
+            }
+            return $out;
+        }
+        $base = self::assignBeds($chunk, $freeBeds, $women);
+        if ($base === null) {
+            return [];
+        }
+        $out = [$base];
+        if (count($chunk) === 2) {
+            [$a, $b] = [$chunk[0], $chunk[1]];
+            $sw = [$a['i'] => $base[$b['i']], $b['i'] => $base[$a['i']]];
+            if ($sw[$a['i']] !== $base[$a['i']] && $ok($a, $sw[$a['i']]) && $ok($b, $sw[$b['i']])) {
+                $out[] = $sw;
+            }
+        }
         return $out;
     }
 

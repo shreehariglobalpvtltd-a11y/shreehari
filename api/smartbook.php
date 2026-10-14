@@ -83,7 +83,11 @@ try {
         if ($sid <= 0) {
             Response::invalid(['scheduleId' => 'Missing bus.']);
         }
-        $sched = Seats::scheduleById($sid);
+        try {
+            $sched = Seats::scheduleById($sid);
+        } catch (RuntimeException $e) {
+            Response::notFound('That bus is not available.');
+        }
         $route = Database::fetch('SELECT * FROM routes WHERE id = :id LIMIT 1', ['id' => (int) $sched['route_id']]);
         $coach = Seats::effectiveCoach($sched, $route);
         $bt    = $coach === 'sleeper' ? ((($in['type'] ?? '') === 'private') ? 'private' : 'sharing') : 'seater';
@@ -105,11 +109,37 @@ try {
         // The QR page's poll — only for the browser / owner of the booking.
         require_once INCLUDE_PATH . '/payadapter.php';
         $pnr = Security::clean((string) ($in['pnr'] ?? ''), 40);
-        $st  = Security::isValidPnr($pnr) ? SmartPay::status($pnr) : null;
+        $st  = Security::isValidPnr($pnr) ? SmartPay::status($pnr, Security::clean((string) ($in['k'] ?? ''), 64)) : null;
         if ($st === null) {
             Response::forbidden('Not your booking.');
         }
         Response::success($st);
+    }
+
+    if ($action === 'regulars') {
+        // Counter / agent quick list: the top 20 mobiles of the last 180 days
+        // (an agent sees only the customers of their own sales). Staff only.
+        if ($mode === 'customer') {
+            Response::forbidden();
+        }
+        $scope  = Auth::bookingScopeAdminId();
+        $params = [];
+        $where  = "b.status IN ('confirmed','completed') AND b.created_at > NOW() - INTERVAL 180 DAY AND b.contact_phone NOT LIKE '0000%'";
+        if ($scope !== null) {
+            $where .= ' AND b.sold_by_admin_id = :me';
+            $params['me'] = $scope;
+        }
+        $rows = Database::fetchAll(
+            "SELECT b.contact_phone AS phone, COUNT(*) AS trips, MAX(b.created_at) AS last_at,
+                    (SELECT bp.full_name FROM bookings b2 JOIN booking_passengers bp ON bp.booking_id = b2.id AND bp.is_primary = 1
+                      WHERE b2.contact_phone = b.contact_phone ORDER BY b2.id DESC LIMIT 1) AS name
+               FROM bookings b WHERE {$where}
+           GROUP BY b.contact_phone ORDER BY trips DESC, last_at DESC LIMIT 20",
+            $params
+        );
+        Response::success(array_map(static fn(array $r): array => [
+            'phone' => (string) $r['phone'], 'name' => (string) preg_replace('/\s*\(\d+\)$/', '', (string) $r['name']), 'trips' => (int) $r['trips'],
+        ], $rows));
     }
 
     if ($action === 'parse') {
@@ -149,6 +179,14 @@ try {
             Response::error($e->getMessage(), 409, ['code' => 'changed', 'quote' => $e->quote]);
         } catch (RuntimeException $e) {
             Response::error($e->getMessage(), 409);
+        }
+        if ($mode === 'agent' && empty($out['replayed'])) {
+            // The agent sees what this sale earned (AgentWallet accrued it inside create()).
+            $out['commission'] = (float) Database::scalar(
+                "SELECT COALESCE(SUM(amount), 0) FROM agent_ledger WHERE booking_id = :b AND account = 'commission'",
+                ['b' => (int) $out['bookingId']],
+                0
+            );
         }
         Response::success($out, $out['status'] === 'confirmed'
             ? 'Ticket confirmed. / टिकट पक्का भयो।'

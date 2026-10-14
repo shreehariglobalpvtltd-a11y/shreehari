@@ -126,7 +126,13 @@ try {
     // Invalid agent code → treated as anonymous → refused.
     throws('an INVALID agent code cannot book the departed bus', fn() => BookingService::create(bookReq($rid, $D1, 'L9', 'SHG-9999')));
 
-    // Valid agent code inside 24h → SUCCEEDS, attributed to the agent.
+    // SmartBook v5 D1 (15 Oct 2026): a valid code from a CUSTOMER session no longer opens a departed bus.
+    throws('a customer session with a valid agent code CANNOT book the departed bus (D1)', fn() => BookingService::create(bookReq($rid, $D1, 'L9', $code)));
+
+    // The agent signed in on the .network door (selling-staff session) inside 24h → SUCCEEDS, attributed to the agent.
+    $_SESSION[ADMIN_SESSION_KEY] = ['id' => $agentId, 'username' => (string) Database::scalar('SELECT username FROM admins WHERE id = :i', ['i' => $agentId], ''),
+        'full_name' => 'Late-book agent', 'role' => 'agent', 'permissions' => [], 'must_change_pw' => false, 'via_otp' => false,
+        'logged_in_at' => time(), 'last_seen' => time(), 'checked_at' => time()];
     $res = BookingService::create(bookReq($rid, $D1, 'L9', $code));
     check('valid agent code BOOKS the departed bus (within 24h)', !empty($res['pnr']));
     $soldBy = (int) Database::scalar('SELECT sold_by_admin_id FROM bookings WHERE pnr = :p', ['p' => $res['pnr'] ?? ''], 0);
@@ -142,6 +148,7 @@ try {
 } catch (Throwable $e) {
     check('unexpected error: ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine(), false);
 } finally {
+    unset($_SESSION[ADMIN_SESSION_KEY]);
     cleanupAll();
     Settings::set('staff_seats', ['sleeper' => ['L5', 'L6'], 'seater' => ['1A']], 'json', 'seats', false);
 }

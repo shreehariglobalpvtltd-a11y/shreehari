@@ -138,10 +138,11 @@ final class SmartPay
      *
      * @return array{status: string, proof: bool, expiresIn: int}|null null = not yours
      */
-    public static function status(string $pnr): ?array
+    public static function status(string $pnr, string $key = ''): ?array
     {
         $b = BookingService::findByPnr($pnr);
-        if ($b === null || !Auth::customerMayOpen($b)) {
+        // the browser that booked it / the verified owner, or the keyed link the QR page was opened with
+        if ($b === null || (!Auth::customerMayOpen($b) && !($key !== '' && Ticket::checkDownloadToken($pnr, $key)))) {
             return null;
         }
         $exp = strtotime((string) ($b['expires_at'] ?? ''));
