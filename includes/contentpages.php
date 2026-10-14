@@ -443,21 +443,23 @@ final class ContentPages
                 'partnerOnlyS' => 'Tour starts — run by our partner',
                 'draft' => 'Preview — this package is not published.', 'nf' => 'Page not found', 'nfP' => 'That page does not exist (or is not published yet).',
                 // /business (10 Oct 2026, BIZ). %s = the brand's short name. Nothing here is a date or a price.
-                'bzTitle' => '%s - business services | Bus · Tours · Import-Export · Cargo · Parcel to Nepal', 'bzH1' => 'Business services', 'bzKick' => '%s · beyond the bus',
+                // The title travels alone (search results, link previews), so a line that is not live says so in it.
+                'bzTitle' => '%s - business services | Bus tickets · Tours · Import-Export & cargo (coming soon)', 'bzH1' => 'Business services', 'bzKick' => '%s · beyond the bus',
                 'bzLead' => 'One company, several doors between Gujarat and Nepal. Bus tickets are live today, tour packages run on enquiry, and cargo, truck booking, packaging and shop-to-Nepal delivery are being prepared — register your interest and we call you the day each one opens.',
                 'bzDesc' => '%s business services: AC sleeper bus tickets (live), Nepal and India tour packages (on enquiry), and coming soon — import-export India ⇄ Nepal, truck and bulk reservation, international packaging and courier, online shopping delivered to Nepal.',
                 'bzLive' => 'LIVE', 'bzSoon' => 'COMING SOON', 'bzLiveHint' => 'Working today', 'bzSoonHint' => 'Planned — nothing is accepted yet', 'bzLegend' => 'Status',
                 'bzServices' => 'Our services', 'bzListName' => 'Business services of %s', 'bzOffices' => '%1$d offices in India · %2$d in Nepal',
                 'bzBusH' => 'Bus tickets', 'bzBusT1' => 'Pick your berth online, pay by UPI, ticket on WhatsApp', 'bzBusT2' => 'Track your bus from your ticket',
                 'bzToursH' => 'Tour packages', 'bzToursP' => 'Nepal and India trips planned with our partners — solo, couple, family, group or pilgrimage. Tell us your dates, we send a quote. No online payment.',
-                'bzToursB' => 'All packages', 'bzToursAsk' => 'Plan my trip', 'bzDemo' => 'Demo packages',
+                'bzToursB' => 'All packages', 'bzToursAsk' => 'Plan my trip', 'bzDemo' => 'Popular trips',
                 'bzIexH' => 'Import-Export India ⇄ Nepal', 'bzIexP1' => 'Documentation support for small and medium traders: invoice and packing list, LC and bank paperwork guidance, and customs clearance through the Rupaidiha–Jamunaha land port.',
                 'bzIexP2' => 'Being set up with licensed customs partners. No shipment is accepted yet — register your interest and we call you when it opens.',
                 'bzTruckH' => 'Truck & bulk reservation', 'bzTruckP1' => 'Full-truck or part-load from Gujarat to the Nepal border, and consolidation of bulk orders from several suppliers into one shipment.', 'bzTruckP2' => 'Planned. No booking is taken yet.',
                 'bzPackH' => 'International packaging & courier', 'bzPackP1' => 'Export-grade packing, labelling and courier hand-off for parcels and samples going abroad.', 'bzPackP2' => 'Planned. Nothing is accepted yet.',
                 'bzShopH' => 'Online shopping delivered to Nepal', 'bzShopP1' => 'Order on Indian online stores to our Gujarat receiving address; we receive, check and pack your parcel, pay the GST and customs duty legally, and deliver it in Nepal.',
                 'bzShopP2' => 'This is planned, not running: please do not send any parcel to us yet. Register your interest and we tell you the day it opens.',
-                'bzNotify' => 'Notify me · मलाई खबर गर्नुहोस्', 'bzService' => 'Service', 'bzNote' => 'What do you need? (optional)', 'bzRegister' => 'Register interest',
+                'bzNotify' => 'Notify me', 'bzNotifyAlt' => ['ne', 'मलाई खबर गर्नुहोस्'], 'bzService' => 'Service',
+                'bzSoonLd' => 'Coming soon — not yet available.', 'bzNote' => 'What do you need? (optional)', 'bzRegister' => 'Register interest',
                 'bzRegNote' => 'We call you back only when the service opens. Nothing is booked or charged.',
                 'bzHonestH' => 'Plain words', 'bzHonestP' => 'Everything on this page is either live or clearly marked coming soon. We never take money for a service that has not opened.',
             ],
@@ -504,21 +506,22 @@ final class ContentPages
                 'jHomeP' => 'रुपईडीहा बॉर्डर → गुजरात में आपका स्टॉप', 'partnerOnly' => 'यह टूर हमारे ट्रैवल पार्टनर चलाते हैं — इसमें हमारी बस शामिल नहीं है।',
                 'partnerOnlyS' => 'टूर शुरू — हमारे पार्टनर द्वारा',
                 'draft' => 'प्रीव्यू — यह पैकेज प्रकाशित नहीं है।', 'nf' => 'पेज नहीं मिला', 'nfP' => 'यह पेज मौजूद नहीं है (या अभी प्रकाशित नहीं हुआ)।',
-                'bzTitle' => '%s - व्यापार सेवाएँ | बस · टूर · इम्पोर्ट-एक्सपोर्ट · कार्गो · नेपाल तक पार्सल', 'bzH1' => 'व्यापार सेवाएँ', 'bzKick' => '%s · बस से आगे',
+                'bzTitle' => '%s - व्यापार सेवाएँ | बस टिकट · टूर · इम्पोर्ट-एक्सपोर्ट और कार्गो (जल्द)', 'bzH1' => 'व्यापार सेवाएँ', 'bzKick' => '%s · बस से आगे',
                 'bzLead' => 'एक कंपनी, गुजरात और नेपाल के बीच कई दरवाज़े। बस टिकट आज चालू हैं, टूर पैकेज पूछताछ पर चलते हैं, और कार्गो, ट्रक बुकिंग, पैकेजिंग और शॉप-टू-नेपाल डिलीवरी तैयार हो रही है — रुचि दर्ज करें, हर सेवा खुलते ही हम कॉल करेंगे।',
                 'bzDesc' => '%s की व्यापार सेवाएँ: AC स्लीपर बस टिकट (चालू), नेपाल और भारत के टूर पैकेज (पूछताछ पर), और जल्द — भारत ⇄ नेपाल इम्पोर्ट-एक्सपोर्ट, ट्रक और बल्क रिज़र्वेशन, अंतरराष्ट्रीय पैकेजिंग और कूरियर, ऑनलाइन शॉपिंग नेपाल तक डिलीवरी।',
                 'bzLive' => 'चालू', 'bzSoon' => 'जल्द आ रहा है', 'bzLiveHint' => 'आज काम कर रही है', 'bzSoonHint' => 'योजना में — अभी कुछ स्वीकार नहीं किया जाता', 'bzLegend' => 'स्थिति',
                 'bzServices' => 'हमारी सेवाएँ', 'bzListName' => '%s की व्यापार सेवाएँ', 'bzOffices' => 'भारत में %1$d कार्यालय · नेपाल में %2$d',
                 'bzBusH' => 'बस टिकट', 'bzBusT1' => 'ऑनलाइन बर्थ चुनें, UPI से भुगतान, टिकट WhatsApp पर', 'bzBusT2' => 'अपने टिकट से बस ट्रैक करें',
                 'bzToursH' => 'टूर पैकेज', 'bzToursP' => 'हमारे पार्टनर के साथ नेपाल और भारत की यात्राएँ — अकेले, कपल, परिवार, ग्रुप या तीर्थ। तारीख बताइए, हम कोटेशन भेजेंगे। ऑनलाइन भुगतान नहीं।',
-                'bzToursB' => 'सभी पैकेज', 'bzToursAsk' => 'मेरी यात्रा प्लान करें', 'bzDemo' => 'डेमो पैकेज',
+                'bzToursB' => 'सभी पैकेज', 'bzToursAsk' => 'मेरी यात्रा प्लान करें', 'bzDemo' => 'लोकप्रिय यात्राएँ',
                 'bzIexH' => 'इम्पोर्ट-एक्सपोर्ट भारत ⇄ नेपाल', 'bzIexP1' => 'छोटे और मध्यम व्यापारियों के लिए दस्तावेज़ सहायता: इनवॉइस और पैकिंग लिस्ट, LC और बैंक कागज़ात में मार्गदर्शन, और रुपईडीहा–जमुनाहा लैंड पोर्ट से कस्टम क्लियरेंस।',
                 'bzIexP2' => 'लाइसेंस प्राप्त कस्टम पार्टनर के साथ तैयार हो रहा है। अभी कोई शिपमेंट स्वीकार नहीं — रुचि दर्ज करें, खुलते ही कॉल करेंगे।',
                 'bzTruckH' => 'ट्रक और बल्क रिज़र्वेशन', 'bzTruckP1' => 'गुजरात से नेपाल बॉर्डर तक फुल-ट्रक या पार्ट-लोड, और कई सप्लायर के बल्क ऑर्डर को एक शिपमेंट में जोड़ना।', 'bzTruckP2' => 'योजना में। अभी कोई बुकिंग नहीं ली जाती।',
                 'bzPackH' => 'अंतरराष्ट्रीय पैकेजिंग और कूरियर', 'bzPackP1' => 'विदेश जाने वाले पार्सल और सैंपल के लिए एक्सपोर्ट-ग्रेड पैकिंग, लेबलिंग और कूरियर हैंड-ऑफ़।', 'bzPackP2' => 'योजना में। अभी कुछ स्वीकार नहीं किया जाता।',
                 'bzShopH' => 'ऑनलाइन शॉपिंग, नेपाल तक डिलीवरी', 'bzShopP1' => 'भारतीय ऑनलाइन स्टोर से हमारे गुजरात रिसीविंग पते पर ऑर्डर करें; हम पार्सल रिसीव, जाँच और पैक करते हैं, GST और कस्टम ड्यूटी कानूनी रूप से चुकाते हैं, और नेपाल में डिलीवर करते हैं।',
                 'bzShopP2' => 'यह योजना में है, अभी चालू नहीं: कृपया अभी हमें कोई पार्सल न भेजें। रुचि दर्ज करें, खुलने के दिन हम बताएँगे।',
-                'bzNotify' => 'मुझे बताएँ · Notify me', 'bzService' => 'सेवा', 'bzNote' => 'आपको क्या चाहिए? (वैकल्पिक)', 'bzRegister' => 'रुचि दर्ज करें',
+                'bzNotify' => 'मुझे बताएँ', 'bzNotifyAlt' => ['en', 'Notify me'], 'bzService' => 'सेवा',
+                'bzSoonLd' => 'जल्द आ रहा है — अभी उपलब्ध नहीं।', 'bzNote' => 'आपको क्या चाहिए? (वैकल्पिक)', 'bzRegister' => 'रुचि दर्ज करें',
                 'bzRegNote' => 'सेवा खुलने पर ही हम कॉल करेंगे। कुछ बुक या चार्ज नहीं होता।',
                 'bzHonestH' => 'साफ़ बात', 'bzHonestP' => 'इस पेज पर हर सेवा या तो चालू है या साफ़ “जल्द आ रहा है” लिखी है। जो सेवा खुली नहीं, उसके लिए हम कभी पैसा नहीं लेते।',
             ],
@@ -565,21 +568,22 @@ final class ContentPages
                 'jHomeP' => 'रुपैडिहा बोर्डर → गुजरातको तपाईंको स्टप', 'partnerOnly' => 'यो टुर हाम्रो ट्राभल साझेदारले चलाउँछ — यसमा हाम्रो बस पर्दैन।',
                 'partnerOnlyS' => 'टुर सुरु — साझेदारमार्फत',
                 'draft' => 'पूर्वावलोकन — यो प्याकेज प्रकाशित छैन।', 'nf' => 'पृष्ठ भेटिएन', 'nfP' => 'यो पृष्ठ छैन (वा अझै प्रकाशित भएको छैन)।',
-                'bzTitle' => '%s - व्यापार सेवाहरू | बस · टुर · आयात-निर्यात · कार्गो · नेपालसम्म पार्सल', 'bzH1' => 'व्यापार सेवाहरू', 'bzKick' => '%s · बसभन्दा पर',
+                'bzTitle' => '%s - व्यापार सेवाहरू | बस टिकट · टुर · आयात-निर्यात र कार्गो (छिट्टै)', 'bzH1' => 'व्यापार सेवाहरू', 'bzKick' => '%s · बसभन्दा पर',
                 'bzLead' => 'एउटै कम्पनी, गुजरात र नेपालबीच धेरै ढोका। बस टिकट आज चालु छ, टुर प्याकेज सोधपुछमा चल्छ, र कार्गो, ट्रक बुकिङ, प्याकेजिङ र सप-टु-नेपाल डेलिभरी तयार हुँदैछ — रुचि दर्ता गर्नुहोस्, हरेक सेवा खुल्नेबित्तिकै हामी फोन गर्छौं।',
                 'bzDesc' => '%s का व्यापार सेवा: AC स्लिपर बस टिकट (चालु), नेपाल र भारतका टुर प्याकेज (सोधपुछमा), र छिट्टै — भारत ⇄ नेपाल आयात-निर्यात, ट्रक र बल्क रिजर्भेसन, अन्तर्राष्ट्रिय प्याकेजिङ र कुरियर, अनलाइन सपिङ नेपालसम्म डेलिभरी।',
                 'bzLive' => 'चालु', 'bzSoon' => 'छिट्टै आउँदैछ', 'bzLiveHint' => 'आज चलिरहेको', 'bzSoonHint' => 'योजनामा — अहिले केही लिइँदैन', 'bzLegend' => 'स्थिति',
                 'bzServices' => 'हाम्रा सेवाहरू', 'bzListName' => '%s का व्यापार सेवाहरू', 'bzOffices' => 'भारतमा %1$d कार्यालय · नेपालमा %2$d',
                 'bzBusH' => 'बस टिकट', 'bzBusT1' => 'अनलाइन बर्थ छान्नुहोस्, UPI बाट तिर्नुहोस्, टिकट WhatsApp मा', 'bzBusT2' => 'आफ्नो टिकटबाट बस ट्र्याक गर्नुहोस्',
                 'bzToursH' => 'टुर प्याकेज', 'bzToursP' => 'साझेदारसँग मिलेर नेपाल र भारतका यात्रा — एक्लै, जोडी, परिवार, समूह वा तीर्थ। मिति भन्नुहोस्, हामी कोटेसन पठाउँछौं। अनलाइन भुक्तानी छैन।',
-                'bzToursB' => 'सबै प्याकेज', 'bzToursAsk' => 'मेरो यात्रा योजना', 'bzDemo' => 'डेमो प्याकेज',
+                'bzToursB' => 'सबै प्याकेज', 'bzToursAsk' => 'मेरो यात्रा योजना', 'bzDemo' => 'लोकप्रिय यात्रा',
                 'bzIexH' => 'आयात-निर्यात भारत ⇄ नेपाल', 'bzIexP1' => 'साना र मझौला व्यापारीका लागि कागजात सहयोग: इन्भ्वाइस र प्याकिङ लिस्ट, LC र बैंक कागजातमा मार्गदर्शन, र रुपैडिहा–जमुनाहा नाकाबाट भन्सार क्लियरेन्स।',
                 'bzIexP2' => 'इजाजतप्राप्त भन्सार साझेदारसँग तयार हुँदैछ। अहिले कुनै ढुवानी लिइँदैन — रुचि दर्ता गर्नुहोस्, खुल्नेबित्तिकै फोन गर्छौं।',
                 'bzTruckH' => 'ट्रक र बल्क रिजर्भेसन', 'bzTruckP1' => 'गुजरातदेखि नेपाल सिमानासम्म फुल-ट्रक वा पार्ट-लोड, र धेरै सप्लायरका बल्क अर्डर एउटै ढुवानीमा जोड्ने सेवा।', 'bzTruckP2' => 'योजनामा। अहिले बुकिङ लिइँदैन।',
                 'bzPackH' => 'अन्तर्राष्ट्रिय प्याकेजिङ र कुरियर', 'bzPackP1' => 'विदेश जाने पार्सल र नमुनाका लागि निर्यात-स्तरको प्याकिङ, लेबलिङ र कुरियर हस्तान्तरण।', 'bzPackP2' => 'योजनामा। अहिले केही लिइँदैन।',
                 'bzShopH' => 'अनलाइन सपिङ, नेपालसम्म डेलिभरी', 'bzShopP1' => 'भारतीय अनलाइन स्टोरबाट हाम्रो गुजरातको रिसिभिङ ठेगानामा अर्डर गर्नुहोस्; हामी पार्सल लिन्छौं, जाँच्छौं र प्याक गर्छौं, GST र भन्सार शुल्क कानुनी रूपमा तिर्छौं, अनि नेपालमा डेलिभर गर्छौं।',
                 'bzShopP2' => 'यो योजनामा छ, अहिले चालु छैन: कृपया अहिले हामीलाई कुनै पार्सल नपठाउनुहोस्। रुचि दर्ता गर्नुहोस्, खुल्ने दिन हामी भन्छौं।',
-                'bzNotify' => 'मलाई खबर गर्नुहोस् · Notify me', 'bzService' => 'सेवा', 'bzNote' => 'तपाईंलाई के चाहिन्छ? (ऐच्छिक)', 'bzRegister' => 'रुचि दर्ता गर्नुहोस्',
+                'bzNotify' => 'मलाई खबर गर्नुहोस्', 'bzNotifyAlt' => ['en', 'Notify me'], 'bzService' => 'सेवा',
+                'bzSoonLd' => 'छिट्टै आउँदैछ — अहिले उपलब्ध छैन।', 'bzNote' => 'तपाईंलाई के चाहिन्छ? (ऐच्छिक)', 'bzRegister' => 'रुचि दर्ता गर्नुहोस्',
                 'bzRegNote' => 'सेवा खुलेपछि मात्र हामी फोन गर्छौं। केही बुक वा शुल्क लाग्दैन।',
                 'bzHonestH' => 'खुला कुरा', 'bzHonestP' => 'यस पृष्ठको हरेक सेवा या त चालु छ, या स्पष्ट “छिट्टै आउँदैछ” लेखिएको छ। नखुलेको सेवाका लागि हामी कहिल्यै पैसा लिँदैनौं।',
             ],
@@ -1470,21 +1474,24 @@ final class ContentPages
             . '<div class="btns"><a class="btn fill" href="' . $e(PublicLayout::url('/tours', $lang)) . '">🧳 ' . $e($w['bzToursB']) . '</a>'
             . '<a class="btn tonal" href="' . $e(PublicLayout::url('/tours', $lang)) . '#enquire">✍️ ' . $e($w['bzToursAsk']) . '</a></div></article>';
 
-        /* Coming soon — two honest lines and a "notify me" form each. */
+        /* Coming soon — two honest lines and a "notify me" form each. The summary carries the
+           label in the other language too, marked with its own lang so a screen reader switches voice. */
+        [$altLang, $altText] = $w['bzNotifyAlt'];
+        $notify = $e($w['bzNotify']) . ' · <span lang="' . $e($altLang) . '">' . $e($altText) . '</span>';
         foreach (['iex', 'truck', 'pack', 'shop'] as $key) {
             [$id, , , $svc] = self::BIZ[$key];
             $wk = ucfirst($key);
             $cards .= '<article class="card biz soon rv" id="' . $e($id) . '">' . $top($key)
                 . '<h2>' . $e($w['bz' . $wk . 'H']) . '</h2><p>' . $e($w['bz' . $wk . 'P1']) . '</p>'
                 . '<p class="note soon-note">⏳ ' . $e($w['bz' . $wk . 'P2']) . '</p>'
-                . '<details class="acc biz-notify"><summary><span>🔔 ' . $e($w['bzNotify']) . '</span></summary><div class="acc-b">'
+                . '<details class="acc biz-notify"><summary><span>🔔 ' . $notify . '</span></summary><div class="acc-b">'
                 . self::bizForm($svc, $w['bz' . $wk . 'H'], $lang, $w)
                 . '<p class="note">' . $e($w['bzRegNote']) . '</p></div></details></article>';
         }
 
         $body = '<section class="hero biz-hero"><span class="blob b1"></span><span class="blob b2"></span>'
             . '<span class="kick">💼 ' . $e(sprintf($w['bzKick'], $short)) . '</span><h1>' . $e($w['bzH1']) . '</h1><p class="lead">' . $e($w['bzLead']) . '</p>'
-            . '<div class="hero-flags" aria-label="' . $e($w['bzLegend']) . '"><span class="flagchip">' . $badge(true) . ' ' . $e($w['bzLiveHint']) . '</span><span class="flagchip">' . $badge(false) . ' ' . $e($w['bzSoonHint']) . '</span></div>'
+            . '<div class="hero-flags" role="group" aria-label="' . $e($w['bzLegend']) . '"><span class="flagchip">' . $badge(true) . ' ' . $e($w['bzLiveHint']) . '</span><span class="flagchip">' . $badge(false) . ' ' . $e($w['bzSoonHint']) . '</span></div>'
             . '<div class="btns"><a class="btn fill" href="/#/">🎫 ' . $e($pw['book']) . '</a><a class="btn tonal" href="#' . self::BIZ['tours'][0] . '">🧳 ' . $e($w['bzToursH']) . '</a>'
             . '<a class="btn out" href="#' . self::BIZ['iex'][0] . '">🔔 ' . $e($w['bzRegister']) . '</a></div></section>'
             . '<section class="sec" id="services"><h2 class="sec-t"><span>' . $e($w['bzServices']) . '</span></h2><div class="grid biz-grid">' . $cards . '</div>'
@@ -1494,21 +1501,20 @@ final class ContentPages
             . '<a class="btn out" href="' . $e(PublicLayout::url('/tours', $lang)) . '">🧳 ' . $e($pw['tours']) . '</a><a class="btn out" href="' . $e(PublicLayout::url('/offices', $lang)) . '">🏢 ' . $e($pw['offices']) . '</a></div></section>'
             . '<script>' . self::bizFormJs() . '</script>';
 
-        /* JSON-LD: the page, the six services as an ItemList (PreOrder only on the coming-soon ones), the trail. */
+        /* JSON-LD: the page, the six services as an ItemList, the trail. 10 Oct 2026 (review): a
+           coming-soon service carries NO offers node — schema.org PreOrder means "can be ordered now",
+           which the page denies — and its description opens with "Coming soon — not yet available." */
         $org = PublicLayout::base() . '/#org';
         $items = [];
         $pos = 0;
         foreach (self::BIZ as $key => [$id, , $live, $svc]) {
             $wk = ucfirst($key);
-            $node = [
+            $about = $w[$key === 'bus' ? 'bzBusT1' : ($key === 'tours' ? 'bzToursP' : 'bz' . $wk . 'P1')];
+            $items[] = ['@type' => 'ListItem', 'position' => ++$pos, 'item' => [
                 '@type' => 'Service', 'name' => $w['bz' . $wk . 'H'], 'url' => $canon . '#' . $id, 'inLanguage' => $lang,
-                'description' => $w[$key === 'bus' ? 'bzBusT1' : ($key === 'tours' ? 'bzToursP' : 'bz' . $wk . 'P1')],
+                'description' => $live ? $about : $w['bzSoonLd'] . ' ' . $about,
                 'provider' => ['@id' => $org], 'areaServed' => ['India', 'Nepal'],
-            ];
-            if (!$live) {
-                $node['offers'] = ['@type' => 'Offer', 'availability' => 'https://schema.org/PreOrder', 'url' => $canon . '#' . $id];
-            }
-            $items[] = ['@type' => 'ListItem', 'position' => ++$pos, 'item' => $node];
+            ]];
         }
         $crumbs = self::crumbs($lang, $w['bzH1'], '/business');
         $ld = self::ld([
@@ -1521,7 +1527,8 @@ final class ContentPages
             ['active' => 'business', 'path' => '/business', 'crumbs' => $crumbs, 'css' => self::css()]));
     }
 
-    /** One "notify me" form (name, mobile, note; the service is a hidden field). No token inside — fetched with a GET like the tour form. */
+    /** One "notify me" form (name, mobile, note; the service is a hidden field). No token inside — fetched with a GET like the tour form.
+     *  The phone pattern escapes ( ) because browsers compile pattern="" with the regex v flag, where a bare ( in a class is invalid. */
     private static function bizForm(string $service, string $serviceName, string $lang, array $w): string
     {
         $e = Closure::fromCallable([self::class, 'e']);
@@ -1530,7 +1537,7 @@ final class ContentPages
             . '<div class="hp" aria-hidden="true"><label>Website <input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>'
             . '<div class="fgrid">'
             . '<label class="fld"><span>' . $e($w['fName']) . ' *</span><input name="name" required minlength="2" maxlength="120" autocomplete="name"></label>'
-            . '<label class="fld"><span>' . $e($w['fPhone']) . ' *</span><input name="phone" type="tel" required inputmode="tel" autocomplete="tel" maxlength="20" pattern="[0-9 +()\-]{10,20}"></label>'
+            . '<label class="fld"><span>' . $e($w['fPhone']) . ' *</span><input name="phone" type="tel" required inputmode="tel" autocomplete="tel" maxlength="20" pattern="[0-9 +\(\)\-]{10,20}"></label>'
             . '<p class="fld full biz-svc"><span>' . $e($w['bzService']) . '</span><b>' . $e($serviceName) . '</b></p>'
             . '<label class="fld full"><span>' . $e($w['bzNote']) . '</span><textarea name="note" rows="2" maxlength="200"></textarea></label>'
             . '</div><div class="btns"><button class="btn fill" type="submit">📨 ' . $e($w['bzRegister']) . '</button></div>'
@@ -1571,7 +1578,7 @@ JS;
             . '<div class="hp" aria-hidden="true"><label>Website <input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>'
             . '<div class="fgrid">'
             . '<label class="fld"><span>' . $e($w['fName']) . ' *</span><input name="name" required minlength="2" maxlength="120" autocomplete="name"></label>'
-            . '<label class="fld"><span>' . $e($w['fPhone']) . ' *</span><input name="phone" type="tel" required inputmode="tel" autocomplete="tel" maxlength="20" pattern="[0-9 +()\-]{10,20}"></label>'
+            . '<label class="fld"><span>' . $e($w['fPhone']) . ' *</span><input name="phone" type="tel" required inputmode="tel" autocomplete="tel" maxlength="20" pattern="[0-9 +\(\)\-]{10,20}"></label>'
             . '<label class="fld"><span>' . $e($w['fAdults']) . '</span><input name="adults" type="number" min="1" max="40" value="2" inputmode="numeric"></label>'
             . '<label class="fld"><span>' . $e($w['fKids']) . '</span><input name="children" type="number" min="0" max="20" value="0" inputmode="numeric"></label>'
             . '<label class="fld"><span>' . $e($w['fMonth']) . '</span><input name="month" type="month" min="' . $min . '"></label>'

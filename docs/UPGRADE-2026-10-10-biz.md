@@ -25,18 +25,26 @@ booked or charged, and the answer says so in the page's language.
   `PublicLayout::offices()`); the company name from `PublicLayout::company()` — nothing typed.
 - Tours card: the four demo packages as mini cards with their audience chip (`demoPackages()`:
   packages with an audience, featured first, max 4; the first published ones stand in when none has
-  an audience yet).
+  an audience yet). They are real published packages, so the customer-facing heading is
+  "Popular trips" / "लोकप्रिय यात्राएँ" / "लोकप्रिय यात्रा" — "demo" is only the internal name of the set.
+- `<title>`: the lines that are not live are marked in it ("Import-Export & cargo (coming soon)" /
+  "(जल्द)" / "(छिट्टै)"), because search results and link previews show the title on its own.
 - Each coming-soon card: two honest lines + `<details>` "Notify me · मलाई खबर गर्नुहोस्" form
-  (name, mobile, hidden service key, optional note, honeypot `website`). One shared CSRF token
-  (GET `/api/tour-enquiry.php`, as the tour form does), POST JSON to `/api/enquiry.php`.
-- JSON-LD: Organization + WebPage + `ItemList` of six `Service` nodes (`provider` → `#org`,
-  `offers.availability = https://schema.org/PreOrder` only on the four coming-soon ones) + BreadcrumbList.
+  (the other-language half sits in `<span lang="…">`), with name, mobile (pattern escapes `( )` so it
+  compiles under the browsers' regex `v` flag), hidden service key, optional note, honeypot `website`.
+  One shared CSRF token (GET `/api/tour-enquiry.php`, as the tour form does), POST JSON to `/api/enquiry.php`.
+- JSON-LD: Organization + WebPage + `ItemList` of six `Service` nodes (`provider` → `#org`) +
+  BreadcrumbList. No `offers` node at all — schema.org `PreOrder` means "can be ordered now", which the
+  page denies; a coming-soon Service's description starts "Coming soon — not yet available."
 - Words: `bz*` keys in `words()` for en / hi / ne.
 
 ## 2. `api/enquiry.php` — source `business`
 - Whitelist gains `business`. `note` is stored as `Service: <key> · <note>` where key ∈
   `import_export | truck_bulk | packaging | shop_to_nepal` (anything else → `general`).
-- Honeypot `website`: a filled box gets the same ok answer and **nothing is stored** (logged).
+- Honeypot `website`: a filled box gets the same ok answer and **nothing is stored** (logged). It is
+  checked before name / phone validation, so a bot never sees a 422 either.
+- `lang`, `service` and `source` are type-checked before use (an array never reaches a `(string)` cast,
+  which used to answer 500 "Array to string conversion").
 - Same CSRF + `enquiry_create` IP rate limit (20 / 5 min) as every other enquiry.
 - `admin/enquiries.php` source label: **Business interest** (filter + CSV).
 
@@ -73,7 +81,8 @@ on the Business services page" (`faqCargo*` keys).
 
 ## Tests
 - `tests/content-pages-test.php` — new section G (/business in three languages, six ids, badges,
-  forms, no date/price, JSON-LD PreOrder count, audience chips, featured payload) and G2
+  forms, no date/price, JSON-LD with no offers + "coming soon" descriptions, honest title, no "demo"
+  heading, lang spans, v-flag-safe phone pattern, audience chips, featured payload) and G2
   (source `business`: 419 without token, honeypot stores nothing, stored note, unknown key → general);
   sitemap and source pins updated (`'callback', 'tour', 'business']`).
 - `tests/homeinfo-test.php`, `tests/showcase-test.php` — `#homeBiz` pinned (five sections, order 12,
@@ -82,6 +91,12 @@ on the Business services page" (`faqCargo*` keys).
 
 ## Deploy
 1. `php tests/apply-sql.php database/upgrade-2026-10-10-biz.sql` (idempotent; safe to re-run).
+   Then verify — the UPDATEs match by slug and skip rows the office already featured, so they can
+   quietly change nothing:
+   `SELECT slug, audience, is_featured, sort_order FROM tour_packages WHERE audience IS NOT NULL;`
+   Expect 4 rows (group, solo, family, pilgrim). If fewer, set the audience (and Featured) on the
+   missing packages in Admin → Website content → Tour packages; otherwise the home cards and
+   `/business` show fewer chips.
 2. Files; the integrator bumps the asset stamp + `sw.js` VERSION once for the whole upgrade.
 3. Check `/business`, `/ne/business`, `/tours` chips, Admin → Enquiries filter **Business interest**.
 

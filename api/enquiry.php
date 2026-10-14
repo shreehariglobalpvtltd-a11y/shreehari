@@ -31,6 +31,26 @@ try {
     // so a script cannot flood the enquiries table.
     Security::requireRateLimit('enquiry_create', Security::clientIp(), 20, 300);
 
+    // 10 Oct 2026 (review): fields read as raw JSON may be arrays — never cast
+    // them with (string) (that is an "Array to string conversion" 500).
+    $langIn = Response::field('lang', 'en');
+    $lang   = is_string($langIn) && in_array($langIn, ['en', 'hi', 'ne'], true) ? $langIn : 'en';
+    $bizMessage = match ($lang) {
+        'hi' => 'धन्यवाद! आपकी रुचि दर्ज हो गई — सेवा खुलते ही ऑफ़िस आपको कॉल करेगा। कुछ बुक या चार्ज नहीं हुआ।',
+        'ne' => 'धन्यवाद! तपाईंको रुचि दर्ता भयो — सेवा खुल्नेबित्तिकै कार्यालयले फोन गर्नेछ। केही बुक वा शुल्क लागेको छैन।',
+        default => 'Thank you! Your interest is noted — our office will call you the day this service opens. Nothing is booked or charged.',
+    };
+    if (Response::field('source', '') === 'business') {
+        // Honeypot (the hidden "website" box, as on the tour form), checked
+        // before any field validation: a bot always gets the same ok answer
+        // and nothing is stored.
+        $hp = Response::field('website', '');
+        if (is_string($hp) ? trim($hp) !== '' : !empty($hp)) {
+            Logger::info('Business interest: honeypot filled', ['ip' => Security::clientIp()]);
+            Response::success(['id' => 0, 'travelDate' => null, 'seats' => 1, 'ticket' => null], $bizMessage);
+        }
+    }
+
     $name  = Security::clean(Response::field('name', ''), 120);
     $phone = Security::digits(Response::field('phone', ''), 20);
 
@@ -72,7 +92,7 @@ try {
     // the same admin Enquiries inbox staff already watch, and the office then
     // phones them and creates the account by hand in Staff & Agents — there is
     // deliberately no self-service path from this form to a real login.
-    $sourceIn = (string) Response::field('source', 'quick_booking');
+    $sourceIn = Response::field('source', 'quick_booking'); // strict in_array below: a non-string never matches
     // 'callback' (24 Sep 2026): the contact button on every screen — "call me
     // back". Lands in the same Enquiries inbox; the office phones them.
     // 'tour' (9 Oct 2026): a tour-package lead. The full form (package, pax,
@@ -86,22 +106,9 @@ try {
         ? $sourceIn
         : 'quick_booking';
 
-    $lang = (string) Response::field('lang', 'en');
-    $lang = in_array($lang, ['en', 'hi', 'ne'], true) ? $lang : 'en';
-    $bizMessage = match ($lang) {
-        'hi' => 'धन्यवाद! आपकी रुचि दर्ज हो गई — सेवा खुलते ही ऑफ़िस आपको कॉल करेगा। कुछ बुक या चार्ज नहीं हुआ।',
-        'ne' => 'धन्यवाद! तपाईंको रुचि दर्ता भयो — सेवा खुल्नेबित्तिकै कार्यालयले फोन गर्नेछ। केही बुक वा शुल्क लागेको छैन।',
-        default => 'Thank you! Your interest is noted — our office will call you the day this service opens. Nothing is booked or charged.',
-    };
     if ($source === 'business') {
-        // Honeypot (the hidden "website" box, as on the tour form): a bot gets
-        // the same answer shape and nothing is stored.
-        $hp = Response::field('website', '');
-        if (is_string($hp) ? trim($hp) !== '' : !empty($hp)) {
-            Logger::info('Business interest: honeypot filled', ['ip' => Security::clientIp()]);
-            Response::success(['id' => 0, 'travelDate' => null, 'seats' => 1, 'ticket' => null], $bizMessage);
-        }
-        $svcIn = Security::clean((string) Response::field('service', ''), 30);
+        $svcRaw = Response::field('service', '');
+        $svcIn = is_string($svcRaw) ? Security::clean($svcRaw, 30) : '';
         $svc   = in_array($svcIn, ['import_export', 'truck_bulk', 'packaging', 'shop_to_nepal'], true) ? $svcIn : 'general';
         $note  = mb_substr('Service: ' . $svc . ($note !== null ? ' · ' . $note : ''), 0, 255);
     }

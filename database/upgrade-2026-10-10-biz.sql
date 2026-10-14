@@ -36,6 +36,10 @@ PREPARE st FROM @s; EXECUTE st; DEALLOCATE PREPARE st;
 -- ---------------------------------------------------------------------
 -- 2. The four demo packages (group / solo / family / pilgrim)
 -- ---------------------------------------------------------------------
+-- Matched by slug and skipped when the office already featured a row, so
+-- these can quietly change nothing. VERIFY after the run (expect 4 rows):
+--   SELECT slug, audience, is_featured, sort_order FROM tour_packages WHERE audience IS NOT NULL
+-- If fewer, set Audience + Featured in Admin -> Website content -> Tour packages.
 UPDATE `tour_packages` SET `audience` = 'group', `is_featured` = 1, `sort_order` = 1
  WHERE `slug` = 'lumbini-pokhara-kathmandu-circuit' AND `is_featured` = 0 AND `audience` IS NULL;
 

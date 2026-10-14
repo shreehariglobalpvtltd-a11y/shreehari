@@ -16,7 +16,7 @@
  *      whitelist + inbox labels, tools/content-seed.php idempotent
  *   G. /business (10 Oct 2026, BIZ): the six section ids, two LIVE + four
  *      COMING SOON badges, a "notify me" form per coming-soon line, no date
- *      or price, JSON-LD ItemList of 6 Services (PreOrder only on the four),
+ *      or price, JSON-LD ItemList of 6 Services (no offers; the four say "coming soon"),
  *      the tour mini cards with their audience chip; api/enquiry.php source
  *      'business': honeypot stores nothing, a real one stores "Service: <key>",
  *      no token = 419; the audience chip on /tours and the featured payload [HTTP]
@@ -87,6 +87,7 @@ $cleanup = static function (): void {
     Database::query("DELETE FROM tour_packages WHERE slug LIKE 'zz-cp-%'");
     Database::query("DELETE FROM travel_places WHERE slug LIKE 'zz-cp-%'");
     Database::query("DELETE FROM enquiries WHERE source IN ('tour', 'business') AND name LIKE 'ZZ CP %'");
+    Database::query("DELETE FROM enquiries WHERE source = 'quick_booking' AND name = 'ZZ CP Src'"); // G2: the array-source fallback row
     Database::query("DELETE FROM rate_limits WHERE bucket LIKE 'trv\\_%'");
     // G (BIZ): the business "notify me" POSTs share the enquiry_create IP bucket (20 / 5 min) — free it for the next run.
     Database::query("DELETE FROM rate_limits WHERE bucket = 'enquiry_create' AND identifier IN ('127.0.0.1', '::1')");
@@ -228,15 +229,28 @@ try {
         $bld = json_decode($lm[1] ?? '', true);
         $lists = array_values(array_filter($bld['@graph'] ?? [], static fn(array $n): bool => ($n['@type'] ?? '') === 'ItemList'));
         $els = $lists[0]['itemListElement'] ?? [];
-        $pre = count(array_filter($els, static fn(array $it): bool => ($it['item']['offers']['availability'] ?? '') === 'https://schema.org/PreOrder'));
+        // Review fix (10 Oct 2026): PreOrder means "can be ordered now", which the page denies — so no offers node
+        // at all, and each coming-soon Service's description says so in words.
         $offers = count(array_filter($els, static fn(array $it): bool => isset($it['item']['offers'])));
+        $soonLd = count(array_filter($els, static fn(array $it): bool => str_starts_with((string) ($it['item']['description'] ?? ''), 'Coming soon — not yet available.')));
         $provOk = $els !== [] && !array_filter($els, static fn(array $it): bool => ($it['item']['@type'] ?? '') !== 'Service' || !str_ends_with((string) ($it['item']['provider']['@id'] ?? ''), '/#org'));
-        check('business JSON-LD: ItemList of 6 Services, provider #org, PreOrder on exactly the four coming-soon ones, none on the live two',
-            count($els) === 6 && (int) ($lists[0]['numberOfItems'] ?? 0) === 6 && $provOk && $pre === 4 && $offers === 4, count($els) . ' items, ' . $pre . ' PreOrder');
+        check('business JSON-LD: ItemList of 6 Services, provider #org, no offers node, "Coming soon — not yet available." on exactly the four',
+            count($els) === 6 && (int) ($lists[0]['numberOfItems'] ?? 0) === 6 && $provOk && $offers === 0 && $soonLd === 4, count($els) . ' items, ' . $offers . ' offers, ' . $soonLd . ' coming-soon');
+        preg_match('~<title>(.*?)</title>~s', $bz, $btm);
+        $bTitle = html_entity_decode($btm[1] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        check('business <title>: every line in it is live or says coming soon (cargo / parcel never bare)', str_contains($bTitle, '(coming soon)')
+            && !preg_match('~parcel to nepal~i', $bTitle) && preg_match('~cargo.*\(coming soon\)~i', $bTitle) === 1, $bTitle);
+        check('business: the published trips are headed as trips, never "Demo"', str_contains($svc, 'Popular trips') && !preg_match('~\bdemo\b~i', strip_tags($bz)));
+        check('business a11y: the status legend is a named group; the Nepali half of "Notify me" carries lang="ne"', str_contains($bz, '<div class="hero-flags" role="group" aria-label="Status">')
+            && substr_count($svc, 'Notify me · <span lang="ne">मलाई खबर गर्नुहोस्</span>') === 4);
+        check('business + tours forms: the phone pattern escapes ( ) so it compiles under the browsers\' regex v flag', !str_contains($bz, 'pattern="[0-9 +()')
+            && substr_count($bz, 'pattern="[0-9 +\(\)\-]{10,20}"') === 4 && str_contains(req('GET', '/tours')['body'], 'pattern="[0-9 +\(\)\-]{10,20}"'));
         $bzHi = req('GET', '/hi/business')['body'];
         $bzNe = req('GET', '/ne/business')['body'];
         check('business (hi / ne): forms post lang hi / ne, Nepali "notify me" wording present', substr_count($bzHi, 'name="lang" value="hi"') === 4 && substr_count($bzNe, 'name="lang" value="ne"') === 4
-            && str_contains($bzNe, 'मलाई खबर गर्नुहोस्') && str_contains($bzHi, 'मुझे बताएँ'));
+            && str_contains($bzNe, 'मलाई खबर गर्नुहोस्') && str_contains($bzHi, 'मुझे बताएँ')
+            && substr_count($bzHi, '<span lang="en">Notify me</span>') === 4 && substr_count($bzNe, '<span lang="en">Notify me</span>') === 4
+            && str_contains($bzHi, '(जल्द)</title>') && str_contains($bzNe, '(छिट्टै)</title>') && !str_contains($bzHi . $bzNe, 'डेमो'));
         if ($withAud) {
             $tl = req('GET', '/tours')['body'];
             check('tours list + package page carry the audience chip', substr_count($tl, 'class="chip aud aud-') >= 1
@@ -265,6 +279,19 @@ try {
         check('business notify: unknown service key → "Service: general", unknown lang → English answer', ($bu['json']['ok'] ?? false) === true
             && (string) Database::scalar("SELECT note FROM enquiries WHERE source = 'business' AND name = 'ZZ CP Gen'", [], '') === 'Service: general · ZZ CP two parcels a month'
             && str_starts_with((string) ($bu['json']['message'] ?? ''), 'Thank you'));
+        // Review fixes (10 Oct 2026): the honeypot answers before field validation, and array-shaped
+        // lang / service / source never reach a (string) cast (that used to be a 500).
+        $b2 = (int) Database::scalar("SELECT COUNT(*) FROM enquiries WHERE source = 'business' AND name LIKE 'ZZ CP %'", [], 0);
+        $bhb = req('POST', '/api/enquiry.php', $jar2, ['website' => 'x', 'phone' => '12', 'name' => ''] + $bizGood, $h2);
+        check('business notify: honeypot + bad phone = the same fake ok (not a 422), nothing stored', $bhb['code'] === 200 && ($bhb['json']['ok'] ?? false) === true
+            && (int) Database::scalar("SELECT COUNT(*) FROM enquiries WHERE source = 'business' AND name LIKE 'ZZ CP %'", [], 0) === $b2);
+        $bar = req('POST', '/api/enquiry.php', $jar2, ['lang' => ['x'], 'service' => ['y'], 'name' => 'ZZ CP Arr', 'phone' => '98' . '0000' . '4483'] + $bizGood, $h2);
+        check('business notify: lang / service sent as arrays = no 500; English answer, "Service: general"', $bar['code'] === 200 && ($bar['json']['ok'] ?? false) === true
+            && str_starts_with((string) ($bar['json']['message'] ?? ''), 'Thank you')
+            && str_starts_with((string) Database::scalar("SELECT note FROM enquiries WHERE source = 'business' AND name = 'ZZ CP Arr'", [], ''), 'Service: general'), (string) $bar['code']);
+        $bas = req('POST', '/api/enquiry.php', $jar2, ['source' => ['business'], 'name' => 'ZZ CP Src', 'phone' => '98' . '0000' . '4484'] + $bizGood, $h2);
+        check('enquiry: source sent as an array = no 500, falls back to quick_booking', $bas['code'] === 200
+            && (string) Database::scalar("SELECT source FROM enquiries WHERE name = 'ZZ CP Src' ORDER BY id DESC LIMIT 1", [], '') === 'quick_booking', (string) $bas['code']);
         @unlink($jar2);
 
         echo "\n-- B. 404s and drafts --\n";
