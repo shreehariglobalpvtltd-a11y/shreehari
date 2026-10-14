@@ -2888,6 +2888,9 @@ s.addEventListener('click',function(e){e.preventDefault();
        snT()). "S Hari Nav" is a name and stays Roman. -->
   <div class="sn-load" id="snLoad"><div class="sn-load-map" id="snLoadMap" aria-hidden="true"></div><div class="spin"></div><p data-i18n="snLoading">S Hari Map — loading…</p></div>
   <div id="sn-map"></div>
+  <!-- 10 Oct 2026 (navpro): the cockpit overlay - vehicle silhouette, speed,
+       heading, next turn - filled by 26-navpro.js, never catches a touch -->
+  <div class="sn-cockpit" id="snCockpitLayer" aria-hidden="true"></div>
   <button class="sn-back" id="snBack" title="Back to site" data-i18n-title="snBackT">←</button>
   <div class="sn-banner" id="snBanner">
     <span class="sb-ico" id="snBanIcon">⬆️</span>
@@ -2917,6 +2920,7 @@ s.addEventListener('click',function(e){e.preventDefault();
     <div class="sn-rstack-more" id="snRstackMore" hidden>
       <button class="sn-cb" id="snCompass" title="Reset north" data-i18n-title="snCompassT"><span class="sn-needle">🧭</span></button>
       <button class="sn-cb" id="sn3D" title="2D / 3D"><small>2D</small>🏙️</button>
+      <button class="sn-cb" id="snCockpit" title="Cockpit view" data-i18n-title="snCockpitT" aria-pressed="false">🚘</button>
       <button class="sn-cb on" id="snTemples" title="Sanatan Mode" data-i18n-title="snTemplesT">🛕</button>
       <button class="sn-cb" id="snLayers" title="Layers" data-i18n-title="snLayersT">🗂️</button>
       <button class="sn-cb" id="snShare" title="Share location" data-i18n-title="snShareT">📤</button>
@@ -2934,6 +2938,15 @@ s.addEventListener('click',function(e){e.preventDefault();
     <label class="sn-ly sn-ly-extra"><input type="checkbox" id="snLyPoi"><span>📍</span> <span class="snl" data-i18n="snLyPoi">Nearby places</span></label>
     <label class="sn-ly sn-ly-extra"><input type="checkbox" id="snLy3D"><span>🏙️</span> <span class="snl" data-i18n="snLy3D">3D buildings + terrain</span></label>
     <label class="sn-ly"><input type="checkbox" id="snLyLite"><span>⚡</span> <span class="snl" data-i18n="snLyLite">Fast mode — only navigation (untick for the full map)</span></label>
+    <!-- 10 Oct 2026 (navpro): cockpit switch, honest live-feed rows, this device.
+         snLyLiteNote shows only on a basic device, where Fast mode is locked on. -->
+    <div class="sn-ly-note" id="snLyLiteNote" data-i18n="snLiteLocked" hidden>Basic device: Fast mode only</div>
+    <label class="sn-ly sn-ly-extra"><input type="checkbox" id="snLyCockpit"><span>🚘</span> <span class="snl" data-i18n="snLyCockpit">Cockpit view — camera inside the vehicle</span></label>
+    <div class="sn-ly-sub" data-i18n="snLiveHd">Live feeds</div>
+    <div class="sn-ly sn-ly-st"><span>📡</span> <span class="snl"><span data-i18n="snLiveDriverRow">Live bus — driver's phone sharing</span><small id="snStDriverV" data-st="wait">—</small></span></div>
+    <div class="sn-ly sn-ly-st"><span>🛰️</span> <span class="snl"><span data-i18n="snLiveFleetRow">Fleet GPS unit + CCTV live view</span><small><em class="sn-soon" data-i18n="snComingSoon">Coming soon</em></small></span></div>
+    <div class="sn-ly-sub" data-i18n="snDeviceRow">This device</div>
+    <div class="sn-ly sn-ly-st"><span>📱</span> <span class="snl" id="snDeviceV">—</span></div>
   </div>
   <div class="sn-hud off" id="snHud">
     <div class="big"><b id="snSpeed">0</b><span>km/h</span></div>
@@ -2941,6 +2954,7 @@ s.addEventListener('click',function(e){e.preventDefault();
     <div class="cell"><b id="snAcc">—</b><span data-i18n="snHudAcc">Accuracy</span></div>
     <div class="cell"><b id="snAlt">—</b><span data-i18n="snHudAlt">Altitude</span></div>
     <div class="cell"><b id="snCoord">—</b><span data-i18n="snHudPos">Position</span></div>
+    <div class="cell"><b id="snGps">—</b><span data-i18n="snHudGps">GPS fix</span></div>
   </div>
   <div class="sn-navcard" id="snNavCard">
     <div class="sn-nc-top"><span class="sn-nc-eta" id="snNcEta">—</span><span class="sn-nc-dist" id="snNcDist">—</span></div>
@@ -2990,6 +3004,7 @@ s.addEventListener('click',function(e){e.preventDefault();
         <div class="sn-mode" data-snmode="bus" role="button" tabindex="0"><span class="em">🚌</span><span class="snl" data-i18n="snModeBus">Bus</span></div>
         <div class="sn-mode" data-snmode="bicycle" role="button" tabindex="0"><span class="em">🚴</span><span class="snl" data-i18n="snModeCycle">Cycle</span></div>
         <div class="sn-mode" data-snmode="pedestrian" role="button" tabindex="0"><span class="em">🚶</span><span class="snl" data-i18n="snModeWalk">Walk</span></div>
+        <div class="sn-mode" data-snmode="flight" role="button" tabindex="0"><span class="em">✈️</span><span class="snl" data-i18n="snModeFlight">Flight</span></div>
       </div>
       <div class="sn-ab">
         <div class="sn-fld"><span class="pin" style="color:#4285F4" aria-hidden="true">●</span>
@@ -3011,12 +3026,25 @@ s.addEventListener('click',function(e){e.preventDefault();
         <div class="sn-steps" id="snSteps"></div>
       </div>
       <div class="sn-altbar" id="snAltBar"></div>
+      <!-- 10 Oct 2026 (navpro): flight mode has no road route - a straight-line
+           arc and an estimate. No booking promise: the owner has not decided
+           on a flight product (review fix, 10 Oct). -->
+      <div class="sn-flight" id="snFlightCard">
+        <div class="ft-t" data-i18n="snFlightCardT">✈️ Flight view</div>
+        <div class="ft-d" id="snFlightDist">—</div>
+        <div class="ft-n" data-i18n="snFlightNote">Straight line (as the crow flies), not a road route. Cruise time is an estimate only.</div>
+      </div>
       <div class="sn-trackcard" id="snTrackCard">
         <div class="ttl"><span data-i18n="snLiveTitle">🚌 Live bus position</span> <small id="snTrackUpd" data-i18n="snWaitDriver">waiting for driver…</small></div>
         <div class="row"><div class="cell"><b id="snTrackDist">—</b><span data-i18n="snRemaining">Remaining</span></div>
           <div class="cell"><b id="snTrackEta">—</b><span data-i18n="snEta">ETA</span></div></div>
         <div class="row"><div class="cell stop"><b id="snTrackCur">—</b><span data-i18n="snCurStop">Current stop</span></div>
           <div class="cell stop"><b id="snTrackNext">—</b><span data-i18n="snNextStop">Next stop</span></div></div>
+        <!-- 10 Oct 2026 (navpro): what is live and what is not, in plain words -->
+        <div class="sn-tc-status">
+          <div class="sn-tc-st"><span aria-hidden="true">📡</span><span data-i18n="snLiveDriverRow">Live bus — driver's phone sharing</span><b id="snTcDriverV" data-st="wait">—</b></div>
+          <div class="sn-tc-st"><span aria-hidden="true">🛰️</span><span data-i18n="snLiveFleetRow">Fleet GPS unit + CCTV live view</span><em class="sn-soon" data-i18n="snComingSoon">Coming soon</em></div>
+        </div>
       </div>
       </div><!-- /.sn-sheet-scroll -->
     </div>

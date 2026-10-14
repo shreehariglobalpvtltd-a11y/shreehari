@@ -244,6 +244,8 @@ const CORE_SUITES = [
     'payment-risk-test.php'       => 'fake-proof scoring, screenshot fingerprint, two-step approval, report-fake, gate live code',
     'staff-msg-test.php'          => 'admin <-> agent chat: scope, CSRF, files behind PHP, push, unread counts',
     'content-pages-test.php'      => '/india-nepal, /offices, /explore, /tours pages, enquiry form, sitemap',
+    // 10 Oct 2026 S Hari Nav pro (static, no DB).
+    'nav-pro-test.php'            => 'S Hari Nav pro: loader chain, precache, i18n, hooks, honest live / flight / device rows',
 ];
 
 /**

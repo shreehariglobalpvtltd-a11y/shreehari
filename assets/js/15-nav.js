@@ -210,6 +210,8 @@ function renderNav(){
     // [MAP PRO] Bug 3 — resize AFTER the view is laid out & painted (double rAF),
     // so the GL canvas never keeps a stale 0×0 / previous size when we re-enter nav.
     requestAnimationFrame(function(){ requestAnimationFrame(function(){ if(SN.map) SN.map.resize(); }); });
+    /* 10 Oct 2026 (navpro): re-entering #/nav re-arms the keyboard / TV / status listeners */
+    if(typeof snProAttach==='function') snProAttach();
     return;
   }
   ensureMapLibre(function(){ snOwnStyles(function(){ initNavApp(); }); });
@@ -232,6 +234,10 @@ function cleanupNav(){
   if(SN.motionAnim!=null){ cancelAnimationFrame(SN.motionAnim); SN.motionAnim=null; }
   if(SN.trackPollT!=null){ clearInterval(SN.trackPollT); SN.trackPollT=null; }
   SN.driverBroadcast=false; SN.persistFollow=false;
+  /* 10 Oct 2026 (navpro): the compass listeners were never removed before;
+     the pro bundle drops its keyboard / visibility / resize listeners too. */
+  if(typeof SN.stopCompass==='function') SN.stopCompass();
+  if(typeof snProCleanup==='function') snProCleanup();
 }
 
 function initNavApp(){
@@ -343,6 +349,9 @@ function initNavApp(){
     return false;
   }
   SN.lite=snDetectLite();
+  /* 10 Oct 2026 (navpro): a low-tier device (26-navpro.js snDeviceProfile) is
+     always on the light map, whatever "Full map" was saved on it. */
+  if(typeof snProForceLite==='function'&&snProForceLite()) SN.lite=true;
   SN.weak=snDetectWeak();
   var _nv=document.getElementById('view-nav'); if(_nv) _nv.classList.toggle('sn-lite',SN.lite);
   if(SN.lite){ SN.templesOn=false; try{ s('#snTemples').classList.remove('on'); var _lt=s('#snLyTemples'); if(_lt) _lt.checked=false; }catch(e){} }
@@ -367,7 +376,7 @@ function initNavApp(){
   var map;
   try{
     if(typeof maplibregl==='undefined'||(typeof maplibregl.supported==='function'&&!maplibregl.supported())) throw new Error('webgl-unsupported');
-    map=new maplibregl.Map({
+    var mapOpts={
       container:'sn-map', style:snStyleOf(SN.currentStyle), center:[76.8,26.6], zoom:4.7, pitch:0, bearing:0,
       attributionControl:{compact:true},
       /* shg-v59 — MapLibre already defaults to inertia on drag, smooth wheel-zoom,
@@ -387,7 +396,11 @@ function initNavApp(){
          Himalaya). Nobody can drag it off to the Atlantic on a 3G phone and
          pull tiles that never matter; zoom floor keeps the corridor readable. */
       maxBounds:[[61.0,4.5],[99.5,38.5]], minZoom:3.8
-    });
+    };
+    /* 10 Oct 2026 (navpro): the device tier (cores, RAM, GPU, network) sets the
+       tile cache, pixel ratio, antialias and cross-fade - see snProMapOpts. */
+    if(typeof snProMapOpts==='function') mapOpts=snProMapOpts(mapOpts)||mapOpts;
+    map=new maplibregl.Map(mapOpts);
   }catch(err){ snNoMapFallback(err); return; }
   map.addControl(new maplibregl.ScaleControl({maxWidth:96,unit:'metric'}),'bottom-left');
   SN.map=map;
@@ -753,6 +766,7 @@ function initNavApp(){
   /* compass + zoom */
   map.on('rotate',function(e){ s('#snCompass .sn-needle').style.transform='rotate('+ -map.getBearing()+'deg)'; if(e.originalEvent) SN.userRotated=true; });
   s('#snCompass').onclick=function(){
+    snStartCompass();   /* 10 Oct 2026 (navpro): iOS asks for the sensor from this tap too - never on load */
     SN.compassMode=!SN.compassMode; SN.userRotated=false;
     s('#snCompass').classList.toggle('on',SN.compassMode);
     if(!SN.compassMode) map.easeTo({bearing:0,pitch:SN.is3D?60:0,duration:500});
@@ -1016,6 +1030,7 @@ function initNavApp(){
   };
   function snTrackTick(){
     if(document.hidden) return;   // 10 Oct 2026 (perf): no redraw for a hidden tab; the age is read from the clock
+    if(typeof snProLiveStatus==='function') snProLiveStatus(false);   /* 10 Oct 2026 (navpro): the honest status rows */
     if(!SN.trackLastTs){ s('#snTrackUpd').textContent=snT('snWaitDriver'); return; }
     var secs=Math.round((Date.now()-SN.trackLastTs)/1000);
     s('#snTrackUpd').textContent=secs<5?snT('snJustNow'):(secs<60?snT('snSecAgo',{n:secs}):snT('snMinAgo',{n:Math.round(secs/60)}));
@@ -1073,6 +1088,9 @@ function initNavApp(){
           }
         }
       };
+      /* 10 Oct 2026 (navpro): window.SHG_NAV.onBusFix (a future fleet GPS unit) pushes
+         into this SAME path - marker, glide, trail, ETA, stops, follow camera. */
+      SN.busFixSink=onBusFix;
       SN.trackUnsub=subscribeLocation(onBusFix);   /* same-device shim (driver phone / tests) */
       /* Cross-device (5 Sep 2026): the driver's phone publishes its GPS to the shared
          `livebus` key every ~10 s (see onSnPos); the Trip Companion already reads it,
@@ -1093,6 +1111,7 @@ function initNavApp(){
       SN.trackTickT=setInterval(snTrackTick,5000);
       snToast(snT('snWatching'));
     } else {
+      SN.busFixSink=null;   /* 10 Oct 2026 (navpro) */
       if(SN.trackUnsub){ SN.trackUnsub(); SN.trackUnsub=null; }
       if(SN.trackPollT){ clearInterval(SN.trackPollT); SN.trackPollT=null; }
       if(SN.trackTickT){ clearInterval(SN.trackTickT); SN.trackTickT=null; }
@@ -1103,7 +1122,7 @@ function initNavApp(){
   };
 
   /* GPS — smart vehicle markers + speed-adaptive camera */
-  var SN_MODE_CLR={auto:'#4285F4',motorcycle:'#7B2FBE',bus:'#178A50',bicycle:'#FF9800',pedestrian:'#00BCD4'};
+  var SN_MODE_CLR={auto:'#4285F4',motorcycle:'#7B2FBE',bus:'#178A50',bicycle:'#FF9800',pedestrian:'#00BCD4',flight:'#1E6FD9'};   /* flight: 10 Oct 2026 (navpro) */
   function ensureMe(){
     if(SN.meMarker) return;
     var el=document.createElement('div'); el.className='sn-me';
@@ -1160,7 +1179,11 @@ function initNavApp(){
   function snTargetBearing(){
     var walk=SN.mode==='pedestrian'||SN.mode==='bicycle';
     if(SN.routeCoords&&SN.routeCumKm){
-      var at=SN.routeProgKm||0, a=snPointAtKm(at), b=snPointAtKm(at+(walk?0.025:0.07));
+      /* 10 Oct 2026 (navpro): the cockpit preset reads further ahead for a bus -
+         read live for the CURRENT mode (the S Hari preset / a restored route set
+         SN.mode without a chip click) */
+      var look=(typeof snProLook==='function')?snProLook():null;
+      var at=SN.routeProgKm||0, a=snPointAtKm(at), b=snPointAtKm(at+(look||(walk?0.025:0.07)));
       if(a&&b&&(a[0]!==b[0]||a[1]!==b[1])) return snBearing(a,b);
     }
     var g=SN.gpsPos||{};
@@ -1202,8 +1225,11 @@ function initNavApp(){
         if(nav){
           var tb=snTargetBearing();
           if(tb!=null){ var b0=map.getBearing(), dB=snShortestArcDelta(b0,tb); if(Math.abs(dB)>0.2){ cam.bearing=b0+dB*(1-Math.exp(-dt/SN_TAU_BRG)); mv=true; } }
-          var tz=snTargetZoom(), z0=map.getZoom(); if(Math.abs(tz-z0)>0.01){ cam.zoom=z0+(tz-z0)*(1-Math.exp(-dt/SN_TAU_ZM)); mv=true; }
-          var tp=SN.weak?0:52, p0=map.getPitch(); if(Math.abs(tp-p0)>0.3){ cam.pitch=p0+(tp-p0)*(1-Math.exp(-dt/SN_TAU_PITCH)); mv=true; }
+          /* 10 Oct 2026 (navpro): the cockpit preset (per vehicle: car / bike / bus /
+             cycle / walk) overrides zoom + pitch while it is on; same time constants. */
+          var pc=(typeof snProCamTarget==='function')?snProCamTarget():null;
+          var tz=pc?pc.zoom:snTargetZoom(), z0=map.getZoom(); if(Math.abs(tz-z0)>0.01){ cam.zoom=z0+(tz-z0)*(1-Math.exp(-dt/SN_TAU_ZM)); mv=true; }
+          var tp=SN.weak?0:(pc?pc.pitch:52), p0=map.getPitch(); if(Math.abs(tp-p0)>0.3){ cam.pitch=p0+(tp-p0)*(1-Math.exp(-dt/SN_TAU_PITCH)); mv=true; }
         }
         if(mv){ map.jumpTo(cam); active=true; }
       } else if(SN._navPad){ snNavPadding(false); }
@@ -1267,6 +1293,12 @@ function initNavApp(){
       }
     } catch(e){}
   }
+  /* 10 Oct 2026 (navpro): cleanupNav removes the sensor listeners (they stayed
+     on for the life of the page before); the next 📍 / 🧭 tap starts them again. */
+  SN.stopCompass=function(){
+    try{ window.removeEventListener('deviceorientationabsolute', snOnOrient, true); window.removeEventListener('deviceorientation', snOnOrient, true); }catch(e){}
+    SN.compassStarted=false;
+  };
 
   function onSnPos(p){
     var c=p.coords, fresh=!SN.meMarker;
@@ -1315,7 +1347,9 @@ function initNavApp(){
         spd:c.speed!=null?Math.round(c.speed*100)/100:null,
         acc:c.accuracy!=null?Math.round(c.accuracy):null,
         stop:nearName,next:'',at:Date.now(),by:(window.SHG_BOOT.staff.name||'driver')};
-      shgApi.post('/kv.php',{action:'set',key:'livebus',value:JSON.stringify(lbPayload)}).catch(function(){});
+      /* 10 Oct 2026 (navpro): the time of the last publish the server ACCEPTED -
+         the honest status row says "this phone is sharing" only from this */
+      shgApi.post('/kv.php',{action:'set',key:'livebus',value:JSON.stringify(lbPayload)}).then(function(){ SN.kvPushOkAt=Date.now(); }).catch(function(){});
     }
 
     /* A3 — road snapping: while a route is active, show the dot on the road
@@ -1337,6 +1371,9 @@ function initNavApp(){
     var gpsHdg = (c.heading != null && !isNaN(c.heading)) ? c.heading : null;
     var hdg    = (moving && gpsHdg != null) ? gpsHdg
                : (SN.compassHeading != null ? SN.compassHeading : gpsHdg);
+    /* 10 Oct 2026 (navpro): below 2 m/s the compass is low-passed and the last
+       good heading is held, so the arrow never spins at a standstill. */
+    if(typeof snProFuseHeading==='function') hdg=snProFuseHeading(c, gpsHdg, hdg);
     if(SN.meMarker&&hdg!=null&&!isNaN(hdg)){
       /* shg-v59 — shortest-arc smooth rotation (was a hard snap). Duration is a hair
          shorter than the position tween so the direction "locks in" before the marker
@@ -1417,6 +1454,8 @@ function initNavApp(){
     s('#snAcc').textContent=c.accuracy!=null?'±'+Math.round(c.accuracy)+' m':'—';
     s('#snAlt').textContent=c.altitude!=null?Math.round(c.altitude)+' m':'—';
     s('#snCoord').textContent=c.latitude.toFixed(4)+', '+c.longitude.toFixed(4);
+    /* 10 Oct 2026 (navpro): GPS cadence / accuracy cell + the cockpit gauges */
+    if(typeof snProOnFix==='function') snProOnFix(c, hdg);
     snFocusCardSync(false);   /* [SECTION 4] keep Focus card live (speed + throttled CURRENT CITY) */
     if(!SN.origin) snSetOrigin(SN.gpsPos.lng,SN.gpsPos.lat,snT('snMyLocation'));
   }
@@ -1654,6 +1693,7 @@ function initNavApp(){
     if(SN.routeCoords&&SN.routeCoords.length&&SN.lastTripSum) snPeekSet(snTripLine(SN.lastTripSum),snT('snTapStart'));
     if(s('#snSummary')&&s('#snSummary').classList.contains('show')) s('#snSVia').textContent=snT('snVia',{m:snModeName()});
     if(SN.trackingMode) snTrackTick();
+    if(typeof snProRelabel==='function') snProRelabel();   /* 10 Oct 2026 (navpro) */
   };
   s('#snUseGps').onclick=function(){ s('#snLocate').click(); };
   map.on('click',function(e){
@@ -1692,6 +1732,7 @@ function initNavApp(){
     var ab=s('#snAltBar');if(ab)ab.classList.remove('show');
     var ar=s('#snArrival');if(ar)ar.classList.remove('show');
     if(typeof snTrailClear==='function') snTrailClear();
+    if(typeof snProFlightClear==='function') snProFlightClear();   /* 10 Oct 2026 (navpro) */
     if(typeof snFocus==='function') snFocus(false);   /* [SECTION 4] leaving a route exits Focus mode */
     snRefreshGo();
   };
@@ -1704,6 +1745,10 @@ function initNavApp(){
   }
   function snRoute(){
     if(!(SN.origin&&SN.dest)) return;
+    /* 10 Oct 2026 (navpro): flight has no road routing - the pro bundle draws a
+       great-circle arc instead and the routing engine is never asked. */
+    if(SN.mode==='flight'){ if(typeof snProFlight==='function') snProFlight(); return; }
+    if(typeof snProFlightClear==='function') snProFlightClear();
     if(typeof snTrailClear==='function') snTrailClear();   /* [MAP PRO] real directions replace the signature trail */
     s('#snGo').textContent=snT('snRouting'); s('#snGo').disabled=true;
     var body={locations:[{lat:SN.origin.lat,lon:SN.origin.lng},{lat:SN.dest.lat,lon:SN.dest.lng}],
@@ -1750,7 +1795,7 @@ function initNavApp(){
   function snTripLine(sum){ return '🚌 '+snFmtTime(sum.time)+' · '+sum.length.toFixed(sum.length<10?1:0)+' km'; }
   /* the travel mode in the app's language - the same words as the mode chips */
   function snModeName(){
-    return snT({auto:'snModeCar',motorcycle:'snModeBike',bus:'snModeBus',bicycle:'snModeCycle',pedestrian:'snModeWalk'}[SN.mode]||'snModeCar');
+    return snT({auto:'snModeCar',motorcycle:'snModeBike',bus:'snModeBus',bicycle:'snModeCycle',pedestrian:'snModeWalk',flight:'snModeFlight'}[SN.mode]||'snModeCar');
   }
   function snManIcon(type){
     var m={1:'🚩',2:'🚩',3:'🚩',4:'🏁',5:'🏁',6:'🏁',7:'⬆️',8:'⬆️',17:'⬆️',22:'⬆️',
@@ -2131,8 +2176,13 @@ function initNavApp(){
       var zmin=5, zmax=bb.route?11:Math.min(13,Math.round(map.getZoom())+1), cap=700;
       var urls=buildTileUrls(tmpl,bb,zmin,zmax,cap);
       if(!urls.length){ snToast(snT('snSaveNothing')); return; }
+      /* 10 Oct 2026 (navpro): the device's free storage caps the batch (never more
+         than a quarter of it) and the toast says the MB before anything downloads. */
+      var plan=(typeof snProSavePlan==='function')?await snProSavePlan(urls):null;
+      if(plan===false) return;   /* no room - the pro bundle already said so */
+      if(plan&&plan.urls) urls=plan.urls;
       saveBtn.classList.add('saving');
-      snToast(snT('snSaving',{n:urls.length}));
+      snToast(plan?plan.msg:snT('snSaving',{n:urls.length}));
       navigator.serviceWorker.controller.postMessage({type:'shg-prefetch',urls:urls});
     };
     if(navigator.serviceWorker) navigator.serviceWorker.addEventListener('message',function(ev){
@@ -2180,6 +2230,11 @@ function initNavApp(){
        re-load (theme swap) only fades in the first time. */
     if(!SN.mapReady){ SN.mapReady=true; var mn=document.getElementById('sn-map'); if(mn) mn.classList.add('sn-map-ready'); }
   });
+  /* 10 Oct 2026 (navpro): the pro bundle (26-navpro.js) reuses these closure
+     helpers instead of duplicating them, then wires its own buttons. */
+  SN.ease=snEase; SN.toast=snToast; SN.kick=snMotionKick; SN.navCamOn=snNavCamOn;
+  SN.peekSet=snPeekSet; SN.sheet=snSheet; SN.focus=snFocus; SN.fmtTime=snFmtTime;
+  if(typeof snProInit==='function'){ try{ snProInit(); }catch(e){ try{ console.warn('S Hari Nav pro: init failed', e); }catch(e2){} } }
   var loader=$('#snLoad'); if(loader) loader.style.display='none';
   SN.ready=true;
   // [MAP PRO] Bug 3 — keep the GL canvas matched to the viewport on rotate/resize

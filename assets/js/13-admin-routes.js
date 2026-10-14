@@ -2259,12 +2259,21 @@ var SN_NAV_P=null, SN_NAV_LOADED=false;
 function snNavLoad(){
   if(SN_NAV_P) return SN_NAV_P;
   var ver=''; try{ var sc=document.querySelector('script[src*="13-admin-routes.js"]'); var m=sc&&sc.getAttribute('src').match(/[?&]v=([^&]+)/); ver=m?m[1]:''; }catch(e){}
-  SN_NAV_P=new Promise(function(res,rej){
-    var s=document.createElement('script'); s.src='/assets/js/15-nav.js'+(ver?'?v='+encodeURIComponent(ver):''); s.async=true;
-    s.onload=function(){ SN_NAV_LOADED=true; res(); };
-    s.onerror=function(){ SN_NAV_P=null; rej(new Error('nav bundle failed to load')); };
-    document.head.appendChild(s);
-  });
+  /* 10 Oct 2026 (navpro): the pro bundle (26-navpro.js - cockpit view, flight,
+     device tier, TV + keyboard, honest live status) is chained right after
+     15-nav.js with the same ?v= stamp, and renderNav waits for both. A failed
+     pro load is not fatal: every hook in 15-nav.js is guarded with typeof. */
+  function snScript(name){
+    return new Promise(function(res,rej){
+      var s=document.createElement('script'); s.src='/assets/js/'+name+(ver?'?v='+encodeURIComponent(ver):''); s.async=true;
+      s.onload=function(){ res(); };
+      s.onerror=function(){ rej(new Error(name+' failed to load')); };
+      document.head.appendChild(s);
+    });
+  }
+  SN_NAV_P=snScript('15-nav.js')
+    .then(function(){ SN_NAV_LOADED=true; return snScript('26-navpro.js').catch(function(){}); })
+    .catch(function(e){ SN_NAV_P=null; throw e; });
   return SN_NAV_P;
 }
 function renderNav(){
