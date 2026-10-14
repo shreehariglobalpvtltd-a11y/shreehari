@@ -381,9 +381,9 @@
   $('sbPoint').addEventListener('change', function () { S.point = this.value; S.why.point = null; $('sbPointWhy').textContent = ''; S.manual = []; changed(); });
   $('sbDateIn').addEventListener('change', function () { if (this.value) { S.date = this.value; S.manual = []; renderDates(); changed(); } });
   $('sbCc').addEventListener('change', function () { S.cc = this.value; changed('phone'); });
-  $('sbPhone').addEventListener('input', function () { S.phone = this.value; store.set(); showErrs(false); syncButtons(); });
+  $('sbPhone').addEventListener('input', function () { S.phone = this.value; S.idem = null; store.set(); showErrs(false); syncButtons(); });
   $('sbPhone').addEventListener('blur', function () { S.touched.phone = true; showErrs(false); if (S.q) requote(); });
-  $('sbName').addEventListener('input', function () { S.name = this.value; store.set(); showErrs(false); syncButtons(); });
+  $('sbName').addEventListener('input', function () { S.name = this.value; S.idem = null; store.set(); showErrs(false); syncButtons(); });
   $('sbName').addEventListener('blur', function () { S.touched.name = true; showErrs(false); });
 
   function nearMe() {
@@ -501,11 +501,12 @@
     try { crypto.getRandomValues(a); } catch (e) { for (var i = 0; i < 16; i++) a[i] = Math.floor(Math.random() * 256); }
     return 'sb' + Array.prototype.map.call(a, function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
   }
-  function book(pay) {
+  function book(pay, wantPrint) {
     S.touched.book = S.touched.phone = S.touched.name = S.touched.pax = true;
     var e = showErrs(true);
     if (Object.keys(e).length) { var k = Object.keys(e)[0]; say(e[k]); if (k === 'phone') $('sbPhone').focus(); else if (k === 'name') $('sbName').focus(); return; }
     if (!S.q || !S.q.ok || S.busy) return;
+    printNext = !!wantPrint;   // only a sale that really starts may print
     S.busy = true; S.idem = S.idem || newKey();
     var btn = $(pay === 'cash' ? 'sbCash' : 'sbOnline'); btn.classList.add('sb-busy');
     var lbl = btn.querySelector('span'); var old = lbl.textContent; lbl.textContent = tr('booking');
@@ -529,8 +530,12 @@
       else if (r.payPage) { say(tr('heldQr')); setTimeout(function () { location.href = r.payPage; }, 400); }
     }).catch(function (er) {
       S.busy = false; btn.classList.remove('sb-busy'); lbl.textContent = old;
+      printNext = false;
       if (er && er.fields && er.fields.code === 'changed' && er.fields.quote) { S.q = er.fields.quote; renderDates(); renderQuote(true); say(tr('changed')); S.idem = null; }
       else say(er && er.message ? er.message : 'Error');
+      // The server answered (a refusal): the next tap is a new request with a new key. A lost
+      // answer (no status: timeout / offline) keeps the key, so the retry gets the same booking back.
+      if (er && er.status) S.idem = null;
       syncButtons();
     });
   }
@@ -556,7 +561,7 @@
   /* Counter keyboard: Ctrl+Enter = auto-berth + Cash + print · Enter in the name / passengers = one more passenger. */
   if (STAFF) {
     root.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); printNext = true; book('cash'); return; }
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); book('cash', true); return; }
       if (e.key === 'Enter' && (e.target.id === 'sbName' || e.target.closest('#sbPax'))) {
         e.preventDefault();
         if (S.pax.length < S.maxPax) { S.pax.push({ gender: S.pax.length ? S.pax[S.pax.length - 1].gender : '', band: 'adult' }); S.manual = []; renderPax(); changed(); }
@@ -687,7 +692,12 @@
     }, { threshold: 0.25 }).observe($('sbCard'));
   }
   new MutationObserver(function () { applyWords(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] });
-  window.SmartBook = { quote: function () { return S.q; }, state: S, requote: requote, loadCustomer: loadCustomer, fillText: fillFromText, mode: MODE };
+  /* Staff: clear the card for the next customer after a sale (keeps the date / pickup / type). */
+  function resetForNext() {
+    S.phone = ''; S.name = ''; S.pax = [{ gender: '', band: 'adult' }]; S.manual = []; S.seatMode = 'auto'; S.idem = null; S.touched = {};
+    S.why = {}; fill(); applyWords(); store.set(); showErrs(false); requote(0);
+  }
+  window.SmartBook = { quote: function () { return S.q; }, state: S, requote: requote, loadCustomer: loadCustomer, fillText: fillFromText, resetForNext: resetForNext, mode: MODE };
 
   boot();
   homeFlag();

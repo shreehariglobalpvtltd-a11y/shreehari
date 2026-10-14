@@ -135,7 +135,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $tab   = 'policy';
             } elseif ($act === 'stops') {
                 $vis = (array) ($_POST['vis'] ?? []);
-                $rows = Database::fetchAll("SELECT rs.id, rs.visible_to FROM route_stops rs JOIN routes r ON r.id = rs.route_id WHERE r.is_active = 1");
+                $rows = Database::fetchAll("SELECT rs.id, rs.visible_to FROM route_stops rs JOIN routes r ON r.id = rs.route_id WHERE r.is_active = 1 AND rs.is_active = 1");
                 $n = 0;
                 foreach ($rows as $r) {
                     $want = array_values(array_intersect(['customer', 'agent', 'counter'], array_keys((array) ($vis[(int) $r['id']] ?? []))));

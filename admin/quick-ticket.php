@@ -496,7 +496,7 @@ admin_header('🤖 QuickBot Ticket', 'quick-ticket');
                a long list, and say when the sale began as a WhatsApp message. */ ?>
       <label class="qt-via-wa"><input type="checkbox" id="qtViaWa"> <span>💬 WhatsApp बाट आएको request · this booking came from a WhatsApp message</span></label>
       <style>.qt-via-wa{display:flex;align-items:center;gap:10px;min-height:44px;margin:0 0 10px;font-size:13.5px;font-weight:600;cursor:pointer}.qt-via-wa input{width:22px;height:22px;accent-color:#25D366;flex:none}#qtAgent+.shg-ap,.qt-row .shg-ap{max-width:420px}</style>
-      <script src="/assets/js/agent-picker.js?v=20261015c"></script>
+      <script src="/assets/js/agent-picker.js?v=20261015d"></script>
       <script>if (window.shgAgentPicker) { shgAgentPicker(document.getElementById('qtAgent')); }</script>
 
       <!-- Phone summary (2 Oct 2026): on a phone the suggestion card sits

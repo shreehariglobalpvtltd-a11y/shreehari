@@ -51,7 +51,9 @@ $owns    = $booking !== null && (
     || ($key !== '' && Ticket::checkDownloadToken($pnr, $key))
 );
 if ($booking !== null && (string) $booking['status'] === 'confirmed' && $owns) {
-    header('Location: /#/?ticket=' . rawurlencode($pnr), true, 302);
+    // the browser that booked opens the ticket on the home page; a keyed link (an agent's customer) gets the ticket itself
+    $dest = in_array($pnr, Auth::ownPnrs(), true) ? '/#/?ticket=' . rawurlencode($pnr) : Ticket::imageUrl($pnr) . '&view=1';
+    header('Location: ' . $dest, true, 302);
     exit;
 }
 
@@ -210,6 +212,7 @@ a{color:var(--primary)}
     <label for="shot" data-t="shot">or a screenshot</label>
     <input type="file" id="shot" name="screenshot" accept="image/*">
     <input type="hidden" name="pnr" value="<?= $e($pnr) ?>">
+    <input type="hidden" name="k" value="<?= $e($key) ?>">
     <input type="hidden" name="amount" value="<?= $e($due) ?>">
     <input type="hidden" name="method" id="method" value="upi">
     <input type="hidden" name="<?= $e(CSRF_TOKEN_NAME) ?>" value="<?= $e($csrf) ?>">

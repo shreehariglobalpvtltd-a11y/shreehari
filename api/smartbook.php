@@ -127,12 +127,13 @@ try {
         $where  = "b.status IN ('confirmed','completed') AND b.created_at > NOW() - INTERVAL 180 DAY AND b.contact_phone NOT LIKE '0000%'";
         if ($scope !== null) {
             $where .= ' AND b.sold_by_admin_id = :me';
-            $params['me'] = $scope;
+            $params['me']  = $scope;
+            $params['me2'] = $scope;
         }
         $rows = Database::fetchAll(
             "SELECT b.contact_phone AS phone, COUNT(*) AS trips, MAX(b.created_at) AS last_at,
                     (SELECT bp.full_name FROM bookings b2 JOIN booking_passengers bp ON bp.booking_id = b2.id AND bp.is_primary = 1
-                      WHERE b2.contact_phone = b.contact_phone ORDER BY b2.id DESC LIMIT 1) AS name
+                      WHERE b2.contact_phone = b.contact_phone" . ($scope !== null ? ' AND b2.sold_by_admin_id = :me2' : '') . " ORDER BY b2.id DESC LIMIT 1) AS name
                FROM bookings b WHERE {$where}
            GROUP BY b.contact_phone ORDER BY trips DESC, last_at DESC LIMIT 20",
             $params

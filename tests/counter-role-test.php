@@ -9,9 +9,9 @@
  *   • the agent-money wall: every agent-facing office page requires
  *     commissions.view for non-agent viewers (counter/support stay out);
  *   • mayCancelBooking(): counter cancels any booking, agent only their own;
- *   • Fare::refundFor() enforces the FIVE slabs the public Terms page has
- *     always promised — 96h/90 · 48h/75 · 24h/50 · 6h/25 · <6h/0 — and the
- *     JS mirrors (02-config, i18n payPolicy, routes answer) say the same;
+ *   • Fare::refundFor() enforces the ONE policy (SmartBook v5 D8, 15 Oct
+ *     2026): 48h/75 · 24h/50 · <24h/0 — the 96h/90 and 6h/25 tiers are gone
+ *     from the code, the JS mirrors and the Terms;
  *   • admins.role ENUM accepts 'counter' after the 2026-09 migration.
  *
  *   php -c .claude/php-dev.ini tests/counter-role-test.php
@@ -42,7 +42,7 @@ Database::run(
 Database::run(
     "INSERT INTO `settings` (`skey`,`svalue`,`stype`)
      VALUES ('refund_slabs',
-             '[{\"minHrs\":96,\"pct\":90},{\"minHrs\":48,\"pct\":75},{\"minHrs\":24,\"pct\":50},{\"minHrs\":6,\"pct\":25},{\"minHrs\":0,\"pct\":0}]',
+             '[{\"minHrs\":48,\"pct\":75},{\"minHrs\":24,\"pct\":50},{\"minHrs\":0,\"pct\":0}]',
              'json')
      ON DUPLICATE KEY UPDATE `svalue` = VALUES(`svalue`), `stype` = VALUES(`stype`)"
 );
@@ -88,14 +88,14 @@ try {
     check('agent still lacks bookings.edit', !Auth::can('bookings.edit'));
 
     echo "\n== refund slabs = the published Terms ==\n";
-    $cases = [[100.0, 90.0], [72.0, 75.0], [30.0, 50.0], [12.0, 25.0], [2.0, 0.0]];
+    $cases = [[100.0, 75.0], [72.0, 75.0], [30.0, 50.0], [12.0, 0.0], [2.0, 0.0]];
     foreach ($cases as [$hrs, $pct]) {
         $at = time() + (int) round($hrs * 3600) + 120;   // +2 min so the slab boundary can't flap mid-test
         $r  = Fare::refundFor(1000.0, date('Y-m-d', $at), date('H:i:s', $at));
         check(sprintf('%.0fh before departure -> %.0f%% (got %.0f%%)', $hrs, $pct, $r['percent']), $r['percent'] === $pct);
     }
     $r = Fare::refundFor(2000.0, date('Y-m-d', time() + 100 * 3600), date('H:i:s', time() + 100 * 3600));
-    check('90% of 2000 rounds to 1800', $r['amount'] === 1800.0);
+    check('75% of 2000 = 1500 (D8: no 90% tier)', $r['amount'] === 1500.0);
 
     echo "\n== admins.role ENUM accepts counter ==\n";
     Database::run("DELETE FROM admins WHERE username = 'counter-test-tmp'");
@@ -114,21 +114,20 @@ try {
     $src  = static fn(string $p): string => (string) file_get_contents($root . '/' . $p);
 
     $fare = $src('includes/fare.php');
-    check('fare.php default slabs carry 96/90 and 6/25',
-        str_contains($fare, "['minHrs' => 96, 'pct' => 90]") && str_contains($fare, "['minHrs' => 6,  'pct' => 25]"));
+    check('fare.php default slabs = the D8 three (no 96/90, no 6/25)',
+        str_contains($fare, "['minHrs' => 48, 'pct' => 75]") && !str_contains($fare, "['minHrs' => 96, 'pct' => 90]") && !str_contains($fare, "'pct' => 25]"));
 
     $cfg = $src('assets/js/02-config.js');
-    check('02-config.js refundSlabs carry 96/90 and 6/25',
-        str_contains($cfg, '{ minHrs: 96, pct: 90 }') && str_contains($cfg, '{ minHrs: 6,  pct: 25 }'));
+    check('02-config.js offline refundSlabs = the D8 three',
+        str_contains($cfg, '{ minHrs: 48, pct: 75 }') && !str_contains($cfg, 'minHrs: 96') && !str_contains($cfg, '{ minHrs: 6,'));
 
     $i18n = $src('assets/js/04-i18n.js');
-    check('i18n payPolicy states the 5 tiers in en+hi+ne',
-        substr_count($i18n, '96') >= 2 && str_contains($i18n, '≥96 hrs before departure: 90% refund')
-        && str_contains($i18n, '≥९६ घण्टा अघि: ९०%'));
+    check('i18n payPolicy reads the one policy from the facts in en+hi+ne',
+        substr_count($i18n, "payPolicy: '{policy}'") === 3 && !str_contains($i18n, '90% refund'));
 
     $terms = $src('assets/js/terms-data.js');
-    check('terms-data.js still promises 96h/90% (source of truth)',
-        str_contains($terms, 'more than 96 hours before departure') && str_contains($terms, '90% is refunded'));
+    check('terms-data.js states 48h/75% and no longer 90%',
+        str_contains($terms, '48 hours or more before departure — 25% of the base fare is retained and 75% is refunded') && !str_contains($terms, '90% is refunded'));
 
     $guard = $src('admin/_guard.php');
     check('nav gates agents register + working screens on commissions.view for office viewers',

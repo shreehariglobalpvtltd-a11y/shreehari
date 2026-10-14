@@ -130,9 +130,7 @@ window.factPolicyLine = function () { var p = <?= json_encode($F['policy']['line
   pr.addEventListener('change', function () { try { localStorage.setItem('sb:print80', pr.checked ? '1' : '0'); } catch (e) {} });
   /* After a sale the card is cleared for the next customer. */
   window.SB_AFTER = function () {
-    var s = window.SmartBook && window.SmartBook.state; if (!s) return;
-    setTimeout(function () { s.phone = ''; s.name = ''; s.pax = [{ gender: '', band: 'adult' }];
-      document.getElementById('sbPhone').value = ''; document.getElementById('sbName').value = ''; }, 800);
+    setTimeout(function () { if (window.SmartBook && window.SmartBook.resetForNext) window.SmartBook.resetForNext(); }, 800);
   };
 })();
 </script>

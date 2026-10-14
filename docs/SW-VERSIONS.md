@@ -4,6 +4,7 @@ Moved out of `sw.js` on 2 Oct 2026: the history used to live on the `var VERSION
 
 The CURRENT version and its note stay on the `var VERSION` line in `sw.js`; this file holds the ones before it. Newest first. Each line: version — what shipped with it (as written at the time).
 
+- **shg-v214** — 15 Oct 2026: SmartBook card on the home page (one screen, Cash | Online), QR pay page, cash book
 - **shg-v213** — 15 Oct 2026: reschedule rule 96h everywhere, Rajkot office beside Ahmedabad, journey time from the timetable
 - **shg-v212** — 15 Oct 2026: SmartBook v5 phase 2 - one cancellation policy (48h 75% / 24-48h 50% / <24h 0, 5-7 days), 1,375 km everywhere, Rajkot in every pickup list
 - **shg-v211** — 14 Oct 2026: visual pro upgrade - 3 brand palettes (Professional default), HD visual pack, perf/touch/TV, S Hari Nav pro (cockpit, flight, device tiers) + route fix, business portfolio + tour demos, social/domain email/agreement facts

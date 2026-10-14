@@ -41,6 +41,11 @@ require_once __DIR__ . '/quickticket.php';
 require_once __DIR__ . '/boarding.php';
 require_once __DIR__ . '/sitefacts.php';
 
+/** An idempotency key presented with another request / by another browser: the card makes a new key. */
+final class SmartBookKeyReused extends RuntimeException
+{
+}
+
 /** A quote that moved since the card showed it — the card re-renders. */
 final class SmartBookChanged extends RuntimeException
 {
@@ -177,7 +182,9 @@ final class SmartBook
     public static function defaults(array $in, string $mode = 'customer'): array
     {
         $phone   = normalisePhone((string) ($in['phone'] ?? ''));
-        $history = $phone !== '' && self::mayReadHistory($phone, $mode) ? self::history($phone) : null;
+        $history = $phone !== '' && self::mayReadHistory($phone, $mode)
+            ? self::history($phone, $mode === 'agent' ? (int) (Auth::admin()['id'] ?? 0) : null)
+            : null;
         $why     = [];
 
         // Direction: opposite of the last one-way trip when it was > 7 days ago, else the same.
@@ -284,17 +291,20 @@ final class SmartBook
     }
 
     /** @return array{name: string, direction: string, daysAgo: ?int, boarding: string, drop: string, pax: list<array{gender: string, band: string}>}|null */
-    private static function history(string $phone): ?array
+    private static function history(string $phone, ?int $soldBy = null): ?array
     {
+        // An agent reads only the customers of their own sales.
+        $own    = $soldBy !== null ? ' AND b.sold_by_admin_id = :sb' : '';
+        $params = ['p' => $phone] + ($soldBy !== null ? ['sb' => $soldBy] : []);
         $b = Database::fetch(
             "SELECT b.id, l.travel_date, l.boarding_stop, l.drop_stop, r.to_city
                FROM bookings b
                JOIN booking_legs l ON l.booking_id = b.id AND l.leg_type = 'outbound'
                JOIN schedules s ON s.id = l.schedule_id
                JOIN routes r ON r.id = s.route_id
-              WHERE b.contact_phone = :p AND b.status IN ('confirmed','completed')
+              WHERE b.contact_phone = :p AND b.status IN ('confirmed','completed'){$own}
            ORDER BY l.travel_date DESC, b.id DESC LIMIT 1",
-            ['p' => $phone]
+            $params
         );
         if ($b === null) {
             return null;
@@ -325,8 +335,8 @@ final class SmartBook
         // The usual pickup across all of this number's trips, not just the last one.
         $most = Database::fetch(
             "SELECT l.boarding_stop, COUNT(*) n FROM bookings b JOIN booking_legs l ON l.booking_id = b.id
-              WHERE b.contact_phone = :p AND b.status IN ('confirmed','completed') GROUP BY l.boarding_stop ORDER BY n DESC LIMIT 1",
-            ['p' => $phone]
+              WHERE b.contact_phone = :p AND b.status IN ('confirmed','completed'){$own} GROUP BY l.boarding_stop ORDER BY n DESC LIMIT 1",
+            $params
         );
         $days = (int) floor((strtotime(todayISO()) - strtotime((string) $b['travel_date'])) / 86400);
         return [
@@ -532,7 +542,8 @@ final class SmartBook
                    at the sale). A taken berth or a gender-held cabin is still refused
                    by the sale itself (Seats::assertAvailable / assertGenderAllowed). */
                 $why = Security::clean((string) ($in['overrideReason'] ?? ''), 200);
-                if ($err !== '' && $mode === 'admin' && mb_strlen($why) >= 5 && !str_contains($err, 'not free')) {
+                $canOverride = $mode === 'admin' && in_array((string) (Auth::admin()['role'] ?? ''), ['superadmin', 'manager'], true);
+                if ($err !== '' && $canOverride && mb_strlen($why) >= 5 && !str_contains($err, 'not free') && !str_contains($err, 'every passenger')) {
                     $override = ['rule' => $err, 'reason' => $why];
                     $err      = '';
                 }
@@ -699,17 +710,33 @@ final class SmartBook
             throw new RuntimeException('Please tap again. / फेरि ट्याप गर्नुहोस्।');
         }
         $pay = $pay === 'online' ? 'online' : 'cash';
+        $fp  = self::fingerprint($in, $pay, $mode);
+        $again = 'Please tap again. / फेरि ट्याप गर्नुहोस्।';
 
         // Claim the key. A second tap / retry / duplicate callback gets the first answer back.
         $claimed = Database::insertIgnore('smartbook_requests', [
-            'idem_key'   => $idemKey,
-            'mode'       => $mode,
-            'ip_address' => Security::clientIp(),
+            'idem_key'    => $idemKey,
+            'mode'        => $mode,
+            'fingerprint' => $fp,
+            'ip_address'  => Security::clientIp(),
         ]);
         if (!$claimed) {
-            $row = Database::fetch('SELECT state, booking_id, response, updated_at FROM smartbook_requests WHERE idem_key = :k LIMIT 1', ['k' => $idemKey]);
+            $row = Database::fetch('SELECT state, booking_id, pnr, mode, fingerprint, ip_address, response, updated_at FROM smartbook_requests WHERE idem_key = :k LIMIT 1', ['k' => $idemKey]);
             if ($row === null) {
-                throw new RuntimeException('Please tap again. / फेरि ट्याप गर्नुहोस्।');
+                throw new RuntimeException($again);
+            }
+            /* A key answers only the SAME request (a counter retrying after a
+               timeout must never hand the next customer the previous one's
+               ticket) ... */
+            if ((string) ($row['fingerprint'] ?? '') !== '' && !hash_equals((string) $row['fingerprint'], $fp)) {
+                throw new SmartBookKeyReused($again);
+            }
+            // ... and only the browser that made it: a made booking only to the session that owns its PNR.
+            if ((int) ($row['booking_id'] ?? 0) > 0 && !in_array(strtoupper((string) $row['pnr']), Auth::ownPnrs(), true)) {
+                throw new SmartBookKeyReused($again);
+            }
+            if ((int) ($row['booking_id'] ?? 0) === 0 && ((string) $row['ip_address'] !== Security::clientIp() || (string) $row['mode'] !== $mode)) {
+                throw new SmartBookKeyReused($again);
             }
             // A booking already exists for this key - whatever happened after it, answer with it.
             if ((int) ($row['booking_id'] ?? 0) > 0) {
@@ -760,6 +787,22 @@ final class SmartBook
             ['b' => (int) $out['bookingId'], 'p' => (string) $out['pnr'], 'r' => $json === false ? null : $json, 'k' => $idemKey]
         );
         return $out;
+    }
+
+    /** What a booking request asked for - same key + different request = refused. */
+    private static function fingerprint(array $in, string $pay, string $mode): string
+    {
+        $pax = [];
+        foreach ((array) ($in['pax'] ?? []) as $p) {
+            $pax[] = is_array($p) ? strtolower((string) ($p['gender'] ?? '')) . ':' . strtolower((string) ($p['band'] ?? '')) : '';
+        }
+        $seats = array_map(static fn($x): string => strtoupper((string) $x), (array) ($in['seats'] ?? []));
+        sort($seats);
+        return hash('sha256', implode('|', [
+            $mode, $pay, normalisePhone((string) ($in['phone'] ?? '')), mb_strtolower(trim((string) ($in['name'] ?? ''))),
+            implode(',', $pax), implode(',', $seats), (string) ($in['direction'] ?? ''), (string) ($in['date'] ?? ''),
+            (string) ($in['point'] ?? ''), (string) ($in['type'] ?? ''), (string) ($in['cabin'] ?? ''),
+        ]));
     }
 
     /**

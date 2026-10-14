@@ -20,7 +20,9 @@ $e   = static fn($v): string => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8
 $pnr = strtoupper(trim((string) ($_GET['pnr'] ?? '')));
 $b   = Security::isValidPnr($pnr) ? BookingService::findByPnr($pnr) : null;
 $scope = Auth::bookingScopeAdminId();
-if ($b === null || ($scope !== null && (int) $b['sold_by_admin_id'] !== $scope)) {
+$desk  = Auth::deskScopeCode();
+if ($b === null || ($scope !== null && (int) $b['sold_by_admin_id'] !== $scope)
+    || ($desk !== null && $b['counter_code'] !== null && (string) $b['counter_code'] !== $desk)) {
     http_response_code(404);
     exit('Ticket not found.');
 }

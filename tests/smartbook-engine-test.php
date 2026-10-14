@@ -220,6 +220,11 @@ try {
     check('a lost answer is replayed from the booking, never a second sale', $b3['pnr'] === $b1['pnr'] && !empty($b3['replayed']));
     $cnt = (int) Database::scalar("SELECT COUNT(*) FROM bookings WHERE contact_phone = '9000000002' AND status IN ('pending','confirmed')");
     check('still exactly one booking', $cnt === 1, (string) $cnt);
+    // Review 15 Oct: the SAME key with ANOTHER customer (a counter retrying after a timeout) is refused.
+    $err = '';
+    try { SmartBook::book(['name' => 'Next Customer', 'phone' => '9000000006'] + $in, 'cash', 'customer', null, $key); }
+    catch (SmartBookKeyReused $e) { $err = 'refused'; }
+    check('same key + different request → refused, never the previous ticket', $err === 'refused');
     // The berths the card showed were taken meanwhile → the fresh quote goes back (409), nothing is sold.
     $err = '';
     try {
