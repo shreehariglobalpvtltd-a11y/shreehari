@@ -48,6 +48,7 @@ require_once __DIR__ . '/../includes/chalanipng.php';
 require_once __DIR__ . '/../includes/challanpng.php';
 require_once __DIR__ . '/../includes/sitefacts.php';
 require_once __DIR__ . '/../includes/agreementtext.php';
+require_once __DIR__ . '/../includes/agreementpdf.php';
 
 $PASS = 0;
 $FAIL = 0;
@@ -159,9 +160,18 @@ check('PNG footer: the address line', str_contains($t, "\$co['desk']['address'] 
 check('PNG footer: the border ID line', str_contains($t, 'सरकारी परिचयपत्र अनिवार्य'));
 check('PNG footer: both statutory rows drawn', str_contains($t, 'foreach (self::statutoryParts($booking, $ticket, $co) as $si => $n4)'));
 check('PNG: the verify QR still carries the keyed URL', str_contains($t, "appUrl('verify-ticket.php')"));
-check('PDF: the statutory row + GSTIN only when set', str_contains($t, "\$statPdf = self::statutoryLine(\$booking, \$ticket, \$coId)")
-    && str_contains($t, "((string) (\$coId['gstin'] ?? '') !== '' ? '  ·  GSTIN '"));
+check('PDF: the statutory row + GSTIN only when set', str_contains($t, "[\$st0, \$st1] = self::statutoryParts(\$booking, \$ticket, \$coId);")
+    && str_contains($t, "\$stGst  = (string) (\$coId['gstin'] ?? '') !== '' ? '  ·  GSTIN '"));
 check('PDF: the closing line names the legal company + office', str_contains($t, "'Regd. office'"));
+/* 14 Oct 2026 (review): the statutory row stays >= 5 pt inside the margins, and
+   "Thank you" is said once when the blessing line is off. */
+check('PDF: the statutory row is tried at 5.5 -> 5 pt only, under the notes, then from the margin, then with the website once',
+    str_contains($t, 'for ($sz = 5.5; $sz >= 5.0; $sz -= 0.25)') && str_contains($t, "[[\$noteX, \$statPdf], [40.0, \$statPdf], [40.0, \$stShort]]"));
+$wPdf = new Pdf();
+$worstA = 'Issued 28 Sep 2026, 11:20 AM IST (11:35 AM NPT)  ·  Computer-generated e-ticket, no signature needed';
+$worstS = $worstA . '  ·  Verify: www.shreehariglobal.in/verify-ticket.php, refund rules: /refund-policy  ·  GSTIN 24ABCDE1234F1Z5';
+check('PDF: the worst real case (NPT + www. website + GSTIN) fits 515 pt at 5 pt', $wPdf->textWidth($worstS, 5.0, 'F1') <= 595.28 - 80, sprintf('%.1f pt', $wPdf->textWidth($worstS, 5.0, 'F1')));
+check('PDF: no blessing line -> "धन्यवाद" alone, the closing line says Thank you', !str_contains($t, "'धन्यवाद · Thank you · ' . \$company") && str_contains($t, "\$pdf->height() - 26.5, 'धन्यवाद', 9"));
 
 /* ------------------------------------------------------------------ */
 echo "\n=== D. Chalani / challan / verify page ===\n\n";
@@ -184,12 +194,19 @@ $tv = $src('ticket/view.php');
 check('ticket view page: the issuing company (legal name, CIN/PAN, GSTIN-when-set, office)', str_contains($tv, '$issuerCo = $b !== null ? Ticket::companyOf($b)') && str_contains($tv, "'GSTIN ' . trim((string) \$issuerCo['gstin'])") && str_contains($tv, '$coAddr'));
 check('ticket view page: IST issue line + verify link + refund pointer', str_contains($tv, 'Ticket::statutoryParts($b, $tkRow, $issuerCo)[0]') && str_contains($tv, "appUrl('verify-ticket.php')") && str_contains($tv, 'href="/refund-policy"'));
 check('ticket view page: the photo-ID line stays', str_contains($tv, 'Carry a photo ID'));
+// 14 Oct 2026 (review): the new lines carry their Nepali half like the rest of both pages
+check('ticket view page: the issue line has its Nepali half', str_contains($tv, '<br>कम्प्युटरबाट बनेको ई-टिकट, हस्ताक्षर चाहिँदैन।'));
+check('verify page: the computer-generated + refund lines have their Nepali half', str_contains($vt, 'Computer-generated verification page · कम्प्युटरबाट बनेको प्रमाणीकरण पृष्ठ') && str_contains($vt, 'Refund &amp; cancellation rules · फिर्ता र रद्दका नियम'));
 
 /* ------------------------------------------------------------------ */
 echo "\n=== E. SiteFacts: channels + domain mailbox ===\n\n";
 
 check('https URL kept', SiteFacts::httpsUrlOrEmpty('https://www.youtube.com/@shreehariglobal') === 'https://www.youtube.com/@shreehariglobal');
-foreach (['http://facebook.com/x', 'facebook.com/x', '@shg', 'javascript:alert(1)', 'https://exa mple.com', 'https://x.com/"><script>', 'https://localhost/x', ''] as $bad) {
+// 14 Oct 2026 (review): links typed the way the WhatsApp bot accepts them are normalised, not silently dropped
+foreach (['http://facebook.com/x' => 'https://facebook.com/x', 'facebook.com/x' => 'https://facebook.com/x', 'www.youtube.com/@shg' => 'https://www.youtube.com/@shg'] as $in => $want) {
+    check("normalised: {$in} -> {$want}", SiteFacts::httpsUrlOrEmpty($in) === $want);
+}
+foreach (['@shg', 'javascript:alert(1)', 'https://exa mple.com', 'https://x.com/"><script>', 'https://localhost/x', 'http://localhost/x', 'shg', 'data:text/html,x', ''] as $bad) {
     check('dropped: ' . ($bad === '' ? '(empty)' : $bad), SiteFacts::httpsUrlOrEmpty($bad) === '');
 }
 check('a mailbox is validated', SiteFacts::emailOrEmpty(' info@shreehariglobal.in ') === 'info@shreehariglobal.in' && SiteFacts::emailOrEmpty('info@') === '');
@@ -226,6 +243,12 @@ foreach (['company_email_alt', 'company_youtube', 'company_facebook', 'company_i
     check("setting {$k}: Admin help text", str_contains($src('admin/settings.php'), "'{$k}'"));
 }
 check('the migration is idempotent (INSERT IGNORE)', str_contains($sql, 'INSERT IGNORE INTO `settings`'));
+// 14 Oct 2026 (review): the Director's profile, typed into the footer until now, must not vanish on deploy
+check('the migration carries the old footer link into a BLANK ceo_facebook only',
+    str_contains($sql, "SET `svalue` = 'https://www.facebook.com/sherbahadur.biswakarma.58'")
+    && str_contains($sql, "WHERE `skey` = 'ceo_facebook' AND (`svalue` IS NULL OR TRIM(`svalue`) = '')"));
+check('admin warns under a channel link / mailbox the site cannot use', str_contains($src('admin/settings.php'), '$trustCheck[$key]') && str_contains($src('admin/settings.php'), 'SiteFacts::httpsUrlOrEmpty($v)'));
+check('admin help: the domain mailbox REPLACES the Gmail in the top bar', str_contains($src('admin/settings.php'), 'replaces the Gmail in the top bar'));
 
 /* ------------------------------------------------------------------ */
 echo "\n=== F. Agreements fed by live facts ===\n\n";
@@ -246,10 +269,25 @@ foreach (['agent', 'partner'] as $doc) {
             count($m[1]) >= 8 && array_diff($keys, AgreementText::FACT_KEYS) === [] && in_array('brand.cin', $keys, true) && in_array('brand.legal', $keys, true),
             count($m[1]) . ' spans');
         check("{$doc}-{$lg}: the printed fallback stays (reads right without JS)", str_contains($html, '<span data-fact="brand.cin">U52291GJ2026PTC174029</span>'));
+        // 14 Oct 2026 (review): one registered office per document - hi / gu keep BOTH office lines built
+        // (no Hindi / Gujarati address setting); en / ne follow Settings in BOTH places
+        $addrSpans = substr_count($html, 'data-fact="head.address"') + substr_count($html, 'data-fact="head.addressNe"');
+        check("{$doc}-{$lg}: letterhead and party block name the same office", in_array($lg, ['hi', 'gu'], true) ? $addrSpans === 0 : $addrSpans === 2, $addrSpans . ' address spans');
+        check("{$doc}-{$lg}: loads the current agreement-live.js (cache-busted)", str_contains($html, '/assets/js/agreement-live.js?v=20261010t'));
     }
 }
 $ap = $src('includes/agreementpdf.php');
-check('agreement PDF letterhead reads Company details', str_contains($ap, 'Settings::company()') && str_contains($ap, "self::co()['legal']") && str_contains($ap, '$co = self::co();'));
+check('agreement PDF letterhead reads Company details', str_contains($ap, 'Settings::company()') && str_contains($ap, '$co = self::co();'));
+check('agreement PDF: no Devanagari name typed beside the Settings legal name', substr_count($ap, "'श्री हरि ग्लोबल प्रा. लि.'") === 1 && str_contains($ap, "'कंपनी: ' . \$co['legalDev'] . ' (' . \$co['legal'] . ')'"));
+$coFn = new ReflectionMethod('AgreementPdf', 'co');
+$coFn->setAccessible(true);
+$coNow = $coFn->invoke(null);
+$coSet = Settings::company();
+$bothSet = trim((string) $coSet['legal']) !== '' && trim((string) $coSet['legalNe']) !== '';
+check('agreement PDF: the Devanagari and Roman names are one pair',
+    $bothSet ? ($coNow['legalDev'] === trim((string) $coSet['legalNe']) && $coNow['legal'] === strtoupper(trim((string) $coSet['legal'])))
+             : ($coNow['legalDev'] === 'श्री हरि ग्लोबल प्रा. लि.' && $coNow['legal'] === 'SHREE HARI GLOBAL PVT. LTD.'),
+    $coNow['legalDev'] . ' / ' . $coNow['legal']);
 
 echo "\n----------------------------------------\n";
 echo "doc-statutory: {$PASS} passed, {$FAIL} failed\n";

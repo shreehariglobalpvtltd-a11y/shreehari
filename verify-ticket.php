@@ -594,7 +594,9 @@ $company = (string) $issuer['name'];
     ?>
     <?= htmlspecialchars(implode(' · ', array_filter([$vLegal, $vReg, $vGst !== '' ? 'GSTIN ' . $vGst : ''], 'strlen')), ENT_QUOTES, 'UTF-8') ?><br>
     <?php if ($vAddr !== ''): ?><?= htmlspecialchars($vAddr, ENT_QUOTES, 'UTF-8') ?><br><?php endif; ?>
-    Computer-generated verification page · <a href="/refund-policy">Refund &amp; cancellation rules</a><br>
+    <?php /* 14 Oct 2026 (review): bilingual, as the rest of this page */ ?>
+    Computer-generated verification page · कम्प्युटरबाट बनेको प्रमाणीकरण पृष्ठ<br>
+    <a href="/refund-policy">Refund &amp; cancellation rules · फिर्ता र रद्दका नियम</a><br>
     <?= date('Y') ?> <?= htmlspecialchars($company, ENT_QUOTES, 'UTF-8') ?>
   </div>
 </div>

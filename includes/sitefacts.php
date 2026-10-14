@@ -359,12 +359,26 @@ final class SiteFacts
         'tiktok'    => ['TikTok',    '<path d="M14 4v9.5a3.5 3.5 0 1 1-3.5-3.5"/><path d="M14 4c.3 2.7 2 4.3 4.5 4.5"/>'],
     ];
 
-    /** A full https:// link with a real host, else '' - a bare handle, an http: link or anything with spaces / quotes is not shown. */
+    /**
+     * A full https:// link with a real host, else '' - a bare handle or
+     * anything with spaces / quotes is not shown.
+     *
+     * 14 Oct 2026 (review): the office types links the way the WhatsApp bot
+     * accepts them ("facebook.com/shreehariglobal", "www.youtube.com/@shg",
+     * "http://…"). Such a value used to vanish silently; now a bare
+     * host/path gets https:// in front and http:// becomes https:// (every
+     * network listed serves https), then the same checks apply.
+     */
     public static function httpsUrlOrEmpty(string $raw): string
     {
         $u = trim($raw);
         if ($u === '' || strlen($u) > 300 || preg_match('/[\s<>"\'\\\\]/', $u) === 1) {
             return '';
+        }
+        if (preg_match('#^http://#i', $u) === 1) {
+            $u = 'https://' . substr($u, 7);
+        } elseif (preg_match('#^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?:[/?\#]|$)#i', $u) === 1) {
+            $u = 'https://' . $u;   // a bare host (no scheme, no colon) - "javascript:" or "@handle" never match
         }
         if (!preg_match('#^https://#i', $u) || filter_var($u, FILTER_VALIDATE_URL) === false) {
             return '';

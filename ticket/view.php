@@ -198,7 +198,8 @@ h1{font-size:19px;margin:4px 0 6px}
     <?php if ($office !== ''): ?><a class="btn" href="tel:<?= $e(preg_replace('/[^\d+]/', '', $office)) ?>">📞 <?= $e($office) ?></a><?php endif; ?>
   </div>
   <p class="hint" style="text-align:center">Carry a photo ID · reach the boarding point 30 minutes early.<br>फोटो परिचयपत्र लिनुहोस् · ३० मिनेट अगाडि पुग्नुहोस्।</p>
-  <?php if ($statIssued !== ''): ?><p class="hint" style="text-align:center"><?= $e($statIssued) ?></p><?php endif; ?>
+  <?php /* 14 Oct 2026 (review): English · Nepali like every other line on this page */ ?>
+  <?php if ($statIssued !== ''): ?><p class="hint" style="text-align:center"><?= $e($statIssued) ?><br>कम्प्युटरबाट बनेको ई-टिकट, हस्ताक्षर चाहिँदैन।</p><?php endif; ?>
   <p class="hint" style="text-align:center"><a href="<?= $e($verifyUrl) ?>" rel="noopener">Check this ticket is genuine · टिकट जाँच</a> · <a href="/refund-policy">Refund &amp; cancellation rules · फिर्ता नियम</a></p>
 <?php endif; ?>
   <?php /* 10 Oct 2026 (trust): who issued this document - legal name, CIN / PAN, GSTIN when set, office */ ?>

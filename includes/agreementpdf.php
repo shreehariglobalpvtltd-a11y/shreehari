@@ -67,18 +67,30 @@ final class AgreementPdf
      * tests/agreement-pdf-test.php renders with no configuration at all,
      * and this class stays free of database reads of its own.
      *
-     * @return array{legal:string, cin:string, web:string}
+     * 14 Oct 2026 (review): the Devanagari name and the Roman legal name
+     * travel as ONE pair ('legalDev' + 'legal'). Mixing the printed
+     * 'श्री हरि' with a Settings 'S Hari' put two different company names
+     * side by side on a signed contract. Both come from Company details
+     * (company_legal_ne + company_legal) only when BOTH are set; otherwise
+     * both stay the printed pair.
+     *
+     * @return array{legal:string, legalDev:string, cin:string, web:string}
      */
     private static function co(): array
     {
-        $out = ['legal' => 'SHREE HARI GLOBAL PVT. LTD.', 'cin' => 'U52291GJ2026PTC174029', 'web' => 'shreehariglobal.in'];
+        $out = ['legal' => 'SHREE HARI GLOBAL PVT. LTD.', 'legalDev' => 'श्री हरि ग्लोबल प्रा. लि.', 'cin' => 'U52291GJ2026PTC174029', 'web' => 'shreehariglobal.in'];
         if (class_exists('Settings', false)) {
             try {
                 $c = Settings::company();
-                foreach (['legal', 'cin', 'web'] as $k) {
+                foreach (['cin', 'web'] as $k) {
                     if (trim((string) ($c[$k] ?? '')) !== '') { $out[$k] = trim((string) $c[$k]); }
                 }
-                $out['legal'] = strtoupper($out['legal']);
+                $legal = trim((string) ($c['legal'] ?? ''));
+                $legalDev = trim((string) ($c['legalNe'] ?? ''));
+                if ($legal !== '' && $legalDev !== '') {
+                    $out['legal'] = strtoupper($legal);
+                    $out['legalDev'] = $legalDev;
+                }
             } catch (Throwable $e) { /* the printed values stand */ }
         }
         return $out;
@@ -92,7 +104,8 @@ final class AgreementPdf
         $self->pdf->registerTTF(DevShape::fontFile());
         $self->page();
         $self->heading('01  पक्ष एवं निश्चित किराया');
-        $self->paragraph('कंपनी: श्री हरि ग्लोबल प्रा. लि. (' . self::co()['legal'] . ')');
+        $co = self::co();
+        $self->paragraph('कंपनी: ' . $co['legalDev'] . ' (' . $co['legal'] . ')');
         $self->paragraph('एजेंट / सहयोगी: ' . $self->data['agent_name']);
         $self->paragraph('पता: ' . $self->data['address']);
         $self->paragraph('दोनों पक्ष टिकट बुकिंग और यात्रियों की सेवा के लिए नीचे दिए नियम स्वीकार करते हैं।');
@@ -139,7 +152,7 @@ final class AgreementPdf
         $self->space(125);
         $y = $self->y + 35;
         $signers = [40 => ['एजेंट / सहयोगी के हस्ताक्षर', $self->data['agent_name']],
-            310 => ['कंपनी के अधिकृत हस्ताक्षर', 'श्री हरि ग्लोबल प्रा. लि.']];
+            310 => ['कंपनी के अधिकृत हस्ताक्षर', $co['legalDev']]];
         foreach ($signers as $x => [$label, $name]) {
             $self->pdf->line($x, $y, $x + 235, $y, self::GOLD);
             $self->draw($x, $y + 8, $label, 10);
@@ -213,10 +226,14 @@ final class AgreementPdf
         if ($this->page++) { $this->pdf->newPage(); }
         $this->pdf->rect(0, 0, 595.28, 108, self::NAVY);
         $this->pdf->rect(0, 108, 595.28, 4, self::GOLD);
-        $this->draw(40, 23, 'श्री हरि ग्लोबल प्रा. लि.', 22, [255, 255, 255]);
-        $this->draw(40, 57, 'व्यवसाय सहयोग / एजेंट समझौता', 15, [234, 201, 123]);
-        // 10 Oct 2026 (trust): the legal name, CIN and website from Company details (co()), the printed values otherwise
+        // 10 Oct 2026 (trust): the legal name, CIN and website from Company details (co()), the printed values otherwise.
+        // 14 Oct 2026 (review): the Devanagari heading is the same pair's name; a longer registered name steps down from 22 pt to fit the 515 pt band.
         $co = self::co();
+        $this->ensureText($co['legalDev']);
+        $hSize = 22.0;
+        while ($hSize > 14 && $this->pdf->textWidthCID($co['legalDev'], $hSize) > 515) { $hSize -= 1; }
+        $this->draw(40, 23, $co['legalDev'], $hSize, [255, 255, 255]);
+        $this->draw(40, 57, 'व्यवसाय सहयोग / एजेंट समझौता', 15, [234, 201, 123]);
         $this->pdf->text(40, 88, $co['legal'] . ($co['cin'] !== '' ? '  |  CIN ' . $co['cin'] : '') . '  |  ' . $co['web'], 9, 'F1', [255, 255, 255]);
         $this->pdf->line(40, 778, 555, 778, self::GOLD);
         $this->draw(40, 786, 'समझौता: ' . $this->data['agreement_no'] . '  |  ' . $this->data['date'], 8);

@@ -2485,14 +2485,21 @@ final class Ticket
      *  good — the old note said "UTC", so 20:10 here meant 20:10 IST and two
      *  tickets drawn at 23:43/23:44 IST with the old seat labels were never
      *  redrawn. tests/chalani-png-test.php and tests/ticket-cache-test.php
-     *  assert a past moment. */
-    private const PNG_LAYOUT_CHANGED = '2026-10-14 21:40:00';   // IST: TRUST - statutory line under the address (issue time IST/NPT, computer-generated, verify + refund pointers), GSTIN beside the CIN when set; canvas +24. Was 2026-10-10 00:10:00:   // IST: GOLD template - ivory card + mandala, navy/royal band in a gold-foil double rule, mantra line on top, emblem in an embossed gold seal, maroon seat chips, stub tear line, MANDATORY payment QR card (due / company UPI / office WhatsApp), blessing line. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem without the white chip, India + Nepal flags, heritage band (Sagarmatha · Lumbini) appended under the footer, SECURITY CODE beside the verify QR, diagonal anti-fake microtext, Nepali header labels. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - pickup-time clock, floor on the seat chip, map QR beside the verify QR, no phone in the QR, 'Departed' label. Was 2026-10-08 12:08:30:   // IST: pickup landmark + Google Maps QR of the pickup (master prompt 2.0). Was 2026-10-04 12:15:00:   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
+     *  assert a past moment.
+     *  14 Oct 2026 (TRUST review): this constant can only name a moment
+     *  BEFORE the code ships, so tickets drawn on live between it and the
+     *  deploy would keep the old layout. database/upgrade-2026-10-10-trust.sql
+     *  therefore also moves ticket_identity_changed_at (staleBefore() takes
+     *  the later of the two) to the moment it is applied - apply it AFTER the
+     *  files are live. The integrator may still move both stamps to the
+     *  deploy minute. */
+    private const PNG_LAYOUT_CHANGED = '2026-10-14 22:15:00';   // IST: TRUST - statutory line under the address (issue time IST/NPT, computer-generated, verify + refund pointers), GSTIN beside the CIN when set; canvas +46 (PNG_STAT_H). Was 2026-10-10 00:10:00:   // IST: GOLD template - ivory card + mandala, navy/royal band in a gold-foil double rule, mantra line on top, emblem in an embossed gold seal, maroon seat chips, stub tear line, MANDATORY payment QR card (due / company UPI / office WhatsApp), blessing line. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem without the white chip, India + Nepal flags, heritage band (Sagarmatha · Lumbini) appended under the footer, SECURITY CODE beside the verify QR, diagonal anti-fake microtext, Nepali header labels. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - pickup-time clock, floor on the seat chip, map QR beside the verify QR, no phone in the QR, 'Departed' label. Was 2026-10-08 12:08:30:   // IST: pickup landmark + Google Maps QR of the pickup (master prompt 2.0). Was 2026-10-04 12:15:00:   // IST: per-company letterhead (India / Nepal), desk + other-side help numbers, address line, IST/NPT on the departure. Was 2026-09-24 10:30:00:   // IST: Nepali on the ticket shaped by HarfBuzz (includes/devshape.php) - conjuncts, reph and the i-matra drawn as written. Before: the two-floor seat labels and the counter location (both 24 Sep, 00:34 / 01:49).
 
     /** Bump whenever renderTicketPdf()'s layout changes — see pdfPath().
      *  A cached PDF older than this re-renders ONCE on its next open, so the
      *  seat box + stub pick up the current seat labels without a manual purge
      *  (23 Sep 2026: the two-floor grid A1-F6 / A7-F12). */
-    private const PDF_LAYOUT_CHANGED = '2026-10-14 21:40:00';   // IST: TRUST - statutory small print in the footer (issue time IST/NPT, computer-generated, verify + refund pointers, GSTIN when set). Was 2026-10-10 00:10:00:   // IST: GOLD template - cream page + mandala, gold-foil rules and corners, mantra strip, gold seal, MANDATORY payment QR in the footer, blessing line, long names clamped off the stub. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem aspect-correct without the white rect, flags, heritage card in the footer, SECURITY CODE on the stub, fare box no longer overlaps the Base / Disc line. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - INR amounts, LOWER 1F / UPPER 2F seat box, bilingual headers, fixed DEPARTS label. Was 2026-10-04 12:15:00:   // IST: per-company letterhead, help numbers from the desk table (no hard-coded offices), INVOICE vs TAX INVOICE. Was 2026-09-24 10:30:00:   // IST: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
+    private const PDF_LAYOUT_CHANGED = '2026-10-14 22:15:00';   // IST: TRUST - statutory small print in the footer (issue time IST/NPT, computer-generated, verify + refund pointers, GSTIN when set; two rows when one does not fit at 5 pt), single 'Thank you'. Was 2026-10-10 00:10:00:   // IST: GOLD template - cream page + mandala, gold-foil rules and corners, mantra strip, gold seal, MANDATORY payment QR in the footer, blessing line, long names clamped off the stub. Was 2026-10-09 20:10:00:   // IST: showcase upgrade - emblem aspect-correct without the white rect, flags, heritage card in the footer, SECURITY CODE on the stub, fare box no longer overlaps the Base / Disc line. Was 2026-10-08 23:42:00:   // IST: premium upgrade (pr1) - INR amounts, LOWER 1F / UPPER 2F seat box, bilingual headers, fixed DEPARTS label. Was 2026-10-04 12:15:00:   // IST: per-company letterhead, help numbers from the desk table (no hard-coded offices), INVOICE vs TAX INVOICE. Was 2026-09-24 10:30:00:   // IST: Nepali in the PDF shaped by HarfBuzz (glyph ids from DevShape into the Identity-H stream). Before: the two-floor seat labels, COUNTER line and desk code (24 Sep, 00:34 / 01:49).
 
     /**
      * How many passengers the ticket names one by one before it stops and
@@ -3208,12 +3215,31 @@ final class Ticket
            blessing rule (the rule and the blessing below sit 3.5pt lower for
            it; the footer itself does not move - a six-row party fills the page
            down to it), in the footer's muted small type; shrinks until it
-           fits the width. */
-        $statPdf = self::statutoryLine($booking, $ticket, $coId)
-                 . ((string) ($coId['gstin'] ?? '') !== '' ? '  ·  GSTIN ' . self::latin((string) $coId['gstin']) : '');
-        $stSz = 5.5;
-        while ($stSz > 4.5 && $pdf->textWidth($statPdf, $stSz, 'F1') > $W - 40 - $noteX) { $stSz -= 0.25; }
-        $pdf->text($noteX, $footY + 90, $statPdf, $stSz, 'F1', self::MUTE);
+           fits the width.
+           14 Oct 2026 (review): never below 5 pt and never past the right
+           margin. It used to stop at 4.5 pt and run on into the gold corner
+           (NPT + GSTIN + a www. website measured 549 pt at 5 pt against
+           441 pt). Steps, each tried from 5.5 pt down to 5 pt: under the notes
+           (x 114, 441 pt) -> from the left margin (x 40, 515 pt; the row sits
+           below the "Live status" caption) -> the same words with the
+           website written once ("refund rules: /refund-policy"). Only a
+           website longer than any real one would still shrink below 5 pt. */
+        [$st0, $st1] = self::statutoryParts($booking, $ticket, $coId);
+        $stGst  = (string) ($coId['gstin'] ?? '') !== '' ? '  ·  GSTIN ' . self::latin((string) $coId['gstin']) : '';
+        $stWeb  = self::latin(trim((string) ($coId['web'] ?? '')));
+        $statPdf = implode('  ·  ', array_filter([$st0, $st1], 'strlen')) . $stGst;
+        $stShort = $stWeb !== '' ? $st0 . '  ·  Verify: ' . $stWeb . '/verify-ticket.php, refund rules: /refund-policy' . $stGst : $statPdf;
+        $stX = $noteX; $stSz = 5.5; $stFit = false;
+        foreach ([[$noteX, $statPdf], [40.0, $statPdf], [40.0, $stShort]] as [$tryX, $tryText]) {
+            for ($sz = 5.5; $sz >= 5.0; $sz -= 0.25) {
+                if ($pdf->textWidth($tryText, $sz, 'F1') <= $W - 40 - $tryX) { $stX = $tryX; $statPdf = $tryText; $stSz = $sz; $stFit = true; break 2; }
+            }
+        }
+        if (!$stFit) {
+            $stX = 40.0; $statPdf = $stShort; $stSz = 5.0;
+            while ($stSz > 3.5 && $pdf->textWidth($statPdf, $stSz, 'F1') > $W - 80) { $stSz -= 0.25; }
+        }
+        $pdf->text($stX, $footY + 90, $statPdf, $stSz, 'F1', self::MUTE);
 
         /* Heritage card (9 Oct 2026, owner: Sagarmatha, Gautam Buddha, the
            Nepal flag on the ticket) — the free right half of the footer, so it
@@ -3267,7 +3293,8 @@ final class Ticket
             self::devCenter($pdf, 40, $W - 40, $pdf->height() - 27.5, $blessPdf, 9.5, $F8, DocArt::GOLD_DEEP);
             $pdf->textCenter(40, $W - 40, $pdf->height() - 14, $closing, $clSz, 'F2', self::ORANGE);
         } else {
-            self::devCenter($pdf, 40, $W - 40, $pdf->height() - 26.5, 'धन्यवाद · Thank you · ' . $company, 9, $F7, self::ORANGE);
+            // 14 Oct 2026 (review): 'Thank you' + the company are already in $closing below - Nepali thanks only, said once
+            self::devCenter($pdf, 40, $W - 40, $pdf->height() - 26.5, 'धन्यवाद', 9, $F7, self::ORANGE);
             $pdf->textCenter(40, $W - 40, $pdf->height() - 14, $closing, $clSz, 'F2', self::ORANGE);
         }
         DocArt::pdfFoil($pdf, 0, $pdf->height() - 5, $W, 5, 4);

@@ -250,7 +250,14 @@ const needList = (lg, ty) => ((T[lg].need || {})[ty] || []).filter(Boolean);
    brand.web, head.address, head.addressNe, head.phone (AgreementText::FACT_KEYS).
    The Hindi / Gujarati pages keep their own-script office line as built:
    there is no Hindi or Gujarati address setting, and a Roman address would
-   replace the reader's language. */
+   replace the reader's language.
+   14 Oct 2026 (review): on hi / gu the LETTERHEAD office line is plain built
+   text too. Only following Settings in the letterhead would let one signed
+   agreement name two different registered offices (letterhead = Settings,
+   party block = built Hindi / Gujarati text). Both stay the built address
+   until a Hindi / Gujarati address setting exists.
+   The pages load agreement-live.js?v=20261010t: bump that stamp whenever
+   agreement-live.js changes, or returning visitors keep the cached copy. */
 const facts = (h) => String(h).replace(/\{\{f:([a-zA-Z0-9_.]{1,40})\|([^{}|]{0,300})\}\}/g, (m, k, t) => `<span data-fact="${k}">${t}</span>`);
 const fact = (key, text) => `<span data-fact="${esc(key)}">${esc(text)}</span>`;
 
@@ -947,7 +954,7 @@ html.bw .bar{background:#fff;color:#000;border:.3mm solid #000}
     <img class="lh-logo" src="${LOGO}" alt="S Hari Global">
     <div class="lh-id">
       <div class="lh-nm">S HARI GLOBAL<span>PVT. LTD.</span></div>
-      <div class="lh-ad">${fact('head.address', coOffice)}</div>
+      <div class="lh-ad">${lg === 'en' || lg === 'ne' ? fact('head.address', coOffice) : esc(coOffice)}</div>
     </div>
     <div class="lh-meta"><div><b>CIN</b> ${fact('brand.cin', CO.cin)}</div><div><b>PAN</b> ${esc(CO.pan)}</div><div>${fact('brand.web', CO.web)}</div><div>${fact('head.phone', CO.phone)}</div></div>
   </header>
@@ -1021,7 +1028,7 @@ ${sections}
 <script>
 (${agreementPage.toString()})(${js(cfg)});
 </script>
-<script src="/assets/js/agreement-live.js?v=20261002" defer></script>
+<script src="/assets/js/agreement-live.js?v=20261010t" defer></script>
 </body>
 </html>
 `;
