@@ -186,7 +186,9 @@ function tcInitManualLive() {
       .catch(function () {});
   };
   pull();
-  TC.manualT = setInterval(pull, 45000);   // whereis allows 120 / min per IP
+  /* whereis allows 120 / min per IP. 10 Oct 2026 (perf): no request and no
+     redraw while the tab is hidden - the next 45 s tick after it is back. */
+  TC.manualT = setInterval(function () { if (!document.hidden) pull(); }, 45000);
 }
 
 function cleanupTrip() {
@@ -616,7 +618,9 @@ function tcStartCountdown() {
     $('#tcCountdown').textContent = (h > 0 ? h + 'h ' : '') + (m < 10 ? '0' : '') + m + 'm ' + (s < 10 ? '0' : '') + s + 's';
   }
   tick();
-  TC.countdownT = setInterval(tick, 1000);
+  /* 10 Oct 2026 (perf): a hidden tab skips the redraw (the time left is
+     read from the clock, so nothing drifts) */
+  TC.countdownT = setInterval(function () { if (!document.hidden) tick(); }, 1000);
 }
 
 /* ── FIREBASE INIT (passenger side — read only) ── */

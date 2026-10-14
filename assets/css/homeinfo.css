@@ -194,8 +194,10 @@
 }
 .hx .hx-note .ic { flex: 0 0 auto; width: 18px; height: 18px; margin-top: 1px; color: var(--success); }
 .hx .hx-empty { margin: 0; padding: 16px; border-radius: var(--hx-r-in); background: var(--hx-surface-2); color: var(--hx-on-2); font-size: 14px; }
-/* tapping a fare row scrolls to the booking card and rings it once */
-#search-anchor.hx-flash .search-card { animation: hx-ring 1.3s var(--hx-ease) 1; }
+/* tapping a fare row scrolls to the booking card and rings it once
+   (10 Oct 2026 perf: an animated outline repaints the card every frame, so
+   the ring is html[data-tier="high"] only; perf.css nudges it elsewhere) */
+html[data-tier="high"] #search-anchor.hx-flash .search-card { animation: hx-ring 1.3s var(--hx-ease) 1; }
 @keyframes hx-ring { 0% { outline: 3px solid var(--royal); outline-offset: 0; } 100% { outline: 3px solid transparent; outline-offset: 12px; } }
 
 /* ---- 6. #homeRoute — section shell; 22-routeline.js renders inside [data-routeline] ---- */

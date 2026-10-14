@@ -317,20 +317,24 @@ function lgOtpStep(s, result) {
   if (!result.canSkip) { const sb = $('#lgSkipBox'); if (sb) sb.remove(); }
 
   /* Resend countdown (the resend button says why it waits: "Resend in 23 s"). */
-  let left = Math.max(30, Number(result.resendIn) || 60);
+  /* 10 Oct 2026 (perf): counted from a deadline, not tick by tick, so a
+     hidden tab can skip its redraws and still show the right number (and
+     a throttled background timer no longer makes the wait longer). */
+  let until = Date.now() + Math.max(30, Number(result.resendIn) || 60) * 1000;
   const rs = $('#lgResend');
   const tick = setInterval(() => {
     if (!document.body.contains(rs)) { clearInterval(tick); return; }
-    left--;
+    if (document.hidden) return;
+    const left = Math.ceil((until - Date.now()) / 1000);
     if (left > 0) { rs.disabled = true; rs.textContent = tf('lgResendIn', { s: left }); }
     else { rs.disabled = false; rs.textContent = t('lgResend'); }
   }, 1000);
-  rs.textContent = tf('lgResendIn', { s: left });
+  rs.textContent = tf('lgResendIn', { s: Math.ceil((until - Date.now()) / 1000) });
   rs.onclick = async () => {
     rs.disabled = true;
     try {
       const r = await shgApi.post('/otp.php', { action: 'request', phone: s.p, name: s.name, purpose: 'login', country: s.country });
-      left = Math.max(30, Number(r && r.resendIn) || 60);
+      until = Date.now() + Math.max(30, Number(r && r.resendIn) || 60) * 1000;
       toast(r && r.sent === false ? t('lgOtpFail') : t('lgResent'));
       if (r && r.sent === false && r.canSkip) { const sb = $('#lgSkipBox'); if (sb) sb.hidden = false; }
     } catch (e) { rs.disabled = false; toast((e && e.message) || t('errOtpSend')); }

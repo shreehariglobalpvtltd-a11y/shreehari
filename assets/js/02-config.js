@@ -323,8 +323,18 @@ function createLocationSearchInput(inputEl, options){
     else if(e.key==='Escape'){ hide(); }
   });
   document.addEventListener('mousedown', function(e){ if(e.target===inputEl || dd.contains(e.target)) return; hide(); });
-  window.addEventListener('resize', function(){ if(open) place(); });
-  window.addEventListener('scroll', function(){ if(open) place(); }, true);
+  /* 10 Oct 2026 (perf): the list follows its field once per frame, and the
+     page-wide scroll listener is passive. It still captures, so a scroll
+     inside any panel moves the list with the field. Every instance used to
+     re-measure the field on every scroll event, before the browser could
+     move the page (a non-passive listener blocks the compositor). */
+  var placeRaf = 0;
+  var placeSoon = function(){
+    if(!open || placeRaf) return;
+    placeRaf = requestAnimationFrame(function(){ placeRaf = 0; if(open) place(); });
+  };
+  window.addEventListener('resize', placeSoon);
+  window.addEventListener('scroll', placeSoon, { capture: true, passive: true });
 
   var api = { input:inputEl,
     setValue:function(txt){ inputEl.value = txt||''; hide(); },

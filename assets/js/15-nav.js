@@ -1015,6 +1015,7 @@ function initNavApp(){
     } else snToast(snT('snBcStop'));
   };
   function snTrackTick(){
+    if(document.hidden) return;   // 10 Oct 2026 (perf): no redraw for a hidden tab; the age is read from the clock
     if(!SN.trackLastTs){ s('#snTrackUpd').textContent=snT('snWaitDriver'); return; }
     var secs=Math.round((Date.now()-SN.trackLastTs)/1000);
     s('#snTrackUpd').textContent=secs<5?snT('snJustNow'):(secs<60?snT('snSecAgo',{n:secs}):snT('snMinAgo',{n:Math.round(secs/60)}));
@@ -2186,9 +2187,12 @@ function initNavApp(){
   // the container is guaranteed visible.
   if(!SN._resizeBound){
     SN._resizeBound=true;
+    /* 10 Oct 2026 (perf): one map.resize() per frame however many resize
+       events a rotation fires */
     window.addEventListener('resize',function(){
       var nv=document.getElementById('view-nav');
-      if(SN.map && nv && nv.classList.contains('active')) requestAnimationFrame(function(){ SN.map.resize(); });
+      if(SN._rzRaf || !SN.map || !nv || !nv.classList.contains('active')) return;
+      SN._rzRaf=requestAnimationFrame(function(){ SN._rzRaf=0; if(SN.map) SN.map.resize(); });
     });
   }
   requestAnimationFrame(function(){ if(SN.map) SN.map.resize(); });
