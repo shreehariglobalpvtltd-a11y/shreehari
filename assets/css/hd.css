@@ -1,0 +1,145 @@
+/* hd.css — 10 Oct 2026: the owner's HD visual pack in the page (HD work package).
+   Loads after homeinfo.css and BEFORE depth.css (which stays the last stylesheet).
+
+   Owner (10 Oct 2026): "the photos GPT made in HD - replace them", with the pack's
+   own guide: calm navy / mist-blue / ivory, gold only as a small accent, 48px+ touch
+   targets, one eager image at most, less auto motion, honest captions. Rules here:
+   • every colour is a design token (ds.css --navy / --royal / --surface / --line …,
+     showcase.css --sc-gold); the only literals are translucent whites and blacks
+     used as overlays on artwork;
+   • NO animation in this file - the artwork sits still (the old hero's rays, orbs
+     and particles are gone); the one hover lift is transform-only and switched off
+     for prefers-reduced-motion and html[data-motion="reduced"];
+   • every image is lazy, sized (width/height) and WebP; no fetchpriority=high -
+     the first screen is still the logo card + the booking form;
+   • every illustration a visitor could take for a photo says "Illustration"
+     beside it (data-i18n hxIllus).
+   Review fixes (10 Oct 2026): no rules for #styleHighlight / #facilities (redesign.css
+   keeps both hidden, so artwork there would never be seen); the sprite size rule is
+   scoped to .ic-s; the #top card below is STAGED - redesign.css still hides it. */
+
+/* =====================================================================
+   1. THE COACH HERO — #top.hero-hd: copy left, the bus render right.
+   Staged for the owner's yes: redesign.css hides #view-home > .hero (the 8 Oct
+   booking-first layout). These rules only matter once that line goes.
+   ===================================================================== */
+#top.hero-hd { box-sizing: border-box; max-width: 1160px; margin: 14px auto 0; padding: 0 16px;
+  background: none; color: var(--on-navy); overflow: visible; }
+#top.hero-hd::before { display: none; }           /* the old dotted map texture */
+#top.hero-hd .hero-grid { position: relative; overflow: hidden; isolation: isolate; z-index: auto;
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: center;
+  max-width: none; padding: 22px 18px 22px; border-radius: var(--radius-xl, 22px);
+  background: linear-gradient(135deg, var(--navy) 0%, var(--royal-strong) 68%, var(--royal) 100%);
+  box-shadow: var(--shadow-2); }
+:root[data-theme="dark"] #top.hero-hd .hero-grid { background: linear-gradient(135deg, var(--navy) 0%, var(--royal-soft) 100%); }
+:root[data-display="amoled"] #top.hero-hd .hero-grid { background: var(--surface); border: 1px solid var(--line); }
+#top.hero-hd .hero-copy { min-width: 0; }
+#top.hero-hd .eyebrow { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 10px; color: var(--on-navy-muted);
+  font: 700 12.5px/1.3 var(--font-sans); letter-spacing: .12em; text-transform: uppercase; }
+#top.hero-hd .eyebrow::before { display: none; }
+#top.hero-hd .eyebrow .flg { flex: none; height: 15px; width: auto; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .35)); }
+#top.hero-hd .hero-brand-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 6px; }
+#top.hero-hd .hero-brand-logo { height: 52px; width: auto; padding: 0; border-radius: 0; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, .35)); }
+#top.hero-hd .hero-brand-logo:not([src]) { display: none; }
+#top.hero-hd .hero-brand-row span { font: 800 clamp(19px, 2.6vw, 28px)/1.15 var(--font-sans); letter-spacing: .04em; text-transform: uppercase; color: var(--on-navy); }
+#top.hero-hd .hero-slogan { margin: 0 0 8px; font: 700 clamp(18px, 2.2vw, 25px)/1.25 var(--font-sans); color: var(--on-navy); }
+#top.hero-hd .hero-sub { margin: 0 0 12px; max-width: 52ch; font: 500 15px/1.6 var(--font-sans); color: var(--on-navy-muted); }
+#top.hero-hd .hero-sub b { color: var(--on-navy); }
+#top.hero-hd .hero-feats { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; padding: 0; list-style: none; }
+#top.hero-hd .hero-feats li { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 6px 13px; border-radius: 999px;
+  font: 700 12.5px/1.3 var(--font-sans); color: var(--on-navy); background: rgba(255, 255, 255, .11); border: 1px solid rgba(255, 255, 255, .22);
+  backdrop-filter: none; -webkit-backdrop-filter: none; }
+#top.hero-hd .hero-feats li .ic { width: 20px; height: 20px; color: var(--sc-gold, var(--accent-gold)); }
+#top.hero-hd .hero-next { display: inline-flex; align-items: center; gap: 8px; margin: 2px 0 0; padding: 10px 16px; border-radius: 14px;
+  background: rgba(255, 255, 255, .11); border: 1px solid rgba(255, 255, 255, .2); font: 700 14px/1.3 var(--font-sans); color: var(--on-navy); }
+#top.hero-hd .hero-next .ic { width: 20px; height: 20px; color: var(--sc-gold, var(--accent-gold)); }
+#top.hero-hd .hero-next #nextDepTimer { font: 800 18px/1 var(--font-mono); letter-spacing: .08em; font-variant-numeric: tabular-nums; color: var(--sc-gold, var(--accent-gold)); }
+/* The countdown stays OFF even when the card is shown: startNextDeparture()
+   (13-admin-routes.js) mixes both directions, reads the device clock against IST
+   times and assumes a daily bus, so a Surat visitor at 14:00 would be told about the
+   Nepal-side 18:00 return. It only ticks while visible (offsetParent), so hiding the
+   box also keeps the timer asleep. Un-hide only after it is fixed per direction. */
+#top.hero-hd #nextDepBox { display: none; }
+#top.hero-hd .hero-qt-cta { margin: 14px 0 0; min-height: 48px; }
+#top.hero-hd .hero-art { margin: 0; min-width: 0; text-align: center; }
+#top.hero-hd .hero-art img { display: inline-block; width: 100%; max-width: 560px; height: auto; filter: drop-shadow(0 16px 22px rgba(0, 0, 0, .38)); }
+@media (min-width: 761px) {
+  #top.hero-hd { padding: 0 22px; margin-top: 18px; }
+  #top.hero-hd .hero-grid { grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr); gap: 26px; padding: 30px 30px 30px; }
+  #top.hero-hd .hero-brand-logo { height: 60px; }
+}
+@media (max-width: 760px) {
+  #top.hero-hd .hero-brand-logo { height: 44px; }
+  #top.hero-hd .hero-art img { max-width: 420px; }
+}
+
+/* =====================================================================
+   2. QUICKBOT — the phone-and-ticket illustration on the right (desktop only:
+   on a phone the form comes first, so the picture is simply not shown)
+   ===================================================================== */
+#quick-ticket .qt-art { display: none; }
+@media (min-width: 761px) {
+  #quick-ticket .qt-banner { position: relative; }
+  #quick-ticket .qt-art { display: block; position: absolute; z-index: 0; right: 16px; top: 12px; width: 150px; height: 150px; pointer-events: none;
+    filter: drop-shadow(0 8px 12px rgba(0, 0, 0, .12)); }
+  #quick-ticket .qt-banner > .qt-head, #quick-ticket .qt-banner > .qt-ai, #quick-ticket .qt-banner > h3, #quick-ticket .qt-banner > p { padding-right: 176px; }
+}
+
+/* =====================================================================
+   3. LIVE BUS TRACKING — #homeLive (two honest rows + the tracking illustration)
+   ===================================================================== */
+#homeLive .hx-live-grid { display: grid; gap: 16px; }
+#homeLive .hx-live-copy { min-width: 0; }
+#homeLive .hx-live-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+#homeLive .hx-live-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center;
+  padding: 12px 14px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-1); }
+#homeLive .hx-live-ic { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 15px; background: var(--royal-tint); color: var(--royal); }
+#homeLive .hx-live-ic .ic { width: 28px; height: 28px; }
+#homeLive .hx-live-tx { min-width: 0; }
+#homeLive .hx-live-tx b { display: block; font: 800 15px/1.3 var(--font-sans); color: var(--ink); }
+#homeLive .hx-live-tx small { display: block; margin-top: 3px; font: 500 13px/1.55 var(--font-sans); color: var(--muted); }
+#homeLive .hx-live-btn { grid-column: 1 / -1; flex: none; }
+#homeLive .hx-live-badge { grid-column: 1 / -1; justify-self: start; display: inline-flex; align-items: center; min-height: 34px; padding: 0 13px; border-radius: 999px;
+  background: var(--orange-soft); color: var(--warm-ink); font: 800 12.5px/1.3 var(--font-sans); white-space: nowrap; }
+#homeLive .hx-live-soon { background: var(--surface-sunken); border-style: dashed; }
+#homeLive .hx-live-soon .hx-live-ic { background: var(--orange-soft); color: var(--warm-ink); }
+#homeLive .hx-live-art { margin: 0; text-align: center; }
+#homeLive .hx-live-art img { display: inline-block; width: min(220px, 60%); height: auto; }
+#homeLive .hx-live-art figcaption { margin-top: 2px; font: 600 11.5px/1.3 var(--font-sans); color: var(--muted); }
+@media (min-width: 560px) {
+  #homeLive .hx-live-row { grid-template-columns: auto minmax(0, 1fr) auto; }
+  #homeLive .hx-live-btn, #homeLive .hx-live-badge { grid-column: auto; }
+}
+@media (min-width: 761px) {
+  #homeLive .hx-live-grid { grid-template-columns: minmax(0, 1fr) 230px; align-items: center; }
+  #homeLive .hx-live-art img { width: 220px; }
+}
+
+/* =====================================================================
+   4. ILLUSTRATIONS IN CONTEXT — the guide header and the menu icons
+   (review fix: the sleeper-concept, family-travel and seat-key additions were
+   taken out - #styleHighlight and #facilities are hidden by redesign.css, and the
+   seat key keeps its colour boxes, which follow the theme tokens)
+   ===================================================================== */
+/* the booking helper beside the guide's title (fictional character, decorative;
+   a 128 px export - the box is 48 x 60) */
+#bookHelp .bh-art { flex: none; width: 48px; height: 60px; border-radius: 14px; overflow: hidden; background: rgba(255, 255, 255, .16); }
+#bookHelp .bh-art img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 0; }
+@media (max-width: 479px) { #bookHelp .bh-art { display: none; } }
+
+/* the pack's support / mobile-booking symbols in the nav + menu rows (48-unit box,
+   thinner stroke than Lucide, so a touch larger). Only .ic-s - the Lucide icons
+   beside them keep their own 1em size. */
+.nav-link .ic-s, .mobile-menu a .ic-s { width: 1.15em; height: 1.15em; }
+
+/* =====================================================================
+   5. MOTION — nothing here loops; the one hover lift is transform-only
+   ===================================================================== */
+#homeLive .hx-live-row { transition: transform .25s var(--sc-ease, ease); }
+#homeLive .hx-live-row:hover { transform: translateY(-2px); }
+@media (prefers-reduced-motion: reduce) {
+  #homeLive .hx-live-row { transition: none; }
+  #homeLive .hx-live-row:hover { transform: none; }
+}
+html[data-motion="reduced"] #homeLive .hx-live-row { transition: none; }
+html[data-motion="reduced"] #homeLive .hx-live-row:hover { transform: none; }

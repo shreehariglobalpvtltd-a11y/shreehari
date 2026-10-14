@@ -551,7 +551,7 @@ en: {
   hxInSub: 'Our coach runs to Rupaidiha on the India side. Jamunaha is across the line, with Nepalgunj just beyond.',
   hxTl1950: 'India–Nepal Treaty of Peace and Friendship (open border)', hxTlOpenY: 'Open border', hxTlOpen: 'Indian and Nepali citizens cross without a visa. Carry a valid photo ID.',
   hxTlNote: 'A short summary. Check the current rules before you travel.', hxInStory: 'Full story', hxInDocs: 'Border documents',
-  hxBandAlt: 'Nepal heritage: Sagarmatha (Mount Everest), prayer flags, Gautam Buddha and a stupa',
+  hxBandAlt: 'Illustration of Nepal’s heritage: a golden Buddha, Himalayan peaks, prayer flags and a stupa',
   hxExEyebrow: 'The S Hari Global ecosystem', hxExTitle: 'One app for the whole journey', hxExSub: 'Bus tickets, fast booking, bus tracking, tours and places to visit · India ⇄ Nepal',
   hxHubBus: 'Bus ticket', hxHubBusSub: 'Pick date & berth', hxHubQuick: 'QuickBot ticket', hxHubQuickSub: 'Name + mobile → ticket',
   hxHubTrack: 'Track bus', hxHubTrackSub: 'From your ticket', hxHubTours: 'Tour packages', hxHubToursSub: 'Enquire & plan',
@@ -561,6 +561,14 @@ en: {
   hxCatPilgrimage: 'Pilgrimage', hxCatNature: 'Nature', hxCatHeritage: 'Heritage', hxCatWildlife: 'Wildlife', hxCatCity: 'City', hxCatAdventure: 'Adventure', hxCatLake: 'Lakes', hxCatHill: 'Hills',
   hxToursCta: 'Explore tour packages', hxPkgNote: 'Tours inside Nepal are arranged with local partners; our coach takes you as far as Rupaidiha.',
   hxPkgDays: '{d} days · {n} nights', hxPkgDaysOnly: '{d} days', hxPkgCta: 'Enquire', hxNP: 'Nepal', hxIN: 'India',
+  /* 10 Oct 2026 (HD visual pack): the live-tracking section (#homeLive), the honest
+     illustration tags and the hero departure countdown label. (No apostrophe in
+     these comments: tests/i18n-check.js reads a quote as the start of a string.) */
+  hxLiveEyebrow: 'Live bus tracking', hxLiveTitle: 'Where is my bus?', hxLiveSub: 'Follow the coach from your own ticket and share the page with family at home.',
+  hxLiveNow: 'GPS tracking from your ticket', hxLiveNowSub: 'Live today whenever the driver’s phone is sharing its position; otherwise the timetable is shown, never a guessed dot.',
+  hxLiveSoon: 'Fleet GPS unit + CCTV live view', hxLiveSoonSub: 'A fixed GPS unit on every coach and a live camera view for passengers’ families — being set up.',
+  hxLiveSoonBadge: 'Coming soon · छिट्टै', hxIllus: 'Illustration',
+  hdNextDep: 'Next departure in',
 },
 hi: {
   premiumFront: "आगे · यात्रा की दिशा", premiumRear: "पीछे", premiumBeyond: "सरहदों के पार सफ़र", premiumDirector: "अध्यक्ष / निदेशक", premiumPromise: "आपकी यात्रा, हमारी ज़िम्मेदारी।", premiumSafe: "सुरक्षित यात्रा", premiumEasy: "आसान बुकिंग", premiumLoading: "आपकी यात्रा तैयार हो रही है…", premiumRetry: "कनेक्शन में समय लग रहा है। पुनः लोड करें", premiumSlow: "कनेक्ट हो रहा है। पुनः प्रयास करें या आगे बढ़ें।", premiumTrust: "भरोसे के साथ यात्रा।", premiumPay: "स्कैन करके भुगतान करें", premiumPaid: "भुगतान सत्यापित", premiumPending: "भुगतान सत्यापन लंबित", premiumVerify: "टिकट सत्यापन", premiumDue: "बकाया राशि",
@@ -1098,7 +1106,7 @@ hi: {
   hxInSub: 'हमारी बस भारत की ओर Rupaidiha तक चलती है। सीमा पार Jamunaha है, और पास ही Nepalgunj।',
   hxTl1950: 'भारत–नेपाल शांति एवं मैत्री संधि (खुली सीमा)', hxTlOpenY: 'खुली सीमा', hxTlOpen: 'भारतीय और नेपाली नागरिक बिना वीज़ा आते-जाते हैं। वैध फोटो पहचान पत्र साथ रखें।',
   hxTlNote: 'संक्षिप्त सारांश। यात्रा से पहले मौजूदा नियम देखें।', hxInStory: 'पूरी कहानी', hxInDocs: 'सीमा दस्तावेज़',
-  hxBandAlt: 'नेपाल की धरोहर: सगरमाथा (माउंट एवरेस्ट), प्रार्थना झंडे, गौतम बुद्ध और स्तूप',
+  hxBandAlt: 'नेपाल की धरोहर का चित्रण: सुनहरे गौतम बुद्ध, हिमालय की चोटियाँ, प्रार्थना झंडे और स्तूप',
   hxExEyebrow: 'S Hari Global इकोसिस्टम', hxExTitle: 'पूरी यात्रा के लिए एक ही ऐप', hxExSub: 'बस टिकट, फटाफट बुकिंग, बस ट्रैकिंग, टूर पैकेज और घूमने की जगहें · भारत ⇄ नेपाल',
   hxHubBus: 'बस टिकट', hxHubBusSub: 'तारीख और बर्थ चुनें', hxHubQuick: 'QuickBot फटाफट टिकट', hxHubQuickSub: 'नाम + मोबाइल → टिकट',
   hxHubTrack: 'बस ट्रैक', hxHubTrackSub: 'अपने टिकट से', hxHubTours: 'टूर पैकेज', hxHubToursSub: 'पूछताछ और योजना',
@@ -1108,6 +1116,12 @@ hi: {
   hxCatPilgrimage: 'तीर्थ', hxCatNature: 'प्रकृति', hxCatHeritage: 'धरोहर', hxCatWildlife: 'वन्यजीव', hxCatCity: 'शहर', hxCatAdventure: 'रोमांच', hxCatLake: 'झील', hxCatHill: 'पहाड़',
   hxToursCta: 'टूर पैकेज देखें', hxPkgNote: 'नेपाल के अंदर की यात्रा स्थानीय पार्टनर के साथ होती है; हमारी बस Rupaidiha तक जाती है।',
   hxPkgDays: '{d} दिन · {n} रात', hxPkgDaysOnly: '{d} दिन', hxPkgCta: 'पूछताछ', hxNP: 'नेपाल', hxIN: 'भारत',
+  /* 10 Oct 2026 (HD visual pack): live-tracking section, illustration tags, countdown label. */
+  hxLiveEyebrow: 'लाइव बस ट्रैकिंग', hxLiveTitle: 'मेरी बस कहाँ है?', hxLiveSub: 'अपने टिकट से बस को फ़ॉलो करें और घर के परिवार के साथ पेज शेयर करें।',
+  hxLiveNow: 'आपके टिकट से GPS ट्रैकिंग', hxLiveNowSub: 'जब ड्राइवर का फ़ोन अपनी लोकेशन शेयर कर रहा हो तब लाइव; नहीं तो समय-सारणी दिखती है, कभी अनुमानित बिंदु नहीं।',
+  hxLiveSoon: 'फ़्लीट GPS यूनिट + CCTV लाइव व्यू', hxLiveSoonSub: 'हर कोच में लगा GPS यूनिट और यात्रियों के परिवार के लिए लाइव कैमरा व्यू — तैयारी चल रही है।',
+  hxLiveSoonBadge: 'जल्द आ रहा है · छिट्टै', hxIllus: 'चित्रण',
+  hdNextDep: 'अगली रवानगी में बाकी समय',
 },
 ne: {
   premiumFront: "अगाडि · यात्राको दिशा", premiumRear: "पछाडि", premiumBeyond: "सीमापारको यात्रा", premiumDirector: "अध्यक्ष / निर्देशक", premiumPromise: "तपाईंको यात्रा, हाम्रो जिम्मेवारी।", premiumSafe: "सुरक्षित यात्रा", premiumEasy: "सजिलो बुकिङ", premiumLoading: "तपाईंको यात्रा तयार हुँदैछ…", premiumRetry: "जडानमा समय लाग्यो। फेरि लोड गर्नुहोस्", premiumSlow: "जडान हुँदैछ। फेरि प्रयास गर्नुहोस् वा अगाडि बढ्नुहोस्।", premiumTrust: "विश्वासका साथ यात्रा।", premiumPay: "स्क्यान गरेर तिर्नुहोस्", premiumPaid: "भुक्तानी प्रमाणित", premiumPending: "भुक्तानी प्रमाणीकरण बाँकी", premiumVerify: "टिकट प्रमाणीकरण", premiumDue: "बाँकी रकम",
@@ -1645,7 +1659,7 @@ ne: {
   hxInSub: 'हाम्रो बस भारततर्फको Rupaidiha सम्म चल्छ। सिमानापारि Jamunaha, अनि नजिकै Nepalgunj।',
   hxTl1950: 'भारत–नेपाल शान्ति तथा मैत्री सन्धि (खुला सिमाना)', hxTlOpenY: 'खुला सिमाना', hxTlOpen: 'भारतीय र नेपाली नागरिक भिसाबिना आवतजावत गर्छन्। मान्य फोटो परिचयपत्र साथमा राख्नुहोस्।',
   hxTlNote: 'छोटो सारांश मात्र। यात्राअघि ताजा नियम हेर्नुहोस्।', hxInStory: 'पूरा कथा', hxInDocs: 'सिमाना कागजात',
-  hxBandAlt: 'नेपालको सम्पदा: सगरमाथा, लुङदार, गौतम बुद्ध र स्तूप',
+  hxBandAlt: 'नेपालको सम्पदाको चित्रण: सुनौलो गौतम बुद्ध, हिमालका चुचुरा, लुङदार र स्तूप',
   hxExEyebrow: 'S Hari Global इकोसिस्टम', hxExTitle: 'पूरै यात्राका लागि एउटै एप', hxExSub: 'बस टिकट, छिटो बुकिङ, बस ट्र्याकिङ, टुर प्याकेज र घुम्ने ठाउँ · भारत ⇄ नेपाल',
   hxHubBus: 'बस टिकट', hxHubBusSub: 'मिति र बर्थ छान्नुहोस्', hxHubQuick: 'QuickBot छिटो टिकट', hxHubQuickSub: 'नाम + मोबाइल → टिकट',
   hxHubTrack: 'बस ट्र्याक', hxHubTrackSub: 'आफ्नो टिकटबाट', hxHubTours: 'टुर प्याकेज', hxHubToursSub: 'सोधपुछ र योजना',
@@ -1655,6 +1669,12 @@ ne: {
   hxCatPilgrimage: 'तीर्थ', hxCatNature: 'प्रकृति', hxCatHeritage: 'सम्पदा', hxCatWildlife: 'वन्यजन्तु', hxCatCity: 'सहर', hxCatAdventure: 'साहसिक', hxCatLake: 'ताल', hxCatHill: 'पहाड',
   hxToursCta: 'टुर प्याकेज हेर्नुहोस्', hxPkgNote: 'नेपालभित्रको भ्रमण स्थानीय साझेदारसँग मिलेर गरिन्छ; हाम्रो बस Rupaidiha सम्म जान्छ।',
   hxPkgDays: '{d} दिन · {n} रात', hxPkgDaysOnly: '{d} दिन', hxPkgCta: 'सोधपुछ', hxNP: 'नेपाल', hxIN: 'भारत',
+  /* 10 Oct 2026 (HD visual pack): live-tracking section, illustration tags, countdown label. */
+  hxLiveEyebrow: 'लाइभ बस ट्र्याकिङ', hxLiveTitle: 'मेरो बस कहाँ छ?', hxLiveSub: 'आफ्नै टिकटबाट बस हेर्नुहोस् र घरका परिवारसँग पेज सेयर गर्नुहोस्।',
+  hxLiveNow: 'तपाईंको टिकटबाट GPS ट्र्याकिङ', hxLiveNowSub: 'चालकको फोनले आफ्नो स्थान सेयर गरिरहेको बेला लाइभ; नत्र समय-तालिका देखिन्छ, अनुमानित बिन्दु कहिल्यै होइन।',
+  hxLiveSoon: 'फ्लिट GPS युनिट + CCTV लाइभ भ्यू', hxLiveSoonSub: 'हरेक कोचमा जडित GPS युनिट र यात्रुका परिवारका लागि लाइभ क्यामेरा भ्यू — तयारी हुँदैछ।',
+  hxLiveSoonBadge: 'छिट्टै आउँदैछ', hxIllus: 'चित्रण',
+  hdNextDep: 'अर्को प्रस्थानसम्म बाँकी',
 }
 };
 

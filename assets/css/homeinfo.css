@@ -227,9 +227,12 @@
 .hx-route .hx-rfb small { font-weight: 600; color: var(--hx-on-2); }
 
 /* ---- 7. #homeIndiaNepal — heritage band, flags, mini timeline ---- */
-.hx-in .hx-band { position: relative; height: clamp(124px, 31vw, 260px); background: linear-gradient(180deg, #4F74B8, #27467F); }
+/* 10 Oct 2026 (HD pack): the heritage montage is 2:1 with the Buddha on the left edge
+   and the stupa on the right, so the band keeps the picture's own shape (no fixed-height
+   crop); only a tall desktop viewport caps it, and then the crop is centred. */
+.hx-in .hx-band { position: relative; aspect-ratio: 2 / 1; max-height: 460px; overflow: hidden; background: linear-gradient(180deg, #4F74B8, #27467F); }
 .hx-in .hx-band picture { display: block; height: 100%; }
-.hx-in .hx-band-img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 40%; }
+.hx-in .hx-band-img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%; }
 :root[data-theme="dark"] .hx-in .hx-band-img { filter: brightness(.86) saturate(.95); }
 .hx-in .hx-flags {
   position: absolute; left: 16px; bottom: -22px; display: inline-flex; align-items: center; gap: 9px;
@@ -320,6 +323,11 @@
 .hx .hx-card:active { transform: scale(.98); }
 .hx .hx-card-art { position: relative; display: block; height: 124px; background-color: #3D6FB6; background-repeat: no-repeat; background-size: cover; background-position: center bottom; }
 :root[data-theme="dark"] .hx .hx-card-art { filter: brightness(.84) saturate(.92); }
+/* 10 Oct 2026 (HD pack): a real artwork per card (3:2 thumbnail, cover-fit) over the CSS
+   art, which stays underneath as the fallback; a small honest "Illustration" tag. */
+.hx .hx-card-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 45%; }
+.hx .hx-card-flag, .hx .hx-card-cat { z-index: 1; }
+.hx .hx-card-ill { position: absolute; z-index: 1; left: 10px; bottom: 8px; padding: 2px 7px; border-radius: 999px; background: rgba(0, 0, 0, .38); color: #fff; font-size: 10.5px; font-weight: 700; line-height: 1.4; letter-spacing: .02em; }
 .hx .hx-card-flag { position: absolute; top: 10px; left: 10px; width: auto; height: 22px; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .35)); }
 .hx .hx-card-flag.hx-card-flag-in { height: 18px; border-radius: 2px; }
 .hx .hx-card-cat {

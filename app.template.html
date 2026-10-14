@@ -150,6 +150,9 @@ html,body{margin:0;background:#F4F6FB}
   <link rel="stylesheet" href="/assets/css/themes.css?v=20261009g">
   <link rel="stylesheet" href="/assets/css/showcase.css?v=20261009g">
   <link rel="stylesheet" href="/assets/css/homeinfo.css?v=20261009g">
+  <!-- 10 Oct 2026: the owner's HD visual pack in the page (hero coach, illustrations,
+       live-tracking section, sprite-icon sizes). Before depth.css, which stays last. -->
+  <link rel="stylesheet" href="/assets/css/hd.css?v=20261009g">
   <!-- 10 Oct 2026: device / input hygiene - touch, hover guards, tap targets,
        compositor layers, dvh sheets, TV + device tiers (perf.css). Right
        BEFORE depth.css, which stays the last stylesheet. -->
@@ -301,6 +304,22 @@ html,body{margin:0;background:#F4F6FB}
     <symbol id="i-play" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m10 8.5 5.5 3.5-5.5 3.5z"/></symbol>
     <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
     <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/></symbol>
+    <!-- 10 Oct 2026 (owner's HD visual pack): the blue-line icons from
+         assets/img/icons/*.svg that the page actually uses, as sprite symbols
+         (s-<name>, 48-unit box). The brand blue stroke became currentColor so a
+         placement class and the dark / AMOLED palettes colour them; the small
+         gold accent on s-charging is kept as drawn. Used in the menu (support,
+         mobile-booking), #homeLive (location, cctv) and the staged #top hero.
+         The other icons of the pack stay in assets/img/icons/ only (review fix:
+         no dead SVG parsed on every page load). -->
+    <symbol id="s-cctv" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11h29v17H14zM36 17l6-3v12l-6-3M21 28v8h11M28 36v5"/><path d="M14 17h15"/></g></symbol>
+    <symbol id="s-charging" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M17 7v9M31 7v9M13 16h22v7a11 11 0 0 1-22 0zM24 34v8"/><path d="M25 19l-4 7h6l-4 7" stroke="#D59A37"/></g></symbol>
+    <symbol id="s-clock" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="24" r="18"/><path d="M24 13v12l8 5"/></g></symbol>
+    <symbol id="s-location" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M38 20c0 10-14 23-14 23S10 30 10 20a14 14 0 0 1 28 0z"/><circle cx="24" cy="20" r="5"/></g></symbol>
+    <symbol id="s-mobile-booking" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect x="13" y="5" width="22" height="38" rx="5"/><path d="M20 9h8M21 38h6M18 23l5 5 8-10"/></g></symbol>
+    <symbol id="s-shield" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M24 5l16 6v12c0 10-16 20-16 20S8 33 8 23V11z"/><path d="M16 24l6 6 11-13"/></g></symbol>
+    <symbol id="s-sleeper" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 38V17M40 38V25H8M8 33h32M14 25v-8h8v8M22 20h13a5 5 0 0 1 5 5"/><path d="M25 8h10l-10 8h10"/></g></symbol>
+    <symbol id="s-support" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 25v-4a16 16 0 0 1 32 0v12a7 7 0 0 1-7 7h-5"/><rect x="6" y="22" width="7" height="12" rx="3"/><rect x="35" y="22" width="7" height="12" rx="3"/><rect x="21" y="37" width="8" height="6" rx="3"/></g></symbol>
   </defs>
 </svg>
 
@@ -420,7 +439,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <a class="nav-link" href="#/my"><svg class="ic"><use href="#i-list"/></svg> My Bookings</a>
       <a class="nav-link" href="#/" data-scroll="timetable"><svg class="ic"><use href="#i-clock"/></svg> Timetable</a>
       <a class="nav-link" href="#/" data-scroll="contact"><svg class="ic"><use href="#i-phone"/></svg> Contact</a>
-      <a class="nav-link" href="/help.php">🛟 Help Desk</a>
+      <a class="nav-link" href="/help.php"><svg class="ic ic-s"><use href="#s-support"/></svg> Help Desk</a>
       <span class="nav-sep"></span>
       <a class="nav-link" href="#/my" id="navUserBtn">Sign in</a>
       <button class="nav-bell" id="notifBellBtn" type="button" aria-label="Notifications"><svg class="ic"><use href="#i-bell"/></svg><span class="notif-badge hide" id="notifBadge">0</span></button>
@@ -434,7 +453,7 @@ s.addEventListener('click',function(e){e.preventDefault();
 <div class="mobile-menu" id="mobileMenu">
   <a href="#/" data-scroll="top"><svg class="ic"><use href="#i-home"/></svg> Home</a>
   <a href="#/" data-scroll="search-anchor"><svg class="ic"><use href="#i-ticket"/></svg> Book Tickets</a>
-  <a href="#/" data-scroll="quick-ticket" class="mm-hot">🤖 QuickBot Ticket · 10-Second Booking</a>
+  <a href="#/" data-scroll="quick-ticket" class="mm-hot"><svg class="ic ic-s"><use href="#s-mobile-booking"/></svg> QuickBot Ticket · 10-Second Booking</a>
   <a href="#/" data-scroll="company"><svg class="ic"><use href="#i-building"/></svg> About Us</a>
   <a href="#/my" data-track-bus><svg class="ic"><use href="#i-radar"/></svg> <span data-i18n="mmTrack">Track my bus</span></a>
   <a href="#/nav"><svg class="ic"><use href="#i-map"/></svg> S Hari Map &amp; Live Bus Tracker</a>
@@ -444,7 +463,7 @@ s.addEventListener('click',function(e){e.preventDefault();
   <a href="/agreements/"><svg class="ic"><use href="#i-doc"/></svg> एजेन्ट / साझेदार सम्झौता · Agent agreements</a>
   <a href="/admin/login.php" rel="nofollow"><svg class="ic"><use href="#i-lock"/></svg> एजेन्ट / स्टाफ लगइन · Agent / Staff sign-in</a>
   <a href="#/" data-scroll="contact"><svg class="ic"><use href="#i-phone"/></svg> Contact</a>
-  <a href="/help.php" class="mm-hot">🛟 सहायता केन्द्र · Help Desk (नम्बर पाउनुहोस्)</a>
+  <a href="/help.php" class="mm-hot"><svg class="ic ic-s"><use href="#s-support"/></svg> सहायता केन्द्र · Help Desk (नम्बर पाउनुहोस्)</a>
   <hr style="border:none;border-top:1px dashed var(--line);margin:4px 0">
   <a href="#/terms"><svg class="ic"><use href="#i-scroll"/></svg> Terms</a>
   <a href="#/my" id="mmUserBtn"><svg class="ic"><use href="#i-users"/></svg> Sign in</a>
@@ -681,39 +700,49 @@ s.addEventListener('click',function(e){e.preventDefault();
 
 
   <!-- ============ HERO ============ -->
-  <div class="hero" id="top">
+  <!-- 10 Oct 2026 (owner's HD visual pack): the decorative hero - light rays,
+       floating particles, blurred orbs and the giant watermark - is now a calm
+       two-column card: the copy on the left, the coach render (bus-cutout,
+       alpha WebP, mobile size under 761px, lazy) on the right. Every real
+       element stays: eyebrow, brand row, slogan, sub, the four facility chips
+       (sprite icons instead of emoji), #heroQuote, #nextDepBox, the QuickBot
+       key. The company name is the live fact (brand.name). Styles: hd.css
+       (.hero-hd). The admin's Bhagwan image layer is kept (hidden by
+       redesign.css unless the office sets one).
+       STAGED, NOT SHOWN (review fix, 10 Oct): redesign.css still hides
+       #view-home > .hero, as the owner-approved booking-first layout (8 Oct,
+       D3-09) decided - the card would repeat #homeHero, #homeFeat and QuickBot.
+       It goes live only on the owner's yes: drop ".hero" from that hide list
+       and give #top an order in showcase.css. #nextDepBox stays hidden even
+       then (hd.css) until the countdown knows the visitor's direction and IST. -->
+  <div class="hero hero-hd" id="top">
     <div class="bhagwan-hero-bg" aria-hidden="true"></div>
-    <div class="orb o1" data-parallax="18"></div>
-    <div class="orb o2" data-parallax="-12"></div>
-    <!-- Premium FX layer: light rays + golden glow + floating particles (decorative only) -->
-    <div class="hero-fx" aria-hidden="true">
-      <span class="hero-ray r1"></span><span class="hero-ray r2"></span><span class="hero-ray r3"></span>
-      <span class="hero-glow"></span>
-      <span class="hero-pt p1"></span><span class="hero-pt p2"></span><span class="hero-pt p3"></span><span class="hero-pt p4"></span><span class="hero-pt p5"></span><span class="hero-pt p6"></span><span class="hero-pt p7"></span><span class="hero-pt p8"></span><span class="hero-pt p9"></span><span class="hero-pt p10"></span>
-    </div>
-    <!-- Oversized brand watermark behind the copy. Decorative only — it is
-         aria-hidden and carries no information the headline does not. -->
-    <span class="hero-wm" aria-hidden="true">S HARI GLOBAL</span>
     <div class="container hero-grid">
       <div class="hero-copy">
-        <span class="eyebrow"><span style="font-size:22px;vertical-align:middle;margin-right:6px">🇮🇳</span> Gujarat ⇄ Rupaidiha <span style="font-size:22px;vertical-align:middle;margin-left:6px">🇳🇵</span></span>
-        <p class="hero-brand hero-brand-row"><img data-logo-clone alt="S Hari Global Pvt Ltd logo" class="hero-brand-logo" width="240" height="125" decoding="async"><span>S HARI GLOBAL PVT LTD</span></p>
+        <span class="eyebrow"><span class="flg" data-flag="IN" role="img" aria-label="India"></span> Gujarat ⇄ Rupaidiha <span class="flg" data-flag="NP" role="img" aria-label="Nepal"></span></span>
+        <p class="hero-brand hero-brand-row"><img data-logo-clone alt="" class="hero-brand-logo" width="240" height="125" decoding="async"><span data-fact="brand.name">{{f:brand.name}}</span></p>
         <p class="hero-brand-np">S Hari Global <span class="npdot">·</span> Nepal</p>
         <p class="hero-slogan" data-i18n="heroTitle">Two nations. One road. <span class="grad">One&nbsp;journey.</span></p>
         <p class="hero-sub" data-i18n="heroSub">Direct <b>Gujarat → Rupaidiha</b> coach. Book your seat, pay by UPI or eSewa — with a registered Indian company.</p>
         <!-- Coach facilities as printed on the company visiting card (17 Sep 2026). -->
         <ul class="hero-feats" aria-label="Coach facilities">
-          <li><i>🚌</i><span data-i18n="heroFeat1">AC Sleeper</span></li>
-          <li><i>📍</i><span data-i18n="heroFeat2">Live GPS Tracking</span></li>
-          <li><i>⚡</i><span data-i18n="heroFeat3">USB / Type-C Charging</span></li>
-          <li><i>🛡️</i><span data-i18n="heroFeat4">Safe &amp; Comfortable Journey</span></li>
+          <li><svg class="ic" aria-hidden="true"><use href="#s-sleeper"/></svg><span data-i18n="heroFeat1">AC Sleeper</span></li>
+          <li><svg class="ic" aria-hidden="true"><use href="#s-location"/></svg><span data-i18n="heroFeat2">Live GPS Tracking</span></li>
+          <li><svg class="ic" aria-hidden="true"><use href="#s-charging"/></svg><span data-i18n="heroFeat3">USB / Type-C Charging</span></li>
+          <li><svg class="ic" aria-hidden="true"><use href="#s-shield"/></svg><span data-i18n="heroFeat4">Safe &amp; Comfortable Journey</span></li>
         </ul>
         <p class="hero-quote" id="heroQuote"></p>
-        <div id="nextDepBox" style="margin-top:14px;display:inline-flex;align-items:center;gap:10px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:10px 18px;font-size:14px;color:#fff;font-weight:700">
-          🚌 Next Departure in: <span id="nextDepTimer" style="font-family:var(--f-code);font-size:18px;letter-spacing:.08em;color:#FFD54F">--:--:--</span>
+        <div id="nextDepBox" class="hero-next">
+          <svg class="ic" aria-hidden="true"><use href="#s-clock"/></svg> <span data-i18n="hdNextDep">Next departure in</span> <span id="nextDepTimer">--:--:--</span>
         </div>
         <a class="btn btn-orange hero-qt-cta" href="#/" data-scroll="quick-ticket" id="heroQtCta" data-i18n="qtBadge">⚡ एक क्लिक, १० सेकेन्डमा टिकट तयार</a>
       </div>
+      <figure class="hero-art">
+        <picture>
+          <source media="(max-width: 760px)" srcset="/assets/img/hd/bus-cutout-m.webp?v=20261009g" width="800" height="400">
+          <img src="/assets/img/hd/bus-cutout.webp?v=20261009g" width="1600" height="800" alt="AC sleeper coach - promotional render, not a photo of the fleet" loading="lazy" decoding="async">
+        </picture>
+      </figure>
     </div>
   </div>
 
@@ -826,6 +855,10 @@ s.addEventListener('click',function(e){e.preventDefault();
         <span class="sc-qs"><i aria-hidden="true">2</i><b data-i18n="qtS2">Auto: बस · सिट · भाडा</b></span>
         <span class="sc-qs"><i aria-hidden="true">3</i><b data-i18n="qtS3">टिकट PNG + PDF तुरुन्तै</b></span>
       </div>
+      <!-- 10 Oct 2026 (HD pack): the phone-and-ticket illustration on the right
+           of the card from 761px; hidden on phones so the form stays first
+           (hd.css .qt-art). Decorative - the card's own words say what it does. -->
+      <img class="qt-art" src="/assets/img/hd/quick-ticket-t.webp?v=20261009g" width="480" height="480" alt="" loading="lazy" decoding="async" aria-hidden="true">
     </section>
     <!-- Seat-map mode: the card folds into this one strip (tap = back to QuickBot)
          and the regular search card right below becomes the first thing on screen. -->
@@ -974,7 +1007,10 @@ s.addEventListener('click',function(e){e.preventDefault();
        set in homeinfo.css (#homeFares 6, #homeRoute 9, #homeIndiaNepal 11, #homeExplore 12),
        behaviour in 24-homeinfo.js, copy in the hx* keys of 04-i18n.js. No price, phone or
        person's name is typed here: every rupee comes from SHG_BOOT (FACTS.fares, else the
-       locations list + sharingDir), the same numbers the server charges. -->
+       locations list + sharingDir), the same numbers the server charges.
+       10 Oct 2026 (HD pack): a fifth section, #homeLive (order 10 in showcase.css), sits
+       between the route and the India-Nepal band - live tracking today, fleet GPS + CCTV
+       honestly marked "coming soon". -->
   <section class="container hx hx-fares" id="homeFares" aria-labelledby="hxFaresTitle">
     <div class="hx-shell">
       <div class="hx-head">
@@ -1006,12 +1042,53 @@ s.addEventListener('click',function(e){e.preventDefault();
     </div>
   </section>
 
+  <!-- 10 Oct 2026 (owner: "live bus tracking ... GPS tracking system, coming soon live
+       bus tracking, CCTV live too"): two honest rows. Row 1 is what works TODAY - the
+       keyed tracker from the ticket, live while the driver's phone shares (the same
+       wording track.php uses). Row 2 is the fleet GPS unit + CCTV view, marked coming
+       soon until it exists. The phone-with-map artwork (track-journey, alpha) is an
+       illustration. Styles: hd.css (.hx-live-*); order 10 (showcase.css). -->
+  <section class="container hx hx-livebus" id="homeLive" aria-labelledby="hxLiveTitle">
+    <div class="hx-shell">
+      <div class="hx-live-grid">
+        <div class="hx-live-copy">
+          <div class="hx-head">
+            <p class="hx-eyebrow hx-live"><span class="hx-dot" aria-hidden="true"></span><span data-i18n="hxLiveEyebrow">Live bus tracking</span></p>
+            <h2 class="hx-title" id="hxLiveTitle" data-i18n="hxLiveTitle">Where is my bus?</h2>
+            <p class="hx-sub" data-i18n="hxLiveSub">Follow the coach from your own ticket and share the page with family at home.</p>
+          </div>
+          <ul class="hx-live-rows">
+            <li class="hx-live-row">
+              <span class="hx-live-ic" aria-hidden="true"><svg class="ic"><use href="#s-location"/></svg></span>
+              <span class="hx-live-tx"><b data-i18n="hxLiveNow">GPS tracking from your ticket</b><small data-i18n="hxLiveNowSub">Live today when the driver's phone is sharing its position; otherwise the timetable is shown, never a guessed dot.</small></span>
+              <a class="hx-btn hx-btn-filled hx-live-btn" href="#/my" data-track-bus><svg class="ic" aria-hidden="true"><use href="#i-radar"/></svg><span data-i18n="hxTrack">Track my bus</span></a>
+            </li>
+            <li class="hx-live-row hx-live-soon">
+              <span class="hx-live-ic" aria-hidden="true"><svg class="ic"><use href="#s-cctv"/></svg></span>
+              <span class="hx-live-tx"><b data-i18n="hxLiveSoon">Fleet GPS unit + CCTV live view</b><small data-i18n="hxLiveSoonSub">A fixed GPS unit on every coach and a live camera view for passengers' families - being set up.</small></span>
+              <span class="hx-live-badge" data-i18n="hxLiveSoonBadge">Coming soon · छिट्टै</span>
+            </li>
+          </ul>
+        </div>
+        <!-- decorative (alt="", aria-hidden): the caption is for sighted visitors only;
+             the 480 px export, shown at 220 px -->
+        <figure class="hx-live-art" aria-hidden="true">
+          <img src="/assets/img/hd/track-journey-t.webp?v=20261009g" width="480" height="480" alt="" loading="lazy" decoding="async">
+          <figcaption data-i18n="hxIllus">Illustration</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
   <section class="container hx hx-in" id="homeIndiaNepal" aria-labelledby="hxInTitle">
     <div class="hx-shell hx-shell-flush">
+      <!-- 10 Oct 2026 (HD pack): the Nepal heritage montage (Buddha, Himalaya, stupa) at
+           its own 2:1 shape - homeinfo.css gives the band aspect-ratio 2 / 1 so neither
+           edge figure is cut off; the old nepal-band files stay for the documents. -->
       <div class="hx-band">
         <picture>
-          <source type="image/webp" srcset="/assets/img/nepal-band-540.webp?v=20261009g 540w, /assets/img/nepal-band.webp?v=20261009g 1080w" sizes="(max-width: 760px) 100vw, 1080px">
-          <img class="hx-band-img" id="hxBandImg" src="/assets/img/nepal-band.png?v=20261009g" width="1080" height="300" loading="lazy" decoding="async" alt="Nepal heritage: Sagarmatha (Mount Everest), prayer flags, Gautam Buddha and a stupa">
+          <source type="image/webp" srcset="/assets/img/hd/nepal-heritage-m.webp?v=20261009g 800w, /assets/img/hd/nepal-heritage.webp?v=20261009g 1600w" sizes="(max-width: 760px) 100vw, 1080px">
+          <img class="hx-band-img" id="hxBandImg" src="/assets/img/hd/nepal-heritage-m.webp?v=20261009g" width="1600" height="800" loading="lazy" decoding="async" alt="Illustration of Nepal's heritage: a golden Buddha, Himalayan peaks, prayer flags and a stupa">
         </picture>
         <div class="hx-flags" aria-hidden="true"><img class="hx-flag" src="/assets/img/flag-in.svg?v=20261009g" width="33" height="22" alt="" loading="lazy" decoding="async"><span class="hx-flags-x">⇄</span><img class="hx-flag hx-flag-np" src="/assets/img/flag-np.svg?v=20261009g" width="20" height="26" alt="" loading="lazy" decoding="async"></div>
       </div>
@@ -1053,10 +1130,13 @@ s.addEventListener('click',function(e){e.preventDefault();
         <h3 class="hx-h3" data-i18n="hxPlacesTitle">Places worth the trip</h3>
         <a class="hx-link" href="/explore" data-hx-href="/explore"><span data-i18n="hxSeeAll">See all</span><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
       </div>
+      <!-- 10 Oct 2026 (HD pack): one real artwork per card (lumbini / pokhara / bardiya
+           thumbnails, never the same image twice) over the old CSS art, which stays as
+           the fallback behind it. They are inspired illustrations, said so on each card. -->
       <ul class="hx-cards" id="hxPlaces">
-        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-heritage"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261009g" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatPilgrimage">Pilgrimage</span></span><span class="hx-card-tx"><b>Lumbini</b><small data-i18n="hxPlLumbini">Birthplace of Gautam Buddha · UNESCO World Heritage Site</small></span></a></li>
-        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-nature"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261009g" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatNature">Nature</span></span><span class="hx-card-tx"><b>Pokhara</b><small data-i18n="hxPlPokhara">Lakes and Annapurna mountain views</small></span></a></li>
-        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-wild"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261009g" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatWildlife">Wildlife</span></span><span class="hx-card-tx"><b>Bardiya National Park</b><small data-i18n="hxPlBardiya">Wildlife and jungle, near Nepalgunj</small></span></a></li>
+        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-heritage"><img class="hx-card-img" src="/assets/img/hd/lumbini-t.webp?v=20261009g" width="480" height="320" alt="" loading="lazy" decoding="async"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261009g" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatPilgrimage">Pilgrimage</span><span class="hx-card-ill" aria-hidden="true" data-i18n="hxIllus">Illustration</span></span><span class="hx-card-tx"><b>Lumbini</b><small data-i18n="hxPlLumbini">Birthplace of Gautam Buddha · UNESCO World Heritage Site</small></span></a></li>
+        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-nature"><img class="hx-card-img" src="/assets/img/hd/pokhara-t.webp?v=20261009g" width="480" height="320" alt="" loading="lazy" decoding="async"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261009g" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatNature">Nature</span><span class="hx-card-ill" aria-hidden="true" data-i18n="hxIllus">Illustration</span></span><span class="hx-card-tx"><b>Pokhara</b><small data-i18n="hxPlPokhara">Lakes and Annapurna mountain views</small></span></a></li>
+        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-wild"><img class="hx-card-img" src="/assets/img/hd/bardiya-t.webp?v=20261009g" width="480" height="320" alt="" loading="lazy" decoding="async"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261009g" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatWildlife">Wildlife</span><span class="hx-card-ill" aria-hidden="true" data-i18n="hxIllus">Illustration</span></span><span class="hx-card-tx"><b>Bardiya National Park</b><small data-i18n="hxPlBardiya">Wildlife and jungle, near Nepalgunj</small></span></a></li>
       </ul>
       <div class="hx-pkgs" id="hxPkgs" hidden></div>
       <div class="hx-tours">
@@ -1158,6 +1238,9 @@ s.addEventListener('click',function(e){e.preventDefault();
     <button type="button" class="bh-btn" id="bookHelpBtn" aria-expanded="false" aria-controls="bookHelpPanel">
       <span class="bh-ic" aria-hidden="true"><svg class="ic"><use href="#i-ticket"/></svg></span>
       <span class="bh-txt"><b id="bookHelpTitle" data-i18n="bhTitle">टिकट कसरी काट्ने? — सजिलो गाइड</b><small data-i18n="bhSub">मोबाइलबाटै केही मिनेटमा आफ्नो टिकट आफैं काट्नुहोस् · यहाँ थिच्नुहोस्</small></span>
+      <!-- 10 Oct 2026 (HD pack): the booking helper (support-guide, a fictional illustrated
+           character, alpha) beside the guide's title; decorative, hidden under 480px. -->
+      <span class="bh-art" aria-hidden="true"><img src="/assets/img/hd/support-guide-s.webp?v=20261009g" width="128" height="192" alt="" loading="lazy" decoding="async"></span>
       <span class="bh-go" aria-hidden="true"><svg class="ic"><use href="#i-plus"/></svg></span>
     </button>
     <div class="bh-panel" id="bookHelpPanel" hidden>

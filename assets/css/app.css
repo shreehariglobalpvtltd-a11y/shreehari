@@ -374,24 +374,9 @@ a.credit-seg:hover,a.credit-seg:focus-visible{background:rgba(255,255,255,.08)}
   content:"";position:absolute;inset:0;
   background-image:radial-gradient(rgba(255,255,255,.13) 1px, transparent 1.6px);
   background-size:26px 26px;opacity:.5;pointer-events:none}
-.hero .orb{position:absolute;border-radius:50%;filter:blur(70px);opacity:.5;pointer-events:none;transition:transform .6s ease-out}
-.hero .orb.o1{width:380px;height:380px;background:var(--orange);top:-140px;right:6%}
-.hero .orb.o2{width:420px;height:420px;background:#3E77CE;bottom:-200px;left:-90px}
-/* Oversized ghost wordmark behind the hero copy. Outline-only so it reads as
-   texture, never as text competing with the headline — and nowrap + the
-   hero's own overflow:hidden let it bleed off both edges the way a printed
-   masthead does, instead of wrapping into a second line on a phone. */
-.hero-wm{position:absolute;left:50%;top:30%;transform:translate(-50%,-50%);
-  font-family:var(--f-display);font-weight:900;text-transform:uppercase;
-  font-size:clamp(58px,14vw,180px);line-height:.9;letter-spacing:.02em;
-  white-space:nowrap;pointer-events:none;user-select:none;z-index:0;
-  color:transparent;-webkit-text-stroke:2px rgba(255,255,255,.085)}
-/* The copy has to win against it. */
+/* 10 Oct 2026 (HD pack): the blurred orbs, the ghost wordmark and the light-ray /
+   particle layer (section 6b) are gone - the hero is the calm coach card in hd.css. */
 .hero-grid,.hero-copy{position:relative;z-index:1}
-@media (prefers-reduced-motion:no-preference){
-  .hero-wm{animation:heroWm 18s ease-in-out infinite alternate}
-}
-@keyframes heroWm{from{transform:translate(-52%,-50%)}to{transform:translate(-48%,-50%)}}
 .hero-grid{display:grid;grid-template-columns:1fr;gap:14px;align-items:center;padding:22px 22px 28px;position:relative}
 .eyebrow{display:inline-flex;align-items:center;gap:10px;font-family:var(--f-code);font-size:12.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#FFC98C;margin-bottom:10px}
 .eyebrow::before{content:"";width:26px;height:2px;background:var(--orange);border-radius:2px}
@@ -427,14 +412,8 @@ a.credit-seg:hover,a.credit-seg:focus-visible{background:rgba(255,255,255,.08)}
   pointer-events: none;
 }
 .hero::before { z-index: 1; }
-/* Lift hero content above the Bhagwan bg — but decorative layers (.orb, .hero-fx)
-   must stay position:absolute or they enter document flow and push the content down. */
-.hero > :not(.bhagwan-hero-bg):not(.orb):not(.hero-fx):not(.hero-wm) { position: relative; z-index: 2; }
-.hero > .orb, .hero > .hero-fx { z-index: 1; }
-/* .hero-wm is excluded above for the same reason .orb and .hero-fx are: it is
-   a decorative backdrop, and this rule would give it position:relative — which
-   discards its absolute centring — and z-index:2, which would stack the
-   watermark on top of the headline it sits behind. */
+/* Lift hero content above the Bhagwan bg (the only decorative layer left, 10 Oct 2026). */
+.hero > :not(.bhagwan-hero-bg) { position: relative; z-index: 2; }
 @media (max-width:760px) { .bhagwan-hero-bg { opacity: 0.28; background-attachment: scroll; } }
 
 /* ---------- [CSS] 6. SEARCH CARD (overlaps hero bottom) ---------- */
@@ -474,38 +453,8 @@ a.credit-seg:hover,a.credit-seg:focus-visible{background:rgba(255,255,255,.08)}
 .swap-btn:hover{transform:rotate(180deg);border-color:var(--blue)}
 .search-note{margin-top:14px;display:flex;gap:8px;align-items:center;color:var(--muted);font-size:13px;flex-wrap:wrap}
 
-/* ---------- [CSS] 6b. PREMIUM HERO FX (light rays, particles, golden glow) ---------- */
-.hero .hero-fx{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:1}
-.hero-fx .hero-ray{position:absolute;top:-60%;left:50%;width:130px;height:220%;opacity:0;background:linear-gradient(180deg,transparent,rgba(255,214,120,.10) 30%,rgba(255,214,120,.16) 50%,rgba(255,214,120,.10) 70%,transparent);filter:blur(14px);transform-origin:50% 50%}
-.hero-fx .hero-ray.r1{margin-left:-320px}
-.hero-fx .hero-ray.r2{margin-left:-40px;width:180px}
-.hero-fx .hero-ray.r3{margin-left:260px;width:110px}
-.hero-fx .hero-glow{position:absolute;top:-12%;left:58%;width:620px;height:620px;margin-left:-310px;border-radius:50%;opacity:0;background:radial-gradient(circle,rgba(255,196,80,.20) 0%,rgba(255,196,80,.08) 42%,transparent 70%)}
-.hero-fx .hero-pt{position:absolute;bottom:-14px;width:6px;height:6px;border-radius:50%;opacity:0;background:radial-gradient(circle,rgba(255,228,168,.95),rgba(255,180,90,.35) 70%,transparent)}
-.hero-fx .hero-pt.p1{left:5%}  .hero-fx .hero-pt.p2{left:14%;width:4px;height:4px}
-.hero-fx .hero-pt.p3{left:24%} .hero-fx .hero-pt.p4{left:33%;width:5px;height:5px}
-.hero-fx .hero-pt.p5{left:46%} .hero-fx .hero-pt.p6{left:58%;width:4px;height:4px}
-.hero-fx .hero-pt.p7{left:68%} .hero-fx .hero-pt.p8{left:78%;width:5px;height:5px}
-.hero-fx .hero-pt.p9{left:87%} .hero-fx .hero-pt.p10{left:94%;width:4px;height:4px}
-@media (prefers-reduced-motion: no-preference){
-  .hero-fx .hero-ray{animation:heroRay 18s ease-in-out infinite alternate}
-  .hero-fx .hero-ray.r2{animation-duration:23s;animation-delay:-7s}
-  .hero-fx .hero-ray.r3{animation-duration:27s;animation-delay:-13s}
-  .hero-fx .hero-glow{animation:heroGlow 9s ease-in-out infinite}
-  .hero-fx .hero-pt{animation:heroFloat 12s linear infinite}
-  .hero-fx .hero-pt.p2{animation-duration:14s;animation-delay:2.2s}
-  .hero-fx .hero-pt.p3{animation-duration:12.5s;animation-delay:4.8s}
-  .hero-fx .hero-pt.p4{animation-duration:16s;animation-delay:1.4s}
-  .hero-fx .hero-pt.p5{animation-duration:13s;animation-delay:3.6s}
-  .hero-fx .hero-pt.p6{animation-duration:15s;animation-delay:6s}
-  .hero-fx .hero-pt.p7{animation-duration:12s;animation-delay:2.8s}
-  .hero-fx .hero-pt.p8{animation-duration:17s;animation-delay:5.2s}
-  .hero-fx .hero-pt.p9{animation-duration:13.5s;animation-delay:.9s}
-  .hero-fx .hero-pt.p10{animation-duration:15.5s;animation-delay:7.4s}
-  @keyframes heroRay{0%{opacity:.28;transform:rotate(13deg)}50%{opacity:.62;transform:rotate(-8deg)}100%{opacity:.32;transform:rotate(10deg)}}
-  @keyframes heroGlow{0%,100%{opacity:.35;transform:scale(.94)}50%{opacity:.8;transform:scale(1.06)}}
-  @keyframes heroFloat{0%{opacity:0;transform:translateY(0) scale(.8)}8%{opacity:.9}55%{opacity:.5}100%{opacity:0;transform:translateY(-620px) scale(1.15)}}
-}
+/* ---------- [CSS] 6b. (removed 10 Oct 2026) the light-ray / particle / glow layer
+   of the old hero - the coach card in hd.css has no auto motion ---------- */
 
 /* Daily devotional quote (hero, under subtitle) */
 .hero-quote{display:none}

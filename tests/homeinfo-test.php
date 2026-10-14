@@ -98,21 +98,24 @@ hx_check('#topHero found and its closing tag located', $thClose !== false);
 $between = ($thClose !== false && $start !== false) ? substr($tpl, (int) $thClose, $start - (int) $thClose) : 'x';
 hx_check('the block starts directly after #topHero closes', trim($between) === '', $thClose !== false ? 'gap: ' . strlen(trim($between)) . ' chars' : '');
 
-$ids = ['homeFares', 'homeRoute', 'homeIndiaNepal', 'homeExplore'];
+/* 10 Oct 2026 (HD pack): a fifth section, #homeLive (live bus tracking), sits between the route and
+   the India–Nepal band inside the block. */
+$ids = ['homeFares', 'homeRoute', 'homeLive', 'homeIndiaNepal', 'homeExplore'];
 foreach ($ids as $id) {
     hx_check("#{$id} is a <section> in the block and unique in the template",
         (bool) preg_match('~<section\b[^>]*\bid="' . $id . '"~', $block) && substr_count($tpl, 'id="' . $id . '"') === 1);
 }
-hx_check('exactly four <section> tags in the block (no nested sections)', substr_count($block, '<section') === 4 && substr_count($block, '</section>') === 4);
+hx_check('exactly five <section> tags in the block (no nested sections)', substr_count($block, '<section') === 5 && substr_count($block, '</section>') === 5);
 preg_match_all('~\bid="([^"]+)"~', $block, $bi);
 $dupes = [];
 foreach (array_unique($bi[1]) as $id) {
     if (substr_count($tpl, 'id="' . $id . '"') !== 1) { $dupes[] = $id; }
 }
 hx_check('every id in the block is unique in the template', $dupes === [] && count($bi[1]) === count(array_unique($bi[1])), $dupes === [] ? count($bi[1]) . ' ids' : implode(', ', $dupes));
-hx_check('section order in the source: fares, route, India–Nepal, explore',
+hx_check('section order in the source: fares, route, live, India–Nepal, explore',
     strpos($block, 'id="homeFares"') < strpos($block, 'id="homeRoute"')
-    && strpos($block, 'id="homeRoute"') < strpos($block, 'id="homeIndiaNepal"')
+    && strpos($block, 'id="homeRoute"') < strpos($block, 'id="homeLive"')
+    && strpos($block, 'id="homeLive"') < strpos($block, 'id="homeIndiaNepal"')
     && strpos($block, 'id="homeIndiaNepal"') < strpos($block, 'id="homeExplore"'));
 hx_check('#homeRoute carries the ROUTE mount [data-routeline="home"] once', substr_count($block, 'data-routeline="home"') === 1 && substr_count($tpl, 'data-routeline="home"') === 1);
 hx_check('#homeRoute keeps the contract classes "container home-route"', (bool) preg_match('~<section class="[^"]*\bcontainer\b[^"]*\bhome-route\b[^"]*" id="homeRoute"~', $block));
@@ -125,10 +128,28 @@ preg_match_all('~data-scroll="([^"]+)"~', $block, $ds);
 $missingScroll = array_values(array_filter(array_unique($ds[1]), static fn(string $t): bool => !str_contains($tpl, 'id="' . $t . '"')));
 hx_check('every data-scroll target exists (search-anchor, quick-ticket)', $ds[1] !== [] && $missingScroll === [], implode(', ', array_unique($ds[1])));
 hx_check('fares body has a placeholder the script replaces', str_contains($block, 'id="hxFaresBody"') && str_contains($js, "q('#hxFaresBody')"));
+/* 10 Oct 2026 (HD pack): the band is the 2:1 heritage montage (nepal-heritage, 1600x800), no longer
+   the 1080x300 nepal-band strip (those files stay on disk for the documents). */
 hx_check('heritage band image is lazy, sized and has alt text',
-    (bool) preg_match('~<img[^>]*nepal-band[^>]*>~', $block, $band)
-    && str_contains($band[0], 'loading="lazy"') && str_contains($band[0], 'width="1080"') && str_contains($band[0], 'height="300"')
+    (bool) preg_match('~<img[^>]*nepal-heritage[^>]*>~', $block, $band)
+    && str_contains($band[0], 'loading="lazy"') && str_contains($band[0], 'width="1600"') && str_contains($band[0], 'height="800"')
     && (bool) preg_match('~alt="[^"]{10,}"~', $band[0]));
+hx_check('heritage band keeps the picture\'s own 2:1 shape (no fixed-height crop)', str_contains($css, '.hx-in .hx-band { position: relative; aspect-ratio: 2 / 1;'));
+/* 10 Oct 2026 (HD review): an illustration is never passed off as a photo - the static place cards
+   AND the cards 24-homeinfo.js draws from /api/explore.php both carry the "Illustration" tag
+   (aria-hidden: the picture itself is decorative), and the API says which pictures are illustrations. */
+$api = (string) @file_get_contents($root . '/includes/contentpages.php');
+hx_check('static place cards: each HD thumbnail has an aria-hidden "Illustration" tag',
+    preg_match_all('~<img class="hx-card-img" src="/assets/img/hd/~', $block) === 3
+    && substr_count($block, '<span class="hx-card-ill" aria-hidden="true" data-i18n="hxIllus">') === 3);
+hx_check('JS place cards: <img class="hx-card-img"> + the hxIllus tag when the API marks an illustration',
+    str_contains($js, '<img class="hx-card-img" src="') && str_contains($js, "p.imageIllus === true")
+    && str_contains($js, "'<span class=\"hx-card-ill\" aria-hidden=\"true\">' + h(tx('hxIllus'"));
+hx_check('API featured(): places and packages carry imageIllus from ContentPages::isIllustration()',
+    substr_count($api, "'imageIllus' => self::isIllustration(") === 2 && str_contains($api, 'public static function isIllustration('));
+hx_check('heritage band alt (hxBandAlt, applied by syncAlt) says illustration in all three languages',
+    (bool) preg_match("~hxBandAlt: 'Illustration of~", $i18n) && substr_count($i18n, "hxBandAlt: '") === 3
+    && (bool) preg_match("~hxBandAlt: '[^']*चित्रण[^']*'[\s\S]*hxBandAlt: '[^']*चित्रण~u", $i18n));
 hx_check('India and Nepal flags shown as SVG (not emoji)', str_contains($block, 'flag-in.svg') && str_contains($block, 'flag-np.svg') && !preg_match('~\x{1F1EE}\x{1F1F3}|\x{1F1F3}\x{1F1F5}~u', $block));
 hx_check('timeline static fallback: the 1950 treaty and the open border', str_contains($block, 'hxTl1950') && str_contains($block, 'hxTlOpen') && str_contains($block, '>1950<'));
 hx_check('no inline event handlers in the block', !preg_match('~\son[a-z]+\s*=~i', $block));
