@@ -280,9 +280,19 @@
           if (!fps) return;
           write(FPS_KEY, String(fps));
           cur.fps = fps;
-          if (fps < 40) cur.tier = 'low';
-          write(KEY, JSON.stringify(cur));
-          apply(cur);
+          if (fps >= 40) { write(KEY, JSON.stringify(cur)); return; }
+          /* Slow: remembered for the rest of the visit, but NOT re-stamped
+             under the passenger's eyes (blur, shadows and loops switching
+             off at once ~3 s after load looks like a glitch). It applies
+             the next time the tab is hidden, or on the next page load. */
+          var next = { tier: 'low', cores: cur.cores, memGB: cur.memGB, fps: fps, tv: cur.tv };
+          write(KEY, JSON.stringify(next));
+          var onHide = function () {
+            if (!document.hidden) return;
+            document.removeEventListener('visibilitychange', onHide);
+            apply(next);
+          };
+          document.addEventListener('visibilitychange', onHide);
         };
         window.requestAnimationFrame(step);
       };
@@ -295,5 +305,5 @@
       if (document.readyState === 'complete') later();
       else window.addEventListener('load', later, { once: true });
     }
-  } catch (e) { /* no tier: perf.css treats the page as mid (no low cuts, no high-only rings) */ }
+  } catch (e) { /* no tier: perf.css treats the page as mid (no low-tier cuts) */ }
 }());

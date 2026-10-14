@@ -1844,9 +1844,14 @@ function initQuickTicket() {
       return true;
     };
     tick();
-    /* 10 Oct 2026 (perf): a hidden tab skips the redraw; the time left is
-       read from the clock, so the first tick back is right again */
-    var iv = setInterval(function () { if (document.hidden) return; if (!tick()) clearInterval(iv); }, 1000);
+    /* 10 Oct 2026 (perf): a hidden tab skips the text redraw (the time left
+       is read from the clock, so the first tick back is right again), but
+       the deadline is still kept: once the undo window closes the button
+       goes, so nobody comes back to an Undo the server will refuse. */
+    var iv = setInterval(function () {
+      if (document.hidden) { if (Date.now() >= r.until) { box.remove(); clearInterval(iv); } return; }
+      if (!tick()) clearInterval(iv);
+    }, 1000);
   }
   window.addEventListener('hashchange', function () {
     var h = location.hash || '#/';

@@ -11,26 +11,29 @@
 
    Sections
      1. touch       no 300 ms double-tap wait and no grey tap flash on the
-                    Oct 2026 controls; strips pan both ways; sheets keep their
-                    overscroll to themselves
-     2. hover       no sticky "lifted" card after a tap (@media (hover: none))
+                    Oct 2026 controls; strips pan both ways and still zoom;
+                    sheets keep their overscroll to themselves
+     2. hover       no sticky "lifted" card after a tap (@media (hover: none)),
+                    the press (:active) still sinks
      3. coarse      48 px minimum tap targets on coarse pointers (--tap-min)
      4. compositor  will-change ONLY while something moves (.btn and the 40+
                     seats lose their permanent GPU layer)
      5. paint       no backdrop blur on surfaces that are on screen the whole
                     time their view is (sheets / modals / pop-ups keep it)
-     6. offscreen   content-visibility on home sections below the first screen
+     6. offscreen   content-visibility on the one heavy home scene below the
+                    first screen that ends without a shadow
      7. scrolling   anchors land under the sticky header, a gentle date snap
      8. iOS/Android dvh sheets, 16 px fields on phones (no zoom-on-focus)
-     9. TV / 1800+  bigger type and container, d-pad focus rings, the
-                    five-tab bar with labels, hover lifts off (html.shg-tv)
+     9. TV          html.shg-tv only: bigger controls and container, d-pad
+                    focus rings, the five-tab bar with labels, hover lifts off
     10. tiers       html[data-tier] from assets/js/01-boot.js: "low" drops
-                    the decoration that costs frames, "high" alone runs the
-                    two search-card attention rings
+                    the decoration that costs frames
+    11. ring        the "here is the booking card" ring, every tier
 
    Rules kept: tokens only; !important only where it overrides an existing
-   !important or an inline style (each one says which); the one animation
-   added here moves transform only and stops for reduced motion; NEVER a
+   !important, an inline style or a higher-specificity token set (each one
+   says which); the one animation added here moves opacity / transform only
+   and stops for reduced motion; NEVER a
    touch-action on #sn-map or the MapLibre canvas (the map owns its
    gestures). Pinned by tests/perf-hints-test.php.
    ===================================================================== */
@@ -47,15 +50,16 @@
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
-/* Horizontal strips. Deliberately NOT bare `pan-x` (views.css "SEAT MAP
-   TOUCH SCROLL" explains why): pan-x hands the browser only the horizontal
-   axis, so a vertical swipe that starts on the 30-day date strip (which
-   spans the whole phone) would no longer scroll the page. `pan-x pan-y`
-   routes a sideways drag to the strip and an up/down drag to the page. */
+/* Horizontal strips. `manipulation` = pan-x + pan-y + pinch-zoom, without
+   the double-tap wait. Never bare `pan-x` (views.css "SEAT MAP TOUCH
+   SCROLL" explains why: a vertical swipe that starts on the 30-day date
+   strip, which spans the whole phone, would no longer scroll the page),
+   and never `pan-x pan-y` either: that also refuses a pinch-zoom started
+   on the strip, and a low-vision passenger must be able to zoom anywhere. */
 .date-strip-30, .qt-dates, .qt-ai, .ai-chips, #view-home .th-offices, .th-npl, .hx .hx-cards,
 .nav-inner #numInner, .flow-head .steps, #view-nav .sn-modes, #view-nav .sn-ex-chips,
 #view-nav .sn-fav-chips {
-  touch-action: pan-x pan-y;
+  touch-action: manipulation;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
 }
@@ -70,30 +74,37 @@
 /* On a touch screen :hover is set by the tap and stays until the next tap
    somewhere else, so a card that lifts on hover stays lifted. views.css has
    its own (hover:none) block for the pre-October classes; these are the
-   showcase / homeinfo / contact lifts added since. Selectors are copied
-   verbatim (equal specificity, this file loads later) and each shadow is
-   put back to the element's own resting value from its source file. */
+   showcase / homeinfo / contact lifts added since, and each shadow is put
+   back to the element's own resting value from its source file.
+   A tap sets :hover and :active together, so every reset of a card that
+   has its own press rule (hx-tile scale .97, hx-card .98, sc-perk .97 in
+   homeinfo.css / showcase.css) is :not(:active) - the finger still sees
+   the card sink - and the contact FAB keeps its open-state turn
+   (views.css .ct-fab[aria-expanded="true"]). */
 @media (hover: none) {
-  #homeFeat .sc-perk.sc-go:hover {
+  #homeFeat .sc-perk.sc-go:hover:not(:active) {
     transform: none;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, .55), 0 2px 0 color-mix(in srgb, var(--t) 16%, transparent), 0 10px 20px -14px color-mix(in srgb, var(--t) 70%, transparent);
   }
-  #homeFeat .sc-perk.sc-go:hover .sc-pk-go, #view-home .th-o a:hover, .hx .hx-link:hover .ic,
-  .wa-row:hover, .ct-fab:hover { transform: none; }
-  .hx .hx-tile:hover { transform: none; box-shadow: inset 0 1px 0 var(--hx-hl), var(--shadow-1); }
-  .hx .hx-tile:hover::after { transform: rotate(22deg); }       /* its resting angle (homeinfo.css) */
-  .hx .hx-tile:hover .hx-tile-ic { transform: none; border-radius: 15px; }
-  .hx .hx-card:hover { transform: none; box-shadow: var(--shadow-1); }
+  #homeFeat .sc-perk.sc-go:hover .sc-pk-go, #view-home .th-o a:hover:not(:active), .hx .hx-link:hover .ic,
+  .wa-row:hover, .ct-fab:not([aria-expanded="true"]):hover { transform: none; }
+  .hx .hx-tile:hover:not(:active) { transform: none; box-shadow: inset 0 1px 0 var(--hx-hl), var(--shadow-1); }
+  .hx .hx-tile:hover:not(:active)::after { transform: rotate(22deg); }       /* its resting angle (homeinfo.css) */
+  .hx .hx-tile:hover:not(:active) .hx-tile-ic { transform: none; border-radius: 15px; }
+  .hx .hx-card:hover:not(:active) { transform: none; box-shadow: var(--shadow-1); }
   .hx .hx-btn:hover { filter: none; }
 }
 
 /* ---------- 3. coarse pointers: 48 px targets ------------------------- */
 /* --tap-min (ds.css) is 48 px. Fingers, not mice: the bottom-bar tabs, the
-   chip rows, the seat-map legend keys, the deck / ticket tabs, the language
-   keys and the homeinfo links. min-height only - nothing gets wider. */
+   chip rows, the phone language menu (premium.css: 40 px) and the
+   homeinfo / office links. min-height only - nothing gets wider. Left out
+   on purpose: the deck and my-ticket tabs (redesign.css pins them at 44 px
+   !important, already a fair target), the payment tabs (74 px) and the
+   desktop topbar's language keys (a mouse row). */
 @media (pointer: coarse) {
-  .bottom-nav .bn-item, .lang-btn, .deck-tab, .my-tab, .atab, .pm-tab, .dir-pill,
-  .qt-chips button, .ai-chips button, #view-seats .legend-sticky button, button.chip, a.chip,
+  .bottom-nav .bn-item, .lang-mini-pop .lang-btn, .atab, .dir-pill,
+  .qt-chips button, .ai-chips button, button.chip, a.chip,
   .hx .hx-link, .th-o a { min-height: var(--tap-min, 48px); }
 }
 
@@ -113,9 +124,15 @@
 .shg-animation .sa-scene.is-running .sa-shadow, .shg-animation .sa-scene.is-running .sa-bus,
 .shg-animation .sa-scene.is-running .sa-rim, .shg-animation .sa-scene.is-running .sa-map-bus { will-change: transform; }
 /* the SOS key, the listening mic and the locating key pulse with a transform
-   now (views.css); a press must still read as a press, so the loop steps
-   aside while the finger is down */
+   now (views.css); a running animation outranks their own :hover / :active
+   scale, so the loop steps aside while the finger is down, and under a real
+   mouse pointer (hover: hover) while it rests on them. Not on touch
+   screens: there :hover sticks after the tap that started listening or
+   locating, and the pulse is the "I am listening / locating" signal. */
 .sos-fab.show:active, .ai-mic.listening:active, #view-nav .sn-cb.locating:active { animation: none; }
+@media (hover: hover) {
+  .sos-fab.show:hover, .ai-mic.listening:hover, #view-nav .sn-cb.locating:hover { animation: none; }
+}
 
 /* ---------- 5. expensive paints --------------------------------------- */
 /* backdrop-filter re-blurs everything underneath on every frame that
@@ -129,10 +146,9 @@
    (app.css .hero .orb, blur 70 px) are display:none since the redesign and
    are being removed with the HD hero, so no blur above 24 px is left on
    anything visible. */
-.sum-card, .pay-card, .shg-hero, .bp-time-hero, .tc-hero .back-btn, .glass {
+.sum-card, .pay-card, .shg-hero, .bp-time-hero, .tc-hero .back-btn {
   backdrop-filter: none; -webkit-backdrop-filter: none;
 }
-.glass { background: var(--surface); }
 /* (1,1,0) beats views.css's #view-nav rules on equal footing */
 #view-nav .sn-back, #view-nav .sn-brand, #view-nav .sn-ss, #view-nav .sn-sbar, #view-nav .sn-cb,
 #view-nav .sn-hud, #view-nav .sn-panel {
@@ -145,22 +161,23 @@
    height after the first render, so scrolling back up does not jump.
    ONE such rule per element (premium.css explains the scroll jump that two
    competing estimates cause): #animRoute, #trust and the footer are covered
-   by showcase.css, and #homeMore is NOT given one because its children are
-   .section blocks views.css already covers. Never the hero, the search card
-   (#search-anchor), #homeFeat or #quick-ticket - they are the first screen.
+   by showcase.css, and #homeMore / #homeExtra are NOT given one because
+   their children are .section blocks views.css already covers. Never the
+   hero, the search card (#search-anchor), #homeFeat or #quick-ticket - they
+   are the first screen.
+   content-visibility always turns on paint containment, which clips any
+   shadow that reaches past the section's edge - and these sections have no
+   vertical padding. #bookHelp (.bh-btn's 3D ledge), #homeCeo (.sc-ceo) and
+   #topHero (.th-brand) all end in a shadowed card, so they are left alone.
+   #animBooking ends in the scene card (anim.css: border, overflow hidden,
+   no outer shadow), and it is the costly one: a phone mock-up of about 160
+   elements on an 8 s loop. tests/perf-hints-test.php pins the list.
    Anchors still land: scrollIntoView() renders the target before it moves,
-   every [data-scroll] target is either above these sections or inside the
-   brochure (05-router.js re-aims there until it sits under the header), and
-   20-anim.js's observers simply see the scene a little later. */
+   and 20-anim.js's observers simply see the scene a little later. */
 @supports (content-visibility: auto) {
   #view-home > #animBooking { content-visibility: auto; contain-intrinsic-size: auto 760px; }
-  #view-home > #topHero { content-visibility: auto; contain-intrinsic-size: auto 560px; }
-  #view-home > #homeCeo { content-visibility: auto; contain-intrinsic-size: auto 420px; }
-  #view-home > #bookHelp { content-visibility: auto; contain-intrinsic-size: auto 620px; }
-  #view-home > #homeExtra { content-visibility: auto; contain-intrinsic-size: auto 1400px; }
   @media (min-width: 760px) {
     #view-home > #animBooking { contain-intrinsic-size: auto 680px; }
-    #view-home > #topHero { contain-intrinsic-size: auto 460px; }
   }
 }
 
@@ -208,33 +225,37 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }   /* every widt
   @media (min-width: 761px) { .ai-panel:not(.max) { height: min(560px, 72dvh); } }
 }
 
-/* ---------- 9. TV and very large screens ------------------------------ */
-@media (min-width: 1800px) {
-  html { font-size: 18px; }
-  .container { max-width: 1400px; }
-  .btn, .sg-btn, .hh-act, .nav-link, .lang-btn { min-height: 52px; }
-}
-/* 10-foot UI: 01-boot.js adds html.shg-tv for TV user agents (Tizen,
-   webOS, Android TV, Fire TV, Roku, Chromecast, Bravia, HbbTV ...). A
-   d-pad user has no hover and no finger: a thick focus ring on every
-   control, the five-tab bar with its labels as the main navigation (not
-   while booking - the flow has its own bar), hover lifts off, 20 px type. */
+/* ---------- 9. TV ----------------------------------------------------- */
+/* 10-foot UI, for TV browsers ONLY: 01-boot.js adds html.shg-tv for TV
+   user agents (Tizen, webOS, Android TV, Fire TV, Roku, Chromecast, Bravia,
+   HbbTV ...). A 1920 px desktop monitor is not a TV and keeps the desktop
+   layout exactly as it was. A d-pad user has no hover and no finger: a
+   thick focus ring on every control, the five-tab bar with its labels as
+   the main navigation, hover lifts off, a 1400 px container and bigger
+   controls. The 20 px base size reaches body text and rem sizes; the many
+   components that set their own px size keep it (a TV browser's own zoom
+   is the honest tool for those). */
 html.shg-tv { font-size: 20px; }
 html.shg-tv body { font-size: 20px; }
 html.shg-tv .container { max-width: 1400px; }
 /* !important: anim.css / depth.css set their focus outlines with !important */
 html.shg-tv :focus-visible { outline: 3px solid var(--royal) !important; outline-offset: 3px !important; }
+/* not while booking: 05-router.js sets body.in-flow on results, seats AND
+   checkout, so the bar never covers the payment screen (no :has() needed -
+   2019-2022 TV browsers are Chromium < 105 and would drop such a rule) */
 html.shg-tv body:not(.in-flow) .bottom-nav { display: flex; justify-content: center; }
-html.shg-tv body:has(#view-checkout.active) .bottom-nav { display: none; }
 html.shg-tv body:not(.in-flow) { padding-bottom: calc(var(--bottomnav-h, 64px) + 24px); }
 html.shg-tv .bottom-nav .bn-item { min-height: 72px; max-width: 220px; }
 /* !important: depth.css's type floor pins the bar label at 12.5px !important */
 html.shg-tv .bottom-nav.bn5 .bn-item .bl { display: block; font-size: 18px !important; }
 html.shg-tv .btn, html.shg-tv .sg-btn, html.shg-tv .hh-act, html.shg-tv .nav-link,
 html.shg-tv .lang-btn, html.shg-tv .d-btn, html.shg-tv .dir-pill { min-height: 56px; }
-html.shg-tv a:hover, html.shg-tv button:hover, html.shg-tv .card:hover, html.shg-tv .bus-card:hover,
-html.shg-tv .hx .hx-tile:hover, html.shg-tv .hx .hx-card:hover, html.shg-tv #homeFeat .sc-perk.sc-go:hover,
-html.shg-tv #view-home .th-o a:hover { transform: none; }
+/* a pointer remote (LG Magic Remote) still hovers: no lift, but a press
+   (:active, also set by the OK key) keeps its own sink, and an open toggle
+   (the contact FAB) keeps its open-state turn */
+html.shg-tv a:hover:not(:active), html.shg-tv button:hover:not(:active):not([aria-expanded="true"]), html.shg-tv .card:hover:not(:active),
+html.shg-tv .bus-card:hover:not(:active), html.shg-tv .hx .hx-tile:hover:not(:active), html.shg-tv .hx .hx-card:hover:not(:active),
+html.shg-tv #homeFeat .sc-perk.sc-go:hover:not(:active), html.shg-tv #view-home .th-o a:hover:not(:active) { transform: none; }
 
 /* ---------- 10. device tiers ------------------------------------------ */
 /* html[data-tier] is stamped once per visit by 01-boot.js from the cores,
@@ -244,7 +265,7 @@ html.shg-tv #view-home .th-o a:hover { transform: none; }
    LOW drops what costs frames on a weak phone: blur, stacked shadows, the
    parallax layers of the coach scene and the decorative loops (the same
    list showcase.css switches off for html[data-motion="reduced"], plus the
-   homeinfo pings, the QuickBot badge and the SOS pulse). Loops that SAY
+   homeinfo pings and the SOS pulse). Loops that SAY
    something keep running: spinners, skeletons, the typing dots, the
    listening mic, the locating key, the live-trip "you are here" dot. */
 /* !important: redesign.css forces backdrop-filter on the bars with !important */
@@ -256,14 +277,21 @@ html[data-tier="low"] .shg-modal .m-box { background: var(--surface); }
 html[data-tier="low"] #view-nav .sn-results, html[data-tier="low"] #view-nav .sn-layers,
 html[data-tier="low"] #view-nav .sn-toast, html[data-tier="low"] #view-nav .sn-focuscard,
 html[data-tier="low"] #view-nav .sn-navcard, html[data-tier="low"] #view-nav .sn-revgeo { background: var(--si); }
-/* one soft layer instead of three stacked ones; the [data-theme] /
-   [data-display] forms outrank the dark and AMOLED token sets in depth.css */
-html[data-tier="low"], html[data-tier="low"][data-theme], html[data-tier="low"][data-display] {
-  --dp-card: 0 1px 3px rgba(0, 0, 0, .16);
-  --dp-act: 0 1px 2px rgba(0, 0, 0, .18);
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, .12);
-  --shadow-2: 0 1px 3px rgba(0, 0, 0, .16);
-  --shadow-3: 0 2px 6px rgba(0, 0, 0, .18);
+/* One soft layer instead of the stacked 3D slabs (4-8 layers each).
+   !important: the token sets that are on by default outrank any plain
+   selector here - :root[data-ui="pixel"][data-theme=...] and
+   :root[data-palette][data-theme=...] in themes.css, the dark / AMOLED sets
+   in depth.css, all (0,3,0) - and a new palette must not quietly undo the
+   low tier. On a custom property !important only wins the cascade on
+   <html>; a component that sets its own token keeps it. */
+html[data-tier="low"] {
+  --dp-panel: 0 2px 8px rgba(0, 0, 0, .14) !important;
+  --dp-card: 0 1px 3px rgba(0, 0, 0, .16) !important;
+  --dp-btn: 0 1px 2px rgba(0, 0, 0, .16) !important;
+  --dp-act: 0 1px 2px rgba(0, 0, 0, .18) !important;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .12) !important;
+  --shadow-2: 0 1px 3px rgba(0, 0, 0, .16) !important;
+  --shadow-3: 0 2px 6px rgba(0, 0, 0, .18) !important;
 }
 /* Each selector is its source rule with html[data-tier="low"] in front, so
    it outranks the #id.sc-live scope without an !important. */
@@ -274,18 +302,33 @@ html[data-tier="low"] #homeHero.sc-live .hh-my .hh-ic .ic, html[data-tier="low"]
 html[data-tier="low"] #homeFeat.sc-live .sc-perk .sc-ping, html[data-tier="low"] #quick-ticket.sc-live .sc-qs,
 html[data-tier="low"] #quick-ticket.sc-live .sc-qs::before, html[data-tier="low"] #homeCeo.sc-live .sc-ceo-photo::before,
 html[data-tier="low"] #bookHelp.sc-live .bh-btn::after, html[data-tier="low"] #bookHelp.sc-live .bh-cta .bh-arr,
-html[data-tier="low"] .hx .hx-dot::after, html[data-tier="low"] .qt-badge, html[data-tier="low"] .sos-fab.show,
+html[data-tier="low"] .hx .hx-dot::after, html[data-tier="low"] .sos-fab.show,
 html[data-tier="low"] .seat-ai-bar .seat-auto, html[data-tier="low"] .ai-fab.has-unread::before { animation: none; }
 html[data-tier="low"] #homeHero .sc-hh-sheen { display: none; }
 
-/* HIGH alone runs the two search-card attention rings (views.css bkFlash,
-   homeinfo.css hx-ring paint a box-shadow / an outline every frame). The
-   other tiers get the same cue as one transform nudge. */
-@keyframes shg-perf-nudge { 0%, 100% { transform: none; } 35% { transform: scale(1.012); } }
-html:not([data-tier="high"]) .search-card.bk-flash,
-html:not([data-tier="high"]) #search-anchor.hx-flash .search-card { animation: shg-perf-nudge .6s var(--m-spring, ease-out) 1; }
-@media (prefers-reduced-motion: reduce) {
-  html:not([data-tier="high"]) .search-card.bk-flash,
-  html:not([data-tier="high"]) #search-anchor.hx-flash .search-card { animation: none; }
+/* ---------- 11. "here is the booking card" ring ----------------------- */
+/* Two taps scroll to the search card and ring it: "Regular booking"
+   (05-router.js adds .bk-flash) and a fare row (24-homeinfo.js adds
+   .hx-flash to #search-anchor). views.css bkFlash never showed at all: it
+   animated a box-shadow that .search-card's own box-shadow !important
+   (views.css) always beat. homeinfo.css hx-ring animated an outline, a
+   repaint of the whole card per frame, with its top edge under
+   #search-anchor's overflow: hidden on phones. One ring for both, on every
+   tier: a still inset line in --royal on the card's own ::after that fades
+   in and out (opacity + a slight scale - the compositor's work, no repaint
+   of the card). position: relative only while ringing; the card's only
+   positioned children are SVG, so nothing re-anchors. */
+#view-home .search-card.bk-flash, #view-home #search-anchor.hx-flash .search-card { position: relative; }
+/* !important: redesign.css hides #view-home .search-card::after with display: none !important */
+#view-home .search-card.bk-flash::after, #view-home #search-anchor.hx-flash .search-card::after {
+  content: ""; display: block !important; position: absolute; inset: 0; pointer-events: none;
+  border-radius: inherit; box-shadow: inset 0 0 0 3px var(--royal); opacity: 0;
+  animation: shg-perf-ring 1.1s ease-out 2;
 }
-html[data-motion="reduced"] .search-card.bk-flash, html[data-motion="reduced"] #search-anchor.hx-flash .search-card { animation: none; }
+#view-home #search-anchor.hx-flash .search-card::after { animation: shg-perf-ring 1.3s var(--hx-ease, ease-out) 1; }
+@keyframes shg-perf-ring { 0% { opacity: 0; transform: scale(.985); } 25% { opacity: 1; transform: none; } 100% { opacity: 0; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  #view-home .search-card.bk-flash::after, #view-home #search-anchor.hx-flash .search-card::after { animation: none; }
+}
+html[data-motion="reduced"] #view-home .search-card.bk-flash::after,
+html[data-motion="reduced"] #view-home #search-anchor.hx-flash .search-card::after { animation: none; }

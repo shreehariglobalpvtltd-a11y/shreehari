@@ -9,21 +9,29 @@
  *
  *   1. loading — assets/css/perf.css is linked with the asset stamp right
  *      BEFORE depth.css (which stays last) and is precached by sw.js;
- *   2. perf.css — tokens, pan-x pan-y (never bare pan-x), nothing on the
- *      map canvas, hover / coarse-pointer guards, will-change only while
- *      moving, content-visibility never on the first screen and never twice,
- *      dvh sheets, 16 px phone fields, TV rules, the device tiers, every
- *      !important explained;
+ *   2. perf.css — tokens, touch-action manipulation (never pan-x / pan-y:
+ *      pinch-zoom stays), nothing on the map canvas, hover resets that keep
+ *      the press, live tap-target selectors, will-change only while moving,
+ *      content-visibility never on the first screen, never twice and never
+ *      on a section ending in a shadowed card, dvh sheets, 16 px phone
+ *      fields, TV rules (TV only, no :has()), the device tiers (flat
+ *      shadows that really win), the booking-card ring on every tier,
+ *      every !important explained;
  *   3. listeners — no scroll / touchstart / touchmove / wheel listener in the
  *      customer bundles without { passive }, every resize handler goes
- *      through requestAnimationFrame, the visible 1 s tickers skip hidden tabs;
+ *      through requestAnimationFrame, the visible 1 s tickers skip hidden tabs
+ *      (each guard pinned together with its own interval);
  *   4. keyframes — every @keyframes in the customer stylesheets moves only
  *      transform / opacity / background-position; the named exceptions are
- *      checked for what they claim (high tier only, one-shot SVG draw,
- *      switched off by redesign.css, or a class nothing uses);
+ *      checked for what they claim (one-shot SVG draw, switched off by
+ *      redesign.css, or a class nothing uses);
  *   5. images — every <img> in app.template.html has width + height (two
  *      previews of the passenger's own upload excepted) and no inline blur;
- *   6. device tier + TV — 01-boot.js stamps data-tier and html.shg-tv.
+ *   6. device tier + TV — 01-boot.js stamps data-tier and html.shg-tv; a slow
+ *      frame-rate probe is applied only while the tab is hidden.
+ *
+ *   Every check marked "review 10 Oct" pins a finding of the independent
+ *   review of the first build (see the comment above each one).
  *
  *   php tests/perf-hints-test.php        (static checks only — no DB, no server)
  */
@@ -124,18 +132,51 @@ $code = (string) preg_replace('~/\*.*?\*/~s', '', $perf);   // rules only
 check('no hex / rgb brand colour outside the shadow tokens', !preg_match('~#[0-9a-f]{3,8}\b~i', $code)
     && preg_match_all('~rgba?\(~', $code) === preg_match_all('~rgba\(0, 0, 0, \.\d+\)|rgba\(255, 255, 255, \.55\)~', $code));
 check('controls: touch-action manipulation + no tap flash', str_contains($code, 'touch-action: manipulation;') && str_contains($code, '-webkit-tap-highlight-color: transparent;'));
-check('strips: pan-x pan-y, never bare pan-x', str_contains($code, 'touch-action: pan-x pan-y;') && !preg_match('~touch-action:\s*pan-x\s*;~', $code));
-check('date strip in the panning list', (bool) preg_match('~\.date-strip-30,[^{]*\{\s*touch-action: pan-x pan-y;~', $code));
+/* review 10 Oct: `pan-x pan-y` also refuses a pinch-zoom that starts on the
+   strip; `manipulation` pans both ways AND zooms */
+check('strips: manipulation (pans both ways, still pinch-zooms), never pan-x / pan-y', !preg_match('~touch-action:\s*pan-[xy]~', $code));
+check('date strip in the panning list', (bool) preg_match('~\.date-strip-30,[^{]*\{\s*touch-action: manipulation;~', $code));
 check('nothing on the map canvas (#sn-map / maplibregl)', !preg_match('~#sn-map|maplibregl|canvas~i', $code));
 check('sheets keep their overscroll (contain)', str_contains($code, 'overscroll-behavior: contain;'));
-check('hover lifts reset under @media (hover: none)', (bool) preg_match('~@media \(hover: none\) \{[^@]*\.hx \.hx-tile:hover \{ transform: none;~s', $code));
+check('hover lifts reset under @media (hover: none)', (bool) preg_match('~@media \(hover: none\) \{[^@]*\.hx \.hx-tile:hover:not\(:active\) \{ transform: none;~s', $code));
+/* review 10 Oct: a tap sets :hover AND :active, so a reset of equal
+   specificity loading later wiped the press sink of every card below */
+preg_match('~@media \(hover: none\) \{(.*?)\n\}~s', $code, $hn);
+$hoverBlock = $hn[1] ?? '';
+$pressKept = [];
+foreach (['.hx .hx-tile' => 'assets/css/homeinfo.css', '.hx .hx-card' => 'assets/css/homeinfo.css', '#homeFeat .sc-perk.sc-go' => 'assets/css/showcase.css'] as $sel => $src) {
+    $hasPress = (bool) preg_match('~' . preg_quote($sel, '~') . ':active \{ transform: scale~', $read($src));
+    /* the card itself (or its ::after), not a child such as ".sc-pk-go" */
+    $bare = (bool) preg_match('~' . preg_quote($sel, '~') . ':hover(?=\s*[{,]|::)~', $hoverBlock);
+    if (!$hasPress || $bare) $pressKept[] = $sel;
+}
+check('...but a press still sinks (:hover:not(:active) where the card has a press rule)', $hoverBlock !== '' && $pressKept === [], implode(', ', $pressKept));
+check('...and the open contact FAB keeps its turn', str_contains($hoverBlock, '.ct-fab:not([aria-expanded="true"]):hover') && !preg_match('~\.ct-fab:hover~', $code)
+    && str_contains($views, '.ct-fab[aria-expanded="true"]{transform:rotate(12deg) scale(1.04)}'));
 check('48 px targets on coarse pointers via --tap-min', (bool) preg_match('~@media \(pointer: coarse\) \{[^}]*min-height: var\(--tap-min, 48px\)~s', $code));
+/* review 10 Oct: no selector that a stronger rule always beats */
+preg_match('~@media \(pointer: coarse\) \{([^}]*)\{~', $code, $cm);
+$deadTap = array_values(array_filter(['.deck-tab', '.my-tab', '.pm-tab', 'legend-sticky'], static fn($s) => str_contains($cm[1] ?? '', $s)));
+if (preg_match('~(^|,)\s*\.lang-btn\b~', $cm[1] ?? '')) $deadTap[] = 'bare .lang-btn';
+check('...no tap-target selector another rule always beats (deck / my / pm tabs, topbar lang keys)', ($cm[1] ?? '') !== '' && $deadTap === [] && !str_contains($code, '.glass'), implode(' ', $deadTap));
+check('...the phone language menu items reach 48 px (premium.css has 40)', str_contains($cm[1] ?? '', '.lang-mini-pop .lang-btn') && str_contains($read('assets/css/premium.css'), 'min-height:40px;'));
+check('pulsing keys: the loop steps aside on press, and on mouse hover only (hover: hover)',
+    str_contains($code, '.sos-fab.show:active, .ai-mic.listening:active, #view-nav .sn-cb.locating:active { animation: none; }')
+    && (bool) preg_match('~@media \(hover: hover\) \{\s*\.sos-fab\.show:hover, \.ai-mic\.listening:hover, #view-nav \.sn-cb\.locating:hover \{ animation: none; \}~', $code));
 check('.btn and .seat lose their permanent will-change', (bool) preg_match('~(^|\n)\.btn, \.seat,[^{]*\{ will-change: auto; \}~', $code));
 check('will-change only on :hover / :active / running scopes', !preg_match('~will-change: (transform|opacity)~', (string) preg_replace('~[^{}]*(:hover|:active|\.is-running|\.sc-live|\.sc-tilting|\.suggested|\.show|\.listening|\.locating)[^{}]*\{[^}]*\}~', '', $code)));
 preg_match_all('~#view-home > #([\w-]+) \{ content-visibility: auto;~', $code, $cv);
 $first = ['homeHero', 'search-anchor', 'nextTripBox', 'homeFeat', 'quick-ticket'];
-check('content-visibility on the heavy home sections', count($cv[1]) >= 5, implode(', ', $cv[1]));
+check('content-visibility on the heavy animated scene (#animBooking)', in_array('animBooking', $cv[1], true), implode(', ', $cv[1]));
 check('...never on the first screen', array_intersect($cv[1], $first) === []);
+/* review 10 Oct: content-visibility = paint containment, which clipped the
+   shadow of the card each of these sections ends in (no vertical padding) */
+$clips = ['bookHelp', 'homeCeo', 'topHero', 'homeExtra', 'homeMore'];
+check('...never on a section that ends in a shadowed card (bookHelp / homeCeo / topHero / brochure)', array_intersect($cv[1], $clips) === [], implode(', ', array_intersect($cv[1], $clips)));
+$allCss = '';
+foreach (glob($root . '/assets/css/*.css') ?: [] as $f) $allCss .= (string) preg_replace('~/\*.*?\*/~s', '', (string) file_get_contents($f));
+check('...#animBooking ends in the scene card: overflow hidden, no outer shadow', str_contains($allCss, '.shg-animation .sa-scene { position: relative; overflow: hidden;')
+    && !preg_match('~\.sa-(?:scene|grid)(?:[.:\[][\w="-]+\]?)*\s*(?:,[^{]*)?\{[^}]*box-shadow~', $allCss));
 $others = '';
 foreach (glob($root . '/assets/css/*.css') ?: [] as $f) { if (basename($f) !== 'perf.css') $others .= (string) file_get_contents($f); }
 $twice = array_values(array_filter($cv[1], static fn($id) => (bool) preg_match('~#view-home > #' . preg_quote($id, '~') . '[^{]*\{[^}]*content-visibility~', $others)));
@@ -147,17 +188,54 @@ check('30-day strip snaps gently (proximity)', str_contains($code, '.date-strip-
 check('dvh sheets behind @supports (height: 1dvh)', str_contains($code, '@supports (height: 1dvh)') && str_contains($code, '.ai-panel { height: min(480px, 62dvh); }') && str_contains($code, '.ai-panel.max { height: auto; }'));
 check('16 px fields on phones (no iOS zoom-on-focus)', (bool) preg_match('~@media \(max-width: 760px\) \{\s*\.ai-head select, \.fm-search input, \.pv-field input, \.qt-plan-row select,\s*#view-nav \.sn-sbar input, #view-nav \.sn-fld input \{ font-size: 16px; \}~', $code));
 check('text-size-adjust 100%', str_contains($code, '-webkit-text-size-adjust: 100%;'));
-check('TV / 1800 px: bigger root type + 1400 px container', str_contains($code, '@media (min-width: 1800px)') && str_contains($code, '.container { max-width: 1400px; }'));
+/* review 10 Oct: a 1920 px desktop monitor is not a TV - its layout stays */
+check('desktops keep their layout: no width-based block, the 1400 px container is TV only', !preg_match('~@media \(min-width: (1[0-9]{3}|[2-9][0-9]{3})px\)~', $code)
+    && preg_match_all('~max-width: 1400px~', $code) === 1 && str_contains($code, 'html.shg-tv .container { max-width: 1400px; }'));
 check('TV: 3 px focus ring on every control', str_contains($code, 'html.shg-tv :focus-visible { outline: 3px solid var(--royal) !important; outline-offset: 3px !important; }'));
 check('TV: five-tab bar with labels, not during a booking', str_contains($code, 'html.shg-tv body:not(.in-flow) .bottom-nav { display: flex;') && str_contains($code, 'html.shg-tv .bottom-nav.bn5 .bn-item .bl { display: block;'));
-check('TV: 20 px base type and hover lifts off', str_contains($code, 'html.shg-tv { font-size: 20px; }') && str_contains($code, 'html.shg-tv a:hover'));
+/* review 10 Oct: :has() needs Chromium 105+; 2019-2022 TV browsers drop it */
+check('...hidden on checkout without :has() (05-router sets body.in-flow on checkout)', !str_contains($code, ':has(')
+    && str_contains($read('assets/js/05-router.js'), "document.body.classList.toggle('in-flow', name === 'results' || name === 'seats' || name === 'checkout');"));
+check('TV: 20 px base type and hover lifts off (a press still sinks)', str_contains($code, 'html.shg-tv { font-size: 20px; }') && str_contains($code, 'html.shg-tv a:hover:not(:active)')
+    && !preg_match('~html\.shg-tv [^{,]*:hover(?!:not\(:active\))~', $code));
 check('low tier: blur off, softer shadows, decorative loops off', str_contains($code, 'html[data-tier="low"] *, html[data-tier="low"] *::before')
     && str_contains($code, '--shadow-3: 0 2px 6px') && str_contains($code, 'html[data-tier="low"] .shg-animation .sa-journey .sa-scenery'));
+/* review 10 Oct: the flat shadows lost to the default (0,3,0) token sets
+   (:root[data-ui="pixel"][data-theme], :root[data-palette][data-theme]).
+   Every stacked shadow token any sheet declares is flattened with
+   !important, and no other sheet declares one with !important. */
+$TOK = ['--dp-panel', '--dp-card', '--dp-btn', '--dp-act', '--shadow-1', '--shadow-2', '--shadow-3'];
+preg_match('~html\[data-tier="low"\] \{([^}]*)\}~', $code, $lt);
+$lowBody = $lt[1] ?? '';
+$weak = array_values(array_filter($TOK, static fn($t) => !preg_match('~' . preg_quote($t, '~') . ': [^;]+ !important;~', $lowBody)));
+$otherImp = [];
+foreach (glob($root . '/assets/css/*.css') ?: [] as $f) {
+    if (basename($f) === 'perf.css') continue;
+    $c = (string) preg_replace('~/\*.*?\*/~s', '', (string) file_get_contents($f));
+    foreach ($TOK as $t) if (preg_match('~' . preg_quote($t, '~') . '\s*:[^;}]*!important~', $c)) $otherImp[] = basename($f) . ' ' . $t;
+}
+$declared = [];
+foreach (glob($root . '/assets/css/*.css') ?: [] as $f) {
+    if (basename($f) === 'perf.css') continue;
+    if (preg_match_all('~(--dp-[a-z-]+|--shadow-\d)\s*:~', (string) file_get_contents($f), $dm)) $declared = array_merge($declared, $dm[1]);
+}
+check('...the flat shadow tokens win over every theme / palette set (!important, nobody else uses it)', $lowBody !== '' && $weak === [] && $otherImp === [], implode(', ', array_merge($weak, $otherImp)));
+check('...and they cover the stacked slabs the sheets declare (panel, card, btn, act, shadow-1..3)', array_diff(['--dp-panel', '--dp-card', '--dp-btn', '--dp-act', '--shadow-1', '--shadow-2', '--shadow-3'], $declared) === []);
 check('low tier keeps spinners / typing / listening loops', !preg_match('~html\[data-tier="low"\][^{]*(spin|skel|typing|listening|locating|loading)[^{]*\{[^}]*animation: none~', $code));
-check('only the high tier runs the search-card rings', str_contains($views, 'html[data-tier="high"] .search-card.bk-flash{animation:bkFlash')
-    && str_contains($home, 'html[data-tier="high"] #search-anchor.hx-flash .search-card { animation: hx-ring'));
-check('...the others get a transform nudge that stops for reduced motion', str_contains($code, '@keyframes shg-perf-nudge { 0%, 100% { transform: none; } 35% { transform: scale(1.012); } }')
-    && str_contains($code, '@media (prefers-reduced-motion: reduce)') && str_contains($code, 'html[data-motion="reduced"] .search-card.bk-flash'));
+/* review 10 Oct: the "ring the booking card" cue reaches every tier */
+check('no rule is high-tier only any more', !preg_match('~data-tier="high"~', $allCss));
+check('booking-card ring: one ::after for both taps, every tier, opacity / transform only', str_contains($code, '#view-home .search-card.bk-flash::after, #view-home #search-anchor.hx-flash .search-card::after {')
+    && str_contains($code, 'content: ""; display: block !important; position: absolute; inset: 0; pointer-events: none;')
+    && str_contains($code, 'box-shadow: inset 0 0 0 3px var(--royal); opacity: 0;')
+    && str_contains($code, '#view-home .search-card.bk-flash, #view-home #search-anchor.hx-flash .search-card { position: relative; }')
+    && str_contains($redes, '#view-home .search-card::before, #view-home .search-card::after { display: none !important; }'));
+$strip = static fn(string $s): string => (string) preg_replace('~/\*.*?\*/~s', '', $s);
+check('...the old rings are gone (bkFlash never painted, hx-ring repainted the card)', !str_contains($strip($views), 'bkFlash') && !str_contains($strip($home), 'hx-ring')
+    && str_contains($read('assets/js/05-router.js'), "sc.classList.add('bk-flash')") && str_contains($read('assets/js/24-homeinfo.js'), "anchor.classList.add('hx-flash')"));
+check('...and stops for reduced motion (system + in-app switch)', (bool) preg_match('~@media \(prefers-reduced-motion: reduce\) \{\s*#view-home \.search-card\.bk-flash::after, #view-home #search-anchor\.hx-flash \.search-card::after \{ animation: none; \}~', $code)
+    && str_contains($code, 'html[data-motion="reduced"] #view-home #search-anchor.hx-flash .search-card::after { animation: none; }'));
+/* An !important on a rule line is explained by the comment right above its
+   rule (rule bodies may run a few lines under that comment). */
 $lines = preg_split('~\R~', $perf);
 $why = []; $inComment = false;
 foreach ($lines as $n => $l) {
@@ -167,11 +245,15 @@ foreach ($lines as $n => $l) {
     if (str_contains($l, '*/')) { $inComment = false; continue; }
     if ($wasIn || $inComment) continue;
     if (!str_contains($l, '!important')) continue;
-    $ctx = implode("\n", array_slice($lines, max(0, $n - 3), 3));
+    $end = $n - 1;
+    while ($end >= 0 && $n - $end <= 12 && !str_contains($lines[$end], '*/')) $end--;
+    $start = $end;
+    while ($start >= 0 && !str_contains($lines[$start], '/*')) $start--;
+    $ctx = ($end >= 0 && $start >= 0) ? implode("\n", array_slice($lines, $start, $end - $start + 1)) : '';
     if (!str_contains($ctx, '!important:')) $why[] = 'line ' . ($n + 1);
 }
 check('every !important says what it overrides', $why === [], implode(', ', $why));
-check('perf.css adds one animation only, transform-only', count(keyframes($perf)) === 1 && keyframes($perf) === ['shg-perf-nudge' => ['transform']]);
+check('perf.css adds one animation only, opacity / transform only', keyframes($perf) === ['shg-perf-ring' => ['opacity', 'transform']], json_encode(keyframes($perf)));
 
 /* ---------------------------------------------------------------- 3 */
 echo "\n-- 3. listeners and tickers (customer bundles) --\n";
@@ -221,15 +303,16 @@ $cfg = $read('assets/js/02-config.js');
 check('location search: one re-aim per frame, capturing + passive scroll', str_contains($cfg, "window.addEventListener('scroll', placeSoon, { capture: true, passive: true });")
     && str_contains($cfg, 'placeRaf = requestAnimationFrame(function(){ placeRaf = 0; if(open) place(); });') && !str_contains($cfg, "if(open) place(); }, true);"));
 $tick = [
-    '05-router.js QuickTicket undo countdown'  => ['assets/js/05-router.js', 'var iv = setInterval(function () { if (document.hidden) return; if (!tick()) clearInterval(iv); }, 1000);'],
+    /* the needles pin each guard together with its own interval (review 10 Oct) */
+    '05-router.js QuickTicket undo countdown'  => ['assets/js/05-router.js', "var iv = setInterval(function () {\n      if (document.hidden) { if (Date.now() >= r.until) { box.remove(); clearInterval(iv); } return; }\n      if (!tick()) clearInterval(iv);\n    }, 1000);"],
     '05-router.js hold pills'                  => ['assets/js/05-router.js', 'holdInt = setInterval(function () { if (!document.hidden) updateHoldPills(); }, 1000);'],
     '08-signin.js OTP resend countdown'        => ['assets/js/08-signin.js', "if (document.hidden) return;\n    const left = Math.ceil((until - Date.now()) / 1000);"],
     '13-admin-routes.js live clock'            => ['assets/js/13-admin-routes.js', 'setInterval(function () { if (!document.hidden && el.isConnected'],
     '15-nav.js "updated N s ago"'              => ['assets/js/15-nav.js', "function snTrackTick(){\n    if(document.hidden) return;"],
     '16-lazy.js pickup countdown'              => ['assets/js/16-lazy.js', 'TC.countdownT = setInterval(function () { if (!document.hidden) tick(); }, 1000);'],
     '16-lazy.js where-is poll'                 => ['assets/js/16-lazy.js', 'TC.manualT = setInterval(function () { if (!document.hidden) pull(); }, 45000);'],
-    '22-routeline.js next-departure countdown' => ['assets/js/22-routeline.js', 'if (D.hidden) return;'],
-    'agent-picker.js keep-in-step'             => ['assets/js/agent-picker.js', 'if (document.hidden) return;'],
+    '22-routeline.js next-departure countdown' => ['assets/js/22-routeline.js', "ticking = setInterval(function () {\n      if (D.hidden) return;"],
+    'agent-picker.js keep-in-step'             => ['assets/js/agent-picker.js', "var tick = setInterval(function () {\n      if (!sel.isConnected) { clearInterval(tick); return; }\n      if (document.hidden) return;"],
     'track-live.js clock'                      => ['assets/js/track-live.js', 'setInterval(function () { if (!document.hidden) clock(); }, 1000);'],
 ];
 foreach ($tick as $label => [$file, $needle]) {
@@ -242,9 +325,6 @@ echo "\n-- 4. keyframes move transform / opacity only --\n";
 $OK_PROPS = ['transform', 'opacity', 'background-position', 'visibility'];
 /* The named exceptions, each with what it claims and how that is checked. */
 $EXC = [
-    // only html[data-tier="high"] runs it (perf.css nudges the others)
-    'bkFlash'          => ['high', 'views.css'],
-    'hx-ring'          => ['high', 'homeinfo.css'],
     // a one-shot SVG stroke drawing: paint of one small path, never a loop
     'ckDraw'           => ['svg', ''], 'ckCircle' => ['svg', ''], 'motifDraw' => ['svg', ''],
     'routeDraw'        => ['svg', ''], 'rovTrace' => ['svg', ''], 'rovFill'   => ['svg', ''], 'smDraw' => ['svg', ''],
@@ -284,11 +364,7 @@ foreach (['anim', 'showcase', 'premium', 'app', 'views', 'homeinfo', 'themes', '
         [$kind, $arg] = $EXC[$name];
         $exUsed[$name] = true;
         $flat = (string) preg_replace('~/\*.*?\*/~s', '', $css);
-        if ($kind === 'high') {
-            preg_match_all('~([^{}]*)\{[^}]*animation:[^;}]*\b' . preg_quote($name, '~') . '\b~', $flat, $um);
-            $scoped = $um[1] !== [] && array_filter($um[1], static fn($s) => !str_starts_with(trim($s), 'html[data-tier="high"]')) === [];
-            if (!$scoped || "{$sheet}.css" !== $arg) $bad[] = "{$sheet}.css {$name}: not scoped to html[data-tier=\"high\"]";
-        } elseif ($kind === 'svg') {
+        if ($kind === 'svg') {
             $odd = array_diff($extra, ['stroke-dashoffset', 'stroke-dasharray', 'fill-opacity']);
             $loop = (bool) preg_match('~animation:[^;}]*\b' . preg_quote($name, '~') . '\b[^;}]*infinite~', $flat);
             if ($odd !== [] || $loop) $bad[] = "{$sheet}.css {$name}: not a one-shot SVG draw";
@@ -303,10 +379,14 @@ check('keyframes found in the customer stylesheets', $total >= 60, $total . ' @k
 check('every @keyframes moves transform / opacity / background-position (or is a checked exception)', $bad === [], implode('; ', $bad));
 $stale = array_diff(array_keys($EXC), array_keys($exUsed));
 check('no stale exception left in the list', $stale === [], implode(', ', $stale));
-check('converted: SOS / mic / trip / locating / QuickBot badge / seat pulses', str_contains($views, '@keyframes sosPulse{0%,100%{transform:scale(1)}')
-    && str_contains($views, '@keyframes tcPulse{0%,100%{transform:scale(1)}') && str_contains($views, '@keyframes qtPulse{0%,100%{transform:scale(1)}')
+check('converted: SOS / mic / trip / locating / seat pulses', str_contains($views, '@keyframes sosPulse{0%,100%{transform:scale(1)}')
+    && str_contains($views, '@keyframes tcPulse{0%,100%{transform:scale(1)}')
     && str_contains(str_replace("\r\n", "\n", $views), "@keyframes snLocPulse{\n  0%,100%{transform:scale(1)}")
     && str_contains($read('assets/css/app.css'), '@keyframes seatSuggestPulse{0%,100%{transform:scale(1)}'));
+/* review 10 Oct: redesign.css's box-shadow: none !important always hid the
+   old glow, so the badge looked still - it must not start moving now */
+check('QuickBot badge stays still (no qtPulse loop)', !preg_match('~qtPulse~', $strip($views)) && !preg_match('~\.qt-badge\{[^}]*animation:(?!none)~', $views)
+    && str_contains($redes, '#quick-ticket .qt-badge'));
 check('aiPick lights up with opacity, not filter', str_contains($views, '@keyframes aiPick{0%{transform:scale(.6) rotate(-8deg);opacity:.6}'));
 $show = $read('assets/js/21-showcase.js');
 $paint = preg_match('~function paint\(\) \{(.*?)\n    \}~s', str_replace("\r\n", "\n", $show), $pm) ? $pm[1] : '';
@@ -343,6 +423,11 @@ check('signals: cores, memory, Save-Data / 2G / 3G, reduced motion, fps probe', 
     && str_contains($boot, 'conn.saveData') && str_contains($boot, "et === '3g'") && str_contains($boot, '(prefers-reduced-motion: reduce)') && str_contains($boot, 'fps < 40'));
 check('fps probe: ~20 frames, once per visit, idle + visible, kept in sessionStorage', str_contains($boot, 'times.length < 21') && str_contains($boot, "FPS_KEY = 'shg:fps'")
     && str_contains($boot, 'requestIdleCallback') && str_contains($boot, 'if (document.hidden) return;') && str_contains($boot, 'sessionStorage.setItem(k, v)'));
+/* review 10 Oct: a slow probe must not flatten the page under the user's eyes */
+$probe = preg_match('~var probe = function \(\) \{(.*?)\n      \};~s', str_replace("\r\n", "\n", $boot), $pb) ? $pb[1] : '';
+check('a slow probe is stored and applied only once the tab is hidden (or next load)', $probe !== '' && !str_contains($probe, 'apply(cur)')
+    && str_contains($probe, "document.addEventListener('visibilitychange', onHide);") && str_contains($probe, 'if (!document.hidden) return;')
+    && str_contains($probe, 'apply(next);') && str_contains($probe, "write(KEY, JSON.stringify(next));"));
 check('window.SHG_TIER = { tier, cores, memGB, fps, tv }', str_contains($boot, 'window.SHG_TIER = t;') && str_contains($boot, 'return { tier: tier, cores: cores, memGB: memGB, fps: fps, tv: tv };'));
 $tvRe = preg_match('~var TV_RE = (/[^\n]+/);~', $boot, $tr) ? $tr[1] : '';
 $tvOk = true;
