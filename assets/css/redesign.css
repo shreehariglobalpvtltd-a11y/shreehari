@@ -197,9 +197,10 @@ body { color: var(--ink); font-family: var(--font-sans); }
 #view-home > #quick-ticket { order: 4 !important; }
 #view-home > #topHero { order: 5 !important; }
 /* decorative or duplicated blocks
-   10 Oct 2026 (HD pack): #view-home > .hero is no longer in this list - the old
-   particle hero became the calm coach card (hd.css .hero-hd, order 5 in showcase.css). */
-#view-home > .wa-ticket-highlight, #view-home > .ra-wrap, #routeAnim, #homeRouteMap,
+   10 Oct 2026 (HD pack, review fix): .hero stays in this list. The old particle hero
+   is now the calm coach card (hd.css .hero-hd), STAGED for the owner's yes - shown
+   here it would repeat #homeHero, #homeFeat and QuickBot right above it. */
+#view-home > .hero, #view-home > .wa-ticket-highlight, #view-home > .ra-wrap, #routeAnim, #homeRouteMap,
 #heroLiveTicker, .intl-badge { display: none !important; }
 /* unverifiable claims and hard-coded prices stay out until the office confirms them */
 #styleHighlight, #whyUs, #facilities, #testimonials { display: none !important; }

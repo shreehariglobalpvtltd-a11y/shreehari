@@ -354,14 +354,22 @@
         var cc = String(p.country || '').toUpperCase();
         cc = cc === 'IN' || cc === 'NP' ? cc : '';
         var blurb = pick(p, 'blurb');
-        /* an uploaded photo (same-origin /uploads/… only) replaces the illustration */
+        /* a same-origin picture (/uploads/… or /assets/…) over the CSS art, which stays as
+           the fallback underneath.
+           10 Oct 2026 (HD review): the same <img class="hx-card-img"> as the static cards,
+           and the honest "Illustration" tag whenever the picture is one - the API says so
+           (imageIllus, from the credit line); an /assets/img/hd/ path counts too, so a
+           30-minute sessionStorage copy of the old payload is still labelled. A real
+           photo the office uploads gets no tag. */
         var img = safeUrl(p.image, '');
         img = /^\/[A-Za-z0-9_.\/-]+\.(?:webp|jpe?g|png)$/i.test(img) ? img : '';
+        var ill = !!img && (p.imageIllus === true || img.indexOf('/assets/img/hd/') === 0);
         return '<li class="hx-rv" style="--i:' + i + '"><a class="hx-card" href="' + h(localize(safeUrl(p.url, '/explore'))) + '">'
-          + '<span class="hx-card-art hx-art-' + (ART[cat] || 'nature') + (img ? ' hx-art-photo' : '') + '"'
-          + (img ? ' style="background-image:url(' + h(img) + ')"' : '') + '>'
+          + '<span class="hx-card-art hx-art-' + (ART[cat] || 'nature') + '">'
+          + (img ? '<img class="hx-card-img" src="' + h(img) + '" width="480" height="320" alt="" loading="lazy" decoding="async">' : '')
           + (cc ? flagImg(cc, cc === 'NP' ? 22 : 18, 'hx-card-flag' + (cc === 'IN' ? ' hx-card-flag-in' : '')) : '')
           + (CAT[cat] ? '<span class="hx-card-cat">' + h(tx(CAT[cat])) + '</span>' : '')
+          + (ill ? '<span class="hx-card-ill" aria-hidden="true">' + h(tx('hxIllus', 'Illustration')) + '</span>' : '')
           + '</span><span class="hx-card-tx"><b>' + h(pick(p, 'name')) + '</b>' + (blurb ? '<small>' + h(blurb) + '</small>' : '') + '</span></a></li>';
       }).join('');
     }

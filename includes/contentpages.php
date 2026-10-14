@@ -234,6 +234,8 @@ final class ContentPages
                 'nameHi' => (string) ($p['name_hi'] ?? ''), 'country' => (string) $p['country'], 'category' => (string) $p['category'],
                 'blurb' => (string) ($p['blurb_en'] ?? ''), 'blurbNe' => (string) ($p['blurb_ne'] ?? ''), 'unesco' => (bool) $p['unesco'],
                 'featured' => (bool) $p['is_featured'], 'image' => self::imgUrl((string) ($p['image'] ?? '')),
+                // 10 Oct 2026 (HD review): the home cards tag an illustration as one.
+                'imageIllus' => self::isIllustration((string) ($p['image'] ?? ''), (string) ($p['image_credit'] ?? '')),
                 'url' => PublicLayout::path('/explore', $lang) . '#place-' . $p['slug'],
             ];
         }
@@ -243,7 +245,9 @@ final class ContentPages
                 'slug' => (string) $k['slug'], 'title' => (string) $k['title_en'], 'titleNe' => (string) ($k['title_ne'] ?? ''),
                 'titleHi' => (string) ($k['title_hi'] ?? ''), 'days' => (int) $k['days'], 'nights' => (int) $k['nights'],
                 'country' => (string) $k['country'], 'priceFrom' => $k['price_from'] !== null ? (float) $k['price_from'] : null,
-                'image' => self::imgUrl((string) ($k['image'] ?? '')), 'url' => PublicLayout::path('/tours/' . $k['slug'], $lang),
+                'image' => self::imgUrl((string) ($k['image'] ?? '')),
+                'imageIllus' => self::isIllustration((string) ($k['image'] ?? ''), (string) ($k['image_credit'] ?? '')),
+                'url' => PublicLayout::path('/tours/' . $k['slug'], $lang),
             ];
         }
         return ['places' => $places, 'packages' => $packages];
@@ -355,6 +359,21 @@ final class ContentPages
             return '';
         }
         return '/' . $rel;
+    }
+
+    /**
+     * 10 Oct 2026 (HD review): is this picture an illustration rather than a photograph?
+     * True for the HD pack's artwork (assets/img/hd/...) and for any picture whose credit
+     * line starts with "Illustration" (what upgrade-2026-10-10-hd.sql writes). Every card
+     * that shows such a picture labels it, so artwork is never passed off as a photo.
+     */
+    public static function isIllustration(string $image, string $credit): bool
+    {
+        $url = self::imgUrl($image);
+        if ($url === '') {
+            return false;
+        }
+        return str_starts_with($url, '/assets/img/hd/') || stripos(ltrim($credit), 'illustration') === 0;
     }
 
     /* ----------------------------------------------------------------
@@ -767,8 +786,9 @@ final class ContentPages
         $flagIn = PublicLayout::flag('IN', 22);
         $flagNp = PublicLayout::flag('NP', 26);
         $pw = PublicLayout::words($lang);
-        $bandAlt = $lang === 'en' ? 'Illustration: Sagarmatha (Mount Everest), prayer flags, Gautam Buddha and a stupa'
-            : ($lang === 'hi' ? 'चित्र: सगरमाथा (माउंट एवरेस्ट), प्रार्थना ध्वज, गौतम बुद्ध और स्तूप' : 'चित्र: सगरमाथा, लुङ्दार, गौतम बुद्ध र स्तूप');
+        // 10 Oct 2026 (HD review): the words describe the new heritage montage (same as hxBandAlt on the home page).
+        $bandAlt = $lang === 'en' ? 'Illustration of Nepal’s heritage: a golden Buddha, Himalayan peaks, prayer flags and a stupa'
+            : ($lang === 'hi' ? 'नेपाल की धरोहर का चित्रण: सुनहरे गौतम बुद्ध, हिमालय की चोटियाँ, प्रार्थना झंडे और स्तूप' : 'नेपालको सम्पदाको चित्रण: सुनौलो गौतम बुद्ध, हिमालका चुचुरा, लुङदार र स्तूप');
 
         $body = '<section class="hero">'
             . '<span class="blob b1"></span><span class="blob b2"></span>'
@@ -778,9 +798,10 @@ final class ContentPages
             . '<div class="hero-flags"><span class="flagchip float">' . $flagIn . ' ' . $e($w['india'] ?? 'India') . '</span><span class="flagchip float">' . $flagNp . ' ' . $e($w['nepal'] ?? 'Nepal') . '</span></div>'
             // 10 Oct 2026 (HD pack): the heritage montage (Buddha, Himalaya, stupa) at its own 2:1
             // shape so no edge figure is cropped - the old nepal-band files stay for the documents.
-            // The one hero image is the only eager one on the page (no fetchpriority).
+            // The one hero image is the only eager one on the page and its LCP element, so it
+            // keeps fetchpriority="high" as before (review fix).
             . '<picture><source type="image/webp" srcset="/assets/img/hd/nepal-heritage-m.webp?v=20261009g 800w, /assets/img/hd/nepal-heritage.webp?v=20261009g 1600w" sizes="(max-width: 640px) 100vw, 1000px">'
-            . '<img class="hero-art art-2x1" src="/assets/img/hd/nepal-heritage-m.webp?v=20261009g" width="1600" height="800" alt="' . $e($bandAlt) . '" decoding="async"></picture>'
+            . '<img class="hero-art art-2x1" src="/assets/img/hd/nepal-heritage-m.webp?v=20261009g" width="1600" height="800" alt="' . $e($bandAlt) . '" decoding="async" fetchpriority="high"></picture>'
             . '<div class="btns"><a class="btn fill" href="#timeline">🕰️ ' . $e($w['timeline']) . '</a><a class="btn tonal" href="/travel-info">🛂 ' . $e($w['carry']) . '</a></div>'
             . '</section>'
             . ($nums !== '' ? '<section class="sec"><h2>' . $e($w['keyNums']) . '</h2><div class="stats">' . $nums . '</div></section>' : '')
@@ -996,9 +1017,10 @@ final class ContentPages
             . '<span class="kick">🧭 ' . $e($w['exKick']) . '</span><h1>' . $e($w['exH1']) . '</h1><p class="lead">' . $e($w['exLead']) . '</p>'
             . '<div class="hero-flags"><a class="flagchip" href="#nepal">' . PublicLayout::flag('NP', 22) . ' ' . $e($w['nepal']) . '</a><a class="flagchip" href="#india">' . PublicLayout::flag('IN', 18) . ' ' . $e($w['india']) . '</a>'
             . '<a class="flagchip" href="#near-border">🛂 ' . $e($w['nearBorder']) . '</a></div>'
-            // 10 Oct 2026 (HD pack): the same 2:1 heritage montage as /india-nepal, decorative here.
+            // 10 Oct 2026 (HD pack): the same 2:1 heritage montage as /india-nepal, decorative here;
+            // the page's LCP image, so fetchpriority="high" stays (review fix).
             . '<picture><source type="image/webp" srcset="/assets/img/hd/nepal-heritage-m.webp?v=20261009g 800w, /assets/img/hd/nepal-heritage.webp?v=20261009g 1600w" sizes="(max-width: 640px) 100vw, 1000px">'
-            . '<img class="hero-art art-2x1" src="/assets/img/hd/nepal-heritage-m.webp?v=20261009g" width="1600" height="800" alt="" decoding="async"></picture></section>'
+            . '<img class="hero-art art-2x1" src="/assets/img/hd/nepal-heritage-m.webp?v=20261009g" width="1600" height="800" alt="" decoding="async" fetchpriority="high"></picture></section>'
             . ($picks !== '' ? '<section class="sec"><h2>⭐ ' . $e($w['picks']) . '</h2><div class="picks">' . $picks . '</div></section>' : '')
             . '<div id="places">' . $filters . '</div>' . $content
             . '<section class="sec band rv"><h2>🧳 ' . $e($w['tH1']) . '</h2><p>' . $e($w['tLead']) . '</p><div class="btns"><a class="btn fill" href="' . $e(PublicLayout::url('/tours', $lang)) . '">' . $e($w['seeTours']) . '</a>'
@@ -1107,10 +1129,17 @@ final class ContentPages
         $url = PublicLayout::url('/tours/' . $k['slug'], $lang);
         $flag = match ((string) $k['country']) { 'India' => PublicLayout::flag('IN', 14), 'Both' => PublicLayout::flag('NP', 16) . PublicLayout::flag('IN', 14), default => PublicLayout::flag('NP', 16) };
         $dw = self::words($lang);
+        // 10 Oct 2026 (HD review): the list card names an illustration as one (the HD
+        // artwork, or any picture credited "Illustration ..."); a real photo with a credit
+        // shows that credit instead. The tag sits inside the decorative picture link.
+        $credit = trim((string) ($k['image_credit'] ?? ''));
+        $tag = $img === '' ? '' : (self::isIllustration((string) ($k['image'] ?? ''), $credit) ? $w['illus']
+            : ($credit !== '' ? sprintf($w['photo'], self::clip($credit, 60)) : ''));
         return '<article class="card pkg rv"><a class="ph ph-tour' . ($img === '' ? ' ph-band' : '') . '" href="' . $e($url) . '" tabindex="-1" aria-hidden="true">'
             . ($img !== '' ? '<img src="' . $e($img) . '" alt="" loading="lazy" decoding="async" width="640" height="360">'
                 : '<span class="ph-days"><b>' . (int) $k['days'] . '</b><small>' . $e(trim(str_replace('%d', '', $dw['days']))) . '</small></span><span class="ph-emo">' . self::pkgIcon($k) . '</span>')
-            . '<span class="ph-flag">' . $flag . '</span></a>'
+            . '<span class="ph-flag">' . $flag . '</span>'
+            . ($tag !== '' ? '<span class="ph-ill">' . $e($tag) . '</span>' : '') . '</a>'
             . '<div class="pb"><div class="chips"><span class="chip on">🗓️ ' . $e(self::durLine($k, $w)) . '</span><span class="chip">' . $e($w['country'][(string) $k['country']] ?? (string) $k['country']) . '</span></div>'
             . '<h3><a href="' . $e($url) . '">' . $e($title) . '</a></h3>'
             . ($route !== '' ? '<p class="route">🛣️ ' . $e($route) . '</p>' : '')
@@ -1343,6 +1372,7 @@ JS;
    a caption line, and the Buddha portrait beside the timeline (contained, never cropped). */
 .hero-art.art-2x1{aspect-ratio:2/1}.hero-art.art-16x9{aspect-ratio:16/9}
 .hero-cap{font-size:12px;opacity:.8;margin:6px 0 0}
+.ph-ill{position:absolute;right:10px;bottom:10px;max-width:calc(100% - 20px);padding:3px 9px;border-radius:999px;background:rgba(0,0,0,.45);color:#fff;font-size:11.5px;font-weight:700;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tl-wrap{display:grid;gap:18px;align-items:start}
 .buddha{margin:0;text-align:center}
 .buddha img{display:inline-block;width:auto;max-width:min(240px,70%);height:auto;max-height:340px;object-fit:contain;filter:drop-shadow(0 10px 16px rgba(0,0,0,.22))}

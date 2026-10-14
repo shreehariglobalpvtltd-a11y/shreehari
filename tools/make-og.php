@@ -6,7 +6,8 @@
  *
  *  Composes assets/img/og-shg.png from
  *    • the coach render   assets/img/hd/bus-hero.webp  (promotional
- *      render, contained on the right - never cropped),
+ *      render, contained on the right - never cropped, with a small
+ *      "Illustration" pill so a share preview is not taken for a photo),
  *    • the emblem         DocArt::mark() (logo-mark.png, transparent, no
  *      white tile - tests/brand-flags-test.php samples that corner),
  *    • the company name   Settings::company()['name'] (never typed here),
@@ -144,6 +145,19 @@ imagedestroy($bus);
 DocArt::roundCorners($im, $bx, $by, $bx + $bw - 1, $by + $bh - 1, 26, og_col($im, DocArt::mix($NAVY, $ROYAL, 0.62)));
 // a 2 px gold rule along the bottom edge of the card - the pack's "gold as a small accent"
 DocArt::goldFoil($im, $bx + 22, $by + $bh - 3, $bx + $bw - 22, $by + $bh - 1);
+// 10 Oct 2026 (HD review): the render is not a photo of the fleet, so the card says so -
+// a small "Illustration" pill in the card's top-right corner (the /offices caption's rule).
+$pill = 'Illustration';
+$pSize = 14.0;
+$pW = og_width($font, $pSize, $pill) + 24;
+$pH = 28;
+$pX = $bx + $bw - $pW - 14;
+$pY = $by + 14;
+$pBg = og_col($im, DocArt::mix($NAVY, [0, 0, 0], 0.35));   // opaque, so the three shapes never double-darken
+imagefilledrectangle($im, $pX + 10, $pY, $pX + $pW - 10, $pY + $pH, $pBg);
+imagefilledellipse($im, $pX + 10, $pY + intdiv($pH, 2), 20, $pH + 1, $pBg);
+imagefilledellipse($im, $pX + $pW - 10, $pY + intdiv($pH, 2), 20, $pH + 1, $pBg);
+og_text($im, $font, $pSize, $pX + 12, $pY + 19, og_col($im, $WHITE), $pill, true);
 
 /* ---- 3. the emblem on the navy, no tile (top-left) ---- */
 $mark = DocArt::mark($im, 64, 54, 170, 118, false, '', 'left');

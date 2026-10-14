@@ -70,10 +70,9 @@
    ===================================================================== */
 #view-home > #demoHead,
 #view-home > #animBooking { order: 5 !important; }
-/* 10 Oct 2026 (HD pack): the coach hero (#top, un-hidden in redesign.css) shares 5 and
-   sits before the demo by DOM order; the live-tracking section (#homeLive) takes the
-   free slot 10 between the route (9) and the India-Nepal band (11). */
-#view-home > #top { order: 5 !important; }
+/* 10 Oct 2026 (HD pack): the live-tracking section (#homeLive) takes the free slot 10
+   between the route (9) and the India-Nepal band (11). The staged coach hero (#top)
+   has no order here on purpose: redesign.css keeps it hidden until the owner says yes. */
 #view-home > #topHero { order: 7 !important; }
 #view-home > #homeCeo { order: 8 !important; }
 #view-home > #homeLive { order: 10 !important; }

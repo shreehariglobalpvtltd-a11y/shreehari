@@ -135,6 +135,21 @@ hx_check('heritage band image is lazy, sized and has alt text',
     && str_contains($band[0], 'loading="lazy"') && str_contains($band[0], 'width="1600"') && str_contains($band[0], 'height="800"')
     && (bool) preg_match('~alt="[^"]{10,}"~', $band[0]));
 hx_check('heritage band keeps the picture\'s own 2:1 shape (no fixed-height crop)', str_contains($css, '.hx-in .hx-band { position: relative; aspect-ratio: 2 / 1;'));
+/* 10 Oct 2026 (HD review): an illustration is never passed off as a photo - the static place cards
+   AND the cards 24-homeinfo.js draws from /api/explore.php both carry the "Illustration" tag
+   (aria-hidden: the picture itself is decorative), and the API says which pictures are illustrations. */
+$api = (string) @file_get_contents($root . '/includes/contentpages.php');
+hx_check('static place cards: each HD thumbnail has an aria-hidden "Illustration" tag',
+    preg_match_all('~<img class="hx-card-img" src="/assets/img/hd/~', $block) === 3
+    && substr_count($block, '<span class="hx-card-ill" aria-hidden="true" data-i18n="hxIllus">') === 3);
+hx_check('JS place cards: <img class="hx-card-img"> + the hxIllus tag when the API marks an illustration',
+    str_contains($js, '<img class="hx-card-img" src="') && str_contains($js, "p.imageIllus === true")
+    && str_contains($js, "'<span class=\"hx-card-ill\" aria-hidden=\"true\">' + h(tx('hxIllus'"));
+hx_check('API featured(): places and packages carry imageIllus from ContentPages::isIllustration()',
+    substr_count($api, "'imageIllus' => self::isIllustration(") === 2 && str_contains($api, 'public static function isIllustration('));
+hx_check('heritage band alt (hxBandAlt, applied by syncAlt) says illustration in all three languages',
+    (bool) preg_match("~hxBandAlt: 'Illustration of~", $i18n) && substr_count($i18n, "hxBandAlt: '") === 3
+    && (bool) preg_match("~hxBandAlt: '[^']*चित्रण[^']*'[\s\S]*hxBandAlt: '[^']*चित्रण~u", $i18n));
 hx_check('India and Nepal flags shown as SVG (not emoji)', str_contains($block, 'flag-in.svg') && str_contains($block, 'flag-np.svg') && !preg_match('~\x{1F1EE}\x{1F1F3}|\x{1F1F3}\x{1F1F5}~u', $block));
 hx_check('timeline static fallback: the 1950 treaty and the open border', str_contains($block, 'hxTl1950') && str_contains($block, 'hxTlOpen') && str_contains($block, '>1950<'));
 hx_check('no inline event handlers in the block', !preg_match('~\son[a-z]+\s*=~i', $block));

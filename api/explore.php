@@ -4,8 +4,10 @@
  * (9 Oct 2026). No personal data, cacheable for 5 minutes.
  *
  *   ?what=featured[&lang=en|hi|ne]
- *       {ok, data:{places:[{slug,name,nameNe,nameHi,country,category,blurb,blurbNe,unesco,featured,image,url}],
- *                  packages:[{slug,title,titleNe,titleHi,days,nights,country,priceFrom,image,url}]}}
+ *       {ok, data:{places:[{slug,name,nameNe,nameHi,country,category,blurb,blurbNe,unesco,featured,image,imageIllus,url}],
+ *                  packages:[{slug,title,titleNe,titleHi,days,nights,country,priceFrom,image,imageIllus,url}]}}
+ *       imageIllus (10 Oct 2026): true when the picture is an illustration, not a photo
+ *       (ContentPages::isIllustration) - the home cards then label it "Illustration".
  *   ?what=timeline[&limit=6]
  *       {ok, data:{events:[{year,yearNe,title,titleNe,titleHi,icon}], reviewed}}
  *

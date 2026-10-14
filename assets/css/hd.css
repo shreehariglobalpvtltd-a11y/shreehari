@@ -12,11 +12,16 @@
      for prefers-reduced-motion and html[data-motion="reduced"];
    • every image is lazy, sized (width/height) and WebP; no fetchpriority=high -
      the first screen is still the logo card + the booking form;
-   • every illustration a visitor could take for a photo says "Illustration" /
-     "Interior concept" beside it (data-i18n hxIllus / hdConcept). */
+   • every illustration a visitor could take for a photo says "Illustration"
+     beside it (data-i18n hxIllus).
+   Review fixes (10 Oct 2026): no rules for #styleHighlight / #facilities (redesign.css
+   keeps both hidden, so artwork there would never be seen); the sprite size rule is
+   scoped to .ic-s; the #top card below is STAGED - redesign.css still hides it. */
 
 /* =====================================================================
-   1. THE COACH HERO — #top.hero-hd: copy left, the bus render right
+   1. THE COACH HERO — #top.hero-hd: copy left, the bus render right.
+   Staged for the owner's yes: redesign.css hides #view-home > .hero (the 8 Oct
+   booking-first layout). These rules only matter once that line goes.
    ===================================================================== */
 #top.hero-hd { box-sizing: border-box; max-width: 1160px; margin: 14px auto 0; padding: 0 16px;
   background: none; color: var(--on-navy); overflow: visible; }
@@ -49,6 +54,12 @@
   background: rgba(255, 255, 255, .11); border: 1px solid rgba(255, 255, 255, .2); font: 700 14px/1.3 var(--font-sans); color: var(--on-navy); }
 #top.hero-hd .hero-next .ic { width: 20px; height: 20px; color: var(--sc-gold, var(--accent-gold)); }
 #top.hero-hd .hero-next #nextDepTimer { font: 800 18px/1 var(--font-mono); letter-spacing: .08em; font-variant-numeric: tabular-nums; color: var(--sc-gold, var(--accent-gold)); }
+/* The countdown stays OFF even when the card is shown: startNextDeparture()
+   (13-admin-routes.js) mixes both directions, reads the device clock against IST
+   times and assumes a daily bus, so a Surat visitor at 14:00 would be told about the
+   Nepal-side 18:00 return. It only ticks while visible (offsetParent), so hiding the
+   box also keeps the timer asleep. Un-hide only after it is fixed per direction. */
+#top.hero-hd #nextDepBox { display: none; }
 #top.hero-hd .hero-qt-cta { margin: 14px 0 0; min-height: 48px; }
 #top.hero-hd .hero-art { margin: 0; min-width: 0; text-align: center; }
 #top.hero-hd .hero-art img { display: inline-block; width: 100%; max-width: 560px; height: auto; filter: drop-shadow(0 16px 22px rgba(0, 0, 0, .38)); }
@@ -105,40 +116,21 @@
 }
 
 /* =====================================================================
-   4. ILLUSTRATIONS IN CONTEXT — guide header, sleeper cards, passenger care,
-   the amenity chips and the seat key (sprite icons sized 18-28px)
+   4. ILLUSTRATIONS IN CONTEXT — the guide header and the menu icons
+   (review fix: the sleeper-concept, family-travel and seat-key additions were
+   taken out - #styleHighlight and #facilities are hidden by redesign.css, and the
+   seat key keeps its colour boxes, which follow the theme tokens)
    ===================================================================== */
-/* the booking helper beside the guide's title (fictional character, decorative) */
+/* the booking helper beside the guide's title (fictional character, decorative;
+   a 128 px export - the box is 48 x 60) */
 #bookHelp .bh-art { flex: none; width: 48px; height: 60px; border-radius: 14px; overflow: hidden; background: rgba(255, 255, 255, .16); }
 #bookHelp .bh-art img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 0; }
 @media (max-width: 479px) { #bookHelp .bh-art { display: none; } }
 
-/* the two sleeper cards: a 3:2 interior CONCEPT across the top, captioned */
-#styleHighlight .style-art { position: relative; margin: -24px -22px 16px; }
-#styleHighlight .style-art img { display: block; width: 100%; height: auto; aspect-ratio: 3 / 2; object-fit: cover; }
-#styleHighlight .style-art figcaption { position: absolute; left: 10px; bottom: 8px; padding: 3px 9px; border-radius: 999px;
-  background: rgba(0, 0, 0, .45); color: #fff; font: 700 11.5px/1.3 var(--font-sans); }
-#styleHighlight .style-feats li { display: flex; align-items: flex-start; gap: 8px; line-height: 1.5; padding: 4px 0; }
-#styleHighlight .style-feats li .ic { flex: none; width: 20px; height: 20px; margin-top: 1px; color: var(--royal); }
-
-/* passenger-care card: the family illustration beside the list on wide screens */
-#facilities .care-hd { display: grid; gap: 16px; }
-#facilities .care-hd-copy { min-width: 0; }
-#facilities .care-hd-art { margin: 0; text-align: center; }
-#facilities .care-hd-art img { display: inline-block; width: min(240px, 70%); height: auto; }
-#facilities .care-hd-art figcaption { margin-top: 2px; font: 600 11.5px/1.3 var(--font-sans); color: var(--muted); }
-@media (min-width: 761px) { #facilities .care-hd { grid-template-columns: minmax(0, 1fr) 240px; align-items: center; } }
-
-/* amenity chips: icon + label, 36px tall */
-.chips-hd .chip { gap: 6px; min-height: 36px; }
-.chips-hd .chip .ic { flex: none; width: 18px; height: 18px; }
-
-/* seat key: the seat symbol beside each colour box */
-.legend .lg-ic { width: 20px; height: 20px; margin-left: -2px; }
-@media (max-width: 760px) { #view-seats .legend-sticky .lg-ic { width: 16px; height: 16px; } }
-
-/* nav + menu rows: the support / booking icons sit like the Lucide ones */
-.nav-link .ic, .mobile-menu a .ic { width: 1.15em; height: 1.15em; }
+/* the pack's support / mobile-booking symbols in the nav + menu rows (48-unit box,
+   thinner stroke than Lucide, so a touch larger). Only .ic-s - the Lucide icons
+   beside them keep their own 1em size. */
+.nav-link .ic-s, .mobile-menu a .ic-s { width: 1.15em; height: 1.15em; }
 
 /* =====================================================================
    5. MOTION — nothing here loops; the one hover lift is transform-only

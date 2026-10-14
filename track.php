@@ -188,7 +188,8 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple
 @keyframes p{70%{box-shadow:0 0 0 12px rgba(74,222,128,0)}100%{box-shadow:0 0 0 0 rgba(74,222,128,0)}}
 @keyframes p2{0%{box-shadow:0 0 0 0 rgba(240,124,31,.55)}70%{box-shadow:0 0 0 9px rgba(240,124,31,0)}100%{box-shadow:0 0 0 0 rgba(240,124,31,0)}}
 @keyframes tk{to{stroke-dashoffset:0}}
-/* 10 Oct 2026 (HD pack): the small phone-with-map illustration beside the title (decorative). */
+/* 10 Oct 2026 (HD pack): the small phone-with-map illustration beside the title (decorative;
+   track-journey-s = a 128 px export for this 64 x 64 box). */
 .h-row{display:flex;align-items:center;gap:12px}.h-row h1{flex:1;min-width:0}
 .h-art{flex:none;width:64px;height:64px}.h-art img{display:block;width:100%;height:100%;object-fit:contain}
 </style>
@@ -206,7 +207,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple
       <?php endforeach; ?>
     </div>
   </div>
-  <div class="h-row"><h1><?= $e($T['title']) ?></h1><span class="h-art" aria-hidden="true"><img src="/assets/img/hd/track-journey-t.webp?v=20261009g" width="480" height="480" alt="" loading="lazy" decoding="async"></span></div>
+  <div class="h-row"><h1><?= $e($T['title']) ?></h1><span class="h-art" aria-hidden="true"><img src="/assets/img/hd/track-journey-s.webp?v=20261009g" width="128" height="128" alt="" loading="lazy" decoding="async"></span></div>
   <p class="sub"><?= $e($T['sub']) ?></p>
 
 <?php if (!$authed): ?>

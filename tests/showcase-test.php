@@ -117,8 +117,8 @@ if ($home !== '') {
 foreach (['homeHero', 'homeFeat', 'quick-ticket', 'demoHead', 'animBooking', 'topHero', 'homeCeo', 'animRoute', 'bookHelp', 'trust', 'agrBar', 'realReviews', 'homeMoreBar', 'homeExtra', 'homeMore'] as $id) {
     sc_check("#{$id} is a direct child of #view-home", in_array($id, $kids, true));
 }
-/* 10 Oct 2026 (HD pack): #homeLive (live bus tracking) joined the HOMEINFO block; #top is the coach hero. */
-foreach (['homeFares', 'homeRoute', 'homeLive', 'homeIndiaNepal', 'homeExplore', 'top'] as $id) {
+/* 10 Oct 2026 (HD pack): #homeLive (live bus tracking) joined the HOMEINFO block. */
+foreach (['homeFares', 'homeRoute', 'homeLive', 'homeIndiaNepal', 'homeExplore'] as $id) {
     if (str_contains($body, 'id="' . $id . '"')) {
         sc_check("HOMEINFO #{$id} is a direct child of #view-home", in_array($id, $kids, true));
     }
@@ -191,8 +191,8 @@ sc_check('every id in the body is unique', $dupes === [], implode(',', array_sli
 
 /* ---------------------------------------------------------------------- */
 echo "-- 2. Display order --\n";
-/* 10 Oct 2026 (HD pack): #top (the coach hero, order 5 by DOM before the demo) and #homeLive (10). */
-$map = ['top' => 5, 'demoHead' => 5, 'animBooking' => 5, 'topHero' => 7, 'homeCeo' => 8, 'homeLive' => 10, 'animRoute' => 13, 'bookHelp' => 14,
+/* 10 Oct 2026 (HD pack): #homeLive (10). */
+$map = ['demoHead' => 5, 'animBooking' => 5, 'topHero' => 7, 'homeCeo' => 8, 'homeLive' => 10, 'animRoute' => 13, 'bookHelp' => 14,
         'trust' => 30, 'agrBar' => 31, 'realReviews' => 32, 'homeMoreBar' => 33, 'homeExtra' => 34, 'homeMore' => 35];
 foreach ($map as $id => $n) {
     sc_check("showcase.css: #{$id} order {$n}", (bool) preg_match('/#view-home > #' . preg_quote($id, '/') . '\b[^{]*\{ order: ' . $n . ' !important; \}/', $css)
@@ -201,6 +201,10 @@ foreach ($map as $id => $n) {
 foreach (['#view-home > * { order: 10 !important; }', '#view-home > #homeHero { order: 0 !important; }'] as $pin) {
     sc_check('redesign.css keeps the pinned line ' . $pin, str_contains($redesign, $pin));
 }
+/* 10 Oct 2026 (HD review): the owner-approved booking-first layout (8 Oct, D3-09) keeps the old
+   #top hero hidden - the HD coach card in it is staged, and showcase.css gives #top no order. */
+sc_check('redesign.css still hides the old #top hero (#view-home > .hero)', (bool) preg_match('/#view-home > \.hero, [^{]*\{ display: none !important; \}/', $redesign));
+sc_check('showcase.css gives the staged #top hero no display order', !str_contains($css, '#view-home > #top {'));
 $pShow = strpos($tpl, '/assets/css/showcase.css');
 $pDepth = strpos($tpl, '/assets/css/depth.css');
 $pAnim = strpos($tpl, '/assets/css/anim.css');

@@ -99,7 +99,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans D
 .langs a{font-size:12px;font-weight:700;color:var(--muted);text-decoration:none;padding:4px 8px;border-radius:999px;border:1px solid var(--line);margin-left:4px}
 .langs a.on{background:var(--blue);color:#fff;border-color:var(--blue)}
 h1{font-size:24px;margin:4px 0 2px}
-/* 10 Oct 2026 (HD pack): the illustrated helper beside the title (a fictional character, decorative). */
+/* 10 Oct 2026 (HD pack): the illustrated helper beside the title (a fictional character, decorative;
+   support-guide-s = a 128 px export for this 56 x 72 box). */
 .h-row{display:flex;align-items:center;gap:12px}.h-row h1{flex:1;min-width:0}
 .h-art{flex:none;width:56px;height:72px;border-radius:14px;overflow:hidden;background:var(--chip)}
 .h-art img{display:block;width:100%;height:100%;object-fit:cover;object-position:50% 0}
@@ -157,7 +158,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--blue)}
       <?php endforeach; ?>
     </div>
   </div>
-  <div class="h-row"><h1>🛟 <?= $e($T['title']) ?></h1><span class="h-art" aria-hidden="true"><img src="/assets/img/hd/support-guide-t.webp?v=20261009g" width="480" height="720" alt="" loading="lazy" decoding="async"></span></div>
+  <div class="h-row"><h1>🛟 <?= $e($T['title']) ?></h1><span class="h-art" aria-hidden="true"><img src="/assets/img/hd/support-guide-s.webp?v=20261009g" width="128" height="192" alt="" loading="lazy" decoding="async"></span></div>
   <p class="sub"><?= $e($T['sub']) ?></p>
 
   <div class="tabs" role="tablist">
