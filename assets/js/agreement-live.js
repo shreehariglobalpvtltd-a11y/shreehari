@@ -79,8 +79,24 @@
     return frag;
   }
 
+  /* 10 Oct 2026 (trust, owner: "agreement ko data live hunu paryo"): the
+     company facts printed on the page - legal name, CIN, website, registered
+     office, phone - are <span data-fact="brand.cin">…</span> (built by
+     tools/agreements/build.js). The built text is the fallback; the live
+     value from SiteFacts (Admin -> Company details) replaces it, so the
+     agreement never lags the office. Runs BEFORE the point corrections: an
+     edited point keeps the office's own wording. */
+  function fillFacts(facts) {
+    if (!facts || typeof facts !== 'object') return;
+    document.querySelectorAll('[data-fact]').forEach(function (el) {
+      var v = facts[el.getAttribute('data-fact')];
+      if (typeof v === 'string' && v.trim() !== '') el.textContent = v;
+    });
+  }
+
   function apply(data) {
     if (!data || !data.ok) return;
+    fillFacts(data.facts);
     var cls = clauses();
     var pts = data.points || {};
     Object.keys(pts).forEach(function (num) {

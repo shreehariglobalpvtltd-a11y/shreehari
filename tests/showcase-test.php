@@ -314,7 +314,12 @@ preg_match_all('/\{\{f:([a-z.:]+)\}\}/i', $body, $tok);
 $known = ['brand.name', 'brand.legal', 'brand.cin', 'brand.email', 'brand.short', 'ceo.name', 'ceo.nameNe', 'ceo.phone', 'ceo.tel', 'ceo.wa',
           'head.phone', 'head.tel', 'head.wa', 'head.address', 'npr', 'fares.go.min', 'fares.go.max', 'fares.back.min', 'fares.back.max',
           'fares.private.single', 'fares.private.double', 'agent.direct', 'html:offices',
-          'nepal.phone', 'nepal.tel', 'support.tel'];
+          'nepal.phone', 'nepal.tel', 'support.tel',
+          // 10 Oct 2026 (trust): the domain mailbox / Gmail, the channel icons + their sprite symbols, the Director's profile
+          'brand.contactEmail', 'html:emails', 'html:social', 'html:socialSymbols', 'html:ceoSocial'];
+/* Tokens that are EMPTY BY DESIGN until the office pastes a channel URL in
+   Admin -> Settings -> Company (empty = not shown, never a dead icon). */
+$optional = ['html:social', 'html:ceoSocial'];
 $unknown = array_values(array_diff(array_unique($tok[1]), $known));
 sc_check('every {{f:…}} token in the body is a known fact', $unknown === [], implode(',', $unknown));
 /* with the DB up, ask SiteFacts itself: every token the template uses must be filled */
@@ -331,7 +336,7 @@ if (is_file($root . '/includes/sitefacts.php') && is_file($root . '/includes/boo
 if (is_array($tokMap)) {
     $notServed = array_values(array_filter(array_unique($tok[1]), fn ($t) => !array_key_exists('{{f:' . $t . '}}', $tokMap)));
     sc_check('SiteFacts fills every token the template uses', $notServed === [], implode(',', $notServed));
-    $empty = array_values(array_filter(array_unique($tok[1]), fn ($t) => array_key_exists('{{f:' . $t . '}}', $tokMap) && trim((string) $tokMap['{{f:' . $t . '}}']) === ''));
+    $empty = array_values(array_filter(array_unique($tok[1]), fn ($t) => !in_array($t, $optional, true) && array_key_exists('{{f:' . $t . '}}', $tokMap) && trim((string) $tokMap['{{f:' . $t . '}}']) === ''));
     sc_check('…and none of them renders empty on this database', $empty === [], implode(',', $empty));
 }
 sc_check('WhatsApp rows that carry a greeting keep their ?text (no data-fact-wa rewrite)', !preg_match('/wa\.me\/[^"]*\?text=[^"]*"[^>]*data-fact-wa=/', $body));

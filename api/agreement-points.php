@@ -33,6 +33,18 @@ try {
     $payload = ['points' => (object) [], 'added' => [], 'v' => ''];
 }
 
+/* 10 Oct 2026 (trust): "facts" - the company facts the page's
+   <span data-fact="…"> carry (AgreementText::FACT_KEYS, from SiteFacts), so
+   the printed legal name / CIN / office / phone follow Admin -> Company
+   details. Its own try: a facts hiccup never hides the office's corrections. */
+try {
+    $facts = AgreementText::facts();
+    $payload['facts'] = $facts === [] ? (object) [] : $facts;
+} catch (Throwable $e) {
+    Logger::warning('agreement facts read failed', ['e' => $e->getMessage()]);
+    $payload['facts'] = (object) [];
+}
+
 // A minute: an office correction reaches readers quickly, and a busy page
 // does not hit the database on every open.
 Response::$publicCacheSeconds = 60;

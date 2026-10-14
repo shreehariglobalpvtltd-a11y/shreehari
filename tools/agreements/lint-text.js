@@ -120,7 +120,10 @@ const perLang = {};
 for (const lg of LANGS) {
   const all = [];
   walk(T[lg], '', all);
-  perLang[lg] = all.filter(([p]) => p !== 'lang' && p !== 'langName');
+  /* 10 Oct 2026 (trust): a live company fact {{f:brand.legal|S HARI …}} is
+     checked as the words it prints (build.js turns it into a data-fact span). */
+  perLang[lg] = all.filter(([p]) => p !== 'lang' && p !== 'langName')
+    .map(([p, s]) => [p, typeof s === 'string' ? s.replace(/\{\{f:[a-zA-Z0-9_.]{1,40}\|([^{}|]{0,300})\}\}/g, '$1') : s]);
 }
 
 for (const lg of LANGS) {

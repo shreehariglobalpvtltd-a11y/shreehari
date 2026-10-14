@@ -48,7 +48,7 @@ final class ChalaniPng
     public const HEIGHT = 1414;
 
     /** Bump whenever the drawing changes, so every cached page re-renders once. */
-    public const LAYOUT_VERSION = 10;  // 10 = GOLD template: mantra strip, gold seal + foil, cream mandala paper, payment QR on every page, blessing band (9 Oct 2026)   // 9 = emblem without the white chip, India + Nepal flags, heritage art in the band (9 Oct 2026)   // 8 = seat column prints the two-floor grid A1-F6 / A7-F12 (23 Sep 2026)   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
+    public const LAYOUT_VERSION = 11;  // 11 = TRUST: "Computer-generated" + GSTIN (when set) on the official-document line, IST on the Generated stamp (10 Oct 2026)   // 10 = GOLD template: mantra strip, gold seal + foil, cream mandala paper, payment QR on every page, blessing band (9 Oct 2026)   // 9 = emblem without the white chip, India + Nepal flags, heritage art in the band (9 Oct 2026)   // 8 = seat column prints the two-floor grid A1-F6 / A7-F12 (23 Sep 2026)   // 7 = chalani number carries the extra-bus slot (17 Sep 2026)   // 6 = seat column prints the LA1/UA1 row-letter grid   // 5 = the cache key covers every drawn field   // 2 = passenger names print in their own script
 
     private const M         = 48;     // page margin
     private const ROW_H     = 42;
@@ -355,6 +355,7 @@ final class ChalaniPng
         GoldSheet::watermark($im, (int) ($W / 2), 880, 430, 112);
 
         $co        = Settings::company();
+        $gstin     = trim(Settings::getString('company_gstin', ''));   // 10 Oct 2026 (trust): printed only once the office has one
         $roman     = static fn(string $s): string => self::ro($s);
         $pages     = count($chunks);
         $chalaniNo = self::chalaniNo($trip, $date);
@@ -662,8 +663,9 @@ final class ChalaniPng
         self::t($im, 14, $M, $fy + 15, $muted,
             self::fit(14, $roman('Booking counters: ' . $co['counters']), $inner - self::w(17, $pg) - 30), false);
         self::t($im, 12, $M, $fy + 36, $muted, self::fit(12, $roman(
-            'Official travel document of ' . $co['legal'] . '. Keep for company records. Valid with authorised signature / stamp. '
-            . 'Route: ' . ($trip['from_city'] ?? '') . ' - ' . ($trip['to_city'] ?? '') . ' (India-Nepal). CIN ' . $co['cin']
+            // 10 Oct 2026 (trust): computer-generated stated, the GSTIN beside the CIN once the office has one
+            'Official travel document of ' . $co['legal'] . '. Computer-generated; valid with authorised signature / stamp. Keep for company records. '
+            . 'Route: ' . ($trip['from_city'] ?? '') . ' - ' . ($trip['to_city'] ?? '') . ' (India-Nepal). CIN ' . $co['cin'] . ($gstin !== '' ? ' | GSTIN ' . $gstin : '')
         ), $inner), false);
 
         /* Navy blessing band at the foot of the sheet. */
@@ -677,7 +679,7 @@ final class ChalaniPng
         }
         $leftW  = (int) (($W - $bw) / 2) - $M - 30;
         self::t($im, 11, $M + 40, $bb + 11, $dim, self::fit(11,
-            'Generated ' . date('D, j M Y g:i A') . '  ·  ' . $chalaniNo, $leftW - 40), false);
+            'Generated ' . date('D, j M Y g:i A') . ' IST  ·  ' . $chalaniNo, $leftW - 40), false);
         self::tR($im, 11, $W - $M - 40, $bb + 11, $dim, self::fit(11,
             'Crew copy, names as typed - signed Nepali chalani = PDF  ·  ' . $roman($co['web']), $leftW - 40), false);
 

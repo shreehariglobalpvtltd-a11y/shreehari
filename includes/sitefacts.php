@@ -21,6 +21,10 @@
  *      Nepal office / team   Settings::nepalOfficePlace(), nepalTeam()
  *      fares                 Fare::board() — the numbers perSeatFor() charges
  *
+ *      channels / mailbox    company_youtube … company_tiktok, ceo_facebook,
+ *                            company_email_alt (10 Oct 2026) - shown only
+ *                            when the office has typed a valid value
+ *
  *  all()     the full facts, memoised per request
  *  boot()    the public subset for SHG_BOOT.facts (no secrets: no payment
  *            ids, no staff data — nothing here is not already public)
@@ -99,6 +103,17 @@ final class SiteFacts
             'gstin'   => $g('company_gstin'),
             'tagline' => $g('company_tagline'),
         ];
+        /* Channels + the domain mailbox (10 Oct 2026, owner: "Gmail YouTube /
+           Facebook sanga connect xa, mention gardeu; shreehariglobal.in ko
+           email ni dekhaideu"). Every value is a Settings row the office fills
+           in (Admin -> Settings -> Company); an empty or malformed one is
+           simply not shown - a bare handle or an http: link never ships. */
+        $brand['email2']       = self::emailOrEmpty($g('company_email_alt'));
+        $brand['contactEmail'] = $brand['email2'] !== '' ? $brand['email2'] : $brand['email'];
+        $brand['social']       = [];
+        foreach (array_keys(self::SOCIAL) as $net) {
+            $brand['social'][$net] = self::httpsUrlOrEmpty($g('company_' . $net));
+        }
 
         /* CEO - company_ceo is the single website source; his phone is the
            Nepal team's CEO line (np_ceo_phone, else the published Director line). */
@@ -127,6 +142,8 @@ final class SiteFacts
             'wa'      => $ceoTel,
             'country' => (string) ($ceoRow['country'] ?? ''),
             'photo'   => is_file(dirname(__DIR__) . '/assets/img/ceo.jpg') ? '/assets/img/ceo.jpg' : '',
+            // 10 Oct 2026: his own profile (ceo_facebook) - the home footer used to carry it typed in
+            'facebook' => self::httpsUrlOrEmpty($g('ceo_facebook')),
         ];
 
         /* Offices (the head office is the first row of the list) */
@@ -263,7 +280,10 @@ final class SiteFacts
      * "₹2,200"; {{f:npr}} renders "1.60"; plus a few composites:
      * {{f:fares.go.min}} / .max, {{f:fares.back.min}} / .max,
      * {{f:fares.go.range}}, {{f:fares.back.range}}, {{f:offices.count}},
-     * {{f:html:offices}} (the home office list <li> rows, already escaped).
+     * {{f:html:offices}} (the home office list <li> rows, already escaped),
+     * {{f:html:social}} / {{f:html:socialSymbols}} / {{f:html:ceoSocial}} /
+     * {{f:html:emails}} (10 Oct 2026: channel icons, the CEO's profile and
+     * the mailto links - '' when the office has set nothing).
      *
      * @return array<string,string>
      */
@@ -311,8 +331,125 @@ final class SiteFacts
         $out['{{f:npr}}']              = $esc(number_format((float) $f['npr'], 2, '.', ''));
         $out['{{f:offices.count}}']    = (string) count($f['offices']);
         $out['{{f:html:offices}}']     = self::officeListHtml();
+        /* 10 Oct 2026 (trust): the channel row, its sprite symbols, the CEO's
+           profile link and the mailto list - each '' when nothing is set. */
+        $out['{{f:html:social}}']        = self::socialHtml();
+        $out['{{f:html:socialSymbols}}'] = self::socialSymbols();
+        $out['{{f:html:ceoSocial}}']     = self::ceoSocialHtml();
+        $out['{{f:html:emails}}']        = self::emailsHtml();
 
         return $out;
+    }
+
+    /* ------------------------------------------------------------------
+     *  Channels + mailboxes (10 Oct 2026, the TRUST package)
+     * ------------------------------------------------------------------ */
+
+    /**
+     * The four networks the office may link, in the order the row shows
+     * them: the accessible name and a 24x24 stroke glyph drawn in the same
+     * line style as the page sprite (fill none, stroke currentColor).
+     *
+     * @var array<string, array{0:string,1:string}>
+     */
+    public const SOCIAL = [
+        'youtube'   => ['YouTube',   '<rect x="2.5" y="5" width="19" height="14" rx="4"/><path d="m10 9 5 3-5 3z"/>'],
+        'facebook'  => ['Facebook',  '<path d="M13.5 21v-7h2.4l.4-3h-2.8V9.2c0-.9.3-1.5 1.5-1.5h1.5V5.1c-.3 0-1.2-.1-2.2-.1-2.2 0-3.7 1.3-3.7 3.8V11H8.2v3h2.4v7"/>'],
+        'instagram' => ['Instagram', '<rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><path d="M17.5 6.5h.01"/>'],
+        'tiktok'    => ['TikTok',    '<path d="M14 4v9.5a3.5 3.5 0 1 1-3.5-3.5"/><path d="M14 4c.3 2.7 2 4.3 4.5 4.5"/>'],
+    ];
+
+    /** A full https:// link with a real host, else '' - a bare handle, an http: link or anything with spaces / quotes is not shown. */
+    public static function httpsUrlOrEmpty(string $raw): string
+    {
+        $u = trim($raw);
+        if ($u === '' || strlen($u) > 300 || preg_match('/[\s<>"\'\\\\]/', $u) === 1) {
+            return '';
+        }
+        if (!preg_match('#^https://#i', $u) || filter_var($u, FILTER_VALIDATE_URL) === false) {
+            return '';
+        }
+        $host = strtolower((string) parse_url($u, PHP_URL_HOST));
+        return (preg_match('/^[a-z0-9.-]+\.[a-z]{2,}$/', $host) === 1 && !str_contains($host, '..')) ? $u : '';
+    }
+
+    /** A well-formed mailbox, else ''. */
+    public static function emailOrEmpty(string $raw): string
+    {
+        $e = trim($raw);
+        return ($e !== '' && strlen($e) <= 190 && filter_var($e, FILTER_VALIDATE_EMAIL) !== false) ? $e : '';
+    }
+
+    /**
+     * The channel row: one 44 px link per network the office has set, the
+     * network as its accessible name, opened in a new tab. '' when nothing
+     * is set, so a footer shows no dead icons.
+     *
+     * $inline = true draws the glyph inside the link (a page without the
+     * sprite: the content pages, help); false uses <use href="#i-…"> from the
+     * page sprite ({{f:html:socialSymbols}} in app.template.html).
+     *
+     * @param array<string,string>|null $urls network => url (default: the live facts)
+     */
+    public static function socialHtml(bool $inline = false, ?array $urls = null): string
+    {
+        $urls = $urls ?? (array) (self::all()['brand']['social'] ?? []);
+        $esc  = static fn($v): string => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+        $out  = '';
+        foreach (self::SOCIAL as $net => [$label, $glyph]) {
+            $url = self::httpsUrlOrEmpty((string) ($urls[$net] ?? ''));
+            if ($url === '') {
+                continue;
+            }
+            $svg = $inline
+                ? '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' . $glyph . '</svg>'
+                : '<svg class="ic" aria-hidden="true" focusable="false"><use href="#i-' . $net . '"/></svg>';
+            $out .= '<a class="soc soc-' . $net . '" href="' . $esc($url) . '" target="_blank" rel="noopener noreferrer me"'
+                  . ' aria-label="' . $esc($label) . '" title="' . $esc($label) . '">' . $svg . '</a>';
+        }
+        return $out;
+    }
+
+    /** The four <symbol id="i-youtube"> … definitions for a page sprite. */
+    public static function socialSymbols(): string
+    {
+        $out = '';
+        foreach (self::SOCIAL as $net => [, $glyph]) {
+            $out .= '<symbol id="i-' . $net . '" viewBox="0 0 24 24">' . $glyph . '</symbol>';
+        }
+        return $out;
+    }
+
+    /** The Director's own Facebook profile as a sprite icon link (home footer); '' when ceo_facebook is blank. */
+    public static function ceoSocialHtml(): string
+    {
+        $f   = self::all();
+        $url = (string) ($f['ceo']['facebook'] ?? '');
+        if ($url === '') {
+            return '';
+        }
+        $esc   = static fn($v): string => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+        $label = 'Facebook — ' . (string) $f['ceo']['name'];
+        return '<a class="soc soc-facebook soc-ceo" href="' . $esc($url) . '" target="_blank" rel="noopener noreferrer"'
+             . ' aria-label="' . $esc($label) . '" title="' . $esc($label) . '">'
+             . '<svg class="ic" aria-hidden="true" focusable="false"><use href="#i-facebook"/></svg></a>';
+    }
+
+    /**
+     * The mailboxes as mailto links: the domain address first when set, then
+     * the Gmail - never the same one twice. The first carries data-fact-mail /
+     * data-fact so 02-config.js hydrateFacts() refreshes it like a phone.
+     */
+    public static function emailsHtml(): string
+    {
+        $b    = self::all()['brand'];
+        $esc  = static fn($v): string => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+        $list = array_values(array_unique(array_filter([(string) $b['email2'], (string) $b['email']], 'strlen')));
+        $out  = [];
+        foreach ($list as $i => $em) {
+            $out[] = '<a href="mailto:' . $esc($em) . '"' . ($i === 0 ? ' data-fact-mail="brand.contactEmail" data-fact="brand.contactEmail"' : '') . '>' . $esc($em) . '</a>';
+        }
+        return implode(' · ', $out);
     }
 
     /**

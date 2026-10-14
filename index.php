@@ -372,7 +372,8 @@ $shgOrg  = [
     'legalName' => (string) ($F['brand']['legal'] ?? $shgCo['legal']),
     'url'       => $baseUrl . '/',
     'logo'      => $baseUrl . '/assets/img/logo-mark.png',
-    'email'     => (string) ($F['brand']['email'] ?? $shgCo['email']),
+    // 10 Oct 2026 (trust): the domain mailbox once typed (company_email_alt), else the Gmail
+    'email'     => (string) ($F['brand']['contactEmail'] ?? $F['brand']['email'] ?? $shgCo['email']),
     'telephone' => $shgTel((string) ($F['head']['tel'] ?? Settings::officeWhatsApp())),
     'address'   => array_filter([
         '@type'           => 'PostalAddress',
@@ -386,8 +387,18 @@ $shgOrg  = [
 if (!empty($F['brand']['cin'])) {
     $shgOrg['identifier'] = ['@type' => 'PropertyValue', 'propertyID' => 'CIN', 'value' => (string) $F['brand']['cin']];
 }
+/* 10 Oct 2026 (trust): sameAs = the channels the office pasted in Admin ->
+   Settings -> Company (YouTube / Facebook / Instagram / TikTok) - left out
+   while empty, so search engines never see a dead profile link. */
+$shgSame = array_values(array_filter(array_map('strval', (array) ($F['brand']['social'] ?? [])), 'strlen'));
+if ($shgSame !== []) {
+    $shgOrg['sameAs'] = $shgSame;
+}
 if (!empty($F['ceo']['name'])) {
     $shgOrg['founder'] = ['@type' => 'Person', 'name' => (string) $F['ceo']['name'], 'jobTitle' => (string) ($F['ceo']['title'] ?? '')];
+    if (!empty($F['ceo']['facebook'])) {
+        $shgOrg['founder']['sameAs'] = [(string) $F['ceo']['facebook']];
+    }
 }
 $shgDepts = [];
 foreach ((array) ($F['offices'] ?? []) as $shgO) {

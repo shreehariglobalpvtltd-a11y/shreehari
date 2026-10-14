@@ -103,6 +103,34 @@ final class PublicLayout
         return $co;
     }
 
+    /**
+     * SiteFacts::all() when the facts helper is present, else null - the
+     * footer's domain mailbox and channel icons and the JSON-LD sameAs read
+     * it (10 Oct 2026, trust). Never throws: a page shells with the company
+     * row alone when the facts cannot be read.
+     *
+     * @return array<string,mixed>|null
+     */
+    public static function facts(): ?array
+    {
+        static $f = false;
+        if ($f === false) {
+            $f = null;
+            try {
+                if (!class_exists('SiteFacts', false) && is_file(INCLUDE_PATH . '/sitefacts.php')) {
+                    require_once INCLUDE_PATH . '/sitefacts.php';
+                }
+                if (class_exists('SiteFacts', false) && method_exists('SiteFacts', 'all')) {
+                    $f = SiteFacts::all();
+                }
+            } catch (Throwable $e) {
+                Logger::warning('PublicLayout: site facts unavailable: ' . $e->getMessage());
+                $f = null;
+            }
+        }
+        return $f;
+    }
+
     /** tel: href from any written number (spaces and dashes dropped, a leading + kept or added). */
     public static function telHref(string $phone): string
     {
@@ -340,17 +368,17 @@ final class PublicLayout
                      'explore' => 'Places to visit', 'tours' => 'Tours', 'travel' => 'Border travel info', 'site' => 'Site sections', 'lang' => 'Language',
                      'theme' => 'Change theme', 'privacy' => 'Privacy', 'terms' => 'Terms', 'refund' => 'Refund policy', 'allRoutes' => 'All bus routes',
                      'ourOffices' => 'Our offices', 'head' => 'Head office', 'soonNum' => 'Number coming soon', 'tag' => 'AC sleeper bus · Gujarat ⇄ India–Nepal border',
-                     'company' => 'Company', 'help' => 'Help desk'],
+                     'company' => 'Company', 'help' => 'Help desk', 'regOffice' => 'Registered office'],
             'hi' => ['skip' => 'सामग्री पर जाएँ', 'book' => 'सीट बुक करें', 'home' => 'होम', 'indiaNepal' => 'भारत–नेपाल', 'offices' => 'कार्यालय',
                      'explore' => 'घूमने की जगहें', 'tours' => 'टूर', 'travel' => 'बॉर्डर यात्रा जानकारी', 'site' => 'साइट के हिस्से', 'lang' => 'भाषा',
                      'theme' => 'थीम बदलें', 'privacy' => 'गोपनीयता', 'terms' => 'शर्तें', 'refund' => 'रिफंड नीति', 'allRoutes' => 'सभी बस रूट',
                      'ourOffices' => 'हमारे कार्यालय', 'head' => 'मुख्य कार्यालय', 'soonNum' => 'नंबर जल्द', 'tag' => 'AC स्लीपर बस · गुजरात ⇄ भारत–नेपाल सीमा',
-                     'company' => 'कंपनी', 'help' => 'हेल्प डेस्क'],
+                     'company' => 'कंपनी', 'help' => 'हेल्प डेस्क', 'regOffice' => 'पंजीकृत कार्यालय'],
             'ne' => ['skip' => 'सामग्रीमा जानुहोस्', 'book' => 'सिट बुक गर्नुहोस्', 'home' => 'गृहपृष्ठ', 'indiaNepal' => 'भारत–नेपाल', 'offices' => 'कार्यालय',
                      'explore' => 'घुम्ने ठाउँ', 'tours' => 'टुर', 'travel' => 'बोर्डर यात्रा जानकारी', 'site' => 'साइटका भाग', 'lang' => 'भाषा',
                      'theme' => 'थिम बदल्नुहोस्', 'privacy' => 'गोपनीयता', 'terms' => 'सर्तहरू', 'refund' => 'फिर्ता नीति', 'allRoutes' => 'सबै बस रुट',
                      'ourOffices' => 'हाम्रा कार्यालय', 'head' => 'प्रधान कार्यालय', 'soonNum' => 'नम्बर छिट्टै', 'tag' => 'AC स्लिपर बस · गुजरात ⇄ भारत–नेपाल सिमाना',
-                     'company' => 'कम्पनी', 'help' => 'सहायता डेस्क'],
+                     'company' => 'कम्पनी', 'help' => 'सहायता डेस्क', 'regOffice' => 'दर्ता कार्यालय'],
         ];
         return $w[$lang] ?? $w['en'];
     }
@@ -415,6 +443,18 @@ final class PublicLayout
                 . '</li>';
         }
         $year = date('Y');
+        /* 10 Oct 2026 (trust): the registered office, both mailboxes and the
+           channel icons under the legal name - every value a Settings row
+           (SiteFacts brand.email2 / brand.social); a blank one draws nothing.
+           The Nepali address (company_address_ne) on the Nepali page. */
+        $f = self::facts();
+        $addr = $lang === 'ne' && trim((string) ($co['addressNe'] ?? '')) !== '' ? (string) $co['addressNe'] : (string) ($co['address'] ?? '');
+        $addr = trim((string) preg_replace('/^\s*प्रधान\s+कार्यालय\s*[:：]\s*/u', '', $addr));   // the setting may carry its own label; the line has one
+        $mailList = array_values(array_unique(array_filter([trim((string) ($f['brand']['email2'] ?? '')), trim((string) ($co['email'] ?? ''))], 'strlen')));
+        $mails = implode(' · ', array_map(static fn(string $m): string => '<a href="mailto:' . $e($m) . '">' . $e($m) . '</a>', $mailList));
+        $soc = $f !== null && class_exists('SiteFacts', false) ? SiteFacts::socialHtml(true) : '';
+        $regLine = ($addr !== '' ? '<small>' . $e($w['regOffice']) . ': ' . $e($addr) . '</small>' : '') . ($mails !== '' ? '<small>' . $mails . '</small>' : '');
+        $socRow = $soc !== '' ? '<div class="foot-soc">' . $soc . '</div>' : '';
         $logo = '<picture><source srcset="/assets/img/logo-mark-96h.webp" type="image/webp"><img class="logo" src="/assets/img/logo-mark-96h.png" width="185" height="96" alt="' . $e($co['name']) . '"></picture>';
         $fl = '<span class="flags" aria-label="India · Nepal">' . self::flag('IN', 18) . self::flag('NP', 20) . '</span>';
         $book = $e($w['book']);
@@ -456,7 +496,8 @@ final class PublicLayout
 </main>
 <footer class="foot">
   <div class="foot-in">
-    <div class="foot-brand">{$logo}<div><b>{$e($co['legal'])}</b><small>{$e($w['tag'])}</small><small>CIN {$e($co['cin'])}</small></div>{$fl}</div>
+    <div class="foot-brand">{$logo}<div><b>{$e($co['legal'])}</b><small>{$e($w['tag'])}</small><small>CIN {$e($co['cin'])}</small>{$regLine}</div>{$fl}</div>
+    {$socRow}
     <div class="foot-cols">
       <section><h2>{$e($w['ourOffices'])}</h2><ul class="foot-off">{$offices}</ul></section>
       <section><h2>{$e($w['company'])}</h2><ul class="foot-links">
@@ -580,6 +621,11 @@ html.rv-on .rv.in{opacity:1;transform:none}
 .foot-off a{font-weight:700;text-decoration:none;white-space:nowrap}
 .foot-links a{display:inline-flex;min-height:32px;align-items:center;color:var(--md-on-surface);text-decoration:none}
 .legal{font-size:12.5px;color:var(--md-on-surface-variant)}.legal a{color:inherit}
+/* 10 Oct 2026 (trust): channel icons (SiteFacts::socialHtml) - 44px round targets, line glyphs, no motion */
+.foot-soc{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0}
+.foot-soc .soc{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:50%;color:var(--md-on-surface);background:var(--md-sc-high);text-decoration:none}
+.foot-soc .soc:hover,.foot-soc .soc:focus-visible{background:var(--md-secondary-container);color:var(--md-on-secondary-container)}
+.foot-soc .ic{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 main [id]{scroll-margin-top:124px}
 .langs .ls{display:none}
 .foot-links{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px}.foot-links li{margin:2px 0}

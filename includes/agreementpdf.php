@@ -60,6 +60,30 @@ final class AgreementPdf
         return $d;
     }
 
+    /**
+     * The letterhead facts (10 Oct 2026, trust): Settings::company() - the
+     * legal name, CIN and website the office keeps on Admin -> Company
+     * details - whenever the app is loaded, else the printed values:
+     * tests/agreement-pdf-test.php renders with no configuration at all,
+     * and this class stays free of database reads of its own.
+     *
+     * @return array{legal:string, cin:string, web:string}
+     */
+    private static function co(): array
+    {
+        $out = ['legal' => 'SHREE HARI GLOBAL PVT. LTD.', 'cin' => 'U52291GJ2026PTC174029', 'web' => 'shreehariglobal.in'];
+        if (class_exists('Settings', false)) {
+            try {
+                $c = Settings::company();
+                foreach (['legal', 'cin', 'web'] as $k) {
+                    if (trim((string) ($c[$k] ?? '')) !== '') { $out[$k] = trim((string) $c[$k]); }
+                }
+                $out['legal'] = strtoupper($out['legal']);
+            } catch (Throwable $e) { /* the printed values stand */ }
+        }
+        return $out;
+    }
+
     public static function generate(array $input): string
     {
         $self = new self();
@@ -68,7 +92,7 @@ final class AgreementPdf
         $self->pdf->registerTTF(DevShape::fontFile());
         $self->page();
         $self->heading('01  पक्ष एवं निश्चित किराया');
-        $self->paragraph('कंपनी: श्री हरि ग्लोबल प्रा. लि. (SHREE HARI GLOBAL PVT. LTD.)');
+        $self->paragraph('कंपनी: श्री हरि ग्लोबल प्रा. लि. (' . self::co()['legal'] . ')');
         $self->paragraph('एजेंट / सहयोगी: ' . $self->data['agent_name']);
         $self->paragraph('पता: ' . $self->data['address']);
         $self->paragraph('दोनों पक्ष टिकट बुकिंग और यात्रियों की सेवा के लिए नीचे दिए नियम स्वीकार करते हैं।');
@@ -191,7 +215,9 @@ final class AgreementPdf
         $this->pdf->rect(0, 108, 595.28, 4, self::GOLD);
         $this->draw(40, 23, 'श्री हरि ग्लोबल प्रा. लि.', 22, [255, 255, 255]);
         $this->draw(40, 57, 'व्यवसाय सहयोग / एजेंट समझौता', 15, [234, 201, 123]);
-        $this->pdf->text(40, 88, 'SHREE HARI GLOBAL PVT. LTD.  |  CIN U52291GJ2026PTC174029  |  shreehariglobal.in', 9, 'F1', [255, 255, 255]);
+        // 10 Oct 2026 (trust): the legal name, CIN and website from Company details (co()), the printed values otherwise
+        $co = self::co();
+        $this->pdf->text(40, 88, $co['legal'] . ($co['cin'] !== '' ? '  |  CIN ' . $co['cin'] : '') . '  |  ' . $co['web'], 9, 'F1', [255, 255, 255]);
         $this->pdf->line(40, 778, 555, 778, self::GOLD);
         $this->draw(40, 786, 'समझौता: ' . $this->data['agreement_no'] . '  |  ' . $this->data['date'], 8);
         $this->draw(497, 786, 'पृष्ठ ' . $this->page, 9);

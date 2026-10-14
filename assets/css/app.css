@@ -656,6 +656,11 @@ footer{background:linear-gradient(180deg,var(--blue-deep) 0%,#080E1C 100%);color
 .f-grid .f-contact a{padding:4px 0}
 .f-grid a:hover{color:#FFB25E}
 .f-contact li{display:flex;gap:9px;font-size:13.5px}
+/* 10 Oct 2026 (trust): the channel icons ({{f:html:social}} / {{f:html:ceoSocial}}
+   from Admin -> Settings -> Company) - 44px round targets, line icons from the page sprite, no motion */
+.f-contact .soc{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;padding:0;font-size:22px;border-radius:50%}
+.f-contact .soc .ic{width:24px;height:24px}
+.f-contact .soc:hover,.f-contact .soc:focus-visible{background:rgba(255,255,255,.08)}
 .f-bottom{border-top:1px solid rgba(255,255,255,.12);padding:18px 0;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:12.5px;color:#8FA5CC}
 .f-bottom .code{font-family:var(--f-code);letter-spacing:.04em}
 .f-dev{text-align:center;padding:10px 0 6px;font-size:11.5px;color:#6B82AB;border-top:1px solid rgba(255,255,255,.06)}

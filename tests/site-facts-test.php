@@ -235,7 +235,7 @@ check('{{f:fares.go.min}} = inr(board go min)', ($tok['{{f:fares.go.min}}'] ?? '
 check('{{f:npr}} renders 2 decimals', preg_match('/^\d+\.\d{2}$/', $tok['{{f:npr}}'] ?? '') === 1, $tok['{{f:npr}}'] ?? '');
 $raw = [];
 foreach ($tok as $k => $v) {
-    if ($k === '{{f:html:offices}}') { continue; }
+    if (str_starts_with($k, '{{f:html:')) { continue; }   // 10 Oct 2026 (trust): every {{f:html:…}} token is markup by design (offices, social, emails)
     if (preg_match('/[<>"]|&(?!amp;|lt;|gt;|quot;|#039;)/', $v) === 1) { $raw[] = $k; }
 }
 check('every value token is HTML-escaped', $raw === [], $raw === [] ? '' : implode(', ', array_slice($raw, 0, 6)));

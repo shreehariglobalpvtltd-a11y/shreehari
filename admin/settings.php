@@ -580,6 +580,14 @@ $ceoPhoto = dirname(__DIR__) . '/assets/img/ceo.jpg';
       'app_ui_style'                        => 'Pixel = rounded cards, pill buttons, soft shadows and spring motion (Android Pixel / Material You). Classic 3D = the raised, deep buttons and cards. Visitors can switch in the Appearance sheet.',
       'app_sound_pack'                      => 'The sound style for taps, seats, switches and the ticket chime. All sounds are generated in the phone (no download) and follow the phone\'s silent mode. Visitors can turn sound off or switch the style.',
       'app_motion_on'                       => 'On = smooth, springy movement. Off = a calm screen for every visitor who has not chosen otherwise (phones set to "reduce motion" are always calm).',
+      /* 10 Oct 2026 (trust): the company's channels and its domain mailbox (includes/sitefacts.php brand.social / brand.email2).
+         Shown on the home page footer, the content pages and in the search-engine card only once a valid value is typed. */
+      'company_email_alt'                   => 'The official mailbox on your own domain, e.g. info@shreehariglobal.in. Once filled it is shown beside the Gmail in the top bar, the footer and the contact section, and goes first in the search-engine card. Blank = the Gmail only.',
+      'company_youtube'                     => 'Paste the full channel URL from the browser (it must start with https://). Empty = the YouTube icon is not shown anywhere.',
+      'company_facebook'                    => 'Paste the full page URL (https://www.facebook.com/…). Empty = the Facebook icon is not shown anywhere.',
+      'company_instagram'                   => 'Paste the full profile URL (https://www.instagram.com/…). Empty = not shown.',
+      'company_tiktok'                      => 'Paste the full profile URL (https://www.tiktok.com/@…). Empty = not shown.',
+      'ceo_facebook'                        => 'The Director\'s own Facebook profile URL - the home-page footer links it beside the company channels. Empty = not shown.',
   ];
   ?>
   <?php foreach ($cats as $cat => $catInfo): foreach ($byCat[$cat] ?? [] as $group => $items):
