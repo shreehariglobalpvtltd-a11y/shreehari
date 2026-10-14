@@ -767,9 +767,11 @@ footer{background:linear-gradient(180deg,var(--blue-deep) 0%,#080E1C 100%);color
 .seat-count-picker .scp-n.on{background:var(--blue);border-color:var(--blue);color:#fff}
 :root[data-theme="dark"] .seat-count-picker{background:rgba(59,130,246,.12);border-color:#1A2240}
 :root[data-theme="dark"] .seat-count-picker .scp-n{background:transparent;color:var(--ink)}
-/* Suggested seats — brief pulse so the traveller sees the smart default */
+/* Suggested seats — brief pulse so the traveller sees the smart default
+   (10 Oct 2026 perf: the ring stays still, the pulse is a compositor-only
+   scale - an animated box-shadow repainted the seat map on every frame) */
 .seat.suggested{box-shadow:0 0 0 2px var(--blue),0 0 0 5px rgba(33,150,243,.35);animation:seatSuggestPulse 1s ease-in-out 2}
-@keyframes seatSuggestPulse{0%,100%{box-shadow:0 0 0 2px var(--blue),0 0 0 4px rgba(33,150,243,.30)}50%{box-shadow:0 0 0 2px var(--blue),0 0 0 9px rgba(33,150,243,0)}}
+@keyframes seatSuggestPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
 @media (prefers-reduced-motion: reduce){.seat.suggested{animation:none}}
 .bus-frame{border:2px solid var(--line);border-radius:22px;padding:18px;max-width:340px;margin:0 auto;position:relative;background:linear-gradient(180deg,#FBFCFE,#F3F7FC)}
 .bus-frame .steering{display:flex;justify-content:flex-end;padding:0 6px 12px;border-bottom:2px dashed var(--line);margin-bottom:16px;color:var(--muted)}

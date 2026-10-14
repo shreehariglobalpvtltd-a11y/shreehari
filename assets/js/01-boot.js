@@ -201,3 +201,109 @@
     };
   } catch (e) {}
 }());
+
+/* ---------------------------------------------------------------------
+   Device tier + TV (10 Oct 2026, owner: "feel like smooth 165 Hz
+   animation ... best performance, works on TV too, on every device").
+
+   Stamps <html data-tier="low|mid|high"> once per visit, and html.shg-tv
+   on a television browser, so assets/css/perf.css can drop the decoration
+   that costs frames on a weak phone (blur, stacked shadows, the parallax
+   layers, decorative loops) and give a TV its 10-foot type and d-pad focus
+   rings. Every tier keeps every feature; only paint cost changes.
+
+   Signals: CPU cores, device memory (Chromium only), the network (Save-Data,
+   2G / 3G), reduced motion (the system setting or the app's own switch) and
+   a frame-rate probe - one burst of ~20 animation frames taken once per
+   visit when the page is idle, kept in sessionStorage. A probe under
+   40 fps marks the device low. window.SHG_TIER = { tier, cores, memGB,
+   fps, tv } for any script that wants it. Nothing is sent anywhere.
+   --------------------------------------------------------------------- */
+(function () {
+  try {
+    var d = document.documentElement, nav = window.navigator || {};
+    var KEY = 'shg:tier', FPS_KEY = 'shg:fps';
+    var TV_RE = /SmartTV|SMART-TV|BRAVIA|Tizen|Web0S|WebOS|NetCast|AFTT|AFTM|CrKey|Roku|Viera|HbbTV|AndroidTV|Android TV|GoogleTV/;
+    var read = function (k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } };
+    var write = function (k, v) { try { sessionStorage.setItem(k, v); } catch (e) { /* private mode: measured again next load */ } };
+
+    function measure() {
+      var conn = nav.connection || nav.mozConnection || nav.webkitConnection || null;
+      var cores = +nav.hardwareConcurrency || 0;
+      var memGB = +nav.deviceMemory || 0;                 // 0 = not reported (Safari, Firefox)
+      var et = conn && conn.effectiveType ? String(conn.effectiveType) : '';
+      var save = !!(conn && conn.saveData);
+      var still = d.getAttribute('data-motion') === 'reduced';
+      try { still = still || !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) {}
+      var fps = +read(FPS_KEY) || 0;
+      var tv = TV_RE.test(nav.userAgent || '');
+      /* Safari reports no memory and rounds its core count down for privacy,
+         so a low core count only counts when a memory figure came with it. */
+      var tier = 'high';
+      if (save || et === 'slow-2g' || et === '2g' || (memGB && memGB <= 2) || (memGB && cores && cores <= 2) || (fps && fps < 40)) tier = 'low';
+      else if (tv || still || et === '3g' || (memGB && memGB <= 4) || (cores && cores <= 4)) tier = 'mid';
+      return { tier: tier, cores: cores, memGB: memGB, fps: fps, tv: tv };
+    }
+    function apply(t) {
+      d.setAttribute('data-tier', t.tier);
+      if (t.tv) d.classList.add('shg-tv'); else d.classList.remove('shg-tv');
+      window.SHG_TIER = t;
+    }
+
+    var cur = null;
+    try { cur = JSON.parse(read(KEY) || 'null'); } catch (e) { cur = null; }
+    if (!cur || !/^(low|mid|high)$/.test(String(cur.tier))) {
+      cur = measure();
+      write(KEY, JSON.stringify(cur));
+    }
+    apply(cur);
+
+    /* The probe: after load, when the main thread is idle and the tab is on
+       screen. The two longest gaps are dropped (a garbage collection or an
+       image decode is not the screen's speed); a gap over a second means the
+       tab was hidden mid-burst and the reading is thrown away. */
+    if (cur.tier !== 'low' && !read(FPS_KEY) && window.requestAnimationFrame) {
+      var probe = function () {
+        if (document.hidden) return;
+        var times = [];
+        var step = function (ts) {
+          times.push(ts);
+          if (times.length < 21) { window.requestAnimationFrame(step); return; }
+          var gaps = [];
+          for (var i = 1; i < times.length; i++) gaps.push(times[i] - times[i - 1]);
+          gaps.sort(function (a, b) { return a - b; });
+          if (gaps[gaps.length - 1] > 1000 || document.hidden) return;
+          gaps = gaps.slice(0, gaps.length - 2);
+          var sum = 0;
+          for (var j = 0; j < gaps.length; j++) sum += gaps[j];
+          var fps = sum > 0 ? Math.round(1000 * gaps.length / sum) : 0;
+          if (!fps) return;
+          write(FPS_KEY, String(fps));
+          cur.fps = fps;
+          if (fps >= 40) { write(KEY, JSON.stringify(cur)); return; }
+          /* Slow: remembered for the rest of the visit, but NOT re-stamped
+             under the passenger's eyes (blur, shadows and loops switching
+             off at once ~3 s after load looks like a glitch). It applies
+             the next time the tab is hidden, or on the next page load. */
+          var next = { tier: 'low', cores: cur.cores, memGB: cur.memGB, fps: fps, tv: cur.tv };
+          write(KEY, JSON.stringify(next));
+          var onHide = function () {
+            if (!document.hidden) return;
+            document.removeEventListener('visibilitychange', onHide);
+            apply(next);
+          };
+          document.addEventListener('visibilitychange', onHide);
+        };
+        window.requestAnimationFrame(step);
+      };
+      var later = function () {
+        setTimeout(function () {
+          if (window.requestIdleCallback) window.requestIdleCallback(probe, { timeout: 3000 });
+          else probe();
+        }, 2500);
+      };
+      if (document.readyState === 'complete') later();
+      else window.addEventListener('load', later, { once: true });
+    }
+  } catch (e) { /* no tier: perf.css treats the page as mid (no low-tier cuts) */ }
+}());

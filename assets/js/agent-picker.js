@@ -176,6 +176,7 @@
     /* a value set from script (the remembered agent) fires no event - keep the box in step */
     var tick = setInterval(function () {
       if (!sel.isConnected) { clearInterval(tick); return; }
+      if (document.hidden) return;   // 10 Oct 2026 (perf): nothing to keep in step for a hidden tab
       if (document.activeElement !== input && painted !== sel.value) paint();
     }, 500);
 

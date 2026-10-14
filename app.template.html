@@ -150,6 +150,10 @@ html,body{margin:0;background:#F4F6FB}
   <link rel="stylesheet" href="/assets/css/themes.css?v=20261009g">
   <link rel="stylesheet" href="/assets/css/showcase.css?v=20261009g">
   <link rel="stylesheet" href="/assets/css/homeinfo.css?v=20261009g">
+  <!-- 10 Oct 2026: device / input hygiene - touch, hover guards, tap targets,
+       compositor layers, dvh sheets, TV + device tiers (perf.css). Right
+       BEFORE depth.css, which stays the last stylesheet. -->
+  <link rel="stylesheet" href="/assets/css/perf.css?v=20261009g">
   <!-- 4 Oct 2026: pop-out depth in every theme + the AMOLED display. Loads LAST. -->
   <link rel="stylesheet" href="/assets/css/depth.css?v=20261009g">
 <!-- App bundle: `defer` keeps the same execution order and still runs after the
@@ -693,7 +697,7 @@ s.addEventListener('click',function(e){e.preventDefault();
     <div class="container hero-grid">
       <div class="hero-copy">
         <span class="eyebrow"><span style="font-size:22px;vertical-align:middle;margin-right:6px">🇮🇳</span> Gujarat ⇄ Rupaidiha <span style="font-size:22px;vertical-align:middle;margin-left:6px">🇳🇵</span></span>
-        <p class="hero-brand hero-brand-row"><img data-logo-clone alt="S Hari Global Pvt Ltd logo" class="hero-brand-logo"><span>S HARI GLOBAL PVT LTD</span></p>
+        <p class="hero-brand hero-brand-row"><img data-logo-clone alt="S Hari Global Pvt Ltd logo" class="hero-brand-logo" width="240" height="125" decoding="async"><span>S HARI GLOBAL PVT LTD</span></p>
         <p class="hero-brand-np">S Hari Global <span class="npdot">·</span> Nepal</p>
         <p class="hero-slogan" data-i18n="heroTitle">Two nations. One road. <span class="grad">One&nbsp;journey.</span></p>
         <p class="hero-sub" data-i18n="heroSub">Direct <b>Gujarat → Rupaidiha</b> coach. Book your seat, pay by UPI or eSewa — with a registered Indian company.</p>
@@ -705,7 +709,7 @@ s.addEventListener('click',function(e){e.preventDefault();
           <li><i>🛡️</i><span data-i18n="heroFeat4">Safe &amp; Comfortable Journey</span></li>
         </ul>
         <p class="hero-quote" id="heroQuote"></p>
-        <div id="nextDepBox" style="margin-top:14px;display:inline-flex;align-items:center;gap:10px;background:rgba(255,255,255,.12);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:10px 18px;font-size:14px;color:#fff;font-weight:700">
+        <div id="nextDepBox" style="margin-top:14px;display:inline-flex;align-items:center;gap:10px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:10px 18px;font-size:14px;color:#fff;font-weight:700">
           🚌 Next Departure in: <span id="nextDepTimer" style="font-family:var(--f-code);font-size:18px;letter-spacing:.08em;color:#FFD54F">--:--:--</span>
         </div>
         <a class="btn btn-orange hero-qt-cta" href="#/" data-scroll="quick-ticket" id="heroQtCta" data-i18n="qtBadge">⚡ एक क्लिक, १० सेकेन्डमा टिकट तयार</a>
@@ -1009,7 +1013,7 @@ s.addEventListener('click',function(e){e.preventDefault();
           <source type="image/webp" srcset="/assets/img/nepal-band-540.webp?v=20261009g 540w, /assets/img/nepal-band.webp?v=20261009g 1080w" sizes="(max-width: 760px) 100vw, 1080px">
           <img class="hx-band-img" id="hxBandImg" src="/assets/img/nepal-band.png?v=20261009g" width="1080" height="300" loading="lazy" decoding="async" alt="Nepal heritage: Sagarmatha (Mount Everest), prayer flags, Gautam Buddha and a stupa">
         </picture>
-        <div class="hx-flags" aria-hidden="true"><img class="hx-flag" src="/assets/img/flag-in.svg?v=20261009g" width="33" height="22" alt=""><span class="hx-flags-x">⇄</span><img class="hx-flag hx-flag-np" src="/assets/img/flag-np.svg?v=20261009g" width="20" height="26" alt=""></div>
+        <div class="hx-flags" aria-hidden="true"><img class="hx-flag" src="/assets/img/flag-in.svg?v=20261009g" width="33" height="22" alt="" loading="lazy" decoding="async"><span class="hx-flags-x">⇄</span><img class="hx-flag hx-flag-np" src="/assets/img/flag-np.svg?v=20261009g" width="20" height="26" alt="" loading="lazy" decoding="async"></div>
       </div>
       <div class="hx-pad">
         <div class="hx-head">
@@ -1050,9 +1054,9 @@ s.addEventListener('click',function(e){e.preventDefault();
         <a class="hx-link" href="/explore" data-hx-href="/explore"><span data-i18n="hxSeeAll">See all</span><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
       </div>
       <ul class="hx-cards" id="hxPlaces">
-        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-heritage"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261009g" width="17" height="22" alt="" aria-hidden="true"><span class="hx-card-cat" data-i18n="hxCatPilgrimage">Pilgrimage</span></span><span class="hx-card-tx"><b>Lumbini</b><small data-i18n="hxPlLumbini">Birthplace of Gautam Buddha · UNESCO World Heritage Site</small></span></a></li>
-        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-nature"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261009g" width="17" height="22" alt="" aria-hidden="true"><span class="hx-card-cat" data-i18n="hxCatNature">Nature</span></span><span class="hx-card-tx"><b>Pokhara</b><small data-i18n="hxPlPokhara">Lakes and Annapurna mountain views</small></span></a></li>
-        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-wild"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261009g" width="17" height="22" alt="" aria-hidden="true"><span class="hx-card-cat" data-i18n="hxCatWildlife">Wildlife</span></span><span class="hx-card-tx"><b>Bardiya National Park</b><small data-i18n="hxPlBardiya">Wildlife and jungle, near Nepalgunj</small></span></a></li>
+        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-heritage"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261009g" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatPilgrimage">Pilgrimage</span></span><span class="hx-card-tx"><b>Lumbini</b><small data-i18n="hxPlLumbini">Birthplace of Gautam Buddha · UNESCO World Heritage Site</small></span></a></li>
+        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-nature"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261009g" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatNature">Nature</span></span><span class="hx-card-tx"><b>Pokhara</b><small data-i18n="hxPlPokhara">Lakes and Annapurna mountain views</small></span></a></li>
+        <li><a class="hx-card" href="/explore" data-hx-href="/explore"><span class="hx-card-art hx-art-wild"><img class="hx-card-flag" src="/assets/img/flag-np.svg?v=20261009g" width="17" height="22" alt="" aria-hidden="true" loading="lazy" decoding="async"><span class="hx-card-cat" data-i18n="hxCatWildlife">Wildlife</span></span><span class="hx-card-tx"><b>Bardiya National Park</b><small data-i18n="hxPlBardiya">Wildlife and jungle, near Nepalgunj</small></span></a></li>
       </ul>
       <div class="hx-pkgs" id="hxPkgs" hidden></div>
       <div class="hx-tours">
@@ -2359,7 +2363,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       </div>
       <div id="upiPanel">
         <div class="qr-box">
-          <img id="qrImg" alt="UPI payment QR code" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" loading="lazy">
+          <img id="qrImg" alt="UPI payment QR code" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" width="190" height="190" loading="lazy" decoding="async">
           <div style="font-size:12.5px;color:var(--muted);margin-bottom:8px" data-i18n="payScanUpi">Scan with any UPI app (GPay / PhonePe / Paytm / BHIM)</div>
           <div class="upi-id"><span id="upiIdText">—</span><button type="button" id="copyUpiBtn" data-i18n="payCopy">COPY</button></div>
           <a class="upi-deeplink" id="upiDeepLink" href="#">📲 Tap to pay in UPI app →</a>
@@ -2369,7 +2373,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       </div>
       <div id="esewaPanel" class="hide">
         <div class="qr-box">
-          <img id="esewaQrImg" alt="eSewa payment QR code" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" loading="lazy">
+          <img id="esewaQrImg" alt="eSewa payment QR code" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" width="190" height="190" loading="lazy" decoding="async">
           <span class="esewa-amt" id="esewaAmt">NPR 0</span>
           <div style="font-size:12.5px;color:var(--muted);margin-bottom:8px" data-i18n="payScanEsewa">Scan with the eSewa app (Nepal)</div>
           <div class="upi-id"><span id="esewaIdText">—</span><button type="button" id="copyEsewaBtn" data-i18n="payCopy">COPY</button></div>
@@ -2458,7 +2462,7 @@ s.addEventListener('click',function(e){e.preventDefault();
       <!-- Official operator — CEO name / number / company, so the payer sees who they're paying -->
       
       <div class="co-operator" id="coOperator">
-        <img data-logo-clone class="co-op-logo" alt="S Hari Global" loading="lazy">
+        <img data-logo-clone class="co-op-logo" alt="S Hari Global" width="46" height="38" loading="lazy" decoding="async">
         <div class="co-op-txt">
           <b>{{f:brand.name}}</b>
           <small>CEO <span data-fact="ceo.name">{{f:ceo.name}}</span> · <a href="tel:+{{f:head.tel}}" data-fact-tel="head.tel">📞 <span data-fact="head.phone">{{f:head.phone}}</span></a></small>
@@ -3043,7 +3047,7 @@ s.addEventListener('click',function(e){e.preventDefault();
     </div>
     <div class="f-dev">Developed by <strong>Dileep Sunar</strong> · <a href="https://wa.me/{{f:head.wa}}" data-fact-wa="head.wa" target="_blank" rel="noopener noreferrer">💬 WhatsApp <span data-fact="head.phone">{{f:head.phone}}</span></a> · <a href="https://www.facebook.com/dileep.soonaar/" target="_blank" rel="noopener noreferrer">Facebook</a></div>
     <div class="f-ceo reveal">
-      <img id="ceoPhoto" src="/assets/img/ceo-sm.webp?v=20261009g" alt="{{f:ceo.name}} — Founder &amp; CEO" loading="lazy" decoding="async" onerror="this.style.display='none'">
+      <img id="ceoPhoto" src="/assets/img/ceo-sm.webp?v=20261009g" alt="{{f:ceo.name}} — Founder &amp; CEO" width="44" height="44" loading="lazy" decoding="async" onerror="this.style.display='none'">
       <span>🕉️ <span id="ceoMantra"></span> — <strong id="ceoName"></strong>, Founder &amp; CEO
         <button id="mantraBtn" type="button" title="Play mantra chant · मन्त्र सुन्नुहोस्" aria-label="Play mantra chant">🔊</button>
       </span>
