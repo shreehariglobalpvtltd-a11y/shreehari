@@ -170,6 +170,28 @@ check('fare.php: last-resort list carries Rajkot', str_contains($src('includes/f
 check('template: description + list + timetable mention Rajkot', substr_count($tpl, 'Rajkot') >= 5);
 
 /* ------------------------------------------------------------------ */
+echo "\nH. Owner follow-up (15 Oct): reschedule 96 h, Rajkot beside Ahmedabad, journey time from the timetable\n";
+check("rescheduleLine('en')", Fare::rescheduleLine('en') === 'Reschedule once: free if asked 96+ hrs before departure · 24–96 hrs: 10% fee · not allowed under 24 hrs.', Fare::rescheduleLine('en'));
+check("rescheduleLine('ne') in Devanagari digits", str_contains(Fare::rescheduleLine('ne'), '९६+') && str_contains(Fare::rescheduleLine('ne'), '१०%'));
+check('boot().policy.reschedule.en', ($b['policy']['reschedule']['en'] ?? '') === Fare::rescheduleLine('en'));
+check('template FAQ prints {{f:policy.reschedule.en}}', str_contains($tpl, '{{f:policy.reschedule.en}}'));
+check('refund page prints Fare::rescheduleLine, no "24+ hours" free reschedule', str_contains($src('refund-policy.php'), "Fare::rescheduleLine('en')") && !str_contains($src('refund-policy.php'), '24+ hours before departure'));
+check('journey hours come from the timetable', is_float($b['route']['hours'] ?? null) && ($b['route']['hoursText'] ?? '') === SiteFacts::hoursText(SiteFacts::journeyHours()), (string) ($b['route']['hoursText'] ?? ''));
+check('hoursText(35.5) = 35½, (30.0) = 30', SiteFacts::hoursText(35.5) === '35½' && SiteFacts::hoursText(30.0) === '30');
+check('template: no typed "about 30 hours" / "≈30h 30m"', !str_contains($tpl, 'about 30 hours') && !str_contains($tpl, '≈30h 30m') && substr_count($tpl, '{{f:route.hoursText}}') >= 3);
+$ord = static function (string $code, string $type): array {
+    return array_map(static fn(array $r): string => (string) $r['stop_name'], Database::fetchAll(
+        "SELECT rs.stop_name FROM route_stops rs JOIN routes r ON r.id = rs.route_id
+          WHERE r.route_code = :c AND rs.stop_type = :t AND rs.is_active = 1 ORDER BY rs.sort_order, rs.id", ['c' => $code, 't' => $type]));
+};
+$go = $ord('r2', 'boarding');
+$ri = array_search('Rajkot', $go, true);
+check('r2: Rajkot sits right before Ahmedabad (Nana Chiloda)', $ri !== false && isset($go[$ri + 1]) && str_contains((string) $go[$ri + 1], 'Nana Chiloda') && ($go[0] ?? '') === 'Surat', implode(' > ', $go));
+$back = $ord('r7', 'drop');
+$bi = array_search('Rajkot', $back, true);
+check('r7: Rajkot right after Ahmedabad', $bi !== false && $bi > 0 && str_contains((string) $back[$bi - 1], 'Nana Chiloda'), implode(' > ', $back));
+
+/* ------------------------------------------------------------------ */
 $base = rtrim((string) getenv('SHG_TEST_BASE'), '/');
 if ($base !== '') {
     echo "\nG. HTTP — $base\n";

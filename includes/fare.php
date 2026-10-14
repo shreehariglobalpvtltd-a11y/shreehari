@@ -865,6 +865,30 @@ final class Fare
     }
 
     /**
+     * The rescheduling rule (15 Oct 2026, owner: "reschedule 96 hours") - the
+     * Terms' clause C.4 as one sentence: once, free when asked more than
+     * `reschedule_free_hrs` (96) before departure, a `reschedule_fee_pct`
+     * (10 %) fee from `reschedule_min_hrs` (24) up to that, not allowed later.
+     * Rescheduling is done by the office by hand; this is only the wording.
+     */
+    public static function rescheduleLine(string $lang = 'en'): string
+    {
+        $free = (int) round(Settings::getFloat('reschedule_free_hrs', 96.0));
+        $min  = (int) round(Settings::getFloat('reschedule_min_hrs', 24.0));
+        $fee  = (int) round(Settings::getFloat('reschedule_fee_pct', 10.0));
+        $L = [
+            'en' => 'Reschedule once: free if asked %f+ hrs before departure · %m–%f hrs: %p%% fee · not allowed under %m hrs.',
+            'hi' => 'एक बार तारीख बदलें: प्रस्थान से %f+ घंटे पहले मुफ़्त · %m–%f घंटे: %p%% शुल्क · %m घंटे से कम में नहीं।',
+            'ne' => 'एक पटक मिति सार्न: प्रस्थानभन्दा %f+ घण्टा अघि निःशुल्क · %m–%f घण्टा: %p%% शुल्क · %m घण्टाभन्दा कम भए मिल्दैन।',
+            'gu' => 'એક વાર તારીખ બદલો: પ્રસ્થાનના %f+ કલાક પહેલાં મફત · %m–%f કલાક: %p%% ફી · %m કલાકથી ઓછા સમયમાં નહીં.',
+        ];
+        $s = strtr($L[$lang] ?? $L['en'], ['%f' => (string) $free, '%m' => (string) $min, '%p' => (string) $fee, '%%' => '%']);
+        return $lang === 'ne'
+            ? strtr($s, ['0' => '०', '1' => '१', '2' => '२', '3' => '३', '4' => '४', '5' => '५', '6' => '६', '7' => '७', '8' => '८', '9' => '९'])
+            : $s;
+    }
+
+    /**
      * Refund due on cancellation, using the published slabs.
      *
      * @return array{amount: float, percent: float, hoursLeft: float, reason: string}

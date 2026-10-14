@@ -135,7 +135,7 @@ function ai_system_prompt(): string
         . "Fares: sharing sleeper per person = the ₹ amount written after each pickup / drop above; a stop with no amount costs the default ₹{$fareNp} towards Nepal, ₹{$fareIn} towards India (so Gujarat → Rupaidiha costs " . $rng($board['range']['go']) . ", Rupaidiha → Gujarat " . $rng($board['range']['back']) . " depending on the stop); a private single cabin ₹{$priv}, a private double cabin (2 people) ₹{$privD}. Same price online and at the counter.\n"
         . "Payment: {$pay}. An online ticket is confirmed after the payment is verified, usually within minutes.\n"
         . "Offer: {$offerTxt}.\n"
-        . "Refund by cancellation time: " . implode(' · ', $slabTxt) . ". Money returns to the same account in " . Fare::refundDays() . " working days.\n"
+        . "Refund by cancellation time: " . implode(' · ', $slabTxt) . ". Money returns to the same account in " . Fare::refundDays() . " working days. " . Fare::rescheduleLine('en') . " The office does cancellations, refunds and date changes by hand.\n"
         . "Boarding: reach the pickup 60 minutes early; booking for a pickup closes {$cutoff} minutes before its time.\n"
         . "Border: {$border}, about 20–40 minutes, the bus waits for everyone. Photo ID is checked: passport or voter ID for Indian citizens, citizenship certificate or passport for Nepali citizens. No visa for either. Indian ₹200 and ₹500 notes are not accepted in Nepal.\n"
         . "Luggage: 1 suitcase (20 kg) + 1 cabin bag per passenger free; extra is charged.\n"

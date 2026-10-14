@@ -4,6 +4,7 @@ Moved out of `sw.js` on 2 Oct 2026: the history used to live on the `var VERSION
 
 The CURRENT version and its note stay on the `var VERSION` line in `sw.js`; this file holds the ones before it. Newest first. Each line: version — what shipped with it (as written at the time).
 
+- **shg-v212** — 15 Oct 2026: SmartBook v5 phase 2 - one cancellation policy (48h 75% / 24-48h 50% / <24h 0, 5-7 days), 1,375 km everywhere, Rajkot in every pickup list
 - **shg-v211** — 14 Oct 2026: visual pro upgrade - 3 brand palettes (Professional default), HD visual pack, perf/touch/TV, S Hari Nav pro (cockpit, flight, device tiers) + route fix, business portfolio + tour demos, social/domain email/agreement facts
 - **shg-v210** — 9 Oct 2026: gold documents - gold ticket (screen, PNG, PDF), gold chalani/challan, mantra + blessing lines, payment QR on every ticket and chalani
 - **shg-v209** — 9 Oct 2026: showcase upgrade - emblem-only logo, Pixel themes + sounds, single-source facts, route km/halts + live time, ticket heritage art + security code, fake-proof risk queue, office chat, India-Nepal + Explore + Tours

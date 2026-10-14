@@ -73,6 +73,44 @@ final class SiteFacts
         return $km > 0 ? $km : self::ROUTE_KM_DEFAULT;
     }
 
+    /**
+     * Gujarat -> Rupaidiha journey in hours, rounded to the half hour, from
+     * the active outbound route's timetable (dep_time -> arr_time + day_offset).
+     * 30 only when no active route has a usable clock.
+     */
+    public static function journeyHours(): float
+    {
+        static $h = null;
+        if ($h !== null) {
+            return $h;
+        }
+        $h = 30.0;
+        try {
+            require_once INCLUDE_PATH . '/boarding.php';
+            $rows = Database::fetchAll(
+                "SELECT to_city, dep_time, arr_time, day_offset FROM routes
+                  WHERE is_active = 1 ORDER BY (to_city LIKE '%Rupaidiha%') DESC, sort_order, id"
+            );
+            foreach ($rows as $r) {
+                $min = Boarding::durationMin((string) $r['dep_time'], (string) $r['arr_time'], (int) $r['day_offset']);
+                if ($min !== null) {
+                    $h = round($min / 30) / 2;
+                    break;
+                }
+            }
+        } catch (Throwable $e) {
+            // keep the default
+        }
+        return $h;
+    }
+
+    /** 35.5 -> "35½", 30.0 -> "30". */
+    public static function hoursText(float $h): string
+    {
+        $whole = (int) floor($h);
+        return $whole . (($h - $whole) >= 0.5 ? '½' : '');
+    }
+
     /** @var array<string,mixed>|null */
     private static ?array $memo = null;
 
@@ -257,11 +295,21 @@ final class SiteFacts
                     'ne' => Fare::refundPolicyLine('ne'),
                     'gu' => Fare::refundPolicyLine('gu'),
                 ],
+                // 15 Oct 2026 (owner): rescheduling = the Terms' 96-hour rule everywhere
+                'reschedule' => [
+                    'en' => Fare::rescheduleLine('en'),
+                    'hi' => Fare::rescheduleLine('hi'),
+                    'ne' => Fare::rescheduleLine('ne'),
+                    'gu' => Fare::rescheduleLine('gu'),
+                ],
             ],
             'route'     => [
-                'km'     => self::routeKm(),
-                'kmText' => number_format(self::routeKm()),
-                'hours'  => 30,
+                'km'        => self::routeKm(),
+                'kmText'    => number_format(self::routeKm()),
+                // 15 Oct 2026 (owner: "yatra samay"): the journey time is the
+                // timetable's (Admin -> Routes dep -> arr), never a typed "30 hours".
+                'hours'     => self::journeyHours(),
+                'hoursText' => self::hoursText(self::journeyHours()),
             ],
         ];
         $facts = ['v' => substr(md5((string) json_encode($facts)), 0, 10)] + $facts;

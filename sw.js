@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v212';   // 15 Oct 2026: SmartBook v5 phase 2 - one cancellation policy (48h 75% / 24-48h 50% / <24h 0, 5-7 days), 1,375 km everywhere, Rajkot in every pickup list
+var VERSION = 'shg-v213';   // 15 Oct 2026: reschedule rule 96h everywhere, Rajkot office beside Ahmedabad, journey time from the timetable
 var SHELL_CACHE = 'shg-shell-' + VERSION;
 /* How long a returning visitor waits for a fresh document before the
    cached app shell opens instead (see the navigate handler). */
@@ -43,7 +43,7 @@ var MAX_TICKETS = 10;
    never go stale: a new build changes the URL and the old cache is dropped
    with the old VERSION. This is what makes a re-open feel instant — the
    ~1 MB of app code is read from disk instead of the network. */
-var ASSET_VER = '20261015a';
+var ASSET_VER = '20261015b';
 var PRECACHE = [
   '/assets/img/logo.png?v=' + ASSET_VER,
   /* 8 Oct 2026: the 10 KB nav / home-hero logo (logo.png stays for the footer + PDF) */

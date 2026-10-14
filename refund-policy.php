@@ -169,7 +169,7 @@ foreach ($slabs as $s) {
   <div class="card">
     <h3>Rescheduling</h3>
     <ul>
-      <li>One free reschedule allowed per ticket if done <b>24+ hours before departure</b>.</li>
+      <li><b><?= $e(Fare::rescheduleLine('en')) ?></b></li>
       <li>Rescheduling to a different date is subject to seat availability.</li>
       <li>Fare difference (if any) is charged at the time of rescheduling.</li>
       <li>Second reschedule is treated as a cancellation + new booking.</li>
