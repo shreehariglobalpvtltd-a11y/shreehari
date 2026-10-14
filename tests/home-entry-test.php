@@ -66,7 +66,10 @@ $i18n   = (string) file_get_contents($root . '/assets/js/04-i18n.js');
 /* ---- 1. the hero, the booking panel, then QuickBot -------------------- */
 $home = preg_match('~<section class="view active" id="view-home"(?: data-first)?>(.*)~s', $tpl, $hm) ? $hm[1] : '';
 $firstBlock = preg_match('~^\s*(?:<!--.*?-->\s*)*<(?:div|section)[^>]*\bid="([A-Za-z-]+)"~s', $home, $fb) ? $fb[1] : '';
-check('the premium hero is the first block of the home view', $firstBlock === 'homeHero', $firstBlock);
+/* 15 Oct 2026 (SmartBook v5, D5): the one-screen booking card leads the home
+   view; the premium hero follows it (and is the first block while the card is off). */
+$afterSb = preg_match('~id="smartBook".*?</section>\s*(?:<!--.*?-->\s*)*<(?:div|section)[^>]*\bid="([A-Za-z-]+)"~s', $home, $sb2) ? $sb2[1] : '';
+check('the SmartBook card is the first block of the home view, the premium hero right after', $firstBlock === 'smartBook' && $afterSb === 'homeHero', $firstBlock . ' > ' . $afterSb);
 $hero = preg_match('~<section[^>]*id="homeHero"[^>]*>(.*?)</section>~s', $tpl, $hh) ? $hh[1] : '';
 check('the hero carries the official logo, the headline and the promise line',
     str_contains($hero, '/assets/img/logo-nav.png') && str_contains($hero, 'data-i18n="hhTitle"') && str_contains($hero, 'data-i18n="hhTag"'));

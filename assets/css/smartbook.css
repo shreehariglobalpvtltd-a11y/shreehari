@@ -1,0 +1,264 @@
+/* =====================================================================
+   SmartBook card (15 Oct 2026, owner's Final Prompt v5 §5) — the home
+   booking card + Journey Summary rail. Everything is scoped under
+   #smartBook so no other screen can change it and it can change no other.
+   Tokens are the SmartBook demo's (light) with a dark set for the site's
+   Dark theme and a true-black set for AMOLED.
+   ===================================================================== */
+#smartBook{
+  --sb-bg:#edf3fa; --sb-panel:#ffffff; --sb-text:#122445; --sb-muted:#637491; --sb-line:#e0e8f2;
+  --sb-primary:#185bed; --sb-primary-d:#093aa8; --sb-grad:linear-gradient(120deg,#216af8,#0d47c6);
+  --sb-ok:#0b9e71; --sb-gold:#f0b54a; --sb-err:#cd4154; --sb-women:#EC4899; --sb-women-bg:#FCE7F3;
+  --sb-r:23px; --sb-ri:11px; --sb-h:43px; --sb-shadow:0 18px 55px rgba(21,52,105,.07);
+  --sb-chip:#f3f7fc; --sb-on:#e8f0ff; --sb-bar-h:66px;
+  display:block; margin:0 auto; padding:12px 16px 4px; max-width:var(--content-max,1120px);
+  color:var(--sb-text); font-family:Inter,var(--font-sans,system-ui,sans-serif);
+}
+:root[data-theme="dark"] #smartBook{
+  --sb-bg:#060b15; --sb-panel:#101928; --sb-text:#eff5ff; --sb-muted:#9caec9; --sb-line:#293750;
+  --sb-chip:#16233a; --sb-on:#1b2f55; --sb-women-bg:#3b1530; --sb-shadow:0 18px 55px rgba(0,0,0,.35);
+}
+:root[data-display="amoled"] #smartBook{ --sb-panel:#000; --sb-bg:#000; --sb-chip:#0b0f17; --sb-line:#1e2738; --sb-on:#0f1d36; }
+#smartBook[hidden]{display:none}
+html:not(.sb-on) #smartBook{display:none}
+/* the classic search card + the old QuickBot banner give way to SmartBook */
+html.sb-on #search-anchor, html.sb-on #quick-ticket{display:none}
+
+#smartBook .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+#smartBook .sb-in{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
+#smartBook .sb-card{background:var(--sb-panel);border:1px solid var(--sb-line);border-radius:var(--sb-r);box-shadow:var(--sb-shadow);padding:14px 14px 12px}
+#smartBook .sb-head{margin:0 0 10px}
+#smartBook .sb-title{margin:0;font-size:19px;line-height:1.2;font-weight:800;letter-spacing:-.01em;color:var(--sb-text)}
+#smartBook .sb-sub{margin:2px 0 0;font-size:12.5px;color:var(--sb-muted)}
+
+/* QuickBot — one line, dark blue gradient */
+#smartBook .sb-bot{display:flex;align-items:center;gap:6px;background:linear-gradient(120deg,#0b2a6b,#185bed);border-radius:var(--sb-ri);padding:4px 4px 4px 10px;margin:0 0 10px}
+#smartBook .sb-bot-ic{font-size:15px}
+#smartBook .sb-bot input{flex:1;min-width:0;height:36px;border:0;background:transparent;color:#fff;font:inherit;font-size:14px;outline:none}
+#smartBook .sb-bot input::placeholder{color:rgba(255,255,255,.72)}
+#smartBook .sb-bot-go{width:40px;height:36px;border:0;border-radius:9px;background:rgba(255,255,255,.18);color:#fff;display:grid;place-items:center;cursor:pointer}
+#smartBook .sb-bot-go .ic{width:18px;height:18px;fill:none;stroke:currentColor}
+
+/* direction switch */
+#smartBook .sb-dir{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--sb-chip);border-radius:var(--sb-ri);padding:4px;margin:0 0 10px}
+#smartBook .sb-dir-b{min-height:40px;border:0;border-radius:9px;background:transparent;color:var(--sb-muted);font:inherit;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;padding:0 6px}
+#smartBook .sb-dir-b b{font-weight:700}
+#smartBook .sb-dir-b.on{background:var(--sb-panel);color:var(--sb-primary);box-shadow:0 2px 10px rgba(24,91,237,.14)}
+
+#smartBook .sb-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 10px}
+#smartBook .sb-f{min-width:0;margin:0 0 8px}
+#smartBook .sb-grid .sb-f{margin:0}
+#smartBook .sb-f-date,#smartBook .sb-f-point{grid-column:1 / -1}
+#smartBook .sb-l{display:block;font-size:11.5px;font-weight:700;letter-spacing:.02em;color:var(--sb-muted);margin:0 0 4px;text-transform:uppercase}
+#smartBook input,#smartBook select{height:var(--sb-h);border:1px solid var(--sb-line);border-radius:var(--sb-ri);background:var(--sb-panel);color:var(--sb-text);font:inherit;font-size:15px;padding:0 10px;width:100%;min-width:0;box-sizing:border-box}
+#smartBook input:focus,#smartBook select:focus{outline:2px solid var(--sb-primary);outline-offset:1px;border-color:transparent}
+#smartBook .sb-sel{display:flex;gap:6px}
+#smartBook .sb-near{flex:0 0 44px;height:var(--sb-h);border:1px solid var(--sb-line);border-radius:var(--sb-ri);background:var(--sb-chip);cursor:pointer;font-size:16px}
+#smartBook .sb-why{display:block;min-height:14px;margin-top:2px;font-size:11.5px;color:var(--sb-muted)}
+#smartBook .sb-tel{display:flex;gap:6px}
+#smartBook .sb-tel select{flex:0 0 92px;padding:0 6px}
+#smartBook .sb-fe{display:block;margin-top:3px;font-size:11.5px;color:var(--sb-err);font-weight:600}
+#smartBook .sb-fe[hidden]{display:none}
+#smartBook .sb-bad{border-color:var(--sb-err)!important}
+
+/* date chips */
+#smartBook .sb-chips{display:flex;gap:6px;align-items:stretch}
+#smartBook .sb-chip{flex:1 1 0;min-height:40px;border:1px solid var(--sb-line);border-radius:var(--sb-ri);background:var(--sb-chip);color:var(--sb-text);font:inherit;font-size:13px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;padding:2px 4px}
+#smartBook .sb-chip small{font-size:10.5px;color:var(--sb-muted)}
+#smartBook .sb-chip.on{background:var(--sb-on);border-color:var(--sb-primary);color:var(--sb-primary);font-weight:700}
+#smartBook .sb-chip-cal{flex:0 0 46px}
+#smartBook .sb-date-in{position:absolute;opacity:0;pointer-events:none;width:1px;height:1px}
+
+/* passengers */
+#smartBook .sb-pax-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+#smartBook .sb-pax-top .sb-l{margin:0}
+#smartBook .sb-step{display:flex;align-items:center;gap:4px}
+#smartBook .sb-step button{width:44px;height:36px;border:1px solid var(--sb-line);border-radius:9px;background:var(--sb-chip);color:var(--sb-text);font-size:20px;line-height:1;cursor:pointer}
+#smartBook .sb-step output{min-width:28px;text-align:center;font-weight:800;font-size:17px}
+#smartBook .sb-paxrow{display:flex;gap:6px;flex-wrap:wrap}
+#smartBook .sb-paxrow.sb-scroll{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin;-webkit-overflow-scrolling:touch;padding-bottom:2px}
+#smartBook .sb-p{flex:0 0 auto;display:flex;align-items:center;border:1px solid var(--sb-line);border-radius:var(--sb-ri);background:var(--sb-chip);overflow:hidden;height:40px}
+#smartBook .sb-p button{height:40px;border:0;background:transparent;color:var(--sb-text);font:inherit;font-size:13px;padding:0 9px;cursor:pointer;white-space:nowrap}
+#smartBook .sb-p .sb-g{min-width:44px;font-weight:700}
+#smartBook .sb-p .sb-g.f{background:var(--sb-women-bg);color:var(--sb-women)}
+#smartBook .sb-p .sb-g.m{background:var(--sb-on);color:var(--sb-primary)}
+#smartBook .sb-p .sb-g.u{color:var(--sb-err)}
+#smartBook .sb-p .sb-b{border-left:1px solid var(--sb-line);color:var(--sb-muted)}
+#smartBook .sb-p.sb-need{border-color:var(--sb-err)}
+
+/* segments */
+#smartBook .sb-row2{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}
+#smartBook .sb-seg{display:inline-flex;background:var(--sb-chip);border-radius:var(--sb-ri);padding:3px;gap:3px}
+#smartBook .sb-seg[hidden]{display:none}
+#smartBook .sb-seg button{min-height:36px;border:0;border-radius:8px;background:transparent;color:var(--sb-muted);font:inherit;font-size:13px;font-weight:600;padding:0 11px;cursor:pointer;white-space:nowrap}
+#smartBook .sb-seg button.on{background:var(--sb-panel);color:var(--sb-primary);box-shadow:0 2px 8px rgba(24,91,237,.12)}
+#smartBook .sb-seg-sm button{padding:0 8px}
+#smartBook .sb-seg-seat{display:flex}
+#smartBook .sb-seg-seat button{flex:1}
+#smartBook .sb-seg-seat em{font-style:normal;font-size:10.5px;color:var(--sb-ok);font-weight:700}
+#smartBook .sb-seat{margin:0 0 6px}
+#smartBook .sb-seatline{margin:6px 2px 0;min-height:20px;font-size:13.5px;color:var(--sb-text)}
+#smartBook .sb-seatline b{color:var(--sb-primary)}
+#smartBook .sb-seatline .sb-flash{animation:sbFlash 1s ease-out}
+#smartBook .sb-seatline small{color:var(--sb-muted)}
+@keyframes sbFlash{0%{background:var(--sb-gold);border-radius:6px}100%{background:transparent}}
+#smartBook .sb-suggest,#smartBook .sb-alt{margin:4px 0 6px;padding:8px 10px;border-radius:var(--sb-ri);background:var(--sb-on);font-size:13px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+#smartBook .sb-suggest[hidden],#smartBook .sb-alt[hidden]{display:none}
+#smartBook .sb-suggest button,#smartBook .sb-alt button{border:1px solid var(--sb-primary);background:var(--sb-panel);color:var(--sb-primary);border-radius:8px;min-height:36px;padding:0 10px;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer}
+#smartBook .sb-alt{background:#fff4e5;color:#7a4b00}
+:root[data-theme="dark"] #smartBook .sb-alt{background:#33240d;color:#ffd79a}
+#smartBook .sb-terms{margin:4px 0 0;font-size:11px;color:var(--sb-muted);line-height:1.35}
+#smartBook .sb-terms a{color:var(--sb-primary)}
+
+/* skeleton (no spinners) */
+#smartBook .sb-skel{display:inline-block;flex:1;min-height:40px;border-radius:var(--sb-ri);background:linear-gradient(90deg,var(--sb-chip),var(--sb-line),var(--sb-chip));background-size:200% 100%;animation:sbSk 1.2s linear infinite}
+#smartBook .sb-skel-w{min-height:16px;width:60%}
+@keyframes sbSk{to{background-position:-200% 0}}
+:root[data-motion="reduced"] #smartBook .sb-skel,:root[data-motion="reduced"] #smartBook .sb-flash{animation:none}
+
+/* rail */
+#smartBook .sb-rail{display:block}
+#smartBook .sb-sum{display:none}
+#smartBook .sb-bar{position:fixed;left:0;right:0;bottom:calc(var(--bottomnav-h,64px) + env(safe-area-inset-bottom,0px));z-index:58;display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--sb-panel);border-top:1px solid var(--sb-line);box-shadow:0 -10px 30px rgba(18,36,69,.12);min-height:var(--sb-bar-h)}
+html:not(.sb-home) #smartBook .sb-bar{display:none}
+#smartBook .sb-bar-sum{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.15}
+#smartBook .sb-bar-sum b{font-size:19px;font-weight:800;color:var(--sb-text)}
+#smartBook .sb-bar-sum small{font-size:11px;color:var(--sb-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#smartBook .sb-pay{min-width:88px;min-height:48px;border:0;border-radius:12px;font:inherit;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;padding:4px 10px;color:#fff}
+#smartBook .sb-pay span{font-size:15px;font-weight:800}
+#smartBook .sb-pay small{font-size:10px;opacity:.9}
+#smartBook .sb-cash{background:linear-gradient(120deg,#12b886,#0b9e71)}
+#smartBook .sb-online{background:var(--sb-grad)}
+#smartBook .sb-pay[disabled]{opacity:.45;cursor:not-allowed;filter:grayscale(.3)}
+#smartBook .sb-pay.sb-busy{opacity:.7;pointer-events:none}
+html.sb-on.sb-home #view-home{padding-bottom:calc(var(--sb-bar-h) + 8px)}
+
+/* seat sheet + ticket modal */
+#smartBook .sb-sheet,#smartBook .sb-modal{position:fixed;inset:0;z-index:120;background:rgba(6,11,21,.55);display:flex;align-items:flex-end;justify-content:center}
+#smartBook .sb-sheet[hidden],#smartBook .sb-modal[hidden]{display:none}
+#smartBook .sb-sheet-in,#smartBook .sb-modal-in{background:var(--sb-panel);color:var(--sb-text);width:100%;max-width:560px;max-height:92vh;overflow:auto;border-radius:20px 20px 0 0;padding:12px 14px calc(14px + env(safe-area-inset-bottom,0px))}
+#smartBook .sb-sheet-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+#smartBook .sb-x{width:44px;height:44px;border:0;background:var(--sb-chip);border-radius:50%;cursor:pointer;color:var(--sb-text);font-size:16px}
+#smartBook .sb-legend{display:flex;flex-wrap:wrap;gap:8px;font-size:11.5px;color:var(--sb-muted);margin:0 0 8px}
+#smartBook .sb-legend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:3px;border:1px solid var(--sb-line)}
+#smartBook .sb-deck{margin:0 0 10px}
+#smartBook .sb-deck h4{margin:0 0 6px;font-size:12.5px;color:var(--sb-muted)}
+#smartBook .sb-mrow{display:flex;gap:6px;margin-bottom:6px;align-items:center}
+#smartBook .sb-mrow .sb-aisle{width:14px}
+#smartBook .sb-mrow .sb-rl{width:16px;font-size:10px;color:var(--sb-muted)}
+#smartBook .sb-berth{flex:1;min-width:0;height:44px;border:1px solid var(--sb-line);border-radius:9px;background:var(--sb-chip);color:var(--sb-text);font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+#smartBook .sb-berth.w{background:var(--sb-women-bg);color:var(--sb-women);border-color:var(--sb-women)}
+#smartBook .sb-berth.x{background:repeating-linear-gradient(45deg,var(--sb-line),var(--sb-line) 4px,transparent 4px,transparent 8px);color:var(--sb-muted);cursor:not-allowed}
+#smartBook .sb-berth.sel{background:var(--sb-primary);color:#fff;border-color:var(--sb-primary)}
+#smartBook .sb-berth.mine{outline:2px solid var(--sb-gold)}
+#smartBook .sb-sheet-f{display:flex;justify-content:space-between;align-items:center;gap:8px;position:sticky;bottom:0;background:var(--sb-panel);padding-top:8px}
+#smartBook .sb-done{min-height:46px;min-width:120px;border:0;border-radius:12px;background:var(--sb-grad);color:#fff;font:inherit;font-weight:800;cursor:pointer}
+
+/* ticket (modal on a phone, rail on a desktop) */
+#smartBook .sb-tk{display:flex;flex-direction:column;gap:10px}
+#smartBook .sb-tk-h{display:flex;align-items:center;gap:10px}
+#smartBook .sb-tk-ok{width:40px;height:40px;border-radius:50%;background:var(--sb-ok);color:#fff;display:grid;place-items:center;font-size:20px;flex:0 0 40px}
+#smartBook .sb-tk-h b{display:block;font-size:16px}
+#smartBook .sb-tk-h small{color:var(--sb-muted)}
+#smartBook .sb-tk-pnr{font-size:22px;font-weight:800;letter-spacing:.04em;color:var(--sb-primary)}
+#smartBook .sb-tk-img{width:100%;border-radius:12px;border:1px solid var(--sb-line);background:var(--sb-chip);min-height:180px;object-fit:contain}
+#smartBook .sb-tk-row{font-size:13px;color:var(--sb-text)}
+#smartBook .sb-tk-row small{color:var(--sb-muted)}
+#smartBook .sb-tk-cod{background:#fff4e5;color:#7a4b00;border-radius:10px;padding:8px 10px;font-size:13px;font-weight:700}
+:root[data-theme="dark"] #smartBook .sb-tk-cod{background:#33240d;color:#ffd79a}
+#smartBook .sb-tk-acts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+#smartBook .sb-tk-acts a,#smartBook .sb-tk-acts button{min-height:46px;border:1px solid var(--sb-line);border-radius:11px;background:var(--sb-chip);color:var(--sb-text);font:inherit;font-size:12.5px;font-weight:700;display:flex;align-items:center;justify-content:center;text-align:center;text-decoration:none;cursor:pointer;padding:2px 4px}
+#smartBook .sb-tk-acts .sb-main-act{background:var(--sb-grad);color:#fff;border:0}
+#smartBook .sb-tk-new{border:0;background:transparent;color:var(--sb-primary);font:inherit;font-weight:700;min-height:44px;cursor:pointer}
+
+/* the card leads the home page (#view-home is a flex column ordered by homeinfo.css) */
+html #view-home > #smartBook{order:-1 !important}   /* redesign.css sets #view-home > * {order:10 !important} */
+
+/* passengers: stepper + one chip per passenger on one line */
+#smartBook .sb-paxline{display:flex;align-items:flex-start;gap:8px}
+#smartBook .sb-paxline .sb-step{flex:0 0 auto}
+#smartBook .sb-paxline .sb-paxrow{flex:1;min-width:0}
+
+/* ---- phone (< 860 px): the whole card fits 360 × 640 with no page scroll ---- */
+@media (max-width:859px){
+  #smartBook{padding-top:4px}
+  #smartBook .sb-head,#smartBook .sb-l{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  #smartBook .sb-card{padding:9px 10px 6px;border-radius:18px}
+  #smartBook{--sb-h:41px}
+  #smartBook .sb-bot,#smartBook .sb-dir{margin-bottom:7px}
+  #smartBook .sb-bot{padding:3px 3px 3px 9px}
+  #smartBook .sb-bot input{height:32px;font-size:13.5px}
+  #smartBook .sb-bot-go{height:32px}
+  #smartBook .sb-dir{padding:3px}
+  #smartBook .sb-dir-b{min-height:36px;font-size:12.5px;white-space:nowrap}
+  #smartBook .sb-dir-b > span{display:none}
+  #smartBook .sb-dir-b b{overflow:hidden;text-overflow:ellipsis}
+  #smartBook .sb-grid{gap:7px;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}
+  #smartBook .sb-f{margin-bottom:7px}
+  #smartBook .sb-chip{min-height:38px}
+  #smartBook .sb-why{min-height:0;margin-top:1px;font-size:11px}
+  #smartBook .sb-why:empty{display:none}
+  #smartBook .sb-tel{gap:4px}
+  #smartBook .sb-tel select{flex:0 0 60px;padding:0 2px 0 6px;font-size:14px}
+  #smartBook .sb-f-phone{grid-column:1}
+  #smartBook .sb-f-name{grid-column:2}
+  #smartBook input,#smartBook select{font-size:14.5px;padding:0 8px}
+  #smartBook .sb-step button{width:34px;height:38px;font-size:18px}
+  #smartBook .sb-p,#smartBook .sb-p button{height:38px}
+  #smartBook .sb-step output{min-width:20px}
+  #smartBook .sb-p button{padding:0 7px;font-size:12.5px}
+  #smartBook .sb-p .sb-g{min-width:40px}
+  #smartBook .sb-row2{gap:6px;margin-bottom:3px}
+  #smartBook .sb-seg{padding:2px}
+  #smartBook .sb-seg button{min-height:32px;padding:0 9px}
+  #smartBook .sb-seg-seat{flex:1 1 100%}
+  #smartBook .sb-seatline{margin-top:2px;font-size:13px}
+  #smartBook .sb-seatline small{display:none}
+  #smartBook .sb-policy{display:none}
+  #smartBook .sb-terms{margin-top:2px}
+}
+/* the WhatsApp / Sahayak buttons would sit on the Online button: while the
+   card is on screen they step aside (27-smartbook.js toggles .sb-in-view) */
+@media (max-width:859px){
+  html.sb-on.sb-home.sb-in-view #waFab,html.sb-on.sb-home.sb-in-view #aiFab{opacity:0;pointer-events:none;transform:scale(.6);transition:opacity .2s,transform .2s}
+}
+/* a short phone: the decorative top strips step aside on the booking screen */
+@media (max-width:859px) and (max-height:780px){
+  html.sb-on.sb-home .divine-bar,html.sb-on.sb-home #offerRibbon{display:none}
+}
+
+/* ---- desktop: card left (≈65 %), sticky Journey Summary right (≈35 %) ---- */
+@media (min-width:860px){
+  #smartBook{padding:18px 20px 6px}
+  #smartBook .sb-in{grid-template-columns:minmax(0,65fr) minmax(0,35fr);gap:20px}
+  #smartBook .sb-card{padding:20px 22px 16px}
+  #smartBook .sb-title{font-size:24px}
+  #smartBook .sb-f-date{grid-column:auto}
+  #smartBook .sb-f-point{grid-column:auto}
+  #smartBook .sb-rail{position:sticky;top:calc(var(--appbar-h,56px) + 14px);background:var(--sb-panel);border:1px solid var(--sb-line);border-radius:var(--sb-r);box-shadow:var(--sb-shadow);padding:16px 18px}
+  #smartBook .sb-sum{display:block}
+  #smartBook .sb-sum-t{margin:0 0 8px;font-size:15px;font-weight:800}
+  #smartBook .sb-dl{margin:0}
+  #smartBook .sb-dl div{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px dashed var(--sb-line);font-size:13px}
+  #smartBook .sb-dl dt{color:var(--sb-muted);flex:0 0 auto}
+  #smartBook .sb-dl dd{margin:0;text-align:right;font-weight:600;min-width:0}
+  #smartBook .sb-total{display:flex;flex-direction:column;align-items:flex-end;padding:10px 0 6px}
+  #smartBook .sb-total small{color:var(--sb-muted);font-size:12px}
+  #smartBook .sb-total b{font-size:30px;font-weight:800;color:var(--sb-text)}
+  #smartBook .sb-total span{font-size:12px;color:var(--sb-muted)}
+  #smartBook .sb-bar{position:static;box-shadow:none;border:0;padding:4px 0 0;background:transparent;min-height:0}
+  html:not(.sb-home) #smartBook .sb-bar{display:flex}
+  #smartBook .sb-bar-sum{display:none}
+  #smartBook .sb-pay{flex:1;min-height:54px}
+  html.sb-on.sb-home #view-home{padding-bottom:0}
+  #smartBook .sb-ticket{margin-top:12px;border-top:1px solid var(--sb-line);padding-top:12px}
+  #smartBook .sb-sheet,#smartBook .sb-modal{align-items:center}
+  #smartBook .sb-sheet-in,#smartBook .sb-modal-in{border-radius:20px}
+}
+@media (max-width:380px){
+  #smartBook{padding-left:10px;padding-right:10px}
+  #smartBook .sb-card{padding:12px 10px 10px}
+  #smartBook .sb-dir-b{font-size:12px}
+  #smartBook .sb-seg button{padding:0 8px;font-size:12.5px}
+  #smartBook .sb-pay{min-width:78px}
+}

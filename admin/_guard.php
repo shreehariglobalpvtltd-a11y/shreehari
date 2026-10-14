@@ -188,6 +188,8 @@ function admin_nav(): array
         // Map — routes, stops, head office and the driver's live position (5 Sep 2026).
         ['href' => 'map.php',          'icon' => 'map-pin',      'label' => 'Live Map',         'perm' => 'schedules.view', 'section' => 'Trips, buses & chalani'],
         ['href' => 'shift.php',        'icon' => 'coins',      'label' => 'Shift & Cash',      'perm' => 'bookings.view', 'section' => 'Agents & counters'],
+        // 15 Oct 2026 (SmartBook v5): every pay-at-boarding ticket - Pending / Collected / No-show, one-tap Collected, daily totals.
+        ['href' => 'cash-book.php',    'icon' => 'coins',      'label' => '💵 Cash book',      'perm' => 'bookings.view', 'section' => 'Agents & counters', 'hot' => true],
         // 4 Oct 2026: every desk as a row (country, money, company, hours) and the book split by desk.
         ['href' => 'counters.php',     'icon' => 'map-pin',    'label' => 'Counters & collection', 'perm' => 'reports.view', 'section' => 'Agents & counters'],
         // 4 Oct 2026: WhatsApp tickets by "hi" - waiting / sent / delivered per number.
@@ -334,7 +336,7 @@ function admin_header(string $title, string $active = ''): void
     // sg- components as the customer app) loads first; the panel's own rules
     // follow, then admin.css restyles the shell on top. The UI uses the
     // device's own font now (no webfont download on a slow counter line).
-    $av = '20261015b';
+    $av = '20261015c';
     /* 5 Oct 2026 (owner, Point 12): Poppins across the panel. display=swap, so a
        slow counter line shows the device font at once and swaps when the file
        lands; Devanagari comes from the same family. The CSP already allows it. */

@@ -75,6 +75,43 @@ try {
         }
     }
 
+    if ($action === 'seats') {
+        // The "Choose seats" sheet: the coach as the card draws it. Read-only,
+        // the same availability the sale re-checks (staff / emergency berths
+        // are already unavailable to the public).
+        $sid = (int) ($in['scheduleId'] ?? 0);
+        if ($sid <= 0) {
+            Response::invalid(['scheduleId' => 'Missing bus.']);
+        }
+        $sched = Seats::scheduleById($sid);
+        $route = Database::fetch('SELECT * FROM routes WHERE id = :id LIMIT 1', ['id' => (int) $sched['route_id']]);
+        $coach = Seats::effectiveCoach($sched, $route);
+        $bt    = $coach === 'sleeper' ? ((($in['type'] ?? '') === 'private') ? 'private' : 'sharing') : 'seater';
+        $av    = Seats::availabilityForSchedule($sid, $bt);
+        $labels = [];
+        foreach ((array) ($av['all'] ?? []) as $s) {
+            $labels[(string) $s] = Seats::displayLabel((string) $s, $coach, $bt === 'seater' ? 'sharing' : $bt);
+        }
+        Response::success([
+            'type'      => $bt,
+            'decks'     => $av['layout']['decks'] ?? [],
+            'available' => array_values($av['available'] ?? []),
+            'female'    => $bt === 'private' ? [] : array_values($av['female'] ?? []),
+            'labels'    => $labels,
+        ]);
+    }
+
+    if ($action === 'status') {
+        // The QR page's poll — only for the browser / owner of the booking.
+        require_once INCLUDE_PATH . '/payadapter.php';
+        $pnr = Security::clean((string) ($in['pnr'] ?? ''), 40);
+        $st  = Security::isValidPnr($pnr) ? SmartPay::status($pnr) : null;
+        if ($st === null) {
+            Response::forbidden('Not your booking.');
+        }
+        Response::success($st);
+    }
+
     if ($action === 'parse') {
         require_once INCLUDE_PATH . '/smartbookbot.php';
         Security::requireRateLimit('smartbook_parse', $ip, 120, 300);

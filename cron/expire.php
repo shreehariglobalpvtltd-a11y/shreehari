@@ -71,4 +71,35 @@ foreach ($stale as $b) {
     }
 }
 
-cron_done(['locksFreed' => $locksFreed, 'bookingsExpired' => $expired]);
+/* 3. SmartBook v5 (15 Oct 2026): unpaid pay-at-boarding (Cash) tickets N
+   minutes before their own boarding time. OFF unless the office sets
+   cod_autocancel_minutes > 0 (Admin -> Settings): the cash is normally
+   paid AT boarding, so the owner decides whether this is ever wanted.
+   Customer-made web tickets only (a desk sale is the desk's), never one
+   with any verified payment, and through BookingService::cancel() so the
+   seats, the bell and the passenger message are the normal ones. */
+$codCut    = Settings::getInt('cod_autocancel_minutes', 0);
+$codCancel = 0;
+if ($codCut > 0) {
+    $late = Database::fetchAll(
+        "SELECT b.pnr FROM bookings b
+           JOIN booking_legs l ON l.booking_id = b.id AND l.leg_type = 'outbound'
+           JOIN schedules s ON s.id = l.schedule_id JOIN routes r ON r.id = s.route_id
+          WHERE b.status = 'confirmed' AND b.is_cod = 1 AND b.source = 'web' AND b.sold_by_admin_id IS NULL
+            AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.booking_id = b.id AND p.status = 'verified')
+            AND TIMESTAMP(l.travel_date, COALESCE(l.boarding_time, s.dep_time_override, r.dep_time)) - INTERVAL :m MINUTE < NOW()
+            AND TIMESTAMP(l.travel_date, COALESCE(l.boarding_time, s.dep_time_override, r.dep_time)) > NOW() - INTERVAL 6 HOUR
+          LIMIT 100",
+        ['m' => $codCut]
+    );
+    foreach ($late as $b) {
+        try {
+            BookingService::cancel((string) $b['pnr'], 'Cash not paid ' . $codCut . ' min before boarding (auto)', false, 'auto');
+            $codCancel++;
+        } catch (Throwable $e) {
+            Logger::error('cod auto-cancel failed', ['pnr' => $b['pnr'], 'err' => $e->getMessage()]);
+        }
+    }
+}
+
+cron_done(['locksFreed' => $locksFreed, 'bookingsExpired' => $expired, 'codCancelled' => $codCancel]);

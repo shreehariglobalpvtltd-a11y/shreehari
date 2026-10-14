@@ -158,7 +158,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--blue)}
       <?php endforeach; ?>
     </div>
   </div>
-  <div class="h-row"><h1>🛟 <?= $e($T['title']) ?></h1><span class="h-art" aria-hidden="true"><img src="/assets/img/hd/support-guide-s.webp?v=20261015b" width="128" height="192" alt="" loading="lazy" decoding="async"></span></div>
+  <div class="h-row"><h1>🛟 <?= $e($T['title']) ?></h1><span class="h-art" aria-hidden="true"><img src="/assets/img/hd/support-guide-s.webp?v=20261015c" width="128" height="192" alt="" loading="lazy" decoding="async"></span></div>
   <p class="sub"><?= $e($T['sub']) ?></p>
 
   <div class="tabs" role="tablist">

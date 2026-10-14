@@ -955,15 +955,15 @@ final class ContentPages
             // shape so no edge figure is cropped - the old nepal-band files stay for the documents.
             // The one hero image is the only eager one on the page and its LCP element, so it
             // keeps fetchpriority="high" as before (review fix).
-            . '<picture><source type="image/webp" srcset="/assets/img/hd/nepal-heritage-m.webp?v=20261015b 800w, /assets/img/hd/nepal-heritage.webp?v=20261015b 1600w" sizes="(max-width: 640px) 100vw, 1000px">'
-            . '<img class="hero-art art-2x1" src="/assets/img/hd/nepal-heritage-m.webp?v=20261015b" width="1600" height="800" alt="' . $e($bandAlt) . '" decoding="async" fetchpriority="high"></picture>'
+            . '<picture><source type="image/webp" srcset="/assets/img/hd/nepal-heritage-m.webp?v=20261015c 800w, /assets/img/hd/nepal-heritage.webp?v=20261015c 1600w" sizes="(max-width: 640px) 100vw, 1000px">'
+            . '<img class="hero-art art-2x1" src="/assets/img/hd/nepal-heritage-m.webp?v=20261015c" width="1600" height="800" alt="' . $e($bandAlt) . '" decoding="async" fetchpriority="high"></picture>'
             . '<div class="btns"><a class="btn fill" href="#timeline">🕰️ ' . $e($w['timeline']) . '</a><a class="btn tonal" href="/travel-info">🛂 ' . $e($w['carry']) . '</a></div>'
             . '</section>'
             . ($nums !== '' ? '<section class="sec"><h2>' . $e($w['keyNums']) . '</h2><div class="stats">' . $nums . '</div></section>' : '')
             // The Buddha portrait (alpha, 2:3) sits beside the timeline from 720px, under it on a
             // phone - contained, never cropped, capped at 340px tall, captioned as an illustration.
             . '<section class="sec" id="timeline"><h2>🕰️ ' . $e($w['timeline']) . '</h2><div class="tl-wrap">' . $tlHtml
-            . '<figure class="buddha"><img src="/assets/img/hd/gautam-buddha-m.webp?v=20261015b" width="800" height="1200" alt="' . $e($w['buddhaAlt']) . '" loading="lazy" decoding="async"><figcaption>' . $e($w['illus']) . '</figcaption></figure></div></section>'
+            . '<figure class="buddha"><img src="/assets/img/hd/gautam-buddha-m.webp?v=20261015c" width="800" height="1200" alt="' . $e($w['buddhaAlt']) . '" loading="lazy" decoding="async"><figcaption>' . $e($w['illus']) . '</figcaption></figure></div></section>'
             . '<section class="sec card rv" id="open-border"><h2>🤝 ' . $e($w['border']) . '</h2>' . $borderInner . '</section>'
             . '<section class="sec card carry rv" id="carry"><div class="carry-ic" aria-hidden="true">🎒</div><div><h2>' . $e($w['carry']) . '</h2><p>' . $e($w['carryP']) . '</p>'
             . '<div class="btns"><a class="btn fill" href="/travel-info">🛂 ' . $e($w['carryBtn']) . '</a></div></div></section>'
@@ -1074,8 +1074,8 @@ final class ContentPages
             . '<span class="flagchip">🚀 ' . $e($w['expH']) . '</span></div>'
             // 10 Oct 2026 (HD pack): the coach render (bus-hero, 16:9) - its ONE place on the site,
             // captioned as a promotional render so nobody takes it for a photo of the fleet.
-            . '<picture><source type="image/webp" srcset="/assets/img/hd/bus-hero-m.webp?v=20261015b 800w, /assets/img/hd/bus-hero.webp?v=20261015b 1600w" sizes="(max-width: 640px) 100vw, 1000px">'
-            . '<img class="hero-art art-16x9" src="/assets/img/hd/bus-hero-m.webp?v=20261015b" width="1600" height="900" alt="' . $e($w['render']) . '" loading="lazy" decoding="async"></picture>'
+            . '<picture><source type="image/webp" srcset="/assets/img/hd/bus-hero-m.webp?v=20261015c 800w, /assets/img/hd/bus-hero.webp?v=20261015c 1600w" sizes="(max-width: 640px) 100vw, 1000px">'
+            . '<img class="hero-art art-16x9" src="/assets/img/hd/bus-hero-m.webp?v=20261015c" width="1600" height="900" alt="' . $e($w['render']) . '" loading="lazy" decoding="async"></picture>'
             . '<p class="hero-cap">' . $e($w['render']) . '</p></section>'
             . '<section class="sec"><div class="grid offices">' . $cards . '</div></section>'
             . '<section class="sec band rv" id="expanding"><span class="band-ic" aria-hidden="true">🚀</span><h2>' . $e($w['expH']) . '</h2>'
@@ -1174,8 +1174,8 @@ final class ContentPages
             . '<a class="flagchip" href="#near-border">🛂 ' . $e($w['nearBorder']) . '</a></div>'
             // 10 Oct 2026 (HD pack): the same 2:1 heritage montage as /india-nepal, decorative here;
             // the page's LCP image, so fetchpriority="high" stays (review fix).
-            . '<picture><source type="image/webp" srcset="/assets/img/hd/nepal-heritage-m.webp?v=20261015b 800w, /assets/img/hd/nepal-heritage.webp?v=20261015b 1600w" sizes="(max-width: 640px) 100vw, 1000px">'
-            . '<img class="hero-art art-2x1" src="/assets/img/hd/nepal-heritage-m.webp?v=20261015b" width="1600" height="800" alt="" decoding="async" fetchpriority="high"></picture></section>'
+            . '<picture><source type="image/webp" srcset="/assets/img/hd/nepal-heritage-m.webp?v=20261015c 800w, /assets/img/hd/nepal-heritage.webp?v=20261015c 1600w" sizes="(max-width: 640px) 100vw, 1000px">'
+            . '<img class="hero-art art-2x1" src="/assets/img/hd/nepal-heritage-m.webp?v=20261015c" width="1600" height="800" alt="" decoding="async" fetchpriority="high"></picture></section>'
             . ($picks !== '' ? '<section class="sec"><h2>⭐ ' . $e($w['picks']) . '</h2><div class="picks">' . $picks . '</div></section>' : '')
             . '<div id="places">' . $filters . '</div>' . $content
             . '<section class="sec band rv"><h2>🧳 ' . $e($w['tH1']) . '</h2><p>' . $e($w['tLead']) . '</p><div class="btns"><a class="btn fill" href="' . $e(PublicLayout::url('/tours', $lang)) . '">' . $e($w['seeTours']) . '</a>'

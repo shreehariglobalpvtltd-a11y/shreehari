@@ -16,7 +16,7 @@
  *  Bump VERSION to invalidate old caches on the next deploy.
  * ===================================================================== */
 
-var VERSION = 'shg-v213';   // 15 Oct 2026: reschedule rule 96h everywhere, Rajkot office beside Ahmedabad, journey time from the timetable
+var VERSION = 'shg-v214';   // 15 Oct 2026: SmartBook card on the home page (one screen, Cash | Online), QR pay page, cash book
 var SHELL_CACHE = 'shg-shell-' + VERSION;
 /* How long a returning visitor waits for a fresh document before the
    cached app shell opens instead (see the navigate handler). */
@@ -43,7 +43,7 @@ var MAX_TICKETS = 10;
    never go stale: a new build changes the URL and the old cache is dropped
    with the old VERSION. This is what makes a re-open feel instant — the
    ~1 MB of app code is read from disk instead of the network. */
-var ASSET_VER = '20261015b';
+var ASSET_VER = '20261015c';
 var PRECACHE = [
   '/assets/img/logo.png?v=' + ASSET_VER,
   /* 8 Oct 2026: the 10 KB nav / home-hero logo (logo.png stays for the footer + PDF) */
@@ -61,6 +61,7 @@ var PRECACHE = [
   '/assets/css/themes.css?v=' + ASSET_VER,
   '/assets/css/showcase.css?v=' + ASSET_VER,
   '/assets/css/homeinfo.css?v=' + ASSET_VER,
+  '/assets/css/smartbook.css?v=' + ASSET_VER,
   /* 10 Oct 2026: the HD visual pack styles (the artwork itself is NOT precached) */
   '/assets/css/hd.css?v=' + ASSET_VER,
   /* 10 Oct 2026: touch / compositor / TV / device-tier hygiene (right before depth.css) */
@@ -72,6 +73,7 @@ var PRECACHE = [
   '/assets/js/22-routeline.js?v=' + ASSET_VER,
   '/assets/js/23-flags.js?v=' + ASSET_VER,
   '/assets/js/24-homeinfo.js?v=' + ASSET_VER,
+  '/assets/js/27-smartbook.js?v=' + ASSET_VER,
   '/assets/js/19-premium.js?v=' + ASSET_VER,
   '/assets/js/01-boot.js?v=' + ASSET_VER,
   '/assets/js/02-config.js?v=' + ASSET_VER,

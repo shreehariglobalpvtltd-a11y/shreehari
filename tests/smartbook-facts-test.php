@@ -207,7 +207,8 @@ if ($base !== '') {
     check('home: no 96 h / 90 % / 1,300 km', !preg_match('/≥96|(?<![-\w])96h\b|90% refund|1,300 km|1635 km/u', $home));
     check('home boot: facts.policy.line.ne', str_contains($home, '"policy"') && str_contains($home, json_encode($want['ne'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '~'));
     $rp = $get($base . '/refund-policy.php');
-    check('refund-policy: 48 hours row, no 96', str_contains($rp, '48') && !preg_match('/96\+|96 hours|90% refund/u', $rp));
+    $rpNoRes = str_replace(htmlspecialchars(Fare::rescheduleLine('en'), ENT_QUOTES, 'UTF-8'), '', $rp);   // the reschedule rule (96 h) is allowed
+check('refund-policy: 48 hours row, no 96 h refund tier', str_contains($rp, '48') && !preg_match('/96\+|96 hours|90% refund/u', $rpNoRes));
     check('refund-policy: 5–7 working days, no 7–10 / 14–21', str_contains($rp, '5–7 working days') && !preg_match('/7–10|14–21|7-21/u', $rp));
     $tt = $get($base . '/api/timetable.php');
     check('api/timetable: displayKm 1375', str_contains($tt, '"displayKm":1375'));
