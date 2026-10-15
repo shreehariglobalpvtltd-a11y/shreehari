@@ -130,8 +130,13 @@ html:not(.sb-home) #smartBook .sb-bar{display:none}
 #smartBook .sb-cash{background:linear-gradient(120deg,#12b886,#0b9e71)}
 #smartBook .sb-online{background:var(--sb-grad)}
 #smartBook .sb-pay[disabled]{opacity:.45;cursor:not-allowed;filter:grayscale(.3)}
+/* never dead: dimmed until ready, still tappable (a tap says what is missing) */
+#smartBook .sb-pay.sb-wait{opacity:.62;filter:saturate(.7)}
+#smartBook .sb-pay.sb-ready{box-shadow:0 6px 18px rgba(11,158,113,.28)}
+#smartBook .sb-online.sb-ready{box-shadow:0 6px 18px rgba(24,91,237,.28)}
 #smartBook .sb-pay.sb-busy{opacity:.7;pointer-events:none}
-html.sb-on.sb-home #view-home{padding-bottom:calc(var(--sb-bar-h) + 8px)}
+/* #view-home is outside #smartBook, so the token needs its fallback here */
+html.sb-on.sb-home #view-home{padding-bottom:calc(var(--sb-bar-h,66px) + 8px)}
 
 /* seat sheet + ticket modal */
 #smartBook .sb-sheet,#smartBook .sb-modal{position:fixed;inset:0;z-index:120;background:rgba(6,11,21,.55);display:flex;align-items:flex-end;justify-content:center}
@@ -221,6 +226,8 @@ html #view-home > #smartBook{order:-1 !important}   /* redesign.css sets #view-h
    card is on screen they step aside (27-smartbook.js toggles .sb-in-view) */
 @media (max-width:859px){
   html.sb-on.sb-home.sb-in-view #waFab,html.sb-on.sb-home.sb-in-view #aiFab{opacity:0;pointer-events:none;transform:scale(.6);transition:opacity .2s,transform .2s}
+  /* below the card they stay, lifted above the book bar so they never cover Online */
+  html.sb-on.sb-home #waFab,html.sb-on.sb-home #aiFab{translate:0 calc(-1 * var(--sb-bar-h,66px))}
 }
 /* a short phone: the decorative top strips step aside on the booking screen */
 @media (max-width:859px) and (max-height:780px){

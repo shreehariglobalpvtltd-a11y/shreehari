@@ -46,10 +46,12 @@ check('it is the first block of the home view', (bool) preg_match('~^\s*(?:<!--.
 foreach (['sbBot' => 'QuickBot line', 'sbDates' => 'date chips', 'sbPoint' => 'boarding / drop point', 'sbNear' => 'nearest-to-me button',
           'sbCc' => '+91 / +977', 'sbPhone' => 'mobile', 'sbName' => 'lead name', 'sbPax' => 'passenger chips', 'sbMinus' => 'fewer passengers',
           'sbPlus' => 'more passengers', 'sbType' => 'Sharing | Private', 'sbCabin' => 'Single | Double', 'sbBerth' => 'berth preference',
-          'sbSeatMode' => 'Auto | Choose seats', 'sbSeatLine' => 'seat line', 'sbCash' => 'Cash', 'sbOnline' => 'Online', 'sbRail' => 'Journey Summary rail',
+          'sbSeatMode' => 'Auto | Choose seats', 'sbSeatLine' => 'seat line', 'sbCash' => 'Book · Cash', 'sbOnline' => 'Book · Online', 'sbRail' => 'Journey Summary rail',
           'sbBar' => 'phone sticky bar', 'sbSheet' => 'seat-map sheet', 'sbModal' => 'ticket modal', 'sbPolicy' => 'policy line'] as $id => $what) {
     check("has $what (#$id)", str_contains($tpl, 'id="' . $id . '"'));
 }
+check('the book buttons are never shipped disabled (a tap must answer)', (bool) preg_match('~id="sbCash"(?![^>]*disabled)[^>]*>~', $tpl) && (bool) preg_match('~id="sbOnline"(?![^>]*disabled)[^>]*>~', $tpl));
+check('the buttons say they book', str_contains($tpl, 'Book · Cash') && str_contains($tpl, 'Book · Online'));
 check('direction switch has both runs', str_contains($tpl, 'data-dir="toNepal"') && str_contains($tpl, 'data-dir="toIndia"'));
 check('the card section ships hidden until the engine boots (classic search is the fallback)', (bool) preg_match('~id="smartBook" aria-labelledby="sbTitle" hidden>~', $tpl)
     && str_contains($css, 'html.sb-on #search-anchor, html.sb-on #quick-ticket{display:none}'));

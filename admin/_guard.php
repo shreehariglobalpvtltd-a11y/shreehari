@@ -339,7 +339,7 @@ function admin_header(string $title, string $active = ''): void
     // sg- components as the customer app) loads first; the panel's own rules
     // follow, then admin.css restyles the shell on top. The UI uses the
     // device's own font now (no webfont download on a slow counter line).
-    $av = '20261015d';
+    $av = '20261015e';
     /* 5 Oct 2026 (owner, Point 12): Poppins across the panel. display=swap, so a
        slow counter line shows the device font at once and swaps when the file
        lands; Devanagari comes from the same family. The CSP already allows it. */
