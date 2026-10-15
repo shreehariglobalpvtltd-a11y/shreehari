@@ -244,7 +244,7 @@ final class WaRoute
         /* 15 Oct 2026 (2D-paid-limit): a Meta template is a PAID message too.
            Past the office's daily cap it is not attempted; the caller carries
            on to its own fallback (the "hi" queue, click-to-chat). */
-        $cap = self::paidRefusal();
+        $cap = (self::isLoginTemplate($name) || in_array(strtolower($purpose), ['otp', 'login', 'auth'], true)) ? '' : self::paidRefusal();
         if ($cap !== '') {
             Logger::info('WaRoute: Meta template not sent - ' . $cap, ['template' => $name, 'purpose' => $purpose], 'whatsapp');
             return null;
@@ -293,13 +293,34 @@ final class WaRoute
      * unless the caller (the Campaigns engine, the owner's own decision)
      * says so. Returns '' when allowed, else the reason.
      */
+    /**
+     * A sign-in code template (AUTHENTICATION category, or a login / OTP
+     * name) - never held back by the daily paid cap (15 Oct 2026).
+     */
+    public static function isLoginTemplate(string $templateName): bool
+    {
+        $n = strtolower($templateName);
+        if (str_contains($n, 'login') || str_contains($n, 'otp')) {
+            return true;
+        }
+        try {
+            if (!class_exists('MsgLedger') && is_file(INCLUDE_PATH . '/msgledger.php')) {
+                require_once INCLUDE_PATH . '/msgledger.php';
+            }
+            return class_exists('MsgLedger') && MsgLedger::templateCategory($templateName) === 'authentication';
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
     public static function aisensyRefusal(string $templateName, bool $explicitMarketing = false): string
     {
         if (!self::aisensyOn()) {
             return 'wa_policy is meta_only - AiSensy is switched off';
         }
-        // 15 Oct 2026: the office's daily cap on paid messages, every template alike.
-        $cap = self::paidRefusal();
+        // 15 Oct 2026: the office's daily cap on paid messages - except a
+        // login code: a customer outside the 24 h window could not sign in.
+        $cap = self::isLoginTemplate($templateName) ? '' : self::paidRefusal();
         if ($cap !== '') {
             return $cap;
         }

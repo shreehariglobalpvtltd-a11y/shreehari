@@ -165,15 +165,18 @@ final class TicketEdit
                 break;
         }
 
+        $who = trim((string) (($actor['full_name'] ?? '') ?: ($actor['username'] ?? 'staff')));
+        /* The "already waiting" check and the insert under one lock on the
+           booking row (15 Oct 2026): a double tap files ONE request. */
+        $id = (int) Database::transaction(static function () use ($bid, $booking, $field, $old, $newValue, $actor, $who, $reason): int {
+        Database::fetchForUpdate('SELECT id FROM bookings WHERE id = :id', ['id' => $bid]);
         if (Database::exists(
             "SELECT 1 FROM ticket_edit_audit WHERE booking_id = :b AND field_changed = :f AND outcome = 'requested' AND changed_by LIKE 'staff:%'",
             ['b' => $bid, 'f' => $field]
         )) {
             throw new RuntimeException('A request for this is already waiting for the office.');
         }
-
-        $who = trim((string) (($actor['full_name'] ?? '') ?: ($actor['username'] ?? 'staff')));
-        $id  = Database::insert('ticket_edit_audit', [
+        return (int) Database::insert('ticket_edit_audit', [
             'booking_id'    => $bid,
             'pnr'           => (string) $booking['pnr'],
             'field_changed' => $field,
@@ -184,6 +187,7 @@ final class TicketEdit
             'outcome'       => 'requested',
             'detail'        => mb_substr($who . ': ' . $reason, 0, 255),
         ]);
+        });
 
         Logger::audit('booking.edit_request', 'booking', (string) $booking['pnr'], [$field => $old], [$field => $newValue],
             'Correction requested (' . self::REQUEST_FIELDS[$field] . ': ' . $shown . ') by admin #' . (int) ($actor['id'] ?? 0), $reason);

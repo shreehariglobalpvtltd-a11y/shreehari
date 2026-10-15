@@ -363,7 +363,7 @@ function wh_process_inbound(array $msg): void
 
     try {
         require_once INCLUDE_PATH . '/watemplates.php';
-        WaTemplates::noteInbound($from);
+        WaTemplates::noteInbound($from, (int) ($msg['timestamp'] ?? 0));   // the time the customer wrote, not the replay time
     } catch (Throwable $ignored) {
     }
 

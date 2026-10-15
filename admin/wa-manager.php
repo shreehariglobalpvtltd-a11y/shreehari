@@ -210,7 +210,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && $ready) {
             if (!in_array($pol, [WaRoute::META_FIRST, WaRoute::META_ONLY, WaRoute::AISENSY_ONLY], true)) {
                 throw new RuntimeException('Unknown sending policy.');
             }
-            $switches = ['wa_booking_on' => true, 'wa_book_combo_on' => true, 'wa_agent_on' => false, 'wa_route_on' => true];
+            $switches = ['wa_booking_on' => true, 'wa_book_combo_on' => true, 'wa_agent_on' => false, 'wa_route_on' => true, 'wa_inbound_replay_on' => true];
             $before = [];
             $after  = [];
             foreach ($switches as $k => $default) {
@@ -599,6 +599,7 @@ admin_page_head('Every WhatsApp, SMS and email the system sent — who got it, w
           'wa_book_combo_on' => [Settings::getBool('wa_book_combo_on', true), 'One combined question', 'Name, boarding, date and how many asked in ONE message. Off = one question at a time.'],
           'wa_agent_on'      => [Settings::getBool('wa_agent_on', false), 'AI assistant (optional)', 'Questions the local answers do not know go to the AI. Selling never needs it.'],
           'wa_route_on'      => [Settings::getBool('wa_route_on', true), 'Agent routing', 'A ticket the customer did not get is handed to the route agent (free messages only).'],
+          'wa_inbound_replay_on' => [Settings::getBool('wa_inbound_replay_on', true), 'Answer stuck messages again', 'A customer message the bot could not answer (a crash) is answered by the replay a few minutes later (max 3 tries, never after 1 hour). Off = never answered late.'],
       ];
     ?>
     <?php foreach ($sw as $k => [$on, $title, $help]): ?>

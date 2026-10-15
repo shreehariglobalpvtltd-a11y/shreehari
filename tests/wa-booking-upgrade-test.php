@@ -345,6 +345,7 @@ try {
     check('  a utility template passes', WaRoute::aisensyRefusal('shg_ticket_confirmed') === '');
     Settings::set('wa_paid_daily_limit', '0', 'string', 'whatsapp', false);
     check('0 = never pay: every AiSensy template is refused', str_contains(WaRoute::aisensyRefusal('shg_ticket_confirmed'), 'wa_paid_daily_limit'));
+    check('  …except the login code (a customer must always be able to sign in)', WaRoute::aisensyRefusal('shg_login') === '' && WaRoute::isLoginTemplate('shg_otp'));
     Settings::set('wa_meta_templates_on', '1', 'string', 'whatsapp', false);
     $tplCalls = 0;
     WaRoute::$transport = static function () use (&$tplCalls): array { $tplCalls++; return ['success' => true, 'message_id' => WB_TAG . 'TPL', 'error' => '']; };

@@ -61,3 +61,7 @@ INSERT IGNORE INTO `settings` (`skey`, `svalue`, `stype`, `sgroup`, `label`, `is
  ('wa_paid_daily_limit',    '',  'string', 'whatsapp', 'Paid WhatsApp messages per day (AiSensy + Meta templates). Empty = no limit, 0 = never pay', 0),
  ('wa_meta_free_allowance', '0', 'int',    'whatsapp', 'Meta free messages per month to count against (0 = not tracked)', 0),
  ('wa_booking_on',          '1', 'bool',   'whatsapp', 'WhatsApp chat selling (WaBooking) - customers book inside the chat', 0);
+
+-- 15 Oct 2026 (p12): the office can switch the replay of stuck inbound messages off.
+INSERT IGNORE INTO `settings` (`skey`, `svalue`, `stype`, `sgroup`, `label`, `is_public`) VALUES
+ ('wa_inbound_replay_on', '1', 'bool', 'whatsapp', 'WhatsApp - answer a customer message again when the first answer failed (cron/wa-inbound.php, max 3 tries, never after 1 hour). 0 = never answered late', 0);

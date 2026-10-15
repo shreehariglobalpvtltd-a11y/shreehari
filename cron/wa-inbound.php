@@ -41,6 +41,13 @@ $hasTable = (int) Database::scalar(
       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wa_inbound'",
     [], 0
 ) > 0;
+/* 15 Oct 2026: the office can switch the replay off (Settings - WhatsApp:
+   wa_inbound_replay_on = 0). Messages are still written down by the webhook;
+   nothing is answered late. */
+if (!Settings::getBool('wa_inbound_replay_on', true)) {
+    cron_done(['skipped' => 'replay switched off (wa_inbound_replay_on = 0)']);
+    exit;
+}
 if (!$hasTable) {
     cron_done(['skipped' => 'wa_inbound table not installed (database/upgrade-2026-10-15-wa-booking.sql)']);
     exit;

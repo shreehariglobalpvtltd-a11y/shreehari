@@ -188,17 +188,23 @@ final class WaTemplates
     }
 
     /** Record an inbound message from a number (called by the webhook). */
-    public static function noteInbound(string $intlDigits): void
+    public static function noteInbound(string $intlDigits, int $at = 0): void
     {
         $intlDigits = preg_replace('/\D/', '', $intlDigits) ?? '';
         if ($intlDigits === '') {
             return;
         }
+        /* 15 Oct 2026: $at = when the customer actually wrote (Meta's own
+           timestamp). A message answered late by the replay cron must not
+           make the free 24 h window look longer than it is, and an older
+           message never pulls a newer note back. */
+        $now = time();
+        $at  = ($at > 0 && $at <= $now) ? $at : $now;
         try {
             Database::run(
                 "INSERT INTO kv_store (kscope, kkey, kvalue, updated_by) VALUES ('wa_inbound', :k, :v, 'webhook')
-                 ON DUPLICATE KEY UPDATE kvalue = :v2, updated_by = 'webhook'",
-                ['k' => $intlDigits, 'v' => (string) time(), 'v2' => (string) time()]
+                 ON DUPLICATE KEY UPDATE kvalue = GREATEST(CAST(kvalue AS UNSIGNED), :v2), updated_by = 'webhook'",
+                ['k' => $intlDigits, 'v' => (string) $at, 'v2' => $at]
             );
         } catch (Throwable $e) {
             Logger::warning('wa_inbound note failed: ' . $e->getMessage(), [], 'whatsapp');
