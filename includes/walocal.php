@@ -185,6 +185,7 @@ final class WaLocal
                 'refund_rule'   => self::refundRule($fromRaw, $lang),
                 'nepal_office'  => self::nepalOffice($lang),
                 'summary'       => self::summary($who, $lang),
+                'staff_board'   => self::staffBoard($lang, $text),
                 'passengers'    => self::passengers($who, $lang, $text),
                 'pending'       => self::pending($lang),
                 default         => null,
@@ -255,6 +256,7 @@ final class WaLocal
                 'refund_rule'  => self::refundRule($from, $lang),
                 'nepal_office' => self::nepalOffice($lang),
                 'summary'      => self::summary($who, $lang),
+                'staff_board'  => self::staffBoard($lang, $text),
                 'passengers'   => self::passengers($who, $lang, $text),
                 'pending'      => self::pending($lang),
                 default        => null,
@@ -294,6 +296,16 @@ final class WaLocal
            link - sabai share garna sakos"). An agent code (SHG-0027) names
            an agent; "office kaha / map" is a place question, never the bus. */
         $complaint = preg_match('/galat|galti|problem|samasya|cancel|refund|firta|paisa|payment|गलत|समस्या|रद्द|पैसा/u', $t) === 1;
+        /* 15 Oct 2026 (owner: "AI le agent / counter haru ko data herdeos"): the
+           office asking about its sellers - "agent report", "counter ko hisab",
+           "sabai agent kati becheko", "agent cash baki" - gets every agent and
+           counter from the books, today or this month. Office numbers only. */
+        if ($role === 'admin'
+            && preg_match('/agent|ejent|counter|kaunter|seller|एजेन्ट|एजेंट|काउन्टर|काउंटर/u', $t) === 1
+            && preg_match('/report|hisab|hisaab|bikri|becheko|sale|kati|kitna|collection|cash|nagad|commission|kamisan|baki|baaki|month|mahina|aaja|aaj|today|रिपोर्ट|हिसाब|बिक्री|कति|कितना|नगद|कमिसन|कमीशन|बाँकी|बाकी|महिना|महीना|आज/u', $t) === 1
+            && preg_match('/(?<![a-z\d])shg\s?-?\s?0*\d{1,4}(?![\d-])/u', $t) !== 1) {
+            return 'staff_board';
+        }
         if (preg_match('/(?<![a-z\d])shg\s?-?\s?0*\d{1,4}(?![\d-])/u', $t) === 1 && !$complaint) {
             return 'agent_info';
         }
@@ -375,6 +387,7 @@ final class WaLocal
                 self::t($lang, '• hisab / aaja kati ticket — आजको बिक्री, पैसा, बस कति भरियो', '• hisab — आज की बिक्री, पैसा, बस कितनी भरी', '• hisab — today\'s sales, money, bus fill'),
                 self::t($lang, '• yatri list [bholi] — यात्रु सूची (सिट, पिकअप, फोन)', '• yatri list — यात्री सूची', '• passenger list — who is on the bus'),
                 self::t($lang, '• pending — भुक्तानी जाँच बाँकी', '• pending — भुगतान जाँच बाकी', '• pending — payments waiting'),
+                self::t($lang, '• agent report [mahina] — सबै एजेन्ट/काउन्टरको बिक्री, नगद, कमिसन', '• agent report — सभी एजेंट/काउंटर की बिक्री, नकद, कमीशन', '• agent report [month] — every agent / counter: sales, cash, commission'),
                 self::t($lang, '• khali seat [bholi / nepal] — कति सिट बाँकी', '• khali seat — कितनी सीट बाकी', '• khali seat — seats left'),
                 self::t($lang, '• bus kaha — बस अहिले कहाँ छ (live)', '• bus kaha — बस अभी कहाँ है', '• bus kaha — where the bus is now'),
                 self::t($lang, '• driver / bus number — आजका बस र चालक', '• driver — आज की बस और ड्राइवर', '• driver — today\'s buses and crew'),
@@ -1064,6 +1077,89 @@ final class WaLocal
         $pend = (int) Database::scalar("SELECT COUNT(*) FROM bookings WHERE status = 'pending' AND created_at >= NOW() - INTERVAL 3 DAY", [], 0);
         $lines[] = self::t($lang, 'भुक्तानी जाँच बाँकी: ' . $pend, 'भुगतान जाँच बाकी: ' . $pend, 'Payments to verify: ' . $pend) . ($pend > 0 ? ' — "pending"' : '');
         $lines[] = appUrl('admin/');
+        return ['text' => implode("\n", $lines), 'media' => null, 'ui' => null];
+    }
+
+    /**
+     * Office: every agent and counter from the books (15 Oct 2026). Today, or
+     * this month when the question says month / mahina. Per seller: tickets,
+     * seats, amount, cash taken; then what each OWES (cash to hand over) and is
+     * OWED (commission due) from agent_ledger; then the counter desks.
+     */
+    private static function staffBoard(string $lang, string $text): array
+    {
+        require_once INCLUDE_PATH . '/agentwallet.php';
+        $month = preg_match('/month|mahina|mahine|महिना|महीना|मास/ui', $text) === 1;
+        $from  = $month ? date('Y-m-01') : todayISO();
+        $to    = addDaysISO(todayISO(), 1);
+        $range = ['f' => $from . ' 00:00:00', 't' => $to . ' 00:00:00'];
+        $title = $month ? formatDate($from, 'M Y') : formatDate($from, 'D, j M');
+        $lines = ['👥 ' . self::t($lang, 'एजेन्ट / काउन्टर — ', 'एजेंट / काउंटर — ', 'Agents / counters — ') . $title];
+
+        $rows = Database::fetchAll(
+            "SELECT a.id, a.full_name, a.role, COUNT(b.id) n, COALESCE(SUM(b.total_amount),0) amt,
+                    COALESCE(SUM((SELECT COUNT(*) FROM booking_passengers bp WHERE bp.booking_id = b.id)),0) seats,
+                    COALESCE(SUM(CASE WHEN b.is_cod = 1 OR EXISTS (SELECT 1 FROM payments p WHERE p.booking_id = b.id AND p.method = 'cash') THEN b.total_amount ELSE 0 END),0) cash
+               FROM bookings b JOIN admins a ON a.id = b.sold_by_admin_id
+              WHERE b.status IN ('confirmed','completed') AND b.created_at >= :f AND b.created_at < :t
+           GROUP BY a.id, a.full_name, a.role ORDER BY amt DESC LIMIT 15",
+            $range
+        );
+        $totN = 0;
+        $totAmt = 0.0;
+        foreach ($rows as $r) {
+            $code = AgentWallet::agentCodeLabel((int) $r['id']);
+            $totN += (int) $r['n'];
+            $totAmt += (float) $r['amt'];
+            $lines[] = '• ' . self::short((string) $r['full_name']) . ($code !== '' ? ' (' . $code . ')' : '') . ((string) $r['role'] === 'counter' ? ' 🏪' : '')
+                     . ': ' . (int) $r['n'] . self::t($lang, ' टिकट · ', ' टिकट · ', ' tkt · ') . (int) $r['seats'] . self::t($lang, ' सिट · ', ' सीट · ', ' seats · ')
+                     . inr((float) $r['amt']) . ((float) $r['cash'] > 0 ? self::t($lang, ' (नगद ', ' (नकद ', ' (cash ') . inr((float) $r['cash']) . ')' : '');
+        }
+        $lines[] = $rows === []
+            ? self::t($lang, 'यो अवधिमा कसैले बेचेको छैन।', 'इस अवधि में कोई बिक्री नहीं।', 'No sales by staff in this period.')
+            : self::t($lang, 'जम्मा: ', 'कुल: ', 'Total: ') . $totN . self::t($lang, ' टिकट · ', ' टिकट · ', ' tickets · ') . inr($totAmt);
+
+        // Balances - who owes the office cash, who is owed commission (all time, from the ledger).
+        $bal = Database::fetchAll(
+            "SELECT l.agent_admin_id id, a.full_name,
+                    COALESCE(SUM(CASE WHEN l.account = 'cash' THEN l.amount ELSE 0 END),0) cash,
+                    COALESCE(SUM(CASE WHEN l.account = 'commission' THEN l.amount ELSE 0 END),0) comm
+               FROM agent_ledger l JOIN admins a ON a.id = l.agent_admin_id
+           GROUP BY l.agent_admin_id, a.full_name
+             HAVING ABS(cash) >= 1 OR ABS(comm) >= 1
+           ORDER BY cash DESC LIMIT 10"
+        );
+        if ($bal !== []) {
+            $lines[] = '';
+            $lines[] = '💰 ' . self::t($lang, 'बाँकी हिसाब (नगद बुझाउनु / कमिसन दिनु):', 'बाकी हिसाब (नकद जमा / कमीशन देना):', 'Balances (cash to hand over / commission due):');
+            foreach ($bal as $r) {
+                $lines[] = '• ' . self::short((string) $r['full_name']) . ': '
+                         . self::t($lang, 'नगद ', 'नकद ', 'cash ') . inr((float) $r['cash']) . ' · '
+                         . self::t($lang, 'कमिसन ', 'कमीशन ', 'comm ') . inr((float) $r['comm']);
+            }
+        }
+
+        // Counter desks (bookings.counter_code) in the same period.
+        try {
+            $desks = Database::fetchAll(
+                "SELECT counter_code c, COUNT(*) n, COALESCE(SUM(total_amount),0) amt FROM bookings
+                  WHERE counter_code IS NOT NULL AND counter_code <> '' AND status IN ('confirmed','completed')
+                    AND created_at >= :f AND created_at < :t GROUP BY counter_code ORDER BY amt DESC LIMIT 8",
+                $range
+            );
+            if ($desks !== []) {
+                $lines[] = '';
+                $lines[] = '🏪 ' . self::t($lang, 'काउन्टर डेस्क:', 'काउंटर डेस्क:', 'Counter desks:');
+                foreach ($desks as $d) {
+                    $lines[] = '• ' . (string) $d['c'] . ': ' . (int) $d['n'] . self::t($lang, ' टिकट · ', ' टिकट · ', ' tickets · ') . inr((float) $d['amt']);
+                }
+            }
+        } catch (Throwable $e) {
+            // counter_code arrives with the desks migration; the board still answers without it
+        }
+        $lines[] = '';
+        $lines[] = self::t($lang, '"agent report mahina" = यो महिना · SHG-00xx = एक एजेन्ट', '"agent report mahina" = यह महीना · SHG-00xx = एक एजेंट', '"agent report month" = this month · SHG-00xx = one agent');
+        $lines[] = appUrl('admin/agent-sales.php');
         return ['text' => implode("\n", $lines), 'media' => null, 'ui' => null];
     }
 

@@ -125,7 +125,7 @@ try {
     $li = req($a, 'POST', '/admin/login.php', ['form' => ['shg_csrf' => $m[1] ?? '', 'username' => 'cmh-agent', 'password' => $pw]]);
     check('agent signs in', $li['code'] === 302, 'HTTP ' . $li['code']);
     $ah = req($a, 'GET', '/admin/agent.php');
-    check('agent panel "+ New Booking" points at counter mode', str_contains($ah['body'], 'href="/index.php?counter=1#/"'));
+    check('agent panel: the one booking entry is SmartBook (15 Oct 2026)', str_contains($ah['body'], 'href="/admin/smartbook.php"') && !str_contains($ah['body'], '+ New Booking'));
     check('agent panel "Sell seats" links carry from/to/date', preg_match('~/index\.php\?counter=1&amp;from=[^"]+&amp;to=[^"]+&amp;date=\d{4}-\d{2}-\d{2}#/~', $ah['body']) === 1 || str_contains($ah['body'], 'No upcoming trips'));
     $nb = req($a, 'GET', '/admin/new-booking.php?route=' . $rid . '&date=' . $D);
     check('new-booking.php redirects to counter mode with route + date', $nb['code'] === 302 && str_contains($nb['location'], 'counter=1') && str_contains($nb['location'], 'date=' . $D), 'HTTP ' . $nb['code'] . ' → ' . $nb['location']);

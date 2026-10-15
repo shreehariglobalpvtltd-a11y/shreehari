@@ -135,11 +135,12 @@ function admin_nav(): array
         // 15 Oct 2026 (SmartBook v5): the one-screen booking card in the staff's own mode (agent / counter / admin).
         ['href' => 'smartbook.php',    'icon' => 'ticket',     'label' => '⚡ SmartBook',       'perm' => 'bookings.view', 'section' => 'Bookings & tickets', 'hot' => true],
         ['href' => 'smart-rules.php',  'icon' => 'cog',        'label' => 'SmartBook rules',   'perm' => 'dashboard.view', 'section' => 'Settings'],
-        ['href' => '/index.php?counter=1#/', 'icon' => 'plus', 'label' => '+ New Booking', 'perm' => 'bookings.view', 'section' => 'Bookings & tickets'],
+        // 15 Oct 2026 (owner: "new booking remove gardeu, euta matra book"): SmartBook is
+        // THE booking screen. "+ New Booking" (counter-mode app) and QuickBot Ticket left the
+        // menu; both URLs still work for a bookmark, new-booking.php lands on SmartBook.
         // 6 Sep 2026: ⚡ Quick Ticket — name + mobile → the server picks the
         // bus, pickup, seat and fare → confirmed sale → PNG ticket → WhatsApp.
         // Flagged `hot` so every desk finds it at a glance (see $renderLink).
-        ['href' => 'quick-ticket.php', 'icon' => 'ticket-alt', 'label' => '🤖 QuickBot Ticket', 'perm' => 'bookings.view', 'section' => 'Bookings & tickets', 'hot' => true],
         // 9 Oct 2026: Office chat - the office and every agent / counter talk about
         // a ticket inside the panel (photos, voice notes, call buttons, push).
         // Near the top so an agent's flat strip shows it early; the office files
@@ -254,6 +255,7 @@ function admin_nav(): array
         ['href' => 'payroll.php',      'icon' => 'rupee',       'label' => 'Staff Payroll',    'perm' => 'reports.view',   'section' => 'Expenses & reports'],
         // 5 Oct 2026: every message in one live book - who got what, delivered / read, cost, AiSensy wallet.
         ['href' => 'wa-manager.php',   'icon' => 'whatsapp',  'label' => '📲 WhatsApp Manager', 'perm' => 'reports.view',  'section' => 'Expenses & reports', 'hot' => true],
+        ['href' => 'wa-form.php',      'icon' => 'whatsapp',  'label' => '📝 WhatsApp booking form', 'perm' => 'reports.view', 'section' => 'Expenses & reports'],
         // 6 Oct 2026: the AI that markets on WhatsApp by itself (budget-guarded) + learns from questions.
         ['href' => 'ai-marketing.php', 'icon' => 'whatsapp',  'label' => '🤖 AI Marketing',   'perm' => 'customers.view', 'section' => 'Expenses & reports', 'hot' => true],
         // 8 Oct 2026: 32 editable WhatsApp drafts (customer / marketing / agent / staff), filled from records only.
@@ -509,7 +511,7 @@ function admin_header(string $title, string $active = ''): void
         $secMap = [
             'customers.php' => '👥 Customers', 'customer-ledger.php' => '👥 Customers', 'customer-directory.php' => '👥 Customers',
             'customer-duplicates.php' => '👥 Customers', 'enquiries.php' => '👥 Customers', 'support-inbox.php' => '👥 Customers',
-            'wa-compose.php' => '📲 WhatsApp & marketing', 'campaigns.php' => '📲 WhatsApp & marketing', 'wa-manager.php' => '📲 WhatsApp & marketing',
+            'wa-compose.php' => '📲 WhatsApp & marketing', 'campaigns.php' => '📲 WhatsApp & marketing', 'wa-manager.php' => '📲 WhatsApp & marketing', 'wa-form.php' => '📲 WhatsApp & marketing',
             'wa-templates.php' => '📲 WhatsApp & marketing', 'messages-log.php' => '📲 WhatsApp & marketing', 'ai-marketing.php' => '📲 WhatsApp & marketing',
             'promo-card.php' => '📲 WhatsApp & marketing', 'wa-pending.php' => '📲 WhatsApp & marketing', 'wa-queue.php' => '📲 WhatsApp & marketing',
             'wa-routing.php' => '📲 WhatsApp & marketing', 'customer-lists.php' => '👥 Customers',
@@ -612,7 +614,7 @@ function admin_mobile_nav(array $items, string $active = ''): string
         $home = $find('smartbook.php') ?? $find('bookings.php');
     }
     $tickets = $find('bookings.php');
-    $new     = $find('quick-ticket.php') ?? $find('/index.php?counter=1#/');
+    $new     = $find('smartbook.php');   // 15 Oct 2026: the one booking screen
     $desk    = !Auth::can('dashboard.view');
     $fourth  = $desk
         ? ($find('map.php') ?? $find('agent-sales.php'))
@@ -635,7 +637,7 @@ function admin_mobile_nav(array $items, string $active = ''): string
     };
     $slots[] = $slot($home, 'Home', 'home', 'home', $active);
     $slots[] = $slot($tickets, 'Tickets', 'ticket', 'tix', $active);
-    $slots[] = $new !== null ? $slot($new, 'Ticket', $new['href'] === 'quick-ticket.php' ? 'bolt' : 'plus-plain', 'fab', $active, true) : '<a class="mn-empty" aria-hidden="true"></a>';
+    $slots[] = $new !== null ? $slot($new, 'Ticket', 'bolt', 'fab', $active, true) : '<a class="mn-empty" aria-hidden="true"></a>';
     $slots[] = $slot($fourth, $fourthMeta[0], $fourthMeta[1], $fourthMeta[2], $active);
     $slots[] = '<a class="mn-menu" href="#" onclick="document.body.classList.toggle(\'nav-open\');return false" aria-label="Menu"><svg class="a-ic"><use href="#a-list"/></svg>Menu</a>';
     return '<nav class="mnav" aria-label="Quick navigation">' . implode('', $slots) . '</nav>'

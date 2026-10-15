@@ -53,6 +53,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET' && !isset($_GET['legacy'])) 
     if ($cphone !== '' && Security::isValidPhone($cphone, true)) { $qs['cphone'] = $cphone; }
     $cname = trim(Security::clean($_GET['cname'] ?? '', 80));
     if ($cname !== '') { $qs['cname'] = $cname; }
+    /* 15 Oct 2026 (owner: "new booking remove gardeu, euta matra book"): every
+       plain "new booking" link lands on SmartBook, the one booking screen; the
+       customer's mobile + name ride along. A link for an EXACT bus (route +
+       date + sid - Quick Edit "Add passenger") keeps the counter seat map. */
+    if (!isset($_GET['counter']) && !isset($qs['date']) && !isset($qs['from'])) {
+        Response::redirect('admin/smartbook.php' . (isset($qs['cphone']) ? '?' . http_build_query(['cphone' => $qs['cphone'], 'cname' => $qs['cname'] ?? '']) : ''));
+    }
     Response::redirect('index.php?' . http_build_query($qs) . '#/');
 }
 

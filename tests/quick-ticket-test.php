@@ -568,7 +568,8 @@ try {
     check('the app banner plans + confirms in place', str_contains($src('app.template.html'), 'id="qtPlanCard"') && str_contains($src('assets/js/05-router.js'), "action: 'customer_sell'") && str_contains($src('assets/js/05-router.js'), "'#/ticket/'"));
     check('the desk offers PNG + PDF downloads', str_contains($src('admin/quick-ticket.php'), 'Download PNG') && str_contains($src('admin/quick-ticket.php'), 'Download PDF'));
     check('api/quick-ticket.php admits selling staff only', str_contains($src('api/quick-ticket.php'), 'isSellingStaff') && str_contains($src('api/quick-ticket.php'), 'requireCsrf'));
-    check('admin nav carries the ⚡ Quick Ticket entry (hot)', str_contains($src('admin/_guard.php'), "'href' => 'quick-ticket.php'") && str_contains($src('admin/_guard.php'), "'hot' => true"));
+    // 15 Oct 2026 (owner: "euta matra book"): SmartBook is the one booking entry; QuickBot stays reachable by URL.
+    check('admin nav: SmartBook is the one hot booking entry', str_contains($src('admin/_guard.php'), "'href' => 'smartbook.php'") && !str_contains($src('admin/_guard.php'), "'href' => 'quick-ticket.php'") && is_file(dirname(__DIR__) . '/admin/quick-ticket.php'));
     check('admin dashboard links the desk', str_contains($src('admin/index.php'), '/admin/quick-ticket.php'));
     check('the desk page gates on bookings.view and reads QuickTicket', str_contains($src('admin/quick-ticket.php'), "admin_boot('bookings.view')") && str_contains($src('admin/quick-ticket.php'), '/api/quick-ticket.php'));
     check('the app home highlights the Quick Ticket Service', str_contains($src('app.template.html'), 'id="quickTicket"') && str_contains($src('app.template.html'), 'data-scroll="quick-ticket"'));

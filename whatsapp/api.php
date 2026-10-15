@@ -317,6 +317,30 @@ if (!function_exists('waGraphPost')) {
             $interactive['footer'] = ['text' => mb_substr($footer, 0, 60)];
         }
 
+        if (($ui['kind'] ?? '') === 'flow') {
+            /* 15 Oct 2026: the booking FORM (includes/waflow.php) - a WhatsApp
+               Flow opened by one button, its stops / dates / seat counts sent
+               as the screen's data. Free inside the 24 h window like a list. */
+            $f = (array) ($ui['flow'] ?? []);
+            if (trim((string) ($f['id'] ?? '')) === '') {
+                return $fail('no flow id');
+            }
+            $params = [
+                'flow_message_version' => '3',
+                'flow_token'           => (string) ($f['token'] ?? 'unused'),
+                'flow_id'              => (string) $f['id'],
+                'flow_cta'             => mb_substr(trim((string) ($f['cta'] ?? 'Book')), 0, 20),
+                'flow_action'          => 'navigate',
+                'flow_action_payload'  => ['screen' => (string) ($f['screen'] ?? 'BOOK'), 'data' => (object) ((array) ($f['data'] ?? []))],
+            ];
+            if (!empty($f['draft'])) {
+                $params['mode'] = 'draft';
+            }
+            $interactive['type']   = 'flow';
+            $interactive['action'] = ['name' => 'flow', 'parameters' => $params];
+            return waGraphPost($to, ['type' => 'interactive', 'interactive' => $interactive], 'interactive');
+        }
+
         if (($ui['kind'] ?? '') === 'list') {
             $rows = [];
             foreach (array_slice((array) ($ui['rows'] ?? []), 0, 10) as $row) {

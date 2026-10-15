@@ -385,12 +385,44 @@ function wh_process_inbound(array $msg): void
         if (WaQueue::ready()) {
             $gotTickets = WaQueue::onInbound($from, $text, 'meta');
             $plainText  = trim(preg_replace('/SHG-?\s?\d{4}-?\s?\d{3,6}/i', '', $text) ?? '');
-            if ($gotTickets > 0 && mb_strlen($plainText) <= 25) {
+            if ($gotTickets > 0 && mb_strlen($plainText) <= 25 && !isset($msg['interactive']['nfm_reply'])) {   // a filled booking form still books
                 return;
             }
         }
     } catch (Throwable $e) {
         Logger::exception($e, 'whatsapp');
+    }
+
+    /* 15 Oct 2026 - the booking FORM (includes/waflow.php) came back filled
+       in. Pressing Book in the form is the confirmation: it goes straight to
+       the sale and the ticket (or the UPI QR) is the answer. */
+    require_once INCLUDE_PATH . '/waflow.php';
+    WaFlow::$metaChannel = true;              // replies from here may carry the form
+    if ($type === 'interactive' && WaFlow::isReply((array) ($msg['interactive'] ?? []))) {
+        $staff = null;
+        try {
+            require_once INCLUDE_PATH . '/aitools.php';
+            require_once INCLUDE_PATH . '/ticketbot.php';
+            require_once INCLUDE_PATH . '/quickticket.php';
+            $who = AiTools::whoIs('+' . $from);
+            if (in_array((string) ($who['role'] ?? ''), ['staff', 'admin'], true) && Settings::getBool('wa_order_staff_on', true)) {
+                $staff = $who;
+            }
+        } catch (Throwable $e) {
+            Logger::exception($e, 'whatsapp');
+        }
+        $reply = WaFlow::handleReply($from, (array) $msg['interactive'], $staff, resolvePhoneCountry('', '+' . $from));
+        $media = $reply['media'] ?? null;
+        $r = ($media !== null && $media !== '' && mb_strlen($reply['text']) <= 1024)
+            ? sendWhatsAppImage($from, $media, $reply['text'])
+            : ['success' => false];
+        if (!$r['success']) {
+            $r = sendWhatsAppText($from, $reply['text']);
+        }
+        Notify::logOutbound($from, $reply['text'], $r['success'] ? 'sent' : 'failed', [
+            'provider' => 'cloud_api', 'sid' => $r['message_id'] ?? '', 'purpose' => 'bot_reply', 'error' => $r['success'] ? null : ($r['error'] ?? ''),
+        ]);
+        return;
     }
 
     /* A voice note becomes the words that were spoken (23 Sep 2026, owner:

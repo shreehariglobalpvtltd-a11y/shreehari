@@ -87,10 +87,11 @@ final class WaBooking
                questions (whose ticket it is comes into it). wa_book_combo_on = 0
                puts the guided order back for everyone. */
             if ($seller === null && self::comboOn()) {
-                return self::comboStart($phoneDigits, $lang);
+                return self::withForm(self::comboStart($phoneDigits, $lang), $phoneDigits, $lang, false);
             }
             $state = ['slots' => ['_guided' => true], 'awaiting' => '', 'options' => [], 'lang' => $lang];
             $text  = '';
+            $formFirst = true;
         }
 
         // "cancel" ends it at any point, in any of the four languages.
@@ -383,11 +384,13 @@ final class WaBooking
                 }
                 $q = self::guidedQuestion($field, $lang, $planNow, $seller !== null);
                 self::save($phoneDigits, $explicit, $field, $q['options'], $lang);
-                return self::out(
+                $asked = self::out(
                     ($prefix !== '' ? $prefix . "\n\n" : '') . self::withOptions($q['question'], $q['options'], $lang),
                     null,
                     self::choiceUi(($prefix !== '' ? $prefix . "\n\n" : '') . $q['question'], $q['options'], $lang)
                 );
+                // The order just opened: the one-sheet form instead (the question stays as the text fallback).
+                return !empty($formFirst) ? self::withForm($asked, $phoneDigits, $lang, $seller !== null) : $asked;
             }
         }
 
@@ -598,6 +601,56 @@ final class WaBooking
      *  missing is asked for in ONE more. Nothing here sells: the summary and
      *  its explicit yes are exactly as before.
      * --------------------------------------------------------------- */
+
+    /**
+     * The booking FORM (15 Oct 2026, includes/waflow.php): on the Meta number,
+     * with the form published, the opening question goes out as the one-sheet
+     * WhatsApp form instead. The question is kept as the text - when Meta
+     * refuses the form the webhook sends that text, and a typed answer is read
+     * by the conversation saved above exactly as before.
+     *
+     * @param array{text: string, media: ?string, ui: ?array} $reply
+     */
+    private static function withForm(array $reply, string $who, string $lang, bool $forSeller): array
+    {
+        try {
+            require_once __DIR__ . '/waflow.php';
+            if (WaFlow::canSend()) {
+                $reply['ui'] = WaFlow::ui($who, $lang, $forSeller);
+            }
+        } catch (Throwable $e) {
+            Logger::exception($e, 'whatsapp');
+        }
+        return $reply;
+    }
+
+    /**
+     * A submitted booking form (WaFlow::handleReply): straight to the sale -
+     * the Book button in the form is the confirmation. $contact is the mobile
+     * typed in the form ('' = the sender's own number); for a seller it is the
+     * customer's number the ticket goes to.
+     *
+     * @return array{text: string, media: ?string, ui: ?array}
+     */
+    public static function sellFromForm(string $phoneDigits, array $slots, string $lang, string $senderCountry, string $pay, ?array $seller, string $contact = ''): array
+    {
+        $state = self::load($phoneDigits);
+        if ($state !== null && (string) ($state['lang'] ?? '') !== '') {
+            $lang = (string) $state['lang'];          // the language the order was opened in
+        }
+        self::clear($phoneDigits);
+        if ($seller !== null) {
+            $slots['custPhone'] = $contact;
+            return self::sell($phoneDigits, $slots, $lang, $senderCountry, 'cash', $seller);
+        }
+        return self::sell($phoneDigits, $slots, $lang, $senderCountry, $pay, null, $contact);
+    }
+
+    /** parseParty() for the form's "other passengers" box. */
+    public static function partyFrom(string $text, int $max): array
+    {
+        return self::parseParty($text, max(1, $max));
+    }
 
     /** wa_book_combo_on (default on): customers get the combined question. */
     private static function comboOn(): bool
@@ -1316,7 +1369,7 @@ final class WaBooking
     /* ----------------------------------------------------------------- */
 
     /** The sale itself, after an explicit yes. */
-    private static function sell(string $phoneDigits, array $slots, string $lang, string $senderCountry = '', string $pay = '', ?array $seller = null): array
+    private static function sell(string $phoneDigits, array $slots, string $lang, string $senderCountry = '', string $pay = '', ?array $seller = null, string $contact = ''): array
     {
         /* The name on the ticket must be a person's name (24 Sep 2026): a
            stop, a yes-word or a number that slipped past the slot logic is
@@ -1340,7 +1393,9 @@ final class WaBooking
         try {
             $res = QuickTicket::sellCustomer([
                 'name'      => $paxName,
-                'phone'     => $phoneDigits,
+                /* 15 Oct 2026: the booking form's own Mobile box books for that
+                   number (the ticket goes there); blank = the sender. */
+                'phone'     => $contact !== '' ? $contact : $phoneDigits,
                 /* '' = the office default (pay on the bus when allowed);
                    'upi' = they chose to pay now, so the booking waits for the
                    money and the QR goes back instead of the ticket. */
@@ -1349,7 +1404,8 @@ final class WaBooking
                    the webhook) is the truth about where this ticket goes; a
                    country parsed out of the text only fills in when the
                    transport gave none. */
-                'country'   => $senderCountry !== '' ? $senderCountry : (string) ($slots['country'] ?? ''),
+                'country'   => ($contact !== '' && strlen($contact) >= 12) ? (str_starts_with($contact, '977') ? 'NP' : 'IN')
+                             : ($senderCountry !== '' ? $senderCountry : (string) ($slots['country'] ?? '')),
                 'seats'     => (int) ($slots['seats'] ?? 1),
                 'direction' => (string) ($slots['direction'] ?? ''),
                 'date'      => (string) ($slots['date'] ?? ''),

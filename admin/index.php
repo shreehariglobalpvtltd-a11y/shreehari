@@ -370,8 +370,8 @@ $actions = $dateForm
     // 8 Oct 2026 (D9-02): .btn.warn is the amber CAUTION face now; QuickBot is
     // the main sale, so it keeps the royal action face it has always shown.
     // 15 Oct 2026: both sale buttons only for a role that may sell (bookings.view).
-    . ($may('quick-ticket.php') ? '<a class="btn" href="' . $base . '/admin/quick-ticket.php"><svg class="a-ic"><use href="#a-bolt"/></svg>QuickBot Ticket</a>' : '')
-    . (Auth::can('bookings.view') ? '<a class="btn" href="/index.php?counter=1#/"><svg class="a-ic"><use href="#a-plus-plain"/></svg>New booking</a>' : '')
+    // 15 Oct 2026 (owner: "euta matra book"): one sale button - SmartBook.
+    . ($may('smartbook.php') ? '<a class="btn" href="' . $base . '/admin/smartbook.php"><svg class="a-ic"><use href="#a-bolt"/></svg>Book ticket</a>' : '')
     // 17 Sep 2026: today's office summary to the admin WhatsApp number in one
     // click (admin/api/wa-send.php). Renders nothing when wa_admin_tools_enabled
     // is off or the role lacks dashboard.view — the dashboard itself is untouched.

@@ -294,15 +294,19 @@
         S.q = q;
         if (!S.date && q.date) { /* next departure chosen by the engine */ }
         renderDates(); renderQuote(flash);
-        syncButtons();
+        syncButtons(); quoted();
       })
       .catch(function (e) {
         if (my !== qSeq) return;
         S.q = null;
         $('sbSeatLine').textContent = e && e.message ? e.message : '—';
-        renderQuote(); syncButtons();
+        renderQuote(); syncButtons(); quoted();
       });
   }
+  /* 15 Oct 2026 (staff one-line order, auto-book): who is waiting for the next quote. */
+  var qWait = [];
+  function whenQuoted() { return new Promise(function (res) { qWait.push(res); }); }
+  function quoted() { var w = qWait; qWait = []; w.forEach(function (f) { try { f(); } catch (x) {} }); }
   function seatSummary(q) {
     if (!q || !q.seats || !q.seats.length) return '';
     var floors = q.floors || [];
@@ -442,6 +446,13 @@
       if (missing.indexOf('gender') >= 0) { S.touched.pax = true; }
       if (missing.indexOf('phone') >= 0) { $('sbPhone').focus(); } else if (missing.indexOf('name') >= 0) { $('sbName').focus(); }
       showErrs(false);
+      /* 15 Oct 2026 (owner: "confirmation automatic, quick flow ma ticket"): on a
+         staff desk with Auto-book on, a complete one-line order books at once
+         (Cash = confirmed, ticket + WhatsApp) - nothing to tap. Anything missing
+         is shown and the clerk finishes it with one tap as before. */
+      if (STAFF && typeof window.SB_AUTOBOOK === 'function' && window.SB_AUTOBOOK()) {
+        whenQuoted().then(function () { if (canBook()) book('cash', false); else showErrs(true); });
+      }
     }).catch(function (er) { say(er.message); });
   }
   /* Sahayak (16-lazy.js) and old "Book" links: the card is the booking now. */
@@ -820,6 +831,7 @@
     S.why = {}; fill(); applyWords(); store.set(); showErrs(false); requote(0);
   }
   window.SmartBook = { quote: function () { return S.q; }, state: S, requote: requote, loadCustomer: loadCustomer, fillText: fillFromText, resetForNext: resetForNext, mode: MODE,
+    errors: errs, canBook: canBook, book: book,
     setAgent: function (code) { setAgent(code, true); } };
 
   boot();

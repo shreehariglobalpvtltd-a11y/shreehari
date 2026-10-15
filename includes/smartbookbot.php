@@ -63,6 +63,9 @@ final class SmartBookBot
         }
         $n = max(0, min(BookingService::maxSeatsFor($mode !== 'customer'), (int) $p['seats']));
         $g = AutoBerth::gender($p['gender'] ?? '');
+        if ($n === 0 && $g !== null) {
+            $n = 1;   // 15 Oct 2026: "Sita 98…, female, Vadodara bholi" = one traveller, gender known (desk Auto-book)
+        }
         for ($i = 0; $i < $n; $i++) {
             $out['pax'][] = ['gender' => $i === 0 && $g !== null ? $g : '', 'band' => 'adult'];
         }

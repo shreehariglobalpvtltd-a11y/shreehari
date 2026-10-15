@@ -100,8 +100,18 @@ admin_header('SmartBook', 'smartbook');
 .sbx-reg{display:flex;gap:6px;overflow-x:auto;padding:4px 0 8px;scrollbar-width:thin}
 .sbx-reg button{flex:0 0 auto;min-height:38px;border:1px solid var(--line,#e0e8f2);border-radius:10px;background:var(--card,#fff);color:inherit;font:inherit;font-size:12.5px;padding:0 10px;cursor:pointer;white-space:nowrap}
 .sbx-help{font-size:12px;color:var(--muted,#637491);margin:2px 0 0}
-.sbx-ov{display:none;margin:6px 0 0}.sbx-ov input{width:100%;min-height:40px}
+.sbx-ov{display:none;margin:0}.sbx-ov input{width:100%;min-height:40px}
 html.sbx-admin .sbx-ov{display:block}
+.sbx-auto{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;border:1px solid #f0b429;background:#fff8e6;color:#7a5200;font-weight:800;font-size:12.5px;cursor:pointer}
+.sbx-more{margin-left:auto;position:relative}.sbx-more>summary{list-style:none;cursor:pointer;width:38px;height:38px;display:grid;place-items:center;border-radius:10px;border:1px solid var(--line,#e0e8f2);font-size:18px}
+.sbx-more>summary::-webkit-details-marker{display:none}
+.sbx-more-in{position:absolute;right:0;top:44px;z-index:30;width:min(420px,92vw);padding:12px;border-radius:14px;background:var(--card,#fff);border:1px solid var(--line,#e0e8f2);box-shadow:0 12px 30px rgba(7,26,64,.18);display:grid;gap:8px}
+.sbx-line{display:flex;gap:4px;list-style:none;margin:4px 0 8px;padding:0;overflow-x:auto;scrollbar-width:none;counter-reset:sbx}
+.sbx-line li{flex:0 0 auto;counter-increment:sbx;display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:0 12px 0 6px;border-radius:999px;border:1px solid var(--line,#e0e8f2);background:var(--card,#fff);font-size:12.5px;font-weight:700;cursor:pointer;color:var(--muted,#637491)}
+.sbx-line li::before{content:counter(sbx);display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#e8eef8;color:#3b4a66;font-size:11px}
+.sbx-line li.ok{color:#11603a;border-color:#9fdcb8;background:#eefaf2}.sbx-line li.ok::before{content:'✓';background:#1f9d55;color:#fff}
+.sbx-line li.now{border-color:#185bed;color:#185bed;box-shadow:0 0 0 2px rgba(24,91,237,.15)}
+.sbx-line li.sbx-go::before{content:'→'}.sbx-line li.sbx-go.ok{background:#1f9d55;color:#fff;border-color:#1f9d55}
 #smartBook{padding-left:0;padding-right:0}
 </style>
 <div class="sbx-top">
@@ -109,17 +119,29 @@ html.sbx-admin .sbx-ov{display:block}
   <?php if ($wallet !== null): ?>
     <span class="sbx-w">Cash to hand over <b class="<?= $wallet['limit'] > 0 && $wallet['cash'] >= $wallet['limit'] ? 'low' : '' ?>"><?= $e(inr($wallet['cash'])) ?></b> · Commission <b><?= $e(inr($wallet['commission'])) ?></b></span>
   <?php endif; ?>
-  <?php if ($isAdmin): ?>
-    <span class="sbx-modes"><?php foreach (['admin' => 'Admin', 'counter' => 'Counter mode', 'agent' => 'Agent mode'] as $k => $v): ?><a class="<?= $mode === $k ? 'on' : '' ?>" href="?mode=<?= $e($k) ?>"><?= $e($v) ?></a><?php endforeach; ?></span>
-  <?php endif; ?>
-  <label class="sbx-help"><input type="checkbox" id="sbxPrint"> 80 mm print after each Cash sale</label>
+  <label class="sbx-auto" title="A complete one-line order books at once as Cash: ticket confirmed, WhatsApp sent - no extra tap"><input type="checkbox" id="sbxAuto"> ⚡ Auto-book</label>
+  <details class="sbx-more"><summary>⚙</summary><div class="sbx-more-in">
+    <?php if ($isAdmin): ?>
+      <span class="sbx-modes"><?php foreach (['admin' => 'Admin', 'counter' => 'Counter mode', 'agent' => 'Agent mode'] as $k => $v): ?><a class="<?= $mode === $k ? 'on' : '' ?>" href="?mode=<?= $e($k) ?>"><?= $e($v) ?></a><?php endforeach; ?></span>
+    <?php endif; ?>
+    <label class="sbx-help"><input type="checkbox" id="sbxPrint"> 80 mm print after each Cash sale</label>
+    <p class="sbx-help">Enter = one more passenger · Ctrl+Enter = auto-berth + Cash + print · same engine as the website (rules decide, nothing typed is trusted).<?php if ($ownAgent === ''): ?> The agent you pick is remembered for this desk; commission goes to that agent, the cash stays with you.<?php endif; ?></p>
+    <?php if ($mode === 'admin'): ?>
+    <div class="sbx-ov" id="sbxOv"><label class="sbx-help" for="sbxOvIn">Override a hard rule on hand-picked berths — written reason (saved in the audit log)</label>
+      <input id="sbxOvIn" maxlength="200" placeholder="e.g. family travelling together, confirmed by phone"></div>
+    <?php endif; ?>
+  </div></details>
 </div>
+<!-- 15 Oct 2026 (owner: "customer ko jastai ordering line"): the order as one line of steps -
+     each turns green as it is filled; tap one to jump to it. Type the whole order in the
+     QuickBot line below ("Ram 98…, 2, Vadodara bholi") and Auto-book does the rest. -->
+<ol class="sbx-line" id="sbxLine" aria-label="Order steps">
+  <li data-k="route" data-go="sbDir">Route</li><li data-k="date" data-go="sbDates">Date</li><li data-k="point" data-go="sbPoint">Pickup</li>
+  <li data-k="phone" data-go="sbPhone">Mobile</li><li data-k="name" data-go="sbName">Name</li><li data-k="pax" data-go="sbPax">F / M</li>
+  <?php if ($ownAgent === '' && $agents !== []): ?><li data-k="agent" data-go="sbAgent">Agent</li><?php endif; ?>
+  <li data-k="book" data-go="sbCash" class="sbx-go">🎫 Book</li>
+</ol>
 <div class="sbx-reg" id="sbxReg" aria-label="Regular customers"></div>
-<p class="sbx-help">Enter = one more passenger · Ctrl+Enter = auto-berth + Cash + print · same engine as the website (rules decide, nothing typed is trusted).<?php if ($ownAgent === ''): ?> The agent you pick is remembered for this desk; commission goes to that agent, the cash stays with you.<?php endif; ?></p>
-<?php if ($mode === 'admin'): ?>
-<div class="sbx-ov" id="sbxOv"><label class="sbx-help" for="sbxOvIn">Override a hard rule on hand-picked berths — written reason (saved in the audit log)</label>
-  <input id="sbxOvIn" maxlength="200" placeholder="e.g. family travelling together, confirmed by phone"></div>
-<?php endif; ?>
 <?php echo $card; ?>
 <script>
 window.SHG_BOOT = window.SHG_BOOT || {};
@@ -164,6 +186,52 @@ window.factPolicyLine = function () { var p = <?= json_encode($F['policy']['line
   window.SB_AFTER = function () {
     setTimeout(function () { if (window.SmartBook && window.SmartBook.resetForNext) window.SmartBook.resetForNext(); }, 800);
   };
+})();
+/* 15 Oct 2026: Auto-book (one-line order → ticket, no tap) - remembered per desk, on by default. */
+(function () {
+  var au = document.getElementById('sbxAuto');
+  try { au.checked = localStorage.getItem('sb:auto') !== '0'; } catch (e) { au.checked = true; }
+  au.addEventListener('change', function () { try { localStorage.setItem('sb:auto', au.checked ? '1' : '0'); } catch (e) {} });
+  window.SB_AUTOBOOK = function () { return au.checked; };
+})();
+/* The ordering line: green as each step is filled, blue = the next one to do. */
+(function () {
+  var line = document.getElementById('sbxLine');
+  function paint() {
+    var sb = window.SmartBook; if (!sb || !sb.state) return;
+    var S = sb.state, er = sb.errors ? sb.errors() : {};
+    var done = {
+      route: !!S.dir, date: !!(S.q && S.q.date), point: !!S.point || S.dir === 'toIndia',
+      phone: !er.phone, name: !er.name, pax: !er.pax, agent: !er.agent
+    };
+    done.book = sb.canBook ? sb.canBook() : false;
+    var next = false;
+    line.querySelectorAll('li').forEach(function (li) {
+      var k = li.getAttribute('data-k'), ok = !!done[k];
+      li.classList.toggle('ok', ok);
+      li.classList.toggle('now', !ok && !next && (next = true));
+    });
+  }
+  setInterval(paint, 400);
+  line.addEventListener('click', function (e) {
+    var li = e.target.closest('li[data-go]'); if (!li) return;
+    var el = document.getElementById(li.getAttribute('data-go')); if (!el) return;
+    if (li.getAttribute('data-k') === 'book') { if (window.SmartBook && window.SmartBook.book) window.SmartBook.book('cash', false); return; }
+    try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (x) {}
+    var f = el.matches('input,select,button') ? el : el.querySelector('input,select,button');
+    if (f) setTimeout(function () { f.focus({ preventScroll: true }); }, 250);
+  });
+})();
+/* Opened from a customer / booking page: ?cphone=&cname= fill the card (never books by itself). */
+(function () {
+  var qs = new URLSearchParams(location.search), ph = qs.get('cphone') || '', nm = qs.get('cname') || '';
+  if (!ph) return;
+  var tries = 0, t = setInterval(function () {
+    var sb = window.SmartBook;
+    if (!(sb && sb.state && sb.state.dirs && sb.state.dirs.length) && ++tries < 40) return;
+    clearInterval(t); if (!sb) return;
+    if (sb.loadCustomer) sb.loadCustomer(ph, nm);
+  }, 250);
 })();
 </script>
 <script defer src="/assets/js/27-smartbook.js?v=<?= $e($ver) ?>"></script>
