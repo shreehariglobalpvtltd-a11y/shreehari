@@ -342,13 +342,16 @@ if ($hisabOn) {
                 COALESCE(SUM(b.status IN ('confirmed','completed') AND lp.status = 'cod_pending'), 0) AS cash_due_n,
                 COALESCE(SUM(CASE WHEN b.status IN ('confirmed','completed') AND lp.status = 'cod_pending' THEN b.total_amount ELSE 0 END), 0) AS cash_due,
                 COALESCE(SUM(b.status = 'pending' AND lp.status = 'pending' AND b.expires_at IS NULL), 0) AS unver_n,
-                COALESCE(SUM(CASE WHEN b.status = 'pending' AND lp.status = 'pending' AND b.expires_at IS NULL THEN b.total_amount ELSE 0 END), 0) AS unver
+                COALESCE(SUM(CASE WHEN b.status = 'pending' AND lp.status = 'pending' AND b.expires_at IS NULL THEN b.total_amount ELSE 0 END), 0) AS unver,
+                -- 15 Oct 2026 (Smart AI upgrade): commission reconciliation, read from the ledger.
+                COALESCE(SUM((SELECT COALESCE(SUM(al.amount), 0) FROM agent_ledger al WHERE al.booking_id = b.id AND al.account = 'commission' AND al.entry_type IN ('commission','commission_void'))), 0) AS comm,
+                COALESCE(SUM(b.status = 'cancelled' AND (SELECT COALESCE(SUM(al.amount), 0) FROM agent_ledger al WHERE al.booking_id = b.id AND al.account = 'commission' AND al.entry_type IN ('commission','commission_void')) > 0.009), 0) AS comm_bad
          " . $joinSql . $lpJoin . ' LEFT JOIN admins sa ON sa.id = b.sold_by_admin_id' . $whereSql . '
           GROUP BY b.sold_by_admin_id
           ORDER BY revenue DESC, n DESC',
         $params
     );
-    $hKeys = ['n', 'pax', 'revenue', 'cancelled', 'ref_done', 'ref_pend_n', 'ref_pend', 'cash_due_n', 'cash_due', 'unver_n', 'unver'];
+    $hKeys = ['n', 'pax', 'revenue', 'cancelled', 'ref_done', 'ref_pend_n', 'ref_pend', 'cash_due_n', 'cash_due', 'unver_n', 'unver', 'comm', 'comm_bad'];
     $hTot  = array_fill_keys($hKeys, 0.0);
     $hSell = [];
     foreach ($hRows as $hr) {
@@ -382,11 +385,13 @@ if ($hisabOn) {
             ['filters' => array_filter(array_map(static fn($v): string => is_string($v) ? mb_substr($v, 0, 60) : '', $_GET))],
             'monthly hisab downloaded');
         $hHead = ['Seller', 'Tickets', 'Passengers', 'Revenue', 'Cancelled', 'Refunds paid', 'Refunds pending (no.)',
-                  'Refunds pending', 'Cash due (no.)', 'Cash due', 'Unverified (no.)', 'Unverified'];
+                  'Refunds pending', 'Cash due (no.)', 'Cash due', 'Unverified (no.)', 'Unverified',
+                  'Commission (ledger)', 'Net to office', 'Cancelled still carrying commission (no.)'];
         $hLine = static fn(string $label, array $v): array => [
             $label, (int) $v['n'], (int) $v['pax'], $showMoney ? (float) $v['revenue'] : '', (int) $v['cancelled'],
             $showMoney ? (float) $v['ref_done'] : '', (int) $v['ref_pend_n'], $showMoney ? (float) $v['ref_pend'] : '',
             (int) $v['cash_due_n'], $showMoney ? (float) $v['cash_due'] : '', (int) $v['unver_n'], $showMoney ? (float) $v['unver'] : '',
+            $showMoney ? (float) $v['comm'] : '', $showMoney ? (float) $v['revenue'] - (float) $v['comm'] : '', (int) $v['comm_bad'],
         ];
         $hData = [];
         foreach ($hisabBySeller ? $hSell : [] as $hs) {
@@ -395,7 +400,7 @@ if ($hisabOn) {
         $hData[] = $hLine('TOTAL (' . $hisab['window'] . ')', $hTot);
         $hName = 'SHG-hisab-' . date('Y-m-d');
         if ($hx === 'xlsx') {
-            shg_export_xlsx($hName . '.xlsx', 'Hisab', $hHead, $hData, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+            shg_export_xlsx($hName . '.xlsx', 'Hisab', $hHead, $hData, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
         }
         shg_export_csv($hName . '.csv', $hHead, $hData);
     }
@@ -1143,17 +1148,20 @@ table.tk-sheet thead .tk-first{z-index:2;background:var(--head,var(--card))}
     <div><span>Refunds pending</span><b><?= number_format((int) $ht['ref_pend_n']) ?> · <?= Security::e(inr((float) $ht['ref_pend'])) ?></b></div>
     <div><span>Cash due (boarding)</span><b><?= number_format((int) $ht['cash_due_n']) ?> · <?= Security::e(inr((float) $ht['cash_due'])) ?></b></div>
     <div><span>Unverified online</span><b><?= number_format((int) $ht['unver_n']) ?> · <?= Security::e(inr((float) $ht['unver'])) ?></b></div>
+    <div><span>Commission (ledger)</span><b style="color:#0a6b3b"><?= Security::e(inr((float) $ht['comm'])) ?></b></div>
+    <div><span>Net to office</span><b><?= Security::e(inr((float) $ht['revenue'] - (float) $ht['comm'])) ?></b></div>
     <?php else: ?>
     <div><span>Refunds pending</span><b><?= number_format((int) $ht['ref_pend_n']) ?></b></div>
     <div><span>Cash due (boarding)</span><b><?= number_format((int) $ht['cash_due_n']) ?></b></div>
     <div><span>Unverified online</span><b><?= number_format((int) $ht['unver_n']) ?></b></div>
     <?php endif; ?>
   </div>
+  <?php if ($showMoney && (int) $ht['comm_bad'] > 0): ?><p class="flash warn" style="font-size:12.5px;margin:0 0 8px">⚠️ <?= (int) $ht['comm_bad'] ?> cancelled ticket<?= (int) $ht['comm_bad'] === 1 ? '' : 's' ?> still carr<?= (int) $ht['comm_bad'] === 1 ? 'ies' : 'y' ?> commission in the agent ledger — check them in <a href="<?= $base ?>/admin/ledger-check.php">Ledger check</a>.</p><?php endif; ?>
   <?php if (!$showMoney): ?><p class="muted" style="font-size:12.5px;margin:0 0 8px">Money figures are for the accounts desk. Tap <b>Only my sales</b> for your own hisab.</p><?php endif; ?>
   <?php if ($hisabBySeller && $hisab['sellers'] !== []): ?>
   <div class="tbl-scroll">
   <table>
-    <thead><tr><th>Seller</th><th class="num">Tickets</th><th class="num">Pax</th><th class="num">Revenue</th><th class="num">Cancelled</th><th class="num">Refunds paid</th><th class="num">Refunds pending</th><th class="num">Cash due</th><th class="num">Unverified</th></tr></thead>
+    <thead><tr><th>Seller</th><th class="num">Tickets</th><th class="num">Pax</th><th class="num">Revenue</th><th class="num">Cancelled</th><th class="num">Refunds paid</th><th class="num">Refunds pending</th><th class="num">Cash due</th><th class="num">Unverified</th><th class="num">Commission</th><th class="num">Net to office</th></tr></thead>
     <tbody>
     <?php foreach ($hisab['sellers'] as $hs): ?>
       <tr>
@@ -1166,6 +1174,8 @@ table.tk-sheet thead .tk-first{z-index:2;background:var(--head,var(--card))}
         <td data-label="Refunds pending" class="num"><?= (int) $hs['ref_pend_n'] ?> · <?= Security::e(inr((float) $hs['ref_pend'])) ?></td>
         <td data-label="Cash due" class="num"><?= (int) $hs['cash_due_n'] ?> · <?= Security::e(inr((float) $hs['cash_due'])) ?></td>
         <td data-label="Unverified" class="num"><?= (int) $hs['unver_n'] ?> · <?= Security::e(inr((float) $hs['unver'])) ?></td>
+        <td data-label="Commission" class="num" style="color:#0a6b3b"><?= Security::e(inr((float) $hs['comm'])) ?><?= (int) $hs['comm_bad'] > 0 ? ' <span class="pill st-bad" title="Cancelled tickets still carrying commission">⚠️ ' . (int) $hs['comm_bad'] . '</span>' : '' ?></td>
+        <td data-label="Net to office" class="num"><?= Security::e(inr((float) $hs['revenue'] - (float) $hs['comm'])) ?></td>
       </tr>
     <?php endforeach; ?>
     </tbody>
