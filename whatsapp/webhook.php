@@ -282,7 +282,7 @@ function wh_queue_add(string $wamid, string $from, string $type, array $msg): ?b
     try {
         return Database::run(
             "INSERT IGNORE INTO wa_inbound (wamid, from_digits, msg_type, payload, status, attempts, next_at)
-             VALUES (:w, :f, :t, :p, 'pending', 1, NOW() + INTERVAL 2 MINUTE)",
+             VALUES (:w, :f, :t, :p, 'pending', 1, NOW() + INTERVAL 10 MINUTE)",
             ['w' => substr($wamid, 0, 128), 'f' => substr($from, 0, 20), 't' => substr($type, 0, 20),
              'p' => (string) json_encode($msg, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]
         ) > 0;

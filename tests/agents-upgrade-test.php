@@ -388,8 +388,9 @@ try {
     check('batch pay: 3 marked paid, the unknown id named', str_contains($out, '3 settlements marked paid') && str_contains($out, '#999999999'), fatal_of($out) ?: substr(strip_tags($out), 0, 300));
     check('S1: commission paid out (UPI, ref ZZB-<no.>)', bal($S1)['commission'] === 0.0
         && Database::exists("SELECT 1 FROM agent_settlements WHERE id = :i AND status = 'paid' AND payment_mode = 'upi' AND payment_ref = :r", ['i' => (int) $ids[0], 'r' => 'ZZB-' . $ids[0]]));
-    check('S2: the cash is handed over, recorded as "No payment"', bal($S2)['cash'] === 0.0
-        && Database::exists("SELECT 1 FROM agent_settlements WHERE id = :i AND status = 'paid' AND payment_mode = 'adjust'", ['i' => (int) $ids[1]]));
+    // review fix: cash really changed hands, so the mode picked (UPI) is kept, not "No payment"
+    check('S2: the cash is handed over, recorded with the chosen mode', bal($S2)['cash'] === 0.0
+        && Database::exists("SELECT 1 FROM agent_settlements WHERE id = :i AND status = 'paid' AND payment_mode = 'upi'", ['i' => (int) $ids[1]]));
     check('S3: an advance outstanding no longer blocks a cash-only settlement', bal($S3)['cash'] === 0.0 && bal($S3)['commission'] === -500.0);
     $out = page('settlements.php', uname($M1), ['tab' => 'register'], ['action' => 'batch_pay', 'mode' => 'upi', 'ids' => $ids]);
     check('the same batch again pays nothing (no double payout)', str_contains($out, '0 settlements marked paid') && bal($S1)['commission'] === 0.0 && bal($S2)['cash'] === 0.0);

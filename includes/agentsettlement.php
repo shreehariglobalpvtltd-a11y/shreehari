@@ -378,6 +378,13 @@ final class AgentSettlement
             "SELECT id, status, created_at FROM agent_settlements WHERE agent_admin_id = :a AND status IN ('draft','approved') ORDER BY id DESC LIMIT 1",
             ['a' => $agentId]
         );
+        /* review fix: a CREDIT to an agent who owes the company (commission
+           balance below zero, e.g. an open advance) would become a cash payout
+           on Mark paid while the debt stays. Only a super-admin posts that
+           straight to the ledger (rule off / Agent 360). */
+        if (!$debit && (float) (AgentWallet::balances($agentId)['commission'] ?? 0) < 0) {
+            throw new RuntimeException('This agent owes the company (commission balance below zero) - a credit cannot be paid out as cash. Ask a super-admin to post it against the balance.');
+        }
         if ($open !== null && $open['status'] === 'approved') {
             throw new RuntimeException('Settlement ' . self::number($open) . ' is approved and waiting to be paid — mark it paid or cancel it, then add this change.');
         }

@@ -353,9 +353,13 @@ final class TicketEdit
             $comm = Database::fetch("SELECT id, agent_admin_id, amount, note FROM agent_ledger WHERE booking_id = :b AND entry_type = 'commission' LIMIT 1", ['b' => $bookingId]);
             if ($comm !== null && in_array((string) $b['status'], ['confirmed', 'completed'], true)) {
                 $agentId = (int) $comm['agent_admin_id'];
-                $want    = AgentWallet::commissionForBooking($total, $agentId, AgentWallet::seatCountFor($bookingId));
-                $voided  = (float) Database::scalar("SELECT COALESCE(SUM(amount), 0) FROM agent_ledger WHERE booking_id = :b AND entry_type = 'commission_void'", ['b' => $bookingId], 0);
-                $shift   = round($want - ((float) $comm['amount'] + $voided), 2);
+                /* Only the FARE-driven part moves (review fix): the same scheme
+                   priced at the old and the new total, so a rate or override
+                   changed since the sale never leaks into the correction, and
+                   a flat per-seat scheme shifts by exactly 0. */
+                $seatsN  = AgentWallet::seatCountFor($bookingId);
+                $shift   = round(AgentWallet::commissionForBooking($total, $agentId, $seatsN)
+                               - AgentWallet::commissionForBooking($oldTotal, $agentId, $seatsN), 2);
                 if (abs($shift) >= 0.005) {
                     $cNew = round((float) $comm['amount'] + $shift, 2);
                     Database::update('agent_ledger', [
@@ -411,7 +415,8 @@ final class TicketEdit
                   WHERE b.id = :b LIMIT 1",
                 ['b' => $bookingId]
             );
-            if ($row === null || (string) ($row['booking_mode'] ?? '') !== 'sharing') {
+            // an empty / NULL mode is a sharing sale (as booking-view treats it)
+            if ($row === null || ((string) ($row['booking_mode'] ?? '') ?: 'sharing') !== 'sharing') {
                 return 0.0;
             }
             $schedule = Seats::scheduleById((int) $row['schedule_id']);

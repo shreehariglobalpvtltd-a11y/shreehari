@@ -137,6 +137,24 @@ function shg_booking_column_filters(array &$where, array &$params, array $in): a
         }
     }
 
+    /* 15 Oct 2026 (review fix): the dashboard's drill-downs. cancelled_from /
+       cancelled_to = the CANCEL date window ("Cancelled today"); cancel_req=1 =
+       tickets with an open WhatsApp cancel request (counted on the dashboard,
+       settled by hand). */
+    $cf = (string) ($in['cancelled_from'] ?? '');
+    $ct = (string) ($in['cancelled_to'] ?? '');
+    if (Security::isValidDate($cf)) {
+        $where[] = 'b.cancelled_at >= :cxFrom';
+        $params['cxFrom'] = $cf . ' 00:00:00';
+    }
+    if (Security::isValidDate($ct)) {
+        $where[] = 'b.cancelled_at <= :cxTo';
+        $params['cxTo'] = $ct . ' 23:59:59';
+    }
+    if ((string) ($in['cancel_req'] ?? '') === '1') {
+        $where[] = "EXISTS (SELECT 1 FROM ticket_edit_audit tq WHERE tq.booking_id = b.id AND tq.field_changed = 'cancel_request' AND tq.outcome = 'requested')";
+    }
+
     return ['f_ticket' => $tk, 'f_pax' => $pax, 'f_mob' => $mob, 'f_seat' => $seat, 'mine' => $mine];
 }
 

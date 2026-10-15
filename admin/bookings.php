@@ -341,8 +341,8 @@ if ($hisabOn) {
                 COALESCE(SUM(CASE WHEN b.refund_status = 'pending' THEN b.refund_amount ELSE 0 END), 0) AS ref_pend,
                 COALESCE(SUM(b.status IN ('confirmed','completed') AND lp.status = 'cod_pending'), 0) AS cash_due_n,
                 COALESCE(SUM(CASE WHEN b.status IN ('confirmed','completed') AND lp.status = 'cod_pending' THEN b.total_amount ELSE 0 END), 0) AS cash_due,
-                COALESCE(SUM(b.status = 'pending' AND lp.status = 'pending'), 0) AS unver_n,
-                COALESCE(SUM(CASE WHEN b.status = 'pending' AND lp.status = 'pending' THEN b.total_amount ELSE 0 END), 0) AS unver
+                COALESCE(SUM(b.status = 'pending' AND lp.status = 'pending' AND b.expires_at IS NULL), 0) AS unver_n,
+                COALESCE(SUM(CASE WHEN b.status = 'pending' AND lp.status = 'pending' AND b.expires_at IS NULL THEN b.total_amount ELSE 0 END), 0) AS unver
          " . $joinSql . $lpJoin . ' LEFT JOIN admins sa ON sa.id = b.sold_by_admin_id' . $whereSql . '
           GROUP BY b.sold_by_admin_id
           ORDER BY revenue DESC, n DESC',
@@ -545,7 +545,8 @@ if (($admin['role'] ?? '') === 'counter' && $q === '' && $status === '' && $page
                  AND COALESCE((SELECT p2.status FROM payments p2 WHERE p2.booking_id = b.id ORDER BY p2.id DESC LIMIT 1), '') <> 'verified'";
     $tcParams = ['d' => $tdISO];
     if ($deskScope !== null && CounterDesk::stampColumn()) {
-        $tcWhere .= ' AND (b.counter_code = :desk OR b.counter_code IS NULL)';
+        // review fix: the desk rule the register uses (own desk, or sold by the desk's own clerks) + the website (no seller)
+        $tcWhere .= ' AND (' . CounterDesk::scopeClause('b', 'desk') . ' OR b.sold_by_admin_id IS NULL)';
         $tcParams['desk'] = $deskScope;
     }
     $toCollect = Database::fetch(
@@ -634,6 +635,10 @@ $exportBase = array_filter([
     'phone'       => $phoneFilter,
     'reach'       => $reachFilter,
     // 15 Oct 2026: the column funnels and "only my sales" (export.php reads them too).
+    // dashboard drill-downs (cancel date window, open cancel requests)
+    'cancelled_from' => $isDate((string) ($_GET['cancelled_from'] ?? '')) ? (string) $_GET['cancelled_from'] : '',
+    'cancelled_to'   => $isDate((string) ($_GET['cancelled_to'] ?? '')) ? (string) $_GET['cancelled_to'] : '',
+    'cancel_req'     => (string) ($_GET['cancel_req'] ?? '') === '1' ? '1' : '',
     'f_ticket'    => $cf['f_ticket'],
     'f_pax'       => $cf['f_pax'],
     'f_mob'       => $cf['f_mob'],

@@ -212,6 +212,18 @@ try {
         && ($st['slots']['date'] ?? '') === $tomorrow, json_encode($st['slots'] ?? null, JSON_UNESCAPED_UNICODE));
     WaBot::reply('+91' . WB_F, 'cancel');
 
+    /* review fixes (15 Oct 2026) */
+    check('"Kartik 5" (a Nepali date) is never 5 seats', priv('bareCount', ['Kartik 5', true]) === 0 && priv('bareCount', ['मंसिर 5', true]) === 0);
+    check('…while "Surat 2" still is', priv('bareCount', ['Surat 2', true]) === 2);
+    WaBot::reply('+91' . WB_F, 'Hari Prasad, Surat, bholi, 1');
+    $before = (string) (convo(WB_F)['slots']['name'] ?? '');
+    foreach (['cash ma tirchu', 'online garchu', 'date badalnu'] as $chat) {
+        WaBot::reply('+91' . WB_F, $chat);
+    }
+    check('at the summary, a chatty line never renames the passenger', $before === 'Hari Prasad' && (convo(WB_F)['slots']['name'] ?? '') === 'Hari Prasad',
+        json_encode(convo(WB_F)['slots'] ?? null, JSON_UNESCAPED_UNICODE));
+    WaBot::reply('+91' . WB_F, 'cancel');
+
     Settings::set('wa_book_combo_on', '0', 'string', 'whatsapp', false);
     $r = WaBot::reply('+91' . WB_F, 'ticket');
     check('wa_book_combo_on = 0: the guided order is back (which way, two buttons)', ids($r['ui'] ?? null) === ['shg:1', 'shg:2'], $r['text']);
@@ -412,9 +424,18 @@ try {
             ['w' => $id, 'f' => '91' . WB_G, 'p' => json_encode($msg), 's' => $status, 'a' => $attempts, 'm' => $agoMin]
         );
     };
-    $mk(WB_TAG . 'R1', 'menu', 5, 1);
+    // review fix: the inline answer is given 10 minutes before a replay may touch it
+    $mk(WB_TAG . 'R1', 'menu', 12, 1);
     $mk(WB_TAG . 'R2', 'menu', 120, 1);
-    $mk(WB_TAG . 'R3', 'menu', 5, 3, 'failed');
+    $mk(WB_TAG . 'R3', 'menu', 12, 3, 'failed');
+    $mk(WB_TAG . 'R0', 'menu', 4, 1);                  // still inside the inline hold
+    /* an older stuck message from a number whose NEWER message was answered */
+    $msgF = ['from' => '91' . WB_F, 'id' => WB_TAG . 'R4', 'timestamp' => (string) time(), 'type' => 'text', 'text' => ['body' => 'menu']];
+    Database::run("INSERT INTO wa_inbound (wamid, from_digits, msg_type, payload, status, attempts, next_at, created_at)
+                   VALUES (:w, :f, 'text', :p, 'pending', 1, NOW() - INTERVAL 1 MINUTE, NOW() - INTERVAL 15 MINUTE)",
+        ['w' => WB_TAG . 'R4', 'f' => '91' . WB_F, 'p' => json_encode($msgF)]);
+    Database::run("INSERT INTO wa_inbound (wamid, from_digits, msg_type, payload, status, attempts, next_at, created_at)
+                   VALUES (:w, :f, 'text', NULL, 'done', 1, NULL, NOW() - INTERVAL 14 MINUTE)", ['w' => WB_TAG . 'R5', 'f' => '91' . WB_F]);
     $runCron = static function (): string {
         $cmd = escapeshellarg(PHP_BINARY) . ' -c ' . escapeshellarg((string) php_ini_loaded_file()) . ' '
              . escapeshellarg(ROOT_PATH . '/cron/wa-inbound.php') . ' 2>&1';
@@ -427,7 +448,10 @@ try {
     check('  and the bot reply went to the sender (logged)', Database::exists(
         "SELECT 1 FROM message_logs WHERE to_number LIKE :t AND purpose = 'bot_reply'", ['t' => '%' . WB_G]), $out);
     check('a message two hours old is never answered late', ($row(WB_TAG . 'R2')['status'] ?? '') === 'failed' && (int) ($row(WB_TAG . 'R2')['attempts'] ?? 0) === 1);
-    check('a message out of attempts is left alone', ($row(WB_TAG . 'R3')['status'] ?? '') === 'failed' && (int) ($row(WB_TAG . 'R3')['attempts'] ?? 0) === 3);
+    check('a message still inside the 10-minute inline hold is not replayed', ($row(WB_TAG . 'R0')['status'] ?? '') === 'pending' && (int) ($row(WB_TAG . 'R0')['attempts'] ?? 0) === 1);
+    check('an older message superseded by a newer answered one is closed, not replayed', ($row(WB_TAG . 'R4')['status'] ?? '') === 'done'
+        && str_contains((string) ($row(WB_TAG . 'R4')['last_error'] ?? ''), 'superseded'));
+    check('a message out of attempts is left alone',($row(WB_TAG . 'R3')['status'] ?? '') === 'failed' && (int) ($row(WB_TAG . 'R3')['attempts'] ?? 0) === 3);
     $n0 = (int) Database::scalar("SELECT COUNT(*) FROM message_logs WHERE to_number LIKE :t AND purpose = 'bot_reply'", ['t' => '%' . WB_G], 0);
     $runCron();
     check('a second run answers nothing twice', (int) Database::scalar("SELECT COUNT(*) FROM message_logs WHERE to_number LIKE :t AND purpose = 'bot_reply'", ['t' => '%' . WB_G], 0) === $n0);

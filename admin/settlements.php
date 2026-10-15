@@ -181,7 +181,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                             throw new RuntimeException('not found');
                         }
                         $net = (float) $sr['net_amount'];
-                        AgentSettlement::markPaid($sid, $net > 0.009 ? $mode : 'adjust', $refPrefix !== '' ? $refPrefix . '-' . $sid : '', $selfId);
+                        // review fix: a cash-collection settlement keeps the mode the money came by
+                        $realMoney = $net > 0.009 || (float) ($sr['cash_received'] ?? 0) > 0.009;
+                        AgentSettlement::markPaid($sid, $realMoney ? $mode : 'adjust', $refPrefix !== '' ? $refPrefix . '-' . $sid : '', $selfId);
                         $done++;
                         $paidSum += $net;
                     } catch (Throwable $ex) {

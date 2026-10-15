@@ -376,8 +376,9 @@ try {
         str_contains($hh, 'Online (website)') && str_contains($hh, 'Agent · Chr Agent') && str_contains($hh, 'Counter · Chr Counter') && str_contains($hh, 'Office · Chr Ops'));
     check('… totals: 7 tickets, 5 passengers, ' . inr(7800) . ' revenue',
         str_contains($hh, '<span>Tickets</span><b>7</b>') && str_contains($hh, '<span>Passengers</span><b>5</b>') && str_contains($hh, '<span>Revenue</span><b>' . inr(7800) . '</b>'));
-    check('… money still to come in: cash 1 · ' . inr(3800) . ', unverified 2 · ' . inr(4000),
-        str_contains($hh, '<b>1 · ' . inr(3800) . '</b>') && str_contains($hh, '<b>2 · ' . inr(4000) . '</b>'));
+    // review fix: an unpaid hold with no proof (B7, expires_at set) is not money to come
+    check('… money still to come in: cash 1 · ' . inr(3800) . ', unverified 1 · ' . inr(2000) . ' (the abandoned hold left out)',
+        str_contains($hh, '<b>1 · ' . inr(3800) . '</b>') && str_contains($hh, '<b>1 · ' . inr(2000) . '</b>'));
     check('… display only - no refund / cancel control inside it',
         !preg_match('#aria-label="Monthly hisab".*?(<form|<button).*?</section>#s', $hh));
     $rho = render('bookings.php', $win + ['hisab' => '1'], $ops);

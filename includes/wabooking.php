@@ -152,7 +152,8 @@ final class WaBooking
            question back with the current values on it, so one message
            ("bholi", "3", "Kamrej", "naam Hari") fixes it. "change" is never
            taken for a passenger's name. */
-        if ($seller === null && $awaiting !== '' && $awaiting !== 'combo' && self::isChange($text)) {
+        // review fix: not at the name question - a passenger called Badal must be able to answer it
+        if ($seller === null && $awaiting !== '' && $awaiting !== 'combo' && $awaiting !== 'name' && self::isChange($text)) {
             return self::comboChange($phoneDigits, $slots, $lang);
         }
         if ($awaiting === 'dup') {
@@ -307,7 +308,12 @@ final class WaBooking
             /* In the combined mode the NAME in the line wins too ("Ram,
                Surat, bholi, 2" - and after CHANGE, "Hari Prasad" alone). A
                stop is never taken as a name; a new name drops the old party. */
-            $nm = $combo ? trim((string) ($fresh['name'] ?? '')) : '';
+            /* review fix: only while the name is still missing or the bot is asking
+               for it (the combined question / the name question) - at the
+               summary "cash ma tirchu" or "date badalnu" must never rename the
+               passenger; a new name there needs "naam X" (the parser's own path). */
+            $nameAsked = trim((string) ($slots['name'] ?? '')) === '' || in_array($awaiting, ['combo', 'name'], true);
+            $nm = ($combo && $nameAsked) ? trim((string) ($fresh['name'] ?? '')) : '';
             if ($nm !== '' && PersonName::clean($nm) !== '' && !self::looksLikePlace($nm, $slots)
                 && mb_strtolower($nm) !== mb_strtolower(trim((string) ($slots['name'] ?? '')))) {
                 $slots['name'] = $nm;
@@ -834,7 +840,12 @@ final class WaBooking
             $before = mb_strtolower((string) preg_replace('/^.*\s/u', '', trim($m[1])));
             $dateWords = ['jan', 'january', 'feb', 'february', 'mar', 'march', 'apr', 'april', 'may', 'jun', 'june', 'jul', 'july',
                           'aug', 'august', 'sep', 'sept', 'september', 'oct', 'october', 'nov', 'november', 'dec', 'december',
-                          'on', 'date', 'miti', 'मिति', 'तारीख', 'तारिख', 'તારીખ'];
+                          'on', 'date', 'miti', 'मिति', 'तारीख', 'तारिख', 'તારીખ',
+                          // review fix: Nepali (Bikram Sambat) months - "Kartik 5" is a date, not 5 seats
+                          'baisakh', 'baishakh', 'jestha', 'jeth', 'asar', 'asadh', 'ashadh', 'shrawan', 'saun', 'sawan', 'bhadra', 'bhadau',
+                          'ashwin', 'asoj', 'kartik', 'mangsir', 'marga', 'poush', 'push', 'magh', 'falgun', 'phagun', 'chaitra', 'chait',
+                          'बैशाख', 'वैशाख', 'जेठ', 'असार', 'साउन', 'श्रावण', 'भदौ', 'भाद्र', 'असोज', 'आश्विन', 'कात्तिक', 'कार्तिक',
+                          'मंसिर', 'मङ्सिर', 'पुस', 'पौष', 'माघ', 'फागुन', 'फाल्गुन', 'चैत', 'चैत्र'];
             if (!in_array($before, $dateWords, true)) {
                 return $pick($m[2]);
             }

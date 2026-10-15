@@ -15,7 +15,7 @@
  * pending (or failed), and this job answers it.
  *
  * Deliberately conservative:
- *  - only rows older than 2 minutes (the inline answer has had its chance);
+ *  - only rows older than 10 minutes (the inline answer has had its chance);
  *  - at most 3 attempts in all - the webhook's own inline try is the first -
  *    spaced 2, 4, 8 minutes apart (attempts doubles the wait);
  *  - never a message older than an hour: the conversation has moved on, and
@@ -60,7 +60,7 @@ $due = Database::fetchAll(
        FROM wa_inbound
       WHERE status IN ('pending', 'failed')
         AND attempts < " . WAI_MAX_ATTEMPTS . "
-        AND created_at < NOW() - INTERVAL 2 MINUTE
+        AND created_at < NOW() - INTERVAL 10 MINUTE   -- review fix: well past any inline answer still running (a slow sale must never be replayed into a second booking)
         AND created_at >= NOW() - INTERVAL " . WAI_MAX_AGE_MIN . " MINUTE
         AND (next_at IS NULL OR next_at <= NOW())
       ORDER BY id ASC
@@ -82,6 +82,13 @@ foreach ($due as $row) {
     );
     if ($mine !== 1) {
         $skipped++;                                    // another run took it
+        continue;
+    }
+    /* review fix: a newer message from the same number was already answered -
+       replaying this older one would overwrite what the customer said since. */
+    if (Database::exists("SELECT 1 FROM wa_inbound WHERE from_digits = :f AND id > :i AND status = 'done'", ['f' => (string) $row['from_digits'], 'i' => (int) $row['id']])) {
+        wh_queue_mark((string) $row['wamid'], 'done', 'superseded by a newer answered message');
+        $skipped++;
         continue;
     }
     $msg = json_decode((string) ($row['payload'] ?? ''), true);

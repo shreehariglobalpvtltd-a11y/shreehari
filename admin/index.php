@@ -565,7 +565,7 @@ admin_page_head(
      settles every cancel and refund by hand. */
   $reqTiles = [];
   if (Auth::can('bookings.view')) {
-      $hWa = $cancelReq['wa'] === 1 && $cancelReq['waPnr'] !== '' ? '/admin/booking-view.php?pnr=' . rawurlencode($cancelReq['waPnr']) : '/admin/wa-routing.php';
+      $hWa = $cancelReq['wa'] === 1 && $cancelReq['waPnr'] !== '' ? '/admin/booking-view.php?pnr=' . rawurlencode($cancelReq['waPnr']) : '/admin/bookings.php?cancel_req=1';
       $reqTiles[] = admin_kpi('Cancel requests', (string) $cancelReq['wa'], 'asked on WhatsApp (code-verified)', 'x-circle', $cancelReq['wa'] > 0 ? 'orange' : 'teal', null, $cancelReq['wa'] > 0 ? $hWa : '');
   }
   if ($may('support-inbox.php')) {
@@ -783,7 +783,7 @@ admin_page_head(
         <div class="dash-row">
           <?= admin_avatar($nm) ?>
           <div class="dash-row__main"><b><?= (int) $i + 1 ?>. <?= $e($nm) ?></b><?php if ($code !== ''): ?><span class="mono muted text-xs"><?= $e($code) ?></span><?php endif; ?></div>
-          <div class="dash-row__end"><b><?= (int) $ta['confirmed'] ?></b> <span class="muted text-xs">ticket<?= (int) $ta['confirmed'] === 1 ? '' : 's' ?></span><div class="muted text-xs money"><?= $e(inr((float) $ta['revenue'])) ?></div></div>
+          <div class="dash-row__end"><b><?= (int) $ta['confirmed'] ?></b> <span class="muted text-xs">ticket<?= (int) $ta['confirmed'] === 1 ? '' : 's' ?></span><?php if ($seeMoney || $seeAgentMoney): ?><div class="muted text-xs money"><?= $e(inr((float) $ta['revenue'])) ?></div><?php endif; ?></div>
         </div>
       <?php endforeach; endif; ?>
     </div>
@@ -802,7 +802,7 @@ admin_page_head(
         <div class="dash-row">
           <?= admin_avatar($nm) ?>
           <div class="dash-row__main"><b><?= $medals[$i] ?? ($i + 1) ?> <?= $e($nm) ?></b><?php if ($code !== ''): ?><span class="mono muted text-xs"><?= $e($code) ?></span><?php endif; ?></div>
-          <div class="dash-row__end"><b><?= (int) $ta['confirmed'] ?></b> <span class="muted text-xs">ticket<?= (int) $ta['confirmed'] === 1 ? '' : 's' ?></span><div class="muted text-xs money"><?= $e(inr((float) $ta['revenue'])) ?></div></div>
+          <div class="dash-row__end"><b><?= (int) $ta['confirmed'] ?></b> <span class="muted text-xs">ticket<?= (int) $ta['confirmed'] === 1 ? '' : 's' ?></span><?php if ($seeMoney || $seeAgentMoney): ?><div class="muted text-xs money"><?= $e(inr((float) $ta['revenue'])) ?></div><?php endif; ?></div>
         </div>
       <?php endforeach; endif; ?>
       <?php if ($hAgentsReg !== ''): ?><a class="btn soft sm block" style="margin-top:12px" href="<?= $base ?>/admin/agents.php"><svg class="a-ic"><use href="#a-users"/></svg>All agents &amp; wallets</a><?php endif; ?>

@@ -1139,7 +1139,9 @@ final class AgentWallet
         }
         // The same mobile on two accounts makes the register's Edit refuse both
         // (agents.php) and the OTP door ambiguous — checked as typed and as digits.
-        if ($phone !== '' && Database::exists('SELECT 1 FROM admins WHERE phone = :p1 OR phone = :p2 LIMIT 1', ['p1' => $phone, 'p2' => $digits !== '' ? $digits : $phone])) {
+        // review fix: compare the last 10 digits too, so '98765 43210' / '+91 9876543210' stored by staff.php match
+        $last10 = strlen($digits) >= 10 ? substr($digits, -10) : '';
+        if ($phone !== '' && Database::exists("SELECT 1 FROM admins WHERE phone = :p1 OR phone = :p2 OR (:p3 <> '' AND RIGHT(REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', ''), 10) = :p4) LIMIT 1", ['p1' => $phone, 'p2' => $digits !== '' ? $digits : $phone, 'p3' => $last10, 'p4' => $last10])) {
             throw new RuntimeException('That mobile number already belongs to another staff account.');
         }
         if ($username === '') {

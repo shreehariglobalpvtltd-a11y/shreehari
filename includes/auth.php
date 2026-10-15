@@ -280,6 +280,12 @@ final class Auth
         $role  = (string) ($admin['role'] ?? '');
         $rules = self::ticketEditRules();
         if ($role === 'agent') {
+            /* Never payment for an agent (review fix): a cash -> UPI switch
+               deletes the cash_due row, i.e. the agent would erase the cash
+               they owe. They use Request correction instead. */
+            if ($field === 'payment') {
+                return false;
+            }
             $me = (int) ($admin['id'] ?? 0);
             return ($rules['agent'][$field] ?? false) === true
                 && $me > 0 && (int) ($booking['sold_by_admin_id'] ?? 0) === $me
