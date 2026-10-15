@@ -324,3 +324,16 @@ html #view-home > #smartBook{order:-1 !important}   /* redesign.css sets #view-h
 @keyframes sbIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 :root[data-theme="dark"] .sb-help code,:root[data-display="amoled"] .sb-help code{background:rgba(255,255,255,.08)}:root[data-theme="dark"] .sb-help .sb-chat,:root[data-display="amoled"] .sb-help .sb-chat{background:#0b2a1a}
 @media (prefers-reduced-motion:reduce){.sb-help .sb-chat p{animation:none;opacity:1}#smartBook .sb-mic.on{animation:none}}
+/* 15 Oct 2026: compact completion ring (27-smartbook.js paintRing) */
+#smartBook .sb-ring{position:relative;display:inline-grid;place-items:center;width:38px;height:38px;margin-left:auto;flex:none;--sb-ring:#DC3B3B}
+#smartBook .sb-ring svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
+#smartBook .sb-ring circle{fill:none;stroke-width:3.4}
+#smartBook .sb-ring .sb-ring-bg{stroke:var(--sb-line)}
+#smartBook .sb-ring .sb-ring-fg{stroke:var(--sb-ring);stroke-linecap:round;transition:stroke-dashoffset .45s cubic-bezier(.2,.8,.2,1),stroke .3s}
+#smartBook .sb-ring b{position:relative;font-size:10.5px;font-weight:800;color:var(--sb-ring);font-variant-numeric:tabular-nums;transition:color .3s}
+#smartBook .sb-ring-mid{--sb-ring:#E08A00}
+#smartBook .sb-ring-ok{--sb-ring:#1FA35B}
+#smartBook .sb-ring-ok b{font-size:15px;animation:sbRingPop .35s ease-out}
+@keyframes sbRingPop{0%{transform:scale(.4)}70%{transform:scale(1.2)}100%{transform:scale(1)}}
+@media (max-width:859px){#smartBook .sb-ring{width:32px;height:32px}}
+@media (prefers-reduced-motion:reduce){#smartBook .sb-ring .sb-ring-fg{transition:none}#smartBook .sb-ring-ok b{animation:none}}

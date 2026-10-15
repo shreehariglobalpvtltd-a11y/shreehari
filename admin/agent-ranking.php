@@ -97,6 +97,18 @@ try {
 } catch (Throwable $e) {
     $cashBy = [];
 }
+/* 15 Oct 2026 (Smart AI upgrade, performance rings): each agent's commission
+   wallet balance RIGHT NOW (all-time sum of the commission account). Read only. */
+$walletBy = [];
+try {
+    foreach (Database::fetchAll(
+        "SELECT agent_admin_id, COALESCE(SUM(amount), 0) AS bal FROM agent_ledger WHERE account = 'commission' GROUP BY agent_admin_id"
+    ) as $w) {
+        $walletBy[(int) $w['agent_admin_id']] = round((float) $w['bal'], 2);
+    }
+} catch (Throwable $e) {
+    $walletBy = [];
+}
 $lastSaleBy = [];
 foreach (Database::fetchAll(
     'SELECT sold_by_admin_id AS id, MAX(created_at) AS last_sale FROM bookings WHERE sold_by_admin_id IS NOT NULL GROUP BY sold_by_admin_id'
@@ -163,6 +175,7 @@ foreach ($rows as &$r) {
     $r['repeatPct']  = $r['customers'] > 0 ? round($r['repeaters'] * 100 / $r['customers'], 1) : 0.0;
     // Cash held now, red above the agent's limit (own, else default, else the cash alert's amount).
     $r['cash']       = max(0.0, $cashBy[(int) $r['id']] ?? 0.0);
+    $r['wallet']     = $walletBy[(int) $r['id']] ?? 0.0;
     $r['cash_lim']   = (float) ($limBy[(int) $r['id']] ?? 0);
     $r['over_cash']  = $r['cash_lim'] > 0.009 && $r['cash'] > $r['cash_lim'] + 0.009;
     /* Low performer (display only): an ACTIVE agent below the target share
@@ -241,6 +254,19 @@ $totalTickets = 0;
 foreach ($rows as $r) { $totalRevenue += $r['revenue']; $totalTickets += $r['confirmed']; }
 
 $leader = $rows[0] ?? null;
+
+/* Achievement score (display only): revenue against this window's share of
+   agent_target_monthly when a target is set, else against the window's best
+   seller. Colour bands: <40 red, <75 amber, <100 green, 100+ gold. */
+$scoreGoal = ($target > 0 && $preset !== 'all') ? $target * $windowDays / 30 : 0.0;
+$topRev    = $rows === [] ? 0.0 : max(array_map(static fn(array $r): float => (float) $r['revenue'], $rows));
+foreach ($rows as &$r) {
+    $den        = $scoreGoal > 0 ? $scoreGoal : $topRev;
+    $r['score'] = $den > 0 ? (int) round($r['revenue'] * 100 / $den) : 0;
+    $r['band']  = $r['score'] >= 100 ? 'gold' : ($r['score'] >= 75 ? 'good' : ($r['score'] >= 40 ? 'mid' : 'low'));
+}
+unset($r);
+
 $hasAny = $totalTickets > 0 || $totalRevenue > 0.0;
 
 /* ---- PDF download (§15/§28) ------------------------------------------- */
@@ -299,6 +325,82 @@ admin_header('Agent Ranking', 'agent-ranking');
   <div class="card"><div class="k">Team tickets</div><div class="v"><?= $totalTickets ?></div>
     <div class="muted" style="font-size:11px">confirmed in this window</div></div>
 </div>
+<?php endif; ?>
+
+<?php if ($rows !== [] && $hasAny):
+    $ringC  = 2 * M_PI * 42;
+    $ringBy = ['gold' => '#C9971C', 'good' => '#1FA35B', 'mid' => '#E08A00', 'low' => '#DC3B3B'];
+    $shown  = 0; ?>
+<div class="panel ar-panel">
+  <h2>🎯 Performance — <?= Security::e($presets[$preset]) ?>
+    <span class="muted" style="font-size:12.5px;font-weight:400">· score = revenue vs <?= $scoreGoal > 0 ? 'target ' . Security::e(inr($scoreGoal)) : 'the top seller' ?></span></h2>
+  <div class="ar-grid">
+  <?php foreach ($rows as $i => $r):
+      if ($lowOnly && !$r['low']) { continue; }
+      if (++$shown > 24) { break; }
+      $pct  = min(100, max(0, (int) $r['score']));
+      $col  = $ringBy[$r['band']];
+      $name = (string) ($r['full_name'] ?: $r['username']); ?>
+    <div class="ar-card ar-<?= $r['band'] ?>">
+      <div class="ar-top">
+        <svg class="ar-ring" viewBox="0 0 100 100" aria-hidden="true">
+          <circle cx="50" cy="50" r="42" class="ar-bg"/>
+          <circle cx="50" cy="50" r="42" class="ar-fg" style="stroke:<?= $col ?>" stroke-dasharray="<?= round($ringC, 2) ?>" stroke-dashoffset="<?= round($ringC, 2) ?>" data-off="<?= round($ringC * (1 - $pct / 100), 2) ?>"/>
+        </svg>
+        <div class="ar-mid"><b style="color:<?= $col ?>" data-n="<?= (int) $r['score'] ?>">0</b><small>%</small></div>
+        <span class="ar-rank"><?= ['🥇', '🥈', '🥉'][$i] ?? '#' . ($i + 1) ?></span>
+      </div>
+      <a class="ar-name" href="<?= $base ?>/admin/agent-360.php?agent=<?= (int) $r['id'] ?>"><?= Security::e($name) ?></a>
+      <div class="muted mono ar-code"><?= Security::e(AgentWallet::agentCodeLabel((int) $r['id'])) ?><?= $r['low'] ? ' · <span class="pill st-bad" style="font-size:10px">Low</span>' : '' ?></div>
+      <dl class="ar-kv">
+        <div><dt>Passengers</dt><dd><?= (int) $r['seats'] ?></dd></div>
+        <div><dt>Bookings</dt><dd><?= (int) $r['confirmed'] ?></dd></div>
+        <div><dt>Revenue</dt><dd><?= Security::e(inr((float) $r['revenue'])) ?></dd></div>
+        <div><dt>Commission</dt><dd style="color:#0a6b3b"><?= Security::e(inr((float) $r['commission'])) ?></dd></div>
+        <div><dt>Wallet</dt><dd><?= Security::e(inr((float) $r['wallet'])) ?></dd></div>
+        <div><dt>Cash held</dt><dd<?= $r['over_cash'] ? ' style="color:#DC3B3B"' : '' ?>><?= Security::e(inr((float) $r['cash'])) ?></dd></div>
+      </dl>
+      <div class="ar-act">
+        <a class="btn ghost sm" href="<?= $base ?>/admin/agent-360.php?agent=<?= (int) $r['id'] ?>&amp;tab=profile" title="Edit agent">✏️ Edit</a>
+        <a class="btn ghost sm" href="<?= $base ?>/admin/settlements.php?new=<?= (int) $r['id'] ?>" title="Start a settlement">💸 Settle</a>
+        <a class="btn ghost sm" href="<?= $base ?>/admin/agent-360.php?agent=<?= (int) $r['id'] ?>" title="Wallet, sales and history">📜 History</a>
+      </div>
+    </div>
+  <?php endforeach; ?>
+  </div>
+  <?php if ($shown > 24): ?><p class="muted" style="font-size:12px;margin:8px 0 0">Top 24 shown — every agent is in the leaderboard below.</p><?php endif; ?>
+</div>
+<style>
+.ar-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,210px),1fr));gap:12px}
+.ar-card{border:1px solid var(--line);border-radius:16px;padding:12px;background:var(--card);display:flex;flex-direction:column;gap:4px;min-width:0}
+.ar-card.ar-gold{border-color:#d4af37;box-shadow:0 0 0 1px rgba(212,175,55,.35)}
+.ar-top{position:relative;width:92px;height:92px;margin:0 auto 4px}
+.ar-ring{width:100%;height:100%;transform:rotate(-90deg)}
+.ar-ring circle{fill:none;stroke-width:8}.ar-ring .ar-bg{stroke:var(--line)}
+.ar-ring .ar-fg{stroke-linecap:round;transition:stroke-dashoffset 1.1s cubic-bezier(.2,.8,.2,1)}
+.ar-mid{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:1px}
+.ar-mid b{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}.ar-mid small{font-size:11px;opacity:.7}
+.ar-rank{position:absolute;top:-4px;right:-18px;font-size:15px;font-weight:800}
+.ar-name{font-weight:800;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:inherit;text-decoration:none}
+.ar-code{text-align:center;font-size:11px}
+.ar-kv{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin:6px 0 0}
+.ar-kv div{min-width:0}.ar-kv dt{font-size:10.5px;color:var(--muted,#6b7a90)}.ar-kv dd{margin:0;font-weight:700;font-size:13px;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis}
+.ar-act{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.ar-act .btn{flex:1;justify-content:center;padding:6px 4px;font-size:12px}
+@media (prefers-reduced-motion:reduce){.ar-ring .ar-fg{transition:none}}
+</style>
+<script>
+(function () {
+  var rm = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  requestAnimationFrame(function () { setTimeout(function () {
+    document.querySelectorAll('.ar-fg').forEach(function (c) { c.setAttribute('stroke-dashoffset', c.getAttribute('data-off')); });
+    document.querySelectorAll('.ar-mid b[data-n]').forEach(function (b) {
+      var n = +b.getAttribute('data-n') || 0, t0 = null;
+      if (rm || !n) { b.textContent = n; return; }
+      (function step(t) { t0 = t0 || t; var k = Math.min(1, (t - t0) / 1100); b.textContent = Math.round(n * (1 - Math.pow(1 - k, 3))); if (k < 1) requestAnimationFrame(step); })(performance.now());
+    });
+  }, 60); });
+})();
+</script>
 <?php endif; ?>
 
 <?php if (count($cmp) >= 2):

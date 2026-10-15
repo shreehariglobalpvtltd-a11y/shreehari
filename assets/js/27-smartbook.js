@@ -306,6 +306,27 @@
       var b = $(id); b.disabled = false;
       b.classList.toggle('sb-ready', ready); b.classList.toggle('sb-wait', !priced || !ready);
     });
+    paintRing(priced);
+  }
+  /* 15 Oct 2026 (Smart AI upgrade): a compact ring beside "How?" that fills as the
+     card completes — name, mobile, gender, priced bus. Display only; the book
+     buttons keep their own rules. */
+  var RING_C = 2 * Math.PI * 15;
+  function paintRing(priced) {
+    var box = $('sbRing'); if (!box) {
+      var bar = root.querySelector('.sb-qbar'), help = $('sbHelpBtn'); if (!bar) return;
+      box = document.createElement('span'); box.id = 'sbRing'; box.className = 'sb-ring'; box.setAttribute('role', 'img');
+      box.innerHTML = '<svg viewBox="0 0 36 36" aria-hidden="true"><circle class="sb-ring-bg" cx="18" cy="18" r="15"/>'
+        + '<circle class="sb-ring-fg" cx="18" cy="18" r="15" stroke-dasharray="' + RING_C.toFixed(2) + '" stroke-dashoffset="' + RING_C.toFixed(2) + '"/></svg><b></b>';
+      bar.insertBefore(box, help || null);
+    }
+    var e = errs(), steps = [!e.name, !e.phone, !e.pax, !!priced];
+    var n = steps.filter(Boolean).length, pct = n / steps.length;
+    box.querySelector('.sb-ring-fg').setAttribute('stroke-dashoffset', (RING_C * (1 - pct)).toFixed(2));
+    box.className = 'sb-ring ' + (n === steps.length ? 'sb-ring-ok' : (n >= 2 ? 'sb-ring-mid' : 'sb-ring-lo'));
+    box.querySelector('b').textContent = n === steps.length ? '✓' : (n + '/' + steps.length);
+    box.setAttribute('aria-label', n + ' of ' + steps.length + ' ready');
+    box.title = n === steps.length ? tr('done') : n + '/' + steps.length;
   }
 
   /* ------------------------------------------------------------ quote */
