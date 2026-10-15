@@ -32,6 +32,8 @@
       needName: 'Enter the lead passenger\'s name', needGender: 'Tap F / M for every passenger', loading: 'Finding the best berths…',
       booking: 'Booking…', making: 'Preparing your ticket…', ticketOk: 'Ticket confirmed', codNote: 'Cash — pay at the boarding counter', pnr: 'PNR', dlPdf: 'Download PDF', dlPng: 'Download PNG',
       share: 'Share', print: 'Print', copy: 'Copy PNR', track: 'Track bus', copied: 'PNR copied', newB: 'Book another', heldQr: 'Berths held — opening the QR page…',
+      needAgent: 'Choose the agent this sale is credited to (or Other = company)', agentPick: 'Type a code, name or city — or tap Other', agentBlank: 'Blank = company code',
+      agentCo: 'Company code — no agent commission', agentNo: 'Not on the list — pick from the list or tap Other', credited: 'Credited to', commission: 'commission',
       paxN: '{n} passenger(s)', left: '{n} left', changed: 'The price or date changed — please check and tap again.', geoNo: 'Location not available — choose from the list.',
       pickN: '{a} of {b} chosen', women: 'Women only', taken: 'Taken', free: 'Free', mine: 'Your pick', pickAll: 'Choose one berth for each passenger',
       floor1: 'Lower floor (1F)', floor2: 'Upper floor (2F)', perCabin: 'cabin', cabins: 'cabins'
@@ -50,6 +52,8 @@
       needName: 'मुख्य यात्री का नाम लिखें', needGender: 'हर यात्री के लिए म / पु दबाएँ', loading: 'सबसे अच्छी बर्थ ढूँढ रहे हैं…',
       booking: 'बुक हो रहा है…', making: 'टिकट तैयार हो रहा है…', ticketOk: 'टिकट पक्का', codNote: 'कैश — चढ़ते समय काउंटर पर भुगतान', pnr: 'PNR', dlPdf: 'PDF डाउनलोड', dlPng: 'PNG डाउनलोड',
       share: 'शेयर', print: 'प्रिंट', copy: 'PNR कॉपी', track: 'बस ट्रैक', copied: 'PNR कॉपी हुआ', newB: 'और बुक करें', heldQr: 'बर्थ रखी गई — QR पेज खुल रहा है…',
+      needAgent: 'यह बिक्री किस एजेंट की है चुनें (या Other = कंपनी)', agentPick: 'कोड, नाम या शहर लिखें — या Other दबाएँ', agentBlank: 'खाली = कंपनी कोड',
+      agentCo: 'कंपनी कोड — एजेंट कमीशन नहीं', agentNo: 'सूची में नहीं — सूची से चुनें या Other दबाएँ', credited: 'एजेंट', commission: 'कमीशन',
       paxN: '{n} यात्री', left: '{n} बाकी', changed: 'किराया या तारीख बदली — जाँचकर फिर दबाएँ।', geoNo: 'लोकेशन नहीं मिली — सूची से चुनें।',
       pickN: '{b} में {a} चुनी', women: 'केवल महिला', taken: 'बुक', free: 'खाली', mine: 'आपकी', pickAll: 'हर यात्री के लिए एक बर्थ चुनें',
       floor1: 'नीचे (1F)', floor2: 'ऊपर (2F)', perCabin: 'केबिन', cabins: 'केबिन'
@@ -68,6 +72,8 @@
       needName: 'मुख्य यात्रुको नाम लेख्नुहोस्', needGender: 'हरेक यात्रुको म / पु थिच्नुहोस्', loading: 'सबैभन्दा राम्रो बर्थ खोज्दै…',
       booking: 'बुक हुँदैछ…', making: 'टिकट तयार हुँदैछ…', ticketOk: 'टिकट पक्का भयो', codNote: 'नगद — चढ्दा काउन्टरमा तिर्ने', pnr: 'PNR', dlPdf: 'PDF डाउनलोड', dlPng: 'PNG डाउनलोड',
       share: 'सेयर', print: 'प्रिन्ट', copy: 'PNR कपी', track: 'बस ट्र्याक', copied: 'PNR कपी भयो', newB: 'अर्को बुक', heldQr: 'बर्थ राखियो — QR पेज खुल्दैछ…',
+      needAgent: 'यो बिक्री कुन एजेन्टको हो छान्नुहोस् (वा Other = कम्पनी)', agentPick: 'कोड, नाम वा सहर लेख्नुहोस् — वा Other थिच्नुहोस्', agentBlank: 'खाली = कम्पनी कोड',
+      agentCo: 'कम्पनी कोड — एजेन्ट कमिसन छैन', agentNo: 'सूचीमा छैन — सूचीबाट छान्नुहोस् वा Other थिच्नुहोस्', credited: 'एजेन्ट', commission: 'कमिसन',
       paxN: '{n} जना', left: '{n} बाँकी', changed: 'भाडा वा मिति बदलियो — हेरेर फेरि थिच्नुहोस्।', geoNo: 'लोकेसन भेटिएन — सूचीबाट छान्नुहोस्।',
       pickN: '{b} मध्ये {a} छानियो', women: 'महिला मात्र', taken: 'बुक भइसक्यो', free: 'खाली', mine: 'तपाईंको', pickAll: 'हरेक यात्रुका लागि एउटा बर्थ छान्नुहोस्',
       floor1: 'तल्लो तला (1F)', floor2: 'माथिल्लो तला (2F)', perCabin: 'क्याबिन', cabins: 'क्याबिन'
@@ -96,7 +102,8 @@
   var S = {
     dirs: [], points: {}, dir: 'toNepal', date: '', point: '', cc: 'IN', phone: '', name: '',
     pax: [{ gender: '', band: 'adult' }], type: 'sharing', cabin: 'single', berth: 'any', seatMode: 'auto', manual: [],
-    q: null, busy: false, idem: null, touched: {}, why: {}, allowCod: true, maxPax: 6, last: null
+    q: null, busy: false, idem: null, touched: {}, why: {}, allowCod: true, maxPax: 6, last: null,
+    agent: ''   // staff desks only: the SHG code the sale is credited to ('OTHER' = company) - never on the customer page
   };
   var store = {
     get: function () { try { return JSON.parse(localStorage.getItem('sb:v1') || 'null') || {}; } catch (e) { return {}; } },
@@ -234,6 +241,7 @@
   }
   function errs() {
     var e = {};
+    if (STAFF && STAFF.agentRequired && $('sbAgent') && !S.agent) e.agent = tr('needAgent');
     var pe = phoneErr(); if (pe) e.phone = pe;
     if (String(S.name || '').trim().length < 2) e.name = tr('needName');
     if (S.pax.some(function (p) { return !p.gender; })) e.pax = tr('needGender');
@@ -242,6 +250,7 @@
   function showErrs(all) {
     var e = errs();
     var f = [['phone', 'sbPhone', 'sbPhoneE'], ['name', 'sbName', 'sbNameE'], ['pax', null, 'sbPaxE']];
+    if ($('sbAgent')) f.unshift(['agent', 'sbAgent', 'sbAgentE']);
     f.forEach(function (x) {
       var show = !!e[x[0]] && (all || S.touched[x[0]]);
       var el = $(x[2]); el.hidden = !show; el.textContent = show ? e[x[0]] : '';
@@ -507,10 +516,10 @@
     return 'sb' + Array.prototype.map.call(a, function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
   }
   function book(pay, wantPrint) {
-    S.touched.book = S.touched.phone = S.touched.name = S.touched.pax = true;
+    S.touched.book = S.touched.phone = S.touched.name = S.touched.pax = S.touched.agent = true;
     var e = showErrs(true);
     if (Object.keys(e).length) {
-      var k = Object.keys(e)[0], el = k === 'phone' ? $('sbPhone') : (k === 'name' ? $('sbName') : $('sbPax'));
+      var k = Object.keys(e)[0], el = k === 'phone' ? $('sbPhone') : (k === 'name' ? $('sbName') : (k === 'agent' ? $('sbAgent') : $('sbPax')));
       say(e[k]);
       try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (x) {}
       if (k !== 'pax') el.focus({ preventScroll: true }); else { var g = el.querySelector('.sb-g.u'); if (g) g.focus({ preventScroll: true }); }
@@ -526,12 +535,14 @@
     body.action = 'book'; body.pay = pay; body.idem = S.idem; body.name = S.name.trim(); body.phone = digits(S.phone); body.country = S.cc;
     body.seats = S.q.seats; body.autoPicked = !!S.q.auto;   // the shown berths are the berths sold (re-checked on the server)
     body.expect = { total: S.q.price ? S.q.price.total : null, date: S.q.date };
+    if (STAFF && $('sbAgent')) body.agentCode = S.agent;   // the desk's pick (the server validates; an agent login never sends one)
     store.set();
     api(body).then(function (r) {
       S.busy = false; btn.classList.remove('sb-busy'); lbl.textContent = old;
       adopt(r);
       S.idem = null;
-      if (STAFF && r.commission) say('💰 Commission ' + money(r.commission));
+      if (STAFF && r.agent) say('🤝 ' + r.agent.code + ' · ' + r.agent.name + (r.commission ? ' · 💰 ' + money(r.commission) : ''));
+      else if (STAFF && r.commission) say('💰 Commission ' + money(r.commission));
       if (r.status === 'confirmed') {
         showTicket(r, !STAFF);
         if (STAFF && (printNext || MODE === 'counter' && staffPrint())) window.open('/admin/ticket-80mm.php?pnr=' + encodeURIComponent(r.pnr), '_blank', 'noopener,width=420,height=700');
@@ -544,6 +555,10 @@
       S.busy = false; btn.classList.remove('sb-busy'); lbl.textContent = old;
       printNext = false;
       if (er && er.fields && er.fields.code === 'changed' && er.fields.quote) { S.q = er.fields.quote; renderDates(); renderQuote(true); say(tr('changed')); S.idem = null; }
+      else if (er && er.fields && er.fields.field === 'agent' && $('sbAgent')) {   // the server refused the agent pick
+        var ae = $('sbAgentE'); ae.textContent = er.message || tr('needAgent'); ae.hidden = false; $('sbAgent').classList.add('sb-bad');
+        say(er.message); try { $('sbAgent').focus(); } catch (x) {}
+      }
       else say(er && er.message ? er.message : 'Error');
       // The server answered (a refusal): the next tap is a new request with a new key. A lost
       // answer (no status: timeout / offline) keeps the key, so the retry gets the same booking back.
@@ -570,8 +585,80 @@
     var b = e.target.closest('[data-copylink]'); if (!b) return;
     try { navigator.clipboard.writeText(b.getAttribute('data-copylink')).then(function () { say('Link copied'); }); } catch (x) {}
   });
+  /* ---- the desk's agent (15 Oct 2026) -----------------------------------
+     admin/smartbook.php splices #sbAgent (a searchable list of every active
+     agent with an SHG number) into the card for a counter / admin desk, and a
+     locked code line for an agent login. The pick is remembered per clerk
+     under shg_ctr_agent_<id> - the key counter mode and QuickBot share - so
+     one pick serves the shift. The server validates it again on every sale. */
+  var AGENTS = (STAFF && STAFF.agents) ? STAFF.agents : [];
+  var KEY_AGENT = STAFF ? 'shg_ctr_agent_' + (STAFF.id || 0) : '';
+  function lsGet(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function normCode(s) {
+    var d = String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    var m = /^SHG(\d{1,4})$/.exec(d) || /^(\d{1,4})$/.exec(d);
+    return m ? 'SHG-' + ('0000' + m[1]).slice(-4) : '';
+  }
+  function agentByCode(code) { for (var i = 0; i < AGENTS.length; i++) { if (AGENTS[i].code === code) return AGENTS[i]; } return null; }
+  function agentLine(a) { return a.code + ' · ' + a.name + (a.city ? ' · ' + a.city : ''); }
+  function agentRate(a) { if (!STAFF || !STAFF.commFlat) return ''; return money(a && a.type === 'joint' ? STAFF.commJoint : STAFF.commDirect) + '/pax'; }
+  /* exact = a code only (while typing); loose = a code, or ONE agent whose line contains the text */
+  function findAgent(s, loose) {
+    var c = normCode(s); if (c) return agentByCode(c);
+    if (!loose) return null;
+    var t = String(s || '').trim().toLowerCase(); if (!t) return null;
+    var hits = AGENTS.filter(function (a) { return agentLine(a).toLowerCase().indexOf(t) >= 0; });
+    return hits.length === 1 ? hits[0] : null;
+  }
+  function setAgent(code, byUser, keepText) {
+    var inp = $('sbAgent'); if (!inp) return;
+    S.agent = code || '';
+    var a = S.agent && S.agent !== 'OTHER' ? agentByCode(S.agent) : null;
+    if (!a && S.agent !== 'OTHER') S.agent = '';
+    $('sbAgentOther').classList.toggle('on', S.agent === 'OTHER');
+    var why = $('sbAgentWhy');
+    if (a) {
+      if (!keepText) inp.value = a.code;
+      var rate = agentRate(a);
+      why.innerHTML = '<span class="sb-agent-ok">✓</span> ' + esc((a.co ? '🏢 ' : '👤 ') + agentLine(a)) + (rate ? ' · ' + esc(rate) : '');
+    } else if (S.agent === 'OTHER') {
+      if (!keepText) inp.value = '';
+      why.textContent = '🏢 ' + (STAFF.company || 'SHG-0001') + ' — ' + tr('agentCo');
+    } else {
+      why.textContent = inp.value.trim() ? tr('agentNo') : tr(STAFF.agentRequired ? 'agentPick' : 'agentBlank');
+    }
+    if (byUser) { lsSet(KEY_AGENT, S.agent); S.touched.agent = true; }
+    showErrs(false); syncButtons();
+  }
+  function initAgent() {
+    var inp = $('sbAgent'); if (!STAFF || !inp) return;
+    $('sbAgentList').innerHTML = AGENTS.map(function (a) {
+      var rate = agentRate(a);
+      return '<option value="' + esc(a.code) + '">' + esc((a.co ? '🏢 ' : '👤 ') + a.name + (a.city ? ' · ' + a.city : '') + (rate ? ' · ' + rate : '')) + '</option>';
+    }).join('');
+    var saved = lsGet(KEY_AGENT);
+    setAgent(saved === 'OTHER' ? 'OTHER' : (findAgent(saved) ? findAgent(saved).code : ''), false);
+    inp.addEventListener('input', function () {     // a code typed or picked from the list resolves at once; text just searches
+      var a = findAgent(inp.value, false);
+      setAgent(a ? a.code : '', !!a, true);
+    });
+    inp.addEventListener('change', function () {    // the list's pick / leaving the box: one match is enough
+      var a = findAgent(inp.value, true);
+      if (a) setAgent(a.code, true); else if (!inp.value.trim() && S.agent !== 'OTHER') setAgent('', true);
+    });
+    inp.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' || e.ctrlKey || e.metaKey) return;
+      e.preventDefault();
+      var a = findAgent(inp.value, true);
+      if (a) { setAgent(a.code, true); $('sbPhone').focus(); } else { say(tr('agentNo')); }
+    });
+    $('sbAgentOther').addEventListener('click', function () { setAgent(S.agent === 'OTHER' ? '' : 'OTHER', true); if (S.agent === 'OTHER') $('sbPhone').focus(); });
+  }
+
   /* Counter keyboard: Ctrl+Enter = auto-berth + Cash + print · Enter in the name / passengers = one more passenger. */
   if (STAFF) {
+    initAgent();
     root.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); book('cash', true); return; }
       if (e.key === 'Enter' && (e.target.id === 'sbName' || e.target.closest('#sbPax'))) {
@@ -619,6 +706,10 @@
       + '<div class="sb-tk-row">' + esc((r.seatLabels || []).join(', ')) + ' · ' + esc(r.totalLabel || '') + ' <small>(≈ ' + esc(npr(r.npr)) + ')</small></div>'
       + (r.boardingTime ? '<div class="sb-tk-row">' + esc(r.boarding || '') + ' · <small>' + esc(tr('report')) + ' ' + esc(r.reportTime || '') + '</small></div>' : '')
       + (r.isCod ? '<div class="sb-tk-cod">💵 ' + esc(tr('codNote')) + ' — ' + esc(r.totalLabel || '') + '</div>' : '')
+      /* staff desks: who the sale was credited to and what it earned (the server
+         answers these only to a staff session; a customer's answer has neither) */
+      + (STAFF && r.agent ? '<div class="sb-tk-agent">🤝 ' + esc(tr('credited')) + ' ' + esc(r.agent.code + ' · ' + r.agent.name)
+          + (r.commission ? ' · ' + esc(money(r.commission)) + ' ' + esc(tr('commission')) : '') + '</div>' : '')
       + '<div class="sb-tk-acts">'
       /* 15 Oct 2026 (owner: "same page mai delivery, share ya download button"):
          the picture above IS the ticket; Share leads (WhatsApp on a phone),
@@ -728,7 +819,8 @@
     S.phone = ''; S.name = ''; S.pax = [{ gender: '', band: 'adult' }]; S.manual = []; S.seatMode = 'auto'; S.idem = null; S.touched = {};
     S.why = {}; fill(); applyWords(); store.set(); showErrs(false); requote(0);
   }
-  window.SmartBook = { quote: function () { return S.q; }, state: S, requote: requote, loadCustomer: loadCustomer, fillText: fillFromText, resetForNext: resetForNext, mode: MODE };
+  window.SmartBook = { quote: function () { return S.q; }, state: S, requote: requote, loadCustomer: loadCustomer, fillText: fillFromText, resetForNext: resetForNext, mode: MODE,
+    setAgent: function (code) { setAgent(code, true); } };
 
   boot();
   homeFlag();

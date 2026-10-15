@@ -33,6 +33,11 @@ if ($mode === 'customer') {
     exit('Selling staff only.');
 }
 
+$ownAgent = AgentWallet::isAgentRow((int) $admin['id']) ? AgentWallet::agentCodeLabel((int) $admin['id']) : '';
+$agents   = $ownAgent !== '' ? [] : AgentWallet::sellableAgents();
+$agentReq = $ownAgent === '' && Settings::getBool('smartbook_agent_required', true) && $agents !== [];
+$coCode   = Settings::getString('company_agent_code', 'SHG-0001');
+
 /* The card, from the one template. */
 $tpl  = (string) @file_get_contents(dirname(__DIR__) . '/app.template.html');
 $card = '';
@@ -41,10 +46,31 @@ if (preg_match('~<section class="sb" id="smartBook"[^>]*>.*?</section>~s', $tpl,
     $card = SiteFacts::apply((string) preg_replace('~(<section class="sb" id="smartBook"[^>]*?)\s+hidden>~', '$1>', $m[0], 1));
     $card = (string) preg_replace('/<!--.*?-->/s', '', $card);
 }
+/* The agent field lives in THIS file, not in the template: the customer page
+   can never carry it (smartbook-ui-test keeps the template free of it). It is
+   spliced in above the passengers row. */
+$agentField = $ownAgent !== ''
+    ? '<div class="sb-f sb-f-agent" id="sbAgentF"><span class="sb-l">Agent code · एजेन्ट कोड</span>'
+      . '<div class="sb-agent-lock">🔒 <span id="sbAgentOwn">' . $e($ownAgent) . '</span> · ' . $e((string) ($admin['full_name'] ?: $admin['username'])) . ' <small>from your login — every sale is credited here</small></div></div>'
+    : '<div class="sb-f sb-f-agent" id="sbAgentF"><label class="sb-l" for="sbAgent">Agent code · एजेन्ट छान्नुहोस्' . ($agentReq ? ' <small style="color:#cd4154;text-transform:none">(required / अनिवार्य)</small>' : '') . '</label>'
+      . '<div class="sb-agent-row"><input id="sbAgent" list="sbAgentList" type="text" autocomplete="off" maxlength="60" placeholder="SHG-0007 · name · city — type to search" enterkeyhint="next">'
+      . '<datalist id="sbAgentList"></datalist>'
+      . '<button type="button" class="sb-agent-other" id="sbAgentOther" title="Credit the company\'s own code ' . $e($coCode) . '">🏢 Other / company</button></div>'
+      . '<small class="sb-why" id="sbAgentWhy"></small><small class="sb-fe" id="sbAgentE" hidden></small></div>';
+$card = (string) preg_replace('~(<div class="sb-f sb-f-pax">)~', $agentField . '$1', $card, 1);
 
 $me     = (int) $admin['id'];
 $label  = ucfirst($mode);
 $wallet = null;
+/* WHO the sale is credited to (15 Oct 2026, owner: "Agent Code entry in Agent
+   Mode and especially Counter Mode, with agent selection/search, automatic
+   commission attribution"). An AGENT login sells on its own code - shown,
+   locked, never typed (D13). Any other desk (counter, admin, an admin in Agent
+   mode) picks the agent from the one list every desk picker uses
+   (AgentWallet::sellableAgents): type a code / name / city, or Other =
+   the company's own code. The choice is remembered per clerk in
+   localStorage shg_ctr_agent_<id> - the same key counter mode and QuickBot
+   read - so one pick serves the whole shift. The server validates again. */
 if ($mode === 'agent') {
     $code   = AgentWallet::agentCodeLabel($admin['role'] === 'agent' ? $me : $me);
     $bal    = AgentWallet::balances($me);
@@ -87,7 +113,7 @@ html.sbx-admin .sbx-ov{display:block}
   <label class="sbx-help"><input type="checkbox" id="sbxPrint"> 80 mm print after each Cash sale</label>
 </div>
 <div class="sbx-reg" id="sbxReg" aria-label="Regular customers"></div>
-<p class="sbx-help">Enter = one more passenger · Ctrl+Enter = auto-berth + Cash + print · same engine as the website (rules decide, nothing typed is trusted).</p>
+<p class="sbx-help">Enter = one more passenger · Ctrl+Enter = auto-berth + Cash + print · same engine as the website (rules decide, nothing typed is trusted).<?php if ($ownAgent === ''): ?> The agent you pick is remembered for this desk; commission goes to that agent, the cash stays with you.<?php endif; ?></p>
 <?php if ($mode === 'admin'): ?>
 <div class="sbx-ov" id="sbxOv"><label class="sbx-help" for="sbxOvIn">Override a hard rule on hand-picked berths — written reason (saved in the audit log)</label>
   <input id="sbxOvIn" maxlength="200" placeholder="e.g. family travelling together, confirmed by phone"></div>
@@ -97,7 +123,11 @@ html.sbx-admin .sbx-ov{display:block}
 window.SHG_BOOT = window.SHG_BOOT || {};
 window.SHG_BOOT.csrf = <?= json_encode(Security::csrfToken()) ?>;
 window.SHG_BOOT.apiBase = '/api';
-window.SB_STAFF = <?= json_encode(['mode' => $mode, 'label' => $label], JSON_HEX_TAG | JSON_HEX_AMP) ?>;
+window.SB_STAFF = <?= json_encode([
+    'mode' => $mode, 'label' => $label, 'id' => $me, 'role' => (string) $admin['role'],
+    'ownCode' => $ownAgent, 'agents' => $agents, 'agentRequired' => $agentReq, 'company' => $coCode,
+    'commDirect' => Settings::getFloat('agent_flat_direct', 200.0), 'commJoint' => Settings::getFloat('agent_flat_joint', 400.0), 'commFlat' => AgentWallet::flatMode(),
+], JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE) ?>;
 if (<?= $mode === 'admin' ? 'true' : 'false' ?>) document.documentElement.classList.add('sbx-admin');
 /* The few app globals the card uses, for a panel page that does not load the app bundle. */
 if (typeof window.shgApi === 'undefined') {

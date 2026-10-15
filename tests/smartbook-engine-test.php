@@ -303,6 +303,66 @@ if ($sid > 0) {
     check('a schedule to race on', false);
 }
 
+echo "\nH. A desk sale credited to the picked agent (15 Oct 2026)\n";
+$madeH = [];
+$agentH = 10;   // 'sad-agent' in the test seed
+$codeWas = AgentWallet::agentCodeFor($agentH);
+try {
+    AgentWallet::setAgentCode($agentH, 7);
+    check('deskAgentCode: "shg 7" / "SHG007" / "7" → SHG-0007', AgentWallet::deskAgentCode('shg 7') === 'SHG-0007' && AgentWallet::deskAgentCode('SHG007') === 'SHG-0007' && AgentWallet::deskAgentCode('7') === 'SHG-0007');
+    check('deskAgentCode: other → OTHER, blank → "", an unissued code → null (refused)', AgentWallet::deskAgentCode('other') === 'OTHER' && AgentWallet::deskAgentCode('') === '' && AgentWallet::deskAgentCode('SHG-0999') === null);
+    $list = AgentWallet::sellableAgents();
+    check('sellableAgents: one list, sorted by code, carries SHG-0007 with name / type / city', in_array('SHG-0007', array_column($list, 'code'), true) && isset($list[0]['name'], $list[0]['type'], $list[0]['city']));
+
+    $seller = ['adminId' => 1, 'source' => 'counter', 'paymentMethod' => 'cash', 'note' => ''];
+    $inH    = ['direction' => 'toNepal', 'point' => 'Vadodara', 'pax' => [$P('Male')], 'name' => 'Desk Agent Test', 'phone' => '9000000007', 'country' => 'IN', 'referralCode' => 'SHG-0007'];
+    $keyH   = 'test' . bin2hex(random_bytes(10));
+    $bH     = SmartBook::book($inH, 'cash', 'counter', $seller, $keyH);
+    $madeH[] = $bH['pnr'];
+    $row = Database::fetch('SELECT sold_by_admin_id, source, status, is_cod FROM bookings WHERE id = :b', ['b' => $bH['bookingId']]);
+    check('counter Cash + SHG-0007 → CONFIRMED, source counter, not COD', ($row['status'] ?? '') === 'confirmed' && ($row['source'] ?? '') === 'counter' && (int) $row['is_cod'] === 0, $bH['pnr']);
+    check('the sale is credited to agent #' . $agentH . ' (sold_by_admin_id)', (int) ($row['sold_by_admin_id'] ?? 0) === $agentH, (string) ($row['sold_by_admin_id'] ?? 'null'));
+    $comm = Database::fetch("SELECT agent_admin_id, amount FROM agent_ledger WHERE booking_id = :b AND entry_type = 'commission' LIMIT 1", ['b' => $bH['bookingId']]);
+    check('the commission row belongs to the agent, amount > 0', $comm !== null && (int) $comm['agent_admin_id'] === $agentH && (float) $comm['amount'] > 0, $comm === null ? 'no row' : inr((float) $comm['amount']) . ' → #' . $comm['agent_admin_id']);
+    $cash = Database::fetch("SELECT agent_admin_id FROM agent_ledger WHERE booking_id = :b AND entry_type = 'cash_due' LIMIT 1", ['b' => $bH['bookingId']]);
+    check('the cash stays with the clerk who took it (never the agent)', $cash === null || (int) $cash['agent_admin_id'] === 1, $cash === null ? 'no cash_due row' : '#' . $cash['agent_admin_id']);
+    $pay = Database::fetch('SELECT method, status FROM payments WHERE booking_id = :b', ['b' => $bH['bookingId']]);
+    check('payment = cash / verified (desk money)', ($pay['method'] ?? '') === 'cash' && ($pay['status'] ?? '') === 'verified', ($pay['method'] ?? '') . '/' . ($pay['status'] ?? ''));
+    check('passenger record + ticket written at once', (int) Database::scalar('SELECT COUNT(*) FROM booking_passengers WHERE booking_id = :b', ['b' => $bH['bookingId']]) === 1
+        && (int) Database::scalar('SELECT COUNT(*) FROM tickets WHERE booking_id = :b', ['b' => $bH['bookingId']]) === 1);
+    $rep = SmartBook::book($inH, 'cash', 'counter', $seller, $keyH);
+    check('same key → the same PNR (double tap at the desk)', $rep['pnr'] === $bH['pnr'] && !empty($rep['replayed']));
+    $err = '';
+    try { SmartBook::book(['referralCode' => 'OTHER'] + $inH, 'cash', 'counter', $seller, $keyH); } catch (SmartBookKeyReused $e) { $err = 'refused'; }
+    check('same key + another agent → refused (a different request)', $err === 'refused');
+
+    $b2 = SmartBook::book(['referralCode' => 'OTHER', 'phone' => '9000000008'] + $inH, 'cash', 'counter', $seller, 'test' . bin2hex(random_bytes(10)));
+    $madeH[] = $b2['pnr'];
+    $coId = AgentWallet::resolveAgentCodeFromString(Settings::getString('company_agent_code', 'SHG-0001'));
+    $sb2  = (int) Database::scalar('SELECT sold_by_admin_id FROM bookings WHERE id = :b', ['b' => $b2['bookingId']], 0);
+    check('OTHER → the company\'s own code (' . Settings::getString('company_agent_code', 'SHG-0001') . ')', $sb2 === ($coId ?? 1), '#' . $sb2);
+
+    $b3 = SmartBook::book(['referralCode' => 'SHG-0007', 'phone' => '9000000009', 'pax' => [$P('Female')]] + $inH, 'cash', 'customer', null, 'test' . bin2hex(random_bytes(10)));
+    $madeH[] = $b3['pnr'];
+    $sb3 = Database::scalar('SELECT sold_by_admin_id FROM bookings WHERE id = :b', ['b' => $b3['bookingId']]);
+    check('customer mode: a code in the payload credits nobody (D13)', $sb3 === null || (int) $sb3 === 0, (string) $sb3);
+} catch (Throwable $e) {
+    check('desk sale runs', false, $e->getMessage() . ' @ ' . basename($e->getFile()) . ':' . $e->getLine());
+} finally {
+    foreach ($madeH as $pnr) {
+        try { BookingService::cancel($pnr, 'smartbook-engine-test cleanup', true, 'undo'); } catch (Throwable $e) { /* already gone */ }
+        $bid = (int) Database::scalar('SELECT id FROM bookings WHERE pnr = :p', ['p' => $pnr]);
+        if ($bid > 0) {
+            foreach (['booking_seats', 'booking_passengers', 'booking_legs', 'payments', 'tickets', 'agent_ledger', 'commissions'] as $t) {
+                try { Database::run("DELETE FROM `$t` WHERE booking_id = :b", ['b' => $bid]); } catch (Throwable $e) { /* no such table */ }
+            }
+            Database::run('DELETE FROM bookings WHERE id = :b', ['b' => $bid]);
+        }
+    }
+    Database::run("DELETE FROM smartbook_requests WHERE idem_key LIKE 'test%'");
+    try { AgentWallet::setAgentCode($agentH, $codeWas); } catch (Throwable $e) { /* keep going */ }
+}
+
 $base = rtrim((string) getenv('SHG_TEST_BASE'), '/');
 if ($base !== '') {
     echo "\nG. HTTP — $base (customer door)\n";

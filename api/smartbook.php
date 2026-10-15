@@ -143,6 +143,25 @@ try {
         ], $rows));
     }
 
+    if ($action === 'agents') {
+        // The desk's agent picker (15 Oct 2026, owner: "Agent Code entry in
+        // Agent Mode and especially Counter Mode, with agent selection/search").
+        // Staff only; an AGENT session gets its own locked code and no list.
+        if ($mode === 'customer') {
+            Response::forbidden();
+        }
+        $admin = Auth::admin();
+        $me    = (int) ($admin['id'] ?? 0);
+        $own   = AgentWallet::isAgentRow($me) ? AgentWallet::agentCodeLabel($me) : '';
+        Response::success([
+            'own'      => $own,
+            'ownName'  => $own !== '' ? (string) ($admin['full_name'] ?: $admin['username']) : '',
+            'required' => $own === '' && Settings::getBool('smartbook_agent_required', true),
+            'company'  => Settings::getString('company_agent_code', 'SHG-0001'),
+            'agents'   => $own !== '' ? [] : AgentWallet::sellableAgents(),
+        ]);
+    }
+
     if ($action === 'parse') {
         require_once INCLUDE_PATH . '/smartbookbot.php';
         Security::requireRateLimit('smartbook_parse', $ip, 120, 300);
@@ -154,23 +173,46 @@ try {
         Security::requireRateLimit($mode === 'customer' ? 'smartbook_book' : 'smartbook_book_staff', $ip, $mode === 'customer' ? 12 : 120, 300);
         $pay    = ($in['pay'] ?? '') === 'online' ? 'online' : 'cash';
         $seller = null;
+        // D13: a customer's payload never carries a code; whatever it sent is dropped here.
+        unset($in['referralCode']);
         if ($mode !== 'customer') {
             $admin = Auth::admin();
             if ($admin === null) {
                 Response::unauthorized();
             }
+            $me = (int) $admin['id'];
             if ($pay === 'cash' || $mode === 'counter' || $mode === 'admin') {
                 // Money taken at the desk (cash, or UPI/eSewa seen on the desk's phone).
                 $seller = [
-                    'adminId'       => (int) $admin['id'],
+                    'adminId'       => $me,
                     'source'        => $mode === 'admin' ? 'admin' : $mode,
                     'paymentMethod' => $pay === 'cash' ? 'cash' : (in_array($in['method'] ?? '', ['upi', 'esewa', 'bank'], true) ? (string) $in['method'] : 'upi'),
                     'note'          => Security::clean((string) ($in['note'] ?? ''), 255),
                 ];
+            }
+            /* WHO the sale is credited to (15 Oct 2026, owner prompt: agent code at
+               the desk, automatic commission, synchronised accounting):
+                 - an AGENT session sells on its own code from the login, never typed;
+                 - a counter / admin desk (or an admin opening Agent mode) PICKS the
+                   agent (#sbAgent on admin/smartbook.php): a valid active code, or
+                   OTHER = the company's own code on purpose. An unknown / suspended
+                   code is refused, never silently credited to the company. When
+                   smartbook_agent_required is on (default), the desk must choose.
+               create() credits the agent after the sale (attributeDeskSale →
+               reassignSeller): commission moves to the agent, the cash stays
+               with the clerk who took it. */
+            if (AgentWallet::isAgentRow($me)) {
+                $in['referralCode'] = AgentWallet::agentCodeLabel($me);
             } else {
-                // Agent + Online: the CUSTOMER pays by QR; the sale is credited to the
-                // agent's own code from the login (never typed — D13).
-                $in['referralCode'] = AgentWallet::agentCodeLabel((int) $admin['id']);
+                $typed = Security::clean((string) ($in['agentCode'] ?? ''), 20);
+                $code  = AgentWallet::deskAgentCode($typed);
+                if ($code === null) {
+                    Response::error('Unknown or inactive agent code: ' . strtoupper($typed) . ' — pick the agent from the list. / यो एजेन्ट कोड छैन वा बन्द छ — सूचीबाट छान्नुहोस्।', 422, ['field' => 'agent']);
+                }
+                if ($code === '' && Settings::getBool('smartbook_agent_required', true) && AgentWallet::sellableAgents() !== []) {
+                    Response::error('Choose the agent this sale is credited to (or Other = company). / यो बिक्री कुन एजेन्टको हो छान्नुहोस् (वा Other = कम्पनी)।', 422, ['field' => 'agent']);
+                }
+                $in['referralCode'] = $code;
             }
         }
         $idem = Security::clean((string) ($in['idem'] ?? ''), 64);
@@ -181,13 +223,24 @@ try {
         } catch (RuntimeException $e) {
             Response::error($e->getMessage(), 409);
         }
-        if ($mode === 'agent' && empty($out['replayed'])) {
-            // The agent sees what this sale earned (AgentWallet accrued it inside create()).
+        if ($mode !== 'customer') {
+            // The desk sees WHO got the sale and what it earned (accrued inside
+            // create(), moved to the picked agent by attributeDeskSale). Read from
+            // the database so a replayed answer says the same thing.
             $out['commission'] = (float) Database::scalar(
                 "SELECT COALESCE(SUM(amount), 0) FROM agent_ledger WHERE booking_id = :b AND account = 'commission'",
                 ['b' => (int) $out['bookingId']],
                 0
             );
+            $soldBy = (int) Database::scalar('SELECT sold_by_admin_id FROM bookings WHERE id = :b', ['b' => (int) $out['bookingId']], 0);
+            $out['agent'] = null;
+            if ($soldBy > 0 && AgentWallet::isAgentRow($soldBy)) {
+                $out['agent'] = [
+                    'code' => AgentWallet::agentCodeLabel($soldBy),
+                    'name' => (string) Database::scalar("SELECT COALESCE(NULLIF(full_name, ''), username) FROM admins WHERE id = :i", ['i' => $soldBy], ''),
+                    'co'   => AgentWallet::isCompanyCode(AgentWallet::agentCodeLabel($soldBy)),
+                ];
+            }
         }
         if ($out['status'] === 'confirmed' && empty($out['replayed'])) {
             /* 15 Oct 2026 (owner: "ticket ekdum kam time ma, same page mai"):

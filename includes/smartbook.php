@@ -802,6 +802,8 @@ final class SmartBook
             $mode, $pay, normalisePhone((string) ($in['phone'] ?? '')), mb_strtolower(trim((string) ($in['name'] ?? ''))),
             implode(',', $pax), implode(',', $seats), (string) ($in['direction'] ?? ''), (string) ($in['date'] ?? ''),
             (string) ($in['point'] ?? ''), (string) ($in['type'] ?? ''), (string) ($in['cabin'] ?? ''),
+            // the agent a desk credits (api/smartbook.php sets it; '' for customers): another agent = another request
+            $mode !== 'customer' ? strtoupper((string) ($in['referralCode'] ?? '')) : '',
         ]));
     }
 
@@ -927,9 +929,12 @@ final class SmartBook
             'originTown'      => (string) $q['boardingName'],
             'couponCode'      => '',
             'pointsRequested' => 0,
-            // D13: never a typed code. An agent's Online sale carries the agent's
-            // OWN code from the login (api/smartbook.php); a customer's never does.
-            'referralCode'    => $mode === 'agent' && $seller === null ? Security::clean((string) ($in['referralCode'] ?? ''), 20) : '',
+            // D13: a customer's request never carries a code. For staff the code
+            // is set by api/smartbook.php only: an agent's OWN code from the
+            // login, or the agent the desk picked (15 Oct 2026) - create() credits
+            // that agent after the sale (attributeDeskSale) while the cash stays
+            // with the clerk; 'OTHER' = the company's own code on purpose.
+            'referralCode'    => $mode !== 'customer' ? Security::clean((string) ($in['referralCode'] ?? ''), 20) : '',
             'paymentMethod'   => $cod ? 'cod' : 'upi',
             'isCod'           => $cod && $seller === null,
         ];

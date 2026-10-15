@@ -97,6 +97,17 @@ check('cash book: settleCod, scope, CSV safe, daily totals', str_contains($cb, '
 $sb = $src('admin/smartbook.php');
 check('staff SmartBook reads the ONE card markup from the template', str_contains($sb, "file_get_contents(dirname(__DIR__) . '/app.template.html')") && str_contains($sb, 'SmartBook::sessionMode('));
 check('staff SmartBook refuses a customer session', str_contains($sb, "if (\$mode === 'customer')"));
+/* 15 Oct 2026 — the desk's agent pick (owner: "Agent Code entry in Agent Mode and
+   especially Counter Mode, with agent selection/search, automatic commission") */
+check('staff SmartBook splices the agent field in (never in the template)', str_contains($sb, 'id="sbAgent" list="sbAgentList"') && str_contains($sb, 'AgentWallet::sellableAgents()') && !str_contains($tpl, 'sbAgent'));
+check('  an agent login gets its own code, locked', str_contains($sb, 'AgentWallet::isAgentRow($me) ? AgentWallet::agentCodeLabel($me)') && str_contains($sb, 'id="sbAgentOwn"'));
+check('  the pick is remembered per clerk under the counter-mode key', str_contains($js, "'shg_ctr_agent_' + (STAFF.id || 0)") && str_contains($src('assets/js/14-counter.js'), "'shg_ctr_agent_' + (STAFF.id || 0)"));
+check('  the card sends the pick; the server validates it', str_contains($js, 'body.agentCode = S.agent') && str_contains($src('api/smartbook.php'), 'AgentWallet::deskAgentCode($typed)') && str_contains($src('api/smartbook.php'), "unset(\$in['referralCode'])"));
+check('  a refused pick lands on the agent field', str_contains($js, "er.fields.field === 'agent'") && str_contains($src('api/smartbook.php'), "['field' => 'agent']"));
+check('  the ticket card names the agent and the commission (staff only)', str_contains($js, 'STAFF && r.agent') && str_contains($src('api/smartbook.php'), "\$out['agent'] = ["));
+check('  the engine credits whatever the API set, never the payload', str_contains($src('includes/smartbook.php'), "'referralCode'    => \$mode !== 'customer' ? Security::clean((string) (\$in['referralCode'] ?? ''), 20) : ''"));
+check('  the rules page carries the "must pick an agent" switch', str_contains($src('admin/smart-rules.php'), "'smartbook_agent_required'") && str_contains($src('admin/smart-rules.php'), 'name="agent_req"'));
+check('  index.php and the API share one agent list', str_contains($src('index.php'), "\$boot['staff']['agents'] = AgentWallet::sellableAgents();"));
 $sr = $src('admin/smart-rules.php');
 check('rules page: saves need settings.manage and are audit-logged', str_contains($sr, 'Auth::canManageSettings()') && str_contains($sr, "Logger::audit('smartbook.settings'"));
 check('rules page: Default Rules preview', str_contains($sr, 'DefaultRules::preview('));

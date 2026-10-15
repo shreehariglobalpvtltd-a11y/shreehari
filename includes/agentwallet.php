@@ -500,6 +500,70 @@ final class AgentWallet
     }
 
     /**
+     * The agents a desk may credit a sale to (15 Oct 2026, SmartBook agent
+     * attribution): every ACTIVE agent that holds an SHG number, sorted by
+     * code, with the fields the pickers show (counter mode's #cAgentCode,
+     * QuickBot's #qtAgent, the SmartBook card's #sbAgent). One list for
+     * all three doors, so a code the counter can pick is a code
+     * resolveAgentCodeFromString() accepts.
+     *
+     * @return array<int, array{code: string, name: string, type: string, co: bool, city: string}>
+     */
+    public static function sellableAgents(): array
+    {
+        try {
+            $rows = Database::fetchAll(
+                "SELECT a.id, a.username, a.full_name, COALESCE(p.counter_name, '') AS city
+                   FROM admins a LEFT JOIN admin_profiles p ON p.admin_id = a.id
+                  WHERE a.role = 'agent' AND a.is_active = 1 ORDER BY a.full_name, a.username"
+            );
+        } catch (Throwable $e) {
+            return [];
+        }
+        $list = [];
+        foreach ($rows as $ar) {
+            $aid   = (int) $ar['id'];
+            $aCode = self::agentCodeLabel($aid);
+            if ($aCode === '') {
+                continue;   // no SHG number yet: nothing a desk could type
+            }
+            $list[] = [
+                'code' => $aCode,
+                'name' => (string) ($ar['full_name'] ?: $ar['username']),
+                'type' => self::agentTypeFor($aid),
+                'co'   => self::isCompanyCode($aCode),
+                'city' => trim((string) ($ar['city'] ?? '')),
+            ];
+        }
+        usort($list, static fn(array $x, array $y): int => strnatcmp($x['code'], $y['code']));
+        return $list;
+    }
+
+    /**
+     * What a desk typed or picked as "the agent" → the code the sale is
+     * credited to (15 Oct 2026). '' = nothing chosen; 'OTHER' = the company's
+     * own code on purpose; else the canonical SHG-NNNN label of an ACTIVE
+     * agent. Returns null for anything that resolves to nobody (a typo, a
+     * suspended agent), so the caller can refuse instead of silently
+     * handing the commission to the company.
+     */
+    public static function deskAgentCode(string $raw): ?string
+    {
+        $raw = strtoupper(trim($raw));
+        if ($raw === '') {
+            return '';
+        }
+        if ($raw === 'OTHER' || $raw === 'COMPANY' || $raw === 'OFFICE') {
+            return 'OTHER';
+        }
+        if (preg_match('/^\d{1,4}$/', $raw) === 1) {
+            $raw = 'SHG-' . $raw;   // a desk types the number alone
+        }
+        $aid = self::resolveAgentCodeFromString($raw);
+        return $aid === null ? null : self::agentCodeLabel($aid);
+    }
+
+    /**
      * Is this sale already credited to ANOTHER agent? Returns that agent's
      * code ("SHG-0007", or "AGENT #42" when un-numbered), '' when the ticket
      * is free to take: no seller, an office / counter seller, the company's

@@ -288,31 +288,8 @@ if ($staffRow !== null) {
         ],
         'nprRate'        => Settings::getFloat('npr_per_inr', defined('NPR_PER_INR') ? (float) NPR_PER_INR : 1.6),
     ];
-    try {
-        $agentRows = Database::fetchAll(
-            "SELECT a.id, a.username, a.full_name, COALESCE(p.counter_name, '') AS city
-               FROM admins a LEFT JOIN admin_profiles p ON p.admin_id = a.id
-              WHERE a.role = 'agent' AND a.is_active = 1 ORDER BY a.full_name, a.username"
-        );
-        $agentList = [];
-        foreach ($agentRows as $ar) {
-            $aid  = (int) $ar['id'];
-            $aCode = AgentWallet::agentCodeLabel($aid);
-            if ($aCode) {
-                $agentList[] = [
-                    'code' => $aCode,
-                    'name' => (string) ($ar['full_name'] ?: $ar['username']),
-                    'type' => AgentWallet::agentTypeFor($aid),
-                    'co'   => AgentWallet::isCompanyCode($aCode),
-                    'city' => trim((string) ($ar['city'] ?? '')),   // shown in the agent search box (5 Oct 2026)
-                ];
-            }
-        }
-        usort($agentList, static fn(array $x, array $y): int => strnatcmp($x['code'], $y['code']));
-        $boot['staff']['agents'] = $agentList;
-    } catch (Throwable $e) {
-        $boot['staff']['agents'] = [];
-    }
+    // One agent list for every desk picker (counter mode, QuickBot, SmartBook) — 15 Oct 2026.
+    $boot['staff']['agents'] = AgentWallet::sellableAgents();
 }
 
 /* Home page (12 Sep 2026): the QuickBot card shows how many tickets the

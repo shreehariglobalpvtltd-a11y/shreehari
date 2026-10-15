@@ -94,6 +94,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                     'smartbook_online_hold_min' => [max(5, min(120, (int) ($_POST['hold'] ?? 15))), 'int', true],
                     'cod_autocancel_minutes'    => [max(0, min(600, (int) ($_POST['cod_cancel'] ?? 0))), 'int', false],
                     'allow_cod'                 => [!empty($_POST['allow_cod']) ? '1' : '0', 'bool', true],
+                    'smartbook_agent_required'  => [!empty($_POST['agent_req']) ? '1' : '0', 'bool', false],
                 ];
                 foreach ($pairs as $k => [$v, $t, $pub]) {
                     $old = Settings::getString($k, '');
@@ -289,6 +290,7 @@ $tabs = ['rules' => 'Default Rules', 'seats' => 'Seat rules', 'limits' => 'Booki
     <label>Most Cash passengers per mobile per bus<input type="number" name="cod_max" min="0" max="50" value="<?= (int) Settings::getInt('cod_max_pax_per_mobile', 6) ?>"></label>
     <label>Online hold (minutes the berths wait for the QR payment)<input type="number" name="hold" min="5" max="120" value="<?= (int) Settings::getInt('smartbook_online_hold_min', 15) ?>"></label>
     <label>Auto-cancel unpaid Cash this many minutes before boarding (0 = off)<input type="number" name="cod_cancel" min="0" max="600" value="<?= (int) Settings::getInt('cod_autocancel_minutes', 0) ?>"></label>
+    <label>Counter / admin SmartBook must pick the agent a sale is credited to<select name="agent_req"><option value="1"<?= Settings::getBool('smartbook_agent_required', true) ? ' selected' : '' ?>>Yes — choose an agent or Other (company)</option><option value=""<?= Settings::getBool('smartbook_agent_required', true) ? '' : ' selected' ?>>No — blank = company code</option></select></label>
   </div>
   <p class="sr-note">Cash is normally paid AT boarding, so the auto-cancel is off; switching it on cancels website Cash tickets that nobody paid by that time (desk sales are never touched).</p>
   <?php if ($canEdit): ?><p><button class="btn ok" type="submit">💾 Save limits</button></p><?php endif; ?>
